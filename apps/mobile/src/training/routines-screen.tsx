@@ -48,6 +48,17 @@ function RoundButton({ disabled, label, onPress }: { disabled: boolean; label: s
   </GlassSurface>;
 }
 
+function DoneButton({ disabled, onPress }: { disabled: boolean; onPress: () => void }) {
+  const { colors } = useOwnlevelTheme();
+  const reduceMotion = useReduceMotion();
+  return <GlassSurface interactive style={styles.done}>
+    <Pressable accessibilityLabel="Guardar orden" accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled}
+      onPress={onPress} style={({ pressed }) => [styles.done, pressedStyle(pressed, reduceMotion)]}>
+      <AppText style={{ color: colors.primary }} variant="headline">Listo</AppText>
+    </Pressable>
+  </GlassSurface>;
+}
+
 /** UIKit must discover the ScrollView directly to manage large-title expansion and collapse. */
 function RoutinesScrollScreen({ children, contentContainerStyle, scrollRef, ...props }: PropsWithChildren<ScrollViewProps> & { scrollRef?: RefObject<ScrollView | null> }) {
   const { colors } = useOwnlevelTheme();
@@ -268,7 +279,7 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
       headerStyle: { backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.background },
       headerLargeStyle: { backgroundColor: 'transparent' }, headerBackButtonMenuEnabled: false,
       headerRight: Platform.OS !== 'ios' && !archivedOnly ? () => orderDraft
-        ? <Pressable accessibilityRole="button" accessibilityLabel="Guardar orden" disabled={Boolean(pending) || dragging} onPress={() => void saveOrder()}><AppText style={{ color: colors.primary }} variant="headline">Listo</AppText></Pressable>
+        ? <DoneButton disabled={Boolean(pending) || dragging || pointerEvents === 'none'} onPress={() => void saveOrder()} />
         : <View style={styles.headerActions}>{active.length >= 2 ? <RoundButton disabled={Boolean(pending) || pointerEvents === 'none'} label="Ordenar rutinas" onPress={openOrder} /> : null}<RoundButton disabled={Boolean(pending) || pointerEvents === 'none'} label="Nueva rutina" onPress={openCreate} /></View> : undefined,
       headerLeft: Platform.OS !== 'ios' ? () => <RoundButton disabled={Boolean(pending) || pointerEvents === 'none'} label="Volver" onPress={() => router.back()} /> : undefined,
     }} />
@@ -350,6 +361,7 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
 
 const styles = StyleSheet.create({
   archived: { alignItems: 'center', borderRadius: radius.card, flexDirection: 'row', gap: spacing.md, minHeight: 64, padding: spacing.lg },
+  done: { alignItems: 'center', borderRadius: radius.full, height: 44, justifyContent: 'center', paddingHorizontal: spacing.md },
   flex: { flex: 1 },
   headerActions: { flexDirection: 'row', gap: spacing.sm },
   list: { borderRadius: radius.card, overflow: 'hidden' },
