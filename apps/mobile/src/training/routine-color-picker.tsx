@@ -12,7 +12,7 @@ export function RoutineColorPicker({ color, disabled, onChange }: {
     <View style={styles.group}>
       <AppText variant="headline">Color</AppText>
       <View accessibilityRole="radiogroup" style={styles.group}>
-        {[MOBILE_ROUTINE_COLOR_KEYS.slice(0, 4), MOBILE_ROUTINE_COLOR_KEYS.slice(4)].map((row, index) => (
+        {[MOBILE_ROUTINE_COLOR_KEYS.slice(0, 6), MOBILE_ROUTINE_COLOR_KEYS.slice(6)].map((row, index) => (
           <View key={index} style={styles.row} testID="routine-color-row">
             {row.map(option => (
               <Pressable accessibilityLabel={trainingRoutineColorLabel(option)} accessibilityRole="radio"

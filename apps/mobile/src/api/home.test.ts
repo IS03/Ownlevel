@@ -126,8 +126,8 @@ describe('Mobile Home runtime parser', () => {
   });
 });
 
-it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('preserves Home routine with unknown color %s', color => {
+it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('preserves Home routine with new or unknown color %s', color => {
   const routine = home.training.workoutStartRoutines.status === 'ok' ? home.training.workoutStartRoutines.data[0] : undefined;
   const parsed = parseMobileHomeResponse({ ...home, training: { ...home.training, workoutStartRoutines: { status: 'ok', data: [{ ...routine, color }] } } });
-  expect(parsed?.training.workoutStartRoutines).toEqual({ status: 'ok', data: [{ ...routine, color: null }] });
+  expect(parsed?.training.workoutStartRoutines).toEqual({ status: 'ok', data: [{ ...routine, color: color === 'future-color' ? null : color }] });
 });

@@ -4,6 +4,7 @@ import { palette, routinePalette } from '@/design-system/brand';
 const routineColorLabels: Record<MobileRoutineColorKey, string> = {
   violet: 'violeta', indigo: 'índigo', blue: 'azul', cyan: 'celeste',
   green: 'verde', yellow: 'amarillo', orange: 'naranja', rose: 'rosa',
+  sand: 'arena', stone: 'piedra', slate: 'pizarra', graphite: 'grafito',
 };
 
 export function trainingRoutineColor(key: MobileRoutineColorKey, isDark: boolean): string {

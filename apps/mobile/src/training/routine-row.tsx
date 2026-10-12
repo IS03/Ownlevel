@@ -33,9 +33,9 @@ function SwipeAction({ full, label, onPress, start, translation, width }: {
   );
 }
 
-export function RoutineRow({ routine, disabled, onOpen, onColor, onStart, onStatus }: {
+export function RoutineRow({ routine, disabled, onOpen, onColor, onDuplicate, onStart, onStatus }: {
   routine: MobileTrainingRoutine; disabled: boolean;
-  onOpen: () => void; onColor: () => void; onStart: () => void; onStatus: () => void;
+  onOpen: () => void; onColor: () => void; onDuplicate: () => void; onStart: () => void; onStatus: () => void;
 }) {
   const { colors, isDark } = useOwnlevelTheme();
   const reduceMotion = useReduceMotion();
@@ -49,6 +49,7 @@ export function RoutineRow({ routine, disabled, onOpen, onColor, onStart, onStat
   const status = () => { if (!disabled) { closeSwipe(); onStatus(); } };
   const open = () => { if (!disabled) { closeSwipe(); onOpen(); } };
   const color = () => { if (!disabled) { closeSwipe(); onColor(); } };
+  const duplicate = () => { if (!disabled) { closeSwipe(); onDuplicate(); } };
   const statusLabel = routine.isActive ? 'Archivar' : 'Restaurar';
   return (
     <View onLayout={event => setWidth(event.nativeEvent.layout.width)} testID={`routine-row-${routine.id}`}>
@@ -61,15 +62,15 @@ export function RoutineRow({ routine, disabled, onOpen, onColor, onStart, onStat
         renderLeftActions={routine.isActive ? (_progress, translation) => <SwipeAction full={trackFullSwipe} label="Empezar" onPress={start} start translation={translation} width={width} /> : undefined}
         renderRightActions={(_progress, translation) => <SwipeAction full={trackFullSwipe} label={statusLabel} onPress={status} translation={translation} width={width} />}
         testID={`routine-swipe-${routine.id}`}>
-        <RoutineContextMenu width={width} disabled={disabled || confirm} onColor={color} onEdit={open} onStart={start} onStatus={status} routine={routine}>
+        <RoutineContextMenu width={width} disabled={disabled || confirm} onColor={color} onEdit={open} onDuplicate={duplicate} onStart={start} onStatus={status} routine={routine}>
           <Pressable accessibilityActions={[
             ...(routine.isActive ? [{ name: 'start', label: 'Empezar entrenamiento' }, { name: 'color', label: 'Cambiar color' }] : []),
-            { name: 'edit', label: 'Editar rutina' }, { name: 'status', label: statusLabel },
+            { name: 'edit', label: 'Editar rutina' }, { name: 'duplicate', label: 'Duplicar' }, { name: 'status', label: statusLabel },
           ]} accessibilityHint="Tocá para editar. Mantené apretado para ver acciones."
             accessibilityLabel={`Abrir rutina ${routine.name}, ${routineMetadata(routine)}`} accessibilityRole="button"
             accessibilityState={{ disabled }} disabled={disabled} onAccessibilityAction={event => {
               const action = event.nativeEvent.actionName;
-              if (action === 'start') start(); else if (action === 'color') color(); else if (action === 'status') status(); else if (action === 'edit') open();
+              if (action === 'start') start(); else if (action === 'color') color(); else if (action === 'status') status(); else if (action === 'edit') open(); else if (action === 'duplicate') duplicate();
             }} onPress={open} style={({ pressed }) => [styles.row, { width: width > 0 ? width : undefined, backgroundColor: colors.surface, opacity: pressed ? 0.7 : 1 }]}>
             {routine.color ? <View accessibilityElementsHidden style={[styles.strip, { backgroundColor: trainingRoutineColor(routine.color, isDark), opacity: routine.isActive ? 1 : 0.45 }]}
               testID={`routine-color-${routine.id}-${routine.color}`} /> : null}

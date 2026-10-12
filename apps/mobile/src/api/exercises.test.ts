@@ -143,7 +143,7 @@ describe('Mobile Training exercises API', () => {
   });
 });
 
-it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('keeps exercise memberships with unknown routine color %s', color => {
+it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('keeps exercise memberships with new or unknown routine color %s', color => {
   const parsed = parseMobileTrainingExercisesResponse({ catalog: { status: 'ok', data: { exercises: [exercise], routines: [{ ...routine, color }] } } });
-  expect(parsed?.catalog).toEqual({ status: 'ok', data: { exercises: [exercise], routines: [{ ...routine, color: null }] } });
+  expect(parsed?.catalog).toEqual({ status: 'ok', data: { exercises: [exercise], routines: [{ ...routine, color: color === 'future-color' ? null : color }] } });
 });

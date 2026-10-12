@@ -1,12 +1,17 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { Alert, RefreshControl } from 'react-native';
+import { Alert, RefreshControl, DeviceEventEmitter, ScrollView } from 'react-native';
+import { State } from 'react-native-gesture-handler';
+import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import * as Reanimated from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { MobileTrainingRoutinesResponse } from '@/api/routines';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { RoutinesScreen } from './routines-screen';
 
+const mockDuplicate = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockDetail = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockOrder = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockCreate = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockFetch = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockRefresh = jest.fn<() => Promise<void>>();
@@ -46,6 +51,9 @@ jest.mock('expo-router', () => {
     Stack: { Toolbar, Screen: ({ options }: { options: { headerRight?: () => React.ReactNode } }) => { mockHeaderOptions(options); return options.headerRight?.() ?? null; } } };
 });
 jest.mock('@/api', () => ({
+  duplicateMobileTrainingRoutine: (...args: unknown[]) => mockDuplicate(...args),
+  reorderMobileTrainingRoutines: (...args: unknown[]) => mockOrder(...args),
+  fetchRoutineDetail: (...args: unknown[]) => mockDetail(...args),
   createMobileTrainingRoutine: (...args: unknown[]) => mockCreate(...args),
   fetchMobileTrainingRoutines: (...args: unknown[]) => mockFetch(...args),
   setMobileTrainingRoutineStatus: (...args: unknown[]) => mockSetStatus(...args),
@@ -59,7 +67,7 @@ const routines = [
   { id: '33333333-3333-4333-8333-333333333333', name: 'OLD', color: 'orange' as const, order: 3, isActive: false, exerciseCount: 3, setCount: 9 },
 ];
 function fixture(overrides: Partial<MobileTrainingRoutinesResponse> = {}): MobileTrainingRoutinesResponse {
-  return { routines: { status: 'ok', data: routines }, initialPlan: { status: 'ok', data: { imported: true, routinesFound: 3 } }, ...overrides };
+  return { routines: { status: 'ok', data: [...routines].sort((a, b) => a.order - b.order) }, listVersion: { status: 'ok', data: 7 }, initialPlan: { status: 'ok', data: { imported: true, routinesFound: 3 } }, ...overrides };
 }
 function readyState(data = fixture()) {
   return { status: 'ready' as const, current: { confirmedAt: 1, data }, refreshing: false, trigger: 'initial' as const,
@@ -81,15 +89,18 @@ function statusResult(isActive: boolean) {
   return { status: 'ok', data: { routine: { id: routines[1].id, isActive, updatedAt: '2026-10-12T12:00:00Z' } } };
 }
 
-describe('routine library', () => {
   beforeEach(() => {
     jest.restoreAllMocks();
     mockSwipeDistance = 0;
     jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockDuplicate.mockReset(); mockDetail.mockReset(); mockOrder.mockReset();
     mockCreate.mockReset(); mockFetch.mockReset(); mockRefresh.mockReset(); mockSetStatus.mockReset(); mockUseApiResource.mockReset(); mockPush.mockReset(); mockStart.mockReset();
     mockRefresh.mockResolvedValue(undefined);
     mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState() });
   });
+
+describe('routine library', () => {
+
 
   it('preserves loading, unavailable and stale states', () => {
     mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: { status: 'loading' } });
@@ -101,7 +112,7 @@ describe('routine library', () => {
   });
 
   it.each([false, true])('shows counts and sorted rows, with no strip for null (dark=%s)', dark => {
-    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState(fixture({ routines: { status: 'ok', data: routines.map(routine => routine.name === 'LEGS' ? { ...routine, color: null } : routine) } })) });
+    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState(fixture({ routines: { status: 'ok', data: [...routines].sort((a, b) => a.order - b.order).map(routine => routine.name === 'LEGS' ? { ...routine, color: null } : routine) } })) });
     const view = renderScreen({ dark });
     expect(view.getAllByTestId('routine-name').map(node => node.props.children)).toEqual(['PUSH', 'LEGS']);
     expect(view.getByText('7 ejercicios · 21 series')).toBeTruthy(); expect(view.getByText('2')).toBeTruthy();
@@ -185,8 +196,8 @@ describe('routine library', () => {
   it('long press exposes actions and changing color opens the editor identity modal', () => {
     const view = renderScreen(); fireEvent(view.getByRole('button', { name: /Abrir rutina PUSH/ }), 'longPress');
     const menu = within(view.getByTestId('routine-menu'));
-    for (const name of ['Empezar entrenamiento', 'Editar rutina', 'Cambiar color', 'Archivar', 'Cancelar']) expect(menu.getByRole('button', { name })).toBeTruthy();
-    expect(menu.queryByText('Duplicar')).toBeNull();
+    for (const name of ['Empezar entrenamiento', 'Editar rutina', 'Duplicar', 'Cambiar color', 'Archivar', 'Cancelar']) expect(menu.getByRole('button', { name })).toBeTruthy();
+    expect(menu.getByText('Duplicar')).toBeTruthy();
     fireEvent.press(menu.getByRole('button', { name: 'Cambiar color' })); expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/routines/[id]', params: { id: routines[1].id, editIdentity: '1' } });
   });
 
@@ -243,11 +254,11 @@ describe('routine library', () => {
     expect(mockCreate.mock.calls.map(call => call[1])).toEqual([{ name: 'Push B', color: 'violet', idempotencyKey: 'stable-key' }, { name: 'Push B', color: 'violet', idempotencyKey: 'stable-key' }]); expect(key).toHaveBeenCalledTimes(1);
   });
 
-  it('uses eight 48pt color targets and prevents double creation', async () => {
+  it('uses twelve 48pt color targets and prevents double creation', async () => {
     let finish: ((result: unknown) => void) | undefined;
     mockCreate.mockReturnValue(new Promise(resolve => { finish = resolve; }));
     const view = renderScreen(); fireEvent.press(view.getByRole('button', { name: 'Nueva rutina' }));
-    expect(view.getAllByRole('radio')).toHaveLength(8); expect(view.getAllByTestId('routine-color-row')).toHaveLength(2);
+    expect(view.getAllByRole('radio')).toHaveLength(12); expect(view.getAllByTestId('routine-color-row')).toHaveLength(2);
     for (const target of view.getAllByRole('radio')) expect(target).toHaveStyle({ height: 48, width: 48 });
     fireEvent.changeText(view.getByLabelText('Nombre de la rutina'), 'Push B'); fireEvent.press(view.getByRole('button', { name: 'Crear rutina' }));
     expect(view.getByRole('button', { name: 'Creando…' })).toBeDisabled(); fireEvent.press(view.getByRole('button', { name: 'Creando…' })); expect(mockCreate).toHaveBeenCalledTimes(1);
@@ -305,4 +316,146 @@ describe('routine writes with real resource reads', () => {
     await waitFor(() => expect(view.getByRole('button', { name: 'Deshacer archivado' })).toBeTruthy());
     expect(mockFetch).toHaveBeenCalledTimes(3); expect(view.queryByText('PUSH')).toBeNull(); expect(view.getByText('LEGS')).toBeTruthy();
   });
+});
+
+const copyDetail = (name = 'PUSH', color: string | null = 'sand') => ({
+  status: 'ok', data: { kind: 'detail', detail: { routine: {
+    id: routines[1].id, name, color, isActive: true, updatedAt: '2026-10-12T12:00:00.123456Z', templateVersion: 9,
+  }, items: [{ targets: { sets: [{}, {}] } }, { targets: { sets: [{}] } }] } },
+});
+function duplicate(view: ReturnType<typeof renderScreen>, name = 'PUSH') {
+  fireEvent(view.getByRole('button', { name: new RegExp(`Abrir rutina ${name}`) }), 'accessibilityAction', { nativeEvent: { actionName: 'duplicate' } });
+}
+function moveDown(view: ReturnType<typeof renderScreen>, name = 'PUSH') {
+  fireEvent(view.getByLabelText(`Ordenar ${name}`), 'accessibilityAction', { nativeEvent: { actionName: 'increment' } });
+}
+
+it('opens a duplication using fresh detail, editable name/color and real template counts', async () => {
+  mockDetail.mockResolvedValue(copyDetail('PUSH actual'));
+  mockDuplicate.mockResolvedValue({ status: 'ok', data: { routine: { ...routines[1], id: '44444444-4444-4444-8444-444444444444', name: 'PUSH B' } } });
+  const view = renderScreen({ createIdempotencyKey: () => 'duplicate-key' }); duplicate(view);
+  await waitFor(() => expect(view.getByText('Duplicar PUSH actual')).toBeTruthy());
+  expect(view.getByLabelText('Nombre de la rutina').props.value).toBe('PUSH actual copia');
+  expect(view.getByText('2 ejercicios · 3 series')).toBeTruthy();
+  expect(view.getByText('Se copian los 2 ejercicios con sus series. PUSH actual queda igual.')).toBeTruthy();
+  expect(view.getByRole('radio', { name: 'arena' }).props.accessibilityState.checked).toBe(true);
+  fireEvent.changeText(view.getByLabelText('Nombre de la rutina'), 'PUSH B');
+  fireEvent.press(view.getByRole('radio', { name: 'piedra' }));
+  fireEvent.press(view.getByRole('button', { name: 'Duplicar rutina' }));
+  await waitFor(() => expect(view.getByText('Rutina duplicada')).toBeTruthy());
+  expect(mockDuplicate.mock.calls[0]?.slice(1)).toEqual([routines[1].id, {
+    name: 'PUSH B', color: 'stone', idempotencyKey: 'duplicate-key', expectedUpdatedAt: '2026-10-12T12:00:00.123456Z', expectedTemplateVersion: 9,
+  }]);
+  expect(view.getAllByTestId('routine-name').map(node => node.props.children)).toEqual(['PUSH', 'PUSH B', 'LEGS']);
+  expect(mockCreate).not.toHaveBeenCalled(); expect(mockSetStatus).not.toHaveBeenCalled(); expect(mockStart).not.toHaveBeenCalled();
+});
+
+it.each([null, 'graphite'])('duplicates an archived routine with its original color %s', async color => {
+  const result = copyDetail('OLD', color); result.data.detail.routine.id = routines[2].id;
+  result.data.detail.routine.isActive = false;
+  mockDetail.mockResolvedValue(result); mockDuplicate.mockResolvedValue({ status: 'ok', data: { routine: { ...routines[2], isActive: true } } });
+  const view = renderScreen({ archivedOnly: true }); duplicate(view, 'OLD');
+  await waitFor(() => expect(view.getByText('Duplicar OLD')).toBeTruthy());
+  fireEvent.press(view.getByRole('button', { name: 'Duplicar rutina' }));
+  await waitFor(() => expect(mockDuplicate).toHaveBeenCalledTimes(1));
+  expect(mockDuplicate.mock.calls[0]?.[2]).toMatchObject({ name: 'OLD copia', color });
+});
+
+it('never opens a duplication sheet with fabricated data when detail fails', async () => {
+  mockDetail.mockResolvedValue({ status: 'unavailable', reason: 'server' });
+  const view = renderScreen(); duplicate(view);
+  await waitFor(() => expect(view.getByText(/No pudimos cargar la rutina para copiarla/)).toBeTruthy());
+  expect(view.queryByTestId('create-routine-sheet')).toBeNull(); expect(mockDuplicate).not.toHaveBeenCalled();
+});
+
+it('keeps duplication retries idempotent and blocks other mutations during a pending request', async () => {
+  const key = jest.fn(() => 'retry-copy'); mockDetail.mockResolvedValue(copyDetail());
+  let finish: ((value: unknown) => void) | undefined;
+  mockDuplicate.mockReturnValueOnce(new Promise(resolve => { finish = resolve; })).mockResolvedValueOnce({ status: 'unavailable', reason: 'network' });
+  const view = renderScreen({ createIdempotencyKey: key }); duplicate(view);
+  await waitFor(() => expect(view.getByRole('button', { name: 'Duplicar rutina' })).toBeTruthy());
+  fireEvent.press(view.getByRole('button', { name: 'Duplicar rutina' }));
+  expect(view.getByRole('button', { name: 'Duplicando…' })).toBeDisabled();
+  archive(view, 'LEGS'); expect(mockSetStatus).not.toHaveBeenCalled();
+  await act(async () => finish?.({ status: 'unavailable', reason: 'network' }));
+  fireEvent.press(view.getByRole('button', { name: 'Duplicar rutina' }));
+  await waitFor(() => expect(mockDuplicate).toHaveBeenCalledTimes(2));
+  expect(mockDuplicate.mock.calls[1]?.[2]).toEqual(mockDuplicate.mock.calls[0]?.[2]); expect(key).toHaveBeenCalledTimes(1);
+});
+
+it.each([false, true])('hides ordering for fewer than two active routines and archived route (%s)', archivedOnly => {
+  mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState(fixture({ routines: { status: 'ok', data: [routines[1], routines[2]] } })) });
+  expect(renderScreen({ archivedOnly }).queryByRole('button', { name: 'Ordenar rutinas' })).toBeNull();
+});
+
+it('requires a confirmed list version before entering order mode', async () => {
+  mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState(fixture({ listVersion: undefined })) });
+  const view = renderScreen(); fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' }));
+  expect(view.queryByTestId('routine-order-list')).toBeNull(); expect(mockOrder).not.toHaveBeenCalled();
+  expect(view.getByText('Actualizá la lista antes de ordenar las rutinas.')).toBeTruthy();
+  await waitFor(() => expect(mockRefresh).toHaveBeenCalled());
+});
+
+it.each([false, true])('keeps an optimistic order and sends exact IDs, server version and one intent on Listo (dark=%s)', async dark => {
+  let finish: ((value: unknown) => void) | undefined;
+  mockOrder.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  const view = renderScreen({ dark, createIdempotencyKey: () => 'order-key' });
+  fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' }));
+  expect(view.queryByRole('button', { name: 'Nueva rutina' })).toBeNull();
+  expect(view.queryByText('Archivadas')).toBeNull();
+  expect(view.queryByRole('button', { name: /Abrir rutina/ })).toBeNull();
+  moveDown(view);
+  expect(view.getByLabelText('Ordenar PUSH').props.accessibilityValue.now).toBe(2);
+  expect(mockOrder).not.toHaveBeenCalled();
+  fireEvent.press(view.getByRole('button', { name: 'Guardar orden' }));
+  expect(view.getByRole('button', { name: 'Guardar orden' })).toBeDisabled();
+  fireEvent.press(view.getByRole('button', { name: 'Guardar orden' }));
+  expect(mockOrder).toHaveBeenCalledTimes(1);
+  expect(mockOrder.mock.calls[0]?.[1]).toEqual({ routineIds: [routines[0].id, routines[1].id], expectedListVersion: 7, idempotencyKey: 'order-key' });
+  await act(async () => finish?.({ status: 'ok', data: { routineIds: [routines[0].id, routines[1].id], listVersion: 9 } }));
+  expect(view.getByText('Orden guardado')).toBeTruthy();
+  expect(view.getAllByTestId('routine-name').map(node => node.props.children)).toEqual(['LEGS', 'PUSH']);
+});
+
+it.each(['conflict', 'unavailable'])('rolls back an unconfirmed order to server rows and reads again after %s', async status => {
+  mockOrder.mockResolvedValue(status === 'conflict' ? { status, code: 'ROUTINE_LIST_CHANGED' } : { status, reason: 'network' });
+  const view = renderScreen(); fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); moveDown(view);
+  await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar orden' })); });
+  expect(mockOrder).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(view.queryByTestId('routine-order-list')).toBeNull());
+  expect(view.getAllByTestId('routine-name').map(node => node.props.children)).toEqual(['PUSH', 'LEGS']);
+  expect(mockRefresh).toHaveBeenCalled(); expect(mockOrder).toHaveBeenCalledTimes(1);
+  expect(view.getByText(status === 'conflict' ? /La lista cambió/ : /No pudimos confirmar el orden/)).toBeTruthy();
+});
+
+it('moves via the real JS gesture and preserves its recognizer across React renders', async () => {
+  const view = renderScreen(); fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' }));
+  for (const row of routines.filter(row => row.isActive)) fireEvent(view.getByTestId(`order-row-${row.id}`), 'layout', { nativeEvent: { layout: { height: 76 } } });
+  const key = `order-drag-${routines[1].id}`, gesture = getByGestureTestId(key);
+  const send = (state: number, oldState: number | undefined, dy: number) => DeviceEventEmitter.emit(oldState === undefined ? 'onGestureHandlerEvent' : 'onGestureHandlerStateChange', {
+    handlerTag: getByGestureTestId(key).handlerTag, state, ...(oldState === undefined ? {} : { oldState }),
+    translationY: dy, translationX: 0, absoluteY: 350 + dy, absoluteX: 300, x: 20, y: 20, velocityX: 0, velocityY: 0, numberOfPointers: 1,
+  });
+  act(() => send(State.BEGAN, State.UNDETERMINED, 0)); act(() => send(State.ACTIVE, State.BEGAN, 0));
+  expect(view.UNSAFE_getByType(ScrollView).props.scrollEnabled).toBe(false);
+  expect(view.getByRole('button', { name: 'Guardar orden' })).toBeDisabled();
+  act(() => send(State.ACTIVE, undefined, 65));
+  expect(getByGestureTestId(key)).toBe(gesture);
+  expect(view.getByTestId(`order-row-${routines[1].id}`)).toHaveStyle({ transform: [{ translateY: 65 }], shadowOpacity: 0.16 });
+  expect(view.getByLabelText('Ordenar PUSH').props.accessibilityValue.now).toBe(2);
+  act(() => send(State.END, State.ACTIVE, 65));
+  expect(view.UNSAFE_getByType(ScrollView).props.scrollEnabled).toBe(true);
+  expect(mockOrder).not.toHaveBeenCalled();
+  await act(async () => undefined);
+});
+
+it('restores the pre-drag draft on a cancelled gesture', async () => {
+  const view = renderScreen(); fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' }));
+  act(() => fireGestureHandler(getByGestureTestId(`order-drag-${routines[1].id}`), [
+    { state: State.BEGAN }, { state: State.ACTIVE, translationY: 0, absoluteY: 350 },
+    { state: State.ACTIVE, translationY: 65, absoluteY: 415 }, { state: State.CANCELLED, translationY: 65, absoluteY: 415 },
+  ]));
+  expect(view.getByLabelText('Ordenar PUSH').props.accessibilityValue.now).toBe(1);
+  expect(view.UNSAFE_getByType(ScrollView).props.scrollEnabled).toBe(true);
+  await act(async () => undefined);
 });

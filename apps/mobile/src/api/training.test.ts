@@ -102,5 +102,5 @@ describe('Mobile Training API contract', () => {
 
 it('keeps trained days when their colors are unknown', () => {
   const parsed = parseMobileTrainingResponse({ ...response, calendar: { status: 'ok', data: { month: '2026-09', days: [{ date: '2026-09-03', colors: ['sand', 'future-color', 'blue'] }] } } });
-  expect(parsed?.calendar).toEqual({ status: 'ok', data: { month: '2026-09', days: [{ date: '2026-09-03', colors: [null, null, 'blue'] }] } });
+  expect(parsed?.calendar).toEqual({ status: 'ok', data: { month: '2026-09', days: [{ date: '2026-09-03', colors: ['sand', null, 'blue'] }] } });
 });

@@ -89,7 +89,7 @@ describe('Mobile Training routines API', () => {
   });
 });
 
-it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('keeps routines with unknown color %s', color => {
+it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('keeps routines with new or unknown color %s', color => {
   const parsed = parseMobileTrainingRoutinesResponse({ routines: { status: 'ok', data: [{ ...routine, color }] }, initialPlan: { status: 'unavailable' } });
-  expect(parsed?.routines).toEqual({ status: 'ok', data: [{ ...routine, color: null }] });
+  expect(parsed?.routines).toEqual({ status: 'ok', data: [{ ...routine, color: color === 'future-color' ? null : color }] });
 });

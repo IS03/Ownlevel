@@ -9,5 +9,6 @@ export type RoutineContextMenuProps = {
   onStart: () => void;
   onEdit: () => void;
   onColor: () => void;
+  onDuplicate: () => void;
   onStatus: () => void;
 };

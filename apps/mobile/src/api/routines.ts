@@ -19,6 +19,7 @@ export type MobileTrainingRoutine = {
 };
 
 export type MobileTrainingRoutinesResponse = {
+  listVersion?: MobileReadResult<number>;
   routines: MobileReadResult<MobileTrainingRoutine[]>;
   initialPlan: MobileReadResult<{
     imported: boolean;
@@ -120,7 +121,10 @@ export function parseMobileTrainingRoutinesResponse(
   if (!isRecord(value)) return undefined;
   const routines = parseReadResult(value.routines, parseRoutineList);
   const initialPlan = parseReadResult(value.initialPlan, parseInitialPlanStatus);
-  return routines && initialPlan ? { routines, initialPlan } : undefined;
+  const listVersion = value.listVersion === undefined ? undefined : parseReadResult(value.listVersion,
+    data => Number.isSafeInteger(data) && (data as number) >= 0 ? data as number : undefined);
+  if (value.listVersion !== undefined && !listVersion) return undefined;
+  return routines && initialPlan ? { routines, initialPlan, ...(listVersion ? { listVersion } : {}) } : undefined;
 }
 
 function parseCreateResponse(value: unknown): MobileTrainingRoutineCreateResponse | undefined {
@@ -174,7 +178,7 @@ export function fetchMobileTrainingRoutines(
 
 export function createMobileTrainingRoutine(
   client: MobileApiClient,
-  input: { name: string; color: MobileRoutineColorKey; idempotencyKey: string },
+  input: { name: string; color: MobileRoutineColorKey | null; idempotencyKey: string },
 ): Promise<MobileApiMutationResult<MobileTrainingRoutineCreateResponse>> {
   return client.request({
     body: input,
@@ -204,5 +208,33 @@ export function importMobileTrainingInitialPlan(
     method: 'POST',
     parse: parseInitialPlanResponse,
     path: MOBILE_TRAINING_INITIAL_PLAN_API_PATH,
+  });
+}
+
+export type RoutineDuplicateInput = {
+  name: string; color: MobileRoutineColorKey | null; idempotencyKey: string;
+  expectedUpdatedAt: string; expectedTemplateVersion: number;
+};
+export type RoutineOrderInput = { routineIds: string[]; expectedListVersion: number; idempotencyKey: string };
+export type RoutineOrderResponse = { routineIds: string[]; listVersion: number };
+
+export function duplicateMobileTrainingRoutine(client: MobileApiClient, id: string, input: RoutineDuplicateInput) {
+  return client.request<MobileTrainingRoutineCreateResponse>({
+    body: input, method: 'POST',
+    parse: value => { const parsed = parseCreateResponse(value); return parsed?.routine.isActive && parsed.routine.id.toLowerCase() !== id.toLowerCase() ? parsed : undefined; },
+    path: `${MOBILE_TRAINING_ROUTINES_API_PATH}/${encodeURIComponent(id)}/duplicate`,
+  });
+}
+
+export function reorderMobileTrainingRoutines(client: MobileApiClient, input: RoutineOrderInput) {
+  return client.request<RoutineOrderResponse>({
+    body: input, method: 'PUT', path: `${MOBILE_TRAINING_ROUTINES_API_PATH}/order`,
+    parse: value => {
+      if (!isRecord(value) || !Array.isArray(value.routineIds) ||
+        !Number.isSafeInteger(value.listVersion) || (value.listVersion as number) < input.expectedListVersion ||
+        value.routineIds.length !== input.routineIds.length ||
+        value.routineIds.some((id, index) => typeof id !== 'string' || id.toLowerCase() !== input.routineIds[index]?.toLowerCase())) return undefined;
+      return { routineIds: value.routineIds as string[], listVersion: value.listVersion as number };
+    },
   });
 }

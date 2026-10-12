@@ -2,6 +2,7 @@ import type { MobileRoutineColorKey } from './home';
 
 export const MOBILE_ROUTINE_COLOR_KEYS: readonly MobileRoutineColorKey[] = [
   'violet', 'indigo', 'blue', 'cyan', 'green', 'yellow', 'orange', 'rose',
+  'sand', 'stone', 'slate', 'graphite',
 ];
 
 export function isKnownRoutineColor(value: unknown): value is MobileRoutineColorKey {
