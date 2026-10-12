@@ -149,10 +149,10 @@ describe("Mobile Training server adapters", () => {
     );
   });
 
-  it("does not turn an overview failure into zero counts", async () => {
-    mocks.listRoutines.mockResolvedValue([routineRow]);
-    mocks.listRoutineOverviews.mockRejectedValue(new Error("overview unavailable"));
-    const result = await readMobileTrainingRoutines(context(), requestPerformance);
+  it("does not turn an atomic list failure into zero counts or a fake version", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: new Error("snapshot unavailable") });
+    const result = await readMobileTrainingRoutines(context(rpc), requestPerformance);
+    expect(result.listVersion).toEqual({ status: "unavailable" });
     expect(result.routines).toEqual({ status: "unavailable" });
     expect(result.initialPlan).toEqual({
       status: "ok",

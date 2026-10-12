@@ -87,7 +87,11 @@ export type MobileRoutineColorKey =
   | "green"
   | "yellow"
   | "orange"
-  | "rose";
+  | "rose"
+  | "sand"
+  | "stone"
+  | "slate"
+  | "graphite";
 
 export type MobileHomeWorkoutStartRoutineDto = {
   id: string;
@@ -153,6 +157,8 @@ export type MobileTrainingRoutineDto = {
 };
 
 export type MobileTrainingRoutinesResponse = {
+  // Read with routines in one snapshot; optional for additive v1 compatibility.
+  listVersion?: MobileReadResult<number>;
   routines: MobileReadResult<MobileTrainingRoutineDto[]>;
   initialPlan: MobileReadResult<{
     imported: boolean;
@@ -168,6 +174,24 @@ export type MobileTrainingRoutineCreatePayload = {
 
 export type MobileTrainingRoutineCreateResponse = {
   routine: MobileTrainingRoutineDto;
+};
+
+export type MobileTrainingRoutineDuplicatePayload = MobileTrainingRoutineCreatePayload & {
+  expectedUpdatedAt: string;
+  expectedTemplateVersion: number;
+};
+
+export type MobileTrainingRoutineDuplicateResponse = MobileTrainingRoutineCreateResponse;
+
+export type MobileTrainingRoutineOrderPayload = {
+  routineIds: string[];
+  expectedListVersion: number;
+  idempotencyKey: string;
+};
+
+export type MobileTrainingRoutineOrderResponse = {
+  routineIds: string[];
+  listVersion: number;
 };
 
 export type MobileTrainingRoutineStatusPayload = {
@@ -439,6 +463,7 @@ export type MobileApiErrorCode =
   | "NOT_FOUND"
   | "IDEMPOTENCY_KEY_REUSED"
   | "ACTIVE_SESSION_EXISTS"
+  | "ROUTINE_LIST_CHANGED"
   | "ROUTINE_CHANGED"
   | "ROUTINE_TEMPLATE_CHANGED"
   | "SESSION_EXERCISE_CHANGED"
