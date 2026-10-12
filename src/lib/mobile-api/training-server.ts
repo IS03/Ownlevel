@@ -7,7 +7,6 @@ import {
   getInProgressSessionForUser,
   listExerciseRoutineMemberships,
   listExercises,
-  listRoutineOverviews,
   listRoutines,
   listTrainingDaysInMonth,
   TrainingResourceNotFoundError,
@@ -19,7 +18,6 @@ import {
   importInitialTrainingPlan,
 } from "../phase2/training-robust";
 import type { ExerciseRoutineMembership } from "../phase2/exercise-insights";
-import type { RoutineOverview } from "../phase2/routine-overview";
 import {
   MobileApiConflictError,
   MobileApiNotFoundError,
@@ -30,6 +28,8 @@ import type {
   MobileTrainingExerciseStatusResponse,
   MobileTrainingInitialPlanResponse,
   MobileTrainingRoutineCreateResponse,
+  MobileTrainingRoutineDuplicateResponse,
+  MobileTrainingRoutineOrderResponse,
   MobileTrainingRoutineDetailResponse,
   MobileTrainingRoutineIdentityResponse,
   MobileTrainingRoutineStatusResponse,
@@ -39,11 +39,15 @@ import type { MobileSupabaseAuthenticatedContext } from "./supabase";
 import {
   buildMobileTrainingExercisesResponse,
   buildMobileTrainingResponse,
-  buildMobileTrainingRoutinesResponse,
   parseMobileTrainingExerciseCreate,
   parseMobileTrainingExercisePatch,
   parseMobileTrainingId,
   parseMobileTrainingRoutineCreate,
+  parseMobileTrainingRoutineDuplicate,
+  parseMobileTrainingRoutineDuplicateResponse,
+  parseMobileTrainingRoutineOrder,
+  parseMobileTrainingRoutineOrderResponse,
+  parseMobileTrainingRoutinesSnapshot,
   parseMobileTrainingRoutineDetailResponse,
   parseMobileTrainingRoutineIdentity,
   parseMobileTrainingRoutineIdentityResponse,
@@ -115,6 +119,12 @@ function throwTrainingMutationError(
   if (message.includes("IDEMPOTENCY_KEY_REUSED")) {
     throw new MobileApiConflictError(
       "La clave de idempotencia ya fue usada con otros datos.",
+    );
+  }
+  if (code === "40001" && message.includes("ROUTINE_LIST_CHANGED")) {
+    throw new MobileApiConflictError(
+      "La lista cambió en otro dispositivo. Recargá antes de guardar.",
+      "ROUTINE_LIST_CHANGED",
     );
   }
   if (code === "40001" && message.includes("ROUTINE_TEMPLATE_CHANGED")) {
@@ -223,24 +233,29 @@ export async function readMobileTrainingRoutines(
     layer: "database" as const,
     ...requestPerformance,
   };
-  const [routines, initialPlan] = await Promise.all([
+  const [snapshot, initialPlan] = await Promise.all([
     resilientRead(
-      { ...performanceBase, operation: "mobile.training.routines.list" },
-      () => listRoutines({ includeArchived: true }, auth),
+      { ...performanceBase, operation: "mobile.training.routines.snapshot" },
+      async () => {
+        const { data, error } = await context.supabase.rpc("mobile_training_routines_snapshot");
+        if (error) throw error;
+        return parseDatabaseResponse(parseMobileTrainingRoutinesSnapshot, data);
+      },
     ),
     resilientRead(
       { ...performanceBase, operation: "mobile.training.initial-plan.status" },
       () => getInitialPlanStatus(auth),
     ),
   ]);
-  const overviews: ReadResult<Map<string, RoutineOverview>> =
-    routines.status === "ok"
-      ? await resilientRead(
-          { ...performanceBase, operation: "mobile.training.routines.overviews" },
-          () => listRoutineOverviews(routines.data.map((routine) => routine.id), auth),
-        )
-      : { status: "unavailable" };
-  return buildMobileTrainingRoutinesResponse({ routines, overviews, initialPlan });
+  return {
+    routines: snapshot.status === "ok"
+      ? { status: "ok" as const, data: snapshot.data.routines }
+      : { status: "unavailable" as const },
+    listVersion: snapshot.status === "ok"
+      ? { status: "ok" as const, data: snapshot.data.listVersion }
+      : { status: "unavailable" as const },
+    initialPlan,
+  };
 }
 
 export async function readMobileTrainingExercises(
@@ -300,6 +315,38 @@ export async function createMobileTrainingRoutine(
     throw new Error("Invalid routine create body");
   }
   return result.response_body as MobileTrainingRoutineCreateResponse;
+}
+
+export async function duplicateMobileTrainingRoutine(
+  routineId: unknown, payload: unknown, context: MobileSupabaseAuthenticatedContext,
+): Promise<MobileTrainingRoutineDuplicateResponse> {
+  const id = parseMobileTrainingId(routineId, "La rutina");
+  const input = parseMobileTrainingRoutineDuplicate(payload);
+  const { data, error } = await context.supabase.rpc("mobile_duplicate_training_routine", {
+    p_routine_id: id, p_name: input.name, p_color: input.color, p_idempotency_key: input.idempotencyKey,
+    p_expected_updated_at: input.expectedUpdatedAt, p_expected_template_version: input.expectedTemplateVersion,
+  });
+  if (error) throwTrainingMutationError(error, "Ya existe una rutina con ese nombre.");
+  const result = parseIdempotentRpcRow(data);
+  if (result.response_status !== 201) throw new Error("Invalid duplicate routine response status");
+  return parseDatabaseResponse(parseMobileTrainingRoutineDuplicateResponse, result.response_body);
+}
+
+export async function reorderMobileTrainingRoutines(
+  payload: unknown, context: MobileSupabaseAuthenticatedContext,
+): Promise<MobileTrainingRoutineOrderResponse> {
+  const input = parseMobileTrainingRoutineOrder(payload);
+  const { data, error } = await context.supabase.rpc("mobile_reorder_training_routines", {
+    p_routine_ids: input.routineIds, p_expected_list_version: input.expectedListVersion, p_idempotency_key: input.idempotencyKey,
+  });
+  if (error) throwTrainingMutationError(error);
+  const result = parseIdempotentRpcRow(data);
+  if (result.response_status !== 200) throw new Error("Invalid reorder routine response status");
+  const response = parseDatabaseResponse(parseMobileTrainingRoutineOrderResponse, result.response_body);
+  if (JSON.stringify(response.routineIds) !== JSON.stringify(input.routineIds) || response.listVersion < input.expectedListVersion) {
+    throw new Error("Invalid reorder routine database response");
+  }
+  return response;
 }
 
 export async function readMobileTrainingRoutineDetail(

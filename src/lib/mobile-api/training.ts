@@ -20,6 +20,11 @@ import type {
   MobileTrainingExerciseStatusPayload,
   MobileTrainingResponse,
   MobileTrainingRoutineCreatePayload,
+  MobileTrainingRoutineDuplicatePayload,
+  MobileTrainingRoutineDuplicateResponse,
+  MobileTrainingRoutineDto,
+  MobileTrainingRoutineOrderPayload,
+  MobileTrainingRoutineOrderResponse,
   MobileTrainingRoutineDetailResponse,
   MobileTrainingRoutineIdentityPayload,
   MobileTrainingRoutineIdentityResponse,
@@ -261,6 +266,76 @@ export function parseMobileTrainingRoutineCreate(
     color,
     idempotencyKey: parseMobileIdempotencyKey(input.idempotencyKey),
   };
+}
+
+export function parseMobileTrainingRoutineDuplicate(value: unknown): MobileTrainingRoutineDuplicatePayload {
+  const input = strictObject(value, "La copia", [
+    "name", "color", "idempotencyKey", "expectedUpdatedAt", "expectedTemplateVersion",
+  ]);
+  return {
+    ...parseMobileTrainingRoutineCreate({ name: input.name, color: input.color, idempotencyKey: input.idempotencyKey }),
+    expectedUpdatedAt: requiredTimestamp(input.expectedUpdatedAt, "La versión de la rutina"),
+    expectedTemplateVersion: requiredInteger(input.expectedTemplateVersion, "La versión de la plantilla", 1),
+  };
+}
+
+function orderedRoutineIds(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > 1000) {
+    throw new MobileApiValidationError("El orden de las rutinas no es válido.");
+  }
+  const ids = value.map(id => parseMobileTrainingId(id, "La rutina").toLowerCase());
+  if (new Set(ids).size !== ids.length) {
+    throw new MobileApiValidationError("El orden contiene rutinas repetidas.");
+  }
+  return ids;
+}
+
+export function parseMobileTrainingRoutineOrder(value: unknown): MobileTrainingRoutineOrderPayload {
+  const input = strictObject(value, "El orden", ["routineIds", "expectedListVersion", "idempotencyKey"]);
+  return {
+    routineIds: orderedRoutineIds(input.routineIds),
+    expectedListVersion: requiredInteger(input.expectedListVersion, "La versión de la lista"),
+    idempotencyKey: parseMobileIdempotencyKey(input.idempotencyKey),
+  };
+}
+
+function routineSummary(value: unknown): MobileTrainingRoutineDto {
+  const input = objectValue(value, "La rutina");
+  if ((input.color !== null && !isRoutineColorKey(input.color)) || typeof input.isActive !== "boolean") {
+    throw new MobileApiValidationError("La rutina no es válida.");
+  }
+  const order = requiredInteger(input.order, "El orden", 1);
+  if (order > 1000) throw new MobileApiValidationError("El orden no es válido.");
+  return {
+    id: parseMobileTrainingId(input.id, "La rutina"), name: requiredText(input.name, "El nombre"),
+    color: input.color, order, isActive: input.isActive,
+    exerciseCount: requiredInteger(input.exerciseCount, "La cantidad de ejercicios"),
+    setCount: requiredInteger(input.setCount, "La cantidad de series"),
+  };
+}
+
+export function parseMobileTrainingRoutinesSnapshot(value: unknown): {
+  routines: MobileTrainingRoutineDto[]; listVersion: number;
+} {
+  const input = objectValue(value, "La lista");
+  if (!Array.isArray(input.routines)) throw new MobileApiValidationError("La lista no es válida.");
+  const routines = input.routines.map(routineSummary);
+  if (new Set(routines.map(routine => routine.id.toLowerCase())).size !== routines.length) {
+    throw new MobileApiValidationError("La lista contiene rutinas repetidas.");
+  }
+  return { routines, listVersion: requiredInteger(input.listVersion, "La versión de la lista") };
+}
+
+export function parseMobileTrainingRoutineDuplicateResponse(value: unknown): MobileTrainingRoutineDuplicateResponse {
+  const input = objectValue(value, "La copia");
+  const routine = routineSummary(input.routine);
+  if (!routine.isActive) throw new MobileApiValidationError("La copia no está activa.");
+  return { routine };
+}
+
+export function parseMobileTrainingRoutineOrderResponse(value: unknown): MobileTrainingRoutineOrderResponse {
+  const input = objectValue(value, "El orden");
+  return { routineIds: orderedRoutineIds(input.routineIds), listVersion: requiredInteger(input.listVersion, "La versión de la lista") };
 }
 
 export function parseMobileTrainingRoutineStatus(

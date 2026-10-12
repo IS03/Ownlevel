@@ -80,6 +80,10 @@
   --routine-yellow: #B08A3E;
   --routine-orange: #A3573A;
   --routine-rose: #9C4A6B;
+  --routine-sand: #A8935F;
+  --routine-stone: #8A7F72;
+  --routine-slate: #5B6B7A;
+  --routine-graphite: #3F3F46;
   --radius: 0.875rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.19 0.015 250);
@@ -129,6 +133,10 @@
   --routine-yellow: #D4B26A;
   --routine-orange: #D08C6A;
   --routine-rose: #CF8AA6;
+  --routine-sand: #DCCBA3;
+  --routine-stone: #B8AC9C;
+  --routine-slate: #9AAABB;
+  --routine-graphite: #A1A1AA;
   --sidebar: oklch(0.205 0.006 285);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.67 0.2 285);

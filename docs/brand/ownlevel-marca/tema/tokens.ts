@@ -66,10 +66,12 @@ export const routinePalette = {
   light: {
     violet: '#6B5BA8', indigo: '#4A5694', blue: '#3F6A96', cyan: '#2F7A72',
     green: '#5E7346', yellow: '#B08A3E', orange: '#A3573A', rose: '#9C4A6B',
+    sand: '#A8935F', stone: '#8A7F72', slate: '#5B6B7A', graphite: '#3F3F46',
   },
   dark: {
     violet: '#A99BD6', indigo: '#8E97D0', blue: '#7FA3C9', cyan: '#6FB3AA',
     green: '#9DB07F', yellow: '#D4B26A', orange: '#D08C6A', rose: '#CF8AA6',
+    sand: '#DCCBA3', stone: '#B8AC9C', slate: '#9AAABB', graphite: '#A1A1AA',
   },
 } as const;
 

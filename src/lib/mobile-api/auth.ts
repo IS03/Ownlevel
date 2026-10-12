@@ -35,6 +35,7 @@ export class MobileApiConflictError extends Error {
     public readonly code:
       | "IDEMPOTENCY_KEY_REUSED"
       | "ACTIVE_SESSION_EXISTS"
+      | "ROUTINE_LIST_CHANGED"
       | "ROUTINE_CHANGED"
       | "ROUTINE_TEMPLATE_CHANGED"
       | "SESSION_EXERCISE_CHANGED"
