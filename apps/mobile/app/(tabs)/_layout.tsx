@@ -1,13 +1,17 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
+import { StyleSheet, View } from 'react-native';
 
 import { useOwnlevelTheme } from '@/design-system';
 import { haptics } from '@/platform/haptics';
+import { SessionRestAccessory, SessionReturnDock } from '@/training/session-return-dock';
+import { supportsNativeSessionNavigation, useSessionNavigation } from '@/training/use-session-navigation';
 
 export default function TabsLayout() {
   const { colors, isDark } = useOwnlevelTheme();
+  const sessionNavigation = useSessionNavigation();
 
   return (
-    <NativeTabs
+    <View style={styles.root}><NativeTabs
       backgroundColor={colors.surface}
       backBehavior="history"
       blurEffect={isDark ? 'systemMaterialDark' : 'systemMaterialLight'}
@@ -21,6 +25,7 @@ export default function TabsLayout() {
       screenListeners={{ tabPress: () => haptics.selection() }}
       shadowColor={colors.border}
       tintColor={colors.primary}
+      unstable_nativeProps={{ ios: { bottomAccessoryHidden: !sessionNavigation.showRest } }}
     >
       <NativeTabs.Trigger name="home">
         <NativeTabs.Trigger.Label>Inicio</NativeTabs.Trigger.Label>
@@ -50,6 +55,15 @@ export default function TabsLayout() {
           sf={{ default: 'chart.line.uptrend.xyaxis', selected: 'chart.line.uptrend.xyaxis' }}
         />
       </NativeTabs.Trigger>
-    </NativeTabs>
+      <NativeTabs.Trigger name="active-workout" role="search" disabled
+        hidden={!supportsNativeSessionNavigation || !sessionNavigation.showReturn}
+        accessibilityLabel={`Volver a la rutina en curso: ${sessionNavigation.session?.name ?? ''}`}
+        listeners={{ tabPress: sessionNavigation.openSession }}>
+        <NativeTabs.Trigger.Label hidden>En curso</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf={{ default: 'dumbbell', selected: 'dumbbell.fill' }} md="fitness_center" />
+      </NativeTabs.Trigger>
+      {supportsNativeSessionNavigation ? <NativeTabs.BottomAccessory><SessionRestAccessory navigation={sessionNavigation} /></NativeTabs.BottomAccessory> : null}
+    </NativeTabs>{supportsNativeSessionNavigation ? null : <SessionReturnDock navigation={sessionNavigation} />}</View>
   );
 }
+const styles = StyleSheet.create({ root: { flex: 1 } });

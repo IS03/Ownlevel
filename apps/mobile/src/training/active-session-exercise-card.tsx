@@ -1,6 +1,10 @@
 import { memo, type ReactNode, useCallback, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, Alert, Keyboard, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
-import { AppIcon, AppText, Button, Separator, Surface, radius, sizes, spacing, useOwnlevelTheme } from '@/design-system';
+import { ActivityIndicator, Alert, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { AppIcon, AppText, Button, radius, sizes, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import Animated, { FadeIn, FadeInUp, LinearTransition } from 'react-native-reanimated';
+import { SessionNextOptions } from './session-next-options';
+import type { NextSessionDecision } from './session-next-options.types';
+import { SessionGlassButton } from './session-glass-button';
 import { haptics, triggerHaptic } from '@/platform/haptics';
 import type { ActiveSessionController, ExercisePhase } from './active-session-controller';
 import { appendSessionSet, compactActual, nextReminder, removeSessionSet, resetSessionSet, setProgress, type SessionExerciseDraft } from './active-session-model';
@@ -26,7 +30,7 @@ function SeriesColumns({ ordinal, kg, reps, rir, completed, header = false }: {
     <View style={styles.ordinalColumn}>{ordinal}</View>
     <View style={styles.numericColumn}>{kg}</View>
     <View style={styles.numericColumn}>{reps}</View>
-    <View style={styles.rirColumn}>{rir}</View>
+    <View style={styles.numericColumn}>{rir}</View>
     <View style={styles.completedColumn}>{completed}</View>
   </View>;
 }
@@ -39,6 +43,16 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
   const state = useSyncExternalStore(subscribe, get, get);
   const { colors } = useOwnlevelTheme();
   const [noteOpen, setNoteOpen] = useState(false);
+  const [nextOpen, setNextOpen] = useState(false);
+  const [addedSet, setAddedSet] = useState<string | null>(null);
+  const reducedMotion = useReduceMotion();
+  const pendingSet = state?.draft.sets.find(set => !set.isCompleted)?.localId;
+  const enabled = expanded && !locked && !!state && state.phase !== 'closed' && state.phase !== 'removed';
+  const [previousEnabled, setPreviousEnabled] = useState(enabled);
+  if (previousEnabled !== enabled) {
+    setPreviousEnabled(enabled);
+    if (!enabled) { setNextOpen(false); setAddedSet(null); }
+  }
   const timer = useSyncExternalStore(controller.subscribeTimer, controller.getTimer, controller.getTimer);
   const tapHeader = useCallback(() => { Keyboard.dismiss(); haptics.selection(); onToggle(id); }, [id, onToggle]);
   if (!state) return null;
@@ -61,14 +75,14 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
     ids.splice(index, 1); ids.splice(to, 0, id);
     void controller.dropExercises(ids).then(confirmed => { if (confirmed) haptics.selection(); });
   };
-  return <Surface style={styles.card} testID={`session-exercise-${id}`}>
-    <NativeSwipeActions label={exercise.nameSnapshot} disabled={!contextual} actions={[
+  return <View style={[styles.card, { borderBottomColor: colors.border }]} testID={`session-exercise-${id}`}>
+    <NativeSwipeActions backgroundColor={colors.background} label={exercise.nameSnapshot} disabled={!contextual} actions={[
       { label: draft.notes.trim() ? 'Editar nota' : 'Agregar nota', disabled: !editable, onPress: () => { Keyboard.dismiss(); setNoteOpen(true); } },
        ...(canDiscard ? [{ label: 'Descartar cambios', onPress: discardChanges }] : []),
       { label: 'Quitar', destructive: true, disabled: !editable, onPress: () => onRemove(id, exercise.nameSnapshot) },
     ]}>
     <NativeDragHandle testID={`exercise-header-${id}`} disabled={locked} accessibilityRole="button" accessibilityLabel={`${expanded ? 'Contraer' : 'Expandir'} ${exercise.nameSnapshot}`} accessibilityState={{ expanded }}
-      accessibilityHint="Mantené presionado para mover. Deslizá a la izquierda para más acciones."
+      accessibilityHint={`${reminder ? `Próxima sesión: ${reminder}. ` : ''}Mantené presionado para mover. Deslizá a la izquierda para más acciones.`}
       accessibilityActions={contextual ? [{ name: 'moveUp', label: 'Mover arriba' }, { name: 'moveDown', label: 'Mover abajo' },
          { name: 'note', label: draft.notes.trim() ? 'Editar nota' : 'Agregar nota' }, ...(canDiscard ? [{ name: 'discard', label: 'Descartar cambios' }] : []), { name: 'remove', label: 'Quitar de la sesión' }] : undefined}
       onAccessibilityAction={event => {
@@ -77,15 +91,16 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
          else if (action === 'note' && editable) setNoteOpen(true); else if (action === 'discard') discardChanges(); else if (action === 'remove' && editable) onRemove(id, exercise.nameSnapshot);
       }}
       onTap={tapHeader} style={styles.header}>
-      <View style={[styles.icon, { backgroundColor: colors.brandSubtle }]}><AppIcon name="dumbbell" color={colors.primary} size={19} /></View>
       <View style={styles.flex}>
-        <AppText numberOfLines={2} variant="label">{exercise.nameSnapshot}</AppText>
+        <AppText numberOfLines={2} variant="label" style={styles.exerciseName}>{exercise.nameSnapshot}</AppText>
         <AppText muted numberOfLines={2} variant="caption">{identity}</AppText>
-        {reminder ? <AppText numberOfLines={2} style={{ color: colors.primary }} variant="caption">Próxima sesión · {reminder}</AppText> : null}
+        {reminder ? <View style={[styles.reminder, { backgroundColor: colors.surfaceRaised }]} accessibilityLabel={`Próxima sesión · ${reminder}`}>
+          <AppText muted variant="caption">↑</AppText><AppText muted variant="caption" style={styles.flex}>Próxima sesión · {reminder}</AppText>
+        </View> : null}
         {draft.notes.trim() ? <View style={styles.noteIndicator} accessibilityLabel="Este ejercicio tiene una nota">
           <AppIcon name="note" color={colors.textMuted} size={13} /><AppText muted variant="caption">Nota</AppText></View> : null}
       </View>
-      <View style={[styles.badge, { backgroundColor: completion.complete ? colors.brandSubtle : colors.surfaceRaised }]}><AppText style={{ color: completion.complete ? colors.primary : colors.textMuted }} variant="caption">{completion.completed}/{completion.total}</AppText></View>
+      <View style={[styles.badge, { backgroundColor: completion.complete ? colors.brandSubtle : colors.surfaceRaised }]}><AppText numeric style={{ color: completion.complete ? colors.primary : colors.textMuted }} variant="caption">{completion.completed}/{completion.total}</AppText></View>
       {state.phase === 'saving' ? <ActivityIndicator testID={`exercise-saving-${id}`} accessibilityLabel="Sincronizando ejercicio" size="small" color={colors.textMuted} /> : null}
       <View style={{ transform: [{ rotate: expanded ? '90deg' : '0deg' }] }}><AppIcon name="chevronRight" color={colors.textMuted} size={15} /></View>
     </NativeDragHandle></NativeSwipeActions>
@@ -98,11 +113,12 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
       </> : state.error && (!state.storageReady || state.phase === 'scheduled') ? <Button label="Reintentar lectura" onPress={() => void controller.refresh()} variant="secondary" /> : null}
     </View> : null}
     {expanded ? <View style={styles.body}>
-      <Separator />
-      <View style={styles.row}><AppText style={styles.flex} variant="label">Series</AppText>
+      <View style={styles.row}><AppText muted style={styles.flex} variant="caption">
+        {pendingSet ? `Serie ${draft.sets.findIndex(set => set.localId === pendingSet) + 1} de ${draft.sets.length}` : 'Series completadas'}
+      </AppText>
         <Pressable accessibilityRole="button" accessibilityLabel={`Historial de ${exercise.nameSnapshot}`} disabled={locked}
-          onPress={() => { Keyboard.dismiss(); onHistory(id); }} style={[styles.historyTrigger, { backgroundColor: colors.brandSubtle, opacity: locked ? 0.45 : 1 }]}>
-          <AppIcon name="clock" color={colors.primary} size={16} /><AppText style={{ color: colors.primary }} variant="caption">Historial</AppText>
+          onPress={() => { Keyboard.dismiss(); onHistory(id); }} style={[styles.historyTrigger, { opacity: locked ? 0.45 : 1 }]}>
+          <AppIcon name="clock" color={colors.textMuted} size={17} /><AppText muted variant="caption">Historial</AppText>
         </Pressable></View>
       <SeriesColumns header ordinal={<AppText muted style={styles.columnTitle} variant="footnote">#</AppText>}
         kg={<AppText muted style={styles.columnTitle} variant="footnote">KG</AppText>} reps={<AppText muted style={styles.columnTitle} variant="footnote">REPS</AppText>}
@@ -110,29 +126,40 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
       <NativeReorderList ids={draft.sets.map(set => set.localId)} onLift={() => { const accepted = controller.beginSetDrag(id); if (accepted) Keyboard.dismiss(); return accepted; }}
         onDrop={ids => controller.dropSets(id, ids)} onCancel={() => controller.cancelDrag()}>
         {draft.sets.map((set, index) => <NativeReorderItem key={set.localId} id={set.localId}>
-          <ActiveSetRow controller={controller} id={id} name={exercise.nameSnapshot} set={set} index={index} count={draft.sets.length} editable={editable} />
+          <ActiveSetRow controller={controller} id={id} name={exercise.nameSnapshot} set={set} index={index} count={draft.sets.length} editable={editable} entering={addedSet === set.localId} reducedMotion={reducedMotion} />
         </NativeReorderItem>)}
       </NativeReorderList>
-       {state.phase !== 'closed' && state.phase !== 'removed' ? <Button disabled={!editable || draft.sets.length >= 50} label="+ Agregar serie" onPress={() => controller.change(id, appendSessionSet, true)} variant="secondary" /> : null}
-      {exercise.restMinSecondsSnapshot !== null || exercise.restMaxSecondsSnapshot !== null ? <View style={[styles.restRow, { backgroundColor: colors.surfaceRaised }]}>
-        <AppIcon name="clock" color={colors.primary} size={18} /><View style={styles.flex}><AppText variant="caption">Descanso</AppText>
-          <AppText variant="label">{[exercise.restMinSecondsSnapshot, exercise.restMaxSecondsSnapshot].filter((value, i, array) => value !== null && (i === 0 || value !== array[0])).map(formatRest).join(' – ')}</AppText></View>
-        <Button disabled={!editable} label={timer?.exerciseId === id ? 'Saltar descanso' : 'Iniciar descanso'} onPress={() => timer?.exerciseId === id ? controller.skipRest() : controller.startRest(id)} variant="quiet" />
-      </View> : null}
-      <Separator /><AppText variant="label">Próxima vez</AppText>
-      <View style={styles.row}>
-        {([['increase_weight', '+ Peso'], ['increase_reps', '+ Repeticiones']] as const).map(([value, label]) => <Pressable key={value} accessibilityRole="button"
-          accessibilityState={{ selected: draft.decision === value, disabled: !editable }} disabled={!editable}
-          onPress={() => { haptics.selection(); controller.change(id, current => ({ ...current, decision: current.decision === value ? 'maintain' : value, decisionNote: '' }), true); }}
-          style={[styles.decision, { borderColor: draft.decision === value ? colors.primary : colors.border, backgroundColor: draft.decision === value ? colors.brandSubtle : colors.surface }]}>
-          <AppText variant="caption">{label}</AppText></Pressable>)}
-      </View>
-      {draft.decision === 'custom' ? <View><AppText muted variant="caption">Recordatorio anterior</AppText><AppText>{draft.decisionNote}</AppText>
-        <Button disabled={!editable} label="Quitar recordatorio" onPress={() => controller.change(id, current => ({ ...current, decision: 'maintain', decisionNote: '' }), true)} variant="quiet" /></View> : null}
-      {exercise.routineExerciseId ? <View style={styles.row}>
-        <View style={styles.flex}><AppText variant="label">Tomar resultado de hoy</AppText><AppText muted variant="caption">Usa las series completadas como base.</AppText></View>
-        <Switch accessibilityLabel="Tomar resultado de hoy" disabled={!editable} value={draft.applyToRoutine} trackColor={{ true: colors.primary, false: colors.border }}
-          onValueChange={value => { haptics.selection(); controller.change(id, current => ({ ...current, applyToRoutine: value }), true); }} />
+      {state.phase !== 'closed' && state.phase !== 'removed' ? <Animated.View layout={reducedMotion ? undefined : LinearTransition.duration(300)} style={styles.row}>
+        <SessionGlassButton style={styles.flex} disabled={!editable || draft.sets.length >= 50} label="+ Agregar serie" onPress={() => {
+          if (controller.getSnapshot().interaction || !controller.canEdit(id)) return;
+          haptics.selection();
+          controller.change(id, appendSessionSet, true);
+          const appended = controller.getExercise(id)?.draft.sets.at(-1);
+          if (appended) setAddedSet(appended.localId);
+        }} />
+        <View style={styles.nextAnchor}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Próxima vez" accessibilityState={{ expanded: nextOpen, disabled: !editable }} disabled={!editable}
+            onPress={() => { if (controller.getSnapshot().interaction) return; Keyboard.dismiss(); haptics.selection(); setNextOpen(true); }}
+            style={[styles.nextTrigger, { backgroundColor: colors.surfaceRaised, borderColor: colors.border, opacity: editable ? 1 : 0.45 }]}>
+            <AppText variant="caption" style={styles.shrink}>{draft.decision === 'increase_weight' ? 'Más peso' : draft.decision === 'increase_reps' ? 'Más reps' : draft.decision === 'custom' ? 'Recordatorio' : 'Próxima vez'}</AppText>
+            <AppIcon name="chevronDown" size={17} color={colors.textMuted} />
+          </Pressable>
+          <SessionNextOptions open={nextOpen} editable={editable} name={exercise.nameSnapshot} decision={draft.decision} decisionNote={draft.decisionNote}
+            applyToRoutine={draft.applyToRoutine} routineLinked={!!exercise.routineExerciseId} onClose={() => setNextOpen(false)}
+            onDecision={(decision: NextSessionDecision) => {
+              if (!controller.canEdit(id) || controller.getSnapshot().interaction) return;
+              haptics.selection(); controller.change(id, current => ({ ...current, decision: current.decision === decision ? 'maintain' : decision, decisionNote: '' }), true);
+            }}
+            onApply={value => {
+              if (!controller.canEdit(id) || controller.getSnapshot().interaction) return;
+              haptics.selection(); controller.change(id, current => ({ ...current, applyToRoutine: value }), true);
+            }} />
+        </View>
+      </Animated.View> : null}
+      {(exercise.restMinSecondsSnapshot !== null || exercise.restMaxSecondsSnapshot !== null) ? <View style={styles.restRow} testID={`exercise-rest-${id}`}>
+        <AppIcon name="clock" color={colors.textMuted} size={17} />
+        <AppText numeric muted variant="caption" style={styles.flex}>Descanso · {[exercise.restMinSecondsSnapshot, exercise.restMaxSecondsSnapshot].filter((value, i, array) => value !== null && (i === 0 || value !== array[0])).map(formatRest).join(' – ')}</AppText>
+        <Button disabled={!editable} label={timer?.exerciseId === id ? 'Saltar descanso' : 'Iniciar descanso'} onPress={() => { haptics.selection(); if (timer?.exerciseId === id) controller.skipRest(); else controller.startRest(id); }} variant="quiet" />
       </View> : null}
     </View> : null}
      {noteOpen ? <SessionNoteSheet name={exercise.nameSnapshot} value={draft.notes} editable={editable}
@@ -143,10 +170,10 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
          return latest?.phase === 'saved' && !latest.dirty && latest.draft.notes === notes;
        }}
        onClose={() => { Keyboard.dismiss(); setNoteOpen(false); }} /> : null}
-  </Surface>;
+  </View>;
 });
-function ActiveSetRow({ controller, id, name, set, index, count, editable }: {
-  controller: ActiveSessionController; id: string; name: string; set: SessionExerciseDraft['sets'][number]; index: number; count: number; editable: boolean;
+function ActiveSetRow({ controller, id, name, set, index, count, editable, entering, reducedMotion }: {
+  controller: ActiveSessionController; id: string; name: string; set: SessionExerciseDraft['sets'][number]; index: number; count: number; editable: boolean; entering: boolean; reducedMotion: boolean;
 }) {
   const { colors } = useOwnlevelTheme();
   const tapCompleted = useCallback(() => {
@@ -175,39 +202,43 @@ function ActiveSetRow({ controller, id, name, set, index, count, editable }: {
   };
   const updateActual = (key: 'actualReps' | 'actualWeightKg', value: string) => controller.change(id, current => ({ ...current,
     sets: current.sets.map(row => row.localId === set.localId ? { ...row, [key]: value } : row) }));
-  return <NativeSwipeActions label={`Serie ${index + 1}`} disabled={!editable} actions={[{ label: 'Resetear', onPress: reset }, { label: 'Eliminar', destructive: true, disabled: count <= 1, onPress: remove }]}>
-    <View style={[styles.setBlock, { borderBottomColor: colors.border }]}>
+  // The gap between rows lives outside the swipe area, so the swiped row and its buttons line up.
+  return <View style={styles.setGap}><NativeSwipeActions backgroundColor={colors.background} label={`Serie ${index + 1}`} disabled={!editable} actions={[{ label: 'Resetear', onPress: reset }, { label: 'Eliminar', destructive: true, disabled: count <= 1, onPress: remove }]}>
+    <Animated.View testID={`session-set-${set.localId}`} entering={entering ? (reducedMotion ? FadeIn.duration(200) : FadeInUp.duration(300)) : undefined}
+      style={[styles.setBlock, { backgroundColor: colors.background }]}>
       <SeriesColumns ordinal={<NativeDragHandle testID={`set-handle-${set.localId}`} disabled={!editable} accessibilityRole="button" accessibilityLabel={`Mover serie ${index + 1}`}
         accessibilityHint="Mantené presionado para arrastrar. Deslizá a la izquierda para resetear o eliminar." accessibilityActions={actions} onAccessibilityAction={accessibilityAction} style={styles.controlTrack}>
-        <AppText muted variant="caption">{index + 1}</AppText></NativeDragHandle>}
-        kg={<><TextInput accessibilityLabel={`Peso serie ${index + 1} de ${name}`} editable={editable} keyboardType="decimal-pad" selectTextOnFocus
+        <AppText numeric muted variant="caption">{index + 1}</AppText></NativeDragHandle>}
+        kg={<TextInput accessibilityLabel={`Peso serie ${index + 1} de ${name}`} editable={editable} keyboardType="decimal-pad" selectTextOnFocus
           placeholder="—" placeholderTextColor={colors.textMuted} value={set.actualWeightKg} onChangeText={value => updateActual('actualWeightKg', value)}
-          onEndEditing={() => void controller.flush(id)} style={[styles.numberInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.text }]} />
-          <AppText muted style={styles.target} variant="caption">obj {compactActual(set.targetWeightKg)}</AppText></>}
-        reps={<><TextInput accessibilityLabel={`Reps serie ${index + 1} de ${name}`} editable={editable} keyboardType="number-pad" selectTextOnFocus
+          onEndEditing={() => void controller.flush(id)} style={[styles.numberInput, { backgroundColor: colors.surfaceRaised, color: colors.text }]} />}
+        reps={<TextInput accessibilityLabel={`Reps serie ${index + 1} de ${name}`} editable={editable} keyboardType="number-pad" selectTextOnFocus
           placeholder="—" placeholderTextColor={colors.textMuted} value={set.actualReps} onChangeText={value => updateActual('actualReps', value)}
-          onEndEditing={() => void controller.flush(id)} style={[styles.numberInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.text }]} />
-          <AppText muted style={styles.target} variant="caption">obj {compactActual(set.targetReps)}</AppText></>}
+          onEndEditing={() => void controller.flush(id)} style={[styles.numberInput, { backgroundColor: colors.surfaceRaised, color: colors.text }]} />}
         rir={<NativeDragHandle testID={`set-rir-${set.localId}`} disabled={!editable} accessibilityRole="button" accessibilityLabel={`RIR objetivo serie ${index + 1}: ${compactActual(set.targetRir)}`}
-          accessibilityActions={actions} onAccessibilityAction={accessibilityAction} style={styles.controlTrack}><AppText variant="label">{compactActual(set.targetRir)}</AppText></NativeDragHandle>}
+          accessibilityActions={actions} onAccessibilityAction={accessibilityAction} style={[styles.controlTrack, styles.rirField, { backgroundColor: colors.surfaceRaised }]}><AppText numeric variant="label">{compactActual(set.targetRir)}</AppText></NativeDragHandle>}
         completed={<NativeDragHandle testID={`set-check-${set.localId}`} accessibilityRole="checkbox" accessibilityLabel={`Serie ${index + 1} completada`} accessibilityState={{ checked: set.isCompleted, disabled: !editable }} disabled={!editable}
           accessibilityActions={actions} onAccessibilityAction={accessibilityAction}
           onTap={tapCompleted} style={styles.controlTrack}>
-          {set.isCompleted ? <AppIcon name="check" color={colors.primary} size={29} /> : <View style={[styles.unchecked, { borderColor: colors.border }]} />}</NativeDragHandle>} />
-    </View>
-  </NativeSwipeActions>;
+          {set.isCompleted ? <AppIcon name="check" color={colors.textMuted} size={26} /> : <View style={[styles.unchecked, { borderColor: colors.border }]} />}</NativeDragHandle>} />
+    </Animated.View>
+  </NativeSwipeActions></View>;
 }
 const styles = StyleSheet.create({
-  card: { padding: spacing.md, gap: spacing.sm }, flex: { flex: 1 }, header: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', minHeight: 64 },
-  icon: { height: 36, width: 36, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' }, badge: { borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
-  noteIndicator: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs }, body: { gap: spacing.md }, row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  columns: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs }, ordinalColumn: { width: sizes.touchTarget }, numericColumn: { flex: 1, minWidth: 0 },
-  rirColumn: { width: sizes.touchTarget }, completedColumn: { width: sizes.touchTarget }, columnTitle: { textAlign: 'center' },
-  controlTrack: { minHeight: sizes.touchTarget, width: sizes.touchTarget, justifyContent: 'center', alignItems: 'center' },
-  unchecked: { borderWidth: 1.5, borderRadius: radius.pill, height: 26, width: 26 },
-  numberInput: { borderWidth: 1, borderRadius: radius.sm, minHeight: sizes.touchTarget, fontSize: 17, fontWeight: '600', textAlign: 'center', paddingHorizontal: spacing.xs, fontVariant: ['tabular-nums'] },
-  target: { textAlign: 'center', fontSize: 11, paddingTop: spacing.xs }, setBlock: { borderBottomWidth: StyleSheet.hairlineWidth, paddingBottom: spacing.sm },
-  restRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.sm, borderRadius: radius.md }, recovery: { gap: spacing.sm },
-  decision: { flex: 1, borderWidth: 1, borderRadius: radius.md, minHeight: sizes.touchTarget, justifyContent: 'center', alignItems: 'center' },
-  historyTrigger: { minHeight: sizes.touchTarget, borderRadius: radius.pill, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  card: { paddingVertical: spacing.md, gap: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth }, flex: { flex: 1 }, shrink: { flexShrink: 1 },
+  header: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', minHeight: 64 }, exerciseName: { fontSize: 17 },
+  badge: { borderRadius: 10, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
+  reminder: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: 10, marginTop: spacing.xs },
+  noteIndicator: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs }, body: { gap: spacing.sm },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  columns: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs }, ordinalColumn: { width: sizes.touchTarget }, numericColumn: { flex: 1, minWidth: 0 },
+  completedColumn: { width: sizes.touchTarget }, columnTitle: { textAlign: 'center' },
+  controlTrack: { minHeight: 48, width: sizes.touchTarget, justifyContent: 'center', alignItems: 'center' },
+  rirField: { width: '100%', borderRadius: 12 }, unchecked: { borderWidth: 1.5, borderRadius: radius.pill, height: 26, width: 26 },
+  numberInput: { borderRadius: 12, minHeight: 48, fontSize: 17, fontWeight: '600', textAlign: 'center', paddingHorizontal: spacing.xs, fontVariant: ['tabular-nums'] },
+  setBlock: { borderRadius: 12, paddingVertical: spacing.xs }, setGap: { marginBottom: spacing.sm },
+  restRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 50 }, recovery: { gap: spacing.sm },
+  // Fixed width: the label changes with the choice and must not move the popover's anchor.
+  nextAnchor: { width: 148 }, nextTrigger: { minHeight: 44, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.xs },
+  historyTrigger: { minHeight: sizes.touchTarget, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
 });

@@ -9,6 +9,7 @@ export type AppIconName =
   | 'book'
   | 'calendar'
   | 'check'
+  | 'checkmark'
   | 'chevronDown'
   | 'chevronLeft'
   | 'chevronRight'
@@ -32,6 +33,7 @@ export type AppIconName =
   | 'scale'
   | 'settings'
   | 'trophy'
+  | 'trash'
   | 'warning'
   | 'water';
 
@@ -52,6 +54,7 @@ export const sfSymbolNames: Record<AppIconName, SFSymbol> = {
   book: 'book',
   calendar: 'calendar',
   check: 'checkmark.circle.fill',
+  checkmark: 'checkmark',
   chevronDown: 'chevron.down',
   chevronLeft: 'chevron.left',
   chevronRight: 'chevron.right',
@@ -75,6 +78,7 @@ export const sfSymbolNames: Record<AppIconName, SFSymbol> = {
   scale: 'scalemass.fill',
   settings: 'gearshape.fill',
   trophy: 'trophy.fill',
+  trash: 'trash',
   warning: 'exclamationmark.triangle.fill',
   water: 'drop.fill',
 };
