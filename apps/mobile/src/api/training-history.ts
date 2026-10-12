@@ -1,3 +1,4 @@
+import { parseRoutineColor } from './routine-color';
 import type { MobileApiClient } from './client';
 import type { MobileRoutineColorKey } from './home';
 import type { MobileApiMutationResult, MobileApiReadResult } from './results';
@@ -58,10 +59,10 @@ function parseSession(value: unknown): TrainingHistorySession | undefined {
   if (!g.record(value, ['id', 'routineId', 'routineName', 'routineColor', 'logDate', 'startedAt', 'endedAt', 'durationMilliseconds',
     'exercisesCompleted', 'completedSets', 'volumeKg']) || Object.keys(value).length !== 11 || !g.id(value.id) ||
     (value.routineId !== null && !g.id(value.routineId)) || typeof value.routineName !== 'string' ||
-    (value.routineColor !== null && !g.COLORS.has(value.routineColor as string)) || !g.date(value.logDate) ||
+    parseRoutineColor(value.routineColor) === undefined || !g.date(value.logDate) ||
     !g.timestamp(value.startedAt) || !g.timestamp(value.endedAt) || !nullableCounter(value.durationMilliseconds) ||
     !g.counter(value.exercisesCompleted) || !g.counter(value.completedSets) || !nullableVolume(value.volumeKg)) return undefined;
-  return value as TrainingHistorySession;
+  return { ...value, routineColor: parseRoutineColor(value.routineColor)! } as TrainingHistorySession;
 }
 function parseSessions(value: unknown): TrainingHistorySession[] | undefined {
   if (!Array.isArray(value)) return undefined;

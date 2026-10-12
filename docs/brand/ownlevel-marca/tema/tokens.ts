@@ -61,6 +61,18 @@ export const palette = {
 
 export type ColorToken = keyof (typeof palette)['dark'];
 
+/** Colores de rutina (C4): identidad mediante tira/punto, nunca acento de acciones o estados. */
+export const routinePalette = {
+  light: {
+    violet: '#6B5BA8', indigo: '#4A5694', blue: '#3F6A96', cyan: '#2F7A72',
+    green: '#5E7346', yellow: '#B08A3E', orange: '#A3573A', rose: '#9C4A6B',
+  },
+  dark: {
+    violet: '#A99BD6', indigo: '#8E97D0', blue: '#7FA3C9', cyan: '#6FB3AA',
+    green: '#9DB07F', yellow: '#D4B26A', orange: '#D08C6A', rose: '#CF8AA6',
+  },
+} as const;
+
 /** Series de gráficos, en orden de uso. Máximo 4 por gráfico. */
 export const chart = {
   dark: ['#C9B68A', '#7FA3C9', '#A99BD6', '#D08C6A', '#6FB3AA', '#8E8E96'],

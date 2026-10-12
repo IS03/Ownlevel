@@ -18,10 +18,9 @@ import type { RoutineDetail, RoutineTemplatePayload } from '@/api/routine-editor
 import type { MobileApiMutationResult } from '@/api/results';
 import {
   AppIcon, AppText, Button, EmptyState, Heading, InlineUnavailable, ScrollScreen,
-  Separator, SkeletonBlock, Surface, UnavailableState, radius, sizes, spacing,
+  Separator, SkeletonBlock, Surface, TextField, UnavailableState, radius, sizes, spacing,
   useOwnlevelTheme,
 } from '@/design-system';
-import { haptics } from '@/platform/haptics';
 
 import { MUSCLE_GROUP_OPTIONS, exerciseSummary } from './exercise-library-model';
 import {
@@ -29,14 +28,11 @@ import {
   reorderTemplate, targetsFromCatalog, targetsFromDraft, templatePayload,
   toggleAdjustment, type TargetsDraft,
 } from './routine-editor-model';
-import { trainingRoutineColor, trainingRoutineColorLabel } from './routine-colors';
+import { trainingRoutineColor } from './routine-colors';
+import { RoutineColorPicker } from './routine-color-picker';
 import { StartConfirm } from './start-confirm';
 import { useStartConfirmPointerEvents } from './start-confirm-lock';
 import { useSessionStarter } from './use-session-starter';
-
-const COLORS: MobileRoutineColorKey[] = [
-  'violet', 'indigo', 'blue', 'cyan', 'green', 'yellow', 'orange', 'rose',
-];
 
 function errorMessage(result: MobileApiMutationResult<unknown>): string {
   if (result.status === 'validation' || result.status === 'not_found') return result.message;
@@ -98,11 +94,14 @@ function IdentityModal({
   onSubmit: (name: string, color: MobileRoutineColorKey | null) => void;
   pending: boolean;
 }) {
-  const { colors, isDark } = useOwnlevelTheme();
+  const { colors } = useOwnlevelTheme();
   const [name, setName] = useState(detail.routine.name);
   const [color, setColor] = useState<MobileRoutineColorKey | null>(detail.routine.color);
+  const [colorChosen, setColorChosen] = useState(false);
+  const colorReady = detail.routine.unrecognizedColor === undefined || colorChosen;
   const [error, setError] = useState<string | null>(null);
   const submit = () => {
+    if (!colorReady || pending) return;
     const normalized = name.trim();
     if (!normalized || normalized.length > 120) {
       setError('Ingresá un nombre de hasta 120 caracteres.');
@@ -114,62 +113,35 @@ function IdentityModal({
     <Modal animationType="slide" onRequestClose={pending ? undefined : onClose} presentationStyle="pageSheet" visible>
       <ModalShell description="Actualizá su nombre o color. Esto no modifica sesiones anteriores." onClose={onClose} pending={pending} title="Editar rutina">
         <ScrollView contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled">
-          <AppText variant="label">Nombre</AppText>
-          <TextInput
-            accessibilityLabel="Nombre de la rutina"
-            editable={!pending}
-            onChangeText={setName}
-            placeholderTextColor={colors.textMuted}
-            style={[styles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
-            value={name}
-          />
-          <AppText variant="label">Color</AppText>
-          <View accessibilityRole="radiogroup" style={styles.colorGrid}>
-            {COLORS.map((option) => {
-              const selected = color === option;
-              return (
-                <Pressable
-                  accessibilityLabel={trainingRoutineColorLabel(option)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: selected }}
-                  disabled={pending}
-                  key={option}
-                  onPress={() => { haptics.selection(); setColor(option); }}
-                  style={[styles.swatchTarget, { borderColor: selected ? colors.text : 'transparent' }]}
-                >
-                  <View style={[styles.swatch, { backgroundColor: trainingRoutineColor(option, isDark) }]}>
-                    {selected ? <AppIcon color={option === 'yellow' ? '#17131F' : '#FFFFFF'} name="check" size={21} /> : null}
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
+          <TextField label="Nombre" accessibilityLabel="Nombre de la rutina" disabled={pending} onChangeText={setName} value={name} />
+          {!colorReady ? <AppText muted variant="footnote">Esta rutina usa un color de una versión más nueva. Elegí un color o “Sin color” para editarla.</AppText> : null}
+          <RoutineColorPicker color={color} disabled={pending} onChange={value => { setColor(value); setColorChosen(true); }} />
           <Pressable
             accessibilityLabel="Sin color"
             accessibilityRole="radio"
-            accessibilityState={{ checked: color === null }}
+            accessibilityState={{ checked: (colorReady && color === null) }}
             disabled={pending}
-            onPress={() => setColor(null)}
+            onPress={() => { setColor(null); setColorChosen(true); }}
             style={[
               styles.noColorOption,
               {
-                backgroundColor: color === null ? colors.brandSubtle : colors.surface,
-                borderColor: color === null ? colors.primary : colors.border,
+                backgroundColor: (colorReady && color === null) ? colors.brandSubtle : colors.surface,
+                borderColor: (colorReady && color === null) ? colors.primary : colors.border,
               },
             ]}
           >
             <View
               style={[
                 styles.noColorIndicator,
-                { borderColor: color === null ? colors.primary : colors.border },
+                { borderColor: (colorReady && color === null) ? colors.primary : colors.border },
               ]}
             >
-              {color === null ? <AppIcon color={colors.primary} name="check" size={20} /> : null}
+              {(colorReady && color === null) ? <AppIcon color={colors.primary} name="check" size={20} /> : null}
             </View>
             <AppText variant="label">Sin color</AppText>
           </Pressable>
           {error ? <AppText accessibilityRole="alert" style={{ color: colors.danger }} variant="caption">{error}</AppText> : null}
-          <Button disabled={pending} label={pending ? 'Guardando…' : 'Guardar cambios'} onPress={submit} />
+          <Button disabled={pending || !colorReady} label={pending ? 'Guardando…' : 'Guardar cambios'} onPress={submit} />
         </ScrollView>
       </ModalShell>
     </Modal>
@@ -390,7 +362,7 @@ function EditorSkeleton() {
 }
 
 export function RoutineEditorScreen() {
-  const params = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string; editIdentity?: string }>();
   const id = typeof params.id === 'string' ? params.id : '';
   const { client } = useMobileApi();
   const { colors, isDark } = useOwnlevelTheme();
@@ -448,6 +420,15 @@ export function RoutineEditorScreen() {
     isTargetsDirty(drafts[item.routineExerciseId]!, item.targets)));
   useEffect(() => { dirtyRef.current = dirty; }, [dirty]);
   useEffect(() => { identityOpenRef.current = identityOpen; }, [identityOpen]);
+
+  const identityRequestHandled = useRef(false);
+  useEffect(() => {
+    if (params.editIdentity === '1' && detail && !identityRequestHandled.current && !dirtyRef.current && !pendingRef.current) {
+      identityRequestHandled.current = true;
+      identityOpenRef.current = true;
+      setIdentityOpen(true);
+    }
+  }, [detail, params.editIdentity]);
 
   const refreshAfterConflict = useCallback(async () => {
     await refresh();
@@ -663,7 +644,7 @@ export function RoutineEditorScreen() {
   );
 
   const count = detail.items.reduce((total, item) => total + item.targets.sets.length, 0);
-  const strip = detail.routine.color ? trainingRoutineColor(detail.routine.color, isDark) : colors.textMuted;
+  const strip = detail.routine.color ? trainingRoutineColor(detail.routine.color, isDark) : null;
   return (
     <>
       <Stack.Screen options={{ headerBackButtonMenuEnabled: false, title: 'Rutinas' }} />
@@ -676,10 +657,10 @@ export function RoutineEditorScreen() {
         testID="routine-editor-screen"
       >
         <View style={styles.identityHeader}>
-          <View style={[styles.headerStrip, { backgroundColor: strip }]} />
+          {strip ? <View style={[styles.headerStrip, { backgroundColor: strip }]} /> : null}
           <View style={styles.flex}>
             <Heading>{detail.routine.name}</Heading>
-            <AppText muted variant="caption">{plural(detail.items.length, 'ejercicio', 'ejercicios')} · {plural(count, 'serie', 'series')}</AppText>
+            <AppText muted numeric variant="caption">{plural(detail.items.length, 'ejercicio', 'ejercicios')} · {plural(count, 'serie', 'series')}</AppText>
             {!detail.routine.isActive ? <AppText style={{ color: colors.text }} variant="caption">Archivada</AppText> : null}
           </View>
           <Pressable accessibilityLabel="Editar identidad de rutina" accessibilityRole="button" disabled={Boolean(pending)} onPress={() => { if (guardStructure()) { identityOpenRef.current = true; setIdentityOpen(true); } }} style={[styles.editButton, { borderColor: colors.border }]}>
@@ -722,7 +703,7 @@ export function RoutineEditorScreen() {
                 <View key={item.routineExerciseId}>
                   {index > 0 ? <Separator /> : null}
                   <View style={styles.itemRow}>
-                    <View style={[styles.itemStrip, { backgroundColor: strip }]} />
+                    {strip ? <View style={[styles.itemStrip, { backgroundColor: strip }]} /> : null}
                     <Pressable
                       accessibilityLabel={`${item.exercise.name}, ${opened ? 'contraer' : 'expandir'}`}
                       accessibilityRole="button"
@@ -779,7 +760,6 @@ const styles = StyleSheet.create({
   archivedNotice: { gap: spacing.md },
   closeButton: { alignItems: 'center', height: sizes.touchTarget, justifyContent: 'center', width: sizes.touchTarget },
   closeText: { fontSize: 28, fontWeight: '300', lineHeight: 30 },
-  colorGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-around', maxWidth: 320 },
   editButton: { alignItems: 'center', borderRadius: radius.pill, borderWidth: 1, height: sizes.touchTarget, justifyContent: 'center', width: sizes.touchTarget },
   editorBody: { gap: spacing.md, padding: spacing.lg },
   expandHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: sizes.touchTarget },
@@ -813,8 +793,6 @@ const styles = StyleSheet.create({
   setRemove: { alignItems: 'center', height: sizes.touchTarget, justifyContent: 'center', width: sizes.touchTarget },
   setRemoveSpacer: { width: sizes.touchTarget },
   setRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs },
-  swatch: { alignItems: 'center', borderRadius: radius.pill, height: 38, justifyContent: 'center', width: 38 },
-  swatchTarget: { alignItems: 'center', borderRadius: radius.pill, borderWidth: 2, height: 62, justifyContent: 'center', width: '25%' },
   targetInput: { borderRadius: radius.sm, borderWidth: 1, minHeight: sizes.touchTarget, minWidth: 45, paddingHorizontal: spacing.xs },
   targetInputWrap: { flex: 1, gap: spacing.xs },
   toast: { maxWidth: 360 },

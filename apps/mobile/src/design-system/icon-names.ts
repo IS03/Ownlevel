@@ -4,6 +4,8 @@ import type { SFSymbol } from 'expo-symbols';
 // the platform implementation (SF Symbols on iOS, Lucide on Android) lives in
 // icons.tsx / icons.android.tsx (IDENTIDAD.md § Íconos).
 export type AppIconName =
+  | 'archive'
+  | 'playFilled'
   | 'activity'
   | 'brand'
   | 'book'
@@ -48,6 +50,8 @@ export type AppIconProps = {
 export const appIconSize = { tabBar: 24, row: 20, inline: 17 } as const;
 
 export const sfSymbolNames: Record<AppIconName, SFSymbol> = {
+  archive: 'archivebox',
+  playFilled: 'play.fill',
   activity: 'bolt.fill',
   // Temporary until the brand isotype replaces it (M9.1D).
   brand: 'figure.strengthtraining.traditional',

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { routinePalette } from "@brand/tokens";
 import { describe, expect, it } from "vitest";
 import {
   LEGACY_ROUTINE_COLOR_TO_KEY,
@@ -44,4 +46,13 @@ describe("routine colors", () => {
     });
     expect(normalizeLegacyRoutineColor(null)).toBeNull();
   });
+});
+
+it("keeps both Web color schemes aligned with the shared Mobile palette", () => {
+  const css = readFileSync(new URL("../../app/globals.css", import.meta.url), "utf8");
+  const darkStart = css.indexOf(".dark {");
+  const schemes = { light: css.slice(0, darkStart), dark: css.slice(darkStart) };
+  for (const scheme of ["light", "dark"] as const) {
+    for (const key of ROUTINE_COLOR_KEYS) expect(schemes[scheme]).toContain(`--routine-${key}: ${routinePalette[scheme][key]};`);
+  }
 });

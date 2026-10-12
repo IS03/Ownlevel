@@ -170,3 +170,9 @@ describe('M3.4-2 finish contract (no UI)', () => {
     expect(await finishSession(client(unknown), sessionId, body)).toMatchObject({ status: 'unavailable' });
   });
 });
+
+it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('preserves active-session truth with unknown color %s', routineColor => {
+  const source = { ...detail, session: { ...detail.session, routineColor } };
+  expect(parseSessionDetail(source)).toEqual({ ...detail, session: { ...detail.session, routineColor: null } });
+  expect(source.session.routineColor).toBe(routineColor);
+});

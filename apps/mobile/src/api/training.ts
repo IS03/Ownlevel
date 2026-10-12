@@ -1,3 +1,4 @@
+import { parseRoutineColor } from './routine-color';
 import type { MobileApiClient } from './client';
 import type { MobileReadResult, MobileRoutineColorKey } from './home';
 import type { MobileApiReadResult } from './results';
@@ -12,7 +13,7 @@ export type MobileTrainingActiveSession = {
 
 export type MobileTrainingCalendarDay = {
   date: string;
-  colors: MobileRoutineColorKey[];
+  colors: (MobileRoutineColorKey | null)[];
 };
 
 export type MobileTrainingCalendar = {
@@ -25,16 +26,6 @@ export type MobileTrainingResponse = {
   calendar: MobileReadResult<MobileTrainingCalendar>;
 };
 
-const ROUTINE_COLORS = new Set<MobileRoutineColorKey>([
-  'violet',
-  'indigo',
-  'blue',
-  'cyan',
-  'green',
-  'yellow',
-  'orange',
-  'rose',
-]);
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -101,13 +92,13 @@ function parseCalendarDay(value: unknown): MobileTrainingCalendarDay | undefined
     !isRecord(value) ||
     !isIsoDate(value.date) ||
     !Array.isArray(value.colors) ||
-    !value.colors.every((color) => ROUTINE_COLORS.has(color as MobileRoutineColorKey))
+    !value.colors.every((color) => typeof color === 'string')
   ) {
     return undefined;
   }
   return {
     date: value.date,
-    colors: value.colors as MobileRoutineColorKey[],
+    colors: value.colors.map(color => parseRoutineColor(color)!),
   };
 }
 

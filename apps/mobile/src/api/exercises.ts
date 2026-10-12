@@ -1,3 +1,4 @@
+import { parseRoutineColor } from './routine-color';
 import type { MobileApiClient } from './client';
 import type { MobileReadResult, MobileRoutineColorKey } from './home';
 import type { MobileApiMutationResult, MobileApiReadResult } from './results';
@@ -62,9 +63,7 @@ export type MobileTrainingExerciseStatusResponse = {
 const MUSCLE_GROUPS = new Set<MobileTrainingMuscleGroup>([
   'pecho', 'espalda', 'piernas', 'hombros', 'bíceps', 'tríceps', 'abdomen', 'cardio',
 ]);
-const ROUTINE_COLORS = new Set<MobileRoutineColorKey>([
-  'violet', 'indigo', 'blue', 'cyan', 'green', 'yellow', 'orange', 'rose',
-]);
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TIMESTAMP_PATTERN =
@@ -119,11 +118,11 @@ function parseRoutine(value: unknown): MobileTrainingExerciseRoutine | undefined
   if (
     !isRecord(value) || typeof value.id !== 'string' || !UUID_PATTERN.test(value.id) ||
     typeof value.name !== 'string' || !value.name.trim() ||
-    (value.color !== null && !ROUTINE_COLORS.has(value.color as MobileRoutineColorKey))
+    parseRoutineColor(value.color) === undefined
   ) {
     return undefined;
   }
-  return value as MobileTrainingExerciseRoutine;
+  return { ...value, color: parseRoutineColor(value.color)! } as MobileTrainingExerciseRoutine;
 }
 
 function parseCatalog(value: unknown): MobileTrainingExercisesResponse['catalog'] | undefined {

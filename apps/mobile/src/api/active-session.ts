@@ -1,3 +1,4 @@
+import { parseRoutineColor } from './routine-color';
 import type { MobileApiClient } from './client';
 import type { MobileApiMutationResult, MobileApiRequestResult } from './results';
 import type { MobileTrainingExerciseMutation, MobileTrainingMuscleGroup } from './exercises';
@@ -197,7 +198,7 @@ export function parseSessionDetail(value: unknown): SessionDetailDto | undefined
   if (!id(s.id) || (s.routineId !== null && !id(s.routineId)) || !text(s.routineNameSnapshot) || typeof s.name !== 'string' || !s.name.trim() ||
     !['in_progress', 'completed', 'discarded'].includes(s.status as string) || !date(s.logDate) || !timestamp(s.startedAt) ||
     (s.endedAt !== null && !timestamp(s.endedAt)) || !timestamp(s.updatedAt) ||
-    (s.routineColor !== null && !COLORS.has(s.routineColor as string)) || !metadata(s.metadata)) return undefined;
+    parseRoutineColor(s.routineColor) === undefined || !metadata(s.metadata)) return undefined;
   const exercises: SessionExerciseDto[] = [];
   const seen = new Set<string>();
   const catalog = new Set<string>();
@@ -210,7 +211,7 @@ export function parseSessionDetail(value: unknown): SessionDetailDto | undefined
   }
   // This auxiliary resource must not invalidate the operational detail.
   const quickHistory = history(value.quickHistory) ?? { status: 'unavailable' as const };
-  return { session: s as SessionDetailDto['session'], exercises, quickHistory };
+  return { session: { ...s, routineColor: parseRoutineColor(s.routineColor)! } as SessionDetailDto['session'], exercises, quickHistory };
 }
 export function parseSessionExerciseSync(value: unknown): SessionExerciseSyncDto | undefined {
   if (!record(value, ['status', 'updatedAt', 'payload', 'sessionStatus'])) return undefined;

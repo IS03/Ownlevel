@@ -267,13 +267,13 @@ export function CalendarCard({
                       </AppText>
                     </View>
                     <View accessibilityElementsHidden style={styles.indicatorRow}>
-                      {day?.colors.map((color) => (
+                      {day?.colors.map((color, index) => (
                         <View
-                          key={color}
+                          key={`${color}-${index}`}
                           style={[
                             styles.indicator,
                             {
-                              backgroundColor: trainingRoutineColor(color, isDark),
+                              backgroundColor: color ? trainingRoutineColor(color, isDark) : colors.textMuted,
                               borderColor: colors.surface,
                             },
                           ]}

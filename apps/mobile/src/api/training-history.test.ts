@@ -30,7 +30,7 @@ describe('M3.4-3 history read contracts', () => {
     expect(parseTrainingHistoryPage({ sessions: [session], nextCursor: 'abc_DEF-1' })).toEqual({ sessions: [session], nextCursor: 'abc_DEF-1' });
     expect(parseTrainingHistoryPage({ sessions: [{ ...session, durationMilliseconds: null }], nextCursor: null })?.sessions[0].durationMilliseconds).toBeNull();
     for (const invalid of [{ sessions: [{ ...session, extra: 1 }], nextCursor: null }, { sessions: [{ ...session, completedSets: -1 }], nextCursor: null },
-      { sessions: [{ ...session, routineColor: 'pink' }], nextCursor: null }, { sessions: [session], nextCursor: 'bad cursor!' }, { sessions: {}, nextCursor: null }]) {
+      { sessions: [{ ...session, routineColor: {} }], nextCursor: null }, { sessions: [session], nextCursor: 'bad cursor!' }, { sessions: {}, nextCursor: null }]) {
       expect(parseTrainingHistoryPage(invalid)).toBeUndefined();
     }
   });
@@ -102,4 +102,9 @@ describe('M3.4-3 correction and discard contracts', () => {
     expect(String(url)).toBe(`https://example.test/api/mobile/v1/training/sessions/${sessionId}/discard`);
     expect(init?.method).toBe('POST'); expect(JSON.parse(String(init?.body))).toEqual({ idempotencyKey: 'discard:1' });
   });
+});
+
+it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('preserves completed session and missing metrics with unknown color %s', routineColor => {
+  const parsed = parseTrainingHistoryPage({ sessions: [{ ...session, routineColor }], nextCursor: null });
+  expect(parsed).toEqual({ sessions: [{ ...session, routineColor: null }], nextCursor: null });
 });

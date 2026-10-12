@@ -43,6 +43,29 @@ Base grafito y un solo acento champagne. Las tablas completas están en `tema/to
 - **Sin rojo ni verde de "bien/mal"** sobre los datos del usuario. El rojo es solo para fallas del sistema (sincronización, pagos) y para acciones de borrar.
 - **Subas y bajas** se marcan con flecha, no con color.
 
+### Colores de rutina · C4
+
+Las claves guardadas identifican rutinas; no califican los datos personales. Solo pintan una tira o un punto de identidad y las muestras del selector de color. Nunca cambian el color de botones, acciones principales ni estados activos: esos siguen usando el único acento champagne. Un color ausente o desconocido no agrega una tira gris ni oculta la rutina.
+
+Decisión aprobada el 12 de octubre de 2026: conservar las ocho claves existentes y remapear sus tonos simultáneamente en Mobile y Web, sin migrar datos. Ampliar a doce claves mediante EXPAND antes de habilitar su elección en Mobile. Arena se parece al champagne, pero conserva exclusivamente el rol de identidad de rutina.
+
+| Clave | Nombre | Claro | Oscuro |
+|---|---|---|---|
+| violet | Violeta | #6B5BA8 | #A99BD6 |
+| indigo | Índigo | #4A5694 | #8E97D0 |
+| blue | Azul | #3F6A96 | #7FA3C9 |
+| cyan | Celeste | #2F7A72 | #6FB3AA |
+| green | Verde | #5E7346 | #9DB07F |
+| yellow | Amarillo | #B08A3E | #D4B26A |
+| orange | Naranja | #A3573A | #D08C6A |
+| rose | Rosa | #9C4A6B | #CF8AA6 |
+| sand | Arena | #A8935F | #DCCBA3 |
+| stone | Piedra | #8A7F72 | #B8AC9C |
+| slate | Pizarra | #5B6B7A | #9AAABB |
+| graphite | Grafito | #3F3F46 | #A1A1AA |
+
+El check de selección usa el token de marca con mayor contraste sobre cada muestra, con al menos 3:1. No se presupone que deba ser blanco; los tonos oscuros de interfaz necesitan un check oscuro.
+
 ## Tipografía
 - **Fuente:** SF Pro (la del sistema) en toda la interfaz. En Android se ve Roboto y en la web la fuente del sistema de cada equipo.
 - **Escala de iOS:**

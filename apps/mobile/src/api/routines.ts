@@ -1,3 +1,4 @@
+import { parseRoutineColor } from './routine-color';
 import type { MobileReadResult, MobileRoutineColorKey } from './home';
 import type { MobileApiClient } from './client';
 import type { MobileApiMutationResult, MobileApiReadResult } from './results';
@@ -42,16 +43,6 @@ export type MobileTrainingInitialPlanResponse = {
   exercises: number;
 };
 
-const ROUTINE_COLORS = new Set<MobileRoutineColorKey>([
-  'violet',
-  'indigo',
-  'blue',
-  'cyan',
-  'green',
-  'yellow',
-  'orange',
-  'rose',
-]);
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TIMESTAMP_PATTERN =
@@ -72,7 +63,7 @@ function parseRoutine(value: unknown): MobileTrainingRoutine | undefined {
     !UUID_PATTERN.test(value.id) ||
     typeof value.name !== 'string' ||
     !value.name.trim() ||
-    (value.color !== null && !ROUTINE_COLORS.has(value.color as MobileRoutineColorKey)) ||
+    parseRoutineColor(value.color) === undefined ||
     !isNonNegativeInteger(value.order) ||
     typeof value.isActive !== 'boolean' ||
     !isNonNegativeInteger(value.exerciseCount) ||
@@ -83,7 +74,7 @@ function parseRoutine(value: unknown): MobileTrainingRoutine | undefined {
   return {
     id: value.id,
     name: value.name,
-    color: value.color as MobileRoutineColorKey | null,
+    color: parseRoutineColor(value.color)!,
     order: value.order,
     isActive: value.isActive,
     exerciseCount: value.exerciseCount,

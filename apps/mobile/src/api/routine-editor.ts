@@ -1,3 +1,4 @@
+import { isKnownRoutineColor, parseRoutineColor } from './routine-color';
 import type { MobileApiClient } from './client';
 import type { MobileRoutineColorKey } from './home';
 import type { MobileTrainingMuscleGroup } from './exercises';
@@ -25,6 +26,8 @@ export type RoutineDetail = {
     id: string;
     name: string;
     color: MobileRoutineColorKey | null;
+    /** Retained so an older editor cannot silently clear a newer color. */
+    unrecognizedColor?: string;
     isActive: boolean;
     updatedAt: string;
     templateVersion: number;
@@ -55,7 +58,6 @@ export type RoutineDetailLoad = { kind: 'detail'; detail: RoutineDetail } | { ki
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
-const COLORS = new Set(['violet', 'indigo', 'blue', 'cyan', 'green', 'yellow', 'orange', 'rose']);
 const GROUPS = new Set(['pecho', 'espalda', 'piernas', 'hombros', 'bíceps', 'tríceps', 'abdomen', 'cardio']);
 const ADJUSTMENTS = new Set(['maintain', 'increase_weight', 'increase_reps', 'custom']);
 
@@ -104,7 +106,7 @@ export function parseRoutineDetail(value: unknown): RoutineDetail | undefined {
   const routine = value.routine;
   if (typeof routine.id !== 'string' || !UUID.test(routine.id) ||
     typeof routine.name !== 'string' || !routine.name.trim() ||
-    (routine.color !== null && !COLORS.has(routine.color as string)) ||
+    parseRoutineColor(routine.color) === undefined ||
     typeof routine.isActive !== 'boolean' || typeof routine.updatedAt !== 'string' ||
     !TIMESTAMP.test(routine.updatedAt) || !Number.isSafeInteger(routine.templateVersion) ||
     (routine.templateVersion as number) < 1) return undefined;
@@ -132,7 +134,9 @@ export function parseRoutineDetail(value: unknown): RoutineDetail | undefined {
     previousOrder = raw.exerciseOrder as number;
     items.push({ ...raw, targets } as RoutineDetail['items'][number]);
   }
-  return { routine: routine as RoutineDetail['routine'], items };
+  return { routine: { ...routine, color: parseRoutineColor(routine.color)!,
+    ...(typeof routine.color === 'string' && !isKnownRoutineColor(routine.color) ? { unrecognizedColor: routine.color } : {}),
+  } as RoutineDetail['routine'], items };
 }
 
 function parseIdentityResponse(value: unknown): { routine: RoutineDetail['routine'] } | undefined {
