@@ -20,7 +20,7 @@ jest.mock('expo-glass-effect', () => ({ GlassView: () => null, isGlassEffectAPIA
 jest.mock('@expo/ui/swift-ui/modifiers', () => {
   const marker = (key: string) => (value?: unknown) => ({ [key]: value });
   return {
-    Animation: { easeInOut: () => ({}), smooth: () => ({}) },
+    Animation: { easeIn: () => ({ delay: () => ({}) }), easeInOut: () => ({}), easeOut: () => ({}), smooth: () => ({}) },
     accessibilityAddTraits: marker('traits'), accessibilityLabel: marker('label'), animation: marker('animation'), blur: marker('blur'), contentShape: marker('shape'), fixedSize: marker('fixed'), opacity: marker('opacity'), scaleEffect: marker('scale'),
     font: marker('font'), foregroundStyle: marker('fg'), frame: marker('frame'), glassEffect: marker('glass'), monospacedDigit: marker('mono'),
     onGeometryChange: marker('onGeometry'), onTapGesture: marker('onTap'), padding: marker('padding'), pickerStyle: marker('pickerStyle'), shapes: { rectangle: () => ({}) },

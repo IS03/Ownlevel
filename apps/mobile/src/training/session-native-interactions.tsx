@@ -156,7 +156,7 @@ type Swipe = { x: SharedValue<number>; width: SharedValue<number>; disabled: boo
 const SwipeContext = createContext<Swipe | null>(null);
 export type SwipeAction = { label: string; onPress: () => void; destructive?: boolean; disabled?: boolean };
 /** Swipe gestures attach to the non-editable handles/header, never to numeric inputs. */
-export function NativeSwipeActions({ actions, disabled, children, label }: { actions: SwipeAction[]; disabled: boolean; children: ReactNode; label: string }) {
+export function NativeSwipeActions({ actions, disabled, children, label, backgroundColor }: { actions: SwipeAction[]; disabled: boolean; children: ReactNode; label: string; backgroundColor?: string }) {
   const { colors } = useOwnlevelTheme();
   const x = useSharedValue(0), width = actions.length * 76;
   const actionWidth = useSharedValue(width);
@@ -175,7 +175,7 @@ export function NativeSwipeActions({ actions, disabled, children, label }: { act
         <AppText variant="caption" style={{ color: action.destructive ? colors.surface : colors.primary, textAlign: 'center' }}>{action.label}</AppText>
       </Pressable>)}
     </View>
-    <Animated.View style={[{ backgroundColor: colors.surface }, style]}>{children}</Animated.View>
+    <Animated.View style={[{ backgroundColor: backgroundColor ?? colors.surface }, style]}>{children}</Animated.View>
   </View></SwipeContext.Provider>;
 }
 export function NativeDragHandle({ disabled, onTap, children, testID, ...props }: ViewProps & { disabled: boolean; onTap?: () => void }) {

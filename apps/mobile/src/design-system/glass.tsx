@@ -31,15 +31,15 @@ const rgbOf = (hex: string) => [1, 3, 5].map(index => parseInt(hex.slice(index, 
  * `visible` switches the glass with its own animation: an opacity of 0 on a GlassView (or a
  * parent) stops it rendering, so fades never go through opacity.
  */
-export function GlassSurface({ children, style, testID, tint, visible = true }: PropsWithChildren<{
-  style?: StyleProp<ViewStyle>; testID?: string; tint?: string; visible?: boolean;
+export function GlassSurface({ children, style, testID, tint, visible = true, interactive = false }: PropsWithChildren<{
+  style?: StyleProp<ViewStyle>; testID?: string; tint?: string; visible?: boolean; interactive?: boolean;
 }>) {
   const { isDark } = useOwnlevelTheme();
   const reduceTransparency = useReduceTransparency();
   if (liquidGlassSupported() && !reduceTransparency) {
     return (
       <GlassView colorScheme={isDark ? 'dark' : 'light'} glassEffectStyle={{ animate: true, animationDuration: 0.2, style: visible ? 'regular' : 'none' }}
-        style={style} testID={testID} tintColor={tint}>
+        style={style} testID={testID} tintColor={tint} isInteractive={interactive}>
         {children}
       </GlassView>
     );

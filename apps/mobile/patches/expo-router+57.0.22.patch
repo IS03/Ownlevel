@@ -1,0 +1,13 @@
+diff --git a/node_modules/expo-router/build/native-tabs/NativeBottomTabsNavigator.js b/node_modules/expo-router/build/native-tabs/NativeBottomTabsNavigator.js
+index 76a6b95..c3eae5e 100644
+--- a/node_modules/expo-router/build/native-tabs/NativeBottomTabsNavigator.js
++++ b/node_modules/expo-router/build/native-tabs/NativeBottomTabsNavigator.js
+@@ -143,7 +143,7 @@ function NativeTabsNavigator({ children, backBehavior = defaultBackBehavior, lab
+             });
+         }
+     }, [descriptors, navigation, state.key]);
+-    return ((0, jsx_runtime_1.jsx)(NavigationContent, { children: (0, jsx_runtime_1.jsx)(exports.NativeTabsContext, { value: true, children: (0, react_1.createElement)(NativeTabsView_1.NativeTabsView, { ...rest, key: visibleTabsKeys, focusedIndex: focusedIndex, 
++    return ((0, jsx_runtime_1.jsx)(NavigationContent, { children: (0, jsx_runtime_1.jsx)(exports.NativeTabsContext, { value: true, children: (0, react_1.createElement)(NativeTabsView_1.NativeTabsView, { ...rest, focusedIndex: focusedIndex, 
+                 // Provenance should only be sent with updates, and updates
+                 // on JS side are only triggered by rerender, so passing ref
+                 // here is ok.

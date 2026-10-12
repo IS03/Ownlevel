@@ -16,7 +16,7 @@ const names = Object.keys(sfSymbolNames) as AppIconName[];
 
 describe('AppIcon foundation', () => {
   it('every semantic name has an SF Symbol (iOS) and a Lucide icon (Android): no fallback needed', () => {
-    expect(names).toHaveLength(30);
+    expect(names).toHaveLength(32);
     expect(Object.keys(lucideIcons).sort()).toEqual([...names].sort());
     for (const name of names) {
       expect(typeof sfSymbolNames[name]).toBe('string');

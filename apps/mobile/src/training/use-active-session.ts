@@ -5,8 +5,10 @@ import type { MobileApiClient } from '@/api/client';
 import { ActiveSessionController, activeSessionApi } from './active-session-controller';
 import { SessionDraftRepository } from './active-session-storage';
 import { activeSessionStorage } from './active-session-native-storage';
+import { useSessionPresenceStore } from './session-presence-provider';
 
 export function useActiveSession(client: MobileApiClient, userId: string, sessionId: string) {
+  const presence = useSessionPresenceStore();
   const controller = useMemo(() => new ActiveSessionController(activeSessionApi(client, sessionId),
     new SessionDraftRepository(activeSessionStorage, userId, sessionId)), [client, sessionId, userId]);
   useEffect(() => {
@@ -21,6 +23,7 @@ export function useActiveSession(client: MobileApiClient, userId: string, sessio
     });
     return () => { subscription.remove(); controller.dispose(); };
   }, [controller]);
+  useEffect(() => presence?.attach(sessionId, controller), [controller, presence, sessionId]);
   useFocusEffect(useCallback(() => { void controller.resume(); return () => { controller.suspend(); }; }, [controller]));
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   return { controller, state };

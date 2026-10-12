@@ -1,0 +1,159 @@
+diff --git a/node_modules/react-native-screens/ios/tabs/host/RNSTabBarController.mm b/node_modules/react-native-screens/ios/tabs/host/RNSTabBarController.mm
+index 481a9e6..eeffd98 100644
+--- a/node_modules/react-native-screens/ios/tabs/host/RNSTabBarController.mm
++++ b/node_modules/react-native-screens/ios/tabs/host/RNSTabBarController.mm
+@@ -392,6 +392,21 @@ - (BOOL)shouldPreventNativeTabSelection:(nonnull UIViewController *)nextViewCont
+ 
+ #pragma mark - UITabBarControllerDelegate
+ 
++#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000 && !TARGET_OS_TV && !TARGET_OS_VISION
++// Keep the existing RNS selection, prevention and provenance handling with UIKit's modern tabs.
++- (BOOL)tabBarController:(UITabBarController *)controller shouldSelectTab:(UITab *)tab API_AVAILABLE(ios(18.0))
++{
++  return [self tabBarController:controller shouldSelectViewController:tab.viewController];
++}
++
++- (void)tabBarController:(UITabBarController *)controller
++           didSelectTab:(UITab *)tab
++            previousTab:(UITab *)previousTab API_AVAILABLE(ios(18.0))
++{
++  [self tabBarController:controller didSelectViewController:tab.viewController];
++}
++#endif
++
+ // These methods are not called on programatic selection!
+ // They are called only when a user taps on tab bar.
+ 
+@@ -501,7 +516,39 @@ - (void)updateReactChildrenControllers
+     return;
+   }
+ 
+-  [self setViewControllers:_tabScreenControllers animated:[[self viewControllers] count] != 0];
++#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000 && !TARGET_OS_TV && !TARGET_OS_VISION
++  if (@available(iOS 27.0, *)) {
++    // OWNLEVEL: UIKit 27's public prominentTabIdentifier requires UITab, not legacy items.
++    // Reuse the same RNS controllers and stable route keys; there is no second navigation tree.
++    NSMutableArray<UITab *> *tabs = [NSMutableArray new];
++    NSString *prominentKey = nil;
++    for (RNSTabsScreenViewController *screen in _tabScreenControllers) {
++      NSString *key = [screen getScreenKeyOrNull];
++      UITab *tab = [self tabForIdentifier:key];
++      if (tab == nil) {
++        tab = [[UITab alloc] initWithTitle:screen.tabBarItem.title ?: @""
++                                   image:screen.tabBarItem.image
++                              identifier:key
++                  viewControllerProvider:^UIViewController *(UITab *item) { return screen; }];
++      }
++      tab.preferredPlacement = UITabPlacementFixed;
++      if (screen.tabScreenComponentView.systemItem == RNSTabsScreenSystemItemSearch &&
++          screen.tabScreenComponentView.preventNativeSelection) {
++        prominentKey = key;
++      }
++      [tabs addObject:tab];
++    }
++    BOOL animate = self.tabs.count != 0 && !UIAccessibilityIsReduceMotionEnabled();
++    BOOL wasHandling = _isHandlingExplicitSelectionUpdate;
++    _isHandlingExplicitSelectionUpdate = YES;
++    [self setTabs:tabs animated:animate];
++    [self setProminentTabIdentifier:prominentKey animated:animate];
++    _isHandlingExplicitSelectionUpdate = wasHandling;
++    [self setNeedsUpdateOfTabBarAppearance:YES];
++    return;
++  }
++#endif
++  [self setViewControllers:_tabScreenControllers animated:[[self rnsCurrentViewControllers] count] != 0];
+ }
+ 
+ - (void)updateSelectedViewControllerIfNeeded
+@@ -513,7 +560,7 @@ - (void)updateSelectedViewControllerIfNeeded
+ 
+ - (void)updateSelectedViewController
+ {
+-  if (_pendingStateUpdate == nil || self.viewControllers.count == 0) {
++  if (_pendingStateUpdate == nil || self.rnsCurrentViewControllers.count == 0) {
+     return;
+   }
+ 
+@@ -610,11 +657,23 @@ - (void)updateTabBarAppearance
+                                    withHostComponentView:self.tabsHostComponentView
+                                     tabScreenControllers:_tabScreenControllers
+                                              imageLoader:[self.tabsHostComponentView reactImageLoader]];
++#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000 && !TARGET_OS_TV && !TARGET_OS_VISION
++  if (@available(iOS 27.0, *)) {
++    for (UITab *tab in self.tabs) {
++      UITabBarItem *item = tab.viewController.tabBarItem;
++      tab.title = item.title ?: @"";
++      tab.image = item.image;
++      tab.selectedImage = item.selectedImage;
++      tab.accessibilityLabel = item.accessibilityLabel;
++      tab.accessibilityIdentifier = item.accessibilityIdentifier;
++    }
++  }
++#endif
+ }
+ 
+ - (void)updateTabBarA11yIfNeeded
+ {
+-  for (UIViewController *tabViewController in self.viewControllers) {
++  for (UIViewController *tabViewController in self.rnsCurrentViewControllers) {
+     auto screenView = static_cast<RNSTabsScreenViewController *>(tabViewController).tabScreenComponentView;
+     if (!screenView.tabBarItemNeedsA11yUpdate) {
+       continue;
+@@ -623,17 +682,38 @@ - (void)updateTabBarA11yIfNeeded
+     screenView.tabBarItemNeedsA11yUpdate = NO;
+     tabViewController.tabBarItem.accessibilityIdentifier = screenView.tabItemTestID;
+     tabViewController.tabBarItem.accessibilityLabel = screenView.tabItemAccessibilityLabel;
++#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000 && !TARGET_OS_TV && !TARGET_OS_VISION
++    if (@available(iOS 27.0, *)) {
++      tabViewController.tab.accessibilityIdentifier = screenView.tabItemTestID;
++      tabViewController.tab.accessibilityLabel = screenView.tabItemAccessibilityLabel;
++    }
++#endif
+   }
+ }
+ 
+ #pragma mark - Utility
+ 
++- (NSArray<UIViewController *> *)rnsCurrentViewControllers
++{
++#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000 && !TARGET_OS_TV && !TARGET_OS_VISION
++  if (@available(iOS 27.0, *)) {
++    // UIKit stops populating the legacy viewControllers array once tabs is set.
++    NSMutableArray<UIViewController *> *controllers = [NSMutableArray new];
++    for (UITab *tab in self.tabs) {
++      if (tab.viewController != nil) [controllers addObject:tab.viewController];
++    }
++    return controllers;
++  }
++#endif
++  return self.viewControllers;
++}
++
+ - (nullable RNSTabsScreenViewController *)findChildViewControllerForKey:(nullable NSString *)screenKey
+ {
+   if (screenKey == nil) {
+     return nil;
+   }
+-  for (UIViewController *viewController in self.viewControllers) {
++  for (UIViewController *viewController in self.rnsCurrentViewControllers) {
+     RCTAssert([viewController isKindOfClass:RNSTabsScreenViewController.class],
+               @"[RNScreens] Unexpected type of controller: %@",
+               viewController.class);
+@@ -769,7 +849,7 @@ - (BOOL)canHaveMoreNavigationController
+   // https://developer.apple.com/documentation/uikit/uitabbarcontroller?language=objc#The-More-navigation-controller
+   // The count is documented. Size class check is empirical, to tighten the condition and have less
+   // false positives. If we ever find it not correct, we can safely remove it.
+-  return self.viewControllers.count >= kMinCountOfVCsForMoreVCPresence &&
++  return self.rnsCurrentViewControllers.count >= kMinCountOfVCsForMoreVCPresence &&
+       self.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassCompact;
+ #else
+   return NO;
+@@ -783,7 +863,7 @@ - (BOOL)isViewControllerHostedByMoreNavigationController:(nonnull UIViewControll
+   }
+ 
+   // Guard: VC must be one we manage (excludes arbitrary external VCs).
+-  if ([self.viewControllers indexOfObject:viewController] == NSNotFound) {
++  if ([self.rnsCurrentViewControllers indexOfObject:viewController] == NSNotFound) {
+     return NO;
+   }
+ 
