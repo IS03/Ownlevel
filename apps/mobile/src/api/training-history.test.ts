@@ -104,7 +104,7 @@ describe('M3.4-3 correction and discard contracts', () => {
   });
 });
 
-it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('preserves completed session and missing metrics with unknown color %s', routineColor => {
+it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('preserves completed session and missing metrics with new or unknown color %s', routineColor => {
   const parsed = parseTrainingHistoryPage({ sessions: [{ ...session, routineColor }], nextCursor: null });
-  expect(parsed).toEqual({ sessions: [{ ...session, routineColor: null }], nextCursor: null });
+  expect(parsed).toEqual({ sessions: [{ ...session, routineColor: routineColor === 'future-color' ? null : routineColor }], nextCursor: null });
 });

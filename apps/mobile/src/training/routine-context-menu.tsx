@@ -5,7 +5,7 @@ import { AppText, ListGroup, ListRow, SheetHandle, SheetSurface, spacing } from 
 import type { RoutineContextMenuProps } from './routine-context-menu.types';
 
 /** RN action sheet, as in HomeAddMenu: Android Alert only supports three buttons. */
-export function RoutineContextMenu({ children, disabled, routine, onStart, onEdit, onColor, onStatus }: RoutineContextMenuProps) {
+export function RoutineContextMenu({ children, disabled, routine, onStart, onEdit, onColor, onDuplicate, onStatus }: RoutineContextMenuProps) {
   const [open, setOpen] = useState(false);
   const run = (action: () => void) => () => { setOpen(false); if (!disabled) action(); };
   return <>
@@ -21,6 +21,7 @@ export function RoutineContextMenu({ children, disabled, routine, onStart, onEdi
               <ListGroup>
                 {routine.isActive ? <ListRow chevron={false} onPress={run(onStart)} title="Empezar entrenamiento" /> : null}
                 <ListRow chevron={false} onPress={run(onEdit)} title="Editar rutina" />
+                <ListRow chevron={false} onPress={run(onDuplicate)} title="Duplicar" />
                 {routine.isActive ? <ListRow chevron={false} onPress={run(onColor)} title="Cambiar color" /> : null}
               </ListGroup>
               <ListGroup><ListRow chevron={false} icon="archive" onPress={run(onStatus)} title={routine.isActive ? 'Archivar' : 'Restaurar'} /></ListGroup>

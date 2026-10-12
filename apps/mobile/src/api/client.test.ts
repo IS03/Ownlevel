@@ -408,3 +408,11 @@ describe('Saved Meal catalog conflict codes',()=>{
   expect(result).toMatchObject({status:'conflict',code,message:'Review source'});expect(fetchImplementation).toHaveBeenCalledTimes(1);
  });
 });
+
+it('keeps routine-list CAS conflict explicit and never retries its write', async () => {
+  const fetchImplementation = jest.fn(async () => response(409, { error: 'ROUTINE_LIST_CHANGED', message: 'Recargá la lista.' })) as unknown as typeof fetch;
+  const setup = dependencies({ fetchImplementation });
+  const result = await createMobileApiClient(setup.values).request({ method: 'PUT', path: '/api/mobile/v1/training/routines/order', body: {}, parse: () => undefined });
+  expect(result).toMatchObject({ status: 'conflict', code: 'ROUTINE_LIST_CHANGED' });
+  expect(fetchImplementation).toHaveBeenCalledTimes(1);
+});

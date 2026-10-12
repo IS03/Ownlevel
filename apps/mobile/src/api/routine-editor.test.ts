@@ -54,5 +54,5 @@ describe('Mobile routine editor API', () => {
 
 it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('keeps the full template and original unknown color %s for safe editing', color => {
   const parsed = parseRoutineDetail({ ...detailFixture, routine: { ...detailFixture.routine, color } });
-  expect(parsed).toEqual({ ...detailFixture, routine: { ...detailFixture.routine, color: null, unrecognizedColor: color } });
+  expect(parsed).toEqual({ ...detailFixture, routine: { ...detailFixture.routine, color: color === 'future-color' ? null : color, ...(color === 'future-color' ? { unrecognizedColor: color } : {}) } });
 });

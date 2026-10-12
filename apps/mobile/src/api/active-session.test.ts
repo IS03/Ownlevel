@@ -171,8 +171,8 @@ describe('M3.4-2 finish contract (no UI)', () => {
   });
 });
 
-it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('preserves active-session truth with unknown color %s', routineColor => {
+it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('preserves active-session truth with new or unknown color %s', routineColor => {
   const source = { ...detail, session: { ...detail.session, routineColor } };
-  expect(parseSessionDetail(source)).toEqual({ ...detail, session: { ...detail.session, routineColor: null } });
+  expect(parseSessionDetail(source)).toEqual({ ...detail, session: { ...detail.session, routineColor: routineColor === 'future-color' ? null : routineColor } });
   expect(source.session.routineColor).toBe(routineColor);
 });

@@ -302,6 +302,7 @@ export function createMobileApiClient({
             conflictCode === 'MEAL_UNAVAILABLE' ||
             conflictCode === 'DAY_HAS_HISTORICAL_SUMMARY' ||
             conflictCode === 'ACTIVE_SESSION_EXISTS' ||
+            conflictCode === 'ROUTINE_LIST_CHANGED' ||
             conflictCode === 'ROUTINE_CHANGED' ||
             conflictCode === 'ROUTINE_TEMPLATE_CHANGED' ||
             conflictCode === 'SESSION_EXERCISE_CHANGED' ||

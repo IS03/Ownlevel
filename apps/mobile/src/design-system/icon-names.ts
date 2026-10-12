@@ -4,6 +4,8 @@ import type { SFSymbol } from 'expo-symbols';
 // the platform implementation (SF Symbols on iOS, Lucide on Android) lives in
 // icons.tsx / icons.android.tsx (IDENTIDAD.md § Íconos).
 export type AppIconName =
+  | 'reorder'
+  | 'dragHandle'
   | 'archive'
   | 'playFilled'
   | 'activity'
@@ -50,6 +52,8 @@ export type AppIconProps = {
 export const appIconSize = { tabBar: 24, row: 20, inline: 17 } as const;
 
 export const sfSymbolNames: Record<AppIconName, SFSymbol> = {
+  reorder: 'arrow.up.arrow.down',
+  dragHandle: 'line.3.horizontal',
   archive: 'archivebox',
   playFilled: 'play.fill',
   activity: 'bolt.fill',

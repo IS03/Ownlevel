@@ -20,6 +20,8 @@ export {
 } from './exercises';
 export {
   createMobileTrainingRoutine,
+  duplicateMobileTrainingRoutine,
+  reorderMobileTrainingRoutines,
   fetchMobileTrainingRoutines,
   importMobileTrainingInitialPlan,
   MOBILE_TRAINING_INITIAL_PLAN_API_PATH,

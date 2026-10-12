@@ -16,7 +16,11 @@ export type MobileRoutineColorKey =
   | 'green'
   | 'yellow'
   | 'orange'
-  | 'rose';
+  | 'rose'
+  | 'sand'
+  | 'stone'
+  | 'slate'
+  | 'graphite';
 
 export type MobileHomeWorkoutStartRoutine = {
   id: string;
