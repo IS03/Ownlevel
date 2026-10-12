@@ -8,6 +8,7 @@ export default function TrainLayout() {
     <Stack screenOptions={screenOptions}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="routines" options={{ title: 'Rutinas' }} />
+      <Stack.Screen name="routines/archived" options={{ title: 'Archivadas' }} />
       <Stack.Screen
         name="routines/[id]"
         options={{ headerBackButtonMenuEnabled: false, title: 'Rutinas' }}

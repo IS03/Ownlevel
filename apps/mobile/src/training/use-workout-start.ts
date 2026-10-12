@@ -3,7 +3,6 @@ import { AccessibilityInfo } from 'react-native';
 
 import { fetchMobileTraining, fetchMobileTrainingRoutines, startMobileTrainingSession, useApiResource, useMobileApi } from '@/api';
 import type { MobileTrainingActiveSession } from '@/api/training';
-import { haptics } from '@/platform/haptics';
 
 import { monthForDate } from './calendar';
 import { activeStartRoutines, initialStartSelection, sameStartSelection, StartIntent, validStartSelection, type StartSelection } from './start-workout-model';
@@ -53,7 +52,6 @@ export function useWorkoutStart({ initialFree = false, initialRoutineId, onClose
     setChosen(next);
     setKeyConflict(false);
     setError(null);
-    haptics.selection();
   };
   const submit = async () => {
     if (pendingRef.current || !verifiedNoActive || !selected || !client || keyConflict ||
@@ -68,7 +66,6 @@ export function useWorkoutStart({ initialFree = false, initialRoutineId, onClose
     pendingRef.current = false;
     setPending(false);
     if (result.status === 'ok' && result.data.status === 'started') {
-      haptics.selection();
       onStarted(result.data.session.id);
       return;
     }

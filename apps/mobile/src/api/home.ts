@@ -1,3 +1,4 @@
+import { parseRoutineColor } from './routine-color';
 import type { MobileApiClient } from './client';
 import type { MobileApiReadResult } from './results';
 
@@ -78,16 +79,6 @@ export type MobileHomeResponse = {
   };
 };
 
-const ROUTINE_COLORS = new Set<MobileRoutineColorKey>([
-  'violet',
-  'indigo',
-  'blue',
-  'cyan',
-  'green',
-  'yellow',
-  'orange',
-  'rose',
-]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -253,7 +244,7 @@ function parseWorkoutStartRoutine(value: unknown): MobileHomeWorkoutStartRoutine
     !isRecord(value) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
-    !(value.color === null || ROUTINE_COLORS.has(value.color as MobileRoutineColorKey)) ||
+    parseRoutineColor(value.color) === undefined ||
     !isCount(value.exerciseCount) ||
     !isCount(value.setCount)
   ) {
@@ -263,7 +254,7 @@ function parseWorkoutStartRoutine(value: unknown): MobileHomeWorkoutStartRoutine
   return {
     id: value.id,
     name: value.name,
-    color: value.color as MobileRoutineColorKey | null,
+    color: parseRoutineColor(value.color)!,
     exerciseCount: value.exerciseCount,
     setCount: value.setCount,
   };

@@ -20,6 +20,7 @@ const mockReplace = jest.fn();
 const mockDispatch = jest.fn();
 const mockStackOptions = jest.fn();
 const mockUsePreventRemove = jest.fn();
+let mockEditIdentity: string | undefined;
 let mockPreventRemoveCallback: ((options: { data: { action: object } }) => void) | undefined;
 
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -28,7 +29,7 @@ jest.mock('expo-router', () => ({
     mockStackOptions(options);
     return null;
   } },
-  useLocalSearchParams: () => ({ id: '11111111-1111-4111-8111-111111111111' }),
+  useLocalSearchParams: () => ({ id: '11111111-1111-4111-8111-111111111111', editIdentity: mockEditIdentity }),
   useNavigation: () => ({
     dispatch: mockDispatch,
   }),
@@ -98,6 +99,7 @@ describe('native routine editor', () => {
     mockStackOptions.mockReset();
     mockUsePreventRemove.mockReset();
     mockPreventRemoveCallback = undefined;
+    mockEditIdentity = undefined;
     mockFetch.mockResolvedValue(loaded());
   });
 
@@ -360,4 +362,35 @@ describe('native routine editor', () => {
     expect(mockIdentity).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
   });
+});
+
+describe('library identity entry and future colors', () => {
+  beforeEach(() => { mockEditIdentity = undefined; mockFetch.mockReset(); mockIdentity.mockReset(); mockUsePreventRemove.mockReset(); mockFetch.mockResolvedValue(loaded()); });
+
+it('opens identity from the library route only once, with the loaded CAS token', async () => {
+  mockEditIdentity = '1';
+  mockFetch.mockResolvedValue(loaded());
+  const view = renderScreen();
+  await waitFor(() => expect(view.getByLabelText('Nombre de la rutina')).toBeTruthy());
+  expect(mockIdentity).not.toHaveBeenCalled();
+  fireEvent.press(view.getByRole('button', { name: 'Cerrar Editar rutina' }));
+  await waitFor(() => expect(view.queryByLabelText('Nombre de la rutina')).toBeNull());
+  fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh');
+  await act(async () => undefined);
+  expect(view.queryByLabelText('Nombre de la rutina')).toBeNull();
+});
+
+it('requires explicit color selection before saving an unrecognized color', async () => {
+  mockFetch.mockResolvedValue(loaded({ ...detailFixture, routine: { ...detailFixture.routine, color: null, unrecognizedColor: 'sand' } }));
+  const view = renderScreen();
+  await waitFor(() => expect(view.getByText('PUSH')).toBeTruthy());
+  fireEvent.press(view.getByRole('button', { name: 'Editar identidad de rutina' }));
+  fireEvent.changeText(view.getByLabelText('Nombre de la rutina'), 'PUSH B');
+  expect(view.getByRole('button', { name: 'Guardar cambios' })).toBeDisabled();
+  fireEvent.press(view.getByRole('button', { name: 'Guardar cambios' }));
+  expect(mockIdentity).not.toHaveBeenCalled();
+  fireEvent.press(view.getByRole('radio', { name: 'Sin color' }));
+  expect(view.getByRole('button', { name: 'Guardar cambios' })).not.toBeDisabled();
+});
+
 });

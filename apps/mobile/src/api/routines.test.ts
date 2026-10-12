@@ -51,7 +51,7 @@ describe('Mobile Training routines API', () => {
       initialPlan: { status: 'ok', data: { imported: true, routinesFound: 1 } },
     })).toBeUndefined();
     expect(parseMobileTrainingRoutinesResponse({
-      routines: { status: 'ok', data: [{ ...routine, color: 'black' }] },
+      routines: { status: 'ok', data: [{ ...routine, color: 123 }] },
       initialPlan: { status: 'ok', data: { imported: true, routinesFound: 1 } },
     })).toBeUndefined();
   });
@@ -87,4 +87,9 @@ describe('Mobile Training routines API', () => {
     }));
     expect(api.request).toHaveBeenCalledTimes(3);
   });
+});
+
+it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('keeps routines with unknown color %s', color => {
+  const parsed = parseMobileTrainingRoutinesResponse({ routines: { status: 'ok', data: [{ ...routine, color }] }, initialPlan: { status: 'unavailable' } });
+  expect(parsed?.routines).toEqual({ status: 'ok', data: [{ ...routine, color: null }] });
 });
