@@ -128,6 +128,22 @@ describe('M3.3B native session contracts (no UI)', () => {
     expect(JSON.parse(fetch.mock.calls[1][1]?.body as string)).toEqual({ expectedUpdatedAt: timestamp, idempotencyKey: 'remove:1' });
     expect(JSON.parse(fetch.mock.calls[2][1]?.body as string)).toEqual({ idempotencyKey: 'cancel:1' });
   });
+  it('reads one blank appended set without inventing zero or issuing a follow-up clear/save', async () => {
+    const blank: SessionExercisePayloadDto = { isCompleted: false, decision: 'maintain', decisionNote: '', applyToRoutine: false, notes: '',
+      sets: [{ setNumber: 1, targetReps: null, targetWeightKg: null, targetRir: null, actualReps: null, actualWeightKg: null, isCompleted: false, notes: null }] };
+    const appended = { ...detail, exercises: [{ ...detail.exercises[0], payload: blank, restMinSecondsSnapshot: null, restMaxSecondsSnapshot: null,
+      nextAdjustmentSnapshot: 'maintain' as const, nextAdjustmentNoteSnapshot: null }] };
+    const fetch = jest.fn<typeof globalThis.fetch>().mockResolvedValueOnce(response(201, { status: 'added', sessionId, sessionExerciseId: relationId, exerciseId }))
+      .mockResolvedValueOnce(response(200, appended));
+    const api = client(fetch);
+    expect(await addSessionExercise(api, sessionId, { operation: 'add_existing', exerciseId, idempotencyKey: 'empty-add' })).toMatchObject({ status: 'ok' });
+    expect(await fetchSessionDetail(api, sessionId)).toMatchObject({ status: 'ok', data: appended });
+    expect(parseSessionExercisePayload(blank)).toEqual(blank); expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls.map(([, init]) => init?.method)).toEqual(['POST', 'GET']);
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual({ operation: 'add_existing', exerciseId, idempotencyKey: 'empty-add' });
+    const changed = { ...blank, sets: [{ ...blank.sets[0], actualWeightKg: 0 }] };
+    expect(parseSessionExercisePayload(changed)?.sets[0]).toMatchObject({ actualWeightKg: 0, actualReps: null });
+  });
   it('does not retry structural errors and rejects a response for a different resource', async () => {
     const fetch = jest.fn<typeof globalThis.fetch>().mockResolvedValueOnce(response(503, { error: 'DATA_UNAVAILABLE' }))
       .mockResolvedValueOnce(response(200, { ...detail, session: { ...detail.session, id: exerciseId } }));

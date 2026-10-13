@@ -40,9 +40,9 @@ begin
     or v_replay.response_body <> v_added.response_body then raise exception 'add replay failed'; end if;
   v_id := (v_added.response_body ->> 'sessionExerciseId')::uuid;
   if not exists (select 1 from public.workout_session_exercises where id = v_id
-    and nombre_snapshot = 'M3.3B PRESS' and rest_max_seconds_snapshot = 120 and exercise_order = 1)
-    or (select count(*) from public.workout_sets where workout_session_exercise_id = v_id) <> 2 then
-    raise exception 'append snapshots/default sets/order failed';
+    and nombre_snapshot = 'M3.3B PRESS' and rest_max_seconds_snapshot is null and exercise_order = 1)
+    or (select count(*) from public.workout_sets where workout_session_exercise_id = v_id) <> 1 then
+    raise exception 'append snapshots/blank set/order failed';
   end if;
   begin
     perform public.mobile_mutate_workout_session(v_session,'add_existing','m3-3b:add',
@@ -97,8 +97,9 @@ begin
     raise exception 'completed missing reps accepted';
   exception when invalid_parameter_value then null; end;
 
-  -- 100 is a valid catalog suggestion but cannot form a 1..50-set session.
-  -- Force failure AFTER catalog creation to prove outer and nested ledger rollback.
+  -- Exhaust order to force failure AFTER creation, without depending on ignored
+  -- catalog defaults. Proves atomic rollback of catalog and both ledgers.
+  update public.workout_session_exercises set exercise_order = 10000 where id = v_id;
   begin
     perform public.mobile_mutate_workout_session(v_session,'create_and_add','m3-3b:create-fail',
       p_exercise => '{"name":"M3.3B ROLLBACK","suggestedSets":100}');
@@ -107,6 +108,7 @@ begin
   if exists (select 1 from public.exercises where nombre = 'M3.3B ROLLBACK') then
     raise exception 'atomic create leaked catalog row';
   end if;
+  update public.workout_session_exercises set exercise_order = 1 where id = v_id;
   select * into v_created from public.mobile_mutate_workout_session(v_session,'create_and_add','m3-3b:create',
     p_exercise => '{"name":"M3.3B CREATED","suggestedSets":1,"suggestedReps":null,"suggestedWeight":null}');
   select * into v_replay from public.mobile_mutate_workout_session(v_session,'create_and_add','m3-3b:create',
