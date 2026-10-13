@@ -54,6 +54,7 @@ export function RoutineRow({ routine, disabled, onOpen, onColor, onDuplicate, on
   return (
     <View onLayout={event => setWidth(event.nativeEvent.layout.width)} testID={`routine-row-${routine.id}`}>
       <Swipeable ref={swipe} enabled={!disabled && !confirm} friction={1} overshootFriction={1}
+        childrenContainerStyle={{ backgroundColor: colors.surface }}
         animationOptions={{ ...brandTokens.motion.spring, reduceMotion: ReduceMotion.System }}
         onSwipeableWillOpen={direction => {
           if (!full.current) return;
@@ -71,7 +72,7 @@ export function RoutineRow({ routine, disabled, onOpen, onColor, onDuplicate, on
             accessibilityState={{ disabled }} disabled={disabled} onAccessibilityAction={event => {
               const action = event.nativeEvent.actionName;
               if (action === 'start') start(); else if (action === 'color') color(); else if (action === 'status') status(); else if (action === 'edit') open(); else if (action === 'duplicate') duplicate();
-            }} onPress={open} style={({ pressed }) => [styles.row, { width: width > 0 ? width : undefined, backgroundColor: colors.surface, opacity: pressed ? 0.7 : 1 }]}>
+            }} onPress={open} style={({ pressed }) => [styles.row, { width: width > 0 ? width : undefined, backgroundColor: pressed ? colors.surfaceRaised : colors.surface }]}>
             {routine.color ? <View accessibilityElementsHidden style={[styles.strip, { backgroundColor: trainingRoutineColor(routine.color, isDark), opacity: routine.isActive ? 1 : 0.45 }]}
               testID={`routine-color-${routine.id}-${routine.color}`} /> : null}
             <View style={styles.copy}>

@@ -1,4 +1,6 @@
-import { Button, ContextMenu, Divider, Host, RNHostView } from '@expo/ui/swift-ui';
+import { cloneElement } from 'react';
+import { Button, ContextMenu, Divider, Group, Host, RNHostView } from '@expo/ui/swift-ui';
+import { contentShape, onTapGesture, shapes } from '@expo/ui/swift-ui/modifiers';
 import { useOwnlevelTheme } from '@/design-system';
 import type { RoutineContextMenuProps } from './routine-context-menu.types';
 
@@ -9,7 +11,12 @@ export function RoutineContextMenu({ children, disabled, width, routine, onStart
   return (
     <Host colorScheme={isDark ? 'dark' : 'light'} matchContents={{ vertical: true }} style={{ width }}>
       <ContextMenu>
-        <ContextMenu.Trigger><RNHostView matchContents>{children}</RNHostView></ContextMenu.Trigger>
+        <ContextMenu.Trigger>
+          {/* SwiftUI owns both touch gestures; the RN row keeps its accessibility actions. */}
+          <Group modifiers={[contentShape(shapes.rectangle()), onTapGesture(onEdit)]}>
+            <RNHostView matchContents>{cloneElement(children, { pointerEvents: 'none' })}</RNHostView>
+          </Group>
+        </ContextMenu.Trigger>
         <ContextMenu.Items>
           {routine.isActive ? <Button label="Empezar entrenamiento" systemImage="play.fill" onPress={onStart} /> : null}
           <Button label="Editar rutina" systemImage="pencil" onPress={onEdit} />
