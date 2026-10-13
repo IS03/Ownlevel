@@ -427,3 +427,12 @@ describe("Mobile API v1 Training", () => {
     });
   });
 });
+
+it("validates identity-only CAS and refuses defaults, ownership and membership injection", () => {
+  const identity = { name: "Press", muscleGroup: "pecho", muscleGroupLabel: null, implement: null, weightMode: null, notes: null };
+  const body = { operation: "update_identity", exercise: identity, expectedUpdatedAt: "2026-10-13T18:00:00.123456Z" };
+  expect(parseMobileTrainingExercisePatch(body)).toEqual({ operation: "update_identity", expectedUpdatedAt: body.expectedUpdatedAt, publicExercise: identity });
+  for (const invalid of [{ ...body, routineIds: [] }, { ...body, userId: "other" }, { ...body, expectedUpdatedAt: undefined }, { ...body, exercise: { ...identity, suggestedReps: 8 } }]) {
+    expect(() => parseMobileTrainingExercisePatch(invalid)).toThrow();
+  }
+});

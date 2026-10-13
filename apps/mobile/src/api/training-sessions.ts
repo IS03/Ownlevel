@@ -79,7 +79,7 @@ export function startMobileTrainingSession(
   input: { routineId: string | null; idempotencyKey: string },
 ): Promise<MobileApiMutationResult<MobileTrainingSessionStartResponse>> {
   return client.request({
-    body: input,
+    body: { ...input, templateTargetsOnly: true },
     method: 'POST',
     parse: parseMobileTrainingSessionStartResponse,
     path: MOBILE_TRAINING_SESSIONS_API_PATH,

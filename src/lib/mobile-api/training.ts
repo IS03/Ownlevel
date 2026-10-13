@@ -70,6 +70,8 @@ export type ParsedMobileTrainingExercisePatch =
       publicExercise: MobileTrainingExerciseMutationDto;
       routineIds: string[];
     }
+  | { operation: "update_identity"; publicExercise: Pick<MobileTrainingExerciseMutationDto,
+      "name" | "muscleGroup" | "muscleGroupLabel" | "implement" | "weightMode" | "notes">; expectedUpdatedAt: string }
   | MobileTrainingExerciseStatusPayload;
 
 export type ParsedMobileTrainingExerciseCreate =
@@ -483,10 +485,15 @@ export function parseMobileTrainingSessionStart(
   value: unknown,
 ): MobileTrainingSessionStartPayload {
   const input = strictObject(value, "El inicio de sesión", [
+    "templateTargetsOnly",
     "routineId",
     "idempotencyKey",
   ]);
+  if (input.templateTargetsOnly !== undefined && input.templateTargetsOnly !== true) {
+    throw new MobileApiValidationError("El modo de inicio no es válido.");
+  }
   return {
+    ...(input.templateTargetsOnly === true ? { templateTargetsOnly: true as const } : {}),
     routineId: input.routineId === null
       ? null
       : parseMobileTrainingId(input.routineId, "La rutina"),
@@ -696,6 +703,16 @@ export function parseMobileTrainingExercisePatch(
       throw new MobileApiValidationError("El estado del ejercicio no es válido.");
     }
     return { operation: "set_status", isActive: input.isActive };
+  }
+  if (input.operation === "update_identity") {
+    strictObject(value, "La operación", ["operation", "exercise", "expectedUpdatedAt"]);
+    const identity = strictObject(input.exercise, "La identidad", ["name", "muscleGroup", "muscleGroupLabel", "implement", "weightMode", "notes"]);
+    const parsed = parseMobileTrainingExerciseMutation({ ...identity, suggestedSets: null,
+      suggestedReps: null, suggestedWeight: null, suggestedRir: null,
+      suggestedRestMinSeconds: null, suggestedRestMaxSeconds: null });
+    const { name, muscleGroup, muscleGroupLabel, implement, weightMode, notes } = parsed.publicExercise;
+    return { operation: "update_identity", publicExercise: { name, muscleGroup, muscleGroupLabel, implement, weightMode, notes },
+      expectedUpdatedAt: requiredTimestamp(input.expectedUpdatedAt, "La versión del ejercicio") };
   }
   if (input.operation === "update") {
     strictObject(value, "La operación", ["operation", "exercise", "routineIds"]);

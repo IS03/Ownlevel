@@ -283,6 +283,7 @@ export type MobileTrainingSessionDto = {
 };
 
 export type MobileTrainingSessionStartPayload = {
+  templateTargetsOnly?: true;
   routineId: string | null;
   idempotencyKey: string;
 };
@@ -465,6 +466,7 @@ export type MobileApiErrorCode =
   | "ACTIVE_SESSION_EXISTS"
   | "ROUTINE_LIST_CHANGED"
   | "ROUTINE_CHANGED"
+      | "EXERCISE_CHANGED"
   | "ROUTINE_TEMPLATE_CHANGED"
   | "SESSION_EXERCISE_CHANGED"
   | "SESSION_CHANGED"

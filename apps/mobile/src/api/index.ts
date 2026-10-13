@@ -17,6 +17,7 @@ export {
   parseMobileTrainingExercisesResponse,
   setMobileTrainingExerciseStatus,
   updateMobileTrainingExercise,
+  updateMobileTrainingExerciseIdentity,
 } from './exercises';
 export {
   createMobileTrainingRoutine,

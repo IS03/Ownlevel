@@ -224,3 +224,11 @@ export function setMobileTrainingExerciseStatus(
     path: `${MOBILE_TRAINING_EXERCISES_API_PATH}/${encodeURIComponent(id)}`,
   });
 }
+
+/** Identity CAS never sends Web defaults or changes routine memberships. */
+export function updateMobileTrainingExerciseIdentity(client: MobileApiClient, id: string,
+  mutation: MobileTrainingExerciseMutation, expectedUpdatedAt: string): Promise<MobileApiMutationResult<MobileTrainingExerciseMutationResponse>> {
+  const { name, muscleGroup, muscleGroupLabel, implement, weightMode, notes } = mutation;
+  return client.request({ method: 'PATCH', path: `${MOBILE_TRAINING_EXERCISES_API_PATH}/${encodeURIComponent(id)}`,
+    body: { operation: 'update_identity', exercise: { name, muscleGroup, muscleGroupLabel, implement, weightMode, notes }, expectedUpdatedAt }, parse: parseMutationResponse });
+}

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Alert, RefreshControl } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -16,17 +16,28 @@ const mockUpdate = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockUseApiResource = jest.fn();
 
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
-jest.mock('expo-router', () => ({
-  Stack: {
-    Screen: ({ options }: { options: { headerRight?: () => React.ReactNode } }) =>
-      options.headerRight?.() ?? null,
-  },
-}));
+const mockPush = jest.fn();
+jest.mock('expo-glass-effect', () => ({ isGlassEffectAPIAvailable: () => false, isLiquidGlassAvailable: () => false }));
+jest.mock('./routine-form-sheet', () => ({ RoutineFormSheet: ({ children }: { children: React.ReactNode }) => children }));
+jest.mock('./routine-context-menu', () => jest.requireActual('./routine-context-menu.tsx'));
+jest.mock('./exercise-choice-menu', () => jest.requireActual('./exercise-choice-menu.tsx'));
+jest.mock('react-native-gesture-handler/ReanimatedSwipeable', () => {
+  const { View } = jest.requireActual<typeof import('react-native')>('react-native');
+  return { __esModule: true, default: ({ children }: { children: React.ReactNode }) => <View>{children}</View> };
+});
+jest.mock('expo-router', () => {
+  const { Pressable, TextInput } = jest.requireActual<typeof import('react-native')>('react-native');
+  const Toolbar = Object.assign(({ children }: { children: React.ReactNode }) => children, {
+    Badge: () => null,
+    Button: ({ accessibilityLabel, onPress, disabled }: { accessibilityLabel: string; onPress: () => void; disabled: boolean }) => <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} onPress={onPress} disabled={disabled} />,
+  });
+  return { useRouter: () => ({ push: mockPush }), useFocusEffect: () => undefined, Stack: { Toolbar, Screen: ({ options }: { options: { headerSearchBarOptions?: { onChangeText: (event: { nativeEvent: { text: string } }) => void } } }) => options.headerSearchBarOptions ? <TextInput accessibilityLabel="Buscar ejercicio o músculo" onChangeText={text => options.headerSearchBarOptions!.onChangeText({ nativeEvent: { text } })} /> : null } };
+});
 jest.mock('@/api', () => ({
   createMobileTrainingExercise: (...args: unknown[]) => mockCreate(...args),
   fetchMobileTrainingExercises: (...args: unknown[]) => mockFetch(...args),
   setMobileTrainingExerciseStatus: (...args: unknown[]) => mockSetStatus(...args),
-  updateMobileTrainingExercise: (...args: unknown[]) => mockUpdate(...args),
+  updateMobileTrainingExerciseIdentity: (...args: unknown[]) => mockUpdate(...args),
   useApiResource: (...args: unknown[]) => mockUseApiResource(...args),
   useMobileApi: () => ({ client: { request: jest.fn() } }),
 }));
@@ -107,288 +118,76 @@ function renderScreen(createIdempotencyKey = jest.fn(() => 'exercise-key')) {
   );
 }
 
-function confirmLastAlert() {
-  const call = jest.mocked(Alert.alert).mock.calls.at(-1);
-  const buttons = call?.[2];
-  const confirm = Array.isArray(buttons) ? buttons.at(-1) : undefined;
-  act(() => confirm?.onPress?.());
-}
-
-describe('native exercise library', () => {
+describe('exercise library polish', () => {
   beforeEach(() => {
-    jest.restoreAllMocks();
-    jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-    mockCreate.mockReset();
-    mockFetch.mockReset();
-    mockRefresh.mockReset();
-    mockRefresh.mockResolvedValue(undefined);
-    mockSetStatus.mockReset();
-    mockUpdate.mockReset();
-    mockUseApiResource.mockReset();
-  });
-
-  it('renders loading, catalog unavailable and valid empty distinctly', () => {
-    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: { status: 'loading', trigger: 'initial' } });
-    const loading = renderScreen();
-    expect(loading.getByTestId('exercise-library-loading')).toBeTruthy();
-    loading.unmount();
-
-    mockUseApiResource.mockReturnValue({
-      refresh: mockRefresh,
-      state: readyState(fixture({ catalog: { status: 'unavailable' } })),
-    });
-    const unavailable = renderScreen();
-    expect(unavailable.getByText('Biblioteca no disponible')).toBeTruthy();
-    expect(unavailable.queryByText('0 ejercicios')).toBeNull();
-    unavailable.unmount();
-
-    mockUseApiResource.mockReturnValue({
-      refresh: mockRefresh,
-      state: readyState(fixture({ catalog: { status: 'ok', data: { exercises: [], routines } } })),
-    });
-    expect(renderScreen().getByText('Sin resultados')).toBeTruthy();
-  });
-
-  it('groups the active catalog and searches locally as a flat alphabetical list', async () => {
+    jest.restoreAllMocks(); jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    [mockCreate, mockFetch, mockRefresh, mockSetStatus, mockUpdate, mockPush, mockUseApiResource].forEach(fn => fn.mockReset());
+    mockRefresh.mockResolvedValue(undefined); mockFetch.mockResolvedValue({ status: 'ok', data: fixture(), meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } });
     mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState() });
-    const view = renderScreen();
-    await waitFor(() => expect(view.getByText('PECHO')).toBeTruthy());
-    expect(view.getByText('Press inclinado')).toBeTruthy();
-    expect(view.queryByText('Curl bíceps')).toBeNull();
-
-    fireEvent.changeText(view.getByLabelText('Buscar ejercicio, músculo o implemento'), 'mancuernas');
-    expect(view.getByText('Resultados')).toBeTruthy();
-    expect(view.getByText('Press inclinado')).toBeTruthy();
-    expect(mockFetch).not.toHaveBeenCalled();
   });
-
-  it('allows the initially open group to remain collapsed', async () => {
-    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState() });
-    const view = renderScreen();
-    const group = await view.findByRole('button', { name: 'Contraer Pecho, 1 ejercicios' });
-    fireEvent.press(group);
-    await waitFor(() => expect(view.queryByText('Press inclinado')).toBeNull());
+  it('distinguishes loading, failed catalog and real empty', () => {
+    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: { status: 'loading' } });
+    const loading = renderScreen(); expect(loading.getByTestId('exercise-library-loading')).toBeTruthy(); loading.unmount();
+    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState(fixture({ catalog: { status: 'unavailable' } })) });
+    const failed = renderScreen(); expect(failed.getByText('Biblioteca no disponible')).toBeTruthy(); expect(failed.queryByText('No tenés ejercicios')).toBeNull(); failed.unmount();
+    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState(fixture({ catalog: { status: 'ok', data: { exercises: [], routines } } })) });
+    expect(renderScreen().getByText('No tenés ejercicios')).toBeTruthy();
   });
-
-  it('keeps filter draft isolated until apply and shows preview count', async () => {
-    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState() });
-    const view = renderScreen();
-    fireEvent.press(view.getByRole('button', { name: 'Filtros' }));
-    fireEvent.press(view.getByRole('radio', { name: 'Archivados' }));
-    expect(view.getAllByText('1 ejercicio')).toHaveLength(2);
-    fireEvent.press(view.getByRole('button', { name: 'Cerrar filtros sin aplicar' }));
-    expect(view.getByText('Ejercicios activos')).toBeTruthy();
-
-    fireEvent.press(view.getByRole('button', { name: 'Filtros' }));
-    fireEvent.press(view.getByRole('radio', { name: 'Archivados' }));
-    fireEvent.press(view.getByRole('button', { name: 'Ver ejercicios' }));
-    await waitFor(() => expect(view.getByText('Ejercicios archivados')).toBeTruthy());
-    expect(view.getByText('BÍCEPS')).toBeTruthy();
+  it('groups without accordions, searches implements and opens the new detail route', () => {
+    const view = renderScreen(); expect(view.getAllByText('Pecho')).toHaveLength(2);
+    expect(view.queryByRole('button', { name: /Contraer/ })).toBeNull();
+    fireEvent.changeText(view.getByLabelText('Buscar ejercicio o músculo'), 'mancuernas');
+    expect(view.getByText('Press inclinado')).toBeTruthy(); expect(mockFetch).not.toHaveBeenCalled();
+    fireEvent.press(view.getByRole('button', { name: 'Abrir Press inclinado' }));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/exercises/[id]', params: { id: pressId } });
+    expect(view.getByLabelText('En PUSH')).toBeTruthy();
   });
-
-  it('clears filter draft without changing applied filters before apply', () => {
-    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState() });
-    const view = renderScreen();
-    fireEvent.press(view.getByRole('button', { name: 'Filtros' }));
-    fireEvent.press(view.getByRole('radio', { name: 'Sin rutina' }));
-    fireEvent.press(view.getByRole('button', { name: 'Limpiar filtros' }));
-    fireEvent.press(view.getByRole('button', { name: 'Cerrar filtros sin aplicar' }));
-    expect(view.getByText('Ejercicios activos')).toBeTruthy();
+  it('selects multiple muscle chips and Todos clears them', () => {
+    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState(fixture({ catalog: { status: 'ok', data: { exercises: [press, { ...curl, isActive: true }], routines } } })) });
+    const view = renderScreen(); fireEvent.press(view.getByRole('checkbox', { name: 'Pecho' }));
+    expect(view.queryByText('Curl bíceps')).toBeNull(); fireEvent.press(view.getByRole('checkbox', { name: 'Bíceps' }));
+    expect(view.getByText('Curl bíceps')).toBeTruthy(); expect(view.getByRole('checkbox', { name: 'Pecho' }).props.accessibilityState.checked).toBe(true);
+    fireEvent.press(view.getByRole('checkbox', { name: 'Todos' })); expect(view.getByRole('checkbox', { name: 'Bíceps' }).props.accessibilityState.checked).toBe(false);
   });
-
-  it('renders the unclassified filter as a described full-width selectable row', () => {
-    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState() });
-    const view = renderScreen();
-    fireEvent.press(view.getByRole('button', { name: 'Filtros' }));
-
-    const row = view.getByTestId('unclassified-filter-row');
-    expect(row.props.accessibilityState).toEqual({ checked: false });
-    expect(row.props.accessibilityLabel).toBe('Sin clasificar');
-    // Every other filter option announces its own name, never "Sin clasificar".
-    const checkboxes = view.getAllByRole('checkbox').filter(box => box.props.testID !== 'unclassified-filter-row');
-    expect(checkboxes.length).toBeGreaterThan(0);
-    for (const box of checkboxes) expect(box.props.accessibilityLabel).not.toBe('Sin clasificar');
-    expect(checkboxes.every(box => typeof box.props.accessibilityLabel === 'string' && box.props.accessibilityLabel.length > 0)).toBe(true);
-    expect(view.getByText('Mostrar ejercicios sin grupo muscular asignado.')).toBeTruthy();
-    fireEvent.press(row);
-    expect(view.getByTestId('unclassified-filter-row').props.accessibilityState).toEqual({
-      checked: true,
-    });
+  it('keeps filters isolated until applying their real count and includes all implement choices', () => {
+    const view = renderScreen(); fireEvent.press(view.getByRole('button', { name: 'Filtros, 0 activos' }));
+    fireEvent.press(view.getByRole('radio', { name: 'Archivados' })); expect(view.getByRole('button', { name: 'Ver 1 ejercicio' })).toBeTruthy();
+    expect(view.getByText('Press inclinado')).toBeTruthy(); expect(view.getByRole('button', { name: 'Polea con barra' })).toBeTruthy();
+    fireEvent.press(view.getByRole('button', { name: 'Ver 1 ejercicio' })); expect(view.queryByText('Press inclinado')).toBeNull(); expect(view.getByText('Curl bíceps')).toBeTruthy();
   });
-
-  it('creates with zero or one routine and reports a partial warning', async () => {
-    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState() });
-    mockCreate.mockResolvedValue({
-      status: 'ok',
-      data: { exercise: press, warning: 'Ejercicio creado. No pudo agregarse a la rutina.' },
-    });
-    const keyFactory = jest.fn(() => 'stable-key');
-    const view = renderScreen(keyFactory);
-
-    fireEvent.press(view.getByRole('button', { name: 'Nuevo ejercicio' }));
-    fireEvent.press(view.getByRole('button', { name: 'Crear ejercicio' }));
-    expect(view.getByText('Nombre es obligatorio.')).toBeTruthy();
-    fireEvent.changeText(view.getByLabelText('Nombre'), 'Press nuevo');
-    fireEvent.press(view.getByRole('radio', { name: 'PUSH' }));
-    fireEvent.press(view.getByRole('button', { name: 'Crear ejercicio' }));
-
-    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
-    expect(mockCreate.mock.calls[0]?.[1]).toMatchObject({
-      routineIds: [pushId],
-      idempotencyKey: 'stable-key',
-    });
-    expect(view.getByText(/No pudo agregarse a la rutina/)).toBeTruthy();
-    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  it('creates with null defaults, no assignments, warning and an idempotent retry', async () => {
+    const key = jest.fn(() => 'one-intent'); mockCreate.mockResolvedValueOnce({ status: 'unavailable', reason: 'network' }).mockResolvedValueOnce({ status: 'ok', data: { exercise: { ...press, id: 'new', name: 'Nuevo', routineIds: [] }, warning: 'Hay un nombre parecido.' } });
+    const view = renderScreen(key); fireEvent.press(view.getByRole('button', { name: 'Nuevo ejercicio' }));
+    expect(view.queryByText('Valores por defecto')).toBeNull(); expect(view.getByRole('button', { name: 'Crear ejercicio' })).toBeDisabled();
+    fireEvent.changeText(view.getByLabelText('Nombre del ejercicio'), 'Nuevo'); await act(async () => fireEvent.press(view.getByRole('button', { name: 'Crear ejercicio' })));
+    await act(async () => fireEvent.press(view.getByRole('button', { name: 'Crear ejercicio' })));
+    expect(mockCreate.mock.calls[0]?.[1]).toEqual(mockCreate.mock.calls[1]?.[1]); expect(key).toHaveBeenCalledTimes(1);
+    expect(mockCreate.mock.calls[0]?.[1]).toMatchObject({ routineIds: [], idempotencyKey: 'one-intent', exercise: { suggestedSets: null, suggestedReps: null, suggestedWeight: null, suggestedRir: null, suggestedRestMinSeconds: null, suggestedRestMaxSeconds: null } });
+    expect(view.getByText('Hay un nombre parecido.')).toBeTruthy(); expect(view.getByText('Nuevo')).toBeTruthy();
   });
-
-  it('reuses create key after ambiguous failure and prevents duplicate pending submit', async () => {
-    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState() });
-    let resolveFirst: ((value: unknown) => void) | undefined;
-    mockCreate.mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }));
-    const keyFactory = jest.fn(() => 'same-key');
-    const view = renderScreen(keyFactory);
-
-    fireEvent.press(view.getByRole('button', { name: 'Nuevo ejercicio' }));
-    fireEvent.changeText(view.getByLabelText('Nombre'), 'Press nuevo');
-    fireEvent.press(view.getByRole('button', { name: 'Crear ejercicio' }));
-    await waitFor(() => expect(view.getByRole('button', { name: 'Creando…' })).toBeDisabled());
-    fireEvent.press(view.getByRole('button', { name: 'Creando…' }));
-    expect(mockCreate).toHaveBeenCalledTimes(1);
-    await act(async () => resolveFirst?.({ status: 'unavailable', reason: 'network' }));
-    expect(view.getByText(/No pudimos completar/)).toBeTruthy();
-
-    mockCreate.mockResolvedValueOnce({ status: 'ok', data: { exercise: press } });
-    fireEvent.press(view.getByRole('button', { name: 'Crear ejercicio' }));
-    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(2));
-    expect((mockCreate.mock.calls[0]?.[1] as { idempotencyKey: string }).idempotencyKey).toBe('same-key');
-    expect((mockCreate.mock.calls[1]?.[1] as { idempotencyKey: string }).idempotencyKey).toBe('same-key');
-    expect(keyFactory).toHaveBeenCalledTimes(1);
+  it('edits identity without erasing saved defaults or memberships', async () => {
+    mockUpdate.mockResolvedValue({ status: 'ok', data: { exercise: { ...press, name: 'Nuevo nombre' } } });
+    const view = renderScreen(); fireEvent(view.getByRole('button', { name: 'Abrir Press inclinado' }), 'accessibilityAction', { nativeEvent: { actionName: 'edit' } });
+    fireEvent.changeText(view.getByLabelText('Nombre del ejercicio'), 'Nuevo nombre'); await act(async () => fireEvent.press(view.getByRole('button', { name: 'Guardar ejercicio' })));
+    expect(mockUpdate).toHaveBeenCalledWith(expect.anything(), pressId, expect.objectContaining({ name: 'Nuevo nombre', suggestedSets: 3, suggestedWeight: 22.5, suggestedReps: 10, suggestedRir: 2, suggestedRestMinSeconds: 90, suggestedRestMaxSeconds: 120 }), press.updatedAt);
   });
-
-  it('uses a new idempotency key for a new intentional create', async () => {
-    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState() });
-    mockCreate.mockResolvedValue({ status: 'ok', data: { exercise: press } });
-    const keyFactory = jest.fn<() => string>()
-      .mockReturnValueOnce('key-one')
-      .mockReturnValueOnce('key-two');
-    const view = renderScreen(keyFactory);
-
-    fireEvent.press(view.getByRole('button', { name: 'Nuevo ejercicio' }));
-    fireEvent.changeText(view.getByLabelText('Nombre'), 'Primero');
-    fireEvent.press(view.getByRole('button', { name: 'Crear ejercicio' }));
-    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
-    fireEvent.press(view.getByRole('button', { name: 'Nuevo ejercicio' }));
-    fireEvent.changeText(view.getByLabelText('Nombre'), 'Segundo');
-    fireEvent.press(view.getByRole('button', { name: 'Crear ejercicio' }));
-    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(2));
-
-    expect(mockCreate.mock.calls.map((call) => (
-      call[1] as { idempotencyKey: string }
-    ).idempotencyKey)).toEqual(['key-one', 'key-two']);
+  it('reloads after an atomic identity conflict without retrying the write', async () => {
+    mockUpdate.mockResolvedValue({ status: 'conflict', code: 'EXERCISE_CHANGED', message: 'El ejercicio cambió en otro lugar.' });
+    mockFetch.mockResolvedValue({ status: 'ok', data: fixture({ catalog: { status: 'ok', data: { exercises: [{ ...press, updatedAt: '2026-10-13T12:00:00Z', suggestedSets: 7 }], routines } } }) });
+    const view = renderScreen(); fireEvent(view.getByRole('button', { name: 'Abrir Press inclinado' }), 'accessibilityAction', { nativeEvent: { actionName: 'edit' } });
+    fireEvent.changeText(view.getByLabelText('Nombre del ejercicio'), 'Local'); await act(async () => fireEvent.press(view.getByRole('button', { name: 'Guardar ejercicio' })));
+    expect(mockUpdate).toHaveBeenCalledTimes(1); expect(mockRefresh).toHaveBeenCalled(); expect(view.getByText(/El ejercicio cambió en otro lugar/)).toBeTruthy();
   });
-
-  it('prepopulates edit and sends desired-state memberships atomically', async () => {
-    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState() });
-    mockUpdate.mockResolvedValue({ status: 'ok', data: { exercise: press } });
-    const view = renderScreen();
-    await waitFor(() => expect(view.getByText('Press inclinado')).toBeTruthy());
-    fireEvent.press(view.getByRole('button', { name: 'Editar Press inclinado' }));
-
-    expect(view.getByDisplayValue('Press inclinado')).toBeTruthy();
-    expect(view.getByDisplayValue('1:30')).toBeTruthy();
-    expect(view.getByRole('button', { name: 'Grupo muscular: Pecho' })).toBeTruthy();
-    expect(view.getByRole('button', { name: 'Implemento: Mancuernas' })).toBeTruthy();
-    expect(view.getByRole('button', { name: 'Registro de carga: Por mancuerna' })).toBeTruthy();
-    fireEvent.press(view.getByRole('checkbox', { name: 'PULL' }));
-    fireEvent.press(view.getByRole('button', { name: 'Guardar cambios' }));
-
-    await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith(
-      expect.anything(),
-      pressId,
-      expect.objectContaining({ name: 'Press inclinado' }),
-      [pushId, pullId],
-    ));
-    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  it('archives immediately with an undo and survives a failed refresh without losing confirmed truth', async () => {
+    mockSetStatus.mockResolvedValueOnce({ status: 'ok', data: { exercise: { id: pressId, isActive: false, updatedAt: press.updatedAt } } }).mockResolvedValueOnce({ status: 'ok', data: { exercise: { id: pressId, isActive: true, updatedAt: press.updatedAt } } });
+    const view = renderScreen(); await act(async () => fireEvent(view.getByRole('button', { name: 'Abrir Press inclinado' }), 'accessibilityAction', { nativeEvent: { actionName: 'status' } }));
+    expect(Alert.alert).not.toHaveBeenCalled(); expect(view.queryByText('Press inclinado')).toBeNull();
+    await act(async () => fireEvent.press(view.getByRole('button', { name: 'Deshacer' })));
+    expect(mockSetStatus).toHaveBeenLastCalledWith(expect.anything(), pressId, true); expect(view.getByText('Press inclinado')).toBeTruthy();
   });
-
-  it('opens a compact taxonomy selector and can close it without changing the value', async () => {
-    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState() });
-    const view = renderScreen();
-    await waitFor(() => expect(view.getByText('Press inclinado')).toBeTruthy());
-    fireEvent.press(view.getByRole('button', { name: 'Editar Press inclinado' }));
-
-    fireEvent.press(view.getByRole('button', { name: 'Implemento: Mancuernas' }));
-    expect(view.getByTestId('taxonomy-picker')).toBeTruthy();
-    expect(view.getByRole('radio', { name: 'Mancuernas' }).props.accessibilityState).toEqual({
-      checked: true,
-    });
-    fireEvent.press(view.getByRole('button', { name: 'Cerrar selector sin cambiar' }));
-
-    expect(view.getByRole('button', { name: 'Implemento: Mancuernas' })).toBeTruthy();
-    expect(view.queryByTestId('taxonomy-picker')).toBeNull();
-  });
-
-  it('keeps confirmed edit open with an error when update fails', async () => {
-    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState() });
-    mockUpdate.mockResolvedValue({ status: 'unavailable', reason: 'server' });
-    const view = renderScreen();
-    await waitFor(() => expect(view.getByText('Press inclinado')).toBeTruthy());
-    fireEvent.press(view.getByRole('button', { name: 'Editar Press inclinado' }));
-    fireEvent.changeText(view.getByLabelText('Nombre'), 'Press actualizado');
-    fireEvent.press(view.getByRole('button', { name: 'Guardar cambios' }));
-
-    await waitFor(() => expect(view.getByText(/No pudimos completar la acción/)).toBeTruthy());
-    expect(view.getByDisplayValue('Press actualizado')).toBeTruthy();
-    expect(mockRefresh).not.toHaveBeenCalled();
-  });
-
-  it('archives and restores only after native confirmation', async () => {
-    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState() });
-    mockSetStatus.mockResolvedValue({ status: 'ok', data: {} });
-    const view = renderScreen();
-    await waitFor(() => expect(view.getByText('Press inclinado')).toBeTruthy());
-    fireEvent.press(view.getByRole('button', { name: 'Editar Press inclinado' }));
-    fireEvent.press(view.getByRole('button', { name: 'Archivar ejercicio' }));
-    expect(mockSetStatus).not.toHaveBeenCalled();
-    confirmLastAlert();
-    await waitFor(() => expect(mockSetStatus).toHaveBeenCalledWith(expect.anything(), pressId, false));
-    view.unmount();
-
-    mockUseApiResource.mockReturnValue({
-      refresh: mockRefresh,
-      state: readyState(fixture({
-        catalog: { status: 'ok', data: { exercises: [{ ...curl, isActive: false }], routines } },
-      })),
-    });
-    const archivedView = renderScreen();
-    fireEvent.press(archivedView.getByRole('button', { name: 'Filtros' }));
-    fireEvent.press(archivedView.getByRole('radio', { name: 'Archivados' }));
-    fireEvent.press(archivedView.getByRole('button', { name: 'Ver ejercicios' }));
-    await waitFor(() => expect(archivedView.getByText('Curl bíceps')).toBeTruthy());
-    fireEvent.press(archivedView.getByRole('button', { name: 'Editar Curl bíceps' }));
-    fireEvent.press(archivedView.getByRole('button', { name: 'Restaurar ejercicio' }));
-    confirmLastAlert();
-    await waitFor(() => expect(mockSetStatus).toHaveBeenCalledWith(expect.anything(), curlId, true));
-  });
-
-  it('preserves stale data and supports pull-to-refresh', () => {
-    const data = fixture();
-    mockUseApiResource.mockReturnValue({
-      refresh: mockRefresh,
-      state: {
-        status: 'unavailable',
-        previous: { confirmedAt: 1, data },
-        reason: 'network',
-        result: {
-          status: 'unavailable',
-          reason: 'network',
-          meta: { durationMs: 10, httpStatus: null, outcome: 'unavailable' },
-        },
-      },
-    });
-    const view = renderScreen();
-    expect(view.getByTestId('exercise-library-stale')).toBeTruthy();
-    fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh');
-    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  it('keeps stale rows and pull to refresh', () => {
+    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: { status: 'unavailable', previous: { data: fixture() } } });
+    const view = renderScreen(); expect(view.getByText('Press inclinado')).toBeTruthy(); expect(view.getByText('Mostramos la última lectura confirmada.')).toBeTruthy();
+    fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh'); expect(mockRefresh).toHaveBeenCalled();
   });
 });

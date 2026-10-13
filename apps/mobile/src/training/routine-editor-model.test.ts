@@ -54,13 +54,13 @@ describe('routine editor model', () => {
     expect(() => targetsFromDraft({ ...draft, restMin: '2:00', restMax: '1:30' })).toThrow();
   });
 
-  it('builds new exercise targets from catalog defaults, not invented values', () => {
+  it('starts routine exercises empty regardless of Web defaults', () => {
     expect(targetsFromCatalog(exercise)).toMatchObject({
-      restMinSeconds: 90, restMaxSeconds: 120,
-      sets: [{ setNumber: 1, targetWeightKg: 0 }, { setNumber: 2, targetWeightKg: 0 }],
+      restMinSeconds: null, restMaxSeconds: null, nextAdjustment: 'maintain',
+      sets: [{ setNumber: 1, targetWeightKg: null, targetReps: null, targetRir: null }],
     });
     expect(targetsFromCatalog({ ...exercise, suggestedSets: null }).sets).toHaveLength(1);
-    expect(() => targetsFromCatalog({ ...exercise, suggestedSets: 51 })).toThrow();
+    expect(targetsFromCatalog({ ...exercise, suggestedSets: 100 }).sets).toHaveLength(1);
   });
 
   it('excludes duplicates/archived, filters local search and moves only array order', () => {

@@ -291,3 +291,16 @@ export function toggleValue<T>(values: readonly T[], value: T): T[] {
     ? values.filter((item) => item !== value)
     : [...values, value];
 }
+
+/** Mobile edits identity only. Legacy form callbacks retain defaults; the identity API projects only identity fields. */
+export function exerciseIdentityMutation(values: ExerciseFormValues, original?: MobileTrainingExercise): MobileTrainingExerciseMutation {
+  const identity = exerciseMutationFromForm({ ...values, suggestedSets: '', suggestedReps: '', suggestedWeight: '', suggestedRir: '', suggestedRestMin: '', suggestedRestMax: '' });
+  return { ...identity, suggestedSets: original?.suggestedSets ?? null, suggestedReps: original?.suggestedReps ?? null,
+    suggestedWeight: original?.suggestedWeight ?? null, suggestedRir: original?.suggestedRir ?? null,
+    suggestedRestMinSeconds: original?.suggestedRestMinSeconds ?? null, suggestedRestMaxSeconds: original?.suggestedRestMaxSeconds ?? null };
+}
+export function weightModeHint(mode: string): string | null {
+  return ({ 'Peso total': 'Anotás el peso que marca la máquina o el total que movés.', 'Por mancuerna': 'Anotás el peso de una sola mancuerna.',
+    'Por brazo': 'Anotás el peso de un solo lado.', 'Total con barra': 'Anotás el peso de la barra más los discos.',
+    'Peso corporal': 'Sin peso agregado.', 'Lingotes (no kg)': 'Anotás la cantidad de placas, no kilos.', 'Tiempo (segundos)': 'Anotás segundos en lugar de peso.' } as Record<string, string>)[mode] ?? null;
+}

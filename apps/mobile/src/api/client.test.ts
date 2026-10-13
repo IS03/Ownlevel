@@ -416,3 +416,11 @@ it('keeps routine-list CAS conflict explicit and never retries its write', async
   expect(result).toMatchObject({ status: 'conflict', code: 'ROUTINE_LIST_CHANGED' });
   expect(fetchImplementation).toHaveBeenCalledTimes(1);
 });
+
+it('keeps exercise identity CAS conflict explicit and never retries its write', async () => {
+  const fetchImplementation = jest.fn(async () => response(409, { error: 'EXERCISE_CHANGED', message: 'Recargá el ejercicio.' })) as unknown as typeof fetch;
+  const setup = dependencies({ fetchImplementation });
+  const result = await createMobileApiClient(setup.values).request({ method: 'PATCH', path: '/api/mobile/v1/training/exercises/id', body: {}, parse: () => undefined });
+  expect(result).toMatchObject({ status: 'conflict', code: 'EXERCISE_CHANGED' });
+  expect(fetchImplementation).toHaveBeenCalledTimes(1);
+});

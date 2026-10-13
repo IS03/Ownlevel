@@ -492,4 +492,21 @@ describe("Mobile Training server adapters", () => {
       context(rpc),
     )).resolves.toEqual({ status: 409, body: active });
   });
+  it("uses identity CAS without sending defaults or memberships", async () => {
+    const { name, muscleGroup, muscleGroupLabel, implement, weightMode, notes } = exercisePayload;
+    const identity = { name, muscleGroup, muscleGroupLabel, implement, weightMode, notes };
+    const rpc = vi.fn().mockResolvedValue({ data: { exercise: exercisePayload }, error: null });
+    await patchMobileTrainingExercise(exerciseId, { operation: "update_identity", exercise: identity, expectedUpdatedAt: exerciseRow.updated_at }, context(rpc), requestPerformance);
+    expect(rpc).toHaveBeenCalledWith("mobile_update_training_exercise_identity", {
+      p_exercise_id: exerciseId, p_exercise: identity, p_expected_updated_at: exerciseRow.updated_at,
+    });
+    rpc.mockResolvedValue({ data: null, error: { code: "40001", message: "EXERCISE_CHANGED" } });
+    await expect(patchMobileTrainingExercise(exerciseId, { operation: "update_identity", exercise: identity, expectedUpdatedAt: exerciseRow.updated_at }, context(rpc), requestPerformance)).rejects.toMatchObject({ code: "EXERCISE_CHANGED" });
+  });
+  it("routes explicit template-only starts to the additive RPC, never retries legacy", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: { code: "PGRST202", message: "Function not deployed" } });
+    await expect(startMobileTrainingSession({ routineId, idempotencyKey: "new-start", templateTargetsOnly: true }, context(rpc))).rejects.toBeTruthy();
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("mobile_start_training_session_from_template", { p_idempotency_key: "new-start", p_routine_id: routineId });
+  });
+
 });
