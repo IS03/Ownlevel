@@ -1,8 +1,8 @@
 import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, View, type ViewProps } from 'react-native';
+import { Pressable, StyleSheet, View, type NativeScrollEvent, type ScrollViewProps, type ViewProps } from 'react-native';
 import { Gesture, GestureDetector, type NativeGesture } from 'react-native-gesture-handler';
-import Animated, { measure, runOnJS, scrollTo, useAnimatedStyle, useFrameCallback, useSharedValue, withSpring, withTiming,
-  type AnimatedRef, type SharedValue } from 'react-native-reanimated';
+import Animated, { measure, runOnJS, scrollTo, useAnimatedProps, useAnimatedRef, useAnimatedScrollHandler, useAnimatedStyle, useFrameCallback,
+  useSharedValue, withSpring, withTiming, type AnimatedRef, type SharedValue } from 'react-native-reanimated';
 import { AppText, radius, sizes, spacing, useOwnlevelTheme } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 
@@ -23,9 +23,9 @@ export function itemTop(ids: readonly string[], heights: Record<string, number>,
 }
 /** iOS can also activate the long-press pan from fast movement before the hold
  * elapses. That touch is a scroll: only a real hold may lift and claim it. */
-export function isHoldActivation(pressedAt: number, now: number): boolean {
+export function isHoldActivation(pressedAt: number, now: number, delay = DRAG_DELAY): boolean {
   'worklet';
-  return now - pressedAt >= DRAG_DELAY - 40;
+  return now - pressedAt >= delay - 40;
 }
 /** Gesture-callback clock (UI thread), never read during render. */
 function gestureClock(): number {
@@ -118,7 +118,8 @@ export function NativeReorderList({ ids, children, onLift, onDrop, onCancel }: {
     const speed = localY < edge ? -240 * Math.min(1, (edge - localY) / edge)
       : localY > bounds.height - edge ? 240 * Math.min(1, (localY - bounds.height + edge) / edge) : 0;
     if (speed) {
-      const next = Math.max(0, Math.min(Math.max(0, scroll.contentHeight.value - bounds.height),
+      // A large-title screen rests at a negative offset: never snap it to 0 mid-drag.
+      const next = Math.max(Math.min(0, scroll.y.value), Math.min(Math.max(0, scroll.contentHeight.value - bounds.height),
         scroll.y.value + speed * Math.min(frame.timeSincePreviousFrame ?? 16, 32) / 1000));
       scroll.y.set(next); scrollTo(scroll.ref, 0, next, false);
     }
@@ -178,7 +179,7 @@ export function NativeSwipeActions({ actions, disabled, children, label, backgro
     <Animated.View style={[{ backgroundColor: backgroundColor ?? colors.surface }, style]}>{children}</Animated.View>
   </View></SwipeContext.Provider>;
 }
-export function NativeDragHandle({ disabled, onTap, children, testID, ...props }: ViewProps & { disabled: boolean; onTap?: () => void }) {
+export function NativeDragHandle({ disabled, onTap, holdDelay = DRAG_DELAY, children, testID, ...props }: ViewProps & { disabled: boolean; onTap?: () => void; holdDelay?: number }) {
   const item = useContext(ItemContext), swipe = useContext(SwipeContext);
   const nativeScrollGesture = useContext(SessionDragScrollContext)?.gesture;
   if (!item) throw new Error('NativeDragHandle requires an item');
@@ -187,9 +188,9 @@ export function NativeDragHandle({ disabled, onTap, children, testID, ...props }
   const gesture = useMemo(() => {
     const press = () => { 'worklet'; if (!list.active.value) scale.set(withTiming(PRESS_SCALE, { duration: 65 })); };
     const release = () => { 'worklet'; if (list.active.value !== id) scale.set(withSpring(1, spring)); };
-    const pan = Gesture.Pan().withTestId(`drag-${testID}`).enabled(!disabled).activateAfterLongPress(DRAG_DELAY).shouldCancelWhenOutside(false)
+    const pan = Gesture.Pan().withTestId(`drag-${testID}`).enabled(!disabled).activateAfterLongPress(holdDelay).shouldCancelWhenOutside(false)
       .onBegin(() => { pressedAt.set(gestureClock()); press(); }).onStart(event => {
-        if (!isHoldActivation(pressedAt.value, gestureClock())) { release(); return; }
+        if (!isHoldActivation(pressedAt.value, gestureClock(), holdDelay)) { release(); return; }
         if (list.active.value || list.scroll?.owner.value || list.settling.value || list.base.value.some(key => !list.heights.value[key])) return;
         list.origin.set(itemTop(list.order.value, list.heights.value, id)); list.top.set(list.origin.value);
         list.delta.set(0); list.pointer.set(event.absoluteY); list.scrollStart.set(list.scroll?.y.value ?? 0);
@@ -209,7 +210,7 @@ export function NativeDragHandle({ disabled, onTap, children, testID, ...props }
         }
         release();
       });
-    const tap = Gesture.Tap().withTestId(`tap-${testID}`).enabled(!disabled).maxDuration(DRAG_DELAY - 1).maxDistance(10)
+    const tap = Gesture.Tap().withTestId(`tap-${testID}`).enabled(!disabled).maxDuration(Math.max(1, holdDelay - 1)).maxDistance(10)
       .onBegin(press).onEnd((_event, success) => { if (success && onTap) runOnJS(onTap)(); }).onFinalize(release);
     const horizontal = Gesture.Pan().withTestId(`swipe-${testID}`).enabled(Boolean(swipe && !swipe.disabled))
       .activeOffsetX([-14, 14]).failOffsetY([-10, 10]).onStart(() => { if (swipe) swipeStart.set(swipe.x.value); release(); })
@@ -226,9 +227,27 @@ export function NativeDragHandle({ disabled, onTap, children, testID, ...props }
       horizontal.simultaneousWithExternalGesture(nativeScrollGesture);
     }
     return Gesture.Race(pan, horizontal, tap);
-  }, [disabled, testID, list, id, scale, onTap, swipe, swipeStart, pressedAt, nativeScrollGesture]);
+  }, [disabled, testID, list, id, scale, onTap, swipe, swipeStart, pressedAt, nativeScrollGesture, holdDelay]);
   return <GestureDetector gesture={gesture}><Animated.View accessible {...props} testID={testID} collapsable={false}
     onAccessibilityTap={onTap} accessibilityState={{ ...props.accessibilityState, disabled }}>{children}</Animated.View></GestureDetector>;
+}
+/** A ScrollView that hosts NativeReorderList: drag claims scrolling on the UI
+ * thread (no React re-render toggles scrollEnabled mid-gesture). */
+export function DragScrollView({ children, onScroll, onContentSizeChange, scrollEnabled = true, ...props }: ScrollViewProps & { children: ReactNode }) {
+  const ref = useAnimatedRef<Animated.ScrollView>();
+  const y = useSharedValue(0), contentHeight = useSharedValue(0), owner = useSharedValue<string | null>(null), enabled = useSharedValue(scrollEnabled);
+  useEffect(() => { enabled.set(scrollEnabled); }, [enabled, scrollEnabled]);
+  const gesture = useMemo(() => Gesture.Native(), []);
+  const latest = useRef(onScroll);
+  useLayoutEffect(() => { latest.current = onScroll; });
+  const forward = useCallback((event: NativeScrollEvent) => { latest.current?.({ nativeEvent: event } as never); }, []);
+  const handler = useAnimatedScrollHandler(event => { y.set(event.contentOffset.y); runOnJS(forward)(event); });
+  const animatedProps = useAnimatedProps(() => ({ scrollEnabled: enabled.value && owner.value === null }));
+  const value = useMemo(() => ({ ref, y, contentHeight, gesture, owner }), [ref, y, contentHeight, gesture, owner]);
+  return <SessionDragScrollContext.Provider value={value}><GestureDetector gesture={gesture}>
+    <Animated.ScrollView {...props} ref={ref} animatedProps={animatedProps} onScroll={handler} scrollEventThrottle={16}
+      onContentSizeChange={(width, height) => { contentHeight.set(height); onContentSizeChange?.(width, height); }}>{children}</Animated.ScrollView>
+  </GestureDetector></SessionDragScrollContext.Provider>;
 }
 const styles = StyleSheet.create({
   item: { shadowColor: '#000', shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },

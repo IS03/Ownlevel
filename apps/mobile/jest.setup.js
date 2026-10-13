@@ -12,5 +12,7 @@ jest.mock('react-native-reanimated', () => {
     useFrameCallback: jest.fn(),
     withTiming: jest.fn(value => value),
     withSpring: jest.fn(value => value),
+    // Scroll worklets run on JS in tests, receiving the native event as on the device.
+    useAnimatedScrollHandler: handler => event => (typeof handler === 'function' ? handler(event.nativeEvent) : handler.onScroll?.(event.nativeEvent)),
   };
 });

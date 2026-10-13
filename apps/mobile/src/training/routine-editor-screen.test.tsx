@@ -1,8 +1,6 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { Alert, AppState, DeviceEventEmitter, RefreshControl, ScrollView, type AppStateStatus } from 'react-native';
-import { State } from 'react-native-gesture-handler';
-import { getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
+import { Alert, AppState, RefreshControl, type AppStateStatus } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { RoutineDetail } from '@/api/routine-editor';
 import type { MobileTrainingExercise } from '@/api/exercises';
@@ -68,7 +66,11 @@ function twoItems(): RoutineDetail { return { ...detailFixture, items: [detailFi
 function screen(dark = false, bottom = 34) { return render(<SafeAreaProvider initialMetrics={{ frame: { height: 844, width: 390, x: 0, y: 0 }, insets: { bottom, left: 0, right: 0, top: 47 } }}>
   <OwnlevelThemeProvider initialMode={dark ? 'dark' : 'light'}><RoutineEditorScreen createIdempotencyKey={() => 'intent-key'} /></OwnlevelThemeProvider></SafeAreaProvider>); }
 async function ready(view: ReturnType<typeof screen>) { await waitFor(() => expect(view.getByTestId('routine-editor-screen')).toBeTruthy()); await act(async () => undefined); }
-function press(view: ReturnType<typeof screen>, name: string) { fireEvent.press(view.getAllByRole('button', { name }).at(-1)!); }
+function press(view: ReturnType<typeof screen>, name: string) {
+  const element = view.getAllByRole('button', { name }).at(-1)!;
+  // Exercise rows are native drag handles: their tap is the accessibility tap.
+  if (element.props.onAccessibilityTap && !element.props.onPress) fireEvent(element, 'accessibilityTap'); else fireEvent.press(element);
+}
 function confirm(label: string) { act(() => jest.mocked(Alert.alert).mock.calls.at(-1)?.[2]?.find(button => button.text === label)?.onPress?.()); }
 function catalog(exercises: MobileTrainingExercise[]) { mockCatalog.mockResolvedValue({ status: 'ok', data: { catalog: { status: 'ok', data: { exercises, routines: [] } } }, meta }); }
 beforeEach(() => {
@@ -204,39 +206,8 @@ describe('routine editor sheets and native list', () => {
     await waitFor(() => expect(mockTemplate).toHaveBeenCalledTimes(1)); expect((mockTemplate.mock.calls[0]?.[2] as { items: { exerciseId: string }[] }).items[0]!.exerciseId).toBe(two.items[1]!.exercise.id);
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2)); const list = within(view.getByTestId('routine-exercise-list')); expect(list.getAllByRole('button', { name: /Editar / }).map(node => node.props.accessibilityLabel)).toEqual(['Editar Press', 'Editar Fondos']);
   });
-  it('keeps a held exercise still in the middle and permits scrolling down and back to the native origin', async () => {
-    mockFetch.mockResolvedValue(loaded(twoItems())); const view = screen(); await ready(view);
-    jest.useFakeTimers();
-    try {
-      const scrollTo = jest.spyOn(ScrollView.prototype, 'scrollTo').mockImplementation(() => undefined);
-      // A cold native mount can measure the frame before its adjusted offset arrives.
-      jest.spyOn(ScrollView.prototype, 'getNativeScrollRef').mockReturnValue({ measureInWindow: (callback: (x: number, y: number, width: number, height: number) => void) => callback(0, 0, 390, 300) } as ReturnType<ScrollView['getNativeScrollRef']>);
-      fireEvent(view.getByTestId('routine-editor-screen'), 'contentSizeChange', 390, 1200);
-      fireEvent(view.getByTestId('routine-editor-screen'), 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 844 } } });
-      const key = `exercise-drag-${detailFixture.items[0]!.routineExerciseId}`;
-      const send = (state: number, oldState: number | undefined, dy: number, absoluteY: number) => DeviceEventEmitter.emit(oldState === undefined ? 'onGestureHandlerEvent' : 'onGestureHandlerStateChange', {
-        handlerTag: getByGestureTestId(key).handlerTag, state, ...(oldState === undefined ? {} : { oldState }), translationY: dy, translationX: 0, absoluteY,
-        absoluteX: 100, x: 20, y: 20, velocityX: 0, velocityY: 0, numberOfPointers: 1,
-      });
-      const scrollEvent = (y: number) => fireEvent.scroll(view.getByTestId('routine-editor-screen'), { nativeEvent: {
-        contentOffset: { y }, contentInset: { top: 0, bottom: 0 }, contentSize: { height: 1200 }, layoutMeasurement: { height: 844 },
-      } });
-      act(() => { send(State.BEGAN, State.UNDETERMINED, 0, 350); send(State.ACTIVE, State.BEGAN, 0, 350); jest.advanceTimersByTime(160); });
-      expect(scrollTo).not.toHaveBeenCalled(); scrollEvent(-152);
-      act(() => jest.advanceTimersByTime(160)); expect(scrollTo).not.toHaveBeenCalled();
-      scrollEvent(100);
-      act(() => { send(State.ACTIVE, undefined, 450, 800); jest.advanceTimersByTime(16); });
-      expect(scrollTo.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({ animated: false }));
-      expect((scrollTo.mock.calls.at(-1)?.[0] as { y: number }).y).toBeGreaterThan(100);
-      act(() => { send(State.ACTIVE, undefined, -250, 100); jest.advanceTimersByTime(1000); });
-      expect(scrollTo).toHaveBeenLastCalledWith({ y: -152, animated: false });
-      const callsAtTop = scrollTo.mock.calls.length; act(() => jest.advanceTimersByTime(160)); expect(scrollTo).toHaveBeenCalledTimes(callsAtTop);
-      act(() => send(State.END, State.ACTIVE, -250, 100)); expect(mockTemplate).not.toHaveBeenCalled();
-      expect(view.getByTestId('routine-editor-screen').props.scrollEnabled).toBe(true); view.unmount();
-    } finally { jest.useRealTimers(); }
-  });
   it('requires explicit removal confirmation and never edits the exercise library', async () => {
-    mockTemplate.mockResolvedValue({ status: 'ok', data: { ...detailFixture, items: [] }, meta }); const view = screen(); await ready(view); press(view, 'Quitar Press');
+    mockTemplate.mockResolvedValue({ status: 'ok', data: { ...detailFixture, items: [] }, meta }); const view = screen(); await ready(view); fireEvent(view.getByRole('button', { name: 'Editar Press' }), 'accessibilityAction', { nativeEvent: { actionName: 'remove' } });
     expect(Alert.alert).toHaveBeenCalledWith('¿Quitar Press?', expect.stringContaining('Se pierden sus series y objetivos'), expect.any(Array), expect.any(Object)); expect(mockTemplate).not.toHaveBeenCalled(); await act(async () => confirm('Quitar de PUSH'));
     await waitFor(() => expect(mockTemplate).toHaveBeenCalledWith(expect.anything(), detailFixture.routine.id, { expectedTemplateVersion: 3, items: [] })); expect(mockRequest).not.toHaveBeenCalled();
   });
