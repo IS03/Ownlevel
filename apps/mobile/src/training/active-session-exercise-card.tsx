@@ -36,8 +36,8 @@ function SeriesColumns({ ordinal, kg, reps, rir, completed, header = false }: {
     <View style={styles.completedColumn}>{completed}</View>
   </View>;
 }
-export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller, id, expanded, locked, reorderDisabled = false, onToggle, onHistory, onRemove, historyCard, onSheetChange, onReveal }: {
-  controller: ActiveSessionController; id: string; expanded: boolean; locked: boolean; reorderDisabled?: boolean; historyCard?: ReactNode; onSheetChange?: (id: string, open: boolean) => void; onReveal?: (top: number) => void;
+export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller, id, expanded, locked, reorderDisabled = false, addToRoutineName, onToggle, onHistory, onRemove, historyCard, onSheetChange, onReveal }: {
+  controller: ActiveSessionController; id: string; expanded: boolean; locked: boolean; reorderDisabled?: boolean; addToRoutineName?: string | null; historyCard?: ReactNode; onSheetChange?: (id: string, open: boolean) => void; onReveal?: (top: number) => void;
   onToggle: (id: string) => void; onHistory: (id: string) => void; onRemove: (id: string, name: string) => void;
 }) {
   const subscribe = useCallback((listener: () => void) => controller.subscribeExercise(id, listener), [controller, id]);
@@ -152,7 +152,7 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
             <AppIcon name="chevronDown" size={17} color={colors.textMuted} />
           </Pressable>
           <SessionNextOptions open={nextOpen} editable={editable} name={exercise.nameSnapshot} decision={draft.decision} decisionNote={draft.decisionNote}
-            applyToRoutine={draft.applyToRoutine} routineLinked={!!exercise.routineExerciseId} onClose={() => setNextOpen(false)}
+            applyToRoutine={draft.applyToRoutine} routineLinked={!!exercise.routineExerciseId} addToRoutineName={addToRoutineName} onClose={() => setNextOpen(false)}
             onDecision={(decision: NextSessionDecision) => {
               if (!controller.canEdit(id) || controller.getSnapshot().interaction) return;
               haptics.selection(); controller.change(id, current => ({ ...current, decision: current.decision === decision ? 'maintain' : decision, decisionNote: '' }), true);

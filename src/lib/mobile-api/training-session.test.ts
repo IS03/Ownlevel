@@ -61,6 +61,13 @@ describe("M3.3B active session codecs", () => {
         actualReps: null, actualWeightKg: null, isCompleted: false }] } });
     expect(parseSessionSave({ expectedUpdatedAt: timestamp, payload: row.payload }).payload.sets).toEqual([set]);
   });
+  it("projects extras opt-in only for adopting clients and preserves linked semantics", () => {
+    const source = { ...detail, exercises: [{ ...detail.exercises[0], add_to_routine_on_finish: true }] };
+    expect(sessionDetailDto(source, { status: "unavailable" }).exercises[0].payload.applyToRoutine).toBe(false);
+    expect(sessionDetailDto(source, { status: "unavailable" }, true).exercises[0].payload.applyToRoutine).toBe(true);
+    source.exercises[0].routine_exercise_id = exerciseId;
+    expect(sessionDetailDto(source, { status: "unavailable" }, true).exercises[0].payload.applyToRoutine).toBe(false);
+  });
   it("validates recursive runtime types, completion invariants and set numbering", () => {
     for (const invalid of [
       { ...payload, isCompleted: false }, { ...payload, applyToRoutine: "true" },
@@ -141,6 +148,25 @@ describe("M3.3B Bearer server adapters", () => {
     builder.maybeSingle.mockResolvedValue({ data: null, error: null });
     expect(await handleMobileAuthenticatedResourceRequest("Bearer token", { authenticate: async () => context(undefined, from),
       read: (ctx) => readMobileSessionExercise(sessionId, relationId, ctx) })).toMatchObject({ status: 404 });
+  });
+  it("uses the v2 CAS writer only on explicit adoption, with no retry or fallback", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: timestamp, error: null });
+    await saveMobileSessionExercise(sessionId, relationId, { expectedUpdatedAt: timestamp, payload: { ...payload, applyToRoutine: true } }, context(rpc), true);
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("mobile_save_workout_exercise_v2", { p_session_id: sessionId, p_session_exercise_id: relationId, p_expected_updated_at: timestamp, p_payload: { ...domainPayload, apply_to_routine: true } });
+    rpc.mockClear().mockResolvedValue({ data: null, error: { code: "PGRST202", message: "RPC missing" } });
+    await expect(saveMobileSessionExercise(sessionId, relationId, { expectedUpdatedAt: timestamp, payload }, context(rpc), true)).rejects.toThrow("unavailable");
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+  it("keeps read-back coherent with the opt-in and does not require the new column for old requests", async () => {
+    const builder = { select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn() };
+    builder.select.mockReturnValue(builder); builder.eq.mockReturnValue(builder);
+    const from = vi.fn().mockReturnValue(builder);
+    builder.maybeSingle.mockResolvedValue({ data: { status: "in_progress", exercises: [{ ...detail.exercises[0], add_to_routine_on_finish: true }] }, error: null });
+    const result = await readMobileSessionExercise(sessionId, relationId, context(undefined, from), true);
+    expect(result).toMatchObject({ status: "active", updatedAt: timestamp, payload: { applyToRoutine: true } });
+    expect(builder.select).toHaveBeenLastCalledWith(expect.stringContaining("add_to_routine_on_finish"));
+    await readMobileSessionExercise(sessionId, relationId, context(undefined, from));
+    expect(builder.select).toHaveBeenLastCalledWith(expect.not.stringContaining("add_to_routine_on_finish"));
   });
   it("sends one association-bound CAS write and exposes stable errors", async () => {
     const rpc = vi.fn().mockResolvedValue({ data: timestamp, error: null });

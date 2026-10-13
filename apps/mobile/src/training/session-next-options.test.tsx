@@ -50,6 +50,14 @@ describe('next-session iOS popover', () => {
     expect(view.props.onClose).not.toHaveBeenCalled();
     view.rerender(view.screen({ ...view.props, routineLinked: false })); expect(view.queryByText('Tomar resultado de hoy')).toBeNull();
   });
+  it('offers an off-by-default Sumara-routine switch for extras and hides it in a free session', () => {
+    const view = setup({ routineLinked: false, addToRoutineName: 'PUSH' });
+    expect(view.getByRole('checkbox', { name: 'Sumar a PUSH' })).not.toBeChecked();
+    expect(view.getByText('Al finalizar, se agrega al final de la rutina con las series de hoy.')).toBeTruthy();
+    fireEvent.press(view.getByText('Sumar a PUSH')); expect(view.props.onApply).toHaveBeenCalledWith(true);
+    expect(view.props.onDecision).not.toHaveBeenCalled();
+    view.rerender(view.screen({ ...view.props, addToRoutineName: null })); expect(view.queryByText('Sumar a PUSH')).toBeNull();
+  });
   it('preserves an existing custom reminder as a selected option that can be unticked', () => {
     const view = setup({ decision: 'custom', decisionNote: 'Revisar agarre' });
     expect(view.getByRole('checkbox', { name: 'Revisar agarre' })).toBeChecked();

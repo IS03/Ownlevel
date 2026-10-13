@@ -209,7 +209,7 @@ export function sessionPayloadDto(payload: WorkoutExercisePayload): SessionExerc
     })),
   };
 }
-export function sessionExerciseDto(exercise: WorkoutSessionExerciseDetail): SessionExerciseDto {
+export function sessionExerciseDto(exercise: WorkoutSessionExerciseDetail, routineAdditions = false): SessionExerciseDto {
   return {
     id: exercise.id, exerciseId: exercise.exercise_id, routineExerciseId: exercise.routine_exercise_id,
     order: exercise.exercise_order, nameSnapshot: exercise.nombre_snapshot,
@@ -220,12 +220,12 @@ export function sessionExerciseDto(exercise: WorkoutSessionExerciseDetail): Sess
     updatedAt: exercise.updated_at,
     payload: sessionPayloadDto({
       is_completed: exercise.sets.some((set) => set.is_completed), decision: exercise.decision,
-      decision_note: exercise.decision_note ?? "", apply_to_routine: !!exercise.routine_exercise_id && exercise.apply_to_routine,
+      decision_note: exercise.decision_note ?? "", apply_to_routine: exercise.routine_exercise_id ? exercise.apply_to_routine : routineAdditions && exercise.add_to_routine_on_finish === true,
       notes: exercise.notes ?? "", sets: exercise.sets,
     }),
   };
 }
-export function sessionDetailDto(detail: WorkoutSessionDetail, quickHistory: SessionDetailDto["quickHistory"]): SessionDetailDto {
+export function sessionDetailDto(detail: WorkoutSessionDetail, quickHistory: SessionDetailDto["quickHistory"], routineAdditions = false): SessionDetailDto {
   const s = detail.session;
   return {
     session: {
@@ -239,7 +239,7 @@ export function sessionDetailDto(detail: WorkoutSessionDetail, quickHistory: Ses
         treadmillSpeedKmh: s.treadmill_speed_kmh, treadmillInclinePercent: s.treadmill_incline_percent, notes: s.notes,
       },
     },
-    exercises: detail.exercises.map(sessionExerciseDto), quickHistory,
+    exercises: detail.exercises.map(exercise => sessionExerciseDto(exercise, routineAdditions)), quickHistory,
   };
 }
 
@@ -251,7 +251,9 @@ export type SessionFinishMetadataDto = {
   notes: string | null;
 };
 export type SessionFinishInput = { metadata: SessionFinishMetadataDto; idempotencyKey: string };
+export type RoutineAdditionDto = { sessionExerciseId: string; exerciseId: string; name: string; outcome: "added" | "already_in_routine" | "routine_unavailable" | "no_completed_sets" };
 export type SessionFinishedDto = {
+  routineAdditions?: RoutineAdditionDto[];
   status: "finished";
   sessionId: string;
   sessionStatus: "completed";
@@ -341,11 +343,20 @@ export function sessionFinishDomainMetadata(metadata: SessionFinishMetadataDto) 
   return { energy_level: metadata.energyLevel, performance_level: metadata.performanceLevel,
     pain_level: metadata.painLevel, notes: metadata.notes };
 }
+function parseRoutineAdditions(value: unknown): RoutineAdditionDto[] {
+  if (!Array.isArray(value)) throw new MobileApiValidationError("El resumen de rutina no es válido.");
+  return value.map(raw => {
+    const row = object(raw, ["sessionExerciseId", "exerciseId", "name", "outcome"]);
+    if (!["added", "already_in_routine", "routine_unavailable", "no_completed_sets"].includes(String(row.outcome))) throw new MobileApiValidationError("El resultado de rutina no es válido.");
+    return { sessionExerciseId: parseMobileTrainingId(row.sessionExerciseId, "El ejercicio de sesión"), exerciseId: parseMobileTrainingId(row.exerciseId, "El ejercicio"), name: text(row.name), outcome: row.outcome as RoutineAdditionDto["outcome"] };
+  });
+}
 export function parseSessionFinishedResponse(value: unknown): SessionFinishedDto {
   const input = object(value, ["status", "sessionId", "sessionStatus", "name", "routineId", "logDate", "startedAt", "endedAt",
-    "sessionUpdatedAt", "metadata", "exerciseCount", "completedExerciseCount", "completedSetCount"]);
+    "sessionUpdatedAt", "metadata", "exerciseCount", "completedExerciseCount", "completedSetCount", "routineAdditions"]);
   if (input.status !== "finished" || input.sessionStatus !== "completed") throw new MobileApiValidationError("La respuesta de finalización no es válida.");
   return {
+    ...(input.routineAdditions === undefined ? {} : { routineAdditions: parseRoutineAdditions(input.routineAdditions) }),
     status: "finished", sessionId: parseMobileTrainingId(input.sessionId, "La sesión"), sessionStatus: "completed",
     name: text(input.name), routineId: input.routineId === null ? null : parseMobileTrainingId(input.routineId, "La rutina"),
     logDate: parseMobileTrainingDate(input.logDate), startedAt: parseSessionVersion(input.startedAt),

@@ -9,6 +9,7 @@ export type SessionNextOptionsProps = {
   decisionNote: string;
   applyToRoutine: boolean;
   routineLinked: boolean;
+  addToRoutineName?: string | null;
   onClose: () => void;
   onDecision: (decision: NextSessionDecision) => void;
   onApply: (value: boolean) => void;

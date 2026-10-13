@@ -31,15 +31,15 @@ describe("M3.3B final Route Handlers", () => {
     const response = await detailGET(request("GET"), resource);
     expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toBe("no-store");
     expect(mocks.readAuth).toHaveBeenCalledWith("valid");
-    expect(mocks.detail).toHaveBeenCalledWith(sessionId, bearerContext, expect.any(Object));
+    expect(mocks.detail).toHaveBeenCalledWith(sessionId, bearerContext, expect.any(Object), false);
     expect((await syncGET(request("GET"), resource)).status).toBe(200);
-    expect(mocks.sync).toHaveBeenCalledWith(sessionId, sessionExerciseId, bearerContext);
+    expect(mocks.sync).toHaveBeenCalledWith(sessionId, sessionExerciseId, bearerContext, false);
     expect(mocks.writeAuth).not.toHaveBeenCalled();
   });
   it("wires PUT/POST/DELETE with authenticated no-retry mutation context", async () => {
     const body = { idempotencyKey: "intent" };
     expect((await PUT(request("PUT", body), resource)).status).toBe(200);
-    expect(mocks.save).toHaveBeenCalledWith(sessionId, sessionExerciseId, body, bearerContext);
+    expect(mocks.save).toHaveBeenCalledWith(sessionId, sessionExerciseId, body, bearerContext, false);
     expect((await POST(request("POST", body), resource)).status).toBe(201);
     expect(mocks.add).toHaveBeenCalledWith(sessionId, body, bearerContext);
     expect((await removeDELETE(request("DELETE", body), resource)).status).toBe(200);
@@ -47,6 +47,12 @@ describe("M3.3B final Route Handlers", () => {
     expect((await cancelDELETE(request("DELETE", body), resource)).status).toBe(200);
     expect(mocks.cancel).toHaveBeenCalledWith(sessionId, body, bearerContext);
     expect(mocks.writeAuth).toHaveBeenCalledTimes(4); expect(mocks.readAuth).not.toHaveBeenCalled();
+  });
+  it("adopts additions only when explicitly requested, without changing structural operations", async () => {
+    const make = (method: string) => new NextRequest("https://example.test/api/mobile/v1/training/sessions/session?routineAdditions=1", { method, headers: { authorization: "Bearer valid", "content-type": "application/json" }, ...(method === "PUT" ? { body: JSON.stringify({}) } : {}) });
+    await detailGET(make("GET"), resource); expect(mocks.detail).toHaveBeenLastCalledWith(sessionId, bearerContext, expect.any(Object), true);
+    await syncGET(make("GET"), resource); expect(mocks.sync).toHaveBeenLastCalledWith(sessionId, sessionExerciseId, bearerContext, true);
+    await PUT(make("PUT"), resource); expect(mocks.save).toHaveBeenLastCalledWith(sessionId, sessionExerciseId, {}, bearerContext, true);
   });
   it("preserves 404/503 rather than returning an empty session", async () => {
     mocks.detail.mockRejectedValueOnce(new MobileApiNotFoundError());

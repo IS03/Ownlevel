@@ -104,6 +104,7 @@ export type WorkoutSession = {
 };
 
 export type WorkoutSessionExercise = {
+  add_to_routine_on_finish?: boolean;
   id: string;
   user_id: string;
   workout_session_id: string;

@@ -160,7 +160,7 @@ function parseExercise(value: unknown): SessionExerciseDto | undefined {
     !number(value.restMinSecondsSnapshot, 3600, true) || !number(value.restMaxSecondsSnapshot, 3600, true) ||
     !DECISIONS.has(value.nextAdjustmentSnapshot as string) || !text(value.nextAdjustmentNoteSnapshot) || !timestamp(value.updatedAt)) return undefined;
   const payload = parseSessionExercisePayload(value.payload);
-  if (!payload || (value.routineExerciseId === null && payload.applyToRoutine)) return undefined;
+  if (!payload) return undefined;
   return { ...value, payload } as SessionExerciseDto;
 }
 function metadata(value: unknown): value is SessionMetadataDto {
@@ -235,17 +235,17 @@ function path(sessionId: string, exerciseId?: string): `/${string}` {
 }
 export function fetchSessionDetail(client: MobileApiClient, sessionId: string, signal?: AbortSignal): Promise<MobileApiRequestResult<SessionDetailDto>> {
   // request(GET) preserves a true 404, unlike the generic read() surface.
-  return client.request({ method: 'GET', path: path(sessionId), signal, parse: (value) => {
+  return client.request({ method: 'GET', path: `${path(sessionId)}?routineAdditions=1`, signal, parse: (value) => {
     const result = parseSessionDetail(value);
     return result?.session.id === sessionId ? result : undefined;
   } });
 }
 export function fetchSessionExerciseSync(client: MobileApiClient, sessionId: string, sessionExerciseId: string, signal?: AbortSignal): Promise<MobileApiRequestResult<SessionExerciseSyncDto>> {
-  return client.request({ method: 'GET', path: path(sessionId, sessionExerciseId), signal, parse: parseSessionExerciseSync });
+  return client.request({ method: 'GET', path: `${path(sessionId, sessionExerciseId)}?routineAdditions=1`, signal, parse: parseSessionExerciseSync });
 }
 export function saveSessionExercise(client: MobileApiClient, sessionId: string, sessionExerciseId: string,
   body: { expectedUpdatedAt: string; payload: SessionExercisePayloadDto }): Promise<MobileApiMutationResult<{ sessionExerciseId: string; updatedAt: string }>> {
-  return client.request({ method: 'PUT', path: path(sessionId, sessionExerciseId),
+  return client.request({ method: 'PUT', path: `${path(sessionId, sessionExerciseId)}?routineAdditions=1`,
     body: { ...body, payload: canonicalSessionExercisePayload(body.payload) }, parse: (value) =>
     record(value, ['sessionExerciseId', 'updatedAt']) && value.sessionExerciseId === sessionExerciseId && timestamp(value.updatedAt)
       ? { sessionExerciseId, updatedAt: value.updatedAt } : undefined });
@@ -294,7 +294,9 @@ export type SessionFinishMetadata = {
   notes: string | null;
 };
 export type SessionFinishInput = { metadata: SessionFinishMetadata; idempotencyKey: string };
+export type RoutineAdditionDto = { sessionExerciseId: string; exerciseId: string; name: string; outcome: 'added' | 'already_in_routine' | 'routine_unavailable' | 'no_completed_sets' };
 export type SessionFinishedDto = {
+  routineAdditions?: RoutineAdditionDto[];
   status: 'finished';
   sessionId: string;
   sessionStatus: 'completed';
@@ -318,7 +320,12 @@ export function parseSessionFinishMetadata(value: unknown): SessionFinishMetadat
 function counter(value: unknown): value is number { return typeof value === 'number' && Number.isInteger(value) && value >= 0; }
 export function parseSessionFinished(value: unknown): SessionFinishedDto | undefined {
   if (!record(value, ['status', 'sessionId', 'sessionStatus', 'name', 'routineId', 'logDate', 'startedAt', 'endedAt', 'sessionUpdatedAt',
-    'metadata', 'exerciseCount', 'completedExerciseCount', 'completedSetCount']) || Object.keys(value).length !== 13 ||
+    'metadata', 'exerciseCount', 'completedExerciseCount', 'completedSetCount', 'routineAdditions']) ||
+    Object.keys(value).length !== (value.routineAdditions === undefined ? 13 : 14) ||
+    (value.routineAdditions !== undefined && (!Array.isArray(value.routineAdditions) || value.routineAdditions.some(row =>
+      !record(row, ['sessionExerciseId', 'exerciseId', 'name', 'outcome']) || Object.keys(row).length !== 4 ||
+      !id(row.sessionExerciseId) || !id(row.exerciseId) || typeof row.name !== 'string' || !row.name.trim() ||
+      !['added', 'already_in_routine', 'routine_unavailable', 'no_completed_sets'].includes(row.outcome as string)))) ||
     value.status !== 'finished' || value.sessionStatus !== 'completed' || !id(value.sessionId) || typeof value.name !== 'string' ||
     !value.name.trim() || (value.routineId !== null && !id(value.routineId)) || !date(value.logDate) || !timestamp(value.startedAt) ||
     !timestamp(value.endedAt) || !timestamp(value.sessionUpdatedAt) || !counter(value.exerciseCount) ||
@@ -327,7 +334,7 @@ export function parseSessionFinished(value: unknown): SessionFinishedDto | undef
   return metadata ? { ...(value as SessionFinishedDto), sessionId: value.sessionId.toLowerCase(), metadata } : undefined;
 }
 export function finishSession(client: MobileApiClient, sessionId: string, body: SessionFinishInput): Promise<MobileApiMutationResult<SessionFinishedDto>> {
-  return client.request({ method: 'POST', path: `${path(sessionId)}/finish`, body, parse: value => {
+  return client.request({ method: 'POST', path: `${path(sessionId)}/finish?routineAdditions=1`, body, parse: value => {
     const parsed = parseSessionFinished(value);
     return parsed?.sessionId === sessionId.toLowerCase() ? parsed : undefined;
   } });

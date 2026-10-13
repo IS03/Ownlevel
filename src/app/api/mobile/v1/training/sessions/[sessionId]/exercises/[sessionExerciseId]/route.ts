@@ -11,11 +11,11 @@ export function OPTIONS(request: NextRequest) {
 }
 export async function GET(request: NextRequest, { params }: Context) {
   const { sessionId, sessionExerciseId } = await params;
-  return sessionReadResponse(request, route, (context) => readMobileSessionExercise(sessionId, sessionExerciseId, context));
+  return sessionReadResponse(request, route, (context) => readMobileSessionExercise(sessionId, sessionExerciseId, context, request.nextUrl.searchParams.get("routineAdditions") === "1"));
 }
 export async function PUT(request: NextRequest, { params }: Context) {
   const { sessionId, sessionExerciseId } = await params;
-  return sessionMutationResponse(request, route, 200, (body, context) => saveMobileSessionExercise(sessionId, sessionExerciseId, body, context));
+  return sessionMutationResponse(request, route, 200, (body, context) => saveMobileSessionExercise(sessionId, sessionExerciseId, body, context, request.nextUrl.searchParams.get("routineAdditions") === "1"));
 }
 export async function DELETE(request: NextRequest, { params }: Context) {
   const { sessionId, sessionExerciseId } = await params;
