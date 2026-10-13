@@ -5,12 +5,12 @@ import type { MobileSupabaseAuthenticatedContext } from "./supabase";
 import type { RobustExerciseHistoryItem } from "../phase2/training-robust";
 import type { TrainingHistoryDirectory } from "../phase2/training-history";
 
-const mocks = vi.hoisted(() => ({ readAuth: vi.fn(), writeAuth: vi.fn(), directory: vi.fn(), exerciseHistory: vi.fn(), catalog: vi.fn() }));
+const mocks = vi.hoisted(() => ({ readAuth: vi.fn(), writeAuth: vi.fn(), directory: vi.fn(), exerciseHistory: vi.fn(), catalog: vi.fn(), completeHistory: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("./supabase", () => ({ authenticateMobileAccessToken: mocks.readAuth, authenticateMobileMutationAccessToken: mocks.writeAuth }));
 vi.mock("../phase2/training-robust", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../phase2/training-robust")>()),
-  getTrainingHistoryDirectory: mocks.directory, listRobustExerciseHistory: mocks.exerciseHistory,
+  getTrainingHistoryDirectory: mocks.directory, listRobustExerciseHistory: mocks.exerciseHistory, listCompleteRobustExerciseHistory: mocks.completeHistory,
 }));
 vi.mock("../phase2/training", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../phase2/training")>()), listExercises: mocks.catalog,
@@ -68,6 +68,26 @@ describe("M3.4-3 exercise history reads", () => {
     mocks.exerciseHistory.mockResolvedValue([]);
     const empty = await readMobileTrainingExerciseHistory(exerciseId, new URLSearchParams(), context, performance);
     expect(empty).toMatchObject({ exercise: { name: "Press (catálogo)" }, latest: null, best: null, sessions: [], hasMore: false });
+  });
+  it("computes filtered latest/best before paging, including a record older than 500 sessions", async () => {
+    const routineId = "34300000-0000-4000-8000-000000000501", other = "34300000-0000-4000-8000-000000000502";
+    mocks.catalog.mockResolvedValue([]);
+    const rows = Array.from({ length: 501 }, (_, index) => ({ ...item(`s${index}`, "2026-09-01", "2026-09-01T12:00:00Z", [[index === 500 ? 200 : 50, 5, true, null]]),
+      session: { ...item(`s${index}`, "2026-09-01", "2026-09-01T12:00:00Z", []).session, routine_id: routineId } }));
+    const foreignRoutine = { ...rows[0], session: { ...rows[0].session, id: "other-routine", routine_id: other }, exercise: { ...rows[0].exercise, sets: [{ ...rows[0].exercise.sets[0], actual_weight_kg: 300 }] } };
+    mocks.completeHistory.mockResolvedValue([foreignRoutine, ...rows]);
+    const result = await readMobileTrainingExerciseHistory(exerciseId, new URLSearchParams(`historyByRoutine=1&routineId=${routineId}&limit=2`), context, performance);
+    expect(result.best).toMatchObject({ sessionId: "s500", routineId, mark: { weightKg: 200 } });
+    expect(result.sessions).toHaveLength(2); expect(result.hasMore).toBe(true);
+    expect(result.sessions.every(row => row.routineId === routineId)).toBe(true);
+    expect(result.routines?.map(row => row.id).sort()).toEqual([routineId, other]);
+    expect(mocks.completeHistory).toHaveBeenCalledWith(exerciseId, expect.objectContaining({ userId: "bearer-owner" }));
+    expect(mocks.exerciseHistory).not.toHaveBeenCalled();
+    const empty = await readMobileTrainingExerciseHistory(exerciseId, new URLSearchParams(`routineId=${exerciseId}`), context, performance);
+    expect(empty).toMatchObject({ latest: null, best: null, sessions: [], hasMore: false });
+    mocks.completeHistory.mockRejectedValue(new Error("unavailable"));
+    await expect(readMobileTrainingExerciseHistory(exerciseId, new URLSearchParams("historyByRoutine=1"), context, performance)).rejects.toThrow("unavailable");
+    await expect(readMobileTrainingExerciseHistory(exerciseId, new URLSearchParams("routineId=bad"), context, performance)).rejects.toBeInstanceOf(MobileApiValidationError);
   });
   it("rejects unknown/foreign exercises and invalid limits", async () => {
     mocks.catalog.mockResolvedValue([]); mocks.exerciseHistory.mockResolvedValue([]);

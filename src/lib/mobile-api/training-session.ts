@@ -494,6 +494,7 @@ export type TrainingHistoryExerciseDto = {
 };
 export type TrainingHistoryExercisesResponse = { exercises: TrainingHistoryExerciseDto[] };
 export type TrainingExerciseHistorySessionDto = {
+  routineId?: string | null;
   sessionId: string;
   logDate: string;
   routineName: string;
@@ -502,6 +503,7 @@ export type TrainingExerciseHistorySessionDto = {
   rirValues: number[];
 };
 export type TrainingExerciseHistoryResponse = {
+  routines?: Array<{ id: string; name: string }>;
   exercise: { id: string; name: string; muscleGroup: string | null; muscleLabel: string | null; implement: string | null; weightMode: string | null };
   latest: TrainingExerciseHistorySessionDto | null;
   best: TrainingExerciseHistorySessionDto | null;

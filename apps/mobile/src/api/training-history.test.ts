@@ -66,7 +66,7 @@ describe('M3.4-3 history read contracts', () => {
     expect(await fetchTrainingExerciseHistory(api, exerciseId, 40)).toMatchObject({ status: 'unavailable' });
     expect(fetch.mock.calls.map(([url]) => String(url).replace('https://example.test', ''))).toEqual([
       '/api/mobile/v1/training/history?limit=20&cursor=cur_1', '/api/mobile/v1/training/days/2026-10-01',
-      '/api/mobile/v1/training/history/exercises', `/api/mobile/v1/training/history/exercises/${exerciseId}?limit=40`]);
+      '/api/mobile/v1/training/history/exercises', `/api/mobile/v1/training/history/exercises/${exerciseId}?limit=40&historyByRoutine=1`]);
   });
 });
 
@@ -107,4 +107,19 @@ describe('M3.4-3 correction and discard contracts', () => {
 it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('preserves completed session and missing metrics with new or unknown color %s', routineColor => {
   const parsed = parseTrainingHistoryPage({ sessions: [{ ...session, routineColor }], nextCursor: null });
   expect(parsed).toEqual({ sessions: [{ ...session, routineColor: routineColor === 'future-color' ? null : routineColor }], nextCursor: null });
+});
+
+
+describe('routine-scoped exercise history', () => {
+  it('accepts both legacy and expanded entries and rejects malformed routine IDs', async () => {
+    const entry = { sessionId, logDate: '2026-10-01', routineName: 'PUSH', mark: null, completedSets: 1, rirValues: [] };
+    const detail = { exercise: { id: exerciseId, name: 'Press', muscleGroup: null, muscleLabel: null, implement: null, weightMode: null }, latest: entry, best: null, sessions: [entry], hasMore: false };
+    const expanded = { ...detail, routines: [{ id: otherId, name: 'PUSH' }], latest: { ...entry, routineId: otherId }, best: { ...entry, routineId: otherId }, sessions: [{ ...entry, routineId: otherId }] };
+    expect(parseTrainingExerciseHistory(expanded, exerciseId)).toEqual(expanded);
+    expect(parseTrainingExerciseHistory(detail, exerciseId)).toEqual(detail);
+    expect(parseTrainingExerciseHistory({ ...expanded, sessions: [{ ...entry, routineId: 'bad' }] }, exerciseId)).toBeUndefined();
+    const fetch = jest.fn<typeof globalThis.fetch>().mockResolvedValue(response(200, expanded));
+    await fetchTrainingExerciseHistory(client(fetch), exerciseId, 20, undefined, otherId);
+    expect(String(fetch.mock.calls[0][0])).toContain(`historyByRoutine=1&routineId=${otherId}`);
+  });
 });

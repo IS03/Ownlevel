@@ -11,6 +11,7 @@ import { OwnlevelThemeProvider } from '@/design-system';
 import { testDetail } from './active-session-test-fixtures';
 import { CompletedSessionScreen, type CompletedSessionApi } from './history-session-screen';
 import { SessionCorrectionScreen } from './session-correction-screen';
+import { ExerciseHistoryScreen } from './exercise-history-screen';
 import { HistoryScreen } from './history-screen';
 import { TrainingDayScreen } from './training-day-screen';
 import { TrainingCalendarScreen } from './training-calendar-screen';
@@ -20,6 +21,7 @@ const mockParams: { current: Record<string, string> } = { current: {} };
 const mockFetchDetail = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockCorrect = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockHistory = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockExerciseHistory = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockExercises = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockDay = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockTraining = jest.fn<(...args: unknown[]) => Promise<unknown>>();
@@ -37,6 +39,7 @@ jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }),
   fetchMobileTraining: (...args: unknown[]) => mockTraining(...args) }));
 jest.mock('@/api/active-session', () => ({ ...jest.requireActual<object>('@/api/active-session'), fetchSessionDetail: (...args: unknown[]) => mockFetchDetail(...args) }));
 jest.mock('@/api/training-history', () => ({ ...jest.requireActual<object>('@/api/training-history'),
+  fetchTrainingExerciseHistory: (...args: unknown[]) => mockExerciseHistory(...args),
   correctSession: (...args: unknown[]) => mockCorrect(...args), fetchTrainingHistory: (...args: unknown[]) => mockHistory(...args),
   fetchTrainingHistoryExercises: (...args: unknown[]) => mockExercises(...args), fetchTrainingDay: (...args: unknown[]) => mockDay(...args) }));
 
@@ -235,5 +238,25 @@ describe('history, day and calendar navigation', () => {
     await waitFor(() => expect(view.getByText('Septiembre de 2026')).toBeTruthy());
     fireEvent.press(view.getByTestId('training-calendar-day-2026-09-03'));
     expect(mockPush).toHaveBeenCalledWith('/(tabs)/train/day/2026-09-03');
+  });
+});
+
+
+describe('exercise history routine scope', () => {
+  it('starts in the origin routine, switches server scope, and keeps unavailable distinct from empty', async () => {
+    mockParams.current = { id: ID(3), routineId: ID(1) };
+    const data = { exercise: { id: ID(3), name: 'PRESS', muscleGroup: null, muscleLabel: null, implement: null, weightMode: null },
+      latest: null, best: null, sessions: [], hasMore: false, routines: [{ id: ID(1), name: 'PUSH' }, { id: ID(2), name: 'PULL' }] };
+    mockExerciseHistory.mockImplementation(async (...args) => args[4] === ID(2) ? lost : ok(data));
+    const view = wrap(<ExerciseHistoryScreen />); await flush();
+    expect(view.getByText('Todavía no lo hiciste en PUSH')).toBeTruthy();
+    expect(mockExerciseHistory).toHaveBeenLastCalledWith(mockClient, ID(3), 20, expect.anything(), ID(1));
+    fireEvent.press(view.getByRole('radio', { name: 'Todas' })); await flush();
+    expect(mockExerciseHistory).toHaveBeenLastCalledWith(mockClient, ID(3), 20, expect.anything(), null);
+    expect(view.getByText('Todavía no lo hiciste')).toBeTruthy();
+    fireEvent.press(view.getByRole('radio', { name: 'PULL' })); await flush();
+    expect(view.queryByText('Todavía no lo hiciste')).toBeNull();
+    expect(view.getByRole('button', { name: 'Reintentar' })).toBeTruthy();
+    expect(view.getByRole('radio', { name: 'Todas' })).toBeTruthy();
   });
 });

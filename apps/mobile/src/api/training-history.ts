@@ -31,9 +31,11 @@ export type TrainingHistoryExercise = {
   lastDate: string | null; sessions: number; lastMark: TrainingHistoryMark | null; bestMark: TrainingHistoryMark | null;
 };
 export type TrainingExerciseHistorySession = {
+  routineId?: string | null;
   sessionId: string; logDate: string; routineName: string; mark: TrainingHistoryMark | null; completedSets: number; rirValues: number[];
 };
 export type TrainingExerciseHistory = {
+  routines?: { id: string; name: string }[];
   exercise: { id: string; name: string; muscleGroup: string | null; muscleLabel: string | null; implement: string | null; weightMode: string | null };
   latest: TrainingExerciseHistorySession | null;
   best: TrainingExerciseHistorySession | null;
@@ -112,14 +114,16 @@ export function parseTrainingHistoryExercises(value: unknown): TrainingHistoryEx
   return result;
 }
 function parseExerciseSession(value: unknown): TrainingExerciseHistorySession | undefined {
-  if (!g.record(value, ['sessionId', 'logDate', 'routineName', 'mark', 'completedSets', 'rirValues']) || Object.keys(value).length !== 6 ||
+  if (!g.record(value, ['sessionId', 'logDate', 'routineName', 'mark', 'completedSets', 'rirValues', 'routineId']) || Object.keys(value).length !== (value.routineId === undefined ? 6 : 7) ||
+    (value.routineId !== undefined && value.routineId !== null && !g.id(value.routineId)) ||
     !g.id(value.sessionId) || !g.date(value.logDate) || typeof value.routineName !== 'string' || !g.counter(value.completedSets) ||
     !Array.isArray(value.rirValues) || !value.rirValues.every(rir => typeof rir === 'number' && Number.isFinite(rir))) return undefined;
   const mark = parseMark(value.mark);
   return mark === undefined ? undefined : { ...(value as TrainingExerciseHistorySession), mark };
 }
 export function parseTrainingExerciseHistory(value: unknown, exerciseId?: string): TrainingExerciseHistory | undefined {
-  if (!g.record(value, ['exercise', 'latest', 'best', 'sessions', 'hasMore']) || Object.keys(value).length !== 5 ||
+  if (!g.record(value, ['exercise', 'latest', 'best', 'sessions', 'hasMore', 'routines']) || Object.keys(value).length !== (value.routines === undefined ? 5 : 6) ||
+    (value.routines !== undefined && (!Array.isArray(value.routines) || value.routines.some(row => !g.record(row, ['id', 'name']) || Object.keys(row).length !== 2 || !g.id(row.id) || typeof row.name !== 'string'))) ||
     typeof value.hasMore !== 'boolean' || !Array.isArray(value.sessions)) return undefined;
   const exercise = value.exercise;
   if (!g.record(exercise, IDENTITY) || Object.keys(exercise).length !== 6 || !identityValid(exercise) ||
@@ -128,7 +132,7 @@ export function parseTrainingExerciseHistory(value: unknown, exerciseId?: string
   const best = value.best === null ? null : parseExerciseSession(value.best);
   const sessions = value.sessions.map(parseExerciseSession);
   if (latest === undefined || best === undefined || !sessions.every(Boolean)) return undefined;
-  return { exercise: exercise as TrainingExerciseHistory['exercise'], latest, best, sessions: sessions as TrainingExerciseHistorySession[], hasMore: value.hasMore };
+  return { ...(value.routines === undefined ? {} : { routines: value.routines as TrainingExerciseHistory["routines"] }), exercise: exercise as TrainingExerciseHistory['exercise'], latest, best, sessions: sessions as TrainingExerciseHistorySession[], hasMore: value.hasMore };
 }
 function parseMetadata(value: unknown): SessionMetadataDto | undefined {
   if (!g.record(value, ['energyLevel', 'performanceLevel', 'painLevel', 'painNote', 'treadmillMinutes', 'treadmillDistanceKm',
@@ -169,9 +173,12 @@ export function fetchTrainingHistoryExercises(client: MobileApiClient, signal?: 
   return client.read({ path: `${BASE}/history/exercises`, signal, parse: parseTrainingHistoryExercises });
 }
 export function fetchTrainingExerciseHistory(client: MobileApiClient, exerciseId: string, limit: number,
-  signal?: AbortSignal): Promise<MobileApiReadResult<TrainingExerciseHistory>> {
-  return client.read({ path: `${BASE}/history/exercises/${encodeURIComponent(exerciseId)}?limit=${limit}`, signal,
-    parse: value => parseTrainingExerciseHistory(value, exerciseId) });
+  signal?: AbortSignal, routineId?: string | null): Promise<MobileApiReadResult<TrainingExerciseHistory>> {
+  return client.read({ path: `${BASE}/history/exercises/${encodeURIComponent(exerciseId)}?limit=${limit}&historyByRoutine=1${routineId ? `&routineId=${encodeURIComponent(routineId)}` : ''}`, signal,
+    parse: value => {
+      const parsed = parseTrainingExerciseHistory(value, exerciseId);
+      return routineId && parsed?.routines === undefined ? undefined : parsed;
+    } });
 }
 export function correctSession(client: MobileApiClient, sessionId: string, body: SessionCorrectionInput): Promise<MobileApiMutationResult<SessionCorrectedDto>> {
   return client.request({ method: 'PUT', path: `${BASE}/sessions/${encodeURIComponent(sessionId)}/correction`, body, parse: value => {

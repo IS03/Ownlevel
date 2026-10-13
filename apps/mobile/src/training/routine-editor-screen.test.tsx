@@ -113,7 +113,7 @@ describe('routine editor sheets and native list', () => {
     const view = screen(); await ready(view); press(view, 'Editar Press'); fireEvent.changeText(view.getByLabelText('Serie 1, reps'), '12');
     press(view, 'Cerrar ejercicio'); confirm('Seguir editando'); expect(view.getByDisplayValue('12')).toBeTruthy();
     press(view, 'Historial del ejercicio'); expect(mockPush).not.toHaveBeenCalled(); confirm('Salir sin guardar');
-    expect(mockPush).toHaveBeenCalledWith(`/(tabs)/train/history/exercise/${detailFixture.items[0]!.exercise.id}`);
+    expect(mockPush).toHaveBeenCalledWith(`/(tabs)/train/history/exercise/${detailFixture.items[0]!.exercise.id}?routineId=${detailFixture.routine.id}`);
     expect(view.queryByTestId('routine-targets-sheet')).toBeNull(); expect(mockTemplate).not.toHaveBeenCalled();
   });
   it('guards native back while dirty and redispatches exactly once on discard', async () => {

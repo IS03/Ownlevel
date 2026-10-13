@@ -890,6 +890,21 @@ async function queryRobustExerciseHistory(
     );
 }
 
+/** Complete owner-scoped exercise history: no 500-day/session truncation for records. */
+export async function listCompleteRobustExerciseHistory(exerciseId: string, context: AuthenticatedRequestContext): Promise<RobustExerciseHistoryItem[]> {
+  type Row = RawSessionExercise & { session: WorkoutSession & { day_log: { log_date: string } } };
+  const { supabase, userId } = context;
+  const rows = await readAllTrainingRows<Row>("Leer historial completo del ejercicio", (from, to) => supabase
+    .from("workout_session_exercises")
+    .select("*, sets:workout_sets(*), session:workout_sessions!inner(*, day_log:day_logs!inner(log_date))")
+    .eq("user_id", userId).eq("exercise_id", exerciseId).eq("is_completed", true)
+    .eq("session.user_id", userId).eq("session.status", "completed")
+    .order("id", { ascending: true }).range(from, to).returns<Row[]>());
+  return rows.map(row => ({ session: row.session, logDate: row.session.day_log.log_date,
+    exercise: { ...row, sets: [...(row.sets ?? [])].sort((a,b) => a.set_number-b.set_number) } }))
+    .sort((a,b) => (b.session.ended_at ?? b.logDate).localeCompare(a.session.ended_at ?? a.logDate) || b.session.id.localeCompare(a.session.id));
+}
+
 export async function listRobustExerciseHistory(input: {
   exerciseId: string;
   fromDate?: string;
