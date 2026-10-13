@@ -164,3 +164,52 @@ export function reorderTemplate(
   [next[index], next[target]] = [next[target]!, next[index]!];
   return { ...payload, items: next };
 }
+
+
+/** Wheel choices include the saved value so opening a picker never rounds a legacy rest. */
+export function restWheelValues(current: string): (number | null)[] {
+  const saved = parseRest(current, 'Descanso');
+  const values = Array.from({ length: 241 }, (_, index) => index * 15);
+  if (saved !== null && !values.includes(saved)) values.push(saved);
+  return [null, ...values.sort((a, b) => a - b)];
+}
+export function changeRest(draft: TargetsDraft, field: 'restMin' | 'restMax', seconds: number | null): TargetsDraft {
+  const next = { ...draft, [field]: formatRest(seconds) };
+  const min = parseRest(next.restMin, 'Descanso mínimo'), max = parseRest(next.restMax, 'Descanso máximo');
+  if (min !== null && max !== null && min > max) {
+    if (field === 'restMin') next.restMin = formatRest(max);
+    else next.restMax = formatRest(min);
+  }
+  return next;
+}
+export function exerciseIdentity(exercise: RoutineDetail['items'][number]['exercise']): string {
+  return [exercise.muscleGroupLabel?.trim() || (exercise.muscleGroup ? exercise.muscleGroup[0]!.toLocaleUpperCase('es-AR') + exercise.muscleGroup.slice(1) : null),
+    exercise.implement, exercise.weightMode].filter(Boolean).join(' · ');
+}
+export function appendExercises(detail: RoutineDetail, selected: readonly MobileTrainingExercise[]): RoutineTemplatePayload {
+  const payload = templatePayload(detail), existing = new Set(detail.items.map(item => item.exercise.id));
+  for (const exercise of selected) {
+    if (!exercise.isActive || existing.has(exercise.id)) throw new Error('La selección cambió. Revisá los ejercicios antes de agregarlos.');
+    existing.add(exercise.id);
+    payload.items.push({ routineExerciseId: null, exerciseId: exercise.id, targets: targetsFromCatalog(exercise) });
+  }
+  return payload;
+}
+export function validateTargetsDraft(draft: TargetsDraft): Record<string, string> {
+  const errors: Record<string, string> = {};
+  const check = (key: string, parse: () => unknown) => { try { parse(); } catch (cause) { errors[key] = cause instanceof Error ? cause.message : 'Revisá este valor.'; } };
+  draft.sets.forEach((set, index) => {
+    check(`sets.${index}.targetReps`, () => parseNumber(set.targetReps, 'Repeticiones', 1000, true));
+    check(`sets.${index}.targetWeightKg`, () => parseNumber(set.targetWeightKg, 'Peso', 9999.99, false));
+    check(`sets.${index}.targetRir`, () => parseNumber(set.targetRir, 'RIR', 10, true));
+  });
+  check('rest', () => { const min = parseRest(draft.restMin, 'Descanso mínimo'), max = parseRest(draft.restMax, 'Descanso máximo');
+    if (min !== null && max !== null && min > max) throw new Error('El descanso mínimo no puede superar al máximo.'); });
+  if (draft.notes.length > 1000) errors.notes = 'Las notas admiten hasta 1000 caracteres.';
+  return errors;
+}
+
+export function restWheelChoices(draft: TargetsDraft, field: 'restMin' | 'restMax'): (number | null)[] {
+  const bound = parseRest(draft[field === 'restMin' ? 'restMax' : 'restMin'], 'Descanso');
+  return restWheelValues(draft[field]).filter(value => value === null || bound === null || (field === 'restMin' ? value <= bound : value >= bound));
+}

@@ -251,6 +251,7 @@ export function ExerciseEditorModal({
   routines,
   target,
   purpose = 'library',
+  initialName = '',
 }: {
   createIdempotencyKey: () => string;
   onClose: () => void;
@@ -263,13 +264,14 @@ export function ExerciseEditorModal({
   pending: boolean;
   routines: MobileTrainingExerciseRoutine[];
   target: EditorTarget;
-  purpose?: 'library' | 'session';
+  purpose?: 'library' | 'session' | 'routine';
+  initialName?: string;
 }) {
   const editing = target.mode === 'edit';
   const exercise = editing ? target.exercise : null;
   const { colors } = useOwnlevelTheme();
   const [values, setValues] = useState<ExerciseFormValues>(() =>
-    exercise ? exerciseFormFromDto(exercise) : emptyExerciseForm(),
+    exercise ? exerciseFormFromDto(exercise) : { ...emptyExerciseForm(), name: initialName },
   );
   const [routineIds, setRoutineIds] = useState<string[]>(() => exercise?.routineIds ?? []);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -440,7 +442,7 @@ export function ExerciseEditorModal({
               </View>
             </View>
 
-            {purpose !== 'session' ? <View style={[styles.section, styles.numberedSection, { borderBottomColor: colors.border }]}>
+            {purpose === 'library' ? <View style={[styles.section, styles.numberedSection, { borderBottomColor: colors.border }]}>
               <SectionTitle
                 number={4}
                 subtitle={editing ? 'Gestioná dónde se utiliza actualmente.' : 'Seleccioná una rutina para tenerlo más a mano.'}

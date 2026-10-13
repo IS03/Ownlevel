@@ -10,7 +10,7 @@ export function RoutineFormSheet({ children, onClose, open, pending }: RoutineFo
   return (
     <Modal animationType="fade" onRequestClose={() => { if (!pending) onClose(); }} statusBarTranslucent transparent visible={open}>
       <KeyboardAvoidingView behavior="height" style={styles.fill}>
-        <Pressable accessibilityLabel="Cerrar nueva rutina" accessibilityRole="button" disabled={pending} onPress={onClose} style={[StyleSheet.absoluteFill, styles.scrim]} />
+        <Pressable accessibilityLabel="Cerrar hoja de rutina" accessibilityRole="button" disabled={pending} onPress={onClose} style={[StyleSheet.absoluteFill, styles.scrim]} />
         <View style={[styles.sheet, { backgroundColor: colors.background, paddingBottom: insets.bottom }]}>{children}</View>
       </KeyboardAvoidingView>
     </Modal>

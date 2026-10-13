@@ -189,6 +189,8 @@ type ButtonProps = {
   /** Leading icon (AppIcon), 20 pt as the brand sets for buttons. */
   icon?: AppIconName;
   label: string;
+  /** Tabular figures when the label includes a count. */
+  numeric?: boolean;
   /** Shows progress and blocks presses (the action is in flight). */
   loading?: boolean;
   onPress: () => void;
@@ -207,6 +209,7 @@ export function Button({
   disabled = false,
   icon,
   label,
+  numeric = false,
   loading = false,
   onPress,
   testID,
@@ -240,7 +243,7 @@ export function Button({
       ]}
     >
       {loading ? <ActivityIndicator color={tone.text} size="small" /> : icon ? <AppIcon color={tone.text} name={icon} size={appIconSize.row} /> : null}
-      <AppText style={{ color: tone.text }} variant="label">
+      <AppText numeric={numeric} style={{ color: tone.text }} variant="label">
         {label}
       </AppText>
     </Pressable>

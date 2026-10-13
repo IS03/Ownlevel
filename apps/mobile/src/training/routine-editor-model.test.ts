@@ -4,7 +4,7 @@ import type { MobileTrainingExercise } from '@/api/exercises';
 import { detailFixture } from '@/api/routine-editor.fixture';
 
 import {
-  addSet, draftFromTargets, isTargetsDirty, pickerExercises, removeSet,
+  appendExercises, changeRest, restWheelValues, validateTargetsDraft, addSet, draftFromTargets, isTargetsDirty, pickerExercises, removeSet,
   reorderTemplate, targetsFromCatalog, targetsFromDraft, templatePayload, toggleAdjustment,
 } from './routine-editor-model';
 
@@ -65,5 +65,39 @@ describe('routine editor model', () => {
     }] });
     expect(reorderTemplate(payload, 1, -1).items.map((item) => item.exerciseId)).toEqual([exercise.id, detailFixture.items[0]!.exercise.id]);
     expect(payload.items[0]!.routineExerciseId).toBe(detailFixture.items[0]!.routineExerciseId);
+  });
+});
+
+
+describe('routine editor rest wheels and multiple selection', () => {
+  it('keeps empty distinct from zero and includes the exact saved off-grid value', () => {
+    expect(restWheelValues('').slice(0, 3)).toEqual([null, 0, 15]);
+    expect(restWheelValues('2:20')).toContain(140);
+    expect(restWheelValues('2:20')).toHaveLength(243);
+    expect(restWheelValues('60:00').at(-1)).toBe(3600);
+    const draft = { ...draftFromTargets(detailFixture.items[0]!.targets), restMin: '2:20', restMax: '3:00' };
+    expect(targetsFromDraft(draft).restMinSeconds).toBe(140);
+    expect(changeRest(draft, 'restMax', 240).restMin).toBe('2:20');
+    expect(changeRest(draft, 'restMin', 300)).toMatchObject({ restMin: '3:00', restMax: '3:00' });
+    expect(changeRest(draft, 'restMax', 60)).toMatchObject({ restMin: '2:20', restMax: '2:20' });
+    expect(targetsFromDraft(changeRest(draft, 'restMin', null))).toMatchObject({ restMinSeconds: null, restMaxSeconds: 180 });
+    expect(targetsFromDraft(changeRest(draft, 'restMin', 0))).toMatchObject({ restMinSeconds: 0, restMaxSeconds: 180 });
+  });
+  it('adds all selections in click order without altering existing targets, rejecting duplicates/archived', () => {
+    const second = { ...exercise, id: '77777777-7777-4777-8777-777777777777', name: 'Aperturas' };
+    const payload = appendExercises(detailFixture, [exercise, second]);
+    expect(payload.expectedTemplateVersion).toBe(3);
+    expect(payload.items.map(item => item.exerciseId)).toEqual([detailFixture.items[0]!.exercise.id, exercise.id, second.id]);
+    expect(payload.items[0]!.targets).toEqual(detailFixture.items[0]!.targets);
+    expect(() => appendExercises(detailFixture, [exercise, exercise])).toThrow();
+    expect(() => appendExercises(detailFixture, [{ ...exercise, isActive: false }])).toThrow();
+    expect(() => appendExercises(detailFixture, [{ ...exercise, id: detailFixture.items[0]!.exercise.id }])).toThrow();
+  });
+  it('reports validation against specific cells and the notes field without dropping the draft', () => {
+    const draft = draftFromTargets(detailFixture.items[0]!.targets);
+    const invalid = { ...draft, notes: 'x'.repeat(1001), sets: [{ ...draft.sets[0]!, targetWeightKg: '1.999', targetReps: '1.2' }] };
+    expect(validateTargetsDraft(invalid)).toMatchObject({ 'sets.0.targetWeightKg': expect.any(String), 'sets.0.targetReps': expect.any(String), notes: expect.any(String) });
+    expect(validateTargetsDraft({ ...draft, notes: 'x'.repeat(1000) })).toEqual({});
+    expect(invalid.sets[0]!.targetWeightKg).toBe('1.999');
   });
 });
