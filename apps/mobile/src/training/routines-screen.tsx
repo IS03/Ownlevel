@@ -1,6 +1,6 @@
-import type { PropsWithChildren, RefObject } from 'react';
+import type { PropsWithChildren } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, type ScrollViewProps } from 'react-native';
+import { AccessibilityInfo, Platform, Pressable, RefreshControl, StyleSheet, View, type ScrollViewProps } from 'react-native';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
@@ -17,6 +17,7 @@ import { duplicateRoutine, routineDuplicateSource } from './routine-duplicate';
 import { CreateRoutineSheet, type DuplicateRoutineSource, type RoutineCreateInput } from './create-routine-sheet';
 import { RoutineOrderList } from './routine-order-list';
 import { RoutineRow } from './routine-row';
+import { DragScrollView } from './session-native-interactions';
 import { useStartConfirmPointerEvents } from './start-confirm-lock';
 import { useSessionStarter } from './use-session-starter';
 
@@ -61,13 +62,13 @@ function DoneButton({ disabled, onPress }: { disabled: boolean; onPress: () => v
 }
 
 /** UIKit must discover the ScrollView directly to manage large-title expansion and collapse. */
-function RoutinesScrollScreen({ children, contentContainerStyle, scrollRef, ...props }: PropsWithChildren<ScrollViewProps> & { scrollRef?: RefObject<ScrollView | null> }) {
+function RoutinesScrollScreen({ children, contentContainerStyle, ...props }: PropsWithChildren<ScrollViewProps>) {
   const { colors } = useOwnlevelTheme();
   const insets = useSafeAreaInsets();
-  const scroll = <ScrollView {...props} ref={scrollRef} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled"
+  const scroll = <DragScrollView {...props} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled"
     style={[{ backgroundColor: colors.background, flex: 1 }, props.style]}
     contentContainerStyle={[{ alignSelf: 'center', flexGrow: 1, gap: spacing.md, maxWidth: sizes.contentMaxWidth, padding: spacing.lg,
-      paddingBottom: insets.bottom + spacing.xl, width: '100%' }, contentContainerStyle]}>{children}</ScrollView>;
+      paddingBottom: insets.bottom + spacing.xl, width: '100%' }, contentContainerStyle]}>{children}</DragScrollView>;
   return Platform.OS === 'ios' ? scroll : <SafeAreaView edges={['left', 'right', 'bottom']} style={{ backgroundColor: colors.background, flex: 1 }}>{scroll}</SafeAreaView>;
 }
 
@@ -88,8 +89,6 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
   const [dragging, setDragging] = useState(false);
   const [confirmedCopies, setConfirmedCopies] = useState<{ routine: MobileTrainingRoutine; after: string }[]>([]);
   const [confirmedOrder, setConfirmedOrder] = useState<string[] | null>(null);
-  const scrollRef = useRef<ScrollView>(null);
-  const scrollMetrics = useRef({ y: 0, min: 0, max: 0, top: 0, height: 0, contentHeight: 0, bottom: 0 });
   const [pending, setPending] = useState<PendingMutation>(null);
   const pendingRef = useRef(false);
   const mutationEpoch = useRef(0);
@@ -231,14 +230,6 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
       announce({ message: 'Actualizá la lista antes de ordenar las rutinas.', error: true }); void refresh(); return;
     }
     ordering.current = true; setOrderDraft({ routines: active, ids: active.map(routine => routine.id), version: version.data });
-    measureScrollViewport();
-  };
-  const measureScrollViewport = () => {
-    scrollRef.current?.getNativeScrollRef()?.measureInWindow((_x, y, _width, height) => {
-      if (height <= 0) return;
-      // Wait for onScroll to supply offset and viewport height as one snapshot.
-      scrollMetrics.current.top = y;
-    });
   };
   const saveOrder = async () => {
     if (!client || pendingRef.current || !orderDraft || dragging) return;
@@ -265,21 +256,6 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
     } finally { pendingRef.current = false; if (alive.current) setPending(null); }
     announce(next);
   };
-  const scrollAtEdge = (pointer: number) => {
-    const metric = scrollMetrics.current;
-    if (metric.height <= 0) return 0;
-    const top = Math.max(metric.top, insets.top + 64), bottom = metric.top + metric.height - insets.bottom - 64;
-    if (bottom <= top) return 0;
-    const delta = pointer < top + 56 ? -Math.min(12, (top + 56 - pointer) / 4)
-      : pointer > bottom - 56 ? Math.min(12, (pointer - bottom + 56) / 4) : 0;
-    if (!delta) return 0;
-    // An inset/layout update must never turn an upward drag into a downward jump.
-    const next = delta < 0 ? Math.min(metric.y, Math.max(metric.min, metric.y + delta))
-      : Math.max(metric.y, Math.min(metric.max, metric.y + delta));
-    const difference = next - metric.y;
-    if (difference) { metric.y = next; scrollRef.current?.scrollTo({ y: next, animated: false }); }
-    return difference;
-  };
   const title = archivedOnly ? 'Archivadas' : 'Rutinas';
   const header = <>
     <Stack.Screen options={{
@@ -303,21 +279,7 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
     <SkeletonBlock height={24} width={120} /><Surface><SkeletonBlock height={64} /><SkeletonBlock height={64} /><SkeletonBlock height={64} /></Surface>
   </RoutinesScrollScreen> : !current ? <RoutinesScrollScreen testID="routines-unavailable">
     <UnavailableState action={<Button label="Reintentar" onPress={runRefresh} />} description="Revisá la conexión e intentá de nuevo." title={`No pudimos cargar ${title}`} />
-  </RoutinesScrollScreen> : <RoutinesScrollScreen scrollRef={scrollRef} scrollEnabled={!dragging} canCancelContentTouches={!orderDraft} scrollEventThrottle={16}
-    onLayout={measureScrollViewport}
-    onScroll={event => { const { contentOffset, contentInset, contentSize, layoutMeasurement } = event.nativeEvent;
-      const metric = scrollMetrics.current;
-      metric.y = contentOffset.y;
-      // Fabric reports contentInset without UIKit's automatic large-title inset.
-      // Keep the observed negative origin so dragging can return above offset zero.
-      metric.min = Math.min(metric.min, -contentInset.top, contentOffset.y);
-      metric.height = layoutMeasurement.height;
-      metric.contentHeight = contentSize.height; metric.bottom = contentInset.bottom;
-      metric.max = Math.max(metric.min, contentSize.height - layoutMeasurement.height + contentInset.bottom); }}
-    onContentSizeChange={(_width, height) => {
-      const metric = scrollMetrics.current; metric.contentHeight = height;
-      if (metric.height > 0) metric.max = Math.max(metric.min, height - metric.height + metric.bottom);
-    }}
+  </RoutinesScrollScreen> : <RoutinesScrollScreen canCancelContentTouches={!orderDraft}
     pointerEvents={pointerEvents} contentContainerStyle={{ paddingBottom: notice ? insets.bottom + 100 : spacing.xl }}
     refreshControl={!orderDraft ? <RefreshControl colors={[colors.primary]} onRefresh={runRefresh} progressBackgroundColor={colors.surface}
       refreshing={state.status === 'ready' && state.refreshing} tintColor={colors.primary} /> : undefined} testID={archivedOnly ? 'archived-routines-screen' : 'routines-screen'}>
@@ -333,7 +295,7 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
         : rows.length === 0 && !orderDraft ? <EmptyState title={archivedOnly ? 'No tenés rutinas archivadas.' : 'No tenés rutinas activas.'}
           description={archivedOnly ? 'Cuando archives una rutina, la vas a encontrar acá.' : 'Creá una nueva o restaurá una archivada.'} action={archivedOnly ? undefined : <Button label="Crear nueva" onPress={openCreate} />} />
           : orderDraft ? <RoutineOrderList routines={orderDraft.routines} ids={orderDraft.ids} disabled={Boolean(pending)}
-            onChange={ids => setOrderDraft(previous => previous ? { ...previous, ids } : null)} onDragging={setDragging} scrollAtEdge={scrollAtEdge} />
+            onChange={ids => setOrderDraft(previous => previous ? { ...previous, ids } : null)} onDragging={setDragging} />
           : <View style={[styles.list, { backgroundColor: colors.surface }]}>
             {rows.map((routine, index) => <View key={routine.id}>
               {index > 0 ? <View style={styles.separator}><Separator /></View> : null}

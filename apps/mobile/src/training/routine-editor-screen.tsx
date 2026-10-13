@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Alert, Keyboard, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Alert, Keyboard, Platform, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/build/react-navigation/core/usePreventRemove';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,6 +14,7 @@ import { duplicateRoutine, routineDuplicateSource } from './routine-duplicate';
 import { appendExercises, draftFromTargets, isTargetsDirty, targetsFromDraft, templatePayload, validateTargetsDraft, type TargetsDraft } from './routine-editor-model';
 import { RoutineEditorMenu } from './routine-editor-menu';
 import { RoutineExerciseList } from './routine-exercise-list';
+import { DragScrollView } from './session-native-interactions';
 import { RoutineExercisePicker } from './routine-exercise-picker';
 import { RoutineTargetsSheet } from './routine-targets-sheet';
 import { RoutineSheetButton } from './routine-sheet-button';
@@ -46,7 +47,7 @@ export function RoutineEditorScreen({ createIdempotencyKey = defaultKey }: { cre
   const [noticeHeight, setNoticeHeight] = useState(brandTokens.layout.minTouch + spacing.md * 2);
   const [pickerError, setPickerError] = useState<string | undefined>(), [dragging, setDragging] = useState(false), dragRef = useRef(false);
   const [listEpoch, setListEpoch] = useState(0), [keyboardOpen, setKeyboardOpen] = useState(false), [floating, setFloating] = useState(false);
-  const epoch = useRef(0), appliedEpoch = useRef(-1), scroll = useRef<ScrollView>(null), headerBottom = useRef<number | null>(null);
+  const epoch = useRef(0), appliedEpoch = useRef(-1), headerBottom = useRef<number | null>(null);
   const scrollMetrics = useRef({ y: 0, min: 0, max: 0, top: 0, height: 0, contentHeight: 0, bottom: 0 });
   const starter = useSessionStarter({ onSession: sessionId => router.replace(`/(tabs)/train/session/${sessionId}`) });
   const confirmPointerEvents = useStartConfirmPointerEvents();
@@ -175,18 +176,6 @@ export function RoutineEditorScreen({ createIdempotencyKey = defaultKey }: { cre
     if (ids.length !== payload.items.length || new Set(ids).size !== ids.length || ids.some(itemId => !byId.has(itemId))) return;
     payload.items = ids.map(itemId => byId.get(itemId)!); void runTemplate(payload, 'Orden guardado');
   };
-  const scrollAtEdge = (pointer: number) => {
-    const metric = scrollMetrics.current;
-    if (metric.height <= 0) return 0;
-    const top = Math.max(metric.top, insets.top + brandTokens.layout.minTouch);
-    const bottom = metric.top + metric.height - insets.bottom - (Platform.OS === 'ios' ? 0 : brandTokens.layout.tabBarHeight);
-    if (bottom <= top) return 0;
-    const delta = pointer < top + 48 ? -Math.min(12, (top + 48 - pointer) / 4) : pointer > bottom - 48 ? Math.min(12, (pointer - bottom + 48) / 4) : 0;
-    if (!delta) return 0;
-    const next = delta < 0 ? Math.min(metric.y, Math.max(metric.min, metric.y + delta)) : Math.max(metric.y, Math.min(metric.max, metric.y + delta));
-    const actual = next - metric.y;
-    if (actual) { metric.y = next; scroll.current?.scrollTo({ y: next, animated: false }); } return actual;
-  };
   const presentedEdit = edit ?? closingEdit;
   const removedItem = detail?.items.find(item => item.routineExerciseId === removeId);
   const rowDisabled = Boolean(pending || form || edit || closingEdit || startOpen || removeId) || confirmPointerEvents === 'none';
@@ -209,15 +198,9 @@ export function RoutineEditorScreen({ createIdempotencyKey = defaultKey }: { cre
     {state.status === 'loading' && !notFound ? <View testID="routine-editor-loading"><SkeletonBlock height={64} /><SkeletonBlock height={150} /></View>
       : <UnavailableState title={notFound ? 'No encontramos la rutina' : 'No pudimos cargar la rutina'} description={notFound ? 'Esta rutina ya no está disponible.' : 'Tu rutina sigue segura. Revisá la conexión e intentá nuevamente.'}
         action={<Button label={notFound ? 'Volver a Rutinas' : 'Reintentar'} onPress={() => { if (notFound) router.dismissTo('/(tabs)/train/routines'); else void refresh(); }} />} />}
-  </View> : <ScrollView ref={scroll} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" scrollEventThrottle={16} scrollEnabled={!dragging}
+  </View> : <DragScrollView contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled"
     pointerEvents={rowDisabled ? 'none' : 'auto'} style={{ flex: 1, backgroundColor: colors.background }} testID="routine-editor-screen"
     contentContainerStyle={[styles.content, { paddingBottom: footerInset + spacing.xxxl }]}
-    onLayout={() => scroll.current?.getNativeScrollRef()?.measureInWindow((_x, y, _width, height) => {
-      if (height <= 0) return;
-      // Window measurement gives coordinates, not an initialized scroll offset.
-      // Only onScroll can supply height and offset together for edge scrolling.
-      scrollMetrics.current.top = y;
-    })}
     onScroll={event => { const { contentOffset, contentInset, contentSize, layoutMeasurement } = event.nativeEvent; const metric = scrollMetrics.current;
       // Fabric omits UIKit's automatic large-title inset; preserve the observed origin.
       metric.y = contentOffset.y; metric.min = Math.min(metric.min, -contentInset.top, contentOffset.y); metric.bottom = contentInset.bottom; metric.height = layoutMeasurement.height; metric.contentHeight = contentSize.height;
@@ -242,8 +225,8 @@ export function RoutineEditorScreen({ createIdempotencyKey = defaultKey }: { cre
     </View>
     {!detail.items.length ? <EmptyState title="Todavía no tiene ejercicios" description="Agregá el primero para empezar a armar esta rutina." action={<Button label="Agregar ejercicio" onPress={() => openForm('picker')} />} />
       : <RoutineExerciseList key={`${detail.routine.templateVersion}-${detail.items.map(item => item.routineExerciseId).join('|')}-${listEpoch}`} items={detail.items} disabled={rowDisabled} onOpen={openExercise}
-        onRemove={itemId => { if (!busy.current && !blockedRead.current && !dragRef.current) setRemoveId(itemId); }} onCommit={commitOrder} scrollAtEdge={scrollAtEdge} onDragging={value => { dragRef.current = value; setDragging(value); }} />}
-  </ScrollView>;
+        onRemove={itemId => { if (!busy.current && !blockedRead.current && !dragRef.current) setRemoveId(itemId); }} onCommit={commitOrder} onDragging={value => { dragRef.current = value; setDragging(value); }} />}
+  </DragScrollView>;
   return <>
     {header}{content}
     {detail && floating && !keyboardOpen && !dragging && !rowDisabled && detail.items.length ? <Animated.View entering={FadeIn.duration(motionDurations.fast)} style={[styles.floating, { bottom: overlayBottom + (notice ? noticeHeight + spacing.sm : 0) }]}>
