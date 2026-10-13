@@ -99,6 +99,8 @@ try {
   const conflictMigration = await read('supabase/migrations/20260930030000_mobile_active_session_conflict_status.sql');
   await setup.query(conflictMigration);
   await setup.query(conflictMigration);
+  await setup.query(await read('supabase/migrations/20261001010000_active_session_exercise_order.sql'));
+  await setup.query(await read('supabase/migrations/20261013231609_active_session_append_empty_sets.sql'));
   await setup.query(await read('supabase/tests/m3_3b_active_session.sql'));
   console.log('PASS SQL: ownership/RLS, snapshots, save/CAS/read-back, closed/removed, structural replay, atomic rollback, cancel/history');
 
