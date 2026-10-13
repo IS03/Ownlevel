@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { SessionDetailDto, SessionFinishedDto } from '@/api/active-session';
-import { AppIcon, AppText, Button, Heading, ScrollScreen, Surface, radius, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, Button, Heading, ScrollScreen, Surface, radius, spacing, useReduceMotion, useOwnlevelTheme } from '@/design-system';
 import { compactHistoryDate } from './active-session-model';
 import { completedSessionModel, postWorkoutSummary, type CompletedMetadataItem } from './completed-session-model';
 
@@ -19,7 +19,8 @@ function MetadataList({ items }: { items: CompletedMetadataItem[] }) {
 export function PostWorkoutSheet({ finished, onHome, onViewSession }: { finished: SessionFinishedDto; onHome: () => void; onViewSession: () => void }) {
   const { colors } = useOwnlevelTheme();
   const summary = postWorkoutSummary(finished);
-  return <Modal visible transparent animationType="slide" onRequestClose={onViewSession}>
+  const reducedMotion = useReduceMotion();
+  return <Modal visible transparent animationType={reducedMotion ? "fade" : "slide"} onRequestClose={onViewSession}>
     <View style={styles.backdrop}>
       <Pressable accessibilityLabel="Ver sesión terminada" style={styles.flex} onPress={onViewSession} />
       <SafeAreaView edges={['bottom']} style={[styles.sheet, { backgroundColor: colors.surface, borderColor: colors.border }]} testID="post-workout-sheet">
@@ -34,7 +35,12 @@ export function PostWorkoutSheet({ finished, onHome, onViewSession }: { finished
           <AppText variant="label">{summary.line}</AppText>
           {summary.duration ? <AppText muted variant="caption">{summary.duration}</AppText> : null}
         </View>
-        {summary.metadata.length ? <MetadataList items={summary.metadata} /> : null}
+        <ScrollView style={styles.receipt} contentContainerStyle={styles.metadata}>
+          {finished.routineAdditions?.map(item => <AppText key={item.sessionExerciseId} variant="caption">
+            {item.name}: {({ added: 'se sumó a la rutina', already_in_routine: 'ya estaba en la rutina', routine_unavailable: 'no se sumó porque la rutina ya no está activa', no_completed_sets: 'no se sumó porque no tiene series completadas' })[item.outcome]}.
+          </AppText>)}
+          {summary.metadata.length ? <MetadataList items={summary.metadata} /> : null}
+        </ScrollView>
         <Button label="Ir al inicio" onPress={onHome} />
         <Button label="Ver sesión" variant="secondary" onPress={onViewSession} />
       </SafeAreaView>
@@ -86,7 +92,8 @@ const styles = StyleSheet.create({
   metadataItem: { minWidth: 88, gap: 2 }, metadataNote: { width: '100%', gap: 2 },
   set: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 28 }, setNumber: { width: 20 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
-  sheet: { borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, borderWidth: StyleSheet.hairlineWidth, padding: spacing.lg, gap: spacing.md },
+  receipt: { maxHeight: 240 },
+  sheet: { maxHeight: '90%', borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, borderWidth: StyleSheet.hairlineWidth, padding: spacing.lg, gap: spacing.md },
   check: { width: 44, height: 44, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   totals: { borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, padding: spacing.md, gap: 2 },
 });

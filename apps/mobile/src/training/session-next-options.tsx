@@ -5,6 +5,7 @@ import type { SessionNextOptionsProps } from './session-next-options.types';
 /** Native Modal fallback; iOS uses an anchored SwiftUI popover. */
 export function SessionNextOptions(props: SessionNextOptionsProps) {
   const { colors } = useOwnlevelTheme();
+  const applyLabel = props.routineLinked ? 'Tomar resultado de hoy' : `Sumar a ${props.addToRoutineName}`;
   return <Modal visible={props.open} transparent animationType="fade" onRequestClose={props.onClose}>
     <View style={styles.overlay}>
       <Pressable style={StyleSheet.absoluteFill} accessible={false} onPress={props.onClose} />
@@ -23,11 +24,11 @@ export function SessionNextOptions(props: SessionNextOptionsProps) {
           <AppIcon name={props.decision === decision ? 'checkmark' : 'plus'} size={20} color={colors.primary} />
           <AppText style={[styles.flex, { color: colors.primary }]}>{label}</AppText>
         </Pressable>)}
-        {props.routineLinked ? <><Separator /><View style={styles.option}>
-          <AppText style={styles.flex}>Tomar resultado de hoy</AppText>
-          <Switch accessibilityLabel="Tomar resultado de hoy" disabled={!props.editable} value={props.applyToRoutine}
+        {props.routineLinked || props.addToRoutineName ? <><Separator /><View style={styles.option}>
+          <AppText style={styles.flex}>{applyLabel}</AppText>
+          <Switch accessibilityLabel={applyLabel} disabled={!props.editable} value={props.applyToRoutine}
             trackColor={{ true: colors.primary, false: colors.border }} onValueChange={props.onApply} />
-        </View></> : null}
+        </View>{!props.routineLinked ? <AppText muted variant="caption">Al finalizar, se agrega al final de la rutina con las series de hoy.</AppText> : null}</> : null}
       </View>
     </View>
   </Modal>;

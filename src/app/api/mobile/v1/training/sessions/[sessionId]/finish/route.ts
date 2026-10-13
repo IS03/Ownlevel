@@ -10,5 +10,5 @@ export function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest, { params }: { params: Promise<{ sessionId: string }> }) {
   const { sessionId } = await params;
   return sessionMutationResponse(request, "/api/mobile/v1/training/sessions/[sessionId]/finish", 200,
-    (body, context) => finishMobileSession(sessionId, body, context));
+    (body, context) => finishMobileSession(sessionId, body, context, request.nextUrl.searchParams.get("routineAdditions") === "1"));
 }

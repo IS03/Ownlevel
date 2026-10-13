@@ -32,7 +32,7 @@ describe('native active-session lifecycle', () => {
       await view.result.current.controller.refresh();
     });
     expect(request).toHaveBeenCalledTimes(1);
-    expect(request.mock.calls[0][0].path).toBe(`/api/mobile/v1/training/sessions/${SESSION_ID}`);
+    expect(request.mock.calls[0][0].path).toBe(`/api/mobile/v1/training/sessions/${SESSION_ID}?routineAdditions=1`);
     view.unmount(); expect(remove).toHaveBeenCalled();
   });
 });

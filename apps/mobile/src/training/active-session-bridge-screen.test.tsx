@@ -11,6 +11,7 @@ import type { SessionDetailDto } from '@/api/active-session';
 import { OwnlevelThemeProvider, spacing } from '@/design-system';
 import { ActiveSessionController, type ActiveSessionApi } from './active-session-controller';
 import { SessionDraftRepository } from './active-session-storage';
+import { PostWorkoutSheet } from './completed-session-view';
 import { ActiveSessionView } from './active-session-screen';
 import { EXERCISE_ID, NEXT_VERSION, SECOND_ID, SESSION_ID, testDetail, testExercise, testFinished } from './active-session-test-fixtures';
 import { DRAG_DELAY, LIFT_SCALE, PRESS_SCALE } from './session-native-interactions';
@@ -302,6 +303,18 @@ describe('native active session screen', () => {
     expect(view.queryByText('Quitar ajuste')).toBeNull();
     fireEvent.press(view.getByLabelText('Cerrar opciones de próxima vez'));
     expect(view.queryByRole('checkbox', { name: 'Más peso' })).toBeNull();
+    controller.dispose();
+  });
+  it('saves the extra exercise opt-in through the existing draft and autosave path', async () => {
+    const detail = testDetail(); detail.session.routineId = SECOND_ID; detail.session.routineNameSnapshot = 'PUSH'; detail.session.name = 'Mi sesión';
+    const { controller, api, Screen } = fixture(detail); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
+    fireEvent.press(view.getByRole('button', { name: 'Próxima vez' }));
+    expect(view.getByLabelText('Sumar a PUSH').props.value).toBe(false);
+    expect(view.queryByText('Tomar resultado de hoy')).toBeNull();
+    fireEvent(view.getByLabelText('Sumar a PUSH'), 'valueChange', true);
+    await act(async () => { await controller.flush(EXERCISE_ID); });
+    expect(api.save).toHaveBeenLastCalledWith(EXERCISE_ID, expect.any(String), expect.objectContaining({ applyToRoutine: true, decision: 'maintain' }));
+    expect(api.finish).not.toHaveBeenCalled(); expect(api.add).not.toHaveBeenCalled();
     controller.dispose();
   });
   it('drags complete series directly, renumbers once, then swipes reset/delete with a minimum of one', async () => {
@@ -667,5 +680,18 @@ describe('native finish screen (M3.4-2)', () => {
     const detail = completedDetail(); detail.session.status = 'discarded';
     const { controller, Screen } = fixture(detail); await controller.refresh(); const view = render(<Screen />);
     expect(view.getByTestId('discarded-session')).toBeTruthy(); expect(view.getByText('SESIÓN ELIMINADA')).toBeTruthy(); controller.dispose();
+  });
+});
+
+
+describe('server-confirmed routine additions receipt', () => {
+  it.each(['light', 'dark'] as const)('shows additions and omission reasons in %s mode', mode => {
+    const finished = { ...testFinished(), routineAdditions: [
+      { sessionExerciseId: EXERCISE_ID, exerciseId: EXERCISE_ID, name: 'PRESS', outcome: 'added' as const },
+      { sessionExerciseId: SECOND_ID, exerciseId: SECOND_ID, name: 'ROW', outcome: 'routine_unavailable' as const },
+    ] };
+    const view = render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}><OwnlevelThemeProvider initialMode={mode}><PostWorkoutSheet finished={finished} onHome={() => {}} onViewSession={() => {}} /></OwnlevelThemeProvider></SafeAreaProvider>);
+    expect(view.getByText('PRESS: se sumó a la rutina.')).toBeTruthy();
+    expect(view.getByText('ROW: no se sumó porque la rutina ya no está activa.')).toBeTruthy();
   });
 });

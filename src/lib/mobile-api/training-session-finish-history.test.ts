@@ -75,6 +75,19 @@ describe("M3.4-1 finish contract", () => {
     expect(rpc).toHaveBeenCalledWith("mobile_finish_training_session", { p_session_id: sessionId,
       p_metadata: { energy_level: 4, performance_level: null, pain_level: 0, notes: null }, p_idempotency_key: "finish:1" });
   });
+  it("adopts the v2 finish receipt only when requested and preserves strict validation", async () => {
+    const routineAdditions = ["added", "already_in_routine", "routine_unavailable", "no_completed_sets"].map(outcome => ({ sessionExerciseId: exerciseId, exerciseId, name: "PULLOVER", outcome }));
+    const rpc = ledger({ ...finished, routineAdditions });
+    expect(await finishMobileSession(sessionId, finishInput, context(rpc), true)).toEqual({ ...finished, routineAdditions });
+    expect(rpc).toHaveBeenCalledWith("mobile_finish_training_session_v2", expect.objectContaining({ p_idempotency_key: "finish:1" }));
+    for (const invalid of [null, {}, [{ ...routineAdditions[0], outcome: "maybe" }], [{ ...routineAdditions[0], userId: "other" }]])
+      expect(() => parseSessionFinishedResponse({ ...finished, routineAdditions: invalid })).toThrow();
+    mocks.writeAuth.mockResolvedValue(context(rpc));
+    const response = await finishPOST(new NextRequest("https://example.test/api/mobile/v1/training/sessions/session/finish?routineAdditions=1", {
+      method: "POST", headers: { authorization: "Bearer valid", "content-type": "application/json" }, body: JSON.stringify(finishInput),
+    }), { params: Promise.resolve({ sessionId }) });
+    expect(response.status).toBe(200); expect(await response.json()).toMatchObject({ routineAdditions });
+  });
   it("maps domain outcomes to the stable Mobile error contract without leaking SQL", async () => {
     const cases: Array<[string, string, unknown]> = [
       ["NO_COMPLETED_SETS", "P0001", "NO_COMPLETED_SETS"], ["SESSION_CLOSED", "P0001", "SESSION_CLOSED"],

@@ -108,6 +108,8 @@ try {
   await setup.query(await readTrainingTestFile('supabase/migrations/20261001010000_active_session_exercise_order.sql'));
   const migration = await readTrainingTestFile('supabase/migrations/20261002010000_mobile_training_finish_history_expand.sql');
   await setup.query(migration); await setup.query(migration);
+  // Verify the existing finish/correction/discard contracts against Step 3 EXPAND too.
+  if (process.argv.includes('--routine-additions')) await setup.query(await readTrainingTestFile('supabase/migrations/20261013233111_active_session_add_to_routine_expand.sql'));
   for (const user of [owner, other]) await setup.query('insert into auth.users(id) values($1)', [user]);
   await setup.query("insert into public.day_logs(id,user_id,log_date) values($1,$2,'2026-10-01'),($3,$4,'2026-10-01')", [ownerDay, owner, otherDay, other]);
   await setup.query("insert into public.exercises(id,user_id,nombre,series_sugeridas,reps_sugeridas,peso_sugerido,rir_sugerido) values($1,$3,'PRESS',1,8,40,2),($2,$3,'ROW',1,8,40,2)", [pressId, rowId, owner]);

@@ -167,12 +167,19 @@ describe('M3.4-2 finish contract (no UI)', () => {
       expect(parseSessionFinished(invalid)).toBeUndefined();
     }
   });
+  it('parses server-confirmed additions and skips, while accepting the legacy receipt', () => {
+    const additions = ['added', 'already_in_routine', 'routine_unavailable', 'no_completed_sets'].map(outcome => ({ sessionExerciseId: relationId, exerciseId, name: 'PULLOVER', outcome }));
+    expect(parseSessionFinished({ ...finished, routineAdditions: additions })?.routineAdditions).toEqual(additions);
+    expect(parseSessionFinished(finished)).toEqual(finished);
+    for (const invalid of [null, {}, [{ ...additions[0], outcome: 'maybe' }], [{ ...additions[0], userId: 'foreign' }]])
+      expect(parseSessionFinished({ ...finished, routineAdditions: invalid })).toBeUndefined();
+  });
   it('posts once with the caller key and rejects a response for another session', async () => {
     const fetch = jest.fn<typeof globalThis.fetch>().mockResolvedValue(response(200, finished));
     expect(await finishSession(client(fetch), sessionId, body)).toMatchObject({ status: 'ok', data: finished });
     expect(fetch).toHaveBeenCalledTimes(1);
     const [url, init] = fetch.mock.calls[0];
-    expect(String(url)).toBe(`https://example.test/api/mobile/v1/training/sessions/${sessionId}/finish`);
+    expect(String(url)).toBe(`https://example.test/api/mobile/v1/training/sessions/${sessionId}/finish?routineAdditions=1`);
     expect(init?.method).toBe('POST'); expect(JSON.parse(String(init?.body))).toEqual(body);
     const other = jest.fn<typeof globalThis.fetch>().mockResolvedValue(response(200, { ...finished, sessionId: exerciseId }));
     expect(await finishSession(client(other), sessionId, body)).toMatchObject({ status: 'unavailable' });
@@ -191,4 +198,19 @@ it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('preserves activ
   const source = { ...detail, session: { ...detail.session, routineColor } };
   expect(parseSessionDetail(source)).toEqual({ ...detail, session: { ...detail.session, routineColor: routineColor === 'future-color' ? null : routineColor } });
   expect(source.session.routineColor).toBe(routineColor);
+});
+
+
+describe('routine additions adoption', () => {
+  it('accepts an opt-in on an unlinked exercise, including a deleted routine, without weakening other fields', () => {
+    const value = { ...detail, exercises: [{ ...detail.exercises[0], payload: { ...payload, applyToRoutine: true } }] };
+    expect(parseSessionDetail(value)?.exercises[0].payload.applyToRoutine).toBe(true);
+    expect(parseSessionDetail({ ...value, exercises: [{ ...value.exercises[0], payload: { ...payload, applyToRoutine: 'true' } }] })).toBeUndefined();
+  });
+  it('requests the new contract on detail, read-back and save', async () => {
+    const fetch = jest.fn<typeof globalThis.fetch>().mockResolvedValue(response(200, detail));
+    await fetchSessionDetail(client(fetch), sessionId); await fetchSessionExerciseSync(client(fetch), sessionId, relationId);
+    await saveSessionExercise(client(fetch), sessionId, relationId, { expectedUpdatedAt: timestamp, payload });
+    expect(fetch.mock.calls.every(([url]) => String(url).endsWith('?routineAdditions=1'))).toBe(true);
+  });
 });
