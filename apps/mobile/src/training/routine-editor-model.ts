@@ -28,7 +28,7 @@ export function draftFromTargets(targets: RoutineTargets): TargetsDraft {
     notes: targets.notes ?? '',
     sets: targets.sets.map((set) => ({
       targetReps: set.targetReps === null ? '' : String(set.targetReps),
-      targetWeightKg: set.targetWeightKg === null ? '' : String(set.targetWeightKg),
+      targetWeightKg: set.targetWeightKg === null ? '' : String(set.targetWeightKg).replace('.', ','),
       targetRir: set.targetRir === null ? '' : String(set.targetRir),
       notes: set.notes,
     })),

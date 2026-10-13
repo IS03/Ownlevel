@@ -10,7 +10,7 @@ export function RoutineRestPicker({ draft, disabled, onChange }: RoutineRestPick
     <HStack spacing={12} modifiers={[frame({ maxWidth: Infinity }), disable(disabled)]}>
       {(['restMin', 'restMax'] as const).map(field => <VStack key={field} modifiers={[frame({ maxWidth: Infinity })]}>
         <Text modifiers={[font({ textStyle: 'caption' }), foregroundStyle(colors.textMuted)]}>{field === 'restMin' ? 'MÍNIMO' : 'MÁXIMO'}</Text>
-        <Picker label={field === 'restMin' ? 'Descanso mínimo' : 'Descanso máximo'} modifiers={[pickerStyle('wheel'), frame({ height: 180, maxWidth: Infinity })]}
+        <Picker label={field === 'restMin' ? 'Descanso mínimo' : 'Descanso máximo'} modifiers={[pickerStyle('wheel'), frame({ maxWidth: Infinity })]}
           selection={parseRest(draft[field], 'Descanso') ?? -1} onSelectionChange={(value: number) => onChange(changeRest(draft, field, value === -1 ? null : value))}>
           {restWheelChoices(draft, field).map(value => <Text key={value ?? 'empty'} modifiers={[tag(value ?? -1), monospacedDigit(), foregroundStyle(colors.text)]}>{value === null ? 'Sin descanso' : formatRest(value)}</Text>)}
         </Picker>

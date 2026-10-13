@@ -28,6 +28,14 @@ describe('routine editor model', () => {
     expect(toggleAdjustment('increase_weight', 'increase_weight')).toBe('maintain');
   });
 
+  it('formats decimal weights with an Argentine comma and sends the same numeric value', () => {
+    const confirmed = { ...detailFixture.items[0]!.targets, sets: [{ ...detailFixture.items[0]!.targets.sets[0]!, targetWeightKg: 90.25 }] };
+    const draft = draftFromTargets(confirmed);
+    expect(draft.sets[0]!.targetWeightKg).toBe('90,25');
+    expect(isTargetsDirty(draft, confirmed)).toBe(false);
+    expect(targetsFromDraft(draft)).toEqual(confirmed);
+  });
+
   it('adds by duplicating last values, removes and renumbers, enforces limits', () => {
     const draft = draftFromTargets(detailFixture.items[0]!.targets);
     const added = addSet(draft);

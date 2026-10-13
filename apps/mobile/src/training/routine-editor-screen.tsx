@@ -40,6 +40,7 @@ export function RoutineEditorScreen({ createIdempotencyKey = defaultKey }: { cre
   const [closingEdit, setClosingEdit] = useState<Edit | null>(null), afterDismiss = useRef<(() => void) | null>(null);
   const [form, setForm] = useState<'identity' | 'duplicate' | 'picker' | null>(null), [duplicateSource, setDuplicateSource] = useState<DuplicateRoutineSource | null>(null);
   const [pending, setPending] = useState<string | null>(null), busy = useRef(false), blockedRead = useRef(false), alive = useRef(true);
+  const startReadLock = useRef(false);
   const [startOpen, setStartOpen] = useState(false), [removeId, setRemoveId] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null), timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pickerError, setPickerError] = useState<string | undefined>(), [dragging, setDragging] = useState(false), dragRef = useRef(false);
@@ -174,7 +175,7 @@ export function RoutineEditorScreen({ createIdempotencyKey = defaultKey }: { cre
     payload.items = ids.map(itemId => byId.get(itemId)!); void runTemplate(payload, 'Orden guardado');
   };
   const scrollAtEdge = (pointer: number) => {
-    const metric = scrollMetrics.current, top = Math.max(metric.top, insets.top + 44), bottom = metric.top + metric.height - insets.bottom - brandTokens.layout.tabBarHeight;
+    const metric = scrollMetrics.current, top = Math.max(metric.top, insets.top + brandTokens.layout.minTouch), bottom = metric.top + metric.height - insets.bottom - brandTokens.layout.tabBarHeight;
     const delta = pointer < top + 48 ? -Math.min(12, (top + 48 - pointer) / 4) : pointer > bottom - 48 ? Math.min(12, (pointer - bottom + 48) / 4) : 0;
     const next = Math.max(metric.min, Math.min(metric.max, metric.y + delta)), actual = next - metric.y;
     if (actual) { metric.y = next; scroll.current?.scrollTo({ y: next, animated: false }); } return actual;
@@ -213,7 +214,11 @@ export function RoutineEditorScreen({ createIdempotencyKey = defaultKey }: { cre
     {Platform.OS !== 'ios' ? <AppText accessibilityRole="header" variant="largeTitle">{detail.routine.name}</AppText> : null}
     <AppText muted numeric variant="subheadline">{plural(detail.items.length, 'ejercicio', 'ejercicios')} · {plural(detail.items.reduce((total, item) => total + item.targets.sets.length, 0), 'serie', 'series')}</AppText>
     {state.status !== 'ready' ? <InlineUnavailable message="Mostramos la última lectura confirmada." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
-    {detail.routine.isActive ? <Button label="Iniciar entrenamiento" disabled={rowDisabled} onPress={() => setStartOpen(true)} />
+    {detail.routine.isActive ? <View>
+      <StartConfirm open={startOpen} routineName={detail.routine.name} onCancel={() => { if (!startReadLock.current) return; startReadLock.current = false; blockedRead.current = false; setStartOpen(false); void readLatest(); }}
+        onConfirm={() => { if (!startReadLock.current) return; startReadLock.current = false; blockedRead.current = false; setStartOpen(false); if (detail.routine.isActive && !busy.current) starter.start({ routineId: id }); }} />
+      <Button icon="play" label="Iniciar entrenamiento" disabled={rowDisabled} onPress={() => { startReadLock.current = true; blockedRead.current = true; setStartOpen(true); }} />
+    </View>
       : <View style={styles.group}><AppText variant="footnote">Rutina archivada</AppText><AppText muted variant="footnote">Restaurala desde Opciones de rutina para volver a empezar un entrenamiento.</AppText></View>}
     <View style={styles.sectionHeader} testID="routine-exercises-header" onLayout={event => { headerBottom.current = event.nativeEvent.layout.y + event.nativeEvent.layout.height; setFloating(scrollMetrics.current.y >= headerBottom.current + scrollMetrics.current.min); }}>
       <AppText accessibilityRole="header" variant="title2">Ejercicios</AppText>
@@ -229,7 +234,7 @@ export function RoutineEditorScreen({ createIdempotencyKey = defaultKey }: { cre
     {detail && floating && !keyboardOpen && !dragging && !rowDisabled && detail.items.length ? <Animated.View entering={FadeIn.duration(motionDurations.fast)} style={[styles.floating, { bottom: footerInset }]}>
       <RoutineSheetButton label="Agregar ejercicios" icon="plus" accent onPress={() => openForm('picker')} /></Animated.View> : null}
     {notice ? <Animated.View entering={FadeIn.duration(motionDurations.fast)} exiting={FadeOut.duration(motionDurations.fast)} style={[styles.toast, { bottom: footerInset + 64 }]}>
-      <GlassSurface style={styles.toastSurface}><AppText accessibilityRole={notice.error ? 'alert' : undefined} style={{ flex: 1 }} variant="subheadline">{notice.message}</AppText>
+      <GlassSurface style={styles.toastSurface}><AppText numeric accessibilityRole={notice.error ? 'alert' : undefined} style={{ flex: 1 }} variant="subheadline">{notice.message}</AppText>
         {notice.undoActive !== undefined ? <Pressable accessibilityLabel="Deshacer cambio de estado" accessibilityRole="button" disabled={rowDisabled || dragging} onPress={() => { if (notice.undoActive !== undefined) void changeStatus(notice.undoActive); }} style={styles.add}><AppText style={{ color: colors.primary }} variant="headline">Deshacer</AppText></Pressable> : null}
       </GlassSurface></Animated.View> : null}
     {detail && form === 'identity' ? <CreateRoutineSheet identity={routineDuplicateSource(detail)} open pending={pending === 'identity'} onClose={closeAndRefresh} onSubmit={submitIdentity} createIdempotencyKey={createIdempotencyKey} /> : null}
@@ -238,11 +243,10 @@ export function RoutineEditorScreen({ createIdempotencyKey = defaultKey }: { cre
     {presentedEdit ? <RoutineTargetsSheet open={Boolean(edit)} onDismissed={() => { setClosingEdit(null); const next = afterDismiss.current; afterDismiss.current = null; next?.(); }} item={presentedEdit.base.items.find(item => item.routineExerciseId === presentedEdit.itemId)!} draft={presentedEdit.draft} dirty={dirty} pending={pending === 'template'} errors={presentedEdit.errors}
       onChange={draft => { if (busy.current) return; if (!edit) return; const next = { ...edit, draft, errors: {} }; editRef.current = next; setEdit(next); }} onSave={saveTargets}
       onClose={() => discard(closeAndRefresh)} onHistory={() => discard(() => { const exerciseId = presentedEdit.base.items.find(item => item.routineExerciseId === presentedEdit.itemId)!.exercise.id; afterDismiss.current = () => router.push(`/(tabs)/train/history/exercise/${exerciseId}`); closeAndRefresh(); })} /> : null}
-    <StartConfirm open={startOpen} routineName={detail?.routine.name ?? ''} onCancel={() => setStartOpen(false)} onConfirm={() => { setStartOpen(false); if (detail?.routine.isActive && !busy.current) starter.start({ routineId: id }); }} />
     {removedItem ? <RoutineRemoveConfirm open name={removedItem.exercise.name} routineName={detail!.routine.name} onCancel={() => setRemoveId(null)} onConfirm={() => {
       if (!detail || busy.current) return; const payload = templatePayload(detail); payload.items = payload.items.filter(item => item.routineExerciseId !== removeId); setRemoveId(null); void runTemplate(payload, 'Ejercicio quitado');
     }} /> : null}
     {starter.element}
   </>;
 }
-const styles = StyleSheet.create({ state: { flex: 1, padding: spacing.lg }, content: { padding: spacing.lg, gap: spacing.xl }, group: { gap: spacing.xs }, sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.lg }, add: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.sm }, floating: { position: 'absolute', right: spacing.lg }, toast: { position: 'absolute', left: spacing.lg, right: spacing.lg, alignItems: 'center' }, toastSurface: { maxWidth: 400, borderRadius: radius.card, padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md } });
+const styles = StyleSheet.create({ state: { flex: 1, padding: spacing.lg }, content: { padding: spacing.lg, gap: spacing.xl }, group: { gap: spacing.xs }, sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.lg }, add: { minHeight: brandTokens.layout.minTouch, justifyContent: 'center', paddingHorizontal: spacing.sm }, floating: { position: 'absolute', right: spacing.lg }, toast: { position: 'absolute', left: spacing.lg, right: spacing.lg, alignItems: 'center' }, toastSurface: { maxWidth: 400, borderRadius: radius.card, padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md } });

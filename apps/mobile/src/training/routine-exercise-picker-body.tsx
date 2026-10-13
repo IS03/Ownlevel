@@ -15,7 +15,7 @@ export function RoutineExercisePickerBody(props: RoutineExercisePickerBodyProps)
           accessibilityLabel={`${exercise.name}${props.existing.has(exercise.id) ? ', En la rutina' : props.selected.includes(exercise.id) ? ', seleccionado' : ''}`}
           disabled={props.disabled || props.existing.has(exercise.id)} onPress={() => props.onToggle(exercise.id)}
           trailing={props.existing.has(exercise.id) ? <AppText muted variant="footnote">En la rutina</AppText> : props.selected.includes(exercise.id) ? <AppIcon name="check" size={20} color={colors.primary} /> : null} />)}
-        {props.rows.length === 0 ? props.query.trim() ? <ListRow title={`Crear “${props.query.trim()}”`} icon="plus" onPress={props.onCreate} disabled={props.disabled} /> : <ListRow title="No hay ejercicios disponibles" /> : null}
+        {props.rows.length === 0 ? !props.canCreate ? <ListRow title="Actualizá la biblioteca para continuar." /> : props.query.trim() ? <ListRow title={`Crear “${props.query.trim()}”`} icon="plus" onPress={props.onCreate} disabled={props.disabled} /> : <ListRow title="No hay ejercicios disponibles" /> : null}
       </ListGroup>
     </ScrollView>
   </View>;

@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { AppText, radius, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppText, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
 import { formatRest, parseRest } from './exercise-library-model';
 import { changeRest, restWheelChoices } from './routine-editor-model';
 import type { RoutineRestPickerProps } from './routine-rest-picker.types';
-const HEIGHT = 48;
+const HEIGHT = brandTokens.layout.inputHeight;
 function Wheel({ field, ...props }: RoutineRestPickerProps & { field: 'restMin' | 'restMax' }) {
   const { colors } = useOwnlevelTheme();
   const ref = useRef<ScrollView>(null), values = restWheelChoices(props.draft, field), selected = parseRest(props.draft[field], 'Descanso');

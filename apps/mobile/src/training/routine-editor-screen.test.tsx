@@ -1,6 +1,6 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { Alert, RefreshControl } from 'react-native';
+import { Alert, AppState, RefreshControl, type AppStateStatus } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { RoutineDetail } from '@/api/routine-editor';
 import type { MobileTrainingExercise } from '@/api/exercises';
@@ -14,6 +14,7 @@ const mockStatus = jest.fn<(...args: unknown[]) => Promise<unknown>>(), mockDupl
 const mockCreateExercise = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockRequest = jest.fn(), mockPush = jest.fn(), mockDismiss = jest.fn(), mockReplace = jest.fn(), mockDispatch = jest.fn(), mockOptions = jest.fn(), mockStart = jest.fn();
 const mockPreventRemove = jest.fn();
+let mockConfirmStart: (() => void) | undefined, mockCancelStart: (() => void) | undefined;
 let mockIdentityParam: string | undefined, mockRemoveCallback: ((args: { data: { action: object } }) => void) | undefined;
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('expo-glass-effect', () => ({ isGlassEffectAPIAvailable: () => false, isLiquidGlassAvailable: () => false }));
@@ -40,6 +41,7 @@ jest.mock('expo-router', () => {
 });
 jest.mock('./start-confirm', () => ({ StartConfirm: ({ open, onConfirm, onCancel }: { open: boolean; onConfirm: () => void; onCancel: () => void }) => {
   const { Pressable } = jest.requireActual<typeof import('react-native')>('react-native');
+  mockConfirmStart = open ? onConfirm : undefined; mockCancelStart = open ? onCancel : undefined;
   return open ? <><Pressable accessibilityRole="button" accessibilityLabel="Confirmar inicio" onPress={onConfirm} /><Pressable accessibilityRole="button" accessibilityLabel="Cancelar inicio" onPress={onCancel} /></> : null;
 } }));
 jest.mock('./routine-remove-confirm', () => jest.requireActual('./routine-remove-confirm.tsx'));
@@ -82,14 +84,14 @@ describe('routine editor sheets and native list', () => {
   });
   it('requires confirmation and keeps the shared starter', async () => {
     const view = screen(); await ready(view); expect(mockStart).not.toHaveBeenCalled(); press(view, 'Iniciar entrenamiento');
-    expect(mockStart).not.toHaveBeenCalled(); press(view, 'Confirmar inicio'); expect(mockStart).toHaveBeenCalledWith({ routineId: detailFixture.routine.id });
+    expect(mockStart).not.toHaveBeenCalled(); const confirm = mockConfirmStart; act(() => { confirm?.(); confirm?.(); }); expect(mockStart).toHaveBeenCalledWith({ routineId: detailFixture.routine.id }); expect(mockStart).toHaveBeenCalledTimes(1);
   });
   it('saves one sheet with template CAS, null/zero and hidden notes preserved', async () => {
     mockTemplate.mockResolvedValue({ status: 'ok', data: { ...detailFixture, routine: { ...detailFixture.routine, templateVersion: 4 } }, meta });
     const view = screen(); await ready(view); press(view, 'Editar Press'); expect(view.getByTestId('routine-targets-sheet')).toBeTruthy();
     expect(view.getByRole('button', { name: 'Guardar objetivos' })).toBeDisabled();
     expect(view.getByLabelText('Serie 1, peso').props.value).toBe(''); expect(view.getByLabelText('Serie 1, RIR').props.value).toBe('0');
-    fireEvent.changeText(view.getByLabelText('Serie 1, reps'), '9'); press(view, 'Guardar objetivos');
+    fireEvent.changeText(view.getByLabelText('Serie 1, reps'), '9'); await act(async () => press(view, 'Guardar objetivos'));
     await waitFor(() => expect(view.queryByTestId('routine-targets-sheet')).toBeNull());
     expect(mockTemplate).toHaveBeenCalledWith(expect.anything(), detailFixture.routine.id, expect.objectContaining({ expectedTemplateVersion: 3,
       items: [expect.objectContaining({ routineExerciseId: detailFixture.items[0]!.routineExerciseId, targets: expect.objectContaining({ nextAdjustment: 'custom', nextAdjustmentNote: 'Más control', notes: 'Agarre',
@@ -113,7 +115,7 @@ describe('routine editor sheets and native list', () => {
     const view = screen(); await ready(view); press(view, 'Editar Press');
     expect(view.getByRole('button', { name: 'Quitar serie 1' })).toBeDisabled(); press(view, 'Quitar serie 1'); expect(view.getByLabelText('Serie 1, reps')).toBeTruthy();
     press(view, 'Agregar serie'); expect(view.getByLabelText('Serie 2, reps').props.value).toBe('0'); expect(view.getByLabelText('Serie 2, peso').props.value).toBe('');
-    fireEvent.changeText(view.getByLabelText('Serie 1, reps'), '1.5'); press(view, 'Guardar objetivos'); expect(view.getByText(/Repeticiones debe estar/)).toBeTruthy(); expect(mockTemplate).not.toHaveBeenCalled();
+    fireEvent.changeText(view.getByLabelText('Serie 1, reps'), '1.5'); await act(async () => press(view, 'Guardar objetivos')); expect(view.getByText(/Repeticiones debe estar/)).toBeTruthy(); expect(mockTemplate).not.toHaveBeenCalled();
     fireEvent.changeText(view.getByLabelText('Serie 1, reps'), '7'); press(view, 'Quitar serie 1'); expect(view.queryByLabelText('Serie 2, reps')).toBeNull();
   });
   it('keeps custom adjustment untouched until selecting and can toggle back to maintain', async () => {
@@ -125,7 +127,7 @@ describe('routine editor sheets and native list', () => {
     mockTemplate.mockResolvedValue({ status: 'unavailable', reason: 'network', meta });
     const view = screen(); await ready(view); press(view, 'Editar Press'); fireEvent.changeText(view.getByLabelText('Serie 1, reps'), '15');
     fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh'); expect(mockFetch).toHaveBeenCalledTimes(1);
-    press(view, 'Guardar objetivos'); await waitFor(() => expect(view.getAllByText(/No pudimos confirmar el cambio/).length).toBeGreaterThan(0));
+    await act(async () => press(view, 'Guardar objetivos')); await waitFor(() => expect(view.getAllByText(/No pudimos confirmar el cambio/).length).toBeGreaterThan(0));
     expect(view.getByDisplayValue('15')).toBeTruthy(); expect(mockTemplate).toHaveBeenCalledTimes(1);
   });
   it('closes a conflicting draft and fetches authoritative state without retrying the write', async () => {
@@ -145,14 +147,14 @@ describe('routine editor sheets and native list', () => {
   it('archives without a confirmation and offers undo, without Start when archived', async () => {
     mockStatus.mockImplementation(async (_client, _id, active) => ({ status: 'ok', data: { routine: { id: detailFixture.routine.id, isActive: active, updatedAt: detailFixture.routine.updatedAt } }, meta }));
     const view = screen(); await ready(view); mockFetch.mockResolvedValue(loaded({ ...detailFixture, routine: { ...detailFixture.routine, isActive: false } }));
-    press(view, 'Archivar rutina'); await waitFor(() => expect(view.getByText('PUSH archivada')).toBeTruthy()); expect(Alert.alert).not.toHaveBeenCalled(); expect(view.queryByRole('button', { name: 'Iniciar entrenamiento' })).toBeNull();
-    mockFetch.mockResolvedValue(loaded()); press(view, 'Deshacer cambio de estado'); await waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(2));
+    await act(async () => press(view, 'Archivar rutina')); await waitFor(() => expect(view.getByText('PUSH archivada')).toBeTruthy()); expect(Alert.alert).not.toHaveBeenCalled(); expect(view.queryByRole('button', { name: 'Iniciar entrenamiento' })).toBeNull();
+    mockFetch.mockResolvedValue(loaded()); await act(async () => press(view, 'Deshacer cambio de estado')); await waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(2));
     expect(mockStatus.mock.calls.map(call => call[2])).toEqual([false, true]);
   });
   it('uses the shared identity sheet, 12 colors and timestamp CAS', async () => {
     mockIdentity.mockResolvedValue({ status: 'ok', data: { routine: { ...detailFixture.routine, name: 'PUSH B', color: null } }, meta });
     const view = screen(); await ready(view); press(view, 'Cambiar nombre y color'); fireEvent.changeText(view.getByLabelText('Nombre de la rutina'), 'PUSH B');
-    expect(view.getByRole('radio', { name: /arena/i })).toBeTruthy(); fireEvent.press(view.getByRole('radio', { name: 'Sin color' })); press(view, 'Guardar cambios');
+    expect(view.getByRole('radio', { name: /arena/i })).toBeTruthy(); fireEvent.press(view.getByRole('radio', { name: 'Sin color' })); await act(async () => press(view, 'Guardar cambios'));
     await waitFor(() => expect(mockIdentity).toHaveBeenCalledWith(expect.anything(), detailFixture.routine.id, { name: 'PUSH B', color: null, expectedUpdatedAt: detailFixture.routine.updatedAt }));
   });
   it('handles identity conflict and future colors without silently clearing them', async () => {
@@ -168,15 +170,15 @@ describe('routine editor sheets and native list', () => {
   });
   it('duplicates with the same sheet and reuses the idempotency intent on an ambiguous retry', async () => {
     mockDuplicate.mockResolvedValueOnce({ status: 'unavailable', reason: 'network', meta }).mockResolvedValueOnce({ status: 'ok', data: { routine: { id: 'new', name: 'PUSH copia', color: 'violet', order: 2, isActive: true, exerciseCount: 1, setCount: 1 } }, meta });
-    const view = screen(); await ready(view); press(view, 'Duplicar rutina'); await waitFor(() => expect(view.getByDisplayValue('PUSH copia')).toBeTruthy()); press(view, 'Duplicar rutina');
-    await waitFor(() => expect(view.getByText(/No pudimos confirmar la copia/)).toBeTruthy()); press(view, 'Duplicar rutina'); await waitFor(() => expect(mockDuplicate).toHaveBeenCalledTimes(2));
+    const view = screen(); await ready(view); await act(async () => press(view, 'Duplicar rutina')); await waitFor(() => expect(view.getByDisplayValue('PUSH copia')).toBeTruthy()); await act(async () => press(view, 'Duplicar rutina'));
+    await waitFor(() => expect(view.getByText(/No pudimos confirmar la copia/)).toBeTruthy()); await act(async () => press(view, 'Duplicar rutina')); await waitFor(() => expect(mockDuplicate).toHaveBeenCalledTimes(2));
     expect(mockDuplicate.mock.calls[0]?.[2]).toEqual(mockDuplicate.mock.calls[1]?.[2]); expect(mockDuplicate.mock.calls[0]?.[2]).toMatchObject({ expectedUpdatedAt: detailFixture.routine.updatedAt, expectedTemplateVersion: 3, idempotencyKey: 'intent-key' });
   });
   it('adds multiple selected exercises in selection order, keeps existing rows disabled', async () => {
     const first = candidate(), second = candidate('Aperturas', '77777777-7777-4777-8777-777777777777'); catalog([first, second, { ...first, id: detailFixture.items[0]!.exercise.id, name: 'Press' }]); mockTemplate.mockResolvedValue({ status: 'ok', data: detailFixture, meta });
     const view = screen(); await ready(view); press(view, 'Agregar ejercicios'); await waitFor(() => expect(view.getByRole('button', { name: 'Press, En la rutina' })).toBeTruthy());
     expect(view.getByRole('button', { name: 'Press, En la rutina' })).toBeDisabled(); press(view, 'Dominadas'); press(view, 'Aperturas');
-    press(view, 'Agregar 2 ejercicios'); await waitFor(() => expect(mockTemplate).toHaveBeenCalledTimes(1));
+    await act(async () => press(view, 'Agregar 2 ejercicios')); await waitFor(() => expect(mockTemplate).toHaveBeenCalledTimes(1));
     const payload = mockTemplate.mock.calls[0]?.[2] as { items: { exerciseId: string }[]; expectedTemplateVersion: number };
     expect(payload.expectedTemplateVersion).toBe(3); expect(payload.items.map(item => item.exerciseId)).toEqual([detailFixture.items[0]!.exercise.id, first.id, second.id]);
   });
@@ -192,33 +194,39 @@ describe('routine editor sheets and native list', () => {
   });
   it('requires explicit removal confirmation and never edits the exercise library', async () => {
     mockTemplate.mockResolvedValue({ status: 'ok', data: { ...detailFixture, items: [] }, meta }); const view = screen(); await ready(view); press(view, 'Quitar Press');
-    expect(Alert.alert).toHaveBeenCalledWith('¿Quitar Press?', expect.stringContaining('Se pierden sus series y objetivos'), expect.any(Array), expect.any(Object)); expect(mockTemplate).not.toHaveBeenCalled(); confirm('Quitar de PUSH');
+    expect(Alert.alert).toHaveBeenCalledWith('¿Quitar Press?', expect.stringContaining('Se pierden sus series y objetivos'), expect.any(Array), expect.any(Object)); expect(mockTemplate).not.toHaveBeenCalled(); await act(async () => confirm('Quitar de PUSH'));
     await waitFor(() => expect(mockTemplate).toHaveBeenCalledWith(expect.anything(), detailFixture.routine.id, { expectedTemplateVersion: 3, items: [] })); expect(mockRequest).not.toHaveBeenCalled();
   });
   it('creates from no results idempotently without direct assignment and leaves the new exercise selected', async () => {
+    const callbacks: ((state: AppStateStatus) => void)[] = [];
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_event, callback) => { callbacks.push(callback); return { remove: jest.fn() }; });
     catalog([]); const created = candidate('Nuevo ejercicio');
     mockCreateExercise.mockResolvedValueOnce({ status: 'unavailable', reason: 'network', meta }).mockResolvedValueOnce({ status: 'ok', data: { exercise: created }, meta });
     const view = screen(); await ready(view); press(view, 'Agregar ejercicios');
     await waitFor(() => expect(view.getByLabelText('Buscar ejercicio')).toBeTruthy()); fireEvent.changeText(view.getByLabelText('Buscar ejercicio'), 'Nuevo ejercicio');
     press(view, 'Crear “Nuevo ejercicio”'); await waitFor(() => expect(view.getByRole('button', { name: 'Crear ejercicio' })).toBeTruthy());
-    press(view, 'Crear ejercicio'); await waitFor(() => expect(view.getByText(/No pudimos confirmar el alta/)).toBeTruthy());
-    press(view, 'Crear ejercicio'); await waitFor(() => expect(view.getByRole('button', { name: 'Agregar 1 ejercicio' })).not.toBeDisabled());
+    await act(async () => press(view, 'Crear ejercicio')); await waitFor(() => expect(view.getByText(/No pudimos confirmar el alta/)).toBeTruthy());
+    await act(async () => press(view, 'Crear ejercicio')); await waitFor(() => expect(view.getByRole('button', { name: 'Agregar 1 ejercicio' })).not.toBeDisabled());
     expect(mockCreateExercise).toHaveBeenCalledTimes(2); expect(mockCreateExercise.mock.calls[0]?.[1]).toEqual(mockCreateExercise.mock.calls[1]?.[1]);
     expect(mockCreateExercise.mock.calls[0]?.[1]).toMatchObject({ routineIds: [], idempotencyKey: 'intent-key', exercise: { name: 'Nuevo ejercicio' } });
     expect(mockTemplate).not.toHaveBeenCalled();
+    catalog([{ ...created, isActive: false, updatedAt: '2026-10-12T12:00:00Z' }]);
+    await act(async () => { callbacks.forEach(callback => callback('background')); callbacks.forEach(callback => callback('active')); });
+    expect(view.queryByRole('button', { name: 'Nuevo ejercicio, seleccionado' })).toBeNull();
+    expect(view.getByRole('button', { name: 'Agregar 0 ejercicios' })).toBeDisabled();
   });
   it('keeps not_found authoritative after a write without producing an empty routine', async () => {
     mockTemplate.mockResolvedValue({ status: 'not_found', message: 'missing', meta });
     const view = screen(); await ready(view); press(view, 'Editar Press'); fireEvent.changeText(view.getByLabelText('Serie 1, reps'), '9');
-    mockFetch.mockResolvedValue({ status: 'ok', data: { kind: 'not_found' }, meta }); press(view, 'Guardar objetivos');
+    mockFetch.mockResolvedValue({ status: 'ok', data: { kind: 'not_found' }, meta }); await act(async () => press(view, 'Guardar objetivos'));
     await waitFor(() => expect(view.getByText('No encontramos la rutina')).toBeTruthy()); expect(view.queryByText('Todavía no tiene ejercicios')).toBeNull(); expect(view.queryByTestId('routine-targets-sheet')).toBeNull();
   });
   it('blocks concurrent actions while a template write is in flight and preserves a late read barrier', async () => {
     let finish: ((value: unknown) => void) | undefined;
     mockTemplate.mockReturnValue(new Promise(resolve => { finish = resolve; }));
-    const view = screen(); await ready(view); press(view, 'Editar Press'); fireEvent.changeText(view.getByLabelText('Serie 1, reps'), '10'); press(view, 'Guardar objetivos');
+    const view = screen(); await ready(view); press(view, 'Editar Press'); fireEvent.changeText(view.getByLabelText('Serie 1, reps'), '10'); await act(async () => press(view, 'Guardar objetivos'));
     expect(view.getByRole('button', { name: 'Guardando…' })).toBeDisabled(); expect(view.getByRole('button', { name: 'Cerrar ejercicio' })).toBeDisabled();
-    press(view, 'Archivar rutina'); expect(mockStatus).not.toHaveBeenCalled();
+    await act(async () => press(view, 'Archivar rutina')); expect(mockStatus).not.toHaveBeenCalled();
     await act(async () => finish?.({ status: 'ok', data: { ...detailFixture, routine: { ...detailFixture.routine, templateVersion: 4 } }, meta }));
     expect(mockTemplate).toHaveBeenCalledTimes(1); expect(view.queryByTestId('routine-targets-sheet')).toBeNull();
   });
@@ -243,6 +251,26 @@ describe('routine editor sheets and native list', () => {
     await act(async () => resolveOldRead?.(loaded({ ...detailFixture, routine: { ...detailFixture.routine, name: 'Lectura vieja' } })));
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(3));
     expect(mockOptions).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Guardada' })); expect(mockTemplate).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a late native cancellation after a new sheet acquires the read barrier', async () => {
+    const view = screen(); await ready(view); press(view, 'Iniciar entrenamiento'); const cancel = mockCancelStart;
+    await act(async () => cancel?.()); expect(mockFetch).toHaveBeenCalledTimes(2);
+    press(view, 'Cambiar nombre y color'); fireEvent.changeText(view.getByLabelText('Nombre de la rutina'), 'Nombre local');
+    await act(async () => cancel?.()); fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh');
+    expect(mockFetch).toHaveBeenCalledTimes(2); expect(view.getByDisplayValue('Nombre local')).toBeTruthy(); expect(mockIdentity).not.toHaveBeenCalled();
+  });
+
+  it('does not offer Create or a false empty search when a previously confirmed catalog cannot refresh', async () => {
+    const callbacks: ((state: AppStateStatus) => void)[] = [];
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_event, callback) => { callbacks.push(callback); return { remove: jest.fn() }; });
+    catalog([]); const view = screen(); await ready(view); press(view, 'Agregar ejercicios');
+    await waitFor(() => expect(view.getByLabelText('Buscar ejercicio')).toBeTruthy()); fireEvent.changeText(view.getByLabelText('Buscar ejercicio'), 'Nuevo');
+    expect(view.getByRole('button', { name: 'Crear “Nuevo”' })).toBeTruthy();
+    mockCatalog.mockResolvedValue({ status: 'unavailable', reason: 'network', meta });
+    await act(async () => { callbacks.forEach(callback => callback('background')); callbacks.forEach(callback => callback('active')); });
+    expect(view.queryByRole('button', { name: 'Crear “Nuevo”' })).toBeNull(); expect(view.getByText('Actualizá la biblioteca para continuar.')).toBeTruthy();
+    expect(view.getByText('Mostramos la última lectura confirmada.')).toBeTruthy(); expect(mockCreateExercise).not.toHaveBeenCalled();
   });
 
 });

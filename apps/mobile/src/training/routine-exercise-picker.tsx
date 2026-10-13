@@ -4,7 +4,7 @@ import { createMobileTrainingExercise, fetchMobileTrainingExercises, useApiResou
 import type { MobileApiClient } from '@/api/client';
 import type { MobileTrainingExercise, MobileTrainingMuscleGroup } from '@/api/exercises';
 import type { RoutineDetail } from '@/api/routine-editor';
-import { AppText, Button, InlineUnavailable, SkeletonBlock, spacing } from '@/design-system';
+import { AppText, brandTokens, Button, InlineUnavailable, SkeletonBlock, spacing } from '@/design-system';
 import { pickerExercises } from './routine-editor-model';
 import { ExerciseEditorModal } from './exercise-editor-modal';
 import { RoutineEditorSheet } from './routine-editor-sheet';
@@ -27,7 +27,7 @@ export function RoutineExercisePicker({ client, detail, onAdd, onClose, pending,
   const existing = useMemo(() => new Set(detail.items.map(item => item.exercise.id)), [detail.items]);
   const exercises = useMemo(() => {
     const byId = new Map((catalog?.status === 'ok' ? catalog.data.exercises : []).map(exercise => [exercise.id, exercise]));
-    created.forEach(exercise => byId.set(exercise.id, exercise)); return [...byId.values()];
+    created.forEach(exercise => { const confirmed = byId.get(exercise.id); if (!confirmed || Date.parse(confirmed.updatedAt) < Date.parse(exercise.updatedAt)) byId.set(exercise.id, exercise); }); return [...byId.values()];
   }, [catalog, created]);
   const rows = pickerExercises(exercises, new Set(), query, group);
   const picked = selected.map(id => exercises.find(exercise => exercise.id === id)).filter((exercise): exercise is MobileTrainingExercise => Boolean(exercise?.isActive && !existing.has(exercise.id)));
@@ -37,11 +37,11 @@ export function RoutineExercisePicker({ client, detail, onAdd, onClose, pending,
     <RoutineEditorSheet open pending={pending || createPending} onClose={close}>
       <View style={styles.root} testID="routine-exercise-picker">
         <View style={styles.header}><RoutineSheetButton label="Cerrar agregar ejercicios" icon="close" disabled={pending || createPending} onPress={close} />
-          <AppText accessibilityRole="header" style={styles.title} variant="headline">Agregar ejercicios</AppText><View style={{ width: 44 }} /></View>
+          <AppText accessibilityRole="header" style={styles.title} variant="headline">Agregar ejercicios</AppText><View style={{ width: brandTokens.layout.minTouch }} /></View>
         {!current && state.status === 'loading' ? <SkeletonBlock height={200} /> : catalog?.status !== 'ok' ? <InlineUnavailable actionLabel="Reintentar" message="No pudimos cargar la biblioteca." onAction={() => void refresh()} /> : <>
           {state.status !== 'ready' ? <InlineUnavailable actionLabel="Reintentar" message="Mostramos la última lectura confirmada." onAction={() => void refresh()} /> : null}
-          <RoutineExercisePickerBody key={`created-${created.length}`} query={query} onQuery={setQuery} group={group} onGroup={setGroup} rows={rows} existing={existing} selected={selected}
-            disabled={pending || createPending} onToggle={toggle} onCreate={() => setCreating(true)} />
+          <RoutineExercisePickerBody canCreate={state.status === 'ready'} key={`created-${created.length}`} query={query} onQuery={setQuery} group={group} onGroup={setGroup} rows={rows} existing={existing} selected={selected}
+            disabled={pending || createPending} onToggle={toggle} onCreate={() => { if (state.status === 'ready' && catalog?.status === 'ok' && !pending) setCreating(true); }} />
         </>}
         <View style={styles.footer}>
           {error || createNotice ? <AppText accessibilityRole="alert" variant="footnote">{error ?? createNotice}</AppText> : null}
@@ -51,7 +51,7 @@ export function RoutineExercisePicker({ client, detail, onAdd, onClose, pending,
       </View>
     </RoutineEditorSheet>
     {creating ? <ExerciseEditorModal initialName={query.trim()} purpose="routine" target={{ mode: 'create' }} routines={[]} pending={createPending}
-      createIdempotencyKey={createIdempotencyKey} onClose={() => { if (!creationBusy.current) setCreating(false); }} onSetStatus={() => undefined}
+      createIdempotencyKey={createIdempotencyKey} onClose={() => { if (!creationBusy.current) { setCreating(false); void refresh(); } }} onSetStatus={() => undefined}
       onSave={async (exercise, _routineIds, key) => {
         if (!client || creationBusy.current || pending) return 'Esperá a que termine la acción actual.';
         creationBusy.current = true; setCreatePending(true);

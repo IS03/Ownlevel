@@ -82,10 +82,10 @@ export function RoutineTargetsSheet({ item, draft, dirty, pending, errors, onCha
 }
 const styles = StyleSheet.create({
   root: { flex: 1 }, header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, padding: spacing.lg },
-  history: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, minHeight: 44, borderRadius: radius.full, paddingHorizontal: spacing.sm },
+  history: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, minHeight: brandTokens.layout.minTouch, borderRadius: radius.full, paddingHorizontal: spacing.sm },
   content: { gap: spacing.xl, paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl }, identity: { gap: spacing.xs }, table: { gap: spacing.xs },
-  setRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs, paddingVertical: spacing.xs }, number: { width: 20, textAlign: 'center', paddingTop: spacing.sm },
+  setRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs, paddingVertical: spacing.xs }, number: { width: brandTokens.space.lg, textAlign: 'center', paddingTop: spacing.sm },
   cell: { flex: 1, minWidth: 0, textAlign: 'center' }, input: { ...brandTokens.typeScale.title2, textAlign: 'center', paddingHorizontal: spacing.xs, borderWidth: 0 },
   remove: { alignItems: 'center', justifyContent: 'center', minWidth: 64, borderRadius: radius.input }, rest: { borderRadius: radius.card, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
-  group: { gap: spacing.sm }, adjustments: { flexDirection: 'row', gap: spacing.xs }, adjustment: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, minHeight: 48, borderRadius: radius.button, borderWidth: 1 },
+  group: { gap: spacing.sm }, adjustments: { flexDirection: 'row', gap: spacing.xs }, adjustment: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, minHeight: brandTokens.layout.inputHeight, borderRadius: radius.button, borderWidth: 1 },
 });

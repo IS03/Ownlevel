@@ -1,5 +1,5 @@
 import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
-import { AppIcon, GlassSurface, pressedStyle, radius, useOwnlevelTheme, useReduceMotion, type AppIconName } from '@/design-system';
+import { AppIcon, GlassSurface, brandTokens, pressedStyle, radius, useOwnlevelTheme, useReduceMotion, type AppIconName } from '@/design-system';
 export function RoutineSheetButton({ label, icon, onPress, disabled = false, accent = false, pending = false }: {
   label: string; icon: AppIconName; onPress: () => void; disabled?: boolean; accent?: boolean; pending?: boolean;
 }) {
@@ -11,4 +11,4 @@ export function RoutineSheetButton({ label, icon, onPress, disabled = false, acc
     </Pressable>
   </GlassSurface>;
 }
-const styles = StyleSheet.create({ round: { alignItems: 'center', borderRadius: radius.full, height: 44, justifyContent: 'center', width: 44 } });
+const styles = StyleSheet.create({ round: { alignItems: 'center', borderRadius: radius.full, height: brandTokens.layout.minTouch, justifyContent: 'center', width: brandTokens.layout.minTouch } });
