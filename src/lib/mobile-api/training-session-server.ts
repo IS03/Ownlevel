@@ -1,7 +1,7 @@
 import "server-only";
 import {
   getTrainingHistoryDirectory, getWorkoutSessionDetail, listCompletedSessionHistory, listRecentRobustExerciseHistoryByExercise,
-  listRobustExerciseHistory, type RobustExerciseHistoryItem,
+  listRobustExerciseHistory, listCompleteRobustExerciseHistory, type RobustExerciseHistoryItem,
 } from "../phase2/training-robust";
 import { listExercises } from "../phase2/training";
 import { buildTrainingHistoryExerciseDetail, sortTrainingHistoryExercises, type TrainingHistoryExerciseSession } from "../phase2/training-history";
@@ -266,8 +266,8 @@ function exerciseReportSessions(items: RobustExerciseHistoryItem[]): ExerciseRep
     })),
   }));
 }
-function exerciseHistorySessionDto(session: TrainingHistoryExerciseSession): TrainingExerciseHistorySessionDto {
-  return { sessionId: session.sessionId, logDate: session.logDate, routineName: session.routineName, mark: session.mark,
+function exerciseHistorySessionDto(session: TrainingHistoryExerciseSession, routineIds?: Map<string, string | null>): TrainingExerciseHistorySessionDto {
+  return { ...(routineIds ? { routineId: routineIds.get(session.sessionId) ?? null } : {}), sessionId: session.sessionId, logDate: session.logDate, routineName: session.routineName, mark: session.mark,
     completedSets: session.completedSets, rirValues: session.rirValues };
 }
 /** One exercise's completed snapshot history with the Web latest/best marks. */
@@ -275,15 +275,24 @@ export async function readMobileTrainingExerciseHistory(id: unknown, searchParam
   context: MobileSupabaseAuthenticatedContext, performance: RequestPerformanceContext): Promise<TrainingExerciseHistoryResponse> {
   const exerciseId = parseMobileTrainingId(id, "El ejercicio").toLowerCase();
   const limit = parseExerciseHistoryLimit(searchParams.get("limit"));
+  const rawRoutineId = searchParams.get("routineId");
+  const routineId = rawRoutineId === null ? null : parseMobileTrainingId(rawRoutineId, "La rutina").toLowerCase();
+  // Opt-in response keeps older strict Mobile parsers operational until adoption.
+  const expanded = searchParams.get("historyByRoutine") === "1" || routineId !== null;
   const request = auth(context, performance);
   const [catalog, items] = await Promise.all([
     listExercises({ includeArchived: true }, request),
-    listRobustExerciseHistory({ exerciseId, limit: 500 }, request),
+    expanded ? listCompleteRobustExerciseHistory(exerciseId, request) : listRobustExerciseHistory({ exerciseId, limit: 500 }, request),
   ]);
   const exercise = catalog.find((item) => item.id === exerciseId) ?? null;
   const latestSnapshot = items[0]?.exercise ?? null;
   if (!exercise && !latestSnapshot) throw new MobileApiNotFoundError();
-  const detail = buildTrainingHistoryExerciseDetail(exerciseReportSessions(items));
+  const filtered = routineId === null ? items : items.filter(item => item.session.routine_id === routineId);
+  const detail = buildTrainingHistoryExerciseDetail(exerciseReportSessions(filtered));
+  const routineIds = expanded ? new Map(items.map(item => [item.session.id, item.session.routine_id])) : undefined;
+  const routines = new Map<string, { id: string; name: string }>();
+  for (const item of items) if (item.session.routine_id && !routines.has(item.session.routine_id)) routines.set(item.session.routine_id,
+    { id: item.session.routine_id, name: item.session.routine_name_snapshot ?? item.session.session_name ?? "Rutina" });
   return {
     exercise: {
       id: exerciseId, name: latestSnapshot?.nombre_snapshot ?? exercise?.nombre ?? "Ejercicio",
@@ -292,9 +301,10 @@ export async function readMobileTrainingExerciseHistory(id: unknown, searchParam
       implement: latestSnapshot?.implement_snapshot ?? exercise?.implement ?? null,
       weightMode: latestSnapshot?.weight_mode_snapshot ?? exercise?.weight_mode ?? null,
     },
-    latest: detail.latest ? exerciseHistorySessionDto(detail.latest) : null,
-    best: detail.best ? exerciseHistorySessionDto(detail.best) : null,
-    sessions: detail.sessions.slice(0, limit).map(exerciseHistorySessionDto),
+    ...(expanded ? { routines: [...routines.values()].sort((a,b) => a.name.localeCompare(b.name, "es-AR")) } : {}),
+    latest: detail.latest ? exerciseHistorySessionDto(detail.latest, routineIds) : null,
+    best: detail.best ? exerciseHistorySessionDto(detail.best, routineIds) : null,
+    sessions: detail.sessions.slice(0, limit).map(session => exerciseHistorySessionDto(session, routineIds)),
     hasMore: detail.sessions.length > limit,
   };
 }

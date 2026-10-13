@@ -91,7 +91,7 @@ export function CompletedSessionScreen({ api, sessionId, initialDetail, finished
   </View> : null;
   return <CompletedSessionView detail={detail} finished={finished} onHome={onHome} onTraining={onTraining} actions={actions}
     banner={<><ReturnToHistoryDay />{state.stale ? <Surface><AppText muted variant="caption">No se pudo actualizar. Mostramos la última lectura confirmada.</AppText></Surface> : null}</>}
-    onOpenExercise={exerciseId => router.push(`/(tabs)/train/history/exercise/${exerciseId}`)} />;
+    onOpenExercise={exerciseId => router.push(`/(tabs)/train/history/exercise/${exerciseId}${detail.session.routineId ? `?routineId=${encodeURIComponent(detail.session.routineId)}` : ''}`)} />;
 }
 
 /** Route entry: /train/history/[id]. */
