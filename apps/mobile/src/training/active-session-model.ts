@@ -165,3 +165,17 @@ export function parseStoredSummary(value: unknown): SessionSummaryDraft | null {
 }
 /** Shared kg/reps text parser (same limits and messages as the active session). */
 export const parseDraftNumber = numeric;
+
+/** Copy only completed historical actuals into today's normal editable draft. RIR is a target. */
+export function draftUsingHistory(draft: SessionExerciseDraft, history: QuickSessionHistoryDto): SessionExerciseDraft {
+  const completed = history.sets.filter(set => set.isCompleted);
+  if (completed.length < 1 || completed.length > 50) throw new Error('No podemos usar estas series. Elegí otra sesión.');
+  const copied = exerciseDraft({ ...draft, isCompleted: false, sets: completed.map((set, index) => ({
+    setNumber: index + 1, targetReps: draft.sets[index]?.targetReps ?? null, targetWeightKg: draft.sets[index]?.targetWeightKg ?? null,
+    targetRir: set.targetRir, actualReps: set.actualReps, actualWeightKg: set.actualWeightKg, isCompleted: false, notes: null,
+  })) });
+  return { ...draft, sets: copied.sets };
+}
+export function quickHistoryDate(date: string, year = new Date().getFullYear()): string {
+  return new Intl.DateTimeFormat('es-AR', { weekday: 'short', day: 'numeric', month: 'short', ...(Number(date.slice(0, 4)) === year ? {} : { year: 'numeric' }), timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`));
+}

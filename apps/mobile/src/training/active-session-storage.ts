@@ -56,6 +56,19 @@ export class SessionDraftRepository {
       await this.port.removeItem(key);
     });
   }
+  async readDismissedHistory(): Promise<string[]> {
+    const value = await this.read(`${this.prefix}ui.history-dismissals`);
+    return Array.isArray(value) && value.every(id => typeof id === 'string') ? value : [];
+  }
+  dismissHistory(exerciseId: string) {
+    const key = `${this.prefix}ui.history-dismissals`;
+    return this.serialize(key, async () => {
+      const raw = await this.port.getItem(key);
+      const value: unknown = raw ? JSON.parse(raw) : [];
+      const ids = Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [];
+      await this.port.setItem(key, JSON.stringify([...new Set([...ids, exerciseId])]));
+    });
+  }
   readTimer() { return this.read(`${this.prefix}timer`); }
   writeTimer(timer: RestDeadline | null) {
     const key = `${this.prefix}timer`;
@@ -90,7 +103,7 @@ export class SessionDraftRepository {
   async clearSession() {
     await Promise.all([...this.queue.entries()].filter(([key]) => key.startsWith(this.prefix)).map(([, job]) => job.catch(() => undefined)));
     const keys = await this.port.getAllKeys();
-    await Promise.all(keys.filter(key => key.startsWith(`${this.prefix}exercise.`) || key === `${this.prefix}timer` || key === `${this.prefix}metadata`)
+    await Promise.all(keys.filter(key => key.startsWith(`${this.prefix}exercise.`) || key === `${this.prefix}timer` || key === `${this.prefix}metadata` || key.startsWith(`${this.prefix}ui.`))
       .map(key => this.serialize(key, () => this.port.removeItem(key))));
     // Keep the replay key until every draft/timer cleanup has succeeded.
     await this.clearIntent();

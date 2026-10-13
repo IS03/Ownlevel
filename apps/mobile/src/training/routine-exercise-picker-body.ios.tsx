@@ -18,17 +18,18 @@ export function RoutineExercisePickerBody(props: RoutineExercisePickerBodyProps)
         </HStack>
       </ScrollView>
       <List modifiers={[listStyle('insetGrouped'), scrollContentBackground('hidden')]}>
+        {props.session && props.canCreate ? <Button label={props.query.trim() ? `Crear “${props.query.trim()}”` : 'Crear ejercicio nuevo'} systemImage="square.and.pencil" onPress={props.onCreate} modifiers={[disabled(props.disabled), foregroundStyle(colors.primary), listRowBackground(colors.surface)]} /> : null}
         {props.rows.map(exercise => <HStack key={exercise.id} spacing={12} modifiers={[listRowBackground(colors.surface), frame({ minHeight: brandTokens.layout.inputHeight }), contentShape(shapes.rectangle()),
           disabled(props.disabled || props.existing.has(exercise.id)), accessibilityAddTraits(['isButton']), onTapGesture(() => { if (!props.disabled && !props.existing.has(exercise.id)) props.onToggle(exercise.id); }),
-          accessibilityLabel(`${exercise.name}${props.existing.has(exercise.id) ? ', En la rutina' : props.selected.includes(exercise.id) ? ', seleccionado' : ''}`)]}>
+          accessibilityLabel(`${exercise.name}${props.existing.has(exercise.id) ? `, En la ${props.session ? 'sesión' : 'rutina'}` : props.selected.includes(exercise.id) ? ', seleccionado' : ''}`)]}>
           <VStack alignment="leading" spacing={4}>
             <Text modifiers={[font({ textStyle: 'headline' }), foregroundStyle(props.existing.has(exercise.id) ? colors.textMuted : colors.text)]}>{exercise.name}</Text>
             {exerciseSummary(exercise) ? <Text modifiers={[font({ textStyle: 'footnote' }), foregroundStyle(colors.textMuted)]}>{exerciseSummary(exercise)}</Text> : null}
           </VStack>
           <Spacer />
-          {props.existing.has(exercise.id) ? <Text modifiers={[font({ textStyle: 'footnote' }), foregroundStyle(colors.textMuted)]}>En la rutina</Text> : props.selected.includes(exercise.id) ? <Image systemName="checkmark.circle.fill" color={colors.primary} size={20} /> : null}
+          {props.existing.has(exercise.id) ? <Text modifiers={[font({ textStyle: 'footnote' }), foregroundStyle(colors.textMuted)]}>{props.session ? 'En la sesión' : 'En la rutina'}</Text> : props.selected.includes(exercise.id) ? <Image systemName="checkmark.circle.fill" color={colors.primary} size={20} /> : props.session ? <Image systemName="plus.circle" color={colors.primary} size={20} /> : null}
         </HStack>)}
-        {props.rows.length === 0 ? !props.canCreate ? <Text modifiers={[foregroundStyle(colors.textMuted), listRowBackground(colors.surface)]}>Actualizá la biblioteca para continuar.</Text> : props.query.trim() ? <Button label={`Crear “${props.query.trim()}”`} systemImage="plus" onPress={props.onCreate} modifiers={[disabled(props.disabled), listRowBackground(colors.surface)]} />
+        {props.rows.length === 0 ? !props.canCreate ? <Text modifiers={[foregroundStyle(colors.textMuted), listRowBackground(colors.surface)]}>Actualizá la biblioteca para continuar.</Text> : !props.session && props.query.trim() ? <Button label={`Crear “${props.query.trim()}”`} systemImage="plus" onPress={props.onCreate} modifiers={[disabled(props.disabled), listRowBackground(colors.surface)]} />
           : <Text modifiers={[foregroundStyle(colors.textMuted), listRowBackground(colors.surface)]}>No hay ejercicios disponibles</Text> : null}
       </List>
     </VStack>
