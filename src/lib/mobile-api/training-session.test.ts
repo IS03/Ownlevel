@@ -254,7 +254,7 @@ describe("M3.3B shared SQL concurrency/security contract", () => {
 
 // Step 2 must preserve the shared security/locking prefix and structure CAS.
 describe("active-session blank append migration", () => {
-  const migration = readFileSync("supabase/migrations/20261013230126_active_session_append_empty_sets.sql", "utf8");
+  const migration = readFileSync("supabase/migrations/20261013231609_active_session_append_empty_sets.sql", "utf8");
   it("retains ownership, source validation, active-session lock and duplicate checks verbatim", () => {
     const original = sqlFunction("append_workout_exercise");
     const checks = original.slice(original.indexOf("begin\n"), original.indexOf("  v_sets :="));

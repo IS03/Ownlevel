@@ -56,7 +56,7 @@ try {
   const before = await snapshot(setup);
   assert.equal(before[0].sets.length, 4, 'Fixture must first reproduce the previous preload');
   await setup.query('reset role');
-  const migration = await read('supabase/migrations/20261013230126_active_session_append_empty_sets.sql');
+  const migration = await read('supabase/migrations/20261013231609_active_session_append_empty_sets.sql');
   await setup.query(migration); await setup.query(migration);
   assert.deepEqual(await snapshot(setup), before, 'Migration reapplication must preserve existing snapshots and real values');
   await setup.query(await read('supabase/tests/active_session_append_empty.sql'));

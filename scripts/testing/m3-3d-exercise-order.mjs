@@ -59,7 +59,7 @@ try {
   const setup = await connect(); await bootstrapTrainingPostgres(setup);
   const migration = await readTrainingTestFile('supabase/migrations/20261001010000_active_session_exercise_order.sql');
   await setup.query(migration); await setup.query(migration);
-  await setup.query(await readTrainingTestFile('supabase/migrations/20261013230126_active_session_append_empty_sets.sql'));
+  await setup.query(await readTrainingTestFile('supabase/migrations/20261013231609_active_session_append_empty_sets.sql'));
   for(const user of [owner,other]) await setup.query('insert into auth.users(id) values($1)',[user]);
   await setup.query("insert into public.day_logs(id,user_id,log_date) values('33500000-0000-4000-8000-000000000101',$1,'2026-10-01'),('33500000-0000-4000-8000-000000000102',$2,'2026-10-01')",[owner,other]);
   for(const [index,id] of catalog.entries()) await setup.query("insert into public.exercises(id,user_id,nombre,series_sugeridas,reps_sugeridas,peso_sugerido,rir_sugerido,descanso_min_sugerido_segundos,descanso_max_sugerido_segundos) values($1,$2,$3,1,8,40,2,90,120)",[id,owner,`ORDER EXERCISE ${index}`]);
