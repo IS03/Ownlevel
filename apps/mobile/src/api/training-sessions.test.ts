@@ -45,7 +45,7 @@ describe('Mobile start session contract', () => {
     expect(request).toHaveBeenCalledTimes(1);
     expect(request).toHaveBeenCalledWith({
       method: 'POST', path: '/api/mobile/v1/training/sessions',
-      body: { routineId: null, idempotencyKey: 'same-intent' },
+      body: { templateTargetsOnly: true, routineId: null, idempotencyKey: 'same-intent' },
       parse: parseMobileTrainingSessionStartResponse,
     });
   });

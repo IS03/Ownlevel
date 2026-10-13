@@ -1,31 +1,15 @@
-import { cloneElement } from 'react';
+import { cloneElement, Fragment } from 'react';
+import { View } from 'react-native';
 import { Button, ContextMenu, Divider, Group, Host, RNHostView } from '@expo/ui/swift-ui';
 import { contentShape, onTapGesture, shapes } from '@expo/ui/swift-ui/modifiers';
 import { useOwnlevelTheme } from '@/design-system';
-import type { RoutineContextMenuProps } from './routine-context-menu.types';
-
-/** Native long-press menu. No fabricated exercise preview or detail reads on every row. */
-export function RoutineContextMenu({ children, disabled, width, routine, onStart, onEdit, onColor, onDuplicate, onStatus }: RoutineContextMenuProps) {
+import { routineMenuActions, type RoutineContextMenuProps, type TrainingContextMenuProps } from './routine-context-menu.types';
+export function TrainingContextMenu({ children, disabled, width, onOpen, actions }: TrainingContextMenuProps) {
   const { isDark } = useOwnlevelTheme();
   if (disabled || width <= 0) return children;
-  return (
-    <Host colorScheme={isDark ? 'dark' : 'light'} matchContents={{ vertical: true }} style={{ width }}>
-      <ContextMenu>
-        <ContextMenu.Trigger>
-          {/* SwiftUI owns both touch gestures; the RN row keeps its accessibility actions. */}
-          <Group modifiers={[contentShape(shapes.rectangle()), onTapGesture(onEdit)]}>
-            <RNHostView matchContents>{cloneElement(children, { pointerEvents: 'none' })}</RNHostView>
-          </Group>
-        </ContextMenu.Trigger>
-        <ContextMenu.Items>
-          {routine.isActive ? <Button label="Empezar entrenamiento" systemImage="play.fill" onPress={onStart} /> : null}
-          <Button label="Editar rutina" systemImage="pencil" onPress={onEdit} />
-          <Button label="Duplicar" systemImage="doc.on.doc" onPress={onDuplicate} />
-          {routine.isActive ? <Button label="Cambiar color" systemImage="paintpalette" onPress={onColor} /> : null}
-          <Divider />
-          <Button label={routine.isActive ? 'Archivar' : 'Restaurar'} systemImage={routine.isActive ? 'archivebox' : 'archivebox.fill'} onPress={onStatus} />
-        </ContextMenu.Items>
-      </ContextMenu>
-    </Host>
-  );
+  return <Host colorScheme={isDark ? 'dark' : 'light'} matchContents={{ vertical: true }} style={{ width }}><ContextMenu>
+    <ContextMenu.Trigger><Group modifiers={[contentShape(shapes.rectangle()), onTapGesture(onOpen)]}><RNHostView matchContents><View style={{ width }}>{cloneElement(children, { pointerEvents: 'none' })}</View></RNHostView></Group></ContextMenu.Trigger>
+    <ContextMenu.Items>{actions.map(action => <Fragment key={action.label}>{action.separated ? <Divider /> : null}<Button label={action.label} systemImage={action.symbol} onPress={action.onPress} /></Fragment>)}</ContextMenu.Items>
+  </ContextMenu></Host>;
 }
+export function RoutineContextMenu(props: RoutineContextMenuProps) { return <TrainingContextMenu {...props} name={props.routine.name} onOpen={props.onEdit} actions={routineMenuActions(props)} />; }

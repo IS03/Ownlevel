@@ -304,6 +304,7 @@ export function createMobileApiClient({
             conflictCode === 'ACTIVE_SESSION_EXISTS' ||
             conflictCode === 'ROUTINE_LIST_CHANGED' ||
             conflictCode === 'ROUTINE_CHANGED' ||
+            conflictCode === 'EXERCISE_CHANGED' ||
             conflictCode === 'ROUTINE_TEMPLATE_CHANGED' ||
             conflictCode === 'SESSION_EXERCISE_CHANGED' ||
             conflictCode === 'SESSION_CHANGED' ||

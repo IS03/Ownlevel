@@ -76,6 +76,7 @@ export type MobileApiMutationResult<T> =
         | 'ACTIVE_SESSION_EXISTS'
         | 'ROUTINE_LIST_CHANGED'
         | 'ROUTINE_CHANGED'
+        | 'EXERCISE_CHANGED'
         | 'ROUTINE_TEMPLATE_CHANGED'
         | 'SESSION_EXERCISE_CHANGED'
         | 'SESSION_CHANGED'

@@ -1,586 +1,82 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  AccessibilityInfo,
-  Alert,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
-import { Stack } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-import {
-  createMobileTrainingExercise,
-  fetchMobileTrainingExercises,
-  setMobileTrainingExerciseStatus,
-  updateMobileTrainingExercise,
-  useApiResource,
-  useMobileApi,
-} from '@/api';
-import type {
-  MobileTrainingExercise,
-  MobileTrainingExerciseMutation,
-  MobileTrainingExerciseRoutine,
-} from '@/api/exercises';
-import type { MobileApiMutationResult } from '@/api/results';
-import {
-  AppIcon,
-  AppText,
-  Button,
-  EmptyState,
-  InlineUnavailable,
-  ScrollScreen,
-  Separator,
-  SkeletonBlock,
-  Surface,
-  UnavailableState,
-  radius,
-  spacing,
-  useOwnlevelTheme,
-} from '@/design-system';
-import { haptics } from '@/platform/haptics';
-
-import {
-  ExerciseEditorModal,
-  type ExerciseEditorTarget,
-} from './exercise-editor-modal';
+import { useState } from 'react';
+import { Platform, Pressable, RefreshControl, ScrollView, SectionList, StyleSheet, View } from 'react-native';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
+import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
+import { ReduceMotion } from 'react-native-reanimated';
+import type { MobileTrainingExercise, MobileTrainingExerciseRoutine } from '@/api/exercises';
+import { AppIcon, AppText, Chip, EmptyState, InlineUnavailable, SkeletonBlock, TextField, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
+import { ExerciseEditorModal, type ExerciseEditorTarget } from './exercise-editor-modal';
 import { ExerciseFilterModal } from './exercise-filter-modal';
-import {
-  activeFilterCount,
-  DEFAULT_EXERCISE_LIBRARY_FILTERS,
-  exerciseSummary,
-  filterExercises,
-  groupExercises,
-  muscleGroupLabel,
-  sortExercises,
-  type ExerciseLibraryFilters,
-  type ExerciseLibraryGroup,
-} from './exercise-library-model';
-
-const EMPTY_EXERCISES: MobileTrainingExercise[] = [];
-const EMPTY_ROUTINES: MobileTrainingExerciseRoutine[] = [];
-
-function defaultIdempotencyKey(): string {
-  if (typeof globalThis.crypto?.randomUUID === 'function') {
-    return globalThis.crypto.randomUUID();
-  }
-  return `exercise-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function mutationErrorMessage(result: MobileApiMutationResult<unknown>): string {
-  if (result.status === 'validation' || result.status === 'not_found') return result.message;
-  if (result.status === 'conflict') {
-    return 'Este intento ya fue usado con otros datos. Modificá el formulario e intentá nuevamente.';
-  }
-  if (result.status === 'auth_required' || result.status === 'unauthorized') {
-    return 'Tu sesión necesita volver a validarse.';
-  }
-  return 'No pudimos completar la acción. Revisá la conexión e intentá nuevamente.';
-}
-
-function ExerciseRows({
-  exercises,
-  onEdit,
-}: {
-  exercises: MobileTrainingExercise[];
-  onEdit: (exercise: MobileTrainingExercise) => void;
+import { activeFilterCount, DEFAULT_EXERCISE_LIBRARY_FILTERS, exerciseSummary, filterExercises, groupExercises, MUSCLE_GROUP_OPTIONS, toggleValue, type ExerciseLibraryFilters } from './exercise-library-model';
+import { TrainingContextMenu } from './routine-context-menu';
+import { RoutineSheetButton } from './routine-sheet-button';
+import { ExerciseAddRoutineSheet } from './exercise-add-routine-sheet';
+import { ExerciseNotice } from './exercise-notice';
+import { useExerciseLibrary } from './use-exercise-library';
+import { trainingRoutineColor } from './routine-colors';
+function ExerciseRow({ exercise, routines, disabled, onOpen, onEdit, onAdd, onStatus, first, last }: {
+  exercise: MobileTrainingExercise; routines: MobileTrainingExerciseRoutine[]; disabled: boolean; onOpen: () => void; onEdit: () => void; onAdd: () => void; onStatus: () => void; first: boolean; last: boolean;
 }) {
-  const { colors } = useOwnlevelTheme();
-  return (
-    <Surface elevated style={styles.exerciseList}>
-      {exercises.map((exercise, index) => {
-        const summary = exerciseSummary(exercise);
-        return (
-          <View key={exercise.id}>
-            {index > 0 ? <Separator /> : null}
-            <Pressable
-              accessibilityLabel={`Editar ${exercise.name}`}
-              accessibilityRole="button"
-              onPress={() => onEdit(exercise)}
-              style={({ pressed }) => [styles.exerciseRow, { opacity: pressed ? 0.65 : 1 }]}
-              testID={`exercise-row-${exercise.id}`}
-            >
-              <View style={styles.exerciseCopy}>
-                <View style={styles.exerciseTitleRow}>
-                  <AppText numberOfLines={2} testID="exercise-name" variant="label">
-                    {exercise.name}
-                  </AppText>
-                  {!exercise.isActive ? (
-                    <View style={[styles.archivedBadge, { backgroundColor: colors.surfaceRaised }]}>
-                      <AppText muted variant="footnote">ARCHIVADO</AppText>
-                    </View>
-                  ) : null}
-                </View>
-                {summary ? <AppText muted variant="caption">{summary}</AppText> : null}
-              </View>
-              <AppIcon color={colors.textMuted} name="chevronRight" size={16} />
-            </Pressable>
-          </View>
-        );
-      })}
-    </Surface>
-  );
+  const { colors, isDark } = useOwnlevelTheme(), [width, setWidth] = useState(0);
+  const assigned = exercise.routineIds.map(id => routines.find(routine => routine.id === id)).filter((routine): routine is MobileTrainingExerciseRoutine => Boolean(routine));
+  return <View onLayout={event => setWidth(event.nativeEvent.layout.width)} style={[styles.rowClip, { marginHorizontal: spacing.lg, backgroundColor: colors.surface, borderTopLeftRadius: first ? radius.card : 0, borderTopRightRadius: first ? radius.card : 0, borderBottomLeftRadius: last ? radius.card : 0, borderBottomRightRadius: last ? radius.card : 0 }]}>
+    <Swipeable enabled={!disabled} overshootRight={false} animationOptions={{ ...brandTokens.motion.spring, reduceMotion: ReduceMotion.System }} childrenContainerStyle={{ backgroundColor: colors.surface }}
+      renderRightActions={() => <Pressable accessibilityRole="button" accessibilityLabel={`${exercise.isActive ? 'Archivar' : 'Restaurar'} ${exercise.name}`} disabled={disabled} onPress={onStatus} style={[styles.swipe, { backgroundColor: colors.surfaceRaised }]}>
+        <AppIcon name="archive" color={colors.text} size={20} /><AppText variant="footnote">{exercise.isActive ? 'Archivar' : 'Restaurar'}</AppText></Pressable>}>
+      <TrainingContextMenu name={exercise.name} width={width} disabled={disabled} onOpen={onOpen} actions={[
+        ...(exercise.isActive ? [{ label: 'Agregar a una rutina', symbol: 'plus' as const, onPress: onAdd }] : []), { label: 'Editar', symbol: 'pencil', onPress: onEdit },
+        { label: exercise.isActive ? 'Archivar' : 'Restaurar', symbol: 'archivebox', onPress: onStatus, separated: true }]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Abrir ${exercise.name}`} disabled={disabled} onPress={onOpen} testID={`exercise-row-${exercise.id}`}
+          accessibilityActions={[{ name: 'edit', label: 'Editar' }, { name: 'status', label: exercise.isActive ? 'Archivar' : 'Restaurar' }, ...(exercise.isActive ? [{ name: 'add', label: 'Agregar a una rutina' }] : [])]}
+          onAccessibilityAction={event => { if (disabled) return; if (event.nativeEvent.actionName === 'edit') onEdit(); else if (event.nativeEvent.actionName === 'status') onStatus(); else if (event.nativeEvent.actionName === 'add' && exercise.isActive) onAdd(); }}
+          style={({ pressed }) => [styles.row, { backgroundColor: pressed ? colors.surfaceRaised : colors.surface, borderColor: colors.border, borderTopWidth: first ? 0 : StyleSheet.hairlineWidth }]}>
+          <View style={{ flex: 1, gap: spacing.xs }}><AppText variant="headline" testID="exercise-name">{exercise.name}</AppText>{exerciseSummary(exercise) ? <AppText muted variant="footnote">{exerciseSummary(exercise)}</AppText> : null}</View>
+          {assigned.length ? <View accessible accessibilityLabel={`En ${assigned.map(routine => routine.name).join(' y ')}`} style={styles.dots}>
+            {assigned.slice(0, 3).map(routine => <View key={routine.id} style={[styles.dot, { backgroundColor: routine.color ? trainingRoutineColor(routine.color, isDark) : colors.textMuted }]} />)}
+            {assigned.length > 3 ? <AppText numeric muted variant="caption">+{assigned.length - 3}</AppText> : null}</View> : null}
+          <AppIcon name="chevronRight" color={colors.textMuted} size={20} />
+        </Pressable>
+      </TrainingContextMenu>
+    </Swipeable>
+  </View>;
 }
-
-function GroupSection({
-  expanded,
-  label,
-  onToggle,
-  exercises,
-  onEdit,
-}: {
-  expanded: boolean;
-  label: string;
-  onToggle: () => void;
-  exercises: MobileTrainingExercise[];
-  onEdit: (exercise: MobileTrainingExercise) => void;
-}) {
-  const { colors } = useOwnlevelTheme();
-  return (
-    <View style={styles.groupSection}>
-      <Pressable
-        accessibilityLabel={`${expanded ? 'Contraer' : 'Expandir'} ${label}, ${exercises.length} ejercicios`}
-        accessibilityRole="button"
-        accessibilityState={{ expanded }}
-        onPress={onToggle}
-        style={({ pressed }) => [
-          styles.groupHeader,
-          { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
-        ]}
-      >
-        <View style={[styles.disclosure, expanded && styles.disclosureExpanded]}>
-          <AppIcon color={colors.textMuted} name="chevronRight" size={16} />
-        </View>
-        <AppText style={styles.groupTitle} variant="footnote">{label.toUpperCase()}</AppText>
-        <View style={[styles.countBadge, { backgroundColor: colors.surfaceRaised }]}>
-          <AppText variant="caption">{exercises.length}</AppText>
-        </View>
-      </Pressable>
-      {expanded ? <ExerciseRows exercises={exercises} onEdit={onEdit} /> : null}
-    </View>
-  );
+export function ExerciseLibraryScreen({ createIdempotencyKey = () => globalThis.crypto?.randomUUID?.() ?? `exercise-${Date.now()}-${Math.random()}` }: { createIdempotencyKey?: () => string }) {
+  const library = useExerciseLibrary(), router = useRouter(), { colors } = useOwnlevelTheme();
+  const [query, setQuery] = useState(''), [filters, setFilters] = useState<ExerciseLibraryFilters>(DEFAULT_EXERCISE_LIBRARY_FILTERS), [filtersOpen, setFiltersOpen] = useState(false);
+  const [editor, setEditor] = useState<ExerciseEditorTarget | null>(null), [adding, setAdding] = useState<MobileTrainingExercise | null>(null);
+  const { refresh, runRefresh } = library;
+  useFocusEffect(runRefresh);
+  const visible = filterExercises(library.exercises, query, filters), sections = groupExercises(visible).map(group => ({ ...group, data: group.exercises }));
+  const disabled = library.pending || Boolean(editor || filtersOpen || adding);
+  const header = <><Stack.Screen options={{ title: 'Ejercicios', headerSearchBarOptions: Platform.OS === 'ios' ? { placeholder: 'Buscar ejercicio o músculo', hideWhenScrolling: false, hideNavigationBar: false, onChangeText: event => setQuery(event.nativeEvent.text), onCancelButtonPress: () => setQuery('') } : undefined, headerLargeTitleEnabled: Platform.OS === 'ios', headerLargeTitleStyle: { color: colors.text }, headerStyle: { backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.background }, headerLargeStyle: { backgroundColor: 'transparent' },
+    headerRight: Platform.OS === 'ios' ? undefined : () => <RoutineSheetButton label="Nuevo ejercicio" icon="plus" accent disabled={disabled} onPress={() => setEditor({ mode: 'create' })} /> }} />
+    {Platform.OS === 'ios' ? <Stack.Toolbar placement="right"><Stack.Toolbar.Button icon="line.3.horizontal.decrease" accessibilityLabel={`Filtros, ${activeFilterCount(filters)} activos`} separateBackground tintColor={activeFilterCount(filters) ? colors.primary : colors.textMuted} disabled={disabled} onPress={() => setFiltersOpen(true)}>{activeFilterCount(filters) ? <Stack.Toolbar.Badge style={{ color: colors.primary, backgroundColor: colors.brandSubtle }}>{String(activeFilterCount(filters))}</Stack.Toolbar.Badge> : null}</Stack.Toolbar.Button><Stack.Toolbar.Button icon="plus" accessibilityLabel="Nuevo ejercicio" separateBackground tintColor={colors.primary} disabled={disabled} onPress={() => setEditor({ mode: 'create' })} /></Stack.Toolbar> : null}</>;
+  return <>{header}<SectionList sections={sections} stickySectionHeadersEnabled contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" style={{ backgroundColor: colors.background, flex: 1 }}
+    contentContainerStyle={{ paddingBottom: spacing.xxxl }} testID="exercise-library-screen" keyExtractor={exercise => exercise.id}
+    refreshControl={<RefreshControl refreshing={library.state.status === 'ready' && library.state.refreshing} onRefresh={() => { if (!disabled) void refresh(); }} tintColor={colors.primary} />}
+    ListHeaderComponent={<View style={styles.searchArea}>
+      {Platform.OS !== 'ios' ? <AppText variant="largeTitle">Ejercicios</AppText> : null}
+      {library.catalog ? <AppText numeric muted variant="subheadline" style={{ textAlign: 'right' }}>{visible.length} {visible.length === 1 ? 'ejercicio' : 'ejercicios'}</AppText> : null}
+      {Platform.OS !== 'ios' ? <View style={styles.search}><TextField label="Buscar ejercicio o músculo" hideLabel search placeholder="Buscar ejercicio o músculo" value={query} onChangeText={setQuery} style={{ flex: 1 }} />
+        <Pressable accessibilityRole="button" accessibilityLabel={`Filtros, ${activeFilterCount(filters)} activos`} onPress={() => setFiltersOpen(true)} disabled={disabled} style={[styles.filter, { backgroundColor: colors.surfaceRaised }]}>
+          <AppIcon name="filter" size={20} color={colors.textMuted} />{activeFilterCount(filters) ? <AppText numeric variant="caption">{activeFilterCount(filters)}</AppText> : null}</Pressable></View> : null}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+        <Chip kind="toggle" label="Todos" selected={!filters.muscleGroups.length} onPress={() => setFilters(previous => ({ ...previous, muscleGroups: [] }))} />
+        {[...MUSCLE_GROUP_OPTIONS, { value: 'none' as const, label: 'Sin clasificar' }].map(group => <Chip kind="toggle" key={group.value} label={group.label} selected={filters.muscleGroups.includes(group.value)} onPress={() => setFilters(previous => ({ ...previous, muscleGroups: toggleValue(previous.muscleGroups, group.value) }))} />)}
+      </ScrollView>
+      {library.current && library.stale ? <InlineUnavailable message="Mostramos la última lectura confirmada." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
+    </View>}
+    ListEmptyComponent={<View style={{ padding: spacing.lg }}>{!library.current && library.state.status === 'loading' ? <View testID="exercise-library-loading"><SkeletonBlock height={100} /></View> : !library.catalog ? <InlineUnavailable message="Biblioteca no disponible" actionLabel="Reintentar" onAction={() => void refresh()} /> : <EmptyState title={library.exercises.length ? 'Sin resultados' : 'No tenés ejercicios'} description={library.exercises.length ? 'Probá otra búsqueda o cambiá los filtros.' : 'Creá un ejercicio para sumarlo a tus rutinas.'} />}</View>}
+    renderSectionHeader={({ section }) => <View style={[styles.section, { backgroundColor: colors.background }]}><AppText variant="headline">{section.label}</AppText><AppText numeric muted variant="footnote">{section.data.length}</AppText></View>}
+    renderItem={({ item, index, section }) => <ExerciseRow exercise={item} routines={library.routines} disabled={disabled} first={index === 0} last={index === section.data.length - 1}
+      onOpen={() => router.push({ pathname: '/(tabs)/train/exercises/[id]', params: { id: item.id } })} onEdit={() => setEditor({ mode: 'edit', exercise: item })}
+      onAdd={() => setAdding(item)} onStatus={() => void library.status(item)} />} />
+    {filtersOpen ? <ExerciseFilterModal filters={filters} exercises={library.exercises} query={query} onClose={() => setFiltersOpen(false)} onApply={next => { setFilters(next); setFiltersOpen(false); }} /> : null}
+    {editor ? <ExerciseEditorModal target={editor} pending={library.pending} createIdempotencyKey={createIdempotencyKey} onClose={() => setEditor(null)} onSave={async (mutation, _ids, key) => {
+      const error = await library.save(editor.mode === 'edit' ? editor.exercise : undefined, mutation, key); if (!error) setEditor(null); return error;
+    }} /> : null}
+    {adding ? <ExerciseAddRoutineSheet client={library.client} exercise={library.exercises.find(exercise => exercise.id === adding.id) ?? adding} onClose={() => setAdding(null)} onChanged={refresh} onAdded={() => library.announce('Ejercicio agregado a la rutina')} /> : null}
+    {library.notice ? <ExerciseNotice {...library.notice} disabled={library.pending} undo={library.notice.undo ? () => void library.status(library.notice!.undo!.exercise, library.notice!.undo!.active) : undefined} /> : null}
+  </>;
 }
-
-function LibrarySkeleton() {
-  return (
-    <ScrollScreen testID="exercise-library-loading">
-      <SkeletonBlock height={48} width="75%" />
-      <SkeletonBlock height={48} />
-      <SkeletonBlock height={28} width="55%" />
-      <SkeletonBlock height={58} />
-      <SkeletonBlock height={58} />
-      <SkeletonBlock height={58} />
-    </ScrollScreen>
-  );
-}
-
-function FilterSummary({
-  filters,
-  routineNames,
-}: {
-  filters: ExerciseLibraryFilters;
-  routineNames: Map<string, string>;
-}) {
-  const { colors } = useOwnlevelTheme();
-  const labels = [
-    filters.usage === 'assigned' ? 'En rutina' : filters.usage === 'unassigned' ? 'Sin rutina' : null,
-    ...filters.routineIds.map((id) => routineNames.get(id) ?? 'Rutina'),
-    ...filters.muscleGroups.map((group) => group === 'none' ? 'Sin clasificar' : muscleGroupLabel(group)),
-    ...filters.implements,
-    filters.status === 'archived' ? 'Archivados' : filters.status === 'all' ? 'Todos' : null,
-  ].filter((label): label is string => Boolean(label));
-  return labels.length ? (
-    <View accessibilityLabel="Filtros activos" style={styles.filterChips}>
-      {labels.map((label, index) => (
-        <View
-          key={`${label}-${index}`}
-          style={[styles.filterChip, { backgroundColor: colors.brandSubtle, borderColor: colors.primary }]}
-        >
-          <AppText style={{ color: colors.primary }} variant="caption">{label}</AppText>
-        </View>
-      ))}
-    </View>
-  ) : null;
-}
-
-export function ExerciseLibraryScreen({
-  createIdempotencyKey = defaultIdempotencyKey,
-}: {
-  createIdempotencyKey?: () => string;
-}) {
-  const { client } = useMobileApi();
-  const { colors } = useOwnlevelTheme();
-  const insets = useSafeAreaInsets();
-  const [query, setQuery] = useState('');
-  const [filters, setFilters] = useState<ExerciseLibraryFilters>(DEFAULT_EXERCISE_LIBRARY_FILTERS);
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [editor, setEditor] = useState<ExerciseEditorTarget | null>(null);
-  const [pending, setPending] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [openGroups, setOpenGroups] = useState<Set<ExerciseLibraryGroup>>(new Set());
-  const initializedGroups = useRef(false);
-
-  const load = useCallback(
-    (signal: AbortSignal) => {
-      if (!client) {
-        return Promise.resolve({
-          status: 'unavailable' as const,
-          reason: 'invalid_response' as const,
-          meta: { durationMs: 0, httpStatus: null, outcome: 'unavailable' as const },
-        });
-      }
-      return fetchMobileTrainingExercises(client, signal);
-    },
-    [client],
-  );
-  const { refresh, state } = useApiResource(load);
-  const current = state.status === 'ready'
-    ? state.current
-    : state.status === 'loading'
-      ? undefined
-      : state.previous;
-  const catalog = current?.data.catalog.status === 'ok' ? current.data.catalog.data : null;
-  const exercises = catalog?.exercises ?? EMPTY_EXERCISES;
-  const routines = catalog?.routines ?? EMPTY_ROUTINES;
-  const visible = useMemo(
-    () => filterExercises(exercises, query, filters),
-    [exercises, filters, query],
-  );
-  const grouped = useMemo(() => groupExercises(visible), [visible]);
-  const routineNames = useMemo(
-    () => new Map(routines.map((routine) => [routine.id, routine.name])),
-    [routines],
-  );
-  const queryActive = Boolean(query.trim());
-
-  useEffect(() => {
-    if (!initializedGroups.current && grouped[0]) {
-      initializedGroups.current = true;
-      setOpenGroups(new Set([grouped[0].value]));
-    }
-  }, [grouped]);
-
-  useEffect(
-    () => () => {
-      if (noticeTimer.current) clearTimeout(noticeTimer.current);
-    },
-    [],
-  );
-
-  const announce = useCallback((message: string) => {
-    if (noticeTimer.current) clearTimeout(noticeTimer.current);
-    setNotice(message);
-    void AccessibilityInfo.announceForAccessibility(message);
-    noticeTimer.current = setTimeout(() => setNotice(null), 3_500);
-  }, []);
-
-  const runRefresh = useCallback(() => {
-    void refresh();
-  }, [refresh]);
-
-  const saveExercise = useCallback(async (
-    mutation: MobileTrainingExerciseMutation,
-    routineIds: string[],
-    idempotencyKey?: string,
-  ): Promise<string | null> => {
-    if (!client || pending || !editor) return 'Esperá a que termine la acción actual.';
-    setPending(true);
-    const result = editor.mode === 'create'
-      ? await createMobileTrainingExercise(client, {
-        exercise: mutation,
-        routineIds: routineIds.slice(0, 1) as [] | [string],
-        idempotencyKey: idempotencyKey ?? '',
-      })
-      : await updateMobileTrainingExercise(client, editor.exercise.id, mutation, routineIds);
-    if (result.status === 'ok') {
-      setEditor(null);
-      announce(result.data.warning ?? (editor.mode === 'create' ? 'Ejercicio creado.' : 'Cambios guardados.'));
-      await refresh();
-      setPending(false);
-      return null;
-    }
-    setPending(false);
-    return mutationErrorMessage(result);
-  }, [announce, client, editor, pending, refresh]);
-
-  const changeStatus = useCallback((exercise: MobileTrainingExercise) => {
-    if (!client || pending) return;
-    const restoring = !exercise.isActive;
-    const action = restoring ? 'Restaurar' : 'Archivar';
-    Alert.alert(
-      `${action} ${exercise.name}`,
-      'Las sesiones y registros anteriores siempre se conservan.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: action,
-          style: restoring ? 'default' : 'destructive',
-          onPress: () => {
-            void (async () => {
-              setPending(true);
-              const result = await setMobileTrainingExerciseStatus(client, exercise.id, restoring);
-              if (result.status === 'ok') {
-                setEditor(null);
-                announce(restoring ? 'Ejercicio restaurado.' : 'Ejercicio archivado.');
-                await refresh();
-              } else {
-                Alert.alert('No pudimos completar la acción', mutationErrorMessage(result));
-              }
-              setPending(false);
-            })();
-          },
-        },
-      ],
-    );
-  }, [announce, client, pending, refresh]);
-
-  if (!current && state.status === 'loading') return <LibrarySkeleton />;
-  if (!current) {
-    return (
-      <ScrollScreen testID="exercise-library-unavailable">
-        <UnavailableState
-          action={<Button label="Reintentar" onPress={runRefresh} />}
-          description="Tus ejercicios siguen seguros. Revisá la conexión e intentá nuevamente."
-          title="No pudimos cargar la Biblioteca"
-        />
-      </ScrollScreen>
-    );
-  }
-
-  const statusTitle = filters.status === 'active'
-    ? 'Ejercicios activos'
-    : filters.status === 'archived'
-      ? 'Ejercicios archivados'
-      : 'Todos los ejercicios';
-
-  return (
-    <>
-      <Stack.Screen
-        options={{
-          headerRight: () => (
-            <Pressable
-              accessibilityLabel="Nuevo ejercicio"
-              accessibilityRole="button"
-              hitSlop={8}
-              onPress={() => {
-                haptics.selection();
-                setEditor({ mode: 'create' });
-              }}
-            >
-              <AppText style={{ color: colors.primary }} variant="label">+ Nuevo</AppText>
-            </Pressable>
-          ),
-          title: 'Biblioteca',
-        }}
-      />
-      <ScrollScreen
-        refreshControl={
-          <RefreshControl
-            colors={[colors.primary]}
-            onRefresh={runRefresh}
-            progressBackgroundColor={colors.surface}
-            refreshing={state.status === 'ready' && state.refreshing}
-            tintColor={colors.primary}
-          />
-        }
-        testID="exercise-library-screen"
-      >
-        <AppText muted>Buscá y organizá tus ejercicios.</AppText>
-
-        {state.status !== 'ready' ? (
-          <Surface style={styles.noticeSurface} testID="exercise-library-stale">
-            <InlineUnavailable
-              actionLabel="Reintentar"
-              message="No se pudo actualizar. Mostramos la última lectura confirmada."
-              onAction={runRefresh}
-            />
-          </Surface>
-        ) : null}
-
-        {current.data.catalog.status === 'unavailable' ? (
-          <UnavailableState
-            action={<Button label="Reintentar" onPress={runRefresh} />}
-            description="No mostramos una lista vacía porque el catálogo no pudo confirmarse."
-            title="Biblioteca no disponible"
-          />
-        ) : (
-          <>
-            <View style={styles.searchRow}>
-              <TextInput
-                accessibilityLabel="Buscar ejercicio, músculo o implemento"
-                onChangeText={setQuery}
-                placeholder="Buscar ejercicio, músculo o implemento"
-                placeholderTextColor={colors.textMuted}
-                style={[
-                  styles.searchInput,
-                  { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text },
-                ]}
-                value={query}
-              />
-              <Pressable
-                accessibilityLabel={`Filtros${activeFilterCount(filters) ? `, ${activeFilterCount(filters)} activos` : ''}`}
-                accessibilityRole="button"
-                onPress={() => setFiltersOpen(true)}
-                style={({ pressed }) => [
-                  styles.filterButton,
-                  { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
-                ]}
-              >
-                <AppIcon color={colors.primary} name="filter" size={20} />
-                {activeFilterCount(filters) ? (
-                  <AppText style={{ color: colors.primary }} variant="caption">
-                    {activeFilterCount(filters)}
-                  </AppText>
-                ) : null}
-              </Pressable>
-            </View>
-            <FilterSummary filters={filters} routineNames={routineNames} />
-
-            <View style={styles.listSection}>
-              <View style={styles.listHeader}>
-                <AppText muted variant="label">{queryActive ? 'Resultados' : statusTitle}</AppText>
-                <AppText muted variant="caption">
-                  {visible.length} {visible.length === 1 ? 'ejercicio' : 'ejercicios'}
-                </AppText>
-              </View>
-
-              {visible.length === 0 ? (
-                <EmptyState
-                  action={
-                    <Button
-                      label="Limpiar"
-                      onPress={() => {
-                        setQuery('');
-                        setFilters(DEFAULT_EXERCISE_LIBRARY_FILTERS);
-                      }}
-                      variant="secondary"
-                    />
-                  }
-                  description={queryActive ? `No encontramos “${query.trim()}”.` : 'No hay ejercicios con estos filtros.'}
-                  title="Sin resultados"
-                />
-              ) : queryActive ? (
-                <ExerciseRows exercises={sortExercises(visible)} onEdit={(exercise) => setEditor({ mode: 'edit', exercise })} />
-              ) : (
-                <View style={styles.groups}>
-                  {grouped.map((group) => (
-                    <GroupSection
-                      expanded={openGroups.has(group.value)}
-                      exercises={group.exercises}
-                      key={group.value}
-                      label={group.label}
-                      onEdit={(exercise) => setEditor({ mode: 'edit', exercise })}
-                      onToggle={() => setOpenGroups((currentGroups) => {
-                        const next = new Set(currentGroups);
-                        if (next.has(group.value)) next.delete(group.value);
-                        else next.add(group.value);
-                        return next;
-                      })}
-                    />
-                  ))}
-                </View>
-              )}
-            </View>
-          </>
-        )}
-      </ScrollScreen>
-
-      {notice ? (
-        <View
-          pointerEvents="none"
-          style={[styles.toastContainer, { bottom: insets.bottom + spacing.xxxl }]}
-        >
-          <Surface accessibilityRole="alert" elevated style={styles.toastSurface}>
-            <AppText variant="caption">{notice}</AppText>
-          </Surface>
-        </View>
-      ) : null}
-
-      {filtersOpen && catalog ? (
-        <ExerciseFilterModal
-          applied={filters}
-          exercises={catalog.exercises}
-          onApply={(next) => {
-            setFilters(next);
-            setFiltersOpen(false);
-          }}
-          onClose={() => setFiltersOpen(false)}
-          query={query}
-          routines={catalog.routines}
-        />
-      ) : null}
-
-      {editor && catalog ? (
-        <ExerciseEditorModal
-          createIdempotencyKey={createIdempotencyKey}
-          onClose={() => setEditor(null)}
-          onSave={saveExercise}
-          onSetStatus={changeStatus}
-          pending={pending}
-          routines={catalog.routines}
-          target={editor}
-        />
-      ) : null}
-    </>
-  );
-}
-
-const styles = StyleSheet.create({
-  archivedBadge: { borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },
-  countBadge: { borderRadius: radius.pill, minWidth: 30, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
-  disclosure: { transform: [{ rotate: '0deg' }] },
-  disclosureExpanded: { transform: [{ rotate: '90deg' }] },
-  exerciseCopy: { flex: 1, gap: spacing.xs, minWidth: 0 },
-  exerciseList: { gap: 0, overflow: 'hidden', padding: 0 },
-  exerciseRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.md,
-    minHeight: 68,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  exerciseTitleRow: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  filterButton: {
-    alignItems: 'center',
-    borderRadius: radius.md,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: spacing.xs,
-    height: 48,
-    justifyContent: 'center',
-    minWidth: 48,
-    paddingHorizontal: spacing.sm,
-  },
-  filterChip: { borderRadius: radius.pill, borderWidth: 1, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
-  filterChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  groupHeader: {
-    alignItems: 'center',
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: spacing.md,
-    minHeight: 56,
-    paddingHorizontal: spacing.md,
-  },
-  groupSection: { gap: spacing.xs },
-  groupTitle: { flex: 1 },
-  groups: { gap: spacing.sm },
-  listHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  listSection: { gap: spacing.md },
-  noticeSurface: { borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  searchInput: {
-    borderRadius: radius.md,
-    borderWidth: 1,
-    flex: 1,
-    fontSize: 15,
-    height: 48,
-    paddingHorizontal: spacing.md,
-  },
-  searchRow: { flexDirection: 'row', gap: spacing.sm },
-  toastContainer: { alignItems: 'center', left: spacing.lg, position: 'absolute', right: spacing.lg },
-  toastSurface: { maxWidth: 520, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, width: '100%' },
-});
+const styles = StyleSheet.create({ searchArea: { padding: spacing.lg, gap: spacing.sm }, search: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm }, filter: { height: 48, minWidth: 44, borderRadius: radius.input, alignItems: 'center', justifyContent: 'center' }, chips: { gap: spacing.sm, paddingVertical: spacing.xs }, section: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.sm }, row: { minHeight: 64, flexDirection: 'row', alignItems: 'center', padding: spacing.md, gap: spacing.sm }, rowClip: { overflow: 'hidden' }, dots: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center' }, dot: { width: 6, height: 6, borderRadius: radius.full }, swipe: { width: 88, alignItems: 'center', justifyContent: 'center', gap: spacing.xs } });

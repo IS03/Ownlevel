@@ -119,22 +119,20 @@ export function templatePayload(
   };
 }
 
-export function targetsFromCatalog(exercise: MobileTrainingExercise): RoutineTargets {
-  const count = Math.max(exercise.suggestedSets ?? 1, 1);
-  if (count > 50) throw new Error('Este ejercicio tiene más de 50 series sugeridas. Ajustalas en la Biblioteca antes de agregarlo.');
+export function targetsFromCatalog(_exercise: MobileTrainingExercise): RoutineTargets {
   return {
     nextAdjustment: 'maintain',
     nextAdjustmentNote: null,
-    restMinSeconds: exercise.suggestedRestMinSeconds,
-    restMaxSeconds: exercise.suggestedRestMaxSeconds,
+    restMinSeconds: null,
+    restMaxSeconds: null,
     notes: null,
-    sets: Array.from({ length: count }, (_, index) => ({
-      setNumber: index + 1,
-      targetReps: exercise.suggestedReps,
-      targetWeightKg: exercise.suggestedWeight,
-      targetRir: exercise.suggestedRir,
+    sets: [{
+      setNumber: 1,
+      targetReps: null,
+      targetWeightKg: null,
+      targetRir: null,
       notes: null,
-    })),
+    }],
   };
 }
 

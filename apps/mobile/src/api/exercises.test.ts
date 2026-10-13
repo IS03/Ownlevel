@@ -7,6 +7,7 @@ import {
   parseMobileTrainingExercisesResponse,
   setMobileTrainingExerciseStatus,
   updateMobileTrainingExercise,
+  updateMobileTrainingExerciseIdentity,
 } from './exercises';
 
 const routineId = '11111111-1111-4111-8111-111111111111';
@@ -146,4 +147,13 @@ describe('Mobile Training exercises API', () => {
 it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('keeps exercise memberships with new or unknown routine color %s', color => {
   const parsed = parseMobileTrainingExercisesResponse({ catalog: { status: 'ok', data: { exercises: [exercise], routines: [{ ...routine, color }] } } });
   expect(parsed?.catalog).toEqual({ status: 'ok', data: { exercises: [exercise], routines: [{ ...routine, color: color === 'future-color' ? null : color }] } });
+});
+
+it('projects identity only and passes its exact server version', async () => {
+  const client = mockClient();
+  await updateMobileTrainingExerciseIdentity(client, exerciseId, { ...exercise, muscleGroup: 'pecho' }, exercise.updatedAt);
+  expect(client.request).toHaveBeenCalledWith(expect.objectContaining({ method: 'PATCH',
+    body: { operation: 'update_identity', expectedUpdatedAt: exercise.updatedAt, exercise: {
+      name: exercise.name, muscleGroup: 'pecho', muscleGroupLabel: exercise.muscleGroupLabel, implement: exercise.implement, weightMode: exercise.weightMode, notes: null,
+    } } }));
 });

@@ -133,6 +133,9 @@ function throwTrainingMutationError(
       "ROUTINE_TEMPLATE_CHANGED",
     );
   }
+  if (code === "40001" && message.includes("EXERCISE_CHANGED")) {
+    throw new MobileApiConflictError("El ejercicio cambió en otro lugar. Recargá antes de editarlo.", "EXERCISE_CHANGED");
+  }
   if (code === "40001" && message.includes("ROUTINE_CHANGED")) {
     throw new MobileApiConflictError(
       "La rutina cambió en otro dispositivo. Recargá antes de guardar.",
@@ -409,7 +412,7 @@ export async function startMobileTrainingSession(
 ): Promise<{ status: 201 | 409; body: MobileTrainingSessionStartResponse }> {
   const input = parseMobileTrainingSessionStart(payload);
   const { data, error } = await context.supabase.rpc(
-    "mobile_start_training_session",
+    input.templateTargetsOnly ? "mobile_start_training_session_from_template" : "mobile_start_training_session",
     {
       p_idempotency_key: input.idempotencyKey,
       p_routine_id: input.routineId,
@@ -521,11 +524,11 @@ export async function patchMobileTrainingExercise(
     }
 
     const { data, error } = await context.supabase.rpc(
-      "mobile_update_training_exercise",
+      input.operation === "update_identity" ? "mobile_update_training_exercise_identity" : "mobile_update_training_exercise",
       {
         p_exercise_id: exerciseId,
         p_exercise: input.publicExercise,
-        p_routine_ids: input.routineIds,
+        ...(input.operation === "update_identity" ? { p_expected_updated_at: input.expectedUpdatedAt } : { p_routine_ids: input.routineIds }),
       },
     );
     if (error) {

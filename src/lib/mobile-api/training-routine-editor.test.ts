@@ -280,3 +280,10 @@ describe("M3.2A SQL safety contract", () => {
     expect(migration).toContain("grant execute on function public.mobile_start_training_session(text, uuid) to authenticated");
   });
 });
+
+it("accepts only the opt-in template policy and preserves legacy start parsing", () => {
+  const body = { routineId: null, idempotencyKey: "policy" };
+  expect(parseMobileTrainingSessionStart(body)).toEqual(body);
+  expect(parseMobileTrainingSessionStart({ ...body, templateTargetsOnly: true })).toEqual({ ...body, templateTargetsOnly: true });
+  expect(() => parseMobileTrainingSessionStart({ ...body, templateTargetsOnly: false })).toThrow();
+});

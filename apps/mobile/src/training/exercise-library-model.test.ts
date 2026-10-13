@@ -6,6 +6,7 @@ import {
   DEFAULT_EXERCISE_LIBRARY_FILTERS,
   exerciseFormFromDto,
   exerciseMutationFromForm,
+  exerciseIdentityMutation,
   filterExercises,
   groupExercises,
   normalizeExerciseSearch,
@@ -125,4 +126,11 @@ describe('exercise library model', () => {
       .toThrow(/mínimo/);
     expect(() => exerciseMutationFromForm({ ...base, notes: 'x'.repeat(1001) })).toThrow(/Notas/);
   });
+});
+
+it('creates only identity with null defaults and preserves Web defaults when editing', () => {
+  const original = item({ suggestedWeight: 0, suggestedSets: 5 });
+  const values = exerciseFormFromDto(original);
+  expect(exerciseIdentityMutation(values)).toMatchObject({ suggestedSets: null, suggestedWeight: null, suggestedReps: null, suggestedRir: null, suggestedRestMinSeconds: null, suggestedRestMaxSeconds: null });
+  expect(exerciseIdentityMutation({ ...values, name: 'Otro' }, original)).toMatchObject({ name: 'Otro', suggestedWeight: 0, suggestedSets: 5, suggestedReps: original.suggestedReps, suggestedRestMinSeconds: 90, suggestedRestMaxSeconds: 120 });
 });
