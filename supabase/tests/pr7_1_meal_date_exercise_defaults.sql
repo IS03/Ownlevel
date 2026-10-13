@@ -124,13 +124,15 @@ begin
   if not exists (
     select 1 from public.workout_session_exercises
     where id = v_session_exercise and source_type = 'manual_new'
-      and planned_sets_count = 4
-      and rest_min_seconds_snapshot = 180
-      and rest_max_seconds_snapshot = 240
+      and planned_sets_count = 1 and series_reales = 1
+      and reps_reales is null and peso_real is null
+      and rest_min_seconds_snapshot is null
+      and rest_max_seconds_snapshot is null
   ) or (select count(*) from public.workout_sets
         where workout_session_exercise_id = v_session_exercise
-          and target_reps = 8 and target_weight_kg = 50 and target_rir = 1) <> 4 then
-    raise exception 'sesión no inicializó defaults y snapshots';
+          and target_reps is null and target_weight_kg is null and target_rir is null
+          and actual_reps is null and actual_weight_kg is null and not is_completed) <> 1 then
+    raise exception 'sesión no agregó una serie vacía sin descanso';
   end if;
 end;
 $$;

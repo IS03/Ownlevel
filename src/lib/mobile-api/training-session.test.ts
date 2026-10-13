@@ -51,6 +51,16 @@ describe("M3.3B active session codecs", () => {
     expect(() => parseSessionSave({ expectedUpdatedAt: timestamp, payload, userId: "other" })).toThrow();
     expect(() => parseSessionSave({ expectedUpdatedAt: timestamp, payload: { ...payload, sets: [{ ...payload.sets[0], actualRir: 2 }] } })).toThrow();
   });
+  it("projects blank appended sets and absent rest without fallback to catalog suggestions", () => {
+    const set = { set_number: 1, target_reps: null, target_weight_kg: null, target_rir: null, actual_reps: null, actual_weight_kg: null, is_completed: false, notes: null };
+    const source = { ...detail, exercises: [{ ...detail.exercises[0], rest_min_seconds_snapshot: null, rest_max_seconds_snapshot: null,
+      next_adjustment_snapshot: "maintain" as const, is_completed: false, notes: null, sets: [set] }] } as WorkoutSessionDetail;
+    const row = sessionDetailDto(source, { status: "ok", data: {} }).exercises[0];
+    expect(row).toMatchObject({ restMinSecondsSnapshot: null, restMaxSecondsSnapshot: null, payload: {
+      isCompleted: false, decision: "maintain", applyToRoutine: false, sets: [{ setNumber: 1, targetReps: null, targetWeightKg: null, targetRir: null,
+        actualReps: null, actualWeightKg: null, isCompleted: false }] } });
+    expect(parseSessionSave({ expectedUpdatedAt: timestamp, payload: row.payload }).payload.sets).toEqual([set]);
+  });
   it("validates recursive runtime types, completion invariants and set numbering", () => {
     for (const invalid of [
       { ...payload, isCompleted: false }, { ...payload, applyToRoutine: "true" },
@@ -239,5 +249,20 @@ describe("M3.3B shared SQL concurrency/security contract", () => {
     expect(readFileSync("src/app/(app)/train/session/[id]/session-editor.tsx", "utf8")).toContain('formData.set("expected_updated_at", serverVersionsRef.current[exerciseId])');
     expect(readFileSync("src/app/(app)/train/session/[id]/session-editor.tsx", "utf8"))
       .toContain('getErrorCategory(exerciseId) === "conflict"');
+  });
+});
+
+// Step 2 must preserve the shared security/locking prefix and structure CAS.
+describe("active-session blank append migration", () => {
+  const migration = readFileSync("supabase/migrations/20261013230126_active_session_append_empty_sets.sql", "utf8");
+  it("retains ownership, source validation, active-session lock and duplicate checks verbatim", () => {
+    const original = sqlFunction("append_workout_exercise");
+    const checks = original.slice(original.indexOf("begin\n"), original.indexOf("  v_sets :="));
+    expect(migration).toContain(checks);
+    expect(migration).toContain("security invoker\nset search_path = ''");
+    expect(migration).toContain("where id = p_session_id and user_id = v_user_id;");
+    expect(migration).toContain("revoke all on function public.append_workout_exercise(uuid,uuid,text) from public, anon");
+    expect(migration).toContain("grant execute on function public.append_workout_exercise(uuid,uuid,text) to authenticated");
+    expect(migration).not.toMatch(/create table|add column|security definer|p_user_id|service_role/);
   });
 });
