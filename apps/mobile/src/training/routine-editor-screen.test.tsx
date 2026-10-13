@@ -1,6 +1,8 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { Alert, AppState, RefreshControl, type AppStateStatus } from 'react-native';
+import { Alert, AppState, DeviceEventEmitter, RefreshControl, ScrollView, type AppStateStatus } from 'react-native';
+import { State } from 'react-native-gesture-handler';
+import { getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { RoutineDetail } from '@/api/routine-editor';
 import type { MobileTrainingExercise } from '@/api/exercises';
@@ -63,7 +65,7 @@ const candidate = (name = 'Dominadas', id = '44444444-4444-4444-8444-44444444444
 });
 function twoItems(): RoutineDetail { return { ...detailFixture, items: [detailFixture.items[0]!, { ...detailFixture.items[0]!, routineExerciseId: '55555555-5555-4555-8555-555555555555', exerciseOrder: 2,
   exercise: { ...detailFixture.items[0]!.exercise, id: '66666666-6666-4666-8666-666666666666', name: 'Fondos' } }] }; }
-function screen(dark = false) { return render(<SafeAreaProvider initialMetrics={{ frame: { height: 844, width: 390, x: 0, y: 0 }, insets: { bottom: 34, left: 0, right: 0, top: 47 } }}>
+function screen(dark = false, bottom = 34) { return render(<SafeAreaProvider initialMetrics={{ frame: { height: 844, width: 390, x: 0, y: 0 }, insets: { bottom, left: 0, right: 0, top: 47 } }}>
   <OwnlevelThemeProvider initialMode={dark ? 'dark' : 'light'}><RoutineEditorScreen createIdempotencyKey={() => 'intent-key'} /></OwnlevelThemeProvider></SafeAreaProvider>); }
 async function ready(view: ReturnType<typeof screen>) { await waitFor(() => expect(view.getByTestId('routine-editor-screen')).toBeTruthy()); await act(async () => undefined); }
 function press(view: ReturnType<typeof screen>, name: string) { fireEvent.press(view.getAllByRole('button', { name }).at(-1)!); }
@@ -98,6 +100,13 @@ describe('routine editor sheets and native list', () => {
         sets: [expect.objectContaining({ targetReps: 9, targetWeightKg: null, targetRir: 0, notes: 'Legacy set note' })] }) })] }));
     expect(view.getByText('Objetivos guardados')).toBeTruthy();
   });
+  it('places a saved-target notice just above the native tab safe area', async () => {
+    mockTemplate.mockResolvedValue({ status: 'ok', data: detailFixture, meta });
+    const view = screen(false, 83); await ready(view); press(view, 'Editar Press');
+    fireEvent.changeText(view.getByLabelText('Serie 1, reps'), '9'); await act(async () => press(view, 'Guardar objetivos'));
+    await waitFor(() => expect(view.getByText('Objetivos guardados')).toBeTruthy());
+    expect(view.getByTestId('routine-editor-notice')).toHaveStyle({ bottom: 91 });
+  });
   it('keeps discard decisions scoped to the open sheet and History navigation', async () => {
     const view = screen(); await ready(view); press(view, 'Editar Press'); fireEvent.changeText(view.getByLabelText('Serie 1, reps'), '12');
     press(view, 'Cerrar ejercicio'); confirm('Seguir editando'); expect(view.getByDisplayValue('12')).toBeTruthy();
@@ -119,9 +128,12 @@ describe('routine editor sheets and native list', () => {
     fireEvent.changeText(view.getByLabelText('Serie 1, reps'), '7'); press(view, 'Quitar serie 1'); expect(view.queryByLabelText('Serie 2, reps')).toBeNull();
   });
   it('keeps custom adjustment untouched until selecting and can toggle back to maintain', async () => {
-    const view = screen(); await ready(view); press(view, 'Editar Press'); expect(view.getByText('Ajuste personalizado anterior conservado.')).toBeTruthy();
-    press(view, 'Más reps'); expect(view.getByText(/Subir repeticiones/)).toBeTruthy(); expect(view.queryByText('Ajuste personalizado anterior conservado.')).toBeNull();
-    press(view, 'Más reps'); expect(view.getByText(/Sin marcar, se mantiene igual/)).toBeTruthy();
+    const view = screen(); await ready(view); press(view, 'Editar Press'); expect(view.getByLabelText('Próxima vez. Ajuste personalizado anterior conservado.')).toBeTruthy();
+    expect(view.queryByText('Ajuste personalizado anterior conservado.')).toBeNull();
+    press(view, 'Más reps'); expect(view.getByRole('button', { name: 'Más reps' }).props.accessibilityState.selected).toBe(true);
+    expect(view.queryByText(/Subir repeticiones/)).toBeNull();
+    press(view, 'Más reps'); expect(view.getByRole('button', { name: 'Más reps' }).props.accessibilityState.selected).toBe(false);
+    expect(view.queryByText(/Sin marcar, se mantiene igual/)).toBeNull();
   });
   it('preserves drafts after an ambiguous write and never overwrites them with refresh', async () => {
     mockTemplate.mockResolvedValue({ status: 'unavailable', reason: 'network', meta });
@@ -191,6 +203,37 @@ describe('routine editor sheets and native list', () => {
     const view = screen(); await ready(view); fireEvent(view.getByRole('button', { name: 'Editar Fondos' }), 'accessibilityAction', { nativeEvent: { actionName: 'moveUp' } });
     await waitFor(() => expect(mockTemplate).toHaveBeenCalledTimes(1)); expect((mockTemplate.mock.calls[0]?.[2] as { items: { exerciseId: string }[] }).items[0]!.exerciseId).toBe(two.items[1]!.exercise.id);
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2)); const list = within(view.getByTestId('routine-exercise-list')); expect(list.getAllByRole('button', { name: /Editar / }).map(node => node.props.accessibilityLabel)).toEqual(['Editar Press', 'Editar Fondos']);
+  });
+  it('keeps a held exercise still in the middle and permits scrolling down and back to the native origin', async () => {
+    mockFetch.mockResolvedValue(loaded(twoItems())); const view = screen(); await ready(view);
+    jest.useFakeTimers();
+    try {
+      const scrollTo = jest.spyOn(ScrollView.prototype, 'scrollTo').mockImplementation(() => undefined);
+      // A cold native mount can measure the frame before its adjusted offset arrives.
+      jest.spyOn(ScrollView.prototype, 'getNativeScrollRef').mockReturnValue({ measureInWindow: (callback: (x: number, y: number, width: number, height: number) => void) => callback(0, 0, 390, 300) } as ReturnType<ScrollView['getNativeScrollRef']>);
+      fireEvent(view.getByTestId('routine-editor-screen'), 'contentSizeChange', 390, 1200);
+      fireEvent(view.getByTestId('routine-editor-screen'), 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 844 } } });
+      const key = `exercise-drag-${detailFixture.items[0]!.routineExerciseId}`;
+      const send = (state: number, oldState: number | undefined, dy: number, absoluteY: number) => DeviceEventEmitter.emit(oldState === undefined ? 'onGestureHandlerEvent' : 'onGestureHandlerStateChange', {
+        handlerTag: getByGestureTestId(key).handlerTag, state, ...(oldState === undefined ? {} : { oldState }), translationY: dy, translationX: 0, absoluteY,
+        absoluteX: 100, x: 20, y: 20, velocityX: 0, velocityY: 0, numberOfPointers: 1,
+      });
+      const scrollEvent = (y: number) => fireEvent.scroll(view.getByTestId('routine-editor-screen'), { nativeEvent: {
+        contentOffset: { y }, contentInset: { top: 0, bottom: 0 }, contentSize: { height: 1200 }, layoutMeasurement: { height: 844 },
+      } });
+      act(() => { send(State.BEGAN, State.UNDETERMINED, 0, 350); send(State.ACTIVE, State.BEGAN, 0, 350); jest.advanceTimersByTime(160); });
+      expect(scrollTo).not.toHaveBeenCalled(); scrollEvent(-152);
+      act(() => jest.advanceTimersByTime(160)); expect(scrollTo).not.toHaveBeenCalled();
+      scrollEvent(100);
+      act(() => { send(State.ACTIVE, undefined, 450, 800); jest.advanceTimersByTime(16); });
+      expect(scrollTo.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({ animated: false }));
+      expect((scrollTo.mock.calls.at(-1)?.[0] as { y: number }).y).toBeGreaterThan(100);
+      act(() => { send(State.ACTIVE, undefined, -250, 100); jest.advanceTimersByTime(1000); });
+      expect(scrollTo).toHaveBeenLastCalledWith({ y: -152, animated: false });
+      const callsAtTop = scrollTo.mock.calls.length; act(() => jest.advanceTimersByTime(160)); expect(scrollTo).toHaveBeenCalledTimes(callsAtTop);
+      act(() => send(State.END, State.ACTIVE, -250, 100)); expect(mockTemplate).not.toHaveBeenCalled();
+      expect(view.getByTestId('routine-editor-screen').props.scrollEnabled).toBe(true); view.unmount();
+    } finally { jest.useRealTimers(); }
   });
   it('requires explicit removal confirmation and never edits the exercise library', async () => {
     mockTemplate.mockResolvedValue({ status: 'ok', data: { ...detailFixture, items: [] }, meta }); const view = screen(); await ready(view); press(view, 'Quitar Press');

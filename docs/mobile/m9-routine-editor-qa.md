@@ -15,14 +15,16 @@ Usar una copia de una rutina para poder cambiar sus objetivos y quitar ejercicio
 
 - [ ] Tocar abre la hoja grande. X, Historial y ✓ tienen zonas táctiles cómodas. ✓ está deshabilitado sin cambios, y mientras guarda no permite cerrar ni enviar otra escritura.
 - [ ] Peso vacío muestra “—”; cero explícito muestra 0. Cambiar peso/reps/RIR y guardar actualiza el ejercicio; reabrir conserva esos valores. Probar coma decimal, un valor inválido y notas de más de 1000 caracteres: el error aparece junto al campo.
-- [ ] Agregar serie copia los valores de la última. Swipe rojo quita una serie y renumera; la última queda protegida. Con 50 series, Agregar queda deshabilitado.
-- [ ] Más peso y Más reps son opciones excluyentes que se pueden desmarcar. El texto anuncia el recordatorio correspondiente, sin cambiar los objetivos automáticamente. Un ajuste personalizado sigue visible hasta elegir otra opción.
+- [ ] Agregar serie usa vidrio y la nueva fila entra con una animación suave, copiando los valores de la última. Swipe rojo muestra Quitar con ícono y texto; quitar una serie intermedia conserva los valores de las restantes y renumera. La última queda protegida. Con 50 series, Agregar queda deshabilitado.
+- [ ] Más peso y Más reps son opciones excluyentes que se pueden desmarcar, con transición de selección y check. No hay texto debajo de los botones. Un ajuste personalizado anterior se conserva mientras no se elija otra opción; VoiceOver lo anuncia en Próxima vez.
+- [ ] Tocar Notas desplaza el campo sobre el teclado, también si el teclado ya estaba abierto en otro campo. Escribir varias líneas conserva la visibilidad y el contenido al guardar/reabrir.
+- [ ] Al guardar, Objetivos guardados aparece justo sobre la barra de pestañas. Si también está visible el + flotante, queda por encima del aviso sin solaparlo.
 - [ ] X con cambios ofrece Seguir editando/Salir sin guardar. Historial pide la misma decisión y navega después de terminar el cierre nativo de la hoja. Sin cambios, ambas acciones funcionan directamente.
 - [ ] El gesto de cerrar la hoja se bloquea mientras hay cambios o una escritura pendiente; para descartar se usa X. El SDK no expone el intento de cierre interactivo para mostrar la confirmación desde ese gesto.
 
 ## Descanso
 
-- [ ] Abrir las ruedas no cambia el valor ni habilita ✓ por sí solo. “Sin descanso” y 0:00 son opciones distintas.
+- [ ] Abrir/cerrar las ruedas responde al primer toque y despliega suavemente el contenido. No cambia el valor ni habilita ✓ por sí solo. “Sin descanso” y 0:00 son opciones distintas.
 - [ ] Si ya hay un valor como 2:20, aparece exactamente y se conserva al guardar otros campos. Las opciones normales avanzan de 15 s en 15 s, hasta 60:00.
 - [ ] Las ruedas no permiten invertir el rango. Cambiar una rueda conserva la otra; elegir Sin descanso no convierte el valor vacío en cero.
 
@@ -32,6 +34,8 @@ Usar una copia de una rutina para poder cambiar sus objetivos y quitar ejercicio
 - [ ] Elegir varios, cambiar de filtro y volver conserva la selección. Agregar incorpora todos en el orden elegido, en una sola operación. Un catálogo fallido muestra error, nunca “sin resultados” ni Crear.
 - [ ] Buscar un nombre sin resultados, usar Crear y confirmar el alta: queda marcado en el selector. Se incorpora a la rutina recién al pulsar Agregar.
 - [ ] Mantener y arrastrar levanta la fila, desplaza las otras y permite seguir hacia los bordes. Soltar guarda una vez. Cancelar no guarda; soltar sin mover tampoco abre el editor. No se agrega vibración de la app al arrastre.
+- [ ] Cerrar por completo la app y volver a abrirla: el primer arrastre de un ejercicio no salta hacia abajo al agarrarlo. Bajar y volver arriba sin soltar permite recorrer la lista en ambas direcciones. Repetir en Ordenar de la biblioteca, con el título grande y con la barra colapsada.
+- [ ] Con Reducir movimiento, las nuevas series entran por fundido y los controles no hacen desplazamientos ni escalas decorativas. El arrastre conserva su seguimiento directo del dedo.
 - [ ] Swipe izquierdo muestra Quitar rojo. Cancelar la confirmación conserva todo; confirmar quita solo la relación con esta rutina. El ejercicio y las sesiones anteriores siguen disponibles.
 - [ ] VoiceOver ofrece Mover arriba/Mover abajo y Quitar; el orden por estas acciones se guarda igual que al arrastrar.
 

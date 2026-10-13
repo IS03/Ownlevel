@@ -43,6 +43,7 @@ export function RoutineEditorScreen({ createIdempotencyKey = defaultKey }: { cre
   const startReadLock = useRef(false);
   const [startOpen, setStartOpen] = useState(false), [removeId, setRemoveId] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null), timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [noticeHeight, setNoticeHeight] = useState(brandTokens.layout.minTouch + spacing.md * 2);
   const [pickerError, setPickerError] = useState<string | undefined>(), [dragging, setDragging] = useState(false), dragRef = useRef(false);
   const [listEpoch, setListEpoch] = useState(0), [keyboardOpen, setKeyboardOpen] = useState(false), [floating, setFloating] = useState(false);
   const epoch = useRef(0), appliedEpoch = useRef(-1), scroll = useRef<ScrollView>(null), headerBottom = useRef<number | null>(null);
@@ -175,9 +176,15 @@ export function RoutineEditorScreen({ createIdempotencyKey = defaultKey }: { cre
     payload.items = ids.map(itemId => byId.get(itemId)!); void runTemplate(payload, 'Orden guardado');
   };
   const scrollAtEdge = (pointer: number) => {
-    const metric = scrollMetrics.current, top = Math.max(metric.top, insets.top + brandTokens.layout.minTouch), bottom = metric.top + metric.height - insets.bottom - brandTokens.layout.tabBarHeight;
+    const metric = scrollMetrics.current;
+    if (metric.height <= 0) return 0;
+    const top = Math.max(metric.top, insets.top + brandTokens.layout.minTouch);
+    const bottom = metric.top + metric.height - insets.bottom - (Platform.OS === 'ios' ? 0 : brandTokens.layout.tabBarHeight);
+    if (bottom <= top) return 0;
     const delta = pointer < top + 48 ? -Math.min(12, (top + 48 - pointer) / 4) : pointer > bottom - 48 ? Math.min(12, (pointer - bottom + 48) / 4) : 0;
-    const next = Math.max(metric.min, Math.min(metric.max, metric.y + delta)), actual = next - metric.y;
+    if (!delta) return 0;
+    const next = delta < 0 ? Math.min(metric.y, Math.max(metric.min, metric.y + delta)) : Math.max(metric.y, Math.min(metric.max, metric.y + delta));
+    const actual = next - metric.y;
     if (actual) { metric.y = next; scroll.current?.scrollTo({ y: next, animated: false }); } return actual;
   };
   const presentedEdit = edit ?? closingEdit;
@@ -196,6 +203,8 @@ export function RoutineEditorScreen({ createIdempotencyKey = defaultKey }: { cre
     {Platform.OS === 'ios' ? <Stack.Toolbar placement="left"><Stack.Toolbar.Button accessibilityLabel="Volver a Rutinas" icon="chevron.left" separateBackground disabled={rowDisabled || dragging} onPress={() => router.dismissTo('/(tabs)/train/routines')} /></Stack.Toolbar> : null}
     {detail && Platform.OS === 'ios' ? menu : null}</>;
   const footerInset = insets.bottom + brandTokens.layout.tabBarHeight + spacing.lg;
+  // NativeTabs includes its bar in the iOS safe area. Count that obstruction once.
+  const overlayBottom = Platform.OS === 'ios' ? insets.bottom + spacing.sm : footerInset;
   const content = !detail ? <View style={[styles.state, { backgroundColor: colors.background }]}>
     {state.status === 'loading' && !notFound ? <View testID="routine-editor-loading"><SkeletonBlock height={64} /><SkeletonBlock height={150} /></View>
       : <UnavailableState title={notFound ? 'No encontramos la rutina' : 'No pudimos cargar la rutina'} description={notFound ? 'Esta rutina ya no está disponible.' : 'Tu rutina sigue segura. Revisá la conexión e intentá nuevamente.'}
@@ -203,9 +212,15 @@ export function RoutineEditorScreen({ createIdempotencyKey = defaultKey }: { cre
   </View> : <ScrollView ref={scroll} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" scrollEventThrottle={16} scrollEnabled={!dragging}
     pointerEvents={rowDisabled ? 'none' : 'auto'} style={{ flex: 1, backgroundColor: colors.background }} testID="routine-editor-screen"
     contentContainerStyle={[styles.content, { paddingBottom: footerInset + spacing.xxxl }]}
-    onLayout={() => scroll.current?.getNativeScrollRef()?.measureInWindow((_x, y, _width, height) => { scrollMetrics.current.top = y; scrollMetrics.current.height = height; })}
+    onLayout={() => scroll.current?.getNativeScrollRef()?.measureInWindow((_x, y, _width, height) => {
+      if (height <= 0) return;
+      // Window measurement gives coordinates, not an initialized scroll offset.
+      // Only onScroll can supply height and offset together for edge scrolling.
+      scrollMetrics.current.top = y;
+    })}
     onScroll={event => { const { contentOffset, contentInset, contentSize, layoutMeasurement } = event.nativeEvent; const metric = scrollMetrics.current;
-      metric.y = contentOffset.y; metric.min = -contentInset.top; metric.bottom = contentInset.bottom; metric.height = layoutMeasurement.height; metric.contentHeight = contentSize.height;
+      // Fabric omits UIKit's automatic large-title inset; preserve the observed origin.
+      metric.y = contentOffset.y; metric.min = Math.min(metric.min, -contentInset.top, contentOffset.y); metric.bottom = contentInset.bottom; metric.height = layoutMeasurement.height; metric.contentHeight = contentSize.height;
       metric.max = Math.max(metric.min, contentSize.height - layoutMeasurement.height + contentInset.bottom);
       setFloating(headerBottom.current !== null && contentOffset.y >= headerBottom.current - contentInset.top);
     }} onContentSizeChange={(_width, height) => { const metric = scrollMetrics.current; metric.contentHeight = height; metric.max = Math.max(metric.min, height - metric.height + metric.bottom); }}
@@ -231,9 +246,9 @@ export function RoutineEditorScreen({ createIdempotencyKey = defaultKey }: { cre
   </ScrollView>;
   return <>
     {header}{content}
-    {detail && floating && !keyboardOpen && !dragging && !rowDisabled && detail.items.length ? <Animated.View entering={FadeIn.duration(motionDurations.fast)} style={[styles.floating, { bottom: footerInset }]}>
+    {detail && floating && !keyboardOpen && !dragging && !rowDisabled && detail.items.length ? <Animated.View entering={FadeIn.duration(motionDurations.fast)} style={[styles.floating, { bottom: overlayBottom + (notice ? noticeHeight + spacing.sm : 0) }]}>
       <RoutineSheetButton label="Agregar ejercicios" icon="plus" accent onPress={() => openForm('picker')} /></Animated.View> : null}
-    {notice ? <Animated.View entering={FadeIn.duration(motionDurations.fast)} exiting={FadeOut.duration(motionDurations.fast)} style={[styles.toast, { bottom: footerInset + 64 }]}>
+    {notice ? <Animated.View testID="routine-editor-notice" onLayout={event => setNoticeHeight(event.nativeEvent.layout.height)} entering={FadeIn.duration(motionDurations.fast)} exiting={FadeOut.duration(motionDurations.fast)} style={[styles.toast, { bottom: overlayBottom }]}>
       <GlassSurface style={styles.toastSurface}><AppText numeric accessibilityRole={notice.error ? 'alert' : undefined} style={{ flex: 1 }} variant="subheadline">{notice.message}</AppText>
         {notice.undoActive !== undefined ? <Pressable accessibilityLabel="Deshacer cambio de estado" accessibilityRole="button" disabled={rowDisabled || dragging} onPress={() => { if (notice.undoActive !== undefined) void changeStatus(notice.undoActive); }} style={styles.add}><AppText style={{ color: colors.primary }} variant="headline">Deshacer</AppText></Pressable> : null}
       </GlassSurface></Animated.View> : null}

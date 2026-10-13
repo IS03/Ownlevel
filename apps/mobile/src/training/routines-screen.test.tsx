@@ -469,3 +469,69 @@ it('restores the pre-drag draft on a cancelled gesture', async () => {
   expect(view.UNSAFE_getByType(ScrollView).props.scrollEnabled).toBe(true);
   await act(async () => undefined);
 });
+
+it.each([false, true])('does not scroll when grabbing a handle before viewport measurement or away from edges (dark=%s)', async dark => {
+  jest.useFakeTimers();
+  try {
+    const scrollTo = jest.spyOn(ScrollView.prototype, 'scrollTo').mockImplementation(() => undefined);
+    const view = renderScreen({ dark });
+    jest.spyOn(ScrollView.prototype, 'getNativeScrollRef').mockReturnValue({ measureInWindow: (callback: (x: number, y: number, width: number, height: number) => void) => callback(0, 0, 390, 300) } as ReturnType<ScrollView['getNativeScrollRef']>);
+    fireEvent(view.getByTestId('routines-screen'), 'contentSizeChange', 390, 1200);
+    fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' }));
+    const key = `order-drag-${routines[1].id}`;
+    const send = (state: number, oldState?: number) => DeviceEventEmitter.emit(oldState === undefined ? 'onGestureHandlerEvent' : 'onGestureHandlerStateChange', {
+      handlerTag: getByGestureTestId(key).handlerTag, state, ...(oldState === undefined ? {} : { oldState }),
+      translationY: 0, translationX: 0, absoluteY: 350, absoluteX: 300, x: 20, y: 20, velocityX: 0, velocityY: 0, numberOfPointers: 1,
+    });
+    act(() => { send(State.BEGAN, State.UNDETERMINED); send(State.ACTIVE, State.BEGAN); });
+    act(() => jest.advanceTimersByTime(160));
+    expect(scrollTo).not.toHaveBeenCalled();
+    // Fabric's event excludes the automatic iOS inset even at a negative offset.
+    fireEvent.scroll(view.UNSAFE_getByType(ScrollView), { nativeEvent: {
+      contentOffset: { x: 0, y: -152 }, contentInset: { top: 0, bottom: 0, left: 0, right: 0 },
+      contentSize: { width: 390, height: 1200 }, layoutMeasurement: { width: 390, height: 844 },
+    } });
+    act(() => jest.advanceTimersByTime(160));
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(view.getByTestId(`order-row-${routines[1].id}`)).toHaveStyle({ transform: [{ translateY: 0 }] });
+    act(() => send(State.END, State.ACTIVE));
+    view.unmount();
+    await act(async () => undefined);
+  } finally { jest.useRealTimers(); }
+});
+
+it('scrolls down and back above zero during the same drag, then stops at the native origin', async () => {
+  jest.useFakeTimers();
+  try {
+    const scrollTo = jest.spyOn(ScrollView.prototype, 'scrollTo').mockImplementation(() => undefined);
+    const view = renderScreen();
+    const scrollEvent = (y: number) => fireEvent.scroll(view.UNSAFE_getByType(ScrollView), { nativeEvent: {
+      contentOffset: { x: 0, y }, contentInset: { top: 0, bottom: 0, left: 0, right: 0 },
+      contentSize: { width: 390, height: 1200 }, layoutMeasurement: { width: 390, height: 844 },
+    } });
+    scrollEvent(-152);
+    fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' }));
+    const key = `order-drag-${routines[1].id}`;
+    const send = (state: number, oldState: number | undefined, dy: number, absoluteY: number) => DeviceEventEmitter.emit(oldState === undefined ? 'onGestureHandlerEvent' : 'onGestureHandlerStateChange', {
+      handlerTag: getByGestureTestId(key).handlerTag, state, ...(oldState === undefined ? {} : { oldState }),
+      translationY: dy, translationX: 0, absoluteY, absoluteX: 300, x: 20, y: 20, velocityX: 0, velocityY: 0, numberOfPointers: 1,
+    });
+    act(() => { send(State.BEGAN, State.UNDETERMINED, 0, 350); send(State.ACTIVE, State.BEGAN, 0, 350); });
+    scrollEvent(100);
+    act(() => { send(State.ACTIVE, undefined, 400, 750); jest.advanceTimersByTime(16); });
+    expect(scrollTo).toHaveBeenLastCalledWith({ y: 112, animated: false });
+    act(() => { send(State.ACTIVE, undefined, -250, 100); jest.advanceTimersByTime(16); });
+    expect(scrollTo).toHaveBeenLastCalledWith({ y: 100, animated: false });
+    act(() => jest.advanceTimersByTime(1000));
+    expect(scrollTo).toHaveBeenLastCalledWith({ y: -152, animated: false });
+    const callsAtTop = scrollTo.mock.calls.length;
+    act(() => jest.advanceTimersByTime(160));
+    expect(scrollTo).toHaveBeenCalledTimes(callsAtTop);
+    expect(view.getByLabelText('Ordenar PUSH').props.accessibilityValue.now).toBe(1);
+    act(() => send(State.END, State.ACTIVE, -250, 100));
+    expect(view.UNSAFE_getByType(ScrollView).props.scrollEnabled).toBe(true);
+    expect(mockOrder).not.toHaveBeenCalled();
+    view.unmount();
+    await act(async () => undefined);
+  } finally { jest.useRealTimers(); }
+});
