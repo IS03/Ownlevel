@@ -5,7 +5,7 @@ import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
-import { createMobileTrainingRoutine, duplicateMobileTrainingRoutine, reorderMobileTrainingRoutines, fetchRoutineDetail, fetchMobileTrainingRoutines, setMobileTrainingRoutineStatus, useApiResource, useMobileApi } from '@/api';
+import { createMobileTrainingRoutine, reorderMobileTrainingRoutines, fetchRoutineDetail, fetchMobileTrainingRoutines, setMobileTrainingRoutineStatus, useApiResource, useMobileApi } from '@/api';
 import type { MobileTrainingRoutine } from '@/api/routines';
 import type { MobileApiMutationResult } from '@/api/results';
 import {
@@ -13,6 +13,7 @@ import {
   Separator, SkeletonBlock, Surface, UnavailableState, motionDurations, pressedStyle, radius, sizes, spacing, useOwnlevelTheme, useReduceMotion,
 } from '@/design-system';
 
+import { duplicateRoutine, routineDuplicateSource } from './routine-duplicate';
 import { CreateRoutineSheet, type DuplicateRoutineSource, type RoutineCreateInput } from './create-routine-sheet';
 import { RoutineOrderList } from './routine-order-list';
 import { RoutineRow } from './routine-row';
@@ -180,8 +181,7 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
     setPending(duplicateSource ? 'duplicate' : 'create');
     try {
       const result = duplicateSource
-        ? await duplicateMobileTrainingRoutine(client, duplicateSource.id, { ...input,
-          expectedUpdatedAt: duplicateSource.expectedUpdatedAt, expectedTemplateVersion: duplicateSource.expectedTemplateVersion })
+        ? await duplicateRoutine(client, duplicateSource, input)
         : await createMobileTrainingRoutine(client, input);
       mutationEpoch.current += 1;
       if (result.status !== 'ok') {
@@ -220,11 +220,7 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
         announce({ message: result.status === 'ok' ? 'La rutina ya no está disponible. Actualizá la lista.' : 'No pudimos cargar la rutina para copiarla. Revisá la conexión e intentá de nuevo.', error: true });
         return;
       }
-      const { routine: source, items } = result.data.detail;
-      setDuplicateSource({ id: source.id, name: source.name, color: source.color,
-        exerciseCount: items.length, setCount: items.reduce((total, item) => total + item.targets.sets.length, 0),
-        expectedUpdatedAt: source.updatedAt, expectedTemplateVersion: source.templateVersion,
-        ...(source.unrecognizedColor ? { unrecognizedColor: source.unrecognizedColor } : {}) });
+      setDuplicateSource(routineDuplicateSource(result.data.detail));
     } catch { announce({ message: 'No pudimos cargar la rutina para copiarla. Revisá la conexión e intentá de nuevo.', error: true }); }
     finally { pendingRef.current = false; if (alive.current) setPending(null); }
   };

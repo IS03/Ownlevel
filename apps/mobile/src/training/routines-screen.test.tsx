@@ -1,6 +1,6 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { Alert, RefreshControl, DeviceEventEmitter, ScrollView } from 'react-native';
+import { Alert, RefreshControl, DeviceEventEmitter, ScrollView, StyleSheet } from 'react-native';
 import { State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import * as Reanimated from 'react-native-reanimated';
@@ -204,6 +204,16 @@ describe('routine library', () => {
   it('opens the editor on tap without writes', () => {
     const view = renderScreen(); fireEvent.press(view.getByRole('button', { name: /Abrir rutina PUSH/ }));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/routines/[id]', params: { id: routines[1].id } }); expect(mockSetStatus).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('keeps the pressed row opaque so swipe actions cannot bleed through (dark=%s)', dark => {
+    const view = renderScreen({ dark });
+    let row = view.getByRole('button', { name: /Abrir rutina PUSH/ }).parent;
+    while (row && typeof row.props.style !== 'function') row = row.parent;
+    expect(row).not.toBeNull();
+    const style = StyleSheet.flatten(row!.props.style({ pressed: true }));
+    expect(style.opacity ?? 1).toBe(1);
+    expect(style.backgroundColor).toBe(dark ? '#27272A' : '#EAE7DF');
   });
 
   it('requires confirmation before passing a swipe action to the shared starter', async () => {
