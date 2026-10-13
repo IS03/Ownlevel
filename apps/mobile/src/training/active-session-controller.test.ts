@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals
 import type { MobileApiRequestResult } from '@/api/results';
 import { ActiveSessionController, type ActiveSessionApi } from './active-session-controller';
 import { SessionDraftRepository, type SessionStoragePort } from './active-session-storage';
-import { appendSessionSet, exerciseDraft, moveSessionSet, removeSessionSet, resetSessionSet } from './active-session-model';
+import { appendSessionSet, draftUsingHistory, exerciseDraft, moveSessionSet, removeSessionSet, resetSessionSet } from './active-session-model';
 import { EXERCISE_ID, NEXT_VERSION, SECOND_ID, SESSION_ID, VERSION, testDetail, testFinished, testPayload } from './active-session-test-fixtures';
 const meta = { durationMs: 0, httpStatus: 200, outcome: 'ok' as const };
 const ok = <T,>(data: T): MobileApiRequestResult<T> => ({ status: 'ok', data, meta });
@@ -535,4 +535,24 @@ describe('native finish (M3.4-2)', () => {
     expect(await controller.finish()).toBe(false); expect(api.finish).not.toHaveBeenCalled();
     expect(controller.getSnapshot().notice).toContain('Sin conexión');
   });
+  it('uses chosen rest duration without a suggested range, preserving snapshots and the existing deadline storage', async () => {
+    const { controller, api, repository } = setup(); const detail = testDetail();
+    detail.exercises[0].restMinSecondsSnapshot = null; detail.exercises[0].restMaxSecondsSnapshot = null;
+    api.detail.mockResolvedValue(ok(detail)); await controller.refresh(); controller.startRest(EXERCISE_ID);
+    expect(controller.getTimer()).toBeNull(); controller.startRest(EXERCISE_ID, 75);
+    expect(controller.getTimer()?.endAt).toBe(85000); expect((await repository.readTimer())).toMatchObject({ exerciseId: EXERCISE_ID, endAt: 85000 });
+    controller.startRest(EXERCISE_ID, 0); controller.startRest(EXERCISE_ID, 3601); expect(controller.getTimer()?.endAt).toBe(85000);
+    expect(controller.getExercise(EXERCISE_ID)?.exercise.restMaxSecondsSnapshot).toBeNull(); expect(api.save).not.toHaveBeenCalled(); controller.dispose();
+  });
+  it('copies actual historical series through the same draft/autosave CAS and never marks today completed', async () => {
+    const { controller, api } = setup(); await controller.refresh();
+    controller.change(EXERCISE_ID, draft => draftUsingHistory(draft, { sessionId: SECOND_ID, logDate: '2026-09-29', completedAt: null, routineId: null, routineName: 'PULL', decision: 'increase_weight',
+      sets: [{ ...testPayload().sets[0], actualWeightKg: 0, actualReps: null, targetRir: 0, isCompleted: true }, { ...testPayload().sets[0], actualWeightKg: null, actualReps: 0, targetRir: null, isCompleted: true }] }), true);
+    await controller.flush(EXERCISE_ID);
+    expect(api.save).toHaveBeenCalledWith(EXERCISE_ID, VERSION, expect.objectContaining({ isCompleted: false, decision: 'maintain', applyToRoutine: false, sets: [
+      expect.objectContaining({ setNumber: 1, actualWeightKg: 0, actualReps: null, targetRir: 0, isCompleted: false }),
+      expect.objectContaining({ setNumber: 2, actualWeightKg: null, actualReps: 0, targetRir: null, isCompleted: false }),
+    ] })); controller.dispose();
+  });
+
 });

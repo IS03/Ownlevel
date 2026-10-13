@@ -1,4 +1,4 @@
-import { memo, type ReactNode, useCallback, useState, useSyncExternalStore } from 'react';
+import { memo, type ReactNode, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, Alert, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { AppIcon, AppText, Button, radius, sizes, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import Animated, { FadeIn, FadeInUp, LinearTransition } from 'react-native-reanimated';
@@ -8,6 +8,8 @@ import { SessionGlassButton } from './session-glass-button';
 import { haptics, triggerHaptic } from '@/platform/haptics';
 import type { ActiveSessionController, ExercisePhase } from './active-session-controller';
 import { appendSessionSet, compactActual, nextReminder, removeSessionSet, resetSessionSet, setProgress, type SessionExerciseDraft } from './active-session-model';
+import { SessionRestDuration } from './session-rest-duration';
+import { restSeconds } from './active-session-model';
 import { formatRest, muscleGroupLabel } from './exercise-library-model';
 import { SessionNoteSheet } from './active-session-sheets';
 import { NativeDragHandle, NativeReorderItem, NativeReorderList, NativeSwipeActions } from './session-native-interactions';
@@ -34,16 +36,18 @@ function SeriesColumns({ ordinal, kg, reps, rir, completed, header = false }: {
     <View style={styles.completedColumn}>{completed}</View>
   </View>;
 }
-export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller, id, expanded, locked, onToggle, onHistory, onRemove }: {
-  controller: ActiveSessionController; id: string; expanded: boolean; locked: boolean;
+export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller, id, expanded, locked, reorderDisabled = false, onToggle, onHistory, onRemove, historyCard, onSheetChange, onReveal }: {
+  controller: ActiveSessionController; id: string; expanded: boolean; locked: boolean; reorderDisabled?: boolean; historyCard?: ReactNode; onSheetChange?: (id: string, open: boolean) => void; onReveal?: (top: number) => void;
   onToggle: (id: string) => void; onHistory: (id: string) => void; onRemove: (id: string, name: string) => void;
 }) {
   const subscribe = useCallback((listener: () => void) => controller.subscribeExercise(id, listener), [controller, id]);
   const get = useCallback(() => controller.getExercise(id), [controller, id]);
   const state = useSyncExternalStore(subscribe, get, get);
   const { colors } = useOwnlevelTheme();
-  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false), [durationOpen, setDurationOpen] = useState(false), [dialogOpen, setDialogOpen] = useState(false);
+  const card = useRef<View>(null);
   const [nextOpen, setNextOpen] = useState(false);
+  useEffect(() => { onSheetChange?.(id, noteOpen || nextOpen || durationOpen || dialogOpen); return () => onSheetChange?.(id, false); }, [id, noteOpen, nextOpen, durationOpen, dialogOpen, onSheetChange]);
   const [addedSet, setAddedSet] = useState<string | null>(null);
   const reducedMotion = useReduceMotion();
   const pendingSet = state?.draft.sets.find(set => !set.isCompleted)?.localId;
@@ -65,17 +69,19 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
   const identity = [exercise.muscleGroupLabelSnapshot || muscleGroupLabel(exercise.muscleGroupSnapshot), exercise.implementSnapshot, exercise.weightModeSnapshot].filter(Boolean).join(' · ');
   const discardChanges = () => {
     if (!contextual || !canDiscard) return;
+    setDialogOpen(true);
     Alert.alert('¿Descartar cambios?', 'Se descartarán los cambios de este ejercicio que todavía no están guardados.', [
-         { text: 'Seguir editando', style: 'cancel' }, { text: 'Descartar cambios', style: 'destructive', onPress: () => void controller.useSaved(id) },
+         { text: 'Seguir editando', style: 'cancel', onPress: () => setDialogOpen(false) }, { text: 'Descartar cambios', style: 'destructive', onPress: () => { setDialogOpen(false); void controller.useSaved(id); } },
       ]);
   };
   const moveExercise = (direction: number) => {
+    if (reorderDisabled) return;
     const ids = controller.getSnapshot().detail?.exercises.map(row => row.id) ?? [], index = ids.indexOf(id), to = index + direction;
     if (to < 0 || to >= ids.length || !controller.beginExerciseDrag()) return;
     ids.splice(index, 1); ids.splice(to, 0, id);
     void controller.dropExercises(ids).then(confirmed => { if (confirmed) haptics.selection(); });
   };
-  return <View style={[styles.card, { borderBottomColor: colors.border }]} testID={`session-exercise-${id}`}>
+  return <View ref={card} onLayout={() => { if (expanded && onReveal) requestAnimationFrame(() => card.current?.measureInWindow((_x, top) => onReveal(top))); }} style={[styles.card, { borderBottomColor: colors.border }]} testID={`session-exercise-${id}`}>
     <NativeSwipeActions backgroundColor={colors.background} label={exercise.nameSnapshot} disabled={!contextual} actions={[
       { label: draft.notes.trim() ? 'Editar nota' : 'Agregar nota', disabled: !editable, onPress: () => { Keyboard.dismiss(); setNoteOpen(true); } },
        ...(canDiscard ? [{ label: 'Descartar cambios', onPress: discardChanges }] : []),
@@ -83,7 +89,7 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
     ]}>
     <NativeDragHandle testID={`exercise-header-${id}`} disabled={locked} accessibilityRole="button" accessibilityLabel={`${expanded ? 'Contraer' : 'Expandir'} ${exercise.nameSnapshot}`} accessibilityState={{ expanded }}
       accessibilityHint={`${reminder ? `Próxima sesión: ${reminder}. ` : ''}Mantené presionado para mover. Deslizá a la izquierda para más acciones.`}
-      accessibilityActions={contextual ? [{ name: 'moveUp', label: 'Mover arriba' }, { name: 'moveDown', label: 'Mover abajo' },
+      accessibilityActions={contextual ? [...(reorderDisabled ? [] : [{ name: 'moveUp', label: 'Mover arriba' }, { name: 'moveDown', label: 'Mover abajo' }]),
          { name: 'note', label: draft.notes.trim() ? 'Editar nota' : 'Agregar nota' }, ...(canDiscard ? [{ name: 'discard', label: 'Descartar cambios' }] : []), { name: 'remove', label: 'Quitar de la sesión' }] : undefined}
       onAccessibilityAction={event => {
         const action = event.nativeEvent.actionName;
@@ -120,13 +126,14 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
           onPress={() => { Keyboard.dismiss(); onHistory(id); }} style={[styles.historyTrigger, { opacity: locked ? 0.45 : 1 }]}>
           <AppIcon name="clock" color={colors.textMuted} size={17} /><AppText muted variant="caption">Historial</AppText>
         </Pressable></View>
+      {historyCard}
       <SeriesColumns header ordinal={<AppText muted style={styles.columnTitle} variant="footnote">#</AppText>}
         kg={<AppText muted style={styles.columnTitle} variant="footnote">KG</AppText>} reps={<AppText muted style={styles.columnTitle} variant="footnote">REPS</AppText>}
         rir={<AppText muted style={styles.columnTitle} variant="footnote">RIR</AppText>} completed={<AppText muted style={styles.columnTitle} variant="footnote">✓</AppText>} />
       <NativeReorderList ids={draft.sets.map(set => set.localId)} onLift={() => { const accepted = controller.beginSetDrag(id); if (accepted) Keyboard.dismiss(); return accepted; }}
         onDrop={ids => controller.dropSets(id, ids)} onCancel={() => controller.cancelDrag()}>
         {draft.sets.map((set, index) => <NativeReorderItem key={set.localId} id={set.localId}>
-          <ActiveSetRow controller={controller} id={id} name={exercise.nameSnapshot} set={set} index={index} count={draft.sets.length} editable={editable} entering={addedSet === set.localId} reducedMotion={reducedMotion} />
+          <ActiveSetRow controller={controller} id={id} name={exercise.nameSnapshot} set={set} index={index} count={draft.sets.length} editable={editable} entering={addedSet === set.localId} reducedMotion={reducedMotion} onDialogChange={setDialogOpen} />
         </NativeReorderItem>)}
       </NativeReorderList>
       {state.phase !== 'closed' && state.phase !== 'removed' ? <Animated.View layout={reducedMotion ? undefined : LinearTransition.duration(300)} style={styles.row}>
@@ -156,12 +163,13 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
             }} />
         </View>
       </Animated.View> : null}
-      {(exercise.restMinSecondsSnapshot !== null || exercise.restMaxSecondsSnapshot !== null) ? <View style={styles.restRow} testID={`exercise-rest-${id}`}>
+      <View style={styles.restRow} testID={`exercise-rest-${id}`}>
         <AppIcon name="clock" color={colors.textMuted} size={17} />
-        <AppText numeric muted variant="caption" style={styles.flex}>Descanso · {[exercise.restMinSecondsSnapshot, exercise.restMaxSecondsSnapshot].filter((value, i, array) => value !== null && (i === 0 || value !== array[0])).map(formatRest).join(' – ')}</AppText>
-        <Button disabled={!editable} label={timer?.exerciseId === id ? 'Saltar descanso' : 'Iniciar descanso'} onPress={() => { haptics.selection(); if (timer?.exerciseId === id) controller.skipRest(); else controller.startRest(id); }} variant="quiet" />
-      </View> : null}
+        <AppText numeric muted variant="caption" style={styles.flex}>Descanso · {[exercise.restMinSecondsSnapshot, exercise.restMaxSecondsSnapshot].filter((value, i, array) => value !== null && (i === 0 || value !== array[0])).map(formatRest).join(' – ') || 'sin rango'}</AppText>
+        <Button disabled={!editable} label={timer?.exerciseId === id ? 'Saltar descanso' : 'Iniciar descanso'} onPress={() => { haptics.selection(); if (timer?.exerciseId === id) controller.skipRest(); else if (restSeconds(exercise) === null) setDurationOpen(true); else controller.startRest(id); }} variant="quiet" />
+      </View>
     </View> : null}
+     {durationOpen ? <SessionRestDuration onClose={() => setDurationOpen(false)} onStart={seconds => { controller.startRest(id, seconds); setDurationOpen(false); }} /> : null}
      {noteOpen ? <SessionNoteSheet name={exercise.nameSnapshot} value={draft.notes} editable={editable}
        onSave={async notes => {
          if (!controller.canEdit(id)) return false;
@@ -172,8 +180,8 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
        onClose={() => { Keyboard.dismiss(); setNoteOpen(false); }} /> : null}
   </View>;
 });
-function ActiveSetRow({ controller, id, name, set, index, count, editable, entering, reducedMotion }: {
-  controller: ActiveSessionController; id: string; name: string; set: SessionExerciseDraft['sets'][number]; index: number; count: number; editable: boolean; entering: boolean; reducedMotion: boolean;
+function ActiveSetRow({ controller, id, name, set, index, count, editable, entering, reducedMotion, onDialogChange }: {
+  controller: ActiveSessionController; id: string; name: string; set: SessionExerciseDraft['sets'][number]; index: number; count: number; editable: boolean; entering: boolean; reducedMotion: boolean; onDialogChange: (open: boolean) => void;
 }) {
   const { colors } = useOwnlevelTheme();
   const tapCompleted = useCallback(() => {
@@ -185,8 +193,9 @@ function ActiveSetRow({ controller, id, name, set, index, count, editable, enter
   const reset = () => mutate(resetSessionSet);
   const remove = () => {
     if (count <= 1) return;
+    onDialogChange(true);
     Alert.alert(`¿Eliminar serie ${index + 1}?`, 'Se quitará sólo de este ejercicio en la sesión actual.', [
-      { text: 'Conservar serie', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: () => mutate(removeSessionSet) },
+      { text: 'Conservar serie', style: 'cancel', onPress: () => onDialogChange(false) }, { text: 'Eliminar', style: 'destructive', onPress: () => { onDialogChange(false); mutate(removeSessionSet); } },
     ]);
   };
   const move = (direction: number) => {

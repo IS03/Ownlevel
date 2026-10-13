@@ -106,6 +106,9 @@ export class ActiveSessionController {
   getSnapshot = () => this.snapshot;
   getProgress = () => this.progress;
   getTimer = () => this.rest;
+  getExerciseRevision = (id: string) => this.entries.get(id)?.revision ?? -1;
+  readDismissedHistory = () => this.repository.readDismissedHistory();
+  dismissHistory = (exerciseId: string) => this.repository.dismissHistory(exerciseId);
   getExercise = (id: string) => this.entries.get(id)?.snapshot ?? null;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   subscribeProgress = (listener: () => void) => { this.progressListeners.add(listener); return () => { this.progressListeners.delete(listener); }; };
@@ -386,9 +389,10 @@ export class ActiveSessionController {
       if (ids.has(id) && this.canWrite(entry) && entry.snapshot.dirty) void this.flush(id);
     }
   }
-  startRest(id: string) {
+  startRest(id: string, duration?: number) {
     const entry = this.entries.get(id); if (!entry || !this.canEdit(id)) return;
-    const seconds = restSeconds(entry.snapshot.exercise); if (seconds === null) return;
+    const seconds = duration ?? restSeconds(entry.snapshot.exercise);
+    if (seconds === null || !Number.isInteger(seconds) || seconds <= 0 || seconds > 3600) return;
     this.setRest({ exerciseId: id, exerciseName: entry.snapshot.exercise.nameSnapshot, endAt: this.now() + seconds * 1000 });
   }
   adjustRest(seconds: number) { if (this.rest && !this.snapshot.fenced && !this.snapshot.intent) this.setRest({ ...this.rest, endAt: Math.max(this.now(), this.rest.endAt + seconds * 1000) }); }

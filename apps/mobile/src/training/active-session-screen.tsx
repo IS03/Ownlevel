@@ -1,19 +1,23 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, Alert, AppState, Keyboard, KeyboardAvoidingView, Platform, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
-import Animated, { useAnimatedProps, useAnimatedRef, useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
+import { ActivityIndicator, AccessibilityInfo, Alert, AppState, Keyboard, KeyboardAvoidingView, Platform, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import Animated, { useAnimatedProps, useAnimatedRef, useAnimatedScrollHandler, useSharedValue, runOnJS } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRouter } from 'expo-router';
+import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/build/react-navigation/core/usePreventRemove';
 import type { MobileApiClient } from '@/api/client';
-import type { SessionDetailDto } from '@/api/active-session';
+import type { QuickSessionHistoryDto, SessionDetailDto } from '@/api/active-session';
 import type { RestDeadline } from './active-session-model';
-import { AppIcon, AppText, Button, Heading, InlineUnavailable, ProgressBar, ScrollScreen, SkeletonBlock, Surface, UnavailableState, GlassSurface, sizes, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, Button, Heading, InlineUnavailable, ProgressBar, ScrollScreen, SkeletonBlock, Surface, UnavailableState, GlassSurface, sizes, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
 import { haptics, triggerHaptic } from '@/platform/haptics';
 import { ActiveSessionController, sessionIntentKey } from './active-session-controller';
 import { ActiveExerciseCard } from './active-session-exercise-card';
-import { durationLabel } from './active-session-model';
+import { SessionExerciseActions } from './session-exercise-actions';
+import { SessionScrollHeader, advanceSessionHeader, INITIAL_SESSION_HEADER } from './session-scroll-header';
+import { SessionLastHistory } from './session-last-history';
+import { ExerciseNotice } from './exercise-notice';
+import { draftUsingHistory, durationLabel, quickSessions } from './active-session-model';
 import { useSessionPresenceStore } from './session-presence-provider';
 import { restCountdownLabel, useRestCountdown } from './use-rest-countdown';
 import { SessionExercisePicker, SessionQuickHistory } from './active-session-sheets';
@@ -23,7 +27,7 @@ import { NativeReorderItem, NativeReorderList, SessionDragScrollContext } from '
 import { FinishSessionSheet } from './finish-session-sheet';
 import { CompletedSessionScreen, completedSessionApi, type CompletedSessionApi } from './history-session-screen';
 
-function SessionClock({ session }: { session: SessionDetailDto['session'] }) {
+function SessionClock({ session, progress }: { session: SessionDetailDto['session']; progress?: { completedSets: number; totalSets: number } }) {
   const [now, setNow] = useState(Date.now);
   const { colors } = useOwnlevelTheme();
   useEffect(() => {
@@ -33,7 +37,7 @@ function SessionClock({ session }: { session: SessionDetailDto['session'] }) {
     return () => { clearInterval(interval); foreground.remove(); };
   }, [session.status]);
   const elapsed = (session.status === 'in_progress' ? now : Date.parse(session.endedAt ?? session.startedAt)) - Date.parse(session.startedAt);
-  return <View style={styles.clock}><AppIcon name="clock" size={17} color={colors.textMuted} /><AppText numeric muted variant="caption">{durationLabel(elapsed)}</AppText></View>;
+  return <View style={styles.clock}><>{!progress ? <AppIcon name="clock" size={17} color={colors.textMuted} /> : null}<AppText numeric muted style={{ flexShrink: 1 }} variant="caption">{durationLabel(elapsed)}{progress ? ` · ${progress.completedSets}/${progress.totalSets} series` : ''}</AppText></></View>;
 }
 function SessionProgressHeader({ controller, color, active }: { controller: ActiveSessionController; color: string; active: boolean }) {
   const progress = useSyncExternalStore(controller.subscribeProgress, controller.getProgress, controller.getProgress);
@@ -78,6 +82,32 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const navigation = useNavigation();
+  const reduceMotion = useReduceMotion();
+  const actions = useMemo(() => new SessionExerciseActions(controller), [controller]);
+  const actionState = useSyncExternalStore(actions.subscribe, actions.getSnapshot, actions.getSnapshot);
+  const progress = useSyncExternalStore(controller.subscribeProgress, controller.getProgress, controller.getProgress);
+  const [header, setHeader] = useState(INITIAL_SESSION_HEADER), [headerHeight, setHeaderHeight] = useState(insets.top + 56);
+  const headerValue = useSharedValue(INITIAL_SESSION_HEADER), titleBottom = useSharedValue(100);
+  const [reader, setReader] = useState(true), [keyboard, setKeyboard] = useState(false), [dialog, setDialog] = useState(false);
+  const [cardSheets, setCardSheets] = useState<Record<string, boolean>>({});
+  const [dismissed, setDismissed] = useState<string[] | null>(null), [createName, setCreateName] = useState('');
+  const reveal = useRef<string | null>(null);
+  const cardSheet = useCallback((id: string, open: boolean) => setCardSheets(old => old[id] === open ? old : { ...old, [id]: open }), []);
+  useFocusEffect(useCallback(() => () => actions.cancelWindow(), [actions]));
+  useEffect(() => {
+    actions.activate();
+    const foreground = AppState.addEventListener('change', next => { if (next !== 'active') actions.cancelWindow(); });
+    return () => { foreground.remove(); actions.dispose(); };
+  }, [actions]);
+  useEffect(() => {
+    let mounted = true;
+    void AccessibilityInfo.isScreenReaderEnabled().then(value => { if (mounted) setReader(value); }).catch(() => undefined);
+    const voice = AccessibilityInfo.addEventListener('screenReaderChanged', setReader);
+    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboard(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboard(false));
+    void controller.readDismissedHistory().then(value => { if (mounted) setDismissed(value); }).catch(() => undefined);
+    return () => { mounted = false; voice.remove(); show.remove(); hide.remove(); };
+  }, [controller]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const expandedRef = useRef<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -92,11 +122,17 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
   const dragOwner = useSharedValue<string | null>(null);
   const scrollGesture = useMemo(() => Gesture.Native().withTestId('session-native-scroll'), []);
   const scrollProps = useAnimatedProps(() => ({ scrollEnabled: dragOwner.value === null }));
-  const onScroll = useAnimatedScrollHandler(event => { scrollY.set(event.contentOffset.y); });
+  const onScroll = useAnimatedScrollHandler(event => {
+    scrollY.set(event.contentOffset.y);
+    if (dragOwner.value !== null) return;
+    const next = advanceSessionHeader(headerValue.value, event.contentOffset.y, titleBottom.value, Math.max(0, event.contentSize.height - event.layoutMeasurement.height));
+    if (next.compact !== headerValue.value.compact || next.controls !== headerValue.value.controls) runOnJS(setHeader)(next);
+    headerValue.set(next);
+  });
   const dragScroll = useMemo(() => ({ ref: scrollRef, y: scrollY, contentHeight, gesture: scrollGesture, owner: dragOwner }), [scrollRef, scrollY, contentHeight, scrollGesture, dragOwner]);
   const detail = state.detail;
   const existingIds = useMemo(() => new Set(detail?.exercises.map(exercise => exercise.exerciseId) ?? []), [detail]);
-  const returnToTraining = useCallback(() => router.replace('/(tabs)/train'), [router]);
+  const returnToTraining = useCallback(() => { actions.cancelWindow(); router.replace('/(tabs)/train'); }, [actions, router]);
   // Cancelling is not an achievement: no success haptic.
   useEffect(() => { if (state.status === 'cancelled') returnToTraining(); }, [returnToTraining, state.status]);
   // Reset the Train stack (the closed session must not stay mounted behind the tab), then go Home.
@@ -109,34 +145,57 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
   useEffect(() => { if (state.finished) triggerHaptic('workoutComplete'); }, [state.finished]);
   const closedStatus = detail && detail.session.status !== 'in_progress' && !state.intent ? detail.session.status : null;
   const locked = state.fenced || state.refreshing || Boolean(state.intent) || state.finishing;
-  const canFinish = !!detail && detail.session.status === 'in_progress' && !locked && !state.interaction;
+  const canFinish = !!detail && detail.session.status === 'in_progress' && !locked && !actionState.working && !state.interaction;
   const requestCancel = useCallback(() => {
-    Keyboard.dismiss();
+    Keyboard.dismiss(); setDialog(true);
     Alert.alert('¿Cancelar entrenamiento?', 'Elimina sólo esta sesión en curso. La rutina y el historial anteriores se conservan.', [
-      { text: 'Seguir entrenando', style: 'cancel' }, { text: 'Cancelar entrenamiento', style: 'destructive', onPress: () => void controller.cancel() },
+      { text: 'Seguir entrenando', style: 'cancel', onPress: () => setDialog(false) }, { text: 'Cancelar entrenamiento', style: 'destructive', onPress: () => { setDialog(false); actions.cancelWindow(); void controller.cancel(); } },
     ]);
-  }, [controller]);
+  }, [actions, controller]);
+  const fallbackHeader = !detail || state.status === 'not_found';
   useLayoutEffect(() => {
-    navigation.setOptions({
-      title: closedStatus === 'discarded' ? 'Sesión eliminada' : closedStatus ? 'Sesión finalizada' : '',
-      headerLeft: closedStatus ? undefined : () => <Pressable accessibilityRole="button" accessibilityLabel="Volver a Entrenar" onPress={returnToTraining} style={styles.headerButton}>
-        <AppIcon name="chevronLeft" size={20} color={colors.textMuted} /><AppText>Entrenar</AppText>
-      </Pressable>,
-      headerRight: closedStatus ? undefined : () => <View style={styles.headerActions}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Cancelar entrenamiento" accessibilityState={{ disabled: !canFinish }} disabled={!canFinish}
-          onPress={requestCancel} style={[styles.headerTrash, { opacity: canFinish ? 1 : 0.45 }]}>
-          <AppIcon name="trash" size={20} color={colors.danger} />
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Finalizar entrenamiento" accessibilityState={{ disabled: !canFinish }} disabled={!canFinish}
-          onPress={() => { Keyboard.dismiss(); haptics.selection(); setFinishOpen(true); }} style={styles.headerButton}>
-          <AppText variant="label" style={{ color: colors.primary, opacity: canFinish ? 1 : 0.45 }}>Finalizar</AppText>
-        </Pressable>
-      </View>,
-    });
-  }, [canFinish, closedStatus, colors.danger, colors.primary, colors.textMuted, navigation, requestCancel, returnToTraining]);
+    navigation.setOptions({ headerShown: !!closedStatus || fallbackHeader,
+      headerLeft: fallbackHeader ? () => <Pressable accessibilityRole="button" accessibilityLabel="Volver a Entrenar" onPress={returnToTraining} style={{ minHeight: sizes.touchTarget, flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.sm }}><AppIcon name="chevronLeft" size={20} color={colors.textMuted} /><AppText>Entrenar</AppText></Pressable> : undefined, headerRight: undefined,
+      title: closedStatus === 'discarded' ? 'Sesión eliminada' : closedStatus ? 'Sesión finalizada' : '' });
+  }, [closedStatus, colors.textMuted, fallbackHeader, navigation, returnToTraining]);
+  useEffect(() => {
+    if (!actionState.addedId) return;
+    const frame = requestAnimationFrame(() => { expandedRef.current = actionState.addedId; setExpanded(actionState.addedId); reveal.current = actionState.addedId; });
+    return () => cancelAnimationFrame(frame);
+  }, [actionState.addedId]);
+  const applyHistory = (id: string, history: QuickSessionHistoryDto) => {
+    const current = controller.getExercise(id);
+    if (!current || !controller.canEdit(id)) return;
+    const apply = () => {
+      setDialog(false);
+      if (!controller.canEdit(id)) return;
+      const live = controller.getExercise(id);
+      if (!live) return;
+      try {
+        const next = draftUsingHistory(live.draft, history);
+        controller.change(id, () => next, true);
+        setHistoryId(null);
+      } catch {
+        setDialog(true);
+        Alert.alert('No pudimos usar estas series', 'Podés cargar los valores a mano.', [{ text: 'Entendido', onPress: () => setDialog(false) }]);
+      }
+    };
+    if (current.draft.sets.some(set => set.isCompleted || set.actualReps.trim() || set.actualWeightKg.trim())) {
+      setDialog(true); Alert.alert('¿Usar estas series?', 'Reemplaza los valores de hoy en este ejercicio. Las series quedan sin completar.', [
+        { text: 'Seguir editando', style: 'cancel', onPress: () => setDialog(false) }, { text: 'Usar', onPress: apply },
+      ]);
+    } else apply();
+  };
+  const afterRemoval = (open: () => void) => {
+    if (!actionState.hiddenId && !actionState.working) open();
+    else void actions.settleRemoval().then(ok => { if (ok) open(); });
+  };
+  const dismissHistory = (exerciseId: string) => { setDismissed(old => [...new Set([...(old ?? []), exerciseId])]); void controller.dismissHistory(exerciseId).catch(() => undefined); };
+
   usePreventRemove(state.intent?.phase === 'running', ({ data }) => {
+    setDialog(true);
     Alert.alert('Hay una operación en curso', 'La intención se conserva para comprobar el resultado cuando vuelvas.', [
-      { text: 'Esperar', style: 'cancel' }, { text: 'Volver a Entrenar', onPress: () => navigation.dispatch(data.action) },
+      { text: 'Esperar', style: 'cancel', onPress: () => setDialog(false) }, { text: 'Volver a Entrenar', onPress: () => { setDialog(false); actions.cancelWindow(); navigation.dispatch(data.action); } },
     ]);
   });
   const toggle = useCallback((id: string) => {
@@ -144,11 +203,17 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
     expandedRef.current = expandedRef.current === id ? null : id; setExpanded(expandedRef.current);
   }, [controller]);
   const showHistory = useCallback((id: string) => setHistoryId(id), []);
-  const remove = useCallback((id: string, name: string) => Alert.alert(`¿Quitar ${name}?`, 'Se quitará sólo de esta sesión. Su última escritura en curso se comprobará antes de quitarlo.', [
-    { text: 'Seguir entrenando', style: 'cancel' }, { text: 'Quitar', style: 'destructive', onPress: () => void controller.remove(id) },
-  ]), [controller]);
-  const openCreator = () => {
-    creatorAfterDismiss.current = true; setPickerOpen(false);
+  const remove = useCallback((id: string, name: string) => {
+    const exercise = controller.getExercise(id);
+    if (!exercise || !controller.canEdit(id)) return;
+    if (!exercise.draft.sets.some(set => set.isCompleted)) { void actions.stageRemoval(id); return; }
+    setDialog(true); Alert.alert(`¿Quitar ${name}?`, 'Se pierden los datos de hoy de este ejercicio. Tu rutina y las sesiones anteriores se conservan.', [
+      { text: 'Seguir entrenando', style: 'cancel', onPress: () => setDialog(false) },
+      { text: 'Quitar', style: 'destructive', onPress: () => { setDialog(false); void actions.stageRemoval(id); } },
+    ]);
+  }, [actions, controller]);
+  const openCreator = (name: string) => {
+    setCreateName(name); creatorAfterDismiss.current = true; setPickerOpen(false);
     if (Platform.OS !== 'ios') { creatorAfterDismiss.current = false; setCreatorOpen(true); }
   };
   const creatorDismissed = () => { if (creatorAfterDismiss.current) { creatorAfterDismiss.current = false; setCreatorOpen(true); } };
@@ -175,14 +240,14 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
   const active = detail.session.status === 'in_progress';
   const accent = colors.primary;
   const historyExercise = detail.exercises.find(exercise => exercise.id === historyId);
-  return <KeyboardAvoidingView style={[styles.screen, { backgroundColor: colors.background }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={88}>
+  return <KeyboardAvoidingView style={[styles.screen, { backgroundColor: colors.background }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
     <SafeAreaView edges={['left', 'right']} style={styles.screen} testID="active-session-ready"><SessionDragScrollContext.Provider value={dragScroll}>
     <GestureDetector gesture={scrollGesture}><Animated.ScrollView ref={scrollRef} animatedProps={scrollProps} directionalLockEnabled removeClippedSubviews={false} onScroll={onScroll} scrollEventThrottle={16} onContentSizeChange={(_width, height) => { contentHeight.set(height); }}
-      contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + Math.max(insets.bottom, restOverlayHeight) }]} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled" contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={[styles.content, { paddingTop: headerHeight + spacing.lg, paddingBottom: spacing.xl + Math.max(insets.bottom, restOverlayHeight) }]} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled" contentInsetAdjustmentBehavior="never"
       refreshControl={<RefreshControl refreshing={pullRefreshing} onRefresh={() => { setPullRefreshing(true); void controller.refresh().finally(() => setPullRefreshing(false)); }} tintColor={colors.primary} />}>
       <View style={styles.sessionHeader}>
         <ReturnToHistoryDay />
-        <View style={styles.row}><Heading level={1} style={[styles.sessionTitle, styles.flex]}>{detail.session.name}</Heading><SessionClock session={detail.session} />
+        <View onLayout={event => { titleBottom.set(event.nativeEvent.layout.y + event.nativeEvent.layout.height + spacing.lg); }} style={styles.row}><Heading level={1} style={[styles.sessionTitle, styles.flex]}>{detail.session.name}</Heading><SessionClock session={detail.session} />
           {state.refreshing || state.intent?.phase === 'running' ? <ActivityIndicator testID="session-background-sync" accessibilityLabel="Sincronizando sesión" size="small" color={colors.textMuted} /> : null}
         </View>
         <SessionProgressHeader controller={controller} color={accent} active={active} />
@@ -192,34 +257,39 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
       {intentPanel}
       {state.notice && !state.intent ? <InlineUnavailable message={state.notice} actionLabel="Comprobar sesión" onAction={() => void controller.refresh()} /> : null}
       <View style={styles.row}><AppText style={styles.flex} variant="heading">Ejercicios</AppText>
-        {active ? <Button disabled={locked || Boolean(state.interaction)} label="+ Agregar" onPress={() => setPickerOpen(true)} variant="quiet" /> : null}</View>
-      {detail.exercises.length ? <NativeReorderList ids={detail.exercises.map(exercise => exercise.id)}
-        onLift={() => { const accepted = controller.beginExerciseDrag(); if (accepted) Keyboard.dismiss(); return accepted; }}
+        {active ? <Button disabled={locked || Boolean(state.interaction)} label="+ Agregar" onPress={() => { afterRemoval(() => setPickerOpen(true)); }} variant="quiet" /> : null}</View>
+      {detail.exercises.some(exercise => exercise.id !== actionState.hiddenId) ? <NativeReorderList ids={detail.exercises.filter(exercise => exercise.id !== actionState.hiddenId).map(exercise => exercise.id)}
+        onLift={() => { const accepted = !actionState.hiddenId && controller.beginExerciseDrag(); if (accepted) Keyboard.dismiss(); return accepted; }}
         onDrop={ids => controller.dropExercises(ids)} onCancel={() => controller.cancelDrag()}>
-        {detail.exercises.map(exercise => <NativeReorderItem key={exercise.id} id={exercise.id} gap={0}>
-          <ActiveExerciseCard controller={controller} id={exercise.id} expanded={expanded === exercise.id} locked={locked} onToggle={toggle} onHistory={showHistory} onRemove={remove} />
+        {detail.exercises.filter(exercise => exercise.id !== actionState.hiddenId).map(exercise => <NativeReorderItem key={exercise.id} id={exercise.id} gap={0}>
+          <ActiveExerciseCard controller={controller} id={exercise.id} expanded={expanded === exercise.id} locked={locked} reorderDisabled={!!actionState.hiddenId || actionState.working} onToggle={toggle} onHistory={showHistory} onRemove={remove} onSheetChange={cardSheet}
+            onReveal={top => { if (reveal.current === exercise.id) { reveal.current = null; scrollRef.current?.scrollTo({ y: Math.max(0, scrollY.get() + top - headerHeight - spacing.md), animated: !reduceMotion }); } }}
+            historyCard={exercise.routineExerciseId === null && dismissed !== null && !dismissed.includes(exercise.exerciseId) && detail.quickHistory.status === 'ok' && quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).some(item => item.sets.some(set => set.isCompleted)) ?
+              <SessionLastHistory history={quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).find(item => item.sets.some(set => set.isCompleted))!} disabled={locked} onUse={() => { if (detail.quickHistory.status === 'ok') applyHistory(exercise.id, quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).find(item => item.sets.some(set => set.isCompleted))!); }} onDismiss={() => dismissHistory(exercise.exerciseId)} /> : null} />
         </NativeReorderItem>)}
       </NativeReorderList> :
         <Surface><AppText muted>Esta sesión no tiene ejercicios.</AppText><AppText muted variant="caption">Agregá uno desde tu biblioteca para empezar a registrar series.</AppText></Surface>}
     </Animated.ScrollView></GestureDetector></SessionDragScrollContext.Provider></SafeAreaView>
+    <SessionScrollHeader title={detail.session.name} clock={<SessionClock session={detail.session} progress={progress} />} compact={header.compact} controls={header.controls}
+      pinned={reader || reduceMotion || keyboard || dialog || pickerOpen || creatorOpen || !!historyId || finishOpen || Object.values(cardSheets).some(Boolean) || !!state.interaction} disabled={!canFinish} top={insets.top}
+      completed={progress.completedSets} total={progress.totalSets} onBack={returnToTraining} onCancel={requestCancel} onFinish={() => { Keyboard.dismiss(); afterRemoval(() => setFinishOpen(true)); }} onHeight={setHeaderHeight} />
+    {actionState.notice ? <ExerciseNotice bottomOffset={Math.max(insets.bottom, restOverlayHeight) - insets.bottom} message={actionState.notice.message} disabled={locked || actionState.working} undo={actionState.notice.undo ? () => void actions.undo() : undefined} /> : null}
     <RestTimerPanel controller={controller} onHeightChange={setRestOverlayHeight} />
     {finishOpen && !state.finished ? <FinishSessionSheet controller={controller} onClose={() => setFinishOpen(false)} /> : null}
     <SessionExercisePicker visible={pickerOpen} client={client} existingIds={existingIds} onClose={() => setPickerOpen(false)} onDismiss={creatorDismissed} onCreate={openCreator}
-      onAdd={exercise => { setPickerOpen(false); void controller.add({ operation: 'add_existing', exerciseId: exercise.id, idempotencyKey: sessionIntentKey() }); }} />
-    {creatorOpen ? <ExerciseEditorModal purpose="session" target={{ mode: 'create' }} routines={[]} pending={Boolean(state.intent) || state.refreshing} createIdempotencyKey={sessionIntentKey}
+      onAdd={exercise => { setPickerOpen(false); void actions.add({ operation: 'add_existing', exerciseId: exercise.id, idempotencyKey: sessionIntentKey() }, exercise.name); }} />
+    {creatorOpen ? <ExerciseEditorModal initialName={createName} purpose="session" target={{ mode: 'create' }} routines={[]} pending={Boolean(state.intent) || state.refreshing} createIdempotencyKey={sessionIntentKey}
       onSetStatus={() => undefined} onClose={() => setCreatorOpen(false)} onSave={async (exercise, _routineIds, key) => {
-        const confirmed = await controller.add({ operation: 'create_and_add', exercise, idempotencyKey: key ?? sessionIntentKey() });
+        const confirmed = await actions.add({ operation: 'create_and_add', exercise, idempotencyKey: key ?? sessionIntentKey() }, exercise.name);
         if (confirmed || controller.getSnapshot().intent) { setCreatorOpen(false); return null; }
         return controller.getSnapshot().notice ?? 'No pudimos agregar el ejercicio.';
       }} /> : null}
-    {historyExercise ? <SessionQuickHistory exercise={historyExercise} history={detail.quickHistory} onClose={() => setHistoryId(null)} onRefresh={() => void controller.refresh()} /> : null}
+    {historyExercise ? <SessionQuickHistory exercise={historyExercise} canUse={!locked && controller.canEdit(historyExercise.id)} history={detail.quickHistory} routineId={detail.session.routineId} routineName={detail.session.routineNameSnapshot ?? detail.session.name} onUse={session => applyHistory(historyExercise.id, session)} onClose={() => setHistoryId(null)} onRefresh={() => void controller.refresh()} /> : null}
   </KeyboardAvoidingView>;
 }
 const styles = StyleSheet.create({
   screen: { flex: 1 }, flex: { flex: 1 }, content: { alignSelf: 'center', flexGrow: 1, maxWidth: sizes.contentMaxWidth, width: '100%', padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xl }, row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  sessionHeader: { gap: spacing.sm, paddingVertical: spacing.sm }, sessionTitle: { fontSize: 34 }, clock: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs }, headerButton: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: sizes.touchTarget, paddingHorizontal: spacing.sm }, progress: { gap: spacing.sm, marginTop: spacing.sm },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  headerTrash: { minWidth: sizes.touchTarget, minHeight: sizes.touchTarget, alignItems: 'center', justifyContent: 'center' },
+  sessionHeader: { gap: spacing.sm, paddingVertical: spacing.sm }, sessionTitle: { fontSize: 34 }, clock: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs }, progress: { gap: spacing.sm, marginTop: spacing.sm },
   timerOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0 },
   timerSafe: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }, timer: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, overflow: 'hidden', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   timerButton: { width: sizes.touchTarget, minHeight: sizes.touchTarget, alignItems: 'center', justifyContent: 'center' }, timerValue: { fontVariant: ['tabular-nums'] },
