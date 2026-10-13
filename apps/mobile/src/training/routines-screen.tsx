@@ -231,7 +231,14 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
       announce({ message: 'Actualizá la lista antes de ordenar las rutinas.', error: true }); void refresh(); return;
     }
     ordering.current = true; setOrderDraft({ routines: active, ids: active.map(routine => routine.id), version: version.data });
-    scrollRef.current?.getNativeScrollRef()?.measureInWindow((_x, y, _width, height) => { const metric = scrollMetrics.current; metric.top = y; metric.height = height; metric.max = Math.max(metric.min, metric.contentHeight - height + metric.bottom); });
+    measureScrollViewport();
+  };
+  const measureScrollViewport = () => {
+    scrollRef.current?.getNativeScrollRef()?.measureInWindow((_x, y, _width, height) => {
+      if (height <= 0) return;
+      // Wait for onScroll to supply offset and viewport height as one snapshot.
+      scrollMetrics.current.top = y;
+    });
   };
   const saveOrder = async () => {
     if (!client || pendingRef.current || !orderDraft || dragging) return;
@@ -260,10 +267,16 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
   };
   const scrollAtEdge = (pointer: number) => {
     const metric = scrollMetrics.current;
+    if (metric.height <= 0) return 0;
     const top = Math.max(metric.top, insets.top + 64), bottom = metric.top + metric.height - insets.bottom - 64;
+    if (bottom <= top) return 0;
     const delta = pointer < top + 56 ? -Math.min(12, (top + 56 - pointer) / 4)
       : pointer > bottom - 56 ? Math.min(12, (pointer - bottom + 56) / 4) : 0;
-    const next = Math.max(metric.min, Math.min(metric.max, metric.y + delta)), difference = next - metric.y;
+    if (!delta) return 0;
+    // An inset/layout update must never turn an upward drag into a downward jump.
+    const next = delta < 0 ? Math.min(metric.y, Math.max(metric.min, metric.y + delta))
+      : Math.max(metric.y, Math.min(metric.max, metric.y + delta));
+    const difference = next - metric.y;
     if (difference) { metric.y = next; scrollRef.current?.scrollTo({ y: next, animated: false }); }
     return difference;
   };
@@ -291,10 +304,16 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
   </RoutinesScrollScreen> : !current ? <RoutinesScrollScreen testID="routines-unavailable">
     <UnavailableState action={<Button label="Reintentar" onPress={runRefresh} />} description="Revisá la conexión e intentá de nuevo." title={`No pudimos cargar ${title}`} />
   </RoutinesScrollScreen> : <RoutinesScrollScreen scrollRef={scrollRef} scrollEnabled={!dragging} canCancelContentTouches={!orderDraft} scrollEventThrottle={16}
+    onLayout={measureScrollViewport}
     onScroll={event => { const { contentOffset, contentInset, contentSize, layoutMeasurement } = event.nativeEvent;
-      scrollMetrics.current.y = contentOffset.y; scrollMetrics.current.min = -contentInset.top;
-      scrollMetrics.current.contentHeight = contentSize.height; scrollMetrics.current.bottom = contentInset.bottom;
-      scrollMetrics.current.max = Math.max(-contentInset.top, contentSize.height - layoutMeasurement.height + contentInset.bottom); }}
+      const metric = scrollMetrics.current;
+      metric.y = contentOffset.y;
+      // Fabric reports contentInset without UIKit's automatic large-title inset.
+      // Keep the observed negative origin so dragging can return above offset zero.
+      metric.min = Math.min(metric.min, -contentInset.top, contentOffset.y);
+      metric.height = layoutMeasurement.height;
+      metric.contentHeight = contentSize.height; metric.bottom = contentInset.bottom;
+      metric.max = Math.max(metric.min, contentSize.height - layoutMeasurement.height + contentInset.bottom); }}
     onContentSizeChange={(_width, height) => {
       const metric = scrollMetrics.current; metric.contentHeight = height;
       if (metric.height > 0) metric.max = Math.max(metric.min, height - metric.height + metric.bottom);
