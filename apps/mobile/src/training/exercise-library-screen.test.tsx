@@ -18,9 +18,10 @@ const mockUseApiResource = jest.fn();
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 const mockPush = jest.fn();
 jest.mock('expo-glass-effect', () => ({ isGlassEffectAPIAvailable: () => false, isLiquidGlassAvailable: () => false }));
-jest.mock('./routine-form-sheet', () => ({ RoutineFormSheet: ({ children }: { children: React.ReactNode }) => children }));
+jest.mock('./routine-form-sheet', () => ({ RoutineFormSheet: ({ children, open }: { children: React.ReactNode; open: boolean }) => (open ? children : null) }));
 jest.mock('./routine-context-menu', () => jest.requireActual('./routine-context-menu.tsx'));
 jest.mock('./exercise-choice-menu', () => jest.requireActual('./exercise-choice-menu.tsx'));
+jest.mock('./exercise-segmented', () => jest.requireActual('./exercise-segmented.tsx'));
 jest.mock('react-native-gesture-handler/ReanimatedSwipeable', () => {
   const { View } = jest.requireActual<typeof import('react-native')>('react-native');
   return { __esModule: true, default: ({ children }: { children: React.ReactNode }) => <View>{children}</View> };

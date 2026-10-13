@@ -60,7 +60,7 @@ export function ExerciseDetailScreen() {
         {exercise.notes ? <><AppText variant="title2">Notas</AppText><Surface><AppText>{exercise.notes}</AppText></Surface></> : null}
       </>}
     </ScrollView>
-    {exercise && editing ? <ExerciseEditorModal target={{ mode: 'edit', exercise: editing }} createIdempotencyKey={() => ''} pending={library.pending} onClose={() => setEditing(null)} onSave={async mutation => { const error = await library.save(editing, mutation); if (!error) setEditing(null); return error; }} /> : null}
+    {exercise ? <ExerciseEditorModal open={Boolean(editing)} target={{ mode: 'edit', exercise: editing ?? exercise }} createIdempotencyKey={() => ''} pending={library.pending} onClose={() => setEditing(null)} onSave={async mutation => { const error = await library.save(editing ?? exercise, mutation); if (!error) setEditing(null); return error; }} /> : null}
     {exercise && adding ? <ExerciseAddRoutineSheet client={library.client} exercise={exercise} onClose={() => setAdding(false)} onChanged={refresh} onAdded={() => library.announce('Ejercicio agregado a la rutina')} /> : null}
     {library.notice ? <ExerciseNotice {...library.notice} disabled={library.pending} undo={library.notice.undo ? () => void library.status(library.notice!.undo!.exercise, library.notice!.undo!.active) : undefined} /> : null}
   </>;

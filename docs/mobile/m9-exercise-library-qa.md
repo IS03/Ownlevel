@@ -19,7 +19,7 @@ La sesión en curso sigue precargando objetivos desde el servidor al agregar un 
 
 ## Orden de despliegue
 
-1. EXPAND: aplicar la migración `20261013183754_mobile_exercise_identity_template_start_expand.sql`, preparada y validada localmente. No se aplicó a la base remota en este trabajo.
+1. EXPAND: migración `20261013211730_mobile_exercise_identity_template_start_expand.sql` aplicada en la base remota el 2026-10-13.
 2. Desplegar la API aditiva (`update_identity`, `templateTargetsOnly`) y luego distribuir Mobile. No hace falta regenerar dependencias nativas.
 3. OBSERVE: confirmar edición CAS, inicio vacío, replay y clientes anteriores. No borrar campos ni RPC anteriores.
 

@@ -43,7 +43,7 @@ try {
   await setup.query(`create trigger tr_exercises_updated_at before update on public.exercises for each row execute function public.set_updated_at();
     revoke all on function public.mobile_start_training_session(text,uuid) from public,anon;
     grant execute on function public.mobile_start_training_session(text,uuid) to authenticated;`);
-  const migration = await read('supabase/migrations/20261013183754_mobile_exercise_identity_template_start_expand.sql');
+  const migration = await read('supabase/migrations/20261013211730_mobile_exercise_identity_template_start_expand.sql');
   await setup.query(migration); await setup.query(migration);
   await setup.query(await read('supabase/tests/m9_exercise_library.sql'));
   console.log('PASS SQL: exact migration reapplication, ownership, strict payload, CAS, defaults/memberships/history preserved, null/zero start, legacy fallback, ledger replay/policy conflict, active guard and grants');

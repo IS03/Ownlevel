@@ -14,7 +14,7 @@ export function RoutineFormSheet({ children, onClose, open, pending }: RoutineFo
   return (
     <Host colorScheme={isDark ? 'dark' : 'light'} style={{ height: 0, position: 'absolute', width: 0 }}>
       <BottomSheet fitToContents isPresented={open} onIsPresentedChange={presented => { if (!presented && !pending) onClose(); }}>
-        <Group modifiers={[frame({ maxWidth: Infinity, alignment: 'leading' }), onGeometryChange(({ width }) => { if (width > 0) setSheetWidth(previous => previous === width ? previous : width); }), presentationBackground(colors.background), presentationCornerRadius(radius.sheet), presentationDragIndicator('visible'), interactiveDismissDisabled(pending)]}>
+        <Group modifiers={[frame({ maxWidth: Infinity, alignment: 'center' }), onGeometryChange(({ width }) => { if (width > 0) setSheetWidth(previous => previous === width ? previous : width); }), presentationBackground(colors.background), presentationCornerRadius(radius.sheet), presentationDragIndicator('visible'), interactiveDismissDisabled(pending)]}>
           <RNHostView matchContents>{content}</RNHostView>
         </Group>
       </BottomSheet>
