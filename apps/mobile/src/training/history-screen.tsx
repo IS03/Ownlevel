@@ -4,7 +4,7 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchTrainingDay, fetchTrainingHistory, fetchTrainingHistoryExercises, fetchTrainingHistoryMonth, type TrainingHistoryExercise, type TrainingHistorySession } from '@/api/training-history';
-import { AppIcon, AppText, Button, EmptyState, ScrollScreen, Surface, TextField, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, Button, EmptyState, Surface, TextField, spacing, useOwnlevelTheme } from '@/design-system';
 import { formatDuration } from '@/home/format';
 import { historyReturnParams } from '@/history/navigation';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
@@ -14,7 +14,7 @@ import { MUSCLE_GROUP_OPTIONS } from './exercise-library-model';
 import { ExerciseSegmented } from './exercise-segmented';
 import { GroupChip } from './group-chip';
 import { HistoryCalendar, type HistoryLevels } from './history-calendar';
-import { ListCard, ReadStateScreen, SessionRow, StaleNotice } from './history-components';
+import { HistoryScroll, ListCard, ReadStateScreen, SessionRow, StaleNotice } from './history-components';
 import { addMonths, dayTotalsLabel, groupSessionsByDate, historyDayLabel, mergeHistoryPage, mondayOf, shiftDay, shortDate, volumeLabel } from './history-model';
 import { useRead } from './use-read';
 
@@ -127,14 +127,14 @@ function SessionsTab({ header, initialDate, today, onOpen }: { header: ReactNode
   const months = expanded ? [month] : [...new Set([week.slice(0, 7), shiftDay(week, 6).slice(0, 7)])];
   const intensity = useHistoryMonths(client, months);
   const select = (date: string) => { setSelected(current => current === date ? null : date); setMonth(date.slice(0, 7)); };
-  return <ScrollScreen testID="history-sessions" refreshControl={<RefreshControl refreshing={false} tintColor={colors.primary}
+  return <HistoryScroll testID="history-sessions" refreshControl={<RefreshControl refreshing={false} tintColor={colors.primary}
     onRefresh={() => { setRefreshKey(value => value + 1); void intensity.reload(); }} />}>
     {header}
     <HistoryCalendar today={today} selected={selected} week={week} month={month} expanded={expanded} levels={intensity.levels} unavailable={intensity.unavailable}
       onToggle={() => setExpanded(value => !value)} onMonth={delta => setMonth(value => addMonths(value, delta))} onSelect={select} onRetry={() => void intensity.reload()} />
     {selected ? <DaySessions key={`${selected}-${refreshKey}`} client={client} date={selected} today={today} onAll={() => setSelected(null)} onOpen={onOpen} />
       : <AllSessions client={client} today={today} refreshKey={refreshKey} onOpen={onOpen} />}
-  </ScrollScreen>;
+  </HistoryScroll>;
 }
 
 function ExerciseRow({ exercise, onPress, divided }: { exercise: TrainingHistoryExercise; onPress: () => void; divided: boolean }) {
@@ -172,7 +172,7 @@ function ExercisesTab({ header, onOpen }: { header: ReactNode; onOpen: (id: stri
     return sort === 'az' ? [...filtered].sort((left, right) => left.name.localeCompare(right.name, 'es-AR')) : filtered;
   }, [group, query, sort, state]);
   if (state.status !== 'ready') return <ReadStateScreen header={header} state={state} onRetry={() => void reload()} testID="history-exercises" />;
-  return <ScrollScreen testID="history-exercises" refreshControl={<RefreshControl refreshing={state.refreshing} onRefresh={() => void reload()} tintColor={colors.primary} />}>
+  return <HistoryScroll testID="history-exercises" refreshControl={<RefreshControl refreshing={state.refreshing} onRefresh={() => void reload()} tintColor={colors.primary} />}>
     {header}
     {state.stale ? <StaleNotice onRetry={() => void reload()} /> : null}
     {state.data.length === 0 ? <EmptyState title="Todavía no hay ejercicios registrados" description="Aparecen acá cuando completás series en una sesión finalizada." /> : <>
@@ -185,7 +185,7 @@ function ExercisesTab({ header, onOpen }: { header: ReactNode; onOpen: (id: stri
       {rows.length === 0 ? <EmptyState title="Sin resultados" description="Probá con otro nombre o grupo muscular." />
         : <ListCard>{rows.map((exercise, index) => <ExerciseRow key={exercise.id} exercise={exercise} divided={index > 0} onPress={() => onOpen(exercise.id)} />)}</ListCard>}
     </>}
-  </ScrollScreen>;
+  </HistoryScroll>;
 }
 
 /** Entrenar › Historial (HI1–HI3): one screen; the old Calendario and Día routes land here. */
@@ -202,15 +202,14 @@ export function HistoryScreen({ now = () => new Date() }: { now?: () => Date }) 
     <ExerciseSegmented accessibilityLabel="Vista de historial" value={tab} options={TABS} onChange={setTab} />
   </View>;
   const openSession = (id: string) => router.push(origin ? { pathname: '/(tabs)/train/history/[id]', params: { id, ...origin } } : `/(tabs)/train/history/${id}`);
-  return <View style={[styles.screen, { backgroundColor: colors.background }]} testID="history-screen">
+  return <>
     <Stack.Screen options={{ title: 'Historial', headerLargeTitleEnabled: Platform.OS === 'ios', headerLargeTitleStyle: { color: colors.text },
       headerStyle: { backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.background }, headerLargeStyle: { backgroundColor: 'transparent' } }} />
     {tab === 'sessions' ? <SessionsTab header={header} initialDate={initialDate} today={today} onOpen={openSession} />
       : <ExercisesTab header={header} onOpen={id => router.push(`/(tabs)/train/history/exercise/${id}`)} />}
-  </View>;
+  </>;
 }
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
   header: { gap: spacing.sm },
   group: { gap: spacing.sm },
   dayHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.sm, paddingHorizontal: spacing.xs, paddingTop: spacing.sm },
