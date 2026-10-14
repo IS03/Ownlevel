@@ -96,12 +96,13 @@ describe('Home metric controls', () => {
     expect(android.queryByTestId('home-register-more-glass')).toBeNull();
   });
 
-  it('two active metrics keep fixed widths instead of spreading across the viewport', async () => {
+  it('two metrics and Más distribute across three equal columns', async () => {
     mockSupported = false;
     const view = render(<OwnlevelThemeProvider initialMode="light"><HomeRegister date={day.date} onRegister={() => undefined}
       today={{ status: 'ready', confirmedAt: 1, data: { ...day, metrics: { status: 'ok', data: { metrics: day.metrics.status === 'ok' ? day.metrics.data.metrics.slice(0, 2) : [] } } } }} /></OwnlevelThemeProvider>);
-    expect(StyleSheet.flatten(view.getByTestId('home-register-more').props.style).width).toBe(80);
-    expect(StyleSheet.flatten(view.getByTestId('home-register-metric-m0').props.style).width).toBe(80);
+    fireEvent(view.getByTestId('home-register-row'), 'layout', { nativeEvent: { layout: { width: 376 } } });
+    expect(StyleSheet.flatten(view.getByTestId('home-register-more').props.style).width).toBe(120);
+    expect(StyleSheet.flatten(view.getByTestId('home-register-metric-m0').props.style).width).toBe(120);
   });
 
   it('larger type widens every item, including Más', async () => {

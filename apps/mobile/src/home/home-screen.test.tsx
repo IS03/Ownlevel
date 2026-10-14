@@ -6,7 +6,7 @@ import { OwnlevelThemeProvider } from '@/design-system';
 
 import { HOME_FOCUS_REFRESH_MS } from './home-data';
 import { HomeScreen } from './home-screen';
-import { homeProgressBody, homeProgressTraining } from './home-test-fixtures';
+import { homeProgressHabits, homeProgressBody, homeProgressTraining } from './home-test-fixtures';
 
 // Screen navigation uses the portable control; the UIKit bridge has its own integration suite.
 jest.mock('./home-page-control', () => jest.requireActual('./home-page-control.tsx'));
@@ -20,6 +20,7 @@ const mockFetchQuick = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockFetchReport = jest.fn<(client: unknown, query: unknown) => Promise<unknown>>();
 const mockFetchHistory = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockFetchTrainingDay = jest.fn<(client: unknown, date: string) => Promise<unknown>>();
+const mockFetchHabits = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockFetchProgressBody = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockFetchProgressWeek = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockFetchProgressRecords = jest.fn<(...args: unknown[]) => Promise<unknown>>();
@@ -68,6 +69,7 @@ jest.mock('@/api/training-history', () => ({
 }));
 jest.mock('@/api/progress', () => ({
   ...jest.requireActual<object>('@/api/progress'),
+  fetchProgressHabitWeek: (...args: unknown[]) => mockFetchHabits(...args),
   fetchProgressBody: (...args: unknown[]) => mockFetchProgressBody(...args),
   fetchProgressTraining: (c: unknown, q: { period: string }, s: unknown) => q.period === '7'
     ? mockFetchProgressWeek(c, q, s) : mockFetchProgressRecords(c, q, s),
@@ -126,7 +128,7 @@ const settle = () => act(async () => { for (let i = 0; i < 6; i++) await Promise
 const afterSheet = () => act(() => new Promise<void>(resolve => { setTimeout(resolve, 400); }));
 const focus = async () => { act(() => { mockFocusEffects.at(-1)!(); }); await settle(); };
 const allFetchers = () => [mockFetchHome, mockFetchDay, mockFetchQuick, mockFetchReport, mockFetchHistory,
-  mockFetchProgressBody, mockFetchProgressRecords];
+  mockFetchHabits, mockFetchProgressBody, mockFetchProgressRecords];
 
 describe('Home screen', () => {
   beforeEach(() => {
@@ -139,6 +141,7 @@ describe('Home screen', () => {
     mockFetchQuick.mockImplementation(() => ok(quick));
     mockFetchReport.mockImplementation(() => ok(report));
     mockFetchHistory.mockImplementation(() => ok({ sessions: [], nextCursor: null }));
+    mockFetchHabits.mockImplementation(() => ok(homeProgressHabits()));
     mockFetchProgressBody.mockImplementation(() => ok(homeProgressBody()));
     mockFetchProgressWeek.mockImplementation(() => ok(homeProgressTraining()));
     mockFetchProgressRecords.mockImplementation(() => ok(homeProgressTraining('30')));
@@ -151,6 +154,7 @@ describe('Home screen', () => {
     // The 7-day trainings read is no longer shown on Home, so it is not requested.
     expect(mockFetchProgressWeek).not.toHaveBeenCalled();
     expect(mockFetchDay.mock.calls[0][1]).toBe('2026-10-10');
+    expect(mockFetchHabits.mock.calls[0][1]).toBe('2026-10-05');
     expect(mockFetchReport.mock.calls[0][1]).toEqual({ period: 'custom', from: '2026-10-05', to: '2026-10-10' });
     expect(mockFetchProgressBody.mock.calls[0][1]).toEqual({ period: '7' });
     expect(mockFetchProgressRecords.mock.calls[0][1]).toEqual({ period: '30' });
@@ -182,6 +186,7 @@ describe('Home screen', () => {
   it('a read after midnight on Sunday asks for the new week', async () => {
     clock = Date.parse('2026-10-12T02:59:00.000Z'); // Sunday 23:59
     await renderScreen();
+    expect(mockFetchHabits.mock.calls[0][1]).toBe('2026-10-05');
     expect(mockFetchReport.mock.calls[0][1]).toEqual({ period: 'custom', from: '2026-10-05', to: '2026-10-11' });
     await focus(); // first focus = initial reads
     clock = Date.parse('2026-10-12T03:00:00.000Z'); // Monday 00:00, seconds later
@@ -228,13 +233,24 @@ describe('Home screen', () => {
     fireEvent.press(view.getByTestId('home-week-day-2026-10-06'));
     fireEvent.press(view.getByTestId('home-week-page-1'));
     fireEvent.press(view.getByTestId('home-week-calories'));
-    expect(view.queryByTestId('home-week-page-2')).toBeNull();
+    expect(view.getByTestId('home-week-page-2')).toBeTruthy();
     expect(view.queryAllByTestId(/home-week-scroll-/)).toHaveLength(0);
     expect(mockPush.mock.calls).toEqual([
       [{ pathname: '/(tabs)/train/history/[id]', params: { id: 'done-1' } }],
       [{ pathname: '/(tabs)/train/history', params: { date: '2026-10-06' } }],
       [{ pathname: '/(tabs)/nutrition/reports', params: { period: 'custom', from: '2026-10-05', to: '2026-10-10' } }],
     ]);
+  });
+
+  it('opens the habit metric in Progreso and refreshes the weekly read on a new week', async () => {
+    const view = await renderScreen();
+    fireEvent.press(view.getByTestId('home-week-page-2'));
+    fireEvent.press(view.getByTestId('home-habit-m1'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/progress/trends/metrics', params: { metric: 'm1' } });
+    await focus();
+    clock = Date.parse('2026-10-12T03:00:05.000Z');
+    await focus();
+    expect(mockFetchHabits.mock.calls.at(-1)![1]).toBe('2026-10-12');
   });
 
   it('"Arrancar rutina" opens the new session sheet; the recommended routine starts right away (no chooser) and Home follows the session', async () => {

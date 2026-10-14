@@ -6,7 +6,7 @@ import type { MobileApiClient } from '@/api/client';
 import { fetchHistoryDay } from '@/api/history';
 import { fetchNutritionReport } from '@/api/nutrition-report';
 import { fetchQuickOptions } from '@/api/nutrition-quick';
-import { fetchProgressBody, fetchProgressTraining } from '@/api/progress';
+import { fetchProgressHabitWeek, fetchProgressBody, fetchProgressTraining } from '@/api/progress';
 import type { MobileApiReadResult } from '@/api/results';
 import { fetchTrainingHistory, type TrainingHistorySession } from '@/api/training-history';
 
@@ -84,6 +84,8 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
       ? fetchNutritionReport(client, { period: 'custom', from: day.weekStart, to: day.today }, signal)
       : Promise.resolve(unavailable);
   }, [client, now]));
+  const habits = useApiResource(useCallback((signal: AbortSignal) =>
+    client ? fetchProgressHabitWeek(client, homeDay(now()).weekStart, signal) : Promise.resolve(unavailable), [client, now]));
   const training = useApiResource(useCallback((signal: AbortSignal) =>
     client ? loadTrainingWeek(client, homeDay(now()).weekStart, signal) : Promise.resolve(unavailable), [client, now]));
   const progressBody = useApiResource(useCallback((signal: AbortSignal) =>
@@ -92,12 +94,12 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
     client ? fetchProgressTraining(client, { period: '30' }, signal) : Promise.resolve(unavailable), [client]));
 
   const refreshHome = home.refresh, refreshToday = today.refresh, refreshQuick = quick.refresh;
-  const refreshCalories = calories.refresh, refreshTraining = training.refresh;
+  const refreshCalories = calories.refresh, refreshTraining = training.refresh, refreshHabits = habits.refresh;
   const refreshProgressBody = progressBody.refresh, refreshProgressRecords = progressRecords.refresh;
   const refreshAll = useCallback(() => {
-    void Promise.all([refreshHome(), refreshToday(), refreshQuick(), refreshCalories(), refreshTraining(),
+    void Promise.all([refreshHome(), refreshToday(), refreshQuick(), refreshCalories(), refreshHabits(), refreshTraining(),
       refreshProgressBody(), refreshProgressRecords()]);
-  }, [refreshCalories, refreshHome, refreshQuick, refreshToday, refreshTraining, refreshProgressBody, refreshProgressRecords]);
+  }, [refreshCalories, refreshHabits, refreshHome, refreshQuick, refreshToday, refreshTraining, refreshProgressBody, refreshProgressRecords]);
 
   const lastFocus = useRef<{ at: number; day: string } | null>(null);
   const markRefreshed = useCallback(() => {
@@ -115,5 +117,5 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
 
   const refreshNow = useCallback(() => { markRefreshed(); refreshAll(); }, [markRefreshed, refreshAll]);
 
-  return { calories, home, progressBody, progressRecords, quick, refresh: refreshNow, today, training };
+  return { calories, habits, home, progressBody, progressRecords, quick, refresh: refreshNow, today, training };
 }

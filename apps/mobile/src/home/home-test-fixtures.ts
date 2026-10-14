@@ -1,4 +1,4 @@
-import type { ProgressBody, ProgressComparison, ProgressPeriod, ProgressTraining } from '@/api/progress';
+import { habitWeekRange, type ProgressHabitWeek, type ProgressBody, ProgressComparison, ProgressPeriod, ProgressTraining } from '@/api/progress';
 
 const period = (preset: '7' | '30'): ProgressPeriod => ({
   preset, start: preset === '7' ? '2026-10-04' : '2026-09-11', end: '2026-10-10', days: Number(preset),
@@ -30,4 +30,9 @@ export function homeProgressBody(): ProgressBody {
     trend: 'decreased', confidence: 'limited', observations: [first, last], referenceCount: 0,
     comparison: { status: 'insufficient_data', reason: 'insufficient_previous_samples' },
   }] };
+}
+
+export function homeProgressHabits(): ProgressHabitWeek {
+  return { today: '2026-10-10', ...habitWeekRange('2026-10-10'), items: [{ id: 'm1', systemKey: 'water', name: 'Agua', unit: 'L', valueType: 'decimal',
+    average: 2.1, coverage: { registered: 5, eligible: 5, ratio: 1 }, comparison: { ...comparison, current: 2.1 } }] };
 }

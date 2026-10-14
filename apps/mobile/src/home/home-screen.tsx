@@ -87,6 +87,10 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
       haptics.selection();
       router.navigate({ pathname: '/(tabs)/nutrition', params: entry === 'quick' ? { quick: 'all' } : { add: entry } });
     },
+    onOpenHabit: (metricId: string) => {
+      haptics.selection();
+      router.push({ pathname: '/(tabs)/progress/trends/metrics', params: { metric: metricId } });
+    },
     onOpenCalories: () => {
       haptics.selection();
       router.push({ pathname: '/(tabs)/nutrition/reports', params: { period: 'custom', from: day.weekStart, to: day.today } });
@@ -139,6 +143,7 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
           {...actions}
           avatarUrl={sessionAvatarUrl(session?.user.user_metadata)}
           calories={homeResource(resources.calories.state)}
+          habits={homeResource(resources.habits.state)}
           day={day}
           home={home}
           now={() => now().getTime()}

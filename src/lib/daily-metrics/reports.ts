@@ -75,6 +75,8 @@ export async function getDailyMetricsReport(
     to?: string;
     metricId?: string;
     compare?: boolean;
+    /** Internal explicit calendar reference; omitted by existing Web/Mobile callers. */
+    previousRange?: { start: string; end: string };
     progressComparison?: ProgressComparisonQuery | null;
   },
   today: string,
@@ -88,7 +90,7 @@ export async function getDailyMetricsReport(
   const temporalReference = resolvedReference?.reference.type === "previous_period" || resolvedReference?.reference.type === "other_period"
     ? resolvedReference.reference.period
     : null;
-  const defaultReference = getPreviousProgressPeriod(range);
+  const defaultReference = input.previousRange ?? getPreviousProgressPeriod(range);
   const readStart = [range.start, defaultReference.start, temporalReference?.start ?? range.start].sort()[0]!;
   const readEnd = [range.end, temporalReference?.end ?? range.end].sort().at(-1)!;
 

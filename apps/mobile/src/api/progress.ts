@@ -1,6 +1,6 @@
 import type { MobileApiClient } from './client';
 import {
-  parseProgressBody, parseProgressMetrics, parseProgressOverview, parseProgressTraining, parseProgressTrainingExercise, progressQueryString,
+  parseProgressHabitWeek, parseProgressBody, parseProgressMetrics, parseProgressOverview, parseProgressTraining, parseProgressTrainingExercise, progressQueryString,
   type ProgressPeriod, type ProgressQuery,
 } from '../../../../src/lib/mobile-api/progress-contract';
 
@@ -32,4 +32,11 @@ export const fetchProgressTrainingExercise = (client: MobileApiClient, query: Pr
   client.read({ path: `${BASE}/training/exercises/${encodeURIComponent(exerciseId)}?${progressQueryString(query)}`, signal, parse: (raw: unknown) => {
     const data = parseProgressTrainingExercise(raw);
     return data && samePeriod(data.period, query) && data.exercise.id === exerciseId.toLowerCase() ? data : undefined;
+  } });
+
+/** A response from a different calendar week never replaces Home's requested week. */
+export const fetchProgressHabitWeek = (client: MobileApiClient, weekStart: string, signal?: AbortSignal) =>
+  client.read({ path: `${BASE}/habits`, signal, parse: (raw: unknown) => {
+    const data = parseProgressHabitWeek(raw);
+    return data?.weekStart === weekStart ? data : undefined;
   } });

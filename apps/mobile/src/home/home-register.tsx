@@ -20,17 +20,11 @@ import {
 import { metricValue } from '@/nutrition/day-content';
 
 import type { HomeResource } from './home-resource';
+import { homeMetricIcon } from './home-metric-icons';
 import { HomeSection, useHomeGutter } from './home-ui';
 
 /** Only daily metrics: weight and body measurements live in Progreso (Cuerpo). */
 export type HomeRegisterTarget = { kind: 'metric'; metricId: string } | { kind: 'more' };
-
-const METRIC_ICONS: Record<NonNullable<NutritionDayMetric['systemKey']>, AppIconName> = {
-  mate: 'mug',
-  sleep: 'moon',
-  steps: 'footprints',
-  water: 'water',
-};
 
 /** All active metrics, in the user's own order. The viewport, not the data, is limited. */
 export function registerMetrics(day: HistoryDay | undefined): NutritionDayMetric[] {
@@ -85,16 +79,17 @@ export function HomeRegister({ date, onRegister, today }: { date: string; onRegi
   const glass = supported && !reduceTransparency;
   const window = useWindowDimensions();
   const gutter = useHomeGutter();
+  const [width, setWidth] = useState(Math.max(1, window.width - gutter.paddingLeft - gutter.paddingRight));
   // Only a confirmed read of today says what is (not) logged today; anything else stays
   // unknown ("—", no check): a stale or previous-day read never claims a state.
   const day = today.data?.date === date ? today.data : undefined;
   const confirmed = today.status === 'ready' && !!day;
   const loading = !day && today.status === 'loading';
   const metrics = registerMetrics(day);
-  const itemWidth = brandTokens.space.xxxl * 2 * Math.max(1, window.fontScale);
+  const itemWidth = Math.max(width / 3, brandTokens.space.xxxl * 2 * Math.max(1, window.fontScale));
   return (
     <HomeSection testID="home-register" title="Métricas">
-      <View style={[styles.row, { marginRight: -gutter.paddingRight }]} testID="home-register-row">
+      <View onLayout={event => { const next = event.nativeEvent.layout.width - gutter.paddingRight; if (next > 0) setWidth(next); }} style={[styles.row, { marginRight: -gutter.paddingRight }]} testID="home-register-row">
         <ScrollView accessibilityHint="Deslizá para ver más métricas" contentContainerStyle={[styles.scrollContent, { paddingRight: gutter.paddingRight }]} decelerationRate="fast"
           directionalLockEnabled horizontal nestedScrollEnabled removeClippedSubviews={false} showsHorizontalScrollIndicator={metrics.length > 3}
           style={styles.scroll} testID="home-register-scroll">
@@ -102,7 +97,7 @@ export function HomeRegister({ date, onRegister, today }: { date: string; onRegi
           ? <><RegisterCircle detail={null} done={false} glass={false} icon="activity" label=" " onPress={() => undefined} width={itemWidth} /><RegisterCircle detail={null} done={false} glass={false} icon="activity" label=" " onPress={() => undefined} width={itemWidth} /></>
           : metrics.map(metric => (
             <RegisterCircle detail={!confirmed ? '—' : metric.value === null ? 'Cargar' : metricValue(metric, metric.value)} done={confirmed && metric.value !== null}
-              glass={glass} icon={metric.systemKey ? METRIC_ICONS[metric.systemKey] : 'activity'} key={metric.id} label={metric.label}
+              glass={glass} icon={homeMetricIcon(metric.systemKey)} key={metric.id} label={metric.label}
               onPress={() => onRegister({ kind: 'metric', metricId: metric.id })} testID={`home-register-metric-${metric.id}`} width={itemWidth} />
           ))}
           <RegisterCircle detail="Métricas" done={false} glass={glass} icon="more" label="Más" onPress={() => onRegister({ kind: 'more' })} testID="home-register-more" width={itemWidth} />
