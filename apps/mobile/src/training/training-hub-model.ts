@@ -11,7 +11,8 @@ export function sessionDay(session: Pick<TrainingHistorySession, 'logDate'>): st
   return session.logDate;
 }
 
-export type HubDayMark = { date: string; trained: boolean; isToday: boolean; future: boolean; known: boolean };
+/** `level` (1–4): History's person-relative intensity; absent = not trained (or not read). */
+export type HubDayMark = { date: string; trained: boolean; isToday: boolean; future: boolean; known: boolean; level?: 1 | 2 | 3 | 4 };
 
 /**
  * What each day of the strip shows: a filled circle when it has at least one finished
@@ -80,7 +81,7 @@ export function routineLastDone(routineId: string, sessions: readonly Pick<Train
   return days === 0 ? 'hoy' : days === 1 ? 'ayer' : `hace ${days} días`;
 }
 
-export type HubMonthCell = { date: string; day: number; trained: boolean; isToday: boolean; future: boolean };
+export type HubMonthCell = { date: string; day: number; trained: boolean; isToday: boolean; future: boolean; level?: 1 | 2 | 3 | 4 };
 
 /**
  * The month grid (Monday first, `null` for padding cells). `trainedDays` null means the
