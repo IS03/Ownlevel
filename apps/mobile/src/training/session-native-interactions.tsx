@@ -1,7 +1,7 @@
 import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View, type NativeScrollEvent, type ScrollViewProps, type ViewProps } from 'react-native';
 import { Gesture, GestureDetector, type NativeGesture } from 'react-native-gesture-handler';
-import Animated, { measure, runOnJS, scrollTo, useAnimatedProps, useAnimatedRef, useAnimatedScrollHandler, useAnimatedStyle, useFrameCallback,
+import Animated, { makeMutable, measure, runOnJS, scrollTo, useAnimatedProps, useAnimatedRef, useAnimatedScrollHandler, useAnimatedStyle, useFrameCallback,
   useSharedValue, withSpring, withTiming, type AnimatedRef, type SharedValue } from 'react-native-reanimated';
 import { AppText, radius, sizes, spacing, useOwnlevelTheme } from '@/design-system';
 import { haptics } from '@/platform/haptics';
@@ -156,6 +156,19 @@ function ReorderItem({ list, id, gap, children }: { list: DragList; id: string; 
 type Swipe = { x: SharedValue<number>; width: SharedValue<number>; disabled: boolean; settled: (open: boolean) => void };
 const SwipeContext = createContext<Swipe | null>(null);
 export type SwipeAction = { label: string; onPress: () => void; destructive?: boolean; disabled?: boolean };
+// One open row at a time across the app: opening another closes the previous one,
+// and scrolling past a small threshold closes it (see `closeSwipeOnScroll`).
+let openSwipeClose: (() => void) | null = null;
+const swipeScrollAnchor = makeMutable<number | null>(null);
+export function closeOpenSwipeActions() { const close = openSwipeClose; openSwipeClose = null; swipeScrollAnchor.set(null); close?.(); }
+/** Call from a scroll worklet with the content offset. */
+export function closeSwipeOnScroll(y: number) {
+  'worklet';
+  const anchor = swipeScrollAnchor.value;
+  if (anchor === null) return;
+  if (anchor < 0) { swipeScrollAnchor.set(y); return; }
+  if (Math.abs(y - anchor) > 12) { swipeScrollAnchor.set(null); runOnJS(closeOpenSwipeActions)(); }
+}
 /** Swipe gestures attach to the non-editable handles/header, never to numeric inputs. */
 export function NativeSwipeActions({ actions, disabled, children, label, backgroundColor }: { actions: SwipeAction[]; disabled: boolean; children: ReactNode; label: string; backgroundColor?: string }) {
   const { colors } = useOwnlevelTheme();
@@ -163,7 +176,14 @@ export function NativeSwipeActions({ actions, disabled, children, label, backgro
   const actionWidth = useSharedValue(width);
   const [open, setOpen] = useState(false);
   const style = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
-  const value = useMemo(() => ({ x, width: actionWidth, disabled, settled: setOpen }), [x, actionWidth, disabled]);
+  const close = useCallback(() => { x.set(withSpring(0, spring)); setOpen(false); }, [x]);
+  const settled = useCallback((value: boolean) => {
+    setOpen(value);
+    if (value) { if (openSwipeClose !== close) openSwipeClose?.(); openSwipeClose = close; swipeScrollAnchor.set(-1); }
+    else if (openSwipeClose === close) { openSwipeClose = null; swipeScrollAnchor.set(null); }
+  }, [close]);
+  useEffect(() => () => { if (openSwipeClose === close) { openSwipeClose = null; swipeScrollAnchor.set(null); } }, [close]);
+  const value = useMemo(() => ({ x, width: actionWidth, disabled, settled }), [x, actionWidth, disabled, settled]);
   useLayoutEffect(() => { actionWidth.set(width); }, [actionWidth, width]);
   useEffect(() => { if (disabled) x.set(withSpring(0, spring, finished => { if (finished) runOnJS(setOpen)(false); })); }, [disabled, x]);
   useEffect(() => { if (x.value < -width) x.set(withSpring(-width, spring)); }, [width, x]);
@@ -171,7 +191,7 @@ export function NativeSwipeActions({ actions, disabled, children, label, backgro
     <View style={styles.actions} accessibilityElementsHidden={!open || disabled} importantForAccessibility={open && !disabled ? 'auto' : 'no-hide-descendants'}>
       {actions.map(action => <Pressable key={action.label} testID={`swipe-${label}-${action.label}`} accessibilityRole="button"
         accessibilityLabel={`${action.label} · ${label}`} disabled={disabled || action.disabled || !open}
-        onPress={() => { x.set(withSpring(0, spring)); setOpen(false); action.onPress(); }}
+        onPress={() => { settled(false); x.set(withSpring(0, spring)); action.onPress(); }}
         style={[styles.action, { backgroundColor: action.destructive ? colors.danger : colors.brandSubtle, opacity: action.disabled ? 0.4 : 1 }]}>
         <AppText variant="caption" style={{ color: action.destructive ? colors.surface : colors.primary, textAlign: 'center' }}>{action.label}</AppText>
       </Pressable>)}
@@ -241,7 +261,7 @@ export function DragScrollView({ children, onScroll, onContentSizeChange, scroll
   const latest = useRef(onScroll);
   useLayoutEffect(() => { latest.current = onScroll; });
   const forward = useCallback((event: NativeScrollEvent) => { latest.current?.({ nativeEvent: event } as never); }, []);
-  const handler = useAnimatedScrollHandler(event => { y.set(event.contentOffset.y); runOnJS(forward)(event); });
+  const handler = useAnimatedScrollHandler(event => { y.set(event.contentOffset.y); closeSwipeOnScroll(event.contentOffset.y); runOnJS(forward)(event); });
   const animatedProps = useAnimatedProps(() => ({ scrollEnabled: enabled.value && owner.value === null }));
   const value = useMemo(() => ({ ref, y, contentHeight, gesture, owner }), [ref, y, contentHeight, gesture, owner]);
   return <SessionDragScrollContext.Provider value={value}><GestureDetector gesture={gesture}>

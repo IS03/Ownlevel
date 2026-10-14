@@ -22,31 +22,32 @@ export function SessionScrollHeader({ title, clock, compact, controls, pinned, d
   const { colors } = useOwnlevelTheme(), reduce = useReduceMotion();
   const visible = !compact || controls || pinned || reduce;
   const fade = useAnimatedStyle(() => ({ opacity: withTiming(visible ? 1 : 0, { duration: reduce ? 0 : brandTokens.motion.duration.fast }) }), [visible, reduce]);
-  const back = <Pressable accessibilityRole="button" accessibilityLabel="Volver a Entrenar" onPress={onBack} style={styles.button}>
-    <AppIcon name="chevronLeft" size={20} color={colors.textMuted} /><AppText variant={compact ? 'footnote' : 'body'}>Entrenar</AppText>
-  </Pressable>;
-  const finish = <View style={styles.actions}>
+  // Same glass pills expanded and compact (SS1/SS2); they size to their content so nothing clips.
+  const back = <GlassSurface interactive visible={visible} style={styles.pill}><Animated.View style={fade}><Pressable accessibilityRole="button" accessibilityLabel="Volver a Entrenar" onPress={onBack} style={[styles.button, styles.backButton]}>
+    <AppIcon name="chevronLeft" size={20} color={colors.textMuted} /><AppText variant="body">Entrenar</AppText>
+  </Pressable></Animated.View></GlassSurface>;
+  const finish = <GlassSurface interactive visible={visible} style={styles.pill}><Animated.View style={[styles.actions, fade]}>
     <Pressable accessibilityRole="button" accessibilityLabel="Cancelar entrenamiento" accessibilityState={{ disabled }} disabled={disabled} onPress={onCancel} style={styles.trash}><AppIcon name="trash" size={20} color={disabled ? colors.textMuted : colors.danger} /></Pressable>
-    <Pressable accessibilityRole="button" accessibilityLabel="Finalizar entrenamiento" accessibilityState={{ disabled }} disabled={disabled} onPress={onFinish} style={styles.button}><AppText variant={compact ? 'footnote' : 'label'} style={{ color: disabled ? colors.textMuted : colors.primary }}>Finalizar</AppText></Pressable>
+    <Pressable accessibilityRole="button" accessibilityLabel="Finalizar entrenamiento" accessibilityState={{ disabled }} disabled={disabled} onPress={onFinish} style={[styles.button, styles.finishButton]}><AppText variant="label" style={{ color: disabled ? colors.textMuted : colors.primary }}>Finalizar</AppText></Pressable>
+  </Animated.View></GlassSurface>;
+  const hidden = { pointerEvents: visible ? 'auto' as const : 'none' as const, accessibilityElementsHidden: !visible, importantForAccessibility: visible ? 'auto' as const : 'no-hide-descendants' as const };
+  const row = <View style={styles.row}>
+    <View testID="session-header-back" {...hidden}>{back}</View>
+    <View style={styles.spacer} />
+    <View testID="session-header-actions" {...hidden}>{finish}</View>
+    {compact ? <View pointerEvents="none" style={[styles.title, { paddingHorizontal: visible ? 128 : spacing.lg }]}><AppText numberOfLines={1} variant="headline">{title}</AppText>{clock}</View> : null}
   </View>;
-  const row = <View style={[styles.row, !compact && styles.expandedRow]}>
-    <Animated.View testID="session-header-back" pointerEvents={visible ? 'auto' : 'none'} accessibilityElementsHidden={!visible} importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'} style={[compact ? styles.left : styles.expandedLeft, fade]}>
-      {compact ? back : <GlassSurface interactive style={styles.pill}>{back}</GlassSurface>}
-    </Animated.View>
-    <View style={styles.title}>{compact ? <><AppText numberOfLines={1} variant="headline">{title}</AppText>{clock}</> : null}</View>
-    <Animated.View testID="session-header-actions" pointerEvents={visible ? 'auto' : 'none'} accessibilityElementsHidden={!visible} importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'} style={[compact ? styles.right : styles.expandedRight, fade]}>
-      {compact ? finish : <GlassSurface interactive style={styles.pill}>{finish}</GlassSurface>}
-    </Animated.View>
-  </View>;
-  return <View testID="session-scroll-header" style={[styles.overlay, { paddingTop: top, backgroundColor: compact ? 'transparent' : colors.background }]} onLayout={event => onHeight(event.nativeEvent.layout.height)}>
-    {compact ? <GlassSurface style={styles.bar}>{row}<View accessible accessibilityRole="progressbar" accessibilityLabel="Progreso del entrenamiento compacto" accessibilityValue={{ min: 0, max: Math.max(1, total), now: completed }} style={[styles.track, { backgroundColor: colors.surfaceRaised }]}><View style={{ height: '100%', width: `${Math.min(100, Math.max(0, completed / Math.max(1, total) * 100))}%`, backgroundColor: colors.primary }} /></View></GlassSurface> : <>{row}<View style={styles.track} /></>}
+  const ratio = Math.min(1, Math.max(0, completed / Math.max(1, total)));
+  return <View testID="session-scroll-header" style={[styles.overlay, { paddingTop: top, backgroundColor: colors.background }, compact && { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]} onLayout={event => onHeight(event.nativeEvent.layout.height)}>
+    {row}
+    {compact ? <View accessible accessibilityRole="progressbar" accessibilityLabel="Progreso del entrenamiento compacto" accessibilityValue={{ min: 0, max: Math.max(1, total), now: completed }} style={[styles.track, { backgroundColor: colors.surfaceRaised }]}><View style={{ height: '100%', width: `${ratio * 100}%`, backgroundColor: colors.primary }} /></View> : <View style={styles.track} />}
   </View>;
 }
 const styles = StyleSheet.create({
-  overlay: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5 }, bar: { overflow: 'hidden' },
-  row: { flexDirection: 'row', alignItems: 'center', minHeight: 56, paddingHorizontal: spacing.xs }, expandedRow: { paddingHorizontal: spacing.lg },
-  left: { width: 96 }, right: { width: 96 }, expandedLeft: { width: 112 }, expandedRight: { width: 152 },
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' }, title: { flex: 1, minWidth: 0, alignItems: 'center' },
-  button: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', minHeight: 44, gap: spacing.xs, paddingHorizontal: spacing.xs },
-  trash: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, pill: { borderRadius: radius.full, overflow: 'hidden' }, track: { height: 3 },
+  overlay: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5 },
+  row: { flexDirection: 'row', alignItems: 'center', minHeight: 60, paddingHorizontal: spacing.lg }, spacer: { flex: 1 },
+  title: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },
+  actions: { flexDirection: 'row', alignItems: 'center' },
+  button: { flexDirection: 'row', alignItems: 'center', minHeight: 44, gap: spacing.xs }, backButton: { paddingLeft: spacing.sm, paddingRight: spacing.md }, finishButton: { paddingRight: spacing.md },
+  trash: { width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, pill: { borderRadius: radius.full, overflow: 'hidden' }, track: { height: 3 },
 });
