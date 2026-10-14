@@ -264,7 +264,8 @@ export function HistoryScreen({ now = () => new Date() }: { now?: () => Date }) 
 const styles = StyleSheet.create({
   header: { gap: spacing.sm },
   calendarSlot: { zIndex: 10 }, calendarFloat: { position: 'absolute', top: 0, left: 0, right: 0 },
-  backdrop: { position: 'absolute', top: 0, left: -spacing.lg, right: -spacing.lg, height: 4000 },
+  // Reaches far up too: the segmented control and the area under the large title dim with the list.
+  backdrop: { position: 'absolute', top: -3000, left: -spacing.lg, right: -spacing.lg, height: 7000 },
   status: { paddingHorizontal: spacing.xs }, loadingMore: { textAlign: 'center' },
   group: { gap: spacing.sm },
   dayHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.sm, paddingHorizontal: spacing.xs, paddingTop: spacing.sm },
