@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { Alert, Platform, StyleSheet, View } from 'react-native';
+import { Stack, useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { historyReturnParams } from '@/history/navigation';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
 import { useMobileApi } from '@/api';
@@ -14,6 +14,8 @@ import { completedSessionModel } from './completed-session-model';
 import { CompletedSessionView } from './completed-session-view';
 import { ReadStateScreen } from './history-components';
 import { useRead } from './use-read';
+import { TrainingContextMenu } from './routine-context-menu';
+import { RoutineSheetButton } from './routine-sheet-button';
 
 export type CompletedSessionApi = {
   detail: (signal?: AbortSignal) => Promise<MobileApiRequestResult<SessionDetailDto>>;
@@ -47,7 +49,7 @@ export function CompletedSessionScreen({ api, sessionId, initialDetail, finished
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const status = state.status === 'ready' ? state.data.session.status : null;
   useLayoutEffect(() => {
-    if (status && status !== 'in_progress') navigation.setOptions({ title: status === 'discarded' ? 'Sesión eliminada' : 'Sesión finalizada' });
+    if (status && status !== 'in_progress') navigation.setOptions({ title: status === 'discarded' ? 'Sesión eliminada' : '' });
   }, [navigation, status]);
   if (state.status !== 'ready') return <ReadStateScreen header={<ReturnToHistoryDay />} state={state} onRetry={() => void reload()} testID="history-session" notFoundTitle="Sesión no disponible" />;
   const detail = state.data;
@@ -83,15 +85,25 @@ export function CompletedSessionScreen({ api, sessionId, initialDetail, finished
       { text: 'Eliminar sesión', style: 'destructive', onPress: () => void runDiscard() },
     ]);
   };
-  const actions = detail.session.status === 'completed' ? <View style={styles.actions}>
+  const correct = () => router.push(origin ? { pathname: '/(tabs)/train/correct/[id]', params: { id: sessionId, ...origin } } : `/(tabs)/train/correct/${sessionId}`);
+  const completed = detail.session.status === 'completed';
+  // HI5: Corregir and Eliminar live in the glass ••• (Eliminar destructive, same confirmation and idempotent discard).
+  const menu = completed ? <>
+    {Platform.OS === 'ios' ? <Stack.Toolbar placement="right"><Stack.Toolbar.Menu icon="ellipsis" accessibilityLabel="Opciones de la sesión" separateBackground disabled={discarding}>
+      <Stack.Toolbar.MenuAction icon="pencil" onPress={correct}>Corregir sesión</Stack.Toolbar.MenuAction>
+      <Stack.Toolbar.MenuAction icon="trash" destructive onPress={pendingKey ? () => void runDiscard() : confirmDiscard}>{pendingKey ? 'Reintentar eliminación' : 'Eliminar sesión'}</Stack.Toolbar.MenuAction>
+    </Stack.Toolbar.Menu></Stack.Toolbar> : <Stack.Screen options={{ headerRight: () => <TrainingContextMenu width={44} name={completedSessionModel(detail).name} onOpen={() => undefined} disabled={discarding} openOnTap actions={[
+      { label: 'Corregir sesión', symbol: 'pencil', onPress: correct }, { label: pendingKey ? 'Reintentar eliminación' : 'Eliminar sesión', onPress: pendingKey ? () => void runDiscard() : confirmDiscard, separated: true }]}>
+      <RoutineSheetButton label="Opciones de la sesión" icon="more" disabled={discarding} onPress={() => undefined} />
+    </TrainingContextMenu> }} />}
+  </> : null;
+  const actions = completed && (notice || pendingKey || discarding) ? <View style={styles.actions}>
     {notice ? <Surface accessibilityRole="alert"><AppText style={{ color: notice.tone === 'danger' ? colors.danger : colors.text }} variant="caption">{notice.text}</AppText></Surface> : null}
-    <Button label="Corregir sesión" variant="secondary" disabled={discarding} onPress={() => router.push(origin ? { pathname: '/(tabs)/train/correct/[id]', params: { id: sessionId, ...origin } } : `/(tabs)/train/correct/${sessionId}`)} />
-    <Button label={discarding ? 'Eliminando…' : pendingKey ? 'Reintentar eliminación' : 'Eliminar sesión'} variant="quiet" disabled={discarding}
-      onPress={pendingKey ? () => void runDiscard() : confirmDiscard} />
+    {pendingKey || discarding ? <Button label={discarding ? 'Eliminando…' : 'Reintentar eliminación'} variant="quiet" disabled={discarding} onPress={() => void runDiscard()} /> : null}
   </View> : null;
-  return <CompletedSessionView detail={detail} finished={finished} onHome={onHome} onTraining={onTraining} actions={actions}
+  return <>{menu}<CompletedSessionView detail={detail} finished={finished} onHome={onHome} onTraining={onTraining} actions={actions}
     banner={<><ReturnToHistoryDay />{state.stale ? <Surface><AppText muted variant="caption">No se pudo actualizar. Mostramos la última lectura confirmada.</AppText></Surface> : null}</>}
-    onOpenExercise={exerciseId => router.push(`/(tabs)/train/history/exercise/${exerciseId}${detail.session.routineId ? `?routineId=${encodeURIComponent(detail.session.routineId)}` : ''}`)} />;
+    onOpenExercise={exerciseId => router.push(`/(tabs)/train/history/exercise/${exerciseId}${detail.session.routineId ? `?routineId=${encodeURIComponent(detail.session.routineId)}` : ''}`)} /></>;
 }
 
 /** Route entry: /train/history/[id]. */

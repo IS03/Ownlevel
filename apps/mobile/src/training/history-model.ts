@@ -98,3 +98,51 @@ export function correctionInput(detail: SessionDetailDto, draft: CorrectionDraft
 export function correctionIsDirty(detail: SessionDetailDto, draft: CorrectionDraft): boolean {
   return JSON.stringify(correctionDraft(detail)) !== JSON.stringify(draft);
 }
+
+// M9 history redesign (HI1–HI5) — presentation helpers. Server truth only.
+const capital = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+/** "Viernes 9"; adds the month outside the current one and the year outside the current year. */
+export function historyDayLabel(date: string, today: string): string {
+  const sameYear = date.slice(0, 4) === today.slice(0, 4), sameMonth = sameYear && date.slice(0, 7) === today.slice(0, 7);
+  const label = new Intl.DateTimeFormat('es-AR', { weekday: 'long', day: 'numeric', ...(sameMonth ? {} : { month: 'long' }), ...(sameYear ? {} : { year: 'numeric' }), timeZone: 'UTC' }).format(noonUtc(date));
+  return capital(label.replace(',', ''));
+}
+/** Right side of a day header: "2 sesiones · 1 h 36 min" (count only when more than one; unknown durations stay out). */
+export function dayTotalsLabel(sessions: readonly Pick<TrainingHistorySession, 'durationMilliseconds'>[]): string {
+  const known = sessions.map(session => session.durationMilliseconds).filter((value): value is number => value !== null);
+  const duration = known.length ? formatDuration(known.reduce((total, value) => total + value, 0)) : null;
+  return [sessions.length > 1 ? plural(sessions.length, 'sesión', 'sesiones') : null, duration].filter(Boolean).join(' · ');
+}
+export function startTime(iso: string): string {
+  return new Intl.DateTimeFormat('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
+}
+/** "14:40 · 1 h 28 min" for a session row. */
+export function sessionRowTiming(session: Pick<TrainingHistorySession, 'startedAt' | 'durationMilliseconds'>): string {
+  return [startTime(session.startedAt), formatDuration(session.durationMilliseconds)].filter(Boolean).join(' · ');
+}
+/** "5 – 11 oct" (or "29 sep – 5 oct") for a Monday-first week. */
+export function weekRangeLabel(monday: string): string {
+  const sunday = shiftDay(monday, 6);
+  const day = (date: string) => String(Number(date.slice(8)));
+  return monday.slice(0, 7) === sunday.slice(0, 7) ? `${day(monday)} – ${shortDate(sunday)}` : `${shortDate(monday)} – ${shortDate(sunday)}`;
+}
+export function shiftDay(date: string, days: number): string {
+  const base = noonUtc(date); base.setUTCDate(base.getUTCDate() + days); return base.toISOString().slice(0, 10);
+}
+export function mondayOf(date: string): string { return shiftDay(date, -((noonUtc(date).getUTCDay() + 6) % 7)); }
+/** "Mié 7 oct" for the finished-session subtitle. */
+export function compactWeekdayDate(date: string): string {
+  return capital(new Intl.DateTimeFormat('es-AR', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(noonUtc(date)).replace(/\./g, '').replace(',', ''));
+}
+/** Unit for a weight mode's chart axis; null = no weight to chart (bodyweight). */
+export function weightModeUnit(mode: string | null): string | null {
+  if (mode === 'Peso corporal') return null;
+  return mode === 'Lingotes (no kg)' ? 'placas' : mode === 'Tiempo (segundos)' ? 's' : 'kg';
+}
+export type HistoryBar = { sessionId: string; date: string; value: number | null };
+/** Best set per session, oldest → newest, up to 8. A session without a weight is a gap, never a 0 bar. */
+export function bestSetBars(sessions: readonly { sessionId: string; logDate: string; mark: TrainingHistoryMark | null }[], limit = 8): HistoryBar[] {
+  return sessions.slice(0, limit).map(session => ({ sessionId: session.sessionId, date: session.logDate, value: session.mark?.weightKg ?? null })).reverse();
+}
+export const sameMark = (left: TrainingHistoryMark | null, right: TrainingHistoryMark | null) =>
+  left !== null && right !== null && left.weightKg === right.weightKg && left.reps === right.reps;

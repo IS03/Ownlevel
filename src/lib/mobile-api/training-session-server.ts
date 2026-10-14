@@ -1,7 +1,7 @@
 import "server-only";
 import {
   getTrainingHistoryDirectory, getWorkoutSessionDetail, listCompletedSessionHistory, listRecentRobustExerciseHistoryByExercise,
-  listRobustExerciseHistory, listCompleteRobustExerciseHistory, type RobustExerciseHistoryItem,
+  listRobustExerciseHistory, listCompleteRobustExerciseHistory, listCompletedSetsByDay, type RobustExerciseHistoryItem,
 } from "../phase2/training-robust";
 import { listExercises } from "../phase2/training";
 import { buildTrainingHistoryExerciseDetail, sortTrainingHistoryExercises, type TrainingHistoryExerciseSession } from "../phase2/training-history";
@@ -24,8 +24,9 @@ import {
   parseMobileTrainingDate, parseTrainingHistoryCursor, parseTrainingHistoryLimit, encodeTrainingHistoryCursor, parseExerciseHistoryLimit,
   type TrainingExerciseHistoryResponse, type TrainingExerciseHistorySessionDto, type TrainingHistoryExercisesResponse,
   type SessionExerciseSyncDto, type SessionStructuralDto, type TrainingDayResponse, type TrainingHistoryResponse,
-  type TrainingHistorySessionDto,
+  type TrainingHistorySessionDto, type TrainingHistoryMonthResponse, parseMobileTrainingMonth,
 } from "./training-session";
+import { INTENSITY_WINDOW_DAYS, intensityLevel, intensityThresholds, isoDayShift, monthRange } from "./training-intensity";
 
 function auth(context: MobileSupabaseAuthenticatedContext, requestPerformance?: RequestPerformanceContext): AuthenticatedRequestContext {
   return { supabase: context.supabase, userId: context.userId, requestPerformance };
@@ -241,6 +242,26 @@ export async function readMobileTrainingDay(date: unknown, context: MobileSupaba
   const logDate = parseMobileTrainingDate(date);
   const sessions = orderTrainingDaySessions(await listCompletedSessionHistory({ logDate, limit: 100 }, auth(context, performance)));
   return { date: logDate, sessions: sessions.map(historySessionDto), summary: summarizeTrainingDay(sessions) };
+}
+
+/** Today's log date as the domain assigns it (America/Argentina/Cordoba, like session start). */
+function trainingToday(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Cordoba", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+/** One month of trained days with intensity relative to the person's last 12 weeks (server-computed: complete data). */
+export async function readMobileTrainingHistoryMonth(searchParams: URLSearchParams, context: MobileSupabaseAuthenticatedContext,
+  performance: RequestPerformanceContext): Promise<TrainingHistoryMonthResponse> {
+  const month = parseMobileTrainingMonth(searchParams.get("month"));
+  const request = auth(context, performance), today = trainingToday();
+  const range = monthRange(month), window = { from: isoDayShift(today, -(INTENSITY_WINDOW_DAYS - 1)), to: today };
+  const covered = range.from >= window.from && range.to <= window.to;
+  const [windowDays, monthDays] = await Promise.all([
+    listCompletedSetsByDay(window, request),
+    covered ? Promise.resolve(null) : listCompletedSetsByDay(range, request),
+  ]);
+  const thresholds = intensityThresholds(windowDays);
+  const days = (monthDays ?? windowDays.filter(day => day.date >= range.from && day.date <= range.to));
+  return { month, days: days.map(day => ({ ...day, level: intensityLevel(day.completedSets, thresholds) })) };
 }
 
 /** Exercises with completed history (Web default: recorded, most recent first). */

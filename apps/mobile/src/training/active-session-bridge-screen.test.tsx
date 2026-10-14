@@ -34,8 +34,11 @@ const mockTrigger = jest.fn();
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: () => mockSelection(), success: () => mockSuccess(), warning: () => mockWarning() },
   triggerHaptic: (event: string) => mockTrigger(event) }));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
-jest.mock('expo-router', () => ({ useLocalSearchParams: () => ({}), useRouter: () => mockRouter, useNavigation: () => mockNavigation,
-  useFocusEffect: () => undefined }));
+jest.mock('expo-router', () => {
+  const Container = ({ children }: { children?: React.ReactNode }) => children ?? null;
+  return { useLocalSearchParams: () => ({}), useRouter: () => mockRouter, useNavigation: () => mockNavigation, useFocusEffect: () => undefined,
+    Stack: { Screen: () => null, Toolbar: Object.assign(Container, { Menu: Container, MenuAction: () => null }) } };
+});
 jest.mock('expo-router/build/react-navigation/core/usePreventRemove', () => ({ usePreventRemove: () => undefined }));
 jest.mock('./routine-exercise-picker-body', () => jest.requireActual('./routine-exercise-picker-body.tsx'));
 jest.mock('./session-next-options', () => jest.requireActual('./session-next-options.tsx'));
@@ -625,7 +628,7 @@ describe('native finish screen (M3.4-2)', () => {
     fireEvent.press(view.getByRole('button', { name: 'Ver sesión' }));
     expect(view.queryByTestId('post-workout-sheet')).toBeNull(); expect(view.getByTestId('completed-session')).toBeTruthy();
     expect(view.queryByRole('button', { name: 'Finalizar entrenamiento' })).toBeNull(); expect(view.queryByLabelText('Peso serie 1 de PRESS')).toBeNull();
-    expect(view.getByLabelText('Serie 1: 40 kg × 8, completada')).toBeTruthy();
+    expect(view.getByLabelText('Serie 1: 40 kg × 8')).toBeTruthy();
     controller.dispose();
   });
   it('routes Ir al inicio to Home after a confirmed finish', async () => {
@@ -671,7 +674,7 @@ describe('native finish screen (M3.4-2)', () => {
   });
   it('opens an already completed session read-only without the active editor or a post-workout sheet', async () => {
     const { controller, Screen } = fixture(completedDetail()); await controller.refresh(); const view = render(<Screen />);
-    expect(view.getByTestId('completed-session')).toBeTruthy(); expect(view.getByText('SESIÓN FINALIZADA')).toBeTruthy();
+    expect(view.getByTestId('completed-session')).toBeTruthy(); expect(view.queryByText('SESIÓN FINALIZADA')).toBeNull();
     expect(mockSetOptions).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Sesión finalizada', headerRight: undefined }));
     expect(view.queryByTestId('post-workout-sheet')).toBeNull(); expect(view.queryByRole('button', { name: 'Finalizar entrenamiento' })).toBeNull();
     expect(view.getByText('4/5')).toBeTruthy(); expect(view.getByText('0/10')).toBeTruthy(); expect(view.queryByText('Rendimiento')).toBeNull();
@@ -680,7 +683,7 @@ describe('native finish screen (M3.4-2)', () => {
   it('shows a discarded session as such, never as a fresh completion', async () => {
     const detail = completedDetail(); detail.session.status = 'discarded';
     const { controller, Screen } = fixture(detail); await controller.refresh(); const view = render(<Screen />);
-    expect(view.getByTestId('discarded-session')).toBeTruthy(); expect(view.getByText('SESIÓN ELIMINADA')).toBeTruthy(); controller.dispose();
+    expect(view.getByTestId('discarded-session')).toBeTruthy(); expect(view.getByText('Esta sesión fue eliminada del historial. Se muestra sólo como referencia.')).toBeTruthy(); controller.dispose();
   });
 });
 

@@ -4,7 +4,7 @@ import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { ReduceMotion } from 'react-native-reanimated';
 import type { MobileTrainingExercise, MobileTrainingExerciseRoutine } from '@/api/exercises';
-import { AppIcon, AppText, Chip, EmptyState, GlassSurface, InlineUnavailable, SkeletonBlock, TextField, brandTokens, pressedStyle, radius, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { AppIcon, AppText, EmptyState, InlineUnavailable, SkeletonBlock, TextField, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
 import { ExerciseEditorModal, type ExerciseEditorTarget } from './exercise-editor-modal';
 import { ExerciseFilterModal } from './exercise-filter-modal';
 import { activeFilterCount, DEFAULT_EXERCISE_LIBRARY_FILTERS, exerciseSummary, filterExercises, groupExercises, MUSCLE_GROUP_OPTIONS, toggleValue, type ExerciseLibraryFilters } from './exercise-library-model';
@@ -12,6 +12,7 @@ import { TrainingContextMenu } from './routine-context-menu';
 import { RoutineSheetButton } from './routine-sheet-button';
 import { ExerciseAddRoutineSheet } from './exercise-add-routine-sheet';
 import { ExerciseNotice } from './exercise-notice';
+import { GroupChip } from './group-chip';
 import { useExerciseLibrary } from './use-exercise-library';
 import { trainingRoutineColor } from './routine-colors';
 type RowActions = Record<'open' | 'edit' | 'add' | 'status', (exercise: MobileTrainingExercise) => void>;
@@ -43,17 +44,6 @@ const ExerciseRow = memo(function ExerciseRow({ exercise, routines, disabled, ac
     </Swipeable>
   </View>;
 });
-/** iOS: interactive Liquid Glass chip (a control, IDENTIDAD.md § Vidrio); elsewhere the brand chip. */
-function GroupChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  const { colors } = useOwnlevelTheme(), reduceMotion = useReduceMotion();
-  if (Platform.OS !== 'ios') return <Chip kind="toggle" label={label} selected={selected} onPress={onPress} />;
-  return <GlassSurface interactive tint={selected ? colors.brandSubtle : undefined} style={styles.glassShape}>
-    <Pressable accessibilityRole="checkbox" accessibilityLabel={label} accessibilityState={{ checked: selected }} hitSlop={(brandTokens.layout.minTouch - brandTokens.layout.chipHeight) / 2} onPress={onPress}
-      style={({ pressed }) => [styles.glassChip, pressedStyle(pressed, reduceMotion)]}>
-      <AppText variant="subheadline" style={selected ? { color: colors.primary, fontWeight: '600' } : null}>{label}</AppText>
-    </Pressable>
-  </GlassSurface>;
-}
 export function ExerciseLibraryScreen({ createIdempotencyKey = () => globalThis.crypto?.randomUUID?.() ?? `exercise-${Date.now()}-${Math.random()}` }: { createIdempotencyKey?: () => string }) {
   const library = useExerciseLibrary(), router = useRouter(), { colors } = useOwnlevelTheme();
   const [query, setQuery] = useState(''), [filters, setFilters] = useState<ExerciseLibraryFilters>(DEFAULT_EXERCISE_LIBRARY_FILTERS), [filtersOpen, setFiltersOpen] = useState(false);
@@ -100,4 +90,4 @@ export function ExerciseLibraryScreen({ createIdempotencyKey = () => globalThis.
     {library.notice ? <ExerciseNotice {...library.notice} disabled={library.pending} undo={library.notice.undo ? () => void library.status(library.notice!.undo!.exercise, library.notice!.undo!.active) : undefined} /> : null}
   </>;
 }
-const styles = StyleSheet.create({ searchArea: { padding: spacing.lg, gap: spacing.sm }, search: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm }, filter: { height: 48, minWidth: 44, borderRadius: radius.input, alignItems: 'center', justifyContent: 'center' }, chips: { gap: spacing.sm, paddingVertical: spacing.xs }, glassShape: { borderRadius: radius.chip }, glassChip: { minHeight: brandTokens.layout.chipHeight, borderRadius: radius.chip, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center' }, section: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.sm }, row: { minHeight: 64, flexDirection: 'row', alignItems: 'center', padding: spacing.md, gap: spacing.sm }, rowClip: { overflow: 'hidden' }, dots: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center' }, dot: { width: 6, height: 6, borderRadius: radius.full }, swipe: { width: 88, alignItems: 'center', justifyContent: 'center', gap: spacing.xs } });
+const styles = StyleSheet.create({ searchArea: { padding: spacing.lg, gap: spacing.sm }, search: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm }, filter: { height: 48, minWidth: 44, borderRadius: radius.input, alignItems: 'center', justifyContent: 'center' }, chips: { gap: spacing.sm, paddingVertical: spacing.xs }, section: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.sm }, row: { minHeight: 64, flexDirection: 'row', alignItems: 'center', padding: spacing.md, gap: spacing.sm }, rowClip: { overflow: 'hidden' }, dots: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center' }, dot: { width: 6, height: 6, borderRadius: radius.full }, swipe: { width: 88, alignItems: 'center', justifyContent: 'center', gap: spacing.xs } });

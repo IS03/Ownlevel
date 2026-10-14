@@ -890,6 +890,44 @@ async function queryRobustExerciseHistory(
     );
 }
 
+/**
+ * Completed sets per stored training day in [from, to] (inclusive log dates).
+ * Only days with at least one completed session are returned; a session with no
+ * completed sets still counts as a trained day (0 sets), never as missing.
+ */
+export async function listCompletedSetsByDay(input: { from: string; to: string }, context: AuthenticatedRequestContext): Promise<Array<{ date: string; sessions: number; completedSets: number }>> {
+  const { supabase, userId } = context;
+  type SessionRow = { id: string; day_log: { log_date: string } };
+  const sessions = await readAllTrainingRows<SessionRow>("Leer días entrenados", (from, to) => supabase
+    .from("workout_sessions").select("id, day_log:day_logs!inner(log_date)")
+    .eq("user_id", userId).eq("status", "completed").not("ended_at", "is", null)
+    .gte("day_log.log_date", input.from).lte("day_log.log_date", input.to)
+    .order("id", { ascending: true }).range(from, to).returns<SessionRow[]>());
+  const days = new Map<string, { date: string; sessions: number; completedSets: number }>();
+  const dateBySession = new Map<string, string>();
+  for (const session of sessions) {
+    const date = session.day_log.log_date;
+    dateBySession.set(session.id, date);
+    const day = days.get(date) ?? { date, sessions: 0, completedSets: 0 };
+    day.sessions += 1; days.set(date, day);
+  }
+  if (!sessions.length) return [];
+  type SetRow = { exercise: { workout_session_id: string } };
+  const ids = [...dateBySession.keys()];
+  for (let index = 0; index < ids.length; index += 150) {
+    const chunk = ids.slice(index, index + 150);
+    const sets = await readAllTrainingRows<SetRow>("Leer series por día", (from, to) => supabase
+      .from("workout_sets").select("exercise:workout_session_exercises!inner(workout_session_id)")
+      .eq("user_id", userId).eq("is_completed", true).in("exercise.workout_session_id", chunk)
+      .order("id", { ascending: true }).range(from, to).returns<SetRow[]>());
+    for (const set of sets) {
+      const date = dateBySession.get(set.exercise.workout_session_id);
+      if (date) days.get(date)!.completedSets += 1;
+    }
+  }
+  return [...days.values()].sort((left, right) => left.date.localeCompare(right.date));
+}
+
 /** Complete owner-scoped exercise history: no 500-day/session truncation for records. */
 export async function listCompleteRobustExerciseHistory(exerciseId: string, context: AuthenticatedRequestContext): Promise<RobustExerciseHistoryItem[]> {
   type Row = RawSessionExercise & { session: WorkoutSession & { day_log: { log_date: string } } };

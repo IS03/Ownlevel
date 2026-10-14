@@ -1,11 +1,18 @@
 import type { SessionDetailDto, SessionFinishedDto, SessionFinishMetadata, SessionSetDto } from '@/api/active-session';
-import { durationLabel, historyLoadLabel } from './active-session-model';
+import { durationLabel } from './active-session-model';
+import { exerciseSetLabel } from './exercise-detail-model';
+import type { MobileRoutineColorKey } from '@/api/home';
 
 // Read-only projection of a closed session. Derived only from server truth;
 // it never reads local drafts or the active-session controller.
 export type CompletedMetadataItem = { key: keyof SessionFinishMetadata; label: string; value: string };
 export type CompletedSessionModel = {
   name: string;
+  color: MobileRoutineColorKey | null;
+  startedAt: string;
+  endedAt: string | null;
+  /** Sum of weight × reps over completed sets of kg exercises; null when none has both (missing ≠ 0). */
+  volumeKg: number | null;
   status: 'completed' | 'discarded';
   logDate: string;
   duration: string | null;
@@ -13,7 +20,8 @@ export type CompletedSessionModel = {
   completedExerciseCount: number;
   completedSetCount: number;
   metadata: CompletedMetadataItem[];
-  exercises: { id: string; exerciseId: string; name: string; identity: string; sets: { setNumber: number; label: string; completed: boolean }[] }[];
+  /** Done exercises first; the ones with no completed set go last (shown in grey). */
+  exercises: { id: string; exerciseId: string; name: string; identity: string; done: boolean; sets: { setNumber: number; label: string; completed: boolean }[] }[];
 };
 
 export function sessionDuration(startedAt: string, endedAt: string | null): string | null {
@@ -30,16 +38,21 @@ export function metadataItems(metadata: SessionFinishMetadata): CompletedMetadat
   if (metadata.notes) items.push({ key: 'notes', label: 'Notas', value: metadata.notes });
   return items;
 }
-function setLabel(set: SessionSetDto) { return historyLoadLabel(set); }
+const KG_MODES = new Set(['Peso total', 'Por mancuerna', 'Por brazo', 'Total con barra']);
+function setLabel(set: SessionSetDto, mode: string | null) { return exerciseSetLabel(set, mode ?? 'Peso total'); }
 export function completedSessionModel(detail: SessionDetailDto): CompletedSessionModel {
   const { session } = detail;
   const exercises = detail.exercises.map(exercise => ({
     id: exercise.id, exerciseId: exercise.exerciseId, name: exercise.nameSnapshot,
     identity: [exercise.muscleGroupLabelSnapshot, exercise.implementSnapshot, exercise.weightModeSnapshot].filter(Boolean).join(' · '),
-    sets: exercise.payload.sets.map(set => ({ setNumber: set.setNumber, label: setLabel(set), completed: set.isCompleted })),
-  }));
+    done: exercise.payload.sets.some(set => set.isCompleted),
+    sets: exercise.payload.sets.map(set => ({ setNumber: set.setNumber, label: setLabel(set, exercise.weightModeSnapshot), completed: set.isCompleted })),
+  })).sort((left, right) => Number(right.done) - Number(left.done));
+  const weighted = detail.exercises.filter(exercise => KG_MODES.has(exercise.weightModeSnapshot ?? 'Peso total'))
+    .flatMap(exercise => exercise.payload.sets.filter(set => set.isCompleted && set.actualWeightKg !== null && set.actualReps !== null));
+  const volumeKg = weighted.length ? weighted.reduce((total, set) => total + set.actualWeightKg! * set.actualReps!, 0) : null;
   return {
-    name: session.name, status: session.status === 'discarded' ? 'discarded' : 'completed', logDate: session.logDate,
+    name: session.name, color: session.routineColor, startedAt: session.startedAt, endedAt: session.endedAt, volumeKg, status: session.status === 'discarded' ? 'discarded' : 'completed', logDate: session.logDate,
     duration: sessionDuration(session.startedAt, session.endedAt), exerciseCount: exercises.length,
     completedExerciseCount: exercises.filter(exercise => exercise.sets.some(set => set.completed)).length,
     completedSetCount: exercises.reduce((total, exercise) => total + exercise.sets.filter(set => set.completed).length, 0),
