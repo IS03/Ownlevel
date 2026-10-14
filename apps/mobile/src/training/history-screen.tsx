@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchTrainingDay, fetchTrainingHistory, fetchTrainingHistoryExercises, fetchTrainingHistoryMonth, type TrainingHistoryExercise, type TrainingHistorySession } from '@/api/training-history';
-import { AppIcon, AppText, Button, EmptyState, Surface, TextField, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, Button, EmptyState, SkeletonBlock, Surface, TextField, spacing, useOwnlevelTheme } from '@/design-system';
 import { formatDuration } from '@/home/format';
 import { historyReturnParams } from '@/history/navigation';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
@@ -14,8 +14,8 @@ import { MUSCLE_GROUP_OPTIONS } from './exercise-library-model';
 import { ExerciseSegmented } from './exercise-segmented';
 import { GroupChip } from './group-chip';
 import { HistoryCalendar, type HistoryLevels } from './history-calendar';
-import { HistoryScroll, ListCard, ReadStateScreen, SessionRow, StaleNotice } from './history-components';
-import { addMonths, dayTotalsLabel, groupSessionsByDate, historyDayLabel, mergeHistoryPage, mondayOf, shiftDay, shortDate, volumeLabel } from './history-model';
+import { HistoryScroll, ListCard, SessionRow, StaleNotice } from './history-components';
+import { dayTotalsLabel, groupSessionsByDate, historyDayLabel, mergeHistoryPage, mondayOf, shiftDay, shortDate, volumeLabel } from './history-model';
 import { useRead } from './use-read';
 
 type Tab = 'sessions' | 'exercises';
@@ -116,25 +116,23 @@ function AllSessions({ client, today, refreshKey, onOpen }: { client: MobileApiC
   </>;
 }
 
-function SessionsTab({ header, initialDate, today, onOpen }: { header: ReactNode; initialDate: string | null; today: string; onOpen: (id: string) => void }) {
+function SessionsTab({ initialDate, today, refreshKey, onOpen }: { initialDate: string | null; today: string; refreshKey: number; onOpen: (id: string) => void }) {
   const { client } = useMobileApi();
-  const { colors } = useOwnlevelTheme();
   const [selected, setSelected] = useState<string | null>(initialDate);
   const [expanded, setExpanded] = useState(false);
   const [month, setMonth] = useState((initialDate ?? today).slice(0, 7));
-  const [refreshKey, setRefreshKey] = useState(0);
   const week = mondayOf(selected ?? today);
   const months = expanded ? [month] : [...new Set([week.slice(0, 7), shiftDay(week, 6).slice(0, 7)])];
   const intensity = useHistoryMonths(client, months);
   const select = (date: string) => { setSelected(current => current === date ? null : date); setMonth(date.slice(0, 7)); };
-  return <HistoryScroll testID="history-sessions" refreshControl={<RefreshControl refreshing={false} tintColor={colors.primary}
-    onRefresh={() => { setRefreshKey(value => value + 1); void intensity.reload(); }} />}>
-    {header}
+  const { reload: reloadIntensity } = intensity;
+  useEffect(() => { if (refreshKey) void reloadIntensity(); }, [refreshKey, reloadIntensity]);
+  return <View style={styles.tab} testID="history-sessions">
     <HistoryCalendar today={today} selected={selected} week={week} month={month} expanded={expanded} levels={intensity.levels} unavailable={intensity.unavailable}
-      onToggle={() => setExpanded(value => !value)} onMonth={delta => setMonth(value => addMonths(value, delta))} onSelect={select} onRetry={() => void intensity.reload()} />
+      onToggle={() => setExpanded(value => !value)} onMonth={setMonth} onSelect={select} onRetry={() => void intensity.reload()} />
     {selected ? <DaySessions key={`${selected}-${refreshKey}`} client={client} date={selected} today={today} onAll={() => setSelected(null)} onOpen={onOpen} />
       : <AllSessions client={client} today={today} refreshKey={refreshKey} onOpen={onOpen} />}
-  </HistoryScroll>;
+  </View>;
 }
 
 function ExerciseRow({ exercise, onPress, divided }: { exercise: TrainingHistoryExercise; onPress: () => void; divided: boolean }) {
@@ -157,13 +155,13 @@ function ExerciseRow({ exercise, onPress, divided }: { exercise: TrainingHistory
 }
 
 /** HI3: search + muscle chips like the library, Recientes / A–Z, last mark on the right. */
-function ExercisesTab({ header, onOpen }: { header: ReactNode; onOpen: (id: string) => void }) {
+function ExercisesTab({ refreshKey, onOpen }: { refreshKey: number; onOpen: (id: string) => void }) {
   const { client } = useMobileApi();
-  const { colors } = useOwnlevelTheme();
   const [query, setQuery] = useState(''), [group, setGroup] = useState<string | null>(null), [sort, setSort] = useState<'recent' | 'az'>('recent');
   const load = useCallback((signal: AbortSignal) => client ? fetchTrainingHistoryExercises(client, signal) : Promise.resolve(UNAVAILABLE), [client]);
   const { state, reload } = useRead(load);
   useFocusEffect(useCallback(() => { void reload(); }, [reload]));
+  useEffect(() => { if (refreshKey) void reload(); }, [refreshKey, reload]);
   const rows = useMemo(() => {
     if (state.status !== 'ready') return [];
     const needle = normalize(query);
@@ -171,9 +169,9 @@ function ExercisesTab({ header, onOpen }: { header: ReactNode; onOpen: (id: stri
       normalize([exercise.name, exercise.muscleGroup, exercise.muscleLabel, exercise.implement].filter(Boolean).join(' ')).includes(needle));
     return sort === 'az' ? [...filtered].sort((left, right) => left.name.localeCompare(right.name, 'es-AR')) : filtered;
   }, [group, query, sort, state]);
-  if (state.status !== 'ready') return <ReadStateScreen header={header} state={state} onRetry={() => void reload()} testID="history-exercises" />;
-  return <HistoryScroll testID="history-exercises" refreshControl={<RefreshControl refreshing={state.refreshing} onRefresh={() => void reload()} tintColor={colors.primary} />}>
-    {header}
+  if (state.status !== 'ready') return <View style={styles.tab} testID={`history-exercises-${state.status}`}>{state.status === 'loading' ? <><SkeletonBlock height={48} /><SkeletonBlock height={200} /></>
+    : <Surface style={styles.group}><AppText muted>No pudimos cargar tus ejercicios. Tus datos siguen seguros.</AppText><Button label="Reintentar" onPress={() => void reload()} /></Surface>}</View>;
+  return <View style={styles.tab} testID="history-exercises">
     {state.stale ? <StaleNotice onRetry={() => void reload()} /> : null}
     {state.data.length === 0 ? <EmptyState title="Todavía no hay ejercicios registrados" description="Aparecen acá cuando completás series en una sesión finalizada." /> : <>
       <TextField label="Buscar ejercicio" hideLabel search placeholder="Buscar ejercicio" value={query} onChangeText={setQuery} />
@@ -185,7 +183,7 @@ function ExercisesTab({ header, onOpen }: { header: ReactNode; onOpen: (id: stri
       {rows.length === 0 ? <EmptyState title="Sin resultados" description="Probá con otro nombre o grupo muscular." />
         : <ListCard>{rows.map((exercise, index) => <ExerciseRow key={exercise.id} exercise={exercise} divided={index > 0} onPress={() => onOpen(exercise.id)} />)}</ListCard>}
     </>}
-  </HistoryScroll>;
+  </View>;
 }
 
 /** Entrenar › Historial (HI1–HI3): one screen; the old Calendario and Día routes land here. */
@@ -197,16 +195,22 @@ export function HistoryScreen({ now = () => new Date() }: { now?: () => Date }) 
   const today = isoDateForDate(now());
   const initialDate = validDate(params.date) && params.date <= today ? params.date : null;
   const [tab, setTab] = useState<Tab>(params.tab === 'exercises' ? 'exercises' : 'sessions');
-  const header = <View style={styles.header}>
-    <ReturnToHistoryDay />
-    <ExerciseSegmented accessibilityLabel="Vista de historial" value={tab} options={TABS} onChange={setTab} />
-  </View>;
+  const [visited, setVisited] = useState<Record<Tab, boolean>>({ sessions: tab === 'sessions', exercises: tab === 'exercises' });
+  const [refreshKey, setRefreshKey] = useState(0);
+  const change = (next: Tab) => { setTab(next); setVisited(old => ({ ...old, [next]: true })); };
   const openSession = (id: string) => router.push(origin ? { pathname: '/(tabs)/train/history/[id]', params: { id, ...origin } } : `/(tabs)/train/history/${id}`);
   return <>
     <Stack.Screen options={{ title: 'Historial', headerLargeTitleEnabled: Platform.OS === 'ios', headerLargeTitleStyle: { color: colors.text },
       headerStyle: { backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.background }, headerLargeStyle: { backgroundColor: 'transparent' } }} />
-    {tab === 'sessions' ? <SessionsTab header={header} initialDate={initialDate} today={today} onOpen={openSession} />
-      : <ExercisesTab header={header} onOpen={id => router.push(`/(tabs)/train/history/exercise/${id}`)} />}
+    {/* One scroll for both tabs, and both stay mounted once seen: switching never rebuilds the screen or its filters. */}
+    <HistoryScroll testID="history-screen" refreshControl={<RefreshControl refreshing={false} tintColor={colors.primary} onRefresh={() => setRefreshKey(value => value + 1)} />}>
+      <View style={styles.header}>
+        <ReturnToHistoryDay />
+        <ExerciseSegmented accessibilityLabel="Vista de historial" value={tab} options={TABS} onChange={change} />
+      </View>
+      {visited.sessions ? <View style={tab === 'sessions' ? styles.tab : styles.hidden}><SessionsTab initialDate={initialDate} today={today} refreshKey={refreshKey} onOpen={openSession} /></View> : null}
+      {visited.exercises ? <View style={tab === 'exercises' ? styles.tab : styles.hidden}><ExercisesTab refreshKey={refreshKey} onOpen={id => router.push(`/(tabs)/train/history/exercise/${id}`)} /></View> : null}
+    </HistoryScroll>
   </>;
 }
 const styles = StyleSheet.create({
@@ -219,6 +223,8 @@ const styles = StyleSheet.create({
   totals: { alignItems: 'flex-end', gap: 2 },
   exerciseRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   exerciseDivider: { position: 'absolute', top: 0, left: spacing.md, right: 0, height: StyleSheet.hairlineWidth },
-  chipScroll: { marginHorizontal: -spacing.lg, overflow: 'visible' },
+  tab: { gap: spacing.md }, hidden: { display: 'none' },
+  // flexGrow 0: a horizontal ScrollView grows by default and stretched the chips when the list got short.
+  chipScroll: { flexGrow: 0, marginHorizontal: -spacing.lg, overflow: 'visible' },
   chips: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.xs },
 });
