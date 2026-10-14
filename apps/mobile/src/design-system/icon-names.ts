@@ -8,6 +8,7 @@ export type AppIconName =
   | 'dragHandle'
   | 'archive'
   | 'playFilled'
+  | 'info'
   | 'activity'
   | 'brand'
   | 'book'
@@ -56,6 +57,7 @@ export const sfSymbolNames: Record<AppIconName, SFSymbol> = {
   dragHandle: 'line.3.horizontal',
   archive: 'archivebox',
   playFilled: 'play.fill',
+  info: 'info.circle',
   activity: 'bolt.fill',
   // Temporary until the brand isotype replaces it (M9.1D).
   brand: 'figure.strengthtraining.traditional',

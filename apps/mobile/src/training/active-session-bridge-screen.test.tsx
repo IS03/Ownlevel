@@ -11,7 +11,7 @@ import type { SessionDetailDto } from '@/api/active-session';
 import { OwnlevelThemeProvider, spacing } from '@/design-system';
 import { ActiveSessionController, type ActiveSessionApi } from './active-session-controller';
 import { SessionDraftRepository } from './active-session-storage';
-import { PostWorkoutSheet } from './completed-session-view';
+import { PostWorkoutScreen } from './post-workout-screen';
 import { ActiveSessionView } from './active-session-screen';
 import { EXERCISE_ID, NEXT_VERSION, SECOND_ID, SESSION_ID, testDetail, testExercise, testFinished } from './active-session-test-fixtures';
 import { DRAG_DELAY, LIFT_SCALE, PRESS_SCALE } from './session-native-interactions';
@@ -31,6 +31,14 @@ const mockSelection = jest.fn();
 const mockSuccess = jest.fn();
 const mockWarning = jest.fn();
 const mockTrigger = jest.fn();
+// Native/UI-thread animation is exercised in Simulator; this bridge advances only after a confirmed receipt.
+jest.mock('./finish-save-animation', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return { FinishSaveAnimation: ({ confirmed, onReady }: { confirmed: boolean; onReady: () => void }) => {
+    React.useEffect(() => { if (confirmed) { mockTrigger('workoutComplete'); onReady(); } }, [confirmed, onReady]);
+    return null;
+  } };
+});
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: () => mockSelection(), success: () => mockSuccess(), warning: () => mockWarning() },
   triggerHaptic: (event: string) => mockTrigger(event) }));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -89,7 +97,7 @@ describe('native active session screen', () => {
     mockHeaderOptions = {}; mockSetOptions.mockClear();
     mockReplace.mockReset(); mockSelection.mockReset(); mockSuccess.mockReset(); mockWarning.mockReset(); mockTrigger.mockReset();
     jest.spyOn(ActionSheetIOS, 'showActionSheetWithOptions').mockImplementation(() => undefined);
-  }); afterEach(() => { jest.restoreAllMocks(); });
+  }); afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
   it('shows loading and real unavailable/not-found states rather than a false inactive session', async () => {
     const { controller, api, Screen } = fixture(); const view = render(<Screen />);
     expect(view.getByTestId('active-session-loading')).toBeTruthy(); expect(view.getByLabelText('Volver a Entrenar')).toBeTruthy();
@@ -153,6 +161,7 @@ describe('native active session screen', () => {
     controller.dispose();
   });
   it('adds with one tap, closes the picker and opens the appended exercise with its refreshed history', async () => {
+    jest.useFakeTimers();
     const detail = testDetail(), added = testExercise('44444444-4444-4444-8444-444444444444', 3);
     added.nameSnapshot = 'PULLOVER';
     const { controller, api, Screen } = fixture(detail); await controller.refresh(); const view = render(<Screen />);
@@ -167,8 +176,9 @@ describe('native active session screen', () => {
     fireEvent.press(view.getByRole('button', { name: 'PULLOVER' }));
     await waitFor(() => expect(view.getByLabelText('Contraer PULLOVER')).toBeTruthy());
     expect(view.getByLabelText('Peso serie 1 de PULLOVER').props.value).toBe('40');
-    // The picker confirms with a short ✓ before closing; the add itself already landed.
-    await waitFor(() => expect(view.queryByLabelText('Buscar ejercicio')).toBeNull(), { timeout: 2000 }); expect(view.getByText('PULLOVER agregado')).toBeTruthy();
+    // Advance the picker’s native confirmation delay deterministically.
+    await act(async () => { await jest.advanceTimersByTimeAsync(1000); });
+    expect(view.queryByLabelText('Buscar ejercicio')).toBeNull(); expect(view.getByText('PULLOVER agregado')).toBeTruthy();
     expect(view.getByRole('button', { name: 'Deshacer' })).toBeTruthy();
     expect(view.getByLabelText(/^La última vez,/)).toBeTruthy(); expect(api.add).toHaveBeenCalledTimes(1); expect(api.save).not.toHaveBeenCalled();
     controller.dispose();
@@ -613,7 +623,8 @@ describe('native finish screen (M3.4-2)', () => {
     await completeSet(view, controller);
     jest.mocked(api.detail).mockResolvedValue({ status: 'ok', data: completedDetail(), meta });
     fireEvent.press(view.getByRole('button', { name: 'Finalizar entrenamiento' }));
-    expect(view.getAllByText('Sin responder')).toHaveLength(3);
+    expect(view.getByText('Sin responder')).toBeTruthy();
+    expect(view.getByText('320')).toBeTruthy(); expect(view.getByText('kg de volumen')).toBeTruthy();
     fireEvent.press(view.getByTestId('summary-energyLevel-4'));
     fireEvent(view.getByTestId('summary-painLevel-slider'), 'accessibilityAction', { nativeEvent: { actionName: 'increment' } });
     fireEvent.press(view.getByTestId('summary-performanceLevel-3')); fireEvent.press(view.getByTestId('summary-performanceLevel-3'));
@@ -621,24 +632,50 @@ describe('native finish screen (M3.4-2)', () => {
     expect(api.finish).toHaveBeenCalledTimes(1);
     expect(api.finish).toHaveBeenCalledWith({ metadata: { energyLevel: 4, performanceLevel: null, painLevel: 0, notes: null }, idempotencyKey: expect.any(String) });
     expect(mockTrigger.mock.calls.filter(([event]) => event === 'workoutComplete')).toHaveLength(1);
-    expect(view.getByTestId('post-workout-sheet')).toBeTruthy(); expect(view.getByText('Entrenamiento guardado')).toBeTruthy();
-    const sheet = within(view.getByTestId('post-workout-sheet'));
-    expect(sheet.getByText('1 serie completada · 1 ejercicio')).toBeTruthy(); expect(sheet.getByText('4/5')).toBeTruthy(); expect(sheet.getByText('0/10')).toBeTruthy();
+    expect(view.getByTestId('post-workout-screen')).toBeTruthy(); expect(view.getByText('Entrenamiento guardado')).toBeTruthy();
+    const sheet = within(view.getByTestId('post-workout-screen'));
+    expect(sheet.getByLabelText('1 series')).toBeTruthy(); expect(sheet.getByText('4/5')).toBeTruthy(); expect(sheet.getByText('0/10')).toBeTruthy();
     expect(sheet.queryByText('Rendimiento')).toBeNull();
     fireEvent.press(view.getByRole('button', { name: 'Ver sesión' }));
-    expect(view.queryByTestId('post-workout-sheet')).toBeNull(); expect(view.getByTestId('completed-session')).toBeTruthy();
+    expect(view.queryByTestId('post-workout-screen')).toBeNull(); expect(view.getByTestId('completed-session')).toBeTruthy();
     expect(view.queryByRole('button', { name: 'Finalizar entrenamiento' })).toBeNull(); expect(view.queryByLabelText('Peso serie 1 de PRESS')).toBeNull();
     expect(view.getByLabelText('Serie 1: 40 kg × 8')).toBeTruthy();
     controller.dispose();
   });
-  it('routes Ir al inicio to Home after a confirmed finish', async () => {
+  it('keeps null distinct from zero, clears selected scales and stages note edits locally', async () => {
+    const detail = testDetail(); detail.exercises[0].payload.sets[0].isCompleted = true;
+    const { controller, Screen } = fixture(detail); await controller.refresh(); const view = render(<Screen />);
+    fireEvent.press(view.getByRole('button', { name: 'Finalizar entrenamiento' }));
+    expect(controller.getSnapshot().summary.energyLevel).toBeNull();
+    fireEvent.press(view.getByTestId('summary-energyLevel-4')); expect(controller.getSnapshot().summary.energyLevel).toBe(4);
+    fireEvent.press(view.getByTestId('summary-energyLevel-4')); expect(controller.getSnapshot().summary.energyLevel).toBeNull();
+    fireEvent.press(view.getByRole('button', { name: 'Sin dolor' })); expect(controller.getSnapshot().summary.painLevel).toBe(0);
+    fireEvent.press(view.getByRole('button', { name: 'Sin dolor' })); expect(controller.getSnapshot().summary.painLevel).toBeNull();
+    fireEvent.press(view.getByTestId('finish-open-note')); fireEvent.changeText(view.getByTestId('finish-note-input'), 'Borrador');
+    fireEvent.press(view.getByLabelText('Descartar edición de la nota')); expect(controller.getSnapshot().summary.notes).toBe('');
+    fireEvent.press(view.getByTestId('finish-open-note')); fireEvent.changeText(view.getByTestId('finish-note-input'), 'Rodilla bien');
+    fireEvent.press(view.getByLabelText('Guardar nota')); expect(controller.getSnapshot().summary.notes).toBe('Rodilla bien');
+    expect(view.getByText('Rodilla bien')).toBeTruthy(); controller.dispose();
+  });
+  it('returns to the session without finishing when no set is checked and uses the existing discard confirmation', async () => {
+    const { controller, api, Screen } = fixture(); await controller.refresh(); const view = render(<Screen />);
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    fireEvent.press(view.getByRole('button', { name: 'Finalizar entrenamiento' }));
+    expect(view.getByTestId('finish-no-sets')).toBeTruthy(); expect(view.queryByRole('button', { name: 'Guardar entrenamiento' })).toBeNull();
+    expect(view.getByTestId('summary-energyLevel-4', { includeHiddenElements: true }).props.accessibilityState.disabled).toBe(true);
+    fireEvent.press(view.getByRole('button', { name: '← Volver a la sesión' })); expect(view.queryByTestId('finish-session-sheet')).toBeNull();
+    fireEvent.press(view.getByRole('button', { name: 'Finalizar entrenamiento' }));
+    fireEvent.press(view.getByRole('button', { name: 'Descartar entrenamiento' })); expect(alert).toHaveBeenCalled(); expect(api.finish).not.toHaveBeenCalled();
+    controller.dispose();
+  });
+  it('routes Listo to Training after a confirmed finish', async () => {
     const { controller, api, Screen } = fixture(); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
     await completeSet(view, controller); jest.mocked(api.detail).mockResolvedValue({ status: 'ok', data: completedDetail(), meta });
     await act(async () => { await controller.finish(); for (let i = 0; i < 40; i++) await Promise.resolve(); });
-    fireEvent.press(view.getByRole('button', { name: 'Ir al inicio' }));
+    fireEvent.press(view.getByRole('button', { name: 'Listo' }));
     // The sheet must close: the Train stack stays mounted behind the Home tab.
-    expect(view.queryByTestId('post-workout-sheet')).toBeNull();
-    expect(mockReplace).toHaveBeenCalledWith('/(tabs)/train'); expect(mockNavigate).toHaveBeenCalledWith('/(tabs)/home'); controller.dispose();
+    expect(view.queryByTestId('post-workout-screen')).toBeNull();
+    expect(mockReplace).toHaveBeenCalledWith('/(tabs)/train'); expect(mockNavigate).not.toHaveBeenCalled(); controller.dispose();
   });
   it('records pain on an iOS-style slider: no default, stepped values including 0, Quitar returns to unanswered', async () => {
     const { controller, Screen } = fixture(); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
@@ -651,10 +688,10 @@ describe('native finish screen (M3.4-2)', () => {
     // Track travel = 328 - 28 = 300pt → 30pt per step; the thumb center starts at 14pt.
     act(() => fireGestureHandler(getByGestureTestId('summary-painLevel-tap'), [{ state: State.BEGAN, x: 14 }, { state: State.ACTIVE, x: 14 }, { state: State.END, x: 14 }]));
     await act(async () => { await Promise.resolve(); });
-    expect(controller.getSnapshot().summary.painLevel).toBe(0); expect(view.getByText('0/10')).toBeTruthy();
+    expect(controller.getSnapshot().summary.painLevel).toBe(0); expect(view.queryByText('0/10')).toBeNull();
     mockSelection.mockClear(); mockTrigger.mockClear();
     act(() => fireGestureHandler(getByGestureTestId('summary-painLevel-pan'), [{ state: State.BEGAN, x: 14 }, { state: State.ACTIVE, x: 104 }, { state: State.ACTIVE, x: 200 }, { state: State.END, x: 200 }]));
-    expect(controller.getSnapshot().summary.painLevel).toBe(6); expect(mockTrigger.mock.calls).toEqual([['stepperChange'], ['stepperChange']]);
+    expect(controller.getSnapshot().summary.painLevel).toBe(6); expect(mockTrigger.mock.calls).toEqual([['stepperChange']]);
     fireEvent.press(view.getByRole('button', { name: 'Quitar dolor' }));
     expect(controller.getSnapshot().summary.painLevel).toBeNull(); expect(view.queryByRole('button', { name: 'Quitar dolor' })).toBeNull();
     controller.dispose();
@@ -666,17 +703,17 @@ describe('native finish screen (M3.4-2)', () => {
     fireEvent.press(view.getByRole('button', { name: 'Finalizar entrenamiento' }));
     await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar entrenamiento' })); for (let i = 0; i < 40; i++) await Promise.resolve(); });
     expect(view.getByText(/No pudimos confirmar si el entrenamiento se guardó/)).toBeTruthy();
-    expect(view.queryByTestId('post-workout-sheet')).toBeNull(); expect(mockTrigger).not.toHaveBeenCalledWith('workoutComplete');
+    expect(view.queryByTestId('post-workout-screen')).toBeNull(); expect(mockTrigger).not.toHaveBeenCalledWith('workoutComplete');
     jest.mocked(api.detail).mockResolvedValue({ status: 'ok', data: completedDetail(), meta });
     await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Comprobar entrenamiento' })); for (let i = 0; i < 40; i++) await Promise.resolve(); });
     expect(jest.mocked(api.finish).mock.calls[1][0]).toEqual(jest.mocked(api.finish).mock.calls[0][0]);
-    expect(view.getByTestId('post-workout-sheet')).toBeTruthy(); controller.dispose();
+    expect(view.getByTestId('post-workout-screen')).toBeTruthy(); controller.dispose();
   });
   it('opens an already completed session read-only without the active editor or a post-workout sheet', async () => {
     const { controller, Screen } = fixture(completedDetail()); await controller.refresh(); const view = render(<Screen />);
     expect(view.getByTestId('completed-session')).toBeTruthy(); expect(view.queryByText('SESIÓN FINALIZADA')).toBeNull();
     expect(mockSetOptions).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Sesión finalizada', headerRight: undefined }));
-    expect(view.queryByTestId('post-workout-sheet')).toBeNull(); expect(view.queryByRole('button', { name: 'Finalizar entrenamiento' })).toBeNull();
+    expect(view.queryByTestId('post-workout-screen')).toBeNull(); expect(view.queryByRole('button', { name: 'Finalizar entrenamiento' })).toBeNull();
     expect(view.getByText('4/5')).toBeTruthy(); expect(view.getByText('0/10')).toBeTruthy(); expect(view.queryByText('Rendimiento')).toBeNull();
     controller.dispose();
   });
@@ -689,13 +726,13 @@ describe('native finish screen (M3.4-2)', () => {
 
 
 describe('server-confirmed routine additions receipt', () => {
-  it.each(['light', 'dark'] as const)('shows additions and omission reasons in %s mode', mode => {
+  it.each(['light', 'dark'] as const)('shows only confirmed additions in %s mode', mode => {
     const finished = { ...testFinished(), routineAdditions: [
       { sessionExerciseId: EXERCISE_ID, exerciseId: EXERCISE_ID, name: 'PRESS', outcome: 'added' as const },
       { sessionExerciseId: SECOND_ID, exerciseId: SECOND_ID, name: 'ROW', outcome: 'routine_unavailable' as const },
     ] };
-    const view = render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}><OwnlevelThemeProvider initialMode={mode}><PostWorkoutSheet finished={finished} onHome={() => {}} onViewSession={() => {}} /></OwnlevelThemeProvider></SafeAreaProvider>);
-    expect(view.getByText('PRESS: se sumó a la rutina.')).toBeTruthy();
-    expect(view.getByText('ROW: no se sumó porque la rutina ya no está activa.')).toBeTruthy();
+    const view = render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}><OwnlevelThemeProvider initialMode={mode}><PostWorkoutScreen finished={finished} onHome={() => {}} onViewSession={() => {}} /></OwnlevelThemeProvider></SafeAreaProvider>);
+    expect(view.getByText('PRESS se sumó a Sesión libre')).toBeTruthy();
+    expect(view.queryByText(/ROW: no se sumó/)).toBeNull();
   });
 });
