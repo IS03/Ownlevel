@@ -10,6 +10,8 @@ import { discardSession, type SessionDiscardedDto } from '@/api/training-history
 import type { MobileApiRequestResult } from '@/api/results';
 import { AppText, Button, ScrollScreen, Surface, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
 import { compactHistoryDate } from './active-session-model';
+import { fetchSessionHighlights } from '@/api/session-highlights';
+import type { SessionHighlightsLoader } from './post-workout-screen';
 import { completedSessionModel } from './completed-session-model';
 import { CompletedSessionView } from './completed-session-view';
 import { ReadStateScreen } from './history-components';
@@ -18,11 +20,12 @@ import { TrainingContextMenu } from './routine-context-menu';
 import { RoutineSheetButton } from './routine-sheet-button';
 
 export type CompletedSessionApi = {
+  highlights?: SessionHighlightsLoader;
   detail: (signal?: AbortSignal) => Promise<MobileApiRequestResult<SessionDetailDto>>;
   discard: (idempotencyKey: string) => Promise<MobileApiRequestResult<SessionDiscardedDto>>;
 };
 export function completedSessionApi(client: MobileApiClient, sessionId: string): CompletedSessionApi {
-  return { detail: signal => fetchSessionDetail(client, sessionId, signal), discard: key => discardSession(client, sessionId, key) };
+  return { highlights: signal => fetchSessionHighlights(client, sessionId, signal), detail: signal => fetchSessionDetail(client, sessionId, signal), discard: key => discardSession(client, sessionId, key) };
 }
 const newKey = () => typeof globalThis.crypto?.randomUUID === 'function' ? globalThis.crypto.randomUUID()
   : `discard-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -101,7 +104,7 @@ export function CompletedSessionScreen({ api, sessionId, initialDetail, finished
     {notice ? <Surface accessibilityRole="alert"><AppText style={{ color: notice.tone === 'danger' ? colors.danger : colors.text }} variant="caption">{notice.text}</AppText></Surface> : null}
     {pendingKey || discarding ? <Button label={discarding ? 'Eliminando…' : 'Reintentar eliminación'} variant="quiet" disabled={discarding} onPress={() => void runDiscard()} /> : null}
   </View> : null;
-  return <>{menu}<CompletedSessionView detail={detail} finished={finished} onHome={onHome} onTraining={onTraining} actions={actions}
+  return <>{menu}<CompletedSessionView detail={detail} finished={finished} readHighlights={api.highlights} onHome={onHome} onTraining={onTraining} actions={actions}
     banner={<><ReturnToHistoryDay />{state.stale ? <Surface><AppText muted variant="caption">No se pudo actualizar. Mostramos la última lectura confirmada.</AppText></Surface> : null}</>}
     onOpenExercise={exerciseId => router.push(`/(tabs)/train/history/exercise/${exerciseId}${detail.session.routineId ? `?routineId=${encodeURIComponent(detail.session.routineId)}` : ''}`)} /></>;
 }

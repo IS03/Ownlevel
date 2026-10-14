@@ -1,4 +1,4 @@
-import {
+import { Info,
   ArrowUpDown, GripHorizontal, Archive, BookOpen, Calendar, ChartLine, Check, ChevronDown,
   ChevronLeft, ChevronRight, CircleCheck, ClipboardList, Clock, Coffee, Droplet, Dumbbell, Ellipsis, Flame,
   Footprints, ListFilter, Moon, NotebookPen, Play, Plus, RotateCw, Settings, Trash2, TriangleAlert, Trophy, User, Utensils, Weight, X, Zap, type LucideIcon,
@@ -12,6 +12,7 @@ export const lucideIcons: Record<AppIconName, LucideIcon> = {
   dragHandle: GripHorizontal,
   archive: Archive,
   playFilled: Play,
+  info: Info,
   activity: Zap,
   // Temporary until the brand isotype replaces it (M9.1D).
   brand: Dumbbell,

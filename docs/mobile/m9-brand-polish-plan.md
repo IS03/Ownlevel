@@ -404,3 +404,7 @@ Inicio vuelve a tener Entrenos, Nutrición y Hábitos, sin scroll interno. Métr
 4. Antes de usar un valor: token de marca. Si no existe, no inventar uno; documentar.
 5. QA visual en Simulator/iPhone (Mobile) o navegador (Web), light y dark, con "Reducir movimiento" activado y desactivado.
 6. No commitear, pushear ni abrir PR salvo pedido explícito (regla general del repo).
+
+### Finalizar entrenamiento · F1–F5 (M9)
+
+Pasada visual dentro de M3.3 y lectura EXPAND aditiva de destacados, autorizada explícitamente. No cambia el recibo de finalizar ni las mutaciones, drafts, autosave, CAS o idempotencia. Contrato, decisiones nativas, semántica de las marcas y validación: [m9-finish-redesign.md](m9-finish-redesign.md).
