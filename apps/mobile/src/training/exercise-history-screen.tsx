@@ -24,9 +24,11 @@ function ExerciseHistoryScope({ exerciseId, initialRoutineId }: { exerciseId: st
   const [options, setOptions] = useState<{ id: string; name: string }[]>([]);
   // The unfiltered best, once read, is what makes a routine's best a real "Récord".
   const [overallBest, setOverallBest] = useState<TrainingHistoryMark | null>(null);
+  // Kept across routine scopes so the large title doesn't flip back to "Ejercicio" while a scope loads.
+  const [name, setName] = useState('Ejercicio');
   // A fresh scope never presents old highlights as if they belonged to the new filter.
-  return <ExerciseHistoryContent key={routineId ?? 'all'} exerciseId={exerciseId} routineId={routineId} options={options} overallBest={overallBest}
-    onRead={(routines, best) => { setOptions(routines); if (routineId === null) setOverallBest(best); }} onRoutineChange={setRoutineId} />;
+  return <ExerciseHistoryContent key={routineId ?? 'all'} exerciseId={exerciseId} routineId={routineId} options={options} overallBest={overallBest} name={name}
+    onRead={(routines, best, exerciseName) => { setOptions(routines); setName(exerciseName); if (routineId === null) setOverallBest(best); }} onRoutineChange={setRoutineId} />;
 }
 
 function Mark({ title, item, label, record }: { title: string; item: TrainingExerciseHistorySession; label: string; record: boolean }) {
@@ -58,23 +60,22 @@ function BestSetChart({ sessions, unit }: { sessions: TrainingExerciseHistorySes
   </Surface>;
 }
 
-function ExerciseHistoryContent({ exerciseId, routineId, options, overallBest, onRead, onRoutineChange }: {
-  exerciseId: string; routineId: string | null; options: { id: string; name: string }[]; overallBest: TrainingHistoryMark | null;
-  onRead: (routines: { id: string; name: string }[], best: TrainingHistoryMark | null) => void; onRoutineChange: (id: string | null) => void;
+function ExerciseHistoryContent({ exerciseId, routineId, options, overallBest, name, onRead, onRoutineChange }: {
+  exerciseId: string; routineId: string | null; options: { id: string; name: string }[]; overallBest: TrainingHistoryMark | null; name: string;
+  onRead: (routines: { id: string; name: string }[], best: TrainingHistoryMark | null, name: string) => void; onRoutineChange: (id: string | null) => void;
 }) {
   const { client } = useMobileApi();
   const router = useRouter();
   const { colors } = useOwnlevelTheme();
   const [limit, setLimit] = useState(20);
   const load = useCallback((signal: AbortSignal) => client && exerciseId ? fetchTrainingExerciseHistory(client, exerciseId, limit, signal, routineId).then(result => {
-    if (result.status === 'ok' && !signal.aborted) onRead(result.data.routines ?? [], result.data.best?.mark ?? null);
+    if (result.status === 'ok' && !signal.aborted) onRead(result.data.routines ?? [], result.data.best?.mark ?? null, result.data.exercise.name);
     return result;
   }) : Promise.resolve({ status: 'unavailable' as const, reason: 'invalid_response' as const, meta: { durationMs: 0, httpStatus: null, outcome: 'unavailable' as const } }),
   // eslint-disable-next-line react-hooks/exhaustive-deps -- onRead is a fresh closure each render; reading again for it would loop.
   [client, exerciseId, limit, routineId]);
   const { state, reload } = useRead(load);
   useFocusEffect(useCallback(() => { void reload(); }, [reload]));
-  const name = state.status === 'ready' ? state.data.exercise.name : 'Ejercicio';
   const screen = <Stack.Screen options={{ title: name, headerLargeTitleEnabled: Platform.OS === 'ios', headerLargeTitleStyle: { color: colors.text },
     headerStyle: { backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.background }, headerLargeStyle: { backgroundColor: 'transparent' } }} />;
   const filters = options.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters} style={styles.filterScroll} accessibilityLabel="Filtrar historial por rutina">
@@ -117,7 +118,8 @@ function ExerciseHistoryContent({ exerciseId, routineId, options, overallBest, o
   </HistoryScroll></>;
 }
 const styles = StyleSheet.create({
-  filterScroll: { marginHorizontal: -spacing.lg, overflow: 'visible' },
+  // flexGrow 0: a horizontal ScrollView grows by default and stretched the chips while loading.
+  filterScroll: { flexGrow: 0, marginHorizontal: -spacing.lg, overflow: 'visible' },
   filters: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.xs },
   flex: { flex: 1, gap: 2 },
   marks: { flexDirection: 'row', gap: spacing.md },
