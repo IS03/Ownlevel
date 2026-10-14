@@ -1,10 +1,12 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import type { MobileHomeResponse } from '@/api/home';
+import type { ProgressHabitWeek } from '@/api/progress';
 import type { NutritionReport } from '@/api/nutrition-report';
 import { AppText, ExampleFrame, InlineUnavailable, SkeletonBlock, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
 
 import { formatInteger, formatTrainingMinutes, plural } from './format';
+import { HomeHabits } from './home-habits';
 import { HomeCarousel } from './home-carousel';
 import type { HomeTrainingWeek } from './home-data';
 import { WEEKDAY_LETTERS, weekDates } from './home-day';
@@ -203,9 +205,12 @@ function ExampleWeek({ dates, today }: { dates: string[]; today: string }) {
 }
 
 export function HomeWeek({
-  calories, onOpenCalories, onOpenDay, onProgress, today, training, week, weekStart,
+  calories, habits, onOpenHabit, onMetrics, onOpenCalories, onOpenDay, onProgress, today, training, week, weekStart,
 }: {
   calories: HomeResource<NutritionReport>;
+  habits: HomeResource<ProgressHabitWeek>;
+  onOpenHabit: (metricId: string) => void;
+  onMetrics: () => void;
   onOpenCalories: () => void;
   onOpenDay: (date: string) => void;
   onProgress: () => void;
@@ -226,6 +231,7 @@ export function HomeWeek({
           </>
         ) : <TrainingSummary dates={dates} onOpenDay={onOpenDay} today={today} training={training} week={week} /> },
         { label: 'Nutrición', content: <NutritionSummary calories={calories} onOpen={onOpenCalories} today={today} weekStart={weekStart} /> },
+        { label: 'Hábitos', content: <HomeHabits habits={habits} onOpen={onOpenHabit} onMetrics={onMetrics} today={today} weekStart={weekStart} /> },
       ]} />
     </HomeSection>
   );

@@ -5,7 +5,7 @@ import type { MobileHomeResponse, MobileHomeTodaySession } from '@/api/home';
 import type { HistoryDay } from '@/api/history';
 import type { NutritionReport } from '@/api/nutrition-report';
 import type { QuickOption, QuickOptions } from '@/api/nutrition-quick';
-import type { ProgressBody, ProgressTraining } from '@/api/progress';
+import type { ProgressHabitWeek, ProgressBody, ProgressTraining } from '@/api/progress';
 import {
   AppIcon,
   AppText,
@@ -35,6 +35,8 @@ export type HomeNavigationTarget = 'nutrition' | 'progress' | 'settings';
 export type HomeDashboardProps = {
   avatarUrl: string | null;
   calories: HomeResource<NutritionReport>;
+  habits: HomeResource<ProgressHabitWeek>;
+  onOpenHabit: (metricId: string) => void;
   day: { today: string; weekStart: string };
   home: HomeResource<MobileHomeResponse>;
   now?: () => number;
@@ -258,7 +260,7 @@ export function HomeDashboard(props: HomeDashboardProps) {
             quick={quick} today={today} />
         </View>
         <View style={styles.afterBand}>
-          <HomeWeek calories={calories} onOpenCalories={props.onOpenCalories} onOpenDay={props.onOpenDay} onProgress={() => onNavigate('progress')} today={date}
+          <HomeWeek calories={calories} habits={props.habits} onOpenHabit={props.onOpenHabit} onMetrics={() => props.onRegister({ kind: 'more' })} onOpenCalories={props.onOpenCalories} onOpenDay={props.onOpenDay} onProgress={() => onNavigate('progress')} today={date}
             training={training} week={data?.training.week} weekStart={weekStart} />
         </View>
         <View style={styles.headedBlock}><HomeRegister date={day.today} onRegister={props.onRegister} today={today} /></View>

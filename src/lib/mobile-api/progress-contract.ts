@@ -39,6 +39,22 @@ export type ProgressMetricHabit = {
   id: string; name: string; unit: string | null; valueType: MetricValueType;
   average: number | null; coverage: ProgressCoverage; comparison: ProgressComparison;
 };
+/** Calendar week for Home; averages exclude today while it is in progress. */
+export type ProgressHabitWeek = {
+  today: string; weekStart: string; weekEnd: string; previousWeekStart: string; previousWeekEnd: string; completedDays: number;
+  items: (ProgressMetricHabit & { systemKey: string | null })[];
+};
+
+/** Pure date context, shared with the parser so a rolling window cannot masquerade as a calendar week. */
+export function habitWeekRange(today: string) {
+  if (!isNutritionDate(today)) throw new Error("Invalid habit week date");
+  const date = new Date(`${today}T12:00:00Z`);
+  const completedDays = (date.getUTCDay() + 6) % 7;
+  const shift = (days: number) => new Date(date.getTime() + days * 86_400_000).toISOString().slice(0, 10);
+  return { weekStart: shift(-completedDays), weekEnd: shift(6 - completedDays),
+    previousWeekStart: shift(-completedDays - 7), previousWeekEnd: shift(-completedDays - 1), completedDays };
+}
+
 /** Training load: sessions, days and sets are real zeros when nothing was trained; duration is start→end (includes rests). */
 export type ProgressTrainingSummary = {
   sessions: number; trainingDays: number; sets: number; minutes: number; sessionsPerWeek: number | null;
@@ -200,6 +216,23 @@ function parseHabit(v: unknown): ProgressMetricHabit | undefined {
   const coverage = parseCoverage(v.coverage), comparison = parseProgressComparison(v.comparison);
   return coverage && comparison ? { ...(v as ProgressMetricHabit), coverage, comparison } : undefined;
 }
+export function parseProgressHabitWeek(v: unknown): ProgressHabitWeek | undefined {
+  if (!record(v) || !keys(v, ["today", "weekStart", "weekEnd", "previousWeekStart", "previousWeekEnd", "completedDays", "items"])
+    || !isNutritionDate(v.today)) return;
+  const range = habitWeekRange(v.today);
+  if (Object.entries(range).some(([key, value]) => v[key] !== value)) return;
+  const items = list(v.items, raw => {
+    if (!record(raw) || !strOrNull(raw.systemKey)) return;
+    const { systemKey, ...rest } = raw;
+    const item = parseHabit(rest);
+    if (!item || item.coverage.eligible !== range.completedDays || item.coverage.registered > range.completedDays
+      || (item.average === null) !== (item.coverage.registered === 0) || item.comparison.current !== item.average) return;
+    return { ...item, systemKey: systemKey as string | null };
+  });
+  if (!items || new Set(items.map(item => item.id)).size !== items.length) return;
+  return { today: v.today, ...range, items };
+}
+
 export function parseProgressOverview(v: unknown): ProgressOverview | undefined {
   if (!record(v) || !keys(v, ["today", "period", "evolution", "changes", "nutrition", "metrics", "body", "training"]) || !isNutritionDate(v.today)) return;
   const period = parseProgressPeriod(v.period);

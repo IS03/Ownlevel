@@ -25,6 +25,7 @@ const ready = (data: NutritionReport): HomeResource<NutritionReport> => ({ data,
 function week(resource = ready(report), theme: 'light' | 'dark' = 'light') {
   const onOpenCalories = jest.fn();
   const view = render(<OwnlevelThemeProvider initialMode={theme}><HomeWeek calories={resource}
+    habits={{ data: undefined, status: 'loading', confirmedAt: null }} onOpenHabit={() => undefined} onMetrics={() => undefined}
     onOpenCalories={onOpenCalories} onOpenDay={() => undefined} onProgress={() => undefined} today={today} weekStart={weekStart}
     training={{ data: undefined, status: 'loading', confirmedAt: null }} week={undefined} /></OwnlevelThemeProvider>);
   fireEvent.press(view.getByTestId('home-week-page-1'));

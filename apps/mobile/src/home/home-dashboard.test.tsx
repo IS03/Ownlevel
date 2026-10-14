@@ -12,7 +12,7 @@ import { HomeDashboard, type HomeDashboardProps } from './home-dashboard';
 import type { HomeTrainingWeek } from './home-data';
 import { calorieSplit, homeHabituals } from './home-nutrition';
 import type { HomeResource } from './home-resource';
-import { homeProgressBody, homeProgressTraining } from './home-test-fixtures';
+import { homeProgressHabits, homeProgressBody, homeProgressTraining } from './home-test-fixtures';
 
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('@/design-system', () => ({ ...jest.requireActual<object>('@/design-system'), useReduceMotion: () => true }));
@@ -111,13 +111,14 @@ const trainingWeek: HomeTrainingWeek = { weekStart: WEEK, everTrained: true, ses
 
 function renderHome(overrides: Partial<HomeDashboardProps> = {}, theme: ThemeMode = 'light') {
   const handlers = {
-    onConfigureNutrition: jest.fn(), onMealEntry: jest.fn(), onNavigate: jest.fn(), onOpenCalories: jest.fn(), onOpenCompletedSession: jest.fn(),
+    onOpenHabit: jest.fn(), onConfigureNutrition: jest.fn(), onMealEntry: jest.fn(), onNavigate: jest.fn(), onOpenCalories: jest.fn(), onOpenCompletedSession: jest.fn(),
     onOpenDay: jest.fn(), onOpenProgress: jest.fn(), onOpenSession: jest.fn(), onQuickMeal: jest.fn(), onRefresh: jest.fn(), onRegister: jest.fn(), onStartWorkout: jest.fn(),
   };
   const props: HomeDashboardProps = {
     ...handlers,
     avatarUrl: null,
     calories: ready(report),
+    habits: ready(homeProgressHabits()),
     day: { today: TODAY, weekStart: WEEK },
     home: ready(home()),
     progressBody: ready(homeProgressBody()), progressRecords: ready(homeProgressTraining('30')),
@@ -385,7 +386,8 @@ describe('Esta semana', () => {
     expect(view.getByLabelText('3 entrenos esta semana, 54 series · 2 h 37 min')).toBeTruthy();
     fireEvent.press(view.getByTestId('home-week-page-1'));
     expect(view.getByText('No pudimos cargar Nutrición de esta semana.')).toBeTruthy();
-    expect(view.queryByTestId('home-week-page-2')).toBeNull();
+    fireEvent.press(view.getByTestId('home-week-page-2'));
+    expect(view.getByTestId('home-week-habits')).toBeTruthy();
   });
 
   it('a user who never trained sees a greyed EJEMPLO week', () => {

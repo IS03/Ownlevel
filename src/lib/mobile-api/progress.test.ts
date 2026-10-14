@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+const clock = vi.hoisted(() => ({ today: "2026-10-05" }));
 vi.mock("server-only", () => ({}));
-vi.mock("../phase2/cordoba-date", () => ({ todayInCordoba: () => "2026-10-05" }));
-vi.mock("@/lib/phase2/cordoba-date", () => ({ todayInCordoba: () => "2026-10-05" }));
+vi.mock("../phase2/cordoba-date", () => ({ todayInCordoba: () => clock.today }));
+vi.mock("@/lib/phase2/cordoba-date", () => ({ todayInCordoba: () => clock.today }));
 vi.mock("./supabase", () => ({ authenticateMobileAccessToken: vi.fn() }));
 vi.mock("@/lib/phase1/profile", () => ({ getMyProfile: vi.fn() }));
 vi.mock("@/lib/phase1/day-log", () => ({ listWeightHistory: vi.fn() }));
@@ -15,12 +16,13 @@ import { listWeightHistory } from "@/lib/phase1/day-log";
 import { listBodyMeasurements } from "@/lib/body-measurements";
 import { loadCompletedTrainingData } from "@/lib/phase2/training-robust";
 import { listRoutines } from "@/lib/phase2/training";
+import { GET as habitsGET } from "@/app/api/mobile/v1/progress/habits/route";
 import { GET as overviewGET } from "@/app/api/mobile/v1/progress/route";
 import { GET as bodyGET } from "@/app/api/mobile/v1/progress/body/route";
 import { GET as metricsGET } from "@/app/api/mobile/v1/progress/metrics/route";
 import { addProgressIsoDays } from "@/lib/progress/analytics";
 import { comparisonDto, resolveMobileProgressPeriod } from "./progress-server";
-import { parseProgressBody, parseProgressComparison, parseProgressMetrics, parseProgressOverview, type ProgressBody, type ProgressMetrics, type ProgressOverview } from "./progress-contract";
+import { habitWeekRange, parseProgressHabitWeek, parseProgressBody, parseProgressComparison, parseProgressMetrics, parseProgressOverview, type ProgressBody, type ProgressMetrics, type ProgressOverview } from "./progress-contract";
 import type { NutritionReportDayLogFact } from "../nutrition/reports-core";
 
 const TODAY = "2026-10-05";
@@ -39,6 +41,9 @@ const definitions = () => [
   { id: ids.custom, system_key: null, name: "Lectura", unit: "páginas", value_type: "integer", target_value: null, sort_order: 3, is_active: true, archived_at: null },
   { id: ids.archived, system_key: "mate", name: "Mate", unit: "L", value_type: "decimal", target_value: null, sort_order: 4, is_active: false, archived_at: "2026-09-01T00:00:00Z" },
 ];
+let metricDefinitions: ReturnType<typeof definitions> | null = null;
+let metricsFail = false;
+const readOwners: string[] = [];
 const log = (date: string, over: Partial<NutritionReportDayLogFact> = {}): NutritionReportDayLogFact => ({ id: date, log_date: date, total_calories_consumed: 2000, total_protein_g: 120, total_carbs_g: 0, total_fat_g: 0,
   nutrition_target_kcal_snapshot: 2100, protein_target_g_snapshot: 130, estimated_expenditure_kcal_snapshot: 2400, delta_vs_nutrition_target: -100, energy_balance_kcal: -400,
   water_target_l_snapshot: null, water_l: null, mate_l: null, steps: null, work_effective_snapshot: null, gym_effective_snapshot: null, gym_source_snapshot: null,
@@ -60,7 +65,7 @@ function supabase() {
       const filters: ((r: Value) => boolean)[] = [];
       const builder = {
         select: () => builder,
-        eq(c: string, v: string) { if (table === "user_metrics") return Promise.resolve({ data: definitions(), error: null }); if (c !== "user_id") filters.push(r => (r as never)[c] === v); return builder; },
+        eq(c: string, v: string) { if (c === "user_id") readOwners.push(v); if (table === "user_metrics") return Promise.resolve({ data: metricsFail ? null : metricDefinitions ?? definitions(), error: metricsFail ? { code: "XX000" } : null }); if (c !== "user_id") filters.push(r => (r as never)[c] === v); return builder; },
         gte(c: keyof Value, v: string) { filters.push(r => String(r[c]) >= v); return builder; },
         lte(c: keyof Value, v: string) { filters.push(r => String(r[c]) <= v); return builder; },
         order: () => builder,
@@ -85,7 +90,7 @@ async function json<T>(response: Response, parse: (v: unknown) => T | undefined)
 }
 
 beforeEach(() => {
-  vi.clearAllMocks(); rpcCalls.length = 0; nutritionFails = false;
+  vi.clearAllMocks(); rpcCalls.length = 0; nutritionFails = false; clock.today = TODAY; metricDefinitions = null; metricsFail = false; readOwners.length = 0;
   values = []; dayLogs = [];
   vi.mocked(authenticateMobileAccessToken).mockResolvedValue({ userId: "owner", supabase: supabase() } as never);
   vi.mocked(getMyProfile).mockResolvedValue({ current_weight_kg: 80 } as never);
@@ -227,5 +232,54 @@ describe("GET /progress (overview)", () => {
     expect(o.body).toEqual({ status: "unavailable" });
     expect(o.training).toEqual({ status: "unavailable" });
     expect(o.metrics.status).toBe("ok");
+  });
+});
+
+describe("GET /progress/habits (additive calendar-week read)", () => {
+  it("returns all active metrics in user order, including missing and zero, against the actual previous week", async () => {
+    clock.today = "2026-10-14";
+    const extra = { ...definitions()[3], id: "b1000000-0000-4000-8000-000000000006", sort_order: 5, name: "Extra" };
+    const extra2 = { ...extra, id: "b1000000-0000-4000-8000-000000000007", sort_order: 6, name: "Otra" };
+    metricDefinitions = [...definitions().reverse(), extra, extra2];
+    values = [
+      { metric_id: ids.water, metric_date: "2026-10-12", value: 2 }, { metric_id: ids.water, metric_date: "2026-10-13", value: 3 },
+      { metric_id: ids.water, metric_date: "2026-10-05", value: 1 }, { metric_id: ids.water, metric_date: "2026-10-06", value: 1 },
+      { metric_id: ids.water, metric_date: "2026-10-14", value: 999 }, // today is excluded
+      { metric_id: ids.water, metric_date: "2026-10-15", value: 999 }, // future is excluded
+      { metric_id: ids.steps, metric_date: "2026-10-12", value: 0 },
+    ];
+    const data = await json(await habitsGET(request("progress/habits")), parseProgressHabitWeek);
+    expect(data).toMatchObject({ weekStart: "2026-10-12", weekEnd: "2026-10-18", previousWeekStart: "2026-10-05", previousWeekEnd: "2026-10-11", completedDays: 2 });
+    expect(data.items.map(item => item.id)).toEqual([ids.steps, ids.water, ids.sleep, ids.custom, extra.id, extra2.id]);
+    expect(data.items[1]).toMatchObject({ average: 2.5, coverage: { registered: 2, eligible: 2, ratio: 1 }, comparison: { status: "comparable", previous: 1, change: "increased" } });
+    expect(data.items[0]).toMatchObject({ average: 0, coverage: { registered: 1 }, comparison: { status: "insufficient_data" } });
+    expect(data.items[2]).toMatchObject({ average: null, coverage: { registered: 0 }, comparison: { status: "insufficient_data" } });
+    expect(readOwners.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(readOwners)).toEqual(new Set(["owner"]));
+    expect(parseProgressHabitWeek({ ...data, previousWeekStart: "2026-10-09" })).toBeUndefined();
+    expect(parseProgressHabitWeek({ ...data, items: [...data.items, data.items[0]] })).toBeUndefined();
+  });
+
+  it("Monday does not reuse Sunday or count today's values; empty differs from a failed read", async () => {
+    values = [{ metric_id: ids.water, metric_date: TODAY, value: 99 }];
+    const data = await json(await habitsGET(request("progress/habits")), parseProgressHabitWeek);
+    expect(data.completedDays).toBe(0);
+    expect(data.items.every(item => item.average === null && item.coverage.registered === 0 && item.coverage.eligible === 0)).toBe(true);
+    metricDefinitions = definitions().map(item => ({ ...item, is_active: false }));
+    expect((await json(await habitsGET(request("progress/habits")), parseProgressHabitWeek)).items).toEqual([]);
+    metricsFail = true;
+    const failed = await habitsGET(request("progress/habits"));
+    expect(failed.status).toBe(503);
+    expect(await failed.json()).toEqual({ error: "DATA_UNAVAILABLE" });
+    expect(habitWeekRange("2026-10-11")).toMatchObject({ weekStart: "2026-10-05", weekEnd: "2026-10-11", completedDays: 6 });
+    expect(habitWeekRange("2026-10-12")).toMatchObject({ weekStart: "2026-10-12", previousWeekStart: "2026-10-05", completedDays: 0 });
+  });
+
+  it("requires bearer identity and rejects arbitrary identity or range parameters", async () => {
+    expect((await habitsGET(request("progress/habits", ""))).status).toBe(401);
+    expect(authenticateMobileAccessToken).not.toHaveBeenCalled();
+    expect((await habitsGET(request("progress/habits?userId=another"))).status).toBe(400);
+    expect((await habitsGET(request("progress/habits?weekStart=2026-10-05"))).status).toBe(400);
+    expect(readOwners).toEqual([]);
   });
 });

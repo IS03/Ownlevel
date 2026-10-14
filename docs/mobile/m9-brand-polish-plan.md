@@ -1,7 +1,7 @@
 # M9 — UX/UI Polish + Release · Plan de marca
 
 Roadmap compartido para Claude Code, Codex, ChatGPT y Nacho.
-Estado: **M0–M8 cerrados. M9 sin empezar.** Ningún cambio visual se hizo al escribir este documento.
+Estado: **M0–M8 cerrados. M9 en curso.** El relevamiento original precede los cambios; los resultados y excepciones autorizadas se registran en §9.
 Relevamiento: 2026-10-05 (main en `ce0ceed`). Contexto canónico de marca preparado en el PR "Prepare canonical brand context for M9".
 
 Reglas permanentes de marca para agentes: `AGENTS.md` y `CLAUDE.md` → "Identidad de marca".
@@ -378,6 +378,14 @@ El inicio Mobile adopta `templateTargetsOnly: true` y el RPC aditivo `mobile_sta
 Rollout: aplicar `20261013211730_mobile_exercise_identity_template_start_expand.sql` antes de desplegar la API y distribuir Mobile; verificar firmas/permisos, observar errores y conflictos, sin CONTRACT ni borrado de defaults. Si falta un RPC, la API falla de forma explícita; nunca deriva una escritura al comportamiento antiguo ni reintenta automáticamente. La migración está preparada y probada en PostgreSQL local; no aplicada a la base remota desde este trabajo.
 
 La ficha muestra vínculos con rutinas activas (alcance del catálogo actual), sin inventar posición ni series. Última vez usa el detalle de la sesión confirmada y su modo de peso histórico. El título nativo se conserva; nombres largos también aparecen completos en el contenido. iOS usa buscador y menús nativos; Android, controles compartidos. Las filas alojadas en SwiftUI reciben el ancho real de la lista y los selectores tienen altura estable. Catálogo externo e imágenes quedan para el futuro.
+
+### 9g. Inicio · semana y Métricas (2026-10-14)
+
+Pedido explícito del usuario: Nutrición semanal aprobada; Hábitos como tercera página y tres círculos de Métricas bien distribuidos por pantalla, con el resto y Más dentro del mismo scroll. Se autoriza ampliar backend de forma aditiva para Hábitos, preservando los contratos actuales. Esta es una excepción de alcance a §10, limitada a esa lectura; no cambia el motor de analytics ni los write paths.
+
+Implementación y contrato: [Inicio Mobile](real-home.md). `GET /api/mobile/v1/progress/habits` devuelve todas las métricas activas, incluso sin muestras, con semana lunes–domingo y referencia explícita a la semana anterior completa. Promedios de días terminados y comparabilidad calculados por el motor existente. Sin migración SQL; desplegar EXPAND antes de distribuir ADOPT. Las lecturas fallidas no fabrican estados vacíos. Los endpoints y presets anteriores se conservan.
+
+Inicio vuelve a tener Entrenos, Nutrición y Hábitos, sin scroll interno. Métricas reparte el ancho normal en tres columnas, preserva orden/estados confirmados y el espacio de expansión del vidrio. QA nativo del usuario pendiente; no se declara completado con tests.
 
 ## 10. Exclusiones y zonas protegidas
 

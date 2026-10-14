@@ -17,8 +17,8 @@ import { MobileApiNotFoundError, MobileApiUnauthorizedError, MobileApiValidation
 import { mobileApiResponseHeaders } from "./http";
 import { NutritionReportDayChangedError, readMobileNutritionFacts } from "./nutrition-report-server";
 import {
-  PROGRESS_DEFAULT_PRESET, parseProgressBody, parseProgressMetrics, parseProgressOverview, parseProgressQuery, parseProgressTraining, parseProgressTrainingExercise,
-  type BodyObservationDto, type ProgressBody, type ProgressBodyMetric, type ProgressComparison, type ProgressDestination,
+  PROGRESS_DEFAULT_PRESET, habitWeekRange, parseProgressHabitWeek, parseProgressBody, parseProgressMetrics, parseProgressOverview, parseProgressQuery, parseProgressTraining, parseProgressTrainingExercise,
+  type ProgressHabitWeek, type BodyObservationDto, type ProgressBody, type ProgressBodyMetric, type ProgressComparison, type ProgressDestination,
   type ProgressMetricDefinition, type ProgressMetrics, type ProgressOverview, type ProgressPeriod, type ProgressQuery, type ProgressSection,
 } from "./progress-contract";
 import { authenticateMobileAccessToken, type MobileSupabaseAuthenticatedContext } from "./supabase";
@@ -270,6 +270,32 @@ export async function progressReadResponse<T>(request: Request, label: string, b
   }
   return NextResponse.json(body, { status, headers: mobileApiResponseHeaders(request) });
 }
+
+/** Additive Home read. Existing period presets and overview filtering remain unchanged. */
+export async function buildMobileProgressHabitWeek(context: Context, today: string): Promise<ProgressHabitWeek> {
+  const range = habitWeekRange(today);
+  const report = await getDailyMetricsReport({ period: "custom", from: range.weekStart, to: today,
+    previousRange: { start: range.previousWeekStart, end: range.previousWeekEnd } }, today, webAuth(context));
+  // A read straddling Córdoba midnight is retried by the shared GET handler.
+  const after = todayInCordoba();
+  if (after !== today) throw new NutritionReportDayChangedError(after);
+  const active = report.definitions.filter(definition => definition.is_active && definition.archived_at === null);
+  const results = new Map(report.defaultComparison?.results.map(result => [result.metric.key, result]));
+  return { today, ...range, items: active.map(definition => {
+    const result = results.get(`activity.daily.${definition.id}`);
+    if (!result) throw new Error("Incomplete habit week");
+    const coverage = result.primary.coverage;
+    return { id: definition.id, systemKey: definition.system_key, name: definition.name, unit: definition.unit,
+      valueType: definition.value_type, average: result.valueA,
+      coverage: { registered: coverage.registeredCount, eligible: coverage.eligibleCount, ratio: coverage.coverageRatio },
+      comparison: comparisonDto(result) };
+  }) };
+}
+
+export const progressHabitWeekResponse = (request: Request) => progressReadResponse(request, "habits.week", (context, params, today) => {
+  if ([...params].length) throw new MobileApiValidationError("Parámetro no válido.");
+  return buildMobileProgressHabitWeek(context, today);
+}, parseProgressHabitWeek);
 
 export const progressOverviewResponse = (request: Request) => progressReadResponse(request, "overview",
   (context, params, today) => buildMobileProgressOverview(context, progressQueryFromParams(params), today), parseProgressOverview);

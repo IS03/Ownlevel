@@ -1,86 +1,46 @@
-# OWNLEVEL Mobile — Real Native Home
+# Inicio Mobile · M9.3
 
-> **Estado:** M2 implementado técnicamente; cierre sujeto a QA físico en iPhone.
->
-> **Baseline:** `5239af32c2f0f59ea2b6b3b1dbaded51b05aeb4d`.
+Estado al 2026-10-14: Entrenos, Nutrición semanal y Hábitos implementados; QA visual/funcional del usuario en Simulator/iPhone pendiente. Fuente visual: `bocetos/inicio/`. Marca: [IDENTIDAD.md](../brand/ownlevel-marca/IDENTIDAD.md) y tokens compartidos.
 
-## Parity Packet
+## Arquitectura y lecturas
 
-| Elemento | Referencia |
-| --- | --- |
-| Web | `/home` |
-| Expo | `/(tabs)/home` |
-| Web source | `src/components/home/home-dashboard.tsx` |
-| Mobile source | `apps/mobile/src/home/home-screen.tsx` y `home-dashboard.tsx` |
-| Endpoint | `GET /api/mobile/v1/home` |
-| Contrato canónico | `src/lib/mobile-api/contracts.ts` |
-| Parser Mobile | `apps/mobile/src/api/home.ts` |
+Expo usa exclusivamente Mobile API v1 con bearer. Supabase es la fuente de verdad; identidad derivada del token, ownership/RLS y contratos de escritura existentes se conservan. Inicio no consulta tablas directamente.
 
-La paridad es informativa y de comportamiento, no de markup. Mobile conserva la jerarquía Home de Web —identidad, entrenamiento principal, Nutrición, semana y sesiones de hoy— en una composición de una columna, touch-first y con navegación nativa.
+`home-data.ts` emite lecturas independientes en paralelo: Home, día actual de Historial, comidas rápidas, reporte nutricional desde el lunes hasta hoy, historial de entrenamientos semanal, Hábitos semanal y resúmenes de Cuerpo/Rendimiento. Cada bloque conserva su carga, fallo y última lectura confirmada. Pull-to-refresh y foreground recargan; volver al tab recarga después de 30 segundos o al cambiar de día. Las fechas usan Córdoba, también en el cambio de semana.
 
-## Contrato Home aditivo
+## Esta semana
 
-M2 agrega sin alterar los campos existentes:
+Tres páginas, sin scroll vertical interno, sobre el fondo de Inicio. Comparten un alto fijo según ancho, Dynamic Type y el ejemplo inicial; conservan los puntitos nativos y sus etiquetas Entrenos, Nutrición y Hábitos. Con letra grande se muestran menos filas de Hábitos y el resto sigue accesible desde Métricas.
 
-- `training.week.data.summary.routines`;
-- `training.week.data.summary.muscleGroups`;
-- `training.workoutStartRoutines`, con `id`, `name`, `color`, `exerciseCount` y `setCount`.
+- **Entrenos:** número, detalle, cápsulas diarias y ejemplo EJEMPLO inicial conservados. Tocar un día abre `/(tabs)/train/history?date=…`.
+- **Nutrición:** promedio del servidor de días terminados con datos, cobertura sobre siete días, barras diarias desde cero y macros. Cada segmento de objetivo usa el snapshot de ese día; no se reemplaza por la meta actual. Sin dato es un carril vacío, cero no crea una barra, los días futuros quedan neutros y hoy se marca en curso, fuera del promedio. Tocar abre el reporte de esta semana. Esta presentación quedó aprobada por el usuario el 2026-10-14.
+- **Hábitos:** métricas activas en el orden del usuario, íconos compartidos con el registro, promedio y unidad/formato, cobertura sobre siete días y flecha neutra solo para cambios comparables. Hasta tres filas y «y N más» si corresponde. Sin muestras: «—» y «0 de 7 días». Sin métricas activas: explicación neutral y acceso a Métricas. Tocar una fila abre esa métrica en Progreso, con su selector de período existente.
 
-Las rutinas se leen server-side mediante `listWorkoutStartRoutines(auth)`. Conservan Bearer, identidad derivada del token, RLS y un estado `unavailable` independiente. No se incorporan mutations ni cambios de schema.
+## API aditiva de Hábitos
 
-El servidor actual siempre emite los campos M2. En el contrato TypeScript canónico permanecen opcionales para conservar compatibilidad de fuente con el cliente Capacitor v1 congelado; el parser Expo M2 los exige y valida en runtime.
+`GET /api/mobile/v1/progress/habits`, sin parámetros. Usa el mismo autenticador bearer, headers privados/CORS y manejo de errores que Progreso. No altera las respuestas ni los presets existentes.
 
-## Estados y refresh
+Respuesta: `today`, `weekStart`, `weekEnd`, `previousWeekStart`, `previousWeekEnd`, `completedDays`, `items`. Cada item incluye `id`, `systemKey`, `name`, `unit`, `valueType`, `average`, `coverage`, `comparison`.
 
-Home hace una sola lectura con `fetchMobileHome` y `useApiResource`:
+- Semana actual lógica: lunes a domingo, exactamente el lunes de Inicio. Las muestras elegibles son del lunes hasta ayer: hoy en curso y las fechas futuras se excluyen.
+- Referencia: lunes a domingo de la semana anterior completa, explícita; nunca los N días inmediatamente anteriores al lunes actual.
+- El motor existente calcula promedios de días con dato y comparabilidad. Un cero registrado cuenta. Se mantiene su mínimo de dos muestras por período y su umbral de estabilidad; el cliente no recalcula promedios ni compara porcentajes.
+- `coverage.eligible` representa los días terminados; la UI muestra `coverage.registered de 7 días` para situar la cobertura en la semana completa.
+- Devuelve **todas** las definiciones activas no archivadas, también sin muestras, sin el filtro ni el límite editorial del overview. Conserva el orden de métricas del servidor.
+- Lecturas incompletas o fallidas devuelven 503; nunca una lista vacía de reemplazo. Se valida el DTO antes de responder. Un cruce de medianoche de Córdoba permite una sola relectura con la fecha nueva. Mobile rechaza una respuesta que pertenece a otra semana y no presenta lecturas de otro día como actuales.
 
-- skeleton estructural durante la primera carga;
-- `RefreshControl` para pull-to-refresh;
-- refresh al volver a foreground;
-- dedupe de lecturas solapadas;
-- último dato confirmado visible y marcado como stale si un refresh falla;
-- estado unavailable general únicamente cuando nunca hubo data confirmada;
-- unavailable parcial para Profile, Nutrition, active session y week.
+Implementación: opción interna `previousRange` del lector de reportes, utilizada solo por esta nueva lectura. Los callers actuales conservan su referencia predeterminada. Reutiliza las tablas, RLS, inicialización idempotente de métricas y paginación existentes; no necesita migraciones ni service role.
 
-Null, zero, vacío y unavailable mantienen semánticas diferentes. La fecha lógica viene del backend; horarios de sesión se presentan para `America/Argentina/Cordoba`.
+Rollout: **EXPAND** desplegar la ruta nueva → **ADOPT** distribuir Mobile → **OBSERVE** errores/latencia con etiquetas sin payload privado. Sin CONTRACT. Hasta que exista la ruta, Hábitos muestra «No pudimos cargar Hábitos de esta semana.»; el resto de Inicio permanece operativo.
 
-## Navegación real
+## Métricas
 
-M2 sólo enlaza destinos existentes:
+Una sola fila horizontal, incluido Más al final. En tamaño normal, el ancho útil se reparte en tres columnas iguales: izquierda, centro y derecha. Los elementos restantes se alcanzan deslizando; Más no tiene una posición fija. El viewport llega al borde derecho, con gutter izquierdo y padding final seguro. Con letra grande, el mínimo de ancho crece para conservar nombres y valores legibles.
 
-- Entrenar → tab `/(tabs)/train`;
-- Nutrición → tab `/(tabs)/nutrition`;
-- Progreso → tab `/(tabs)/progress`;
-- perfil/Ajustes → `/settings`.
+Se mantienen el orden del usuario y los estados de hoy: check y valor solo con lectura confirmada, Cargar sin valor confirmado y «—» si la lectura no está confirmada. Liquid Glass solo cuando está disponible y Reducir transparencia está desactivado; se conserva espacio vertical para su expansión. Reducir movimiento desactiva la expansión nativa y conserva las acciones.
 
-Una sesión activa o completada lleva temporalmente a Entrenar. No se crean pantallas falsas ni deep links muertos.
+## Validación y QA
 
-## Deuda de paridad intencional
+Checks: `npm run validate` en `apps/mobile`; typecheck raíz, lint de archivos backend modificados y pruebas de Progreso/reportes. Tests focalizados cubren rangos semanales, ownership de lecturas, 0 frente a ausencia, fallo frente a vacío, métricas activas completas/ordenadas, flechas comparables, formatos, lectura vieja, navegación y distribución de tres círculos.
 
-| Capacidad | Milestone previsto |
-| --- | --- |
-| Inicio real de workout | M3.2 |
-| Detalle/editor de sesión activa | M3.3 |
-| Shortcut profundo a Rutinas | M3 |
-| Body | M5 |
-| Calendar | M6 |
-| Daily History | M6 |
-| Reportes profundos | M7 |
-
-Home debe reemplazar los destinos temporales sólo cuando las rutas reales existan.
-
-## Visual y accesibilidad
-
-La card violeta de Training es el ancla de marca. Nutrición concentra sus métricas en una superficie, la semana usa siete estados accesibles sin charts pesados y las sesiones aparecen sólo cuando existen. Tokens, surfaces elevadas, iconografía Expo oficial y primitives pequeñas quedan reutilizables para dominios futuros.
-
-Los controles mantienen 44 puntos mínimos, labels explícitos, progressbars con valor accesible, estados semánticos que no dependen sólo de color, Dynamic Type y temas light/dark/system.
-
-## Diagnostics
-
-Settings → API Diagnostics se conserva temporalmente en development para aislar problemas del runtime HTTP. Sólo solicita Home cuando el usuario abre esa pantalla; no duplica la lectura mientras Home está visible.
-
-## QA físico iPhone
-
-Comparar `/home` Web/PWA con el tab Inicio usando la misma cuenta y fecha lógica. Verificar Profile, Nutrition, sesión activa, semana, rutinas, músculos y sesiones de hoy; luego pull-to-refresh, background/foreground, offline/recovery y los tres modos de theme. El CTA de Training debe abrir el tab real y nunca una sesión placeholder.
-
-QA físico Android permanece diferido; CNG, Metro, tipos y tests cubren técnicamente ambos targets.
+QA del usuario en Simulator/iPhone: claro/oscuro, letra normal/grande, Reducir movimiento y Reducir transparencia; semanas vacía/parcial/completa; 0, 2 y 6 métricas activas; desplazamiento hasta Más sin recortar vidrio, acceso a cada métrica y cambio de semana. Los tests no sustituyen esta revisión nativa.
