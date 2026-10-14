@@ -1,6 +1,6 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View, type ScrollViewProps } from 'react-native';
 import type { TrainingHistorySession } from '@/api/training-history';
-import { AppIcon, AppText, Button, InlineUnavailable, ScrollScreen, SkeletonBlock, Surface, UnavailableState, radius, sizes, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, Button, InlineUnavailable, SkeletonBlock, Surface, UnavailableState, brandTokens, radius, sizes, spacing, useOwnlevelTheme } from '@/design-system';
 import { trainingRoutineColor } from './routine-colors';
 import { plural, sessionRowTiming, sessionTotals, volumeLabel } from './history-model';
 import type { ReadState } from './use-read';
@@ -45,18 +45,25 @@ export function SegmentedControl<T extends string>({ options, value, onChange, l
   </View>;
 }
 
+/** Screen scroll for large-title history screens: the ScrollView is the root so the native title collapses into the bar. */
+export function HistoryScroll({ children, testID, ...props }: ScrollViewProps & { children: React.ReactNode; testID: string }) {
+  const { colors } = useOwnlevelTheme();
+  return <ScrollView {...props} testID={testID} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled"
+    style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll}>{children}</ScrollView>;
+}
+
 /** Loading / unavailable / not-found screens shared by history reads. Returns null when ready. */
 export function ReadStateScreen<T>({ state, onRetry, notFoundTitle = 'No disponible', testID, header }: {
   state: ReadState<T>; onRetry: () => void; notFoundTitle?: string; testID: string; header?: React.ReactNode;
 }) {
   if (state.status === 'ready') return null;
-  return <ScrollScreen testID={`${testID}-${state.status}`}>
+  return <HistoryScroll testID={`${testID}-${state.status}`}>
     {header}
     {state.status === 'loading' ? <><SkeletonBlock height={72} /><SkeletonBlock height={88} /><SkeletonBlock height={88} /></>
       : state.status === 'not_found' ? <UnavailableState title={notFoundTitle} description="Puede que se haya eliminado o que no pertenezca a tu cuenta." />
         : <UnavailableState title="No pudimos cargar los datos" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente."
           action={<Button label="Reintentar" onPress={onRetry} />} />}
-  </ScrollScreen>;
+  </HistoryScroll>;
 }
 
 export function StaleNotice({ onRetry }: { onRetry: () => void }) {
@@ -64,6 +71,7 @@ export function StaleNotice({ onRetry }: { onRetry: () => void }) {
 }
 
 const styles = StyleSheet.create({
+  scroll: { alignSelf: 'center', flexGrow: 1, gap: brandTokens.layout.blockGap, maxWidth: sizes.contentMaxWidth, padding: brandTokens.layout.screenPadding, paddingBottom: 120, width: '100%' },
   flex: { flex: 1, gap: 2 },
   listCard: { padding: 0, gap: 0, overflow: 'hidden' },
   sessionRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },

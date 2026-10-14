@@ -3,10 +3,10 @@ import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } fro
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchTrainingExerciseHistory, type TrainingExerciseHistorySession, type TrainingHistoryMark } from '@/api/training-history';
-import { AppIcon, AppText, Button, EmptyState, ScrollScreen, Surface, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, Button, EmptyState, Surface, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
 import { exerciseSetLabel } from './exercise-detail-model';
 import { GroupChip } from './group-chip';
-import { ListCard, ReadStateScreen, StaleNotice } from './history-components';
+import { HistoryScroll, ListCard, ReadStateScreen, StaleNotice } from './history-components';
 import { bestSetBars, dayHeading, plural, sameMark, shortDate, weightModeUnit } from './history-model';
 import { useRead } from './use-read';
 
@@ -89,7 +89,7 @@ function ExerciseHistoryContent({ exerciseId, routineId, options, overallBest, o
   const record = !!best && (routineId === null || sameMark(best.mark, overallBest));
   const identity = ['Historial', exercise.implement, exercise.weightMode].filter(Boolean).join(' · ');
   const single = !!latest && !!best && latest.sessionId === best.sessionId;
-  return <>{screen}<ScrollScreen testID="exercise-history" refreshControl={<RefreshControl refreshing={state.refreshing} onRefresh={() => void reload()} tintColor={colors.primary} />}>
+  return <>{screen}<HistoryScroll testID="exercise-history" refreshControl={<RefreshControl refreshing={state.refreshing} onRefresh={() => void reload()} tintColor={colors.primary} />}>
     <AppText muted variant="subheadline">{identity}</AppText>
     {filters}
     {state.stale ? <StaleNotice onRetry={() => void reload()} /> : null}
@@ -114,7 +114,7 @@ function ExerciseHistoryContent({ exerciseId, routineId, options, overallBest, o
       </Pressable>)}</ListCard>}
     {hasMore && limit < 100 ? <Button label={state.refreshing ? 'Cargando…' : 'Ver más'} variant="secondary" disabled={state.refreshing}
       onPress={() => setLimit(current => Math.min(current + 20, 100))} /> : null}
-  </ScrollScreen></>;
+  </HistoryScroll></>;
 }
 const styles = StyleSheet.create({
   filterScroll: { marginHorizontal: -spacing.lg, overflow: 'visible' },
