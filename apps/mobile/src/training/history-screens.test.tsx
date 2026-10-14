@@ -38,6 +38,9 @@ jest.mock('expo-router', () => {
     Stack: { Screen: () => null, Toolbar: Object.assign(Container, { Menu: Container, MenuAction }) } };
 });
 jest.mock('./exercise-segmented', () => jest.requireActual('./exercise-segmented.tsx'));
+jest.mock('./training-week-calendar', () => ({
+  TrainingWeekCalendar: (jest.requireActual('./training-week-calendar-rn') as typeof import('./training-week-calendar-rn')).TrainingWeekCalendarRN,
+}));
 jest.mock('expo-router/build/react-navigation/core/usePreventRemove', () => ({ usePreventRemove: () => undefined }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn(), success: () => mockSuccess(), warning: jest.fn() }, triggerHaptic: () => mockSuccess() }));
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }),
@@ -184,8 +187,11 @@ describe('history: one screen with calendar, day and exercises (HI1–HI3)', () 
     await flush();
     expect(view.getByText('Viernes 2')).toBeTruthy();
     expect(mockMonth.mock.calls.map(call => call[1])).toEqual(['2026-09', '2026-10']);
-    expect(view.getByLabelText('1, intensidad 3 de 4')).toBeTruthy(); expect(view.getByLabelText('30, sin entrenar')).toBeTruthy();
-    fireEvent.press(view.getByRole('button', { name: 'Ver más' }));
+    fireEvent.press(view.getByRole('button', { name: 'Semana' }));
+    expect(view.getByLabelText('Jueves 1, intensidad 3 de 4')).toBeTruthy(); expect(view.getByLabelText('Viernes 2, hoy, sin entrenamiento')).toBeTruthy();
+    expect(view.getByLabelText('Escala de intensidad: de menos a más')).toBeTruthy();
+    // Reaching the end loads the next page (no "Ver más" button).
+    fireEvent.scroll(view.getByTestId('history-screen'), { nativeEvent: { contentOffset: { y: 400 }, contentSize: { height: 900 }, layoutMeasurement: { height: 800 } } });
     await flush();
     expect(mockHistory).toHaveBeenLastCalledWith(expect.anything(), 'next_1');
     expect(view.getAllByTestId(/history-session-/)).toHaveLength(3); expect(view.getByText('Domingo 20 de septiembre')).toBeTruthy();
@@ -202,7 +208,8 @@ describe('history: one screen with calendar, day and exercises (HI1–HI3)', () 
     const unavailable = wrap(<HistoryScreen now={now} />);
     await flush();
     expect(unavailable.getByText(/No pudimos cargar tus sesiones/)).toBeTruthy(); expect(unavailable.queryByText('Todavía no terminaste ningún entrenamiento')).toBeNull();
-    expect(unavailable.getByText(/No pudimos cargar la intensidad/)).toBeTruthy(); expect(unavailable.queryByLabelText(/sin entrenar/)).toBeNull();
+    fireEvent.press(unavailable.getByRole('button', { name: 'Semana' }));
+    expect(unavailable.getByText(/No pudimos cargar los días entrenados/)).toBeTruthy(); expect(unavailable.queryByLabelText(/sin entrenamiento/)).toBeNull();
   });
   it('searches recorded exercises and opens an exercise history', async () => {
     mockHistory.mockResolvedValue(ok({ sessions: [], nextCursor: null }));
@@ -233,11 +240,11 @@ describe('history: one screen with calendar, day and exercises (HI1–HI3)', () 
     expect(mockPush).toHaveBeenCalledWith(`/(tabs)/train/history/${ID(1)}`);
     fireEvent.press(view.getByRole('button', { name: 'Ver todo' })); await flush();
     expect(view.queryByTestId('history-day')).toBeNull(); expect(view.getByTestId(`history-session-${ID(2)}`)).toBeTruthy();
-    mockDay.mockResolvedValueOnce(ok({ date: '2026-09-30', sessions: [], summary: { sessionCount: 0, exercisesCompleted: 0, completedSets: 0, durationMilliseconds: null, volumeKg: null } }));
-    fireEvent.press(view.getByTestId('history-day-2026-09-30')); await flush();
-    expect(view.getByText('No entrenaste este día')).toBeTruthy();
-    fireEvent.press(view.getByRole('button', { name: 'Ver mes' })); await flush();
-    expect(view.getByText('Septiembre de 2026')).toBeTruthy(); expect(view.getByLabelText('Escala de intensidad: de menos a más')).toBeTruthy();
+    mockDay.mockResolvedValueOnce(ok({ date: '2026-10-02', sessions: [], summary: { sessionCount: 0, exercisesCompleted: 0, completedSets: 0, durationMilliseconds: null, volumeKg: null } }));
+    fireEvent.press(view.getByRole('button', { name: 'Semana' })); await flush();
+    expect(view.getByText('Octubre 2026')).toBeTruthy();
+    fireEvent.press(view.getByTestId('training-month-day-2026-10-02')); await flush();
+    expect(view.getByText('No entrenaste este día')).toBeTruthy(); expect(view.queryByText('Octubre 2026')).toBeNull();
   });
 });
 

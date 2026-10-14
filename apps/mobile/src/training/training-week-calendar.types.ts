@@ -21,6 +21,12 @@ export type TrainingWeekCalendarProps = {
   onExpand: () => void;
   onMonth: (month: string) => void;
   onOpenDay: (date: string) => void;
+  /**
+   * History: the brand 5-step intensity colors (index = level). Days are painted by their
+   * `level` instead of the trained dot, the chosen day gets a ring and a legend is shown.
+   */
+  intensity?: readonly string[];
+  selected?: string | null;
 };
 
 export const MONTH_NAMES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];

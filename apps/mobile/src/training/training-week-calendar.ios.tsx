@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { AccessibilityInfo, StyleSheet } from 'react-native';
-import { Circle, GlassEffectContainer, Grid, HStack, Host, Image, Picker, Spacer, Text, VStack, ZStack } from '@expo/ui/swift-ui';
+import { Circle, GlassEffectContainer, Grid, HStack, Host, Image, Picker, Rectangle, Spacer, Text, VStack, ZStack } from '@expo/ui/swift-ui';
 import {
-  Animation, accessibilityAddTraits, accessibilityLabel, animation, contentShape, fixedSize, font, foregroundStyle, frame, glassEffect, monospacedDigit,
+  Animation, accessibilityAddTraits, accessibilityLabel, animation, clipShape, contentShape, fixedSize, font, foregroundStyle, frame, glassEffect, monospacedDigit,
   onGeometryChange, onTapGesture, padding, pickerStyle, shapes, strokeBorder, tag,
 } from '@expo/ui/swift-ui/modifiers';
 import { isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
@@ -45,11 +45,27 @@ function useReduceTransparency(): boolean {
 
 const alpha = (hex: string, value: number) => `rgba(${[1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(',')},${value})`;
 
-type Palette = { halo: string; onPrimary: string; primary: string; text: string; textMuted: string };
+type Palette = { halo: string; onPrimary: string; primary: string; text: string; textMuted: string; background: string; intensity?: readonly string[] };
+/** History: a level paints the circle with the intensity scale; 3–4 are strong enough for the background color as text. */
+const levelFill = (palette: Palette, level?: number) => palette.intensity && level ? palette.intensity[level]! : null;
+const levelText = (palette: Palette, level: number | undefined, future: boolean) => future ? palette.textMuted : level && level >= 3 ? palette.background : palette.text;
 
 /** One day of the strip: letter over a 40 pt circle (filled = trained; ring = today; halo = today trained). */
-function StripDay({ index, mark, palette }: { index: number; mark: HubDayMark; palette: Palette }) {
+function StripDay({ index, mark, palette, selected }: { index: number; mark: HubDayMark; palette: Palette; selected: boolean }) {
   const { future, isToday, trained } = mark;
+  if (palette.intensity) {
+    const fill = levelFill(palette, mark.level), ring = selected ? palette.text : isToday ? palette.primary : null;
+    return (
+      <VStack modifiers={[frame({ maxWidth: FILL })]} spacing={8}>
+        <Text modifiers={[font({ size: 13, weight: isToday ? 'bold' : 'regular' }), foregroundStyle(isToday ? palette.text : palette.textMuted)]}>{WEEKDAY_LETTERS[index]}</Text>
+        <ZStack modifiers={[frame({ height: 46, width: 46 })]}>
+          {fill ? <Circle modifiers={[foregroundStyle(fill), frame({ height: 40, width: 40 })]} /> : null}
+          {ring ? <Circle modifiers={[strokeBorder({ color: ring, shape: 'circle', style: { lineWidth: 2 } }), frame({ height: 40, width: 40 })]} /> : null}
+          <Text modifiers={[font({ size: 17, weight: 'semibold' }), monospacedDigit(), foregroundStyle(levelText(palette, mark.level, future))]}>{String(Number(mark.date.slice(8)))}</Text>
+        </ZStack>
+      </VStack>
+    );
+  }
   const number = Number(mark.date.slice(8));
   const numberColor = trained ? palette.onPrimary : future ? palette.textMuted : palette.text;
   return (
@@ -65,9 +81,21 @@ function StripDay({ index, mark, palette }: { index: number; mark: HubDayMark; p
   );
 }
 
-function MonthDay({ cell, ready, onOpenDay, palette, weekday }: {
-  cell: HubMonthCell; ready: boolean; onOpenDay: (date: string) => void; palette: Palette; weekday: number;
+function MonthDay({ cell, ready, onOpenDay, palette, weekday, selected }: {
+  cell: HubMonthCell; ready: boolean; onOpenDay: (date: string) => void; palette: Palette; weekday: number; selected: boolean;
 }) {
+  if (palette.intensity) {
+    const fill = levelFill(palette, cell.level), ring = selected ? palette.text : cell.isToday ? palette.primary : null;
+    const label = `${HUB_WEEKDAY_NAMES[weekday]} ${cell.day}${cell.isToday ? ', hoy' : ''}${cell.future ? '' : `, ${!ready ? 'actividad no disponible' : cell.level ? `intensidad ${cell.level} de 4` : 'sin entrenamiento'}`}`;
+    const tap = cell.future ? [] : [contentShape(shapes.rectangle()), onTapGesture(() => onOpenDay(cell.date)), accessibilityAddTraits(['isButton'])];
+    return (
+      <ZStack modifiers={[frame({ height: 48, maxWidth: FILL }), ...tap, accessibilityLabel(label)]}>
+        {fill ? <Circle modifiers={[foregroundStyle(fill), frame({ height: 40, width: 40 })]} /> : null}
+        {ring ? <Circle modifiers={[strokeBorder({ color: ring, shape: 'circle', style: { lineWidth: 2 } }), frame({ height: 40, width: 40 })]} /> : null}
+        <Text modifiers={[font({ size: 15, weight: 'semibold' }), monospacedDigit(), foregroundStyle(levelText(palette, cell.level, cell.future))]}>{String(cell.day)}</Text>
+      </ZStack>
+    );
+  }
   const label = `${HUB_WEEKDAY_NAMES[weekday]} ${cell.day}${cell.isToday ? ', hoy' : ''}${cell.future ? '' : `, ${!ready ? 'actividad no disponible' : cell.trained ? 'entrenaste' : 'sin entrenamiento'}`}`;
   const tap = cell.future ? [] : [contentShape(shapes.rectangle()), onTapGesture(() => onOpenDay(cell.date)), accessibilityAddTraits(['isButton'])];
   return (
@@ -92,7 +120,7 @@ export function TrainingWeekCalendar(props: TrainingWeekCalendarProps) {
   const { colors, isDark } = useOwnlevelTheme();
   const reduceMotion = useReduceMotion();
   const reduceTransparency = useReduceTransparency();
-  const { expanded, marks, month, monthCells, monthStatus, onCollapse, onCollapsedHeight, onExpand, onMonth, onOpenDay, years } = props;
+  const { expanded, marks, month, monthCells, monthStatus, onCollapse, onCollapsedHeight, onExpand, onMonth, onOpenDay, years, intensity, selected = null } = props;
   // The month/year wheel always starts closed when the calendar opens again.
   const [picking, setPicking] = useState(false);
   const [wasExpanded, setWasExpanded] = useState(expanded);
@@ -114,7 +142,7 @@ export function TrainingWeekCalendar(props: TrainingWeekCalendarProps) {
   }, [closing]);
   if (!liquidGlass() || reduceTransparency) return <TrainingWeekCalendarRN {...props} />;
 
-  const palette: Palette = { halo: alpha(colors.primary, 0.28), onPrimary: colors.onPrimary, primary: colors.primary, text: colors.text, textMuted: colors.textMuted };
+  const palette: Palette = { halo: alpha(colors.primary, 0.28), onPrimary: colors.onPrimary, primary: colors.primary, text: colors.text, textMuted: colors.textMuted, background: colors.background, intensity };
   const motion = reduceMotion ? Animation.easeInOut({ duration: 0.2 }) : Animation.smooth({ duration: 0.35 });
   const year = Number(month.slice(0, 4));
   const monthNumber = Number(month.slice(5, 7));
@@ -141,7 +169,7 @@ export function TrainingWeekCalendar(props: TrainingWeekCalendarProps) {
           animation(motion, expanded), animation(motion, monthCells.length)]} spacing={0}>
           <HStack modifiers={[contentShape(shapes.rectangle()), onTapGesture(expanded ? onCollapse : onExpand), accessibilityAddTraits(['isButton']),
             accessibilityLabel(expanded ? 'Semana, cerrar calendario' : 'Semana, abrir calendario')]} spacing={0}>
-            {marks.map((mark, index) => <StripDay index={index} key={mark.date} mark={mark} palette={palette} />)}
+            {marks.map((mark, index) => <StripDay index={index} key={mark.date} mark={mark} palette={palette} selected={selected === mark.date} />)}
           </HStack>
           {expanded ? (
             <VStack modifiers={[padding({ horizontal: 8, top: 16 })]} spacing={8}>
@@ -183,7 +211,7 @@ export function TrainingWeekCalendar(props: TrainingWeekCalendarProps) {
                   {monthCells.map((week, rowIndex) => (
                     <Grid.Row key={rowIndex}>
                       {week.map((cell, weekday) => cell
-                        ? <MonthDay cell={cell} key={cell.date} onOpenDay={onOpenDay} palette={palette} ready={monthStatus === 'ready'} weekday={weekday} />
+                        ? <MonthDay cell={cell} key={cell.date} onOpenDay={onOpenDay} palette={palette} ready={monthStatus === 'ready'} selected={selected === cell.date} weekday={weekday} />
                         : <Spacer key={`empty-${weekday}`} modifiers={[frame({ height: 48, maxWidth: FILL })]} />)}
                     </Grid.Row>
                   ))}
@@ -191,6 +219,13 @@ export function TrainingWeekCalendar(props: TrainingWeekCalendarProps) {
               )}
               {monthStatus === 'unavailable' ? (
                 <Text modifiers={[font({ size: 13 }), foregroundStyle(palette.textMuted)]}>No pudimos cargar los días entrenados de este mes.</Text>
+              ) : intensity && !picking ? (
+                <HStack modifiers={[frame({ height: 20 }), accessibilityLabel('Escala de intensidad: de menos a más')]} spacing={4}>
+                  <Spacer />
+                  <Text modifiers={[font({ size: 12 }), foregroundStyle(palette.textMuted)]}>Menos</Text>
+                  {intensity.map(color => <Rectangle key={color} modifiers={[foregroundStyle(color), frame({ height: 12, width: 12 }), clipShape('roundedRectangle', 3)]} />)}
+                  <Text modifiers={[font({ size: 12 }), foregroundStyle(palette.textMuted)]}>Más</Text>
+                </HStack>
               ) : null}
             </VStack>
           ) : null}
