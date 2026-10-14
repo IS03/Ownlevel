@@ -1,4 +1,4 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { AccessibilityInfo, Platform, StyleSheet } from 'react-native';
 
@@ -9,6 +9,10 @@ import { HomeRegister } from './home-register';
 
 let mockSupported = true;
 let mockReduced = false;
+let mockFontScale = 1;
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({ __esModule: true,
+  default: () => ({ width: 393, height: 852, scale: 3, fontScale: mockFontScale }),
+}));
 jest.mock('@/design-system', () => ({ ...jest.requireActual<object>('@/design-system'), useReduceMotion: () => mockReduced }));
 jest.mock('expo-glass-effect', () => {
   const { View } = jest.requireActual<typeof import('react-native')>('react-native');
@@ -30,9 +34,9 @@ async function metrics() {
 }
 
 describe('Home metric controls', () => {
-  beforeEach(() => { jest.restoreAllMocks(); mockSupported = true; mockReduced = false; });
+  beforeEach(() => { jest.restoreAllMocks(); mockSupported = true; mockReduced = false; mockFontScale = 1; });
 
-  it('all six metrics remain reachable, zero is logged, and Más is fixed outside the scroller', async () => {
+  it('all six metrics remain reachable, zero is logged, and Más scrolls after the metrics', async () => {
     jest.spyOn(AccessibilityInfo, 'isReduceTransparencyEnabled').mockResolvedValue(false);
     const view = await metrics();
     expect(view.getAllByTestId(/home-register-metric-m\d$/)).toHaveLength(6);
@@ -42,7 +46,7 @@ describe('Home metric controls', () => {
     fireEvent.press(view.getByTestId('home-register-more'));
     expect(view.onRegister).toHaveBeenCalledWith({ kind: 'more' });
     expect(view.getByTestId('home-register-scroll').props.horizontal).toBe(true);
-    expect(view.getByTestId('home-register-fixed-more')).toBeTruthy();
+    expect(within(view.getByTestId('home-register-scroll')).getByTestId('home-register-more')).toBeTruthy();
     expect(view.getByTestId('home-register-more-glass').props.colorScheme).toBe('dark');
   });
 
@@ -65,7 +69,8 @@ describe('Home metric controls', () => {
     const scroller = view.getByTestId('home-register-scroll');
     expect(StyleSheet.flatten(scroller.props.contentContainerStyle).paddingTop).toBe(20);
     expect(scroller.props.removeClippedSubviews).toBe(false);
-    expect(StyleSheet.flatten(view.getByTestId('home-register-fixed-more').props.style).paddingTop).toBe(20);
+    expect(StyleSheet.flatten(scroller.props.contentContainerStyle).paddingBottom).toBe(8);
+    expect(StyleSheet.flatten(view.getByTestId('home-register-row').props.style).marginRight).toBe(-16);
     expect(view.getByTestId('home-register-metric-m0-glass').props.isInteractive).toBe(true);
     fireEvent(view.getByTestId('home-register-metric-m0'), 'pressIn');
     expect(StyleSheet.flatten(view.getByTestId('home-register-metric-m0').props.style).transform).toBeUndefined();
@@ -91,14 +96,27 @@ describe('Home metric controls', () => {
     expect(android.queryByTestId('home-register-more-glass')).toBeNull();
   });
 
-  it('fewer than three active metrics share the available width with Más', async () => {
+  it('two active metrics keep fixed widths instead of spreading across the viewport', async () => {
     mockSupported = false;
     const view = render(<OwnlevelThemeProvider initialMode="light"><HomeRegister date={day.date} onRegister={() => undefined}
       today={{ status: 'ready', confirmedAt: 1, data: { ...day, metrics: { status: 'ok', data: { metrics: day.metrics.status === 'ok' ? day.metrics.data.metrics.slice(0, 2) : [] } } } }} /></OwnlevelThemeProvider>);
-    const row = view.getByTestId('home-register-fixed-more').parent!;
-    fireEvent(row, 'layout', { nativeEvent: { layout: { width: 360 } } });
-    expect(StyleSheet.flatten(view.getByTestId('home-register-more').props.style).width).toBe(120);
-    expect(StyleSheet.flatten(view.getByTestId('home-register-metric-m0').props.style).width).toBe(120);
+    expect(StyleSheet.flatten(view.getByTestId('home-register-more').props.style).width).toBe(80);
+    expect(StyleSheet.flatten(view.getByTestId('home-register-metric-m0').props.style).width).toBe(80);
+  });
+
+  it('larger type widens every item, including Más', async () => {
+    mockFontScale = 2;
+    const view = await metrics();
+    expect(StyleSheet.flatten(view.getByTestId('home-register-more').props.style).width).toBe(160);
+    expect(StyleSheet.flatten(view.getByTestId('home-register-metric-m0').props.style).width).toBe(160);
+  });
+
+  it('no active metrics keeps Más as the only action inside the scroller', () => {
+    mockSupported = false;
+    const view = render(<OwnlevelThemeProvider><HomeRegister date={day.date} onRegister={() => undefined}
+      today={{ status: 'ready', confirmedAt: 1, data: { ...day, metrics: { status: 'ok', data: { metrics: [] } } } }} /></OwnlevelThemeProvider>);
+    expect(within(view.getByTestId('home-register-scroll')).getAllByRole('button')).toHaveLength(1);
+    expect(within(view.getByTestId('home-register-scroll')).getByTestId('home-register-more')).toBeTruthy();
   });
 
   it('a failed preference read stays solid rather than assuming transparency is allowed', async () => {

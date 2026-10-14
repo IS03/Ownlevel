@@ -228,9 +228,11 @@ describe('Home screen', () => {
     fireEvent.press(view.getByTestId('home-week-day-2026-10-06'));
     fireEvent.press(view.getByTestId('home-week-page-1'));
     fireEvent.press(view.getByTestId('home-week-calories'));
+    expect(view.queryByTestId('home-week-page-2')).toBeNull();
+    expect(view.queryAllByTestId(/home-week-scroll-/)).toHaveLength(0);
     expect(mockPush.mock.calls).toEqual([
       [{ pathname: '/(tabs)/train/history/[id]', params: { id: 'done-1' } }],
-      [{ pathname: '/history/day/[date]', params: { date: '2026-10-06' } }],
+      [{ pathname: '/(tabs)/train/history', params: { date: '2026-10-06' } }],
       [{ pathname: '/(tabs)/nutrition/reports', params: { period: 'custom', from: '2026-10-05', to: '2026-10-10' } }],
     ]);
   });

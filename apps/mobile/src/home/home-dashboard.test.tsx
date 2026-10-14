@@ -345,7 +345,7 @@ describe('Esta semana', () => {
     fireEvent.press(view.getByTestId('home-week-page-1'));
     const calories = within(view.getByTestId('home-week-calories'));
     expect(calories.getByText('2.410')).toBeTruthy();
-    expect(calories.getByText('Promedio · 4 de 7 días con datos')).toBeTruthy();
+    expect(calories.getByText('4 de 7 días')).toBeTruthy();
     fireEvent.press(view.getByTestId('home-week-calories'));
     expect(view.onOpenCalories).toHaveBeenCalledTimes(1);
   });
@@ -385,8 +385,7 @@ describe('Esta semana', () => {
     expect(view.getByLabelText('3 entrenos esta semana, 54 series · 2 h 37 min')).toBeTruthy();
     fireEvent.press(view.getByTestId('home-week-page-1'));
     expect(view.getByText('No pudimos cargar Nutrición de esta semana.')).toBeTruthy();
-    fireEvent.press(view.getByTestId('home-week-page-2'));
-    expect(view.getByText('No pudimos cargar el detalle por día.')).toBeTruthy();
+    expect(view.queryByTestId('home-week-page-2')).toBeNull();
   });
 
   it('a user who never trained sees a greyed EJEMPLO week', () => {
@@ -399,24 +398,11 @@ describe('Esta semana', () => {
   it('weekly macros retain the server averages and each metric\'s coverage: missing is not zero', () => {
     const view = renderHome();
     fireEvent.press(view.getByTestId('home-week-page-1'));
-    expect(view.getByText('Promedios diarios · Días terminados con datos')).toBeTruthy();
-    expect(within(view.getByTestId('home-week-protein')).getByText('140')).toBeTruthy();
-    expect(within(view.getByTestId('home-week-protein')).getByText('Promedio · 3 de 7 días con datos · 1 día parcial')).toBeTruthy();
-    expect(within(view.getByTestId('home-week-carbs')).getByText('0')).toBeTruthy();
-    expect(within(view.getByTestId('home-week-fat')).getByText('—')).toBeTruthy();
+    expect(view.getByTestId('home-week-calories').props.accessibilityHint).toContain('días terminados');
+    expect(view.getByLabelText('Proteína: 140 g. Promedio de 3 de 7 días con datos, 1 día parcial')).toBeTruthy();
+    expect(view.getByLabelText('Carbos: 0 g. Promedio de 2 de 7 días con datos')).toBeTruthy();
+    expect(view.getByLabelText('Grasas: —. Promedio de 0 de 7 días con datos')).toBeTruthy();
     expect(view.queryByTestId('home-week-summary')).toBeNull();
-  });
-
-  it('daily summary keeps multiple routines, unknown duration and absent/future days distinct', () => {
-    const view = renderHome({ training: ready({ ...trainingWeek, sessions: [...weekSessions, { ...sessionAt('s5', '2026-10-06', 0, null), routineName: 'Sesión libre' }] }) });
-    fireEvent.press(view.getByTestId('home-week-page-2'));
-    expect(view.getByText('Push · 30 min / Push · 28 min / Sesión libre · Duración no disponible')).toBeTruthy();
-    expect(within(view.getByTestId('home-week-detail-2026-10-07')).getByText('Sin entrenamientos registrados')).toBeTruthy();
-    expect(within(view.getByTestId('home-week-detail-2026-10-11')).getByText('Por venir')).toBeTruthy();
-    expect(view.queryByText('Descanso')).toBeNull();
-    fireEvent.press(view.getByTestId('home-week-detail-2026-10-06'));
-    expect(view.onOpenDay).toHaveBeenCalledWith('2026-10-06');
-    expect(view.getByTestId('home-week-detail-2026-10-11').props.accessibilityRole).toBeUndefined();
   });
 
   it('cached nutrition is marked; a report from another week is not rendered as this week', () => {
@@ -432,14 +418,13 @@ describe('Esta semana', () => {
 });
 
 describe('Métricas', () => {
-  it('all active metrics, preserving order and today\'s state; Más lives outside the scroll', () => {
+  it('all active metrics, preserving order and today\'s state; Más lives inside the scroll', () => {
     const view = renderHome();
     const register = view.getByTestId('home-register');
     expect(within(register).getByRole('header', { name: 'Métricas' })).toBeTruthy();
     expect(within(register).getAllByRole('button').map(button => button.props.accessibilityLabel))
       .toEqual(['Sueño, 7,5', 'Energía, Cargar', 'Agua, 2', 'Más, Métricas']);
-    expect(within(view.getByTestId('home-register-scroll')).queryByText('Más')).toBeNull();
-    expect(within(view.getByTestId('home-register-fixed-more')).getByRole('button', { name: 'Más, Métricas' })).toBeTruthy();
+    expect(within(view.getByTestId('home-register-scroll')).getByRole('button', { name: 'Más, Métricas' })).toBeTruthy();
     expect(within(register).queryByText('Peso')).toBeNull();
     expect(within(register).getByRole('button', { name: 'Sueño, 7,5' }).props.accessibilityState).toEqual({ checked: true });
     expect(within(register).getByRole('button', { name: 'Energía, Cargar' }).props.accessibilityState).toEqual({ checked: false });

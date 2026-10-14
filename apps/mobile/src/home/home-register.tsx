@@ -20,7 +20,7 @@ import {
 import { metricValue } from '@/nutrition/day-content';
 
 import type { HomeResource } from './home-resource';
-import { HomeSection } from './home-ui';
+import { HomeSection, useHomeGutter } from './home-ui';
 
 /** Only daily metrics: weight and body measurements live in Progreso (Cuerpo). */
 export type HomeRegisterTarget = { kind: 'metric'; metricId: string } | { kind: 'more' };
@@ -84,19 +84,18 @@ export function HomeRegister({ date, onRegister, today }: { date: string; onRegi
   }, [supported]);
   const glass = supported && !reduceTransparency;
   const window = useWindowDimensions();
-  const [width, setWidth] = useState(Math.max(1, window.width - 32));
+  const gutter = useHomeGutter();
   // Only a confirmed read of today says what is (not) logged today; anything else stays
   // unknown ("—", no check): a stale or previous-day read never claims a state.
   const day = today.data?.date === date ? today.data : undefined;
   const confirmed = today.status === 'ready' && !!day;
   const loading = !day && today.status === 'loading';
   const metrics = registerMetrics(day);
-  const slots = loading ? 3 : Math.min(metrics.length + 1, 4);
-  const itemWidth = Math.max(window.fontScale > 1.5 ? 112 : 72, width / slots);
+  const itemWidth = brandTokens.space.xxxl * 2 * Math.max(1, window.fontScale);
   return (
     <HomeSection testID="home-register" title="Métricas">
-      <View onLayout={event => { if (event.nativeEvent.layout.width > 0) setWidth(event.nativeEvent.layout.width); }} style={styles.row}>
-        <ScrollView accessibilityHint="Deslizá para ver más métricas" contentContainerStyle={styles.scrollContent} decelerationRate="fast"
+      <View style={[styles.row, { marginRight: -gutter.paddingRight }]} testID="home-register-row">
+        <ScrollView accessibilityHint="Deslizá para ver más métricas" contentContainerStyle={[styles.scrollContent, { paddingRight: gutter.paddingRight }]} decelerationRate="fast"
           directionalLockEnabled horizontal nestedScrollEnabled removeClippedSubviews={false} showsHorizontalScrollIndicator={metrics.length > 3}
           style={styles.scroll} testID="home-register-scroll">
         {loading
@@ -106,10 +105,8 @@ export function HomeRegister({ date, onRegister, today }: { date: string; onRegi
               glass={glass} icon={metric.systemKey ? METRIC_ICONS[metric.systemKey] : 'activity'} key={metric.id} label={metric.label}
               onPress={() => onRegister({ kind: 'metric', metricId: metric.id })} testID={`home-register-metric-${metric.id}`} width={itemWidth} />
           ))}
-        </ScrollView>
-        <View style={styles.fixedMore} testID="home-register-fixed-more">
           <RegisterCircle detail="Métricas" done={false} glass={glass} icon="more" label="Más" onPress={() => onRegister({ kind: 'more' })} testID="home-register-more" width={itemWidth} />
-        </View>
+        </ScrollView>
       </View>
     </HomeSection>
   );
@@ -120,11 +117,10 @@ const styles = StyleSheet.create({
   circle: { alignItems: 'center', borderRadius: radius.full, height: 48, justifyContent: 'center', width: 48 },
   circleWrap: { height: 48, marginBottom: 2, width: 48 },
   detail: { textAlign: 'center' },
-  fixedMore: { paddingBottom: spacing.sm, paddingTop: brandTokens.space.lg },
   item: { alignItems: 'center', gap: 4, minHeight: 44, paddingHorizontal: spacing.xs },
   label: { fontWeight: '600', textAlign: 'center' },
   // Native glass grows outside its 48 pt circle. Keep its entire expansion inside the
-  // scroller's clipping rectangle, without exposing offscreen metrics behind Más.
+  // scroller's clipping rectangle, including the final Más control.
   row: { alignItems: 'flex-start', flexDirection: 'row', marginTop: -brandTokens.space.md, paddingTop: spacing.xs },
   scroll: { flex: 1 },
   scrollContent: { alignItems: 'flex-start', paddingBottom: spacing.sm, paddingTop: brandTokens.space.lg },
