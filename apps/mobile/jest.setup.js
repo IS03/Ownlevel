@@ -6,6 +6,7 @@ jest.mock('react-native-reanimated', () => {
   return {
     ...mock,
     // Shared values and refs are stable across renders, as on the device.
+    makeMutable: initial => ({ value: initial, get() { return this.value; }, set(value) { this.value = value; } }),
     useSharedValue: initial => React.useRef({ value: initial, get() { return this.value; }, set(value) { this.value = value; },
       modify(modifier) { this.value = modifier(this.value); } }).current,
     useAnimatedRef: () => React.useRef(null),

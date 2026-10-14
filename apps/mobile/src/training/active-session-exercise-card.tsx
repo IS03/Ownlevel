@@ -1,7 +1,7 @@
 import { memo, type ReactNode, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, Alert, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { AppIcon, AppText, Button, radius, sizes, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
-import Animated, { FadeIn, FadeInUp, LinearTransition } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInUp, LinearTransition, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SessionNextOptions } from './session-next-options';
 import type { NextSessionDecision } from './session-next-options.types';
 import { SessionGlassButton } from './session-glass-button';
@@ -36,7 +36,9 @@ function SeriesColumns({ ordinal, kg, reps, rir, completed, header = false }: {
     <View style={styles.completedColumn}>{completed}</View>
   </View>;
 }
-export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller, id, expanded, locked, reorderDisabled = false, addToRoutineName, onToggle, onHistory, onRemove, historyCard, onSheetChange, onReveal }: {
+export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller, id, expanded, locked, reorderDisabled = false, addToRoutineName, onToggle, onHistory, onRemove, historyCard, onSheetChange, onReveal, reveal = 0 }: {
+  /** Bumped after "Usar": the set rows remount and cascade in with the copied values. */
+  reveal?: number;
   controller: ActiveSessionController; id: string; expanded: boolean; locked: boolean; reorderDisabled?: boolean; addToRoutineName?: string | null; historyCard?: ReactNode; onSheetChange?: (id: string, open: boolean) => void; onReveal?: (top: number) => void;
   onToggle: (id: string) => void; onHistory: (id: string) => void; onRemove: (id: string, name: string) => void;
 }) {
@@ -51,6 +53,7 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
   const [addedSet, setAddedSet] = useState<string | null>(null);
   const reducedMotion = useReduceMotion();
   const pendingSet = state?.draft.sets.find(set => !set.isCompleted)?.localId;
+  const chevron = useAnimatedStyle(() => ({ transform: [{ rotate: withTiming(expanded ? '90deg' : '0deg', { duration: reducedMotion ? 0 : 220 }) }] }), [expanded, reducedMotion]);
   const enabled = expanded && !locked && !!state && state.phase !== 'closed' && state.phase !== 'removed';
   const [previousEnabled, setPreviousEnabled] = useState(enabled);
   if (previousEnabled !== enabled) {
@@ -108,7 +111,7 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
       </View>
       <View style={[styles.badge, { backgroundColor: completion.complete ? colors.brandSubtle : colors.surfaceRaised }]}><AppText numeric style={{ color: completion.complete ? colors.primary : colors.textMuted }} variant="caption">{completion.completed}/{completion.total}</AppText></View>
       {state.phase === 'saving' ? <ActivityIndicator testID={`exercise-saving-${id}`} accessibilityLabel="Sincronizando ejercicio" size="small" color={colors.textMuted} /> : null}
-      <View style={{ transform: [{ rotate: expanded ? '90deg' : '0deg' }] }}><AppIcon name="chevronRight" color={colors.textMuted} size={15} /></View>
+      <Animated.View style={chevron}><AppIcon name="chevronRight" color={colors.textMuted} size={15} /></Animated.View>
     </NativeDragHandle></NativeSwipeActions>
     {state.error || statusLabels[state.phase] ? <View style={styles.recovery}>
       <AppText accessibilityLiveRegion="polite" style={{ color: phaseIsFailure(state.phase) || !statusLabels[state.phase] ? colors.danger : colors.text }} variant="caption">{statusLabels[state.phase] ?? state.error}</AppText>
@@ -118,7 +121,7 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
          {canDiscard ? <Button disabled={locked} label="Descartar cambios" onPress={discardChanges} variant="quiet" /> : null}
       </> : state.error && (!state.storageReady || state.phase === 'scheduled') ? <Button label="Reintentar lectura" onPress={() => void controller.refresh()} variant="secondary" /> : null}
     </View> : null}
-    {expanded ? <View style={styles.body}>
+    {expanded ? <Animated.View entering={FadeIn.duration(reducedMotion ? 200 : 220)} style={styles.body}>
       <View style={styles.row}><AppText muted style={styles.flex} variant="caption">
         {pendingSet ? `Serie ${draft.sets.findIndex(set => set.localId === pendingSet) + 1} de ${draft.sets.length}` : 'Series completadas'}
       </AppText>
@@ -133,7 +136,7 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
       <NativeReorderList ids={draft.sets.map(set => set.localId)} onLift={() => { const accepted = controller.beginSetDrag(id); if (accepted) Keyboard.dismiss(); return accepted; }}
         onDrop={ids => controller.dropSets(id, ids)} onCancel={() => controller.cancelDrag()}>
         {draft.sets.map((set, index) => <NativeReorderItem key={set.localId} id={set.localId}>
-          <ActiveSetRow controller={controller} id={id} name={exercise.nameSnapshot} set={set} index={index} count={draft.sets.length} editable={editable} entering={addedSet === set.localId} reducedMotion={reducedMotion} onDialogChange={setDialogOpen} />
+          <ActiveSetRow key={reveal} controller={controller} id={id} name={exercise.nameSnapshot} set={set} index={index} count={draft.sets.length} editable={editable} entering={addedSet === set.localId ? 0 : Math.min(index, 8) * 55} reducedMotion={reducedMotion} onDialogChange={setDialogOpen} />
         </NativeReorderItem>)}
       </NativeReorderList>
       {state.phase !== 'closed' && state.phase !== 'removed' ? <Animated.View layout={reducedMotion ? undefined : LinearTransition.duration(300)} style={styles.row}>
@@ -168,7 +171,7 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
         <AppText numeric muted variant="caption" style={styles.flex}>Descanso · {[exercise.restMinSecondsSnapshot, exercise.restMaxSecondsSnapshot].filter((value, i, array) => value !== null && (i === 0 || value !== array[0])).map(formatRest).join(' – ') || 'sin rango'}</AppText>
         <Button disabled={!editable} label={timer?.exerciseId === id ? 'Saltar descanso' : 'Iniciar descanso'} onPress={() => { haptics.selection(); if (timer?.exerciseId === id) controller.skipRest(); else if (restSeconds(exercise) === null) setDurationOpen(true); else controller.startRest(id); }} variant="quiet" />
       </View>
-    </View> : null}
+    </Animated.View> : null}
      {durationOpen ? <SessionRestDuration onClose={() => setDurationOpen(false)} onStart={seconds => { controller.startRest(id, seconds); setDurationOpen(false); }} /> : null}
      {noteOpen ? <SessionNoteSheet name={exercise.nameSnapshot} value={draft.notes} editable={editable}
        onSave={async notes => {
@@ -181,7 +184,7 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
   </View>;
 });
 function ActiveSetRow({ controller, id, name, set, index, count, editable, entering, reducedMotion, onDialogChange }: {
-  controller: ActiveSessionController; id: string; name: string; set: SessionExerciseDraft['sets'][number]; index: number; count: number; editable: boolean; entering: boolean; reducedMotion: boolean; onDialogChange: (open: boolean) => void;
+  controller: ActiveSessionController; id: string; name: string; set: SessionExerciseDraft['sets'][number]; index: number; count: number; editable: boolean; /** Entering delay in ms: rows cascade in one under the other. */ entering: number; reducedMotion: boolean; onDialogChange: (open: boolean) => void;
 }) {
   const { colors } = useOwnlevelTheme();
   const tapCompleted = useCallback(() => {
@@ -213,7 +216,7 @@ function ActiveSetRow({ controller, id, name, set, index, count, editable, enter
     sets: current.sets.map(row => row.localId === set.localId ? { ...row, [key]: value } : row) }));
   // The gap between rows lives outside the swipe area, so the swiped row and its buttons line up.
   return <View style={styles.setGap}><NativeSwipeActions backgroundColor={colors.background} label={`Serie ${index + 1}`} disabled={!editable} actions={[{ label: 'Resetear', onPress: reset }, { label: 'Eliminar', destructive: true, disabled: count <= 1, onPress: remove }]}>
-    <Animated.View testID={`session-set-${set.localId}`} entering={entering ? (reducedMotion ? FadeIn.duration(200) : FadeInUp.duration(300)) : undefined}
+    <Animated.View testID={`session-set-${set.localId}`} entering={reducedMotion ? FadeIn.duration(200) : FadeInUp.delay(entering).duration(260)}
       style={[styles.setBlock, { backgroundColor: colors.background }]}>
       <SeriesColumns ordinal={<NativeDragHandle testID={`set-handle-${set.localId}`} disabled={!editable} accessibilityRole="button" accessibilityLabel={`Mover serie ${index + 1}`}
         accessibilityHint="Mantené presionado para arrastrar. Deslizá a la izquierda para resetear o eliminar." accessibilityActions={actions} onAccessibilityAction={accessibilityAction} style={styles.controlTrack}>

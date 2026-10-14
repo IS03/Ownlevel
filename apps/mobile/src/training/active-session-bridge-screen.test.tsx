@@ -164,7 +164,8 @@ describe('native active session screen', () => {
     fireEvent.press(view.getByRole('button', { name: 'PULLOVER' }));
     await waitFor(() => expect(view.getByLabelText('Contraer PULLOVER')).toBeTruthy());
     expect(view.getByLabelText('Peso serie 1 de PULLOVER').props.value).toBe('40');
-    expect(view.queryByLabelText('Buscar ejercicio')).toBeNull(); expect(view.getByText('PULLOVER agregado')).toBeTruthy();
+    // The picker confirms with a short ✓ before closing; the add itself already landed.
+    await waitFor(() => expect(view.queryByLabelText('Buscar ejercicio')).toBeNull(), { timeout: 2000 }); expect(view.getByText('PULLOVER agregado')).toBeTruthy();
     expect(view.getByRole('button', { name: 'Deshacer' })).toBeTruthy();
     expect(view.getByLabelText(/^La última vez,/)).toBeTruthy(); expect(api.add).toHaveBeenCalledTimes(1); expect(api.save).not.toHaveBeenCalled();
     controller.dispose();

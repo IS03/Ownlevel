@@ -47,7 +47,7 @@ describe('session exercise picker', () => {
   beforeEach(() => { mockResource.mockReset(); });
   const exercise = { id: EXERCISE_ID, name: 'PRESS', muscleGroup: 'pecho', isActive: true, implement: 'Barra', weightMode: 'Peso total' };
   const ready = (exercises: unknown[]) => ({ state: { status: 'ready', current: { data: { catalog: { status: 'ok', data: { exercises, routines: [] } } } } }, refresh: jest.fn() });
-  function sheet(onAdd = jest.fn(), onCreate = jest.fn()) { return render(wrapper(<SessionExercisePicker visible client={{} as never} existingIds={new Set([EXERCISE_ID])} onClose={jest.fn()} onDismiss={jest.fn()} onCreate={onCreate} onAdd={onAdd} />)); }
+  function sheet(onAdd = jest.fn(), onCreate = jest.fn()) { return render(wrapper(<SessionExercisePicker visible client={{} as never} existingIds={new Set([EXERCISE_ID])} onClose={jest.fn()} onDismiss={jest.fn()} onCreate={onCreate} onAdd={onAdd as never} />)); }
   it('shows existing rows disabled and adds exactly once on a single tap without a confirm footer', async () => {
     mockResource.mockReturnValue(ready([exercise, { ...exercise, id: SECOND_ID, name: 'ROW' }])); const add = jest.fn(), view = sheet(add);
     expect(view.getByRole('button', { name: 'PRESS, En la sesión' })).toBeDisabled(); expect(view.queryByText('Agregar a la sesión')).toBeNull();

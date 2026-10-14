@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 import { AppIcon, AppText, Chip, ListGroup, ListRow, TextField, spacing, useOwnlevelTheme } from '@/design-system';
 import { MUSCLE_GROUP_OPTIONS, exerciseSummary } from './exercise-library-model';
 import type { RoutineExercisePickerBodyProps } from './routine-exercise-picker-body.types';
@@ -15,7 +15,7 @@ export function RoutineExercisePickerBody(props: RoutineExercisePickerBodyProps)
         {props.rows.map(exercise => <ListRow key={exercise.id} title={exercise.name} subtitle={exerciseSummary(exercise) ?? undefined} chevron={false}
           accessibilityLabel={`${exercise.name}${props.existing.has(exercise.id) ? `, En la ${props.session ? 'sesión' : 'rutina'}` : props.selected.includes(exercise.id) ? ', seleccionado' : ''}`}
           disabled={props.disabled || props.existing.has(exercise.id)} onPress={() => props.onToggle(exercise.id)}
-          trailing={props.existing.has(exercise.id) ? <AppText muted variant="footnote">{props.session ? 'En la sesión' : 'En la rutina'}</AppText> : props.selected.includes(exercise.id) ? <AppIcon name="check" size={20} color={colors.primary} /> : props.session ? <AppIcon name="plus" size={20} color={colors.primary} /> : null} />)}
+          trailing={props.adding?.id === exercise.id ? props.adding.done ? <AppIcon name="check" size={20} color={colors.primary} /> : <ActivityIndicator color={colors.primary} /> : props.existing.has(exercise.id) ? <AppText muted variant="footnote">{props.session ? 'En la sesión' : 'En la rutina'}</AppText> : props.selected.includes(exercise.id) ? <AppIcon name="check" size={20} color={colors.primary} /> : props.session ? <AppIcon name="plus" size={20} color={colors.primary} /> : null} />)}
         {props.rows.length === 0 ? !props.canCreate ? <ListRow title="Actualizá la biblioteca para continuar." /> : !props.session && props.query.trim() ? <ListRow title={`Crear “${props.query.trim()}”`} icon="plus" onPress={props.onCreate} disabled={props.disabled} /> : <ListRow title="No hay ejercicios disponibles" /> : null}
       </ListGroup>
     </ScrollView>

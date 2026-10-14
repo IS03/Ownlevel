@@ -23,7 +23,7 @@ import { restCountdownLabel, useRestCountdown } from './use-rest-countdown';
 import { SessionExercisePicker, SessionQuickHistory } from './active-session-sheets';
 import { ExerciseEditorModal } from './exercise-editor-modal';
 import { useActiveSession } from './use-active-session';
-import { NativeReorderItem, NativeReorderList, SessionDragScrollContext } from './session-native-interactions';
+import { NativeReorderItem, NativeReorderList, SessionDragScrollContext, closeSwipeOnScroll } from './session-native-interactions';
 import { FinishSessionSheet } from './finish-session-sheet';
 import { CompletedSessionScreen, completedSessionApi, type CompletedSessionApi } from './history-session-screen';
 
@@ -114,6 +114,7 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
   const [creatorOpen, setCreatorOpen] = useState(false);
   const creatorAfterDismiss = useRef(false);
   const [historyId, setHistoryId] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState<{ id: string; n: number } | null>(null);
   const [finishOpen, setFinishOpen] = useState(false);
   const [pullRefreshing, setPullRefreshing] = useState(false);
   const [restOverlayHeight, setRestOverlayHeight] = useState(0);
@@ -124,6 +125,7 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
   const scrollProps = useAnimatedProps(() => ({ scrollEnabled: dragOwner.value === null }));
   const onScroll = useAnimatedScrollHandler(event => {
     scrollY.set(event.contentOffset.y);
+    closeSwipeOnScroll(event.contentOffset.y);
     if (dragOwner.value !== null) return;
     const next = advanceSessionHeader(headerValue.value, event.contentOffset.y, titleBottom.value, Math.max(0, event.contentSize.height - event.layoutMeasurement.height));
     if (next.compact !== headerValue.value.compact || next.controls !== headerValue.value.controls) runOnJS(setHeader)(next);
@@ -163,7 +165,7 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
     const frame = requestAnimationFrame(() => { expandedRef.current = actionState.addedId; setExpanded(actionState.addedId); reveal.current = actionState.addedId; });
     return () => cancelAnimationFrame(frame);
   }, [actionState.addedId]);
-  const applyHistory = (id: string, history: QuickSessionHistoryDto) => {
+  const applyHistory = (id: string, history: QuickSessionHistoryDto, cardExerciseId?: string) => {
     const current = controller.getExercise(id);
     if (!current || !controller.canEdit(id)) return;
     const apply = () => {
@@ -174,7 +176,10 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
       try {
         const next = draftUsingHistory(live.draft, history);
         controller.change(id, () => next, true);
+        setRevealed(previous => ({ id, n: (previous?.n ?? 0) + 1 }));
         setHistoryId(null);
+        // Using the "La última vez" card resolves it: no manual dismiss afterwards.
+        if (cardExerciseId) dismissHistory(cardExerciseId);
       } catch {
         setDialog(true);
         Alert.alert('No pudimos usar estas series', 'Podés cargar los valores a mano.', [{ text: 'Entendido', onPress: () => setDialog(false) }]);
@@ -262,10 +267,10 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
         onLift={() => { const accepted = !actionState.hiddenId && controller.beginExerciseDrag(); if (accepted) Keyboard.dismiss(); return accepted; }}
         onDrop={ids => controller.dropExercises(ids)} onCancel={() => controller.cancelDrag()}>
         {detail.exercises.filter(exercise => exercise.id !== actionState.hiddenId).map(exercise => <NativeReorderItem key={exercise.id} id={exercise.id} gap={0}>
-          <ActiveExerciseCard addToRoutineName={detail.session.routineId ? detail.session.routineNameSnapshot ?? detail.session.name : null} controller={controller} id={exercise.id} expanded={expanded === exercise.id} locked={locked} reorderDisabled={!!actionState.hiddenId || actionState.working} onToggle={toggle} onHistory={showHistory} onRemove={remove} onSheetChange={cardSheet}
+          <ActiveExerciseCard reveal={revealed?.id === exercise.id ? revealed.n : 0} addToRoutineName={detail.session.routineId ? detail.session.routineNameSnapshot ?? detail.session.name : null} controller={controller} id={exercise.id} expanded={expanded === exercise.id} locked={locked} reorderDisabled={!!actionState.hiddenId || actionState.working} onToggle={toggle} onHistory={showHistory} onRemove={remove} onSheetChange={cardSheet}
             onReveal={top => { if (reveal.current === exercise.id) { reveal.current = null; scrollRef.current?.scrollTo({ y: Math.max(0, scrollY.get() + top - headerHeight - spacing.md), animated: !reduceMotion }); } }}
             historyCard={exercise.routineExerciseId === null && dismissed !== null && !dismissed.includes(exercise.exerciseId) && detail.quickHistory.status === 'ok' && quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).some(item => item.sets.some(set => set.isCompleted)) ?
-              <SessionLastHistory history={quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).find(item => item.sets.some(set => set.isCompleted))!} disabled={locked} onUse={() => { if (detail.quickHistory.status === 'ok') applyHistory(exercise.id, quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).find(item => item.sets.some(set => set.isCompleted))!); }} onDismiss={() => dismissHistory(exercise.exerciseId)} /> : null} />
+              <SessionLastHistory history={quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).find(item => item.sets.some(set => set.isCompleted))!} disabled={locked} onUse={() => { if (detail.quickHistory.status === 'ok') applyHistory(exercise.id, quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).find(item => item.sets.some(set => set.isCompleted))!, exercise.exerciseId); }} onDismiss={() => dismissHistory(exercise.exerciseId)} /> : null} />
         </NativeReorderItem>)}
       </NativeReorderList> :
         <Surface><AppText muted>Esta sesión no tiene ejercicios.</AppText><AppText muted variant="caption">Agregá uno desde tu biblioteca para empezar a registrar series.</AppText></Surface>}
@@ -277,7 +282,7 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
     <RestTimerPanel controller={controller} onHeightChange={setRestOverlayHeight} />
     {finishOpen && !state.finished ? <FinishSessionSheet controller={controller} onClose={() => setFinishOpen(false)} /> : null}
     <SessionExercisePicker visible={pickerOpen} client={client} existingIds={existingIds} onClose={() => setPickerOpen(false)} onDismiss={creatorDismissed} onCreate={openCreator}
-      onAdd={exercise => { setPickerOpen(false); void actions.add({ operation: 'add_existing', exerciseId: exercise.id, idempotencyKey: sessionIntentKey() }, exercise.name); }} />
+      onAdd={exercise => actions.add({ operation: 'add_existing', exerciseId: exercise.id, idempotencyKey: sessionIntentKey() }, exercise.name)} />
     {creatorOpen ? <ExerciseEditorModal initialName={createName} purpose="session" target={{ mode: 'create' }} routines={[]} pending={Boolean(state.intent) || state.refreshing} createIdempotencyKey={sessionIntentKey}
       onSetStatus={() => undefined} onClose={() => setCreatorOpen(false)} onSave={async (exercise, _routineIds, key) => {
         const confirmed = await actions.add({ operation: 'create_and_add', exercise, idempotencyKey: key ?? sessionIntentKey() }, exercise.name);
