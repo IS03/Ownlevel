@@ -9,7 +9,7 @@ import { HomeCarousel } from './home-carousel';
 import type { HomeTrainingWeek } from './home-data';
 import { WEEKDAY_LETTERS, weekDates } from './home-day';
 import type { HomeResource } from './home-resource';
-import { HomeBar, HomeRow, HomeRowSeparator, HomeSection } from './home-ui';
+import { HomeBar, HomeSection } from './home-ui';
 
 const WEEKDAY_NAMES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 const CAPSULE_HEIGHT = 8;
@@ -111,45 +111,80 @@ function TrainingSummary({ dates, onOpenDay, today, training, week }: {
 function NutritionSummary({ calories, onOpen, today, weekStart }: {
   calories: HomeResource<NutritionReport>; onOpen: () => void; today: string; weekStart: string;
 }) {
-  const data = calories.data?.range.start === weekStart && calories.data.today === today ? calories.data : undefined;
+  const data = calories.data?.range.start === weekStart && calories.data.range.end === today && calories.data.today === today ? calories.data : undefined;
   if (!data) return calories.status === 'loading'
-    ? <View style={styles.summary}><SkeletonBlock height={34} /><SkeletonBlock height={34} /><SkeletonBlock height={34} /></View>
+    ? <View style={styles.nutrition} testID="home-week-nutrition-loading"><SkeletonBlock height={41} width={180} /><SkeletonBlock height={52} /><SkeletonBlock height={18} /></View>
     : <InlineUnavailable message="No pudimos cargar Nutrición de esta semana." />;
-  return <View testID="home-week-nutrition">
-    <AppText muted variant="footnote">Promedios diarios · Días terminados con datos</AppText>
-    {([['calories', 'Calorías', 'kcal'], ['protein', 'Proteína', 'g'], ['carbs', 'Carbohidratos', 'g'], ['fat', 'Grasas', 'g']] as const).map(([key, title, unit], index) => {
-      const stat = data.summary.metrics[key];
-      const value = stat.value === null ? '—' : formatInteger(Math.round(stat.value));
-      const coverage = `Promedio · ${stat.denominator} de 7 días con datos${stat.partialDays > 0 ? ` · ${plural(stat.partialDays, 'día parcial', 'días parciales')}` : ''}`;
-      return <View key={key}>
-        {index > 0 ? <HomeRowSeparator /> : null}
-        <HomeRow accessibilityHint="Abre el reporte de nutrición de esta semana" accessibilityLabel={`${title}: ${value} ${unit}. ${coverage}`}
-          chevron onPress={onOpen} subtitle={coverage} testID={`home-week-${key}`} title={title}
-          trailing={<View style={styles.nutrientValue}><AppText numeric variant="title2">{value}</AppText><AppText muted variant="caption">{unit}</AppText></View>} />
-      </View>;
-    })}
+  const stat = data.summary.metrics.calories;
+  const average = stat.value === null ? '—' : formatInteger(Math.round(stat.value));
+  const coverage = `${stat.denominator} de 7 días`;
+  const dates = weekDates(weekStart);
+  const days = weekCalories(data, dates);
+  const macroLabel = (['protein', 'carbs', 'fat'] as const).map(key => {
+    const metric = data.summary.metrics[key];
+    const name = { protein: 'Proteína', carbs: 'Carbos', fat: 'Grasas' }[key];
+    return `${name}: ${metric.value === null ? '—' : `${formatInteger(Math.round(metric.value))} g`}. Promedio de ${metric.denominator} de 7 días con datos${metric.partialDays ? `, ${plural(metric.partialDays, 'día parcial', 'días parciales')}` : ''}`;
+  });
+  return <Pressable accessibilityHint="Promedios de días terminados con datos. Abre el reporte de esta semana."
+    accessibilityLabel={`${average} kcal promedio, ${coverage}${stat.partialDays ? `, ${plural(stat.partialDays, 'día parcial', 'días parciales')}` : ''}. ${macroLabel.join('. ')}. ${days.map((day, index) => calorieDayLabel(day, index, today)).join('. ')}${calories.status === 'unavailable' ? '. Sin actualizar, última lectura disponible' : ''}`}
+    accessibilityRole="button" onPress={onOpen} style={({ pressed }) => [styles.nutrition, pressed && { opacity: 0.55 }]} testID="home-week-calories">
+    <View style={styles.nutritionHeader}>
+      <BigNumber unit="kcal promedio" value={average} />
+      <View style={styles.nutritionCoverage}>
+        <AppText muted numeric variant="footnote">{coverage}</AppText>
+        {data.days.some(day => day.targetCalories !== null) ? <AppText muted variant="caption">— Objetivo diario</AppText> : null}
+      </View>
+    </View>
+    <CalorieDays days={days} today={today} />
+    <View style={styles.macros}>
+      {([['protein', 'Proteína'], ['carbs', 'Carbos'], ['fat', 'Grasas']] as const).map(([key, title]) => {
+        const macro = data.summary.metrics[key];
+        const value = macro.value === null ? '—' : `${formatInteger(Math.round(macro.value))} g`;
+        return <AppText accessibilityLabel={`${title}: ${value}. Promedio de ${macro.denominator} de 7 días con datos${macro.partialDays ? `, ${plural(macro.partialDays, 'día parcial', 'días parciales')}` : ''}`}
+          key={key} muted numeric testID={`home-week-${key}`} variant="footnote">
+          {title} <AppText numeric variant="footnote" style={styles.macroValue}>{value}</AppText>
+        </AppText>;
+      })}
+    </View>
     {calories.status === 'unavailable' ? <AppText muted variant="footnote">Sin actualizar · Última lectura disponible</AppText> : null}
-  </View>;
+  </Pressable>;
 }
 
-function TrainingDays({ dates, onOpenDay, today, training, weekStart }: {
-  dates: string[]; onOpenDay: (date: string) => void; today: string; training: HomeResource<HomeTrainingWeek>; weekStart: string;
-}) {
-  const data = training.data?.weekStart === weekStart ? training.data : undefined;
-  if (!data) return training.status === 'loading' ? <SkeletonBlock height={160} /> : <InlineUnavailable message="No pudimos cargar el detalle por día." />;
-  return <View testID="home-week-training-days">
-    {dates.map((date, index) => {
-      const sessions = data.sessions.filter(session => session.logDate === date);
-      const subtitle = date > today ? 'Por venir' : sessions.length === 0 ? 'Sin entrenamientos registrados'
-        : sessions.map(session => `${session.routineName ?? 'Sesión libre'} · ${session.durationMilliseconds === null ? 'Duración no disponible' : formatTrainingMinutes(Math.round(session.durationMilliseconds / 60_000))}`).join(' / ');
-      const title = `${WEEKDAY_NAMES[index]} ${Number(date.slice(8))}${date === today ? ' · Hoy' : ''}`;
-      return <View key={date}>
-        {index > 0 ? <HomeRowSeparator /> : null}
-        <HomeRow accessibilityLabel={`${title}. ${subtitle}`} chevron={date <= today} onPress={date <= today ? () => onOpenDay(date) : undefined}
-          subtitle={subtitle} testID={`home-week-detail-${date}`} title={title} />
-      </View>;
-    })}
-    {training.status === 'unavailable' ? <AppText muted variant="footnote">Sin actualizar · Última lectura disponible</AppText> : null}
+function calorieDayLabel(day: DayCalories, index: number, today: string) {
+  if (day.date > today) return `${WEEKDAY_NAMES[index]}. Por venir`;
+  return `${WEEKDAY_NAMES[index]}. ${day.value === null ? 'Sin datos' : `${formatInteger(day.value)} kcal`}${day.date === today ? ', hoy en curso, no incluido en el promedio' : ''}${day.target !== null ? `. Objetivo ${formatInteger(day.target)} kcal` : ''}`;
+}
+
+/** One scale from zero, including signed values. Targets use each day's snapshot, never today's goal for older days. */
+function CalorieDays({ days, today }: { days: DayCalories[]; today: string }) {
+  const { colors } = useOwnlevelTheme();
+  const observed = days.filter(day => day.date <= today);
+  const values = observed.flatMap(day => [day.value ?? 0, day.target ?? 0]);
+  const min = Math.min(0, ...values), max = Math.max(0, ...values);
+  const span = max - min || 1;
+  const position = (value: number) => (max - value) / span * 100;
+  return <View style={styles.calorieChart}>
+    <View style={styles.calorieDays}>
+      {days.map((day, index) => {
+        const future = day.date > today, current = day.date === today;
+        const missing = !future && day.value === null;
+        const value = future ? null : day.value;
+        return <View accessibilityLabel={calorieDayLabel(day, index, today)}
+          key={day.date} style={styles.calorieDay}>
+          <View style={[styles.calorieTrack, future && { backgroundColor: colors.surfaceRaised }, missing && { borderColor: colors.border, borderWidth: 1 },
+            current && { borderColor: colors.textMuted, borderWidth: 1, borderStyle: 'dashed' }]} testID={`home-week-calorie-${day.date}`}>
+            {!future && min < 0 ? <View style={[styles.calorieLine, { backgroundColor: colors.border, top: `${position(0)}%` }]} /> : null}
+            {value !== null && value !== 0 ? <View style={[styles.calorieFill, { backgroundColor: colors.primary,
+              top: `${position(Math.max(0, value))}%`, height: `${Math.abs(value) / span * 100}%`, opacity: current ? 0.5 : 1 }]}
+              testID={`home-week-calorie-${day.date}-fill`} /> : null}
+            {value === 0 ? <View style={[styles.calorieLine, { backgroundColor: colors.primary, top: `${position(0)}%` }]} testID={`home-week-calorie-${day.date}-zero`} /> : null}
+            {!future && day.target !== null ? <View style={[styles.calorieLine, { backgroundColor: colors.textMuted, top: `${position(day.target)}%` }]}
+              testID={`home-week-calorie-${day.date}-target`} /> : null}
+          </View>
+          <AppText muted numeric style={[styles.calorieLetter, current && styles.currentLetter]} variant="caption">{WEEKDAY_LETTERS[index]}</AppText>
+        </View>;
+      })}
+    </View>
   </View>;
 }
 
@@ -183,7 +218,7 @@ export function HomeWeek({
   const firstTime = training.data !== undefined && !training.data.everTrained;
   return (
     <HomeSection accessibilityLabel="Progreso" action="Progreso →" onAction={onProgress} testID="home-week" title="Esta semana">
-      <HomeCarousel pages={[
+      <HomeCarousel minimumHeight={firstTime ? 208 : 176} pages={[
         { label: 'Entrenos', content: firstTime ? (
           <>
             <ExampleWeek dates={dates} today={today} />
@@ -191,7 +226,6 @@ export function HomeWeek({
           </>
         ) : <TrainingSummary dates={dates} onOpenDay={onOpenDay} today={today} training={training} week={week} /> },
         { label: 'Nutrición', content: <NutritionSummary calories={calories} onOpen={onOpenCalories} today={today} weekStart={weekStart} /> },
-        { label: 'Por día', content: <TrainingDays dates={dates} onOpenDay={onOpenDay} today={today} training={training} weekStart={weekStart} /> },
       ]} />
     </HomeSection>
   );
@@ -201,7 +235,19 @@ const styles = StyleSheet.create({
   bigLine: { lineHeight: 41 },
   day: { flex: 1, gap: DAY_GAP, justifyContent: 'center', minHeight: brandTokens.layout.minTouch },
   days: { flexDirection: 'row', gap: 6 },
-  nutrientValue: { alignItems: 'flex-end' },
+  nutrition: { gap: brandTokens.space.xs },
+  nutritionHeader: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', justifyContent: 'space-between', columnGap: brandTokens.space.xs },
+  calorieChart: { gap: brandTokens.space.xxs },
+  nutritionCoverage: { alignItems: 'flex-end' },
+  calorieDays: { flexDirection: 'row', gap: brandTokens.space.xs },
+  calorieDay: { flex: 1, gap: brandTokens.space.xxs },
+  calorieTrack: { height: brandTokens.layout.buttonHeight, borderRadius: brandTokens.radius.chip },
+  calorieFill: { position: 'absolute', width: '100%', borderRadius: brandTokens.radius.chip },
+  calorieLine: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth },
+  calorieLetter: { textAlign: 'center' },
+  currentLetter: { fontWeight: '700', textDecorationLine: 'underline' },
+  macros: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', columnGap: brandTokens.space.xs },
+  macroValue: { fontWeight: '600' },
   letter: { fontSize: 13, lineHeight: LETTER_LINE, textAlign: 'center' },
   summary: { gap: spacing.md },
 });

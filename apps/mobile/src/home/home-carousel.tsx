@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Animated, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 
-import { spacing, useReduceMotion } from '@/design-system';
+import { useReduceMotion } from '@/design-system';
 import { HomePageControl } from './home-page-control';
 
 /** Swipe and explicit buttons expose the same pages, including to VoiceOver. */
-export function HomeCarousel({ pages }: { pages: { label: string; content: ReactNode }[] }) {
+export function HomeCarousel({ minimumHeight = 176, pages }: { minimumHeight?: number; pages: { label: string; content: ReactNode }[] }) {
   const reduceMotion = useReduceMotion();
   const window = useWindowDimensions();
   const [width, setWidth] = useState(Math.max(1, window.width - 32));
@@ -13,8 +13,12 @@ export function HomeCarousel({ pages }: { pages: { label: string; content: React
   const currentPage = useRef(0);
   const [offset] = useState(() => new Animated.Value(0));
   // Stable on the very first render: no tallest-page fallback or delayed measurements.
-  // Larger type gets a larger (still bounded) viewport; every page remains scrollable.
-  const height = Math.min(280, 176 * Math.max(1, window.fontScale));
+  // Every page fits without a nested vertical scroll. Reserve extra room at larger type
+  // for the unchanged training example and wrapped nutrition labels.
+  const baseHeight = Math.max(minimumHeight, window.width < 375 ? 208 : 176);
+  const height = window.fontScale > 1
+    ? Math.min(720, baseHeight * window.fontScale + 64 * Math.max(1, window.fontScale - 1))
+    : baseHeight;
   const scroll = useRef<ScrollView>(null);
   useEffect(() => {
     scroll.current?.scrollTo({ x: currentPage.current * width, animated: false });
@@ -40,9 +44,7 @@ export function HomeCarousel({ pages }: { pages: { label: string; content: React
         {pages.map((item, index) => <View accessibilityElementsHidden={page !== index}
           importantForAccessibility={page === index ? 'auto' : 'no-hide-descendants'} key={item.label}
           style={{ height, width }} testID={`home-week-content-${index}`}>
-          <ScrollView accessibilityHint="Deslizá hacia arriba para ver el resto del resumen" alwaysBounceVertical={false} bounces={false} contentContainerStyle={styles.pageContent}
-            directionalLockEnabled nestedScrollEnabled removeClippedSubviews={false} showsVerticalScrollIndicator
-            style={styles.pageScroll} testID={`home-week-scroll-${index}`}>{item.content}</ScrollView>
+          {item.content}
         </View>)}
       </Animated.ScrollView>
       <View style={styles.indicators} testID="home-week-pagination">
@@ -54,7 +56,5 @@ export function HomeCarousel({ pages }: { pages: { label: string; content: React
 
 const styles = StyleSheet.create({
   pages: { alignItems: 'flex-start' },
-  pageContent: { paddingBottom: spacing.xs },
-  pageScroll: { flex: 1 },
   indicators: { alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
 });

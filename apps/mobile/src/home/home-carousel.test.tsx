@@ -25,7 +25,7 @@ function carousel(theme: 'light' | 'dark' = 'light') {
   return render(<OwnlevelThemeProvider initialMode={theme}><HomeCarousel pages={[
     { label: 'Entrenos', content: <AppText>Resumen de entrenos</AppText> },
     { label: 'Nutrición', content: <AppText>Promedios</AppText> },
-    { label: 'Por día', content: <AppText>Detalle de días</AppText> },
+    { label: 'Hábitos', content: <AppText>Detalle de días</AppText> },
   ]} /></OwnlevelThemeProvider>);
 }
 
@@ -54,8 +54,8 @@ describe('Home weekly carousel', () => {
     fireEvent(view.getByTestId('home-week-pager'), 'momentumScrollEnd', { nativeEvent: { contentOffset: { x: 725 } } });
     expect(view.getByText('Detalle de días')).toBeTruthy();
     expect(StyleSheet.flatten(view.getByTestId('home-week-pager').props.style).height).toBe(initialHeight);
-    expect(view.getByTestId('home-week-scroll-2').props.nestedScrollEnabled).toBe(true);
-    expect(view.getByTestId('home-week-scroll-2').props.showsVerticalScrollIndicator).toBe(true);
+    expect(view.queryAllByTestId(/home-week-scroll-/)).toHaveLength(0);
+    expect(view.UNSAFE_getAllByType(ScrollView).every(scroll => scroll.props.horizontal)).toBe(true);
     fireEvent(view.getByTestId('home-week-pager'), 'momentumScrollEnd', { nativeEvent: { contentOffset: { x: -80 } } });
     expect(view.getByText('Resumen de entrenos')).toBeTruthy();
   });
@@ -69,13 +69,13 @@ describe('Home weekly carousel', () => {
     expect(StyleSheet.flatten(view.getByTestId('home-week-pager').props.style).height).toBe(176);
   });
 
-  it('large Dynamic Type grows the bounded viewport, keeping the complete content scrollable', () => {
+  it('large Dynamic Type grows the bounded viewport, without introducing a vertical scroll', () => {
     mockFontScale = 2;
     const view = carousel();
-    expect(StyleSheet.flatten(view.getByTestId('home-week-pager').props.style).height).toBe(280);
+    expect(StyleSheet.flatten(view.getByTestId('home-week-pager').props.style).height).toBe(416);
     fireEvent.press(view.getByTestId('home-week-page-2'));
     expect(view.getByText('Detalle de días')).toBeTruthy();
-    expect(StyleSheet.flatten(view.getByTestId('home-week-scroll-2').props.style).flex).toBe(1);
+    expect(view.queryAllByTestId(/home-week-scroll-/)).toHaveLength(0);
   });
 
   it('Reduce Motion disables animated jumps, not access to pages', () => {
@@ -91,11 +91,11 @@ describe('Home weekly carousel', () => {
 
   it('only three bottom dots are visible, with 44 pt controls and accessible page names', () => {
     const view = carousel();
-    for (const label of ['Entrenos', 'Nutrición', 'Por día']) expect(view.queryByText(label)).toBeNull();
+    for (const label of ['Entrenos', 'Nutrición', 'Hábitos']) expect(view.queryByText(label)).toBeNull();
     expect(view.getByTestId('home-week-pagination')).toBeTruthy();
     expect(view.getAllByTestId(/home-week-dot-\d/)).toHaveLength(3);
     expect(StyleSheet.flatten(view.getByTestId('home-week-active-dot').props.style).backgroundColor).toBe('#7D6A3C');
-    fireEvent.press(view.getByRole('button', { name: 'Página 3 de 3: Por día' }));
+    fireEvent.press(view.getByRole('button', { name: 'Página 3 de 3: Hábitos' }));
     expect(StyleSheet.flatten(view.getByTestId('home-week-page-2').props.style)).toMatchObject({ minHeight: 44, width: 44 });
     expect(view.getByTestId('home-week-page-2').props.accessibilityState).toEqual({ selected: true });
     expect(StyleSheet.flatten(view.getByTestId('home-week-dot-0').props.style).opacity).toBe(0.35);

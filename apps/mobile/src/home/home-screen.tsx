@@ -92,7 +92,7 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
       router.push({ pathname: '/(tabs)/nutrition/reports', params: { period: 'custom', from: day.weekStart, to: day.today } });
     },
     onOpenCompletedSession: (id: string) => { haptics.selection(); router.push({ pathname: '/(tabs)/train/history/[id]', params: { id } }); },
-    onOpenDay: (date: string) => { haptics.selection(); router.push({ pathname: '/history/day/[date]', params: { date } }); },
+    onOpenDay: (date: string) => { haptics.selection(); router.push({ pathname: '/(tabs)/train/history', params: { date } }); },
     onOpenProgress: (target: HomeProgressTarget) => {
       haptics.selection();
       if (target.kind === 'body') router.push({ pathname: '/(tabs)/progress/trends/body', params: { period: target.period } });
