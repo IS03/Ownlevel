@@ -162,7 +162,7 @@ describe('Training native hub', () => {
     expect(view.queryByTestId('training-other-core')).toBeNull();
     fireEvent.press(view.getByTestId('training-other-abs')); expect(mockPush).toHaveBeenCalledWith('/(tabs)/train/history/abs');
     fireEvent.press(view.getByRole('button', { name: 'Ver las 1 restantes' }));
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/history/day/[date]', params: { date: '2026-10-07' } });
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/history', params: { date: '2026-10-07' } });
   });
   it('nothing finished today: date, weekday and "Nueva sesión", which opens the start flow', async () => {
     mockHistory.mockResolvedValue(ok({ sessions: [session('monday', '2026-10-05', 'PULL')], nextCursor: null }));
@@ -276,7 +276,7 @@ describe('Training native hub', () => {
     expect(month().getByText('Octubre 2026')).toBeTruthy();
     expect(month().queryByText('Ir a hoy')).toBeNull();
     fireEvent.press(month().getByTestId('training-month-day-2026-10-05'));
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/history/day/[date]', params: { date: '2026-10-05' } });
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/history', params: { date: '2026-10-05' } });
     expect(view.queryByTestId('training-month-calendar')).toBeNull();
   });
   it('continues the shared active hero without duplicating it among completed sessions', async () => {

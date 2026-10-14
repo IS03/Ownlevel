@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Alert } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -13,8 +13,6 @@ import { CompletedSessionScreen, type CompletedSessionApi } from './history-sess
 import { SessionCorrectionScreen } from './session-correction-screen';
 import { ExerciseHistoryScreen } from './exercise-history-screen';
 import { HistoryScreen } from './history-screen';
-import { TrainingDayScreen } from './training-day-screen';
-import { TrainingCalendarScreen } from './training-calendar-screen';
 
 const mockPush = jest.fn(), mockReplace = jest.fn(), mockBack = jest.fn(), mockSetOptions = jest.fn();
 const mockParams: { current: Record<string, string> } = { current: {} };
@@ -25,14 +23,21 @@ const mockExerciseHistory = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockExercises = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockDay = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockTraining = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockMonth = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockSuccess = jest.fn();
 const mockClient = { request: jest.fn(), read: jest.fn() };
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
-jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, replace: mockReplace, back: mockBack, canGoBack: () => true }),
-  useNavigation: () => ({ setOptions: mockSetOptions, dispatch: jest.fn() }),
-  useLocalSearchParams: () => mockParams.current, useFocusEffect: () => undefined,
-}));
+jest.mock('expo-router', () => {
+  const { Pressable, Text } = jest.requireActual<typeof import('react-native')>('react-native');
+  const Container = ({ children }: { children?: React.ReactNode }) => children ?? null;
+  // Toolbar menu actions render as plain buttons so the ••• actions stay testable.
+  const MenuAction = ({ children, onPress }: { children: string; onPress: () => void }) => <Pressable accessibilityRole="button" accessibilityLabel={children} onPress={onPress}><Text>{children}</Text></Pressable>;
+  return { useRouter: () => ({ push: mockPush, replace: mockReplace, back: mockBack, canGoBack: () => true }),
+    useNavigation: () => ({ setOptions: mockSetOptions, dispatch: jest.fn() }),
+    useLocalSearchParams: () => mockParams.current, useFocusEffect: () => undefined,
+    Stack: { Screen: () => null, Toolbar: Object.assign(Container, { Menu: Container, MenuAction }) } };
+});
+jest.mock('./exercise-segmented', () => jest.requireActual('./exercise-segmented.tsx'));
 jest.mock('expo-router/build/react-navigation/core/usePreventRemove', () => ({ usePreventRemove: () => undefined }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn(), success: () => mockSuccess(), warning: jest.fn() }, triggerHaptic: () => mockSuccess() }));
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }),
@@ -41,7 +46,8 @@ jest.mock('@/api/active-session', () => ({ ...jest.requireActual<object>('@/api/
 jest.mock('@/api/training-history', () => ({ ...jest.requireActual<object>('@/api/training-history'),
   fetchTrainingExerciseHistory: (...args: unknown[]) => mockExerciseHistory(...args),
   correctSession: (...args: unknown[]) => mockCorrect(...args), fetchTrainingHistory: (...args: unknown[]) => mockHistory(...args),
-  fetchTrainingHistoryExercises: (...args: unknown[]) => mockExercises(...args), fetchTrainingDay: (...args: unknown[]) => mockDay(...args) }));
+  fetchTrainingHistoryExercises: (...args: unknown[]) => mockExercises(...args), fetchTrainingDay: (...args: unknown[]) => mockDay(...args),
+  fetchTrainingHistoryMonth: (...args: unknown[]) => mockMonth(...args) }));
 
 const meta: MobileApiResultMeta = { durationMs: 1, httpStatus: 200, outcome: 'ok' };
 const ok = <T,>(data: T) => ({ status: 'ok' as const, data, meta });
@@ -82,7 +88,7 @@ describe('completed session: correct + discard (M3.4-3)', () => {
     await act(async () => { buttons.find(button => button.text === 'Eliminar sesión')?.onPress?.(); });
     await flush();
     expect(view.getByText(/No pudimos confirmar si la sesión se eliminó/)).toBeTruthy(); expect(mockBack).not.toHaveBeenCalled();
-    fireEvent.press(view.getByRole('button', { name: 'Reintentar eliminación' }));
+    fireEvent.press(view.getAllByRole('button', { name: 'Reintentar eliminación' })[0]!);
     await flush();
     expect(discard).toHaveBeenCalledTimes(2); expect(discard.mock.calls[1][0]).toBe(discard.mock.calls[0][0]);
     expect(mockSuccess).not.toHaveBeenCalled(); expect(mockBack).toHaveBeenCalledTimes(1);
@@ -168,30 +174,35 @@ describe('historical correction screen', () => {
   });
 });
 
-describe('history, day and calendar navigation', () => {
-  it('groups sessions by day, appends the next page with the cursor and opens a session', async () => {
+describe('history: one screen with calendar, day and exercises (HI1–HI3)', () => {
+  const now = () => new Date(2026, 9, 2, 12);
+  beforeEach(() => { mockParams.current = {}; mockMonth.mockImplementation(async (...args) => ok({ month: args[1], days: [{ date: '2026-10-01', sessions: 1, completedSets: 20, level: 3 }].filter(day => day.date.startsWith(args[1] as string)) })); });
+  it('groups sessions by day with totals, appends the next page with the cursor and opens a session', async () => {
     mockHistory.mockResolvedValueOnce(ok({ sessions: [row(ID(1), '2026-10-02'), row(ID(2), '2026-10-01')], nextCursor: 'next_1' }))
       .mockResolvedValueOnce(ok({ sessions: [row(ID(2), '2026-10-01'), row(ID(3), '2026-09-20')], nextCursor: null }));
-    const view = wrap(<HistoryScreen />);
+    const view = wrap(<HistoryScreen now={now} />);
     await flush();
-    expect(view.getByText('Viernes, 2 de octubre')).toBeTruthy();
+    expect(view.getByText('Viernes 2')).toBeTruthy();
+    expect(mockMonth.mock.calls.map(call => call[1])).toEqual(['2026-09', '2026-10']);
+    expect(view.getByLabelText('1, intensidad 3 de 4')).toBeTruthy(); expect(view.getByLabelText('30, sin entrenar')).toBeTruthy();
     fireEvent.press(view.getByRole('button', { name: 'Ver más' }));
     await flush();
     expect(mockHistory).toHaveBeenLastCalledWith(expect.anything(), 'next_1');
-    expect(view.getAllByTestId(/history-session-/)).toHaveLength(3); expect(view.queryByRole('button', { name: 'Ver más' })).toBeNull();
+    expect(view.getAllByTestId(/history-session-/)).toHaveLength(3); expect(view.getByText('Domingo 20 de septiembre')).toBeTruthy();
     fireEvent.press(view.getByTestId(`history-session-${ID(3)}`));
     expect(mockPush).toHaveBeenCalledWith(`/(tabs)/train/history/${ID(3)}`);
   });
-  it('distinguishes an empty history from an unavailable read', async () => {
+  it('distinguishes an empty history from an unavailable read, and unavailable intensity from not trained', async () => {
     mockHistory.mockResolvedValueOnce(ok({ sessions: [], nextCursor: null }));
-    const empty = wrap(<HistoryScreen />);
+    const empty = wrap(<HistoryScreen now={now} />);
     await flush();
-    expect(empty.getByText('Todavía no hay sesiones')).toBeTruthy();
+    expect(empty.getByText('Todavía no terminaste ningún entrenamiento')).toBeTruthy();
     empty.unmount();
-    mockHistory.mockResolvedValueOnce(lost);
-    const unavailable = wrap(<HistoryScreen />);
+    mockHistory.mockResolvedValueOnce(lost); mockMonth.mockResolvedValue(lost);
+    const unavailable = wrap(<HistoryScreen now={now} />);
     await flush();
-    expect(unavailable.getByTestId('history-sessions-unavailable')).toBeTruthy(); expect(unavailable.queryByText('Todavía no hay sesiones')).toBeNull();
+    expect(unavailable.getByText(/No pudimos cargar tus sesiones/)).toBeTruthy(); expect(unavailable.queryByText('Todavía no terminaste ningún entrenamiento')).toBeNull();
+    expect(unavailable.getByText(/No pudimos cargar la intensidad/)).toBeTruthy(); expect(unavailable.queryByLabelText(/sin entrenar/)).toBeNull();
   });
   it('searches recorded exercises and opens an exercise history', async () => {
     mockHistory.mockResolvedValue(ok({ sessions: [], nextCursor: null }));
@@ -199,45 +210,34 @@ describe('history, day and calendar navigation', () => {
       { id: ID(4), name: 'Press banca', muscleGroup: 'pecho', muscleLabel: null, implement: 'barra', weightMode: null, lastDate: '2026-10-01', sessions: 3, lastMark: { weightKg: 60, reps: 5 }, bestMark: null },
       { id: ID(5), name: 'Remo', muscleGroup: 'espalda', muscleLabel: null, implement: null, weightMode: null, lastDate: '2026-09-01', sessions: 1, lastMark: null, bestMark: null },
     ]));
-    const view = wrap(<HistoryScreen />);
+    const view = wrap(<HistoryScreen now={now} />);
     await flush();
-    fireEvent.press(view.getByRole('tab', { name: 'Ejercicios' }));
+    fireEvent.press(view.getByRole('radio', { name: 'Ejercicios' }));
     await flush();
-    expect(within(view.getByTestId(`history-exercise-${ID(4)}`)).getByText(/60 kg × 5/)).toBeTruthy();
+    expect(within(view.getByTestId(`history-exercise-${ID(4)}`)).getByText('60 kg × 5')).toBeTruthy();
     fireEvent.changeText(view.getByLabelText('Buscar ejercicio'), 'ESPALDA');
     expect(view.queryByTestId(`history-exercise-${ID(4)}`)).toBeNull();
     fireEvent.press(view.getByTestId(`history-exercise-${ID(5)}`));
     expect(mockPush).toHaveBeenCalledWith(`/(tabs)/train/history/exercise/${ID(5)}`);
   });
-  it('shows a day summary or an explicit empty day', async () => {
+  it('opens a chosen day (old Día route) with its summary, an explicit empty day, and "Ver todo" back', async () => {
     mockParams.current = { date: '2026-10-01' };
+    mockHistory.mockResolvedValue(ok({ sessions: [row(ID(2), '2026-09-29')], nextCursor: null }));
     mockDay.mockResolvedValueOnce(ok({ date: '2026-10-01', sessions: [row(ID(1), '2026-10-01')],
       summary: { sessionCount: 1, exercisesCompleted: 2, completedSets: 6, durationMilliseconds: null, volumeKg: null } }));
-    const view = wrap(<TrainingDayScreen />);
+    const view = wrap(<HistoryScreen now={now} />);
     await flush();
-    const summary = within(view.getByTestId('training-day-summary'));
-    expect(summary.getByText('1 entrenamiento')).toBeTruthy(); expect(summary.getAllByText('—')).toHaveLength(2);
-    expect(mockSetOptions).toHaveBeenCalledWith({ title: 'Jueves, 1 de octubre' });
+    const day = within(view.getByTestId('history-day'));
+    expect(day.getByText('Jueves 1')).toBeTruthy(); expect(day.getByText('6')).toBeTruthy(); expect(day.queryByText('volumen')).toBeNull();
     fireEvent.press(view.getByTestId(`history-session-${ID(1)}`));
     expect(mockPush).toHaveBeenCalledWith(`/(tabs)/train/history/${ID(1)}`);
-    view.unmount();
-    mockDay.mockResolvedValueOnce(ok({ date: '2026-10-01', sessions: [], summary: { sessionCount: 0, exercisesCompleted: 0, completedSets: 0, durationMilliseconds: null, volumeKg: null } }));
-    const empty = wrap(<TrainingDayScreen />);
-    await flush();
-    expect(empty.getByText('No hay entrenamientos terminados este día.')).toBeTruthy();
-  });
-  it('navigates months and opens any day from the calendar', async () => {
-    const training = (month: string) => ok({ activeSession: { status: 'ok', data: null }, calendar: { status: 'ok', data: { month, days: [{ date: `${month}-03`, colors: ['violet'] }] } } });
-    mockTraining.mockImplementation(async (...args: unknown[]) => training(args[1] as string));
-    const view = wrap(<TrainingCalendarScreen now={() => new Date(2026, 9, 2, 12)} />);
-    await flush();
-    expect(mockTraining).toHaveBeenLastCalledWith(expect.anything(), '2026-10', expect.anything());
-    fireEvent.press(view.getByRole('button', { name: 'Mes anterior' }));
-    await flush();
-    expect(mockTraining).toHaveBeenLastCalledWith(expect.anything(), '2026-09', expect.anything());
-    await waitFor(() => expect(view.getByText('Septiembre de 2026')).toBeTruthy());
-    fireEvent.press(view.getByTestId('training-calendar-day-2026-09-03'));
-    expect(mockPush).toHaveBeenCalledWith('/(tabs)/train/day/2026-09-03');
+    fireEvent.press(view.getByRole('button', { name: 'Ver todo' })); await flush();
+    expect(view.queryByTestId('history-day')).toBeNull(); expect(view.getByTestId(`history-session-${ID(2)}`)).toBeTruthy();
+    mockDay.mockResolvedValueOnce(ok({ date: '2026-09-30', sessions: [], summary: { sessionCount: 0, exercisesCompleted: 0, completedSets: 0, durationMilliseconds: null, volumeKg: null } }));
+    fireEvent.press(view.getByTestId('history-day-2026-09-30')); await flush();
+    expect(view.getByText('No entrenaste este día')).toBeTruthy();
+    fireEvent.press(view.getByRole('button', { name: 'Ver mes' })); await flush();
+    expect(view.getByText('Septiembre de 2026')).toBeTruthy(); expect(view.getByLabelText('Escala de intensidad: de menos a más')).toBeTruthy();
   });
 });
 
@@ -251,12 +251,12 @@ describe('exercise history routine scope', () => {
     const view = wrap(<ExerciseHistoryScreen />); await flush();
     expect(view.getByText('Todavía no lo hiciste en PUSH')).toBeTruthy();
     expect(mockExerciseHistory).toHaveBeenLastCalledWith(mockClient, ID(3), 20, expect.anything(), ID(1));
-    fireEvent.press(view.getByRole('radio', { name: 'Todas' })); await flush();
+    fireEvent.press(view.getByRole('checkbox', { name: 'Todas' })); await flush();
     expect(mockExerciseHistory).toHaveBeenLastCalledWith(mockClient, ID(3), 20, expect.anything(), null);
     expect(view.getByText('Todavía no lo hiciste')).toBeTruthy();
-    fireEvent.press(view.getByRole('radio', { name: 'PULL' })); await flush();
+    fireEvent.press(view.getByRole('checkbox', { name: 'PULL' })); await flush();
     expect(view.queryByText('Todavía no lo hiciste')).toBeNull();
     expect(view.getByRole('button', { name: 'Reintentar' })).toBeTruthy();
-    expect(view.getByRole('radio', { name: 'Todas' })).toBeTruthy();
+    expect(view.getByRole('checkbox', { name: 'Todas' })).toBeTruthy();
   });
 });

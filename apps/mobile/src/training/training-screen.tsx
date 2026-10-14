@@ -71,7 +71,7 @@ export function TrainingScreen({ now = systemNow }: { now?: () => Date }) {
   const expand = () => { haptics.selection(); setCalendar({ month, open: true }); };
   const collapse = () => setCalendar(value => ({ ...value, open: false }));
   // Opening a day closes the calendar first, so coming back finds it closed.
-  const openDay = (date: string) => { haptics.selection(); collapse(); router.push({ pathname: '/history/day/[date]', params: { date } }); };
+  const openDay = (date: string) => { haptics.selection(); collapse(); router.push({ pathname: '/(tabs)/train/history', params: { date } }); };
   const toSession = (id: string, replace = false) => {
     refresh('foreground');
     const path = `/(tabs)/train/session/${id}` as const;

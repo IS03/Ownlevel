@@ -302,6 +302,11 @@ export type TrainingHistorySessionDto = {
   volumeKg: number | null;
 };
 export type TrainingHistoryResponse = { sessions: TrainingHistorySessionDto[]; nextCursor: string | null };
+/** One month of stored training days with the person-relative intensity (1–4); absent days = not trained. */
+export type TrainingHistoryMonthResponse = {
+  month: string;
+  days: Array<{ date: string; sessions: number; completedSets: number; level: 1 | 2 | 3 | 4 }>;
+};
 export type TrainingDayResponse = {
   date: string;
   sessions: TrainingHistorySessionDto[];
@@ -514,4 +519,10 @@ export function parseExerciseHistoryLimit(value: string | null): number {
   if (value === null) return 20;
   if (!/^\d{1,3}$/.test(value) || Number(value) < 1 || Number(value) > 100) throw new MobileApiValidationError("El límite no es válido.");
   return Number(value);
+}
+
+const TRAINING_MONTH = /^(\d{4})-(0[1-9]|1[0-2])$/;
+export function parseMobileTrainingMonth(value: unknown): string {
+  if (typeof value !== "string" || !TRAINING_MONTH.test(value)) throw new MobileApiValidationError("El mes no es válido.");
+  return value;
 }

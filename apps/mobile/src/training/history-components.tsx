@@ -2,24 +2,27 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import type { TrainingHistorySession } from '@/api/training-history';
 import { AppIcon, AppText, Button, InlineUnavailable, ScrollScreen, SkeletonBlock, Surface, UnavailableState, radius, sizes, spacing, useOwnlevelTheme } from '@/design-system';
 import { trainingRoutineColor } from './routine-colors';
-import { sessionTiming, sessionTotals } from './history-model';
+import { plural, sessionRowTiming, sessionTotals, volumeLabel } from './history-model';
 import type { ReadState } from './use-read';
 
-/** One completed session (history list and day). Server truth only. */
+/** One completed session (HI1): routine color strip (none = no strip), start · duration, series and volume on the right. */
 export function SessionRow({ session, onPress, divided }: { session: TrainingHistorySession; onPress: () => void; divided?: boolean }) {
   const { colors, isDark } = useOwnlevelTheme();
-  const timing = sessionTiming(session);
-  return <Pressable accessibilityRole="button" accessibilityLabel={`${session.routineName}. ${timing || 'Sesión terminada'}. ${sessionTotals(session)}`}
+  const timing = sessionRowTiming(session), volume = volumeLabel(session.volumeKg);
+  return <Pressable accessibilityRole="button" accessibilityLabel={`${session.routineName}. ${timing}. ${sessionTotals(session)}`}
     testID={`history-session-${session.id}`} onPress={onPress}
-    style={({ pressed }) => [styles.sessionRow, divided ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border } : null,
-      pressed ? { backgroundColor: colors.surfaceRaised } : null]}>
-    <View style={[styles.identity, { backgroundColor: session.routineColor ? trainingRoutineColor(session.routineColor, isDark) : colors.border }]} />
+    style={({ pressed }) => [styles.sessionRow, pressed ? { backgroundColor: colors.surfaceRaised } : null]}>
+    {divided ? <View style={[styles.divider, { backgroundColor: colors.border }]} /> : null}
+    <View style={[styles.identity, { backgroundColor: session.routineColor ? trainingRoutineColor(session.routineColor, isDark) : 'transparent' }]} />
     <View style={styles.flex}>
-      <AppText numberOfLines={1} variant="label">{session.routineName}</AppText>
-      <AppText muted numberOfLines={1} variant="caption">{timing || 'Sesión terminada'}</AppText>
-      <AppText muted numberOfLines={1} variant="caption">{sessionTotals(session)}</AppText>
+      <AppText numberOfLines={1} variant="headline">{session.routineName}</AppText>
+      <AppText muted numeric numberOfLines={1} variant="footnote">{timing}</AppText>
     </View>
-    <AppIcon color={colors.textMuted} name="chevronRight" size={14} />
+    <View style={styles.totals}>
+      <AppText numeric variant="subheadline">{plural(session.completedSets, 'serie')}</AppText>
+      {volume ? <AppText muted numeric variant="footnote">{volume}</AppText> : null}
+    </View>
+    <AppIcon color={colors.textMuted} name="chevronRight" size={15} />
   </Pressable>;
 }
 
@@ -63,8 +66,10 @@ export function StaleNotice({ onRetry }: { onRetry: () => void }) {
 const styles = StyleSheet.create({
   flex: { flex: 1, gap: 2 },
   listCard: { padding: 0, gap: 0, overflow: 'hidden' },
-  sessionRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  sessionRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  divider: { position: 'absolute', top: 0, left: spacing.md + 4 + spacing.md, right: 0, height: StyleSheet.hairlineWidth },
   identity: { width: 4, alignSelf: 'stretch', borderRadius: 2, marginVertical: spacing.xs },
+  totals: { alignItems: 'flex-end', gap: 2 },
   segmented: { flexDirection: 'row', borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, padding: 3, gap: 3 },
   segment: { flex: 1, minHeight: sizes.touchTarget - 6, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md - 2,
     borderWidth: StyleSheet.hairlineWidth, borderColor: 'transparent' },

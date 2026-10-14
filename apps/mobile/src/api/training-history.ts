@@ -169,6 +169,20 @@ export function fetchTrainingHistory(client: MobileApiClient, cursor: string | n
 export function fetchTrainingDay(client: MobileApiClient, date: string, signal?: AbortSignal): Promise<MobileApiReadResult<TrainingDay>> {
   return client.read({ path: `${BASE}/days/${encodeURIComponent(date)}`, signal, parse: value => parseTrainingDay(value, date) });
 }
+/** Trained days of a month with the person-relative intensity (1–4). Absent day = not trained. */
+export type TrainingHistoryMonth = { month: string; days: { date: string; sessions: number; completedSets: number; level: 1 | 2 | 3 | 4 }[] };
+export function parseTrainingHistoryMonth(value: unknown, requested?: string): TrainingHistoryMonth | undefined {
+  if (!g.record(value, ['month', 'days']) || Object.keys(value).length !== 2 || typeof value.month !== 'string' ||
+    !/^\d{4}-(0[1-9]|1[0-2])$/.test(value.month) || (requested !== undefined && value.month !== requested) || !Array.isArray(value.days)) return undefined;
+  const month = value.month;
+  const valid = value.days.every(day => g.record(day, ['date', 'sessions', 'completedSets', 'level']) && Object.keys(day).length === 4 &&
+    g.date(day.date) && (day.date as string).startsWith(month) && g.counter(day.sessions) && (day.sessions as number) > 0 && g.counter(day.completedSets) &&
+    [1, 2, 3, 4].includes(day.level as number));
+  return valid ? { month, days: value.days as TrainingHistoryMonth['days'] } : undefined;
+}
+export function fetchTrainingHistoryMonth(client: MobileApiClient, month: string, signal?: AbortSignal): Promise<MobileApiReadResult<TrainingHistoryMonth>> {
+  return client.read({ path: `${BASE}/history/days?month=${encodeURIComponent(month)}`, signal, parse: value => parseTrainingHistoryMonth(value, month) });
+}
 export function fetchTrainingHistoryExercises(client: MobileApiClient, signal?: AbortSignal): Promise<MobileApiReadResult<TrainingHistoryExercise[]>> {
   return client.read({ path: `${BASE}/history/exercises`, signal, parse: parseTrainingHistoryExercises });
 }
