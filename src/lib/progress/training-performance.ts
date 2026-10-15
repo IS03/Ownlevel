@@ -1,4 +1,5 @@
 import { TRAINING_PROGRESS_METRICS } from "./analytics/catalog";
+import { weightModeStrategy } from "@/lib/mobile-api/weight-modes";
 import type { ProgressMetricSample, ProgressPeriodRange } from "./analytics/types";
 import { buildProgressComparison, type ProgressComparisonReport, type ProgressTemporalComparisonReference } from "./comparisons";
 import type { TrainingAnalysis, TrainingAnalysisSource } from "../phase2/training-analysis";
@@ -122,13 +123,7 @@ export function trainingPerformanceStrategy(mode: string | null | undefined): Pe
   return strategyFor(normalize(mode));
 }
 
-function strategyFor(mode: string | null): PerformanceStrategy {
-  if (["peso total", "por mancuerna", "por brazo", "total con barra"].includes(mode ?? "")) return "load_reps";
-  if (mode === "peso corporal") return "bodyweight_reps";
-  if (mode === "lingotes (no kg)") return "unit_reps";
-  if (mode === "tiempo (segundos)") return "time";
-  return "unsupported";
-}
+const strategyFor = (mode: string | null): PerformanceStrategy => weightModeStrategy(mode);
 
 function number(value: number, maximumFractionDigits = 1) {
   return new Intl.NumberFormat("es-AR", { maximumFractionDigits }).format(value);
