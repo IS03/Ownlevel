@@ -114,3 +114,22 @@ describe('Reliable manual meal writes',()=>{
     expect(f.api.mutate).not.toHaveBeenCalled(); expect(await f.repository.read()).not.toBeNull();
   });
 });
+
+describe('M9 manual entry and Undo', () => {
+  it('persists atomic library/timing fields before sending and replays unchanged after restart', async () => {
+    const f = fixture(); await f.controller.initialize(); f.controller.open(date); f.controller.change('title', 'QA'); f.controller.change('calories', '123');
+    f.controller.timing('lunch', `${date}T13:40:00-03:00`); f.controller.saveToLibrary(true);
+    (f.api.mutate as jest.Mock<MealApi['mutate']>).mockResolvedValueOnce(failure);
+    await f.controller.save(); const stored = (await f.repository.read())!;
+    expect(stored.intent.fields).toMatchObject({ mealLabel: 'lunch', consumedAt: `${date}T16:40:00.000Z`, saveToLibrary: true, proteinG: null });
+    const next = new MealController(f.api, f.repository, f.invalidate); await next.initialize();
+    expect(f.api.mutate).toHaveBeenCalledTimes(1); await next.recover(); expect(f.api.mutate).toHaveBeenLastCalledWith(stored.intent);
+  });
+  it('Undo uses the created receipt version; conflict does not adopt a newer version or retry', async () => {
+    const f = fixture(); await f.controller.initialize();
+    (f.api.mutate as jest.Mock<MealApi['mutate']>).mockResolvedValueOnce({ status: 'conflict', code: 'MEAL_CHANGED', message: 'changed', data: { error: 'MEAL_CHANGED', message: 'changed', currentDate: date }, meta: { ...meta, outcome: 'conflict' } });
+    await f.controller.undo(f.meal, date);
+    expect(f.api.mutate).toHaveBeenCalledWith(expect.objectContaining({ operation: 'delete', mealId: id, expectedUpdatedAt: version }));
+    expect(f.controller.getSnapshot().phase).toBe('conflict'); expect(f.api.mutate).toHaveBeenCalledTimes(1);
+  });
+});

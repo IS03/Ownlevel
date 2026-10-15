@@ -1,9 +1,9 @@
 import { isNutritionDate } from './nutrition-day-contract';
-import { mealUuid, mealVersion } from './nutrition-meal-contract';
+import { mealUuid, mealVersion, parseMealTiming, type MealTiming } from './nutrition-meal-contract';
 
 export type QuickSource = { kind: 'suggestion' | 'saved' | 'food'; id: string; version: string };
 export type QuickQuantity = { itemId: string; quantity: number };
-export type QuickSelection = { date: string; source: QuickSource; quantities: QuickQuantity[] | null };
+export type QuickSelection = MealTiming & { date: string; source: QuickSource; quantities: QuickQuantity[] | null };
 export type QuickIntent = QuickSelection & { operation: 'register' | 'saveSuggestion'; idempotencyKey: string };
 export type QuickNutrients = { calories: number | null; proteinG: number | null; carbsG: number | null; fatG: number | null };
 export type QuickItem = { id: string; label: string; quantity: number; unit: string };
@@ -28,7 +28,9 @@ export function parseQuickSource(v: unknown): QuickSource | undefined {
     ? { kind: v.kind, id: v.id.toLowerCase(), version: v.version } : undefined;
 }
 export function parseQuickSelection(v: unknown): QuickSelection | undefined {
-  if (!record(v) || Object.keys(v).length !== 3 || !isNutritionDate(v.date)) return undefined;
+  if (!record(v) || Object.keys(v).some(k => !['date','source','quantities','mealLabel','consumedAt'].includes(k)) || !isNutritionDate(v.date)) return undefined;
+  const timing = parseMealTiming(v, v.date);
+  if (!timing) return undefined;
   const source = parseQuickSource(v.source);
   if (!source || !(v.quantities === null || Array.isArray(v.quantities))) return undefined;
   let quantities: QuickQuantity[] | null = null;
@@ -44,16 +46,16 @@ export function parseQuickSelection(v: unknown): QuickSelection | undefined {
     quantities.sort((a,b) => a.itemId.localeCompare(b.itemId));
   }
   if (source.kind === 'food' && (!quantities || quantities.length !== 1 || quantities[0].itemId !== source.id)) return undefined;
-  return { date: v.date, source, quantities };
+  return { date: v.date, source, quantities, ...timing };
 }
 export function parseQuickIntent(v: unknown): QuickIntent | undefined {
-  if (!record(v) || Object.keys(v).length !== 5 || !['register','saveSuggestion'].includes(String(v.operation))
+  if (!record(v) || Object.keys(v).some(k => !['date','source','quantities','operation','idempotencyKey','mealLabel','consumedAt'].includes(k)) || !['register','saveSuggestion'].includes(String(v.operation))
     || typeof v.idempotencyKey !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(v.idempotencyKey)) return undefined;
-  const selection = parseQuickSelection({ date: v.date, source: v.source, quantities: v.quantities });
+  const selection = parseQuickSelection(quickSelectionOf(v as QuickIntent));
   if (!selection || v.operation === 'saveSuggestion' && selection.source.kind !== 'suggestion') return undefined;
   return { ...selection, operation: v.operation as QuickIntent['operation'], idempotencyKey: v.idempotencyKey };
 }
-export function quickSelectionOf(v: QuickSelection): QuickSelection { return { date: v.date, source: v.source, quantities: v.quantities }; }
+export function quickSelectionOf(v: QuickSelection): QuickSelection { return { date: v.date, source: v.source, quantities: v.quantities, ...('mealLabel' in v ? { mealLabel: v.mealLabel } : {}), ...('consumedAt' in v ? { consumedAt: v.consumedAt } : {}) }; }
 export function sameQuickSelection(a: QuickSelection, b: QuickSelection) {
   return JSON.stringify(parseQuickSelection(quickSelectionOf(a))) === JSON.stringify(parseQuickSelection(quickSelectionOf(b)));
 }

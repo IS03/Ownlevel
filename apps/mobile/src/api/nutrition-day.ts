@@ -6,7 +6,7 @@ import type { MobileApiClient } from './client';
 
 export { isNutritionDate, parseMobileNutritionDayResponse };
 export type {
-  MobileNutritionDayResponse, NutritionDayData, NutritionDayMetric,
+  MobileNutritionDayResponse, NutritionDayData, NutritionDayMetric, NutritionDayMeal,
   NutritionDayContext, NutritionDaySummary, NutritionNutrientTotal,
 } from '../../../../src/lib/mobile-api/nutrition-day-contract';
 

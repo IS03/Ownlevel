@@ -1,92 +1,104 @@
-import { Alert, KeyboardAvoidingView, Modal, Platform, StyleSheet, TextInput, View } from 'react-native';
-import { AppText, Button, Heading, LoadingState, ScrollScreen, Surface, spacing, useOwnlevelTheme } from '@/design-system';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { AppIcon, AppText, Button, Heading, LoadingState, Surface, useOwnlevelTheme } from '@/design-system';
+import { triggerHaptic } from '@/platform/haptics';
 import type { QuickNutrients, QuickSection } from '@/api/nutrition-quick';
+import type { NutritionDayMeal } from '@/api/nutrition-day';
 import { displayNutritionDate } from './day-format';
 import type { QuickController, QuickState } from './quick-controller';
-const shown = (v: number | null) => v === null ? 'sin dato' : new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 }).format(v);
-function Nutrients({ value }: { value: QuickNutrients }) {
-  return <AppText selectable>{`${shown(value.calories)} kcal · P ${shown(value.proteinG)} · C ${shown(value.carbsG)} · G ${shown(value.fatG)}`}</AppText>;
+import { MealSheet, MealSearch, mealShown as shown, mealSheetStyles as shared } from './meal-sheet';
+import { MealTiming } from './meal-timing';
+import { MealProjection } from './meal-projection';
+import { MealDateControl } from './meal-date-control';
+export function MealNutrients({ value }: { value: QuickNutrients }) {
+  return <View style={shared.totals}><AppText numeric variant="title1">{shown(value.calories)} <AppText muted>kcal</AppText></AppText><AppText numeric muted variant="footnote">{`P ${shown(value.proteinG)} · C ${shown(value.carbsG)} · G ${shown(value.fatG)}`}</AppText></View>;
 }
-export function QuickEditor({ controller, state, embedded = false, onBack }: { controller: QuickController; state: QuickState; embedded?: boolean; onBack?: () => void }) {
+export function QuickEditor({ controller, state, embedded = false, onBack, onUndo, onSaved, externalLocked = false }: { controller: QuickController; state: QuickState; embedded?: boolean; onBack?: () => void; onUndo?: (meal: NutritionDayMeal, date: string, key: string) => void; onSaved?: () => void; externalLocked?: boolean }) {
   const { colors } = useOwnlevelTheme();
-  if (!state.open || !state.date) return null;
+  const [search, setSearch] = useState('');
+  const [more, setMore] = useState(false);
+  const draft = state.inlineKey ? null : state.draft;
+  const locked = externalLocked || !!state.intent || state.phase !== 'idle' || !!state.inlineKey;
   const running = state.phase === 'pending' || state.phase === 'loading';
-  const locked = !!state.intent || state.phase !== 'idle';
+  // Preview only: debounce quantity edits, cancel stale work in the controller.
+  useEffect(() => {
+    if (!state.open || !draft || locked || state.preview || state.previewLoading || state.message) return;
+    const timer = setTimeout(() => void controller.requestPreview(), 250);
+    return () => clearTimeout(timer);
+  }, [controller, draft, locked, state.open, state.preview, state.previewLoading, state.message]);
+  const [wasOpen, setWasOpen] = useState(state.open);
+  if (wasOpen !== state.open) { setWasOpen(state.open); if (!state.open) { setSearch(''); setMore(false); } }
+  if (!state.open || !state.date) return null;
   const close = () => {
-    if (running) return;
+    if (running || state.inlineKey && state.previewLoading) return;
     if (!state.intent && controller.dirty()) Alert.alert('¿Descartar ajustes?', 'Estas cantidades todavía no se registraron.', [
       { text: 'Seguir revisando', style: 'cancel' }, { text: 'Descartar', style: 'destructive', onPress: () => controller.close() },
     ]); else controller.close();
   };
-  const section = (title: string, data: QuickSection | undefined) => <Surface>
-    <Heading level={2}>{title}</Heading>
-    {data?.status === 'unavailable' ? <AppText>No pudimos cargar estas opciones.</AppText>
-      : data?.status === 'ok' ? data.items.length ? data.items.map(option => <View key={option.source.id} style={styles.option}>
-        <AppText variant="label">{option.name}</AppText>
-        <Nutrients value={option} />
-        {option.useCount !== null ? <AppText muted>{`${option.useCount} veces · Última vez ${displayNutritionDate(option.lastUsedDate!)}`}</AppText> : null}
-        {option.items.length ? <AppText muted>{`${option.items.length} ingredientes · Se pueden ajustar para esta vez`}</AppText> : null}
-        <Button label={`Revisar ${option.name}`} onPress={() => controller.choose(option)} variant="secondary" />
-      </View>) : <AppText>{title === 'Guardadas' ? 'Todavía no tenés habituales activas.' : 'No hay sugeridas de los 60 días anteriores a hoy.'}</AppText>
-      : null}
-  </Surface>;
-  const body = <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.screen}>
-      <ScrollScreen safeAreaEdges={['top','left','right','bottom']} testID="quick-meal-editor">
-        <Heading level={2}>{state.draft?.option.source.kind === 'food' ? 'Agregar alimento' : 'Agregar rápido'}</Heading>
-        <AppText variant="label">{`Destino · ${displayNutritionDate(state.date)}`}</AppText>
-        {!state.draft ? <>
-          {state.optionsLoading ? <LoadingState label="Cargando opciones rápidas" /> : null}
-          {state.optionsError ? <AppText accessibilityRole="alert">No pudimos actualizar las opciones. Podés reintentar.</AppText> : null}
-          {section('Guardadas', state.options?.saved)}
-          {section('Sugeridas', state.options?.suggested)}
-          <Button disabled={state.optionsLoading} label="Actualizar opciones" onPress={() => void controller.loadOptions()} variant="secondary" />
-        </> : <>
-          <Heading level={2}>{state.draft.option.name}</Heading>
-          {state.draft.option.source.kind === 'food' ? <AppText muted>{`Porción base: ${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 3 }).format(state.draft.option.items[0].quantity)} ${state.draft.option.items[0].unit}. Usá la misma unidad.`}</AppText> : null}
-          {state.draft.option.templateType === 'composite' ? <AppText muted>Las cantidades se aplican sólo a esta comida. La habitual no se modifica.</AppText> : null}
-          {state.draft.option.items.map(item => <View style={styles.field} key={item.id}>
-            <AppText variant="label">{`${item.label} (${item.unit})`}</AppText>
-            <TextInput accessibilityLabel={`Cantidad de ${item.label}`} editable={!locked} keyboardType="decimal-pad"
-              value={state.draft!.quantities[item.id]} onChangeText={value => controller.change(item.id, value)}
-              style={[styles.input, { color: colors.text, borderColor: state.errors[item.id] ? colors.danger : colors.border }]} />
-            {state.errors[item.id] ? <AppText accessibilityRole="alert">{state.errors[item.id]}</AppText> : null}
-          </View>)}
-          {state.previousDraft?.option.items.length ? <Surface>
-            <AppText variant="label">Tus cantidades anteriores, para revisar</AppText>
-            {state.previousDraft.option.items.map(i => <AppText key={i.id}>{`${i.label}: ${state.previousDraft!.quantities[i.id]} ${i.unit}`}</AppText>)}
-          </Surface> : null}
-          {state.previewLoading ? <LoadingState label="Calculando vista previa" /> : null}
-          {state.preview ? <Surface testID="quick-preview">
-            <Heading level={2}>Se registrará</Heading>
-            {state.preview.snapshot.description ? <AppText selectable>{state.preview.snapshot.description}</AppText> : null}
-            <Nutrients value={state.preview.snapshot} />
-          </Surface> : null}
-          {state.phase === 'idle' ? <>
-            <Button disabled={state.previewLoading} label="Actualizar vista previa" onPress={() => void controller.requestPreview()} variant="secondary" />
-            <Button disabled={!state.preview || state.previewLoading} label={state.draft.option.source.kind === 'food' ? 'Agregar al día' : 'Registrar comida'} onPress={() => void controller.save()} />
-            {state.draft.option.source.kind === 'suggestion' ? <Button disabled={!state.preview || state.previewLoading}
-              label="Guardar como habitual" onPress={() => void controller.save('saveSuggestion')} variant="secondary" /> : null}
-            <Button label="Elegir otra opción" onPress={() => {
-              if (controller.dirty()) Alert.alert('¿Descartar ajustes?', 'Podés volver a elegir otra opción.', [
-                { text: 'Cancelar', style: 'cancel' }, { text: 'Descartar', style: 'destructive', onPress: () => (onBack ?? (() => controller.back()))() },
-              ]); else (onBack ?? (() => controller.back()))();
-            }} variant="quiet" />
-          </> : null}
-        </>}
-        {state.message ? <AppText accessibilityRole="alert" selectable>{state.message}</AppText> : null}
-        {state.phase === 'conflict' ? <Surface>
-          {state.truth ? <><AppText variant="label">Versión actual del servidor</AppText><AppText>{state.truth.name}</AppText><Nutrients value={state.truth} />
-            <Button label="Revisar la versión actual" onPress={() => controller.reviewTruth()} variant="secondary" /></>
-            : <AppText>No hay una opción actual confirmada. Conservamos tu selección y cantidades.</AppText>}
-          <Button disabled={state.optionsLoading} label="Actualizar fuente" onPress={() => void controller.loadOptions()} variant="secondary" />
-          <Button label="Elegir otra opción" onPress={() => (onBack ?? (() => controller.back()))()} variant="quiet" />
-        </Surface> : null}
-        {['uncertain','confirmed','blocked'].includes(state.phase) ? <Button label={state.intent?.receipt ? 'Actualizar datos confirmados' : 'Comprobar intento guardado'} onPress={() => void controller.recover()} /> : null}
-        {running ? <Button label="Procesando…" disabled onPress={() => {}} /> : null}
-        <Button disabled={running} label={state.intent ? 'Volver al día · conservar intento' : 'Cancelar'} onPress={close} variant="quiet" />
-      </ScrollScreen>
-    </KeyboardAvoidingView>;
-  return embedded ? body : <Modal animationType="slide" presentationStyle="fullScreen" visible onRequestClose={close}>{body}</Modal>;
+  const back = () => {
+    const action = onBack ?? (() => controller.back());
+    if (controller.dirty()) Alert.alert('¿Descartar ajustes?', 'Podés volver a elegir otra opción.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Descartar', style: 'destructive', onPress: action }]);
+    else action();
+  };
+  const section = (title: string, data?: QuickSection) => {
+    const matches = data?.status === 'ok' ? data.items.filter(o => `${o.name} ${o.description ?? ''}`.toLocaleLowerCase('es-AR').includes(search.trim().toLocaleLowerCase('es-AR'))) : [];
+    return <View style={{ gap: 4 }}><View style={shared.totals}><Heading level={2}>{title}</Heading>{title === 'Guardadas' && onSaved ? <Button label="Ver todas" variant="quiet" onPress={onSaved} disabled={locked} /> : null}</View>
+      {data?.status === 'unavailable' ? <AppText accessibilityRole="alert">No pudimos cargar estas opciones.</AppText> : data?.status === 'ok' ? matches.length ? matches.slice(0, title === 'Para vos' && !search.trim() && !more ? 3 : undefined).map(option => {
+        const key = `${option.source.kind}:${option.source.id}`, added = state.added?.[key], pending = state.inlineKey === key;
+        return <View key={key} style={[shared.row, { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
+          <View style={shared.text}><Pressable accessibilityRole="button" accessibilityLabel={`Revisar ${option.name}`} disabled={locked} onPress={() => controller.choose(option)} style={{ minHeight: 44, justifyContent: 'center' }}>
+            <AppText variant="headline">{option.name}</AppText>
+            {!added ? <AppText muted numeric variant="caption">{`P ${shown(option.proteinG)} · C ${shown(option.carbsG)} · G ${shown(option.fatG)}${option.items.length ? ` · ${option.items.length} ingredientes` : ''}`}</AppText> : null}
+          </Pressable>
+          {added ? <Pressable accessibilityRole="button" accessibilityLabel={`Deshacer ${option.name}`} disabled={locked || !onUndo} onPress={() => onUndo?.(added.meal, added.date, key)} style={{ minHeight: 44, justifyContent: 'center' }}><AppText variant="caption" style={{ color: colors.primary }}>Agregado · Deshacer</AppText></Pressable> : null}</View>
+          <View style={{ alignItems: 'flex-end', gap: 2 }}><AppText numeric variant="subheadline">{shown(option.calories)} kcal</AppText>{option.useCount !== null ? <AppText muted variant="caption">{option.useCount} veces</AppText> : null}</View>
+          <Pressable accessibilityRole="button" accessibilityLabel={added ? `${option.name} agregado` : `Agregar ${option.name}`} accessibilityState={{ disabled: locked || !!added, busy: pending }} disabled={locked || !!added} onPress={() => { void controller.addInline(option); }} style={[styles.add, { backgroundColor: added ? colors.primary : colors.brandSubtle }]}>
+            {pending ? <ActivityIndicator color={colors.primary} /> : <AppIcon name={added ? 'checkmark' : 'plus'} size={20} color={added ? colors.onPrimary : colors.primary} />}
+          </Pressable>
+        </View>;
+      }) : <AppText muted>{search.trim() ? 'No encontramos comidas con esa búsqueda.' : title === 'Guardadas' ? 'Todavía no tenés comidas guardadas.' : 'Tus comidas frecuentes van a aparecer acá.'}</AppText> : null}
+      {title === 'Para vos' && !search.trim() && matches.length > 3 ? <Button label={more ? 'Ver menos' : 'Ver más sugerencias'} variant="quiet" onPress={() => setMore(!more)} /> : null}
+    </View>;
+  };
+  return <MealSheet title={draft?.option.name ?? 'Rápido'} subtitle={draft ? draft.option.source.kind === 'food' ? `Alimento · ${shown(draft.option.items[0].quantity, 3)} ${draft.option.items[0].unit} = ${shown(draft.option.calories)} kcal` : draft.option.templateType === 'composite' ? `Guardada · ${draft.option.items.length} ingredientes` : 'Ajustar comida' : undefined}
+    onClose={draft && !state.intent ? back : close} back={!!draft && !state.intent} running={running || !!state.inlineKey} embedded={embedded} testID="quick-meal-editor"
+    right={<MealDateControl date={state.date} disabled={locked} onChange={date => controller.changeDate(date)} />}>
+    {!draft ? <>
+      <MealSearch label="Buscar en tus comidas" value={search} onChange={setSearch} />
+      {state.optionsLoading ? <LoadingState label="Cargando opciones rápidas" /> : null}
+      {state.optionsError ? <AppText accessibilityRole="alert">No pudimos actualizar las opciones.</AppText> : null}
+      {section('Para vos', state.options?.suggested)}{section('Guardadas', state.options?.saved)}
+      {(state.optionsError || state.options?.saved.status === 'unavailable' || state.options?.suggested.status === 'unavailable') ? <Button label="Reintentar opciones" onPress={() => void controller.loadOptions()} variant="quiet" /> : null}
+    </> : <>
+      {draft.option.items.map(item => {
+        const value = draft.quantities[item.id], numeric = Number(value?.replace(',', '.')), step = draft.option.source.kind === 'food' ? item.quantity : ['g', 'ml'].includes(item.unit.toLowerCase()) ? 10 : Math.min(item.quantity, 1);
+        const change = (delta: number) => { if (!locked && Number.isFinite(numeric)) { triggerHaptic('stepperChange'); controller.change(item.id, String(Math.max(draft.option.source.kind === 'food' ? 0.001 : 0.01, Math.round((numeric + delta * step) * 1000) / 1000)).replace('.', ',')); } };
+        return <View key={item.id} style={[shared.row, draft.option.source.kind === 'food' && styles.foodQuantity]}>
+          {draft.option.source.kind !== 'food' ? <View style={shared.text}><AppText variant="headline">{item.label}</AppText><AppText muted numeric variant="caption">{shown(state.preview?.items.find(i => i.id === item.id)?.calories)} kcal</AppText></View> : null}
+          <View style={[styles.stepper, { backgroundColor: colors.surface }]}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Restar ${item.label}`} disabled={locked || numeric <= step} onPress={() => change(-1)} style={styles.step}><AppText muted>−</AppText></Pressable>
+            <View style={{ alignItems: 'center', flexShrink: 1 }}><TextInput accessibilityLabel={`Cantidad de ${item.label}`} editable={!locked} keyboardType="decimal-pad" selectTextOnFocus value={value} onChangeText={v => controller.change(item.id, v)} style={[styles.quantity, draft.option.source.kind === 'food' && shared.number, { color: colors.text }]} /><AppText muted variant="caption">{item.unit}</AppText></View>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Sumar ${item.label}`} disabled={locked} onPress={() => change(1)} style={styles.step}><AppText>+</AppText></Pressable>
+          </View>
+          {state.errors[item.id] ? <AppText accessibilityRole="alert">{state.errors[item.id]}</AppText> : null}
+        </View>;
+      })}
+      {draft.option.source.kind === 'food' ? <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8 }}>{[1, 2, 3, 4].map(m => Math.round(draft.option.items[0].quantity * m * 1000) / 1000).map(n => <Pressable key={n} accessibilityRole="button" accessibilityLabel={`Cantidad ${n}`} disabled={locked} onPress={() => controller.change(draft.option.items[0].id, String(n))} style={[styles.chip, { backgroundColor: Number(draft.quantities[draft.option.items[0].id]?.replace(',', '.')) === n ? colors.brandSubtle : colors.surface }]}><AppText numeric>{n}</AppText></Pressable>)}</View> : null}
+      {state.previousDraft?.option.items.length ? <Surface><AppText variant="label">Tus cantidades anteriores, para revisar</AppText>{state.previousDraft.option.items.map(i => <AppText key={i.id}>{`${i.label}: ${state.previousDraft!.quantities[i.id]} ${i.unit}`}</AppText>)}</Surface> : null}
+      {state.previewLoading ? <LoadingState label="Calculando vista previa" /> : null}
+      {state.preview ? <View style={{ gap: 20 }} testID="quick-preview"><MealNutrients value={state.preview.snapshot} /><MealProjection date={state.date} nutrients={state.preview.snapshot} /></View> : null}
+      <MealTiming date={state.date} value={draft} disabled={locked} onChange={(label, time) => controller.timing(label, time)} />
+      <View style={shared.footer}>
+        <Button disabled={locked || !state.preview || state.previewLoading} label={`Agregar al día${state.preview ? ` · ${shown(state.preview.snapshot.calories)} kcal` : ''}`} onPress={() => void controller.save()} />
+        {draft.option.source.kind === 'suggestion' ? <Button disabled={locked || !state.preview || state.previewLoading} label="Guardar como habitual" onPress={() => void controller.save('saveSuggestion')} variant="quiet" /> : null}
+      </View>
+    </>}
+    {state.message && state.message !== 'Comida registrada.' ? <AppText accessibilityRole="alert" selectable>{state.message}</AppText> : null}
+    {state.phase === 'idle' && !state.preview && !state.previewLoading && state.message && state.draft ? <Button label="Reintentar vista previa" onPress={() => void controller.requestPreview()} variant="quiet" /> : null}
+    {state.phase === 'conflict' ? <Surface>{state.truth ? <><AppText variant="headline">La opción cambió</AppText><AppText>{state.truth.name}</AppText><MealNutrients value={state.truth} /><Button label="Revisar la versión actual" onPress={() => { controller.reviewTruth(); void controller.requestPreview(); }} /></> : <AppText>No hay una opción actual confirmada. Conservamos tus cantidades.</AppText>}<Button label="Actualizar fuente" disabled={state.optionsLoading} onPress={() => void controller.loadOptions()} variant="quiet" /><Button label="Elegir otra opción" onPress={() => { controller.back(); }} variant="quiet" /></Surface> : null}
+    {['uncertain', 'confirmed', 'blocked'].includes(state.phase) ? <Button label={state.intent?.receipt ? 'Actualizar datos confirmados' : 'Comprobar intento guardado'} onPress={() => void controller.recover()} /> : null}
+    {state.intent ? <Button label="Volver al día · conservar intento" disabled={running} onPress={close} variant="quiet" /> : null}
+    {!draft && !state.intent ? <AppText muted variant="caption">Destino · {displayNutritionDate(state.date)}</AppText> : null}
+  </MealSheet>;
 }
-const styles = StyleSheet.create({ screen: { flex: 1 }, option: { gap: spacing.sm, paddingVertical: spacing.sm }, field: { gap: spacing.xs },
-  input: { minHeight: 48, borderWidth: 1, borderRadius: 12, padding: spacing.md, fontSize: 17 } });
+const styles = StyleSheet.create({ add: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' }, stepper: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, paddingVertical: 4, flexShrink: 1 }, step: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, quantity: { fontSize: 17, fontWeight: '600', textAlign: 'center', minWidth: 50, maxWidth: 180, fontVariant: ['tabular-nums'] }, foodQuantity: { justifyContent: 'center', flexWrap: 'wrap' }, chip: { minWidth: 50, minHeight: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' } });
