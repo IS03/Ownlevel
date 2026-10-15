@@ -36,6 +36,8 @@ export class MobileApiConflictError extends Error {
       | "IDEMPOTENCY_KEY_REUSED"
       | "ACTIVE_SESSION_EXISTS"
       | "ROUTINE_LIST_CHANGED"
+      | "PROGRESS_VIEW_CHANGED"
+      | "PROGRESS_VIEW_LIST_CHANGED"
       | "ROUTINE_CHANGED"
       | "EXERCISE_CHANGED"
       | "ROUTINE_TEMPLATE_CHANGED"

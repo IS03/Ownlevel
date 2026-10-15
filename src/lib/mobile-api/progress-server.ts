@@ -23,6 +23,8 @@ import { loadTrainingContext, trainingInPeriodDto, trainingDto, trainingExercise
 import { readNutritionTiming } from "./progress-nutrition-timing";
 import { bodyReport, comparisonDto, webAuth } from "./progress-sources";
 import { buildMobileProgressExplore } from "./progress-explore";
+import { buildMobileProgressViews } from "./progress-views-server";
+import { parseProgressViewsRead } from "./progress-views-contract";
 import { exploreOptions, parseExploreMeasure, parseProgressExplore, type ExploreBreakdown, type ExploreDays } from "./progress-explore-contract";
 
 type Context = MobileSupabaseAuthenticatedContext;
@@ -384,3 +386,10 @@ export const progressExploreResponse = (request: Request) => progressReadRespons
   const { range, period } = resolveMobileProgressPeriod(query, today);
   return buildMobileProgressExplore(context, { measure, breakdown: breakdown as ExploreBreakdown | null, days: days as ExploreDays | null, series: series === "1" }, range, period, !!query.compare, today);
 }, parseProgressExplore);
+
+/** Mis vistas (stage 2): every saved view with its result in the shared period and comparison. */
+export const progressViewsResponse = (request: Request) => progressReadResponse(request, "views", (context, params, today) => {
+  const query = progressQueryFromParams(params);
+  const { range, period } = resolveMobileProgressPeriod(query, today);
+  return buildMobileProgressViews(context, range, period, !!query.compare, today);
+}, parseProgressViewsRead);
