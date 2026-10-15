@@ -23,7 +23,10 @@ import type { NutritionDayMeal } from '../../../../src/lib/mobile-api/nutrition-
 import { useMealController } from './use-meal-controller';
 import { useDayWriteController } from './use-day-write-controller';
 import { DayWriteEditor } from './day-write-editor';
-import type { MobileNutritionDayResponse } from '@/api/nutrition-day';
+import { useMetricEntry } from './use-metric-entry';
+import { MetricEntrySheet } from './metric-entry-sheet';
+import { MetricSavedNotice } from './metric-notice';
+import type { MobileNutritionDayResponse, NutritionDayMetric } from '@/api/nutrition-day';
 import { MealEditor } from './meal-editor';
 import { useQuickController } from './use-quick-controller';
 import { useFoodController } from './use-food-controller';
@@ -32,10 +35,11 @@ import { foodQuickOption } from '@/api/nutrition-food';
 import { QuickEditor } from './quick-editor';
 import { useNutritionHomeEntry, type AddEntry } from './home-entry';
 
-function NutritionDayView({ date, today, onSelect, onToday, onServerToday, onAdd, addChoices, onManageFoods, onManageSaved, onConfigure, onReport, onEdit, onActivity, onContext }: {
+function NutritionDayView({ date, today, onSelect, onToday, onServerToday, onAdd, addChoices, onManageFoods, onManageSaved, onConfigure, onReport, onEdit, onActivity, onContext, onMetric }: {
   date: string; today: string; onSelect: (date: string) => void; onToday: () => void; onServerToday: (date: string) => void;
   onAdd?: () => void; onEdit?: (meal: NutritionDayMeal) => void;
   onConfigure?: () => void; onReport?: () => void; addChoices?: ReactNode; onManageFoods?: () => void; onManageSaved?: () => void;
+  onMetric?: (data: MobileNutritionDayResponse, metric: NutritionDayMetric) => void;
   onActivity?: (data: MobileNutritionDayResponse) => void; onContext?: (data: MobileNutritionDayResponse) => void;
 }) {
   const { client } = useMobileApi();
@@ -77,7 +81,7 @@ function NutritionDayView({ date, today, onSelect, onToday, onServerToday, onAdd
           <Button label="Reintentar" onPress={runRefresh} variant="secondary" />
         </View> : null}
         <NutritionDayContent data={current.data} onAdd={onAdd} addChoices={addChoices} onEdit={state.status === 'ready' ? onEdit : undefined}
-          onActivity={state.status === 'ready' ? onActivity : undefined} onContext={state.status === 'ready' ? onContext : undefined} />
+          onMetric={state.status === 'ready' ? onMetric : undefined} onActivity={state.status === 'ready' ? onActivity : undefined} onContext={state.status === 'ready' ? onContext : undefined} />
       </>}
     {!current ? <><NutritionGlassButton icon="plus" label="Agregar comida" wide onPress={onAdd} />{addChoices}</> : null}
     {selector ? <NutritionMonthSheet date={date} today={today} onReport={onReport} onClose={() => setSelector(false)} onSelect={onSelect} /> : null}
@@ -115,6 +119,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
     return () => subscription.remove();
   }, [updateToday]);
   const date = selected ?? today;
+  const metricEntry = useMetricEntry(writes?.controller, date);
   const editable = meals?.state.phase === 'idle' && !meals.state.intent && writes?.state.phase === 'idle' && !writes.state.intent
     && quick?.state.phase === 'idle' && !quick.state.intent && foods?.state.phase === 'idle' && !foods.state.intent && saved?.state.phase==='idle' && !saved.state.intent && config?.state.phase==='idle' && !config.state.intent;
   const showToday = useCallback(() => { updateToday(); setSelected(null); }, [setSelected, updateToday]);
@@ -139,13 +144,14 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
         <Button label="Cancelar" variant="quiet" onPress={() => setAdding(false)} />
       </View> : undefined}
       onEdit={editable ? meal => meals.controller.open(date, meal) : undefined}
+      onMetric={editable ? metricEntry.open : undefined}
       onActivity={editable ? data => writes.controller.open('metrics', data) : undefined}
       onContext={editable ? data => writes.controller.open('context', data) : undefined} />
     {reportOpen ? <NutritionReports onClose={() => setReportOpen(false)} onDate={setSelected} /> : null}
     {meals?.state.message && !meals.state.editor ? <View style={styles.header}><AppText accessibilityRole="alert">{meals.state.message}</AppText>
       {meals.state.intent ? <Button label="Revisar intento guardado" onPress={() => meals.controller.showRecovery()} /> : null}
       {meals.state.phase === 'blocked' ? <Button label="Comprobar almacenamiento" onPress={() => void meals.controller.recover()} /> : null}</View> : null}
-    {writes?.state.message && !writes.state.draft ? <View style={styles.header}><AppText accessibilityRole="alert">{writes.state.message}</AppText>
+    {writes?.state.message && !writes.state.draft && !metricEntry.notice && !(metricEntry.feedbackHandled && writes.state.message === 'Cambios guardados.') ? <View style={styles.header}><AppText accessibilityRole="alert">{writes.state.message}</AppText>
       {writes.state.intent ? <Button label="Revisar intento de actividad/contexto" onPress={() => writes.controller.showRecovery()} /> : null}
       {writes.state.phase === 'blocked' ? <Button label="Comprobar almacenamiento del día" onPress={() => void writes.controller.recover()} /> : null}</View> : null}
     {quick?.state.message && !quick.state.open ? <View style={styles.header}><AppText accessibilityRole="alert">{quick.state.message}</AppText>
@@ -159,7 +165,10 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
     {saved?<SavedEditor controller={saved.controller} state={saved.state}/>:null}
     {saved?.state.message&&!saved.state.open?<View style={styles.header}><AppText accessibilityRole="alert">{saved.state.message}</AppText>{saved.state.intent?<Button label="Revisar intento de guardadas" onPress={()=>saved.controller.showRecovery()}/>:null}{saved.state.phase==='blocked'?<Button label="Comprobar almacenamiento de guardadas" onPress={()=>void saved.controller.recover()}/>:null}</View>:null}
     {config?.state.message && !config.state.open ? <View style={styles.header}><AppText accessibilityRole="alert">{config.state.message}</AppText>{config.state.intent ? <Button label="Revisar intento de configuración" onPress={()=>config.controller.showRecovery()} /> : null}{config.state.phase==='blocked'?<Button label="Comprobar almacenamiento de configuración" onPress={()=>void config.controller.recover()}/>:null}</View>:null}
-    {writes ? <DayWriteEditor controller={writes.controller} state={writes.state} /> : null}
+    {writes && metricEntry.entry && writes.state.draft ? <MetricEntrySheet id={metricEntry.entry.id} controller={writes.controller} state={writes.state} onClose={metricEntry.close} /> : null}
+    {writes && !metricEntry.entry && !(metricEntry.undoing && writes.state.phase === 'pending') ? <DayWriteEditor controller={writes.controller} state={writes.state} /> : null}
+    {metricEntry.undoing && writes?.state.phase === 'pending' ? <MetricSavedNotice notice={{ date, message: 'Deshaciendo…', undo: null }} disabled pending onUndo={() => {}} onClose={() => {}} /> : null}
+    {metricEntry.notice ? <MetricSavedNotice notice={metricEntry.notice} disabled={!editable || !!writes?.state.draft} onUndo={metricEntry.undoNotice} onClose={metricEntry.dismissNotice} /> : null}
     {meals ? <MealEditor controller={meals.controller} state={meals.state} /> : null}
   </>;
 }

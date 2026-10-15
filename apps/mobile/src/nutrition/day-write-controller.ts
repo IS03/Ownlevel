@@ -6,15 +6,19 @@ import { DayWriteRepository, type StoredDayWrite } from './day-write-storage';
 export type DayWriteState = { phase:'loading'|'idle'|'pending'|'uncertain'|'confirmed'|'conflict'|'blocked';
   draft:DayWriteDraft|null; intent:StoredDayWrite|null; truth:MobileNutritionDayResponse|null; message:string|null; errors:Record<string,string> };
 export type DayWriteApi = { mutate:(intent:DayWriteIntent)=>Promise<MobileApiRequestResult<DayWriteResponse>>; read:(date:string)=>Promise<MobileApiReadResult<MobileNutritionDayResponse>> };
+export type DayWriteConfirmation = { intent: DayWriteIntent; baseline: MobileNutritionDayResponse; current: MobileNutritionDayResponse };
 export class DayWriteController {
   private state:DayWriteState={phase:'loading',draft:null,intent:null,truth:null,message:null,errors:{}};
+  private confirmations=new Set<(confirmation:DayWriteConfirmation)=>void>();
   private listeners=new Set<()=>void>(); private busy=false; private disposed=false;
   constructor(private api:DayWriteApi,private repository:DayWriteRepository,private invalidate:()=>void,
     private newKey=()=>`day:${Date.now()}:${Math.random().toString(36).slice(2)}`) {}
   getSnapshot=()=>this.state;
   subscribe=(f:()=>void)=>{this.listeners.add(f);return()=>{this.listeners.delete(f);};};
   private update(patch:Partial<DayWriteState>) { if(!this.disposed) {this.state={...this.state,...patch};this.listeners.forEach(f=>f());} }
-  dispose(){this.disposed=true;this.listeners.clear();}
+  /** Presentation observers run only after the existing receipt, reread and storage cleanup succeed. */
+  subscribeConfirmed=(listener:(confirmation:DayWriteConfirmation)=>void)=>{this.confirmations.add(listener);return()=>{this.confirmations.delete(listener);};};
+  dispose(){this.disposed=true;this.listeners.clear();this.confirmations.clear();}
   async initialize(){
     try{const intent=await this.repository.read();this.update({intent,phase:intent ? intent.receipt ? 'confirmed':'uncertain':'idle',
       draft:intent?.draft??null,message:intent ? 'Hay un intento guardado. Comprobalo explícitamente antes de enviar otro.':null});}
@@ -105,6 +109,10 @@ export class DayWriteController {
     }
     await this.repository.clear(stored.intent.idempotencyKey);
     this.update({phase:'idle',intent:null,draft:null,truth:null,errors:{},message:'Cambios guardados.'});
+    if(!this.disposed)this.confirmations.forEach(listener=>{
+      // Presentation feedback must never change the outcome of a completed write.
+      try{listener({intent:stored.intent,baseline:stored.draft.baseline,current:r.data});}catch{/* Non-critical observer. */}
+    });
   }
   private async readTruth(date:string){
     try{const r=await this.api.read(date);if(r.status==='ok'&&r.data.date===date)this.update({truth:r.data});}catch{/* Failed reads cannot authorize a new CAS. */}
