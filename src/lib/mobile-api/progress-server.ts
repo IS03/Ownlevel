@@ -1,36 +1,31 @@
 import "server-only";
 import { NextResponse } from "next/server";
-import { listBodyMeasurements } from "@/lib/body-measurements";
 import { getDailyMetricsReport } from "@/lib/daily-metrics/reports";
-import { listWeightHistory } from "@/lib/phase1/day-log";
-import { getMyProfile } from "@/lib/phase1/profile";
 import { todayInCordoba } from "@/lib/phase2/cordoba-date";
 import { NUTRITION_PROGRESS_METRICS, bucketProgressRange, getPreviousProgressPeriod, progressBucketForDays, progressRangeDays } from "@/lib/progress/analytics";
-import { bodyAvailableMetricDefinitions, buildBodyProgressReport, type BodyObservation, type BodyProgressReport } from "@/lib/progress/body";
-import { buildProgressComparison, type ProgressComparisonMetricResult, type ProgressComparisonReport } from "@/lib/progress/comparisons";
+import type { BodyObservation, BodyProgressReport } from "@/lib/progress/body";
+import { buildProgressComparison, type ProgressComparisonReport } from "@/lib/progress/comparisons";
 import { buildProgressHomeModel, type ProgressHomeRow, type ProgressHomeInsight } from "@/lib/progress/home";
 import { DEFAULT_NUTRITION_COMPARISON_METRICS, nutritionSamplesByMetric } from "@/lib/nutrition/reports";
 import { aggregateNutritionReport, buildNutritionReportDays, resolveNutritionReportRange, type NutritionReportDay, type NutritionReportRange } from "@/lib/nutrition/reports-core";
-import type { AuthenticatedRequestContext } from "@/lib/supabase/server";
-import type { RequestPerformanceContext } from "@/lib/request-performance";
 import { MobileApiNotFoundError, MobileApiUnauthorizedError, MobileApiValidationError, mobileBearerToken } from "./auth";
 import { mobileApiResponseHeaders } from "./http";
 import { NutritionReportDayChangedError, readMobileNutritionFacts } from "./nutrition-report-server";
 import {
   parseProgressNutritionTiming, PROGRESS_CUSTOM_MAX_DAYS, PROGRESS_DEFAULT_PRESET, habitWeekRange, parseProgressHabitWeek, parseProgressBody, parseProgressMetrics, parseProgressOverview, parseProgressQuery, parseProgressTraining, parseProgressTrainingExercise,
-  type ProgressHabitWeek, type BodyObservationDto, type ProgressBody, type ProgressBodyMetric, type ProgressComparison, type ProgressDestination,
+  type ProgressHabitWeek, type BodyObservationDto, type ProgressBody, type ProgressBodyMetric, type ProgressDestination,
   type ProgressMetricDefinition, type ProgressMetrics, type ProgressOverview, type ProgressOverviewSparks, type ProgressPeriod, type ProgressQuery, type ProgressSection,
   type ProgressNutritionTiming, type ProgressSparkPoint,
 } from "./progress-contract";
 import { isNutritionDate } from "./nutrition-day-contract";
 import { authenticateMobileAccessToken, type MobileSupabaseAuthenticatedContext } from "./supabase";
 import { loadTrainingContext, trainingInPeriodDto, trainingDto, trainingExerciseDto, trainingSummaryDto } from "./progress-training";
-
 import { readNutritionTiming } from "./progress-nutrition-timing";
+import { bodyReport, comparisonDto, webAuth } from "./progress-sources";
+import { buildMobileProgressExplore } from "./progress-explore";
+import { exploreOptions, parseExploreMeasure, parseProgressExplore, type ExploreBreakdown, type ExploreDays } from "./progress-explore-contract";
 
 type Context = MobileSupabaseAuthenticatedContext;
-const webAuth = (context: Context, requestPerformance?: RequestPerformanceContext): AuthenticatedRequestContext =>
-  ({ supabase: context.supabase as AuthenticatedRequestContext["supabase"], userId: context.userId, requestPerformance });
 
 /** An explicit comparison range (EXPAND). Absent = the previous equivalent period, exactly as before. */
 export type MobileProgressQuery = ProgressQuery & { compare?: { start: string; end: string } };
@@ -69,16 +64,7 @@ export function resolveMobileProgressPeriod(query: MobileProgressQuery, today: s
   } };
 }
 
-export function comparisonDto(result: ProgressComparisonMetricResult | undefined): ProgressComparison {
-  if (!result) return { status: "insufficient_data", reason: "current_period_empty", current: null, previous: null, deltaAbsolute: null, deltaPercent: null, change: "insufficient_data" };
-  const comparable = result.eligibility.status === "comparable";
-  return {
-    status: result.eligibility.status, reason: result.eligibility.reason, current: result.valueA, previous: result.valueB,
-    deltaAbsolute: comparable ? result.deltaAbsolute : null,
-    deltaPercent: comparable && result.valueB !== null && result.valueB !== 0 ? result.deltaPercent : null,
-    change: result.change,
-  };
-}
+export { comparisonDto };
 
 /** Web hrefs → Mobile destinations (Progress Home is shared with Web; only the routes differ). */
 function destination(href: string): ProgressDestination | null {
@@ -103,17 +89,6 @@ async function isolated<T>(task: () => Promise<T>, label: string): Promise<Progr
     console.warn(`[mobile.progress] ${label} unavailable`);
     return { status: "unavailable" };
   }
-}
-
-async function bodyReport(context: Context, range: NutritionReportRange, period: ProgressPeriod) {
-  const auth = webAuth(context);
-  const [profile, weightHistory, measurements] = await Promise.all([getMyProfile(auth), listWeightHistory(1000, auth), listBodyMeasurements(1000, auth)]);
-  const currentWeightKg = profile?.current_weight_kg ?? null;
-  return {
-    report: buildBodyProgressReport({ weightHistory, currentWeightKg, measurements, period: range,
-      referencePeriod: { start: period.previousStart, end: period.previousEnd } }),
-    available: new Set(bodyAvailableMetricDefinitions({ weightHistory, currentWeightKg, measurements }).map(metric => metric.key)),
-  };
 }
 
 async function nutritionReport(context: Context, range: NutritionReportRange, period: ProgressPeriod, today: string) {
@@ -393,3 +368,19 @@ export const progressNutritionTimingResponse = (request: Request) => progressRea
   if (after !== today) throw new NutritionReportDayChangedError(after);
   return { today, period, current, reference };
 }, parseProgressNutritionTiming);
+
+/** Explorar (stage 2): measure × optional breakdown × optional day filter, inside the chosen period. Invalid combinations are 400. */
+export const progressExploreResponse = (request: Request) => progressReadResponse(request, "explore", (context, params, today) => {
+  const query = progressQueryFromParams(params, ["measure", "breakdown", "days", "series"]);
+  const key = params.get("measure");
+  if (!key) throw new MobileApiValidationError("Elegí una medida.");
+  const measure = parseExploreMeasure(key);
+  if (!measure) throw new MobileApiValidationError("Medida no válida.");
+  const options = exploreOptions(measure), breakdown = params.get("breakdown"), days = params.get("days"), series = params.get("series");
+  if (breakdown !== null && !(options.breakdowns as readonly string[]).includes(breakdown)) throw new MobileApiValidationError("Esta medida no se puede desglosar así.");
+  if (days !== null && !(options.days as readonly string[]).includes(days)) throw new MobileApiValidationError("Esta medida no admite ese filtro de días.");
+  if (series !== null && series !== "1") throw new MobileApiValidationError("Parámetro no válido.");
+  if (series === "1" && breakdown === "weekday") throw new MobileApiValidationError("El desglose por día de la semana no se muestra en el tiempo.");
+  const { range, period } = resolveMobileProgressPeriod(query, today);
+  return buildMobileProgressExplore(context, { measure, breakdown: breakdown as ExploreBreakdown | null, days: days as ExploreDays | null, series: series === "1" }, range, period, !!query.compare, today);
+}, parseProgressExplore);

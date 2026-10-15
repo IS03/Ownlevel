@@ -502,3 +502,68 @@ describe('Progress nutrition timing read', () => {
     expect(other.current).toMatchObject({ meals: 0, mealsWithTime: 0, kcal: 0, proteinG: 0 });
   });
 });
+
+describe('Progress explore read (stage 2, step 1)', () => {
+  const get = async (q: string) => (await import('@/app/api/mobile/v1/progress/explore/route')).GET(request(`progress/explore?period=custom&from=${d(-4)}&to=${TODAY}&${q}`));
+  const read = async (q: string) => json(await get(q), (await import('./progress-explore-contract')).parseProgressExplore);
+  const ex = (id: string, sessionId: string, muscle: string, name = id) => ({ id: `${sessionId}-${id}`, exercise_id: id, workout_session_id: sessionId, nombre_snapshot: name, grupo_muscular_snapshot: muscle, muscle_group_label_snapshot: null, weight_mode_snapshot: 'Peso total', is_completed: true });
+  const sets = (exerciseRow: string, n: number) => Array.from({ length: n }, (_, i) => ({ id: `${exerciseRow}-s${i}`, workout_session_exercise_id: exerciseRow, set_number: i + 1, is_completed: true, actual_reps: 10, actual_weight_kg: 50 }));
+  // 1 oct (work): pecho 3 + piernas 2 · 3 oct (off): pecho 4 · 5 oct (work): piernas 5. 4 oct is a work day without training (a real 0).
+  function training() {
+    const sessions = [[d(-4), 'r1', 'PUSH'], [d(-2), 'r1', 'PUSH'], [d(0), null, null]].map(([date, routine, name], i) => ({ id: `ses${i}`, user_id: 'owner', day_log_id: date, status: 'completed',
+      started_at: `${date}T10:00:00Z`, ended_at: `${date}T11:00:00Z`, routine_id: routine, routine_name_snapshot: name, session_name: null, energy_level: null, pain_level: null, performance_level: null }));
+    const exercises = [ex('chest', 'ses0', 'pecho'), ex('legs', 'ses0', 'piernas'), ex('chest', 'ses1', 'pecho'), ex('legs', 'ses2', 'piernas')];
+    const allSets = [...sets('ses0-chest', 3), ...sets('ses0-legs', 2), ...sets('ses1-chest', 4), ...sets('ses2-legs', 5)];
+    vi.mocked(loadCompletedTrainingData).mockResolvedValue({ sessions, sessionExercises: exercises, sets: allSets, dateByDayLog: new Map([d(-4), d(-2), d(0)].map(x => [x, x])) } as never);
+    dayLogs = [log(d(-4), { work_effective_snapshot: true }), log(d(-2), { work_effective_snapshot: false }), log(d(-1), { work_effective_snapshot: true }), log(d(0), { work_effective_snapshot: true })];
+  }
+  it('training: a sum where 0 is real, filtered to work days, broken down by muscle and in time', async () => {
+    training();
+    const e = await read('measure=training.sets&breakdown=muscle&days=work&series=1');
+    expect(e.measure).toMatchObject({ key: 'training.sets', unit: 'series', aggregation: 'sum', derived: false });
+    expect(e.current.value).toBe(10); // 3 + 2 + 5; the off day (3 oct) is out
+    expect(e.current.coverage).toEqual({ days: 2, eligible: 3 }); // work days: 1, 4 and 5 oct (2 oct has no day log: in neither group)
+    expect(e.current.groups.map(g => [g.key, g.value])).toEqual([['piernas', 7], ['pecho', 3]]);
+    expect(e.current.series!.map(b => b.value)).toEqual([5, null, null, 0, 5]); // 4 oct = worked, did not train = 0
+    expect(e.reference).toBeNull();
+    const w = await read('measure=training.sessions&breakdown=weekday');
+    expect(w.current.groups.map(g => g.value)).toEqual([1, null, null, 1, 0, 1, 0]); // Mon 5, Thu 1 and Sat 3 trained; Fri 2 and Sun 4 are real zeros; Tue/Wed are not in the period
+  });
+  it('nutrition: average per complete day; by moment a missing moment is 0 that day; unlabeled meals counted apart; today never counts', async () => {
+    training();
+    for (const l of dayLogs) l.total_protein_g = l.log_date === d(-4) ? 100 : 140;
+    const mealsFixture = [['m1', d(-4), 'breakfast', 40], ['m2', d(-4), 'dinner', 60], ['m3', d(-2), 'lunch', 120], ['m4', d(-2), null, 20], ['m5', d(0), 'dinner', 999]];
+    const base = supabase();
+    vi.mocked(authenticateMobileAccessToken).mockResolvedValue({ userId: 'owner', supabase: { ...base, from: (table: string) => table !== 'meal_entries' ? base.from(table) : (() => {
+      const b = { select: () => b, eq: () => b, is: () => b, order: () => b, gte: () => b, lte: () => b,
+        range: (from: number) => Promise.resolve({ data: from ? [] : mealsFixture.map(([id, date, label, p]) => ({ id, user_id: 'owner', consumed_at: null, raw_input: null, entry_kind: 'meal', deleted_at: null, meal_label: label,
+          final_calories: 500, final_protein_g: p, final_carbs_g: null, final_fat_g: null, day_logs: { user_id: 'owner', log_date: date } })), error: null }) };
+      return b; })() } } as never);
+    const e = await read('measure=nutrition.protein&breakdown=meal_moment&days=training');
+    expect(e.measure).toMatchObject({ unit: 'g', aggregation: 'average' });
+    expect(e.current.coverage).toEqual({ days: 2, eligible: 2 }); // training days 1 and 3 oct; 5 oct (today) never counts
+    expect(e.current.value).toBe(120); // (100 + 140) / 2
+    expect(Object.fromEntries(e.current.groups.map(g => [g.key, g.value]))).toEqual({ breakfast: 20, lunch: 60, snack: 0, dinner: 30, extra: 0 });
+    expect(e.current.unassigned).toBe(1);
+  });
+  it('metrics: a recorded 0 counts and a missing day does not; comparison reads the chosen range', async () => {
+    values = [{ metric_id: ids.steps, metric_date: d(-4), value: 0 }, { metric_id: ids.steps, metric_date: d(-3), value: 8000 }, { metric_id: ids.steps, metric_date: d(0), value: 9999 },
+      { metric_id: ids.steps, metric_date: d(-10), value: 5000 }];
+    const e = await read(`measure=metric.${ids.steps}&compareFrom=${d(-11)}&compareTo=${d(-5)}`);
+    expect(e.measure).toMatchObject({ label: 'Pasos', unit: 'pasos', valueType: 'integer', aggregation: 'average' });
+    expect(e.current).toMatchObject({ value: 4000, coverage: { days: 2, eligible: 4 } });
+    expect(e.reference).toMatchObject({ value: 5000, coverage: { days: 1, eligible: 7 } });
+  });
+  it('body: last record and first-to-last change, never a breakdown', async () => {
+    vi.mocked(listWeightHistory).mockResolvedValue([{ id: 'w1', log_date: d(-4), weight_kg: 82 }, { id: 'w2', log_date: d(-1), weight_kg: 80.5 }]);
+    const e = await read('measure=body.weight');
+    expect(e.current).toMatchObject({ value: 80.5, change: -1.5, groups: [], unassigned: 0 });
+    expect((await get('measure=body.weight&breakdown=weekday')).status).toBe(400);
+  });
+  it('rejects unknown measures and combinations the measure does not admit', async () => {
+    for (const q of ['', 'measure=training.volume', 'measure=metric.not-a-uuid', 'measure=training.minutes&breakdown=muscle', 'measure=training.sets&days=training',
+      'measure=nutrition.kcal&breakdown=weekday&series=1', 'measure=nutrition.kcal&series=2', 'measure=nutrition.kcal&breakdown=routine', 'measure=training.sets&measure=training.sets'])
+      expect((await get(q)).status).toBe(400);
+    expect((await get(`measure=metric.${ids.archived.replace('5', '9')}`)).status).toBe(400);
+  });
+});
