@@ -25,7 +25,7 @@ function Answer({ data }: { data: InfluenceReading }) {
     {r.status === 'ok' ? <View style={styles.section}>
       <AppText variant="headline" testID="influence-answer-text">{answerText(data)}</AppText>
       {data.definition.outcome.startsWith('training.') ? <AppText muted variant="footnote">sobre días que entrenaste</AppText> : null}
-      <AppText muted numeric>{valueText(Math.abs(r.difference), data.measure.outcome)} {r.difference < 0 ? 'menos' : r.difference > 0 ? 'más' : 'de diferencia'}{r.differencePercent !== null ? ` · ${valueText(Math.abs(r.differencePercent), { ...data.measure.outcome, unit: '%', valueType: 'decimal' })}` : ''}</AppText>
+      <AppText muted numeric>{valueText(Math.abs(r.difference), data.measure.outcome)} {r.difference < 0 ? 'menos' : r.difference > 0 ? 'más' : 'de diferencia'}{r.differencePercent !== null ? ` · ${`${Math.round(Math.abs(r.differencePercent))} %`}` : ''}</AppText>
       <View style={styles.section} testID="influence-bars">{[r.high, r.low].map((group, i) => {
         const text = `${valueText(group.average, data.measure.outcome)} · ${group.days.length} días`;
         return <View key={i} accessible accessibilityLabel={`${labels[i]}: ${text}`} style={{ gap: spacing.xs }}>
@@ -58,7 +58,8 @@ function Reading({ definition, questionKey }: { definition: InfluenceDefinition;
   return <ProgressScroll title={title} multilineTitle compactTitle="Qué influye" testID="influence-answer-screen">
     {state.status === 'loading' ? <SkeletonBlock height={240} /> : data ? <>
       {state.status !== 'ready' ? <InlineUnavailable message="No se pudo actualizar. Mostramos la última lectura confirmada." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
-      <AppText muted>{data.measure.split.label} {LAG_LABELS[definition.lag]} · {data.measure.outcome.label} del día</AppText>
+      <AppText muted>{definition.split === 'day.training' ? 'Días con y sin entrenamiento' : definition.split === 'day.work' ? 'Días laborales y no laborales'
+        : `${data.measure.split.label} ${LAG_LABELS[definition.lag]}`}{definition.split.startsWith('day.') && definition.lag ? (definition.lag === 1 ? ', el día siguiente' : ', 2 días después') : ''} · {data.measure.outcome.label.toLocaleLowerCase('es-AR')} del día</AppText>
       <Answer data={data} />
     </> : <UnavailableState title="No pudimos cargar la respuesta" description="Revisá la conexión e intentá nuevamente." action={<Button label="Reintentar" onPress={() => void refresh()} />} />}
   </ProgressScroll>;
