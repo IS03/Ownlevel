@@ -95,6 +95,7 @@ function Highlights({ data, open }: { data: ProgressOverview; open: (d: Progress
   const perf = compareOn && data.training.status === 'ok' && data.training.data.performance.comparable > 0 ? data.training.data.performance : null;
   const rows = [
     ...findings.map(f => ({ key: f.id, icon: (f.domain === 'training' ? 'trophy' : 'progress') as AppIconName, title: f.label, detail: f.description, to: f.destination })),
+    ...(!compareOn && data.training.status === 'ok' && data.inPeriod && data.inPeriod.improved > 0 ? [{ key: 'in-period', icon: 'progress' as AppIconName, title: `${data.inPeriod.improved} ${data.inPeriod.improved === 1 ? 'ejercicio mejoró' : 'ejercicios mejoraron'}`, detail: 'Entre su primera y su última sesión del período', to: { kind: 'training' } as ProgressDestination }] : []),
     ...(perf ? [{ key: 'performance', icon: 'progress' as AppIconName, title: perf.headline, detail: `Frente a ${compareText}`, to: { kind: 'training' } as ProgressDestination }] : []),
   ];
   return <View style={styles.section} testID="progress-highlights">

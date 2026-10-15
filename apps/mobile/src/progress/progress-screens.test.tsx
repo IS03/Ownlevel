@@ -128,14 +128,17 @@ describe('Progress Overview', () => {
     fireEvent.press(view.getByTestId('progress-area-training'));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/training', params: {} });
   });
-  it('records show without comparing; other findings and "mejoraron" only while comparing', async () => {
-    mockOverview.mockImplementation(async () => ok(overview({ changes: [
+  it('records and in-period improvements show without comparison; period comparisons stay opt-in', async () => {
+    mockOverview.mockImplementation(async () => ok(overview({ inPeriod: { improved: 3, comparable: 5 }, changes: [
       { id: 'pr', domain: 'training', label: 'Aductores', description: 'Nuevo mejor peso: 29 kg × 20', destination: { kind: 'training_exercise', exerciseId: 'e1' } },
       { id: 'activity:steps', domain: 'metrics', label: 'Pasos', description: 'Subió frente al período anterior.', destination: { kind: 'metrics', metricId: ids.steps } }] })));
     const view = wrap(<ProgressOverviewScreen />); await flush();
     const highlights = within(view.getByTestId('progress-highlights'));
     expect(highlights.getByText('Aductores')).toBeTruthy(); expect(highlights.queryByText('Pasos')).toBeNull();
     expect(highlights.queryByText('4 de 8 ejercicios mejoraron')).toBeNull();
+    expect(highlights.getByText('3 ejercicios mejoraron')).toBeTruthy();
+    fireEvent.press(highlights.getByRole('button', { name: '3 ejercicios mejoraron. Entre su primera y su última sesión del período' }));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/training', params: {} });
     fireEvent.press(highlights.getByRole('button', { name: 'Aductores. Nuevo mejor peso: 29 kg × 20' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: 'e1' } });
   });

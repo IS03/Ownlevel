@@ -36,6 +36,10 @@ function training(preset: ProgressQuery['period'] = '30', empty = false): Progre
         trainingDays: cmp(), sets: cmp({ current: 12, previous: 4, deltaAbsolute: 8, deltaPercent: 200 }), minutes: cmp({ current: 150, previous: 60, deltaAbsolute: 90, deltaPercent: 150 }), setsPerSession: cmp({ change: 'stable' }) },
       performance: empty ? { improved: 0, stable: 0, declined: 0, comparable: 0, insufficient: 0, headline: 'No hay suficiente historial comparable' } : { improved: 1, stable: 0, declined: 0, comparable: 1, insufficient: 2, headline: '1 de 1 ejercicios mejoraron' } },
     series: empty ? [{ start: '2026-09-06', end: '2026-09-12', ...empties }] : [{ start: '2026-09-06', end: '2026-09-12', sessions: 1, sets: 4, minutes: 50 }, { start: '2026-09-13', end: TODAY, sessions: 2, sets: 8, minutes: 100 }],
+    inPeriod: empty ? { improved: 0, stable: 0, declined: 0, insufficient: 0, exercises: [] } : { improved: 1, stable: 0, declined: 0, insufficient: 1, exercises: [
+      { id: ex.bench, status: 'improved', reason: 'comparable', sessions: 3, firstDate: '2026-09-20', lastDate: '2026-10-04', signal: { kind: 'more_load_same_reps', description: '+5 kg manteniendo 5 reps', currentValue: 80, referenceValue: 75, contextValue: 5 } },
+      { id: ex.cable, status: 'insufficient_data', reason: 'unsupported_weight_mode', sessions: 2, firstDate: '2026-09-21', lastDate: '2026-10-01', signal: null },
+    ] },
     exercises: empty ? [] : [
       { id: ex.bench, name: 'Press banca', muscleLabel: 'Pecho', weightMode: 'Peso total', status: 'improved', reason: 'comparable', isPersonalRecord: true,
         signal: { kind: 'new_best_weight', description: 'Nuevo mejor peso: 80 kg × 5', currentValue: 80, referenceValue: 75, contextValue: 5 }, sessions: 3, sets: 9, lastDate: '2026-10-04' },
@@ -76,27 +80,44 @@ describe('Training Trends', () => {
     expect(parseProgressTraining(training())).toBeDefined(); expect(parseProgressTraining(training('30', true))).toBeDefined();
     expect(parseProgressTrainingExercise(exercise(ex.bench))).toBeDefined(); expect(parseProgressTrainingExercise(exercise(ex.cable))).toBeDefined();
   });
-  it('shows load with comparisons, honest duration wording, per-exercise performance by mode, PRs, feelings with coverage, muscles and routines — never volume', async () => {
+  it('shows the flat summary, chart and breakdown segments, first/last performance, records and feeling coverage', async () => {
+    const view = wrap(<TrainingTrendsScreen />); await flush();
+    expect(view.getByTestId('training-summary')).toHaveTextContent('2 días · 3 sesiones · 12 series · 2 h 30 min');
+    expect(view.getByText('La duración va del inicio al fin de cada sesión e incluye descansos.')).toBeTruthy();
+    expect(view.getByText('Series por semana · esta semana en curso')).toBeTruthy();
+    expect(view.getByText('1 ejercicio mejoró en octubre')).toBeTruthy();
+    expect(within(view.getByTestId(`training-exercise-${ex.bench}`)).getByText('Mejoró · 75 → 80 · +5 kg manteniendo 5 reps')).toBeTruthy();
+    expect(within(view.getByTestId(`training-exercise-${ex.cable}`)).getByText('Este modo de carga no tiene una comparación confiable.')).toBeTruthy();
+    expect(view.queryByText(/Frente a/)).toBeNull(); expect(view.queryByText(/Sólo en el período de comparación/)).toBeNull();
+    expect(within(view.getByTestId('training-prs')).getByText('Nuevo mejor peso: 80 kg × 5')).toBeTruthy();
+    expect(view.getByText('Energía 3,8/5')).toBeTruthy(); expect(view.getByText('1 de 3 sesiones con registro · pocas sesiones con registro')).toBeTruthy();
+    expect(view.queryByText(/volumen/i)).toBeNull();
+    fireEvent.press(view.getByRole('radio', { name: 'Sesiones' })); expect(view.getByText('Sesiones por semana · esta semana en curso')).toBeTruthy();
+    fireEvent.press(view.getByRole('radio', { name: 'Duración' })); expect(view.getByText('Duración por semana · esta semana en curso')).toBeTruthy();
+    fireEvent.press(view.getByRole('radio', { name: 'Rutina' })); expect(view.getByText('Sesión libre')).toBeTruthy(); expect(view.getByText('3 sesiones')).toBeTruthy();
+    fireEvent.press(view.getByRole('radio', { name: 'Ejercicio' })); fireEvent.press(view.getByTestId(`training-breakdown-${ex.bench}`));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: ex.bench } });
+    fireEvent.press(view.getByTestId(`training-exercise-${ex.bench}`)); expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: ex.bench } });
+    fireEvent.press(view.getByRole('button', { name: 'Abrir historial de entrenamiento' })); expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/train/history');
+  });
+  it('comparison adds the chosen reference to the summary and each performance row, without changing the in-period result', async () => {
     const view = wrap(<TrainingTrendsScreen />, comparing); await flush();
     expect(mockTraining).toHaveBeenLastCalledWith(mockClient, MONTH, { start: '2026-09-01', end: '2026-09-05' });
-    const summary = within(view.getByTestId('training-summary'));
-    expect(summary.getByText('+2 sesiones (+200%) frente a 1–5 sep.')).toBeTruthy();
-    expect(summary.getByText('2 h 30 min')).toBeTruthy();
-    expect(view.getByText('La duración va del inicio al fin de cada sesión e incluye descansos.')).toBeTruthy();
-    const bench = within(view.getByTestId(`training-exercise-${ex.bench}`));
-    expect(bench.getByText('Press banca · PR')).toBeTruthy(); expect(bench.getByText('Mejoró · Nuevo mejor peso: 80 kg × 5')).toBeTruthy();
-    expect(within(view.getByTestId(`training-exercise-${ex.cable}`)).getByText('Este modo de carga no tiene una comparación confiable.')).toBeTruthy();
-    expect(view.getByText('Sólo en el período anterior: Curl.')).toBeTruthy();
-    expect(within(view.getByTestId('training-prs')).getByText('Press banca: Nuevo mejor peso: 80 kg × 5')).toBeTruthy();
-    expect(within(view.getByTestId('training-feelings')).getByText('Energía promedio: 3,8/5 · 1 de 3 sesiones · pocas sesiones con registro')).toBeTruthy();
-    expect(within(view.getByTestId('training-muscles')).getByText('Pecho: 9 series · 3 sesiones · 1 ejercicios')).toBeTruthy();
-    expect(view.queryByText(/volumen/i)).toBeNull();
-    fireEvent.press(view.getByRole('button', { name: 'Series' }));
-    expect(within(view.getByTestId('training-chart')).getByText('8 series')).toBeTruthy();
-    fireEvent.press(view.getByRole('button', { name: 'Press banca: Mejoró' }));
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: ex.bench } });
-    fireEvent.press(view.getByRole('button', { name: 'Abrir historial de entrenamiento' }));
-    expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/train/history');
+    expect(view.getByTestId('training-summary')).toHaveTextContent(/12 series · 1–5 sep 4 · ↗ 8/);
+    expect(view.getByText('1 ejercicio mejoró en octubre')).toBeTruthy(); expect(view.getByText('Frente a 1–5 sep: Mejoró · Nuevo mejor peso: 80 kg × 5')).toBeTruthy();
+    expect(view.getByText('Sólo en el período de comparación: Curl')).toBeTruthy();
+  });
+  it('expands all breakdown rows, groups single sessions and keeps zero day marks and dense chart values accessible', async () => {
+    const t = training();
+    t.muscles = Array.from({ length: 7 }, (_, i) => ({ key: `m${i}`, label: `Grupo ${i}`, sets: i + 1, sessions: 1, exercises: 1 }));
+    t.exercises.push({ ...t.exercises[1], id: ex.dips, name: 'Fondos', sessions: 1 });
+    t.series = Array.from({ length: 10 }, (_, i) => ({ start: `2026-09-${String(i + 1).padStart(2, '0')}`, end: `2026-09-${String(i + 1).padStart(2, '0')}`, sets: i === 1 ? 0 : 12, sessions: i === 1 ? 0 : 1, minutes: 10 }));
+    t.period.bucket = 'day'; mockTraining.mockResolvedValue(ok(t));
+    const view = wrap(<TrainingTrendsScreen />); await flush();
+    expect(view.queryByText('Grupo 0')).toBeNull(); fireEvent.press(view.getByText('Ver todos (7)')); expect(view.getByText('Grupo 0')).toBeTruthy();
+    expect(view.getByText('Con una sola sesión: Fondos')).toBeTruthy(); expect(view.getByTestId('training-bar-2026-09-02-zero')).toBeTruthy();
+    expect(within(view.getByTestId('training-chart')).queryByText('12')).toBeNull();
+    fireEvent.press(view.getByRole('button', { name: '1 sep, 12 series' })); expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/history/day/[date]', params: { date: '2026-09-01' } });
   });
   it('no training in the period is a real empty state (no averages at 0); period changes ignore late responses; foreground re-reads', async () => {
     let release!: (v: unknown) => void;
@@ -108,8 +129,8 @@ describe('Training Trends', () => {
     expect(view.queryByText(/frente a/)).toBeNull(); expect(view.queryByText(/Sólo en el período anterior/)).toBeNull();
     await act(async () => { release(ok(training('30'))); }); await flush();
     expect(view.queryByText('Press banca · PR')).toBeNull();
-    expect(view.getByText('Sin entrenamientos completados en este período.')).toBeTruthy();
-    expect(view.getByText('Sin sensaciones suficientes registradas en este período.')).toBeTruthy();
+    expect(view.getByText('Sin entrenamientos en este período.')).toBeTruthy();
+    expect(view.getByText('Sin sensaciones registradas en este período.')).toBeTruthy();
     expect(view.getByText('Sin récords nuevos en este período.')).toBeTruthy();
     const calls = mockTraining.mock.calls.length;
     await act(async () => { listeners.at(-1)!('background'); listeners.at(-1)!('active'); }); await flush();

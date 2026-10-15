@@ -24,7 +24,7 @@ import {
 } from "./progress-contract";
 import { isNutritionDate } from "./nutrition-day-contract";
 import { authenticateMobileAccessToken, type MobileSupabaseAuthenticatedContext } from "./supabase";
-import { loadTrainingContext, trainingDto, trainingExerciseDto, trainingSummaryDto } from "./progress-training";
+import { loadTrainingContext, trainingInPeriodDto, trainingDto, trainingExerciseDto, trainingSummaryDto } from "./progress-training";
 
 type Context = MobileSupabaseAuthenticatedContext;
 const webAuth = (context: Context, requestPerformance?: RequestPerformanceContext): AuthenticatedRequestContext =>
@@ -174,7 +174,7 @@ function overviewSparks(period: ProgressPeriod, comparing: boolean, sections: {
   };
 }
 
-export async function buildMobileProgressOverview(context: Context, query: MobileProgressQuery, today: string, withSparks = false): Promise<ProgressOverview> {
+export async function buildMobileProgressOverview(context: Context, query: MobileProgressQuery, today: string, withSparks = false, withInPeriod = false): Promise<ProgressOverview> {
   const { range, period } = resolveMobileProgressPeriod(query, today);
   const [body, nutrition, metrics, training] = await Promise.all([
     isolated(() => bodyReport(context, range, period), "body"),
@@ -230,6 +230,10 @@ export async function buildMobileProgressOverview(context: Context, query: Mobil
     } } : { status: "unavailable" },
     training: training.status === "ok" ? { status: "ok", data: trainingSummaryDto(training.data, period, comparisonDto) } : { status: "unavailable" },
   };
+  if (withInPeriod) {
+    const p = training.status === "ok" ? trainingInPeriodDto(training.data, period) : null;
+    overview.inPeriod = p ? { improved: p.improved, comparable: p.improved + p.stable + p.declined } : null;
+  }
   if (withSparks) overview.sparks = overviewSparks(period, !!query.compare, {
     body: body.status === "ok" ? body.data : null, nutrition: nutrition.status === "ok" ? nutrition.data : null,
     training: training.status === "ok" ? training.data : null,
@@ -286,9 +290,10 @@ export async function buildMobileProgressMetrics(context: Context, query: Mobile
   };
 }
 
-export async function buildMobileProgressTraining(context: Context, query: MobileProgressQuery, today: string) {
+export async function buildMobileProgressTraining(context: Context, query: MobileProgressQuery, today: string, withInPeriod = false) {
   const { period } = resolveMobileProgressPeriod(query, today);
-  return trainingDto(await loadTrainingContext(webAuth(context), period, today), today, period, comparisonDto);
+  const ctx = await loadTrainingContext(webAuth(context), period, today);
+  return { ...trainingDto(ctx, today, period, comparisonDto), ...(withInPeriod ? { inPeriod: trainingInPeriodDto(ctx, period) } : {}) };
 }
 export async function buildMobileProgressTrainingExercise(context: Context, query: MobileProgressQuery, today: string, exerciseId: string) {
   const { period } = resolveMobileProgressPeriod(query, today);
@@ -351,7 +356,10 @@ export const progressHabitWeekResponse = (request: Request) => progressReadRespo
 export const progressOverviewResponse = (request: Request) => progressReadResponse(request, "overview", (context, params, today) => {
   const spark = params.get("spark");
   if (spark !== null && spark !== "1") throw new MobileApiValidationError("Parámetro no válido.");
-  return buildMobileProgressOverview(context, progressQueryFromParams(params, ["spark"]), today, spark === "1");
+  const query = progressQueryFromParams(params, ["spark", "inPeriod"]);
+  const inPeriod = params.get("inPeriod");
+  if (inPeriod !== null && inPeriod !== "1") throw new MobileApiValidationError("Parámetro no válido.");
+  return buildMobileProgressOverview(context, query, today, spark === "1", inPeriod === "1");
 }, parseProgressOverview);
 export const progressBodyResponse = (request: Request) => progressReadResponse(request, "body",
   (context, params, today) => buildMobileProgressBody(context, progressQueryFromParams(params), today), parseProgressBody);
@@ -361,7 +369,11 @@ export const progressMetricsResponse = (request: Request) => progressReadRespons
   return buildMobileProgressMetrics(context, progressQueryFromParams(params, ["metric"]), today, metric ?? undefined);
 }, parseProgressMetrics);
 export const progressTrainingResponse = (request: Request) => progressReadResponse(request, "training",
-  (context, params, today) => buildMobileProgressTraining(context, progressQueryFromParams(params), today), parseProgressTraining);
+  (context, params, today) => {
+    const query = progressQueryFromParams(params, ["inPeriod"]), inPeriod = params.get("inPeriod");
+    if (inPeriod !== null && inPeriod !== "1") throw new MobileApiValidationError("Parámetro no válido.");
+    return buildMobileProgressTraining(context, query, today, inPeriod === "1");
+  }, parseProgressTraining);
 export const progressTrainingExerciseResponse = (request: Request, exerciseId: string) => progressReadResponse(request, "training.exercise", (context, params, today) => {
   if (!/^[0-9a-f-]{36}$/i.test(exerciseId)) throw new MobileApiValidationError("Ejercicio no válido.");
   return buildMobileProgressTrainingExercise(context, progressQueryFromParams(params), today, exerciseId.toLowerCase());
