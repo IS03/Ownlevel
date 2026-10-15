@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { useMobileApi } from '@/api';
 import {
@@ -8,6 +9,7 @@ import {
 import { AppIcon, AppText, Button, Heading, InlineUnavailable, SegmentedControl, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
 import { BREAKDOWN_LABELS, DAYS_LABELS, IDEAS, aggregationText, coverageLine, type ExploreChoice } from './explore-model';
 import { MeasureSheet, OptionSheet } from './explore-sheets';
+import { PinViewSheet } from './pin-view-sheet';
 import { PeriodChart } from './period-chart';
 import { ProgressRow } from './progress-row';
 import { ProgressScroll } from './progress-scroll';
@@ -27,7 +29,7 @@ function Field({ label, value, accent, onPress, testID }: { label: string; value
 }
 
 /** Values in the measure's own semantics; a weekday average of a sum is no longer a whole number. */
-const valueText = (e: ProgressExplore, v: number | null, averaged = false) =>
+export const valueText = (e: ProgressExplore, v: number | null, averaged = false) =>
   formatValue(v, e.measure.valueType === 'duration' ? null : e.measure.unit, averaged && e.measure.valueType === 'integer' ? 'decimal' : e.measure.valueType);
 
 function Bars({ e, groups, reference }: { e: ProgressExplore; groups: ExploreGroup[]; reference: ExploreGroup[] | null }) {
@@ -82,12 +84,13 @@ function SmallMultiples({ e, groups }: { e: ProgressExplore; groups: ExploreGrou
   </View>;
 }
 
-function Result({ request }: { request: ExploreRequest }) {
+function Result({ request, onLoaded }: { request: ExploreRequest; onLoaded: (e: ProgressExplore | null) => void }) {
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
   const { query, compare, compareText, today } = useProgressRange();
   const load = useCallback((c: NonNullable<typeof client>, s: AbortSignal) => fetchProgressExplore(c, query, request, s, compare), [query, request, compare]);
   const { state, data: e, refresh } = useProgressResource(client, `${progressRequestKey(query, compare)}|${exploreRequestKey(request)}`, load);
+  useEffect(() => { onLoaded(e ?? null); }, [e, onLoaded]);
   if (state.status === 'loading') return <SkeletonBlock height={220} />;
   if (!e) return <UnavailableState title="No pudimos cargar esta consulta" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente." action={<Button label="Reintentar" onPress={() => void refresh()} />} />;
   const c = e.current, r = e.reference;
@@ -116,8 +119,19 @@ function Result({ request }: { request: ExploreRequest }) {
 /** Explorar (stage 2, S2–S5): one measure × optional breakdown × optional days, inside the period chosen above. */
 export function ExploreScreen() {
   const { colors } = useOwnlevelTheme();
-  const [draft, setDraft] = useState<Draft>({ measure: null, label: null, breakdown: null, days: null, series: false });
-  const [sheet, setSheet] = useState<'measure' | 'breakdown' | 'days' | null>(null);
+  const params = useLocalSearchParams<{ measure?: string; breakdown?: string; days?: string; series?: string }>();
+  // A saved view opens here with its query; only combinations the measure admits are kept.
+  const [draft, setDraft] = useState<Draft>(() => {
+    const m = typeof params.measure === 'string' ? parseExploreMeasure(params.measure) : undefined;
+    if (!m) return { measure: null, label: null, breakdown: null, days: null, series: false };
+    const o = exploreOptions(m);
+    const breakdown = o.breakdowns.find(b => b === params.breakdown) ?? null, days = o.days.find(d => d === params.days) ?? null;
+    return { measure: m.key, label: null, breakdown, days, series: params.series === '1' && breakdown !== 'weekday' };
+  });
+  const [loaded, setLoaded] = useState<ProgressExplore | null>(null);
+  const [pinned, setPinned] = useState<string | null>(null);
+  const onLoaded = useCallback((e: ProgressExplore | null) => setLoaded(e), []);
+  const [sheet, setSheet] = useState<'measure' | 'breakdown' | 'days' | 'pin' | null>(null);
   const measure = draft.measure ? parseExploreMeasure(draft.measure) : undefined;
   const options = measure ? exploreOptions(measure) : null;
   const pickMeasure = (c: ExploreChoice) => {
@@ -131,14 +145,18 @@ export function ExploreScreen() {
   const request: ExploreRequest | null = draft.measure ? { measure: draft.measure, breakdown: draft.breakdown, days: draft.days, series: draft.series && draft.breakdown !== 'weekday' } : null;
   return <ProgressScroll title="Explorar" testID="explore-screen">
     <View testID="explore-builder">
-      <Field testID="explore-field-measure" label="Medida" value={draft.label ?? 'Elegí qué medir'} accent={!draft.measure} onPress={() => setSheet('measure')} />
+      <Field testID="explore-field-measure" label="Medida" value={draft.label ?? loaded?.measure.label ?? (draft.measure ? 'Cargando…' : 'Elegí qué medir')} accent={!draft.measure} onPress={() => setSheet('measure')} />
       {options?.breakdowns.length ? <Field testID="explore-field-breakdown" label="Desglosar por" value={draft.breakdown ? BREAKDOWN_LABELS[draft.breakdown] : 'Sin desglose'} onPress={() => setSheet('breakdown')} /> : null}
       {options?.days.length ? <Field testID="explore-field-days" label="Días" value={draft.days ? DAYS_LABELS[draft.days] : 'Todos'} onPress={() => setSheet('days')} /> : null}
     </View>
     {request && draft.breakdown !== 'weekday' ? <SegmentedControl accessibilityLabel="Cómo ver el resultado" value={draft.series ? 'time' : 'total'}
       options={[{ value: 'total', label: draft.breakdown ? 'Total' : 'Período' }, { value: 'time', label: 'En el tiempo' }]}
       onChange={v => setDraft(d => ({ ...d, series: v === 'time' }))} /> : null}
-    {request ? <Result request={request} /> : <View style={styles.section} testID="explore-ideas">
+    {request ? <Result request={request} onLoaded={onLoaded} /> : null}
+    {request && loaded ? pinned === exploreRequestKey(request)
+      ? <View style={styles.pinned} testID="explore-pinned"><AppIcon name="check" color={colors.primary} size={18} /><AppText variant="headline" style={{ color: colors.primary }}>Fijada en Mis vistas</AppText></View>
+      : <Button label="Fijar en Mis vistas" onPress={() => setSheet('pin')} testID="explore-pin" /> : null}
+    {request ? null : <View style={styles.section} testID="explore-ideas">
       <Heading level={2}>Ideas para empezar</Heading>
       <View>{IDEAS.map(i => <ProgressRow key={i.title} testID={`explore-idea-${i.request.measure}`} label={`${i.title}. ${i.detail}`}
         onPress={() => setDraft({ measure: i.request.measure, label: i.label, breakdown: i.request.breakdown, days: i.request.days, series: i.request.series })}>
@@ -146,6 +164,8 @@ export function ExploreScreen() {
         <View style={styles.grow}><AppText variant="headline">{i.title}</AppText><AppText muted variant="footnote">{i.detail}</AppText></View>
       </ProgressRow>)}</View>
     </View>}
+    {sheet === 'pin' && request && loaded ? <PinViewSheet label={draft.label ?? loaded.measure.label} definition={request}
+      preview={loaded.current.value === null ? '—' : valueText(loaded, loaded.current.value)} onPinned={() => setPinned(exploreRequestKey(request))} onClose={() => setSheet(null)} /> : null}
     {sheet === 'measure' ? <MeasureSheet selected={draft.measure} onPick={pickMeasure} onClose={() => setSheet(null)} /> : null}
     {sheet === 'breakdown' && options ? <OptionSheet title="Desglosar por" selected={draft.breakdown ?? 'none'} onClose={() => setSheet(null)}
       options={[{ key: 'none', label: 'Sin desglose', detail: '' }, ...options.breakdowns.map(b => ({ key: b, label: BREAKDOWN_LABELS[b], detail: '' }))]}
@@ -173,4 +193,5 @@ const styles = StyleSheet.create({
   mini: { flexDirection: 'row', alignItems: 'flex-end', height: 32, gap: 3 },
   miniSlot: { flex: 1, minWidth: 0, height: 32, justifyContent: 'flex-end' },
   axis: { flexDirection: 'row', justifyContent: 'space-between' },
+  pinned: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 50, justifyContent: 'center' },
 });

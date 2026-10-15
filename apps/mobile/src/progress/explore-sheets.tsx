@@ -11,7 +11,7 @@ import { STATIC_MEASURES, bodyChoices, exerciseChoices, metricChoices, type Expl
 import { useProgressRange } from './progress-range-context';
 import { useProgressResource } from './use-progress-resource';
 
-function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function ExploreSheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const { colors } = useOwnlevelTheme(), reduced = useReduceMotion(), insets = useSafeAreaInsets();
   return <Modal transparent statusBarTranslucent visible animationType="fade" onRequestClose={onClose}>
     <View style={styles.fill}>
@@ -54,9 +54,9 @@ function Group({ title, choices, selected, onPick, note }: { title: string; choi
 export function OptionSheet({ title, options, selected, onPick, onClose }: {
   title: string; options: ExploreChoice[]; selected: string; onPick: (key: string) => void; onClose: () => void;
 }) {
-  return <Sheet title={title} onClose={onClose}>
+  return <ExploreSheet title={title} onClose={onClose}>
     <View>{options.map((c, i) => <Choice key={c.key} choice={c} first={i === 0} selected={c.key === selected} onPick={() => { onPick(c.key); onClose(); }} />)}</View>
-  </Sheet>;
+  </ExploreSheet>;
 }
 
 /** S3 · choose a measure: search, fixed groups, and the user's metrics, body measures and exercises of the period. */
@@ -78,13 +78,13 @@ export function MeasureSheet({ selected, onPick, onClose }: { selected: string |
     if (!choices.length) return <Group title={title} choices={[]} selected={selected} onPick={pick} note={empty} />;
     return shown.length ? <Group title={title} choices={shown} selected={selected} onPick={pick} /> : null;
   };
-  return <Sheet title="Medida" onClose={onClose}>
+  return <ExploreSheet title="Medida" onClose={onClose}>
     <TextField search hideLabel label="Buscar medida" placeholder="Buscar medida" value={search} onChangeText={setSearch} />
     {STATIC_MEASURES.map(g => { const shown = g.choices.filter(match); return shown.length ? <Group key={g.title} title={g.title} choices={shown} selected={selected} onPick={pick} /> : null; })}
     {dynamic('Métricas', metrics, metrics.data ? metricChoices(metrics.data) : [], 'Todavía no tenés métricas.')}
     {dynamic('Cuerpo', body, body.data ? bodyChoices(body.data) : [], 'Todavía no hay pesos ni medidas registrados.')}
     {dynamic('Ejercicios del período', training, training.data ? exerciseChoices(training.data) : [], 'Sin ejercicios completados en este período.')}
-  </Sheet>;
+  </ExploreSheet>;
 }
 
 const styles = StyleSheet.create({
