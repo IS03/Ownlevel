@@ -7,10 +7,11 @@ vi.mock("@/lib/phase2/training-robust", () => ({ loadCompletedTrainingData: vi.f
 vi.mock("@/lib/phase2/training", () => ({ listRoutines: vi.fn() }));
 import { authenticateMobileAccessToken, authenticateMobileMutationAccessToken } from "./supabase";
 import { loadCompletedTrainingData } from "@/lib/phase2/training-robust";
-import { parseProgressViewsRead } from "./progress-views-contract";
+import { influenceDefinitionOf, isInfluenceView, parseViewDefinition, parseProgressViewsRead } from "./progress-views-contract";
 
 const ID = "4357c187-6641-4343-bcae-ea685e3554bc", OTHER = "cddcae61-5e78-45a8-984d-0283d3367a86";
 const SETS = { measure: "training.sets", breakdown: "muscle", days: null, series: false };
+const INFLUENCE = { kind: "influence", measure: "training.sets", split: "training.sessions", cut: "median", lag: 1 };
 const view = (id: string, position: number, definition: object, name = "Series de piernas") => ({ id, name, position, version: 1, definition });
 let rpc: ReturnType<typeof vi.fn>;
 const request = (path: string, init: { method?: string; body?: unknown } = {}) => new NextRequest(`https://www.ownlevel.fit/api/mobile/v1/${path}`,
@@ -29,6 +30,67 @@ beforeEach(() => {
 });
 
 describe("Mis vistas API (stage 2, step 3)", () => {
+  it("accepts compact influence definitions and rejects contradictory outcomes, numeric yes cuts and lag 3", () => {
+    const parsed = parseViewDefinition(INFLUENCE);
+    expect(parsed).toEqual(INFLUENCE);
+    expect(parsed && isInfluenceView(parsed) && influenceDefinitionOf(parsed)).toEqual({ split: "training.sessions", cut: "median", lag: 1, outcome: "training.sets" });
+    expect(parseViewDefinition({ ...INFLUENCE, outcome: "training.sets" })).toBeDefined();
+    expect(parseViewDefinition({ ...INFLUENCE, outcome: "nutrition.kcal" })).toBeUndefined();
+    expect(parseViewDefinition({ ...INFLUENCE, cut: "yes" })).toBeUndefined();
+    expect(parseViewDefinition({ ...INFLUENCE, lag: 3 })).toBeUndefined();
+  });
+  it("legacy reads hide influence views; the explicit EXPAND returns them and leaves explore results unchanged", async () => {
+    const { list } = await routes();
+    const query = "progress/views?period=custom&from=2026-10-01&to=2026-10-05";
+    rpc.mockResolvedValue({ data: { listVersion: 8, views: [view(ID, 1, SETS)] }, error: null });
+    const before = await (await list.GET(request(query))).json();
+    rpc.mockResolvedValue({ data: { listVersion: 8, views: [view(ID, 1, SETS), view(OTHER, 2, INFLUENCE, "Series después de entrenar")] }, error: null });
+    expect(await (await list.GET(request(query))).json()).toEqual(before);
+    const response = await list.GET(request(`${query}&kinds=influence`));
+    expect(response.status).toBe(200);
+    const body = parseProgressViewsRead(await response.json())!;
+    expect(body.listVersion).toBe(8); expect(body.views[0]).toEqual(before.views[0]);
+    expect(body.views[1]).toMatchObject({ position: 2, definition: INFLUENCE, result: { status: "ok", kind: "influence", data: { definition: { split: INFLUENCE.split, outcome: INFLUENCE.measure, lag: 1 }, current: { status: "insufficient" } } } });
+  });
+  it("one deleted metric or failed source does not hide the other views", async () => {
+    const { list } = await routes();
+    rpc.mockResolvedValue({ data: { listVersion: 4, views: [view(ID, 1, { ...INFLUENCE, split: `metric.${ID}` }), view(OTHER, 2, SETS)] }, error: null });
+    const context = vi.mocked(authenticateMobileAccessToken).getMockImplementation();
+    const owner = await context!("token");
+    vi.mocked(authenticateMobileAccessToken).mockResolvedValue({ ...owner, supabase: { ...owner.supabase, from: () => ({ select: () => ({ eq: async () => ({ data: [], error: null }) }) }) } } as never);
+    const query = "progress/views?period=custom&from=2026-10-01&to=2026-10-05&kinds=influence";
+    const response = await list.GET(request(query)); expect(response.status).toBe(200);
+    const body = parseProgressViewsRead(await response.json())!;
+    expect(body.views[0].result).toEqual({ status: "unavailable", reason: "invalid_definition" }); expect(body.views[1].result.status).toBe("ok");
+    vi.mocked(authenticateMobileAccessToken).mockResolvedValue({ ...owner, supabase: { ...owner.supabase, from: () => ({ select: () => ({ eq: async () => ({ data: null, error: { code: "XX000" } }) }) }) } } as never);
+    const failed = await list.GET(request(query)); expect(failed.status).toBe(200);
+    expect(parseProgressViewsRead(await failed.json())!.views[0].result).toEqual({ status: "unavailable", reason: "data_unavailable" });
+  });
+  it("rejects unsupported or repeated kinds before reading the snapshot", async () => {
+    const { list } = await routes();
+    expect((await list.GET(request("progress/views?kinds=otra"))).status).toBe(400);
+    expect((await list.GET(request("progress/views?kinds=influence&kinds=influence"))).status).toBe(400);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+  it("filtering keeps stored positions and listVersion, including gaps in the legacy read", async () => {
+    const { list } = await routes();
+    rpc.mockResolvedValue({ data: { listVersion: 8, views: [view(ID, 1, INFLUENCE), view(OTHER, 2, SETS)] }, error: null });
+    const response = await list.GET(request("progress/views?period=custom&from=2026-10-01&to=2026-10-05"));
+    expect(response.status).toBe(200);
+    const body = parseProgressViewsRead(await response.json())!;
+    expect(body.listVersion).toBe(8); expect(body.views.map(v => [v.id, v.position])).toEqual([[OTHER, 2]]);
+    // Older binaries require position === index + 1. Keeping database positions, as requested,
+    // requires their parser update before they can consume a filtered list with gaps.
+    expect(body.views.every((v, i) => v.position === i + 1)).toBe(false);
+  });
+  it("POST validates influence before the RPC and preserves the same idempotency input", async () => {
+    const { list } = await routes();
+    expect((await list.POST(request("progress/views", { method: "POST", body: { name: "Mi pregunta", definition: { ...INFLUENCE, outcome: "nutrition.kcal" }, idempotencyKey: "q1" } }))).status).toBe(400);
+    expect(rpc).not.toHaveBeenCalled();
+    rpc.mockResolvedValue({ data: [{ response_status: 201, response_body: { view: view(ID, 1, INFLUENCE, "Mi pregunta"), listVersion: 1 }, replayed: false }], error: null });
+    expect((await list.POST(request("progress/views", { method: "POST", body: { name: "Mi pregunta", definition: INFLUENCE, idempotencyKey: "q1" } }))).status).toBe(201);
+    expect(rpc).toHaveBeenLastCalledWith("mobile_create_progress_view", { p_name: "Mi pregunta", p_definition: INFLUENCE, p_idempotency_key: "q1" });
+  });
   it("reads every view with its result in the shared period; one invalid view never hides the others", async () => {
     rpc.mockResolvedValue({ data: { listVersion: 3, views: [view(ID, 1, SETS), view(OTHER, 2, { measure: "training.volume", breakdown: null, days: null, series: false }, "Vieja")] }, error: null });
     const res = await (await routes()).list.GET(request("progress/views?period=custom&from=2026-10-01&to=2026-10-05"));

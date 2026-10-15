@@ -2,18 +2,19 @@ import { useCallback } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
-import { fetchProgressViews, PROGRESS_VIEWS_MAX, type ProgressViewDefinition, type ProgressViewsRead } from '@/api/progress-views';
+import { fetchProgressViews, influenceDefinitionOf, isInfluenceView, PROGRESS_VIEWS_MAX, type ExploreViewDefinition, type ProgressViewsRead } from '@/api/progress-views';
 import { progressRequestKey } from '@/api/progress';
 import { AppIcon, AppText, Heading, InlineUnavailable, SkeletonBlock, spacing, useOwnlevelTheme } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import { aggregationText } from './explore-model';
 import { valueText } from './explore-screen';
+import { shortAnswer, valueText as influenceValueText } from './influence-model';
 import { MiniChart } from './mini-chart';
 import { useProgressRange } from './progress-range-context';
 import { useProgressResource } from './use-progress-resource';
 
 /** Opens Explorar with a saved query, so a view can be read in full or changed. */
-export function exploreParams(d: ProgressViewDefinition): Record<string, string> {
+export function exploreParams(d: ExploreViewDefinition): Record<string, string> {
   return { measure: d.measure, ...(d.breakdown ? { breakdown: d.breakdown } : {}), ...(d.days ? { days: d.days } : {}), ...(d.series ? { series: '1' } : {}) };
 }
 
@@ -25,6 +26,17 @@ function Tile({ view, onPress }: { view: ProgressViewsRead['views'][number]; onP
     <AppText variant="headline">No disponible</AppText>
     <AppText muted variant="caption" numberOfLines={2}>{r.reason === 'invalid_definition' ? 'Esta medida ya no existe. Podés sacarla en Editar.' : 'No pudimos cargarla.'}</AppText>
   </Pressable>;
+  if (r.kind === 'influence') {
+    const data = r.data, c = data.current;
+    const difference = c.status === 'ok' ? `${influenceValueText(Math.abs(c.difference), data.measure.outcome)} ${c.difference > 0 ? 'más' : c.difference < 0 ? 'menos' : 'de diferencia'}` : null;
+    const summary = shortAnswer(data);
+    return <Pressable accessibilityRole="button" accessibilityLabel={`${view.name}. ${difference ? `${difference}. ` : ''}${summary}`} accessibilityHint="Abre la respuesta en Qué influye" onPress={onPress}
+      testID={`my-view-${view.id}`} style={({ pressed }) => [styles.tile, pressed && { opacity: 0.6 }]}>
+      <AppText muted variant="caption" numberOfLines={1} style={styles.name}>{view.name}</AppText>
+      {difference ? <AppText numeric variant="title2" numberOfLines={1} adjustsFontSizeToFit>{difference}</AppText> : null}
+      <AppText muted numeric variant="caption" numberOfLines={2}>{summary}</AppText>
+    </Pressable>;
+  }
   const e = r.data, c = e.current;
   const dots = e.measure.aggregation === 'latest' || e.measure.aggregation === 'best';
   const top = e.breakdown ? [...c.groups].filter(g => g.value !== null).sort((a, b) => (b.value ?? 0) - (a.value ?? 0))[0] : undefined;
@@ -59,7 +71,12 @@ export function MyViews() {
     {state.status === 'loading' ? <SkeletonBlock height={84} />
       : !data ? <InlineUnavailable actionLabel="Reintentar" message="No pudimos cargar tus vistas." onAction={() => void refresh()} />
       : views.length ? <View style={styles.grid}>{views.map(v => <View key={v.id} style={styles.cell}>
-        <Tile view={v} onPress={() => explore(exploreParams(v.definition))} />
+        <Tile view={v} onPress={() => {
+          if (isInfluenceView(v.definition)) {
+            haptics.selection(); const definition = influenceDefinitionOf(v.definition);
+            router.push({ pathname: '/(tabs)/progress/influence/answer', params: { ...definition, lag: String(definition.lag) } });
+          } else explore(exploreParams(v.definition));
+        }} />
       </View>)}</View>
       : <AppText muted testID="my-views-empty">Fijá acá lo que más mirás: armalo en Explorar y tocá “Fijar en Mis vistas”.</AppText>}
     {data && views.length < PROGRESS_VIEWS_MAX ? <Pressable accessibilityRole="button" onPress={() => explore()} testID="my-views-new" style={styles.add}>

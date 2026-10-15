@@ -5,8 +5,9 @@ import { NutritionReportDayChangedError } from "./nutrition-report-server";
 import type { ProgressPeriod } from "./progress-contract";
 import { parseExploreMeasure } from "./progress-explore-contract";
 import { buildMobileProgressExplore } from "./progress-explore";
+import { buildMobileProgressInfluence } from "./progress-influence";
 import {
-  isProgressViewId, parseProgressViewCreate, parseProgressViewMutation, parseProgressViewOrder, parseProgressViewRename, parseProgressViewsSnapshot, parseViewDefinition,
+  influenceDefinitionOf, isInfluenceView, isProgressViewId, parseProgressViewCreate, parseProgressViewMutation, parseProgressViewOrder, parseProgressViewRename, parseProgressViewsSnapshot, parseViewDefinition,
   type ProgressViewMutation, type ProgressViewsRead,
 } from "./progress-views-contract";
 import type { MobileSupabaseAuthenticatedContext } from "./supabase";
@@ -31,17 +32,26 @@ const idempotentRow = (data: unknown) => {
 };
 
 /** Every view with its result in the shared period. One broken view never hides the others. */
-export async function buildMobileProgressViews(context: Context, range: NutritionReportRange, period: ProgressPeriod, comparing: boolean, today: string): Promise<ProgressViewsRead> {
+export async function buildMobileProgressViews(context: Context, range: NutritionReportRange, period: ProgressPeriod, comparing: boolean, today: string, includeInfluence = false): Promise<ProgressViewsRead> {
   const { data, error } = await context.supabase.rpc("mobile_progress_views_snapshot");
   if (error) viewError(error);
   const snapshot = parseProgressViewsSnapshot(data);
   if (!snapshot) throw new Error("Invalid progress views snapshot");
-  const views = await Promise.all(snapshot.views.map(async (stored): Promise<ProgressViewsRead["views"][number]> => {
-    const definition = parseViewDefinition(stored.definition), measure = definition && parseExploreMeasure(definition.measure);
+  // EXPAND: only clients explicitly requesting kinds=influence see those definitions.
+  // Keep the snapshot listVersion and database positions; filtering never changes the stored list.
+  const visible = includeInfluence ? snapshot.views : snapshot.views.filter(v => (v.definition as Record<string, unknown>).kind !== "influence");
+  const views = await Promise.all(visible.map(async (stored): Promise<ProgressViewsRead["views"][number]> => {
+    const definition = parseViewDefinition(stored.definition);
     // The stored definition travels as-is so an invalid view can still be shown and removed.
     const view = { ...stored, definition: stored.definition as ProgressViewsRead["views"][number]["definition"] };
-    if (!definition || !measure) return { ...view, result: { status: "unavailable", reason: "invalid_definition" } };
+    if (!definition) return { ...view, result: { status: "unavailable", reason: "invalid_definition" } };
     try {
+      if (isInfluenceView(definition)) {
+        const data = await buildMobileProgressInfluence(context, influenceDefinitionOf(definition), period, comparing, today);
+        return { ...view, definition, result: { status: "ok", kind: "influence", data } };
+      }
+      const measure = parseExploreMeasure(definition.measure);
+      if (!measure) return { ...view, result: { status: "unavailable", reason: "invalid_definition" } };
       const result = await buildMobileProgressExplore(context, { measure, breakdown: definition.breakdown, days: definition.days, series: definition.series }, range, period, comparing, today);
       return { ...view, definition, result: { status: "ok", data: result } };
     } catch (e) {
@@ -86,6 +96,8 @@ export async function deleteMobileProgressView(id: unknown, expectedVersion: str
 }
 
 export async function reorderMobileProgressViews(payload: unknown, context: Context): Promise<{ viewIds: string[]; listVersion: number }> {
+  // A legacy client omitting hidden influence views submits an incomplete list: the database returns
+  // PROGRESS_VIEW_LIST_CHANGED. Keep this CAS check authoritative; never reorder just a visible subset.
   const input = parseProgressViewOrder(payload);
   if (!input) throw new MobileApiValidationError("El orden de las vistas no es válido.");
   const { data, error } = await context.supabase.rpc("mobile_reorder_progress_views", { p_view_ids: input.viewIds, p_expected_list_version: input.expectedListVersion, p_idempotency_key: input.idempotencyKey });

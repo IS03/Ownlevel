@@ -391,9 +391,11 @@ export const progressExploreResponse = (request: Request) => progressReadRespons
 
 /** Mis vistas (stage 2): every saved view with its result in the shared period and comparison. */
 export const progressViewsResponse = (request: Request) => progressReadResponse(request, "views", (context, params, today) => {
-  const query = progressQueryFromParams(params);
+  const query = progressQueryFromParams(params, ["kinds"]);
+  const kinds = params.get("kinds");
+  if (kinds !== null && kinds !== "influence") throw new MobileApiValidationError("Tipo de vista no válido.");
   const { range, period } = resolveMobileProgressPeriod(query, today);
-  return buildMobileProgressViews(context, range, period, !!query.compare, today);
+  return buildMobileProgressViews(context, range, period, !!query.compare, today, kinds === "influence");
 }, parseProgressViewsRead);
 
 /** Stage 3 EXPAND: two new reads; existing Progress endpoints and response shapes are unchanged. */

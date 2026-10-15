@@ -11,7 +11,7 @@ const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v ===
 
 /** Mis vistas with their results in the shared period (a late response for another period is invalid). */
 export const fetchProgressViews = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
-  client.read({ path: `${BASE}?${progressQueryString(query)}${compare ? `&compareFrom=${compare.start}&compareTo=${compare.end}` : ''}`, signal, parse: (raw: unknown) => {
+  client.read({ path: `${BASE}?${progressQueryString(query)}&kinds=influence${compare ? `&compareFrom=${compare.start}&compareTo=${compare.end}` : ''}`, signal, parse: (raw: unknown) => {
     const data = parseProgressViewsRead(raw);
     return data && data.period.preset === query.period && (query.period !== 'custom' || data.period.start === query.from)
       && (!compare || (data.period.previousStart === compare.start && data.period.previousEnd === compare.end)) ? data : undefined;
