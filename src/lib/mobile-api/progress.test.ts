@@ -248,6 +248,23 @@ describe("GET /progress (overview)", () => {
     expect(o.training).toEqual({ status: "unavailable" });
     expect(o.metrics.status).toBe("ok");
   });
+  it("sparks only on request (EXPAND): per-bucket gaps stay null, comparison buckets only while comparing", async () => {
+    for (const i of [1, 2, 4, 10]) dayLogs.push(log(d(-i), { total_calories_consumed: 1800 + i * 10 }));
+    vi.mocked(listWeightHistory).mockResolvedValue([{ id: "w0", log_date: d(-10), weight_kg: 81 }, { id: "w1", log_date: d(-6), weight_kg: 82 }, { id: "w2", log_date: d(-2), weight_kg: 80.5 }]);
+    const plain = await overviewGET(request(`progress?period=custom&from=${d(-6)}&to=${TODAY}`));
+    expect("sparks" in (await plain.json())).toBe(false);
+    const o: ProgressOverview = await json(await overviewGET(request(`progress?period=custom&from=${d(-6)}&to=${TODAY}&spark=1`)), parseProgressOverview);
+    // 7 day buckets: a day without a complete log or a weighing is null, never 0; training zero is real.
+    expect(o.sparks!.nutrition!.current.map(p => p.value)).toEqual([null, null, 1840, null, 1820, 1810, null]);
+    expect(o.sparks!.weight).toMatchObject({ first: 82, last: 80.5, referenceLast: null, reference: null });
+    expect(o.sparks!.weight!.current.map(p => p.value)).toEqual([82, null, null, null, 80.5, null, null]);
+    expect(o.sparks!.training!.current.every(p => p.value === 0)).toBe(true);
+    const c: ProgressOverview = await json(await overviewGET(request(`progress?period=custom&from=${d(-6)}&to=${TODAY}&compareFrom=${d(-13)}&compareTo=${d(-7)}&spark=1`)), parseProgressOverview);
+    expect(c.sparks!.nutrition!.reference!.map(p => p.value)).toEqual([null, null, null, 1900, null, null, null]);
+    expect(c.sparks!.weight).toMatchObject({ referenceLast: 81 });
+    expect((await overviewGET(request("progress?spark=yes"))).status).toBe(400);
+    expect((await overviewGET(request("progress?spark=1&spark=1"))).status).toBe(400);
+  });
 });
 
 describe("GET /progress/habits (additive calendar-week read)", () => {

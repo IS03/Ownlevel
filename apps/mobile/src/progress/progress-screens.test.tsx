@@ -53,7 +53,16 @@ function overview(over: Partial<ProgressOverview> = {}, preset: ProgressQuery['p
       { id: ids.steps, name: 'Pasos', unit: 'pasos', valueType: 'integer', average: 9000, coverage: { registered: 28, eligible: 29, ratio: 28 / 29 }, comparison: cmp({ current: 9000, previous: 6000, deltaAbsolute: 3000, deltaPercent: 50 }) },
       { id: ids.sleep, name: 'Sueño', unit: 'min', valueType: 'duration', average: 450, coverage: { registered: 5, eligible: 29, ratio: 5 / 29 }, comparison: cmp({ status: 'insufficient_data', reason: 'previous_period_empty', previous: null, deltaAbsolute: null, deltaPercent: null, change: 'insufficient_data' }) },
     ] } },
-    body: { status: 'ok', data: { excludedSuspect: 1, trackedMetrics: 1 } }, ...over };
+    body: { status: 'ok', data: { excludedSuspect: 1, trackedMetrics: 1 } }, sparks: sparks(), ...over };
+}
+const pt = (day: string, value: number | null) => ({ start: day, end: day, value });
+function sparks(comparing = false): NonNullable<ProgressOverview['sparks']> {
+  const ref = (values: (number | null)[]) => comparing ? values.map((v, i) => pt(`2026-09-0${i + 1}`, v)) : null;
+  return {
+    weight: { current: [pt('2026-10-01', 82), pt('2026-10-02', null), pt('2026-10-03', 80.5)], reference: ref([83, null, 83]), first: 82, last: 80.5, referenceLast: comparing ? 83 : null },
+    training: { current: [pt('2026-10-01', 40), pt('2026-10-02', 0), pt('2026-10-03', 60)], reference: ref([50, 50, 50]) },
+    nutrition: { current: [pt('2026-10-01', 2100), pt('2026-10-02', null), pt('2026-10-03', 2300)], reference: ref([2000, 2000, null]) },
+  };
 }
 const obs = (date: string, value: number, imported = false) => ({ date, value, imported, provenanceLabel: imported ? 'Importado · sheet' : 'Registro de peso' });
 function body(): ProgressBody {
@@ -98,35 +107,55 @@ describe('Progress fixtures follow the shared contract', () => {
 });
 
 describe('Progress Overview', () => {
-  it('reads this calendar month without comparing; shows evolution, findings, habits with coverage, explore and operational links', async () => {
+  const row = (view: ReturnType<typeof wrap>, id: string) => view.getByTestId(`progress-area-${id}`).props.accessibilityLabel as string;
+  it('"Tu octubre" without comparing: progress inside the period, mini charts with real gaps, no Explorar or Revisar datos', async () => {
     const view = wrap(<ProgressOverviewScreen />); await flush();
     expect(mockOverview).toHaveBeenLastCalledWith(mockClient, MONTH, null);
     expect(view.getByTestId('progress-period-stepper').props.accessibilityLabel).toBe('Octubre 2026, del 1 al 5 · en curso');
-    expect(within(view.getByTestId('progress-evolution')).getByText('80,5 kg')).toBeTruthy();
-    expect(view.getByText('1 medición sospechosa excluida del análisis.')).toBeTruthy();
-    const nutrition = within(view.getByTestId('progress-nutrition'));
-    expect(nutrition.getByText('2.200 kcal/día')).toBeTruthy(); expect(nutrition.getByText('Objetivo histórico promedio: 2.100 kcal')).toBeTruthy();
-    // Sin comparar: no "frente a…" anywhere, and no compare chip.
-    expect(view.queryByText(/frente a/)).toBeNull(); expect(view.queryByTestId('progress-compare-chip')).toBeNull();
-    const sleep = within(view.getByTestId(`progress-habit-${ids.sleep}`));
-    expect(sleep.getByText('7 h 30 min')).toBeTruthy(); expect(sleep.getByText('5 de 29 días con dato · cobertura baja')).toBeTruthy();
-    expect(within(view.getByTestId('progress-training')).getByText('Ejercicios: 4 mejoraron · 3 estables · 1 bajó · 2 sin comparación')).toBeTruthy();
-    expect(view.queryByText(/volumen/i)).toBeNull();
-    fireEvent.press(view.getByRole('button', { name: 'Tendencias de Entrenamiento' }));
+    expect(view.getByText('Tu octubre')).toBeTruthy();
+    expect(row(view, 'body')).toBe('Peso. 82 → 80,5 kg · ↘ 1,5');
+    expect(row(view, 'training')).toBe('Entrenamiento. 11 días · 180 series');
+    expect(row(view, 'nutrition')).toBe('Nutrición. 2.200 kcal por día · objetivo 2.100 · 10 de 30 días');
+    expect(row(view, 'metrics')).toBe('Métricas. Pasos 9.000 pasos · Sueño 7 h 30 min');
+    // missing != zero: a bucket without data is a gap; zero sets is a real (faint) mark.
+    expect(view.getByTestId('progress-spark-nutrition-current-2026-10-02-missing', { includeHiddenElements: true })).toBeTruthy();
+    expect(view.getByTestId('progress-spark-training-current-2026-10-02-zero', { includeHiddenElements: true })).toBeTruthy();
+    expect(view.queryByTestId(/progress-spark-training-reference/, { includeHiddenElements: true })).toBeNull();
+    // Sin comparar: no comparison anywhere; findings that compare periods wait for "Comparar".
+    expect(view.queryByText(/frente a/i)).toBeNull(); expect(view.queryByTestId('progress-compare-chip')).toBeNull();
+    expect(view.getByText('Sin récords ni cambios destacados en este período.')).toBeTruthy();
+    for (const gone of ['Explorar', 'Revisar datos']) expect(view.queryByText(gone)).toBeNull();
+    fireEvent.press(view.getByTestId('progress-area-training'));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/training', params: {} });
-    for (const name of ['Abrir Historial', 'Abrir Cuerpo', 'Abrir Métricas diarias']) expect(view.getByRole('button', { name })).toBeTruthy();
   });
-  it('with a comparison: the server gets range B, texts name it, and the chip clears it', async () => {
+  it('records show without comparing; other findings and "mejoraron" only while comparing', async () => {
+    mockOverview.mockImplementation(async () => ok(overview({ changes: [
+      { id: 'pr', domain: 'training', label: 'Aductores', description: 'Nuevo mejor peso: 29 kg × 20', destination: { kind: 'training_exercise', exerciseId: 'e1' } },
+      { id: 'activity:steps', domain: 'metrics', label: 'Pasos', description: 'Subió frente al período anterior.', destination: { kind: 'metrics', metricId: ids.steps } }] })));
+    const view = wrap(<ProgressOverviewScreen />); await flush();
+    const highlights = within(view.getByTestId('progress-highlights'));
+    expect(highlights.getByText('Aductores')).toBeTruthy(); expect(highlights.queryByText('Pasos')).toBeNull();
+    expect(highlights.queryByText('4 de 8 ejercicios mejoraron')).toBeNull();
+    fireEvent.press(highlights.getByRole('button', { name: 'Aductores. Nuevo mejor peso: 29 kg × 20' }));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: 'e1' } });
+  });
+  it('with a comparison: B goes to the server, each row adds its value and a neutral arrow, grey bars appear, and the chip clears it', async () => {
+    mockOverview.mockImplementation(async (_c, _q, compare) => ok(overview({ sparks: sparks(!!compare) })));
     const view = wrap(<ProgressOverviewScreen />, comparing); await flush();
     expect(mockOverview).toHaveBeenLastCalledWith(mockClient, MONTH, { start: '2026-09-01', end: '2026-09-05' });
     expect(within(view.getByTestId('progress-compare-chip')).getByText('vs. 1–5 sep')).toBeTruthy();
-    expect(within(view.getByTestId('progress-changes')).getByText('Subió frente al período anterior.')).toBeTruthy();
-    expect(within(view.getByTestId('progress-nutrition')).getByText('+200 kcal (+10%) frente a 1–5 sep.')).toBeTruthy();
-    expect(within(view.getByTestId(`progress-habit-${ids.sleep}`)).getByText(/el período de comparación no tiene datos/)).toBeTruthy();
-    expect(within(view.getByTestId('progress-training')).getByText('+3 sesiones (+33,3%) frente a 1–5 sep.')).toBeTruthy();
+    expect(row(view, 'body')).toBe('Peso. 80,5 kg · 1–5 sep 83 · ↘ 2,5');
+    expect(row(view, 'training')).toBe('Entrenamiento. 180 series · 1–5 sep 150 · ↗ 30');
+    expect(row(view, 'nutrition')).toBe('Nutrición. 2.200 kcal · 1–5 sep 2.000 · ↗ 200 · 10 de 30 días');
+    expect(row(view, 'metrics')).toBe('Métricas. Pasos 9.000 pasos · 1–5 sep 6.000 pasos');
+    expect(view.getByTestId('progress-spark-training-reference-2026-09-01-mark', { includeHiddenElements: true })).toBeTruthy();
+    const highlights = within(view.getByTestId('progress-highlights'));
+    expect(highlights.getByText('Subió frente al período anterior.')).toBeTruthy();
+    expect(highlights.getByText('4 de 8 ejercicios mejoraron')).toBeTruthy(); expect(highlights.getByText('Frente a 1–5 sep')).toBeTruthy();
     fireEvent.press(view.getByTestId('progress-compare-clear')); await flush();
     expect(mockOverview).toHaveBeenLastCalledWith(mockClient, MONTH, null);
-    expect(view.queryByText(/frente a/)).toBeNull();
+    expect(view.queryByText(/1–5 sep/)).toBeNull();
+    expect(row(view, 'training')).toBe('Entrenamiento. 11 días · 180 series');
   });
   it('the period bar and the stepper re-read; a late response for another period is never shown', async () => {
     let release!: (v: unknown) => void;
@@ -134,14 +163,17 @@ describe('Progress Overview', () => {
     const view = wrap(<ProgressOverviewScreen />); await flush();
     fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
     expect(mockOverview).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-10-05', to: TODAY }, null);
-    await act(async () => { release(ok(overview({ evolution: [{ id: 'stale', label: 'Viejo', value: '1 kg', detail: null, destination: { kind: 'body' } }] }))); }); await flush();
+    expect(view.getByText('Tu semana')).toBeTruthy();
+    await act(async () => { release(ok(overview({ changes: [{ id: 'stale', domain: 'training', label: 'Viejo', description: 'x', destination: { kind: 'training' } }] }))); }); await flush();
     expect(view.queryByText('Viejo')).toBeNull();
     fireEvent.press(view.getByTestId('progress-unit-month')); await flush();
     fireEvent(view.getByTestId('progress-period-stepper'), 'accessibilityAction', { nativeEvent: { actionName: 'decrement' } }); await flush();
     expect(mockOverview).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-09-01', to: '2026-09-30' }, null);
     expect(view.getByTestId('progress-period-stepper').props.accessibilityLabel).toBe('Septiembre 2026, 30 días');
+    expect(view.getByText('Tu septiembre')).toBeTruthy();
     fireEvent.press(view.getByTestId('progress-unit-year')); await flush();
     expect(mockOverview).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-01-01', to: TODAY }, null);
+    expect(view.getByText('Tu 2026')).toBeTruthy();
   });
   it('Personalizado opens the calendar: first day, last day, Listo', async () => {
     const view = wrap(<ProgressOverviewScreen />); await flush();
@@ -151,18 +183,20 @@ describe('Progress Overview', () => {
     fireEvent.press(view.getByRole('button', { name: '3 de octubre' }));
     fireEvent.press(view.getByRole('button', { name: 'Listo' })); await flush();
     expect(mockOverview).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-10-01', to: '2026-10-03' }, null);
+    expect(view.getByText('Tu período')).toBeTruthy();
   });
-  it('an unavailable domain is explicit (never zero or empty); drilldowns keep the period in the shared state', async () => {
-    mockOverview.mockImplementation(async () => ok(overview({ nutrition: { status: 'unavailable' }, body: { status: 'unavailable' }, training: { status: 'unavailable' }, evolution: [] })));
+  it('an unavailable domain is explicit (never zero or empty); rows open their detail with the shared period', async () => {
+    mockOverview.mockImplementation(async () => ok(overview({ nutrition: { status: 'unavailable' }, body: { status: 'unavailable' }, training: { status: 'unavailable' },
+      sparks: { weight: null, training: null, nutrition: null } })));
     const view = wrap(<ProgressOverviewScreen />); await flush();
-    expect(view.getByText('No pudimos cargar Nutrición. No significa que no haya datos.')).toBeTruthy();
-    expect(view.getByText('No pudimos cargar Cuerpo. El resto del resumen sigue disponible.')).toBeTruthy();
-    expect(view.queryByText(/0 kcal/)).toBeNull();
-    expect(view.getByText('No pudimos cargar Entrenamiento. No significa que no haya datos.')).toBeTruthy();
-    fireEvent.press(view.getAllByRole('button', { name: 'Pasos' })[0]);
+    expect(row(view, 'nutrition')).toBe('Nutrición. No pudimos cargar Nutrición.');
+    expect(row(view, 'body')).toBe('Peso. No pudimos cargar Cuerpo.');
+    expect(row(view, 'training')).toBe('Entrenamiento. No pudimos cargar Entrenamiento.');
+    expect(view.queryByText(/0 kcal/)).toBeNull(); expect(view.queryByTestId(/progress-spark/, { includeHiddenElements: true })).toBeNull();
+    fireEvent.press(view.getByTestId('progress-area-metrics'));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/metrics', params: { metric: ids.steps } });
     // The Nutrition report lives in another tab's stack: it still receives the chosen range.
-    fireEvent.press(view.getByRole('button', { name: 'Reportes de Nutrición' }));
+    fireEvent.press(view.getByTestId('progress-area-nutrition'));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/nutrition/reports', params: { period: 'custom', from: '2026-10-01', to: TODAY } });
   });
   it('a failed first read is an error state (not empty); foreground re-reads; a failed refresh keeps the confirmed read marked stale', async () => {
@@ -171,10 +205,10 @@ describe('Progress Overview', () => {
     const view = wrap(<ProgressOverviewScreen />); await flush();
     expect(view.getByText('No pudimos cargar tu progreso')).toBeTruthy();
     await act(async () => { listeners.at(-1)!('background'); listeners.at(-1)!('active'); }); await flush();
-    expect(view.getByText('80,5 kg')).toBeTruthy();
+    expect(view.getByText('82 → 80,5 kg · ↘ 1,5')).toBeTruthy();
     mockOverview.mockResolvedValueOnce(lost);
     await act(async () => { listeners.at(-1)!('background'); listeners.at(-1)!('active'); }); await flush();
-    expect(view.getByText('80,5 kg')).toBeTruthy();
+    expect(view.getByText('82 → 80,5 kg · ↘ 1,5')).toBeTruthy();
     expect(view.getByText('No se pudo actualizar. Mostramos la última lectura confirmada de este período.')).toBeTruthy();
   });
 });

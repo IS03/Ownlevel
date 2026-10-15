@@ -27,6 +27,7 @@ Lista viva de lo que sacamos de una pantalla para llevarlo a otra, y de los camb
 ### Se va de Progreso (bocetos P1–P6)
 - **"Explorar" y "Revisar datos":** duplicaban las filas de "Tus áreas".
 - **Historial:** vive en Entrenar.
+  - El Historial general (`/history`: calendario con cuerpo, métricas y nutrición por día) quedó sin entrada directa desde el paso 2 de Progreso (15/10). Se sigue llegando a sus días desde los gráficos de Cuerpo y Métricas. Decidir si se suma a Entrenar o se retira.
 - **"Métricas diarias" (cargar y editar el día):** la carga de hoy ya está en Nutrición › "Tu día". La edición de días pasados va con el editor de Nutrición, y "Administrar métricas" va a Ajustes.
 - **Selector de período de 7 chips:** queda Semana, Mes, 3 meses y Año, y "Personalizado" pasa al `•••`. Hay que confirmar que el servidor acepte esos presets: hoy acepta 7/14/30 días, 3/6 meses, 1 año y personalizado, así que "Semana" sería 7 días y "Mes" 30.
 

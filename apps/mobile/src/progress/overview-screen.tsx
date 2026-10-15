@@ -1,15 +1,15 @@
-import { useCallback } from 'react';
-import { RefreshControl, StyleSheet, View } from 'react-native';
+import { useCallback, type ReactNode } from 'react';
+import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchProgressOverview, progressRequestKey, type ProgressDestination, type ProgressOverview } from '@/api/progress';
-import { AppIcon, AppText, Button, Heading, IconCircle, InlineUnavailable, PressableSurface, SkeletonBlock, Surface, UnavailableState, spacing, useOwnlevelTheme, type AppIconName } from '@/design-system';
-import { ProgressDataLinks } from '@/body/progress-hub';
+import { AppIcon, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme, type AppIconName } from '@/design-system';
 import { haptics } from '@/platform/haptics';
+import { MiniChart } from './mini-chart';
 import { ProgressScroll } from './progress-scroll';
-import { useComparisonText, useProgressRange } from './progress-range-context';
-import { coverageText, formatValue, lowCoverage, queryParams } from './progress-format';
-import { TrainingSummaryCard } from './training-summary';
+import { useProgressRange } from './progress-range-context';
+import { periodHeading } from './progress-range';
+import { arrowDelta, formatValue, queryParams } from './progress-format';
 import { useProgressResource } from './use-progress-resource';
 
 export type ProgressRoute = '/(tabs)/progress/trends/body' | '/(tabs)/progress/trends/metrics' | '/(tabs)/nutrition/reports'
@@ -22,108 +22,122 @@ export function destinationRoute(d: ProgressDestination): { pathname: ProgressRo
   return { pathname: '/(tabs)/progress/trends/metrics', extra: d.metricId ? { metric: d.metricId } : {} };
 }
 
-function Entry({ label, detail, icon, onPress, disabled, testID }: { label: string; detail: string; icon: AppIconName; onPress?: () => void; disabled?: boolean; testID?: string }) {
+const kg = (v: number) => formatValue(v, null);
+const kcal = (v: number) => formatValue(v, null, 'integer');
+
+/** Flat row (E5 style): icon, title, one line of detail, the mini chart and a chevron. */
+function AreaRow({ icon, title, detail, chart, divider, onPress, testID }: {
+  icon: AppIconName; title: string; detail: string; chart?: ReactNode; divider: boolean; onPress: () => void; testID: string;
+}) {
   const { colors } = useOwnlevelTheme();
-  const body = <>
-    <IconCircle icon={icon} />
-    <View style={styles.flex}><AppText variant="label">{label}</AppText><AppText muted variant="caption">{detail}</AppText></View>
-    {disabled ? null : <AppIcon color={colors.textMuted} name="chevronRight" size={16} />}
-  </>;
-  // Pending entries are visible but not actionable (no partial numbers).
-  if (disabled) return <View testID={testID} accessible accessibilityLabel={`${label}. ${detail}`} accessibilityState={{ disabled: true }}><Surface style={{ ...styles.card, opacity: 0.55 }}>{body}</Surface></View>;
-  return <View testID={testID}><PressableSurface accessibilityLabel={label} accessibilityHint={detail} onPress={() => { haptics.selection(); onPress?.(); }} style={styles.card}>{body}</PressableSurface></View>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={`${title}. ${detail}`} testID={testID}
+    onPress={() => { haptics.selection(); onPress(); }} style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}>
+    {divider ? <View style={[styles.divider, { backgroundColor: colors.border }]} /> : null}
+    <AppIcon name={icon} color={colors.textMuted} size={20} />
+    <View style={styles.text}>
+      <AppText variant="headline">{title}</AppText>
+      <AppText muted numeric variant="footnote">{detail}</AppText>
+    </View>
+    {chart}
+    <AppIcon name="chevronRight" color={colors.textMuted} size={15} />
+  </Pressable>;
 }
 
-function Content({ data, open }: { data: ProgressOverview; open: (d: ProgressDestination) => void }) {
-  const { colors } = useOwnlevelTheme();
-  const compare = useComparisonText(), { compareOn } = useProgressRange();
-  // Without "Comparar", only findings that don't compare periods (training records and exercise progress).
-  const changes = compareOn ? data.changes : data.changes.filter(f => f.domain === 'training');
-  const nutrition = data.nutrition.status === 'ok' ? data.nutrition.data : null;
-  return <>
-    <View style={styles.section} testID="progress-evolution">
-      <Heading level={2}>Tu evolución</Heading>
-      {data.body.status === 'unavailable' ? <Surface><InlineUnavailable message="No pudimos cargar Cuerpo. El resto del resumen sigue disponible." /></Surface>
-        : data.evolution.length ? data.evolution.map(row => <PressableSurface key={row.id} accessibilityLabel={`${row.label}: ${row.value}`} onPress={() => open(row.destination)} style={styles.row}>
-          <View style={styles.flex}><AppText variant="label">{row.label}</AppText>{row.detail ? <AppText muted variant="caption">{row.detail}</AppText> : null}</View>
-          <AppText variant="label">{row.value}</AppText>
-        </PressableSurface>)
-        : <Surface><AppText muted>Datos insuficientes: no hay medidas o pesos con al menos 2 registros en este período.</AppText></Surface>}
-      {data.body.status === 'ok' && data.body.data.excludedSuspect > 0 ? <AppText muted variant="caption">
-        {data.body.data.excludedSuspect} medición sospechosa excluida del análisis.</AppText> : null}
-    </View>
+/** "Tu octubre": what happened inside the period; the comparison only adds its value and an arrow. */
+function Areas({ data, open }: { data: ProgressOverview; open: (d: ProgressDestination) => void }) {
+  const { compareText } = useProgressRange();
+  const sparks = data.sparks;
+  const vs = compareText ? `${compareText} ` : '';
 
-    <View style={styles.section} testID="progress-changes">
-      <Heading level={2}>Qué cambió</Heading>
-      {changes.length ? changes.map(f => <PressableSurface key={f.id} accessibilityLabel={`${f.label}. ${f.description}`} onPress={() => open(f.destination)} style={styles.row}>
-        <View style={styles.flex}><AppText variant="label">{f.label}</AppText><AppText muted variant="caption">{f.description}</AppText></View>
-      </PressableSurface>) : <Surface><AppText muted>Sin cambios destacados con datos suficientes en este período.</AppText></Surface>}
-    </View>
+  const w = sparks?.weight ?? null;
+  const weight = data.body.status === 'unavailable' ? 'No pudimos cargar Cuerpo.'
+    : !w ? 'Sin pesos registrados'
+    : w.last === null ? `Sin pesos en este período${compareText && w.referenceLast !== null ? ` · ${vs}${kg(w.referenceLast)} kg` : ''}`
+    : compareText ? `${kg(w.last)} kg · ${w.referenceLast === null ? `${vs}sin pesos` : `${vs}${kg(w.referenceLast)} · ${arrowDelta(w.last - w.referenceLast, null)}`}`
+    : w.first === null || w.first === w.last && w.current.filter(p => p.value !== null).length < 2 ? `${kg(w.last)} kg · un solo registro`
+    : `${kg(w.first)} → ${kg(w.last)} kg · ${arrowDelta(w.last - w.first, null)}`;
 
-    <View style={styles.section} testID="progress-habits">
-      <Heading level={2}>Tus hábitos</Heading>
-      {data.training.status === 'ok' ? <View testID="progress-training"><PressableSurface accessibilityLabel="Entrenamiento" onPress={() => open({ kind: 'training' })} style={styles.block}>
-        <TrainingSummaryCard summary={data.training.data} compact />
-      </PressableSurface></View> : <Surface><InlineUnavailable message="No pudimos cargar Entrenamiento. No significa que no haya datos." /></Surface>}
-      {nutrition ? <View testID="progress-nutrition"><PressableSurface accessibilityLabel="Nutrición" onPress={() => open({ kind: 'nutrition' })} style={styles.block}>
-        <AppText variant="label">Nutrición</AppText>
-        <AppText>{nutrition.averageKcal === null ? 'Sin días completos con calorías' : `${formatValue(nutrition.averageKcal, 'kcal', 'integer')}/día`}</AppText>
-        {compare(nutrition.calories, 'kcal', 'integer') ? <AppText muted variant="caption">{compare(nutrition.calories, 'kcal', 'integer')}</AppText> : null}
-        <AppText>{nutrition.averageProteinG === null ? 'Proteína sin dato' : `${formatValue(nutrition.averageProteinG, 'g', 'decimal')} proteína/día`}</AppText>
-        {compare(nutrition.protein, 'g') ? <AppText muted variant="caption">{compare(nutrition.protein, 'g')}</AppText> : null}
-        {nutrition.averageTargetKcal !== null ? <AppText muted variant="caption">Objetivo histórico promedio: {formatValue(nutrition.averageTargetKcal, 'kcal', 'integer')}</AppText> : null}
-        {nutrition.accumulatedBalanceKcal !== null ? <AppText muted variant="caption">Balance acumulado: {formatValue(nutrition.accumulatedBalanceKcal, 'kcal', 'integer')}</AppText> : null}
-        <AppText muted variant="caption" style={nutrition.registeredDays * 2 < nutrition.days ? { color: colors.text } : undefined}>
-          {nutrition.registeredDays} de {nutrition.days} días con registro</AppText>
-      </PressableSurface></View> : <Surface><InlineUnavailable message="No pudimos cargar Nutrición. No significa que no haya datos." /></Surface>}
-      {data.metrics.status === 'unavailable' ? <Surface><InlineUnavailable message="No pudimos cargar tus métricas. No significa que no haya datos." /></Surface>
-        : data.metrics.data.items.map(m => <View key={m.id} testID={`progress-habit-${m.id}`}><PressableSurface accessibilityLabel={m.name} onPress={() => open({ kind: 'metrics', metricId: m.id })} style={styles.block}>
-          <View style={styles.rowInline}><AppText variant="label" style={styles.flex}>{m.name}</AppText><AppText>{formatValue(m.average, m.unit, m.valueType)}</AppText></View>
-          <AppText muted variant="caption">Promedio por día con dato{compare(m.comparison, m.unit, m.valueType) ? ` · ${compare(m.comparison, m.unit, m.valueType)}` : ''}</AppText>
-          <AppText muted={!lowCoverage(m.coverage)} variant="caption" style={lowCoverage(m.coverage) ? { color: colors.text } : undefined}>
-            {coverageText(m.coverage)}{lowCoverage(m.coverage) ? ' · cobertura baja' : ''}</AppText>
-        </PressableSurface></View>)}
-    </View>
-  </>;
+  const t = data.training.status === 'ok' ? data.training.data : null;
+  const sets = t?.comparisons.sets;
+  const training = !t ? 'No pudimos cargar Entrenamiento.'
+    : compareText && sets ? `${kcal(t.sets)} series · ${sets.previous === null ? `${vs}sin datos` : `${vs}${kcal(sets.previous)} · ${arrowDelta(t.sets - sets.previous, null, 'integer')}`}`
+    : `${t.trainingDays} ${t.trainingDays === 1 ? 'día' : 'días'} · ${kcal(t.sets)} series`;
+
+  const n = data.nutrition.status === 'ok' ? data.nutrition.data : null;
+  const lowLog = n && n.registeredDays * 2 < n.days ? ` · ${n.registeredDays} de ${n.days} días` : '';
+  const nutrition = !n ? 'No pudimos cargar Nutrición.'
+    : n.averageKcal === null ? 'Sin días completos con calorías'
+    : compareText ? `${kcal(n.averageKcal)} kcal · ${n.calories.previous === null ? `${vs}sin datos` : `${vs}${kcal(n.calories.previous)} · ${arrowDelta(n.averageKcal - n.calories.previous, null, 'integer')}`}${lowLog}`
+    : `${kcal(n.averageKcal)} kcal por día${n.averageTargetKcal !== null ? ` · objetivo ${kcal(n.averageTargetKcal)}` : ''}${lowLog}`;
+
+  const m = data.metrics.status === 'ok' ? data.metrics.data.items : null;
+  const metrics = !m ? 'No pudimos cargar tus métricas.'
+    : !m.length ? 'Sin métricas con datos en este período'
+    : compareText ? `${m[0].name} ${formatValue(m[0].average, m[0].unit, m[0].valueType)} · ${vs}${m[0].comparison.previous === null ? 'sin datos' : formatValue(m[0].comparison.previous, m[0].unit, m[0].valueType)}`
+    : m.map(x => `${x.name} ${formatValue(x.average, x.unit, x.valueType)}`).join(' · ');
+
+  return <View style={styles.section} testID="progress-areas">
+    <AreaRow testID="progress-area-body" icon="scale" title="Peso" detail={weight} divider={false} onPress={() => open({ kind: 'body' })}
+      chart={w ? <MiniChart testID="progress-spark-weight" mode="level" current={w.current} reference={w.reference} /> : null} />
+    <AreaRow testID="progress-area-training" icon="dumbbell" title="Entrenamiento" detail={training} divider onPress={() => open({ kind: 'training' })}
+      chart={sparks?.training ? <MiniChart testID="progress-spark-training" mode="bars" current={sparks.training.current} reference={sparks.training.reference} /> : null} />
+    <AreaRow testID="progress-area-nutrition" icon="nutrition" title="Nutrición" detail={nutrition} divider onPress={() => open({ kind: 'nutrition' })}
+      chart={sparks?.nutrition ? <MiniChart testID="progress-spark-nutrition" mode="bars" current={sparks.nutrition.current} reference={sparks.nutrition.reference} /> : null} />
+    <AreaRow testID="progress-area-metrics" icon="water" title="Métricas" detail={metrics} divider onPress={() => open({ kind: 'metrics', metricId: m?.[0]?.id ?? null })} />
+  </View>;
 }
 
-/** Progreso: the analytic overview (M7.1). Training analytics arrive in M7.2. */
+/** "Lo destacado": records and exercise progress inside the period; with a comparison, also what changed against it. */
+function Highlights({ data, open }: { data: ProgressOverview; open: (d: ProgressDestination) => void }) {
+  const { colors } = useOwnlevelTheme();
+  const { compareOn, compareText } = useProgressRange();
+  const findings = compareOn ? data.changes : data.changes.filter(f => f.domain === 'training');
+  const perf = compareOn && data.training.status === 'ok' && data.training.data.performance.comparable > 0 ? data.training.data.performance : null;
+  const rows = [
+    ...findings.map(f => ({ key: f.id, icon: (f.domain === 'training' ? 'trophy' : 'progress') as AppIconName, title: f.label, detail: f.description, to: f.destination })),
+    ...(perf ? [{ key: 'performance', icon: 'progress' as AppIconName, title: perf.headline, detail: `Frente a ${compareText}`, to: { kind: 'training' } as ProgressDestination }] : []),
+  ];
+  return <View style={styles.section} testID="progress-highlights">
+    <Heading level={2}>Lo destacado</Heading>
+    {rows.length ? rows.map((r, i) => <Pressable key={r.key} accessibilityRole="button" accessibilityLabel={`${r.title}. ${r.detail}`}
+      onPress={() => { haptics.selection(); open(r.to); }} style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}>
+      {i > 0 ? <View style={[styles.divider, { backgroundColor: colors.border }]} /> : null}
+      <AppIcon name={r.icon} color={r.icon === 'trophy' ? colors.primary : colors.textMuted} size={20} />
+      <View style={styles.text}><AppText variant="headline">{r.title}</AppText><AppText muted numeric variant="footnote">{r.detail}</AppText></View>
+      <AppIcon name="chevronRight" color={colors.textMuted} size={15} />
+    </Pressable>) : <AppText muted>Sin récords ni cambios destacados en este período.</AppText>}
+  </View>;
+}
+
+/** Progreso: the period at a glance (R1/R2). Detail lives one tap away in each row. */
 export function ProgressOverviewScreen() {
   const router = useRouter();
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
-  const { query, compare } = useProgressRange();
+  const { query, compare, state, today } = useProgressRange();
   const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressOverview(c, query, signal, compare), [query, compare]);
-  const { state, data, refresh } = useProgressResource(client, progressRequestKey(query, compare), load);
+  const { state: status, data, refresh } = useProgressResource(client, progressRequestKey(query, compare), load);
   // The period travels in ProgressRangeProvider; only the Nutrition report (another tab's stack) still takes it by route.
-  const go = (pathname: ProgressRoute, extra: Record<string, string> = {}) => router.push({ pathname, params: pathname === '/(tabs)/nutrition/reports' ? { ...queryParams(query), ...extra } : extra });
-  const open = (d: ProgressDestination) => { const r = destinationRoute(d); go(r.pathname, r.extra); };
-  return <ProgressScroll title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
-    {state.status === 'loading' ? <><SkeletonBlock height={96} /><SkeletonBlock height={96} /></>
+  const open = (d: ProgressDestination) => {
+    const { pathname, extra } = destinationRoute(d);
+    router.push({ pathname, params: pathname === '/(tabs)/nutrition/reports' ? { ...queryParams(query), ...extra } : extra });
+  };
+  return <ProgressScroll title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={status.status === 'ready' && status.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
+    {status.status === 'loading' ? <><SkeletonBlock height={240} /><SkeletonBlock height={96} /></>
       : data ? <>
-        {state.status !== 'ready' ? <Surface><InlineUnavailable actionLabel="Reintentar" message="No se pudo actualizar. Mostramos la última lectura confirmada de este período." onAction={() => void refresh()} /></Surface> : null}
-        <Content data={data} open={open} />
+        {status.status !== 'ready' ? <InlineUnavailable actionLabel="Reintentar" message="No se pudo actualizar. Mostramos la última lectura confirmada de este período." onAction={() => void refresh()} /> : null}
+        <View style={styles.section}>
+          <Heading level={2}>{periodHeading(state, today)}</Heading>
+          <Areas data={data} open={open} />
+        </View>
+        <Highlights data={data} open={open} />
       </> : <UnavailableState title="No pudimos cargar tu progreso" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente."
         action={<Button label="Reintentar" onPress={() => void refresh()} />} />}
-
-    <View style={styles.section} testID="progress-explore">
-      <Heading level={2}>Explorar</Heading>
-      <Entry testID="progress-explore-body" label="Tendencias de Cuerpo" detail="Peso y medidas: cambio, tendencia y registros." icon="activity" onPress={() => go('/(tabs)/progress/trends/body')} />
-      <Entry testID="progress-explore-nutrition" label="Reportes de Nutrición" detail="Consumo, objetivos históricos y evolución." icon="nutrition" onPress={() => go('/(tabs)/nutrition/reports')} />
-      <Entry testID="progress-explore-metrics" label="Tendencias de Métricas" detail="Promedio, mínimo, máximo y cobertura de tus métricas." icon="water" onPress={() => go('/(tabs)/progress/trends/metrics')} />
-      <Entry testID="progress-explore-training" label="Tendencias de Entrenamiento" detail="Sesiones, series, duración, rendimiento por ejercicio y PRs." icon="dumbbell" onPress={() => go('/(tabs)/progress/trends/training')} />
-    </View>
-    <View style={styles.section} testID="progress-review">
-      <Heading level={2}>Revisar datos</Heading>
-      <ProgressDataLinks />
-    </View>
   </ProgressScroll>;
 }
 const styles = StyleSheet.create({
-  section: { gap: spacing.sm },
-  card: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  rowInline: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
-  block: { gap: 4 },
-  flex: { flex: 1, gap: 2 },
+  section: { gap: spacing.xs },
+  row: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  divider: { position: 'absolute', top: 0, left: 32, right: 0, height: StyleSheet.hairlineWidth },
+  text: { flex: 1, gap: 2 },
 });

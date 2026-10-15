@@ -105,6 +105,16 @@ export function rangeTitle(state: ProgressRangeState, today: string): { title: s
   if (state.unit === 'week') return { title: `Semana del ${shortRange(calendarRange('week', state.anchor), today)}`, subtitle: live ? `hasta hoy${tail}` : '7 días' };
   return { title: cap(shortRange(r, today)), subtitle: `${days} días${tail}` };
 }
+/** The overview's heading for the chosen period: "Tu octubre", "Tu semana", "Tus 3 meses", "Tu 2026", "Tu período". */
+export function periodHeading(state: ProgressRangeState, today: string): string {
+  const r = progressRange(state, today);
+  if (state.unit === 'month') return `Tu ${MONTHS[monthOf(r.start)]}`;
+  if (state.unit === 'week') return 'Tu semana';
+  if (state.unit === '3m') return 'Tus 3 meses';
+  if (state.unit === '6m') return 'Tus 6 meses';
+  if (state.unit === 'year') return `Tu ${r.start.slice(0, 4)}`;
+  return 'Tu período';
+}
 export function compareLabel(state: ProgressRangeState, today: string): string | null {
   const r = compareRange(state, today);
   return r ? shortRange(r, today) : null;

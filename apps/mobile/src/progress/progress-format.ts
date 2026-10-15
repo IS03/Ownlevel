@@ -15,6 +15,11 @@ export function formatDelta(value: number, unit: string | null, valueType: Metri
   if (valueType === 'duration') { const total = Math.round(Math.abs(value)); return `${sign}${Math.floor(total / 60)} h ${total % 60} min`; }
   return `${sign}${fmt(Math.abs(value), valueType === 'integer' ? 0 : 2)}${unit ? ` ${unit}` : ''}`;
 }
+/** A change as a neutral arrow and its magnitude ("↘ 2,1 kg"); never a color, never a judgment. */
+export function arrowDelta(delta: number, unit: string | null, valueType: MetricValueType = 'decimal'): string {
+  if (Math.abs(delta) < 1e-9) return 'sin cambio';
+  return `${delta > 0 ? '↗' : '↘'} ${formatValue(Math.abs(delta), unit, valueType)}`;
+}
 const REASONS: Record<string, string> = {
   current_period_empty: 'sin datos en este período', previous_period_empty: 'el período de comparación no tiene datos',
   insufficient_current_samples: 'pocos datos en este período', insufficient_previous_samples: 'pocos datos en el período de comparación',

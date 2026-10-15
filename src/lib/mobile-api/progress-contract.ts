@@ -68,7 +68,17 @@ export type ProgressOverview = {
   metrics: ProgressSection<{ items: ProgressMetricHabit[] }>;
   body: ProgressSection<{ excludedSuspect: number; trackedMetrics: number }>;
   training: ProgressSection<ProgressTrainingSummary>;
+  /** Only when requested (`spark=1`): mini charts for the Progreso rows. */
+  sparks?: ProgressOverviewSparks;
 };
+/** One bucket of a mini chart. null = no data in the bucket (a gap, never 0). */
+export type ProgressSparkPoint = { start: string; end: string; value: number | null };
+/** Buckets of the period and, only while comparing, of the comparison range (its own natural buckets). */
+export type ProgressSpark = { current: ProgressSparkPoint[]; reference: ProgressSparkPoint[] | null };
+/** Weight: last weighing per bucket; first/last of the period and the last weighing of the comparison range. */
+export type ProgressWeightSpark = ProgressSpark & { first: number | null; last: number | null; referenceLast: number | null };
+/** Training = completed sets per bucket (0 is real). Nutrition = average kcal of complete days per bucket. */
+export type ProgressOverviewSparks = { weight: ProgressWeightSpark | null; training: ProgressSpark | null; nutrition: ProgressSpark | null };
 export type TrainingPerformanceStatus = "improved" | "stable" | "declined" | "insufficient_data";
 export type TrainingSignal = { kind: string; description: string; currentValue: number | null; referenceValue: number | null; contextValue: number | null };
 export type ProgressTrainingExercise = {
@@ -233,8 +243,34 @@ export function parseProgressHabitWeek(v: unknown): ProgressHabitWeek | undefine
   return { today: v.today, ...range, items };
 }
 
+const OVERVIEW_KEYS = ["today", "period", "evolution", "changes", "nutrition", "metrics", "body", "training"];
+const parseSparkPoints = (v: unknown, value: (x: unknown) => boolean): ProgressSparkPoint[] | undefined => {
+  const points = list(v, p => record(p) && keys(p, ["start", "end", "value"]) && isNutritionDate(p.start) && isNutritionDate(p.end)
+    && p.start <= p.end && (p.value === null || value(p.value)) ? p as ProgressSparkPoint : undefined);
+  return points && points.every((p, i) => i === 0 || p.start > points[i - 1].end) ? points : undefined;
+};
+function parseSpark(v: unknown, value: (x: unknown) => boolean, extra: readonly string[] = []): ProgressSpark | undefined {
+  if (!record(v) || !keys(v, ["current", "reference", ...extra])) return;
+  const current = parseSparkPoints(v.current, value), reference = v.reference === null ? null : parseSparkPoints(v.reference, value);
+  return current && reference !== undefined ? { current, reference } : undefined;
+}
+function parseSparks(v: unknown): ProgressOverviewSparks | undefined {
+  if (!record(v) || !keys(v, ["weight", "training", "nutrition"])) return;
+  const positive = (x: unknown) => num(x) && x > 0;
+  const w = v.weight;
+  const weight = w === null ? null : (() => {
+    const spark = parseSpark(w, positive, ["first", "last", "referenceLast"]), r = w as Record<string, unknown>;
+    if (!spark || ![r.first, r.last, r.referenceLast].every(x => x === null || positive(x))) return;
+    return { ...spark, first: r.first as number | null, last: r.last as number | null, referenceLast: r.referenceLast as number | null };
+  })();
+  const training = v.training === null ? null : parseSpark(v.training, count);
+  const nutrition = v.nutrition === null ? null : parseSpark(v.nutrition, x => num(x) && x >= 0);
+  return weight !== undefined && training !== undefined && nutrition !== undefined ? { weight, training, nutrition } : undefined;
+}
 export function parseProgressOverview(v: unknown): ProgressOverview | undefined {
-  if (!record(v) || !keys(v, ["today", "period", "evolution", "changes", "nutrition", "metrics", "body", "training"]) || !isNutritionDate(v.today)) return;
+  if (!record(v) || !keys(v, "sparks" in v ? [...OVERVIEW_KEYS, "sparks"] : OVERVIEW_KEYS) || !isNutritionDate(v.today)) return;
+  const sparks = "sparks" in v ? parseSparks(v.sparks) : null;
+  if (sparks === undefined) return;
   const period = parseProgressPeriod(v.period);
   const evolution = list(v.evolution, parseRow), changes = list(v.changes, parseFinding);
   const nutrition = section(v.nutrition, parseNutrition);
@@ -251,7 +287,7 @@ export function parseProgressOverview(v: unknown): ProgressOverview | undefined 
   const perDomain = new Map<string, number>();
   for (const f of changes) perDomain.set(f.domain, (perDomain.get(f.domain) ?? 0) + 1);
   if ([...perDomain.values()].some(n => n > 2)) return;
-  return { today: v.today, period, evolution, changes, nutrition, metrics, body, training };
+  return { today: v.today, period, evolution, changes, nutrition, metrics, body, training, ...(sparks ? { sparks } : {}) };
 }
 
 const COMPARISON_KEYS = ["sessions", "trainingDays", "sets", "minutes", "setsPerSession"] as const;
