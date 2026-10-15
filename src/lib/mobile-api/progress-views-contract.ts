@@ -1,13 +1,20 @@
 // Progreso stage 2 · "Mis vistas" contract (pure; shared by the Mobile API and Expo). Plan: bocetos/explorar/PLAN.md.
-// A view is a saved Explorar query with a name and a position. It never stores dates: it follows Progreso's period.
+// A view is a saved Explorar query or Qué influye question. It never stores dates: it follows Progreso's period.
 import { isNutritionDate } from "./nutrition-day-contract";
 import { parseProgressPeriod, type ProgressPeriod } from "./progress-contract";
 import { exploreOptions, parseExploreMeasure, parseProgressExplore, type ExploreBreakdown, type ExploreDays, type ProgressExplore } from "./progress-explore-contract";
+import { parseProgressInfluence, validInfluenceDefinition, type InfluenceDefinition, type ProgressInfluence } from "./progress-influence-contract";
 
 export const PROGRESS_VIEWS_MAX = 6;
-export type ProgressViewDefinition = { measure: string; breakdown: ExploreBreakdown | null; days: ExploreDays | null; series: boolean };
+export type ExploreViewDefinition = { measure: string; breakdown: ExploreBreakdown | null; days: ExploreDays | null; series: boolean };
+/** `measure` is the outcome, keeping the existing database JSON check. An explicit outcome, if supplied, must agree. */
+export type InfluenceViewDefinition = { kind: "influence"; measure: string; split: string; cut: string; lag: 0 | 1 | 2; outcome?: string };
+export type ProgressViewDefinition = ExploreViewDefinition | InfluenceViewDefinition;
+export const isInfluenceView = (d: ProgressViewDefinition): d is InfluenceViewDefinition => "kind" in d && d.kind === "influence";
+export const influenceDefinitionOf = (d: InfluenceViewDefinition): InfluenceDefinition => ({ split: d.split, cut: d.cut, lag: d.lag, outcome: d.measure });
 export type ProgressView = { id: string; name: string; position: number; version: number; definition: ProgressViewDefinition };
-export type ProgressViewResult = { status: "ok"; data: ProgressExplore } | { status: "unavailable"; reason: "invalid_definition" | "data_unavailable" };
+export type ProgressViewResult = { status: "ok"; kind?: "explore"; data: ProgressExplore } | { status: "ok"; kind: "influence"; data: ProgressInfluence }
+  | { status: "unavailable"; reason: "invalid_definition" | "data_unavailable" };
 export type ProgressViewsRead = { today: string; period: ProgressPeriod; listVersion: number; views: (ProgressView & { result: ProgressViewResult })[] };
 export type ProgressViewCreate = { name: string; definition: ProgressViewDefinition; idempotencyKey: string };
 export type ProgressViewRename = { name: string; expectedVersion: number };
@@ -22,9 +29,17 @@ const KEY = /^[A-Za-z0-9._:-]{1,128}$/;
 
 /** A trimmed name of 1–60 characters. */
 export const parseViewName = (v: unknown): string | undefined => typeof v === "string" && v.trim() === v && v.length >= 1 && v.length <= 60 ? v : undefined;
-/** Only combinations Explorar admits (same rules as the explore read). */
+/** Each shape uses its read's validation rules; existing Explorar definitions keep their exact shape. */
 export function parseViewDefinition(v: unknown): ProgressViewDefinition | undefined {
-  if (!record(v) || !keys(v, ["measure", "breakdown", "days", "series"]) || typeof v.measure !== "string" || typeof v.series !== "boolean") return;
+  if (!record(v)) return;
+  if (v.kind === "influence") {
+    if (!(keys(v, ["kind", "measure", "split", "cut", "lag"]) || keys(v, ["kind", "measure", "split", "cut", "lag", "outcome"]))
+      || typeof v.measure !== "string" || typeof v.split !== "string" || typeof v.cut !== "string" || typeof v.lag !== "number"
+      || ("outcome" in v && v.outcome !== v.measure)) return;
+    const definition = v as InfluenceViewDefinition;
+    return validInfluenceDefinition(influenceDefinitionOf(definition)) ? { ...definition } : undefined;
+  }
+  if (!keys(v, ["measure", "breakdown", "days", "series"]) || typeof v.measure !== "string" || typeof v.series !== "boolean") return;
   const measure = parseExploreMeasure(v.measure);
   if (!measure) return;
   const options = exploreOptions(measure);
@@ -63,11 +78,18 @@ export function parseProgressViewsRead(v: unknown): ProgressViewsRead | undefine
     if (!record(raw) || !("result" in raw)) return;
     const { result, ...rest } = raw;
     const view = parseStoredView(rest);
+    // Positions are always 1..n in the response (a legacy read renumbers the views it shows).
     if (!view || view.position !== i + 1 || !record(result)) return;
-    if (result.status === "ok" && keys(result, ["status", "data"])) {
+    if (result.status === "ok" && result.kind === "influence" && keys(result, ["status", "kind", "data"])) {
+      const data = parseProgressInfluence(result.data), definition = parseViewDefinition(view.definition);
+      if (!data || !definition || !isInfluenceView(definition) || data.definition.split !== definition.split || data.definition.cut !== definition.cut
+        || data.definition.lag !== definition.lag || data.definition.outcome !== definition.measure
+        || data.period.start !== period.start || data.period.end !== period.end || data.today !== v.today) return;
+      views.push({ ...view, definition, result: { status: "ok", kind: "influence", data } });
+    } else if (result.status === "ok" && (keys(result, ["status", "data"]) || (keys(result, ["status", "kind", "data"]) && result.kind === "explore"))) {
       const data = parseProgressExplore(result.data), definition = parseViewDefinition(view.definition);
-      if (!data || !definition || data.measure.key !== definition.measure || data.period.start !== period.start || data.period.end !== period.end) return;
-      views.push({ ...view, definition, result: { status: "ok", data } });
+      if (!data || !definition || isInfluenceView(definition) || data.measure.key !== definition.measure || data.period.start !== period.start || data.period.end !== period.end) return;
+      views.push({ ...view, definition, result: { status: "ok", ...(result.kind === "explore" ? { kind: "explore" as const } : {}), data } });
     } else if (result.status === "unavailable" && keys(result, ["status", "reason"]) && (result.reason === "invalid_definition" || result.reason === "data_unavailable")) {
       // An invalid stored definition still needs a shape the app can show and remove.
       const definition = parseViewDefinition(view.definition) ?? { measure: String((view.definition as Record<string, unknown>).measure ?? ""), breakdown: null, days: null, series: false };

@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Alert } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
-import { parseProgressViewsRead, type ProgressViewsRead } from '@/api/progress-views';
+import { influenceDefinitionOf, parseProgressViewsRead, type InfluenceViewDefinition, type ProgressViewsRead } from '@/api/progress-views';
+import type { ProgressInfluence } from '@/api/progress-influence';
 import type { ProgressQuery } from '@/api/progress';
 import { MyViews } from './my-views';
 import { PinViewSheet, suggestedViewName } from './pin-view-sheet';
@@ -54,6 +55,31 @@ const wrap = (el: React.ReactElement) => render(<SafeAreaProvider initialMetrics
 beforeEach(() => { jest.clearAllMocks(); mockViews.mockResolvedValue(ok(read('two'))); });
 
 describe('Mis vistas', () => {
+  it('the API client opts into influence definitions', () => {
+    const api = jest.requireActual<typeof import('@/api/progress-views')>('@/api/progress-views');
+    void api.fetchProgressViews(mockClient as never, { period: 'custom', from: period.start, to: period.end });
+    expect(mockClient.read).toHaveBeenCalledWith(expect.objectContaining({ path: '/api/mobile/v1/progress/views?period=custom&from=2026-10-01&to=2026-10-05&kinds=influence' }));
+  });
+  it('shows influence differences or coverage, navigates to the answer, and describes the view in Editar', async () => {
+    const definition: InfluenceViewDefinition = { kind: 'influence', measure: 'training.sets', split: 'nutrition.carbs', cut: 'median', lag: 0 };
+    const dates = (start: number) => Array.from({ length: 7 }, (_, i) => `2026-09-${String(start + i).padStart(2, '0')}`);
+    const p = { ...period, start: '2026-09-01', days: 35, previousStart: '2026-07-28', previousEnd: '2026-08-31', bucket: 'week' as const };
+    const data: ProgressInfluence = { today: TODAY, period: p, definition: influenceDefinitionOf(definition),
+      measure: { split: { key: 'nutrition.carbs', label: 'Carbohidratos', unit: 'g', valueType: 'decimal' }, outcome: { key: 'training.sets', label: 'Series', unit: 'series', valueType: 'integer' } },
+      current: { status: 'ok', pairs: 14, cut: 300, low: { days: dates(1), average: 21 }, high: { days: dates(8), average: 26 }, difference: 5, differencePercent: 5 / 21 * 100, evidence: 'moderate' }, reference: null };
+    const payload: ProgressViewsRead = { today: TODAY, period: p, listVersion: 2, views: [
+      { id: A, name: 'Mi pregunta', position: 1, version: 1, definition, result: { status: 'ok', kind: 'influence', data } },
+      { id: B, name: 'Faltan registros', position: 2, version: 1, definition, result: { status: 'ok', kind: 'influence', data: { ...data, current: { status: 'insufficient', pairs: 6, needed: 14, perGroupNeeded: 5, cut: 300, low: { days: dates(1).slice(0, 3) }, high: { days: dates(8).slice(0, 3) }, missing: 'outcome' } } } },
+    ] };
+    expect(parseProgressViewsRead(payload)).toBeDefined(); mockViews.mockResolvedValue(ok(payload));
+    const view = wrap(<MyViews />); await flush();
+    expect(view.getByText('5 series más')).toBeTruthy(); expect(view.getByText('300 g o más: 26 series · el resto: 21')).toBeTruthy();
+    expect(view.getByText('Faltan datos: 6 de 14 días')).toBeTruthy();
+    fireEvent.press(view.getByTestId(`my-view-${A}`));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/influence/answer', params: { split: 'nutrition.carbs', cut: 'median', lag: '0', outcome: 'training.sets' } });
+    view.unmount(); const edit = wrap(<ViewsEditScreen />); await flush();
+    expect(edit.getAllByText('Qué influye · Carbohidratos → Series')).toHaveLength(2);
+  });
   it('fixtures follow the shared contract', () => { expect(parseProgressViewsRead(read('two'))).toBeDefined(); });
   it('shows each view with its value in the shared period; an invalid one says so; tapping opens Explorar with the saved query', async () => {
     const view = wrap(<MyViews />); await flush();

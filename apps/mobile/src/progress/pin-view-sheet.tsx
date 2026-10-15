@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useMobileApi } from '@/api';
-import { createProgressView, viewIntentKey, type ProgressViewDefinition } from '@/api/progress-views';
+import { createProgressView, isInfluenceView, viewIntentKey, type ProgressViewDefinition } from '@/api/progress-views';
 import { AppIcon, AppText, Button, InlineNotice, TextField, spacing, useOwnlevelTheme, type AppIconName } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import { BREAKDOWN_LABELS, DAYS_LABELS } from './explore-model';
@@ -9,17 +9,17 @@ import { ExploreSheet } from './explore-sheets';
 
 /** "Proteína por momento de la comida · con entrenamiento", at most 60 characters. */
 export function suggestedViewName(label: string, d: ProgressViewDefinition): string {
-  const name = `${label}${d.breakdown ? ` por ${BREAKDOWN_LABELS[d.breakdown].toLocaleLowerCase('es-AR')}` : ''}${d.days ? ` · ${DAYS_LABELS[d.days].toLocaleLowerCase('es-AR')}` : ''}`;
+  const name = isInfluenceView(d) ? label : `${label}${d.breakdown ? ` por ${BREAKDOWN_LABELS[d.breakdown].toLocaleLowerCase('es-AR')}` : ''}${d.days ? ` · ${DAYS_LABELS[d.days].toLocaleLowerCase('es-AR')}` : ''}`;
   return name.length <= 60 ? name : `${name.slice(0, 59).trimEnd()}…`;
 }
 
 /** S6 · pin the current Explorar query. One idempotency key per sheet: a retry never creates a second view. */
-export function PinViewSheet({ label, definition, preview, onPinned, onClose }: {
-  label: string; definition: ProgressViewDefinition; preview: string; onPinned: () => void; onClose: () => void;
+export function PinViewSheet({ label, definition, preview, onPinned, onClose, suggestedName }: {
+  label: string; definition: ProgressViewDefinition; preview: string; onPinned: () => void; onClose: () => void; suggestedName?: string;
 }) {
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
-  const [name, setName] = useState(() => suggestedViewName(label, definition));
+  const [name, setName] = useState(() => suggestedName ? suggestedName.trim().slice(0, 60) : suggestedViewName(label, definition));
   // Same name = same intent (a retry reuses the key); a new name is a new intent.
   const [key, setKey] = useState(viewIntentKey);
   const [busy, setBusy] = useState(false);

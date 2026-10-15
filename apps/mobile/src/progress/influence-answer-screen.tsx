@@ -1,15 +1,17 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { progressRequestKey } from '@/api/progress';
+import type { InfluenceViewDefinition } from '@/api/progress-views';
 import { fetchProgressInfluence, influenceDefinitionKey, validInfluenceDefinition, type InfluenceDefinition, type InfluenceReading, type InfluenceSuggestedKey } from '@/api/progress-influence';
 import { AppIcon, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme, type AppIconName } from '@/design-system';
 import { ProgressScroll } from './progress-scroll';
 import { ProgressRow } from './progress-row';
 import { useProgressRange } from './progress-range-context';
 import { useProgressResource } from './use-progress-resource';
-import { CAUTION, LAG_LABELS, QUESTIONS, answerText, groupLabels, questionText, valueText } from './influence-model';
+import { CAUTION, LAG_LABELS, QUESTIONS, answerText, groupLabels, questionText, shortAnswer, valueText } from './influence-model';
+import { PinViewSheet } from './pin-view-sheet';
 
 function Detail({ title, detail, icon, onPress, testID }: { title: string; detail?: string; icon: AppIconName; onPress?: () => void; testID?: string }) {
   const { colors } = useOwnlevelTheme();
@@ -50,6 +52,9 @@ function Answer({ data }: { data: InfluenceReading }) {
   </>;
 }
 function Reading({ definition, questionKey }: { definition: InfluenceDefinition; questionKey?: string }) {
+  const { colors } = useOwnlevelTheme();
+  const [pinOpen, setPinOpen] = useState(false), [pinned, setPinned] = useState<string | null>(null);
+  const definitionKey = influenceDefinitionKey(definition);
   const { client } = useMobileApi(), { query, compare } = useProgressRange();
   const { state, data, refresh } = useProgressResource(client, `influence|${progressRequestKey(query, compare)}|${influenceDefinitionKey(definition)}`,
     useCallback((c, s) => fetchProgressInfluence(c, query, definition, s, compare), [query, compare, definition]));
@@ -61,6 +66,11 @@ function Reading({ definition, questionKey }: { definition: InfluenceDefinition;
       <AppText muted>{definition.split === 'day.training' ? 'Días con y sin entrenamiento' : definition.split === 'day.work' ? 'Días laborales y no laborales'
         : `${data.measure.split.label} ${LAG_LABELS[definition.lag]}`}{definition.split.startsWith('day.') && definition.lag ? (definition.lag === 1 ? ', el día siguiente' : ', 2 días después') : ''} · {data.measure.outcome.label.toLocaleLowerCase('es-AR')} del día</AppText>
       <Answer data={data} />
+      {pinned === definitionKey ? <View style={styles.pinned} testID="influence-pinned"><AppIcon name="check" color={colors.primary} size={20} /><AppText variant="headline" style={{ color: colors.primary }}>Fijada en Mis vistas</AppText></View>
+        : <ProgressRow label="Fijar en Mis vistas" testID="influence-pin" onPress={() => setPinOpen(true)}><AppIcon name="pin" color={colors.primary} size={20} /><AppText variant="headline" style={{ flex: 1, color: colors.primary }}>Fijar en Mis vistas</AppText></ProgressRow>}
+      {pinOpen ? <PinViewSheet key={definitionKey} label={title} suggestedName={title.slice(0, 60)}
+        definition={{ kind: 'influence', measure: definition.outcome, split: definition.split, cut: definition.cut, lag: definition.lag } satisfies InfluenceViewDefinition}
+        preview={shortAnswer(data)} onPinned={() => setPinned(definitionKey)} onClose={() => setPinOpen(false)} /> : null}
     </> : <UnavailableState title="No pudimos cargar la respuesta" description="Revisá la conexión e intentá nuevamente." action={<Button label="Reintentar" onPress={() => void refresh()} />} />}
   </ProgressScroll>;
 }
@@ -71,4 +81,4 @@ export function InfluenceAnswerScreen() {
     return <ProgressScroll title="Tu pregunta" testID="influence-answer-screen"><AppText muted>Esta pregunta no es válida. Volvé a armarla.</AppText></ProgressScroll>;
   return <Reading definition={definition} questionKey={params.key} />;
 }
-const styles = StyleSheet.create({ section: { gap: spacing.md }, grow: { flex: 1 }, barLabel: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap' }, track: { height: 10, borderRadius: 10, overflow: 'hidden' } });
+const styles = StyleSheet.create({ section: { gap: spacing.md }, grow: { flex: 1 }, barLabel: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap' }, track: { height: 10, borderRadius: 10, overflow: 'hidden' }, pinned: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 50 } });

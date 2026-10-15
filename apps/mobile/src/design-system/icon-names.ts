@@ -8,6 +8,7 @@ export type AppIconName =
   | 'dragHandle'
   | 'archive'
   | 'bookmark'
+  | 'pin'
   | 'chat'
   | 'compare'
   | 'edit'
@@ -68,6 +69,7 @@ export const sfSymbolNames: Record<AppIconName, SFSymbol> = {
   dragHandle: 'line.3.horizontal',
   archive: 'archivebox',
   bookmark: 'bookmark',
+  pin: 'pin',
   chat: 'bubble.left',
   compare: 'arrow.left.arrow.right',
   edit: 'pencil',

@@ -14,13 +14,17 @@ import { QUESTIONS } from './influence-model';
 const mockPush = jest.fn();
 let mockParams: Record<string, string> = {};
 const mockRead = jest.fn<(...args: unknown[]) => Promise<unknown>>(), mockSuggested = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockCreate = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+let mockIntent = 0;
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocusEffect: () => undefined, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
-jest.mock('@/platform/haptics', () => ({ triggerHaptic: jest.fn() }));
+jest.mock('@/platform/haptics', () => ({ triggerHaptic: jest.fn(), haptics: { selection: jest.fn() } }));
 const mockClient = {};
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
 jest.mock('@/api/progress-influence', () => ({ ...jest.requireActual<object>('@/api/progress-influence'),
   fetchProgressInfluence: (...args: unknown[]) => mockRead(...args), fetchProgressInfluenceSuggested: (...args: unknown[]) => mockSuggested(...args) }));
+jest.mock('@/api/progress-views', () => ({ ...jest.requireActual<object>('@/api/progress-views'),
+  createProgressView: (...args: unknown[]) => mockCreate(...args), viewIntentKey: () => `influence-key-${++mockIntent}` }));
 jest.mock('@/api/progress', () => ({ ...jest.requireActual<object>('@/api/progress'),
   fetchProgressMetrics: async () => ({ status: 'ok', meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' }, data: { definitions: [] } }) }));
 
@@ -36,12 +40,27 @@ const flush = () => act(async () => { for (let i = 0; i < 12; i++) await Promise
 const wrap = (Screen: typeof InfluenceScreen, state?: ProgressRangeState) => render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
   <OwnlevelThemeProvider initialMode="light"><ProgressRangeProvider initialToday={TODAY} initialState={state}><Screen /></ProgressRangeProvider></OwnlevelThemeProvider></SafeAreaProvider>);
 beforeEach(() => {
-  jest.clearAllMocks(); mockParams = { ...definition, lag: '0' };
+  jest.clearAllMocks(); mockIntent = 0; mockParams = { ...definition, lag: '0' };
   mockRead.mockResolvedValue(ok({ today: TODAY, period, ...reading() }));
   mockSuggested.mockResolvedValue(ok({ today: TODAY, period, questions: [{ key: 'carbs_sets', ...reading() }, { key: 'steps_sleep', ...insufficient() }] }));
 });
 
 describe('Qué influye', () => {
+  it.each(['ok', 'insufficient'])('pins from T2 (%s) with the compact definition, a suggested name and one idempotency key per intent', async status => {
+    mockRead.mockResolvedValue(ok({ today: TODAY, period, ...(status === 'ok' ? reading() : insufficient()) }));
+    mockCreate.mockResolvedValueOnce({ status: 'unavailable', reason: 'network', meta: { ...meta, outcome: 'unavailable' } }).mockResolvedValueOnce(ok({}));
+    const view = wrap(InfluenceAnswerScreen); await flush();
+    fireEvent.press(view.getByTestId('influence-pin')); await flush();
+    const name = view.getByTestId('pin-view-name').props.value as string;
+    expect(name.length).toBeLessThanOrEqual(60); expect(name).toContain('¿Los días');
+    fireEvent.press(view.getByTestId('pin-view-confirm')); await flush();
+    const input = mockCreate.mock.calls[0][1];
+    expect(input).toEqual({ name, definition: { kind: 'influence', measure: 'training.sets', split: 'nutrition.carbs', cut: 'median', lag: 0 }, idempotencyKey: 'influence-key-1' });
+    expect(view.getByText('No pudimos fijarla. Probá de nuevo.')).toBeTruthy();
+    fireEvent.press(view.getByTestId('pin-view-confirm')); await flush();
+    expect(mockCreate.mock.calls[1][1]).toEqual(input);
+    expect(view.getByTestId('influence-pinned')).toBeTruthy(); expect(view.queryByTestId('influence-pin')).toBeNull();
+  });
   it('lists only questions received, showing ok and insufficient states, and navigates with the definition', async () => {
     const view = wrap(InfluenceScreen); await flush();
     expect(view.getByText(QUESTIONS.carbs_sets.title)).toBeTruthy();

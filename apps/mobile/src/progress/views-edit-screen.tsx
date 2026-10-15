@@ -4,13 +4,14 @@ import { useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { progressRequestKey } from '@/api/progress';
 import {
-  PROGRESS_VIEWS_MAX, deleteProgressView, fetchProgressViews, renameProgressView, reorderProgressViews, viewIntentKey, type ProgressViewsRead,
+  PROGRESS_VIEWS_MAX, deleteProgressView, fetchProgressViews, isInfluenceView, renameProgressView, reorderProgressViews, viewIntentKey, type ProgressViewsRead,
 } from '@/api/progress-views';
 import { AppIcon, AppText, Button, InlineNotice, InlineUnavailable, ScrollScreen, SkeletonBlock, TextField, spacing, useOwnlevelTheme } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import { NativeDragHandle, NativeReorderItem, NativeReorderList } from '@/training/session-native-interactions';
 import { BREAKDOWN_LABELS, DAYS_LABELS } from './explore-model';
 import { ExploreSheet } from './explore-sheets';
+import { choiceFor } from './influence-model';
 import { useProgressRange } from './progress-range-context';
 import { useProgressResource } from './use-progress-resource';
 
@@ -18,7 +19,13 @@ type ViewRow = ProgressViewsRead['views'][number];
 const CHANGED = 'Tus vistas cambiaron en otro dispositivo. Ya ves las últimas.';
 
 function detail(v: ViewRow): string {
-  const label = v.result.status === 'ok' ? v.result.data.measure.label : 'Medida no disponible';
+  if (isInfluenceView(v.definition)) {
+    const r = v.result;
+    const split = r.status === 'ok' && r.kind === 'influence' ? r.data.measure.split.label : choiceFor(v.definition.split)?.label ?? 'Medida no disponible';
+    const outcome = r.status === 'ok' && r.kind === 'influence' ? r.data.measure.outcome.label : choiceFor(v.definition.measure)?.label ?? 'Medida no disponible';
+    return `Qué influye · ${split} → ${outcome}`;
+  }
+  const label = v.result.status === 'ok' && v.result.kind !== 'influence' ? v.result.data.measure.label : 'Medida no disponible';
   const d = v.definition;
   return `${label}${d.breakdown ? ` · por ${BREAKDOWN_LABELS[d.breakdown].toLocaleLowerCase('es-AR')}` : ''}${d.days ? ` · ${DAYS_LABELS[d.days].toLocaleLowerCase('es-AR')}` : ''}${d.series ? ' · en el tiempo' : ''}`;
 }
