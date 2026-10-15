@@ -353,6 +353,21 @@ describe('Progress inPeriod read EXPAND', () => {
       expect((await get(request(`${path}?inPeriod=1&inPeriod=1`))).status).toBe(400);
     }
   });
+  it('counts that differ from the summary never break the read; blocks without valid sets are not first or last', async () => {
+    const { GET: trainingGET } = await import('@/app/api/mobile/v1/progress/training/route');
+    const source = history(60);
+    // Newest session: exercise not flagged completed (the summary still counts its completed set).
+    (source.sessionExercises[0] as { is_completed: boolean }).is_completed = false;
+    // Oldest session: the block exists but its only set has no reps.
+    (source.sets[2] as { actual_reps: number | null }).actual_reps = null;
+    vi.mocked(loadCompletedTrainingData).mockResolvedValue(source);
+    const response = await trainingGET(request('progress/training?period=custom&from=2026-10-01&to=2026-10-05&inPeriod=1'));
+    expect(response.status).toBe(200);
+    const t = await response.json();
+    expect(t.exercises.find((e: { id: string }) => e.id === eid).sessions).toBe(3);
+    // Only the middle session is usable: one session, so it stays out of the list.
+    expect(t.inPeriod.exercises).toEqual([]);
+  });
   it('a changed mode is non-comparable and unavailable Training gives overview null', async () => {
     const { GET: trainingGET } = await import('@/app/api/mobile/v1/progress/training/route');
     vi.mocked(loadCompletedTrainingData).mockResolvedValue(history(60, 'Peso total', 'Por mancuerna'));
