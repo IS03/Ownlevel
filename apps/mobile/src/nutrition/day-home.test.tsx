@@ -58,7 +58,8 @@ describe('Nutrition Home data truth and rings', () => {
     expect(ringLaps(2)).toEqual({ base: 1, excess: 1 });
     expect(ringLaps(2.25)).toEqual({ base: 1, excess: 0.25 });
     const view = render(wrap(<NutritionRings readings={readings} />));
-    expect(view.getByTestId('nutrition-rings-calories-excess', { includeHiddenElements: true }).props.strokeLinecap).toBe(1); // SVG's native round enum
+    // An excess lap overlaps the start: it is drawn as a group (arc, end-cap shadow, end cap on top).
+    expect(view.getByTestId('nutrition-rings-calories-excess', { includeHiddenElements: true })).toBeTruthy();
     expect(view.getByTestId('nutrition-rings-protein-excess', { includeHiddenElements: true })).toBeTruthy();
   });
   it('never paints progress for an unknown value or missing target', () => {
@@ -87,16 +88,18 @@ describe('Nutrition Home data truth and rings', () => {
     jest.restoreAllMocks();
   });
   it('uses logical dates across month/year and leap-year boundaries', () => {
-    expect(nutritionWeek('2026-10-01')).toEqual(['2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04']);
+    // Rolling window ending today; a date in it keeps the window, an older one becomes its last day.
+    expect(nutritionWeek('2026-10-01', '2026-10-03')).toEqual(['2026-09-27', '2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02', '2026-10-03']);
+    expect(nutritionWeek('2026-09-20', '2026-10-03').at(-1)).toBe('2026-09-20');
     expect(nutritionMonth('2028-02-14')).toMatchObject({ start: '2028-02-01', end: '2028-02-29', days: 29 });
-    expect(nutritionWeek('2027-01-01')[0]).toBe('2026-12-28');
+    expect(nutritionWeek('2027-01-01')[0]).toBe('2026-12-26');
   });
 });
 describe('Nutrition week and month existing reads', () => {
-  it('requests the selected week clipped to today and opens the tapped date', async () => {
+  it('requests the last seven days ending today and opens the tapped date', async () => {
     const select = jest.fn();
     const view = render(wrap(<NutritionWeek date="2026-10-02" today="2026-10-02" onSelect={select} />));
-    await waitFor(() => expect(mockReport).toHaveBeenCalledWith(mockClient, { period: 'custom', from: '2026-09-28', to: '2026-10-02' }, expect.anything()));
+    await waitFor(() => expect(mockReport).toHaveBeenCalledWith(mockClient, { period: 'custom', from: '2026-09-26', to: '2026-10-02' }, expect.anything()));
     fireEvent.press(view.getByTestId('nutrition-week-2026-10-01'));
     expect(select).toHaveBeenCalledWith('2026-10-01');
   });

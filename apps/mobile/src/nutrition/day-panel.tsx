@@ -2,7 +2,7 @@ import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import type { MobileNutritionDayResponse, NutritionDayMetric } from '@/api/nutrition-day';
 import { AppIcon, AppText, GlassSurface, ScrollScreen, SheetHeader, useOwnlevelTheme, useReduceMotion, type AppIconName } from '@/design-system';
 import { homeMetricIcon } from '@/home/home-metric-icons';
-import { amount, signedAmount } from './day-format';
+import { amount } from './day-format';
 import { NutritionSectionHeading } from './day-controls';
 import { NutritionDayDetails, metricValue } from './day-details';
 import { canWriteDay } from './day-write-model';
@@ -19,7 +19,7 @@ function PanelCell({ title, value, target, icon, onPress, metric, actionLabel }:
     </View>
     <View style={styles.cellText}>
       <AppText muted variant="caption">{title}</AppText>
-      <View style={styles.value}><AppText numeric variant="headline">{value}</AppText>{target ? <AppText muted numeric variant="caption">{target}</AppText> : null}</View>
+      <View style={styles.value}><AppText numeric variant="headline">{value === 'Sin dato' ? '—' : value}</AppText>{target ? <AppText muted numeric variant="caption">{target}</AppText> : null}</View>
     </View>
   </>;
   return onPress ? <Pressable accessibilityRole="button" accessibilityLabel={`${title}: ${value}${target ? ` ${target}` : ''}. ${actionLabel ?? 'Editar actividad'}`}
@@ -31,7 +31,8 @@ export function NutritionDayPanel({ data, onDetail, onActivity }: {
   const { colors } = useOwnlevelTheme();
   const n = data.nutrition.status === 'ok' && data.nutrition.data.dayState === 'recorded' ? data.nutrition.data : null;
   const caloriesKnown = n && !(n.summary.entryCount > 0 && n.summary.calories.missingCount === n.summary.entryCount);
-  const balance = caloriesKnown ? signedAmount(n.context.energyBalanceKcal) : 'Sin dato';
+  // The arrow carries the direction; the number is the magnitude (no minus sign next to an arrow, no color).
+  const balance = caloriesKnown && n.context.energyBalanceKcal !== null ? amount(Math.abs(n.context.energyBalanceKcal), 'kcal') : 'Sin dato';
   const metrics = data.activity.status === 'ok' ? data.activity.data.metrics : [];
   const activity = onActivity && canWriteDay('metrics', data) ? () => onActivity(data) : undefined;
   return <View style={styles.section} testID="nutrition-day-panel">

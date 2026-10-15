@@ -49,7 +49,7 @@ function NutritionDayView({ date, today, onSelect, onToday, onServerToday, onAdd
   useEffect(() => { if (serverToday) onServerToday(serverToday); }, [serverToday, onServerToday]);
   const selectedLabel = `${headerDate(date)}${date.slice(0, 4) !== today.slice(0, 4) ? ` de ${date.slice(0, 4)}` : ''}`;
   const runRefresh = () => { void refresh(); setRefreshRevision(v => v + 1); };
-  return <ScrollScreen testID="nutrition-day-screen" refreshControl={
+  return <ScrollScreen statusBarGlass testID="nutrition-day-screen" refreshControl={
     <RefreshControl colors={[colors.primary]} onRefresh={runRefresh}
       progressBackgroundColor={colors.surface} refreshing={state.status === 'ready' && state.refreshing}
       testID="nutrition-refresh" tintColor={colors.primary} />

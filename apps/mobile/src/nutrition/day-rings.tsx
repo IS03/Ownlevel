@@ -15,14 +15,24 @@ function Ring({ color, radius, reading, stroke, testID, track }: {
   const fraction = ringFraction(reading);
   const { base, excess } = ringLaps(fraction);
   const circumference = 2 * Math.PI * radius;
-  const arc = (share: number, tint: string, id: string) => share > 0 ? <Circle cx={80} cy={80} r={radius} fill="none"
-    stroke={tint} strokeWidth={stroke} strokeLinecap="round" strokeDasharray={`${share * circumference} ${circumference}`}
-    testID={id} /> : null;
+  const capTurn = stroke / 2 / circumference;
+  const segment = (from: number, share: number, tint: string, id?: string) => <Circle cx={80} cy={80} r={radius} fill="none" stroke={tint}
+    strokeWidth={stroke} strokeLinecap="round" strokeDasharray={`${share * circumference} ${circumference}`} strokeDashoffset={-from * circumference} testID={id} />;
+  // When the end cap reaches the start cap they pinch into a notch. Like Activity rings, the end gets a soft
+  // shadow and is redrawn on top, so the lap reads as overlapping instead of glitching.
+  const arc = (share: number, tint: string, id: string, overlapsBase = false) => {
+    if (share <= 0) return null;
+    if (!overlapsBase && share < 1 - 2 * capTurn) return segment(0, share, tint, id);
+    const end = share * 2 * Math.PI, tail = Math.min(share, 4 * capTurn);
+    return <G testID={id}>{segment(0, share, tint)}
+      <Circle cx={80 + radius * Math.cos(end + capTurn)} cy={80 + radius * Math.sin(end + capTurn)} r={stroke / 2} fill="#000" opacity={0.18} />
+      {segment(share - tail, tail, tint)}</G>;
+  };
   return <G rotation={-90} origin="80, 80">
     <Circle cx={80} cy={80} r={radius} fill="none" stroke={track} strokeWidth={stroke}
       strokeDasharray={fraction === null ? '3 5' : undefined} testID={`${testID}-${fraction === null ? 'unknown' : 'track'}`} />
     {arc(base, color, `${testID}-base`)}
-    {arc(excess, darker(color), `${testID}-excess`)}
+    {arc(excess, darker(color), `${testID}-excess`, true)}
   </G>;
 }
 

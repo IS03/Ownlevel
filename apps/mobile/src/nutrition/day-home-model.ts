@@ -28,9 +28,10 @@ export function ringFraction(reading: RingReading): number | null {
   return reading.value !== null && reading.value >= 0 && reading.target !== null && reading.target > 0
     ? reading.value / reading.target : null;
 }
-export function nutritionWeek(date: string): string[] {
-  const offset = (new Date(`${date}T12:00:00Z`).getUTCDay() + 6) % 7;
-  return Array.from({ length: 7 }, (_, i) => shiftNutritionDate(date, i - offset)!);
+/** E5: the last seven days ending today; a date outside that window becomes the window's last day. */
+export function nutritionWeek(date: string, today: string = date): string[] {
+  const end = date <= today && date > shiftNutritionDate(today, -7)! ? today : date;
+  return Array.from({ length: 7 }, (_, i) => shiftNutritionDate(end, i - 6)!);
 }
 export function nutritionMonth(date: string) {
   const start = `${date.slice(0, 7)}-01`;
