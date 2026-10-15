@@ -1,10 +1,12 @@
 import type { MobileApiClient } from './client';
+import { parseProgressExplore, type ExploreBreakdown, type ExploreDays } from '../../../../src/lib/mobile-api/progress-explore-contract';
 import {
   parseProgressNutritionTiming, parseProgressHabitWeek, parseProgressBody, parseProgressMetrics, parseProgressOverview, parseProgressTraining, parseProgressTrainingExercise, progressQueryKey, progressQueryString,
   type ProgressPeriod, type ProgressQuery,
 } from '../../../../src/lib/mobile-api/progress-contract';
 
 export * from '../../../../src/lib/mobile-api/progress-contract';
+export * from '../../../../src/lib/mobile-api/progress-explore-contract';
 const BASE = '/api/mobile/v1/progress';
 /** An explicit comparison range B (server EXPAND). Without it the server keeps its previous equivalent window. */
 export type ProgressCompareRange = { start: string; end: string } | null;
@@ -55,3 +57,15 @@ export const fetchProgressNutritionTiming = (client: MobileApiClient, query: Pro
     const data = parseProgressNutritionTiming(raw);
     return data && samePeriod(data.period, query, compare) && (compare ? data.reference !== null : data.reference === null) ? data : undefined;
   } });
+
+/** Explorar (stage 2): measure × optional breakdown × optional day filter, inside the shared period. */
+export type ExploreRequest = { measure: string; breakdown: ExploreBreakdown | null; days: ExploreDays | null; series: boolean };
+export const exploreRequestKey = (r: ExploreRequest) => `${r.measure}|${r.breakdown ?? ''}|${r.days ?? ''}|${r.series ? 's' : ''}`;
+export const fetchProgressExplore = (client: MobileApiClient, query: ProgressQuery, request: ExploreRequest, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
+  client.read({ path: `${BASE}/explore?${qs(query, compare)}&measure=${encodeURIComponent(request.measure)}${request.breakdown ? `&breakdown=${request.breakdown}` : ''}${request.days ? `&days=${request.days}` : ''}${request.series ? '&series=1' : ''}`,
+    signal, parse: (raw: unknown) => {
+      const data = parseProgressExplore(raw);
+      // A response for another measure, breakdown or period is invalid, never shown.
+      return data && samePeriod(data.period, query, compare) && data.measure.key === request.measure && data.breakdown === request.breakdown
+        && data.days === request.days && data.series === request.series && (data.reference !== null) === !!compare ? data : undefined;
+    } });
