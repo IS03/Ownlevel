@@ -1,77 +1,302 @@
-import { View, StyleSheet } from 'react-native';
-import type { MobileNutritionDayResponse, NutritionDayContext, NutritionDayMetric } from '@/api/nutrition-day';
-import { AppText, Button, Heading, Surface, spacing } from '@/design-system';
+import { Pressable, StyleSheet, View } from 'react-native';
+import type {
+  MobileNutritionDayResponse,
+  NutritionDayContext,
+  NutritionDayFactor,
+  NutritionDayMetric,
+} from '@/api/nutrition-day';
+import { AppIcon, AppText, brandTokens, useOwnlevelTheme, type AppIconName } from '@/design-system';
 import { canWriteDay } from './day-write-model';
-import { amount, nutrientAmount, signedAmount } from './day-format';
+import { number } from './day-format';
+import { nutrientReading } from './day-home-model';
 
-function Detail({ label, value }: { label: string; value: string }) {
-  return <View style={styles.detail}><AppText muted style={styles.label}>{label}</AppText><AppText numeric style={styles.value}>{value}</AppText></View>;
-}
-function effective(value: boolean | null): string { return value === null ? 'Sin dato' : value ? 'Sí' : 'No'; }
-const sources = { workout: 'sesión registrada', override: 'ajuste diario', none: 'sin sesión', schedule: 'horario' };
-function Context({ data, onAdjust }: { data: NutritionDayContext; onAdjust?: () => void }) {
-  return <Surface>
-    <Heading level={2}>Contexto del día</Heading>
-    {onAdjust ? <Button label="Ajustar contexto" onPress={onAdjust} variant="secondary" /> : null}
-    <Detail label="Entrenamiento efectivo" value={`${effective(data.training.effective)}${data.training.source ? ` · ${sources[data.training.source]}` : ''}`} />
-    <Detail label="Trabajo efectivo" value={`${effective(data.work.effective)}${data.work.source ? ` · ${sources[data.work.source]}` : ''}`} />
-    <Detail label="Objetivo automático" value={amount(data.targetAutomaticKcal, 'kcal')} />
-    {data.targetOverrideKcal !== null ? <Detail label="Objetivo ajustado para este día" value={amount(data.targetOverrideKcal, 'kcal')} /> : null}
-    <Detail label="Gasto automático" value={amount(data.expenditureAutomaticKcal, 'kcal')} />
-    {data.expenditureOverrideKcal !== null ? <Detail label="Gasto ajustado para este día" value={amount(data.expenditureOverrideKcal, 'kcal')} /> : null}
-    <Detail label="Objetivo de agua del plan" value={amount(data.waterTargetL, 'L')} />
-    {data.resolvedAt === null ? <AppText muted>Este día no tiene contexto nutricional resuelto.</AppText> : null}
-  </Surface>;
-}
+export type DayContextField = 'target' | 'expenditure';
+export type DayContextAction = (data: MobileNutritionDayResponse, reset?: DayContextField) => void;
 export function metricValue(m: NutritionDayMetric, value: number | null): string {
   if (value === null) return 'Sin dato';
   if (m.valueType === 'duration') return `${Math.floor(value / 60)} h ${value % 60} min`;
   return `${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 4 }).format(value)}${m.unit ? ` ${m.unit}` : ''}`;
 }
-export function NutritionDayDetails({ data, onActivity, onContext }: { data: MobileNutritionDayResponse; onActivity?: (data: MobileNutritionDayResponse) => void; onContext?: (data: MobileNutritionDayResponse) => void }) {
-  const nutrition = data.nutrition.status === 'ok' ? data.nutrition.data : null;
-  const recorded = nutrition?.dayState === 'recorded' ? nutrition : null;
-  const energyAmount = (value: number | null) => {
-    if (!recorded) return 'Sin dato';
-    const { calories, entryCount } = recorded.summary;
-    if (entryCount > 0 && calories.missingCount === entryCount) return 'Sin dato';
-    return `${signedAmount(value)}${value !== null && calories.missingCount > 0 ? ' · parcial' : ''}`;
-  };
-  return <>
-    {!nutrition ? <Surface><Heading level={2}>Nutrición no disponible</Heading><AppText muted>No pudimos consultar el resumen ni las comidas de esta fecha. Deslizá para reintentar.</AppText></Surface>
-      : !recorded ? <Surface><Heading level={2}>Sin día registrado</Heading><AppText muted>Esta fecha todavía no tiene un registro nutricional. No hay resumen ni objetivos guardados.</AppText></Surface>
-      : <>
-        <Surface>
-          <Heading level={2}>Resumen nutricional</Heading>
-          <Detail label="Consumo" value={nutrientAmount(recorded.summary.calories, recorded.summary.entryCount, 'kcal')} />
-          <Detail label="Objetivo nutricional" value={amount(recorded.context.calorieTarget, 'kcal')} />
-          <Detail label="Consumo − objetivo" value={energyAmount(recorded.context.deltaVsTargetKcal)} />
-          <Detail label="Gasto energético" value={amount(recorded.context.expenditureKcal, 'kcal')} />
-          <Detail label="Balance: consumo − gasto" value={energyAmount(recorded.context.energyBalanceKcal)} />
-          <Detail label="Proteína" value={nutrientAmount(recorded.summary.proteinG, recorded.summary.entryCount, 'g')} />
-          <Detail label="Objetivo de proteína" value={amount(recorded.context.proteinTargetG, 'g')} />
-          <Detail label="Carbohidratos" value={nutrientAmount(recorded.summary.carbsG, recorded.summary.entryCount, 'g')} />
-          <Detail label="Grasas" value={nutrientAmount(recorded.summary.fatG, recorded.summary.entryCount, 'g')} />
-          {Object.values(recorded.summary).some(v => typeof v === 'object' && v.missingCount > 0) ?
-            <AppText muted>Las sumas parciales incluyen sólo valores conocidos. “Sin dato” no significa cero.</AppText> : null}
-        </Surface>
-        <Context data={recorded.context} onAdjust={onContext && canWriteDay('context', data) ? () => onContext(data) : undefined} />
-      </>}
-    <Surface>
-      <Heading level={2}>Actividad</Heading>
-      {onActivity && canWriteDay('metrics', data) ? <Button label="Editar actividad" onPress={() => onActivity(data)} variant="secondary" /> : null}
-      {data.activity.status === 'unavailable' ? <AppText muted>Las métricas de esta fecha no están disponibles. Deslizá para reintentar.</AppText>
-        : data.activity.data.metrics.length === 0 ? <AppText muted>No hay métricas disponibles para esta fecha.</AppText>
-        : data.activity.data.metrics.map(m => <View key={m.id} style={styles.metric}>
-          <Detail label={`${m.label}${m.isActive ? '' : ' · archivada'}`} value={metricValue(m, m.value)} />
-          {m.target !== null ? <AppText muted variant="caption">Objetivo actual de la métrica: {metricValue(m, m.target)}</AppText> : null}
-        </View>)}
-      <AppText muted variant="caption">Valores de esta fecha exacta. Sin dato indica que no se registró un valor.</AppText>
-    </Surface>
-  </>;
+const energy = (value: number | null) => (value === null ? '—' : `${number(value)} kcal`);
+const signed = (value: number) => `${value < 0 ? '−' : '+'}${number(Math.abs(value))} kcal`;
+const allocation = { target: 'al objetivo', expenditure: 'al gasto', both: 'al objetivo y al gasto' };
+export function factorState(factor: NutritionDayFactor) {
+  if (factor.source === 'override') return 'Ajustado hoy';
+  if (factor.key === 'training') return factor.active ? 'Sí, hubo sesión hoy' : 'No hubo sesión hoy';
+  if (factor.key === 'work' && factor.source === 'schedule')
+    return factor.active ? 'Sí, por tu horario' : 'No, por tu horario';
+  return factor.active ? 'Se aplica hoy' : 'No se aplica hoy';
+}
+const factorName = (key: string) =>
+  key === 'training' ? 'Entrenamiento' : key === 'work' ? 'Día laboral' : 'Extra del plan';
+function EnergyBar({
+  label,
+  value,
+  target,
+  scale,
+  muted,
+  partial,
+}: {
+  label: string;
+  value: number | null;
+  target?: number | null;
+  scale: number;
+  muted?: boolean;
+  partial?: boolean;
+}) {
+  const { colors } = useOwnlevelTheme();
+  const targetLabel =
+    target === undefined ? '' : `, objetivo ${target === null ? 'sin dato' : `${number(target)} kilocalorías`}`;
+  return (
+    <View
+      accessible
+      accessibilityLabel={`${label}, ${value === null ? 'sin dato' : `${number(value)} kilocalorías`}${partial ? ', suma parcial' : ''}${targetLabel}${muted ? ', según tu plan' : ''}`}
+      style={styles.energy}
+    >
+      <View style={styles.row}>
+        <AppText muted variant="subheadline">
+          {label}
+        </AppText>
+        <AppText numeric variant="headline">
+          {energy(value)}
+          {partial ? ' · parcial' : ''}
+        </AppText>
+      </View>
+      {muted ? (
+        <AppText muted variant="caption">
+          según tu plan
+        </AppText>
+      ) : null}
+      {value !== null ? (
+        <View
+          testID={muted ? 'day-expenditure-track' : 'day-intake-track'}
+          style={[styles.track, { backgroundColor: colors.surfaceRaised }]}
+        >
+          <View
+            testID={muted ? 'day-expenditure-bar' : 'day-intake-bar'}
+            style={[
+              styles.bar,
+              {
+                width: `${(value / scale) * 100}%`,
+                backgroundColor: muted ? colors.textMuted : brandTokens.palette.dark.accent,
+                opacity: muted ? 0.5 : 1,
+              },
+            ]}
+          />
+          {target !== undefined && target !== null ? (
+            <View
+              testID="day-target-mark"
+              style={[styles.mark, { left: `${(target / scale) * 100}%`, backgroundColor: colors.text }]}
+            />
+          ) : null}
+        </View>
+      ) : null}
+      {target !== undefined ? (
+        <AppText muted numeric variant="caption">
+          Objetivo {energy(target)}
+        </AppText>
+      ) : null}
+    </View>
+  );
+}
+function ExplanationRow({
+  icon,
+  title,
+  subtitle,
+  value,
+  accessibilityLabel,
+}: {
+  icon: AppIconName;
+  title: string;
+  subtitle: string;
+  value: string;
+  accessibilityLabel: string;
+}) {
+  const { colors } = useOwnlevelTheme();
+  return (
+    <View
+      accessible
+      accessibilityLabel={accessibilityLabel}
+      style={[styles.explanation, { borderBottomColor: colors.border }]}
+    >
+      <View style={[styles.icon, { backgroundColor: colors.surfaceRaised }]}>
+        <AppIcon name={icon} size={17} color={colors.textMuted} />
+      </View>
+      <View style={styles.label}>
+        <AppText variant="body">{title}</AppText>
+        <AppText muted variant="caption">
+          {subtitle}
+        </AppText>
+      </View>
+      <AppText numeric variant="headline" style={styles.contribution}>
+        {value}
+      </AppText>
+    </View>
+  );
+}
+function Changes({ context }: { context: NutritionDayContext }) {
+  const breakdown = context.breakdown;
+  if (!breakdown || context.targetOverrideKcal !== null || context.expenditureOverrideKcal !== null) return null;
+  const fixedNote =
+    breakdown.baseExpenditureMode === 'automatic' ? 'Base automática, sin extras' : 'Fijo, todos los días';
+  const keys = [...new Set(breakdown.factors.map((f) => f.key))];
+  return keys.length ? (
+    <View style={styles.section} testID="day-factors">
+      <AppText accessibilityRole="header" muted variant="footnote">
+        Qué cambia hoy
+      </AppText>
+      {keys.map((key) => {
+        const factors = breakdown.factors.filter((f) => f.key === key);
+        const subtitle = factors.map((f) => `${factorState(f)} · ${allocation[f.appliesTo]}`).join('\n');
+        const value = factors.map((f) => signed(f.deltaKcal)).join('\n');
+        const spoken = `${factorName(key)}, ${factors.map((f) => `${factorState(f)}, ${f.deltaKcal < 0 ? 'menos' : 'más'} ${number(Math.abs(f.deltaKcal))} kilocalorías ${allocation[f.appliesTo]}`).join(', ')}`;
+        return (
+          <ExplanationRow
+            key={key}
+            icon={key === 'training' ? 'dumbbell' : key === 'work' ? 'work' : 'settings'}
+            title={factorName(key)}
+            subtitle={subtitle}
+            value={value}
+            accessibilityLabel={spoken}
+          />
+        );
+      })}
+      <AppText muted numeric variant="caption">
+        Base del plan {energy(breakdown.baseTargetKcal)} objetivo · {energy(breakdown.baseExpenditureKcal)} gasto
+      </AppText>
+    </View>
+  ) : breakdown.expenditureMode === 'fixed' ? (
+    <View style={styles.section} testID="day-fixed-origin">
+      <AppText accessibilityRole="header" muted variant="footnote">
+        De dónde sale
+      </AppText>
+      <ExplanationRow
+        icon="settings"
+        title="Gasto de tu plan"
+        subtitle={fixedNote}
+        value={energy(breakdown.baseExpenditureKcal)}
+        accessibilityLabel={`Gasto de tu plan, ${fixedNote}, ${number(breakdown.baseExpenditureKcal)} kilocalorías`}
+      />
+      <ExplanationRow
+        icon="nutrition"
+        title="Objetivo"
+        subtitle="Automático"
+        value={energy(breakdown.baseTargetKcal)}
+        accessibilityLabel={`Objetivo, automático, ${number(breakdown.baseTargetKcal)} kilocalorías`}
+      />
+    </View>
+  ) : null;
+}
+export function NutritionDayDetails({
+  data,
+  onContext,
+}: {
+  data: MobileNutritionDayResponse;
+  onActivity?: (data: MobileNutritionDayResponse) => void;
+  onContext?: DayContextAction;
+}) {
+  const { colors } = useOwnlevelTheme();
+  const n = data.nutrition.status === 'ok' && data.nutrition.data.dayState === 'recorded' ? data.nutrition.data : null;
+  const reading = n ? nutrientReading(n.summary.calories, n.summary.entryCount, n.context.calorieTarget) : null;
+  const intake = reading?.value ?? null,
+    expenditure = n?.context.expenditureKcal ?? null,
+    target = n?.context.calorieTarget ?? null;
+  const scale = Math.max(1, intake ?? 0, expenditure ?? 0, target ?? 0);
+  const balance = intake === null ? null : (n?.context.energyBalanceKcal ?? null);
+  const shownBalance =
+    balance === null
+      ? '—'
+      : `${balance < 0 ? '↘' : balance > 0 ? '↗' : '→'} ${energy(Math.abs(balance))}${reading?.partial ? ' · parcial' : ''}`;
+  return (
+    <View style={styles.content} testID="nutrition-day-details">
+      <View style={styles.section}>
+        <EnergyBar label="Comiste" value={intake} target={target} scale={scale} partial={reading?.partial} />
+        <EnergyBar label="Gasto estimado" value={expenditure} scale={scale} muted />
+        <View
+          accessible
+          accessibilityLabel={`Balance del día, ${balance === null ? 'sin dato' : `${balance < 0 ? 'menos' : balance > 0 ? 'más' : ''} ${number(Math.abs(balance))} kilocalorías`}${reading?.partial ? ', parcial' : ''}`}
+          style={[styles.balance, { borderTopColor: colors.border }]}
+        >
+          <AppText variant="headline">Balance del día</AppText>
+          <AppText numeric variant="title2">
+            {shownBalance}
+          </AppText>
+        </View>
+      </View>
+      {!n ? (
+        <AppText muted>
+          {data.nutrition.status === 'unavailable'
+            ? 'No pudimos consultar la energía de esta fecha.'
+            : 'Esta fecha todavía no tiene un registro nutricional.'}
+        </AppText>
+      ) : (
+        <>
+          {reading?.partial ? (
+            <AppText muted variant="caption">
+              La suma incluye solo calorías conocidas. Sin dato no significa cero.
+            </AppText>
+          ) : null}
+          <Changes context={n.context} />
+          {(['target', 'expenditure'] as const).map((field) => {
+            const value = field === 'target' ? n.context.targetOverrideKcal : n.context.expenditureOverrideKcal;
+            const title = field === 'target' ? 'Objetivo' : 'Gasto estimado';
+            return value !== null ? (
+              <View key={field} style={[styles.adjustment, { borderTopColor: colors.border }]}>
+                <ExplanationRow
+                  icon="edit"
+                  title={title}
+                  subtitle="Ajustado hoy"
+                  value={energy(value)}
+                  accessibilityLabel={`${title}, ajustado hoy, ${number(value)} kilocalorías`}
+                />
+                {onContext && canWriteDay('context', data) ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Volver al automático: ${field === 'target' ? 'objetivo' : 'gasto'}`}
+                    onPress={() => onContext(data, field)}
+                    style={styles.reset}
+                  >
+                    <AppText style={{ color: colors.primary }} variant="subheadline">
+                      Volver al automático
+                    </AppText>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null;
+          })}
+        </>
+      )}
+    </View>
+  );
 }
 const styles = StyleSheet.create({
-  detail: { flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between', alignItems: 'flex-start' },
-  label: { flex: 1 }, value: { flex: 1, textAlign: 'right' },
-  metric: { gap: spacing.xs },
+  content: { gap: 24 },
+  section: { gap: 16 },
+  energy: { gap: 8 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' },
+  track: { height: 10, borderRadius: 5 },
+  bar: { height: 10, borderRadius: 5 },
+  mark: { position: 'absolute', width: 2, height: 16, top: -3, marginLeft: -1 },
+  balance: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    gap: 12,
+    flexWrap: 'wrap',
+    paddingTop: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  explanation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingBottom: 12,
+    minHeight: 56,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  icon: { width: 32, height: 32, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  label: { flex: 1, gap: 2 },
+  contribution: { textAlign: 'right', flexShrink: 1 },
+  adjustment: { gap: 4, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth },
+  reset: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-end' },
 });

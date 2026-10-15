@@ -1,4 +1,5 @@
 import "server-only";
+import { readDayBreakdown } from "./nutrition-day-breakdown";
 
 import { measurePerformance, type RequestPerformanceContext } from "@/lib/request-performance";
 import { buildMobileNutritionDayResponse, parseNutritionDate } from "./nutrition-day";
@@ -15,7 +16,12 @@ export async function readMobileNutritionDaySnapshot(
   }, () => context.supabase.rpc("mobile_read_nutrition_day", { p_log_date: requestedDate }, { get: true }));
   const { data, error } = await snapshot();
   if (error) throw new Error("Nutrition day snapshot unavailable");
-  return buildMobileNutritionDayResponse(requestedDate, data);
+  const result = buildMobileNutritionDayResponse(requestedDate, data);
+  if (result.nutrition.status === 'ok' && result.nutrition.data.dayState === 'recorded') {
+    const raw = data?.nutrition?.data?.dayLog;
+    result.nutrition.data.context.breakdown = await readDayBreakdown(requestedDate, result.today, result.nutrition.data.context, raw, context);
+  }
+  return result;
 }
 
 export async function readMobileNutritionDay(
