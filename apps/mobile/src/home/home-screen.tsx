@@ -1,10 +1,11 @@
-import { useCallback, useMemo } from 'react';
-import { RefreshControl, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useMemo } from 'react';
+import { Alert, RefreshControl, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { useMobileApi } from '@/api';
 import type { QuickOption } from '@/api/nutrition-quick';
 import { useMobileAuth } from '@/auth';
+import { useHomeMetricEntry } from './use-home-metric-entry';
 import {
   AppText,
   Button,
@@ -65,6 +66,11 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
   const resources = useHomeResources(client, now);
   const { refresh } = resources;
   const configuration = useNutritionConfiguration(refresh);
+  // Quick load of a daily metric right here (same sheet as Nutrición › Tu día).
+  const metricEntry = useHomeMetricEntry(refresh);
+  const openMetric = metricEntry.open;
+  const { error: metricError, clearError: clearMetricError } = metricEntry;
+  useEffect(() => { if (metricError) { Alert.alert('Métricas', metricError); clearMetricError(); } }, [metricError, clearMetricError]);
 
   const home = homeResource(resources.home.state);
   const day = homeDay(now());
@@ -111,10 +117,10 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
     },
     onRegister: (target: HomeRegisterTarget) => {
       haptics.selection();
-      if (target.kind === 'metric') router.push({ pathname: '/(tabs)/progress/metrics', params: { editar: 'metricas' } });
-      else router.push('/(tabs)/progress/metrics');
+      if (target.kind === 'metric') void openMetric(target.metricId);
+      else router.push('/settings/metrics');
     },
-  }), [configuration, day.today, day.weekStart, router]);
+  }), [configuration, day.today, day.weekStart, router, openMetric]);
 
   if (!home.data && home.status === 'unavailable') {
     return <HomeUnavailable onRetry={refresh} />;
@@ -159,6 +165,7 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
       </ScrollScreen>
       {newSession.element}
       {starter.element}
+      {metricEntry.element}
     </>
   );
 }
