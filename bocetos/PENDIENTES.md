@@ -64,3 +64,8 @@ Lista viva de lo que sacamos de una pantalla para llevarlo a otra, y de los camb
 
 - F1–F5 y lectura aditiva de volumen/destacados implementados en M9. Contrato y decisiones: `docs/mobile/m9-finish-redesign.md`.
 - Repetir QA en iOS 26 y verificar haptics en iPhone físico: esta máquina solo tiene Simulator iOS 27. El módulo de controles requiere rebuild del development client.
+
+## Nutrición · Biblioteca · QA de gestos
+
+- Paso 6 implementado. Listas, búsqueda, filtros, crear/editar, archivar/restaurar, menú nativo del editor y acciones de accesibilidad verificados en Simulator iOS 27, en claro y oscuro. Los registros creados para QA quedaron archivados.
+- Repetir en iPhone el gesto físico de mantener apretado y deslizar: el puente de Device Hub de esta sesión rechaza arrastres/coordenadas con `noWindowsAvailable`. La acción de deslizar se probó automáticamente (cierra el gesto y pide confirmación antes de archivar); el menú nativo y las acciones accesibles se probaron en Simulator.
