@@ -23,6 +23,8 @@ import { loadTrainingContext, trainingInPeriodDto, trainingDto, trainingExercise
 import { readNutritionTiming } from "./progress-nutrition-timing";
 import { bodyReport, comparisonDto, webAuth } from "./progress-sources";
 import { buildMobileProgressExplore } from "./progress-explore";
+import { buildMobileProgressInfluence, buildMobileProgressInfluenceSuggested } from "./progress-influence";
+import { influenceCutValue, parseInfluenceMeasure, parseProgressInfluence, parseProgressInfluenceSuggested, type InfluenceDefinition } from "./progress-influence-contract";
 import { buildMobileProgressViews } from "./progress-views-server";
 import { parseProgressViewsRead } from "./progress-views-contract";
 import { exploreOptions, parseExploreMeasure, parseProgressExplore, type ExploreBreakdown, type ExploreDays } from "./progress-explore-contract";
@@ -393,3 +395,23 @@ export const progressViewsResponse = (request: Request) => progressReadResponse(
   const { range, period } = resolveMobileProgressPeriod(query, today);
   return buildMobileProgressViews(context, range, period, !!query.compare, today);
 }, parseProgressViewsRead);
+
+/** Stage 3 EXPAND: two new reads; existing Progress endpoints and response shapes are unchanged. */
+export const progressInfluenceResponse = (request: Request) => progressReadResponse(request, "influence", (context, params, today) => {
+  const query = progressQueryFromParams(params, ["split", "cut", "lag", "outcome"]);
+  const split = params.get("split"), outcome = params.get("outcome"), cut = params.get("cut"), lag = params.get("lag");
+  if (!split || !outcome || !cut || lag === null) throw new MobileApiValidationError("Elegí qué separa los días, el corte, el desfase y qué medida mirar.");
+  const measure = parseInfluenceMeasure(split, "split");
+  if (!measure || !parseInfluenceMeasure(outcome, "outcome")) throw new MobileApiValidationError("Medida no válida para esta relación.");
+  if (!["0", "1", "2"].includes(lag)) throw new MobileApiValidationError("El desfase debe ser 0, 1 o 2 días.");
+  if (measure.kind === "day" ? cut !== "yes" : cut !== "median" && influenceCutValue(cut) === undefined)
+    throw new MobileApiValidationError(measure.kind === "day" ? "Las medidas sí/no usan el corte yes." : "Las medidas numéricas usan median o gte seguido de un número.");
+  if (split === outcome && lag === "0") throw new MobileApiValidationError("Elegí medidas distintas para mirar el mismo día.");
+  const { period } = resolveMobileProgressPeriod(query, today);
+  return buildMobileProgressInfluence(context, { split, cut, lag: Number(lag), outcome } as InfluenceDefinition, period, !!query.compare, today);
+}, parseProgressInfluence);
+
+export const progressInfluenceSuggestedResponse = (request: Request) => progressReadResponse(request, "influence.suggested", (context, params, today) => {
+  const query = progressQueryFromParams(params), { period } = resolveMobileProgressPeriod(query, today);
+  return buildMobileProgressInfluenceSuggested(context, period, !!query.compare, today);
+}, parseProgressInfluenceSuggested);

@@ -22,13 +22,13 @@ export type ExploreInput = { measure: ExploreMeasure; breakdown: ExploreBreakdow
 const WEEKDAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 const MOMENTS: [string, string][] = [["breakfast", "Desayuno"], ["lunch", "Almuerzo"], ["snack", "Merienda"], ["dinner", "Cena"], ["extra", "Extra"]];
 const BANDS: [string, string][] = [["morning", "Mañana · 5–11"], ["midday", "Mediodía · 11–15"], ["afternoon", "Tarde · 15–20"], ["night", "Noche · 20–5"]];
-const NUTRITION: Record<string, { label: string; unit: string; valueType: MetricValueType; day: (d: NutritionReportDay) => number | null; meal: (m: MealRow) => number | null }> = {
+export const NUTRITION: Record<string, { label: string; unit: string; valueType: MetricValueType; day: (d: NutritionReportDay) => number | null; meal: (m: MealRow) => number | null }> = {
   "nutrition.kcal": { label: "Calorías", unit: "kcal", valueType: "integer", day: d => d.calories, meal: m => m.kcal },
   "nutrition.protein": { label: "Proteína", unit: "g", valueType: "decimal", day: d => d.proteinG, meal: m => m.proteinG },
   "nutrition.carbs": { label: "Carbohidratos", unit: "g", valueType: "decimal", day: d => d.carbsG, meal: m => m.carbsG },
   "nutrition.fat": { label: "Grasas", unit: "g", valueType: "decimal", day: d => d.fatG, meal: m => m.fatG },
 };
-const TRAINING: Record<string, { label: string; unit: string; valueType: MetricValueType }> = {
+export const TRAINING: Record<string, { label: string; unit: string; valueType: MetricValueType }> = {
   "training.sets": { label: "Series", unit: "series", valueType: "integer" },
   "training.sessions": { label: "Sesiones", unit: "sesiones", valueType: "integer" },
   "training.minutes": { label: "Duración", unit: "min", valueType: "duration" },
