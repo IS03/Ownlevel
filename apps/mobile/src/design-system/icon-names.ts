@@ -7,6 +7,11 @@ export type AppIconName =
   | 'reorder'
   | 'dragHandle'
   | 'archive'
+  | 'bookmark'
+  | 'chat'
+  | 'edit'
+  | 'repeat'
+  | 'sparkles'
   | 'playFilled'
   | 'info'
   | 'activity'
@@ -57,6 +62,11 @@ export const sfSymbolNames: Record<AppIconName, SFSymbol> = {
   reorder: 'arrow.up.arrow.down',
   dragHandle: 'line.3.horizontal',
   archive: 'archivebox',
+  bookmark: 'bookmark',
+  chat: 'bubble.left',
+  edit: 'pencil',
+  repeat: 'arrow.2.squarepath',
+  sparkles: 'sparkles',
   playFilled: 'play.fill',
   info: 'info.circle',
   activity: 'bolt.fill',

@@ -14,7 +14,7 @@ export type RoutineContextMenuProps = {
   onStatus: () => void;
 };
 
-export type TrainingMenuAction = { label: string; symbol?: 'play.fill' | 'pencil' | 'doc.on.doc' | 'paintpalette' | 'archivebox' | 'archivebox.fill' | 'plus'; onPress: () => void; separated?: boolean };
+export type TrainingMenuAction = { label: string; symbol?: 'play.fill' | 'pencil' | 'doc.on.doc' | 'paintpalette' | 'archivebox' | 'archivebox.fill' | 'plus' | 'arrow.2.squarepath' | 'bookmark' | 'trash'; onPress: () => void; separated?: boolean; destructive?: boolean };
 export type TrainingContextMenuProps = Pick<RoutineContextMenuProps, 'children' | 'disabled' | 'width'> & { name: string; openOnTap?: boolean; onOpen: () => void; actions: TrainingMenuAction[] };
 export function routineMenuActions(props: RoutineContextMenuProps): TrainingMenuAction[] {
   return [ ...(props.routine.isActive ? [{ label: 'Empezar entrenamiento', symbol: 'play.fill' as const, onPress: props.onStart }] : []),
