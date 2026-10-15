@@ -26,6 +26,16 @@ jest.mock('./day-format', () => ({
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
 jest.mock('@/auth', () => ({ useMobileAuth: () => ({ session: { user: { id: mockUser } } }) }));
 jest.mock('expo-router', () => ({ useLocalSearchParams: () => ({}), useRouter: () => ({ navigate: jest.fn() }), useFocusEffect: () => {} }));
+jest.mock('@/api/nutrition-report', () => ({
+  ...jest.requireActual<typeof import('@/api/nutrition-report')>('@/api/nutrition-report'),
+  fetchNutritionReport: (_client: unknown, query: import('@/api/nutrition-report').ReportQuery) => Promise.resolve({
+    status: 'ok', data: jest.requireActual<typeof import('./report-fixture.test-helper')>('./report-fixture.test-helper').reportFixture(query), meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' },
+  }),
+}));
+jest.mock('@expo/ui/swift-ui', () => {
+  const { Pressable, Text, View } = jest.requireActual<typeof import('react-native')>('react-native');
+  return { Host: View, Menu: View, Image: () => null, Button: ({ label, onPress }: { label: string; onPress?: () => void }) => <Pressable onPress={onPress}><Text>{label}</Text></Pressable> };
+});
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 const ok = (date: string, data = nutritionFixture(date)): MobileApiReadResult<MobileNutritionDayResponse> => ({
@@ -50,8 +60,8 @@ describe('Native Nutrition day', () => {
     mockRead.mockImplementation(async options => options.path.includes('/reports?')
       ? {status:'ok',data:reportFixture(),meta:{durationMs:1,httpStatus:200,outcome:'ok'}} as never
       : ok(options.path.split('/').pop()!,nutritionFixture(options.path.split('/').pop()!)) as never);
-    const view=render(element());await view.findByText('Reporte nutricional');
-    fireEvent.press(view.getByText('Reporte nutricional'));await view.findByTestId('nutrition-report-screen');
+    const view=render(element());await view.findByText('Reporte');
+    fireEvent.press(view.getByText('Reporte'));await view.findByTestId('nutrition-report-screen');
     await view.findByText('Días destacados');fireEvent.press(view.getByText(/Más cerca del objetivo/));
     await waitFor(()=>expect(view.queryByTestId('nutrition-report-screen')).toBeNull());
     await waitFor(()=>expect(mockRead.mock.calls.some(([o])=>o.path.endsWith('/days/2026-10-03'))).toBe(true));
@@ -109,7 +119,7 @@ describe('Native Nutrition day', () => {
       latest = nutritionFixture(); if (latest.activity.status === 'ok') latest.activity.data.metrics[0].value = 3.5;
       return { status: 'ok', data: { status: 'saved', operation: body.operation, date: body.date }, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } } as never;
     });
-    const view = render(element()); await view.findByText('Editar actividad'); fireEvent.press(view.getByText('Editar actividad'));
+    const view = render(element()); await view.findByText('Detalle'); fireEvent.press(view.getByText('Detalle')); await view.findByText('Editar actividad'); fireEvent.press(view.getByText('Editar actividad'));
     fireEvent.changeText(view.getByLabelText('Agua'), '3,5');
     await act(async () => { appStateListeners.forEach(f => f('active')); });
     expect(view.getByLabelText('Agua').props.value).toBe('3,5');
@@ -128,11 +138,11 @@ describe('Native Nutrition day', () => {
       }
       return { status: 'ok', data: { status: 'saved', operation: body.operation, date: body.date }, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } } as never;
     });
-    const view = render(element()); await view.findByText('Ajustar contexto'); fireEvent.press(view.getByText('Ajustar contexto'));
+    const view = render(element()); await view.findByText('Detalle'); fireEvent.press(view.getByText('Detalle')); await view.findByText('Ajustar contexto'); fireEvent.press(view.getByText('Ajustar contexto'));
     expect(view.getByText('Automático: 1.800 kcal')).toBeTruthy();
     fireEvent.changeText(view.getByLabelText('Override objetivo'), '1900'); await act(async () => { fireEvent.press(view.getByText('Guardar cambios')); });
     await waitFor(() => expect(view.queryByTestId('nutrition-day-write-editor')).toBeNull());
-    fireEvent.press(await view.findByText('Ajustar contexto')); expect(view.getByText('Override diario: 1.900 kcal')).toBeTruthy(); expect(view.getByText('Efectivo: 1.900 kcal')).toBeTruthy();
+    fireEvent.press(await view.findByText('Detalle')); fireEvent.press(await view.findByText('Ajustar contexto')); expect(view.getByText('Override diario: 1.900 kcal')).toBeTruthy(); expect(view.getByText('Efectivo: 1.900 kcal')).toBeTruthy();
     fireEvent.press(view.getByText('Usar objetivo automático')); await act(async () => { fireEvent.press(view.getByText('Guardar cambios')); });
     await waitFor(() => expect(view.queryByTestId('nutrition-day-write-editor')).toBeNull());
     expect(mockRequest.mock.calls[1][0].body).toMatchObject({ operation: 'context', changes: { target: { action: 'clear' } } });
@@ -185,15 +195,15 @@ describe('Native Nutrition day', () => {
     mockRead.mockImplementation(async options => ok(options.path.split('/').pop()!) as never);
     const view = render(element());
     await view.findByText('Comida 2026-10-02');
-    expect(view.getByText('Consumo − objetivo')).toBeTruthy();
+    fireEvent.press(view.getByText('Detalle')); expect(view.getByText('Consumo − objetivo')).toBeTruthy();
     expect(view.getByText('Balance: consumo − gasto')).toBeTruthy();
-    expect(view.getByText('0 L')).toBeTruthy();
-    fireEvent.press(view.getByLabelText('Día anterior'));
+    expect(view.getAllByText('0 L').length).toBeGreaterThan(0); fireEvent.press(view.getByLabelText('Cerrar Detalle del día'));
+    fireEvent.press(view.getByTestId('nutrition-week-2026-10-01'));
     await view.findByText('Comida 2026-10-01');
     expect(view.queryByText('Comida 2026-10-02')).toBeNull();
     fireEvent.press(view.getByText('Volver a hoy'));
     await view.findByText('Comida 2026-10-02');
-    fireEvent.press(view.getByText('Elegir fecha'));
+    fireEvent.press(view.getByLabelText('Elegir fecha')); fireEvent.press(view.getByText('Otra fecha'));
     fireEvent.changeText(view.getByLabelText('Fecha DD/MM/AAAA'), '30/02/2026');
     fireEvent.press(view.getByText('Consultar fecha'));
     expect(view.getByText('Ingresá una fecha válida.')).toBeTruthy();
@@ -217,8 +227,8 @@ describe('Native Nutrition day', () => {
       date: options.path.split('/').pop()!, resolve: resolve as (r: unknown) => void })));
     const view = render(element());
     expect(view.getByText('Cargando día nutricional')).toBeTruthy();
-    fireEvent.press(view.getByLabelText('Día anterior'));
-    fireEvent.press(view.getByLabelText('Día anterior'));
+    fireEvent.press(view.getByTestId('nutrition-week-2026-10-01'));
+    fireEvent.press(view.getByTestId('nutrition-week-2026-09-30'));
     expect(pending[0].signal?.aborted).toBe(true);
     expect(pending[1].signal?.aborted).toBe(true);
     await act(async () => { pending[2].resolve(ok(pending[2].date)); });
@@ -270,11 +280,11 @@ describe('Native Nutrition day', () => {
     }
     empty.activity = { status: 'unavailable' };
     mockRead.mockResolvedValueOnce(ok('2026-10-01', empty) as never);
-    fireEvent.press(view.getByLabelText('Día anterior'));
+    fireEvent.press(view.getByTestId('nutrition-week-2026-10-01'));
     await view.findByText('Sin comidas registradas');
     expect(view.getByText('Las métricas de esta fecha no están disponibles. Deslizá para reintentar.')).toBeTruthy();
     mockRead.mockResolvedValueOnce(failure as never);
-    fireEvent.press(view.getByLabelText('Día anterior'));
+    fireEvent.press(view.getByTestId('nutrition-week-2026-09-30'));
     await waitFor(() => expect(view.getByText('No pudimos cargar este día')).toBeTruthy());
     expect(view.queryByText('Sin comidas registradas')).toBeNull();
   });
