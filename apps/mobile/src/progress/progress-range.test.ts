@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import { compareRange, initialProgressRange, progressRange, rangeTitle, shortRange, stepProgressRange, type ProgressRangeState } from './progress-range';
+import { compareRange, initialProgressRange, periodHeading, progressRange, rangeTitle, shortRange, stepProgressRange, type ProgressRangeState } from './progress-range';
 
 const TODAY = '2026-10-15';
 const at = (patch: Partial<ProgressRangeState>): ProgressRangeState => ({ ...initialProgressRange(TODAY), ...patch });
@@ -46,5 +46,14 @@ describe('Labels', () => {
     expect(shortRange({ start: '2026-09-01', end: '2026-09-15' }, TODAY)).toBe('1–15 sep');
     expect(shortRange({ start: '2026-09-28', end: '2026-10-04' }, TODAY)).toBe('28 sep – 4 oct');
     expect(shortRange({ start: '2025-12-20', end: '2026-01-05' }, TODAY)).toBe('20 dic 2025 – 5 ene 2026');
+  });
+});
+describe('periodHeading', () => {
+  it('names the period the way you would say it', () => {
+    expect(periodHeading(at({ unit: 'month', anchor: '2026-09-10' }), TODAY)).toBe('Tu septiembre');
+    expect(periodHeading(at({ unit: 'week' }), TODAY)).toBe('Tu semana');
+    expect(periodHeading(at({ unit: '3m' }), TODAY)).toBe('Tus 3 meses');
+    expect(periodHeading(at({ unit: 'year', anchor: '2025-06-01' }), TODAY)).toBe('Tu 2025');
+    expect(periodHeading(at({ unit: 'custom', custom: { start: '2026-10-01', end: '2026-10-03' } }), TODAY)).toBe('Tu período');
   });
 });

@@ -5,12 +5,12 @@ import { getDailyMetricsReport } from "@/lib/daily-metrics/reports";
 import { listWeightHistory } from "@/lib/phase1/day-log";
 import { getMyProfile } from "@/lib/phase1/profile";
 import { todayInCordoba } from "@/lib/phase2/cordoba-date";
-import { NUTRITION_PROGRESS_METRICS, getPreviousProgressPeriod, progressBucketForDays, progressRangeDays } from "@/lib/progress/analytics";
+import { NUTRITION_PROGRESS_METRICS, bucketProgressRange, getPreviousProgressPeriod, progressBucketForDays, progressRangeDays } from "@/lib/progress/analytics";
 import { bodyAvailableMetricDefinitions, buildBodyProgressReport, type BodyObservation, type BodyProgressReport } from "@/lib/progress/body";
 import { buildProgressComparison, type ProgressComparisonMetricResult, type ProgressComparisonReport } from "@/lib/progress/comparisons";
 import { buildProgressHomeModel, type ProgressHomeRow, type ProgressHomeInsight } from "@/lib/progress/home";
 import { DEFAULT_NUTRITION_COMPARISON_METRICS, nutritionSamplesByMetric } from "@/lib/nutrition/reports";
-import { aggregateNutritionReport, buildNutritionReportDays, resolveNutritionReportRange, type NutritionReportRange } from "@/lib/nutrition/reports-core";
+import { aggregateNutritionReport, buildNutritionReportDays, resolveNutritionReportRange, type NutritionReportDay, type NutritionReportRange } from "@/lib/nutrition/reports-core";
 import type { AuthenticatedRequestContext } from "@/lib/supabase/server";
 import type { RequestPerformanceContext } from "@/lib/request-performance";
 import { MobileApiNotFoundError, MobileApiUnauthorizedError, MobileApiValidationError, mobileBearerToken } from "./auth";
@@ -19,7 +19,8 @@ import { NutritionReportDayChangedError, readMobileNutritionFacts } from "./nutr
 import {
   PROGRESS_CUSTOM_MAX_DAYS, PROGRESS_DEFAULT_PRESET, habitWeekRange, parseProgressHabitWeek, parseProgressBody, parseProgressMetrics, parseProgressOverview, parseProgressQuery, parseProgressTraining, parseProgressTrainingExercise,
   type ProgressHabitWeek, type BodyObservationDto, type ProgressBody, type ProgressBodyMetric, type ProgressComparison, type ProgressDestination,
-  type ProgressMetricDefinition, type ProgressMetrics, type ProgressOverview, type ProgressPeriod, type ProgressQuery, type ProgressSection,
+  type ProgressMetricDefinition, type ProgressMetrics, type ProgressOverview, type ProgressOverviewSparks, type ProgressPeriod, type ProgressQuery, type ProgressSection,
+  type ProgressSparkPoint,
 } from "./progress-contract";
 import { isNutritionDate } from "./nutrition-day-contract";
 import { authenticateMobileAccessToken, type MobileSupabaseAuthenticatedContext } from "./supabase";
@@ -37,7 +38,7 @@ export function progressQueryFromParams(params: URLSearchParams, extra: readonly
   const input: Record<string, string> = {};
   const compare: Record<string, string> = {};
   for (const [key, value] of params) {
-    if (key in input || key in compare) throw new MobileApiValidationError("Parámetro repetido.");
+    if (key in input || key in compare || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro repetido.");
     if (!["period", "from", "to", "compareFrom", "compareTo", ...extra].includes(key)) throw new MobileApiValidationError("Parámetro no válido.");
     if (extra.includes(key)) continue;
     if (key === "compareFrom" || key === "compareTo") compare[key] = value; else input[key] = value;
@@ -130,7 +131,7 @@ async function nutritionReport(context: Context, range: NutritionReportRange, pe
     reference: { type: "previous_period", period: previousRange, label: "Período anterior" },
     inProgressDate: range.end === today ? today : null,
   });
-  return { summary: aggregateNutritionReport(days), comparison };
+  return { summary: aggregateNutritionReport(days), comparison, days, previousDays };
 }
 
 async function metricsReport(context: Context, query: MobileProgressQuery, today: string, metricId?: string) {
@@ -139,7 +140,41 @@ async function metricsReport(context: Context, query: MobileProgressQuery, today
 
 const byKey = (report: ProgressComparisonReport | null | undefined, key: string) => report?.results.find(result => result.metric.key === key);
 
-export async function buildMobileProgressOverview(context: Context, query: MobileProgressQuery, today: string): Promise<ProgressOverview> {
+/** Buckets of a range at its natural granularity (same rule as the training timeline). */
+const rangeBuckets = (range: { start: string; end: string }) => bucketProgressRange(range, progressBucketForDays(progressRangeDays(range)));
+const sparkPoints = <T extends { date: string }>(range: { start: string; end: string }, items: readonly T[], value: (inBucket: T[]) => number | null): ProgressSparkPoint[] =>
+  rangeBuckets(range).map(({ start, end }) => ({ start, end, value: value(items.filter(item => item.date >= start && item.date <= end)) }));
+const mean = (values: number[]) => values.length ? values.reduce((t, v) => t + v, 0) / values.length : null;
+/** Same days as the overview's average kcal: complete registered days with known calories. */
+const kcalDays = (days: NutritionReportDay[]) => days.filter(day => day.hasNutrition && day.isComplete && day.calories !== null);
+
+function overviewSparks(period: ProgressPeriod, comparing: boolean, sections: {
+  body: Awaited<ReturnType<typeof bodyReport>> | null; nutrition: Awaited<ReturnType<typeof nutritionReport>> | null;
+  training: Awaited<ReturnType<typeof loadTrainingContext>> | null;
+}): ProgressOverviewSparks {
+  const current = { start: period.start, end: period.end }, reference = { start: period.previousStart, end: period.previousEnd };
+  const weightMetric = sections.body?.report.metrics.find(m => m.field === "weight_kg" && sections.body!.available.has(m.key));
+  const lastWeight = (items: { value: number }[]) => items.length ? items[items.length - 1].value : null;
+  const kcal = (days: NutritionReportDay[]) => mean(days.map(day => day.calories!));
+  const timeline = (points: { start: string; end: string; sets: number }[]) => points.map(p => ({ start: p.start, end: p.end, value: p.sets }));
+  return {
+    weight: weightMetric ? {
+      current: sparkPoints(current, weightMetric.current, lastWeight),
+      reference: comparing ? sparkPoints(reference, weightMetric.reference, lastWeight) : null,
+      first: weightMetric.current[0]?.value ?? null, last: lastWeight(weightMetric.current),
+      referenceLast: comparing ? lastWeight(weightMetric.reference) : null,
+    } : null,
+    training: sections.training ? {
+      current: timeline(sections.training.current.timeline), reference: comparing ? timeline(sections.training.reference.timeline) : null,
+    } : null,
+    nutrition: sections.nutrition ? {
+      current: sparkPoints(current, kcalDays(sections.nutrition.days), kcal),
+      reference: comparing ? sparkPoints(reference, kcalDays(sections.nutrition.previousDays), kcal) : null,
+    } : null,
+  };
+}
+
+export async function buildMobileProgressOverview(context: Context, query: MobileProgressQuery, today: string, withSparks = false): Promise<ProgressOverview> {
   const { range, period } = resolveMobileProgressPeriod(query, today);
   const [body, nutrition, metrics, training] = await Promise.all([
     isolated(() => bodyReport(context, range, period), "body"),
@@ -195,6 +230,10 @@ export async function buildMobileProgressOverview(context: Context, query: Mobil
     } } : { status: "unavailable" },
     training: training.status === "ok" ? { status: "ok", data: trainingSummaryDto(training.data, period, comparisonDto) } : { status: "unavailable" },
   };
+  if (withSparks) overview.sparks = overviewSparks(period, !!query.compare, {
+    body: body.status === "ok" ? body.data : null, nutrition: nutrition.status === "ok" ? nutrition.data : null,
+    training: training.status === "ok" ? training.data : null,
+  });
   return overview;
 }
 
@@ -309,8 +348,11 @@ export const progressHabitWeekResponse = (request: Request) => progressReadRespo
   return buildMobileProgressHabitWeek(context, today);
 }, parseProgressHabitWeek);
 
-export const progressOverviewResponse = (request: Request) => progressReadResponse(request, "overview",
-  (context, params, today) => buildMobileProgressOverview(context, progressQueryFromParams(params), today), parseProgressOverview);
+export const progressOverviewResponse = (request: Request) => progressReadResponse(request, "overview", (context, params, today) => {
+  const spark = params.get("spark");
+  if (spark !== null && spark !== "1") throw new MobileApiValidationError("Parámetro no válido.");
+  return buildMobileProgressOverview(context, progressQueryFromParams(params, ["spark"]), today, spark === "1");
+}, parseProgressOverview);
 export const progressBodyResponse = (request: Request) => progressReadResponse(request, "body",
   (context, params, today) => buildMobileProgressBody(context, progressQueryFromParams(params), today), parseProgressBody);
 export const progressMetricsResponse = (request: Request) => progressReadResponse(request, "metrics", (context, params, today) => {
