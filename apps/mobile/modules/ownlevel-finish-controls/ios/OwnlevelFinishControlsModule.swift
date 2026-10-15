@@ -91,7 +91,7 @@ public final class FinishPainView: ExpoView {
     control.onBegin = { [weak self] touch in
       guard let self else { return }
       self.answered = true
-      self.control.setThumbImage(nil, for: .normal)
+      self.updateAppearance()
       let track = self.control.trackRect(forBounds: self.control.bounds)
       let thumb = self.control.thumbRect(forBounds: self.control.bounds, trackRect: track, value: self.control.value)
       let fraction = min(1, max(0, (touch.location(in: self.control).x - thumb.width / 2) / max(1, self.control.bounds.width - thumb.width)))
@@ -105,10 +105,17 @@ public final class FinishPainView: ExpoView {
     answered = value != nil; control.value = Float(value ?? 0); updateAppearance()
   }
   public override func layoutSubviews() { super.layoutSubviews(); control.frame = bounds; positionNumber() }
+  private var styledAnswered: Bool?
+  private var styledAccent: UIColor?
   func updateAppearance() {
-    control.minimumTrackTintColor = answered ? accent : .clear
-    control.setThumbImage(answered ? nil : UIImage(), for: .normal)
-    number.isHidden = !answered; number.textColor = accent
+    // Restyling the thumb on every drag tick resets the Liquid Glass thumb and makes it stutter:
+    // touch the track/thumb only when the answered state or accent actually changes.
+    if styledAnswered != answered || styledAccent != accent {
+      styledAnswered = answered; styledAccent = accent
+      control.minimumTrackTintColor = answered ? accent : .clear
+      control.setThumbImage(answered ? nil : UIImage(), for: .normal)
+      number.isHidden = !answered; number.textColor = accent
+    }
     number.text = "\(Int(control.value.rounded()))"
     control.accessibilityValue = answered ? "\(Int(control.value.rounded())) de 10" : "Sin responder"
     positionNumber()

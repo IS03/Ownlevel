@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AccessibilityInfo, Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Animated, { FadeIn, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppIcon, AppText, Button, GlassSurface, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
@@ -13,6 +13,7 @@ import { compactWeekdayDate } from './history-model';
 import { FinishPainControl, FinishScaleControl } from './finish-controls';
 import { FinishNoteSheet } from './finish-note-sheet';
 import { FinishSaveAnimation, type SaveOrigin } from './finish-save-animation';
+import { PostWorkoutContent, type SessionHighlightsLoader } from './post-workout-screen';
 import { RoutineSheetButton } from './routine-sheet-button';
 export { SummaryScale } from './summary-scale'; // Correction retains its existing presentation/semantics.
 
@@ -34,8 +35,10 @@ const number = (value: number) => new Intl.NumberFormat('es-AR', { maximumFracti
 function Stat({ value, label }: { value: string; label: string }) {
   return <View style={styles.stat}><AppText numeric variant="title2">{value}</AppText><AppText muted variant="caption">{label}</AppText></View>;
 }
-export function FinishSessionSheet({ controller, onClose, onDiscard, onConfirmedPresentation }: {
-  controller: ActiveSessionController; onClose: () => void; onDiscard?: () => void; onConfirmedPresentation?: () => void;
+/** F1→F3→F4 in one modal: the confirmed receipt fades in over the grown champagne circle, so the session never flashes between them. */
+export function FinishSessionSheet({ controller, onClose, onDiscard, readHighlights, onDone, onViewSession }: {
+  controller: ActiveSessionController; onClose: () => void; onDiscard?: () => void;
+  readHighlights?: SessionHighlightsLoader; onDone: () => void; onViewSession: () => void;
 }) {
   const { colors } = useOwnlevelTheme(), reduceMotion = useReduceMotion(), window = useWindowDimensions();
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
@@ -47,14 +50,15 @@ export function FinishSessionSheet({ controller, onClose, onDiscard, onConfirmed
   const blockedByOther = Boolean(state.intent && !finishIntent);
   const editable = !empty && state.summaryReady && !running && !state.intent && !state.fenced;
   const summary = pending ?? state.summary;
-  const [noteOpen, setNoteOpen] = useState(false), [now, setNow] = useState(Date.now);
+  const [noteOpen, setNoteOpen] = useState(false), [receipt, setReceipt] = useState(false), [now, setNow] = useState(Date.now);
   const [origin, setOrigin] = useState<SaveOrigin>({ x: 16, y: window.height - 130, width: window.width - 32 });
   const button = useRef<View>(null), reveal = useSharedValue(0);
+  const showReceipt = useCallback(() => setReceipt(true), []); // Stable: the animation must not restart its sequence on re-render.
   useEffect(() => { const clock = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(clock); }, []);
   useEffect(() => { if (running || confirmed) button.current?.measureInWindow((x, y, width) => { if (width > 0) setOrigin({ x, y, width }); }); }, [running, confirmed]);
   const sheetAnimation = useAnimatedStyle(() => ({ opacity: 1 - reveal.value, transform: [{ translateY: reduceMotion ? 0 : reveal.value * window.height }] }));
   const change = (update: Partial<SessionSummaryDraft>) => { if (editable) { triggerHaptic('stepperChange'); controller.updateSummary(value => ({ ...value, ...update })); } };
-  const close = () => { if (!running && !confirmed) onClose(); };
+  const close = () => { if (receipt) onViewSession(); else if (!running && !confirmed) onClose(); };
   const status = finishIntent?.phase === 'uncertain' ? 'No pudimos confirmar si el entrenamiento se guardó. Comprobalo antes de seguir: no se va a guardar dos veces.'
     : finishIntent?.phase === 'blocked' ? state.notice ?? 'La finalización necesita revisión.' : !running ? state.notice : null;
   const detail = state.detail;
@@ -80,18 +84,19 @@ export function FinishSessionSheet({ controller, onClose, onDiscard, onConfirmed
               {(['energyLevel', 'performanceLevel'] as const).map(field => {
                 const label = field === 'energyLevel' ? 'Energía' : 'Rendimiento';
                 return <View key={field} style={styles.scale}>
-                  <View style={styles.scaleHeader}><AppText variant="headline">{label}</AppText>{summary[field] !== null ? <Pressable accessibilityRole="button" accessibilityLabel={`Quitar ${label.toLowerCase()}`} disabled={!editable} onPress={() => change({ [field]: null })} style={styles.quiet}><AppText muted variant="caption">Quitar</AppText></Pressable> : null}</View>
+                  <View style={styles.scaleHeader}><AppText variant="headline">{label}</AppText></View>
                   <FinishScaleControl field={field} label={label} value={summary[field]} disabled={!editable} onChange={value => change({ [field]: value })} />
                   <View style={styles.ends}><AppText muted variant="caption">Baja</AppText><AppText muted variant="caption">Alta</AppText></View>
                 </View>;
               })}
               <View style={styles.scale}>
-                <View style={styles.scaleHeader}><AppText variant="headline">Dolor</AppText><View style={styles.shortcuts}>
-                  {summary.painLevel !== null && summary.painLevel !== 0 ? <Pressable accessibilityRole="button" accessibilityLabel="Quitar dolor" onPress={() => change({ painLevel: null })} style={styles.quiet}><AppText muted variant="caption">Quitar</AppText></Pressable> : null}
-                  <GlassSurface interactive style={{ borderRadius: brandTokens.radius.full }}><Button label="Sin dolor" variant="quiet" disabled={!editable} onPress={() => change({ painLevel: summary.painLevel === 0 ? null : 0 })} /></GlassSurface>
-                </View></View>
+                {/* No "Quitar": "Sin dolor" sets 0 and a second tap returns to unanswered (null). Fixed heights: nothing below jumps. */}
+                <View style={styles.scaleHeader}><AppText variant="headline">Dolor</AppText>
+                  <GlassSurface interactive style={styles.shortcut}><Pressable accessibilityRole="button" accessibilityLabel="Sin dolor" accessibilityHint={summary.painLevel === 0 ? 'Tocá de nuevo para dejarlo sin responder' : undefined}
+                    accessibilityState={{ selected: summary.painLevel === 0, disabled: !editable }} disabled={!editable} onPress={() => change({ painLevel: summary.painLevel === 0 ? null : 0 })} style={styles.shortcutPress}>
+                    <AppText variant="subheadline" style={{ color: summary.painLevel === 0 ? colors.primary : colors.text, fontWeight: '600' }}>Sin dolor</AppText>
+                  </Pressable></GlassSurface></View>
                 <FinishPainControl field="painLevel" label="Dolor" value={summary.painLevel} disabled={!editable} onChange={painLevel => change({ painLevel })} />
-                {summary.painLevel === null ? <AppText muted variant="caption">Sin responder</AppText> : null}
               </View>
               <Pressable accessibilityRole="button" accessibilityLabel={summary.notes ? `Editar nota: ${summary.notes}` : 'Agregar una nota'} disabled={!editable} onPress={() => setNoteOpen(true)}
                 style={[styles.note, { backgroundColor: colors.surface }]} testID="finish-open-note">
@@ -102,7 +107,6 @@ export function FinishSessionSheet({ controller, onClose, onDiscard, onConfirmed
           </ScrollView>
           <View style={styles.footer}>
             {status ? <AppText accessibilityLiveRegion="polite" style={{ color: finishIntent?.phase === 'uncertain' ? colors.text : colors.danger }} variant="footnote">{status}</AppText> : null}
-            {running ? <AppText accessibilityLiveRegion="polite" muted variant="caption">Guardando entrenamiento…</AppText> : null}
             <View ref={button} collapsable={false} style={running || confirmed ? { opacity: 0 } : undefined}>
               {empty ? <Button label="← Volver a la sesión" onPress={close} /> : finishIntent && finishIntent.phase !== 'running'
                 ? <Button label="Comprobar entrenamiento" onPress={() => void controller.retryIntent()} />
@@ -112,7 +116,10 @@ export function FinishSessionSheet({ controller, onClose, onDiscard, onConfirmed
           </View>
         </SafeAreaView>
       </Animated.View>
-      <FinishSaveAnimation running={running} confirmed={confirmed} origin={origin} reveal={reveal} onReady={onConfirmedPresentation ?? onClose} />
+      <FinishSaveAnimation running={running} confirmed={confirmed} origin={origin} reveal={reveal} onReady={showReceipt} />
+      {receipt && state.finished ? <Animated.View entering={FadeIn.duration(reduceMotion ? brandTokens.motion.duration.fast : brandTokens.motion.duration.base)} style={StyleSheet.absoluteFill}>
+        <PostWorkoutContent finished={state.finished} readHighlights={readHighlights} onHome={onDone} onViewSession={onViewSession} />
+      </Animated.View> : null}
       {noteOpen ? <FinishNoteSheet value={summary.notes ?? ''} onClose={() => setNoteOpen(false)} onSave={notes => change({ notes })} /> : null}
     </GestureHandlerRootView>
   </Modal>;
@@ -122,8 +129,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', padding: brandTokens.space.md, gap: brandTokens.space.sm }, content: { paddingHorizontal: brandTokens.space.md, paddingBottom: brandTokens.space.xl, gap: brandTokens.space.lg },
   stats: { flexDirection: 'row', gap: brandTokens.space.md }, stat: { flex: 1, gap: brandTokens.space.xxs }, divider: { width: StyleSheet.hairlineWidth }, dim: { opacity: 0.45 },
   empty: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.sm, padding: brandTokens.space.md, borderRadius: brandTokens.radius.inner },
-  questions: { gap: brandTokens.space.lg }, scale: { gap: brandTokens.space.xs }, scaleHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 28 },
-  ends: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: brandTokens.space.xs }, shortcuts: { flexDirection: 'row', alignItems: 'center' }, quiet: { minHeight: 44, justifyContent: 'center', paddingHorizontal: brandTokens.space.xs },
+  questions: { gap: brandTokens.space.lg }, scale: { gap: brandTokens.space.xs }, scaleHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
+  ends: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: brandTokens.space.xs }, shortcut: { borderRadius: brandTokens.radius.full }, shortcutPress: { minHeight: 44, justifyContent: 'center', paddingHorizontal: brandTokens.space.md },
   note: { flexDirection: 'row', gap: brandTokens.space.sm, alignItems: 'center', padding: brandTokens.space.md, borderRadius: brandTokens.radius.inner, minHeight: 64 },
   discard: { minHeight: 50, alignItems: 'center', justifyContent: 'center' },
   footer: { padding: brandTokens.space.md, gap: brandTokens.space.xxs },
