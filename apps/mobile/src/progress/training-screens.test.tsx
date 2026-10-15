@@ -155,7 +155,7 @@ describe('Exercise analytics', () => {
     const view = wrap(<ExerciseTrendsScreen />); await flush();
     expect(mockExercise).toHaveBeenLastCalledWith(mockClient, MONTH, ex.bench, null);
     expect(view.getByTestId('exercise-estimated-chip')).toHaveTextContent('estimado');
-    expect(view.getByText('1RM estimado de tu mejor serie del 4 oct (60 kg × 10) · ↗ 8 kg en octubre')).toBeTruthy();
+    expect(view.getByText('1RM estimado de tu serie del 4 oct (60 kg × 10) · ↗ 8 kg en octubre')).toBeTruthy();
     expect(view.queryByText(/Frente a|frente a/)).toBeNull(); expect(view.queryByTestId('exercise-performance-comparison')).toBeNull();
     expect(view.getByTestId('exercise-gap-current-s-gap')).toBeTruthy(); expect(view.queryByTestId('exercise-point-current-s-gap')).toBeNull();
     fireEvent.press(within(view.getByTestId('exercise-trend-chart')).getByRole('button', { name: '4 oct, 1RM estimado, 80 kg' }));
@@ -172,7 +172,7 @@ describe('Exercise analytics', () => {
     mockParams = { id: ex.bench }; const data = exercise(ex.bench);
     data.charts!.measures.forEach(m => { m.reference = [{ date: '2026-09-01', sessionId: 'ref-old', value: 70, best: { reps: 10, weightKg: 52.5 } }, { date: '2026-09-05', sessionId: 'ref-last', value: 74, best: { reps: 10, weightKg: 55.5 } }]; });
     mockExercise.mockResolvedValue(ok(data)); const view = wrap(<ExerciseTrendsScreen />, comparing); await flush();
-    expect(view.getByText('1RM estimado de tu mejor serie del 4 oct (60 kg × 10) · 1–5 sep 74 · ↗ 6')).toBeTruthy();
+    expect(view.getByText('1RM estimado de tu serie del 4 oct (60 kg × 10) · 1–5 sep 74 · ↗ 6')).toBeTruthy();
     expect(view.queryByText(/8 kg en octubre/)).toBeNull(); expect(view.getByText('Frente a 1–5 sep: Mejoró · +4 kg manteniendo 10 reps')).toBeTruthy();
     expect(view.getByTestId('exercise-point-reference-ref-last')).toBeTruthy();
     view.unmount();

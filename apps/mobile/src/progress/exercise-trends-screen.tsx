@@ -251,7 +251,7 @@ function Measures({ data }: { data: ProgressTrainingExerciseDetail }) {
       : null;
   const caption = latest
     ? measure.derived
-      ? `1RM estimado de tu mejor serie del ${shortDate(latest.date)} (${formatValue(latest.best!.weightKg, 'kg')} × ${formatValue(latest.best!.reps, null)})`
+      ? `1RM estimado de tu serie del ${shortDate(latest.date)} (${formatValue(latest.best!.weightKg, 'kg')} × ${formatValue(latest.best!.reps, null)})`
       : `${measure.label} del ${shortDate(latest.date)}${measure.key === 'best_set' && latest.best && measure.unit !== 'reps' ? ` · ${pointText(measure, latest)}` : ''}`
     : `Sin valor válido para ${measure.label.toLocaleLowerCase('es-AR')} en la última sesión.`;
   return (
@@ -314,7 +314,10 @@ function Content({ data }: { data: ProgressTrainingExerciseDetail }) {
             const best = bestBySession.get(s.sessionId),
               estimate = estimates.get(s.sessionId);
             const title = `${shortDate(s.date, true)} · ${s.routineName}`;
-            const detail = `${best && bestMeasure ? pointText(bestMeasure, best) : 'Sin serie comparable'}${estimate ? ` · 1RM est. ${formatValue(estimate.value, 'kg')}` : ''}`;
+            // The 1RM may come from another set (only 1–12 reps count): then say which one.
+            const sameSet = !!estimate?.best && !!best?.best && estimate.best.reps === best.best.reps && estimate.best.weightKg === best.best.weightKg;
+            const from = estimate?.best && !sameSet ? ` con ${formatValue(estimate.best.weightKg, 'kg')} × ${formatValue(estimate.best.reps, null)}` : '';
+            const detail = `${best && bestMeasure ? pointText(bestMeasure, best) : 'Sin serie comparable'}${estimate ? ` · 1RM est. ${formatValue(estimate.value, 'kg')}${from}` : ''}`;
             return (
               <FlatRow
                 key={`${s.sessionId}-${index}`}
