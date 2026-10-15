@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
-import { parseProgressTraining, parseProgressTrainingExercise, type ProgressComparison, type ProgressQuery, type ProgressTraining, type ProgressTrainingExerciseDetail } from '@/api/progress';
+import { parseProgressTraining, parseProgressTrainingExercise, type ProgressComparison, type ProgressQuery, type ProgressTraining, type ProgressTrainingExerciseDetail, type ProgressExerciseCharts } from '@/api/progress';
 import { TrainingTrendsScreen } from './training-trends-screen';
 import { ExerciseTrendsScreen } from './exercise-trends-screen';
 import { ProgressRangeProvider } from './progress-range-context';
@@ -51,15 +51,26 @@ function training(preset: ProgressQuery['period'] = '30', empty = false): Progre
     muscles: empty ? [] : [{ key: 'pecho', label: 'Pecho', sets: 9, sessions: 3, exercises: 1 }],
     routines: empty ? [] : [{ id: '__free__', name: 'Sesión libre', sessions: 3, sets: 12, minutes: 150 }] };
 }
-function exercise(id: string): ProgressTrainingExerciseDetail {
-  const unsupported = id === ex.cable;
-  return { today: TODAY, period: period(), exercise: { id, name: unsupported ? 'Remo máquina' : 'Press banca', muscleLabel: 'Pecho', weightMode: unsupported ? 'Carga manual' : 'Peso total' },
-    performance: unsupported ? { status: 'insufficient_data', reason: 'unsupported_weight_mode', signal: null, isPersonalRecord: false, primarySamples: 3, referenceSamples: 2 }
-      : { status: 'improved', reason: 'comparable', signal: { kind: 'new_best_weight', description: 'Nuevo mejor peso: 80 kg × 5', currentValue: 80, referenceValue: 75, contextValue: 5 }, isPersonalRecord: true, primarySamples: 9, referenceSamples: 3 },
+function exercise(id: string, strategy: ProgressExerciseCharts['strategy'] = id === ex.cable ? 'unsupported' : 'load_reps'): ProgressTrainingExerciseDetail {
+  const unit = strategy === 'unit_reps' ? 'lingotes' : strategy === 'time' ? 's' : strategy === 'bodyweight_reps' ? 'reps' : 'kg';
+  const current = [{ date: '2026-09-20', sessionId: 's-1', value: 54, best: { reps: 10, weightKg: 54 } },
+    { date: '2026-09-27', sessionId: 's-gap', value: 60, best: { reps: 15, weightKg: 60 } },
+    { date: '2026-10-04', sessionId: 's-2', value: 60, best: { reps: 10, weightKg: 60 } }];
+  const definitions = strategy === 'load_reps' ? [['estimated_1rm', '1RM estimado'], ['best_set', 'Mejor serie'], ['volume', 'Volumen']]
+    : strategy === 'unit_reps' ? [['best_set', 'Mejor serie'], ['volume', 'Volumen']]
+    : strategy === 'bodyweight_reps' ? [['best_set', 'Mejor serie'], ['total_reps', 'Repeticiones totales']]
+    : strategy === 'time' ? [['best_time', 'Mejor tiempo'], ['total_time', 'Tiempo total']] : [];
+  const measures: ProgressExerciseCharts['measures'] = definitions.map(([key, label]) => ({ key: key as ProgressExerciseCharts['measures'][number]['key'], label, unit, derived: key === 'estimated_1rm',
+    points: key === 'estimated_1rm' ? [0, 2].map(i => ({ ...current[i], value: i === 0 ? 72 : 80 })) : current,
+    reference: null }));
+  return { today: TODAY, period: period(), exercise: { id, name: strategy === 'unsupported' ? 'Remo máquina' : 'Press banca', muscleLabel: 'Pecho', weightMode: strategy === 'unsupported' ? 'Carga manual' : 'Peso total' },
+    charts: { strategy, measures },
+    performance: strategy === 'unsupported' ? { status: 'insufficient_data', reason: 'unsupported_weight_mode', signal: null, isPersonalRecord: false, primarySamples: 3, referenceSamples: 2 }
+      : { status: 'improved', reason: 'comparable', signal: { kind: 'more_load_same_reps', description: '+4 kg manteniendo 10 reps', currentValue: 60, referenceValue: 56, contextValue: 10 }, isPersonalRecord: false, primarySamples: 9, referenceSamples: 3 },
     comparisons: { sessions: cmp(), sets: cmp() },
-    marks: unsupported ? [] : [{ kind: 'best_load', label: 'Mejor peso', value: 80, unit: 'kg', context: '5 reps', date: '2026-10-04' }],
-    chart: unsupported ? null : { kind: 'load', unit: 'kg', points: [{ date: '2026-09-20', sessionId: 's-1', value: 75, context: 6 }, { date: '2026-10-04', sessionId: 's-2', value: 80, context: 5 }] },
-    sessions: [{ sessionId: 's-2', date: '2026-10-04', routineName: 'Torso', sets: [{ reps: 5, weightKg: 80 }] }] };
+    marks: strategy === 'unsupported' ? [] : [{ kind: 'best_load', label: 'Mejor peso', value: 60, unit: 'kg', context: '10 reps', date: '2026-10-04' }],
+    chart: strategy === 'unsupported' ? null : { kind: 'load', unit: 'kg', points: current.map(p => ({ date: p.date, sessionId: p.sessionId, value: p.value, context: p.best.reps })) },
+    sessions: [...current].reverse().map(p => ({ sessionId: p.sessionId, date: p.date, routineName: 'Torso', sets: [{ reps: p.best.reps, weightKg: p.best.weightKg }] })) };
 }
 const flush = () => act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
 const MONTH = { period: 'custom' as const, from: '2026-10-01', to: TODAY };
@@ -139,24 +150,60 @@ describe('Training Trends', () => {
 });
 
 describe('Exercise analytics', () => {
-  it('shows performance, all-time marks, a mode-compatible chart and opens the session / exercise history', async () => {
+  it('shows the estimate, internal change and gaps; changes measures and opens sessions / exercise history', async () => {
     mockParams = { id: ex.bench };
     const view = wrap(<ExerciseTrendsScreen />); await flush();
     expect(mockExercise).toHaveBeenLastCalledWith(mockClient, MONTH, ex.bench, null);
-    expect(within(view.getByTestId('exercise-trend-summary')).getByText('Mejoró · Récord en el período')).toBeTruthy();
-    expect(within(view.getByTestId('exercise-trend-marks')).getByText(/Mejor peso: 80 kg · 5 reps/)).toBeTruthy();
-    expect(view.getByText('Mejor carga por sesión')).toBeTruthy();
-    fireEvent.press(within(view.getByTestId('exercise-trend-chart')).getByRole('button', { name: /80 kg × 5 reps/ }));
+    expect(view.getByTestId('exercise-estimated-chip')).toHaveTextContent('estimado');
+    expect(view.getByText('1RM estimado de tu mejor serie del 4 oct (60 kg × 10) · ↗ 8 kg en octubre')).toBeTruthy();
+    expect(view.queryByText(/Frente a|frente a/)).toBeNull(); expect(view.queryByTestId('exercise-performance-comparison')).toBeNull();
+    expect(view.getByTestId('exercise-gap-current-s-gap')).toBeTruthy(); expect(view.queryByTestId('exercise-point-current-s-gap')).toBeNull();
+    fireEvent.press(within(view.getByTestId('exercise-trend-chart')).getByRole('button', { name: '4 oct, 1RM estimado, 80 kg' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/history/[id]', params: { id: 's-2' } });
+    expect(within(view.getByTestId('exercise-session-s-2')).getByText('60 kg × 10 reps · 1RM est. 80 kg')).toBeTruthy();
+    fireEvent.press(view.getByTestId('exercise-session-s-2')); expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/history/[id]', params: { id: 's-2' } });
+    expect(within(view.getByTestId('exercise-trend-marks')).getByText('Mejor peso')).toBeTruthy();
+    fireEvent.press(view.getByRole('radio', { name: 'Mejor serie' })); expect(view.queryByTestId('exercise-estimated-chip')).toBeNull(); expect(view.getByTestId('exercise-point-current-s-gap')).toBeTruthy();
+    fireEvent.press(view.getByRole('radio', { name: 'Volumen' })); expect(view.getByText('Volumen por sesión · kg × reps')).toBeTruthy();
     fireEvent.press(view.getByRole('button', { name: 'Abrir historial del ejercicio' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id: ex.bench } });
+  });
+  it('uses the latest reference session only while comparing, and keeps performance and sample comparisons opt-in', async () => {
+    mockParams = { id: ex.bench }; const data = exercise(ex.bench);
+    data.charts!.measures.forEach(m => { m.reference = [{ date: '2026-09-01', sessionId: 'ref-old', value: 70, best: { reps: 10, weightKg: 52.5 } }, { date: '2026-09-05', sessionId: 'ref-last', value: 74, best: { reps: 10, weightKg: 55.5 } }]; });
+    mockExercise.mockResolvedValue(ok(data)); const view = wrap(<ExerciseTrendsScreen />, comparing); await flush();
+    expect(view.getByText('1RM estimado de tu mejor serie del 4 oct (60 kg × 10) · 1–5 sep 74 · ↗ 6')).toBeTruthy();
+    expect(view.queryByText(/8 kg en octubre/)).toBeNull(); expect(view.getByText('Frente a 1–5 sep: Mejoró · +4 kg manteniendo 10 reps')).toBeTruthy();
+    expect(view.getByTestId('exercise-point-reference-ref-last')).toBeTruthy();
+    view.unmount();
+    data.charts!.measures.filter(m => !m.derived).forEach(m => { m.reference!.push({ date: '2026-09-05', sessionId: 'ref-missing', value: 55, best: { reps: 15, weightKg: 55 } }); });
+    const missing = wrap(<ExerciseTrendsScreen />, comparing); await flush();
+    expect(missing.getByText(/Sin comparación: 1–5 sep sin valor comparable/)).toBeTruthy();
+    expect(missing.getByTestId('exercise-gap-reference-ref-missing')).toBeTruthy();
+  });
+  it.each([
+    ['unit_reps', ['Mejor serie', 'Volumen']], ['bodyweight_reps', ['Mejor serie', 'Repeticiones totales']], ['time', ['Mejor tiempo', 'Tiempo total']],
+  ] as [ProgressExerciseCharts['strategy'], string[]][])('%s offers its mode measures, without an estimated 1RM', async (strategy, labels) => {
+    mockParams = { id: ex.bench }; mockExercise.mockResolvedValue(ok(exercise(ex.bench, strategy)));
+    const view = wrap(<ExerciseTrendsScreen />); await flush();
+    for (const label of labels) expect(view.getByRole('radio', { name: label })).toBeTruthy();
+    expect(view.queryByRole('radio', { name: '1RM estimado' })).toBeNull(); expect(view.queryByTestId('exercise-estimated-chip')).toBeNull();
+  });
+  it('keeps missing latest values distinct from zero, and shows the one-session and empty states', async () => {
+    mockParams = { id: ex.bench }; const data = exercise(ex.bench);
+    data.charts!.measures[0].points = data.charts!.measures[0].points.slice(0, 1);
+    mockExercise.mockResolvedValue(ok(data)); const view = wrap(<ExerciseTrendsScreen />); await flush();
+    expect(view.getByText('—')).toBeTruthy(); expect(view.getByText('Una sola sesión: todavía no hay tendencia.')).toBeTruthy();
+    expect(view.getByTestId('exercise-gap-current-s-2')).toBeTruthy();
+    data.sessions = []; data.charts!.measures.forEach(m => { m.points = []; });
+    mockExercise.mockResolvedValue(ok({ ...data })); fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
+    expect(view.getByText('Sin sesiones de este ejercicio en este período.')).toBeTruthy();
   });
   it('an unsupported weight mode has no chart and no fabricated comparison', async () => {
     mockParams = { id: ex.cable };
     const view = wrap(<ExerciseTrendsScreen />); await flush();
     expect(view.getByText('Este modo de carga no tiene una métrica de rendimiento comparable. Revisá las sesiones abajo.')).toBeTruthy();
-    expect(view.getByText('Este modo de carga no tiene una comparación confiable.')).toBeTruthy();
-    expect(view.queryByTestId('exercise-trend-chart')).toBeNull();
+    expect(view.queryByTestId('exercise-performance-comparison')).toBeNull(); expect(view.queryByTestId('exercise-trend-chart')).toBeNull();
   });
   it('a 404 is an explicit "no records" state', async () => {
     mockParams = { id: ex.dips };

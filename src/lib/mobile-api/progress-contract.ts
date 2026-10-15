@@ -103,7 +103,15 @@ export type ProgressTraining = {
 };
 export type ProgressExerciseMark = { kind: "best_load" | "best_reps" | "best_time"; label: string; value: number; unit: "kg" | "lingotes" | "reps" | "s"; context: string | null; date: string };
 export type ProgressExerciseChartKind = "load" | "reps" | "time";
+export type ProgressExerciseMeasureKey = "estimated_1rm" | "best_set" | "volume" | "total_reps" | "best_time" | "total_time";
+export type ProgressExercisePoint = { date: string; sessionId: string; value: number; best: { reps: number; weightKg: number | null } | null };
+export type ProgressExerciseCharts = {
+  strategy: "load_reps" | "unit_reps" | "bodyweight_reps" | "time" | "unsupported";
+  measures: { key: ProgressExerciseMeasureKey; label: string; unit: "kg" | "lingotes" | "reps" | "s"; derived: boolean;
+    points: ProgressExercisePoint[]; reference: ProgressExercisePoint[] | null }[];
+};
 export type ProgressTrainingExerciseDetail = {
+  charts?: ProgressExerciseCharts;
   today: string; period: ProgressPeriod;
   exercise: { id: string; name: string; muscleLabel: string; weightMode: string | null };
   performance: { status: TrainingPerformanceStatus; reason: string; signal: TrainingSignal | null; isPersonalRecord: boolean; primarySamples: number; referenceSamples: number };
@@ -360,8 +368,35 @@ export function parseProgressTraining(v: unknown): ProgressTraining | undefined 
   if ("inPeriod" in v && !inPeriod) return;
   return { today: v.today, period, summary, series, exercises, personalRecords, feelings, muscles, routines, ...(inPeriod ? { inPeriod } : {}) };
 }
+const EXERCISE_MEASURES: Record<ProgressExerciseCharts["strategy"], ProgressExerciseMeasureKey[]> = {
+  load_reps: ["estimated_1rm", "best_set", "volume"], unit_reps: ["best_set", "volume"],
+  bodyweight_reps: ["best_set", "total_reps"], time: ["best_time", "total_time"], unsupported: [],
+};
+function parseExerciseCharts(v: unknown, period: ProgressPeriod): ProgressExerciseCharts | undefined {
+  if (!record(v) || !keys(v, ["strategy", "measures"]) || !Object.hasOwn(EXERCISE_MEASURES, String(v.strategy))) return;
+  const strategy = v.strategy as ProgressExerciseCharts["strategy"];
+  const points = (value: unknown, start: string, end: string) => {
+    const rows = list(value, p => {
+      if (!record(p) || !keys(p, ["date", "sessionId", "value", "best"]) || !isNutritionDate(p.date) || p.date < start || p.date > end || !str(p.sessionId) || !num(p.value) || p.value <= 0) return;
+      if (p.best !== null && (!record(p.best) || !keys(p.best, ["reps", "weightKg"]) || !num(p.best.reps) || p.best.reps <= 0 || !numOrNull(p.best.weightKg))) return;
+      return p as ProgressExercisePoint;
+    });
+    return rows && !rows.some((p, i) => i > 0 && p.date < rows[i - 1].date) && new Set(rows.map(p => p.sessionId)).size === rows.length ? rows : undefined;
+  };
+  const measures = list(v.measures, m => {
+    if (!record(m) || !keys(m, ["key", "label", "unit", "derived", "points", "reference"]) || !EXERCISE_MEASURES[strategy].includes(m.key as ProgressExerciseMeasureKey) || !str(m.label)
+      || m.derived !== (m.key === "estimated_1rm") || m.unit !== (strategy === "load_reps" ? "kg" : strategy === "unit_reps" ? "lingotes" : strategy === "time" ? "s" : "reps")) return;
+    const current = points(m.points, period.start, period.end), reference = m.reference === null ? null : points(m.reference, period.previousStart, period.previousEnd);
+    if (!current || reference === undefined) return;
+    if (m.key === "estimated_1rm" && [...current, ...(reference ?? [])].some(p => !p.best || p.best.reps > 12 || p.best.weightKg === null || p.best.weightKg <= 0)) return;
+    return { key: m.key, label: m.label, unit: m.unit, derived: m.derived, points: current, reference } as ProgressExerciseCharts["measures"][number];
+  });
+  if (!measures || measures.length !== EXERCISE_MEASURES[strategy].length || new Set(measures.map(m => m.key)).size !== measures.length) return;
+  if (measures.some(m => (m.reference === null) !== (measures[0].reference === null))) return;
+  return { strategy, measures };
+}
 export function parseProgressTrainingExercise(v: unknown): ProgressTrainingExerciseDetail | undefined {
-  if (!record(v) || !keys(v, ["today", "period", "exercise", "performance", "comparisons", "marks", "chart", "sessions"]) || !isNutritionDate(v.today)) return;
+  if (!record(v) || !keys(v, ["today", "period", "exercise", "performance", "comparisons", "marks", "chart", "sessions", ...("charts" in v ? ["charts"] : [])]) || !isNutritionDate(v.today)) return;
   const period = parseProgressPeriod(v.period);
   const e = v.exercise, p = v.performance, c = v.comparisons;
   if (!period || !record(e) || !keys(e, ["id", "name", "muscleLabel", "weightMode"]) || !str(e.id) || !str(e.name) || !str(e.muscleLabel) || !strOrNull(e.weightMode)) return;
@@ -383,9 +418,10 @@ export function parseProgressTrainingExercise(v: unknown): ProgressTrainingExerc
     chart = record(ch) && keys(ch, ["kind", "unit", "points"]) && ["load", "reps", "time"].includes(String(ch.kind)) && ["kg", "lingotes", "reps", "s"].includes(String(ch.unit)) && points
       && !points.some((x, i) => i > 0 && x.date < points[i - 1].date) ? { kind: ch.kind as ProgressExerciseChartKind, unit: ch.unit as "kg", points } : undefined;
   }
-  if (!sessionsCmp || !setsCmp || !marks || !sessions || chart === undefined) return;
+  const charts = "charts" in v ? parseExerciseCharts(v.charts, period) : undefined;
+  if (!sessionsCmp || !setsCmp || !marks || !sessions || chart === undefined || ("charts" in v && !charts)) return;
   return { today: v.today, period, exercise: e as ProgressTrainingExerciseDetail["exercise"],
-    performance: { ...(p as ProgressTrainingExerciseDetail["performance"]), signal }, comparisons: { sessions: sessionsCmp, sets: setsCmp }, marks, chart, sessions };
+    performance: { ...(p as ProgressTrainingExerciseDetail["performance"]), signal }, comparisons: { sessions: sessionsCmp, sets: setsCmp }, marks, chart, sessions, ...(charts ? { charts } : {}) };
 }
 
 function parseObservation(v: unknown): BodyObservationDto | undefined {

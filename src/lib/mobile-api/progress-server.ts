@@ -295,9 +295,9 @@ export async function buildMobileProgressTraining(context: Context, query: Mobil
   const ctx = await loadTrainingContext(webAuth(context), period, today);
   return { ...trainingDto(ctx, today, period, comparisonDto), ...(withInPeriod ? { inPeriod: trainingInPeriodDto(ctx, period) } : {}) };
 }
-export async function buildMobileProgressTrainingExercise(context: Context, query: MobileProgressQuery, today: string, exerciseId: string) {
+export async function buildMobileProgressTrainingExercise(context: Context, query: MobileProgressQuery, today: string, exerciseId: string, withCharts = false) {
   const { period } = resolveMobileProgressPeriod(query, today);
-  const dto = trainingExerciseDto(await loadTrainingContext(webAuth(context), period, today), exerciseId, today, period, comparisonDto);
+  const dto = trainingExerciseDto(await loadTrainingContext(webAuth(context), period, today), exerciseId, today, period, comparisonDto, withCharts, !!query.compare);
   if (!dto) throw new MobileApiNotFoundError();
   return dto;
 }
@@ -376,5 +376,7 @@ export const progressTrainingResponse = (request: Request) => progressReadRespon
   }, parseProgressTraining);
 export const progressTrainingExerciseResponse = (request: Request, exerciseId: string) => progressReadResponse(request, "training.exercise", (context, params, today) => {
   if (!/^[0-9a-f-]{36}$/i.test(exerciseId)) throw new MobileApiValidationError("Ejercicio no válido.");
-  return buildMobileProgressTrainingExercise(context, progressQueryFromParams(params), today, exerciseId.toLowerCase());
+  const query = progressQueryFromParams(params, ["charts"]), charts = params.get("charts");
+  if (charts !== null && charts !== "1") throw new MobileApiValidationError("Parámetro no válido.");
+  return buildMobileProgressTrainingExercise(context, query, today, exerciseId.toLowerCase(), charts === "1");
 }, parseProgressTrainingExercise);

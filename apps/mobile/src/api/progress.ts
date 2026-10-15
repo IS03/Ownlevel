@@ -38,7 +38,7 @@ export const fetchProgressTraining = (client: MobileApiClient, query: ProgressQu
     const data = parseProgressTraining(raw); return data && samePeriod(data.period, query, compare) ? data : undefined;
   } });
 export const fetchProgressTrainingExercise = (client: MobileApiClient, query: ProgressQuery, exerciseId: string, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
-  client.read({ path: `${BASE}/training/exercises/${encodeURIComponent(exerciseId)}?${qs(query, compare)}`, signal, parse: (raw: unknown) => {
+  client.read({ path: `${BASE}/training/exercises/${encodeURIComponent(exerciseId)}?${qs(query, compare)}&charts=1`, signal, parse: (raw: unknown) => {
     const data = parseProgressTrainingExercise(raw);
     return data && samePeriod(data.period, query, compare) && data.exercise.id === exerciseId.toLowerCase() ? data : undefined;
   } });
