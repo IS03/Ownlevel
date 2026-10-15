@@ -72,16 +72,17 @@ describe("Mis vistas API (stage 2, step 3)", () => {
     expect((await list.GET(request("progress/views?kinds=influence&kinds=influence"))).status).toBe(400);
     expect(rpc).not.toHaveBeenCalled();
   });
-  it("filtering keeps stored positions and listVersion, including gaps in the legacy read", async () => {
+  it("the legacy read renumbers the visible views 1..n (older binaries require it) and keeps listVersion", async () => {
     const { list } = await routes();
     rpc.mockResolvedValue({ data: { listVersion: 8, views: [view(ID, 1, INFLUENCE), view(OTHER, 2, SETS)] }, error: null });
     const response = await list.GET(request("progress/views?period=custom&from=2026-10-01&to=2026-10-05"));
     expect(response.status).toBe(200);
     const body = parseProgressViewsRead(await response.json())!;
-    expect(body.listVersion).toBe(8); expect(body.views.map(v => [v.id, v.position])).toEqual([[OTHER, 2]]);
-    // Older binaries require position === index + 1. Keeping database positions, as requested,
-    // requires their parser update before they can consume a filtered list with gaps.
-    expect(body.views.every((v, i) => v.position === i + 1)).toBe(false);
+    expect(body.listVersion).toBe(8); expect(body.views.map(v => [v.id, v.position])).toEqual([[OTHER, 1]]);
+    // A legacy reorder of the visible subset no longer matches the stored list: the database rejects it (PROGRESS_VIEW_LIST_CHANGED).
+    rpc.mockResolvedValue({ data: null, error: { code: "40001", message: "PROGRESS_VIEW_LIST_CHANGED" } });
+    const order = await (await routes()).order.PUT(request("progress/views/order", { method: "PUT", body: { viewIds: [OTHER], expectedListVersion: 8, idempotencyKey: "legacy-1" } }));
+    expect(order.status).toBe(409);
   });
   it("POST validates influence before the RPC and preserves the same idempotency input", async () => {
     const { list } = await routes();

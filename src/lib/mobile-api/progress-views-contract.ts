@@ -78,8 +78,8 @@ export function parseProgressViewsRead(v: unknown): ProgressViewsRead | undefine
     if (!record(raw) || !("result" in raw)) return;
     const { result, ...rest } = raw;
     const view = parseStoredView(rest);
-    // A legacy read can omit influence views; positions keep their database identity and may have gaps.
-    if (!view || (i > 0 && view.position <= views[i - 1].position) || views.some(v => v.id === view.id) || !record(result)) return;
+    // Positions are always 1..n in the response (a legacy read renumbers the views it shows).
+    if (!view || view.position !== i + 1 || !record(result)) return;
     if (result.status === "ok" && result.kind === "influence" && keys(result, ["status", "kind", "data"])) {
       const data = parseProgressInfluence(result.data), definition = parseViewDefinition(view.definition);
       if (!data || !definition || !isInfluenceView(definition) || data.definition.split !== definition.split || data.definition.cut !== definition.cut

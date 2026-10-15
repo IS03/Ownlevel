@@ -38,8 +38,11 @@ export async function buildMobileProgressViews(context: Context, range: Nutritio
   const snapshot = parseProgressViewsSnapshot(data);
   if (!snapshot) throw new Error("Invalid progress views snapshot");
   // EXPAND: only clients explicitly requesting kinds=influence see those definitions.
-  // Keep the snapshot listVersion and database positions; filtering never changes the stored list.
-  const visible = includeInfluence ? snapshot.views : snapshot.views.filter(v => (v.definition as Record<string, unknown>).kind !== "influence");
+  // Older clients expect positions 1..n, so the legacy response renumbers the visible views in their stored order.
+  // The database positions and listVersion never change; a legacy reorder of the visible subset is rejected
+  // as PROGRESS_VIEW_LIST_CHANGED (the stored list differs), so nothing is ever overwritten.
+  const visible = includeInfluence ? snapshot.views
+    : snapshot.views.filter(v => (v.definition as Record<string, unknown>).kind !== "influence").map((v, i) => ({ ...v, position: i + 1 }));
   const views = await Promise.all(visible.map(async (stored): Promise<ProgressViewsRead["views"][number]> => {
     const definition = parseViewDefinition(stored.definition);
     // The stored definition travels as-is so an invalid view can still be shown and removed.
