@@ -104,14 +104,14 @@ export type TrainingAnalysisSource = {
 };
 
 type CompletedSet = { weightKg: number | null; reps: number | null };
-type ExerciseRecord = {
+export type ExerciseRecord = {
   id: string;
   name: string;
   muscleKey: string;
   muscleLabel: string;
   sets: CompletedSet[];
 };
-type SessionRecord = {
+export type SessionRecord = {
   id: string;
   logDate: string;
   routineId: string | null;
@@ -300,7 +300,8 @@ function historicalRoutineNames(source: TrainingAnalysisSource): Map<string, str
   return names;
 }
 
-function buildSessionRecords(source: TrainingAnalysisSource, range: { start: string; end: string }): SessionRecord[] {
+/** Completed sessions in the range with their exercises and completed sets (the summary's own counting rules). */
+export function buildSessionRecords(source: TrainingAnalysisSource, range: { start: string; end: string }): SessionRecord[] {
   const completedSessions = source.sessions.filter((session) => {
     const date = source.dateByDayLog.get(session.day_log_id);
     return session.status === "completed" && Boolean(date && date >= range.start && date <= range.end);

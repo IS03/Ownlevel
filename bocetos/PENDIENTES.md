@@ -44,6 +44,10 @@ Lista viva de lo que sacamos de una pantalla para llevarlo a otra, y de los camb
 
 ## Cambios de servidor pendientes (EXPAND)
 
+- **Progreso etapa 2 · Explorar y Mis vistas:** plan en `bocetos/explorar/PLAN.md`.
+  - Lectura `GET /progress/explore` (sin migración).
+  - Tabla `progress_views` con API de vistas (migración, CAS, idempotencia, máximo 6).
+
 - **Rutinas:** duplicar, reordenar y 4 colores nuevos (sand, stone, slate, graphite). Ver `rutinas-biblioteca/PROMPT-codex.md`.
 - **Sesión en curso:**
   - agregar ejercicio arranca vacío;
