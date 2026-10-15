@@ -217,54 +217,58 @@ describe('Progress Overview', () => {
 });
 
 describe('Body Trends', () => {
-  it('uses the shared period, shows real points (imported flagged), trend, and sparse metrics as insufficient', async () => {
+  it('values inside the period, a dot per real record (imported flagged), the other measures as rows', async () => {
     const view = wrap(<BodyTrendsScreen />); await flush();
     expect(mockBody).toHaveBeenLastCalledWith(mockClient, MONTH, null);
     const summary = within(view.getByTestId('body-trend-summary'));
-    expect(summary.getByText('Cambio: −1,5 kg')).toBeTruthy(); expect(summary.getByText('Tendencia en bajada.')).toBeTruthy();
-    expect(summary.queryByText(/datos insuficientes \(1 registro\)/)).toBeNull(); // only while comparing
-    expect(within(view.getByTestId('body-trend-chart')).getByText('81 kg · Importado · sheet')).toBeTruthy();
-    fireEvent.press(within(view.getByTestId('body-trend-chart')).getByRole('button', { name: /20 de septiembre de 2026: 81 kg/ }));
+    expect(summary.getByText('80,5 kg')).toBeTruthy(); expect(summary.getByText('último registro · 1 oct')).toBeTruthy();
+    expect(summary.getByText('↘ 1,5 kg')).toBeTruthy(); expect(summary.getByText('en octubre')).toBeTruthy();
+    expect(summary.getByText(/Tendencia en bajada\./)).toBeTruthy();
+    expect(summary.getByText(/1 medición sospechosa excluida; podés corregirla en Cuerpo\./)).toBeTruthy();
+    expect(summary.queryByText(/sin cambio medible/)).toBeNull(); // only while comparing
+    fireEvent.press(within(view.getByTestId('body-trend-chart')).getByRole('button', { name: '20 sep, 81 kg · Importado · sheet' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/history/day/[date]', params: { date: '2026-09-20' } });
-    fireEvent.press(view.getByRole('button', { name: 'Cintura' }));
+    fireEvent.press(view.getByRole('button', { name: 'Cintura. 88 cm · un solo registro' }));
+    expect(within(view.getByTestId('body-trend-summary')).getByText('hacen falta 2 registros')).toBeTruthy();
     expect(view.getByText(/Datos insuficientes para una tendencia/)).toBeTruthy();
-    expect(view.queryByText(/Cambio:/)).toBeNull();
-    expect(view.getByText('1 medición sospechosa excluida del análisis. Podés corregirla en Cuerpo.')).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Peso. 80,5 kg · ↘ 1,5 kg' })).toBeTruthy();
     fireEvent.press(view.getByRole('button', { name: 'Abrir Cuerpo' }));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/body');
   });
   it('keeps the comparison chosen on the hub', async () => {
     const view = wrap(<BodyTrendsScreen />, comparing); await flush();
     expect(mockBody).toHaveBeenLastCalledWith(mockClient, MONTH, { start: '2026-09-01', end: '2026-09-05' });
-    expect(within(view.getByTestId('body-trend-summary')).getByText('1–5 sep: datos insuficientes (1 registro).')).toBeTruthy();
+    expect(within(view.getByTestId('body-trend-summary')).getByText('1–5 sep sin cambio medible (1 registro)')).toBeTruthy();
   });
 });
 
 describe('Metrics Trends', () => {
-  it('selects a metric, labels the target as current, shows explicit zero, gaps and low coverage, and opens a day', async () => {
+  it('one metric at a time: average per day with data, current target, coverage, zero vs gaps, and opens a day', async () => {
     mockParams = { metric: ids.steps };
     const view = wrap(<MetricsTrendsScreen />); await flush();
     expect(mockMetrics).toHaveBeenLastCalledWith(mockClient, MONTH, ids.steps, null);
     const summary = within(view.getByTestId('metric-trend-summary'));
-    expect(summary.getByText('Promedio: 0 pasos')).toBeTruthy();
-    expect(summary.getByText('Objetivo actual: 10.000 pasos (no hay objetivos históricos por período)')).toBeTruthy();
-    expect(summary.getByText('2 de 6 días con dato · cobertura baja')).toBeTruthy();
+    expect(summary.getByText('0 pasos')).toBeTruthy();
+    expect(summary.getByText('promedio por día con dato · obj. 10.000 pasos')).toBeTruthy();
+    expect(summary.getByText('2/6')).toBeTruthy(); expect(summary.getByText('días con dato · cobertura baja')).toBeTruthy();
     expect(view.queryByTestId('metric-trend-comparison')).toBeNull();
-    const chart = within(view.getByTestId('metric-trend-chart'));
-    expect(chart.getAllByText('Sin dato')).toHaveLength(4);
-    fireEvent.press(chart.getByRole('button', { name: /29 de septiembre de 2026: 0 pasos/ }));
+    expect(view.getAllByTestId(/^metric-trend-chart-.*-gap$/)).toHaveLength(4);
+    expect(view.getAllByTestId(/^metric-trend-chart-.*-zero$/)).toHaveLength(2);
+    fireEvent.press(view.getByRole('button', { name: '29 sep, 0 pasos' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/history/day/[date]', params: { date: '2026-09-29' } });
-    fireEvent.press(view.getByRole('button', { name: 'Sueño' })); await flush();
+    expect(view.getByText('El objetivo es el actual: no hay objetivos históricos por período.')).toBeTruthy();
+    fireEvent.press(view.getByRole('radio', { name: 'Sueño' })); await flush();
     expect(mockMetrics).toHaveBeenLastCalledWith(mockClient, MONTH, ids.sleep, null);
-    expect(within(view.getByTestId('metric-trend-summary')).getByText('Promedio: 7 h 30 min')).toBeTruthy();
-    expect(view.getByRole('button', { name: 'Mate viejo · archivada' })).toBeTruthy();
+    expect(within(view.getByTestId('metric-trend-summary')).getByText('7 h 30 min')).toBeTruthy();
+    expect(view.getByRole('radio', { name: 'Mate viejo · archivada' })).toBeTruthy();
     fireEvent.press(view.getByRole('button', { name: 'Abrir Métricas diarias' }));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/metrics');
   });
   it('compares with the chosen range when Comparar is on', async () => {
     mockParams = { metric: ids.steps };
     const view = wrap(<MetricsTrendsScreen />, comparing); await flush();
-    expect(within(view.getByTestId('metric-trend-comparison')).getByText('Estable frente a 1–5 sep.')).toBeTruthy();
+    expect(within(view.getByTestId('metric-trend-summary')).getByText('1–5 sep 0 pasos · sin cambio')).toBeTruthy();
+    expect(view.getByText('1–5 sep 3/7')).toBeTruthy();
   });
 });
 
