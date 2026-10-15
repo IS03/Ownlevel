@@ -85,7 +85,7 @@ export function NutritionReportDayRow({day,onDate}:{day:ReportDailyRow;onDate:(d
     <AppText muted>Objetivo: {amount(day.targetCalories,'kcal')} · Gasto: {amount(day.expenditureKcal,'kcal')}</AppText>
   </Surface>;
 }
-/** The ONE Nutrition Reports surface: embedded in Nutrition (modal) and as its own route (Progress drilldown). */
+/** Legacy Reports surface, retained for existing links until CONTRACT. New entry points use Progreso. */
 export function NutritionReportsContent({onClose,onDate,initialQuery}:{onClose?:()=>void;onDate:(date:string)=>void;initialQuery?:ReportQuery}) {
   const {client}=useMobileApi();
   const {colors}=useOwnlevelTheme();

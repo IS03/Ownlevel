@@ -32,6 +32,9 @@ export type AppIconName =
   | 'filter'
   | 'footprints'
   | 'more'
+  | 'sunrise'
+  | 'sun'
+  | 'sunset'
   | 'moon'
   | 'mug'
   | 'nutrition'
@@ -90,6 +93,9 @@ export const sfSymbolNames: Record<AppIconName, SFSymbol> = {
   filter: 'line.3.horizontal.decrease',
   footprints: 'figure.walk',
   more: 'ellipsis',
+  sunrise: 'sunrise',
+  sun: 'sun.max',
+  sunset: 'sunset',
   moon: 'moon.fill',
   mug: 'cup.and.saucer.fill',
   nutrition: 'fork.knife',

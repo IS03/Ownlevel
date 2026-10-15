@@ -19,10 +19,11 @@ Lista viva de lo que sacamos de una pantalla para llevarlo a otra, y de los camb
 
 ## Va a Progreso (cuando lo diseñemos)
 
-- **Reporte nutricional:** mientras tanto se abre desde Nutrición › `•••` › Reporte, y desde "Ver reporte" del calendario de Nutrición.
+- ~~**Reporte nutricional:**~~ HECHO (15/10, Progreso paso 5): Nutrición tiene su pantalla propia en Progreso, con el período y la comparación compartidos. Inicio, el resumen y el calendario abren esa pantalla; se retiró "Reporte" del `•••` de Nutrición.
+  - CONTRACT pendiente: la ruta `/(tabs)/nutrition/reports` sigue viva para links anteriores, sin entradas desde la app. Retirarla en una etapa posterior.
 - **Análisis grande por ejercicio:** el historial de un ejercicio queda con un gráfico chico; el análisis completo va en Progreso.
 - **Tendencias de métricas** y de nutrición (promedios largos y comparaciones).
-- **Bocetos de Progreso hechos (15/10, `bocetos/progreso/`, P1–P6):** el reporte nutricional pasa a P4 y el análisis por ejercicio a P3. Cuando se implementen, sacar "Reporte" del `•••` de Nutrición.
+- **Bocetos de Progreso hechos (15/10, `bocetos/progreso/`, P1–P6):** el reporte nutricional pasa a P4 y el análisis por ejercicio a P3. "Reporte" ya se retiró del `•••` al implementar Progreso paso 5 (R5/R6).
 
 ### Se va de Progreso (bocetos P1–P6)
 - **"Explorar" y "Revisar datos":** duplicaban las filas de "Tus áreas".
@@ -33,7 +34,7 @@ Lista viva de lo que sacamos de una pantalla para llevarlo a otra, y de los camb
 
 ## Queda en su sección, pero dentro de un menú
 
-- **Nutrición › `•••`:** Comidas guardadas, Alimentos, Reporte (temporal) y Plan nutricional (temporal, hasta que exista en Ajustes).
+- **Nutrición › `•••`:** Comidas guardadas, Alimentos y Plan nutricional (temporal, hasta que exista en Ajustes).
 
 ## Se sacó (decisión tomada)
 
@@ -60,7 +61,7 @@ Lista viva de lo que sacamos de una pantalla para llevarlo a otra, y de los camb
 - **Nutrición · Repetir una comida:** se puede hacer hoy creando una comida manual con los mismos valores (se pierde el origen y la precisión). Si se quiere conservar el origen, hace falta una operación de servidor.
 
 - **Progreso · comparación libre:** "Elegir rangos" compara dos períodos cualquiera (boceto Q2). Confirmar que la lectura de Progreso acepte un rango de comparación explícito; si no, EXPAND de lectura.
-- **Progreso · "Cuándo comés" (boceto Q5):** calorías y proteína por franja horaria (Mañana 5–11, Mediodía 11–15, Tarde 15–20, Noche 20–2), contando solo las comidas con hora. Hoy no hay lectura agregada por franja: EXPAND de lectura.
+- ~~**Progreso · "Cuándo comés" (boceto R6):**~~ HECHO (15/10, Progreso paso 5): endpoint aditivo `GET /api/mobile/v1/progress/nutrition/timing`, con identidad por Bearer y lectura paginada bajo RLS, sin migración. Mañana 5–11, Mediodía 11–15, Tarde 15–20 y Noche **20–5** (incluye madrugada), en horario de Córdoba; solo las comidas con hora conocida aportan a las franjas. Menos de 10 comidas con hora no muestra porcentajes.
 - **Progreso · lectura de estadísticas general (etapa 2):** medida × desglose × filtro × rango, para Explorar, Mis vistas y Qué influye. Probablemente lleve migración (agregaciones e índices).
 
 ## Decisiones de marca para registrar en IDENTIDAD.md

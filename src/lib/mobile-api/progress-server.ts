@@ -17,14 +17,16 @@ import { MobileApiNotFoundError, MobileApiUnauthorizedError, MobileApiValidation
 import { mobileApiResponseHeaders } from "./http";
 import { NutritionReportDayChangedError, readMobileNutritionFacts } from "./nutrition-report-server";
 import {
-  PROGRESS_CUSTOM_MAX_DAYS, PROGRESS_DEFAULT_PRESET, habitWeekRange, parseProgressHabitWeek, parseProgressBody, parseProgressMetrics, parseProgressOverview, parseProgressQuery, parseProgressTraining, parseProgressTrainingExercise,
+  parseProgressNutritionTiming, PROGRESS_CUSTOM_MAX_DAYS, PROGRESS_DEFAULT_PRESET, habitWeekRange, parseProgressHabitWeek, parseProgressBody, parseProgressMetrics, parseProgressOverview, parseProgressQuery, parseProgressTraining, parseProgressTrainingExercise,
   type ProgressHabitWeek, type BodyObservationDto, type ProgressBody, type ProgressBodyMetric, type ProgressComparison, type ProgressDestination,
   type ProgressMetricDefinition, type ProgressMetrics, type ProgressOverview, type ProgressOverviewSparks, type ProgressPeriod, type ProgressQuery, type ProgressSection,
-  type ProgressSparkPoint,
+  type ProgressNutritionTiming, type ProgressSparkPoint,
 } from "./progress-contract";
 import { isNutritionDate } from "./nutrition-day-contract";
 import { authenticateMobileAccessToken, type MobileSupabaseAuthenticatedContext } from "./supabase";
 import { loadTrainingContext, trainingInPeriodDto, trainingDto, trainingExerciseDto, trainingSummaryDto } from "./progress-training";
+
+import { readNutritionTiming } from "./progress-nutrition-timing";
 
 type Context = MobileSupabaseAuthenticatedContext;
 const webAuth = (context: Context, requestPerformance?: RequestPerformanceContext): AuthenticatedRequestContext =>
@@ -380,3 +382,14 @@ export const progressTrainingExerciseResponse = (request: Request, exerciseId: s
   if (charts !== null && charts !== "1") throw new MobileApiValidationError("Parámetro no válido.");
   return buildMobileProgressTrainingExercise(context, query, today, exerciseId.toLowerCase(), charts === "1");
 }, parseProgressTrainingExercise);
+
+export const progressNutritionTimingResponse = (request: Request) => progressReadResponse(request, "nutrition.timing", async (context, params, today): Promise<ProgressNutritionTiming> => {
+  const query = progressQueryFromParams(params), { period } = resolveMobileProgressPeriod(query, today);
+  const [current, reference] = await Promise.all([
+    readNutritionTiming(context, { start: period.start, end: period.end }),
+    query.compare ? readNutritionTiming(context, query.compare) : Promise.resolve(null),
+  ]);
+  const after = todayInCordoba();
+  if (after !== today) throw new NutritionReportDayChangedError(after);
+  return { today, period, current, reference };
+}, parseProgressNutritionTiming);

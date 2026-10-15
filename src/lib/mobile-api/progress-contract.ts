@@ -15,6 +15,13 @@ export type ProgressPeriod = {
   preset: ProgressPreset; start: string; end: string; days: number;
   previousStart: string; previousEnd: string; bucket: ProgressBucket; includesToday: boolean;
 };
+export const TIMING_BANDS = ["morning", "midday", "afternoon", "night"] as const;
+export type TimingBandKey = typeof TIMING_BANDS[number];
+export type NutritionTiming = {
+  meals: number; mealsWithTime: number; kcal: number; proteinG: number;
+  bands: { key: TimingBandKey; kcal: number; proteinG: number; kcalShare: number | null; proteinShare: number | null }[];
+};
+export type ProgressNutritionTiming = { today: string; period: ProgressPeriod; current: NutritionTiming; reference: NutritionTiming | null };
 export type ProgressComparisonStatus = "comparable" | "not_comparable" | "insufficient_data";
 export type ProgressChange = "increased" | "decreased" | "stable" | "deficit_to_surplus" | "surplus_to_deficit" | "insufficient_data";
 /** current vs previous equivalent period (engine result). Percent is null when not valid (baseline 0, metric disallows it). */
@@ -482,4 +489,24 @@ export function parseProgressMetrics(v: unknown): ProgressMetrics | undefined {
   if (!metric || !summary || !comparison || !previous || !definitions.some(d => d.id === metric.id)) return;
   if (series.some((p, i) => i > 0 && p.start <= series[i - 1].end)) return;
   return { today: v.today, period, definitions, metric, summary, previous, comparison, series };
+}
+
+const closeTimingNumber = (a: number, b: number) => Math.abs(a - b) <= 1e-6 * Math.max(1, Math.abs(a), Math.abs(b));
+function parseNutritionTiming(v: unknown): NutritionTiming | undefined {
+  if (!record(v) || !keys(v, ["meals", "mealsWithTime", "kcal", "proteinG", "bands"]) || !count(v.meals) || !count(v.mealsWithTime) || v.mealsWithTime > v.meals
+    || !num(v.kcal) || v.kcal < 0 || !num(v.proteinG) || v.proteinG < 0 || !Array.isArray(v.bands) || v.bands.length !== 4) return;
+  const bands = list(v.bands, (b) => {
+    if (!record(b) || !keys(b, ["key", "kcal", "proteinG", "kcalShare", "proteinShare"]) || !num(b.kcal) || b.kcal < 0 || !num(b.proteinG) || b.proteinG < 0) return;
+    const share = (value: unknown, amount: number, total: number) => total === 0 ? value === null : num(value) && value >= 0 && value <= 1 && closeTimingNumber(value, amount / total);
+    if (!share(b.kcalShare, b.kcal, v.kcal as number) || !share(b.proteinShare, b.proteinG, v.proteinG as number)) return;
+    return b as NutritionTiming["bands"][number];
+  });
+  if (!bands || bands.some((b, i) => b.key !== TIMING_BANDS[i]) || !closeTimingNumber(bands.reduce((sum, b) => sum + b.kcal, 0), v.kcal)
+    || !closeTimingNumber(bands.reduce((sum, b) => sum + b.proteinG, 0), v.proteinG) || (v.mealsWithTime === 0 && (v.kcal !== 0 || v.proteinG !== 0))) return;
+  return { meals: v.meals, mealsWithTime: v.mealsWithTime, kcal: v.kcal, proteinG: v.proteinG, bands };
+}
+export function parseProgressNutritionTiming(v: unknown): ProgressNutritionTiming | undefined {
+  if (!record(v) || !keys(v, ["today", "period", "current", "reference"]) || !isNutritionDate(v.today)) return;
+  const period = parseProgressPeriod(v.period), current = parseNutritionTiming(v.current), reference = v.reference === null ? null : parseNutritionTiming(v.reference);
+  return period && current && reference !== undefined ? { today: v.today, period, current, reference } : undefined;
 }

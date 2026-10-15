@@ -93,7 +93,7 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
     },
     onOpenCalories: () => {
       haptics.selection();
-      router.push({ pathname: '/(tabs)/nutrition/reports', params: { period: 'custom', from: day.weekStart, to: day.today } });
+      router.push({ pathname: '/(tabs)/progress/trends/nutrition', params: { from: day.weekStart, to: day.today } });
     },
     onOpenCompletedSession: (id: string) => { haptics.selection(); router.push({ pathname: '/(tabs)/train/history/[id]', params: { id } }); },
     onOpenDay: (date: string) => { haptics.selection(); router.push({ pathname: '/(tabs)/train/history', params: { date } }); },

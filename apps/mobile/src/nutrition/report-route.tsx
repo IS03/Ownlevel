@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { parseReportQuery } from '@/api/nutrition-report';
 import { NutritionReportsContent } from './report-screen';
 
-/** /(tabs)/nutrition/reports: the same Reports component, deep-linkable from Progress with its period. */
+/** Legacy report links remain supported until CONTRACT; the app now enters Nutrition through Progreso. */
 export function NutritionReportsRoute() {
   const router = useRouter();
   const p = useLocalSearchParams<{ period?: string; from?: string; to?: string }>();

@@ -11,7 +11,7 @@ import { readingLabel } from './day-summary';
 import { useNutritionReportResource } from './report-resource';
 
 export function NutritionMonthSheet({ date, today, onClose, onSelect, onReport }: {
-  date: string; today: string; onClose: () => void; onSelect: (date: string) => void; onReport?: () => void;
+  date: string; today: string; onClose: () => void; onSelect: (date: string) => void; onReport?: (range: { from: string; to: string }) => void;
 }) {
   const { colors } = useOwnlevelTheme();
   const reduced = useReduceMotion();
@@ -39,7 +39,7 @@ export function NutritionMonthSheet({ date, today, onClose, onSelect, onReport }
             <Pressable accessibilityLabel="Mes siguiente" accessibilityRole="button" onPress={() => move(1)} style={styles.arrow}><AppIcon name="chevronRight" size={20} color={colors.primary} /></Pressable>
           </View>
           {month > today ? <MonthGrid month={month} selected={date} today={today} onSelect={select} />
-            : <ReadMonth key={month} month={month} selected={date} today={today} onSelect={select} onReport={onReport ? () => { onClose(); onReport(); } : undefined} />}
+            : <ReadMonth key={month} month={month} selected={date} today={today} onSelect={select} onReport={onReport ? range => { onClose(); onReport(range); } : undefined} />}
           <View style={styles.footer}>
             <Button label="Volver a hoy" variant="quiet" onPress={() => select(today)} />
             <Button label="Otra fecha" variant="quiet" onPress={() => setManual(v => !v)} />
@@ -58,7 +58,7 @@ export function NutritionMonthSheet({ date, today, onClose, onSelect, onReport }
     </View>
   </Modal>;
 }
-function ReadMonth({ month, today, ...props }: { month: string; today: string; selected: string; onSelect: (date: string) => void; onReport?: () => void }) {
+function ReadMonth({ month, today, ...props }: { month: string; today: string; selected: string; onSelect: (date: string) => void; onReport?: (range: { from: string; to: string }) => void }) {
   const { client } = useMobileApi();
   const end = nutritionMonth(month).end;
   const { state, refresh } = useNutritionReportResource(client, { period: 'custom', from: month, to: end < today ? end : today });
@@ -75,7 +75,7 @@ function ReadMonth({ month, today, ...props }: { month: string; today: string; s
         <AppText numeric variant="footnote">{average ? average.value === null ? 'Sin promedio disponible' : `${number(average.value)} kcal · ${average.denominator} de ${report!.coverage.finalizedDays} días${average.partialDays > 0 ? ' · parcial' : ''}` : '—'}</AppText>
         {average && report?.range.end === today ? <AppText muted variant="caption">Hoy sigue en curso y no entra en el promedio.</AppText> : null}
       </View>
-      {props.onReport ? <Button label="Ver reporte" variant="quiet" onPress={props.onReport} /> : null}
+      {props.onReport ? <Button label="Ver reporte" variant="quiet" onPress={() => props.onReport?.({ from: month, to: end < today ? end : today })} /> : null}
     </View>
   </>;
 }

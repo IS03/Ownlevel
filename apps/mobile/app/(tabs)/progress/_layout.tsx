@@ -12,6 +12,8 @@ export default function ProgressLayout() {
       <Stack.Screen name="metrics" options={{ title: 'Métricas diarias' }} />
       <Stack.Screen name="trends/body" options={{ title: 'Cuerpo' }} />
       <Stack.Screen name="trends/metrics" options={{ title: 'Métricas' }} />
+      <Stack.Screen name="trends/nutrition" options={{ title: 'Nutrición' }} />
+      <Stack.Screen name="trends/meal-times" options={{ title: 'Cuándo comés' }} />
       <Stack.Screen name="trends/training" options={{ title: 'Entrenamiento' }} />
       <Stack.Screen name="trends/exercise/[id]" options={{ title: 'Ejercicio' }} />
     </Stack></ProgressRangeProvider>

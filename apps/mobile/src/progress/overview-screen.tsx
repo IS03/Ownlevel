@@ -9,14 +9,14 @@ import { MiniChart } from './mini-chart';
 import { ProgressScroll } from './progress-scroll';
 import { useProgressRange } from './progress-range-context';
 import { periodHeading } from './progress-range';
-import { arrowDelta, formatValue, queryParams } from './progress-format';
+import { arrowDelta, formatValue } from './progress-format';
 import { useProgressResource } from './use-progress-resource';
 
-export type ProgressRoute = '/(tabs)/progress/trends/body' | '/(tabs)/progress/trends/metrics' | '/(tabs)/nutrition/reports'
+export type ProgressRoute = '/(tabs)/progress/trends/body' | '/(tabs)/progress/trends/metrics' | '/(tabs)/progress/trends/nutrition'
   | '/(tabs)/progress/trends/training' | '/(tabs)/progress/trends/exercise/[id]';
 export function destinationRoute(d: ProgressDestination): { pathname: ProgressRoute; extra: Record<string, string> } {
   if (d.kind === 'body') return { pathname: '/(tabs)/progress/trends/body', extra: {} };
-  if (d.kind === 'nutrition') return { pathname: '/(tabs)/nutrition/reports', extra: {} };
+  if (d.kind === 'nutrition') return { pathname: '/(tabs)/progress/trends/nutrition', extra: {} };
   if (d.kind === 'training') return { pathname: '/(tabs)/progress/trends/training', extra: {} };
   if (d.kind === 'training_exercise') return { pathname: '/(tabs)/progress/trends/exercise/[id]', extra: { id: d.exerciseId } };
   return { pathname: '/(tabs)/progress/trends/metrics', extra: d.metricId ? { metric: d.metricId } : {} };
@@ -118,10 +118,10 @@ export function ProgressOverviewScreen() {
   const { query, compare, state, today } = useProgressRange();
   const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressOverview(c, query, signal, compare), [query, compare]);
   const { state: status, data, refresh } = useProgressResource(client, progressRequestKey(query, compare), load);
-  // The period travels in ProgressRangeProvider; only the Nutrition report (another tab's stack) still takes it by route.
+  // Every destination shares the period in ProgressRangeProvider.
   const open = (d: ProgressDestination) => {
     const { pathname, extra } = destinationRoute(d);
-    router.push({ pathname, params: pathname === '/(tabs)/nutrition/reports' ? { ...queryParams(query), ...extra } : extra });
+    router.push({ pathname, params: extra });
   };
   return <ProgressScroll title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={status.status === 'ready' && status.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
     {status.status === 'loading' ? <><SkeletonBlock height={240} /><SkeletonBlock height={96} /></>

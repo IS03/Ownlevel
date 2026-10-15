@@ -1,6 +1,6 @@
 import type { MobileApiClient } from './client';
 import {
-  parseProgressHabitWeek, parseProgressBody, parseProgressMetrics, parseProgressOverview, parseProgressTraining, parseProgressTrainingExercise, progressQueryKey, progressQueryString,
+  parseProgressNutritionTiming, parseProgressHabitWeek, parseProgressBody, parseProgressMetrics, parseProgressOverview, parseProgressTraining, parseProgressTrainingExercise, progressQueryKey, progressQueryString,
   type ProgressPeriod, type ProgressQuery,
 } from '../../../../src/lib/mobile-api/progress-contract';
 
@@ -48,4 +48,10 @@ export const fetchProgressHabitWeek = (client: MobileApiClient, weekStart: strin
   client.read({ path: `${BASE}/habits`, signal, parse: (raw: unknown) => {
     const data = parseProgressHabitWeek(raw);
     return data?.weekStart === weekStart ? data : undefined;
+  } });
+
+export const fetchProgressNutritionTiming = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
+  client.read({ path: `${BASE}/nutrition/timing?${qs(query, compare)}`, signal, parse: (raw: unknown) => {
+    const data = parseProgressNutritionTiming(raw);
+    return data && samePeriod(data.period, query, compare) && (compare ? data.reference !== null : data.reference === null) ? data : undefined;
   } });
