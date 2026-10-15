@@ -4,6 +4,7 @@ import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMobileApi } from '@/api';
 import { fetchProgressBody, fetchProgressMetrics, fetchProgressTraining, progressRequestKey } from '@/api/progress';
+import { parseInfluenceMeasure } from '@/api/progress-influence';
 import { AppIcon, AppText, SheetHandle, TextField, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import { RoutineSheetButton } from '@/training/routine-sheet-button';
@@ -51,40 +52,56 @@ function Group({ title, choices, selected, onPick, note }: { title: string; choi
 }
 
 /** One list of options (breakdown or day filter); the first one clears it. */
-export function OptionSheet({ title, options, selected, onPick, onClose }: {
-  title: string; options: ExploreChoice[]; selected: string; onPick: (key: string) => void; onClose: () => void;
+export function OptionSheet({ title, options, selected, onPick, onClose, closeOnPick = true, children }: {
+  title: string; options: ExploreChoice[]; selected: string; onPick: (key: string) => void; onClose: () => void; closeOnPick?: boolean; children?: ReactNode;
 }) {
   return <ExploreSheet title={title} onClose={onClose}>
-    <View>{options.map((c, i) => <Choice key={c.key} choice={c} first={i === 0} selected={c.key === selected} onPick={() => { onPick(c.key); onClose(); }} />)}</View>
+    <View>{options.map((c, i) => <Choice key={c.key} choice={c} first={i === 0} selected={c.key === selected} onPick={() => { onPick(c.key); if (closeOnPick) onClose(); }} />)}</View>
+    {children}
   </ExploreSheet>;
 }
 
+function DynamicGroup({ title, read, choices, empty, selected, pick, match }: {
+  title: string; read: { state: { status: string }; data: unknown }; choices: ExploreChoice[]; empty: string;
+  selected: string | null; pick: (c: ExploreChoice) => void; match: (c: ExploreChoice) => boolean;
+}) {
+  const shown = choices.filter(match);
+  const note = read.state.status === 'loading' ? 'Cargando…' : !read.data ? 'No pudimos cargar esta lista.' : !choices.length ? empty : undefined;
+  return note || shown.length ? <Group title={title} choices={note ? [] : shown} selected={selected} onPick={pick} note={note} /> : null;
+}
+
 /** S3 · choose a measure: search, fixed groups, and the user's metrics, body measures and exercises of the period. */
-export function MeasureSheet({ selected, onPick, onClose }: { selected: string | null; onPick: (c: ExploreChoice) => void; onClose: () => void }) {
+export function MeasureSheet({ selected, onPick, onClose, influenceRole }: { selected: string | null; onPick: (c: ExploreChoice) => void; onClose: () => void; influenceRole?: 'split' | 'outcome' }) {
   const { client } = useMobileApi();
   const { query, compare } = useProgressRange();
   const [search, setSearch] = useState('');
   const key = progressRequestKey(query, compare);
   const metrics = useProgressResource(client, `explore-metrics|${key}`, useCallback((c, s) => fetchProgressMetrics(c, query, null, s), [query]));
-  const body = useProgressResource(client, `explore-body|${key}`, useCallback((c, s) => fetchProgressBody(c, query, s), [query]));
-  const training = useProgressResource(client, `explore-training|${key}`, useCallback((c, s) => fetchProgressTraining(c, query, s), [query]));
   const needle = search.trim().toLocaleLowerCase('es-AR');
-  const match = (c: ExploreChoice) => !needle || c.label.toLocaleLowerCase('es-AR').includes(needle);
+  const match = (c: ExploreChoice) => (!influenceRole || !!parseInfluenceMeasure(c.key, influenceRole)) && (!needle || c.label.toLocaleLowerCase('es-AR').includes(needle));
   const pick = (c: ExploreChoice) => { onPick(c); onClose(); };
-  const dynamic = (title: string, read: { state: { status: string }; data: unknown }, choices: ExploreChoice[], empty: string) => {
-    const shown = choices.filter(match);
-    if (read.state.status === 'loading') return <Group title={title} choices={[]} selected={selected} onPick={pick} note="Cargando…" />;
-    if (!read.data) return <Group title={title} choices={[]} selected={selected} onPick={pick} note="No pudimos cargar esta lista." />;
-    if (!choices.length) return <Group title={title} choices={[]} selected={selected} onPick={pick} note={empty} />;
-    return shown.length ? <Group title={title} choices={shown} selected={selected} onPick={pick} /> : null;
-  };
   return <ExploreSheet title="Medida" onClose={onClose}>
     <TextField search hideLabel label="Buscar medida" placeholder="Buscar medida" value={search} onChangeText={setSearch} />
     {STATIC_MEASURES.map(g => { const shown = g.choices.filter(match); return shown.length ? <Group key={g.title} title={g.title} choices={shown} selected={selected} onPick={pick} /> : null; })}
-    {dynamic('Métricas', metrics, metrics.data ? metricChoices(metrics.data) : [], 'Todavía no tenés métricas.')}
-    {dynamic('Cuerpo', body, body.data ? bodyChoices(body.data) : [], 'Todavía no hay pesos ni medidas registrados.')}
-    {dynamic('Ejercicios del período', training, training.data ? exerciseChoices(training.data) : [], 'Sin ejercicios completados en este período.')}
+    <DynamicGroup title="Métricas" read={metrics} choices={metrics.data ? metricChoices(metrics.data) : []} empty="Todavía no tenés métricas." selected={selected} pick={pick} match={match} />
+    {influenceRole === 'split' ? <Group title="Días" choices={[
+      { key: 'day.training', label: 'Día de entrenamiento', detail: 'Con una sesión completada' },
+      { key: 'day.work', label: 'Día laboral', detail: 'Según el registro del día' },
+    ].filter(match)} selected={selected} onPick={pick} /> : null}
+    {!influenceRole ? <AdditionalMeasures selected={selected} pick={pick} match={match} /> : null}
   </ExploreSheet>;
+}
+
+/** Only Explorar reads these sources. Influence shares the picker without loading unsupported measures. */
+function AdditionalMeasures({ selected, pick, match }: { selected: string | null; pick: (c: ExploreChoice) => void; match: (c: ExploreChoice) => boolean }) {
+  const { client } = useMobileApi(), { query, compare } = useProgressRange();
+  const key = progressRequestKey(query, compare);
+  const body = useProgressResource(client, `explore-body|${key}`, useCallback((c, s) => fetchProgressBody(c, query, s), [query]));
+  const training = useProgressResource(client, `explore-training|${key}`, useCallback((c, s) => fetchProgressTraining(c, query, s), [query]));
+  return <>{[
+    { title: 'Cuerpo', read: body, choices: body.data ? bodyChoices(body.data) : [], empty: 'Todavía no hay pesos ni medidas registrados.' },
+    { title: 'Ejercicios del período', read: training, choices: training.data ? exerciseChoices(training.data) : [], empty: 'Sin ejercicios completados en este período.' },
+  ].map(g => <DynamicGroup key={g.title} {...g} selected={selected} pick={pick} match={match} />)}</>;
 }
 
 const styles = StyleSheet.create({

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { parseInfluenceMeasure } from '@/api/progress-influence';
 import { StyleSheet, View } from 'react-native';
 import { useMobileApi } from '@/api';
 import {
@@ -118,6 +119,7 @@ function Result({ request, onLoaded }: { request: ExploreRequest; onLoaded: (e: 
 
 /** Explorar (stage 2, S2–S5): one measure × optional breakdown × optional days, inside the period chosen above. */
 export function ExploreScreen() {
+  const router = useRouter();
   const { colors } = useOwnlevelTheme();
   const params = useLocalSearchParams<{ measure?: string; breakdown?: string; days?: string; series?: string }>();
   // A saved view opens here with its query; only combinations the measure admits are kept.
@@ -173,6 +175,9 @@ export function ExploreScreen() {
     {sheet === 'days' && options ? <OptionSheet title="Días" selected={draft.days ?? 'all'} onClose={() => setSheet(null)}
       options={[{ key: 'all', label: 'Todos', detail: '' }, ...options.days.map(k => ({ key: k, label: DAYS_LABELS[k], detail: '' }))]}
       onPick={k => setDraft(d => ({ ...d, days: k === 'all' ? null : k as ExploreDays }))} /> : null}
+    {draft.measure && parseInfluenceMeasure(draft.measure, 'outcome') ? <ProgressRow testID="explore-influence" label="Qué influye en esto" onPress={() => router.push({ pathname: '/(tabs)/progress/influence/build', params: { outcome: draft.measure!, ...(loaded?.measure.key === draft.measure ? { outcomeLabel: loaded.measure.label } : {}) } })}>
+      <AppIcon name="sparkles" color={colors.textMuted} size={20} /><AppText variant="headline" style={styles.grow}>Qué influye en esto</AppText>
+    </ProgressRow> : null}
   </ProgressScroll>;
 }
 const styles = StyleSheet.create({

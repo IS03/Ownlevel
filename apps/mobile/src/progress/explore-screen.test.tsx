@@ -9,8 +9,9 @@ import { ProgressRangeProvider } from './progress-range-context';
 import type { DateRange, ProgressRangeState } from './progress-range';
 
 const mockExplore = jest.fn<(c: unknown, q: ProgressQuery, r: ExploreRequest, compare: DateRange | null) => Promise<unknown>>();
+const mockPush = jest.fn();
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }), useFocusEffect: () => undefined, useLocalSearchParams: () => ({}), Stack: { Screen: () => null } }));
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocusEffect: () => undefined, useLocalSearchParams: () => ({}), Stack: { Screen: () => null } }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn() }, triggerHaptic: jest.fn() }));
 const mockClient = { request: jest.fn(), read: jest.fn() };
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
@@ -58,6 +59,8 @@ describe('Explorar', () => {
     fireEvent.press(view.getByTestId('explore-idea-training.sets')); await flush();
     expect(mockExplore).toHaveBeenLastCalledWith(mockClient, MONTH, { measure: 'training.sets', breakdown: 'muscle', days: null, series: true }, null);
     expect(view.getByTestId('explore-value').props.children).toBe('10 series');
+    fireEvent.press(view.getByTestId('explore-influence'));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/influence/build', params: { outcome: 'training.sets', outcomeLabel: 'Series' } });
     expect(view.getByText('Entrenaste 2 de 5 días')).toBeTruthy();
     // In time, one row per group with the same scale; a real 0 is a mark, never a gap.
     expect(view.getByTestId('explore-multiple-piernas')).toBeTruthy();

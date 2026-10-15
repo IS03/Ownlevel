@@ -8,6 +8,7 @@ import { haptics } from '@/platform/haptics';
 import { MiniChart } from './mini-chart';
 import { MyViews } from './my-views';
 import { ProgressScroll } from './progress-scroll';
+import { ProgressRow } from './progress-row';
 import { useProgressRange } from './progress-range-context';
 import { periodHeading } from './progress-range';
 import { arrowDelta, formatValue } from './progress-format';
@@ -136,6 +137,10 @@ export function ProgressOverviewScreen() {
         <Highlights data={data} open={open} />
       </> : <UnavailableState title="No pudimos cargar tu progreso" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente."
         action={<Button label="Reintentar" onPress={() => void refresh()} />} />}
+    <ProgressRow testID="progress-influence" label="Qué influye. Preguntas sobre tus días" onPress={() => router.push('/(tabs)/progress/influence')}>
+      <AppIcon name="sparkles" color={colors.textMuted} size={20} />
+      <View style={styles.text}><AppText variant="headline">Qué influye</AppText><AppText muted variant="footnote">Preguntas sobre tus días</AppText></View>
+    </ProgressRow>
   </ProgressScroll>;
 }
 const styles = StyleSheet.create({

@@ -3,7 +3,7 @@ import { Platform, StyleSheet, View, type RefreshControlProps } from 'react-nati
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { Stack } from 'expo-router';
 import { HeaderHeightContext } from 'expo-router/build/react-navigation/elements/Header/HeaderHeightContext';
-import { GlassSurface, ScrollScreen, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { AppText, GlassSurface, ScrollScreen, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { CompareHeaderButton, ProgressPeriodBlock } from './period-controls';
 import { CompareSheet, CustomRangeSheet } from './period-sheets';
 
@@ -12,8 +12,8 @@ import { CompareSheet, CustomRangeSheet } from './period-sheets';
  * and the period block. Once the block reaches the bar, a pinned copy appears right below it on glass (R2).
  * (ScrollView sticky headers stick behind a large-title bar, under its content inset, so they can't be used here.)
  */
-export function ProgressScroll({ title, testID, refreshControl, children }: {
-  title: string; testID: string; refreshControl?: React.ReactElement<RefreshControlProps>; children: ReactNode;
+export function ProgressScroll({ title, testID, refreshControl, children, multilineTitle = false, compactTitle }: {
+  title: string; testID: string; refreshControl?: React.ReactElement<RefreshControlProps>; children: ReactNode; multilineTitle?: boolean; compactTitle?: string;
 }) {
   const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
   const headerHeight = useContext(HeaderHeightContext) ?? 0;
@@ -28,11 +28,12 @@ export function ProgressScroll({ title, testID, refreshControl, children }: {
   });
   return <>
     <Stack.Screen options={{
-      title, headerLargeTitleEnabled: Platform.OS === 'ios', headerLargeTitleStyle: { color: colors.text },
+      title: compactTitle ?? title, headerLargeTitleEnabled: Platform.OS === 'ios' && !multilineTitle, headerLargeTitleStyle: { color: colors.text },
       headerStyle: { backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.background }, headerLargeStyle: { backgroundColor: 'transparent' },
       headerRight: () => <CompareHeaderButton onPress={() => setSheet('compare')} />,
     }} />
     <ScrollScreen testID={testID} refreshControl={refreshControl} scrollEventThrottle={32} onScroll={check}>
+      {multilineTitle ? <AppText accessibilityRole="header" variant="largeTitle">{title}</AppText> : null}
       <View ref={block} collapsable={false}><ProgressPeriodBlock {...open} /></View>
       {children}
     </ScrollScreen>
