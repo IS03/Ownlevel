@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AccessibilityInfo, Modal, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn, useAnimatedProps, useSharedValue, withTiming } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { SessionFinishedDto } from '@/api/active-session';
 import type { SessionHighlightsDto } from '@/api/session-highlights';
 import { isKgWeightMode } from '@/api/session-highlights';
@@ -28,7 +28,11 @@ function countText(value: number, duration: boolean) {
 function Count({ value, label, duration = false }: { value: number; label: string; duration?: boolean }) {
   const reduced = useReduceMotion(), progress = useSharedValue(reduced ? 1 : 0);
   useEffect(() => { progress.value = reduced ? 1 : withTiming(1, { duration: brandTokens.motion.duration.base }); }, [value, reduced, progress]);
-  const props = useAnimatedProps(() => ({ text: countText(value * progress.value, duration), defaultValue: countText(value * progress.value, duration) }));
+  // Whole targets count in whole steps: "62,01" mid-count reads like a real value.
+  const props = useAnimatedProps(() => {
+    const shown = Number.isInteger(value) ? Math.round(value * progress.value) : value * progress.value;
+    return { text: countText(shown, duration), defaultValue: countText(shown, duration) };
+  });
   return <View style={styles.stat} accessible accessibilityLabel={`${countText(value, duration)} ${label}`}>
     {reduced ? <AppText numeric style={styles.number} variant="title1">{countText(value, duration)}</AppText>
       : <AnimatedInput accessibilityElementsHidden importantForAccessibility="no-hide-descendants" editable={false} defaultValue={countText(value, duration)} animatedProps={props} style={styles.number} underlineColorAndroid="transparent" />}
@@ -48,10 +52,14 @@ export function postWorkoutRows(finished: SessionFinishedDto, data?: SessionHigh
     id: `added-${item.sessionExerciseId}`, kind: 'added', title: `${item.name} se sumó a ${finished.name}`, detail: 'Va a estar en tu próxima sesión',
   }))].slice(0, 4);
 }
+type PostWorkoutProps = { finished: SessionFinishedDto; readHighlights?: SessionHighlightsLoader; onHome: () => void; onViewSession: () => void };
+/** Standalone presentation, for a finish confirmed outside the finish sheet (e.g. a recovered intent). */
+export function PostWorkoutScreen(props: PostWorkoutProps) {
+  return <Modal visible presentationStyle="fullScreen" animationType="fade" onRequestClose={props.onViewSession}><PostWorkoutContent {...props} /></Modal>;
+}
 /** Full-screen confirmed receipt; auxiliary history never gates success or manufactures empty/zero values. */
-export function PostWorkoutScreen({ finished, readHighlights, onHome, onViewSession }: {
-  finished: SessionFinishedDto; readHighlights?: SessionHighlightsLoader; onHome: () => void; onViewSession: () => void;
-}) {
+export function PostWorkoutContent({ finished, readHighlights, onHome, onViewSession }: PostWorkoutProps) {
+  const insets = useSafeAreaInsets();
   const [highlights, setHighlights] = useState<SessionHighlightsDto>();
   const reduced = useReduceMotion(), { fontScale } = useWindowDimensions();
   useEffect(() => { AccessibilityInfo.announceForAccessibility(`${finished.name} guardado`); }, [finished.name]);
@@ -66,12 +74,11 @@ export function PostWorkoutScreen({ finished, readHighlights, onHome, onViewSess
   const rows = postWorkoutRows(finished, highlights);
   const metadata = metadataItems(finished.metadata), feelings = metadata.filter(item => item.key !== 'notes'), note = metadata.find(item => item.key === 'notes');
   const minutes = Math.max(0, Math.floor((Date.parse(finished.endedAt) - Date.parse(finished.startedAt)) / 60000));
-  return <Modal visible presentationStyle="fullScreen" animationType="fade" onRequestClose={onViewSession}>
-    <OwnlevelThemeProvider initialMode="light"><SafeAreaView style={styles.screen} testID="post-workout-screen">
+  return <OwnlevelThemeProvider initialMode="light"><View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]} testID="post-workout-screen">
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.hero}>
           <View style={styles.check}><AppIcon name="check" color={hero.onAccent} size={32} /></View>
-          <AppText accessibilityRole="header" style={styles.heroText} variant="largeTitle">{finished.routineId ? `${finished.name} guardado` : 'Entrenamiento guardado'}</AppText>
+          <AppText accessibilityRole="header" style={[styles.heroText, styles.center]} variant="largeTitle">{finished.routineId ? `${finished.name} guardado` : 'Entrenamiento guardado'}</AppText>
           <AppText numeric style={styles.heroText} variant="subheadline">{compactWeekdayDate(finished.logDate)} · {formatTimeRange(finished.startedAt, finished.endedAt)}</AppText>
         </View>
         <View style={[styles.stats, fontScale > 1.5 && styles.vertical]}>
@@ -99,8 +106,7 @@ export function PostWorkoutScreen({ finished, readHighlights, onHome, onViewSess
         <Button label="Listo" onPress={onHome} />
         <Button label="Ver sesión" variant="quiet" onPress={onViewSession} />
       </View>
-    </SafeAreaView></OwnlevelThemeProvider>
-  </Modal>;
+    </View></OwnlevelThemeProvider>;
 }
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: hero.bg, experimental_backgroundImage: `linear-gradient(160deg, ${hero.heroFrom} 0%, ${hero.bg} 75%)` },
@@ -111,6 +117,6 @@ const styles = StyleSheet.create({
   stat: { flex: 1, gap: brandTokens.space.xxs, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: hero.border, paddingLeft: brandTokens.space.sm },
   number: { ...brandTokens.typeScale.title1, color: hero.onHero, fontVariant: ['tabular-nums'], padding: 0, width: '100%' },
   row: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.sm, paddingVertical: brandTokens.space.sm }, hairline: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: hero.border },
-  flex: { flex: 1 }, badge: { backgroundColor: hero.accentSoft, borderRadius: brandTokens.radius.chip, paddingHorizontal: brandTokens.space.xs, paddingVertical: brandTokens.space.xxs },
+  center: { textAlign: 'center' }, flex: { flex: 1 }, badge: { backgroundColor: hero.accentSoft, borderRadius: brandTokens.radius.chip, paddingHorizontal: brandTokens.space.xs, paddingVertical: brandTokens.space.xxs },
   feelings: { gap: brandTokens.space.xs }, italic: { fontStyle: 'italic' }, footer: { padding: brandTokens.space.md, gap: brandTokens.space.xxs },
 });

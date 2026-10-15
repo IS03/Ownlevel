@@ -623,7 +623,7 @@ describe('native finish screen (M3.4-2)', () => {
     await completeSet(view, controller);
     jest.mocked(api.detail).mockResolvedValue({ status: 'ok', data: completedDetail(), meta });
     fireEvent.press(view.getByRole('button', { name: 'Finalizar entrenamiento' }));
-    expect(view.getByText('Sin responder')).toBeTruthy();
+    expect(view.queryByText('Quitar')).toBeNull(); // Re-tapping a value clears it; no extra control shifts the layout.
     expect(view.getByText('320')).toBeTruthy(); expect(view.getByText('kg de volumen')).toBeTruthy();
     fireEvent.press(view.getByTestId('summary-energyLevel-4'));
     fireEvent(view.getByTestId('summary-painLevel-slider'), 'accessibilityAction', { nativeEvent: { actionName: 'increment' } });
@@ -677,7 +677,7 @@ describe('native finish screen (M3.4-2)', () => {
     expect(view.queryByTestId('post-workout-screen')).toBeNull();
     expect(mockReplace).toHaveBeenCalledWith('/(tabs)/train'); expect(mockNavigate).not.toHaveBeenCalled(); controller.dispose();
   });
-  it('records pain on an iOS-style slider: no default, stepped values including 0, Quitar returns to unanswered', async () => {
+  it('records pain on an iOS-style slider: no default, values including 0, Sin dolor twice returns to unanswered', async () => {
     const { controller, Screen } = fixture(); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
     await completeSet(view, controller);
     fireEvent.press(view.getByRole('button', { name: 'Finalizar entrenamiento' }));
@@ -692,8 +692,8 @@ describe('native finish screen (M3.4-2)', () => {
     mockSelection.mockClear(); mockTrigger.mockClear();
     act(() => fireGestureHandler(getByGestureTestId('summary-painLevel-pan'), [{ state: State.BEGAN, x: 14 }, { state: State.ACTIVE, x: 104 }, { state: State.ACTIVE, x: 200 }, { state: State.END, x: 200 }]));
     expect(controller.getSnapshot().summary.painLevel).toBe(6); expect(mockTrigger.mock.calls).toEqual([['stepperChange']]);
-    fireEvent.press(view.getByRole('button', { name: 'Quitar dolor' }));
-    expect(controller.getSnapshot().summary.painLevel).toBeNull(); expect(view.queryByRole('button', { name: 'Quitar dolor' })).toBeNull();
+    fireEvent.press(view.getByRole('button', { name: 'Sin dolor' })); expect(controller.getSnapshot().summary.painLevel).toBe(0);
+    fireEvent.press(view.getByRole('button', { name: 'Sin dolor' })); expect(controller.getSnapshot().summary.painLevel).toBeNull();
     controller.dispose();
   });
   it('keeps an unknown finish outcome explicit and recovers it from the sheet with the same key', async () => {

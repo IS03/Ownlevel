@@ -241,7 +241,8 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
   // A closed session uses its own read-only view. While an intent is unresolved
   // (e.g. a finish whose outcome is unknown) keep the recovery panel visible here.
   if (detail.session.status !== 'in_progress' && !state.intent && (!state.finished || !finishOpen || finishTransitionDone)) {
-    return <CompletedSessionScreen api={closedApi} sessionId={detail.session.id} initialDetail={detail} finished={state.finished}
+    // After the sheet's own receipt ("Ver sesión"), the read-only view must not present it a second time.
+    return <CompletedSessionScreen api={closedApi} sessionId={detail.session.id} initialDetail={detail} finished={finishTransitionDone ? null : state.finished}
       onHome={returnHome} onTraining={returnToTraining} />;
   }
   const active = detail.session.status === 'in_progress';
@@ -282,7 +283,8 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
       completed={progress.completedSets} total={progress.totalSets} onBack={returnToTraining} onCancel={requestCancel} onFinish={() => { Keyboard.dismiss(); afterRemoval(() => setFinishOpen(true)); }} onHeight={setHeaderHeight} />
     {actionState.notice ? <ExerciseNotice bottomOffset={Math.max(insets.bottom, restOverlayHeight) - insets.bottom} message={actionState.notice.message} disabled={locked || actionState.working} undo={actionState.notice.undo ? () => void actions.undo() : undefined} /> : null}
     <RestTimerPanel controller={controller} onHeightChange={setRestOverlayHeight} />
-    {finishOpen && !finishTransitionDone ? <FinishSessionSheet controller={controller} onClose={() => setFinishOpen(false)} onDiscard={requestCancel} onConfirmedPresentation={() => setFinishTransitionDone(true)} /> : null}
+    {finishOpen && !finishTransitionDone ? <FinishSessionSheet controller={controller} onClose={() => setFinishOpen(false)} onDiscard={requestCancel}
+      readHighlights={closedApi.highlights} onDone={returnToTraining} onViewSession={() => setFinishTransitionDone(true)} /> : null}
     <SessionExercisePicker visible={pickerOpen} client={client} existingIds={existingIds} onClose={() => setPickerOpen(false)} onDismiss={creatorDismissed} onCreate={openCreator}
       onAdd={exercise => actions.add({ operation: 'add_existing', exerciseId: exercise.id, idempotencyKey: sessionIntentKey() }, exercise.name)} />
     {creatorOpen ? <ExerciseEditorModal initialName={createName} purpose="session" target={{ mode: 'create' }} routines={[]} pending={Boolean(state.intent) || state.refreshing} createIdempotencyKey={sessionIntentKey}
