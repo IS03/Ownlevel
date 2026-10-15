@@ -20,9 +20,8 @@ import { headerDate } from '@/home/home-day';
 import { NutritionGlassButton } from './day-controls';
 import { NutritionDayMenu } from './day-menu';
 import { NutritionWeek } from './day-week';
-import { NutritionDayContent } from './day-content';
+import { NutritionDayContent, type MealActions } from './day-content';
 import { useNutritionDayResource } from './day-resource';
-import type { NutritionDayMeal } from '../../../../src/lib/mobile-api/nutrition-day-contract';
 import { useMealController } from './use-meal-controller';
 import { useDayWriteController } from './use-day-write-controller';
 import { DayWriteEditor } from './day-write-editor';
@@ -38,9 +37,9 @@ import { foodQuickOption } from '@/api/nutrition-food';
 import { QuickEditor } from './quick-editor';
 import { useNutritionHomeEntry, type AddEntry } from './home-entry';
 
-function NutritionDayView({ date, today, onSelect, onToday, onServerToday, onAdd, addChoices, addControl, highlightedMeal, onManageFoods, onManageSaved, onConfigure, onReport, onEdit, onActivity, onContext, onMetric }: {
+function NutritionDayView({ date, today, onSelect, onToday, onServerToday, onAdd, addChoices, addControl, highlightedMeal, onManageFoods, onManageSaved, onConfigure, onReport, mealActions, onActivity, onContext, onMetric }: {
   date: string; today: string; onSelect: (date: string) => void; onToday: () => void; onServerToday: (date: string) => void;
-  onAdd?: () => void; onEdit?: (meal: NutritionDayMeal) => void;
+  onAdd?: () => void; mealActions?: MealActions;
   onConfigure?: () => void; onReport?: () => void; addChoices?: ReactNode; addControl?: ReactNode; highlightedMeal?: string; onManageFoods?: () => void; onManageSaved?: () => void;
   onMetric?: (data: MobileNutritionDayResponse, metric: NutritionDayMetric) => void;
   onActivity?: (data: MobileNutritionDayResponse) => void; onContext?: (data: MobileNutritionDayResponse) => void;
@@ -83,7 +82,7 @@ function NutritionDayView({ date, today, onSelect, onToday, onServerToday, onAdd
           <AppText accessibilityRole="alert">No pudimos actualizar. Mostramos la última lectura de esta fecha.</AppText>
           <Button label="Reintentar" onPress={runRefresh} variant="secondary" />
         </View> : null}
-        <NutritionDayContent data={current.data} onAdd={onAdd} addChoices={addChoices} addControl={addControl} highlightedMeal={highlightedMeal} onEdit={state.status === 'ready' ? onEdit : undefined}
+        <NutritionDayContent data={current.data} onAdd={onAdd} addChoices={addChoices} addControl={addControl} highlightedMeal={highlightedMeal} mealActions={state.status === 'ready' ? mealActions : undefined}
           onMetric={state.status === 'ready' ? onMetric : undefined} onActivity={state.status === 'ready' ? onActivity : undefined} onContext={state.status === 'ready' ? onContext : undefined} />
       </>}
     {!current ? <>{addControl ?? <NutritionGlassButton icon="plus" label="Agregar comida" wide onPress={onAdd} />}{addChoices}</> : null}
@@ -160,7 +159,14 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
       onConfigure={editable?()=>config.controller.open():undefined}
       onManageSaved={editable?()=>saved.controller.open():undefined}
       onManageFoods={editable ? () => foods.controller.open(null) : undefined}
-      onEdit={editable ? meal => meals.controller.open(date, meal) : undefined}
+      mealActions={editable ? {
+        edit: meal => meals.controller.open(date, meal),
+        // "Repetir" loads it again today by default; the Día chip in the form moves it elsewhere.
+        repeat: meal => meals.controller.repeat(today, meal),
+        save: meal => saved.controller.prefill({ name: (meal.title || meal.description || '').slice(0, 120), description: meal.description ?? '',
+          calories: meal.calories == null ? '' : String(Math.round(meal.calories)), ...Object.fromEntries((['proteinG', 'carbsG', 'fatG'] as const).map(k => [k, meal[k] == null ? '' : String(meal[k]).replace('.', ',')])) as Record<'proteinG' | 'carbsG' | 'fatG', string> }),
+        remove: meal => void mealNotice.undo(meal, date),
+      } : undefined}
       onMetric={editable ? metricEntry.open : undefined}
       onActivity={editable ? data => writes.controller.open('metrics', data) : undefined}
       onContext={editable ? data => writes.controller.open('context', data) : undefined} />

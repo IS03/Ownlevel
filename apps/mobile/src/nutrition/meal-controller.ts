@@ -1,7 +1,8 @@
+import { parseInputNutritionDate } from './day-format';
 import type { MobileApiRequestResult, MobileApiReadResult } from '@/api/results';
 import type { MealMutationIntent, MealMutationResponse } from '@/api/nutrition-meal';
 import type { MobileNutritionDayResponse, NutritionDayMeal } from '../../../../src/lib/mobile-api/nutrition-day-contract';
-import { mealDraft, validateMealDraft, type MealDraft } from './meal-form-model';
+import { mealDraft, validateMealDraft, type MealDraft, repeatMealDraft } from './meal-form-model';
 import { MealIntentRepository, type StoredMealIntent } from './meal-storage';
 export type MealApi = { mutate: (intent: MealMutationIntent) => Promise<MobileApiRequestResult<MealMutationResponse>>;
   read: (date: string) => Promise<MobileApiReadResult<MobileNutritionDayResponse>> };
@@ -35,10 +36,19 @@ export class MealController {
     const draft = mealDraft(date, meal);
     this.update({ editor: { sourceDate: date, mealId: meal?.id ?? null, expectedUpdatedAt: meal?.updatedAt ?? null, draft, original: draft }, errors: {}, message: null, truth: null, truthDate: null });
   }
+  /** Opens "A mano" prefilled from any meal (also ChatGPT/imported ones): it creates a new manual meal, never edits the source. */
+  repeat(date: string, meal: NutritionDayMeal) {
+    if (this.state.phase !== 'idle' || this.state.intent || this.busy || meal.entryKind !== 'meal') return;
+    const draft = repeatMealDraft(date, meal);
+    this.update({ editor: { sourceDate: date, mealId: null, expectedUpdatedAt: null, draft, original: draft }, errors: {}, message: null, truth: null, truthDate: null });
+  }
   change(field: Exclude<keyof MealDraft, 'saveToLibrary' | 'mealLabel'>, value: string) {
     const editor = this.state.editor;
     if (!editor || this.state.intent || this.busy || ['loading','blocked','confirmed'].includes(this.state.phase)) return;
-    this.update({ editor: { ...editor, draft: { ...editor.draft, [field]: value } }, errors: {},
+    // Moving the meal to another day keeps its clock time: a time stays on the meal's own day (server rule).
+    const day = field === 'date' ? parseInputNutritionDate(value) : null;
+    const moved = day && editor.draft.consumedAt ? { consumedAt: `${day}T${new Date(Date.parse(editor.draft.consumedAt) - 10800000).toISOString().slice(11, 16)}:00-03:00` } : {};
+    this.update({ editor: { ...editor, draft: { ...editor.draft, [field]: value, ...moved } }, errors: {},
       ...(this.state.phase === 'duplicate' ? { phase: 'idle' as const, message: null } : {}) });
   }
   timing(mealLabel: MealDraft['mealLabel'], consumedAt?: string) {
@@ -66,7 +76,9 @@ export class MealController {
     if (this.disposed || !e || this.busy || this.state.intent || !['idle','duplicate'].includes(this.state.phase)) return;
     const validation = validateMealDraft(e.draft);
     if (!deleting && !validation.fields) { this.update({ errors: validation.errors }); return; }
-    const intent: MealMutationIntent = { operation: deleting ? 'delete' : e.mealId ? 'edit' : 'create', sourceDate: e.sourceDate,
+    // A new meal lives where the Día chip points (the server requires create's destination to be its source).
+    const sourceDate = !e.mealId && !deleting && validation.fields ? validation.fields.date : e.sourceDate;
+    const intent: MealMutationIntent = { operation: deleting ? 'delete' : e.mealId ? 'edit' : 'create', sourceDate,
       mealId: e.mealId, expectedUpdatedAt: e.expectedUpdatedAt, idempotencyKey: this.newKey(), fields: deleting ? null : validation.fields!, forceDuplicate };
     const stored: StoredMealIntent = { version: 1, intent, draft: e.draft };
     this.busy = true; this.update({ phase: 'pending', errors: {}, message: null });

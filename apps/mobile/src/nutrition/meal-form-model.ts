@@ -5,9 +5,20 @@ import { inputNutritionDate, parseInputNutritionDate } from './day-format';
 export type MealDraft = { mealLabel?: ManualMealFields['mealLabel']; consumedAt?: string; saveToLibrary?: boolean; date: string; title: string; description: string; calories: string; proteinG: string; carbsG: string; fatG: string };
 export function mealDraft(date: string, meal?: NutritionDayMeal | null): MealDraft {
   const number = (n: number | null | undefined) => n == null ? '' : String(n).replace('.', ',');
-  const moment = meal ? undefined : suggestedMealLabel(date);
-  return { ...(moment ? { mealLabel: moment } : {}), date: inputNutritionDate(date), title: meal?.title ?? '', description: meal?.description ?? '', calories: number(meal?.calories),
+  // An edit shows the meal's own moment and time (only a known time); a new meal starts on today's likely moment.
+  const timing: Pick<MealDraft, 'mealLabel' | 'consumedAt'> = meal ? { mealLabel: meal.mealLabel, ...(meal.timeKnown ? { consumedAt: meal.consumedAt } : {}) }
+    : (moment => moment ? { mealLabel: moment } : {})(suggestedMealLabel(date));
+  return { ...timing, date: inputNutritionDate(date), title: meal?.title ?? '', description: meal?.description ?? '', calories: number(meal?.calories),
     proteinG: number(meal?.proteinG), carbsG: number(meal?.carbsG), fatG: number(meal?.fatG) };
+}
+/**
+ * "Repetir": a new manual meal with the same values on `date` (today by default). Only the values travel:
+ * origin and precision stay with the original, and the moment is today's, not the old meal's.
+ */
+export function repeatMealDraft(date: string, meal: NutritionDayMeal): MealDraft {
+  const values = mealDraft(date, meal), moment = suggestedMealLabel(date);
+  const { mealLabel: _label, consumedAt: _time, ...rest } = values;
+  return { ...(moment ? { mealLabel: moment } : {}), ...rest, calories: meal.calories == null ? '' : String(Math.round(meal.calories)) };
 }
 export function validateMealDraft(draft: MealDraft): { fields?: ManualMealFields; errors: Partial<Record<keyof MealDraft, string>> } {
   const errors: Partial<Record<keyof MealDraft, string>> = {};
