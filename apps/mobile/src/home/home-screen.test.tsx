@@ -53,6 +53,9 @@ jest.mock('./home-add-menu', () => {
   ) };
 });
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn() } }));
+const mockOpenMetric = jest.fn<(id: string) => Promise<void>>();
+// The quick metric sheet (same as Nutrición › Tu día) is covered by its own Nutrition tests.
+jest.mock('./use-home-metric-entry', () => ({ useHomeMetricEntry: () => ({ open: mockOpenMetric, loading: null, error: null, clearError: () => {}, element: null }) }));
 jest.mock('@/auth', () => ({ useMobileAuth: () => ({ session: { user: { id: 'u1', user_metadata: { avatar_url: 'https://lh3.googleusercontent.com/a/p' } } } }) }));
 jest.mock('@/nutrition/config-provider', () => ({ useNutritionConfiguration: () => ({ controller: { open: mockConfigOpen } }) }));
 jest.mock('@/api', () => ({
@@ -213,16 +216,14 @@ describe('Home screen', () => {
     ]);
   });
 
-  it('Métricas opens today\'s metrics editor and all metrics; weight is not here', async () => {
+  it('a metric opens the quick sheet right here; Más opens Ajustes › Métricas; weight is not here', async () => {
     const view = await renderScreen();
     const register = within(view.getByTestId('home-register'));
     expect(register.queryByText('Peso')).toBeNull();
     fireEvent.press(register.getByRole('button', { name: 'Sueño, Cargar' }));
+    expect(mockOpenMetric).toHaveBeenCalledTimes(1);
     fireEvent.press(register.getByRole('button', { name: 'Más, Métricas' }));
-    expect(mockPush.mock.calls).toEqual([
-      [{ pathname: '/(tabs)/progress/metrics', params: { editar: 'metricas' } }],
-      ['/(tabs)/progress/metrics'],
-    ]);
+    expect(mockPush.mock.calls).toEqual([['/settings/metrics']]);
   });
 
   it('a session row opens the finished session; a strip day opens that day; calories per day opens this week\'s report', async () => {
