@@ -16,16 +16,16 @@ export function formatDelta(value: number, unit: string | null, valueType: Metri
   return `${sign}${fmt(Math.abs(value), valueType === 'integer' ? 0 : 2)}${unit ? ` ${unit}` : ''}`;
 }
 const REASONS: Record<string, string> = {
-  current_period_empty: 'sin datos en este período', previous_period_empty: 'el período anterior no tiene datos',
-  insufficient_current_samples: 'pocos datos en este período', insufficient_previous_samples: 'pocos datos en el período anterior',
+  current_period_empty: 'sin datos en este período', previous_period_empty: 'el período de comparación no tiene datos',
+  insufficient_current_samples: 'pocos datos en este período', insufficient_previous_samples: 'pocos datos en el período de comparación',
   metric_disallows_comparison: 'esta métrica no se compara',
 };
-/** current vs previous equivalent period, honest about missing baselines. */
-export function comparisonText(c: ProgressComparison, unit: string | null, valueType: MetricValueType = 'decimal'): string {
+/** Current vs the chosen comparison range (Progreso's "Comparar"), honest about missing baselines. */
+export function comparisonText(c: ProgressComparison, unit: string | null, valueType: MetricValueType = 'decimal', against = 'el período anterior'): string {
   if (c.status !== 'comparable' || c.deltaAbsolute === null) return `Sin comparación: ${REASONS[c.reason] ?? 'datos insuficientes'}.`;
-  if (c.change === 'stable') return 'Estable frente al período anterior.';
+  if (c.change === 'stable') return `Estable frente a ${against}.`;
   const percent = c.deltaPercent === null ? '' : ` (${c.deltaPercent > 0 ? '+' : ''}${fmt(c.deltaPercent)}%)`;
-  return `${formatDelta(c.deltaAbsolute, unit, valueType)}${percent} frente al período anterior.`;
+  return `${formatDelta(c.deltaAbsolute, unit, valueType)}${percent} frente a ${against}.`;
 }
 export function coverageText(c: ProgressCoverage): string | null {
   if (c.eligible === null) return `${c.registered} registros`;

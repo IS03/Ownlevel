@@ -22,6 +22,13 @@ Lista viva de lo que sacamos de una pantalla para llevarlo a otra, y de los camb
 - **Reporte nutricional:** mientras tanto se abre desde Nutrición › `•••` › Reporte, y desde "Ver reporte" del calendario de Nutrición.
 - **Análisis grande por ejercicio:** el historial de un ejercicio queda con un gráfico chico; el análisis completo va en Progreso.
 - **Tendencias de métricas** y de nutrición (promedios largos y comparaciones).
+- **Bocetos de Progreso hechos (15/10, `bocetos/progreso/`, P1–P6):** el reporte nutricional pasa a P4 y el análisis por ejercicio a P3. Cuando se implementen, sacar "Reporte" del `•••` de Nutrición.
+
+### Se va de Progreso (bocetos P1–P6)
+- **"Explorar" y "Revisar datos":** duplicaban las filas de "Tus áreas".
+- **Historial:** vive en Entrenar.
+- **"Métricas diarias" (cargar y editar el día):** la carga de hoy ya está en Nutrición › "Tu día". La edición de días pasados va con el editor de Nutrición, y "Administrar métricas" va a Ajustes.
+- **Selector de período de 7 chips:** queda Semana, Mes, 3 meses y Año, y "Personalizado" pasa al `•••`. Hay que confirmar que el servidor acepte esos presets: hoy acepta 7/14/30 días, 3/6 meses, 1 año y personalizado, así que "Semana" sería 7 días y "Mes" 30.
 
 ## Queda en su sección, pero dentro de un menú
 
@@ -50,6 +57,10 @@ Lista viva de lo que sacamos de una pantalla para llevarlo a otra, y de los camb
 - **Nutrición · aviso de duplicado en la carga rápida (opcional):** hoy solo la carga manual detecta "posible duplicado". La carga rápida (guardadas, sugerencias, alimentos) no; por ahora lo cubre el aviso con "Deshacer".
 - **Nutrición · editar y borrar comidas que no se cargaron desde la app:** hoy el servidor solo permite editar o borrar comidas con origen `manual` (incluye las de carga rápida). Las que llegan desde ChatGPT, IA, etiqueta o importadas quedan de solo lectura (`MEAL_UNAVAILABLE`), y tampoco los resúmenes históricos. Decidir si se habilita conservando el origen. Mientras tanto, la app ofrece Repetir y Guardar como comida.
 - **Nutrición · Repetir una comida:** se puede hacer hoy creando una comida manual con los mismos valores (se pierde el origen y la precisión). Si se quiere conservar el origen, hace falta una operación de servidor.
+
+- **Progreso · comparación libre:** "Elegir rangos" compara dos períodos cualquiera (boceto Q2). Confirmar que la lectura de Progreso acepte un rango de comparación explícito; si no, EXPAND de lectura.
+- **Progreso · "Cuándo comés" (boceto Q5):** calorías y proteína por franja horaria (Mañana 5–11, Mediodía 11–15, Tarde 15–20, Noche 20–2), contando solo las comidas con hora. Hoy no hay lectura agregada por franja: EXPAND de lectura.
+- **Progreso · lectura de estadísticas general (etapa 2):** medida × desglose × filtro × rango, para Explorar, Mis vistas y Qué influye. Probablemente lleve migración (agregaciones e índices).
 
 ## Decisiones de marca para registrar en IDENTIDAD.md
 

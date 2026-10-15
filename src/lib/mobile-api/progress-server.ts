@@ -17,10 +17,11 @@ import { MobileApiNotFoundError, MobileApiUnauthorizedError, MobileApiValidation
 import { mobileApiResponseHeaders } from "./http";
 import { NutritionReportDayChangedError, readMobileNutritionFacts } from "./nutrition-report-server";
 import {
-  PROGRESS_DEFAULT_PRESET, habitWeekRange, parseProgressHabitWeek, parseProgressBody, parseProgressMetrics, parseProgressOverview, parseProgressQuery, parseProgressTraining, parseProgressTrainingExercise,
+  PROGRESS_CUSTOM_MAX_DAYS, PROGRESS_DEFAULT_PRESET, habitWeekRange, parseProgressHabitWeek, parseProgressBody, parseProgressMetrics, parseProgressOverview, parseProgressQuery, parseProgressTraining, parseProgressTrainingExercise,
   type ProgressHabitWeek, type BodyObservationDto, type ProgressBody, type ProgressBodyMetric, type ProgressComparison, type ProgressDestination,
   type ProgressMetricDefinition, type ProgressMetrics, type ProgressOverview, type ProgressPeriod, type ProgressQuery, type ProgressSection,
 } from "./progress-contract";
+import { isNutritionDate } from "./nutrition-day-contract";
 import { authenticateMobileAccessToken, type MobileSupabaseAuthenticatedContext } from "./supabase";
 import { loadTrainingContext, trainingDto, trainingExerciseDto, trainingSummaryDto } from "./progress-training";
 
@@ -28,25 +29,36 @@ type Context = MobileSupabaseAuthenticatedContext;
 const webAuth = (context: Context, requestPerformance?: RequestPerformanceContext): AuthenticatedRequestContext =>
   ({ supabase: context.supabase as AuthenticatedRequestContext["supabase"], userId: context.userId, requestPerformance });
 
+/** An explicit comparison range (EXPAND). Absent = the previous equivalent period, exactly as before. */
+export type MobileProgressQuery = ProgressQuery & { compare?: { start: string; end: string } };
+
 /** Query params → canonical query (default 30 días). Unknown or repeated params are invalid. */
-export function progressQueryFromParams(params: URLSearchParams, extra: readonly string[] = []): ProgressQuery {
+export function progressQueryFromParams(params: URLSearchParams, extra: readonly string[] = []): MobileProgressQuery {
   const input: Record<string, string> = {};
+  const compare: Record<string, string> = {};
   for (const [key, value] of params) {
-    if (key in input) throw new MobileApiValidationError("Parámetro repetido.");
-    if (!["period", "from", "to", ...extra].includes(key)) throw new MobileApiValidationError("Parámetro no válido.");
+    if (key in input || key in compare) throw new MobileApiValidationError("Parámetro repetido.");
+    if (!["period", "from", "to", "compareFrom", "compareTo", ...extra].includes(key)) throw new MobileApiValidationError("Parámetro no válido.");
     if (extra.includes(key)) continue;
-    input[key] = value;
+    if (key === "compareFrom" || key === "compareTo") compare[key] = value; else input[key] = value;
   }
   const query = parseProgressQuery({ period: PROGRESS_DEFAULT_PRESET, ...input });
   if (!query) throw new MobileApiValidationError("Período no válido.");
-  return query;
+  if (!("compareFrom" in compare) && !("compareTo" in compare)) return query;
+  const { compareFrom: start, compareTo: end } = compare;
+  if (!isNutritionDate(start) || !isNutritionDate(end) || start > end) throw new MobileApiValidationError("Período de comparación no válido.");
+  return { ...query, compare: { start, end } };
 }
 
 /** The canonical period resolver (resolveProgressPeriod via the Reports presets); never beyond today Córdoba. */
-export function resolveMobileProgressPeriod(query: ProgressQuery, today: string): { range: NutritionReportRange; period: ProgressPeriod } {
-  const range = resolveNutritionReportRange(query, today);
+export function resolveMobileProgressPeriod(query: MobileProgressQuery, today: string): { range: NutritionReportRange; period: ProgressPeriod } {
+  const { compare, ...reportQuery } = query;
+  const range = resolveNutritionReportRange(reportQuery, today);
   if (range.error) throw new MobileApiValidationError(range.error);
-  const previous = getPreviousProgressPeriod(range);
+  if (compare && (compare.end > today || progressRangeDays(compare) > PROGRESS_CUSTOM_MAX_DAYS))
+    throw new MobileApiValidationError(`El período de comparación termina hoy como máximo y admite hasta ${PROGRESS_CUSTOM_MAX_DAYS} días.`);
+  // Every section (body, nutrition, metrics, training) reads its reference from previousStart/previousEnd.
+  const previous = compare ?? getPreviousProgressPeriod(range);
   const days = progressRangeDays(range);
   return { range, period: {
     preset: range.preset, start: range.start, end: range.end, days,
@@ -121,13 +133,13 @@ async function nutritionReport(context: Context, range: NutritionReportRange, pe
   return { summary: aggregateNutritionReport(days), comparison };
 }
 
-async function metricsReport(context: Context, query: ProgressQuery, today: string, metricId?: string) {
-  return getDailyMetricsReport({ period: query.period, from: query.from, to: query.to, metricId }, today, webAuth(context));
+async function metricsReport(context: Context, query: MobileProgressQuery, today: string, metricId?: string) {
+  return getDailyMetricsReport({ period: query.period, from: query.from, to: query.to, metricId, ...(query.compare ? { previousRange: query.compare } : {}) }, today, webAuth(context));
 }
 
 const byKey = (report: ProgressComparisonReport | null | undefined, key: string) => report?.results.find(result => result.metric.key === key);
 
-export async function buildMobileProgressOverview(context: Context, query: ProgressQuery, today: string): Promise<ProgressOverview> {
+export async function buildMobileProgressOverview(context: Context, query: MobileProgressQuery, today: string): Promise<ProgressOverview> {
   const { range, period } = resolveMobileProgressPeriod(query, today);
   const [body, nutrition, metrics, training] = await Promise.all([
     isolated(() => bodyReport(context, range, period), "body"),
@@ -206,13 +218,13 @@ export function bodyDto(report: BodyProgressReport, available: ReadonlySet<strin
   return { today, period, excludedSuspect: report.excludedSuspectCount, metrics };
 }
 
-export async function buildMobileProgressBody(context: Context, query: ProgressQuery, today: string): Promise<ProgressBody> {
+export async function buildMobileProgressBody(context: Context, query: MobileProgressQuery, today: string): Promise<ProgressBody> {
   const { range, period } = resolveMobileProgressPeriod(query, today);
   const { report, available } = await bodyReport(context, range, period);
   return bodyDto(report, available, today, period);
 }
 
-export async function buildMobileProgressMetrics(context: Context, query: ProgressQuery, today: string, metricId: string | undefined): Promise<ProgressMetrics> {
+export async function buildMobileProgressMetrics(context: Context, query: MobileProgressQuery, today: string, metricId: string | undefined): Promise<ProgressMetrics> {
   const { period } = resolveMobileProgressPeriod(query, today);
   const report = await metricsReport(context, query, today, metricId);
   const definitions: ProgressMetricDefinition[] = report.definitions.map(definition => ({
@@ -235,11 +247,11 @@ export async function buildMobileProgressMetrics(context: Context, query: Progre
   };
 }
 
-export async function buildMobileProgressTraining(context: Context, query: ProgressQuery, today: string) {
+export async function buildMobileProgressTraining(context: Context, query: MobileProgressQuery, today: string) {
   const { period } = resolveMobileProgressPeriod(query, today);
   return trainingDto(await loadTrainingContext(webAuth(context), period, today), today, period, comparisonDto);
 }
-export async function buildMobileProgressTrainingExercise(context: Context, query: ProgressQuery, today: string, exerciseId: string) {
+export async function buildMobileProgressTrainingExercise(context: Context, query: MobileProgressQuery, today: string, exerciseId: string) {
   const { period } = resolveMobileProgressPeriod(query, today);
   const dto = trainingExerciseDto(await loadTrainingContext(webAuth(context), period, today), exerciseId, today, period, comparisonDto);
   if (!dto) throw new MobileApiNotFoundError();

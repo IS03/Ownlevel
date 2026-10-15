@@ -9,6 +9,7 @@ export type AppIconName =
   | 'archive'
   | 'bookmark'
   | 'chat'
+  | 'compare'
   | 'edit'
   | 'repeat'
   | 'sparkles'
@@ -65,6 +66,7 @@ export const sfSymbolNames: Record<AppIconName, SFSymbol> = {
   archive: 'archivebox',
   bookmark: 'bookmark',
   chat: 'bubble.left',
+  compare: 'arrow.left.arrow.right',
   edit: 'pencil',
   repeat: 'arrow.2.squarepath',
   sparkles: 'sparkles',

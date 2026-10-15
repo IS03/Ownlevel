@@ -1,4 +1,4 @@
-import { Briefcase, Bookmark, Info, MessageCircle, Pencil, Repeat, Sparkles,
+import { ArrowLeftRight, Briefcase, Bookmark, Info, MessageCircle, Pencil, Repeat, Sparkles,
   ArrowUpDown, GripHorizontal, Archive, BookOpen, Calendar, ChartLine, Check, ChevronDown,
   ChevronLeft, ChevronRight, CircleCheck, ClipboardList, Clock, Coffee, Droplet, Dumbbell, Ellipsis, Flame,
   Footprints, Search, ListFilter, Moon, NotebookPen, Play, Plus, RotateCw, Settings, Trash2, TriangleAlert, Trophy, User, Utensils, Weight, X, Zap, type LucideIcon,
@@ -47,6 +47,7 @@ export const lucideIcons: Record<AppIconName, LucideIcon> = {
   trash: Trash2,
   bookmark: Bookmark,
   chat: MessageCircle,
+  compare: ArrowLeftRight,
   edit: Pencil,
   repeat: Repeat,
   sparkles: Sparkles,

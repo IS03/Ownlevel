@@ -1,13 +1,14 @@
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
-import { fetchProgressOverview, progressQueryKey, type ProgressDestination, type ProgressOverview, type ProgressQuery } from '@/api/progress';
-import { AppIcon, AppText, Button, Heading, IconCircle, InlineUnavailable, PressableSurface, ScrollScreen, SkeletonBlock, Surface, UnavailableState, spacing, useOwnlevelTheme, type AppIconName } from '@/design-system';
+import { fetchProgressOverview, progressRequestKey, type ProgressDestination, type ProgressOverview } from '@/api/progress';
+import { AppIcon, AppText, Button, Heading, IconCircle, InlineUnavailable, PressableSurface, SkeletonBlock, Surface, UnavailableState, spacing, useOwnlevelTheme, type AppIconName } from '@/design-system';
 import { ProgressDataLinks } from '@/body/progress-hub';
 import { haptics } from '@/platform/haptics';
-import { ProgressPeriodSelector } from './period-selector';
-import { comparisonText, coverageText, formatValue, lowCoverage, queryParams } from './progress-format';
+import { ProgressScroll } from './progress-scroll';
+import { useComparisonText, useProgressRange } from './progress-range-context';
+import { coverageText, formatValue, lowCoverage, queryParams } from './progress-format';
 import { TrainingSummaryCard } from './training-summary';
 import { useProgressResource } from './use-progress-resource';
 
@@ -35,6 +36,9 @@ function Entry({ label, detail, icon, onPress, disabled, testID }: { label: stri
 
 function Content({ data, open }: { data: ProgressOverview; open: (d: ProgressDestination) => void }) {
   const { colors } = useOwnlevelTheme();
+  const compare = useComparisonText(), { compareOn } = useProgressRange();
+  // Without "Comparar", only findings that don't compare periods (training records and exercise progress).
+  const changes = compareOn ? data.changes : data.changes.filter(f => f.domain === 'training');
   const nutrition = data.nutrition.status === 'ok' ? data.nutrition.data : null;
   return <>
     <View style={styles.section} testID="progress-evolution">
@@ -51,7 +55,7 @@ function Content({ data, open }: { data: ProgressOverview; open: (d: ProgressDes
 
     <View style={styles.section} testID="progress-changes">
       <Heading level={2}>Qué cambió</Heading>
-      {data.changes.length ? data.changes.map(f => <PressableSurface key={f.id} accessibilityLabel={`${f.label}. ${f.description}`} onPress={() => open(f.destination)} style={styles.row}>
+      {changes.length ? changes.map(f => <PressableSurface key={f.id} accessibilityLabel={`${f.label}. ${f.description}`} onPress={() => open(f.destination)} style={styles.row}>
         <View style={styles.flex}><AppText variant="label">{f.label}</AppText><AppText muted variant="caption">{f.description}</AppText></View>
       </PressableSurface>) : <Surface><AppText muted>Sin cambios destacados con datos suficientes en este período.</AppText></Surface>}
     </View>
@@ -64,9 +68,9 @@ function Content({ data, open }: { data: ProgressOverview; open: (d: ProgressDes
       {nutrition ? <View testID="progress-nutrition"><PressableSurface accessibilityLabel="Nutrición" onPress={() => open({ kind: 'nutrition' })} style={styles.block}>
         <AppText variant="label">Nutrición</AppText>
         <AppText>{nutrition.averageKcal === null ? 'Sin días completos con calorías' : `${formatValue(nutrition.averageKcal, 'kcal', 'integer')}/día`}</AppText>
-        <AppText muted variant="caption">{comparisonText(nutrition.calories, 'kcal', 'integer')}</AppText>
+        {compare(nutrition.calories, 'kcal', 'integer') ? <AppText muted variant="caption">{compare(nutrition.calories, 'kcal', 'integer')}</AppText> : null}
         <AppText>{nutrition.averageProteinG === null ? 'Proteína sin dato' : `${formatValue(nutrition.averageProteinG, 'g', 'decimal')} proteína/día`}</AppText>
-        <AppText muted variant="caption">{comparisonText(nutrition.protein, 'g')}</AppText>
+        {compare(nutrition.protein, 'g') ? <AppText muted variant="caption">{compare(nutrition.protein, 'g')}</AppText> : null}
         {nutrition.averageTargetKcal !== null ? <AppText muted variant="caption">Objetivo histórico promedio: {formatValue(nutrition.averageTargetKcal, 'kcal', 'integer')}</AppText> : null}
         {nutrition.accumulatedBalanceKcal !== null ? <AppText muted variant="caption">Balance acumulado: {formatValue(nutrition.accumulatedBalanceKcal, 'kcal', 'integer')}</AppText> : null}
         <AppText muted variant="caption" style={nutrition.registeredDays * 2 < nutrition.days ? { color: colors.text } : undefined}>
@@ -75,7 +79,7 @@ function Content({ data, open }: { data: ProgressOverview; open: (d: ProgressDes
       {data.metrics.status === 'unavailable' ? <Surface><InlineUnavailable message="No pudimos cargar tus métricas. No significa que no haya datos." /></Surface>
         : data.metrics.data.items.map(m => <View key={m.id} testID={`progress-habit-${m.id}`}><PressableSurface accessibilityLabel={m.name} onPress={() => open({ kind: 'metrics', metricId: m.id })} style={styles.block}>
           <View style={styles.rowInline}><AppText variant="label" style={styles.flex}>{m.name}</AppText><AppText>{formatValue(m.average, m.unit, m.valueType)}</AppText></View>
-          <AppText muted variant="caption">Promedio por día con dato · {comparisonText(m.comparison, m.unit, m.valueType)}</AppText>
+          <AppText muted variant="caption">Promedio por día con dato{compare(m.comparison, m.unit, m.valueType) ? ` · ${compare(m.comparison, m.unit, m.valueType)}` : ''}</AppText>
           <AppText muted={!lowCoverage(m.coverage)} variant="caption" style={lowCoverage(m.coverage) ? { color: colors.text } : undefined}>
             {coverageText(m.coverage)}{lowCoverage(m.coverage) ? ' · cobertura baja' : ''}</AppText>
         </PressableSurface></View>)}
@@ -88,17 +92,13 @@ export function ProgressOverviewScreen() {
   const router = useRouter();
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
-  const [query, setQuery] = useState<ProgressQuery>({ period: '30' });
-  const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressOverview(c, query, signal), [query]);
-  const { state, data, refresh } = useProgressResource(client, progressQueryKey(query), load);
-  const go = (pathname: ProgressRoute, extra: Record<string, string> = {}) => router.push({ pathname, params: { ...queryParams(query), ...extra } });
+  const { query, compare } = useProgressRange();
+  const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressOverview(c, query, signal, compare), [query, compare]);
+  const { state, data, refresh } = useProgressResource(client, progressRequestKey(query, compare), load);
+  // The period travels in ProgressRangeProvider; only the Nutrition report (another tab's stack) still takes it by route.
+  const go = (pathname: ProgressRoute, extra: Record<string, string> = {}) => router.push({ pathname, params: pathname === '/(tabs)/nutrition/reports' ? { ...queryParams(query), ...extra } : extra });
   const open = (d: ProgressDestination) => { const r = destinationRoute(d); go(r.pathname, r.extra); };
-  return <ScrollScreen testID="progress-overview" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
-    <View style={styles.section}>
-      <Heading>Progreso</Heading>
-      <AppText muted variant="caption">¿Cómo estás evolucionando? Comparado con el período anterior equivalente.</AppText>
-      <ProgressPeriodSelector query={query} period={data?.period} onChange={setQuery} />
-    </View>
+  return <ProgressScroll title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
     {state.status === 'loading' ? <><SkeletonBlock height={96} /><SkeletonBlock height={96} /></>
       : data ? <>
         {state.status !== 'ready' ? <Surface><InlineUnavailable actionLabel="Reintentar" message="No se pudo actualizar. Mostramos la última lectura confirmada de este período." onAction={() => void refresh()} /></Surface> : null}
@@ -117,7 +117,7 @@ export function ProgressOverviewScreen() {
       <Heading level={2}>Revisar datos</Heading>
       <ProgressDataLinks />
     </View>
-  </ScrollScreen>;
+  </ProgressScroll>;
 }
 const styles = StyleSheet.create({
   section: { gap: spacing.sm },

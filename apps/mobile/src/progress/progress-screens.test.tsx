@@ -8,21 +8,24 @@ import { ProgressOverviewScreen } from './overview-screen';
 import { BodyTrendsScreen } from './body-trends-screen';
 import { MetricsTrendsScreen } from './metrics-trends-screen';
 import { NutritionReportsRoute } from '@/nutrition/report-route';
+import { ProgressRangeProvider } from './progress-range-context';
+import type { DateRange, ProgressRangeState } from './progress-range';
 
 const mockPush = jest.fn();
 let mockParams: Record<string, string> = {};
-const mockOverview = jest.fn<(c: unknown, q: ProgressQuery) => Promise<unknown>>();
-const mockBody = jest.fn<(c: unknown, q: ProgressQuery) => Promise<unknown>>();
-const mockMetrics = jest.fn<(c: unknown, q: ProgressQuery, id: string | null) => Promise<unknown>>();
+const mockOverview = jest.fn<(c: unknown, q: ProgressQuery, compare: DateRange | null) => Promise<unknown>>();
+const mockBody = jest.fn<(c: unknown, q: ProgressQuery, compare: DateRange | null) => Promise<unknown>>();
+const mockMetrics = jest.fn<(c: unknown, q: ProgressQuery, id: string | null, compare: DateRange | null) => Promise<unknown>>();
 const mockReport = jest.fn<(c: unknown, q: unknown) => Promise<unknown>>();
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocusEffect: () => undefined, useLocalSearchParams: () => mockParams }));
-jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn(), success: jest.fn(), warning: jest.fn() } }));
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocusEffect: () => undefined, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
+jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn(), success: jest.fn(), warning: jest.fn() }, triggerHaptic: jest.fn() }));
 const mockClient = { request: jest.fn(), read: jest.fn() };
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
 jest.mock('@/api/progress', () => ({ ...jest.requireActual<object>('@/api/progress'),
-  fetchProgressOverview: (c: unknown, q: ProgressQuery) => mockOverview(c, q), fetchProgressBody: (c: unknown, q: ProgressQuery) => mockBody(c, q),
-  fetchProgressMetrics: (c: unknown, q: ProgressQuery, id: string | null) => mockMetrics(c, q, id) }));
+  fetchProgressOverview: (c: unknown, q: ProgressQuery, _s: unknown, compare: DateRange | null) => mockOverview(c, q, compare),
+  fetchProgressBody: (c: unknown, q: ProgressQuery, _s: unknown, compare: DateRange | null) => mockBody(c, q, compare),
+  fetchProgressMetrics: (c: unknown, q: ProgressQuery, id: string | null, _s: unknown, compare: DateRange | null) => mockMetrics(c, q, id, compare) }));
 jest.mock('@/api/nutrition-report', () => ({ ...jest.requireActual<object>('@/api/nutrition-report'), fetchNutritionReport: (c: unknown, q: unknown) => mockReport(c, q) }));
 
 const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
@@ -74,8 +77,10 @@ function metrics(id: string | null): ProgressMetrics {
     series: ['2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04'].map((d, i) => ({ start: d, end: d, value: i % 3 === 0 ? 0 : null, samples: i % 3 === 0 ? 1 : 0 })) };
 }
 const flush = () => act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
-const wrap = (el: React.ReactElement) => render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
-  <OwnlevelThemeProvider initialMode="light">{el}</OwnlevelThemeProvider></SafeAreaProvider>);
+const MONTH = { period: 'custom' as const, from: '2026-10-01', to: TODAY };
+const comparing: ProgressRangeState = { unit: 'month', anchor: TODAY, custom: null, compare: { kind: 'previous' } };
+const wrap = (el: React.ReactElement, initialState?: ProgressRangeState) => render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
+  <OwnlevelThemeProvider initialMode="light"><ProgressRangeProvider initialToday={TODAY} initialState={initialState}>{el}</ProgressRangeProvider></OwnlevelThemeProvider></SafeAreaProvider>);
 
 const listeners: ((s: string) => void)[] = [];
 beforeEach(() => {
@@ -93,64 +98,72 @@ describe('Progress fixtures follow the shared contract', () => {
 });
 
 describe('Progress Overview', () => {
-  it('defaults to 30 days and shows evolution, findings, habits with comparisons/coverage, explore and operational links', async () => {
+  it('reads this calendar month without comparing; shows evolution, findings, habits with coverage, explore and operational links', async () => {
     const view = wrap(<ProgressOverviewScreen />); await flush();
-    expect(mockOverview).toHaveBeenLastCalledWith(mockClient, { period: '30' });
+    expect(mockOverview).toHaveBeenLastCalledWith(mockClient, MONTH, null);
+    expect(view.getByTestId('progress-period-stepper').props.accessibilityLabel).toBe('Octubre 2026, del 1 al 5 · en curso');
     expect(within(view.getByTestId('progress-evolution')).getByText('80,5 kg')).toBeTruthy();
     expect(view.getByText('1 medición sospechosa excluida del análisis.')).toBeTruthy();
-    expect(within(view.getByTestId('progress-changes')).getByText('Subió frente al período anterior.')).toBeTruthy();
     const nutrition = within(view.getByTestId('progress-nutrition'));
-    expect(nutrition.getByText('2.200 kcal/día')).toBeTruthy(); expect(nutrition.getByText('+200 kcal (+10%) frente al período anterior.')).toBeTruthy();
-    expect(nutrition.getByText('Objetivo histórico promedio: 2.100 kcal')).toBeTruthy();
-    expect(within(view.getByTestId(`progress-habit-${ids.steps}`)).getByText(/\+3\.000 pasos \(\+50%\)/)).toBeTruthy();
+    expect(nutrition.getByText('2.200 kcal/día')).toBeTruthy(); expect(nutrition.getByText('Objetivo histórico promedio: 2.100 kcal')).toBeTruthy();
+    // Sin comparar: no "frente a…" anywhere, and no compare chip.
+    expect(view.queryByText(/frente a/)).toBeNull(); expect(view.queryByTestId('progress-compare-chip')).toBeNull();
     const sleep = within(view.getByTestId(`progress-habit-${ids.sleep}`));
-    expect(sleep.getByText('7 h 30 min')).toBeTruthy(); expect(sleep.getByText(/el período anterior no tiene datos/)).toBeTruthy();
-    expect(sleep.getByText('5 de 29 días con dato · cobertura baja')).toBeTruthy();
-    const training = within(view.getByTestId('progress-training'));
-    expect(training.getByText('+3 sesiones (+33,3%) frente al período anterior.')).toBeTruthy();
-    expect(training.getByText('Ejercicios: 4 mejoraron · 3 estables · 1 bajó · 2 sin comparación')).toBeTruthy();
+    expect(sleep.getByText('7 h 30 min')).toBeTruthy(); expect(sleep.getByText('5 de 29 días con dato · cobertura baja')).toBeTruthy();
+    expect(within(view.getByTestId('progress-training')).getByText('Ejercicios: 4 mejoraron · 3 estables · 1 bajó · 2 sin comparación')).toBeTruthy();
     expect(view.queryByText(/volumen/i)).toBeNull();
     fireEvent.press(view.getByRole('button', { name: 'Tendencias de Entrenamiento' }));
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/training', params: { period: '30' } });
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/training', params: {} });
     for (const name of ['Abrir Historial', 'Abrir Cuerpo', 'Abrir Métricas diarias']) expect(view.getByRole('button', { name })).toBeTruthy();
   });
-  it('changing the period re-reads; a late response for the previous period is never shown', async () => {
+  it('with a comparison: the server gets range B, texts name it, and the chip clears it', async () => {
+    const view = wrap(<ProgressOverviewScreen />, comparing); await flush();
+    expect(mockOverview).toHaveBeenLastCalledWith(mockClient, MONTH, { start: '2026-09-01', end: '2026-09-05' });
+    expect(within(view.getByTestId('progress-compare-chip')).getByText('vs. 1–5 sep')).toBeTruthy();
+    expect(within(view.getByTestId('progress-changes')).getByText('Subió frente al período anterior.')).toBeTruthy();
+    expect(within(view.getByTestId('progress-nutrition')).getByText('+200 kcal (+10%) frente a 1–5 sep.')).toBeTruthy();
+    expect(within(view.getByTestId(`progress-habit-${ids.sleep}`)).getByText(/el período de comparación no tiene datos/)).toBeTruthy();
+    expect(within(view.getByTestId('progress-training')).getByText('+3 sesiones (+33,3%) frente a 1–5 sep.')).toBeTruthy();
+    fireEvent.press(view.getByTestId('progress-compare-clear')); await flush();
+    expect(mockOverview).toHaveBeenLastCalledWith(mockClient, MONTH, null);
+    expect(view.queryByText(/frente a/)).toBeNull();
+  });
+  it('the period bar and the stepper re-read; a late response for another period is never shown', async () => {
     let release!: (v: unknown) => void;
     mockOverview.mockImplementationOnce(() => new Promise(r => { release = r; }));
     const view = wrap(<ProgressOverviewScreen />); await flush();
-    fireEvent.press(view.getByRole('radio', { name: '7 días' })); await flush();
-    expect(mockOverview).toHaveBeenLastCalledWith(mockClient, { period: '7' });
-    await act(async () => { release(ok(overview({ evolution: [{ id: 'stale', label: 'Viejo', value: '1 kg', detail: null, destination: { kind: 'body' } }] }, '30'))); }); await flush();
+    fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
+    expect(mockOverview).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-10-05', to: TODAY }, null);
+    await act(async () => { release(ok(overview({ evolution: [{ id: 'stale', label: 'Viejo', value: '1 kg', detail: null, destination: { kind: 'body' } }] }))); }); await flush();
     expect(view.queryByText('Viejo')).toBeNull();
-    expect(view.getByText(/7 días · /)).toBeTruthy();
-    fireEvent.press(view.getByRole('radio', { name: '3 meses' })); await flush();
-    fireEvent.press(view.getByRole('radio', { name: '1 año' })); await flush();
-    expect(mockOverview.mock.calls.map(c => c[1].period)).toEqual(['30', '7', '3m', '1y']);
+    fireEvent.press(view.getByTestId('progress-unit-month')); await flush();
+    fireEvent(view.getByTestId('progress-period-stepper'), 'accessibilityAction', { nativeEvent: { actionName: 'decrement' } }); await flush();
+    expect(mockOverview).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-09-01', to: '2026-09-30' }, null);
+    expect(view.getByTestId('progress-period-stepper').props.accessibilityLabel).toBe('Septiembre 2026, 30 días');
+    fireEvent.press(view.getByTestId('progress-unit-year')); await flush();
+    expect(mockOverview).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-01-01', to: TODAY }, null);
   });
-  it('custom: invalid or longer than 366 days is rejected locally; a valid range is requested', async () => {
+  it('Personalizado opens the calendar: first day, last day, Listo', async () => {
     const view = wrap(<ProgressOverviewScreen />); await flush();
-    fireEvent.press(view.getByRole('radio', { name: 'Personalizado' }));
-    fireEvent.changeText(view.getByLabelText('Desde (DD/MM/AAAA)'), '01/01/2025');
-    fireEvent.changeText(view.getByLabelText('Hasta (DD/MM/AAAA)'), '05/10/2026');
-    fireEvent.press(view.getByRole('button', { name: 'Consultar rango' }));
-    expect(view.getByText('El período personalizado admite hasta 366 días.')).toBeTruthy();
-    fireEvent.changeText(view.getByLabelText('Desde (DD/MM/AAAA)'), '01/09/2026');
-    fireEvent.press(view.getByRole('button', { name: 'Consultar rango' })); await flush();
-    expect(mockOverview).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-09-01', to: '2026-10-05' });
+    fireEvent.press(view.getByTestId('progress-unit-custom'));
+    fireEvent.press(view.getByRole('button', { name: '1 de octubre' }));
+    expect(view.getByRole('button', { name: 'Listo' }).props.accessibilityState.disabled).toBe(true);
+    fireEvent.press(view.getByRole('button', { name: '3 de octubre' }));
+    fireEvent.press(view.getByRole('button', { name: 'Listo' })); await flush();
+    expect(mockOverview).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-10-01', to: '2026-10-03' }, null);
   });
-  it('an unavailable domain is explicit (never zero or empty) and drilldowns carry the period', async () => {
-    mockOverview.mockImplementation(async (_c, q) => ok(overview({ nutrition: { status: 'unavailable' }, body: { status: 'unavailable' }, training: { status: 'unavailable' }, evolution: [] }, q.period)));
+  it('an unavailable domain is explicit (never zero or empty); drilldowns keep the period in the shared state', async () => {
+    mockOverview.mockImplementation(async () => ok(overview({ nutrition: { status: 'unavailable' }, body: { status: 'unavailable' }, training: { status: 'unavailable' }, evolution: [] })));
     const view = wrap(<ProgressOverviewScreen />); await flush();
     expect(view.getByText('No pudimos cargar Nutrición. No significa que no haya datos.')).toBeTruthy();
     expect(view.getByText('No pudimos cargar Cuerpo. El resto del resumen sigue disponible.')).toBeTruthy();
     expect(view.queryByText(/0 kcal/)).toBeNull();
     expect(view.getByText('No pudimos cargar Entrenamiento. No significa que no haya datos.')).toBeTruthy();
     fireEvent.press(view.getAllByRole('button', { name: 'Pasos' })[0]);
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/metrics', params: { period: '30', metric: ids.steps } });
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/metrics', params: { metric: ids.steps } });
+    // The Nutrition report lives in another tab's stack: it still receives the chosen range.
     fireEvent.press(view.getByRole('button', { name: 'Reportes de Nutrición' }));
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/nutrition/reports', params: { period: '30' } });
-    fireEvent.press(view.getByRole('button', { name: 'Tendencias de Cuerpo' }));
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/body', params: { period: '30' } });
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/nutrition/reports', params: { period: 'custom', from: '2026-10-01', to: TODAY } });
   });
   it('a failed first read is an error state (not empty); foreground re-reads; a failed refresh keeps the confirmed read marked stale', async () => {
     mockOverview.mockResolvedValueOnce(lost);
@@ -167,13 +180,12 @@ describe('Progress Overview', () => {
 });
 
 describe('Body Trends', () => {
-  it('uses the period from Progress, shows real points (imported flagged), trend, and sparse metrics as insufficient', async () => {
-    mockParams = { period: '30' };
+  it('uses the shared period, shows real points (imported flagged), trend, and sparse metrics as insufficient', async () => {
     const view = wrap(<BodyTrendsScreen />); await flush();
-    expect(mockBody).toHaveBeenLastCalledWith(mockClient, { period: '30' });
+    expect(mockBody).toHaveBeenLastCalledWith(mockClient, MONTH, null);
     const summary = within(view.getByTestId('body-trend-summary'));
     expect(summary.getByText('Cambio: −1,5 kg')).toBeTruthy(); expect(summary.getByText('Tendencia en bajada.')).toBeTruthy();
-    expect(summary.getByText('Período anterior: datos insuficientes (1 registro).')).toBeTruthy();
+    expect(summary.queryByText(/datos insuficientes \(1 registro\)/)).toBeNull(); // only while comparing
     expect(within(view.getByTestId('body-trend-chart')).getByText('81 kg · Importado · sheet')).toBeTruthy();
     fireEvent.press(within(view.getByTestId('body-trend-chart')).getByRole('button', { name: /20 de septiembre de 2026: 81 kg/ }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/history/day/[date]', params: { date: '2026-09-20' } });
@@ -184,28 +196,38 @@ describe('Body Trends', () => {
     fireEvent.press(view.getByRole('button', { name: 'Abrir Cuerpo' }));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/body');
   });
+  it('keeps the comparison chosen on the hub', async () => {
+    const view = wrap(<BodyTrendsScreen />, comparing); await flush();
+    expect(mockBody).toHaveBeenLastCalledWith(mockClient, MONTH, { start: '2026-09-01', end: '2026-09-05' });
+    expect(within(view.getByTestId('body-trend-summary')).getByText('1–5 sep: datos insuficientes (1 registro).')).toBeTruthy();
+  });
 });
 
 describe('Metrics Trends', () => {
   it('selects a metric, labels the target as current, shows explicit zero, gaps and low coverage, and opens a day', async () => {
-    mockParams = { period: '7', metric: ids.steps };
+    mockParams = { metric: ids.steps };
     const view = wrap(<MetricsTrendsScreen />); await flush();
-    expect(mockMetrics).toHaveBeenLastCalledWith(mockClient, { period: '7' }, ids.steps);
+    expect(mockMetrics).toHaveBeenLastCalledWith(mockClient, MONTH, ids.steps, null);
     const summary = within(view.getByTestId('metric-trend-summary'));
     expect(summary.getByText('Promedio: 0 pasos')).toBeTruthy();
     expect(summary.getByText('Objetivo actual: 10.000 pasos (no hay objetivos históricos por período)')).toBeTruthy();
     expect(summary.getByText('2 de 6 días con dato · cobertura baja')).toBeTruthy();
-    expect(within(view.getByTestId('metric-trend-comparison')).getByText('Estable frente al período anterior.')).toBeTruthy();
+    expect(view.queryByTestId('metric-trend-comparison')).toBeNull();
     const chart = within(view.getByTestId('metric-trend-chart'));
     expect(chart.getAllByText('Sin dato')).toHaveLength(4);
     fireEvent.press(chart.getByRole('button', { name: /29 de septiembre de 2026: 0 pasos/ }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/history/day/[date]', params: { date: '2026-09-29' } });
     fireEvent.press(view.getByRole('button', { name: 'Sueño' })); await flush();
-    expect(mockMetrics).toHaveBeenLastCalledWith(mockClient, { period: '7' }, ids.sleep);
+    expect(mockMetrics).toHaveBeenLastCalledWith(mockClient, MONTH, ids.sleep, null);
     expect(within(view.getByTestId('metric-trend-summary')).getByText('Promedio: 7 h 30 min')).toBeTruthy();
     expect(view.getByRole('button', { name: 'Mate viejo · archivada' })).toBeTruthy();
     fireEvent.press(view.getByRole('button', { name: 'Abrir Métricas diarias' }));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/metrics');
+  });
+  it('compares with the chosen range when Comparar is on', async () => {
+    mockParams = { metric: ids.steps };
+    const view = wrap(<MetricsTrendsScreen />, comparing); await flush();
+    expect(within(view.getByTestId('metric-trend-comparison')).getByText('Estable frente a 1–5 sep.')).toBeTruthy();
   });
 });
 
