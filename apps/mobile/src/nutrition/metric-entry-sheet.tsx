@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
 import { AppIcon, AppText, Button, GlassSurface, SheetHandle, pressedStyle, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
@@ -71,10 +72,10 @@ function MetricForm({ id, controller, state, onClose }: { id: string; controller
   };
   const truth = state.truth ? findDayMetric(state.truth, id) : undefined;
   const saveDisabled = locked || state.phase !== 'idle' || (!removing && (invalid || !candidate?.valid));
-  return <Modal transparent statusBarTranslucent visible animationType={reduced ? 'fade' : 'slide'} onRequestClose={() => { if (!running) onClose(); }}>
+  return <Modal transparent statusBarTranslucent visible animationType="fade" onRequestClose={() => { if (!running) onClose(); }}>
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.fill}>
       <Pressable accessibilityLabel="Cerrar carga de métrica" disabled={running} onPress={onClose} style={[StyleSheet.absoluteFill, styles.scrim]} />
-      <View accessibilityViewIsModal style={[styles.sheet, { backgroundColor: colors.background, paddingBottom: Math.max(insets.bottom, 16) }]} testID="nutrition-metric-sheet">
+      <Animated.View entering={reduced ? FadeIn.duration(200) : SlideInDown.duration(300)} accessibilityViewIsModal style={[styles.sheet, { backgroundColor: colors.background, paddingBottom: Math.max(insets.bottom, 16) }]} testID="nutrition-metric-sheet">
         <SheetHandle />
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
           <View style={styles.header}>
@@ -85,7 +86,7 @@ function MetricForm({ id, controller, state, onClose }: { id: string; controller
           </View>
           {metric.value !== null ? <View pointerEvents={locked ? 'none' : 'auto'} accessibilityElementsHidden={locked}>
             <ExerciseSegmented accessibilityLabel="Cómo cargar la métrica" value={mode} options={[{ value: 'add', label: `Sumar a ${relative}` }, { value: 'replace', label: 'Reemplazar' }]} onChange={changeMode} />
-          </View> : <AppText muted variant="footnote" style={styles.center}>Reemplazar</AppText>}
+          </View> : null}
           {metric.valueType === 'duration' ? <MetricDuration value={raw} disabled={locked} onChange={next => apply(next, mode)} />
             : <View style={styles.numberRow}><TextInput accessibilityLabel={`Valor de ${metric.label}`} autoFocus editable={!locked} keyboardType={metric.valueType === 'decimal' ? 'decimal-pad' : 'number-pad'}
               selectTextOnFocus value={raw.value} placeholder="0" placeholderTextColor={colors.textMuted} onChangeText={value => apply({ ...raw, value }, mode)}
@@ -107,7 +108,7 @@ function MetricForm({ id, controller, state, onClose }: { id: string; controller
             <AppText muted variant="footnote">{`Quitar el valor de ${relative}`}</AppText>
           </Pressable> : null}
         </ScrollView>
-      </View>
+      </Animated.View>
     </KeyboardAvoidingView>
   </Modal>;
 }
@@ -117,5 +118,5 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 16 }, header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   title: { flex: 1, gap: 4 }, center: { textAlign: 'center' }, control: { width: 44, height: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   numberRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 8, paddingTop: 8 },
-  number: { fontSize: 48, fontWeight: '700', fontVariant: ['tabular-nums'], textAlign: 'center', minWidth: 100, maxWidth: '80%', minHeight: 64, padding: 0 }, status: { gap: 12 }, remove: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  number: { fontSize: 48, fontWeight: '700', fontVariant: ['tabular-nums'], textAlign: 'center', minWidth: 32, minHeight: 64, padding: 0 }, status: { gap: 12 }, remove: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
 });
