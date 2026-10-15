@@ -46,7 +46,8 @@ export type AppIconName =
   | 'trophy'
   | 'trash'
   | 'warning'
-  | 'water';
+  | 'water'
+  | 'work';
 
 export type AppIconProps = {
   accessibilityLabel?: string;
@@ -103,4 +104,5 @@ export const sfSymbolNames: Record<AppIconName, SFSymbol> = {
   trash: 'trash',
   warning: 'exclamationmark.triangle.fill',
   water: 'drop.fill',
+  work: 'briefcase',
 };

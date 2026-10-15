@@ -1,4 +1,4 @@
-import { Bookmark, Info, MessageCircle, Pencil, Repeat, Sparkles,
+import { Briefcase, Bookmark, Info, MessageCircle, Pencil, Repeat, Sparkles,
   ArrowUpDown, GripHorizontal, Archive, BookOpen, Calendar, ChartLine, Check, ChevronDown,
   ChevronLeft, ChevronRight, CircleCheck, ClipboardList, Clock, Coffee, Droplet, Dumbbell, Ellipsis, Flame,
   Footprints, Search, ListFilter, Moon, NotebookPen, Play, Plus, RotateCw, Settings, Trash2, TriangleAlert, Trophy, User, Utensils, Weight, X, Zap, type LucideIcon,
@@ -52,6 +52,7 @@ export const lucideIcons: Record<AppIconName, LucideIcon> = {
   sparkles: Sparkles,
   warning: TriangleAlert,
   water: Droplet,
+  work: Briefcase,
 };
 
 export const LUCIDE_STROKE_WIDTH = 2;

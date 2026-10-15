@@ -1,3 +1,4 @@
+import type { DayContextAction } from './day-details';
 import { useState, type ReactNode } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -81,7 +82,7 @@ function MealRow({ meal, divider, highlighted, actions, onOpen }: { meal: Nutrit
 export function NutritionDayContent({ data, onAdd, addChoices, addControl, highlightedMeal, mealActions = {}, onActivity, onContext, onMetric }: {
   data: MobileNutritionDayResponse; onAdd?: () => void; addChoices?: ReactNode; addControl?: ReactNode; highlightedMeal?: string; mealActions?: MealActions;
   onMetric?: (data: MobileNutritionDayResponse, metric: NutritionDayMetric) => void;
-  onActivity?: (data: MobileNutritionDayResponse) => void; onContext?: (data: MobileNutritionDayResponse) => void;
+  onActivity?: (data: MobileNutritionDayResponse) => void; onContext?: DayContextAction;
 }) {
   const [detail, setDetail] = useState(false);
   const [openMeal, setOpenMeal] = useState<string | null>(null);

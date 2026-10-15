@@ -1,10 +1,15 @@
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
+import { RoutineSheetButton } from '@/training/routine-sheet-button';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import type { MobileNutritionDayResponse, NutritionDayMetric } from '@/api/nutrition-day';
-import { AppIcon, AppText, GlassSurface, ScrollScreen, SheetHeader, useOwnlevelTheme, useReduceMotion, type AppIconName } from '@/design-system';
+import { AppIcon, AppText, GlassSurface, ScreenGlow, SheetHandle, useOwnlevelTheme, useReduceMotion, type AppIconName } from '@/design-system';
 import { homeMetricIcon } from '@/home/home-metric-icons';
 import { amount } from './day-format';
 import { NutritionSectionHeading } from './day-controls';
-import { NutritionDayDetails, metricValue } from './day-details';
+import { NutritionDayDetails, metricValue, type DayContextAction } from './day-details';
+import { canWriteDay } from './day-write-model';
 import { canEditDayMetric } from './metric-entry-model';
 import { NutritionCalorieRing } from './day-rings';
 
@@ -52,18 +57,45 @@ export function NutritionDayPanel({ data, onDetail, onMetric }: {
     </GlassSurface>
   </View>;
 }
-export function NutritionDayDetailSheet({ data, onClose, onActivity, onContext }: {
-  data: MobileNutritionDayResponse; onClose: () => void; onActivity?: (data: MobileNutritionDayResponse) => void; onContext?: (data: MobileNutritionDayResponse) => void;
+export function NutritionDayDetailSheet({ data, onClose, onContext }: {
+  data: MobileNutritionDayResponse; onClose: () => void; onActivity?: (data: MobileNutritionDayResponse) => void; onContext?: DayContextAction;
 }) {
-  const reduced = useReduceMotion();
-  return <Modal animationType={reduced ? 'fade' : 'slide'} presentationStyle="pageSheet" visible onRequestClose={onClose}>
-    <ScrollScreen safeAreaEdges={['top', 'bottom', 'left', 'right']}>
-      <SheetHeader title="Detalle del día" onClose={onClose} inset={false} />
-      <NutritionDayDetails data={data} onActivity={onActivity ? d => { onClose(); onActivity(d); } : undefined} onContext={onContext ? d => { onClose(); onContext(d); } : undefined} />
-    </ScrollScreen>
+  const reduced = useReduceMotion(), { colors } = useOwnlevelTheme(), insets = useSafeAreaInsets();
+  const [visible, setVisible] = useState(true);
+  const closing = useRef(false), afterDismiss = useRef<(() => void) | undefined>(undefined);
+  const finish = () => { const action = afterDismiss.current; afterDismiss.current = undefined; onClose(); action?.(); };
+  const dismiss = (action?: () => void) => {
+    if (closing.current) return;
+    closing.current = true; afterDismiss.current = action;
+    // iOS must finish removing the modal (including its accessibility tree)
+    // before the existing context editor is presented.
+    if (Platform.OS === 'ios') setVisible(false);
+    else finish();
+  };
+  const adjust: DayContextAction = (day, reset) => dismiss(() => onContext?.(day, reset));
+  const canAdjust = onContext && canWriteDay('context', data);
+  return <Modal transparent statusBarTranslucent animationType="fade" visible={visible} onDismiss={finish} onRequestClose={() => dismiss()} testID="nutrition-day-detail-modal">
+    <View style={styles.fill}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Cerrar detalle del día desde el fondo" onPress={() => dismiss()} style={[StyleSheet.absoluteFill, styles.scrim]} />
+      <Animated.View entering={reduced ? FadeIn.duration(200) : SlideInDown.duration(300)} accessibilityViewIsModal
+        style={[styles.detailSheet, { backgroundColor: colors.background, paddingBottom: Math.max(insets.bottom,16) }]} testID="nutrition-day-detail-sheet">
+        <ScreenGlow />
+        <SheetHandle />
+        <ScrollView contentContainerStyle={styles.detailContent}>
+          <View style={styles.detailHeader}><AppText accessibilityRole="header" variant="title2" style={{ flex: 1 }}>Tu día</AppText>
+            {canAdjust ? <Pressable accessibilityRole="button" accessibilityLabel="Ajustar hoy" onPress={() => adjust(data)} style={styles.adjust}><AppText variant="subheadline" style={{ color: colors.primary }}>Ajustar hoy</AppText></Pressable> : null}
+            <RoutineSheetButton label="Cerrar Detalle del día" icon="close" onPress={() => dismiss()} />
+          </View>
+          <NutritionDayDetails data={data} onContext={canAdjust ? adjust : undefined} />
+        </ScrollView>
+      </Animated.View>
+    </View>
   </Modal>;
 }
 const styles = StyleSheet.create({
+  fill: { flex: 1, justifyContent: 'flex-end' }, scrim: { backgroundColor: 'rgba(0,0,0,0.2)' },
+  detailSheet: { overflow: 'hidden', maxHeight: '90%', borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 8 },
+  detailContent: { padding: 16, gap: 20 }, detailHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 }, adjust: { minHeight: 44, justifyContent: 'center' },
   section: { gap: 8 }, panel: { borderRadius: 20, padding: 18, gap: 12 }, row: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   metrics: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 8, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12 },
   cell: { flex: 1, minWidth: '42%', minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12 },

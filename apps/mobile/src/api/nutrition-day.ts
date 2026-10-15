@@ -7,7 +7,7 @@ import type { MobileApiClient } from './client';
 export { isNutritionDate, parseMobileNutritionDayResponse };
 export type {
   MobileNutritionDayResponse, NutritionDayData, NutritionDayMetric, NutritionDayMeal,
-  NutritionDayContext, NutritionDaySummary, NutritionNutrientTotal,
+  NutritionDayContext, NutritionDayBreakdown, NutritionDayFactor, NutritionDaySummary, NutritionNutrientTotal,
 } from '../../../../src/lib/mobile-api/nutrition-day-contract';
 
 export function fetchMobileNutritionDay(client: MobileApiClient, date: string, signal?: AbortSignal) {

@@ -1,3 +1,5 @@
+import { breakdownMatches, parseNutritionDayBreakdown, type NutritionDayBreakdown } from './nutrition-breakdown-contract';
+export type { NutritionDayBreakdown, NutritionDayFactor } from './nutrition-breakdown-contract';
 /** Portable wire contract: no server, Supabase or React dependencies. */
 export type NutritionReadResult<T> = { status: "ok"; data: T } | { status: "unavailable" };
 export type NutritionNutrientTotal = { knownTotal: number; missingCount: number };
@@ -26,6 +28,7 @@ export type NutritionDaySummary = {
   mealCount: number;
 };
 export type NutritionDayContext = {
+  breakdown?: NutritionDayBreakdown | null;
   updatedAt?: string;
   calorieTarget: number | null;
   proteinTargetG: number | null;
@@ -119,8 +122,9 @@ export function parseNutritionDayData(value: unknown): NutritionDayData | undefi
     || !(c.training.effective === null || typeof c.training.effective === "boolean")
     || !oneOf(c.training.source, ["workout", "override", "none", null])
     || !(c.work.effective === null || typeof c.work.effective === "boolean") || !oneOf(c.work.source, ["schedule", "override", null])) return undefined;
+  const breakdown = parseNutritionDayBreakdown(c.breakdown);
   return { dayState: "recorded", summary: { calories, proteinG, carbsG, fatG, entryCount: s.entryCount, mealCount: s.mealCount },
-    context: { ...(c.updatedAt !== undefined ? { updatedAt: c.updatedAt as string } : {}), calorieTarget: c.calorieTarget as number | null, proteinTargetG: c.proteinTargetG as number | null,
+    context: { ...('breakdown' in c ? { breakdown: breakdown && breakdownMatches(breakdown, c as unknown as NutritionDayContext) ? breakdown : null } : {}), ...(c.updatedAt !== undefined ? { updatedAt: c.updatedAt as string } : {}), calorieTarget: c.calorieTarget as number | null, proteinTargetG: c.proteinTargetG as number | null,
       waterTargetL: c.waterTargetL as number | null, deltaVsTargetKcal: c.deltaVsTargetKcal, expenditureKcal: c.expenditureKcal as number | null,
       energyBalanceKcal: c.energyBalanceKcal, targetAutomaticKcal: c.targetAutomaticKcal as number | null,
       targetOverrideKcal: c.targetOverrideKcal as number | null, expenditureAutomaticKcal: c.expenditureAutomaticKcal as number | null,
