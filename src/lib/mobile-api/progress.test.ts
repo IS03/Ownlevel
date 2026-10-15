@@ -379,3 +379,63 @@ describe('Progress inPeriod read EXPAND', () => {
     expect(o.inPeriod).toBeNull(); expect(o.training.status).toBe('unavailable');
   });
 });
+
+describe('Exercise charts read EXPAND', () => {
+  const eid = 'e1000000-0000-4000-8000-000000000001';
+  const path = 'progress/training/exercises/' + eid + '?period=custom&from=2026-10-01&to=2026-10-05';
+  async function get(query = '') {
+    const { GET } = await import('@/app/api/mobile/v1/progress/training/exercises/[id]/route');
+    return GET(request(path + query), { params: Promise.resolve({ id: eid }) });
+  }
+  function fixture(mode = 'Peso total') {
+    const dates = ['2026-10-05', '2026-10-03', '2026-10-01', '2026-09-05'];
+    const source = { sessions: dates.map((date, i) => ({ id: `session-${i}`, day_log_id: date, status: 'completed', started_at: `${date}T10:00:00Z`, ended_at: `${date}T11:00:00Z`, routine_id: null, routine_name_snapshot: 'PULL', session_name: null })),
+      sessionExercises: dates.map((_, i) => ({ id: `exercise-${i}`, exercise_id: eid, workout_session_id: `session-${i}`, nombre_snapshot: 'Press', grupo_muscular_snapshot: 'pecho', muscle_group_label_snapshot: null, weight_mode_snapshot: mode, is_completed: true })),
+      sets: dates.map((_, i) => ({ id: `set-${i}`, workout_session_exercise_id: `exercise-${i}`, set_number: 1, is_completed: true, actual_reps: i === 1 ? 15 : i === 2 ? 7 : 10, actual_weight_kg: i === 3 ? 54 : i === 2 ? 57 : 60 })), dateByDayLog: new Map(dates.map(date => [date, date])) };
+    vi.mocked(loadCompletedTrainingData).mockResolvedValue(source as never);
+    return source;
+  }
+  it('keeps the old shape without charts and rejects invalid/repeated flags', async () => {
+    fixture(); const plain = await get(); expect(plain.status).toBe(200); expect(await plain.json()).not.toHaveProperty('charts');
+    expect((await get('&charts=2')).status).toBe(400); expect((await get('&charts=1&charts=1')).status).toBe(400);
+  });
+  it('computes Epley per session, rounds to 0.5 kg, leaves >12 reps as a gap and only includes reference when requested', async () => {
+    const source = fixture();
+    source.sets.push({ ...source.sets[0], id: 'heavier-single', set_number: 2, actual_reps: 1, actual_weight_kg: 70 });
+    const { parseProgressTrainingExercise } = await import('./progress-contract');
+    const data = await json(await get('&charts=1'), parseProgressTrainingExercise);
+    const rm = data.charts!.measures[0];
+    expect(data.charts!.strategy).toBe('load_reps'); expect(rm).toMatchObject({ key: 'estimated_1rm', derived: true, unit: 'kg', reference: null });
+    expect(rm.points.map(p => [p.date, p.value])).toEqual([['2026-10-01', 70.5], ['2026-10-05', 80]]);
+    expect(rm.points.at(-1)!.best).toEqual({ reps: 10, weightKg: 60 });
+    expect(data.charts!.measures[1].points).toHaveLength(3);
+    expect(data.charts!.measures[1].points.at(-1)).toMatchObject({ value: 70, best: { reps: 1, weightKg: 70 } });
+    expect(loadCompletedTrainingData).toHaveBeenCalledTimes(1);
+    expect(loadCompletedTrainingData).toHaveBeenCalledWith(expect.objectContaining({ userId: 'owner' }));
+    expect(authenticateMobileAccessToken).toHaveBeenCalledWith('token');
+    const compared = await json(await get('&charts=1&compareFrom=2026-09-01&compareTo=2026-09-05'), parseProgressTrainingExercise);
+    expect(compared.charts!.measures[0].reference).toEqual([{ date: '2026-09-05', sessionId: 'session-3', value: 72, best: { reps: 10, weightKg: 54 } }]);
+    // Derived labels, range, ordering and the kg-only rule are contract boundaries.
+    for (const charts of [
+      { ...data.charts!, strategy: 'unit_reps' },
+      { ...data.charts!, measures: data.charts!.measures.map(m => ({ ...m, derived: false })) },
+      { ...data.charts!, measures: data.charts!.measures.map(m => ({ ...m, points: [...m.points].reverse() })) },
+      { ...data.charts!, measures: data.charts!.measures.map(m => ({ ...m, points: m.points.map(p => ({ ...p, date: '2020-01-01' })) })) },
+    ]) expect(parseProgressTrainingExercise({ ...data, charts })).toBeUndefined();
+  });
+  it.each([
+    ['Lingotes (no kg)', 'unit_reps', ['best_set', 'volume'], [60, 600]],
+    ['Peso corporal', 'bodyweight_reps', ['best_set', 'total_reps'], [10, 10]],
+    ['Tiempo (segundos)', 'time', ['best_time', 'total_time'], [10, 10]],
+    ['Carga manual', 'unsupported', [], []],
+  ] as const)('%s uses its own measures, without 1RM', async (mode, strategy, keys, lastValues) => {
+    const source = fixture(mode);
+    if (strategy === 'bodyweight_reps') source.sets.forEach(s => { s.actual_weight_kg = null as never; });
+    const { parseProgressTrainingExercise } = await import('./progress-contract');
+    const data = await json(await get('&charts=1'), parseProgressTrainingExercise);
+    expect(data.charts!.strategy).toBe(strategy);
+    expect(data.charts!.measures.map(m => m.key)).toEqual(keys);
+    expect(data.charts!.measures.map(m => m.points.at(-1)!.value)).toEqual(lastValues);
+    expect(data.charts!.measures.every(m => !m.derived && m.reference === null)).toBe(true);
+  });
+});

@@ -8,10 +8,10 @@ import {
   compareTrainingExercisePerformance, buildTrainingGeneralAnalytics, buildTrainingLoadComparison, trainingLoadSamples, trainingPerformanceStrategy,
   type TrainingExercisePerformance, type TrainingGeneralAnalytics,
 } from "@/lib/progress/training-performance";
-import { buildTrainingExercisesAnalytics } from "@/lib/progress/training-exercises";
+import { buildTrainingExercisesAnalytics, type TrainingExerciseDetailAnalytics } from "@/lib/progress/training-exercises";
 import type { AuthenticatedRequestContext } from "@/lib/supabase/server";
 import type {
-  ProgressComparison, ProgressPeriod, ProgressTraining, ProgressTrainingExercise, ProgressTrainingExerciseDetail, ProgressTrainingSummary, ProgressTrainingInPeriod,
+  ProgressComparison, ProgressPeriod, ProgressTraining, ProgressTrainingExercise, ProgressTrainingExerciseDetail, ProgressTrainingSummary, ProgressTrainingInPeriod, ProgressExerciseCharts, ProgressExercisePoint,
 } from "./progress-contract";
 
 type CompareDto = (result: ProgressComparisonReport["results"][number] | undefined) => ProgressComparison;
@@ -93,8 +93,8 @@ export function trainingDto(ctx: TrainingContext, today: string, period: Progres
   };
 }
 
-/** Exercise analytics: the Web exercises read model, restricted to mode-compatible metrics (no volume). */
-export function trainingExerciseDto(ctx: TrainingContext, exerciseId: string, today: string, period: ProgressPeriod, compare: CompareDto): ProgressTrainingExerciseDetail | null {
+/** Exercise analytics: existing read model, with optional mode-compatible session charts. */
+export function trainingExerciseDto(ctx: TrainingContext, exerciseId: string, today: string, period: ProgressPeriod, compare: CompareDto, withCharts = false, comparing = false): ProgressTrainingExerciseDetail | null {
   const analytics = buildTrainingExercisesAnalytics({ source: ctx.source, primary: ctx.current, reference: ctx.reference,
     referenceDefinition: ctx.referenceDefinition, selectedExerciseId: exerciseId });
   const item = analytics.exercises.find(exercise => exercise.id === exerciseId);
@@ -119,6 +119,7 @@ export function trainingExerciseDto(ctx: TrainingContext, exerciseId: string, to
   const p = selected.performance;
   return {
     today, period,
+    ...(withCharts ? { charts: exerciseCharts(selected, comparing) } : {}),
     exercise: { id: exerciseId, name: item.name, muscleLabel: item.muscleLabel, weightMode: selected.weightMode },
     performance: { status: p.status, reason: p.reason, signal: p.status === "insufficient_data" ? null : p.signal, isPersonalRecord: p.isPersonalRecord,
       primarySamples: p.primarySampleSize, referenceSamples: p.referenceSampleSize },
@@ -128,6 +129,48 @@ export function trainingExerciseDto(ctx: TrainingContext, exerciseId: string, to
     sessions: selected.currentSessions.map(session => ({ sessionId: session.sessionId, date: session.logDate, routineName: session.routineName,
       sets: session.sets.filter(set => set.is_completed).map(set => ({ reps: set.actual_reps, weightKg: set.actual_weight_kg })) })),
   };
+}
+
+/** Derived measures use the already loaded session snapshots; unknown/incompatible modes remain gaps. */
+function exerciseCharts(selected: TrainingExerciseDetailAnalytics, comparing: boolean): ProgressExerciseCharts {
+  const strategy = trainingPerformanceStrategy(selected.weightMode);
+  const unit = strategy === "unit_reps" ? "lingotes" : strategy === "time" ? "s" : strategy === "bodyweight_reps" ? "reps" : "kg";
+  const definitions: { key: ProgressExerciseCharts["measures"][number]["key"]; label: string }[] = strategy === "load_reps"
+    ? [{ key: "estimated_1rm", label: "1RM estimado" }, { key: "best_set", label: "Mejor serie" }, { key: "volume", label: "Volumen" }]
+    : strategy === "unit_reps" ? [{ key: "best_set", label: "Mejor serie" }, { key: "volume", label: "Volumen" }]
+    : strategy === "bodyweight_reps" ? [{ key: "best_set", label: "Mejor serie" }, { key: "total_reps", label: "Repeticiones totales" }]
+    : strategy === "time" ? [{ key: "best_time", label: "Mejor tiempo" }, { key: "total_time", label: "Tiempo total" }] : [];
+  const normalize = (v: string | null | undefined) => v?.trim().replace(/\s+/g, " ").toLocaleLowerCase("es-AR") ?? null;
+  const buildPoints = (sessions: TrainingExerciseDetailAnalytics["currentSessions"], key: ProgressExerciseCharts["measures"][number]["key"]): ProgressExercisePoint[] => {
+    // Repeated blocks of the same exercise in one session still produce a single point.
+    const grouped = new Map<string, TrainingExerciseDetailAnalytics["currentSessions"][number]>();
+    for (const session of sessions) {
+      if (normalize(session.weightMode) !== normalize(selected.weightMode)) continue;
+      const previous = grouped.get(session.sessionId);
+      grouped.set(session.sessionId, previous ? { ...session, sets: [...previous.sets, ...session.sets] } : session);
+    }
+    return [...grouped.values()].sort((a, b) => a.logDate.localeCompare(b.logDate) || (a.completedAt ?? "").localeCompare(b.completedAt ?? "") || a.sessionId.localeCompare(b.sessionId)).flatMap(session => {
+      const sets = session.sets.filter(s => s.is_completed && typeof s.actual_reps === "number" && Number.isFinite(s.actual_reps) && s.actual_reps > 0)
+        .filter(s => strategy === "load_reps" || strategy === "unit_reps" ? typeof s.actual_weight_kg === "number" && Number.isFinite(s.actual_weight_kg) && s.actual_weight_kg > 0
+          : strategy !== "bodyweight_reps" || !s.actual_weight_kg);
+      if (!sets.length) return [];
+      let value: number, best: ProgressExercisePoint["best"] = null;
+      if (key === "volume") value = sets.reduce((sum, s) => sum + s.actual_reps! * s.actual_weight_kg!, 0);
+      else if (key === "total_reps" || key === "total_time") value = sets.reduce((sum, s) => sum + s.actual_reps!, 0); // Time is stored in actual_reps, in seconds.
+      else {
+        const candidates = key === "estimated_1rm" ? sets.filter(s => s.actual_reps! <= 12) : sets;
+        const score = (s: typeof sets[number]) => key === "estimated_1rm" ? s.actual_weight_kg! * (1 + s.actual_reps! / 30)
+          : strategy === "load_reps" || strategy === "unit_reps" ? s.actual_weight_kg! : s.actual_reps!;
+        const winner = [...candidates].sort((a, b) => score(b) - score(a) || b.actual_reps! - a.actual_reps!)[0];
+        if (!winner) return [];
+        value = key === "estimated_1rm" ? Math.round(score(winner) * 2) / 2 : score(winner);
+        best = { reps: winner.actual_reps!, weightKg: winner.actual_weight_kg };
+      }
+      return Number.isFinite(value) && value > 0 ? [{ date: session.logDate, sessionId: session.sessionId, value, best }] : [];
+    });
+  };
+  return { strategy, measures: definitions.map(({ key, label }) => ({ key, label, unit, derived: key === "estimated_1rm",
+    points: buildPoints(selected.currentSessions, key), reference: comparing ? buildPoints(selected.referenceSessions, key) : null })) };
 }
 
 /** First and last completed SESSION per exercise, using the existing read and comparison engine. */
