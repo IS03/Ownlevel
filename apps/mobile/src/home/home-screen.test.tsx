@@ -238,7 +238,7 @@ describe('Home screen', () => {
     expect(mockPush.mock.calls).toEqual([
       [{ pathname: '/(tabs)/train/history/[id]', params: { id: 'done-1' } }],
       [{ pathname: '/(tabs)/train/history', params: { date: '2026-10-06' } }],
-      [{ pathname: '/(tabs)/nutrition/reports', params: { period: 'custom', from: '2026-10-05', to: '2026-10-10' } }],
+      [{ pathname: '/(tabs)/progress/trends/nutrition', params: { from: '2026-10-05', to: '2026-10-10' } }],
     ]);
   });
 

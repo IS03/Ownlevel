@@ -10,12 +10,12 @@ import type { MobileNutritionDayResponse } from '@/api/nutrition-day';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { NutritionDayScreen } from './day-screen';
 import { NutritionConfigurationProvider } from './config-provider';
-import { reportFixture } from './report-fixture.test-helper';
 import { nutritionFixture } from './day-fixture.test-helper';
 import { quickOptions, quickPreview, quickReceipt, quickDate } from './quick-fixture.test-helper';
 import { personalFood } from './food-fixture.test-helper';
 import type { QuickSelection } from '@/api/nutrition-quick';
 
+const mockPush = jest.fn();
 const mockRead = jest.fn<MobileApiClient['read']>();
 const mockRequest = jest.fn<MobileApiClient['request']>();
 const mockClient = { read: mockRead, request: mockRequest };
@@ -26,7 +26,7 @@ jest.mock('./day-format', () => ({
 }));
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
 jest.mock('@/auth', () => ({ useMobileAuth: () => ({ session: { user: { id: mockUser } } }) }));
-jest.mock('expo-router', () => ({ useLocalSearchParams: () => ({}), useRouter: () => ({ navigate: jest.fn() }), useFocusEffect: () => {} }));
+jest.mock('expo-router', () => ({ useLocalSearchParams: () => ({}), useRouter: () => ({ navigate: jest.fn(), push: mockPush }), useFocusEffect: () => {} }));
 jest.mock('@/api/nutrition-report', () => ({
   ...jest.requireActual<typeof import('@/api/nutrition-report')>('@/api/nutrition-report'),
   fetchNutritionReport: (_client: unknown, query: import('@/api/nutrition-report').ReportQuery) => Promise.resolve({
@@ -60,16 +60,14 @@ describe('Native Nutrition day', () => {
       return { remove: () => { const index = appStateListeners.indexOf(listener); if (index >= 0) appStateListeners.splice(index, 1); } };
     });
   });
-  it('report entry opens a highlighted date in the existing Nutrition resource', async () => {
+  it('removes Reporte from the menu and opens Progress Nutrition with the calendar month range', async () => {
     mockToday = '2026-10-04';
-    mockRead.mockImplementation(async options => options.path.includes('/reports?')
-      ? {status:'ok',data:reportFixture(),meta:{durationMs:1,httpStatus:200,outcome:'ok'}} as never
-      : ok(options.path.split('/').pop()!,nutritionFixture(options.path.split('/').pop()!)) as never);
-    const view=render(element());await view.findByText('Reporte');
-    fireEvent.press(view.getByText('Reporte'));await view.findByTestId('nutrition-report-screen');
-    await view.findByText('Días destacados');fireEvent.press(view.getByText(/Más cerca del objetivo/));
-    await waitFor(()=>expect(view.queryByTestId('nutrition-report-screen')).toBeNull());
-    await waitFor(()=>expect(mockRead.mock.calls.some(([o])=>o.path.endsWith('/days/2026-10-03'))).toBe(true));
+    mockRead.mockImplementation(async options => ok(options.path.split('/').pop()!, { ...nutritionFixture(options.path.split('/').pop()!), today: mockToday }) as never);
+    const view = render(element()); await view.findByText('Hoy');
+    expect(view.queryByText('Reporte')).toBeNull();
+    fireEvent.press(view.getByLabelText('Elegir fecha')); await view.findByText('Ver reporte');
+    fireEvent.press(view.getByText('Ver reporte'));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/nutrition', params: { from: '2026-10-01', to: '2026-10-04' } });
   });
   it('quick composition survives foreground refresh and registers against the displayed destination', async () => {
     mockToday = quickDate;

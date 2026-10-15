@@ -200,7 +200,7 @@ describe('Progress Overview', () => {
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/metrics', params: { metric: ids.steps } });
     // The Nutrition report lives in another tab's stack: it still receives the chosen range.
     fireEvent.press(view.getByTestId('progress-area-nutrition'));
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/nutrition/reports', params: { period: 'custom', from: '2026-10-01', to: TODAY } });
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/nutrition', params: {} });
   });
   it('a failed first read is an error state (not empty); foreground re-reads; a failed refresh keeps the confirmed read marked stale', async () => {
     mockOverview.mockResolvedValueOnce(lost);

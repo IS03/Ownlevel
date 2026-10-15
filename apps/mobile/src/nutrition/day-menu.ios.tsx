@@ -4,7 +4,7 @@ import { accessibilityLabel, disabled, frame, glassEffect } from '@expo/ui/swift
 import { useOwnlevelTheme } from '@/design-system';
 import type { NutritionDayMenuProps } from './day-menu';
 
-export function NutritionDayMenu({ onSaved, onFoods, onReport, onPlan }: NutritionDayMenuProps) {
+export function NutritionDayMenu({ onSaved, onFoods, onPlan }: NutritionDayMenuProps) {
   const { colors, isDark } = useOwnlevelTheme();
   return <Host colorScheme={isDark ? 'dark' : 'light'} matchContents style={styles.host} testID="nutrition-day-menu">
     <Menu label={<Image systemName="ellipsis" color={colors.text} size={20}
@@ -12,7 +12,6 @@ export function NutritionDayMenu({ onSaved, onFoods, onReport, onPlan }: Nutriti
       modifiers={[accessibilityLabel('Más opciones de nutrición')]}>
       <Button label="Comidas guardadas" systemImage="bookmark" onPress={onSaved} modifiers={[disabled(!onSaved)]} />
       <Button label="Alimentos" systemImage="carrot" onPress={onFoods} modifiers={[disabled(!onFoods)]} />
-      <Button label="Reporte" systemImage="chart.bar" onPress={onReport} modifiers={[disabled(!onReport)]} />
       <Button label="Plan nutricional" systemImage="slider.horizontal.3" onPress={onPlan} modifiers={[disabled(!onPlan)]} />
     </Menu>
   </Host>;

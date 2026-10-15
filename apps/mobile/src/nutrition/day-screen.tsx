@@ -2,13 +2,12 @@ import type { DayContextAction } from './day-details';
 import { NutritionAddMenu, showNutritionAddMenu } from './add-menu';
 import { useMealNotice } from './use-meal-notice';
 import { MealAddedNotice } from './meal-notice';
-import { NutritionReports } from './report-screen';
 import {useNutritionConfiguration} from './config-provider';
 import {useSavedController} from './use-saved-controller';
 import {SavedEditor} from './saved-editor';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { AppState, RefreshControl, StyleSheet, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { selectedRouteDate } from '@/history/navigation';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
 import { useDomainDate } from '@/history/use-domain-date';
@@ -41,7 +40,7 @@ import { useNutritionHomeEntry, type AddEntry } from './home-entry';
 function NutritionDayView({ date, today, onSelect, onToday, onServerToday, onAdd, addChoices, addControl, highlightedMeal, onManageFoods, onManageSaved, onConfigure, onReport, mealActions, onActivity, onContext, onMetric }: {
   date: string; today: string; onSelect: (date: string) => void; onToday: () => void; onServerToday: (date: string) => void;
   onAdd?: () => void; mealActions?: MealActions;
-  onConfigure?: () => void; onReport?: () => void; addChoices?: ReactNode; addControl?: ReactNode; highlightedMeal?: string; onManageFoods?: () => void; onManageSaved?: () => void;
+  onConfigure?: () => void; onReport?: (range: { from: string; to: string }) => void; addChoices?: ReactNode; addControl?: ReactNode; highlightedMeal?: string; onManageFoods?: () => void; onManageSaved?: () => void;
   onMetric?: (data: MobileNutritionDayResponse, metric: NutritionDayMetric) => void;
   onActivity?: (data: MobileNutritionDayResponse) => void; onContext?: DayContextAction;
 }) {
@@ -69,7 +68,7 @@ function NutritionDayView({ date, today, onSelect, onToday, onServerToday, onAdd
           <AppText accessibilityRole="header" variant="largeTitle">{date === today ? 'Hoy' : selectedLabel.split(' ').slice(1).join(' ')}</AppText>
         </View>
         <NutritionGlassButton icon="calendar" label="Elegir fecha" onPress={() => setSelector(true)} />
-        <NutritionDayMenu onSaved={onManageSaved} onFoods={onManageFoods} onReport={onReport} onPlan={onConfigure} />
+        <NutritionDayMenu onSaved={onManageSaved} onFoods={onManageFoods} onPlan={onConfigure} />
       </View>
       {date !== today ? <Button label="Volver a hoy" onPress={onToday} variant="quiet" /> : null}
     </View>
@@ -110,7 +109,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
   const quickController=quick?.controller;
   const invalidateQuick=useCallback(()=>{if(quickController)void quickController.loadOptions();},[quickController]);
   const saved=useSavedController(client,userId,invalidateQuick);
-  const [reportOpen, setReportOpen] = useState(false);
+  const router = useRouter();
 
   const [today, setToday] = useState(() => nutritionToday());
   const [selected, setSelected] = useDomainDate(routeDate);
@@ -156,7 +155,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
       addControl={<NutritionAddMenu onManual={editable ? () => meals.controller.open(date) : undefined} onQuick={editable ? () => quick.controller.open(date) : undefined} onFood={editable ? () => foods.controller.open(date) : undefined} />}
       addChoices={statusBanners}
       highlightedMeal={mealNotice.notice?.meal.id}
-      onReport={() => setReportOpen(true)}
+      onReport={range => router.push({ pathname: '/(tabs)/progress/trends/nutrition', params: range })}
       onConfigure={editable?()=>config.controller.open():undefined}
       onManageSaved={editable?()=>saved.controller.open():undefined}
       onManageFoods={editable ? () => foods.controller.open(null) : undefined}
@@ -171,7 +170,6 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
       onMetric={editable ? metricEntry.open : undefined}
       onActivity={editable ? data => writes.controller.open('metrics', data) : undefined}
       onContext={editable ? (data, reset) => { writes.controller.open('context', data); if (reset && writes.controller.getSnapshot().draft?.baseline === data) { writes.controller.changeContext(reset, ''); void writes.controller.save(); } } : undefined} />
-    {reportOpen ? <NutritionReports onClose={() => setReportOpen(false)} onDate={setSelected} /> : null}
     {quick && !(foods?.state.open && foods.state.mode === 'register') ? <QuickEditor controller={quick.controller} state={quick.state} externalLocked={!editable} onUndo={(meal, destination, key) => void mealNotice.undo(meal, destination, key)} onSaved={() => { quick.controller.close(); saved?.controller.open(); }} /> : null}
     {foods && quick ? <FoodEditor controller={foods.controller} state={foods.state} quick={quick} onChoose={food => { quick.controller.open(foods.state.date!, foodQuickOption(food)); foods.controller.registration(); }} /> : null}
     {saved?<SavedEditor controller={saved.controller} state={saved.state}/>:null}

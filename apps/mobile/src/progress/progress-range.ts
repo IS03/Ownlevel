@@ -1,3 +1,4 @@
+import { isNutritionDate } from '@/api/nutrition-day';
 import type { ProgressQuery } from '@/api/progress';
 
 /**
@@ -118,4 +119,16 @@ export function periodHeading(state: ProgressRangeState, today: string): string 
 export function compareLabel(state: ProgressRangeState, today: string): string | null {
   const r = compareRange(state, today);
   return r ? shortRange(r, today) : null;
+}
+
+/** External report links set A once; exact calendar weeks/months keep their native controls. */
+export function progressStateForRange(from: unknown, to: unknown, state: ProgressRangeState, today: string): ProgressRangeState | null {
+  if (!isNutritionDate(from) || !isNutritionDate(to) || from > to || from > today || daysBetween(from, to) > PROGRESS_MAX_DAYS) return null;
+  const range = { start: from, end: to > today ? today : to };
+  for (const unit of ['week', 'month'] as const) {
+    const candidate = { ...state, unit, anchor: from, custom: null };
+    const calendar = progressRange(candidate, today);
+    if (calendar.start === range.start && calendar.end === range.end) return candidate;
+  }
+  return { ...state, unit: 'custom', anchor: range.start, custom: range };
 }

@@ -439,3 +439,66 @@ describe('Exercise charts read EXPAND', () => {
     expect(data.charts!.measures.every(m => !m.derived && m.reference === null)).toBe(true);
   });
 });
+
+describe('Progress nutrition timing read', () => {
+  const path = 'progress/nutrition/timing?period=custom&from=2026-10-01&to=2026-10-05';
+  type Meal = { id: string; user_id: string; consumed_at: string | null; raw_input: string | null; entry_kind: string; deleted_at: string | null; final_calories: number | null; final_protein_g: number | null; day_logs: { user_id: string; log_date: string } };
+  const meal = (id: string, time: string | null, kcal: number | null, protein: number | null, extra: Partial<Meal> = {}): Meal => ({ id, user_id: 'owner', consumed_at: time ? `2026-10-05T${time}:00-03:00` : null, raw_input: null, entry_kind: 'meal', deleted_at: null, final_calories: kcal, final_protein_g: protein, day_logs: { user_id: 'owner', log_date: '2026-10-05' }, ...extra });
+  const get = async (suffix = '') => (await import('@/app/api/mobile/v1/progress/nutrition/timing/route')).GET(request(path + suffix));
+  function repository(rows: Meal[], failed = false, owner = 'owner') {
+    const pages: number[] = [], owners: string[] = [];
+    vi.mocked(authenticateMobileAccessToken).mockResolvedValue({ userId: owner, supabase: { from: (table: string) => {
+      expect(table).toBe('meal_entries'); const filters: ((r: Meal) => boolean)[] = [];
+      const value = (r: Meal, key: string) => key.startsWith('day_logs.') ? r.day_logs[key.slice(9) as keyof Meal['day_logs']] : r[key as keyof Meal];
+      const builder = { select: () => builder, order: () => builder,
+        eq: (key: string, v: string) => { if (key.endsWith('user_id')) owners.push(v); filters.push(r => value(r, key) === v); return builder; },
+        is: (key: string, v: null) => { filters.push(r => value(r, key) === v); return builder; },
+        gte: (key: string, v: string) => { filters.push(r => String(value(r, key)) >= v); return builder; },
+        lte: (key: string, v: string) => { filters.push(r => String(value(r, key)) <= v); return builder; },
+        range: (from: number) => { pages.push(from); return Promise.resolve({ data: failed ? null : rows.filter(r => filters.every(f => f(r))).sort((a, b) => a.id.localeCompare(b.id)).slice(from, from + 2), error: failed ? { code: '42501' } : null }); },
+      }; return builder;
+    } } } as never);
+    return { pages, owners };
+  }
+  it('uses Córdoba boundaries, the day date and shared time provenance; pages every row and excludes other owners / deleted / legacy', async () => {
+    const rows = [meal('a', '00:30', 100, 10), meal('b', '04:59', 200, 20), meal('c', '05:00', 300, 30), meal('d', '11:00', 400, null), meal('e', '15:00', null, 40), meal('f', '20:00', 500, 50),
+      meal('g', '09:00', 999, 999, { raw_input: '{"originalTimeKnown":false}' }), meal('h', null, 999, 999), meal('i', '09:00', 999, 999, { entry_kind: 'legacy_daily_summary' }),
+      meal('j', '09:00', 999, 999, { deleted_at: '2026-10-05T12:00:00Z' }), meal('k', '09:00', 999, 999, { user_id: 'another' }),
+      meal('l', '09:00', 999, 999, { day_logs: { user_id: 'another', log_date: '2026-10-05' } }),
+      meal('m', '20:00', 100, 5, { day_logs: { user_id: 'owner', log_date: '2026-09-05' } }),
+    ];
+    const { pages, owners } = repository(rows);
+    const { parseProgressNutritionTiming } = await import('./progress-contract');
+    const dto = await json(await get(), parseProgressNutritionTiming);
+    expect(dto.current).toMatchObject({ meals: 8, mealsWithTime: 6, kcal: 1500, proteinG: 150 });
+    expect(dto.current.bands.map(b => [b.key, b.kcal, b.proteinG])).toEqual([['morning', 300, 30], ['midday', 400, 0], ['afternoon', 0, 40], ['night', 800, 80]]);
+    expect(dto.reference).toBeNull(); expect(pages).toEqual([0, 2, 4, 6, 8, 9]); expect(new Set(owners)).toEqual(new Set(['owner']));
+    expect(authenticateMobileAccessToken).toHaveBeenCalledWith('token');
+    const compared = await json(await get('&compareFrom=2026-09-01&compareTo=2026-09-05'), parseProgressNutritionTiming);
+    expect(compared.reference).toMatchObject({ meals: 1, mealsWithTime: 1, kcal: 100, proteinG: 5 });
+    expect(compared.reference!.bands[3].kcalShare).toBe(1); // consumed_at is October, log_date is September.
+    for (const current of [
+      { ...dto.current, mealsWithTime: 99 }, { ...dto.current, kcal: 1 }, { ...dto.current, bands: [...dto.current.bands].reverse() },
+      { ...dto.current, bands: dto.current.bands.map(b => ({ ...b, kcalShare: 1.2 })) },
+    ]) expect(parseProgressNutritionTiming({ ...dto, current })).toBeUndefined();
+  });
+  it('zero/unknown totals have null shares, and a failed read is unavailable rather than empty', async () => {
+    repository([meal('a', '05:00', 0, null), meal('b', '20:00', null, 0)]);
+    const { parseProgressNutritionTiming } = await import('./progress-contract');
+    const dto = await json(await get(), parseProgressNutritionTiming);
+    expect(dto.current).toMatchObject({ meals: 2, mealsWithTime: 2, kcal: 0, proteinG: 0 });
+    expect(dto.current.bands.every(b => b.kcalShare === null && b.proteinShare === null)).toBe(true);
+    repository([], true); const failed = await get(); expect(failed.status).toBe(503); expect(await failed.json()).toEqual({ error: 'DATA_UNAVAILABLE' });
+  });
+  it('requires Bearer identity and rejects invalid, repeated and arbitrary identity parameters before reading', async () => {
+    const { pages } = repository([]);
+    const { GET } = await import('@/app/api/mobile/v1/progress/nutrition/timing/route');
+    expect((await GET(request(path, ''))).status).toBe(401);
+    for (const suffix of ['&userId=another', '&period=7', '&compareFrom=2026-09-01', '&compareFrom=2026-09-05&compareTo=2026-09-01', '&compareFrom=2026-11-01&compareTo=2026-11-05']) expect((await get(suffix)).status).toBe(400);
+    expect(pages).toEqual([]);
+    repository([meal('owner-meal', '12:00', 500, 30)], false, 'another');
+    const { parseProgressNutritionTiming } = await import('./progress-contract');
+    const other = await json(await get(), parseProgressNutritionTiming);
+    expect(other.current).toMatchObject({ meals: 0, mealsWithTime: 0, kcal: 0, proteinG: 0 });
+  });
+});

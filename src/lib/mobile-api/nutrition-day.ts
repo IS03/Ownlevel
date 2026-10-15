@@ -1,3 +1,4 @@
+import { nutritionMealTimeKnown } from "./nutrition-meal-time";
 import { MobileApiValidationError } from "./auth";
 import {
   isNutritionDate,
@@ -16,11 +17,6 @@ export function parseNutritionDate(value: unknown): string {
   return value;
 }
 
-function timeKnown(raw: unknown, kind: unknown): boolean {
-  if (kind === "legacy_daily_summary") return false;
-  if (typeof raw !== "string") return true;
-  try { return JSON.parse(raw)?.originalTimeKnown !== false; } catch { return true; }
-}
 
 function nutritionData(raw: unknown, date: string): NutritionDayData | undefined {
   if (!record(raw) || !Array.isArray(raw.meals)) return undefined;
@@ -32,7 +28,7 @@ function nutritionData(raw: unknown, date: string): NutritionDayData | undefined
     id: m.id, title: m.title, description: m.description,
     calories: m.final_calories, proteinG: m.final_protein_g, carbsG: m.final_carbs_g, fatG: m.final_fat_g,
     consumedAt: m.consumed_at, updatedAt: m.updated_at,
-    timeKnown: timeKnown(m.raw_input, m.entry_kind), entryKind: m.entry_kind,
+    timeKnown: nutritionMealTimeKnown(m.raw_input, m.entry_kind), entryKind: m.entry_kind,
     sourceType: m.source_type, precision: m.precision_level, mealLabel: m.meal_label,
   }));
   // Totals remain canonical persisted aggregates. Only coverage is derived here.
