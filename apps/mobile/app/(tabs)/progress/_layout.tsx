@@ -17,6 +17,7 @@ export default function ProgressLayout() {
       <Stack.Screen name="trends/training" options={{ title: 'Entrenamiento' }} />
       <Stack.Screen name="trends/exercise/[id]" options={{ title: 'Ejercicio' }} />
       <Stack.Screen name="explore" options={{ title: 'Explorar' }} />
+      <Stack.Screen name="views" options={{ title: 'Mis vistas' }} />
     </Stack></ProgressRangeProvider>
   );
 }

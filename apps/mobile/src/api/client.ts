@@ -303,6 +303,8 @@ export function createMobileApiClient({
             conflictCode === 'DAY_HAS_HISTORICAL_SUMMARY' ||
             conflictCode === 'ACTIVE_SESSION_EXISTS' ||
             conflictCode === 'ROUTINE_LIST_CHANGED' ||
+            conflictCode === 'PROGRESS_VIEW_CHANGED' ||
+            conflictCode === 'PROGRESS_VIEW_LIST_CHANGED' ||
             conflictCode === 'ROUTINE_CHANGED' ||
             conflictCode === 'EXERCISE_CHANGED' ||
             conflictCode === 'ROUTINE_TEMPLATE_CHANGED' ||

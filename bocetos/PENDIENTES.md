@@ -44,7 +44,7 @@ Lista viva de lo que sacamos de una pantalla para llevarlo a otra, y de los camb
 
 ## Cambios de servidor pendientes (EXPAND)
 
-- **Progreso etapa 2 · Explorar y Mis vistas:** plan en `bocetos/explorar/PLAN.md`.
+- ~~**Progreso etapa 2 · Explorar y Mis vistas:**~~ HECHO (15/10, PRs #241–#244, migración `20261015175527_progress_views_expand`). Plan en `bocetos/explorar/PLAN.md`. Sigue la etapa 3 (Qué influye), con bocetos propios.
   - Lectura `GET /progress/explore` (sin migración).
   - Tabla `progress_views` con API de vistas (migración, CAS, idempotencia, máximo 6).
 

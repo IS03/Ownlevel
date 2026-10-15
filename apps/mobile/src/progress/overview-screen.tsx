@@ -6,7 +6,7 @@ import { fetchProgressOverview, progressRequestKey, type ProgressDestination, ty
 import { AppIcon, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme, type AppIconName } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import { MiniChart } from './mini-chart';
-import { ProgressRow } from './progress-row';
+import { MyViews } from './my-views';
 import { ProgressScroll } from './progress-scroll';
 import { useProgressRange } from './progress-range-context';
 import { periodHeading } from './progress-range';
@@ -125,6 +125,7 @@ export function ProgressOverviewScreen() {
     router.push({ pathname, params: extra });
   };
   return <ProgressScroll title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={status.status === 'ready' && status.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
+    <MyViews />
     {status.status === 'loading' ? <><SkeletonBlock height={240} /><SkeletonBlock height={96} /></>
       : data ? <>
         {status.status !== 'ready' ? <InlineUnavailable actionLabel="Reintentar" message="No se pudo actualizar. Mostramos la última lectura confirmada de este período." onAction={() => void refresh()} /> : null}
@@ -135,11 +136,6 @@ export function ProgressOverviewScreen() {
         <Highlights data={data} open={open} />
       </> : <UnavailableState title="No pudimos cargar tu progreso" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente."
         action={<Button label="Reintentar" onPress={() => void refresh()} />} />}
-    {/* Until Mis vistas exists (stage 2, step 4), Explorar is reached from here. */}
-    <ProgressRow testID="progress-explore-entry" label="Explorar tus datos" onPress={() => { haptics.selection(); router.push('/(tabs)/progress/explore'); }}>
-      <AppIcon name="search" color={colors.textMuted} size={20} />
-      <View style={styles.text}><AppText variant="headline">Explorar tus datos</AppText><AppText muted variant="footnote">Elegí qué medir, cómo desglosarlo y qué días mirar.</AppText></View>
-    </ProgressRow>
   </ProgressScroll>;
 }
 const styles = StyleSheet.create({

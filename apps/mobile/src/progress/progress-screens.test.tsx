@@ -26,6 +26,10 @@ jest.mock('@/api/progress', () => ({ ...jest.requireActual<object>('@/api/progre
   fetchProgressOverview: (c: unknown, q: ProgressQuery, _s: unknown, compare: DateRange | null) => mockOverview(c, q, compare),
   fetchProgressBody: (c: unknown, q: ProgressQuery, _s: unknown, compare: DateRange | null) => mockBody(c, q, compare),
   fetchProgressMetrics: (c: unknown, q: ProgressQuery, id: string | null, _s: unknown, compare: DateRange | null) => mockMetrics(c, q, id, compare) }));
+// Mis vistas has its own tests (my-views.test.tsx); here it is an empty list.
+jest.mock('@/api/progress-views', () => ({ ...jest.requireActual<object>('@/api/progress-views'),
+  fetchProgressViews: async () => ({ status: 'ok', meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' },
+    data: { today: '2026-10-05', listVersion: 0, views: [], period: { preset: 'custom', start: '2026-10-01', end: '2026-10-05', days: 5, previousStart: '2026-09-26', previousEnd: '2026-09-30', bucket: 'day', includesToday: true } } }) }));
 jest.mock('@/api/nutrition-report', () => ({ ...jest.requireActual<object>('@/api/nutrition-report'), fetchNutritionReport: (c: unknown, q: unknown) => mockReport(c, q) }));
 
 const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
