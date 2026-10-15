@@ -6,7 +6,7 @@ export const BREAKDOWN_LABELS: Record<ExploreBreakdown, string> = {
 };
 export const DAYS_LABELS: Record<ExploreDays, string> = { training: 'Con entrenamiento', rest: 'Sin entrenamiento', work: 'De trabajo', off: 'Sin trabajo' };
 
-export type ExploreChoice = { key: string; label: string; detail: string };
+export type ExploreChoice = { key: string; label: string; detail: string; unit?: string | null; valueType?: 'integer' | 'decimal' | 'duration' };
 export type ExploreGroupOfChoices = { title: string; choices: ExploreChoice[] };
 
 /** Fixed measures; metrics, body measures and exercises come from the user's own reads. */
@@ -25,7 +25,7 @@ export const STATIC_MEASURES: ExploreGroupOfChoices[] = [
 ];
 
 export function metricChoices(data: ProgressMetrics): ExploreChoice[] {
-  return data.definitions.map(d => ({ key: `metric.${d.id}`, label: `${d.name}${d.isActive ? '' : ' · archivada'}`, detail: `${d.unit ?? 'sin unidad'} · promedio por día con dato` }));
+  return data.definitions.map(d => ({ key: `metric.${d.id}`, label: `${d.name}${d.isActive ? '' : ' · archivada'}`, detail: `${d.unit ?? 'sin unidad'} · promedio por día con dato`, unit: d.unit, valueType: d.valueType }));
 }
 export function bodyChoices(data: ProgressBody): ExploreChoice[] {
   return data.metrics.map(m => ({ key: m.key, label: m.label, detail: `${m.unit} · un punto por registro` }));

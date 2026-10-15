@@ -131,6 +131,8 @@ describe('Progress Overview', () => {
     for (const gone of ['Explorar', 'Revisar datos']) expect(view.queryByText(gone)).toBeNull();
     fireEvent.press(view.getByTestId('progress-area-training'));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/training', params: {} });
+    fireEvent.press(view.getByTestId('progress-influence'));
+    expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/influence');
   });
   it('records and in-period improvements show without comparison; period comparisons stay opt-in', async () => {
     mockOverview.mockImplementation(async () => ok(overview({ inPeriod: { improved: 3, comparable: 5 }, changes: [
