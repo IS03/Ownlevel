@@ -331,7 +331,7 @@ function parseTrainingInPeriod(v: unknown, period: ProgressPeriod, trained: Prog
   const exercises = list(v.exercises, e => {
     if (!record(e) || !keys(e, ["id", "status", "reason", "sessions", "firstDate", "lastDate", "signal"]) || !str(e.id) || !PERFORMANCE_STATUSES.includes(String(e.status)) || !str(e.reason) || !count(e.sessions) || e.sessions < 2 || !isNutritionDate(e.firstDate) || !isNutritionDate(e.lastDate) || e.firstDate > e.lastDate || e.firstDate < period.start || e.lastDate > period.end) return;
     const signal = parseSignal(e.signal);
-    if (signal === undefined || (e.status === "insufficient_data" && signal !== null) || !trained.some(t => t.id === e.id && t.sessions === e.sessions)) return;
+    if (signal === undefined || (e.status === "insufficient_data" && signal !== null) || !trained.some(t => t.id === e.id)) return;
     return { ...e, signal } as ProgressTrainingInPeriod["exercises"][number];
   });
   if (!exercises || new Set(exercises.map(e => e.id)).size !== exercises.length) return;

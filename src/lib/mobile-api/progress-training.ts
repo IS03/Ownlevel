@@ -161,7 +161,9 @@ export function trainingInPeriodDto(ctx: TrainingContext, period: ProgressPeriod
   }
   const exercises: ProgressTrainingInPeriod["exercises"] = [];
   for (const [id, bySession] of grouped) {
-    const ordered = [...bySession].sort(([a], [b]) => {
+    // A block without valid sets says nothing about performance: it is never the "first" or "last" session.
+    // (Its session count may differ from the summary's, which counts any completed set; the parser only checks the id.)
+    const ordered = [...bySession].filter(([, snapshot]) => snapshot.sets.length > 0).sort(([a], [b]) => {
       const x = sessions.get(a)!, y = sessions.get(b)!;
       return x.date.localeCompare(y.date) || x.startedAt.localeCompare(y.startedAt) || x.endedAt.localeCompare(y.endedAt) || a.localeCompare(b);
     });

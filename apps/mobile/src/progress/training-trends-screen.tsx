@@ -1,5 +1,5 @@
 import { useCallback, useState, type ReactNode } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import {
@@ -99,6 +99,8 @@ function TrainingChart({ data }: { data: ProgressTraining }) {
   const bucket = { day: 'día', week: 'semana', month: 'mes' }[data.period.bucket];
   const live = data.series.at(-1),
     inCourse = !!live && live.start <= data.today && live.end >= data.today;
+  const n = data.series.length, step = Math.ceil(n / 5);
+  const labeled = (index: number) => n <= 6 || index === n - 1 || (index % step === 0 && n - 1 - index >= step / 2);
   return (
     <View style={styles.section}>
       <Heading level={2}>Evolución</Heading>
@@ -111,9 +113,9 @@ function TrainingChart({ data }: { data: ProgressTraining }) {
         }))}
         onChange={setMetric}
       />
-      <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} testID="training-chart">
-          <View style={[styles.bars, { width: Math.max(width, data.series.length * 44) }]}>
+      {/* Every bucket fits the width (no sideways scroll); with many buckets only some dates are labeled. */}
+      <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)} testID="training-chart">
+          <View style={[styles.bars, { gap: data.series.length > 16 ? 2 : 6 }]}>
             {data.series.map((p, index) => {
               const value = p[metric],
                 current = index === data.series.length - 1 && inCourse;
@@ -136,15 +138,16 @@ function TrainingChart({ data }: { data: ProgressTraining }) {
                     <View
                       testID={`training-bar-${p.start}${value === 0 ? '-zero' : ''}`}
                       style={{
-                        height: value === 0 ? 1 : (144 * value) / max,
+                        height: value === 0 ? 1 : (110 * value) / max,
+                        borderTopLeftRadius: value === 0 ? 0 : 3, borderTopRightRadius: value === 0 ? 0 : 3,
                         width: '100%',
                         backgroundColor: value === 0 ? colors.border : colors.primary,
                         opacity: value === 0 || current ? 1 : 0.38,
                       }}
                     />
                   </View>
-                  <AppText muted numeric variant="caption" style={styles.center}>
-                    {shortDate(p.start)}
+                  <AppText muted numeric variant="caption" numberOfLines={1} style={[styles.center, styles.dateLabel, { width: Math.max(44, width / 5) }]}>
+                    {labeled(index) ? shortDate(p.start) : ''}
                   </AppText>
                 </>
               );
@@ -167,12 +170,11 @@ function TrainingChart({ data }: { data: ProgressTraining }) {
               );
             })}
           </View>
-        </ScrollView>
       </View>
       <AppText muted variant="caption">
         {SERIES_LABELS[metric]} por {bucket}
         {inCourse
-          ? ` · ${data.period.bucket === 'day' ? 'este día' : data.period.bucket === 'week' ? 'esta semana' : 'este mes'} en curso`
+          ? ` · ${data.period.bucket === 'day' ? 'hoy' : data.period.bucket === 'week' ? 'esta semana' : 'este mes'} en curso`
           : ''}
       </AppText>
     </View>
@@ -228,7 +230,7 @@ function Breakdown({ data, open }: { data: ProgressTraining; open: (id: string) 
               <View
                 testID={`training-breakdown-bar-${item.id}`}
                 style={{
-                  height: item.sets === 0 ? 1 : 8,
+                  height: item.sets === 0 ? 1 : 8, borderRadius: item.sets === 0 ? 0 : 4,
                   width: item.sets === 0 ? '100%' : `${(item.sets / max) * 100}%`,
                   backgroundColor: item.sets === 0 ? colors.border : colors.primary,
                   opacity: index === 0 ? 1 : 0.38,
@@ -252,17 +254,19 @@ function Breakdown({ data, open }: { data: ProgressTraining; open: (id: string) 
     </View>
   );
 }
-function firstLastSignal(signal: TrainingSignal | null) {
+function firstLastSignal(signal: TrainingSignal | null, stable = false) {
   if (!signal) return null;
-  return signal.referenceValue !== null && signal.currentValue !== null
-    ? `${fmt(signal.referenceValue, 2)} → ${fmt(signal.currentValue, 2)} · ${signal.description}`
-    : signal.description;
+  const values = signal.referenceValue !== null && signal.currentValue !== null ? `${fmt(signal.referenceValue, 2)} → ${fmt(signal.currentValue, 2)}` : null;
+  // "Estable · Sin cambio claro" says the same twice: a stable row only shows its values.
+  if (stable) return values ?? null;
+  return values ? `${values} · ${signal.description}` : signal.description;
 }
 function Performance({ data, open }: { data: ProgressTraining; open: (id: string) => void }) {
   const { colors } = useOwnlevelTheme(),
     { compareOn, compareText, state, today } = useProgressRange();
   const names = new Map(data.exercises.map((e) => [e.id, e]));
-  const order = { improved: 0, stable: 1, declined: 2, insufficient_data: 3 };
+  const order = { improved: 0, declined: 1, stable: 2, insufficient_data: 3 };
+  const [all, setAll] = useState(false);
   const rows = data.inPeriod?.exercises
     .slice()
     .sort(
@@ -289,10 +293,10 @@ function Performance({ data, open }: { data: ProgressTraining; open: (id: string
         <AppText muted>No pudimos consultar la comparación dentro del período.</AppText>
       )}
       <View>
-        {rows?.map((e) => {
+        {(all ? rows : rows?.slice(0, 6))?.map((e) => {
           const item = names.get(e.id),
             status = STATUS_LABELS[e.status],
-            signal = firstLastSignal(e.signal);
+            signal = firstLastSignal(e.signal, e.status === 'stable');
           const comparison =
             compareOn && item
               ? `Frente a ${compareText}: ${STATUS_LABELS[item.status]} · ${item.signal?.description ?? REASON_LABELS[item.reason] ?? 'Datos insuficientes.'}`
@@ -314,7 +318,7 @@ function Performance({ data, open }: { data: ProgressTraining; open: (id: string
                   {status}
                   {signal ? ` · ${signal}` : ''}
                 </AppText>
-                {!signal ? (
+                {!signal && e.status !== 'stable' ? (
                   <AppText muted variant="caption">
                     {REASON_LABELS[e.reason] ?? 'Datos insuficientes.'}
                   </AppText>
@@ -329,6 +333,9 @@ function Performance({ data, open }: { data: ProgressTraining; open: (id: string
           );
         })}
       </View>
+      {rows && rows.length > 6 ? (
+        <Button label={all ? 'Ver menos' : `Ver todos (${rows.length})`} variant="quiet" onPress={() => setAll(!all)} />
+      ) : null}
       {single.length ? (
         <AppText muted variant="caption">
           Con una sola sesión: {single.map((e) => e.name).join(', ')}
@@ -480,10 +487,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   text: { flex: 1, gap: 4 },
-  bars: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
-  barColumn: { flex: 1, gap: 8, minWidth: 36, minHeight: 44 },
-  plot: { height: 184, justifyContent: 'flex-end', gap: 4 },
+  bars: { flexDirection: 'row', alignItems: 'flex-end' },
+  barColumn: { flex: 1, gap: 6, minHeight: 44 },
+  plot: { height: 136, justifyContent: 'flex-end', gap: 4 },
   center: { textAlign: 'center' },
+  dateLabel: { alignSelf: 'center' },
   breakdownName: { flex: 1, gap: 4 },
   horizontalTrack: { flex: 1, justifyContent: 'center', minWidth: 32 },
 });
