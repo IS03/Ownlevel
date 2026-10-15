@@ -5,7 +5,7 @@ import { homeMetricIcon } from '@/home/home-metric-icons';
 import { amount } from './day-format';
 import { NutritionSectionHeading } from './day-controls';
 import { NutritionDayDetails, metricValue } from './day-details';
-import { canWriteDay } from './day-write-model';
+import { canEditDayMetric } from './metric-entry-model';
 import { NutritionCalorieRing } from './day-rings';
 
 function PanelCell({ title, value, target, icon, onPress, metric, actionLabel }: {
@@ -23,10 +23,10 @@ function PanelCell({ title, value, target, icon, onPress, metric, actionLabel }:
     </View>
   </>;
   return onPress ? <Pressable accessibilityRole="button" accessibilityLabel={`${title}: ${value}${target ? ` ${target}` : ''}. ${actionLabel ?? 'Editar actividad'}`}
-    onPress={onPress} style={styles.cell}>{content}</Pressable> : <View style={styles.cell}>{content}</View>;
+    onPress={onPress} style={({ pressed }) => [styles.cell, pressed && { backgroundColor: colors.brandSubtle }]} testID={metric ? `nutrition-metric-${metric.id}` : undefined}>{content}</Pressable> : <View style={styles.cell}>{content}</View>;
 }
-export function NutritionDayPanel({ data, onDetail, onActivity }: {
-  data: MobileNutritionDayResponse; onDetail: () => void; onActivity?: (data: MobileNutritionDayResponse) => void;
+export function NutritionDayPanel({ data, onDetail, onMetric }: {
+  data: MobileNutritionDayResponse; onDetail: () => void; onMetric?: (data: MobileNutritionDayResponse, metric: NutritionDayMetric) => void;
 }) {
   const { colors } = useOwnlevelTheme();
   const n = data.nutrition.status === 'ok' && data.nutrition.data.dayState === 'recorded' ? data.nutrition.data : null;
@@ -34,7 +34,6 @@ export function NutritionDayPanel({ data, onDetail, onActivity }: {
   // The arrow carries the direction; the number is the magnitude (no minus sign next to an arrow, no color).
   const balance = caloriesKnown && n.context.energyBalanceKcal !== null ? amount(Math.abs(n.context.energyBalanceKcal), 'kcal') : 'Sin dato';
   const metrics = data.activity.status === 'ok' ? data.activity.data.metrics : [];
-  const activity = onActivity && canWriteDay('metrics', data) ? () => onActivity(data) : undefined;
   return <View style={styles.section} testID="nutrition-day-panel">
     <NutritionSectionHeading action="Detalle" onAction={onDetail}>Tu día</NutritionSectionHeading>
     {/* E5 explicitly allows glass for this action panel; bocetos/PENDIENTES.md records the brand exception. */}
@@ -48,7 +47,7 @@ export function NutritionDayPanel({ data, onDetail, onActivity }: {
         : metrics.length === 0 ? <AppText muted variant="footnote">No hay métricas disponibles para esta fecha.</AppText>
         : <View style={[styles.metrics, { borderTopColor: colors.border }]}>
           {metrics.map(m => <PanelCell key={m.id} title={`${m.label}${m.isActive ? '' : ' · archivada'}`} value={metricValue(m, m.value)}
-            target={m.target !== null ? `/ ${metricValue(m, m.target)}` : undefined} icon={homeMetricIcon(m.systemKey)} onPress={activity} metric={m} />)}
+            target={m.target !== null ? `/ ${metricValue(m, m.target)}` : undefined} icon={homeMetricIcon(m.systemKey)} actionLabel="Cargar esta métrica" onPress={onMetric && canEditDayMetric(data, m) ? () => onMetric(data, m) : undefined} metric={m} />)}
         </View>}
     </GlassSurface>
   </View>;
@@ -67,7 +66,7 @@ export function NutritionDayDetailSheet({ data, onClose, onActivity, onContext }
 const styles = StyleSheet.create({
   section: { gap: 8 }, panel: { borderRadius: 20, padding: 18, gap: 12 }, row: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   metrics: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 8, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12 },
-  cell: { flex: 1, minWidth: '42%', minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cell: { flex: 1, minWidth: '42%', minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12 },
   icon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, cellText: { flex: 1 },
   value: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 4 },
 });

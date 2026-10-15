@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import type { MobileNutritionDayResponse } from '@/api/nutrition-day';
+import type { MobileNutritionDayResponse, NutritionDayMetric } from '@/api/nutrition-day';
 import type { NutritionDayMeal } from '../../../../src/lib/mobile-api/nutrition-day-contract';
 import { AppIcon, AppText, useOwnlevelTheme } from '@/design-system';
 import { amount, number } from './day-format';
@@ -39,8 +39,9 @@ function MealRow({ meal, divider, onEdit }: { meal: NutritionDayMeal; divider: b
     : <View accessible style={styles.meal}>{body}</View>;
 }
 
-export function NutritionDayContent({ data, onAdd, addChoices, onEdit, onActivity, onContext }: {
+export function NutritionDayContent({ data, onAdd, addChoices, onEdit, onActivity, onContext, onMetric }: {
   data: MobileNutritionDayResponse; onAdd?: () => void; addChoices?: ReactNode; onEdit?: (meal: NutritionDayMeal) => void;
+  onMetric?: (data: MobileNutritionDayResponse, metric: NutritionDayMetric) => void;
   onActivity?: (data: MobileNutritionDayResponse) => void; onContext?: (data: MobileNutritionDayResponse) => void;
 }) {
   const [detail, setDetail] = useState(false);
@@ -54,7 +55,7 @@ export function NutritionDayContent({ data, onAdd, addChoices, onEdit, onActivit
       : !recorded ? <View style={styles.section}><AppText variant="headline">Sin día registrado</AppText><AppText muted>Esta fecha todavía no tiene un registro nutricional. No hay resumen ni objetivos guardados.</AppText></View> : null}
     {recorded && Object.values(recorded.summary).some(v => typeof v === 'object' && v.missingCount > 0) ?
       <AppText muted variant="caption">Las sumas parciales incluyen sólo valores conocidos. “Sin dato” no significa cero.</AppText> : null}
-    <NutritionDayPanel data={data} onDetail={() => setDetail(true)} onActivity={onActivity} />
+    <NutritionDayPanel data={data} onDetail={() => setDetail(true)} onMetric={onMetric} />
     {recorded ? <View style={styles.section}>
       <View style={styles.heading}><NutritionSectionHeading>Comidas</NutritionSectionHeading>
         <AppText muted numeric variant="caption">{recorded.summary.entryCount} · {recorded.summary.entryCount > 0 && recorded.summary.calories.missingCount === recorded.summary.entryCount ? 'Sin dato' : `${number(recorded.summary.calories.knownTotal)} kcal${recorded.summary.calories.missingCount > 0 ? ' · parcial' : ''}`}</AppText>
