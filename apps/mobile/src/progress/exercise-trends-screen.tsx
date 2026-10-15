@@ -1,12 +1,12 @@
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { RefreshControl, StyleSheet } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
-import { fetchProgressTrainingExercise, parseProgressQuery, progressQueryKey, type ProgressQuery, type ProgressTrainingExerciseDetail } from '@/api/progress';
-import { AppText, Button, Heading, InlineUnavailable, ScrollScreen, SkeletonBlock, Surface, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
+import { fetchProgressTrainingExercise, progressRequestKey, type ProgressTrainingExerciseDetail } from '@/api/progress';
+import { AppText, Button, Heading, InlineUnavailable, SkeletonBlock, Surface, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
 import { displayNutritionDate } from '@/nutrition/day-format';
-import { ProgressPeriodSelector } from './period-selector';
-import { comparisonText, queryFromParams } from './progress-format';
+import { ProgressScroll } from './progress-scroll';
+import { useComparisonText, useProgressRange } from './progress-range-context';
 import { REASON_LABELS, STATUS_LABELS } from './training-trends-screen';
 import { useProgressResource } from './use-progress-resource';
 import { ValueBars } from './value-bars';
@@ -17,6 +17,7 @@ const setText = (s: { reps: number | null; weightKg: number | null }) => `${s.re
 
 function Content({ data }: { data: ProgressTrainingExerciseDetail }) {
   const router = useRouter();
+  const compare = useComparisonText();
   const p = data.performance;
   return <>
     <Surface style={styles.section} testID="exercise-trend-summary">
@@ -26,8 +27,8 @@ function Content({ data }: { data: ProgressTrainingExerciseDetail }) {
       {p.signal && p.status !== 'insufficient_data' ? <AppText>{p.signal.description}</AppText> : null}
       {p.status === 'insufficient_data' ? <AppText muted>{REASON_LABELS[p.reason] ?? 'Datos insuficientes.'}</AppText> : null}
       <AppText muted variant="caption">{p.primarySamples} series comparables en este período · {p.referenceSamples} en el anterior</AppText>
-      <AppText muted variant="caption">Sesiones: {comparisonText(data.comparisons.sessions, 'sesiones', 'integer')}</AppText>
-      <AppText muted variant="caption">Series: {comparisonText(data.comparisons.sets, 'series', 'integer')}</AppText>
+      {compare(data.comparisons.sessions, 'sesiones', 'integer') ? <AppText muted variant="caption">Sesiones: {compare(data.comparisons.sessions, 'sesiones', 'integer')}</AppText> : null}
+      {compare(data.comparisons.sets, 'series', 'integer') ? <AppText muted variant="caption">Series: {compare(data.comparisons.sets, 'series', 'integer')}</AppText> : null}
     </Surface>
     {data.marks.length ? <Surface style={styles.section} testID="exercise-trend-marks">
       <Heading level={2}>Mejores marcas (historial completo)</Heading>
@@ -57,12 +58,11 @@ export function ExerciseTrendsScreen() {
   const id = String(params.id ?? '');
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
-  const [query, setQuery] = useState<ProgressQuery>(() => queryFromParams(params, parseProgressQuery));
-  const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressTrainingExercise(c, query, id, signal), [query, id]);
-  const { state, data, refresh } = useProgressResource(client, `${progressQueryKey(query)}|${id}`, load);
+  const { query, compare } = useProgressRange();
+  const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressTrainingExercise(c, query, id, signal, compare), [query, id, compare]);
+  const { state, data, refresh } = useProgressResource(client, `${progressRequestKey(query, compare)}|${id}`, load);
   const notFound = state.status === 'unavailable' && state.result.meta.httpStatus === 404;
-  return <ScrollScreen testID="exercise-trends-screen" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
-    <ProgressPeriodSelector query={query} period={data?.period} onChange={setQuery} />
+  return <ProgressScroll title="Ejercicio" testID="exercise-trends-screen" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
     {state.status === 'loading' ? <SkeletonBlock height={200} />
       : !data ? notFound ? <Surface><AppText muted>No hay registros completados de este ejercicio.</AppText></Surface>
         : <UnavailableState title="No pudimos cargar el ejercicio" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente." action={<Button label="Reintentar" onPress={() => void refresh()} />} />
@@ -71,6 +71,6 @@ export function ExerciseTrendsScreen() {
         <Content data={data} />
       </>}
     <Button label="Abrir historial del ejercicio" variant="secondary" onPress={() => router.push({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id } })} />
-  </ScrollScreen>;
+  </ProgressScroll>;
 }
 const styles = StyleSheet.create({ section: { gap: spacing.sm } });

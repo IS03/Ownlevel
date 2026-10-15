@@ -1,13 +1,15 @@
 import { StyleSheet, View } from 'react-native';
 import type { ProgressComparison, ProgressTrainingSummary } from '@/api/progress';
 import { AppText, spacing } from '@/design-system';
-import { comparisonText, formatValue } from './progress-format';
+import { formatValue } from './progress-format';
+import { useComparisonText } from './progress-range-context';
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 function Line({ label, value, comparison, unit, duration }: { label: string; value: string; comparison: ProgressComparison; unit: string | null; duration?: boolean }) {
+  const compare = useComparisonText()(comparison, unit, duration ? 'duration' : 'integer');
   return <View style={styles.line}>
     <View style={styles.row}><AppText style={styles.flex}>{label}</AppText><AppText variant="label">{value}</AppText></View>
-    <AppText muted variant="caption">{comparisonText(comparison, unit, duration ? 'duration' : 'integer')}</AppText>
+    {compare ? <AppText muted variant="caption">{compare}</AppText> : null}
   </View>;
 }
 /** Training load (sessions, days, sets, session duration) and the exercise performance tally. No volume. */

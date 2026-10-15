@@ -21,7 +21,7 @@ import { GET as overviewGET } from "@/app/api/mobile/v1/progress/route";
 import { GET as bodyGET } from "@/app/api/mobile/v1/progress/body/route";
 import { GET as metricsGET } from "@/app/api/mobile/v1/progress/metrics/route";
 import { addProgressIsoDays } from "@/lib/progress/analytics";
-import { comparisonDto, resolveMobileProgressPeriod } from "./progress-server";
+import { comparisonDto, progressQueryFromParams, resolveMobileProgressPeriod } from "./progress-server";
 import { habitWeekRange, parseProgressHabitWeek, parseProgressBody, parseProgressComparison, parseProgressMetrics, parseProgressOverview, type ProgressBody, type ProgressMetrics, type ProgressOverview } from "./progress-contract";
 import type { NutritionReportDayLogFact } from "../nutrition/reports-core";
 
@@ -116,6 +116,21 @@ describe("Progress period model (canonical resolver)", () => {
     expect(resolveMobileProgressPeriod({ period: "custom", from: "2025-10-05", to: TODAY }, TODAY).period.days).toBe(366);
     expect(() => resolveMobileProgressPeriod({ period: "custom", from: "2025-10-04", to: TODAY }, TODAY)).toThrow(/366/);
     expect(() => resolveMobileProgressPeriod({ period: "custom", from: "2026-11-01", to: "2026-11-05" }, TODAY)).toThrow();
+  });
+  it("explicit comparison range (EXPAND): replaces the reference; absent keeps the previous equivalent window", () => {
+    const q = progressQueryFromParams(new URLSearchParams("period=custom&from=2026-10-01&to=2026-10-05&compareFrom=2025-10-01&compareTo=2025-10-05"));
+    expect(q).toEqual({ period: "custom", from: "2026-10-01", to: "2026-10-05", compare: { start: "2025-10-01", end: "2025-10-05" } });
+    expect(resolveMobileProgressPeriod(q, TODAY).period).toMatchObject({ start: "2026-10-01", end: TODAY, previousStart: "2025-10-01", previousEnd: "2025-10-05" });
+    // A reference of a different length is allowed (March vs August); averages compare, the client labels totals.
+    expect(resolveMobileProgressPeriod({ period: "30", compare: { start: "2026-03-01", end: "2026-03-31" } }, TODAY).period).toMatchObject({ previousStart: "2026-03-01", previousEnd: "2026-03-31" });
+    expect(progressQueryFromParams(new URLSearchParams("period=30"))).toEqual({ period: "30" });
+  });
+  it("rejects incomplete, inverted, future or too long comparison ranges", () => {
+    expect(() => progressQueryFromParams(new URLSearchParams("period=30&compareFrom=2026-09-01"))).toThrow();
+    expect(() => progressQueryFromParams(new URLSearchParams("period=30&compareFrom=2026-09-10&compareTo=2026-09-01"))).toThrow();
+    expect(() => progressQueryFromParams(new URLSearchParams("period=30&compareFrom=2026-09-01&compareTo=2026-09-01&compareTo=2026-09-02"))).toThrow(/repetido/);
+    expect(() => resolveMobileProgressPeriod({ period: "30", compare: { start: "2026-10-01", end: "2026-10-09" } }, TODAY)).toThrow();
+    expect(() => resolveMobileProgressPeriod({ period: "30", compare: { start: "2024-01-01", end: "2025-01-02" } }, TODAY)).toThrow(/366/);
   });
   it("comparison semantics: no percent over a zero baseline, no deltas when not comparable", () => {
     const base = { eligibility: { status: "comparable", reason: "eligible" }, valueA: 5, valueB: 0, deltaAbsolute: 5, deltaPercent: Infinity, change: "increased" } as never;

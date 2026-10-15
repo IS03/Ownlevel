@@ -2,16 +2,18 @@ import { useCallback, useState } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
-import { fetchProgressMetrics, parseProgressQuery, progressQueryKey, type ProgressMetrics, type ProgressQuery } from '@/api/progress';
-import { AppText, Button, Heading, InlineUnavailable, ScrollScreen, SkeletonBlock, Surface, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
+import { fetchProgressMetrics, progressRequestKey, type ProgressMetrics } from '@/api/progress';
+import { AppText, Button, Heading, InlineUnavailable, SkeletonBlock, Surface, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
 import { displayNutritionDate } from '@/nutrition/day-format';
-import { ProgressPeriodSelector } from './period-selector';
-import { comparisonText, formatDelta, formatValue, queryFromParams } from './progress-format';
+import { ProgressScroll } from './progress-scroll';
+import { useComparisonText, useProgressRange } from './progress-range-context';
+import { formatDelta, formatValue } from './progress-format';
 import { useProgressResource } from './use-progress-resource';
 import { ValueBars } from './value-bars';
 
 function Detail({ data, onDay }: { data: ProgressMetrics; onDay: (date: string) => void }) {
   const { colors } = useOwnlevelTheme();
+  const compare = useComparisonText(), { compareText } = useProgressRange();
   const m = data.metric!, s = data.summary!, v = (n: number | null) => formatValue(n, m.unit, m.valueType);
   const low = s.coverageRatio !== null && s.coverageRatio < 0.5;
   return <>
@@ -26,11 +28,11 @@ function Detail({ data, onDay }: { data: ProgressMetrics; onDay: (date: string) 
       {m.currentTarget !== null ? <AppText muted variant="caption">Objetivo actual: {v(m.currentTarget)} (no hay objetivos históricos por período)</AppText> : null}
       {data.period.includesToday ? <AppText muted variant="caption">Hoy no se incluye mientras está en curso.</AppText> : null}
     </Surface>
-    <Surface style={styles.section} testID="metric-trend-comparison">
-      <Heading level={2}>Frente al período anterior</Heading>
-      <AppText>{comparisonText(data.comparison!, m.unit, m.valueType)}</AppText>
-      {data.previous ? <AppText muted variant="caption">Período anterior: promedio {v(data.previous.average)} · {data.previous.registeredDays} de {data.previous.eligibleDays} días con dato</AppText> : null}
-    </Surface>
+    {compareText && data.comparison ? <Surface style={styles.section} testID="metric-trend-comparison">
+      <Heading level={2}>Frente a {compareText}</Heading>
+      <AppText>{compare(data.comparison, m.unit, m.valueType)}</AppText>
+      {data.previous ? <AppText muted variant="caption">{compareText}: promedio {v(data.previous.average)} · {data.previous.registeredDays} de {data.previous.eligibleDays} días con dato</AppText> : null}
+    </Surface> : null}
     <Surface style={styles.section}>
       <Heading level={2}>Evolución</Heading>
       <AppText muted variant="caption">{data.period.bucket === 'day' ? 'Por día.' : data.period.bucket === 'week' ? 'Promedio por semana.' : 'Promedio por mes.'} Los tramos sin dato quedan vacíos.</AppText>
@@ -48,12 +50,11 @@ export function MetricsTrendsScreen() {
   const params = useLocalSearchParams<{ period?: string; from?: string; to?: string; metric?: string }>();
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
-  const [query, setQuery] = useState<ProgressQuery>(() => queryFromParams(params, parseProgressQuery));
+  const { query, compare } = useProgressRange();
   const [metricId, setMetricId] = useState<string | null>(typeof params.metric === 'string' ? params.metric : null);
-  const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressMetrics(c, query, metricId, signal), [query, metricId]);
-  const { state, data, refresh } = useProgressResource(client, `${progressQueryKey(query)}|${metricId ?? ''}`, load);
-  return <ScrollScreen testID="metrics-trends-screen" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
-    <ProgressPeriodSelector query={query} period={data?.period} onChange={setQuery} />
+  const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressMetrics(c, query, metricId, signal, compare), [query, metricId, compare]);
+  const { state, data, refresh } = useProgressResource(client, `${progressRequestKey(query, compare)}|${metricId ?? ''}`, load);
+  return <ProgressScroll title="Métricas" testID="metrics-trends-screen" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
     {state.status === 'loading' ? <SkeletonBlock height={160} />
       : !data ? <UnavailableState title="No pudimos cargar tus métricas" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente." action={<Button label="Reintentar" onPress={() => void refresh()} />} />
       : <>
@@ -64,6 +65,6 @@ export function MetricsTrendsScreen() {
           : <Surface><AppText muted>No hay métricas para analizar.</AppText></Surface>}
       </>}
     <Button label="Abrir Métricas diarias" variant="secondary" onPress={() => router.push('/(tabs)/progress/metrics')} />
-  </ScrollScreen>;
+  </ProgressScroll>;
 }
 const styles = StyleSheet.create({ section: { gap: spacing.sm }, wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm } });

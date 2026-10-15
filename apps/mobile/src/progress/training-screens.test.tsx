@@ -6,18 +6,21 @@ import { OwnlevelThemeProvider } from '@/design-system';
 import { parseProgressTraining, parseProgressTrainingExercise, type ProgressComparison, type ProgressQuery, type ProgressTraining, type ProgressTrainingExerciseDetail } from '@/api/progress';
 import { TrainingTrendsScreen } from './training-trends-screen';
 import { ExerciseTrendsScreen } from './exercise-trends-screen';
+import { ProgressRangeProvider } from './progress-range-context';
+import type { DateRange, ProgressRangeState } from './progress-range';
 
 const mockPush = jest.fn();
 let mockParams: Record<string, string> = {};
-const mockTraining = jest.fn<(c: unknown, q: ProgressQuery) => Promise<unknown>>();
-const mockExercise = jest.fn<(c: unknown, q: ProgressQuery, id: string) => Promise<unknown>>();
+const mockTraining = jest.fn<(c: unknown, q: ProgressQuery, compare: DateRange | null) => Promise<unknown>>();
+const mockExercise = jest.fn<(c: unknown, q: ProgressQuery, id: string, compare: DateRange | null) => Promise<unknown>>();
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocusEffect: () => undefined, useLocalSearchParams: () => mockParams }));
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocusEffect: () => undefined, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
+jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn(), success: jest.fn(), warning: jest.fn() }, triggerHaptic: jest.fn() }));
 const mockClient = { request: jest.fn(), read: jest.fn() };
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
 jest.mock('@/api/progress', () => ({ ...jest.requireActual<object>('@/api/progress'),
-  fetchProgressTraining: (c: unknown, q: ProgressQuery) => mockTraining(c, q),
-  fetchProgressTrainingExercise: (c: unknown, q: ProgressQuery, id: string) => mockExercise(c, q, id) }));
+  fetchProgressTraining: (c: unknown, q: ProgressQuery, _s: unknown, compare: DateRange | null) => mockTraining(c, q, compare),
+  fetchProgressTrainingExercise: (c: unknown, q: ProgressQuery, id: string, _s: unknown, compare: DateRange | null) => mockExercise(c, q, id, compare) }));
 
 const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
 const ok = <T,>(data: T) => ({ status: 'ok' as const, data, meta });
@@ -55,8 +58,10 @@ function exercise(id: string): ProgressTrainingExerciseDetail {
     sessions: [{ sessionId: 's-2', date: '2026-10-04', routineName: 'Torso', sets: [{ reps: 5, weightKg: 80 }] }] };
 }
 const flush = () => act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
-const wrap = (el: React.ReactElement) => render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
-  <OwnlevelThemeProvider initialMode="light">{el}</OwnlevelThemeProvider></SafeAreaProvider>);
+const MONTH = { period: 'custom' as const, from: '2026-10-01', to: TODAY };
+const comparing: ProgressRangeState = { unit: 'month', anchor: TODAY, custom: null, compare: { kind: 'previous' } };
+const wrap = (el: React.ReactElement, initialState?: ProgressRangeState) => render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
+  <OwnlevelThemeProvider initialMode="light"><ProgressRangeProvider initialToday={TODAY} initialState={initialState}>{el}</ProgressRangeProvider></OwnlevelThemeProvider></SafeAreaProvider>);
 const listeners: ((s: string) => void)[] = [];
 
 beforeEach(() => {
@@ -72,11 +77,10 @@ describe('Training Trends', () => {
     expect(parseProgressTrainingExercise(exercise(ex.bench))).toBeDefined(); expect(parseProgressTrainingExercise(exercise(ex.cable))).toBeDefined();
   });
   it('shows load with comparisons, honest duration wording, per-exercise performance by mode, PRs, feelings with coverage, muscles and routines — never volume', async () => {
-    mockParams = { period: '30' };
-    const view = wrap(<TrainingTrendsScreen />); await flush();
-    expect(mockTraining).toHaveBeenLastCalledWith(mockClient, { period: '30' });
+    const view = wrap(<TrainingTrendsScreen />, comparing); await flush();
+    expect(mockTraining).toHaveBeenLastCalledWith(mockClient, MONTH, { start: '2026-09-01', end: '2026-09-05' });
     const summary = within(view.getByTestId('training-summary'));
-    expect(summary.getByText('+2 sesiones (+200%) frente al período anterior.')).toBeTruthy();
+    expect(summary.getByText('+2 sesiones (+200%) frente a 1–5 sep.')).toBeTruthy();
     expect(summary.getByText('2 h 30 min')).toBeTruthy();
     expect(view.getByText('La duración va del inicio al fin de cada sesión e incluye descansos.')).toBeTruthy();
     const bench = within(view.getByTestId(`training-exercise-${ex.bench}`));
@@ -90,7 +94,7 @@ describe('Training Trends', () => {
     fireEvent.press(view.getByRole('button', { name: 'Series' }));
     expect(within(view.getByTestId('training-chart')).getByText('8 series')).toBeTruthy();
     fireEvent.press(view.getByRole('button', { name: 'Press banca: Mejoró' }));
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: ex.bench, period: '30' } });
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: ex.bench } });
     fireEvent.press(view.getByRole('button', { name: 'Abrir historial de entrenamiento' }));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/train/history');
   });
@@ -99,7 +103,9 @@ describe('Training Trends', () => {
     mockTraining.mockImplementationOnce(() => new Promise(r => { release = r; }));
     const view = wrap(<TrainingTrendsScreen />); await flush();
     mockTraining.mockImplementation(async (_c, q) => ok(training(q.period, true)));
-    fireEvent.press(view.getByRole('radio', { name: '7 días' })); await flush();
+    fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
+    expect(mockTraining).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-10-05', to: TODAY }, null);
+    expect(view.queryByText(/frente a/)).toBeNull(); expect(view.queryByText(/Sólo en el período anterior/)).toBeNull();
     await act(async () => { release(ok(training('30'))); }); await flush();
     expect(view.queryByText('Press banca · PR')).toBeNull();
     expect(view.getByText('Sin entrenamientos completados en este período.')).toBeTruthy();
@@ -113,9 +119,9 @@ describe('Training Trends', () => {
 
 describe('Exercise analytics', () => {
   it('shows performance, all-time marks, a mode-compatible chart and opens the session / exercise history', async () => {
-    mockParams = { id: ex.bench, period: '30' };
+    mockParams = { id: ex.bench };
     const view = wrap(<ExerciseTrendsScreen />); await flush();
-    expect(mockExercise).toHaveBeenLastCalledWith(mockClient, { period: '30' }, ex.bench);
+    expect(mockExercise).toHaveBeenLastCalledWith(mockClient, MONTH, ex.bench, null);
     expect(within(view.getByTestId('exercise-trend-summary')).getByText('Mejoró · Récord en el período')).toBeTruthy();
     expect(within(view.getByTestId('exercise-trend-marks')).getByText(/Mejor peso: 80 kg · 5 reps/)).toBeTruthy();
     expect(view.getByText('Mejor carga por sesión')).toBeTruthy();
