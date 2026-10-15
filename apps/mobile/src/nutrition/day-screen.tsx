@@ -11,8 +11,12 @@ import { useDomainDate } from '@/history/use-domain-date';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
 import { AppText, Button, LoadingState, ScrollScreen, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
-import { displayNutritionDate, nutritionToday, shiftNutritionDate } from './day-format';
-import { NutritionDateSelector } from './date-selector';
+import { nutritionToday } from './day-format';
+import { NutritionMonthSheet } from './day-calendar';
+import { headerDate } from '@/home/home-day';
+import { NutritionGlassButton } from './day-controls';
+import { NutritionDayMenu } from './day-menu';
+import { NutritionWeek } from './day-week';
 import { NutritionDayContent } from './day-content';
 import { useNutritionDayResource } from './day-resource';
 import type { NutritionDayMeal } from '../../../../src/lib/mobile-api/nutrition-day-contract';
@@ -37,35 +41,32 @@ function NutritionDayView({ date, today, onSelect, onToday, onServerToday, onAdd
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
   const { state, refresh } = useNutritionDayResource(client, date);
+  const [refreshRevision, setRefreshRevision] = useState(0);
   const [selector, setSelector] = useState(false);
   const current = state.status === 'ready' ? state.current
     : state.status === 'unavailable' ? state.previous : undefined;
   const serverToday = current?.data.today;
   useEffect(() => { if (serverToday) onServerToday(serverToday); }, [serverToday, onServerToday]);
-  const runRefresh = () => { void refresh(); };
-  const previous = shiftNutritionDate(date, -1), next = shiftNutritionDate(date, 1);
-  return <ScrollScreen testID="nutrition-day-screen" refreshControl={
+  const selectedLabel = `${headerDate(date)}${date.slice(0, 4) !== today.slice(0, 4) ? ` de ${date.slice(0, 4)}` : ''}`;
+  const runRefresh = () => { void refresh(); setRefreshRevision(v => v + 1); };
+  return <ScrollScreen statusBarGlass testID="nutrition-day-screen" refreshControl={
     <RefreshControl colors={[colors.primary]} onRefresh={runRefresh}
       progressBackgroundColor={colors.surface} refreshing={state.status === 'ready' && state.refreshing}
       testID="nutrition-refresh" tintColor={colors.primary} />
   }>
     <View style={styles.header}>
       <ReturnToHistoryDay />
-      <AppText variant="footnote">{date === today ? 'Hoy' : 'Día nutricional'}</AppText>
-      <AppText accessibilityRole="header" variant="heading">{displayNutritionDate(date)}</AppText>
-      <View style={styles.dates}>
-        <Button accessibilityLabel="Día anterior" disabled={!previous} label="‹" onPress={() => { if (previous) onSelect(previous); }} variant="secondary" />
-        <View style={styles.choose}><Button label="Elegir fecha" onPress={() => setSelector(true)} variant="secondary" /></View>
-        <Button accessibilityLabel="Día siguiente" disabled={!next} label="›" onPress={() => { if (next) onSelect(next); }} variant="secondary" />
+      <View style={styles.topBar}>
+        <View style={styles.title}>
+          <AppText muted variant="footnote">{selectedLabel}</AppText>
+          <AppText accessibilityRole="header" variant="largeTitle">{date === today ? 'Hoy' : selectedLabel.split(' ').slice(1).join(' ')}</AppText>
+        </View>
+        <NutritionGlassButton icon="calendar" label="Elegir fecha" onPress={() => setSelector(true)} />
+        <NutritionDayMenu onSaved={onManageSaved} onFoods={onManageFoods} onReport={onReport} onPlan={onConfigure} />
       </View>
       {date !== today ? <Button label="Volver a hoy" onPress={onToday} variant="quiet" /> : null}
-      {onAdd ? <Button label="Agregar comida" onPress={onAdd} /> : null}
-      {addChoices}
-      {onManageSaved ? <Button label="Administrar comidas guardadas" variant="quiet" onPress={onManageSaved} /> : null}
-      {onReport ? <Button label="Reporte nutricional" variant="quiet" onPress={onReport} /> : null}
-      {onConfigure ? <Button label="Configurar nutrición" variant="quiet" onPress={onConfigure} /> : null}
-      {onManageFoods ? <Button label="Administrar alimentos" variant="quiet" onPress={onManageFoods} /> : null}
     </View>
+    <NutritionWeek refreshRevision={refreshRevision} date={date} today={today} data={current?.data} onSelect={onSelect} />
     {!current ? state.status === 'loading' ? <LoadingState label="Cargando día nutricional" />
       : <UnavailableState title="No pudimos cargar este día"
         description={state.status === 'auth_required' || state.status === 'unauthorized' ? 'No pudimos confirmar tu sesión.' : 'Revisá la conexión e intentá nuevamente.'}
@@ -75,10 +76,11 @@ function NutritionDayView({ date, today, onSelect, onToday, onServerToday, onAdd
           <AppText accessibilityRole="alert">No pudimos actualizar. Mostramos la última lectura de esta fecha.</AppText>
           <Button label="Reintentar" onPress={runRefresh} variant="secondary" />
         </View> : null}
-        <NutritionDayContent data={current.data} onEdit={state.status === 'ready' ? onEdit : undefined}
+        <NutritionDayContent data={current.data} onAdd={onAdd} addChoices={addChoices} onEdit={state.status === 'ready' ? onEdit : undefined}
           onActivity={state.status === 'ready' ? onActivity : undefined} onContext={state.status === 'ready' ? onContext : undefined} />
       </>}
-    {selector ? <NutritionDateSelector date={date} onClose={() => setSelector(false)} onSelect={onSelect} /> : null}
+    {!current ? <><NutritionGlassButton icon="plus" label="Agregar comida" wide onPress={onAdd} />{addChoices}</> : null}
+    {selector ? <NutritionMonthSheet date={date} today={today} onReport={onReport} onClose={() => setSelector(false)} onSelect={onSelect} /> : null}
   </ScrollScreen>;
 }
 
@@ -162,5 +164,5 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
   </>;
 }
 const styles = StyleSheet.create({
-  header: { gap: spacing.md }, dates: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm }, choose: { flex: 1 },
+  header: { gap: spacing.md }, topBar: { flexDirection: 'row', alignItems: 'center', gap: 8 }, title: { flex: 1, gap: 0 },
 });

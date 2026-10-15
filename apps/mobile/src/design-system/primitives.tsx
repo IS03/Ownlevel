@@ -1,4 +1,4 @@
-import { useContext, type PropsWithChildren, type ReactNode } from 'react';
+import { useContext, useState, type PropsWithChildren, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -15,7 +15,9 @@ import {
 import {
   type Edge,
   SafeAreaView,
+  SafeAreaInsetsContext,
 } from 'react-native-safe-area-context';
+import { GlassSurface } from './glass';
 import { HeaderHeightContext } from 'expo-router/build/react-navigation/elements/Header/HeaderHeightContext';
 
 import { atmosphere, glowGradient } from './atmosphere';
@@ -103,6 +105,11 @@ type ScrollScreenProps = PropsWithChildren<
     /** Background glow; off for focused flows (the active training session). */
     glow?: boolean;
     safeAreaEdges?: Edge[];
+    /**
+     * For screens without a navigation header whose content scrolls under the status bar: a glass top bar
+     * appears once content passes below it (IDENTIDAD.md § Vidrio: "top bar on scroll").
+     */
+    statusBarGlass?: boolean;
     testID?: string;
   }
 >;
@@ -112,10 +119,14 @@ export function ScrollScreen({
   contentContainerStyle,
   glow = true,
   safeAreaEdges = ['left', 'right', 'bottom'],
+  statusBarGlass = false,
   testID,
+  onScroll,
   ...scrollViewProps
 }: ScrollScreenProps) {
   const { colors } = useOwnlevelTheme();
+  const top = useContext(SafeAreaInsetsContext)?.top ?? 0; // Optional: screens rendered without a provider just skip the bar.
+  const [scrolled, setScrolled] = useState(false);
 
   return (
     <SafeAreaView
@@ -126,12 +137,21 @@ export function ScrollScreen({
       {glow ? <ScreenGlow /> : null}
       <ScrollView
         {...scrollViewProps}
+        onScroll={event => {
+          // Only crossing the threshold re-renders; the glass animates its own appearance.
+          if (statusBarGlass) { const next = event.nativeEvent.contentOffset.y + top > 4; if (next !== scrolled) setScrolled(next); }
+          onScroll?.(event);
+        }}
+        scrollEventThrottle={statusBarGlass ? 16 : scrollViewProps.scrollEventThrottle}
         contentContainerStyle={[styles.scrollContent, contentContainerStyle]}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
       >
         {children}
       </ScrollView>
+      {statusBarGlass && top > 0 ? <View pointerEvents="none" style={[styles.statusBar, { height: top }]}>
+        <GlassSurface visible={scrolled} style={StyleSheet.absoluteFill} testID="status-bar-glass" />
+      </View> : null}
     </SafeAreaView>
   );
 }
@@ -589,6 +609,7 @@ export function UnavailableState(props: StateProps) {
 }
 
 const styles = StyleSheet.create({
+  statusBar: { position: 'absolute', top: 0, left: 0, right: 0 },
   screen: {
     flex: 1,
   },
