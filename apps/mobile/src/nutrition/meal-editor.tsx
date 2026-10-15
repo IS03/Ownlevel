@@ -1,12 +1,13 @@
+import { ManualMealEntry } from './manual-meal-entry';
 import { Alert, KeyboardAvoidingView, Modal, Platform, StyleSheet, TextInput, View } from 'react-native';
 import { AppText, Button, Heading, ScrollScreen, Surface, spacing, useOwnlevelTheme } from '@/design-system';
 import { displayNutritionDate } from './day-format';
 import type { MealDraft } from './meal-form-model';
 import type { MealController, MealEditorState } from './meal-controller';
 
-const labels: Record<keyof MealDraft, string> = { date: 'Fecha DD/MM/AAAA', title: 'Título', description: 'Descripción',
+const labels: Partial<Record<keyof MealDraft, string>> = { date: 'Fecha DD/MM/AAAA', title: 'Título', description: 'Descripción',
   calories: 'Calorías', proteinG: 'Proteína (g)', carbsG: 'Carbohidratos (g)', fatG: 'Grasas (g)' };
-export function MealEditor({ controller, state }: { controller: MealController; state: MealEditorState }) {
+function ExistingMealEditor({ controller, state }: { controller: MealController; state: MealEditorState }) {
   const { colors } = useOwnlevelTheme();
   const e = state.editor;
   if (!e) return null;
@@ -29,7 +30,7 @@ export function MealEditor({ controller, state }: { controller: MealController; 
         <Heading level={2}>{e.mealId ? 'Editar comida' : 'Agregar comida'}</Heading>
         <AppText muted>Calorías enteras, mayores a cero. Macros opcionales: vacío significa sin dato; cero se conserva. Podés usar coma o punto.</AppText>
         {Object.entries(labels).map(([key, label]) => {
-          const field = key as keyof MealDraft, error = state.errors[field];
+          const field = key as Exclude<keyof MealDraft, 'saveToLibrary' | 'mealLabel'>, error = state.errors[field];
           return <View key={field} style={styles.field}>
             <AppText variant="label">{label}</AppText>
             <TextInput accessibilityLabel={label} autoCorrect={field === 'description'} editable={!locked}
@@ -66,3 +67,7 @@ export function MealEditor({ controller, state }: { controller: MealController; 
 }
 const styles = StyleSheet.create({ screen: { flex: 1 }, field: { gap: spacing.xs },
   input: { minHeight: 48, borderWidth: 1, borderRadius: 12, padding: spacing.md, fontSize: 17 } });
+
+export function MealEditor(props: { controller: MealController; state: MealEditorState }) {
+  return props.state.editor && !props.state.editor.mealId ? <ManualMealEntry {...props} /> : <ExistingMealEditor {...props} />;
+}

@@ -122,3 +122,43 @@ describe('Reliable quick registration', () => {
     const saving = f.controller.save(); await settle(); f.controller.dispose(); finish(); await saving; expect(f.api.confirm).not.toHaveBeenCalled();
   });
 });
+
+describe('M9 inline additions', () => {
+  it('previews before writing, gates double taps, stays open and retains the original CAS for Undo', async () => {
+    const f = fixture(); await f.controller.initialize(); f.controller.open(quickDate); await settle();
+    const day = nutritionFixture(quickDate);
+    if (day.nutrition.status === 'ok' && day.nutrition.data.dayState === 'recorded') day.nutrition.data.meals[0] = { ...day.nutrition.data.meals[0], id: quickId, updatedAt: '2026-10-03T13:00:00Z' };
+    (f.api.read as jest.Mock<QuickApi['read']>).mockResolvedValue({ status: 'ok', data: day, meta });
+    const added = jest.fn(); f.controller.subscribeConfirmed(added);
+    let finish!: (v: Awaited<ReturnType<QuickApi['preview']>>) => void;
+    (f.api.preview as jest.Mock<QuickApi['preview']>).mockImplementationOnce(() => new Promise(r => { finish = r; }));
+    const first = f.controller.addInline(quickOption()); await settle();
+    await f.controller.addInline(quickOption()); expect(f.api.confirm).not.toHaveBeenCalled();
+    const selection = selectionFromDraft(f.controller.getSnapshot().draft!).selection!;
+    finish({ status: 'ok', data: quickPreview(selection), meta }); await first;
+    expect(f.api.confirm).toHaveBeenCalledTimes(1); expect(f.controller.getSnapshot()).toMatchObject({ open: true, draft: null, intent: null, phase: 'idle' });
+    expect(added).toHaveBeenCalledWith(expect.objectContaining({ id: quickId, updatedAt: quickReceipt.updatedAt }), quickDate);
+    expect(f.controller.getSnapshot().added?.[`saved:${quickId}`].meal.updatedAt).toBe(quickReceipt.updatedAt);
+  });
+  it('preview failure returns to the list without writing; an uncertain write keeps the SAME stored attempt', async () => {
+    const f = fixture(); await f.controller.initialize(); f.controller.open(quickDate); await settle();
+    (f.api.preview as jest.Mock<QuickApi['preview']>).mockResolvedValueOnce(failure);
+    await f.controller.addInline(quickOption()); expect(f.api.confirm).not.toHaveBeenCalled();
+    expect(f.controller.getSnapshot()).toMatchObject({ open: true, inlineKey: null, draft: null, phase: 'idle' });
+    (f.api.confirm as jest.Mock<QuickApi['confirm']>).mockResolvedValueOnce(failure);
+    await f.controller.addInline(quickOption()); const stored = (await f.repository.read())!;
+    await f.controller.addInline(quickOption()); expect(f.api.confirm).toHaveBeenCalledTimes(1);
+    await f.controller.recover(); expect(f.api.confirm).toHaveBeenLastCalledWith(stored.intent);
+  });
+  it('timing invalidates the preview and survives persistence/restart unchanged', async () => {
+    const f = fixture(); await f.open();
+    f.controller.timing('lunch', `${quickDate}T13:40:00-03:00`);
+    await f.controller.save(); expect(f.api.confirm).not.toHaveBeenCalled();
+    await f.controller.requestPreview();
+    (f.api.confirm as jest.Mock<QuickApi['confirm']>).mockResolvedValueOnce(failure);
+    await f.controller.save(); const stored = (await f.repository.read())!;
+    expect(stored.intent).toMatchObject({ mealLabel: 'lunch', consumedAt: `${quickDate}T16:40:00.000Z` });
+    const next = new QuickController(f.api, f.repository, f.invalidate); await next.initialize();
+    await next.recover(); expect(f.api.confirm).toHaveBeenLastCalledWith(stored.intent);
+  });
+});

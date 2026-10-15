@@ -19,7 +19,7 @@ export class MealController {
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private update(patch: Partial<MealEditorState>) { if (!this.disposed) { this.state = { ...this.state, ...patch }; this.listeners.forEach(f => f()); } }
-  dispose() { this.disposed = true; this.listeners.clear(); }
+  dispose() { this.disposed = true; this.listeners.clear(); this.confirmedListeners.clear(); }
   async initialize() {
     try {
       const stored = await this.repository.read();
@@ -35,12 +35,20 @@ export class MealController {
     const draft = mealDraft(date, meal);
     this.update({ editor: { sourceDate: date, mealId: meal?.id ?? null, expectedUpdatedAt: meal?.updatedAt ?? null, draft, original: draft }, errors: {}, message: null, truth: null, truthDate: null });
   }
-  change(field: keyof MealDraft, value: string) {
+  change(field: Exclude<keyof MealDraft, 'saveToLibrary' | 'mealLabel'>, value: string) {
     const editor = this.state.editor;
     if (!editor || this.state.intent || this.busy || ['loading','blocked','confirmed'].includes(this.state.phase)) return;
     this.update({ editor: { ...editor, draft: { ...editor.draft, [field]: value } }, errors: {},
       ...(this.state.phase === 'duplicate' ? { phase: 'idle' as const, message: null } : {}) });
   }
+  timing(mealLabel: MealDraft['mealLabel'], consumedAt?: string) {
+    if (this.state.editor && !this.state.intent && !this.busy && this.state.phase === 'idle') this.update({ editor: { ...this.state.editor, draft: { ...this.state.editor.draft, mealLabel, ...(consumedAt ? { consumedAt } : {}) } } });
+  }
+  saveToLibrary(value: boolean) {
+    if (this.state.editor && !this.state.editor.mealId && !this.state.intent && !this.busy && this.state.phase === 'idle') this.update({ editor: { ...this.state.editor, draft: { ...this.state.editor.draft, saveToLibrary: value } } });
+  }
+  private confirmedListeners = new Set<(stored: StoredMealIntent) => void>();
+  subscribeConfirmed = (f: (stored: StoredMealIntent) => void) => { this.confirmedListeners.add(f); return () => { this.confirmedListeners.delete(f); }; };
   dirty() { const e = this.state.editor; return !!e && JSON.stringify(e.draft) !== JSON.stringify(e.original); }
   close() {
     if (this.busy) return;
@@ -97,7 +105,7 @@ export class MealController {
         const date = result.data && 'error' in result.data ? result.data.currentDate : undefined;
         this.update({ phase: 'conflict', truth: null, truthDate: date ?? null });
         if (date) await this.readConflict(date, stored.intent.mealId!);
-      } else this.update({ phase: result.status === 'validation' ? 'idle' : 'conflict', truth: null, truthDate: null });
+      } else this.update({ phase: result.status === 'validation' || result.status === 'conflict' && result.code === 'SAVED_NAME_EXISTS' ? 'idle' : 'conflict', truth: null, truthDate: null });
       return;
     }
     this.update({ phase: 'uncertain', message: 'La respuesta no confirma el resultado. Comprobá el intento guardado.' });
@@ -111,6 +119,7 @@ export class MealController {
       this.update({ phase: 'confirmed', message: 'La operación está confirmada, pero no pudimos actualizar todos los días. No vuelvas a guardar.' }); return;
     }
     await this.repository.clear(stored.intent.idempotencyKey);
+    this.confirmedListeners.forEach(f => f(stored));
     this.update({ phase: 'idle', intent: null, editor: null, message: receipt.status === 'deleted' ? 'Comida eliminada.' : 'Comida guardada.', errors: {}, truth: null, truthDate: null });
   }
   private async readConflict(date: string, id: string) {
@@ -120,6 +129,13 @@ export class MealController {
         this.update({ truth: result.data.nutrition.data.meals.find(m => m.id === id && m.entryKind === 'meal' && m.sourceType === 'manual') ?? null });
       }
     } catch { /* A failed truth read must never authorize a new version. */ }
+  }
+  cancelDuplicate() { if (!this.busy && !this.state.intent && this.state.phase === 'duplicate') this.update({ phase: 'idle', message: null }); }
+  reviseCreate() { if (!this.busy && !this.state.intent && !this.state.editor?.mealId && this.state.phase === 'conflict') this.update({ phase: 'idle' }); }
+  async undo(meal: NutritionDayMeal, date: string) {
+    if (this.busy || this.state.phase !== 'idle' || this.state.intent) return;
+    this.open(date, meal);
+    await this.save(false, true);
   }
   async refreshConflict() {
     const e = this.state.editor;

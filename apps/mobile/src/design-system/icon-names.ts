@@ -22,6 +22,7 @@ export type AppIconName =
   | 'close'
   | 'dumbbell'
   | 'flame'
+  | 'search'
   | 'filter'
   | 'footprints'
   | 'more'
@@ -72,6 +73,7 @@ export const sfSymbolNames: Record<AppIconName, SFSymbol> = {
   close: 'xmark',
   dumbbell: 'dumbbell.fill',
   flame: 'flame.fill',
+  search: 'magnifyingglass',
   filter: 'line.3.horizontal.decrease',
   footprints: 'figure.walk',
   more: 'ellipsis',

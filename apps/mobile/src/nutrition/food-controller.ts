@@ -31,6 +31,7 @@ export class FoodController {
   registration(){if(this.state.phase==='idle'&&!this.state.intent)this.update({mode:'register'});}
   back(){if(this.busy||this.state.intent||this.state.phase==='blocked')return;this.truthGeneration++;this.update({phase:'idle',mode:'browse',draft:null,editing:null,truth:null,message:null,errors:{}});}
   dirty(){return !!this.state.draft&&JSON.stringify(this.state.draft)!==JSON.stringify(foodDraft(this.state.editing));}
+  changeDate(date:string){if(this.state.phase==='idle'&&!this.busy&&!this.state.intent)this.update({date});}
   change(key:keyof FoodDraft,value:string){if(this.state.phase==='idle'&&!this.busy&&!this.state.intent&&this.state.draft)this.update({draft:{...this.state.draft,[key]:value},errors:{},message:null});}
   async save(operation?:FoodOperation){if(this.disposed||this.busy||this.state.phase!=='idle'||this.state.intent)return;
     const op=operation??(this.state.editing?'update':'create'), editing=this.state.editing;

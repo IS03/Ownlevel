@@ -74,3 +74,20 @@ describe('Quick Nutrition contracts and routes', () => {
     rpc.mockResolvedValueOnce({ data: [{ response_status: 200, response_body: { ...p, selection: { ...selection, source: { ...selection.source, version: 'b'.repeat(64) } } } }], error: null }); expect((await preview(request(selection), params)).status).toBe(503);
   });
 });
+
+describe('M9 quick timing EXPAND', () => {
+  it('preserves legacy shapes and includes timing in preview/confirmation identity', () => {
+    const timed = { ...selection, mealLabel: 'lunch', consumedAt: `${date}T13:40:00-03:00` };
+    expect(parseQuickSelection(selection)).toEqual(selection);
+    expect(parseQuickSelection(timed)).toMatchObject({ mealLabel: 'lunch', consumedAt: `${date}T16:40:00.000Z` });
+    expect(parseQuickIntent({ ...timed, operation: 'register', idempotencyKey: 'm9:timed' })).toMatchObject({ consumedAt: `${date}T16:40:00.000Z` });
+    expect(parseQuickPreview({ ...p, selection: timed })?.selection).toMatchObject({ mealLabel: 'lunch' });
+    expect(parseQuickSelection({ ...timed, consumedAt: `${date}T01:00:00Z` })).toBeUndefined();
+    expect(parseQuickSelection({ ...timed, consumedAt: null })).toBeUndefined();
+  });
+  it('rejects a preview that silently drops the chosen timing', async () => {
+    rpc.mockResolvedValueOnce({ data: [{ response_status: 200, response_body: p }], error: null });
+    const response = await preview(request({ ...selection, mealLabel: 'dinner' }), params);
+    expect(response.status).toBe(503);
+  });
+});

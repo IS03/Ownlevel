@@ -7,6 +7,7 @@ import { quickDraft, selectionFromDraft, type QuickDraft } from './quick-model';
 export type QuickApi = { food?: (id: string) => Promise<MobileApiReadResult<FoodDetail>>; options: () => Promise<MobileApiReadResult<QuickOptions>>; preview: (s: QuickSelection) => Promise<MobileApiRequestResult<QuickPreview>>;
   confirm: (i: QuickIntent) => Promise<MobileApiRequestResult<QuickResponse>>; read: (date: string) => Promise<MobileApiReadResult<MobileNutritionDayResponse>> };
 export type QuickState = { phase: 'loading' | 'idle' | 'pending' | 'uncertain' | 'confirmed' | 'conflict' | 'blocked';
+  inlineKey?: string | null; added?: Record<string, { meal: import('@/api/nutrition-day').NutritionDayMeal; date: string }>;
   open: boolean; date: string | null; options: QuickOptions | null; optionsLoading: boolean; optionsError: boolean;
   draft: QuickDraft | null; previousDraft: QuickDraft | null; preview: QuickPreview | null; previewLoading: boolean;
   intent: StoredQuickIntent | null; truth: QuickOption | null; message: string | null; errors: Record<string, string> };
@@ -19,7 +20,7 @@ export class QuickController {
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private update(patch: Partial<QuickState>) { if (!this.disposed) { this.state = { ...this.state, ...patch }; this.listeners.forEach(f => f()); } }
-  dispose() { this.disposed = true; this.previewGeneration++; this.optionsGeneration++; this.listeners.clear(); }
+  dispose() { this.disposed = true; this.previewGeneration++; this.optionsGeneration++; this.listeners.clear(); this.confirmedListeners.clear(); }
   async initialize() {
     try { const stored = await this.repository.read();
       this.update(stored ? { phase: stored.receipt ? 'confirmed' : 'uncertain', intent: stored, draft: stored.draft, date: stored.intent.date,
@@ -29,7 +30,7 @@ export class QuickController {
   open(date: string, option?: QuickOption) {
     if (this.state.phase !== 'idle' || this.state.intent || this.busy) return;
     this.previewGeneration++; this.optionsGeneration++;
-    this.update({ optionsLoading: false, optionsError: false, open: true, date, draft: null, previousDraft: null, preview: null, previewLoading: false, message: null, errors: {}, truth: null });
+    this.update({ optionsLoading: false, optionsError: false, open: true, date, draft: null, previousDraft: null, preview: null, previewLoading: false, message: null, errors: {}, truth: null, added: {}, inlineKey: null });
     if (option) this.choose(option); else void this.loadOptions();
   }
   close() {
@@ -63,14 +64,35 @@ export class QuickController {
       }
     } catch { if (generation === this.optionsGeneration) this.update({ optionsLoading: false, optionsError: true }); }
   }
-  choose(option: QuickOption) {
+  choose(option: QuickOption, preview = true) {
     if (this.state.phase !== 'idle' || this.state.intent || this.busy || !this.state.date) return;
     this.previewGeneration++; this.optionsGeneration++; this.update({ optionsLoading: false, draft: quickDraft(this.state.date, option), previousDraft: null, preview: null, message: null, errors: {}, truth: null });
-    void this.requestPreview();
+    if (preview) void this.requestPreview();
   }
+  async addInline(option: QuickOption) {
+    if (this.busy || this.state.phase !== 'idle' || this.state.intent || !this.state.open || this.state.draft) return;
+    const key = `${option.source.kind}:${option.source.id}`;
+    this.update({ inlineKey: key }); this.choose(option, false);
+    await this.requestPreview();
+    if (this.state.preview && this.state.inlineKey === key && this.state.phase === 'idle') await this.save();
+    if (this.state.phase === 'idle' && !this.state.intent) this.update({ inlineKey: null, draft: null, preview: null });
+  }
+  removeAdded(key: string) { const added = { ...this.state.added }; delete added[key]; this.update({ added }); }
+  timing(mealLabel: QuickDraft['mealLabel'], consumedAt?: string) {
+    if (this.state.draft && !this.state.intent && !this.busy && this.state.phase === 'idle') {
+      this.previewGeneration++; this.update({ draft: { ...this.state.draft, mealLabel, ...(consumedAt ? { consumedAt } : {}) }, preview: null, previewLoading: false });
+    }
+  }
+  private confirmedListeners = new Set<(meal: import('@/api/nutrition-day').NutritionDayMeal, date: string) => void>();
+  subscribeConfirmed = (f: (meal: import('@/api/nutrition-day').NutritionDayMeal, date: string) => void) => { this.confirmedListeners.add(f); return () => { this.confirmedListeners.delete(f); }; };
   back() {
     if (this.state.intent || this.busy || this.state.phase === 'blocked') return;
-    this.previewGeneration++; this.update({ phase: 'idle', draft: null, previousDraft: null, preview: null, previewLoading: false, truth: null, errors: {}, message: null });
+    this.previewGeneration++; this.update({ phase: 'idle', inlineKey: null, draft: null, previousDraft: null, preview: null, previewLoading: false, truth: null, errors: {}, message: null });
+  }
+  changeDate(date: string) {
+    if (this.state.phase !== 'idle' || this.busy || this.state.intent || this.state.inlineKey) return;
+    const d = this.state.draft;
+    this.previewGeneration++; this.update({ date, added: {}, ...(d ? { draft: { ...d, date, ...(d.consumedAt ? { consumedAt: `${date}T${new Date(Date.parse(d.consumedAt) - 10800000).toISOString().slice(11,16)}:00-03:00` } : {}) } } : {}), preview: null, previewLoading: false });
   }
   change(itemId: string, value: string) {
     const d = this.state.draft;
@@ -95,9 +117,9 @@ export class QuickController {
     if (!truth || !draft || this.state.phase !== 'conflict' || this.busy) return;
     // Deliberate review only. Web may replace ingredient IDs; preserve the old
     // draft as visible reference, never silently assign an old quantity to a new item.
-    const next = quickDraft(draft.date, truth);
+    const next = { ...quickDraft(draft.date, truth), ...('mealLabel' in draft ? { mealLabel: draft.mealLabel } : {}), ...('consumedAt' in draft ? { consumedAt: draft.consumedAt } : {}) };
     for (const item of truth.items) if (draft.quantities[item.id] !== undefined) next.quantities[item.id] = draft.quantities[item.id];
-    this.update({ phase: 'idle', draft: next, previousDraft: draft, truth: null, preview: null, message: 'Revisá esta versión y calculá una nueva vista previa antes de confirmar.' });
+    this.update({ phase: 'idle', inlineKey: null, draft: next, previousDraft: draft, truth: null, preview: null, message: 'Revisá esta versión y calculá una nueva vista previa antes de confirmar.' });
   }
   async save(operation: QuickIntent['operation'] = 'register') {
     const { draft, preview } = this.state;
@@ -137,12 +159,16 @@ export class QuickController {
   }
   private async confirmed(stored: StoredQuickIntent) {
     const receipt = stored.receipt!; this.invalidate();
+    let registered: import('@/api/nutrition-day').NutritionDayMeal | undefined;
     if (receipt.operation === 'register') {
       const result = await this.api.read(receipt.date);
       if (this.disposed) return;
       if (result.status !== 'ok' || result.data.date !== receipt.date || result.data.nutrition.status !== 'ok') {
         this.update({ phase: 'confirmed', message: 'La comida está confirmada. Falta actualizar el día; no vuelvas a registrarla.' }); return;
       }
+      registered = result.data.nutrition.data.meals.find(m => m.id === receipt.resourceId);
+      // Retain the version created by THIS write. Undo must conflict if someone edited it.
+      if (registered) registered = { ...registered, updatedAt: receipt.updatedAt };
     } else {
       await this.loadOptions();
       if (this.disposed) return;
@@ -151,7 +177,12 @@ export class QuickController {
       }
     }
     await this.repository.clear(stored.intent.idempotencyKey);
-    this.update({ phase: 'idle', intent: null, open: false, draft: null, preview: null, previousDraft: null, truth: null,
+    if (registered) {
+      const key = `${stored.draft.option.source.kind}:${stored.draft.option.source.id}`;
+      this.update({ added: { ...this.state.added, [key]: { meal: registered, date: receipt.date } } });
+      this.confirmedListeners.forEach(f => f(registered!, receipt.date));
+    }
+    this.update({ phase: 'idle', intent: null, open: !!this.state.inlineKey, inlineKey: null, draft: null, preview: null, previousDraft: null, truth: null,
       message: receipt.operation === 'register' ? 'Comida registrada.' : 'Guardada como habitual. No agregamos otra comida al día.' });
   }
 }

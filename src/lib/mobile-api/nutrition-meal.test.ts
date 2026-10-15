@@ -58,3 +58,20 @@ describe('Manual meal authenticated HTTP adapter',()=>{
     expect((await nutritionMealMutationResponse(request(),'create',date)).status).toBe(503);
   });
 });
+
+describe('M9 additive meal timing', () => {
+  it('keeps legacy fields byte-for-byte and normalizes explicit local time', () => {
+    expect(parseManualMealFields(fields)).toEqual({ ...fields, title: 'MY MEAL', description: null });
+    expect(parseManualMealFields({ ...fields, mealLabel: 'lunch', consumedAt: '2026-10-03T13:40:00-03:00', saveToLibrary: true })).toMatchObject({ mealLabel: 'lunch', consumedAt: '2026-10-03T16:40:00.000Z', saveToLibrary: true, proteinG: null, fatG: 0 });
+    expect(parseMealMutationIntent({ ...intent, fields: { ...fields, saveToLibrary: true, title: '', description: null } })).toBeUndefined();
+    expect(parseMealMutationIntent({ ...intent, operation: 'edit', mealId: id, expectedUpdatedAt: version, fields: { ...fields, saveToLibrary: true } })).toBeUndefined();
+  });
+  it.each([{ mealLabel: 'brunch' }, { consumedAt: null }, { consumedAt: '2026-10-04T12:00:00Z' }, { consumedAt: '2026-10-03T01:00:00Z' }, { consumedAt: '2026-10-03T24:00:00Z' }, { consumedAt: '2026-02-30T15:00:00Z' }, { saveToLibrary: 'true' }, { userId: id }])('rejects invalid timing/ownership %j', patch => {
+    expect(parseManualMealFields({ ...fields, ...patch })).toBeUndefined();
+  });
+  it('passes the optional fields into the SAME atomic RPC', async () => {
+    rpc.mockResolvedValueOnce({ data: [{ response_status: 201, response_body: { status: 'saved', mealId: id, sourceDate: date, destinationDate: date, updatedAt: version } }], error: null });
+    expect((await nutritionMealMutationResponse(request({ ...intent, fields: { ...fields, mealLabel: null, consumedAt: '2026-10-03T12:00:00-03:00', saveToLibrary: true } }), 'create', date)).status).toBe(201);
+    expect(rpc).toHaveBeenCalledWith('mobile_mutate_manual_meal', { p_intent: expect.objectContaining({ fields: expect.objectContaining({ mealLabel: null, consumedAt: '2026-10-03T15:00:00.000Z', saveToLibrary: true }) }) });
+  });
+});

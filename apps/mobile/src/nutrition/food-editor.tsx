@@ -1,3 +1,4 @@
+import { FoodAddPicker } from './food-add-picker';
 import { FoodSearchControls } from './food-search-controls';
 import { useEffect } from 'react';
 import { Alert,KeyboardAvoidingView,Modal,Platform,StyleSheet,TextInput,View } from 'react-native';
@@ -23,9 +24,9 @@ export function FoodEditor({controller,state,quick,onChoose}:{controller:FoodCon
  const action=(op:'archive'|'reactivate'|'delete')=>Alert.alert(op==='delete'?'¿Eliminar alimento?':op==='archive'?'¿Archivar alimento?':'¿Reactivar alimento?',
   `Las comidas registradas y los componentes guardados no cambian.${controller.dirty()?' Los cambios del formulario sin guardar se descartarán.':''}`,
   [{text:'Cancelar',style:'cancel'},{text:op==='delete'?'Eliminar':op==='archive'?'Archivar':'Reactivar',style:op==='delete'?'destructive':'default',onPress:()=>void controller.save(op)}]);
- return <Modal animationType="slide" presentationStyle="fullScreen" visible onRequestClose={close}>
+ return <Modal animationType="slide" presentationStyle={state.date ? "pageSheet" : "fullScreen"} visible onRequestClose={close}>
   {state.mode==='register'?<QuickEditor embedded controller={quick.controller} state={quick.state} onBack={()=>{quick.controller.close();controller.back();}}/>:
-  <KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':undefined} style={styles.screen}>
+  state.mode==='browse'&&state.date?<FoodAddPicker controller={controller} state={state} onChoose={onChoose} onClose={close}/>:<KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':undefined} style={styles.screen}>
    <ScrollScreen safeAreaEdges={['top','left','right','bottom']} testID="food-editor">
     <Heading level={2}>{state.mode==='browse'?'Alimentos personales':state.mode==='create'?'Nuevo alimento':'Editar alimento'}</Heading>
     {state.date?<AppText variant="label">{`Destino · ${displayNutritionDate(state.date)}`}</AppText>:null}

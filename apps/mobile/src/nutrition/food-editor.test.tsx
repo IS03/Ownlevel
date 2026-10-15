@@ -11,6 +11,8 @@ import { QuickIntentRepository } from './quick-storage';
 import { quickDate,quickOptions,quickPreview,quickReceipt } from './quick-fixture.test-helper';
 import { personalFood,foodReceipt } from './food-fixture.test-helper';
 import { nutritionFixture } from './day-fixture.test-helper';
+jest.mock('./day-resource', () => ({ useNutritionDayResource: () => ({ state: { status: 'loading' } }) }));
+jest.mock('@/api', () => ({ useMobileApi: () => ({ client: null }) }));
 jest.mock('expo-symbols',()=>({SymbolView:()=>null}));
 const meta={durationMs:1,httpStatus:200,outcome:'ok' as const};
 function fixture(){const map=new Map<string,string>(),storage={getItem:async(k:string)=>map.get(k)??null,setItem:async(k:string,v:string)=>{map.set(k,v);},removeItem:async(k:string)=>{map.delete(k);}};
@@ -33,18 +35,18 @@ describe('Native Food surfaces',()=>{
   fireEvent.press(f.view.getByText('Nuevo alimento'));expect(f.view.getByLabelText('Cantidad base').props.value).toBe('1');
  });
  it('food quantity reuses preview/receipt pipeline and closes after exact-day refresh',async()=>{
-  const f=fixture();await f.open(quickDate);await act(async()=>{fireEvent.press(f.view.getByText('Usar CAFÉ'));});
-  expect(f.view.getByText('Agregar alimento')).toBeTruthy();expect(f.view.getByLabelText('Cantidad de CAFÉ').props.value).toBe('0,125');
-  fireEvent.changeText(f.view.getByLabelText('Cantidad de CAFÉ'),'0,375');await act(async()=>{fireEvent.press(f.view.getByText('Actualizar vista previa'));});
-  await act(async()=>{fireEvent.press(f.view.getByText('Agregar al día'));});await waitFor(()=>expect(f.view.queryByTestId('quick-meal-editor')).toBeNull());
+  const f=fixture();await f.open(quickDate);await act(async()=>{fireEvent.press(f.view.getByLabelText('Usar CAFÉ'));});
+  expect(f.view.getByText('CAFÉ')).toBeTruthy();expect(f.view.getByLabelText('Cantidad de CAFÉ').props.value).toBe('0,125');
+  fireEvent.changeText(f.view.getByLabelText('Cantidad de CAFÉ'),'0,375');await f.view.findByTestId('quick-preview');
+  await act(async()=>{fireEvent.press(f.view.getByText(/Agregar al día ·/));});await waitFor(()=>expect(f.view.queryByTestId('quick-meal-editor')).toBeNull());
   expect(f.qapi.confirm).toHaveBeenCalledWith(expect.objectContaining({date:quickDate,source:expect.objectContaining({kind:'food'}),quantities:[{itemId:personalFood.id,quantity:0.375}]}));expect(f.api.write).not.toHaveBeenCalled();
  });
  it('source conflict retains quantity, fetches actual food and requires a new preview after review',async()=>{
-  const f=fixture();await f.open(quickDate);await act(async()=>{fireEvent.press(f.view.getByText('Usar CAFÉ'));});fireEvent.changeText(f.view.getByLabelText('Cantidad de CAFÉ'),'0,375');await act(async()=>{fireEvent.press(f.view.getByText('Actualizar vista previa'));});
+  const f=fixture();await f.open(quickDate);await act(async()=>{fireEvent.press(f.view.getByLabelText('Usar CAFÉ'));});fireEvent.changeText(f.view.getByLabelText('Cantidad de CAFÉ'),'0,375');await f.view.findByTestId('quick-preview');
   const truth={...personalFood,servingQuantity:0.5,version:'b'.repeat(64)};(f.api.detail as jest.Mock<FoodApi['detail']>).mockResolvedValue({status:'ok',data:{status:'ok',food:truth},meta});
   (f.qapi.confirm as jest.Mock<QuickApi['confirm']>).mockResolvedValueOnce({status:'conflict',code:'QUICK_SOURCE_CHANGED',message:'changed',meta:{...meta,outcome:'conflict'}});
-  await act(async()=>{fireEvent.press(f.view.getByText('Agregar al día'));});expect(f.view.getByLabelText('Cantidad de CAFÉ').props.value).toBe('0,375');
-  fireEvent.press(f.view.getByText('Revisar la versión actual'));expect(f.view.queryByTestId('quick-preview')).toBeNull();expect(f.q.getSnapshot().draft?.option.source.version).toBe(truth.version);expect(f.view.getByLabelText('Cantidad de CAFÉ').props.value).toBe('0,375');
+  await act(async()=>{fireEvent.press(f.view.getByText(/Agregar al día ·/));});expect(f.view.getByLabelText('Cantidad de CAFÉ').props.value).toBe('0,375');
+  await act(async()=>{fireEvent.press(f.view.getByText('Revisar la versión actual'));});expect(f.qapi.confirm).toHaveBeenCalledTimes(1);expect(f.view.getByTestId('quick-preview')).toBeTruthy();expect(f.q.getSnapshot().draft?.option.source.version).toBe(truth.version);expect(f.view.getByLabelText('Cantidad de CAFÉ').props.value).toBe('0,375');
  });
  it('delete/archive/reactivate require deliberate native confirmation and empty differs from unavailable',async()=>{
   const f=fixture();await f.open();fireEvent.press(f.view.getByText('Editar CAFÉ'));const alert=jest.spyOn(Alert,'alert');

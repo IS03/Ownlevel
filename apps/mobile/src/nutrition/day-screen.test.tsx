@@ -3,6 +3,7 @@ import { StrictMode } from 'react';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { AppState, type AppStateStatus, RefreshControl } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import type { MobileApiClient } from '@/api/client';
 import type { MobileApiReadResult } from '@/api/results';
 import type { MobileNutritionDayResponse } from '@/api/nutrition-day';
@@ -34,7 +35,7 @@ jest.mock('@/api/nutrition-report', () => ({
 }));
 jest.mock('@expo/ui/swift-ui', () => {
   const { Pressable, Text, View } = jest.requireActual<typeof import('react-native')>('react-native');
-  return { Host: View, Menu: View, Image: () => null, Button: ({ label, onPress }: { label: string; onPress?: () => void }) => <Pressable onPress={onPress}><Text>{label}</Text></Pressable> };
+  return { Host: View, HStack: View, Spacer: () => null, Text, DatePicker: () => null, Menu: ({ label, children }: { label?: import('react').ReactNode; children: import('react').ReactNode }) => <View>{label}{children}</View>, Image: () => null, Button: ({ label, onPress }: { label: string; onPress?: () => void }) => <Pressable onPress={onPress}><Text>{label}</Text></Pressable> };
 });
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
@@ -43,7 +44,7 @@ const ok = (date: string, data = nutritionFixture(date)): MobileApiReadResult<Mo
 });
 const failure: MobileApiReadResult<MobileNutritionDayResponse> = { status: 'unavailable', reason: 'network',
   meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } };
-const element = () => <OwnlevelThemeProvider initialMode="light"><NutritionConfigurationProvider><NutritionDayScreen /></NutritionConfigurationProvider></OwnlevelThemeProvider>;
+const element = () => <SafeAreaInsetsContext.Provider value={{ top: 0, bottom: 0, left: 0, right: 0 }}><OwnlevelThemeProvider initialMode="light"><NutritionConfigurationProvider><NutritionDayScreen /></NutritionConfigurationProvider></OwnlevelThemeProvider></SafeAreaInsetsContext.Provider>;
 const appStateListeners: ((state: AppStateStatus) => void)[] = [];
 describe('Native Nutrition day', () => {
   beforeEach(async () => {
@@ -79,12 +80,12 @@ describe('Native Nutrition day', () => {
     });
     const view = render(element()); await view.findByText('Agregar comida');
     fireEvent.press(view.getByText('Agregar comida')); await act(async () => { fireEvent.press(view.getByText('Rápido')); });
-    await act(async () => { fireEvent.press(view.getAllByText('Revisar PASTA')[0]); });
+    await act(async () => { fireEvent.press(view.getAllByLabelText('Revisar PASTA').at(-1)!); });
     fireEvent.changeText(view.getByLabelText('Cantidad de INGREDIENTE'), '150,25');
     await act(async () => { appStateListeners.forEach(f => f('background')); appStateListeners.forEach(f => f('active')); });
     expect(view.getByLabelText('Cantidad de INGREDIENTE').props.value).toBe('150,25');
-    await act(async () => { fireEvent.press(view.getByText('Actualizar vista previa')); });
-    await act(async () => { fireEvent.press(view.getByText('Registrar comida')); });
+    await view.findByTestId('quick-preview');
+    await act(async () => { fireEvent.press(view.getByText(/Agregar al día ·/)); });
     await waitFor(() => expect(view.queryByTestId('quick-meal-editor')).toBeNull());
     expect(mockRequest.mock.calls.filter(([o]) => o.path.endsWith('meal-registrations'))).toHaveLength(1);
     expect(await AsyncStorage.getItem('ownlevel.nutrition.quick.v1.owner')).toBeNull();
@@ -98,14 +99,14 @@ describe('Native Nutrition day', () => {
       return { status: 'ok', data: options.path.endsWith('meal-preview') ? quickPreview(selection) : { ...quickReceipt, date: selection.date }, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } } as never;
     });
     const view = render(element()); await view.findByText('Agregar comida');
-    fireEvent.press(view.getByText('Agregar comida')); await act(async () => { fireEvent.press(view.getByText('Alimento')); });
-    await act(async () => { fireEvent.press(view.getByText('Usar CAFÉ')); });
-    expect(view.getByText('Destino · viernes, 2 de octubre de 2026')).toBeTruthy();
+    fireEvent.press(view.getByText('Agregar comida')); await act(async () => { fireEvent.press(view.getByText('Alimento por cantidad')); });
+    await act(async () => { fireEvent.press(view.getByLabelText('Usar CAFÉ')); });
+    expect(view.getByLabelText('Destino: Hoy')).toBeTruthy();
     fireEvent.changeText(view.getByLabelText('Cantidad de CAFÉ'), '0,375');
     await act(async () => { appStateListeners.forEach(f => f('background')); appStateListeners.forEach(f => f('active')); });
     expect(view.getByLabelText('Cantidad de CAFÉ').props.value).toBe('0,375');
-    await act(async () => { fireEvent.press(view.getByText('Actualizar vista previa')); });
-    await act(async () => { fireEvent.press(view.getByText('Agregar al día')); });
+    await view.findByTestId('quick-preview');
+    await act(async () => { fireEvent.press(view.getByText(/Agregar al día ·/)); });
     await waitFor(() => expect(view.queryByTestId('quick-meal-editor')).toBeNull());
     expect(mockRequest.mock.calls.filter(([o]) => o.path.endsWith('meal-registrations'))[0][0].body).toMatchObject({ date: mockToday, source: { kind: 'food' } });
     expect(await AsyncStorage.getItem('ownlevel.nutrition.quick.v1.owner')).toBeNull();
@@ -151,7 +152,7 @@ describe('Native Nutrition day', () => {
     let latest = nutritionFixture();
     mockRead.mockImplementation(async () => ({ status: 'ok', data: latest, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } }) as never);
     const view = render(element()); await view.findByText('Agregar comida');
-    fireEvent.press(view.getByText('Agregar comida')); fireEvent.press(view.getByText('Manual'));
+    fireEvent.press(view.getByText('Agregar comida')); fireEvent.press(view.getByText('A mano'));
     fireEvent.changeText(view.getByLabelText('Título'), 'My draft');
     fireEvent.changeText(view.getByLabelText('Calorías'), '350');
     let finishOld!: (r: unknown) => void;
@@ -168,7 +169,7 @@ describe('Native Nutrition day', () => {
       }
       return { status: 'ok', data: { status: 'saved', mealId: '41100000-0000-4000-8000-000000000002', sourceDate: mockToday, destinationDate: mockToday, updatedAt: `${mockToday}T13:00:00Z` }, meta: { durationMs: 1, httpStatus: 201, outcome: 'ok' } } as never;
     });
-    fireEvent.press(view.getByText('Guardar comida'));
+    await act(async () => { fireEvent.press(view.getByText(/Agregar al día ·/)); });
     await view.findByText('MY DRAFT');
     await act(async () => { finishOld(ok(mockToday)); });
     expect(view.getByText('MY DRAFT')).toBeTruthy(); expect(view.queryByText('Comida 2026-10-02')).toBeNull();
@@ -179,15 +180,15 @@ describe('Native Nutrition day', () => {
     mockRequest.mockResolvedValueOnce(failure as never).mockResolvedValueOnce({ status: 'ok',
       data: { status: 'saved', mealId: '41100000-0000-4000-8000-000000000002', sourceDate: mockToday, destinationDate: mockToday, updatedAt: `${mockToday}T13:00:00Z` },
       meta: { durationMs: 1, httpStatus: 201, outcome: 'ok' } } as never);
-    const view = render(element()); await view.findByText('Agregar comida'); fireEvent.press(view.getByText('Agregar comida')); fireEvent.press(view.getByText('Manual'));
-    fireEvent.changeText(view.getByLabelText('Calorías'), '250'); fireEvent.press(view.getByText('Guardar comida'));
+    const view = render(element()); await view.findByText('Agregar comida'); fireEvent.press(view.getByText('Agregar comida')); fireEvent.press(view.getByText('A mano'));
+    fireEvent.changeText(view.getByLabelText('Calorías'), '250'); fireEvent.press(view.getByText(/Agregar al día ·/));
     await view.findByText('Comprobar intento guardado');
     fireEvent.press(view.getByText('Volver al día · conservar intento')); await view.findByText('Revisar intento guardado');
     await act(async () => { appStateListeners.forEach(f => f('background')); appStateListeners.forEach(f => f('active')); });
     expect(mockRequest).toHaveBeenCalledTimes(1);
     fireEvent.press(view.getByText('Revisar intento guardado'));
     expect(view.getByLabelText('Calorías').props.value).toBe('250');
-    fireEvent.press(view.getByText('Comprobar intento guardado')); await view.findByText('Comida guardada.');
+    await act(async () => { fireEvent.press(view.getByText('Comprobar intento guardado')); }); await view.findByText('Comida guardada.');
     expect(mockRequest).toHaveBeenCalledTimes(2);
     expect(mockRequest.mock.calls[1][0].body).toEqual(mockRequest.mock.calls[0][0].body);
   });
