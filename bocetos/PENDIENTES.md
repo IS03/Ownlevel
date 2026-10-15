@@ -44,6 +44,8 @@ Lista viva de lo que sacamos de una pantalla para llevarlo a otra, y de los camb
 
 ## Cambios de servidor pendientes (EXPAND)
 
+- ~~**Progreso etapas 3 y 4 · Qué influye y aviso automático:**~~ HECHO (15/10, PRs #245–#249, migración `20261015222727_progress_insight_dismissals_expand`). Plan en `bocetos/que-influye/PLAN.md`.
+
 - ~~**Progreso etapa 2 · Explorar y Mis vistas:**~~ HECHO (15/10, PRs #241–#244, migración `20261015175527_progress_views_expand`). Plan en `bocetos/explorar/PLAN.md`. Sigue la etapa 3 (Qué influye), con bocetos propios.
   - Lectura `GET /progress/explore` (sin migración).
   - Tabla `progress_views` con API de vistas (migración, CAS, idempotencia, máximo 6).

@@ -30,6 +30,9 @@ jest.mock('@/api/progress', () => ({ ...jest.requireActual<object>('@/api/progre
 jest.mock('@/api/progress-views', () => ({ ...jest.requireActual<object>('@/api/progress-views'),
   fetchProgressViews: async () => ({ status: 'ok', meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' },
     data: { today: '2026-10-05', listVersion: 0, views: [], period: { preset: 'custom', start: '2026-10-01', end: '2026-10-05', days: 5, previousStart: '2026-09-26', previousEnd: '2026-09-30', bucket: 'day', includesToday: true } } }) }));
+// The automatic insight has its own tests (insight-row.test.tsx); here there is none.
+jest.mock('@/api/progress-insight', () => ({ ...jest.requireActual<object>('@/api/progress-insight'),
+  fetchProgressInsight: async () => ({ status: 'ok', meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' }, data: { today: '2026-10-05', insight: null } }) }));
 jest.mock('@/api/nutrition-report', () => ({ ...jest.requireActual<object>('@/api/nutrition-report'), fetchNutritionReport: (c: unknown, q: unknown) => mockReport(c, q) }));
 
 const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
@@ -213,10 +216,10 @@ describe('Progress Overview', () => {
     Object.defineProperty(AppState, 'currentState', { value: 'active', configurable: true });
     const view = wrap(<ProgressOverviewScreen />); await flush();
     expect(view.getByText('No pudimos cargar tu progreso')).toBeTruthy();
-    await act(async () => { listeners.at(-1)!('background'); listeners.at(-1)!('active'); }); await flush();
+    await act(async () => { listeners.forEach(l => l('background')); listeners.forEach(l => l('active')); }); await flush();
     expect(view.getByText('82 → 80,5 kg · ↘ 1,5')).toBeTruthy();
     mockOverview.mockResolvedValueOnce(lost);
-    await act(async () => { listeners.at(-1)!('background'); listeners.at(-1)!('active'); }); await flush();
+    await act(async () => { listeners.forEach(l => l('background')); listeners.forEach(l => l('active')); }); await flush();
     expect(view.getByText('82 → 80,5 kg · ↘ 1,5')).toBeTruthy();
     expect(view.getByText('No se pudo actualizar. Mostramos la última lectura confirmada de este período.')).toBeTruthy();
   });

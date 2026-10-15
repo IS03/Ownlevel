@@ -6,6 +6,7 @@ import { fetchProgressOverview, progressRequestKey, type ProgressDestination, ty
 import { AppIcon, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme, type AppIconName } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import { MiniChart } from './mini-chart';
+import { InsightRow } from './insight-row';
 import { MyViews } from './my-views';
 import { ProgressScroll } from './progress-scroll';
 import { ProgressRow } from './progress-row';
@@ -102,6 +103,7 @@ function Highlights({ data, open }: { data: ProgressOverview; open: (d: Progress
   ];
   return <View style={styles.section} testID="progress-highlights">
     <Heading level={2}>Lo destacado</Heading>
+    <InsightRow />
     {rows.length ? rows.map((r, i) => <Pressable key={r.key} accessibilityRole="button" accessibilityLabel={`${r.title}. ${r.detail}`}
       onPress={() => { haptics.selection(); open(r.to); }} style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}>
       {i > 0 ? <View style={[styles.divider, { backgroundColor: colors.border }]} /> : null}

@@ -26,6 +26,8 @@ import { buildMobileProgressExplore } from "./progress-explore";
 import { buildMobileProgressInfluence, buildMobileProgressInfluenceSuggested } from "./progress-influence";
 import { influenceCutValue, parseInfluenceMeasure, parseProgressInfluence, parseProgressInfluenceSuggested, type InfluenceDefinition } from "./progress-influence-contract";
 import { buildMobileProgressViews } from "./progress-views-server";
+import { buildMobileProgressInsight } from "./progress-insight";
+import { parseProgressInsight } from "./progress-insight-contract";
 import { parseProgressViewsRead } from "./progress-views-contract";
 import { exploreOptions, parseExploreMeasure, parseProgressExplore, type ExploreBreakdown, type ExploreDays } from "./progress-explore-contract";
 
@@ -417,3 +419,10 @@ export const progressInfluenceSuggestedResponse = (request: Request) => progress
   const query = progressQueryFromParams(params), { period } = resolveMobileProgressPeriod(query, today);
   return buildMobileProgressInfluenceSuggested(context, period, !!query.compare, today);
 }, parseProgressInfluenceSuggested);
+
+/** Stage 4: at most one automatic insight, computed over the last 3 months (no parameters). */
+export const progressInsightResponse = (request: Request) => progressReadResponse(request, "insight", (context, params, today) => {
+  if ([...params].length) throw new MobileApiValidationError("Parámetro no válido.");
+  const { period } = resolveMobileProgressPeriod({ period: "3m" }, today);
+  return buildMobileProgressInsight(context, period, today);
+}, parseProgressInsight);
