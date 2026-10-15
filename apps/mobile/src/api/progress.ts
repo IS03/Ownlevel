@@ -18,7 +18,7 @@ const samePeriod = (period: ProgressPeriod, query: ProgressQuery, compare: Progr
   && (!compare || (period.previousStart === compare.start && period.previousEnd === compare.end));
 export const fetchProgressOverview = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
   // spark=1: the overview also carries the rows' mini charts (server EXPAND).
-  client.read({ path: `${BASE}?${qs(query, compare)}&spark=1`, signal, parse: (raw: unknown) => {
+  client.read({ path: `${BASE}?${qs(query, compare)}&spark=1&inPeriod=1`, signal, parse: (raw: unknown) => {
     const data = parseProgressOverview(raw); return data && samePeriod(data.period, query, compare) ? data : undefined;
   } });
 export const fetchProgressBody = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
@@ -34,7 +34,7 @@ export const fetchProgressMetrics = (client: MobileApiClient, query: ProgressQue
     return data;
   } });
 export const fetchProgressTraining = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
-  client.read({ path: `${BASE}/training?${qs(query, compare)}`, signal, parse: (raw: unknown) => {
+  client.read({ path: `${BASE}/training?${qs(query, compare)}&inPeriod=1`, signal, parse: (raw: unknown) => {
     const data = parseProgressTraining(raw); return data && samePeriod(data.period, query, compare) ? data : undefined;
   } });
 export const fetchProgressTrainingExercise = (client: MobileApiClient, query: ProgressQuery, exerciseId: string, signal?: AbortSignal, compare: ProgressCompareRange = null) =>

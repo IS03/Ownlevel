@@ -315,3 +315,52 @@ describe("GET /progress/habits (additive calendar-week read)", () => {
     expect(readOwners).toEqual([]);
   });
 });
+
+describe('Progress inPeriod read EXPAND', () => {
+  const eid = 'e1000000-0000-4000-8000-000000000001';
+  function history(last: number, firstMode = 'Peso total', lastMode = firstMode) {
+    const dates = ['2026-10-05', '2026-10-03', '2026-10-01']; // Deliberately newest first; middle is a peak, never the baseline.
+    const source = { sessions: dates.map((date, i) => ({ id: `session-${i}`, user_id: 'owner', day_log_id: date, status: 'completed', started_at: `${date}T10:00:00Z`, ended_at: `${date}T11:00:00Z`, routine_id: null, routine_name_snapshot: null, session_name: null, energy_level: null, pain_level: null, performance_level: null })),
+      sessionExercises: dates.map((_, i) => ({ id: `exercise-${i}`, exercise_id: eid, workout_session_id: `session-${i}`, nombre_snapshot: 'Press', grupo_muscular_snapshot: 'pecho', muscle_group_label_snapshot: null, weight_mode_snapshot: i === 0 ? lastMode : firstMode, is_completed: true })),
+      sets: dates.map((_, i) => ({ id: `set-${i}`, workout_session_exercise_id: `exercise-${i}`, set_number: 1, is_completed: true, actual_reps: 8, actual_weight_kg: i === 0 ? last : i === 1 ? 100 : 50 })), dateByDayLog: new Map(dates.map(date => [date, date])) };
+    // An exercise with just one session must stay outside the new comparison list.
+    source.sessionExercises.push({ ...source.sessionExercises[0], id: 'single', exercise_id: 'single', nombre_snapshot: 'Una sesión' });
+    source.sets.push({ ...source.sets[0], id: 'single-set', workout_session_exercise_id: 'single' });
+    return source as unknown as Awaited<ReturnType<typeof loadCompletedTrainingData>>;
+  }
+  it.each([[60, 'improved'], [40, 'declined'], [50, 'stable']] as const)('compares first against last (%s → %s), never the peak or the previous period', async (last, status) => {
+    const { GET: trainingGET } = await import('@/app/api/mobile/v1/progress/training/route');
+    const { parseProgressTraining } = await import('./progress-contract');
+    vi.mocked(loadCompletedTrainingData).mockResolvedValue(history(last));
+    const response = await trainingGET(request('progress/training?period=custom&from=2026-10-01&to=2026-10-05&inPeriod=1'));
+    const raw = await response.json(), t = parseProgressTraining(raw)!;
+    expect(response.status).toBe(200); expect(t).toBeDefined();
+    expect(t.inPeriod!.exercises).toHaveLength(1);
+    expect(t.inPeriod!.exercises[0]).toMatchObject({ id: eid, status, sessions: 3, firstDate: '2026-10-01', lastDate: '2026-10-05', signal: { referenceValue: 50, currentValue: last } });
+    expect(t.exercises.find(e => e.id === 'single')?.sessions).toBe(1);
+    expect(loadCompletedTrainingData).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(loadCompletedTrainingData).mock.calls[0][0]).toMatchObject({ userId: 'owner' });
+    expect(t.inPeriod!.improved + t.inPeriod!.stable + t.inPeriod!.declined + t.inPeriod!.insufficient).toBe(1);
+    expect(parseProgressTraining({ ...raw, inPeriod: { ...raw.inPeriod, improved: 99 } })).toBeUndefined();
+    const o = await json(await overviewGET(request('progress?period=custom&from=2026-10-01&to=2026-10-05&spark=1&inPeriod=1')), parseProgressOverview);
+    expect(o.inPeriod).toEqual({ improved: status === 'improved' ? 1 : 0, comparable: 1 }); expect(o.sparks).toBeDefined();
+  });
+  it('keeps old responses identical and rejects invalid/repeated inPeriod on both endpoints', async () => {
+    const { GET: trainingGET } = await import('@/app/api/mobile/v1/progress/training/route');
+    for (const [get, path] of [[overviewGET, 'progress'], [trainingGET, 'progress/training']] as const) {
+      const plain = await get(request(path)); expect(plain.status).toBe(200); expect(await plain.json()).not.toHaveProperty('inPeriod');
+      expect((await get(request(`${path}?inPeriod=2`))).status).toBe(400);
+      expect((await get(request(`${path}?inPeriod=1&inPeriod=1`))).status).toBe(400);
+    }
+  });
+  it('a changed mode is non-comparable and unavailable Training gives overview null', async () => {
+    const { GET: trainingGET } = await import('@/app/api/mobile/v1/progress/training/route');
+    vi.mocked(loadCompletedTrainingData).mockResolvedValue(history(60, 'Peso total', 'Por mancuerna'));
+    const response = await trainingGET(request('progress/training?inPeriod=1'));
+    expect(response.status).toBe(200); const t = await response.json();
+    expect(t.inPeriod).toMatchObject({ improved: 0, stable: 0, declined: 0, insufficient: 1, exercises: [{ status: 'insufficient_data', reason: 'different_weight_mode', signal: null }] });
+    vi.mocked(loadCompletedTrainingData).mockRejectedValue(new Error('offline'));
+    const o = await json(await overviewGET(request('progress?inPeriod=1')), parseProgressOverview);
+    expect(o.inPeriod).toBeNull(); expect(o.training.status).toBe('unavailable');
+  });
+});

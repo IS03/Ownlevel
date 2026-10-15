@@ -5,13 +5,13 @@ import { buildTrainingAnalysis, type TrainingAnalysis, type TrainingAnalysisSour
 import { TRAINING_PROGRESS_METRICS } from "@/lib/progress/analytics";
 import { buildProgressComparison, type ProgressComparisonReport, type ProgressTemporalComparisonReference } from "@/lib/progress/comparisons";
 import {
-  buildTrainingGeneralAnalytics, buildTrainingLoadComparison, trainingLoadSamples, trainingPerformanceStrategy,
+  compareTrainingExercisePerformance, buildTrainingGeneralAnalytics, buildTrainingLoadComparison, trainingLoadSamples, trainingPerformanceStrategy,
   type TrainingExercisePerformance, type TrainingGeneralAnalytics,
 } from "@/lib/progress/training-performance";
 import { buildTrainingExercisesAnalytics } from "@/lib/progress/training-exercises";
 import type { AuthenticatedRequestContext } from "@/lib/supabase/server";
 import type {
-  ProgressComparison, ProgressPeriod, ProgressTraining, ProgressTrainingExercise, ProgressTrainingExerciseDetail, ProgressTrainingSummary,
+  ProgressComparison, ProgressPeriod, ProgressTraining, ProgressTrainingExercise, ProgressTrainingExerciseDetail, ProgressTrainingSummary, ProgressTrainingInPeriod,
 } from "./progress-contract";
 
 type CompareDto = (result: ProgressComparisonReport["results"][number] | undefined) => ProgressComparison;
@@ -128,4 +128,48 @@ export function trainingExerciseDto(ctx: TrainingContext, exerciseId: string, to
     sessions: selected.currentSessions.map(session => ({ sessionId: session.sessionId, date: session.logDate, routineName: session.routineName,
       sets: session.sets.filter(set => set.is_completed).map(set => ({ reps: set.actual_reps, weightKg: set.actual_weight_kg })) })),
   };
+}
+
+/** First and last completed SESSION per exercise, using the existing read and comparison engine. */
+export function trainingInPeriodDto(ctx: TrainingContext, period: ProgressPeriod): ProgressTrainingInPeriod {
+  type Snapshot = NonNullable<Parameters<typeof compareTrainingExercisePerformance>[0]["primary"]>;
+  const sessions = new Map(ctx.source.sessions.filter(s => s.status === "completed" && s.ended_at).flatMap(s => {
+    const date = ctx.source.dateByDayLog.get(s.day_log_id);
+    return date && date >= period.start && date <= period.end ? [[s.id, { date, startedAt: s.started_at, endedAt: s.ended_at! }] as const] : [];
+  }));
+  const sets = new Map<string, Snapshot["sets"]>();
+  for (const set of ctx.source.sets) {
+    if (!set.is_completed || typeof set.actual_reps !== "number" || !Number.isFinite(set.actual_reps) || set.actual_reps <= 0) continue;
+    const rows = sets.get(set.workout_session_exercise_id) ?? [];
+    rows.push({ reps: set.actual_reps, load: typeof set.actual_weight_kg === "number" && Number.isFinite(set.actual_weight_kg) ? set.actual_weight_kg : null, date: "" });
+    sets.set(set.workout_session_exercise_id, rows);
+  }
+  const stats = new Map(ctx.current.exercises.map(e => [e.id, e]));
+  const grouped = new Map<string, Map<string, Snapshot>>();
+  for (const e of ctx.source.sessionExercises) {
+    const session = sessions.get(e.workout_session_id);
+    if (!session || !e.is_completed) continue;
+    const mode = e.weight_mode_snapshot?.trim() || null;
+    const normalizedMode = mode?.replace(/\s+/g, " ").toLocaleLowerCase("es-AR") || null;
+    const bySession = grouped.get(e.exercise_id) ?? new Map<string, Snapshot>();
+    const previous = bySession.get(e.workout_session_id);
+    const snapshot: Snapshot = { exerciseId: e.exercise_id, name: e.nombre_snapshot, muscleKey: e.grupo_muscular_snapshot ?? "unassigned", muscleLabel: stats.get(e.exercise_id)?.muscleLabel ?? "Sin grupo", mode, normalizedMode,
+      sets: (sets.get(e.id) ?? []).map(s => ({ ...s, date: session.date })) };
+    // Repeated exercise blocks in one session form one snapshot; mixed modes stay non-comparable.
+    if (previous) { snapshot.sets = [...previous.sets, ...snapshot.sets]; if (previous.normalizedMode !== normalizedMode) snapshot.normalizedMode = "__multiple__"; }
+    bySession.set(e.workout_session_id, snapshot); grouped.set(e.exercise_id, bySession);
+  }
+  const exercises: ProgressTrainingInPeriod["exercises"] = [];
+  for (const [id, bySession] of grouped) {
+    const ordered = [...bySession].sort(([a], [b]) => {
+      const x = sessions.get(a)!, y = sessions.get(b)!;
+      return x.date.localeCompare(y.date) || x.startedAt.localeCompare(y.startedAt) || x.endedAt.localeCompare(y.endedAt) || a.localeCompare(b);
+    });
+    if (ordered.length < 2) continue;
+    const [firstId, first] = ordered[0], [lastId, last] = ordered[ordered.length - 1];
+    const result = compareTrainingExercisePerformance({ primary: last, reference: first });
+    if (result) exercises.push({ id, status: result.status, reason: result.reason, sessions: ordered.length, firstDate: sessions.get(firstId)!.date, lastDate: sessions.get(lastId)!.date, signal: result.signal });
+  }
+  const count = (status: string) => exercises.filter(e => e.status === status).length;
+  return { improved: count("improved"), stable: count("stable"), declined: count("declined"), insufficient: count("insufficient_data"), exercises };
 }
