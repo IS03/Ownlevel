@@ -3,18 +3,19 @@ import { StyleSheet, View } from 'react-native';
 import Animated, { cancelAnimation, Easing, ReduceMotion, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 import { useMobileAuth } from '@/auth';
 import { brandTokens, useReduceMotion } from '@/design-system';
-import { STAIR_END, type EntryMotion } from './artwork';
+import { type EntryMotion } from './artwork';
+import { ENTRY_SPREAD_MS, ENTRY_FADE_MS, ENTRY_STAIRS_MS, ENTRY_SUCCESS_MS } from './motion-model';
 import { EntryView } from './view';
 
 type EntryPresentation = EntryMotion & { registerEntry: (mounted: boolean) => void };
 const EntryMotionContext = createContext<EntryPresentation | null>(null);
-const { fast, base } = brandTokens.motion.duration;
+const { base } = brandTokens.motion.duration;
 
 /** Keeps only presentation alive across Stack.Protected unmounting the signed-out route. */
 export function EntryTransitionProvider({ children }: PropsWithChildren) {
   const { state } = useMobileAuth();
   const reduced = useReduceMotion();
-  const level = useSharedValue(0), cover = useSharedValue(0), opacity = useSharedValue(1);
+  const level = useSharedValue(0), arrival = useSharedValue(0), spread = useSharedValue(0), opacity = useSharedValue(1);
   const status = state.status;
   const [presentation, setPresentation] = useState({ status, attempted: status === 'SIGNING_IN' });
   const [entryMounted, registerEntry] = useState(false);
@@ -23,46 +24,55 @@ export function EntryTransitionProvider({ children }: PropsWithChildren) {
   }
   const complete = presentation.attempted && status === 'SIGNED_IN';
   const boot = status === 'BOOTSTRAPPING' || (!entryMounted && (status === 'SIGNED_OUT' || (status === 'TRANSIENT_ERROR' && !state.session)));
-  const motion = useMemo(() => ({ level, cover, reduced, registerEntry }), [cover, level, reduced]);
+  const motion = useMemo(() => ({ level, arrival, spread, reduced, registerEntry }), [arrival, spread, level, reduced]);
   const finish = useCallback(() => setPresentation(previous => ({ ...previous, attempted: false })), []);
 
   useEffect(() => {
     if (status === 'SIGNED_IN') return;
-    cancelAnimation(cover);
+    cancelAnimation(spread);
+    cancelAnimation(arrival);
     cancelAnimation(opacity);
-    cover.set(0);
+    spread.set(0);
+    arrival.set(0);
     opacity.set(1);
     if (status === 'SIGNING_IN') {
-      level.set(reduced ? 0 : withTiming(STAIR_END, { duration: STAIR_END * fast, easing: Easing.linear }));
+      level.set(reduced ? 0 : withTiming(1, { duration: base }));
     } else {
       level.set(reduced ? 0 : withTiming(0, { duration: base }));
     }
-  }, [cover, level, opacity, reduced, status]);
+  }, [arrival, spread, level, opacity, reduced, status]);
 
   useEffect(() => {
     if (!complete) return;
-    const finishStairs = reduced ? 0 : base;
-    level.set(reduced ? 0 : withTiming(STAIR_END, { duration: base }));
-    cover.set(withDelay(finishStairs, withTiming(1, {
-      duration: reduced ? fast : base, reduceMotion: reduced ? ReduceMotion.Never : ReduceMotion.System,
-    }), reduced ? ReduceMotion.Never : ReduceMotion.System));
-    const coveredAt = finishStairs + (reduced ? fast : base);
-    opacity.set(withDelay(coveredAt, withTiming(0, { duration: base, reduceMotion: ReduceMotion.Never }), ReduceMotion.Never));
+    // Waiting has moved only six points. Full-height bars begin only after SIGNED_IN.
+    if (reduced) {
+      level.set(0);
+      arrival.set(0);
+      spread.set(0);
+      opacity.set(withTiming(0, { duration: ENTRY_FADE_MS, reduceMotion: ReduceMotion.Never }));
+    } else {
+      arrival.set(withTiming(1, { duration: ENTRY_STAIRS_MS, easing: Easing.linear, reduceMotion: ReduceMotion.Never }));
+      // Closing the gaps overlaps the last part of the rise; there is no separate color cover.
+      spread.set(withDelay(ENTRY_STAIRS_MS - ENTRY_SPREAD_MS, withTiming(1, { duration: ENTRY_SPREAD_MS, reduceMotion: ReduceMotion.Never }), ReduceMotion.Never));
+      opacity.set(withDelay(ENTRY_STAIRS_MS, withTiming(0, { duration: ENTRY_FADE_MS, reduceMotion: ReduceMotion.Never }), ReduceMotion.Never));
+    }
     // This timer only retires an already-faded overlay; auth and navigation never wait for it.
-    const timer = setTimeout(finish, coveredAt + base);
+    const timer = setTimeout(finish, reduced ? ENTRY_FADE_MS : ENTRY_SUCCESS_MS);
     return () => {
       clearTimeout(timer);
       cancelAnimation(level);
-      cancelAnimation(cover);
+      cancelAnimation(arrival);
+      cancelAnimation(spread);
       cancelAnimation(opacity);
     };
-  }, [complete, cover, finish, level, opacity, reduced]);
+  }, [arrival, complete, spread, finish, level, opacity, reduced]);
 
   useEffect(() => () => {
     cancelAnimation(level);
-    cancelAnimation(cover);
+    cancelAnimation(arrival);
+    cancelAnimation(spread);
     cancelAnimation(opacity);
-  }, [cover, level, opacity]);
+  }, [arrival, spread, level, opacity]);
 
   const fade = useAnimatedStyle(() => ({ opacity: opacity.value }));
   const overlay = boot || complete;

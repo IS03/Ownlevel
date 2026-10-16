@@ -7,7 +7,7 @@ import { KeyRound, Mail } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 import Animated, { FadeIn, FadeOut, ReduceMotion, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { AppIcon, brandTokens, GlassSurface, OwnlevelThemeProvider } from '@/design-system';
-import { EntryBars, EntryCover, EntryGradient, type EntryMotion } from './artwork';
+import { EntryBars, EntryGradient, type EntryMotion } from './artwork';
 import { EntryLogo } from './logo';
 import { openLegal } from '@/platform/legal';
 
@@ -65,6 +65,11 @@ export function EntryView({ mode, motion, notice, onGoogle, onSoon, onRetry }: E
   const insets = useSafeAreaInsets();
   const busy = mode === 'signing-in' || mode === 'complete';
   const boot = mode === 'bootstrapping';
+  const contentOpacity = useSharedValue(1);
+  useEffect(() => {
+    contentOpacity.set(withTiming(mode === 'complete' ? 0 : 1, { duration: timing.duration.base, reduceMotion: ReduceMotion.Never }));
+  }, [contentOpacity, mode]);
+  const contentFade = useAnimatedStyle(() => ({ opacity: contentOpacity.value }));
   const logoWidth = Math.min(220, width * 0.56, height * 0.26);
   // Keep the composition usable in landscape, small screens and with enlarged text.
   const top = Math.max(space.xxxl, height * 0.17 - insets.top);
@@ -75,6 +80,7 @@ export function EntryView({ mode, motion, notice, onGoogle, onSoon, onRetry }: E
       <EntryBars width={width} height={height} motion={motion} resting={!busy} />
       <ScrollView bounces={false} contentContainerStyle={[styles.content, { minHeight: height, paddingTop: insets.top + top, paddingBottom: insets.bottom + Math.min(176, height * 0.21) }]}
         accessibilityLabel={boot ? 'Comprobando tu sesión' : undefined} accessibilityState={{ busy: boot }}>
+        <Animated.View style={[styles.composition, contentFade]}>
         <View style={styles.logo}><EntryLogo width={logoWidth} reduced={motion.reduced} /></View>
         {!boot ? <View style={styles.actions}>
           <View style={styles.noticeSlot}>
@@ -95,15 +101,16 @@ export function EntryView({ mode, motion, notice, onGoogle, onSoon, onRetry }: E
             <Text accessibilityRole="link" onPress={() => openLegal('privacy')} style={styles.link}>Política de privacidad</Text>.
           </Text>
         </View> : null}
+        </Animated.View>
       </ScrollView>
-      <EntryCover width={width} height={height} motion={motion} />
     </View>
   </OwnlevelThemeProvider>;
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: dark.bg },
+  screen: { flex: 1, backgroundColor: dark.bg, overflow: 'hidden' },
   content: { paddingHorizontal: space.xl, alignItems: 'center' },
+  composition: { width: '100%', alignItems: 'center' },
   logo: { alignItems: 'center' },
   actions: { width: '100%', maxWidth: 400, gap: space.xs },
   noticeSlot: { minHeight: space.xxxl, justifyContent: 'center', marginTop: space.md },
