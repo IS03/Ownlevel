@@ -1,8 +1,20 @@
 import type { MobileNutritionDayResponse, NutritionDayMetric } from '@/api/nutrition-day';
 import type { DayWriteIntent } from '@/api/nutrition-day-write';
 import { buildDayWriteIntent, canWriteDay, dayWriteDraft, metricInputValue, type MetricInput } from './day-write-model';
+import {isMetricQuickValue,isMetricTarget} from '@/api/metric-definitions';
 
 export type MetricEntryMode = 'add' | 'replace';
+/** Compare equivalent timezone encodings without dropping Postgres' microseconds. */
+export function sameMetricTimestamp(a:string|null|undefined,b:string|null|undefined):boolean {
+  if(a===b)return true;if(!a||!b)return false;
+  const normalize=(s:string)=>{const m=/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/.exec(s);return m?`${Date.parse(m[1]+m[3])}|${(m[2]??'').replace(/0+$/,'')}`:null;};
+  const first=normalize(a);return first!==null&&first===normalize(b);
+}
+export function quickMetricValue(metric:NutritionDayMetric,portion:number):number|undefined {
+  if(!isMetricQuickValue(portion,metric.valueType))return;
+  const value=(Math.round((metric.value??0)*10000)+Math.round(portion*10000))/10000;
+  return isMetricTarget(value,metric.valueType)?value:undefined;
+}
 export const metricRaw = (value: number | null, duration: boolean): MetricInput => ({
   value: value === null ? '' : String(value).replace('.', ','),
   hours: duration && value !== null ? String(Math.floor(value / 60)) : '0',

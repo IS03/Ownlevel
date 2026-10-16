@@ -31,13 +31,15 @@ type AppSheetProps = PropsWithChildren<{
   edgeSwipe?: boolean;
   style?: StyleProp<ViewStyle>;
   testID?: string;
+  /** Confirm discarding an unsaved form before starting any exit (including a drag/backdrop). */
+  beforeDismiss?: (proceed: () => void) => void;
 }>;
 
 /**
  * App-drawn bottom sheet: it slides in and leaves the same way (IDENTIDAD.md § Movimiento, 300 ms), follows a
  * drag down and closes from the backdrop. With Reduce Motion it only fades.
  */
-export function AppSheet({ children, onClose, closeLabel, locked = false, dragFromContent = false, edgeSwipe = false, style, testID }: AppSheetProps) {
+export function AppSheet({ children, onClose, closeLabel, locked = false, dragFromContent = false, edgeSwipe = false, style, testID, beforeDismiss }: AppSheetProps) {
   const reduced = useReduceMotion();
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const [gone, setGone] = useState(false);
@@ -62,8 +64,17 @@ export function AppSheet({ children, onClose, closeLabel, locked = false, dragFr
     if (toSide) sideways.set(withTiming(windowWidth, TIMING, done => { if (done) runOnJS(hide)(); }));
     else offset.set(withTiming(sheetHeight.get(), TIMING, done => { if (done) runOnJS(hide)(); }));
   }, [closing, hide, locked, offset, reduced, sheetHeight, shown, sideways, windowWidth]);
-  const dismiss = useCallback<AppSheetDismiss>(next => leave(next, false), [leave]);
-  const dismissSideways = useCallback(() => leave(undefined, true), [leave]);
+  const requestLeave = useCallback((next: (() => void) | undefined, side: boolean) => {
+    if (locked) return;
+    if (beforeDismiss && !next) {
+      // A drag past the threshold returns home while the confirmation is up; "keep editing" leaves it in place.
+      offset.set(reduced ? 0 : withSpring(0, motion.spring));
+      sideways.set(reduced ? 0 : withSpring(0, motion.spring));
+      beforeDismiss(() => leave(undefined, side));
+    } else leave(next, side);
+  }, [beforeDismiss, leave, locked, offset, reduced, sideways]);
+  const dismiss = useCallback<AppSheetDismiss>(next => requestLeave(next, false), [requestLeave]);
+  const dismissSideways = useCallback(() => requestLeave(undefined, true), [requestLeave]);
 
   useEffect(() => { shown.set(withTiming(1, TIMING)); }, [shown]);
 

@@ -23,9 +23,11 @@ export type MetricDefinitionActions = {
 export type MetricDefinition = {
   id: string; systemKey: MetricSystemKey | null; name: string; unit: string | null; valueType: MetricDefinitionValueType;
   target: number | null; isActive: boolean; sortOrder: number; updatedAt: string; hasHistory: boolean; actions: MetricDefinitionActions;
+  /** Only present when the client explicitly requests presentation=1. Unknown valid keys are allowed. */
+  icon?: string | null; quickValue?: number | null;
 };
 export type MetricDefinitionsResponse = { definitions: MetricDefinition[] };
-export type MetricDefinitionFields = { name: string; valueType: MetricDefinitionValueType; unit: string | null; target: number | null };
+export type MetricDefinitionFields = { name: string; valueType: MetricDefinitionValueType; unit: string | null; target: number | null; icon?: string | null; quickValue?: number | null };
 export type MetricDefinitionOperation = "create" | "update" | "archive" | "restore" | "delete";
 export type MetricDefinitionIntent = {
   operation: MetricDefinitionOperation; metricId: string | null; expectedUpdatedAt: string | null;
@@ -52,6 +54,12 @@ export function isMetricTarget(v: unknown, type: MetricDefinitionValueType): v i
     && (type === "decimal" || Number.isInteger(v));
 }
 const trim = (s: string) => s.replace(/^\s+|\s+$/g, "");
+export const isMetricIcon = (v: unknown): v is string => typeof v === 'string' && /^[a-z][a-z0-9-]{0,31}$/.test(v);
+export const isMetricQuickValue = (v: unknown, type: MetricDefinitionValueType): v is number => isMetricTarget(v, type) && v > 0;
+const presentationKeys = ['icon', 'quickValue'];
+const hasPresentation = (v: Record<string, unknown>) => Object.hasOwn(v, 'icon') || Object.hasOwn(v, 'quickValue');
+const presentationValid = (v: Record<string, unknown>, type: MetricDefinitionValueType) =>
+  (v.icon === null || isMetricIcon(v.icon)) && (v.quickValue === null || isMetricQuickValue(v.quickValue, type));
 
 export function metricDefinitionActions(d: { systemKey: MetricSystemKey | null; isActive: boolean; hasHistory: boolean }): MetricDefinitionActions {
   const custom = d.systemKey === null;
@@ -63,21 +71,22 @@ export function metricDefinitionActions(d: { systemKey: MetricSystemKey | null; 
  * 1..80, duration unit is always "min", blank unit is null. undefined = invalid.
  */
 export function normalizeMetricDefinitionFields(v: unknown): MetricDefinitionFields | undefined {
-  if (!record(v) || !keys(v, ["name", "valueType", "unit", "target"]) || typeof v.name !== "string" || !isType(v.valueType)
+  if (!record(v) || !keys(v, ["name", "valueType", "unit", "target", ...(hasPresentation(v) ? presentationKeys : [])]) || typeof v.name !== "string" || !isType(v.valueType)
     || (v.unit !== null && typeof v.unit !== "string") || (v.target !== null && typeof v.target !== "number")) return;
   const name = trim(v.name);
   const unit = v.valueType === "duration" ? "min" : (typeof v.unit === "string" && trim(v.unit)) || null;
   if (!name || [...name].length > METRIC_NAME_MAX || (unit !== null && [...unit].length > METRIC_UNIT_MAX)) return;
   if (v.target !== null && !isMetricTarget(v.target, v.valueType)) return;
-  return { name, valueType: v.valueType, unit, target: v.target as number | null };
+  if (hasPresentation(v) && !presentationValid(v, v.valueType)) return;
+  return { name, valueType: v.valueType, unit, target: v.target as number | null, ...(hasPresentation(v) ? {icon: v.icon as string | null, quickValue: v.quickValue as number | null} : {}) };
 }
 
 export function parseMetricDefinition(v: unknown): MetricDefinition | undefined {
-  if (!record(v) || !keys(v, ["id", "systemKey", "name", "unit", "valueType", "target", "isActive", "sortOrder", "updatedAt", "hasHistory", "actions"])
+  if (!record(v) || !keys(v, ["id", "systemKey", "name", "unit", "valueType", "target", "isActive", "sortOrder", "updatedAt", "hasHistory", "actions", ...(hasPresentation(v) ? presentationKeys : [])])
     || !isUuid(v.id) || typeof v.name !== "string" || !trim(v.name) || (v.unit !== null && typeof v.unit !== "string") || !isType(v.valueType)
     || (v.target !== null && !isMetricTarget(v.target, v.valueType)) || typeof v.isActive !== "boolean"
     || typeof v.sortOrder !== "number" || !Number.isInteger(v.sortOrder) || v.sortOrder < 0
-    || !isMetricTimestamp(v.updatedAt) || typeof v.hasHistory !== "boolean") return;
+    || !isMetricTimestamp(v.updatedAt) || typeof v.hasHistory !== "boolean" || (hasPresentation(v) && !presentationValid(v, v.valueType))) return;
   const systemKey = v.systemKey;
   if (systemKey !== null) {
     if (typeof systemKey !== "string" || !(systemKey in METRIC_SYSTEM_IDENTITY)) return;

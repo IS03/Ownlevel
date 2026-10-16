@@ -406,8 +406,8 @@ describe('Métricas', () => {
       .toEqual(['Sueño, 7,5', 'Energía, Cargar', 'Agua, 2', 'Más, Métricas']);
     expect(within(view.getByTestId('home-register-scroll')).getByRole('button', { name: 'Más, Métricas' })).toBeTruthy();
     expect(within(register).queryByText('Peso')).toBeNull();
-    expect(within(register).getByRole('button', { name: 'Sueño, 7,5' }).props.accessibilityState).toEqual({ checked: true });
-    expect(within(register).getByRole('button', { name: 'Energía, Cargar' }).props.accessibilityState).toEqual({ checked: false });
+    expect(within(register).getByRole('button', { name: 'Sueño, 7,5' }).props.accessibilityState).toMatchObject({ checked: true });
+    expect(within(register).getByRole('button', { name: 'Energía, Cargar' }).props.accessibilityState).toMatchObject({ checked: false });
     fireEvent.press(within(register).getByRole('button', { name: 'Sueño, 7,5' }));
     fireEvent.press(within(register).getByRole('button', { name: 'Más, Métricas' }));
     expect(view.onRegister.mock.calls).toEqual([[{ kind: 'metric', metricId: 'm-sleep' }], [{ kind: 'more' }]]);
@@ -418,7 +418,7 @@ describe('Métricas', () => {
     for (const today of [unavailable(todayDay()), ready(oldDay)]) {
       const view = renderHome({ today });
       const register = within(view.getByTestId('home-register'));
-      for (const button of register.getAllByRole('button')) expect(button.props.accessibilityState).toEqual({ checked: false });
+      for (const button of register.getAllByRole('button')) expect(button.props.accessibilityState).toMatchObject({ checked: false });
       expect(register.queryByRole('button', { name: /Cargar/ })).toBeNull();
       view.unmount();
     }

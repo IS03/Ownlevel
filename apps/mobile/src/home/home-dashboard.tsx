@@ -23,7 +23,7 @@ import type { HomeTrainingWeek } from './home-data';
 import { elapsedMinutes, headerDate, readAge } from './home-day';
 import { HomeNutrition, type HomeMealEntry } from './home-nutrition';
 import { HomeProgress, type HomeProgressTarget } from './home-progress';
-import { HomeRegister, type HomeRegisterTarget } from './home-register';
+import { HomeRegister, type HomeRegisterTarget, type MetricPresentationProps } from './home-register';
 import type { HomeResource } from './home-resource';
 import { HEADER_SLACK, homeLayout } from './home-layout';
 import { HomeButton, HomeGutter, HomeRow, HomeRowSeparator } from './home-ui';
@@ -31,7 +31,7 @@ import { HomeWeek } from './home-week';
 
 export type HomeNavigationTarget = 'nutrition' | 'progress' | 'settings';
 
-export type HomeDashboardProps = {
+export type HomeDashboardProps = MetricPresentationProps & {
   avatarUrl: string | null;
   calories: HomeResource<NutritionReport>;
   habits: HomeResource<ProgressHabitWeek>;
@@ -259,7 +259,7 @@ export function HomeDashboard(props: HomeDashboardProps) {
           <HomeWeek calories={calories} habits={props.habits} onOpenHabit={props.onOpenHabit} onMetrics={() => props.onRegister({ kind: 'more' })} onOpenCalories={props.onOpenCalories} onOpenDay={props.onOpenDay} onProgress={() => onNavigate('progress')} today={date}
             training={training} week={data?.training.week} weekStart={weekStart} />
         </View>
-        <View style={styles.headedBlock}><HomeRegister date={day.today} onRegister={props.onRegister} today={today} /></View>
+        <View style={styles.headedBlock}><HomeRegister date={day.today} onRegister={props.onRegister} today={today} metricDefinitions={props.metricDefinitions} metricBusyId={props.metricBusyId} metricsLocked={props.metricsLocked}/></View>
         <View style={styles.headedBlock}>
           <HomeProgress body={props.progressBody} date={day.today} onAll={() => onNavigate('progress')}
             onOpen={props.onOpenProgress} onRetry={onRefresh} records={props.progressRecords} />

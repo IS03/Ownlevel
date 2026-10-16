@@ -27,6 +27,8 @@ function run(effect: () => Promise<void>): void {
     // Unsupported hardware/simulator: no vibration, no error.
   }
 }
+/** Explicit metric feedback: quick entry and lifting/dropping a definition. Respects Settings. */
+export function triggerMetricHaptic(): void { run(() => ExpoHaptics.selectionAsync()); }
 
 export function triggerHaptic(event: HapticEvent): void {
   run(() => {

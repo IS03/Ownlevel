@@ -19,9 +19,14 @@ function withActions(raw: unknown): unknown {
     systemKey: (raw.systemKey ?? null) as MetricSystemKey | null, isActive: raw.isActive === true, hasHistory: raw.hasHistory === true,
   }) };
 }
-export function metricDefinitionsReadDto(raw: unknown) {
+export function metricDefinitionsReadDto(raw: unknown, presentation = false) {
   if (!record(raw) || !Array.isArray(raw.definitions)) return undefined;
-  return parseMetricDefinitions({ definitions: raw.definitions.map(withActions) });
+  return parseMetricDefinitions({ definitions: raw.definitions.map(d => {
+    if (!record(d) || presentation) return withActions(d);
+    const { icon: _icon, quickValue: _quick, ...legacy } = d;
+    void _icon; void _quick;
+    return withActions(legacy);
+  }) });
 }
 
 /** GET /metrics/definitions. Initializes system definitions (ensure_user_metrics) before reading. */
@@ -30,8 +35,9 @@ export async function metricDefinitionsReadResponse(request: Request) {
   try {
     const auth = await authenticateMobileAccessToken(mobileBearerToken(request.headers.get("authorization")));
     // POST on purpose: the read initializes missing system definitions (idempotent write).
-    const { data, error } = await auth.supabase.rpc("mobile_read_metric_definitions");
-    const dto = error ? undefined : metricDefinitionsReadDto(data);
+    const presentation = new URL(request.url).searchParams.get('presentation') === '1';
+    const { data, error } = await auth.supabase.rpc(presentation ? "mobile_read_metric_presentations" : "mobile_read_metric_definitions");
+    const dto = error ? undefined : metricDefinitionsReadDto(data, presentation);
     if (!dto) throw new Error("Metric definitions read unavailable");
     status = 200; body = dto;
   } catch (e) {

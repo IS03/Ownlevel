@@ -13,6 +13,7 @@ import { canWriteDay } from './day-write-model';
 import { canEditDayMetric } from './metric-entry-model';
 import { NutritionCalorieRing } from './day-rings';
 import { useTweenedNumber } from './use-tweened-number';
+import {useMetricPresentations} from '@/metrics/presentation-provider';
 
 function PanelCell({ title, value, target, icon, onPress, metric, actionLabel }: {
   title: string; value: string; target?: string; actionLabel?: string; icon: AppIconName; onPress?: () => void; metric?: NutritionDayMetric;
@@ -47,6 +48,7 @@ export function NutritionDayPanel({ data, onDetail, onMetric }: {
   data: MobileNutritionDayResponse; onDetail: () => void; onMetric?: (data: MobileNutritionDayResponse, metric: NutritionDayMetric) => void;
 }) {
   const { colors } = useOwnlevelTheme();
+  const definitions=useMetricPresentations();
   const n = data.nutrition.status === 'ok' && data.nutrition.data.dayState === 'recorded' ? data.nutrition.data : null;
   const caloriesKnown = n && !(n.summary.entryCount > 0 && n.summary.calories.missingCount === n.summary.entryCount);
   // The arrow carries the direction; the number is the magnitude (no minus sign next to an arrow, no color).
@@ -65,7 +67,7 @@ export function NutritionDayPanel({ data, onDetail, onMetric }: {
         : metrics.length === 0 ? <AppText muted variant="footnote">No hay métricas disponibles para esta fecha.</AppText>
         : <View style={[styles.metrics, { borderTopColor: colors.border }]}>
           {metrics.map(m => <PanelCell key={m.id} title={`${m.label}${m.isActive ? '' : ' · archivada'}`} value={metricValue(m, m.value)}
-            target={m.target !== null ? `/ ${metricValue(m, m.target)}` : undefined} icon={homeMetricIcon(m.systemKey)} actionLabel="Cargar esta métrica" onPress={onMetric && canEditDayMetric(data, m) ? () => onMetric(data, m) : undefined} metric={m} />)}
+            target={m.target !== null ? `/ ${metricValue(m, m.target)}` : undefined} icon={homeMetricIcon(m.systemKey,definitions.find(d=>d.id===m.id)?.icon)} actionLabel="Cargar esta métrica" onPress={onMetric && canEditDayMetric(data, m) ? () => onMetric(data, m) : undefined} metric={m} />)}
         </View>}
     </GlassSurface>
   </View>;

@@ -5,13 +5,16 @@ import {
 import { metricInputValue } from '@/nutrition/day-write-model';
 
 // Form strings for one definition. Missing target stays '' (never 0).
-export type DefinitionDraft = { name: string; valueType: MetricDefinitionValueType; unit: string; target: string; hours: string; minutes: string };
+export type DefinitionDraft = { name: string; valueType: MetricDefinitionValueType; unit: string; target: string; hours: string; minutes: string; icon: string | null; quickValue: string; quickHours: string; quickMinutes: string };
 export const VALUE_TYPE_LABELS: Record<MetricDefinitionValueType, string> = { integer: 'Número entero', decimal: 'Decimal', duration: 'Duración' };
 
 export function definitionDraft(d: MetricDefinition | null): DefinitionDraft {
-  if (!d) return { name: '', valueType: 'integer', unit: '', target: '', hours: '', minutes: '' };
+  if (!d) return { name: '', valueType: 'integer', unit: '', target: '', hours: '', minutes: '', icon: null, quickValue: '', quickHours: '', quickMinutes: '' };
   const duration = d.valueType === 'duration' && d.target !== null;
-  return { name: d.name, valueType: d.valueType, unit: d.valueType === 'duration' ? '' : d.unit ?? '',
+  const quick = d.quickValue ?? null;
+  return { name: d.name, valueType: d.valueType, unit: d.valueType === 'duration' ? '' : d.unit ?? '', icon: d.icon ?? null,
+    quickValue: quick===null || d.valueType==='duration' ? '' : String(quick).replace('.',','),
+    quickHours: quick!==null && d.valueType==='duration' ? String(Math.floor(quick/60)) : '', quickMinutes: quick!==null && d.valueType==='duration' ? String(quick%60) : '',
     target: d.target === null || d.valueType === 'duration' ? '' : String(d.target).replace('.', ','),
     hours: duration ? String(Math.floor(d.target! / 60)) : '', minutes: duration ? String(d.target! % 60) : '' };
 }
@@ -36,7 +39,9 @@ export function validateDefinitionDraft(draft: DefinitionDraft, baseline: Metric
   if (target === undefined) errors.target = valueType === 'duration' ? 'Ingresá horas y minutos válidos.'
     : valueType === 'integer' ? 'El objetivo debe ser un número entero.' : 'El objetivo debe ser un número válido (hasta 4 decimales).';
   if (Object.keys(errors).length) return { errors };
-  const fields = normalizeMetricDefinitionFields({ name, valueType, unit, target: target ?? null });
+  const quickValue = metricInputValue({value:draft.quickValue,hours:draft.quickHours,minutes:draft.quickMinutes},valueType);
+  if (quickValue === undefined || quickValue === 0) return {errors: {quickValue:'La porción tiene que ser mayor que 0 y respetar cómo registrás la métrica.'}};
+  const fields = normalizeMetricDefinitionFields({ name, valueType, unit, target: target ?? null, icon: draft.icon, quickValue });
   return fields ? { fields } : { errors: { form: 'Revisá los datos de la métrica.' } };
 }
 
@@ -47,7 +52,10 @@ export function formatDefinitionAmount(d: Pick<MetricDefinition, 'valueType' | '
 }
 export function definitionSummary(d: MetricDefinition): string {
   const kind = d.valueType === 'duration' ? 'Duración (h y min)' : `${VALUE_TYPE_LABELS[d.valueType]}${d.unit ? ` · ${d.unit}` : ''}`;
-  return `${kind} · ${d.target === null ? 'Sin objetivo' : `Objetivo ${formatDefinitionAmount(d, d.target)}`}`;
+  return `${kind} · ${d.target === null ? 'Sin objetivo' : `Objetivo ${formatDefinitionAmount(d, d.target)}`}${d.quickValue == null ? '' : ` · toque: + ${quickAmount(d, d.quickValue)}`}`;
+}
+export function quickAmount(d: Pick<MetricDefinition,'valueType'|'unit'>, value:number): string {
+  return d.unit==='L' && value<1 ? `${number.format(Math.round(value*1e7)/1e4)} ml` : formatDefinitionAmount(d,value);
 }
 export const activeDefinitions = (all: MetricDefinition[]) => all.filter(d => d.isActive);
 export const archivedDefinitions = (all: MetricDefinition[]) => all.filter(d => !d.isActive);

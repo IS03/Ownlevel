@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MobileNutritionDayResponse, NutritionDayMetric } from '@/api/nutrition-day';
 import type { DayWriteController } from './day-write-controller';
-import { canEditDayMetric, confirmedMetricUndo, findDayMetric, metricRaw, type MetricUndo } from './metric-entry-model';
+import { canEditDayMetric, confirmedMetricUndo, findDayMetric, metricRaw, quickMetricValue, type MetricUndo } from './metric-entry-model';
 import { metricValue } from './day-details';
 
 export type MetricNotice = { date: string; message: string; undo: MetricUndo | null };
@@ -63,5 +63,15 @@ export function useMetricEntry(controller: DayWriteController | undefined, date:
     undo.current = { id: metric.id, date, value: metric.value }; setUndoing(true); setNotice(null);
     void controller.save();
   }, [controller, date, notice]);
-  return { entry, feedbackHandled, notice: notice?.date === date ? notice : null, undoing, open, close, undoNotice, dismissNotice: () => setNotice(null) };
+  const quick=useCallback(async(data:MobileNutritionDayResponse,metric:NutritionDayMetric,portion:number)=>{
+    const state=controller?.getSnapshot(),value=quickMetricValue(metric,portion);
+    if(!controller||!state||state.phase!=='idle'||state.intent||state.draft||!canEditDayMetric(data,metric)||value===undefined)return false;
+    controller.open('metrics',data);
+    if(!controller.getSnapshot().draft)return false;
+    const raw=metricRaw(value,metric.valueType==='duration');
+    undo.current=null;setUndoing(false);setNotice(null);active.current={id:metric.id,date:data.date};
+    for(const field of ['value','hours','minutes'] as const)controller.changeMetric(metric.id,field,raw[field]);
+    await controller.save();return true;
+  },[controller]);
+  return { entry, feedbackHandled, notice: notice?.date === date ? notice : null, undoing, open, quick, close, undoNotice, dismissNotice: () => setNotice(null) };
 }

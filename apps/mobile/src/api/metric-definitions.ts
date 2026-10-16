@@ -7,7 +7,7 @@ import {
 export * from '../../../../src/lib/mobile-api/metric-definitions-contract';
 const BASE = '/api/mobile/v1/metrics/definitions';
 export const fetchMetricDefinitions = (client: MobileApiClient, signal?: AbortSignal) =>
-  client.read({ path: BASE, signal, parse: parseMetricDefinitions });
+  client.read({ path: `${BASE}?presentation=1`, signal, parse: parseMetricDefinitions });
 export const mutateMetricDefinition = (client: MobileApiClient, intent: MetricDefinitionIntent, signal?: AbortSignal) =>
   client.request({ method: intent.operation === 'create' ? 'POST' : intent.operation === 'delete' ? 'DELETE' : 'PUT',
     path: intent.metricId ? `${BASE}/${encodeURIComponent(intent.metricId)}` : BASE, body: intent, signal,
