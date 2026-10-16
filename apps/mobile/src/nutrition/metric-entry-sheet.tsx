@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, SlideInDown, useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import { AppIcon, AppText, Button, GlassSurface, SheetHandle, pressedStyle, useOwnlevelTheme, useReduceMotion } from '@/design-system';
@@ -16,8 +16,8 @@ function SheetControl({ label, icon, disabled, accent, pending, onPress }: {
 }) {
   const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
   return <Pressable accessibilityLabel={label} accessibilityRole="button" accessibilityState={{ disabled, busy: pending }} disabled={disabled} onPress={onPress} style={({ pressed }) => pressedStyle(pressed, reduced)}>
-    <GlassSurface interactive style={[styles.control, accent && { backgroundColor: colors.primary }, disabled && { opacity: 0.4 }]}>
-      <AppIcon name={icon} color={accent ? colors.onPrimary : colors.text} size={20} />
+    <GlassSurface interactive style={[styles.control, accent && { backgroundColor: colors.primary }, disabled && !pending && { opacity: 0.4 }]}>
+      {pending ? <ActivityIndicator color={accent ? colors.onPrimary : colors.text} /> : <AppIcon name={icon} color={accent ? colors.onPrimary : colors.text} size={20} />}
     </GlassSurface>
   </Pressable>;
 }
@@ -46,7 +46,8 @@ function MetricForm({ id, controller, state, onClose }: { id: string; controller
   const input = useRef<TextInput>(null);
   const [removing, setRemoving] = useState(false);
   const restInset = Math.max(insets.bottom, 16);
-  const running = state.phase === 'pending';
+  // Sent, or confirmed while the day is re-read: still saving for the user (no recovery choice flashing by).
+  const running = state.phase === 'pending' || (state.phase === 'confirmed' && !state.message);
   const locked = !!state.intent || !['idle', 'conflict'].includes(state.phase);
   const candidate = metricEntryCandidate(data, id, mode, raw);
   const invalid = !candidate || !!candidate.error;
@@ -123,7 +124,7 @@ function MetricForm({ id, controller, state, onClose }: { id: string; controller
             {truth ? <Button label="Revisar mi entrada sobre esta versión" variant="secondary" onPress={review} /> : null}
           </View> : null}
           {running ? <AppText accessibilityRole="alert" muted style={styles.center}>Guardando…</AppText> : null}
-          {['uncertain', 'confirmed', 'blocked'].includes(state.phase) ? <Button label={state.intent?.receipt ? 'Actualizar fecha confirmada' : 'Comprobar intento guardado'} onPress={() => void controller.recover()} /> : null}
+          {['uncertain', 'confirmed', 'blocked'].includes(state.phase) && !running ? <Button label={state.intent?.receipt ? 'Actualizar fecha confirmada' : 'Comprobar intento guardado'} onPress={() => void controller.recover()} /> : null}
           {metric.value !== null ? <Pressable accessibilityRole="button" accessibilityLabel={`Quitar el valor de ${relative}`} accessibilityState={{ disabled: locked || state.phase !== 'idle' }} disabled={locked || state.phase !== 'idle'} onPress={remove} style={styles.remove}>
             <AppText muted variant="footnote">{`Quitar el valor de ${relative}`}</AppText>
           </Pressable> : null}

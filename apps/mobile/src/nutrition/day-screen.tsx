@@ -194,8 +194,9 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
     {foods && quick ? <FoodEditor controller={foods.controller} state={foods.state} quick={quick} onChoose={food => { quick.controller.open(foods.state.date!, foodQuickOption(food)); foods.controller.registration(); }} /> : null}
     {saved?<SavedEditor controller={saved.controller} state={saved.state}/>:null}
     {writes && metricEntry.entry && writes.state.draft ? <MetricEntrySheet id={metricEntry.entry.id} controller={writes.controller} state={writes.state} onClose={metricEntry.close} /> : null}
-    {writes && !metricEntry.entry && !(metricEntry.undoing && writes.state.phase === 'pending') ? <DayWriteEditor controller={writes.controller} state={writes.state} /> : null}
-    {metricEntry.undoing && writes?.state.phase === 'pending' ? <MetricSavedNotice notice={{ date, message: 'Deshaciendo…', undo: null }} disabled pending onUndo={() => {}} onClose={() => {}} /> : null}
+    {/* An undo from the notice never shows the full metrics editor; only a write that really needs recovery does. */}
+    {writes && !metricEntry.entry && !(metricEntry.undoing && !['uncertain', 'blocked', 'conflict'].includes(writes.state.phase)) ? <DayWriteEditor controller={writes.controller} state={writes.state} /> : null}
+    {metricEntry.undoing && writes && ['pending', 'confirmed'].includes(writes.state.phase) ? <MetricSavedNotice notice={{ date, message: 'Deshaciendo…', undo: null }} disabled pending onUndo={() => {}} onClose={() => {}} /> : null}
     {metricEntry.notice ? <MetricSavedNotice notice={metricEntry.notice} disabled={!editable || !!writes?.state.draft} onUndo={metricEntry.undoNotice} onClose={metricEntry.dismissNotice} /> : null}
     {/* Another day shown and no notice on screen: a discreet way back to today. */}
     {date !== today && !mealNotice.undoing && !mealNotice.result && !mealNotice.notice && !metricEntry.notice && !metricEntry.undoing ? <TodayPill onPress={showToday} /> : null}
