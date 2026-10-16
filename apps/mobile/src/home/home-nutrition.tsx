@@ -3,7 +3,6 @@ import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
 
 import type { MobileHomeResponse } from '@/api/home';
 import type { HistoryDay } from '@/api/history';
-import type { QuickOption, QuickOptions } from '@/api/nutrition-quick';
 import { AppIcon, AppText, brandTokens, InlineUnavailable, SkeletonBlock, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 
 import { HomeAddMenu } from './home-add-menu';
@@ -65,14 +64,6 @@ function Legend({ band, carbsG, fatG, proteinG }: { band: BandColors; carbsG: nu
   );
 }
 
-/** Habituals: the server's frequency-ordered suggestions first, then saved meals. */
-export function homeHabituals(options: QuickOptions | undefined, limit = 2): QuickOption[] {
-  if (!options) return [];
-  const suggested = options.suggested.status === 'ok' ? options.suggested.items : [];
-  const saved = options.saved.status === 'ok' ? options.saved.items : [];
-  return [...suggested, ...saved].slice(0, limit);
-}
-
 type BandColors = { hairline: string; textMuted: string; track: string };
 
 /** Nutrition now shares the screen background; all colors come from the theme. */
@@ -82,13 +73,11 @@ function useBandColors(): BandColors {
 }
 
 export function HomeNutrition({
-  home, onConfigure, onMealEntry, onQuickMeal, quick, today,
+  home, onConfigure, onMealEntry, today,
 }: {
   home: HomeResource<MobileHomeResponse>;
   onConfigure: () => void;
   onMealEntry: (entry: HomeMealEntry) => void;
-  onQuickMeal: (option: QuickOption) => void;
-  quick: HomeResource<QuickOptions>;
   today: HomeResource<HistoryDay>;
 }) {
   const { colors } = useOwnlevelTheme();
@@ -99,8 +88,7 @@ export function HomeNutrition({
   return (
     <View style={[styles.band, gutter]} testID={!nutrition ? 'home-nutrition-loading' : 'home-nutrition'}>
       <HomeSectionTitle title="Nutrición">
-        <HomeAddMenu habituals={homeHabituals(quick.data)} onAll={() => onMealEntry('quick')} onFood={() => onMealEntry('food')}
-          onHabitual={onQuickMeal} onManual={() => onMealEntry('manual')} />
+        <HomeAddMenu onFood={() => onMealEntry('food')} onManual={() => onMealEntry('manual')} onQuick={() => onMealEntry('quick')} />
       </HomeSectionTitle>
       <View style={styles.body}>
         {!nutrition ? (

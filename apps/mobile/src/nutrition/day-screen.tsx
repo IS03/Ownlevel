@@ -13,7 +13,7 @@ import { ReturnToHistoryDay } from '@/history/return-to-day';
 import { useDomainDate } from '@/history/use-domain-date';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
-import { AppText, Button, LoadingState, ScrollScreen, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppText, Button, LoadingState, ScrollScreen, UnavailableState, spacing, usePullRefresh, useOwnlevelTheme } from '@/design-system';
 import { nutritionToday } from './day-format';
 import { NutritionMonthSheet } from './day-calendar';
 import { headerDate } from '@/home/home-day';
@@ -54,10 +54,11 @@ function NutritionDayView({ date, today, onSelect, onToday, onServerToday, onAdd
   const serverToday = current?.data.today;
   useEffect(() => { if (serverToday) onServerToday(serverToday); }, [serverToday, onServerToday]);
   const selectedLabel = `${headerDate(date)}${date.slice(0, 4) !== today.slice(0, 4) ? ` de ${date.slice(0, 4)}` : ''}`;
-  const runRefresh = () => { void refresh(); setRefreshRevision(v => v + 1); };
+  const runRefresh = useCallback(() => { setRefreshRevision(v => v + 1); return refresh(); }, [refresh]);
+  const pull = usePullRefresh(state.status === 'ready' && state.refreshing, runRefresh);
   return <ScrollScreen statusBarGlass testID="nutrition-day-screen" refreshControl={
-    <RefreshControl colors={[colors.primary]} onRefresh={runRefresh}
-      progressBackgroundColor={colors.surface} refreshing={state.status === 'ready' && state.refreshing}
+    <RefreshControl colors={[colors.primary]} onRefresh={pull.onRefresh}
+      progressBackgroundColor={colors.surface} refreshing={pull.refreshing}
       testID="nutrition-refresh" tintColor={colors.primary} />
   }>
     <View style={styles.header}>

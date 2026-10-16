@@ -16,7 +16,6 @@ const mockPush = jest.fn();
 const mockFocusEffects: (() => void)[] = [];
 const mockFetchHome = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockFetchDay = jest.fn<(client: unknown, date: string) => Promise<unknown>>();
-const mockFetchQuick = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockFetchReport = jest.fn<(client: unknown, query: unknown) => Promise<unknown>>();
 const mockFetchHistory = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockFetchTrainingDay = jest.fn<(client: unknown, date: string) => Promise<unknown>>();
@@ -43,12 +42,11 @@ jest.mock('@/training/new-session-sheet', () => ({
 }));
 jest.mock('./home-add-menu', () => {
   const { Pressable, Text, View } = jest.requireActual<typeof import('react-native')>('react-native');
-  return { HomeAddMenu: ({ habituals, onAll, onFood, onHabitual, onManual }: import('./home-add-menu.types').HomeAddMenuProps) => (
+  return { HomeAddMenu: ({ onFood, onManual, onQuick }: import('./home-add-menu.types').HomeAddMenuProps) => (
     <View testID="home-add-menu">
-      <Pressable accessibilityRole="button" onPress={onManual}><Text>Comida manual</Text></Pressable>
-      <Pressable accessibilityRole="button" onPress={onFood}><Text>Buscar alimento</Text></Pressable>
-      {habituals.map(option => <Pressable accessibilityRole="button" key={option.source.id} onPress={() => onHabitual(option)}><Text>{option.name}</Text></Pressable>)}
-      <Pressable accessibilityRole="button" onPress={onAll}><Text>Ver todas</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={onManual}><Text>A mano</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={onQuick}><Text>Rápido</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={onFood}><Text>Alimento por cantidad</Text></Pressable>
     </View>
   ) };
 });
@@ -64,7 +62,6 @@ jest.mock('@/api', () => ({
   useMobileApi: () => ({ client: {} }),
 }));
 jest.mock('@/api/history', () => ({ fetchHistoryDay: (c: unknown, d: string) => mockFetchDay(c, d) }));
-jest.mock('@/api/nutrition-quick', () => ({ fetchQuickOptions: (...args: unknown[]) => mockFetchQuick(...args) }));
 jest.mock('@/api/nutrition-report', () => ({ fetchNutritionReport: (c: unknown, q: unknown) => mockFetchReport(c, q) }));
 jest.mock('@/api/training-history', () => ({
   fetchTrainingDay: (client: unknown, date: string) => mockFetchTrainingDay(client, date),
@@ -111,9 +108,6 @@ const historyDay = {
   nutrition: { status: 'unavailable' }, body: { date: '2026-10-10', today: '2026-10-10', weight: { status: 'ok', data: null }, measurement: { status: 'ok', data: null } },
   metrics: { status: 'ok', data: { metrics: [{ id: 'm1', systemKey: 'sleep', label: 'Sueño', unit: 'h', valueType: 'duration', target: null, value: null, isActive: true, updatedAt: null }] } },
 };
-const quick = { today: '2026-10-10', saved: { status: 'ok', items: [] }, suggested: { status: 'ok', items: [{
-  source: { kind: 'suggestion', id: '00000000-0000-4000-8000-000000000001', version: 'a'.repeat(64) }, name: 'Batido', description: null,
-  templateType: null, items: [], calories: 200, proteinG: 30, carbsG: 10, fatG: 2, useCount: 5, lastUsedDate: '2026-10-09' }] } };
 const report = { today: '2026-10-10', range: { start: '2026-10-05', end: '2026-10-10' },
   summary: { metrics: Object.fromEntries(['calories', 'protein', 'carbs', 'fat'].map(key => [key, { value: null, denominator: 0, partialDays: 0 }])) }, days: [] };
 
@@ -130,7 +124,7 @@ const settle = () => act(async () => { for (let i = 0; i < 6; i++) await Promise
 // The start modal opens after the sheet's dismissal (SHEET_DISMISS_MS).
 const afterSheet = () => act(() => new Promise<void>(resolve => { setTimeout(resolve, 400); }));
 const focus = async () => { act(() => { mockFocusEffects.at(-1)!(); }); await settle(); };
-const allFetchers = () => [mockFetchHome, mockFetchDay, mockFetchQuick, mockFetchReport, mockFetchHistory,
+const allFetchers = () => [mockFetchHome, mockFetchDay, mockFetchReport, mockFetchHistory,
   mockFetchHabits, mockFetchProgressBody, mockFetchProgressRecords];
 
 describe('Home screen', () => {
@@ -141,7 +135,6 @@ describe('Home screen', () => {
     for (const mock of [mockNavigate, mockPush, mockConfigOpen, mockFetchProgressWeek, ...allFetchers()]) mock.mockReset();
     mockFetchHome.mockImplementation(() => ok(homeData()));
     mockFetchDay.mockImplementation(() => ok(historyDay));
-    mockFetchQuick.mockImplementation(() => ok(quick));
     mockFetchReport.mockImplementation(() => ok(report));
     mockFetchHistory.mockImplementation(() => ok({ sessions: [], nextCursor: null }));
     mockFetchHabits.mockImplementation(() => ok(homeProgressHabits()));
@@ -202,17 +195,15 @@ describe('Home screen', () => {
     fireEvent.press(view.getByRole('button', { name: 'Abrir perfil y ajustes' }));
     fireEvent.press(view.getByRole('button', { name: 'Progreso' }));
     const menu = within(view.getByTestId('home-add-menu'));
-    fireEvent.press(menu.getByText('Comida manual'));
-    fireEvent.press(menu.getByText('Buscar alimento'));
-    fireEvent.press(menu.getByText('Batido'));
-    fireEvent.press(menu.getByText('Ver todas'));
+    fireEvent.press(menu.getByText('A mano'));
+    fireEvent.press(menu.getByText('Rápido'));
+    fireEvent.press(menu.getByText('Alimento por cantidad'));
     expect(mockPush.mock.calls).toEqual([['/settings']]);
     expect(mockNavigate.mock.calls).toEqual([
       ['/(tabs)/progress'],
       [{ pathname: '/(tabs)/nutrition', params: { add: 'manual' } }],
-      [{ pathname: '/(tabs)/nutrition', params: { add: 'food' } }],
-      [{ pathname: '/(tabs)/nutrition', params: { quick: 'suggestion:00000000-0000-4000-8000-000000000001' } }],
       [{ pathname: '/(tabs)/nutrition', params: { quick: 'all' } }],
+      [{ pathname: '/(tabs)/nutrition', params: { add: 'food' } }],
     ]);
   });
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
+import Animated, { FadeIn, SlideInDown, useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import { AppIcon, AppText, Button, GlassSurface, SheetHandle, pressedStyle, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
@@ -21,6 +21,15 @@ function SheetControl({ label, icon, disabled, accent, pending, onPress }: {
     </GlassSurface>
   </Pressable>;
 }
+/**
+ * iOS: the sheet sits on the keyboard, frame by frame, so both rise in one motion. KeyboardAvoidingView
+ * and the Modal's own fade let the keyboard arrive first and the value end up under it.
+ */
+function KeyboardSpacer({ rest }: { rest: number }) {
+  const keyboard = useAnimatedKeyboard();
+  const style = useAnimatedStyle(() => ({ height: Math.max(keyboard.height.value + 8 - rest, 0) }));
+  return <Animated.View style={style} />;
+}
 export function MetricEntrySheet({ id, controller, state, onClose }: { id: string; controller: DayWriteController; state: DayWriteState; onClose: () => void }) {
   const draft = state.draft;
   const metric = draft ? findDayMetric(draft.baseline, id) : undefined;
@@ -32,6 +41,7 @@ function MetricForm({ id, controller, state, onClose }: { id: string; controller
   const [mode, setMode] = useState<MetricEntryMode>(metric.value === null ? 'replace' : 'add');
   const [raw, setRaw] = useState<MetricInput>(() => metricRaw(metric.value === null ? null : 0, metric.valueType === 'duration'));
   const [removing, setRemoving] = useState(false);
+  const restInset = Math.max(insets.bottom, 16);
   const running = state.phase === 'pending';
   const locked = !!state.intent || !['idle', 'conflict'].includes(state.phase);
   const candidate = metricEntryCandidate(data, id, mode, raw);
@@ -72,10 +82,12 @@ function MetricForm({ id, controller, state, onClose }: { id: string; controller
   };
   const truth = state.truth ? findDayMetric(state.truth, id) : undefined;
   const saveDisabled = locked || state.phase !== 'idle' || (!removing && (invalid || !candidate?.valid));
-  return <Modal transparent statusBarTranslucent visible animationType="fade" onRequestClose={() => { if (!running) onClose(); }}>
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.fill}>
-      <Pressable accessibilityLabel="Cerrar carga de métrica" disabled={running} onPress={onClose} style={[StyleSheet.absoluteFill, styles.scrim]} />
-      <Animated.View entering={reduced ? FadeIn.duration(200) : SlideInDown.duration(300)} accessibilityViewIsModal style={[styles.sheet, { backgroundColor: colors.background, paddingBottom: Math.max(insets.bottom, 16) }]} testID="nutrition-metric-sheet">
+  return <Modal transparent statusBarTranslucent visible animationType="none" onRequestClose={() => { if (!running) onClose(); }}>
+    <KeyboardAvoidingView enabled={Platform.OS === 'android'} behavior="height" style={styles.fill}>
+      <Animated.View entering={FadeIn.duration(200)} style={StyleSheet.absoluteFill}>
+        <Pressable accessibilityLabel="Cerrar carga de métrica" disabled={running} onPress={onClose} style={[StyleSheet.absoluteFill, styles.scrim]} />
+      </Animated.View>
+      <Animated.View entering={reduced ? FadeIn.duration(200) : SlideInDown.duration(300)} accessibilityViewIsModal style={[styles.sheet, { backgroundColor: colors.background, paddingBottom: restInset }]} testID="nutrition-metric-sheet">
         <SheetHandle />
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
           <View style={styles.header}>
@@ -108,6 +120,7 @@ function MetricForm({ id, controller, state, onClose }: { id: string; controller
             <AppText muted variant="footnote">{`Quitar el valor de ${relative}`}</AppText>
           </Pressable> : null}
         </ScrollView>
+        {Platform.OS === 'ios' ? <KeyboardSpacer rest={restInset} /> : null}
       </Animated.View>
     </KeyboardAvoidingView>
   </Modal>;
