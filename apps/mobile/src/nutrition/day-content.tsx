@@ -17,6 +17,10 @@ import { NutritionDayPanel, NutritionDayDetailSheet } from './day-panel';
 export { metricValue } from './day-details';
 const mealLabels = { breakfast: 'Desayuno', lunch: 'Almuerzo', snack: 'Merienda', dinner: 'Cena', extra: 'Extra' };
 const time = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Cordoba', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+/** List precision: whole grams, one decimal under 10 g (0,3 g never reads as 0); a missing macro is "—", never 0. */
+export function rowGrams(value: number | null) {
+  return value === null ? '—' : `${new Intl.NumberFormat('es-AR', { maximumFractionDigits: value < 10 ? 1 : 0 }).format(value)} g`;
+}
 
 /** E5: grouped by moment in the server's order; without any moment the list stays flat (no invented "Otras" heading). */
 export function mealGroups(meals: NutritionDayMeal[]) {
@@ -60,7 +64,11 @@ function MealRow({ meal, divider, highlighted, actions, onOpen }: { meal: Nutrit
   const { colors } = useOwnlevelTheme(), reduceMotion = useReduceMotion();
   const [width, setWidth] = useState(0);
   const menu = mealMenu(meal, actions);
-  const meta = `${meal.timeKnown ? time.format(new Date(meal.consumedAt)) : 'Hora sin dato'} · P ${amount(meal.proteinG, 'g')} · C ${amount(meal.carbsG, 'g')} · G ${amount(meal.fatG, 'g')}${meal.precision === 'estimated' ? ' · estimado' : ''}`;
+  const clock = meal.timeKnown ? time.format(new Date(meal.consumedAt)) : 'Sin hora';
+  const estimated = meal.precision === 'estimated' ? ' · estimado' : '';
+  // The row stays light (one-line title, rounded macros); the detail keeps every exact value.
+  const meta = `${clock} · P ${rowGrams(meal.proteinG)} · C ${rowGrams(meal.carbsG)} · G ${rowGrams(meal.fatG)}${estimated}`;
+  const spoken = `${meal.timeKnown ? clock : 'Hora sin dato'} · Proteína ${amount(meal.proteinG, 'g')} · Carbohidratos ${amount(meal.carbsG, 'g')} · Grasas ${amount(meal.fatG, 'g')}${estimated}`;
   // The swipe hands its own methods to the action, so no ref is read while rendering.
   const confirmDelete = (swipe?: SwipeableMethods) => { if (reduceMotion) swipe?.reset(); else swipe?.close(); Alert.alert('¿Eliminar esta comida?', 'Deja de contar en el día y desaparece de la lista.', [
     { text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: () => menu.remove?.(meal) }]); };
@@ -70,14 +78,14 @@ function MealRow({ meal, divider, highlighted, actions, onOpen }: { meal: Nutrit
     ...(menu.save ? [{ label: 'Guardar como comida', symbol: 'bookmark' as const, onPress: () => menu.save!(meal) }] : []),
     ...(menu.remove ? [{ label: 'Eliminar', symbol: 'trash' as const, onPress: () => confirmDelete(), separated: true, destructive: true }] : []),
   ];
-  const row = <Pressable accessibilityRole="button" accessibilityLabel={`${mealTitle(meal)}, ${amount(meal.calories, 'kcal')}. ${meta}`} accessibilityHint="Abre el detalle. Mantené apretado para ver acciones."
+  const row = <Pressable accessibilityRole="button" accessibilityLabel={`${mealTitle(meal)}, ${amount(meal.calories, 'kcal')}. ${spoken}`} accessibilityHint="Abre el detalle. Mantené apretado para ver acciones."
     accessibilityActions={menuActions.map(action => ({ name: action.label, label: action.label }))}
     onAccessibilityAction={event => menuActions.find(action => action.label === event.nativeEvent.actionName)?.onPress()}
     onPress={() => onOpen(meal)} style={({ pressed }) => [styles.meal, { width: width > 0 ? width : undefined }, pressed && { opacity: 0.6 }]}>
     <RowFlash active={!!highlighted} />
     {divider ? <View style={[styles.divider, { backgroundColor: colors.border }]} /> : null}
     <View style={styles.mealText}>
-      <AppText numberOfLines={2} variant="headline">{mealTitle(meal)}</AppText>
+      <AppText numberOfLines={1} variant="headline">{mealTitle(meal)}</AppText>
       <AppText muted numeric numberOfLines={1} variant="caption">{meta}</AppText>
     </View>
     <AppText numeric variant="subheadline">{amount(meal.calories, 'kcal')}</AppText>
@@ -128,7 +136,7 @@ const styles = StyleSheet.create({
   group: { gap: 0 }, groupLabel: { fontWeight: '600', paddingTop: 4 },
   // The row bleeds 12 pt past the gutter so its flash has room; the content keeps the gutter's alignment.
   bleed: { marginHorizontal: -12 },
-  meal: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 12 }, mealText: { flex: 1, gap: 2 },
+  meal: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 12 }, mealText: { flex: 1, gap: 4 },
   swipeAction: { width: 96, height: '100%', alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 14, marginLeft: 8 },
   divider: { position: 'absolute', top: 0, left: 12, right: 12, height: StyleSheet.hairlineWidth },
   flash: { position: 'absolute', top: 2, bottom: 2, left: 0, right: 0, borderRadius: 12 },
