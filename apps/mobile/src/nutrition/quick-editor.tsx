@@ -8,7 +8,7 @@ import type { QuickController, QuickState } from './quick-controller';
 import { MealSheet, MealSearch, mealShown as shown, mealSheetStyles as shared } from './meal-sheet';
 import { MealTiming } from './meal-timing';
 import { MealProjection } from './meal-projection';
-import { quickEstimate } from './quick-model';
+import { quickEstimate, searchable } from './quick-model';
 import { MealDateControl } from './meal-date-control';
 import { SaveButton } from './save-button';
 /** `pending`: an instant estimate the server is still confirming (muted, with the native spinner). */
@@ -18,7 +18,9 @@ export function MealNutrients({ value, pending = false }: { value: QuickNutrient
     {pending ? <ActivityIndicator color={colors.textMuted} accessibilityLabel="Confirmando valores" /> : null}</View>
     <AppText numeric muted variant="footnote">{`P ${shown(value.proteinG)} · C ${shown(value.carbsG)} · G ${shown(value.fatG)}`}</AppText></View>;
 }
-export function QuickEditor({ controller, state, embedded = false, onBack, onSaved, externalLocked = false }: { controller: QuickController; state: QuickState; embedded?: boolean; onBack?: () => void; onSaved?: () => void; externalLocked?: boolean }) {
+/** `suggestions`: "Para vos" is hidden for now (Rápido shows only the saved meals); the code stays for later. */
+export function QuickEditor({ controller, state, embedded = false, onBack, onSaved, externalLocked = false, suggestions = false }: { controller: QuickController; state: QuickState; embedded?: boolean; onBack?: () => void; onSaved?: () => void; externalLocked?: boolean; suggestions?: boolean }) {
+  const showSuggestions = suggestions;
   const { colors } = useOwnlevelTheme();
   const [search, setSearch] = useState('');
   const [more, setMore] = useState(false);
@@ -50,9 +52,9 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onSav
     if (controller.dirty()) Alert.alert('¿Descartar ajustes?', 'Podés volver a elegir otra opción.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Descartar', style: 'destructive', onPress: action }]);
     else action();
   };
-  const section = (title: string, data?: QuickSection) => {
-    const matches = data?.status === 'ok' ? data.items.filter(o => `${o.name} ${o.description ?? ''}`.toLocaleLowerCase('es-AR').includes(search.trim().toLocaleLowerCase('es-AR'))) : [];
-    return <View style={{ gap: 4 }}><View style={shared.totals}><Heading level={2}>{title}</Heading>{title === 'Guardadas' && onSaved ? <Button label="Ver todas" variant="quiet" onPress={onSaved} disabled={locked} /> : null}</View>
+  const section = (title: string, data?: QuickSection, titled = true) => {
+    const matches = data?.status === 'ok' ? data.items.filter(o => searchable(`${o.name} ${o.description ?? ''}`).includes(searchable(search.trim()))) : [];
+    return <View style={{ gap: 4 }}>{titled ? <View style={shared.totals}><Heading level={2}>{title}</Heading>{title === 'Guardadas' && onSaved ? <Button label="Ver todas" variant="quiet" onPress={onSaved} disabled={locked} /> : null}</View> : null}
       {data?.status === 'unavailable' ? <AppText accessibilityRole="alert">No pudimos cargar estas opciones.</AppText> : data?.status === 'ok' ? matches.length ? matches.slice(0, title === 'Para vos' && !search.trim() && !more ? 3 : undefined).map(option => {
         const key = `${option.source.kind}:${option.source.id}`, added = state.added?.[key], pending = state.inlineKey === key;
         return <View key={key} style={[shared.row, { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
@@ -78,8 +80,10 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onSav
       <MealSearch label="Buscar en tus comidas" value={search} onChange={setSearch} />
       {state.optionsLoading ? <LoadingState label="Cargando opciones rápidas" /> : null}
       {state.optionsError ? <AppText accessibilityRole="alert">No pudimos actualizar las opciones.</AppText> : null}
-      {section('Para vos', state.options?.suggested)}{section('Guardadas', state.options?.saved)}
-      {(state.optionsError || state.options?.saved.status === 'unavailable' || state.options?.suggested.status === 'unavailable') ? <Button label="Reintentar opciones" onPress={() => void controller.loadOptions()} variant="quiet" /> : null}
+      {/* Only the saved meals for now (no title needed); the suggestions stay built, hidden unless `suggestions`. */}
+      {showSuggestions ? section('Para vos', state.options?.suggested) : null}{section('Guardadas', state.options?.saved, showSuggestions)}
+      {!showSuggestions && onSaved && state.options?.saved.status === 'ok' && state.options.saved.items.length ? <Button label="Editar guardadas" variant="quiet" onPress={onSaved} disabled={locked} /> : null}
+      {(state.optionsError || state.options?.saved.status === 'unavailable' || (showSuggestions && state.options?.suggested.status === 'unavailable')) ? <Button label="Reintentar opciones" onPress={() => void controller.loadOptions()} variant="quiet" /> : null}
     </> : <>
       {draft.option.items.map(item => {
         const value = draft.quantities[item.id], numeric = Number(value?.replace(',', '.')), step = draft.option.source.kind === 'food' ? item.quantity : ['g', 'ml'].includes(item.unit.toLowerCase()) ? 10 : Math.min(item.quantity, 1);

@@ -43,3 +43,5 @@ export function quickEstimate(draft: QuickDraft): QuickNutrients | null {
   return draft.option.items.every(i => amount(i.id) === i.quantity) ? scale(1) : null;
 }
 const times = (value: number | null, factor: number, places = 2) => value === null ? null : Math.round(value * factor * 10 ** places) / 10 ** places;
+/** Search form of a text: no accents, no case (café = cafe = CAFÉ), like the server's catalog search. */
+export const searchable = (value: string) => value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLocaleUpperCase('es-AR');
