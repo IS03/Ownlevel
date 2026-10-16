@@ -27,6 +27,8 @@ type AppSheetProps = PropsWithChildren<{
   locked?: boolean;
   /** The whole sheet follows a downward drag; otherwise only the handle area does (scrollable content). */
   dragFromContent?: boolean;
+  /** Also closes with a swipe from the left edge (like going back). */
+  edgeSwipe?: boolean;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }>;
@@ -35,13 +37,13 @@ type AppSheetProps = PropsWithChildren<{
  * App-drawn bottom sheet: it slides in and leaves the same way (IDENTIDAD.md § Movimiento, 300 ms), follows a
  * drag down and closes from the backdrop. With Reduce Motion it only fades.
  */
-export function AppSheet({ children, onClose, closeLabel, locked = false, dragFromContent = false, style, testID }: AppSheetProps) {
+export function AppSheet({ children, onClose, closeLabel, locked = false, dragFromContent = false, edgeSwipe = false, style, testID }: AppSheetProps) {
   const reduced = useReduceMotion();
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const [gone, setGone] = useState(false);
   const [after, setAfter] = useState<{ run?: () => void }>({});
   const shown = useSharedValue(0), closing = useSharedValue(false);
-  const offset = useSharedValue(windowHeight), sheetHeight = useSharedValue(windowHeight);
+  const offset = useSharedValue(windowHeight), sheetHeight = useSharedValue(windowHeight), sideways = useSharedValue(0);
   const measured = useRef(false);
 
   const finish = useCallback(() => { onClose(); after.run?.(); }, [after, onClose]);
@@ -49,14 +51,19 @@ export function AppSheet({ children, onClose, closeLabel, locked = false, dragFr
   // the Modal's onDismiss calls finish there. Elsewhere it runs once the exit is done.
   useEffect(() => { if (gone && Platform.OS !== 'ios') finish(); }, [finish, gone]);
   const hide = useCallback(() => setGone(true), []);
-  const dismiss = useCallback<AppSheetDismiss>(next => {
+  const leave = useCallback((next: (() => void) | undefined, toSide: boolean) => {
     if (closing.get() || locked) return;
     closing.set(true);
     setAfter({ run: next });
     // Reduce Motion: the backdrop fades and the sheet leaves without sliding.
     shown.set(withTiming(0, TIMING, done => { if (done && reduced) runOnJS(hide)(); }));
-    if (!reduced) offset.set(withTiming(sheetHeight.get(), TIMING, done => { if (done) runOnJS(hide)(); }));
-  }, [closing, hide, locked, offset, reduced, sheetHeight, shown]);
+    if (reduced) return;
+    // A swipe from the edge leaves sideways, the way it was pulled; everything else slides down.
+    if (toSide) sideways.set(withTiming(windowWidth, TIMING, done => { if (done) runOnJS(hide)(); }));
+    else offset.set(withTiming(sheetHeight.get(), TIMING, done => { if (done) runOnJS(hide)(); }));
+  }, [closing, hide, locked, offset, reduced, sheetHeight, shown, sideways, windowWidth]);
+  const dismiss = useCallback<AppSheetDismiss>(next => leave(next, false), [leave]);
+  const dismissSideways = useCallback(() => leave(undefined, true), [leave]);
 
   useEffect(() => { shown.set(withTiming(1, TIMING)); }, [shown]);
 
@@ -66,11 +73,17 @@ export function AppSheet({ children, onClose, closeLabel, locked = false, dragFr
       if (event.translationY > sheetHeight.value * 0.25 || event.velocityY > 900) runOnJS(dismiss)();
       else offset.set(withSpring(0, motion.spring));
     }), [dismiss, locked, offset, sheetHeight]);
+  const edge = useMemo(() => Gesture.Pan().enabled(edgeSwipe && !locked).hitSlop({ left: 0, width: 28 }).activeOffsetX(10).failOffsetY([-20, 20])
+    .onUpdate(event => { sideways.set(Math.max(0, event.translationX)); })
+    .onEnd(event => {
+      if (event.translationX > windowWidth * 0.3 || event.velocityX > 800) runOnJS(dismissSideways)();
+      else sideways.set(withSpring(0, motion.spring));
+    }), [dismissSideways, edgeSwipe, locked, sideways, windowWidth]);
 
   const scrim = useAnimatedStyle(() => ({ opacity: shown.value }));
   // Never an opacity on the sheet: iOS Liquid Glass inside it (close buttons) does not render under a faded parent.
   // Until measured it waits off screen, one window below.
-  const sheet = useAnimatedStyle(() => ({ transform: [{ translateY: reduced ? 0 : offset.value }] }));
+  const sheet = useAnimatedStyle(() => ({ transform: [{ translateY: reduced ? 0 : offset.value }, { translateX: reduced ? 0 : sideways.value }] }));
 
   const grabber = <View style={styles.grabber}><SheetHandle /></View>;
   const body = <Animated.View accessibilityViewIsModal onLayout={event => {
@@ -92,7 +105,7 @@ export function AppSheet({ children, onClose, closeLabel, locked = false, dragFr
           <Animated.View style={[StyleSheet.absoluteFill, styles.scrim, scrim]}>
             <Pressable accessibilityRole="button" accessibilityLabel={closeLabel} disabled={locked} onPress={() => dismiss()} style={StyleSheet.absoluteFill} />
           </Animated.View>
-          {dragFromContent ? <GestureDetector gesture={pan}>{body}</GestureDetector> : body}
+          <GestureDetector gesture={dragFromContent ? Gesture.Simultaneous(pan, edge) : edge}>{body}</GestureDetector>
         </View>
       </DismissContext.Provider>
     </GestureHandlerRootView>

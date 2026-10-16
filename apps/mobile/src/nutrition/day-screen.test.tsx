@@ -8,6 +8,7 @@ import type { MobileApiClient } from '@/api/client';
 import type { MobileApiReadResult } from '@/api/results';
 import type { MobileNutritionDayResponse } from '@/api/nutrition-day';
 import { OwnlevelThemeProvider } from '@/design-system';
+import { resetNutritionReportCacheForTests } from './report-resource';
 import { NutritionDayScreen } from './day-screen';
 import { NutritionConfigurationProvider } from './config-provider';
 import { nutritionFixture } from './day-fixture.test-helper';
@@ -56,6 +57,7 @@ function finishDetailDismissal(view: ReturnType<typeof render>) {
 const appStateListeners: ((state: AppStateStatus) => void)[] = [];
 describe('Native Nutrition day', () => {
   beforeEach(async () => {
+    resetNutritionReportCacheForTests(mockClient as unknown as MobileApiClient);
     await AsyncStorage.clear(); mockRequest.mockReset();
     mockRead.mockReset(); mockUser = 'owner'; mockToday = '2026-10-02';
     appStateListeners.length = 0;
@@ -249,11 +251,11 @@ describe('Native Nutrition day', () => {
     fireEvent.press(view.getByTestId('nutrition-week-2026-10-01'));
     await view.findByText('Comida 2026-10-01');
     expect(view.queryByText('Comida 2026-10-02')).toBeNull();
-    fireEvent.press(view.getByText('Volver a hoy'));
+    fireEvent.press(view.getByTestId('nutrition-today-pill'));
     await view.findByText('Comida 2026-10-02');
     // A far date: the month title opens the month/year picker, then the day.
     fireEvent.press(view.getByLabelText('Elegir fecha')); fireEvent.press(await view.findByTestId('nutrition-month-title'));
-    fireEvent.press(view.getByTestId('nutrition-pick-2026-09'));
+    fireEvent(view.UNSAFE_getByProps({ label: 'Mes' }), 'selectionChange', 9); fireEvent.press(view.getByTestId('nutrition-month-title'));
     await act(async () => { fireEvent.press(await view.findByTestId('nutrition-month-2026-09-20')); });
     await act(async () => { finishMonthDismissal(view); });
     await view.findByText('Comida 2026-09-20');

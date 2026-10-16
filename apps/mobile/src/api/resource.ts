@@ -58,7 +58,15 @@ export class ApiResourceController<T> {
   constructor(
     private readonly load: ResourceLoader<T>,
     private readonly now: () => number = Date.now,
-  ) {}
+    /** A reading confirmed earlier (cache): shown at once as ready, and the first refresh revalidates it. */
+    initial?: { confirmedAt: number; result: Extract<MobileApiReadResult<T>, { status: 'ok' }> },
+  ) {
+    if (initial) {
+      this.confirmed = { confirmedAt: initial.confirmedAt, data: initial.result.data };
+      this.confirmedResult = initial.result;
+      this.state = { status: 'ready', current: this.confirmed, refreshing: false, trigger: 'initial', result: initial.result };
+    }
+  }
 
   getSnapshot(): ApiResourceState<T> {
     return this.state;

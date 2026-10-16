@@ -1,4 +1,4 @@
-import { useContext, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useMobileApi } from '@/api';
@@ -8,10 +8,25 @@ import { NutritionGlassButton } from './day-controls';
 import { displayNutritionDate, inputNutritionDate, number, parseInputNutritionDate, shiftNutritionDate } from './day-format';
 import { nutritionMonth, reportRings } from './day-home-model';
 import { NutritionCalorieRing } from './day-rings';
+import { MonthWheel } from './month-wheel';
 import { readingLabel } from './day-summary';
-import { useNutritionReportResource } from './report-resource';
+import { prefetchNutritionReport, useNutritionReportResource } from './report-resource';
 
-const MONTHS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+/** The report range a calendar month reads: the month, cut at today. */
+export function monthReportQuery(month: string, today: string) {
+  const end = nutritionMonth(month).end;
+  return { period: 'custom' as const, from: month, to: end < today ? end : today };
+}
+const shiftMonth = (month: string, delta: number) => {
+  const value = new Date(`${month}T12:00:00Z`);
+  value.setUTCMonth(value.getUTCMonth() + delta);
+  return value.toISOString().slice(0, 10);
+};
+/** Warms the month the calendar opens on, so its rings and average show at once. */
+export function prefetchCalendarMonth(client: Parameters<typeof prefetchNutritionReport>[0], date: string, today: string) {
+  const month = `${date.slice(0, 7)}-01`;
+  if (month <= today) prefetchNutritionReport(client, monthReportQuery(month, today));
+}
 const monthName = (month: string, style: 'long' | 'short' = 'long') => new Intl.DateTimeFormat('es-AR', { month: style, year: 'numeric', timeZone: 'UTC' })
   .format(new Date(`${month}T12:00:00Z`)).replace(/^./u, c => c.toLocaleUpperCase('es-AR'));
 
@@ -36,13 +51,17 @@ function MonthBody({ date, today, onSelect, onReport }: { date: string; today: s
   const [picking, setPicking] = useState(false);
   // The sheet keeps its tallest height (the day grid) when the month picker replaces it.
   const [height, setHeight] = useState(0);
+  const { client } = useMobileApi();
   const select = (selected: string) => dismiss(() => onSelect(selected));
   const move = (delta: number) => {
-    const value = new Date(`${month}T12:00:00Z`);
-    value.setUTCMonth(value.getUTCMonth() + delta);
-    const next = value.toISOString().slice(0, 10);
+    const next = shiftMonth(month, delta);
     if (parseInputNutritionDate(inputNutritionDate(next))) setMonth(next);
   };
+  // The month before is the likely next step: read it while this one is on screen.
+  useEffect(() => {
+    const previous = shiftMonth(month, -1);
+    if (parseInputNutritionDate(inputNutritionDate(previous))) prefetchNutritionReport(client, monthReportQuery(previous, today));
+  }, [client, month, today]);
   return <View style={styles.content}>
     <View style={styles.monthHeader}>
       {picking ? <View style={styles.arrow} /> : <Pressable accessibilityLabel="Mes anterior" accessibilityRole="button" onPress={() => move(-1)} style={styles.arrow}><AppIcon name="chevronLeft" size={20} color={colors.primary} /></Pressable>}
@@ -53,37 +72,16 @@ function MonthBody({ date, today, onSelect, onReport }: { date: string; today: s
       {picking ? <View style={styles.arrow} /> : <Pressable accessibilityLabel="Mes siguiente" accessibilityRole="button" onPress={() => move(1)} style={styles.arrow}><AppIcon name="chevronRight" size={20} color={colors.primary} /></Pressable>}
     </View>
     <View style={[styles.body, { minHeight: height }]} onLayout={event => { const next = event.nativeEvent.layout.height; if (next > height) setHeight(next); }}>
-      {picking ? <MonthPicker month={month} today={today} onPick={next => { setMonth(next); setPicking(false); }} />
+      {picking ? <MonthWheel month={month} today={today} onChange={setMonth} onDone={next => { setMonth(next); setPicking(false); }} />
         : month > today ? <><MonthGrid month={month} selected={date} today={today} onSelect={select} /><View style={styles.average} /></>
         : <ReadMonth key={month} month={month} selected={date} today={today} onSelect={select} onReport={onReport ? range => dismiss(() => onReport(range)) : undefined} />}
     </View>
   </View>;
 }
-/** Year with arrows and its twelve months; months after today are not offered. */
-function MonthPicker({ month, today, onPick }: { month: string; today: string; onPick: (month: string) => void }) {
-  const { colors } = useOwnlevelTheme();
-  const [year, setYear] = useState(Number(month.slice(0, 4)));
-  const lastYear = Number(today.slice(0, 4));
-  return <View style={styles.picker} testID="nutrition-month-picker">
-    <View style={styles.monthHeader}>
-      <Pressable accessibilityLabel="Año anterior" accessibilityRole="button" onPress={() => setYear(y => y - 1)} style={styles.arrow}><AppIcon name="chevronLeft" size={20} color={colors.primary} /></Pressable>
-      <AppText numeric variant="headline">{year}</AppText>
-      <Pressable accessibilityLabel="Año siguiente" accessibilityRole="button" accessibilityState={{ disabled: year >= lastYear }} disabled={year >= lastYear} onPress={() => setYear(y => y + 1)}
-        style={[styles.arrow, year >= lastYear && { opacity: 0.3 }]}><AppIcon name="chevronRight" size={20} color={colors.primary} /></Pressable>
-    </View>
-    <View style={styles.months}>{MONTHS.map((label, i) => {
-      const value = `${year}-${String(i + 1).padStart(2, '0')}-01`, future = value > today, current = value === month;
-      return <Pressable key={label} accessibilityRole="button" accessibilityLabel={monthName(value)} accessibilityState={{ disabled: future, selected: current }} disabled={future}
-        onPress={() => onPick(value)} style={[styles.monthCell, { backgroundColor: current ? colors.brandSubtle : colors.surface }, future && { opacity: 0.35 }]} testID={`nutrition-pick-${value.slice(0, 7)}`}>
-        <AppText variant="subheadline" style={current && { color: colors.primary, fontWeight: '600' }}>{label}</AppText>
-      </Pressable>;
-    })}</View>
-  </View>;
-}
 function ReadMonth({ month, today, ...props }: { month: string; today: string; selected: string; onSelect: (date: string) => void; onReport?: (range: { from: string; to: string }) => void }) {
   const { client } = useMobileApi();
   const end = nutritionMonth(month).end;
-  const { state, refresh } = useNutritionReportResource(client, { period: 'custom', from: month, to: end < today ? end : today });
+  const { state, refresh } = useNutritionReportResource(client, monthReportQuery(month, today));
   const report = state.status === 'ready' ? state.current.data : state.status === 'unavailable' ? state.previous?.data : undefined;
   const failed = state.status !== 'ready' && state.status !== 'loading';
   const average = report?.summary.metrics.calories;
@@ -137,8 +135,6 @@ const styles = StyleSheet.create({
   cellRing: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },
   selection: { width: 12, height: 2, borderRadius: 2, position: 'absolute', bottom: 8 },
   average: { minHeight: 50, gap: 12 }, averageText: { gap: 4 },
-  body: { gap: 16 }, picker: { gap: 12 },
-  months: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  monthCell: { width: '31.5%', minHeight: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  body: { gap: 16 },
   manual: { gap: 12 },
 });

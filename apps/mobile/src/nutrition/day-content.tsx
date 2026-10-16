@@ -113,8 +113,6 @@ export function NutritionDayContent({ data, onAdd, addChoices, addControl, highl
     {addChoices}
     {!nutrition ? <AppText accessibilityRole="alert">Nutrición no disponible. No pudimos consultar el resumen ni las comidas de esta fecha. Deslizá para reintentar.</AppText>
       : !recorded ? <View style={styles.section}><AppText variant="headline">Sin día registrado</AppText><AppText muted>Esta fecha todavía no tiene un registro nutricional. No hay resumen ni objetivos guardados.</AppText></View> : null}
-    {recorded && Object.values(recorded.summary).some(v => typeof v === 'object' && v.missingCount > 0) ?
-      <AppText muted variant="caption">Las sumas parciales incluyen sólo valores conocidos. “Sin dato” no significa cero.</AppText> : null}
     <NutritionDayPanel data={data} onDetail={() => setDetail(true)} onMetric={onMetric} />
     {recorded ? <View style={styles.section}>
       <View style={styles.heading}><NutritionSectionHeading>Comidas</NutritionSectionHeading>

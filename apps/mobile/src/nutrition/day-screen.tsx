@@ -1,7 +1,7 @@
 import type { DayContextAction } from './day-details';
 import { NutritionAddMenu, showNutritionAddMenu } from './add-menu';
 import { useMealNotice } from './use-meal-notice';
-import { NutritionToast } from './nutrition-toast';
+import { NutritionToast, TodayPill } from './nutrition-toast';
 import { MealAddedNotice } from './meal-notice';
 import {useNutritionConfiguration} from './config-provider';
 import {useSavedController} from './use-saved-controller';
@@ -16,7 +16,7 @@ import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
 import { AppText, Button, LoadingState, ScrollScreen, UnavailableState, spacing, usePullRefresh, useOwnlevelTheme } from '@/design-system';
 import { nutritionToday } from './day-format';
-import { NutritionMonthSheet } from './day-calendar';
+import { NutritionMonthSheet, prefetchCalendarMonth } from './day-calendar';
 import { headerDate } from '@/home/home-day';
 import { NutritionGlassButton } from './day-controls';
 import { NutritionDayMenu } from './day-menu';
@@ -38,10 +38,10 @@ import { foodQuickOption } from '@/api/nutrition-food';
 import { QuickEditor } from './quick-editor';
 import { useNutritionHomeEntry, type AddEntry } from './home-entry';
 
-function NutritionDayView({ revision, date, today, onSelect, onToday, onServerToday, onAdd, addChoices, addControl, highlightedMeal, onManageFoods, onManageSaved, onConfigure, onReport, mealActions, onActivity, onContext, onMetric }: {
+function NutritionDayView({ revision, date, today, onSelect, onServerToday, onAdd, addChoices, addControl, highlightedMeal, onManageFoods, onManageSaved, onConfigure, onReport, mealActions, onActivity, onContext, onMetric }: {
   /** Bumped after a confirmed write: the day re-reads in place, so its numbers can move to the new values. */
   revision: number;
-  date: string; today: string; onSelect: (date: string) => void; onToday: () => void; onServerToday: (date: string) => void;
+  date: string; today: string; onSelect: (date: string) => void; onServerToday: (date: string) => void;
   onAdd?: () => void; mealActions?: MealActions;
   onConfigure?: () => void; onReport?: (range: { from: string; to: string }) => void; addChoices?: ReactNode; addControl?: ReactNode; highlightedMeal?: string; onManageFoods?: () => void; onManageSaved?: () => void;
   onMetric?: (data: MobileNutritionDayResponse, metric: NutritionDayMetric) => void;
@@ -59,6 +59,9 @@ function NutritionDayView({ revision, date, today, onSelect, onToday, onServerTo
   const selectedLabel = `${headerDate(date)}${date.slice(0, 4) !== today.slice(0, 4) ? ` de ${date.slice(0, 4)}` : ''}`;
   const runRefresh = useCallback(() => { setRefreshRevision(v => v + 1); return refresh(); }, [refresh]);
   useEffect(() => { if (revision > 0) void reload(); }, [reload, revision]);
+  // The calendar's month is read ahead, once this day has loaded (it never competes with it).
+  const loaded = state.status === 'ready';
+  useEffect(() => { if (loaded) prefetchCalendarMonth(client, date, today); }, [client, date, loaded, today]);
   const pull = usePullRefresh(state.status === 'ready' && state.refreshing, runRefresh);
   return <ScrollScreen statusBarGlass testID="nutrition-day-screen" refreshControl={
     <RefreshControl colors={[colors.primary]} onRefresh={pull.onRefresh}
@@ -75,7 +78,6 @@ function NutritionDayView({ revision, date, today, onSelect, onToday, onServerTo
         <NutritionGlassButton icon="calendar" label="Elegir fecha" onPress={() => setSelector(true)} />
         <NutritionDayMenu onSaved={onManageSaved} onFoods={onManageFoods} onPlan={onConfigure} />
       </View>
-      {date !== today ? <Button label="Volver a hoy" onPress={onToday} variant="quiet" /> : null}
     </View>
     <NutritionWeek refreshRevision={refreshRevision + revision} date={date} today={today} data={current?.data} onSelect={onSelect} />
     {!current ? state.status === 'loading' ? <LoadingState label="Cargando día nutricional" />
@@ -156,7 +158,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
   </>;
   return <>
     <NutritionDayView key={`${userId}:${date}`} revision={revision} date={date} today={today}
-      onSelect={setSelected} onToday={() => { updateToday(); setSelected(null); }} onServerToday={setToday}
+      onSelect={setSelected} onServerToday={setToday}
       addControl={<NutritionAddMenu onManual={editable ? () => meals.controller.open(date) : undefined} onQuick={editable ? () => quick.controller.open(date) : undefined} onFood={editable ? () => foods.controller.open(date) : undefined} />}
       addChoices={statusBanners}
       highlightedMeal={mealNotice.notice?.meal.id}
@@ -182,6 +184,8 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
     {writes && !metricEntry.entry && !(metricEntry.undoing && writes.state.phase === 'pending') ? <DayWriteEditor controller={writes.controller} state={writes.state} /> : null}
     {metricEntry.undoing && writes?.state.phase === 'pending' ? <MetricSavedNotice notice={{ date, message: 'Deshaciendo…', undo: null }} disabled pending onUndo={() => {}} onClose={() => {}} /> : null}
     {metricEntry.notice ? <MetricSavedNotice notice={metricEntry.notice} disabled={!editable || !!writes?.state.draft} onUndo={metricEntry.undoNotice} onClose={metricEntry.dismissNotice} /> : null}
+    {/* Another day shown and no notice on screen: a discreet way back to today. */}
+    {date !== today && !mealNotice.undoing && !mealNotice.result && !mealNotice.notice && !metricEntry.notice && !metricEntry.undoing ? <TodayPill onPress={showToday} /> : null}
     {/* One notice at a time: a delete/undo running, its brief confirmation, or "Guardado · Deshacer". */}
     {mealNotice.undoing ? <NutritionToast testID="nutrition-meal-pending" state="pending" message={mealNotice.undoing === 'undo' ? 'Deshaciendo…' : 'Eliminando…'} />
       : mealNotice.result ? <NutritionToast testID="nutrition-meal-result" state="done" message={mealNotice.result.message} />

@@ -138,14 +138,27 @@ describe('Nutrition week and month existing reads', () => {
     await act(async () => { fireEvent(view.UNSAFE_getByType(Modal), 'dismiss'); });
     expect(select).toHaveBeenCalledWith('2026-10-01'); expect(close).toHaveBeenCalledTimes(1);
   });
+  it('a month read once opens with its rings at once and is revalidated in the background', async () => {
+    const first = render(wrap(<NutritionMonthSheet date="2026-10-02" today="2026-10-02" onSelect={jest.fn()} onClose={jest.fn()} />));
+    expect(await first.findByText('100 kcal · 1 de 1 días')).toBeTruthy();
+    first.unmount();
+    let finish!: (r: MobileApiReadResult<NutritionReport>) => void;
+    mockReport.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const again = render(wrap(<NutritionMonthSheet date="2026-10-02" today="2026-10-02" onSelect={jest.fn()} onClose={jest.fn()} />));
+    expect(again.getByText('100 kcal · 1 de 1 días')).toBeTruthy();
+    await act(async () => { finish(failure); });
+  });
   it('always six rows; the month title opens a month/year picker without future months', async () => {
     const view = render(wrap(<NutritionMonthSheet date="2026-10-02" today="2026-10-02" onSelect={jest.fn()} onClose={jest.fn()} />));
     await waitFor(() => expect(view.getByTestId('nutrition-month-2026-10-31')).toBeTruthy());
     expect(view.getByTestId('nutrition-month').children).toHaveLength(7); // weekdays + six weeks
     fireEvent.press(view.getByTestId('nutrition-month-title'));
-    expect(view.getByTestId('nutrition-pick-2026-11').props.accessibilityState.disabled).toBe(true);
-    fireEvent.press(view.getByLabelText('Año anterior'));
-    fireEvent.press(view.getByTestId('nutrition-pick-2025-05'));
+    // iOS month/year wheels: a month after today snaps back to today's month.
+    fireEvent(view.UNSAFE_getByProps({ label: 'Mes' }), 'selectionChange', 11);
+    expect(view.getByTestId('nutrition-month-title').props.accessibilityLabel).toContain('Octubre de 2026');
+    fireEvent(view.UNSAFE_getByProps({ label: 'Año' }), 'selectionChange', 2025);
+    fireEvent(view.UNSAFE_getByProps({ label: 'Mes' }), 'selectionChange', 5);
+    fireEvent.press(view.getByTestId('nutrition-month-title'));
     await waitFor(() => expect(view.getByTestId('nutrition-month-2025-05-01')).toBeTruthy());
     expect(view.queryByText('Volver a hoy')).toBeNull(); expect(view.queryByText('Otra fecha')).toBeNull(); expect(view.queryByText('Cerrar calendario')).toBeNull();
   });
@@ -156,6 +169,8 @@ describe('Nutrition week and month existing reads', () => {
     expect(view.getByTestId('nutrition-month-2026-10-01').props.accessibilityLabel).toContain('No disponible');
     fireEvent.press(view.getByLabelText('Mes siguiente'));
     await waitFor(() => expect(view.getByTestId('nutrition-month-2026-11-01')).toBeTruthy());
-    expect(mockReport).toHaveBeenCalledTimes(1);
+    // Only past months are read (the one before is read ahead); a future month never is.
+    const ranges = mockReport.mock.calls.map(call => (call[1] as ReportQuery).from);
+    expect(ranges).not.toContain('2026-11-01'); expect(ranges).toContain('2026-09-01');
   });
 });

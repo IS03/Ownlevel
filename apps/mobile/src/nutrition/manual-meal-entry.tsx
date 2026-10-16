@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
-import { AppText, Button, Surface, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, Button, Surface, useOwnlevelTheme } from '@/design-system';
 import type { MealController, MealEditorState } from './meal-controller';
 import { validateMealDraft } from './meal-form-model';
 import { MealSheet, mealShown, mealSheetStyles as shared } from './meal-sheet';
@@ -43,13 +43,21 @@ export function ManualMealEntry({ controller, state, done = false }: { controlle
     onChangeText={value => controller.change(key, value)} style={[big ? shared.number : shared.input, { color: colors.text }, !big && { backgroundColor: colors.surface },
       ['proteinG', 'carbsG', 'fatG'].includes(key) && styles.macroInput]} />;
   return <MealSheet title={editing ? 'Editar comida' : 'Cargar a mano'} subtitle={new Intl.DateTimeFormat('es-AR', { timeZone: 'UTC', weekday: 'long', day: 'numeric' }).format(new Date(`${date}T12:00:00Z`))} onClose={close} running={saving || done} testID="manual-meal-editor" right={<MealDateControl date={date} disabled={locked} onChange={next => { controller.change('date', inputNutritionDate(next)); if (draft.consumedAt) controller.timing(draft.mealLabel ?? null, `${next}T${new Date(Date.parse(draft.consumedAt) - 10800000).toISOString().slice(11,16)}:00-03:00`); }} />}>
-    {input('title', 'Título')}
+    <View style={styles.titleRow}>
+      <View style={styles.flex}>{input('title', 'Título')}</View>
+      {/* The optional detail lives behind a note button beside the name. */}
+      <Pressable accessibilityRole="button" accessibilityLabel={note || draft.description ? 'Detalle de la comida' : 'Agregar detalle opcional'} accessibilityState={{ disabled: locked, expanded: note || !!draft.description }}
+        disabled={locked} onPress={() => setNote(v => !v || !!draft.description)} hitSlop={4}
+        style={[styles.noteButton, { backgroundColor: note || draft.description ? colors.brandSubtle : colors.surface }, locked && { opacity: 0.4 }]} testID="manual-meal-note">
+        <AppIcon name="note" color={note || draft.description ? colors.primary : colors.textMuted} size={20} />
+      </Pressable>
+    </View>
+    {note || draft.description ? input('description', 'Descripción') : null}
     <Pressable accessible={false} onPress={() => focus('calories')} style={styles.caloriesBand}>
       <View style={styles.calories}>{input('calories', 'Calorías', true)}<AppText muted variant="title2">kcal</AppText></View><AppText muted variant="caption">Calorías · obligatorio</AppText>
     </Pressable>
     <View style={styles.macros}>{(['proteinG', 'carbsG', 'fatG'] as const).map((key, i) => <Pressable accessible={false} key={key} onPress={() => focus(key)} style={[styles.macro, { backgroundColor: colors.surface }]}>
       <AppText muted variant="caption">{['Proteína', 'Carbos', 'Grasas'][i]}</AppText>{input(key, ['Proteína (g)', 'Carbohidratos (g)', 'Grasas (g)'][i])}</Pressable>)}</View>
-    {note || draft.description ? input('description', 'Descripción') : <Button label="Agregar detalle opcional" variant="quiet" disabled={locked} onPress={() => setNote(true)} />}
     <MealTiming date={date} value={draft} disabled={locked} onChange={(label, time) => controller.timing(label, time)} />
     {editing ? null : <View style={shared.row}><View style={shared.text}><AppText>Guardar en mis comidas</AppText><AppText muted variant="caption">Para cargarla con un toque la próxima</AppText></View><Switch accessibilityLabel="Guardar en mis comidas" disabled={locked} value={draft.saveToLibrary ?? false} onValueChange={value => controller.saveToLibrary(value)} trackColor={{ true: colors.primary, false: colors.border }} /></View>}
     {Object.entries(state.errors).map(([key, message]) => <AppText key={key} accessibilityRole="alert">{message}</AppText>)}
@@ -70,6 +78,8 @@ export function ManualMealEntry({ controller, state, done = false }: { controlle
   </MealSheet>;
 }
 const styles = StyleSheet.create({
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, flex: { flex: 1 },
+  noteButton: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   caloriesBand: { alignSelf: 'stretch', alignItems: 'center', gap: 4, paddingVertical: 8 },
   calories: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center' }, macros: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   macro: { flex: 1, minWidth: 90, minHeight: 88, borderRadius: 12, padding: 8 }, macroInput: { flexGrow: 1, alignSelf: 'stretch', paddingHorizontal: 0 },
