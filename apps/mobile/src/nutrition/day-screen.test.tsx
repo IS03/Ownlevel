@@ -46,7 +46,7 @@ const failure: MobileApiReadResult<MobileNutritionDayResponse> = { status: 'unav
   meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } };
 const element = () => <SafeAreaInsetsContext.Provider value={{ top: 0, bottom: 0, left: 0, right: 0 }}><OwnlevelThemeProvider initialMode="light"><NutritionConfigurationProvider><NutritionDayScreen /></NutritionConfigurationProvider></OwnlevelThemeProvider></SafeAreaInsetsContext.Provider>;
 function finishDetailDismissal(view: ReturnType<typeof render>) {
-  const sheet = view.UNSAFE_getAllByType(Modal).find(m => m.props.testID === 'nutrition-day-detail-modal');
+  const sheet = view.UNSAFE_getAllByType(Modal).find(m => m.props.testID === 'nutrition-day-detail-sheet-modal');
   if (sheet) fireEvent(sheet,'dismiss');
 }
 const appStateListeners: ((state: AppStateStatus) => void)[] = [];
@@ -165,7 +165,9 @@ describe('Native Nutrition day', () => {
       return { status: 'ok', data: { status: 'saved', operation: 'context', date: mockToday }, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } } as never;
     });
     const view = render(element()); fireEvent.press(await view.findByText('Detalle'));
-    await act(async () => { fireEvent.press(view.getByLabelText('Volver al automático: objetivo')); finishDetailDismissal(view); });
+    await act(async () => { fireEvent.press(view.getByLabelText('Volver al automático: objetivo')); });
+    // The sheet first runs its exit; iOS then reports the Modal gone.
+    await act(async () => { finishDetailDismissal(view); });
     await waitFor(() => expect(view.queryByTestId('nutrition-day-write-editor')).toBeNull());
     expect(mockRequest).toHaveBeenCalledTimes(1);
   });
