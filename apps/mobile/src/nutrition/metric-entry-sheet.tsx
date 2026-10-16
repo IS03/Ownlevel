@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, SlideInDown, useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import { AppIcon, AppText, Button, GlassSurface, SheetHandle, pressedStyle, useOwnlevelTheme, useReduceMotion } from '@/design-system';
@@ -16,8 +16,8 @@ function SheetControl({ label, icon, disabled, accent, pending, onPress }: {
 }) {
   const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
   return <Pressable accessibilityLabel={label} accessibilityRole="button" accessibilityState={{ disabled, busy: pending }} disabled={disabled} onPress={onPress} style={({ pressed }) => pressedStyle(pressed, reduced)}>
-    <GlassSurface interactive style={[styles.control, accent && { backgroundColor: colors.primary }, disabled && { opacity: 0.4 }]}>
-      <AppIcon name={icon} color={accent ? colors.onPrimary : colors.text} size={20} />
+    <GlassSurface interactive style={[styles.control, accent && { backgroundColor: colors.primary }, disabled && !pending && { opacity: 0.4 }]}>
+      {pending ? <ActivityIndicator color={accent ? colors.onPrimary : colors.text} /> : <AppIcon name={icon} color={accent ? colors.onPrimary : colors.text} size={20} />}
     </GlassSurface>
   </Pressable>;
 }
@@ -39,10 +39,15 @@ function MetricForm({ id, controller, state, onClose }: { id: string; controller
   const draft = state.draft!, data = draft.baseline, metric = findDayMetric(data, id)!;
   const { colors } = useOwnlevelTheme(), insets = useSafeAreaInsets(), reduced = useReduceMotion();
   const [mode, setMode] = useState<MetricEntryMode>(metric.value === null ? 'replace' : 'add');
-  const [raw, setRaw] = useState<MetricInput>(() => metricRaw(metric.value === null ? null : 0, metric.valueType === 'duration'));
+  const duration = metric.valueType === 'duration';
+  // A typed number starts empty with a grey "0" behind it: typing 500 gives 500, never 0500.
+  // Durations keep their wheels at 0 h 0 min when there is something to add to.
+  const [raw, setRaw] = useState<MetricInput>(() => metricRaw(duration && metric.value !== null ? 0 : null, duration));
+  const input = useRef<TextInput>(null);
   const [removing, setRemoving] = useState(false);
   const restInset = Math.max(insets.bottom, 16);
-  const running = state.phase === 'pending';
+  // Sent, or confirmed while the day is re-read: still saving for the user (no recovery choice flashing by).
+  const running = state.phase === 'pending' || (state.phase === 'confirmed' && !state.message);
   const locked = !!state.intent || !['idle', 'conflict'].includes(state.phase);
   const candidate = metricEntryCandidate(data, id, mode, raw);
   const invalid = !candidate || !!candidate.error;
@@ -65,7 +70,9 @@ function MetricForm({ id, controller, state, onClose }: { id: string; controller
   const changeMode = (next: MetricEntryMode) => {
     if (locked) return;
     setMode(next);
-    apply(metricRaw(next === 'replace' ? metric.value : metric.valueType === 'duration' ? 0 : null, metric.valueType === 'duration'), next);
+    // Replace starts empty too (the current value stays visible as the grey placeholder); the keyboard stays up.
+    apply(metricRaw(duration ? next === 'replace' ? metric.value : 0 : null, duration), next);
+    if (!duration) input.current?.focus();
   };
   const review = () => {
     controller.reviewWithServerVersion();
@@ -89,7 +96,8 @@ function MetricForm({ id, controller, state, onClose }: { id: string; controller
       </Animated.View>
       <Animated.View entering={reduced ? FadeIn.duration(200) : SlideInDown.duration(300)} accessibilityViewIsModal style={[styles.sheet, { backgroundColor: colors.background, paddingBottom: restInset }]} testID="nutrition-metric-sheet">
         <SheetHandle />
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+        {/* "always": a tap on the native Sumar/Reemplazar control must not drop the keyboard. */}
+        <ScrollView keyboardShouldPersistTaps="always" contentContainerStyle={styles.content}>
           <View style={styles.header}>
             <SheetControl label={`Cerrar ${metric.label} sin guardar`} icon="close" disabled={running} onPress={onClose} />
             <View style={styles.title}><AppText accessibilityRole="header" variant="headline" style={styles.center}>{metric.label}</AppText>
@@ -100,11 +108,12 @@ function MetricForm({ id, controller, state, onClose }: { id: string; controller
             <ExerciseSegmented accessibilityLabel="Cómo cargar la métrica" value={mode} options={[{ value: 'add', label: `Sumar a ${relative}` }, { value: 'replace', label: 'Reemplazar' }]} onChange={changeMode} />
           </View> : null}
           {metric.valueType === 'duration' ? <MetricDuration value={raw} disabled={locked} onChange={next => apply(next, mode)} />
-            : <View style={styles.numberRow}><TextInput accessibilityLabel={`Valor de ${metric.label}`} autoFocus editable={!locked} keyboardType={metric.valueType === 'decimal' ? 'decimal-pad' : 'number-pad'}
-              selectTextOnFocus value={raw.value} placeholder="0" placeholderTextColor={colors.textMuted} onChangeText={value => apply({ ...raw, value }, mode)}
+            : <View style={styles.numberRow}><TextInput ref={input} accessibilityLabel={`Valor de ${metric.label}`} autoFocus editable={!locked} keyboardType={metric.valueType === 'decimal' ? 'decimal-pad' : 'number-pad'}
+              value={raw.value} placeholder={mode === 'replace' && metric.value !== null ? metricRaw(metric.value, false).value : '0'} placeholderTextColor={colors.textMuted} onChangeText={value => apply({ ...raw, value }, mode)}
               style={[styles.number, { color: colors.text }]} /><AppText muted variant="title2">{metric.unit}</AppText></View>}
           <AppText accessibilityLiveRegion="polite" muted numeric variant="footnote" style={styles.center} testID="nutrition-metric-preview">
-            {removing ? 'Quedaría sin dato' : invalid ? 'Ingresá un valor válido' : `Quedaría en ${metricValue(metric, candidate!.value)}`}
+            {removing ? 'Quedaría sin dato' : !duration && raw.value.trim() === '' ? mode === 'add' ? 'Escribí cuánto sumar' : metric.value === null ? `Escribí el valor de ${relative}` : 'Escribí el nuevo valor'
+              : invalid ? 'Ingresá un valor válido' : `Quedaría en ${metricValue(metric, candidate!.value)}`}
           </AppText>
           {state.errors[id] || state.errors.form ? <AppText accessibilityRole="alert">{state.errors[id] ?? state.errors.form}</AppText> : null}
           {state.message ? <AppText accessibilityRole="alert">{state.message}</AppText> : null}
@@ -115,7 +124,7 @@ function MetricForm({ id, controller, state, onClose }: { id: string; controller
             {truth ? <Button label="Revisar mi entrada sobre esta versión" variant="secondary" onPress={review} /> : null}
           </View> : null}
           {running ? <AppText accessibilityRole="alert" muted style={styles.center}>Guardando…</AppText> : null}
-          {['uncertain', 'confirmed', 'blocked'].includes(state.phase) ? <Button label={state.intent?.receipt ? 'Actualizar fecha confirmada' : 'Comprobar intento guardado'} onPress={() => void controller.recover()} /> : null}
+          {['uncertain', 'confirmed', 'blocked'].includes(state.phase) && !running ? <Button label={state.intent?.receipt ? 'Actualizar fecha confirmada' : 'Comprobar intento guardado'} onPress={() => void controller.recover()} /> : null}
           {metric.value !== null ? <Pressable accessibilityRole="button" accessibilityLabel={`Quitar el valor de ${relative}`} accessibilityState={{ disabled: locked || state.phase !== 'idle' }} disabled={locked || state.phase !== 'idle'} onPress={remove} style={styles.remove}>
             <AppText muted variant="footnote">{`Quitar el valor de ${relative}`}</AppText>
           </Pressable> : null}

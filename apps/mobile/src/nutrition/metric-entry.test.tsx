@@ -131,6 +131,17 @@ describe('individual metric sheet and existing writer', () => {
     fireEvent.changeText(view.getByLabelText('Valor de Pasos'), '250'); await save(view, 'Pasos');
     expect(f.mutate.mock.calls[0][0]).toMatchObject({ changes: [{ value: 250 }] });
   });
+  it('starts empty behind a grey placeholder in both modes, so typing never keeps a leading zero', async () => {
+    const { view } = await open(setup(100, 'integer'));
+    const input = () => view.getByLabelText('Valor de Pasos');
+    expect(input().props.value).toBe(''); expect(input().props.placeholder).toBe('0');
+    expect(view.getByText('Escribí cuánto sumar')).toBeTruthy();
+    fireEvent.changeText(input(), '500');
+    expect(input().props.value).toBe('500'); expect(view.getByText('Quedaría en 600 pasos')).toBeTruthy();
+    fireEvent.press(view.getByText('Reemplazar'));
+    expect(input().props.value).toBe(''); expect(input().props.placeholder).toBe('100');
+    expect(view.getByText('Escribí el nuevo valor')).toBeTruthy();
+  });
   it('duration input converts hours/minutes into canonical minutes', async () => {
     const { f, view } = await open(setup(60, 'duration'));
     fireEvent.changeText(view.getByLabelText('Horas'), '0'); fireEvent.changeText(view.getByLabelText('Minutos'), '30');

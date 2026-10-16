@@ -140,6 +140,22 @@ describe('M9 inline additions', () => {
     expect(added).toHaveBeenCalledWith(expect.objectContaining({ id: quickId, updatedAt: quickReceipt.updatedAt }), quickDate);
     expect(f.controller.getSnapshot().added?.[`saved:${quickId}`].meal.updatedAt).toBe(quickReceipt.updatedAt);
   });
+  it('closing during a "+" add lets it finish in the background, once, without reopening the sheet', async () => {
+    const f = fixture(); await f.controller.initialize(); f.controller.open(quickDate); await settle();
+    const day = nutritionFixture(quickDate);
+    if (day.nutrition.status === 'ok' && day.nutrition.data.dayState === 'recorded') day.nutrition.data.meals[0] = { ...day.nutrition.data.meals[0], id: quickId };
+    (f.api.read as jest.Mock<QuickApi['read']>).mockResolvedValue({ status: 'ok', data: day, meta });
+    const added = jest.fn(); f.controller.subscribeConfirmed(added);
+    let finish!: (v: Awaited<ReturnType<QuickApi['preview']>>) => void;
+    (f.api.preview as jest.Mock<QuickApi['preview']>).mockImplementationOnce(() => new Promise(r => { finish = r; }));
+    const adding = f.controller.addInline(quickOption()); await settle();
+    f.controller.close();
+    expect(f.controller.getSnapshot()).toMatchObject({ open: false, inlineKey: `saved:${quickId}` });
+    const selection = selectionFromDraft(f.controller.getSnapshot().draft!).selection!;
+    finish({ status: 'ok', data: quickPreview(selection), meta }); await adding;
+    expect(f.api.confirm).toHaveBeenCalledTimes(1); expect(added).toHaveBeenCalledTimes(1);
+    expect(f.controller.getSnapshot()).toMatchObject({ open: false, inlineKey: null, intent: null, phase: 'idle' });
+  });
   it('preview failure returns to the list without writing; an uncertain write keeps the SAME stored attempt', async () => {
     const f = fixture(); await f.controller.initialize(); f.controller.open(quickDate); await settle();
     (f.api.preview as jest.Mock<QuickApi['preview']>).mockResolvedValueOnce(failure);

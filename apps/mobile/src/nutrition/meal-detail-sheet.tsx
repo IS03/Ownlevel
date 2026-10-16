@@ -1,8 +1,8 @@
-import { ActionSheetIOS, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
+import { useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NutritionDayMeal, NutritionNutrientTotal } from '@/api/nutrition-day';
-import { AppIcon, AppText, GlassSurface, SheetHandle, brandTokens, pressedStyle, useOwnlevelTheme, useReduceMotion, type AppIconName } from '@/design-system';
+import { AppIcon, AppSheet, AppText, GlassSurface, brandTokens, pressedStyle, useAppSheetDismiss, useOwnlevelTheme, useReduceMotion, type AppIconName } from '@/design-system';
 import { RoutineSheetButton } from '@/training/routine-sheet-button';
 import { amount } from './day-format';
 import { mealShown } from './meal-sheet';
@@ -47,76 +47,77 @@ function Share({ label, share, color }: { label: string; share: number; color: s
 export function MealDetailSheet({ meal, calories, protein, entries, actions, onClose }: {
   meal: NutritionDayMeal; calories: NutritionNutrientTotal; protein: NutritionNutrientTotal; entries: number; actions: MealDetailActions; onClose: () => void;
 }) {
-  const { colors, isDark } = useOwnlevelTheme(), reduced = useReduceMotion(), insets = useSafeAreaInsets();
+  const { colors } = useOwnlevelTheme(), insets = useSafeAreaInsets();
+  return <AppSheet onClose={onClose} closeLabel="Cerrar detalle de la comida" dragFromContent edgeSwipe testID="meal-detail-sheet"
+    style={[styles.sheet, { backgroundColor: colors.background, paddingBottom: Math.max(insets.bottom, 16) }]}>
+    <DetailBody meal={meal} calories={calories} protein={protein} entries={entries} actions={actions} />
+  </AppSheet>;
+}
+function DetailBody({ meal, calories, protein, entries, actions }: {
+  meal: NutritionDayMeal; calories: NutritionNutrientTotal; protein: NutritionNutrientTotal; entries: number; actions: MealDetailActions;
+}) {
+  const { colors, isDark } = useOwnlevelTheme();
+  const dismiss = useAppSheetDismiss();
+  // Short content never scrolls, so a drag anywhere on the sheet closes it; long content scrolls.
+  const [frame, setFrame] = useState(0), [content, setContent] = useState(0);
   const origin = meal.sourceType && meal.sourceType !== 'manual' ? origins[meal.sourceType] : undefined;
   const readOnlyNote = mealEditable(meal) ? null : origin?.note ?? (meal.entryKind === 'meal' ? 'Esta comida no se edita desde acá; podés repetirla o guardarla como tuya.' : 'Es un resumen histórico importado: no se edita ni se repite.');
   const moment = [meal.mealLabel ? mealMoments[meal.mealLabel] : null, meal.timeKnown ? time.format(new Date(meal.consumedAt)) : null].filter(Boolean).join(' · ');
   const calorieShare = dayShare(meal.calories, calories, entries), proteinShare = dayShare(meal.proteinG, protein, entries);
   const showDescription = !!meal.description && meal.description !== meal.title;
-  const more = () => {
+  // Delete is one tap away (trash), confirmed once.
+  const remove = () => {
     if (!actions.onDelete) return;
-    const confirm = () => Alert.alert('¿Eliminar esta comida?', 'Deja de contar en el día y desaparece de la lista.', [
-      { text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: actions.onDelete }]);
-    if (Platform.OS === 'ios') ActionSheetIOS.showActionSheetWithOptions({ options: ['Eliminar comida', 'Cancelar'], destructiveButtonIndex: 0, cancelButtonIndex: 1, userInterfaceStyle: isDark ? 'dark' : 'light' },
-      index => { if (index === 0) confirm(); });
-    else confirm();
+    Alert.alert('¿Eliminar esta comida?', 'Deja de contar en el día y desaparece de la lista.', [
+      { text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: () => dismiss(actions.onDelete) }]);
   };
-  const run = (action?: () => void) => action ? () => { onClose(); action(); } : undefined;
+  // The sheet leaves first; the next flow (editor, repeat, save) opens once it is gone.
+  const run = (action?: () => void) => action ? () => dismiss(action) : undefined;
   const edit = run(actions.onEdit), repeat = run(actions.onRepeat), save = run(actions.onSave);
-  return <Modal transparent statusBarTranslucent visible animationType="fade" onRequestClose={onClose}>
-    <View style={styles.fill}>
-      <Pressable accessibilityLabel="Cerrar detalle de la comida" onPress={onClose} style={[StyleSheet.absoluteFill, styles.scrim]} />
-      <Animated.View entering={reduced ? FadeIn.duration(200) : SlideInDown.duration(300)} accessibilityViewIsModal
-        style={[styles.sheet, { backgroundColor: colors.background, paddingBottom: Math.max(insets.bottom, 16) }]} testID="meal-detail-sheet">
-        <SheetHandle />
-        <ScrollView contentContainerStyle={styles.content}>
-          <View style={styles.header}>
-            <RoutineSheetButton label="Cerrar" icon="close" onPress={onClose} />
-            {actions.onDelete ? <RoutineSheetButton label="Más acciones" icon="more" onPress={more} /> : null}
-          </View>
-          <View style={styles.titleBlock}>
-            <AppText accessibilityRole="header" variant="title1">{mealTitle(meal)}</AppText>
-            {moment || origin || meal.precision === 'estimated' ? <View style={styles.meta}>
-              {moment ? <AppText muted numeric variant="subheadline">{moment}</AppText> : null}
-              {origin || meal.precision === 'estimated' ? <View style={[styles.badge, { backgroundColor: colors.surfaceRaised }]}>
-                <AppIcon name={origin ? 'chat' : 'sparkles'} color={colors.textMuted} size={13} />
-                <AppText muted variant="caption">{origin?.label ?? 'Estimado'}</AppText>
-              </View> : null}
-            </View> : null}
-          </View>
-          <View style={styles.numbers}>
-            <View style={styles.kcal} accessible accessibilityLabel={`${mealShown(meal.calories)} kilocalorías`}>
-              <AppText numeric style={styles.kcalValue}>{meal.calories === null ? '—' : mealShown(meal.calories)}</AppText>
-              <AppText muted variant="title2">kcal</AppText>
-            </View>
-            <View style={styles.macros}>{([['Proteína', meal.proteinG], ['Carbos', meal.carbsG], ['Grasas', meal.fatG]] as const).map(([label, value]) =>
-              <View key={label} style={styles.macro} accessible accessibilityLabel={`${label}: ${value === null ? 'sin dato' : amount(value, 'g')}`}>
-                <AppText numeric variant="headline">{value === null ? '—' : amount(value, 'g')}</AppText>
-                <AppText muted variant="caption">{label}</AppText>
-              </View>)}</View>
-          </View>
-          {calorieShare !== null || proteinShare !== null ? <View style={styles.shares}>
-            <AppText muted variant="footnote">En tu día</AppText>
-            {calorieShare !== null ? <Share label="Calorías" share={calorieShare} color={brandTokens.palette.dark.accent} /> : null}
-            {proteinShare !== null ? <Share label="Proteína" share={proteinShare} color={isDark ? brandTokens.palette.dark.heroTo : colors.primary} /> : null}
-          </View> : null}
-          {showDescription ? <AppText muted selectable>{meal.description}</AppText> : null}
-          {readOnlyNote ? <View style={[styles.note, { backgroundColor: colors.surface }]}>
-            <AppIcon name="info" color={colors.textMuted} size={17} /><AppText muted variant="subheadline" style={styles.flex}>{readOnlyNote}</AppText>
-          </View> : null}
-          {edit || repeat || save ? <View style={styles.actions}>
-            {edit ? <Action icon="edit" label="Editar" primary onPress={edit} /> : null}
-            {repeat ? <Action icon="repeat" label="Repetir" onPress={repeat} /> : null}
-            {save ? <Action icon="bookmark" label="Guardar" onPress={save} /> : null}
-          </View> : null}
-        </ScrollView>
-      </Animated.View>
+  return <ScrollView scrollEnabled={content > frame + 1} onLayout={e => setFrame(e.nativeEvent.layout.height)} onContentSizeChange={(_w, h) => setContent(h)} contentContainerStyle={styles.content}>
+    <View style={styles.header}>
+      <RoutineSheetButton label="Cerrar" icon="close" onPress={() => dismiss()} />
+      {actions.onDelete ? <RoutineSheetButton label="Eliminar comida" icon="trash" onPress={remove} /> : null}
     </View>
-  </Modal>;
+    <View style={styles.titleBlock}>
+      <AppText accessibilityRole="header" variant="title1">{mealTitle(meal)}</AppText>
+      {moment || origin || meal.precision === 'estimated' ? <View style={styles.meta}>
+        {moment ? <AppText muted numeric variant="subheadline">{moment}</AppText> : null}
+        {origin || meal.precision === 'estimated' ? <View style={[styles.badge, { backgroundColor: colors.surfaceRaised }]}>
+          <AppIcon name={origin ? 'chat' : 'sparkles'} color={colors.textMuted} size={13} />
+          <AppText muted variant="caption">{origin?.label ?? 'Estimado'}</AppText>
+        </View> : null}
+      </View> : null}
+    </View>
+    <View style={styles.numbers}>
+      <View style={styles.kcal} accessible accessibilityLabel={`${mealShown(meal.calories)} kilocalorías`}>
+        <AppText numeric style={styles.kcalValue}>{meal.calories === null ? '—' : mealShown(meal.calories)}</AppText>
+        <AppText muted variant="title2">kcal</AppText>
+      </View>
+      <View style={styles.macros}>{([['Proteína', meal.proteinG], ['Carbos', meal.carbsG], ['Grasas', meal.fatG]] as const).map(([label, value]) =>
+        <View key={label} style={styles.macro} accessible accessibilityLabel={`${label}: ${value === null ? 'sin dato' : amount(value, 'g')}`}>
+          <AppText numeric variant="headline">{value === null ? '—' : amount(value, 'g')}</AppText>
+          <AppText muted variant="caption">{label}</AppText>
+        </View>)}</View>
+    </View>
+    {calorieShare !== null || proteinShare !== null ? <View style={styles.shares}>
+      <AppText muted variant="footnote">En tu día</AppText>
+      {calorieShare !== null ? <Share label="Calorías" share={calorieShare} color={brandTokens.palette.dark.accent} /> : null}
+      {proteinShare !== null ? <Share label="Proteína" share={proteinShare} color={isDark ? brandTokens.palette.dark.heroTo : colors.primary} /> : null}
+    </View> : null}
+    {showDescription ? <AppText muted selectable>{meal.description}</AppText> : null}
+    {readOnlyNote ? <View style={[styles.note, { backgroundColor: colors.surface }]}>
+      <AppIcon name="info" color={colors.textMuted} size={17} /><AppText muted variant="subheadline" style={styles.flex}>{readOnlyNote}</AppText>
+    </View> : null}
+    {edit || repeat || save ? <View style={styles.actions}>
+      {edit ? <Action icon="edit" label="Editar" primary onPress={edit} /> : null}
+      {repeat ? <Action icon="repeat" label="Repetir" onPress={repeat} /> : null}
+      {save ? <Action icon="bookmark" label="Guardar" onPress={save} /> : null}
+    </View> : null}
+  </ScrollView>;
 }
 const styles = StyleSheet.create({
-  fill: { flex: 1, justifyContent: 'flex-end' }, scrim: { backgroundColor: 'rgba(0,0,0,0.3)' }, flex: { flex: 1 },
-  sheet: { maxHeight: '92%', borderTopLeftRadius: brandTokens.radius.sheet, borderTopRightRadius: brandTokens.radius.sheet, paddingTop: 8 },
+  flex: { flex: 1 }, sheet: { maxHeight: '92%' },
   content: { padding: 16, gap: 20 }, header: { flexDirection: 'row', justifyContent: 'space-between' },
   titleBlock: { gap: 6 }, meta: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: brandTokens.radius.chip, paddingHorizontal: 8, paddingVertical: 3 },

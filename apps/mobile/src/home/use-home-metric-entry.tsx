@@ -70,7 +70,7 @@ export function useHomeMetricEntry(onSaved: () => void) {
   const state = writes?.state;
   const element = <>
     {writes && entry.entry && state?.draft ? <MetricEntrySheet id={entry.entry.id} controller={writes.controller} state={writes.state} onClose={entry.close} /> : null}
-    {entry.undoing && state?.phase === 'pending' ? <MetricSavedNotice notice={{ date: today, message: 'Deshaciendo…', undo: null }} disabled pending onUndo={() => {}} onClose={() => {}} /> : null}
+    {entry.undoing && (state?.phase === 'pending' || state?.phase === 'confirmed') ? <MetricSavedNotice notice={{ date: today, message: 'Deshaciendo…', undo: null }} disabled pending onUndo={() => {}} onClose={() => {}} /> : null}
     {entry.notice ? <MetricSavedNotice notice={entry.notice} disabled={!!state?.draft || state?.phase !== 'idle'} onUndo={entry.undoNotice} onClose={entry.dismissNotice} /> : null}
   </>;
   const clearError = useCallback(() => setError(null), []);

@@ -8,6 +8,7 @@ import type { MobileApiClient } from '@/api/client';
 import type { MobileApiReadResult } from '@/api/results';
 import type { MobileNutritionDayResponse } from '@/api/nutrition-day';
 import { OwnlevelThemeProvider } from '@/design-system';
+import { resetNutritionReportCacheForTests } from './report-resource';
 import { NutritionDayScreen } from './day-screen';
 import { NutritionConfigurationProvider } from './config-provider';
 import { nutritionFixture } from './day-fixture.test-helper';
@@ -45,13 +46,18 @@ const ok = (date: string, data = nutritionFixture(date)): MobileApiReadResult<Mo
 const failure: MobileApiReadResult<MobileNutritionDayResponse> = { status: 'unavailable', reason: 'network',
   meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } };
 const element = () => <SafeAreaInsetsContext.Provider value={{ top: 0, bottom: 0, left: 0, right: 0 }}><OwnlevelThemeProvider initialMode="light"><NutritionConfigurationProvider><NutritionDayScreen /></NutritionConfigurationProvider></OwnlevelThemeProvider></SafeAreaInsetsContext.Provider>;
+function finishMonthDismissal(view: ReturnType<typeof render>) {
+  const sheet = view.UNSAFE_getAllByType(Modal).find(m => m.props.testID === 'nutrition-month-sheet-modal');
+  if (sheet) fireEvent(sheet, 'dismiss');
+}
 function finishDetailDismissal(view: ReturnType<typeof render>) {
-  const sheet = view.UNSAFE_getAllByType(Modal).find(m => m.props.testID === 'nutrition-day-detail-modal');
+  const sheet = view.UNSAFE_getAllByType(Modal).find(m => m.props.testID === 'nutrition-day-detail-sheet-modal');
   if (sheet) fireEvent(sheet,'dismiss');
 }
 const appStateListeners: ((state: AppStateStatus) => void)[] = [];
 describe('Native Nutrition day', () => {
   beforeEach(async () => {
+    resetNutritionReportCacheForTests(mockClient as unknown as MobileApiClient);
     await AsyncStorage.clear(); mockRequest.mockReset();
     mockRead.mockReset(); mockUser = 'owner'; mockToday = '2026-10-02';
     appStateListeners.length = 0;
@@ -60,14 +66,12 @@ describe('Native Nutrition day', () => {
       return { remove: () => { const index = appStateListeners.indexOf(listener); if (index >= 0) appStateListeners.splice(index, 1); } };
     });
   });
-  it('removes Reporte from the menu and opens Progress Nutrition with the calendar month range', async () => {
-    mockToday = '2026-10-04';
-    mockRead.mockImplementation(async options => ok(options.path.split('/').pop()!, { ...nutritionFixture(options.path.split('/').pop()!), today: mockToday }) as never);
+  it('the calendar is just the month: no average and no report shortcut', async () => {
+    mockRead.mockImplementation(async options => ok(options.path.split('/').pop()!) as never);
     const view = render(element()); await view.findByText('Hoy');
     expect(view.queryByText('Reporte')).toBeNull();
-    fireEvent.press(view.getByLabelText('Elegir fecha')); await view.findByText('Ver reporte');
-    fireEvent.press(view.getByText('Ver reporte'));
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/nutrition', params: { from: '2026-10-01', to: '2026-10-04' } });
+    fireEvent.press(view.getByLabelText('Elegir fecha')); await view.findByTestId('nutrition-month');
+    expect(view.queryByText('Ver reporte')).toBeNull(); expect(view.queryByText('Promedio del mes')).toBeNull();
   });
   it('quick composition survives foreground refresh and registers against the displayed destination', async () => {
     mockToday = quickDate;
@@ -165,9 +169,30 @@ describe('Native Nutrition day', () => {
       return { status: 'ok', data: { status: 'saved', operation: 'context', date: mockToday }, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } } as never;
     });
     const view = render(element()); fireEvent.press(await view.findByText('Detalle'));
-    await act(async () => { fireEvent.press(view.getByLabelText('Volver al automático: objetivo')); finishDetailDismissal(view); });
+    await act(async () => { fireEvent.press(view.getByLabelText('Volver al automático: objetivo')); });
+    // The sheet first runs its exit; iOS then reports the Modal gone.
+    await act(async () => { finishDetailDismissal(view); });
     await waitFor(() => expect(view.queryByTestId('nutrition-day-write-editor')).toBeNull());
     expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+  it('undo from the notice deletes without opening the editor: running, then a brief confirmation', async () => {
+    mockRead.mockImplementation(async () => ok(mockToday) as never);
+    const saved = { status: 'ok', data: { status: 'saved', mealId: '41100000-0000-4000-8000-000000000002', sourceDate: mockToday, destinationDate: mockToday, updatedAt: `${mockToday}T13:00:00Z` }, meta: { durationMs: 1, httpStatus: 201, outcome: 'ok' } };
+    let finishDelete!: (r: unknown) => void;
+    mockRequest.mockResolvedValueOnce(saved as never).mockImplementationOnce(() => new Promise(resolve => { finishDelete = resolve as (r: unknown) => void; }));
+    const view = render(element()); await view.findByText('Agregar comida');
+    fireEvent.press(view.getByText('Agregar comida')); fireEvent.press(view.getByText('A mano'));
+    fireEvent.changeText(view.getByLabelText('Calorías'), '250');
+    await act(async () => { fireEvent.press(view.getByText(/Agregar al día ·/)); });
+    expect(await view.findByTestId('nutrition-meal-notice')).toBeTruthy();
+    expect(view.queryByText('Comida guardada.')).toBeNull();
+    await act(async () => { fireEvent.press(view.getByLabelText('Deshacer comida agregada')); });
+    expect(view.getByText('Deshaciendo…')).toBeTruthy();
+    expect(view.queryByTestId('manual-meal-editor')).toBeNull();
+    await act(async () => { finishDelete({ ...saved, data: { ...saved.data, status: 'deleted' } }); });
+    expect(await view.findByText('Deshecho')).toBeTruthy();
+    expect(view.queryByTestId('manual-meal-editor')).toBeNull(); expect(view.queryByText('Comida eliminada.')).toBeNull();
+    expect((mockRequest.mock.calls[1][0].body as { operation: string }).operation).toBe('delete');
   });
   it('keeps a form draft through refresh and fences the pre-write response after confirmed create', async () => {
     let latest = nutritionFixture();
@@ -209,7 +234,7 @@ describe('Native Nutrition day', () => {
     expect(mockRequest).toHaveBeenCalledTimes(1);
     fireEvent.press(view.getByText('Revisar intento guardado'));
     expect(view.getByLabelText('Calorías').props.value).toBe('250');
-    await act(async () => { fireEvent.press(view.getByText('Comprobar intento guardado')); }); await view.findByText('Comida guardada.');
+    await act(async () => { fireEvent.press(view.getByText('Comprobar intento guardado')); }); expect(await view.findByTestId('nutrition-meal-notice')).toBeTruthy(); expect(view.queryByText('Comida guardada.')).toBeNull();
     expect(mockRequest).toHaveBeenCalledTimes(2);
     expect(mockRequest.mock.calls[1][0].body).toEqual(mockRequest.mock.calls[0][0].body);
   });
@@ -223,14 +248,13 @@ describe('Native Nutrition day', () => {
     fireEvent.press(view.getByTestId('nutrition-week-2026-10-01'));
     await view.findByText('Comida 2026-10-01');
     expect(view.queryByText('Comida 2026-10-02')).toBeNull();
-    fireEvent.press(view.getByText('Volver a hoy'));
+    fireEvent.press(view.getByTestId('nutrition-today-pill'));
     await view.findByText('Comida 2026-10-02');
-    fireEvent.press(view.getByLabelText('Elegir fecha')); fireEvent.press(view.getByText('Otra fecha'));
-    fireEvent.changeText(view.getByLabelText('Fecha DD/MM/AAAA'), '30/02/2026');
-    fireEvent.press(view.getByText('Consultar fecha'));
-    expect(view.getByText('Ingresá una fecha válida.')).toBeTruthy();
-    fireEvent.changeText(view.getByLabelText('Fecha DD/MM/AAAA'), '20/09/2026');
-    fireEvent.press(view.getByText('Consultar fecha'));
+    // A far date: the month title opens the month/year picker, then the day.
+    fireEvent.press(view.getByLabelText('Elegir fecha')); fireEvent.press(await view.findByTestId('nutrition-month-title'));
+    fireEvent(view.UNSAFE_getByProps({ label: 'Mes' }), 'selectionChange', 9); fireEvent.press(view.getByTestId('nutrition-month-title'));
+    await act(async () => { fireEvent.press(await view.findByTestId('nutrition-month-2026-09-20')); });
+    await act(async () => { finishMonthDismissal(view); });
     await view.findByText('Comida 2026-09-20');
     const tiny = nutritionFixture('2026-09-20');
     if (tiny.activity.status === 'ok') tiny.activity.data.metrics[0].value = 0.0001;

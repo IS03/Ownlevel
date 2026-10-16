@@ -1,5 +1,5 @@
 import { suggestedMealLabel } from './meal-timing-model';
-import { parseQuickOption, parseQuickSelection, type QuickOption, type QuickSelection } from '@/api/nutrition-quick';
+import { parseQuickOption, parseQuickSelection, type QuickNutrients, type QuickOption, type QuickSelection } from '@/api/nutrition-quick';
 import { isNutritionDate } from '@/api/nutrition-day';
 export type QuickDraft = Pick<QuickSelection, 'mealLabel' | 'consumedAt'> & { date: string; option: QuickOption; quantities: Record<string, string> };
 export function quickDraft(date: string, option: QuickOption): QuickDraft {
@@ -27,3 +27,21 @@ export function parseQuickDraft(v: unknown): QuickDraft | undefined {
   const draft = { date: d.date, option, quantities: quantities as Record<string, string>, ...('mealLabel' in d ? { mealLabel: d.mealLabel as QuickDraft['mealLabel'] } : {}), ...('consumedAt' in d ? { consumedAt: d.consumedAt as string } : {}) };
   return selectionFromDraft(draft).selection ? draft : undefined;
 }
+/**
+ * Instant estimate shown while the server preview is computed: a food scales its base portion; any other option
+ * only at its own quantities. Display only: adding still requires the confirmed preview. Missing stays null.
+ */
+export function quickEstimate(draft: QuickDraft): QuickNutrients | null {
+  // Calories in whole kcal, like the server's preview; macros keep two decimals.
+  const scale = (factor: number): QuickNutrients => ({ calories: times(draft.option.calories, factor, 0), proteinG: times(draft.option.proteinG, factor),
+    carbsG: times(draft.option.carbsG, factor), fatG: times(draft.option.fatG, factor) });
+  const amount = (id: string) => Number(draft.quantities[id]?.trim().replace(',', '.'));
+  if (draft.option.source.kind === 'food') {
+    const item = draft.option.items[0], quantity = item ? amount(item.id) : NaN;
+    return item && item.quantity > 0 && Number.isFinite(quantity) && quantity > 0 ? scale(quantity / item.quantity) : null;
+  }
+  return draft.option.items.every(i => amount(i.id) === i.quantity) ? scale(1) : null;
+}
+const times = (value: number | null, factor: number, places = 2) => value === null ? null : Math.round(value * factor * 10 ** places) / 10 ** places;
+/** Search form of a text: no accents, no case (café = cafe = CAFÉ), like the server's catalog search. */
+export const searchable = (value: string) => value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLocaleUpperCase('es-AR');

@@ -17,8 +17,8 @@ function fixture() {
     confirm: jest.fn<QuickApi['confirm']>().mockImplementation(async i => ({ status: 'ok', data: i.operation === 'register' ? quickReceipt : { ...quickReceipt, operation: 'saveSuggestion', status: 'habitual_saved' }, meta })),
     read: jest.fn<QuickApi['read']>().mockImplementation(async d => ({ status: 'ok', data: nutritionFixture(d), meta })) };
   const c = new QuickController(api, new QuickIntentRepository({ getItem: async k => map.get(k) ?? null, setItem: async(k,v) => { map.set(k,v); }, removeItem: async k => { map.delete(k); } }, 'owner'), () => {});
-  const view = render(<OwnlevelThemeProvider initialMode="light"><QuickEditor controller={c} state={c.getSnapshot()} /></OwnlevelThemeProvider>);
-  c.subscribe(() => view.rerender(<OwnlevelThemeProvider initialMode="light"><QuickEditor controller={c} state={c.getSnapshot()} /></OwnlevelThemeProvider>));
+  const view = render(<OwnlevelThemeProvider initialMode="light"><QuickEditor suggestions controller={c} state={c.getSnapshot()} /></OwnlevelThemeProvider>);
+  c.subscribe(() => view.rerender(<OwnlevelThemeProvider initialMode="light"><QuickEditor suggestions controller={c} state={c.getSnapshot()} /></OwnlevelThemeProvider>));
   return { c, api, view };
 }
 describe('Native quick editor', () => {

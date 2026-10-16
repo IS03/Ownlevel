@@ -33,7 +33,10 @@ export class QuickController {
     this.update({ optionsLoading: false, optionsError: false, open: true, date, draft: null, previousDraft: null, preview: null, previewLoading: false, message: null, errors: {}, truth: null, added: {}, inlineKey: null });
     if (option) this.choose(option); else void this.loadOptions();
   }
+  /** An inline "+" add the user closed the sheet on: it finishes in the background (the day shows it running). */
+  private backgroundInline: string | null = null;
   close() {
+    if (this.state.inlineKey) { this.backgroundInline = this.state.inlineKey; this.update({ open: false }); return; }
     if (this.busy) return;
     this.previewGeneration++;
     this.update({ open: false, previewLoading: false,
@@ -74,8 +77,10 @@ export class QuickController {
     const key = `${option.source.kind}:${option.source.id}`;
     this.update({ inlineKey: key }); this.choose(option, false);
     await this.requestPreview();
-    if (this.state.preview && this.state.inlineKey === key && this.state.phase === 'idle') await this.save();
-    if (this.state.phase === 'idle' && !this.state.intent) this.update({ inlineKey: null, draft: null, preview: null });
+    try {
+      if (this.state.preview && this.state.inlineKey === key && this.state.phase === 'idle') await this.save();
+      if (this.state.phase === 'idle' && !this.state.intent) this.update({ inlineKey: null, draft: null, preview: null });
+    } finally { if (this.backgroundInline === key) this.backgroundInline = null; }
   }
   removeAdded(key: string) { const added = { ...this.state.added }; delete added[key]; this.update({ added }); }
   timing(mealLabel: QuickDraft['mealLabel'], consumedAt?: string) {
@@ -105,7 +110,7 @@ export class QuickController {
     if (!selection) { this.update({ errors, preview: null }); return; }
     const generation = ++this.previewGeneration; this.update({ previewLoading: true, preview: null, errors: {}, message: null });
     try { const result = await this.api.preview(selection);
-      if (this.disposed || generation !== this.previewGeneration || !this.state.open) return;
+      if (this.disposed || generation !== this.previewGeneration || (!this.state.open && !this.backgroundInline)) return;
       if (result.status === 'ok' && sameQuickSelection(selection, result.data.selection)) this.update({ preview: result.data, previewLoading: false });
       else if (result.status === 'conflict') {
         this.update({ phase: 'conflict', previewLoading: false, message: result.message, truth: null }); await this.loadOptions();
@@ -182,7 +187,7 @@ export class QuickController {
       this.update({ added: { ...this.state.added, [key]: { meal: registered, date: receipt.date } } });
       this.confirmedListeners.forEach(f => f(registered!, receipt.date));
     }
-    this.update({ phase: 'idle', intent: null, open: !!this.state.inlineKey, inlineKey: null, draft: null, preview: null, previousDraft: null, truth: null,
+    this.update({ phase: 'idle', intent: null, open: !!this.state.inlineKey && !this.backgroundInline, inlineKey: null, draft: null, preview: null, previousDraft: null, truth: null,
       message: receipt.operation === 'register' ? 'Comida registrada.' : 'Guardada como habitual. No agregamos otra comida al día.' });
   }
 }

@@ -58,7 +58,15 @@ export class ApiResourceController<T> {
   constructor(
     private readonly load: ResourceLoader<T>,
     private readonly now: () => number = Date.now,
-  ) {}
+    /** A reading confirmed earlier (cache): shown at once as ready, and the first refresh revalidates it. */
+    initial?: { confirmedAt: number; result: Extract<MobileApiReadResult<T>, { status: 'ok' }> },
+  ) {
+    if (initial) {
+      this.confirmed = { confirmedAt: initial.confirmedAt, data: initial.result.data };
+      this.confirmedResult = initial.result;
+      this.state = { status: 'ready', current: this.confirmed, refreshing: false, trigger: 'initial', result: initial.result };
+    }
+  }
 
   getSnapshot(): ApiResourceState<T> {
     return this.state;
@@ -67,6 +75,19 @@ export class ApiResourceController<T> {
   subscribe(listener: ResourceListener<T>): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /**
+   * A read that must reflect a write confirmed just now: a read already in flight may predate that write, so it is
+   * aborted and its result ignored instead of being reused.
+   */
+  reload(trigger: ResourceRefreshTrigger): Promise<void> {
+    if (this.disposed) {
+      return Promise.resolve();
+    }
+    this.abortController?.abort();
+    this.inFlight = null;
+    return this.refresh(trigger);
   }
 
   refresh(trigger: ResourceRefreshTrigger): Promise<void> {
@@ -92,7 +113,8 @@ export class ApiResourceController<T> {
 
     const operation = this.load(this.abortController.signal)
       .then((result) => {
-        if (this.disposed) {
+        // A superseded read (see reload) never replaces newer truth.
+        if (this.disposed || this.inFlight !== operation) {
           return;
         }
 

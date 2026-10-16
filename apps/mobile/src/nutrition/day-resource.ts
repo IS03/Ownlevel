@@ -17,6 +17,12 @@ export function useNutritionDayResource(client: MobileApiClient | null, date: st
     return resource?.client === client && resource.date === date
       ? resource.controller.refresh('manual') : Promise.resolve();
   }, [client, date]);
+  /** After a confirmed write: drop any read that may predate it. */
+  const reload = useCallback(() => {
+    const resource = active.current;
+    return resource?.client === client && resource.date === date
+      ? resource.controller.reload('manual') : Promise.resolve();
+  }, [client, date]);
   useEffect(() => {
     // Create per effect lifetime as well as per date/client. Strict Mode may
     // replay effects; a disposed controller must never be reused.
@@ -38,5 +44,5 @@ export function useNutritionDayResource(client: MobileApiClient | null, date: st
     };
   }, [client, date]);
   useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
-  return { date, state, refresh };
+  return { date, state, refresh, reload };
 }
