@@ -81,6 +81,10 @@ describe('keyboard and sheet leave together', () => {
     const tree = () => <OwnlevelThemeProvider initialMode="light"><AppSheet testID="follow" closeLabel="Cerrar" onClose={onClose}
       dismissKeyboardOnClose keyboardHeight={height} keyboardInset={26} onShow={onShow}><Close /></AppSheet></OwnlevelThemeProvider>;
     const view = render(tree());
+    const tail = view.getByTestId('follow-keyboard-tail', { includeHiddenElements: true });
+    expect(tail.props.pointerEvents).toBe('none');
+    expect(StyleSheet.flatten(tail.props.style)).toMatchObject({ top: '100%', left: 0, right: 0 });
+    expect(StyleSheet.flatten(tail.props.style).height).toBeGreaterThan(300);
     fireEvent(view.UNSAFE_getByType(Modal), 'show');
     expect(onShow).not.toHaveBeenCalled();
     fireEvent(view.getByTestId('follow'), 'layout', { nativeEvent: { layout: { height: 300 } } });

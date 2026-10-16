@@ -18,6 +18,8 @@ export function useAppSheetDismiss(): AppSheetDismiss {
 }
 
 const TIMING = { duration: motion.duration.base, easing: Easing.bezier(...motion.easing) };
+// A full keyboard travel must ease in as well as out; the short-control curve starts too abruptly here.
+const KEYBOARD_TIMING = { duration: motion.duration.base, easing: Easing.inOut(Easing.cubic) };
 
 type AppSheetProps = PropsWithChildren<{
   onClose: () => void;
@@ -75,8 +77,8 @@ export function AppSheet({ children, onClose, closeLabel, locked = false, dragFr
     if (reduced) return;
     // A swipe from the edge leaves sideways, the way it was pulled; everything else slides down.
     if (toSide) sideways.set(withTiming(windowWidth, TIMING, done => { if (done) runOnJS(hide)(); }));
-    else offset.set(withTiming(sheetHeight.get(), TIMING, done => { if (done) runOnJS(hide)(); }));
-  }, [closing, dismissKeyboardOnClose, hide, locked, offset, reduced, sheetHeight, shown, sideways, windowWidth]);
+    else offset.set(withTiming(sheetHeight.get(), keyboardHeight ? KEYBOARD_TIMING : TIMING, done => { if (done) runOnJS(hide)(); }));
+  }, [closing, dismissKeyboardOnClose, hide, keyboardHeight, locked, offset, reduced, sheetHeight, shown, sideways, windowWidth]);
   const requestLeave = useCallback((next: (() => void) | undefined, side: boolean) => {
     if (locked) return;
     if (beforeDismiss && !next) {
@@ -121,9 +123,12 @@ export function AppSheet({ children, onClose, closeLabel, locked = false, dragFr
     if (measured.current) return;
     measured.current = true;
     if (reduced) offset.set(0);
-    else { offset.set(next); offset.set(withTiming(0, TIMING)); }
+    else { offset.set(next); offset.set(withTiming(0, keyboardHeight ? KEYBOARD_TIMING : TIMING)); }
     notifyShown();
-  }} style={[styles.sheet, style, sheet]} testID={testID}>
+  }} style={[styles.sheet, style, keyboardHeight && styles.keyboardSheet, sheet]} testID={testID}>
+    {keyboardHeight ? <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
+      testID={testID ? `${testID}-keyboard-tail` : 'sheet-keyboard-tail'}
+      style={{ position: 'absolute', top: '100%', left: 0, right: 0, height: windowHeight, backgroundColor: StyleSheet.flatten(style)?.backgroundColor }} /> : null}
     {dragFromContent ? grabber : <GestureDetector gesture={pan}>{grabber}</GestureDetector>}
     {children}
   </Animated.View>;
@@ -146,5 +151,6 @@ const styles = StyleSheet.create({
   fill: { flex: 1, justifyContent: 'flex-end' },
   scrim: { backgroundColor: 'rgba(0,0,0,0.25)' },
   sheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
+  keyboardSheet: { overflow: 'visible' },
   grabber: { paddingTop: 8, paddingBottom: 4, alignItems: 'center' },
 });

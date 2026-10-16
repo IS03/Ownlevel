@@ -12,6 +12,9 @@ import { MonthWheel } from './month-wheel';
 import { readingLabel } from './day-summary';
 import { prefetchNutritionReport, useNutritionReportResource } from './report-resource';
 
+// Six compact rows, weekday label and six 8-point gaps: same body for every month and the wheels.
+const MONTH_BODY_HEIGHT = 6 * 44 + 16 + 6 * 8;
+
 /** The report range a calendar month reads: the month, cut at today. */
 export function monthReportQuery(month: string, today: string) {
   const end = nutritionMonth(month).end;
@@ -32,7 +35,7 @@ const monthName = (month: string, style: 'long' | 'short' = 'long') => new Intl.
 
 /**
  * Month calendar in an app sheet: drag it down or tap outside to close. The month title opens a month/year
- * picker for far dates; its height follows the visible month, without retaining a previous read/error's height.
+ * picker for far dates; all months and the month/year wheels share the six-week grid's height.
  */
 /** Just the month (compact): the averages and the report live in Progreso. */
 export function NutritionMonthSheet({ date, today, onClose, onSelect }: {
@@ -74,7 +77,7 @@ function MonthBody({ date, today, onSelect, picking, setPicking }: {
       </Pressable>
       {picking ? <View style={styles.arrow} /> : <Pressable accessibilityLabel="Mes siguiente" accessibilityRole="button" onPress={() => move(1)} style={styles.arrow}><AppIcon name="chevronRight" size={20} color={colors.primary} /></Pressable>}
     </View>
-    <View style={styles.body} testID="nutrition-month-body">
+    <View style={[styles.body, styles.viewport, picking && styles.wheels]} testID="nutrition-month-body">
       {picking ? <MonthWheel month={month} today={today} onChange={setMonth} onDone={next => { setMonth(next); setPicking(false); }} />
         : month > today ? <MonthGrid month={month} selected={date} today={today} onSelect={select} />
         : <ReadMonth key={month} month={month} selected={date} today={today} onSelect={select} />}
@@ -110,7 +113,7 @@ function MonthGrid({ month, selected, today, onSelect, report, loading, unavaila
 }) {
   const { colors } = useOwnlevelTheme();
   const { days, offset } = nutritionMonth(month);
-  const cells = Array.from({ length: Math.ceil((offset + days) / 7) * 7 }, (_, i) => i >= offset && i < offset + days ? shiftNutritionDate(month, i - offset)! : null);
+  const cells = Array.from({ length: 42 }, (_, i) => i >= offset && i < offset + days ? shiftNutritionDate(month, i - offset)! : null);
   const rows = new Map(report?.days.map(row => [row.date, row]));
   return <View testID="nutrition-month" style={styles.calendar}>
     <View style={styles.week}>{['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((day, i) => <AppText key={i} muted variant="caption" style={styles.weekday}>{day}</AppText>)}</View>
@@ -140,6 +143,6 @@ const styles = StyleSheet.create({
   // The ring is centered on the day number (it used to sit at the cell's top-left corner).
   cellRing: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },
   selection: { width: 12, height: 2, borderRadius: 2, position: 'absolute', bottom: 8 },
-  body: { gap: 16 },
+  body: { gap: 16 }, viewport: { minHeight: MONTH_BODY_HEIGHT }, wheels: { justifyContent: 'center' },
   manual: { gap: 12 },
 });
