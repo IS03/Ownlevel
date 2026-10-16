@@ -124,7 +124,7 @@ export function ScrollScreen({
   onScroll,
   ...scrollViewProps
 }: ScrollScreenProps) {
-  const { colors } = useOwnlevelTheme();
+  const { colors, isDark } = useOwnlevelTheme();
   const top = useContext(SafeAreaInsetsContext)?.top ?? 0; // Optional: screens rendered without a provider just skip the bar.
   const [scrolled, setScrolled] = useState(false);
 
@@ -150,7 +150,8 @@ export function ScrollScreen({
         {children}
       </ScrollView>
       {statusBarGlass && top > 0 ? <View pointerEvents="none" style={[styles.statusBar, { height: top }]}>
-        <GlassSurface visible={scrolled} style={StyleSheet.absoluteFill} testID="status-bar-glass" />
+        {/* Dark: the glass refracts bright text and edges under it into noise, so it carries most of the background. */}
+        <GlassSurface visible={scrolled} style={StyleSheet.absoluteFill} testID="status-bar-glass" tint={isDark ? `${colors.background}C8` : undefined} />
       </View> : null}
     </SafeAreaView>
   );

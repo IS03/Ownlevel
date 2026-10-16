@@ -22,25 +22,33 @@ function SheetControl({ label, icon, disabled, accent, pending, onPress }: {
   </Pressable>;
 }
 /** iOS moves a constant-size sheet with the keyboard, never an animated layout spacer. */
-function KeyboardMetricSheet({ input, ...props }: ComponentProps<typeof AppSheet> & { input: RefObject<TextInput | null> }) {
-  const keyboardHeight = useMetricKeyboard();
+function KeyboardMetricSheet({ input, focused, ...props }: ComponentProps<typeof AppSheet> & { input: RefObject<TextInput | null>; focused: RefObject<(() => void) | null> }) {
+  const keyboard = useMetricKeyboard();
   const insets = useSafeAreaInsets();
-  return <AppSheet {...props} keyboardHeight={keyboardHeight} keyboardInset={Math.max(insets.bottom, 16) - 8} onShow={() => input.current?.focus()} />;
+  // Focus first, slide once the input took it (or after a few frames): the keyboard and the sheet then rise together,
+  // and focusing's UI-thread work never lands in the slide. A duration has no input and slides right away.
+  const focus = () => {
+    const field = input.current;
+    if (!field) return;
+    return new Promise<void>(resolve => { focused.current = resolve; setTimeout(resolve, FOCUS_WAIT_MS); field.focus(); });
+  };
+  return <AppSheet {...props} keyboard={keyboard} keyboardInset={Math.max(insets.bottom, 16) - 8} onShow={focus} />;
 }
+const FOCUS_WAIT_MS = 150;
 export function MetricEntrySheet({ id, controller, state, onClose }: { id: string; controller: DayWriteController; state: DayWriteState; onClose: () => void }) {
   const draft = state.draft;
   const metric = draft ? findDayMetric(draft.baseline, id) : undefined;
   const {colors}=useOwnlevelTheme();
-  const input = useRef<TextInput>(null);
+  const input = useRef<TextInput>(null), focused = useRef<(() => void) | null>(null);
   const running=state.phase==='pending'||state.phase==='confirmed'&&!state.message;
   if (draft?.kind !== 'metrics' || !metric) return null;
   const props = { dismissKeyboardOnClose: true, locked: running, onClose, closeLabel: 'Cerrar carga de métrica', style: { backgroundColor: colors.background, maxHeight: '90%' as const } };
-  const form = <MetricForm id={id} controller={controller} state={state} input={input} />;
+  const form = <MetricForm id={id} controller={controller} state={state} input={input} onInputFocus={() => focused.current?.()} />;
   return Platform.OS === 'ios'
-    ? <KeyboardMetricSheet key={`${draft.baseline.date}:${id}`} {...props} input={input}>{form}</KeyboardMetricSheet>
+    ? <KeyboardMetricSheet key={`${draft.baseline.date}:${id}`} {...props} input={input} focused={focused}>{form}</KeyboardMetricSheet>
     : <AppSheet key={`${draft.baseline.date}:${id}`} {...props}>{form}</AppSheet>;
 }
-function MetricForm({ id, controller, state, input }: { id: string; controller: DayWriteController; state: DayWriteState; input: RefObject<TextInput | null> }) {
+function MetricForm({ id, controller, state, input, onInputFocus }: { id: string; controller: DayWriteController; state: DayWriteState; input: RefObject<TextInput | null>; onInputFocus?: () => void }) {
   const draft = state.draft!, data = draft.baseline, metric = findDayMetric(data, id)!;
   const { colors } = useOwnlevelTheme(), insets = useSafeAreaInsets(),dismiss=useAppSheetDismiss();
   const onClose=()=>dismiss();
@@ -96,11 +104,11 @@ function MetricForm({ id, controller, state, input }: { id: string; controller: 
               <AppText muted numeric variant="caption" style={styles.center}>{subtitle}</AppText></View>
             <SheetControl label={`Guardar ${metric.label}`} icon="checkmark" disabled={saveDisabled} accent pending={running} onPress={() => void controller.save()} />
           </View>
-          {metric.value !== null ? <View pointerEvents={locked ? 'none' : 'auto'} accessibilityElementsHidden={locked}>
+          {metric.value !== null ? <View pointerEvents={locked ? 'none' : 'auto'} accessibilityElementsHidden={locked} style={styles.mode}>
             <ExerciseSegmented accessibilityLabel="Cómo cargar la métrica" value={mode} options={[{ value: 'add', label: `Sumar a ${relative}` }, { value: 'replace', label: 'Reemplazar' }]} onChange={changeMode} />
           </View> : null}
           {metric.valueType === 'duration' ? <MetricDuration value={raw} disabled={locked} onChange={next => apply(next, mode)} />
-            : <View style={styles.numberRow}><TextInput ref={input} accessibilityLabel={`Valor de ${metric.label}`} autoFocus={Platform.OS !== 'ios'} editable={!locked} keyboardType={metric.valueType === 'decimal' ? 'decimal-pad' : 'number-pad'}
+            : <View style={styles.numberRow}><TextInput ref={input} onFocus={onInputFocus} accessibilityLabel={`Valor de ${metric.label}`} autoFocus={Platform.OS !== 'ios'} editable={!locked} keyboardType={metric.valueType === 'decimal' ? 'decimal-pad' : 'number-pad'}
               value={raw.value} placeholder={mode === 'replace' && metric.value !== null ? metricRaw(metric.value, false).value : '0'} placeholderTextColor={colors.textMuted} onChangeText={value => apply({ ...raw, value }, mode)}
               style={[styles.number, { color: colors.text }]} /><AppText muted variant="title2">{metric.unit}</AppText></View>}
           <AppText accessibilityLiveRegion="polite" muted numeric variant="footnote" style={styles.center} testID="nutrition-metric-preview">
@@ -124,8 +132,9 @@ function MetricForm({ id, controller, state, input }: { id: string; controller: 
 const styles = StyleSheet.create({
   fill: { flex: 1, justifyContent: 'flex-end' }, scrim: { backgroundColor: 'rgba(0,0,0,0.3)' },
   sheet: { maxHeight: '90%', borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 8 },
-  content: { padding: 16, gap: 16 }, header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  title: { flex: 1, gap: 4 }, center: { textAlign: 'center' }, control: { width: 44, height: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  content: { padding: 16, gap: 16 }, header: { flexDirection: 'row', alignItems: 'center', gap: 12 }, mode: { marginTop: 8 },
+  // Name and day sit a little above the buttons' center line.
+  title: { flex: 1, gap: 4, alignSelf: 'flex-start', marginTop: -6 }, center: { textAlign: 'center' }, control: { width: 44, height: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   numberRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 8, paddingTop: 8 },
   number: { fontSize: 48, fontWeight: '700', fontVariant: ['tabular-nums'], textAlign: 'center', minWidth: 32, minHeight: 64, padding: 0 }, status: { gap: 12 },
 });

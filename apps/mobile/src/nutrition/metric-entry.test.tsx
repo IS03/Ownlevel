@@ -84,7 +84,7 @@ beforeEach(() => { jest.clearAllMocks(); });
 it('opts the shared Home/Nutrition metric sheet into closing its keyboard at the start of the exit', async () => {
   const { view } = await open();
   expect(view.UNSAFE_getByType(AppSheet).props.dismissKeyboardOnClose).toBe(true);
-  expect(view.UNSAFE_getByType(AppSheet).props.keyboardHeight).toBeDefined();
+  expect(view.UNSAFE_getByType(AppSheet).props.keyboard).toBeDefined();
   expect(view.UNSAFE_getByType(AppSheet).props.onShow).toEqual(expect.any(Function));
   expect(view.getByLabelText('Valor de Agua').props.autoFocus).toBe(false);
 });

@@ -22,10 +22,17 @@ describe('metric keyboard uses native frame notifications instead of estimated p
     jest.mocked(withTiming).mockClear();
     act(() => notify(event(100, 250)));
     expect(withTiming).toHaveBeenLastCalledWith(expect.any(Number), { duration: 250, easing: expect.anything(), reduceMotion: ReduceMotion.Never });
-    expect(hook.result.current.value).toBeGreaterThan(0);
+    expect(hook.result.current.height.value).toBeGreaterThan(0);
+    expect(hook.result.current.target.value).toBe(hook.result.current.height.value);
     act(() => notify(event(10000, 350)));
     expect(withTiming).toHaveBeenLastCalledWith(0, { duration: 350, easing: expect.anything(), reduceMotion: ReduceMotion.Never });
-    expect(hook.result.current.value).toBe(0);
+    expect(hook.result.current.height.value).toBe(0);
+    expect(hook.result.current.target.value).toBe(0);
+    expect(hook.result.current.duration.value).toBe(350);
+    // A hardware keyboard's bar shows up with no animation: the sheet still moves over a few frames, not in one.
+    act(() => notify(event(700, 0)));
+    expect(withTiming).toHaveBeenLastCalledWith(expect.any(Number), { duration: 250, easing: expect.anything(), reduceMotion: ReduceMotion.Never });
+    expect(hook.result.current.duration.value).toBe(250);
     hook.unmount();
     expect(remove).toHaveBeenCalledTimes(1);
   });
