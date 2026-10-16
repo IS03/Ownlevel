@@ -11,8 +11,12 @@ export function useMealNotice(meals: MealController | undefined, quick: QuickCon
   const [notice, setNotice] = useState<MealNotice | null>(null);
   const [undoing, setUndoing] = useState<'undo' | 'delete' | null>(null);
   const [result, setResult] = useState<MealResult | null>(null);
+  // The meal being deleted (its row shakes and dims), then the one confirmed gone (its row breaks away once the day
+  // re-reads without it).
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [removed, setRemoved] = useState<string | null>(null);
   const [owner, setOwner] = useState(meals);
-  if (owner !== meals) { setOwner(meals); setNotice(null); setUndoing(null); setResult(null); }
+  if (owner !== meals) { setOwner(meals); setNotice(null); setUndoing(null); setResult(null); setRemoving(null); }
   useEffect(() => { if (!notice || undoing) return; const timer = setTimeout(() => setNotice(null), 10000); return () => clearTimeout(timer); }, [notice, undoing]);
   useEffect(() => { if (!result) return; const timer = setTimeout(() => setResult(null), RESULT_MS); return () => clearTimeout(timer); }, [result]);
   const undoKey = useRef<string | null>(null), undoKind = useRef<'undo' | 'delete'>('delete');
@@ -23,7 +27,7 @@ export function useMealNotice(meals: MealController | undefined, quick: QuickCon
       const receipt = stored.receipt!, fields = stored.intent.fields;
       if (stored.intent.operation === 'delete') {
         if (undoKey.current) quick?.removeAdded(undoKey.current);
-        undoKey.current = null; setUndoing(null); setNotice(null);
+        undoKey.current = null; setUndoing(null); setNotice(null); setRemoved(stored.intent.mealId);
         setResult({ message: undoKind.current === 'undo' ? 'Deshecho' : 'Comida eliminada' });
         undoKind.current = 'delete';
         return;
@@ -34,15 +38,15 @@ export function useMealNotice(meals: MealController | undefined, quick: QuickCon
     return () => { unsubscribeQuick?.(); unsubscribeMeal?.(); };
   }, [meals, quick]);
   /**
-   * Deletes the meal without opening the editor: from the notice's "Deshacer" (no arguments), from the quick list's
-   * "Agregado · Deshacer" (with its key) or from the day's delete actions. The notice shows it running, then confirmed.
+   * Deletes the meal without opening the editor: from the notice's "Deshacer" (no arguments) or from the day's delete
+   * actions (swipe, long-press menu, detail). The notice shows it running, then confirmed.
    */
   const undo = async (meal = notice?.meal, destination = notice?.date, key?: string) => {
     if (!meals || !meal || !destination || meals.getSnapshot().phase !== 'idle' || meals.getSnapshot().intent) return;
     const kind = key || meal.id === notice?.meal.id ? 'undo' : 'delete';
-    undoKey.current = key ?? null; undoKind.current = kind; setResult(null); setUndoing(kind);
+    undoKey.current = key ?? null; undoKind.current = kind; setResult(null); setUndoing(kind); setRemoving(meal.id);
     await meals.undo(meal, destination);
-    setUndoing(null);
+    setUndoing(null); setRemoving(null);
   };
-  return { notice: notice?.date === date ? notice : null, undoing, result, undo, dismiss: () => setNotice(null) };
+  return { notice: notice?.date === date ? notice : null, undoing, result, removing, removed, undo, dismiss: () => setNotice(null) };
 }

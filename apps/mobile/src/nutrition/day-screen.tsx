@@ -22,7 +22,7 @@ import { headerDate } from '@/home/home-day';
 import { NutritionGlassButton } from './day-controls';
 import { NutritionDayMenu } from './day-menu';
 import { NutritionWeek } from './day-week';
-import { NutritionDayContent, type MealActions } from './day-content';
+import { NutritionDayContent, type MealActions, type MealRemoval } from './day-content';
 import { useNutritionDayResource } from './day-resource';
 import { useMealController } from './use-meal-controller';
 import { useDayWriteController } from './use-day-write-controller';
@@ -39,12 +39,12 @@ import { foodQuickOption } from '@/api/nutrition-food';
 import { QuickEditor } from './quick-editor';
 import { useNutritionHomeEntry, type AddEntry } from './home-entry';
 
-function NutritionDayView({ revision, date, today, onSelect, onServerToday, onAdd, addChoices, addControl, highlightedMeal, onManageFoods, onManageSaved, onConfigure, onReport, mealActions, onActivity, onContext, onMetric }: {
+function NutritionDayView({ revision, date, today, onSelect, onServerToday, onAdd, addChoices, addControl, highlightedMeal, removal, onManageFoods, onManageSaved, onConfigure, onReport, mealActions, onActivity, onContext, onMetric }: {
   /** Bumped after a confirmed write: the day re-reads in place, so its numbers can move to the new values. */
   revision: number;
   date: string; today: string; onSelect: (date: string) => void; onServerToday: (date: string) => void;
   onAdd?: () => void; mealActions?: MealActions;
-  onConfigure?: () => void; onReport?: (range: { from: string; to: string }) => void; addChoices?: ReactNode; addControl?: ReactNode; highlightedMeal?: string; onManageFoods?: () => void; onManageSaved?: () => void;
+  onConfigure?: () => void; onReport?: (range: { from: string; to: string }) => void; addChoices?: ReactNode; addControl?: ReactNode; highlightedMeal?: string; removal?: MealRemoval; onManageFoods?: () => void; onManageSaved?: () => void;
   onMetric?: (data: MobileNutritionDayResponse, metric: NutritionDayMetric) => void;
   onActivity?: (data: MobileNutritionDayResponse) => void; onContext?: DayContextAction;
 }) {
@@ -102,7 +102,7 @@ function NutritionDayView({ revision, date, today, onSelect, onServerToday, onAd
           <AppText accessibilityRole="alert">No pudimos actualizar. Mostramos la última lectura de esta fecha.</AppText>
           <Button label="Reintentar" onPress={runRefresh} variant="secondary" />
         </View> : null}
-        <NutritionDayContent data={current.data} onAdd={onAdd} addChoices={addChoices} addControl={addControl} highlightedMeal={highlightedMeal} mealActions={state.status === 'ready' ? mealActions : undefined}
+        <NutritionDayContent data={current.data} onAdd={onAdd} addChoices={addChoices} addControl={addControl} highlightedMeal={highlightedMeal} removal={removal} mealActions={state.status === 'ready' ? mealActions : undefined}
           onMetric={state.status === 'ready' ? onMetric : undefined} onActivity={state.status === 'ready' ? onActivity : undefined} onContext={state.status === 'ready' ? onContext : undefined} />
       </>}
     {!current ? <>{addControl ?? <NutritionGlassButton icon="plus" label="Agregar comida" wide onPress={onAdd} />}{addChoices}</> : null}
@@ -174,7 +174,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
       onSelect={setSelected} onServerToday={setToday}
       addControl={<NutritionAddMenu onManual={editable ? () => meals.controller.open(date) : undefined} onQuick={editable ? () => quick.controller.open(date) : undefined} onFood={editable ? () => foods.controller.open(date) : undefined} />}
       addChoices={statusBanners}
-      highlightedMeal={mealNotice.notice?.meal.id}
+      highlightedMeal={mealNotice.notice?.meal.id} removal={{ removing: mealNotice.removing, removed: mealNotice.removed }}
       onReport={range => router.push({ pathname: '/(tabs)/progress/trends/nutrition', params: range })}
       onConfigure={editable?()=>config.controller.open():undefined}
       onManageSaved={editable?()=>saved.controller.open():undefined}

@@ -2,7 +2,7 @@ import type { DayContextAction } from './day-details';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
-import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming, type SharedValue } from 'react-native-reanimated';
+import Animated, { FadeOut, Keyframe, LinearTransition, useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming, type SharedValue } from 'react-native-reanimated';
 import type { MobileNutritionDayResponse, NutritionDayMetric } from '@/api/nutrition-day';
 import type { NutritionDayMeal } from '../../../../src/lib/mobile-api/nutrition-day-contract';
 import { AppIcon, AppText, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
@@ -29,6 +29,14 @@ export function mealGroups(meals: NutritionDayMeal[]) {
   return order.map(key => ({ key, label: key === 'none' ? 'Sin momento' : mealLabels[key as keyof typeof mealLabels],
     meals: meals.filter(meal => (meal.mealLabel ?? 'none') === key) })).filter(group => group.meals.length > 0);
 }
+/** The meal being deleted and the last one confirmed gone (see useMealNotice). */
+export type MealRemoval = { removing: string | null; removed: string | null };
+/** A deleted meal breaks away: a quick crack (shrink and tilt) while it fades. Reduce Motion only fades. */
+const breakAway = new Keyframe({
+  0: { opacity: 0.45, transform: [{ scale: 1 }, { rotate: '0deg' }] },
+  40: { opacity: 0.35, transform: [{ scale: 0.97 }, { rotate: '-1.5deg' }] },
+  100: { opacity: 0, transform: [{ scale: 0.86 }, { rotate: '2deg' }] },
+}).duration(brandTokens.motion.duration.base);
 export type MealActions = { edit?: (meal: NutritionDayMeal) => void; repeat?: (meal: NutritionDayMeal) => void;
   save?: (meal: NutritionDayMeal) => void; remove?: (meal: NutritionDayMeal) => void };
 /** What a meal allows: edit/delete only for manual meals (server rule); repeat/save for any real meal; nothing for legacy summaries. */
@@ -60,8 +68,18 @@ function RowFlash({ active }: { active: boolean }) {
  * Flat row (E5). Tap opens the detail (D1/D2); long-press shows the native menu and swipe left deletes (D4).
  * The full description lives in the detail.
  */
-function MealRow({ meal, divider, highlighted, actions, onOpen }: { meal: NutritionDayMeal; divider: boolean; highlighted?: boolean; actions: MealActions; onOpen: (meal: NutritionDayMeal) => void }) {
+function MealRow({ meal, divider, highlighted, removing, removed, actions, onOpen }: {
+  meal: NutritionDayMeal; divider: boolean; highlighted?: boolean; removing?: boolean; removed?: boolean; actions: MealActions; onOpen: (meal: NutritionDayMeal) => void;
+}) {
   const { colors } = useOwnlevelTheme(), reduceMotion = useReduceMotion();
+  // Deleting: a short shake, then it stays dimmed until the server confirms (a failed delete brings it back).
+  const shake = useSharedValue(0);
+  useEffect(() => {
+    if (!removing || reduceMotion) return;
+    const step = (to: number) => withTiming(to, { duration: 45 });
+    shake.set(withSequence(step(-6), step(6), step(-4), step(4), step(-2), step(0)));
+  }, [reduceMotion, removing, shake]);
+  const trembling = useAnimatedStyle(() => ({ transform: [{ translateX: shake.value }] }));
   const [width, setWidth] = useState(0);
   const menu = mealMenu(meal, actions);
   const clock = meal.timeKnown ? time.format(new Date(meal.consumedAt)) : 'Sin hora';
@@ -91,15 +109,18 @@ function MealRow({ meal, divider, highlighted, actions, onOpen }: { meal: Nutrit
     <AppText numeric variant="subheadline">{amount(meal.calories, 'kcal')}</AppText>
     <AppIcon name="chevronRight" color={colors.textMuted} size={15} />
   </Pressable>;
-  return <View onLayout={event => setWidth(event.nativeEvent.layout.width)} style={styles.bleed} testID={`nutrition-meal-${meal.id}`}>
+  return <Animated.View onLayout={event => setWidth(event.nativeEvent.layout.width)} pointerEvents={removing ? 'none' : 'auto'}
+    layout={reduceMotion ? undefined : LinearTransition.duration(brandTokens.motion.duration.base)}
+    exiting={removing || removed ? reduceMotion ? FadeOut.duration(brandTokens.motion.duration.fast) : breakAway : undefined}
+    style={[styles.bleed, trembling, { opacity: removing || removed ? 0.45 : 1 }]} testID={`nutrition-meal-${meal.id}`}>
     <Swipeable enabled={!!menu.remove} friction={1} overshootRight={false} renderRightActions={(_progress, translation, methods) => <DeleteAction translation={translation} onPress={() => confirmDelete(methods)} />}>
       {menuActions.length ? <TrainingContextMenu width={width} disabled={false} name={mealTitle(meal)} onOpen={() => onOpen(meal)} actions={menuActions}>{row}</TrainingContextMenu> : row}
     </Swipeable>
-  </View>;
+  </Animated.View>;
 }
 
-export function NutritionDayContent({ data, onAdd, addChoices, addControl, highlightedMeal, mealActions = {}, onActivity, onContext, onMetric }: {
-  data: MobileNutritionDayResponse; onAdd?: () => void; addChoices?: ReactNode; addControl?: ReactNode; highlightedMeal?: string; mealActions?: MealActions;
+export function NutritionDayContent({ data, onAdd, addChoices, addControl, highlightedMeal, removal, mealActions = {}, onActivity, onContext, onMetric }: {
+  data: MobileNutritionDayResponse; onAdd?: () => void; addChoices?: ReactNode; addControl?: ReactNode; highlightedMeal?: string; removal?: MealRemoval; mealActions?: MealActions;
   onMetric?: (data: MobileNutritionDayResponse, metric: NutritionDayMetric) => void;
   onActivity?: (data: MobileNutritionDayResponse) => void; onContext?: DayContextAction;
 }) {
@@ -120,7 +141,7 @@ export function NutritionDayContent({ data, onAdd, addChoices, addControl, highl
       </View>
       {recorded.meals.length === 0 ? <AppText muted>Sin comidas registradas</AppText> : mealGroups(recorded.meals).map(group => <View key={group.key} style={styles.group}>
         {group.label ? <AppText muted variant="footnote" style={styles.groupLabel}>{group.label}</AppText> : null}
-        {group.meals.map((meal, index) => <MealRow key={meal.id} meal={meal} divider={index > 0} highlighted={meal.id === highlightedMeal} actions={mealActions} onOpen={m => setOpenMeal(m.id)} />)}
+        {group.meals.map((meal, index) => <MealRow key={meal.id} meal={meal} divider={index > 0} highlighted={meal.id === highlightedMeal} removing={meal.id === removal?.removing} removed={meal.id === removal?.removed} actions={mealActions} onOpen={m => setOpenMeal(m.id)} />)}
       </View>)}
     </View> : null}
     {(meal => meal && recorded ? <MealDetailSheet meal={meal} calories={recorded.summary.calories} protein={recorded.summary.proteinG} entries={recorded.summary.entryCount}
