@@ -17,6 +17,9 @@ const mockOverview = jest.fn<(c: unknown, q: ProgressQuery, compare: DateRange |
 const mockBody = jest.fn<(c: unknown, q: ProgressQuery, compare: DateRange | null) => Promise<unknown>>();
 const mockMetrics = jest.fn<(c: unknown, q: ProgressQuery, id: string | null, compare: DateRange | null) => Promise<unknown>>();
 const mockReport = jest.fn<(c: unknown, q: unknown) => Promise<unknown>>();
+jest.mock('@react-native-async-storage/async-storage', () =>
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocusEffect: () => undefined, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn(), success: jest.fn(), warning: jest.fn() }, triggerHaptic: jest.fn() }));

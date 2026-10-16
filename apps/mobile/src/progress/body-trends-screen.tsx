@@ -3,7 +3,9 @@ import { RefreshControl, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchProgressBody, progressRequestKey, type ProgressBody, type ProgressBodyMetric } from '@/api/progress';
-import { AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppText, Button, Chip, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
+import { useNutritionStages } from '@/stages/stages-provider';
+import { chartBands } from './stages-model';
 import { PeriodChart } from './period-chart';
 import { ProgressRow } from './progress-row';
 import { ProgressScroll } from './progress-scroll';
@@ -26,6 +28,10 @@ function Selected({ metric, excluded }: { metric: ProgressBodyMetric; excluded: 
   const { compareText, state, today } = useProgressRange();
   const day = (d: string) => shortRange({ start: d, end: d }, today);
   const within = state.unit === 'month' ? periodHeading(state, today).replace(/^Tu /, 'en ') : 'en el período';
+  // Stages behind the weight, only if you ask for them (off by default) and only when the range touches one.
+  const [showStages, setShowStages] = useState(false);
+  const stages = useNutritionStages()?.state.list;
+  const bands = metric.key === 'body.weight' ? chartBands(stages, metric.observations.map(o => o.date)) : [];
   return <View style={styles.section} testID="body-trend-summary">
     <View style={styles.numbers}>
       <View style={styles.grow}>
@@ -41,7 +47,8 @@ function Selected({ metric, excluded }: { metric: ProgressBodyMetric; excluded: 
           ? `sin cambio medible (${metric.referenceCount} registro${metric.referenceCount === 1 ? '' : 's'})` : arrowDelta(metric.referenceChange, metric.unit)}</AppText> : null}
       </View>
     </View>
-    {metric.observations.length ? <PeriodChart testID="body-trend-chart" mode="dots" points={metric.observations.map(o => ({
+    {bands.length ? <View style={styles.chips}><Chip kind="toggle" label="Etapas" selected={showStages} onPress={() => setShowStages(v => !v)} /></View> : null}
+    {metric.observations.length ? <PeriodChart testID="body-trend-chart" mode="dots" bands={showStages ? bands : undefined} points={metric.observations.map(o => ({
       key: o.date, label: day(o.date), value: o.value, text: `${formatValue(o.value, metric.unit)}${o.imported ? ` · ${o.provenanceLabel}` : ''}`,
       hint: 'Abre el día en Historial', onPress: () => router.push({ pathname: '/history/day/[date]', params: { date: o.date } }),
     }))} /> : null}
@@ -94,4 +101,5 @@ const styles = StyleSheet.create({
   numbers: { flexDirection: 'row', gap: spacing.lg },
   grow: { flex: 1, gap: 2 },
   divider: { width: StyleSheet.hairlineWidth },
+  chips: { flexDirection: 'row' },
 });
