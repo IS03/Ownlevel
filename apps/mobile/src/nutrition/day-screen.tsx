@@ -9,7 +9,7 @@ import {SavedEditor} from './saved-editor';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState, RefreshControl, StyleSheet, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { selectedRouteDate } from '@/history/navigation';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
 import { useDomainDate } from '@/history/use-domain-date';
@@ -39,12 +39,12 @@ import { foodQuickOption } from '@/api/nutrition-food';
 import { QuickEditor } from './quick-editor';
 import { useNutritionHomeEntry, type AddEntry } from './home-entry';
 
-function NutritionDayView({ revision, date, today, onSelect, onServerToday, onAdd, addChoices, addControl, highlightedMeal, removal, onManageFoods, onManageSaved, onConfigure, onReport, mealActions, onActivity, onContext, onMetric }: {
+function NutritionDayView({ revision, date, today, onSelect, onServerToday, onAdd, addChoices, addControl, highlightedMeal, removal, onManageFoods, onManageSaved, onConfigure, mealActions, onActivity, onContext, onMetric }: {
   /** Bumped after a confirmed write: the day re-reads in place, so its numbers can move to the new values. */
   revision: number;
   date: string; today: string; onSelect: (date: string) => void; onServerToday: (date: string) => void;
   onAdd?: () => void; mealActions?: MealActions;
-  onConfigure?: () => void; onReport?: (range: { from: string; to: string }) => void; addChoices?: ReactNode; addControl?: ReactNode; highlightedMeal?: string; removal?: MealRemoval; onManageFoods?: () => void; onManageSaved?: () => void;
+  onConfigure?: () => void; addChoices?: ReactNode; addControl?: ReactNode; highlightedMeal?: string; removal?: MealRemoval; onManageFoods?: () => void; onManageSaved?: () => void;
   onMetric?: (data: MobileNutritionDayResponse, metric: NutritionDayMetric) => void;
   onActivity?: (data: MobileNutritionDayResponse) => void; onContext?: DayContextAction;
 }) {
@@ -106,7 +106,7 @@ function NutritionDayView({ revision, date, today, onSelect, onServerToday, onAd
           onMetric={state.status === 'ready' ? onMetric : undefined} onActivity={state.status === 'ready' ? onActivity : undefined} onContext={state.status === 'ready' ? onContext : undefined} />
       </>}
     {!current ? <>{addControl ?? <NutritionGlassButton icon="plus" label="Agregar comida" wide onPress={onAdd} />}{addChoices}</> : null}
-    {selector ? <NutritionMonthSheet date={date} today={today} onReport={onReport} onClose={() => setSelector(false)} onSelect={onSelect} /> : null}
+    {selector ? <NutritionMonthSheet date={date} today={today} onClose={() => setSelector(false)} onSelect={onSelect} /> : null}
   </ScrollScreen>{controls}</View>;
 }
 
@@ -129,7 +129,6 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
   const quickController=quick?.controller;
   const invalidateQuick=useCallback(()=>{if(quickController)void quickController.loadOptions();},[quickController]);
   const saved=useSavedController(client,userId,invalidateQuick);
-  const router = useRouter();
 
   const [today, setToday] = useState(() => nutritionToday());
   const [selected, setSelected] = useDomainDate(routeDate);
@@ -175,7 +174,6 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
       addControl={<NutritionAddMenu onManual={editable ? () => meals.controller.open(date) : undefined} onQuick={editable ? () => quick.controller.open(date) : undefined} onFood={editable ? () => foods.controller.open(date) : undefined} />}
       addChoices={statusBanners}
       highlightedMeal={mealNotice.notice?.meal.id} removal={{ removing: mealNotice.removing, removed: mealNotice.removed }}
-      onReport={range => router.push({ pathname: '/(tabs)/progress/trends/nutrition', params: range })}
       onConfigure={editable?()=>config.controller.open():undefined}
       onManageSaved={editable?()=>saved.controller.open():undefined}
       onManageFoods={editable ? () => foods.controller.open(null) : undefined}

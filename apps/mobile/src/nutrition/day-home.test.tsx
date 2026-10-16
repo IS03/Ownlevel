@@ -131,7 +131,8 @@ describe('Nutrition week and month existing reads', () => {
     const select = jest.fn(), close = jest.fn();
     const view = render(wrap(<NutritionMonthSheet date="2026-10-02" today="2026-10-02" onSelect={select} onClose={close} />));
     await waitFor(() => expect(mockReport).toHaveBeenCalledWith(mockClient, { period: 'custom', from: '2026-10-01', to: '2026-10-02' }, expect.anything()));
-    expect(await view.findByText('100 kcal · 1 de 1 días')).toBeTruthy();
+    await waitFor(() => expect(view.getByTestId('nutrition-month-2026-10-01').props.accessibilityLabel).toContain('Calorías 100'));
+    expect(view.queryByText('Promedio del mes')).toBeNull(); expect(view.queryByText('Ver reporte')).toBeNull();
     expect(view.getByTestId('nutrition-month-2026-10-03').props.accessibilityState.disabled).toBe(true);
     await act(async () => { fireEvent.press(view.getByTestId('nutrition-month-2026-10-01')); });
     // The sheet slides out first; once iOS reports it gone, it closes and selects the day.
@@ -140,12 +141,12 @@ describe('Nutrition week and month existing reads', () => {
   });
   it('a month read once opens with its rings at once and is revalidated in the background', async () => {
     const first = render(wrap(<NutritionMonthSheet date="2026-10-02" today="2026-10-02" onSelect={jest.fn()} onClose={jest.fn()} />));
-    expect(await first.findByText('100 kcal · 1 de 1 días')).toBeTruthy();
+    await waitFor(() => expect(first.getByTestId('nutrition-month-2026-10-01').props.accessibilityLabel).toContain('Calorías 100'));
     first.unmount();
     let finish!: (r: MobileApiReadResult<NutritionReport>) => void;
     mockReport.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     const again = render(wrap(<NutritionMonthSheet date="2026-10-02" today="2026-10-02" onSelect={jest.fn()} onClose={jest.fn()} />));
-    expect(again.getByText('100 kcal · 1 de 1 días')).toBeTruthy();
+    expect(again.getByTestId('nutrition-month-2026-10-01').props.accessibilityLabel).toContain('Calorías 100');
     await act(async () => { finish(failure); });
   });
   it('always six rows; the month title opens a month/year picker without future months', async () => {

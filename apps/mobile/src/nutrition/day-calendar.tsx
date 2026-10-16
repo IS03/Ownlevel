@@ -5,7 +5,6 @@ import { useMobileApi } from '@/api';
 import type { NutritionReport } from '@/api/nutrition-report';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { AppIcon, AppSheet, AppText, Button, brandTokens, useAppSheetDismiss, useOwnlevelTheme, useReduceMotion } from '@/design-system';
-import { NutritionGlassButton } from './day-controls';
 import { displayNutritionDate, inputNutritionDate, number, parseInputNutritionDate, shiftNutritionDate } from './day-format';
 import { nutritionMonth, reportRings } from './day-home-model';
 import { NutritionCalorieRing } from './day-rings';
@@ -35,8 +34,9 @@ const monthName = (month: string, style: 'long' | 'short' = 'long') => new Intl.
  * Month calendar in an app sheet: drag it down or tap outside to close. The month title opens a month/year
  * picker for far dates; every month keeps six rows so the sheet never changes height.
  */
-export function NutritionMonthSheet({ date, today, onClose, onSelect, onReport }: {
-  date: string; today: string; onClose: () => void; onSelect: (date: string) => void; onReport?: (range: { from: string; to: string }) => void;
+/** Just the month (compact): the averages and the report live in Progreso. */
+export function NutritionMonthSheet({ date, today, onClose, onSelect }: {
+  date: string; today: string; onClose: () => void; onSelect: (date: string) => void;
 }) {
   // Context (not the hook): it also opens from places rendered without a provider (tests, nested sheets).
   const { colors } = useOwnlevelTheme(), bottom = useContext(SafeAreaInsetsContext)?.bottom ?? 0;
@@ -44,11 +44,11 @@ export function NutritionMonthSheet({ date, today, onClose, onSelect, onReport }
   const [picking, setPicking] = useState(false);
   return <AppSheet onClose={onClose} closeLabel="Cerrar calendario" dragFromContent={!picking} testID="nutrition-month-sheet"
     style={{ backgroundColor: colors.background, paddingBottom: Math.max(bottom, 16) }}>
-    <MonthBody date={date} today={today} onSelect={onSelect} onReport={onReport} picking={picking} setPicking={setPicking} />
+    <MonthBody date={date} today={today} onSelect={onSelect} picking={picking} setPicking={setPicking} />
   </AppSheet>;
 }
-function MonthBody({ date, today, onSelect, onReport, picking, setPicking }: {
-  date: string; today: string; onSelect: (date: string) => void; onReport?: (range: { from: string; to: string }) => void;
+function MonthBody({ date, today, onSelect, picking, setPicking }: {
+  date: string; today: string; onSelect: (date: string) => void;
   picking: boolean; setPicking: (next: boolean | ((v: boolean) => boolean)) => void;
 }) {
   const { colors } = useOwnlevelTheme();
@@ -78,18 +78,16 @@ function MonthBody({ date, today, onSelect, onReport, picking, setPicking }: {
     </View>
     <View style={[styles.body, { minHeight: height }]} onLayout={event => { const next = event.nativeEvent.layout.height; if (next > height) setHeight(next); }}>
       {picking ? <MonthWheel month={month} today={today} onChange={setMonth} onDone={next => { setMonth(next); setPicking(false); }} />
-        : month > today ? <><MonthGrid month={month} selected={date} today={today} onSelect={select} /><View style={styles.average} /></>
-        : <ReadMonth key={month} month={month} selected={date} today={today} onSelect={select} onReport={onReport ? range => dismiss(() => onReport(range)) : undefined} />}
+        : month > today ? <MonthGrid month={month} selected={date} today={today} onSelect={select} />
+        : <ReadMonth key={month} month={month} selected={date} today={today} onSelect={select} />}
     </View>
   </View>;
 }
-function ReadMonth({ month, today, ...props }: { month: string; today: string; selected: string; onSelect: (date: string) => void; onReport?: (range: { from: string; to: string }) => void }) {
+function ReadMonth({ month, today, ...props }: { month: string; today: string; selected: string; onSelect: (date: string) => void }) {
   const { client } = useMobileApi();
-  const end = nutritionMonth(month).end;
   const { state, refresh } = useNutritionReportResource(client, monthReportQuery(month, today));
   const report = state.status === 'ready' ? state.current.data : state.status === 'unavailable' ? state.previous?.data : undefined;
   const failed = state.status !== 'ready' && state.status !== 'loading';
-  const average = report?.summary.metrics.calories;
   // A month read just now fades in whole (numbers, rings and average together) instead of rings popping in after
   // the numbers. A month already read (cache) shows at once.
   const reduced = useReduceMotion();
@@ -107,13 +105,6 @@ function ReadMonth({ month, today, ...props }: { month: string; today: string; s
     <MonthGrid {...props} month={month} today={today} report={report} loading={state.status === 'loading'} unavailable={failed} />
     {failed ? <View style={styles.manual}><AppText accessibilityRole="alert">{report ? 'No pudimos actualizar este mes. Mostramos la última lectura.' : 'No pudimos cargar este mes.'}</AppText>
       <Button variant="quiet" label="Reintentar mes" onPress={() => void refresh()} /></View> : null}
-    <View style={styles.average}>
-      <View style={styles.averageText}><AppText muted variant="caption">Promedio del mes</AppText>
-        <AppText numeric variant="footnote">{average ? average.value === null ? 'Sin promedio disponible' : `${number(average.value)} kcal · ${average.denominator} de ${report!.coverage.finalizedDays} días${average.partialDays > 0 ? ' · parcial' : ''}` : '—'}</AppText>
-        {average && report?.range.end === today ? <AppText muted variant="caption">Hoy sigue en curso y no entra en el promedio.</AppText> : null}
-      </View>
-      {props.onReport ? <NutritionGlassButton icon="progress" label="Ver reporte" wide onPress={() => props.onReport?.({ from: month, to: end < today ? end : today })} /> : null}
-    </View>
   </Animated.View>;
 }
 function MonthGrid({ month, selected, today, onSelect, report, loading, unavailable }: {
@@ -152,7 +143,6 @@ const styles = StyleSheet.create({
   // The ring is centered on the day number (it used to sit at the cell's top-left corner).
   cellRing: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },
   selection: { width: 12, height: 2, borderRadius: 2, position: 'absolute', bottom: 8 },
-  average: { minHeight: 50, gap: 12 }, averageText: { gap: 4 },
   body: { gap: 16 },
   manual: { gap: 12 },
 });

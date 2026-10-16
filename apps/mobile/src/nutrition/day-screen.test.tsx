@@ -66,15 +66,12 @@ describe('Native Nutrition day', () => {
       return { remove: () => { const index = appStateListeners.indexOf(listener); if (index >= 0) appStateListeners.splice(index, 1); } };
     });
   });
-  it('removes Reporte from the menu and opens Progress Nutrition with the calendar month range', async () => {
-    mockToday = '2026-10-04';
-    mockRead.mockImplementation(async options => ok(options.path.split('/').pop()!, { ...nutritionFixture(options.path.split('/').pop()!), today: mockToday }) as never);
+  it('the calendar is just the month: no average and no report shortcut', async () => {
+    mockRead.mockImplementation(async options => ok(options.path.split('/').pop()!) as never);
     const view = render(element()); await view.findByText('Hoy');
     expect(view.queryByText('Reporte')).toBeNull();
-    fireEvent.press(view.getByLabelText('Elegir fecha')); await view.findByText('Ver reporte');
-    await act(async () => { fireEvent.press(view.getByText('Ver reporte')); });
-    await act(async () => { finishMonthDismissal(view); });
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/nutrition', params: { from: '2026-10-01', to: '2026-10-04' } });
+    fireEvent.press(view.getByLabelText('Elegir fecha')); await view.findByTestId('nutrition-month');
+    expect(view.queryByText('Ver reporte')).toBeNull(); expect(view.queryByText('Promedio del mes')).toBeNull();
   });
   it('quick composition survives foreground refresh and registers against the displayed destination', async () => {
     mockToday = quickDate;
