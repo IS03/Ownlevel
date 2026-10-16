@@ -1,5 +1,5 @@
 import type { DayContextAction } from './day-details';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Animated, { FadeOut, Keyframe, LinearTransition, useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming, type SharedValue } from 'react-native-reanimated';
@@ -33,8 +33,8 @@ export function mealGroups(meals: NutritionDayMeal[]) {
 export type MealRemoval = { removing: string | null; removed: string | null };
 /** A deleted meal breaks away: a quick crack (shrink and tilt) while it fades. Reduce Motion only fades. */
 const breakAway = new Keyframe({
-  0: { opacity: 0.45, transform: [{ scale: 1 }, { rotate: '0deg' }] },
-  40: { opacity: 0.35, transform: [{ scale: 0.97 }, { rotate: '-1.5deg' }] },
+  0: { opacity: 1, transform: [{ scale: 1 }, { rotate: '0deg' }] },
+  40: { opacity: 0.6, transform: [{ scale: 0.97 }, { rotate: '-1.5deg' }] },
   100: { opacity: 0, transform: [{ scale: 0.86 }, { rotate: '2deg' }] },
 }).duration(brandTokens.motion.duration.base);
 export type MealActions = { edit?: (meal: NutritionDayMeal) => void; repeat?: (meal: NutritionDayMeal) => void;
@@ -68,17 +68,23 @@ function RowFlash({ active }: { active: boolean }) {
  * Flat row (E5). Tap opens the detail (D1/D2); long-press shows the native menu and swipe left deletes (D4).
  * The full description lives in the detail.
  */
-function MealRow({ meal, divider, highlighted, removing, removed, actions, onOpen }: {
+function MealRow({ meal, divider, highlighted, removing, removed, actions, onOpen, onShaken }: {
   meal: NutritionDayMeal; divider: boolean; highlighted?: boolean; removing?: boolean; removed?: boolean; actions: MealActions; onOpen: (meal: NutritionDayMeal) => void;
+  /** The shake is over: the list hides the row now (trust), while the delete finishes in the background. */
+  onShaken: (id: string) => void;
 }) {
   const { colors } = useOwnlevelTheme(), reduceMotion = useReduceMotion();
-  // Deleting: a short shake, then it stays dimmed until the server confirms (a failed delete brings it back).
+  // Deleting: a short shake and the row breaks away at once; the server finishes in the background (the notice shows
+  // it running) and a failed delete brings the row back.
   const shake = useSharedValue(0);
   useEffect(() => {
-    if (!removing || reduceMotion) return;
+    if (!removing) return;
+    if (reduceMotion) { onShaken(meal.id); return; }
     const step = (to: number) => withTiming(to, { duration: 45 });
     shake.set(withSequence(step(-6), step(6), step(-4), step(4), step(-2), step(0)));
-  }, [reduceMotion, removing, shake]);
+    const timer = setTimeout(() => onShaken(meal.id), 280);
+    return () => clearTimeout(timer);
+  }, [meal.id, onShaken, reduceMotion, removing, shake]);
   const trembling = useAnimatedStyle(() => ({ transform: [{ translateX: shake.value }] }));
   const [width, setWidth] = useState(0);
   const menu = mealMenu(meal, actions);
@@ -112,7 +118,7 @@ function MealRow({ meal, divider, highlighted, removing, removed, actions, onOpe
   return <Animated.View onLayout={event => setWidth(event.nativeEvent.layout.width)} pointerEvents={removing ? 'none' : 'auto'}
     layout={reduceMotion ? undefined : LinearTransition.duration(brandTokens.motion.duration.base)}
     exiting={removing || removed ? reduceMotion ? FadeOut.duration(brandTokens.motion.duration.fast) : breakAway : undefined}
-    style={[styles.bleed, trembling, { opacity: removing || removed ? 0.45 : 1 }]} testID={`nutrition-meal-${meal.id}`}>
+    style={[styles.bleed, trembling]} testID={`nutrition-meal-${meal.id}`}>
     <Swipeable enabled={!!menu.remove} friction={1} overshootRight={false} renderRightActions={(_progress, translation, methods) => <DeleteAction translation={translation} onPress={() => confirmDelete(methods)} />}>
       {menuActions.length ? <TrainingContextMenu width={width} disabled={false} name={mealTitle(meal)} onOpen={() => onOpen(meal)} actions={menuActions}>{row}</TrainingContextMenu> : row}
     </Swipeable>
@@ -125,6 +131,9 @@ export function NutritionDayContent({ data, onAdd, addChoices, addControl, highl
   onActivity?: (data: MobileNutritionDayResponse) => void; onContext?: DayContextAction;
 }) {
   const [detail, setDetail] = useState(false);
+  // A row hidden on trust while its delete runs; it comes back only if that delete does not go through.
+  const [gone, setGone] = useState<string | null>(null);
+  const hide = useCallback((id: string) => setGone(id), []);
   const [openMeal, setOpenMeal] = useState<string | null>(null);
   const nutrition = data.nutrition.status === 'ok' ? data.nutrition.data : null;
   const recorded = nutrition?.dayState === 'recorded' ? nutrition : null;
@@ -139,9 +148,9 @@ export function NutritionDayContent({ data, onAdd, addChoices, addControl, highl
       <View style={styles.heading}><NutritionSectionHeading>Comidas</NutritionSectionHeading>
         <AppText muted numeric variant="caption">{recorded.summary.entryCount} · {recorded.summary.entryCount > 0 && recorded.summary.calories.missingCount === recorded.summary.entryCount ? 'Sin dato' : `${number(recorded.summary.calories.knownTotal)} kcal${recorded.summary.calories.missingCount > 0 ? ' · parcial' : ''}`}</AppText>
       </View>
-      {recorded.meals.length === 0 ? <AppText muted>Sin comidas registradas</AppText> : mealGroups(recorded.meals).map(group => <View key={group.key} style={styles.group}>
+      {recorded.meals.length === 0 ? <AppText muted>Sin comidas registradas</AppText> : mealGroups(recorded.meals.filter(m => !(m.id === gone && (m.id === removal?.removing || m.id === removal?.removed)))).map(group => <View key={group.key} style={styles.group}>
         {group.label ? <AppText muted variant="footnote" style={styles.groupLabel}>{group.label}</AppText> : null}
-        {group.meals.map((meal, index) => <MealRow key={meal.id} meal={meal} divider={index > 0} highlighted={meal.id === highlightedMeal} removing={meal.id === removal?.removing} removed={meal.id === removal?.removed} actions={mealActions} onOpen={m => setOpenMeal(m.id)} />)}
+        {group.meals.map((meal, index) => <MealRow key={meal.id} meal={meal} divider={index > 0} highlighted={meal.id === highlightedMeal} removing={meal.id === removal?.removing} removed={meal.id === removal?.removed} actions={mealActions} onOpen={m => setOpenMeal(m.id)} onShaken={hide} />)}
       </View>)}
     </View> : null}
     {(meal => meal && recorded ? <MealDetailSheet meal={meal} calories={recorded.summary.calories} protein={recorded.summary.proteinG} entries={recorded.summary.entryCount}
