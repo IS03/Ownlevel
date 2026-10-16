@@ -15,6 +15,7 @@ import { initHapticsPreference } from '@/platform/haptics';
 import { createHapticsPreferenceStorage } from '@/platform/haptics-preference';
 import { useStackScreenOptions } from '@/navigation/use-stack-screen-options';
 import { SessionPresenceProvider } from '@/training/session-presence-provider';
+import { EntryTransitionProvider } from '@/entry/transition';
 
 const themePreference = createThemePreferenceStorage(AsyncStorage);
 initHapticsPreference(createHapticsPreferenceStorage(AsyncStorage));
@@ -24,7 +25,7 @@ void SplashScreen.preventAutoHideAsync().catch(() => {
 });
 
 function RootNavigator() {
-  const { session, state } = useMobileAuth();
+  const { session } = useMobileAuth();
   const { colors, isDark } = useOwnlevelTheme();
   const screenOptions = useStackScreenOptions();
   const navigationTheme = useMemo(
@@ -49,12 +50,11 @@ function RootNavigator() {
   }, [colors.background]);
 
   useEffect(() => {
-    if (state.status !== 'BOOTSTRAPPING') {
-      void SplashScreen.hideAsync().catch(() => {
-        // The splash may already be hidden during fast refresh.
-      });
-    }
-  }, [state.status]);
+    // The entry presentation renders the bootstrap artwork while session restoration runs.
+    void SplashScreen.hideAsync().catch(() => {
+      // The splash may already be hidden during fast refresh.
+    });
+  }, []);
 
   return (
     <NavigationThemeProvider value={navigationTheme}>
@@ -85,7 +85,9 @@ export default function RootLayout() {
       <OwnlevelThemeProvider persistence={themePreference}>
         <MobileAuthProvider>
           <MobileApiProvider>
-            <RootNavigator />
+            <EntryTransitionProvider>
+              <RootNavigator />
+            </EntryTransitionProvider>
           </MobileApiProvider>
         </MobileAuthProvider>
       </OwnlevelThemeProvider>
