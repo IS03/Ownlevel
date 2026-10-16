@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ComponentProps, type RefObject } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAnimatedKeyboard } from 'react-native-reanimated';
 import { AppIcon, AppSheet, AppText, Button, GlassSurface, useAppSheetDismiss, pressedStyle, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
@@ -10,6 +9,7 @@ import { metricValue } from './day-details';
 import { findDayMetric, metricEntryCandidate, metricRaw, type MetricEntryMode } from './metric-entry-model';
 import type { MetricInput } from './day-write-model';
 import { MetricDuration } from './metric-duration';
+import { useMetricKeyboard } from './use-metric-keyboard';
 
 function SheetControl({ label, icon, disabled, accent, pending, onPress }: {
   label: string; icon: 'close' | 'checkmark'; disabled: boolean; accent?: boolean; pending?: boolean; onPress: () => void;
@@ -23,9 +23,9 @@ function SheetControl({ label, icon, disabled, accent, pending, onPress }: {
 }
 /** iOS moves a constant-size sheet with the keyboard, never an animated layout spacer. */
 function KeyboardMetricSheet({ input, ...props }: ComponentProps<typeof AppSheet> & { input: RefObject<TextInput | null> }) {
-  const keyboard = useAnimatedKeyboard();
+  const keyboardHeight = useMetricKeyboard();
   const insets = useSafeAreaInsets();
-  return <AppSheet {...props} keyboardHeight={keyboard.height} keyboardInset={Math.max(insets.bottom, 16) - 8} onShow={() => input.current?.focus()} />;
+  return <AppSheet {...props} keyboardHeight={keyboardHeight} keyboardInset={Math.max(insets.bottom, 16) - 8} onShow={() => input.current?.focus()} />;
 }
 export function MetricEntrySheet({ id, controller, state, onClose }: { id: string; controller: DayWriteController; state: DayWriteState; onClose: () => void }) {
   const draft = state.draft;

@@ -149,11 +149,14 @@ describe('Nutrition week and month existing reads', () => {
     expect(again.getByTestId('nutrition-month-2026-10-01').props.accessibilityLabel).toContain('Calorías 100');
     await act(async () => { finish(failure); });
   });
-  it('uses only the needed rows; the month title opens a month/year picker without future months', async () => {
+  it('keeps six rows and the same body height when the month/year wheels replace the grid', async () => {
     const view = render(wrap(<NutritionMonthSheet date="2026-10-02" today="2026-10-02" onSelect={jest.fn()} onClose={jest.fn()} />));
     await waitFor(() => expect(view.getByTestId('nutrition-month-2026-10-31')).toBeTruthy());
-    expect(view.getByTestId('nutrition-month').children).toHaveLength(6); // weekdays + five weeks
+    expect(view.getByTestId('nutrition-month').children).toHaveLength(7); // weekdays + six weeks
+    const height = StyleSheet.flatten(view.getByTestId('nutrition-month-body').props.style).minHeight;
+    expect(height).toBe(328);
     fireEvent.press(view.getByTestId('nutrition-month-title'));
+    expect(StyleSheet.flatten(view.getByTestId('nutrition-month-body').props.style).minHeight).toBe(height);
     // iOS month/year wheels: a month after today snaps back to today's month.
     fireEvent(view.UNSAFE_getByProps({ label: 'Mes' }), 'selectionChange', 11);
     expect(view.getByTestId('nutrition-month-title').props.accessibilityLabel).toContain('Octubre de 2026');
@@ -163,13 +166,13 @@ describe('Nutrition week and month existing reads', () => {
     await waitFor(() => expect(view.getByTestId('nutrition-month-2025-05-01')).toBeTruthy());
     expect(view.queryByText('Volver a hoy')).toBeNull(); expect(view.queryByText('Otra fecha')).toBeNull(); expect(view.queryByText('Cerrar calendario')).toBeNull();
   });
-  it.each([{ month: '2026-11-01', weeks: 6, days: 30 }, { month: '2026-10-01', weeks: 5, days: 31 }, { month: '2027-02-01', weeks: 4, days: 28 }])('fits $month into $weeks compact weeks without retaining empty bottom space', async ({ month, weeks, days }) => {
+  it.each([{ month: '2026-11-01', days: 30 }, { month: '2026-10-01', days: 31 }, { month: '2027-02-01', days: 28 }])('gives $month the same compact six-week frame, regardless of its occupied rows', async ({ month, days }) => {
     const view = render(wrap(<NutritionMonthSheet date={month} today="2026-10-02" onSelect={jest.fn()} onClose={jest.fn()} />));
     const grid = await view.findByTestId('nutrition-month');
-    expect(grid.children).toHaveLength(weeks + 1);
+    expect(grid.children).toHaveLength(7);
     expect(view.getAllByTestId(new RegExp(`^nutrition-month-${month.slice(0, 7)}-\\d{2}$`))).toHaveLength(days);
     const body = view.getByTestId('nutrition-month-body');
-    expect(StyleSheet.flatten(body.props.style).minHeight).toBeUndefined();
+    expect(StyleSheet.flatten(body.props.style).minHeight).toBe(328);
     expect(body.props.onLayout).toBeUndefined();
     expect(StyleSheet.flatten(view.getByTestId(`nutrition-month-${month}`).props.style).minHeight).toBe(44);
   });
