@@ -13,6 +13,8 @@ config.watchFolders = [
   path.resolve(__dirname, '../../src/lib/mobile-api'),
   // Pure date/range helpers used by the portable influence contract and client.
   path.resolve(__dirname, '../../src/lib/progress/analytics'),
+  // Pure Nutrition engine factors (plan-v2-core) for the local Energía preview.
+  path.resolve(__dirname, '../../src/lib/nutrition'),
   // Shared brand tokens: the runtime entry and the single file holding the values.
   path.resolve(__dirname, '../../packages/brand/src'),
   path.resolve(__dirname, '../../docs/brand/ownlevel-marca/tema'),
