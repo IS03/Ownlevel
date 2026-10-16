@@ -65,11 +65,11 @@ describe('UIKit page control bridge', () => {
     const scroll = jest.spyOn(ScrollView.prototype, 'scrollTo');
     const view = render(<OwnlevelThemeProvider initialMode="dark"><HomeCarousel pages={labels.map(label => ({ label, content: <AppText>{label}</AppText> }))} /></OwnlevelThemeProvider>);
     fireEvent(view.getByTestId('home-week-native-page-control'), 'pageChange', { nativeEvent: { page: 2 } });
-    expect(scroll).toHaveBeenLastCalledWith({ x: 722, animated: true });
+    expect(scroll).toHaveBeenLastCalledWith({ x: 786, animated: true });
     expect(view.getByText('Por día')).toBeTruthy();
     expect(view.queryByText('Entrenos')).toBeNull();
     expect(view.getByTestId('home-week-native-page-control').props.page).toBe(2);
-    fireEvent(view.getByTestId('home-week-pager'), 'momentumScrollEnd', { nativeEvent: { contentOffset: { x: 361 } } });
+    fireEvent(view.getByTestId('home-week-pager'), 'momentumScrollEnd', { nativeEvent: { contentOffset: { x: 393 } } });
     expect(view.getByTestId('home-week-native-page-control').props.page).toBe(1);
     expect(view.getByText('Nutrición')).toBeTruthy();
     act(() => { mockReduced = true; });

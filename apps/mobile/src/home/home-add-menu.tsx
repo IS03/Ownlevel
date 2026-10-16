@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AppText, ListGroup, ListRow, SheetHandle, SheetSurface, radius, spacing, useOwnlevelTheme } from '@/design-system';
+import { ListGroup, ListRow, SheetHandle, SheetSurface, radius, spacing, useOwnlevelTheme } from '@/design-system';
 
 import type { HomeAddMenuProps } from './home-add-menu.types';
 import { HomeLink } from './home-ui';
 
 /** Nutrition's "+ Comida" outside iOS: the M9.2 sheet with the same entries as the native menu. */
-export function HomeAddMenu({ habituals, onAll, onFood, onHabitual, onManual }: HomeAddMenuProps) {
+export function HomeAddMenu({ onFood, onManual, onQuick }: HomeAddMenuProps) {
   const [open, setOpen] = useState(false);
   const { colors } = useOwnlevelTheme();
   const run = (action: () => void) => () => { setOpen(false); action(); };
@@ -23,18 +23,10 @@ export function HomeAddMenu({ habituals, onAll, onFood, onHabitual, onManual }: 
           <SafeAreaView edges={['bottom']} style={styles.sheet}>
             <SheetHandle />
             <ListGroup>
-              <ListRow onPress={run(onManual)} subtitle="Cargar macros a mano" title="Comida manual" />
-              <ListRow onPress={run(onFood)} title="Buscar alimento" />
+              <ListRow onPress={run(onManual)} title="A mano" />
+              <ListRow onPress={run(onQuick)} title="Rápido" />
+              <ListRow onPress={run(onFood)} title="Alimento por cantidad" />
             </ListGroup>
-            <View style={styles.section}>
-              <AppText muted variant="footnote">Habituales</AppText>
-              <ListGroup>
-                {habituals.map(option => (
-                  <ListRow key={`${option.source.kind}:${option.source.id}`} onPress={run(() => onHabitual(option))} title={option.name} />
-                ))}
-                <ListRow onPress={run(onAll)} title="Ver todas" />
-              </ListGroup>
-            </View>
           </SafeAreaView>
         </SheetSurface>
       </Modal>
@@ -45,6 +37,5 @@ export function HomeAddMenu({ habituals, onAll, onFood, onHabitual, onManual }: 
 const styles = StyleSheet.create({
   backdrop: { backgroundColor: 'rgba(0,0,0,0.3)', flex: 1 },
   control: { borderRadius: radius.full, justifyContent: 'center', minHeight: 44, paddingHorizontal: spacing.md },
-  section: { gap: spacing.sm },
   sheet: { gap: spacing.lg, padding: spacing.lg },
 });

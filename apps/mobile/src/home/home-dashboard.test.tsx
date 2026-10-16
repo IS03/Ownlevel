@@ -5,12 +5,11 @@ import { StyleSheet } from 'react-native';
 import type { MobileHomeResponse } from '@/api/home';
 import type { HistoryDay } from '@/api/history';
 import type { NutritionReport } from '@/api/nutrition-report';
-import type { QuickOption, QuickOptions } from '@/api/nutrition-quick';
 import { OwnlevelThemeProvider, type ThemeMode } from '@/design-system';
 
 import { HomeDashboard, type HomeDashboardProps } from './home-dashboard';
 import type { HomeTrainingWeek } from './home-data';
-import { calorieSplit, homeHabituals } from './home-nutrition';
+import { calorieSplit } from './home-nutrition';
 import type { HomeResource } from './home-resource';
 import { homeProgressHabits, homeProgressBody, homeProgressTraining } from './home-test-fixtures';
 
@@ -21,12 +20,11 @@ jest.mock('expo-glass-effect', () => ({ isGlassEffectAPIAvailable: () => false, 
 // The native "+" menu has its own test; here a stub exposes its entries as buttons.
 jest.mock('./home-add-menu', () => {
   const { Pressable, Text, View } = jest.requireActual<typeof import('react-native')>('react-native');
-  return { HomeAddMenu: ({ habituals, onAll, onFood, onHabitual, onManual }: import('./home-add-menu.types').HomeAddMenuProps) => (
+  return { HomeAddMenu: ({ onFood, onManual, onQuick }: import('./home-add-menu.types').HomeAddMenuProps) => (
     <View testID="home-add-menu">
-      <Pressable accessibilityRole="button" onPress={onManual}><Text>Comida manual</Text></Pressable>
-      <Pressable accessibilityRole="button" onPress={onFood}><Text>Buscar alimento</Text></Pressable>
-      {habituals.map(option => <Pressable accessibilityRole="button" key={option.source.id} onPress={() => onHabitual(option)}><Text>{option.name}</Text></Pressable>)}
-      <Pressable accessibilityRole="button" onPress={onAll}><Text>Ver todas</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={onManual}><Text>A mano</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={onQuick}><Text>Rápido</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={onFood}><Text>Alimento por cantidad</Text></Pressable>
     </View>
   ) };
 });
@@ -76,17 +74,6 @@ function todayDay(): HistoryDay {
   } as HistoryDay;
 }
 
-const option = (kind: 'saved' | 'suggestion', id: string, name: string): QuickOption => ({
-  source: { kind, id, version: 'a'.repeat(64) }, name, description: null, templateType: null, items: [],
-  calories: 300, proteinG: 20, carbsG: 30, fatG: 10, useCount: null, lastUsedDate: null,
-});
-const breakfast = option('suggestion', '00000000-0000-4000-8000-000000000001', 'Desayuno de siempre');
-const quickOptions: QuickOptions = {
-  today: TODAY,
-  saved: { status: 'ok', items: [option('saved', '00000000-0000-4000-8000-000000000003', 'Avena guardada')] },
-  suggested: { status: 'ok', items: [breakfast, option('suggestion', '00000000-0000-4000-8000-000000000002', 'Batido')] },
-};
-
 const calorieRow = (date: string, value: number | null, isToday = false) => ({
   date, exists: true, hasNutrition: value !== null, imported: false, isToday, mealCount: value === null ? 0 : 3,
   nutrients: { calories: { value, knownMeals: 3, missingMeals: 0, status: value === null ? 'none' : 'complete' } },
@@ -112,7 +99,7 @@ const trainingWeek: HomeTrainingWeek = { weekStart: WEEK, everTrained: true, ses
 function renderHome(overrides: Partial<HomeDashboardProps> = {}, theme: ThemeMode = 'light') {
   const handlers = {
     onOpenHabit: jest.fn(), onConfigureNutrition: jest.fn(), onMealEntry: jest.fn(), onNavigate: jest.fn(), onOpenCalories: jest.fn(), onOpenCompletedSession: jest.fn(),
-    onOpenDay: jest.fn(), onOpenProgress: jest.fn(), onOpenSession: jest.fn(), onQuickMeal: jest.fn(), onRefresh: jest.fn(), onRegister: jest.fn(), onStartWorkout: jest.fn(),
+    onOpenDay: jest.fn(), onOpenProgress: jest.fn(), onOpenSession: jest.fn(), onRefresh: jest.fn(), onRegister: jest.fn(), onStartWorkout: jest.fn(),
   };
   const props: HomeDashboardProps = {
     ...handlers,
@@ -123,7 +110,6 @@ function renderHome(overrides: Partial<HomeDashboardProps> = {}, theme: ThemeMod
     home: ready(home()),
     progressBody: ready(homeProgressBody()), progressRecords: ready(homeProgressTraining('30')),
     now: () => NOW,
-    quick: ready(quickOptions),
     today: ready(todayDay()),
     training: ready(trainingWeek),
     ...overrides,
@@ -267,21 +253,13 @@ describe('Nutrition', () => {
     expect(view.onConfigureNutrition).toHaveBeenCalledTimes(1);
   });
 
-  it('habituals: the 2 suggested (server frequency order) first, saved only to fill', () => {
-    expect(homeHabituals(quickOptions).map(o => o.name)).toEqual(['Desayuno de siempre', 'Batido']);
-    expect(homeHabituals({ ...quickOptions, suggested: { status: 'ok', items: [breakfast] } }).map(o => o.name)).toEqual(['Desayuno de siempre', 'Avena guardada']);
-    expect(homeHabituals({ ...quickOptions, suggested: { status: 'unavailable' } }).map(o => o.name)).toEqual(['Avena guardada']);
-  });
-
-  it('the "+" menu opens the existing flows: manual, food search, a habitual (A2) and the full list', () => {
+  it('the "+" menu has the same entries as Nutrición: a mano, rápido, alimento por cantidad', () => {
     const view = renderHome();
     const menu = within(view.getByTestId('home-add-menu'));
-    fireEvent.press(menu.getByText('Comida manual'));
-    fireEvent.press(menu.getByText('Buscar alimento'));
-    fireEvent.press(menu.getByText('Batido'));
-    fireEvent.press(menu.getByText('Ver todas'));
-    expect(view.onMealEntry.mock.calls).toEqual([['manual'], ['food'], ['quick']]);
-    expect(view.onQuickMeal.mock.calls[0][0]).toMatchObject({ name: 'Batido', source: { kind: 'suggestion' } });
+    fireEvent.press(menu.getByText('A mano'));
+    fireEvent.press(menu.getByText('Rápido'));
+    fireEvent.press(menu.getByText('Alimento por cantidad'));
+    expect(view.onMealEntry.mock.calls).toEqual([['manual'], ['quick'], ['food']]);
   });
 
   it('carbs and fat show "—" when their read fails; the training block does not wait for nutrition', () => {

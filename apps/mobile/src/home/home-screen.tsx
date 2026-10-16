@@ -3,7 +3,6 @@ import { Alert, RefreshControl, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { useMobileApi } from '@/api';
-import type { QuickOption } from '@/api/nutrition-quick';
 import { useMobileAuth } from '@/auth';
 import { useHomeMetricEntry } from './use-home-metric-entry';
 import {
@@ -13,6 +12,7 @@ import {
   ScrollScreen,
   UnavailableState,
   useOwnlevelTheme,
+  usePullRefresh,
 } from '@/design-system';
 import { useNutritionConfiguration } from '@/nutrition/config-provider';
 import { haptics } from '@/platform/haptics';
@@ -65,6 +65,7 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
   const router = useRouter();
   const resources = useHomeResources(client, now);
   const { refresh } = resources;
+  const pull = usePullRefresh(resources.home.state.status === 'ready' && resources.home.state.refreshing, refresh);
   const configuration = useNutritionConfiguration(refresh);
   // Quick load of a daily metric right here (same sheet as Nutrición › Tu día).
   const metricEntry = useHomeMetricEntry(refresh);
@@ -88,7 +89,7 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
 
   const actions = useMemo(() => ({
     onConfigureNutrition: () => { if (configuration) configuration.controller.open(); },
-    // Existing Nutrition flows: manual meal, food search, or the quick list ("Ver todas").
+    // Existing Nutrition flows, same as its "Agregar comida": a mano, rápido, alimento por cantidad.
     onMealEntry: (entry: HomeMealEntry) => {
       haptics.selection();
       router.navigate({ pathname: '/(tabs)/nutrition', params: entry === 'quick' ? { quick: 'all' } : { add: entry } });
@@ -110,11 +111,6 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
       else router.push({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: target.exerciseId, period: target.period } });
     },
     onOpenSession: (id: string) => { haptics.selection(); router.push(`/(tabs)/train/session/${id}`); },
-    // A2: opens the existing quick registration with this meal; the user confirms there.
-    onQuickMeal: (option: QuickOption) => {
-      haptics.selection();
-      router.navigate({ pathname: '/(tabs)/nutrition', params: { quick: `${option.source.kind}:${option.source.id}` } });
-    },
     onRegister: (target: HomeRegisterTarget) => {
       haptics.selection();
       if (target.kind === 'metric') void openMetric(target.metricId);
@@ -132,9 +128,9 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
         refreshControl={
           <RefreshControl
             colors={[colors.primary]}
-            onRefresh={refresh}
+            onRefresh={pull.onRefresh}
             progressBackgroundColor={colors.surface}
-            refreshing={resources.home.state.status === 'ready' && resources.home.state.refreshing}
+            refreshing={pull.refreshing}
             testID="home-refresh-control"
             tintColor={colors.primary}
           />
@@ -158,7 +154,6 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
           onStartWorkout={newSession.open}
           progressBody={homeResource(resources.progressBody.state)}
           progressRecords={homeResource(resources.progressRecords.state)}
-          quick={homeResource(resources.quick.state)}
           today={homeResource(resources.today.state)}
           training={homeResource(resources.training.state)}
         />

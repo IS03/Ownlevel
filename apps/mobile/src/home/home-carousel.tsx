@@ -3,12 +3,19 @@ import { Animated, ScrollView, StyleSheet, View, useWindowDimensions } from 'rea
 
 import { useReduceMotion } from '@/design-system';
 import { HomePageControl } from './home-page-control';
+import { useHomeGutter } from './home-ui';
 
-/** Swipe and explicit buttons expose the same pages, including to VoiceOver. */
+/**
+ * Swipe and explicit buttons expose the same pages, including to VoiceOver.
+ * Pages span the full screen width (each keeps the gutter inside), so two pages are 2 × gutter apart and
+ * leave through the screen edge; the page that leaves also fades with the swipe.
+ */
 export function HomeCarousel({ minimumHeight = 176, pages }: { minimumHeight?: number; pages: { label: string; content: ReactNode }[] }) {
   const reduceMotion = useReduceMotion();
   const window = useWindowDimensions();
-  const [width, setWidth] = useState(Math.max(1, window.width - 32));
+  const gutter = useHomeGutter();
+  const [width, setWidth] = useState(Math.max(1, window.width - gutter.paddingLeft - gutter.paddingRight));
+  const pageWidth = width + gutter.paddingLeft + gutter.paddingRight;
   const [page, setPage] = useState(0);
   const currentPage = useRef(0);
   const [offset] = useState(() => new Animated.Value(0));
@@ -21,14 +28,14 @@ export function HomeCarousel({ minimumHeight = 176, pages }: { minimumHeight?: n
     : baseHeight;
   const scroll = useRef<ScrollView>(null);
   useEffect(() => {
-    scroll.current?.scrollTo({ x: currentPage.current * width, animated: false });
-  }, [width]);
+    scroll.current?.scrollTo({ x: currentPage.current * pageWidth, animated: false });
+  }, [pageWidth]);
   const select = useCallback((index: number) => {
     setPage(index);
     currentPage.current = index;
-    scroll.current?.scrollTo({ x: index * width, animated: !reduceMotion });
-  }, [width, reduceMotion]);
-  const scrub = useCallback((position: number) => scroll.current?.scrollTo({ x: position * width, animated: false }), [width]);
+    scroll.current?.scrollTo({ x: index * pageWidth, animated: !reduceMotion });
+  }, [pageWidth, reduceMotion]);
+  const scrub = useCallback((position: number) => scroll.current?.scrollTo({ x: position * pageWidth, animated: false }), [pageWidth]);
   return (
     <View onLayout={event => {
       const next = event.nativeEvent.layout.width;
@@ -37,18 +44,22 @@ export function HomeCarousel({ minimumHeight = 176, pages }: { minimumHeight?: n
       <Animated.ScrollView contentContainerStyle={styles.pages} decelerationRate="fast" directionalLockEnabled horizontal nestedScrollEnabled
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: offset } } }], { useNativeDriver: true })} scrollEventThrottle={16}
         onMomentumScrollEnd={event => {
-          const next = Math.max(0, Math.min(pages.length - 1, Math.round(event.nativeEvent.contentOffset.x / width)));
+          const next = Math.max(0, Math.min(pages.length - 1, Math.round(event.nativeEvent.contentOffset.x / pageWidth)));
           currentPage.current = next; setPage(next);
         }}
-        pagingEnabled ref={scroll} removeClippedSubviews={false} showsHorizontalScrollIndicator={false} style={{ height }} testID="home-week-pager">
+        pagingEnabled ref={scroll} removeClippedSubviews={false} showsHorizontalScrollIndicator={false} style={{ height, marginLeft: -gutter.paddingLeft, marginRight: -gutter.paddingRight }} testID="home-week-pager">
         {pages.map((item, index) => <View accessibilityElementsHidden={page !== index}
           importantForAccessibility={page === index ? 'auto' : 'no-hide-descendants'} key={item.label}
-          style={{ height, width }} testID={`home-week-content-${index}`}>
-          {item.content}
+          style={{ height, width: pageWidth, paddingLeft: gutter.paddingLeft, paddingRight: gutter.paddingRight }} testID={`home-week-content-${index}`}>
+          <Animated.View style={{ flex: 1, opacity: offset.interpolate({
+            inputRange: [(index - 1) * pageWidth, index * pageWidth, (index + 1) * pageWidth], outputRange: [0, 1, 0], extrapolate: 'clamp',
+          }) }}>
+            {item.content}
+          </Animated.View>
         </View>)}
       </Animated.ScrollView>
       <View style={styles.indicators} testID="home-week-pagination">
-        <HomePageControl labels={pages.map(item => item.label)} offset={offset} onScrub={scrub} onSelect={select} page={page} width={width} />
+        <HomePageControl labels={pages.map(item => item.label)} offset={offset} onScrub={scrub} onSelect={select} page={page} width={pageWidth} />
       </View>
     </View>
   );

@@ -65,7 +65,8 @@ describe('Home weekly carousel', () => {
     fireEvent.press(view.getByTestId('home-week-page-2'));
     fireEvent(view.getByTestId('home-week-carousel'), 'layout', { nativeEvent: { layout: { width: 600 } } });
     expect(view.getByTestId('home-week-page-2').props.accessibilityState).toEqual({ selected: true });
-    expect(StyleSheet.flatten(view.getByTestId('home-week-content-2').props.style).width).toBe(600);
+    // Each page spans the gutter too (600 + 2 × 16): pages sit 32 pt apart.
+    expect(StyleSheet.flatten(view.getByTestId('home-week-content-2').props.style).width).toBe(632);
     expect(StyleSheet.flatten(view.getByTestId('home-week-pager').props.style).height).toBe(176);
   });
 
@@ -161,7 +162,7 @@ describe('Home weekly carousel', () => {
     expect(binding.mock.calls[0][1]).toEqual({ useNativeDriver: true });
     const mapping = binding.mock.calls[0][0] as [{ nativeEvent: { contentOffset: { x: Animated.Value } } }];
     // Jest does not deliver UI-thread native events: set the bound value as the native scroll would.
-    act(() => mapping[0].nativeEvent.contentOffset.x.setValue(180.5));
+    act(() => mapping[0].nativeEvent.contentOffset.x.setValue(196.5));
     fireEvent.press(view.getByTestId('home-week-page-1'));
     expect(StyleSheet.flatten(view.getByTestId('home-week-active-dot').props.style).transform).toEqual([{ translateX: 22 }]);
     act(() => mapping[0].nativeEvent.contentOffset.x.setValue(900));
@@ -183,9 +184,9 @@ describe('Home weekly carousel', () => {
       callbacks.onPanResponderGrant!(event, gesture(0));
       callbacks.onPanResponderMove!(event, gesture(22));
     });
-    expect(scroll).toHaveBeenLastCalledWith({ x: 180.5, animated: false });
+    expect(scroll).toHaveBeenLastCalledWith({ x: 196.5, animated: false });
     act(() => callbacks.onPanResponderRelease!(event, gesture(22)));
-    expect(scroll).toHaveBeenLastCalledWith({ x: 361, animated: true });
+    expect(scroll).toHaveBeenLastCalledWith({ x: 393, animated: true });
     expect(view.getByTestId('home-week-page-1').props.accessibilityState).toEqual({ selected: true });
     act(() => {
       callbacks.onPanResponderGrant!(event, gesture(0));
@@ -193,7 +194,7 @@ describe('Home weekly carousel', () => {
       callbacks.onPanResponderRelease!(event, gesture(200));
     });
     expect(view.getByTestId('home-week-page-2').props.accessibilityState).toEqual({ selected: true });
-    expect(scroll).toHaveBeenLastCalledWith({ x: 722, animated: true });
+    expect(scroll).toHaveBeenLastCalledWith({ x: 786, animated: true });
     act(() => {
       callbacks.onPanResponderGrant!(event, gesture(0));
       callbacks.onPanResponderMove!(event, gesture(-200));
@@ -218,9 +219,9 @@ describe('Home weekly carousel', () => {
     });
     expect(scroll).not.toHaveBeenCalled();
     act(() => callbacks.onPanResponderMove!(event, { ...gesture, dx: 44 }));
-    expect(scroll).toHaveBeenLastCalledWith({ x: 361, animated: false });
+    expect(scroll).toHaveBeenLastCalledWith({ x: 393, animated: false });
     act(() => callbacks.onPanResponderRelease!(event, gesture));
-    expect(scroll).toHaveBeenLastCalledWith({ x: 361, animated: false });
+    expect(scroll).toHaveBeenLastCalledWith({ x: 393, animated: false });
     expect(view.getByTestId('home-week-page-1').props.accessibilityState).toEqual({ selected: true });
   });
 });

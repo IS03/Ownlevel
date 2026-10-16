@@ -4,7 +4,6 @@ import { Image, Pressable, StyleSheet, View } from 'react-native';
 import type { MobileHomeResponse, MobileHomeTodaySession } from '@/api/home';
 import type { HistoryDay } from '@/api/history';
 import type { NutritionReport } from '@/api/nutrition-report';
-import type { QuickOption, QuickOptions } from '@/api/nutrition-quick';
 import type { ProgressHabitWeek, ProgressBody, ProgressTraining } from '@/api/progress';
 import {
   AppIcon,
@@ -52,14 +51,12 @@ export type HomeDashboardProps = {
   onOpenProgress: (target: HomeProgressTarget) => void;
   /** Active session (`/(tabs)/train/session/{id}`), never the Training hub first. */
   onOpenSession: (sessionId: string) => void;
-  onQuickMeal: (option: QuickOption) => void;
   onRefresh: () => void;
   onRegister: (target: HomeRegisterTarget) => void;
   /** Opens the start sheet ("¿Qué entrenás hoy?"); the session starts through the shared start flow. */
   onStartWorkout: () => void;
   progressBody: HomeResource<ProgressBody>;
   progressRecords: HomeResource<ProgressTraining>;
-  quick: HomeResource<QuickOptions>;
   today: HomeResource<HistoryDay>;
   training: HomeResource<HomeTrainingWeek>;
 };
@@ -237,7 +234,7 @@ function OfflineNotice({ confirmedAt, now, onRetry }: { confirmedAt: number; now
 }
 
 export function HomeDashboard(props: HomeDashboardProps) {
-  const { avatarUrl, calories, day, home, onNavigate, onRefresh, quick, today, training } = props;
+  const { avatarUrl, calories, day, home, onNavigate, onRefresh, today, training } = props;
   const now = props.now ?? Date.now;
   const data = home.data;
   const stale = home.status === 'unavailable' && !!data;
@@ -256,8 +253,7 @@ export function HomeDashboard(props: HomeDashboardProps) {
             onOpenSession={props.onOpenSession} onRefresh={onRefresh} onStartWorkout={props.onStartWorkout} />
         </HomeGutter>
         <View style={styles.beforeBand}>
-          <HomeNutrition home={home} onConfigure={props.onConfigureNutrition} onMealEntry={props.onMealEntry} onQuickMeal={props.onQuickMeal}
-            quick={quick} today={today} />
+          <HomeNutrition home={home} onConfigure={props.onConfigureNutrition} onMealEntry={props.onMealEntry} today={today} />
         </View>
         <View style={styles.afterBand}>
           <HomeWeek calories={calories} habits={props.habits} onOpenHabit={props.onOpenHabit} onMetrics={() => props.onRegister({ kind: 'more' })} onOpenCalories={props.onOpenCalories} onOpenDay={props.onOpenDay} onProgress={() => onNavigate('progress')} today={date}
