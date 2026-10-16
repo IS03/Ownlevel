@@ -69,6 +69,19 @@ export class ApiResourceController<T> {
     return () => this.listeners.delete(listener);
   }
 
+  /**
+   * A read that must reflect a write confirmed just now: a read already in flight may predate that write, so it is
+   * aborted and its result ignored instead of being reused.
+   */
+  reload(trigger: ResourceRefreshTrigger): Promise<void> {
+    if (this.disposed) {
+      return Promise.resolve();
+    }
+    this.abortController?.abort();
+    this.inFlight = null;
+    return this.refresh(trigger);
+  }
+
   refresh(trigger: ResourceRefreshTrigger): Promise<void> {
     if (this.disposed) {
       return Promise.resolve();
@@ -92,7 +105,8 @@ export class ApiResourceController<T> {
 
     const operation = this.load(this.abortController.signal)
       .then((result) => {
-        if (this.disposed) {
+        // A superseded read (see reload) never replaces newer truth.
+        if (this.disposed || this.inFlight !== operation) {
           return;
         }
 

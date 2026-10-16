@@ -35,6 +35,24 @@ describe('API resource refresh', () => {
     });
   });
 
+  it('reload supersedes a read in flight: the older response never replaces newer truth', async () => {
+    const pending: ((value: MobileApiReadResult<string>) => void)[] = [];
+    const signals: AbortSignal[] = [];
+    const loader = jest.fn((signal: AbortSignal) => new Promise<MobileApiReadResult<string>>((resolve) => {
+      signals.push(signal); pending.push(resolve);
+    }));
+    const controller = new ApiResourceController(loader, () => 1_000);
+    const before = controller.refresh('manual');
+    const after = controller.reload('manual');
+    expect(loader).toHaveBeenCalledTimes(2);
+    expect(signals[0].aborted).toBe(true);
+    pending[1](ok('after write'));
+    await after;
+    pending[0](ok('before write'));
+    await before;
+    expect(controller.getSnapshot()).toMatchObject({ status: 'ready', current: { data: 'after write' } });
+  });
+
   it('preserves prior data as explicitly stale when refresh is unavailable', async () => {
     const loader = jest
       .fn<() => Promise<MobileApiReadResult<string>>>()

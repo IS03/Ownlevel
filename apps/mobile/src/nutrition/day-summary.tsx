@@ -6,6 +6,7 @@ import { NutritionSwitchText } from '@/home/home-nutrition-switch';
 import { number, nutrientAmount } from './day-format';
 import { dayRings, type RingReading } from './day-home-model';
 import { NutritionRings } from './day-rings';
+import { useTweenedNumber } from './use-tweened-number';
 
 export function readingLabel(reading: RingReading, unit: string, remaining = false) {
   if (reading.value === null) return 'Sin dato';
@@ -41,13 +42,18 @@ export function NutritionDaySummary({ data }: { data: MobileNutritionDayResponse
     animation.start();
     return () => animation.stop();
   }, [progress, reduced, remaining]);
-  const readings = dayRings(data);
+  const raw = dayRings(data);
   const n = data.nutrition.status === 'ok' && data.nutrition.data.dayState === 'recorded' ? data.nutrition.data : null;
-  const canToggle = [readings.calories, readings.protein].some(r => r.target !== null && r.value !== null);
+  // After a meal is added, edited or removed the totals count to their new values and the rings follow.
+  const calories = useTweenedNumber(raw.calories.value), protein = useTweenedNumber(raw.protein.value);
+  const carbs = useTweenedNumber(n ? n.summary.carbsG.knownTotal : null), fat = useTweenedNumber(n ? n.summary.fatG.knownTotal : null);
+  const readings = { calories: { ...raw.calories, value: calories }, protein: { ...raw.protein, value: protein } };
+  const macro = (key: 'carbsG' | 'fatG') => n ? { ...n.summary[key], knownTotal: (key === 'carbsG' ? carbs : fat) ?? n.summary[key].knownTotal } : null;
+  const canToggle = [raw.calories, raw.protein].some(r => r.target !== null && r.value !== null);
   const status = remaining ? 'Te falta' : 'Llevás';
   const stacked = width < 350 || fontScale > 1.3;
   return <Pressable accessibilityRole="button" accessibilityState={{ disabled: !canToggle }} disabled={!canToggle}
-    accessibilityLabel={`${status}. Calorías: ${readingLabel(readings.calories, 'kcal', remaining)}. Objetivo: ${readings.calories.target === null ? 'sin objetivo' : number(readings.calories.target)} kcal. Proteína: ${readingLabel(readings.protein, 'g', remaining)}. Objetivo: ${readings.protein.target === null ? 'sin objetivo' : number(readings.protein.target)} g. Carbos: ${n ? nutrientAmount(n.summary.carbsG, n.summary.entryCount, 'g') : 'Sin dato'}. Grasas: ${n ? nutrientAmount(n.summary.fatG, n.summary.entryCount, 'g') : 'Sin dato'}.`}
+    accessibilityLabel={`${status}. Calorías: ${readingLabel(raw.calories, 'kcal', remaining)}. Objetivo: ${raw.calories.target === null ? 'sin objetivo' : number(raw.calories.target)} kcal. Proteína: ${readingLabel(raw.protein, 'g', remaining)}. Objetivo: ${raw.protein.target === null ? 'sin objetivo' : number(raw.protein.target)} g. Carbos: ${n ? nutrientAmount(n.summary.carbsG, n.summary.entryCount, 'g') : 'Sin dato'}. Grasas: ${n ? nutrientAmount(n.summary.fatG, n.summary.entryCount, 'g') : 'Sin dato'}.`}
     accessibilityHint={canToggle ? `Tocá para ver lo que ${remaining ? 'llevás' : 'te falta'}. Los valores negativos indican cuánto superaste el objetivo.` : undefined}
     onPress={() => setRemaining(v => !v)} style={[styles.summary, stacked && styles.stacked]} testID="nutrition-summary">
     <NutritionRings readings={readings} />
@@ -60,7 +66,7 @@ export function NutritionDaySummary({ data }: { data: MobileNutritionDayResponse
       <View style={[styles.macros, { opacity: remaining ? 0.55 : 1 }]} testID="nutrition-summary-macros">
         {(['carbsG', 'fatG'] as const).map((key, i) => <View key={key} style={styles.macro}>
           <AppText muted variant="caption">{i === 0 ? 'Carbos' : 'Grasas'}</AppText>
-          <AppText numeric variant="subheadline">{n ? nutrientAmount(n.summary[key], n.summary.entryCount, 'g') : 'Sin dato'}</AppText>
+          <AppText numeric variant="subheadline">{n ? nutrientAmount(macro(key)!, n.summary.entryCount, 'g') : 'Sin dato'}</AppText>
         </View>)}
       </View>
     </View>

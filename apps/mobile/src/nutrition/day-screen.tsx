@@ -38,7 +38,9 @@ import { foodQuickOption } from '@/api/nutrition-food';
 import { QuickEditor } from './quick-editor';
 import { useNutritionHomeEntry, type AddEntry } from './home-entry';
 
-function NutritionDayView({ date, today, onSelect, onToday, onServerToday, onAdd, addChoices, addControl, highlightedMeal, onManageFoods, onManageSaved, onConfigure, onReport, mealActions, onActivity, onContext, onMetric }: {
+function NutritionDayView({ revision, date, today, onSelect, onToday, onServerToday, onAdd, addChoices, addControl, highlightedMeal, onManageFoods, onManageSaved, onConfigure, onReport, mealActions, onActivity, onContext, onMetric }: {
+  /** Bumped after a confirmed write: the day re-reads in place, so its numbers can move to the new values. */
+  revision: number;
   date: string; today: string; onSelect: (date: string) => void; onToday: () => void; onServerToday: (date: string) => void;
   onAdd?: () => void; mealActions?: MealActions;
   onConfigure?: () => void; onReport?: (range: { from: string; to: string }) => void; addChoices?: ReactNode; addControl?: ReactNode; highlightedMeal?: string; onManageFoods?: () => void; onManageSaved?: () => void;
@@ -47,7 +49,7 @@ function NutritionDayView({ date, today, onSelect, onToday, onServerToday, onAdd
 }) {
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
-  const { state, refresh } = useNutritionDayResource(client, date);
+  const { state, refresh, reload } = useNutritionDayResource(client, date);
   const [refreshRevision, setRefreshRevision] = useState(0);
   const [selector, setSelector] = useState(false);
   const current = state.status === 'ready' ? state.current
@@ -56,6 +58,7 @@ function NutritionDayView({ date, today, onSelect, onToday, onServerToday, onAdd
   useEffect(() => { if (serverToday) onServerToday(serverToday); }, [serverToday, onServerToday]);
   const selectedLabel = `${headerDate(date)}${date.slice(0, 4) !== today.slice(0, 4) ? ` de ${date.slice(0, 4)}` : ''}`;
   const runRefresh = useCallback(() => { setRefreshRevision(v => v + 1); return refresh(); }, [refresh]);
+  useEffect(() => { if (revision > 0) void reload(); }, [reload, revision]);
   const pull = usePullRefresh(state.status === 'ready' && state.refreshing, runRefresh);
   return <ScrollScreen statusBarGlass testID="nutrition-day-screen" refreshControl={
     <RefreshControl colors={[colors.primary]} onRefresh={pull.onRefresh}
@@ -74,7 +77,7 @@ function NutritionDayView({ date, today, onSelect, onToday, onServerToday, onAdd
       </View>
       {date !== today ? <Button label="Volver a hoy" onPress={onToday} variant="quiet" /> : null}
     </View>
-    <NutritionWeek refreshRevision={refreshRevision} date={date} today={today} data={current?.data} onSelect={onSelect} />
+    <NutritionWeek refreshRevision={refreshRevision + revision} date={date} today={today} data={current?.data} onSelect={onSelect} />
     {!current ? state.status === 'loading' ? <LoadingState label="Cargando día nutricional" />
       : <UnavailableState title="No pudimos cargar este día"
         description={state.status === 'auth_required' || state.status === 'unauthorized' ? 'No pudimos confirmar tu sesión.' : 'Revisá la conexión e intentá nuevamente.'}
@@ -152,7 +155,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
     {config?.state.message && !config.state.open ? <View style={styles.header}><AppText accessibilityRole="alert">{config.state.message}</AppText>{config.state.intent ? <Button label="Revisar intento de configuración" onPress={()=>config.controller.showRecovery()} /> : null}{config.state.phase==='blocked'?<Button label="Comprobar almacenamiento de configuración" onPress={()=>void config.controller.recover()}/>:null}</View>:null}
   </>;
   return <>
-    <NutritionDayView key={`${userId}:${date}:${revision}`} date={date} today={today}
+    <NutritionDayView key={`${userId}:${date}`} revision={revision} date={date} today={today}
       onSelect={setSelected} onToday={() => { updateToday(); setSelected(null); }} onServerToday={setToday}
       addControl={<NutritionAddMenu onManual={editable ? () => meals.controller.open(date) : undefined} onQuick={editable ? () => quick.controller.open(date) : undefined} onFood={editable ? () => foods.controller.open(date) : undefined} />}
       addChoices={statusBanners}
