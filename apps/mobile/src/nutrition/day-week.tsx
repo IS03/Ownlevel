@@ -53,12 +53,12 @@ function WeekDay({ day, selected, today, readings, status, colors, onSelect }: {
   return <Pressable accessibilityRole="button" accessibilityState={{ selected }}
     accessibilityLabel={`${displayNutritionDate(day)}${day === today ? ', hoy' : ''}. ${status ?? `Calorías ${readingLabel(readings.calories, 'kcal')}. Proteína ${readingLabel(readings.protein, 'g')}`}`}
     onPress={() => onSelect(day)} style={[styles.day, selected && { backgroundColor: colors.brandSubtle }]} testID={`nutrition-week-${day}`}>
-    <AppText muted={!selected} variant="caption">{weekday(day)}</AppText>
+    {/* The weekday initial is enough here; the full date is in the header and in VoiceOver. */}
+    <AppText muted={!selected} variant="caption" style={selected && { fontWeight: '700' }}>{weekday(day)}</AppText>
     <NutritionRings readings={readings} size={32} testID={`nutrition-week-rings-${day}`} />
-    <AppText numeric variant="caption" style={{ fontWeight: selected ? '700' : '400', color: selected ? colors.text : colors.textMuted }}>{Number(day.slice(8))}</AppText>
   </Pressable>;
 }
 const styles = StyleSheet.create({
   scroll: { flexGrow: 1 }, section: { gap: 4 }, week: { flex: 1, minWidth: 308, flexDirection: 'row', justifyContent: 'space-between', gap: 0 },
-  day: { flex: 1, minHeight: 76, alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 12 },
+  day: { flex: 1, minHeight: 64, paddingVertical: 6, alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 12 },
 });
