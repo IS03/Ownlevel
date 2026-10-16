@@ -41,6 +41,15 @@ try {
   await admin.query(ledger.slice(0, ledger.indexOf('create function public.mobile_create_training_routine')) + 'commit;');
   for (const name of ['20260909155017_configurable_daily_metrics.sql', '20260914104157_r3_atomic_daily_metric_values.sql', '20261003021157_mobile_nutrition_day_read.sql', '20261003040926_mobile_activity_context_writes.sql', '20261004235000_mobile_daily_metrics_integrity.sql', '20261005000000_mobile_metric_definitions.sql']) await admin.query(await file(name));
   await admin.query('insert into auth.users values($1),($2),($3)', [owner, other, fresh]);
+  const legacyUser=id(99),legacyClient=await connect();
+  await admin.query('insert into auth.users values($1)',[legacyUser]);await role(legacyClient,legacyUser);
+  const legacyIntent={operation:'create',metricId:null,expectedUpdatedAt:null,fields:{name:'Antes del EXPAND',valueType:'integer',unit:null,target:null},idempotencyKey:'pre-expand'};
+  const beforeExpand=(await legacyClient.query('select * from public.mobile_mutate_metric_definition($1::jsonb)',[JSON.stringify(legacyIntent)])).rows[0];
+  await admin.query(await file('20261016180618_metric_presentation_expand.sql'));
+  await check('legacy receipt created before EXPAND replays unchanged after migration',async()=>{
+    const after=(await legacyClient.query('select * from public.mobile_mutate_metric_definition($1::jsonb)',[JSON.stringify(legacyIntent)])).rows[0];
+    assert.equal(after.replayed,true);assert.deepEqual(after.response_body,beforeExpand.response_body);
+  });
   await admin.query('grant select,insert,update on public.day_logs,public.meal_entries to authenticated; grant select on public.profiles, public.workout_sessions to authenticated');
   const c = await connect();
   await role(a); await role(b); await role(stranger, other); await role(c, fresh);
@@ -242,7 +251,45 @@ try {
     await b.query("insert into public.user_metrics(user_id,name,unit,value_type,sort_order) values($1,'Web','u','decimal',99)", [owner]);
     assert.ok(await find(d => d.name === 'Web'));
   });
-  console.log(`M5.3 metric definitions harness: ${checks} checks passed`);
+  await check('presentation EXPAND: opt-in shape, system edits, legacy writes/receipts and Web preserve presentation', async () => {
+    const opt = async conn => (await conn.query('select public.mobile_read_metric_presentations() r')).rows[0].r.definitions;
+    const water = await find(d => d.systemKey === 'water');
+    const extended = {...fields(water.name,water.valueType,water.unit,water.target),icon:'book',quickValue:0.25};
+    const input = intent('update','presentation-water',water,extended);
+    const first = await mutate(a,input);
+    assert.equal(first.response_status,200); assert.equal(first.response_body.definition.icon,'book');
+    assert.equal(Number(first.response_body.definition.quickValue),0.25);
+    assert.deepEqual((await mutate(a,input)).response_body,first.response_body);
+    assert.ok((await read()).every(d => !Object.hasOwn(d,'icon') && !Object.hasOwn(d,'quickValue')));
+    let current = (await opt(a)).find(d => d.id===water.id);
+    assert.equal(current.icon,'book'); assert.equal(Number(current.quickValue),0.25);
+    const legacy = await mutate(a,intent('update','presentation-old',current,fields(current.name,current.valueType,current.unit,3)));
+    assert.equal(legacy.response_status,200); assert.ok(!Object.hasOwn(legacy.response_body.definition,'icon'));
+    await b.query('update public.user_metrics set target_value=4 where id=$1',[water.id]);
+    current=(await opt(a)).find(d=>d.id===water.id);
+    assert.equal(current.icon,'book'); assert.equal(Number(current.quickValue),0.25);
+    const rawDay = (await a.query('select public.mobile_read_nutrition_day($1::date) r',[today])).rows[0].r;
+    assert.ok(rawDay.activity.data.metrics.every(d=>!Object.hasOwn(d,'icon')&&!Object.hasOwn(d,'quickValue')));
+    assert.ok((await opt(stranger)).every(d=>d.id!==water.id));
+    assert.equal((await mutate(stranger,intent('update','presentation-foreign',current,extended))).response_status,404);
+    assert.equal((await stranger.query('update public.user_metrics set icon=$1 where id=$2 returning id',['heart',water.id])).rows.length,0);
+    const security=(await admin.query("select p.prosecdef from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('mobile_read_metric_presentations','mobile_mutate_metric_definition','mobile_reorder_metric_definitions')")).rows;
+    assert.equal(security.length,3); assert.ok(security.every(p=>!p.prosecdef));
+    assert.equal((await admin.query("select has_function_privilege('anon','public.mobile_read_metric_presentations()','execute') allowed")).rows[0].allowed,false);
+  });
+  await check('presentation EXPAND: format-open icons and quick-value rules also enforced by table constraints', async () => {
+    for (const [type,value,valid] of [['decimal',0.1234,true],['decimal',0.12345,false],['integer',1,true],['integer',1.5,false],['duration',30,true],['duration',1.5,false],['decimal',0,false],['decimal',-1,false]]) {
+      const f={...fields('Porción',type,'u'),icon:'future-icon-key',quickValue:value};
+      const input=intent('create',`quick-${type}-${value}`,null,f);
+      if(valid) assert.equal((await mutate(a,input)).response_status,200);
+      else await assert.rejects(mutate(a,input),/INVALID_METRIC_DEFINITION/);
+    }
+    for(const icon of ['Water','has space','x'.repeat(33),'bad_underscore']) await assert.rejects(mutate(a,intent('create',`bad-icon-${Math.random()}`,null,{...fields('Ícono'),icon,quickValue:null})),/INVALID_METRIC_DEFINITION/);
+    const d=await find(d=>d.name==='Web');
+    await assert.rejects(a.query('update public.user_metrics set quick_value=0 where id=$1',[d.id]),/user_metrics_quick_value_domain/);
+    await assert.rejects(a.query("update public.user_metrics set icon='NO' where id=$1",[d.id]),/user_metrics_icon_format/);
+  });
+  console.log(`M5.3 + presentation metric definitions harness: ${checks} checks passed`);
 } finally {
   for (const c of clients) await c.end().catch(() => undefined);
   if (started) await pg.stop().catch(() => undefined);

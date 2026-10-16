@@ -116,7 +116,7 @@ beforeEach(async () => {
     if (options.path === '/api/mobile/v1/profile') return ok({ displayName, version }) as never;
     if (options.path === '/api/mobile/v1/nutrition/stages')
       return (stagesFail ? unavailable : ok(list)) as never;
-    if (options.path === '/api/mobile/v1/metrics/definitions')
+    if (options.path === '/api/mobile/v1/metrics/definitions?presentation=1')
       return ok({ definitions: [] }) as never;
     if (options.path.includes('/nutrition/days/'))
       return ok(nutritionFixture(config.today)) as never;

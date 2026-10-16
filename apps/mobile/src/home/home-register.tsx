@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react';
-import { AccessibilityInfo, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import type {MetricDefinition} from '@/api/metric-definitions';
+import type {QuickMetricTap} from './use-home-metric-entry';
+import {NutritionCalorieRing} from '@/nutrition/day-rings';
+import {useTweenedNumber} from '@/nutrition/use-tweened-number';
 import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
 
 import type { HistoryDay } from '@/api/history';
@@ -24,7 +28,7 @@ import { homeMetricIcon } from './home-metric-icons';
 import { HomeSection, useHomeGutter } from './home-ui';
 
 /** Only daily metrics: weight and body measurements live in Progreso (Cuerpo). */
-export type HomeRegisterTarget = { kind: 'metric'; metricId: string } | { kind: 'more' };
+export type HomeRegisterTarget = { kind: 'metric'; metricId: string; quick?:QuickMetricTap } | { kind: 'more' };
 
 /** All active metrics, in the user's own order. The viewport, not the data, is limited. */
 export function registerMetrics(day: HistoryDay | undefined): NutritionDayMetric[] {
@@ -33,18 +37,20 @@ export function registerMetrics(day: HistoryDay | undefined): NutritionDayMetric
 }
 
 /** One shortcut: a 48 pt circle, its name and today's state; a check badge when it is logged today. */
-function RegisterCircle({ detail, done, glass, icon, label, onPress, testID, width }: {
+function RegisterCircle({ detail, done, glass, icon, label, onPress, testID, width, onLongPress, pending=false, disabled=false, ring, quick=false }: {
   detail: string | null; done: boolean; glass: boolean; icon: AppIconName; label: string; onPress: () => void; testID?: string; width: number;
+  onLongPress?:()=>void;pending?:boolean;disabled?:boolean;ring?:React.ReactNode;quick?:boolean;
 }) {
   const { colors, isDark } = useOwnlevelTheme();
   const reduceMotion = useReduceMotion();
-  const image = <AppIcon color={colors.textMuted} name={icon} size={20} />;
+  const image = pending?<ActivityIndicator size="small" color={colors.primary}/>:<AppIcon color={colors.textMuted} name={icon} size={20} />;
   return (
     <Pressable
-      accessibilityHint={done ? 'Ya lo registraste hoy' : 'Abre la carga de hoy'}
+      accessibilityHint={quick?'Un toque suma tu porción. Mantené apretado para cargar otro valor.':done ? 'Ya lo registraste hoy' : 'Abre la carga de hoy'}
       accessibilityLabel={detail ? `${label}, ${detail}` : label}
       accessibilityRole="button"
-      accessibilityState={{ checked: done }}
+      accessibilityState={{ checked: done,busy:pending,disabled }}
+      disabled={disabled} onLongPress={onLongPress}
       onPress={onPress}
       style={({ pressed }) => [styles.item, { width }, glass && !reduceMotion ? null : pressedStyle(pressed, reduceMotion)]}
       testID={testID}
@@ -52,6 +58,7 @@ function RegisterCircle({ detail, done, glass, icon, label, onPress, testID, wid
       <View style={styles.circleWrap}>
         {glass ? <GlassView colorScheme={isDark ? 'dark' : 'light'} glassEffectStyle="regular" isInteractive={!reduceMotion} style={styles.circle} testID={`${testID}-glass`}>{image}</GlassView>
           : <View style={[styles.circle, { backgroundColor: colors.surface }]}>{image}</View>}
+        {ring?<View pointerEvents="none" style={StyleSheet.absoluteFill}>{ring}</View>:null}
         {done ? (
           <View style={[styles.badge, { backgroundColor: colors.background }]}>
             <AppIcon color={colors.primary} name="check" size={17} />
@@ -66,7 +73,16 @@ function RegisterCircle({ detail, done, glass, icon, label, onPress, testID, wid
   );
 }
 
-export function HomeRegister({ date, onRegister, today }: { date: string; onRegister: (target: HomeRegisterTarget) => void; today: HomeResource<HistoryDay> }) {
+export type MetricPresentationProps={metricDefinitions?:MetricDefinition[];metricBusyId?:string|null;metricsLocked?:boolean};
+function MetricCircle({metric,definition,confirmed,date,onRegister,pending,disabled,...circle}:{metric:NutritionDayMetric;definition?:MetricDefinition;confirmed:boolean;date:string;onRegister:(t:HomeRegisterTarget)=>void;pending:boolean;disabled:boolean;glass:boolean;width:number}){
+ const shown=useTweenedNumber(confirmed?metric.value:null,300);
+ const quick=confirmed&&definition?.quickValue!=null;
+ return <RegisterCircle {...circle} detail={!confirmed?'—':shown===null?'Cargar':metricValue(metric,shown)} done={confirmed&&metric.value!==null} icon={homeMetricIcon(metric.systemKey,definition?.icon)} label={metric.label} testID={'home-register-metric-'+metric.id} pending={pending} disabled={disabled} quick={quick}
+  ring={<NutritionCalorieRing size={48} reading={{value:shown,target:metric.target,partial:false}} testID={'home-register-ring-'+metric.id}/>}
+  onPress={()=>onRegister({kind:'metric',metricId:metric.id,...(quick?{quick:{portion:definition!.quickValue!,value:metric.value,updatedAt:metric.updatedAt,definitionUpdatedAt:metric.definitionUpdatedAt,date}}:{})})}
+  onLongPress={()=>onRegister({kind:'metric',metricId:metric.id})}/>;
+}
+export function HomeRegister({ date, onRegister, today,metricDefinitions=[],metricBusyId,metricsLocked=false }: { date: string; onRegister: (target: HomeRegisterTarget) => void; today: HomeResource<HistoryDay> }&MetricPresentationProps) {
   const supported = Platform.OS === 'ios' && isGlassEffectAPIAvailable() && isLiquidGlassAvailable();
   const [reduceTransparency, setReduceTransparency] = useState(true);
   useEffect(() => {
@@ -96,9 +112,7 @@ export function HomeRegister({ date, onRegister, today }: { date: string; onRegi
         {loading
           ? <><RegisterCircle detail={null} done={false} glass={false} icon="activity" label=" " onPress={() => undefined} width={itemWidth} /><RegisterCircle detail={null} done={false} glass={false} icon="activity" label=" " onPress={() => undefined} width={itemWidth} /></>
           : metrics.map(metric => (
-            <RegisterCircle detail={!confirmed ? '—' : metric.value === null ? 'Cargar' : metricValue(metric, metric.value)} done={confirmed && metric.value !== null}
-              glass={glass} icon={homeMetricIcon(metric.systemKey)} key={metric.id} label={metric.label}
-              onPress={() => onRegister({ kind: 'metric', metricId: metric.id })} testID={`home-register-metric-${metric.id}`} width={itemWidth} />
+            <MetricCircle metric={metric} definition={metricDefinitions.find(d=>d.id===metric.id)} confirmed={confirmed} date={date} onRegister={onRegister} pending={metricBusyId===metric.id} disabled={metricsLocked} glass={glass} key={metric.id} width={itemWidth}/>
           ))}
           <RegisterCircle detail="Métricas" done={false} glass={glass} icon="more" label="Más" onPress={() => onRegister({ kind: 'more' })} testID="home-register-more" width={itemWidth} />
         </ScrollView>

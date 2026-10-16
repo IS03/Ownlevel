@@ -12,6 +12,13 @@ const mockReorder = jest.fn<(client: unknown, intent: unknown) => Promise<unknow
 const mockStore = new Map<string, string>();
 const mockFocus: (() => void)[] = [];
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
+jest.mock('@/settings/native-segmented',()=>jest.requireActual('@/settings/native-segmented.tsx'));
+jest.mock('@/design-system/app-sheet',()=>{
+ const React=jest.requireActual<typeof import('react')>('react');
+ const {View}=jest.requireActual<typeof import('react-native')>('react-native');
+ const Context=React.createContext<()=>void>(()=>{});
+ return {AppSheet:({children,onClose,testID}:{children:React.ReactNode;onClose:()=>void;testID:string})=><Context.Provider value={onClose}><View testID={testID}>{children}</View></Context.Provider>,useAppSheetDismiss:()=>{const close=React.useContext(Context);return(after?:()=>void)=>{close();after?.();};}};
+});
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }), useFocusEffect: (effect: () => void) => { mockFocus.push(effect); } }));
 jest.mock('@/auth', () => ({ useMobileAuth: () => ({ session: { user: { id: 'owner' } } }) }));
 const mockClient = { request: jest.fn(), read: jest.fn() };
@@ -48,10 +55,11 @@ describe('Administrar métricas', () => {
     expect(within(view.getByTestId(`metric-definition-${defId(1)}`)).getByText('Número entero · pasos · Objetivo 10.000 pasos')).toBeTruthy();
     expect(within(view.getByTestId(`metric-definition-${defId(3)}`)).getByText('Duración (h y min) · Objetivo 8 h 0 min')).toBeTruthy();
     expect(within(view.getByTestId(`metric-definition-${defId(11)}`)).getByText('Decimal · km · Sin objetivo')).toBeTruthy();
+    fireEvent.press(view.getByText('Archivadas · 1'));
     const archived = within(view.getByTestId('metric-definitions-archived'));
     expect(archived.getByText('Mate')).toBeTruthy(); expect(archived.getByText('Sistema · Archivada · Con historial')).toBeTruthy();
-    expect(view.getByRole('button', { name: 'Subir Pasos' })).toBeDisabled();
-    expect(view.getByRole('button', { name: 'Bajar Correr' })).toBeDisabled();
+    expect(view.getByLabelText('Editar Pasos').props.accessibilityActions).not.toContainEqual({name:'moveUp',label:'Mover arriba'});
+    expect(view.getByLabelText('Editar Correr').props.accessibilityActions).not.toContainEqual({name:'moveDown',label:'Mover abajo'});
   });
   it('a system definition only exposes the target; no delete, archive is offered', async () => {
     const view = wrap(); await flush();
@@ -62,8 +70,12 @@ describe('Administrar métricas', () => {
     expect(editor.getByRole('radio', { name: 'Decimal' })).toBeDisabled();
     expect(editor.getByLabelText('Objetivo (opcional)').props.editable).toBe(true);
     expect(editor.queryByRole('button', { name: 'Eliminar métrica' })).toBeNull();
-    expect(editor.getByRole('button', { name: 'Archivar' })).toBeTruthy();
-    expect(editor.getByText(/sólo se puede cambiar el objetivo/)).toBeTruthy();
+    const alert=jest.spyOn(Alert,'alert');
+    fireEvent.press(editor.getByLabelText('Más opciones de métrica'));
+    expect(alert.mock.calls.at(-1)?.[2]?.map(b=>b.text)).toContain('Archivar');
+    expect(alert.mock.calls.at(-1)?.[2]?.map(b=>b.text)).not.toContain('Eliminar métrica');
+    expect(editor.getByLabelText('Ícono: Libro')).toBeEnabled();
+    expect(editor.getByText(/Podés elegir su ícono, objetivo y carga rápida/)).toBeTruthy();alert.mockRestore();
   });
   it('custom with history: type/unit frozen and explained, archive instead of delete; without history delete is offered', async () => {
     const view = wrap(); await flush();
@@ -71,14 +83,13 @@ describe('Administrar métricas', () => {
     let editor = within(view.getByTestId('metric-definition-editor'));
     expect(editor.getByLabelText('Nombre').props.editable).toBe(true);
     expect(editor.getByLabelText('Unidad').props.editable).toBe(false);
-    expect(editor.getByText(/no su tipo ni su unidad/)).toBeTruthy();
+    expect(editor.getByText(/el tipo y la unidad quedan como estaban/)).toBeTruthy();
     expect(editor.queryByRole('button', { name: 'Eliminar métrica' })).toBeNull();
     fireEvent.press(editor.getByRole('button', { name: 'Cerrar' }));
     fireEvent.press(view.getByRole('button', { name: 'Editar Lectura' }));
     editor = within(view.getByTestId('metric-definition-editor'));
-    expect(editor.getByRole('button', { name: 'Eliminar métrica' })).toBeTruthy();
-    const alert = jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => { buttons?.find(b => b.text === 'Eliminar')?.onPress?.(); });
-    await act(async () => { fireEvent.press(editor.getByRole('button', { name: 'Eliminar métrica' })); }); await flush();
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => { buttons?.find(b => b.text === 'Eliminar métrica'||b.text==='Confirmar')?.onPress?.(); });
+    await act(async () => { fireEvent.press(editor.getByRole('button', { name: 'Más opciones de métrica' })); }); await flush();
     expect(alert).toHaveBeenCalled();
     expect(mockMutate.mock.calls[0][1]).toMatchObject({ operation: 'delete', metricId: defId(10), fields: null });
     expect(view.getByText('Métrica eliminada.')).toBeTruthy();
@@ -97,12 +108,12 @@ describe('Administrar métricas', () => {
     await act(async () => { fireEvent.press(editor.getByRole('button', { name: 'Crear métrica' })); }); await flush();
     expect(mockMutate).toHaveBeenCalledTimes(1);
     expect(mockMutate.mock.calls[0][1]).toMatchObject({ operation: 'create', fields: { name: 'Agua con gas', valueType: 'decimal', unit: 'L', target: 0.5 } });
-    expect(view.queryByTestId('metric-definition-editor')).toBeNull();
+    expect(view.getByLabelText('Guardado')).toBeTruthy();
     expect(within(view.getByTestId(`metric-definition-${defId(99)}`)).getByText('Decimal · L · Objetivo 0,5 L')).toBeTruthy();
   });
   it('reorders with one full-list move and refreshes on focus', async () => {
     const view = wrap(); await flush();
-    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Bajar Pasos' })); }); await flush();
+    await act(async () => { fireEvent(view.getByLabelText('Editar Pasos'),'accessibilityAction',{nativeEvent:{actionName:'moveDown'}}); }); await flush();
     expect(mockReorder.mock.calls[0][1]).toMatchObject({ metricIds: [defId(2), defId(1), defId(3), defId(10), defId(11)], expectedMetricIds: [defId(1), defId(2), defId(3), defId(10), defId(11)] });
     const reads = mockRead.mock.calls.length;
     await act(async () => { mockFocus.at(-1)!(); }); await flush();
@@ -111,7 +122,7 @@ describe('Administrar métricas', () => {
   it('unavailable first read is an explicit error, never an empty list', async () => {
     mockRead.mockResolvedValue({ status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } });
     const view = wrap(); await flush();
-    expect(view.getByText('No pudimos cargar tus métricas')).toBeTruthy();
+    expect(view.getByText('No pudimos cargar tus métricas.')).toBeTruthy();
     expect(view.queryByText('No tenés métricas activas.')).toBeNull();
   });
 });

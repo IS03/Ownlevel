@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeIn, SlideInDown, useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
-import { AppIcon, AppText, Button, GlassSurface, SheetHandle, pressedStyle, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
+import { AppIcon, AppSheet, AppText, Button, GlassSurface, useAppSheetDismiss, pressedStyle, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
 import type { DayWriteController, DayWriteState } from './day-write-controller';
@@ -33,11 +33,14 @@ function KeyboardSpacer({ rest }: { rest: number }) {
 export function MetricEntrySheet({ id, controller, state, onClose }: { id: string; controller: DayWriteController; state: DayWriteState; onClose: () => void }) {
   const draft = state.draft;
   const metric = draft ? findDayMetric(draft.baseline, id) : undefined;
-  return draft?.kind === 'metrics' && metric ? <MetricForm key={`${draft.baseline.date}:${id}`} id={id} controller={controller} state={state} onClose={onClose} /> : null;
+  const {colors}=useOwnlevelTheme();
+  const running=state.phase==='pending'||state.phase==='confirmed'&&!state.message;
+  return draft?.kind === 'metrics' && metric ? <AppSheet key={`${draft.baseline.date}:${id}`} locked={running} onClose={onClose} closeLabel="Cerrar carga de métrica" style={{backgroundColor:colors.background,maxHeight:'90%'}}><MetricForm id={id} controller={controller} state={state}/></AppSheet> : null;
 }
-function MetricForm({ id, controller, state, onClose }: { id: string; controller: DayWriteController; state: DayWriteState; onClose: () => void }) {
+function MetricForm({ id, controller, state }: { id: string; controller: DayWriteController; state: DayWriteState }) {
   const draft = state.draft!, data = draft.baseline, metric = findDayMetric(data, id)!;
-  const { colors } = useOwnlevelTheme(), insets = useSafeAreaInsets(), reduced = useReduceMotion();
+  const { colors } = useOwnlevelTheme(), insets = useSafeAreaInsets(),dismiss=useAppSheetDismiss();
+  const onClose=()=>dismiss();
   const [mode, setMode] = useState<MetricEntryMode>(metric.value === null ? 'replace' : 'add');
   const duration = metric.valueType === 'duration';
   // A typed number starts empty with a grey "0" behind it: typing 500 gives 500, never 0500.
@@ -89,13 +92,8 @@ function MetricForm({ id, controller, state, onClose }: { id: string; controller
   };
   const truth = state.truth ? findDayMetric(state.truth, id) : undefined;
   const saveDisabled = locked || state.phase !== 'idle' || (!removing && (invalid || !candidate?.valid));
-  return <Modal transparent statusBarTranslucent visible animationType="none" onRequestClose={() => { if (!running) onClose(); }}>
-    <KeyboardAvoidingView enabled={Platform.OS === 'android'} behavior="height" style={styles.fill}>
-      <Animated.View entering={FadeIn.duration(200)} style={StyleSheet.absoluteFill}>
-        <Pressable accessibilityLabel="Cerrar carga de métrica" disabled={running} onPress={onClose} style={[StyleSheet.absoluteFill, styles.scrim]} />
-      </Animated.View>
-      <Animated.View entering={reduced ? FadeIn.duration(200) : SlideInDown.duration(300)} accessibilityViewIsModal style={[styles.sheet, { backgroundColor: colors.background, paddingBottom: restInset }]} testID="nutrition-metric-sheet">
-        <SheetHandle />
+  return <KeyboardAvoidingView enabled={Platform.OS === 'android'} behavior="height">
+      <View style={{paddingBottom:restInset}} testID="nutrition-metric-sheet">
         {/* "always": a tap on the native Sumar/Reemplazar control must not drop the keyboard. */}
         <ScrollView keyboardShouldPersistTaps="always" contentContainerStyle={styles.content}>
           <View style={styles.header}>
@@ -116,23 +114,22 @@ function MetricForm({ id, controller, state, onClose }: { id: string; controller
               : invalid ? 'Ingresá un valor válido' : `Quedaría en ${metricValue(metric, candidate!.value)}`}
           </AppText>
           {state.errors[id] || state.errors.form ? <AppText accessibilityRole="alert">{state.errors[id] ?? state.errors.form}</AppText> : null}
-          {state.message ? <AppText accessibilityRole="alert">{state.message}</AppText> : null}
+          {state.message ? <AppText accessibilityLiveRegion="polite">{state.phase==='uncertain'?'Tu cambio sigue acá. Comprobá si se guardó.':state.phase==='confirmed'?'Se guardó. Falta actualizar el día.':state.phase==='blocked'?'No pudimos recuperar el cambio en este teléfono.':state.phase==='conflict'?'El valor cambió en otro lado. Lo que escribiste sigue acá.':state.truth?'Revisá el valor antes de guardar.':state.message}</AppText> : null}
           {state.phase === 'conflict' ? <View style={styles.status}>
             <AppText variant="headline">El valor cambió</AppText>
             <AppText numeric>{truth ? `Ahora: ${metricValue(truth, truth.value)}` : 'No pudimos confirmar el valor actual. Tu entrada sigue guardada.'}</AppText>
-            <Button label="Actualizar versión del servidor" variant="quiet" onPress={() => void controller.refreshConflict()} />
-            {truth ? <Button label="Revisar mi entrada sobre esta versión" variant="secondary" onPress={review} /> : null}
+            <Button label="Actualizar el valor" variant="quiet" onPress={() => void controller.refreshConflict()} />
+            {truth ? <Button label="Revisar lo que escribí" variant="secondary" onPress={review} /> : null}
           </View> : null}
-          {running ? <AppText accessibilityRole="alert" muted style={styles.center}>Guardando…</AppText> : null}
-          {['uncertain', 'confirmed', 'blocked'].includes(state.phase) && !running ? <Button label={state.intent?.receipt ? 'Actualizar fecha confirmada' : 'Comprobar intento guardado'} onPress={() => void controller.recover()} /> : null}
+          {['uncertain', 'confirmed', 'blocked'].includes(state.phase) && !running ? <Button label={state.intent?.receipt ? 'Actualizar el día' : 'Comprobar cambio'} onPress={() => void controller.recover()} /> : null}
           {metric.value !== null ? <Pressable accessibilityRole="button" accessibilityLabel={`Quitar el valor de ${relative}`} accessibilityState={{ disabled: locked || state.phase !== 'idle' }} disabled={locked || state.phase !== 'idle'} onPress={remove} style={styles.remove}>
             <AppText muted variant="footnote">{`Quitar el valor de ${relative}`}</AppText>
           </Pressable> : null}
         </ScrollView>
         {Platform.OS === 'ios' ? <KeyboardSpacer rest={restInset} /> : null}
-      </Animated.View>
+      </View>
     </KeyboardAvoidingView>
-  </Modal>;
+  ;
 }
 const styles = StyleSheet.create({
   fill: { flex: 1, justifyContent: 'flex-end' }, scrim: { backgroundColor: 'rgba(0,0,0,0.3)' },

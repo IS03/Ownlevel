@@ -30,6 +30,7 @@ import { DayWriteEditor } from './day-write-editor';
 import { useMetricEntry } from './use-metric-entry';
 import { MetricEntrySheet } from './metric-entry-sheet';
 import { MetricSavedNotice } from './metric-notice';
+import {subscribeMetricDefinitionsChanged} from '@/metrics/presentation-resource';
 import type { MobileNutritionDayResponse, NutritionDayMetric } from '@/api/nutrition-day';
 import { MealEditor } from './meal-editor';
 import { useQuickController } from './use-quick-controller';
@@ -121,6 +122,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
   const routeDate = selectedRouteDate(params);
   const { client } = useMobileApi();
   const [revision, setRevision] = useState(0);
+  useEffect(()=>{if(client)return subscribeMetricDefinitionsChanged(client,userId,()=>setRevision(n=>n+1));},[client,userId]);
   const invalidate = useCallback(() => setRevision(v => v + 1), []);
   // Shared with Settings (one controller/intent per user); its editor is hosted by the provider.
   const config = useNutritionConfiguration(invalidate);

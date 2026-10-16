@@ -13,9 +13,15 @@ import { NutritionDayPanel } from './day-panel';
 import { MetricEntrySheet } from './metric-entry-sheet';
 import { MetricSavedNotice } from './metric-notice';
 import { useMetricEntry } from './use-metric-entry';
-import { confirmedMetricUndo, metricEntryCandidate, metricRaw } from './metric-entry-model';
+import { confirmedMetricUndo, metricEntryCandidate, metricRaw, quickMetricValue, sameMetricTimestamp } from './metric-entry-model';
 
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
+jest.mock('@/design-system/app-sheet',()=>{
+ const React=jest.requireActual<typeof import('react')>('react');
+ const {View}=jest.requireActual<typeof import('react-native')>('react-native');
+ const Context=React.createContext<()=>void>(()=>{});
+ return {AppSheet:({children,onClose,testID}:{children:React.ReactNode;onClose:()=>void;testID?:string})=><Context.Provider value={onClose}><View testID={testID}>{children}</View></Context.Provider>,useAppSheetDismiss:()=>{const close=React.useContext(Context);return(after?:()=>void)=>{close();after?.();};}};
+});
 jest.mock('@/training/exercise-segmented', () => ({
   ExerciseSegmented: (props: import('@/training/exercise-segmented').ExerciseSegmentedProps<string>) => {
     const { SegmentedControl } = jest.requireActual<typeof import('@/design-system')>('@/design-system');
@@ -73,6 +79,54 @@ async function open(f = setup()) {
 }
 const save = async (view: Awaited<ReturnType<typeof open>>['view'], label = 'Agua') => { await act(async () => { fireEvent.press(view.getByLabelText(`Guardar ${label}`)); }); };
 beforeEach(() => { jest.clearAllMocks(); });
+describe('quick entry uses the same durable day writer and exact undo',()=>{
+ const first=(f:ReturnType<typeof setup>)=>{const d=f.data();if(d.activity.status!=='ok')throw new Error('Missing fixture');return d.activity.data.metrics[0];};
+ it.each([null,0,1.5])('creates or adds to the displayed value %s, and undo restores missing rather than zero',async(value)=>{
+  const f=setup(value);await f.controller.initialize();
+  const hook=renderHook(()=>useMetricEntry(f.controller,date));
+  await act(async()=>{await hook.result.current.quick(f.data(),first(f),0.25);});
+  expect(f.mutate).toHaveBeenCalledTimes(1);expect(first(f).value).toBe((value??0)+0.25);
+  expect(hook.result.current.notice?.undo?.before.value).toBe(value);
+  await act(async()=>{hook.result.current.undoNotice();});
+  expect(first(f).value).toBe(value);
+  expect(f.mutate.mock.calls[1][0]).toMatchObject({operation:'metrics',changes:[{metricId,value}]});
+ });
+ it('blocks consecutive taps before persistence/network finishes, without losing or doubling an accepted sum',async()=>{
+  const f=setup(1);await f.controller.initialize();
+  const hook=renderHook(()=>useMetricEntry(f.controller,date));
+  const original=f.mutate.getMockImplementation()!;
+  let release!:()=>void;
+  f.mutate.mockImplementationOnce(async i=>{await new Promise<void>(r=>{release=r;});return original(i);});
+  let pending!:Promise<boolean>;
+  await act(async()=>{pending=hook.result.current.quick(f.data(),first(f),0.25);});
+  await act(async()=>{expect(await hook.result.current.quick(f.data(),first(f),0.25)).toBe(false);});
+  expect(f.mutate).toHaveBeenCalledTimes(1);
+  await act(async()=>{release();await pending;});expect(first(f).value).toBe(1.25);
+ });
+ it('a competing update conflicts, reads truth and never retries the addition automatically',async()=>{
+  const f=setup(1),old=f.data();await f.controller.initialize();
+  const hook=renderHook(()=>useMetricEntry(f.controller,date));
+  f.apply(2);
+  await act(async()=>{await hook.result.current.quick(old,old.activity.status==='ok'?old.activity.data.metrics[0]:first(f),0.25);});
+  expect(f.controller.getSnapshot().phase).toBe('conflict');expect(first(f).value).toBe(2);
+  expect(f.mutate).toHaveBeenCalledTimes(1);expect(hook.result.current.notice).toBeNull();
+ });
+ it('an uncertain quick entry preserves the same idempotency key and recovery uses the same body',async()=>{
+  const f=setup(1);await f.controller.initialize();const hook=renderHook(()=>useMetricEntry(f.controller,date));
+  f.mutate.mockResolvedValueOnce(failure);
+  await act(async()=>{await hook.result.current.quick(f.data(),first(f),0.25);});
+  const stored=await f.repository.read();expect(stored).not.toBeNull();
+  await act(async()=>{await f.controller.recover();});
+  expect(f.mutate.mock.calls[1][0]).toEqual(stored!.intent);expect(first(f).value).toBe(1.25);
+ });
+ it('decimal arithmetic is exact, duration portions integral, timestamp comparison retains microseconds',()=>{
+  const m=first(setup(0.1));expect(quickMetricValue(m,0.2)).toBe(0.3);
+  expect(quickMetricValue({...m,valueType:'duration'},0.5)).toBeUndefined();
+  expect(quickMetricValue(m,0)).toBeUndefined();
+  expect(sameMetricTimestamp('2026-10-02T12:00:00.000001Z','2026-10-02T09:00:00.000001-03:00')).toBe(true);
+  expect(sameMetricTimestamp('2026-10-02T12:00:00.000001Z','2026-10-02T12:00:00.000002Z')).toBe(false);
+ });
+});
 
 describe('individual metric sheet and existing writer', () => {
   it('opens only that metric, previews comma addition, closes without saving', async () => {
@@ -151,24 +205,24 @@ describe('individual metric sheet and existing writer', () => {
   it('keeps ambiguous writes locked and explicitly recovers the same key and payload', async () => {
     const f = setup(); f.mutate.mockResolvedValueOnce(failure);
     const { view } = await open(f); fireEvent.changeText(view.getByLabelText('Valor de Agua'), '0,25'); await save(view);
-    expect(await view.findByText('Comprobar intento guardado')).toBeTruthy();
+    expect(await view.findByText('Comprobar cambio')).toBeTruthy();
     expect(view.getByLabelText('Guardar Agua').props.accessibilityState.disabled).toBe(true);
     expect(view.queryByTestId('nutrition-metric-notice')).toBeNull();
-    await act(async () => { fireEvent.press(view.getByText('Comprobar intento guardado')); });
+    await act(async () => { fireEvent.press(view.getByText('Comprobar cambio')); });
     expect(f.mutate.mock.calls[1][0]).toEqual(f.mutate.mock.calls[0][0]); await view.findByTestId('nutrition-metric-notice');
   });
   it('confirmed saves with failed rereads offer read recovery, never another write or early undo', async () => {
     const f = setup(); f.read.mockResolvedValueOnce(failure);
     const { view } = await open(f); fireEvent.changeText(view.getByLabelText('Valor de Agua'), '0,25'); await save(view);
-    expect(await view.findByText('Actualizar fecha confirmada')).toBeTruthy(); expect(view.queryByText('Deshacer')).toBeNull();
-    await act(async () => { fireEvent.press(view.getByText('Actualizar fecha confirmada')); });
+    expect(await view.findByText('Actualizar el día')).toBeTruthy(); expect(view.queryByText('Deshacer')).toBeNull();
+    await act(async () => { fireEvent.press(view.getByText('Actualizar el día')); });
     expect(f.mutate).toHaveBeenCalledTimes(1); await view.findByText('Deshacer');
   });
   it('recomputes addition only after explicit conflict review and requires another save', async () => {
     const f = setup(); f.mutate.mockImplementationOnce(async () => { f.apply(2); return conflict; });
     const { view } = await open(f); fireEvent.changeText(view.getByLabelText('Valor de Agua'), '0,25'); await save(view);
     expect(await view.findByText('Ahora: 2 L')).toBeTruthy();
-    await act(async () => { fireEvent.press(view.getByText('Revisar mi entrada sobre esta versión')); });
+    await act(async () => { fireEvent.press(view.getByText('Revisar lo que escribí')); });
     expect(f.mutate).toHaveBeenCalledTimes(1); expect(view.getByText('Quedaría en 2,25 L')).toBeTruthy();
     await save(view); expect(f.mutate.mock.calls[1][0]).toMatchObject({ changes: [{ value: 2.25, expectedUpdatedAt: `${date}T13:00:00.000001Z` }] });
   });

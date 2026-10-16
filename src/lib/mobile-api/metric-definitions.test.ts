@@ -30,6 +30,15 @@ beforeEach(() => {
 });
 
 describe("M5.3 Metric Definitions contract", () => {
+  it('accepts exactly four legacy fields or six presentation fields; validates portion by type without choosing icons',()=>{
+    expect(normalizeMetricDefinitionFields(fields)).toEqual(fields);
+    for(const [valueType,quickValue,valid] of [['integer',1,true],['integer',1.1,false],['decimal',0.1234,true],['decimal',0.12345,false],['duration',30,true],['duration',1.5,false],['decimal',0,false],['decimal',-1,false]] as const){
+      expect(!!normalizeMetricDefinitionFields({...fields,target:null,valueType,icon:'future-icon',quickValue})).toBe(valid);
+    }
+    expect(normalizeMetricDefinitionFields({...fields,icon:'book'})).toBeUndefined();
+    expect(normalizeMetricDefinitionFields({...fields,icon:'Bad Icon',quickValue:null})).toBeUndefined();
+    expect(normalizeMetricDefinitionFields({...fields,icon:null,quickValue:null})).toEqual({...fields,icon:null,quickValue:null});
+  });
   it("derives actions from domain facts: system = target + archive/restore; custom with history = no meaning change, no delete", () => {
     const withActions = (d: Record<string, unknown>, actions: Record<string, boolean>) => ({ ...d, actions: { editTarget: true, ...actions } });
     expect(parseMetricDefinition(withActions(steps, { editName: false, editMeaning: false, archive: true, restore: false, delete: false }))).toBeDefined();
@@ -67,6 +76,16 @@ describe("M5.3 Metric Definitions contract", () => {
 });
 
 describe("M5.3 Metric Definitions routes", () => {
+  it('legacy GET strips presentation keys; opt-in uses its own RPC and returns the extra fields',async()=>{
+    rpc.mockResolvedValue({data:{definitions:[raw({icon:'book',quickValue:0.25})]},error:null});
+    const old=await (await GET(request('/api/mobile/v1/metrics/definitions'))).json();
+    expect(Object.keys(old.definitions[0])).not.toContain('icon');
+    expect(Object.keys(old.definitions[0])).not.toContain('quickValue');
+    expect(Object.keys(old.definitions[0]).sort()).toEqual(['id','systemKey','name','unit','valueType','target','isActive','sortOrder','updatedAt','hasHistory','actions'].sort());
+    const modern=await GET(request('/api/mobile/v1/metrics/definitions?presentation=1'));
+    expect(modern.status).toBe(200);expect(rpc).toHaveBeenLastCalledWith('mobile_read_metric_presentations');
+    expect(parseMetricDefinitions(await modern.json())?.definitions[0]).toMatchObject({icon:'book',quickValue:0.25});
+  });
   it("GET initializes and reads through one RPC (POST), adds actions, keeps active before archived", async () => {
     rpc.mockResolvedValue({ data: { definitions: [steps, raw(), raw({ id: id(3), isActive: false, hasHistory: true })] }, error: null });
     const response = await GET(request("/api/mobile/v1/metrics/definitions"));

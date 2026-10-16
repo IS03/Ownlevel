@@ -7,6 +7,7 @@ import { fetchMetricDefinitions, mutateMetricDefinition, reorderMetricDefinition
 import { shouldRefreshOnForeground } from '@/api/resource';
 import { DefinitionsController, type DefinitionsState } from './definitions-controller';
 import { DefinitionIntentRepository } from './definitions-storage';
+import {rememberMetricPresentation,metricDefinitionsChanged} from './presentation-resource';
 
 /**
  * One controller per client/user. Focus/foreground re-read server truth; drafts stay.
@@ -19,11 +20,11 @@ export function useDefinitionsController(client: MobileApiClient | null, userId:
     if (!client) return;
     const life = new AbortController();
     const controller = new DefinitionsController({
-      read: () => fetchMetricDefinitions(client, life.signal),
+      read: () => fetchMetricDefinitions(client,life.signal),
       mutate: intent => mutateMetricDefinition(client, intent, life.signal),
       reorder: intent => reorderMetricDefinitions(client, intent, life.signal),
-    }, new DefinitionIntentRepository(AsyncStorage, userId));
-    const unsubscribe = controller.subscribe(() => setCurrent({ client, userId, controller, state: controller.getSnapshot() }));
+    }, new DefinitionIntentRepository(AsyncStorage, userId),()=>metricDefinitionsChanged(client,userId));
+    const unsubscribe = controller.subscribe(() => {const state=controller.getSnapshot();if(state.read.definitions&&!state.read.refreshing&&!state.read.stale&&['idle','confirmed'].includes(state.phase))rememberMetricPresentation(client,userId,state.read.definitions);setCurrent({ client, userId, controller, state });});
     void controller.initialize();
     let previous = AppState.currentState;
     const subscription = AppState.addEventListener('change', next => { if (shouldRefreshOnForeground(previous, next)) void controller.load(); previous = next; });

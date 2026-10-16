@@ -30,7 +30,7 @@ export function CountingNumber({
     </AppText>
   );
 }
-export function EditorialScreen({ children }: PropsWithChildren) {
+export function EditorialScreen({ children,scrollEnabled=true }: PropsWithChildren<{scrollEnabled?:boolean}>) {
   const { isDark, colors } = useOwnlevelTheme();
   return (
     <SafeAreaView
@@ -47,6 +47,7 @@ export function EditorialScreen({ children }: PropsWithChildren) {
         ]}
       />
       <ScrollView
+        scrollEnabled={scrollEnabled}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ padding: 16, gap: 24, paddingBottom: 40 }}

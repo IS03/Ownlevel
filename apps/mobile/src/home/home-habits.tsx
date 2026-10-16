@@ -5,6 +5,7 @@ import { AppIcon, AppText, Button, InlineUnavailable, SkeletonBlock, brandTokens
 import { formatValue } from '@/progress/progress-format';
 
 import { homeMetricIcon } from './home-metric-icons';
+import {useMetricPresentations} from '@/metrics/presentation-provider';
 import type { HomeResource } from './home-resource';
 
 /** Only a server-comparable change carries a neutral direction arrow. */
@@ -17,6 +18,7 @@ export function HomeHabits({ habits, onOpen, onMetrics, today, weekStart }: {
   habits: HomeResource<ProgressHabitWeek>; onOpen: (metricId: string) => void; onMetrics: () => void; today: string; weekStart: string;
 }) {
   const { colors } = useOwnlevelTheme();
+  const definitions=useMetricPresentations();
   const { fontScale, width } = useWindowDimensions();
   const data = habits.data?.weekStart === weekStart && habits.data.today === today ? habits.data : undefined;
   // Leave room for complete names/values and the remainder action at accessibility sizes.
@@ -43,7 +45,7 @@ export function HomeHabits({ habits, onOpen, onMetrics, today, weekStart }: {
         accessibilityHint="Abre esta métrica en Progreso" key={item.id} onPress={() => onOpen(item.id)}
         style={({ pressed }) => [styles.row, index > 0 && { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth }, pressed && { opacity: 0.55 }]}
         testID={`home-habit-${item.id}`}>
-        <AppIcon color={colors.textMuted} name={homeMetricIcon(item.systemKey)} size={20} />
+        <AppIcon color={colors.textMuted} name={homeMetricIcon(item.systemKey,definitions.find(d=>d.id===item.id)?.icon)} size={20} />
         <View style={styles.name}>
           <AppText numberOfLines={1} variant="body">{item.name}</AppText>
           <AppText muted numeric variant="caption">{coverage}</AppText>

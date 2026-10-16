@@ -18,11 +18,13 @@ function parseEditor(v: unknown): DefinitionEditor | null | undefined {
   if (v === null) return null;
   if (!record(v) || (v.mode !== 'create' && v.mode !== 'edit') || !record(v.draft)) return;
   const draft = v.draft;
-  if (Object.keys(draft).length !== DRAFT_KEYS.length || !DRAFT_KEYS.every(k => typeof draft[k] === 'string')
+  const extended = Object.hasOwn(draft,'icon');
+  if (Object.keys(draft).length !== DRAFT_KEYS.length + (extended ? 4 : 0) || !DRAFT_KEYS.every(k => typeof draft[k] === 'string')
+    || (extended && !((draft.icon===null || typeof draft.icon==='string') && ['quickValue','quickHours','quickMinutes'].every(k=>typeof draft[k]==='string')))
     || !METRIC_DEFINITION_VALUE_TYPES.includes(draft.valueType as never)) return;
   const baseline = v.baseline === null ? null : parseMetricDefinition(v.baseline);
   if (baseline === undefined || (v.mode === 'edit') !== (baseline !== null)) return;
-  return { mode: v.mode, baseline, draft: draft as DefinitionDraft };
+  return { mode: v.mode, baseline, draft: {...draft,...(!extended ? {icon:baseline?.icon??null,quickValue:'',quickHours:'',quickMinutes:''}: {})} as DefinitionDraft };
 }
 export function parseStoredDefinitionIntent(v: unknown): StoredDefinitionIntent {
   if (!record(v) || v.version !== 1) throw new Error('Invalid definitions intent');

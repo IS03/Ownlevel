@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Briefcase, Bookmark, Pin, Info, MessageCircle, Pencil, Repeat, Sparkles,
+import { Bike, Heart, Pill, Apple, Brain, Bed, Timer, Smile, Leaf, CigaretteOff, ArrowLeftRight, Briefcase, Bookmark, Pin, Info, MessageCircle, Pencil, Repeat, Sparkles,
   ArrowUpDown, GripHorizontal, Archive, BookOpen, Calendar, ChartLine, Check, ChevronDown,
   ChevronLeft, ChevronRight, CircleCheck, ClipboardList, Clock, Coffee, Droplet, Dumbbell, Ellipsis, Flame,
   Footprints, Search, ListFilter, Sunrise, Sun, Sunset, Moon, NotebookPen, Play, Plus, Minus, RotateCw, Settings, Trash2, TriangleAlert, Trophy, User, Utensils, Weight, X, Zap, type LucideIcon,
@@ -8,6 +8,7 @@ import type { AppIconName } from './icon-names';
 
 // Android/Web icon set per IDENTIDAD.md (Lucide, stroke 2). Imported only by icons.android.tsx.
 export const lucideIcons: Record<AppIconName, LucideIcon> = {
+  bike: Bike, heart: Heart, pill: Pill, apple: Apple, brain: Brain, bed: Bed, timer: Timer, smile: Smile, leaf: Leaf, 'no-smoking': CigaretteOff,
   reorder: ArrowUpDown,
   dragHandle: GripHorizontal,
   archive: Archive,

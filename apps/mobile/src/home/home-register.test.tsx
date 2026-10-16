@@ -6,6 +6,7 @@ import type { HistoryDay } from '@/api/history';
 import { OwnlevelThemeProvider } from '@/design-system';
 
 import { HomeRegister } from './home-register';
+import {definition} from '@/metrics/definitions-fixture.test-helper';
 
 let mockSupported = true;
 let mockReduced = false;
@@ -34,13 +35,23 @@ async function metrics() {
 }
 
 describe('Home metric controls', () => {
+  it('a portion uses the exact displayed snapshot, long press keeps full entry, and pending disables repeat taps',()=>{
+    const onRegister=jest.fn(),props={date:day.date,onRegister,today:{status:'ready' as const,confirmedAt:1,data:day},metricDefinitions:[definition({id:'m0',quickValue:0.25,icon:'book',valueType:'decimal',unit:null})]};
+    const view=render(<OwnlevelThemeProvider initialMode="dark"><HomeRegister {...props}/></OwnlevelThemeProvider>);
+    const circle=view.getByTestId('home-register-metric-m0');
+    fireEvent.press(circle);expect(onRegister).toHaveBeenLastCalledWith({kind:'metric',metricId:'m0',quick:{value:0,updatedAt:null,definitionUpdatedAt:undefined,portion:0.25,date:day.date}});
+    fireEvent(circle,'longPress');expect(onRegister).toHaveBeenLastCalledWith({kind:'metric',metricId:'m0'});
+    view.rerender(<OwnlevelThemeProvider initialMode="dark"><HomeRegister {...props} metricBusyId="m0" metricsLocked/></OwnlevelThemeProvider>);
+    expect(view.getByTestId('home-register-metric-m0')).toBeDisabled();expect(view.getByTestId('home-register-metric-m0').props.accessibilityState.busy).toBe(true);
+    fireEvent.press(view.getByTestId('home-register-metric-m0'));expect(onRegister).toHaveBeenCalledTimes(2);
+  });
   beforeEach(() => { jest.restoreAllMocks(); mockSupported = true; mockReduced = false; mockFontScale = 1; });
 
   it('all six metrics remain reachable, zero is logged, and Más scrolls after the metrics', async () => {
     jest.spyOn(AccessibilityInfo, 'isReduceTransparencyEnabled').mockResolvedValue(false);
     const view = await metrics();
     expect(view.getAllByTestId(/home-register-metric-m\d$/)).toHaveLength(6);
-    expect(view.getByRole('button', { name: 'Métrica 0, 0' }).props.accessibilityState).toEqual({ checked: true });
+    expect(view.getByRole('button', { name: 'Métrica 0, 0' }).props.accessibilityState).toMatchObject({ checked: true });
     fireEvent.press(view.getByTestId('home-register-metric-m5'));
     expect(view.onRegister).toHaveBeenCalledWith({ kind: 'metric', metricId: 'm5' });
     fireEvent.press(view.getByTestId('home-register-more'));

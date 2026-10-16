@@ -34,7 +34,7 @@ export class DefinitionsController {
     try {
       const stored = await this.repository.read();
       this.update(stored ? { phase: stored.receipt ? 'confirmed' : 'uncertain', intent: stored, editor: stored.kind === 'definition' ? stored.editor : null,
-        message: stored.receipt ? 'El cambio está confirmado. Falta actualizar la lectura.' : 'Hay un cambio sin resultado confirmado. Comprobalo antes de hacer otro.' }
+        message: stored.receipt ? 'El cambio está confirmado. Falta mostrar tus métricas actualizadas.' : 'Hay un cambio sin resultado confirmado. Comprobalo antes de hacer otro.' }
         : { phase: 'idle' });
     } catch { this.update({ phase: 'blocked', message: 'No pudimos leer el cambio guardado en el teléfono. Revisá el almacenamiento antes de continuar.' }); }
     await this.load();
@@ -102,7 +102,16 @@ export class DefinitionsController {
     const expected = activeDefinitions(definitions).map(d => d.id);
     const metricIds = moveId(expected, id, direction);
     if (!metricIds) return;
-    await this.submit({ version: 1, kind: 'order', intent: { operation: 'reorder', metricIds, expectedMetricIds: expected, idempotencyKey: this.key() } });
+    await this.reorder(metricIds,expected);
+  }
+  /** The full order captured on lift is the CAS, not a later background read. One request on drop. */
+  async reorder(metricIds:string[],expectedMetricIds:string[]) {
+    if(!this.canEdit()||this.state.editor||metricIds.join()===expectedMetricIds.join())return;
+    if(metricIds.length!==expectedMetricIds.length||new Set(metricIds).size!==metricIds.length||[...metricIds].sort().join()!==[...expectedMetricIds].sort().join())return;
+    const all=this.state.read.definitions!;
+    this.generation++;
+    this.update({read:{...this.state.read,definitions:[...metricIds.map((id,i)=>({...all.find(d=>d.id===id)!,sortOrder:i})),...all.filter(d=>!d.isActive)],refreshing:false}});
+    await this.submit({version:1,kind:'order',intent:{operation:'reorder',metricIds,expectedMetricIds,idempotencyKey:this.key()}});
   }
 
   private async submit(stored: StoredDefinitionIntent) {
@@ -113,7 +122,7 @@ export class DefinitionsController {
       await this.repository.write(stored);
       this.update({ intent: stored });
       await this.send(stored);
-    } catch { this.update({ phase: 'blocked', message: 'No pudimos conservar el cambio en el teléfono. No enviamos nada; revisá el almacenamiento.' }); }
+    } catch { this.update({ phase: this.state.intent?.receipt?'confirmed':this.state.intent?'uncertain':'blocked', message: this.state.intent?.receipt?'Se guardó. Falta actualizar tus métricas.':this.state.intent?'Tu cambio sigue acá. Comprobá si se guardó.':'No pudimos conservar el cambio en este teléfono.' }); }
     finally { this.busy = false; }
   }
   async recover() {
@@ -149,7 +158,7 @@ export class DefinitionsController {
   private async confirmed(stored: StoredDefinitionIntent) {
     const fresh = await this.load();
     if (this.disposed) return;
-    if (!fresh) { this.update({ phase: 'confirmed', message: 'Guardado confirmado. Falta actualizar la lectura; no vuelvas a enviarlo.' }); return; }
+    if (!fresh) { this.update({ phase: 'confirmed', message: 'Se guardó. Falta mostrar tus métricas actualizadas.' }); return; }
     await this.repository.clear(stored.intent.idempotencyKey);
     this.update({ phase: 'idle', intent: null, editor: null, errors: {}, message: null, notice: successNotice(stored) });
     this.onChanged();
@@ -158,7 +167,7 @@ export class DefinitionsController {
   reviewTruth() {
     const editor = this.state.editor, definitions = this.state.read.definitions;
     if (this.busy || this.state.phase !== 'conflict' || !editor || !definitions) return;
-    if (!editor.baseline) { this.update({ phase: 'idle', message: 'Revisá tu borrador antes de guardar de nuevo.' }); return; }
+    if (!editor.baseline) { this.update({ phase: 'idle', message: 'Revisá lo que escribiste antes de guardar.' }); return; }
     const current = definitions.find(d => d.id === editor.baseline!.id);
     if (!current) { this.update({ phase: 'idle', editor: null, message: null, notice: 'Esa métrica ya no existe.' }); return; }
     const draft = { ...editor.draft };
@@ -166,7 +175,7 @@ export class DefinitionsController {
     if (!current.actions.editName) draft.name = current.name;
     if (!current.actions.editMeaning) { const truth = definitionDraft(current); draft.valueType = truth.valueType; draft.unit = truth.unit; }
     this.update({ phase: 'idle', editor: { mode: 'edit', baseline: current, draft },
-      message: 'Actualizamos la métrica con los datos actuales. Revisá tu borrador antes de guardar de nuevo.' });
+      message: 'Actualizamos la métrica con los datos actuales. Revisá lo que escribiste antes de guardar.' });
   }
   dismissNotice() { this.update({ notice: null }); }
 }

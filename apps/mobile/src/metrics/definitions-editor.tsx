@@ -1,104 +1,380 @@
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { METRIC_DEFINITION_VALUE_TYPES } from '@/api/metric-definitions';
-import { AppText, Button, SheetHeader, TextField, radius, sizes, spacing, useOwnlevelTheme } from '@/design-system';
-import type { DefinitionsController, DefinitionsState } from './definitions-controller';
-import { VALUE_TYPE_LABELS } from './definitions-model';
+import { useEffect } from 'react';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  View,
+} from 'react-native';
+import {
+  AppIcon,
+  AppSheet,
+  AppText,
+  Button,
+  Heading,
+  TextField,
+  pressedStyle,
+  useAppSheetDismiss,
+  useOwnlevelTheme,
+  useReduceMotion,
+} from '@/design-system';
+import { SettingsSegmented } from '@/settings/native-segmented';
+import { SaveButton } from '@/nutrition/save-button';
+import { homeMetricIcon, metricIcons } from '@/home/home-metric-icons';
+import type {
+  DefinitionsController,
+  DefinitionsState,
+} from './definitions-controller';
 import type { DefinitionEditor } from './definitions-storage';
-
-function Field({ label, value, onChange, error, editable, keyboard = 'default', placeholder, hint }: {
-  label: string; value: string; onChange: (v: string) => void; error?: string; editable: boolean;
-  keyboard?: 'default' | 'decimal-pad' | 'number-pad'; placeholder?: string; hint?: string;
-}) {
-  return <TextField label={label} value={value} onChangeText={onChange} error={error} hint={hint} disabled={!editable} keyboardType={keyboard}
-    placeholder={placeholder ?? '—'} autoCorrect={false} numeric={keyboard !== 'default'} />;
-}
-
-/** Create / edit one definition. Only what the domain allows is editable; the rest is shown read-only. */
-export function DefinitionEditorSheet({ editor, state, controller }: { editor: DefinitionEditor; state: DefinitionsState; controller: DefinitionsController }) {
+import { VALUE_TYPE_LABELS, quickAmount } from './definitions-model';
+import { metricInputValue } from '@/nutrition/day-write-model';
+type Props = {
+  editor: DefinitionEditor;
+  state: DefinitionsState;
+  controller: DefinitionsController;
+  onClosed?: () => void;
+};
+export function DefinitionEditorSheet(props: Props) {
   const { colors } = useOwnlevelTheme();
-  const { phase, intent, message, errors } = state;
-  const busy = phase === 'pending';
-  const editable = phase === 'idle' && !intent;
-  const b = editor.baseline, d = editor.draft;
-  const canName = !b || b.actions.editName, canMeaning = !b || b.actions.editMeaning;
-  const close = () => {
-    if (busy || intent) return;
-    if (!controller.dirty()) { controller.close(); return; }
+  const beforeDismiss = (proceed: () => void) => {
+    if (!props.controller.dirty()) {
+      proceed();
+      return;
+    }
     Alert.alert('¿Descartar cambios?', 'Todavía no guardaste esta métrica.', [
-      { text: 'Seguir editando', style: 'cancel' }, { text: 'Descartar', style: 'destructive', onPress: () => controller.close() },
+      { text: 'Seguir editando', style: 'cancel' },
+      { text: 'Descartar', style: 'destructive', onPress: proceed },
     ]);
   };
-  const confirm = (title: string, detail: string, action: string, run: () => void, destructive = false) =>
-    Alert.alert(title, detail, [{ text: 'Cancelar', style: 'cancel' }, { text: action, style: destructive ? 'destructive' : 'default', onPress: run }]);
-  const tone = phase === 'uncertain' || phase === 'confirmed' ? colors.text : phase === 'conflict' || phase === 'blocked' ? colors.danger : colors.text;
-  const title = b ? b.name : 'Crear métrica';
-  const subtitle = !b ? 'Elegí qué querés registrar cada día.' : b.systemKey ? 'Métrica del sistema' : b.isActive ? 'Métrica propia' : 'Métrica propia · archivada';
-  return <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
-    <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]} testID="metric-definition-editor">
-      <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <SheetHeader title={title} subtitle={subtitle} onClose={close} />
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {b?.systemKey ? <AppText muted variant="caption">En las métricas del sistema sólo se puede cambiar el objetivo. Su nombre, tipo y unidad son fijos.</AppText> : null}
-          {b && !b.systemKey && b.hasHistory ? <AppText muted variant="caption">Tiene historial: podés cambiar el nombre o el objetivo y archivarla, pero no su tipo ni su unidad.</AppText> : null}
-          <Field label="Nombre" value={d.name} editable={editable && canName} onChange={v => controller.change('name', v)} error={errors.name} placeholder="Ej.: Lectura" />
-          <View style={styles.field}>
-            <AppText variant="label">Tipo</AppText>
-            <View style={styles.types} accessibilityRole="radiogroup">
-              {METRIC_DEFINITION_VALUE_TYPES.map(type => {
-                const selected = d.valueType === type;
-                return <Pressable key={type} accessibilityRole="radio" accessibilityState={{ selected, disabled: !(editable && canMeaning) }} accessibilityLabel={VALUE_TYPE_LABELS[type]}
-                  disabled={!(editable && canMeaning)} onPress={() => controller.change('valueType', type)}
-                  style={[styles.type, { borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.surfaceRaised : colors.surface, opacity: editable && canMeaning ? 1 : 0.6 }]}>
-                  <AppText variant="caption" style={selected ? { color: colors.primary } : undefined}>{VALUE_TYPE_LABELS[type]}</AppText>
-                </Pressable>;
-              })}
-            </View>
-          </View>
-          {d.valueType === 'duration'
-            ? <View style={styles.field}><AppText variant="label">Unidad</AppText><AppText muted variant="caption">Horas y minutos</AppText></View>
-            : <Field label="Unidad" value={d.unit} editable={editable && canMeaning} onChange={v => controller.change('unit', v)} error={errors.unit} placeholder="Ej.: km, páginas, veces (opcional)" />}
-          {d.valueType === 'duration' ? <View style={styles.field}>
-            <AppText variant="label">Objetivo (opcional)</AppText>
-            <View style={styles.duration}>
-              <View style={styles.flex}><Field label="Objetivo horas" value={d.hours} editable={editable} keyboard="number-pad" onChange={v => controller.change('hours', v)} placeholder="h" /></View>
-              <View style={styles.flex}><Field label="Objetivo minutos" value={d.minutes} editable={editable} keyboard="number-pad" onChange={v => controller.change('minutes', v)} placeholder="min" /></View>
-            </View>
-            {errors.target ? <AppText accessibilityRole="alert" style={{ color: colors.danger }} variant="caption">{errors.target}</AppText> : null}
-          </View> : <Field label="Objetivo (opcional)" value={d.target} editable={editable} keyboard={d.valueType === 'integer' ? 'number-pad' : 'decimal-pad'}
-            onChange={v => controller.change('target', v)} error={errors.target} placeholder="Sin objetivo" />}
-          <AppText muted variant="caption">El objetivo es una referencia actual: no cambia los valores ya registrados.</AppText>
-        </ScrollView>
-        <View style={[styles.footer, { borderTopColor: colors.border }]}>
-          {errors.form ? <AppText accessibilityRole="alert" style={{ color: colors.danger }} variant="caption">{errors.form}</AppText> : null}
-          {message ? <AppText accessibilityLiveRegion="polite" style={{ color: tone }} variant="caption">{message}</AppText> : null}
-          {busy ? <View style={styles.row}><ActivityIndicator color={colors.primary} /><AppText muted variant="caption">Guardando…</AppText></View> : null}
-          {phase === 'uncertain' ? <Button label="Comprobar" onPress={() => void controller.recover()} />
-            : phase === 'confirmed' ? <Button label="Actualizar lectura" onPress={() => void controller.recover()} />
-            : phase === 'conflict' ? <Button label="Revisar valores actuales" onPress={() => controller.reviewTruth()} />
-            : phase === 'blocked' ? null
-            : <Button label={busy ? 'Guardando…' : b ? 'Guardar' : 'Crear métrica'} disabled={busy || (!!b && !controller.dirty())} onPress={() => void controller.save()} />}
-          {editable && b?.actions.archive ? <Button label="Archivar" variant="secondary" onPress={() => confirm('¿Archivar esta métrica?',
-            'Deja de aparecer para registrar valores nuevos. Su historial se conserva y podés restaurarla.', 'Archivar', () => void controller.archive())} /> : null}
-          {editable && b?.actions.restore ? <Button label="Restaurar" variant="secondary" onPress={() => confirm('¿Restaurar esta métrica?',
-            'Vuelve a la lista activa, al final del orden.', 'Restaurar', () => void controller.restore())} /> : null}
-          {editable && b?.actions.delete ? <Button label="Eliminar métrica" variant="quiet" onPress={() => confirm('¿Eliminar esta métrica?',
-            'No tiene valores registrados. Esta acción no se puede deshacer.', 'Eliminar', () => void controller.remove(), true)} /> : null}
-          {!intent && !busy ? <Button label="Cerrar" variant="quiet" onPress={close} /> : null}
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
-  </Modal>;
+  return (
+    <AppSheet
+      closeLabel="Cerrar edición de métrica"
+      beforeDismiss={beforeDismiss}
+      onClose={() => {
+        props.controller.close();
+        props.onClosed?.();
+      }}
+      locked={props.state.phase === 'pending' || !!props.state.intent}
+      style={{ backgroundColor: colors.background, maxHeight: '92%' }}
+      testID="metric-definition-editor"
+    >
+      <EditorBody {...props} />
+    </AppSheet>
+  );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xl },
-  footer: { padding: spacing.lg, gap: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  field: { gap: spacing.xs },
-  flex: { flex: 1 },
-  types: { flexDirection: 'row', gap: spacing.sm },
-  type: { flex: 1, minHeight: sizes.touchTarget, borderWidth: 1, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xs },
-  duration: { flexDirection: 'row', gap: spacing.sm },
-});
+function EditorBody({ editor, state, controller }: Props) {
+  const dismiss = useAppSheetDismiss(),
+    { colors } = useOwnlevelTheme(),
+    reduced = useReduceMotion();
+  const b = editor.baseline,
+    d = editor.draft,
+    done = !!state.notice && !state.editor;
+  const busy =
+    state.phase === 'pending' ||
+    (state.phase === 'confirmed' && !state.message);
+  const editable = state.phase === 'idle' && !state.intent && !done;
+  const quick = metricInputValue(
+    { value: d.quickValue, hours: d.quickHours, minutes: d.quickMinutes },
+    d.valueType,
+  );
+  const icon = homeMetricIcon(b?.systemKey ?? null, d.icon);
+  useEffect(() => {
+    if (done) {
+      const t = setTimeout(() => dismiss(), 300);
+      return () => clearTimeout(t);
+    }
+  }, [done, dismiss]);
+  const close = () => {
+    if (!editable) return;
+    dismiss();
+  };
+  const menu = () => {
+    if (!editable || !b) return;
+    const confirm = (title: string, detail: string, run: () => void) =>
+      Alert.alert(title, detail, [
+        { text: 'Volver', style: 'cancel' },
+        { text: 'Confirmar', style: 'destructive', onPress: run },
+      ]);
+    Alert.alert(b.name, 'Elegí qué querés hacer.', [
+      ...(b.actions.archive
+        ? [
+            {
+              text: 'Archivar',
+              onPress: () =>
+                confirm(
+                  '¿Archivar esta métrica?',
+                  'Deja de aparecer para cargar valores nuevos. Su historial queda.',
+                  () => void controller.archive(),
+                ),
+            },
+          ]
+        : []),
+      ...(b.actions.restore
+        ? [{ text: 'Restaurar', onPress: () => void controller.restore() }]
+        : []),
+      ...(b.actions.delete
+        ? [
+            {
+              text: 'Eliminar métrica',
+              style: 'destructive' as const,
+              onPress: () =>
+                confirm(
+                  '¿Eliminar esta métrica?',
+                  'No tiene registros. Esto no se puede deshacer.',
+                  () => void controller.remove(),
+                ),
+            },
+          ]
+        : []),
+      { text: 'Volver', style: 'cancel' },
+    ]);
+  };
+  const field = (
+    key:
+      | 'name'
+      | 'unit'
+      | 'target'
+      | 'hours'
+      | 'minutes'
+      | 'quickValue'
+      | 'quickHours'
+      | 'quickMinutes',
+    label: string,
+    numeric = false,
+    disabled = false,
+  ) => (
+    <TextField
+      label={label}
+      value={d[key]}
+      disabled={!editable || disabled}
+      numeric={numeric}
+      keyboardType={
+        numeric
+          ? d.valueType === 'decimal'
+            ? 'decimal-pad'
+            : 'number-pad'
+          : 'default'
+      }
+      onChangeText={(v) => controller.change(key, v)}
+      error={state.errors[key]}
+      placeholder="—"
+    />
+  );
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ padding: 16, paddingBottom: 32, gap: 24 }}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+          }}
+        >
+          <Button
+            label="Cerrar"
+            variant="quiet"
+            icon="close"
+            disabled={busy || !!state.intent}
+            onPress={close}
+          />
+          <Heading level={2}>{b ? 'Editar métrica' : 'Nueva métrica'}</Heading>
+          {b ? (
+            <Button
+              label="Más opciones de métrica"
+              variant="quiet"
+              icon="more"
+              disabled={!editable}
+              onPress={menu}
+            />
+          ) : null}
+        </View>
+        <View
+          style={{ alignItems: 'center', gap: 8 }}
+          accessibilityLabel="Vista previa en Inicio"
+        >
+          <View
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 24,
+              borderWidth: 1,
+              borderColor: colors.border,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <AppIcon name={icon} size={20} color={colors.textMuted} />
+          </View>
+          <AppText variant="headline">{d.name || 'Tu métrica'}</AppText>
+          <AppText muted numeric>
+            {quick != null && quick > 0
+              ? '+ ' +
+                quickAmount(
+                  { valueType: d.valueType, unit: d.unit || null },
+                  quick,
+                )
+              : 'Cargar'}
+          </AppText>
+        </View>
+        {field('name', 'Nombre', false, !!b && !b.actions.editName)}
+        <View style={{ gap: 12 }}>
+          <AppText variant="headline">Ícono</AppText>
+          <View
+            accessibilityRole="radiogroup"
+            accessibilityLabel="Ícono de la métrica"
+            style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
+          >
+            {metricIcons.map((i) => (
+              <Pressable
+                key={i.key}
+                accessibilityRole="radio"
+                accessibilityLabel={'Ícono: ' + i.label}
+                accessibilityState={{
+                  checked: icon === i.key,
+                  disabled: !editable,
+                }}
+                disabled={!editable}
+                onPress={() => controller.change('icon', i.key)}
+                style={({ pressed }) => [
+                  {
+                    width: 44,
+                    height: 44,
+                    borderRadius: 12,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor:
+                      icon === i.key
+                        ? colors.brandSubtle
+                        : colors.surfaceRaised,
+                  },
+                  pressedStyle(pressed, reduced),
+                ]}
+              >
+                <AppIcon
+                  name={i.key}
+                  size={20}
+                  color={icon === i.key ? colors.primary : colors.textMuted}
+                />
+              </Pressable>
+            ))}
+          </View>
+          <Button
+            label="Usar ícono predeterminado"
+            variant="quiet"
+            disabled={!editable}
+            onPress={() => controller.change('icon', null)}
+          />
+        </View>
+        <View style={{ gap: 12 }}>
+          <AppText variant="headline">Se registra como</AppText>
+          <SettingsSegmented
+            accessibilityLabel="Se registra como"
+            value={d.valueType}
+            disabled={!editable || (!!b && !b.actions.editMeaning)}
+            options={Object.entries(VALUE_TYPE_LABELS).map(
+              ([value, label]) => ({
+                value: value as typeof d.valueType,
+                label,
+              }),
+            )}
+            onChange={(v) => controller.change('valueType', v)}
+          />
+          {b && !b.actions.editMeaning ? (
+            <AppText muted variant="footnote">
+              {b.systemKey
+                ? 'El nombre, tipo y unidad de esta métrica son fijos. Podés elegir su ícono, objetivo y carga rápida.'
+                : 'Ya tiene registros: el tipo y la unidad quedan como estaban para conservarlos.'}
+            </AppText>
+          ) : null}
+        </View>
+        {d.valueType === 'duration' ? (
+          <AppText muted>Unidad · horas y minutos</AppText>
+        ) : (
+          field('unit', 'Unidad', false, !!b && !b.actions.editMeaning)
+        )}
+        <View style={{ gap: 12 }}>
+          <AppText variant="headline">Objetivo diario</AppText>
+          {d.valueType === 'duration' ? (
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                {field('hours', 'Objetivo horas', true)}
+              </View>
+              <View style={{ flex: 1 }}>
+                {field('minutes', 'Objetivo minutos', true)}
+              </View>
+            </View>
+          ) : (
+            field('target', 'Objetivo (opcional)', true)
+          )}
+          <AppText muted variant="footnote">
+            Es una referencia. No cambia tus registros anteriores.
+          </AppText>
+        </View>
+        <View style={{ gap: 12 }}>
+          <AppText variant="headline">Carga rápida</AppText>
+          {d.valueType === 'duration' ? (
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                {field('quickHours', 'Porción horas', true)}
+              </View>
+              <View style={{ flex: 1 }}>
+                {field('quickMinutes', 'Porción minutos', true)}
+              </View>
+            </View>
+          ) : (
+            field(
+              'quickValue',
+              d.unit ? 'Porción (' + d.unit + ')' : 'Porción',
+              true,
+            )
+          )}
+          <AppText muted variant="footnote">
+            Un toque en Inicio suma esto. Mantené apretado para cargar otro
+            valor. Dejalo vacío para abrir siempre la carga completa.
+          </AppText>
+          {state.errors.quickValue ? (
+            <AppText accessibilityLiveRegion="polite">
+              {state.errors.quickValue}
+            </AppText>
+          ) : null}
+        </View>
+        {state.errors.form ? (
+          <AppText accessibilityLiveRegion="polite">
+            {state.errors.form}
+          </AppText>
+        ) : null}
+        {state.message ? (
+          <AppText accessibilityLiveRegion="polite">{state.message}</AppText>
+        ) : null}
+        {state.phase === 'uncertain' ||
+        (state.phase === 'confirmed' && !busy) ||
+        state.phase === 'blocked' ? (
+          <Button
+            label="Comprobar cambio"
+            onPress={() => void controller.recover()}
+          />
+        ) : state.phase === 'conflict' ? (
+          <Button
+            label="Revisar lo que cambió"
+            onPress={() => controller.reviewTruth()}
+          />
+        ) : (
+          <SaveButton
+            label={b ? 'Guardar' : 'Crear métrica'}
+            state={done ? 'done' : busy ? 'saving' : 'idle'}
+            disabled={!editable || (!!b && !controller.dirty())}
+            onPress={() => void controller.save()}
+            testID="metric-definition-save"
+          />
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}

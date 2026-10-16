@@ -68,7 +68,7 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
   const pull = usePullRefresh(resources.home.state.status === 'ready' && resources.home.state.refreshing, refresh);
   const configuration = useNutritionConfiguration(resources.invalidate);
   // Quick load of a daily metric right here (same sheet as Nutrición › Tu día).
-  const metricEntry = useHomeMetricEntry(refresh);
+  const metricEntry = useHomeMetricEntry(resources.invalidate);
   const openMetric = metricEntry.open;
   const { error: metricError, clearError: clearMetricError } = metricEntry;
   useEffect(() => { if (metricError) { Alert.alert('Métricas', metricError); clearMetricError(); } }, [metricError, clearMetricError]);
@@ -112,8 +112,8 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
     },
     onOpenSession: (id: string) => { haptics.selection(); router.push(`/(tabs)/train/session/${id}`); },
     onRegister: (target: HomeRegisterTarget) => {
-      haptics.selection();
-      if (target.kind === 'metric') void openMetric(target.metricId);
+      if(target.kind!=='metric'||!target.quick)haptics.selection();
+      if (target.kind === 'metric') void openMetric(target.metricId,target.quick);
       else router.push('/settings/metrics');
     },
   }), [configuration, day.today, day.weekStart, router, openMetric]);
@@ -155,6 +155,7 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
           progressBody={homeResource(resources.progressBody.state)}
           progressRecords={homeResource(resources.progressRecords.state)}
           today={homeResource(resources.today.state)}
+          metricDefinitions={metricEntry.definitions} metricBusyId={metricEntry.loading} metricsLocked={metricEntry.locked}
           training={homeResource(resources.training.state)}
         />
       </ScrollScreen>

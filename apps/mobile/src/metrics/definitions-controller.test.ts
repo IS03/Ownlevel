@@ -30,6 +30,24 @@ function setup(definitions = fixtureDefinitions()) {
 const find = (c: DefinitionsController, id: string) => c.getSnapshot().read.definitions!.find(d => d.id === id)!;
 
 describe('Metric definitions controller', () => {
+  it('system presentation fields remain editable with history, and unknown icon keys fall back safely',async()=>{
+    const s=setup();await s.controller.initialize();s.controller.openEdit(find(s.controller,defId(2)));
+    s.controller.change('icon','book');s.controller.change('quickValue','0,25');await s.controller.save();
+    expect(s.api.mutate.mock.calls[0][0]).toMatchObject({fields:{name:'Agua',valueType:'decimal',unit:'L',icon:'book',quickValue:0.25}});
+  });
+  it('drop keeps the optimistic order while saving; a conflict restores the server order and never resubmits',async()=>{
+    const s=setup();await s.controller.initialize();
+    const expected=s.controller.getSnapshot().read.definitions!.filter(d=>d.isActive).map(d=>d.id),ids=[...expected].reverse();
+    let release!:(r:Awaited<ReturnType<DefinitionsApi['reorder']>>)=>void;
+    s.api.reorder.mockImplementationOnce(()=>new Promise(r=>{release=r;}));
+    const pending=s.controller.reorder(ids,expected);
+    for(let i=0;i<30&&!release;i++)await Promise.resolve();
+    expect(s.controller.getSnapshot().read.definitions!.filter(d=>d.isActive).map(d=>d.id)).toEqual(ids);
+    expect(s.controller.getSnapshot().phase).toBe('pending');
+    release({status:'conflict',code:'METRIC_ORDER_CHANGED',message:'El orden cambió en otro lado.',meta});await pending;
+    expect(s.controller.getSnapshot().read.definitions!.filter(d=>d.isActive).map(d=>d.id)).toEqual(expected);
+    expect(s.api.reorder).toHaveBeenCalledTimes(1);expect(s.controller.getSnapshot().message).toBe('El orden cambió en otro lado.');
+  });
   it('parses the server list (active first) and separates archived definitions', async () => {
     expect(parseMetricDefinitions({ definitions: fixtureDefinitions() })).toBeDefined();
     expect(parseMetricDefinitions({ definitions: [...fixtureDefinitions()].reverse() })).toBeUndefined();
@@ -49,7 +67,7 @@ describe('Metric definitions controller', () => {
     });
     await s.controller.save();
     expect(JSON.parse(persisted!).intent).toEqual({ operation: 'create', metricId: null, expectedUpdatedAt: null,
-      fields: { name: 'Meditación', valueType: 'duration', unit: 'min', target: 20 }, idempotencyKey: 'metric:1' });
+      fields: { name: 'Meditación', valueType: 'duration', unit: 'min', target: 20,icon:null,quickValue:null }, idempotencyKey: 'metric:1' });
     expect(s.controller.getSnapshot()).toMatchObject({ phase: 'idle', editor: null, intent: null, notice: 'Métrica creada.' });
     expect(s.api.read).toHaveBeenCalledTimes(2); expect(s.changed).toHaveBeenCalledTimes(1); expect(s.map.size).toBe(0);
   });
@@ -90,11 +108,11 @@ describe('Metric definitions controller', () => {
     s.controller.change('valueType', 'integer'); s.controller.change('unit', 'm');
     s.controller.change('name', 'Trote'); s.controller.change('target', '5,5');
     await s.controller.save();
-    expect(s.api.mutate.mock.calls[0][0].fields).toEqual({ name: 'Trote', valueType: 'decimal', unit: 'km', target: 5.5 });
+    expect(s.api.mutate.mock.calls[0][0].fields).toEqual({ name: 'Trote', valueType: 'decimal', unit: 'km', target: 5.5,icon:null,quickValue:null });
     s.controller.openEdit(find(s.controller, defId(10)));
     s.controller.change('valueType', 'decimal'); s.controller.change('unit', ' '); s.controller.change('target', '');
     await s.controller.save();
-    expect(s.api.mutate.mock.calls[1][0].fields).toEqual({ name: 'Lectura', valueType: 'decimal', unit: null, target: null });
+    expect(s.api.mutate.mock.calls[1][0].fields).toEqual({ name: 'Lectura', valueType: 'decimal', unit: null, target: null,icon:null,quickValue:null });
     expect(validateDefinitionDraft({ ...definitionDraft(null), name: ' ' }, null)).toEqual({ errors: { name: 'El nombre es obligatorio.' } });
   });
   it('archive / restore / delete only when the domain allows it; archive keeps history', async () => {
