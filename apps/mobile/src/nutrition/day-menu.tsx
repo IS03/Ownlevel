@@ -4,14 +4,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppIcon, AppText, type AppIconName, useOwnlevelTheme } from '@/design-system';
 import { NutritionGlassButton } from './day-controls';
 
-export type NutritionDayMenuProps = { onSaved?: () => void; onFoods?: () => void; onPlan?: () => void };
+export type NutritionDayMenuProps = { onSaved?: () => void; onFoods?: () => void; onPlan?: () => void; onEnergy?: () => void; onPhysical?: () => void };
 /** Native Menu on iOS; a labelled dismissible menu on other platforms. */
-export function NutritionDayMenu({ onSaved, onFoods, onPlan }: NutritionDayMenuProps) {
+export function NutritionDayMenu({ onSaved, onFoods, onPlan, onEnergy, onPhysical }: NutritionDayMenuProps) {
   const [open, setOpen] = useState(false);
   const { colors } = useOwnlevelTheme();
   const items: { label: string; icon: AppIconName; action?: () => void }[] = [
     { label: 'Comidas guardadas', icon: 'book', action: onSaved }, { label: 'Alimentos', icon: 'nutrition', action: onFoods },
     { label: 'Plan nutricional', icon: 'settings', action: onPlan },
+    { label: 'Energía', icon: 'settings', action: onEnergy }, { label: 'Datos físicos', icon: 'settings', action: onPhysical },
   ];
   return <>
     <NutritionGlassButton icon="more" label="Más opciones de nutrición" onPress={() => setOpen(true)} />

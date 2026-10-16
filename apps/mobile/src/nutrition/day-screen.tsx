@@ -9,7 +9,7 @@ import {SavedEditor} from './saved-editor';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState, RefreshControl, StyleSheet, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { selectedRouteDate } from '@/history/navigation';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
 import { useDomainDate } from '@/history/use-domain-date';
@@ -48,6 +48,7 @@ function NutritionDayView({ revision, date, today, onSelect, onServerToday, onAd
   onMetric?: (data: MobileNutritionDayResponse, metric: NutritionDayMetric) => void;
   onActivity?: (data: MobileNutritionDayResponse) => void; onContext?: DayContextAction;
 }) {
+  const router = useRouter();
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
   const { state, refresh, reload } = useNutritionDayResource(client, date);
@@ -74,7 +75,7 @@ function NutritionDayView({ revision, date, today, onSelect, onServerToday, onAd
   const pinned = headerAt && slotAt ? { x: headerAt.x + slotAt.x, y: safeTop + headerAt.y + slotAt.y } : null;
   const controls = <View pointerEvents="box-none" style={[styles.pinned, pinned ? { top: pinned.y, left: pinned.x } : styles.hidden]} testID="nutrition-day-controls">
     <NutritionGlassButton icon="calendar" label="Elegir fecha" onPress={() => setSelector(true)} />
-    <NutritionDayMenu onSaved={onManageSaved} onFoods={onManageFoods} onPlan={onConfigure} />
+    <NutritionDayMenu onSaved={onManageSaved} onFoods={onManageFoods} onPlan={onConfigure} onEnergy={() => router.push('/settings/energy')} onPhysical={() => router.push('/settings/physical')} />
   </View>;
   return <View style={styles.fill}><ScrollScreen statusBarGlass testID="nutrition-day-screen" refreshControl={
     <RefreshControl colors={[colors.primary]} onRefresh={pull.onRefresh}
@@ -166,7 +167,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
       {foods.state.intent ? <Button label="Revisar intento de catálogo" onPress={() => foods.controller.showRecovery()} /> : null}
       {foods.state.phase === 'blocked' ? <Button label="Comprobar almacenamiento de alimentos" onPress={() => void foods.controller.recover()} /> : null}</View> : null}
     {saved?.state.message&&!saved.state.open?<View style={styles.header}><AppText accessibilityRole="alert">{saved.state.message}</AppText>{saved.state.intent?<Button label="Revisar intento de guardadas" onPress={()=>saved.controller.showRecovery()}/>:null}{saved.state.phase==='blocked'?<Button label="Comprobar almacenamiento de guardadas" onPress={()=>void saved.controller.recover()}/>:null}</View>:null}
-    {config?.state.message && !config.state.open ? <View style={styles.header}><AppText accessibilityRole="alert">{config.state.message}</AppText>{config.state.intent ? <Button label="Revisar intento de configuración" onPress={()=>config.controller.showRecovery()} /> : null}{config.state.phase==='blocked'?<Button label="Comprobar almacenamiento de configuración" onPress={()=>void config.controller.recover()}/>:null}</View>:null}
+    {config?.state.message && !config.state.open ? <View style={styles.header}><AppText accessibilityRole="alert">{config.state.message}</AppText>{config.state.intent ? <Button label="Comprobar cambio guardado" onPress={()=>config.controller.showRecovery()} /> : null}{config.state.phase==='blocked'?<Button label="Comprobar cambio" onPress={()=>void config.controller.recover()}/>:null}</View>:null}
   </>;
   return <>
     <NutritionDayView key={`${userId}:${date}`} revision={revision} date={date} today={today}
@@ -174,7 +175,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
       addControl={<NutritionAddMenu onManual={editable ? () => meals.controller.open(date) : undefined} onQuick={editable ? () => quick.controller.open(date) : undefined} onFood={editable ? () => foods.controller.open(date) : undefined} />}
       addChoices={statusBanners}
       highlightedMeal={mealNotice.notice?.meal.id} removal={{ removing: mealNotice.removing, removed: mealNotice.removed }}
-      onConfigure={editable?()=>config.controller.open():undefined}
+      onConfigure={editable?()=>config.controller.open('plan'):undefined}
       onManageSaved={editable?()=>saved.controller.open():undefined}
       onManageFoods={editable ? () => foods.controller.open(null) : undefined}
       mealActions={editable ? {

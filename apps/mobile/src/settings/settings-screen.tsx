@@ -1,152 +1,235 @@
 import * as Application from 'expo-application';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Alert, StyleSheet, Switch, View } from 'react-native';
-
-import { useMobileApi } from '@/api';
+import type { ReactNode } from 'react';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 import { useMobileAuth } from '@/auth';
-import {
-  AppText, Button, Heading, ListGroup, ListRow, Row, ScrollScreen, SectionHeader, SegmentedControl, Surface, TextField,
-  spacing, type ThemeMode, useOwnlevelTheme,
-} from '@/design-system';
-import { useNutritionConfiguration } from '@/nutrition/config-provider';
+import { AppText, Heading, ProgressBar, SkeletonBlock, useOwnlevelTheme } from '@/design-system';
 import { useHapticsPreference } from '@/platform/haptics';
-import { useDisplayNameController } from './use-display-name-controller';
-import type { DisplayNameController, DisplayNameState } from './display-name-controller';
+import { AccountAvatar } from './account-avatar';
+import { CountingNumber, EditorialRow, EditorialScreen, Reveal } from './editorial';
+import { previousDate, shortDate, stageHeadline, stageNames } from './settings-model';
+import { useSettingsOverview } from './use-settings-overview';
 
-const themeOptions: { label: string; value: ThemeMode }[] = [
-  { label: 'Sistema', value: 'system' },
-  { label: 'Claro', value: 'light' },
-  { label: 'Oscuro', value: 'dark' },
-];
-
-/** "Versión X (build Y)" from the native binary; Expo config only as fallback. */
-export function appVersionLabel(): string {
-  const version = Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? null;
+export function appVersionLabel() {
+  const version = Application.nativeApplicationVersion ?? Constants.expoConfig?.version;
   const build = Application.nativeBuildVersion;
-  if (!version) return 'Versión no disponible';
-  return build ? `Versión ${version} (build ${build})` : `Versión ${version}`;
+  return version ? `OWNLEVEL ${version}${build ? ` (${build})` : ''}` : 'OWNLEVEL';
 }
-
-function ProfileCard({ email, name }: { email: string | null; name: { controller: DisplayNameController; state: DisplayNameState } | null }) {
-  const state = name?.state, controller = name?.controller;
-  const identity = state?.read.identity ?? null;
-  const editor = state?.editor ?? null;
-  const pending = state?.phase === 'pending';
-  const locked = !!state && (state.phase !== 'idle' || !!state.intent);
-  const cancel = () => {
-    if (!controller || pending) return;
-    if (controller.dirty() && !state?.intent) {
-      Alert.alert('¿Descartar cambios?', 'Tu nombre todavía no está guardado.', [
-        { text: 'Seguir editando', style: 'cancel' }, { text: 'Descartar', style: 'destructive', onPress: () => controller.close() }]);
-    } else controller.close();
-  };
-  return <Surface testID="settings-profile-card">
-    {state?.read.status === 'unavailable'
-      ? <AppText accessibilityRole="alert">No pudimos cargar tu nombre.</AppText>
-      : !identity ? <AppText muted>Cargando perfil…</AppText>
-      : <Heading level={2}>{identity.displayName ?? 'Sin nombre'}</Heading>}
-    {state?.read.stale ? <AppText muted variant="caption">No pudimos actualizar. Mostramos la última lectura.</AppText> : null}
-    <AppText muted>{email ?? 'Email no disponible'}</AppText>
-    {state?.read.status === 'unavailable' ? <Button label="Reintentar" variant="secondary" onPress={() => void controller?.load()} /> : null}
-    {editor ? <View style={styles.editor} testID="display-name-editor">
-      <TextField label="Cómo querés que te llamemos" value={editor.draft} disabled={locked} placeholder="Ej: Nacho"
-        onChangeText={value => controller?.change(value)} autoCapitalize="words" />
-      {!locked ? <Row><Button label="Guardar nombre" onPress={() => void controller?.save()} /><Button label="Cancelar" variant="quiet" onPress={cancel} /></Row> : null}
-    </View>
-      : identity && state?.phase === 'idle' && !state.intent ? <Button label="Editar nombre" variant="secondary" onPress={() => controller?.open()} /> : null}
-    {pending ? <AppText muted>Guardando nombre…</AppText> : null}
-    {state?.message ? <AppText accessibilityRole="alert">{state.message}</AppText> : null}
-    {state?.notice ? <AppText accessibilityRole="alert">{state.notice}</AppText> : null}
-    {state?.phase === 'conflict' ? <View style={styles.editor}>
-      <AppText variant="label">{`Valor actual: ${identity ? identity.displayName ?? 'Sin nombre' : 'sin lectura'}`}</AppText>
-      <Button label="Actualizar valor actual" variant="secondary" onPress={() => void controller?.load()} />
-      <Button label="Revisar mi borrador con este valor" disabled={!identity || state.read.stale} onPress={() => controller?.reviewTruth()} />
-      <Button label="Descartar borrador" variant="quiet" onPress={() => controller?.close()} />
-    </View> : null}
-    {state && ['uncertain', 'confirmed', 'blocked'].includes(state.phase)
-      ? <Button label={state.intent?.receipt ? 'Actualizar lectura confirmada' : 'Comprobar intento guardado'} onPress={() => void controller?.recover()} /> : null}
-  </Surface>;
-}
-
 export function SettingsScreen() {
   const router = useRouter();
-  const { client, config: apiConfig } = useMobileApi();
-  const { colors, mode, resolvedMode, setMode, persistenceFailed } = useOwnlevelTheme();
-  const { session, signOut, state: authState } = useMobileAuth();
-  const vibration = useHapticsPreference();
-  const userId = session?.user.id ?? 'anonymous';
-  const name = useDisplayNameController(session ? client : null, userId);
-  const configuration = useNutritionConfiguration();
-  const [isSigningOut, setIsSigningOut] = useState(false);
-  const configState = configuration?.state;
-  const configAvailable = !!configuration && configState?.phase === 'idle' && !configState.intent;
-  const google = session?.user.app_metadata?.provider === 'google';
-
-  async function handleSignOut() {
-    if (isSigningOut) return;
-    setIsSigningOut(true);
-    await signOut();
-    setIsSigningOut(false);
-  }
-
-  return <ScrollScreen testID="settings-screen">
-    <ProfileCard email={session?.user.email ?? null} name={name} />
-
-    <SectionHeader title="Perfil y plan" />
-    <ListGroup>
-      <ListRow title="Perfil físico" subtitle="Nacimiento, sexo, altura y peso" accessibilityHint="Nacimiento, sexo, altura y peso"
-        disabled={!configAvailable} onPress={() => configuration?.controller.open('physical')} />
-      <ListRow title="Plan nutricional" subtitle="Plan, energía y datos físicos desde hoy" accessibilityHint="Plan, energía y datos físicos desde hoy"
-        disabled={!configAvailable} onPress={() => configuration?.controller.open()} />
-      <ListRow title="Métricas diarias" subtitle="Qué querés registrar cada día" accessibilityHint="Qué querés registrar cada día"
-        onPress={() => router.push('/settings/metrics')} />
-    </ListGroup>
-    {configState?.message && !configState.open ? <Surface>
-      <AppText accessibilityRole="alert">{configState.message}</AppText>
-      {configState.intent ? <Button label="Revisar intento de configuración" onPress={() => configuration?.controller.showRecovery()} /> : null}
-      {configState.phase === 'blocked' ? <Button label="Comprobar almacenamiento de configuración" onPress={() => void configuration?.controller.recover()} /> : null}
-    </Surface> : null}
-
-    <SectionHeader title="Preferencias" />
-    <Surface>
-      <Heading level={2}>Tema</Heading>
-      <SegmentedControl accessibilityLabel="Tema" options={themeOptions} value={mode} onChange={setMode} />
-      {mode === 'system' ? <AppText muted variant="caption">{`Usando el tema ${resolvedMode === 'dark' ? 'oscuro' : 'claro'} del sistema.`}</AppText> : null}
-      {persistenceFailed ? <AppText muted variant="caption">No pudimos guardar la preferencia en este dispositivo. Se aplica hasta cerrar la app.</AppText> : null}
-    </Surface>
-    <Surface>
-      <ListRow title="Vibración" subtitle="Respuesta táctil al usar la app." trailing={
-        <Switch accessibilityLabel="Vibración" value={vibration.enabled} onValueChange={value => void vibration.setEnabled(value)}
-          trackColor={{ false: colors.surfaceRaised, true: colors.primary }} />} />
-      {vibration.persistenceFailed ? <AppText muted variant="caption">No pudimos guardar la preferencia en este dispositivo. Se aplica hasta cerrar la app.</AppText> : null}
-    </Surface>
-
-    <SectionHeader title="Cuenta" />
-    <Surface>
-      <AppText variant="label">Cuenta conectada</AppText>
-      <AppText>{session?.user.email ?? 'Email no disponible'}</AppText>
-      {google ? <AppText muted variant="caption">Ingresás con Google</AppText> : null}
-      {authState.status === 'TRANSIENT_ERROR' && authState.session ? (
-        <AppText accessibilityRole="alert" style={{ color: colors.text }}>
-          No pudimos verificar la sesión en este momento. La sesión local se conservó.
+  const { session } = useMobileAuth();
+  const { colors, mode } = useOwnlevelTheme();
+  const haptics = useHapticsPreference();
+  const overview = useSettingsOverview();
+  const { configuration, stages, identity, metrics, loading } = overview;
+  const config = configuration?.state.config;
+  const name = identity?.displayName ?? null;
+  const headline = stageHeadline(name, stages);
+  const stage = stages?.current;
+  const physical = config?.physical.status === 'ok' ? config.physical.data : null;
+  const energy = config?.energy.status === 'ok' ? config.energy.data : null;
+  const plan = config?.plan.status === 'ok' ? config.plan.data : null;
+  const date = stages?.today ?? config?.today;
+  const weekday = date ? new Date(`${date}T12:00:00Z`).getUTCDay() || 7 : null;
+  const kcal =
+    (stage?.weekdays ?? plan?.weekdays)?.find((d) => d.weekday === weekday)?.calorieTargetKcal ??
+    null;
+  const summary = (children: ReactNode) =>
+    !config ? (
+      configuration?.state.readError ? (
+        <AppText muted>No disponible ahora</AppText>
+      ) : (
+        <SkeletonBlock height={18} width="65%" />
+      )
+    ) : (
+      children
+    );
+  return (
+    <EditorialScreen>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <AppText muted variant="caption" style={{ letterSpacing: 2 }}>
+          AJUSTES
         </AppText>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Cuenta"
+          onPress={() => router.push('/settings/account')}
+        >
+          <AccountAvatar name={name} size={44} />
+        </Pressable>
+      </View>
+      <Reveal>
+        {(overview.identityLoading && !identity) || (overview.stagesLoading && !stages) ? (
+          <SkeletonBlock height={123} width="90%" />
+        ) : (
+          <Heading numeric>{headline.text}</Heading>
+        )}
+        {headline.progress !== null && stage ? (
+          <View style={{ gap: 12, marginTop: 24 }}>
+            <ProgressBar
+              accessibilityLabel="Avance de tu etapa"
+              value={headline.progress}
+              maximumValue={1}
+            />
+            <View
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                justifyContent: 'space-between',
+                gap: 8,
+              }}
+            >
+              <AppText muted variant="footnote">
+                Desde {shortDate(stage.startsOn)}
+                {kcal === null ? '' : ` · ${kcal.toLocaleString('es-AR')} kcal`}
+              </AppText>
+              <AppText muted variant="footnote">
+                Termina {shortDate(previousDate(stage.endsOn!))}
+              </AppText>
+            </View>
+          </View>
+        ) : null}
+        {(overview.refreshing || configuration?.state.loading) && (!loading || !!identity) ? (
+          <ActivityIndicator
+            color={colors.textMuted}
+            size="small"
+            accessibilityLabel="Actualizando ajustes"
+            style={{ alignSelf: 'flex-start', marginTop: 8 }}
+          />
+        ) : null}
+      </Reveal>
+      <View>
+        {[
+          <EditorialRow
+            key="plan"
+            large
+            title="Plan"
+            disabled={
+              !configuration || configuration.state.phase !== 'idle' || !!configuration.state.intent
+            }
+            onPress={() => configuration?.controller.open('plan')}
+          >
+            {summary(
+              <>
+                <AppText style={{ color: colors.primary }}>
+                  {stage?.kind ? stageNames[stage.kind] : 'Plan'} ·{' '}
+                </AppText>
+                <CountingNumber value={kcal} />
+                {kcal === null ? null : <AppText style={{ color: colors.primary }}> kcal</AppText>}
+              </>,
+            )}
+          </EditorialRow>,
+          <EditorialRow
+            key="energy"
+            large
+            title="Energía"
+            onPress={() => router.push('/settings/energy')}
+          >
+            {summary(
+              config?.energy.status === 'unavailable' ? (
+                <AppText muted>No disponible ahora</AppText>
+              ) : (
+                <>
+                  <CountingNumber value={energy?.usedBaseKcal ?? null} />
+                  {energy?.usedBaseKcal == null ? null : (
+                    <AppText style={{ color: colors.primary }}> kcal por día</AppText>
+                  )}
+                </>
+              ),
+            )}
+          </EditorialRow>,
+          <EditorialRow
+            key="physical"
+            large
+            title="Datos físicos"
+            onPress={() => router.push('/settings/physical')}
+          >
+            {summary(
+              config?.physical.status === 'unavailable' ? (
+                <AppText muted>No disponible ahora</AppText>
+              ) : (
+                <>
+                  <CountingNumber value={physical?.heightCm ?? null} />
+                  <AppText style={{ color: colors.primary }}> cm · </AppText>
+                  <CountingNumber value={physical?.weightKg ?? null} />
+                  <AppText style={{ color: colors.primary }}> kg</AppText>
+                </>
+              ),
+            )}
+          </EditorialRow>,
+          <EditorialRow
+            key="metrics"
+            large
+            title="Métricas"
+            onPress={() => router.push('/settings/metrics')}
+          >
+            {overview.metricsLoading && !metrics ? (
+              <SkeletonBlock height={18} width="65%" />
+            ) : metrics ? (
+              metrics.definitions
+                .filter((d) => d.isActive)
+                .map((d) => d.name)
+                .join(', ') || 'Ninguna activa'
+            ) : (
+              'No disponibles ahora'
+            )}
+          </EditorialRow>,
+          <EditorialRow
+            key="app"
+            large
+            title="App"
+            onPress={() => router.push('/settings/app')}
+          >{`${mode === 'system' ? 'Tema del sistema' : mode === 'dark' ? 'Oscuro' : 'Claro'} · ${haptics.enabled ? 'vibración' : 'sin vibración'}`}</EditorialRow>,
+          <EditorialRow
+            key="account"
+            large
+            title="Cuenta"
+            onPress={() => router.push('/settings/account')}
+          >{`${session?.user.app_metadata.provider === 'google' ? 'Google' : 'Tu cuenta'} · ${session?.user.email ?? 'Sin email'}`}</EditorialRow>,
+        ].map((row, i) => (
+          <Reveal key={row.key} index={i + 1}>
+            {row}
+          </Reveal>
+        ))}
+      </View>
+      {configuration?.state.intent || configuration?.state.phase === 'blocked' ? (
+        <EditorialRow
+          title="Terminá de confirmar tu cambio"
+          onPress={() => {
+            const op = configuration.state.intent?.intent.operation;
+            if (!configuration.state.intent) void configuration.controller.recover();
+            else if (op === 'energy' || op === 'physical') router.push(`/settings/${op}`);
+            else configuration.controller.showRecovery();
+          }}
+        >
+          {configuration.state.intent
+            ? 'Tu cambio sigue guardado en este teléfono.'
+            : 'No pudimos guardar el cambio en este teléfono.'}
+        </EditorialRow>
       ) : null}
-      <Button disabled={isSigningOut} label={isSigningOut ? 'Cerrando sesión…' : 'Cerrar sesión en este dispositivo'}
-        onPress={() => void handleSignOut()} variant="secondary" />
-      <AppText muted variant="caption">Esto no cierra tu sesión en Safari ni en OWNLEVEL Web/PWA. Tus datos quedan en tu cuenta.</AppText>
-    </Surface>
-
-    <SectionHeader title="Acerca de" />
-    <Surface>
-      <AppText>{appVersionLabel()}</AppText>
-      {apiConfig && apiConfig.appEnv !== 'production' ? <AppText muted variant="caption">{`Entorno: ${apiConfig.appEnv}`}</AppText> : null}
-      {__DEV__ ? <Button label="API Diagnostics" onPress={() => router.push('/settings/diagnostics')} variant="secondary" /> : null}
-    </Surface>
-  </ScrollScreen>;
+      {__DEV__ ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${appVersionLabel()}. Abrir diagnóstico`}
+          onPress={() => router.push('/settings/diagnostics')}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
+          <AppText muted variant="footnote">
+            {appVersionLabel()}
+          </AppText>
+        </Pressable>
+      ) : (
+        <AppText muted variant="footnote">
+          {appVersionLabel()}
+        </AppText>
+      )}
+    </EditorialScreen>
+  );
 }
-
-const styles = StyleSheet.create({
-  editor: { gap: spacing.sm },
-});

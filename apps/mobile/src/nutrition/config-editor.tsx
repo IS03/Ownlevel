@@ -1,5 +1,7 @@
 import {Alert,KeyboardAvoidingView,Modal,Platform,StyleSheet} from 'react-native';
 import {AppText,Button,ChipGroup,Heading,LoadingState,ScrollScreen,Surface,TextField} from '@/design-system';
+import {useRouter} from 'expo-router';
+import {activities,sexes} from '@/settings/settings-model';
 import type {ConfigOperation,NutritionConfig} from '@/api/nutrition-config';
 import type {ConfigurationController,ConfigState} from './config-controller';
 import type {ConfigDraft} from './config-model';
@@ -9,7 +11,7 @@ const titles:Record<ConfigOperation,string>={plan:'Plan nutricional',energy:'Ene
 function Field({label,value,onChange,disabled,error,numeric=true}:{label:string;value:string;onChange:(v:string)=>void;disabled:boolean;error?:string;numeric?:boolean}){
  return <TextField label={label} value={value} disabled={disabled} error={error} onChangeText={onChange} numeric={numeric} keyboardType={numeric?'decimal-pad':'default'} autoCapitalize={numeric?'none':'sentences'}/>;
 }
-const SEX_OPTIONS=[{value:'',label:'Sin dato'},{value:'male',label:'Masculino'},{value:'female',label:'Femenino'},{value:'other',label:'Otro'}] as const;
+const SEX_OPTIONS=[{value:'',label:'Sin dato'},{value:'male',label:'Hombre'},{value:'female',label:'Mujer'},{value:'other',label:'Otro'}] as const;
 const ACTIVITY_OPTIONS=[{value:'low',label:'Baja'},{value:'moderate',label:'Moderada'},{value:'high',label:'Alta'}] as const;
 const BASE_MODE_OPTIONS=[{value:'automatic',label:'Automático'},{value:'custom',label:'Personalizado'}] as const;
 // Shared physical editor: M8 can use this surface and the profile/physical API.
@@ -25,11 +27,12 @@ export function PhysicalProfileFields({draft,change,locked,errors,hasHistory}:{d
 function Truth({config,op}:{config:NutritionConfig;op:ConfigOperation}){
  const s=config[op];if(s.status!=='ok')return <AppText>No pudimos obtener la configuración actual.</AppText>;
  if(op==='plan'&&config.plan.status==='ok'){const d=config.plan.data;return <><AppText>{d.name}</AppText>{d.weekdays.map(w=><AppText key={w.weekday}>{`${WEEKDAYS[w.weekday-1].label}: ${w.calorieTargetKcal??'sin dato'} kcal · ${w.proteinTargetG??'sin dato'} g proteína`}</AppText>)}<AppText>{`Agua ${d.baseWaterL??'sin dato'} L · Extra entrenamiento ${d.trainingCalorieDeltaKcal} kcal / ${d.trainingWaterDeltaL} L`}</AppText></>;}
- if(op==='energy'&&config.energy.status==='ok'){const d=config.energy.data;return <><AppText>{`Actividad ${d.activityLevel} · ${d.baseExpenditureMode==='custom'?'Personalizado':'Automático'}`}</AppText><AppText>{`BMR ${shown(d.bmrKcal)} · Base automática ${shown(d.automaticBaseKcal)} · Base usada ${shown(d.usedBaseKcal)}`}</AppText><AppText>{`Personalizado ${shown(d.customBaseExpenditureKcal)} · Extra ${shown(d.trainingExpenditureDeltaKcal)}`}</AppText></>;}
- if(config.physical.status!=='ok')return null;const d=config.physical.data;return <><AppText>{`Nacimiento ${d.birthDate??'sin dato'} · Sexo ${d.sex??'sin dato'}`}</AppText><AppText>{`Altura ${d.heightCm??'sin dato'} cm · Peso ${d.weightKg??'sin dato'} kg · BMR ${shown(d.bmrKcal)}`}</AppText></>;
+ if(op==='energy'&&config.energy.status==='ok'){const d=config.energy.data;return <><AppText>{`Actividad ${activities.find(a=>a.value===d.activityLevel)?.label??'Sin dato'} · ${d.baseExpenditureMode==='custom'?'Personalizado':'Automático'}`}</AppText><AppText>{`En reposo ${shown(d.bmrKcal)} · Gasto calculado ${shown(d.automaticBaseKcal)} · Tu gasto ${shown(d.usedBaseKcal)}`}</AppText><AppText>{`Personalizado ${shown(d.customBaseExpenditureKcal)} · Extra ${shown(d.trainingExpenditureDeltaKcal)}`}</AppText></>;}
+ if(config.physical.status!=='ok')return null;const d=config.physical.data;return <><AppText>{`Nacimiento ${d.birthDate??'sin dato'} · Sexo ${sexes.find(s=>s.value===d.sex)?.label??'sin dato'}`}</AppText><AppText>{`Altura ${d.heightCm??'sin dato'} cm · Peso ${d.weightKg??'sin dato'} kg · En reposo ${shown(d.bmrKcal)}`}</AppText></>;
 }
 export function ConfigurationEditor({controller,state}:{controller:ConfigurationController;state:ConfigState}){
- if(!state.open)return null;
+ const router=useRouter();
+ if(!state.open||state.presentation==='route')return null;
  const pending=state.phase==='pending',locked=state.phase!=='idle'||!!state.intent;
  const leave=(action:()=>void)=>{if(pending)return;if(controller.dirty()&&!state.intent)Alert.alert('¿Descartar cambios?','Estos cambios todavía no están guardados.',[{text:'Seguir revisando',style:'cancel'},{text:'Descartar',style:'destructive',onPress:action}]);else action();};
  const field=(key:string,label:string,numeric=true)=><Field key={key} label={label} value={state.draft![key]} disabled={locked} error={state.errors[key]} numeric={numeric} onChange={v=>controller.change(key,v)}/>;
@@ -38,11 +41,11 @@ export function ConfigurationEditor({controller,state}:{controller:Configuration
  <Heading level={2}>{op?titles[op]:'Configurar nutrición'}</Heading><AppText variant="label">Desde hoy{config?` · ${config.today}`:''}</AppText>
  <AppText muted>Configuración general. Los ajustes de un día y el historial permanecen independientes.</AppText>
  {state.loading?<LoadingState label="Actualizando configuración"/>:null}
- {state.readError?<Surface><AppText accessibilityRole="alert">No pudimos actualizar la configuración. Tu borrador sigue intacto.</AppText><Button label="Reintentar lectura" onPress={()=>void controller.load()}/></Surface>:null}
+ {state.readError?<Surface><AppText accessibilityRole="alert">No pudimos actualizar la configuración. Lo que escribiste sigue acá.</AppText><Button label="Reintentar" onPress={()=>void controller.load()}/></Surface>:null}
  {!op&&config?(['plan','energy','physical'] as const).map(key=><Surface key={key}><Heading level={2}>{titles[key]}</Heading>{config[key].status==='ok'?<>
-  {key!=='physical'?<AppText muted>{config[key].data.source==='v2'?'Plan V2 vigente':config[key].data.source==='legacy'?'Configuración heredada. Guardar adopta V2 desde hoy; algunas reglas anteriores no tienen equivalencia exacta.':'Todavía no hay configuración guardada.'}</AppText>:null}
-  {key!=='physical'&&config[key].data.effectiveFrom?<AppText muted>{`Vigente desde ${config[key].data.effectiveFrom}`}</AppText>:null}<Truth config={config} op={key}/><Button label={`Editar ${titles[key].toLowerCase()}`} disabled={locked||state.loading||state.readError} onPress={()=>controller.begin(key)}/>
- </>:<AppText>No disponible. Reintentá la lectura.</AppText>}</Surface>):null}
+  {key!=='physical'?<AppText muted>{config[key].data.source==='v2'?'Tu plan actual':config[key].data.source==='legacy'?'Al guardar, estos valores rigen desde hoy. Tus días anteriores no cambian.':'Todavía no hay configuración guardada.'}</AppText>:null}
+  {key!=='physical'&&config[key].data.effectiveFrom?<AppText muted>{`Vigente desde ${config[key].data.effectiveFrom}`}</AppText>:null}<Truth config={config} op={key}/><Button label={`Editar ${titles[key].toLowerCase()}`} disabled={locked||state.loading||state.readError} onPress={()=>{if(key==='plan')controller.begin(key);else{controller.close();router.push(`/settings/${key}`);}}}/>
+ </>:<AppText>No disponible ahora. Volvé a probar.</AppText>}</Surface>):null}
  {op&&draft?<>
   {op==='plan'?<>{field('name','Nombre de etapa',false)}{WEEKDAYS.map(w=><Surface key={w.value}><AppText variant="label">{w.label}</AppText>{field(`calories${w.value}`,`${w.label} · Calorías (kcal)`)}{field(`protein${w.value}`,`${w.label} · Proteína (g)`)}</Surface>)}
    {field('baseWaterL','Agua base (L)')}{field('trainingCalorieDeltaKcal','Extra de objetivo por entrenamiento (kcal)')}{field('trainingWaterDeltaL','Extra de agua por entrenamiento (L)')}
@@ -50,8 +53,8 @@ export function ConfigurationEditor({controller,state}:{controller:Configuration
   {op==='energy'?<>
    <AppText variant="subheadline">Actividad cotidiana</AppText><ChipGroup accessibilityLabel="Actividad cotidiana" options={ACTIVITY_OPTIONS} value={draft.activityLevel} disabled={locked} onChange={v=>controller.change('activityLevel',v)}/>
    <AppText variant="subheadline">Gasto base</AppText><ChipGroup accessibilityLabel="Gasto base" options={BASE_MODE_OPTIONS} value={draft.baseExpenditureMode} disabled={locked} onChange={v=>controller.change('baseExpenditureMode',v)}/>
-   <AppText muted>Automático usa tu BMR y actividad cotidiana. Personalizado usa el valor que indicás; ambos requieren datos físicos para calcular BMR.</AppText>
-   {config?.energy.status==='ok'?<Surface><AppText>{`BMR: ${shown(config.energy.data.bmrKcal)}`}</AppText><AppText>{`Base automática guardada: ${shown(config.energy.data.automaticBaseKcal)}`}</AppText><AppText>{`Base usada guardada: ${shown(config.energy.data.usedBaseKcal)}`}</AppText></Surface>:null}
+   <AppText muted>Automático usa tu gasto en reposo y tu actividad. La opción propia usa el número que ponés. Completá tus datos físicos para calcularlo.</AppText>
+   {config?.energy.status==='ok'?<Surface><AppText>{`En reposo: ${shown(config.energy.data.bmrKcal)}`}</AppText><AppText>{`Gasto calculado: ${shown(config.energy.data.automaticBaseKcal)}`}</AppText><AppText>{`Tu gasto por día: ${shown(config.energy.data.usedBaseKcal)}`}</AppText></Surface>:null}
    {draft.baseExpenditureMode==='custom'?field('customBaseExpenditureKcal','Gasto base personalizado (kcal)'):null}{field('trainingExpenditureDeltaKcal','Extra de gasto por entrenamiento (kcal)')}
    <Button label="Editar datos físicos" disabled={locked} variant="secondary" onPress={()=>leave(()=>controller.begin('physical'))}/>
   </>:null}
@@ -60,11 +63,11 @@ export function ConfigurationEditor({controller,state}:{controller:Configuration
   {!locked?<Button label={`Guardar ${titles[op].toLowerCase()}`} onPress={()=>void controller.save()}/>:null}
  </>:null}
  {state.message?<AppText accessibilityRole="alert">{state.message}</AppText>:null}
- {state.phase==='conflict'&&op?<Surface><Heading level={2}>Valores actuales del servidor</Heading>{config?<Truth config={config} op={op}/>:null}<Button label="Actualizar valores actuales" onPress={()=>void controller.load()} variant="secondary"/><Button label="Revisar mi borrador con esta versión" disabled={state.loading||state.readError||!config||config[op].status!=='ok'} onPress={()=>controller.reviewTruth()}/></Surface>:null}
- {['uncertain','confirmed','blocked'].includes(state.phase)?<Button label={state.intent?.receipt?'Actualizar lectura confirmada':'Comprobar intento guardado'} onPress={()=>void controller.recover()}/>:null}
+ {state.phase==='conflict'&&op?<Surface><Heading level={2}>Así quedaron tus datos</Heading>{config?<Truth config={config} op={op}/>:null}<Button label="Actualizar valores actuales" onPress={()=>void controller.load()} variant="secondary"/><Button label="Revisar mi cambio" disabled={state.loading||state.readError||!config||config[op].status!=='ok'} onPress={()=>controller.reviewTruth()}/></Surface>:null}
+ {['uncertain','confirmed','blocked'].includes(state.phase)?<Button label={state.intent?.receipt?'Mostrar datos actualizados':'Comprobar cambio'} onPress={()=>void controller.recover()}/>:null}
  {pending?<LoadingState label="Guardando configuración"/>:null}
  {op&&!state.intent?<Button label="Volver a configuración" disabled={pending} variant="quiet" onPress={()=>leave(()=>controller.back())}/>:null}
- <Button label={state.intent?'Cerrar · conservar intento':'Cerrar configuración'} disabled={pending} variant="quiet" onPress={()=>leave(()=>controller.close())}/>
+ <Button label={state.intent?'Cerrar · retomar después':'Cerrar configuración'} disabled={pending} variant="quiet" onPress={()=>leave(()=>controller.close())}/>
  </ScrollScreen></KeyboardAvoidingView></Modal>;
 }
 const styles=StyleSheet.create({screen:{flex:1}});

@@ -18,7 +18,11 @@ describe('Settings stack', () => {
     expect(mockScreens).toEqual([
       { name: 'index', title: 'Ajustes' },
       { name: 'metrics', title: 'Métricas' },
-      { name: 'diagnostics', title: 'Diagnostics' },
+      { name: 'diagnostics', title: 'Diagnóstico' },
+      { name: 'account', title: 'Cuenta' },
+      { name: 'app', title: 'App' },
+      { name: 'energy', title: 'Energía' },
+      { name: 'physical', title: 'Datos físicos' },
     ]);
   });
 });
