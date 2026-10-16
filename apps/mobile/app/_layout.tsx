@@ -4,6 +4,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { useEffect, useMemo } from 'react';
+import { Appearance } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
@@ -30,7 +31,7 @@ SplashScreen.setOptions({ duration: brandTokens.motion.duration.base, fade: true
 
 function RootNavigator() {
   const { session, state } = useMobileAuth();
-  const { colors, isDark } = useOwnlevelTheme();
+  const { colors, isDark, mode } = useOwnlevelTheme();
   const screenOptions = useStackScreenOptions();
   const navigationTheme = useMemo(
     () => ({
@@ -46,6 +47,12 @@ function RootNavigator() {
     }),
     [colors, isDark],
   );
+
+  useEffect(() => {
+    // Native chrome (tab bar glass, menus, pickers) follows the app's theme, not only the system's:
+    // with a forced theme the selected tab kept the system appearance and lost contrast.
+    Appearance.setColorScheme(mode === 'system' ? 'unspecified' : mode);
+  }, [mode]);
 
   useEffect(() => {
     void SystemUI.setBackgroundColorAsync(colors.background).catch(() => {

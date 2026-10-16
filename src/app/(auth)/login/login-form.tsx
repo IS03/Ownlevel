@@ -14,6 +14,8 @@ import {
 type LoginFormProps = {
   authError?: boolean;
   next?: string;
+  /** Neutral notice (not an error), e.g. after deleting the account. */
+  notice?: string | null;
 };
 
 function GoogleMark() {
@@ -27,7 +29,7 @@ function GoogleMark() {
   );
 }
 
-export function LoginForm({ authError, next }: LoginFormProps) {
+export function LoginForm({ authError, next, notice }: LoginFormProps) {
   const [error, setError] = useState<string | null>(
     authError ? PUBLIC_AUTH_ERROR_MESSAGE : null,
   );
@@ -119,6 +121,10 @@ export function LoginForm({ authError, next }: LoginFormProps) {
             {error ? (
               <p className="rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm leading-relaxed text-destructive" role="alert">
                 {error}
+              </p>
+            ) : notice ? (
+              <p className="rounded-xl border border-border bg-muted/40 px-3 py-2.5 text-sm leading-relaxed text-foreground">
+                {notice}
               </p>
             ) : null}
           </div>

@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { getAuthedUser } from "@/lib/phase1/profile";
 import { signOut } from "../actions";
 import { SettingsHeader } from "../settings-components";
+import { DeleteAccountForm } from "./delete-account-form";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,9 @@ export default async function AccountSettingsPage() {
             Cerrar sesión en este dispositivo
           </Button>
         </form>
+      </section>
+      <section className="overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/8">
+        <DeleteAccountForm />
       </section>
     </div>
   );
