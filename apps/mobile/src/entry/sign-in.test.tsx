@@ -8,6 +8,7 @@ import { authMessages } from '@/auth/errors';
 import { OwnlevelThemeProvider } from '@/design-system';
 import SignInScreen from '../../app/(auth)/sign-in';
 import { EntryTransitionProvider } from './transition';
+import * as WebBrowser from 'expo-web-browser';
 
 let mockState: MobileAuthState;
 let mockReduced = false;
@@ -19,6 +20,7 @@ jest.mock('@/design-system/motion', () => ({
   useReduceMotion: () => mockReduced,
 }));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
+jest.mock('expo-web-browser', () => ({ openBrowserAsync: jest.fn(async () => ({ type: 'dismiss' })), WebBrowserPresentationStyle: { PAGE_SHEET: 'pageSheet' } }));
 jest.mock('expo-glass-effect', () => ({ isGlassEffectAPIAvailable: () => false, isLiquidGlassAvailable: () => false }));
 
 function EntryHarness({ theme = 'light', routeReady = true }: { theme?: 'light' | 'dark'; routeReady?: boolean }) {
@@ -210,5 +212,13 @@ describe('EN-C entry presentation', () => {
     view.rerender(<EntryHarness />);
     expect(view.queryByTestId('entry-success-transition')).toBeNull();
     expect(view.getByText('Inicio real')).toBeTruthy();
+  });
+  it('opens the Terms and the Privacy Policy from the legal line', () => {
+    const view = render(<EntryHarness />);
+    fireEvent.press(view.getByText('Términos'));
+    fireEvent.press(view.getByText('Política de privacidad'));
+    expect(jest.mocked(WebBrowser.openBrowserAsync).mock.calls.map(([url]) => url)).toEqual([
+      'https://www.ownlevel.fit/terminos', 'https://www.ownlevel.fit/privacidad',
+    ]);
   });
 });
