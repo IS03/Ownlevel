@@ -1,4 +1,5 @@
 import * as Application from 'expo-application';
+import { openLegal } from '@/platform/legal';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
@@ -211,22 +212,36 @@ export function SettingsScreen() {
             : 'No pudimos guardar el cambio en este teléfono.'}
         </EditorialRow>
       ) : null}
-      {__DEV__ ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`${appVersionLabel()}. Abrir diagnóstico`}
-          onPress={() => router.push('/settings/diagnostics')}
-          style={{ minHeight: 44, justifyContent: 'center' }}
-        >
-          <AppText muted variant="footnote">
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+        {__DEV__ ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${appVersionLabel()}. Abrir diagnóstico`}
+            onPress={() => router.push('/settings/diagnostics')}
+            style={{ minHeight: 44, justifyContent: 'center', flex: 1 }}
+          >
+            <AppText muted variant="footnote">
+              {appVersionLabel()}
+            </AppText>
+          </Pressable>
+        ) : (
+          <AppText muted variant="footnote" style={{ flex: 1 }}>
             {appVersionLabel()}
           </AppText>
-        </Pressable>
-      ) : (
-        <AppText muted variant="footnote">
-          {appVersionLabel()}
-        </AppText>
-      )}
+        )}
+        {(['privacy', 'terms'] as const).map(page => (
+          <Pressable
+            key={page}
+            accessibilityRole="link"
+            onPress={() => openLegal(page)}
+            style={{ minHeight: 44, justifyContent: 'center' }}
+          >
+            <AppText muted variant="footnote">
+              {page === 'privacy' ? 'Privacidad' : 'Términos'}
+            </AppText>
+          </Pressable>
+        ))}
+      </View>
     </EditorialScreen>
   );
 }

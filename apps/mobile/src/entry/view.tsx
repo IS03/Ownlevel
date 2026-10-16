@@ -9,6 +9,7 @@ import Animated, { FadeIn, FadeOut, ReduceMotion, useAnimatedStyle, useSharedVal
 import { AppIcon, brandTokens, GlassSurface, OwnlevelThemeProvider } from '@/design-system';
 import { EntryBars, EntryCover, EntryGradient, type EntryMotion } from './artwork';
 import { EntryLogo } from './logo';
+import { openLegal } from '@/platform/legal';
 
 export type EntryMode = 'bootstrapping' | 'signed-out' | 'signing-in' | 'complete' | 'error';
 type EntryViewProps = {
@@ -88,8 +89,11 @@ export function EntryView({ mode, motion, notice, onGoogle, onSoon, onRetry }: E
             <EntryButton label="Continuar con tu mail" icon="mail" disabled={busy} onPress={onSoon} reduced={motion.reduced} />
             <EntryButton label="Usar una passkey" icon="passkey" disabled={busy} onPress={onSoon} reduced={motion.reduced} />
           </>}
-          {/* TODO(Entrada y cuenta): enlazar Términos y Política de privacidad cuando existan sus URL públicas. */}
-          <Text style={styles.legal}>Al continuar aceptás los Términos y la Política de privacidad.</Text>
+          <Text style={styles.legal}>Al continuar aceptás los{' '}
+            <Text accessibilityRole="link" onPress={() => openLegal('terms')} style={styles.link}>Términos</Text>
+            {' '}y la{' '}
+            <Text accessibilityRole="link" onPress={() => openLegal('privacy')} style={styles.link}>Política de privacidad</Text>.
+          </Text>
         </View> : null}
       </ScrollView>
       <EntryCover width={width} height={height} motion={motion} />
@@ -112,4 +116,5 @@ const styles = StyleSheet.create({
   buttonText: { ...typeScale.headline, color: dark.text, flexShrink: 1, textAlign: 'center' },
   appleText: { color: '#000000' },
   legal: { ...typeScale.caption, color: dark.textMuted, textAlign: 'center', marginTop: space.sm, paddingHorizontal: space.md },
+  link: { color: dark.text, textDecorationLine: 'underline' },
 });
