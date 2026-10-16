@@ -190,7 +190,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
       onMetric={editable ? metricEntry.open : undefined}
       onActivity={editable ? data => writes.controller.open('metrics', data) : undefined}
       onContext={editable ? (data, reset) => { writes.controller.open('context', data); if (reset && writes.controller.getSnapshot().draft?.baseline === data) { writes.controller.changeContext(reset, ''); void writes.controller.save(); } } : undefined} />
-    {quick && !(foods?.state.open && foods.state.mode === 'register') ? <QuickEditor controller={quick.controller} state={quick.state} externalLocked={!editable} onUndo={(meal, destination, key) => void mealNotice.undo(meal, destination, key)} onSaved={() => { quick.controller.close(); saved?.controller.open(); }} /> : null}
+    {quick && !(foods?.state.open && foods.state.mode === 'register') ? <QuickEditor controller={quick.controller} state={quick.state} externalLocked={!editable} onSaved={() => { quick.controller.close(); saved?.controller.open(); }} /> : null}
     {foods && quick ? <FoodEditor controller={foods.controller} state={foods.state} quick={quick} onChoose={food => { quick.controller.open(foods.state.date!, foodQuickOption(food)); foods.controller.registration(); }} /> : null}
     {saved?<SavedEditor controller={saved.controller} state={saved.state}/>:null}
     {writes && metricEntry.entry && writes.state.draft ? <MetricEntrySheet id={metricEntry.entry.id} controller={writes.controller} state={writes.state} onClose={metricEntry.close} /> : null}

@@ -3,7 +3,6 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, TextInput, View } from
 import { AppIcon, AppText, Button, Heading, LoadingState, Surface, useOwnlevelTheme } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import type { QuickNutrients, QuickSection } from '@/api/nutrition-quick';
-import type { NutritionDayMeal } from '@/api/nutrition-day';
 import { displayNutritionDate } from './day-format';
 import type { QuickController, QuickState } from './quick-controller';
 import { MealSheet, MealSearch, mealShown as shown, mealSheetStyles as shared } from './meal-sheet';
@@ -19,7 +18,7 @@ export function MealNutrients({ value, pending = false }: { value: QuickNutrient
     {pending ? <ActivityIndicator color={colors.textMuted} accessibilityLabel="Confirmando valores" /> : null}</View>
     <AppText numeric muted variant="footnote">{`P ${shown(value.proteinG)} · C ${shown(value.carbsG)} · G ${shown(value.fatG)}`}</AppText></View>;
 }
-export function QuickEditor({ controller, state, embedded = false, onBack, onUndo, onSaved, externalLocked = false }: { controller: QuickController; state: QuickState; embedded?: boolean; onBack?: () => void; onUndo?: (meal: NutritionDayMeal, date: string, key: string) => void; onSaved?: () => void; externalLocked?: boolean }) {
+export function QuickEditor({ controller, state, embedded = false, onBack, onSaved, externalLocked = false }: { controller: QuickController; state: QuickState; embedded?: boolean; onBack?: () => void; onSaved?: () => void; externalLocked?: boolean }) {
   const { colors } = useOwnlevelTheme();
   const [search, setSearch] = useState('');
   const [more, setMore] = useState(false);
@@ -57,9 +56,9 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onUnd
         return <View key={key} style={[shared.row, { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
           <View style={shared.text}><Pressable accessibilityRole="button" accessibilityLabel={`Revisar ${option.name}`} disabled={locked} onPress={() => controller.choose(option)} style={{ minHeight: 44, justifyContent: 'center' }}>
             <AppText variant="headline">{option.name}</AppText>
-            {!added ? <AppText muted numeric variant="caption">{`P ${shown(option.proteinG)} · C ${shown(option.carbsG)} · G ${shown(option.fatG)}${option.items.length ? ` · ${option.items.length} ingredientes` : ''}`}</AppText> : null}
-          </Pressable>
-          {added ? <Pressable accessibilityRole="button" accessibilityLabel={`Deshacer ${option.name}`} disabled={locked || !onUndo} onPress={() => onUndo?.(added.meal, added.date, key)} style={{ minHeight: 44, justifyContent: 'center' }}><AppText variant="caption" style={{ color: colors.primary }}>Agregado · Deshacer</AppText></Pressable> : null}</View>
+            {/* An added option keeps its macros; the check says it is in the day, and undoing happens from the day. */}
+            <AppText muted numeric variant="caption">{`P ${shown(option.proteinG)} · C ${shown(option.carbsG)} · G ${shown(option.fatG)}${option.items.length ? ` · ${option.items.length} ingredientes` : ''}`}</AppText>
+          </Pressable></View>
           <View style={{ alignItems: 'flex-end', gap: 2 }}><AppText numeric variant="subheadline">{shown(option.calories)} kcal</AppText>{option.useCount !== null ? <AppText muted variant="caption">{option.useCount} veces</AppText> : null}</View>
           <Pressable accessibilityRole="button" accessibilityLabel={added ? `${option.name} agregado` : `Agregar ${option.name}`} accessibilityState={{ disabled: locked || !!added, busy: pending }} disabled={locked || !!added} onPress={() => { void controller.addInline(option); }} style={[styles.add, { backgroundColor: added ? colors.primary : colors.brandSubtle }]}>
             {pending ? <ActivityIndicator color={colors.primary} /> : <AppIcon name={added ? 'checkmark' : 'plus'} size={20} color={added ? colors.onPrimary : colors.primary} />}
