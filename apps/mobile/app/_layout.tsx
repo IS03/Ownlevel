@@ -10,6 +10,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { MobileAuthProvider, useMobileAuth } from '@/auth';
 import { MobileApiProvider } from '@/api';
 import { brandTokens, createThemePreferenceStorage, OwnlevelThemeProvider, useOwnlevelTheme } from '@/design-system';
+import { NutritionStagesProvider } from '@/stages/stages-provider';
 import { NutritionConfigurationProvider } from '@/nutrition/config-provider';
 import { initHapticsPreference } from '@/platform/haptics';
 import { createHapticsPreferenceStorage } from '@/platform/haptics-preference';
@@ -58,6 +59,7 @@ function RootNavigator() {
     <NavigationThemeProvider value={navigationTheme}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <NutritionConfigurationProvider>
+      <NutritionStagesProvider>
       <SessionPresenceProvider>
       <Stack screenOptions={screenOptions}>
         <Stack.Screen name="index" options={{ headerShown: false }} />
@@ -72,6 +74,7 @@ function RootNavigator() {
         </Stack.Protected>
       </Stack>
       </SessionPresenceProvider>
+      </NutritionStagesProvider>
       </NutritionConfigurationProvider>
     </NavigationThemeProvider>
   );

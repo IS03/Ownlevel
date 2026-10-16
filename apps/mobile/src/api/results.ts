@@ -38,6 +38,8 @@ export type MobileApiMutationResult<T> =
   | {
       status: 'conflict';
       code:
+        | 'STAGES_CHANGED'
+        | 'STAGES_DAY_CHANGED'
         | 'IDEMPOTENCY_KEY_REUSED'
         | 'WEIGHT_CHANGED'
         | 'BODY_FUTURE_DATE'

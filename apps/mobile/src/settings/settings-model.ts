@@ -36,6 +36,17 @@ export const shortDate = (date: string) =>
   `${Number(date.slice(8, 10))} ${['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'][Number(date.slice(5, 7)) - 1]}`;
 export const previousDate = (date: string) =>
   new Date(epoch(date) - 86400000).toISOString().slice(0, 10);
+export function stageProgress(stage: NonNullable<NutritionStages['current']>, today: string) {
+  if (!stage.endsOn) return null;
+  const days = Math.max(1, Math.round((epoch(stage.endsOn) - epoch(stage.startsOn)) / 86400000));
+  const elapsed = Math.max(0, Math.round((epoch(today) - epoch(stage.startsOn)) / 86400000));
+  const weeks = Math.ceil(days / 7);
+  return {
+    weeks,
+    week: Math.min(weeks, Math.floor(elapsed / 7) + 1),
+    progress: Math.min(1, elapsed / days),
+  };
+}
 export function stageHeadline(name: string | null, list: NutritionStages | null) {
   const greeting = name ? `Hola, ${name}.` : 'Hola.';
   const stage = list?.current;
@@ -47,13 +58,10 @@ export function stageHeadline(name: string | null, list: NutritionStages | null)
       text: `${prefix}tu ${stage.kind && stage.kind !== 'custom' ? 'plan de ' : ''}${kind} rige desde el ${shortDate(stage.startsOn)}.`,
       progress: null,
     };
-  const days = Math.max(1, Math.round((epoch(stage.endsOn) - epoch(stage.startsOn)) / 86400000));
-  const elapsed = Math.max(0, Math.round((epoch(list.today) - epoch(stage.startsOn)) / 86400000));
-  const weeks = Math.ceil(days / 7),
-    week = Math.min(weeks, Math.floor(elapsed / 7) + 1);
+  const { week, weeks, progress } = stageProgress(stage, list.today)!;
   return {
     text: `${prefix}vas por la semana ${week} de ${weeks} de tu ${kind}.`,
-    progress: Math.min(1, elapsed / days),
+    progress,
   };
 }
 /** Preview only, using the day engine's factors. Confirmed configuration always wins. */

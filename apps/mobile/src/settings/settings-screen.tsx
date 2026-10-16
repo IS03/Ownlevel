@@ -111,10 +111,7 @@ export function SettingsScreen() {
             key="plan"
             large
             title="Plan"
-            disabled={
-              !configuration || configuration.state.phase !== 'idle' || !!configuration.state.intent
-            }
-            onPress={() => configuration?.controller.open('plan')}
+            onPress={() => router.push('/settings/stages')}
           >
             {summary(
               <>

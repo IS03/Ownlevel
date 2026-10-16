@@ -238,7 +238,15 @@ export function createMobileApiClient({
         const parsedJson = parseJson(rawBody);
         const responseBody = parsedJson.ok ? parsedJson.value : undefined;
 
-        if (response.status === 400) {
+        // Stages uses strict status-tagged errors. Only this endpoint can opt into that wire shape.
+        if (options.path === '/api/mobile/v1/nutrition/stages' && options.method === 'POST' && (response.status === 400 || response.status === 409)) {
+          const parsed = options.parse(responseBody);
+          if (isRecord(parsed) && response.status === 400 && parsed.status === 'validation' && typeof parsed.message === 'string') {
+            result = { status: 'validation', message: parsed.message, meta: meta(durationMs, 400, 'validation') };
+          } else if (isRecord(parsed) && response.status === 409 && parsed.status === 'conflict' && ['STAGES_CHANGED', 'STAGES_DAY_CHANGED', 'IDEMPOTENCY_KEY_REUSED'].includes(String(parsed.error)) && typeof parsed.message === 'string') {
+            result = { status: 'conflict', code: parsed.error as 'STAGES_CHANGED' | 'STAGES_DAY_CHANGED' | 'IDEMPOTENCY_KEY_REUSED', message: parsed.message, data: parsed, meta: meta(durationMs, 409, 'conflict') };
+          } else result = unavailable('invalid_response', durationMs, response.status);
+        } else if (response.status === 400) {
           result =
             isRecord(responseBody) && responseBody.error === 'VALIDATION_ERROR'
               ? {

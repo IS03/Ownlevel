@@ -1,11 +1,12 @@
 import { createContext, type PropsWithChildren, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
+import { invalidateNutritionReports } from './report-resource';
 import { ConfigurationEditor } from './config-editor';
 import { useConfigurationController } from './use-config-controller';
 
 type SharedConfiguration = ReturnType<typeof useConfigurationController>;
-type ContextValue = { current: SharedConfiguration; subscribeConfirmed: (listener: () => void) => () => void };
+type ContextValue = { current: SharedConfiguration; subscribeConfirmed: (listener: () => void) => () => void; confirmExternalPlan: () => void };
 const ConfigurationContext = createContext<ContextValue | null>(null);
 
 /**
@@ -19,13 +20,15 @@ export function NutritionConfigurationProvider({ children }: PropsWithChildren) 
   const { session } = useMobileAuth();
   const userId = session?.user.id ?? null;
   const listeners = useRef(new Set<() => void>());
-  const invalidate = useCallback(() => { listeners.current.forEach(listener => listener()); }, []);
+  const invalidate = useCallback(() => { if (client) invalidateNutritionReports(client); listeners.current.forEach(listener => listener()); }, [client]);
   const current = useConfigurationController(userId ? client : null, userId ?? 'anonymous', invalidate);
   const subscribeConfirmed = useCallback((listener: () => void) => {
     listeners.current.add(listener);
     return () => { listeners.current.delete(listener); };
   }, []);
-  const value = useMemo(() => ({ current, subscribeConfirmed }), [current, subscribeConfirmed]);
+  const controller = current?.controller;
+  const confirmExternalPlan = useCallback(() => { if (controller) void controller.load(); invalidate(); }, [controller, invalidate]);
+  const value = useMemo(() => ({ current, subscribeConfirmed, confirmExternalPlan }), [current, subscribeConfirmed, confirmExternalPlan]);
   return <ConfigurationContext.Provider value={value}>
     {children}
     {current ? <ConfigurationEditor controller={current.controller} state={current.state} /> : null}
@@ -39,4 +42,11 @@ export function useNutritionConfiguration(onConfirmed?: () => void): SharedConfi
   const { subscribeConfirmed } = value;
   useEffect(() => (onConfirmed ? subscribeConfirmed(onConfirmed) : undefined), [onConfirmed, subscribeConfirmed]);
   return value.current;
+}
+
+/** Stage writes enter the exact same Home/Nutrition/report invalidation boundary as configuration. */
+export function useConfirmExternalPlan() {
+  const value = useContext(ConfigurationContext);
+  if (!value) throw new Error('useConfirmExternalPlan requires NutritionConfigurationProvider');
+  return value.confirmExternalPlan;
 }

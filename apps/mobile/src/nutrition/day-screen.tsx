@@ -117,6 +117,7 @@ export function NutritionDayScreen() {
 }
 function NutritionUserDayScreen({ userId }: { userId: string }) {
   const params = useLocalSearchParams();
+  const router = useRouter();
   const routeDate = selectedRouteDate(params);
   const { client } = useMobileApi();
   const [revision, setRevision] = useState(0);
@@ -175,7 +176,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
       addControl={<NutritionAddMenu onManual={editable ? () => meals.controller.open(date) : undefined} onQuick={editable ? () => quick.controller.open(date) : undefined} onFood={editable ? () => foods.controller.open(date) : undefined} />}
       addChoices={statusBanners}
       highlightedMeal={mealNotice.notice?.meal.id} removal={{ removing: mealNotice.removing, removed: mealNotice.removed }}
-      onConfigure={editable?()=>config.controller.open('plan'):undefined}
+      onConfigure={()=>router.push('/settings/stages')}
       onManageSaved={editable?()=>saved.controller.open():undefined}
       onManageFoods={editable ? () => foods.controller.open(null) : undefined}
       mealActions={editable ? {
