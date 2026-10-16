@@ -44,7 +44,8 @@ type MobileAuthContextValue = {
   retry: () => Promise<void>;
   session: Session | null;
   signInWithGoogle: () => Promise<void>;
-  signOut: () => Promise<void>;
+  /** `notice` is shown on the entry screen when the device ends signed out (e.g. after deleting the account). */
+  signOut: (notice?: string) => Promise<void>;
   state: MobileAuthState;
 };
 
@@ -279,14 +280,14 @@ export function MobileAuthProvider({ children }: PropsWithChildren) {
     }
   }, [dispatchIfMounted, handleCallbackUrl]);
 
-  const signOut = useCallback(async () => {
+  const signOut = useCallback(async (notice?: string) => {
     const client = clientRef.current;
     if (!client) {
       return;
     }
 
     const event = await performLocalLogout(client);
-    dispatchIfMounted(event);
+    dispatchIfMounted(notice && event.type === 'SESSION_MISSING' ? { ...event, notice } : event);
   }, [dispatchIfMounted]);
 
   const value = useMemo<MobileAuthContextValue>(

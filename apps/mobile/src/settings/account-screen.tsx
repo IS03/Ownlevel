@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, View } from 'react-native';
-import { useNavigation } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
@@ -33,6 +33,7 @@ export function AccountScreen() {
     return () => clearTimeout(timer);
   }, [state?.notice, controller]);
   const navigation = useNavigation();
+  const router = useRouter();
   usePreventRemove(
     !!controller && (pending || (controller.dirty() && !state?.intent)),
     ({ data }) => {
@@ -185,6 +186,12 @@ export function AccountScreen() {
         ) : (
           <Button label="Cerrar sesión" variant="quiet" onPress={logout} />
         )}
+        <EditorialRow
+          title="Eliminar cuenta"
+          hint="Borra tu cuenta y todo lo que registraste, también en la Web."
+          disabled={leaving}
+          onPress={() => router.push('/settings/delete-account')}
+        />
       </EditorialScreen>
       {state?.notice ? <NutritionToast message="Nombre guardado." state="done" /> : null}
     </View>

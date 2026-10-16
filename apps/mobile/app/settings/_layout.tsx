@@ -12,6 +12,7 @@ export default function SettingsLayout() {
       <Stack.Screen name="metrics" options={{ title: 'Métricas' }} />
       <Stack.Screen name="diagnostics" options={{ title: 'Diagnóstico' }} />
       <Stack.Screen name="account" options={{ ...editorial, title: 'Cuenta' }} />
+      <Stack.Screen name="delete-account" options={{ ...editorial, title: 'Eliminar cuenta' }} />
       <Stack.Screen name="app" options={{ ...editorial, title: 'App' }} />
       <Stack.Screen name="energy" options={{ ...editorial, title: 'Energía' }} />
       <Stack.Screen name="physical" options={{ ...editorial, title: 'Datos físicos' }} />
