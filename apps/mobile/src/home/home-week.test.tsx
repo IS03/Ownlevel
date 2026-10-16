@@ -40,7 +40,7 @@ describe('weekly nutrition', () => {
     expect(view.queryByTestId(`home-week-calorie-${weekStart}-fill`)).toBeNull();
     expect(view.queryByTestId('home-week-calorie-2026-10-06-fill')).toBeNull();
     expect(StyleSheet.flatten(view.getByTestId('home-week-calorie-2026-10-06').props.style).borderWidth).toBe(1);
-    expect(StyleSheet.flatten(view.getByTestId(`home-week-calorie-${today}-fill`).props.style)).toMatchObject({ height: '40%', top: '60%', backgroundColor: theme === 'light' ? '#7D6A3C' : '#C9B68A' });
+    expect(StyleSheet.flatten(view.getByTestId(`home-week-calorie-${today}-fill`).props.style)).toMatchObject({ height: '40%', top: '60%', backgroundColor: theme === 'light' ? '#705F36' : '#C9B68A' });
     expect(view.getByTestId('home-week-calories').props.accessibilityLabel).toContain('hoy en curso, no incluido en el promedio');
     expect(view.getByLabelText('Jueves. Por venir')).toBeTruthy();
     expect(view.queryByTestId('home-week-calorie-2026-10-08-target')).toBeNull();

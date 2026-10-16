@@ -6,7 +6,7 @@ import { chart, intensity, layout, palette, radius, space, typeScale } from "@br
 describe("OWNLEVEL brand tokens (shared runtime entry)", () => {
   it("champagne is the single accent; light mode uses the readable dark champagne", () => {
     expect(palette.dark.accent).toBe("#C9B68A");
-    expect(palette.light.accent).toBe("#7D6A3C");
+    expect(palette.light.accent).toBe("#705F36");
     expect(palette.dark.accentSoft).toBe("rgba(201,182,138,0.16)");
     expect(palette.light.accentSoft).toBe("rgba(201,182,138,0.32)");
     expect(chart.dark[0]).toBe(palette.dark.accent);
@@ -17,7 +17,7 @@ describe("OWNLEVEL brand tokens (shared runtime entry)", () => {
 
   it("graphite neutrals for dark and light", () => {
     expect(palette.dark).toMatchObject({ bg: "#09090B", surface: "#18181B", elevated: "#27272A", text: "#F4F4F5", textMuted: "#9F9FA9" });
-    expect(palette.light).toMatchObject({ bg: "#F3F1EC", surface: "#FFFFFF", elevated: "#EAE7DF", border: "#E0DCD0", text: "#18181B", textMuted: "#6A6A72" });
+    expect(palette.light).toMatchObject({ bg: "#F3F1EC", surface: "#FFFFFF", elevated: "#EAE7DF", border: "#E0DCD0", text: "#18181B", textMuted: "#62626A" });
     expect(palette.dark.heroFrom).toBe("#DCCBA3");
     expect(palette.dark.heroTo).toBe("#A8935F");
   });

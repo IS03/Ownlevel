@@ -29,7 +29,7 @@ If the identity conflicts with product invariants or the current implementation:
 report it, do not bend either side silently.
 
 Permanent rules (summary; IDENTIDAD.md wins on detail):
-- One accent only: champagne (dark #C9B68A; light #7D6A3C for text/icons).
+- One accent only: champagne (dark #C9B68A; light #705F36 for text/icons).
   Reserved for what matters: primary action, active set, record.
 - No red/green "good/bad" on the user's personal data (weight, intake, volume, trends).
   Ups/downs use an arrow, not a color.

@@ -31,11 +31,13 @@ Base grafito y un solo acento champagne. Las tablas completas están en `tema/to
 | Elevado (inputs, chips) | #27272A | #EAE7DF |
 | Borde | blanco al 8 % | #E0DCD0 |
 | Texto | #F4F4F5 | #18181B |
-| Texto secundario | #9F9FA9 | #6A6A72 |
-| Acento | #C9B68A | #7D6A3C (texto e íconos) |
+| Texto secundario | #9F9FA9 | #62626A |
+| Acento | #C9B68A | #705F36 (texto e íconos) |
 | Fondo de acento | champagne al 16 % | champagne al 32 % |
 | Hero | degradado #DCCBA3 → #A8935F, texto #1A1710 | igual |
 | Error (solo del sistema) | #E5736B | #B4392F |
+
+Contraste (16/10): en claro, el acento de texto pasó de #7D6A3C a #705F36 y el texto secundario de #6A6A72 a #62626A, para llegar a AA (4,5:1) también sobre los campos y el fondo champagne suave. El logo conserva #7D6A3C.
 
 **Reglas:**
 - **Un solo acento.** El champagne es para lo importante: botón principal, serie activa y récord.
@@ -174,7 +176,7 @@ Cálido y argentino. Frases cortas, alguna exclamación, nunca exagerado.
 
 | Orden | Oscuro | Claro |
 |---|---|---|
-| 1 | #C9B68A | #7D6A3C |
+| 1 | #C9B68A | #705F36 |
 | 2 | #7FA3C9 | #3F6A96 |
 | 3 | #A99BD6 | #6B5BA8 |
 | 4 | #D08C6A | #A3573A |

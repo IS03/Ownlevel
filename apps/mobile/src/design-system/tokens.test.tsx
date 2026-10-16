@@ -26,7 +26,7 @@ describe('Mobile theme on the OWNLEVEL brand tokens', () => {
   });
 
   it('champagne is the primary accent in both modes', () => {
-    expect(lightColors.primary).toBe('#7D6A3C');
+    expect(lightColors.primary).toBe('#705F36');
     expect(darkColors.primary).toBe('#C9B68A');
   });
 

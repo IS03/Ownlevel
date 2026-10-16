@@ -178,7 +178,7 @@ describe('Today\'s training: states by priority, no gradients', () => {
     const view = renderHome();
     expect(view.queryByText(/Hoy te toca|Día libre/i)).toBeNull();
     const button = view.getByRole('button', { name: 'Arrancar rutina' });
-    expect(StyleSheet.flatten(button.props.style)).toMatchObject({ backgroundColor: '#7D6A3C', minHeight: 50, borderRadius: 999 });
+    expect(StyleSheet.flatten(button.props.style)).toMatchObject({ backgroundColor: '#705F36', minHeight: 50, borderRadius: 999 });
     fireEvent.press(button);
     expect(view.onStartWorkout).toHaveBeenCalledTimes(1);
     expect(view.onNavigate).not.toHaveBeenCalled();
@@ -209,7 +209,7 @@ describe('Nutrition', () => {
     expect(view.queryByTestId('home-calories-left')).toBeNull();
     expect(view.getByText('128 / 160 g')).toBeTruthy();
     expect(StyleSheet.flatten(view.getByTestId('home-calorie-bar').props.style)).toMatchObject({ height: 8, backgroundColor: '#EAE7DF' });
-    expect(StyleSheet.flatten(view.getByTestId('home-calorie-bar-fill').props.style)).toMatchObject({ backgroundColor: '#7D6A3C' });
+    expect(StyleSheet.flatten(view.getByTestId('home-calorie-bar-fill').props.style)).toMatchObject({ backgroundColor: '#705F36' });
     expect(StyleSheet.flatten(view.getByTestId('home-protein-bar').props.style)).toMatchObject({ height: 5 });
     expect(view.queryByTestId('home-calorie-ring')).toBeNull();
   });
@@ -289,7 +289,7 @@ describe('Nutrition', () => {
     fireEvent.press(view.getByTestId('home-protein'));
     expect(view.getByLabelText('Calorías por encima del objetivo: 120 kcal, objetivo 2.600')).toBeTruthy();
     expect(view.getByLabelText('Proteína por encima: 14 de 160 g')).toBeTruthy();
-    expect(StyleSheet.flatten(view.getByTestId('home-calorie-bar-fill').props.style).backgroundColor).toBe('#7D6A3C');
+    expect(StyleSheet.flatten(view.getByTestId('home-calorie-bar-fill').props.style).backgroundColor).toBe('#705F36');
   });
 
   it('a missing goal never manufactures remaining values; no goals disables toggling', () => {
@@ -343,7 +343,7 @@ describe('Esta semana', () => {
     }
     const today = view.getByTestId('home-week-today');
     expect(today.props.children).toBe('S');
-    expect(StyleSheet.flatten(today.props.style)).toMatchObject({ color: '#7D6A3C', fontWeight: '600', fontSize: 13 });
+    expect(StyleSheet.flatten(today.props.style)).toMatchObject({ color: '#705F36', fontWeight: '600', fontSize: 13 });
     fireEvent.press(view.getByTestId('home-week-day-2026-10-06'));
     expect(view.onOpenDay).toHaveBeenCalledWith('2026-10-06');
     fireEvent.press(view.getByTestId('home-week-day-2026-10-11'));
@@ -463,7 +463,7 @@ describe('Screen states', () => {
     expect(band.borderWidth ?? 0).toBe(0);
     for (const id of ['home-band-fade-top', 'home-band-solid', 'home-band-fade-bottom']) expect(view.queryByTestId(id)).toBeNull();
     expect(StyleSheet.flatten(view.getByTestId('home-calorie-split').props.style)).toMatchObject({ borderTopColor: '#E0DCD0', paddingTop: 16 });
-    expect(StyleSheet.flatten(view.getByText('Calorías consumidas').props.style)).toMatchObject({ color: '#6A6A72' });
+    expect(StyleSheet.flatten(view.getByText('Calorías consumidas').props.style)).toMatchObject({ color: '#62626A' });
   });
 
   it('dark: no band; brand tracks and secondary grey', () => {
@@ -476,7 +476,7 @@ describe('Screen states', () => {
   it.each(['light', 'dark'] as const)('%s: exact nutrition ratios and trained days are painted immediately, in either nutrition mode', theme => {
     const view = renderHome({}, theme);
     const textColor = theme === 'dark' ? '#F4F4F5' : '#18181B';
-    const accent = theme === 'dark' ? '#C9B68A' : '#7D6A3C';
+    const accent = theme === 'dark' ? '#C9B68A' : '#705F36';
     expect(StyleSheet.flatten(view.getByText('1.840').props.style).color).toBe(textColor);
     expect(StyleSheet.flatten(view.getByText('128 / 160 g').props.style).color).toBe(textColor);
     expect(StyleSheet.flatten(view.getByTestId('home-calorie-bar-fill').props.style).width).toBe(`${1840 / 2600 * 100}%`);

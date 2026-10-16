@@ -43,8 +43,14 @@ export function PeriodStepper({ onCustom }: { onCustom: () => void }) {
   const go = (to: typeof prev) => { if (to) { triggerHaptic('stepperChange'); setState(to); } };
   const custom = state.unit === 'custom';
   return <View style={styles.stepper} accessible accessibilityRole="adjustable" accessibilityLabel={`${title}, ${subtitle}`}
-    accessibilityActions={[{ name: 'decrement', label: 'Período anterior' }, { name: 'increment', label: 'Período siguiente' }]}
-    onAccessibilityAction={e => go(e.nativeEvent.actionName === 'increment' ? next : prev)} testID="progress-period-stepper">
+    accessibilityActions={[{ name: 'decrement', label: 'Período anterior' }, { name: 'increment', label: 'Período siguiente' },
+      ...(custom ? [{ name: 'activate', label: 'Cambiar fechas' }] : [])]}
+    accessibilityHint={custom ? 'Tocá dos veces para cambiar las fechas' : undefined}
+    onAccessibilityAction={e => {
+      const action = e.nativeEvent.actionName;
+      if (action === 'activate') { if (custom) onCustom(); }
+      else go(action === 'increment' ? next : prev);
+    }} testID="progress-period-stepper">
     <Pressable accessibilityElementsHidden disabled={!prev} hitSlop={10} onPress={() => go(prev)} style={styles.arrow}>
       <AppIcon name="chevronLeft" color={prev ? colors.text : colors.border} size={20} /></Pressable>
     {/* A custom range has no neighbors: its title reopens the calendar instead. */}
