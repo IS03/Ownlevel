@@ -71,5 +71,6 @@ describe("PR70 — Ajustes, Perfil y Aplicación", () => {
     expect(account).toContain("getAuthedUser()");
     expect(account).toContain("form action={signOut}");
     expect(account).toContain("Cerrar sesión en este dispositivo");
+    expect(account).toContain("<DeleteAccountForm />");
   });
 });

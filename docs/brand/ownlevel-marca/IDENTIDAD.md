@@ -113,6 +113,8 @@ El check de selección usa el token de marca con mayor contraste sobre cada mues
 - **Barra de pestañas:** flotante, a 16 de los bordes, con vidrio. Cuatro pestañas: Inicio, Rutinas, Entrenar y Progreso.
 - **Vidrio:** solo en controles. Va en la barra de pestañas, los botones flotantes, la barra superior al hacer scroll, los controles sobre fotos o gráficos y el temporizador flotante.
 - **Sin vidrio:** tarjetas, filas, listas, inputs y el hero.
+- **Excepción · panel "Tu día" de Nutrición (16/10):** va en vidrio aunque contiene contenido. Se justifica porque es un panel de acciones: desde ahí cargás métricas y abrís el detalle del día. Tiene un fondo sólido de respaldo con "Reducir transparencia", en Android y en iOS anterior a 26. No se extiende a otras tarjetas.
+- **Estilo editorial (16/10):** Nutrición, Ajustes y Progreso › Tus etapas no usan tarjetas blancas. El contenido va directo sobre el fondo con el resplandor champagne, con titulares grandes y renglones separados por una línea fina. Las tarjetas quedan para lo que de verdad es un objeto aparte (una hoja, una comida abierta).
 
 ## Íconos (78 A)
 - **Librerías:** SF Symbols en iOS (`expo-symbols`) y Lucide en Android y web, con trazo 2.
