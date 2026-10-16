@@ -11,7 +11,7 @@ const round = (n: number, places: number) => Math.round(n * 10 ** places) / 10 *
  * Counts from the value on screen to the new one after a change (rings and totals move with it).
  * Missing never animates: to or from null it switches at once (missing ≠ zero). Reduce Motion switches at once.
  */
-export function useTweenedNumber(target: number | null): number | null {
+export function useTweenedNumber(target: number | null, duration = DURATION): number | null {
   const reduced = useReduceMotion();
   const [shown, setShown] = useState<{ to: number | null; value: number | null }>({ to: target, value: target });
   const onScreen = useRef<number | null>(target);
@@ -24,14 +24,14 @@ export function useTweenedNumber(target: number | null): number | null {
     }
     const began = Date.now();
     let frame = requestAnimationFrame(function step() {
-      const t = Math.min(1, (Date.now() - began) / DURATION);
+      const t = Math.min(1, (Date.now() - began) / duration);
       const value = t >= 1 ? target : round(from + (target - from) * easeOut(t), decimals(target));
       onScreen.current = value;
       setShown({ to: target, value });
       if (t < 1) frame = requestAnimationFrame(step);
     });
     return () => cancelAnimationFrame(frame);
-  }, [reduced, target]);
+  }, [duration, reduced, target]);
   // Until the first frame of a new count, keep what was on screen; a switch to/from missing shows the target.
   if (shown.to === target) return shown.value;
   return reduced || target === null || shown.value === null || shown.to === null ? target : shown.value;

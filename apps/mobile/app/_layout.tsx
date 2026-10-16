@@ -9,13 +9,14 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { MobileAuthProvider, useMobileAuth } from '@/auth';
 import { MobileApiProvider } from '@/api';
-import { createThemePreferenceStorage, OwnlevelThemeProvider, useOwnlevelTheme } from '@/design-system';
+import { brandTokens, createThemePreferenceStorage, OwnlevelThemeProvider, useOwnlevelTheme } from '@/design-system';
 import { NutritionConfigurationProvider } from '@/nutrition/config-provider';
 import { initHapticsPreference } from '@/platform/haptics';
 import { createHapticsPreferenceStorage } from '@/platform/haptics-preference';
 import { useStackScreenOptions } from '@/navigation/use-stack-screen-options';
 import { SessionPresenceProvider } from '@/training/session-presence-provider';
 import { EntryTransitionProvider } from '@/entry/transition';
+import { useNativeSplash } from '@/entry/use-native-splash';
 
 const themePreference = createThemePreferenceStorage(AsyncStorage);
 initHapticsPreference(createHapticsPreferenceStorage(AsyncStorage));
@@ -23,9 +24,10 @@ initHapticsPreference(createHapticsPreferenceStorage(AsyncStorage));
 void SplashScreen.preventAutoHideAsync().catch(() => {
   // Fast refresh can call this after the native splash has already been handled.
 });
+SplashScreen.setOptions({ duration: brandTokens.motion.duration.base, fade: true });
 
 function RootNavigator() {
-  const { session } = useMobileAuth();
+  const { session, state } = useMobileAuth();
   const { colors, isDark } = useOwnlevelTheme();
   const screenOptions = useStackScreenOptions();
   const navigationTheme = useMemo(
@@ -49,12 +51,8 @@ function RootNavigator() {
     });
   }, [colors.background]);
 
-  useEffect(() => {
-    // The entry presentation renders the bootstrap artwork while session restoration runs.
-    void SplashScreen.hideAsync().catch(() => {
-      // The splash may already be hidden during fast refresh.
-    });
-  }, []);
+  // Hold the native splash through restoration, then fade straight into the resolved route.
+  useNativeSplash(state.status);
 
   return (
     <NavigationThemeProvider value={navigationTheme}>
