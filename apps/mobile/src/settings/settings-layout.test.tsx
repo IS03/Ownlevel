@@ -20,6 +20,7 @@ describe('Settings stack', () => {
       { name: 'metrics', title: 'Métricas' },
       { name: 'diagnostics', title: 'Diagnóstico' },
       { name: 'account', title: 'Cuenta' },
+      { name: 'delete-account', title: 'Eliminar cuenta' },
       { name: 'app', title: 'App' },
       { name: 'energy', title: 'Energía' },
       { name: 'physical', title: 'Datos físicos' },
