@@ -280,7 +280,9 @@ export function FoodEditor({
   );
   // Keep one native modal throughout the day picker → create → picker flow.
   return state.date || state.mode === 'register' ? (
-    <Modal animationType={reduced ? 'fade' : 'slide'} presentationStyle="pageSheet" visible onRequestClose={close}>
+    <Modal animationType={reduced ? 'fade' : 'slide'} presentationStyle="pageSheet" visible onRequestClose={close}
+      allowSwipeDismissal={!pending && quick.state.phase !== 'pending' && !state.intent && !quick.state.intent
+        && !(state.mode === 'register' ? quick.controller.dirty() : controller.dirty())}>
       {state.mode === 'register' ? (
         <QuickEditor
           embedded
