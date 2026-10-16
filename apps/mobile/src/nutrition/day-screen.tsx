@@ -6,7 +6,8 @@ import { MealAddedNotice } from './meal-notice';
 import {useNutritionConfiguration} from './config-provider';
 import {useSavedController} from './use-saved-controller';
 import {SavedEditor} from './saved-editor';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
+import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState, RefreshControl, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { selectedRouteDate } from '@/history/navigation';
@@ -63,20 +64,32 @@ function NutritionDayView({ revision, date, today, onSelect, onServerToday, onAd
   const loaded = state.status === 'ready';
   useEffect(() => { if (loaded) prefetchCalendarMonth(client, date, today); }, [client, date, loaded, today]);
   const pull = usePullRefresh(state.status === 'ready' && state.refreshing, runRefresh);
-  return <ScrollScreen statusBarGlass testID="nutrition-day-screen" refreshControl={
+  // The calendar and ··· stay pinned at the top (a native menu inside the scroll lagged behind it). Placed from
+  // the layout (header in the content + slot in the header + safe area), never from the scroll position.
+  const header = useRef<View>(null), slot = useRef<View>(null);
+  const safeTop = useContext(SafeAreaInsetsContext)?.top ?? 0;
+  const [headerAt, setHeaderAt] = useState<{ x: number; y: number } | null>(null);
+  const [slotAt, setSlotAt] = useState<{ x: number; y: number } | null>(null);
+  const placeSlot = () => { if (header.current) slot.current?.measureLayout(header.current, (x, y) => setSlotAt(prev => prev && prev.x === x && prev.y === y ? prev : { x, y })); };
+  const pinned = headerAt && slotAt ? { x: headerAt.x + slotAt.x, y: safeTop + headerAt.y + slotAt.y } : null;
+  const controls = <View pointerEvents="box-none" style={[styles.pinned, pinned ? { top: pinned.y, left: pinned.x } : styles.hidden]} testID="nutrition-day-controls">
+    <NutritionGlassButton icon="calendar" label="Elegir fecha" onPress={() => setSelector(true)} />
+    <NutritionDayMenu onSaved={onManageSaved} onFoods={onManageFoods} onPlan={onConfigure} />
+  </View>;
+  return <View style={styles.fill}><ScrollScreen statusBarGlass testID="nutrition-day-screen" refreshControl={
     <RefreshControl colors={[colors.primary]} onRefresh={pull.onRefresh}
       progressBackgroundColor={colors.surface} refreshing={pull.refreshing}
       testID="nutrition-refresh" tintColor={colors.primary} />
   }>
-    <View style={styles.header}>
+    <View ref={header} style={styles.header} onLayout={event => { const { x, y } = event.nativeEvent.layout; setHeaderAt(prev => prev && prev.x === x && prev.y === y ? prev : { x, y }); placeSlot(); }}>
       <ReturnToHistoryDay />
       <View style={styles.topBar}>
         <View style={styles.title}>
           <AppText muted variant="footnote">{selectedLabel}</AppText>
           <AppText accessibilityRole="header" variant="largeTitle">{date === today ? 'Hoy' : selectedLabel.split(' ').slice(1).join(' ')}</AppText>
         </View>
-        <NutritionGlassButton icon="calendar" label="Elegir fecha" onPress={() => setSelector(true)} />
-        <NutritionDayMenu onSaved={onManageSaved} onFoods={onManageFoods} onPlan={onConfigure} />
+        {/* Room for the pinned controls below: they float over the screen instead of scrolling with it. */}
+        <View ref={slot} onLayout={placeSlot} style={styles.controls} />
       </View>
     </View>
     <NutritionWeek refreshRevision={refreshRevision + revision} date={date} today={today} data={current?.data} onSelect={onSelect} />
@@ -94,7 +107,7 @@ function NutritionDayView({ revision, date, today, onSelect, onServerToday, onAd
       </>}
     {!current ? <>{addControl ?? <NutritionGlassButton icon="plus" label="Agregar comida" wide onPress={onAdd} />}{addChoices}</> : null}
     {selector ? <NutritionMonthSheet date={date} today={today} onReport={onReport} onClose={() => setSelector(false)} onSelect={onSelect} /> : null}
-  </ScrollScreen>;
+  </ScrollScreen>{controls}</View>;
 }
 
 export function NutritionDayScreen() {
@@ -195,4 +208,6 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
 }
 const styles = StyleSheet.create({
   header: { gap: spacing.md }, topBar: { flexDirection: 'row', alignItems: 'center', gap: 8 }, title: { flex: 1, gap: 0 },
+  fill: { flex: 1 }, controls: { width: 44 * 2 + 8, height: 44 },
+  pinned: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 8 }, hidden: { opacity: 0, top: 0, right: 0 },
 });
