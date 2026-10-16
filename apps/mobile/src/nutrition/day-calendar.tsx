@@ -3,7 +3,8 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useMobileApi } from '@/api';
 import type { NutritionReport } from '@/api/nutrition-report';
-import { AppIcon, AppSheet, AppText, Button, useAppSheetDismiss, useOwnlevelTheme } from '@/design-system';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { AppIcon, AppSheet, AppText, Button, brandTokens, useAppSheetDismiss, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { NutritionGlassButton } from './day-controls';
 import { displayNutritionDate, inputNutritionDate, number, parseInputNutritionDate, shiftNutritionDate } from './day-format';
 import { nutritionMonth, reportRings } from './day-home-model';
@@ -39,16 +40,20 @@ export function NutritionMonthSheet({ date, today, onClose, onSelect, onReport }
 }) {
   // Context (not the hook): it also opens from places rendered without a provider (tests, nested sheets).
   const { colors } = useOwnlevelTheme(), bottom = useContext(SafeAreaInsetsContext)?.bottom ?? 0;
-  return <AppSheet onClose={onClose} closeLabel="Cerrar calendario" dragFromContent testID="nutrition-month-sheet"
+  // While the month/year wheels are up, only the handle drags the sheet: a drag near a wheel turns the wheel.
+  const [picking, setPicking] = useState(false);
+  return <AppSheet onClose={onClose} closeLabel="Cerrar calendario" dragFromContent={!picking} testID="nutrition-month-sheet"
     style={{ backgroundColor: colors.background, paddingBottom: Math.max(bottom, 16) }}>
-    <MonthBody date={date} today={today} onSelect={onSelect} onReport={onReport} />
+    <MonthBody date={date} today={today} onSelect={onSelect} onReport={onReport} picking={picking} setPicking={setPicking} />
   </AppSheet>;
 }
-function MonthBody({ date, today, onSelect, onReport }: { date: string; today: string; onSelect: (date: string) => void; onReport?: (range: { from: string; to: string }) => void }) {
+function MonthBody({ date, today, onSelect, onReport, picking, setPicking }: {
+  date: string; today: string; onSelect: (date: string) => void; onReport?: (range: { from: string; to: string }) => void;
+  picking: boolean; setPicking: (next: boolean | ((v: boolean) => boolean)) => void;
+}) {
   const { colors } = useOwnlevelTheme();
   const dismiss = useAppSheetDismiss();
   const [month, setMonth] = useState(`${date.slice(0, 7)}-01`);
-  const [picking, setPicking] = useState(false);
   // The sheet keeps its tallest height (the day grid) when the month picker replaces it.
   const [height, setHeight] = useState(0);
   const { client } = useMobileApi();
@@ -85,7 +90,20 @@ function ReadMonth({ month, today, ...props }: { month: string; today: string; s
   const report = state.status === 'ready' ? state.current.data : state.status === 'unavailable' ? state.previous?.data : undefined;
   const failed = state.status !== 'ready' && state.status !== 'loading';
   const average = report?.summary.metrics.calories;
-  return <>
+  // A month read just now fades in whole (numbers, rings and average together) instead of rings popping in after
+  // the numbers. A month already read (cache) shows at once.
+  const reduced = useReduceMotion();
+  const settled = state.status !== 'loading';
+  const [waited, setWaited] = useState(false);
+  const shown = useSharedValue(settled ? 1 : 0);
+  useEffect(() => {
+    if (settled || waited) { shown.set(withTiming(1, { duration: reduced ? brandTokens.motion.duration.fast : brandTokens.motion.duration.base })); return; }
+    // A slow read never leaves the month blank: after a moment the days show, and the rings join when they arrive.
+    const timer = setTimeout(() => setWaited(true), 1200);
+    return () => clearTimeout(timer);
+  }, [reduced, settled, shown, waited]);
+  const fade = useAnimatedStyle(() => ({ opacity: shown.value }));
+  return <Animated.View style={[styles.body, fade]}>
     <MonthGrid {...props} month={month} today={today} report={report} loading={state.status === 'loading'} unavailable={failed} />
     {failed ? <View style={styles.manual}><AppText accessibilityRole="alert">{report ? 'No pudimos actualizar este mes. Mostramos la última lectura.' : 'No pudimos cargar este mes.'}</AppText>
       <Button variant="quiet" label="Reintentar mes" onPress={() => void refresh()} /></View> : null}
@@ -96,7 +114,7 @@ function ReadMonth({ month, today, ...props }: { month: string; today: string; s
       </View>
       {props.onReport ? <NutritionGlassButton icon="progress" label="Ver reporte" wide onPress={() => props.onReport?.({ from: month, to: end < today ? end : today })} /> : null}
     </View>
-  </>;
+  </Animated.View>;
 }
 function MonthGrid({ month, selected, today, onSelect, report, loading, unavailable }: {
   month: string; selected: string; today: string; onSelect: (date: string) => void; report?: NutritionReport; loading?: boolean; unavailable?: boolean;
