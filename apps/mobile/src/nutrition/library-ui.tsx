@@ -17,6 +17,7 @@ import {
   AppText,
   GlassSurface,
   ScreenGlow,
+  SearchField,
   SheetHandle,
   brandTokens,
   pressedStyle,
@@ -152,21 +153,7 @@ export function LibrarySearch({
   onChange: (v: string) => void;
   label: string;
 }) {
-  const { colors } = useOwnlevelTheme();
-  return (
-    <GlassSurface style={styles.search}>
-      <AppIcon name="search" color={colors.textMuted} size={20} />
-      <TextInput
-        accessibilityLabel={label}
-        placeholder={label}
-        placeholderTextColor={colors.textMuted}
-        value={value}
-        onChangeText={onChange}
-        style={[styles.searchInput, { color: colors.text }]}
-        clearButtonMode="while-editing"
-      />
-    </GlassSurface>
-  );
+  return <SearchField label={label} value={value} onChange={onChange} />;
 }
 export function LibraryFilter({
   filter,
@@ -454,15 +441,6 @@ const styles = StyleSheet.create({
   title: { flex: 1, textAlign: 'center' },
   content: { padding: 16, gap: 20, flexGrow: 1 },
   footer: { paddingHorizontal: 16, paddingTop: 12, gap: 8 },
-  search: {
-    borderRadius: 12,
-    minHeight: 48,
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-    paddingHorizontal: 12,
-  },
-  searchInput: { minHeight: 48, fontSize: 17, flex: 1 },
   row: {
     minHeight: 72,
     flexDirection: 'row',

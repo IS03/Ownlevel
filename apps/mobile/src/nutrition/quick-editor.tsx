@@ -9,16 +9,22 @@ import type { QuickController, QuickState } from './quick-controller';
 import { MealSheet, MealSearch, mealShown as shown, mealSheetStyles as shared } from './meal-sheet';
 import { MealTiming } from './meal-timing';
 import { MealProjection } from './meal-projection';
+import { quickEstimate } from './quick-model';
 import { MealDateControl } from './meal-date-control';
 import { SaveButton } from './save-button';
-export function MealNutrients({ value }: { value: QuickNutrients }) {
-  return <View style={shared.totals}><AppText numeric variant="title1">{shown(value.calories)} <AppText muted>kcal</AppText></AppText><AppText numeric muted variant="footnote">{`P ${shown(value.proteinG)} · C ${shown(value.carbsG)} · G ${shown(value.fatG)}`}</AppText></View>;
+/** `pending`: an instant estimate the server is still confirming (muted, with the native spinner). */
+export function MealNutrients({ value, pending = false }: { value: QuickNutrients; pending?: boolean }) {
+  const { colors } = useOwnlevelTheme();
+  return <View style={shared.totals}><View style={styles.total}><AppText numeric variant="title1" style={pending && { color: colors.textMuted }}>{shown(value.calories)} <AppText muted>kcal</AppText></AppText>
+    {pending ? <ActivityIndicator color={colors.textMuted} accessibilityLabel="Confirmando valores" /> : null}</View>
+    <AppText numeric muted variant="footnote">{`P ${shown(value.proteinG)} · C ${shown(value.carbsG)} · G ${shown(value.fatG)}`}</AppText></View>;
 }
 export function QuickEditor({ controller, state, embedded = false, onBack, onUndo, onSaved, externalLocked = false }: { controller: QuickController; state: QuickState; embedded?: boolean; onBack?: () => void; onUndo?: (meal: NutritionDayMeal, date: string, key: string) => void; onSaved?: () => void; externalLocked?: boolean }) {
   const { colors } = useOwnlevelTheme();
   const [search, setSearch] = useState('');
   const [more, setMore] = useState(false);
   const draft = state.inlineKey ? null : state.draft;
+  const estimate = draft ? quickEstimate(draft) : null;
   const locked = externalLocked || !!state.intent || state.phase !== 'idle' || !!state.inlineKey;
   const running = state.phase === 'pending' || state.phase === 'loading';
   // Sent and confirmed while the day is re-read: still "saving" (no recovery choices flashing by).
@@ -88,11 +94,13 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onUnd
       })}
       {draft.option.source.kind === 'food' ? <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8 }}>{[1, 2, 3, 4].map(m => Math.round(draft.option.items[0].quantity * m * 1000) / 1000).map(n => <Pressable key={n} accessibilityRole="button" accessibilityLabel={`Cantidad ${n}`} disabled={locked} onPress={() => controller.change(draft.option.items[0].id, String(n))} style={[styles.chip, { backgroundColor: Number(draft.quantities[draft.option.items[0].id]?.replace(',', '.')) === n ? colors.brandSubtle : colors.surface }]}><AppText numeric>{n}</AppText></Pressable>)}</View> : null}
       {state.previousDraft?.option.items.length ? <Surface><AppText variant="label">Tus cantidades anteriores, para revisar</AppText>{state.previousDraft.option.items.map(i => <AppText key={i.id}>{`${i.label}: ${state.previousDraft!.quantities[i.id]} ${i.unit}`}</AppText>)}</Surface> : null}
-      {state.previewLoading ? <LoadingState label="Calculando vista previa" /> : null}
-      {state.preview ? <View style={{ gap: 20 }} testID="quick-preview"><MealNutrients value={state.preview.snapshot} /><MealProjection date={state.date} nutrients={state.preview.snapshot} /></View> : null}
+      {/* The same block stays put: an instant estimate first, then the server's confirmed preview. */}
+      {state.preview ? <View style={{ gap: 20 }} testID="quick-preview"><MealNutrients value={state.preview.snapshot} /><MealProjection date={state.date} nutrients={state.preview.snapshot} /></View>
+        : estimate && !state.message ? <View style={{ gap: 20 }} testID="quick-estimate"><MealNutrients value={estimate} pending /><MealProjection date={state.date} nutrients={estimate} pending /></View>
+        : state.previewLoading ? <LoadingState label="Calculando vista previa" /> : null}
       <MealTiming date={state.date} value={draft} disabled={locked} onChange={(label, time) => controller.timing(label, time)} />
       <View style={shared.footer}>
-        <SaveButton state={saving && !state.inlineKey ? 'saving' : 'idle'} disabled={locked || !state.preview || state.previewLoading} label={`Agregar al día${state.preview ? ` · ${shown(state.preview.snapshot.calories)} kcal` : ''}`} onPress={() => void controller.save()} />
+        <SaveButton state={saving && !state.inlineKey ? 'saving' : 'idle'} disabled={locked || !state.preview || state.previewLoading} label={`Agregar al día${state.preview ? ` · ${shown(state.preview.snapshot.calories)} kcal` : estimate && !state.message ? ` · ${shown(estimate.calories)} kcal` : ''}`} onPress={() => void controller.save()} />
         {draft.option.source.kind === 'suggestion' ? <Button disabled={locked || !state.preview || state.previewLoading} label="Guardar como habitual" onPress={() => void controller.save('saveSuggestion')} variant="quiet" /> : null}
       </View>
     </>}
@@ -104,4 +112,4 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onUnd
     {!draft && !state.intent ? <AppText muted variant="caption">Destino · {displayNutritionDate(state.date)}</AppText> : null}
   </MealSheet>;
 }
-const styles = StyleSheet.create({ add: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' }, stepper: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, paddingVertical: 4, flexShrink: 1 }, step: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, quantity: { fontSize: 17, fontWeight: '600', textAlign: 'center', minWidth: 50, maxWidth: 180, fontVariant: ['tabular-nums'] }, foodQuantity: { justifyContent: 'center', flexWrap: 'wrap' }, chip: { minWidth: 50, minHeight: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' } });
+const styles = StyleSheet.create({ total: { flexDirection: 'row', alignItems: 'center', gap: 8 }, add: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' }, stepper: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, paddingVertical: 4, flexShrink: 1 }, step: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, quantity: { fontSize: 17, fontWeight: '600', textAlign: 'center', minWidth: 50, maxWidth: 180, fontVariant: ['tabular-nums'] }, foodQuantity: { justifyContent: 'center', flexWrap: 'wrap' }, chip: { minWidth: 50, minHeight: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' } });

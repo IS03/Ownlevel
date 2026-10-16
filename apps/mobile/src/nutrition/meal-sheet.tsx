@@ -1,6 +1,6 @@
 import type { PropsWithChildren, ReactNode } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, StyleSheet, TextInput, View } from 'react-native';
-import { AppIcon, AppText, ScrollScreen, SheetHandle, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { KeyboardAvoidingView, Modal, Platform, StyleSheet, View } from 'react-native';
+import { AppText, ScrollScreen, SearchField, SheetHandle, useReduceMotion } from '@/design-system';
 import { NutritionGlassButton } from './day-controls';
 export const mealShown = (n: number | null | undefined, digits = 2): string => n == null ? '—' : new Intl.NumberFormat('es-AR', { maximumFractionDigits: digits }).format(n);
 export function MealSheet({ title, subtitle, children, onClose, back, right, running, embedded, testID }: PropsWithChildren<{ title: string; subtitle?: string; onClose: () => void; back?: boolean; right?: ReactNode; running?: boolean; embedded?: boolean; testID: string }>) {
@@ -19,14 +19,11 @@ export function MealSheet({ title, subtitle, children, onClose, back, right, run
   return embedded ? body : <Modal visible animationType={reduced ? 'fade' : 'slide'} presentationStyle="pageSheet" onRequestClose={onClose} allowSwipeDismissal={false}>{body}</Modal>;
 }
 export function MealSearch({ value, onChange, label }: { value: string; onChange: (value: string) => void; label: string }) {
-  const { colors } = useOwnlevelTheme();
-  return <View style={[styles.search, { backgroundColor: colors.surface, borderColor: colors.border }]}><AppIcon name="search" size={20} color={colors.textMuted} />
-    <TextInput accessibilityLabel={label} placeholder={label} placeholderTextColor={colors.textMuted} value={value} onChangeText={onChange} style={[styles.searchInput, { color: colors.text }]} clearButtonMode="while-editing" />
-  </View>;
+  return <SearchField label={label} value={value} onChange={onChange} />;
 }
 export const mealSheetStyles = StyleSheet.create({
   footer: { marginTop: 'auto', paddingTop: 24, gap: 12 }, row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64, paddingVertical: 12 },
   text: { flex: 1, gap: 2 }, totals: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
   input: { minHeight: 48, padding: 12, borderRadius: 12, fontSize: 17 }, number: { fontSize: 56, lineHeight: 68, fontWeight: '700', fontVariant: ['tabular-nums'], textAlign: 'center', minWidth: 40, marginRight: 6 },
 });
-const styles = StyleSheet.create({ fill: { flex: 1 }, content: { flexGrow: 1, gap: 20, paddingTop: 8 }, header: { flexDirection: 'row', alignItems: 'center', gap: 8 }, title: { flex: 1, gap: 2 }, center: { textAlign: 'center' }, search: { flexDirection: 'row', alignItems: 'center', minHeight: 48, gap: 8, borderRadius: 12, paddingHorizontal: 12, borderWidth: StyleSheet.hairlineWidth }, searchInput: { flex: 1, fontSize: 17, minHeight: 48 } });
+const styles = StyleSheet.create({ fill: { flex: 1 }, content: { flexGrow: 1, gap: 20, paddingTop: 8 }, header: { flexDirection: 'row', alignItems: 'center', gap: 8 }, title: { flex: 1, gap: 2 }, center: { textAlign: 'center' } });

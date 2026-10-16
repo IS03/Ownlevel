@@ -24,6 +24,7 @@ export {
 } from './primitives';
 export type { AppTextVariant, ButtonVariant } from './primitives';
 export { TextField } from './form';
+export { SearchField } from './search-field';
 export { Chip, ChipGroup, SegmentedControl } from './selection';
 export type { SelectionOption } from './selection';
 export { ListGroup, ListRow } from './list';
