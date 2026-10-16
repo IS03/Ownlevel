@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { RoutineSheetButton } from '@/training/routine-sheet-button';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import type { MobileNutritionDayResponse, NutritionDayMetric } from '@/api/nutrition-day';
-import { AppIcon, AppSheet, AppText, GlassSurface, ScreenGlow, useAppSheetDismiss, useOwnlevelTheme, type AppIconName } from '@/design-system';
+import { AppIcon, AppSheet, AppText, GlassSurface, ScreenGlow, brandTokens, useAppSheetDismiss, useOwnlevelTheme, useReduceMotion, type AppIconName } from '@/design-system';
 import { homeMetricIcon } from '@/home/home-metric-icons';
 import { amount } from './day-format';
 import { NutritionSectionHeading } from './day-controls';
@@ -10,16 +12,29 @@ import { NutritionDayDetails, metricValue, type DayContextAction } from './day-d
 import { canWriteDay } from './day-write-model';
 import { canEditDayMetric } from './metric-entry-model';
 import { NutritionCalorieRing } from './day-rings';
+import { useTweenedNumber } from './use-tweened-number';
 
 function PanelCell({ title, value, target, icon, onPress, metric, actionLabel }: {
   title: string; value: string; target?: string; actionLabel?: string; icon: AppIconName; onPress?: () => void; metric?: NutritionDayMetric;
 }) {
-  const { colors } = useOwnlevelTheme();
+  const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
+  // A new metric value: the ring fills to it; without a target the icon gives a small bump instead.
+  const shown = useTweenedNumber(metric?.value ?? null);
+  const bump = useSharedValue(1);
+  const [last, setLast] = useState(metric?.value ?? null);
+  if ((metric?.value ?? null) !== last) {
+    const next = metric?.value ?? null;
+    setLast(next);
+    if (!reduced && metric && metric.target === null && next !== null && (last === null || next > last)) {
+      bump.set(withSequence(withTiming(1.18, { duration: brandTokens.motion.duration.fast }), withSpring(1, brandTokens.motion.spring)));
+    }
+  }
+  const bumped = useAnimatedStyle(() => ({ transform: [{ scale: bump.value }] }));
   const content = <>
-    <View style={[styles.icon, { backgroundColor: colors.surfaceRaised }]}>
-      {metric ? <View style={StyleSheet.absoluteFill}><NutritionCalorieRing size={36} reading={{ value: metric.value, target: metric.target, partial: false }} testID={`nutrition-metric-ring-${metric.id}`} /></View> : null}
+    <Animated.View style={[styles.icon, { backgroundColor: colors.surfaceRaised }, bumped]}>
+      {metric ? <View style={StyleSheet.absoluteFill}><NutritionCalorieRing size={36} reading={{ value: shown, target: metric.target, partial: false }} testID={`nutrition-metric-ring-${metric.id}`} /></View> : null}
       <AppIcon name={icon} color={colors.textMuted} size={17} />
-    </View>
+    </Animated.View>
     <View style={styles.cellText}>
       <AppText muted variant="caption">{title}</AppText>
       <View style={styles.value}><AppText numeric variant="headline">{value === 'Sin dato' ? '—' : value}</AppText>{target ? <AppText muted numeric variant="caption">{target}</AppText> : null}</View>
