@@ -77,9 +77,9 @@ describe('keyboard and sheet leave together', () => {
     expect(StyleSheet.flatten(view.getByTestId('metric').props.style).height).toBe(480);
   });
   it('follows keyboard frames by translation, without growing/freezing content or restarting entry', () => {
-    const height = makeMutable(0), onClose = jest.fn(), onShow = jest.fn();
+    const keyboard = { height: makeMutable(0), target: makeMutable(0), duration: makeMutable(0) }, onClose = jest.fn(), onShow = jest.fn<() => void>();
     const tree = () => <OwnlevelThemeProvider initialMode="light"><AppSheet testID="follow" closeLabel="Cerrar" onClose={onClose}
-      dismissKeyboardOnClose keyboardHeight={height} keyboardInset={26} onShow={onShow}><Close /></AppSheet></OwnlevelThemeProvider>;
+      dismissKeyboardOnClose keyboard={keyboard} keyboardInset={26} onShow={onShow}><Close /></AppSheet></OwnlevelThemeProvider>;
     const view = render(tree());
     const tail = view.getByTestId('follow-keyboard-tail', { includeHiddenElements: true });
     expect(tail.props.pointerEvents).toBe('none');
@@ -87,12 +87,15 @@ describe('keyboard and sheet leave together', () => {
     expect(StyleSheet.flatten(tail.props.style).height).toBeGreaterThan(300);
     fireEvent(view.UNSAFE_getByType(Modal), 'show');
     expect(onShow).not.toHaveBeenCalled();
+    jest.mocked(withTiming).mockClear();
     fireEvent(view.getByTestId('follow'), 'layout', { nativeEvent: { layout: { height: 300 } } });
     fireEvent(view.UNSAFE_getByType(Modal), 'show');
     expect(onShow).toHaveBeenCalledTimes(1);
+    // It never waits for a keyboard that may not come (a hardware keyboard): the entry starts once presented.
+    expect(withTiming).toHaveBeenCalledWith(0, expect.anything(), expect.any(Function));
     jest.mocked(withTiming).mockClear();
     for (const frame of [0, 30, 80, 160, 240, 340]) {
-      height.set(frame); view.rerender(tree());
+      keyboard.height.set(frame); view.rerender(tree());
       const style = StyleSheet.flatten(view.getByTestId('follow').props.style);
       expect(style.height).toBeUndefined();
       expect(style.transform[0].translateY).toBe(0 - Math.max(0, frame - 26));
@@ -101,10 +104,23 @@ describe('keyboard and sheet leave together', () => {
     jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
     fireEvent.press(view.getByLabelText('Cerrar métrica'));
     for (const frame of [340, 240, 160, 80, 30, 0]) {
-      height.set(frame); view.rerender(tree());
+      keyboard.height.set(frame); view.rerender(tree());
       const style = StyleSheet.flatten(view.getByTestId('follow').props.style);
       expect(style.height).toBeUndefined();
       expect(style.transform[0].translateY).toBe(300 - Math.max(0, frame - 26));
     }
+  });
+  it('holds the entry until focusing settles, then rises on the keyboard\'s curve when it is already on its way', async () => {
+    const keyboard = { height: makeMutable(0), target: makeMutable(0), duration: makeMutable(0) };
+    let focused = () => {};
+    const view = render(<OwnlevelThemeProvider initialMode="light"><AppSheet testID="focus" closeLabel="Cerrar" onClose={jest.fn()}
+      keyboard={keyboard} onShow={() => new Promise<void>(resolve => { focused = resolve; })}><Close /></AppSheet></OwnlevelThemeProvider>);
+    jest.mocked(withTiming).mockClear();
+    fireEvent(view.getByTestId('focus'), 'layout', { nativeEvent: { layout: { height: 300 } } });
+    fireEvent(view.UNSAFE_getByType(Modal), 'show');
+    expect(withTiming).not.toHaveBeenCalledWith(0, expect.anything(), expect.anything());
+    keyboard.target.set(340); keyboard.duration.set(250);
+    await act(async () => { focused(); });
+    expect(withTiming).toHaveBeenCalledWith(0, { duration: 250, easing: expect.anything() }, expect.any(Function));
   });
 });

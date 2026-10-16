@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
 import { Keyboard, Modal, Platform, Pressable, StyleSheet, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming, type SharedValue } from 'react-native-reanimated';
+import Animated, { Easing, runOnJS, useAnimatedReaction, useAnimatedStyle, useSharedValue, withSpring, withTiming, type SharedValue } from 'react-native-reanimated';
 
 import { motion } from './brand';
 import { useReduceMotion } from './motion';
@@ -20,6 +20,10 @@ export function useAppSheetDismiss(): AppSheetDismiss {
 const TIMING = { duration: motion.duration.base, easing: Easing.bezier(...motion.easing) };
 // A full keyboard travel must ease in as well as out; the short-control curve starts too abruptly here.
 const KEYBOARD_TIMING = { duration: motion.duration.base, easing: Easing.inOut(Easing.cubic) };
+/** The iOS keyboard's own curve (keyboardWillChangeFrame), for anything that moves with it. */
+export const KEYBOARD_EASING = Easing.bezier(0.25, 0.1, 0.25, 1);
+/** The keyboard as a sheet follows it: current height, where it is heading and how long it takes. */
+export type SheetKeyboard = { height: SharedValue<number>; target: SharedValue<number>; duration: SharedValue<number> };
 
 type AppSheetProps = PropsWithChildren<{
   onClose: () => void;
@@ -38,29 +42,49 @@ type AppSheetProps = PropsWithChildren<{
   /** Dismiss the keyboard at the start of an accepted exit, holding sheet geometry until it is gone. */
   dismissKeyboardOnClose?: boolean;
   /** Follow the keyboard on the UI thread without resizing the sheet's content. */
-  keyboardHeight?: SharedValue<number>;
+  keyboard?: SheetKeyboard;
   keyboardInset?: number;
-  onShow?: () => void;
+  /**
+   * Runs once the sheet is presented and measured (focus an input here). Returning a promise holds the entry until it
+   * settles: focusing an input blocks the UI thread for a few frames, which would otherwise land in the slide.
+   */
+  onShow?: () => void | Promise<void>;
 }>;
 
 /**
  * App-drawn bottom sheet: it slides in and leaves the same way (IDENTIDAD.md § Movimiento, 300 ms), follows a
  * drag down and closes from the backdrop. With Reduce Motion it only fades.
  */
-export function AppSheet({ children, onClose, closeLabel, locked = false, dragFromContent = false, edgeSwipe = false, style, testID, beforeDismiss, dismissKeyboardOnClose = false, keyboardHeight, keyboardInset = 0, onShow }: AppSheetProps) {
+export function AppSheet({ children, onClose, closeLabel, locked = false, dragFromContent = false, edgeSwipe = false, style, testID, beforeDismiss, dismissKeyboardOnClose = false, keyboard, keyboardInset = 0, onShow }: AppSheetProps) {
   const reduced = useReduceMotion();
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const [gone, setGone] = useState(false);
   const [after, setAfter] = useState<{ run?: () => void }>({});
-  const shown = useSharedValue(0), closing = useSharedValue(false);
+  const shown = useSharedValue(0), closing = useSharedValue(false), entering = useSharedValue(false);
   const offset = useSharedValue(windowHeight), sheetHeight = useSharedValue(windowHeight), sideways = useSharedValue(0);
+  const keyboardHeight = keyboard?.height;
   const measured = useRef(false);
   const nativeShown = useRef(false), notifiedShown = useRef(false);
+  const enter = () => {
+    if (closing.get()) return;
+    entering.set(true);
+    // A keyboard already on its way sets the curve; otherwise the sheet's own (the keyboard may still join it, below).
+    const timing = keyboard && keyboard.target.get() > 0 ? { duration: keyboard.duration.get(), easing: KEYBOARD_EASING } : keyboard ? KEYBOARD_TIMING : TIMING;
+    offset.set(withTiming(0, timing, done => { if (done) entering.value = false; }));
+  };
   const notifyShown = () => {
     if (!nativeShown.current || !measured.current || notifiedShown.current) return;
     notifiedShown.current = true;
-    onShow?.();
+    const ready = onShow?.();
+    if (reduced || !onShow) return;
+    if (ready) void ready.then(enter, enter); else enter();
   };
+  // The sheet never waits for the keyboard (a hardware keyboard never shows one). If the keyboard starts while the
+  // sheet is still entering, the rest of the entry runs on the keyboard's curve and timing: one movement, no second push.
+  useAnimatedReaction(() => keyboard?.target.value ?? 0, (next, previous) => {
+    if (!keyboard || next <= 0 || (previous ?? 0) > 0 || !entering.value || closing.value) return;
+    offset.value = withTiming(0, { duration: keyboard.duration.value, easing: KEYBOARD_EASING }, done => { if (done) entering.value = false; });
+  });
 
   const finish = useCallback(() => { onClose(); after.run?.(); }, [after, onClose]);
   // iOS must finish removing the Modal before a next one is presented (the `after` action may open one):
@@ -70,6 +94,7 @@ export function AppSheet({ children, onClose, closeLabel, locked = false, dragFr
   const leave = useCallback((next: (() => void) | undefined, toSide: boolean) => {
     if (closing.get() || locked) return;
     closing.set(true);
+    entering.set(false);
     if (dismissKeyboardOnClose) Keyboard.dismiss();
     setAfter({ run: next });
     // Reduce Motion: the backdrop fades and the sheet leaves without sliding.
@@ -78,7 +103,7 @@ export function AppSheet({ children, onClose, closeLabel, locked = false, dragFr
     // A swipe from the edge leaves sideways, the way it was pulled; everything else slides down.
     if (toSide) sideways.set(withTiming(windowWidth, TIMING, done => { if (done) runOnJS(hide)(); }));
     else offset.set(withTiming(sheetHeight.get(), keyboardHeight ? KEYBOARD_TIMING : TIMING, done => { if (done) runOnJS(hide)(); }));
-  }, [closing, dismissKeyboardOnClose, hide, keyboardHeight, locked, offset, reduced, sheetHeight, shown, sideways, windowWidth]);
+  }, [closing, dismissKeyboardOnClose, entering, hide, keyboardHeight, locked, offset, reduced, sheetHeight, shown, sideways, windowWidth]);
   const requestLeave = useCallback((next: (() => void) | undefined, side: boolean) => {
     if (locked) return;
     if (beforeDismiss && !next) {
@@ -94,11 +119,11 @@ export function AppSheet({ children, onClose, closeLabel, locked = false, dragFr
   useEffect(() => { shown.set(withTiming(1, TIMING)); }, [shown]);
 
   const pan = useMemo(() => Gesture.Pan().withTestId(`${testID ?? 'app-sheet'}-pan`).enabled(!locked).activeOffsetY(8).failOffsetX([-24, 24])
-    .onUpdate(event => { offset.set(Math.max(0, event.translationY)); })
+    .onUpdate(event => { entering.set(false); offset.set(Math.max(0, event.translationY)); })
     .onEnd(event => {
       if (event.translationY > sheetHeight.value * 0.25 || event.velocityY > 900) runOnJS(dismiss)();
       else offset.set(withSpring(0, motion.spring));
-    }), [dismiss, locked, offset, sheetHeight, testID]);
+    }), [dismiss, entering, locked, offset, sheetHeight, testID]);
   const edge = useMemo(() => Gesture.Pan().enabled(edgeSwipe && !locked).hitSlop({ left: 0, width: 28 }).activeOffsetX(10).failOffsetY([-20, 20])
     .onUpdate(event => { sideways.set(Math.max(0, event.translationX)); })
     .onEnd(event => {
@@ -123,7 +148,7 @@ export function AppSheet({ children, onClose, closeLabel, locked = false, dragFr
     if (measured.current) return;
     measured.current = true;
     if (reduced) offset.set(0);
-    else { offset.set(next); offset.set(withTiming(0, keyboardHeight ? KEYBOARD_TIMING : TIMING)); }
+    else { offset.set(next); if (!onShow) enter(); }
     notifyShown();
   }} style={[styles.sheet, style, keyboardHeight && styles.keyboardSheet, sheet]} testID={testID}>
     {keyboardHeight ? <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"

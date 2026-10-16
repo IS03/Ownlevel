@@ -29,7 +29,7 @@ export { Chip, ChipGroup, SegmentedControl } from './selection';
 export type { SelectionOption } from './selection';
 export { ListGroup, ListRow } from './list';
 export { SheetHandle, SheetHeader, SheetSurface } from './sheet';
-export { AppSheet, useAppSheetDismiss, type AppSheetDismiss } from './app-sheet';
+export { AppSheet, KEYBOARD_EASING, useAppSheetDismiss, type AppSheetDismiss, type SheetKeyboard } from './app-sheet';
 export { motionDurations, pressedStyle, pressScale, useReduceMotion } from './motion';
 export { usePullRefresh } from './pull-refresh';
 export { AppIcon, appIconSize } from './icons';
