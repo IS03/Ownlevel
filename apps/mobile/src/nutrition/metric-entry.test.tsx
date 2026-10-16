@@ -1,9 +1,11 @@
 import { act, fireEvent, render, renderHook } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { useSyncExternalStore } from 'react';
+import { StyleSheet } from 'react-native';
+import { withTiming } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { MobileNutritionDayResponse, NutritionDayMetric } from '@/api/nutrition-day';
-import { AppText, OwnlevelThemeProvider } from '@/design-system';
+import { AppSheet, AppText, OwnlevelThemeProvider } from '@/design-system';
 import type { NutritionStoragePort } from './intent-repository';
 import { DayWriteController, type DayWriteApi } from './day-write-controller';
 import { DayWriteRepository } from './day-write-storage';
@@ -79,6 +81,27 @@ async function open(f = setup()) {
 }
 const save = async (view: Awaited<ReturnType<typeof open>>['view'], label = 'Agua') => { await act(async () => { fireEvent.press(view.getByLabelText(`Guardar ${label}`)); }); };
 beforeEach(() => { jest.clearAllMocks(); });
+it('opts the shared Home/Nutrition metric sheet into closing its keyboard at the start of the exit', async () => {
+  const { view } = await open();
+  expect(view.UNSAFE_getByType(AppSheet).props.dismissKeyboardOnClose).toBe(true);
+  expect(view.UNSAFE_getByType(AppSheet).props.keyboardHeight).toBeDefined();
+  expect(view.UNSAFE_getByType(AppSheet).props.onShow).toEqual(expect.any(Function));
+  expect(view.getByLabelText('Valor de Agua').props.autoFocus).toBe(false);
+});
+it('gives Nutrition panel presses a wider, subtler fading highlight without moving the content', async () => {
+  const { view } = await open();
+  const cell = view.getByTestId(`nutrition-metric-${metricId}`);
+  const highlight = view.getByTestId(`nutrition-panel-highlight-${metricId}`, { includeHiddenElements: true });
+  expect(StyleSheet.flatten(highlight.props.style)).toMatchObject({ top: -8, bottom: -8, left: -8, right: -8, opacity: 0 });
+  expect(highlight.props.pointerEvents).toBe('none');
+  expect(highlight.props.accessibilityElementsHidden).toBe(true);
+  expect(StyleSheet.flatten(cell.props.style).backgroundColor).toBeUndefined();
+  jest.mocked(withTiming).mockClear();
+  fireEvent(cell, 'pressIn');
+  expect(withTiming).toHaveBeenCalledWith(0.3, { duration: 200, reduceMotion: expect.anything() });
+  fireEvent(cell, 'pressOut');
+  expect(withTiming).toHaveBeenCalledWith(0, { duration: 200, reduceMotion: expect.anything() });
+});
 describe('quick entry uses the same durable day writer and exact undo',()=>{
  const first=(f:ReturnType<typeof setup>)=>{const d=f.data();if(d.activity.status!=='ok')throw new Error('Missing fixture');return d.activity.data.metrics[0];};
  it.each([null,0,1.5])('creates or adds to the displayed value %s, and undo restores missing rather than zero',async(value)=>{
@@ -165,13 +188,22 @@ describe('individual metric sheet and existing writer', () => {
     expect(f.mutate.mock.calls[1][0]).toMatchObject({ changes: [{ value: null }] });
     expect(await view.findByText('Agua: Sin dato · deshecho')).toBeTruthy();
   });
-  it('removes explicitly as null and restores zero rather than treating it as missing', async () => {
-    const { f, view } = await open(setup(0));
-    await act(async () => { fireEvent.press(view.getByText('Quitar el valor de hoy')); });
-    expect(f.mutate.mock.calls[0][0]).toMatchObject({ changes: [{ value: null }] });
+  it.each([null, 0, 0.5])('never offers to clear the value %s from the shared metric sheet', async value => {
+    const { f, view } = await open(setup(value));
+    expect(view.queryByText(/Quitar el valor/)).toBeNull();
+    expect(view.queryByRole('button', { name: /Quitar el valor/ })).toBeNull();
+    expect(view.getByLabelText('Guardar Agua').props.accessibilityState.disabled).toBe(true);
+    expect(f.mutate).not.toHaveBeenCalled();
+  });
+  it('still allows manual replacement with zero and undo restores the exact previous value', async () => {
+    const { f, view } = await open(setup(0.5));
+    fireEvent.press(view.getByText('Reemplazar'));
+    fireEvent.changeText(view.getByLabelText('Valor de Agua'), '0');
+    await save(view);
+    expect(f.mutate.mock.calls[0][0]).toMatchObject({ changes: [{ value: 0 }] });
     await view.findByTestId('nutrition-metric-notice');
     await act(async () => { fireEvent.press(view.getByLabelText('Deshacer cambio de métrica')); });
-    expect(f.mutate.mock.calls[1][0]).toMatchObject({ changes: [{ value: 0, expectedUpdatedAt: null }] });
+    expect(f.mutate.mock.calls[1][0]).toMatchObject({ changes: [{ value: 0.5, expectedUpdatedAt: `${date}T13:00:00.000001Z` }] });
   });
   it('replacement is absolute; blank, fractional integers and unchanged values cannot save', async () => {
     const { f, view } = await open(setup(100, 'integer'));

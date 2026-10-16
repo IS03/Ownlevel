@@ -17,13 +17,19 @@ jest.mock('@expo/ui/swift-ui', () => {
 });
 jest.mock('@expo/ui/swift-ui/modifiers', () => ({
   accessibilityLabel: (label: string) => ({ label }), font: () => ({}), foregroundStyle: () => ({}), padding: () => ({}),
+  buttonStyle: () => ({}), menuStyle: () => ({}), menuIndicator: () => ({}),
 }));
+jest.mock('expo-glass-effect', () => {
+  const { View } = jest.requireActual<typeof import('react-native')>('react-native');
+  return { GlassView: View, isGlassEffectAPIAvailable: () => true, isLiquidGlassAvailable: () => true };
+});
 
 describe('Home "+ Comida" native menu (iOS)', () => {
   it('has the same entries as Nutrición (a mano, rápido, alimento por cantidad), each calling its flow', () => {
     const handlers = { onFood: jest.fn(), onManual: jest.fn(), onQuick: jest.fn() };
     const view = render(<OwnlevelThemeProvider initialMode="light"><HomeAddMenu {...handlers} /></OwnlevelThemeProvider>);
     expect(view.getByText('+ Comida')).toBeTruthy();
+    expect(view.getByTestId('home-add-menu-glass').props.tintColor).toBe('rgba(201,182,138,0.32)');
     fireEvent.press(view.getByText('A mano'));
     fireEvent.press(view.getByText('Rápido'));
     fireEvent.press(view.getByText('Alimento por cantidad'));

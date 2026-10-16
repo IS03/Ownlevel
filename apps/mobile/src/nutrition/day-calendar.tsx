@@ -32,7 +32,7 @@ const monthName = (month: string, style: 'long' | 'short' = 'long') => new Intl.
 
 /**
  * Month calendar in an app sheet: drag it down or tap outside to close. The month title opens a month/year
- * picker for far dates; every month keeps six rows so the sheet never changes height.
+ * picker for far dates; its height follows the visible month, without retaining a previous read/error's height.
  */
 /** Just the month (compact): the averages and the report live in Progreso. */
 export function NutritionMonthSheet({ date, today, onClose, onSelect }: {
@@ -54,8 +54,6 @@ function MonthBody({ date, today, onSelect, picking, setPicking }: {
   const { colors } = useOwnlevelTheme();
   const dismiss = useAppSheetDismiss();
   const [month, setMonth] = useState(`${date.slice(0, 7)}-01`);
-  // The sheet keeps its tallest height (the day grid) when the month picker replaces it.
-  const [height, setHeight] = useState(0);
   const { client } = useMobileApi();
   const select = (selected: string) => dismiss(() => onSelect(selected));
   const move = (delta: number) => {
@@ -76,7 +74,7 @@ function MonthBody({ date, today, onSelect, picking, setPicking }: {
       </Pressable>
       {picking ? <View style={styles.arrow} /> : <Pressable accessibilityLabel="Mes siguiente" accessibilityRole="button" onPress={() => move(1)} style={styles.arrow}><AppIcon name="chevronRight" size={20} color={colors.primary} /></Pressable>}
     </View>
-    <View style={[styles.body, { minHeight: height }]} onLayout={event => { const next = event.nativeEvent.layout.height; if (next > height) setHeight(next); }}>
+    <View style={styles.body} testID="nutrition-month-body">
       {picking ? <MonthWheel month={month} today={today} onChange={setMonth} onDone={next => { setMonth(next); setPicking(false); }} />
         : month > today ? <MonthGrid month={month} selected={date} today={today} onSelect={select} />
         : <ReadMonth key={month} month={month} selected={date} today={today} onSelect={select} />}
@@ -112,8 +110,7 @@ function MonthGrid({ month, selected, today, onSelect, report, loading, unavaila
 }) {
   const { colors } = useOwnlevelTheme();
   const { days, offset } = nutritionMonth(month);
-  // Six rows for every month: the sheet keeps one height from month to month.
-  const cells = Array.from({ length: 42 }, (_, i) => i >= offset && i < offset + days ? shiftNutritionDate(month, i - offset)! : null);
+  const cells = Array.from({ length: Math.ceil((offset + days) / 7) * 7 }, (_, i) => i >= offset && i < offset + days ? shiftNutritionDate(month, i - offset)! : null);
   const rows = new Map(report?.days.map(row => [row.date, row]));
   return <View testID="nutrition-month" style={styles.calendar}>
     <View style={styles.week}>{['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((day, i) => <AppText key={i} muted variant="caption" style={styles.weekday}>{day}</AppText>)}</View>
@@ -139,7 +136,7 @@ const styles = StyleSheet.create({
   arrow: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   calendar: { gap: 8 },
   week: { flexDirection: 'row' }, weekday: { flex: 1, textAlign: 'center' },
-  cell: { flex: 1, minHeight: 52, justifyContent: 'center', alignItems: 'center' },
+  cell: { flex: 1, minHeight: 44, justifyContent: 'center', alignItems: 'center' },
   // The ring is centered on the day number (it used to sit at the cell's top-left corner).
   cellRing: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },
   selection: { width: 12, height: 2, borderRadius: 2, position: 'absolute', bottom: 8 },
