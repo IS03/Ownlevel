@@ -1,62 +1,84 @@
-import { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useContext, useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useMobileApi } from '@/api';
 import type { NutritionReport } from '@/api/nutrition-report';
-import { AppIcon, AppText, Button, SheetHandle, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { AppIcon, AppSheet, AppText, Button, useAppSheetDismiss, useOwnlevelTheme } from '@/design-system';
+import { NutritionGlassButton } from './day-controls';
 import { displayNutritionDate, inputNutritionDate, number, parseInputNutritionDate, shiftNutritionDate } from './day-format';
 import { nutritionMonth, reportRings } from './day-home-model';
 import { NutritionCalorieRing } from './day-rings';
 import { readingLabel } from './day-summary';
 import { useNutritionReportResource } from './report-resource';
 
+const MONTHS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const monthName = (month: string, style: 'long' | 'short' = 'long') => new Intl.DateTimeFormat('es-AR', { month: style, year: 'numeric', timeZone: 'UTC' })
+  .format(new Date(`${month}T12:00:00Z`)).replace(/^./u, c => c.toLocaleUpperCase('es-AR'));
+
+/**
+ * Month calendar in an app sheet: drag it down or tap outside to close. The month title opens a month/year
+ * picker for far dates; every month keeps six rows so the sheet never changes height.
+ */
 export function NutritionMonthSheet({ date, today, onClose, onSelect, onReport }: {
   date: string; today: string; onClose: () => void; onSelect: (date: string) => void; onReport?: (range: { from: string; to: string }) => void;
 }) {
+  // Context (not the hook): it also opens from places rendered without a provider (tests, nested sheets).
+  const { colors } = useOwnlevelTheme(), bottom = useContext(SafeAreaInsetsContext)?.bottom ?? 0;
+  return <AppSheet onClose={onClose} closeLabel="Cerrar calendario" dragFromContent testID="nutrition-month-sheet"
+    style={{ backgroundColor: colors.background, paddingBottom: Math.max(bottom, 16) }}>
+    <MonthBody date={date} today={today} onSelect={onSelect} onReport={onReport} />
+  </AppSheet>;
+}
+function MonthBody({ date, today, onSelect, onReport }: { date: string; today: string; onSelect: (date: string) => void; onReport?: (range: { from: string; to: string }) => void }) {
   const { colors } = useOwnlevelTheme();
-  const reduced = useReduceMotion();
+  const dismiss = useAppSheetDismiss();
   const [month, setMonth] = useState(`${date.slice(0, 7)}-01`);
-  const [manual, setManual] = useState(false);
-  const [input, setInput] = useState(inputNutritionDate(date));
-  const [error, setError] = useState(false);
-  const select = (selected: string) => { onSelect(selected); onClose(); };
+  const [picking, setPicking] = useState(false);
+  // The sheet keeps its tallest height (the day grid) when the month picker replaces it.
+  const [height, setHeight] = useState(0);
+  const select = (selected: string) => dismiss(() => onSelect(selected));
   const move = (delta: number) => {
     const value = new Date(`${month}T12:00:00Z`);
     value.setUTCMonth(value.getUTCMonth() + delta);
     const next = value.toISOString().slice(0, 10);
     if (parseInputNutritionDate(inputNutritionDate(next))) setMonth(next);
   };
-  const monthTitle = new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${month}T12:00:00Z`)).replace(/^./u, c => c.toLocaleUpperCase('es-AR'));
-  return <Modal transparent animationType={reduced ? 'fade' : 'slide'} visible onRequestClose={onClose}>
-    <View style={styles.modal}>
-      <Pressable accessibilityLabel="Cerrar calendario" onPress={onClose} style={styles.backdrop} />
-      <SafeAreaView edges={['bottom', 'left', 'right']} style={[styles.sheet, { backgroundColor: colors.background }]} accessibilityViewIsModal>
-        <SheetHandle />
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.monthHeader}>
-            <Pressable accessibilityLabel="Mes anterior" accessibilityRole="button" onPress={() => move(-1)} style={styles.arrow}><AppIcon name="chevronLeft" size={20} color={colors.primary} /></Pressable>
-            <AppText accessibilityRole="header" variant="headline">{monthTitle}</AppText>
-            <Pressable accessibilityLabel="Mes siguiente" accessibilityRole="button" onPress={() => move(1)} style={styles.arrow}><AppIcon name="chevronRight" size={20} color={colors.primary} /></Pressable>
-          </View>
-          {month > today ? <MonthGrid month={month} selected={date} today={today} onSelect={select} />
-            : <ReadMonth key={month} month={month} selected={date} today={today} onSelect={select} onReport={onReport ? range => { onClose(); onReport(range); } : undefined} />}
-          <View style={styles.footer}>
-            <Button label="Volver a hoy" variant="quiet" onPress={() => select(today)} />
-            <Button label="Otra fecha" variant="quiet" onPress={() => setManual(v => !v)} />
-          </View>
-          {manual ? <View style={styles.manual}>
-            <AppText muted variant="footnote">Usá el formato DD/MM/AAAA.</AppText>
-            <TextInput accessibilityLabel="Fecha DD/MM/AAAA" autoCorrect={false} keyboardType="numbers-and-punctuation" maxLength={10}
-              onChangeText={value => { setInput(value); setError(false); }} value={input} placeholder="DD/MM/AAAA" placeholderTextColor={colors.textMuted}
-              style={[styles.input, { color: colors.text, borderColor: error ? colors.danger : colors.border }]} />
-            {error ? <AppText accessibilityRole="alert">Ingresá una fecha válida.</AppText> : null}
-            <Button label="Consultar fecha" onPress={() => { const selected = parseInputNutritionDate(input); if (selected) select(selected); else setError(true); }} />
-          </View> : null}
-          <Button label="Cerrar calendario" variant="quiet" onPress={onClose} />
-        </ScrollView>
-      </SafeAreaView>
+  return <View style={styles.content}>
+    <View style={styles.monthHeader}>
+      {picking ? <View style={styles.arrow} /> : <Pressable accessibilityLabel="Mes anterior" accessibilityRole="button" onPress={() => move(-1)} style={styles.arrow}><AppIcon name="chevronLeft" size={20} color={colors.primary} /></Pressable>}
+      <Pressable accessibilityRole="button" accessibilityLabel={`${monthName(month)}. ${picking ? 'Volver a los días' : 'Elegir mes y año'}`} onPress={() => setPicking(v => !v)} style={styles.title} testID="nutrition-month-title">
+        <AppText accessibilityRole="header" variant="headline" style={picking && { color: colors.primary }}>{monthName(month)}</AppText>
+        <AppIcon name={picking ? 'chevronDown' : 'chevronRight'} size={15} color={picking ? colors.primary : colors.textMuted} />
+      </Pressable>
+      {picking ? <View style={styles.arrow} /> : <Pressable accessibilityLabel="Mes siguiente" accessibilityRole="button" onPress={() => move(1)} style={styles.arrow}><AppIcon name="chevronRight" size={20} color={colors.primary} /></Pressable>}
     </View>
-  </Modal>;
+    <View style={[styles.body, { minHeight: height }]} onLayout={event => { const next = event.nativeEvent.layout.height; if (next > height) setHeight(next); }}>
+      {picking ? <MonthPicker month={month} today={today} onPick={next => { setMonth(next); setPicking(false); }} />
+        : month > today ? <><MonthGrid month={month} selected={date} today={today} onSelect={select} /><View style={styles.average} /></>
+        : <ReadMonth key={month} month={month} selected={date} today={today} onSelect={select} onReport={onReport ? range => dismiss(() => onReport(range)) : undefined} />}
+    </View>
+  </View>;
+}
+/** Year with arrows and its twelve months; months after today are not offered. */
+function MonthPicker({ month, today, onPick }: { month: string; today: string; onPick: (month: string) => void }) {
+  const { colors } = useOwnlevelTheme();
+  const [year, setYear] = useState(Number(month.slice(0, 4)));
+  const lastYear = Number(today.slice(0, 4));
+  return <View style={styles.picker} testID="nutrition-month-picker">
+    <View style={styles.monthHeader}>
+      <Pressable accessibilityLabel="Año anterior" accessibilityRole="button" onPress={() => setYear(y => y - 1)} style={styles.arrow}><AppIcon name="chevronLeft" size={20} color={colors.primary} /></Pressable>
+      <AppText numeric variant="headline">{year}</AppText>
+      <Pressable accessibilityLabel="Año siguiente" accessibilityRole="button" accessibilityState={{ disabled: year >= lastYear }} disabled={year >= lastYear} onPress={() => setYear(y => y + 1)}
+        style={[styles.arrow, year >= lastYear && { opacity: 0.3 }]}><AppIcon name="chevronRight" size={20} color={colors.primary} /></Pressable>
+    </View>
+    <View style={styles.months}>{MONTHS.map((label, i) => {
+      const value = `${year}-${String(i + 1).padStart(2, '0')}-01`, future = value > today, current = value === month;
+      return <Pressable key={label} accessibilityRole="button" accessibilityLabel={monthName(value)} accessibilityState={{ disabled: future, selected: current }} disabled={future}
+        onPress={() => onPick(value)} style={[styles.monthCell, { backgroundColor: current ? colors.brandSubtle : colors.surface }, future && { opacity: 0.35 }]} testID={`nutrition-pick-${value.slice(0, 7)}`}>
+        <AppText variant="subheadline" style={current && { color: colors.primary, fontWeight: '600' }}>{label}</AppText>
+      </Pressable>;
+    })}</View>
+  </View>;
 }
 function ReadMonth({ month, today, ...props }: { month: string; today: string; selected: string; onSelect: (date: string) => void; onReport?: (range: { from: string; to: string }) => void }) {
   const { client } = useMobileApi();
@@ -67,7 +89,6 @@ function ReadMonth({ month, today, ...props }: { month: string; today: string; s
   const average = report?.summary.metrics.calories;
   return <>
     <MonthGrid {...props} month={month} today={today} report={report} loading={state.status === 'loading'} unavailable={failed} />
-    {state.status === 'loading' ? <AppText muted variant="footnote">Cargando mes…</AppText> : null}
     {failed ? <View style={styles.manual}><AppText accessibilityRole="alert">{report ? 'No pudimos actualizar este mes. Mostramos la última lectura.' : 'No pudimos cargar este mes.'}</AppText>
       <Button variant="quiet" label="Reintentar mes" onPress={() => void refresh()} /></View> : null}
     <View style={styles.average}>
@@ -75,7 +96,7 @@ function ReadMonth({ month, today, ...props }: { month: string; today: string; s
         <AppText numeric variant="footnote">{average ? average.value === null ? 'Sin promedio disponible' : `${number(average.value)} kcal · ${average.denominator} de ${report!.coverage.finalizedDays} días${average.partialDays > 0 ? ' · parcial' : ''}` : '—'}</AppText>
         {average && report?.range.end === today ? <AppText muted variant="caption">Hoy sigue en curso y no entra en el promedio.</AppText> : null}
       </View>
-      {props.onReport ? <Button label="Ver reporte" variant="quiet" onPress={() => props.onReport?.({ from: month, to: end < today ? end : today })} /> : null}
+      {props.onReport ? <NutritionGlassButton icon="progress" label="Ver reporte" wide onPress={() => props.onReport?.({ from: month, to: end < today ? end : today })} /> : null}
     </View>
   </>;
 }
@@ -84,9 +105,10 @@ function MonthGrid({ month, selected, today, onSelect, report, loading, unavaila
 }) {
   const { colors } = useOwnlevelTheme();
   const { days, offset } = nutritionMonth(month);
-  const cells = Array.from({ length: Math.ceil((days + offset) / 7) * 7 }, (_, i) => i >= offset && i < offset + days ? shiftNutritionDate(month, i - offset)! : null);
+  // Six rows for every month: the sheet keeps one height from month to month.
+  const cells = Array.from({ length: 42 }, (_, i) => i >= offset && i < offset + days ? shiftNutritionDate(month, i - offset)! : null);
   const rows = new Map(report?.days.map(row => [row.date, row]));
-  return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.gridScroll}><View testID="nutrition-month" style={styles.calendar}>
+  return <View testID="nutrition-month" style={styles.calendar}>
     <View style={styles.week}>{['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((day, i) => <AppText key={i} muted variant="caption" style={styles.weekday}>{day}</AppText>)}</View>
     {Array.from({ length: cells.length / 7 }, (_, week) => <View key={week} style={styles.week}>
       {cells.slice(week * 7, week * 7 + 7).map((day, i) => {
@@ -101,17 +123,22 @@ function MonthGrid({ month, selected, today, onSelect, report, loading, unavaila
         </Pressable>;
       })}
     </View>)}
-  </View></ScrollView>;
+  </View>;
 }
 const styles = StyleSheet.create({
-  modal: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.25)' }, backdrop: { flex: 1 },
-  sheet: { maxHeight: '85%', minHeight: '65%', borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 8 },
-  content: { padding: 16, gap: 16 }, monthHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  arrow: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, gridScroll: { flexGrow: 1 }, calendar: { gap: 8, minWidth: 308, flex: 1 },
+  content: { paddingHorizontal: 16, paddingTop: 4, gap: 16 },
+  monthHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  title: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 8 },
+  arrow: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  calendar: { gap: 8 },
   week: { flexDirection: 'row' }, weekday: { flex: 1, textAlign: 'center' },
-  cell: { flex: 1, minHeight: 52, justifyContent: 'center', alignItems: 'center' }, cellRing: { position: 'absolute' },
+  cell: { flex: 1, minHeight: 52, justifyContent: 'center', alignItems: 'center' },
+  // The ring is centered on the day number (it used to sit at the cell's top-left corner).
+  cellRing: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },
   selection: { width: 12, height: 2, borderRadius: 2, position: 'absolute', bottom: 8 },
-  average: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }, averageText: { flex: 1, minWidth: 160, gap: 4 },
-  footer: { flexDirection: 'row', justifyContent: 'space-between' }, manual: { gap: 12 },
-  input: { minHeight: 48, borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, fontSize: 17 },
+  average: { minHeight: 50, gap: 12 }, averageText: { gap: 4 },
+  body: { gap: 16 }, picker: { gap: 12 },
+  months: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  monthCell: { width: '31.5%', minHeight: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  manual: { gap: 12 },
 });

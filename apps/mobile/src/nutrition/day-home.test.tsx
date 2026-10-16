@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import { Animated, StyleSheet } from 'react-native';
+import { Animated, Modal, StyleSheet } from 'react-native';
 import type { MobileApiClient } from '@/api/client';
 import type { MobileApiReadResult } from '@/api/results';
 import type { NutritionReport, ReportQuery } from '@/api/nutrition-report';
@@ -133,8 +133,21 @@ describe('Nutrition week and month existing reads', () => {
     await waitFor(() => expect(mockReport).toHaveBeenCalledWith(mockClient, { period: 'custom', from: '2026-10-01', to: '2026-10-02' }, expect.anything()));
     expect(await view.findByText('100 kcal · 1 de 1 días')).toBeTruthy();
     expect(view.getByTestId('nutrition-month-2026-10-03').props.accessibilityState.disabled).toBe(true);
-    fireEvent.press(view.getByTestId('nutrition-month-2026-10-01'));
+    await act(async () => { fireEvent.press(view.getByTestId('nutrition-month-2026-10-01')); });
+    // The sheet slides out first; once iOS reports it gone, it closes and selects the day.
+    await act(async () => { fireEvent(view.UNSAFE_getByType(Modal), 'dismiss'); });
     expect(select).toHaveBeenCalledWith('2026-10-01'); expect(close).toHaveBeenCalledTimes(1);
+  });
+  it('always six rows; the month title opens a month/year picker without future months', async () => {
+    const view = render(wrap(<NutritionMonthSheet date="2026-10-02" today="2026-10-02" onSelect={jest.fn()} onClose={jest.fn()} />));
+    await waitFor(() => expect(view.getByTestId('nutrition-month-2026-10-31')).toBeTruthy());
+    expect(view.getByTestId('nutrition-month').children).toHaveLength(7); // weekdays + six weeks
+    fireEvent.press(view.getByTestId('nutrition-month-title'));
+    expect(view.getByTestId('nutrition-pick-2026-11').props.accessibilityState.disabled).toBe(true);
+    fireEvent.press(view.getByLabelText('Año anterior'));
+    fireEvent.press(view.getByTestId('nutrition-pick-2025-05'));
+    await waitFor(() => expect(view.getByTestId('nutrition-month-2025-05-01')).toBeTruthy());
+    expect(view.queryByText('Volver a hoy')).toBeNull(); expect(view.queryByText('Otra fecha')).toBeNull(); expect(view.queryByText('Cerrar calendario')).toBeNull();
   });
   it('keeps monthly failure explicit and skips future-only reads', async () => {
     mockReport.mockResolvedValueOnce(failure);

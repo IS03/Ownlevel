@@ -45,6 +45,10 @@ const ok = (date: string, data = nutritionFixture(date)): MobileApiReadResult<Mo
 const failure: MobileApiReadResult<MobileNutritionDayResponse> = { status: 'unavailable', reason: 'network',
   meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } };
 const element = () => <SafeAreaInsetsContext.Provider value={{ top: 0, bottom: 0, left: 0, right: 0 }}><OwnlevelThemeProvider initialMode="light"><NutritionConfigurationProvider><NutritionDayScreen /></NutritionConfigurationProvider></OwnlevelThemeProvider></SafeAreaInsetsContext.Provider>;
+function finishMonthDismissal(view: ReturnType<typeof render>) {
+  const sheet = view.UNSAFE_getAllByType(Modal).find(m => m.props.testID === 'nutrition-month-sheet-modal');
+  if (sheet) fireEvent(sheet, 'dismiss');
+}
 function finishDetailDismissal(view: ReturnType<typeof render>) {
   const sheet = view.UNSAFE_getAllByType(Modal).find(m => m.props.testID === 'nutrition-day-detail-sheet-modal');
   if (sheet) fireEvent(sheet,'dismiss');
@@ -66,7 +70,8 @@ describe('Native Nutrition day', () => {
     const view = render(element()); await view.findByText('Hoy');
     expect(view.queryByText('Reporte')).toBeNull();
     fireEvent.press(view.getByLabelText('Elegir fecha')); await view.findByText('Ver reporte');
-    fireEvent.press(view.getByText('Ver reporte'));
+    await act(async () => { fireEvent.press(view.getByText('Ver reporte')); });
+    await act(async () => { finishMonthDismissal(view); });
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/nutrition', params: { from: '2026-10-01', to: '2026-10-04' } });
   });
   it('quick composition survives foreground refresh and registers against the displayed destination', async () => {
@@ -246,12 +251,11 @@ describe('Native Nutrition day', () => {
     expect(view.queryByText('Comida 2026-10-02')).toBeNull();
     fireEvent.press(view.getByText('Volver a hoy'));
     await view.findByText('Comida 2026-10-02');
-    fireEvent.press(view.getByLabelText('Elegir fecha')); fireEvent.press(view.getByText('Otra fecha'));
-    fireEvent.changeText(view.getByLabelText('Fecha DD/MM/AAAA'), '30/02/2026');
-    fireEvent.press(view.getByText('Consultar fecha'));
-    expect(view.getByText('Ingresá una fecha válida.')).toBeTruthy();
-    fireEvent.changeText(view.getByLabelText('Fecha DD/MM/AAAA'), '20/09/2026');
-    fireEvent.press(view.getByText('Consultar fecha'));
+    // A far date: the month title opens the month/year picker, then the day.
+    fireEvent.press(view.getByLabelText('Elegir fecha')); fireEvent.press(await view.findByTestId('nutrition-month-title'));
+    fireEvent.press(view.getByTestId('nutrition-pick-2026-09'));
+    await act(async () => { fireEvent.press(await view.findByTestId('nutrition-month-2026-09-20')); });
+    await act(async () => { finishMonthDismissal(view); });
     await view.findByText('Comida 2026-09-20');
     const tiny = nutritionFixture('2026-09-20');
     if (tiny.activity.status === 'ok') tiny.activity.data.metrics[0].value = 0.0001;
