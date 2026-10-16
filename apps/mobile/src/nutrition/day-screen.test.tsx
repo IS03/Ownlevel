@@ -171,6 +171,25 @@ describe('Native Nutrition day', () => {
     await waitFor(() => expect(view.queryByTestId('nutrition-day-write-editor')).toBeNull());
     expect(mockRequest).toHaveBeenCalledTimes(1);
   });
+  it('undo from the notice deletes without opening the editor: running, then a brief confirmation', async () => {
+    mockRead.mockImplementation(async () => ok(mockToday) as never);
+    const saved = { status: 'ok', data: { status: 'saved', mealId: '41100000-0000-4000-8000-000000000002', sourceDate: mockToday, destinationDate: mockToday, updatedAt: `${mockToday}T13:00:00Z` }, meta: { durationMs: 1, httpStatus: 201, outcome: 'ok' } };
+    let finishDelete!: (r: unknown) => void;
+    mockRequest.mockResolvedValueOnce(saved as never).mockImplementationOnce(() => new Promise(resolve => { finishDelete = resolve as (r: unknown) => void; }));
+    const view = render(element()); await view.findByText('Agregar comida');
+    fireEvent.press(view.getByText('Agregar comida')); fireEvent.press(view.getByText('A mano'));
+    fireEvent.changeText(view.getByLabelText('Calorías'), '250');
+    await act(async () => { fireEvent.press(view.getByText(/Agregar al día ·/)); });
+    expect(await view.findByTestId('nutrition-meal-notice')).toBeTruthy();
+    expect(view.queryByText('Comida guardada.')).toBeNull();
+    await act(async () => { fireEvent.press(view.getByLabelText('Deshacer comida agregada')); });
+    expect(view.getByText('Deshaciendo…')).toBeTruthy();
+    expect(view.queryByTestId('manual-meal-editor')).toBeNull();
+    await act(async () => { finishDelete({ ...saved, data: { ...saved.data, status: 'deleted' } }); });
+    expect(await view.findByText('Deshecho')).toBeTruthy();
+    expect(view.queryByTestId('manual-meal-editor')).toBeNull(); expect(view.queryByText('Comida eliminada.')).toBeNull();
+    expect((mockRequest.mock.calls[1][0].body as { operation: string }).operation).toBe('delete');
+  });
   it('keeps a form draft through refresh and fences the pre-write response after confirmed create', async () => {
     let latest = nutritionFixture();
     mockRead.mockImplementation(async () => ({ status: 'ok', data: latest, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } }) as never);
@@ -211,7 +230,7 @@ describe('Native Nutrition day', () => {
     expect(mockRequest).toHaveBeenCalledTimes(1);
     fireEvent.press(view.getByText('Revisar intento guardado'));
     expect(view.getByLabelText('Calorías').props.value).toBe('250');
-    await act(async () => { fireEvent.press(view.getByText('Comprobar intento guardado')); }); await view.findByText('Comida guardada.');
+    await act(async () => { fireEvent.press(view.getByText('Comprobar intento guardado')); }); expect(await view.findByTestId('nutrition-meal-notice')).toBeTruthy(); expect(view.queryByText('Comida guardada.')).toBeNull();
     expect(mockRequest).toHaveBeenCalledTimes(2);
     expect(mockRequest.mock.calls[1][0].body).toEqual(mockRequest.mock.calls[0][0].body);
   });

@@ -10,6 +10,7 @@ import { MealSheet, MealSearch, mealShown as shown, mealSheetStyles as shared } 
 import { MealTiming } from './meal-timing';
 import { MealProjection } from './meal-projection';
 import { MealDateControl } from './meal-date-control';
+import { SaveButton } from './save-button';
 export function MealNutrients({ value }: { value: QuickNutrients }) {
   return <View style={shared.totals}><AppText numeric variant="title1">{shown(value.calories)} <AppText muted>kcal</AppText></AppText><AppText numeric muted variant="footnote">{`P ${shown(value.proteinG)} · C ${shown(value.carbsG)} · G ${shown(value.fatG)}`}</AppText></View>;
 }
@@ -20,6 +21,8 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onUnd
   const draft = state.inlineKey ? null : state.draft;
   const locked = externalLocked || !!state.intent || state.phase !== 'idle' || !!state.inlineKey;
   const running = state.phase === 'pending' || state.phase === 'loading';
+  // Sent and confirmed while the day is re-read: still "saving" (no recovery choices flashing by).
+  const saving = state.phase === 'pending' || (state.phase === 'confirmed' && !state.message);
   // Preview only: debounce quantity edits, cancel stale work in the controller.
   useEffect(() => {
     if (!state.open || !draft || locked || state.preview || state.previewLoading || state.message) return;
@@ -89,15 +92,15 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onUnd
       {state.preview ? <View style={{ gap: 20 }} testID="quick-preview"><MealNutrients value={state.preview.snapshot} /><MealProjection date={state.date} nutrients={state.preview.snapshot} /></View> : null}
       <MealTiming date={state.date} value={draft} disabled={locked} onChange={(label, time) => controller.timing(label, time)} />
       <View style={shared.footer}>
-        <Button disabled={locked || !state.preview || state.previewLoading} label={`Agregar al día${state.preview ? ` · ${shown(state.preview.snapshot.calories)} kcal` : ''}`} onPress={() => void controller.save()} />
+        <SaveButton state={saving && !state.inlineKey ? 'saving' : 'idle'} disabled={locked || !state.preview || state.previewLoading} label={`Agregar al día${state.preview ? ` · ${shown(state.preview.snapshot.calories)} kcal` : ''}`} onPress={() => void controller.save()} />
         {draft.option.source.kind === 'suggestion' ? <Button disabled={locked || !state.preview || state.previewLoading} label="Guardar como habitual" onPress={() => void controller.save('saveSuggestion')} variant="quiet" /> : null}
       </View>
     </>}
     {state.message && state.message !== 'Comida registrada.' ? <AppText accessibilityRole="alert" selectable>{state.message}</AppText> : null}
     {state.phase === 'idle' && !state.preview && !state.previewLoading && state.message && state.draft ? <Button label="Reintentar vista previa" onPress={() => void controller.requestPreview()} variant="quiet" /> : null}
     {state.phase === 'conflict' ? <Surface>{state.truth ? <><AppText variant="headline">La opción cambió</AppText><AppText>{state.truth.name}</AppText><MealNutrients value={state.truth} /><Button label="Revisar la versión actual" onPress={() => { controller.reviewTruth(); void controller.requestPreview(); }} /></> : <AppText>No hay una opción actual confirmada. Conservamos tus cantidades.</AppText>}<Button label="Actualizar fuente" disabled={state.optionsLoading} onPress={() => void controller.loadOptions()} variant="quiet" /><Button label="Elegir otra opción" onPress={() => { controller.back(); }} variant="quiet" /></Surface> : null}
-    {['uncertain', 'confirmed', 'blocked'].includes(state.phase) ? <Button label={state.intent?.receipt ? 'Actualizar datos confirmados' : 'Comprobar intento guardado'} onPress={() => void controller.recover()} /> : null}
-    {state.intent ? <Button label="Volver al día · conservar intento" disabled={running} onPress={close} variant="quiet" /> : null}
+    {['uncertain', 'confirmed', 'blocked'].includes(state.phase) && !saving ? <Button label={state.intent?.receipt ? 'Actualizar datos confirmados' : 'Comprobar intento guardado'} onPress={() => void controller.recover()} /> : null}
+    {state.intent && !saving ? <Button label="Volver al día · conservar intento" disabled={running} onPress={close} variant="quiet" /> : null}
     {!draft && !state.intent ? <AppText muted variant="caption">Destino · {displayNutritionDate(state.date)}</AppText> : null}
   </MealSheet>;
 }

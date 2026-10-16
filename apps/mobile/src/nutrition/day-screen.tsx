@@ -1,6 +1,7 @@
 import type { DayContextAction } from './day-details';
 import { NutritionAddMenu, showNutritionAddMenu } from './add-menu';
 import { useMealNotice } from './use-meal-notice';
+import { NutritionToast } from './nutrition-toast';
 import { MealAddedNotice } from './meal-notice';
 import {useNutritionConfiguration} from './config-provider';
 import {useSavedController} from './use-saved-controller';
@@ -178,8 +179,11 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
     {writes && !metricEntry.entry && !(metricEntry.undoing && writes.state.phase === 'pending') ? <DayWriteEditor controller={writes.controller} state={writes.state} /> : null}
     {metricEntry.undoing && writes?.state.phase === 'pending' ? <MetricSavedNotice notice={{ date, message: 'Deshaciendo…', undo: null }} disabled pending onUndo={() => {}} onClose={() => {}} /> : null}
     {metricEntry.notice ? <MetricSavedNotice notice={metricEntry.notice} disabled={!editable || !!writes?.state.draft} onUndo={metricEntry.undoNotice} onClose={metricEntry.dismissNotice} /> : null}
-    {mealNotice.notice ? <MealAddedNotice notice={mealNotice.notice} disabled={!editable || !!meals?.state.editor} pending={mealNotice.undoing} onUndo={() => void mealNotice.undo()} onClose={mealNotice.dismiss} /> : null}
-    {meals && !(mealNotice.undoing && meals.state.phase === 'pending') ? <MealEditor controller={meals.controller} state={meals.state} /> : null}
+    {/* One notice at a time: a delete/undo running, its brief confirmation, or "Guardado · Deshacer". */}
+    {mealNotice.undoing ? <NutritionToast testID="nutrition-meal-pending" state="pending" message={mealNotice.undoing === 'undo' ? 'Deshaciendo…' : 'Eliminando…'} />
+      : mealNotice.result ? <NutritionToast testID="nutrition-meal-result" state="done" message={mealNotice.result.message} />
+      : mealNotice.notice ? <MealAddedNotice notice={mealNotice.notice} disabled={!editable || !!meals?.state.editor} pending={false} onUndo={() => void mealNotice.undo()} onClose={mealNotice.dismiss} /> : null}
+    {meals ? <MealEditor controller={meals.controller} state={meals.state} /> : null}
   </>;
 }
 const styles = StyleSheet.create({

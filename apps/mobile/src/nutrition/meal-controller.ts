@@ -6,7 +6,8 @@ import { mealDraft, validateMealDraft, type MealDraft, repeatMealDraft } from '.
 import { MealIntentRepository, type StoredMealIntent } from './meal-storage';
 export type MealApi = { mutate: (intent: MealMutationIntent) => Promise<MobileApiRequestResult<MealMutationResponse>>;
   read: (date: string) => Promise<MobileApiReadResult<MobileNutritionDayResponse>> };
-type Editor = { sourceDate: string; mealId: string | null; expectedUpdatedAt: string | null; draft: MealDraft; original: MealDraft };
+/** `headless`: a delete started from the day (undo, swipe) that never shows the editor; its recovery still can. */
+type Editor = { sourceDate: string; mealId: string | null; expectedUpdatedAt: string | null; draft: MealDraft; original: MealDraft; headless?: boolean };
 export type MealEditorState = { phase: 'loading' | 'idle' | 'pending' | 'uncertain' | 'duplicate' | 'conflict' | 'blocked' | 'confirmed';
   editor: Editor | null; intent: StoredMealIntent | null; message: string | null;
   errors: Partial<Record<keyof MealDraft, string>>; truth: NutritionDayMeal | null; truthDate: string | null };
@@ -132,7 +133,8 @@ export class MealController {
     }
     await this.repository.clear(stored.intent.idempotencyKey);
     this.confirmedListeners.forEach(f => f(stored));
-    this.update({ phase: 'idle', intent: null, editor: null, message: receipt.status === 'deleted' ? 'Comida eliminada.' : 'Comida guardada.', errors: {}, truth: null, truthDate: null });
+    // Success is told by the day's notice (confirmed listeners), not by a message left under the add button.
+    this.update({ phase: 'idle', intent: null, editor: null, message: null, errors: {}, truth: null, truthDate: null });
   }
   private async readConflict(date: string, id: string) {
     try {
@@ -147,6 +149,7 @@ export class MealController {
   async undo(meal: NutritionDayMeal, date: string) {
     if (this.busy || this.state.phase !== 'idle' || this.state.intent) return;
     this.open(date, meal);
+    if (this.state.editor) this.update({ editor: { ...this.state.editor, headless: true } });
     await this.save(false, true);
   }
   async refreshConflict() {
