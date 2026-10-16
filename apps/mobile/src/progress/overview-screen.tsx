@@ -14,6 +14,8 @@ import { useProgressRange } from './progress-range-context';
 import { periodHeading } from './progress-range';
 import { arrowDelta, formatValue } from './progress-format';
 import { useProgressResource } from './use-progress-resource';
+import { useNutritionStages } from '@/stages/stages-provider';
+import { stagesRowDetail } from './stages-model';
 
 export type ProgressRoute = '/(tabs)/progress/trends/body' | '/(tabs)/progress/trends/metrics' | '/(tabs)/progress/trends/nutrition'
   | '/(tabs)/progress/trends/training' | '/(tabs)/progress/trends/exercise/[id]';
@@ -120,6 +122,8 @@ export function ProgressOverviewScreen() {
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
   const { query, compare, state, today } = useProgressRange();
+  // The stage is shown only if you want it: one row, never mixed into the period.
+  const stagesDetail = stagesRowDetail(useNutritionStages()?.state.list) ?? 'Tus planes, uno al lado del otro';
   const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressOverview(c, query, signal, compare), [query, compare]);
   const { state: status, data, refresh } = useProgressResource(client, progressRequestKey(query, compare), load);
   // Every destination shares the period in ProgressRangeProvider.
@@ -139,6 +143,10 @@ export function ProgressOverviewScreen() {
         <Highlights data={data} open={open} />
       </> : <UnavailableState title="No pudimos cargar tu progreso" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente."
         action={<Button label="Reintentar" onPress={() => void refresh()} />} />}
+    <ProgressRow testID="progress-stages" label={`Tus etapas. ${stagesDetail}`} onPress={() => router.push('/(tabs)/progress/stages')}>
+      <AppIcon name="calendar" color={colors.textMuted} size={20} />
+      <View style={styles.text}><AppText variant="headline">Tus etapas</AppText><AppText muted numeric variant="footnote">{stagesDetail}</AppText></View>
+    </ProgressRow>
     <ProgressRow testID="progress-influence" label="Qué influye. Preguntas sobre tus días" onPress={() => router.push('/(tabs)/progress/influence')}>
       <AppIcon name="sparkles" color={colors.textMuted} size={20} />
       <View style={styles.text}><AppText variant="headline">Qué influye</AppText><AppText muted variant="footnote">Preguntas sobre tus días</AppText></View>
