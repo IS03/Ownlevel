@@ -38,7 +38,9 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onSav
   if (wasOpen !== state.open) { setWasOpen(state.open); if (!state.open) { setSearch(''); setMore(false); } }
   if (!state.open || !state.date) return null;
   const close = () => {
-    if (running || state.inlineKey && state.previewLoading) return;
+    // A "+" add in flight never holds the sheet: closing lets it finish in the background.
+    if (state.inlineKey) { controller.close(); return; }
+    if (running) return;
     if (!state.intent && controller.dirty()) Alert.alert('¿Descartar ajustes?', 'Estas cantidades todavía no se registraron.', [
       { text: 'Seguir revisando', style: 'cancel' }, { text: 'Descartar', style: 'destructive', onPress: () => controller.close() },
     ]); else controller.close();
@@ -69,8 +71,8 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onSav
     </View>;
   };
   return <MealSheet title={draft?.option.name ?? 'Rápido'} subtitle={draft ? draft.option.source.kind === 'food' ? `Alimento · ${shown(draft.option.items[0].quantity, 3)} ${draft.option.items[0].unit} = ${shown(draft.option.calories)} kcal` : draft.option.templateType === 'composite' ? `Guardada · ${draft.option.items.length} ingredientes` : 'Ajustar comida' : undefined}
-    onClose={draft && !state.intent ? back : close} onDismiss={close} dismissable={!state.intent && !controller.dirty()}
-    back={!!draft && !state.intent} running={running || !!state.inlineKey} embedded={embedded} testID="quick-meal-editor"
+    onClose={draft && !state.intent ? back : close} onDismiss={close} dismissable={!!state.inlineKey || (!state.intent && !controller.dirty())}
+    back={!!draft && !state.intent} running={running && !state.inlineKey} embedded={embedded} testID="quick-meal-editor"
     right={<MealDateControl date={state.date} disabled={locked} onChange={date => controller.changeDate(date)} />}>
     {!draft ? <>
       <MealSearch label="Buscar en tus comidas" value={search} onChange={setSearch} />
