@@ -41,6 +41,7 @@ export type AppIconName =
   | 'nutrition'
   | 'note'
   | 'plus'
+  | 'minus'
   | 'play'
   | 'profile'
   | 'progress'
@@ -103,6 +104,7 @@ export const sfSymbolNames: Record<AppIconName, SFSymbol> = {
   nutrition: 'fork.knife',
   note: 'note.text',
   plus: 'plus',
+  minus: 'minus',
   play: 'play',
   profile: 'person.fill',
   progress: 'chart.line.uptrend.xyaxis',

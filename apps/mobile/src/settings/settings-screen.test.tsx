@@ -169,7 +169,7 @@ describe('Editorial settings', () => {
       expect(mockPush).toHaveBeenCalledWith('/settings/energy');
     },
   );
-  it('routes every row; Plan keeps the existing editor and version opens diagnostics', async () => {
+  it('routes every row; Plan opens stages and version opens diagnostics', async () => {
     const view = render(element());
     await view.findByText('Hola, Nacho.');
     for (const [label, path] of [
@@ -183,7 +183,7 @@ describe('Editorial settings', () => {
     fireEvent.press(view.getByText('OWNLEVEL 1.2.0 (42)'));
     expect(mockPush).toHaveBeenCalledWith('/settings/diagnostics');
     fireEvent.press(view.getByLabelText('Plan'));
-    await view.findByLabelText('Nombre de etapa');
+    expect(mockPush).toHaveBeenCalledWith('/settings/stages');
     expect(view.queryByText(/V2|heredada|borrador/)).toBeNull();
   });
   it('shows cached headline immediately on reentry and no other user data', async () => {

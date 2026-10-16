@@ -7,6 +7,7 @@ import type { MobileApiClient } from '@/api/client';
 import { fetchProfileIdentity, type ProfileIdentity } from '@/api/profile-identity';
 import { fetchNutritionStages, type NutritionStages } from '@/api/nutrition-stages';
 import { fetchMetricDefinitions, type MetricDefinitionsResponse } from '@/api/metric-definitions';
+import { cachedStages, rememberStages } from '@/stages/stages-cache';
 import { useNutritionConfiguration } from '@/nutrition/config-provider';
 type Overview = {
   identity: ProfileIdentity | null;
@@ -100,7 +101,7 @@ export function useSettingsOverview() {
       void fetchNutritionStages(client, signal)
         .then((r) =>
           publish({
-            stages: r.status === 'ok' ? r.data : null,
+            stages: r.status === 'ok' ? (rememberStages(client, userId, r.data), r.data) : null,
             stagesLoading: false,
           }),
         )
@@ -134,5 +135,18 @@ export function useSettingsOverview() {
       subscription.remove();
     };
   }, [refresh]);
-  return { ...data, configuration };
+  const confirmed = client ? cachedStages(client, userId) : null;
+  return {
+    ...data,
+    stages:
+      !data.stagesLoading && data.stages === null
+        ? null
+        : confirmed &&
+            (!data.stages ||
+              confirmed.listVersion > data.stages.listVersion ||
+              confirmed.today > data.stages.today)
+          ? confirmed
+          : data.stages,
+    configuration,
+  };
 }

@@ -113,6 +113,8 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
   }, [markRefreshed, now, refreshAll]));
 
   const refreshNow = useCallback(() => { markRefreshed(); refreshAll(); }, [markRefreshed, refreshAll]);
+  const reloadHome = home.reload, reloadToday = today.reload, reloadCalories = calories.reload;
+  const invalidate = useCallback(() => { markRefreshed(); void Promise.all([reloadHome(), reloadToday(), reloadCalories()]); }, [markRefreshed, reloadHome, reloadToday, reloadCalories]);
 
-  return { calories, habits, home, progressBody, progressRecords, refresh: refreshNow, today, training };
+  return { calories, habits, home, progressBody, progressRecords, refresh: refreshNow, invalidate, today, training };
 }

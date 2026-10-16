@@ -23,6 +23,10 @@ describe('Settings stack', () => {
       { name: 'app', title: 'App' },
       { name: 'energy', title: 'Energía' },
       { name: 'physical', title: 'Datos físicos' },
+      { name: 'stages', title: 'Etapas' },
+      { name: 'stage-action', title: 'Tu plan' },
+      { name: 'stage-plan', title: 'Plan nutricional' },
+      { name: 'stage-sequence', title: 'Programar etapas' },
     ]);
   });
 });

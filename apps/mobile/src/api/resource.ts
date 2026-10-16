@@ -195,5 +195,6 @@ export function useApiResource<T>(loader: ResourceLoader<T>) {
     [controller],
   );
 
-  return { refresh, state };
+  const reload = useCallback(() => controller.reload('manual'), [controller]);
+  return { refresh, reload, state };
 }
