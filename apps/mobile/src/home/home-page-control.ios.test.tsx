@@ -37,7 +37,7 @@ describe('UIKit page control bridge', () => {
     const view = control(theme);
     const native = view.getByTestId('home-week-native-page-control');
     expect(native.props).toMatchObject({ labels, page: 1, isDark: theme === 'dark',
-      activeColor: theme === 'dark' ? '#C9B68A' : '#7D6A3C', inactiveColor: theme === 'dark' ? '#9F9FA9' : '#6A6A72' });
+      activeColor: theme === 'dark' ? '#C9B68A' : '#705F36', inactiveColor: theme === 'dark' ? '#9F9FA9' : '#62626A' });
     expect(StyleSheet.flatten(native.props.style).height).toBe(44);
     expect(view.queryByTestId('home-week-pagination-control')).toBeNull();
     expect(native.props.onResponderMove).toBeUndefined();

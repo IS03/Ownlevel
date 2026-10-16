@@ -95,7 +95,7 @@ describe('Home weekly carousel', () => {
     for (const label of ['Entrenos', 'Nutrición', 'Hábitos']) expect(view.queryByText(label)).toBeNull();
     expect(view.getByTestId('home-week-pagination')).toBeTruthy();
     expect(view.getAllByTestId(/home-week-dot-\d/)).toHaveLength(3);
-    expect(StyleSheet.flatten(view.getByTestId('home-week-active-dot').props.style).backgroundColor).toBe('#7D6A3C');
+    expect(StyleSheet.flatten(view.getByTestId('home-week-active-dot').props.style).backgroundColor).toBe('#705F36');
     fireEvent.press(view.getByRole('button', { name: 'Página 3 de 3: Hábitos' }));
     expect(StyleSheet.flatten(view.getByTestId('home-week-page-2').props.style)).toMatchObject({ minHeight: 44, width: 44 });
     expect(view.getByTestId('home-week-page-2').props.accessibilityState).toEqual({ selected: true });

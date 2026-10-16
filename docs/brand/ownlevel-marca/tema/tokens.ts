@@ -5,7 +5,7 @@
  *
  * Reglas que el código no puede imponer, pero hay que respetar:
  * - Un solo acento. Champagne = lo importante (CTA, serie activa, récord).
- * - En claro, el acento de texto/íconos es #7D6A3C; #C9B68A solo para fondos/hero.
+ * - En claro, el acento de texto/íconos es #705F36 (16/10: antes #7D6A3C, oscurecido para AA 4,5:1); #C9B68A solo para fondos/hero.
  * - Sin semáforo rojo/verde sobre datos del usuario. `error` es solo para fallas
  *   del sistema (sync, pagos) y acciones destructivas.
  * - Subas/bajas se marcan con flecha, no con color.
@@ -47,8 +47,8 @@ export const palette = {
     elevated: '#EAE7DF',
     border: '#E0DCD0',
     text: '#18181B',
-    textMuted: '#6A6A72',
-    accent: '#7D6A3C',
+    textMuted: '#62626A',
+    accent: '#705F36',
     accentSoft: 'rgba(201,182,138,0.32)',
     onAccent: '#FFFFFF',
     heroFrom: '#DCCBA3',
@@ -78,13 +78,13 @@ export const routinePalette = {
 /** Series de gráficos, en orden de uso. Máximo 4 por gráfico. */
 export const chart = {
   dark: ['#C9B68A', '#7FA3C9', '#A99BD6', '#D08C6A', '#6FB3AA', '#8E8E96'],
-  light: ['#7D6A3C', '#3F6A96', '#6B5BA8', '#A3573A', '#2F7A72', '#6A6A72'],
+  light: ['#705F36', '#3F6A96', '#6B5BA8', '#A3573A', '#2F7A72', '#6A6A72'],
 } as const;
 
 /** Escala de intensidad/constancia (calendario, heatmap): 0 = nada, 4 = máximo. */
 export const intensity = {
   dark: ['#27272A', '#504B42', '#786E5A', '#A09272', '#C9B68A'],
-  light: ['#EAE7DF', '#CFC8B6', '#B4A88E', '#988965', '#7D6A3C'],
+  light: ['#EAE7DF', '#CFC8B6', '#B4A88E', '#988965', '#705F36'],
 } as const;
 
 /**

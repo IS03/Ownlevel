@@ -20,7 +20,7 @@ export function SearchField({ value, onChange, label, testID }: { value: string;
 }
 
 const styles = StyleSheet.create({
-  field: { height: layout.inputHeight, borderRadius: radius.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingLeft: spacing.md },
+  field: { minHeight: layout.inputHeight, borderRadius: radius.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingLeft: spacing.md },
   // Every text attribute is explicit: iOS recycles text fields, and one that came from a big number input
   // (line height 68) pushed this text down. It stretches to the field, which centers the line.
   input: { flex: 1, alignSelf: 'stretch', paddingVertical: 0, paddingRight: spacing.md, fontSize: 17, lineHeight: 22, fontWeight: '400',
