@@ -1,22 +1,21 @@
 import { useState } from 'react';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ListGroup, ListRow, SheetHandle, SheetSurface, radius, spacing, useOwnlevelTheme } from '@/design-system';
+import { ListGroup, ListRow, SheetHandle, SheetSurface, spacing } from '@/design-system';
 
 import type { HomeAddMenuProps } from './home-add-menu.types';
-import { HomeLink } from './home-ui';
+import { HomeActionSurface, HomeLink } from './home-ui';
 
 /** Nutrition's "+ Comida" outside iOS: the M9.2 sheet with the same entries as the native menu. */
 export function HomeAddMenu({ onFood, onManual, onQuick }: HomeAddMenuProps) {
   const [open, setOpen] = useState(false);
-  const { colors } = useOwnlevelTheme();
   const run = (action: () => void) => () => { setOpen(false); action(); };
   return (
     <>
-      <View style={[styles.control, { backgroundColor: colors.brandSubtle }]}>
+      <HomeActionSurface style={styles.control} testID="home-add-menu-glass">
         <HomeLink accessibilityLabel="Agregar comida" label="+ Comida" onPress={() => setOpen(true)} testID="home-add-menu" />
-      </View>
+      </HomeActionSurface>
       <Modal animationType="slide" onRequestClose={() => setOpen(false)} transparent visible={open}>
         <Pressable accessibilityLabel="Cerrar" onPress={() => setOpen(false)} style={styles.backdrop} />
         <SheetSurface>
@@ -36,6 +35,6 @@ export function HomeAddMenu({ onFood, onManual, onQuick }: HomeAddMenuProps) {
 
 const styles = StyleSheet.create({
   backdrop: { backgroundColor: 'rgba(0,0,0,0.3)', flex: 1 },
-  control: { borderRadius: radius.full, justifyContent: 'center', minHeight: 44, paddingHorizontal: spacing.md },
+  control: { paddingHorizontal: spacing.md },
   sheet: { gap: spacing.lg, padding: spacing.lg },
 });

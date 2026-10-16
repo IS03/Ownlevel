@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ComponentProps, type RefObject } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
+import { useAnimatedKeyboard } from 'react-native-reanimated';
 import { AppIcon, AppSheet, AppText, Button, GlassSurface, useAppSheetDismiss, pressedStyle, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
@@ -21,23 +21,26 @@ function SheetControl({ label, icon, disabled, accent, pending, onPress }: {
     </GlassSurface>
   </Pressable>;
 }
-/**
- * iOS: the sheet sits on the keyboard, frame by frame, so both rise in one motion. KeyboardAvoidingView
- * and the Modal's own fade let the keyboard arrive first and the value end up under it.
- */
-function KeyboardSpacer({ rest }: { rest: number }) {
+/** iOS moves a constant-size sheet with the keyboard, never an animated layout spacer. */
+function KeyboardMetricSheet({ input, ...props }: ComponentProps<typeof AppSheet> & { input: RefObject<TextInput | null> }) {
   const keyboard = useAnimatedKeyboard();
-  const style = useAnimatedStyle(() => ({ height: Math.max(keyboard.height.value + 8 - rest, 0) }));
-  return <Animated.View style={style} />;
+  const insets = useSafeAreaInsets();
+  return <AppSheet {...props} keyboardHeight={keyboard.height} keyboardInset={Math.max(insets.bottom, 16) - 8} onShow={() => input.current?.focus()} />;
 }
 export function MetricEntrySheet({ id, controller, state, onClose }: { id: string; controller: DayWriteController; state: DayWriteState; onClose: () => void }) {
   const draft = state.draft;
   const metric = draft ? findDayMetric(draft.baseline, id) : undefined;
   const {colors}=useOwnlevelTheme();
+  const input = useRef<TextInput>(null);
   const running=state.phase==='pending'||state.phase==='confirmed'&&!state.message;
-  return draft?.kind === 'metrics' && metric ? <AppSheet key={`${draft.baseline.date}:${id}`} locked={running} onClose={onClose} closeLabel="Cerrar carga de métrica" style={{backgroundColor:colors.background,maxHeight:'90%'}}><MetricForm id={id} controller={controller} state={state}/></AppSheet> : null;
+  if (draft?.kind !== 'metrics' || !metric) return null;
+  const props = { dismissKeyboardOnClose: true, locked: running, onClose, closeLabel: 'Cerrar carga de métrica', style: { backgroundColor: colors.background, maxHeight: '90%' as const } };
+  const form = <MetricForm id={id} controller={controller} state={state} input={input} />;
+  return Platform.OS === 'ios'
+    ? <KeyboardMetricSheet key={`${draft.baseline.date}:${id}`} {...props} input={input}>{form}</KeyboardMetricSheet>
+    : <AppSheet key={`${draft.baseline.date}:${id}`} {...props}>{form}</AppSheet>;
 }
-function MetricForm({ id, controller, state }: { id: string; controller: DayWriteController; state: DayWriteState }) {
+function MetricForm({ id, controller, state, input }: { id: string; controller: DayWriteController; state: DayWriteState; input: RefObject<TextInput | null> }) {
   const draft = state.draft!, data = draft.baseline, metric = findDayMetric(data, id)!;
   const { colors } = useOwnlevelTheme(), insets = useSafeAreaInsets(),dismiss=useAppSheetDismiss();
   const onClose=()=>dismiss();
@@ -46,8 +49,6 @@ function MetricForm({ id, controller, state }: { id: string; controller: DayWrit
   // A typed number starts empty with a grey "0" behind it: typing 500 gives 500, never 0500.
   // Durations keep their wheels at 0 h 0 min when there is something to add to.
   const [raw, setRaw] = useState<MetricInput>(() => metricRaw(duration && metric.value !== null ? 0 : null, duration));
-  const input = useRef<TextInput>(null);
-  const [removing, setRemoving] = useState(false);
   const restInset = Math.max(insets.bottom, 16);
   // Sent, or confirmed while the day is re-read: still saving for the user (no recovery choice flashing by).
   const running = state.phase === 'pending' || (state.phase === 'confirmed' && !state.message);
@@ -68,7 +69,7 @@ function MetricForm({ id, controller, state }: { id: string; controller: DayWrit
       const canonical = metricRaw(value, current.valueType === 'duration');
       for (const field of ['value', 'hours', 'minutes'] as const) controller.changeMetric(id, field, canonical[field]);
     }
-    setRaw(next); setRemoving(false);
+    setRaw(next);
   };
   const changeMode = (next: MetricEntryMode) => {
     if (locked) return;
@@ -81,17 +82,10 @@ function MetricForm({ id, controller, state }: { id: string; controller: DayWrit
     controller.reviewWithServerVersion();
     const next = controller.getSnapshot();
     if (next.phase !== 'idle' || !next.draft) return;
-    if (removing) for (const field of ['value', 'hours', 'minutes'] as const) controller.changeMetric(id, field, '');
-    else apply(raw, mode, next.draft.baseline);
-  };
-  const remove = () => {
-    if (locked || state.phase !== 'idle' || metric.value === null) return;
-    setRemoving(true);
-    for (const field of ['value', 'hours', 'minutes'] as const) controller.changeMetric(id, field, '');
-    void controller.save();
+    apply(raw, mode, next.draft.baseline);
   };
   const truth = state.truth ? findDayMetric(state.truth, id) : undefined;
-  const saveDisabled = locked || state.phase !== 'idle' || (!removing && (invalid || !candidate?.valid));
+  const saveDisabled = locked || state.phase !== 'idle' || invalid || !candidate?.valid;
   return <KeyboardAvoidingView enabled={Platform.OS === 'android'} behavior="height">
       <View style={{paddingBottom:restInset}} testID="nutrition-metric-sheet">
         {/* "always": a tap on the native Sumar/Reemplazar control must not drop the keyboard. */}
@@ -106,11 +100,11 @@ function MetricForm({ id, controller, state }: { id: string; controller: DayWrit
             <ExerciseSegmented accessibilityLabel="Cómo cargar la métrica" value={mode} options={[{ value: 'add', label: `Sumar a ${relative}` }, { value: 'replace', label: 'Reemplazar' }]} onChange={changeMode} />
           </View> : null}
           {metric.valueType === 'duration' ? <MetricDuration value={raw} disabled={locked} onChange={next => apply(next, mode)} />
-            : <View style={styles.numberRow}><TextInput ref={input} accessibilityLabel={`Valor de ${metric.label}`} autoFocus editable={!locked} keyboardType={metric.valueType === 'decimal' ? 'decimal-pad' : 'number-pad'}
+            : <View style={styles.numberRow}><TextInput ref={input} accessibilityLabel={`Valor de ${metric.label}`} autoFocus={Platform.OS !== 'ios'} editable={!locked} keyboardType={metric.valueType === 'decimal' ? 'decimal-pad' : 'number-pad'}
               value={raw.value} placeholder={mode === 'replace' && metric.value !== null ? metricRaw(metric.value, false).value : '0'} placeholderTextColor={colors.textMuted} onChangeText={value => apply({ ...raw, value }, mode)}
               style={[styles.number, { color: colors.text }]} /><AppText muted variant="title2">{metric.unit}</AppText></View>}
           <AppText accessibilityLiveRegion="polite" muted numeric variant="footnote" style={styles.center} testID="nutrition-metric-preview">
-            {removing ? 'Quedaría sin dato' : !duration && raw.value.trim() === '' ? mode === 'add' ? 'Escribí cuánto sumar' : metric.value === null ? `Escribí el valor de ${relative}` : 'Escribí el nuevo valor'
+            {!duration && raw.value.trim() === '' ? mode === 'add' ? 'Escribí cuánto sumar' : metric.value === null ? `Escribí el valor de ${relative}` : 'Escribí el nuevo valor'
               : invalid ? 'Ingresá un valor válido' : `Quedaría en ${metricValue(metric, candidate!.value)}`}
           </AppText>
           {state.errors[id] || state.errors.form ? <AppText accessibilityRole="alert">{state.errors[id] ?? state.errors.form}</AppText> : null}
@@ -122,11 +116,7 @@ function MetricForm({ id, controller, state }: { id: string; controller: DayWrit
             {truth ? <Button label="Revisar lo que escribí" variant="secondary" onPress={review} /> : null}
           </View> : null}
           {['uncertain', 'confirmed', 'blocked'].includes(state.phase) && !running ? <Button label={state.intent?.receipt ? 'Actualizar el día' : 'Comprobar cambio'} onPress={() => void controller.recover()} /> : null}
-          {metric.value !== null ? <Pressable accessibilityRole="button" accessibilityLabel={`Quitar el valor de ${relative}`} accessibilityState={{ disabled: locked || state.phase !== 'idle' }} disabled={locked || state.phase !== 'idle'} onPress={remove} style={styles.remove}>
-            <AppText muted variant="footnote">{`Quitar el valor de ${relative}`}</AppText>
-          </Pressable> : null}
         </ScrollView>
-        {Platform.OS === 'ios' ? <KeyboardSpacer rest={restInset} /> : null}
       </View>
     </KeyboardAvoidingView>
   ;
@@ -137,5 +127,5 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 16 }, header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   title: { flex: 1, gap: 4 }, center: { textAlign: 'center' }, control: { width: 44, height: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   numberRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 8, paddingTop: 8 },
-  number: { fontSize: 48, fontWeight: '700', fontVariant: ['tabular-nums'], textAlign: 'center', minWidth: 32, minHeight: 64, padding: 0 }, status: { gap: 12 }, remove: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  number: { fontSize: 48, fontWeight: '700', fontVariant: ['tabular-nums'], textAlign: 'center', minWidth: 32, minHeight: 64, padding: 0 }, status: { gap: 12 },
 });

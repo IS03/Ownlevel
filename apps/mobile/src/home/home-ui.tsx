@@ -1,10 +1,11 @@
 import { useContext, type PropsWithChildren } from 'react';
-import { Pressable, StyleSheet, View, type ViewProps } from 'react-native';
+import { Pressable, StyleSheet, View, type ViewProps, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
 import {
   AppIcon,
   AppText,
+  GlassSurface,
   brandTokens,
   pressedStyle,
   radius,
@@ -66,7 +67,16 @@ export function HomeLink({ accessibilityLabel, label, onPress, testID }: { acces
   );
 }
 
-/** Full-width action: `solid` = the one primary action; `soft` = accent text on the soft accent. */
+/** Raised champagne material shared by Home's session and food controls. */
+export function HomeActionSurface({ children, style, testID }: PropsWithChildren<{ style?: StyleProp<ViewStyle>; testID?: string }>) {
+  const { colors } = useOwnlevelTheme();
+  const reduced = useReduceMotion();
+  return <View style={styles.actionShadow}>
+    <GlassSurface interactive={!reduced} tint={colors.brandSubtle} style={[styles.actionSurface, style]} testID={testID}>{children}</GlassSurface>
+  </View>;
+}
+
+/** Full-width action: `solid` = the one primary action; `soft` = champagne Liquid Glass. */
 export function HomeButton({ accessibilityHint, label, onPress, testID, tone }: {
   accessibilityHint?: string; label: string; onPress: () => void; testID?: string; tone: 'solid' | 'soft';
 }) {
@@ -77,8 +87,10 @@ export function HomeButton({ accessibilityHint, label, onPress, testID, tone }: 
     : { background: colors.brandSubtle, text: colors.primary };
   return (
     <Pressable accessibilityHint={accessibilityHint} accessibilityLabel={label} accessibilityRole="button" onPress={onPress}
-      style={({ pressed }) => [styles.button, { backgroundColor: palette.background }, pressedStyle(pressed, reduceMotion)]} testID={testID}>
-      <AppText style={{ color: palette.text }} variant="headline">{label}</AppText>
+      style={({ pressed }) => [tone === 'solid' && [styles.button, { backgroundColor: palette.background }], pressedStyle(pressed, reduceMotion)]} testID={testID}>
+      {tone === 'soft' ? <HomeActionSurface style={styles.button} testID={testID ? `${testID}-glass` : undefined}>
+        <AppText style={{ color: palette.text }} variant="headline">{label}</AppText>
+      </HomeActionSurface> : <AppText style={{ color: palette.text }} variant="headline">{label}</AppText>}
     </Pressable>
   );
 }
@@ -153,6 +165,8 @@ export function HomeSectionHeader({ action, onAction, title }: { action?: string
 const ICON_COLUMN = 36;
 
 const styles = StyleSheet.create({
+  actionShadow: { borderRadius: radius.full, shadowColor: '#000000', shadowOpacity: 0.12, shadowOffset: { width: 0, height: 4 }, shadowRadius: 10, elevation: 3 },
+  actionSurface: { borderRadius: radius.full, minHeight: 44, justifyContent: 'center' },
   button: { alignItems: 'center', borderRadius: radius.full, minHeight: brandTokens.layout.buttonHeight, justifyContent: 'center', paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   fill: { borderRadius: radius.full, height: '100%' },
   flex: { flex: 1, minWidth: 0 },

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { RoutineSheetButton } from '@/training/routine-sheet-button';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import type { MobileNutritionDayResponse, NutritionDayMetric } from '@/api/nutrition-day';
@@ -19,6 +19,11 @@ function PanelCell({ title, value, target, icon, onPress, metric, actionLabel }:
   title: string; value: string; target?: string; actionLabel?: string; icon: AppIconName; onPress?: () => void; metric?: NutritionDayMetric;
 }) {
   const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
+  const highlight = useSharedValue(0);
+  const highlighted = useAnimatedStyle(() => ({ opacity: highlight.value }));
+  const pressFeedback = (pressed: boolean) => highlight.set(withTiming(pressed ? 0.3 : 0, {
+    duration: brandTokens.motion.duration.fast, reduceMotion: ReduceMotion.Never,
+  }));
   // A new metric value: the ring fills to it; without a target the icon gives a small bump instead.
   const shown = useTweenedNumber(metric?.value ?? null);
   const bump = useSharedValue(1);
@@ -42,7 +47,11 @@ function PanelCell({ title, value, target, icon, onPress, metric, actionLabel }:
     </View>
   </>;
   return onPress ? <Pressable accessibilityRole="button" accessibilityLabel={`${title}: ${value}${target ? ` ${target}` : ''}. ${actionLabel ?? 'Editar actividad'}`}
-    onPress={onPress} style={({ pressed }) => [styles.cell, pressed && { backgroundColor: colors.brandSubtle }]} testID={metric ? `nutrition-metric-${metric.id}` : undefined}>{content}</Pressable> : <View style={styles.cell}>{content}</View>;
+    onPress={onPress} onPressIn={() => pressFeedback(true)} onPressOut={() => pressFeedback(false)} style={styles.cell} testID={metric ? `nutrition-metric-${metric.id}` : undefined}>
+    <Animated.View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
+      testID={`nutrition-panel-highlight-${metric?.id ?? icon}`} style={[styles.pressHighlight, { backgroundColor: colors.brandSubtle }, highlighted]} />
+    {content}
+  </Pressable> : <View style={styles.cell}>{content}</View>;
 }
 export function NutritionDayPanel({ data, onDetail, onMetric }: {
   data: MobileNutritionDayResponse; onDetail: () => void; onMetric?: (data: MobileNutritionDayResponse, metric: NutritionDayMetric) => void;
@@ -103,6 +112,7 @@ const styles = StyleSheet.create({
   section: { gap: 8 }, panel: { borderRadius: 20, padding: 18, gap: 12 }, row: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   metrics: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 8, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12 },
   cell: { flex: 1, minWidth: '42%', minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12 },
+  pressHighlight: { position: 'absolute', top: -8, bottom: -8, left: -8, right: -8, borderRadius: 20 },
   icon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, cellText: { flex: 1 },
   value: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 4 },
 });
