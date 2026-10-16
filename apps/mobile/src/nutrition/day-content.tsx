@@ -1,11 +1,11 @@
 import type { DayContextAction } from './day-details';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
-import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming, type SharedValue } from 'react-native-reanimated';
 import type { MobileNutritionDayResponse, NutritionDayMetric } from '@/api/nutrition-day';
 import type { NutritionDayMeal } from '../../../../src/lib/mobile-api/nutrition-day-contract';
-import { AppIcon, AppText, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { AppIcon, AppText, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { TrainingContextMenu } from '@/training/routine-context-menu';
 import type { TrainingMenuAction } from '@/training/routine-context-menu.types';
 import { MealDetailSheet, mealEditable, mealTitle } from './meal-detail-sheet';
@@ -41,6 +41,17 @@ function DeleteAction({ onPress, translation }: { onPress: () => void; translati
     <AppIcon color={colors.onPrimary} name="trash" size={20} /><AppText style={{ color: colors.onPrimary }} variant="footnote">Eliminar</AppText>
   </Pressable></Animated.View>;
 }
+/** A just-added meal blinks once (about a second) and settles back; the tint reaches past the text, never cutting it. */
+function RowFlash({ active }: { active: boolean }) {
+  const { colors } = useOwnlevelTheme();
+  const opacity = useSharedValue(0);
+  const { fast, base } = brandTokens.motion.duration;
+  useEffect(() => {
+    if (active) opacity.set(withSequence(withTiming(1, { duration: fast }), withDelay(700, withTiming(0, { duration: base }))));
+  }, [active, base, fast, opacity]);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return <Animated.View pointerEvents="none" style={[styles.flash, { backgroundColor: colors.brandSubtle }, style]} />;
+}
 /**
  * Flat row (E5). Tap opens the detail (D1/D2); long-press shows the native menu and swipe left deletes (D4).
  * The full description lives in the detail.
@@ -62,8 +73,8 @@ function MealRow({ meal, divider, highlighted, actions, onOpen }: { meal: Nutrit
   const row = <Pressable accessibilityRole="button" accessibilityLabel={`${mealTitle(meal)}, ${amount(meal.calories, 'kcal')}. ${meta}`} accessibilityHint="Abre el detalle. Mantené apretado para ver acciones."
     accessibilityActions={menuActions.map(action => ({ name: action.label, label: action.label }))}
     onAccessibilityAction={event => menuActions.find(action => action.label === event.nativeEvent.actionName)?.onPress()}
-    onPress={() => onOpen(meal)} style={({ pressed }) => [styles.meal, { width: width > 0 ? width : undefined, backgroundColor: highlighted ? colors.brandSubtle : 'transparent' },
-      highlighted && { borderRadius: 12 }, pressed && { opacity: 0.6 }]}>
+    onPress={() => onOpen(meal)} style={({ pressed }) => [styles.meal, { width: width > 0 ? width : undefined }, pressed && { opacity: 0.6 }]}>
+    <RowFlash active={!!highlighted} />
     {divider ? <View style={[styles.divider, { backgroundColor: colors.border }]} /> : null}
     <View style={styles.mealText}>
       <AppText numberOfLines={2} variant="headline">{mealTitle(meal)}</AppText>
@@ -72,7 +83,7 @@ function MealRow({ meal, divider, highlighted, actions, onOpen }: { meal: Nutrit
     <AppText numeric variant="subheadline">{amount(meal.calories, 'kcal')}</AppText>
     <AppIcon name="chevronRight" color={colors.textMuted} size={15} />
   </Pressable>;
-  return <View onLayout={event => setWidth(event.nativeEvent.layout.width)} testID={`nutrition-meal-${meal.id}`}>
+  return <View onLayout={event => setWidth(event.nativeEvent.layout.width)} style={styles.bleed} testID={`nutrition-meal-${meal.id}`}>
     <Swipeable enabled={!!menu.remove} friction={1} overshootRight={false} renderRightActions={(_progress, translation, methods) => <DeleteAction translation={translation} onPress={() => confirmDelete(methods)} />}>
       {menuActions.length ? <TrainingContextMenu width={width} disabled={false} name={mealTitle(meal)} onOpen={() => onOpen(meal)} actions={menuActions}>{row}</TrainingContextMenu> : row}
     </Swipeable>
@@ -115,7 +126,10 @@ export function NutritionDayContent({ data, onAdd, addChoices, addControl, highl
 const styles = StyleSheet.create({
   section: { gap: 12 }, heading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
   group: { gap: 0 }, groupLabel: { fontWeight: '600', paddingTop: 4 },
-  meal: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 }, mealText: { flex: 1, gap: 2 },
+  // The row bleeds 12 pt past the gutter so its flash has room; the content keeps the gutter's alignment.
+  bleed: { marginHorizontal: -12 },
+  meal: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 12 }, mealText: { flex: 1, gap: 2 },
   swipeAction: { width: 96, height: '100%', alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 14, marginLeft: 8 },
-  divider: { position: 'absolute', top: 0, left: 0, right: 0, height: StyleSheet.hairlineWidth },
+  divider: { position: 'absolute', top: 0, left: 12, right: 12, height: StyleSheet.hairlineWidth },
+  flash: { position: 'absolute', top: 2, bottom: 2, left: 0, right: 0, borderRadius: 12 },
 });
