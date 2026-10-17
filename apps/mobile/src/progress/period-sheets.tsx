@@ -41,9 +41,9 @@ function Sheet({ title, subtitle, valid, onClose, onDone, children }: {
 function Shortcut({ label, active, onPress }: { label: string; active?: boolean; onPress: () => void }) {
   const { colors } = useOwnlevelTheme();
   return <Pressable accessibilityRole="button" accessibilityState={{ selected: !!active }} onPress={() => { triggerHaptic('stepperChange'); onPress(); }}>
-    {/* The chosen one is solid; glass would wash its fill out. */}
-    {active ? <View style={[styles.shortcut, { backgroundColor: colors.text }]}>
-      <AppText variant="footnote" style={{ fontWeight: '600', color: colors.background }}>{label}</AppText>
+    {/* The chosen one sinks into the app's own raised tone (never black); glass would wash its fill out. */}
+    {active ? <View style={[styles.shortcut, { backgroundColor: colors.surfaceRaised, borderColor: colors.border }]}>
+      <AppText variant="footnote" style={{ fontWeight: '700', color: colors.text }}>{label}</AppText>
     </View> : <GlassSurface interactive style={styles.shortcut}>
       <AppText variant="footnote" style={{ fontWeight: '600', color: colors.text }}>{label}</AppText>
     </GlassSurface>}
@@ -53,6 +53,12 @@ const rangeSubtitle = (r: DateRange | null, today: string, partial: Draft | null
   if (r) { const days = daysBetween(r.start, r.end); return days > PROGRESS_MAX_DAYS ? `Hasta ${PROGRESS_MAX_DAYS} días` : `${shortRange(r, today)} · ${days} días`; }
   return partial ? 'Elegí el último día' : 'Elegí el primer día';
 };
+
+const quickRanges = (today: string): { label: string; range: DateRange }[] => [
+  { label: 'Últimos 30 días', range: { start: addDays(today, -29), end: today } },
+  { label: 'Últimos 90 días', range: { start: addDays(today, -89), end: today } },
+  { label: 'Último año', range: { start: addDays(addMonths(today, -12), 1), end: today } },
+];
 
 /** R3 · Personalizado: one calendar, a painted range, quick shortcuts. */
 export function CustomRangeSheet({ onClose }: { onClose: () => void }) {
@@ -72,9 +78,8 @@ export function CustomRangeSheet({ onClose }: { onClose: () => void }) {
       {!isCurrentProgressRange(state, today) ? <Shortcut label="Volver a hoy" onPress={() => move(currentProgressRange(state, today))} /> : null}
     </View>
     <View style={styles.shortcuts}>
-      <Shortcut label="Últimos 30 días" onPress={() => apply({ start: addDays(today, -29), end: today })} />
-      <Shortcut label="Últimos 90 días" onPress={() => apply({ start: addDays(today, -89), end: today })} />
-      <Shortcut label="Último año" onPress={() => apply({ start: addDays(addMonths(today, -12), 1), end: today })} />
+      {quickRanges(today).map(q => <Shortcut key={q.label} label={q.label} onPress={() => apply(q.range)}
+        active={state.unit === 'custom' && current.start === q.range.start && current.end === q.range.end} />)}
     </View>
     <RangeCalendar month={month} onMonth={setMonth} max={today} onDay={d => setDraft(pick(draft, d))} marks={draft ? [{ range: draft, tone: 'a' }] : []} />
   </Sheet>;
@@ -135,7 +140,7 @@ const styles = StyleSheet.create({
   fill: { flex: 1, justifyContent: 'flex-end' }, scrim: { backgroundColor: 'rgba(0,0,0,0.3)' },
   sheet: { maxHeight: '92%', borderTopLeftRadius: brandTokens.radius.sheet, borderTopRightRadius: brandTokens.radius.sheet, paddingTop: 8 },
   content: { padding: 16, gap: 14 }, header: { flexDirection: 'row', alignItems: 'center', gap: 12 }, title: { flex: 1, alignItems: 'center', gap: 2 },
-  shortcuts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, shortcut: { minHeight: 34, paddingHorizontal: 12, borderRadius: brandTokens.radius.full, justifyContent: 'center' },
+  shortcuts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, shortcut: { minHeight: 34, paddingHorizontal: 12, borderRadius: brandTokens.radius.full, borderWidth: StyleSheet.hairlineWidth, borderColor: 'transparent', justifyContent: 'center' },
   ab: { flexDirection: 'row', gap: 8 }, abItem: { flex: 1 },
   abCell: { borderRadius: brandTokens.radius.inner, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12, paddingVertical: 8, gap: 2 },
 });

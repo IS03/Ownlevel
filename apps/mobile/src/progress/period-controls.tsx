@@ -6,12 +6,13 @@ import { triggerHaptic } from '@/platform/haptics';
 import { PROGRESS_UNITS, currentProgressRange, isCurrentProgressRange, rangeTitle, shiftProgressRange, type ProgressRangeState, type ProgressUnit } from './progress-range';
 import { useProgressRange } from './progress-range-context';
 
-const STRIP = 36, STRIP_OPEN = 46;
+export const STRIP = 44;
+const STRIP_OPEN = 50;
 
 /**
- * R1 · the period strip: one straight glass bar from edge to edge, compact at rest. Dragging it sideways opens it a
- * little so the options read better while you look for one; it settles back once you let go. Personalizado (past the
- * edge) opens the calendar, with "anterior / siguiente" for the unit you are on.
+ * R1 · the period strip: one straight glass bar from edge to edge that stays at the top (it never scrolls with the
+ * page). The options are spaced so the row runs past the edge and scrolls freely; dragging it opens it a touch while
+ * you look. Personalizado (at the end) opens the calendar, with "anterior / siguiente" for the unit you are on.
  */
 export function PeriodBar({ onCustom }: { onCustom: () => void }) {
   const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
@@ -25,7 +26,6 @@ export function PeriodBar({ onCustom }: { onCustom: () => void }) {
   const grow = () => { if (!reduced) open.set(withSpring(1, brandTokens.motion.spring)); };
   const settle = () => { open.set(withDelay(350, withTiming(0, { duration: brandTokens.motion.duration.fast }))); };
   const track = useAnimatedStyle(() => ({ height: STRIP + (STRIP_OPEN - STRIP) * open.value }));
-  const label = useAnimatedStyle(() => ({ transform: [{ scale: 1 + 0.14 * open.value }] }));
   const choose = (unit: ProgressUnit) => {
     if (unit === 'custom') { onCustom(); return; }
     if (unit === state.unit) return;
@@ -33,29 +33,25 @@ export function PeriodBar({ onCustom }: { onCustom: () => void }) {
     // A new unit starts from today, so "Año" shows this year and not the year of the month you were looking at.
     setState({ ...state, unit, anchor: today, custom: null });
   };
-  return <View style={styles.stripSlot}>
-    <Animated.View style={[styles.strip, { borderColor: colors.border }, track]}>
-      {/* Pinned over the content: a near-solid base so text passing behind never shows through the options. */}
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, opacity: 0.92 }]} />
-      <GlassSurface style={StyleSheet.absoluteFill} testID="progress-period-bar" />
-      <ScrollView ref={scroll} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.options}
-        onScrollBeginDrag={grow} onScrollEndDrag={settle} onMomentumScrollEnd={settle}
-        accessibilityRole="tablist" accessibilityLabel="Período">
-        {PROGRESS_UNITS.map(o => {
-          const on = o.value === state.unit;
-          return <Pressable key={o.value} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={o.label}
-            hitSlop={{ top: 4, bottom: 4 }} onPress={() => choose(o.value)} style={styles.option} testID={`progress-unit-${o.value}`}
-            onLayout={e => { const first = offsets.current[o.value] === undefined; offsets.current[o.value] = e.nativeEvent.layout.x; if (first && on) reveal(e.nativeEvent.layout.x, false); }}>
-            <Animated.View style={[styles.optionInner, label]}>
-              <AppText variant="footnote" style={{ color: on ? colors.primary : colors.textMuted, fontWeight: on ? '700' : '500' }}>{o.label}</AppText>
-              {/* The chosen one is champagne with a short line under it; the rest stay muted. */}
-              <View style={[styles.mark, { backgroundColor: on ? colors.primary : 'transparent' }]} />
-            </Animated.View>
-          </Pressable>;
-        })}
-      </ScrollView>
-    </Animated.View>
-  </View>;
+  return <Animated.View style={[styles.strip, { borderColor: colors.border }, track]}>
+    {/* Content scrolls under it: a near-solid base so text passing behind never shows through the options. */}
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, opacity: 0.92 }]} />
+    <GlassSurface style={StyleSheet.absoluteFill} testID="progress-period-bar" />
+    <ScrollView ref={scroll} horizontal bounces={false} decelerationRate="fast" showsHorizontalScrollIndicator={false} contentContainerStyle={styles.options}
+      onScrollBeginDrag={grow} onScrollEndDrag={settle} onMomentumScrollEnd={settle}
+      accessibilityRole="tablist" accessibilityLabel="Período">
+      {PROGRESS_UNITS.map(o => {
+        const on = o.value === state.unit;
+        return <Pressable key={o.value} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={o.label}
+          onPress={() => choose(o.value)} style={styles.option} testID={`progress-unit-${o.value}`}
+          onLayout={e => { const first = offsets.current[o.value] === undefined; offsets.current[o.value] = e.nativeEvent.layout.x; if (first && on) reveal(e.nativeEvent.layout.x, false); }}>
+          <AppText variant="subheadline" style={{ color: on ? colors.primary : colors.textMuted, fontWeight: on ? '700' : '500' }}>{o.label}</AppText>
+          {/* The chosen one is champagne with a short line under it; the rest stay muted. */}
+          <View style={[styles.mark, { backgroundColor: on ? colors.primary : 'transparent' }]} />
+        </Pressable>;
+      })}
+    </ScrollView>
+  </Animated.View>;
 }
 
 /**
@@ -123,13 +119,11 @@ export function CompareHeaderButton({ onPress }: { onPress: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  // Edge to edge: the strip cancels the screen gutter and keeps a fixed slot, so opening it never pushes the page.
-  stripSlot: { height: STRIP, marginHorizontal: -brandTokens.layout.screenPadding, zIndex: 1 },
+  // Positioned by the header (edge to edge); opening it overlaps the page instead of pushing it.
   strip: { position: 'absolute', top: 0, left: 0, right: 0, overflow: 'hidden', borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth },
-  options: { paddingHorizontal: 8, alignItems: 'stretch' },
-  option: { paddingHorizontal: 12, justifyContent: 'center' },
-  optionInner: { alignItems: 'center', gap: 3, paddingTop: 5 },
-  mark: { width: 14, height: 2, borderRadius: 1 },
+  options: { paddingHorizontal: 10, alignItems: 'stretch' },
+  option: { minWidth: 44, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', gap: 4, paddingTop: 6 },
+  mark: { width: 16, height: 2, borderRadius: 1 },
   caption: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 32 },
   captionText: { flex: 1, minHeight: 32, justifyContent: 'center' },
   chipRow: { flexDirection: 'row', alignSelf: 'flex-start', gap: 2 },
