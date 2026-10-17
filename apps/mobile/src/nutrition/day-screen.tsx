@@ -65,7 +65,7 @@ function NutritionDayView({ revision, date, today, onSelect, onServerToday, onAd
   const loaded = state.status === 'ready';
   useEffect(() => { if (loaded) prefetchCalendarMonth(client, date, today); }, [client, date, loaded, today]);
   const pull = usePullRefresh(state.status === 'ready' && state.refreshing, runRefresh);
-  return <ScrollScreen statusBarGlass testID="nutrition-day-screen" refreshControl={
+  return <ScrollScreen scrollEdge testID="nutrition-day-screen" refreshControl={
     <RefreshControl colors={[colors.primary]} onRefresh={pull.onRefresh}
       progressBackgroundColor={colors.surface} refreshing={pull.refreshing}
       testID="nutrition-refresh" tintColor={colors.primary} />
