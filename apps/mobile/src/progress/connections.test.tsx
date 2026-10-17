@@ -212,7 +212,7 @@ describe('connections editorial stories', () => {
     ['protein_strength', 'comparable_exercises', 'current', 0, 1, 'Hace falta repetir un ejercicio en los dos períodos.'],
     ['carbs_energy', 'energy_sessions', 'previous', 1, 2, 'Hacen falta 2 entrenamientos con la energía cargada en cada período. El anterior tiene 1.'],
     ['kcal_weight', 'weigh_ins', 'current', 2, 3, 'Hacen falta 3 pesajes en cada período. Este tiene 2.'],
-    ['kcal_weight', 'weigh_in_span', 'previous', 2, 4, 'Hacen falta pesajes separados por al menos 4 días. Los del período anterior abarcan 2.'],
+    ['kcal_weight', 'weigh_in_span', 'previous', 2, 4, 'Hacen falta pesajes separados por al menos 4 días. Los del período anterior abarcan 2 días.'],
   ] as [ConnectionStory['key'], ConnectionMissing['reason'], ConnectionMissing['period'], number, number, string][])(
     'puts %s with %s below ready stories and explains the actual missing side', async (key, reason, period, have, need, message) => {
       mockTransform = d => changeStory(d, key, { side: reason === 'food_days' ? 'food' : 'outcome', reason, period, have, need });

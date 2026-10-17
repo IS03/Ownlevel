@@ -68,7 +68,7 @@ export function connectionMissingText(missing: ConnectionMissing, unit: Progress
     case 'comparable_exercises': return 'Hace falta repetir un ejercicio en los dos períodos.';
     case 'energy_sessions': return `Hacen falta ${missing.need} entrenamientos con la energía cargada en cada período. ${previous ? 'El anterior' : 'Este'} tiene ${have}.`;
     case 'weigh_ins': return `Hacen falta ${missing.need} pesajes en cada período. ${previous ? 'El anterior' : 'Este'} tiene ${have}.`;
-    case 'weigh_in_span': return `Hacen falta pesajes separados por al menos ${missing.need} días. Los ${which} abarcan ${have}.`;
+    case 'weigh_in_span': return `Hacen falta pesajes separados por al menos ${missing.need} días. Los ${which} abarcan ${have} días.`;
   }
 }
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
