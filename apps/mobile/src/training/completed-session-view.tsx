@@ -8,20 +8,11 @@ import { formatTimeRange } from '@/home/format';
 import { compactWeekdayDate } from './history-model';
 import { trainingRoutineColor } from './routine-colors';
 import { completedSessionModel } from './completed-session-model';
-import { revisitModel, type RevisitExercise, type RevisitFeeling } from './session-revisit-model';
+import { revisitModel, type RevisitExercise } from './session-revisit-model';
+import { FeelingDots } from './feeling-dots';
 import { PostWorkoutScreen } from './post-workout-screen';
 
 const FIRST_EXERCISES = 4;
-
-function Dots({ feeling }: { feeling: RevisitFeeling }) {
-  const { colors } = useOwnlevelTheme();
-  const size = feeling.scale === 10 ? 8 : 10;
-  return <View style={styles.feeling} accessible accessibilityLabel={`${feeling.label}: ${feeling.value} de ${feeling.scale}`} testID={`revisit-feeling-${feeling.key}`}>
-    <AppText muted variant="footnote">{feeling.label}</AppText>
-    <View style={styles.dots}>{Array.from({ length: feeling.scale }, (_, index) => <View key={index}
-      style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: index < feeling.value ? colors.text : colors.border }} />)}</View>
-  </View>;
-}
 
 function ExerciseRow({ exercise, open, first, onToggle, onOpenExercise }: {
   exercise: RevisitExercise; open: boolean; first: boolean; onToggle: () => void; onOpenExercise?: (exerciseId: string) => void;
@@ -111,7 +102,7 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
       <AppText muted numeric variant="subheadline">{model.line}</AppText>
     </View>
     {model.feelings.length || model.note ? <View style={styles.feelings} testID="completed-summary">
-      {model.feelings.length ? <View style={styles.feelingRow}>{model.feelings.map(feeling => <Dots key={feeling.key} feeling={feeling} />)}</View> : null}
+      {model.feelings.length ? <View style={styles.feelingRow}>{model.feelings.map(feeling => <FeelingDots key={feeling.key} feeling={feeling} />)}</View> : null}
       {model.note ? <AppText style={styles.italic}>“{model.note}”</AppText> : null}
     </View> : null}
     {model.muscles.length ? <View style={styles.section} testID="revisit-muscles">
@@ -134,7 +125,7 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
     </View>
     {actions}
     {onTraining ? <Button label="Volver a Entrenar" variant="secondary" onPress={onTraining} /> : null}
-    {finished && postWorkoutOpen && !discarded ? <PostWorkoutScreen finished={finished} readHighlights={readSummary} onHome={() => { setPostWorkoutOpen(false); (onTraining ?? onHome)(); }} onViewSession={() => setPostWorkoutOpen(false)} /> : null}
+    {finished && postWorkoutOpen && !discarded ? <PostWorkoutScreen finished={finished} detail={detail} readSummary={readSummary} onHome={() => { setPostWorkoutOpen(false); (onTraining ?? onHome)(); }} onViewSession={() => setPostWorkoutOpen(false)} /> : null}
   </ScrollScreen>;
 }
 const styles = StyleSheet.create({
@@ -142,7 +133,6 @@ const styles = StyleSheet.create({
   header: { gap: spacing.xs }, title: { flexDirection: 'row', gap: spacing.md, alignItems: 'stretch' }, strip: { width: 4, borderRadius: 2 },
   hero: { gap: spacing.xs },
   feelings: { gap: spacing.md }, feelingRow: { flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.xl, rowGap: spacing.md },
-  feeling: { gap: spacing.sm }, dots: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 12 },
   section: { gap: spacing.md, marginTop: spacing.md },
   muscle: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 28 }, muscleLabel: { width: 108 },
   track: { flex: 1, height: 8, borderRadius: brandTokens.radius.full, overflow: 'hidden' }, fill: { height: '100%', borderRadius: brandTokens.radius.full },

@@ -13,7 +13,8 @@ import { compactWeekdayDate } from './history-model';
 import { FinishPainControl, FinishScaleControl } from './finish-controls';
 import { FinishNoteSheet } from './finish-note-sheet';
 import { FinishSaveAnimation, type SaveOrigin } from './finish-save-animation';
-import { PostWorkoutContent, type SessionHighlightsLoader } from './post-workout-screen';
+import { PostWorkoutContent, type FinishWeekLoader } from './post-workout-screen';
+import type { SessionSummaryLoader } from '@/api/session-summary';
 import { RoutineSheetButton } from './routine-sheet-button';
 export { SummaryScale } from './summary-scale'; // Correction retains its existing presentation/semantics.
 
@@ -36,9 +37,9 @@ function Stat({ value, label }: { value: string; label: string }) {
   return <View style={styles.stat}><AppText numeric variant="title2">{value}</AppText><AppText muted variant="caption">{label}</AppText></View>;
 }
 /** F1→F3→F4 in one modal: the confirmed receipt fades in over the grown champagne circle, so the session never flashes between them. */
-export function FinishSessionSheet({ controller, onClose, onDiscard, readHighlights, onDone, onViewSession }: {
+export function FinishSessionSheet({ controller, onClose, onDiscard, readSummary, readWeek, onDone, onViewSession }: {
   controller: ActiveSessionController; onClose: () => void; onDiscard?: () => void;
-  readHighlights?: SessionHighlightsLoader; onDone: () => void; onViewSession: () => void;
+  readSummary?: SessionSummaryLoader; readWeek?: FinishWeekLoader; onDone: () => void; onViewSession: () => void;
 }) {
   const { colors } = useOwnlevelTheme(), reduceMotion = useReduceMotion(), window = useWindowDimensions();
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
@@ -118,7 +119,7 @@ export function FinishSessionSheet({ controller, onClose, onDiscard, readHighlig
       </Animated.View>
       <FinishSaveAnimation running={running} confirmed={confirmed} origin={origin} reveal={reveal} onReady={showReceipt} />
       {receipt && state.finished ? <Animated.View entering={FadeIn.duration(reduceMotion ? brandTokens.motion.duration.fast : brandTokens.motion.duration.base)} style={StyleSheet.absoluteFill}>
-        <PostWorkoutContent finished={state.finished} readHighlights={readHighlights} onHome={onDone} onViewSession={onViewSession} />
+        <PostWorkoutContent finished={state.finished} detail={state.detail ?? undefined} readSummary={readSummary} readWeek={readWeek} onHome={onDone} onViewSession={onViewSession} />
       </Animated.View> : null}
       {noteOpen ? <FinishNoteSheet value={summary.notes ?? ''} onClose={() => setNoteOpen(false)} onSave={notes => change({ notes })} /> : null}
     </GestureHandlerRootView>
