@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import type { SessionDetailDto, SessionFinishedDto } from '@/api/active-session';
 import type { SessionSummaryDto, SessionSummaryLoader } from '@/api/session-summary';
@@ -17,9 +17,13 @@ const FIRST_EXERCISES = 4;
 function ExerciseRow({ exercise, open, first, onToggle, onOpenExercise }: {
   exercise: RevisitExercise; open: boolean; first: boolean; onToggle: () => void; onOpenExercise?: (exerciseId: string) => void;
 }) {
-  const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
+  const { colors } = useOwnlevelTheme(), reduced = useReduceMotion(), { fontScale } = useWindowDimensions();
   const status = exercise.status, record = status?.kind === 'record';
   const statusColor = record ? colors.primary : status?.kind === 'improved' ? colors.text : colors.textMuted;
+  // Large text: the status goes under the name; otherwise it never takes more than its share of the row.
+  const large = fontScale > 1.3;
+  const statusText = status ? <AppText numeric variant="subheadline" style={[{ color: statusColor }, record && styles.strong, !large && styles.status]}
+    testID={`revisit-status-${exercise.id}`}>{status.label}</AppText> : null;
   return <Animated.View layout={reduced ? undefined : LinearTransition.duration(brandTokens.motion.duration.base)}
     style={[!first && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]} testID={`completed-exercise-${exercise.id}`}>
     <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }}
@@ -29,8 +33,9 @@ function ExerciseRow({ exercise, open, first, onToggle, onOpenExercise }: {
       <View style={styles.flex}>
         <AppText variant="headline" style={exercise.done ? null : { color: colors.textMuted }}>{exercise.name}</AppText>
         {open ? null : <AppText muted numeric variant="footnote">{exercise.line}</AppText>}
+        {status && large ? statusText : null}
       </View>
-      {status ? <AppText numeric variant="subheadline" style={[{ color: statusColor }, record && styles.strong]} testID={`revisit-status-${exercise.id}`}>{status.label}</AppText> : null}
+      {status && !large ? statusText : null}
       <View style={open ? styles.flipped : undefined}><AppIcon name="chevronDown" color={colors.textMuted} size={17} /></View>
     </Pressable>
     {open ? <Animated.View entering={FadeIn.duration(reduced ? brandTokens.motion.duration.fast : brandTokens.motion.duration.base)} style={styles.expanded} testID={`revisit-detail-${exercise.id}`}>
@@ -63,7 +68,7 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
   detail: SessionDetailDto; finished: SessionFinishedDto | null; onHome: () => void; onTraining?: () => void;
   onOpenExercise?: (exerciseId: string) => void; actions?: ReactNode; banner?: ReactNode;
 }) {
-  const { colors, isDark } = useOwnlevelTheme(), reduced = useReduceMotion();
+  const { colors, isDark } = useOwnlevelTheme(), reduced = useReduceMotion(), { fontScale } = useWindowDimensions();
   const [postWorkoutOpen, setPostWorkoutOpen] = useState(Boolean(finished));
   const [summary, setSummary] = useState<SessionSummaryDto>();
   const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -80,7 +85,9 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
   const base = completedSessionModel(detail), model = revisitModel(detail, summary);
   const discarded = base.status === 'discarded';
   const when = [compactWeekdayDate(base.logDate), base.endedAt ? formatTimeRange(base.startedAt, base.endedAt) : null].filter(Boolean).join(' · ');
-  const many = model.exercises.length > FIRST_EXERCISES + 1, shown = many && !showAll ? model.exercises.slice(0, FIRST_EXERCISES) : model.exercises;
+  // Collapsed: the first ones in session order, plus any record (the sentence above names it, so it is never hidden).
+  const many = model.exercises.length > FIRST_EXERCISES + 1;
+  const shown = many && !showAll ? model.exercises.filter((exercise, index) => index < FIRST_EXERCISES || exercise.status?.kind === 'record') : model.exercises;
   const top = model.muscles[0]?.sets ?? 0;
   const toggle = (id: string) => setOpenIds(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const fade = FadeIn.duration(reduced ? brandTokens.motion.duration.fast : brandTokens.motion.duration.base);
@@ -107,20 +114,26 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
     </View> : null}
     {model.muscles.length ? <View style={styles.section} testID="revisit-muscles">
       <Heading level={2}>A dónde fue el trabajo</Heading>
-      {model.muscles.map((muscle, index) => <View key={muscle.label} style={styles.muscle} accessible accessibilityLabel={`${muscle.label}: ${muscle.sets} ${muscle.sets === 1 ? 'serie' : 'series'}`}>
-        <AppText numberOfLines={1} style={styles.muscleLabel} variant="subheadline">{muscle.label}</AppText>
-        <View style={[styles.track, { backgroundColor: colors.surfaceRaised }]}>
+      {model.muscles.map((muscle, index) => {
+        const count = `${muscle.sets} ${muscle.sets === 1 ? 'serie' : 'series'}`;
+        const bar = <View style={[styles.track, { backgroundColor: colors.surfaceRaised }]}>
           <View style={[styles.fill, { width: `${(muscle.sets / top) * 100}%`, backgroundColor: index === 0 ? colors.primary : colors.brandSubtle }]} />
-        </View>
-        <AppText muted numeric style={styles.muscleCount} variant="footnote">{muscle.sets} {muscle.sets === 1 ? 'serie' : 'series'}</AppText>
-      </View>)}
+        </View>;
+        // Large text: label and count on a line, the bar under them, so no group name is cut.
+        return fontScale > 1.3 ? <View key={muscle.label} style={styles.muscleStack} accessible accessibilityLabel={`${muscle.label}: ${count}`}>
+          <View style={styles.muscle}><AppText style={styles.flex} variant="subheadline">{muscle.label}</AppText><AppText muted numeric variant="footnote">{count}</AppText></View>{bar}
+        </View> : <View key={muscle.label} style={styles.muscle} accessible accessibilityLabel={`${muscle.label}: ${count}`}>
+          <AppText numberOfLines={2} style={styles.muscleLabel} variant="subheadline">{muscle.label}</AppText>{bar}
+          <AppText muted numeric style={styles.muscleCount} variant="footnote">{count}</AppText>
+        </View>;
+      })}
     </View> : null}
     <View style={styles.section}>
       <Heading level={2}>Ejercicios</Heading>
       <View>{shown.map((exercise, index) => <ExerciseRow key={exercise.id} exercise={exercise} first={index === 0} open={openIds.has(exercise.id)}
         onToggle={() => toggle(exercise.id)} onOpenExercise={onOpenExercise} />)}</View>
-      {many && !showAll ? <Pressable accessibilityRole="button" onPress={() => setShowAll(true)} style={styles.more} testID="revisit-show-all">
-        <AppText muted variant="headline">+ {model.exercises.length - FIRST_EXERCISES} ejercicios más</AppText>
+      {shown.length < model.exercises.length ? <Pressable accessibilityRole="button" onPress={() => setShowAll(true)} style={styles.more} testID="revisit-show-all">
+        <AppText muted variant="headline">+ {model.exercises.length - shown.length} {model.exercises.length - shown.length === 1 ? 'ejercicio' : 'ejercicios'} más</AppText>
       </Pressable> : null}
     </View>
     {actions}
@@ -136,11 +149,12 @@ const styles = StyleSheet.create({
   section: { gap: spacing.md, marginTop: spacing.md },
   muscle: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 28 }, muscleLabel: { width: 108 },
   track: { flex: 1, height: 8, borderRadius: brandTokens.radius.full, overflow: 'hidden' }, fill: { height: '100%', borderRadius: brandTokens.radius.full },
-  muscleCount: { minWidth: 56, textAlign: 'right' },
+  muscleCount: { minWidth: 56, textAlign: 'right' }, muscleStack: { gap: spacing.xs },
+  status: { flexShrink: 1, maxWidth: '45%', textAlign: 'right' },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 64, paddingVertical: spacing.md },
   lead: { width: 20, alignItems: 'center' }, flipped: { transform: [{ rotate: '180deg' }] },
   expanded: { gap: spacing.sm, paddingLeft: 20 + spacing.md, paddingBottom: spacing.md },
-  set: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 36 }, setNumber: { width: 16 },
+  set: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: spacing.md, rowGap: spacing.xs, minHeight: 36 }, setNumber: { width: 16 },
   tag: { borderRadius: brandTokens.radius.chip, paddingHorizontal: spacing.sm, paddingVertical: 2 },
   link: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: 44 },
   more: { minHeight: 44, justifyContent: 'center' },
