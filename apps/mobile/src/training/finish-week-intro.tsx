@@ -47,7 +47,7 @@ export function FinishWeekIntro({ week, onDone }: { week: FinishWeek; onDone: ()
       <Animated.View style={[styles.week, row]}>
         {week.days.map(day => <Day key={day.date} today={day.today} trained={day.sessionsBefore > 0} fill={fill} />)}
       </Animated.View>
-      <Animated.View style={label}>
+      <Animated.View style={[styles.labelWrap, label]}>
         <AppText numeric variant="title2" style={styles.count} testID="finish-week-count">{filled ? count : ' '}</AppText>
       </Animated.View>
     </Pressable>
@@ -60,5 +60,6 @@ const styles = StyleSheet.create({
   dot: { width: DOT, height: DOT, borderRadius: DOT / 2, alignItems: 'center', justifyContent: 'center' },
   today: { borderWidth: 2, borderColor: hero.accent },
   fill: { width: DOT - 4, height: DOT - 4, borderRadius: (DOT - 4) / 2, backgroundColor: hero.accent },
-  count: { color: hero.onHero },
+  labelWrap: { alignSelf: 'stretch' },
+  count: { color: hero.onHero, textAlign: 'center', paddingHorizontal: brandTokens.space.xl },
 });

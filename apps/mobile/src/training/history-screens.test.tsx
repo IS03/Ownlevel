@@ -125,6 +125,22 @@ describe('completed session: correct + discard (M3.4-3)', () => {
     fireEvent.press(view.getByTestId(`revisit-toggle-${press.id}`));
     expect(view.getByText('antes 40×7')).toBeTruthy();
   });
+  it('SF1: collapsed, the list keeps any record in view (the sentence names it)', async () => {
+    const detail = completedDetail(), base = detail.exercises[0];
+    const id = (n: number) => `56000000-0000-4000-8000-00000000000${n}`;
+    detail.exercises = Array.from({ length: 7 }, (_, n) => ({ ...base, id: id(n), exerciseId: id(n), nameSnapshot: `EJ ${n}`,
+      payload: { ...base.payload, sets: [{ ...base.payload.sets[0], isCompleted: true, actualWeightKg: 40, actualReps: 8 }] } }));
+    const summary = jest.fn<NonNullable<CompletedSessionApi['summary']>>().mockResolvedValue(ok({ sessionId: detail.session.id, volumeKg: 2240,
+      highlights: [{ kind: 'record' as const, exerciseId: id(6), name: 'EJ 6', weightMode: 'Peso total', mark: { weightKg: 40, reps: 8 }, previous: { weightKg: 35, reps: 8 } }],
+      exercises: detail.exercises.map(exercise => ({ sessionExerciseId: exercise.id, exerciseId: exercise.exerciseId, status: 'first' as const, change: null, previous: null })) }));
+    const view = wrap(<CompletedSessionScreen api={{ detail: jest.fn<CompletedSessionApi['detail']>().mockResolvedValue(ok(detail)), discard: jest.fn<CompletedSessionApi['discard']>(), summary }}
+      sessionId={ID(1)} initialDetail={detail} onHome={jest.fn()} />);
+    await flush();
+    expect(view.getByText('EJ 3')).toBeTruthy(); expect(view.queryByText('EJ 4')).toBeNull(); expect(view.getByText('EJ 6')).toBeTruthy();
+    expect(view.getByText('+ 2 ejercicios más')).toBeTruthy();
+    fireEvent.press(view.getByTestId('revisit-show-all'));
+    expect(view.getByText('EJ 4')).toBeTruthy(); expect(view.queryByTestId('revisit-show-all')).toBeNull();
+  });
   it('shows a discarded session without correction or discard actions', async () => {
     const detail = completedDetail(); detail.session.status = 'discarded';
     const view = wrap(<CompletedSessionScreen api={{ detail: jest.fn<CompletedSessionApi['detail']>().mockResolvedValue(ok(detail)), discard: jest.fn<CompletedSessionApi['discard']>() }}
