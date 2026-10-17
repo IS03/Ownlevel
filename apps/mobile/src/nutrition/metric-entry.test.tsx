@@ -84,9 +84,14 @@ beforeEach(() => { jest.clearAllMocks(); });
 it('opts the shared Home/Nutrition metric sheet into closing its keyboard at the start of the exit', async () => {
   const { view } = await open();
   expect(view.UNSAFE_getByType(AppSheet).props.dismissKeyboardOnClose).toBe(true);
-  expect(view.UNSAFE_getByType(AppSheet).props.keyboard).toBeDefined();
-  expect(view.UNSAFE_getByType(AppSheet).props.onShow).toEqual(expect.any(Function));
+  expect(view.UNSAFE_getByType(AppSheet).props.nativeKeyboard).toBe(true);
+  expect(view.UNSAFE_getByType(AppSheet).props.onShow).toBeUndefined();
   expect(view.getByLabelText('Valor de Agua').props.autoFocus).toBe(false);
+});
+it('opens a duration metric directly without waiting for a keyboard notification', async () => {
+  const { view } = await open(setup(null, 'duration'));
+  expect(view.UNSAFE_getByType(AppSheet).props.nativeKeyboard).toBeUndefined();
+  expect(view.UNSAFE_getByType(AppSheet).props.onShow).toBeUndefined();
 });
 it('gives Nutrition panel presses a wider, subtler fading highlight without moving the content', async () => {
   const { view } = await open();

@@ -9,7 +9,6 @@ import { metricValue } from './day-details';
 import { findDayMetric, metricEntryCandidate, metricRaw, type MetricEntryMode } from './metric-entry-model';
 import type { MetricInput } from './day-write-model';
 import { MetricDuration } from './metric-duration';
-import { useMetricKeyboard } from './use-metric-keyboard';
 
 function SheetControl({ label, icon, disabled, accent, pending, onPress }: {
   label: string; icon: 'close' | 'checkmark'; disabled: boolean; accent?: boolean; pending?: boolean; onPress: () => void;
@@ -22,33 +21,24 @@ function SheetControl({ label, icon, disabled, accent, pending, onPress }: {
   </Pressable>;
 }
 /** iOS moves a constant-size sheet with the keyboard, never an animated layout spacer. */
-function KeyboardMetricSheet({ input, focused, ...props }: ComponentProps<typeof AppSheet> & { input: RefObject<TextInput | null>; focused: RefObject<(() => void) | null> }) {
-  const keyboard = useMetricKeyboard();
+function KeyboardMetricSheet(props: ComponentProps<typeof AppSheet>) {
   const insets = useSafeAreaInsets();
-  // Focus first, slide once the input took it (or after a few frames): the keyboard and the sheet then rise together,
-  // and focusing's UI-thread work never lands in the slide. A duration has no input and slides right away.
-  const focus = () => {
-    const field = input.current;
-    if (!field) return;
-    return new Promise<void>(resolve => { focused.current = resolve; setTimeout(resolve, FOCUS_WAIT_MS); field.focus(); });
-  };
-  return <AppSheet {...props} keyboard={keyboard} keyboardInset={Math.max(insets.bottom, 16) - 8} onShow={focus} />;
+  return <AppSheet {...props} nativeKeyboard keyboardInset={Math.max(insets.bottom, 16) - 8} />;
 }
-const FOCUS_WAIT_MS = 150;
 export function MetricEntrySheet({ id, controller, state, onClose }: { id: string; controller: DayWriteController; state: DayWriteState; onClose: () => void }) {
   const draft = state.draft;
   const metric = draft ? findDayMetric(draft.baseline, id) : undefined;
   const {colors}=useOwnlevelTheme();
-  const input = useRef<TextInput>(null), focused = useRef<(() => void) | null>(null);
+  const input = useRef<TextInput>(null);
   const running=state.phase==='pending'||state.phase==='confirmed'&&!state.message;
   if (draft?.kind !== 'metrics' || !metric) return null;
   const props = { dismissKeyboardOnClose: true, locked: running, onClose, closeLabel: 'Cerrar carga de métrica', style: { backgroundColor: colors.background, maxHeight: '90%' as const } };
-  const form = <MetricForm id={id} controller={controller} state={state} input={input} onInputFocus={() => focused.current?.()} />;
-  return Platform.OS === 'ios'
-    ? <KeyboardMetricSheet key={`${draft.baseline.date}:${id}`} {...props} input={input} focused={focused}>{form}</KeyboardMetricSheet>
+  const form = <MetricForm id={id} controller={controller} state={state} input={input} />;
+  return Platform.OS === 'ios' && metric.valueType !== 'duration'
+    ? <KeyboardMetricSheet key={`${draft.baseline.date}:${id}`} {...props}>{form}</KeyboardMetricSheet>
     : <AppSheet key={`${draft.baseline.date}:${id}`} {...props}>{form}</AppSheet>;
 }
-function MetricForm({ id, controller, state, input, onInputFocus }: { id: string; controller: DayWriteController; state: DayWriteState; input: RefObject<TextInput | null>; onInputFocus?: () => void }) {
+function MetricForm({ id, controller, state, input }: { id: string; controller: DayWriteController; state: DayWriteState; input: RefObject<TextInput | null> }) {
   const draft = state.draft!, data = draft.baseline, metric = findDayMetric(data, id)!;
   const { colors } = useOwnlevelTheme(), insets = useSafeAreaInsets(),dismiss=useAppSheetDismiss();
   const onClose=()=>dismiss();
@@ -108,7 +98,7 @@ function MetricForm({ id, controller, state, input, onInputFocus }: { id: string
             <ExerciseSegmented accessibilityLabel="Cómo cargar la métrica" value={mode} options={[{ value: 'add', label: `Sumar a ${relative}` }, { value: 'replace', label: 'Reemplazar' }]} onChange={changeMode} />
           </View> : null}
           {metric.valueType === 'duration' ? <MetricDuration value={raw} disabled={locked} onChange={next => apply(next, mode)} />
-            : <View style={styles.numberRow}><TextInput ref={input} onFocus={onInputFocus} accessibilityLabel={`Valor de ${metric.label}`} autoFocus={Platform.OS !== 'ios'} editable={!locked} keyboardType={metric.valueType === 'decimal' ? 'decimal-pad' : 'number-pad'}
+            : <View style={styles.numberRow}><TextInput ref={input} accessibilityLabel={`Valor de ${metric.label}`} autoFocus={Platform.OS !== 'ios'} editable={!locked} keyboardType={metric.valueType === 'decimal' ? 'decimal-pad' : 'number-pad'}
               value={raw.value} placeholder={mode === 'replace' && metric.value !== null ? metricRaw(metric.value, false).value : '0'} placeholderTextColor={colors.textMuted} onChangeText={value => apply({ ...raw, value }, mode)}
               style={[styles.number, { color: colors.text }]} /><AppText muted variant="title2">{metric.unit}</AppText></View>}
           <AppText accessibilityLiveRegion="polite" muted numeric variant="footnote" style={styles.center} testID="nutrition-metric-preview">
