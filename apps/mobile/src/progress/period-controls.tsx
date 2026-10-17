@@ -8,23 +8,42 @@ import { useProgressRange } from './progress-range-context';
 
 export const STRIP = 44;
 const STRIP_OPEN = 50;
+/** The options repeat so the strip turns like a wheel: past Personalizado comes Semana again, never a stop. */
+const COPIES = 9, MIDDLE = 4;
 
 /**
- * R1 · the period strip: one straight glass bar from edge to edge that stays at the top (it never scrolls with the
- * page). The options are spaced so the row runs past the edge and scrolls freely; dragging it opens it a touch while
- * you look. Personalizado (at the end) opens the calendar, with "anterior / siguiente" for the unit you are on.
+ * R1 · the period strip: one straight glass bar from edge to edge, fixed at the top (it never scrolls with the page).
+ * It loops: dragging past the last option keeps going into the first one. Once it stops it quietly re-centres on the
+ * middle copy, so the wheel never runs out. The chosen period sits in the middle. Personalizado opens the calendar.
  */
 export function PeriodBar({ onCustom }: { onCustom: () => void }) {
   const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
   const { state, setState, today } = useProgressRange();
-  const scroll = useRef<ScrollView>(null), offsets = useRef<Record<string, number>>({});
+  const scroll = useRef<ScrollView>(null);
+  const items = useRef<Record<string, { x: number; width: number }>>({});
+  const copy = useRef(0), view = useRef(0), x = useRef(0), placed = useRef(false);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const open = useSharedValue(0);
-  // Options near the start stay where they are (no half word at the edge); later ones scroll into view.
-  const reveal = (x: number, animated: boolean) => scroll.current?.scrollTo({ x: x < 220 ? 0 : x - 24, animated });
-  // Keep the selected option visible (Personalizado sits past the edge).
-  useEffect(() => { const x = offsets.current[state.unit]; if (x !== undefined) reveal(x, true); }, [state.unit]);
-  const grow = () => { if (!reduced) open.set(withSpring(1, brandTokens.motion.spring)); };
-  const settle = () => { open.set(withDelay(350, withTiming(0, { duration: brandTokens.motion.duration.fast }))); };
+  /** Centre the chosen option, in the copy nearest to where the wheel is now. */
+  const centre = (unit: ProgressUnit, animated: boolean) => {
+    const item = items.current[unit], width = copy.current;
+    if (!item || !width || !view.current) return;
+    const inCopy = item.x + item.width / 2 - view.current / 2;
+    const k = animated ? Math.round((x.current - inCopy) / width) : MIDDLE;
+    scroll.current?.scrollTo({ x: k * width + inCopy, animated });
+  };
+  const place = () => { if (!placed.current && copy.current && view.current && items.current[state.unit]) { placed.current = true; centre(state.unit, false); } };
+  useEffect(() => { if (placed.current) centre(state.unit, true); }, [state.unit]);
+  useEffect(() => () => { if (settleTimer.current) clearTimeout(settleTimer.current); }, []);
+  /** Back to the middle copy at the same visual spot (identical content, so nothing moves on screen). */
+  const recentre = () => {
+    const width = copy.current;
+    if (!width) return;
+    const same = MIDDLE * width + ((((x.current - MIDDLE * width) % width) + width) % width);
+    if (Math.abs(same - x.current) > 0.5) { x.current = same; scroll.current?.scrollTo({ x: same, animated: false }); }
+  };
+  const grow = () => { if (settleTimer.current) clearTimeout(settleTimer.current); if (!reduced) open.set(withSpring(1, brandTokens.motion.spring)); };
+  const rest = () => { open.set(withDelay(350, withTiming(0, { duration: brandTokens.motion.duration.fast }))); recentre(); };
   const track = useAnimatedStyle(() => ({ height: STRIP + (STRIP_OPEN - STRIP) * open.value }));
   const choose = (unit: ProgressUnit) => {
     if (unit === 'custom') { onCustom(); return; }
@@ -37,19 +56,27 @@ export function PeriodBar({ onCustom }: { onCustom: () => void }) {
     {/* Content scrolls under it: a near-solid base so text passing behind never shows through the options. */}
     <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, opacity: 0.92 }]} />
     <GlassSurface style={StyleSheet.absoluteFill} testID="progress-period-bar" />
-    <ScrollView ref={scroll} horizontal bounces={false} decelerationRate="fast" showsHorizontalScrollIndicator={false} contentContainerStyle={styles.options}
-      onScrollBeginDrag={grow} onScrollEndDrag={settle} onMomentumScrollEnd={settle}
+    <ScrollView ref={scroll} horizontal bounces={false} decelerationRate="fast" showsHorizontalScrollIndicator={false}
+      scrollEventThrottle={16} onScroll={e => { x.current = e.nativeEvent.contentOffset.x; }}
+      onLayout={e => { view.current = e.nativeEvent.layout.width; place(); }}
+      onScrollBeginDrag={grow} onMomentumScrollBegin={() => { if (settleTimer.current) clearTimeout(settleTimer.current); }}
+      // A drag that ends without a fling has no momentum end: settle shortly after, unless a fling starts.
+      onScrollEndDrag={() => { settleTimer.current = setTimeout(rest, 80); }} onMomentumScrollEnd={rest}
       accessibilityRole="tablist" accessibilityLabel="Período">
-      {PROGRESS_UNITS.map(o => {
-        const on = o.value === state.unit;
-        return <Pressable key={o.value} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={o.label}
-          onPress={() => choose(o.value)} style={styles.option} testID={`progress-unit-${o.value}`}
-          onLayout={e => { const first = offsets.current[o.value] === undefined; offsets.current[o.value] = e.nativeEvent.layout.x; if (first && on) reveal(e.nativeEvent.layout.x, false); }}>
-          <AppText variant="subheadline" style={{ color: on ? colors.primary : colors.textMuted, fontWeight: on ? '700' : '500' }}>{o.label}</AppText>
-          {/* The chosen one is champagne with a short line under it; the rest stay muted. */}
-          <View style={[styles.mark, { backgroundColor: on ? colors.primary : 'transparent' }]} />
-        </Pressable>;
-      })}
+      {Array.from({ length: COPIES }, (_, k) => <View key={k} style={styles.copy} accessibilityElementsHidden={k !== MIDDLE}
+        importantForAccessibility={k === MIDDLE ? 'auto' : 'no-hide-descendants'}
+        onLayout={k === MIDDLE ? e => { copy.current = e.nativeEvent.layout.width; place(); } : undefined}>
+        {PROGRESS_UNITS.map(o => {
+          const on = o.value === state.unit;
+          return <Pressable key={o.value} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={o.label}
+            onPress={() => choose(o.value)} style={styles.option} testID={k === MIDDLE ? `progress-unit-${o.value}` : undefined}
+            onLayout={k === MIDDLE ? e => { const { x: at, width } = e.nativeEvent.layout; items.current[o.value] = { x: at, width }; place(); } : undefined}>
+            <AppText variant="subheadline" style={{ color: on ? colors.primary : colors.textMuted, fontWeight: on ? '700' : '500' }}>{o.label}</AppText>
+            {/* The chosen one is champagne with a short line under it; the rest stay muted. */}
+            <View style={[styles.mark, { backgroundColor: on ? colors.primary : 'transparent' }]} />
+          </Pressable>;
+        })}
+      </View>)}
     </ScrollView>
   </Animated.View>;
 }
@@ -121,7 +148,7 @@ export function CompareHeaderButton({ onPress }: { onPress: () => void }) {
 const styles = StyleSheet.create({
   // Positioned by the header (edge to edge); opening it overlaps the page instead of pushing it.
   strip: { position: 'absolute', top: 0, left: 0, right: 0, overflow: 'hidden', borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth },
-  options: { paddingHorizontal: 10, alignItems: 'stretch' },
+  copy: { flexDirection: 'row', alignItems: 'stretch' },
   option: { minWidth: 44, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', gap: 4, paddingTop: 6 },
   mark: { width: 16, height: 2, borderRadius: 1 },
   caption: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 32 },
