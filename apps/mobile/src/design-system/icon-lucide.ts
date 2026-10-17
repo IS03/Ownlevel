@@ -1,6 +1,6 @@
 import { Bike, Heart, Pill, Apple, Brain, Bed, Timer, Smile, Leaf, CigaretteOff, ArrowLeftRight, Briefcase, Bookmark, Pin, Info, MessageCircle, Pencil, Repeat, Sparkles,
   ArrowUpDown, GripHorizontal, Archive, BookOpen, Calendar, ChartLine, Check, ChevronDown,
-  ChevronLeft, ChevronRight, CircleCheck, ClipboardList, Clock, Coffee, Droplet, Dumbbell, Ellipsis, Flame,
+  ChevronLeft, ChevronRight, CircleCheck, ClipboardList, Clock, Hourglass, Coffee, Droplet, Dumbbell, Ellipsis, Flame,
   Footprints, Search, ListFilter, Sunrise, Sun, Sunset, Moon, NotebookPen, Play, Plus, Minus, RotateCw, Settings, Trash2, TriangleAlert, Trophy, User, Utensils, Weight, X, Zap, type LucideIcon,
 } from 'lucide-react-native';
 
@@ -25,6 +25,7 @@ export const lucideIcons: Record<AppIconName, LucideIcon> = {
   chevronLeft: ChevronLeft,
   chevronRight: ChevronRight,
   clock: Clock,
+  hourglass: Hourglass,
   close: X,
   dumbbell: Dumbbell,
   flame: Flame,

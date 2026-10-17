@@ -37,6 +37,9 @@ jest.mock('@/api/progress-views', () => ({ ...jest.requireActual<object>('@/api/
 jest.mock('@/api/progress-insight', () => ({ ...jest.requireActual<object>('@/api/progress-insight'),
   fetchProgressInsight: async () => ({ status: 'ok', meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' }, data: { today: '2026-10-05', insight: null } }) }));
 jest.mock('@/api/nutrition-report', () => ({ ...jest.requireActual<object>('@/api/nutrition-report'), fetchNutritionReport: (c: unknown, q: unknown) => mockReport(c, q) }));
+// Connections owns its resource; its loading, comparison and retry behavior is covered in connections.test.tsx.
+jest.mock('@/api/progress-connections', () => ({ ...jest.requireActual<object>('@/api/progress-connections'),
+  fetchProgressConnections: async () => ({ status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } }) }));
 
 const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
 const ok = <T,>(data: T) => ({ status: 'ok' as const, data, meta });
@@ -131,8 +134,8 @@ describe('Progress Overview', () => {
     expect(view.getByTestId('progress-spark-nutrition-current-2026-10-02-missing', { includeHiddenElements: true })).toBeTruthy();
     expect(view.getByTestId('progress-spark-training-current-2026-10-02-zero', { includeHiddenElements: true })).toBeTruthy();
     expect(view.queryByTestId(/progress-spark-training-reference/, { includeHiddenElements: true })).toBeNull();
-    // Sin comparar: no comparison anywhere; findings that compare periods wait for "Comparar".
-    expect(view.queryByText(/frente a/i)).toBeNull(); expect(view.queryByTestId('progress-compare-chip')).toBeNull();
+    // Sin comparar: Areas hides comparison; Connections independently keeps its previous-period reference.
+    expect(within(view.getByTestId('progress-areas')).queryByText(/frente a/i)).toBeNull(); expect(view.queryByTestId('progress-compare-chip')).toBeNull();
     expect(view.getByText('Sin récords ni cambios destacados en este período.')).toBeTruthy();
     for (const gone of ['Explorar', 'Revisar datos']) expect(view.queryByText(gone)).toBeNull();
     fireEvent.press(view.getByTestId('progress-area-training'));

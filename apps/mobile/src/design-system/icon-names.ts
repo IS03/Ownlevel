@@ -27,6 +27,7 @@ export type AppIconName =
   | 'chevronLeft'
   | 'chevronRight'
   | 'clock'
+  | 'hourglass'
   | 'close'
   | 'dumbbell'
   | 'flame'
@@ -91,6 +92,7 @@ export const sfSymbolNames: Record<AppIconName, SFSymbol> = {
   chevronLeft: 'chevron.left',
   chevronRight: 'chevron.right',
   clock: 'clock.fill',
+  hourglass: 'hourglass',
   close: 'xmark',
   dumbbell: 'dumbbell.fill',
   flame: 'flame.fill',
