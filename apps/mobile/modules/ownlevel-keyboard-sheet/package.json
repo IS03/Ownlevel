@@ -1,0 +1,7 @@
+{
+  "name": "ownlevel-keyboard-sheet",
+  "version": "1.0.0",
+  "private": true,
+  "description": "UIKit-synchronized keyboard sheet motion",
+  "license": "UNLICENSED"
+}

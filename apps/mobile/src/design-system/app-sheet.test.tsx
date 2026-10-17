@@ -3,8 +3,9 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { Keyboard, Modal, Pressable, StyleSheet, Text } from 'react-native';
 import { State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
-import { makeMutable, withTiming } from 'react-native-reanimated';
+import { withTiming } from 'react-native-reanimated';
 import { AppSheet, useAppSheetDismiss } from './app-sheet';
+import { KeyboardSheetMotion } from './keyboard-sheet-motion';
 import { OwnlevelThemeProvider } from './theme';
 
 let mockReduced = false;
@@ -18,9 +19,10 @@ function open(props: Partial<React.ComponentProps<typeof AppSheet>> = {}) {
   const onClose = jest.fn();
   const view = render(<OwnlevelThemeProvider initialMode="light"><AppSheet testID="metric" closeLabel="Cerrar carga" onClose={onClose} dismissKeyboardOnClose {...props}><Close /></AppSheet></OwnlevelThemeProvider>);
   fireEvent(view.getByTestId('metric'), 'layout', { nativeEvent: { layout: { height: 600 } } });
+  fireEvent(view.UNSAFE_getByType(Modal), 'show');
   return { view, onClose };
 }
-afterEach(() => { jest.restoreAllMocks(); mockReduced = false; });
+afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); mockReduced = false; });
 
 describe('keyboard and sheet leave together', () => {
   it.each(['Cerrar métrica', 'Cerrar carga'])('dismisses the keyboard immediately from %s, before the exit timing, without waiting for Modal removal', label => {
@@ -76,51 +78,58 @@ describe('keyboard and sheet leave together', () => {
     expect(keyboard).not.toHaveBeenCalled();
     expect(StyleSheet.flatten(view.getByTestId('metric').props.style).height).toBe(480);
   });
-  it('follows keyboard frames by translation, without growing/freezing content or restarting entry', () => {
-    const keyboard = { height: makeMutable(0), target: makeMutable(0), duration: makeMutable(0) }, onClose = jest.fn(), onShow = jest.fn<() => void>();
-    const tree = () => <OwnlevelThemeProvider initialMode="light"><AppSheet testID="follow" closeLabel="Cerrar" onClose={onClose}
-      dismissKeyboardOnClose keyboard={keyboard} keyboardInset={26} onShow={onShow}><Close /></AppSheet></OwnlevelThemeProvider>;
+  it('still opens sheets without a keyboard as soon as they are measured', () => {
+    const tree = () => <OwnlevelThemeProvider initialMode="light"><AppSheet testID="plain" closeLabel="Cerrar" onClose={jest.fn()}><Close /></AppSheet></OwnlevelThemeProvider>;
     const view = render(tree());
-    const tail = view.getByTestId('follow-keyboard-tail', { includeHiddenElements: true });
-    expect(tail.props.pointerEvents).toBe('none');
-    expect(StyleSheet.flatten(tail.props.style)).toMatchObject({ top: '100%', left: 0, right: 0 });
-    expect(StyleSheet.flatten(tail.props.style).height).toBeGreaterThan(300);
-    fireEvent(view.UNSAFE_getByType(Modal), 'show');
-    expect(onShow).not.toHaveBeenCalled();
     jest.mocked(withTiming).mockClear();
-    fireEvent(view.getByTestId('follow'), 'layout', { nativeEvent: { layout: { height: 300 } } });
-    fireEvent(view.UNSAFE_getByType(Modal), 'show');
-    expect(onShow).toHaveBeenCalledTimes(1);
-    // It never waits for a keyboard that may not come (a hardware keyboard): the entry starts once presented.
-    expect(withTiming).toHaveBeenCalledWith(0, expect.anything(), expect.any(Function));
-    jest.mocked(withTiming).mockClear();
-    for (const frame of [0, 30, 80, 160, 240, 340]) {
-      keyboard.height.set(frame); view.rerender(tree());
-      const style = StyleSheet.flatten(view.getByTestId('follow').props.style);
-      expect(style.height).toBeUndefined();
-      expect(style.transform[0].translateY).toBe(0 - Math.max(0, frame - 26));
-    }
-    expect(withTiming).not.toHaveBeenCalled();
-    jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
-    fireEvent.press(view.getByLabelText('Cerrar métrica'));
-    for (const frame of [340, 240, 160, 80, 30, 0]) {
-      keyboard.height.set(frame); view.rerender(tree());
-      const style = StyleSheet.flatten(view.getByTestId('follow').props.style);
-      expect(style.height).toBeUndefined();
-      expect(style.transform[0].translateY).toBe(300 - Math.max(0, frame - 26));
-    }
+    fireEvent(view.getByTestId('plain'), 'layout', { nativeEvent: { layout: { height: 300 } } });
+    expect(withTiming).toHaveBeenCalledTimes(1);
+    view.rerender(tree());
+    expect(StyleSheet.flatten(view.getByTestId('plain').props.style).transform[0].translateY).toBe(0);
   });
-  it('holds the entry until focusing settles, then rises on the keyboard\'s curve when it is already on its way', async () => {
-    const keyboard = { height: makeMutable(0), target: makeMutable(0), duration: makeMutable(0) };
-    let focused = () => {};
-    const view = render(<OwnlevelThemeProvider initialMode="light"><AppSheet testID="focus" closeLabel="Cerrar" onClose={jest.fn()}
-      keyboard={keyboard} onShow={() => new Promise<void>(resolve => { focused = resolve; })}><Close /></AppSheet></OwnlevelThemeProvider>);
+});
+
+describe('native metric keyboard presentation', () => {
+  it('waits for measurement and Modal presentation and gives UIKit sole ownership of entry', () => {
+    const view = render(<OwnlevelThemeProvider initialMode="light"><AppSheet nativeKeyboard testID="native" closeLabel="Cerrar" onClose={jest.fn()} keyboardInset={26}><Close /></AppSheet></OwnlevelThemeProvider>);
+    expect(view.UNSAFE_getByType(KeyboardSheetMotion).props).toMatchObject({ sheetHeight: 0, presented: false, closing: false });
     jest.mocked(withTiming).mockClear();
-    fireEvent(view.getByTestId('focus'), 'layout', { nativeEvent: { layout: { height: 300 } } });
+    fireEvent(view.getByTestId('native'), 'layout', { nativeEvent: { layout: { height: 300 } } });
+    expect(view.UNSAFE_getByType(KeyboardSheetMotion).props).toMatchObject({ sheetHeight: 300, presented: false, bottomInset: 26 });
     fireEvent(view.UNSAFE_getByType(Modal), 'show');
-    expect(withTiming).not.toHaveBeenCalledWith(0, expect.anything(), expect.anything());
-    keyboard.target.set(340); keyboard.duration.set(250);
-    await act(async () => { focused(); });
-    expect(withTiming).toHaveBeenCalledWith(0, { duration: 250, easing: expect.anything() }, expect.any(Function));
+    expect(view.UNSAFE_getByType(KeyboardSheetMotion).props.presented).toBe(true);
+    expect(StyleSheet.flatten(view.getByTestId('native').props.style).transform[0].translateY).toBe(0);
+    // Neither measurement nor presentation may schedule a competing JS slide or a focus timeout.
+    expect(withTiming).not.toHaveBeenCalled();
+  });
+  it('keeps the Modal mounted until UIKit completes closing and then waits for native Modal dismissal', () => {
+    const keyboard = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
+    const { view, onClose } = open({ nativeKeyboard: true });
+    jest.mocked(withTiming).mockClear();
+    fireEvent.press(view.getByLabelText('Cerrar métrica'));
+    expect(view.UNSAFE_getByType(KeyboardSheetMotion).props.closing).toBe(true);
+    expect(keyboard).not.toHaveBeenCalled(); // UIKit owns resignFirstResponder and the keyboard notification.
+    expect(view.UNSAFE_getByType(Modal).props.visible).toBe(true);
+    expect(jest.mocked(withTiming).mock.calls.map(([target]) => target)).toEqual([0]); // scrim only
+    act(() => view.UNSAFE_getByType(KeyboardSheetMotion).props.onClosed());
+    expect(view.UNSAFE_getByType(Modal).props.visible).toBe(false);
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent(view.UNSAFE_getByType(Modal), 'dismiss');
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+  it('returns a cancelled drag to the native keyboard baseline, without adding keyboard height again', () => {
+    const { view } = open({ nativeKeyboard: true });
+    const pan = getByGestureTestId('metric-pan');
+    act(() => fireGestureHandler(pan, [{ state: State.BEGAN }, { state: State.ACTIVE, translationY: 20 }, { state: State.END, translationY: 20, velocityY: 0 }]));
+    expect(view.UNSAFE_getByType(KeyboardSheetMotion).props.closing).toBe(false);
+    expect(StyleSheet.flatten(view.getByTestId('metric').props.style).transform[0].translateY).toBe(0);
+    act(() => fireGestureHandler(pan, [{ state: State.BEGAN }, { state: State.ACTIVE, translationY: 200 }, { state: State.END, translationY: 200, velocityY: 0 }]));
+    expect(view.UNSAFE_getByType(KeyboardSheetMotion).props.closing).toBe(true);
+  });
+  it('passes Reduce Motion to UIKit and keeps saving locked', () => {
+    mockReduced = true;
+    const { view } = open({ nativeKeyboard: true, locked: true });
+    fireEvent.press(view.getByLabelText('Cerrar métrica'));
+    expect(view.UNSAFE_getByType(KeyboardSheetMotion).props).toMatchObject({ reduceMotion: true, closing: false });
   });
 });

@@ -1,11 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
 import { Keyboard, Modal, Platform, Pressable, StyleSheet, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import Animated, { Easing, runOnJS, useAnimatedReaction, useAnimatedStyle, useSharedValue, withSpring, withTiming, type SharedValue } from 'react-native-reanimated';
+import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 
 import { motion } from './brand';
 import { useReduceMotion } from './motion';
 import { SheetHandle } from './sheet';
+import { KeyboardSheetMotion } from './keyboard-sheet-motion';
 
 /** Closes the sheet with its exit animation, then runs `after` once it is gone. */
 export type AppSheetDismiss = (after?: () => void) => void;
@@ -18,12 +19,6 @@ export function useAppSheetDismiss(): AppSheetDismiss {
 }
 
 const TIMING = { duration: motion.duration.base, easing: Easing.bezier(...motion.easing) };
-// A full keyboard travel must ease in as well as out; the short-control curve starts too abruptly here.
-const KEYBOARD_TIMING = { duration: motion.duration.base, easing: Easing.inOut(Easing.cubic) };
-/** The iOS keyboard's own curve (keyboardWillChangeFrame), for anything that moves with it. */
-export const KEYBOARD_EASING = Easing.bezier(0.25, 0.1, 0.25, 1);
-/** The keyboard as a sheet follows it: current height, where it is heading and how long it takes. */
-export type SheetKeyboard = { height: SharedValue<number>; target: SharedValue<number>; duration: SharedValue<number> };
 
 type AppSheetProps = PropsWithChildren<{
   onClose: () => void;
@@ -41,50 +36,34 @@ type AppSheetProps = PropsWithChildren<{
   beforeDismiss?: (proceed: () => void) => void;
   /** Dismiss the keyboard at the start of an accepted exit, holding sheet geometry until it is gone. */
   dismissKeyboardOnClose?: boolean;
-  /** Follow the keyboard on the UI thread without resizing the sheet's content. */
-  keyboard?: SheetKeyboard;
+  /** iOS: UIKit focuses the first input and owns the entire keyboard/sheet entrance and exit. */
+  nativeKeyboard?: boolean;
   keyboardInset?: number;
-  /**
-   * Runs once the sheet is presented and measured (focus an input here). Returning a promise holds the entry until it
-   * settles: focusing an input blocks the UI thread for a few frames, which would otherwise land in the slide.
-   */
-  onShow?: () => void | Promise<void>;
+  /** Runs once the sheet is presented and measured (focus an input here). */
+  onShow?: () => void;
 }>;
 
 /**
  * App-drawn bottom sheet: it slides in and leaves the same way (IDENTIDAD.md § Movimiento, 300 ms), follows a
  * drag down and closes from the backdrop. With Reduce Motion it only fades.
  */
-export function AppSheet({ children, onClose, closeLabel, locked = false, dragFromContent = false, edgeSwipe = false, style, testID, beforeDismiss, dismissKeyboardOnClose = false, keyboard, keyboardInset = 0, onShow }: AppSheetProps) {
+export function AppSheet({ children, onClose, closeLabel, locked = false, dragFromContent = false, edgeSwipe = false, style, testID, beforeDismiss, dismissKeyboardOnClose = false, nativeKeyboard = false, keyboardInset = 0, onShow }: AppSheetProps) {
   const reduced = useReduceMotion();
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const [gone, setGone] = useState(false);
   const [after, setAfter] = useState<{ run?: () => void }>({});
-  const shown = useSharedValue(0), closing = useSharedValue(false), entering = useSharedValue(false);
+  const [nativePresentation, setNativePresentation] = useState({ height: 0, presented: false, closing: false });
+  const followsKeyboard = nativeKeyboard && Platform.OS === 'ios';
+  const shown = useSharedValue(0), closing = useSharedValue(false);
   const offset = useSharedValue(windowHeight), sheetHeight = useSharedValue(windowHeight), sideways = useSharedValue(0);
-  const keyboardHeight = keyboard?.height;
   const measured = useRef(false);
   const nativeShown = useRef(false), notifiedShown = useRef(false);
-  const enter = () => {
-    if (closing.get()) return;
-    entering.set(true);
-    // A keyboard already on its way sets the curve; otherwise the sheet's own (the keyboard may still join it, below).
-    const timing = keyboard && keyboard.target.get() > 0 ? { duration: keyboard.duration.get(), easing: KEYBOARD_EASING } : keyboard ? KEYBOARD_TIMING : TIMING;
-    offset.set(withTiming(0, timing, done => { if (done) entering.value = false; }));
-  };
   const notifyShown = () => {
     if (!nativeShown.current || !measured.current || notifiedShown.current) return;
     notifiedShown.current = true;
-    const ready = onShow?.();
-    if (reduced || !onShow) return;
-    if (ready) void ready.then(enter, enter); else enter();
+    onShow?.();
+    if (!followsKeyboard && onShow) offset.set(reduced ? 0 : withTiming(0, TIMING));
   };
-  // The sheet never waits for the keyboard (a hardware keyboard never shows one). If the keyboard starts while the
-  // sheet is still entering, the rest of the entry runs on the keyboard's curve and timing: one movement, no second push.
-  useAnimatedReaction(() => keyboard?.target.value ?? 0, (next, previous) => {
-    if (!keyboard || next <= 0 || (previous ?? 0) > 0 || !entering.value || closing.value) return;
-    offset.value = withTiming(0, { duration: keyboard.duration.value, easing: KEYBOARD_EASING }, done => { if (done) entering.value = false; });
-  });
 
   const finish = useCallback(() => { onClose(); after.run?.(); }, [after, onClose]);
   // iOS must finish removing the Modal before a next one is presented (the `after` action may open one):
@@ -94,16 +73,21 @@ export function AppSheet({ children, onClose, closeLabel, locked = false, dragFr
   const leave = useCallback((next: (() => void) | undefined, toSide: boolean) => {
     if (closing.get() || locked) return;
     closing.set(true);
-    entering.set(false);
-    if (dismissKeyboardOnClose) Keyboard.dismiss();
     setAfter({ run: next });
+    if (followsKeyboard) {
+      // UIKit dismisses the input and moves the sheet in the same native transaction.
+      setNativePresentation(value => ({ ...value, closing: true }));
+      shown.set(withTiming(0, TIMING));
+      return;
+    }
+    if (dismissKeyboardOnClose) Keyboard.dismiss();
     // Reduce Motion: the backdrop fades and the sheet leaves without sliding.
     shown.set(withTiming(0, TIMING, done => { if (done && reduced) runOnJS(hide)(); }));
     if (reduced) return;
     // A swipe from the edge leaves sideways, the way it was pulled; everything else slides down.
     if (toSide) sideways.set(withTiming(windowWidth, TIMING, done => { if (done) runOnJS(hide)(); }));
-    else offset.set(withTiming(sheetHeight.get(), keyboardHeight ? KEYBOARD_TIMING : TIMING, done => { if (done) runOnJS(hide)(); }));
-  }, [closing, dismissKeyboardOnClose, entering, hide, keyboardHeight, locked, offset, reduced, sheetHeight, shown, sideways, windowWidth]);
+    else offset.set(withTiming(sheetHeight.get(), TIMING, done => { if (done) runOnJS(hide)(); }));
+  }, [closing, dismissKeyboardOnClose, followsKeyboard, hide, locked, offset, reduced, sheetHeight, shown, sideways, windowWidth]);
   const requestLeave = useCallback((next: (() => void) | undefined, side: boolean) => {
     if (locked) return;
     if (beforeDismiss && !next) {
@@ -119,11 +103,11 @@ export function AppSheet({ children, onClose, closeLabel, locked = false, dragFr
   useEffect(() => { shown.set(withTiming(1, TIMING)); }, [shown]);
 
   const pan = useMemo(() => Gesture.Pan().withTestId(`${testID ?? 'app-sheet'}-pan`).enabled(!locked).activeOffsetY(8).failOffsetX([-24, 24])
-    .onUpdate(event => { entering.set(false); offset.set(Math.max(0, event.translationY)); })
+    .onUpdate(event => { if (!closing.value) offset.set(reduced ? 0 : Math.max(0, event.translationY)); })
     .onEnd(event => {
       if (event.translationY > sheetHeight.value * 0.25 || event.velocityY > 900) runOnJS(dismiss)();
-      else offset.set(withSpring(0, motion.spring));
-    }), [dismiss, entering, locked, offset, sheetHeight, testID]);
+      else offset.set(reduced ? 0 : withSpring(0, motion.spring));
+    }), [closing, dismiss, locked, offset, reduced, sheetHeight, testID]);
   const edge = useMemo(() => Gesture.Pan().enabled(edgeSwipe && !locked).hitSlop({ left: 0, width: 28 }).activeOffsetX(10).failOffsetY([-20, 20])
     .onUpdate(event => { sideways.set(Math.max(0, event.translationX)); })
     .onEnd(event => {
@@ -136,8 +120,8 @@ export function AppSheet({ children, onClose, closeLabel, locked = false, dragFr
   // Until measured it waits off screen, one window below.
   const sheet = useAnimatedStyle(() => ({
     // Android's avoiding view still resizes; iOS follows the keyboard by translation only.
-    ...(dismissKeyboardOnClose && !keyboardHeight && closing.value ? { height: sheetHeight.value } : {}),
-    transform: [{ translateY: (reduced ? 0 : offset.value) - Math.max(0, (keyboardHeight?.value ?? 0) - keyboardInset) }, { translateX: reduced ? 0 : sideways.value }],
+    ...(dismissKeyboardOnClose && !followsKeyboard && closing.value ? { height: sheetHeight.value } : {}),
+    transform: [{ translateY: reduced ? 0 : offset.value }, { translateX: reduced ? 0 : sideways.value }],
   }));
 
   const grabber = <View style={styles.grabber}><SheetHandle /></View>;
@@ -145,27 +129,35 @@ export function AppSheet({ children, onClose, closeLabel, locked = false, dragFr
     const next = event.nativeEvent.layout.height;
     if (closing.get()) return;
     sheetHeight.set(next);
+    if (followsKeyboard) setNativePresentation(value => value.height === next ? value : { ...value, height: next });
     if (measured.current) return;
     measured.current = true;
-    if (reduced) offset.set(0);
-    else { offset.set(next); if (!onShow) enter(); }
+    offset.set(reduced || followsKeyboard ? 0 : next);
+    if (!followsKeyboard && !onShow) offset.set(reduced ? 0 : withTiming(0, TIMING));
     notifyShown();
-  }} style={[styles.sheet, style, keyboardHeight && styles.keyboardSheet, sheet]} testID={testID}>
-    {keyboardHeight ? <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
+  }} style={[styles.sheet, style, followsKeyboard && styles.keyboardSheet, sheet]} testID={testID}>
+    {followsKeyboard ? <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
       testID={testID ? `${testID}-keyboard-tail` : 'sheet-keyboard-tail'}
       style={{ position: 'absolute', top: '100%', left: 0, right: 0, height: windowHeight, backgroundColor: StyleSheet.flatten(style)?.backgroundColor }} /> : null}
     {dragFromContent ? grabber : <GestureDetector gesture={pan}>{grabber}</GestureDetector>}
     {children}
   </Animated.View>;
 
-  return <Modal transparent statusBarTranslucent animationType="none" visible={!gone} onShow={() => { nativeShown.current = true; notifyShown(); }} onDismiss={finish} onRequestClose={() => dismiss()} testID={testID ? `${testID}-modal` : undefined}>
+  const draggableBody = <GestureDetector gesture={dragFromContent ? Gesture.Simultaneous(pan, edge) : edge}>{body}</GestureDetector>;
+  return <Modal transparent statusBarTranslucent animationType="none" visible={!gone} onShow={() => {
+    nativeShown.current = true;
+    if (followsKeyboard) setNativePresentation(value => ({ ...value, presented: true }));
+    notifyShown();
+  }} onDismiss={finish} onRequestClose={() => dismiss()} testID={testID ? `${testID}-modal` : undefined}>
     <GestureHandlerRootView style={styles.fill}>
       <DismissContext.Provider value={dismiss}>
         <View style={styles.fill}>
           <Animated.View style={[StyleSheet.absoluteFill, styles.scrim, scrim]}>
             <Pressable accessibilityRole="button" accessibilityLabel={closeLabel} disabled={locked} onPress={() => dismiss()} style={StyleSheet.absoluteFill} />
           </Animated.View>
-          <GestureDetector gesture={dragFromContent ? Gesture.Simultaneous(pan, edge) : edge}>{body}</GestureDetector>
+          {followsKeyboard ? <KeyboardSheetMotion pointerEvents="box-none" style={styles.fill}
+            sheetHeight={nativePresentation.height} presented={nativePresentation.presented} closing={nativePresentation.closing}
+            bottomInset={keyboardInset} reduceMotion={reduced} onClosed={hide}>{draggableBody}</KeyboardSheetMotion> : draggableBody}
         </View>
       </DismissContext.Provider>
     </GestureHandlerRootView>
