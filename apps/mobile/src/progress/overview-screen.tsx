@@ -16,6 +16,7 @@ import { arrowDelta, formatValue } from './progress-format';
 import { useProgressResource } from './use-progress-resource';
 import { useNutritionStages } from '@/stages/stages-provider';
 import { stagesRowDetail } from './stages-model';
+import { ConnectionsSection, useProgressConnections } from './connections-section';
 
 export type ProgressRoute = '/(tabs)/progress/trends/body' | '/(tabs)/progress/trends/metrics' | '/(tabs)/progress/trends/nutrition'
   | '/(tabs)/progress/trends/training' | '/(tabs)/progress/trends/exercise/[id]';
@@ -126,12 +127,15 @@ export function ProgressOverviewScreen() {
   const stagesDetail = stagesRowDetail(useNutritionStages()?.state.list) ?? 'Tus planes, uno al lado del otro';
   const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressOverview(c, query, signal, compare), [query, compare]);
   const { state: status, data, refresh } = useProgressResource(client, progressRequestKey(query, compare), load);
+  const connections = useProgressConnections();
+  const refreshAll = () => { void Promise.all([refresh(), connections.refresh()]); };
+  const refreshing = status.status === 'ready' && status.refreshing || connections.state.status === 'ready' && connections.state.refreshing;
   // Every destination shares the period in ProgressRangeProvider.
   const open = (d: ProgressDestination) => {
     const { pathname, extra } = destinationRoute(d);
     router.push({ pathname, params: extra });
   };
-  return <ProgressScroll root title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={status.status === 'ready' && status.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
+  return <ProgressScroll root title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} tintColor={colors.primary} />}>
     <MyViews />
     {status.status === 'loading' ? <><SkeletonBlock height={240} /><SkeletonBlock height={96} /></>
       : data ? <>
@@ -139,6 +143,7 @@ export function ProgressOverviewScreen() {
         <View style={styles.section}>
           <Heading level={2}>{periodHeading(state, today)}</Heading>
           <Areas data={data} open={open} />
+          <ConnectionsSection resource={connections} />
         </View>
         <Highlights data={data} open={open} />
       </> : <UnavailableState title="No pudimos cargar tu progreso" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente."

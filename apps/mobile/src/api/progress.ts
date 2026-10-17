@@ -18,6 +18,7 @@ export const progressRequestKey = (query: ProgressQuery, compare: ProgressCompar
 const samePeriod = (period: ProgressPeriod, query: ProgressQuery, compare: ProgressCompareRange = null) =>
   period.preset === query.period && (query.period !== 'custom' || period.start === query.from)
   && (!compare || (period.previousStart === compare.start && period.previousEnd === compare.end));
+export { qs as progressQueryParams, samePeriod as progressResponseMatches };
 export const fetchProgressOverview = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
   // spark=1: the overview also carries the rows' mini charts (server EXPAND).
   client.read({ path: `${BASE}?${qs(query, compare)}&spark=1&inPeriod=1`, signal, parse: (raw: unknown) => {
