@@ -30,6 +30,9 @@ import { buildMobileProgressInsight } from "./progress-insight";
 import { parseProgressInsight } from "./progress-insight-contract";
 import { parseProgressViewsRead } from "./progress-views-contract";
 import { exploreOptions, parseExploreMeasure, parseProgressExplore, type ExploreBreakdown, type ExploreDays } from "./progress-explore-contract";
+import { readProgressConnections } from "./progress-connections";
+import { parseProgressConnections, type ProgressConnections } from "./progress-connections-contract";
+import { registeredNutritionDays } from "./progress-nutrition-days";
 
 type Context = MobileSupabaseAuthenticatedContext;
 
@@ -129,7 +132,7 @@ const sparkPoints = <T extends { date: string }>(range: { start: string; end: st
   rangeBuckets(range).map(({ start, end }) => ({ start, end, value: value(items.filter(item => item.date >= start && item.date <= end)) }));
 const mean = (values: number[]) => values.length ? values.reduce((t, v) => t + v, 0) / values.length : null;
 /** Same days as the overview's average kcal: complete registered days with known calories. */
-const kcalDays = (days: NutritionReportDay[]) => days.filter(day => day.hasNutrition && day.isComplete && day.calories !== null);
+const kcalDays = (days: NutritionReportDay[]) => registeredNutritionDays(days, day => day.calories);
 
 function overviewSparks(period: ProgressPeriod, comparing: boolean, sections: {
   body: Awaited<ReturnType<typeof bodyReport>> | null; nutrition: Awaited<ReturnType<typeof nutritionReport>> | null;
@@ -426,3 +429,14 @@ export const progressInsightResponse = (request: Request) => progressReadRespons
   const { period } = resolveMobileProgressPeriod({ period: "3m" }, today);
   return buildMobileProgressInsight(context, period, today);
 }, parseProgressInsight);
+
+/** EXPAND: an explicit B is required even when the app's general comparison toggle is off. */
+export async function buildMobileProgressConnections(context: Context, query: MobileProgressQuery, today: string): Promise<ProgressConnections> {
+  if (!query.compare) throw new MobileApiValidationError("Elegí también el período con el que querés comparar.");
+  const { period } = resolveMobileProgressPeriod(query, today);
+  if (query.compare.end >= period.start) throw new MobileApiValidationError("Elegí un período de comparación anterior al que estás mirando.");
+  const { period: reference } = resolveMobileProgressPeriod({ period: "custom", from: query.compare.start, to: query.compare.end }, today);
+  return readProgressConnections(context, period, reference, today);
+}
+export const progressConnectionsResponse = (request: Request) => progressReadResponse(request, "connections",
+  (context, params, today) => buildMobileProgressConnections(context, progressQueryFromParams(params), today), parseProgressConnections);

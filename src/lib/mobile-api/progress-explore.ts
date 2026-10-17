@@ -14,6 +14,7 @@ import { readMealRows, type MealRow } from "./progress-nutrition-timing";
 import { bodyReport, comparisonDto, webAuth } from "./progress-sources";
 import { loadTrainingContext, trainingExerciseDto } from "./progress-training";
 import type { MobileSupabaseAuthenticatedContext } from "./supabase";
+import { registeredNutritionDays } from "./progress-nutrition-days";
 
 type Context = MobileSupabaseAuthenticatedContext;
 type Range = { start: string; end: string };
@@ -177,7 +178,7 @@ export async function buildMobileProgressExplore(context: Context, input: Explor
     const meta = NUTRITION[m.key];
     const meals = input.breakdown === "meal_moment" || input.breakdown === "time_band" ? await Promise.all(ranges.map(r => readMealRows(context, r))) : null;
     return done(head(meta.label, meta.unit, meta.valueType), ranges.map((r, i) => {
-      const value = new Map(nutritionDays![i].filter(d => d.hasNutrition && d.isComplete && meta.day(d) !== null).map(d => [d.date, meta.day(d)!]));
+      const value = new Map(registeredNutritionDays(nutritionDays![i], meta.day).map(d => [d.date, meta.day(d)!]));
       return averageResult(value, input, eligibleOf(i, true), r, meals?.[i], meta.meal);
     }));
   }

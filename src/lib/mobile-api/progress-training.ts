@@ -132,7 +132,7 @@ export function trainingExerciseDto(ctx: TrainingContext, exerciseId: string, to
 }
 
 /** Derived measures use the already loaded session snapshots; unknown/incompatible modes remain gaps. */
-function exerciseCharts(selected: TrainingExerciseDetailAnalytics, comparing: boolean): ProgressExerciseCharts {
+export function exerciseCharts(selected: TrainingExerciseDetailAnalytics, comparing: boolean): ProgressExerciseCharts {
   const strategy = trainingPerformanceStrategy(selected.weightMode);
   const unit = strategy === "unit_reps" ? "lingotes" : strategy === "time" ? "s" : strategy === "bodyweight_reps" ? "reps" : "kg";
   const definitions: { key: ProgressExerciseCharts["measures"][number]["key"]; label: string }[] = strategy === "load_reps"
