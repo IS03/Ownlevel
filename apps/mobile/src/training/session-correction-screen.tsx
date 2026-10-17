@@ -7,6 +7,7 @@ import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchSessionDetail, type SessionDetailDto } from '@/api/active-session';
 import { correctSession, type SessionCorrectionInput } from '@/api/training-history';
+import { forgetSessionSummary } from '@/api/session-summary';
 import { AppText, Button, ScrollScreen, Surface, UnavailableState, radius, sizes, spacing, useOwnlevelTheme } from '@/design-system';
 import { compactHistoryDate } from './active-session-model';
 import { SummaryScale } from './finish-session-sheet';
@@ -54,6 +55,7 @@ function CorrectionForm({ client, detail, onReload }: { client: MobileApiClient;
     const result = await correctSession(client, detail.session.id, input);
     if (result.status === 'ok') {
       setSaved(true);
+      forgetSessionSummary(client, detail.session.id);
       // The session screen re-reads on focus and shows confirmed server truth.
       requestAnimationFrame(() => router.back());
       return;

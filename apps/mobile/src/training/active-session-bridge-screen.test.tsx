@@ -639,7 +639,7 @@ describe('native finish screen (M3.4-2)', () => {
     fireEvent.press(view.getByRole('button', { name: 'Ver sesión' }));
     expect(view.queryByTestId('post-workout-screen')).toBeNull(); expect(view.getByTestId('completed-session')).toBeTruthy();
     expect(view.queryByRole('button', { name: 'Finalizar entrenamiento' })).toBeNull(); expect(view.queryByLabelText('Peso serie 1 de PRESS')).toBeNull();
-    expect(view.getByLabelText('Serie 1: 40 kg × 8')).toBeTruthy();
+    expect(view.getByText('40×8 kg')).toBeTruthy();
     controller.dispose();
   });
   it('keeps null distinct from zero, clears selected scales and stages note edits locally', async () => {
@@ -714,7 +714,7 @@ describe('native finish screen (M3.4-2)', () => {
     expect(view.getByTestId('completed-session')).toBeTruthy(); expect(view.queryByText('SESIÓN FINALIZADA')).toBeNull();
     expect(mockSetOptions).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Sesión finalizada', headerRight: undefined }));
     expect(view.queryByTestId('post-workout-screen')).toBeNull(); expect(view.queryByRole('button', { name: 'Finalizar entrenamiento' })).toBeNull();
-    expect(view.getByText('4/5')).toBeTruthy(); expect(view.getByText('0/10')).toBeTruthy(); expect(view.queryByText('Rendimiento')).toBeNull();
+    expect(view.getByLabelText('Energía: 4 de 5')).toBeTruthy(); expect(view.getByLabelText('Dolor: 0 de 10')).toBeTruthy(); expect(view.queryByText('Rendimiento')).toBeNull();
     controller.dispose();
   });
   it('shows a discarded session as such, never as a fresh completion', async () => {

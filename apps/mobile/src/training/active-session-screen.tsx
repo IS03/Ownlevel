@@ -6,7 +6,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/build/react-navigation/core/usePreventRemove';
 import type { MobileApiClient } from '@/api/client';
-import { fetchSessionHighlights } from '@/api/session-highlights';
+import { prefetchSessionSummary, readSessionSummary } from '@/api/session-summary';
 import type { QuickSessionHistoryDto, SessionDetailDto } from '@/api/active-session';
 import type { RestDeadline } from './active-session-model';
 import { AppIcon, AppText, Button, Heading, InlineUnavailable, ProgressBar, ScrollScreen, SkeletonBlock, Surface, UnavailableState, GlassSurface, sizes, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
@@ -143,10 +143,13 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
   const returnHome = useCallback(() => { router.replace('/(tabs)/train'); router.navigate('/(tabs)/home'); }, [router]);
   // Closed sessions read through the controller's API; discard goes through the client.
   const closedId = detail?.session.id ?? '';
-  const closedApi = useMemo<CompletedSessionApi>(() => ({ highlights: signal => fetchSessionHighlights(client, closedId, signal), detail: () => controller.readDetail(),
+  const closedApi = useMemo<CompletedSessionApi>(() => ({ summary: () => readSessionSummary(client, closedId), detail: () => controller.readDetail(),
     discard: key => completedSessionApi(client, closedId).discard(key) }), [client, closedId, controller]);
   // Confirmed finish (server truth): success feedback once, then the read-only view.
   useEffect(() => { if (state.finished && !finishOpen) triggerHaptic('workoutComplete'); }, [state.finished, finishOpen]);
+  // The summary read starts as soon as the finish is confirmed, while the save animation plays.
+  const finishedId = state.finished?.sessionId;
+  useEffect(() => { if (finishedId) void prefetchSessionSummary(client, finishedId); }, [client, finishedId]);
   const closedStatus = detail && detail.session.status !== 'in_progress' && !state.intent ? detail.session.status : null;
   const locked = state.fenced || state.refreshing || Boolean(state.intent) || state.finishing;
   const canFinish = !!detail && detail.session.status === 'in_progress' && !locked && !actionState.working && !state.interaction;
@@ -284,7 +287,7 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
     {actionState.notice ? <ExerciseNotice bottomOffset={Math.max(insets.bottom, restOverlayHeight) - insets.bottom} message={actionState.notice.message} disabled={locked || actionState.working} undo={actionState.notice.undo ? () => void actions.undo() : undefined} /> : null}
     <RestTimerPanel controller={controller} onHeightChange={setRestOverlayHeight} />
     {finishOpen && !finishTransitionDone ? <FinishSessionSheet controller={controller} onClose={() => setFinishOpen(false)} onDiscard={requestCancel}
-      readHighlights={closedApi.highlights} onDone={returnToTraining} onViewSession={() => setFinishTransitionDone(true)} /> : null}
+      readHighlights={closedApi.summary} onDone={returnToTraining} onViewSession={() => setFinishTransitionDone(true)} /> : null}
     <SessionExercisePicker visible={pickerOpen} client={client} existingIds={existingIds} onClose={() => setPickerOpen(false)} onDismiss={creatorDismissed} onCreate={openCreator}
       onAdd={exercise => actions.add({ operation: 'add_existing', exerciseId: exercise.id, idempotencyKey: sessionIntentKey() }, exercise.name)} />
     {creatorOpen ? <ExerciseEditorModal initialName={createName} purpose="session" target={{ mode: 'create' }} routines={[]} pending={Boolean(state.intent) || state.refreshing} createIdempotencyKey={sessionIntentKey}

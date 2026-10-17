@@ -1,77 +1,157 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import type { SessionDetailDto, SessionFinishedDto } from '@/api/active-session';
-import { AppIcon, AppText, Button, Heading, ScrollScreen, Surface, spacing, useOwnlevelTheme } from '@/design-system';
+import type { SessionSummaryDto, SessionSummaryLoader } from '@/api/session-summary';
+import { AppIcon, AppText, brandTokens, Button, Heading, ScrollScreen, Surface, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { formatTimeRange } from '@/home/format';
-import { compactWeekdayDate, volumeLabel } from './history-model';
+import { compactWeekdayDate } from './history-model';
 import { trainingRoutineColor } from './routine-colors';
 import { completedSessionModel } from './completed-session-model';
+import { revisitModel, type RevisitExercise, type RevisitFeeling } from './session-revisit-model';
+import { PostWorkoutScreen } from './post-workout-screen';
 
-import { PostWorkoutScreen, type SessionHighlightsLoader } from './post-workout-screen';
+const FIRST_EXERCISES = 4;
 
-function Stat({ value, label }: { value: string; label: string }) {
-  return <Surface style={styles.stat}><AppText numeric variant="title2" numberOfLines={1} adjustsFontSizeToFit>{value}</AppText><AppText muted variant="footnote">{label}</AppText></Surface>;
+function Dots({ feeling }: { feeling: RevisitFeeling }) {
+  const { colors } = useOwnlevelTheme();
+  const size = feeling.scale === 10 ? 8 : 10;
+  return <View style={styles.feeling} accessible accessibilityLabel={`${feeling.label}: ${feeling.value} de ${feeling.scale}`} testID={`revisit-feeling-${feeling.key}`}>
+    <AppText muted variant="footnote">{feeling.label}</AppText>
+    <View style={styles.dots}>{Array.from({ length: feeling.scale }, (_, index) => <View key={index}
+      style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: index < feeling.value ? colors.text : colors.border }} />)}</View>
+  </View>;
 }
 
-/** Read-only closed session (HI5). Server truth only; Corregir/Eliminar live in the screen's •••. */
-export function CompletedSessionView({ detail, finished, onHome, onTraining, onOpenExercise, actions, banner, readHighlights }: {
-  readHighlights?: SessionHighlightsLoader;
+function ExerciseRow({ exercise, open, first, onToggle, onOpenExercise }: {
+  exercise: RevisitExercise; open: boolean; first: boolean; onToggle: () => void; onOpenExercise?: (exerciseId: string) => void;
+}) {
+  const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
+  const status = exercise.status, record = status?.kind === 'record';
+  const statusColor = record ? colors.primary : status?.kind === 'improved' ? colors.text : colors.textMuted;
+  return <Animated.View layout={reduced ? undefined : LinearTransition.duration(brandTokens.motion.duration.base)}
+    style={[!first && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]} testID={`completed-exercise-${exercise.id}`}>
+    <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }}
+      accessibilityLabel={`${exercise.name}. ${exercise.line}${status ? `. ${status.label === '=' ? 'igual que la última vez' : status.label}` : ''}`}
+      onPress={onToggle} style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]} testID={`revisit-toggle-${exercise.id}`}>
+      <View style={styles.lead}>{record ? <AppIcon name="trophy" color={colors.primary} size={17} /> : null}</View>
+      <View style={styles.flex}>
+        <AppText variant="headline" style={exercise.done ? null : { color: colors.textMuted }}>{exercise.name}</AppText>
+        {open ? null : <AppText muted numeric variant="footnote">{exercise.line}</AppText>}
+      </View>
+      {status ? <AppText numeric variant="subheadline" style={[{ color: statusColor }, record && styles.strong]} testID={`revisit-status-${exercise.id}`}>{status.label}</AppText> : null}
+      <View style={open ? styles.flipped : undefined}><AppIcon name="chevronDown" color={colors.textMuted} size={17} /></View>
+    </Pressable>
+    {open ? <Animated.View entering={FadeIn.duration(reduced ? brandTokens.motion.duration.fast : brandTokens.motion.duration.base)} style={styles.expanded} testID={`revisit-detail-${exercise.id}`}>
+      {exercise.identity ? <AppText muted variant="footnote">{exercise.identity}</AppText> : null}
+      {exercise.sets.map(set => <View key={set.setNumber} style={styles.set} accessible
+        accessibilityLabel={`Serie ${set.setNumber}: ${set.completed ? set.label : `${set.label === '—' ? '' : `${set.label}, `}no hecha`}${set.record ? ', récord' : ''}${set.before ? `. Antes ${set.before}` : ''}`}>
+        <AppText muted numeric style={styles.setNumber} variant="subheadline">{set.setNumber}</AppText>
+        <AppText numeric variant="headline" style={set.completed ? null : { color: colors.textMuted }}>{set.label}</AppText>
+        {set.record ? <View style={[styles.tag, { backgroundColor: colors.brandSubtle }]}><AppText variant="caption" style={{ color: colors.primary }}>récord</AppText></View> : null}
+        <View style={styles.flex} />
+        {set.completed ? null : <AppText muted variant="footnote">no hecha</AppText>}
+        {set.before ? <AppText muted numeric variant="footnote">antes {set.before}</AppText> : null}
+      </View>)}
+      {exercise.note ? <AppText muted style={styles.italic}>“{exercise.note}”</AppText> : null}
+      {onOpenExercise ? <Pressable accessibilityRole="button" accessibilityLabel={`Ver historial de ${exercise.name}`} onPress={() => onOpenExercise(exercise.exerciseId)}
+        style={styles.link} testID={`completed-exercise-history-${exercise.id}`}>
+        <AppText variant="subheadline" style={[styles.strong, { color: colors.primary }]}>Ver historial del ejercicio</AppText>
+        <AppIcon name="chevronRight" color={colors.primary} size={17} />
+      </Pressable> : null}
+    </Animated.View> : null}
+  </Animated.View>;
+}
+
+/**
+ * SF1 · a closed session seen again. Server truth only; Corregir/Eliminar live in the screen's •••.
+ * The comparison with the last time arrives with the summary read and never blocks the session itself.
+ */
+export function CompletedSessionView({ detail, finished, onHome, onTraining, onOpenExercise, actions, banner, readSummary }: {
+  readSummary?: SessionSummaryLoader;
   detail: SessionDetailDto; finished: SessionFinishedDto | null; onHome: () => void; onTraining?: () => void;
   onOpenExercise?: (exerciseId: string) => void; actions?: ReactNode; banner?: ReactNode;
 }) {
-  const { colors, isDark } = useOwnlevelTheme();
+  const { colors, isDark } = useOwnlevelTheme(), reduced = useReduceMotion();
   const [postWorkoutOpen, setPostWorkoutOpen] = useState(Boolean(finished));
-  const model = completedSessionModel(detail);
-  const discarded = model.status === 'discarded';
-  const volume = volumeLabel(model.volumeKg);
-  const subtitle = [compactWeekdayDate(model.logDate), model.endedAt ? formatTimeRange(model.startedAt, model.endedAt) : null, model.duration].filter(Boolean).join(' · ');
-  const summary = model.metadata.filter(item => item.key !== 'notes'), notes = model.metadata.find(item => item.key === 'notes');
+  const [summary, setSummary] = useState<SessionSummaryDto>();
+  const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [showAll, setShowAll] = useState(false);
+  const sessionId = detail.session.id, version = detail.session.updatedAt;
+  useEffect(() => {
+    if (!readSummary) return;
+    const abort = new AbortController();
+    void Promise.resolve().then(() => readSummary(abort.signal)).then(result => {
+      if (!abort.signal.aborted && result.status === 'ok' && result.data.sessionId === sessionId) setSummary(result.data);
+    }).catch(() => undefined);
+    return () => abort.abort();
+  }, [readSummary, sessionId, version]);
+  const base = completedSessionModel(detail), model = revisitModel(detail, summary);
+  const discarded = base.status === 'discarded';
+  const when = [compactWeekdayDate(base.logDate), base.endedAt ? formatTimeRange(base.startedAt, base.endedAt) : null].filter(Boolean).join(' · ');
+  const many = model.exercises.length > FIRST_EXERCISES + 1, shown = many && !showAll ? model.exercises.slice(0, FIRST_EXERCISES) : model.exercises;
+  const top = model.muscles[0]?.sets ?? 0;
+  const toggle = (id: string) => setOpenIds(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const fade = FadeIn.duration(reduced ? brandTokens.motion.duration.fast : brandTokens.motion.duration.base);
   return <ScrollScreen testID={discarded ? 'discarded-session' : 'completed-session'}>
-    <View style={styles.title}>
-      {model.color ? <View style={[styles.strip, { backgroundColor: trainingRoutineColor(model.color, isDark) }]} /> : null}
-      <View style={styles.flex}><Heading level={1}>{model.name}</Heading><AppText muted numeric variant="subheadline">{subtitle}</AppText></View>
-    </View>
     {banner}
-    {discarded ? <Surface><AppText muted>Esta sesión fue eliminada del historial. Se muestra sólo como referencia.</AppText></Surface> : null}
-    <View style={styles.stats}>
-      <Stat value={String(model.completedSetCount)} label={model.completedSetCount === 1 ? 'serie' : 'series'} />
-      <Stat value={`${model.completedExerciseCount} de ${model.exerciseCount}`} label="ejercicios" />
-      {volume ? <Stat value={volume} label="volumen" /> : null}
-    </View>
-    {model.metadata.length ? <Surface style={styles.section} testID="completed-summary">
-      {summary.length ? <View style={styles.metadata}>{summary.map(item => <View key={item.key} style={styles.metadataItem}>
-        <AppText muted variant="footnote">{item.label}</AppText><AppText numeric variant="headline">{item.value}</AppText></View>)}</View> : null}
-      {summary.length && notes ? <View style={[styles.hairline, { backgroundColor: colors.border }]} /> : null}
-      {notes ? <AppText>{notes.value}</AppText> : null}
-    </Surface> : null}
-    {model.exercises.map(exercise => <Surface key={exercise.id} style={styles.section} testID={`completed-exercise-${exercise.id}`}>
-      <View style={styles.exerciseHeader}>
-        <View style={styles.flex}><AppText variant="headline" style={exercise.done ? null : { color: colors.textMuted }}>{exercise.name}</AppText>
-          {exercise.identity ? <AppText muted variant="footnote">{exercise.identity}</AppText> : null}</View>
-        {onOpenExercise ? <Pressable accessibilityRole="button" accessibilityLabel={`Ver historial de ${exercise.name}`} hitSlop={8} onPress={() => onOpenExercise(exercise.exerciseId)}
-          style={styles.historyLink} testID={`completed-exercise-history-${exercise.id}`}>
-          <AppIcon name="clock" color={colors.textMuted} size={17} /><AppText variant="subheadline">Historial</AppText>
-        </Pressable> : null}
+    <View style={styles.header}>
+      <AppText muted numeric variant="subheadline">{when}</AppText>
+      <View style={styles.title}>
+        {base.color ? <View style={[styles.strip, { backgroundColor: trainingRoutineColor(base.color, isDark) }]} /> : null}
+        <Heading level={1} style={styles.flex}>{base.name}</Heading>
       </View>
-      {exercise.sets.map(set => <View key={set.setNumber} style={styles.set} accessible
-        accessibilityLabel={`Serie ${set.setNumber}: ${set.completed ? set.label : `${set.label === '—' ? '' : `${set.label}, `}no hecha`}`}>
-        <AppText muted numeric style={styles.setNumber} variant="subheadline">{set.setNumber}</AppText>
-        <AppText numeric style={[styles.flex, set.completed ? null : { color: colors.textMuted }]} variant="body">{set.label}</AppText>
-        {set.completed ? null : <AppText muted variant="footnote">no hecha</AppText>}
+    </View>
+    {discarded ? <Surface><AppText muted>Esta sesión fue eliminada del historial. Se muestra sólo como referencia.</AppText></Surface> : null}
+    <View style={styles.hero} testID="revisit-hero">
+      <AppText numeric variant="title2">{model.sentence}</AppText>
+      {model.achievement && !discarded ? <Animated.View entering={fade}>
+        <AppText numeric variant="title2" style={{ color: colors.primary }} testID="revisit-achievement">{model.achievement}</AppText>
+      </Animated.View> : null}
+      <AppText muted numeric variant="subheadline">{model.line}</AppText>
+    </View>
+    {model.feelings.length || model.note ? <View style={styles.feelings} testID="completed-summary">
+      {model.feelings.length ? <View style={styles.feelingRow}>{model.feelings.map(feeling => <Dots key={feeling.key} feeling={feeling} />)}</View> : null}
+      {model.note ? <AppText style={styles.italic}>“{model.note}”</AppText> : null}
+    </View> : null}
+    {model.muscles.length ? <View style={styles.section} testID="revisit-muscles">
+      <Heading level={2}>A dónde fue el trabajo</Heading>
+      {model.muscles.map((muscle, index) => <View key={muscle.label} style={styles.muscle} accessible accessibilityLabel={`${muscle.label}: ${muscle.sets} ${muscle.sets === 1 ? 'serie' : 'series'}`}>
+        <AppText numberOfLines={1} style={styles.muscleLabel} variant="subheadline">{muscle.label}</AppText>
+        <View style={[styles.track, { backgroundColor: colors.surfaceRaised }]}>
+          <View style={[styles.fill, { width: `${(muscle.sets / top) * 100}%`, backgroundColor: index === 0 ? colors.primary : colors.brandSubtle }]} />
+        </View>
+        <AppText muted numeric style={styles.muscleCount} variant="footnote">{muscle.sets} {muscle.sets === 1 ? 'serie' : 'series'}</AppText>
       </View>)}
-    </Surface>)}
+    </View> : null}
+    <View style={styles.section}>
+      <Heading level={2}>Ejercicios</Heading>
+      <View>{shown.map((exercise, index) => <ExerciseRow key={exercise.id} exercise={exercise} first={index === 0} open={openIds.has(exercise.id)}
+        onToggle={() => toggle(exercise.id)} onOpenExercise={onOpenExercise} />)}</View>
+      {many && !showAll ? <Pressable accessibilityRole="button" onPress={() => setShowAll(true)} style={styles.more} testID="revisit-show-all">
+        <AppText muted variant="headline">+ {model.exercises.length - FIRST_EXERCISES} ejercicios más</AppText>
+      </Pressable> : null}
+    </View>
     {actions}
     {onTraining ? <Button label="Volver a Entrenar" variant="secondary" onPress={onTraining} /> : null}
-    {finished && postWorkoutOpen && !discarded ? <PostWorkoutScreen finished={finished} readHighlights={readHighlights} onHome={() => { setPostWorkoutOpen(false); (onTraining ?? onHome)(); }} onViewSession={() => setPostWorkoutOpen(false)} /> : null}
+    {finished && postWorkoutOpen && !discarded ? <PostWorkoutScreen finished={finished} readHighlights={readSummary} onHome={() => { setPostWorkoutOpen(false); (onTraining ?? onHome)(); }} onViewSession={() => setPostWorkoutOpen(false)} /> : null}
   </ScrollScreen>;
 }
 const styles = StyleSheet.create({
-  flex: { flex: 1 }, exerciseHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: 44 },
-  section: { gap: spacing.sm },
-  title: { flexDirection: 'row', gap: spacing.md, alignItems: 'stretch' }, strip: { width: 4, borderRadius: 2 },
-  stats: { flexDirection: 'row', gap: spacing.sm }, stat: { flex: 1, gap: 2, padding: spacing.md },
-  hairline: { height: StyleSheet.hairlineWidth }, historyLink: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: 44 },
-  metadata: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  metadataItem: { minWidth: 88, gap: 2 },
-  set: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 32 }, setNumber: { width: 20 },
+  flex: { flex: 1 }, strong: { fontWeight: '600' }, italic: { fontStyle: 'italic' },
+  header: { gap: spacing.xs }, title: { flexDirection: 'row', gap: spacing.md, alignItems: 'stretch' }, strip: { width: 4, borderRadius: 2 },
+  hero: { gap: spacing.xs },
+  feelings: { gap: spacing.md }, feelingRow: { flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.xl, rowGap: spacing.md },
+  feeling: { gap: spacing.sm }, dots: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 12 },
+  section: { gap: spacing.md, marginTop: spacing.md },
+  muscle: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 28 }, muscleLabel: { width: 108 },
+  track: { flex: 1, height: 8, borderRadius: brandTokens.radius.full, overflow: 'hidden' }, fill: { height: '100%', borderRadius: brandTokens.radius.full },
+  muscleCount: { minWidth: 56, textAlign: 'right' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 64, paddingVertical: spacing.md },
+  lead: { width: 20, alignItems: 'center' }, flipped: { transform: [{ rotate: '180deg' }] },
+  expanded: { gap: spacing.sm, paddingLeft: 20 + spacing.md, paddingBottom: spacing.md },
+  set: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 36 }, setNumber: { width: 16 },
+  tag: { borderRadius: brandTokens.radius.chip, paddingHorizontal: spacing.sm, paddingVertical: 2 },
+  link: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: 44 },
+  more: { minHeight: 44, justifyContent: 'center' },
 });
