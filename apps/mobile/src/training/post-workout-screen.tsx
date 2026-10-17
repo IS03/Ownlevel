@@ -1,122 +1,116 @@
-import { useEffect, useState } from 'react';
-import { AccessibilityInfo, Modal, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
-import Animated, { FadeIn, useAnimatedProps, useSharedValue, withTiming } from 'react-native-reanimated';
+import { useCallback, useEffect, useState } from 'react';
+import { AccessibilityInfo, Modal, ScrollView, StyleSheet, View } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { SessionFinishedDto } from '@/api/active-session';
-import type { SessionHighlightsDto } from '@/api/session-highlights';
-import { isKgWeightMode } from '@/api/session-highlights';
-import type { MobileApiReadResult } from '@/api/results';
-import { AppIcon, AppText, brandTokens, useReduceMotion, Button, OwnlevelThemeProvider } from '@/design-system';
-import { formatTimeRange } from '@/home/format';
-import { compactWeekdayDate } from './history-model';
-import { exerciseSetLabel } from './exercise-detail-model';
-import { metadataItems } from './completed-session-model';
+import type { SessionDetailDto, SessionFinishedDto } from '@/api/active-session';
+import type { SessionSummaryDto, SessionSummaryLoader } from '@/api/session-summary';
+import { AppIcon, AppText, brandTokens, Button, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { FeelingDots } from './feeling-dots';
+import type { FinishWeek } from './finish-week';
+import { FinishWeekIntro } from './finish-week-intro';
+import { postWorkoutModel } from './post-workout-model';
 
-export type SessionHighlightsLoader = (signal?: AbortSignal) => Promise<MobileApiReadResult<SessionHighlightsDto>>;
-const AnimatedInput = Animated.createAnimatedComponent(TextInput);
-const hero = brandTokens.palette.light;
-function formatCount(value: number): string {
-  'worklet';
-  const [whole, decimal] = String(Math.round(value * 100) / 100).split('.');
-  return whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + (decimal ? `,${decimal}` : '');
-}
-function countText(value: number, duration: boolean) {
-  'worklet';
-  if (!duration) return formatCount(value);
-  return value < 1 ? '<1 min' : value < 60 ? `${Math.floor(value)} min` : `${Math.floor(value / 60)} h ${String(Math.floor(value % 60)).padStart(2, '0')}`;
-}
-function Count({ value, label, duration = false }: { value: number; label: string; duration?: boolean }) {
-  const reduced = useReduceMotion(), progress = useSharedValue(reduced ? 1 : 0);
-  useEffect(() => { progress.value = reduced ? 1 : withTiming(1, { duration: brandTokens.motion.duration.base }); }, [value, reduced, progress]);
-  // Whole targets count in whole steps: "62,01" mid-count reads like a real value.
-  const props = useAnimatedProps(() => {
-    const shown = Number.isInteger(value) ? Math.round(value * progress.value) : value * progress.value;
-    return { text: countText(shown, duration), defaultValue: countText(shown, duration) };
-  });
-  return <View style={styles.stat} accessible accessibilityLabel={`${countText(value, duration)} ${label}`}>
-    {reduced ? <AppText numeric style={styles.number} variant="title1">{countText(value, duration)}</AppText>
-      : <AnimatedInput accessibilityElementsHidden importantForAccessibility="no-hide-descendants" editable={false} defaultValue={countText(value, duration)} animatedProps={props} style={styles.number} underlineColorAndroid="transparent" />}
-    <AppText style={styles.heroText} variant="caption">{label}</AppText>
-  </View>;
-}
-export function postWorkoutRows(finished: SessionFinishedDto, data?: SessionHighlightsDto) {
-  const highlights = data?.sessionId === finished.sessionId ? data.highlights : [];
-  const rows = [...highlights.filter(item => item.kind === 'record'), ...highlights.filter(item => item.kind === 'improvement')].map(item => {
-    const mark = exerciseSetLabel({ actualWeightKg: item.mark.weightKg, actualReps: item.mark.reps }, item.weightMode);
-    const weightDelta = item.mark.weightKg - item.previous.weightKg;
-    const change = weightDelta > 0 ? `+${formatCount(weightDelta)} ${isKgWeightMode(item.weightMode) ? 'kg' : 'placas'}` : `+${item.mark.reps - item.previous.reps} reps`;
-    return { id: `${item.kind}-${item.exerciseId}`, kind: item.kind, title: item.name,
-      detail: item.kind === 'record' ? mark : `${mark} · ${change} que la última vez` };
-  });
-  return [...rows, ...(finished.routineAdditions ?? []).filter(item => item.outcome === 'added').map(item => ({
-    id: `added-${item.sessionExerciseId}`, kind: 'added', title: `${item.name} se sumó a ${finished.name}`, detail: 'Va a estar en tu próxima sesión',
-  }))].slice(0, 4);
-}
-type PostWorkoutProps = { finished: SessionFinishedDto; readHighlights?: SessionHighlightsLoader; onHome: () => void; onViewSession: () => void };
+export type FinishWeekLoader = () => Promise<FinishWeek | null>;
+/** How long the receipt waits for the prefetched week before skipping the intro (never a fake week). */
+const WEEK_WAIT_MS = 900;
+const { fast, base } = brandTokens.motion.duration;
+
+type PostWorkoutProps = {
+  finished: SessionFinishedDto; detail?: SessionDetailDto; readSummary?: SessionSummaryLoader; readWeek?: FinishWeekLoader;
+  onHome: () => void; onViewSession: () => void;
+};
 /** Standalone presentation, for a finish confirmed outside the finish sheet (e.g. a recovered intent). */
 export function PostWorkoutScreen(props: PostWorkoutProps) {
   return <Modal visible presentationStyle="fullScreen" animationType="fade" onRequestClose={props.onViewSession}><PostWorkoutContent {...props} /></Modal>;
 }
-/** Full-screen confirmed receipt; auxiliary history never gates success or manufactures empty/zero values. */
-export function PostWorkoutContent({ finished, readHighlights, onHome, onViewSession }: PostWorkoutProps) {
-  const insets = useSafeAreaInsets();
-  const [highlights, setHighlights] = useState<SessionHighlightsDto>();
-  const reduced = useReduceMotion(), { fontScale } = useWindowDimensions();
-  useEffect(() => { AccessibilityInfo.announceForAccessibility(`${finished.name} guardado`); }, [finished.name]);
+
+/**
+ * SF2/SF3 · the confirmed receipt. The week intro plays first (when its read is ready), then the page:
+ * "{rutina} guardado", the record or improvement block (only when true), what improved and what was added, and the feelings.
+ * Auxiliary reads never gate success or manufacture empty or zero values.
+ */
+export function PostWorkoutContent({ finished, detail, readSummary, readWeek, onHome, onViewSession }: PostWorkoutProps) {
+  const insets = useSafeAreaInsets(), reduced = useReduceMotion(), { colors } = useOwnlevelTheme();
+  const [summary, setSummary] = useState<SessionSummaryDto>();
+  const [phase, setPhase] = useState<'waiting' | 'week' | 'page'>(readWeek ? 'waiting' : 'page');
+  const [week, setWeek] = useState<FinishWeek | null>(null);
+  const model = postWorkoutModel(finished, summary, detail);
+  useEffect(() => { AccessibilityInfo.announceForAccessibility(model.title); }, [model.title]);
   useEffect(() => {
-    if (!readHighlights) return;
+    if (!readSummary) return;
     const abort = new AbortController();
-    void Promise.resolve().then(() => readHighlights(abort.signal)).then(result => {
-      if (!abort.signal.aborted && result.status === 'ok' && result.data.sessionId === finished.sessionId) setHighlights(result.data);
+    void Promise.resolve().then(() => readSummary(abort.signal)).then(result => {
+      if (!abort.signal.aborted && result.status === 'ok' && result.data.sessionId === finished.sessionId) setSummary(result.data);
     }).catch(() => undefined);
     return () => abort.abort();
-  }, [finished.sessionId, readHighlights]);
-  const rows = postWorkoutRows(finished, highlights);
-  const metadata = metadataItems(finished.metadata), feelings = metadata.filter(item => item.key !== 'notes'), note = metadata.find(item => item.key === 'notes');
-  const minutes = Math.max(0, Math.floor((Date.parse(finished.endedAt) - Date.parse(finished.startedAt)) / 60000));
-  return <OwnlevelThemeProvider initialMode="light"><View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]} testID="post-workout-screen">
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.hero}>
-          <View style={styles.check}><AppIcon name="check" color={hero.onAccent} size={32} /></View>
-          <AppText accessibilityRole="header" style={[styles.heroText, styles.center]} variant="largeTitle">{finished.routineId ? `${finished.name} guardado` : 'Entrenamiento guardado'}</AppText>
-          <AppText numeric style={styles.heroText} variant="subheadline">{compactWeekdayDate(finished.logDate)} · {formatTimeRange(finished.startedAt, finished.endedAt)}</AppText>
-        </View>
-        <View style={[styles.stats, fontScale > 1.5 && styles.vertical]}>
-          <Count value={minutes} label="duración" duration />
-          <Count value={finished.completedSetCount} label="series" />
-          {highlights?.volumeKg !== null && highlights?.volumeKg !== undefined ? <Count value={highlights.volumeKg} label="kg de volumen" /> : null}
-        </View>
-        {rows.length ? <Animated.View entering={FadeIn.duration(reduced ? brandTokens.motion.duration.fast : brandTokens.motion.duration.base)} testID="post-workout-highlights">
-          <AppText style={styles.sectionTitle} variant="footnote">Lo destacado</AppText>
-          {rows.map((row, index) => <View key={row.id} style={[styles.row, index > 0 && styles.hairline]} testID={`post-highlight-${row.kind}`}>
-            {row.kind === 'improvement' ? <AppText style={styles.heroText} variant="title2">↗</AppText> : <AppIcon name={row.kind === 'record' ? 'trophy' : 'plus'} color={hero.onHero} size={20} />}
-            <View style={styles.flex}><AppText style={styles.heroText} variant="headline">{row.title}</AppText><AppText numeric style={styles.heroText} variant="subheadline">{row.detail}</AppText></View>
-            {row.kind === 'record' ? <View style={styles.badge}><AppText style={styles.heroText} variant="caption">Récord</AppText></View> : null}
-          </View>)}
-        </Animated.View> : null}
-        {feelings.length || note ? <View style={styles.feelings} testID="post-workout-feelings">
-          <AppText style={styles.sectionTitle} variant="footnote">Cómo te sentiste</AppText>
-          {feelings.length ? <View style={[styles.stats, fontScale > 1.5 && styles.vertical]}>{feelings.map(item => <View key={item.key} style={styles.stat}>
-            <AppText style={styles.heroText} variant="caption">{item.label}</AppText><AppText numeric style={styles.heroText} variant="headline">{item.value}</AppText>
-          </View>)}</View> : null}
-          {note ? <AppText style={[styles.heroText, styles.italic]} variant="body">“{note.value}”</AppText> : null}
-        </View> : null}
-      </ScrollView>
-      <View style={styles.footer}>
-        <Button label="Listo" onPress={onHome} />
-        <Button label="Ver sesión" variant="quiet" onPress={onViewSession} />
+  }, [finished.sessionId, readSummary]);
+  useEffect(() => {
+    if (!readWeek) return;
+    let live = true;
+    const skip = () => { if (live) setPhase(current => current === 'waiting' ? 'page' : current); };
+    const timer = setTimeout(skip, WEEK_WAIT_MS);
+    void readWeek().then(value => {
+      if (!live || !value) { skip(); return; }
+      setWeek(value); setPhase(current => current === 'waiting' ? 'week' : current);
+    }, skip);
+    return () => { live = false; clearTimeout(timer); };
+  }, [readWeek]);
+  const showPage = useCallback(() => setPhase('page'), []);
+  const fade = FadeIn.duration(reduced ? fast : base);
+  const hero = model.hero;
+  return <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top, paddingBottom: insets.bottom }]} testID="post-workout-screen">
+    <ScrollView contentContainerStyle={styles.content}>
+      <View style={styles.header}>
+        <AppText accessibilityRole="header" variant="largeTitle">{model.title}</AppText>
+        <AppText muted numeric variant="subheadline" testID="post-workout-line">{model.line}</AppText>
       </View>
-    </View></OwnlevelThemeProvider>;
+      {hero ? <Animated.View entering={fade} style={[styles.hero, { backgroundColor: colors.brandSurface }]} testID={`post-workout-hero-${hero.kind}`}>
+        <View style={styles.heroTitle}>
+          <AppIcon name={hero.kind === 'record' ? 'trophy' : 'progress'} color={colors.onBrand} size={20} />
+          <AppText variant="headline" style={{ color: colors.onBrand }}>{hero.title}</AppText>
+        </View>
+        {hero.kind === 'record' ? <>
+          <AppText variant="headline" style={[styles.soft, { color: colors.onBrand }]}>{hero.name}</AppText>
+          <AppText numeric variant="largeTitle" style={{ color: colors.onBrand }}>{hero.mark}</AppText>
+          <AppText numeric variant="footnote" style={{ color: colors.onBrand }}>{[hero.before, hero.more].filter(Boolean).join(' ')}</AppText>
+        </> : <>
+          <AppText variant="headline" style={[styles.soft, { color: colors.onBrand }]}>{hero.count}</AppText>
+          <AppText variant="title2" style={{ color: colors.onBrand }}>{hero.names}</AppText>
+          {hero.rest ? <AppText variant="footnote" style={{ color: colors.onBrand }}>{hero.rest}</AppText> : null}
+        </>}
+      </Animated.View> : null}
+      {model.rows.length ? <Animated.View entering={fade} testID="post-workout-rows">
+        {model.rows.map((row, index) => <View key={row.id} style={[styles.row, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}
+          testID={`post-workout-row-${row.kind}`}>
+          <View style={styles.lead}>{row.kind === 'improvement' ? <AppText muted variant="title2" accessibilityLabel="Mejoró">↗</AppText>
+            : <AppIcon name="plus" color={colors.textMuted} size={20} />}</View>
+          <View style={styles.flex}><AppText variant="headline">{row.title}</AppText><AppText muted numeric variant="footnote">{row.detail}</AppText></View>
+        </View>)}
+      </Animated.View> : null}
+      {model.feelings.length || model.note ? <View style={[styles.feelings, { backgroundColor: colors.surfaceRaised }]} testID="post-workout-feelings">
+        {model.feelings.length ? <View style={styles.feelingRow}>{model.feelings.map(feeling => <FeelingDots key={feeling.key} feeling={feeling} />)}</View> : null}
+        {model.note ? <AppText style={styles.italic}>“{model.note}”</AppText> : null}
+      </View> : null}
+    </ScrollView>
+    <View style={styles.footer}>
+      <Button label="Listo" onPress={onHome} />
+      <Button label="Ver sesión" variant="quiet" onPress={onViewSession} />
+    </View>
+    {phase === 'waiting' ? <View style={[StyleSheet.absoluteFill, styles.waiting]} testID="finish-week-waiting" /> : null}
+    {phase === 'week' && week ? <FinishWeekIntro week={week} onDone={showPage} /> : null}
+  </View>;
 }
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: hero.bg, experimental_backgroundImage: `linear-gradient(160deg, ${hero.heroFrom} 0%, ${hero.bg} 75%)` },
-  content: { padding: brandTokens.space.xl, gap: brandTokens.space.xxl }, hero: { alignItems: 'center', gap: brandTokens.space.sm, paddingTop: brandTokens.space.xl },
-  check: { width: 72, height: 72, borderRadius: brandTokens.radius.full, backgroundColor: hero.accent, alignItems: 'center', justifyContent: 'center' },
-  heroText: { color: hero.onHero }, sectionTitle: { color: hero.onHero, fontWeight: '600', marginBottom: brandTokens.space.sm },
-  stats: { flexDirection: 'row', gap: brandTokens.space.md }, vertical: { flexDirection: 'column' },
-  stat: { flex: 1, gap: brandTokens.space.xxs, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: hero.border, paddingLeft: brandTokens.space.sm },
-  number: { ...brandTokens.typeScale.title1, color: hero.onHero, fontVariant: ['tabular-nums'], padding: 0, width: '100%' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.sm, paddingVertical: brandTokens.space.sm }, hairline: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: hero.border },
-  center: { textAlign: 'center' }, flex: { flex: 1 }, badge: { backgroundColor: hero.accentSoft, borderRadius: brandTokens.radius.chip, paddingHorizontal: brandTokens.space.xs, paddingVertical: brandTokens.space.xxs },
-  feelings: { gap: brandTokens.space.xs }, italic: { fontStyle: 'italic' }, footer: { padding: brandTokens.space.md, gap: brandTokens.space.xxs },
+  screen: { flex: 1 }, flex: { flex: 1 }, italic: { fontStyle: 'italic' }, soft: { fontWeight: '500' },
+  content: { paddingHorizontal: brandTokens.space.md, paddingTop: brandTokens.space.xxl, paddingBottom: brandTokens.space.xl, gap: brandTokens.space.xl },
+  header: { gap: brandTokens.space.xxs },
+  hero: { borderRadius: brandTokens.radius.card, padding: brandTokens.layout.cardPadding, gap: brandTokens.space.xxs,
+    experimental_backgroundImage: `linear-gradient(160deg, ${brandTokens.palette.light.heroFrom} 0%, ${brandTokens.palette.light.heroTo} 100%)` },
+  heroTitle: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.xs, marginBottom: brandTokens.space.xxs },
+  row: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.sm, paddingVertical: brandTokens.space.sm, minHeight: 56 },
+  lead: { width: 24, alignItems: 'center' },
+  feelings: { borderRadius: brandTokens.radius.inner, padding: brandTokens.space.md, gap: brandTokens.space.sm },
+  feelingRow: { flexDirection: 'row', flexWrap: 'wrap', columnGap: brandTokens.space.xl, rowGap: brandTokens.space.sm },
+  waiting: { backgroundColor: brandTokens.palette.light.heroFrom },
+  footer: { padding: brandTokens.space.md, gap: brandTokens.space.xxs },
 });

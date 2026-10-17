@@ -1,4 +1,4 @@
-import type { SessionDetailDto } from '@/api/active-session';
+import type { SessionDetailDto, SessionFinishMetadata } from '@/api/active-session';
 import { loadCompared, type SessionSummaryDto } from '@/api/session-summary';
 import { isKgWeightMode } from '@/api/session-highlights';
 import { volumeLabel } from './history-model';
@@ -50,6 +50,15 @@ function statusOf(row: SessionSummaryDto['exercises'][number] | undefined, recor
   return { kind: row.status, label: `${arrow} ${label}` };
 }
 
+/** Only answered fields: missing stays absent, a recorded 0 pain is shown. */
+export function sessionFeelings(metadata: Pick<SessionFinishMetadata, 'energyLevel' | 'performanceLevel' | 'painLevel'>): RevisitFeeling[] {
+  const feelings: RevisitFeeling[] = [];
+  if (metadata.energyLevel !== null) feelings.push({ key: 'energyLevel', label: 'Energía', value: metadata.energyLevel, scale: 5 });
+  if (metadata.performanceLevel !== null) feelings.push({ key: 'performanceLevel', label: 'Rendimiento', value: metadata.performanceLevel, scale: 5 });
+  if (metadata.painLevel !== null) feelings.push({ key: 'painLevel', label: 'Dolor', value: metadata.painLevel, scale: 10 });
+  return feelings;
+}
+
 export function revisitModel(detail: SessionDetailDto, summary?: SessionSummaryDto): RevisitModel {
   const base = completedSessionModel(detail);
   const data = summary?.sessionId === detail.session.id ? summary : undefined;
@@ -93,10 +102,7 @@ export function revisitModel(detail: SessionDetailDto, summary?: SessionSummaryD
     if (done) { const label = exercise.muscleGroupLabelSnapshot ?? MUSCLE_GROUP_OPTIONS.find(option => option.value === exercise.muscleGroupSnapshot)?.label ?? 'Otros'; groups.set(label, (groups.get(label) ?? 0) + done); }
   }
   const metadata = detail.session.metadata;
-  const feelings: RevisitFeeling[] = [];
-  if (metadata.energyLevel !== null) feelings.push({ key: 'energyLevel', label: 'Energía', value: metadata.energyLevel, scale: 5 });
-  if (metadata.performanceLevel !== null) feelings.push({ key: 'performanceLevel', label: 'Rendimiento', value: metadata.performanceLevel, scale: 5 });
-  if (metadata.painLevel !== null) feelings.push({ key: 'painLevel', label: 'Dolor', value: metadata.painLevel, scale: 10 });
+  const feelings = sessionFeelings(metadata);
   return {
     sentence: base.duration ? `${sets} en ${base.duration}.` : `${sets}.`,
     achievement: achievement ? `${achievement}.` : null,

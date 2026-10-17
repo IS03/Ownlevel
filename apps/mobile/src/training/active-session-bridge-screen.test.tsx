@@ -634,8 +634,9 @@ describe('native finish screen (M3.4-2)', () => {
     expect(mockTrigger.mock.calls.filter(([event]) => event === 'workoutComplete')).toHaveLength(1);
     expect(view.getByTestId('post-workout-screen')).toBeTruthy(); expect(view.getByText('Entrenamiento guardado')).toBeTruthy();
     const sheet = within(view.getByTestId('post-workout-screen'));
-    expect(sheet.getByLabelText('1 series')).toBeTruthy(); expect(sheet.getByText('4/5')).toBeTruthy(); expect(sheet.getByText('0/10')).toBeTruthy();
-    expect(sheet.queryByText('Rendimiento')).toBeNull();
+    expect(sheet.getByTestId('post-workout-line').props.children).toMatch(/1 serie\b/);
+    expect(sheet.getByLabelText('Energía: 4 de 5')).toBeTruthy(); expect(sheet.getByLabelText('Dolor: 0 de 10')).toBeTruthy();
+    expect(sheet.queryByLabelText(/Rendimiento/)).toBeNull();
     fireEvent.press(view.getByRole('button', { name: 'Ver sesión' }));
     expect(view.queryByTestId('post-workout-screen')).toBeNull(); expect(view.getByTestId('completed-session')).toBeTruthy();
     expect(view.queryByRole('button', { name: 'Finalizar entrenamiento' })).toBeNull(); expect(view.queryByLabelText('Peso serie 1 de PRESS')).toBeNull();
