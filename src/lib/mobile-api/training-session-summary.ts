@@ -12,8 +12,12 @@ export type SessionExerciseComparison = {
    * mode. first: never done before. not_comparable: done before, but with another load mode or without completed sets.
    */
   status: SessionComparisonStatus;
-  /** Signed change of the best set: load first (kg or lingotes), reps when the load is equal. null unless improved/declined. */
-  change: { kind: 'weight' | 'reps'; amount: number } | null;
+  /**
+   * Signed change, null unless improved/declined. weight: load of the best set (kg or lingotes); reps: reps of the best set at
+   * the same load; volume: when the best set ties, the exercise's total (load × reps of completed sets, or total reps when the
+   * mode compares reps). "same" means the best set and the total are both equal.
+   */
+  change: { kind: 'weight' | 'reps' | 'volume'; amount: number } | null;
   previous: { sessionId: string; endedAt: string; sets: SessionPreviousSet[] } | null;
 };
 export type SessionSummaryDto = {
@@ -32,7 +36,7 @@ function comparison(value: unknown): value is SessionExerciseComparison {
   const moved = value.status === 'improved' || value.status === 'declined';
   if (moved) {
     const c = value.change;
-    if (!object(c, ['kind', 'amount']) || (c.kind !== 'weight' && c.kind !== 'reps') || typeof c.amount !== 'number' || !Number.isFinite(c.amount)
+    if (!object(c, ['kind', 'amount']) || (c.kind !== 'weight' && c.kind !== 'reps' && c.kind !== 'volume') || typeof c.amount !== 'number' || !Number.isFinite(c.amount)
       || c.amount === 0 || (value.status === 'improved') !== (c.amount > 0) || (c.kind === 'reps' && !Number.isInteger(c.amount))) return false;
   } else if (value.change !== null) return false;
   if (value.status === 'first') return value.previous === null;

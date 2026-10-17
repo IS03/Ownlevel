@@ -3,6 +3,7 @@ import { Alert, RefreshControl, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { useMobileApi } from '@/api';
+import { prefetchSessionSummary } from '@/api/session-summary';
 import { useMobileAuth } from '@/auth';
 import { useHomeMetricEntry } from './use-home-metric-entry';
 import {
@@ -102,7 +103,7 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
       haptics.selection();
       router.push({ pathname: '/(tabs)/progress/trends/nutrition', params: { from: day.weekStart, to: day.today } });
     },
-    onOpenCompletedSession: (id: string) => { haptics.selection(); router.push({ pathname: '/(tabs)/train/history/[id]', params: { id } }); },
+    onOpenCompletedSession: (id: string) => { haptics.selection(); if (client) void prefetchSessionSummary(client, id); router.push({ pathname: '/(tabs)/train/history/[id]', params: { id } }); },
     onOpenDay: (date: string) => { haptics.selection(); router.push({ pathname: '/(tabs)/train/history', params: { date } }); },
     onOpenProgress: (target: HomeProgressTarget) => {
       haptics.selection();
@@ -116,7 +117,7 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
       if (target.kind === 'metric') void openMetric(target.metricId,target.quick);
       else router.push('/settings/metrics');
     },
-  }), [configuration, day.today, day.weekStart, router, openMetric]);
+  }), [client, configuration, day.today, day.weekStart, router, openMetric]);
 
   if (!home.data && home.status === 'unavailable') {
     return <HomeUnavailable onRetry={refresh} />;

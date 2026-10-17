@@ -104,11 +104,26 @@ describe('completed session: correct + discard (M3.4-3)', () => {
     await flush();
     fireEvent.press(view.getByRole('button', { name: 'Corregir sesión' }));
     expect(mockPush).toHaveBeenCalledWith(`/(tabs)/train/correct/${ID(1)}`);
+    fireEvent.press(view.getByTestId(`revisit-toggle-${detail.exercises[0].id}`));
     fireEvent.press(view.getByRole('button', { name: 'Ver historial de PRESS' }));
     expect(mockPush).toHaveBeenCalledWith(`/(tabs)/train/history/exercise/${detail.exercises[0].exerciseId}`);
     fireEvent.press(view.getByRole('button', { name: 'Eliminar sesión' }));
     await flush();
     expect(alert).toHaveBeenCalled(); expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+  it('SF1: the comparison arrives after the session and opens set by set with "antes"', async () => {
+    const detail = completedDetail(), press = detail.exercises[0];
+    const summary = jest.fn<NonNullable<CompletedSessionApi['summary']>>().mockResolvedValue(ok({ sessionId: detail.session.id, volumeKg: 320, highlights: [],
+      exercises: [{ sessionExerciseId: press.id, exerciseId: press.exerciseId, status: 'improved' as const, change: { kind: 'reps' as const, amount: 1 },
+        previous: { sessionId: ID(2), endedAt: '2026-09-26T13:00:00Z', sets: [{ weightKg: 40, reps: 7 }] } }] }));
+    const view = wrap(<CompletedSessionScreen api={{ ...api(jest.fn<CompletedSessionApi['discard']>()), summary }} sessionId={ID(1)} initialDetail={detail} onHome={jest.fn()} />);
+    await flush();
+    expect(view.getByText('1 serie en 1 h 04 min.')).toBeTruthy();
+    expect(view.getByTestId('revisit-achievement').props.children).toBe('1 ejercicio mejor que la última vez.');
+    expect(view.getByTestId(`revisit-status-${press.id}`).props.children).toBe('↗ 1 rep');
+    expect(view.queryByText('antes 40×7')).toBeNull();
+    fireEvent.press(view.getByTestId(`revisit-toggle-${press.id}`));
+    expect(view.getByText('antes 40×7')).toBeTruthy();
   });
   it('shows a discarded session without correction or discard actions', async () => {
     const detail = completedDetail(); detail.session.status = 'discarded';

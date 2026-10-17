@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
+import { prefetchSessionSummary } from '@/api/session-summary';
 import type { MobileApiClient } from '@/api/client';
 import { fetchTrainingDay, fetchTrainingHistory, fetchTrainingHistoryExercises, fetchTrainingHistoryMonth, type TrainingHistoryExercise, type TrainingHistorySession } from '@/api/training-history';
 import { AppIcon, AppText, Button, EmptyState, SkeletonBlock, Surface, TextField, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
@@ -233,7 +234,9 @@ export function HistoryScreen({ now = () => new Date() }: { now?: () => Date }) 
   const [refreshKey, setRefreshKey] = useState(0), [endKey, setEndKey] = useState(0), [calendarOpen, setCalendarOpen] = useState(false), [sort, setSort] = useState<Sort>('recent');
   const nearEnd = useRef(false);
   const change = (next: Tab) => { setTab(next); setVisited(old => ({ ...old, [next]: true })); };
-  const openSession = (id: string) => router.push(origin ? { pathname: '/(tabs)/train/history/[id]', params: { id, ...origin } } : `/(tabs)/train/history/${id}`);
+  const { client } = useMobileApi();
+  // The comparison read starts on the tap, while the screen slides in.
+  const openSession = (id: string) => { if (client) void prefetchSessionSummary(client, id); router.push(origin ? { pathname: '/(tabs)/train/history/[id]', params: { id, ...origin } } : `/(tabs)/train/history/${id}`); };
   return <>
     <Stack.Screen options={{ title: 'Historial', headerLargeTitleEnabled: Platform.OS === 'ios', headerLargeTitleStyle: { color: colors.text },
       headerStyle: { backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.background }, headerLargeStyle: { backgroundColor: 'transparent' } }} />

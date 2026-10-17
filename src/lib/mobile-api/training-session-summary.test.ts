@@ -37,6 +37,13 @@ describe('per-exercise comparison against the last time', () => {
     expect(compare(exercise('Peso total', [set(60, 8)]), [previous([set(60, 10)])])).toMatchObject({ status: 'declined', change: { kind: 'reps', amount: -2 } });
     expect(compare(exercise('Peso total', [set(60, 10)]), [previous([set(60, 10)])])).toMatchObject({ status: 'same', change: null });
   });
+  it('a tied best set is decided by the rest of the work: a held top set with fewer reps after it is not "the same"', () => {
+    expect(compare(exercise('Peso total', [set(60, 10, true, 1), set(60, 7, true, 2), set(56, 8, true, 3)]), [previous([set(60, 10, true, 1), set(60, 9, true, 2), set(60, 8, true, 3)])]))
+      .toMatchObject({ status: 'declined', change: { kind: 'volume', amount: -152 } });
+    expect(compare(exercise('Peso corporal', [set(null, 12, true, 1), set(null, 10, true, 2)]), [previous([set(null, 12, true, 1), set(null, 8, true, 2)], 'Peso corporal')]))
+      .toMatchObject({ status: 'improved', change: { kind: 'volume', amount: 2 } });
+    expect(compare(exercise('Peso total', [set(60, 10, true, 1), set(50, 10, false, 2)]), [previous([set(60, 10, true, 1)])])).toMatchObject({ status: 'same', change: null });
+  });
   it('bodyweight compares reps; the most recent earlier session is the reference', () => {
     expect(compare(exercise('Peso corporal', [set(null, 12)]), [previous([set(null, 10)], 'Peso corporal', '2026-10-12T17:00:00Z', previousSessionId), previous([set(null, 15)], 'Peso corporal', '2026-10-01T17:00:00Z', '66666666-6666-4666-8666-666666666666')]))
       .toMatchObject({ status: 'improved', change: { kind: 'reps', amount: 2 }, previous: { sessionId: previousSessionId } });
@@ -74,12 +81,14 @@ describe('summary parser', () => {
     change: { kind: 'weight', amount: 2.5 }, previous: { sessionId: previousSessionId, endedAt: '2026-10-10T17:00:00Z', sets: [{ weightKg: 60, reps: 10 }] } }] });
   it('accepts a valid summary and rejects inconsistent rows', () => {
     expect(parseSessionSummary(ok())).toBeDefined();
+    { const d = ok(); d.exercises[0].change = { kind: 'volume', amount: 12.5 }; expect(parseSessionSummary(d)).toBeDefined(); }
     const bad: ((d: SessionSummaryDto) => void)[] = [
       d => { d.exercises[0].change = { kind: 'weight', amount: -2.5 }; },
       d => { d.exercises[0].change = null; },
       d => { d.exercises[0].status = 'same'; },
       d => { d.exercises[0].status = 'first'; d.exercises[0].change = null; },
       d => { d.exercises[0].change = { kind: 'reps', amount: 1.5 }; },
+      d => { d.exercises[0].change = { kind: 'volume', amount: -5 }; },
       d => { d.exercises.push({ ...d.exercises[0] }); },
       d => { d.exercises[0].previous!.sets[0].reps = -1; },
       d => { (d as Record<string, unknown>).extra = 1; },

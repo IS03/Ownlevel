@@ -84,6 +84,10 @@ function best(sets: WorkoutSet[], byLoad: boolean): { load: number; reps: number
   return done.map(set => ({ load: byLoad ? set.actual_weight_kg! : 0, reps: set.actual_reps! }))
     .reduce((left, right) => right.load > left.load || right.load === left.load && right.reps > left.reps ? right : left);
 }
+/** Load × reps of the completed sets with both values, or total reps when the mode compares reps. */
+function volume(sets: WorkoutSet[], byLoad: boolean) {
+  return completed(sets).reduce((sum, set) => set.actual_reps === null ? sum : byLoad ? set.actual_weight_kg === null ? sum : sum + set.actual_weight_kg * set.actual_reps : sum + set.actual_reps, 0);
+}
 /** How one exercise of the session went against the last time it was done before it. */
 export function exerciseComparison(exercise: SessionDetail['exercises'][number], before: RobustExerciseHistoryItem[]): SessionExerciseComparison {
   const base = { sessionExerciseId: exercise.id, exerciseId: exercise.exercise_id };
@@ -97,6 +101,9 @@ export function exerciseComparison(exercise: SessionDetail['exercises'][number],
   if (!now || !then) return { ...base, status: 'not_comparable', change: null, previous };
   if (now.load !== then.load) return { ...base, status: now.load > then.load ? 'improved' : 'declined', change: { kind: 'weight', amount: Math.round((now.load - then.load) * 100) / 100 }, previous };
   if (now.reps !== then.reps) return { ...base, status: now.reps > then.reps ? 'improved' : 'declined', change: { kind: 'reps', amount: now.reps - then.reps }, previous };
+  // Same best set: the rest of the work decides, so a top set held while the others dropped is not "the same".
+  const total = Math.round((volume(exercise.sets, byLoad) - volume(last.exercise.sets, byLoad)) * 100) / 100;
+  if (total !== 0) return { ...base, status: total > 0 ? 'improved' : 'declined', change: { kind: 'volume', amount: total }, previous };
   return { ...base, status: 'same', change: null, previous };
 }
 /** One read for "Entrenamiento guardado" and the completed session: highlights + per-exercise comparison. */
