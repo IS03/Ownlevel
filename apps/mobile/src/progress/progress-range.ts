@@ -133,6 +133,20 @@ export function rangeTitle(state: ProgressRangeState, today: string): { title: s
   if (state.unit === 'week') return { title: `Semana del ${shortRange(calendarRange('week', state.anchor), today)}`, subtitle: live ? `hasta hoy${tail}` : '7 días' };
   return { title: cap(shortRange(r, today)), subtitle: `${days} días${tail}` };
 }
+const CURRENT_NAMES: Record<Exclude<ProgressUnit, 'custom'>, string> = {
+  week: 'Esta semana', month: 'Este mes', '3m': '3 meses en curso', '6m': '6 meses en curso', year: 'Este año',
+};
+/**
+ * What the collapsed bar says you are looking at: "Este mes", "Mes anterior", "Semana anterior"; further back, the
+ * period itself ("Agosto 2026"); a custom range, its dates ("17 sep – 16 oct").
+ */
+export function rangeShortLabel(state: ProgressRangeState, today: string): string {
+  if (state.unit === 'custom') return shortRange(progressRange(state, today), today);
+  if (isCurrentProgressRange(state, today)) return CURRENT_NAMES[state.unit];
+  const ahead = stepProgressRange(state, 1, today);
+  if (ahead && isCurrentProgressRange(ahead, today)) return shiftLabel(state.unit, -1);
+  return rangeTitle(state, today).title;
+}
 /** The overview's heading for the chosen period: "Tu octubre", "Tu semana", "Tus 3 meses", "Tu 2026", "Tu período". */
 export function periodHeading(state: ProgressRangeState, today: string): string {
   const r = progressRange(state, today);

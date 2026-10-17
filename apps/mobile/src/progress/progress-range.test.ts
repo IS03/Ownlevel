@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import { compareRange, currentProgressRange, initialProgressRange, isCurrentProgressRange, periodHeading, progressRange, rangeTitle, shiftLabel, shiftProgressRange, shortRange, stepProgressRange, type ProgressRangeState } from './progress-range';
+import { compareRange, currentProgressRange, initialProgressRange, isCurrentProgressRange, periodHeading, progressRange, rangeTitle, rangeShortLabel, shiftLabel, shiftProgressRange, shortRange, stepProgressRange, type ProgressRangeState } from './progress-range';
 
 const TODAY = '2026-10-15';
 const at = (patch: Partial<ProgressRangeState>): ProgressRangeState => ({ ...initialProgressRange(TODAY), ...patch });
@@ -74,5 +74,14 @@ describe('Personalizado · anterior / siguiente / volver a hoy', () => {
     expect(isCurrentProgressRange(september, TODAY)).toBe(false);
     expect(progressRange(currentProgressRange(september, TODAY), TODAY)).toEqual({ start: '2026-10-01', end: TODAY });
     expect(currentProgressRange(at({ unit: 'custom', custom: { start: '2026-01-01', end: '2026-01-31' } }), TODAY).unit).toBe('month');
+  });
+});
+
+describe('the collapsed bar names the period', () => {
+  it('this one, the previous one, an older one by its name, and a custom range by its dates', () => {
+    expect(rangeShortLabel(at({ unit: 'month' }), TODAY)).toBe('Este mes');
+    expect(rangeShortLabel(shiftProgressRange(at({ unit: 'week' }), -1, TODAY)!, TODAY)).toBe('Semana anterior');
+    expect(rangeShortLabel(at({ unit: 'month', anchor: '2026-08-10' }), TODAY)).toBe('Agosto 2026');
+    expect(rangeShortLabel(at({ unit: 'custom', custom: { start: '2026-09-16', end: TODAY } }), TODAY)).toBe('16 sep – 15 oct');
   });
 });
