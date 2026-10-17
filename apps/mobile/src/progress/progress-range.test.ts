@@ -85,3 +85,15 @@ describe('the collapsed bar names the period', () => {
     expect(rangeShortLabel(at({ unit: 'custom', custom: { start: '2026-09-16', end: TODAY } }), TODAY)).toBe('16 sep – 15 oct');
   });
 });
+
+describe('2 and 3 weeks', () => {
+  it('are whole Monday–Sunday weeks ending with this one, and step by their own length', () => {
+    expect(progressRange(at({ unit: '2w' }), TODAY)).toEqual({ start: '2026-10-05', end: TODAY });
+    expect(progressRange(at({ unit: '3w' }), TODAY)).toEqual({ start: '2026-09-28', end: TODAY });
+    expect(progressRange(stepProgressRange(at({ unit: '2w' }), -1, TODAY)!, TODAY)).toEqual({ start: '2026-09-21', end: '2026-10-04' });
+    expect(compareRange(at({ unit: '3w', compare: { kind: 'previous' } }), TODAY)).toEqual({ start: '2026-09-07', end: '2026-09-24' });
+    expect(shiftLabel('2w', -1)).toBe('2 semanas anteriores');
+    expect(rangeShortLabel(at({ unit: '3w' }), TODAY)).toBe('Últimas 3 semanas');
+    expect(periodHeading(at({ unit: '2w' }), TODAY)).toBe('Tus 2 semanas');
+  });
+});

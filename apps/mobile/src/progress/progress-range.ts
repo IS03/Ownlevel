@@ -6,13 +6,13 @@ import type { ProgressQuery } from '@/api/progress';
  * Week, month, 3/6 months and year are calendar ranges (Monday–Sunday, 1st–last day, January–December),
  * never beyond today. They travel to the server as `custom` ranges; the comparison is opt-in.
  */
-export type ProgressUnit = 'week' | 'month' | '3m' | '6m' | 'year' | 'custom';
+export type ProgressUnit = 'week' | '2w' | '3w' | 'month' | '3m' | '6m' | 'year' | 'custom';
 export type DateRange = { start: string; end: string };
 export type ProgressCompare = { kind: 'none' } | { kind: 'previous' } | { kind: 'last_year' } | { kind: 'custom'; range: DateRange };
 export type ProgressRangeState = { unit: ProgressUnit; anchor: string; custom: DateRange | null; compare: ProgressCompare };
 
 export const PROGRESS_UNITS: { value: ProgressUnit; label: string }[] = [
-  { value: 'week', label: 'Semana' }, { value: 'month', label: 'Mes' }, { value: '3m', label: '3 meses' },
+  { value: 'week', label: 'Semana' }, { value: '2w', label: '2 semanas' }, { value: '3w', label: '3 semanas' }, { value: 'month', label: 'Mes' }, { value: '3m', label: '3 meses' },
   { value: '6m', label: '6 meses' }, { value: 'year', label: 'Año' }, { value: 'custom', label: 'Personalizado' },
 ];
 export const PROGRESS_MAX_DAYS = 366;
@@ -35,9 +35,12 @@ const minDate = (a: string, b: string) => a < b ? a : b;
 export function initialProgressRange(today: string): ProgressRangeState {
   return { unit: 'month', anchor: today, custom: null, compare: { kind: 'none' } };
 }
+const unitWeeks = (unit: ProgressUnit) => unit === 'week' ? 1 : unit === '2w' ? 2 : unit === '3w' ? 3 : 0;
 /** The whole calendar range of the unit containing the anchor (may extend past today). */
 export function calendarRange(unit: Exclude<ProgressUnit, 'custom'>, anchor: string): DateRange {
-  if (unit === 'week') { const offset = (parse(anchor).getUTCDay() + 6) % 7; const start = addDays(anchor, -offset); return { start, end: addDays(start, 6) }; }
+  const weeks = unitWeeks(unit);
+  // Whole Monday–Sunday weeks: the anchor's week and the ones right before it.
+  if (weeks) { const offset = (parse(anchor).getUTCDay() + 6) % 7; const monday = addDays(anchor, -offset); return { start: addDays(monday, -7 * (weeks - 1)), end: addDays(monday, 6) }; }
   if (unit === 'month') return { start: monthStart(anchor), end: monthEnd(anchor) };
   if (unit === 'year') return { start: `${anchor.slice(0, 4)}-01-01`, end: `${anchor.slice(0, 4)}-12-31` };
   const months = unit === '3m' ? 3 : 6;
@@ -52,7 +55,8 @@ const unitMonths = (unit: ProgressUnit) => unit === 'month' ? 1 : unit === '3m' 
 /** ‹ › move by one unit. Never into a range that starts after today. */
 export function stepProgressRange(state: ProgressRangeState, direction: -1 | 1, today: string): ProgressRangeState | null {
   if (state.unit === 'custom') return null;
-  const anchor = state.unit === 'week' ? addDays(state.anchor, 7 * direction) : addMonths(state.anchor, unitMonths(state.unit) * direction);
+  const weeks = unitWeeks(state.unit);
+  const anchor = weeks ? addDays(state.anchor, 7 * weeks * direction) : addMonths(state.anchor, unitMonths(state.unit) * direction);
   if (calendarRange(state.unit, anchor).start > today) return null;
   return { ...state, anchor: direction === 1 && anchor > today ? today : anchor };
 }
@@ -74,7 +78,7 @@ export const isCurrentProgressRange = (state: ProgressRangeState, today: string)
 export const currentProgressRange = (state: ProgressRangeState, today: string): ProgressRangeState =>
   ({ ...state, unit: state.unit === 'custom' ? 'month' : state.unit, anchor: today, custom: null });
 const SHIFT_NAMES: Record<ProgressUnit, [string, boolean]> = {
-  week: ['Semana', false], month: ['Mes', false], '3m': ['3 meses', true], '6m': ['6 meses', true], year: ['Año', false], custom: ['Período', false],
+  week: ['Semana', false], '2w': ['2 semanas', true], '3w': ['3 semanas', true], month: ['Mes', false], '3m': ['3 meses', true], '6m': ['6 meses', true], year: ['Año', false], custom: ['Período', false],
 };
 /** "Semana anterior", "3 meses anteriores", "Mes siguiente". */
 export function shiftLabel(unit: ProgressUnit, direction: -1 | 1): string {
@@ -97,7 +101,7 @@ export function compareRange(state: ProgressRangeState, today: string): DateRang
     : { start: addMonths(current.start, -12), end: addMonths(current.end, -12) };
   const full = calendarRange(state.unit, state.anchor);
   const otherAnchor = c.kind === 'last_year' ? addMonths(state.anchor, -12)
-    : state.unit === 'week' ? addDays(state.anchor, -7) : addMonths(state.anchor, -unitMonths(state.unit));
+    : unitWeeks(state.unit) ? addDays(state.anchor, -7 * unitWeeks(state.unit)) : addMonths(state.anchor, -unitMonths(state.unit));
   const other = calendarRange(state.unit, otherAnchor);
   if (current.end === full.end) return other;
   return { start: other.start, end: minDate(addDays(other.start, length - 1), other.end) };
@@ -134,7 +138,7 @@ export function rangeTitle(state: ProgressRangeState, today: string): { title: s
   return { title: cap(shortRange(r, today)), subtitle: `${days} días${tail}` };
 }
 const CURRENT_NAMES: Record<Exclude<ProgressUnit, 'custom'>, string> = {
-  week: 'Esta semana', month: 'Este mes', '3m': '3 meses en curso', '6m': '6 meses en curso', year: 'Este año',
+  week: 'Esta semana', '2w': 'Últimas 2 semanas', '3w': 'Últimas 3 semanas', month: 'Este mes', '3m': '3 meses en curso', '6m': '6 meses en curso', year: 'Este año',
 };
 /**
  * What the collapsed bar says you are looking at: "Este mes", "Mes anterior", "Semana anterior"; further back, the
@@ -152,6 +156,8 @@ export function periodHeading(state: ProgressRangeState, today: string): string 
   const r = progressRange(state, today);
   if (state.unit === 'month') return `Tu ${MONTHS[monthOf(r.start)]}`;
   if (state.unit === 'week') return 'Tu semana';
+  if (state.unit === '2w') return 'Tus 2 semanas';
+  if (state.unit === '3w') return 'Tus 3 semanas';
   if (state.unit === '3m') return 'Tus 3 meses';
   if (state.unit === '6m') return 'Tus 6 meses';
   if (state.unit === 'year') return `Tu ${r.start.slice(0, 4)}`;

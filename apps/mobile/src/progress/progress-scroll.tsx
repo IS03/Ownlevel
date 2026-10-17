@@ -12,7 +12,7 @@ import { useProgressRange } from './progress-range-context';
 const BAR = 52;
 /** Scrolled distance over which the title shrinks into the compact bar. */
 const SHRINK = 44;
-const SMALL = 17;
+const SMALL = 21;
 
 /**
  * Every Progreso screen draws its own header: the title row with Comparar fixed at the top and, right under it, the
