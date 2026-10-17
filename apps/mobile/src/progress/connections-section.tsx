@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useMobileApi } from '@/api';
@@ -38,11 +39,17 @@ function StatValue({ value, unit = null, integer = false, total, suffix = '' }: 
 
 function ReadyConnection({ story }: { story: ConnectionStory }) {
   const { colors } = useOwnlevelTheme();
+  const router = useRouter();
   const f = story.food, o = story.outcome;
   const food = story.key === 'protein_strength' ? 'proteína' : story.key === 'kcal_weight' ? 'kcal' : 'carbos';
-  return <Animated.View entering={FadeIn.duration(200)} accessible accessibilityRole="text"
-    accessibilityLabel={connectionAccessibilityLabel(story)} style={[styles.story, { borderColor: colors.border }]} testID={`connection-${story.key}`}>
-    <AppText muted variant="caption" style={styles.label}>{CONNECTION_LABELS[story.key]}</AppText>
+  return <Animated.View entering={FadeIn.duration(200)}><Pressable accessibilityRole="button" accessibilityHint="Abre el detalle semana por semana"
+    accessibilityLabel={connectionAccessibilityLabel(story)} testID={`connection-${story.key}`}
+    onPress={() => { haptics.selection(); router.push({ pathname: '/(tabs)/progress/connections/[key]', params: { key: story.key } }); }}
+    style={({ pressed }) => [styles.story, { borderColor: colors.border }, pressed && { opacity: 0.6 }]}>
+    <View style={styles.labelRow}>
+      <AppText muted variant="caption" style={styles.label}>{CONNECTION_LABELS[story.key]}</AppText>
+      <AppIcon name="chevronRight" color={colors.textMuted} size={15} />
+    </View>
     <AppText variant="headline">{connectionTitle(story)}</AppText>
     <View style={styles.values}>
       <View style={styles.value}>
@@ -65,7 +72,7 @@ function ReadyConnection({ story }: { story: ConnectionStory }) {
         </>}
       </View>
     </View>
-  </Animated.View>;
+  </Pressable></Animated.View>;
 }
 
 function ConnectionsSkeleton() {
@@ -79,7 +86,7 @@ function ConnectionsSkeleton() {
   </View>;
 }
 
-/** C1/C4. Editorial facts; the whole row will open its detail in step 3, so there is no navigation affordance yet. */
+/** C1/C4. Editorial facts; each ready story opens its detail (C2/C3). */
 export function ConnectionsSection({ resource }: { resource: ConnectionsResource }) {
   const { state, today, setState } = useProgressRange();
   const { colors } = useOwnlevelTheme();
@@ -132,6 +139,7 @@ const styles = StyleSheet.create({
   section: { gap: spacing.xs, marginTop: spacing.xl },
   story: { gap: spacing.sm, paddingVertical: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth },
   label: { fontWeight: '600', letterSpacing: 0.8 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   values: { flexDirection: 'row', gap: spacing.md },
   value: { flex: 1, gap: spacing.xs },
   result: { borderLeftWidth: StyleSheet.hairlineWidth, paddingLeft: spacing.md },

@@ -20,6 +20,7 @@ export default function ProgressLayout() {
       <Stack.Screen name="explore" options={{ headerShown: false, title: 'Explorar' }} />
       <Stack.Screen name="views" options={{ title: 'Mis vistas' }} />
       <Stack.Screen name="stages" options={{ title: 'Tus etapas', headerTransparent: true, headerStyle: { backgroundColor: 'transparent' } }} />
+      <Stack.Screen name="connections/[key]" options={{ headerShown: false, title: 'Lo que se movió junto' }} />
       <Stack.Screen name="influence/index" options={{ headerShown: false, title: 'Qué influye' }} />
       <Stack.Screen name="influence/answer" options={{ headerShown: false, title: 'Tu pregunta' }} />
       <Stack.Screen name="influence/build" options={{ headerShown: false, title: 'Tu pregunta' }} />

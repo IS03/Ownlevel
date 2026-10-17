@@ -1,6 +1,7 @@
 import type { MobileApiClient } from './client';
 import { progressQueryParams, progressResponseMatches, type ProgressCompareRange, type ProgressQuery } from './progress';
 import { parseProgressConnections } from '../../../../src/lib/mobile-api/progress-connections-contract';
+import { roundConnections } from '@/progress/connections-model';
 
 export * from '../../../../src/lib/mobile-api/progress-connections-contract';
 
@@ -10,5 +11,5 @@ export const fetchProgressConnections = (client: MobileApiClient, query: Progres
     const data = parseProgressConnections(raw);
     if (!data || !progressResponseMatches(data.period, query, compare)) return;
     const end = query.to && query.to < data.today ? query.to : data.today;
-    return query.period !== 'custom' || data.period.end === end ? data : undefined;
+    return query.period !== 'custom' || data.period.end === end ? roundConnections(data) : undefined;
   } });
