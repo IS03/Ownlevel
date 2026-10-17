@@ -8,6 +8,8 @@ import { NutritionReportDayChangedError, readMobileNutritionFacts } from "./nutr
 import { webAuth } from "./progress-sources";
 import { PROGRESS_STAGES_MAX, type ProgressStages, type ProgressStageSummary } from "./progress-stages-contract";
 import type { MobileSupabaseAuthenticatedContext } from "./supabase";
+import { weightPerWeek } from "./progress-weight-trend";
+export { weightPerWeek } from "./progress-weight-trend";
 
 type Context = MobileSupabaseAuthenticatedContext;
 const DAY = 86_400_000;
@@ -24,15 +26,6 @@ export function stageWindow(stage: Pick<NutritionStage, "startsOn" | "endsOn">, 
   const end = last < today ? last : today;
   const start = daysBetween(stage.startsOn, end) + 1 > MAX_WINDOW_DAYS ? addDays(end, -(MAX_WINDOW_DAYS - 1)) : stage.startsOn;
   return { start, end };
-}
-
-/** Least-squares slope of the weigh-ins, kg per week. Needs 3 weigh-ins spanning at least 10 days. */
-export function weightPerWeek(points: { date: string; value: number }[]): number | null {
-  if (points.length < 3 || daysBetween(points[0].date, points[points.length - 1].date) < 10) return null;
-  const xs = points.map(p => daysBetween(points[0].date, p.date)), ys = points.map(p => p.value);
-  const mx = mean(xs)!, my = mean(ys)!;
-  const den = xs.reduce((t, x) => t + (x - mx) ** 2, 0);
-  return den === 0 ? null : xs.reduce((t, x, i) => t + (x - mx) * (ys[i] - my), 0) / den * 7;
 }
 
 /** Same days as Progreso's average kcal: complete registered days with known calories. */
