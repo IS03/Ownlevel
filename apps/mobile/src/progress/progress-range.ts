@@ -57,6 +57,33 @@ export function stepProgressRange(state: ProgressRangeState, direction: -1 | 1, 
   return { ...state, anchor: direction === 1 && anchor > today ? today : anchor };
 }
 /**
+ * Personalizado's "anterior / siguiente": one unit back or forward, keeping the unit; a custom range moves by its own
+ * length. Never into a range that starts after today (a forward custom range is clipped to today).
+ */
+export function shiftProgressRange(state: ProgressRangeState, direction: -1 | 1, today: string): ProgressRangeState | null {
+  if (state.unit !== 'custom' || !state.custom) return stepProgressRange(state, direction, today);
+  const length = daysBetween(state.custom.start, state.custom.end);
+  const start = addDays(state.custom.start, length * direction);
+  if (start > today) return null;
+  const end = minDate(addDays(start, length - 1), today);
+  return { ...state, custom: { start, end }, anchor: end };
+}
+/** True when the period being read reaches today (the live one). */
+export const isCurrentProgressRange = (state: ProgressRangeState, today: string) => progressRange(state, today).end === today;
+/** "Volver a hoy": the same unit around today (a custom range goes back to the month). */
+export const currentProgressRange = (state: ProgressRangeState, today: string): ProgressRangeState =>
+  ({ ...state, unit: state.unit === 'custom' ? 'month' : state.unit, anchor: today, custom: null });
+const SHIFT_NAMES: Record<ProgressUnit, [string, boolean]> = {
+  week: ['Semana', false], month: ['Mes', false], '3m': ['3 meses', true], '6m': ['6 meses', true], year: ['Año', false], custom: ['Período', false],
+};
+/** "Semana anterior", "3 meses anteriores", "Mes siguiente". */
+export function shiftLabel(unit: ProgressUnit, direction: -1 | 1): string {
+  const [name, plural] = SHIFT_NAMES[unit];
+  const word = direction === -1 ? (plural ? 'anteriores' : 'anterior') : (plural ? 'siguientes' : 'siguiente');
+  return `${name} ${word}`;
+}
+
+/**
  * The comparison range B. "Período anterior" and "Año pasado" shift the calendar range, keeping the same elapsed
  * span when the current range is still in progress (1–15 Oct → 1–15 Sep), so a partial month is never set against a full one.
  */

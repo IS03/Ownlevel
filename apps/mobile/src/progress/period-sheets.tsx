@@ -6,7 +6,7 @@ import { AppText, GlassSurface, SheetHandle, brandTokens, useOwnlevelTheme, useR
 import { triggerHaptic } from '@/platform/haptics';
 import { RoutineSheetButton } from '@/training/routine-sheet-button';
 import { RangeCalendar, type CalendarMark } from './range-calendar';
-import { PROGRESS_MAX_DAYS, addDays, addMonths, compareRange, daysBetween, progressRange, shortRange, type DateRange } from './progress-range';
+import { PROGRESS_MAX_DAYS, addDays, addMonths, compareRange, currentProgressRange, daysBetween, isCurrentProgressRange, progressRange, shiftLabel, shiftProgressRange, shortRange, type DateRange, type ProgressRangeState } from './progress-range';
 import { useProgressRange } from './progress-range-context';
 
 type Draft = { start: string; end: string | null };
@@ -62,7 +62,15 @@ export function CustomRangeSheet({ onClose }: { onClose: () => void }) {
   const [month, setMonth] = useState(current.end);
   const range = complete(draft), valid = !!range && daysBetween(range.start, range.end) <= PROGRESS_MAX_DAYS;
   const apply = (r: DateRange) => { setState({ ...state, unit: 'custom', custom: r, anchor: r.end }); onClose(); };
+  // Step the unit you are on (the previous week, month, 3 months…) without a stepper on screen.
+  const prev = shiftProgressRange(state, -1, today), next = shiftProgressRange(state, 1, today);
+  const move = (to: ProgressRangeState) => { setState(to); onClose(); };
   return <Sheet title="Elegir período" subtitle={rangeSubtitle(range, today, draft)} valid={valid} onClose={onClose} onDone={() => { if (range && valid) apply(range); }}>
+    <View style={styles.shortcuts} testID="progress-period-shift">
+      {prev ? <Shortcut label={shiftLabel(state.unit, -1)} onPress={() => move(prev)} /> : null}
+      {next ? <Shortcut label={shiftLabel(state.unit, 1)} onPress={() => move(next)} /> : null}
+      {!isCurrentProgressRange(state, today) ? <Shortcut label="Volver a hoy" onPress={() => move(currentProgressRange(state, today))} /> : null}
+    </View>
     <View style={styles.shortcuts}>
       <Shortcut label="Últimos 30 días" onPress={() => apply({ start: addDays(today, -29), end: today })} />
       <Shortcut label="Últimos 90 días" onPress={() => apply({ start: addDays(today, -89), end: today })} />

@@ -2,7 +2,6 @@ import { useContext, useState, type PropsWithChildren, type ReactNode } from 're
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   type ScrollViewProps,
   StyleSheet,
   Text,
@@ -17,6 +16,7 @@ import {
   SafeAreaView,
   SafeAreaInsetsContext,
 } from 'react-native-safe-area-context';
+import Animated, { type AnimatedRef } from 'react-native-reanimated';
 import { ScrollEdgeBlur } from './scroll-edge';
 import { HeaderHeightContext } from 'expo-router/build/react-navigation/elements/Header/HeaderHeightContext';
 
@@ -115,6 +115,15 @@ type ScrollScreenProps = PropsWithChildren<
      */
     scrollEdge?: boolean;
     edgeExtra?: number;
+    /** Length of the blur's soft bottom edge (see ScrollEdgeBlur). */
+    edgeFade?: number;
+    /** Reanimated ref, for screens that follow the scroll on the UI thread (useScrollViewOffset). */
+    scrollRef?: AnimatedRef<Animated.ScrollView>;
+    /**
+     * "manual": no automatic top inset (the screen pads its own content under the status bar), so the offset is 0 at
+     * rest and never shifts when a hidden navigation bar is measured on the way back.
+     */
+    topInset?: 'automatic' | 'manual';
     testID?: string;
   }
 >;
@@ -126,6 +135,9 @@ export function ScrollScreen({
   safeAreaEdges = ['left', 'right', 'bottom'],
   scrollEdge = false,
   edgeExtra = EDGE_EXTRA,
+  edgeFade,
+  scrollRef,
+  topInset = 'automatic',
   testID,
   onScroll,
   ...scrollViewProps
@@ -141,21 +153,22 @@ export function ScrollScreen({
       testID={testID}
     >
       {glow ? <ScreenGlow /> : null}
-      <ScrollView
+      <Animated.ScrollView
+        ref={scrollRef}
         {...scrollViewProps}
         onScroll={event => {
           // Only crossing the threshold re-renders; the glass animates its own appearance.
-          if (scrollEdge) { const next = event.nativeEvent.contentOffset.y + top > 4; if (next !== scrolled) setScrolled(next); }
+          if (scrollEdge) { const next = event.nativeEvent.contentOffset.y + (topInset === 'manual' ? 0 : top) > 4; if (next !== scrolled) setScrolled(next); }
           onScroll?.(event);
         }}
         scrollEventThrottle={scrollEdge ? 16 : scrollViewProps.scrollEventThrottle}
         contentContainerStyle={[styles.scrollContent, contentContainerStyle]}
-        contentInsetAdjustmentBehavior="automatic"
+        contentInsetAdjustmentBehavior={topInset === 'manual' ? 'never' : 'automatic'}
         keyboardShouldPersistTaps="handled"
       >
         {children}
-      </ScrollView>
-      {scrollEdge && top > 0 ? <ScrollEdgeBlur visible={scrolled} height={top + edgeExtra} testID="scroll-edge-blur" /> : null}
+      </Animated.ScrollView>
+      {scrollEdge && top > 0 ? <ScrollEdgeBlur visible={scrolled} height={top + edgeExtra} fade={edgeFade} testID="scroll-edge-blur" /> : null}
     </SafeAreaView>
   );
 }
