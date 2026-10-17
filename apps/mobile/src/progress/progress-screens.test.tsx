@@ -121,7 +121,7 @@ describe('Progress Overview', () => {
   it('"Tu octubre" without comparing: progress inside the period, mini charts with real gaps, no Explorar or Revisar datos', async () => {
     const view = wrap(<ProgressOverviewScreen />); await flush();
     expect(mockOverview).toHaveBeenLastCalledWith(mockClient, MONTH, null);
-    expect(view.getByTestId('progress-period-stepper').props.accessibilityLabel).toBe('Octubre 2026, del 1 al 5 · en curso');
+    expect(view.getByTestId('progress-period-caption').props.accessibilityLabel).toBe('Octubre 2026, del 1 al 5 · en curso');
     expect(view.getByText('Tu octubre')).toBeTruthy();
     expect(row(view, 'body')).toBe('Peso. 82 → 80,5 kg · ↘ 1,5');
     expect(row(view, 'training')).toBe('Entrenamiento. 11 días · 180 series');
@@ -172,7 +172,7 @@ describe('Progress Overview', () => {
     expect(view.queryByText(/1–5 sep/)).toBeNull();
     expect(row(view, 'training')).toBe('Entrenamiento. 11 días · 180 series');
   });
-  it('the period bar and the stepper re-read; a late response for another period is never shown', async () => {
+  it('the period strip and the caption (VoiceOver steps) re-read; a late response for another period is never shown', async () => {
     let release!: (v: unknown) => void;
     mockOverview.mockImplementationOnce(() => new Promise(r => { release = r; }));
     const view = wrap(<ProgressOverviewScreen />); await flush();
@@ -182,13 +182,27 @@ describe('Progress Overview', () => {
     await act(async () => { release(ok(overview({ changes: [{ id: 'stale', domain: 'training', label: 'Viejo', description: 'x', destination: { kind: 'training' } }] }))); }); await flush();
     expect(view.queryByText('Viejo')).toBeNull();
     fireEvent.press(view.getByTestId('progress-unit-month')); await flush();
-    fireEvent(view.getByTestId('progress-period-stepper'), 'accessibilityAction', { nativeEvent: { actionName: 'decrement' } }); await flush();
+    fireEvent(view.getByTestId('progress-period-caption'), 'accessibilityAction', { nativeEvent: { actionName: 'decrement' } }); await flush();
     expect(mockOverview).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-09-01', to: '2026-09-30' }, null);
-    expect(view.getByTestId('progress-period-stepper').props.accessibilityLabel).toBe('Septiembre 2026, 30 días');
+    expect(view.getByTestId('progress-period-caption').props.accessibilityLabel).toBe('Septiembre 2026, 30 días');
     expect(view.getByText('Tu septiembre')).toBeTruthy();
+    // Away from today, one tap brings the same unit back to the current period.
+    fireEvent.press(view.getByTestId('progress-period-today')); await flush();
+    expect(view.getByText('Tu octubre')).toBeTruthy(); expect(view.queryByTestId('progress-period-today')).toBeNull();
     fireEvent.press(view.getByTestId('progress-unit-year')); await flush();
     expect(mockOverview).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-01-01', to: TODAY }, null);
     expect(view.getByText('Tu 2026')).toBeTruthy();
+  });
+  it('Personalizado steps the unit you are on: previous and next month, then back to today', async () => {
+    const view = wrap(<ProgressOverviewScreen />); await flush();
+    fireEvent.press(view.getByTestId('progress-unit-custom'));
+    expect(view.queryByText('Mes siguiente')).toBeNull();
+    fireEvent.press(view.getByText('Mes anterior')); await flush();
+    expect(mockOverview).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-09-01', to: '2026-09-30' }, null);
+    expect(view.getByTestId('progress-unit-month').props.accessibilityState.selected).toBe(true);
+    fireEvent.press(view.getByTestId('progress-unit-custom'));
+    fireEvent.press(view.getByText('Mes siguiente')); await flush();
+    expect(mockOverview).toHaveBeenLastCalledWith(mockClient, MONTH, null);
   });
   it('Personalizado opens the calendar: first day, last day, Listo', async () => {
     const view = wrap(<ProgressOverviewScreen />); await flush();

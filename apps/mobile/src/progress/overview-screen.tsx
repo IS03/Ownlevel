@@ -131,7 +131,7 @@ export function ProgressOverviewScreen() {
     const { pathname, extra } = destinationRoute(d);
     router.push({ pathname, params: extra });
   };
-  return <ProgressScroll title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={status.status === 'ready' && status.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
+  return <ProgressScroll root title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={status.status === 'ready' && status.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
     <MyViews />
     {status.status === 'loading' ? <><SkeletonBlock height={240} /><SkeletonBlock height={96} /></>
       : data ? <>

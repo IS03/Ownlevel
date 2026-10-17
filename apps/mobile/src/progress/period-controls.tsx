@@ -1,18 +1,31 @@
 import { useEffect, useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { AppIcon, AppText, GlassSurface, brandTokens, useOwnlevelTheme } from '@/design-system';
+import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming } from 'react-native-reanimated';
+import { AppIcon, AppText, GlassSurface, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
-import { PROGRESS_UNITS, rangeTitle, stepProgressRange, type ProgressUnit } from './progress-range';
+import { PROGRESS_UNITS, currentProgressRange, isCurrentProgressRange, rangeTitle, shiftProgressRange, type ProgressRangeState, type ProgressUnit } from './progress-range';
 import { useProgressRange } from './progress-range-context';
 
-/** R1 · the native-feeling period bar: one glass track that scrolls sideways; Personalizado opens the calendar. */
+const STRIP = 36, STRIP_OPEN = 46;
+
+/**
+ * R1 · the period strip: one straight glass bar from edge to edge, compact at rest. Dragging it sideways opens it a
+ * little so the options read better while you look for one; it settles back once you let go. Personalizado (past the
+ * edge) opens the calendar, with "anterior / siguiente" for the unit you are on.
+ */
 export function PeriodBar({ onCustom }: { onCustom: () => void }) {
-  const { colors } = useOwnlevelTheme();
+  const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
   const { state, setState, today } = useProgressRange();
   const scroll = useRef<ScrollView>(null), offsets = useRef<Record<string, number>>({});
-  const reveal = (x: number, animated: boolean) => scroll.current?.scrollTo({ x: Math.max(0, x - 24), animated });
-  // Keep the selected option visible (Personalizado sits past the edge), also in a freshly mounted copy (the pinned one).
+  const open = useSharedValue(0);
+  // Options near the start stay where they are (no half word at the edge); later ones scroll into view.
+  const reveal = (x: number, animated: boolean) => scroll.current?.scrollTo({ x: x < 220 ? 0 : x - 24, animated });
+  // Keep the selected option visible (Personalizado sits past the edge).
   useEffect(() => { const x = offsets.current[state.unit]; if (x !== undefined) reveal(x, true); }, [state.unit]);
+  const grow = () => { if (!reduced) open.set(withSpring(1, brandTokens.motion.spring)); };
+  const settle = () => { open.set(withDelay(350, withTiming(0, { duration: brandTokens.motion.duration.fast }))); };
+  const track = useAnimatedStyle(() => ({ height: STRIP + (STRIP_OPEN - STRIP) * open.value }));
+  const label = useAnimatedStyle(() => ({ transform: [{ scale: 1 + 0.14 * open.value }] }));
   const choose = (unit: ProgressUnit) => {
     if (unit === 'custom') { onCustom(); return; }
     if (unit === state.unit) return;
@@ -20,46 +33,53 @@ export function PeriodBar({ onCustom }: { onCustom: () => void }) {
     // A new unit starts from today, so "Año" shows this year and not the year of the month you were looking at.
     setState({ ...state, unit, anchor: today, custom: null });
   };
-  return <GlassSurface style={styles.track} testID="progress-period-bar">
-    <ScrollView ref={scroll} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.options} accessibilityRole="tablist" accessibilityLabel="Período">
-      {PROGRESS_UNITS.map(o => {
-        const on = o.value === state.unit;
-        return <Pressable key={o.value} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={o.label}
-          onLayout={e => { const first = offsets.current[o.value] === undefined; offsets.current[o.value] = e.nativeEvent.layout.x; if (first && on) reveal(e.nativeEvent.layout.x, false); }} onPress={() => choose(o.value)}
-          style={[styles.option, on ? { backgroundColor: colors.surface } : null]} testID={`progress-unit-${o.value}`}>
-          <AppText variant="subheadline" style={{ color: on ? colors.text : colors.textMuted, fontWeight: on ? '600' : '500' }}>{o.label}</AppText>
-        </Pressable>;
-      })}
-    </ScrollView>
-  </GlassSurface>;
+  return <View style={styles.stripSlot}>
+    <Animated.View style={[styles.strip, { borderColor: colors.border }, track]}>
+      {/* Pinned over the content: a near-solid base so text passing behind never shows through the options. */}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, opacity: 0.92 }]} />
+      <GlassSurface style={StyleSheet.absoluteFill} testID="progress-period-bar" />
+      <ScrollView ref={scroll} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.options}
+        onScrollBeginDrag={grow} onScrollEndDrag={settle} onMomentumScrollEnd={settle}
+        accessibilityRole="tablist" accessibilityLabel="Período">
+        {PROGRESS_UNITS.map(o => {
+          const on = o.value === state.unit;
+          return <Pressable key={o.value} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={o.label}
+            hitSlop={{ top: 4, bottom: 4 }} onPress={() => choose(o.value)} style={styles.option} testID={`progress-unit-${o.value}`}
+            onLayout={e => { const first = offsets.current[o.value] === undefined; offsets.current[o.value] = e.nativeEvent.layout.x; if (first && on) reveal(e.nativeEvent.layout.x, false); }}>
+            <Animated.View style={[styles.optionInner, label]}>
+              <AppText variant="footnote" style={{ color: on ? colors.primary : colors.textMuted, fontWeight: on ? '700' : '500' }}>{o.label}</AppText>
+              {/* The chosen one is champagne with a short line under it; the rest stay muted. */}
+              <View style={[styles.mark, { backgroundColor: on ? colors.primary : 'transparent' }]} />
+            </Animated.View>
+          </Pressable>;
+        })}
+      </ScrollView>
+    </Animated.View>
+  </View>;
 }
 
-/** "‹ Octubre 2026 ›": one unit back or forward, never into the future. */
-export function PeriodStepper({ onCustom }: { onCustom: () => void }) {
+/**
+ * The dates you are reading, in one line under the strip ("Semana del 12–18 oct · hasta hoy · en curso"), with
+ * "Volver a hoy" when you moved away. VoiceOver can still step periods from here (no visible arrows any more).
+ */
+export function PeriodCaption({ onCustom }: { onCustom: () => void }) {
   const { colors } = useOwnlevelTheme();
   const { state, setState, today } = useProgressRange();
   const { title, subtitle } = rangeTitle(state, today);
-  const prev = stepProgressRange(state, -1, today), next = stepProgressRange(state, 1, today);
-  const go = (to: typeof prev) => { if (to) { triggerHaptic('stepperChange'); setState(to); } };
-  const custom = state.unit === 'custom';
-  return <View style={styles.stepper} accessible accessibilityRole="adjustable" accessibilityLabel={`${title}, ${subtitle}`}
-    accessibilityActions={[{ name: 'decrement', label: 'Período anterior' }, { name: 'increment', label: 'Período siguiente' },
-      ...(custom ? [{ name: 'activate', label: 'Cambiar fechas' }] : [])]}
-    accessibilityHint={custom ? 'Tocá dos veces para cambiar las fechas' : undefined}
-    onAccessibilityAction={e => {
-      const action = e.nativeEvent.actionName;
-      if (action === 'activate') { if (custom) onCustom(); }
-      else go(action === 'increment' ? next : prev);
-    }} testID="progress-period-stepper">
-    <Pressable accessibilityElementsHidden disabled={!prev} hitSlop={10} onPress={() => go(prev)} style={styles.arrow}>
-      <AppIcon name="chevronLeft" color={prev ? colors.text : colors.border} size={20} /></Pressable>
-    {/* A custom range has no neighbors: its title reopens the calendar instead. */}
-    <Pressable accessibilityElementsHidden disabled={!custom} onPress={onCustom} style={styles.label}>
-      <AppText numeric variant="headline">{title}</AppText>
-      <AppText muted numeric variant="caption">{subtitle}</AppText>
+  const prev = shiftProgressRange(state, -1, today), next = shiftProgressRange(state, 1, today);
+  const current = isCurrentProgressRange(state, today);
+  const go = (to: ProgressRangeState | null) => { if (to) { triggerHaptic('stepperChange'); setState(to); } };
+  return <View style={styles.caption}>
+    <Pressable accessibilityRole="adjustable" accessibilityLabel={`${title}, ${subtitle}`} testID="progress-period-caption"
+      accessibilityActions={[{ name: 'decrement', label: 'Período anterior' }, { name: 'increment', label: 'Período siguiente' }, { name: 'activate', label: 'Elegir período' }]}
+      onAccessibilityAction={e => { const action = e.nativeEvent.actionName; if (action === 'activate') onCustom(); else go(action === 'increment' ? next : prev); }}
+      onPress={onCustom} style={styles.captionText}>
+      <AppText muted numeric variant="footnote" numberOfLines={1}>{title} · {subtitle}</AppText>
     </Pressable>
-    <Pressable accessibilityElementsHidden disabled={!next} hitSlop={10} onPress={() => go(next)} style={styles.arrow}>
-      <AppIcon name="chevronRight" color={next ? colors.text : colors.border} size={20} /></Pressable>
+    {!current ? <Pressable accessibilityRole="button" accessibilityLabel="Volver a hoy" hitSlop={10} testID="progress-period-today"
+      onPress={() => go(currentProgressRange(state, today))}>
+      <AppText variant="footnote" style={{ color: colors.primary, fontWeight: '600' }}>Volver a hoy</AppText>
+    </Pressable> : null}
   </View>;
 }
 
@@ -81,36 +101,40 @@ export function CompareChip({ onOpen }: { onOpen: () => void }) {
   </View>;
 }
 
-/** The period block: period bar, stepper and the comparison chip. */
+/** Under the strip: the dates being read and, when on, the comparison chip. */
 export function ProgressPeriodBlock({ onCustom, onCompare }: { onCustom: () => void; onCompare: () => void }) {
   return <View style={styles.block}>
-    <PeriodBar onCustom={onCustom} />
-    <PeriodStepper onCustom={onCustom} />
+    <PeriodCaption onCustom={onCustom} />
     <CompareChip onOpen={onCompare} />
   </View>;
 }
 
-/** Header action: "Comparar" (champagne while a comparison is on). */
+/** Header action: "Comparar" on glass (champagne while a comparison is on). */
 export function CompareHeaderButton({ onPress }: { onPress: () => void }) {
   const { colors } = useOwnlevelTheme();
   const { compareOn } = useProgressRange();
   return <Pressable accessibilityRole="button" accessibilityLabel={compareOn ? 'Cambiar la comparación' : 'Comparar con otro período'} onPress={onPress}
-    hitSlop={8} style={styles.headerButton} testID="progress-compare-button">
-    <AppIcon name="compare" color={compareOn ? colors.primary : colors.text} size={17} />
-    <AppText variant="subheadline" style={{ fontWeight: '600', color: compareOn ? colors.primary : colors.text }}>Comparar</AppText>
+    hitSlop={4} testID="progress-compare-button">
+    <GlassSurface interactive style={styles.headerButton}>
+      <AppIcon name="compare" color={compareOn ? colors.primary : colors.text} size={17} />
+      <AppText variant="subheadline" style={{ fontWeight: '600', color: compareOn ? colors.primary : colors.text }}>Comparar</AppText>
+    </GlassSurface>
   </Pressable>;
 }
 
 const styles = StyleSheet.create({
-  track: { borderRadius: brandTokens.radius.full, overflow: 'hidden' },
-  options: { padding: 3, gap: 2 },
-  option: { minHeight: 34, paddingHorizontal: 14, borderRadius: brandTokens.radius.full, justifyContent: 'center' },
-  stepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
-  arrow: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  label: { flex: 1, alignItems: 'center' },
-  chipRow: { flexDirection: 'row', alignSelf: 'center', gap: 2 },
+  // Edge to edge: the strip cancels the screen gutter and keeps a fixed slot, so opening it never pushes the page.
+  stripSlot: { height: STRIP, marginHorizontal: -brandTokens.layout.screenPadding, zIndex: 1 },
+  strip: { position: 'absolute', top: 0, left: 0, right: 0, overflow: 'hidden', borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth },
+  options: { paddingHorizontal: 8, alignItems: 'stretch' },
+  option: { paddingHorizontal: 12, justifyContent: 'center' },
+  optionInner: { alignItems: 'center', gap: 3, paddingTop: 5 },
+  mark: { width: 14, height: 2, borderRadius: 1 },
+  caption: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 32 },
+  captionText: { flex: 1, minHeight: 32, justifyContent: 'center' },
+  chipRow: { flexDirection: 'row', alignSelf: 'flex-start', gap: 2 },
   chip: { minHeight: 30, paddingHorizontal: 12, justifyContent: 'center', borderTopLeftRadius: 15, borderBottomLeftRadius: 15 },
   chipClose: { width: 32, minHeight: 30, alignItems: 'center', justifyContent: 'center', borderTopRightRadius: 15, borderBottomRightRadius: 15 },
   block: { gap: 6 },
-  headerButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, minHeight: 36 },
+  headerButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, height: 40, borderRadius: brandTokens.radius.full, overflow: 'hidden' },
 });

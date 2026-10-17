@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import { compareRange, initialProgressRange, periodHeading, progressRange, rangeTitle, shortRange, stepProgressRange, type ProgressRangeState } from './progress-range';
+import { compareRange, currentProgressRange, initialProgressRange, isCurrentProgressRange, periodHeading, progressRange, rangeTitle, shiftLabel, shiftProgressRange, shortRange, stepProgressRange, type ProgressRangeState } from './progress-range';
 
 const TODAY = '2026-10-15';
 const at = (patch: Partial<ProgressRangeState>): ProgressRangeState => ({ ...initialProgressRange(TODAY), ...patch });
@@ -55,5 +55,24 @@ describe('periodHeading', () => {
     expect(periodHeading(at({ unit: '3m' }), TODAY)).toBe('Tus 3 meses');
     expect(periodHeading(at({ unit: 'year', anchor: '2025-06-01' }), TODAY)).toBe('Tu 2025');
     expect(periodHeading(at({ unit: 'custom', custom: { start: '2026-10-01', end: '2026-10-03' } }), TODAY)).toBe('Tu período');
+  });
+});
+
+describe('Personalizado · anterior / siguiente / volver a hoy', () => {
+  it('names the step after the unit and moves a custom range by its own length, never past today', () => {
+    expect(shiftLabel('week', -1)).toBe('Semana anterior');
+    expect(shiftLabel('3m', -1)).toBe('3 meses anteriores');
+    expect(shiftLabel('6m', 1)).toBe('6 meses siguientes');
+    const custom = at({ unit: 'custom', custom: { start: '2026-10-06', end: '2026-10-10' } });
+    expect(shiftProgressRange(custom, -1, TODAY)?.custom).toEqual({ start: '2026-10-01', end: '2026-10-05' });
+    expect(shiftProgressRange(custom, 1, TODAY)?.custom).toEqual({ start: '2026-10-11', end: '2026-10-15' });
+    expect(shiftProgressRange(at({ unit: 'custom', custom: { start: '2026-10-11', end: '2026-10-15' } }), 1, TODAY)).toBeNull();
+    expect(shiftProgressRange(at({ unit: 'month' }), 1, TODAY)).toBeNull();
+  });
+  it('knows when you are away from today and brings the same unit back', () => {
+    const september = shiftProgressRange(at({ unit: 'month' }), -1, TODAY)!;
+    expect(isCurrentProgressRange(september, TODAY)).toBe(false);
+    expect(progressRange(currentProgressRange(september, TODAY), TODAY)).toEqual({ start: '2026-10-01', end: TODAY });
+    expect(currentProgressRange(at({ unit: 'custom', custom: { start: '2026-01-01', end: '2026-01-31' } }), TODAY).unit).toBe('month');
   });
 });
