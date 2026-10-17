@@ -138,7 +138,8 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
         // Blocks apply their own gutter (with the side insets) so the Nutrition band is full-bleed;
         // the bottom keeps the tab bar inset plus homeLayout.bottomExtra.
         contentContainerStyle={styles.content}
-        safeAreaEdges={['top', 'bottom']}
+        safeAreaEdges={['bottom']}
+        scrollEdge
         testID={home.data ? 'home-screen' : 'home-loading'}
       >
         <HomeDashboard

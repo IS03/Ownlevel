@@ -10,7 +10,7 @@ function liquidGlassSupported(): boolean {
   return Platform.OS === 'ios' && isGlassEffectAPIAvailable() && isLiquidGlassAvailable();
 }
 
-function useReduceTransparency(): boolean {
+export function useReduceTransparency(): boolean {
   const [reduced, setReduced] = useState(false);
   useEffect(() => {
     let alive = true;

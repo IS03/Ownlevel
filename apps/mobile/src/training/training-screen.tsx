@@ -95,9 +95,9 @@ export function TrainingScreen({ now = systemNow }: { now?: () => Date }) {
   });
 
   return <View pointerEvents={confirmPointerEvents} style={styles.root}>
-    {/* The scroll starts at the calendar's top edge: content passes under the glass, never above it. */}
-    <ScrollScreen contentContainerStyle={{ paddingBottom: 100, paddingTop: collapsedHeight + spacing.xl }} safeAreaEdges={['top', 'left', 'right']}
-      style={styles.scroll}
+    {/* Content passes under the status bar and the calendar's glass, blurring progressively above the calendar. */}
+    <ScrollScreen contentContainerStyle={{ paddingBottom: 100, paddingTop: CALENDAR_TOP_GAP + collapsedHeight + spacing.xl }} safeAreaEdges={['left', 'right']}
+      scrollEdge edgeExtra={CALENDAR_TOP_GAP + 56}
       refreshControl={<RefreshControl onRefresh={() => refresh()} refreshing={homeState.status === 'ready' && homeState.refreshing && homeState.trigger === 'manual'}
         tintColor={colors.primary} colors={[colors.primary]} progressBackgroundColor={colors.surface} testID="training-refresh-control" />} testID="training-screen">
       {home.status === 'loading' && currentCalendar.status === 'loading' ? <View style={{ gap: 12 }} testID="training-loading">
@@ -130,5 +130,4 @@ export function TrainingScreen({ now = systemNow }: { now?: () => Date }) {
 const styles = StyleSheet.create({
   calendar: { left: 12, position: 'absolute', right: 12 },
   root: { flex: 1 },
-  scroll: { marginTop: CALENDAR_TOP_GAP },
 });

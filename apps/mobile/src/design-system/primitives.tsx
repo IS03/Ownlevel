@@ -17,7 +17,7 @@ import {
   SafeAreaView,
   SafeAreaInsetsContext,
 } from 'react-native-safe-area-context';
-import { GlassSurface } from './glass';
+import { ScrollEdgeBlur } from './scroll-edge';
 import { HeaderHeightContext } from 'expo-router/build/react-navigation/elements/Header/HeaderHeightContext';
 
 import { atmosphere, glowGradient } from './atmosphere';
@@ -100,16 +100,21 @@ export function Screen({ centered = false, children, glow = true, testID }: Scre
   );
 }
 
+// The fade runs a little past the status bar, so content blurs in rather than being cut at a line.
+const EDGE_EXTRA = 28;
+
 type ScrollScreenProps = PropsWithChildren<
   Omit<ScrollViewProps, 'children'> & {
     /** Background glow; off for focused flows (the active training session). */
     glow?: boolean;
     safeAreaEdges?: Edge[];
     /**
-     * For screens without a navigation header whose content scrolls under the status bar: a glass top bar
-     * appears once content passes below it (IDENTIDAD.md § Vidrio: "top bar on scroll").
+     * For screens without a navigation header whose content scrolls under the status bar: once content passes
+     * below it, it blurs progressively (IDENTIDAD.md § Vidrio: "top bar on scroll"). `edgeExtra` lengthens the
+     * fade below the status bar (a screen with a floating header passes content under it too).
      */
-    statusBarGlass?: boolean;
+    scrollEdge?: boolean;
+    edgeExtra?: number;
     testID?: string;
   }
 >;
@@ -119,12 +124,13 @@ export function ScrollScreen({
   contentContainerStyle,
   glow = true,
   safeAreaEdges = ['left', 'right', 'bottom'],
-  statusBarGlass = false,
+  scrollEdge = false,
+  edgeExtra = EDGE_EXTRA,
   testID,
   onScroll,
   ...scrollViewProps
 }: ScrollScreenProps) {
-  const { colors, isDark } = useOwnlevelTheme();
+  const { colors } = useOwnlevelTheme();
   const top = useContext(SafeAreaInsetsContext)?.top ?? 0; // Optional: screens rendered without a provider just skip the bar.
   const [scrolled, setScrolled] = useState(false);
 
@@ -139,20 +145,17 @@ export function ScrollScreen({
         {...scrollViewProps}
         onScroll={event => {
           // Only crossing the threshold re-renders; the glass animates its own appearance.
-          if (statusBarGlass) { const next = event.nativeEvent.contentOffset.y + top > 4; if (next !== scrolled) setScrolled(next); }
+          if (scrollEdge) { const next = event.nativeEvent.contentOffset.y + top > 4; if (next !== scrolled) setScrolled(next); }
           onScroll?.(event);
         }}
-        scrollEventThrottle={statusBarGlass ? 16 : scrollViewProps.scrollEventThrottle}
+        scrollEventThrottle={scrollEdge ? 16 : scrollViewProps.scrollEventThrottle}
         contentContainerStyle={[styles.scrollContent, contentContainerStyle]}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
       >
         {children}
       </ScrollView>
-      {statusBarGlass && top > 0 ? <View pointerEvents="none" style={[styles.statusBar, { height: top }]}>
-        {/* Dark: the glass refracts bright text and edges under it into noise, so it carries most of the background. */}
-        <GlassSurface visible={scrolled} style={StyleSheet.absoluteFill} testID="status-bar-glass" tint={isDark ? `${colors.background}C8` : undefined} />
-      </View> : null}
+      {scrollEdge && top > 0 ? <ScrollEdgeBlur visible={scrolled} height={top + edgeExtra} testID="scroll-edge-blur" /> : null}
     </SafeAreaView>
   );
 }
@@ -610,7 +613,6 @@ export function UnavailableState(props: StateProps) {
 }
 
 const styles = StyleSheet.create({
-  statusBar: { position: 'absolute', top: 0, left: 0, right: 0 },
   screen: {
     flex: 1,
   },

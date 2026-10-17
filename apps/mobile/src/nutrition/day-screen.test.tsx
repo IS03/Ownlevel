@@ -84,8 +84,8 @@ describe('Native Nutrition day', () => {
       expect(await AsyncStorage.getItem('ownlevel.nutrition.quick.v1.owner')).not.toBeNull();
       return { status: 'ok', data: quickReceipt, meta: { durationMs: 1, httpStatus: 201, outcome: 'ok' } } as never;
     });
-    const view = render(element()); await view.findByText('Agregar comida');
-    fireEvent.press(view.getByText('Agregar comida')); await act(async () => { fireEvent.press(view.getByText('Rápido')); });
+    const view = render(element()); await view.findByText('Agregar comida', { includeHiddenElements: true });
+    fireEvent.press(view.getByText('Agregar comida', { includeHiddenElements: true })); await act(async () => { fireEvent.press(view.getByText('Rápido')); });
     await act(async () => { fireEvent.press(view.getAllByLabelText('Revisar PASTA').at(-1)!); });
     fireEvent.changeText(view.getByLabelText('Cantidad de INGREDIENTE'), '150,25');
     await act(async () => { appStateListeners.forEach(f => f('background')); appStateListeners.forEach(f => f('active')); });
@@ -104,8 +104,8 @@ describe('Native Nutrition day', () => {
       const selection = options.body as QuickSelection;
       return { status: 'ok', data: options.path.endsWith('meal-preview') ? quickPreview(selection) : { ...quickReceipt, date: selection.date }, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } } as never;
     });
-    const view = render(element()); await view.findByText('Agregar comida');
-    fireEvent.press(view.getByText('Agregar comida')); await act(async () => { fireEvent.press(view.getByText('Alimento por cantidad')); });
+    const view = render(element()); await view.findByText('Agregar comida', { includeHiddenElements: true });
+    fireEvent.press(view.getByText('Agregar comida', { includeHiddenElements: true })); await act(async () => { fireEvent.press(view.getByText('Alimento por cantidad')); });
     await act(async () => { fireEvent.press(view.getByLabelText('Usar CAFÉ')); });
     expect(view.getByLabelText('Destino: Hoy')).toBeTruthy();
     fireEvent.changeText(view.getByLabelText('Cantidad de CAFÉ'), '0,375');
@@ -180,8 +180,8 @@ describe('Native Nutrition day', () => {
     const saved = { status: 'ok', data: { status: 'saved', mealId: '41100000-0000-4000-8000-000000000002', sourceDate: mockToday, destinationDate: mockToday, updatedAt: `${mockToday}T13:00:00Z` }, meta: { durationMs: 1, httpStatus: 201, outcome: 'ok' } };
     let finishDelete!: (r: unknown) => void;
     mockRequest.mockResolvedValueOnce(saved as never).mockImplementationOnce(() => new Promise(resolve => { finishDelete = resolve as (r: unknown) => void; }));
-    const view = render(element()); await view.findByText('Agregar comida');
-    fireEvent.press(view.getByText('Agregar comida')); fireEvent.press(view.getByText('A mano'));
+    const view = render(element()); await view.findByText('Agregar comida', { includeHiddenElements: true });
+    fireEvent.press(view.getByText('Agregar comida', { includeHiddenElements: true })); fireEvent.press(view.getByText('A mano'));
     fireEvent.changeText(view.getByLabelText('Calorías'), '250');
     await act(async () => { fireEvent.press(view.getByText(/Agregar al día ·/)); });
     expect(await view.findByTestId('nutrition-meal-notice')).toBeTruthy();
@@ -197,8 +197,8 @@ describe('Native Nutrition day', () => {
   it('keeps a form draft through refresh and fences the pre-write response after confirmed create', async () => {
     let latest = nutritionFixture();
     mockRead.mockImplementation(async () => ({ status: 'ok', data: latest, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } }) as never);
-    const view = render(element()); await view.findByText('Agregar comida');
-    fireEvent.press(view.getByText('Agregar comida')); fireEvent.press(view.getByText('A mano'));
+    const view = render(element()); await view.findByText('Agregar comida', { includeHiddenElements: true });
+    fireEvent.press(view.getByText('Agregar comida', { includeHiddenElements: true })); fireEvent.press(view.getByText('A mano'));
     fireEvent.changeText(view.getByLabelText('Título'), 'My draft');
     fireEvent.changeText(view.getByLabelText('Calorías'), '350');
     let finishOld!: (r: unknown) => void;
@@ -226,7 +226,7 @@ describe('Native Nutrition day', () => {
     mockRequest.mockResolvedValueOnce(failure as never).mockResolvedValueOnce({ status: 'ok',
       data: { status: 'saved', mealId: '41100000-0000-4000-8000-000000000002', sourceDate: mockToday, destinationDate: mockToday, updatedAt: `${mockToday}T13:00:00Z` },
       meta: { durationMs: 1, httpStatus: 201, outcome: 'ok' } } as never);
-    const view = render(element()); await view.findByText('Agregar comida'); fireEvent.press(view.getByText('Agregar comida')); fireEvent.press(view.getByText('A mano'));
+    const view = render(element()); await view.findByText('Agregar comida', { includeHiddenElements: true }); fireEvent.press(view.getByText('Agregar comida', { includeHiddenElements: true })); fireEvent.press(view.getByText('A mano'));
     fireEvent.changeText(view.getByLabelText('Calorías'), '250'); fireEvent.press(view.getByText(/Agregar al día ·/));
     await view.findByText('Comprobar intento guardado');
     fireEvent.press(view.getByText('Volver al día · conservar intento')); await view.findByText('Revisar intento guardado');
