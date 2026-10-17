@@ -18,6 +18,7 @@ import { resolveMobileProgressPeriod } from "./progress-server";
 import { CONNECTION_KEYS, parseProgressConnections, type ProgressConnections } from "./progress-connections-contract";
 import { calculateProgressConnections, connectionRank, connectionWeeks, type ConnectionSources } from "./progress-connections-model";
 import { connectionTrainingEvidence } from "./progress-connections";
+import { weightPerWeek, weightTrendAt } from "./progress-weight-trend";
 
 const TODAY = "2026-10-19";
 const aStart = "2026-10-05", bStart = "2026-09-21";
@@ -110,7 +111,8 @@ describe("connections facts and coverage", () => {
     expect(story.outcome.current).toBeCloseTo(71.8); // mean 71 + 0.1 * (end day 13 - mean day 5)
     expect(story.outcome.current).not.toBe(71);
     s.weights = [aStart, bStart].flatMap(start => [0, 1, 2].map(n => ({ date: addProgressIsoDays(start, n), value: 70 + n })));
-    expect(get(calculate(s), "kcal_weight").status).toBe("insufficient");
+    expect(get(calculate(s), "kcal_weight")).toMatchObject({ status: "insufficient",
+      missing: { reason: "weigh_in_span", have: 2, need: 10, period: "current" } });
   });
   it("one energy session in B fails without publishing its average", () => {
     const s = sources(); s.training!.energy.sessions.previous = 1; s.training!.energy.previous = null;
@@ -141,6 +143,77 @@ describe("connections facts and coverage", () => {
     s.training = sources().training;
     s.training!.exercises.push({ ...exercise("decline", 70, 100), status: "declined" });
     expect(calculate(s).stories[0].outcome).toMatchObject({ improved: 1, comparable: 2, top: { exerciseId: "decline", currentE1rm: 70, previousE1rm: 100 } });
+  });
+});
+
+describe("weight minimum by each measured period", () => {
+  const weeklyA = period("2026-10-12", 7, aStart), weeklyB = period(aStart, 7, "2026-09-28");
+  const weighIns = (start: string, dates: number[]) => dates.map(n => ({ date: addProgressIsoDays(start, n), value: 70 + n * 0.2 }));
+  const input = (pa = weeklyA, pb = weeklyB): ConnectionSources => ({
+    ...sources(), nutrition: [...days(pa.start, pa.days), ...days(pb.start, pb.days)],
+    weights: [...weighIns(pa.start, [0, 1, 3, 4]), ...weighIns(pb.start, [0, 1, 3, 4])],
+  });
+  it("a week with four weigh-ins in five calendar days is ready, with the same least-squares line in the summary and detail", () => {
+    const dto = calculateProgressConnections(weeklyA, weeklyB, TODAY, input());
+    const story = get(dto, "kcal_weight");
+    expect(story).toMatchObject({ status: "ready", missing: null, outcome: { weighIns: { current: 4, previous: 4 } } });
+    if (story.key !== "kcal_weight") throw new Error("wrong story");
+    expect(story.outcome.perWeekCurrent).toBeCloseTo(1.4);
+    expect(story.outcome.current).toBeCloseTo(71.2);
+    expect(story.weightWeeks[0].trend).toBeCloseTo(71.2);
+    expect(story.outcome.perWeekPrevious).toBeCloseTo(1.4);
+    expect(story.weightWeeksPrevious[0].trend).toBeCloseTo(71.2);
+    expect(dto.ranking).toContain("kcal_weight");
+    expect(parseProgressConnections(dto)).toBeDefined();
+    // Etapas keeps its original minimum when no parameter is provided.
+    expect(weightPerWeek(weighIns(weeklyA.start, [0, 1, 3, 4]))).toBeNull();
+    expect(weightTrendAt(weighIns(weeklyA.start, [0, 1, 3, 4]), weeklyA.end)).toBeNull();
+  });
+  it("a week with three weigh-ins spanning two days reports days, rather than a contradictory count", () => {
+    const s = input(); s.weights = [...weighIns(weeklyA.start, [0, 1, 2]), ...weighIns(weeklyB.start, [0, 2, 4])];
+    const dto = calculateProgressConnections(weeklyA, weeklyB, TODAY, s);
+    expect(get(dto, "kcal_weight")).toMatchObject({ status: "insufficient",
+      missing: { side: "outcome", reason: "weigh_in_span", have: 2, need: 4, period: "current" },
+      outcome: { current: null, perWeekCurrent: null, weighIns: { current: 3, previous: 3 } } });
+    expect(parseProgressConnections(dto)).toBeDefined();
+  });
+  it("a month with three weigh-ins spanning six days still needs ten days", () => {
+    const pa = period("2026-09-01", 30, "2026-08-01"), pb = period("2026-08-01", 30, "2026-07-02"), s = input(pa, pb);
+    s.weights = [...weighIns(pa.start, [0, 3, 6]), ...weighIns(pb.start, [0, 5, 10])];
+    const dto = calculateProgressConnections(pa, pb, TODAY, s);
+    expect(get(dto, "kcal_weight")).toMatchObject({ status: "insufficient",
+      missing: { reason: "weigh_in_span", have: 6, need: 10, period: "current" } });
+    expect(parseProgressConnections(dto)).toBeDefined();
+  });
+  it("uses A and B lengths independently and identifies a shortfall in B", () => {
+    const pb = period("2026-09-01", 30, "2026-08-01"), pa = { ...weeklyA, previousStart: pb.start, previousEnd: pb.end }, s = input(pa, pb);
+    s.weights = [...weighIns(pa.start, [0, 2, 4]), ...weighIns(pb.start, [0, 3, 6])];
+    let dto = calculateProgressConnections(pa, pb, TODAY, s);
+    expect(get(dto, "kcal_weight")).toMatchObject({ status: "insufficient", outcome: { current: expect.any(Number) },
+      missing: { reason: "weigh_in_span", have: 6, need: 10, period: "previous" } });
+    expect(parseProgressConnections(dto)).toBeDefined();
+    s.weights = [...weighIns(pa.start, [0, 2, 4]), ...weighIns(pb.start, [0, 4])];
+    dto = calculateProgressConnections(pa, pb, TODAY, s);
+    expect(get(dto, "kcal_weight").missing).toEqual({ side: "outcome", reason: "weigh_ins", have: 2, need: 3, period: "previous" });
+  });
+  it.each([[8, 5], [12, 9], [13, 10], [14, 10]])("a %i-day period requires a %i-day span", (length, need) => {
+    const pa = period(aStart, length, bStart), pb = period(bStart, length, "2026-08-20"), s = input(pa, pb);
+    s.weights = [pa, pb].flatMap(p => weighIns(p.start, [0, 1, need - 1]));
+    const short = get(calculateProgressConnections(pa, pb, TODAY, s), "kcal_weight");
+    expect(short.missing).toMatchObject({ reason: "weigh_in_span", have: need - 1, need });
+    s.weights = [pa, pb].flatMap(p => weighIns(p.start, [0, 1, need]));
+    expect(get(calculateProgressConnections(pa, pb, TODAY, s), "kcal_weight").status).toBe("ready");
+  });
+  it("clips A to today before choosing its minimum and fitting its final value", () => {
+    const pa = period("2026-10-13", 14, "2026-09-29"), pb = period("2026-09-29", 14, "2026-09-01"), s = input(pa, pb);
+    expect(pa.days).toBe(7); // canonical period resolution clips the requested fourteen days to today
+    s.weights = [...weighIns(pa.start, [0, 1, 4]), ...weighIns(pb.start, [0, 5, 10]),
+      { date: "2026-10-23", value: 100 }];
+    const dto = calculateProgressConnections(pa, pb, TODAY, s), story = get(dto, "kcal_weight");
+    expect(story).toMatchObject({ status: "ready", outcome: { weighIns: { current: 3 } } });
+    if (story.outcome.kind !== "weight") throw new Error("wrong outcome");
+    expect(story.outcome.current).toBeCloseTo(71.2);
+    expect(parseProgressConnections(dto)).toBeDefined();
   });
 });
 
@@ -178,6 +251,16 @@ describe("shared training calculations", () => {
 });
 
 describe("strict shared contract", () => {
+  it.each(["weigh_ins", "weigh_in_span"] as const)("only accepts %s for kcal_weight's outcome", reason => {
+    for (const key of CONNECTION_KEYS) {
+      for (const side of ["food", "outcome"] as const) {
+        const dto = structuredClone(calculate()), story = get(dto, key);
+        story.status = "insufficient"; story.missing = { side, reason, have: 2, need: reason === "weigh_ins" ? 3 : 10, period: "current" };
+        dto.ranking = dto.ranking.filter(k => k !== key);
+        expect(parseProgressConnections(dto) !== undefined).toBe(key === "kcal_weight" && side === "outcome");
+      }
+    }
+  });
   it("accepts ready, insufficient and unavailable facts, and preserves real zero food", () => {
     expect(parseProgressConnections(calculate())).toBeDefined();
     const s = sources(); s.training!.exercises = [];

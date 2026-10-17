@@ -7,8 +7,10 @@ export const CONNECTION_KEYS = ["protein_strength", "carbs_strength", "carbs_ene
 export type ConnectionKey = typeof CONNECTION_KEYS[number];
 export type ConnectionFoodKey = "nutrition.protein" | "nutrition.carbs" | "nutrition.kcal";
 export type ConnectionMissing = {
-  side: "food" | "outcome"; reason: "food_days" | "weigh_ins" | "comparable_exercises" | "energy_sessions";
-  /** null only when the source failed, never a fabricated zero. */
+  side: "food" | "outcome"; reason: "food_days" | "weigh_ins" | "weigh_in_span" | "comparable_exercises" | "energy_sessions";
+  /** weigh_ins counts records; weigh_in_span counts elapsed days between first and last.
+   * null only when the source failed, never a fabricated zero.
+   */
   have: number | null; need: number; period: "current" | "previous";
 };
 export type ConnectionCoverage = { days: number | null; eligible: number };
@@ -89,7 +91,7 @@ function exerciseValid(v: unknown, status: boolean): boolean {
 }
 function missingValid(v: unknown): v is ConnectionMissing {
   return record(v) && exact(v, ["side", "reason", "have", "need", "period"]) && ["food", "outcome"].includes(String(v.side))
-    && ["food_days", "weigh_ins", "comparable_exercises", "energy_sessions"].includes(String(v.reason))
+    && ["food_days", "weigh_ins", "weigh_in_span", "comparable_exercises", "energy_sessions"].includes(String(v.reason))
     && optional(v.have, count) && count(v.need) && v.need > 0 && ["current", "previous"].includes(String(v.period))
     && (v.side === "food") === (v.reason === "food_days");
 }
@@ -113,7 +115,8 @@ function storyValid(v: unknown, key: ConnectionKey, period: ProgressPeriod, refe
     || [...v.weeks as ConnectionWeek[], ...v.weeksPrevious as ConnectionWeek[]].some(w => w.days === null))) return false;
   if (v.status !== "ready") {
     const m = v.missing as ConnectionMissing;
-    if (m.side === "outcome" && m.reason !== (strength ? "comparable_exercises" : weight ? "weigh_ins" : "energy_sessions")) return false;
+    const reasons = strength ? ["comparable_exercises"] : weight ? ["weigh_ins", "weigh_in_span"] : ["energy_sessions"];
+    if (m.side === "outcome" && !reasons.includes(m.reason)) return false;
   }
   if (strength) {
     if (!exact(o, ["kind", "improved", "comparable", "top"]) || o.kind !== "strength" || !optional(o.improved, count) || !optional(o.comparable, count)

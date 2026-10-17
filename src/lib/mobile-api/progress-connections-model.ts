@@ -53,13 +53,18 @@ function foodPeriod(key: ConnectionFoodKey, range: Range, today: string, source:
     weeks, enough, have, need };
 }
 
-function weightPeriod(range: Range, source: ConnectionSources["weights"]) {
+function weightPeriod(period: Range, today: string, source: ConnectionSources["weights"]) {
+  const range = { start: period.start, end: period.end < today ? period.end : today };
+  const length = weightDaysBetween(range.start, range.end) + 1;
+  const requiredSpanDays = length >= 14 ? 10 : Math.max(4, length - 3);
   const points = source?.filter(p => inside(range, p.date)).sort((a, b) => a.date.localeCompare(b.date)) ?? [];
-  const slope = source === null ? null : weightPerWeek(points);
-  return { value: weightTrendAt(points, range.end), slope, count: source === null ? null : points.length,
+  const spanDays = points.length ? weightDaysBetween(points[0].date, points[points.length - 1].date) : 0;
+  const slope = source === null ? null : weightPerWeek(points, requiredSpanDays);
+  return { value: weightTrendAt(points, range.end, requiredSpanDays), slope, count: source === null ? null : points.length,
+    spanDays, requiredSpanDays,
     weeks: connectionWeeks(range).map(w => ({ ...w,
       // The fitted trend is shown only in weeks with an actual weigh-in; gaps remain gaps.
-      trend: points.some(p => inside(w, p.date)) ? weightTrendAt(points, w.end) : null })),
+      trend: points.some(p => inside(w, p.date)) ? weightTrendAt(points, w.end, requiredSpanDays) : null })),
   };
 }
 const relative = (now: number | null, before: number | null) =>
@@ -75,7 +80,7 @@ export function connectionRank(story: ConnectionStory): number {
 
 /** Pure assembly. Null sources mean failed reads; [] means successfully read, with no records. */
 export function calculateProgressConnections(period: ProgressPeriod, reference: ProgressPeriod, today: string, sources: ConnectionSources): ProgressConnections {
-  const weight = { current: weightPeriod(period, sources.weights), previous: weightPeriod(reference, sources.weights) };
+  const weight = { current: weightPeriod(period, today, sources.weights), previous: weightPeriod(reference, today, sources.weights) };
   const stories = CONNECTION_KEYS.map((key): ConnectionStory => {
     const foodKey: ConnectionFoodKey = key === "protein_strength" ? "nutrition.protein" : key === "kcal_weight" ? "nutrition.kcal" : "nutrition.carbs";
     const a = foodPeriod(foodKey, period, today, sources.nutrition), b = foodPeriod(foodKey, reference, today, sources.nutrition);
@@ -97,8 +102,11 @@ export function calculateProgressConnections(period: ProgressPeriod, reference: 
     const previousEnough = isWeight ? weight.previous.slope !== null : isEnergy ? (e?.sessions.previous ?? 0) >= 2 : exercises.length >= 1;
     if (!missing && (!currentEnough || !previousEnough)) {
       const previous = currentEnough;
-      missing = { side: "outcome", reason, need, period: previous ? "previous" : "current",
-        have: isWeight ? weight[previous ? "previous" : "current"].count : isEnergy ? e?.sessions[previous ? "previous" : "current"] ?? 0 : exercises.length };
+      const side = previous ? "previous" : "current";
+      const w = weight[side], spanMissing = isWeight && (w.count ?? 0) >= 3;
+      missing = { side: "outcome", reason: spanMissing ? "weigh_in_span" : reason,
+        need: spanMissing ? w.requiredSpanDays : need, period: side,
+        have: isWeight ? spanMissing ? w.spanDays : w.count : isEnergy ? e?.sessions[side] ?? 0 : exercises.length };
     }
     const base = { key, status: unavailable ? "unavailable" as const : missing ? "insufficient" as const : "ready" as const,
       food: { key: foodKey, unit: isWeight ? "kcal" as const : "g" as const,
