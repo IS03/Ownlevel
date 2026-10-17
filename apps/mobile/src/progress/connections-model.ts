@@ -1,4 +1,4 @@
-import type { ConnectionKey, ConnectionMissing, ConnectionStory } from '@/api/progress-connections';
+import type { ConnectionKey, ConnectionMissing, ConnectionStory, ProgressConnections } from '@/api/progress-connections';
 import { arrowDelta, formatValue } from './progress-format';
 import { compareRange, progressRange, rangeShortLabel, shortRange, type ProgressRangeState } from './progress-range';
 
@@ -85,4 +85,25 @@ export function connectionsPeriodText(state: ProgressRangeState, today: string):
     : `${rangeShortLabel(state, today)} frente a ${shortRange(b, today)}`;
   const scale = state.unit === 'month' ? 'del mes' : state.unit === 'week' ? 'de la semana' : state.unit === 'year' ? 'del año' : 'del período';
   return `${pair}${a.end === today ? `, a la misma altura ${scale}` : ''}.`;
+}
+
+const round = (value: number | null, step: number) => value === null ? null : Math.round(value / step) * step;
+/**
+ * The precision people read on screen: grams and kcal as whole numbers, energy and weight with one decimal.
+ * Rounded once on arrival, so every value, arrow and spoken label agrees with what is shown (304 g ↗ 15 g, never
+ * 304,11 g ↗ 14,68 g). Missing values stay null.
+ */
+export function roundConnections(data: ProgressConnections): ProgressConnections {
+  return { ...data, stories: data.stories.map((s): ConnectionStory => {
+    const food = { ...s.food, current: round(s.food.current, 1), previous: round(s.food.previous, 1) };
+    const weeks = s.weeks.map(w => ({ ...w, food: round(w.food, 1) }));
+    const weeksPrevious = s.weeksPrevious.map(w => ({ ...w, food: round(w.food, 1) }));
+    if (s.key === 'carbs_energy') return { ...s, food, weeks, weeksPrevious,
+      outcome: { ...s.outcome, current: round(s.outcome.current, 0.1), previous: round(s.outcome.previous, 0.1) } };
+    if (s.key === 'kcal_weight') return { ...s, food, weeks, weeksPrevious,
+      outcome: { ...s.outcome, current: round(s.outcome.current, 0.1), previous: round(s.outcome.previous, 0.1) },
+      weightWeeks: s.weightWeeks.map(w => ({ ...w, trend: round(w.trend, 0.1) })),
+      weightWeeksPrevious: s.weightWeeksPrevious.map(w => ({ ...w, trend: round(w.trend, 0.1) })) };
+    return { ...s, food, weeks, weeksPrevious };
+  }) };
 }

@@ -11,15 +11,17 @@ import {
 } from '@/api/progress-connections';
 import type { ProgressOverview, ProgressPeriod } from '@/api/progress';
 import { ConnectionsSection } from './connections-section';
-import { connectionTitle, connectionsPeriodText } from './connections-model';
+import { connectionTitle, connectionsPeriodText, roundConnections } from './connections-model';
 import { ProgressOverviewScreen } from './overview-screen';
+import { ConnectionDetailScreen } from './connection-detail-screen';
 import { ProgressRangeProvider } from './progress-range-context';
 import { addDays, calendarRange, compareRange, daysBetween, initialProgressRange, progressRequest, type DateRange, type ProgressRangeState } from './progress-range';
 
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 const mockPush = jest.fn();
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocusEffect: () => undefined, Stack: { Screen: () => null } }));
+let mockParams: { key?: string } = {};
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocusEffect: () => undefined, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn() }, triggerHaptic: jest.fn() }));
 jest.mock('./my-views', () => ({ MyViews: () => null }));
 jest.mock('./insight-row', () => ({ InsightRow: () => null }));
@@ -193,7 +195,7 @@ describe('connections client and independent resource', () => {
 });
 
 describe('connections editorial stories', () => {
-  it('renders ranked ready facts, with one complete VoiceOver label and no navigation affordance', async () => {
+  it('renders ranked ready facts as one button each, with one complete VoiceOver label, opening the detail', async () => {
     mockTransform = d => ({ ...d, ranking: ['kcal_weight', 'protein_strength', 'carbs_energy', 'carbs_strength'] });
     const view = await open();
     expect(view.getAllByTestId(/^connection-(protein_strength|carbs_strength|carbs_energy|kcal_weight)$/).map(n => n.props.testID)).toEqual([
@@ -202,10 +204,12 @@ describe('connections editorial stories', () => {
     const protein = view.getByTestId('connection-protein_strength');
     expect(protein.props.accessibilityLabel).toBe('Proteína y fuerza. 142 gramos de proteína por día, 18 gramos más. 4 de 6 ejercicios mejoraron.');
     expect(within(protein).getByText('142 g')).toBeTruthy(); expect(within(protein).getByText('4 de 6')).toBeTruthy();
-    expect(within(protein).queryAllByRole('button')).toHaveLength(0);
+    expect(protein.props.accessibilityRole).toBe('button');
     expect(view.getByText('Octubre frente a septiembre, a la misma altura del mes.')).toBeTruthy();
     expect(view.getByText('Pasaron al mismo tiempo: no quiere decir que una cosa cause la otra.')).toBeTruthy();
     expect(mockPush).not.toHaveBeenCalled();
+    fireEvent.press(protein);
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/progress/connections/[key]', params: { key: 'protein_strength' } });
   });
   it.each([
     ['protein_strength', 'food_days', 'previous', 3, 4, 'Hacen falta comidas en 4 días del período anterior. Tenés 3.'],
@@ -277,5 +281,58 @@ describe('story titles and period copy', () => {
     expect(connectionsPeriodText({ ...MONTH, anchor: '2026-09-15' }, TODAY)).toBe('Septiembre frente a agosto.');
     expect(connectionsPeriodText({ ...MONTH, unit: 'week' }, TODAY)).toBe('Esta semana frente a la anterior, a la misma altura de la semana.');
     expect(connectionsPeriodText({ ...MONTH, unit: 'custom', custom: { start: '2026-10-04', end: '2026-10-10' } }, TODAY)).toBe('4–10 oct frente a 27 sep – 3 oct.');
+  });
+});
+
+describe('connection detail (C2, C3)', () => {
+  const detail = async (key: string, state = MONTH) => { mockParams = { key }; const view = render(tree(<ConnectionDetailScreen />, state)); await flush(); return view; };
+  it('protein and strength: the two facts, food week by week with the previous period beside it, and every comparable exercise', async () => {
+    const view = await detail('protein_strength');
+    expect(view.getAllByText('142 g').length).toBeGreaterThan(0); expect(view.getByText('4 de 6')).toBeTruthy();
+    expect(view.getByTestId('connection-week-2026-10-01').props.accessibilityLabel).toBe('1–4 oct: 142 g por día, antes 124 g. 4 de 4 días con comidas.');
+    expect(within(view.getByTestId('connection-exercises')).getAllByRole('button')).toHaveLength(6);
+    fireEvent.press(view.getByTestId('connection-exercise-exercise-0'));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: 'exercise-0' } });
+    fireEvent.press(view.getByTestId('connection-influence'));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/influence/answer',
+      params: { split: 'nutrition.protein', cut: 'median', lag: '1', outcome: 'training.sets' } });
+    // Same B as the section: always the previous equivalent period.
+    expect(connectionCalls().at(-1)!.path).toContain('compareFrom=2026-09-01&compareTo=2026-09-17');
+  });
+  it('calories and weight: weekly trend, a week without weigh-ins is a gap, and no Qué influye link', async () => {
+    mockTransform = d => { const s = d.stories.find(x => x.key === 'kcal_weight')!; if (s.key === 'kcal_weight') s.weightWeeks[0] = { ...s.weightWeeks[0], trend: null }; return d; };
+    const view = await detail('kcal_weight');
+    const weeks = within(view.getByTestId('connection-weight-weeks'));
+    expect(weeks.getByText('Sin pesaje')).toBeTruthy(); expect(weeks.queryByText('0 kg')).toBeNull();
+    expect(view.queryByTestId('connection-influence')).toBeNull();
+  });
+  it('a week without meals is a gap, not a zero bar', async () => {
+    mockTransform = d => { d.stories.forEach(s => { s.weeks[0] = { ...s.weeks[0], food: null, days: 0 }; }); return d; };
+    const view = await detail('carbs_energy');
+    expect(view.getByTestId('connection-week-2026-10-01').props.accessibilityLabel).toMatch(/^1–4 oct: sin comidas registradas/);
+  });
+  it('an insufficient story says what is missing; an unknown key or a failed read is not empty', async () => {
+    mockTransform = d => changeStory(d, 'carbs_energy', { side: 'outcome', reason: 'energy_sessions', have: 1, need: 2, period: 'previous' });
+    let view = await detail('carbs_energy');
+    expect(within(view.getByTestId('connection-detail-missing')).getByText('Hacen falta 2 entrenamientos con la energía cargada en cada período. El anterior tiene 1.')).toBeTruthy();
+    view.unmount();
+    view = await detail('nope');
+    expect(view.getByText('No encontramos esta historia')).toBeTruthy();
+    view.unmount();
+    mockFailure = true;
+    view = await detail('kcal_weight');
+    expect(view.getByText('No pudimos cargar esta historia')).toBeTruthy();
+  });
+});
+
+describe('display precision', () => {
+  it('grams and kcal whole, energy and weight to one decimal, nulls untouched, so arrows match the numbers shown', () => {
+    const dto = fixture();
+    const carbs = dto.stories.find(s => s.key === 'carbs_strength')!; carbs.food.current = 304.11; carbs.food.previous = 289.43;
+    const energy = dto.stories.find(s => s.key === 'carbs_energy')!;
+    if (energy.outcome.kind === 'energy') { energy.outcome.current = 3.72; energy.outcome.previous = null; }
+    const rounded = roundConnections(dto);
+    expect(rounded.stories.find(s => s.key === 'carbs_strength')!.food).toMatchObject({ current: 304, previous: 289 });
+    expect(rounded.stories.find(s => s.key === 'carbs_energy')!.outcome).toMatchObject({ current: 3.7, previous: null });
   });
 });
