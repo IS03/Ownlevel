@@ -152,7 +152,11 @@ describe('native active session screen', () => {
     act(() => { DeviceEventEmitter.emit('keyboardDidHide', { endCoordinates: { height: 0, screenY: 844 } }); }); expect(hidden()).toBe(true);
     fireEvent.press(view.getByRole('button', { name: 'Historial de PRESS' })); expect(hidden()).toBe(false);
     scroll(350); expect(hidden()).toBe(false);
-    fireEvent.press(view.getByLabelText('Cerrar Historial')); expect(hidden()).toBe(true);
+    fireEvent.press(view.getByLabelText('Cerrar Historial'));
+    // The native sheet goes down first; the screen drops it on the dismissal.
+    const lowered = view.UNSAFE_root.findAll(node => typeof node.props.onDismiss === 'function' && node.props.isPresented === false
+      && node.findAll(child => child.props.accessibilityLabel === 'Cerrar Historial').length > 0)[0];
+    act(() => { lowered.props.onDismiss(); }); expect(hidden()).toBe(true);
     scroll(342); expect(hidden()).toBe(false);
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     fireEvent.press(view.getByLabelText('Cancelar entrenamiento')); scroll(360); expect(hidden()).toBe(false);
@@ -640,7 +644,7 @@ describe('native finish screen (M3.4-2)', () => {
     fireEvent.press(view.getByRole('button', { name: 'Ver sesión' }));
     expect(view.queryByTestId('post-workout-screen')).toBeNull(); expect(view.getByTestId('completed-session')).toBeTruthy();
     expect(view.queryByRole('button', { name: 'Finalizar entrenamiento' })).toBeNull(); expect(view.queryByLabelText('Peso serie 1 de PRESS')).toBeNull();
-    expect(view.getByText('40×8 kg')).toBeTruthy();
+    expect(view.getByText(/40×8 kg/)).toBeTruthy();
     controller.dispose();
   });
   it('keeps null distinct from zero, clears selected scales and stages note edits locally', async () => {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AccessibilityInfo, Modal, ScrollView, StyleSheet, TextInput, View, type LayoutChangeEvent } from 'react-native';
 import Animated, { FadeIn, FadeInDown, useAnimatedProps, useAnimatedStyle, useSharedValue, withDelay, withSequence, withSpring, withTiming } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import type { SessionDetailDto, SessionFinishedDto } from '@/api/active-session';
 import type { SessionSummaryDto, SessionSummaryLoader } from '@/api/session-summary';
 import { AppIcon, AppText, brandTokens, Button, useOwnlevelTheme, useReduceMotion } from '@/design-system';
@@ -95,7 +95,7 @@ function HeroCard({ hero }: { hero: PostWorkoutHero }) {
  * the routine and the feelings. Auxiliary reads never gate success or manufacture empty or zero values.
  */
 export function PostWorkoutContent({ finished, detail, readSummary, readWeek, onHome, onViewSession }: PostWorkoutProps) {
-  const insets = useSafeAreaInsets(), reduced = useReduceMotion(), { colors } = useOwnlevelTheme();
+  const reduced = useReduceMotion(), { colors } = useOwnlevelTheme();
   const [summary, setSummary] = useState<SessionSummaryDto>();
   const [week, setWeek] = useState<FinishWeek | null | undefined>(undefined);
   const [intro, setIntro] = useState(Boolean(readWeek)), [revealed, setRevealed] = useState(!readWeek);
@@ -119,7 +119,8 @@ export function PostWorkoutContent({ finished, detail, readSummary, readWeek, on
   const reveal = useCallback(() => setRevealed(true), []), endIntro = useCallback(() => setIntro(false), []);
   const enter = (step: number) => reduced ? FadeIn.duration(fast) : FadeInDown.delay(step * 45).duration(base);
   const rows = exercises ? model.rows.filter(row => row.kind === 'added') : model.rows;
-  return <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top, paddingBottom: insets.bottom }]} testID="post-workout-screen">
+  // The device's own safe area, measured natively: the inherited insets include the tab bar, which this full screen covers.
+  return <SafeAreaView edges={['top', 'bottom']} style={[styles.screen, { backgroundColor: colors.background }]} testID="post-workout-screen">
     {revealed ? <>
       <ScrollView contentContainerStyle={styles.content}>
         <Animated.View entering={enter(0)} style={styles.header}>
@@ -133,12 +134,12 @@ export function PostWorkoutContent({ finished, detail, readSummary, readWeek, on
             const status = exercise.status, record = status?.kind === 'record';
             return <Animated.View key={exercise.id} entering={enter(3 + index)}
               style={[styles.row, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]} testID={`post-workout-exercise-${exercise.id}`}>
-              <View style={styles.lead}>{record ? <AppIcon name="trophy" color={colors.primary} size={17} /> : null}</View>
               <View style={styles.flex}>
                 <AppText variant="headline" style={exercise.done ? null : { color: colors.textMuted }}>{exercise.name}</AppText>
                 <AppText muted numeric variant="footnote">{exercise.line}</AppText>
               </View>
               {status ? <Animated.View entering={FadeIn.duration(base)} style={styles.status}>
+                {record ? <AppIcon name="trophy" color={colors.primary} size={15} /> : null}
                 <AppText numeric variant="subheadline" style={[{ color: record ? colors.primary : status.kind === 'improved' ? colors.text : colors.textMuted }, record && styles.strong, styles.right]}>
                   {status.label}</AppText></Animated.View> : null}
             </Animated.View>;
@@ -163,7 +164,7 @@ export function PostWorkoutContent({ finished, detail, readSummary, readWeek, on
       </Animated.View>
     </> : null}
     {intro ? <FinishWeekIntro week={week} onLeave={reveal} onDone={endIntro} /> : null}
-  </View>;
+  </SafeAreaView>;
 }
 const styles = StyleSheet.create({
   screen: { flex: 1 }, flex: { flex: 1 }, italic: { fontStyle: 'italic' }, soft: { fontWeight: '500' }, strong: { fontWeight: '600' }, right: { textAlign: 'right' },
@@ -179,8 +180,9 @@ const styles = StyleSheet.create({
   mark: { padding: 0, fontVariant: ['tabular-nums'] },
   section: { fontWeight: '600', marginBottom: brandTokens.space.xxs },
   row: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.sm, paddingVertical: brandTokens.space.sm, minHeight: 56 },
-  lead: { width: 20, alignItems: 'center' }, status: { flexShrink: 1, maxWidth: '45%' },
+  lead: { width: 20, alignItems: 'center' }, status: { flexShrink: 1, maxWidth: '45%', flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.xxs },
   feelings: { borderRadius: brandTokens.radius.inner, padding: brandTokens.space.md, gap: brandTokens.space.sm },
   feelingRow: { flexDirection: 'row', flexWrap: 'wrap', columnGap: brandTokens.space.xl, rowGap: brandTokens.space.sm },
-  footer: { padding: brandTokens.space.md, gap: brandTokens.space.xxs },
+  // Thumb height: the buttons sit right above the home indicator, with no extra bottom padding on top of the safe area.
+  footer: { paddingHorizontal: brandTokens.space.md, paddingTop: brandTokens.space.sm, gap: brandTokens.space.xxs },
 });

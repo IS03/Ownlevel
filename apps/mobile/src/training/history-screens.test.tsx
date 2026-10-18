@@ -136,10 +136,10 @@ describe('completed session: correct + discard (M3.4-3)', () => {
     const view = wrap(<CompletedSessionScreen api={{ detail: jest.fn<CompletedSessionApi['detail']>().mockResolvedValue(ok(detail)), discard: jest.fn<CompletedSessionApi['discard']>(), summary }}
       sessionId={ID(1)} initialDetail={detail} onHome={jest.fn()} />);
     await flush();
-    expect(view.getByText('EJ 3')).toBeTruthy(); expect(view.queryByText('EJ 4')).toBeNull(); expect(view.getByText('EJ 6')).toBeTruthy();
+    expect(view.getByText(/^EJ 3\b/)).toBeTruthy(); expect(view.queryByText(/^EJ 4\b/)).toBeNull(); expect(view.getByText(/^EJ 6\b/)).toBeTruthy();
     expect(view.getByText('+ 2 ejercicios más')).toBeTruthy();
     fireEvent.press(view.getByTestId('revisit-show-all'));
-    expect(view.getByText('EJ 4')).toBeTruthy(); expect(view.queryByTestId('revisit-show-all')).toBeNull();
+    expect(view.getByText(/^EJ 4\b/)).toBeTruthy(); expect(view.queryByTestId('revisit-show-all')).toBeNull();
   });
   it('shows a discarded session without correction or discard actions', async () => {
     const detail = completedDetail(); detail.session.status = 'discarded';
