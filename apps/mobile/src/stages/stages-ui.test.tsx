@@ -18,6 +18,8 @@ const mockPush = jest.fn(),
   mockBack = jest.fn(),
   mockReplace = jest.fn();
 let mockParams: Record<string, string> = {};
+let mockConfig: unknown = null;
+jest.mock("@/nutrition/config-provider", () => ({ useNutritionConfiguration: () => mockConfig }));
 jest.mock("./stages-provider", () => ({
   useNutritionStages: () => {
     const React = jest.requireActual<typeof import("react")>("react");
@@ -90,6 +92,7 @@ const element = (children: React.ReactNode) => (
 beforeEach(async () => {
   jest.clearAllMocks();
   mockParams = {};
+  mockConfig = null;
   list = stagesFixture({ untyped: true });
   const memory = new Map<string, string>();
   api = {
@@ -213,6 +216,29 @@ describe("Editorial stages and day editor", () => {
       params: { source: stageId(3) },
     });
     expect(api.write).not.toHaveBeenCalled();
+  });
+  it("a plan saved before stages shows as the current plan and turns into a stage from today with the same numbers", () => {
+    list.current = null;
+    const weekdays = Array.from({ length: 7 }, (_, i) => ({ weekday: i + 1, calorieTargetKcal: 1900, proteinTargetG: 130 }));
+    mockConfig = { state: { config: { plan: { status: "ok", data: { source: "legacy", name: "Recomposición suave", baseWaterL: 3,
+      trainingCalorieDeltaKcal: 0, trainingWaterDeltaL: 0, weekdays, id: null, effectiveFrom: null, version: "1" } } } } };
+    const view = render(element(<StagesListScreen />));
+    expect(view.getByText("Tu plan actual")).toBeTruthy();
+    expect(view.queryByText(/Todavía no tenés una etapa/)).toBeNull();
+    fireEvent.press(view.getByRole("button", { name: "Pasarlo a etapa" }));
+    expect(mockPush).toHaveBeenCalledWith("/settings/stage-plan");
+    const stage = mockController.stage()!;
+    expect(stage).toMatchObject({ name: "Recomposición suave", kind: null, sourceWasUntyped: true, baseWaterL: "3" });
+    expect(stage.weekdays.every((d) => d.kcal === "1900" && d.protein === "130")).toBe(true);
+    expect(api.write).not.toHaveBeenCalled();
+  });
+  it("without a legacy plan (default or already a stage) nothing extra is shown", () => {
+    list.current = null;
+    mockConfig = { state: { config: { plan: { status: "ok", data: { source: "default", name: "Plan", baseWaterL: null,
+      trainingCalorieDeltaKcal: 0, trainingWaterDeltaL: 0, weekdays: [], id: null, effectiveFrom: null, version: "1" } } } } };
+    const view = render(element(<StagesListScreen />));
+    expect(view.queryByText("Tu plan actual")).toBeNull();
+    expect(view.getByText(/Todavía no tenés una etapa/)).toBeTruthy();
   });
   it("empty loading never becomes a false empty or unavailable state", () => {
     mockController = new StagesController(

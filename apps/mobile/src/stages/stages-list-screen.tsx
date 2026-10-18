@@ -17,6 +17,7 @@ import {
   stageProgress,
 } from "@/settings/settings-model";
 import type { NutritionStage } from "@/api/nutrition-stages";
+import { useNutritionConfiguration } from "@/nutrition/config-provider";
 import { dayDistance, kindLabel, weekdayFor } from "./stages-model";
 import {
   isLocked,
@@ -37,6 +38,21 @@ export function StagesListScreen() {
   const state = shared?.state,
     list = state?.list;
   const locked = !state || isLocked(state);
+  // A plan saved before stages existed still sets today's targets (Ajustes and Nutrición show it), but it is not a
+  // stage: show it as the current plan and offer to turn it into one from today, with the same numbers.
+  const config = useNutritionConfiguration()?.state.config;
+  const legacy =
+    list && !list.current && config?.plan.status === "ok" && config.plan.data.source === "legacy"
+      ? config.plan.data
+      : null;
+  const legacyStage: NutritionStage | null = legacy && list
+    ? ({
+        id: "legacy-plan", kind: null, name: legacy.name, startsOn: list.today, endsOn: null,
+        sequenceId: null, position: null, duration: null, status: "current",
+        baseWaterL: legacy.baseWaterL, trainingCalorieDeltaKcal: legacy.trainingCalorieDeltaKcal,
+        trainingWaterDeltaL: legacy.trainingWaterDeltaL, weekdays: legacy.weekdays,
+      } as NutritionStage)
+    : null;
   const duplicate = (stage: NutritionStage) =>
     router.push({
       pathname: "/settings/stage-action",
@@ -60,6 +76,7 @@ export function StagesListScreen() {
     list?.current && list ? stageProgress(list.current, list.today) : null;
   const today = list ? weekdayFor(list.today) : 1;
   const target = list?.current?.weekdays.find((d) => d.weekday === today);
+  const legacyToday = legacy?.weekdays.find((d) => d.weekday === today);
   return (
     <View style={{ flex: 1 }}>
       <EditorialScreen>
@@ -134,6 +151,33 @@ export function StagesListScreen() {
                     <StageProgressBar value={progress.progress} />
                   ) : null}
                 </Pressable>
+              ) : legacy && legacyStage ? (
+                <View style={{ paddingVertical: 20, gap: 12 }} testID="stages-legacy-plan">
+                  <EditorialSpread>
+                    <Heading level={2} style={{ flexShrink: 1 }}>Tu plan actual</Heading>
+                    <View>
+                      <CountingNumber variant="title1" value={legacyToday?.calorieTargetKcal ?? null} />
+                      <AppText muted variant="caption">kcal hoy</AppText>
+                    </View>
+                  </EditorialSpread>
+                  <AppText muted numeric>
+                    Lo armaste antes de que existieran las etapas
+                    {legacyToday?.proteinTargetG == null
+                      ? "."
+                      : ` · ${legacyToday.proteinTargetG.toLocaleString("es-AR")} g proteína.`}
+                  </AppText>
+                  <Button
+                    label="Pasarlo a etapa"
+                    variant="secondary"
+                    disabled={locked}
+                    onPress={() => {
+                      if (shared?.controller.replace(legacyStage)) router.push("/settings/stage-plan");
+                    }}
+                  />
+                  <AppText muted variant="footnote">
+                    Arranca hoy con los mismos números; elegís el tipo y lo podés ajustar. Los días anteriores no cambian.
+                  </AppText>
+                </View>
               ) : !state?.loading && !state?.readError ? (
                 <AppText muted>Todavía no tenés una etapa en curso.</AppText>
               ) : null}
