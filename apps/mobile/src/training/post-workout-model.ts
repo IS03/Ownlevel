@@ -8,7 +8,11 @@ import { sessionFeelings, type RevisitFeeling } from './session-revisit-model';
 // SF2/SF3 · just finished. The base is the finish receipt (server truth); the summary read adds records and what improved.
 // Nothing is promised before it arrives and nothing is invented when it does not: no record and no improvement → no block.
 export type PostWorkoutHero =
-  | { kind: 'record'; title: string; name: string; mark: string; before: string; more: string | null }
+  | {
+    kind: 'record'; title: string; name: string; mark: string; before: string; more: string | null;
+    /** For the count-up: the load goes from the previous best to the record, the reps stay. */
+    count: { from: number; to: number; unit: string; reps: number };
+  }
   | { kind: 'improved'; title: string; count: string; names: string; rest: string | null };
 export type PostWorkoutRow = { id: string; kind: 'improvement' | 'added'; title: string; detail: string };
 export type PostWorkoutModel = {
@@ -63,7 +67,8 @@ export function postWorkoutModel(finished: SessionFinishedDto, summary?: Session
     const [first, ...others] = records;
     hero = { kind: 'record', title: records.length === 1 ? '¡Récord hoy!' : `¡${records.length} récords hoy!`, name: first.name, mark: markOf(first),
       before: `Antes: ${exerciseSetLabel({ actualWeightKg: first.previous.weightKg, actualReps: first.previous.reps }, first.weightMode)}.`,
-      more: others.length === 1 ? `Y ${others[0].name} ${markOf(others[0])}.` : others.length ? `Y ${others.length} más: ${list(others.map(item => item.name))}.` : null };
+      more: others.length === 1 ? `Y ${others[0].name} ${markOf(others[0])}.` : others.length ? `Y ${others.length} más: ${list(others.map(item => item.name))}.` : null,
+      count: { from: first.previous.weightKg, to: first.mark.weightKg, unit: first.weightMode === 'Lingotes (no kg)' ? 'placas' : 'kg', reps: first.mark.reps } };
   } else if (improved.length) {
     const compared = (data?.exercises ?? []).filter(row => row.status === 'improved' || row.status === 'same' || row.status === 'declined');
     const restSame = compared.length > improved.length && compared.every(row => row.status !== 'declined');
