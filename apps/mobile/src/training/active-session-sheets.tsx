@@ -67,8 +67,11 @@ export function SessionQuickHistory({ exercise, history, routineId = null, routi
   const routines = new Map(sessions.filter(row => row.routineId).map(row => [row.routineId!, row.routineName]));
   if (routineId) routines.set(routineId, routineName ?? routines.get(routineId) ?? 'esta rutina');
   const visible = filter === null ? sessions : sessions.filter(row => row.routineId === filter);
-  return <RoutineEditorSheet open pending={false} onClose={onClose}><View style={styles.root}>
-    <View style={styles.header}><View style={{ flex: 1 }}><AppText accessibilityRole="header" variant="title2">Historial</AppText><AppText muted variant="footnote">{exercise.nameSnapshot}</AppText></View><RoutineSheetButton label="Cerrar Historial" icon="close" onPress={onClose} /></View>
+  // The close button lowers the native sheet with its content; the screen unmounts it only once it is down (no white flash).
+  const [open, setOpen] = useState(true);
+  const close = () => setOpen(false);
+  return <RoutineEditorSheet open={open} pending={false} onClose={close} onDismissed={onClose}><View style={styles.root}>
+    <View style={styles.header}><View style={{ flex: 1 }}><AppText accessibilityRole="header" variant="title2">Historial</AppText><AppText muted variant="footnote">{exercise.nameSnapshot}</AppText></View><RoutineSheetButton label="Cerrar Historial" icon="close" onPress={close} /></View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips} contentContainerStyle={styles.chipContent}>
       <Chip kind="toggle" label="Todas" selected={filter === null} onPress={() => setFilter(null)} />
       {[...routines].map(([id, name]) => <Chip kind="toggle" key={id} label={name} selected={filter === id} onPress={() => setFilter(id)} />)}

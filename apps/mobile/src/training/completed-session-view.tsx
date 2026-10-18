@@ -22,21 +22,23 @@ function ExerciseRow({ exercise, open, first, onToggle, onOpenExercise }: {
   const statusColor = record ? colors.primary : status?.kind === 'improved' ? colors.text : colors.textMuted;
   // Large text: the status goes under the name; otherwise it never takes more than its share of the row.
   const large = fontScale > 1.3;
-  const statusText = status ? <AppText numeric variant="subheadline" style={[{ color: statusColor }, record && styles.strong, !large && styles.status]}
-    testID={`revisit-status-${exercise.id}`}>{status.label}</AppText> : null;
+  const statusText = status ? <View style={[styles.statusRow, !large && styles.status]}>
+    {record ? <AppIcon name="trophy" color={colors.primary} size={15} /> : null}
+    <AppText numeric variant="subheadline" style={[{ color: statusColor }, record && styles.strong, !large && styles.right]} testID={`revisit-status-${exercise.id}`}>{status.label}</AppText>
+  </View> : null;
   return <Animated.View layout={reduced ? undefined : LinearTransition.duration(brandTokens.motion.duration.base)}
     style={[!first && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]} testID={`completed-exercise-${exercise.id}`}>
     <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }}
       accessibilityLabel={`${exercise.name}. ${exercise.line}${status ? `. ${status.label === '=' ? 'igual que la última vez' : status.label}` : ''}`}
       onPress={onToggle} style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]} testID={`revisit-toggle-${exercise.id}`}>
-      <View style={styles.lead}>{record ? <AppIcon name="trophy" color={colors.primary} size={17} /> : null}</View>
+      {/* Name and sets share one line ("NOMBRE · 90×10 · 90×9 kg"): opening drops only the sets, the name stays put. */}
       <View style={styles.flex}>
-        <AppText variant="headline" style={exercise.done ? null : { color: colors.textMuted }}>{exercise.name}</AppText>
-        {open ? null : <AppText muted numeric variant="footnote">{exercise.line}</AppText>}
+        <AppText variant="headline" style={exercise.done ? null : { color: colors.textMuted }}>{exercise.name}
+          {open ? null : <AppText muted numeric variant="footnote" style={styles.inline}>{'  ·  '}{exercise.line}</AppText>}</AppText>
         {status && large ? statusText : null}
       </View>
       {status && !large ? statusText : null}
-      <View style={open ? styles.flipped : undefined}><AppIcon name="chevronDown" color={colors.textMuted} size={17} /></View>
+      <View style={[styles.chevron, open && styles.flipped]}><AppIcon name="chevronDown" color={colors.textMuted} size={17} /></View>
     </Pressable>
     {open ? <Animated.View entering={FadeIn.duration(reduced ? brandTokens.motion.duration.fast : brandTokens.motion.duration.base)} style={styles.expanded} testID={`revisit-detail-${exercise.id}`}>
       {exercise.identity ? <AppText muted variant="footnote">{exercise.identity}</AppText> : null}
@@ -150,10 +152,11 @@ const styles = StyleSheet.create({
   muscle: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 28 }, muscleLabel: { width: 108 },
   track: { flex: 1, height: 8, borderRadius: brandTokens.radius.full, overflow: 'hidden' }, fill: { height: '100%', borderRadius: brandTokens.radius.full },
   muscleCount: { minWidth: 56, textAlign: 'right' }, muscleStack: { gap: spacing.xs },
-  status: { flexShrink: 1, maxWidth: '45%', textAlign: 'right' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 64, paddingVertical: spacing.md },
-  lead: { width: 20, alignItems: 'center' }, flipped: { transform: [{ rotate: '180deg' }] },
-  expanded: { gap: spacing.sm, paddingLeft: 20 + spacing.md, paddingBottom: spacing.md },
+  status: { flexShrink: 1, maxWidth: '45%', justifyContent: 'flex-end' },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, paddingVertical: spacing.lg }, inline: { fontWeight: '400' },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingTop: 1 }, right: { textAlign: 'right' }, chevron: { paddingTop: 3 },
+  flipped: { transform: [{ rotate: '180deg' }] },
+  expanded: { gap: spacing.sm, paddingBottom: spacing.md },
   set: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: spacing.md, rowGap: spacing.xs, minHeight: 36 }, setNumber: { width: 16 },
   tag: { borderRadius: brandTokens.radius.chip, paddingHorizontal: spacing.sm, paddingVertical: 2 },
   link: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: 44 },

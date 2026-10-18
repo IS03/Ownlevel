@@ -9,7 +9,14 @@ const mockResource = jest.fn();
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('expo-glass-effect', () => ({ isGlassEffectAPIAvailable: () => false, isLiquidGlassAvailable: () => false }));
 jest.mock('@/api', () => ({ fetchMobileTrainingExercises: jest.fn(), useApiResource: () => mockResource() }));
-jest.mock('./routine-editor-sheet', () => ({ RoutineEditorSheet: ({ children }: { children: React.ReactNode }) => children }));
+// Like the native sheet: closing lowers it, and the screen hears about it once it is down.
+jest.mock('./routine-editor-sheet', () => {
+  const { useEffect } = jest.requireActual<typeof import('react')>('react');
+  return { RoutineEditorSheet: ({ children, open, onDismissed }: { children: React.ReactNode; open: boolean; onDismissed?: () => void }) => {
+    useEffect(() => { if (!open) onDismissed?.(); }, [open, onDismissed]);
+    return children;
+  } };
+});
 jest.mock('./routine-exercise-picker-body', () => jest.requireActual('./routine-exercise-picker-body.tsx'));
 function historical(index: number, routineId: string | null = 'push'): QuickSessionHistoryDto {
   const set = { ...testPayload().sets[0], actualWeightKg: 17.5, actualReps: 10, targetRir: 2, isCompleted: true };

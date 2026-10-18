@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, useWindowDimensions } from 'react-native';
 import Animated, { cancelAnimation, interpolateColor, runOnJS, useAnimatedProps, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withTiming, type SharedValue } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
-import { AppIcon, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 export type SaveOrigin = { x: number; y: number; width: number };
@@ -12,7 +12,7 @@ export function FinishSaveAnimation({ running, confirmed, origin, reveal, onRead
   running: boolean; confirmed: boolean; origin: SaveOrigin; reveal: SharedValue<number>; onReady: () => void;
 }) {
   const { colors } = useOwnlevelTheme(), reduceMotion = useReduceMotion(), window = useWindowDimensions();
-  const shape = useSharedValue(0), rotation = useSharedValue(0), ring = useSharedValue(0.25), check = useSharedValue(0);
+  const shape = useSharedValue(0), rotation = useSharedValue(0), ring = useSharedValue(0.25);
   const notified = useRef(false), ready = useRef(onReady);
   useEffect(() => { ready.current = onReady; }, [onReady]);
   const notify = () => { if (!notified.current) { notified.current = true; triggerHaptic('workoutComplete'); } };
@@ -27,12 +27,12 @@ export function FinishSaveAnimation({ running, confirmed, origin, reveal, onRead
   useEffect(() => {
     if (!confirmed) return;
     cancelAnimation(rotation); rotation.set(0); shape.set(1);
-    ring.set(withTiming(1, { duration: brandTokens.motion.duration.fast }));
-    check.set(withTiming(1, { duration: brandTokens.motion.duration.fast }, finished => { if (finished) runOnJS(notify)(); }));
-    reveal.set(withDelay(reduceMotion ? 0 : brandTokens.motion.duration.base, withTiming(1, {
+    // The ring closes and the circle opens straight into the champagne of the week intro: no check mark growing on top.
+    ring.set(withTiming(1, { duration: brandTokens.motion.duration.fast }, finished => { if (finished) runOnJS(notify)(); }));
+    reveal.set(withDelay(reduceMotion ? 0 : brandTokens.motion.duration.fast, withTiming(1, {
       duration: reduceMotion ? brandTokens.motion.duration.fast : brandTokens.motion.duration.base,
     }, finished => { if (finished) { runOnJS(notify)(); runOnJS(done)(); } })));
-    return () => { cancelAnimation(check); cancelAnimation(reveal); };
+    return () => { cancelAnimation(ring); cancelAnimation(reveal); };
   // Callback refs preserve the visual sequence across controller read-backs.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [confirmed, reduceMotion]);
@@ -44,13 +44,11 @@ export function FinishSaveAnimation({ running, confirmed, origin, reveal, onRead
     opacity: running || confirmed ? reduceMotion ? 1 - reveal.value : 1 : 0,
     transform: [{ scale: reduceMotion ? 1 : 1 + (Math.hypot(window.width, window.height) * 4 / 50 - 1) * reveal.value }],
   }));
-  const spinning = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotation.value}deg` }], opacity: 1 - check.value }));
+  const spinning = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotation.value}deg` }], opacity: 1 - reveal.value }));
   const ringProps = useAnimatedProps(() => ({ strokeDashoffset: 2 * Math.PI * 18 * (1 - ring.value) }));
-  const checked = useAnimatedStyle(() => ({ opacity: check.value * (1 - reveal.value) }));
   return <Animated.View pointerEvents="none" style={[styles.circle, { backgroundColor: colors.primary }, circle]} testID="finish-save-animation">
     <Animated.View style={[styles.symbol, spinning]}><Svg width={50} height={50}><AnimatedCircle animatedProps={ringProps} cx={25} cy={25} r={18}
       stroke={colors.onPrimary} strokeWidth={2} strokeDasharray={[2 * Math.PI * 18]} fill="none" /></Svg></Animated.View>
-    <Animated.View style={[styles.symbol, checked]}><View style={styles.symbol}><AppIcon name="check" color={colors.onPrimary} size={24} /></View></Animated.View>
   </Animated.View>;
 }
 const styles = StyleSheet.create({ circle: { position: 'absolute', justifyContent: 'center', alignItems: 'center' }, symbol: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' } });
