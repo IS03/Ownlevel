@@ -41,7 +41,8 @@ describe('SF2/SF3 · just finished', () => {
     const model = postWorkoutModel(finished(), summary(), detail());
     expect(model.title).toBe('PUSH guardado');
     expect(model.line).toBe('Mié 30 sept · 1 h 04 min · 24 series · 9.887 kg');
-    expect(model.hero).toEqual({ kind: 'record', title: '¡Récord hoy!', name: 'PRESS INCLINADO', mark: '20 kg × 7', before: 'Antes: 17,5 kg × 8.', more: null });
+    expect(model.hero).toEqual({ kind: 'record', title: '¡Récord hoy!', name: 'PRESS INCLINADO', mark: '20 kg × 7', before: 'Antes: 17,5 kg × 8.', more: null,
+      count: { from: 17.5, to: 20, unit: 'kg', reps: 7 } });
     expect(model.rows.map(row => [row.title, row.detail])).toEqual([
       ['PECHO DECLIVE', '90 kg × 10 · 1 rep más que la última vez'], ['FONDOS', '12 reps · 2 reps más en total']]);
     expect(model.feelings.map(feeling => feeling.key)).toEqual(['energyLevel', 'painLevel']);
@@ -74,7 +75,8 @@ describe('the receipt screen', () => {
     expect(view.getByLabelText('Dolor: 0 de 10')).toBeTruthy(); expect(view.queryByLabelText(/Rendimiento/)).toBeNull();
     await act(async () => {});
     await act(async () => { resolve({ status: 'ok', data: summary(), meta }); });
-    expect(view.getByTestId('post-workout-hero-record')).toBeTruthy(); expect(view.getByText('20 kg × 7')).toBeTruthy();
+    expect(view.getByTestId('post-workout-hero-record')).toBeTruthy(); expect(view.getByLabelText('20 kg × 7')).toBeTruthy();
+    expect(view.getByTestId(`post-workout-exercise-${SECOND_ID}`)).toBeTruthy(); expect(view.queryByTestId('post-workout-row-improvement')).toBeNull();
   });
   it.each(['unavailable', 'throw'] as const)('keeps the receipt useful when the summary is %s, with no false block or zero volume', async state => {
     const view = wrap({ readSummary: async () => { if (state === 'throw') throw new Error('offline'); return { status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } }; } });
@@ -82,26 +84,30 @@ describe('the receipt screen', () => {
     expect(view.getByText('PUSH guardado')).toBeTruthy(); expect(view.queryByTestId(/post-workout-hero/)).toBeNull();
     expect(view.getByTestId('post-workout-line').props.children).toBe('Mié 30 sept · 1 h 04 min · 24 series');
   });
-  it('plays the week first, then leaves it out of the page; a tap skips it', async () => {
+  it('plays the week first (the seven days at once), then the page comes up without it; a tap skips it', async () => {
     const week: FinishWeek = { sessions: 4, days: ['2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04']
       .map((date, index) => ({ date, today: index === 2, sessionsBefore: index < 2 ? 1 : 0 })) };
     jest.useFakeTimers();
     const view = wrap({ readWeek: async () => week });
-    expect(view.getByTestId('finish-week-waiting')).toBeTruthy();
+    expect(view.getByTestId('finish-week-intro')).toBeTruthy(); expect(view.queryByText('PUSH guardado')).toBeNull();
     await act(async () => {});
-    expect(view.getByTestId('finish-week-intro')).toBeTruthy();
-    act(() => { jest.advanceTimersByTime(600); });
+    act(() => { jest.advanceTimersByTime(400); });
+    expect(view.getByTestId('finish-week-count').props.children).toBe('3 entrenos esta semana');
+    act(() => { jest.advanceTimersByTime(300); });
     expect(view.getByTestId('finish-week-count').props.children).toBe('4 entrenos esta semana');
     fireEvent.press(view.getByRole('button', { name: '4 entrenos esta semana' }));
-    expect(view.queryByTestId('finish-week-intro')).toBeNull(); expect(view.getByText('PUSH guardado')).toBeTruthy();
+    expect(view.getByText('PUSH guardado')).toBeTruthy();
+    act(() => { jest.advanceTimersByTime(400); });
+    expect(view.queryByTestId('finish-week-intro')).toBeNull();
   });
-  it('without the week the page comes straight in', async () => {
+  it('without the week the intro leaves at once; a slow calendar is not waited for', async () => {
     jest.useFakeTimers();
     const view = wrap({ readWeek: async () => null });
     await act(async () => {});
-    expect(view.queryByTestId('finish-week-waiting')).toBeNull(); expect(view.queryByTestId('finish-week-intro')).toBeNull();
+    expect(view.getByText('PUSH guardado')).toBeTruthy(); expect(view.queryByTestId('finish-week-count')).toBeNull();
     const slow = wrap({ readWeek: () => new Promise<null>(() => undefined) });
-    act(() => { jest.advanceTimersByTime(1000); });
-    expect(slow.queryByTestId('finish-week-waiting')).toBeNull();
+    expect(slow.queryByText('PUSH guardado')).toBeNull();
+    act(() => { jest.advanceTimersByTime(1300); });
+    expect(slow.getByText('PUSH guardado')).toBeTruthy();
   });
 });
