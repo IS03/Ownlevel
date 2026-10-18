@@ -15,6 +15,8 @@ import {
   CountingNumber,
   EditorialRow,
   EditorialScreen,
+  EditorialSpread,
+  useEditorialLayout,
 } from "@/settings/editorial";
 import { previousDate, shortDate } from "@/settings/settings-model";
 import { SettingsSegmented } from "@/settings/native-segmented";
@@ -50,6 +52,7 @@ export function StageSequenceScreen() {
   useStagesLeaveGuard(shared);
   const router = useRouter();
   const reduced = useReduceMotion();
+  const { largeInputStyle } = useEditorialLayout();
   const { colors } = useOwnlevelTheme();
   const state = shared?.state,
     controller = shared?.controller,
@@ -87,8 +90,8 @@ export function StageSequenceScreen() {
   return (
     <View style={{ flex: 1 }}>
       <EditorialScreen>
-        <View style={stageStyles.spread}>
-          <Heading>Programar etapas</Heading>
+        <EditorialSpread>
+          <Heading style={{ flexShrink: 1 }}>Programar etapas</Heading>
           {totals && end ? (
             <View style={{ alignItems: "flex-end" }}>
               {totals.months ? (
@@ -108,7 +111,7 @@ export function StageSequenceScreen() {
               </AppText>
             </View>
           ) : null}
-        </View>
+        </EditorialSpread>
         {state ? <RefreshingStages state={state} /> : null}
         {!sequence || !list ? (
           state?.notice || (list && state?.phase !== "loading") ? (
@@ -132,7 +135,7 @@ export function StageSequenceScreen() {
               maxLength={80}
               disabled={locked}
               onChangeText={(name) => setSequence({ ...sequence, name })}
-              inputStyle={{ fontSize: 28, fontWeight: "700" }}
+              inputStyle={largeInputStyle}
             />
             <EditorialRow
               title="Inicio"
@@ -233,8 +236,8 @@ export function StageSequenceScreen() {
                 >
                   <StageStripe kind={item.stage.kind} />
                   <View style={{ flex: 1, gap: 12 }}>
-                    <View style={stageStyles.spread}>
-                      <View style={{ flex: 1 }}>
+                    <EditorialSpread>
+                      <View style={{ flexShrink: 1 }}>
                         <KindPicker
                           value={item.stage.kind}
                           suggested={null}
@@ -258,7 +261,7 @@ export function StageSequenceScreen() {
                           {item.stage.suggested ? " · sugerido" : ""}
                         </AppText>
                       </View>
-                    </View>
+                    </EditorialSpread>
                     <Animated.View
                       key={`${dates[i]?.startsOn}-${dates[i]?.endsOn}`}
                       entering={FadeIn.duration(200)}
@@ -281,7 +284,7 @@ export function StageSequenceScreen() {
                         })
                       }
                     />
-                    <View style={stageStyles.spread}>
+                    <EditorialSpread>
                       <Button
                         label={`Ajustar ${kindLabel(item.stage.kind).toLocaleLowerCase("es-AR")}`}
                         disabled={locked}
@@ -303,7 +306,7 @@ export function StageSequenceScreen() {
                           })
                         }
                       />
-                    </View>
+                    </EditorialSpread>
                   </View>
                 </Animated.View>
               ))}

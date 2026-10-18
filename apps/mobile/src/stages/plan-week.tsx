@@ -16,7 +16,6 @@ import Animated, {
 import {
   AppSheet,
   AppText,
-  Button,
   Chip,
   Heading,
   TextField,
@@ -26,6 +25,7 @@ import {
   pressedStyle,
 } from "@/design-system";
 import { useTweenedNumber } from "@/nutrition/use-tweened-number";
+import { NutritionGlassButton } from "@/nutrition/day-controls";
 import {
   applyDays,
   dayNames,
@@ -34,7 +34,7 @@ import {
   type DayDraft,
   type StageDraft,
 } from "./stages-model";
-import { formatNumber } from "@/settings/editorial";
+import { EditorialSpread, formatNumber, useEditorialLayout } from "@/settings/editorial";
 export function PlanNumber({
   value,
   suggested = false,
@@ -76,6 +76,7 @@ function DayColumn({
 }) {
   const { colors } = useOwnlevelTheme();
   const reduced = useReduceMotion();
+  const { largeText } = useEditorialLayout();
   const value = draftNumber(day.kcal);
   const target = value === null ? 0 : (value / maximum) * 100;
   const height = useSharedValue(target);
@@ -91,7 +92,7 @@ function DayColumn({
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
-        { flex: 1, minWidth: 44, alignItems: "center", gap: 8 },
+        { flex: 1, minWidth: largeText ? 128 : 44, alignItems: "center", gap: 8 },
         pressedStyle(pressed, reduced),
       ]}
     >
@@ -234,8 +235,9 @@ function PlanDaySheet({
   return (
     <AppSheet
       onClose={onClose}
+      dismissKeyboardOnClose
       closeLabel="Cerrar ajuste del día"
-      style={{ backgroundColor: colors.background }}
+      style={{ backgroundColor: colors.background, maxHeight: '92%' }}
       testID="stage-day-sheet"
     >
       <DaySheetBody stage={stage} day={day} same={same} onApply={onApply} />
@@ -254,6 +256,7 @@ function DaySheetBody({
   onApply: (days: number[], kcal: string, protein: string) => void;
 }) {
   const dismiss = useAppSheetDismiss();
+  const { largeText, largeInputStyle } = useEditorialLayout();
   const original = stage.weekdays.find((d) => d.weekday === day)!;
   const [kcal, setKcal] = useState(original.kcal),
     [protein, setProtein] = useState(original.protein),
@@ -271,25 +274,25 @@ function DaySheetBody({
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
+      style={{ flexShrink: 1 }}
     >
       <ScrollView
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.sheet}
       >
-        <View style={styles.header}>
-          <Button label="Cancelar" variant="quiet" onPress={() => dismiss()} />
-          <Heading level={2}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <NutritionGlassButton label="Cancelar" icon="close" onPress={() => dismiss()} />
+          <Heading level={2} style={{ flex: 1 }}>
             {same ? "Todos los días" : dayNames[day - 1]}
           </Heading>
-          <Button
+          <NutritionGlassButton
             label="Listo"
             icon="checkmark"
-            disabled={!valid || !days.length}
-            onPress={() => dismiss(() => onApply(days, kcal, protein))}
+            onPress={valid && days.length ? () => dismiss(() => onApply(days, kcal, protein)) : undefined}
           />
         </View>
-        <View style={{ flexDirection: "row", gap: 12 }}>
-          <View style={{ flex: 1 }}>
+        <EditorialSpread style={{ alignItems: 'stretch' }}>
+          <View style={largeText ? { width: '100%' } : { flex: 1 }}>
             <TextField
               label="Calorías (kcal)"
               numeric
@@ -297,20 +300,20 @@ function DaySheetBody({
               value={kcal}
               onChangeText={setKcal}
               autoFocus
-              inputStyle={{ fontSize: 28, fontWeight: "700" }}
+              inputStyle={largeInputStyle}
             />
           </View>
-          <View style={{ flex: 1 }}>
+          <View style={largeText ? { width: '100%' } : { flex: 1 }}>
             <TextField
               label="Proteína (g)"
               numeric
               keyboardType="decimal-pad"
               value={protein}
               onChangeText={setProtein}
-              inputStyle={{ fontSize: 28, fontWeight: "700" }}
+              inputStyle={largeInputStyle}
             />
           </View>
-        </View>
+        </EditorialSpread>
         {!same ? (
           <>
             <AppText muted variant="caption">
@@ -352,10 +355,4 @@ function DaySheetBody({
 }
 const styles = StyleSheet.create({
   sheet: { padding: 16, paddingBottom: 40, gap: 24 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
 });

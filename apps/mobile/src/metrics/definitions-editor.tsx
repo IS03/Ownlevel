@@ -20,7 +20,9 @@ import {
   useReduceMotion,
 } from '@/design-system';
 import { SettingsSegmented } from '@/settings/native-segmented';
+import { EditorialSpread, useEditorialLayout } from '@/settings/editorial';
 import { SaveButton } from '@/nutrition/save-button';
+import { NutritionGlassButton } from '@/nutrition/day-controls';
 import { homeMetricIcon, metricIcons } from '@/home/home-metric-icons';
 import type {
   DefinitionsController,
@@ -49,6 +51,7 @@ export function DefinitionEditorSheet(props: Props) {
   };
   return (
     <AppSheet
+      dismissKeyboardOnClose
       closeLabel="Cerrar edición de métrica"
       beforeDismiss={beforeDismiss}
       onClose={() => {
@@ -64,6 +67,7 @@ export function DefinitionEditorSheet(props: Props) {
   );
 }
 function EditorBody({ editor, state, controller }: Props) {
+  const { largeText } = useEditorialLayout();
   const dismiss = useAppSheetDismiss(),
     { colors } = useOwnlevelTheme(),
     reduced = useReduceMotion();
@@ -164,34 +168,24 @@ function EditorBody({ editor, state, controller }: Props) {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flexShrink: 1 }}
     >
       <ScrollView
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ padding: 16, paddingBottom: 32, gap: 24 }}
       >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-          }}
-        >
-          <Button
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <NutritionGlassButton
             label="Cerrar"
-            variant="quiet"
             icon="close"
-            disabled={busy || !!state.intent}
-            onPress={close}
+            onPress={busy || state.intent ? undefined : close}
           />
-          <Heading level={2}>{b ? 'Editar métrica' : 'Nueva métrica'}</Heading>
+          <Heading level={2} style={{ flex: 1 }}>{b ? 'Editar métrica' : 'Nueva métrica'}</Heading>
           {b ? (
-            <Button
+            <NutritionGlassButton
               label="Más opciones de métrica"
-              variant="quiet"
               icon="more"
-              disabled={!editable}
-              onPress={menu}
+              onPress={editable ? menu : undefined}
             />
           ) : null}
         </View>
@@ -302,14 +296,14 @@ function EditorBody({ editor, state, controller }: Props) {
         <View style={{ gap: 12 }}>
           <AppText variant="headline">Objetivo diario</AppText>
           {d.valueType === 'duration' ? (
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 1 }}>
+            <EditorialSpread style={{ alignItems: 'stretch' }}>
+              <View style={largeText ? { width: '100%' } : { flex: 1 }}>
                 {field('hours', 'Objetivo horas', true)}
               </View>
-              <View style={{ flex: 1 }}>
+              <View style={largeText ? { width: '100%' } : { flex: 1 }}>
                 {field('minutes', 'Objetivo minutos', true)}
               </View>
-            </View>
+            </EditorialSpread>
           ) : (
             field('target', 'Objetivo (opcional)', true)
           )}
@@ -320,14 +314,14 @@ function EditorBody({ editor, state, controller }: Props) {
         <View style={{ gap: 12 }}>
           <AppText variant="headline">Carga rápida</AppText>
           {d.valueType === 'duration' ? (
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 1 }}>
+            <EditorialSpread style={{ alignItems: 'stretch' }}>
+              <View style={largeText ? { width: '100%' } : { flex: 1 }}>
                 {field('quickHours', 'Porción horas', true)}
               </View>
-              <View style={{ flex: 1 }}>
+              <View style={largeText ? { width: '100%' } : { flex: 1 }}>
                 {field('quickMinutes', 'Porción minutos', true)}
               </View>
-            </View>
+            </EditorialSpread>
           ) : (
             field(
               'quickValue',

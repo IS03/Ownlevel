@@ -10,7 +10,7 @@ import {
   useReduceMotion,
 } from "@/design-system";
 import { NutritionGlassButton } from "@/nutrition/day-controls";
-import { CountingNumber, EditorialScreen, Reveal } from "@/settings/editorial";
+import { CountingNumber, EditorialScreen, EditorialSpread, Reveal } from "@/settings/editorial";
 import {
   previousDate,
   shortDate,
@@ -63,8 +63,8 @@ export function StagesListScreen() {
   return (
     <View style={{ flex: 1 }}>
       <EditorialScreen>
-        <View style={stageStyles.spread}>
-          <Heading>Etapas</Heading>
+        <EditorialSpread>
+          <Heading style={{ flexShrink: 1 }}>Etapas</Heading>
           <NutritionGlassButton
             icon="plus"
             label="Agregar etapa"
@@ -72,7 +72,7 @@ export function StagesListScreen() {
               locked ? undefined : () => router.push("/settings/stage-action")
             }
           />
-        </View>
+        </EditorialSpread>
         <AppText muted>
           Cada etapa con su objetivo. Las pasadas quedan como estaban.
         </AppText>
@@ -105,8 +105,8 @@ export function StagesListScreen() {
                     pressedStyle(pressed, reduced),
                   ]}
                 >
-                  <View style={stageStyles.spread}>
-                    <Heading level={2}>{list.current.name}</Heading>
+                  <EditorialSpread>
+                    <Heading level={2} style={{ flexShrink: 1 }}>{list.current.name}</Heading>
                     <View>
                       <CountingNumber
                         variant="title1"
@@ -116,7 +116,7 @@ export function StagesListScreen() {
                         kcal hoy
                       </AppText>
                     </View>
-                  </View>
+                  </EditorialSpread>
                   <AppText muted numeric>
                     {kindLabel(list.current.kind)} ·{" "}
                     {shortDate(list.current.startsOn)}
@@ -203,7 +203,7 @@ export function StagesListScreen() {
                 <AppText muted variant="footnote">
                   Deslizá una etapa pasada para duplicarla.
                 </AppText>
-              ) : null}
+              ) : !state?.loading && !state?.readError ? <AppText muted>Tus etapas anteriores van a aparecer acá.</AppText> : null}
             </Reveal>
           </>
         )}

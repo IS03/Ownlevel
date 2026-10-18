@@ -8,7 +8,7 @@ import {
   TextField,
   useOwnlevelTheme,
 } from "@/design-system";
-import { EditorialRow, EditorialScreen } from "@/settings/editorial";
+import { EditorialRow, EditorialScreen, EditorialSpread, formatNumber } from "@/settings/editorial";
 import { shortDate } from "@/settings/settings-model";
 import {
   kindLabel,
@@ -32,7 +32,6 @@ import {
   StagesStatus,
   StagesToast,
   StageSave,
-  stageStyles,
   useStagesLeaveGuard,
   useStagesRoute,
 } from "./stages-ui";
@@ -244,7 +243,7 @@ function StagePlanBody({
                 ) : null}
               </>
             ) : null}
-            <View style={stageStyles.spread}>
+            <EditorialSpread>
               <AppText>Igual todos los días</AppText>
               <Switch
                 accessibilityLabel="Igual todos los días"
@@ -269,7 +268,7 @@ function StagePlanBody({
                   } else setUniformNotice(null);
                 }}
               />
-            </View>
+            </EditorialSpread>
             {uniformNotice ? (
               <AppText
                 muted
@@ -294,7 +293,7 @@ function StagePlanBody({
               >
                 {draftNumber(stage.baseWaterL) === null
                   ? "Sin dato"
-                  : `${stage.baseWaterL} L`}
+                  : `${formatNumber(draftNumber(stage.baseWaterL)!)} L`}
               </EditorialRow>
               {extras === "water" ? (
                 <TextField
@@ -312,7 +311,7 @@ function StagePlanBody({
                 onPress={() =>
                   setExtras(extras === "training" ? null : "training")
                 }
-              >{`${draftNumber(stage.trainingCalorieDeltaKcal) === null ? "Calorías sin dato" : `+${stage.trainingCalorieDeltaKcal} kcal`} · ${draftNumber(stage.trainingWaterDeltaL) === null ? "agua sin dato" : `+${stage.trainingWaterDeltaL} L`}`}</EditorialRow>
+              >{`${draftNumber(stage.trainingCalorieDeltaKcal) === null ? "Calorías sin dato" : `+${formatNumber(draftNumber(stage.trainingCalorieDeltaKcal)!)} kcal`} · ${draftNumber(stage.trainingWaterDeltaL) === null ? "agua sin dato" : `+${formatNumber(draftNumber(stage.trainingWaterDeltaL)!)} L`}`}</EditorialRow>
               {extras === "training" ? (
                 <View style={{ gap: 12 }}>
                   <TextField

@@ -5,9 +5,10 @@ import { OwnlevelThemeProvider } from '@/design-system';
 import SettingsLayout from '../../app/settings/_layout';
 
 const mockScreens: { name: string; title?: string }[] = [];
+const mockTransparentHeaders: string[] = [];
 jest.mock('expo-router', () => {
   function Stack({ children }: { children: ReactNode }) { return children; }
-  function Screen({ name, options }: { name: string; options?: { title?: string } }) { mockScreens.push({ name, title: options?.title }); return null; }
+  function Screen({ name, options }: { name: string; options?: { title?: string; headerTransparent?: boolean } }) { mockScreens.push({ name, title: options?.title }); if (options?.headerTransparent) mockTransparentHeaders.push(name); return null; }
   Stack.Screen = Screen;
   return { Stack };
 });
@@ -29,5 +30,6 @@ describe('Settings stack', () => {
       { name: 'stage-plan', title: 'Plan nutricional' },
       { name: 'stage-sequence', title: 'Programar etapas' },
     ]);
+    expect(mockTransparentHeaders).toEqual(expect.arrayContaining(['metrics', 'diagnostics']));
   });
 });
