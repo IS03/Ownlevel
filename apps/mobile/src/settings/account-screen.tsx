@@ -69,7 +69,7 @@ export function AccountScreen() {
         <View style={{ alignItems: 'center', gap: 12 }}>
           <AccountAvatar name={identity?.displayName ?? null} />
           <AppText muted variant="footnote">
-            Tu cuenta de {provider}
+            {provider === 'tu cuenta' ? 'Tu cuenta conectada' : `Tu cuenta de ${provider}`}
           </AppText>
         </View>
         <AppText muted variant="caption">

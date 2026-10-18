@@ -155,9 +155,9 @@ export function SettingsScreen() {
               ) : (
                 <>
                   <CountingNumber value={physical?.heightCm ?? null} />
-                  <AppText style={{ color: colors.primary }}> cm · </AppText>
+                  <AppText style={{ color: colors.primary }}>{physical?.heightCm == null ? ' · ' : ' cm · '}</AppText>
                   <CountingNumber value={physical?.weightKg ?? null} />
-                  <AppText style={{ color: colors.primary }}> kg</AppText>
+                  {physical?.weightKg == null ? null : <AppText style={{ color: colors.primary }}> kg</AppText>}
                 </>
               ),
             )}

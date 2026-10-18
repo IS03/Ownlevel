@@ -287,7 +287,7 @@ describe("Editorial stages and day editor", () => {
       view.getByText("Sábado y domingo quedan en 2.200 kcal · 120 g."),
     ).toBeTruthy();
     expect(change).not.toHaveBeenCalled();
-    fireEvent.press(view.getByText("Listo"));
+    fireEvent.press(view.getByLabelText("Listo"));
     expect(change).toHaveBeenCalledWith(
       applyDays(stage, [6, 7], "2200", "120"),
     );

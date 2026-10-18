@@ -6,12 +6,11 @@ import {
   AppText,
   Button,
   Heading,
-  LoadingState,
-  ScrollScreen,
-  Separator,
-  Surface,
+  brandTokens,
+  SkeletonBlock,
   UnavailableState,
 } from '@/design-system';
+import { EditorialRow, EditorialScreen, useEditorialLayout } from '@/settings/editorial';
 
 function displayTimestamp(value: number | undefined): string {
   return value
@@ -24,6 +23,7 @@ function displayTimestamp(value: number | undefined): string {
 }
 
 function ApiDiagnosticsContent() {
+  const { largeText } = useEditorialLayout();
   const { client, config, configurationError, runtime } = useMobileApi();
   const { session } = useMobileAuth();
   const load = useCallback(
@@ -55,74 +55,62 @@ function ApiDiagnosticsContent() {
     state.status === 'loading' || (state.status === 'ready' && state.refreshing);
 
   return (
-    <ScrollScreen testID="api-diagnostics-screen">
-      <Surface>
-        <AppText muted variant="footnote">
-          DEVELOPMENT / DIAGNOSTICS
-        </AppText>
-        <Heading>Mobile API Runtime</Heading>
-        <AppText muted>
-          Prueba temporal del recorrido Expo → Vercel → Supabase. No muestra el payload.
-        </AppText>
-      </Surface>
-
-      <Surface>
-        <Heading level={2}>Runtime</Heading>
-        <AppText>API host: {config?.host ?? 'sin configurar'}</AppText>
-        <AppText>App env: {config?.appEnv ?? 'sin configurar'}</AppText>
-        <AppText>Platform: {runtime?.platform ?? 'no disponible'}</AppText>
-        <AppText>Authenticated: {session ? 'yes' : 'no'}</AppText>
-      </Surface>
+    <EditorialScreen>
+      <Heading style={largeText ? brandTokens.typeScale.title1 : undefined}>Diagnóstico</Heading>
+      <AppText muted>Comprobá la conexión con OWNLEVEL. No mostramos tus registros ni credenciales.</AppText>
+      <EditorialRow title="Servidor">{config?.host ?? 'Sin configurar'}</EditorialRow>
+      <EditorialRow title="Entorno">{config?.appEnv ?? 'Sin configurar'}</EditorialRow>
+      <EditorialRow title="Dispositivo">{runtime?.platform ?? 'No disponible'}</EditorialRow>
+      <EditorialRow title="Sesión">{session ? 'Conectada' : 'Sin sesión'}</EditorialRow>
 
       {configurationError ? (
         <UnavailableState
-          description="Revisá EXPO_PUBLIC_OWNLEVEL_API_URL y EXPO_PUBLIC_APP_ENV."
+          description="Falta configurar la conexión de esta app con OWNLEVEL."
           title="Configuración incompleta"
         />
       ) : null}
 
       {state.status === 'loading' ? (
-        <LoadingState label="Consultando Mobile Home" />
+        <SkeletonBlock height={96} />
       ) : null}
 
-      <Surface>
-        <Heading level={2}>GET /api/mobile/v1/home</Heading>
-        <AppText>Request state: {state.status}</AppText>
-        <AppText>Outcome: {result?.meta.outcome ?? 'pending'}</AppText>
-        <AppText>HTTP: {result?.meta.httpStatus ?? '—'}</AppText>
-        <AppText>Duration: {result ? `${result.meta.durationMs} ms` : '—'}</AppText>
-        <Separator />
-        <AppText>Home date: {current?.data.date ?? '—'}</AppText>
-        <AppText>Last confirmed: {displayTimestamp(current?.confirmedAt)}</AppText>
+      <>
+        <Heading level={2}>Conexión con Inicio</Heading>
+        <EditorialRow title="Estado">{isRefreshing ? 'Comprobando conexión' : state.status === 'ready' ? 'Conectado' : 'No disponible ahora'}</EditorialRow>
+        <EditorialRow title="Respuesta del servidor">{result?.meta.httpStatus?.toString() ?? 'Sin respuesta'}</EditorialRow>
+        <EditorialRow title="Tiempo de respuesta">{result ? `${result.meta.durationMs.toLocaleString('es-AR')} ms` : 'Sin dato'}</EditorialRow>
+        <EditorialRow title="Fecha en Inicio">{current?.data.date ?? 'Sin dato'}</EditorialRow>
+        <EditorialRow title="Última comprobación">{displayTimestamp(current?.confirmedAt)}</EditorialRow>
         {state.status === 'unavailable' && state.previous ? (
           <AppText muted>
-            La lectura anterior está preservada como stale; no fue confirmada por este refresh.
+            Mostramos el último dato disponible. No pudimos actualizarlo.
           </AppText>
         ) : null}
         {state.status === 'unavailable' ? (
           <AppText accessibilityRole="alert" muted>
-            Unavailable reason: {state.reason}
+            No pudimos comprobar la conexión. Podés volver a probar.
           </AppText>
         ) : null}
         <Button
-          disabled={isRefreshing || configurationError}
-          label={isRefreshing ? 'Actualizando…' : 'Refresh'}
+          disabled={!!configurationError}
+          loading={isRefreshing}
+          label="Comprobar conexión"
           onPress={() => void refresh()}
         />
-      </Surface>
-    </ScrollScreen>
+      </>
+    </EditorialScreen>
   );
 }
 
 export default function ApiDiagnosticsScreen() {
   if (!__DEV__) {
     return (
-      <ScrollScreen testID="api-diagnostics-disabled-screen">
+      <EditorialScreen>
         <UnavailableState
-          description="Esta prueba temporal sólo está habilitada en development builds."
-          title="Diagnostics no disponible"
+          description="Esta herramienta solo está habilitada en la app de desarrollo."
+          title="Diagnóstico no disponible"
         />
-      </ScrollScreen>
+      </EditorialScreen>
     );
   }
 

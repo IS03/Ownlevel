@@ -1,5 +1,5 @@
 import type { PropsWithChildren, ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import {
@@ -12,10 +12,26 @@ import {
   useReduceMotion,
   pressedStyle,
   type AppTextVariant,
+  brandTokens,
 } from '@/design-system';
 import { useTweenedNumber } from '@/nutrition/use-tweened-number';
 
 export const formatNumber = (n: number) => n.toLocaleString('es-AR', { maximumFractionDigits: 2 });
+/** Keep the same content and controls, but stack pairs before Dynamic Type squeezes their labels. */
+export function useEditorialLayout() {
+  const { fontScale } = useWindowDimensions();
+  return {
+    largeText: fontScale > 1.3,
+    largeInputStyle: {
+      ...brandTokens.typeScale.title1,
+      minHeight: Math.max(48, 34 * fontScale + 24),
+    },
+  };
+}
+export function EditorialSpread({ children, style, testID }: PropsWithChildren<{ style?: ViewStyle; testID?: string }>) {
+  const { largeText } = useEditorialLayout();
+  return <View testID={testID} style={[{ flexDirection: largeText ? 'column' : 'row', alignItems: largeText ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 16 }, style]}>{children}</View>;
+}
 export function CountingNumber({
   value,
   variant = 'body',
@@ -50,6 +66,8 @@ export function EditorialScreen({ children,scrollEnabled=true }: PropsWithChildr
         scrollEnabled={scrollEnabled}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
         contentContainerStyle={{ padding: 16, gap: 24, paddingBottom: 40 }}
       >
         {children}
@@ -125,6 +143,7 @@ export function EditorialRow({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={title}
+      accessibilityValue={typeof children === 'string' ? { text: children } : undefined}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}

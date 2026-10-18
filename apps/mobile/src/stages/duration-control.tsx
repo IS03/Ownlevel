@@ -26,8 +26,8 @@ export function DurationControl({
               : () => onChange({ ...duration, value: duration.value - 1 })
           }
         />
-        <CountingNumber value={duration.value} />
-        <AppText muted>
+        <AppText muted numeric style={{ flexShrink: 1 }}>
+          <CountingNumber value={duration.value} />{' '}
           {duration.unit === "weeks"
             ? duration.value === 1
               ? "semana"

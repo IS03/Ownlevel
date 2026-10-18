@@ -23,6 +23,7 @@ const mockPush = jest.fn(),
   mockReplace = jest.fn(),
   mockSignOut = jest.fn(async () => undefined);
 let mockUser = 'owner';
+let mockProvider: string | undefined = 'google';
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
 jest.mock('@/auth', () => ({
   useMobileAuth: () => ({
@@ -30,7 +31,7 @@ jest.mock('@/auth', () => ({
       user: {
         id: mockUser,
         email: 'nacho@example.com',
-        app_metadata: { provider: 'google' },
+        app_metadata: { provider: mockProvider },
         user_metadata: {},
       },
     },
@@ -99,6 +100,7 @@ beforeEach(async () => {
   jest.clearAllMocks();
   resetHapticsForTests();
   mockUser = 'owner';
+  mockProvider = 'google';
   mockClient = { read: mockRead, request: mockRequest };
   config = structuredClone(configFixture);
   displayName = 'Nacho';
@@ -210,6 +212,14 @@ describe('Editorial settings', () => {
   });
 });
 describe('Account and local App preferences', () => {
+  it('uses neutral copy when the connected provider is not known', async () => {
+    mockProvider = undefined;
+    const view = render(element(<AccountScreen />));
+    await view.findByLabelText('Editar nombre');
+    expect(view.getByText('Tu cuenta conectada')).toBeTruthy();
+    expect(view.queryByText('Tu cuenta de tu cuenta')).toBeNull();
+    expect(view.queryByText('Tu cuenta de Google')).toBeNull();
+  });
   it('edits in place through the existing name controller with CAS and confirmed truth', async () => {
     mockRequest.mockImplementationOnce(async () => {
       displayName = 'Ignacio';
