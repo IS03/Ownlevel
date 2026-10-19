@@ -123,6 +123,41 @@ beforeEach(async () => {
   );
   await mockController.initialize();
 });
+describe("Plan week, summary and extras stay in place", () => {
+  it("both presentations stay mounted; only the visible one is touchable and read; the notice lives in the summary", async () => {
+    mockController.replace(list.current!, "current");
+    const view = render(element(<StagePlanScreen />));
+    const week = () => view.getByTestId("stage-week", { includeHiddenElements: true });
+    const summary = () => view.getByTestId("stage-week-summary", { includeHiddenElements: true });
+    expect(week().props.pointerEvents).toBe("auto");
+    expect(summary().props).toMatchObject({ pointerEvents: "none", accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants" });
+    expect(view.getByText(/kcal arriba/)).toBeTruthy();
+    await act(async () => fireEvent(view.getByLabelText("Igual todos los días"), "valueChange", true));
+    expect(week().props).toMatchObject({ pointerEvents: "none", accessibilityElementsHidden: true });
+    expect(summary().props).toMatchObject({ pointerEvents: "box-none", accessibilityElementsHidden: false });
+    expect(view.queryByText(/kcal arriba/)).toBeNull();
+    expect(view.getByText(/^Tomamos el valor más repetido: /)).toBeTruthy();
+    expect(view.getByText(/^Tomamos el valor más repetido: [\d.]+ kcal/).props.children).not.toMatch(/\d{4} kcal/);
+    expect(view.getAllByTestId(/^stage-day-bar-/, { includeHiddenElements: true }).length).toBeGreaterThan(0);
+    await act(async () => fireEvent(view.getByLabelText("Igual todos los días"), "valueChange", false));
+    expect(view.queryByText(/^Tomamos el valor más repetido/)).toBeNull();
+    expect(api.write).not.toHaveBeenCalled();
+  });
+  it("water and training open one at a time with an expanded state, keep their values and write nothing", async () => {
+    mockController.replace(list.current!, "current");
+    const view = render(element(<StagePlanScreen />));
+    const water = view.getByLabelText("Agua por día");
+    expect(water.props.accessibilityState).toMatchObject({ expanded: false });
+    fireEvent.press(water);
+    expect(view.getByLabelText("Agua por día").props.accessibilityState).toMatchObject({ expanded: true });
+    fireEvent.changeText(view.getByLabelText("Agua por día (L)"), "3");
+    fireEvent.press(view.getByLabelText("Si entrenás"));
+    expect(view.queryByLabelText("Agua por día (L)")).toBeNull();
+    expect(view.getByLabelText("Si entrenás").props.accessibilityState).toMatchObject({ expanded: true });
+    expect(view.getByLabelText("Agua por día").props.accessibilityValue).toEqual({ text: "3 L" });
+    expect(api.write).not.toHaveBeenCalled();
+  });
+});
 describe("Editorial stages and day editor", () => {
   it("untyped current plan requires a tap, keeps name/targets and never sends the hint on its own", async () => {
     mockController.replace(list.current!, "current");

@@ -133,6 +133,7 @@ export function PlanWeek({
   onChange,
   disabled,
   onSheetVisibilityChange,
+  notice = null,
 }: {
   stage: StageDraft;
   today: number;
@@ -140,21 +141,66 @@ export function PlanWeek({
   onChange: (stage: StageDraft) => void;
   disabled: boolean;
   onSheetVisibilityChange?: (visible: boolean) => void;
+  /** "Tomamos el valor más repetido…": lives in the summary, so its space is reserved with it. */
+  notice?: string | null;
 }) {
   const [selected, setSelected] = useState<number | null>(null);
+  const [summaryHeight, setSummaryHeight] = useState(0);
   const openDay = (day: number) => { onSheetVisibilityChange?.(true); setSelected(day); };
   const closeDay = () => { setSelected(null); onSheetVisibilityChange?.(false); };
   const maximum = Math.max(
     1,
     ...stage.weekdays.map((d) => draftNumber(d.kcal) ?? 0),
   );
+  // Week and summary share one reserved height and cross-fade (200 ms, a fade also with Reduce Motion), so Agua,
+  // extras and Guardar never move. The week stays mounted: switching never restarts its bars. Only the visible layer
+  // takes touches and is read by VoiceOver.
+  const shown = useSharedValue(same ? 1 : 0);
+  useEffect(() => { shown.set(withTiming(same ? 1 : 0, { duration: brandTokens.motion.duration.fast })); }, [same, shown]);
+  const weekLayer = useAnimatedStyle(() => ({ opacity: 1 - shown.get() }));
+  const summaryLayer = useAnimatedStyle(() => ({ opacity: shown.get() }));
   return (
-    <View style={{ gap: 12 }}>
-      {same ? (
+    <View style={{ minHeight: summaryHeight }} testID="stage-week-area">
+      <Animated.View
+        style={[{ gap: 12 }, weekLayer]}
+        pointerEvents={same ? "none" : "auto"}
+        accessibilityElementsHidden={same}
+        importantForAccessibility={same ? "no-hide-descendants" : "auto"}
+        testID="stage-week"
+      >
+        <ScrollView
+          horizontal
+          contentContainerStyle={{ flexGrow: 1, gap: 4 }}
+          showsHorizontalScrollIndicator={false}
+        >
+          {stage.weekdays.map((day) => (
+            <DayColumn
+              key={day.weekday}
+              day={day}
+              maximum={maximum}
+              today={day.weekday === today}
+              suggested={stage.suggested}
+              disabled={disabled || same}
+              onPress={() => openDay(day.weekday)}
+            />
+          ))}
+        </ScrollView>
+        <AppText muted variant="footnote">
+          kcal arriba · proteína abajo{stage.suggested ? " · sugerido" : ""}
+        </AppText>
+      </Animated.View>
+      <Animated.View
+        style={[StyleSheet.absoluteFill, { bottom: undefined }, summaryLayer]}
+        pointerEvents={same ? "box-none" : "none"}
+        accessibilityElementsHidden={!same}
+        importantForAccessibility={same ? "auto" : "no-hide-descendants"}
+        onLayout={(event) => setSummaryHeight(Math.ceil(event.nativeEvent.layout.height))}
+        testID="stage-week-summary"
+      >
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Ajustar todos los días"
-          disabled={disabled}
+          disabled={disabled || !same}
           onPress={() => openDay(1)}
           style={{
             minHeight: 100,
@@ -168,35 +214,19 @@ export function PlanWeek({
             value={draftNumber(stage.weekdays[0].kcal)}
             suggested={stage.suggested}
           />
-          <AppText muted numeric>
+          <AppText muted numeric style={{ textAlign: "center" }}>
             {draftNumber(stage.weekdays[0].protein) === null
               ? "Proteína sin dato"
               : `${stage.weekdays[0].protein} g de proteína`}{" "}
             · Todos los días
           </AppText>
         </Pressable>
-      ) : (
-        <ScrollView
-          horizontal
-          contentContainerStyle={{ flexGrow: 1, gap: 4 }}
-          showsHorizontalScrollIndicator={false}
-        >
-          {stage.weekdays.map((day) => (
-            <DayColumn
-              key={day.weekday}
-              day={day}
-              maximum={maximum}
-              today={day.weekday === today}
-              suggested={stage.suggested}
-              disabled={disabled}
-              onPress={() => openDay(day.weekday)}
-            />
-          ))}
-        </ScrollView>
-      )}
-      <AppText muted variant="footnote">
-        kcal arriba · proteína abajo{stage.suggested ? " · sugerido" : ""}
-      </AppText>
+        {notice ? (
+          <AppText muted variant="footnote" accessibilityLiveRegion="polite" style={{ marginTop: 12, textAlign: "center" }}>
+            {notice}
+          </AppText>
+        ) : null}
+      </Animated.View>
       {selected !== null ? (
         <PlanDaySheet
           stage={stage}
