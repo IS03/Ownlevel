@@ -254,6 +254,6 @@ const styles = StyleSheet.create({
   currentLetter: { fontWeight: '700', textDecorationLine: 'underline' },
   macros: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', columnGap: brandTokens.space.xs },
   macroValue: { fontWeight: '600' },
-  letter: { fontSize: 13, lineHeight: LETTER_LINE, textAlign: 'center' },
+  letter: { fontSize: brandTokens.typeScale.footnote.fontSize, lineHeight: LETTER_LINE, textAlign: 'center' },
   summary: { gap: spacing.md },
 });

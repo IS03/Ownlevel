@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ComponentProps, type RefObject } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppIcon, AppSheet, AppText, Button, GlassSurface, useAppSheetDismiss, pressedStyle, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { AppIcon, AppSheet, AppText, Button, GlassSurface, useAppSheetDismiss, pressedStyle, useOwnlevelTheme, useReduceMotion, brandTokens } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
 import type { DayWriteController, DayWriteState } from './day-write-controller';
@@ -126,5 +126,5 @@ const styles = StyleSheet.create({
   // Name and day sit a little above the buttons' center line.
   title: { flex: 1, gap: 4, alignSelf: 'flex-start', marginTop: -6 }, center: { textAlign: 'center' }, control: { width: 44, height: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   numberRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 8, paddingTop: 8 },
-  number: { fontSize: 48, fontWeight: '700', fontVariant: ['tabular-nums'], textAlign: 'center', minWidth: 32, minHeight: 64, padding: 0 }, status: { gap: 12 },
+  number: { fontSize: brandTokens.typeScale.heroNumber.fontSize, fontWeight: '700', fontVariant: ['tabular-nums'], textAlign: 'center', minWidth: 32, minHeight: 64, padding: 0 }, status: { gap: 12 },
 });

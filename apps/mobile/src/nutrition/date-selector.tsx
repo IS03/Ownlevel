@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AppText, Button, Heading, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppText, Button, Heading, spacing, useOwnlevelTheme, brandTokens } from '@/design-system';
 import { inputNutritionDate, parseInputNutritionDate } from './day-format';
 
 export function NutritionDateSelector({ date, onClose, onSelect }: {
@@ -39,5 +39,5 @@ export function NutritionDateSelector({ date, onClose, onSelect }: {
 }
 const styles = StyleSheet.create({
   screen: { flex: 1 }, form: { padding: spacing.xl, gap: spacing.lg },
-  input: { minHeight: 48, borderWidth: 1, borderRadius: 12, paddingHorizontal: spacing.lg, fontSize: 18 },
+  input: { minHeight: 48, borderWidth: 1, borderRadius: 12, paddingHorizontal: spacing.lg, fontSize: brandTokens.typeScale.body.fontSize },
 });

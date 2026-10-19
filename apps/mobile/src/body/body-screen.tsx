@@ -6,7 +6,7 @@ import { ReturnToHistoryDay } from '@/history/return-to-day';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
 import type { BodyMeasurement, BodyWeightEntry } from '@/api/body';
-import { AppIcon, AppText, Button, Heading, InlineUnavailable, ScrollScreen, SkeletonBlock, Surface, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, Button, Heading, InlineUnavailable, ScrollScreen, SkeletonBlock, Surface, UnavailableState, spacing, useOwnlevelTheme, brandTokens } from '@/design-system';
 import type { BodyController, BodyState } from './body-controller';
 import { MeasurementEditorSheet, WeightEditorSheet } from './body-editor';
 import { formatBodyDate, formatKg, measurementBadges, measurementValues } from './body-model';
@@ -169,7 +169,7 @@ function BodyDate({ state, controller, date, editable }: { state: BodyState; con
 const styles = StyleSheet.create({
   section: { gap: spacing.sm },
   card: { gap: spacing.xs },
-  big: { fontSize: 28, lineHeight: 34 },
+  big: { fontSize: brandTokens.typeScale.title1.fontSize, lineHeight: brandTokens.typeScale.title1.lineHeight },
   list: { padding: 0, gap: 0, overflow: 'hidden' },
   row: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   flex: { flex: 1, gap: 2 },

@@ -82,7 +82,9 @@ El check de selección usa el token de marca con mayor contraste sobre cada mues
 | Subheadline | 15 / 400 |
 | Footnote | 13 / 400 |
 | Caption | 12 / 500 |
+| Número destacado | 56 / 700 |
 
+- **Número destacado:** solo para el número principal de una hoja o un bloque héroe (las kcal de una comida, el valor que estás cargando). Uno por pantalla como máximo y siempre con cifras tabulares. No es un título: los títulos usan la escala de iOS.
 - **Números:** siempre con cifras tabulares (`fontVariant: ['tabular-nums']`), para que no "bailen" cuando cambian.
 - **Hanken Grotesk** se usa solo en el logotipo.
 - **Letra grande (Dynamic Type):** el texto siempre respeta el tamaño que eligió la persona; nunca se desactiva el escalado. Con letra grande, los pares etiqueta/valor se apilan y el texto pasa a otra línea en lugar de cortarse con "…" o achicarse.

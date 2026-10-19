@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenStack, ScreenStackItem } from 'react-native-screens';
-import { AppText, radius, sizes, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, radius, sizes, spacing, useOwnlevelTheme, brandTokens } from '@/design-system';
 
 export function SessionNoteSheet({ name, value, editable, onSave, onClose }: {
   name: string; value: string; editable: boolean; onSave: (notes: string) => Promise<boolean>; onClose: () => void;
@@ -36,7 +36,7 @@ export function SessionNoteSheet({ name, value, editable, onSave, onClose }: {
     {/* Header is outside keyboard avoidance/scrolling: Guardar never moves below the keyboard. */}
     <View testID="note-sheet-header" style={[styles.header, { borderBottomColor: colors.border }]}>
       <Pressable accessibilityRole="button" accessibilityLabel="Cerrar Nota del ejercicio" disabled={saving} onPress={requestClose} style={styles.close}>
-        <AppText style={{ fontSize: 28, color: colors.textMuted }}>×</AppText>
+        <AppIcon name="close" color={colors.textMuted} size={20} />
       </Pressable>
       <AppText accessibilityRole="header" variant="label" style={styles.title}>Nota del ejercicio</AppText>
       <Pressable accessibilityRole="button" accessibilityLabel="Guardar nota" accessibilityState={{ disabled: !editable || !changed || saving }}
@@ -78,6 +78,6 @@ const styles = StyleSheet.create({
   flex: { flex: 1 }, sheet: { flex: 1, paddingTop: spacing.lg }, header: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: spacing.sm },
   close: { minWidth: 72, minHeight: sizes.touchTarget, alignItems: 'center', justifyContent: 'center' },
   title: { flex: 1, textAlign: 'center' }, save: { minWidth: 72, minHeight: sizes.touchTarget, alignItems: 'center', justifyContent: 'center' },
-  body: { padding: spacing.lg, gap: spacing.md }, input: { minHeight: 144, maxHeight: 220, borderWidth: 1, borderRadius: radius.md, padding: spacing.md, fontSize: 17, textAlignVertical: 'top' },
+  body: { padding: spacing.lg, gap: spacing.md }, input: { minHeight: 144, maxHeight: 220, borderWidth: 1, borderRadius: radius.md, padding: spacing.md, fontSize: brandTokens.typeScale.body.fontSize, textAlignVertical: 'top' },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }, fallback: { borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, overflow: 'hidden' },
 });

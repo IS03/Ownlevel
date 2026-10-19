@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import type { MobileHomeResponse, MobileHomeWorkoutStartRoutine } from '@/api/home';
 import type { MobileTrainingResponse } from '@/api/training';
 import type { TrainingHistorySession } from '@/api/training-history';
-import { AppIcon, AppText, GlassSurface, InlineUnavailable, SkeletonBlock, atmosphere, radius, spacing, useOwnlevelTheme, type AppIconName } from '@/design-system';
+import { AppIcon, AppText, GlassSurface, InlineUnavailable, SkeletonBlock, atmosphere, radius, spacing, useOwnlevelTheme, type AppIconName, brandTokens } from '@/design-system';
 import { Capsule, Hero } from '@/home/home-dashboard';
 import { elapsedMinutes, headerDate, WEEKDAY_LETTERS } from '@/home/home-day';
 import type { HomeResource } from '@/home/home-resource';
@@ -285,10 +285,10 @@ const styles = StyleSheet.create({
   circleBox: { alignItems: 'center', height: DAY_CIRCLE, justifyContent: 'center', width: DAY_CIRCLE },
   dashboard: { gap: spacing.xxl },
   dayColumn: { alignItems: 'center', flex: 1, gap: spacing.sm, minHeight: 44 },
-  dayNumber: { fontSize: 17, letterSpacing: -0.4, lineHeight: 22 },
+  dayNumber: { fontSize: brandTokens.typeScale.body.fontSize, letterSpacing: brandTokens.typeScale.body.letterSpacing, lineHeight: brandTokens.typeScale.body.lineHeight },
   flex: { flex: 1, minWidth: 0 },
   halo: { borderRadius: radius.full, borderWidth: 3, bottom: -4, left: -4, position: 'absolute', right: -4, top: -4 },
-  letter: { fontSize: 13, lineHeight: 18 },
+  letter: { fontSize: brandTokens.typeScale.footnote.fontSize, lineHeight: brandTokens.typeScale.footnote.lineHeight },
   line: { height: StyleSheet.hairlineWidth },
   medium: { fontWeight: '500' },
   nameRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.md },

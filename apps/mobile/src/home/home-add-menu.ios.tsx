@@ -2,7 +2,7 @@ import { StyleSheet, View } from 'react-native';
 import { Button, Host, HStack, Menu, Spacer } from '@expo/ui/swift-ui';
 import { accessibilityLabel, buttonStyle, contentShape, frame, menuIndicator, menuStyle, shapes } from '@expo/ui/swift-ui/modifiers';
 
-import { AppText, useOwnlevelTheme } from '@/design-system';
+import { AppText, useOwnlevelTheme, brandTokens } from '@/design-system';
 import { HomeActionSurface } from './home-ui';
 
 import type { HomeAddMenuProps } from './home-add-menu.types';
@@ -36,5 +36,5 @@ export function HomeAddMenu({ onFood, onManual, onQuick }: HomeAddMenuProps) {
 
 const styles = StyleSheet.create({
   label: { minHeight: 44, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
-  text: { fontSize: 15, fontWeight: '500', letterSpacing: -0.2, lineHeight: 20 },
+  text: { ...brandTokens.typeScale.subheadline, fontWeight: '500' },
 });

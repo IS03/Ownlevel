@@ -41,7 +41,7 @@ describe("OWNLEVEL brand tokens (shared runtime entry)", () => {
     const sizes = Object.fromEntries(Object.entries(typeScale).map(([k, v]) => [k, `${v.fontSize}/${v.fontWeight}`]));
     expect(sizes).toEqual({
       largeTitle: "34/700", title1: "28/700", title2: "22/700", headline: "17/600",
-      body: "17/400", subheadline: "15/400", footnote: "13/400", caption: "12/500",
+      body: "17/400", subheadline: "15/400", footnote: "13/400", caption: "12/500", heroNumber: "56/700",
     });
   });
 });

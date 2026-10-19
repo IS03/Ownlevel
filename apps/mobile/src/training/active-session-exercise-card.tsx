@@ -1,6 +1,6 @@
 import { memo, type ReactNode, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, Alert, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { AppIcon, AppText, Button, radius, sizes, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { AppIcon, AppText, Button, radius, sizes, spacing, useOwnlevelTheme, useReduceMotion, brandTokens } from '@/design-system';
 import Animated, { FadeIn, FadeInUp, LinearTransition, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SessionNextOptions } from './session-next-options';
 import type { NextSessionDecision } from './session-next-options.types';
@@ -238,7 +238,7 @@ function ActiveSetRow({ controller, id, name, set, index, count, editable, enter
 }
 const styles = StyleSheet.create({
   card: { paddingVertical: spacing.md, gap: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth }, flex: { flex: 1 }, shrink: { flexShrink: 1 },
-  header: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', minHeight: 64 }, exerciseName: { fontSize: 17 },
+  header: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', minHeight: 64 }, exerciseName: {},
   badge: { borderRadius: 10, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   reminder: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: 10, marginTop: spacing.xs },
   noteIndicator: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs }, body: { gap: spacing.sm },
@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
   completedColumn: { width: sizes.touchTarget }, columnTitle: { textAlign: 'center' },
   controlTrack: { minHeight: 48, width: sizes.touchTarget, justifyContent: 'center', alignItems: 'center' },
   rirField: { width: '100%', borderRadius: 12 }, unchecked: { borderWidth: 1.5, borderRadius: radius.pill, height: 26, width: 26 },
-  numberInput: { borderRadius: 12, minHeight: 48, fontSize: 17, fontWeight: '600', textAlign: 'center', paddingHorizontal: spacing.xs, fontVariant: ['tabular-nums'] },
+  numberInput: { borderRadius: 12, minHeight: 48, fontSize: brandTokens.typeScale.headline.fontSize, fontWeight: '600', textAlign: 'center', paddingHorizontal: spacing.xs, fontVariant: ['tabular-nums'] },
   setBlock: { borderRadius: 12, paddingVertical: spacing.xs }, setGap: { marginBottom: spacing.sm },
   restRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 50 }, recovery: { gap: spacing.sm },
   // Fixed width: the label changes with the choice and must not move the popover's anchor.

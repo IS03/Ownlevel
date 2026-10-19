@@ -101,6 +101,8 @@ export const typeScale = {
   subheadline: { fontSize: 15, lineHeight: 20, fontWeight: '400', letterSpacing: -0.2 },
   footnote: { fontSize: 13, lineHeight: 18, fontWeight: '400', letterSpacing: -0.1 },
   caption: { fontSize: 12, lineHeight: 16, fontWeight: '500', letterSpacing: 0 },
+  /** Número destacado: solo el número principal de una hoja o un héroe (kcal de una comida, valor que se carga). Siempre tabular. */
+  heroNumber: { fontSize: 56, lineHeight: 64, fontWeight: '700', letterSpacing: -0.6 },
 } as const;
 
 export type TypeStyle = keyof typeof typeScale;

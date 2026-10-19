@@ -101,6 +101,8 @@ export const typography = {
   subheadline: typeScale.subheadline,
   footnote: typeScale.footnote,
   caption: typeScale.caption,
+  /** Main number of a sheet or hero (IDENTIDAD.md § Tipografía). Always with `numeric`. */
+  heroNumber: typeScale.heroNumber,
   /** Same as largeTitle. */
   display: typeScale.largeTitle,
   /** Same as title2. */
