@@ -85,6 +85,8 @@ El check de selección usa el token de marca con mayor contraste sobre cada mues
 
 - **Números:** siempre con cifras tabulares (`fontVariant: ['tabular-nums']`), para que no "bailen" cuando cambian.
 - **Hanken Grotesk** se usa solo en el logotipo.
+- **Letra grande (Dynamic Type):** el texto siempre respeta el tamaño que eligió la persona; nunca se desactiva el escalado. Con letra grande, los pares etiqueta/valor se apilan y el texto pasa a otra línea en lugar de cortarse con "…" o achicarse.
+- En Mobile, el texto usa los estilos de esta escala (`AppText`, `Heading`); no se escriben tamaños sueltos en el código.
 
 ## Sistema (77 B · Equilibrado)
 - **Radios:**
@@ -112,7 +114,7 @@ El check de selección usa el token de marca con mayor contraste sobre cada mues
 | Alto de fila de serie | 44 |
 | Zona táctil mínima | 44 |
 
-- **Barra de pestañas:** flotante, a 16 de los bordes, con vidrio. Cuatro pestañas: Inicio, Rutinas, Entrenar y Progreso.
+- **Barra de pestañas:** flotante, a 16 de los bordes, con vidrio. Cuatro pestañas: Inicio, Entrenar, Nutrición y Progreso.
 - **Vidrio:** solo en controles. Va en la barra de pestañas, los botones flotantes, la barra superior al hacer scroll, los controles sobre fotos o gráficos y el temporizador flotante.
 - **Sin vidrio:** tarjetas, filas, listas, inputs y el hero.
 - **Excepción · panel "Tu día" de Nutrición (16/10):** va en vidrio aunque contiene contenido. Se justifica porque es un panel de acciones: desde ahí cargás métricas y abrís el detalle del día. Tiene un fondo sólido de respaldo con "Reducir transparencia", en Android y en iOS anterior a 26. No se extiende a otras tarjetas.

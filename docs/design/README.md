@@ -1,5 +1,7 @@
 # Diseño de OWNLEVEL
 
+> **Reemplazado en lo visual (octubre 2026).** Este documento es de la Web anterior a la marca: acento violeta, tamaños de Tailwind y radios propios. Para color, tipografía, radios, espacios, íconos, movimiento y tono, la referencia para Mobile y Web es [`docs/brand/ownlevel-marca/IDENTIDAD.md`](../brand/ownlevel-marca/IDENTIDAD.md) con los valores de `tema/tokens.ts`. Lo que sigue vale solo como contexto de la Web actual hasta su migración (M9.4) y para los principios no visuales (jerarquía, estados, invariantes).
+
 Esta carpeta define el lenguaje de producto y de interfaz que guía los rediseños posteriores a PR22. Es una guía de decisiones prácticas; no es una librería UI paralela ni reemplaza al código, los tests o las invariantes de dominio.
 
 ## Documentos vigentes

@@ -121,8 +121,8 @@ La puerta de entrada a toda la documentación es [`docs/README.md`](./docs/READM
 | [`docs/architecture/training-system.md`](./docs/architecture/training-system.md) | Lógica operativa vigente de Entrenamiento. |
 | [`docs/architecture/nutrition-system.md`](./docs/architecture/nutrition-system.md) | Lógica operativa vigente de Nutrición, Plan V2, gasto, comidas y snapshots. |
 | [`docs/architecture/auth-security.md`](./docs/architecture/auth-security.md) | Google OAuth, sesión, RLS, ownership, secretos e integraciones privadas. |
-| [`docs/design/principles.md`](./docs/design/principles.md) | Principios visuales y de interacción. |
-| [`docs/design/patterns.md`](./docs/design/patterns.md) | Patrones reutilizables de interfaz. |
+| [`docs/brand/ownlevel-marca/IDENTIDAD.md`](./docs/brand/ownlevel-marca/IDENTIDAD.md) | Identidad de marca vigente (Mobile y Web): colores, tipografía, radios, espacios, íconos, movimiento y tono. |
+| [`docs/design/principles.md`](./docs/design/principles.md) | Principios de la Web anterior a la marca; reemplazados en lo visual por la identidad. |
 | [`docs/integrations/chatgpt-nutrition.md`](./docs/integrations/chatgpt-nutrition.md) | Integración privada entre ChatGPT y el registro nutricional. |
 
 Ante contradicciones, el código y los tests actuales tienen prioridad sobre documentación histórica. Los documentos de `docs/archive/` se conservan sólo como contexto.
