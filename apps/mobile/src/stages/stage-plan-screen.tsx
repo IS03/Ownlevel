@@ -11,7 +11,6 @@ import {
 import { EditorialRow, EditorialScreen, EditorialSpread, formatNumber } from "@/settings/editorial";
 import { shortDate } from "@/settings/settings-model";
 import {
-  kindLabel,
   stageFields,
   draftNumber,
   weekdayFor,
@@ -21,7 +20,7 @@ import {
   validStageDate,
 } from "./stages-model";
 import { PlanWeek } from "./plan-week";
-import { KindPicker } from "./kind-picker";
+import { StageKindField } from './stage-kind-field';
 import { StartDatePicker } from "./start-date-picker";
 import { DurationControl } from "./duration-control";
 import {
@@ -59,6 +58,7 @@ function StagePlanBody({
   const localOnly = draft?.mode === "sequence";
   useStagesLeaveGuard(shared, localOnly);
   const [same, setSame] = useState(false),
+    [daySheetOpen, setDaySheetOpen] = useState(false),
     [uniformNotice, setUniformNotice] = useState<string | null>(null),
     [extras, setExtras] = useState<"water" | "training" | "date" | null>(null);
   const locked = !state || isDraftLocked(state);
@@ -121,7 +121,7 @@ function StagePlanBody({
       : null;
   return (
     <View style={{ flex: 1 }}>
-      <EditorialScreen>
+      <EditorialScreen adjustKeyboardInsets={!daySheetOpen}>
         <Heading>{future ? future.name : "Plan nutricional"}</Heading>
         <AppText muted>
           {localOnly
@@ -147,39 +147,18 @@ function StagePlanBody({
           )
         ) : (
           <>
-            <View
-              style={{
-                gap: 12,
-                borderLeftWidth: !stage.kind ? 2 : 0,
-                borderColor: colors.primary,
-                paddingLeft: !stage.kind ? 12 : 0,
-              }}
-            >
-              <AppText variant="headline">Tipo</AppText>
-              {(draft?.mode === "replace" &&
+            <StageKindField
+              reserveHint
+              readOnly={!!((draft?.mode === "replace" &&
                 draft.origin === "current" &&
                 stage.kind &&
                 !stage.sourceWasUntyped) ||
-              (localOnly && state?.editing === "maintenance") ? (
-                <AppText style={{ color: colors.primary }}>
-                  {kindLabel(stage.kind)}
-                </AppText>
-              ) : (
-                <KindPicker
-                  value={stage.kind}
-                  suggested={
-                    stage.kind === null ? suggestedKind(stage, list) : null
-                  }
-                  disabled={locked}
-                  onChange={(kind) => controller?.kind(kind)}
-                />
-              )}
-              {!stage.kind ? (
-                <AppText muted>
-                  Elegí qué tipo de plan es para guardarlo.
-                </AppText>
-              ) : null}
-            </View>
+                (localOnly && state?.editing === "maintenance"))}
+              value={stage.kind}
+              suggested={stage.kind === null ? suggestedKind(stage, list) : null}
+              disabled={locked}
+              onChange={kind => controller?.kind(kind)}
+            />
             {draft?.mode === "replace" && draft.origin === "current" ? (
               <EditorialRow title="Nombre">{stage.name}</EditorialRow>
             ) : (
@@ -284,6 +263,7 @@ function StagePlanBody({
               same={same}
               disabled={locked}
               onChange={(s) => controller?.changeStage(s)}
+              onSheetVisibilityChange={setDaySheetOpen}
             />
             <View>
               <EditorialRow

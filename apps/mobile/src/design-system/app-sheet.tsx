@@ -38,6 +38,9 @@ type AppSheetProps = PropsWithChildren<{
   dismissKeyboardOnClose?: boolean;
   /** iOS: UIKit focuses the first input and owns the entire keyboard/sheet entrance and exit. */
   nativeKeyboard?: boolean;
+  /** iOS nativeKeyboard only: cap the scrollable form above the keyboard and below the top safe area. */
+  keyboardViewport?: boolean;
+  keyboardTopInset?: number;
   keyboardInset?: number;
   /** Runs once the sheet is presented and measured (focus an input here). */
   onShow?: () => void;
@@ -47,7 +50,7 @@ type AppSheetProps = PropsWithChildren<{
  * App-drawn bottom sheet: it slides in and leaves the same way (IDENTIDAD.md § Movimiento, 300 ms), follows a
  * drag down and closes from the backdrop. With Reduce Motion it only fades.
  */
-export function AppSheet({ children, onClose, closeLabel, locked = false, dragFromContent = false, edgeSwipe = false, style, testID, beforeDismiss, dismissKeyboardOnClose = false, nativeKeyboard = false, keyboardInset = 0, onShow }: AppSheetProps) {
+export function AppSheet({ children, onClose, closeLabel, locked = false, dragFromContent = false, edgeSwipe = false, style, testID, beforeDismiss, dismissKeyboardOnClose = false, nativeKeyboard = false, keyboardViewport = false, keyboardTopInset = 0, keyboardInset = 0, onShow }: AppSheetProps) {
   const reduced = useReduceMotion();
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const [gone, setGone] = useState(false);
@@ -155,8 +158,10 @@ export function AppSheet({ children, onClose, closeLabel, locked = false, dragFr
           <Animated.View style={[StyleSheet.absoluteFill, styles.scrim, scrim]}>
             <Pressable accessibilityRole="button" accessibilityLabel={closeLabel} disabled={locked} onPress={() => dismiss()} style={StyleSheet.absoluteFill} />
           </Animated.View>
-          {followsKeyboard ? <KeyboardSheetMotion pointerEvents="box-none" style={styles.fill}
+          {followsKeyboard ? <KeyboardSheetMotion pointerEvents="box-none"
+            style={keyboardViewport ? { height: Math.max(0, windowHeight - keyboardTopInset), justifyContent: 'flex-end' } : styles.fill}
             sheetHeight={nativePresentation.height} presented={nativePresentation.presented} closing={nativePresentation.closing}
+            {...(keyboardViewport ? { boundedViewport: true, topInset: keyboardTopInset } : {})}
             bottomInset={keyboardInset} reduceMotion={reduced} onClosed={hide}>{draggableBody}</KeyboardSheetMotion> : draggableBody}
         </View>
       </DismissContext.Provider>
