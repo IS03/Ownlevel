@@ -16,7 +16,8 @@ export function DurationControl({
   const maximum = duration.unit === "weeks" ? 104 : 24;
   return (
     <View style={{ gap: 8 }}>
-      <View style={{ flexDirection: "row", gap: 16, alignItems: "center" }}>
+      {/* Its own row: minus, the amount with its unit (centered, width never pushes the buttons), plus. */}
+      <View style={{ flexDirection: "row", gap: 16, alignItems: "center" }} testID="duration-stepper">
         <NutritionGlassButton
           icon="minus"
           label="Acortar etapa"
@@ -26,7 +27,7 @@ export function DurationControl({
               : () => onChange({ ...duration, value: duration.value - 1 })
           }
         />
-        <AppText muted numeric style={{ flexShrink: 1 }}>
+        <AppText numeric variant="headline" style={{ flex: 1, textAlign: "center" }}>
           <CountingNumber value={duration.value} />{' '}
           {duration.unit === "weeks"
             ? duration.value === 1

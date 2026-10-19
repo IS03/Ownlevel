@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { Alert, View } from "react-native";
+import { useEffect, useState, type PropsWithChildren } from "react";
+import { Alert, View, type StyleProp, type ViewStyle } from "react-native";
 import { useRouter } from "expo-router";
-import Animated, { FadeIn, LinearTransition } from "react-native-reanimated";
+import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import {
   AppText,
   Button,
@@ -9,7 +9,6 @@ import {
   TextField,
   brandTokens,
   useOwnlevelTheme,
-  useReduceMotion,
 } from "@/design-system";
 import {
   CountingNumber,
@@ -51,7 +50,6 @@ export function StageSequenceScreen() {
   const shared = useStagesRoute();
   useStagesLeaveGuard(shared);
   const router = useRouter();
-  const reduced = useReduceMotion();
   const { largeInputStyle } = useEditorialLayout();
   const { colors } = useOwnlevelTheme();
   const state = shared?.state,
@@ -90,28 +88,20 @@ export function StageSequenceScreen() {
   return (
     <View style={{ flex: 1 }}>
       <EditorialScreen>
-        <EditorialSpread>
-          <Heading style={{ flexShrink: 1 }}>Programar etapas</Heading>
-          {totals && end ? (
-            <View style={{ alignItems: "flex-end" }}>
-              {totals.months ? (
-                <AppText muted>
-                  <CountingNumber value={totals.months} />{" "}
-                  {totals.months === 1 ? "mes" : "meses"}
-                </AppText>
-              ) : null}
-              {totals.weeks ? (
-                <AppText muted>
-                  <CountingNumber value={totals.weeks} />{" "}
-                  {totals.weeks === 1 ? "semana" : "semanas"}
-                </AppText>
-              ) : null}
-              <AppText muted variant="footnote">
-                hasta {shortDate(end)}
-              </AppText>
-            </View>
-          ) : null}
-        </EditorialSpread>
+        <View style={{ gap: 4 }}>
+          <Heading>Programar etapas</Heading>
+          {/* Its own line under the title, always present: months, weeks and the end date never push the title. */}
+          <AppText muted numeric testID="sequence-totals">
+            {totals && end ? (
+              <>
+                {totals.months ? <><CountingNumber value={totals.months} /> {totals.months === 1 ? "mes" : "meses"}</> : null}
+                {totals.months && totals.weeks ? " · " : null}
+                {totals.weeks ? <><CountingNumber value={totals.weeks} /> {totals.weeks === 1 ? "semana" : "semanas"}</> : null}
+                {` · hasta ${shortDate(end)}`}
+              </>
+            ) : " "}
+          </AppText>
+        </View>
         {state ? <RefreshingStages state={state} /> : null}
         {!sequence || !list ? (
           state?.notice || (list && state?.phase !== "loading") ? (
@@ -223,16 +213,10 @@ export function StageSequenceScreen() {
             ) : null}
             <View>
               {sequence.stages.map((item, i) => (
-                <Animated.View
+                <StageRow
                   key={item.stage.key}
-                  layout={
-                    reduced
-                      ? undefined
-                      : LinearTransition.springify()
-                          .damping(brandTokens.motion.spring.damping)
-                          .stiffness(brandTokens.motion.spring.stiffness)
-                  }
                   style={[stageStyles.row, { borderColor: colors.border }]}
+                  testID={`sequence-stage-${i}`}
                 >
                   <StageStripe kind={item.stage.kind} />
                   <View style={{ flex: 1, gap: 12 }}>
@@ -258,16 +242,13 @@ export function StageSequenceScreen() {
                         {item.stage.suggested ? " · sugerido" : ""}
                       </AppText>
                     </View>
-                    <Animated.View
-                      key={`${dates[i]?.startsOn}-${dates[i]?.endsOn}`}
-                      entering={FadeIn.duration(200)}
-                    >
+                    <StageRow key={`${dates[i]?.startsOn}-${dates[i]?.endsOn}`}>
                       <AppText muted>
                         {dates[i]
                           ? `${shortDate(dates[i].startsOn)} → ${shortDate(previousDate(dates[i].endsOn))}`
                           : "Elegí una fecha de inicio válida"}
                       </AppText>
-                    </Animated.View>
+                    </StageRow>
                     <DurationControl
                       duration={item.duration}
                       disabled={locked}
@@ -304,7 +285,7 @@ export function StageSequenceScreen() {
                       />
                     </EditorialSpread>
                   </View>
-                </Animated.View>
+                </StageRow>
               ))}
             </View>
             <Button
@@ -339,7 +320,8 @@ export function StageSequenceScreen() {
               onChange={(afterEnd) => setSequence({ ...sequence, afterEnd })}
             />
             {sequence.afterEnd === "maintenance" ? (
-              <View style={[stageStyles.row, { borderColor: colors.border }]}>
+              <Animated.View entering={FadeIn.duration(brandTokens.motion.duration.fast)} exiting={FadeOut.duration(brandTokens.motion.duration.fast)}
+                style={[stageStyles.row, { borderColor: colors.border }]} testID="sequence-maintenance">
                 <StageStripe kind="maintenance" />
                 <View style={{ flex: 1, gap: 12 }}>
                   <Heading level={2}>Mantenimiento</Heading>
@@ -366,7 +348,7 @@ export function StageSequenceScreen() {
                     }}
                   />
                 </View>
-              </View>
+              </Animated.View>
             ) : null}
             {!valid && !collision ? (
               <AppText muted>
@@ -391,4 +373,16 @@ export function StageSequenceScreen() {
       <StagesToast shared={shared} />
     </View>
   );
+}
+
+/**
+ * A stage holds native views (the type menu and Semanas/Meses) that size themselves after mounting. A Reanimated
+ * layout animation (entering, exiting or layout) on an ancestor takes over their frames and leaves them drawn away
+ * from their slot, so a stage only fades in with a plain opacity style (it never moves or resizes anything).
+ */
+function StageRow({ children, style, testID }: PropsWithChildren<{ style?: StyleProp<ViewStyle>; testID?: string }>) {
+  const shown = useSharedValue(0);
+  useEffect(() => { shown.set(withTiming(1, { duration: brandTokens.motion.duration.fast })); }, [shown]);
+  const fade = useAnimatedStyle(() => ({ opacity: shown.get() }));
+  return <Animated.View style={[style, fade]} testID={testID}>{children}</Animated.View>;
 }

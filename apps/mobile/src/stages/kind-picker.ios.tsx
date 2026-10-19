@@ -50,7 +50,7 @@ export function KindPicker({
         <AppIcon name="chevronDown" size={17} color={colors.textMuted} />
       </View>
       {measured && !disabled ? (
-        <Host colorScheme={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} testID="stage-kind-menu-host">
+        <Host colorScheme={isDark ? 'dark' : 'light'} ignoreSafeArea="all" style={StyleSheet.absoluteFill} testID="stage-kind-menu-host">
           <Menu
             label={<HStack modifiers={[frame(size), contentShape(shapes.rectangle())]}><Spacer minLength={0} /></HStack>}
             modifiers={[
