@@ -46,7 +46,7 @@ export function CountingNumber({
     </AppText>
   );
 }
-export function EditorialScreen({ children,scrollEnabled=true }: PropsWithChildren<{scrollEnabled?:boolean}>) {
+export function EditorialScreen({ children,scrollEnabled=true,adjustKeyboardInsets=true }: PropsWithChildren<{scrollEnabled?:boolean;adjustKeyboardInsets?:boolean}>) {
   const { isDark, colors } = useOwnlevelTheme();
   return (
     <SafeAreaView
@@ -66,7 +66,7 @@ export function EditorialScreen({ children,scrollEnabled=true }: PropsWithChildr
         scrollEnabled={scrollEnabled}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets
+        automaticallyAdjustKeyboardInsets={adjustKeyboardInsets}
         keyboardDismissMode="interactive"
         contentContainerStyle={{ padding: 16, gap: 24, paddingBottom: 40 }}
       >

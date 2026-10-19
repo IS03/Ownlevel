@@ -29,6 +29,10 @@ describe('Editorial QA', () => {
     const view = wrap(<EditorialScreen><RN.Text>Cuenta</RN.Text></EditorialScreen>);
     expect(view.UNSAFE_getByType(RN.ScrollView).props).toMatchObject({ automaticallyAdjustKeyboardInsets: true, keyboardDismissMode: 'interactive', contentInsetAdjustmentBehavior: 'automatic' });
   });
+  it('can stop background keyboard adjustment while its own modal is visible', () => {
+    const view = wrap(<EditorialScreen adjustKeyboardInsets={false} scrollEnabled={false}><RN.Text>Plan</RN.Text></EditorialScreen>);
+    expect(view.UNSAFE_getByType(RN.ScrollView).props).toMatchObject({ automaticallyAdjustKeyboardInsets: false, scrollEnabled: false });
+  });
   it('announces an editorial row value alongside its title and keeps navigation', () => {
     const open = jest.fn();
     const view = wrap(<EditorialRow title="Nacimiento" onPress={open}>11 dic 2003</EditorialRow>);

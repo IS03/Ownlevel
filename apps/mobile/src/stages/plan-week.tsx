@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeIn,
   useAnimatedStyle,
@@ -23,6 +24,7 @@ import {
   useOwnlevelTheme,
   useReduceMotion,
   pressedStyle,
+  brandTokens,
 } from "@/design-system";
 import { useTweenedNumber } from "@/nutrition/use-tweened-number";
 import { NutritionGlassButton } from "@/nutrition/day-controls";
@@ -130,14 +132,18 @@ export function PlanWeek({
   same,
   onChange,
   disabled,
+  onSheetVisibilityChange,
 }: {
   stage: StageDraft;
   today: number;
   same: boolean;
   onChange: (stage: StageDraft) => void;
   disabled: boolean;
+  onSheetVisibilityChange?: (visible: boolean) => void;
 }) {
   const [selected, setSelected] = useState<number | null>(null);
+  const openDay = (day: number) => { onSheetVisibilityChange?.(true); setSelected(day); };
+  const closeDay = () => { setSelected(null); onSheetVisibilityChange?.(false); };
   const maximum = Math.max(
     1,
     ...stage.weekdays.map((d) => draftNumber(d.kcal) ?? 0),
@@ -149,7 +155,7 @@ export function PlanWeek({
           accessibilityRole="button"
           accessibilityLabel="Ajustar todos los días"
           disabled={disabled}
-          onPress={() => setSelected(1)}
+          onPress={() => openDay(1)}
           style={{
             minHeight: 100,
             gap: 12,
@@ -183,7 +189,7 @@ export function PlanWeek({
               today={day.weekday === today}
               suggested={stage.suggested}
               disabled={disabled}
-              onPress={() => setSelected(day.weekday)}
+              onPress={() => openDay(day.weekday)}
             />
           ))}
         </ScrollView>
@@ -196,10 +202,10 @@ export function PlanWeek({
           stage={stage}
           day={selected}
           same={same}
-          onClose={() => setSelected(null)}
+          onClose={closeDay}
           onApply={(days, kcal, protein) => {
             onChange(applyDays(stage, days, kcal, protein));
-            setSelected(null);
+            closeDay();
           }}
         />
       ) : null}
@@ -232,12 +238,17 @@ function PlanDaySheet({
   onApply: (days: number[], kcal: string, protein: string) => void;
 }) {
   const { colors } = useOwnlevelTheme();
+  const insets = useSafeAreaInsets();
+  const nativeKeyboard = Platform.OS === 'ios';
   return (
     <AppSheet
       onClose={onClose}
       dismissKeyboardOnClose
+      nativeKeyboard={nativeKeyboard}
+      keyboardViewport={nativeKeyboard}
+      keyboardTopInset={insets.top + brandTokens.space.md}
       closeLabel="Cerrar ajuste del día"
-      style={{ backgroundColor: colors.background, maxHeight: '92%' }}
+      style={{ backgroundColor: colors.background, maxHeight: nativeKeyboard ? '100%' : '92%', flexShrink: 1 }}
       testID="stage-day-sheet"
     >
       <DaySheetBody stage={stage} day={day} same={same} onApply={onApply} />
@@ -257,6 +268,15 @@ function DaySheetBody({
 }) {
   const dismiss = useAppSheetDismiss();
   const { largeText, largeInputStyle } = useEditorialLayout();
+  const insets = useSafeAreaInsets();
+  const scroll = useRef<ScrollView>(null);
+  const focused = useRef<'kcal' | 'protein'>('kcal');
+  const positions = useRef({ pair: 0, kcal: 0, protein: 0 });
+  const revealFocused = () => scroll.current?.scrollTo({
+    y: Math.max(0, positions.current.pair + positions.current[focused.current] - brandTokens.space.md),
+    animated: false,
+  });
+  const focus = (field: 'kcal' | 'protein') => { focused.current = field; revealFocused(); };
   const original = stage.weekdays.find((d) => d.weekday === day)!;
   const [kcal, setKcal] = useState(original.kcal),
     [protein, setProtein] = useState(original.protein),
@@ -273,14 +293,11 @@ function DaySheetBody({
     grams <= 2000;
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      enabled={Platform.OS === 'android'}
+      behavior="height"
       style={{ flexShrink: 1 }}
     >
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.sheet}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      <View style={styles.header} testID="stage-day-header">
           <NutritionGlassButton label="Cancelar" icon="close" onPress={() => dismiss()} />
           <Heading level={2} style={{ flex: 1 }}>
             {same ? "Todos los días" : dayNames[day - 1]}
@@ -290,30 +307,45 @@ function DaySheetBody({
             icon="checkmark"
             onPress={valid && days.length ? () => dismiss(() => onApply(days, kcal, protein)) : undefined}
           />
-        </View>
+      </View>
+      <ScrollView
+        ref={scroll}
+        testID="stage-day-scroll"
+        onLayout={revealFocused}
+        automaticallyAdjustKeyboardInsets={false}
+        keyboardShouldPersistTaps="always"
+        style={{ flexShrink: 1 }}
+        contentContainerStyle={[styles.sheet, { paddingBottom: Math.max(insets.bottom, brandTokens.space.md) }]}
+      >
+        <View testID="stage-day-fields" onLayout={event => { positions.current.pair = event.nativeEvent.layout.y; }}>
         <EditorialSpread style={{ alignItems: 'stretch' }}>
-          <View style={largeText ? { width: '100%' } : { flex: 1 }}>
+          <View testID="stage-day-kcal-container" style={largeText ? { width: '100%' } : { flex: 1 }}
+            onLayout={event => { positions.current.kcal = event.nativeEvent.layout.y; }}>
             <TextField
               label="Calorías (kcal)"
               numeric
               keyboardType="number-pad"
               value={kcal}
               onChangeText={setKcal}
-              autoFocus
+              autoFocus={Platform.OS !== 'ios'}
+              onFocus={() => focus('kcal')}
               inputStyle={largeInputStyle}
             />
           </View>
-          <View style={largeText ? { width: '100%' } : { flex: 1 }}>
+          <View testID="stage-day-protein-container" style={largeText ? { width: '100%' } : { flex: 1 }}
+            onLayout={event => { positions.current.protein = event.nativeEvent.layout.y; }}>
             <TextField
               label="Proteína (g)"
               numeric
               keyboardType="decimal-pad"
               value={protein}
               onChangeText={setProtein}
+              onFocus={() => focus('protein')}
               inputStyle={largeInputStyle}
             />
           </View>
         </EditorialSpread>
+        </View>
         {!same ? (
           <>
             <AppText muted variant="caption">
@@ -354,5 +386,6 @@ function DaySheetBody({
   );
 }
 const styles = StyleSheet.create({
-  sheet: { padding: 16, paddingBottom: 40, gap: 24 },
+  header: { padding: brandTokens.space.md, flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.sm },
+  sheet: { padding: brandTokens.space.md, gap: brandTokens.space.xl },
 });

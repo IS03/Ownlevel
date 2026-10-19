@@ -31,7 +31,7 @@ import {
   validStageDate,
 } from "./stages-model";
 import { PlanNumber } from "./plan-week";
-import { KindPicker } from "./kind-picker";
+import { StageKindField } from './stage-kind-field';
 import { StartDatePicker } from "./start-date-picker";
 import { DurationControl } from "./duration-control";
 import {
@@ -236,32 +236,28 @@ export function StageSequenceScreen() {
                 >
                   <StageStripe kind={item.stage.kind} />
                   <View style={{ flex: 1, gap: 12 }}>
-                    <EditorialSpread>
-                      <View style={{ flexShrink: 1 }}>
-                        <KindPicker
-                          value={item.stage.kind}
-                          suggested={null}
-                          disabled={locked}
-                          onChange={(kind) => {
-                            controller?.editStage(i);
-                            controller?.kind(kind);
-                          }}
-                        />
-                        <AppText variant="headline">
-                          {item.stage.name || kindLabel(item.stage.kind)}
-                        </AppText>
-                      </View>
-                      <View>
-                        <PlanNumber
-                          value={mean(item.stage)}
-                          suggested={item.stage.suggested}
-                        />
-                        <AppText muted variant="caption">
-                          kcal promedio
-                          {item.stage.suggested ? " · sugerido" : ""}
-                        </AppText>
-                      </View>
-                    </EditorialSpread>
+                    <StageKindField
+                      value={item.stage.kind}
+                      suggested={null}
+                      disabled={locked}
+                      onChange={(kind) => {
+                        controller?.editStage(i);
+                        controller?.kind(kind);
+                      }}
+                    />
+                    <AppText variant="headline">
+                      {item.stage.name || kindLabel(item.stage.kind)}
+                    </AppText>
+                    <View>
+                      <PlanNumber
+                        value={mean(item.stage)}
+                        suggested={item.stage.suggested}
+                      />
+                      <AppText muted variant="caption">
+                        kcal promedio
+                        {item.stage.suggested ? " · sugerido" : ""}
+                      </AppText>
+                    </View>
                     <Animated.View
                       key={`${dates[i]?.startsOn}-${dates[i]?.endsOn}`}
                       entering={FadeIn.duration(200)}

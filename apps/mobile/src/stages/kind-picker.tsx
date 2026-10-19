@@ -1,13 +1,8 @@
 import { View } from "react-native";
 import { AppText, Chip } from "@/design-system";
 import { kindOptions } from "./stages-model";
-import type { StageKind } from "@/api/nutrition-stages";
-export type KindPickerProps = {
-  value: StageKind | null;
-  suggested: StageKind | null;
-  disabled?: boolean;
-  onChange: (kind: StageKind) => void;
-};
+import type { KindPickerProps } from './kind-picker.types';
+export type { KindPickerProps } from './kind-picker.types';
 export function KindPicker({
   value,
   disabled,

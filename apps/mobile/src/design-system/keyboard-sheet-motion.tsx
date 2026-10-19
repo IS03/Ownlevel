@@ -6,10 +6,13 @@ export type KeyboardSheetMotionProps = ViewProps & {
   presented: boolean;
   closing: boolean;
   reduceMotion: boolean;
+  /** Opt-in viewport sizing by UIKit, for taller scrollable forms. */
+  boundedViewport?: boolean;
+  topInset?: number;
   onClosed: () => void;
 };
 
-/** Only iOS numeric metric forms opt into native keyboard motion. */
+/** Non-iOS fallback; native coordination is opt-in in AppSheet. */
 export function KeyboardSheetMotion({ children, style }: KeyboardSheetMotionProps) {
   return <View style={style}>{children}</View>;
 }

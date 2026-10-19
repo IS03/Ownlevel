@@ -11,6 +11,8 @@ public final class OwnlevelKeyboardSheetModule: Module {
       Prop("presented") { (view, value: Bool) in view.presented = value }
       Prop("closing") { (view, value: Bool) in view.closing = value }
       Prop("reduceMotion") { (view, value: Bool) in view.reduceMotion = value }
+      Prop("boundedViewport") { (view, value: Bool) in view.boundedViewport = value }
+      Prop("topInset") { (view, value: Double) in view.topInset = CGFloat(value) }
       OnViewDidUpdateProps { view in view.updatePresentation() }
     }
   }
@@ -25,6 +27,8 @@ public final class KeyboardSheetView: ExpoView {
   var presented = false
   var closing = false
   var reduceMotion = false
+  var boundedViewport = false
+  var topInset: CGFloat = 0
   let onClosed = EventDispatcher()
 
   private var started = false
@@ -33,6 +37,8 @@ public final class KeyboardSheetView: ExpoView {
   private var closingAnimationStarted = false
   private var target: CGFloat?
   private var fallback: DispatchWorkItem?
+  private var viewportHeight: CGFloat?
+  private var pendingEntrance: (destination: CGFloat, duration: TimeInterval, options: UIView.AnimationOptions, startedAt: TimeInterval)?
 
   public required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -54,6 +60,12 @@ public final class KeyboardSheetView: ExpoView {
 
   public override func layoutSubviews() {
     super.layoutSubviews()
+    if let pending = pendingEntrance, let height = viewportHeight,
+       abs(bounds.height - height) < 1, !closing {
+      pendingEntrance = nil
+      let remaining = max(0, pending.duration - (ProcessInfo.processInfo.systemUptime - pending.startedAt))
+      move(to: pending.destination, duration: remaining, options: pending.options)
+    }
     updatePresentation()
   }
 
@@ -62,6 +74,7 @@ public final class KeyboardSheetView: ExpoView {
     if closing {
       guard !closingStarted else { return }
       closingStarted = true
+      pendingEntrance = nil
       fallback?.cancel()
       // The notification normally arrives synchronously and supplies the exit's native timing.
       endEditing(true)
@@ -112,10 +125,29 @@ public final class KeyboardSheetView: ExpoView {
     // iOS can publish an initial empty frame before the real software keyboard. It must not
     // start a short first entrance that the subsequent frame then interrupts.
     guard entered || height > 0 else { return }
-    move(to: -max(0, height - bottomInset), duration: duration, options: options)
+    let destination = -max(0, height - bottomInset)
+    if boundedViewport {
+      // Change Yoga's proposed size directly from UIKit, not through a JS keyboard
+      // listener/KAV. The scroll view and pinned header then share the real free area.
+      let available = max(0, window.bounds.height - max(0, topInset) + destination)
+      if viewportHeight != available {
+        viewportHeight = available
+        setStyleSize(nil, height: NSNumber(value: Double(available)))
+      }
+      if !entered && sheetHeight > available && abs(bounds.height - available) >= 1 {
+        // Only an oversized form needs a new measurement before appearing.
+        // A form that already fits enters in the keyboard's original transaction.
+        // Use only the remaining native keyboard transaction; never a second delay.
+        fallback?.cancel()
+        pendingEntrance = (destination, duration, options, ProcessInfo.processInfo.systemUptime)
+        return
+      }
+    }
+    move(to: destination, duration: duration, options: options)
   }
 
   private func move(to destination: CGFloat, duration: TimeInterval, options: UIView.AnimationOptions) {
+    pendingEntrance = nil
     guard target != destination else { return }
     entered = true
     target = destination

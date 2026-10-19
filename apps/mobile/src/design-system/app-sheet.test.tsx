@@ -90,6 +90,16 @@ describe('keyboard and sheet leave together', () => {
 });
 
 describe('native metric keyboard presentation', () => {
+  it('bounds only forms that opt in, while keeping existing metric geometry untouched', () => {
+    const regular = open({ nativeKeyboard: true });
+    expect(regular.view.UNSAFE_getByType(KeyboardSheetMotion).props.boundedViewport).toBeUndefined();
+    regular.view.unmount();
+    const bounded = open({ nativeKeyboard: true, keyboardViewport: true, keyboardTopInset: 78 });
+    const motion = bounded.view.UNSAFE_getByType(KeyboardSheetMotion);
+    expect(motion.props).toMatchObject({ boundedViewport: true, topInset: 78 });
+    expect(StyleSheet.flatten(motion.props.style).flex).toBeUndefined();
+    expect(StyleSheet.flatten(motion.props.style).height).toBeGreaterThan(0);
+  });
   it('waits for measurement and Modal presentation and gives UIKit sole ownership of entry', () => {
     const view = render(<OwnlevelThemeProvider initialMode="light"><AppSheet nativeKeyboard testID="native" closeLabel="Cerrar" onClose={jest.fn()} keyboardInset={26}><Close /></AppSheet></OwnlevelThemeProvider>);
     expect(view.UNSAFE_getByType(KeyboardSheetMotion).props).toMatchObject({ sheetHeight: 0, presented: false, closing: false });
