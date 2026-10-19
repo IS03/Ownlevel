@@ -1,7 +1,7 @@
-import type { PropsWithChildren, ReactNode } from 'react';
+import { useEffect, type PropsWithChildren, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import {
   AppIcon,
   AppText,
@@ -92,6 +92,7 @@ export function EditorialRow({
   disabled = false,
   large = false,
   hint,
+  expanded,
 }: {
   title: string;
   children?: ReactNode;
@@ -99,9 +100,16 @@ export function EditorialRow({
   disabled?: boolean;
   large?: boolean;
   hint?: string;
+  /** Optional: the row opens a block below it. Shows a down/up arrow and the expanded state instead of the chevron. */
+  expanded?: boolean;
 }) {
   const { colors } = useOwnlevelTheme();
   const reduced = useReduceMotion();
+  const turn = useSharedValue(expanded ? 1 : 0);
+  useEffect(() => {
+    turn.set(reduced ? (expanded ? 1 : 0) : withTiming(expanded ? 1 : 0, { duration: brandTokens.motion.duration.fast }));
+  }, [expanded, reduced, turn]);
+  const arrow = useAnimatedStyle(() => ({ transform: [{ rotate: `${180 * turn.get()}deg` }] }));
   const content = (
     <>
       <View style={{ flex: 1, gap: 8 }}>
@@ -127,7 +135,9 @@ export function EditorialRow({
           </AppText>
         ) : null}
       </View>
-      {onPress ? <AppIcon name="chevronRight" size={20} color={colors.textMuted} /> : null}
+      {onPress && expanded !== undefined ? (
+        <Animated.View style={arrow}><AppIcon name="chevronDown" size={20} color={colors.textMuted} /></Animated.View>
+      ) : onPress ? <AppIcon name="chevronRight" size={20} color={colors.textMuted} /> : null}
     </>
   );
   const style = {
@@ -144,7 +154,7 @@ export function EditorialRow({
       accessibilityRole="button"
       accessibilityLabel={title}
       accessibilityValue={typeof children === 'string' ? { text: children } : undefined}
-      accessibilityState={{ disabled }}
+      accessibilityState={expanded === undefined ? { disabled } : { disabled, expanded }}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [style, pressedStyle(pressed, reduced), disabled && { opacity: 0.5 }]}

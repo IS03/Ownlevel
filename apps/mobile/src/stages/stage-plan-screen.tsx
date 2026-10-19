@@ -1,12 +1,15 @@
 import { useState } from "react";
-import { Alert, Switch, View } from "react-native";
+import { Alert, Keyboard, Switch, View } from "react-native";
+import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
 import { useRouter } from "expo-router";
 import {
   AppText,
   Button,
   Heading,
   TextField,
+  brandTokens,
   useOwnlevelTheme,
+  useReduceMotion,
 } from "@/design-system";
 import { EditorialRow, EditorialScreen, EditorialSpread, formatNumber } from "@/settings/editorial";
 import { shortDate } from "@/settings/settings-model";
@@ -61,6 +64,17 @@ function StagePlanBody({
     [daySheetOpen, setDaySheetOpen] = useState(false),
     [uniformNotice, setUniformNotice] = useState<string | null>(null),
     [extras, setExtras] = useState<"water" | "training" | "date" | null>(null);
+  const reduced = useReduceMotion();
+  // One block open at a time. Its fields fade in/out (200 ms) while what follows slides to its new place (300 ms);
+  // Reduce Motion: fades only. Closing a block with the keyboard up takes the keyboard down with it.
+  const toggle = (block: "water" | "training" | "date") => {
+    const next = extras === block ? null : block;
+    if (extras && extras !== "date" && Keyboard.isVisible()) Keyboard.dismiss();
+    setExtras(next);
+  };
+  const move = reduced ? undefined : LinearTransition.duration(brandTokens.motion.duration.base);
+  const appear = FadeIn.duration(brandTokens.motion.duration.fast);
+  const leave = FadeOut.duration(brandTokens.motion.duration.fast);
   const locked = !state || isDraftLocked(state);
   const valid =
     !!stage &&
@@ -192,7 +206,8 @@ function StagePlanBody({
                 <EditorialRow
                   title="Empieza"
                   disabled={locked}
-                  onPress={() => setExtras(extras === "date" ? null : "date")}
+                  expanded={extras === "date"}
+                  onPress={() => toggle("date")}
                 >
                   {validStageDate(draft.startsOn)
                     ? shortDate(draft.startsOn)
@@ -242,21 +257,12 @@ function StagePlanBody({
                       ),
                     );
                     setUniformNotice(
-                      `Tomamos el valor más repetido: ${repeated.kcal || "—"} kcal · ${repeated.protein || "—"} g.`,
+                      `Tomamos el valor más repetido: ${draftNumber(repeated.kcal) === null ? "—" : formatNumber(draftNumber(repeated.kcal)!)} kcal · ${draftNumber(repeated.protein) === null ? "—" : formatNumber(draftNumber(repeated.protein)!)} g.`,
                     );
                   } else setUniformNotice(null);
                 }}
               />
             </EditorialSpread>
-            {uniformNotice ? (
-              <AppText
-                muted
-                variant="footnote"
-                accessibilityLiveRegion="polite"
-              >
-                {uniformNotice}
-              </AppText>
-            ) : null}
             <PlanWeek
               stage={stage}
               today={weekdayFor(list.today)}
@@ -264,36 +270,41 @@ function StagePlanBody({
               disabled={locked}
               onChange={(s) => controller?.changeStage(s)}
               onSheetVisibilityChange={setDaySheetOpen}
+              notice={same ? uniformNotice : null}
             />
-            <View>
+            <Animated.View layout={move}>
               <EditorialRow
                 title="Agua por día"
                 disabled={locked}
-                onPress={() => setExtras(extras === "water" ? null : "water")}
+                expanded={extras === "water"}
+                onPress={() => toggle("water")}
               >
                 {draftNumber(stage.baseWaterL) === null
                   ? "Sin dato"
                   : `${formatNumber(draftNumber(stage.baseWaterL)!)} L`}
               </EditorialRow>
               {extras === "water" ? (
-                <TextField
-                  label="Agua por día (L)"
-                  numeric
-                  keyboardType="decimal-pad"
-                  value={stage.baseWaterL}
-                  disabled={locked}
-                  onChangeText={(v) => change("baseWaterL", v)}
-                />
+                <Animated.View entering={appear} exiting={leave} style={{ paddingTop: 12 }}>
+                  <TextField
+                    label="Agua por día (L)"
+                    numeric
+                    keyboardType="decimal-pad"
+                    value={stage.baseWaterL}
+                    disabled={locked}
+                    onChangeText={(v) => change("baseWaterL", v)}
+                  />
+                </Animated.View>
               ) : null}
+            </Animated.View>
+            <Animated.View layout={move}>
               <EditorialRow
                 title="Si entrenás"
                 disabled={locked}
-                onPress={() =>
-                  setExtras(extras === "training" ? null : "training")
-                }
+                expanded={extras === "training"}
+                onPress={() => toggle("training")}
               >{`${draftNumber(stage.trainingCalorieDeltaKcal) === null ? "Calorías sin dato" : `+${formatNumber(draftNumber(stage.trainingCalorieDeltaKcal)!)} kcal`} · ${draftNumber(stage.trainingWaterDeltaL) === null ? "agua sin dato" : `+${formatNumber(draftNumber(stage.trainingWaterDeltaL)!)} L`}`}</EditorialRow>
               {extras === "training" ? (
-                <View style={{ gap: 12 }}>
+                <Animated.View entering={appear} exiting={leave} style={{ gap: 12, paddingTop: 12 }}>
                   <TextField
                     label="Extra de calorías (kcal)"
                     numeric
@@ -310,9 +321,10 @@ function StagePlanBody({
                     disabled={locked}
                     onChangeText={(v) => change("trainingWaterDeltaL", v)}
                   />
-                </View>
+                </Animated.View>
               ) : null}
-            </View>
+            </Animated.View>
+            <Animated.View layout={move} style={{ gap: 24 }}>
             {draft?.mode === "update" && !valid ? (
               <AppText muted>
                 {future
@@ -382,6 +394,7 @@ function StagePlanBody({
                 ) : null}
               </>
             ) : null}
+            </Animated.View>
           </>
         )}
         {shared ? <StagesStatus {...shared} /> : null}
