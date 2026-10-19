@@ -95,7 +95,8 @@ Permanent rules (summary; IDENTIDAD.md wins on detail):
   system stack on Web. Hanken Grotesk only inside the logo artwork.
 - Type scale (iOS text styles, pt / weight): Large Title 34/700, Title 1 28/700,
   Title 2 22/700, Headline 17/600, Body 17/400, Subheadline 15/400, Footnote 13/400,
-  Caption 12/500. On Mobile use the `AppText`/`Heading` variants (or
+  Caption 12/500, plus Hero number 56/700 (only the main number of a sheet or hero, one
+  per screen, tabular). On Mobile use the `AppText`/`Heading` variants (or
   `brandTokens.typeScale`), never a raw `fontSize`.
 - Dynamic Type: never disable font scaling. With large text (fontScale > 1.3), stack
   label/value pairs and wrap instead of truncating or squeezing text.

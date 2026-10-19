@@ -8,7 +8,7 @@ import type { MobileApiClient } from '@/api/client';
 import { fetchSessionDetail, type SessionDetailDto } from '@/api/active-session';
 import { correctSession, type SessionCorrectionInput } from '@/api/training-history';
 import { forgetSessionSummary } from '@/api/session-summary';
-import { AppText, Button, ScrollScreen, Surface, UnavailableState, radius, sizes, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppText, Button, ScrollScreen, Surface, UnavailableState, radius, sizes, spacing, useOwnlevelTheme, brandTokens } from '@/design-system';
 import { compactHistoryDate } from './active-session-model';
 import { SummaryScale } from './finish-session-sheet';
 import { correctionDraft, correctionInput, correctionIsDirty, type CorrectionDraft } from './history-model';
@@ -163,15 +163,15 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xl },
   header: { gap: 2 },
-  title: { fontSize: 22, lineHeight: 28 },
+  title: { fontSize: brandTokens.typeScale.title2.fontSize, lineHeight: brandTokens.typeScale.title2.lineHeight },
   exercise: { gap: spacing.sm },
   setHeader: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
   setRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
   setNumber: { width: 40 },
   flex: { flex: 1 },
-  input: { minHeight: sizes.touchTarget, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: spacing.md, fontSize: 16 },
+  input: { minHeight: sizes.touchTarget, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: spacing.md, fontSize: brandTokens.typeScale.body.fontSize },
   summary: { gap: spacing.lg },
   notesBlock: { gap: spacing.sm },
-  notes: { minHeight: 96, borderWidth: 1, borderRadius: radius.md, padding: spacing.md, fontSize: 16, textAlignVertical: 'top' },
+  notes: { minHeight: 96, borderWidth: 1, borderRadius: radius.md, padding: spacing.md, fontSize: brandTokens.typeScale.body.fontSize, textAlignVertical: 'top' },
   footer: { gap: spacing.sm, paddingTop: spacing.sm },
 });

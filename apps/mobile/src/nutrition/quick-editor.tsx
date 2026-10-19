@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { AppIcon, AppText, Button, Heading, LoadingState, Surface, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, Button, Heading, LoadingState, Surface, useOwnlevelTheme, brandTokens } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import type { QuickNutrients, QuickSection } from '@/api/nutrition-quick';
 import { displayNutritionDate } from './day-format';
@@ -118,4 +118,4 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onSav
     {!draft && !state.intent ? <AppText muted variant="caption">Destino · {displayNutritionDate(state.date)}</AppText> : null}
   </MealSheet>;
 }
-const styles = StyleSheet.create({ total: { flexDirection: 'row', alignItems: 'center', gap: 8 }, add: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' }, stepper: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, paddingVertical: 4, flexShrink: 1 }, step: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, quantity: { fontSize: 17, fontWeight: '600', textAlign: 'center', minWidth: 50, maxWidth: 180, fontVariant: ['tabular-nums'] }, foodQuantity: { justifyContent: 'center', flexWrap: 'wrap' }, chip: { minWidth: 50, minHeight: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' } });
+const styles = StyleSheet.create({ total: { flexDirection: 'row', alignItems: 'center', gap: 8 }, add: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' }, stepper: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, paddingVertical: 4, flexShrink: 1 }, step: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, quantity: { fontSize: brandTokens.typeScale.body.fontSize, fontWeight: '600', textAlign: 'center', minWidth: 50, maxWidth: 180, fontVariant: ['tabular-nums'] }, foodQuantity: { justifyContent: 'center', flexWrap: 'wrap' }, chip: { minWidth: 50, minHeight: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' } });

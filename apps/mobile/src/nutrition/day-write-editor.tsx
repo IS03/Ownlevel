@@ -1,5 +1,5 @@
 import { Alert,KeyboardAvoidingView,Modal,Platform,StyleSheet,TextInput,View } from 'react-native';
-import { AppText,Button,Heading,ScrollScreen,Surface,spacing,useOwnlevelTheme } from '@/design-system';
+import { AppText,Button,Heading,ScrollScreen,Surface,spacing,useOwnlevelTheme, brandTokens } from '@/design-system';
 import type { NutritionDayContext,NutritionDayMetric } from '@/api/nutrition-day';
 import type { DayWriteController,DayWriteState } from './day-write-controller';
 import { displayNutritionDate,amount } from './day-format';
@@ -78,4 +78,4 @@ export function DayWriteEditor({controller,state}:{controller:DayWriteController
     </KeyboardAvoidingView>
   </Modal>;
 }
-const styles=StyleSheet.create({screen:{flex:1},row:{flexDirection:'row',gap:spacing.md},column:{flex:1,gap:spacing.xs},input:{minHeight:48,borderWidth:1,borderRadius:12,padding:spacing.md,fontSize:17}});
+const styles=StyleSheet.create({screen:{flex:1},row:{flexDirection:'row',gap:spacing.md},column:{flex:1,gap:spacing.xs},input:{minHeight:48,borderWidth:1,borderRadius:12,padding:spacing.md,fontSize: brandTokens.typeScale.body.fontSize}});

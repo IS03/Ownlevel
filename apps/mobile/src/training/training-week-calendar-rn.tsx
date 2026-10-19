@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AppIcon, AppText, GlassSurface, InlineUnavailable, radius, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, GlassSurface, InlineUnavailable, radius, spacing, useOwnlevelTheme, brandTokens } from '@/design-system';
 import { WEEKDAY_LETTERS } from '@/home/home-day';
 
 import { shiftHubMonth } from './training-hub-data';
@@ -87,12 +87,12 @@ const styles = StyleSheet.create({
   arrow: { alignItems: 'center', height: 44, justifyContent: 'center', width: 40 },
   cell: { alignItems: 'center', flex: 1, gap: 2, minHeight: 48 },
   day: { alignItems: 'center', borderRadius: radius.full, height: 36, justifyContent: 'center', width: 36 },
-  dayNumber: { fontSize: 15, fontWeight: '600', lineHeight: 20 },
+  dayNumber: { ...brandTokens.typeScale.subheadline, fontWeight: '600' },
   dot: { borderRadius: radius.full, height: 4, width: 4 },
   flex: { flex: 1, minWidth: 0 },
   glass: { borderRadius: WEEK_CALENDAR_RADIUS, overflow: 'hidden', paddingHorizontal: spacing.xs, paddingVertical: spacing.md },
   header: { alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', marginTop: spacing.md, paddingLeft: spacing.md, paddingTop: spacing.xs },
-  letter: { fontSize: 13, lineHeight: 18 },
+  letter: { fontSize: brandTokens.typeScale.footnote.fontSize, lineHeight: brandTokens.typeScale.footnote.lineHeight },
   letterCell: { alignItems: 'center', flex: 1, paddingBottom: spacing.xs },
   month: { paddingHorizontal: spacing.xs },
   row: { flexDirection: 'row' },

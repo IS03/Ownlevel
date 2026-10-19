@@ -50,6 +50,6 @@ export function MealSearch({ value, onChange, label }: { value: string; onChange
 export const mealSheetStyles = StyleSheet.create({
   footer: { marginTop: 'auto', paddingTop: 24, gap: 12 }, row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64, paddingVertical: 12 },
   text: { flex: 1, gap: 2 }, totals: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
-  input: { minHeight: 48, padding: 12, borderRadius: 12, fontSize: 17 }, number: { fontSize: 56, lineHeight: 68, fontWeight: '700', fontVariant: ['tabular-nums'], textAlign: 'center', minWidth: 40, marginRight: 6 },
+  input: { minHeight: 48, padding: 12, borderRadius: 12, fontSize: brandTokens.typeScale.body.fontSize }, number: { fontSize: brandTokens.typeScale.heroNumber.fontSize, lineHeight: 68, fontWeight: '700', fontVariant: ['tabular-nums'], textAlign: 'center', minWidth: 40, marginRight: 6 },
 });
 const styles = StyleSheet.create({ fill: { flex: 1 }, content: { flexGrow: 1, gap: 20, paddingTop: 8 }, header: { flexDirection: 'row', alignItems: 'center', gap: 8 }, title: { flex: 1, gap: 2 }, center: { textAlign: 'center' } });

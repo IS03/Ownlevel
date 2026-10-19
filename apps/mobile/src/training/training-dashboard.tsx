@@ -16,8 +16,7 @@ import {
   radius,
   sizes,
   spacing,
-  useOwnlevelTheme,
-} from '@/design-system';
+  useOwnlevelTheme, brandTokens } from '@/design-system';
 
 import {
   buildTrainingMonth,
@@ -426,8 +425,8 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   activeSessionName: {
-    fontSize: 20,
-    lineHeight: 26,
+    fontSize: brandTokens.typeScale.title2.fontSize,
+    lineHeight: brandTokens.typeScale.title2.lineHeight,
     marginTop: 1,
   },
   calendarCard: {
@@ -442,8 +441,8 @@ const styles = StyleSheet.create({
     width: `${100 / 7}%`,
   },
   calendarTitle: {
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: brandTokens.typeScale.headline.fontSize,
+    lineHeight: brandTokens.typeScale.headline.lineHeight,
   },
   calendarTitleRow: {
     alignItems: 'center',
@@ -487,8 +486,8 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   hubSubtitle: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: brandTokens.typeScale.subheadline.fontSize,
+    lineHeight: brandTokens.typeScale.subheadline.lineHeight,
   },
   indicator: {
     borderRadius: radius.pill,

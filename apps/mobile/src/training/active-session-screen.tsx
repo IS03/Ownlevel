@@ -10,7 +10,7 @@ import { prefetchSessionSummary, readSessionSummary } from '@/api/session-summar
 import { prefetchFinishWeek } from './finish-week';
 import type { QuickSessionHistoryDto, SessionDetailDto } from '@/api/active-session';
 import type { RestDeadline } from './active-session-model';
-import { AppIcon, AppText, Button, Heading, InlineUnavailable, ProgressBar, ScrollScreen, SkeletonBlock, Surface, UnavailableState, GlassSurface, sizes, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { AppIcon, AppText, Button, Heading, InlineUnavailable, ProgressBar, ScrollScreen, SkeletonBlock, Surface, UnavailableState, GlassSurface, sizes, spacing, useOwnlevelTheme, useReduceMotion, brandTokens } from '@/design-system';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
 import { haptics, triggerHaptic } from '@/platform/haptics';
 import { ActiveSessionController, sessionIntentKey } from './active-session-controller';
@@ -304,7 +304,7 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
 }
 const styles = StyleSheet.create({
   screen: { flex: 1 }, flex: { flex: 1 }, content: { alignSelf: 'center', flexGrow: 1, maxWidth: sizes.contentMaxWidth, width: '100%', padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xl }, row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  sessionHeader: { gap: spacing.sm, paddingVertical: spacing.sm }, sessionTitle: { fontSize: 34 }, clock: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs }, progress: { gap: spacing.sm, marginTop: spacing.sm },
+  sessionHeader: { gap: spacing.sm, paddingVertical: spacing.sm }, sessionTitle: { fontSize: brandTokens.typeScale.largeTitle.fontSize }, clock: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs }, progress: { gap: spacing.sm, marginTop: spacing.sm },
   timerOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0 },
   timerSafe: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }, timer: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, overflow: 'hidden', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   timerButton: { width: sizes.touchTarget, minHeight: sizes.touchTarget, alignItems: 'center', justifyContent: 'center' }, timerValue: { fontVariant: ['tabular-nums'] },

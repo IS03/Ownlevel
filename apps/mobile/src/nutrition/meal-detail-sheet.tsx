@@ -122,7 +122,7 @@ const styles = StyleSheet.create({
   titleBlock: { gap: 6 }, meta: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: brandTokens.radius.chip, paddingHorizontal: 8, paddingVertical: 3 },
   numbers: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' },
-  kcal: { flexDirection: 'row', alignItems: 'baseline', gap: 6 }, kcalValue: { fontSize: 56, lineHeight: 64, fontWeight: '700' },
+  kcal: { flexDirection: 'row', alignItems: 'baseline', gap: 6 }, kcalValue: { fontSize: brandTokens.typeScale.heroNumber.fontSize, lineHeight: brandTokens.typeScale.heroNumber.lineHeight, fontWeight: '700' },
   macros: { flexDirection: 'row', gap: 16 }, macro: { alignItems: 'flex-end' },
   shares: { gap: 8 }, share: { flexDirection: 'row', alignItems: 'center', gap: 12 }, shareLabel: { width: 76 },
   track: { flex: 1, height: 6, borderRadius: 3, overflow: 'hidden' }, bar: { height: 6, borderRadius: 3 }, percent: { minWidth: 44, textAlign: 'right' },

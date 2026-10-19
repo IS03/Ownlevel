@@ -459,9 +459,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 4,
   },
-  input: { minHeight: 48, padding: 12, borderRadius: 12, fontSize: 17, fontVariant: ['tabular-nums'] },
+  input: { minHeight: 48, padding: 12, borderRadius: 12, fontSize: brandTokens.typeScale.body.fontSize, fontVariant: ['tabular-nums'] },
   number: {
-    fontSize: 56,
+    fontSize: brandTokens.typeScale.heroNumber.fontSize,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
     minWidth: 48,

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { AppText, Button, GlassSurface, LoadingState, useOwnlevelTheme } from '@/design-system';
+import { AppText, Button, GlassSurface, LoadingState, useOwnlevelTheme, brandTokens } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import type { PersonalSavedMeal } from '@/api/nutrition-saved';
 import type { SavedController, SavedState } from './saved-controller';
@@ -470,7 +470,7 @@ const styles = StyleSheet.create({
   stepper: { flexDirection: 'row', alignItems: 'center', borderRadius: 999, overflow: 'hidden' },
   step: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   quantity: {
-    fontSize: 17,
+    fontSize: brandTokens.typeScale.body.fontSize,
     fontVariant: ['tabular-nums'],
     minWidth: 44,
     maxWidth: 80,
