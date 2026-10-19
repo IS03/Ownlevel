@@ -155,7 +155,7 @@ packages/brand/src/tokens.ts              ← entrada runtime: `export * from` e
 | Capa | Ubicación | Contenido |
 |---|---|---|
 | Mobile tema | `apps/mobile/src/design-system/tokens.ts` → consume `./brand` (`packages/brand`) | Mapea la marca a nombres semánticos del DS (`background`, `surface`, `elevated`, `text`, `textMuted`, `accent`, `accentSoft`, `onAccent`, `error`, `border`, hero, chart, intensity). Se borra la paleta violeta. El provider de M8 (preferencia + persistencia) queda igual. |
-| Mobile tipografía | `design-system/typography.ts` | `typeScale` de marca + estilo `numeric` (`tabular-nums`); variante de `AppText` por estilo iOS. |
+| Mobile tipografía | `design-system/tokens.ts` (`typography`) y `primitives.tsx` (`AppText`) | `typeScale` de marca + estilo `numeric` (`tabular-nums`); variante de `AppText` por estilo iOS. |
 | Mobile haptics | `apps/mobile/src/platform/haptics.ts` | `haptic(event)` según `hapticsMap`; respeta el interruptor local que pide `IDENTIDAD.md` (`ownlevel.haptics.v1`); reemplaza `selection/success/warning`. |
 | Mobile vidrio | `design-system/glass.tsx` | `GlassControl`: `GlassView` si `isLiquidGlassAvailable()`, si no fondo `elevated` sólido. |
 | Web tema | `src/app/globals.css` | Variables `--ol-*` derivadas de los tokens (mecanismo a definir en M9.4, sin copiar hex a mano) + mapeo de variables shadcn (`--primary`, `--background`, `--card`, `--muted`, `--border`, `--destructive`, `--chart-*`) a `--ol-*` bajo `:root` / `.dark`. |

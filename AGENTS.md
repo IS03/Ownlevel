@@ -59,8 +59,6 @@ Use native Mobile patterns where appropriate.
 
 ## Identidad de marca (Brand identity)
 
-<!-- Keep this section identical to CLAUDE.md › Identidad de marca. -->
-
 Source of truth for branding, visual identity and copy tone, for BOTH Mobile and Web:
 
 docs/brand/ownlevel-marca/
@@ -68,8 +66,14 @@ docs/brand/ownlevel-marca/
 - IDENTIDAD.md: every decision and its reason.
 - LEEME.md: assets and how to wire them.
 - tema/tokens.ts: canonical values (colors, type, radius, space, layout, motion, haptics).
-- tema/theme.ts, tema/haptics.ts, tema/theme.css: reference adapters. Do not import them
-  directly from app code; M9 moves them into the shared brand package (see the M9 plan).
+- tema/theme.ts, tema/haptics.ts, tema/theme.css: reference adapters only.
+
+App code never imports from docs/ and never copies hex values or sizes. The values reach
+code through packages/brand (a re-export of tema/tokens.ts):
+- Mobile: `@/design-system` (`brandTokens`, `typography`, `spacing`, `radius`, `AppText`
+  variants), built on apps/mobile/src/design-system/brand.ts → packages/brand.
+- Web: not migrated yet (M9.4). docs/design/* describes the legacy Web (violet accent,
+  Tailwind sizes) and is NOT a reference for new UI on either platform.
 
 Before creating or modifying UI: read the relevant parts of IDENTIDAD.md and tokens.ts.
 Do not copy IDENTIDAD.md into code comments or other docs; link to it.
@@ -89,9 +93,15 @@ Permanent rules (summary; IDENTIDAD.md wins on detail):
   `tabular-nums`).
 - System font: SF Pro on iOS (no fontFamily, no bundled font files), Roboto on Android,
   system stack on Web. Hanken Grotesk only inside the logo artwork.
-- Use the brand type scale, radii (card 20, inner 12, button 14, chip 10, input 12,
-  sheet 28, tab bar 26), spacing (4, 8, 12, 16, 20, 24, 32, 40; card padding 18) and
-  fixed sizes (button 50, input 48, set row 44, min touch 44).
+- Type scale (iOS text styles, pt / weight): Large Title 34/700, Title 1 28/700,
+  Title 2 22/700, Headline 17/600, Body 17/400, Subheadline 15/400, Footnote 13/400,
+  Caption 12/500. On Mobile use the `AppText`/`Heading` variants (or
+  `brandTokens.typeScale`), never a raw `fontSize`.
+- Dynamic Type: never disable font scaling. With large text (fontScale > 1.3), stack
+  label/value pairs and wrap instead of truncating or squeezing text.
+- Radii (card 20, inner 12, button 14, chip 10, input 12, sheet 28, tab bar 26), spacing
+  (4, 8, 12, 16, 20, 24, 32, 40; card padding 18) and fixed sizes (button 50, input 48,
+  set row 44, min touch 44).
 - Icons: SF Symbols on iOS; on Android/Web per IDENTIDAD.md (Lucide, stroke 2).
   Sizes 24 tab bar / 20 rows and buttons / 17 next to body text. Muted at rest, accent
   when active. No emojis as UI.
@@ -204,8 +214,12 @@ M5 Body + Daily Metrics: CLOSED
 M6 History & Calendar: CLOSED
 M7 Progress: CLOSED
 M8 Settings: CLOSED (PRs #171, #172; security hotfix #173)
-M9 UX/UI Polish + Release: NEXT, not started.
-Plan: docs/mobile/m9-brand-polish-plan.md. Start only when explicitly requested.
+M9 UX/UI Polish + Release: IN PROGRESS.
+- M9.1 (brand package, Mobile theme, assets, icons, haptics) and M9.2 (primitives): DONE.
+- M9.3 (screen by screen redesign, with sketches in bocetos/): IN PROGRESS.
+  Working list of what is done and pending: bocetos/PENDIENTES.md.
+- M9.4 (Web on the brand) and M9.5 (production, accessibility, store gates): PENDING.
+Plan: docs/mobile/m9-brand-polish-plan.md.
 
 M3.1 Landing + Routines + Exercise Library: CLOSED
 M3.2 Routine Editor + Start Flow: CLOSED
@@ -213,7 +227,9 @@ M3.3 Active Session: CLOSED (PR #152)
 M3.4 Finish + Corrections + History: CLOSED (PRs #152 backend, #153 finish, #154 history/corrections)
 
 Do not reopen closed milestone scope unless explicitly requested.
-M9 is visual/UX polish: it must not change data semantics, analytics or write paths.
+M9 polish must not change data semantics, analytics or write paths. A new capability
+(as stages, metric icons/order or account deletion were) goes through its own EXPAND
+step and PR, never hidden inside a visual change.
 
 ## Training (M3) closed state
 

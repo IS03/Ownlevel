@@ -1,5 +1,7 @@
 # Patrones de interfaz OWNLEVEL v1
 
+> **Reemplazado en lo visual (octubre 2026).** Este documento es de la Web anterior a la marca: acento violeta, tamaños de Tailwind y radios propios. Para color, tipografía, radios, espacios, íconos, movimiento y tono, la referencia para Mobile y Web es [`docs/brand/ownlevel-marca/IDENTIDAD.md`](../brand/ownlevel-marca/IDENTIDAD.md) con los valores de `tema/tokens.ts`. Lo que sigue vale solo como contexto de la Web actual hasta su migración (M9.4) y para los principios no visuales (jerarquía, estados, invariantes).
+
 Los patrones describen cómo reutilizar y consolidar lo existente. No obligan a crear nuevos componentes en este PR.
 
 ## Elegir la superficie

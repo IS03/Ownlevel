@@ -1,5 +1,7 @@
 # Auditoría visual y UX global — PR23
 
+> **Reemplazado en lo visual (octubre 2026).** Este documento es de la Web anterior a la marca: acento violeta, tamaños de Tailwind y radios propios. Para color, tipografía, radios, espacios, íconos, movimiento y tono, la referencia para Mobile y Web es [`docs/brand/ownlevel-marca/IDENTIDAD.md`](../brand/ownlevel-marca/IDENTIDAD.md) con los valores de `tema/tokens.ts`. Lo que sigue vale solo como contexto de la Web actual hasta su migración (M9.4) y para los principios no visuales (jerarquía, estados, invariantes).
+
 ## Método y alcance
 
 Auditoría realizada el 28 de agosto de 2026 sobre el código de `main` y la producción autenticada de `https://www.ownlevel.fit`, sin crear ni modificar datos. Se inspeccionaron visualmente Home, Today, Reportes, Train, Ajustes y una sesión activa; además se inventariaron todas las rutas actuales y los patrones de interfaz que las sostienen. La superficie, bordes, muted, violeta, destructive y selected se contrastaron en claro y oscuro; el tema quedó restaurado a Sistema.

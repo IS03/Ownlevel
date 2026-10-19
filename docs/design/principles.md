@@ -1,5 +1,7 @@
 # Principios de diseño OWNLEVEL v1
 
+> **Reemplazado en lo visual (octubre 2026).** Este documento es de la Web anterior a la marca: acento violeta, tamaños de Tailwind y radios propios. Para color, tipografía, radios, espacios, íconos, movimiento y tono, la referencia para Mobile y Web es [`docs/brand/ownlevel-marca/IDENTIDAD.md`](../brand/ownlevel-marca/IDENTIDAD.md) con los valores de `tema/tokens.ts`. Lo que sigue vale solo como contexto de la Web actual hasta su migración (M9.4) y para los principios no visuales (jerarquía, estados, invariantes).
+
 ## Dirección de producto
 
 OWNLEVEL hoy es un producto personal que funciona; se diseña desde ahora para ser personalizable y comprensible también para una persona que llega con una cuenta vacía. Cada decisión debe responder dos preguntas:

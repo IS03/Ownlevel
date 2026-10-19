@@ -21,11 +21,16 @@ Define el propósito de OWNLEVEL, áreas funcionales, principios de UX y alcance
 
 ## Diseño / Product UX
 
+### [`brand/ownlevel-marca/IDENTIDAD.md`](./brand/ownlevel-marca/IDENTIDAD.md)
+
+Identidad de marca vigente para Mobile y Web: colores, tipografía, radios, espacios,
+íconos, movimiento, vibración y tono. Los valores están en `tema/tokens.ts`.
+
 ### [`design/README.md`](./design/README.md)
 
-Índice del Design System v1 y de la auditoría visual global. Define principios,
-patrones de interfaz, inventario de componentes y prioridades de los próximos
-rediseños.
+Design System v1 de la Web anterior a la marca (acento violeta, tamaños de Tailwind).
+**Reemplazado en lo visual por la identidad de marca;** se conserva como contexto de la
+Web actual hasta su migración (M9.4).
 
 - [`design/principles.md`](./design/principles.md): dirección, tokens y reglas de interacción.
 - [`design/patterns.md`](./design/patterns.md): superficies, controles y estados.

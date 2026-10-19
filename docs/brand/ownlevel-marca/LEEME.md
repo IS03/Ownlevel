@@ -30,7 +30,8 @@ Logo 60 A (L baja) · grafito + champagne · SF Pro en la interfaz, Hanken Grote
   Para la opción B usar `logo/png/logo-vertical-*.png`.
 
 ## tema/
-- `tokens.ts` (fuente única), `theme.ts` (Expo), `haptics.ts` (vibración, necesita `npx expo install expo-haptics`), `theme.css` (Tailwind v4).
+- `tokens.ts`: fuente única de los valores. Llega al código a través de `packages/brand` (en Mobile, por `@/design-system`); nunca se copian valores ni se importa desde `docs/`.
+- `theme.ts` (Expo), `haptics.ts` (vibración) y `theme.css` (Tailwind v4): adaptadores de referencia. Mobile ya tiene los suyos en `apps/mobile/src/design-system` y `src/platform/haptics.ts`; la Web los adopta en M9.4.
 - Todas las decisiones explicadas: `IDENTIDAD.md`.
 
 ## Expo · app.json (fragmento)
