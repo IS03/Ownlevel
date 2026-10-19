@@ -20,6 +20,9 @@ export function SettingsSegmented<T extends string>({
     <Host
       colorScheme={isDark ? 'dark' : 'light'}
       matchContents={{ vertical: true }}
+      // Inside a scroll view the hosting view otherwise applies the bars' safe area to its content, drawing the control
+      // away from the space React Native reserved for it (it changed with the scroll position).
+      ignoreSafeArea="all"
       style={{ width: '100%' }}
     >
       <Picker

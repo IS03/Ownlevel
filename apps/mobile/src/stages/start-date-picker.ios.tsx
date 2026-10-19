@@ -11,6 +11,7 @@ export function StartDatePicker({ value, minimum, onChange }: StartDateProps) {
   return (
     <Host
       colorScheme={isDark ? "dark" : "light"}
+      ignoreSafeArea="all"
       style={{ width: "100%", height: 200 }}
     >
       <DatePicker

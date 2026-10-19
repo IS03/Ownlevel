@@ -357,6 +357,19 @@ describe("Editorial stages and day editor", () => {
       "Sábado y domingo quedan en 2.200 kcal · 120 g.",
     );
   });
+  it("ET4 layout: totals on their own line, stages never under a layout animation, stepper in its own row", () => {
+    mockController.sequence(0);
+    const view = render(element(<StageSequenceScreen />));
+    expect(view.getByTestId("sequence-totals").props.children).toBeTruthy();
+    for (const stage of view.getAllByTestId(/^sequence-stage-\d+$/)) {
+      // Native type menu and Semanas/Meses live inside: no entering/exiting/layout animation may own their frames.
+      expect(stage.props.entering).toBeUndefined();
+      expect(stage.props.exiting).toBeUndefined();
+      expect(stage.props.layout).toBeUndefined();
+    }
+    expect(view.getAllByTestId("duration-stepper").length).toBe(view.getAllByTestId(/^sequence-stage-\d+$/).length);
+    expect(api.write).not.toHaveBeenCalled();
+  });
   it("ET4 detects existing schedule before POST, exposes cutting as a separate explicit action", () => {
     list.upcoming = stagesFixture({ future: true }).upcoming;
     mockController.sequence(0);
