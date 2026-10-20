@@ -32,6 +32,7 @@ export function stagesFixture({
       baseWaterL: 2.5,
       trainingCalorieDeltaKcal: 300,
       trainingWaterDeltaL: 0.5,
+      trainingProteinDeltaG: 20,
     },
     upcoming: future
       ? [
@@ -49,6 +50,7 @@ export function stagesFixture({
             baseWaterL: 2.5,
             trainingCalorieDeltaKcal: 300,
             trainingWaterDeltaL: 0.5,
+      trainingProteinDeltaG: 20,
           },
         ]
       : [],

@@ -36,6 +36,7 @@ const fields = parseStageFields({
   baseWaterL: current.baseWaterL,
   trainingCalorieDeltaKcal: current.trainingCalorieDeltaKcal,
   trainingWaterDeltaL: current.trainingWaterDeltaL,
+  trainingProteinDeltaG: current.trainingProteinDeltaG,
 })!;
 const intent: StagesIntent = {
   operation: 'replace_from_today',
@@ -56,7 +57,7 @@ describe('Stage POST through the authenticated client', () => {
     const result = await mutateNutritionStages(f.client, intent);
     expect(result.status).toBe('ok');
     const [url, init] = f.fetcher.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe('https://www.ownlevel.fit/api/mobile/v1/nutrition/stages');
+    expect(url).toBe('https://www.ownlevel.fit/api/mobile/v1/nutrition/stages?targets=2');
     expect(init.method).toBe('POST');
     expect(init.headers).toMatchObject({ Authorization: 'Bearer private-test-token' });
     expect(JSON.parse(init.body as string)).not.toHaveProperty('userId');

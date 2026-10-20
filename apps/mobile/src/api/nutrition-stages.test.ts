@@ -9,7 +9,7 @@ describe('Read-only stage API for Settings', () => {
     const signal = new AbortController().signal;
     await fetchNutritionStages(client, signal);
     const options = read.mock.calls[0][0];
-    expect(options).toMatchObject({ path: '/api/mobile/v1/nutrition/stages', signal });
+    expect(options).toMatchObject({ path: '/api/mobile/v1/nutrition/stages?targets=2', signal });
     expect(options).not.toHaveProperty('userId');
     expect(request).not.toHaveBeenCalled();
     const list = {

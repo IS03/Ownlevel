@@ -16,11 +16,13 @@ import { shortDate } from "@/settings/settings-model";
 import {
   stageFields,
   draftNumber,
+  hasProteinGoal,
   weekdayFor,
   repeatedDay,
   applyDays,
   suggestedKind,
   validStageDate,
+  type StageDraft,
 } from "./stages-model";
 import { PlanWeek } from "./plan-week";
 import { StageKindField } from './stage-kind-field';
@@ -63,11 +65,11 @@ function StagePlanBody({
   const [same, setSame] = useState(false),
     [daySheetOpen, setDaySheetOpen] = useState(false),
     [uniformNotice, setUniformNotice] = useState<string | null>(null),
-    [extras, setExtras] = useState<"water" | "training" | "date" | null>(null);
+    [extras, setExtras] = useState<"training" | "date" | null>(null);
   const reduced = useReduceMotion();
   // One block open at a time. Its fields fade in/out (200 ms) while what follows slides to its new place (300 ms);
   // Reduce Motion: fades only. Closing a block with the keyboard up takes the keyboard down with it.
-  const toggle = (block: "water" | "training" | "date") => {
+  const toggle = (block: "training" | "date") => {
     const next = extras === block ? null : block;
     if (extras && extras !== "date" && Keyboard.isVisible()) Keyboard.dismiss();
     setExtras(next);
@@ -87,9 +89,8 @@ function StagePlanBody({
   const change = (
     field:
       | "name"
-      | "baseWaterL"
       | "trainingCalorieDeltaKcal"
-      | "trainingWaterDeltaL",
+      | "trainingProteinDeltaG",
     value: string,
   ) => {
     if (stage) controller?.changeStage({ ...stage, [field]: value });
@@ -272,35 +273,11 @@ function StagePlanBody({
             />
             <Animated.View layout={move}>
               <EditorialRow
-                title="Agua por día"
-                disabled={locked}
-                expanded={extras === "water"}
-                onPress={() => toggle("water")}
-              >
-                {draftNumber(stage.baseWaterL) === null
-                  ? "Sin dato"
-                  : `${formatNumber(draftNumber(stage.baseWaterL)!)} L`}
-              </EditorialRow>
-              {extras === "water" ? (
-                <Animated.View entering={appear} exiting={leave} style={{ paddingTop: 12 }}>
-                  <TextField
-                    label="Agua por día (L)"
-                    numeric
-                    keyboardType="decimal-pad"
-                    value={stage.baseWaterL}
-                    disabled={locked}
-                    onChangeText={(v) => change("baseWaterL", v)}
-                  />
-                </Animated.View>
-              ) : null}
-            </Animated.View>
-            <Animated.View layout={move}>
-              <EditorialRow
                 title="Si entrenás"
                 disabled={locked}
                 expanded={extras === "training"}
                 onPress={() => toggle("training")}
-              >{`${draftNumber(stage.trainingCalorieDeltaKcal) === null ? "Calorías sin dato" : `+${formatNumber(draftNumber(stage.trainingCalorieDeltaKcal)!)} kcal`} · ${draftNumber(stage.trainingWaterDeltaL) === null ? "agua sin dato" : `+${formatNumber(draftNumber(stage.trainingWaterDeltaL)!)} L`}`}</EditorialRow>
+              >{trainingSummary(stage)}</EditorialRow>
               {extras === "training" ? (
                 <Animated.View entering={appear} exiting={leave} style={{ gap: 12, paddingTop: 12 }}>
                   <TextField
@@ -311,14 +288,19 @@ function StagePlanBody({
                     disabled={locked}
                     onChangeText={(v) => change("trainingCalorieDeltaKcal", v)}
                   />
-                  <TextField
-                    label="Extra de agua (L)"
-                    numeric
-                    keyboardType="decimal-pad"
-                    value={stage.trainingWaterDeltaL}
-                    disabled={locked}
-                    onChangeText={(v) => change("trainingWaterDeltaL", v)}
-                  />
+                  {hasProteinGoal(stage) ? (
+                    <TextField
+                      label="Extra de proteína (g)"
+                      numeric
+                      keyboardType="decimal-pad"
+                      value={stage.trainingProteinDeltaG}
+                      disabled={locked}
+                      onChangeText={(v) => change("trainingProteinDeltaG", v)}
+                    />
+                  ) : null}
+                  <AppText muted variant="footnote">
+                    Se suma el día que terminás un entrenamiento.
+                  </AppText>
                 </Animated.View>
               ) : null}
             </Animated.View>
@@ -333,7 +315,7 @@ function StagePlanBody({
             {!valid && stage.kind && (draft?.mode !== "update" || !!future) ? (
               <AppText muted>
                 Completá el nombre, las calorías y la proteína de los siete
-                días, el agua y los extras. Si no usás un extra, poné 0.
+                días y el extra si entrenás. Si no lo usás, poné 0.
               </AppText>
             ) : null}
             {shared ? (
@@ -400,4 +382,12 @@ function StagePlanBody({
       <StagesToast shared={shared} />
     </View>
   );
+}
+/** "+300 kcal · +25 g de proteína": only the goals the plan has; a blank extra reads as missing, never as 0. */
+function trainingSummary(stage: StageDraft) {
+  const kcal = draftNumber(stage.trainingCalorieDeltaKcal);
+  const calories = kcal === null ? "Calorías sin dato" : `+${formatNumber(kcal)} kcal`;
+  if (!hasProteinGoal(stage)) return calories;
+  const grams = draftNumber(stage.trainingProteinDeltaG);
+  return `${calories} · ${grams === null ? "proteína sin dato" : `+${formatNumber(grams)} g de proteína`}`;
 }
