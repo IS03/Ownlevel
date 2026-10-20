@@ -62,6 +62,8 @@ try {
 
   const baselineAdvisors=process.env.OWNLEVEL_TEST_ADVISORS==='1'?await advisors():null;
   await admin.query(await file('20261016121039_nutrition_plan_stages_expand.sql'));
+  // Every v1 check below runs on top of the training-extra EXPAND: the original shape must not move.
+  await admin.query(await file('20261020013939_nutrition_training_protein_expand.sql'));
   const snapshot=async(c=a)=>(await c.query('select public.mobile_read_nutrition_stages() d')).rows[0].d;
   const mutate=async(i,c=a)=>(await c.query('select * from public.mobile_mutate_nutrition_stages($1)',[JSON.stringify(i)])).rows[0];
   let key=0;
@@ -243,7 +245,65 @@ try {
     assert.equal((await admin.query("select count(*)::int n from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='ownlevel_private' and p.prosecdef and not coalesce(p.proconfig @> array['search_path=\"\"'],false)")).rows[0].n,0);
     await assert.rejects(stranger.query('select * from ownlevel_private.nutrition_stage_lists'),e=>e.code==='42501');
   });
+  const snapshot2=async(c=a)=>(await c.query('select public.mobile_read_nutrition_stages_v2() d')).rows[0].d;
+  const mutate2=async(i,c=a)=>(await c.query('select * from public.mobile_mutate_nutrition_stages_v2($1)',[JSON.stringify(i)])).rows[0];
+  const stage2=(name='Sin agua',calories=2000,protein=130,extra=25)=>({...stage(name,calories,'maintenance'),baseWaterL:null,trainingProteinDeltaG:extra,
+    weekdays:Array.from({length:7},(_,i)=>({weekday:i+1,calorieTargetKcal:calories,proteinTargetG:protein}))});
+  const context=async date=>(await a.query('select nutrition_target_kcal,protein_target_g::float8 p,water_target_l::float8 w from public.resolve_nutrition_context($1)',[date])).rows[0];
+  await check('v2 is opt-in: v1 keeps its exact keys; v2 adds only the protein extra',async()=>{
+    const v1=await snapshot(),v2=await snapshot2();
+    assert.equal('trainingProteinDeltaG' in v1.current,false);assert.equal(v2.current.trainingProteinDeltaG,0);
+    const rest={...v2.current};delete rest.trainingProteinDeltaG;assert.deepEqual(rest,v1.current);
+  });
+  await check('training raises the goals the plan has (calories and protein); without its own water the Agua metric keeps the goal',async()=>{
+    await admin.query("insert into public.user_metrics(user_id,system_key,name,unit,value_type,target_value) values($1,'water','Agua','L','decimal',2.5)",[owner]);
+    const r=await mutate2(await intent('replace_from_today',{stage:{...stage2(),trainingCalorieDeltaKcal:300},future_stages:'keep'}));
+    assert.equal(r.response_status,200);
+    assert.equal(r.response_body.list.current.baseWaterL,null);assert.equal(r.response_body.list.current.trainingProteinDeltaG,25);
+    assert.equal((await snapshot()).current.baseWaterL,null); // v1 readers see the missing water as missing, never as 0
+    assert.deepEqual(await context(today),{nutrition_target_kcal:2000,p:130,w:2.5});
+    const dayId=(await rawDay(today)).id;
+    await admin.query("insert into public.workout_sessions values($1,$2,$3,'completed')",[id(90),owner,dayId]);
+    assert.deepEqual(await context(today),{nutrition_target_kcal:2300,p:155,w:2.5});
+    await a.query('select public.refresh_nutrition_day($1)',[dayId]);
+    const day=await rawDay(today);assert.equal(Number(day.protein_target_g_snapshot),155);assert.equal(Number(day.water_target_l_snapshot),2.5);
+    await admin.query("update public.user_metrics set target_value=60 where user_id=$1 and system_key='water'",[owner]);
+    assert.equal((await context(today)).w,null); // out of the snapshot's range: no goal, never a clipped one
+    await admin.query("update public.user_metrics set target_value=2.5 where user_id=$1 and system_key='water'",[owner]);
+    await admin.query('delete from public.workout_sessions where id=$1',[id(90)]);
+    assert.deepEqual(await rawDay(yesterday),history);
+  });
+  await check('a v1 save keeps the stored protein extra; only a v2 edit changes it',async()=>{
+    const v1=await mutate(await intent('replace_from_today',{stage:stage('Guardado v1',2100),future_stages:'keep'}));
+    assert.equal(v1.response_status,200);assert.equal('trainingProteinDeltaG' in v1.response_body.list.current,false);
+    assert.equal((await snapshot2()).current.trainingProteinDeltaG,25);assert.equal((await snapshot2()).current.baseWaterL,0);
+    const r=await mutate2(await intent('schedule_sequence',{name:'Proteína',after_end:'keep_last',start_date:calendar('2029-06-01'),
+      stages:[{...stage2('Con extra',2200,140,30),duration:{unit:'weeks',value:4}}],maintenanceStage:null}));
+    assert.equal(r.response_status,200);const future=r.response_body.list.upcoming.at(-1);assert.equal(future.trainingProteinDeltaG,30);
+    const kept=await mutate(await intent('update_future',{stageId:future.id,stage:stage('Editado en v1',2250,'custom'),startsOn:future.startsOn,duration:future.duration}));
+    assert.equal(kept.response_status,200);assert.equal((await snapshot2()).upcoming.at(-1).trainingProteinDeltaG,30);
+    const edited=await mutate2(await intent('update_future',{stageId:future.id,stage:{...stage2('Editado en v2',2250,140,10),kind:'custom'},startsOn:future.startsOn,duration:future.duration}));
+    assert.equal(edited.response_status,200);assert.equal(edited.response_body.list.upcoming.at(-1).trainingProteinDeltaG,10);
+    assert.equal((await mutate(await intent('cancel_sequence',{sequenceId:future.sequenceId}))).response_status,200);
+  });
+  await check('mixed shapes and inconsistent water are rejected before any write; ledgers never cross',async()=>{
+    const before=await snapshot2();
+    await assert.rejects(mutate2(await intent('replace_from_today',{stage:stage(),future_stages:'keep'})),e=>e.code==='22023');
+    await assert.rejects(mutate(await intent('replace_from_today',{stage:stage2(),future_stages:'keep'})),e=>e.code==='22023');
+    await assert.rejects(mutate2(await intent('replace_from_today',{stage:{...stage2(),trainingWaterDeltaL:0.5},future_stages:'keep'})),e=>e.code==='22023');
+    await assert.rejects(mutate2(await intent('replace_from_today',{stage:stage2('Mucho',2000,130,1000.5),future_stages:'keep'})),e=>e.code==='22023');
+    assert.deepEqual(await snapshot2(),before);
+    const i=await intent('replace_from_today',{stage:stage2('Misma clave'),future_stages:'keep'});
+    assert.equal((await mutate2(i)).response_status,200);
+    const v1=await mutate({...i,stage:stage('Misma clave'),expectedListVersion:(await snapshot()).listVersion});
+    assert.equal(v1.replayed,false);assert.equal(v1.response_status,200);
+    assert.equal((await admin.query("select count(*)::int n from public.mobile_idempotency_keys where user_id=$1 and idempotency_key=$2",[owner,i.idempotencyKey])).rows[0].n,2);
+    await admin.query('reset role; set role anon');await assert.rejects(admin.query('select public.mobile_read_nutrition_stages_v2()'),e=>e.code==='42501');await admin.query('reset role');
+    assert.equal((await admin.query("select count(*)::int n from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('mobile_read_nutrition_stages_v2','mobile_mutate_nutrition_stages_v2') and p.prosecdef")).rows[0].n,0);
+    assert.deepEqual(await rawDay(yesterday),history);
+  });
   console.log(`STAGES_SNAPSHOT ${JSON.stringify(await snapshot())}`);
+  console.log(`STAGES_SNAPSHOT_V2 ${JSON.stringify(await snapshot2())}`);
   console.log(`${checks} Postgres integration groups passed`);
   if(process.env.OWNLEVEL_TEST_ADVISORS==='1') {
     const findings=await advisors();

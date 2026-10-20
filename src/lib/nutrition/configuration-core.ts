@@ -74,7 +74,8 @@ export function planEditor(plan: PlanWithWeekdays | null, goal: NutritionGoalPer
     id: plan.id,
     effectiveFrom: plan.effective_from,
     name: plan.name,
-    baseWaterL: Number(plan.base_water_l),
+    // null: a stage without its own water goal (the Agua metric keeps it). Never shown as 0.
+    baseWaterL: plan.base_water_l == null ? null : Number(plan.base_water_l),
     trainingCalorieDeltaKcal: plan.training_calorie_delta_kcal,
     trainingWaterDeltaL: Number(plan.training_water_delta_l),
     weekdays,

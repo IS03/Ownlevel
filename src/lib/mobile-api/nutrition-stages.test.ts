@@ -14,7 +14,7 @@ const stage = { ...fields, id: id(1), kind: null, startsOn: today, endsOn: null,
 const list = { today, listVersion: 7, current: stage, upcoming: [], past: [], sequences: [], suggestions: null };
 const base = { date: today, expectedListVersion: 7, idempotencyKey: 'stages:1' };
 const replace = { ...base, operation: 'replace_from_today', stage: fields, future_stages: 'keep' };
-const request = (method = 'GET', body?: unknown, token = 'Bearer token') => new NextRequest('https://www.ownlevel.fit/api/mobile/v1/nutrition/stages', {
+const request = (method = 'GET', body?: unknown, token = 'Bearer token', query = '') => new NextRequest(`https://www.ownlevel.fit/api/mobile/v1/nutrition/stages${query}`, {
   method, headers: { authorization: token, 'content-type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
 });
 beforeEach(() => {
@@ -23,6 +23,32 @@ beforeEach(() => {
 });
 
 describe('Nutrition stages strict shared contract and API', () => {
+  it('v2 is opt-in: protein extra and optional water only with ?targets=2; each shape is exact', async () => {
+    const fields2 = { ...fields, baseWaterL: null, trainingProteinDeltaG: 25 };
+    const stage2 = { ...stage, baseWaterL: null, trainingProteinDeltaG: 25 };
+    const list2 = { ...list, current: stage2 };
+    expect(parseNutritionStages(list2, 2)?.current).toMatchObject({ baseWaterL: null, trainingProteinDeltaG: 25 });
+    expect(parseNutritionStages(list2)).toBeUndefined(); // v1 never reads a missing water as 0
+    expect(parseNutritionStages(list, 2)).toBeUndefined(); // v2 always carries the protein extra
+    expect(parseStagesIntent({ ...replace, stage: fields2 }, 2)).toBeDefined();
+    expect(parseStagesIntent({ ...replace, stage: fields2 })).toBeUndefined();
+    expect(parseStagesIntent(replace, 2)).toBeUndefined();
+    for (const bad of [{ ...fields2, trainingWaterDeltaL: 0.5 }, { ...fields2, trainingProteinDeltaG: -1 }, { ...fields2, trainingProteinDeltaG: 1000.5 }, { ...fields2, trainingProteinDeltaG: 1.234 }]) {
+      expect(parseStagesIntent({ ...replace, stage: bad }, 2)).toBeUndefined();
+    }
+    expect(parseStagesIntent({ ...replace, stage: { ...fields2, baseWaterL: 2, trainingWaterDeltaL: 0.5 } }, 2)).toBeDefined();
+    rpc.mockResolvedValue({ data: list2, error: null });
+    expect(await (await GET(request('GET', undefined, 'Bearer token', '?targets=2'))).json()).toEqual(list2);
+    expect(rpc).toHaveBeenCalledWith('mobile_read_nutrition_stages_v2', {}, { get: true });
+    const receipt = { status: 'confirmed', operation: 'replace_from_today', date: today, list: list2 };
+    rpc.mockResolvedValue({ data: [{ response_status: 200, response_body: receipt, replayed: false }], error: null });
+    expect(await (await POST(request('POST', { ...replace, stage: fields2 }, 'Bearer token', '?targets=2'))).json()).toEqual(receipt);
+    expect(rpc).toHaveBeenLastCalledWith('mobile_mutate_nutrition_stages_v2', { p_intent: parseStagesIntent({ ...replace, stage: fields2 }, 2) });
+    rpc.mockClear();
+    expect((await POST(request('POST', replace, 'Bearer token', '?targets=2'))).status).toBe(400);
+    expect((await POST(request('POST', { ...replace, stage: fields2 }))).status).toBe(400);
+    expect(rpc).not.toHaveBeenCalled();
+  });
   it('distinguishes no plan, old untyped plan, zero and unavailable', async () => {
     expect(parseNutritionStages({ ...list, current: null })).toBeDefined();
     expect(parseNutritionStages(list)?.current).toMatchObject({ kind: null, baseWaterL: 0 });

@@ -15,13 +15,13 @@ import { trainingLoadSamples } from "@/lib/progress/training-performance";
 import { GET } from "@/app/api/mobile/v1/progress/stages/route";
 import { legacyStages, stageWindow, summarizeStage, weightPerWeek } from "./progress-stages";
 import { parseProgressStages } from "./progress-stages-contract";
-import type { NutritionStage } from "./nutrition-stages-contract";
+import type { NutritionStageV2 } from "./nutrition-stages-contract";
 import type { NutritionReportDay } from "@/lib/nutrition/reports-core";
 
 const week = (kcal: number, protein = 130) => [1, 2, 3, 4, 5, 6, 7].map(weekday => ({ weekday, calorieTargetKcal: kcal, proteinTargetG: protein }));
-const stage = (o: Partial<NutritionStage>): NutritionStage => ({
+const stage = (o: Partial<NutritionStageV2>): NutritionStageV2 => ({
   id: "11111111-1111-4111-8111-111111111111", name: "Déficit", kind: "deficit", startsOn: "2026-09-29", endsOn: null,
-  baseWaterL: 2.5, trainingCalorieDeltaKcal: 300, trainingWaterDeltaL: 0.5, weekdays: week(1900),
+  baseWaterL: 2.5, trainingCalorieDeltaKcal: 300, trainingWaterDeltaL: 0.5, trainingProteinDeltaG: 0, weekdays: week(1900),
   sequenceId: null, position: null, duration: null, status: "current", ...o,
 });
 const day = (date: string, o: Partial<NutritionReportDay> = {}) => ({ date, hasNutrition: true, isComplete: true, calories: 2000, proteinG: 120, ...o }) as NutritionReportDay;
@@ -92,7 +92,7 @@ describe("GET /api/mobile/v1/progress/stages", () => {
     const body = parseProgressStages(await res.json())!;
     expect(body.stages.map(s => [s.status, s.kind, s.targetKcal])).toEqual([["current", "deficit", 1900], ["past", null, 2300]]);
     expect(body).toMatchObject({ hasUpcoming: true, sources: { nutrition: "ok", body: "ok", training: "ok" } });
-    expect(rpc).toHaveBeenCalledWith("mobile_read_nutrition_stages", {}, { get: true });
+    expect(rpc).toHaveBeenCalledWith("mobile_read_nutrition_stages_v2", {}, { get: true });
     expect(readMobileNutritionFacts).toHaveBeenCalledWith(expect.anything(), { start: "2026-06-16", end: "2026-09-28" }, "2026-10-16");
   });
   it("reports an unreadable source as unavailable instead of empty stages", async () => {

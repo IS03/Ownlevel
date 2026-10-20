@@ -73,7 +73,7 @@ type LegacyPlan = { id: string; name: string | null; effective_from: string; goa
  * Plans saved before the stages model (nutrition_goal_periods), read-only and only for the dates before the first
  * stage, so history before the first stage is not lost. Each lasts until the next plan or the first stage.
  */
-export function legacyStages(plans: LegacyPlan[], list: NutritionStages, today: string): StageLike[] {
+export function legacyStages(plans: LegacyPlan[], list: NutritionStages<StageLike>, today: string): StageLike[] {
   const all = [...list.past, ...(list.current ? [list.current] : []), ...list.upcoming];
   const firstStage = all.reduce<string | null>((min, s) => (min === null || s.startsOn < min ? s.startsOn : min), null);
   const before = plans.filter(p => p.effective_from <= today && (firstStage === null || p.effective_from < firstStage))
@@ -89,8 +89,9 @@ export function legacyStages(plans: LegacyPlan[], list: NutritionStages, today: 
 
 /** GET /progress/stages: the current stage and up to 12 past ones, each measured with Progreso's own sources. */
 export async function buildMobileProgressStages(context: Context, today: string): Promise<ProgressStages> {
-  const { data, error } = await context.supabase.rpc("mobile_read_nutrition_stages", {}, { get: true });
-  const list = error ? undefined : parseNutritionStages(data);
+  // v2: a stage without its own water (baseWaterL null) is valid there; Progreso only uses dates, names and weekdays.
+  const { data, error } = await context.supabase.rpc("mobile_read_nutrition_stages_v2", {}, { get: true });
+  const list = error ? undefined : parseNutritionStages(data, 2);
   if (!list) throw new Error("Stages unavailable");
   const legacy = await context.supabase.from("nutrition_goal_periods").select("id,name,effective_from,goal_type").order("effective_from");
   if (legacy.error) throw new Error("Earlier plans unavailable");
