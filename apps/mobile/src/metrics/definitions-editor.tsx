@@ -93,47 +93,38 @@ function EditorBody({ editor, state, controller }: Props) {
     if (!editable) return;
     dismiss();
   };
-  const menu = () => {
-    if (!editable || !b) return;
-    const confirm = (title: string, detail: string, run: () => void) =>
-      Alert.alert(title, detail, [
-        { text: 'Volver', style: 'cancel' },
-        { text: 'Confirmar', style: 'destructive', onPress: run },
-      ]);
-    Alert.alert(b.name, 'Elegí qué querés hacer.', [
-      ...(b.actions.archive
-        ? [
-            {
-              text: 'Archivar',
-              onPress: () =>
-                confirm(
-                  '¿Archivar esta métrica?',
-                  'Deja de aparecer para cargar valores nuevos. Su historial queda.',
-                  () => void controller.archive(),
-                ),
-            },
-          ]
-        : []),
-      ...(b.actions.restore
-        ? [{ text: 'Restaurar', onPress: () => void controller.restore() }]
-        : []),
-      ...(b.actions.delete
-        ? [
-            {
-              text: 'Eliminar métrica',
-              style: 'destructive' as const,
-              onPress: () =>
-                confirm(
-                  '¿Eliminar esta métrica?',
-                  'No tiene registros. Esto no se puede deshacer.',
-                  () => void controller.remove(),
-                ),
-            },
-          ]
-        : []),
-      { text: 'Volver', style: 'cancel' },
-    ]);
-  };
+  // One direct action instead of a "more" menu: archive (or restore an archived one). A metric with no records can
+  // still be deleted from the same confirmation.
+  const remove = b?.actions.delete
+    ? [{
+        text: 'Eliminar métrica',
+        style: 'destructive' as const,
+        onPress: () =>
+          Alert.alert('¿Eliminar esta métrica?', 'No tiene registros. Esto no se puede deshacer.', [
+            { text: 'Volver', style: 'cancel' },
+            { text: 'Eliminar', style: 'destructive', onPress: () => void controller.remove() },
+          ]),
+      }]
+    : [];
+  const archiveAction = !b
+    ? null
+    : b.actions.archive
+      ? { label: 'Archivar métrica', run: () =>
+          Alert.alert('¿Archivar esta métrica?', 'Deja de aparecer para cargar valores nuevos. Su historial queda.', [
+            { text: 'Volver', style: 'cancel' },
+            ...remove,
+            { text: 'Archivar', onPress: () => void controller.archive() },
+          ]) }
+      : b.actions.restore
+        ? { label: 'Restaurar métrica', run: () =>
+            Alert.alert('¿Restaurar esta métrica?', 'Vuelve a aparecer para cargar valores.', [
+              { text: 'Volver', style: 'cancel' },
+              ...remove,
+              { text: 'Restaurar', onPress: () => void controller.restore() },
+            ]) }
+        : remove.length
+          ? { label: 'Eliminar métrica', run: () => remove[0].onPress() }
+          : null;
   const field = (
     key:
       | 'name'
@@ -181,11 +172,11 @@ function EditorBody({ editor, state, controller }: Props) {
             onPress={busy || state.intent ? undefined : close}
           />
           <Heading level={2} style={{ flex: 1 }}>{b ? 'Editar métrica' : 'Nueva métrica'}</Heading>
-          {b ? (
+          {archiveAction ? (
             <NutritionGlassButton
-              label="Más opciones de métrica"
-              icon="more"
-              onPress={editable ? menu : undefined}
+              label={archiveAction.label}
+              icon={archiveAction.label === 'Eliminar métrica' ? 'trash' : 'archive'}
+              onPress={editable ? archiveAction.run : undefined}
             />
           ) : null}
         </View>
@@ -231,11 +222,12 @@ function EditorBody({ editor, state, controller }: Props) {
                 accessibilityRole="radio"
                 accessibilityLabel={'Ícono: ' + i.label}
                 accessibilityState={{
-                  checked: icon === i.key,
+                  checked: d.icon === i.key,
                   disabled: !editable,
                 }}
                 disabled={!editable}
-                onPress={() => controller.change('icon', i.key)}
+                // Only a chosen icon is marked; tapping it again goes back to the default one.
+                onPress={() => controller.change('icon', d.icon === i.key ? null : i.key)}
                 style={({ pressed }) => [
                   {
                     width: 44,
@@ -244,7 +236,7 @@ function EditorBody({ editor, state, controller }: Props) {
                     alignItems: 'center',
                     justifyContent: 'center',
                     backgroundColor:
-                      icon === i.key
+                      d.icon === i.key
                         ? colors.brandSubtle
                         : colors.surfaceRaised,
                   },
@@ -254,17 +246,11 @@ function EditorBody({ editor, state, controller }: Props) {
                 <AppIcon
                   name={i.key}
                   size={20}
-                  color={icon === i.key ? colors.primary : colors.textMuted}
+                  color={d.icon === i.key ? colors.primary : colors.textMuted}
                 />
               </Pressable>
             ))}
           </View>
-          <Button
-            label="Usar ícono predeterminado"
-            variant="quiet"
-            disabled={!editable}
-            onPress={() => controller.change('icon', null)}
-          />
         </View>
         <View style={{ gap: 12 }}>
           <AppText variant="headline">Se registra como</AppText>

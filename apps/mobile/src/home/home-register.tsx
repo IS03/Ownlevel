@@ -64,6 +64,12 @@ function RegisterCircle({ detail, done, glass, icon, label, onPress, testID, wid
             <AppIcon color={colors.primary} name="check" size={17} />
           </View>
         ) : null}
+        {/* Quick entry: one tap adds the portion. A small "+" says so before the first tap. */}
+        {quick ? (
+          <View style={[styles.quickBadge, { backgroundColor: colors.background, borderColor: colors.border }]} testID={`${testID}-quick`}>
+            <AppIcon color={colors.textMuted} name="plus" size={13} />
+          </View>
+        ) : null}
       </View>
       <AppText style={styles.label} variant="subheadline">{label}</AppText>
       {detail === null ? <SkeletonBlock height={14} width={40} /> : (
@@ -123,6 +129,8 @@ export function HomeRegister({ date, onRegister, today,metricDefinitions=[],metr
 
 const styles = StyleSheet.create({
   badge: { borderRadius: radius.full, bottom: -4, padding: 1, position: 'absolute', right: -4 },
+  quickBadge: { alignItems: 'center', borderRadius: radius.full, borderWidth: StyleSheet.hairlineWidth, height: 20, justifyContent: 'center',
+    position: 'absolute', right: -4, top: -4, width: 20 },
   circle: { alignItems: 'center', borderRadius: radius.full, height: 48, justifyContent: 'center', width: 48 },
   circleWrap: { height: 48, marginBottom: 2, width: 48 },
   detail: { textAlign: 'center' },

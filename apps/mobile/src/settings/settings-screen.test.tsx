@@ -148,25 +148,24 @@ function currentStage(endsOn: string | null, kind: 'deficit' | 'maintenance' = '
   };
 }
 describe('Editorial settings', () => {
-  it('uses real calendar weeks, end-exclusive date and today kcal', async () => {
-    currentStage('2026-12-22');
-    const view = render(element());
-    await view.findByText('Nacho, vas por la semana 3 de 12 de tu déficit.');
-    expect(view.getByText('Termina 21 dic')).toBeTruthy();
-    expect(view.getByText('Desde 29 sep · 1.900 kcal')).toBeTruthy();
-  });
-  it('does not invent an end or progress for an open stage', async () => {
-    currentStage(null, 'maintenance');
-    const view = render(element());
-    await view.findByText('Nacho, tu plan de mantenimiento rige desde el 29 sep.');
-    expect(view.queryByLabelText('Avance de tu etapa')).toBeNull();
+  it('the header is only your name and photo: no stage sentence, dates or progress (the Plan row has the plan)', async () => {
+    for (const end of ['2026-12-22', null]) {
+      currentStage(end);
+      const view = render(element());
+      await view.findByText('Nacho');
+      expect(view.queryByText(/semana|rige desde/)).toBeNull();
+      expect(view.queryByLabelText('Avance de tu etapa')).toBeNull();
+      expect(view.queryByText(/^Termina /)).toBeNull();
+      expect(view.getAllByLabelText('Cuenta').length).toBeGreaterThan(0); // the photo and the Cuenta row
+      view.unmount();
+    }
   });
   it.each([false, true])(
     'neutral headline with no plan or unavailable stages (failure=%s)',
     async (fail) => {
       stagesFail = fail;
       const view = render(element());
-      await view.findByText('Hola, Nacho.');
+      await view.findByText('Nacho');
       expect(view.queryByText(/No pudimos/)).toBeNull();
       fireEvent.press(view.getByLabelText('Energía'));
       expect(mockPush).toHaveBeenCalledWith('/settings/energy');
@@ -174,7 +173,7 @@ describe('Editorial settings', () => {
   );
   it('routes every row; Plan opens stages and version opens diagnostics', async () => {
     const view = render(element());
-    await view.findByText('Hola, Nacho.');
+    await view.findByText('Nacho');
     for (const [label, path] of [
       ['Datos físicos', '/settings/physical'],
       ['Métricas', '/settings/metrics'],
@@ -191,24 +190,24 @@ describe('Editorial settings', () => {
   });
   it('shows cached headline immediately on reentry and no other user data', async () => {
     const view = render(element());
-    await view.findByText('Hola, Nacho.');
+    await view.findByText('Nacho');
     view.unmount();
     mockRead.mockImplementation(() => new Promise(() => {}));
     const cached = render(element());
-    expect(cached.getByText('Hola, Nacho.')).toBeTruthy();
+    expect(cached.getByText('Nacho')).toBeTruthy();
     cached.unmount();
     mockUser = 'other';
     const other = render(element());
-    expect(other.queryByText('Hola, Nacho.')).toBeNull();
+    expect(other.queryByText('Nacho')).toBeNull();
   });
   it('failed stage refresh replaces cached stage with neutral headline', async () => {
     currentStage('2026-12-22');
     const view = render(element());
-    await view.findByText(/semana 3/);
+    await view.findByText('Nacho');
     view.unmount();
     stagesFail = true;
     const refreshed = render(element());
-    await refreshed.findByText('Hola, Nacho.');
+    await refreshed.findByText('Nacho');
     expect(refreshed.queryByText(/semana/)).toBeNull();
   });
 });
@@ -217,9 +216,9 @@ describe('Account and local App preferences', () => {
     mockProvider = undefined;
     const view = render(element(<AccountScreen />));
     await view.findByLabelText('Editar nombre');
-    expect(view.getByText('Tu cuenta conectada')).toBeTruthy();
-    expect(view.queryByText('Tu cuenta de tu cuenta')).toBeNull();
-    expect(view.queryByText('Tu cuenta de Google')).toBeNull();
+    // No provider line and no "Entrás con…" row: name, email and the two account actions only.
+    expect(view.queryByText('Tu cuenta conectada')).toBeNull();
+    expect(view.queryByText(/^Entrás con/)).toBeNull();
   });
   it('edits in place through the existing name controller with CAS and confirmed truth', async () => {
     mockRequest.mockImplementationOnce(async () => {
@@ -233,7 +232,7 @@ describe('Account and local App preferences', () => {
     const view = render(element(<AccountScreen />));
     fireEvent.press(await view.findByLabelText('Editar nombre'));
     fireEvent.changeText(view.getByLabelText('Cómo querés que te llamemos'), ' Ignacio ');
-    await act(async () => fireEvent.press(view.getByText('Listo')));
+    await act(async () => fireEvent.press(view.getByLabelText('Guardar nombre')));
     await view.findByText('Ignacio');
     expect(mockRequest).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -259,18 +258,17 @@ describe('Account and local App preferences', () => {
     const view = render(element(<AccountScreen />));
     fireEvent.press(await view.findByLabelText('Editar nombre'));
     fireEvent.changeText(view.getByLabelText('Cómo querés que te llamemos'), 'Mobile');
-    await act(async () => fireEvent.press(view.getByText('Listo')));
+    await act(async () => fireEvent.press(view.getByLabelText('Guardar nombre')));
     await view.findByText('Cambiaste el nombre en otro lado. Quedó «Desde Web».');
     expect(view.getByLabelText('Cómo querés que te llamemos').props.value).toBe('Mobile');
     fireEvent.press(view.getByText('Volver a escribirlo'));
-    expect(view.getByText('Listo')).toBeTruthy();
+    expect(view.getByLabelText('Guardar nombre')).toBeTruthy();
   });
   it('signs out only after native confirmation', async () => {
     const alert = jest.spyOn(Alert, 'alert');
     const view = render(element(<AccountScreen />));
     await view.findByLabelText('Editar nombre');
-    expect(view.getByText('Entrás con Google')).toBeTruthy();
-    fireEvent.press(view.getByText('Cerrar sesión'));
+    fireEvent.press(view.getByLabelText('Cerrar sesión'));
     expect(mockSignOut).not.toHaveBeenCalled();
     await act(async () =>
       alert.mock.calls
