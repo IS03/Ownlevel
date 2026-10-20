@@ -2,6 +2,7 @@ import { DatePicker, Host } from "@expo/ui/swift-ui";
 import {
   accessibilityLabel,
   datePickerStyle,
+  labelsHidden,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
 import { useOwnlevelTheme } from "@/design-system";
@@ -12,7 +13,9 @@ export function StartDatePicker({ value, minimum, onChange }: StartDateProps) {
     <Host
       colorScheme={isDark ? "dark" : "light"}
       ignoreSafeArea="all"
-      style={{ width: "100%", height: 200 }}
+      // The wheel's own height: a fixed box left an empty band under it. The row above already says "Inicio".
+      matchContents={{ vertical: true }}
+      style={{ width: "100%" }}
     >
       <DatePicker
         title="Inicio"
@@ -21,6 +24,7 @@ export function StartDatePicker({ value, minimum, onChange }: StartDateProps) {
         displayedComponents={["date"]}
         modifiers={[
           datePickerStyle("wheel"),
+          labelsHidden(),
           tint(colors.primary),
           accessibilityLabel("Fecha de inicio"),
         ]}

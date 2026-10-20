@@ -1,21 +1,25 @@
 import { useEffect, useState, type PropsWithChildren } from "react";
-import { Alert, View, type StyleProp, type ViewStyle } from "react-native";
+import { Alert, Platform, Pressable, StyleSheet, View, useWindowDimensions, type StyleProp, type ViewStyle } from "react-native";
 import { useRouter } from "expo-router";
 import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import {
+  AppIcon,
   AppText,
   Button,
   Heading,
   TextField,
   brandTokens,
+  pressedStyle,
   useOwnlevelTheme,
+  useReduceMotion,
 } from "@/design-system";
 import {
   CountingNumber,
   EditorialRow,
   EditorialScreen,
-  EditorialSpread,
+  formatNumber,
 } from "@/settings/editorial";
+import { NutritionGlassButton } from "@/nutrition/day-controls";
 import { previousDate, shortDate } from "@/settings/settings-model";
 import { SettingsSegmented } from "@/settings/native-segmented";
 import {
@@ -28,8 +32,7 @@ import {
   scheduledCollision,
   validStageDate,
 } from "./stages-model";
-import { PlanNumber } from "./plan-week";
-import { StageKindField } from './stage-kind-field';
+import { KindPicker } from "./kind-picker";
 import { StartDatePicker } from "./start-date-picker";
 import { DurationControl } from "./duration-control";
 import {
@@ -49,6 +52,9 @@ export function StageSequenceScreen() {
   const shared = useStagesRoute();
   useStagesLeaveGuard(shared);
   const router = useRouter();
+  // Name and type share a row; with large text (or the Android chips) the type goes under the name.
+  const { fontScale } = useWindowDimensions();
+  const stackHeader = Platform.OS !== "ios" || fontScale > 1.3;
   const { colors } = useOwnlevelTheme();
   const state = shared?.state,
     controller = shared?.controller,
@@ -209,63 +215,36 @@ export function StageSequenceScreen() {
                 >
                   <StageStripe kind={item.stage.kind} />
                   <View style={{ flex: 1, gap: 12 }}>
-                    <StageKindField
-                      value={item.stage.kind}
-                      suggested={null}
-                      disabled={locked}
-                      onChange={(kind) => {
-                        controller?.editStage(i);
-                        controller?.kind(kind);
-                      }}
-                    />
-                    <AppText variant="headline">
-                      {item.stage.name || kindLabel(item.stage.kind)}
-                    </AppText>
-                    <View>
-                      <PlanNumber
-                        value={mean(item.stage)}
-                        suggested={item.stage.suggested}
-                      />
-                      <AppText muted variant="caption">
-                        kcal promedio
-                        {item.stage.suggested ? " · sugerido" : ""}
+                    {/* Name on the left, its type on the right: the menu says "Tipo" until one is chosen. */}
+                    <View style={[styles.header, stackHeader && styles.stacked]}>
+                      <AppText variant="headline" style={styles.name}>
+                        {item.stage.name || kindLabel(item.stage.kind)}
                       </AppText>
+                      <View style={stackHeader ? undefined : styles.kind}>
+                        <KindPicker
+                          value={item.stage.kind}
+                          suggested={null}
+                          placeholder="Tipo"
+                          disabled={locked}
+                          onChange={(kind) => {
+                            controller?.editStage(i);
+                            controller?.kind(kind);
+                          }}
+                        />
+                      </View>
                     </View>
-                    <StageRow key={`${dates[i]?.startsOn}-${dates[i]?.endsOn}`}>
-                      <AppText muted>
-                        {dates[i]
-                          ? `${shortDate(dates[i].startsOn)} → ${shortDate(previousDate(dates[i].endsOn))}`
-                          : "Elegí una fecha de inicio válida"}
-                      </AppText>
-                    </StageRow>
-                    <DurationControl
-                      duration={item.duration}
-                      disabled={locked}
-                      onChange={(duration) =>
-                        setSequence({
-                          ...sequence,
-                          stages: sequence.stages.map((s, n) =>
-                            n === i ? { ...s, duration } : s,
-                          ),
-                        })
-                      }
-                    />
-                    <EditorialSpread>
-                      <Button
-                        label={`Ajustar ${kindLabel(item.stage.kind).toLocaleLowerCase("es-AR")}`}
-                        disabled={locked}
-                        variant="quiet"
-                        onPress={() => {
-                          controller?.editStage(i);
-                          router.push("/settings/stage-plan");
-                        }}
-                      />
-                      <Button
-                        label="Quitar"
-                        accessibilityLabel={`Quitar etapa ${i + 1}`}
-                        variant="quiet"
-                        disabled={locked}
-                        onPress={() =>
+                    <View style={styles.dates}>
+                      <StageRow key={`${dates[i]?.startsOn}-${dates[i]?.endsOn}`} style={{ flex: 1 }}>
+                        <AppText muted>
+                          {dates[i]
+                            ? `${shortDate(dates[i].startsOn)} → ${shortDate(previousDate(dates[i].endsOn))}`
+                            : "Elegí una fecha de inicio válida"}
+                        </AppText>
+                      </StageRow>
+                      <NutritionGlassButton
+                        icon="trash"
+                        label={`Quitar etapa ${i + 1}`}
+                        onPress={locked ? undefined : () =>
                           Alert.alert(
                             "¿Quitar esta etapa?",
                             `Sale «${item.stage.name || kindLabel(item.stage.kind)}» de la secuencia que estás armando. Las fechas de las demás se reacomodan.`,
@@ -284,7 +263,29 @@ export function StageSequenceScreen() {
                           )
                         }
                       />
-                    </EditorialSpread>
+                    </View>
+                    <DurationControl
+                      duration={item.duration}
+                      disabled={locked}
+                      onChange={(duration) =>
+                        setSequence({
+                          ...sequence,
+                          stages: sequence.stages.map((s, n) =>
+                            n === i ? { ...s, duration } : s,
+                          ),
+                        })
+                      }
+                    />
+                    <TargetsRow
+                      name={item.stage.name || kindLabel(item.stage.kind)}
+                      kcal={mean(item.stage)}
+                      suggested={item.stage.suggested}
+                      disabled={locked}
+                      onPress={() => {
+                        controller?.editStage(i);
+                        router.push("/settings/stage-plan");
+                      }}
+                    />
                   </View>
                 </StageRow>
               ))}
@@ -325,24 +326,17 @@ export function StageSequenceScreen() {
                 style={[stageStyles.row, { borderColor: colors.border }]} testID="sequence-maintenance">
                 <StageStripe kind="maintenance" />
                 <View style={{ flex: 1, gap: 12 }}>
-                  <Heading level={2}>Mantenimiento</Heading>
+                  <AppText variant="headline">Mantenimiento</AppText>
                   <AppText muted>
                     {end
                       ? `Desde ${shortDate(end)} · sin fecha de fin`
                       : "Se agrega al terminar los tramos anteriores"}
                   </AppText>
-                  <PlanNumber
-                    value={mean(sequence.maintenanceStage)}
+                  <TargetsRow
+                    name="Mantenimiento final"
+                    kcal={mean(sequence.maintenanceStage)}
                     suggested={sequence.maintenanceStage.suggested}
-                  />
-                  <AppText muted variant="footnote">
-                    Objetivos propios para esta etapa
-                    {sequence.maintenanceStage.suggested ? " · sugerido" : ""}.
-                  </AppText>
-                  <Button
-                    label="Ajustar mantenimiento final"
                     disabled={locked}
-                    variant="quiet"
                     onPress={() => {
                       controller?.editStage("maintenance");
                       router.push("/settings/stage-plan");
@@ -351,13 +345,12 @@ export function StageSequenceScreen() {
                 </View>
               </Animated.View>
             ) : null}
-            {!valid && !collision ? (
+            {/* Only what blocks saving and is not visible above: no stage yet, or past the ten-year limit. */}
+            {!valid && !collision && (sequence.stages.length === 0 || (end && dayDistance(sequence.startDate, end) > 3660)) ? (
               <AppText muted>
                 {sequence.stages.length === 0
                   ? "Agregá tu primera etapa."
-                  : end && dayDistance(sequence.startDate, end) > 3660
-                    ? "La secuencia puede abarcar hasta diez años."
-                    : "Completá el nombre, el tipo y los objetivos de cada etapa antes de guardar."}
+                  : "La secuencia puede abarcar hasta diez años."}
               </AppText>
             ) : null}
             {shared ? (
@@ -387,3 +380,39 @@ function StageRow({ children, style, testID }: PropsWithChildren<{ style?: Style
   const fade = useAnimatedStyle(() => ({ opacity: shown.get() }));
   return <Animated.View style={[style, fade]} testID={testID}>{children}</Animated.View>;
 }
+
+/** The stage's targets as one row: average kcal (or what is missing) and a chevron that opens the plan editor. */
+function TargetsRow({ name, kcal, suggested, disabled, onPress }: {
+  name: string; kcal: number | null; suggested: boolean; disabled: boolean; onPress: () => void;
+}) {
+  const { colors } = useOwnlevelTheme();
+  const reduced = useReduceMotion();
+  const value = kcal === null ? "Sin completar" : `${formatNumber(kcal)} kcal promedio${suggested ? " · sugerido" : ""}`;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Objetivos de ${name}`}
+      accessibilityValue={{ text: value }}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [styles.targets, pressedStyle(pressed, reduced), disabled && { opacity: 0.5 }]}
+    >
+      <View style={{ flex: 1, gap: 4 }}>
+        <AppText variant="headline">Objetivos</AppText>
+        <AppText numeric muted={suggested || kcal === null} style={suggested || kcal === null ? undefined : { color: colors.primary }}>
+          {value}
+        </AppText>
+      </View>
+      <AppIcon name="chevronRight" size={20} color={colors.textMuted} />
+    </Pressable>
+  );
+}
+const styles = StyleSheet.create({
+  header: { flexDirection: "row", alignItems: "center", gap: brandTokens.space.md, minHeight: brandTokens.layout.minTouch },
+  stacked: { flexDirection: "column", alignItems: "stretch", gap: brandTokens.space.xs },
+  name: { flex: 1, minWidth: 0 },
+  kind: { flexShrink: 0, maxWidth: "55%" },
+  dates: { flexDirection: "row", alignItems: "center", gap: brandTokens.space.md },
+  targets: { flexDirection: "row", alignItems: "center", gap: brandTokens.space.md, minHeight: brandTokens.layout.minTouch },
+});

@@ -86,21 +86,22 @@ describe('Stage type field geometry', () => {
   ])(
     'fits content width $width and Dynamic Type $scale', ({ scale, width, direction }) => {
       mockFontScale = scale;
-      const view = render(wrap(<StageKindField {...props} reserveHint />));
+      const view = render(wrap(<StageKindField {...props} />));
       fireEvent(view.getByTestId('stage-kind-field'), 'layout', layout(width));
       expect(StyleSheet.flatten(view.getByTestId('stage-kind-row').props.style).flexDirection).toBe(direction);
       expect(view.getByText('Elegí un tipo', { includeHiddenElements: true }).props.maxFontSizeMultiplier).toBeUndefined();
     },
   );
-  it('keeps helper space, margins and row geometry after choosing without exposing the hidden hint', () => {
-    const view = render(wrap(<StageKindField {...props} reserveHint />));
-    const fieldStyle = view.getByTestId('stage-kind-field').props.style;
+  it('keeps its row geometry after choosing; no inline hint (it moves to onboarding)', () => {
+    const view = render(wrap(<StageKindField {...props} />));
     const rowStyle = view.getByTestId('stage-kind-row').props.style;
-    view.rerender(wrap(<StageKindField {...props} value="surplus" reserveHint />));
-    expect(view.getByTestId('stage-kind-field').props.style).toEqual(fieldStyle);
+    view.rerender(wrap(<StageKindField {...props} value="surplus" />));
     expect(view.getByTestId('stage-kind-row').props.style).toEqual(rowStyle);
-    expect(view.getByTestId('stage-kind-hint', { includeHiddenElements: true }).props).toMatchObject({ accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants', style: { opacity: 0 } });
-    expect(view.queryByText('Elegí qué tipo de plan es para guardarlo.')).toBeNull();
+    expect(view.queryByText('Elegí qué tipo de plan es para guardarlo.', { includeHiddenElements: true })).toBeNull();
+  });
+  it('a compact picker can say "Tipo" until one is chosen', () => {
+    const view = render(wrap(<KindPicker {...props} placeholder="Tipo" />));
+    expect(view.getByText('Tipo', { includeHiddenElements: true })).toBeTruthy();
   });
   it('keeps an existing read-only type out of the menu', () => {
     const view = render(wrap(<StageKindField {...props} value="maintenance" readOnly />));
