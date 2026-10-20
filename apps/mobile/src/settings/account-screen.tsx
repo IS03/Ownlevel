@@ -1,10 +1,22 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useNavigation, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
-import { AppText, Button, Heading, SkeletonBlock, TextField } from '@/design-system';
+import {
+  AppIcon,
+  AppText,
+  Button,
+  GlassSurface,
+  Heading,
+  SkeletonBlock,
+  brandTokens,
+  pressedStyle,
+  useOwnlevelTheme,
+  useReduceMotion,
+} from '@/design-system';
+import { NutritionGlassButton } from '@/nutrition/day-controls';
 import { SaveButton } from '@/nutrition/save-button';
 import { NutritionToast } from '@/nutrition/nutrition-toast';
 import { AccountAvatar } from './account-avatar';
@@ -21,12 +33,8 @@ export function AccountScreen() {
   const [leaving, setLeaving] = useState(false);
   const pending = state?.phase === 'pending' || (state?.phase === 'confirmed' && !state.message);
   const locked = state?.phase !== 'idle' || !!state?.intent;
-  const provider =
-    session?.user.app_metadata.provider === 'google'
-      ? 'Google'
-      : session?.user.app_metadata.provider === 'apple'
-        ? 'Apple'
-        : 'tu cuenta';
+  const { colors } = useOwnlevelTheme();
+  const reduced = useReduceMotion();
   useEffect(() => {
     if (!state?.notice) return;
     const timer = setTimeout(() => controller?.dismissNotice(), 2200);
@@ -51,6 +59,13 @@ export function AccountScreen() {
       ]);
     },
   );
+  const cancel = () =>
+    controller?.dirty()
+      ? Alert.alert('¿Dejar el nombre como estaba?', 'Lo que escribiste todavía no está guardado.', [
+          { text: 'Seguir escribiendo', style: 'cancel' },
+          { text: 'Descartar', style: 'destructive', onPress: () => controller.close() },
+        ])
+      : controller?.close();
   const logout = () =>
     Alert.alert('¿Cerrar sesión?', 'Podés volver a entrar cuando quieras.', [
       { text: 'Quedarme', style: 'cancel' },
@@ -66,55 +81,41 @@ export function AccountScreen() {
     <View style={{ flex: 1 }}>
       <EditorialScreen>
         <Heading>Cuenta</Heading>
-        <View style={{ alignItems: 'center', gap: 12 }}>
+        <View style={{ alignItems: 'center' }}>
           <AccountAvatar name={identity?.displayName ?? null} />
-          <AppText muted variant="footnote">
-            {provider === 'tu cuenta' ? 'Tu cuenta conectada' : `Tu cuenta de ${provider}`}
-          </AppText>
         </View>
         <AppText muted variant="caption">
           CÓMO TE LLAMAMOS
         </AppText>
         {state?.editor ? (
-          <View style={{ gap: 12 }}>
-            <TextField
-              label="Cómo querés que te llamemos"
+          // Edited in place, at the same size it is shown; cancel and save as small controls beside it.
+          <View style={styles.nameRow}>
+            <TextInput
+              accessibilityLabel="Cómo querés que te llamemos"
               autoFocus
               value={state.editor.draft}
               onChangeText={(text) => controller?.change(text)}
-              disabled={locked}
+              editable={!locked}
               maxLength={80}
+              // Wraps like the shown name instead of scrolling sideways; Return still saves.
+              multiline
+              submitBehavior="blurAndSubmit"
+              returnKeyType="done"
+              onSubmitEditing={() => {
+                if (!locked) void controller?.save();
+              }}
+              style={[styles.nameInput, { color: colors.text }]}
             />
-            {state.phase === 'idle' || pending ? (
-              <SaveButton
-                label="Listo"
-                state={pending ? 'saving' : 'idle'}
-                disabled={locked}
-                onPress={() => void controller?.save()}
+            {!locked ? <NutritionGlassButton icon="close" label="Cancelar" onPress={cancel} /> : null}
+            {pending ? (
+              <ActivityIndicator accessibilityLabel="Guardando nombre" color={colors.textMuted} />
+            ) : (
+              <NutritionGlassButton
+                icon="checkmark"
+                label="Guardar nombre"
+                onPress={locked ? undefined : () => void controller?.save()}
               />
-            ) : null}
-            {!locked ? (
-              <Button
-                label="Cancelar"
-                variant="quiet"
-                onPress={() =>
-                  controller?.dirty()
-                    ? Alert.alert(
-                        '¿Dejar el nombre como estaba?',
-                        'Lo que escribiste todavía no está guardado.',
-                        [
-                          { text: 'Seguir escribiendo', style: 'cancel' },
-                          {
-                            text: 'Descartar',
-                            style: 'destructive',
-                            onPress: () => controller.close(),
-                          },
-                        ],
-                      )
-                    : controller?.close()
-                }
-              />
-            ) : null}
+            )}
           </View>
         ) : identity ? (
           <Pressable
@@ -170,12 +171,7 @@ export function AccountScreen() {
         <AppText muted variant="footnote">
           Así te saludamos en Inicio.
         </AppText>
-        <View>
-          <EditorialRow title="Email">{session?.user.email ?? 'Sin email'}</EditorialRow>
-          <EditorialRow title={`Entrás con ${provider}`}>
-            Es la misma cuenta que usás en OWNLEVEL Web.
-          </EditorialRow>
-        </View>
+        <EditorialRow title="Email">{session?.user.email ?? 'Sin email'}</EditorialRow>
         {auth.status === 'TRANSIENT_ERROR' ? (
           <AppText accessibilityLiveRegion="polite">
             No pudimos comprobar tu sesión ahora. Seguís en tu cuenta.
@@ -184,16 +180,55 @@ export function AccountScreen() {
         {leaving ? (
           <ActivityIndicator accessibilityLabel="Cerrando sesión" />
         ) : (
-          <Button label="Cerrar sesión" variant="quiet" onPress={logout} />
+          // A control, so native glass; destructive color because it takes you out of the app.
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Cerrar sesión"
+            onPress={logout}
+            style={({ pressed }) => pressedStyle(pressed, reduced)}
+          >
+            <GlassSurface interactive style={styles.signOut}>
+              <AppText variant="headline" style={{ color: colors.danger }}>
+                Cerrar sesión
+              </AppText>
+            </GlassSurface>
+          </Pressable>
         )}
-        <EditorialRow
-          title="Eliminar cuenta"
-          hint="Borra tu cuenta y todo lo que registraste, también en la Web."
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Eliminar cuenta"
+          accessibilityHint="Borra tu cuenta y todo lo que registraste, también en la Web."
+          accessibilityState={{ disabled: leaving }}
           disabled={leaving}
           onPress={() => router.push('/settings/delete-account')}
-        />
+          style={({ pressed }) => [styles.delete, pressedStyle(pressed, reduced), leaving && { opacity: 0.5 }]}
+        >
+          <AppIcon name="warning" size={20} color={colors.danger} />
+          <View style={{ flex: 1, gap: 4 }}>
+            <AppText variant="headline" style={{ color: colors.danger }}>
+              Eliminar cuenta
+            </AppText>
+            <AppText muted variant="footnote">
+              Borra tu cuenta y todo lo que registraste, también en la Web. No se puede deshacer.
+            </AppText>
+          </View>
+          <AppIcon name="chevronRight" size={20} color={colors.danger} />
+        </Pressable>
       </EditorialScreen>
       {state?.notice ? <NutritionToast message="Nombre guardado." state="done" /> : null}
     </View>
   );
 }
+const styles = StyleSheet.create({
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.sm, minHeight: 50 },
+  nameInput: { ...brandTokens.typeScale.largeTitle, flex: 1, padding: 0 },
+  signOut: {
+    minHeight: brandTokens.layout.buttonHeight,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: brandTokens.space.xl,
+    overflow: 'hidden',
+  },
+  delete: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.md, paddingVertical: brandTokens.space.lg },
+});

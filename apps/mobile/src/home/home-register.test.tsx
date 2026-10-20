@@ -39,6 +39,9 @@ describe('Home metric controls', () => {
     const onRegister=jest.fn(),props={date:day.date,onRegister,today:{status:'ready' as const,confirmedAt:1,data:day},metricDefinitions:[definition({id:'m0',quickValue:0.25,icon:'book',valueType:'decimal',unit:null})]};
     const view=render(<OwnlevelThemeProvider initialMode="dark"><HomeRegister {...props}/></OwnlevelThemeProvider>);
     const circle=view.getByTestId('home-register-metric-m0');
+    // A quick-entry metric says so before the first tap; the others carry no "+".
+    expect(view.getByTestId('home-register-metric-m0-quick')).toBeTruthy();
+    expect(view.queryAllByTestId(/^home-register-metric-(?!m0).*-quick$/)).toHaveLength(0);
     fireEvent.press(circle);expect(onRegister).toHaveBeenLastCalledWith({kind:'metric',metricId:'m0',quick:{value:0,updatedAt:null,definitionUpdatedAt:undefined,portion:0.25,date:day.date}});
     fireEvent(circle,'longPress');expect(onRegister).toHaveBeenLastCalledWith({kind:'metric',metricId:'m0'});
     view.rerender(<OwnlevelThemeProvider initialMode="dark"><HomeRegister {...props} metricBusyId="m0" metricsLocked/></OwnlevelThemeProvider>);

@@ -71,10 +71,18 @@ describe('Administrar métricas', () => {
     expect(editor.getByLabelText('Objetivo (opcional)').props.editable).toBe(true);
     expect(editor.queryByRole('button', { name: 'Eliminar métrica' })).toBeNull();
     const alert=jest.spyOn(Alert,'alert');
-    fireEvent.press(editor.getByLabelText('Más opciones de métrica'));
+    expect(editor.queryByLabelText('Más opciones de métrica')).toBeNull();
+    fireEvent.press(editor.getByLabelText('Archivar métrica'));
     expect(alert.mock.calls.at(-1)?.[2]?.map(b=>b.text)).toContain('Archivar');
     expect(alert.mock.calls.at(-1)?.[2]?.map(b=>b.text)).not.toContain('Eliminar métrica');
     expect(editor.getByLabelText('Ícono: Libro')).toBeEnabled();
+    // No "use default" button: only a chosen icon is marked, and tapping it again goes back to the default.
+    expect(editor.queryByText('Usar ícono predeterminado')).toBeNull();
+    expect(editor.getByLabelText('Ícono: Libro').props.accessibilityState.checked).toBe(false);
+    fireEvent.press(editor.getByLabelText('Ícono: Libro'));
+    expect(editor.getByLabelText('Ícono: Libro').props.accessibilityState.checked).toBe(true);
+    fireEvent.press(editor.getByLabelText('Ícono: Libro'));
+    expect(editor.getByLabelText('Ícono: Libro').props.accessibilityState.checked).toBe(false);
     expect(editor.getByText(/Podés elegir su ícono, objetivo y carga rápida/)).toBeTruthy();alert.mockRestore();
   });
   it('custom with history: type/unit frozen and explained, archive instead of delete; without history delete is offered', async () => {
@@ -88,8 +96,8 @@ describe('Administrar métricas', () => {
     fireEvent.press(editor.getByRole('button', { name: 'Cerrar' }));
     fireEvent.press(view.getByRole('button', { name: 'Editar Lectura' }));
     editor = within(view.getByTestId('metric-definition-editor'));
-    const alert = jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => { buttons?.find(b => b.text === 'Eliminar métrica'||b.text==='Confirmar')?.onPress?.(); });
-    await act(async () => { fireEvent.press(editor.getByRole('button', { name: 'Más opciones de métrica' })); }); await flush();
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => { buttons?.find(b => b.text === 'Eliminar métrica'||b.text==='Eliminar')?.onPress?.(); });
+    await act(async () => { fireEvent.press(editor.getByRole('button', { name: /^(Archivar|Eliminar) métrica$/ })); }); await flush();
     expect(alert).toHaveBeenCalled();
     expect(mockMutate.mock.calls[0][1]).toMatchObject({ operation: 'delete', metricId: defId(10), fields: null });
     expect(view.getByText('Métrica eliminada.')).toBeTruthy();

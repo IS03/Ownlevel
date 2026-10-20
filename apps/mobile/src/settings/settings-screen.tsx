@@ -5,11 +5,11 @@ import { useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import { useMobileAuth } from '@/auth';
-import { AppText, Heading, ProgressBar, SkeletonBlock, useOwnlevelTheme } from '@/design-system';
+import { AppText, Heading, SkeletonBlock, useOwnlevelTheme } from '@/design-system';
 import { useHapticsPreference } from '@/platform/haptics';
 import { AccountAvatar } from './account-avatar';
 import { CountingNumber, EditorialRow, EditorialScreen, Reveal } from './editorial';
-import { previousDate, shortDate, stageHeadline, stageNames } from './settings-model';
+import { stageNames } from './settings-model';
 import { useSettingsOverview } from './use-settings-overview';
 
 export function appVersionLabel() {
@@ -26,7 +26,6 @@ export function SettingsScreen() {
   const { configuration, stages, identity, metrics, loading } = overview;
   const config = configuration?.state.config;
   const name = identity?.displayName ?? null;
-  const headline = stageHeadline(name, stages);
   const stage = stages?.current;
   const physical = config?.physical.status === 'ok' ? config.physical.data : null;
   const energy = config?.energy.status === 'ok' ? config.energy.data : null;
@@ -48,55 +47,22 @@ export function SettingsScreen() {
     );
   return (
     <EditorialScreen>
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <AppText muted variant="caption" style={{ letterSpacing: 2 }}>
-          AJUSTES
-        </AppText>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Cuenta"
-          onPress={() => router.push('/settings/account')}
-        >
-          <AccountAvatar name={name} size={44} />
-        </Pressable>
-      </View>
+      {/* Only who you are: your name and your photo (which opens Cuenta). The plan lives in its own row below. */}
       <Reveal>
-        {(overview.identityLoading && !identity) || (overview.stagesLoading && !stages) ? (
-          <SkeletonBlock height={123} width="90%" />
-        ) : (
-          <Heading numeric>{headline.text}</Heading>
-        )}
-        {headline.progress !== null && stage ? (
-          <View style={{ gap: 12, marginTop: 24 }}>
-            <ProgressBar
-              accessibilityLabel="Avance de tu etapa"
-              value={headline.progress}
-              maximumValue={1}
-            />
-            <View
-              style={{
-                flexDirection: 'row',
-                flexWrap: 'wrap',
-                justifyContent: 'space-between',
-                gap: 8,
-              }}
-            >
-              <AppText muted variant="footnote">
-                Desde {shortDate(stage.startsOn)}
-                {kcal === null ? '' : ` · ${kcal.toLocaleString('es-AR')} kcal`}
-              </AppText>
-              <AppText muted variant="footnote">
-                Termina {shortDate(previousDate(stage.endsOn!))}
-              </AppText>
-            </View>
-          </View>
-        ) : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+          {overview.identityLoading && !identity ? (
+            <SkeletonBlock height={41} width="60%" />
+          ) : (
+            <Heading style={{ flex: 1 }}>{name ?? 'Ajustes'}</Heading>
+          )}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Cuenta"
+            onPress={() => router.push('/settings/account')}
+          >
+            <AccountAvatar name={name} size={44} />
+          </Pressable>
+        </View>
         {(overview.refreshing || configuration?.state.loading) && (!loading || !!identity) ? (
           <ActivityIndicator
             color={colors.textMuted}
