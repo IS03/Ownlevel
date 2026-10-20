@@ -33,8 +33,14 @@ describe('Home champagne glass actions', () => {
     await act(async () => {});
     expect(view.getByTestId('new-session-glass').props.tintColor).toBeUndefined();
   });
-  it('does not turn the other primary session action into glass', () => {
+  it('the primary session action ("Arrancar rutina", "Volver a la sesión") is glass tinted with the dark champagne', () => {
     const view = render(<OwnlevelThemeProvider initialMode="light"><HomeButton label="Arrancar rutina" testID="start" tone="solid" onPress={() => {}} /></OwnlevelThemeProvider>);
-    expect(view.queryByTestId('start-glass')).toBeNull();
+    expect(view.getByTestId('start-glass').props.tintColor).toBe('#705F36');
+    expect(StyleSheet.flatten(view.getByTestId('start-glass').props.style).minHeight).toBe(50);
+  });
+  it('without Liquid Glass the primary action keeps its plain dark champagne fill', () => {
+    mockGlass = false;
+    const view = render(<OwnlevelThemeProvider initialMode="light"><HomeButton label="Arrancar rutina" testID="start" tone="solid" onPress={() => {}} /></OwnlevelThemeProvider>);
+    expect(StyleSheet.flatten(view.getByTestId('start-glass').props.style).backgroundColor).toBe('#705F36');
   });
 });

@@ -67,16 +67,20 @@ export function HomeLink({ accessibilityLabel, label, onPress, testID }: { acces
   );
 }
 
-/** Raised champagne material shared by Home's session and food controls. */
-export function HomeActionSurface({ children, style, testID }: PropsWithChildren<{ style?: StyleProp<ViewStyle>; testID?: string }>) {
+/** Raised champagne material shared by Home's session and food controls. `tint` defaults to the soft champagne. */
+export function HomeActionSurface({ children, style, testID, tint }: PropsWithChildren<{ style?: StyleProp<ViewStyle>; testID?: string; tint?: string }>) {
   const { colors } = useOwnlevelTheme();
   const reduced = useReduceMotion();
   return <View style={styles.actionShadow}>
-    <GlassSurface interactive={!reduced} tint={colors.brandSubtle} style={[styles.actionSurface, style]} testID={testID}>{children}</GlassSurface>
+    <GlassSurface interactive={!reduced} tint={tint ?? colors.brandSubtle} style={[styles.actionSurface, style]} testID={testID}>{children}</GlassSurface>
   </View>;
 }
 
-/** Full-width action: `solid` = the one primary action; `soft` = champagne Liquid Glass. */
+/**
+ * Full-width action, always Liquid Glass: `solid` = the one primary action (glass tinted with the dark champagne,
+ * light text: "Arrancar rutina", "Volver a la sesión"); `soft` = the soft champagne glass. Without Liquid Glass (older
+ * iOS, Reduce Transparency) the tint becomes a plain fill, so the solid one looks exactly as before.
+ */
 export function HomeButton({ accessibilityHint, label, onPress, testID, tone }: {
   accessibilityHint?: string; label: string; onPress: () => void; testID?: string; tone: 'solid' | 'soft';
 }) {
@@ -87,10 +91,10 @@ export function HomeButton({ accessibilityHint, label, onPress, testID, tone }: 
     : { background: colors.brandSubtle, text: colors.primary };
   return (
     <Pressable accessibilityHint={accessibilityHint} accessibilityLabel={label} accessibilityRole="button" onPress={onPress}
-      style={({ pressed }) => [tone === 'solid' && [styles.button, { backgroundColor: palette.background }], pressedStyle(pressed, reduceMotion)]} testID={testID}>
-      {tone === 'soft' ? <HomeActionSurface style={styles.button} testID={testID ? `${testID}-glass` : undefined}>
+      style={({ pressed }) => pressedStyle(pressed, reduceMotion)} testID={testID}>
+      <HomeActionSurface style={styles.button} testID={testID ? `${testID}-glass` : undefined} tint={palette.background}>
         <AppText style={{ color: palette.text }} variant="headline">{label}</AppText>
-      </HomeActionSurface> : <AppText style={{ color: palette.text }} variant="headline">{label}</AppText>}
+      </HomeActionSurface>
     </Pressable>
   );
 }
