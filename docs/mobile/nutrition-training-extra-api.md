@@ -35,4 +35,8 @@ Se probó en Postgres descartable y se aplicó a producción (Supabase "gym") el
 
 ## Rollout
 
-EXPAND (este paso): aplicar la migración, desplegar la API y observar. ADOPT: Mobile pide `?targets=2`, quita el agua del editor de etapas y muestra "Si entrenás" solo para los objetivos que el plan tiene. CONTRACT: más adelante, cuando ya no queden clientes v1.
+EXPAND: hecho (migración aplicada y API desplegada).
+
+ADOPT: hecho. Mobile pide `?targets=2` y el editor de etapas ya no tiene agua: cada etapa que se guarda va con `baseWaterL: null`. "Si entrenás" muestra el extra de calorías siempre, y el de proteína solo si algún día tiene objetivo de proteína (0 g todos los días = sin objetivo, y se envía 0). Los borradores e intents locales usan la clave `ownlevel.nutrition.stages.v2`; los borradores v1 sin enviar no se recuperan.
+
+CONTRACT: más adelante, cuando ya no queden clientes v1.

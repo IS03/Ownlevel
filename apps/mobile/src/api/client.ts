@@ -239,7 +239,7 @@ export function createMobileApiClient({
         const responseBody = parsedJson.ok ? parsedJson.value : undefined;
 
         // Stages uses strict status-tagged errors. Only this endpoint can opt into that wire shape.
-        if (options.path === '/api/mobile/v1/nutrition/stages' && options.method === 'POST' && (response.status === 400 || response.status === 409)) {
+        if (safeTelemetryPath(options.path) === '/api/mobile/v1/nutrition/stages' && options.method === 'POST' && (response.status === 400 || response.status === 409)) {
           const parsed = options.parse(responseBody);
           if (isRecord(parsed) && response.status === 400 && parsed.status === 'validation' && typeof parsed.message === 'string') {
             result = { status: 'validation', message: parsed.message, meta: meta(durationMs, 400, 'validation') };

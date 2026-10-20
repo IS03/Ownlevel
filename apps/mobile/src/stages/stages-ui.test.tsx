@@ -156,18 +156,23 @@ describe("Plan week, summary and extras stay in place", () => {
     expect(view.queryByText(/^Tomamos el valor más repetido/)).toBeNull();
     expect(api.write).not.toHaveBeenCalled();
   });
-  it("water and training open one at a time with an expanded state, keep their values and write nothing", async () => {
+  it("no water in the plan; Si entrenás shows only the goals the plan has and writes nothing", async () => {
     mockController.replace(list.current!, "current");
     const view = render(element(<StagePlanScreen />));
-    const water = view.getByLabelText("Agua por día");
-    expect(water.props.accessibilityState).toMatchObject({ expanded: false });
-    fireEvent.press(water);
-    expect(view.getByLabelText("Agua por día").props.accessibilityState).toMatchObject({ expanded: true });
-    fireEvent.changeText(view.getByLabelText("Agua por día (L)"), "3");
-    fireEvent.press(view.getByLabelText("Si entrenás"));
-    expect(view.queryByLabelText("Agua por día (L)")).toBeNull();
-    expect(view.getByLabelText("Si entrenás").props.accessibilityState).toMatchObject({ expanded: true });
-    expect(view.getByLabelText("Agua por día").props.accessibilityValue).toEqual({ text: "3 L" });
+    expect(view.queryByLabelText("Agua por día")).toBeNull();
+    const training = () => view.getByLabelText("Si entrenás");
+    expect(training().props.accessibilityState).toMatchObject({ expanded: false });
+    expect(training().props.accessibilityValue).toEqual({ text: "+300 kcal · +20 g de proteína" });
+    fireEvent.press(training());
+    expect(training().props.accessibilityState).toMatchObject({ expanded: true });
+    fireEvent.changeText(view.getByLabelText("Extra de proteína (g)"), "25");
+    expect(training().props.accessibilityValue).toEqual({ text: "+300 kcal · +25 g de proteína" });
+    expect(view.queryByLabelText(/Extra de agua/)).toBeNull();
+    // Without a protein goal there is nothing to raise: the field and its summary go away.
+    mockController.changeStage(applyDays(mockController.stage()!, [1, 2, 3, 4, 5, 6, 7], "2000", "0"));
+    await act(async () => {});
+    expect(view.queryByLabelText("Extra de proteína (g)")).toBeNull();
+    expect(training().props.accessibilityValue).toEqual({ text: "+300 kcal" });
     expect(api.write).not.toHaveBeenCalled();
   });
 });
@@ -276,7 +281,7 @@ describe("Editorial stages and day editor", () => {
     fireEvent.press(view.getByRole("button", { name: "Pasarlo a etapa" }));
     expect(mockPush).toHaveBeenCalledWith("/settings/stage-plan");
     const stage = mockController.stage()!;
-    expect(stage).toMatchObject({ name: "Recomposición suave", kind: null, sourceWasUntyped: true, baseWaterL: "3" });
+    expect(stage).toMatchObject({ name: "Recomposición suave", kind: null, sourceWasUntyped: true, trainingCalorieDeltaKcal: "0", trainingProteinDeltaG: "0" });
     expect(stage.weekdays.every((d) => d.kcal === "1900" && d.protein === "130")).toBe(true);
     expect(api.write).not.toHaveBeenCalled();
   });

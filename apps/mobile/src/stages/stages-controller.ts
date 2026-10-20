@@ -430,7 +430,7 @@ export class StagesController {
   private async submit(intent: StagesIntent) {
     this.busy = true;
     const stored: StoredStagesIntent = {
-      version: 1,
+      version: 2,
       intent,
       draft: this.state.draft,
     };

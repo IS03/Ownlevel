@@ -152,8 +152,8 @@ export function PlanWeek({
     1,
     ...stage.weekdays.map((d) => draftNumber(d.kcal) ?? 0),
   );
-  // Week and summary share one reserved height and cross-fade (200 ms, a fade also with Reduce Motion), so Agua,
-  // extras and Guardar never move. The week stays mounted: switching never restarts its bars. Only the visible layer
+  // Week and summary share one reserved height and cross-fade (200 ms, a fade also with Reduce Motion), so the extras
+  // and Guardar never move. The week stays mounted: switching never restarts its bars. Only the visible layer
   // takes touches and is read by VoiceOver.
   const shown = useSharedValue(same ? 1 : 0);
   useEffect(() => { shown.set(withTiming(same ? 1 : 0, { duration: brandTokens.motion.duration.fast })); }, [same, shown]);

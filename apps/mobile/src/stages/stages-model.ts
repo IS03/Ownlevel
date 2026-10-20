@@ -34,9 +34,9 @@ export type StageDraft = {
   name: string;
   kind: StageKind | null;
   weekdays: DayDraft[];
-  baseWaterL: string;
+  /** Training extras. Only goals the plan has: calories always, protein when a day has a protein goal. */
   trainingCalorieDeltaKcal: string;
-  trainingWaterDeltaL: string;
+  trainingProteinDeltaG: string;
   suggested: boolean;
   preserveTargets: boolean;
   sourceWasUntyped: boolean;
@@ -93,9 +93,8 @@ export function stageDraft(
         protein: text(d?.proteinTargetG),
       };
     }),
-    baseWaterL: text(current?.baseWaterL),
     trainingCalorieDeltaKcal: text(current?.trainingCalorieDeltaKcal),
-    trainingWaterDeltaL: text(current?.trainingWaterDeltaL),
+    trainingProteinDeltaG: text(current?.trainingProteinDeltaG),
     suggested: suggestion !== null,
     preserveTargets,
     sourceWasUntyped: source?.kind === null,
@@ -132,13 +131,19 @@ export const draftNumber = (v: string): number | null =>
   v.trim() && /^\d+(?:[,.]\d{1,2})?$/.test(v.trim())
     ? Number(v.replace(",", "."))
     : null;
+/** A protein goal exists when some day asks for protein; 0 g every day means the plan has none. */
+export const hasProteinGoal = (stage: StageDraft) =>
+  stage.weekdays.some((d) => (draftNumber(d.protein) ?? 0) > 0);
 export function stageFields(stage: StageDraft): StageFields | undefined {
   return parseStageFields({
     name: stage.name,
     kind: stage.kind,
-    baseWaterL: draftNumber(stage.baseWaterL),
+    // Water is the Agua metric's goal, not the plan's: a saved stage carries none of its own.
+    baseWaterL: null,
     trainingCalorieDeltaKcal: draftNumber(stage.trainingCalorieDeltaKcal),
-    trainingWaterDeltaL: draftNumber(stage.trainingWaterDeltaL),
+    trainingWaterDeltaL: 0,
+    // Without a protein goal there is nothing to raise.
+    trainingProteinDeltaG: hasProteinGoal(stage) ? draftNumber(stage.trainingProteinDeltaG) : 0,
     weekdays: stage.weekdays.map((d) => ({
       weekday: d.weekday,
       calorieTargetKcal: draftNumber(d.kcal),

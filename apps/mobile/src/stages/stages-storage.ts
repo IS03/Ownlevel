@@ -10,7 +10,7 @@ import {
 } from "@/api/nutrition-stages";
 import { stageFields, type StagesDraft } from "./stages-model";
 export type StoredStagesIntent = {
-  version: 1;
+  version: 2;
   intent: StagesIntent;
   draft: StagesDraft | null;
   receipt?: Extract<StagesResult, { status: "confirmed" }>;
@@ -36,7 +36,7 @@ function validStage(v: unknown): boolean {
   )
     return false;
   return (
-    ["baseWaterL", "trainingCalorieDeltaKcal", "trainingWaterDeltaL"].every(
+    ["trainingCalorieDeltaKcal", "trainingProteinDeltaG"].every(
       (k) => typeof v[k] === "string",
     ) &&
     Array.isArray(v.weekdays) &&
@@ -96,7 +96,7 @@ function parseStored(v: unknown): StoredStagesIntent {
   const intent = parseStagesIntent(v.intent),
     receipt = v.receipt ? parseStagesResult(v.receipt) : undefined;
   if (
-    v.version !== 1 ||
+    v.version !== 2 ||
     !intent ||
     !validDraft(v.draft) ||
     (v.receipt &&
@@ -149,7 +149,7 @@ function parseStored(v: unknown): StoredStagesIntent {
   )
     throw new Error("Stage draft does not match change");
   return {
-    version: 1,
+    version: 2,
     intent,
     draft: v.draft,
     ...(receipt?.status === "confirmed" ? { receipt } : {}),
@@ -159,7 +159,8 @@ export class StagesIntentRepository extends NutritionIntentRepository<StoredStag
   constructor(port: NutritionStoragePort, userId: string) {
     super(
       port,
-      `ownlevel.nutrition.stages.v1.${encodeURIComponent(userId)}`,
+      // v2: intents in the training-extra shape. A v1 entry (water, no protein extra) is not read back.
+      `ownlevel.nutrition.stages.v2.${encodeURIComponent(userId)}`,
       parseStored,
     );
   }

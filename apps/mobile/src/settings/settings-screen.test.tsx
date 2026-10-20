@@ -116,7 +116,7 @@ beforeEach(async () => {
   };
   mockRead.mockImplementation(async (options) => {
     if (options.path === '/api/mobile/v1/profile') return ok({ displayName, version }) as never;
-    if (options.path === '/api/mobile/v1/nutrition/stages')
+    if (options.path === '/api/mobile/v1/nutrition/stages?targets=2')
       return (stagesFail ? unavailable : ok(list)) as never;
     if (options.path === '/api/mobile/v1/metrics/definitions?presentation=1')
       return ok({ definitions: [] }) as never;
@@ -139,6 +139,7 @@ function currentStage(endsOn: string | null, kind: 'deficit' | 'maintenance' = '
     baseWaterL: 2,
     trainingWaterDeltaL: 0,
     trainingCalorieDeltaKcal: 0,
+    trainingProteinDeltaG: 0,
     weekdays: Array.from({ length: 7 }, (_, i) => ({
       weekday: i + 1,
       calorieTargetKcal: 1900,

@@ -50,7 +50,7 @@ export function StagesListScreen() {
         id: "legacy-plan", kind: null, name: legacy.name, startsOn: list.today, endsOn: null,
         sequenceId: null, position: null, duration: null, status: "current",
         baseWaterL: legacy.baseWaterL, trainingCalorieDeltaKcal: legacy.trainingCalorieDeltaKcal,
-        trainingWaterDeltaL: legacy.trainingWaterDeltaL, weekdays: legacy.weekdays,
+        trainingWaterDeltaL: legacy.trainingWaterDeltaL, trainingProteinDeltaG: 0, weekdays: legacy.weekdays,
       } as NutritionStage)
     : null;
   const duplicate = (stage: NutritionStage) =>

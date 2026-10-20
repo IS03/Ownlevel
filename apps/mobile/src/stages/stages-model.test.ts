@@ -10,6 +10,7 @@ import {
   sequenceDraft,
   stageDraft,
   stageFields,
+  hasProteinGoal,
   suggestedKind,
   validSequence,
   kindLabel,
@@ -43,17 +44,21 @@ describe("Calendar and honest plan drafts", () => {
     ]);
     expect(previousDate("2027-02-28")).toBe("2027-02-27");
   });
-  it("copies protein, water and real zero extras, with conservative GET suggestions only for calories", () => {
+  it("copies protein and real zero extras, with conservative GET suggestions only for calories", () => {
     const list = stagesFixture();
     const draft = stageDraft(list, "surplus");
     expect(draft.weekdays[0]).toMatchObject({ kcal: "2625", protein: "130" });
-    expect(draft).toMatchObject({
-      baseWaterL: "2,5",
-      trainingWaterDeltaL: "0,5",
-      suggested: true,
-    });
+    expect(draft).toMatchObject({ trainingCalorieDeltaKcal: "300", trainingProteinDeltaG: "20", suggested: true });
     list.current!.trainingCalorieDeltaKcal = 0;
     expect(stageDraft(list).trainingCalorieDeltaKcal).toBe("0");
+  });
+  it("a saved stage carries no water of its own; the protein extra only exists with a protein goal", () => {
+    const draft = stageDraft(stagesFixture(), "deficit");
+    expect(stageFields(draft)).toMatchObject({ baseWaterL: null, trainingWaterDeltaL: 0, trainingCalorieDeltaKcal: 300, trainingProteinDeltaG: 20 });
+    const noProtein = { ...draft, weekdays: draft.weekdays.map((d) => ({ ...d, protein: "0" })) };
+    expect(hasProteinGoal(noProtein)).toBe(false);
+    expect(stageFields(noProtein)?.trainingProteinDeltaG).toBe(0);
+    expect(stageFields({ ...draft, trainingProteinDeltaG: "" })).toBeUndefined(); // missing is never sent as 0
   });
   it("recomposition and custom start at maintenance and are marked suggested, not a fabricated recommendation", () => {
     for (const kind of ["recomposition", "custom"] as const) {
@@ -70,8 +75,8 @@ describe("Calendar and honest plan drafts", () => {
     list.current = null;
     const empty = stageDraft(list);
     expect(empty.weekdays[0]).toEqual({ weekday: 1, kcal: "", protein: "" });
-    expect(empty.baseWaterL).toBe("");
-    expect(empty.trainingWaterDeltaL).toBe("");
+    expect(empty.trainingCalorieDeltaKcal).toBe("");
+    expect(empty.trainingProteinDeltaG).toBe("");
     expect(draftNumber("")).toBeNull();
     expect(draftNumber("0")).toBe(0);
     expect(stageFields(empty)).toBeUndefined();
