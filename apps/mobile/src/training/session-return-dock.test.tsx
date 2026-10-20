@@ -1,6 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { AppState, Keyboard } from 'react-native';
+import { AppState, Keyboard, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { ActiveSessionController, type ActiveSessionApi } from './active-session-controller';
@@ -21,6 +21,7 @@ let mockOwner = 'owner';
 const mockNavigate = jest.fn();
 const mockRedirect = jest.fn();
 const mockTrigger = jest.fn();
+const mockTabInsets = jest.fn();
 const mockValues = new Map<string, string>();
 const mockReadActive = async () => ok({ activeSession: { status: 'ok', data: { id: SESSION_ID, name: 'Sesión libre', logDate: '2026-09-30' } }, calendar: { status: 'ok', data: { month: '2026-09', days: [] } } });
 const mockRead = jest.fn().mockImplementation(mockReadActive);
@@ -37,10 +38,13 @@ jest.mock('expo-router/unstable-native-tabs', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   const { Pressable, Text, View } = jest.requireActual<typeof import('react-native')>('react-native');
   const Hidden = React.createContext(false);
-  const Trigger = Object.assign(({ name, hidden, accessibilityLabel, listeners, children }: {
-    name: string; hidden?: boolean; accessibilityLabel?: string; listeners?: { tabPress?: () => void }; children?: React.ReactNode;
-  }) => hidden ? null : <Pressable testID={`native-tab-${name}`} accessibilityRole="button" accessibilityLabel={accessibilityLabel}
-    onPress={() => listeners?.tabPress?.()}>{children}</Pressable>, {
+  const Trigger = Object.assign(({ name, hidden, accessibilityLabel, listeners, children, disableAutomaticContentInsets }: {
+    name: string; hidden?: boolean; accessibilityLabel?: string; listeners?: { tabPress?: () => void }; children?: React.ReactNode; disableAutomaticContentInsets?: boolean;
+  }) => {
+    mockTabInsets(name, disableAutomaticContentInsets);
+    return hidden ? null : <Pressable testID={`native-tab-${name}`} accessibilityRole="button" accessibilityLabel={accessibilityLabel}
+      onPress={() => listeners?.tabPress?.()}>{children}</Pressable>;
+  }, {
     Icon: () => null,
     Label: ({ children, hidden }: { children?: React.ReactNode; hidden?: boolean }) => hidden ? null : <Text>{children}</Text>,
   });
@@ -70,6 +74,15 @@ function setup(nativeTabs = false) {
   return { ...render(screen()), screen, controller, getStore: () => store! };
 }
 describe('global session return dock', () => {
+  it.each(['ios', 'android'] as const)('respects manual Progress insets without changing the other native tabs (%s)', async platform => {
+    jest.replaceProperty(Platform, 'OS', platform);
+    mockTabInsets.mockClear();
+    const view = setup(true);
+    await act(async () => { await view.getStore().refresh(); });
+    expect(mockTabInsets).toHaveBeenCalledWith('progress', platform === 'ios');
+    for (const tab of ['home', 'train', 'nutrition']) expect(mockTabInsets).toHaveBeenCalledWith(tab, undefined);
+    view.controller.dispose();
+  });
   afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); AppState.currentState = initialAppState; mockValues.clear(); mockPath = '/home'; mockOwner = 'owner'; mockNavigate.mockClear(); mockRedirect.mockClear(); mockTrigger.mockClear(); mockRead.mockImplementation(mockReadActive); });
   it.each([false, true])('preserves the native Keyboard receiver when initial visibility is %s', async (visible) => {
     jest.spyOn(Keyboard, 'isVisible').mockImplementation(function (this: typeof Keyboard) {
