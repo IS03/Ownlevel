@@ -19,7 +19,6 @@ import {
   EditorialScreen,
   formatNumber,
 } from "@/settings/editorial";
-import { NutritionGlassButton } from "@/nutrition/day-controls";
 import { previousDate, shortDate } from "@/settings/settings-model";
 import { SettingsSegmented } from "@/settings/native-segmented";
 import {
@@ -55,6 +54,7 @@ export function StageSequenceScreen() {
   // Name and type share a row; with large text (or the Android chips) the type goes under the name.
   const { fontScale } = useWindowDimensions();
   const stackHeader = Platform.OS !== "ios" || fontScale > 1.3;
+  const reduced = useReduceMotion();
   const { colors } = useOwnlevelTheme();
   const state = shared?.state,
     controller = shared?.controller,
@@ -241,10 +241,15 @@ export function StageSequenceScreen() {
                             : "Elegí una fecha de inicio válida"}
                         </AppText>
                       </StageRow>
-                      <NutritionGlassButton
-                        icon="trash"
-                        label={`Quitar etapa ${i + 1}`}
-                        onPress={locked ? undefined : () =>
+                      {/* Destructive action: just the trash, in the system's destructive color (no glass). */}
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Quitar etapa ${i + 1}`}
+                        accessibilityState={{ disabled: locked }}
+                        disabled={locked}
+                        hitSlop={brandTokens.space.sm}
+                        style={({ pressed }) => [styles.trash, pressedStyle(pressed, reduced), locked && { opacity: 0.5 }]}
+                        onPress={() =>
                           Alert.alert(
                             "¿Quitar esta etapa?",
                             `Sale «${item.stage.name || kindLabel(item.stage.kind)}» de la secuencia que estás armando. Las fechas de las demás se reacomodan.`,
@@ -262,7 +267,9 @@ export function StageSequenceScreen() {
                             ],
                           )
                         }
-                      />
+                      >
+                        <AppIcon name="trash" size={20} color={colors.danger} />
+                      </Pressable>
                     </View>
                     <DurationControl
                       duration={item.duration}
@@ -414,5 +421,7 @@ const styles = StyleSheet.create({
   name: { flex: 1, minWidth: 0 },
   kind: { flexShrink: 0, maxWidth: "55%" },
   dates: { flexDirection: "row", alignItems: "center", gap: brandTokens.space.md },
-  targets: { flexDirection: "row", alignItems: "center", gap: brandTokens.space.md, minHeight: brandTokens.layout.minTouch },
+  targets: { flexDirection: "row", alignItems: "center", gap: brandTokens.space.md, minHeight: brandTokens.layout.minTouch,
+    marginTop: brandTokens.space.sm },
+  trash: { minWidth: brandTokens.layout.minTouch, minHeight: brandTokens.layout.minTouch, alignItems: "center", justifyContent: "center" },
 });

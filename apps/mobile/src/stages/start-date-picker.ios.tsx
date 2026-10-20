@@ -5,7 +5,7 @@ import {
   labelsHidden,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
-import { useOwnlevelTheme } from "@/design-system";
+import { brandTokens, useOwnlevelTheme } from "@/design-system";
 import type { StartDateProps } from "./start-date-picker";
 export function StartDatePicker({ value, minimum, onChange }: StartDateProps) {
   const { colors, isDark } = useOwnlevelTheme();
@@ -13,9 +13,10 @@ export function StartDatePicker({ value, minimum, onChange }: StartDateProps) {
     <Host
       colorScheme={isDark ? "dark" : "light"}
       ignoreSafeArea="all"
-      // The wheel's own height: a fixed box left an empty band under it. The row above already says "Inicio".
+      // The wheel's own height; the row above already says "Inicio". The native wheel adds transparent room around
+      // its rows (more below than above), on top of the screen's block gap: pull it in so the gaps look even.
       matchContents={{ vertical: true }}
-      style={{ width: "100%" }}
+      style={{ width: "100%", marginTop: -brandTokens.space.md, marginBottom: -brandTokens.space.xxxl }}
     >
       <DatePicker
         title="Inicio"
