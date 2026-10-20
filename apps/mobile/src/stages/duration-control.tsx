@@ -4,6 +4,7 @@ import { NutritionGlassButton } from "@/nutrition/day-controls";
 import { CountingNumber } from "@/settings/editorial";
 import { SettingsSegmented } from "@/settings/native-segmented";
 import type { StageDuration } from "@/api/nutrition-stages";
+import { triggerHaptic } from "@/platform/haptics";
 export function DurationControl({
   duration,
   onChange,
@@ -14,6 +15,7 @@ export function DurationControl({
   disabled?: boolean;
 }) {
   const maximum = duration.unit === "weeks" ? 104 : 24;
+  const step = (value: number) => { triggerHaptic("stepperChange"); onChange({ ...duration, value }); };
   return (
     <View style={{ gap: 8 }}>
       {/* Its own row: minus, the amount with its unit (centered, width never pushes the buttons), plus. */}
@@ -24,7 +26,7 @@ export function DurationControl({
           onPress={
             disabled || duration.value <= 1
               ? undefined
-              : () => onChange({ ...duration, value: duration.value - 1 })
+              : () => step(duration.value - 1)
           }
         />
         <AppText numeric variant="headline" style={{ flex: 1, textAlign: "center" }}>
@@ -43,7 +45,7 @@ export function DurationControl({
           onPress={
             disabled || duration.value >= maximum
               ? undefined
-              : () => onChange({ ...duration, value: duration.value + 1 })
+              : () => step(duration.value + 1)
           }
         />
       </View>

@@ -47,6 +47,8 @@ jest.mock("@/settings/native-segmented", () =>
   jest.requireActual("@/settings/native-segmented.tsx"),
 );
 jest.mock("expo-symbols", () => ({ SymbolView: () => null }));
+const mockHaptic = jest.fn();
+jest.mock("@/platform/haptics", () => ({ triggerHaptic: (event: string) => mockHaptic(event) }));
 jest.mock("react-native-gesture-handler/ReanimatedSwipeable", () => {
   const { View } =
     jest.requireActual<typeof import("react-native")>("react-native");
@@ -126,6 +128,7 @@ beforeEach(async () => {
 describe("Plan week, summary and extras stay in place", () => {
   it("both presentations stay mounted; only the visible one is touchable and read; the notice lives in the summary", async () => {
     mockController.replace(list.current!, "current");
+    mockController.changeStage(applyDays(mockController.stage()!, [6, 7], "2200", "120"));
     const view = render(element(<StagePlanScreen />));
     const week = () => view.getByTestId("stage-week", { includeHiddenElements: true });
     const summary = () => view.getByTestId("stage-week-summary", { includeHiddenElements: true });
@@ -140,6 +143,16 @@ describe("Plan week, summary and extras stay in place", () => {
     expect(view.getByText(/^Tomamos el valor más repetido: [\d.]+ kcal/).props.children).not.toMatch(/\d{4} kcal/);
     expect(view.getAllByTestId(/^stage-day-bar-/, { includeHiddenElements: true }).length).toBeGreaterThan(0);
     await act(async () => fireEvent(view.getByLabelText("Igual todos los días"), "valueChange", false));
+    expect(view.queryByText(/^Tomamos el valor más repetido/)).toBeNull();
+    expect(api.write).not.toHaveBeenCalled();
+  });
+  it("a suggested week that is already uniform keeps its suggested note: the first toggle moves nothing", async () => {
+    mockController.replace();
+    const view = render(element(<StagePlanScreen />));
+    expect(view.getByText(/^Calorías sugeridas/)).toBeTruthy();
+    await act(async () => fireEvent(view.getByLabelText("Igual todos los días"), "valueChange", true));
+    expect(view.getByText(/^Calorías sugeridas/)).toBeTruthy();
+    expect(mockController.stage()?.suggested).toBe(true);
     expect(view.queryByText(/^Tomamos el valor más repetido/)).toBeNull();
     expect(api.write).not.toHaveBeenCalled();
   });
@@ -368,6 +381,27 @@ describe("Editorial stages and day editor", () => {
       expect(stage.props.layout).toBeUndefined();
     }
     expect(view.getAllByTestId("duration-stepper").length).toBe(view.getAllByTestId(/^sequence-stage-\d+$/).length);
+    expect(api.write).not.toHaveBeenCalled();
+  });
+  it("ET4 controls: Inicio opens in place without a separate today button, steps vibrate, Quitar asks first", () => {
+    mockController.sequence(0);
+    const view = render(element(<StageSequenceScreen />));
+    const start = () => view.getByLabelText("Inicio");
+    expect(start().props.accessibilityState).toMatchObject({ expanded: false });
+    fireEvent.press(start());
+    expect(start().props.accessibilityState).toMatchObject({ expanded: true });
+    expect(view.queryByText("Empezar hoy", { exact: true })).toBeTruthy(); // the row value, not a button
+    expect(view.queryByLabelText("Empezar hoy")).toBeNull();
+    mockHaptic.mockClear();
+    fireEvent.press(view.getAllByLabelText("Alargar etapa")[0]);
+    expect(mockHaptic).toHaveBeenCalledWith("stepperChange");
+    const count = view.getAllByTestId(/^sequence-stage-\d+$/).length;
+    const alert = jest.spyOn(Alert, "alert");
+    fireEvent.press(view.getByLabelText("Quitar etapa 1"));
+    expect(alert).toHaveBeenCalledWith("¿Quitar esta etapa?", expect.any(String), expect.any(Array));
+    expect(view.getAllByTestId(/^sequence-stage-\d+$/).length).toBe(count);
+    act(() => alert.mock.calls.at(-1)?.[2]?.find((b) => b.text === "Quitar")?.onPress?.());
+    expect(view.queryAllByTestId(/^sequence-stage-\d+$/).length).toBe(count - 1);
     expect(api.write).not.toHaveBeenCalled();
   });
   it("ET4 detects existing schedule before POST, exposes cutting as a separate explicit action", () => {
