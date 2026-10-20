@@ -1,5 +1,5 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 
 import { useOwnlevelTheme } from '@/design-system';
 import { haptics } from '@/platform/haptics';
@@ -48,7 +48,9 @@ export default function TabsLayout() {
           sf={{ default: 'fork.knife', selected: 'fork.knife' }}
         />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="progress">
+      {/* ProgressScroll sets its own header/insets. Do not have tabs override `never` with `automatic`.
+          Other Progreso screens still explicitly request automatic insets; Android keeps its native wrapper. */}
+      <NativeTabs.Trigger name="progress" disableAutomaticContentInsets={Platform.OS === 'ios'}>
         <NativeTabs.Trigger.Label>Progreso</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           md={{ default: 'show_chart', selected: 'show_chart' }}

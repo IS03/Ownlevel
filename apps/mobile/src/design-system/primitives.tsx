@@ -1,6 +1,7 @@
 import { useContext, useState, type PropsWithChildren, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   type ScrollViewProps,
   StyleSheet,
@@ -107,6 +108,7 @@ type ScrollScreenProps = PropsWithChildren<
   Omit<ScrollViewProps, 'children'> & {
     /** Background glow; off for focused flows (the active training session). */
     glow?: boolean;
+    /** On iOS the bottom protection belongs to the scroll inset, not a fixed strip outside the viewport. */
     safeAreaEdges?: Edge[];
     /**
      * For screens without a navigation header whose content scrolls under the status bar: once content passes
@@ -143,12 +145,17 @@ export function ScrollScreen({
   ...scrollViewProps
 }: ScrollScreenProps) {
   const { colors } = useOwnlevelTheme();
-  const top = useContext(SafeAreaInsetsContext)?.top ?? 0; // Optional: screens rendered without a provider just skip the bar.
+  const insets = useContext(SafeAreaInsetsContext);
+  const top = insets?.top ?? 0; // Optional: screens rendered without a provider just skip the bar.
+  const scrollsUnderBottom = Platform.OS === 'ios' && safeAreaEdges.includes('bottom');
+  // UIKit owns automatic insets. A manual header opts out, so use the measured safe area
+  // (including a native tab/accessory when present) once, inside the scrollable viewport.
+  const manualBottom = scrollsUnderBottom && topInset === 'manual' ? insets?.bottom ?? 0 : 0;
   const [scrolled, setScrolled] = useState(false);
 
   return (
     <SafeAreaView
-      edges={safeAreaEdges}
+      edges={scrollsUnderBottom ? safeAreaEdges.filter(edge => edge !== 'bottom') : safeAreaEdges}
       style={[styles.screen, { backgroundColor: colors.background }]}
       testID={testID}
     >
@@ -164,6 +171,8 @@ export function ScrollScreen({
         scrollEventThrottle={scrollEdge ? 16 : scrollViewProps.scrollEventThrottle}
         contentContainerStyle={[styles.scrollContent, contentContainerStyle]}
         contentInsetAdjustmentBehavior={topInset === 'manual' ? 'never' : 'automatic'}
+        contentInset={manualBottom ? { ...scrollViewProps.contentInset, bottom: (scrollViewProps.contentInset?.bottom ?? 0) + manualBottom } : scrollViewProps.contentInset}
+        scrollIndicatorInsets={manualBottom ? { ...scrollViewProps.scrollIndicatorInsets, bottom: (scrollViewProps.scrollIndicatorInsets?.bottom ?? 0) + manualBottom } : scrollViewProps.scrollIndicatorInsets}
         keyboardShouldPersistTaps="handled"
       >
         {children}

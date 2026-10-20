@@ -1,6 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import * as RN from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider, TextField } from '@/design-system';
 import { EditorialRow, EditorialScreen, EditorialSpread, useEditorialLayout } from './editorial';
 
@@ -28,6 +29,14 @@ describe('Editorial QA', () => {
   it('lets the screen follow and dismiss the keyboard, with its own safe area', () => {
     const view = wrap(<EditorialScreen><RN.Text>Cuenta</RN.Text></EditorialScreen>);
     expect(view.UNSAFE_getByType(RN.ScrollView).props).toMatchObject({ automaticallyAdjustKeyboardInsets: true, keyboardDismissMode: 'interactive', contentInsetAdjustmentBehavior: 'automatic' });
+    expect(view.UNSAFE_getByType(SafeAreaView).props.edges).toEqual(['left', 'right']);
+    expect(RN.StyleSheet.flatten(view.UNSAFE_getByType(RN.ScrollView).props.contentContainerStyle).paddingBottom).toBe(40);
+  });
+  it('keeps Android safe area outside the scroll without changing keyboard behavior', () => {
+    jest.replaceProperty(RN.Platform, 'OS', 'android');
+    const view = wrap(<EditorialScreen><RN.Text>Cuenta</RN.Text></EditorialScreen>);
+    expect(view.UNSAFE_getByType(SafeAreaView).props.edges).toEqual(['left', 'right', 'bottom']);
+    expect(view.UNSAFE_getByType(RN.ScrollView).props.automaticallyAdjustKeyboardInsets).toBe(true);
   });
   it('can stop background keyboard adjustment while its own modal is visible', () => {
     const view = wrap(<EditorialScreen adjustKeyboardInsets={false} scrollEnabled={false}><RN.Text>Plan</RN.Text></EditorialScreen>);

@@ -1,5 +1,5 @@
 import { useEffect, type PropsWithChildren, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions, type ViewStyle } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeInDown, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import {
@@ -50,7 +50,8 @@ export function EditorialScreen({ children,scrollEnabled=true,adjustKeyboardInse
   const { isDark, colors } = useOwnlevelTheme();
   return (
     <SafeAreaView
-      edges={['left', 'right', 'bottom']}
+      // UIKit protects the final row with its scroll inset; the viewport reaches the home indicator.
+      edges={Platform.OS === 'ios' ? ['left', 'right'] : ['left', 'right', 'bottom']}
       style={{ flex: 1, backgroundColor: colors.background }}
     >
       <View
