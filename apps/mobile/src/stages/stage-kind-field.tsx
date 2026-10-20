@@ -5,19 +5,16 @@ import { KindPicker } from './kind-picker';
 import type { KindPickerProps } from './kind-picker.types';
 import { kindLabel } from './stages-model';
 
-const requiredHint = 'Elegí qué tipo de plan es para guardarlo.';
 // Below this content width, long type labels need a separate line.
 const minimumInlineWidth = 320;
 
-export function StageKindField({ readOnly = false, reserveHint = false, ...props }: KindPickerProps & {
+export function StageKindField({ readOnly = false, ...props }: KindPickerProps & {
   readOnly?: boolean;
-  reserveHint?: boolean;
 }) {
   const { colors } = useOwnlevelTheme();
   const { fontScale } = useWindowDimensions();
   const [width, setWidth] = useState(0);
   const stacked = Platform.OS !== 'ios' || fontScale > 1.3 || (width > 0 && width < minimumInlineWidth);
-  const needsChoice = !props.value;
   return (
     <View style={styles.field} testID="stage-kind-field" onLayout={event => setWidth(event.nativeEvent.layout.width)}>
       <View testID="stage-kind-row" style={[styles.row, stacked && styles.stacked]}>
@@ -33,12 +30,6 @@ export function StageKindField({ readOnly = false, reserveHint = false, ...props
           ) : <KindPicker {...props} />}
         </View>
       </View>
-      {reserveHint ? (
-        <View pointerEvents="none" accessibilityElementsHidden={!needsChoice} importantForAccessibility={needsChoice ? 'auto' : 'no-hide-descendants'}
-          testID="stage-kind-hint" style={{ opacity: needsChoice ? 1 : 0 }}>
-          <AppText muted variant="footnote" accessibilityLiveRegion={needsChoice ? 'polite' : 'none'}>{requiredHint}</AppText>
-        </View>
-      ) : null}
     </View>
   );
 }

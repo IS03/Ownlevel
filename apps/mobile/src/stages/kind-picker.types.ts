@@ -5,4 +5,6 @@ export type KindPickerProps = {
   suggested: StageKind | null;
   disabled?: boolean;
   onChange: (kind: StageKind) => void;
+  /** Shown while no type is chosen (iOS menu). Default: "Elegí un tipo". */
+  placeholder?: string;
 };

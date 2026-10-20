@@ -138,13 +138,14 @@ function StagePlanBody({
     <View style={{ flex: 1 }}>
       <EditorialScreen adjustKeyboardInsets={!daySheetOpen}>
         <Heading>{future ? future.name : "Plan nutricional"}</Heading>
-        <AppText muted>
-          {localOnly
-            ? "Ajustá los objetivos de este tramo. La secuencia se guarda toda junta."
-            : future
-              ? "Esta etapa todavía no empezó. Lo vivido no cambia."
-              : "Rige desde hoy. Los días anteriores conservan el plan que tenían."}
-        </AppText>
+        {/* "Rige desde hoy…" and the type/suggestion hints move to the one-time onboarding (bocetos/PENDIENTES.md). */}
+        {localOnly || future ? (
+          <AppText muted>
+            {localOnly
+              ? "Ajustá los objetivos de este tramo. La secuencia se guarda toda junta."
+              : "Esta etapa todavía no empezó. Lo vivido no cambia."}
+          </AppText>
+        ) : null}
         {state ? <RefreshingStages state={state} /> : null}
         {!stage || !list ? (
           state?.notice || (list && state?.phase !== "loading") ? (
@@ -163,7 +164,6 @@ function StagePlanBody({
         ) : (
           <>
             <StageKindField
-              reserveHint
               readOnly={!!((draft?.mode === "replace" &&
                 draft.origin === "current" &&
                 stage.kind &&
@@ -185,11 +185,6 @@ function StagePlanBody({
                 onChangeText={(v) => change("name", v)}
               />
             )}
-            {stage.suggested ? (
-              <AppText muted variant="footnote">
-                Calorías sugeridas. Podés ajustarlas antes de guardar.
-              </AppText>
-            ) : null}
             {!list.suggestions ? (
               <View style={{ gap: 8 }}>
                 <AppText muted variant="footnote">

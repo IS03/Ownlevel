@@ -149,9 +149,12 @@ describe("Plan week, summary and extras stay in place", () => {
   it("a suggested week that is already uniform keeps its suggested note: the first toggle moves nothing", async () => {
     mockController.replace();
     const view = render(element(<StagePlanScreen />));
-    expect(view.getByText(/^Calorías sugeridas/)).toBeTruthy();
+    // The intro and hints live in onboarding now: nothing above the week can appear or vanish.
+    expect(view.queryByText(/^Calorías sugeridas/)).toBeNull();
+    expect(view.queryByText(/^Rige desde hoy/)).toBeNull();
+    expect(view.queryByText(/^Elegí qué tipo de plan/)).toBeNull();
+    expect(view.getByText(/^kcal arriba · proteína abajo · sugerido$/)).toBeTruthy();
     await act(async () => fireEvent(view.getByLabelText("Igual todos los días"), "valueChange", true));
-    expect(view.getByText(/^Calorías sugeridas/)).toBeTruthy();
     expect(mockController.stage()?.suggested).toBe(true);
     expect(view.queryByText(/^Tomamos el valor más repetido/)).toBeNull();
     expect(api.write).not.toHaveBeenCalled();
@@ -180,9 +183,7 @@ describe("Editorial stages and day editor", () => {
   it("untyped current plan requires a tap, keeps name/targets and never sends the hint on its own", async () => {
     mockController.replace(list.current!, "current");
     const view = render(element(<StagePlanScreen />));
-    expect(
-      view.getByText("Elegí qué tipo de plan es para guardarlo."),
-    ).toBeTruthy();
+    expect(view.queryByText("Elegí qué tipo de plan es para guardarlo.")).toBeNull();
     expect(
       view.getByLabelText("Déficit · sugerido").props.accessibilityState
         ?.checked ?? false,
@@ -407,6 +408,10 @@ describe("Editorial stages and day editor", () => {
     expect(view.getAllByTestId(/^sequence-stage-\d+$/).length).toBe(count);
     act(() => alert.mock.calls.at(-1)?.[2]?.find((b) => b.text === "Quitar")?.onPress?.());
     expect(view.queryAllByTestId(/^sequence-stage-\d+$/).length).toBe(count - 1);
+    // Targets are one row per stage that opens the plan editor; no trailing "complete everything" text.
+    fireEvent.press(view.getAllByLabelText(/^Objetivos de /)[0]);
+    expect(mockPush).toHaveBeenCalledWith("/settings/stage-plan");
+    expect(view.queryByText(/^Completá el nombre, el tipo/)).toBeNull();
     expect(api.write).not.toHaveBeenCalled();
   });
   it("ET4 detects existing schedule before POST, exposes cutting as a separate explicit action", () => {

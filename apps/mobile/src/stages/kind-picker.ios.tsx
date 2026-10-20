@@ -21,11 +21,12 @@ export function KindPicker({
   disabled = false,
   onChange,
   suggested,
+  placeholder = 'Elegí un tipo',
 }: KindPickerProps) {
   const { colors, isDark } = useOwnlevelTheme();
   const { fontScale } = useWindowDimensions();
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const label = value ? kindLabel(value) : 'Elegí un tipo';
+  const label = value ? kindLabel(value) : placeholder;
   const measured = size.width > 0 && size.height > 0;
   return (
     <View
