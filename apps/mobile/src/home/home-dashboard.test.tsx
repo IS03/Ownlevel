@@ -178,7 +178,7 @@ describe('Today\'s training: states by priority, no gradients', () => {
     const view = renderHome();
     expect(view.queryByText(/Hoy te toca|Día libre/i)).toBeNull();
     const button = view.getByRole('button', { name: 'Arrancar rutina' });
-    expect(StyleSheet.flatten(button.props.style)).toMatchObject({ backgroundColor: '#705F36', minHeight: 50, borderRadius: 999 });
+    expect(StyleSheet.flatten(view.getByTestId('home-start-routine-glass').props.style)).toMatchObject({ minHeight: 50, borderRadius: 999 });
     fireEvent.press(button);
     expect(view.onStartWorkout).toHaveBeenCalledTimes(1);
     expect(view.onNavigate).not.toHaveBeenCalled();
