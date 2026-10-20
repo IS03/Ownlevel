@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, View } from 'react-native';
+import { Alert, Pressable, TextInput, View } from 'react-native';
 import { useNavigation, useRouter, useIsFocused, useFocusEffect } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
-import { AppText, Button, ChipGroup, Heading, TextField, useOwnlevelTheme } from '@/design-system';
+import { AppText, Button, ChipGroup, Heading, TextField, brandTokens, useOwnlevelTheme } from '@/design-system';
 import { useNutritionConfiguration } from '@/nutrition/config-provider';
 import { configurationDraft } from '@/nutrition/config-model';
 import type { ConfigState, ConfigurationController } from '@/nutrition/config-controller';
@@ -44,7 +44,11 @@ export function ConfigurationStatus({
         </AppText>
         {state.operation === 'energy' && energy ? (
           <AppText numeric>
-            Ahora: {activities.find((a) => a.value === energy.activityLevel)?.label} ·{' '}
+            Ahora:{' '}
+            {energy.baseExpenditureMode === 'custom'
+              ? 'Manual'
+              : activities.find((a) => a.value === energy.activityLevel)?.label}{' '}
+            ·{' '}
             {energy.usedBaseKcal === null
               ? 'gasto sin dato'
               : `${formatNumber(energy.usedBaseKcal)} kcal por día`}{' '}
@@ -249,14 +253,19 @@ export function ConfigurationScreen({ operation }: { operation: Operation }) {
               value={draft.baseExpenditureMode}
               options={[
                 { value: 'automatic', label: 'Automática' },
-                { value: 'custom', label: 'La pongo yo' },
+                { value: 'custom', label: 'Manual' },
               ]}
               onChange={(v) => change('baseExpenditureMode', v)}
             />
             <View style={{ gap: 12 }}>
               <AppText muted>Gastás por día</AppText>
               {draft.baseExpenditureMode === 'custom' ? (
-                field('customBaseExpenditureKcal', 'Tu gasto por día (kcal)')
+                <ManualExpenditure
+                  value={draft.customBaseExpenditureKcal ?? ''}
+                  error={state?.errors.customBaseExpenditureKcal}
+                  disabled={locked}
+                  onChange={(v) => change('customBaseExpenditureKcal', v)}
+                />
               ) : value !== null ? (
                 <Heading numeric>
                   <CountingNumber variant="largeTitle" value={value} /> kcal
@@ -296,6 +305,9 @@ export function ConfigurationScreen({ operation }: { operation: Operation }) {
                 </EditorialRow>
               </View>
             ) : null}
+            {/* Your day to day only feeds the automatic estimate; a manual number already includes it. */}
+            {draft.baseExpenditureMode === 'automatic' ? (
+            <>
             <AppText muted variant="caption">
               TU DÍA A DÍA
             </AppText>
@@ -333,6 +345,8 @@ export function ConfigurationScreen({ operation }: { operation: Operation }) {
                 </Pressable>
               ))}
             </View>
+            </>
+            ) : null}
             <EditorialRow
               title="Si entrenás, gastás"
               onPress={() => openControl('training')}
@@ -432,6 +446,34 @@ export function ConfigurationScreen({ operation }: { operation: Operation }) {
         ) : null}
       </EditorialScreen>
       {notice ? <NutritionToast message="Cambios guardados." state="done" /> : null}
+    </View>
+  );
+}
+/** Manual daily expenditure: the number itself is the field (same size as the automatic one), no boxed input. */
+function ManualExpenditure({ value, error, disabled, onChange }: {
+  value: string; error?: string; disabled: boolean; onChange: (value: string) => void;
+}) {
+  const { colors } = useOwnlevelTheme();
+  return (
+    <View style={{ gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+        <TextInput
+          accessibilityLabel="Tu gasto por día (kcal)"
+          value={value}
+          editable={!disabled}
+          keyboardType="number-pad"
+          placeholder="0"
+          placeholderTextColor={colors.textMuted}
+          onChangeText={onChange}
+          style={{ ...brandTokens.typeScale.largeTitle, fontVariant: ['tabular-nums'], color: colors.text, padding: 0, minWidth: 48 }}
+        />
+        <AppText variant="title2" muted>kcal</AppText>
+      </View>
+      {error ? (
+        <AppText accessibilityRole="alert" variant="footnote" style={{ color: colors.danger }}>{error}</AppText>
+      ) : (
+        <AppText muted variant="footnote">Lo cargás vos: no usa tus datos físicos ni tu día a día.</AppText>
+      )}
     </View>
   );
 }

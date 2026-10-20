@@ -428,6 +428,16 @@ describe('Routed configuration shares the durable controller', () => {
       fields: { activityLevel: 'high' },
     });
   });
+  it('Manual: the number is the field and the day-to-day choice is not offered (it only feeds the automatic estimate)', async () => {
+    if (config.energy.status === 'ok') config.energy.data = { ...config.energy.data, baseExpenditureMode: 'custom', customBaseExpenditureKcal: 2300, usedBaseKcal: 2300 };
+    const view = render(element(<ConfigurationScreen operation="energy" />));
+    expect((await view.findByLabelText('Tu gasto por día (kcal)')).props.value).toBe('2300');
+    expect(view.getByText('Manual')).toBeTruthy();
+    expect(view.queryByText('La pongo yo')).toBeNull();
+    expect(view.queryByText('TU DÍA A DÍA')).toBeNull();
+    expect(view.queryByLabelText('Poco movimiento')).toBeNull();
+    expect(view.getByText(/^Lo cargás vos/)).toBeTruthy();
+  });
   it('an ambiguous save is never retried automatically; recovery reuses the durable key', async () => {
     mockRequest.mockResolvedValueOnce(unavailable as never);
     const view = render(element(<ConfigurationScreen operation="energy" />));
