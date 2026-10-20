@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useNavigation, useRouter, useIsFocused, useFocusEffect } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { AppText, Button, ChipGroup, Heading, TextField, brandTokens, useOwnlevelTheme } from '@/design-system';
@@ -8,6 +8,7 @@ import { configurationDraft } from '@/nutrition/config-model';
 import type { ConfigState, ConfigurationController } from '@/nutrition/config-controller';
 import { SaveButton } from '@/nutrition/save-button';
 import { NutritionToast } from '@/nutrition/nutrition-toast';
+import { useTweenedNumber } from '@/nutrition/use-tweened-number';
 import { SettingsSegmented } from './native-segmented';
 import { BirthPicker, HeightWheel } from './physical-controls';
 import {
@@ -267,9 +268,10 @@ export function ConfigurationScreen({ operation }: { operation: Operation }) {
                   onChange={(v) => change('customBaseExpenditureKcal', v)}
                 />
               ) : value !== null ? (
-                <Heading numeric>
-                  <CountingNumber variant="largeTitle" value={value} /> kcal
-                </Heading>
+                <View style={expenditureStyles.row}>
+                  <AnimatedKcal value={value} />
+                  <AppText variant="title2" muted>kcal</AppText>
+                </View>
               ) : (
                 <>
                   <AppText>Para calcularlo necesitamos tu altura, peso y nacimiento.</AppText>
@@ -449,15 +451,36 @@ export function ConfigurationScreen({ operation }: { operation: Operation }) {
     </View>
   );
 }
-/** Manual daily expenditure: the number itself is the field (same size as the automatic one), no boxed input. */
+/** Manual and automatic daily expenditure share one look: a large plain number with a muted "kcal". */
+const expenditureStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'baseline', gap: 8, minHeight: brandTokens.layout.minTouch },
+});
+function AnimatedKcal({ value }: { value: number }) {
+  const { colors } = useOwnlevelTheme();
+  const shown = useTweenedNumber(value, 300);
+  return (
+    <AppText numeric variant="largeTitle" style={{ color: colors.text }}>
+      {shown === null ? '' : formatNumber(shown)}
+    </AppText>
+  );
+}
+/** Manual daily expenditure: the whole row (number, kcal and the space to its right) focuses the number. */
 function ManualExpenditure({ value, error, disabled, onChange }: {
   value: string; error?: string; disabled: boolean; onChange: (value: string) => void;
 }) {
   const { colors } = useOwnlevelTheme();
+  const input = useRef<TextInput>(null);
   return (
     <View style={{ gap: 8 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+      <Pressable
+        accessible={false}
+        disabled={disabled}
+        onPress={() => input.current?.focus()}
+        style={expenditureStyles.row}
+        testID="manual-expenditure-row"
+      >
         <TextInput
+          ref={input}
           accessibilityLabel="Tu gasto por día (kcal)"
           value={value}
           editable={!disabled}
@@ -467,13 +490,11 @@ function ManualExpenditure({ value, error, disabled, onChange }: {
           onChangeText={onChange}
           style={{ ...brandTokens.typeScale.largeTitle, fontVariant: ['tabular-nums'], color: colors.text, padding: 0, minWidth: 48 }}
         />
-        <AppText variant="title2" muted>kcal</AppText>
-      </View>
+        <AppText variant="title2" muted style={{ flex: 1 }}>kcal</AppText>
+      </Pressable>
       {error ? (
         <AppText accessibilityRole="alert" variant="footnote" style={{ color: colors.danger }}>{error}</AppText>
-      ) : (
-        <AppText muted variant="footnote">Lo cargás vos: no usa tus datos físicos ni tu día a día.</AppText>
-      )}
+      ) : null}
     </View>
   );
 }

@@ -436,7 +436,8 @@ describe('Routed configuration shares the durable controller', () => {
     expect(view.queryByText('La pongo yo')).toBeNull();
     expect(view.queryByText('TU DÍA A DÍA')).toBeNull();
     expect(view.queryByLabelText('Poco movimiento')).toBeNull();
-    expect(view.getByText(/^Lo cargás vos/)).toBeTruthy();
+    expect(view.queryByText(/^Lo cargás vos/)).toBeNull();
+    expect(view.getByTestId('manual-expenditure-row')).toBeTruthy(); // the whole row focuses the number
   });
   it('an ambiguous save is never retried automatically; recovery reuses the durable key', async () => {
     mockRequest.mockResolvedValueOnce(unavailable as never);

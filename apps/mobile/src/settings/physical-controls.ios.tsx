@@ -5,6 +5,7 @@ import {
   font,
   foregroundStyle,
   frame,
+  labelsHidden,
   monospacedDigit,
   pickerStyle,
   tag,
@@ -12,12 +13,18 @@ import {
 } from '@expo/ui/swift-ui/modifiers';
 import { useOwnlevelTheme } from '@/design-system';
 import type { BirthPickerProps, HeightWheelProps } from './physical-controls';
+/**
+ * Inside the scrolling settings list a SwiftUI host would apply the bars' safe area and draw the wheel away from
+ * its slot (it jumps while it opens): ignoreSafeArea. The row above names the value, so the wheel hides its label.
+ * These rows sit flush (no block gap), so the wheel's own transparent room is the spacing around it.
+ */
+const wheelHost = { ignoreSafeArea: 'all' as const, matchContents: { vertical: true }, style: { width: '100%' as const } };
 export function BirthPicker({ value, today, onChange }: BirthPickerProps) {
   const { colors, isDark } = useOwnlevelTheme();
   // Native pickers use the device zone, but birth dates are plain calendar dates.
   const date = value ? new Date(`${value}T12:00:00`) : undefined;
   return (
-    <Host colorScheme={isDark ? 'dark' : 'light'} style={{ width: '100%', height: 200 }}>
+    <Host colorScheme={isDark ? 'dark' : 'light'} {...wheelHost}>
       <DatePicker
         title="Nacimiento"
         selection={date}
@@ -25,6 +32,7 @@ export function BirthPicker({ value, today, onChange }: BirthPickerProps) {
         displayedComponents={['date']}
         modifiers={[
           datePickerStyle('wheel'),
+          labelsHidden(),
           tint(colors.primary),
           accessibilityLabel('Nacimiento'),
         ]}
@@ -40,17 +48,14 @@ export function BirthPicker({ value, today, onChange }: BirthPickerProps) {
 export function HeightWheel({ value, onChange }: HeightWheelProps) {
   const { colors, isDark } = useOwnlevelTheme();
   return (
-    <Host
-      colorScheme={isDark ? 'dark' : 'light'}
-      matchContents={{ vertical: true }}
-      style={{ width: '100%' }}
-    >
+    <Host colorScheme={isDark ? 'dark' : 'light'} {...wheelHost}>
       <Picker
         label="Altura"
         selection={value ? Number(value) : 0}
         onSelectionChange={(n: number) => onChange(n === 0 ? '' : String(n))}
         modifiers={[
           pickerStyle('wheel'),
+          labelsHidden(),
           frame({ maxWidth: Infinity }),
           accessibilityLabel('Altura'),
         ]}
