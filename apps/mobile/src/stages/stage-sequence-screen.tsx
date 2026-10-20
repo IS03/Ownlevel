@@ -15,7 +15,6 @@ import {
   EditorialRow,
   EditorialScreen,
   EditorialSpread,
-  useEditorialLayout,
 } from "@/settings/editorial";
 import { previousDate, shortDate } from "@/settings/settings-model";
 import { SettingsSegmented } from "@/settings/native-segmented";
@@ -50,7 +49,6 @@ export function StageSequenceScreen() {
   const shared = useStagesRoute();
   useStagesLeaveGuard(shared);
   const router = useRouter();
-  const { largeInputStyle } = useEditorialLayout();
   const { colors } = useOwnlevelTheme();
   const state = shared?.state,
     controller = shared?.controller,
@@ -125,11 +123,12 @@ export function StageSequenceScreen() {
               maxLength={80}
               disabled={locked}
               onChangeText={(name) => setSequence({ ...sequence, name })}
-              inputStyle={largeInputStyle}
             />
             <EditorialRow
               title="Inicio"
               disabled={locked}
+              expanded={dateOpen}
+              arrow="right"
               onPress={() => setDateOpen(!dateOpen)}
             >
               {sequence.startDate === list.today
@@ -139,23 +138,13 @@ export function StageSequenceScreen() {
                   : "Elegí una fecha válida"}
             </EditorialRow>
             {dateOpen ? (
-              <>
-                <Button
-                  label="Empezar hoy"
-                  variant="quiet"
-                  disabled={locked}
-                  onPress={() =>
-                    setSequence({ ...sequence, startDate: list.today })
-                  }
-                />
-                <StartDatePicker
-                  value={sequence.startDate}
-                  minimum={list.today}
-                  onChange={(startDate) =>
-                    setSequence({ ...sequence, startDate })
-                  }
-                />
-              </>
+              <StartDatePicker
+                value={sequence.startDate}
+                minimum={list.today}
+                onChange={(startDate) =>
+                  setSequence({ ...sequence, startDate })
+                }
+              />
             ) : null}
             {!list.suggestions ? (
               <View>
@@ -277,10 +266,22 @@ export function StageSequenceScreen() {
                         variant="quiet"
                         disabled={locked}
                         onPress={() =>
-                          setSequence({
-                            ...sequence,
-                            stages: sequence.stages.filter((_, n) => n !== i),
-                          })
+                          Alert.alert(
+                            "¿Quitar esta etapa?",
+                            `Sale «${item.stage.name || kindLabel(item.stage.kind)}» de la secuencia que estás armando. Las fechas de las demás se reacomodan.`,
+                            [
+                              { text: "Volver", style: "cancel" },
+                              {
+                                text: "Quitar",
+                                style: "destructive",
+                                onPress: () =>
+                                  setSequence({
+                                    ...sequence,
+                                    stages: sequence.stages.filter((_, n) => n !== i),
+                                  }),
+                              },
+                            ],
+                          )
                         }
                       />
                     </EditorialSpread>

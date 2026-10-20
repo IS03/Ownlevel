@@ -248,15 +248,13 @@ function StagePlanBody({
                   setSame(next);
                   if (next) {
                     const repeated = repeatedDay(stage);
-                    controller?.changeStage(
-                      applyDays(
-                        stage,
-                        [1, 2, 3, 4, 5, 6, 7],
-                        repeated.kcal,
-                        repeated.protein,
-                      ),
-                    );
-                    setUniformNotice(
+                    const uniform = applyDays(stage, [1, 2, 3, 4, 5, 6, 7], repeated.kcal, repeated.protein);
+                    const matches = (field: "kcal" | "protein") =>
+                      stage.weekdays.every((d) => d[field] === repeated[field]);
+                    // A week that already matches changes nothing: suggested calories stay suggested (their note
+                    // above keeps its place, so nothing jumps) and there is no "most repeated value" to explain.
+                    controller?.changeStage(matches("kcal") ? { ...uniform, suggested: stage.suggested } : uniform);
+                    setUniformNotice(matches("kcal") && matches("protein") ? null :
                       `Tomamos el valor más repetido: ${draftNumber(repeated.kcal) === null ? "—" : formatNumber(draftNumber(repeated.kcal)!)} kcal · ${draftNumber(repeated.protein) === null ? "—" : formatNumber(draftNumber(repeated.protein)!)} g.`,
                     );
                   } else setUniformNotice(null);

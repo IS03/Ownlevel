@@ -93,6 +93,7 @@ export function EditorialRow({
   large = false,
   hint,
   expanded,
+  arrow = 'down',
 }: {
   title: string;
   children?: ReactNode;
@@ -102,6 +103,8 @@ export function EditorialRow({
   hint?: string;
   /** Optional: the row opens a block below it. Shows a down/up arrow and the expanded state instead of the chevron. */
   expanded?: boolean;
+  /** With `expanded`: 'down' flips a down arrow up when open; 'right' turns a side arrow to point down (inline pickers). */
+  arrow?: 'down' | 'right';
 }) {
   const { colors } = useOwnlevelTheme();
   const reduced = useReduceMotion();
@@ -109,7 +112,7 @@ export function EditorialRow({
   useEffect(() => {
     turn.set(reduced ? (expanded ? 1 : 0) : withTiming(expanded ? 1 : 0, { duration: brandTokens.motion.duration.fast }));
   }, [expanded, reduced, turn]);
-  const arrow = useAnimatedStyle(() => ({ transform: [{ rotate: `${180 * turn.get()}deg` }] }));
+  const turned = useAnimatedStyle(() => ({ transform: [{ rotate: `${(arrow === 'right' ? 90 : 180) * turn.get()}deg` }] }));
   const content = (
     <>
       <View style={{ flex: 1, gap: 8 }}>
@@ -136,7 +139,7 @@ export function EditorialRow({
         ) : null}
       </View>
       {onPress && expanded !== undefined ? (
-        <Animated.View style={arrow}><AppIcon name="chevronDown" size={20} color={colors.textMuted} /></Animated.View>
+        <Animated.View style={turned}><AppIcon name={arrow === 'right' ? 'chevronRight' : 'chevronDown'} size={20} color={colors.textMuted} /></Animated.View>
       ) : onPress ? <AppIcon name="chevronRight" size={20} color={colors.textMuted} /> : null}
     </>
   );
