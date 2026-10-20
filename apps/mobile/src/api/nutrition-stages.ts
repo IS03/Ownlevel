@@ -24,7 +24,7 @@ export const fetchNutritionStages = (client: MobileApiClient, signal?: AbortSign
   client.read({
     path: '/api/mobile/v1/nutrition/stages',
     signal,
-    parse: parseNutritionStages,
+    parse: (value) => parseNutritionStages(value),
   });
 export const mutateNutritionStages = (
   client: MobileApiClient,

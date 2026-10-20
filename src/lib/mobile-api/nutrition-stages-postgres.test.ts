@@ -9,9 +9,12 @@ describe.skipIf(!process.env.OWNLEVEL_TEST_MODULES)('Nutrition stages on disposa
     const output = execFileSync(process.execPath, ['scripts/testing/nutrition-stages.mjs'], {
       encoding: 'utf8', env: process.env, timeout: 90000, maxBuffer: 4 * 1024 * 1024,
     });
-    expect(output).toContain('19 Postgres integration groups passed');
+    expect(output).toContain('23 Postgres integration groups passed');
     const line = output.split('\n').find(s => s.startsWith('STAGES_SNAPSHOT '));
     expect(line).toBeDefined();
     expect(parseNutritionStages(JSON.parse(line!.slice('STAGES_SNAPSHOT '.length)))).toBeDefined();
+    const v2 = output.split('\n').find(s => s.startsWith('STAGES_SNAPSHOT_V2 '));
+    expect(v2).toBeDefined();
+    expect(parseNutritionStages(JSON.parse(v2!.slice('STAGES_SNAPSHOT_V2 '.length)), 2)).toBeDefined();
   }, 95000);
 });
