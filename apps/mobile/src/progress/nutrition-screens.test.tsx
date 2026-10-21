@@ -145,15 +145,14 @@ describe('Progress Nutrition', () => {
     // The legend only names what the chart shows (here: a gap), once.
     expect(view.getByText('hueco: sin registro', { includeHiddenElements: true })).toBeTruthy();
     expect(view.getByTestId('nutrition-chart-current-2026-10-02-gap')).toBeTruthy();
-    expect(within(view.getByTestId('nutrition-progress-detail')).getByText('Carbohidratos')).toBeTruthy();
+    expect(within(view.getByTestId('nutrition-progress-detail')).getByText('Carbos')).toBeTruthy();
     fireEvent.press(view.getByRole('button', { name: /1 oct, 100 kcal/ }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/nutrition', params: { date: '2026-10-01' } });
     fireEvent.press(view.getByTestId('nutrition-timing-entry'));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/trends/meal-times');
-    fireEvent.press(view.getByText('Ver los 4 días'));
-    expect(view.getByText('Sin registro nutricional')).toBeTruthy();
-    fireEvent.press(view.getByText('Ver detalle por bloques'));
-    expect(view.getAllByText('Diferencia con el objetivo').length).toBeGreaterThan(0);
+    // Day by day opens a compact table; a day without meals says so, never 0 kcal.
+    fireEvent.press(within(view.getByTestId('nutrition-progress-daily')).getByRole('button', { name: /Día por día/ }));
+    expect(view.getAllByText('sin registro').length).toBeGreaterThan(0);
   });
   it('pairs a shorter reference by position, leaving gaps, and shows comparisons only when enabled', async () => {
     const initial: ProgressRangeState = {

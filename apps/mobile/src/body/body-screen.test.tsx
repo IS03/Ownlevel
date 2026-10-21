@@ -1,13 +1,15 @@
 import { useSyncExternalStore } from 'react';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { describe, expect, it, jest } from '@jest/globals';
-import { Alert } from 'react-native';
+import { Alert, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { createMobileApiClient } from '@/api/client';
 import { mutateBodyMeasurement, mutateBodyWeight } from '@/api/body';
 import { BodyController } from './body-controller';
-import { BodyView, useWeightEntry } from './body-screen';
+import { BodyEditors, BodyStatus, MeasurementRecords, WeightRecords, openTodayWeight, useWeightEntry } from './body-screen';
+import { BodyAddMenu } from './body-add-menu';
+import type { BodyState } from './body-controller';
 import { ProgressHub } from './progress-hub';
 import { MID, TODAY, conflict, fakeApi, measurement, memoryStorage, ok, overview, repository } from './body-fixture.test-helper';
 
@@ -16,16 +18,31 @@ jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('@react-native-async-storage/async-storage', () => ({ __esModule: true, default: {} }));
 const mockSetParams = jest.fn();
 jest.mock('expo-router', () => ({ useLocalSearchParams: () => ({}), useRouter: () => ({ push: mockPush, setParams: mockSetParams }), useFocusEffect: () => undefined }));
-jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn(), success: jest.fn(), warning: jest.fn() } }));
+jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn(), success: jest.fn(), warning: jest.fn() }, triggerHaptic: jest.fn() }));
 
 const flush = () => act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
 function wrap(element: React.ReactElement) {
   return render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
     <OwnlevelThemeProvider initialMode="light">{element}</OwnlevelThemeProvider></SafeAreaProvider>);
 }
+/** What Progreso › Cuerpo shows of Body: status, the weight and measurement records, the "+" and the sheets. */
+function Body({ state, controller }: { state: BodyState; controller: BodyController }) {
+  if (!state.read.overview) return <View testID={state.read.status === 'loading' ? 'body-loading' : 'body-unavailable'} />;
+  const editable = state.phase === 'idle' && !state.intent && !state.editor;
+  return <>
+    <BodyStatus state={state} controller={controller} />
+    <View testID="body-weight-section"><WeightRecords state={state} controller={controller} editable={editable} /></View>
+    <View testID="body-measurement-section"><MeasurementRecords state={state} controller={controller} editable={editable} /></View>
+    <BodyAddMenu disabled={!editable} actions={[
+      { key: 'weight', label: 'Registrar peso', icon: 'scale', onPress: () => openTodayWeight(state, controller) },
+      { key: 'measurement', label: 'Registrar medidas', icon: 'ruler', onPress: () => controller.openMeasurement() },
+    ]} />
+    <BodyEditors state={state} controller={controller} />
+  </>;
+}
 function Harness({ controller }: { controller: BodyController }) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
-  return <BodyView state={state} controller={controller} />;
+  return <Body state={state} controller={controller} />;
 }
 async function mount(api = fakeApi()) {
   const controller = new BodyController(api, repository(memoryStorage().port), () => 'body:1');
@@ -37,7 +54,7 @@ async function mount(api = fakeApi()) {
 function EntryHarness({ controller }: { controller: BodyController }) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   useWeightEntry(true, { state, controller });
-  return <BodyView state={state} controller={controller} />;
+  return <Body state={state} controller={controller} />;
 }
 
 describe('Home → Registrar → Peso', () => {
@@ -59,17 +76,16 @@ describe('Home → Registrar → Peso', () => {
   });
 });
 
-describe('Body screen', () => {
-  it('shows current weight with its date, history and the latest measurement with quality/import state', async () => {
+describe('Body records and sheets', () => {
+  it('lists every weight with its change and each measurement with its quality/import state', async () => {
     const suspect = measurement({ imported: true, importSource: 'sheet', qualityStatus: 'suspect', qualityNote: 'Revisar', armCm: 33 });
     const { view } = await mount(fakeApi(overview({ measurements: { items: [suspect], nextBefore: null } })));
     const weight = within(view.getByTestId('body-weight-section'));
-    expect(weight.getAllByText('80,5 kg').length).toBeGreaterThan(0); expect(weight.getByText(/Último registro: 4 oct 2026/)).toBeTruthy();
+    expect(weight.getByLabelText('Peso del 4 oct 2026: 80,5 kg')).toBeTruthy(); expect(weight.getByText('↘ 0,5 kg')).toBeTruthy();
     expect(weight.getByLabelText('Peso del 2 oct 2026: 81 kg')).toBeTruthy();
+    // The import source is an internal id: only "Importada" is shown.
     const measures = within(view.getByTestId('body-measurement-section'));
-    expect(measures.getAllByText('Sospechosa · excluida del análisis: Revisar').length).toBeGreaterThan(0);
-    expect(measures.getAllByText('Importada · sheet').length).toBeGreaterThan(0);
-    expect(measures.getByText('Brazo')).toBeTruthy();
+    expect(measures.getByText('2 medidas · Sospechosa · Importada')).toBeTruthy(); expect(measures.queryByText(/sheet/)).toBeNull();
   });
   it('empty body data is an explicit absence, not zero', async () => {
     const { view } = await mount(fakeApi(overview({ current: null, profileWeightKg: null, measurements: { items: [], nextBefore: null } }, [])));
@@ -81,10 +97,11 @@ describe('Body screen', () => {
     const { view } = await mount(api);
     expect(view.getByTestId('body-unavailable')).toBeTruthy(); expect(view.queryByText('Todavía no registraste peso.')).toBeNull();
   });
-  it('registers a weight from the sheet and shows the confirmed result', async () => {
+  it('registers a weight from the "+" and shows the confirmed result', async () => {
     const { view, api } = await mount(fakeApi(overview({}, [{ date: '2026-10-01', weightKg: 81 }])));
     api.weight.mockResolvedValue(ok({ status: 'confirmed', operation: 'set', date: TODAY, weightKg: 79.5, current: { date: TODAY, weightKg: 79.5 }, profileWeightKg: 79.5, currentWeightChanged: true }));
-    fireEvent.press(view.getByRole('button', { name: 'Registrar peso' }));
+    fireEvent.press(view.getByTestId('body-add-menu'));
+    fireEvent.press(view.getByTestId('body-add-weight'));
     fireEvent.changeText(view.getByLabelText('Peso'), '79,5');
     await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar' })); });
     await flush();
@@ -95,7 +112,8 @@ describe('Body screen', () => {
     const { view, api } = await mount();
     api.weight.mockResolvedValue(conflict('WEIGHT_CHANGED', 'El peso de esa fecha cambió desde que lo abriste.'));
     fireEvent.press(view.getByLabelText('Peso del 4 oct 2026: 80,5 kg'));
-    expect(view.getByLabelText('Fecha').props.editable).toBe(false);
+    // Editing a weight never changes its date: the sheet has no date field at all.
+    expect(view.queryByLabelText('Fecha')).toBeNull();
     fireEvent.changeText(view.getByLabelText('Peso'), '79');
     await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar' })); });
     await flush();
@@ -104,7 +122,7 @@ describe('Body screen', () => {
     fireEvent.press(view.getByRole('button', { name: 'Revisar valores actuales' }));
     expect(view.getByRole('button', { name: 'Guardar' })).toBeTruthy();
   });
-  it('deleting asks for confirmation; dirty close asks before discarding', async () => {
+  it('deleting asks for confirmation; closing with changes asks before discarding', async () => {
     const { view, api } = await mount();
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     fireEvent.press(view.getByLabelText('Peso del 4 oct 2026: 80,5 kg'));

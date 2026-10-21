@@ -127,7 +127,7 @@ export function NutritionChart({ report, reference }: { report: NutritionReport;
           <AppText muted variant="caption">champagne {currentLabel} · gris {compareText}</AppText>
         ) : null}
         {a.some((p) => p.today) ? <AppText muted variant="caption">clara: hoy, en curso</AppText> : null}
-        {a.some((p) => p.value === null) ? <AppText muted variant="caption">hueco: sin registro</AppText> : null}
+        {a.some((p) => p.value === null && !p.today) ? <AppText muted variant="caption">hueco: sin registro</AppText> : null}
       </View>
       {a.some((p) => p.partial) ? (
         <AppText muted variant="caption">Las sumas parciales incluyen solo los nutrientes conocidos.</AppText>

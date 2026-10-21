@@ -1,4 +1,6 @@
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import Animated, { Easing, FadeIn, LinearTransition, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
@@ -15,11 +17,12 @@ import {
   Button,
   Heading,
   InlineUnavailable,
-  SegmentedControl,
   SkeletonBlock,
   UnavailableState,
+  brandTokens,
   spacing,
   useOwnlevelTheme,
+  useReduceMotion,
 } from '@/design-system';
 import { ProgressScroll } from './progress-scroll';
 import { useComparisonText, useProgressRange } from './progress-range-context';
@@ -92,9 +95,22 @@ function FlatRow({
     </View>
   );
 }
+/** A bar that animates to its height (300 ms, IDENTIDAD.md § Movimiento); with Reduce Motion it just changes. */
+function GrowingBar({ height, zero, soft, reduced, testID }: { height: number; zero: boolean; soft: boolean; reduced: boolean; testID: string }) {
+  const { colors } = useOwnlevelTheme();
+  const h = useSharedValue(height);
+  useEffect(() => { h.value = reduced ? height : withTiming(height, { duration: brandTokens.motion.duration.base, easing: Easing.out(Easing.cubic) }); }, [h, height, reduced]);
+  const style = useAnimatedStyle(() => ({ height: h.value }));
+  return <Animated.View testID={testID} style={[{
+    width: '100%', borderTopLeftRadius: zero ? 0 : 3, borderTopRightRadius: zero ? 0 : 3,
+    backgroundColor: zero ? colors.border : colors.primary,
+    // Single series in champagne (IDENTIDAD.md § Gráficos); the bucket still in course is soft.
+    opacity: zero || !soft ? 1 : 0.4,
+  }, style]} />;
+}
 function TrainingChart({ data }: { data: ProgressTraining }) {
-  const { colors } = useOwnlevelTheme(),
-    router = useRouter();
+  const router = useRouter(),
+    reduced = useReduceMotion();
   const [metric, setMetric] = useState<SeriesMetric>('sets'),
     [width, setWidth] = useState(300);
   const max = Math.max(1, ...data.series.map((p) => p[metric]));
@@ -106,7 +122,8 @@ function TrainingChart({ data }: { data: ProgressTraining }) {
   return (
     <View style={styles.section}>
       <Heading level={2}>Evolución</Heading>
-      <SegmentedControl
+      {/* Native segmented control: Liquid Glass on iOS 26, the selection slides with the system animation. */}
+      <ExerciseSegmented
         accessibilityLabel="Medida del gráfico"
         value={metric}
         options={(Object.keys(SERIES_LABELS) as SeriesMetric[]).map((value) => ({
@@ -133,20 +150,19 @@ function TrainingChart({ data }: { data: ProgressTraining }) {
                 <>
                   <View style={styles.plot}>
                     {data.series.length <= 8 ? (
-                      <AppText numeric muted variant="caption" style={styles.center}>
-                        {metric === 'minutes' ? formatValue(value, null, 'duration') : fmt(value, 0)}
-                      </AppText>
+                      <Animated.View key={metric} entering={FadeIn.duration(reduced ? 0 : 200)}>
+                        <AppText numeric muted variant="caption" style={styles.center}>
+                          {metric === 'minutes' ? formatValue(value, null, 'duration') : fmt(value, 0)}
+                        </AppText>
+                      </Animated.View>
                     ) : null}
-                    <View
+                    {/* Changing the measure grows or shrinks each bar to its new height instead of jumping. */}
+                    <GrowingBar
                       testID={`training-bar-${p.start}${value === 0 ? '-zero' : ''}`}
-                      style={{
-                        height: value === 0 ? 1 : (110 * value) / max,
-                        borderTopLeftRadius: value === 0 ? 0 : 3, borderTopRightRadius: value === 0 ? 0 : 3,
-                        width: '100%',
-                        backgroundColor: value === 0 ? colors.border : colors.primary,
-                        // Single series in champagne (IDENTIDAD.md § Gráficos); the bucket still in course is soft.
-                        opacity: value === 0 || !current ? 1 : 0.4,
-                      }}
+                      height={value === 0 ? 1 : (110 * value) / max}
+                      zero={value === 0}
+                      soft={current}
+                      reduced={reduced}
                     />
                   </View>
                   <AppText muted numeric variant="caption" numberOfLines={1} style={[styles.center, styles.dateLabel, { width: Math.max(44, width / 5) }]}>
@@ -174,7 +190,7 @@ function TrainingChart({ data }: { data: ProgressTraining }) {
             })}
           </View>
       </View>
-      <AppText muted variant="caption">
+      <AppText muted variant="caption" key={metric}>
         {SERIES_LABELS[metric]} por {bucket}
         {inCourse
           ? ` · ${data.period.bucket === 'day' ? 'hoy' : data.period.bucket === 'week' ? 'esta semana' : 'este mes'} en curso`
@@ -184,7 +200,7 @@ function TrainingChart({ data }: { data: ProgressTraining }) {
   );
 }
 function Breakdown({ data, open }: { data: ProgressTraining; open: (id: string) => void }) {
-  const { colors } = useOwnlevelTheme();
+  const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
   const [group, setGroup] = useState<'muscle' | 'routine' | 'exercise'>('muscle'),
     [all, setAll] = useState(false);
   const items = (
@@ -200,7 +216,7 @@ function Breakdown({ data, open }: { data: ProgressTraining; open: (id: string) 
   return (
     <View style={styles.section} testID="training-breakdown">
       <Heading level={2}>Desglose</Heading>
-      <SegmentedControl
+      <ExerciseSegmented
         accessibilityLabel="Desglosar series"
         value={group}
         options={[
@@ -213,7 +229,8 @@ function Breakdown({ data, open }: { data: ProgressTraining; open: (id: string) 
           setAll(false);
         }}
       />
-      <View>
+      {/* Switching músculo / rutina / ejercicio fades the new list in instead of swapping it at once. */}
+      <Animated.View key={group} entering={FadeIn.duration(reduced ? 0 : 200)} layout={reduced ? undefined : LinearTransition.duration(brandTokens.motion.duration.base)}>
         {(all || items.length <= 7 ? items : items.slice(0, 6)).map((item) => (
           <FlatRow
             compact
@@ -246,7 +263,7 @@ function Breakdown({ data, open }: { data: ProgressTraining; open: (id: string) 
             </AppText>
           </FlatRow>
         ))}
-      </View>
+      </Animated.View>
       {!items.length ? <AppText muted>Sin datos para este desglose.</AppText> : null}
       {items.length > 7 ? (
         <Button

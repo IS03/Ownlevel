@@ -25,6 +25,19 @@ jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocu
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn(), success: jest.fn(), warning: jest.fn() }, triggerHaptic: jest.fn() }));
 const mockClient = { request: jest.fn(), read: jest.fn() };
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
+jest.mock('@/auth', () => ({ useMobileAuth: () => ({ session: { user: { id: 'owner' } } }) }));
+// Cuerpo's records and sheets run on the real BodyController over a fake Body API (no network, no storage).
+jest.mock('@/body/use-body-controller', () => {
+  const { useState, useEffect, useSyncExternalStore } = jest.requireActual<typeof import('react')>('react');
+  const { BodyController } = jest.requireActual<typeof import('@/body/body-controller')>('@/body/body-controller');
+  const fx = jest.requireActual<typeof import('@/body/body-fixture.test-helper')>('@/body/body-fixture.test-helper');
+  return { useBodyController: () => {
+    const [controller] = useState(() => new BodyController(fx.fakeApi(), fx.repository(fx.memoryStorage().port), () => 'body:1'));
+    useEffect(() => { void controller.initialize(); }, [controller]);
+    const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+    return { controller, state };
+  } };
+});
 jest.mock('@/api/progress', () => ({ ...jest.requireActual<object>('@/api/progress'),
   fetchProgressOverview: (c: unknown, q: ProgressQuery, _s: unknown, compare: DateRange | null) => mockOverview(c, q, compare),
   fetchProgressBody: (c: unknown, q: ProgressQuery, _s: unknown, compare: DateRange | null) => mockBody(c, q, compare),
@@ -261,8 +274,11 @@ describe('Body Trends', () => {
     // Each measure opens on its own screen, so Back returns to the weight.
     fireEvent.press(view.getByRole('button', { name: 'Cintura. 88 cm · un solo registro' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.waist' } });
-    fireEvent.press(view.getByRole('button', { name: 'Cargar o corregir en Cuerpo' }));
-    expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/body');
+    // The records to correct sit right under the weight, and one floating "+" loads a new one here.
+    expect(within(view.getByTestId('body-trend-records')).getByLabelText('Peso del 4 oct 2026: 80,5 kg')).toBeTruthy();
+    fireEvent.press(view.getByTestId('body-add-menu'));
+    fireEvent.press(view.getByTestId('body-add-measurement')); await flush();
+    expect(view.getByTestId('body-measurement-sheet')).toBeTruthy();
   });
   it('a measure on its own screen: one record has no chart, says so and offers a longer period', async () => {
     mockParams = { metric: 'body.waist' };
@@ -304,11 +320,11 @@ describe('Metrics Trends', () => {
     expect(mockMetrics).toHaveBeenLastCalledWith(mockClient, MONTH, ids.sleep, null);
     expect(within(view.getByTestId('metric-trend-summary')).getByText('7 h 30 min')).toBeTruthy();
     // Archived metrics wait behind one chip.
-    expect(view.queryByRole('radio', { name: 'Mate viejo · archivada' })).toBeNull();
-    fireEvent.press(view.getByRole('radio', { name: 'Archivadas (1)' }));
-    expect(view.getByRole('radio', { name: 'Mate viejo · archivada' })).toBeTruthy();
-    fireEvent.press(view.getByRole('button', { name: 'Cargar o corregir en Métricas' }));
-    expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/metrics');
+    expect(view.queryByRole('radio', { name: 'Mate viejo, archivada' })).toBeNull();
+    fireEvent.press(view.getByTestId('metric-archived-toggle'));
+    expect(view.getByRole('radio', { name: 'Mate viejo, archivada' })).toBeTruthy();
+    // Progreso › Métricas is for looking; loading or correcting lives in Inicio and Nutrición.
+    expect(view.queryByText('Cargar o corregir')).toBeNull();
   });
   it('compares with the chosen range when Comparar is on', async () => {
     mockParams = { metric: ids.steps };

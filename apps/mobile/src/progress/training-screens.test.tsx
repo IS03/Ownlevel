@@ -18,6 +18,8 @@ jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocu
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn(), success: jest.fn(), warning: jest.fn() }, triggerHaptic: jest.fn() }));
 const mockClient = { request: jest.fn(), read: jest.fn() };
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
+// The native (SwiftUI) segmented control renders nothing in Jest: test with the brand fallback it mirrors.
+jest.mock('@/training/exercise-segmented', () => jest.requireActual('@/training/exercise-segmented.tsx'));
 jest.mock('@/api/progress', () => ({ ...jest.requireActual<object>('@/api/progress'),
   fetchProgressTraining: (c: unknown, q: ProgressQuery, _s: unknown, compare: DateRange | null) => mockTraining(c, q, compare),
   fetchProgressTrainingExercise: (c: unknown, q: ProgressQuery, id: string, _s: unknown, compare: DateRange | null) => mockExercise(c, q, id, compare) }));

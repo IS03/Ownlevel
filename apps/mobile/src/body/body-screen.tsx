@@ -1,84 +1,122 @@
 import { useEffect, useRef } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { selectedRouteDate } from '@/history/navigation';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
-import type { BodyMeasurement, BodyWeightEntry } from '@/api/body';
-import { AppIcon, AppText, Button, Heading, InlineUnavailable, ScrollScreen, SkeletonBlock, Surface, UnavailableState, spacing, useOwnlevelTheme, brandTokens } from '@/design-system';
+import type { BodyMeasurement, BodyMeasurementField, BodyWeightEntry } from '@/api/body';
+import { AppIcon, AppText, Button, Heading, InlineUnavailable, ScrollScreen, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
 import type { BodyController, BodyState } from './body-controller';
 import { MeasurementEditorSheet, WeightEditorSheet } from './body-editor';
-import { formatBodyDate, formatKg, measurementBadges, measurementValues } from './body-model';
+import { formatBodyDate, formatCm, formatKg, measurementBadges, measurementValues } from './body-model';
 import { useBodyController } from './use-body-controller';
 
-function Row({ title, detail, badges, onPress, label, divided }: { title: string; detail: string; badges?: string[]; onPress?: () => void; label: string; divided: boolean }) {
+const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+/** "3 oct", with the year only when it is not this year's. */
+function shortDate(date: string, today: string) {
+  const [y, m, d] = date.split('-').map(Number);
+  return `${d} ${MONTHS[m - 1]}${date.slice(0, 4) === today.slice(0, 4) ? '' : ` ${y}`}`;
+}
+const decimals = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 });
+/** A change as a neutral arrow and its size, never a color (IDENTIDAD.md: no good/bad on personal data). */
+function change(delta: number, unit: string) {
+  return Math.abs(delta) < 1e-9 ? '=' : `${delta > 0 ? '↗' : '↘'} ${decimals.format(Math.abs(delta))} ${unit}`;
+}
+
+function Row({ title, detail, value, onPress, label, divided, testID }: {
+  title: string; detail?: string; value?: string; onPress?: () => void; label: string; divided: boolean; testID?: string;
+}) {
   const { colors } = useOwnlevelTheme();
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={!onPress} onPress={onPress}
-    style={({ pressed }) => [styles.row, divided ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border } : null, pressed ? { backgroundColor: colors.surfaceRaised } : null]}>
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={!onPress} onPress={onPress} testID={testID}
+    style={({ pressed }) => [styles.row, divided && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }, pressed && { opacity: 0.6 }]}>
     <View style={styles.flex}>
-      <AppText variant="label">{title}</AppText>
-      <AppText muted numberOfLines={2} variant="caption">{detail}</AppText>
-      {badges?.map(b => <AppText key={b} style={{ color: colors.text }} variant="caption">{b}</AppText>)}
+      <AppText numeric variant="body">{title}</AppText>
+      {detail ? <AppText muted numeric numberOfLines={2} variant="footnote">{detail}</AppText> : null}
     </View>
-    {onPress ? <AppIcon color={colors.textMuted} name="chevronRight" size={14} /> : null}
+    {value ? <AppText numeric variant="headline">{value}</AppText> : null}
+    {onPress ? <AppIcon color={colors.textMuted} name="chevronRight" size={15} /> : null}
   </Pressable>;
 }
 
-function WeightSection({ state, controller, editable }: { state: BodyState; controller: BodyController; editable: boolean }) {
-  const { read } = state, overview = read.overview!;
-  const current = overview.current;
-  return <View style={styles.section} testID="body-weight-section">
-    <Heading level={2}>Peso</Heading>
-    <Surface style={styles.card}>
-      <AppText muted variant="caption">Peso actual</AppText>
-      {current ? <>
-        <AppText style={styles.big} variant="label">{formatKg(current.weightKg)}</AppText>
-        <AppText muted variant="caption">Último registro: {formatBodyDate(current.date)}</AppText>
-      </> : overview.profileWeightKg !== null ? <>
-        <AppText style={styles.big} variant="label">{formatKg(overview.profileWeightKg)}</AppText>
-        <AppText muted variant="caption">Peso de perfil sin registro con fecha.</AppText>
-      </> : <AppText muted>Todavía no registraste peso.</AppText>}
-      <Button label="Registrar peso" disabled={!editable} onPress={() => controller.openWeight()} />
-    </Surface>
-    {read.weights.length ? <Surface style={styles.list}>
-      {read.weights.map((entry: BodyWeightEntry, index) => <Row key={entry.date} divided={index > 0} title={formatBodyDate(entry.date)} detail={formatKg(entry.weightKg)}
-        label={`Peso del ${formatBodyDate(entry.date)}: ${formatKg(entry.weightKg)}`} onPress={editable ? () => controller.openWeight(entry) : undefined} />)}
-    </Surface> : null}
-    {read.weightsCursor ? <Button label={read.loadingMore === 'weights' ? 'Cargando…' : 'Ver más pesos'} variant="secondary"
+/** Weight entries, newest first, each against the one before it; tapping one edits it. */
+export function WeightRecords({ state, controller, editable, limit }: { state: BodyState; controller: BodyController; editable: boolean; limit?: number }) {
+  const { read } = state, today = read.overview!.today, weights = read.weights;
+  const shown = limit ? weights.slice(0, limit) : weights;
+  return <View style={styles.section} testID="body-weight-records">
+    {shown.length ? <View>
+      {shown.map((entry: BodyWeightEntry, index) => {
+        const before = weights[index + 1] ?? null;
+        return <Row key={entry.date} divided={index > 0} title={shortDate(entry.date, today)} detail={before ? change(entry.weightKg - before.weightKg, 'kg') : undefined}
+          value={formatKg(entry.weightKg)} label={`Peso del ${formatBodyDate(entry.date)}: ${formatKg(entry.weightKg)}`}
+          onPress={editable ? () => controller.openWeight(entry) : undefined} />;
+      })}
+    </View> : <AppText muted>Todavía no registraste peso.</AppText>}
+    {limit && weights.length > limit ? null : read.weightsCursor ? <Button label={read.loadingMore === 'weights' ? 'Cargando…' : 'Ver más pesajes'} variant="quiet"
       disabled={read.loadingMore !== null} onPress={() => void controller.loadMore('weights')} /> : null}
   </View>;
 }
 
 function measurementSummary(m: BodyMeasurement) {
-  const values = measurementValues(m).map(v => `${v.label} ${v.value}`);
-  return values.join(' · ') || 'Sin valores';
+  const n = measurementValues(m).length;
+  const badges = measurementBadges(m).map(b => b.short);
+  return [n === 1 ? '1 medida' : `${n} medidas`, ...badges].join(' · ');
 }
-function MeasurementSection({ state, controller, editable }: { state: BodyState; controller: BodyController; editable: boolean }) {
-  const { colors } = useOwnlevelTheme();
-  const { read } = state, latest = read.measurements[0];
-  return <View style={styles.section} testID="body-measurement-section">
-    <Heading level={2}>Medidas</Heading>
-    <Surface style={styles.card}>
-      <AppText muted variant="caption">Última medición</AppText>
-      {latest ? <>
-        <AppText variant="label">{formatBodyDate(latest.measuredOn)}</AppText>
-        {measurementValues(latest).map(v => <View key={v.field} style={styles.value}><AppText muted variant="caption">{v.label}</AppText><AppText variant="caption">{v.value}</AppText></View>)}
-        {measurementBadges(latest).map(b => <AppText key={b.text} style={{ color: b.tone === 'warning' ? colors.text : colors.textMuted }} variant="caption">{b.text}</AppText>)}
-      </> : <AppText muted>Todavía no registraste medidas.</AppText>}
-      <Button label="Registrar medidas" disabled={!editable} onPress={() => controller.openMeasurement()} />
-    </Surface>
-    {read.measurements.length ? <Surface style={styles.list}>
-      {read.measurements.map((m, index) => <Row key={m.id} divided={index > 0} title={formatBodyDate(m.measuredOn)} detail={measurementSummary(m)}
-        badges={measurementBadges(m).map(b => b.text)} label={`Medición del ${formatBodyDate(m.measuredOn)}`}
-        onPress={editable ? () => controller.openMeasurement(m) : undefined} />)}
-    </Surface> : null}
-    {read.measurementsCursor ? <Button label={read.loadingMore === 'measurements' ? 'Cargando…' : 'Ver más mediciones'} variant="secondary"
+/**
+ * Measurement records, newest first; with `field`, only those that include it, showing its value and change.
+ * Tapping one edits the whole measurement (one record holds every measure of that day).
+ */
+export function MeasurementRecords({ state, controller, editable, field }: { state: BodyState; controller: BodyController; editable: boolean; field?: BodyMeasurementField }) {
+  const { read } = state, today = read.overview!.today;
+  const items = field ? read.measurements.filter(m => m[field] !== null) : read.measurements;
+  return <View style={styles.section} testID="body-measurement-records">
+    {items.length ? <View>
+      {items.map((m, index) => {
+        const value = field ? m[field] : null, before = field ? items[index + 1]?.[field] ?? null : null;
+        const badges = measurementBadges(m).map(b => b.short).join(' · ');
+        return <Row key={m.id} divided={index > 0} title={shortDate(m.measuredOn, today)}
+          detail={field ? [value !== null && before !== null ? change(value - before, 'cm') : null, badges || null].filter(Boolean).join(' · ') || undefined : measurementSummary(m)}
+          value={field ? formatCm(value) : undefined} label={`Medición del ${formatBodyDate(m.measuredOn)}`} onPress={editable ? () => controller.openMeasurement(m) : undefined} />;
+      })}
+    </View> : <AppText muted>Todavía no registraste medidas.</AppText>}
+    {read.measurementsCursor ? <Button label={read.loadingMore === 'measurements' ? 'Cargando…' : 'Ver más mediciones'} variant="quiet"
       disabled={read.loadingMore !== null} onPress={() => void controller.loadMore('measurements')} /> : null}
   </View>;
 }
 
-export function BodyView({ state, controller, date }: { state: BodyState; controller: BodyController; date?: string | null }) {
+/** Save confirmations, pending changes and blocked writes, above the content of any Body screen. */
+export function BodyStatus({ state, controller }: { state: BodyState; controller: BodyController }) {
+  const { colors } = useOwnlevelTheme();
+  const { read, editor } = state;
+  return <>
+    {read.stale ? <InlineUnavailable actionLabel="Reintentar" message="No se pudo actualizar. Mostramos la última lectura confirmada." onAction={() => void controller.load()} /> : null}
+    {state.notice ? <View accessibilityRole="alert" style={styles.notice}>
+      <AppIcon name="check" color={colors.primary} size={17} />
+      <AppText numeric variant="footnote" style={styles.flex}>{state.notice}</AppText>
+      <Pressable accessibilityRole="button" accessibilityLabel="Entendido" hitSlop={8} onPress={() => controller.dismissNotice()}>
+        <AppText variant="footnote" style={{ color: colors.primary, fontWeight: '600' }}>Entendido</AppText>
+      </Pressable>
+    </View> : null}
+    {state.intent && !editor ? <View style={styles.section}><AppText variant="footnote">{state.message ?? 'Hay un cambio pendiente de confirmar.'}</AppText>
+      <Button label="Comprobar" onPress={() => void controller.recover()} /></View> : null}
+    {state.phase === 'blocked' && !editor ? <AppText style={{ color: colors.danger }} variant="footnote">{state.message}</AppText> : null}
+    {read.moreError ? <AppText style={{ color: colors.danger }} variant="footnote">No pudimos cargar más registros. Probá de nuevo.</AppText> : null}
+  </>;
+}
+/** The open weight or measurement sheet, if any. */
+export function BodyEditors({ state, controller }: { state: BodyState; controller: BodyController }) {
+  const editor = state.editor;
+  return <>
+    {editor?.kind === 'weight' ? <WeightEditorSheet editor={editor} state={state} controller={controller} /> : null}
+    {editor?.kind === 'measurement' ? <MeasurementEditorSheet editor={editor} state={state} controller={controller} /> : null}
+  </>;
+}
+/** Today's weight opens in edit mode, so a second entry for the same day is never created. */
+export const openTodayWeight = (state: BodyState, controller: BodyController) =>
+  controller.openWeight(state.read.weights.find(e => e.date === state.read.overview?.today));
+
+/** A single day of Body (from Historial): its weight and its measurement, each one tap from its sheet. */
+export function BodyView({ state, controller, date }: { state: BodyState; controller: BodyController; date: string }) {
   const { colors } = useOwnlevelTheme();
   const { read, editor } = state;
   if (!read.overview) {
@@ -93,20 +131,10 @@ export function BodyView({ state, controller, date }: { state: BodyState; contro
   return <>
     <ScrollScreen testID="body-screen" refreshControl={<RefreshControl refreshing={read.refreshing} onRefresh={() => void controller.load()} tintColor={colors.primary} />}>
       <ReturnToHistoryDay />
-      {read.stale ? <Surface><InlineUnavailable actionLabel="Reintentar" message="No se pudo actualizar. Mostramos la última lectura confirmada." onAction={() => void controller.load()} /></Surface> : null}
-      {state.notice ? <Surface accessibilityRole="alert"><AppText variant="caption">{state.notice}</AppText>
-        <Button label="Entendido" variant="quiet" onPress={() => controller.dismissNotice()} /></Surface> : null}
-      {state.intent && !editor ? <Surface><AppText variant="caption">{state.message ?? 'Hay un cambio pendiente de confirmar.'}</AppText>
-        <Button label="Comprobar" onPress={() => void controller.recover()} /></Surface> : null}
-      {state.phase === 'blocked' && !editor ? <Surface><AppText style={{ color: colors.danger }} variant="caption">{state.message}</AppText></Surface> : null}
-      {read.moreError ? <AppText style={{ color: colors.danger }} variant="caption">No pudimos cargar más registros. Probá de nuevo.</AppText> : null}
-      {date ? <BodyDate state={state} controller={controller} date={date} editable={editable} /> : <>
-        <WeightSection state={state} controller={controller} editable={editable} />
-        <MeasurementSection state={state} controller={controller} editable={editable} />
-      </>}
+      <BodyStatus state={state} controller={controller} />
+      <BodyDate state={state} controller={controller} date={date} editable={editable} />
     </ScrollScreen>
-    {editor?.kind === 'weight' ? <WeightEditorSheet editor={editor} state={state} controller={controller} /> : null}
-    {editor?.kind === 'measurement' ? <MeasurementEditorSheet editor={editor} state={state} controller={controller} /> : null}
+    <BodyEditors state={state} controller={controller} />
   </>;
 }
 
@@ -120,7 +148,11 @@ function BodyUserScreen({ userId }: { userId: string }) {
   const params = useLocalSearchParams();
   const date = selectedRouteDate(params);
   const body = useBodyController(client, userId, date);
-  useWeightEntry(params.registrar === 'peso' && !date, body);
+  // Cuerpo is one screen, Progreso › Cuerpo; this route stays for a single day (Historial) and for old links.
+  if (!date) {
+    const registrar = params.registrar === 'peso' || params.registrar === 'medidas' ? params.registrar : undefined;
+    return <Redirect href={{ pathname: '/(tabs)/progress/trends/body', params: registrar ? { registrar } : {} }} />;
+  }
   if (!body) return <ScrollScreen testID="body-loading"><SkeletonBlock height={140} /></ScrollScreen>;
   return <BodyView state={body.state} controller={body.controller} date={date} />;
 }
@@ -142,36 +174,47 @@ export function useWeightEntry(requested: boolean, body: { state: BodyState; con
     body.controller.openWeight(body.state.read.weights.find(entry => entry.date === today));
   }, [body, ready, router, today]);
 }
+/** Progreso › Cuerpo › "+" › Registrar medidas: opens a new measurement once, like useWeightEntry. */
+export function useMeasurementEntry(requested: boolean, body: { state: BodyState; controller: BodyController } | null) {
+  const router = useRouter();
+  const used = useRef(false);
+  const ready = requested && !!body && body.state.read.status === 'ready' && body.state.phase === 'idle' && !body.state.intent && !body.state.editor;
+  useEffect(() => {
+    if (!ready || !body || used.current) return;
+    used.current = true;
+    router.setParams({ registrar: undefined });
+    body.controller.openMeasurement();
+  }, [body, ready, router]);
+}
 function BodyDate({ state, controller, date, editable }: { state: BodyState; controller: BodyController; date: string; editable: boolean }) {
   const day = state.read.day?.date === date ? state.read.day : null;
   if (!day && state.read.refreshing) return <SkeletonBlock height={160} />;
-  if (!day) return <Surface><Heading level={2}>{formatBodyDate(date)}</Heading><InlineUnavailable message="No hay una lectura confirmada de esta fecha." actionLabel="Reintentar" onAction={() => void controller.load()} /></Surface>;
-  return <>
+  if (!day) return <View style={styles.section}><Heading level={2}>{formatBodyDate(date)}</Heading><InlineUnavailable message="No hay una lectura confirmada de esta fecha." actionLabel="Reintentar" onAction={() => void controller.load()} /></View>;
+  const can = editable && !state.read.stale;
+  const m = day.measurement.status === 'ok' ? day.measurement.data : null;
+  return <View style={styles.section}>
     <Heading level={2}>{formatBodyDate(date)}</Heading>
-    <Surface><Heading level={2}>Peso</Heading>
-      {day.weight.status === 'unavailable' ? <AppText>No pudimos cargar el peso de esta fecha.</AppText> : <>
-        <AppText>{day.weight.data ? formatKg(day.weight.data.weightKg) : 'Sin registro de peso.'}</AppText>
-        <Button label={day.weight.data ? 'Editar peso' : 'Registrar peso'} disabled={!editable || state.read.stale} onPress={() => { if (day.weight.status === 'ok') controller.openWeight(day.weight.data ?? undefined, date); }} />
-      </>}
-    </Surface>
-    <Surface><Heading level={2}>Medidas</Heading>
-      {day.measurement.status === 'unavailable' ? <AppText>No pudimos cargar la medición de esta fecha.</AppText> : <>
-        {day.measurement.data ? <>
-          {measurementValues(day.measurement.data).map(v => <AppText key={v.field}>{v.label}: {v.value}</AppText>)}
-          {measurementBadges(day.measurement.data).map(b => <AppText key={b.text} muted>{b.text}</AppText>)}
-        </> : <AppText>Sin medición corporal.</AppText>}
-        <Button label={day.measurement.data ? 'Editar medición' : 'Registrar medidas'} disabled={!editable || state.read.stale} onPress={() => { if (day.measurement.status === 'ok') controller.openMeasurement(day.measurement.data ?? undefined, date); }} />
-      </>}
-    </Surface>
-  </>;
+    {day.weight.status === 'unavailable' ? <AppText muted>No pudimos cargar el peso de esta fecha.</AppText>
+      : <Row divided={false} title="Peso" value={day.weight.data ? formatKg(day.weight.data.weightKg) : undefined} detail={day.weight.data ? undefined : 'Sin registro · tocá para cargar'}
+        label={day.weight.data ? `Editar peso: ${formatKg(day.weight.data.weightKg)}` : 'Registrar peso'}
+        onPress={can ? () => { if (day.weight.status === 'ok') controller.openWeight(day.weight.data ?? undefined, date); } : undefined} />}
+    {day.measurement.status === 'unavailable' ? <AppText muted>No pudimos cargar la medición de esta fecha.</AppText>
+      : <Row divided title="Medidas" detail={m ? measurementValues(m).map(v => `${v.label} ${v.value}`).join(' · ') : 'Sin medición · tocá para cargar'}
+        label={m ? 'Editar medición' : 'Registrar medidas'}
+        onPress={can ? () => { if (day.measurement.status === 'ok') controller.openMeasurement(m ?? undefined, date); } : undefined} />}
+    {m ? measurementBadges(m).map(b => <AppText key={b.text} muted variant="footnote">{b.text}</AppText>) : null}
+  </View>;
 }
 
 const styles = StyleSheet.create({
   section: { gap: spacing.sm },
-  card: { gap: spacing.xs },
-  big: { fontSize: brandTokens.typeScale.title1.fontSize, lineHeight: brandTokens.typeScale.title1.lineHeight },
-  list: { padding: 0, gap: 0, overflow: 'hidden' },
-  row: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  hero: { gap: 2, paddingBottom: spacing.xs },
+  list: { paddingTop: spacing.sm },
+  row: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm },
   flex: { flex: 1, gap: 2 },
-  value: { flexDirection: 'row', justifyContent: 'space-between' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: spacing.md },
+  cell: { width: '50%', gap: 2, paddingRight: spacing.md },
+  cellValue: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.xs, flexWrap: 'wrap' },
+  notice: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44 },
+  fabRoom: { height: 72 },
 });

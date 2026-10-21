@@ -1,6 +1,11 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { haptics } from '@/platform/haptics';
+import { BodyAddMenu } from '@/body/body-add-menu';
+import { BodyEditors, BodyStatus, MeasurementRecords, WeightRecords, openTodayWeight, useMeasurementEntry, useWeightEntry } from '@/body/body-screen';
+import { useBodyController } from '@/body/use-body-controller';
+import { useMobileAuth } from '@/auth';
+import { BODY_MEASUREMENT_FIELDS, type BodyMeasurementField } from '@/api/body';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchProgressBody, progressRequestKey, type ProgressBody, type ProgressBodyMetric } from '@/api/progress';
@@ -82,15 +87,34 @@ function Selected({ metric, excluded }: { metric: ProgressBodyMetric; excluded: 
   </View>;
 }
 
-/** The weight (or the measure you opened) on top; on the main screen, every other measure one tap away. */
-function Content({ data, selected }: { data: ProgressBody; selected: string | null }) {
+/** "body.arm_right" → "armRightCm": the record field behind a measure of this screen (none for the weight). */
+function recordField(key: string): BodyMeasurementField | undefined {
+  const field = `${key.replace(/^body\./, '').replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())}Cm`;
+  return (BODY_MEASUREMENT_FIELDS as readonly string[]).includes(field) ? field as BodyMeasurementField : undefined;
+}
+
+type Body = NonNullable<ReturnType<typeof useBodyController>>;
+/** The weight (or the measure you opened) on top, its records under it; on the main screen, every other measure one tap away. */
+function Content({ data, selected, body }: { data: ProgressBody; selected: string | null; body: Body | null }) {
   const router = useRouter();
+  const { colors } = useOwnlevelTheme();
   const metric = (selected ? data.metrics.find(m => m.key === selected) : data.metrics.find(m => m.key === 'body.weight')) ?? data.metrics[0] ?? null;
   if (!metric) return <AppText muted>Todavía no hay pesos ni medidas registrados con fecha.</AppText>;
   const others = selected ? [] : data.metrics.filter(m => m.key !== metric.key);
+  const field = recordField(metric.key);
+  const editable = !!body && body.state.phase === 'idle' && !body.state.intent && !body.state.editor;
   return <>
     {selected ? null : <Heading level={2}>{metric.label}</Heading>}
     <Selected metric={metric} excluded={data.excludedSuspect} />
+    {body?.state.read.overview ? <View style={styles.section} testID="body-trend-records">
+      <AppText muted variant="footnote">{metric.key === 'body.weight' ? 'Tus pesajes · tocá uno para corregirlo' : 'Tus mediciones · tocá una para corregirla'}</AppText>
+      {metric.key === 'body.weight' ? <WeightRecords state={body.state} controller={body.controller} editable={editable} limit={selected ? undefined : 5} />
+        : <MeasurementRecords state={body.state} controller={body.controller} editable={editable} field={field} />}
+      {!selected && body.state.read.weights.length > 5 ? <Pressable accessibilityRole="button" style={styles.link} testID="body-trend-all-weights"
+        onPress={() => { haptics.selection(); router.push({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.weight' } }); }}>
+        <AppText variant="headline" style={{ color: colors.primary }}>Ver todos los pesajes →</AppText>
+      </Pressable> : null}
+    </View> : null}
     {others.length ? <View style={styles.section} testID="body-trend-others">
       <Heading level={2}>{metric.key === 'body.weight' ? 'Medidas' : 'Peso y medidas'}</Heading>
       <View>{others.map(m => <ProgressRow key={m.key} testID={`body-trend-row-${m.key}`} label={`${m.label}. ${metricLine(m)}`}
@@ -101,28 +125,50 @@ function Content({ data, selected }: { data: ProgressBody; selected: string | nu
   </>;
 }
 
-/** Cuerpo in Progreso (P5): values inside the period, a dot per real record; no smoothing, no interpolation, no body fat. */
+/**
+ * Cuerpo (P5), the only Body screen: values inside the period, a dot per real record (no smoothing, no interpolation,
+ * no body fat), the records to correct right under them, and one floating "+" to load a weight or measures here.
+ */
 export function BodyTrendsScreen() {
-  const router = useRouter();
   const { client } = useMobileApi();
+  const { session } = useMobileAuth();
   const { colors } = useOwnlevelTheme();
   const { query, compare } = useProgressRange();
-  const params = useLocalSearchParams<{ metric?: string }>();
+  const params = useLocalSearchParams<{ metric?: string; registrar?: string }>();
   const selected = typeof params.metric === 'string' && params.metric ? params.metric : null;
   const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressBody(c, query, signal, compare), [query, compare]);
   const { state, data, refresh } = useProgressResource(client, progressRequestKey(query, compare), load);
+  const body = useBodyController(client, session?.user.id ?? 'anonymous');
+  // Links from Inicio or Ajustes open the right sheet once ("registrar=peso|medidas").
+  useWeightEntry(params.registrar === 'peso', body);
+  useMeasurementEntry(params.registrar === 'medidas', body);
+  // A saved weight or measurement re-reads Body; the period read follows it.
+  const overview = body?.state.read.overview;
+  const seen = useRef(overview);
+  useEffect(() => {
+    if (overview && seen.current && overview !== seen.current) void refresh();
+    seen.current = overview;
+  }, [overview, refresh]);
   const title = selected ? data?.metrics.find(m => m.key === selected)?.label ?? 'Cuerpo' : 'Cuerpo';
-  return <ProgressScroll title={title} testID="body-trends-screen" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
+  const editable = !!body?.state.read.overview && body.state.phase === 'idle' && !body.state.intent && !body.state.editor;
+  return <><ProgressScroll title={title} testID="body-trends-screen" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing}
+    onRefresh={() => { void refresh(); void body?.controller.load(); }} tintColor={colors.primary} />}>
+    {body ? <BodyStatus state={body.state} controller={body.controller} /> : null}
     {state.status === 'loading' ? <SkeletonBlock height={200} />
       : !data ? <UnavailableState title="No pudimos cargar Cuerpo" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente." action={<Button label="Reintentar" onPress={() => void refresh()} />} />
       : <>
         {state.status !== 'ready' ? <InlineUnavailable actionLabel="Reintentar" message="No se pudo actualizar. Mostramos la última lectura confirmada." onAction={() => void refresh()} /> : null}
-        <Content data={data} selected={selected} />
+        <Content data={data} selected={selected} body={body} />
       </>}
-    <ProgressRow testID="body-trend-open" label="Cargar o corregir en Cuerpo" onPress={() => router.push('/(tabs)/progress/body')}>
-      <View style={styles.grow}><AppText variant="headline">Cargar o corregir</AppText><AppText muted variant="footnote">Tus pesos y medidas, en Cuerpo.</AppText></View>
-    </ProgressRow>
-  </ProgressScroll>;
+    <View style={styles.fabRoom} />
+  </ProgressScroll>
+  {body ? <>
+    <BodyAddMenu disabled={!editable} actions={[
+      { key: 'weight', label: 'Registrar peso', icon: 'scale', onPress: () => openTodayWeight(body.state, body.controller) },
+      { key: 'measurement', label: 'Registrar medidas', icon: 'ruler', onPress: () => body.controller.openMeasurement() },
+    ]} />
+    <BodyEditors state={body.state} controller={body.controller} />
+  </> : null}</>;
 }
 const styles = StyleSheet.create({
   section: { gap: spacing.sm },
@@ -132,4 +178,5 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row' },
   chart: { marginTop: spacing.sm },
   link: { minHeight: 44, justifyContent: 'center' },
+  fabRoom: { height: 72 },
 });

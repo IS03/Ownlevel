@@ -1,4 +1,4 @@
-import { Bike, Heart, Pill, Apple, Brain, Bed, Timer, Smile, Leaf, CigaretteOff, ArrowLeftRight, Briefcase, Bookmark, Pin, Info, MessageCircle, Pencil, Repeat, Sparkles,
+import { Ruler, Bike, Heart, Pill, Apple, Brain, Bed, Timer, Smile, Leaf, CigaretteOff, ArrowLeftRight, Briefcase, Bookmark, Pin, Info, MessageCircle, Pencil, Repeat, Sparkles,
   ArrowUpDown, GripHorizontal, Archive, BookOpen, Calendar, ChartLine, Check, ChevronDown,
   ChevronLeft, ChevronRight, CircleCheck, ClipboardList, Clock, Hourglass, Coffee, Droplet, Dumbbell, Ellipsis, Flame,
   Footprints, Search, ListFilter, Sunrise, Sun, Sunset, Moon, NotebookPen, Play, Plus, Minus, RotateCw, Settings, Trash2, TriangleAlert, Trophy, User, Utensils, Weight, X, Zap, type LucideIcon,
@@ -48,6 +48,7 @@ export const lucideIcons: Record<AppIconName, LucideIcon> = {
   refresh: RotateCw,
   routines: ClipboardList,
   scale: Weight,
+  ruler: Ruler,
   settings: Settings,
   trophy: Trophy,
   trash: Trash2,

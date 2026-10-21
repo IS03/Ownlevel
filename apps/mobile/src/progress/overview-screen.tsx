@@ -95,7 +95,7 @@ function Areas({ data, open }: { data: ProgressOverview; open: (d: ProgressDesti
       chart={sparks?.training ? <MiniChart testID="progress-spark-training" mode="bars" current={sparks.training.current} reference={sparks.training.reference} /> : null} />
     <AreaRow testID="progress-area-nutrition" icon="nutrition" title="Nutrición" detail={nutrition} divider onPress={() => open({ kind: 'nutrition' })}
       chart={sparks?.nutrition ? <MiniChart testID="progress-spark-nutrition" mode="bars" current={sparks.nutrition.current} reference={sparks.nutrition.reference} /> : null} />
-    <AreaRow testID="progress-area-metrics" icon="water" title="Métricas" detail={metrics} divider onPress={() => open({ kind: 'metrics', metricId: m?.[0]?.id ?? null })} />
+    <AreaRow testID="progress-area-metrics" icon="activity" title="Métricas" detail={metrics} divider onPress={() => open({ kind: 'metrics', metricId: m?.[0]?.id ?? null })} />
   </View>;
 }
 
