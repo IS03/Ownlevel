@@ -3,8 +3,8 @@
 // client at runtime. CommonJS so Node config files and the app use the same rule.
 // Messages name variables, never values: a rejected key must not reach any log.
 
-// Built from parts so the marker itself never appears verbatim in a bundle; a plain
-// search for it stays a reliable leak check.
+// Avoid introducing the marker ourselves. The Supabase SDK can contain the bare
+// prefix for key classification; bundle checks must distinguish it from a key payload.
 const SECRET_MARKER = ['sb', 'secret', ''].join('_');
 const PUBLISHABLE_PREFIX = 'sb_publishable_';
 const SUPABASE_KEY_VARIABLE = 'EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY';

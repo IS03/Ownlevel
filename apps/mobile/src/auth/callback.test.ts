@@ -1,4 +1,4 @@
-import { describe, expect, it } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 
 import {
   callbackUrlFromRouteParameters,
@@ -13,6 +13,27 @@ describe('native auth callback', () => {
         'ownlevel-dev://auth/callback?code=oauth-code&sb_flow_id=flow_12345678',
       ),
     ).toEqual({ kind: 'code', code: 'oauth-code', flowId: 'flow_12345678' });
+  });
+
+  it('isolates Daily OAuth from Development, including route delivery', () => {
+    const previous = process.env.EXPO_PUBLIC_IOS_VARIANT;
+    try {
+      process.env.EXPO_PUBLIC_IOS_VARIANT = 'daily';
+      jest.isolateModules(() => {
+        const daily = jest.requireActual<typeof import('./callback')>('./callback');
+        expect(daily.parseNativeAuthCallback('ownlevel-dev://auth/callback?code=one')).toBeNull();
+        expect(daily.parseNativeAuthCallback('ownlevel-daily://auth/callback?code=one')).toEqual({
+          kind: 'code', code: 'one', flowId: null,
+        });
+        expect(daily.callbackUrlFromRouteParameters({ code: 'one' })).toBe('ownlevel-daily://auth/callback?code=one');
+        expect(daily.parseNativeAuthCallback('ownlevel-daily://auth/callback?code=one&code=two')).toEqual({ kind: 'invalid' });
+      });
+    } finally {
+      if (previous === undefined) delete process.env.EXPO_PUBLIC_IOS_VARIANT;
+      else process.env.EXPO_PUBLIC_IOS_VARIANT = previous;
+    }
+    expect(parseNativeAuthCallback('ownlevel-daily://auth/callback?code=one')).toBeNull();
+    expect(parseNativeAuthCallback('ownlevel-dev://auth/callback?code=one')).toEqual({ kind: 'code', code: 'one', flowId: null });
   });
 
   it.each([

@@ -1,6 +1,6 @@
 import { NATIVE_AUTH_CALLBACK_URL } from './constants';
 
-const EXPECTED_PROTOCOL = 'ownlevel-dev:';
+const EXPECTED_PROTOCOL = new URL(NATIVE_AUTH_CALLBACK_URL).protocol;
 const EXPECTED_HOST = 'auth';
 const EXPECTED_PATH = '/callback';
 const EXPECTED_PARAMETERS = new Set([
