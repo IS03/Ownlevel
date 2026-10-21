@@ -30,6 +30,11 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
   const { top } = useSafeAreaInsets();
   const { state, today } = useProgressRange();
   const [sheet, setSheet] = useState<'custom' | 'compare' | null>(null);
+  const [pulled, setPulled] = useState(false);
+  const refreshing = !!refreshControl?.props.refreshing;
+  // The pull ends with its read; the next silent read starts with the spinner hidden again.
+  const [wasRefreshing, setWasRefreshing] = useState(refreshing);
+  if (wasRefreshing !== refreshing) { setWasRefreshing(refreshing); if (!refreshing && pulled) setPulled(false); }
   const open = { onCustom: () => setSheet('custom'), onCompare: () => setSheet('compare') };
   const scroll = useAnimatedRef<Animated.ScrollView>();
   const offset = useScrollViewOffset(scroll);
@@ -46,13 +51,20 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
     <Stack.Screen options={{ title: barTitle, headerShown: false }} />
     <ScrollScreen testID={testID} scrollRef={scroll} scrollEdge edgeExtra={BAR + 8} edgeFade={10} topInset="manual"
       // The spinner shows below the fixed header, not behind it.
-      refreshControl={refreshControl ? cloneElement(refreshControl, { progressViewOffset: header }) : undefined}
+      refreshControl={refreshControl ? cloneElement(refreshControl, {
+        progressViewOffset: header,
+        // Only a pull shows the spinner: the silent re-reads on focus/foreground must never push the page down.
+        refreshing: pulled && refreshControl.props.refreshing,
+        onRefresh: () => { setPulled(true); refreshControl.props.onRefresh?.(); },
+      }) : undefined}
       contentContainerStyle={{ paddingTop: header }}>
       {/* The strip opens the page and scrolls away with it; only the title bar stays. */}
       <View style={styles.stripSlot}><PeriodBar onCustom={open.onCustom} /></View>
       {multilineTitle ? <AppText accessibilityRole="header" variant="title1">{title}</AppText> : null}
       <ProgressPeriodBlock {...open} />
       {children}
+      {/* The floating tab bar sits over the end of the page: the last row always scrolls clear of it. */}
+      <View style={styles.tabRoom} />
     </ScrollScreen>
     <View pointerEvents="box-none" style={[styles.header, { paddingTop: top }]}>
       <View pointerEvents="box-none" style={styles.bar}>
@@ -76,6 +88,7 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
   </>;
 }
 const styles = StyleSheet.create({
+  tabRoom: { height: 72 },
   header: { position: 'absolute', top: 0, left: 0, right: 0 },
   bar: { height: BAR, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16 },
   titleSlot: { flex: 1, height: BAR, justifyContent: 'center' },

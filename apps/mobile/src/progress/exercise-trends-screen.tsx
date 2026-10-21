@@ -1,5 +1,7 @@
-import { useCallback, useState, type ReactNode } from 'react';
-import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Pressable, RefreshControl, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import {
@@ -15,12 +17,13 @@ import {
   Button,
   Heading,
   InlineUnavailable,
-  SegmentedControl,
   SkeletonBlock,
   UnavailableState,
+  brandTokens,
   radius,
   spacing,
   useOwnlevelTheme,
+  useReduceMotion,
 } from '@/design-system';
 import { ProgressScroll } from './progress-scroll';
 import { useComparisonText, useProgressRange } from './progress-range-context';
@@ -90,9 +93,18 @@ function FlatRow({
   );
 }
 
+/** A mark that slides to its new position or height when the measure changes (300 ms); Reduce Motion: no slide. */
+function Moving({ to, prop, reduced, style, children }: { to: number; prop: 'height' | 'bottom' | 'marginBottom'; reduced: boolean; style?: StyleProp<ViewStyle>; children?: ReactNode }) {
+  const v = useSharedValue(to);
+  useEffect(() => { v.value = reduced ? to : withTiming(to, { duration: brandTokens.motion.duration.base, easing: Easing.out(Easing.cubic) }); }, [reduced, to, v]);
+  const animated = useAnimatedStyle(() => ({ [prop]: v.value }));
+  return <Animated.View style={[style, animated]}>{children}</Animated.View>;
+}
+
 function ExerciseChart({ data, measure }: { data: ProgressTrainingExerciseDetail; measure: Measure }) {
   const { colors } = useOwnlevelTheme(),
-    router = useRouter();
+    router = useRouter(),
+    reduced = useReduceMotion();
   const { compareOn, compareText } = useProgressRange();
   const [width, setWidth] = useState(300);
   const level = ['estimated_1rm', 'best_set', 'best_time'].includes(measure.key);
@@ -158,34 +170,18 @@ function ExerciseChart({ data, measure }: { data: ProgressTrainingExerciseDetail
                   level ? (
                     <>
                       {written.has(index) ? (
-                        <AppText numeric variant="caption" numberOfLines={1}
-                          style={[styles.value, { bottom: lift + 10, color: slot.sessionId === last ? colors.text : colors.textMuted }]}>
-                          {formatValue(p.value, null)}
-                        </AppText>
+                        <Moving to={lift + 10} reduced={reduced} prop="bottom" style={styles.value}>
+                          <AppText numeric variant="caption" numberOfLines={1} style={{ textAlign: 'center', color: slot.sessionId === last ? colors.text : colors.textMuted }}>
+                            {formatValue(p.value, null)}
+                          </AppText>
+                        </Moving>
                       ) : null}
-                      <View
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: radius.full,
-                          backgroundColor: color,
-                          opacity,
-                          marginBottom: lift,
-                        }}
-                      />
+                      <Moving to={lift} reduced={reduced} prop="marginBottom"
+                        style={{ width: 8, height: 8, borderRadius: radius.full, backgroundColor: color, opacity }} />
                     </>
                   ) : (
-                    <View
-                      style={{
-                        width: '60%',
-                        maxWidth: 32,
-                        height: height * 144,
-                        backgroundColor: color,
-                        opacity,
-                        borderTopLeftRadius: 2,
-                        borderTopRightRadius: 2,
-                      }}
-                    />
+                    <Moving to={height * 144} reduced={reduced} prop="height"
+                      style={{ width: '60%', maxWidth: 32, backgroundColor: color, opacity, borderTopLeftRadius: 2, borderTopRightRadius: 2 }} />
                   )
                 ) : null}
               </View>
@@ -235,7 +231,7 @@ function ExerciseChart({ data, measure }: { data: ProgressTrainingExerciseDetail
 }
 
 function Measures({ data }: { data: ProgressTrainingExerciseDetail }) {
-  const { colors } = useOwnlevelTheme();
+  const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
   const { compareOn, compareText, state, today } = useProgressRange();
   const [selected, setSelected] = useState(data.charts?.measures[0]?.key ?? 'best_set');
   const measure = data.charts?.measures.find((m) => m.key === selected) ?? data.charts?.measures[0];
@@ -272,13 +268,14 @@ function Measures({ data }: { data: ProgressTrainingExerciseDetail }) {
     : `Sin valor válido para ${measure.label.toLocaleLowerCase('es-AR')} en la última sesión.`;
   return (
     <View style={styles.section} testID="exercise-trend-summary">
-      <SegmentedControl
+      {/* Native segmented control (Liquid Glass on iOS 26). */}
+      <ExerciseSegmented
         accessibilityLabel="Medida del ejercicio"
         value={measure.key}
         options={data.charts.measures.map((m) => ({ value: m.key, label: m.label }))}
         onChange={setSelected}
       />
-      <View style={styles.numbers}>
+      <Animated.View key={measure.key} entering={FadeIn.duration(reduced ? 0 : 200)} style={styles.numbers}>
         <View style={styles.grow}>
           <View style={styles.valueLine}>
             <AppText
@@ -309,7 +306,7 @@ function Measures({ data }: { data: ProgressTrainingExerciseDetail }) {
             </View>
           </>
         ) : null}
-      </View>
+      </Animated.View>
       {compareOn && !change ? <AppText muted variant="caption">Sin comparación: {compareText} sin valor comparable.</AppText> : null}
       <ExerciseChart data={data} measure={measure} />
     </View>
@@ -483,7 +480,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   grow: { flex: 1, gap: spacing.xs },
-  numbers: { flexDirection: 'row', gap: spacing.lg },
+  numbers: { flexDirection: 'row', gap: spacing.lg, minHeight: 96 },
   divider: { width: StyleSheet.hairlineWidth },
   valueLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.xs },
   chip: { borderRadius: radius.chip, paddingHorizontal: spacing.xs, paddingVertical: spacing.xs },

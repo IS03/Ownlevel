@@ -1,9 +1,10 @@
 import { useCallback, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchProgressMetrics, progressRequestKey, type ProgressMetrics } from '@/api/progress';
-import { AppText, Button, Chip, InlineUnavailable, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, Button, GlassSurface, InlineUnavailable, SkeletonBlock, UnavailableState, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion, type AppIconName } from '@/design-system';
+import { triggerHaptic } from '@/platform/haptics';
 import { PeriodChart } from './period-chart';
 import { ProgressRow } from './progress-row';
 import { ProgressScroll } from './progress-scroll';
@@ -80,6 +81,24 @@ function Detail({ data, onDay }: { data: ProgressMetrics; onDay: (date: string) 
   </>;
 }
 
+/**
+ * A metric to look at, as a Liquid Glass capsule (IDENTIDAD.md: glass on controls). The chosen one takes the champagne;
+ * an archived one is quieter, in muted text with the archive mark, so it never reads as one you track today.
+ */
+function MetricChip({ label, selected, onPress, icon, quiet = false, archived = false, testID }: {
+  label: string; selected: boolean; onPress: () => void; icon?: AppIconName; quiet?: boolean; archived?: boolean; testID?: string;
+}) {
+  const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
+  const color = selected ? colors.primary : quiet ? colors.textMuted : colors.text;
+  return <Pressable accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={archived ? `${label}, archivada` : label} testID={testID}
+    onPress={() => { triggerHaptic('stepperChange'); onPress(); }} style={({ pressed }) => pressedStyle(pressed, reduced)}>
+    <GlassSurface interactive tint={selected ? colors.brandSubtle : undefined} style={styles.chip}>
+      {icon || archived ? <AppIcon name={icon ?? 'archive'} color={color} size={15} /> : null}
+      <AppText variant="subheadline" style={{ color, fontWeight: selected ? '600' : '400' }}>{label}</AppText>
+    </GlassSurface>
+  </Pressable>;
+}
+
 /** Métricas in Progreso (P6): one metric at a time, average per day with data, coverage always visible. No sums, no "target hit" days. */
 export function MetricsTrendsScreen() {
   const router = useRouter();
@@ -91,32 +110,37 @@ export function MetricsTrendsScreen() {
   const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressMetrics(c, query, metricId, signal, compare), [query, metricId, compare]);
   const { state, data, refresh } = useProgressResource(client, `${progressRequestKey(query, compare)}|${metricId ?? ''}`, load);
   const [showArchived, setShowArchived] = useState(false);
-  const archived = data?.definitions.filter(d => !d.isActive && d.id !== data.metric?.id).length ?? 0;
+  const active = data?.definitions.filter(d => d.isActive) ?? [];
+  const archived = data?.definitions.filter(d => !d.isActive) ?? [];
   return <ProgressScroll title="Métricas" testID="metrics-trends-screen" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
     {state.status === 'loading' ? <SkeletonBlock height={200} />
       : !data ? <UnavailableState title="No pudimos cargar tus métricas" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente." action={<Button label="Reintentar" onPress={() => void refresh()} />} />
       : <>
         {state.status !== 'ready' ? <InlineUnavailable actionLabel="Reintentar" message="No se pudo actualizar. Mostramos la última lectura confirmada." onAction={() => void refresh()} /> : null}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow} contentContainerStyle={styles.chips} accessibilityLabel="Métrica">
-          {/* Archived metrics stay one tap away, after the ones in use. */}
-          {data.definitions.filter(d => d.isActive || showArchived || d.id === data.metric?.id).map(d =>
-            <Chip key={d.id} label={d.isActive ? d.name : `${d.name} · archivada`} selected={d.id === data.metric?.id} onPress={() => setMetricId(d.id)} />)}
-          {archived && !showArchived ? <Chip label={`Archivadas (${archived})`} selected={false} onPress={() => setShowArchived(true)} /> : null}
+          {active.map(d => <MetricChip key={d.id} label={d.name} selected={d.id === data.metric?.id} onPress={() => setMetricId(d.id)} />)}
+          {/* Archived metrics live after a divider, quieter and with their own mark; collapsed until you ask for them. */}
+          {archived.length ? <>
+            <View style={[styles.rule, { backgroundColor: colors.border }]} />
+            <MetricChip label={showArchived ? 'Archivadas' : `Archivadas (${archived.length})`} icon="archive" quiet selected={false}
+              onPress={() => setShowArchived(v => !v)} testID="metric-archived-toggle" />
+            {showArchived || archived.some(d => d.id === data.metric?.id) ? archived.filter(d => showArchived || d.id === data.metric?.id).map(d =>
+              <MetricChip key={d.id} label={d.name} quiet archived selected={d.id === data.metric?.id} onPress={() => setMetricId(d.id)} />) : null}
+          </> : null}
         </ScrollView>
         {data.metric && data.summary ? <Detail data={data} onDay={date => router.push({ pathname: '/history/day/[date]', params: { date } })} />
           : <AppText muted>No hay métricas para analizar.</AppText>}
       </>}
-    <ProgressRow testID="metric-trend-open" label="Cargar o corregir en Métricas" onPress={() => router.push('/(tabs)/progress/metrics')}>
-      <View style={styles.grow}><AppText variant="headline">Cargar o corregir</AppText><AppText muted variant="footnote">El dato de cualquier día, en Métricas.</AppText></View>
-    </ProgressRow>
   </ProgressScroll>;
 }
 const styles = StyleSheet.create({
   numbers: { flexDirection: 'row', gap: spacing.lg },
   grow: { flex: 1, gap: 2 },
   divider: { width: StyleSheet.hairlineWidth },
-  chipRow: { flexGrow: 0 },
-  chips: { gap: spacing.sm, paddingVertical: 2, alignItems: 'center' },
+  chipRow: { flexGrow: 0, marginHorizontal: -16 },
+  chip: { minHeight: 36, borderRadius: 18, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  rule: { width: StyleSheet.hairlineWidth, height: 24, marginHorizontal: 4 },
+  chips: { gap: spacing.sm, paddingVertical: 2, paddingHorizontal: 16, alignItems: 'center' },
   legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.md, rowGap: spacing.xs },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   dash: { width: 14, borderTopWidth: 1, borderStyle: 'dashed', opacity: 0.6 },

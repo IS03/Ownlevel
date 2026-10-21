@@ -185,3 +185,25 @@ Avisos que salieron de Plan nutricional y se muestran una sola vez:
   - Cuando dos etapas se llaman igual, se distinguen por sus fechas, en los chips y en la tabla.
   - "Sin dato" va chico en lugar del número.
   - Con menos de una semana, la duración va en días. La fila "Duró" pasa a "Duración".
+
+## Progreso · segunda vuelta de QA (21/10)
+
+- **Cuerpo, una sola pantalla:**
+  - Progreso › Cuerpo tiene los pesajes y mediciones para corregir, y un "+" flotante con Liquid Glass y vibración.
+  - El "+" gira a ✕ y las opciones salen hacia arriba sin taparlo.
+  - La ruta vieja `/(tabs)/progress/body` redirige ahí; queda solo para un día puntual (desde Historial).
+  - CONTRACT pendiente: retirar `ProgressHub` y la ruta vieja cuando no queden links.
+- **Hojas de carga:**
+  - Peso: el número se ve arriba del teclado.
+  - Medidas: hoja acotada arriba del teclado, que se cierra deslizando sin saltos. La fecha es nativa en iOS.
+- **Entrenamiento y ejercicio:** selector nativo (Liquid Glass). Las barras y puntos se animan a su valor nuevo y los números aparecen con fundido.
+- **Progreso:** el indicador de recarga aparece solo al tirar hacia abajo; las recargas automáticas ya no bajan la página. Todas las pantallas dejan espacio bajo la barra de pestañas.
+- **Nutrición:**
+  - El promedio por día va con barra contra el objetivo y reparto de macros.
+  - Se sacó la sección Cobertura: lo que falta se dice en "Días con registro".
+  - Los días destacados muestran su valor.
+  - "Por semana" y "Día por día" son tablas compactas plegables. "Por semana" no aparece si los bloques son días.
+- **Métricas:**
+  - Chips con Liquid Glass.
+  - Las archivadas van detrás de una línea, en gris y con el ícono de archivo.
+  - Se sacó "Cargar o corregir": Progreso es solo para ver.

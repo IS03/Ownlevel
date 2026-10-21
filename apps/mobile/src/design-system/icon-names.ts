@@ -50,6 +50,7 @@ export type AppIconName =
   | 'refresh'
   | 'routines'
   | 'scale'
+  | 'ruler'
   | 'settings'
   | 'trophy'
   | 'trash'
@@ -115,6 +116,7 @@ export const sfSymbolNames: Record<AppIconName, SFSymbol> = {
   refresh: 'arrow.clockwise',
   routines: 'list.bullet.rectangle',
   scale: 'scalemass.fill',
+  ruler: 'ruler',
   settings: 'gearshape.fill',
   trophy: 'trophy.fill',
   trash: 'trash',

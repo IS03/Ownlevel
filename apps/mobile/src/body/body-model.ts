@@ -87,11 +87,12 @@ export function measurementValues(measurement: BodyMeasurement) {
   return fields.filter(field => measurement[field] !== null)
     .map(field => ({ field, label: BODY_MEASUREMENT_LABELS[field], value: formatCm(measurement[field]) }));
 }
-export type QualityBadge = { tone: 'warning' | 'muted'; text: string };
+/** `short` is the one word a history row has room for; `text` the full sentence. The import source id stays internal. */
+export type QualityBadge = { tone: 'warning' | 'muted'; text: string; short: string };
 export function measurementBadges(measurement: BodyMeasurement): QualityBadge[] {
   const badges: QualityBadge[] = [];
-  if (measurement.qualityStatus === 'suspect') badges.push({ tone: 'warning', text: `Sospechosa · excluida del análisis${measurement.qualityNote ? `: ${measurement.qualityNote}` : ''}` });
-  if (measurement.imported) badges.push({ tone: 'muted', text: `Importada${measurement.importSource ? ` · ${measurement.importSource}` : ''}` });
+  if (measurement.qualityStatus === 'suspect') badges.push({ tone: 'warning', short: 'Sospechosa', text: `Sospechosa · excluida del análisis${measurement.qualityNote ? `: ${measurement.qualityNote}` : ''}` });
+  if (measurement.imported) badges.push({ tone: 'muted', short: 'Importada', text: 'Importada' });
   return badges;
 }
 

@@ -35,6 +35,6 @@ describe('Body model: missing != zero and domain validation', () => {
   it('describes import/quality state without technical metadata', () => {
     expect(measurementBadges(measurement())).toEqual([]);
     expect(measurementBadges(measurement({ imported: true, importSource: 'sheet', qualityStatus: 'suspect', qualityNote: 'Revisar' })).map(b => b.text))
-      .toEqual(['Sospechosa · excluida del análisis: Revisar', 'Importada · sheet']);
+      .toEqual(['Sospechosa · excluida del análisis: Revisar', 'Importada']);
   });
 });
