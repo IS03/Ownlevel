@@ -19,7 +19,8 @@ export default function ProgressLayout() {
       <Stack.Screen name="trends/exercise/[id]" options={{ headerShown: false, title: 'Ejercicio' }} />
       <Stack.Screen name="explore" options={{ headerShown: false, title: 'Explorar' }} />
       <Stack.Screen name="views" options={{ title: 'Mis vistas' }} />
-      <Stack.Screen name="stages" options={{ title: 'Tus etapas', headerTransparent: true, headerStyle: { backgroundColor: 'transparent' } }} />
+      {/* The page opens with its own large title: the bar only keeps Back, so the name is never said twice. */}
+      <Stack.Screen name="stages" options={{ title: 'Tus etapas', headerTitle: '', headerTransparent: true, headerStyle: { backgroundColor: 'transparent' } }} />
       <Stack.Screen name="connections/[key]" options={{ headerShown: false, title: 'Lo que se movió junto' }} />
       <Stack.Screen name="influence/index" options={{ headerShown: false, title: 'Qué influye' }} />
       <Stack.Screen name="influence/answer" options={{ headerShown: false, title: 'Tu pregunta' }} />

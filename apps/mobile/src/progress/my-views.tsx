@@ -22,7 +22,7 @@ function Tile({ view, onPress }: { view: ProgressViewsRead['views'][number]; onP
   const r = view.result;
   if (r.status === 'unavailable') return <Pressable accessibilityRole="button" accessibilityLabel={`${view.name}. No disponible`} onPress={onPress}
     testID={`my-view-${view.id}`} style={({ pressed }) => [styles.tile, pressed && { opacity: 0.6 }]}>
-    <AppText muted variant="caption" numberOfLines={1} style={styles.name}>{view.name}</AppText>
+    <AppText muted variant="caption" numberOfLines={1}>{view.name}</AppText>
     <AppText variant="headline">No disponible</AppText>
     <AppText muted variant="caption" numberOfLines={2}>{r.reason === 'invalid_definition' ? 'Esta medida ya no existe. Podés sacarla en Editar.' : 'No pudimos cargarla.'}</AppText>
   </Pressable>;
@@ -32,7 +32,7 @@ function Tile({ view, onPress }: { view: ProgressViewsRead['views'][number]; onP
     const summary = shortAnswer(data);
     return <Pressable accessibilityRole="button" accessibilityLabel={`${view.name}. ${difference ? `${difference}. ` : ''}${summary}`} accessibilityHint="Abre la respuesta en Qué influye" onPress={onPress}
       testID={`my-view-${view.id}`} style={({ pressed }) => [styles.tile, pressed && { opacity: 0.6 }]}>
-      <AppText muted variant="caption" numberOfLines={1} style={styles.name}>{view.name}</AppText>
+      <AppText muted variant="caption" numberOfLines={1}>{view.name}</AppText>
       {difference ? <AppText numeric variant="title2" numberOfLines={1} adjustsFontSizeToFit>{difference}</AppText> : null}
       <AppText muted numeric variant="caption" numberOfLines={2}>{summary}</AppText>
     </Pressable>;
@@ -41,14 +41,36 @@ function Tile({ view, onPress }: { view: ProgressViewsRead['views'][number]; onP
   const dots = e.measure.aggregation === 'latest' || e.measure.aggregation === 'best';
   const top = e.breakdown ? [...c.groups].filter(g => g.value !== null).sort((a, b) => (b.value ?? 0) - (a.value ?? 0))[0] : undefined;
   const value = c.value === null ? '—' : valueText(e, c.value);
-  return <Pressable accessibilityRole="button" accessibilityLabel={`${view.name}: ${value}`} accessibilityHint="Abre la vista en Explorar" onPress={onPress}
+  const topText = top ? `${top.label} · ${valueText(e, top.value, e.breakdown === 'weekday' && e.measure.aggregation === 'sum')}` : null;
+  return <Pressable accessibilityRole="button" accessibilityLabel={`${view.name}: ${value}${topText ? `. El más alto, ${topText}` : ''}`} accessibilityHint="Abre la vista en Explorar" onPress={onPress}
     testID={`my-view-${view.id}`} style={({ pressed }) => [styles.tile, pressed && { opacity: 0.6 }]}>
-    <AppText muted variant="caption" numberOfLines={1} style={styles.name}>{view.name}</AppText>
+    <AppText muted variant="caption" numberOfLines={1}>{view.name}</AppText>
     <AppText numeric variant="title2" numberOfLines={1} adjustsFontSizeToFit>{value}</AppText>
     {c.series && !e.breakdown ? <MiniChart current={c.series} reference={e.reference?.series ?? null} mode={dots ? 'level' : 'bars'} />
-      : top ? <AppText muted numeric variant="caption" numberOfLines={1}>{top.label} · {valueText(e, top.value, e.breakdown === 'weekday' && e.measure.aggregation === 'sum')}</AppText>
+      : top ? <View style={styles.breakdown}>
+        <BreakdownBars groups={c.groups} top={top.key} ordered={ORDERED.has(e.breakdown!)} />
+        <AppText muted variant="caption" numberOfLines={1} style={styles.grow}>{top.label}</AppText>
+      </View>
       : <AppText muted variant="caption" numberOfLines={1}>{aggregationText(e)}</AppText>}
   </Pressable>;
+}
+
+/** Breakdowns with their own order (days, meal moments, time bands) keep it; the rest go from most to least. */
+const ORDERED = new Set(['weekday', 'meal_moment', 'time_band']);
+const BAR_W = 56, BAR_H = 22;
+/** Decorative: one bar per group from zero, the highest in champagne (like Explorar); the label beside it names it. */
+function BreakdownBars({ groups, top, ordered }: { groups: { key: string; value: number | null }[]; top: string; ordered: boolean }) {
+  const { colors } = useOwnlevelTheme();
+  const shown = (ordered ? groups : [...groups].sort((a, b) => (b.value ?? -1) - (a.value ?? -1))).slice(0, 8);
+  const high = Math.max(0, ...shown.map(g => g.value ?? 0));
+  if (!high) return null;
+  const width = Math.max(2, (BAR_W - 2 * (shown.length - 1)) / shown.length);
+  return <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.bars}>
+    {shown.map(g => <View key={g.key} style={{ width, height: BAR_H, justifyContent: 'flex-end' }}>
+      {g.value !== null && g.value > 0 ? <View style={{ height: Math.max(2, (g.value / high) * BAR_H), borderTopLeftRadius: 1.5, borderTopRightRadius: 1.5,
+        backgroundColor: colors.primary, opacity: g.key === top ? 1 : 0.35 }} /> : null}
+    </View>)}
+  </View>;
 }
 
 /** S1 · Mis vistas, on top of Progreso: saved queries in the shared period. Empty is useful and neutral. */
@@ -75,7 +97,7 @@ export function MyViews() {
           if (isInfluenceView(v.definition)) {
             haptics.selection(); const definition = influenceDefinitionOf(v.definition);
             router.push({ pathname: '/(tabs)/progress/influence/answer', params: { ...definition, lag: String(definition.lag) } });
-          } else explore(exploreParams(v.definition));
+          } else explore({ ...exploreParams(v.definition), view: v.name });
         }} />
       </View>)}</View>
       : <AppText muted testID="my-views-empty">Fijá acá lo que más mirás: armalo en Explorar y tocá “Fijar en Mis vistas”.</AppText>}
@@ -91,6 +113,8 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: spacing.lg, columnGap: spacing.lg },
   cell: { width: '47%' },
   tile: { gap: 4, minHeight: 74 },
-  name: { fontWeight: '600' },
+  breakdown: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm },
+  bars: { width: BAR_W, height: BAR_H, flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
+  grow: { flex: 1 },
   add: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 },
 });

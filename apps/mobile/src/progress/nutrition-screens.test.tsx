@@ -139,10 +139,13 @@ describe('Progress Nutrition', () => {
     expect(mockReport).toHaveBeenLastCalledWith(mockClient, query);
     expect(within(view.getByTestId('nutrition-progress-summary')).getByText('2.556')).toBeTruthy();
     expect(within(view.getByTestId('nutrition-progress-summary')).getByText('156 g')).toBeTruthy();
+    // How many days the averages cover is said once, not under every number.
+    expect(within(view.getByTestId('nutrition-progress-summary')).getAllByText(/^Promedio de \d+ días? con dato/)).toHaveLength(1);
     expect(view.queryByText(/gris =|Frente a/)).toBeNull();
-    expect(view.getByText('hueco = sin registro')).toBeTruthy();
+    // The legend only names what the chart shows (here: a gap), once.
+    expect(view.getByText('hueco: sin registro', { includeHiddenElements: true })).toBeTruthy();
     expect(view.getByTestId('nutrition-chart-current-2026-10-02-gap')).toBeTruthy();
-    expect(within(view.getByTestId('nutrition-progress-detail')).getByText('Carbohidratos promedio')).toBeTruthy();
+    expect(within(view.getByTestId('nutrition-progress-detail')).getByText('Carbohidratos')).toBeTruthy();
     fireEvent.press(view.getByRole('button', { name: /1 oct, 100 kcal/ }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/nutrition', params: { date: '2026-10-01' } });
     fireEvent.press(view.getByTestId('nutrition-timing-entry'));
@@ -150,7 +153,7 @@ describe('Progress Nutrition', () => {
     fireEvent.press(view.getByText('Ver los 4 días'));
     expect(view.getByText('Sin registro nutricional')).toBeTruthy();
     fireEvent.press(view.getByText('Ver detalle por bloques'));
-    expect(view.getAllByText('Diferencia contra objetivo').length).toBeGreaterThan(0);
+    expect(view.getAllByText('Diferencia con el objetivo').length).toBeGreaterThan(0);
   });
   it('pairs a shorter reference by position, leaving gaps, and shows comparisons only when enabled', async () => {
     const initial: ProgressRangeState = {
@@ -165,7 +168,7 @@ describe('Progress Nutrition', () => {
     expect(mockReport).toHaveBeenCalledWith(mockClient, { period: 'custom', from: '2026-09-01', to: '2026-09-02' });
     expect(view.getByText('1–2 sep 2.195 · ↗ 361')).toBeTruthy();
     expect(view.getByText('1–2 sep 156 · ↗ 1')).toBeTruthy();
-    expect(view.getByText('Champagne = octubre · gris = 1–2 sep · hueco = sin registro')).toBeTruthy();
+    expect(view.getByText('champagne octubre · gris 1–2 sep', { includeHiddenElements: true })).toBeTruthy();
     expect(view.getByTestId('nutrition-chart-reference-2-gap')).toBeTruthy();
     expect(view.getByTestId('nutrition-chart-reference-2026-09-01-bar')).toBeTruthy();
   });
@@ -208,7 +211,7 @@ describe('Cuándo comés', () => {
     await flush();
     expect(view.getByText('De 20 a 5 h comés el 41 % de tus calorías y el 18 % de tu proteína.')).toBeTruthy();
     expect(view.getByText('Al mediodía, el 12 % de tus calorías.')).toBeTruthy();
-    expect(view.getByText('Champagne = calorías · oscuro = proteína · 86 de 92 comidas con hora')).toBeTruthy();
+    expect(view.getByText('86 de 92 comidas con hora · hora de Córdoba')).toBeTruthy();
     expect(view.getAllByText(/1–4 sep: /)).toHaveLength(4);
     expect(view.getByTestId('timing-night')).toBeTruthy();
   });

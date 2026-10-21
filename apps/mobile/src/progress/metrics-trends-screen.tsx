@@ -27,19 +27,27 @@ function Detail({ data, onDay }: { data: ProgressMetrics; onDay: (date: string) 
     return hit ? ` · ${day(hit.start)}` : '';
   };
   const c = data.comparison;
+  // Today without a value is still in course, not a gap.
+  const gaps = data.series.some(p => p.value === null && !(p.start <= data.today && p.end >= data.today));
+  const stats = [
+    { key: 'min', label: 'Mínimo', value: v(s.minimum), when: when(s.minimum) },
+    { key: 'max', label: 'Máximo', value: v(s.maximum), when: when(s.maximum) },
+    { key: 'median', label: 'Mediana', value: v(s.median), when: '' },
+  ];
   return <>
     <View style={styles.numbers} testID="metric-trend-summary">
       <View style={styles.grow}>
         <AppText numeric variant="largeTitle">{s.average === null ? '—' : v(s.average)}</AppText>
-        <AppText muted variant="caption">promedio por día con dato{m.currentTarget !== null ? ` · obj. ${v(m.currentTarget)}` : ''}</AppText>
+        <AppText muted variant="caption">promedio por día con dato</AppText>
+        {m.currentTarget !== null ? <AppText muted numeric variant="caption">objetivo {v(m.currentTarget)}</AppText> : null}
         {compareText ? <AppText numeric variant="caption" testID="metric-trend-comparison">{compareText} {data.previous?.average == null ? 'sin datos'
           : `${v(data.previous.average)}${c && c.status === 'comparable' && c.deltaAbsolute !== null ? ` · ${arrowDelta(c.deltaAbsolute, m.unit, m.valueType)}` : ''}`}</AppText> : null}
       </View>
       <View style={[styles.divider, { backgroundColor: colors.border }]} />
       <View style={styles.grow}>
-        <AppText numeric variant="largeTitle">{s.registeredDays}/{s.eligibleDays}</AppText>
-        <AppText variant="caption" style={{ color: low ? colors.text : colors.textMuted }}>días con dato{low ? ' · cobertura baja' : ''}</AppText>
-        {compareText && data.previous ? <AppText numeric muted variant="caption">{compareText} {data.previous.registeredDays}/{data.previous.eligibleDays}</AppText> : null}
+        <AppText numeric variant="largeTitle">{s.registeredDays} de {s.eligibleDays}</AppText>
+        <AppText variant="caption" style={{ color: low ? colors.text : colors.textMuted }}>días con dato{low ? ' · pocos para un promedio' : ''}</AppText>
+        {compareText && data.previous ? <AppText numeric muted variant="caption">{compareText} {data.previous.registeredDays} de {data.previous.eligibleDays}</AppText> : null}
       </View>
     </View>
     <PeriodChart testID="metric-trend-chart" mode="bars" target={m.currentTarget} points={data.series.map(p => ({
@@ -47,19 +55,28 @@ function Detail({ data, onDay }: { data: ProgressMetrics; onDay: (date: string) 
       text: `${p.value === null ? 'sin dato' : v(p.value)}${p.samples > 1 ? `, promedio de ${p.samples} días` : ''}`,
       ...(p.start === p.end && p.value !== null ? { onPress: () => onDay(p.start), hint: 'Abre el día en Historial' } : {}),
     }))} />
-    <AppText muted variant="caption">
-      {daily ? 'Un día por barra' : data.period.bucket === 'week' ? 'Promedio por semana' : 'Promedio por mes'}
-      {m.currentTarget !== null ? ' · línea = objetivo actual' : ''} · hueco = sin dato
-      {data.period.includesToday ? ' · hoy no se incluye mientras está en curso' : ''}. Un 0 registrado cuenta; un día sin dato no.
-    </AppText>
-    <View>
-      <ProgressRow label={`Mínimo, ${v(s.minimum)}`}><View style={styles.grow}><AppText variant="headline">Mínimo</AppText><AppText muted numeric variant="footnote">{v(s.minimum)}{when(s.minimum)}</AppText></View></ProgressRow>
-      <ProgressRow label={`Máximo, ${v(s.maximum)}`}><View style={styles.grow}><AppText variant="headline">Máximo</AppText><AppText muted numeric variant="footnote">{v(s.maximum)}{when(s.maximum)}</AppText></View></ProgressRow>
-      <ProgressRow label={`Mediana, ${v(s.median)}`}><View style={styles.grow}><AppText variant="headline">Mediana</AppText><AppText muted numeric variant="footnote">{v(s.median)}</AppText></View></ProgressRow>
-      <ProgressRow><View style={styles.grow}><AppText variant="headline">Del primer al último dato</AppText>
-        <AppText muted numeric variant="footnote">{s.trendDelta === null ? 'Datos insuficientes' : `${arrowDelta(s.trendDelta, m.unit, m.valueType)}${s.trendPercentDelta !== null ? ` (${PCT.format(Math.abs(s.trendPercentDelta))} %)` : ''}`}</AppText></View></ProgressRow>
+    {/* One legend line, only with what this chart shows. */}
+    <View style={styles.legend} testID="metric-trend-legend">
+      {!daily ? <AppText muted variant="caption">{data.period.bucket === 'week' ? 'cada barra: promedio de la semana' : 'cada barra: promedio del mes'}</AppText> : null}
+      {m.currentTarget !== null ? <View style={styles.legendItem}>
+        <View style={[styles.dash, { borderColor: colors.text }]} />
+        <AppText muted numeric variant="caption">objetivo actual {v(m.currentTarget)}</AppText>
+      </View> : null}
+      {gaps ? <AppText muted variant="caption">hueco: sin dato</AppText> : null}
+      {data.period.includesToday ? <AppText muted variant="caption">hoy cuenta cuando termina</AppText> : null}
     </View>
-    {m.currentTarget !== null ? <AppText muted variant="caption">El objetivo es el actual: no hay objetivos históricos por período.</AppText> : null}
+    <View style={styles.stats} testID="metric-trend-stats">
+      {stats.map((x, i) => <View key={x.key} accessible accessibilityLabel={`${x.label}, ${x.value}${x.when}`}
+        style={[styles.stat, i > 0 && [styles.statDivider, { borderColor: colors.border }]]}>
+        <AppText muted variant="caption">{x.label}</AppText>
+        <AppText numeric variant="headline">{x.value}</AppText>
+        {x.when ? <AppText muted numeric variant="caption">{x.when.replace(/^ · /, '')}</AppText> : null}
+      </View>)}
+    </View>
+    <ProgressRow label={`Del primer al último dato, ${s.trendDelta === null ? 'datos insuficientes' : arrowDelta(s.trendDelta, m.unit, m.valueType)}`}>
+      <View style={styles.grow}><AppText>Del primer al último dato</AppText></View>
+      <AppText numeric variant="headline">{s.trendDelta === null ? 'Sin datos suficientes' : `${arrowDelta(s.trendDelta, m.unit, m.valueType)}${s.trendPercentDelta !== null && s.trendDelta !== 0 ? ` (${PCT.format(Math.abs(s.trendPercentDelta))} %)` : ''}`}</AppText>
+    </ProgressRow>
   </>;
 }
 
@@ -73,19 +90,24 @@ export function MetricsTrendsScreen() {
   const [metricId, setMetricId] = useState<string | null>(typeof params.metric === 'string' ? params.metric : null);
   const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressMetrics(c, query, metricId, signal, compare), [query, metricId, compare]);
   const { state, data, refresh } = useProgressResource(client, `${progressRequestKey(query, compare)}|${metricId ?? ''}`, load);
+  const [showArchived, setShowArchived] = useState(false);
+  const archived = data?.definitions.filter(d => !d.isActive && d.id !== data.metric?.id).length ?? 0;
   return <ProgressScroll title="Métricas" testID="metrics-trends-screen" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
     {state.status === 'loading' ? <SkeletonBlock height={200} />
       : !data ? <UnavailableState title="No pudimos cargar tus métricas" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente." action={<Button label="Reintentar" onPress={() => void refresh()} />} />
       : <>
         {state.status !== 'ready' ? <InlineUnavailable actionLabel="Reintentar" message="No se pudo actualizar. Mostramos la última lectura confirmada." onAction={() => void refresh()} /> : null}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} accessibilityLabel="Métrica">
-          {data.definitions.map(d => <Chip key={d.id} label={`${d.name}${d.isActive ? '' : ' · archivada'}`} selected={d.id === data.metric?.id} onPress={() => setMetricId(d.id)} />)}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow} contentContainerStyle={styles.chips} accessibilityLabel="Métrica">
+          {/* Archived metrics stay one tap away, after the ones in use. */}
+          {data.definitions.filter(d => d.isActive || showArchived || d.id === data.metric?.id).map(d =>
+            <Chip key={d.id} label={d.isActive ? d.name : `${d.name} · archivada`} selected={d.id === data.metric?.id} onPress={() => setMetricId(d.id)} />)}
+          {archived && !showArchived ? <Chip label={`Archivadas (${archived})`} selected={false} onPress={() => setShowArchived(true)} /> : null}
         </ScrollView>
         {data.metric && data.summary ? <Detail data={data} onDay={date => router.push({ pathname: '/history/day/[date]', params: { date } })} />
           : <AppText muted>No hay métricas para analizar.</AppText>}
       </>}
-    <ProgressRow testID="metric-trend-open" label="Abrir Métricas diarias" onPress={() => router.push('/(tabs)/progress/metrics')}>
-      <View style={styles.grow}><AppText variant="headline">Abrir Métricas diarias</AppText><AppText muted variant="footnote">Cargá o corregí el dato de un día.</AppText></View>
+    <ProgressRow testID="metric-trend-open" label="Cargar o corregir en Métricas" onPress={() => router.push('/(tabs)/progress/metrics')}>
+      <View style={styles.grow}><AppText variant="headline">Cargar o corregir</AppText><AppText muted variant="footnote">El dato de cualquier día, en Métricas.</AppText></View>
     </ProgressRow>
   </ProgressScroll>;
 }
@@ -93,5 +115,12 @@ const styles = StyleSheet.create({
   numbers: { flexDirection: 'row', gap: spacing.lg },
   grow: { flex: 1, gap: 2 },
   divider: { width: StyleSheet.hairlineWidth },
-  chips: { gap: spacing.sm, paddingVertical: 2 },
+  chipRow: { flexGrow: 0 },
+  chips: { gap: spacing.sm, paddingVertical: 2, alignItems: 'center' },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.md, rowGap: spacing.xs },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  dash: { width: 14, borderTopWidth: 1, borderStyle: 'dashed', opacity: 0.6 },
+  stats: { flexDirection: 'row', flexWrap: 'wrap', rowGap: spacing.md, paddingVertical: spacing.sm },
+  stat: { flexGrow: 1, flexBasis: 90, gap: 2, paddingRight: spacing.sm },
+  statDivider: { borderLeftWidth: StyleSheet.hairlineWidth, paddingLeft: spacing.md },
 });

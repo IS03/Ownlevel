@@ -9,27 +9,38 @@ import {
 } from '@/api/nutrition-report';
 import { AppText, Button, Heading, spacing } from '@/design-system';
 import { displayNutritionDate } from '@/nutrition/day-format';
-import { formatValue } from './progress-format';
+import { formatDelta, formatValue } from './progress-format';
 import { ProgressRow } from './progress-row';
 
 const LABEL: Record<ReportMetric, string> = {
   calories: 'Calorías',
-  targetCalories: 'Objetivo histórico',
-  targetDeviation: 'Diferencia contra objetivo',
-  expenditure: 'Gasto estimado histórico',
+  targetCalories: 'Objetivo',
+  targetDeviation: 'Diferencia con el objetivo',
+  expenditure: 'Gasto estimado',
   balance: 'Balance del día',
   protein: 'Proteína',
-  targetProtein: 'Objetivo histórico de proteína',
+  targetProtein: 'Objetivo de proteína',
   carbs: 'Carbohidratos',
   fat: 'Grasas',
 };
 const unit = (metric: ReportMetric) => (['protein', 'targetProtein', 'carbs', 'fat'].includes(metric) ? 'g' : 'kcal');
-const shown = (value: number | null, u: string) => (value === null ? '—' : formatValue(value, u));
+// Differences carry their sign; every amount is whole kcal or grams, as on the rest of the screen.
+const SIGNED: ReportMetric[] = ['targetDeviation', 'balance'];
+const shown = (value: number | null, u: string, signed = false) =>
+  value === null ? '—' : signed ? formatDelta(Math.round(value), u, 'integer') : formatValue(value, u, 'integer');
+const days = (n: number) => `${n} ${n === 1 ? 'día' : 'días'}`;
 const denominator = (s: ReportStatistic) =>
-  `${s.denominator} días con dato${s.partialDays ? ` · ${s.partialDays} con suma parcial` : ''}`;
-function DetailRow({ title, value, detail }: { title: string; value: string; detail?: string }) {
+  `${days(s.denominator)} con dato${s.partialDays ? ` · ${s.partialDays} con suma parcial` : ''}`;
+/** "jueves 1 oct": short enough for a row, with the weekday that makes the day recognizable. */
+const dayLabel = (date: string) =>
+  new Intl.DateTimeFormat('es-AR', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'short' })
+    .format(new Date(`${date}T12:00:00Z`))
+    .replace(',', '')
+    .replace('.', '')
+    .replace('sept', 'sep');
+function DetailRow({ title, value, detail }: { title: string; value?: string; detail?: string }) {
   return (
-    <ProgressRow label={`${title}, ${value}${detail ? `, ${detail}` : ''}`}>
+    <ProgressRow label={`${title}${value ? `, ${value}` : ''}${detail ? `, ${detail}` : ''}`}>
       <View style={styles.grow}>
         <AppText>{title}</AppText>
         {detail ? (
@@ -38,9 +49,11 @@ function DetailRow({ title, value, detail }: { title: string; value: string; det
           </AppText>
         ) : null}
       </View>
-      <AppText numeric variant="label" style={styles.value}>
-        {value}
-      </AppText>
+      {value ? (
+        <AppText numeric variant="label" style={styles.value}>
+          {value}
+        </AppText>
+      ) : null}
     </ProgressRow>
   );
 }
@@ -56,79 +69,71 @@ export function NutritionReportDetails({
   const [daily, setDaily] = useState(false),
     [blocks, setBlocks] = useState(false);
   const { summary: s, coverage: c } = report;
+  const base = s.metrics.calories.denominator;
+  const gaps = REPORT_NUTRIENTS.filter((k) => c.nutrients[k].partialDays || c.nutrients[k].unknownDays);
   return (
     <>
       <View style={styles.section} testID="nutrition-progress-detail">
-        <Heading level={2}>Detalle</Heading>
-        <AppText muted variant="caption">
-          Promedios sobre días finalizados con datos. Hoy queda fuera del resumen.
+        <Heading level={2}>Promedio por día</Heading>
+        <AppText muted numeric variant="caption">
+          Sobre {days(base)} terminados con dato. El objetivo y el gasto son los de cada día.
         </AppText>
-        <DetailRow
-          title="Días con registro"
-          value={`${c.registeredDays} de ${report.range.days} días`}
-          detail={`${c.completedRegisteredDays} de ${c.finalizedDays} días finalizados con registro`}
-        />
-        <DetailRow
-          title="Proteína cumplida"
-          value={`${s.proteinHitDays} de ${s.proteinComparableDays} días`}
-          detail="Días finalizados con proteína y objetivo conocidos"
-        />
-        <DetailRow
-          title="Balance acumulado"
-          value={shown(s.accumulatedBalance.value, 'kcal')}
-          detail={denominator(s.accumulatedBalance)}
-        />
         {REPORT_METRICS.map((k) => (
           <DetailRow
             key={k}
-            title={`${LABEL[k]} promedio`}
-            value={shown(s.metrics[k].value, unit(k))}
-            detail={denominator(s.metrics[k])}
-          />
-        ))}
-        <ProgressRow
-          label={`Objetivo, ${s.belowTargetDays} días por debajo, ${s.exactTargetDays} iguales, ${s.aboveTargetDays} por encima`}
-        >
-          <View style={styles.grow}>
-            <AppText>Respecto del objetivo</AppText>
-            <AppText numeric muted variant="caption">
-              {s.belowTargetDays} por debajo · {s.exactTargetDays} iguales · {s.aboveTargetDays} por encima
-            </AppText>
-          </View>
-        </ProgressRow>
-        <ProgressRow
-          label={`Balance, ${s.deficitDays} días de déficit, ${s.neutralDays} neutros, ${s.surplusDays} de superávit`}
-        >
-          <View style={styles.grow}>
-            <AppText>Balance</AppText>
-            <AppText numeric muted variant="caption">
-              {s.deficitDays} déficit · {s.neutralDays} neutros · {s.surplusDays} superávit
-            </AppText>
-          </View>
-        </ProgressRow>
-        {s.goalStages.length ? (
-          <ProgressRow>
-            <AppText>Etapas: {s.goalStages.join(', ')}</AppText>
-          </ProgressRow>
-        ) : null}
-      </View>
-      <View style={styles.section}>
-        <Heading level={2}>Cobertura</Heading>
-        <AppText numeric muted>
-          {c.missingDays} días sin registro.{' '}
-          {c.todayRegistered ? 'Hoy tiene datos en curso.' : 'Hoy, si aparece, sigue en curso.'}
-        </AppText>
-        {REPORT_NUTRIENTS.map((k) => (
-          <DetailRow
-            key={k}
             title={LABEL[k]}
-            value={`${c.nutrients[k].knownDays} días con dato`}
-            detail={`${c.nutrients[k].partialDays} parciales · ${c.nutrients[k].unknownDays} desconocidos`}
+            value={shown(s.metrics[k].value, unit(k), SIGNED.includes(k))}
+            detail={s.metrics[k].denominator !== base || s.metrics[k].partialDays ? denominator(s.metrics[k]) : undefined}
           />
         ))}
-        <AppText muted variant="caption">
-          Una suma parcial solo incluye nutrientes conocidos; no representa necesariamente el total. Cada promedio
-          muestra su propio denominador.
+      </View>
+      <View style={styles.section} testID="nutrition-progress-days">
+        <Heading level={2}>Tus días</Heading>
+        <DetailRow
+          title="Días con registro"
+          value={`${c.registeredDays} de ${report.range.days}`}
+          detail={`${c.completedRegisteredDays} de ${c.finalizedDays} días terminados${c.missingDays ? ` · ${days(c.missingDays)} sin registro` : ''}`}
+        />
+        <DetailRow
+          title="Proteína cumplida"
+          value={`${s.proteinHitDays} de ${s.proteinComparableDays}`}
+          detail="Días terminados con proteína y objetivo conocidos"
+        />
+        <DetailRow
+          title="Respecto del objetivo"
+          detail={`${s.belowTargetDays} por debajo · ${s.exactTargetDays} iguales · ${s.aboveTargetDays} por encima`}
+        />
+        <DetailRow
+          title="Balance"
+          detail={`${s.deficitDays} con déficit · ${s.neutralDays} neutros · ${s.surplusDays} con superávit`}
+        />
+        <DetailRow
+          title="Balance acumulado"
+          value={shown(s.accumulatedBalance.value, 'kcal', true)}
+          detail={s.accumulatedBalance.denominator !== base || s.accumulatedBalance.partialDays ? denominator(s.accumulatedBalance) : undefined}
+        />
+        {s.goalStages.length ? <DetailRow title={s.goalStages.length === 1 ? 'Etapa' : 'Etapas'} value={s.goalStages.join(', ')} /> : null}
+      </View>
+      <View style={styles.section} testID="nutrition-progress-coverage">
+        <Heading level={2}>Cobertura</Heading>
+        {/* Complete days need one line; only nutrients with partial or unknown days get their own row. */}
+        {gaps.length ? (
+          gaps.map((k) => (
+            <DetailRow
+              key={k}
+              title={LABEL[k]}
+              value={`${c.nutrients[k].knownDays} con dato`}
+              detail={`${c.nutrients[k].partialDays} parciales · ${c.nutrients[k].unknownDays} desconocidos`}
+            />
+          ))
+        ) : (
+          <AppText muted numeric variant="footnote">
+            Todos los días con registro tienen calorías, proteína, carbos y grasas.
+          </AppText>
+        )}
+        <AppText muted numeric variant="caption">
+          {c.todayRegistered ? 'Hoy tiene datos en curso.' : 'Hoy, si aparece, sigue en curso.'}
+          {gaps.some((k) => c.nutrients[k].partialDays) ? ' Una suma parcial solo incluye los nutrientes conocidos.' : ''}
         </AppText>
       </View>
       <View style={styles.section}>
@@ -142,8 +147,8 @@ export function NutritionReportDetails({
             >
               <View style={styles.grow}>
                 <AppText>{h.title}</AppText>
-                <AppText muted variant="caption">
-                  {displayNutritionDate(h.date)}
+                <AppText muted numeric variant="caption">
+                  {dayLabel(h.date)}
                 </AppText>
               </View>
             </ProgressRow>
@@ -170,7 +175,7 @@ export function NutritionReportDetails({
                   <DetailRow
                     key={k}
                     title={LABEL[k]}
-                    value={shown(b.metrics[k].value, unit(k))}
+                    value={shown(b.metrics[k].value, unit(k), SIGNED.includes(k))}
                     detail={denominator(b.metrics[k])}
                   />
                 ))}
@@ -193,7 +198,7 @@ export function NutritionReportDetails({
                   ? [
                       d.imported ? 'Resumen histórico importado' : null,
                       nutrient('calories'),
-                      `Diferencia ${shown(d.targetDeviationKcal, 'kcal')} · Balance ${shown(d.energyBalanceKcal, 'kcal')}`,
+                      `Diferencia ${shown(d.targetDeviationKcal, 'kcal', true)} · Balance ${shown(d.energyBalanceKcal, 'kcal', true)}`,
                       `${nutrient('protein')} · Objetivo ${shown(d.targetProteinG, 'g')}`,
                       `${nutrient('carbs')} · ${nutrient('fat')}`,
                     ].filter(Boolean)

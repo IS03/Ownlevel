@@ -13,6 +13,7 @@ import { BREAKDOWN_LABELS, DAYS_LABELS } from './explore-model';
 import { ExploreSheet } from './explore-sheets';
 import { choiceFor } from './influence-model';
 import { useProgressRange } from './progress-range-context';
+import { suggestedViewName } from './pin-view-sheet';
 import { useProgressResource } from './use-progress-resource';
 
 type ViewRow = ProgressViewsRead['views'][number];
@@ -27,6 +28,8 @@ function detail(v: ViewRow): string {
   }
   const label = v.result.status === 'ok' && v.result.kind !== 'influence' ? v.result.data.measure.label : 'Medida no disponible';
   const d = v.definition;
+  // A view keeping its suggested name already says what it measures: only how it is seen is left to add.
+  if (v.result.status === 'ok' && suggestedViewName(label, d) === v.name) return d.series ? 'En el tiempo' : '';
   return `${label}${d.breakdown ? ` · por ${BREAKDOWN_LABELS[d.breakdown].toLocaleLowerCase('es-AR')}` : ''}${d.days ? ` · ${DAYS_LABELS[d.days].toLocaleLowerCase('es-AR')}` : ''}${d.series ? ' · en el tiempo' : ''}`;
 }
 
@@ -101,11 +104,12 @@ export function ViewsEditScreen() {
           {views.map((v, index) => <NativeReorderItem key={v.id} id={v.id} gap={0}>
             <View testID={`edit-view-${v.id}`} style={[styles.row, { backgroundColor: colors.background, borderColor: colors.border, borderTopWidth: index ? StyleSheet.hairlineWidth : 0 }]}>
               <Pressable accessibilityRole="button" accessibilityLabel={`Sacar ${v.name}`} hitSlop={8} disabled={busy} onPress={() => remove(v)} testID={`edit-view-remove-${v.id}`}>
-                <AppIcon name="trash" color={colors.danger} size={20} />
+                {/* Muted at rest; the confirmation carries the destructive red. */}
+                <AppIcon name="trash" color={colors.textMuted} size={20} />
               </Pressable>
               <Pressable accessibilityRole="button" accessibilityLabel={`${v.name}. Cambiar el nombre`} disabled={busy} onPress={() => setRenaming(v)} style={styles.copy} testID={`edit-view-rename-${v.id}`}>
                 <AppText variant="headline" numberOfLines={1}>{v.name}</AppText>
-                <AppText muted variant="footnote" numberOfLines={1}>{detail(v)}</AppText>
+                {detail(v) ? <AppText muted variant="footnote" numberOfLines={1}>{detail(v)}</AppText> : null}
               </Pressable>
               <NativeDragHandle testID={`edit-view-drag-${v.id}`} holdDelay={120} disabled={busy} accessibilityLabel={`Ordenar ${v.name}`} accessibilityRole="adjustable"
                 accessibilityValue={{ min: 1, max: ids.length, now: index + 1 }} accessibilityHint="Mantené y arrastrá la manija, o usá las acciones para mover la vista."
@@ -120,7 +124,7 @@ export function ViewsEditScreen() {
           <AppIcon name="plus" color={colors.primary} size={20} />
           <AppText variant="headline" style={{ color: colors.primary }}>Nueva vista desde Explorar</AppText>
         </Pressable> : null}
-        <AppText muted variant="caption">{views.length} de {PROGRESS_VIEWS_MAX} vistas. Tocá un nombre para cambiarlo. Sacar una vista no borra ningún dato.</AppText>
+        <AppText muted variant="caption">{views.length} de {PROGRESS_VIEWS_MAX} vistas · tocá una para cambiarle el nombre, o mantené las rayas para ordenarlas.</AppText>
       </>}
     {renaming ? <RenameSheet view={renaming} onDone={m => void done(m)} onClose={() => setRenaming(null)} /> : null}
   </ScrollScreen>;

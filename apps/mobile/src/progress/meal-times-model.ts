@@ -11,7 +11,8 @@ export const TIMING_META: Record<
   night: { name: 'Noche', hours: '20–5', icon: 'moon', sentence: 'De 20 a 5 h', least: 'De noche' },
 };
 export const shareText = (share: number | null) =>
-  share === null ? '—' : `${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(share * 100)} %`;
+  // A no-break space, so "39 %" never splits across lines.
+  share === null ? '—' : `${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(share * 100)}\u00A0%`;
 export const fewTimedMeals = (n: number) => `Todavía hay pocas comidas con hora para ver un patrón (${n}).`;
 export function timingHeadline(timing: NutritionTiming) {
   if (timing.mealsWithTime < 10) return { text: fewTimedMeals(timing.mealsWithTime), icon: null, least: null };
@@ -21,7 +22,8 @@ export function timingHeadline(timing: NutritionTiming) {
     top = sorted[0],
     bottom = sorted.at(-1)!;
   return {
-    text: `${TIMING_META[top.key].sentence} comés el ${shareText(top.kcalShare)} de tus calorías${top.proteinShare === null ? '.' : ` y el ${shareText(top.proteinShare)} de tu proteína.`}`,
+    text: `${TIMING_META[top.key].sentence} comés el ${shareText(top.kcalShare)} de tus calorías${top.proteinShare === null ? '.'
+      : shareText(top.proteinShare) === shareText(top.kcalShare) ? ' y de tu proteína.' : ` y el ${shareText(top.proteinShare)} de tu proteína.`}`,
     icon: TIMING_META[top.key].icon,
     least: `${TIMING_META[bottom.key].least}, el ${shareText(bottom.kcalShare)} de tus calorías.`,
   };

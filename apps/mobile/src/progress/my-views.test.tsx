@@ -73,8 +73,8 @@ describe('Mis vistas', () => {
     ] };
     expect(parseProgressViewsRead(payload)).toBeDefined(); mockViews.mockResolvedValue(ok(payload));
     const view = wrap(<MyViews />); await flush();
-    expect(view.getByText('5 series más')).toBeTruthy(); expect(view.getByText('300 g o más: 26 series · el resto: 21')).toBeTruthy();
-    expect(view.getByText('Faltan datos: 6 de 14 días')).toBeTruthy();
+    expect(view.getByText('5 series más')).toBeTruthy(); expect(view.getByText('300 g o más: 26 series · el resto: 21 series')).toBeTruthy();
+    expect(view.getByText('Todavía no alcanza: 6 de 14 días')).toBeTruthy();
     fireEvent.press(view.getByTestId(`my-view-${A}`));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/influence/answer', params: { split: 'nutrition.carbs', cut: 'median', lag: '0', outcome: 'training.sets' } });
     view.unmount(); const edit = wrap(<ViewsEditScreen />); await flush();
@@ -84,11 +84,11 @@ describe('Mis vistas', () => {
   it('shows each view with its value in the shared period; an invalid one says so; tapping opens Explorar with the saved query', async () => {
     const view = wrap(<MyViews />); await flush();
     expect(mockViews).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-10-01', to: TODAY });
-    expect(view.getByTestId(`my-view-${A}`).props.accessibilityLabel).toBe('Series por músculo: 230 series');
-    expect(view.getByText('Bíceps · 46 series')).toBeTruthy();
+    expect(view.getByTestId(`my-view-${A}`).props.accessibilityLabel).toBe('Series por músculo: 230 series. El más alto, Bíceps · 46 series');
+    expect(view.getByText('Bíceps')).toBeTruthy();
     expect(view.getByTestId(`my-view-${B}`).props.accessibilityLabel).toBe('Vieja. No disponible');
     fireEvent.press(view.getByTestId(`my-view-${A}`));
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/explore', params: { measure: 'training.sets', breakdown: 'muscle' } });
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/explore', params: { measure: 'training.sets', breakdown: 'muscle', view: 'Series por músculo' } });
     fireEvent.press(view.getByTestId('my-views-edit'));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/views');
   });

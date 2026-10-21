@@ -44,11 +44,13 @@ export function RangeCalendar({ month, onMonth, marks, max, onDay }: {
       const day = `${first.slice(0, 8)}${String(n).padStart(2, '0')}`, mark = toneOf(day), future = day > max;
       const band = mark ? (mark.tone === 'a' ? colors.brandSubtle : colors.surfaceRaised) : 'transparent';
       const dot = mark && (mark.start || mark.end) ? (mark.tone === 'a' ? colors.primary : colors.textMuted) : null;
-      return <Pressable key={i} accessibilityRole="button" accessibilityLabel={`${n} de ${MONTHS[Number(first.slice(5, 7)) - 1].toLowerCase()}`}
+      // The band rounds off where a week (or the month) breaks it, so each row reads as one piece.
+      const opens = i === 0 || n === 1, closes = i === 6 || n === days, isToday = day === max;
+      return <Pressable key={i} accessibilityRole="button" accessibilityLabel={`${n} de ${MONTHS[Number(first.slice(5, 7)) - 1].toLowerCase()}${isToday ? ', hoy' : ''}`}
         accessibilityState={{ disabled: future, selected: !!mark }} disabled={future} onPress={() => { triggerHaptic('stepperChange'); onDay(day); }} style={styles.cell}>
-        <View style={[styles.band, { backgroundColor: band }, mark?.start && styles.bandStart, mark?.end && styles.bandEnd]} />
+        <View style={[styles.band, { backgroundColor: band }, opens && styles.bandOpen, closes && styles.bandClose, mark?.start && styles.bandStart, mark?.end && styles.bandEnd]} />
         <View style={[styles.dot, dot ? { backgroundColor: dot } : null]}>
-          <AppText numeric variant="body" style={{ color: dot ? colors.onPrimary : future ? colors.border : colors.text, fontWeight: dot ? '700' : '500' }}>{n}</AppText>
+          <AppText numeric variant="body" style={{ color: dot ? colors.onPrimary : future ? colors.border : isToday ? colors.primary : colors.text, fontWeight: dot || isToday ? '700' : '500' }}>{n}</AppText>
         </View>
       </Pressable>;
     })}</View>)}
@@ -58,7 +60,9 @@ const styles = StyleSheet.create({
   wrap: { gap: 4 }, head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 6 },
   arrows: { flexDirection: 'row', gap: 22 }, row: { flexDirection: 'row' },
   cell: { flex: 1, height: CELL, alignItems: 'center', justifyContent: 'center' },
-  band: { position: 'absolute', left: 0, right: 0, top: 3, bottom: 3 },
+  // Half a point of overlap so neighbouring days never show a hairline seam.
+  band: { position: 'absolute', left: -0.5, right: -0.5, top: 3, bottom: 3 },
+  bandOpen: { left: 3, borderTopLeftRadius: 17, borderBottomLeftRadius: 17 }, bandClose: { right: 3, borderTopRightRadius: 17, borderBottomRightRadius: 17 },
   bandStart: { left: '50%' }, bandEnd: { right: '50%' },
   dot: { width: CELL - 6, height: CELL - 6, borderRadius: (CELL - 6) / 2, alignItems: 'center', justifyContent: 'center' },
 });

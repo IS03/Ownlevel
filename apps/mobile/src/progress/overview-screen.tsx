@@ -2,7 +2,7 @@ import { useCallback, type ReactNode } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
-import { fetchProgressOverview, progressRequestKey, type ProgressDestination, type ProgressOverview } from '@/api/progress';
+import { fetchProgressOverview, progressRequestKey, type MetricValueType, type ProgressDestination, type ProgressOverview } from '@/api/progress';
 import { AppIcon, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme, type AppIconName } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import { MiniChart } from './mini-chart';
@@ -17,6 +17,7 @@ import { useProgressResource } from './use-progress-resource';
 import { useNutritionStages } from '@/stages/stages-provider';
 import { stagesRowDetail } from './stages-model';
 import { ConnectionsSection, useProgressConnections } from './connections-section';
+import { connectionsPeriodNames } from './connections-model';
 
 export type ProgressRoute = '/(tabs)/progress/trends/body' | '/(tabs)/progress/trends/metrics' | '/(tabs)/progress/trends/nutrition'
   | '/(tabs)/progress/trends/training' | '/(tabs)/progress/trends/exercise/[id]';
@@ -30,6 +31,10 @@ export function destinationRoute(d: ProgressDestination): { pathname: ProgressRo
 
 const kg = (v: number) => formatValue(v, null);
 const kcal = (v: number) => formatValue(v, null, 'integer');
+const known = (points: { value: number | null }[]) => points.filter(p => p.value !== null).length;
+/** "Pasos 6.811", not "Pasos 6.811 pasos": the unit is dropped when it only repeats the name. */
+const metricValue = (m: { name: string; unit: string | null; valueType: MetricValueType }, v: number | null) =>
+  formatValue(v, m.unit && m.unit.toLocaleLowerCase('es-AR') === m.name.toLocaleLowerCase('es-AR') ? null : m.unit, m.valueType);
 
 /** Flat row (E5 style): icon, title, one line of detail, the mini chart and a chevron. */
 function AreaRow({ icon, title, detail, chart, divider, onPress, testID }: {
@@ -59,9 +64,9 @@ function Areas({ data, open }: { data: ProgressOverview; open: (d: ProgressDesti
   const weight = data.body.status === 'unavailable' ? 'No pudimos cargar Cuerpo.'
     : !w ? 'Sin pesos registrados'
     : w.last === null ? `Sin pesos en este período${compareText && w.referenceLast !== null ? ` · ${vs}${kg(w.referenceLast)} kg` : ''}`
-    : compareText ? `${kg(w.last)} kg · ${w.referenceLast === null ? `${vs}sin pesos` : `${vs}${kg(w.referenceLast)} · ${arrowDelta(w.last - w.referenceLast, null)}`}`
+    : compareText ? `${kg(w.last)} kg · ${w.referenceLast === null ? `${vs}sin pesos` : `${vs}${kg(w.referenceLast)} · ${arrowDelta(w.last - w.referenceLast, 'kg')}`}`
     : w.first === null || w.first === w.last && w.current.filter(p => p.value !== null).length < 2 ? `${kg(w.last)} kg · un solo registro`
-    : `${kg(w.first)} → ${kg(w.last)} kg · ${arrowDelta(w.last - w.first, null)}`;
+    : `${kg(w.first)} → ${kg(w.last)} kg · ${arrowDelta(w.last - w.first, 'kg')}`;
 
   const t = data.training.status === 'ok' ? data.training.data : null;
   const sets = t?.comparisons.sets;
@@ -74,17 +79,18 @@ function Areas({ data, open }: { data: ProgressOverview; open: (d: ProgressDesti
   const nutrition = !n ? 'No pudimos cargar Nutrición.'
     : n.averageKcal === null ? 'Sin días completos con calorías'
     : compareText ? `${kcal(n.averageKcal)} kcal · ${n.calories.previous === null ? `${vs}sin datos` : `${vs}${kcal(n.calories.previous)} · ${arrowDelta(n.averageKcal - n.calories.previous, null, 'integer')}`}${lowLog}`
-    : `${kcal(n.averageKcal)} kcal por día${n.averageTargetKcal !== null ? ` · objetivo ${kcal(n.averageTargetKcal)}` : ''}${lowLog}`;
+    : n.averageTargetKcal !== null ? `${kcal(n.averageKcal)} / ${kcal(n.averageTargetKcal)} kcal por día${lowLog}`
+    : `${kcal(n.averageKcal)} kcal por día${lowLog}`;
 
   const m = data.metrics.status === 'ok' ? data.metrics.data.items : null;
   const metrics = !m ? 'No pudimos cargar tus métricas.'
     : !m.length ? 'Sin métricas con datos en este período'
-    : compareText ? `${m[0].name} ${formatValue(m[0].average, m[0].unit, m[0].valueType)} · ${vs}${m[0].comparison.previous === null ? 'sin datos' : formatValue(m[0].comparison.previous, m[0].unit, m[0].valueType)}`
-    : m.map(x => `${x.name} ${formatValue(x.average, x.unit, x.valueType)}`).join(' · ');
+    : compareText ? `${m[0].name} ${metricValue(m[0], m[0].average)} · ${vs}${m[0].comparison.previous === null ? 'sin datos' : metricValue(m[0], m[0].comparison.previous)}`
+    : m.map(x => `${x.name} ${metricValue(x, x.average)}`).join(' · ');
 
   return <View style={styles.section} testID="progress-areas">
     <AreaRow testID="progress-area-body" icon="scale" title="Peso" detail={weight} divider={false} onPress={() => open({ kind: 'body' })}
-      chart={w ? <MiniChart testID="progress-spark-weight" mode="level" current={w.current} reference={w.reference} /> : null} />
+      chart={w && known(w.current) + known(w.reference ?? []) >= 2 ? <MiniChart testID="progress-spark-weight" mode="level" current={w.current} reference={w.reference} /> : null} />
     <AreaRow testID="progress-area-training" icon="dumbbell" title="Entrenamiento" detail={training} divider onPress={() => open({ kind: 'training' })}
       chart={sparks?.training ? <MiniChart testID="progress-spark-training" mode="bars" current={sparks.training.current} reference={sparks.training.reference} /> : null} />
     <AreaRow testID="progress-area-nutrition" icon="nutrition" title="Nutrición" detail={nutrition} divider onPress={() => open({ kind: 'nutrition' })}
@@ -96,17 +102,16 @@ function Areas({ data, open }: { data: ProgressOverview; open: (d: ProgressDesti
 /** "Lo destacado": records and exercise progress inside the period; with a comparison, also what changed against it. */
 function Highlights({ data, open }: { data: ProgressOverview; open: (d: ProgressDestination) => void }) {
   const { colors } = useOwnlevelTheme();
-  const { compareOn, compareText } = useProgressRange();
+  const { compareOn, compareText, state, today } = useProgressRange();
   const findings = compareOn ? data.changes : data.changes.filter(f => f.domain === 'training');
   const perf = compareOn && data.training.status === 'ok' && data.training.data.performance.comparable > 0 ? data.training.data.performance : null;
   const rows = [
     ...findings.map(f => ({ key: f.id, icon: (f.domain === 'training' ? 'trophy' : 'progress') as AppIconName, title: f.label, detail: f.description, to: f.destination })),
-    ...(!compareOn && data.training.status === 'ok' && data.inPeriod && data.inPeriod.improved > 0 ? [{ key: 'in-period', icon: 'progress' as AppIconName, title: `${data.inPeriod.improved} ${data.inPeriod.improved === 1 ? 'ejercicio mejoró' : 'ejercicios mejoraron'}`, detail: 'Entre su primera y su última sesión del período', to: { kind: 'training' } as ProgressDestination }] : []),
+    ...(!compareOn && data.training.status === 'ok' && data.inPeriod && data.inPeriod.improved > 0 ? [{ key: 'in-period', icon: 'progress' as AppIconName, title: `${data.inPeriod.improved} ${data.inPeriod.improved === 1 ? 'ejercicio mejoró' : 'ejercicios mejoraron'} en ${connectionsPeriodNames(state, today).now}`, detail: 'De su primera a su última sesión del período', to: { kind: 'training' } as ProgressDestination }] : []),
     ...(perf ? [{ key: 'performance', icon: 'progress' as AppIconName, title: perf.headline, detail: `Frente a ${compareText}`, to: { kind: 'training' } as ProgressDestination }] : []),
   ];
-  return <View style={styles.section} testID="progress-highlights">
+  return <View style={[styles.section, styles.spaced]} testID="progress-highlights">
     <Heading level={2}>Lo destacado</Heading>
-    <InsightRow />
     {rows.length ? rows.map((r, i) => <Pressable key={r.key} accessibilityRole="button" accessibilityLabel={`${r.title}. ${r.detail}`}
       onPress={() => { haptics.selection(); open(r.to); }} style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}>
       {i > 0 ? <View style={[styles.divider, { backgroundColor: colors.border }]} /> : null}
@@ -143,23 +148,29 @@ export function ProgressOverviewScreen() {
         <View style={styles.section}>
           <Heading level={2}>{periodHeading(state, today)}</Heading>
           <Areas data={data} open={open} />
-          <ConnectionsSection resource={connections} />
         </View>
         <Highlights data={data} open={open} />
+        <ConnectionsSection resource={connections} />
       </> : <UnavailableState title="No pudimos cargar tu progreso" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente."
         action={<Button label="Reintentar" onPress={() => void refresh()} />} />}
-    <ProgressRow testID="progress-stages" label={`Tus etapas. ${stagesDetail}`} onPress={() => router.push('/(tabs)/progress/stages')}>
-      <AppIcon name="calendar" color={colors.textMuted} size={20} />
-      <View style={styles.text}><AppText variant="headline">Tus etapas</AppText><AppText muted numeric variant="footnote">{stagesDetail}</AppText></View>
-    </ProgressRow>
-    <ProgressRow testID="progress-influence" label="Qué influye. Preguntas sobre tus días" onPress={() => router.push('/(tabs)/progress/influence')}>
-      <AppIcon name="sparkles" color={colors.textMuted} size={20} />
-      <View style={styles.text}><AppText variant="headline">Qué influye</AppText><AppText muted variant="footnote">Preguntas sobre tus días</AppText></View>
-    </ProgressRow>
+    {/* Beyond this period: the 3-month insight, stages and Qué influye. */}
+    <View style={[styles.section, styles.spaced]} testID="progress-more">
+      <Heading level={2}>Más para mirar</Heading>
+      <InsightRow />
+      <ProgressRow testID="progress-stages" label={`Tus etapas. ${stagesDetail}`} onPress={() => router.push('/(tabs)/progress/stages')}>
+        <AppIcon name="calendar" color={colors.textMuted} size={20} />
+        <View style={styles.text}><AppText variant="headline">Tus etapas</AppText><AppText muted numeric variant="footnote">{stagesDetail}</AppText></View>
+      </ProgressRow>
+      <ProgressRow testID="progress-influence" label="Qué influye. Preguntas sobre tus días" onPress={() => router.push('/(tabs)/progress/influence')}>
+        <AppIcon name="sparkles" color={colors.textMuted} size={20} />
+        <View style={styles.text}><AppText variant="headline">Qué influye</AppText><AppText muted variant="footnote">Preguntas sobre tus días</AppText></View>
+      </ProgressRow>
+    </View>
   </ProgressScroll>;
 }
 const styles = StyleSheet.create({
   section: { gap: spacing.xs },
+  spaced: { marginTop: spacing.md },
   row: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   divider: { position: 'absolute', top: 0, left: 32, right: 0, height: StyleSheet.hairlineWidth },
   text: { flex: 1, gap: 2 },

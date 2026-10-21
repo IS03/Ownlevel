@@ -42,12 +42,16 @@ export function InfluenceBuildScreen() {
   const cutLabel = cut === 'yes' ? 'Sí / no' : cut === 'median' ? 'Arriba / abajo de tu mediana' : splitInfo ? `${valueText(influenceCutValue(cut)!, splitInfo)} o más` : 'Un corte propio';
   return <ProgressScroll title="Tu pregunta" testID="influence-build-screen">
     <View>
-      <Field title="Separar días por" value={split?.label ?? 'Elegí una medida'} testID="influence-split" onPress={() => setSheet('split')} />
-      <Field title="Cómo" value={cutLabel} testID="influence-cut" onPress={split && cut !== 'yes' ? () => setSheet('cut') : undefined} />
+      <Field title="Separar por" value={split?.label ?? 'Elegí una medida'} testID="influence-split" onPress={() => setSheet('split')} />
+      {/* How to split only means something once there is something to split. */}
+      {split ? <Field title="Cómo" value={cutLabel} testID="influence-cut" onPress={cut !== 'yes' ? () => setSheet('cut') : undefined} /> : null}
       <Field title="Qué medir" value={outcome?.label ?? 'Elegí una medida'} testID="influence-outcome" onPress={() => setSheet('outcome')} />
     </View>
-    <SegmentedControl accessibilityLabel="Cuándo mirar la medida" value={String(lag)} options={[{ value: '0', label: 'Mismo día' }, { value: '1', label: 'Día siguiente' }, { value: '2', label: '2 días después' }]}
-      onChange={value => setLag(Number(value) as 0 | 1 | 2)} />
+    <View style={styles.section}>
+      <AppText muted variant="footnote">Cuándo mirarlo</AppText>
+      <SegmentedControl accessibilityLabel="Cuándo mirar la medida" value={String(lag)} options={[{ value: '0', label: 'Ese día' }, { value: '1', label: 'Al otro día' }, { value: '2', label: 'A los 2 días' }]}
+        onChange={value => setLag(Number(value) as 0 | 1 | 2)} />
+    </View>
     <View style={styles.section}>
       <AppText muted>Tu pregunta</AppText>
       {splitInfo && outcomeInfo ? <AppText variant="headline">{questionText(definition, splitInfo, outcomeInfo)}</AppText> : <AppText muted>Elegí qué separa tus días y qué querés mirar.</AppText>}
@@ -60,4 +64,4 @@ export function InfluenceBuildScreen() {
     {sheet === 'cut' && splitInfo ? <CutSheet cut={cut} measure={splitInfo} onChange={setCut} onClose={() => setSheet(null)} /> : null}
   </ProgressScroll>;
 }
-const styles = StyleSheet.create({ section: { gap: spacing.xs }, fieldLabel: { width: 112 }, fieldValue: { flex: 1, textAlign: 'right' }, stepper: { flexDirection: 'row', alignItems: 'center', padding: spacing.xs }, center: { flex: 1, textAlign: 'center' }, minus: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' } });
+const styles = StyleSheet.create({ section: { gap: spacing.xs }, fieldLabel: { width: 96 }, fieldValue: { flex: 1, textAlign: 'right' }, stepper: { flexDirection: 'row', alignItems: 'center', padding: spacing.xs }, center: { flex: 1, textAlign: 'center' }, minus: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' } });

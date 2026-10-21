@@ -42,6 +42,12 @@ function TimingContent({ data }: { data: ProgressNutritionTiming }) {
       {t.mealsWithTime >= 10 ? (
         <View testID="timing-bands">
           <Heading level={2}>Franjas del día</Heading>
+          <View style={styles.legend} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <View style={[styles.swatch, { backgroundColor: colors.primary }]} />
+            <AppText muted variant="caption">calorías</AppText>
+            <View style={[styles.swatch, { backgroundColor: colors.text, opacity: 0.7 }]} />
+            <AppText muted variant="caption">proteína</AppText>
+          </View>
           {t.bands.map((band, index) => {
             const meta = TIMING_META[band.key],
               ref = compareOn ? data.reference?.bands[index] : null;
@@ -53,34 +59,30 @@ function TimingContent({ data }: { data: ProgressNutritionTiming }) {
               <ProgressRow key={band.key} label={label} testID={`timing-${band.key}`}>
                 <AppIcon name={meta.icon} color={colors.textMuted} />
                 <View style={styles.grow}>
-                  <View style={styles.bandTitle}>
-                    <AppText variant="label" style={styles.flex}>
-                      {meta.name} · {meta.hours}
-                    </AppText>
-                    <AppText numeric muted variant="footnote">
-                      {shareText(band.kcalShare)} · {shareText(band.proteinShare)}
-                    </AppText>
-                  </View>
+                  <AppText variant="label">
+                    {meta.name} · {meta.hours} h
+                  </AppText>
+                  {/* Each share sits next to its own bar, so the pair never needs decoding. */}
                   {[
                     { value: band.kcalShare, color: colors.primary, opacity: 1 },
                     { value: band.proteinShare, color: colors.text, opacity: 0.7 },
                   ].map((bar, i) => (
-                    <View
-                      key={i}
-                      style={[styles.track, { backgroundColor: colors.border }]}
-                      accessibilityElementsHidden
-                      importantForAccessibility="no-hide-descendants"
-                    >
-                      {bar.value !== null ? (
-                        <View
-                          style={{
-                            height: 5,
-                            width: `${bar.value * 100}%`,
-                            backgroundColor: bar.color,
-                            opacity: bar.opacity,
-                          }}
-                        />
-                      ) : null}
+                    <View key={i} style={styles.barRow} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                      <View style={[styles.track, { backgroundColor: colors.border }]}>
+                        {bar.value !== null ? (
+                          <View
+                            style={{
+                              height: 5,
+                              width: `${bar.value * 100}%`,
+                              backgroundColor: bar.color,
+                              opacity: bar.opacity,
+                            }}
+                          />
+                        ) : null}
+                      </View>
+                      <AppText numeric muted variant="caption" style={styles.share}>
+                        {shareText(bar.value)}
+                      </AppText>
                     </View>
                   ))}
                   {referenceText ? (
@@ -100,11 +102,7 @@ function TimingContent({ data }: { data: ProgressNutritionTiming }) {
         </View>
       ) : null}
       <AppText numeric muted variant="caption">
-        {t.mealsWithTime >= 10 ? 'Champagne = calorías · oscuro = proteína · ' : ''}
-        {t.mealsWithTime} de {t.meals} comidas con hora
-      </AppText>
-      <AppText muted variant="caption">
-        Horario de Córdoba · las comidas se incluyen por la fecha de su día.
+        {t.mealsWithTime} de {t.meals} comidas con hora · hora de Córdoba
       </AppText>
     </>
   );
@@ -157,6 +155,9 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   grow: { flex: 1, gap: spacing.sm },
   headline: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
-  bandTitle: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
-  track: { height: 5, overflow: 'hidden' },
+  legend: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingBottom: spacing.xs },
+  swatch: { width: 10, height: 5, marginLeft: spacing.xs },
+  barRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  track: { flex: 1, height: 5, overflow: 'hidden' },
+  share: { minWidth: 40, textAlign: 'right' },
 });

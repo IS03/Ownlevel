@@ -37,7 +37,7 @@ describe('Automatic insight row', () => {
   it('says what happened, neutrally, with how many days; "Ver" opens the answer on the last 3 months', async () => {
     const view = wrap(); await flush();
     expect(view.getByText('Notamos algo en tus datos')).toBeTruthy();
-    expect(view.getByText(/Los días que entrenaste registraste en promedio 2,6 L\. Los días sin entrenar, 1,5\. Pasó en 34 días de los últimos 3 meses\./)).toBeTruthy();
+    expect(view.getByText(/Los días que entrenaste registraste en promedio 2,6 L\. Los días sin entrenar, 1,5 L\. Pasó en 34 días de los últimos 3 meses\./)).toBeTruthy();
     fireEvent.press(view.getByTestId('progress-insight-open'));
     await flush();
     expect(seenUnit).toHaveBeenLastCalledWith('3m');
