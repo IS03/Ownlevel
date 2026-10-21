@@ -72,15 +72,16 @@ export function CustomRangeSheet({ onClose }: { onClose: () => void }) {
   const prev = shiftProgressRange(state, -1, today), next = shiftProgressRange(state, 1, today);
   const move = (to: ProgressRangeState) => { setState(to); onClose(); };
   return <Sheet title="Elegir período" subtitle={rangeSubtitle(range, today, draft)} valid={valid} onClose={onClose} onDone={() => { if (range && valid) apply(range); }}>
-    <View style={styles.shortcuts} testID="progress-period-shift">
-      {prev ? <Shortcut label={shiftLabel(state.unit, -1)} onPress={() => move(prev)} /> : null}
-      {next ? <Shortcut label={shiftLabel(state.unit, 1)} onPress={() => move(next)} /> : null}
-      {!isCurrentProgressRange(state, today) ? <Shortcut label="Volver a hoy" onPress={() => move(currentProgressRange(state, today))} /> : null}
-    </View>
-    <View style={styles.shortcuts}>
+    {/* One row of shortcuts that scrolls sideways, like the period bar: stepping the unit first, then the quick ranges. */}
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.shortcutRow} contentContainerStyle={styles.shortcutScroll}>
+      <View style={styles.shortcutGroup} testID="progress-period-shift">
+        {prev ? <Shortcut label={shiftLabel(state.unit, -1)} onPress={() => move(prev)} /> : null}
+        {next ? <Shortcut label={shiftLabel(state.unit, 1)} onPress={() => move(next)} /> : null}
+        {!isCurrentProgressRange(state, today) ? <Shortcut label="Volver a hoy" onPress={() => move(currentProgressRange(state, today))} /> : null}
+      </View>
       {quickRanges(today).map(q => <Shortcut key={q.label} label={q.label} onPress={() => apply(q.range)}
         active={state.unit === 'custom' && current.start === q.range.start && current.end === q.range.end} />)}
-    </View>
+    </ScrollView>
     <RangeCalendar month={month} onMonth={setMonth} max={today} onDay={d => setDraft(pick(draft, d))} marks={draft ? [{ range: draft, tone: 'a' }] : []} />
   </Sheet>;
 }
@@ -140,7 +141,8 @@ const styles = StyleSheet.create({
   fill: { flex: 1, justifyContent: 'flex-end' }, scrim: { backgroundColor: 'rgba(0,0,0,0.3)' },
   sheet: { maxHeight: '92%', borderTopLeftRadius: brandTokens.radius.sheet, borderTopRightRadius: brandTokens.radius.sheet, paddingTop: 8 },
   content: { padding: 16, gap: 14 }, header: { flexDirection: 'row', alignItems: 'center', gap: 12 }, title: { flex: 1, alignItems: 'center', gap: 2 },
-  shortcuts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, shortcut: { minHeight: 34, paddingHorizontal: 12, borderRadius: brandTokens.radius.full, borderWidth: StyleSheet.hairlineWidth, borderColor: 'transparent', justifyContent: 'center' },
+  shortcuts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  shortcutRow: { marginHorizontal: -16, flexGrow: 0 }, shortcutScroll: { paddingHorizontal: 16, gap: 8 }, shortcutGroup: { flexDirection: 'row', gap: 8 }, shortcut: { minHeight: 34, paddingHorizontal: 12, borderRadius: brandTokens.radius.full, borderWidth: StyleSheet.hairlineWidth, borderColor: 'transparent', justifyContent: 'center' },
   ab: { flexDirection: 'row', gap: 8 }, abItem: { flex: 1 },
   abCell: { borderRadius: brandTokens.radius.inner, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12, paddingVertical: 8, gap: 2 },
 });

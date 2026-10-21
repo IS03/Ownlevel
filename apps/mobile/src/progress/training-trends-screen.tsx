@@ -56,11 +56,13 @@ function FlatRow({
   onPress,
   label,
   testID,
+  compact,
 }: {
   children: ReactNode;
   onPress?: () => void;
   label?: string;
   testID?: string;
+  compact?: boolean;
 }) {
   const { colors } = useOwnlevelTheme();
   const content = (
@@ -75,7 +77,7 @@ function FlatRow({
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      style={({ pressed }) => [styles.row, { borderColor: colors.border }, pressed && { opacity: 0.6 }]}
+      style={({ pressed }) => [styles.row, compact && styles.compact, { borderColor: colors.border }, pressed && { opacity: 0.6 }]}
     >
       {content}
     </Pressable>
@@ -84,7 +86,7 @@ function FlatRow({
       testID={testID}
       accessible={!!label}
       accessibilityLabel={label}
-      style={[styles.row, { borderColor: colors.border }]}
+      style={[styles.row, compact && styles.compact, { borderColor: colors.border }]}
     >
       {content}
     </View>
@@ -142,7 +144,8 @@ function TrainingChart({ data }: { data: ProgressTraining }) {
                         borderTopLeftRadius: value === 0 ? 0 : 3, borderTopRightRadius: value === 0 ? 0 : 3,
                         width: '100%',
                         backgroundColor: value === 0 ? colors.border : colors.primary,
-                        opacity: value === 0 || current ? 1 : 0.38,
+                        // Single series in champagne (IDENTIDAD.md § Gráficos); the bucket still in course is soft.
+                        opacity: value === 0 || !current ? 1 : 0.4,
                       }}
                     />
                   </View>
@@ -211,8 +214,9 @@ function Breakdown({ data, open }: { data: ProgressTraining; open: (id: string) 
         }}
       />
       <View>
-        {(all ? items : items.slice(0, 6)).map((item, index) => (
+        {(all || items.length <= 7 ? items : items.slice(0, 6)).map((item) => (
           <FlatRow
+            compact
             key={item.id}
             testID={`training-breakdown-${item.id}`}
             label={`${item.name}, ${item.sets} series${item.sessions !== null ? `, ${plural(item.sessions, 'sesión', 'sesiones')}` : ''}`}
@@ -233,7 +237,7 @@ function Breakdown({ data, open }: { data: ProgressTraining; open: (id: string) 
                   height: item.sets === 0 ? 1 : 8, borderRadius: item.sets === 0 ? 0 : 4,
                   width: item.sets === 0 ? '100%' : `${(item.sets / max) * 100}%`,
                   backgroundColor: item.sets === 0 ? colors.border : colors.primary,
-                  opacity: index === 0 ? 1 : 0.38,
+                  opacity: item.sets === max ? 1 : 0.38,
                 }}
               />
             </View>
@@ -244,7 +248,7 @@ function Breakdown({ data, open }: { data: ProgressTraining; open: (id: string) 
         ))}
       </View>
       {!items.length ? <AppText muted>Sin datos para este desglose.</AppText> : null}
-      {items.length > 6 ? (
+      {items.length > 7 ? (
         <Button
           label={all ? 'Ver menos' : `Ver todos (${items.length})`}
           variant="quiet"
@@ -254,12 +258,26 @@ function Breakdown({ data, open }: { data: ProgressTraining; open: (id: string) 
     </View>
   );
 }
-function firstLastSignal(signal: TrainingSignal | null, stable = false) {
-  if (!signal) return null;
-  const values = signal.referenceValue !== null && signal.currentValue !== null ? `${fmt(signal.referenceValue, 2)} → ${fmt(signal.currentValue, 2)}` : null;
-  // "Estable · Sin cambio claro" says the same twice: a stable row only shows its values.
-  if (stable) return values ?? null;
-  return values ? `${values} · ${signal.description}` : signal.description;
+/**
+ * Before → after with its unit, in one phrase: "9 → 10 reps con 60 kg", "9 → 10 lingotes, a 20 reps".
+ * A stable exercise says nothing more than "Estable"; an unknown kind keeps the server's own sentence.
+ */
+export function signalLine(signal: TrainingSignal | null): string | null {
+  if (!signal || signal.kind === 'stable') return null;
+  const { referenceValue: before, currentValue: now, description } = signal;
+  if (before === null || now === null) return description;
+  const pair = `${fmt(before, 2)} → ${fmt(now, 2)}`;
+  if (signal.kind.includes('reps_same_load') || signal.kind.endsWith('reps_bodyweight')) {
+    const at = description.indexOf(' con ');
+    return at >= 0 ? `${pair} reps${description.slice(at)}` : description;
+  }
+  if (signal.kind.includes('load_same_reps')) {
+    const [delta, reps] = description.split(' manteniendo ');
+    const unit = delta?.split(' ').slice(1).join(' ');
+    return unit && reps ? `${pair} ${unit}, a ${reps}` : description;
+  }
+  if (signal.kind.endsWith('_time')) return `${pair} s en el mejor registro`;
+  return description;
 }
 function Performance({ data, open }: { data: ProgressTraining; open: (id: string) => void }) {
   const { colors } = useOwnlevelTheme(),
@@ -279,16 +297,11 @@ function Performance({ data, open }: { data: ProgressTraining; open: (id: string
   const when = state.unit === 'month' ? periodHeading(state, today).replace(/^Tu /, 'en ') : 'en el período';
   return (
     <View style={styles.section} testID="training-performance">
-      <Heading level={2}>Mejoraron en el período</Heading>
+      <Heading level={2}>Ejercicios</Heading>
       {data.inPeriod ? (
-        <>
-          <AppText variant="headline">
-            {plural(data.inPeriod.improved, 'ejercicio mejoró', 'ejercicios mejoraron')} {when}
-          </AppText>
-          <AppText muted variant="caption">
-            Entre su primera y su última sesión del período
-          </AppText>
-        </>
+        <AppText muted variant="footnote">
+          {plural(data.inPeriod.improved, 'mejoró', 'mejoraron')} {when}, de su primera a su última sesión.
+        </AppText>
       ) : (
         <AppText muted>No pudimos consultar la comparación dentro del período.</AppText>
       )}
@@ -296,10 +309,10 @@ function Performance({ data, open }: { data: ProgressTraining; open: (id: string
         {(all ? rows : rows?.slice(0, 6))?.map((e) => {
           const item = names.get(e.id),
             status = STATUS_LABELS[e.status],
-            signal = firstLastSignal(e.signal, e.status === 'stable');
+            signal = signalLine(e.signal);
           const comparison =
             compareOn && item
-              ? `Frente a ${compareText}: ${STATUS_LABELS[item.status]} · ${item.signal?.description ?? REASON_LABELS[item.reason] ?? 'Datos insuficientes.'}`
+              ? `Frente a ${compareText}: ${STATUS_LABELS[item.status]}${item.status === 'stable' ? '' : ` · ${signalLine(item.signal) ?? REASON_LABELS[item.reason] ?? 'Datos insuficientes.'}`}`
               : null;
           return (
             <FlatRow
@@ -349,31 +362,50 @@ function Performance({ data, open }: { data: ProgressTraining; open: (id: string
     </View>
   );
 }
+/** Three numbers on top (days, sets, time); sessions and the duration note go underneath, small. */
+function Summary({ data }: { data: ProgressTraining }) {
+  const { colors } = useOwnlevelTheme();
+  const { compareOn, compareText } = useProgressRange(), comparison = useComparisonText();
+  const s = data.summary, c = s.comparisons.sets;
+  const versus = compareOn
+    ? c.previous === null ? comparison(c, null, 'integer') : `${compareText} ${fmt(c.previous, 0)} · ${arrowDelta(s.sets - c.previous, null, 'integer')}`
+    : null;
+  const stats = [
+    { key: 'days', value: fmt(s.trainingDays, 0), label: s.trainingDays === 1 ? 'día entrenado' : 'días entrenados' },
+    { key: 'sets', value: fmt(s.sets, 0), label: s.sets === 1 ? 'serie' : 'series', extra: versus },
+    { key: 'time', value: formatValue(s.minutes, null, 'duration'), label: 'en total' },
+  ];
+  return (
+    <View style={styles.section} testID="training-summary"
+      accessible accessibilityLabel={`${plural(s.trainingDays, 'día', 'días')} · ${plural(s.sessions, 'sesión', 'sesiones')} · ${plural(s.sets, 'serie', 'series')}${versus ? `, ${versus}` : ''} · ${formatValue(s.minutes, null, 'duration')}`}>
+      <View style={styles.stats}>
+        {stats.map((x, i) => (
+          <View key={x.key} style={[styles.stat, i > 0 && [styles.statDivider, { borderColor: colors.border }]]}>
+            {/* A long time shrinks to fit; the slot keeps the three labels on one line. */}
+            <View style={styles.statValue}><AppText numeric variant="title1" numberOfLines={1} adjustsFontSizeToFit>{x.value}</AppText></View>
+            <AppText muted variant="footnote">{x.label}</AppText>
+            {x.extra ? <AppText numeric variant="caption">{x.extra}</AppText> : null}
+          </View>
+        ))}
+      </View>
+      <AppText muted numeric variant="caption">
+        {plural(s.sessions, 'sesión', 'sesiones')} · el tiempo va del inicio al fin de cada sesión, con descansos
+      </AppText>
+    </View>
+  );
+}
 function Content({ data }: { data: ProgressTraining }) {
   const { colors } = useOwnlevelTheme();
   const router = useRouter(),
-    { compareOn, compareText } = useProgressRange(),
-    comparison = useComparisonText();
+    { compareOn } = useProgressRange();
   const open = (id: string) => router.push({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id } });
-  const s = data.summary,
-    c = s.comparisons.sets;
-  const sets = compareOn
-    ? `${fmt(s.sets, 0)} series · ${c.previous === null ? comparison(c, null, 'integer') : `${compareText} ${fmt(c.previous, 0)} · ${arrowDelta(s.sets - c.previous, null, 'integer')}`}`
-    : plural(s.sets, 'serie', 'series');
+  const s = data.summary;
   return (
     <>
       {s.sessions > 0 ? (
         <>
-          <AppText numeric testID="training-summary">
-            {plural(s.trainingDays, 'día', 'días')} · {plural(s.sessions, 'sesión', 'sesiones')} · {sets} ·{' '}
-            {formatValue(s.minutes, null, 'duration')}
-          </AppText>
-          <AppText muted variant="caption">
-            La duración va del inicio al fin de cada sesión e incluye descansos.
-          </AppText>
+          <Summary data={data} />
           <TrainingChart data={data} />
-          <Breakdown key={`${data.period.start}:${data.period.end}`} data={data} open={open} />
-          <Performance data={data} open={open} />
         </>
       ) : (
         <>
@@ -406,20 +438,26 @@ function Content({ data }: { data: ProgressTraining }) {
         </View>
         {!data.personalRecords.length ? <AppText muted>Sin récords nuevos en este período.</AppText> : null}
       </View>
+      {s.sessions > 0 ? (
+        <>
+          <Performance data={data} open={open} />
+          <Breakdown key={`${data.period.start}:${data.period.end}`} data={data} open={open} />
+        </>
+      ) : null}
       <View style={styles.section} testID="training-feelings">
         <Heading level={2}>Cómo te sentiste</Heading>
         <View>
           {data.feelings.map((f) => (
-            <FlatRow key={f.key}>
+            <FlatRow key={f.key} compact label={`${f.label}: ${fmt(f.average)} de ${f.scaleMaximum}. ${f.registered} de ${f.eligible} sesiones con registro`}>
               <View style={styles.text}>
-                <AppText numeric>
-                  {f.label} {fmt(f.average)}/{f.scaleMaximum}
-                </AppText>
+                <AppText>{f.label}</AppText>
                 <AppText muted numeric variant="caption">
-                  {f.registered} de {f.eligible} sesiones con registro
-                  {f.ratio < 0.5 ? ' · pocas sesiones con registro' : ''}
+                  {f.registered} de {f.eligible} sesiones{f.ratio < 0.5 ? ' · pocas con registro' : ''}
                 </AppText>
               </View>
+              <AppText numeric variant="headline">
+                {fmt(f.average)} de {f.scaleMaximum}
+              </AppText>
             </FlatRow>
           ))}
         </View>
@@ -470,8 +508,11 @@ export function TrainingTrendsScreen() {
           <Content data={data} />
         </>
       )}
-      <FlatRow onPress={() => router.push('/(tabs)/train/history')} label="Abrir historial de entrenamiento">
-        <AppText style={styles.text}>Abrir historial de entrenamiento</AppText>
+      <FlatRow onPress={() => router.push('/(tabs)/train/history')} label="Ver el historial de entrenamientos">
+        <View style={styles.text}>
+          <AppText variant="headline">Historial</AppText>
+          <AppText muted variant="footnote">Cada sesión, día por día, en Entrenar.</AppText>
+        </View>
       </FlatRow>
     </ProgressScroll>
   );
@@ -486,7 +527,12 @@ const styles = StyleSheet.create({
     gap: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  compact: { minHeight: 44, paddingVertical: 10 },
   text: { flex: 1, gap: 4 },
+  stats: { flexDirection: 'row', flexWrap: 'wrap', rowGap: spacing.md },
+  stat: { flexGrow: 1, flexBasis: 90, gap: 2, paddingRight: spacing.sm },
+  statValue: { minHeight: 40, justifyContent: 'flex-end' },
+  statDivider: { borderLeftWidth: StyleSheet.hairlineWidth, paddingLeft: spacing.md },
   bars: { flexDirection: 'row', alignItems: 'flex-end' },
   barColumn: { flex: 1, gap: 6, minHeight: 44 },
   plot: { height: 136, justifyContent: 'flex-end', gap: 4 },

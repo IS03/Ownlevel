@@ -126,10 +126,10 @@ describe('Progress Overview', () => {
     expect(mockOverview).toHaveBeenLastCalledWith(mockClient, MONTH, null);
     expect(view.getByTestId('progress-period-caption').props.accessibilityLabel).toBe('Octubre 2026, del 1 al 5 · en curso');
     expect(view.getByText('Tu octubre')).toBeTruthy();
-    expect(row(view, 'body')).toBe('Peso. 82 → 80,5 kg · ↘ 1,5');
+    expect(row(view, 'body')).toBe('Peso. 82 → 80,5 kg · ↘ 1,5 kg');
     expect(row(view, 'training')).toBe('Entrenamiento. 11 días · 180 series');
-    expect(row(view, 'nutrition')).toBe('Nutrición. 2.200 kcal por día · objetivo 2.100 · 10 de 30 días');
-    expect(row(view, 'metrics')).toBe('Métricas. Pasos 9.000 pasos · Sueño 7 h 30 min');
+    expect(row(view, 'nutrition')).toBe('Nutrición. 2.200 / 2.100 kcal por día · 10 de 30 días');
+    expect(row(view, 'metrics')).toBe('Métricas. Pasos 9.000 · Sueño 7 h 30 min');
     // missing != zero: a bucket without data is a gap; zero sets is a real (faint) mark.
     expect(view.getByTestId('progress-spark-nutrition-current-2026-10-02-missing', { includeHiddenElements: true })).toBeTruthy();
     expect(view.getByTestId('progress-spark-training-current-2026-10-02-zero', { includeHiddenElements: true })).toBeTruthy();
@@ -151,8 +151,8 @@ describe('Progress Overview', () => {
     const highlights = within(view.getByTestId('progress-highlights'));
     expect(highlights.getByText('Aductores')).toBeTruthy(); expect(highlights.queryByText('Pasos')).toBeNull();
     expect(highlights.queryByText('4 de 8 ejercicios mejoraron')).toBeNull();
-    expect(highlights.getByText('3 ejercicios mejoraron')).toBeTruthy();
-    fireEvent.press(highlights.getByRole('button', { name: '3 ejercicios mejoraron. Entre su primera y su última sesión del período' }));
+    expect(highlights.getByText('3 ejercicios mejoraron en octubre')).toBeTruthy();
+    fireEvent.press(highlights.getByRole('button', { name: '3 ejercicios mejoraron en octubre. De su primera a su última sesión del período' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/training', params: {} });
     fireEvent.press(highlights.getByRole('button', { name: 'Aductores. Nuevo mejor peso: 29 kg × 20' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: 'e1' } });
@@ -162,10 +162,10 @@ describe('Progress Overview', () => {
     const view = wrap(<ProgressOverviewScreen />, comparing); await flush();
     expect(mockOverview).toHaveBeenLastCalledWith(mockClient, MONTH, { start: '2026-09-01', end: '2026-09-05' });
     expect(within(view.getByTestId('progress-compare-chip')).getByText('vs. 1–5 sep')).toBeTruthy();
-    expect(row(view, 'body')).toBe('Peso. 80,5 kg · 1–5 sep 83 · ↘ 2,5');
+    expect(row(view, 'body')).toBe('Peso. 80,5 kg · 1–5 sep 83 · ↘ 2,5 kg');
     expect(row(view, 'training')).toBe('Entrenamiento. 180 series · 1–5 sep 150 · ↗ 30');
     expect(row(view, 'nutrition')).toBe('Nutrición. 2.200 kcal · 1–5 sep 2.000 · ↗ 200 · 10 de 30 días');
-    expect(row(view, 'metrics')).toBe('Métricas. Pasos 9.000 pasos · 1–5 sep 6.000 pasos');
+    expect(row(view, 'metrics')).toBe('Métricas. Pasos 9.000 · 1–5 sep 6.000');
     expect(view.getByTestId('progress-spark-training-reference-2026-09-01-mark', { includeHiddenElements: true })).toBeTruthy();
     const highlights = within(view.getByTestId('progress-highlights'));
     expect(highlights.getByText('Subió frente al período anterior.')).toBeTruthy();
@@ -237,10 +237,10 @@ describe('Progress Overview', () => {
     const view = wrap(<ProgressOverviewScreen />); await flush();
     expect(view.getByText('No pudimos cargar tu progreso')).toBeTruthy();
     await act(async () => { listeners.forEach(l => l('background')); listeners.forEach(l => l('active')); }); await flush();
-    expect(view.getByText('82 → 80,5 kg · ↘ 1,5')).toBeTruthy();
+    expect(view.getByText('82 → 80,5 kg · ↘ 1,5 kg')).toBeTruthy();
     mockOverview.mockResolvedValueOnce(lost);
     await act(async () => { listeners.forEach(l => l('background')); listeners.forEach(l => l('active')); }); await flush();
-    expect(view.getByText('82 → 80,5 kg · ↘ 1,5')).toBeTruthy();
+    expect(view.getByText('82 → 80,5 kg · ↘ 1,5 kg')).toBeTruthy();
     expect(view.getByText('No se pudo actualizar. Mostramos la última lectura confirmada de este período.')).toBeTruthy();
   });
 });
@@ -251,18 +251,29 @@ describe('Body Trends', () => {
     expect(mockBody).toHaveBeenLastCalledWith(mockClient, MONTH, null);
     const summary = within(view.getByTestId('body-trend-summary'));
     expect(summary.getByText('80,5 kg')).toBeTruthy(); expect(summary.getByText('último registro · 1 oct')).toBeTruthy();
-    expect(summary.getByText('↘ 1,5 kg')).toBeTruthy(); expect(summary.getByText('en octubre')).toBeTruthy();
-    expect(summary.getByText(/Tendencia en bajada\./)).toBeTruthy();
+    expect(summary.getByText('↘ 1,5 kg')).toBeTruthy(); expect(summary.getByText('en octubre · desde 82 kg')).toBeTruthy();
+    // The arrow already says it went down: no extra trend line, and no technical note about dots.
+    expect(summary.queryByText(/Tendencia en bajada/)).toBeNull(); expect(summary.queryByText(/Un punto por registro/)).toBeNull();
     expect(summary.getByText(/1 medición sospechosa excluida; podés corregirla en Cuerpo\./)).toBeTruthy();
     expect(summary.queryByText(/sin cambio medible/)).toBeNull(); // only while comparing
     fireEvent.press(within(view.getByTestId('body-trend-chart')).getByRole('button', { name: '20 sep, 81 kg · Importado · sheet' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/history/day/[date]', params: { date: '2026-09-20' } });
+    // Each measure opens on its own screen, so Back returns to the weight.
     fireEvent.press(view.getByRole('button', { name: 'Cintura. 88 cm · un solo registro' }));
-    expect(within(view.getByTestId('body-trend-summary')).getByText('hacen falta 2 registros')).toBeTruthy();
-    expect(view.getByText(/Datos insuficientes para una tendencia/)).toBeTruthy();
-    expect(view.getByRole('button', { name: 'Peso. 80,5 kg · ↘ 1,5 kg' })).toBeTruthy();
-    fireEvent.press(view.getByRole('button', { name: 'Abrir Cuerpo' }));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.waist' } });
+    fireEvent.press(view.getByRole('button', { name: 'Cargar o corregir en Cuerpo' }));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/body');
+  });
+  it('a measure on its own screen: one record has no chart, says so and offers a longer period', async () => {
+    mockParams = { metric: 'body.waist' };
+    const view = wrap(<BodyTrendsScreen />); await flush();
+    const summary = within(view.getByTestId('body-trend-summary'));
+    expect(summary.getByText('88 cm')).toBeTruthy(); expect(summary.queryByText('hacen falta 2 registros')).toBeNull();
+    expect(summary.getByText('Un solo registro en octubre. Con dos o más vas a ver cómo cambió.')).toBeTruthy();
+    expect(view.queryByTestId('body-trend-chart')).toBeNull(); expect(view.queryByTestId('body-trend-others')).toBeNull();
+    fireEvent.press(view.getByTestId('body-trend-widen')); await flush();
+    expect(mockBody).toHaveBeenLastCalledWith(mockClient, expect.objectContaining({ period: 'custom' }), null);
+    expect(view.queryByText('Un solo registro en octubre. Con dos o más vas a ver cómo cambió.')).toBeNull();
   });
   it('keeps the comparison chosen on the hub', async () => {
     const view = wrap(<BodyTrendsScreen />, comparing); await flush();
@@ -278,26 +289,32 @@ describe('Metrics Trends', () => {
     expect(mockMetrics).toHaveBeenLastCalledWith(mockClient, MONTH, ids.steps, null);
     const summary = within(view.getByTestId('metric-trend-summary'));
     expect(summary.getByText('0 pasos')).toBeTruthy();
-    expect(summary.getByText('promedio por día con dato · obj. 10.000 pasos')).toBeTruthy();
-    expect(summary.getByText('2/6')).toBeTruthy(); expect(summary.getByText('días con dato · cobertura baja')).toBeTruthy();
+    expect(summary.getByText('promedio por día con dato')).toBeTruthy(); expect(summary.getByText('objetivo 10.000 pasos')).toBeTruthy();
+    expect(summary.getByText('2 de 6')).toBeTruthy(); expect(summary.getByText('días con dato · pocos para un promedio')).toBeTruthy();
     expect(view.queryByTestId('metric-trend-comparison')).toBeNull();
     expect(view.getAllByTestId(/^metric-trend-chart-.*-gap$/)).toHaveLength(4);
     expect(view.getAllByTestId(/^metric-trend-chart-.*-zero$/)).toHaveLength(2);
     fireEvent.press(view.getByRole('button', { name: '29 sep, 0 pasos' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/history/day/[date]', params: { date: '2026-09-29' } });
-    expect(view.getByText('El objetivo es el actual: no hay objetivos históricos por período.')).toBeTruthy();
+    // The legend says the target is the current one, and names the gaps the chart has.
+    const legend = within(view.getByTestId('metric-trend-legend'));
+    expect(legend.getByText('objetivo actual 10.000 pasos')).toBeTruthy(); expect(legend.getByText('hueco: sin dato')).toBeTruthy();
+    expect(within(view.getByTestId('metric-trend-stats')).getByText('Mediana')).toBeTruthy();
     fireEvent.press(view.getByRole('radio', { name: 'Sueño' })); await flush();
     expect(mockMetrics).toHaveBeenLastCalledWith(mockClient, MONTH, ids.sleep, null);
     expect(within(view.getByTestId('metric-trend-summary')).getByText('7 h 30 min')).toBeTruthy();
+    // Archived metrics wait behind one chip.
+    expect(view.queryByRole('radio', { name: 'Mate viejo · archivada' })).toBeNull();
+    fireEvent.press(view.getByRole('radio', { name: 'Archivadas (1)' }));
     expect(view.getByRole('radio', { name: 'Mate viejo · archivada' })).toBeTruthy();
-    fireEvent.press(view.getByRole('button', { name: 'Abrir Métricas diarias' }));
+    fireEvent.press(view.getByRole('button', { name: 'Cargar o corregir en Métricas' }));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/metrics');
   });
   it('compares with the chosen range when Comparar is on', async () => {
     mockParams = { metric: ids.steps };
     const view = wrap(<MetricsTrendsScreen />, comparing); await flush();
     expect(within(view.getByTestId('metric-trend-summary')).getByText('1–5 sep 0 pasos · sin cambio')).toBeTruthy();
-    expect(view.getByText('1–5 sep 3/7')).toBeTruthy();
+    expect(view.getByText('1–5 sep 3 de 7')).toBeTruthy();
   });
 });
 

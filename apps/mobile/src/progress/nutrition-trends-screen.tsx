@@ -5,9 +5,9 @@ import { useMobileApi } from '@/api';
 import { fetchNutritionReport, reportQueryKey, type NutritionReport, type ReportQuery } from '@/api/nutrition-report';
 import { fetchProgressNutritionTiming, progressRequestKey } from '@/api/progress';
 import {
+  AppIcon,
   AppText,
   Button,
-  Heading,
   InlineUnavailable,
   SkeletonBlock,
   UnavailableState,
@@ -26,7 +26,8 @@ import { timingHeadline } from './meal-times-model';
 
 function TimingEntry() {
   const { client } = useMobileApi(),
-    router = useRouter();
+    router = useRouter(),
+    { colors } = useOwnlevelTheme();
   const { query } = useProgressRange();
   const load = useCallback(
     (c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressNutritionTiming(c, query, signal),
@@ -44,14 +45,23 @@ function TimingEntry() {
       label={`Cuándo comés, ${subtitle}`}
       onPress={() => router.push('/(tabs)/progress/trends/meal-times')}
     >
+      <AppIcon name="clock" color={colors.textMuted} size={20} />
       <View style={styles.grow}>
-        <Heading level={2}>Cuándo comés</Heading>
-        <AppText numeric muted variant="caption">
+        <AppText variant="headline">Cuándo comés</AppText>
+        <AppText numeric muted variant="footnote">
           {subtitle}
         </AppText>
       </View>
     </ProgressRow>
   );
+}
+/** One line for both numbers: how many days the averages cover, never repeated per number. */
+function daysText(report: NutritionReport) {
+  const c = report.summary.metrics.calories, p = report.summary.metrics.protein;
+  const days = (n: number) => `${n} ${n === 1 ? 'día' : 'días'}`;
+  const partial = c.partialDays ? ` · ${days(c.partialDays)} con suma parcial` : '';
+  const protein = p.denominator !== c.denominator ? ` (proteína: ${days(p.denominator)})` : '';
+  return `Promedio de ${days(c.denominator)} con dato${protein}${partial}${report.days.some((d) => d.isToday) ? ', sin contar hoy' : ''}`;
 }
 function ReportContent({ report, reference }: { report: NutritionReport; reference?: NutritionReport }) {
   const router = useRouter();
@@ -68,33 +78,37 @@ function ReportContent({ report, reference }: { report: NutritionReport; referen
           No hay comidas ni resúmenes históricos en este período. Los días sin registro no se cuentan como cero.
         </AppText>
       ) : null}
-      <View style={styles.primary} testID="nutrition-progress-summary">
-        {(['calories', 'protein'] as const).map((key, i) => {
-          const stat = report.summary.metrics[key],
-            previous = reference?.summary.metrics[key].value;
-          return (
-            <View key={key} style={styles.grow}>
-              <AppText numeric variant="largeTitle">
-                {stat.value === null ? '—' : formatValue(stat.value, i === 0 ? null : 'g', 'integer')}
-              </AppText>
-              <AppText muted variant="caption">
-                {i === 0 ? 'kcal por día' : 'proteína por día'}
-              </AppText>
-              <AppText numeric muted variant="caption">
-                {stat.denominator} días con dato{stat.partialDays ? ` · ${stat.partialDays} parciales` : ''}
-              </AppText>
-              {compareOn && reference ? (
-                <AppText numeric variant="caption">
-                  {compareText}{' '}
-                  {previous === null || previous === undefined ? 'sin dato' : formatValue(previous, null, 'integer')}
-                  {stat.value !== null && previous !== null && previous !== undefined
-                    ? ` · ${arrowDelta(Math.round(stat.value) - Math.round(previous), null, 'integer')}`
-                    : ''}
+      <View style={styles.section} testID="nutrition-progress-summary">
+        <View style={styles.primary}>
+          {(['calories', 'protein'] as const).map((key, i) => {
+            const stat = report.summary.metrics[key],
+              previous = reference?.summary.metrics[key].value,
+              target = report.summary.metrics[i === 0 ? 'targetCalories' : 'targetProtein'].value;
+            return (
+              <View key={key} style={styles.grow}>
+                <AppText numeric variant="largeTitle">
+                  {stat.value === null ? '—' : formatValue(stat.value, i === 0 ? null : 'g', 'integer')}
                 </AppText>
-              ) : null}
-            </View>
-          );
-        })}
+                <AppText muted variant="caption">{i === 0 ? 'kcal por día' : 'proteína por día'}</AppText>
+                {target !== null ? (
+                  <AppText muted numeric variant="caption">objetivo {formatValue(target, i === 0 ? null : 'g', 'integer')}</AppText>
+                ) : null}
+                {compareOn && reference ? (
+                  <AppText numeric variant="caption">
+                    {compareText}{' '}
+                    {previous === null || previous === undefined ? 'sin dato' : formatValue(previous, null, 'integer')}
+                    {stat.value !== null && previous !== null && previous !== undefined
+                      ? ` · ${arrowDelta(Math.round(stat.value) - Math.round(previous), null, 'integer')}`
+                      : ''}
+                  </AppText>
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+        <AppText muted numeric variant="caption">
+          {daysText(report)}
+        </AppText>
       </View>
       <NutritionChart report={report} reference={reference} />
       <TimingEntry />
@@ -191,6 +205,7 @@ export function NutritionTrendsScreen() {
   return applied ? <NutritionReportResource /> : <SkeletonBlock height={200} />;
 }
 const styles = StyleSheet.create({
+  section: { gap: spacing.xs },
   primary: { flexDirection: 'row', gap: spacing.lg },
   grow: { flex: 1, gap: spacing.xs },
 });

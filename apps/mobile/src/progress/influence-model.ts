@@ -8,7 +8,7 @@ export const QUESTIONS: Record<InfluenceSuggestedKey, { title: string; icon: App
   carbs_sets: { title: '¿Los carbohidratos del día anterior cambian tus series?', icon: 'nutrition' },
   training_kcal: { title: '¿Comés distinto los días que entrenás?', icon: 'dumbbell' },
   steps_sleep: { title: '¿Caminar más cambia lo que dormís?', icon: 'footprints' },
-  training_water: { title: '¿Tomás más agua los días que entrenás?', icon: 'dumbbell' },
+  training_water: { title: '¿Tomás más agua los días que entrenás?', icon: 'water' },
 };
 export const CAUTION = 'Es una relación, no una causa: otras cosas pudieron cambiar esos días.';
 export const LAG_LABELS = ['de ese día', 'del día anterior', 'de 2 días antes'];
@@ -39,10 +39,10 @@ function thresholdText(cut: number, measure: InfluenceMeasureInfo) {
 }
 export function shortAnswer(read: InfluenceReading): string {
   const r = read.current;
-  if (r.status === 'insufficient') return `Faltan datos: ${r.pairs} de 14 días`;
+  if (r.status === 'insufficient') return `Todavía no alcanza: ${r.pairs} de 14 días`;
   const [high] = groupLabels(read);
   const yes = read.definition.split === 'day.training';
-  return `${yes ? 'Entrenando' : high}: ${valueText(r.high.average, read.measure.outcome)} · ${yes ? 'sin entrenar' : 'el resto'}: ${valueText(r.low.average, read.measure.outcome, false)}`;
+  return `${yes ? 'Entrenando' : high}: ${valueText(r.high.average, read.measure.outcome)} · ${yes ? 'sin entrenar' : 'el resto'}: ${valueText(r.low.average, read.measure.outcome)}`;
 }
 export function questionText(d: InfluenceDefinition, split: InfluenceMeasureInfo, outcome: InfluenceMeasureInfo): string {
   const actions: Record<string, string> = { 'nutrition.kcal': 'comer más calorías', 'nutrition.protein': 'comer más proteína', 'nutrition.carbs': 'comer más carbohidratos', 'nutrition.fat': 'comer más grasas',
@@ -60,7 +60,7 @@ export function questionText(d: InfluenceDefinition, split: InfluenceMeasureInfo
 }
 export function answerText(read: InfluenceReading): string {
   const r = read.current; if (r.status !== 'ok') return '';
-  const high = valueText(r.high.average, read.measure.outcome), low = valueText(r.low.average, read.measure.outcome, false);
+  const high = valueText(r.high.average, read.measure.outcome), low = valueText(r.low.average, read.measure.outcome);
   const action = read.definition.outcome.startsWith('nutrition.') ? 'comiste' : read.definition.outcome.startsWith('training.') ? 'hiciste' : 'registraste';
   const later = read.definition.lag === 1 ? ' al día siguiente' : read.definition.lag === 2 ? ' dos días después' : '';
   if (read.definition.split === 'day.training') return `${read.definition.lag ? `Después de un día con entrenamiento,${later}` : 'Los días que entrenaste'} ${action} en promedio ${high}. ${read.definition.lag ? 'Después de días sin entrenar' : 'Los días sin entrenar'}, ${low}.`;

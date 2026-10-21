@@ -87,6 +87,36 @@ export function connectionsPeriodText(state: ProgressRangeState, today: string):
   return `${pair}${a.end === today ? `, a la misma altura ${scale}` : ''}.`;
 }
 
+/** Short names for the two periods ("octubre" / "septiembre"), for legends and "antes → ahora" captions. */
+export function connectionsPeriodNames(state: ProgressRangeState, today: string): { now: string; before: string } {
+  const a = progressRange(state, today), b = compareRange({ ...state, compare: { kind: 'previous' } }, today)!;
+  if (state.unit === 'month') return { now: monthName(a.start, today), before: monthName(b.start, today) };
+  if (state.unit === 'week' && a.end === today) return { now: 'esta semana', before: 'la anterior' };
+  if (state.unit === 'year') return { now: a.start.slice(0, 4), before: b.start.slice(0, 4) };
+  return { now: shortRange(a, today), before: shortRange(b, today) };
+}
+
+/** "295 → 310 g": the previous value, then the current one with its unit. A missing side says so. */
+export function beforeAfter(before: number | null, now: number | null, unit: string | null, integer = false): string {
+  const type = integer ? 'integer' : 'decimal';
+  if (now === null) return 'sin dato';
+  return before === null ? `${formatValue(now, unit, type)} · antes sin dato` : `${formatValue(before, null, type)} → ${formatValue(now, unit, type)}`;
+}
+
+/** The two facts of a story as plain lines, each with its before → now. */
+export function connectionFacts(story: ConnectionStory, before: string): { food: string; outcome: string } {
+  const f = story.food, o = story.outcome;
+  const food = `${cap(foodName(story.key))}: ${f.current === null ? 'sin dato' : `${beforeAfter(f.previous, f.current, f.unit, true)} por día`}`;
+  const outcome = o.kind === 'strength'
+    ? story.key === 'protein_strength'
+      ? o.improved === null || o.comparable === null ? 'Fuerza: sin dato'
+        : `${o.improved} de ${o.comparable} ejercicios mejoraron frente a ${before}`
+      : o.top ? `${o.top.name}: ${beforeAfter(o.top.previousE1rm, o.top.currentE1rm, 'kg')} (1RM estimado)` : '1RM estimado: sin dato'
+    : o.kind === 'energy' ? `Energía al terminar: ${beforeAfter(o.previous, o.current, 'de 5')}`
+    : `Peso, tendencia: ${beforeAfter(o.previous, o.current, 'kg')}`;
+  return { food, outcome };
+}
+
 const round = (value: number | null, step: number) => value === null ? null : Math.round(value / step) * step;
 /**
  * The precision people read on screen: grams and kcal as whole numbers, energy and weight with one decimal.

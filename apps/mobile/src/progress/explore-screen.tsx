@@ -8,7 +8,7 @@ import {
   type ExploreBreakdown, type ExploreBucket, type ExploreDays, type ExploreGroup, type ExploreRequest, type ProgressExplore,
 } from '@/api/progress';
 import { AppIcon, AppText, Button, Heading, InlineUnavailable, SegmentedControl, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
-import { BREAKDOWN_LABELS, DAYS_LABELS, IDEAS, aggregationText, coverageLine, type ExploreChoice } from './explore-model';
+import { BREAKDOWN_LABELS, DAYS_LABELS, IDEAS, STATIC_MEASURES, aggregationText, coverageLine, type ExploreChoice } from './explore-model';
 import { MeasureSheet, OptionSheet } from './explore-sheets';
 import { PinViewSheet } from './pin-view-sheet';
 import { PeriodChart } from './period-chart';
@@ -20,6 +20,10 @@ import { arrowDelta, formatValue } from './progress-format';
 import { useProgressResource } from './use-progress-resource';
 
 type Draft = { measure: string | null; label: string | null; breakdown: ExploreBreakdown | null; days: ExploreDays | null; series: boolean };
+/** The key Explorar uses for a query (the same one Result and the pin compare). */
+const draftKey = (d: Draft) => d.measure ? exploreRequestKey({ measure: d.measure, breakdown: d.breakdown, days: d.days, series: d.series && d.breakdown !== 'weekday' }) : '';
+/** Fixed measures have their name at hand, so a saved view never shows "Cargando…" for them. */
+const staticLabel = (key: string) => STATIC_MEASURES.flatMap(g => g.choices).find(c => c.key === key)?.label ?? null;
 
 function Field({ label, value, accent, onPress, testID }: { label: string; value: string; accent?: boolean; onPress: () => void; testID: string }) {
   const { colors } = useOwnlevelTheme();
@@ -28,6 +32,10 @@ function Field({ label, value, accent, onPress, testID }: { label: string; value
     <AppText variant="headline" numberOfLines={1} style={[styles.fieldValue, accent ? { color: colors.primary } : null]}>{value}</AppText>
   </ProgressRow>;
 }
+
+/** "352 series" already names the measure: its label would only repeat it under the number. */
+const namedByValue = (e: ProgressExplore, v: number | null) =>
+  v !== null && valueText(e, v).toLocaleLowerCase('es-AR').endsWith(e.measure.label.toLocaleLowerCase('es-AR'));
 
 /** Values in the measure's own semantics; a weekday average of a sum is no longer a whole number. */
 export const valueText = (e: ProgressExplore, v: number | null, averaged = false) =>
@@ -81,7 +89,10 @@ function SmallMultiples({ e, groups }: { e: ProgressExplore; groups: ExploreGrou
       <AppText muted numeric variant="caption">{shortRange({ start: last.start, end: last.start }, today)}</AppText>
     </View> : null}
     {groups.length > 4 ? <Button label={all ? 'Ver menos' : `Ver todos (${groups.length})`} variant="quiet" onPress={() => setAll(!all)} /> : null}
-    <AppText muted variant="caption">Misma escala en todas las filas · hueco = sin dato · el tramo en curso va más claro.</AppText>
+    <AppText muted variant="caption">
+      Misma escala en todas las filas{shown.some(g => (g.series ?? []).some(b => b.value === null && !(b.start <= today && b.end >= today))) ? ' · hueco: sin dato' : ''}
+      {shown.some(g => (g.series ?? []).some(b => b.start <= today && b.end >= today && b.value !== null)) ? ' · la barra clara sigue en curso' : ''}.
+    </AppText>
   </View>;
 }
 
@@ -103,7 +114,7 @@ function Result({ request, onLoaded }: { request: ExploreRequest; onLoaded: (e: 
         <AppText numeric variant="largeTitle" testID="explore-value">{c.value === null ? '—' : valueText(e, c.value)}</AppText>
         {e.measure.derived ? <View style={[styles.chip, { backgroundColor: colors.brandSubtle }]}><AppText variant="caption" style={{ color: colors.primary, fontWeight: '600' }}>estimado</AppText></View> : null}
       </View>
-      <AppText muted variant="caption">{e.measure.label} · {aggregationText(e)}{e.days ? ` · días ${DAYS_LABELS[e.days].toLocaleLowerCase('es-AR')}` : ''}</AppText>
+      <AppText muted variant="caption">{namedByValue(e, c.value) ? '' : `${e.measure.label} · `}{aggregationText(e)}{e.days ? ` · días ${DAYS_LABELS[e.days].toLocaleLowerCase('es-AR')}` : ''}</AppText>
       <AppText muted numeric variant="caption">{coverageLine(e, c.coverage)}{c.change !== null ? ` · ${arrowDelta(c.change, e.measure.unit)} en el período` : ''}</AppText>
       {r && compareText ? <AppText numeric variant="caption" testID="explore-reference">{compareText} {r.value === null ? 'sin dato'
         : `${valueText(e, r.value)}${c.value !== null ? ` · ${arrowDelta(c.value - r.value, e.measure.valueType === 'duration' ? null : e.measure.unit, e.measure.valueType)}` : ''}`}</AppText> : null}
@@ -121,17 +132,19 @@ function Result({ request, onLoaded }: { request: ExploreRequest; onLoaded: (e: 
 export function ExploreScreen() {
   const router = useRouter();
   const { colors } = useOwnlevelTheme();
-  const params = useLocalSearchParams<{ measure?: string; breakdown?: string; days?: string; series?: string }>();
+  const params = useLocalSearchParams<{ measure?: string; breakdown?: string; days?: string; series?: string; view?: string }>();
   // A saved view opens here with its query; only combinations the measure admits are kept.
   const [draft, setDraft] = useState<Draft>(() => {
     const m = typeof params.measure === 'string' ? parseExploreMeasure(params.measure) : undefined;
     if (!m) return { measure: null, label: null, breakdown: null, days: null, series: false };
     const o = exploreOptions(m);
     const breakdown = o.breakdowns.find(b => b === params.breakdown) ?? null, days = o.days.find(d => d === params.days) ?? null;
-    return { measure: m.key, label: null, breakdown, days, series: params.series === '1' && breakdown !== 'weekday' };
+    return { measure: m.key, label: staticLabel(m.key), breakdown, days, series: params.series === '1' && breakdown !== 'weekday' };
   });
+  // Opened from Mis vistas: while the query is untouched it is that view, so there is nothing to pin.
+  const [fromView] = useState(() => typeof params.view === 'string' && params.view ? { name: params.view, key: draftKey(draft) } : null);
   const [loaded, setLoaded] = useState<ProgressExplore | null>(null);
-  const [pinned, setPinned] = useState<string | null>(null);
+  const [pinned, setPinned] = useState<string | null>(() => fromView?.key ?? null);
   const onLoaded = useCallback((e: ProgressExplore | null) => setLoaded(e), []);
   const [sheet, setSheet] = useState<'measure' | 'breakdown' | 'days' | 'pin' | null>(null);
   const measure = draft.measure ? parseExploreMeasure(draft.measure) : undefined;
@@ -156,7 +169,8 @@ export function ExploreScreen() {
       onChange={v => setDraft(d => ({ ...d, series: v === 'time' }))} /> : null}
     {request ? <Result request={request} onLoaded={onLoaded} /> : null}
     {request && loaded ? pinned === exploreRequestKey(request)
-      ? <View style={styles.pinned} testID="explore-pinned"><AppIcon name="check" color={colors.primary} size={18} /><AppText variant="headline" style={{ color: colors.primary }}>Fijada en Mis vistas</AppText></View>
+      ? <View style={styles.pinned} testID="explore-pinned"><AppIcon name="check" color={colors.primary} size={17} />
+        <AppText variant="subheadline" numberOfLines={1} style={{ color: colors.primary }}>{fromView?.key === pinned ? 'Ya está en Mis vistas' : 'Fijada en Mis vistas'}</AppText></View>
       : <Button label="Fijar en Mis vistas" onPress={() => setSheet('pin')} testID="explore-pin" /> : null}
     {request ? null : <View style={styles.section} testID="explore-ideas">
       <Heading level={2}>Ideas para empezar</Heading>
@@ -188,7 +202,7 @@ const styles = StyleSheet.create({
   big: { gap: 2 },
   bigLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   chip: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10 },
-  bars: { gap: spacing.md },
+  bars: { gap: spacing.md, marginTop: spacing.sm },
   barRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   barLabel: { width: 108 },
   track: { flex: 1, height: 10 },

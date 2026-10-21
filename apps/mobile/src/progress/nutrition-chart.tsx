@@ -50,12 +50,7 @@ export function NutritionChart({ report, reference }: { report: NutritionReport;
       <Heading level={2}>Calorías por {daily ? 'día' : 'bloque'}</Heading>
       {!daily ? (
         <AppText muted variant="caption">
-          Promedios por bloque sobre días con dato; cada bloque conserva su denominador.
-        </AppText>
-      ) : null}
-      {target !== null ? (
-        <AppText numeric muted variant="caption" style={styles.targetLabel}>
-          objetivo {formatValue(target, null, 'integer')}
+          Cada barra es el promedio del bloque, sobre sus días con dato.
         </AppText>
       ) : null}
       <View
@@ -63,14 +58,6 @@ export function NutritionChart({ report, reference }: { report: NutritionReport;
         onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
         style={styles.chart}
       >
-        {target !== null ? (
-          <View
-            testID="nutrition-progress-target"
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-            style={[styles.target, { top: 150 * (1 - target / max), borderColor: colors.textMuted }]}
-          />
-        ) : null}
         {Array.from({ length: n }, (_, i) => (
           <View key={i} style={styles.slot}>
             <View style={[styles.pair, n > 31 && { gap: 0, paddingHorizontal: 0 }]}>
@@ -119,14 +106,32 @@ export function NutritionChart({ report, reference }: { report: NutritionReport;
             </AppText>
           </View>
         ))}
+        {target !== null ? (
+          <View
+            testID="nutrition-progress-target"
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            style={[styles.target, { top: 150 * (1 - target / max), borderColor: colors.text }]}
+          />
+        ) : null}
       </View>
-      <AppText muted variant="caption">
-        {compareOn ? `Champagne = ${currentLabel} · gris = ${compareText} · ` : ''}hueco = sin registro
-      </AppText>
-      <AppText muted variant="caption">
-        {report.days.some((d) => d.isToday) ? 'Hoy sigue en curso. ' : ''}Las sumas parciales incluyen solo nutrientes
-        conocidos.
-      </AppText>
+      {/* One legend line, only with what this chart actually shows. */}
+      <View style={styles.legend} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        {target !== null ? (
+          <View style={styles.legendItem}>
+            <View style={[styles.dash, { borderColor: colors.text }]} />
+            <AppText numeric muted variant="caption">objetivo {formatValue(target, null, 'integer')}</AppText>
+          </View>
+        ) : null}
+        {compareOn ? (
+          <AppText muted variant="caption">champagne {currentLabel} · gris {compareText}</AppText>
+        ) : null}
+        {a.some((p) => p.today) ? <AppText muted variant="caption">clara: hoy, en curso</AppText> : null}
+        {a.some((p) => p.value === null) ? <AppText muted variant="caption">hueco: sin registro</AppText> : null}
+      </View>
+      {a.some((p) => p.partial) ? (
+        <AppText muted variant="caption">Las sumas parciales incluyen solo los nutrientes conocidos.</AppText>
+      ) : null}
     </View>
   );
 }
@@ -137,13 +142,16 @@ const styles = StyleSheet.create({
   pair: { height: 150, flexDirection: 'row', gap: 2, width: '100%', paddingHorizontal: 1 },
   bar: { flex: 1, minWidth: 0, height: 150, justifyContent: 'flex-end' },
   date: { position: 'absolute', top: 150, marginTop: spacing.sm, textAlign: 'center', alignSelf: 'center' },
-  targetLabel: { textAlign: 'right' },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.md, rowGap: spacing.xs },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  dash: { width: 14, borderTopWidth: 1, borderStyle: 'dashed', opacity: 0.6 },
   target: {
     position: 'absolute',
     left: 0,
     right: 0,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 1,
     borderStyle: 'dashed',
+    opacity: 0.6,
     zIndex: 1,
     pointerEvents: 'none',
   },

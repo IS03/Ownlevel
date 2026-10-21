@@ -1,7 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 import type { SupportedStorage } from '@supabase/supabase-js';
+import { iosVariant } from '../config/ios-variant';
 
-const AUTH_KEYCHAIN_SERVICE = 'fit.ownlevel.app.dev.auth';
+const AUTH_KEYCHAIN_SERVICE = iosVariant().keychainService;
 
 type SecureStorePort = Pick<
   typeof SecureStore,

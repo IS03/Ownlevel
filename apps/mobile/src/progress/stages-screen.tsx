@@ -11,7 +11,7 @@ import { haptics } from '@/platform/haptics';
 import { EditorialScreen, Reveal } from '@/settings/editorial';
 import { StageProgressBar, StageStripe } from '@/stages/stages-ui';
 import { arrowDelta, formatValue } from './progress-format';
-import { defaultCompare, kindLabel, stageDates, stageLength, stageNotes, stageProgress, stageRows } from './stages-model';
+import { defaultCompare, kindLabel, stageDates, stageLabel, stageLength, stageNotes, stageProgress, stageRows } from './stages-model';
 import { useProgressResource } from './use-progress-resource';
 
 const COL = 92;
@@ -20,17 +20,22 @@ const COL = 92;
 function Numbers({ stage, sources }: { stage: ProgressStageSummary; sources: ProgressStages['sources'] }) {
   const cells = [
     { key: 'eaten', value: sources.nutrition !== 'ok' ? 'No disponible' : stage.eatenKcal === null ? 'Sin dato' : formatValue(stage.eatenKcal, null, 'integer'),
-      caption: stage.targetKcal === null ? 'kcal por día' : `kcal por día · objetivo ${formatValue(stage.targetKcal, null, 'integer')}` },
+      caption: 'kcal por día', extra: stage.targetKcal === null ? null : `objetivo ${formatValue(stage.targetKcal, null, 'integer')}` },
     { key: 'weight', value: sources.body !== 'ok' ? 'No disponible' : stage.weightPerWeekKg === null ? 'Sin dato' : arrowDelta(stage.weightPerWeekKg, 'kg'),
-      caption: 'peso por semana' },
+      caption: 'peso por semana', extra: null },
     { key: 'training', value: sources.training !== 'ok' ? 'No disponible' : stage.trainingDaysPerWeek === null ? 'Sin dato' : formatValue(stage.trainingDaysPerWeek, null),
-      caption: 'entrenos por semana' },
+      caption: 'entrenos por semana', extra: null },
   ];
   return <View style={styles.numbers} testID="stages-numbers">
-    {cells.map(c => <View key={c.key} style={styles.number} accessible accessibilityLabel={`${c.value}, ${c.caption}`}>
-      <AppText numeric variant="title2">{c.value}</AppText>
-      <AppText muted variant="caption">{c.caption}</AppText>
-    </View>)}
+    {cells.map(c => {
+      // A missing number stays a quiet word in the number's place, never a big "Sin dato" and never 0.
+      const empty = c.value === 'Sin dato' || c.value === 'No disponible';
+      return <View key={c.key} style={styles.number} accessible accessibilityLabel={`${c.value}, ${c.caption}${c.extra ? `, ${c.extra}` : ''}`}>
+        <View style={styles.numberValue}><AppText numeric muted={empty} variant={empty ? 'subheadline' : 'title2'}>{empty ? c.value.toLocaleLowerCase('es-AR') : c.value}</AppText></View>
+        <AppText muted variant="caption">{c.caption}</AppText>
+        {c.extra ? <AppText muted numeric variant="caption">{c.extra}</AppText> : null}
+      </View>;
+    })}
   </View>;
 }
 
@@ -38,6 +43,7 @@ function Numbers({ stage, sources }: { stage: ProgressStageSummary; sources: Pro
 function Table({ stages, highlight, sources, testID, onPick }: {
   stages: ProgressStageSummary[]; highlight: string; sources: ProgressStages['sources']; testID: string; onPick?: (id: string) => void;
 }) {
+  const repeated = (s: ProgressStageSummary) => stages.some(o => o.id !== s.id && o.name === s.name);
   const { colors } = useOwnlevelTheme();
   const rows = stageRows(sources);
   const scroll = stages.length > 2;
@@ -48,6 +54,7 @@ function Table({ stages, highlight, sources, testID, onPick }: {
         accessibilityLabel={onPick ? `Ver ${s.name}` : undefined} onPress={() => { haptics.selection(); onPick?.(s.id); }}
         style={[styles.td, scroll && { width: COL }]}>
         <AppText variant="headline" numberOfLines={2} style={[styles.right, s.id === highlight && { color: colors.primary }]}>{s.name}</AppText>
+        {repeated(s) ? <AppText muted numeric variant="caption" numberOfLines={1} style={styles.right}>{stageDates(s)}</AppText> : null}
       </Pressable>)}
     </View>
     {rows.map(r => <View key={r.key} style={[styles.tr, { borderTopColor: colors.border }, styles.rule]} testID={`${testID}-${r.key}`}>
@@ -93,7 +100,7 @@ function Content({ data }: { data: ProgressStages }) {
       <Reveal index={2}><View style={styles.section} testID="stages-compare">
         <Heading level={2}>Comparar con</Heading>
         <ChipGroup accessibilityLabel="Etapa para comparar" value={b?.id ?? ''} onChange={id => { haptics.selection(); setCompareWith(id); }}
-          options={data.stages.filter(s => s.id !== a.id).map(s => ({ value: s.id, label: s.name }))} />
+          options={data.stages.filter(s => s.id !== a.id).map(s => ({ value: s.id, label: stageLabel(s, data.stages) }))} />
         {b ? <Animated.View key={b.id} entering={fade} exiting={FadeOut.duration(reduced ? 0 : 150)}>
           <Table testID="stages-pair" stages={[a, b]} highlight={a.id} sources={data.sources} />
         </Animated.View> : null}
@@ -139,6 +146,7 @@ const styles = StyleSheet.create({
   grow: { flex: 1, gap: 2 },
   numbers: { flexDirection: 'row', gap: spacing.md, paddingTop: spacing.xs },
   number: { flex: 1, gap: 2 },
+  numberValue: { minHeight: 30, justifyContent: 'flex-end' },
   tr: { flexDirection: 'row', alignItems: 'center', minHeight: 44, gap: spacing.sm },
   rule: { borderTopWidth: StyleSheet.hairlineWidth },
   th: { width: 104 },

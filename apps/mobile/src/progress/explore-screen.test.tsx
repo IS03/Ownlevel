@@ -11,7 +11,8 @@ import type { DateRange, ProgressRangeState } from './progress-range';
 const mockExplore = jest.fn<(c: unknown, q: ProgressQuery, r: ExploreRequest, compare: DateRange | null) => Promise<unknown>>();
 const mockPush = jest.fn();
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocusEffect: () => undefined, useLocalSearchParams: () => ({}), Stack: { Screen: () => null } }));
+let mockParams: Record<string, string> = {};
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocusEffect: () => undefined, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn() }, triggerHaptic: jest.fn() }));
 const mockClient = { request: jest.fn(), read: jest.fn() };
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
@@ -67,6 +68,17 @@ describe('Explorar', () => {
     fireEvent.press(view.getByText('Total')); await flush();
     expect(mockExplore).toHaveBeenLastCalledWith(mockClient, MONTH, { measure: 'training.sets', breakdown: 'muscle', days: null, series: false }, null);
     expect(view.getByTestId('explore-group-piernas').props.accessibilityLabel).toBe('Piernas: 7 series');
+  });
+  it('a saved view opens as itself: no second pin until the query changes, and its name is known before the read', async () => {
+    mockParams = { measure: 'training.sets', breakdown: 'muscle', view: 'Series por músculo' };
+    const view = wrap();
+    expect(within(view.getByTestId('explore-field-measure')).getByText('Series')).toBeTruthy();
+    await flush();
+    expect(view.getByTestId('explore-pinned')).toBeTruthy(); expect(view.getByText('Ya está en Mis vistas')).toBeTruthy();
+    expect(view.queryByTestId('explore-pin')).toBeNull();
+    fireEvent.press(view.getByText('En el tiempo')); await flush();
+    expect(view.getByTestId('explore-pin')).toBeTruthy();
+    mockParams = {};
   });
   it('by moment: a missing moment is 0, unassigned meals are told apart, and the comparison names its range', async () => {
     const view = wrap({ unit: 'month', anchor: TODAY, custom: null, compare: { kind: 'previous' } }); await flush();

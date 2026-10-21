@@ -11,7 +11,7 @@ import {
 } from '@/api/progress-connections';
 import type { ProgressOverview, ProgressPeriod } from '@/api/progress';
 import { ConnectionsSection } from './connections-section';
-import { connectionTitle, connectionsPeriodText, roundConnections } from './connections-model';
+import { CONNECTION_NAMES, connectionTitle, connectionsPeriodText, roundConnections } from './connections-model';
 import { ProgressOverviewScreen } from './overview-screen';
 import { ConnectionDetailScreen } from './connection-detail-screen';
 import { ProgressRangeProvider } from './progress-range-context';
@@ -203,10 +203,12 @@ describe('connections editorial stories', () => {
     ]);
     const protein = view.getByTestId('connection-protein_strength');
     expect(protein.props.accessibilityLabel).toBe('Proteína y fuerza. 142 gramos de proteína por día, 18 gramos más. 4 de 6 ejercicios mejoraron.');
-    expect(within(protein).getByText('142 g')).toBeTruthy(); expect(within(protein).getByText('4 de 6')).toBeTruthy();
+    expect(within(protein).getByText('Proteína: 124 → 142 g por día')).toBeTruthy();
+    expect(within(protein).getByText('4 de 6 ejercicios mejoraron frente a septiembre')).toBeTruthy();
     expect(protein.props.accessibilityRole).toBe('button');
     expect(view.getByText('Octubre frente a septiembre, a la misma altura del mes.')).toBeTruthy();
-    expect(view.getByText('Pasaron al mismo tiempo: no quiere decir que una cosa cause la otra.')).toBeTruthy();
+    // The disclaimer lives in each story's detail, not in the section.
+    expect(view.queryByText('Pasaron al mismo tiempo: no quiere decir que una cosa cause la otra.')).toBeNull();
     expect(mockPush).not.toHaveBeenCalled();
     fireEvent.press(protein);
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/progress/connections/[key]', params: { key: 'protein_strength' } });
@@ -221,8 +223,7 @@ describe('connections editorial stories', () => {
     'puts %s with %s below ready stories and explains the actual missing side', async (key, reason, period, have, need, message) => {
       mockTransform = d => changeStory(d, key, { side: reason === 'food_days' ? 'food' : 'outcome', reason, period, have, need });
       const view = await open();
-      expect(view.getByText('TODAVÍA NO ALCANZA')).toBeTruthy();
-      expect(within(view.getByTestId(`connection-missing-${key}`)).getByText(message)).toBeTruthy();
+      expect(within(view.getByTestId(`connection-missing-${key}`)).getByText(`${CONNECTION_NAMES[key]}: todavía no alcanza. ${message}`)).toBeTruthy();
       expect(view.queryByTestId(`connection-${key}`)).toBeNull();
       expect(view.queryByTestId('connections-view-month')).toBeNull();
     });
@@ -234,7 +235,7 @@ describe('connections editorial stories', () => {
     const view = await open({ ...MONTH, unit: 'week' });
     expect(view.queryByTestId('connection-protein_strength')).toBeNull();
     expect(view.getAllByTestId(/^connection-missing-/)).toHaveLength(4);
-    expect(view.getAllByText('Hacen falta comidas en 4 días de esta semana. Tenés 1.')).toHaveLength(4);
+    expect(view.getAllByText(/: todavía no alcanza\. Hacen falta comidas en 4 días de esta semana\. Tenés 1\.$/)).toHaveLength(4);
     fireEvent.press(view.getByRole('button', { name: 'Ver el mes' })); await flush();
     expect(view.getByText('Tu octubre')).toBeTruthy();
     expect(connectionCalls().at(-1)!.path).toContain('from=2026-10-01&to=2026-10-17&compareFrom=2026-09-01&compareTo=2026-09-17');
@@ -245,14 +246,14 @@ describe('connections editorial stories', () => {
     protein.food.current = null;
     if (energy.outcome.kind === 'energy') energy.outcome.current = null;
     const view = direct(dto); await flush();
-    expect(within(view.getByTestId('connection-protein_strength')).getByText('Sin dato')).toBeTruthy();
-    expect(within(view.getByTestId('connection-carbs_energy')).getByText('Sin dato')).toBeTruthy();
+    expect(within(view.getByTestId('connection-protein_strength')).getByText('Proteína: sin dato')).toBeTruthy();
+    expect(within(view.getByTestId('connection-carbs_energy')).getByText('Energía al terminar: sin dato')).toBeTruthy();
     expect(view.queryByText('0 g')).toBeNull(); expect(view.queryByText('0 de 5')).toBeNull();
     protein.food.current = 0;
     view.rerender(tree(<ConnectionsSection resource={{ data: dto, refresh: async () => {},
       state: { status: 'ready', refreshing: false, trigger: 'initial', current: { data: dto, confirmedAt: 1 }, result: ok(dto) } }} />));
     await flush();
-    expect(within(view.getByTestId('connection-protein_strength')).getByText('0 g')).toBeTruthy();
+    expect(within(view.getByTestId('connection-protein_strength')).getByText('Proteína: 124 → 0 g por día')).toBeTruthy();
   });
 });
 
@@ -289,7 +290,9 @@ describe('connection detail (C2, C3)', () => {
   it('protein and strength: the two facts, food week by week with the previous period beside it, and every comparable exercise', async () => {
     const view = await detail('protein_strength');
     expect(view.getAllByText('142 g').length).toBeGreaterThan(0); expect(view.getByText('4 de 6')).toBeTruthy();
-    expect(view.getByTestId('connection-week-2026-10-01').props.accessibilityLabel).toBe('1–4 oct: 142 g por día, antes 124 g. 4 de 4 días con comidas.');
+    expect(view.getByTestId('connection-week-2026-10-01').props.accessibilityLabel).toBe('1–4 oct: 142 g por día, septiembre 124 g. 4 de 4 días con comidas.');
+    expect(view.getByText('Septiembre: 124 g · ↗ 18 g')).toBeTruthy();
+    expect(view.getByText('Pasaron al mismo tiempo: no quiere decir que una cosa cause la otra.')).toBeTruthy();
     expect(within(view.getByTestId('connection-exercises')).getAllByRole('button')).toHaveLength(6);
     fireEvent.press(view.getByTestId('connection-exercise-exercise-0'));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: 'exercise-0' } });
@@ -310,6 +313,8 @@ describe('connection detail (C2, C3)', () => {
     mockTransform = d => { d.stories.forEach(s => { s.weeks[0] = { ...s.weeks[0], food: null, days: 0 }; }); return d; };
     const view = await detail('carbs_energy');
     expect(view.getByTestId('connection-week-2026-10-01').props.accessibilityLabel).toMatch(/^1–4 oct: sin comidas registradas/);
+    // Qué influye cannot ask about energy yet: no link rather than an unrelated question.
+    expect(view.queryByTestId('connection-influence')).toBeNull();
   });
   it('an insufficient story says what is missing; an unknown key or a failed read is not empty', async () => {
     mockTransform = d => changeStory(d, 'carbs_energy', { side: 'outcome', reason: 'energy_sessions', have: 1, need: 2, period: 'previous' });

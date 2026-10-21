@@ -126,6 +126,11 @@ function ExerciseChart({ data, measure }: { data: ProgressTrainingExerciseDetail
     step = Math.ceil(n / 5);
   const labeled = (index: number) => n <= 6 || index === n - 1 || (index % step === 0 && n - 1 - index >= step / 2);
   const last = measure.points.at(-1)?.sessionId;
+  // Level charts carry their value over the dot: all of them when few, otherwise first, last, lowest and highest.
+  const own = slots.flatMap((sl, i) => (sl.point && !sl.reference ? [i] : []));
+  const byValue = [...own].sort((a, b) => slots[a].point!.value - slots[b].point!.value);
+  const written = new Set(!level ? [] : own.length <= 6 ? own : [own[0], own[own.length - 1], byValue[0], byValue[byValue.length - 1]]);
+  const room = written.size ? 18 : 0;
   if (!values.length)
     return (
       <AppText muted>
@@ -142,6 +147,7 @@ function ExerciseChart({ data, measure }: { data: ProgressTrainingExerciseDetail
         {slots.map((slot, index) => {
           const p = slot.point;
           const height = p ? (level ? (high === low ? 0.5 : (p.value - low) / (high - low)) : p.value / high) : 0;
+          const lift = 4 + height * (136 - room - 4);
           const color = slot.reference ? colors.textMuted : colors.primary;
           const opacity = slot.reference ? 0.4 : slot.sessionId === last ? 1 : 0.38;
           const key = `${slot.reference ? 'reference' : 'current'}-${slot.sessionId}`;
@@ -150,16 +156,24 @@ function ExerciseChart({ data, measure }: { data: ProgressTrainingExerciseDetail
               <View style={styles.column} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
                 {p ? (
                   level ? (
-                    <View
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: radius.full,
-                        backgroundColor: color,
-                        opacity,
-                        marginBottom: height * 136,
-                      }}
-                    />
+                    <>
+                      {written.has(index) ? (
+                        <AppText numeric variant="caption" numberOfLines={1}
+                          style={[styles.value, { bottom: lift + 10, color: slot.sessionId === last ? colors.text : colors.textMuted }]}>
+                          {formatValue(p.value, null)}
+                        </AppText>
+                      ) : null}
+                      <View
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: radius.full,
+                          backgroundColor: color,
+                          opacity,
+                          marginBottom: lift,
+                        }}
+                      />
+                    </>
                   ) : (
                     <View
                       style={{
@@ -242,17 +256,19 @@ function Measures({ data }: { data: ProgressTrainingExerciseDetail }) {
     last = measure.points.at(-1),
     ref = compareOn ? measure.reference?.find((p) => p.sessionId === lastReferenceSession?.sessionId) : null;
   const within = state.unit === 'month' ? periodHeading(state, today).replace(/^Tu /, 'en ') : 'en el período';
+  const unit = measureUnit(measure);
   const change = compareOn
     ? latest && ref
-      ? `${compareText} ${formatValue(ref.value, null)} · ${arrowDelta(latest.value - ref.value, null)}`
-      : `Sin comparación: ${compareText} sin valor comparable.`
+      ? { value: arrowDelta(latest.value - ref.value, unit), caption: `frente a ${compareText} · ${formatValue(ref.value, unit)}` }
+      : null
     : first && last && measure.points.length >= 2
-      ? `${arrowDelta(last.value - first.value, measureUnit(measure))} ${within}`
+      ? { value: arrowDelta(last.value - first.value, unit), caption: `${within} · desde ${formatValue(first.value, unit)}` }
       : null;
+  const set = latest?.best ? `${formatValue(latest.best.weightKg, 'kg')} × ${formatValue(latest.best.reps, null)}` : null;
   const caption = latest
     ? measure.derived
-      ? `1RM estimado de tu serie del ${shortDate(latest.date)} (${formatValue(latest.best!.weightKg, 'kg')} × ${formatValue(latest.best!.reps, null)})`
-      : `${measure.label} del ${shortDate(latest.date)}${measure.key === 'best_set' && latest.best && measure.unit !== 'reps' ? ` · ${pointText(measure, latest)}` : ''}`
+      ? `de ${set ?? 'tu mejor serie'} · ${shortDate(latest.date)}`
+      : `${measure.key === 'best_set' && latest.best && measure.unit !== 'reps' ? `${pointText(measure, latest)} · ` : ''}${shortDate(latest.date)}`
     : `Sin valor válido para ${measure.label.toLocaleLowerCase('es-AR')} en la última sesión.`;
   return (
     <View style={styles.section} testID="exercise-trend-summary">
@@ -262,29 +278,40 @@ function Measures({ data }: { data: ProgressTrainingExerciseDetail }) {
         options={data.charts.measures.map((m) => ({ value: m.key, label: m.label }))}
         onChange={setSelected}
       />
-      <ExerciseChart data={data} measure={measure} />
-      <View style={styles.valueLine}>
-        <AppText
-          numeric
-          variant="largeTitle"
-          accessibilityLabel={`${measure.label}, ${latest ? pointText(measure, latest) : 'sin dato'}`}
-        >
-          {latest ? formatValue(latest.value, measureUnit(measure)) : '—'}
-        </AppText>
-        {measure.derived ? (
-          <AppText
-            testID="exercise-estimated-chip"
-            variant="caption"
-            style={[styles.chip, { backgroundColor: colors.brandSubtle, color: colors.primary }]}
-          >
-            estimado
-          </AppText>
+      <View style={styles.numbers}>
+        <View style={styles.grow}>
+          <View style={styles.valueLine}>
+            <AppText
+              numeric
+              variant="largeTitle"
+              accessibilityLabel={`${measure.label}, ${latest ? pointText(measure, latest) : 'sin dato'}`}
+            >
+              {latest ? formatValue(latest.value, measureUnit(measure)) : '—'}
+            </AppText>
+            {measure.derived ? (
+              <AppText
+                testID="exercise-estimated-chip"
+                variant="caption"
+                style={[styles.chip, { backgroundColor: colors.brandSubtle, color: colors.primary }]}
+              >
+                estimado
+              </AppText>
+            ) : null}
+          </View>
+          <AppText numeric muted variant="caption">{caption}</AppText>
+        </View>
+        {change ? (
+          <>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <View style={styles.grow} testID="exercise-trend-change">
+              <AppText numeric variant="largeTitle">{change.value}</AppText>
+              <AppText numeric muted variant="caption">{change.caption}</AppText>
+            </View>
+          </>
         ) : null}
       </View>
-      <AppText numeric muted variant="caption">
-        {caption}
-        {change ? ` · ${change}` : ''}
-      </AppText>
+      {compareOn && !change ? <AppText muted variant="caption">Sin comparación: {compareText} sin valor comparable.</AppText> : null}
+      <ExerciseChart data={data} measure={measure} />
     </View>
   );
 }
@@ -398,6 +425,8 @@ export function ExerciseTrendsScreen() {
   return (
     <ProgressScroll
       title={data?.exercise.name ?? 'Ejercicio'}
+      multilineTitle={(data?.exercise.name.length ?? 0) > 16}
+      compactTitle={data && data.exercise.name.length > 16 ? 'Ejercicio' : undefined}
       testID="exercise-trends-screen"
       refreshControl={
         <RefreshControl
@@ -432,10 +461,13 @@ export function ExerciseTrendsScreen() {
         </>
       )}
       <FlatRow
-        label="Abrir historial del ejercicio"
+        label="Ver el historial del ejercicio"
         onPress={() => router.push({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id } })}
       >
-        <AppText style={styles.grow}>Abrir historial del ejercicio</AppText>
+        <View style={styles.grow}>
+          <AppText variant="headline">Historial</AppText>
+          <AppText muted variant="footnote">Todas las veces que lo hiciste, en Entrenar.</AppText>
+        </View>
       </FlatRow>
     </ProgressScroll>
   );
@@ -451,10 +483,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   grow: { flex: 1, gap: spacing.xs },
+  numbers: { flexDirection: 'row', gap: spacing.lg },
+  divider: { width: StyleSheet.hairlineWidth },
   valueLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.xs },
   chip: { borderRadius: radius.chip, paddingHorizontal: spacing.xs, paddingVertical: spacing.xs },
   plot: { flexDirection: 'row', alignItems: 'flex-end', minHeight: 176 },
   chartSlot: { flex: 1, minWidth: 0, minHeight: 176 },
   column: { height: 144, alignItems: 'center', justifyContent: 'flex-end' },
+  value: { position: 'absolute', left: -24, right: -24, textAlign: 'center' },
   date: { position: 'absolute', top: 144, marginTop: spacing.xs, alignSelf: 'center', textAlign: 'center' },
 });

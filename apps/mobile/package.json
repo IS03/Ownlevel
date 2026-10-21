@@ -54,6 +54,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "ios:prepare-locked": "node scripts/prepare-ios-locked.mjs",
+    "ios:daily": "node scripts/ios-daily.mjs",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit --pretty false",
     "lint": "expo lint --max-warnings 0",

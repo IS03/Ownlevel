@@ -16,11 +16,14 @@ export function stageDates(s: Pick<ProgressStageSummary, 'startsOn' | 'endsOn' |
   return `${shortDay(s.startsOn)} → ${shortDay(lastDay(s.endsOn!))}`;
 }
 const weeks = (days: number) => Math.max(1, Math.round(days / 7));
+/** Under a week it is said in days ("3 días"), never rounded up to a week. */
+const span = (days: number, short: boolean) => days < 7 ? `${days} ${days === 1 ? 'día' : 'días'}`
+  : short ? `${weeks(days)} sem` : `${weeks(days)} ${weeks(days) === 1 ? 'semana' : 'semanas'}`;
 /** "semana 3 de 12" for a running stage with an end; otherwise how long it lasted. */
 export function stageLength(s: ProgressStageSummary) {
   if (s.status === 'current' && s.plannedDays) return `semana ${Math.min(weeks(s.plannedDays), Math.floor((s.elapsedDays - 1) / 7) + 1)} de ${weeks(s.plannedDays)}`;
-  if (s.status === 'current') return `${weeks(s.elapsedDays)} ${weeks(s.elapsedDays) === 1 ? 'semana' : 'semanas'}`;
-  return `${weeks(s.elapsedDays)} sem`;
+  if (s.status === 'current') return span(s.elapsedDays, false);
+  return span(s.elapsedDays, true);
 }
 export const stageProgress = (s: ProgressStageSummary) => (s.status === 'current' && s.plannedDays ? Math.min(1, s.elapsedDays / s.plannedDays) : null);
 
@@ -31,7 +34,7 @@ const kcal = (v: number | null) => (v === null ? 'Sin dato' : formatValue(v, nul
 /** Rows of the comparison. Missing data says "Sin dato" and an unreadable source "No disponible", never 0. */
 export function stageRows(sources: Sources): StageRow[] {
   return [
-    { key: 'length', label: 'Duró', value: s => s.status === 'current' && s.plannedDays ? `${weeks(s.elapsedDays)} de ${weeks(s.plannedDays)}` : stageLength(s) },
+    { key: 'length', label: 'Duración', value: s => s.status === 'current' && s.plannedDays ? `${weeks(s.elapsedDays)} de ${weeks(s.plannedDays)} sem` : span(s.elapsedDays, true) },
     { key: 'target', label: 'Objetivo', value: s => kcal(s.targetKcal) },
     { key: 'eaten', label: 'Comiste', value: s => or(sources.nutrition === 'ok', kcal(s.eatenKcal)) },
     { key: 'weight', label: 'Peso / sem.', value: s => or(sources.body === 'ok', s.weightPerWeekKg === null ? 'Sin dato' : arrowDelta(s.weightPerWeekKg, 'kg')) },
@@ -61,6 +64,14 @@ export function stagesRowDetail(list: NutritionStages | null | undefined): strin
     return `${name} · semana ${Math.min(weeks(planned), Math.floor((elapsed - 1) / 7) + 1)} de ${weeks(planned)}`;
   }
   return list.past[0] ? `La última: ${list.past[0].name}` : null;
+}
+
+/**
+ * How to tell stages apart: the name, plus its dates when another stage shares it
+ * ("Recomposición suave · desde 18 oct" next to "Recomposición suave · 29 jul → 17 oct").
+ */
+export function stageLabel(s: ProgressStageSummary, stages: ProgressStageSummary[]) {
+  return stages.some(o => o.id !== s.id && o.name === s.name) ? `${s.name} · ${stageDates(s)}` : s.name;
 }
 
 /** Comparison default: the stage before the one you are looking at. */

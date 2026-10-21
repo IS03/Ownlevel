@@ -27,7 +27,6 @@ function Answer({ data }: { data: InfluenceReading }) {
     {r.status === 'ok' ? <View style={styles.section}>
       <AppText variant="headline" testID="influence-answer-text">{answerText(data)}</AppText>
       {data.definition.outcome.startsWith('training.') ? <AppText muted variant="footnote">sobre días que entrenaste</AppText> : null}
-      <AppText muted numeric>{valueText(Math.abs(r.difference), data.measure.outcome)} {r.difference < 0 ? 'menos' : r.difference > 0 ? 'más' : 'de diferencia'}{r.differencePercent !== null ? ` · ${`${Math.round(Math.abs(r.differencePercent))} %`}` : ''}</AppText>
       <View style={styles.section} testID="influence-bars">{[r.high, r.low].map((group, i) => {
         const text = `${valueText(group.average, data.measure.outcome)} · ${group.days.length} días`;
         return <View key={i} accessible accessibilityLabel={`${labels[i]}: ${text}`} style={{ gap: spacing.xs }}>
@@ -37,18 +36,22 @@ function Answer({ data }: { data: InfluenceReading }) {
           {group.average < 0 ? <AppText muted variant="caption">Valor negativo: se muestra en el número, sin barra.</AppText> : null}
         </View>;
       })}</View>
-      <Detail title="Evidencia" icon="progress" detail={`${{ low: 'Poca', moderate: 'Moderada', clear: 'Clara' }[r.evidence]} · ${r.pairs} días con los dos datos`} />
+      {/* The difference and how much to trust it, in one line under the bars (the sentence above already says both numbers). */}
+      <AppText muted numeric variant="footnote" testID="influence-evidence">
+        {r.difference === 0 ? 'Sin diferencia' : `${valueText(Math.abs(r.difference), data.measure.outcome)} ${r.difference < 0 ? 'menos' : 'más'}${r.differencePercent !== null ? ` (${Math.round(Math.abs(r.differencePercent))}\u00A0%)` : ''}`}
+        {` · evidencia ${{ low: 'poca', moderate: 'moderada', clear: 'clara' }[r.evidence]}, ${r.pairs} días con los dos datos`}
+      </AppText>
     </View> : <View style={styles.section} testID="influence-insufficient">
       <Heading level={2}>Todavía no alcanza</Heading>
-      <AppText muted>Hay {r.pairs} días con los dos datos en este período. Hacen falta al menos 14, con 5 en cada grupo, para comparar sin adivinar.</AppText>
-      <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 14, now: Math.min(r.pairs, 14), text: `${r.pairs} de 14 días` }} style={[styles.track, { backgroundColor: colors.border }]}>
-        <View style={{ width: `${Math.min(r.pairs / 14, 1) * 100}%`, backgroundColor: colors.textMuted, height: '100%', borderRadius: 10 }} />
-      </View><AppText muted numeric>{r.pairs} de 14 días</AppText>
-      <Detail title="Probá un período más largo" icon="calendar" testID="influence-longer" onPress={() => setState({ ...state, unit: '3m', anchor: today, custom: null })} />
-      <Detail title={`${data.measure[r.missing].label} es lo que más falta`} icon="info" />
+      <AppText muted numeric>Hay {r.pairs} de los 14 días con los dos datos que hacen falta, con al menos 5 en cada grupo. Lo que más falta registrar: {data.measure[r.missing].label.toLocaleLowerCase('es-AR')}.</AppText>
+      <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 14, now: Math.min(r.pairs, 14), text: `${r.pairs} de 14 días` }} style={[styles.track, { backgroundColor: colors.surfaceRaised }]}>
+        <View style={{ width: `${Math.min(r.pairs / 14, 1) * 100}%`, backgroundColor: colors.primary, opacity: 0.4, height: '100%', borderRadius: 10 }} />
+      </View>
+      {state.unit !== '3m' && state.unit !== '6m' && state.unit !== 'year'
+        ? <Detail title="Ver 3 meses" detail="Con un período más largo hay más días para comparar" icon="calendar" testID="influence-longer" onPress={() => setState({ ...state, unit: '3m', anchor: today, custom: null })} /> : null}
     </View>}
     {r.status === 'ok' && compareOn && ref ? <Detail title="Comparando" icon="compare" testID="influence-comparison" detail={`Frente a ${compareText}: ${ref.status === 'ok' ? `${valueText(ref.high.average, data.measure.outcome, false)} y ${valueText(ref.low.average, data.measure.outcome)}` : 'no alcanza'}`} /> : null}
-    <Detail title="Ojo" icon="info" detail={CAUTION} />
+    <AppText muted variant="footnote" testID="influence-caution">{CAUTION}</AppText>
   </>;
 }
 function Reading({ definition, questionKey }: { definition: InfluenceDefinition; questionKey?: string }) {
@@ -81,4 +84,4 @@ export function InfluenceAnswerScreen() {
     return <ProgressScroll title="Tu pregunta" testID="influence-answer-screen"><AppText muted>Esta pregunta no es válida. Volvé a armarla.</AppText></ProgressScroll>;
   return <Reading definition={definition} questionKey={params.key} />;
 }
-const styles = StyleSheet.create({ section: { gap: spacing.md }, grow: { flex: 1 }, barLabel: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap' }, track: { height: 10, borderRadius: 10, overflow: 'hidden' }, pinned: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 50 } });
+const styles = StyleSheet.create({ section: { gap: spacing.md }, grow: { flex: 1 }, barLabel: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap' }, track: { height: 8, borderRadius: 10, overflow: 'hidden' }, pinned: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 50 } });
