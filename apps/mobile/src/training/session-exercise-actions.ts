@@ -4,12 +4,12 @@ import type { ActiveSessionController } from './active-session-controller';
 export const SESSION_UNDO_MS = 6000;
 type Controller = Pick<ActiveSessionController, 'getSnapshot' | 'getExercise' | 'getExerciseRevision' | 'subscribe' | 'subscribeExercise' | 'canEdit' | 'add' | 'remove'>;
 export type SessionActionState = {
-  hiddenId: string | null; addedId: string | null; working: boolean;
-  notice: { message: string; undo: 'added' | 'removed' | null } | null;
+  addedId: string | null; working: boolean;
+  notice: { message: string; undo: 'added' | null } | null;
 };
-/** Presentation-only undo window. Once sent, writes use the existing durable controller intent. */
+/** Removal goes straight to the durable controller; notices never substitute for persistence. */
 export class SessionExerciseActions {
-  private state: SessionActionState = { hiddenId: null, addedId: null, working: false, notice: null };
+  private state: SessionActionState = { addedId: null, working: false, notice: null };
   private active = false;
   private listeners = new Set<() => void>();
   private deadline: ReturnType<typeof setTimeout> | null = null;
@@ -58,40 +58,36 @@ export class SessionExerciseActions {
     if (!confirmed && !this.controller.getSnapshot().intent) this.pendingAdd = null;
     return confirmed;
   }
-  async stageRemoval(id: string) {
-    if (!await this.settleRemoval() || !this.active || !this.controller.canEdit(id)) return false;
+  remove(id: string): Promise<boolean> {
+    if (this.removal || !this.active || !this.controller.canEdit(id)) return Promise.resolve(false);
     const exercise = this.controller.getExercise(id);
-    if (!exercise) return false;
+    if (!exercise) return Promise.resolve(false);
     this.stopClock(); this.stopAdded();
-    this.update({ hiddenId: id, notice: { message: `${exercise.exercise.nameSnapshot} quitado`, undo: 'removed' } });
-    this.deadline = setTimeout(() => { void this.settleRemoval(); }, SESSION_UNDO_MS);
-    return true;
-  }
-  async undo() {
-    if (this.state.working) return;
-    if (this.state.notice?.undo === 'removed') { this.cancelWindow(); return; }
-    if (this.state.notice?.undo === 'added' && this.state.addedId && this.controller.canEdit(this.state.addedId)) {
-      const id = this.state.addedId;
-      this.stopClock(); this.stopAdded(); this.update({ hiddenId: id, notice: null });
-      await this.settleRemoval();
-    }
-  }
-  settleRemoval(): Promise<boolean> {
-    if (this.removal) return this.removal;
-    const id = this.state.hiddenId;
-    if (!id) return Promise.resolve(true);
-    this.stopClock(); this.update({ working: true, notice: this.state.notice ? { ...this.state.notice, undo: null } : null });
+    this.update({ working: true, notice: { message: `Quitando ${exercise.exercise.nameSnapshot}…`, undo: null } });
     const flight = this.controller.remove(id).then(confirmed => {
-      this.update({ hiddenId: null, notice: null });
+      if (this.active) {
+        this.update({ notice: { message: confirmed ? `${exercise.exercise.nameSnapshot} quitado` : 'No pudimos confirmar la eliminación. Comprobá la sesión.', undo: null } });
+        this.deadline = setTimeout(() => this.update({ notice: null }), SESSION_UNDO_MS);
+      }
       return confirmed;
     }).finally(() => { this.removal = null; this.update({ working: false }); });
     this.removal = flight; return flight;
   }
-  /** Leaving/backgrounding before the RPC cancels the UI-only removal, preserving all data. */
+  async undo() {
+    if (this.state.working) return;
+    if (this.state.notice?.undo === 'added' && this.state.addedId && this.controller.canEdit(this.state.addedId)) {
+      const id = this.state.addedId;
+      await this.remove(id);
+    }
+  }
+  settleRemoval(): Promise<boolean> {
+    return this.removal ?? Promise.resolve(true);
+  }
+  /** Leaving/backgrounding clears feedback only; the controller owns pending writes. */
   cancelWindow() {
     this.pendingAdd = null;
     if (this.removal) return;
-    this.stopClock(); this.stopAdded(); this.update({ hiddenId: null, notice: null });
+    this.stopClock(); this.stopAdded(); this.update({ notice: null });
   }
   dispose() { this.active = false; this.detach?.(); this.detach = null; this.cancelWindow(); this.stopAdded(); this.stopClock(); }
 }

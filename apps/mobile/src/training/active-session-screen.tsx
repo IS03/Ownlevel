@@ -154,7 +154,7 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
     [client, finishedId, finishedDate]);
   const readWeek = useCallback(() => finishedId && finishedDate ? prefetchFinishWeek(client, finishedId, finishedDate) : Promise.resolve(null), [client, finishedId, finishedDate]);
   const closedStatus = detail && detail.session.status !== 'in_progress' && !state.intent ? detail.session.status : null;
-  const locked = state.fenced || state.refreshing || Boolean(state.intent) || state.finishing;
+  const locked = state.fenced || state.refreshing || Boolean(state.intent) || state.finishing || actionState.working;
   const canFinish = !!detail && detail.session.status === 'in_progress' && !locked && !actionState.working && !state.interaction;
   const requestCancel = useCallback(() => {
     Keyboard.dismiss(); setDialog(true);
@@ -200,7 +200,7 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
     } else apply();
   };
   const afterRemoval = (open: () => void) => {
-    if (!actionState.hiddenId && !actionState.working) open();
+    if (!actionState.working) open();
     else void actions.settleRemoval().then(ok => { if (ok) open(); });
   };
   const dismissHistory = (exerciseId: string) => { setDismissed(old => [...new Set([...(old ?? []), exerciseId])]); void controller.dismissHistory(exerciseId).catch(() => undefined); };
@@ -219,10 +219,10 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
   const remove = useCallback((id: string, name: string) => {
     const exercise = controller.getExercise(id);
     if (!exercise || !controller.canEdit(id)) return;
-    if (!exercise.draft.sets.some(set => set.isCompleted)) { void actions.stageRemoval(id); return; }
+    if (!exercise.draft.sets.some(set => set.isCompleted)) { void actions.remove(id); return; }
     setDialog(true); Alert.alert(`¿Quitar ${name}?`, 'Se pierden los datos de hoy de este ejercicio. Tu rutina y las sesiones anteriores se conservan.', [
       { text: 'Seguir entrenando', style: 'cancel', onPress: () => setDialog(false) },
-      { text: 'Quitar', style: 'destructive', onPress: () => { setDialog(false); void actions.stageRemoval(id); } },
+      { text: 'Quitar', style: 'destructive', onPress: () => { setDialog(false); void actions.remove(id); } },
     ]);
   }, [actions, controller]);
   const openCreator = (name: string) => {
@@ -272,11 +272,11 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
       {state.notice && !state.intent ? <InlineUnavailable message={state.notice} actionLabel="Comprobar sesión" onAction={() => void controller.refresh()} /> : null}
       <View style={styles.row}><AppText style={styles.flex} variant="heading">Ejercicios</AppText>
         {active ? <Button disabled={locked || Boolean(state.interaction)} label="+ Agregar" onPress={() => { afterRemoval(() => setPickerOpen(true)); }} variant="quiet" /> : null}</View>
-      {detail.exercises.some(exercise => exercise.id !== actionState.hiddenId) ? <NativeReorderList ids={detail.exercises.filter(exercise => exercise.id !== actionState.hiddenId).map(exercise => exercise.id)}
-        onLift={() => { const accepted = !actionState.hiddenId && controller.beginExerciseDrag(); if (accepted) Keyboard.dismiss(); return accepted; }}
+      {detail.exercises.length ? <NativeReorderList ids={detail.exercises.map(exercise => exercise.id)}
+        onLift={() => { const accepted = !actionState.working && controller.beginExerciseDrag(); if (accepted) Keyboard.dismiss(); return accepted; }}
         onDrop={ids => controller.dropExercises(ids)} onCancel={() => controller.cancelDrag()}>
-        {detail.exercises.filter(exercise => exercise.id !== actionState.hiddenId).map(exercise => <NativeReorderItem key={exercise.id} id={exercise.id} gap={0}>
-          <ActiveExerciseCard reveal={revealed?.id === exercise.id ? revealed.n : 0} addToRoutineName={detail.session.routineId ? detail.session.routineNameSnapshot ?? detail.session.name : null} controller={controller} id={exercise.id} expanded={expanded === exercise.id} locked={locked} reorderDisabled={!!actionState.hiddenId || actionState.working} onToggle={toggle} onHistory={showHistory} onRemove={remove} onSheetChange={cardSheet}
+        {detail.exercises.map(exercise => <NativeReorderItem key={exercise.id} id={exercise.id} gap={0}>
+          <ActiveExerciseCard reveal={revealed?.id === exercise.id ? revealed.n : 0} addToRoutineName={detail.session.routineId ? detail.session.routineNameSnapshot ?? detail.session.name : null} controller={controller} id={exercise.id} expanded={expanded === exercise.id} locked={locked} reorderDisabled={actionState.working} onToggle={toggle} onHistory={showHistory} onRemove={remove} onSheetChange={cardSheet}
             onReveal={top => { if (reveal.current === exercise.id) { reveal.current = null; scrollRef.current?.scrollTo({ y: Math.max(0, scrollY.get() + top - headerHeight - spacing.md), animated: !reduceMotion }); } }}
             historyCard={exercise.routineExerciseId === null && dismissed !== null && !dismissed.includes(exercise.exerciseId) && detail.quickHistory.status === 'ok' && quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).some(item => item.sets.some(set => set.isCompleted)) ?
               <SessionLastHistory history={quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).find(item => item.sets.some(set => set.isCompleted))!} disabled={locked} onUse={() => { if (detail.quickHistory.status === 'ok') applyHistory(exercise.id, quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).find(item => item.sets.some(set => set.isCompleted))!, exercise.exerciseId); }} onDismiss={() => dismissHistory(exercise.exerciseId)} /> : null} />
