@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { AppState, type AppStateStatus } from 'react-native';
 import type { MobileApiClient } from '@/api/client';
-import { testDetail, SESSION_ID } from './active-session-test-fixtures';
+import { testDetail, SESSION_ID, EXERCISE_ID, NEXT_VERSION } from './active-session-test-fixtures';
 import { useActiveSession } from './use-active-session';
 
 let mockFocus: (() => void | (() => void)) | null = null;
@@ -15,7 +15,31 @@ jest.mock('./active-session-native-storage', () => ({ activeSessionStorage: {
   getAllKeys: async () => [...mockValues.keys()],
 } }));
 describe('native active-session lifecycle', () => {
-  afterEach(() => { jest.restoreAllMocks(); mockValues.clear(); mockFocus = null; });
+  afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); mockValues.clear(); mockFocus = null; });
+  it('keeps the same controller and edits through inactive/background while the foreground response is slow', async () => {
+    let listener!: (state: AppStateStatus) => void;
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_event, handler) => { listener = handler; return { remove: jest.fn() }; });
+    const meta = { durationMs: 0, httpStatus: 200, outcome: 'ok' as const };
+    const request = jest.fn<MobileApiClient['request']>().mockResolvedValue({ status: 'ok', data: testDetail(), meta });
+    const client = { request, read: jest.fn() } as MobileApiClient;
+    const view = renderHook(() => useActiveSession(client, 'owner', SESSION_ID));
+    await waitFor(() => expect(view.result.current.state.status).toBe('ready'));
+    const controller = view.result.current.controller; jest.useFakeTimers(); request.mockClear();
+    let resolve!: (result: Awaited<ReturnType<MobileApiClient['request']>>) => void;
+    request.mockReturnValueOnce(new Promise(done => { resolve = done; }));
+    request.mockResolvedValue({ status: 'ok', data: { sessionExerciseId: EXERCISE_ID, updatedAt: NEXT_VERSION }, meta });
+    act(() => { listener('inactive'); listener('background'); listener('active'); (mockFocus as unknown as () => void)(); });
+    expect(view.result.current.controller).toBe(controller); expect(controller.canEdit(EXERCISE_ID)).toBe(true);
+    expect(view.result.current.state.refreshing).toBe(true);
+    await act(async () => {
+      controller.change(EXERCISE_ID, draft => ({ ...draft, sets: draft.sets.map(set => ({ ...set, actualReps: '13', actualWeightKg: '48,5', targetRir: 1 })) }));
+      await jest.advanceTimersByTimeAsync(1000);
+    });
+    expect(request).toHaveBeenCalledTimes(1); expect(controller.getExercise(EXERCISE_ID)?.draft.sets[0].actualReps).toBe('13');
+    await act(async () => { resolve({ status: 'ok', data: testDetail(), meta }); await controller.refresh(); await controller.flush(EXERCISE_ID); });
+    expect(view.result.current.controller).toBe(controller); expect(controller.getExercise(EXERCISE_ID)?.draft.sets[0].actualWeightKg).toBe('48,5');
+    expect(request).toHaveBeenCalledTimes(2); expect(request.mock.calls[1][0].method).toBe('PUT'); view.unmount();
+  });
   it('reconciles foreground/focus through one in-flight read and removes its listener', async () => {
     let listener: ((state: AppStateStatus) => void) | null = null;
     const remove = jest.fn();

@@ -154,8 +154,9 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
     [client, finishedId, finishedDate]);
   const readWeek = useCallback(() => finishedId && finishedDate ? prefetchFinishWeek(client, finishedId, finishedDate) : Promise.resolve(null), [client, finishedId, finishedDate]);
   const closedStatus = detail && detail.session.status !== 'in_progress' && !state.intent ? detail.session.status : null;
-  const locked = state.fenced || state.refreshing || Boolean(state.intent) || state.finishing || actionState.working;
-  const canFinish = !!detail && detail.session.status === 'in_progress' && !locked && !actionState.working && !state.interaction;
+  const locked = state.fenced || Boolean(state.intent) || state.finishing || actionState.working;
+  const structuralLocked = locked || state.refreshing;
+  const canFinish = !!detail && detail.session.status === 'in_progress' && !structuralLocked && !state.interaction;
   const requestCancel = useCallback(() => {
     Keyboard.dismiss(); setDialog(true);
     Alert.alert('¿Cancelar entrenamiento?', 'Elimina sólo esta sesión en curso. La rutina y el historial anteriores se conservan.', [
@@ -271,12 +272,12 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
       {intentPanel}
       {state.notice && !state.intent ? <InlineUnavailable message={state.notice} actionLabel="Comprobar sesión" onAction={() => void controller.refresh()} /> : null}
       <View style={styles.row}><AppText style={styles.flex} variant="heading">Ejercicios</AppText>
-        {active ? <Button disabled={locked || Boolean(state.interaction)} label="+ Agregar" onPress={() => { afterRemoval(() => setPickerOpen(true)); }} variant="quiet" /> : null}</View>
+        {active ? <Button disabled={structuralLocked || Boolean(state.interaction)} label="+ Agregar" onPress={() => { afterRemoval(() => setPickerOpen(true)); }} variant="quiet" /> : null}</View>
       {detail.exercises.length ? <NativeReorderList ids={detail.exercises.map(exercise => exercise.id)}
-        onLift={() => { const accepted = !actionState.working && controller.beginExerciseDrag(); if (accepted) Keyboard.dismiss(); return accepted; }}
+        onLift={() => { const accepted = !structuralLocked && controller.beginExerciseDrag(); if (accepted) Keyboard.dismiss(); return accepted; }}
         onDrop={ids => controller.dropExercises(ids)} onCancel={() => controller.cancelDrag()}>
         {detail.exercises.map(exercise => <NativeReorderItem key={exercise.id} id={exercise.id} gap={0}>
-          <ActiveExerciseCard reveal={revealed?.id === exercise.id ? revealed.n : 0} addToRoutineName={detail.session.routineId ? detail.session.routineNameSnapshot ?? detail.session.name : null} controller={controller} id={exercise.id} expanded={expanded === exercise.id} locked={locked} reorderDisabled={actionState.working} onToggle={toggle} onHistory={showHistory} onRemove={remove} onSheetChange={cardSheet}
+          <ActiveExerciseCard reveal={revealed?.id === exercise.id ? revealed.n : 0} addToRoutineName={detail.session.routineId ? detail.session.routineNameSnapshot ?? detail.session.name : null} controller={controller} id={exercise.id} expanded={expanded === exercise.id} locked={locked} refreshing={state.refreshing} reorderDisabled={structuralLocked} onToggle={toggle} onHistory={showHistory} onRemove={remove} onSheetChange={cardSheet}
             onReveal={top => { if (reveal.current === exercise.id) { reveal.current = null; scrollRef.current?.scrollTo({ y: Math.max(0, scrollY.get() + top - headerHeight - spacing.md), animated: !reduceMotion }); } }}
             historyCard={exercise.routineExerciseId === null && dismissed !== null && !dismissed.includes(exercise.exerciseId) && detail.quickHistory.status === 'ok' && quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).some(item => item.sets.some(set => set.isCompleted)) ?
               <SessionLastHistory history={quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).find(item => item.sets.some(set => set.isCompleted))!} disabled={locked} onUse={() => { if (detail.quickHistory.status === 'ok') applyHistory(exercise.id, quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).find(item => item.sets.some(set => set.isCompleted))!, exercise.exerciseId); }} onDismiss={() => dismissHistory(exercise.exerciseId)} /> : null} />
