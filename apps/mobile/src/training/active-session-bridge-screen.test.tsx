@@ -63,10 +63,14 @@ function afterHold<T>(run: () => T): T {
 function fixture(detail: SessionDetailDto = testDetail()) {
   const store = new Map<string, string>();
   const api: ActiveSessionApi = {
-    detail: jest.fn<ActiveSessionApi['detail']>().mockResolvedValue({ status: 'ok', data: detail, meta }),
+    detail: jest.fn<ActiveSessionApi['detail']>().mockImplementation(async () => ({ status: 'ok', data: detail, meta })),
     sync: jest.fn<ActiveSessionApi['sync']>().mockResolvedValue({ status: 'ok', data: { status: 'active', updatedAt: NEXT_VERSION, payload: detail.exercises[0].payload }, meta }),
     save: jest.fn<ActiveSessionApi['save']>().mockResolvedValue({ status: 'ok', data: { sessionExerciseId: EXERCISE_ID, updatedAt: NEXT_VERSION }, meta }),
-    add: jest.fn<ActiveSessionApi['add']>(), remove: jest.fn<ActiveSessionApi['remove']>(),
+    add: jest.fn<ActiveSessionApi['add']>(),
+    remove: jest.fn<ActiveSessionApi['remove']>().mockImplementation(async id => {
+      detail = { ...detail, exercises: detail.exercises.filter(row => row.id !== id) };
+      return { status: 'ok', data: { status: 'removed', sessionId: SESSION_ID, sessionExerciseId: id }, meta };
+    }),
     cancel: jest.fn<ActiveSessionApi['cancel']>().mockResolvedValue({ status: 'ok', data: { status: 'cancelled', sessionId: SESSION_ID }, meta }),
     reorder: jest.fn<ActiveSessionApi['reorder']>().mockImplementation(async input => ({ status: 'ok', data: {
       status: 'reordered', sessionId: SESSION_ID, sessionUpdatedAt: NEXT_VERSION, orderedSessionExerciseIds: input.orderedSessionExerciseIds }, meta })),
@@ -187,18 +191,35 @@ describe('native active session screen', () => {
     expect(view.getByLabelText(/^La última vez,/)).toBeTruthy(); expect(api.add).toHaveBeenCalledTimes(1); expect(api.save).not.toHaveBeenCalled();
     controller.dispose();
   });
-  it('confirms removal of completed sets and undo restores the same session exercise without a write', async () => {
+  it('confirms removal of completed sets and only hides the exercise after persistence confirms', async () => {
     const detail = testDetail(); detail.exercises[0].payload.sets[0].isCompleted = true;
     const { controller, api, Screen } = fixture(detail); await controller.refresh(); const view = render(<Screen />); await act(async () => {});
+    let proceed!: () => void; const gate = new Promise<void>(resolve => { proceed = resolve; }), remove = jest.mocked(api.remove).getMockImplementation()!;
+    jest.mocked(api.remove).mockImplementation(async (...args) => { await gate; return remove(...args); });
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     fireEvent(view.getByLabelText('Expandir PRESS'), 'accessibilityAction', { nativeEvent: { actionName: 'remove' } });
     expect(alert).toHaveBeenCalledWith('¿Quitar PRESS?', expect.any(String), expect.any(Array));
     expect(view.getByTestId(`session-exercise-${EXERCISE_ID}`)).toBeTruthy();
     await act(async () => { alert.mock.calls.at(-1)?.[2]?.find(button => button.text === 'Quitar')?.onPress?.(); });
+    expect(view.getByTestId(`session-exercise-${EXERCISE_ID}`)).toBeTruthy();
+    expect(view.getByText('Quitando PRESS…')).toBeTruthy(); expect(view.queryByText('PRESS quitado')).toBeNull();
+    expect(view.queryByRole('button', { name: 'Deshacer' })).toBeNull(); expect(api.remove).toHaveBeenCalledTimes(1);
+    await act(async () => { proceed(); });
     expect(view.queryByTestId(`session-exercise-${EXERCISE_ID}`)).toBeNull();
-    fireEvent.press(view.getByRole('button', { name: 'Deshacer' }));
-    expect(view.getByTestId(`session-exercise-${EXERCISE_ID}`)).toBeTruthy(); expect(controller.getExercise(EXERCISE_ID)?.draft.sets[0].isCompleted).toBe(true);
-    expect(api.remove).not.toHaveBeenCalled(); expect(api.add).not.toHaveBeenCalled(); controller.dispose();
+    expect(view.getByText('PRESS quitado')).toBeTruthy();
+    await act(async () => { await controller.refresh(); });
+    expect(view.queryByTestId(`session-exercise-${EXERCISE_ID}`)).toBeNull();
+    expect(api.add).not.toHaveBeenCalled(); controller.dispose();
+  });
+  it('keeps the exercise and shows explicit recovery when removal persistence fails', async () => {
+    const { controller, api, Screen } = fixture(); await controller.refresh(); const view = render(<Screen />); await act(async () => {});
+    jest.mocked(api.remove).mockResolvedValue({ status: 'unavailable', reason: 'network', meta: { ...meta, outcome: 'unavailable' } });
+    await act(async () => { fireEvent(view.getByLabelText('Expandir PRESS'), 'accessibilityAction', { nativeEvent: { actionName: 'remove' } }); });
+    expect(view.getByTestId(`session-exercise-${EXERCISE_ID}`)).toBeTruthy(); expect(view.queryByText('PRESS quitado')).toBeNull();
+    expect(view.getByText('Operación pendiente de confirmación')).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Comprobar operación' })).toBeTruthy();
+    expect(view.getByText('No pudimos confirmar la eliminación. Comprobá la sesión.')).toBeTruthy();
+    expect(api.remove).toHaveBeenCalledTimes(1); controller.dispose();
   });
   it('persists dismissal of La última vez and does not show it again after a refresh or screen remount', async () => {
     const detail = testDetail(); detail.quickHistory = { status: 'ok', data: { [EXERCISE_ID]: [{ sessionId: SECOND_ID, logDate: '2026-10-05', completedAt: null, routineId: EXERCISE_ID, routineName: 'PULL', decision: 'maintain', sets: detail.exercises[0].payload.sets.map(set => ({ ...set, isCompleted: true })) }] } };
@@ -384,10 +405,9 @@ describe('native active session screen', () => {
     expect(controller.getExercise(EXERCISE_ID)?.draft.notes).toBe(''); expect(await repository.readDraft(EXERCISE_ID)).toBeNull();
     swipe(); fireEvent.press(view.getByLabelText('Quitar · PRESS'));
     await act(async () => { await Promise.resolve(); });
-    expect(view.getByText('PRESS quitado')).toBeTruthy(); expect(view.getByRole('button', { name: 'Deshacer' })).toBeTruthy();
-    expect(alert).toHaveBeenCalledTimes(1); expect(api.remove).not.toHaveBeenCalled();
-    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Deshacer' })); });
-    expect(view.getByTestId(`session-exercise-${EXERCISE_ID}`)).toBeTruthy();
+    expect(view.getByText('PRESS quitado')).toBeTruthy(); expect(view.queryByRole('button', { name: 'Deshacer' })).toBeNull();
+    expect(alert).toHaveBeenCalledTimes(1); expect(api.remove).toHaveBeenCalledTimes(1);
+    expect(view.queryByTestId(`session-exercise-${EXERCISE_ID}`)).toBeNull();
     controller.dispose();
   });
   it('reacts immediately to tap, springs back, and never starts drag from a tap or numeric input', async () => {

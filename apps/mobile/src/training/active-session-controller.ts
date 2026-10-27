@@ -492,6 +492,9 @@ export class ActiveSessionController {
       }
       if (intent.kind === 'remove') {
         this.localRemovals.add(intent.exerciseId);
+        // The mutation receipt confirms membership even if the subsequent read fails.
+        const detail = this.snapshot.detail;
+        if (detail) this.update({ detail: { ...detail, exercises: detail.exercises.filter(exercise => exercise.id !== intent.exerciseId) } });
         const entry = this.entries.get(intent.exerciseId);
         if (entry) { entry.paused = true; entry.stale = null; this.publish(entry, { draft: exerciseDraft(entry.base), stale: false, phase: 'removed', error: null }); }
         try { await this.repository.removeDraft(intent.exerciseId, intent.draftWriteId); }
