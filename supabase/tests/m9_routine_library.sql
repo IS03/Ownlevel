@@ -122,10 +122,10 @@ begin
  select array_agg(id order by position desc) into v_reverse from unnest(v_ids) with ordinality as ids(id,position);
  v_version := ownlevel_private.routine_list_version();
  select routine_order into v_archived_order from public.routines where nombre='ARCHIVED';
- perform pg_temp.expect_error(format('select * from public.mobile_reorder_training_routines(%L::uuid[],%s,''missing-id'')',v_ids[2:cardinality(v_ids)],v_version),'40001','ROUTINE_LIST_CHANGED');
- perform pg_temp.expect_error(format('select * from public.mobile_reorder_training_routines(%L::uuid[],%s,''foreign-id'')',v_ids||'93000000-0000-4000-8000-000000000114'::uuid,v_version),'40001','ROUTINE_LIST_CHANGED');
+ perform pg_temp.expect_error(format('select * from public.mobile_reorder_training_routines(%L::uuid[],%s,''missing-id'')',v_ids[2:cardinality(v_ids)],v_version),'PT409','ROUTINE_LIST_CHANGED');
+ perform pg_temp.expect_error(format('select * from public.mobile_reorder_training_routines(%L::uuid[],%s,''foreign-id'')',v_ids||'93000000-0000-4000-8000-000000000114'::uuid,v_version),'PT409','ROUTINE_LIST_CHANGED');
  perform pg_temp.expect_error(format('select * from public.mobile_reorder_training_routines(%L::uuid[],%s,''duplicate-id'')',v_ids||v_ids[1],v_version),'22023');
- perform pg_temp.expect_error(format('select * from public.mobile_reorder_training_routines(%L::uuid[],%s,''stale-version'')',v_ids,v_version-1),'40001','ROUTINE_LIST_CHANGED');
+ perform pg_temp.expect_error(format('select * from public.mobile_reorder_training_routines(%L::uuid[],%s,''stale-version'')',v_ids,v_version-1),'PT409','ROUTINE_LIST_CHANGED');
  select * into v_first from public.mobile_reorder_training_routines(v_reverse,v_version,'order-main');
  v_after := ownlevel_private.routine_list_version();
  perform pg_temp.assert_true(v_after>v_version and (v_first.response_body->>'listVersion')::bigint=v_after,'order version advances');
@@ -144,7 +144,7 @@ begin
  update public.routines set is_active=false where id=v_reverse[1];
  update public.routines set is_active=true where id=v_reverse[1];
  perform pg_temp.assert_true(ownlevel_private.routine_list_version()=v_after+2,'archive+restore ABA detected');
- perform pg_temp.expect_error(format('select * from public.mobile_reorder_training_routines(%L::uuid[],%s,''aba'')',v_reverse,v_after),'40001','ROUTINE_LIST_CHANGED');
+ perform pg_temp.expect_error(format('select * from public.mobile_reorder_training_routines(%L::uuid[],%s,''aba'')',v_reverse,v_after),'PT409','ROUTINE_LIST_CHANGED');
 end;
 $$;
 

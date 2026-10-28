@@ -121,7 +121,9 @@ function throwTrainingMutationError(
       "La clave de idempotencia ya fue usada con otros datos.",
     );
   }
-  if (code === "40001" && message.includes("ROUTINE_LIST_CHANGED")) {
+  // Accept the old code during rollout; permanent list CAS conflicts must not
+  // enter PostgREST/hasql's serialization-failure transaction retry loop.
+  if ((code === "PT409" || code === "40001") && message.includes("ROUTINE_LIST_CHANGED")) {
     throw new MobileApiConflictError(
       "La lista cambió en otro dispositivo. Recargá antes de guardar.",
       "ROUTINE_LIST_CHANGED",

@@ -105,6 +105,7 @@ describe("routine library HTTP → bearer → RPC", () => {
 
   it.each([
     ["40001", "ROUTINE_LIST_CHANGED", 409, "ROUTINE_LIST_CHANGED"],
+    ["PT409", "ROUTINE_LIST_CHANGED", 409, "ROUTINE_LIST_CHANGED"],
     ["P0001", "IDEMPOTENCY_KEY_REUSED", 409, "IDEMPOTENCY_KEY_REUSED"],
     ["08006", "Connection lost", 503, "DATA_UNAVAILABLE"],
   ])("maps order %s/%s without retrying the write", async (code, message, status, expected) => {
