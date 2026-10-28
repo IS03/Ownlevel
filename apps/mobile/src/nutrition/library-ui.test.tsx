@@ -37,14 +37,35 @@ describe('Library sheet (Alimentos, Comidas guardadas) — #306', () => {
     expect(sheet().queryByTestId('library-footer')).toBeNull();
     expect(sheet({ footer: <Text>Guardar</Text> }).getByTestId('library-footer')).toBeTruthy();
   });
-  it('the keyboard is measured from the top of the screen, so Guardar stays above it', async () => {
+  it.each([
+    { parentY: 52, localY: 5, height: 783, keyboardY: 540 },
+    { parentY: 24, localY: 5, height: 350, keyboardY: 240 },
+  ])('avoids the actual overlap on screen without counting local y twice ($height pt view)', async ({ parentY, localY, height, keyboardY }) => {
     const view = sheet({ footer: <Text>Guardar</Text> });
-    const layout = (y: number, height: number) => ({ persist: () => {}, nativeEvent: { layout: { x: 0, y, width: 402, height } } });
+    const layout = (y: number, h: number) => ({ persist: () => {}, nativeEvent: { layout: { x: 0, y, width: 402, height: h } } });
     await act(async () => {
-      fireEvent(view.getByTestId('library-sheet'), 'layout', layout(52, 822));
-      fireEvent(view.getByTestId('library-keyboard'), 'layout', layout(5, 783));
+      fireEvent(view.getByTestId('library-sheet'), 'layout', layout(parentY, height + 39));
+      fireEvent(view.getByTestId('library-keyboard'), 'layout', layout(localY, height));
     });
-    expect(view.UNSAFE_getByType(KeyboardAvoidingView).props.keyboardVerticalOffset).toBe(57);
+    // Exercise the installed RN implementation, not an assertion about the offset prop alone.
+    const avoiding = view.UNSAFE_getByType(KeyboardAvoidingView).instance as {
+      _relativeKeyboardHeight: (frame: { screenY: number; screenX: number; width: number; height: number }) => Promise<number>;
+    };
+    const overlap = (screenY: number) => avoiding._relativeKeyboardHeight({ screenY, screenX: 0, width: 402, height: 334 });
+    await expect(overlap(keyboardY)).resolves.toBe(parentY + localY + height - keyboardY);
+    await expect(overlap(parentY + localY + height + 10)).resolves.toBe(0);
+    // The modal is re-laid out (a different window height): the parent origin must follow it.
+    await act(async () => { fireEvent(view.getByTestId('library-sheet'), 'layout', layout(parentY + 12, height + 39)); });
+    await expect(overlap(keyboardY)).resolves.toBe(parentY + 12 + localY + height - keyboardY);
+  });
+  it('updates the window insets after a native frame/dimensions change instead of retaining launch metrics', async () => {
+    const view = sheet();
+    const native = view.root.find(node => typeof node.type === 'string' && typeof node.props.onInsetsChange === 'function');
+    await act(async () => { fireEvent(native, 'insetsChange', { nativeEvent: {
+      frame: { x: 0, y: 0, width: 874, height: 402 },
+      insets: { top: 0, bottom: 21, left: 62, right: 62 },
+    } }); });
+    expect(paddingBottom(view)).toBe(21);
   });
   it('embedded in another sheet keeps that sheet\'s insets and keyboard handling', () => {
     const view = sheet({ embedded: true });
