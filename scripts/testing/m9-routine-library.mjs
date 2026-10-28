@@ -1,6 +1,7 @@
 // Disposable PostgreSQL 17; production SQL and real competing connections.
 // npm install --prefix "$TEMP_DIR" --no-save --package-lock=false embedded-postgres@17.10.0-beta.17
 // OWNLEVEL_TEST_MODULES="$TEMP_DIR/node_modules" node scripts/testing/m9-routine-library.mjs
+// Optional HTTP regression: set OWNLEVEL_POSTGREST_BIN to a local PostgREST binary (tested v14.5).
 // No remote URL is accepted; no repository dependencies are added.
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -85,6 +86,13 @@ try {
   const migration = await read('supabase/migrations/20261012230412_mobile_routine_library_expand.sql');
   await setup.query(migration);
   await setup.query(migration);
+  const orderDefinition = async () => (await setup.query("select pg_get_functiondef('ownlevel_private.reorder_training_routines(uuid[],bigint,text)'::regprocedure) as body")).rows[0].body;
+  const previousOrderDefinition = await orderDefinition();
+  const conflictMigration = await read('supabase/migrations/20261028211830_routine_order_conflict_no_retry.sql');
+  await setup.query(conflictMigration);
+  await setup.query(conflictMigration);
+  assert.equal(await orderDefinition(), previousOrderDefinition.replace("errcode = '40001'", "errcode = 'PT409'"),
+    'migration changes only the permanent conflict code, preserving identity, locks, CAS and idempotency');
   assert.equal((await setup.query("select pg_get_functiondef('public.mobile_create_training_routine(text,text,text)'::regprocedure) as body")).rows[0].body.split('perform public.lock_training_user_mutations();').length - 1, 1);
   console.log('PASS actual migration + safe DDL reapplication');
   await setup.query(await read('supabase/tests/m9_routine_library.sql'));
@@ -93,6 +101,10 @@ try {
   await setup.query('insert into auth.users(id) values($1)', [owner]);
   await setup.query("insert into public.routines(id,user_id,nombre,routine_order) values($1,$3,'RACE SOURCE',1),($2,$3,'RACE NEXT',2)", [sourceId,nextId,owner]);
   const a = await connect(), b = await connect(); await asOwner(a); await asOwner(b);
+  if (process.env.OWNLEVEL_POSTGREST_BIN) {
+    const { verifyRoutineOrderPostgrest } = await import('./routine-order-postgrest.mjs');
+    await verifyRoutineOrderPostgrest({ admin: setup, pgPort: port, owner, directory, binary: process.env.OWNLEVEL_POSTGREST_BIN });
+  }
   const pid = Number((await b.query('select pg_backend_pid() as pid')).rows[0].pid);
   const source = (await a.query('select updated_at::text,template_version from public.routines where id=$1', [sourceId])).rows[0];
   // Same intent on two connections creates exactly one resource.
@@ -105,13 +117,13 @@ try {
   assert.deepEqual(second.result.rows[0].response_body,first.rows[0].response_body);
   console.log('PASS concurrent duplicate: one copy, stable replay');
 
-  async function conflictRace(label, firstWrite, waitingWrite, expected = 'ROUTINE_LIST_CHANGED') {
+  async function conflictRace(label, firstWrite, waitingWrite, expected = 'ROUTINE_LIST_CHANGED', expectedCode = 'PT409') {
     const before = await snapshot(a);
     await a.query('begin'); await firstWrite(a,before);
     const waiter = waitingWrite(b,before).then(result => ({ result }), error => ({ error }));
     await waitForLock(setup,pid); await a.query('commit');
     const outcome = await waiter;
-    assert.equal(outcome.error?.code,'40001'); assert.equal(outcome.error?.message,expected);
+    assert.equal(outcome.error?.code,expectedCode); assert.equal(outcome.error?.message,expected);
     console.log(`PASS concurrent ${label}`);
   }
   const reorder = (c,s,key) => c.query('select * from public.mobile_reorder_training_routines($1,$2,$3)',
@@ -124,7 +136,7 @@ try {
     c=>c.query("insert into public.routines(user_id,nombre) values($1,'RACE NEW')",[owner]), (c,s)=>reorder(c,s,'race-create'));
   await conflictRace('Web rename vs duplicate: source identity CAS',
     c=>c.query("update public.routines set nombre='RACE RENAMED' where id=$1",[sourceId]),
-    c=>duplicate(c,source,'race-source-change'), 'ROUTINE_CHANGED');
+    c=>duplicate(c,source,'race-source-change'), 'ROUTINE_CHANGED', '40001');
 
   // A read during uncommitted changes sees the old list AND its old version.
   const before = await snapshot(b);
