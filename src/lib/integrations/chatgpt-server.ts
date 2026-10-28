@@ -9,7 +9,7 @@ export async function persistChatgptMeal(
   meal: ChatgptMealInput,
 ): Promise<ChatgptMealSuccess> {
   const admin = createAdminClient();
-  const { data, error } = await admin.rpc("create_chatgpt_meal_for_integration", {
+  const { data, error } = await admin.rpc("create_chatgpt_meal_for_integration_v2", {
     p_user_id: userId,
     p_log_date: meal.date,
     p_title: meal.title,
@@ -20,6 +20,8 @@ export async function persistChatgptMeal(
     p_fat_g: meal.fat_g,
     p_idempotency_key: meal.idempotency_key,
     p_force_duplicate: meal.force_duplicate,
+    p_consumed_at: meal.consumed_at,
+    p_meal_label: meal.meal_type,
   });
   if (error?.message.includes("possible_duplicate")) {
     throw new PossibleDuplicateError();

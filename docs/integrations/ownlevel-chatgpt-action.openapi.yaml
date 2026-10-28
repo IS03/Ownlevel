@@ -139,6 +139,14 @@ components:
         force_duplicate:
           type: boolean
           default: false
+        time:
+          type: string
+          pattern: '^([01]\d|2[0-3]):[0-5]\d$'
+          description: Sólo si el usuario dijo a qué hora comió (HH:MM, hora de Córdoba, del día en date). Si no lo dijo, omitilo; OWNLEVEL no inventa la hora.
+        meal_type:
+          type: string
+          enum: [breakfast, lunch, snack, dinner, extra]
+          description: Sólo si el usuario nombró la comida (desayuno, almuerzo, merienda, cena o extra). No lo deduzcas por la hora de envío.
     MealSuccess:
       type: object
       additionalProperties: false

@@ -14,7 +14,12 @@ const ALLOWED_KEYS = new Set([
   "fat_g",
   "idempotency_key",
   "force_duplicate",
+  "time",
+  "meal_type",
 ]);
+
+export const CHATGPT_MEAL_TYPES = ["breakfast", "lunch", "snack", "dinner", "extra"] as const;
+export type ChatgptMealType = (typeof CHATGPT_MEAL_TYPES)[number];
 
 export type ChatgptMealInput = {
   date: string;
@@ -26,6 +31,10 @@ export type ChatgptMealInput = {
   fat_g: number | null;
   idempotency_key: string;
   force_duplicate: boolean;
+  /** Only when the user said when they ate: local Córdoba time of `date`. Without it OWNLEVEL never presents one. */
+  consumed_at: string | null;
+  /** Only when the user named it; never inferred from the moment it was sent. */
+  meal_type: ChatgptMealType | null;
 };
 
 export type ChatgptMealSuccess = {
@@ -89,6 +98,23 @@ function optionalText(value: unknown, label: string, maxLength: number) {
   return text;
 }
 
+/** "HH:MM" said by the user, on the logged Córdoba day (UTC-3 all year), as an ISO instant. */
+function optionalConsumedAt(value: unknown, date: string) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) {
+    throw new Error("Hora inválida. Usá HH:MM (hora de Córdoba).");
+  }
+  return `${date}T${value}:00-03:00`;
+}
+
+function optionalMealType(value: unknown): ChatgptMealType | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string" || !(CHATGPT_MEAL_TYPES as readonly string[]).includes(value)) {
+    throw new Error(`Tipo de comida inválido. Usá ${CHATGPT_MEAL_TYPES.join(", ")}.`);
+  }
+  return value as ChatgptMealType;
+}
+
 export function parseBearerToken(authorization: string | null): string | null {
   if (!authorization) return null;
   const match = /^Bearer[ \t]+([^\s]+)$/i.exec(authorization.trim());
@@ -128,6 +154,8 @@ export function parseChatgptMealInput(
       200,
     ),
     force_duplicate: body.force_duplicate === true,
+    consumed_at: optionalConsumedAt(body.time, date),
+    meal_type: optionalMealType(body.meal_type),
   };
 }
 
