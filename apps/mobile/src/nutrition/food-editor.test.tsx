@@ -16,6 +16,7 @@ jest.mock('@/api', () => ({ useMobileApi: () => ({ client: null }) }));
 jest.mock('react-native-safe-area-context', () => ({
   ...jest.requireActual<object>('react-native-safe-area-context'),
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  initialWindowMetrics: { frame: { x: 0, y: 0, width: 402, height: 874 }, insets: { top: 0, bottom: 0, left: 0, right: 0 } },
 }));
 jest.mock('@/training/exercise-segmented', () => ({
   ExerciseSegmented: ({
