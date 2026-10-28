@@ -1,4 +1,4 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -386,6 +386,33 @@ describe('Routed configuration shares the durable controller', () => {
         }),
       }),
     );
+  });
+  it('Datos físicos opens one control at a time below its row, with the row expanded (#314)', async () => {
+    const view = render(element(<ConfigurationScreen operation="physical" />));
+    const row = async (label: string) => view.findByLabelText(label);
+    expect((await row('Nacimiento')).props.accessibilityState).toMatchObject({ expanded: false });
+    fireEvent.press(await row('Nacimiento'));
+    expect(view.getByTestId('physical-birth-expansion')).toBeTruthy();
+    expect((await row('Nacimiento')).props.accessibilityState).toMatchObject({ expanded: true });
+    fireEvent.press(await row('Sexo'));
+    expect(view.queryByTestId('physical-birth-expansion')).toBeNull();
+    // Sexo is the native segmented control (full width, large targets), the same as Automática/Manual.
+    fireEvent.press(within(view.getByTestId('physical-sex-expansion')).getByLabelText('Mujer'));
+    expect(within(view.getByTestId('physical-sex-expansion')).getByLabelText('Mujer').props.accessibilityState.checked).toBe(true);
+    fireEvent.press(await row('Altura'));
+    expect(view.queryByTestId('physical-sex-expansion')).toBeNull();
+    expect(view.getByTestId('physical-height-expansion')).toBeTruthy();
+    fireEvent.press(await row('Altura'));
+    expect(view.queryByTestId('physical-height-expansion')).toBeNull();
+  });
+  it('Energía opens «Extra si entrenás» below its row and closes it again (#312)', async () => {
+    const view = render(element(<ConfigurationScreen operation="energy" />));
+    const training = await view.findByLabelText('Si entrenás, gastás');
+    fireEvent.press(training);
+    expect(within(view.getByTestId('energy-training-expansion')).getByLabelText('Extra si entrenás (kcal)')).toBeTruthy();
+    expect(view.getByLabelText('Si entrenás, gastás').props.accessibilityState).toMatchObject({ expanded: true });
+    fireEvent.press(view.getByLabelText('Si entrenás, gastás'));
+    expect(view.queryByTestId('energy-training-expansion')).toBeNull();
   });
   it('a weight with history is readonly here and links to Body', async () => {
     const view = render(element(<ConfigurationScreen operation="physical" />));
