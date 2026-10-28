@@ -89,6 +89,11 @@ const unavailable = {
   meta: { ...meta, outcome: 'unavailable' as const },
 };
 let config: NutritionConfig, list: NutritionStages, displayName: string, stagesFail: boolean;
+/** Datos físicos with weight history shows the weight sheet of Cuerpo (#315), which reads the Body overview. */
+const bodyOverview = (weightKg = 80, today = configFixture.today) => ({
+  today, current: { date: today, weightKg }, profileWeightKg: weightKg,
+  weights: { items: [{ date: today, weightKg }], nextBefore: null }, measurements: { items: [], nextBefore: null },
+});
 const element = (screen: React.ReactNode = <SettingsScreen />) => (
   <SafeAreaInsetsContext.Provider value={{ top: 0, bottom: 0, left: 0, right: 0 }}>
     <OwnlevelThemeProvider initialMode="light">
@@ -123,6 +128,7 @@ beforeEach(async () => {
       return ok({ definitions: [] }) as never;
     if (options.path.includes('/nutrition/days/'))
       return ok(nutritionFixture(config.today)) as never;
+    if (options.path === '/api/mobile/v1/body') return ok(bodyOverview()) as never;
     return ok(config) as never;
   });
 });
@@ -414,13 +420,55 @@ describe('Routed configuration shares the durable controller', () => {
     fireEvent.press(view.getByLabelText('Si entrenás, gastás'));
     expect(view.queryByTestId('energy-training-expansion')).toBeNull();
   });
-  it('a weight with history is readonly here and links to Body', async () => {
-    const view = render(element(<ConfigurationScreen operation="physical" />));
-    await view.findByLabelText('Peso');
-    expect(view.queryByLabelText('Peso (kg)')).toBeNull();
-    expect(view.getByText('Último registro: 4 oct · Se cambia en Cuerpo')).toBeTruthy();
-    fireEvent.press(view.getByLabelText('Peso'));
-    expect(mockPush).toHaveBeenCalledWith('/(tabs)/progress/body');
+  describe('quick weight from Datos físicos (#315)', () => {
+    const today = configFixture.today;
+    const weightWrites = () => mockRequest.mock.calls.filter(([options]) => options.path.startsWith('/api/mobile/v1/body/weights/'));
+    it('opens the weight sheet of Cuerpo in place; closing it saves nothing', async () => {
+      const view = render(element(<ConfigurationScreen operation="physical" />));
+      await view.findByText('80 kg');
+      expect(view.queryByLabelText('Peso (kg)')).toBeNull();
+      expect(view.getByText('Último registro: 4 oct')).toBeTruthy();
+      fireEvent.press(view.getByLabelText('Peso'));
+      expect(await view.findByTestId('body-weight-sheet')).toBeTruthy();
+      expect(view.getByText('Registrar peso')).toBeTruthy();
+      expect(view.getByText('Si la fecha ya tiene peso, se reemplaza')).toBeTruthy();
+      fireEvent.changeText(view.getByTestId('body-weight-input'), '81');
+      await act(async () => fireEvent.press(view.getByLabelText('Cerrar carga de peso')));
+      expect(weightWrites()).toHaveLength(0);
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+    it('replacing the same day is explicit and goes through the Body write path with CAS', async () => {
+      const view = render(element(<ConfigurationScreen operation="physical" />));
+      await view.findByText('80 kg');
+      fireEvent.press(view.getByLabelText('Peso'));
+      fireEvent.changeText(await view.findByTestId('body-weight-input'), '81,5');
+      await act(async () => fireEvent.press(view.getByLabelText('Guardar')));
+      expect(view.getByText('Ese día ya tiene 80 kg. Guardá de nuevo para reemplazarlo.')).toBeTruthy();
+      expect(weightWrites()).toHaveLength(0);
+      mockRequest.mockImplementationOnce(async (options) => ok({
+        status: 'confirmed', operation: 'set', date: today, weightKg: 81.5, current: { date: today, weightKg: 81.5 },
+        profileWeightKg: 81.5, currentWeightChanged: true,
+      }) as never);
+      const configReads = () => mockRead.mock.calls.filter(([options]) => options.path === '/api/mobile/v1/nutrition/config').length;
+      const before = configReads();
+      const original = mockRead.getMockImplementation()!;
+      mockRead.mockImplementation(async (options) =>
+        options.path === '/api/mobile/v1/body' ? ok(bodyOverview(81.5)) as never : original(options));
+      await act(async () => fireEvent.press(view.getByLabelText('Guardar')));
+      expect(weightWrites()).toHaveLength(1);
+      const [options] = weightWrites()[0];
+      expect(options).toMatchObject({ method: 'PUT', path: `/api/mobile/v1/body/weights/${today}` });
+      expect(options.body).toMatchObject({ operation: 'set', date: today, expectedWeightKg: 80, weightKg: 81.5 });
+      expect(await view.findByText('81,5 kg')).toBeTruthy();
+      // The physical version includes the latest weight: Ajustes re-reads it after the save.
+      expect(configReads()).toBeGreaterThan(before);
+    });
+    it('keeps a quiet link to the history in Cuerpo', async () => {
+      const view = render(element(<ConfigurationScreen operation="physical" />));
+      await view.findByText('80 kg');
+      fireEvent.press(view.getByTestId('physical-weight-history'));
+      expect(mockPush).toHaveBeenCalledWith('/(tabs)/progress/body');
+    });
   });
   it('missing energy is not rendered as zero', async () => {
     if (config.energy.status === 'ok')

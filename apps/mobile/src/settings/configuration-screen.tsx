@@ -3,6 +3,10 @@ import { Alert, Pressable, TextInput, View } from 'react-native';
 import { useNavigation, useRouter, useIsFocused, useFocusEffect } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { AppText, Button, Heading, TextField, brandTokens, useOwnlevelTheme } from '@/design-system';
+import { useMobileApi } from '@/api';
+import { useMobileAuth } from '@/auth';
+import { BodyEditors, BodyStatus } from '@/body/body-screen';
+import { useBodyController } from '@/body/use-body-controller';
 import { useNutritionConfiguration } from '@/nutrition/config-provider';
 import { configurationDraft } from '@/nutrition/config-model';
 import type { ConfigState, ConfigurationController } from '@/nutrition/config-controller';
@@ -222,6 +226,7 @@ export function ConfigurationScreen({ operation }: { operation: Operation }) {
     else go();
   };
   const otherIntent = !!state?.intent && state.intent.intent.operation !== operation;
+  const reloadConfiguration = useCallback(() => { void controller?.load(); }, [controller]);
   return (
     <View style={{ flex: 1 }}>
       <EditorialScreen>
@@ -426,20 +431,13 @@ export function ConfigurationScreen({ operation }: { operation: Operation }) {
               </EditorialMove>
               <EditorialMove>
               {physical?.hasWeightHistory ? (
-                <EditorialRow
-                  title="Peso"
-                  hint={
-                    physical.latestWeightDate
-                      ? `Último registro: ${shortDate(physical.latestWeightDate)} · Se cambia en Cuerpo`
-                      : undefined
-                  }
+                <QuickWeight
+                  weightKg={physical.weightKg}
+                  latestDate={physical.latestWeightDate}
                   disabled={locked}
-                  onPress={() => navigate('/(tabs)/progress/body')}
-                >
-                  {physical.weightKg === null
-                    ? 'Sin dato'
-                    : `${formatNumber(physical.weightKg)} kg`}
-                </EditorialRow>
+                  onHistory={() => navigate('/(tabs)/progress/body')}
+                  onSaved={reloadConfiguration}
+                />
               ) : (
                 <View style={{ paddingVertical: 20 }}>{field('weightKg', 'Peso (kg)')}</View>
               )}
@@ -475,6 +473,43 @@ export function ConfigurationScreen({ operation }: { operation: Operation }) {
       </EditorialScreen>
       {notice ? <NutritionToast message="Cambios guardados." state="done" /> : null}
     </View>
+  );
+}
+/**
+ * #315: the weight sheet of Cuerpo, in place. Same controller, write path, date field and same-day replace prompt,
+ * so a weight saved here is a dated record of the history, never a separate "current weight".
+ */
+function QuickWeight({ weightKg, latestDate, disabled, onHistory, onSaved }: {
+  weightKg: number | null; latestDate: string | null; disabled: boolean; onHistory: () => void; onSaved: () => void;
+}) {
+  const { session } = useMobileAuth();
+  const { client } = useMobileApi();
+  const body = useBodyController(client, session?.user.id ?? 'anonymous');
+  const { colors } = useOwnlevelTheme();
+  // After a save the body reading is the newer truth; until it loads, the configuration's own.
+  const current = body?.state.read.overview ? body.state.read.overview.current : undefined;
+  const shown = current === undefined ? weightKg : current?.weightKg ?? null;
+  const date = current === undefined ? latestDate : current?.date ?? null;
+  const ready = !!body && body.state.read.status === 'ready' && body.state.phase === 'idle' && !body.state.intent;
+  // The physical version includes the latest weight: re-read it so the next save here is not a needless conflict.
+  const notice = body?.state.notice ?? null;
+  useEffect(() => { if (notice) onSaved(); }, [notice, onSaved]);
+  return (
+    <>
+      <EditorialRow
+        title="Peso"
+        hint={date ? `Último registro: ${shortDate(date)}` : undefined}
+        disabled={disabled || !ready}
+        onPress={() => { if (!body?.state.editor) body?.controller.openWeight(); }}
+      >
+        {shown === null ? 'Sin dato' : `${formatNumber(shown)} kg`}
+      </EditorialRow>
+      {body ? <BodyStatus state={body.state} controller={body.controller} /> : null}
+      <Pressable accessibilityRole="link" hitSlop={8} onPress={onHistory} style={{ alignSelf: 'flex-start', paddingTop: 12, paddingBottom: 16 }} testID="physical-weight-history">
+        <AppText variant="footnote" style={{ color: colors.primary }}>Ver historial en Cuerpo</AppText>
+      </Pressable>
+      {body ? <BodyEditors state={body.state} controller={body.controller} /> : null}
+    </>
   );
 }
 /** Manual daily expenditure: the number itself is the field (same size as the automatic one), no boxed input. */
