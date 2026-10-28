@@ -115,7 +115,7 @@ export function MealTimesScreen() {
     (c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressNutritionTiming(c, query, signal, compare),
     [query, compare],
   );
-  const { state, data, refresh } = useProgressResource(client, progressRequestKey(query, compare), load);
+  const { state, data, refresh } = useProgressResource(client, `timing|${progressRequestKey(query, compare)}`, load);
   return (
     <ProgressScroll
       title="Cuándo comés"

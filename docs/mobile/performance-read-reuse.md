@@ -111,10 +111,31 @@ No se aprueba #303 ni se cierran #310/#311 por esta PR. El layout específico de
   - Compartir Cuerpo/Entrenamiento entre Inicio y Progreso no sirve: Inicio pide 7 y 30 días, y Progreso empieza en el mes calendario.
   - Deduplicar `fetchMobileHome` y la página 1 del historial entre Inicio y el hub ahorraría una lectura por primera visita, pero requiere pasar el disparador a cada loader. Es marginal frente al riesgo de que un refresh manual reutilice datos, así que queda documentado.
 
-## Siguientes intervenciones
+## Bloque C · Ajustes y Progreso restante
 
-1. Consolidar la caché de reportes de Nutrición con su consumo desde Progreso; acotar retención y reutilizar consultas idénticas desde Inicio, sin otra copia del DTO. Adoptar luego vistas, conexiones y Explorar con sus claves e invalidaciones específicas, antes de afirmar que todo Progreso reutiliza lecturas.
-2. Reutilizar selectivamente lecturas de Inicio/Entrenar y páginas de historial; medir volumen y presupuesto antes de precargar semanas o agregar endpoints.
-3. Retener días nutricionales con invalidación precisa por fechas tras crear, editar, mover o borrar, sin convertir una lectura cacheada en baseline de mutación.
-4. Deduplicar el resumen de Ajustes y separar su vigencia de la validación de formularios.
-5. Perfilar Release física para decidir si API/agregaciones o gráficos necesitan otra intervención. Sin evidencia, no cambiar backend ni rediseñar pantallas.
+- Las demás lecturas de Progreso pasan por la familia `progress-extra` de `ConfirmedReadCache`, mediante `useProgressResource`, que conserva su firma. Son vistas, edición de vistas, conexiones, insight, Explorar y sus hojas, cuándo comés, etapas, influencia y detalle de ejercicio. Con esto, todo Progreso reutiliza lecturas confirmadas. Cada clave lleva el prefijo de su tipo de lectura. La entrada «Cuándo comés» de Progreso Nutrición y su pantalla comparten la lectura cuando no hay comparación (es la misma consulta).
+- Se agregan los dominios `views` e `insight`: guardar, renombrar, ordenar o borrar una vista, o descartar el insight, invalida esas lecturas. Las escrituras de datos (nutrición, cuerpo, entrenamiento y métricas) también las invalidan.
+- Los cambios rápidos de período o comparación reutilizan lo ya leído y cancelan las primeras cargas abandonadas.
+- Resumen de Ajustes:
+  - Al enfocar, vuelve a leer perfil, etapas y métricas (y recarga la configuración nutricional) sólo si no hay una lectura completa, si venció la ventana de 30 s o si hubo una escritura de la cuenta.
+  - Al volver del segundo plano, relee sólo si Ajustes está visible, y no en cada transición `inactive → active`.
+  - Una lectura parcial o fallida no abre la ventana.
+  - Los formularios (nombre, energía, datos físicos) siguen usando sus propios controladores y versiones.
+
+## Estado final de #303 y pendientes
+
+Las cinco secciones están evaluadas, y las intervenciones con beneficio demostrado están implementadas en #318–#321:
+
+1. Reportes de Nutrición consolidados con Progreso; días retenidos con invalidación por dominio (en lugar de por fecha, para no dejar una fecha vieja visible).
+2. Inicio y Entrenar: el foco relee sólo lo vencido o lo afectado por una escritura.
+3. Todo Progreso pasa por `ConfirmedReadCache`.
+4. Resumen de Ajustes deduplicado; los formularios quedan fuera de la caché de presentación.
+
+Pendientes documentados (sin evidencia o marginales):
+
+- Perfilar una Release física (latencia API, agregaciones, gráficos, hilo JS) antes de tocar backend, SQL o render. No hay mediciones físicas en esta ejecución.
+- Prefetch de pantallas habituales: no se agregó, porque faltan datos de uso. Sólo el calendario lee el mes anterior, como antes.
+- Deduplicar `fetchMobileHome` y la página 1 del historial entre Inicio y el hub, si una medición lo justifica.
+- Invalidación más fina por fecha o campo, si releer de más resulta costoso.
+- La revalidación fallida con datos visibles se indica en Nutrición y en Progreso (por la hora de lectura), pero no en todas las pantallas. Unificarlo es trabajo visual de otros issues.
+- QA físico integral pendiente (ver «QA físico»).

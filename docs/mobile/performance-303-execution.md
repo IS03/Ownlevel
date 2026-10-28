@@ -5,13 +5,13 @@ Registro corto para retomar la ejecución autónoma. El diagnóstico y las decis
 | Bloque | Estado | Rama / PR |
 |---|---|---|
 | A · Nutrición | Fusionado | #319 (`4f100e0`) |
-| B · Inicio y Entrenar | En validación | `claude/303-home-training` |
-| C · Ajustes y Progreso restante | Pendiente | — |
-| D · Revisión final | Pendiente | — |
+| B · Inicio y Entrenar | Fusionado | #320 (`5a6872c`) |
+| C · Ajustes y Progreso restante | En validación | `claude/303-settings-progress` |
+| D · Revisión final | Hecha, sin defectos nuevos | incluida en #321 |
 
 - Base: `main` en `f9b30b1` (#316, #317 y #318 fusionadas).
 - Worktree: `/Users/ignaciosenestrari/Proyectos/Ownlevel-303-review`, con `node_modules` enlazado al worktree de Codex de #303.
-- Últimas pruebas: `npm run validate` del bloque B, 175 suites / 1.423 pruebas OK.
+- Últimas pruebas: `npm run validate` del bloque C, 175 suites / 1.430 pruebas OK.
 - Bloqueos: ninguno.
 - QA físico: no realizado en esta ejecución; queda pendiente de una sesión integral.
-- Próxima acción: validar el bloque B, abrir la PR, fusionar y seguir con C.
+- Próxima acción: fusionar #321 y cerrar #303. QA físico integral pendiente.

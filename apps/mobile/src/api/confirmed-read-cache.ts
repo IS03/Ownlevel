@@ -2,8 +2,8 @@ import type { MobileApiClient } from './client';
 import type { MobileApiReadResult } from './results';
 import { ApiResourceController, type ResourceRefreshTrigger } from './resource';
 
-export type ReadFamily = 'overview' | 'body' | 'training' | 'metrics' | 'nutrition-report' | 'nutrition-day';
-type Domain = 'body' | 'training' | 'metrics' | 'nutrition';
+export type ReadFamily = 'overview' | 'body' | 'training' | 'metrics' | 'nutrition-report' | 'nutrition-day' | 'progress-extra';
+type Domain = 'body' | 'training' | 'metrics' | 'nutrition' | 'views' | 'insight';
 type Loader<T> = (signal: AbortSignal) => Promise<MobileApiReadResult<T>>;
 export type RetainedRead<T> = {
   resource: ApiResourceController<T>; family: ReadFamily; mounted: number; focused: number; invalidated: boolean;
@@ -17,6 +17,8 @@ const domains: Record<ReadFamily, readonly Domain[]> = {
   // Day targets follow training days and energy follows weight/physical data, not only nutrition writes. The day
   // also lists the configured daily metrics, so definition changes invalidate it.
   'nutrition-report': ['nutrition', 'body', 'training'], 'nutrition-day': ['nutrition', 'body', 'training', 'metrics'],
+  // Views, connections, insight, Explorar, meal times, stages, influence and exercise detail: any data domain moves them.
+  'progress-extra': ['body', 'training', 'metrics', 'nutrition', 'views', 'insight'],
 };
 /** The day scope keeps a relative period ("today", "last 7 days") from crossing midnight in Córdoba. */
 export const scopedReadKey = (key: string, day: string) => `${day}|${key}`;
@@ -134,7 +136,9 @@ export function invalidateConfirmedReads(client: MobileApiClient, path: string) 
     : /^\/api\/mobile\/v1\/body(?:\/|$)/.test(route) ? ['body']
     : /^\/api\/mobile\/v1\/profile\/physical$/.test(route) ? ['body', 'nutrition', 'metrics']
     : /^\/api\/mobile\/v1\/nutrition(?:\/|$)/.test(route) ? ['nutrition', 'metrics']
-    : /^\/api\/mobile\/v1\/metrics(?:\/|$)/.test(route) ? ['metrics'] : [];
+    : /^\/api\/mobile\/v1\/metrics(?:\/|$)/.test(route) ? ['metrics']
+    : /^\/api\/mobile\/v1\/progress\/views(?:\/|$)/.test(route) ? ['views']
+    : /^\/api\/mobile\/v1\/progress\/insight(?:\/|$)/.test(route) ? ['insight'] : [];
   // Every settled write counts, mapped or not: reload() must never join a read that predates it.
   confirmedReads(client).invalidate(changed);
 }

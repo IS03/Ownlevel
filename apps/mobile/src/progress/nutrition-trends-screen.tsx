@@ -34,7 +34,7 @@ function TimingEntry() {
     (c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressNutritionTiming(c, query, signal),
     [query],
   );
-  const { state, data } = useProgressResource(client, progressRequestKey(query), load);
+  const { state, data } = useProgressResource(client, `timing|${progressRequestKey(query)}`, load);
   const subtitle = data
     ? timingHeadline(data.current).text
     : state.status === 'loading'

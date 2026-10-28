@@ -231,6 +231,7 @@ describe('Cuándo comés', () => {
     expect(view.queryByTestId('timing-bands')).toBeNull();
     expect(view.queryAllByText(/%/)).toHaveLength(0);
     view.unmount();
+    clearConfirmedReads(mockClient as never); // a later visit, outside the reuse window
     mockTiming.mockResolvedValue(failure);
     const failed = wrap(<MealTimesScreen />);
     await flush();
