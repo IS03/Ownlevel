@@ -28,7 +28,8 @@ import { ProgressScroll } from './progress-scroll';
 import { useComparisonText, useProgressRange } from './progress-range-context';
 import { periodHeading } from './progress-range';
 import { arrowDelta, formatValue } from './progress-format';
-import { useProgressResource } from './use-progress-resource';
+import { useCachedProgressResource } from './use-cached-progress-resource';
+import { ProgressReadStatus } from './progress-read-status';
 
 type SeriesMetric = 'sets' | 'sessions' | 'minutes';
 const SERIES_LABELS: Record<SeriesMetric, string> = { sets: 'Series', sessions: 'Sesiones', minutes: 'Duración' };
@@ -492,7 +493,7 @@ export function TrainingTrendsScreen() {
     (c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressTraining(c, query, signal, compare),
     [query, compare],
   );
-  const { state, data, refresh } = useProgressResource(client, progressRequestKey(query, compare), load);
+  const { state, data, refresh } = useCachedProgressResource(client, 'training', progressRequestKey(query, compare), load);
   return (
     <ProgressScroll
       title="Entrenamiento"
@@ -505,6 +506,7 @@ export function TrainingTrendsScreen() {
         />
       }
     >
+      <ProgressReadStatus state={state} />
       {state.status === 'loading' ? (
         <SkeletonBlock height={200} />
       ) : !data ? (

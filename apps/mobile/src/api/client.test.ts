@@ -11,6 +11,7 @@ import {
   type MobileApiClientDependencies,
 } from './client';
 import type { MobileApiTelemetry, MobileApiTelemetryEvent } from './telemetry';
+import { confirmedReads, clearConfirmedReads } from './confirmed-read-cache';
 
 const accessToken = 'private-access-token';
 const renewedAccessToken = 'private-renewed-token';
@@ -65,6 +66,26 @@ function dependencies(overrides: {
 
 afterEach(() => {
   jest.useRealTimers();
+});
+
+it.each([false, true])('invalidates retained analytical reads after a settled write (ambiguous=%s), without caching operational reads', async ambiguous => {
+  const fetcher = jest.fn<typeof fetch>().mockResolvedValue(response(200, { value: 'ok' }));
+  const { values } = dependencies({ fetchImplementation: fetcher });
+  const client = createMobileApiClient(values), cache = confirmedReads(client);
+  const entry = cache.get('body', '30', async () => ({ status: 'ok', data: 1, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } }));
+  await cache.ensure(entry, 'initial'); expect(entry.invalidated).toBe(false);
+  if (ambiguous) fetcher.mockRejectedValueOnce(new Error('network'));
+  const result = await client.request({ method: 'PUT', path: '/api/mobile/v1/body/weights/2026-10-01', body: {}, parse: v => v });
+  expect(result.status).toBe(ambiguous ? 'unavailable' : 'ok'); expect(entry.invalidated).toBe(true); expect(fetcher).toHaveBeenCalledTimes(1);
+  await client.request({ method: 'GET', path: '/api/mobile/v1/body', parse: v => v });
+  await client.request({ method: 'GET', path: '/api/mobile/v1/body', parse: v => v });
+  expect(fetcher).toHaveBeenCalledTimes(3); clearConfirmedReads(client);
+});
+it('preserves a confirmed mutation receipt even if a presentation invalidation observer fails', async () => {
+  const { values } = dependencies(), client = createMobileApiClient(values), cache = confirmedReads(client);
+  jest.spyOn(cache, 'invalidate').mockImplementationOnce(() => { throw new Error('observer'); });
+  const result = await client.request({ method: 'PUT', path: '/api/mobile/v1/body/weights/fixture', body: {}, parse: value => value });
+  expect(result.status).toBe('ok'); clearConfirmedReads(client);
 });
 
 describe('Mobile API client', () => {

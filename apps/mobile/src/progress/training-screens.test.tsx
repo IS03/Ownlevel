@@ -1,3 +1,5 @@
+import { clearConfirmedReads } from '@/api/confirmed-read-cache';
+import type { MobileApiClient } from '@/api/client';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { AppState } from 'react-native';
@@ -14,9 +16,9 @@ let mockParams: Record<string, string> = {};
 const mockTraining = jest.fn<(c: unknown, q: ProgressQuery, compare: DateRange | null) => Promise<unknown>>();
 const mockExercise = jest.fn<(c: unknown, q: ProgressQuery, id: string, compare: DateRange | null) => Promise<unknown>>();
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocusEffect: () => undefined, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocusEffect: (callback: () => void | (() => void)) => { jest.requireActual<typeof import('react')>('react').useEffect(callback, [callback]); }, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn(), success: jest.fn(), warning: jest.fn() }, triggerHaptic: jest.fn() }));
-const mockClient = { request: jest.fn(), read: jest.fn() };
+const mockClient = { request: jest.fn(), read: jest.fn() } as unknown as MobileApiClient;
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
 // The native (SwiftUI) segmented control renders nothing in Jest: test with the brand fallback it mirrors.
 jest.mock('@/training/exercise-segmented', () => jest.requireActual('@/training/exercise-segmented.tsx'));
@@ -82,6 +84,7 @@ const wrap = (el: React.ReactElement, initialState?: ProgressRangeState) => rend
 const listeners: ((s: string) => void)[] = [];
 
 beforeEach(() => {
+  clearConfirmedReads(mockClient);
   jest.clearAllMocks(); mockParams = {}; listeners.length = 0;
   jest.spyOn(AppState, 'addEventListener').mockImplementation((_e, l) => { listeners.push(l as (s: string) => void); return { remove: jest.fn() } as never; });
   mockTraining.mockImplementation(async (_c, q) => ok(training(q.period)));

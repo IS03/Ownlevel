@@ -1,3 +1,5 @@
+import { clearConfirmedReads } from '@/api/confirmed-read-cache';
+import type { MobileApiClient } from '@/api/client';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { AppState } from 'react-native';
@@ -21,9 +23,9 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocusEffect: () => undefined, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocusEffect: (callback: () => void | (() => void)) => { jest.requireActual<typeof import('react')>('react').useEffect(callback, [callback]); }, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn(), success: jest.fn(), warning: jest.fn() }, triggerHaptic: jest.fn() }));
-const mockClient = { request: jest.fn(), read: jest.fn() };
+const mockClient = { request: jest.fn(), read: jest.fn() } as unknown as MobileApiClient;
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
 jest.mock('@/auth', () => ({ useMobileAuth: () => ({ session: { user: { id: 'owner' } } }) }));
 // Cuerpo's records and sheets run on the real BodyController over a fake Body API (no network, no storage).
@@ -119,6 +121,7 @@ const wrap = (el: React.ReactElement, initialState?: ProgressRangeState) => rend
 
 const listeners: ((s: string) => void)[] = [];
 beforeEach(() => {
+  clearConfirmedReads(mockClient);
   jest.clearAllMocks(); mockParams = {}; listeners.length = 0;
   jest.spyOn(AppState, 'addEventListener').mockImplementation((_e, l) => { listeners.push(l as (s: string) => void); return { remove: jest.fn() } as never; });
   mockOverview.mockImplementation(async (_c, q) => ok(overview({}, q.period)));
@@ -133,6 +136,15 @@ describe('Progress fixtures follow the shared contract', () => {
 });
 
 describe('Progress Overview', () => {
+  it('reopens the confirmed overview without another main request or a fresh synchronization timestamp', async () => {
+    const first = wrap(<ProgressOverviewScreen />); await flush();
+    const timestamp = first.getByText(/^Lectura de las /).props.children;
+    expect(mockOverview).toHaveBeenCalledTimes(1); first.unmount();
+    const second = wrap(<ProgressOverviewScreen />);
+    expect(second.getByText('Tu octubre')).toBeTruthy();
+    expect(second.getByText(/^Lectura de las /).props.children).toEqual(timestamp);
+    expect(mockOverview).toHaveBeenCalledTimes(1); await flush(); second.unmount();
+  });
   const row = (view: ReturnType<typeof wrap>, id: string) => view.getByTestId(`progress-area-${id}`).props.accessibilityLabel as string;
   it('"Tu octubre" without comparing: progress inside the period, mini charts with real gaps, no Explorar or Revisar datos', async () => {
     const view = wrap(<ProgressOverviewScreen />); await flush();
@@ -218,7 +230,8 @@ describe('Progress Overview', () => {
     expect(view.getByTestId('progress-unit-month').props.accessibilityState.selected).toBe(true);
     fireEvent.press(view.getByTestId('progress-unit-custom'));
     fireEvent.press(view.getByText('Mes siguiente')); await flush();
-    expect(mockOverview).toHaveBeenLastCalledWith(mockClient, MONTH, null);
+    expect(view.getByText('Tu octubre')).toBeTruthy();
+    expect(mockOverview).toHaveBeenCalledTimes(2); // October was already confirmed before visiting September.
   });
   it('Personalizado opens the calendar: first day, last day, Listo', async () => {
     const view = wrap(<ProgressOverviewScreen />); await flush();

@@ -3,6 +3,9 @@ import {
   type PropsWithChildren,
   useContext,
   useMemo,
+  useLayoutEffect,
+  useRef,
+  useState,
 } from 'react';
 
 import { useMobileAuth } from '@/auth';
@@ -10,6 +13,7 @@ import { useMobileAuth } from '@/auth';
 import { createMobileApiClient, type MobileApiClient } from './client';
 import { readMobileApiConfig, type MobileApiConfig } from './config';
 import { createMobileClientRuntime, type MobileClientRuntime } from './runtime';
+import { clearConfirmedReads } from './confirmed-read-cache';
 
 type MobileApiContextValue = {
   client: MobileApiClient | null;
@@ -21,21 +25,22 @@ type MobileApiContextValue = {
 const MobileApiContext = createContext<MobileApiContextValue | null>(null);
 
 export function MobileApiProvider({ children }: PropsWithChildren) {
-  const { getAccessTokenForApi, revalidateApiSession } = useMobileAuth();
+  const { getAccessTokenForApi, revalidateApiSession, session } = useMobileAuth();
+  const owner = session?.user.id ?? null;
 
   const value = useMemo<MobileApiContextValue>(() => {
     try {
       const config = readMobileApiConfig();
       const runtime = createMobileClientRuntime();
       return {
-        client: createMobileApiClient({
+        client: owner ? createMobileApiClient({
           auth: {
             getAccessToken: getAccessTokenForApi,
             revalidateAfterUnauthorized: revalidateApiSession,
           },
           config,
           runtime,
-        }),
+        }) : null,
         config,
         configurationError: false,
         runtime,
@@ -48,9 +53,18 @@ export function MobileApiProvider({ children }: PropsWithChildren) {
         runtime: null,
       };
     }
-  }, [getAccessTokenForApi, revalidateApiSession]);
+  }, [getAccessTokenForApi, revalidateApiSession, owner]);
+  const previous = useRef<MobileApiClient | null>(null);
+  useLayoutEffect(() => {
+    if (previous.current && previous.current !== value.client) clearConfirmedReads(previous.current);
+    previous.current = value.client;
+  }, [value.client]);
 
-  return <MobileApiContext.Provider value={value}>{children}</MobileApiContext.Provider>;
+  // A direct account change also retires screen-local readers that do not share this cache. Sign-in and sign-out
+  // keep the tree: Stack.Protected already swaps the screens, and the entry transition must survive SIGNED_IN.
+  const [scope, setScope] = useState({ owner, generation: 0 });
+  if (scope.owner !== owner) setScope({ owner, generation: scope.owner && owner ? scope.generation + 1 : scope.generation });
+  return <MobileApiContext.Provider key={scope.generation} value={value}>{children}</MobileApiContext.Provider>;
 }
 
 export function useMobileApi(): MobileApiContextValue {
