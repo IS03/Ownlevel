@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { QuickSessionHistoryDto } from '@/api/active-session';
-import { OwnlevelThemeProvider } from '@/design-system';
+import { brandTokens, OwnlevelThemeProvider } from '@/design-system';
 import { SessionExercisePicker, SessionQuickHistory } from './active-session-sheets';
 import { EXERCISE_ID, SECOND_ID, testExercise, testPayload } from './active-session-test-fixtures';
 const mockResource = jest.fn();
@@ -41,10 +41,11 @@ describe('session quick history', () => {
     const use = jest.fn();
     const view = render(wrapper(<SessionQuickHistory exercise={testExercise()} history={{ status: 'ok', data: { [EXERCISE_ID]: [done, empty] } }} onClose={jest.fn()} onRefresh={jest.fn()} onUse={use} />));
     const action = within(view.getByTestId(`quick-history-session-${done.sessionId}`)).getByRole('button', { name: 'Usar' });
-    // No fixed-height button in the header row: the row is as tall as the date, the touch area stays at least 44 pt.
-    expect(StyleSheet.flatten(action.props.style)).not.toHaveProperty('height');
-    const { top, bottom, left, right } = action.props.hitSlop;
-    expect(22 + top + bottom).toBeGreaterThanOrEqual(44); expect(left + right).toBeGreaterThanOrEqual(24);
+    // hitSlop is clipped to the header row: the action must allocate the minimum target itself.
+    const target = StyleSheet.flatten(action.props.style);
+    expect(target).not.toHaveProperty('height'); // Dynamic Type can still grow the header.
+    expect(target.minHeight).toBeGreaterThanOrEqual(brandTokens.layout.minTouch);
+    expect(target.minWidth).toBeGreaterThanOrEqual(brandTokens.layout.minTouch);
     const blocked = within(view.getByTestId(`quick-history-session-${empty.sessionId}`)).getByRole('button', { name: 'Usar' });
     expect(blocked.props.accessibilityState).toMatchObject({ disabled: true });
     fireEvent.press(blocked); expect(use).not.toHaveBeenCalled();

@@ -4,7 +4,7 @@ import { fetchMobileTrainingExercises, useApiResource } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import type { QuickSessionHistoryDto, SessionDetailDto, SessionExerciseDto } from '@/api/active-session';
 import type { MobileTrainingExercise, MobileTrainingMuscleGroup } from '@/api/exercises';
-import { AppText, Button, Chip, EmptyState, InlineUnavailable, SkeletonBlock, Surface, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppText, Button, Chip, EmptyState, InlineUnavailable, SkeletonBlock, Surface, spacing, brandTokens, useOwnlevelTheme } from '@/design-system';
 import { pickerExercises } from './routine-editor-model';
 import { compactActual, historyLoadLabel, quickHistoryDate, quickSessions } from './active-session-model';
 import { RoutineExercisePickerBody } from './routine-exercise-picker-body';
@@ -92,13 +92,13 @@ export function SessionQuickHistory({ exercise, history, routineId = null, routi
 }
 /**
  * «Usar» as a text action, like the other inline actions: a 50 pt button made every card header that tall and left empty
- * space around the date. The touch area still reaches 44 pt through hitSlop.
+ * space around the date. Allocate the minimum target: hitSlop is clipped to the header row bounds.
  */
 function UseAction({ date, disabled, onPress }: { date: string; disabled: boolean; onPress: () => void }) {
   const { colors } = useOwnlevelTheme();
   return <Pressable accessibilityRole="button" accessibilityLabel="Usar" accessibilityHint={`Copia las series del ${date} en este ejercicio.`}
     accessibilityState={{ disabled }} disabled={disabled} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} onPress={onPress}
-    style={({ pressed }) => ({ opacity: disabled ? 0.45 : pressed ? 0.6 : 1 })} testID="quick-history-use">
+    style={({ pressed }) => ({ minHeight: brandTokens.layout.minTouch, minWidth: brandTokens.layout.minTouch, justifyContent: 'center', alignItems: 'flex-end', opacity: disabled ? 0.45 : pressed ? 0.6 : 1 })} testID="quick-history-use">
     <AppText variant="headline" style={{ color: colors.primary }}>Usar</AppText>
   </Pressable>;
 }

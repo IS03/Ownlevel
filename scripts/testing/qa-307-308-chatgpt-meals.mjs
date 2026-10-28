@@ -113,6 +113,38 @@ try {
     const m=await row(c.response_body.mealId); assert.equal(m.source_type,'manual');
     assert.equal((await mutate(a,edit(m.id,m.v,'manual-edit',{title:'arroz',calories:320}))).response_status,200);
   });
+  await check('RPC role grants reject anon/authenticated integration writes while Mobile remains authenticated',async()=>{
+    const rows=(await admin.query("select proname,has_function_privilege('anon',oid,'EXECUTE') anon,has_function_privilege('authenticated',oid,'EXECUTE') authenticated,has_function_privilege('service_role',oid,'EXECUTE') service from pg_proc where proname in ('create_chatgpt_meal_for_integration','create_chatgpt_meal_for_integration_v2','create_chatgpt_meal_for_oauth_v2','mobile_mutate_manual_meal')")).rows;
+    for(const r of rows){assert.equal(r.anon,false);assert.equal(r.authenticated,r.proname==='mobile_mutate_manual_meal');if(r.proname!=='mobile_mutate_manual_meal')assert.equal(r.service,true);}
+    await assert.rejects(a.query("select public.create_chatgpt_meal_for_integration_v2($1,$2,'denied',null,1,null,null,null,'denied',false,null,null)",[owner,date]),/permission denied/);
+  });
+  await check('moving an untimed ChatGPT meal keeps provenance/time uncertainty and both day totals consistent',async()=>{
+    const r=await legacy('move-unknown',{title:'move unknown',calories:487}), m=await row(r.meal.id);
+    const sourceBefore=(await admin.query('select total_calories_consumed n from public.day_logs where id=$1',[m.day_log_id])).rows[0].n;
+    const result=await mutate(a,edit(m.id,m.v,'move-unknown-write',{date:destination,title:'move unknown',calories:487}));
+    assert.equal(result.response_status,200);
+    const moved=await row(m.id);assert.equal(moved.source_type,'chatgpt');assert.equal(timed(moved.raw_input),false);
+    assert.equal((await admin.query('select log_date::text d from public.day_logs where id=$1',[moved.day_log_id])).rows[0].d,destination);
+    assert.equal((await admin.query('select total_calories_consumed n from public.day_logs where id=$1',[m.day_log_id])).rows[0].n,sourceBefore-487);
+    assert.equal((await admin.query('select total_calories_consumed n from public.day_logs where id=$1',[moved.day_log_id])).rows[0].n,487);
+    const replay=await mutate(a,edit(m.id,m.v,'move-unknown-write',{date:destination,title:'move unknown',calories:487}));assert.equal(replay.replayed,true);
+    assert.equal((await admin.query('select total_calories_consumed n from public.day_logs where id=$1',[moved.day_log_id])).rows[0].n,487);
+  });
+  await check('simultaneous integration retries with the same key create one meal',async()=>{
+    const secondAdmin=await connect();
+    const q="select public.create_chatgpt_meal_for_integration_v2($1,$2,'concurrent',null,341,null,null,null,'concurrent-key',true,null,null) r";
+    const replies=await Promise.all([admin.query(q,[owner,date]),secondAdmin.query(q,[owner,date])]);
+    assert.equal(replies[0].rows[0].r.meal.id,replies[1].rows[0].r.meal.id);
+    assert.equal(replies.filter(r=>r.rows[0].r.created).length,1);
+    assert.equal((await admin.query("select count(*)::int n from public.meal_entries where user_id=$1 and idempotency_key='concurrent-key'",[owner])).rows[0].n,1);
+  });
+  await check('midnight and unknown time are distinct; applying EXPAND again leaves prior rows byte-for-byte unchanged',async()=>{
+    const midnight=await v2('midnight-known','2026-09-20T00:00:00-03:00','breakfast',{title:'midnight',calories:225});
+    assert.equal(timed((await row(midnight.meal.id)).raw_input),true);
+    const before=(await admin.query('select jsonb_agg(to_jsonb(m) order by id) value from public.meal_entries m')).rows[0].value;
+    await admin.query(await file('20261028084439_chatgpt_meal_parity_expand.sql'));
+    assert.deepEqual((await admin.query('select jsonb_agg(to_jsonb(m) order by id) value from public.meal_entries m')).rows[0].value,before);
+  });
   console.log(`PostgreSQL: ${checks} groups PASS`);
 } finally {
   for(const c of clients) await c.end().catch(()=>{});
