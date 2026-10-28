@@ -7,6 +7,7 @@ import { parseProgressNutritionTiming, type ProgressNutritionTiming } from '@/ap
 import { reportFixture } from '@/nutrition/report-fixture.test-helper';
 import { ProgressRangeProvider } from './progress-range-context';
 import type { DateRange, ProgressRangeState } from './progress-range';
+import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 import { NutritionTrendsScreen } from './nutrition-trends-screen';
 import { MealTimesScreen } from './meal-times-screen';
 
@@ -123,6 +124,7 @@ const flush = () =>
     for (let i = 0; i < 12; i++) await Promise.resolve();
   });
 beforeEach(() => {
+  clearConfirmedReads(mockClient as never);
   jest.clearAllMocks();
   mockParams = {};
   mockReport.mockImplementation(async (_c, q) => ok(report(q)));
@@ -178,6 +180,8 @@ describe('Progress Nutrition', () => {
     expect(view.getByText('No pudimos cargar el período de comparación')).toBeTruthy();
     expect(view.getByTestId('nutrition-progress-summary')).toBeTruthy();
     view.unmount();
+    // A new visit outside the reuse window (a retained reading would be shown, marked by its time).
+    clearConfirmedReads(mockClient as never);
     mockReport.mockResolvedValue(failure);
     const failed = wrap(<NutritionTrendsScreen />);
     await flush();
@@ -198,9 +202,12 @@ describe('Progress Nutrition', () => {
     view.rerender(tree(<NutritionTrendsScreen />));
     await flush();
     expect(mockReport).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-09-10', to: '2026-09-12' });
+    const calls = mockReport.mock.calls.length;
     fireEvent.press(view.getByTestId('progress-unit-month'));
     await flush();
-    expect(mockReport).toHaveBeenLastCalledWith(mockClient, query);
+    // The month read a moment ago is reused (same account, day and range), not requested again.
+    expect(mockReport).toHaveBeenCalledTimes(calls);
+    expect(view.getByTestId('progress-unit-month').props.accessibilityState.selected).toBe(true);
   });
 });
 

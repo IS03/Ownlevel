@@ -29,12 +29,12 @@ Se reutiliza `ApiResourceController`, incluyendo la última respuesta confirmada
 
 - Adopción explícita en cuatro pantallas: resumen de Progreso, Cuerpo, Entrenamiento y Métricas. El resto conserva sus mecanismos actuales.
 - Vistas, conexiones, insight, Explorar y Progreso Nutrición aún pueden consultar al foco. Por eso puede seguir apareciendo un indicador real de actualización auxiliar aunque el contenido principal ya esté disponible. También continúan las lecturas operativas de Cuerpo para sus formularios.
-- Memoria únicamente. Objetivo de hasta 24 entradas retenidas mediante LRU; los controladores observados no se expulsan y se vuelve a aplicar el límite al desuscribirse.
+- Memoria únicamente. Objetivo de hasta 40 entradas retenidas mediante LRU (24 en la primera intervención; se amplió al sumar días y reportes de Nutrición); los controladores observados no se expulsan y se vuelve a aplicar el límite al desuscribirse.
 - Clave: cliente de la cuenta autenticada + familia de recurso + día de Córdoba + clave completa de período/comparación/métrica. Las familias evitan colisiones entre respuestas distintas para el mismo período.
 - Un cliente nuevo al cambiar cuenta/cerrar sesión; se retira el caché anterior y se reinicia el árbol dependiente de esa cuenta, incluidos lectores locales no compartidos. Renovar el token de la misma cuenta conserva cliente, árbol y controlador de entrenamiento. También quedan aisladas por cuenta las cachés existentes que ya usan `WeakMap<MobileApiClient, …>`.
 - Retorno por foco dentro de 30 s: muestra la lectura confirmada sin otro GET. Al vencer la ventana, la lectura sigue visible y se revalida. No se renueva `confirmedAt` por reutilizarla.
 - Foreground de una pantalla enfocada y refresh manual: consulta remota incluso dentro de la ventana. Las pantallas ocultas adoptadas no disparan GET al volver del background.
-- Dos consumidores de una misma clave comparten el controlador y su petición en curso. Una consulta ya solicitada puede terminar después de salir para aprovecharla al volver; no se precargan pantallas no visitadas.
+- Dos consumidores de una misma clave comparten el controlador y su petición en curso. Una revalidación ya solicitada puede terminar después de salir para aprovecharla al volver; una primera carga que nadie espera (cambios rápidos de fecha o período) se cancela. No se precargan pantallas no visitadas.
 - La interfaz muestra «Lectura de las …» o «Actualizando · lectura de las …» con `AppText` de marca y cifras tabulares. Los errores conservan sus avisos existentes. Identidad: [fuente canónica](../brand/ownlevel-marca/IDENTIDAD.md).
 - Una denegación explícita de autorización retira la respuesta protegida anterior. Una falla transitoria mantiene la información conocida, diferenciada de una lectura fresca o un vacío real.
 
@@ -91,6 +91,15 @@ Usar la misma cuenta/red, sin mutar datos entre las primeras dos vueltas. Medir 
 7. Repetir eliminación de ejercicio y guardado de nota durante revalidación: no regresión de #316 ni de la revisión de #317.
 
 No se aprueba #303 ni se cierran #310/#311 por esta PR. El layout específico de Nutrición y Ajustes se valida en sus propios issues.
+
+## Bloque A · Nutrición
+
+- El reporte nutricional dejó su caché propia (WeakMap, prefetch, epochs e invalidación manual) y usa la familia `nutrition-report` de `ConfirmedReadCache`. La semana, el calendario, el reporte y Progreso Nutrición comparten una lectura por cuenta, día de Córdoba y rango. El prefetch del calendario es la misma entrada, sin otra petición.
+- Los días visitados se retienen en la familia `nutrition-day`. Volver a una fecha dentro de los 30 s la muestra sin GET. La proyección de la hoja de comida comparte la lectura del día en vez de pedirla otra vez.
+- Ambas familias se invalidan con escrituras de nutrición, cuerpo/datos físicos y entrenamiento, porque los objetivos dependen del día de entrenamiento y la energía, del peso. Granularidad por dominio, no por fecha: se prefiere invalidar de más antes que mostrar una fecha vieja.
+- `reload` después de una escritura confirmada se suma sólo a la lectura que inició la invalidación de esa escritura. Cualquier otra lectura en curso puede ser anterior, así que se aborta y se lee de nuevo. Antes, cada guardado del día disparaba dos GET, uno de ellos abortado.
+- `meal-preview` (POST que sólo calcula) ya no invalida lecturas.
+- Formularios, versiones y CAS de comidas siguen usando las respuestas de sus escrituras. La lectura retenida es presentación: con datos vencidos, el servidor rechaza una escritura con versión vieja como antes.
 
 ## Siguientes intervenciones
 

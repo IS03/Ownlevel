@@ -147,3 +147,50 @@ it.each([
   invalidateConfirmedReads(client, path);
   expect(entries.map(entry => entry.invalidated)).toEqual(expected); clearConfirmedReads(client);
 });
+it('after a write, reload joins the read the invalidation started instead of issuing a second one', async () => {
+  const client = {} as MobileApiClient, cache = confirmedReads(client), next = deferred<MobileApiReadResult<number>>();
+  const load = jest.fn<(s: AbortSignal) => Promise<MobileApiReadResult<number>>>().mockResolvedValueOnce(ok(1)).mockReturnValueOnce(next.promise);
+  const entry = cache.get('nutrition-day', '2026-10-04', load); entry.focused = 1;
+  await cache.ensure(entry, 'initial');
+  invalidateConfirmedReads(client, '/api/mobile/v1/nutrition/days/2026-10-04/meals');
+  const reloaded = cache.reload(entry);
+  expect(load).toHaveBeenCalledTimes(2); expect(load.mock.calls[1][0].aborted).toBe(false);
+  next.resolve(ok(2)); await reloaded;
+  expect(entry.resource.getSnapshot()).toMatchObject({ current: { data: 2 } }); clearConfirmedReads(client);
+});
+it('reload drops an in-flight read that the write did not start, even without a client notification', async () => {
+  const cache = pool(), old = deferred<MobileApiReadResult<number>>();
+  const load = jest.fn<(s: AbortSignal) => Promise<MobileApiReadResult<number>>>().mockResolvedValueOnce(ok(1)).mockReturnValueOnce(old.promise).mockResolvedValueOnce(ok(3));
+  const entry = cache.get('nutrition-day', '2026-10-04', load);
+  await cache.ensure(entry, 'initial'); void cache.ensure(entry, 'manual');
+  await cache.reload(entry); old.resolve(ok(2)); await Promise.resolve();
+  expect(load).toHaveBeenCalledTimes(3); expect(load.mock.calls[1][0].aborted).toBe(true);
+  expect(entry.resource.getSnapshot()).toMatchObject({ current: { data: 3 } }); cache.clear();
+});
+it('cancels an abandoned first load (fast date changes) but not one an effect replay remounts', async () => {
+  const cache = pool(), first = deferred<MobileApiReadResult<number>>(), second = deferred<MobileApiReadResult<number>>();
+  const load = jest.fn<(s: AbortSignal) => Promise<MobileApiReadResult<number>>>().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+  const replayed = cache.get('nutrition-day', 'a', load), abandoned = cache.get('nutrition-day', 'b', load);
+  const detachA = cache.mount(replayed); void cache.ensure(replayed, 'initial'); detachA(); const again = cache.mount(replayed);
+  const detachB = cache.mount(abandoned); void cache.ensure(abandoned, 'initial'); detachB();
+  await Promise.resolve();
+  expect(load.mock.calls[0][0].aborted).toBe(false); expect(load.mock.calls[1][0].aborted).toBe(true);
+  second.resolve(ok(9)); first.resolve(ok(1)); await Promise.resolve(); await Promise.resolve();
+  expect(abandoned.resource.getSnapshot().status).toBe('loading'); expect(replayed.resource.getSnapshot()).toMatchObject({ current: { data: 1 } });
+  again(); cache.clear();
+});
+it.each([
+  ['/api/mobile/v1/nutrition/days/2026-10-04/meals/m', [true, true]],
+  ['/api/mobile/v1/training/sessions/s/finish?routineAdditions=1', [true, true]],
+  ['/api/mobile/v1/body/weights/2026-10-04', [true, true]],
+  ['/api/mobile/v1/profile/physical', [true, true]],
+  ['/api/mobile/v1/metrics/definitions/order', [false, true]],
+  ['/api/mobile/v1/nutrition/days/2026-10-04/meal-preview', [false, false]],
+  ['/api/mobile/v1/progress/views/v', [false, false]],
+] as [string, boolean[]][])('maps %s to the Nutrition report and day readings that depend on it', async (path, expected) => {
+  const client = {} as MobileApiClient, cache = confirmedReads(client);
+  const entries = (['nutrition-report', 'nutrition-day'] as const).map(family => cache.get(family, '2026-10-04', async () => ok(1)));
+  await Promise.all(entries.map(entry => cache.ensure(entry, 'initial')));
+  invalidateConfirmedReads(client, path);
+  expect(entries.map(entry => entry.invalidated)).toEqual(expected); clearConfirmedReads(client);
+});

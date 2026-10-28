@@ -19,6 +19,7 @@ import { useProgressRange } from './progress-range-context';
 import { PRESET_LABELS, arrowDelta, formatValue } from './progress-format';
 import { ProgressRow } from './progress-row';
 import { useProgressResource } from './use-progress-resource';
+import { useCachedRead } from '@/api/use-cached-read';
 import { useProgressRouteRange } from './use-progress-route-range';
 import { NutritionChart } from './nutrition-chart';
 import { NutritionReportDetails } from './nutrition-report-details';
@@ -125,7 +126,7 @@ function ComparedReport({ report, query }: { report: NutritionReport; query: Rep
     (c: NonNullable<typeof client>, signal: AbortSignal) => fetchNutritionReport(c, query, signal),
     [query],
   );
-  const { state, data, refresh } = useProgressResource(client, reportQueryKey(query), load);
+  const { state, data, refresh } = useCachedRead(client, 'nutrition-report', reportQueryKey(query), load);
   return (
     <>
       {state.status === 'loading' ? (
@@ -151,7 +152,7 @@ function NutritionReportResource() {
     (c: NonNullable<typeof client>, signal: AbortSignal) => fetchNutritionReport(c, query, signal),
     [query],
   );
-  const { state, data, refresh } = useProgressResource(client, reportQueryKey(query), load);
+  const { state, data, refresh } = useCachedRead(client, 'nutrition-report', reportQueryKey(query), load);
   const [referenceRevision, setReferenceRevision] = useState(0);
   const refreshAll = () => {
     void refresh();

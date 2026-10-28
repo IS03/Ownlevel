@@ -18,7 +18,7 @@ import { ProgressScroll } from './progress-scroll';
 import { useProgressRange } from './progress-range-context';
 import { PROGRESS_UNITS, periodHeading, shortRange, type ProgressUnit } from './progress-range';
 import { arrowDelta, formatValue, trendText } from './progress-format';
-import { useCachedProgressResource } from './use-cached-progress-resource';
+import { useCachedRead } from '@/api/use-cached-read';
 import { ProgressReadStatus } from './progress-read-status';
 
 const LONGER: Partial<Record<ProgressUnit, ProgressUnit>> = { week: '3m', '2w': '3m', '3w': '3m', month: '3m', '3m': '6m', '6m': 'year' };
@@ -138,7 +138,7 @@ export function BodyTrendsScreen() {
   const params = useLocalSearchParams<{ metric?: string; registrar?: string }>();
   const selected = typeof params.metric === 'string' && params.metric ? params.metric : null;
   const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressBody(c, query, signal, compare), [query, compare]);
-  const { state, data, refresh } = useCachedProgressResource(client, 'body', progressRequestKey(query, compare), load);
+  const { state, data, refresh } = useCachedRead(client, 'body', progressRequestKey(query, compare), load);
   const body = useBodyController(client, session?.user.id ?? 'anonymous');
   // Links from Inicio or Ajustes open the right sheet once ("registrar=peso|medidas").
   useWeightEntry(params.registrar === 'peso', body);

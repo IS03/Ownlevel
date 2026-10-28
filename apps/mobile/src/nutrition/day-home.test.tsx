@@ -139,15 +139,24 @@ describe('Nutrition week and month existing reads', () => {
     await act(async () => { fireEvent(view.UNSAFE_getByType(Modal), 'dismiss'); });
     expect(select).toHaveBeenCalledWith('2026-10-01'); expect(close).toHaveBeenCalledTimes(1);
   });
-  it('a month read once opens with its rings at once and is revalidated in the background', async () => {
+  it('a month read once opens with its rings at once, reused inside the window and revalidated after it', async () => {
     const first = render(wrap(<NutritionMonthSheet date="2026-10-02" today="2026-10-02" onSelect={jest.fn()} onClose={jest.fn()} />));
     await waitFor(() => expect(first.getByTestId('nutrition-month-2026-10-01').props.accessibilityLabel).toContain('Calorías 100'));
     first.unmount();
-    let finish!: (r: MobileApiReadResult<NutritionReport>) => void;
-    mockReport.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const calls = mockReport.mock.calls.length;
     const again = render(wrap(<NutritionMonthSheet date="2026-10-02" today="2026-10-02" onSelect={jest.fn()} onClose={jest.fn()} />));
     expect(again.getByTestId('nutrition-month-2026-10-01').props.accessibilityLabel).toContain('Calorías 100');
+    expect(mockReport).toHaveBeenCalledTimes(calls);
+    again.unmount();
+    let finish!: (r: MobileApiReadResult<NutritionReport>) => void;
+    mockReport.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const now = Date.now(); jest.spyOn(Date, 'now').mockReturnValue(now + 31_000);
+    const later = render(wrap(<NutritionMonthSheet date="2026-10-02" today="2026-10-02" onSelect={jest.fn()} onClose={jest.fn()} />));
+    // Outside the window the known month stays on screen while it is read again.
+    expect(later.getByTestId('nutrition-month-2026-10-01').props.accessibilityLabel).toContain('Calorías 100');
+    expect(mockReport).toHaveBeenCalledTimes(calls + 1);
     await act(async () => { finish(failure); });
+    jest.mocked(Date.now).mockRestore();
   });
   it('keeps six rows and the same body height when the month/year wheels replace the grid', async () => {
     const view = render(wrap(<NutritionMonthSheet date="2026-10-02" today="2026-10-02" onSelect={jest.fn()} onClose={jest.fn()} />));

@@ -1,5 +1,6 @@
 import {act,fireEvent,render,waitFor} from '@testing-library/react-native';
 import {beforeEach,describe,expect,it,jest} from '@jest/globals';
+import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 import {AppState,type AppStateStatus} from 'react-native';
 import { OwnlevelThemeProvider } from '@/design-system';
 import type {MobileApiClient} from '@/api/client';
@@ -14,7 +15,7 @@ const ok=(q:ReportQuery)=>({status:'ok',data:reportFixture(q),meta:{durationMs:1
 const failure={status:'unavailable',reason:'network',meta:{durationMs:1,httpStatus:null,outcome:'unavailable'}} as const;
 const element=(onDate=jest.fn(),onClose=jest.fn())=><OwnlevelThemeProvider initialMode="light"><NutritionReports onClose={onClose} onDate={onDate}/></OwnlevelThemeProvider>;
 describe('Native Nutrition Reports',()=>{
- beforeEach(()=>{mockRead.mockReset();listeners.length=0;mockRead.mockImplementation(async o=>ok(query(o.path)) as never);jest.spyOn(AppState,'addEventListener').mockImplementation((_e,l)=>{listeners.push(l);return {remove:()=>{const i=listeners.indexOf(l);if(i>=0)listeners.splice(i,1);}};});});
+ beforeEach(()=>{clearConfirmedReads(mockClient as never);mockRead.mockReset();listeners.length=0;mockRead.mockImplementation(async o=>ok(query(o.path)) as never);jest.spyOn(AppState,'addEventListener').mockImplementation((_e,l)=>{listeners.push(l);return {remove:()=>{const i=listeners.indexOf(l);if(i>=0)listeners.splice(i,1);}};});});
  it('runtime validation preserves zero and rejects wrong scope/malformed coverage',async()=>{
   const r=reportFixture();expect(parseNutritionReport(r)).toEqual(r);expect(r.days[0]!.nutrients.fat.value).toBe(0);expect(parseNutritionReport({...r,summary:{...r.summary,metrics:{...r.summary.metrics,protein:{value:0,denominator:0,partialDays:0}}}})).toBeUndefined();
   await fetchNutritionReport(mockClient as MobileApiClient,{period:'14'});const parse=mockRead.mock.calls[0]![0].parse;expect(parse(r)).toBeUndefined();expect(parse(reportFixture({period:'14'}))).toBeDefined();

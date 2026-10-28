@@ -8,7 +8,7 @@ import type { MobileApiClient } from '@/api/client';
 import type { MobileApiReadResult } from '@/api/results';
 import type { MobileNutritionDayResponse } from '@/api/nutrition-day';
 import { OwnlevelThemeProvider } from '@/design-system';
-import { resetNutritionReportCacheForTests } from './report-resource';
+import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 import { NutritionDayScreen } from './day-screen';
 import { NutritionConfigurationProvider } from './config-provider';
 import { nutritionFixture } from './day-fixture.test-helper';
@@ -19,7 +19,7 @@ import type { QuickSelection } from '@/api/nutrition-quick';
 const mockPush = jest.fn();
 const mockRead = jest.fn<MobileApiClient['read']>();
 const mockRequest = jest.fn<MobileApiClient['request']>();
-const mockClient = { read: mockRead, request: mockRequest };
+let mockClient = { read: mockRead, request: mockRequest };
 let mockUser = 'owner';
 let mockToday = '2026-10-02';
 jest.mock('./day-format', () => ({
@@ -27,7 +27,9 @@ jest.mock('./day-format', () => ({
 }));
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
 jest.mock('@/auth', () => ({ useMobileAuth: () => ({ session: { user: { id: mockUser } } }) }));
-jest.mock('expo-router', () => ({ useLocalSearchParams: () => ({}), useRouter: () => ({ navigate: jest.fn(), push: mockPush }), useFocusEffect: () => {} }));
+jest.mock('expo-router', () => ({ useLocalSearchParams: () => ({}), useRouter: () => ({ navigate: jest.fn(), push: mockPush }),
+  // The day screen is the focused tab.
+  useFocusEffect: (callback: () => void | (() => void)) => jest.requireActual<typeof import('react')>('react').useEffect(callback, [callback]) }));
 jest.mock('@/api/nutrition-report', () => ({
   ...jest.requireActual<typeof import('@/api/nutrition-report')>('@/api/nutrition-report'),
   fetchNutritionReport: (_client: unknown, query: import('@/api/nutrition-report').ReportQuery) => Promise.resolve({
@@ -57,9 +59,9 @@ function finishDetailDismissal(view: ReturnType<typeof render>) {
 const appStateListeners: ((state: AppStateStatus) => void)[] = [];
 describe('Native Nutrition day', () => {
   beforeEach(async () => {
-    resetNutritionReportCacheForTests(mockClient as unknown as MobileApiClient);
+    clearConfirmedReads(mockClient as unknown as MobileApiClient);
     await AsyncStorage.clear(); mockRequest.mockReset();
-    mockRead.mockReset(); mockUser = 'owner'; mockToday = '2026-10-02';
+    mockRead.mockReset(); mockUser = 'owner'; mockClient = { read: mockRead, request: mockRequest }; mockToday = '2026-10-02';
     appStateListeners.length = 0;
     jest.spyOn(AppState, 'addEventListener').mockImplementation((_event, listener) => {
       appStateListeners.push(listener);
@@ -275,6 +277,7 @@ describe('Native Nutrition day', () => {
     expect(view.getByText('Cargando día nutricional')).toBeTruthy();
     fireEvent.press(view.getByTestId('nutrition-week-2026-10-01'));
     fireEvent.press(view.getByTestId('nutrition-week-2026-09-30'));
+    await act(async () => {});
     expect(pending[0].signal?.aborted).toBe(true);
     expect(pending[1].signal?.aborted).toBe(true);
     await act(async () => { pending[2].resolve(ok(pending[2].date)); });
@@ -306,7 +309,8 @@ describe('Native Nutrition day', () => {
   it('isolates previous private data when the authenticated user changes', async () => {
     mockRead.mockResolvedValueOnce(ok('2026-10-02') as never).mockResolvedValue(failure as never);
     const view = render(element()); await view.findByText('Comida 2026-10-02');
-    mockUser = 'second-user'; view.rerender(element());
+    // A different account always gets a different API client (MobileApiProvider): nothing retained crosses over.
+    mockUser = 'second-user'; mockClient = { read: mockRead, request: mockRequest }; view.rerender(element());
     await view.findByText('No pudimos cargar este día');
     expect(view.queryByText('Comida 2026-10-02')).toBeNull();
   });

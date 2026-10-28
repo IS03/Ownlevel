@@ -2,24 +2,33 @@ import type { MobileApiClient } from './client';
 import type { MobileApiReadResult } from './results';
 import { ApiResourceController, type ResourceRefreshTrigger } from './resource';
 
-export type ReadFamily = 'overview' | 'body' | 'training' | 'metrics';
+export type ReadFamily = 'overview' | 'body' | 'training' | 'metrics' | 'nutrition-report' | 'nutrition-day';
 type Domain = 'body' | 'training' | 'metrics' | 'nutrition';
 type Loader<T> = (signal: AbortSignal) => Promise<MobileApiReadResult<T>>;
 export type RetainedRead<T> = {
   resource: ApiResourceController<T>; family: ReadFamily; mounted: number; focused: number; invalidated: boolean;
+  /** Write count when the latest read was started by that write's invalidation; -1 for any other read. */
+  readEpoch: number;
 };
 export const READ_REUSE_MS = 30_000;
-export const RETAINED_READ_LIMIT = 24;
+export const RETAINED_READ_LIMIT = 40;
 const domains: Record<ReadFamily, readonly Domain[]> = {
   overview: ['body', 'training', 'metrics', 'nutrition'], body: ['body'], training: ['training'], metrics: ['metrics'],
+  // Day targets follow training days and energy follows weight/physical data, not only nutrition writes. The day
+  // also lists the configured daily metrics, so definition changes invalidate it.
+  'nutrition-report': ['nutrition', 'body', 'training'], 'nutrition-day': ['nutrition', 'body', 'training', 'metrics'],
 };
+/** The day scope keeps a relative period ("today", "last 7 days") from crossing midnight in Córdoba. */
+export const scopedReadKey = (key: string, day: string) => `${day}|${key}`;
 type Measurement = { event: 'reuse' | 'network' | 'join' | 'settled' | 'invalidate' | 'evict'; family: ReadFamily; trigger?: ResourceRefreshTrigger; durationMs?: number; ageMs?: number };
 const record = (measurement: Measurement) => { if (__DEV__) console.info('[OWNLEVEL Read Reuse]', measurement); };
 
 /** Retains the existing controllers, not a second copy of their data. Memory only. */
 export class ConfirmedReadCache {
   private readonly entries = new Map<string, RetainedRead<unknown>>();
-  constructor(private readonly now: () => number = Date.now, private readonly measure = record) {}
+  private writes = 0;
+  private invalidating = false;
+  constructor(private readonly now: () => number = () => Date.now(), private readonly measure = record) {}
   get<T>(family: ReadFamily, key: string, load: Loader<T>): RetainedRead<T> {
     const scopedKey = `${family}|${key}`;
     const existing = this.entries.get(scopedKey);
@@ -28,9 +37,10 @@ export class ConfirmedReadCache {
       return existing as RetainedRead<T>;
     }
     const entry: RetainedRead<T> = {
-      family, mounted: 0, focused: 0, invalidated: true,
+      family, mounted: 0, focused: 0, invalidated: true, readEpoch: -1,
       resource: new ApiResourceController(async signal => {
         const started = this.now();
+        entry.readEpoch = this.invalidating ? this.writes : -1;
         let result: MobileApiReadResult<T>;
         try { result = await load(signal); }
         catch { result = { status: 'unavailable', reason: 'network', meta: { durationMs: 0, httpStatus: null, outcome: 'unavailable' } }; }
@@ -57,22 +67,41 @@ export class ConfirmedReadCache {
     this.measure({ event: entry.resource.isRefreshing() ? 'join' : 'network', family: entry.family, trigger });
     return entry.resource.refresh(trigger);
   }
+  /**
+   * After a confirmed write: join only the read the client started when that write settled; any other in-flight read
+   * may predate the write, so it is dropped and read again.
+   */
+  reload<T>(entry: RetainedRead<T>): Promise<void> {
+    entry.invalidated = true;
+    if (entry.resource.isRefreshing() && entry.readEpoch === this.writes) return this.ensure(entry, 'manual');
+    this.measure({ event: 'network', family: entry.family, trigger: 'manual' });
+    return entry.resource.reload('manual');
+  }
   mount<T>(entry: RetainedRead<T>) {
     entry.mounted++;
-    return () => { entry.mounted--; this.trim(); };
+    return () => {
+      entry.mounted--; this.trim();
+      // A first load nobody waits for anymore (fast date/period changes) is cancelled, as before retention. Deferred:
+      // an effect replay remounts the same entry before this runs.
+      void Promise.resolve().then(() => { if (!entry.mounted && entry.resource.getSnapshot().status === 'loading') entry.resource.cancelRefresh(); });
+    };
   }
   focus<T>(entry: RetainedRead<T>) {
     entry.focused++;
     return () => { entry.focused--; };
   }
   invalidate(changed: readonly Domain[]) {
+    this.writes++;
     for (const entry of this.entries.values()) {
       if (!domains[entry.family].some(domain => changed.includes(domain))) continue;
       entry.invalidated = true;
       entry.resource.cancelRefresh();
       this.measure({ event: 'invalidate', family: entry.family });
       // Hidden screens retain their old reading; only a focused consumer revalidates now.
-      if (entry.focused > 0) void this.ensure(entry, 'manual');
+      if (entry.focused > 0) {
+        this.invalidating = true;
+        try { void this.ensure(entry, 'manual'); } finally { this.invalidating = false; }
+      }
     }
   }
   clear() { this.entries.forEach(entry => entry.resource.dispose()); this.entries.clear(); }
@@ -95,10 +124,13 @@ export function clearConfirmedReads(client: MobileApiClient) { scopes.get(client
 /** Settled writes include ambiguous outcomes. This never retries or confirms the write. */
 export function invalidateConfirmedReads(client: MobileApiClient, path: string) {
   const route = path.split('?')[0];
+  // A meal preview is a POST that only computes: it changes nothing a retained read shows.
+  if (/^\/api\/mobile\/v1\/nutrition\/days\/[^/]+\/meal-preview$/.test(route)) return;
   const changed: Domain[] = /^\/api\/mobile\/v1\/training(?:\/|$)/.test(route) ? ['training']
     : /^\/api\/mobile\/v1\/body(?:\/|$)/.test(route) ? ['body']
     : /^\/api\/mobile\/v1\/profile\/physical$/.test(route) ? ['body', 'nutrition', 'metrics']
     : /^\/api\/mobile\/v1\/nutrition(?:\/|$)/.test(route) ? ['nutrition', 'metrics']
     : /^\/api\/mobile\/v1\/metrics(?:\/|$)/.test(route) ? ['metrics'] : [];
-  if (changed.length) scopes.get(client)?.invalidate(changed);
+  // Every settled write counts, mapped or not: reload() must never join a read that predates it.
+  scopes.get(client)?.invalidate(changed);
 }
