@@ -100,22 +100,31 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
       refreshProgressBody(), refreshProgressRecords()]);
   }, [refreshCalories, refreshHabits, refreshHome, refreshToday, refreshTraining, refreshProgressBody, refreshProgressRecords]);
 
+  const reloadHome = home.reload, reloadToday = today.reload, reloadCalories = calories.reload;
+  const reloadHabits = habits.reload, reloadTraining = training.reload;
+  const reloadProgressBody = progressBody.reload, reloadProgressRecords = progressRecords.reload;
+  const reloadAll = useCallback(() => {
+    void Promise.all([reloadHome(), reloadToday(), reloadCalories(), reloadHabits(), reloadTraining(),
+      reloadProgressBody(), reloadProgressRecords()]);
+  }, [reloadHome, reloadToday, reloadCalories, reloadHabits, reloadTraining, reloadProgressBody, reloadProgressRecords]);
+
   const lastFocus = useRef<{ at: number; day: string; writes: number } | null>(null);
   const markRefreshed = useCallback(() => {
     lastFocus.current = { at: now().getTime(), day: homeDay(now()).today, writes: settledWrites(client) };
   }, [client, now]);
+  const refreshNow = useCallback(() => {
+    const changed = (lastFocus.current?.writes ?? 0) !== settledWrites(client);
+    markRefreshed();
+    // A pending read may predate the write; refresh() would join it and accept stale data.
+    if (changed) reloadAll(); else refreshAll();
+  }, [client, markRefreshed, refreshAll, reloadAll]);
   useFocusEffect(useCallback(() => {
     const day = homeDay(now()).today;
     // The first focus coincides with the initial reads.
     if (lastFocus.current === null) { markRefreshed(); return; }
-    if (shouldRefreshOnFocus(lastFocus.current, now().getTime(), day, settledWrites(client))) {
-      markRefreshed();
-      refreshAll();
-    }
-  }, [client, markRefreshed, now, refreshAll]));
+    if (shouldRefreshOnFocus(lastFocus.current, now().getTime(), day, settledWrites(client))) refreshNow();
+  }, [client, markRefreshed, now, refreshNow]));
 
-  const refreshNow = useCallback(() => { markRefreshed(); refreshAll(); }, [markRefreshed, refreshAll]);
-  const reloadHome = home.reload, reloadToday = today.reload, reloadCalories = calories.reload;
   const invalidate = useCallback(() => { markRefreshed(); void Promise.all([reloadHome(), reloadToday(), reloadCalories()]); }, [markRefreshed, reloadHome, reloadToday, reloadCalories]);
 
   return { calories, habits, home, progressBody, progressRecords, refresh: refreshNow, invalidate, today, training };

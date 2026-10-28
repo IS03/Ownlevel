@@ -121,6 +121,22 @@ describe('Training native hub', () => {
     expect(reads()).toBe(afterWrite + 4); // home, the two distinct months and the week: the window expired
     jest.mocked(Date.now).mockRestore(); clearConfirmedReads(mockClient as never);
   });
+  it('returning after a write drops an older pending hub read even if its response arrives last', async () => {
+    let finish!: (result: unknown) => void;
+    const old = home(), fresh = home();
+    if (fresh.training.workoutStartRoutines.status === 'ok') fresh.training.workoutStartRoutines.data[0].name = 'ACTUALIZADA';
+    mockHome.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; })).mockResolvedValue(ok(fresh));
+    const view = renderScreen();
+    await act(async () => { mockFocus.at(-1)!(); });
+    const signal = mockHome.mock.calls[0][1] as AbortSignal;
+    invalidateConfirmedReads(mockClient as never, '/api/mobile/v1/training/sessions/s/finish');
+    await act(async () => { mockFocus.at(-1)!(); });
+    await act(async () => { finish(ok(old)); });
+    expect(mockHome).toHaveBeenCalledTimes(2);
+    expect(signal.aborted).toBe(true);
+    expect(view.getByRole('button', { name: 'Iniciar ACTUALIZADA' })).toBeTruthy();
+    clearConfirmedReads(mockClient as never);
+  });
   it('shows skeleton then manual first three routines, without recency reads', async () => {
     const view = renderScreen(); expect(view.getByTestId('training-loading')).toBeTruthy();
     await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar LEGS' })).toBeTruthy());

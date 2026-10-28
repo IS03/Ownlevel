@@ -67,7 +67,11 @@ export function TrainingScreen({ now = systemNow }: { now?: () => Date }) {
     writes.current = settled;
     const resources = new Set([cache.home, cache.month(month), cache.month(previousMonth), cache.month(shownMonth),
       cache.month(firstWeekMonth), cache.month(lastWeekMonth), cache.week(today)]);
-    resources.forEach(resource => { if (!onlyStale || changed || hubReadExpired(resource)) void resource.refresh(trigger); });
+    resources.forEach(resource => {
+      // A read already in flight can predate the settled write: never join it as the new truth.
+      if (changed) void resource.reload(trigger);
+      else if (!onlyStale || hubReadExpired(resource)) void resource.refresh(trigger);
+    });
   };
   const refreshRef = useRef(refresh);
   useEffect(() => { refreshRef.current = refresh; });
