@@ -86,7 +86,7 @@ export function MobileAuthProvider({ children }: PropsWithChildren) {
 
   const restore = useCallback(async (client: SupabaseClient) => {
     const event = await restoreNativeSession(client);
-    dispatchIfMounted(event);
+    dispatchIfMounted(event.type === 'TRANSIENT_FAILURE' ? { ...event, session: event.session ?? undefined } : event);
   }, [dispatchIfMounted]);
 
   useEffect(() => {
@@ -204,7 +204,8 @@ export function MobileAuthProvider({ children }: PropsWithChildren) {
       dispatchIfMounted({
         type: 'TRANSIENT_FAILURE',
         message: authMessages.restoreFailed,
-        session: result.session,
+        // Unavailable + null means unknown, not a confirmed sign-out.
+        session: result.session ?? undefined,
       });
     }
     return result;
@@ -226,7 +227,7 @@ export function MobileAuthProvider({ children }: PropsWithChildren) {
       dispatchIfMounted({
         type: 'TRANSIENT_FAILURE',
         message: authMessages.restoreFailed,
-        session: result.session,
+        session: result.session ?? undefined,
       });
     } else {
       dispatchIfMounted({ type: 'SESSION_CONFIRMED', session: result.session });

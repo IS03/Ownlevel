@@ -102,6 +102,43 @@ describe('native active session screen', () => {
     mockReplace.mockReset(); mockSelection.mockReset(); mockSuccess.mockReset(); mockWarning.mockReset(); mockTrigger.mockReset();
     jest.spyOn(ActionSheetIOS, 'showActionSheetWithOptions').mockImplementation(() => undefined);
   }); afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
+  it('keeps visible series editable and back navigation available while revalidating after background', async () => {
+    const { controller, api, Screen } = fixture(); await controller.refresh(); const view = renderWithPressOpen(<Screen />); await act(async () => {});
+    let resolve!: (value: Awaited<ReturnType<ActiveSessionApi['detail']>>) => void;
+    jest.mocked(api.detail).mockReturnValueOnce(new Promise(done => { resolve = done; }));
+    let resumed!: Promise<void>;
+    act(() => { controller.suspend(); resumed = controller.resume(); });
+    expect(view.getByTestId('session-background-sync')).toBeTruthy();
+    expect(view.getByLabelText('Peso serie 1 de PRESS').props.editable).toBe(true);
+    fireEvent.changeText(view.getByLabelText('Peso serie 1 de PRESS'), '52,5');
+    expect(view.getByLabelText('Peso serie 1 de PRESS').props.value).toBe('52,5');
+    expect(view.getByRole('button', { name: 'Volver a Entrenar' })).toBeEnabled();
+    expect(view.getByRole('button', { name: 'Finalizar entrenamiento' })).toBeDisabled();
+    expect(view.getByRole('button', { name: '+ Agregar' })).toBeDisabled();
+    expect(controller.beginExerciseDrag()).toBe(false); expect(controller.beginSetDrag(EXERCISE_ID)).toBe(false);
+    fireEvent(view.getByLabelText('Contraer PRESS'), 'accessibilityAction', { nativeEvent: { actionName: 'remove' } });
+    expect(api.remove).not.toHaveBeenCalled();
+    await act(async () => { resolve({ status: 'ok', data: testDetail(), meta }); await resumed; });
+    expect(view.getByLabelText('Peso serie 1 de PRESS').props.value).toBe('52,5'); controller.dispose();
+  });
+  it('saves a note entered during revalidation after reconciliation, without a false save error', async () => {
+    const { controller, api, Screen } = fixture(); await controller.refresh(); const view = renderWithPressOpen(<Screen />); await act(async () => {});
+    let resolve!: (value: Awaited<ReturnType<ActiveSessionApi['detail']>>) => void;
+    jest.mocked(api.detail).mockReturnValueOnce(new Promise(done => { resolve = done; }));
+    let resumed!: Promise<void>;
+    act(() => { controller.suspend(); resumed = controller.resume(); });
+    act(() => fireGestureHandler(getByGestureTestId(`swipe-exercise-header-${EXERCISE_ID}`), [
+      { state: State.BEGAN }, { state: State.ACTIVE, translationX: 0 }, { state: State.ACTIVE, translationX: -180 }, { state: State.END, translationX: -180 },
+    ]));
+    fireEvent.press(view.getByLabelText('Agregar nota · PRESS')); fireEvent(view.UNSAFE_getAllByType(Modal).find(node => node.props.visible)!, 'show');
+    fireEvent.changeText(view.getByLabelText('Nota de PRESS'), 'durante la comprobación');
+    await act(async () => { fireEvent.press(view.getByLabelText('Guardar nota')); for (let i = 0; i < 30; i++) await Promise.resolve(); });
+    expect(api.save).not.toHaveBeenCalled(); expect(view.getByLabelText('Nota de PRESS')).toBeTruthy();
+    await act(async () => { resolve({ status: 'ok', data: testDetail(), meta }); await resumed; await controller.flush(EXERCISE_ID); for (let i = 0; i < 30; i++) await Promise.resolve(); });
+    expect(api.save).toHaveBeenCalledTimes(1); expect(view.queryByText(/No pudimos confirmar el guardado/)).toBeNull();
+    expect(view.queryByLabelText('Nota de PRESS')).toBeNull(); expect(controller.getExercise(EXERCISE_ID)).toMatchObject({ phase: 'saved', dirty: false });
+    controller.dispose();
+  });
   it('shows loading and real unavailable/not-found states rather than a false inactive session', async () => {
     const { controller, api, Screen } = fixture(); const view = render(<Screen />);
     expect(view.getByTestId('active-session-loading')).toBeTruthy(); expect(view.getByLabelText('Volver a Entrenar')).toBeTruthy();

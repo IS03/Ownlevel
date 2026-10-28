@@ -36,10 +36,10 @@ function SeriesColumns({ ordinal, kg, reps, rir, completed, header = false }: {
     <View style={styles.completedColumn}>{completed}</View>
   </View>;
 }
-export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller, id, expanded, locked, reorderDisabled = false, addToRoutineName, onToggle, onHistory, onRemove, historyCard, onSheetChange, onReveal, reveal = 0 }: {
+export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller, id, expanded, locked, refreshing = false, reorderDisabled = false, addToRoutineName, onToggle, onHistory, onRemove, historyCard, onSheetChange, onReveal, reveal = 0 }: {
   /** Bumped after "Usar": the set rows remount and cascade in with the copied values. */
   reveal?: number;
-  controller: ActiveSessionController; id: string; expanded: boolean; locked: boolean; reorderDisabled?: boolean; addToRoutineName?: string | null; historyCard?: ReactNode; onSheetChange?: (id: string, open: boolean) => void; onReveal?: (top: number) => void;
+  controller: ActiveSessionController; id: string; expanded: boolean; locked: boolean; refreshing?: boolean; reorderDisabled?: boolean; addToRoutineName?: string | null; historyCard?: ReactNode; onSheetChange?: (id: string, open: boolean) => void; onReveal?: (top: number) => void;
   onToggle: (id: string) => void; onHistory: (id: string) => void; onRemove: (id: string, name: string) => void;
 }) {
   const subscribe = useCallback((listener: () => void) => controller.subscribeExercise(id, listener), [controller, id]);
@@ -71,7 +71,7 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
   const reminder = nextReminder(exercise);
   const identity = [exercise.muscleGroupLabelSnapshot || muscleGroupLabel(exercise.muscleGroupSnapshot), exercise.implementSnapshot, exercise.weightModeSnapshot].filter(Boolean).join(' · ');
   const discardChanges = () => {
-    if (!contextual || !canDiscard) return;
+    if (!contextual || !canDiscard || refreshing) return;
     setDialogOpen(true);
     Alert.alert('¿Descartar cambios?', 'Se descartarán los cambios de este ejercicio que todavía no están guardados.', [
          { text: 'Seguir editando', style: 'cancel', onPress: () => setDialogOpen(false) }, { text: 'Descartar cambios', style: 'destructive', onPress: () => { setDialogOpen(false); void controller.useSaved(id); } },
@@ -87,17 +87,17 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
   return <View ref={card} onLayout={() => { if (expanded && onReveal) requestAnimationFrame(() => card.current?.measureInWindow((_x, top) => onReveal(top))); }} style={[styles.card, { borderBottomColor: colors.border }]} testID={`session-exercise-${id}`}>
     <NativeSwipeActions backgroundColor={colors.background} label={exercise.nameSnapshot} disabled={!contextual} actions={[
       { label: draft.notes.trim() ? 'Editar nota' : 'Agregar nota', disabled: !editable, onPress: () => { Keyboard.dismiss(); setNoteOpen(true); } },
-       ...(canDiscard ? [{ label: 'Descartar cambios', onPress: discardChanges }] : []),
-      { label: 'Quitar', destructive: true, disabled: !editable, onPress: () => onRemove(id, exercise.nameSnapshot) },
+       ...(canDiscard ? [{ label: 'Descartar cambios', disabled: refreshing, onPress: discardChanges }] : []),
+      { label: 'Quitar', destructive: true, disabled: !editable || refreshing, onPress: () => onRemove(id, exercise.nameSnapshot) },
     ]}>
     <NativeDragHandle testID={`exercise-header-${id}`} disabled={locked} accessibilityRole="button" accessibilityLabel={`${expanded ? 'Contraer' : 'Expandir'} ${exercise.nameSnapshot}`} accessibilityState={{ expanded }}
       accessibilityHint={`${reminder ? `Próxima sesión: ${reminder}. ` : ''}Mantené presionado para mover. Deslizá a la izquierda para más acciones.`}
       accessibilityActions={contextual ? [...(reorderDisabled ? [] : [{ name: 'moveUp', label: 'Mover arriba' }, { name: 'moveDown', label: 'Mover abajo' }]),
-         { name: 'note', label: draft.notes.trim() ? 'Editar nota' : 'Agregar nota' }, ...(canDiscard ? [{ name: 'discard', label: 'Descartar cambios' }] : []), { name: 'remove', label: 'Quitar de la sesión' }] : undefined}
+         { name: 'note', label: draft.notes.trim() ? 'Editar nota' : 'Agregar nota' }, ...(canDiscard && !refreshing ? [{ name: 'discard', label: 'Descartar cambios' }] : []), ...(refreshing ? [] : [{ name: 'remove', label: 'Quitar de la sesión' }])] : undefined}
       onAccessibilityAction={event => {
         const action = event.nativeEvent.actionName;
         if (action === 'moveUp') moveExercise(-1); else if (action === 'moveDown') moveExercise(1);
-         else if (action === 'note' && editable) setNoteOpen(true); else if (action === 'discard') discardChanges(); else if (action === 'remove' && editable) onRemove(id, exercise.nameSnapshot);
+         else if (action === 'note' && editable) setNoteOpen(true); else if (action === 'discard' && !refreshing) discardChanges(); else if (action === 'remove' && editable && !refreshing) onRemove(id, exercise.nameSnapshot);
       }}
       onTap={tapHeader} style={styles.header}>
       <View style={styles.flex}>
@@ -117,8 +117,8 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
       <AppText accessibilityLiveRegion="polite" style={{ color: phaseIsFailure(state.phase) || !statusLabels[state.phase] ? colors.danger : colors.text }} variant="caption">{statusLabels[state.phase] ?? state.error}</AppText>
       {state.error && statusLabels[state.phase] ? <AppText accessibilityRole="alert" style={{ color: colors.danger }} variant="caption">{state.error}</AppText> : null}
       {['conflict', 'stale', 'retryable', 'unconfirmed'].includes(state.phase) ? <>
-        <Button disabled={locked} label="Comprobar cambios" onPress={() => void controller.checkExercise(id)} variant="secondary" />
-         {canDiscard ? <Button disabled={locked} label="Descartar cambios" onPress={discardChanges} variant="quiet" /> : null}
+        <Button disabled={locked || refreshing} label="Comprobar cambios" onPress={() => void controller.checkExercise(id)} variant="secondary" />
+         {canDiscard ? <Button disabled={locked || refreshing} label="Descartar cambios" onPress={discardChanges} variant="quiet" /> : null}
       </> : state.error && (!state.storageReady || state.phase === 'scheduled') ? <Button label="Reintentar lectura" onPress={() => void controller.refresh()} variant="secondary" /> : null}
     </View> : null}
     {expanded ? <Animated.View entering={FadeIn.duration(reducedMotion ? 200 : 220)} style={styles.body}>

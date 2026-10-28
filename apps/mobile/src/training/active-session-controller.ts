@@ -10,6 +10,7 @@ import {
   summaryIsValid, type RestDeadline, type SessionExerciseDraft, type SessionSummaryDraft, type StoredExerciseDraft,
 } from './active-session-model';
 import { SessionDraftRepository, type StructuralIntent } from './active-session-storage';
+import { recordSessionResume } from './session-resume-telemetry';
 
 export type ActiveSessionApi = {
   detail: () => Promise<MobileApiRequestResult<SessionDetailDto>>;
@@ -120,7 +121,21 @@ export class ActiveSessionController {
   activate() { this.disposed = false; this.foreground = true; }
   dispose() { this.disposed = true; this.drag = null; this.pauseTimers(); }
   suspend() { this.foreground = false; this.cancelDrag(); this.pauseTimers(); }
-  resume() { this.foreground = true; return this.refresh(); }
+  resume() {
+    const wasSuspended = !this.foreground, startedAt = this.now();
+    this.foreground = true;
+    const flight = this.refresh();
+    if (wasSuspended) {
+      this.measureResume(startedAt, 'local');
+      void flight.then(() => { if (!this.disposed) this.measureResume(startedAt, 'revalidated'); });
+    }
+    return flight;
+  }
+  private measureResume(startedAt: number, stage: 'local' | 'revalidated') {
+    recordSessionResume({ stage, elapsedMs: Math.max(0, this.now() - startedAt), hasSnapshot: !!this.snapshot.detail,
+      editable: [...this.entries.keys()].some(id => this.canEdit(id)),
+      outcome: stage === 'local' ? 'pending' : this.snapshot.fenced || !!this.snapshot.intent ? 'blocked' : this.networkReady ? 'ready' : 'unavailable' });
+  }
   private update(value: Partial<SessionSnapshot>) {
     this.snapshot = { ...this.snapshot, ...value };
     if (!this.disposed) this.listeners.forEach(listener => listener());
@@ -153,7 +168,8 @@ export class ActiveSessionController {
   }
   canEdit(id: string) {
     const entry = this.entries.get(id);
-    return !!entry && !this.disposed && !this.snapshot.fenced && !this.snapshot.refreshing && !this.snapshot.intent && !this.snapshot.finishing && !entry.paused &&
+    // Local edits stay journaled while loadDetail holds writes until CAS reconciliation.
+    return !!entry && !this.disposed && !this.snapshot.fenced && !this.snapshot.intent && !this.snapshot.finishing && !entry.paused &&
       entry.snapshot.storageReady && !entry.stale && entry.snapshot.phase !== 'closed' && entry.snapshot.phase !== 'removed';
   }
   private async safe<T>(operation: () => Promise<MobileApiRequestResult<T>>): Promise<MobileApiRequestResult<T>> {
@@ -190,6 +206,8 @@ export class ActiveSessionController {
   flush(id: string): Promise<void> {
     const entry = this.entries.get(id); if (!entry) return Promise.resolve();
     if (entry.timer) clearTimeout(entry.timer); entry.timer = null;
+    // A revalidation holds writes: wait for its CAS reconciliation instead of settling with nothing sent.
+    if (this.writesPaused && this.refreshFlight) return this.refreshFlight.then(() => this.flush(id));
     if (entry.flight) return entry.flight;
     if (!this.canWrite(entry) || !entry.snapshot.dirty) return Promise.resolve();
     const flight = this.drain(entry).finally(() => { if (entry.flight === flight) entry.flight = null; });
@@ -402,7 +420,7 @@ export class ActiveSessionController {
     if (persist) void this.repository.writeTimer(timer).catch(() => this.update({ storageError: true }));
   }
   beginSetDrag(id: string): boolean {
-    if (this.drag || !this.canEdit(id) || !this.foreground) return false;
+    if (this.drag || this.snapshot.refreshing || !this.canEdit(id) || !this.foreground) return false;
     this.drag = { kind: 'sets', id };
     const entry = this.entries.get(id)!; if (entry.timer) clearTimeout(entry.timer); entry.timer = null;
     this.update({ interaction: 'sets' }); return true;

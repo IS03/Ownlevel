@@ -9,7 +9,7 @@ const ok = <T,>(data: T): MobileApiRequestResult<T> => ({ status: 'ok', data, me
 const unavailable = { status: 'unavailable', reason: 'network', meta: { ...meta, outcome: 'unavailable' } } as const;
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
 const settle = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
-function setup() {
+function setup(now: () => number = () => 10000) {
   const values = new Map<string, string>();
   const storage: SessionStoragePort = { getItem: async key => values.get(key) ?? null, setItem: async (key, value) => { values.set(key, value); },
     removeItem: async key => { values.delete(key); }, getAllKeys: async () => [...values.keys()] };
@@ -26,11 +26,125 @@ function setup() {
     finish: jest.fn<ActiveSessionApi['finish']>().mockImplementation(async input => ok(testFinished(input.metadata))),
   };
   let key = 0;
-  const controller = new ActiveSessionController(api, repository, () => `intent:${++key}`, () => 10000);
+  const controller = new ActiveSessionController(api, repository, () => `intent:${++key}`, now);
   return { values, storage, repository, api, controller };
 }
 describe('native active-session controller', () => {
   beforeEach(() => { jest.useFakeTimers(); }); afterEach(() => { jest.useRealTimers(); });
+  it('measures edit availability independently of a controlled five-second foreground read', async () => {
+    const { controller, api } = setup(() => Date.now()); await controller.refresh(); controller.suspend();
+    const log = jest.spyOn(console, 'info');
+    api.detail.mockImplementationOnce(() => new Promise(resolve => setTimeout(() => resolve(ok(testDetail())), 5000)));
+    const start = Date.now(); let editableAt: number | null = null;
+    const observe = () => { if (editableAt === null && controller.canEdit(EXERCISE_ID)) editableAt = Date.now(); };
+    const detach = controller.subscribe(observe), resumed = controller.resume(); observe();
+    await jest.advanceTimersByTimeAsync(5000); await resumed; observe(); detach();
+    console.info('[QA resume controlled]', { revalidationMs: 5000, editingWaitMs: editableAt === null ? null : editableAt - start });
+    expect(editableAt! - start).toBe(0);
+    expect(log).toHaveBeenCalledWith('[OWNLEVEL Session Resume]', { stage: 'local', elapsedMs: 0, hasSnapshot: true, editable: true, outcome: 'pending' });
+    expect(log).toHaveBeenCalledWith('[OWNLEVEL Session Resume]', { stage: 'revalidated', elapsedMs: 5000, hasSnapshot: true, editable: true, outcome: 'ready' });
+    log.mockRestore(); controller.dispose();
+  });
+  it('allows durable local edits immediately on resume while a five-second revalidation holds writes', async () => {
+    const { controller, api, repository } = setup(); await controller.refresh(); controller.suspend();
+    api.detail.mockImplementationOnce(() => new Promise(resolve => setTimeout(() => resolve(ok(testDetail())), 5000)));
+    const resumed = controller.resume();
+    expect(controller.getSnapshot().refreshing).toBe(true);
+    expect(controller.canEdit(EXERCISE_ID)).toBe(true);
+    controller.change(EXERCISE_ID, draft => ({ ...draft, notes: 'resumed', sets: draft.sets.map(set => ({ ...set, actualReps: '12', actualWeightKg: '47,5', targetRir: 0 })) }));
+    await jest.advanceTimersByTimeAsync(4999);
+    expect((await repository.readDraft(EXERCISE_ID))?.draft.notes).toBe('resumed'); expect(api.save).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1); await resumed; await controller.flush(EXERCISE_ID);
+    expect(api.save).toHaveBeenCalledWith(EXERCISE_ID, VERSION, expect.objectContaining({ notes: 'resumed', sets: [expect.objectContaining({ actualReps: 12, actualWeightKg: 47.5, targetRir: 0 })] }));
+    controller.dispose();
+  });
+  it('preserves edits made during a slow foreground read when another device changed the exercise', async () => {
+    const { controller, api, repository } = setup(); await controller.refresh(); controller.suspend();
+    const read = deferred<Awaited<ReturnType<ActiveSessionApi['detail']>>>(); api.detail.mockReturnValueOnce(read.promise);
+    const resumed = controller.resume();
+    controller.change(EXERCISE_ID, draft => ({ ...draft, notes: 'while checking', sets: draft.sets.map(set => ({ ...set, actualWeightKg: '51,5', actualReps: '11', targetRir: null })) }));
+    await jest.advanceTimersByTimeAsync(1000); expect(api.save).not.toHaveBeenCalled();
+    const remote = testDetail(); remote.exercises[0] = { ...remote.exercises[0], updatedAt: NEXT_VERSION, payload: testPayload('another device') };
+    read.resolve(ok(remote)); await resumed;
+    expect(controller.getExercise(EXERCISE_ID)?.phase).toBe('conflict');
+    expect((await repository.readDraft(EXERCISE_ID))?.draft).toMatchObject({ notes: 'while checking', sets: [{ actualWeightKg: '51,5', actualReps: '11', targetRir: null }] });
+    expect(api.save).not.toHaveBeenCalled(); controller.dispose();
+  });
+  it('settles an explicit flush during revalidation only after reconciliation and the confirmed save', async () => {
+    const { controller, api, repository } = setup(); await controller.refresh(); controller.suspend();
+    const read = deferred<Awaited<ReturnType<ActiveSessionApi['detail']>>>(); api.detail.mockReturnValueOnce(read.promise);
+    const resumed = controller.resume();
+    controller.change(EXERCISE_ID, draft => ({ ...draft, notes: 'saved after check' }), true);
+    let settled = false; const flushed = controller.flush(EXERCISE_ID).then(() => { settled = true; });
+    await settle(); expect(settled).toBe(false); expect(api.save).not.toHaveBeenCalled();
+    read.resolve(ok(testDetail())); await resumed; await flushed;
+    expect(api.save).toHaveBeenCalledTimes(1); expect(api.save).toHaveBeenCalledWith(EXERCISE_ID, VERSION, expect.objectContaining({ notes: 'saved after check' }));
+    expect(controller.getExercise(EXERCISE_ID)).toMatchObject({ phase: 'saved', dirty: false }); expect(await repository.readDraft(EXERCISE_ID)).toBeNull();
+    controller.dispose();
+  });
+  it('settles an explicit flush during an unavailable revalidation without sending, keeping the draft', async () => {
+    const { controller, api, repository } = setup(); await controller.refresh(); controller.suspend();
+    api.detail.mockResolvedValueOnce(unavailable); const resumed = controller.resume();
+    controller.change(EXERCISE_ID, draft => ({ ...draft, notes: 'offline' }), true);
+    await controller.flush(EXERCISE_ID); await resumed;
+    expect(api.save).not.toHaveBeenCalled(); expect(controller.getExercise(EXERCISE_ID)?.phase).toBe('scheduled');
+    expect((await repository.readDraft(EXERCISE_ID))?.draft.notes).toBe('offline'); controller.dispose();
+  });
+  it('keeps local editing responsive while an earlier save drains, then uses its confirmed CAS for the newer draft', async () => {
+    const { controller, api } = setup(); await controller.refresh();
+    const save = deferred<Awaited<ReturnType<ActiveSessionApi['save']>>>(); api.save.mockReturnValueOnce(save.promise);
+    controller.change(EXERCISE_ID, draft => ({ ...draft, notes: 'first' }), true); await settle();
+    controller.suspend(); const resumed = controller.resume();
+    expect(controller.canEdit(EXERCISE_ID)).toBe(true);
+    controller.change(EXERCISE_ID, draft => ({ ...draft, notes: 'after unlock' }));
+    expect(api.detail).toHaveBeenCalledTimes(1); expect(api.save).toHaveBeenCalledTimes(1);
+    const detail = testDetail(); detail.exercises[0] = { ...detail.exercises[0], updatedAt: NEXT_VERSION, payload: testPayload('first') }; api.detail.mockResolvedValueOnce(ok(detail));
+    save.resolve(ok({ sessionExerciseId: EXERCISE_ID, updatedAt: NEXT_VERSION })); await resumed; await controller.flush(EXERCISE_ID);
+    expect(api.save).toHaveBeenCalledTimes(2);
+    expect(api.save).toHaveBeenLastCalledWith(EXERCISE_ID, NEXT_VERSION, expect.objectContaining({ notes: 'after unlock' })); controller.dispose();
+  });
+  it('retains drafts across repeated lock/unlock, unavailable reads and restored connectivity', async () => {
+    const { controller, api, repository } = setup(); await controller.refresh();
+    for (const notes of ['first unlock', 'second unlock']) {
+      controller.suspend(); api.detail.mockResolvedValueOnce(unavailable);
+      const resumed = controller.resume(); controller.change(EXERCISE_ID, draft => ({ ...draft, notes })); await resumed;
+      expect(controller.canEdit(EXERCISE_ID)).toBe(true);
+      expect(controller.getSnapshot().status).toBe('ready');
+      expect((await repository.readDraft(EXERCISE_ID))?.draft.notes).toBe(notes);
+    }
+    expect(api.save).not.toHaveBeenCalled();
+    controller.suspend(); await controller.resume(); await controller.flush(EXERCISE_ID);
+    expect(api.save).toHaveBeenCalledTimes(1); expect(api.save).toHaveBeenCalledWith(EXERCISE_ID, VERSION, expect.objectContaining({ notes: 'second unlock' }));
+    controller.dispose();
+  });
+  it('keeps restored sets and their local identity during foreground reconciliation', async () => {
+    const { api, repository } = setup();
+    const draft = exerciseDraft(testPayload('restored')); draft.sets[0] = { ...draft.sets[0], actualWeightKg: '0', actualReps: '10', targetRir: 0 };
+    await repository.writeDraft({ version: 1, sessionId: SESSION_ID, sessionExerciseId: EXERCISE_ID, serverUpdatedAt: VERSION, basePayload: testPayload(), draft, writeId: 'restored' });
+    const restored = new ActiveSessionController(api, repository); restored.suspend(); await restored.refresh();
+    const read = deferred<Awaited<ReturnType<ActiveSessionApi['detail']>>>(); api.detail.mockReturnValueOnce(read.promise);
+    const resumed = restored.resume(); expect(restored.getExercise(EXERCISE_ID)?.draft.sets).toEqual(draft.sets);
+    restored.change(EXERCISE_ID, current => appendSessionSet(current)); read.resolve(ok(testDetail())); await resumed; await restored.flush(EXERCISE_ID);
+    expect(restored.getExercise(EXERCISE_ID)?.draft.sets[0].localId).toBe(draft.sets[0].localId);
+    expect(api.save).toHaveBeenCalledWith(EXERCISE_ID, VERSION, expect.objectContaining({ sets: [expect.objectContaining({ actualWeightKg: 0, targetRir: 0 }), expect.any(Object)] })); restored.dispose();
+  });
+  it('keeps pending structural operations fenced on resume without replaying them', async () => {
+    const { controller, api, repository } = setup(); await controller.refresh(); api.remove.mockResolvedValueOnce(unavailable);
+    expect(await controller.remove(EXERCISE_ID)).toBe(false); const intent = await repository.readIntent();
+    controller.suspend(); await controller.resume();
+    expect(controller.canEdit(EXERCISE_ID)).toBe(false); expect(await repository.readIntent()).toEqual(intent);
+    expect(api.remove).toHaveBeenCalledTimes(1); expect(api.save).not.toHaveBeenCalled(); controller.dispose();
+  });
+  it.each(['completed', 'removed'] as const)('fences a remotely %s exercise/session and retains changes entered during revalidation', async terminal => {
+    const { controller, api, repository } = setup(); await controller.refresh(); controller.suspend();
+    const read = deferred<Awaited<ReturnType<ActiveSessionApi['detail']>>>(); api.detail.mockReturnValueOnce(read.promise);
+    const resumed = controller.resume(); controller.change(EXERCISE_ID, draft => ({ ...draft, notes: 'retain locally' }));
+    const detail = testDetail();
+    if (terminal === 'completed') detail.session.status = 'completed'; else detail.exercises = [detail.exercises[1]];
+    read.resolve(ok(detail)); await resumed;
+    expect(controller.canEdit(EXERCISE_ID)).toBe(false);
+    expect((await repository.readDraft(EXERCISE_ID))?.draft.notes).toBe('retain locally'); expect(api.save).not.toHaveBeenCalled(); controller.dispose();
+  });
   it('debounces rapid edits for 850ms with durable granular drafts', async () => {
     const { controller, api, repository } = setup(); await controller.refresh();
     controller.change(EXERCISE_ID, draft => ({ ...draft, notes: 'first' }));
