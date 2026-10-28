@@ -122,10 +122,20 @@ No se aprueba #303 ni se cierran #310/#311 por esta PR. El layout específico de
   - Una lectura parcial o fallida no abre la ventana.
   - Los formularios (nombre, energía, datos físicos) siguen usando sus propios controladores y versiones.
 
-## Siguientes intervenciones
+## Estado final de #303 y pendientes
 
-1. Consolidar la caché de reportes de Nutrición con su consumo desde Progreso; acotar retención y reutilizar consultas idénticas desde Inicio, sin otra copia del DTO. Adoptar luego vistas, conexiones y Explorar con sus claves e invalidaciones específicas, antes de afirmar que todo Progreso reutiliza lecturas.
-2. Reutilizar selectivamente lecturas de Inicio/Entrenar y páginas de historial; medir volumen y presupuesto antes de precargar semanas o agregar endpoints.
-3. Retener días nutricionales con invalidación precisa por fechas tras crear, editar, mover o borrar, sin convertir una lectura cacheada en baseline de mutación.
-4. Deduplicar el resumen de Ajustes y separar su vigencia de la validación de formularios.
-5. Perfilar Release física para decidir si API/agregaciones o gráficos necesitan otra intervención. Sin evidencia, no cambiar backend ni rediseñar pantallas.
+Las cinco secciones están evaluadas, y las intervenciones con beneficio demostrado están implementadas en #318–#321:
+
+1. Reportes de Nutrición consolidados con Progreso; días retenidos con invalidación por dominio (en lugar de por fecha, para no dejar una fecha vieja visible).
+2. Inicio y Entrenar: el foco relee sólo lo vencido o lo afectado por una escritura.
+3. Todo Progreso pasa por `ConfirmedReadCache`.
+4. Resumen de Ajustes deduplicado; los formularios quedan fuera de la caché de presentación.
+
+Pendientes documentados (sin evidencia o marginales):
+
+- Perfilar una Release física (latencia API, agregaciones, gráficos, hilo JS) antes de tocar backend, SQL o render. No hay mediciones físicas en esta ejecución.
+- Prefetch de pantallas habituales: no se agregó, porque faltan datos de uso. Sólo el calendario lee el mes anterior, como antes.
+- Deduplicar `fetchMobileHome` y la página 1 del historial entre Inicio y el hub, si una medición lo justifica.
+- Invalidación más fina por fecha o campo, si releer de más resulta costoso.
+- La revalidación fallida con datos visibles se indica en Nutrición y en Progreso (por la hora de lectura), pero no en todas las pantallas. Unificarlo es trabajo visual de otros issues.
+- QA físico integral pendiente (ver «QA físico»).
