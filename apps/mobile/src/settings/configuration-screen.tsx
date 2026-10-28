@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, TextInput, View } from 'react-native';
 import { useNavigation, useRouter, useIsFocused, useFocusEffect } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
-import { AppText, Button, ChipGroup, Heading, TextField, brandTokens, useOwnlevelTheme } from '@/design-system';
+import { AppText, Button, Heading, TextField, brandTokens, useOwnlevelTheme } from '@/design-system';
 import { useNutritionConfiguration } from '@/nutrition/config-provider';
 import { configurationDraft } from '@/nutrition/config-model';
 import type { ConfigState, ConfigurationController } from '@/nutrition/config-controller';
@@ -12,6 +12,8 @@ import { SettingsSegmented } from './native-segmented';
 import { BirthPicker, HeightWheel } from './physical-controls';
 import {
   CountingNumber,
+  EditorialExpansion,
+  EditorialMove,
   EditorialRow,
   EditorialScreen,
   EditorialSkeleton,
@@ -347,61 +349,82 @@ export function ConfigurationScreen({ operation }: { operation: Operation }) {
             </View>
             </>
             ) : null}
-            <EditorialRow
-              title="Si entrenás, gastás"
-              onPress={() => openControl('training')}
-              disabled={locked}
-            >
-              {draft.trainingExpenditureDeltaKcal.trim() &&
-              /^\d+$/.test(draft.trainingExpenditureDeltaKcal)
-                ? `+${formatNumber(Number(draft.trainingExpenditureDeltaKcal))} kcal`
-                : 'Sin dato'}
-            </EditorialRow>
-            {control === 'training'
-              ? field('trainingExpenditureDeltaKcal', 'Extra si entrenás (kcal)')
-              : null}
+            <EditorialMove>
+              <EditorialRow
+                title="Si entrenás, gastás"
+                onPress={() => openControl('training')}
+                disabled={locked}
+                expanded={control === 'training'}
+              >
+                {draft.trainingExpenditureDeltaKcal.trim() &&
+                /^\d+$/.test(draft.trainingExpenditureDeltaKcal)
+                  ? `+${formatNumber(Number(draft.trainingExpenditureDeltaKcal))} kcal`
+                  : 'Sin dato'}
+              </EditorialRow>
+              {control === 'training' ? (
+                <EditorialExpansion testID="energy-training-expansion">
+                  {field('trainingExpenditureDeltaKcal', 'Extra si entrenás (kcal)')}
+                </EditorialExpansion>
+              ) : null}
+            </EditorialMove>
           </>
         ) : (
           <>
             <View>
-              <EditorialRow
-                title="Nacimiento"
-                onPress={() => openControl('birthDate')}
-                disabled={locked}
-              >
-                {draft.birthDate
-                  ? `${shortDate(draft.birthDate)} ${draft.birthDate.slice(0, 4)}`
-                  : 'Sin dato'}
-              </EditorialRow>
-              {control === 'birthDate' ? (
-                <BirthPicker
-                  value={draft.birthDate}
-                  today={config!.today}
-                  onChange={(v) => change('birthDate', v)}
-                />
-              ) : null}
-              <EditorialRow title="Sexo" onPress={() => openControl('sex')} disabled={locked}>
-                {sexes.find((s) => s.value === draft.sex)?.label ?? 'Sin dato'}
-              </EditorialRow>
-              {control === 'sex' ? (
-                <ChipGroup
-                  accessibilityLabel="Sexo"
-                  options={sexes}
-                  value={draft.sex || null}
+              <EditorialMove>
+                <EditorialRow
+                  title="Nacimiento"
+                  onPress={() => openControl('birthDate')}
                   disabled={locked}
-                  onChange={(v) => change('sex', v)}
-                />
-              ) : null}
-              <EditorialRow
-                title="Altura"
-                onPress={() => openControl('heightCm')}
-                disabled={locked}
-              >
-                {draft.heightCm ? `${draft.heightCm} cm` : 'Sin dato'}
-              </EditorialRow>
-              {control === 'heightCm' ? (
-                <HeightWheel value={draft.heightCm} onChange={(v) => change('heightCm', v)} />
-              ) : null}
+                  expanded={control === 'birthDate'}
+                >
+                  {draft.birthDate
+                    ? `${shortDate(draft.birthDate)} ${draft.birthDate.slice(0, 4)}`
+                    : 'Sin dato'}
+                </EditorialRow>
+                {control === 'birthDate' ? (
+                  <EditorialExpansion testID="physical-birth-expansion">
+                    <BirthPicker
+                      value={draft.birthDate}
+                      today={config!.today}
+                      onChange={(v) => change('birthDate', v)}
+                    />
+                  </EditorialExpansion>
+                ) : null}
+              </EditorialMove>
+              <EditorialMove>
+                <EditorialRow title="Sexo" onPress={() => openControl('sex')} disabled={locked} expanded={control === 'sex'}>
+                  {sexes.find((s) => s.value === draft.sex)?.label ?? 'Sin dato'}
+                </EditorialRow>
+                {control === 'sex' ? (
+                  <EditorialExpansion testID="physical-sex-expansion">
+                    {/* The same native segmented control as Automática/Manual: full width, large targets. Without data none is selected. */}
+                    <SettingsSegmented
+                      accessibilityLabel="Sexo"
+                      options={sexes}
+                      value={draft.sex as (typeof sexes)[number]['value']}
+                      disabled={locked}
+                      onChange={(v) => change('sex', v)}
+                    />
+                  </EditorialExpansion>
+                ) : null}
+              </EditorialMove>
+              <EditorialMove>
+                <EditorialRow
+                  title="Altura"
+                  onPress={() => openControl('heightCm')}
+                  disabled={locked}
+                  expanded={control === 'heightCm'}
+                >
+                  {draft.heightCm ? `${draft.heightCm} cm` : 'Sin dato'}
+                </EditorialRow>
+                {control === 'heightCm' ? (
+                  <EditorialExpansion testID="physical-height-expansion">
+                    <HeightWheel value={draft.heightCm} onChange={(v) => change('heightCm', v)} />
+                  </EditorialExpansion>
+                ) : null}
+              </EditorialMove>
+              <EditorialMove>
               {physical?.hasWeightHistory ? (
                 <EditorialRow
                   title="Peso"
@@ -420,10 +443,13 @@ export function ConfigurationScreen({ operation }: { operation: Operation }) {
               ) : (
                 <View style={{ paddingVertical: 20 }}>{field('weightKg', 'Peso (kg)')}</View>
               )}
+              </EditorialMove>
             </View>
-            <AppText muted variant="footnote">
-              Se usan para estimar cuánto gastás en reposo (Energía). No se muestran a nadie.
-            </AppText>
+            <EditorialMove>
+              <AppText muted variant="footnote">
+                Se usan para estimar cuánto gastás en reposo (Energía). No se muestran a nadie.
+              </AppText>
+            </EditorialMove>
           </>
         )}
         {state && controller && !otherIntent ? (
@@ -435,12 +461,14 @@ export function ConfigurationScreen({ operation }: { operation: Operation }) {
               </AppText>
             ))}
             {state.phase === 'idle' || pending ? (
+              <EditorialMove>
               <SaveButton
                 label="Guardar cambios"
                 state={pending ? 'saving' : notice ? 'done' : 'idle'}
                 disabled={locked || !controller.dirty() || !draft}
                 onPress={() => void controller.save()}
               />
+              </EditorialMove>
             ) : null}
           </>
         ) : null}

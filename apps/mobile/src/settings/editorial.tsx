@@ -1,7 +1,7 @@
 import { useEffect, type PropsWithChildren, type ReactNode } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Animated, { FadeIn, FadeInDown, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, FadeOut, LinearTransition, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import {
   AppIcon,
   AppText,
@@ -85,6 +85,20 @@ export function Reveal({ children, index = 0 }: PropsWithChildren<{ index?: numb
       {children}
     </Animated.View>
   );
+}
+/** A block that slides into place when a row above it opens or closes (Reduce Motion: no slide). */
+export function EditorialMove({ children }: PropsWithChildren) {
+  const reduced = useReduceMotion();
+  return <Animated.View layout={reduced ? undefined : LinearTransition.duration(brandTokens.motion.duration.base)}>{children}</Animated.View>;
+}
+const { fast, base } = brandTokens.motion.duration;
+/**
+ * The control a row opens below it, while the blocks after it slide (EditorialMove): it fades in once the space has
+ * started to open (ending with the slide) and fades out quickly, so it never sits over a block that is still moving.
+ */
+export function EditorialExpansion({ children, testID }: PropsWithChildren<{ testID?: string }>) {
+  return <Animated.View entering={FadeIn.delay(base - fast).duration(fast)} exiting={FadeOut.duration(fast / 2)}
+    style={{ paddingTop: 12, paddingBottom: 20 }} testID={testID}>{children}</Animated.View>;
 }
 export function EditorialRow({
   title,
