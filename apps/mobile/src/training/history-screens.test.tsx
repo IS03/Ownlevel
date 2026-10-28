@@ -257,6 +257,67 @@ describe('history: one screen with calendar, day and exercises (HI1–HI3)', () 
       expect(mockMonth).toHaveBeenCalledTimes(4);
       view.unmount();
     });
+    const month = (level: number | null) => (...args: unknown[]) => Promise.resolve(ok({ month: args[1],
+      days: level === null ? [] : [{ date: '2026-10-01', sessions: 1, completedSets: 20, level }].filter(day => day.date.startsWith(args[1] as string)) }));
+    const calendarDay = (view: ReturnType<typeof wrap>) => {
+      fireEvent.press(view.getByRole('button', { name: 'Semana' }));
+      const label = view.getByTestId('training-month-day-2026-10-01').props.accessibilityLabel as string;
+      fireEvent.press(view.getByRole('button', { name: 'Semana' }));
+      return label;
+    };
+    it('after registering a session elsewhere, returning shows it and its intensity', async () => {
+      mockHistory.mockResolvedValue(page); mockMonth.mockImplementation(month(null));
+      const view = wrap(<HistoryScreen now={now} />);
+      await flush();
+      expect(calendarDay(view)).toBe('Jueves 1, sin entrenamiento');
+      setFocused(false); write();
+      mockHistory.mockResolvedValue(ok({ sessions: [row(ID(1), '2026-10-02'), row(ID(4), '2026-10-01')], nextCursor: null }));
+      mockMonth.mockImplementation(month(2));
+      setFocused(true); await flush();
+      expect(view.getByTestId(`history-session-${ID(4)}`)).toBeTruthy();
+      expect(calendarDay(view)).toBe('Jueves 1, intensidad 2 de 4');
+      view.unmount();
+    });
+    it('after editing or discarding a session elsewhere, returning drops what changed', async () => {
+      mockHistory.mockResolvedValue(ok({ sessions: [row(ID(1), '2026-10-02'), row(ID(4), '2026-10-01')], nextCursor: null }));
+      mockMonth.mockImplementation(month(3));
+      const view = wrap(<HistoryScreen now={now} />);
+      await flush();
+      setFocused(false); write();
+      mockHistory.mockResolvedValue(page); mockMonth.mockImplementation(month(null));
+      setFocused(true); await flush();
+      expect(view.queryByTestId(`history-session-${ID(4)}`)).toBeNull();
+      expect(calendarDay(view)).toBe('Jueves 1, sin entrenamiento');
+      view.unmount();
+    });
+    it('a failed refresh keeps the last confirmed data, and the next refresh recovers', async () => {
+      mockHistory.mockResolvedValue(page); mockMonth.mockImplementation(month(3));
+      const view = wrap(<HistoryScreen now={now} />);
+      await flush();
+      mockHistory.mockResolvedValue(lost); mockMonth.mockResolvedValue(lost);
+      await act(async () => view.UNSAFE_getByType(RefreshControl).props.onRefresh()); await flush();
+      expect(view.getByTestId(`history-session-${ID(1)}`)).toBeTruthy();
+      expect(calendarDay(view)).toBe('Jueves 1, intensidad 3 de 4');
+      mockHistory.mockResolvedValue(ok({ sessions: [row(ID(1), '2026-10-02'), row(ID(4), '2026-10-01')], nextCursor: null }));
+      mockMonth.mockImplementation(month(4));
+      await act(async () => view.UNSAFE_getByType(RefreshControl).props.onRefresh()); await flush();
+      expect(view.getByTestId(`history-session-${ID(4)}`)).toBeTruthy();
+      expect(calendarDay(view)).toBe('Jueves 1, intensidad 4 de 4');
+      view.unmount();
+    });
+    it('leaving while the first read is in flight cancels it; opening again reads once and shows the data', async () => {
+      const signals: AbortSignal[] = [];
+      mockHistory.mockImplementation((...args) => { signals.push(args[2] as AbortSignal); return new Promise(() => {}); });
+      const first = wrap(<HistoryScreen now={now} />);
+      await flush(); first.unmount();
+      expect(signals).toHaveLength(1); expect(signals[0]!.aborted).toBe(true);
+      mockHistory.mockReset(); mockHistory.mockResolvedValue(page);
+      const again = wrap(<HistoryScreen now={now} />);
+      await flush();
+      expect(mockHistory).toHaveBeenCalledTimes(1);
+      expect(again.getByTestId(`history-session-${ID(1)}`)).toBeTruthy();
+      again.unmount();
+    });
     it('changing the visible months keeps a post-write reload of a month it already had', async () => {
       mockHistory.mockResolvedValue(page);
       const view = wrap(<HistoryScreen now={now} />);
