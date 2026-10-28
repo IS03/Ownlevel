@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { fetchMobileTrainingExercises, useApiResource } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import type { QuickSessionHistoryDto, SessionDetailDto, SessionExerciseDto } from '@/api/active-session';
 import type { MobileTrainingExercise, MobileTrainingMuscleGroup } from '@/api/exercises';
-import { AppText, Button, Chip, EmptyState, InlineUnavailable, SkeletonBlock, Surface, spacing } from '@/design-system';
+import { AppText, Button, Chip, EmptyState, InlineUnavailable, SkeletonBlock, Surface, spacing, useOwnlevelTheme } from '@/design-system';
 import { pickerExercises } from './routine-editor-model';
 import { compactActual, historyLoadLabel, quickHistoryDate, quickSessions } from './active-session-model';
 import { RoutineExercisePickerBody } from './routine-exercise-picker-body';
@@ -79,7 +79,8 @@ export function SessionQuickHistory({ exercise, history, routineId = null, routi
     <ScrollView contentContainerStyle={styles.historyContent}>
       {history.status === 'unavailable' ? <InlineUnavailable message="No pudimos consultar las últimas sesiones. Podés seguir entrenando." actionLabel="Reintentar" onAction={onRefresh} /> :
         visible.length === 0 ? <><EmptyState title={filter ? `Todavía no lo hiciste en ${routines.get(filter)}` : 'Todavía sin registros'} description={filter ? 'Estas son las últimas seis sesiones disponibles.' : 'No hay sesiones finalizadas con este ejercicio.'} />{filter ? <Button label="Ver todas" onPress={() => setFilter(null)} variant="quiet" /> : null}</> : visible.map(session => <Surface key={session.sessionId} testID={`quick-history-session-${session.sessionId}`}>
-          <View style={styles.row}><AppText numeric variant="headline" style={{ flex: 1 }}>{quickHistoryDate(session.logDate)} · {session.routineName}</AppText><Button label="Usar" variant="quiet" onPress={() => onUse(session)} disabled={!canUse || !session.sets.some(set => set.isCompleted)} /></View>
+          <View style={styles.row}><AppText numeric variant="headline" style={{ flex: 1 }}>{quickHistoryDate(session.logDate)} · {session.routineName}</AppText>
+            <UseAction date={quickHistoryDate(session.logDate)} disabled={!canUse || !session.sets.some(set => set.isCompleted)} onPress={() => onUse(session)} /></View>
           {decisionLabel[session.decision] ? <AppText muted variant="footnote">{decisionLabel[session.decision]}</AppText> : null}
           {session.sets.filter(set => set.isCompleted).map(set => <View key={set.setNumber} style={styles.row}>
             <AppText muted numeric variant="footnote">{set.setNumber}</AppText><AppText numeric style={{ flex: 1 }} variant="body">{historyLoadLabel(set)}</AppText>
@@ -88,5 +89,17 @@ export function SessionQuickHistory({ exercise, history, routineId = null, routi
         </Surface>)}
     </ScrollView>
   </View></RoutineEditorSheet>;
+}
+/**
+ * «Usar» as a text action, like the other inline actions: a 50 pt button made every card header that tall and left empty
+ * space around the date. The touch area still reaches 44 pt through hitSlop.
+ */
+function UseAction({ date, disabled, onPress }: { date: string; disabled: boolean; onPress: () => void }) {
+  const { colors } = useOwnlevelTheme();
+  return <Pressable accessibilityRole="button" accessibilityLabel="Usar" accessibilityHint={`Copia las series del ${date} en este ejercicio.`}
+    accessibilityState={{ disabled }} disabled={disabled} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} onPress={onPress}
+    style={({ pressed }) => ({ opacity: disabled ? 0.45 : pressed ? 0.6 : 1 })} testID="quick-history-use">
+    <AppText variant="headline" style={{ color: colors.primary }}>Usar</AppText>
+  </Pressable>;
 }
 const styles = StyleSheet.create({ root: { flex: 1 }, header: { padding: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: spacing.md }, chips: { flexGrow: 0 }, chipContent: { paddingHorizontal: spacing.lg, gap: spacing.sm, paddingBottom: spacing.md }, historyContent: { padding: spacing.lg, gap: spacing.md }, row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm } });
