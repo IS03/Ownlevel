@@ -1,5 +1,6 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { Dimensions, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { parseNutritionReport, type ReportQuery } from '@/api/nutrition-report';
@@ -132,6 +133,20 @@ beforeEach(() => {
 });
 
 describe('Progress Nutrition', () => {
+  it('keeps the «Cuándo comés» row height while consulting, with a result and on failure (#310)', async () => {
+    let finish!: (value: unknown) => void;
+    mockTiming.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const view = wrap(<NutritionTrendsScreen />);
+    await flush(); // the report is on screen; the timing read is still running
+    const subtitle = () => within(view.getByTestId('nutrition-timing-entry')).getAllByText(/./).at(-1)!;
+    const reserved = (node: ReturnType<typeof subtitle>) => StyleSheet.flatten(node.props.style).minHeight;
+    expect(subtitle().props.children).toBe('Consultando comidas con hora…');
+    const loading = reserved(subtitle());
+    expect(loading).toBe(2 * 18 * Dimensions.get('window').fontScale); // two footnote lines, scaled
+    await act(async () => { finish(ok(timing())); });
+    expect(subtitle().props.children).not.toBe('Consultando comidas con hora…');
+    expect(reserved(subtitle())).toBe(loading);
+  });
   it('shows the current report, real gaps, the preserved detail and navigation, without comparison', async () => {
     expect(parseNutritionReport(report())).toBeDefined();
     expect(parseProgressNutritionTiming(timing())).toBeDefined();

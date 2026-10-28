@@ -64,11 +64,13 @@ export function SettingsScreen() {
           </Pressable>
         </View>
         {(overview.refreshing || configuration?.state.loading) && (!loading || !!identity) ? (
+          // Out of the flow, inside the gap before the rows: appearing or finishing never moves Plan, Energía…
           <ActivityIndicator
+            testID="settings-refreshing"
             color={colors.textMuted}
             size="small"
             accessibilityLabel="Actualizando ajustes"
-            style={{ alignSelf: 'flex-start', marginTop: 8 }}
+            style={{ position: 'absolute', top: '100%', left: 0, marginTop: 2 }}
           />
         ) : null}
       </Reveal>
