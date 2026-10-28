@@ -71,6 +71,9 @@ export class ApiResourceController<T> {
   getSnapshot(): ApiResourceState<T> {
     return this.state;
   }
+  isRefreshing(): boolean { return this.inFlight !== null; }
+  /** An explicit authorization denial must not fall back to a prior protected response. */
+  discardConfirmed(): void { this.confirmed = undefined; this.confirmedResult = undefined; }
 
   subscribe(listener: ResourceListener<T>): () => void {
     this.listeners.add(listener);
@@ -88,6 +91,14 @@ export class ApiResourceController<T> {
     this.abortController?.abort();
     this.inFlight = null;
     return this.refresh(trigger);
+  }
+
+  /** Invalidate a read without starting another one (for an unobserved screen). */
+  cancelRefresh(): void {
+    this.abortController?.abort();
+    this.inFlight = null;
+    this.abortController = null;
+    if (this.state.status === 'ready' && this.state.refreshing) this.update({ ...this.state, refreshing: false });
   }
 
   refresh(trigger: ResourceRefreshTrigger): Promise<void> {

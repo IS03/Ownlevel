@@ -4,6 +4,7 @@ import type {
 } from '@/auth/service';
 
 import type { MobileApiConfig } from './config';
+import { invalidateConfirmedReads } from './confirmed-read-cache';
 import type {
   MobileApiMethod,
   MobileApiReadResult,
@@ -452,5 +453,13 @@ export function createMobileApiClient({
     return result;
   }
 
-  return { read, request };
+  const client: MobileApiClient = { read, request: async options => {
+    const result = await request(options);
+    if (options.method !== 'GET' && result.status !== 'validation' && result.status !== 'auth_required' && result.status !== 'unauthorized') {
+      // Presentation invalidation cannot turn a confirmed write into an ambiguous result.
+      try { invalidateConfirmedReads(client, options.path); } catch { /* A subsequent focus/manual read can still revalidate. */ }
+    }
+    return result;
+  } };
+  return client;
 }

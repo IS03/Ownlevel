@@ -11,7 +11,8 @@ import { ProgressScroll } from './progress-scroll';
 import { useProgressRange } from './progress-range-context';
 import { shortRange } from './progress-range';
 import { arrowDelta, formatValue } from './progress-format';
-import { useProgressResource } from './use-progress-resource';
+import { useCachedProgressResource } from './use-cached-progress-resource';
+import { ProgressReadStatus } from './progress-read-status';
 
 const PCT = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 });
 
@@ -108,11 +109,12 @@ export function MetricsTrendsScreen() {
   const { query, compare } = useProgressRange();
   const [metricId, setMetricId] = useState<string | null>(typeof params.metric === 'string' ? params.metric : null);
   const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressMetrics(c, query, metricId, signal, compare), [query, metricId, compare]);
-  const { state, data, refresh } = useProgressResource(client, `${progressRequestKey(query, compare)}|${metricId ?? ''}`, load);
+  const { state, data, refresh } = useCachedProgressResource(client, 'metrics', `${progressRequestKey(query, compare)}|${metricId ?? ''}`, load);
   const [showArchived, setShowArchived] = useState(false);
   const active = data?.definitions.filter(d => d.isActive) ?? [];
   const archived = data?.definitions.filter(d => !d.isActive) ?? [];
   return <ProgressScroll title="Métricas" testID="metrics-trends-screen" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
+    <ProgressReadStatus state={state} />
     {state.status === 'loading' ? <SkeletonBlock height={200} />
       : !data ? <UnavailableState title="No pudimos cargar tus métricas" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente." action={<Button label="Reintentar" onPress={() => void refresh()} />} />
       : <>

@@ -13,7 +13,8 @@ import { ProgressRow } from './progress-row';
 import { useProgressRange } from './progress-range-context';
 import { periodHeading } from './progress-range';
 import { arrowDelta, formatValue } from './progress-format';
-import { useProgressResource } from './use-progress-resource';
+import { useCachedProgressResource } from './use-cached-progress-resource';
+import { ProgressReadStatus } from './progress-read-status';
 import { useNutritionStages } from '@/stages/stages-provider';
 import { stagesRowDetail } from './stages-model';
 import { ConnectionsSection, useProgressConnections } from './connections-section';
@@ -131,7 +132,7 @@ export function ProgressOverviewScreen() {
   // The stage is shown only if you want it: one row, never mixed into the period.
   const stagesDetail = stagesRowDetail(useNutritionStages()?.state.list) ?? 'Tus planes, uno al lado del otro';
   const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressOverview(c, query, signal, compare), [query, compare]);
-  const { state: status, data, refresh } = useProgressResource(client, progressRequestKey(query, compare), load);
+  const { state: status, data, refresh } = useCachedProgressResource(client, 'overview', progressRequestKey(query, compare), load);
   const connections = useProgressConnections();
   const refreshAll = () => { void Promise.all([refresh(), connections.refresh()]); };
   const refreshing = status.status === 'ready' && status.refreshing || connections.state.status === 'ready' && connections.state.refreshing;
@@ -141,6 +142,7 @@ export function ProgressOverviewScreen() {
     router.push({ pathname, params: extra });
   };
   return <ProgressScroll root title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} tintColor={colors.primary} />}>
+    <ProgressReadStatus state={status} />
     <MyViews />
     {status.status === 'loading' ? <><SkeletonBlock height={240} /><SkeletonBlock height={96} /></>
       : data ? <>
