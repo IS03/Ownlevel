@@ -179,17 +179,20 @@ export function SavedEditor({ controller, state }: { controller: SavedController
           </View>
         ) : undefined
       }
+      // Only when it holds something: an empty footer still kept its padding below the list (#306).
       footer={
-        <>
-          {notice.notice}
-          {!browse && !picker && d ? (
-            <Button
-              label={pending ? 'Guardando…' : 'Guardar'}
-              disabled={saveDisabled}
-              onPress={() => void controller.save()}
-            />
-          ) : null}
-        </>
+        notice.notice || (!browse && !picker && d) ? (
+          <>
+            {notice.notice}
+            {!browse && !picker && d ? (
+              <Button
+                label={pending ? 'Guardando…' : 'Guardar'}
+                disabled={saveDisabled}
+                onPress={() => void controller.save()}
+              />
+            ) : null}
+          </>
+        ) : undefined
       }
     >
       {picker ? (

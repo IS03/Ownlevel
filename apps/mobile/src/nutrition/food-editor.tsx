@@ -157,17 +157,20 @@ export function FoodEditor({
           </View>
         ) : undefined
       }
+      // Only when it holds something: an empty footer still kept its padding below the list (#306).
       footer={
-        <>
-          {notice.notice}
-          {!browse && draft ? (
-            <Button
-              label={pending ? 'Guardando…' : 'Guardar'}
-              disabled={saveDisabled}
-              onPress={() => void controller.save()}
-            />
-          ) : null}
-        </>
+        notice.notice || (!browse && draft) ? (
+          <>
+            {notice.notice}
+            {!browse && draft ? (
+              <Button
+                label={pending ? 'Guardando…' : 'Guardar'}
+                disabled={saveDisabled}
+                onPress={() => void controller.save()}
+              />
+            ) : null}
+          </>
+        ) : undefined
       }
     >
       {state.date ? <AppText muted>{`Destino · ${displayNutritionDate(state.date)}`}</AppText> : null}

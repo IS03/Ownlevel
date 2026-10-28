@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Animated, { FadeIn, SlideInDown, useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import {
@@ -31,7 +31,30 @@ import { NutritionGlassButton } from './day-controls';
 import { mealShown } from './meal-sheet';
 export const libraryMacros = (n: { proteinG: number | null; carbsG: number | null; fatG: number | null }) =>
   `P ${mealShown(n.proteinG)} · C ${mealShown(n.carbsG)} · G ${mealShown(n.fatG)}`;
-export function LibrarySheet({
+type LibrarySheetProps = PropsWithChildren<{
+  title: string;
+  browse?: boolean;
+  onClose: () => void;
+  right?: ReactNode;
+  footer?: ReactNode;
+  testID: string;
+  running?: boolean;
+  embedded?: boolean;
+}>;
+export function LibrarySheet(props: LibrarySheetProps) {
+  return props.embedded ? (
+    <LibrarySheetBody {...props} />
+  ) : (
+    <Modal visible transparent animationType="fade" onRequestClose={props.onClose} statusBarTranslucent>
+      {/* #306: the modal covers the tab bar, so its insets are the window's, not the tab screen's (home
+          indicator + tab bar). Without its own provider the sheet reserved the tab bar below the list. */}
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+        <LibrarySheetBody {...props} />
+      </SafeAreaProvider>
+    </Modal>
+  );
+}
+function LibrarySheetBody({
   title,
   browse,
   onClose,
@@ -41,20 +64,16 @@ export function LibrarySheet({
   testID,
   running,
   embedded = false,
-}: PropsWithChildren<{
-  title: string;
-  browse?: boolean;
-  onClose: () => void;
-  right?: ReactNode;
-  footer?: ReactNode;
-  testID: string;
-  running?: boolean;
-  embedded?: boolean;
-}>) {
+}: LibrarySheetProps) {
   const { colors } = useOwnlevelTheme(),
     reduced = useReduceMotion(),
     insets = useSafeAreaInsets();
-  const body = (
+  // KeyboardAvoidingView compares its parent-relative frame with the keyboard's screen position: the sheet's
+  // offset from the top of the screen is the vertical offset, or the keyboard covers the footer (Guardar).
+  const sheetY = useRef(0),
+    innerY = useRef(0),
+    [keyboardOffset, setKeyboardOffset] = useState(0);
+  return (
     <View style={styles.modal}>
       <Pressable
         accessibilityLabel={`Cerrar ${title} desde el fondo`}
@@ -70,6 +89,11 @@ export function LibrarySheet({
             : SlideInDown.duration(brandTokens.motion.duration.base)
         }
         accessibilityViewIsModal
+        testID={`${testID}-sheet`}
+        onLayout={(e) => {
+          sheetY.current = e.nativeEvent.layout.y;
+          setKeyboardOffset(sheetY.current + innerY.current);
+        }}
         style={[
           styles.sheet,
           embedded && { height: '100%' },
@@ -78,7 +102,16 @@ export function LibrarySheet({
       >
         <ScreenGlow />
         <SheetHandle />
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.fill}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={embedded ? 0 : keyboardOffset}
+          testID={`${testID}-keyboard`}
+          onLayout={(e) => {
+            innerY.current = e.nativeEvent.layout.y;
+            setKeyboardOffset(sheetY.current + innerY.current);
+          }}
+          style={styles.fill}
+        >
           <View style={styles.header}>
             <NutritionGlassButton
               icon="close"
@@ -102,17 +135,10 @@ export function LibrarySheet({
             ) : null}
             {children}
           </ScrollView>
-          {footer ? <View style={styles.footer}>{footer}</View> : null}
+          {footer ? <View style={styles.footer} testID={`${testID}-footer`}>{footer}</View> : null}
         </KeyboardAvoidingView>
       </Animated.View>
     </View>
-  );
-  return embedded ? (
-    body
-  ) : (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      {body}
-    </Modal>
   );
 }
 export function LibrarySaveButton({
