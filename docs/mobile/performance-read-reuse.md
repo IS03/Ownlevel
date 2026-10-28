@@ -78,7 +78,7 @@ Validación de esta intervención: `npm run validate` desde `apps/mobile` pasó 
 
 Metro está preparado desde el worktree de esta PR con la configuración Development habitual. Se verificaron el manifiesto y el bundle iOS servido por LAN, incluida esta intervención y las garantías #316/#317. La instalación Diario permanece intacta.
 
-Al conectar el iPhone, iOS rechazó la firma vencida de OWNLEVEL Dev. Se preparó una renovación de Debug exclusivamente en este worktree y con DerivedData aislado, sin prebuild ni cambios en el proyecto nativo principal. La compilación se detuvo antes de compilar porque Xcode no reconocía ninguna cuenta; queda pendiente completar el acceso personal y verificar instalación/conexión. Esta limitación no es una medición de rendimiento. Los tiempos de Development deben registrarse aparte de Release.
+Al conectar el iPhone, iOS rechazó la firma vencida de OWNLEVEL Dev. Se renovó Debug exclusivamente en este worktree y con DerivedData aislado, sin prebuild ni cambios en el proyecto nativo principal. Tras completar personalmente el acceso de Xcode, `xcodebuild` pasó. Se verificaron bundle ID Dev, equipo, identificador de aplicación, grupos de llavero, vigencia y dispositivo del perfil, además de `codesign --verify --deep --strict`. La actualización de Dev se instaló sin desinstalar; Diario no se modificó. La conexión física está pendiente de desbloquear el iPhone. Los tiempos de Development deben registrarse aparte de Release.
 
 Usar la misma cuenta/red, sin mutar datos entre las primeras dos vueltas. Medir por separado primera información útil y fin de actualización:
 
