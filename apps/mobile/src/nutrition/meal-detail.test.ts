@@ -17,9 +17,14 @@ describe('meal actions (D1, D2, D4)', () => {
   it('manual meals allow everything', () => {
     expect(Object.values(mealMenu(meal(), actions)).every(Boolean)).toBe(true);
   });
-  it('ChatGPT meals only repeat or save (the server blocks edit/delete)', () => {
-    const menu = mealMenu(meal({ sourceType: 'chatgpt' }), actions);
-    expect([!!menu.edit, !!menu.repeat, !!menu.save, !!menu.remove]).toEqual([false, true, true, false]);
+  it('ChatGPT meals are edited and deleted like manual ones (#307)', () => {
+    expect(Object.values(mealMenu(meal({ sourceType: 'chatgpt' }), actions)).every(Boolean)).toBe(true);
+  });
+  it('other origins (imported, label, AI) still only repeat or save', () => {
+    for (const sourceType of ['sheet_import', 'label', 'ai'] as const) {
+      const menu = mealMenu(meal({ sourceType }), actions);
+      expect([!!menu.edit, !!menu.repeat, !!menu.save, !!menu.remove]).toEqual([false, true, true, false]);
+    }
   });
   it('a legacy daily summary offers nothing', () => {
     expect(Object.values(mealMenu(meal({ entryKind: 'legacy_daily_summary' }), actions)).some(Boolean)).toBe(false);

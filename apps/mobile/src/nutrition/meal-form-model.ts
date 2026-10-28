@@ -44,3 +44,9 @@ export function isMealDraft(value: unknown): value is MealDraft {
   const v = value as Record<string, unknown>;
   return Object.keys(v).every(k => ['date','title','description','calories','proteinG','carbsG','fatG','mealLabel','consumedAt','saveToLibrary'].includes(k)) && (v.saveToLibrary === undefined || typeof v.saveToLibrary === 'boolean') && (v.mealLabel === undefined || [null,'breakfast','lunch','snack','dinner','extra'].includes(v.mealLabel as string | null)) && (v.consumedAt === undefined || typeof v.consumedAt === 'string') && ['date','title','description','calories','proteinG','carbsG','fatG'].every(k => typeof v[k] === 'string');
 }
+/**
+ * Meals you logged (manual and quick loads) and the ones that came from ChatGPT are edited and deleted the same way; the
+ * server blocks the rest (MEAL_UNAVAILABLE). A ChatGPT meal keeps its origin internally, it is not labelled here.
+ */
+export const EDITABLE_MEAL_SOURCES: readonly NonNullable<NutritionDayMeal['sourceType']>[] = ['manual', 'chatgpt'];
+export const mealEditable = (meal: NutritionDayMeal) => meal.entryKind === 'meal' && !!meal.sourceType && EDITABLE_MEAL_SOURCES.includes(meal.sourceType);

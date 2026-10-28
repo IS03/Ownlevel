@@ -22,6 +22,15 @@ describe("OWNLEVEL MCP forwarding contract", () => {
     expect(options.redirect).toBe("error");
     expect(JSON.parse(options.body as string)).toEqual(meal);
   });
+  it("forwards time and meal type only when the user said them (#308)", async () => {
+    config();
+    const fetcher = vi.fn(async () => Response.json({ ok: true }));
+    await forwardOAuthMeal({ ...meal, time: "13:05", meal_type: "lunch" }, "Bearer token", fetcher);
+    const [, options] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(JSON.parse(options.body as string)).toEqual({ ...meal, time: "13:05", meal_type: "lunch" });
+    expect(registerMealTool.inputSchema.required).not.toContain("time");
+    expect(registerMealTool.inputSchema.required).not.toContain("meal_type");
+  });
   it("forbids user_id before sending anything", async () => {
     config(); const fetcher = vi.fn();
     await expect(forwardOAuthMeal({ ...meal, user_id: "victim" }, "Bearer token", fetcher)).rejects.toThrow("user_id");

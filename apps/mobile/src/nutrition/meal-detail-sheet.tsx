@@ -7,17 +7,16 @@ import { RoutineSheetButton } from '@/training/routine-sheet-button';
 import { amount } from './day-format';
 import { mealShown } from './meal-sheet';
 import { mealMoments } from './meal-timing-model';
+import { mealEditable } from './meal-form-model';
 
 const time = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Cordoba', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const origins: Partial<Record<NonNullable<NutritionDayMeal['sourceType']>, { label: string; note: string }>> = {
-  chatgpt: { label: 'ChatGPT', note: 'Esta comida llegó desde ChatGPT. Por ahora se corrige desde ahí; acá podés repetirla o guardarla como tuya.' },
   ai: { label: 'IA', note: 'Esta comida se cargó con IA. Por ahora no se edita desde acá; podés repetirla o guardarla como tuya.' },
   label: { label: 'Etiqueta', note: 'Esta comida se cargó desde una etiqueta. Por ahora no se edita desde acá; podés repetirla o guardarla como tuya.' },
   sheet_import: { label: 'Importada', note: 'Esta comida se importó. Por ahora no se edita desde acá; podés repetirla o guardarla como tuya.' },
 };
 export const mealTitle = (meal: NutritionDayMeal) => meal.entryKind === 'legacy_daily_summary' ? 'Resumen histórico importado' : meal.title || meal.description || 'Comida';
-/** Only manual meals (manual and quick loads) can be edited or deleted; the server blocks the rest (MEAL_UNAVAILABLE). */
-export const mealEditable = (meal: NutritionDayMeal) => meal.entryKind === 'meal' && meal.sourceType === 'manual';
+export { EDITABLE_MEAL_SOURCES, mealEditable } from './meal-form-model';
 /** Share of the day's known total. Hidden when either side is unknown or the day's sum is partial (missing ≠ zero). */
 export function dayShare(value: number | null, total: NutritionNutrientTotal, entries: number): number | null {
   if (value === null || total.missingCount > 0 || entries === 0 || total.knownTotal <= 0) return null;

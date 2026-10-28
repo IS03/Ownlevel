@@ -56,6 +56,22 @@ fila.
 La respuesta de escritura confirma únicamente el estado de la operación y la
 comida recién enviada. No incluye acumulados, objetivos ni otros datos del día.
 
+### Hora y tipo de comida (#308)
+
+- `time` (`HH:MM`, hora de Córdoba del día en `date`) y `meal_type` (`breakfast`, `lunch`, `snack`, `dinner`,
+  `extra`) son opcionales. Se envían **sólo** si el usuario los dijo; el GPT no los deduce por la hora de envío.
+- Sin `time`, OWNLEVEL usa el momento de registro para ordenar el día, pero lo marca como horario no informado
+  (igual que las comidas importadas): no aparece como hora confirmada ni cuenta en «Cuándo comés».
+- Una hora que no corresponde al día local de `date` se rechaza (`400 invalid_request`).
+- Desde OWNLEVEL Mobile, las comidas de ChatGPT se editan y borran como las manuales (fecha, hora, tipo, valores),
+  con las mismas garantías (CAS, idempotencia, borrado lógico). La procedencia queda guardada internamente.
+- Las comidas de ChatGPT anteriores al 28/10/2026 no se reescribieron: conservan la hora de envío como hora.
+
+Dependencia externa: el GPT privado guarda la copia del esquema que importó. Para que envíe `time` y `meal_type`
+hay que **volver a importar** el esquema desde la URL de arriba y agregar a sus instrucciones: «Mandá `time` y
+`meal_type` sólo si el usuario los dijo». Hasta entonces, sus comidas llegan sin hora (marcadas como no informada).
+El conector MCP/OAuth lee el esquema en cada conexión.
+
 Si OWNLEVEL responde `409 possible_duplicate`, el GPT debe pedir confirmación.
 Sólo cuando el usuario confirme que fue otra comida puede reenviar con una
 `idempotency_key` nueva y `force_duplicate=true`.

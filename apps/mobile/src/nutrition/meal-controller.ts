@@ -2,7 +2,7 @@ import { parseInputNutritionDate } from './day-format';
 import type { MobileApiRequestResult, MobileApiReadResult } from '@/api/results';
 import type { MealMutationIntent, MealMutationResponse } from '@/api/nutrition-meal';
 import type { MobileNutritionDayResponse, NutritionDayMeal } from '../../../../src/lib/mobile-api/nutrition-day-contract';
-import { mealDraft, validateMealDraft, type MealDraft, repeatMealDraft } from './meal-form-model';
+import { mealDraft, mealEditable, validateMealDraft, type MealDraft, repeatMealDraft } from './meal-form-model';
 import { MealIntentRepository, type StoredMealIntent } from './meal-storage';
 export type MealApi = { mutate: (intent: MealMutationIntent) => Promise<MobileApiRequestResult<MealMutationResponse>>;
   read: (date: string) => Promise<MobileApiReadResult<MobileNutritionDayResponse>> };
@@ -33,7 +33,7 @@ export class MealController {
     } catch { this.update({ phase: 'blocked', message: 'No pudimos leer el intento local. Revisá el almacenamiento antes de continuar.' }); }
   }
   open(date: string, meal?: NutritionDayMeal) {
-    if (this.state.phase !== 'idle' || this.state.intent || (meal && (meal.sourceType !== 'manual' || meal.entryKind !== 'meal'))) return;
+    if (this.state.phase !== 'idle' || this.state.intent || (meal && !mealEditable(meal))) return;
     const draft = mealDraft(date, meal);
     this.update({ editor: { sourceDate: date, mealId: meal?.id ?? null, expectedUpdatedAt: meal?.updatedAt ?? null, draft, original: draft }, errors: {}, message: null, truth: null, truthDate: null });
   }
@@ -140,7 +140,7 @@ export class MealController {
     try {
       const result = await this.api.read(date);
       if (result.status === 'ok' && result.data.nutrition.status === 'ok') {
-        this.update({ truth: result.data.nutrition.data.meals.find(m => m.id === id && m.entryKind === 'meal' && m.sourceType === 'manual') ?? null });
+        this.update({ truth: result.data.nutrition.data.meals.find(m => m.id === id && mealEditable(m)) ?? null });
       }
     } catch { /* A failed truth read must never authorize a new version. */ }
   }

@@ -22,6 +22,8 @@ export const registerMealTool = {
       fat_g: { anyOf: [{ type: "number", minimum: 0, maximum: 10000 }, { type: "null" }] },
       idempotency_key: { type: "string", minLength: 8, maxLength: 200 },
       force_duplicate: { type: "boolean" },
+      time: { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", description: "Sólo si el usuario dijo a qué hora comió (HH:MM, hora de Córdoba). Si no lo dijo, omitilo: OWNLEVEL no inventa la hora." },
+      meal_type: { type: "string", enum: ["breakfast", "lunch", "snack", "dinner", "extra"], description: "Sólo si el usuario nombró la comida (desayuno=breakfast, almuerzo=lunch, merienda=snack, cena=dinner, extra). No lo deduzcas por la hora." },
     },
   },
   securitySchemes: [{ type: "oauth2", scopes: OWNLEVEL_OAUTH_SCOPES }],
@@ -31,8 +33,10 @@ export const registerMealTool = {
 
 export async function forwardOAuthMeal(args: unknown, bearer: string, fetcher: typeof fetch = fetch) {
   const meal = parseChatgptMealInput(args);
-  const { force_duplicate, ...fields } = meal;
-  const payload = { ...fields, ...(force_duplicate ? { force_duplicate: true } : {}) };
+  const { force_duplicate, consumed_at, meal_type, ...fields } = meal;
+  // The route takes the time as the user said it ("HH:MM"), never the composed instant.
+  const time = consumed_at ? consumed_at.slice(11, 16) : null;
+  const payload = { ...fields, ...(force_duplicate ? { force_duplicate: true } : {}), ...(time ? { time } : {}), ...(meal_type ? { meal_type } : {}) };
   // Fixed origin/resource, no user-controlled destination or redirect following.
   const endpoint = new URL(ownlevelIntegrationOrigin());
   // Disposable local tests keep the canonical HTTPS resource/audience, but

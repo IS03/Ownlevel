@@ -315,6 +315,32 @@ describe("ChatGPT private meal contract", () => {
     );
   });
 
+  it("hora y tipo sólo si el usuario los dijo: HH:MM de Córdoba en la fecha, nunca inferidos (#308)", () => {
+    const none = parseChatgptMealInput(validBody);
+    expect(none.consumed_at).toBeNull();
+    expect(none.meal_type).toBeNull();
+    const said = parseChatgptMealInput({ ...validBody, time: "23:45", meal_type: "dinner" });
+    expect(said.consumed_at).toBe("2026-08-20T23:45:00-03:00");
+    expect(new Date(said.consumed_at!).toISOString()).toBe("2026-08-21T02:45:00.000Z");
+    expect(said.meal_type).toBe("dinner");
+    for (const time of ["24:00", "7:30", "07:30:00", 730]) {
+      expect(() => parseChatgptMealInput({ ...validBody, time })).toThrow("Hora inválida");
+    }
+    expect(() => parseChatgptMealInput({ ...validBody, meal_type: "brunch" })).toThrow("Tipo de comida inválido");
+  });
+
+  it("persiste con la RPC v2 y pasa hora y tipo sin inventarlos (#308)", async () => {
+    const rpc = vi.fn(async () => ({ data: { ok: true, created: true, idempotent_replay: false,
+      meal: { id: "m", date: "2026-08-20", title: "T", calories: 1, protein_g: null, carbs_g: null, fat_g: null } }, error: null }));
+    supabaseMocks.createAdminClient.mockReturnValue({ rpc } as never);
+    await persistChatgptMeal("token-owner", parseChatgptMealInput(validBody));
+    await persistChatgptMeal("token-owner", parseChatgptMealInput({ ...validBody, time: "08:10", meal_type: "breakfast" }));
+    const calls = rpc.mock.calls as unknown as [string, Record<string, unknown>][];
+    expect(calls[0][0]).toBe("create_chatgpt_meal_for_integration_v2");
+    expect(calls[0][1]).toMatchObject({ p_consumed_at: null, p_meal_label: null });
+    expect(calls[1][1]).toMatchObject({ p_consumed_at: "2026-08-20T08:10:00-03:00", p_meal_label: "breakfast" });
+  });
+
   it("genera secretos aleatorios y sólo persiste SHA-256", () => {
     const first = newIntegrationToken();
     const second = newIntegrationToken();
