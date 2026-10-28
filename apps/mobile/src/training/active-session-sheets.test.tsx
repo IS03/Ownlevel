@@ -1,5 +1,6 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { QuickSessionHistoryDto } from '@/api/active-session';
 import { OwnlevelThemeProvider } from '@/design-system';
@@ -34,6 +35,25 @@ describe('session quick history', () => {
     expect(row.getAllByText('17,5 kg × 10')).toHaveLength(2); expect(row.getByText('RIR objetivo 2')).toBeTruthy();
     expect(row.getByText('Pediste más peso para la próxima')).toBeTruthy(); fireEvent.press(row.getByRole('button', { name: 'Usar' })); expect(use).toHaveBeenCalledWith(sessions[0]);
     expect(view.queryByText('Ver historial completo')).toBeNull();
+  });
+  it('keeps each card compact: «Usar» is a text action with a 44 pt target, disabled when nothing can be copied (#305)', () => {
+    const done = historical(0), empty = historical(1); empty.sets = empty.sets.map(set => ({ ...set, isCompleted: false }));
+    const use = jest.fn();
+    const view = render(wrapper(<SessionQuickHistory exercise={testExercise()} history={{ status: 'ok', data: { [EXERCISE_ID]: [done, empty] } }} onClose={jest.fn()} onRefresh={jest.fn()} onUse={use} />));
+    const action = within(view.getByTestId(`quick-history-session-${done.sessionId}`)).getByRole('button', { name: 'Usar' });
+    // No fixed-height button in the header row: the row is as tall as the date, the touch area stays at least 44 pt.
+    expect(StyleSheet.flatten(action.props.style)).not.toHaveProperty('height');
+    const { top, bottom, left, right } = action.props.hitSlop;
+    expect(22 + top + bottom).toBeGreaterThanOrEqual(44); expect(left + right).toBeGreaterThanOrEqual(24);
+    const blocked = within(view.getByTestId(`quick-history-session-${empty.sessionId}`)).getByRole('button', { name: 'Usar' });
+    expect(blocked.props.accessibilityState).toMatchObject({ disabled: true });
+    fireEvent.press(blocked); expect(use).not.toHaveBeenCalled();
+    fireEvent.press(action); expect(use).toHaveBeenCalledWith(done);
+  });
+  it('disables «Usar» when the exercise cannot be edited right now', () => {
+    const use = jest.fn(), session = historical(0);
+    const view = render(wrapper(<SessionQuickHistory exercise={testExercise()} canUse={false} history={{ status: 'ok', data: { [EXERCISE_ID]: [session] } }} onClose={jest.fn()} onRefresh={jest.fn()} onUse={use} />));
+    fireEvent.press(view.getByRole('button', { name: 'Usar' })); expect(use).not.toHaveBeenCalled();
   });
   it('preserves unknown actuals and zero without substituting targets', () => {
     const session = historical(0); session.sets[0] = { ...session.sets[0], actualWeightKg: null, actualReps: null, targetRir: null }; session.sets[1] = { ...session.sets[1], actualWeightKg: 0, actualReps: 0 };
