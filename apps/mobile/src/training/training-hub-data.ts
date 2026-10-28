@@ -3,7 +3,7 @@ import { AppState } from 'react-native';
 
 import { fetchMobileHome, type MobileHomeResponse } from '@/api/home';
 import type { MobileApiClient } from '@/api/client';
-import { ApiResourceController, shouldRefreshOnForeground } from '@/api/resource';
+import { ApiResourceController, shouldRefreshOnForeground, type ApiResourceState } from '@/api/resource';
 import type { MobileApiReadResult } from '@/api/results';
 import { fetchMobileTraining, type MobileTrainingResponse } from '@/api/training';
 import { fetchTrainingHistory, type TrainingHistorySession } from '@/api/training-history';
@@ -97,11 +97,16 @@ export class TrainingHubCache {
   }
 }
 
+/** Not confirmed yet, failed, or confirmed longer than the hub window ago. */
+export function hubReadExpired(resource: { getSnapshot(): ApiResourceState<unknown> }, now = Date.now()) {
+  const snapshot = resource.getSnapshot();
+  return snapshot.status !== 'ready' || now - snapshot.current.confirmedAt >= HUB_CACHE_TTL;
+}
+
 export function useHubRead<T>(resource: ApiResourceController<T>) {
   const state = useSyncExternalStore(resource.subscribe.bind(resource), resource.getSnapshot.bind(resource), resource.getSnapshot.bind(resource));
   useEffect(() => {
-    const snapshot = resource.getSnapshot();
-    if (snapshot.status !== 'ready' || Date.now() - snapshot.current.confirmedAt >= HUB_CACHE_TTL) void resource.refresh('initial');
+    if (hubReadExpired(resource)) void resource.refresh('initial');
     let previous = AppState.currentState;
     const subscription = AppState.addEventListener('change', next => {
       if (shouldRefreshOnForeground(previous, next)) void resource.refresh('foreground');

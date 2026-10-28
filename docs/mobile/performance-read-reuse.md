@@ -101,6 +101,16 @@ No se aprueba #303 ni se cierran #310/#311 por esta PR. El layout específico de
 - `meal-preview` (POST que sólo calcula) ya no invalida lecturas.
 - Formularios, versiones y CAS de comidas siguen usando las respuestas de sus escrituras. La lectura retenida es presentación: con datos vencidos, el servidor rechaza una escritura con versión vieja como antes.
 
+## Bloque B · Inicio y Entrenar
+
+- El hub de Entrenar volvía a pedir sus siete recursos (inicio, meses y semana con páginas de historial) en cada foco, aun al volver de Rutinas o Historial un segundo después. Ahora el foco vuelve a leer sólo los recursos vencidos (30 s, la ventana que ya tenía el hub) o todos si hubo una escritura. El refresh manual, el primer plano y el inicio de una sesión siguen leyendo siempre.
+- Inicio, dentro de su ventana de 30 s, no se enteraba de escrituras hechas en otras secciones: registrar una comida en Nutrición y volver mostraba las calorías anteriores. Ahora refresca al enfocar si hubo cualquier escritura de la cuenta desde su última lectura.
+- Ambos usan el contador de escrituras de `ConfirmedReadCache` (`settledWrites`): cuenta toda escritura asentada del cliente de la cuenta, aunque todavía no exista ninguna lectura retenida.
+- Sin cambios, con motivo:
+  - Rutinas y biblioteca: la lista de rutinas es la base CAS del reordenamiento, y la biblioteca es operativa.
+  - Compartir Cuerpo/Entrenamiento entre Inicio y Progreso no sirve: Inicio pide 7 y 30 días, y Progreso empieza en el mes calendario.
+  - Deduplicar `fetchMobileHome` y la página 1 del historial entre Inicio y el hub ahorraría una lectura por primera visita, pero requiere pasar el disparador a cada loader. Es marginal frente al riesgo de que un refresh manual reutilice datos, así que queda documentado.
+
 ## Siguientes intervenciones
 
 1. Consolidar la caché de reportes de Nutrición con su consumo desde Progreso; acotar retención y reutilizar consultas idénticas desde Inicio, sin otra copia del DTO. Adoptar luego vistas, conexiones y Explorar con sus claves e invalidaciones específicas, antes de afirmar que todo Progreso reutiliza lecturas.

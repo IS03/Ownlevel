@@ -104,6 +104,8 @@ export class ConfirmedReadCache {
       }
     }
   }
+  /** Settled writes through this account's client so far (any domain): screens with their own reads compare it on focus. */
+  settledWrites() { return this.writes; }
   clear() { this.entries.forEach(entry => entry.resource.dispose()); this.entries.clear(); }
   private trim(protectedKey?: string) {
     for (const [key, entry] of this.entries) {
@@ -119,6 +121,8 @@ export function confirmedReads(client: MobileApiClient) {
   if (!cache) { cache = new ConfirmedReadCache(); scopes.set(client, cache); }
   return cache;
 }
+/** 0 until the first settled write of this account. */
+export function settledWrites(client: MobileApiClient | null) { return client ? scopes.get(client)?.settledWrites() ?? 0 : 0; }
 export function clearConfirmedReads(client: MobileApiClient) { scopes.get(client)?.clear(); scopes.delete(client); }
 
 /** Settled writes include ambiguous outcomes. This never retries or confirms the write. */
@@ -132,5 +136,5 @@ export function invalidateConfirmedReads(client: MobileApiClient, path: string) 
     : /^\/api\/mobile\/v1\/nutrition(?:\/|$)/.test(route) ? ['nutrition', 'metrics']
     : /^\/api\/mobile\/v1\/metrics(?:\/|$)/.test(route) ? ['metrics'] : [];
   // Every settled write counts, mapped or not: reload() must never join a read that predates it.
-  scopes.get(client)?.invalidate(changed);
+  confirmedReads(client).invalidate(changed);
 }

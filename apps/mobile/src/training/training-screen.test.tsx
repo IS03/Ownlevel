@@ -1,5 +1,6 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { clearConfirmedReads, invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import { Alert, RefreshControl } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { MobileHomeResponse } from '@/api/home';
@@ -15,6 +16,7 @@ const mockStart = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockTrainingDay = jest.fn<(client: unknown, date: string) => Promise<unknown>>();
 const mockPush = jest.fn(); const mockReplace = jest.fn(); const mockHaptic = jest.fn();
 const mockClient = {};
+const mockFocus: (() => void)[] = [];
 const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
 const routineId = '11111111-1111-4111-8111-111111111111';
 const sessionId = '22222222-2222-4222-8222-222222222222';
@@ -26,7 +28,7 @@ jest.mock('@expo/ui', () => {
   const { View } = jest.requireActual<typeof import('react-native')>('react-native');
   return { Host: View, RNHostView: View, BottomSheet: ({ isPresented, children }: { isPresented: boolean; children: React.ReactNode }) => isPresented ? <View>{children}</View> : null };
 });
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, replace: mockReplace }), useFocusEffect: () => undefined }));
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, replace: mockReplace }), useFocusEffect: (effect: () => void) => { mockFocus.push(effect); } }));
 jest.mock('@/api/home', () => ({ fetchMobileHome: (...args: unknown[]) => mockHome(...args) }));
 jest.mock('@/api/training', () => ({ fetchMobileTraining: (...args: unknown[]) => mockTraining(...args) }));
 jest.mock('@/api/training-history', () => ({
@@ -92,6 +94,7 @@ function renderScreen() {
 }
 describe('Training native hub', () => {
   beforeEach(() => {
+    mockFocus.length = 0;
     [mockHome, mockTraining, mockHistory, mockRoutines, mockStart, mockPush, mockReplace, mockHaptic, mockTrainingDay].forEach(mock => mock.mockReset());
     mockTrainingDay.mockImplementation(async (_client, date) => ok({ date, sessions: [], summary: { sessionCount: 0, exercisesCompleted: 0, completedSets: 0, durationMilliseconds: null, volumeKg: null } }));
     mockHome.mockResolvedValue(ok(home()));
@@ -102,6 +105,21 @@ describe('Training native hub', () => {
     mockRoutines.mockResolvedValue(ok({ routines: { status: 'ok', data: [{ id: routineId, name: 'PUSH', color: 'blue', order: 1, isActive: true, exerciseCount: 8, setCount: 24 }] }, initialPlan: { status: 'ok', data: { imported: true, routinesFound: 1 } } }));
     mockStart.mockResolvedValue({ status: 'ok', data: { status: 'started', session: active }, meta });
     jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+  });
+  it('coming back re-reads only expired reads, or everything after a settled write', async () => {
+    const view = renderScreen(); await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar LEGS' })).toBeTruthy());
+    const reads = () => mockHome.mock.calls.length + mockTraining.mock.calls.length + mockHistory.mock.calls.length;
+    const initial = reads();
+    await act(async () => { mockFocus.at(-1)!(); });
+    expect(reads()).toBe(initial); // back from Rutinas/Historial a moment later: nothing re-read
+    invalidateConfirmedReads(mockClient as never, '/api/mobile/v1/training/sessions/s/finish');
+    await act(async () => { mockFocus.at(-1)!(); });
+    expect(mockHome.mock.calls.length).toBe(2); expect(mockHistory.mock.calls.length).toBe(2);
+    const afterWrite = reads(), start = Date.now();
+    jest.spyOn(Date, 'now').mockReturnValue(start + 31_000);
+    await act(async () => { mockFocus.at(-1)!(); });
+    expect(reads()).toBe(afterWrite + 4); // home, the two distinct months and the week: the window expired
+    jest.mocked(Date.now).mockRestore(); clearConfirmedReads(mockClient as never);
   });
   it('shows skeleton then manual first three routines, without recency reads', async () => {
     const view = renderScreen(); expect(view.getByTestId('training-loading')).toBeTruthy();

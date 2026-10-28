@@ -3,6 +3,7 @@ import { useFocusEffect } from 'expo-router';
 
 import { fetchMobileHome, useApiResource } from '@/api';
 import type { MobileApiClient } from '@/api/client';
+import { settledWrites } from '@/api/confirmed-read-cache';
 import { fetchHistoryDay } from '@/api/history';
 import { fetchNutritionReport } from '@/api/nutrition-report';
 import { fetchProgressHabitWeek, fetchProgressBody, fetchProgressTraining } from '@/api/progress';
@@ -59,14 +60,15 @@ export async function loadTrainingWeek(
 /**
  * The minimum time between tab-focus refreshes. Returning to the tab inside this window
  * keeps the confirmed reads; foregrounding the app (useApiResource) and pull-to-refresh
- * always refresh, and a day change always refreshes.
+ * always refresh, and a day change or a write settled anywhere since the last refresh
+ * (a meal, a weight, a finished session) always refreshes.
  */
 export const HOME_FOCUS_REFRESH_MS = 30_000;
 
 export function shouldRefreshOnFocus(
-  last: { at: number; day: string } | null, now: number, day: string,
+  last: { at: number; day: string; writes?: number } | null, now: number, day: string, writes = 0,
 ): boolean {
-  return !last || last.day !== day || now - last.at >= HOME_FOCUS_REFRESH_MS;
+  return !last || last.day !== day || now - last.at >= HOME_FOCUS_REFRESH_MS || (last.writes ?? 0) !== writes;
 }
 
 /** Home's reads, issued in parallel; each block renders from its own state. */
@@ -98,19 +100,19 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
       refreshProgressBody(), refreshProgressRecords()]);
   }, [refreshCalories, refreshHabits, refreshHome, refreshToday, refreshTraining, refreshProgressBody, refreshProgressRecords]);
 
-  const lastFocus = useRef<{ at: number; day: string } | null>(null);
+  const lastFocus = useRef<{ at: number; day: string; writes: number } | null>(null);
   const markRefreshed = useCallback(() => {
-    lastFocus.current = { at: now().getTime(), day: homeDay(now()).today };
-  }, [now]);
+    lastFocus.current = { at: now().getTime(), day: homeDay(now()).today, writes: settledWrites(client) };
+  }, [client, now]);
   useFocusEffect(useCallback(() => {
     const day = homeDay(now()).today;
     // The first focus coincides with the initial reads.
     if (lastFocus.current === null) { markRefreshed(); return; }
-    if (shouldRefreshOnFocus(lastFocus.current, now().getTime(), day)) {
+    if (shouldRefreshOnFocus(lastFocus.current, now().getTime(), day, settledWrites(client))) {
       markRefreshed();
       refreshAll();
     }
-  }, [markRefreshed, now, refreshAll]));
+  }, [client, markRefreshed, now, refreshAll]));
 
   const refreshNow = useCallback(() => { markRefreshed(); refreshAll(); }, [markRefreshed, refreshAll]);
   const reloadHome = home.reload, reloadToday = today.reload, reloadCalories = calories.reload;
