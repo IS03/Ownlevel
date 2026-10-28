@@ -68,11 +68,9 @@ function LibrarySheetBody({
   const { colors } = useOwnlevelTheme(),
     reduced = useReduceMotion(),
     insets = useSafeAreaInsets();
-  // KeyboardAvoidingView compares its parent-relative frame with the keyboard's screen position: the sheet's
-  // offset from the top of the screen is the vertical offset, or the keyboard covers the footer (Guardar).
-  const sheetY = useRef(0),
-    innerY = useRef(0),
-    [keyboardOffset, setKeyboardOffset] = useState(0);
+  // RN already includes the KeyboardAvoidingView's local y in its overlap formula. Only its parent's
+  // screen origin (the sheet) belongs in keyboardVerticalOffset; adding the local y counts it twice.
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
   return (
     <View style={styles.modal}>
       <Pressable
@@ -90,10 +88,7 @@ function LibrarySheetBody({
         }
         accessibilityViewIsModal
         testID={`${testID}-sheet`}
-        onLayout={(e) => {
-          sheetY.current = e.nativeEvent.layout.y;
-          setKeyboardOffset(sheetY.current + innerY.current);
-        }}
+        onLayout={(e) => setKeyboardOffset(e.nativeEvent.layout.y)}
         style={[
           styles.sheet,
           embedded && { height: '100%' },
@@ -106,10 +101,6 @@ function LibrarySheetBody({
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={embedded ? 0 : keyboardOffset}
           testID={`${testID}-keyboard`}
-          onLayout={(e) => {
-            innerY.current = e.nativeEvent.layout.y;
-            setKeyboardOffset(sheetY.current + innerY.current);
-          }}
           style={styles.fill}
         >
           <View style={styles.header}>
