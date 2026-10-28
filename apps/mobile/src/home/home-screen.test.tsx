@@ -1,11 +1,11 @@
-import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import { act, fireEvent, render, renderHook, waitFor, within } from '@testing-library/react-native';
 import { clearConfirmedReads, invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 import type { MobileHomeResponse } from '@/api/home';
 import { OwnlevelThemeProvider } from '@/design-system';
 
-import { HOME_FOCUS_REFRESH_MS } from './home-data';
+import { HOME_FOCUS_REFRESH_MS, useHomeResources } from './home-data';
 import { HomeScreen } from './home-screen';
 import { homeProgressHabits, homeProgressBody, homeProgressTraining } from './home-test-fixtures';
 
@@ -195,6 +195,28 @@ describe('Home screen', () => {
     clock += 1_000;
     await focus();
     expect(mockFetchHome).toHaveBeenCalledTimes(2);
+    clearConfirmedReads(mockApiClient as never);
+  });
+
+  it.each(['focus', 'manual'] as const)('refreshing via %s after a write supersedes a pending pre-write read', async trigger => {
+    let finish!: (result: unknown) => void;
+    const old = homeData(), fresh = homeData();
+    fresh.profile = { status: 'ok', data: { displayName: 'Perfil actualizado' } };
+    mockFetchHome.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; })).mockImplementation(() => ok(fresh));
+    const hook = renderHook(() => useHomeResources(mockApiClient as never, now));
+    await settle();
+    await focus();
+    const signal = mockFetchHome.mock.calls[0][1] as AbortSignal;
+    invalidateConfirmedReads(mockApiClient as never, '/api/mobile/v1/nutrition/days/2026-10-10/meals');
+    clock += 1_000;
+    if (trigger === 'focus') await focus();
+    else await act(async () => { hook.result.current.refresh(); });
+    await act(async () => { finish({ status: 'ok', data: old, meta }); });
+    await settle();
+    expect(mockFetchHome).toHaveBeenCalledTimes(2);
+    expect(signal.aborted).toBe(true);
+    expect(hook.result.current.home.state).toMatchObject({ status: 'ready', current: { data: fresh } });
+    hook.unmount();
     clearConfirmedReads(mockApiClient as never);
   });
 
