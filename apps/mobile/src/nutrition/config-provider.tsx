@@ -1,7 +1,6 @@
 import { createContext, type PropsWithChildren, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
-import { invalidateNutritionReports } from './report-resource';
 import { ConfigurationEditor } from './config-editor';
 import { useConfigurationController } from './use-config-controller';
 
@@ -20,7 +19,8 @@ export function NutritionConfigurationProvider({ children }: PropsWithChildren) 
   const { session } = useMobileAuth();
   const userId = session?.user.id ?? null;
   const listeners = useRef(new Set<() => void>());
-  const invalidate = useCallback(() => { if (client) invalidateNutritionReports(client); listeners.current.forEach(listener => listener()); }, [client]);
+  // Retained reports are already invalidated by the API client when the plan/config write settles.
+  const invalidate = useCallback(() => { listeners.current.forEach(listener => listener()); }, []);
   const current = useConfigurationController(userId ? client : null, userId ?? 'anonymous', invalidate);
   const subscribeConfirmed = useCallback((listener: () => void) => {
     listeners.current.add(listener);

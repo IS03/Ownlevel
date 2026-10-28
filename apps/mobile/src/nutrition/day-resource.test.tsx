@@ -1,0 +1,30 @@
+import { act, renderHook } from '@testing-library/react-native';
+import { afterEach, expect, it, jest } from '@jest/globals';
+import type { MobileApiClient } from '@/api/client';
+import type { MobileApiReadResult } from '@/api/results';
+import type { MobileNutritionDayResponse } from '@/api/nutrition-day';
+import { clearConfirmedReads } from '@/api/confirmed-read-cache';
+import { useNutritionDayResource } from './day-resource';
+import { nutritionFixture } from './day-fixture.test-helper';
+jest.mock('expo-router', () => ({ useFocusEffect: (callback: () => void | (() => void)) => jest.requireActual<typeof import('react')>('react').useEffect(callback, [callback]) }));
+const ok = (date: string) => ({ status: 'ok', data: nutritionFixture(date), meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } }) as MobileApiReadResult<MobileNutritionDayResponse>;
+const read = jest.fn<MobileApiClient['read']>(async options => ok(options.path.split('/').pop()!) as never);
+const client = { read, request: jest.fn() } as unknown as MobileApiClient;
+afterEach(() => { clearConfirmedReads(client); read.mockClear(); });
+it('returns to a visited date at once without reading it again inside the reuse window', async () => {
+  const hook = renderHook(({ date }: { date: string }) => useNutritionDayResource(client, date), { initialProps: { date: '2026-10-02' } });
+  await act(async () => {});
+  hook.rerender({ date: '2026-10-01' }); await act(async () => {});
+  hook.rerender({ date: '2026-10-02' });
+  const state = hook.result.current.state;
+  expect(state.status === 'ready' && state.current.data.date).toBe('2026-10-02');
+  expect(read).toHaveBeenCalledTimes(2);
+  hook.unmount();
+});
+it('shares one day read between the day screen and the meal projection', async () => {
+  const screen = renderHook(() => useNutritionDayResource(client, '2026-10-02'));
+  const projection = renderHook(() => useNutritionDayResource(client, '2026-10-02'));
+  await act(async () => {});
+  expect(read).toHaveBeenCalledTimes(1); expect(projection.result.current.state.status).toBe('ready');
+  screen.unmount(); projection.unmount();
+});

@@ -13,7 +13,7 @@ import { ProgressRow } from './progress-row';
 import { useProgressRange } from './progress-range-context';
 import { periodHeading } from './progress-range';
 import { arrowDelta, formatValue } from './progress-format';
-import { useCachedProgressResource } from './use-cached-progress-resource';
+import { useCachedRead } from '@/api/use-cached-read';
 import { ProgressReadStatus } from './progress-read-status';
 import { useNutritionStages } from '@/stages/stages-provider';
 import { stagesRowDetail } from './stages-model';
@@ -132,7 +132,7 @@ export function ProgressOverviewScreen() {
   // The stage is shown only if you want it: one row, never mixed into the period.
   const stagesDetail = stagesRowDetail(useNutritionStages()?.state.list) ?? 'Tus planes, uno al lado del otro';
   const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressOverview(c, query, signal, compare), [query, compare]);
-  const { state: status, data, refresh } = useCachedProgressResource(client, 'overview', progressRequestKey(query, compare), load);
+  const { state: status, data, refresh } = useCachedRead(client, 'overview', progressRequestKey(query, compare), load);
   const connections = useProgressConnections();
   const refreshAll = () => { void Promise.all([refresh(), connections.refresh()]); };
   const refreshing = status.status === 'ready' && status.refreshing || connections.state.status === 'ready' && connections.state.refreshing;

@@ -28,7 +28,7 @@ import { ProgressScroll } from './progress-scroll';
 import { useComparisonText, useProgressRange } from './progress-range-context';
 import { periodHeading } from './progress-range';
 import { arrowDelta, formatValue } from './progress-format';
-import { useCachedProgressResource } from './use-cached-progress-resource';
+import { useCachedRead } from '@/api/use-cached-read';
 import { ProgressReadStatus } from './progress-read-status';
 
 type SeriesMetric = 'sets' | 'sessions' | 'minutes';
@@ -493,7 +493,7 @@ export function TrainingTrendsScreen() {
     (c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressTraining(c, query, signal, compare),
     [query, compare],
   );
-  const { state, data, refresh } = useCachedProgressResource(client, 'training', progressRequestKey(query, compare), load);
+  const { state, data, refresh } = useCachedRead(client, 'training', progressRequestKey(query, compare), load);
   return (
     <ProgressScroll
       title="Entrenamiento"

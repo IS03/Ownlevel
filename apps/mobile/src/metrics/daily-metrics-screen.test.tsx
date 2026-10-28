@@ -1,5 +1,6 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { clearConfirmedReads, invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import type { MobileNutritionDayResponse } from '@/api/nutrition-day';
@@ -45,10 +46,14 @@ const wrap = (element: React.ReactElement) => render(<SafeAreaProvider initialMe
   <OwnlevelThemeProvider initialMode="light">{element}</OwnlevelThemeProvider></SafeAreaProvider>);
 
 beforeEach(() => {
-  jest.clearAllMocks(); mockStore.clear(); mockFocus.length = 0; mockParams = {};
+  clearConfirmedReads(mockClient as never); jest.clearAllMocks(); mockStore.clear(); mockFocus.length = 0; mockParams = {};
   jest.useFakeTimers({ now: new Date('2026-10-02T15:00:00Z'), doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
   mockFetchDay.mockImplementation(async (_c, d) => ({ status: 'ok', data: day(d), meta }));
-  mockMutate.mockImplementation(async (_c, i) => ({ status: 'ok', data: { status: 'saved', date: (i as { date: string }).date, operation: 'metrics' }, meta }));
+  mockMutate.mockImplementation(async (_c, i) => {
+    // The real write goes through the API client, which invalidates retained readings when it settles.
+    invalidateConfirmedReads(mockClient as never, `/api/mobile/v1/nutrition/days/${(i as { date: string }).date}/metrics`);
+    return { status: 'ok', data: { status: 'saved', date: (i as { date: string }).date, operation: 'metrics' }, meta };
+  });
 });
 afterEach(() => { jest.useRealTimers(); });
 
@@ -113,6 +118,8 @@ describe('Progress → Métricas diarias', () => {
       const [steps, sleep, custom] = base.activity.data.metrics;
       return { status: 'ok', data: { ...base, activity: { status: 'ok', data: { metrics: [{ ...custom, label: 'Proteína' }, steps, { ...sleep, target: 420 }] } } }, meta };
     });
+    // The definitions screen saved through the API client before returning here.
+    invalidateConfirmedReads(mockClient as never, '/api/mobile/v1/metrics/definitions/order');
     await act(async () => { mockFocus.forEach(effect => effect()); }); await flush();
     const labels = view.getAllByTestId(/^daily-metric-/).map(node => node.props.testID);
     expect(labels).toEqual([`daily-metric-${ids.custom}`, `daily-metric-${ids.steps}`, `daily-metric-${ids.sleep}`]);
