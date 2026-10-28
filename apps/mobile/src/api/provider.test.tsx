@@ -28,3 +28,14 @@ it('keeps one client through same-user renders, replaces it on account changes a
   mockOwner = null; view.rerender({}); expect(view.result.current.client).toBeNull();
   mockOwner = 'a'; view.rerender({}); expect(view.result.current.client).not.toBe(first); view.unmount();
 });
+it('keeps the app tree mounted across sign-in and sign-out (entry transition state) while replacing the client', async () => {
+  mockOwner = null;
+  const view = renderHook(() => useMobileApi(), { wrapper: TestProvider });
+  expect(view.result.current.client).toBeNull(); expect(mockMount).toHaveBeenCalledTimes(1);
+  mockOwner = 'a'; view.rerender({}); const signedIn = view.result.current.client!;
+  expect(signedIn).not.toBeNull(); expect(mockMount).toHaveBeenCalledTimes(1);
+  const entry = confirmedReads(signedIn).get('body', '30', async () => ({ status: 'ok', data: 9, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } }));
+  mockOwner = null; view.rerender({}); expect(view.result.current.client).toBeNull(); expect(mockMount).toHaveBeenCalledTimes(1);
+  expect(confirmedReads(signedIn).get('body', '30', async () => ({ status: 'auth_required', meta: { durationMs: 0, httpStatus: null, outcome: 'auth_required' } })).resource).not.toBe(entry.resource);
+  mockOwner = 'b'; view.rerender({}); expect(mockMount).toHaveBeenCalledTimes(1); view.unmount();
+});

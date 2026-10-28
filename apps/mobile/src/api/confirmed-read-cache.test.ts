@@ -96,3 +96,54 @@ it('bounds retained history without evicting an observed controller or leaking q
   expect(cache.get('body', 'unused', async () => ok(0))).not.toBe(unused);
   expect(JSON.stringify(events)).not.toContain('private'); detach(); cache.clear();
 });
+it('publishes only the last read after consecutive invalidations, whatever order earlier reads settle in', async () => {
+  const cache = pool(), reads = [0, 1, 2, 3].map(() => deferred<MobileApiReadResult<number>>());
+  const load = jest.fn<(s: AbortSignal) => Promise<MobileApiReadResult<number>>>();
+  reads.forEach(read => load.mockReturnValueOnce(read.promise));
+  const entry = cache.get('overview', '30', load); entry.focused = 1;
+  const first = cache.ensure(entry, 'initial');
+  cache.invalidate(['body']); cache.invalidate(['training']); cache.invalidate(['nutrition']);
+  expect(load).toHaveBeenCalledTimes(4); expect(load.mock.calls.slice(0, 3).every(([signal]) => signal.aborted)).toBe(true);
+  reads[3].resolve(ok(4)); await entry.resource.refresh('manual');
+  reads[2].resolve(ok(3)); reads[0].resolve(ok(1)); reads[1].resolve(ok(2)); await first; await Promise.resolve();
+  expect(entry.resource.getSnapshot()).toMatchObject({ status: 'ready', refreshing: false, current: { data: 4 } }); expect(entry.invalidated).toBe(false);
+  cache.clear();
+});
+it('never leaves a hidden first load stuck after an invalidation: the next focus reads again', async () => {
+  const cache = pool(), first = deferred<MobileApiReadResult<number>>();
+  const load = jest.fn<(s: AbortSignal) => Promise<MobileApiReadResult<number>>>().mockReturnValueOnce(first.promise).mockResolvedValueOnce(ok(2));
+  const entry = cache.get('body', '30', load); const unmount = cache.mount(entry);
+  void cache.ensure(entry, 'initial'); cache.invalidate(['body']);
+  expect(load).toHaveBeenCalledTimes(1); expect(entry.resource.getSnapshot().status).toBe('loading');
+  first.resolve(ok(1)); await Promise.resolve(); expect(entry.invalidated).toBe(true);
+  await cache.ensure(entry, 'initial');
+  expect(load).toHaveBeenCalledTimes(2); expect(entry.resource.getSnapshot()).toMatchObject({ status: 'ready', current: { data: 2 } });
+  unmount(); cache.clear();
+});
+it.each([
+  ['/api/mobile/v1/training/sessions/s/exercises/e?routineAdditions=1', [true, true, false, false]],
+  ['/api/mobile/v1/training/sessions/s/finish?routineAdditions=1', [true, true, false, false]],
+  ['/api/mobile/v1/training/sessions/s/correction', [true, true, false, false]],
+  ['/api/mobile/v1/training/sessions/s/discard', [true, true, false, false]],
+  ['/api/mobile/v1/training/routines/r/template', [true, true, false, false]],
+  ['/api/mobile/v1/training/exercises/x', [true, true, false, false]],
+  ['/api/mobile/v1/body/weights/2026-10-27', [true, false, true, false]],
+  ['/api/mobile/v1/body/measurements/m', [true, false, true, false]],
+  ['/api/mobile/v1/profile/physical', [true, false, true, true]],
+  ['/api/mobile/v1/nutrition/days/2026-10-27/metrics', [true, false, false, true]],
+  ['/api/mobile/v1/nutrition/days/2026-10-27/context', [true, false, false, true]],
+  ['/api/mobile/v1/nutrition/days/2026-10-27/meals/m', [true, false, false, true]],
+  ['/api/mobile/v1/nutrition/days/2026-10-27/meal-registrations', [true, false, false, true]],
+  ['/api/mobile/v1/nutrition/config', [true, false, false, true]],
+  ['/api/mobile/v1/nutrition/stages?targets=2', [true, false, false, true]],
+  ['/api/mobile/v1/metrics/definitions/order', [true, false, false, true]],
+  ['/api/mobile/v1/progress/views/v?expectedVersion=1', [false, false, false, false]],
+  ['/api/mobile/v1/progress/insight/dismiss', [false, false, false, false]],
+  ['/api/mobile/v1/profile', [false, false, false, false]],
+] as [string, boolean[]][])('maps the real write route %s to the Progress reads that depend on it', async (path, expected) => {
+  const client = {} as MobileApiClient, cache = confirmedReads(client);
+  const entries = (['overview', 'training', 'body', 'metrics'] as const).map(family => cache.get(family, '30', async () => ok(1)));
+  await Promise.all(entries.map(entry => cache.ensure(entry, 'initial')));
+  invalidateConfirmedReads(client, path);
+  expect(entries.map(entry => entry.invalidated)).toEqual(expected); clearConfirmedReads(client);
+});

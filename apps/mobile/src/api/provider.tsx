@@ -5,6 +5,7 @@ import {
   useMemo,
   useLayoutEffect,
   useRef,
+  useState,
 } from 'react';
 
 import { useMobileAuth } from '@/auth';
@@ -59,8 +60,11 @@ export function MobileApiProvider({ children }: PropsWithChildren) {
     previous.current = value.client;
   }, [value.client]);
 
-  // Account changes also retire screen-local readers that do not share this cache.
-  return <MobileApiContext.Provider key={owner ?? 'signed-out'} value={value}>{children}</MobileApiContext.Provider>;
+  // A direct account change also retires screen-local readers that do not share this cache. Sign-in and sign-out
+  // keep the tree: Stack.Protected already swaps the screens, and the entry transition must survive SIGNED_IN.
+  const [scope, setScope] = useState({ owner, generation: 0 });
+  if (scope.owner !== owner) setScope({ owner, generation: scope.owner && owner ? scope.generation + 1 : scope.generation });
+  return <MobileApiContext.Provider key={scope.generation} value={value}>{children}</MobileApiContext.Provider>;
 }
 
 export function useMobileApi(): MobileApiContextValue {
