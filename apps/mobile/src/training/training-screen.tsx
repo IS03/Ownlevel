@@ -13,7 +13,8 @@ import { homeDay, weekDates, mondayOf } from '@/home/home-day';
 import { haptics } from '@/platform/haptics';
 
 import { buildTrainingMonth } from './calendar';
-import { TrainingHubCache, shiftHubMonth, useHubRead } from './training-hub-data';
+import { TrainingHubCache, hubReadExpired, shiftHubMonth, useHubRead } from './training-hub-data';
+import { settledWrites } from '@/api/confirmed-read-cache';
 import { TrainingHubDashboard, knownTrainedDays } from './training-hub-dashboard';
 import { monthCells, pickerYears, weekMarks } from './training-hub-model';
 import { useStartConfirmPointerEvents } from './start-confirm-lock';
@@ -57,16 +58,20 @@ export function TrainingScreen({ now = systemNow }: { now?: () => Date }) {
   }, [now]);
   useEffect(() => () => cache.dispose(), [cache]);
 
+  const writes = useRef(settledWrites(client));
   // The React Compiler memoizes this; focus reads it through a ref.
-  const refresh = (trigger: ResourceRefreshTrigger = 'manual') => {
+  const refresh = (trigger: ResourceRefreshTrigger = 'manual', onlyStale = false) => {
     setClock(now());
+    // Coming back to the hub re-reads only what expired or what a write (here or in another section) may have moved.
+    const settled = settledWrites(client), changed = settled !== writes.current;
+    writes.current = settled;
     const resources = new Set([cache.home, cache.month(month), cache.month(previousMonth), cache.month(shownMonth),
       cache.month(firstWeekMonth), cache.month(lastWeekMonth), cache.week(today)]);
-    resources.forEach(resource => { void resource.refresh(trigger); });
+    resources.forEach(resource => { if (!onlyStale || changed || hubReadExpired(resource)) void resource.refresh(trigger); });
   };
   const refreshRef = useRef(refresh);
   useEffect(() => { refreshRef.current = refresh; });
-  useFocusEffect(useCallback(() => { refreshRef.current('foreground'); }, []));
+  useFocusEffect(useCallback(() => { refreshRef.current('foreground', true); }, []));
 
   const expand = () => { haptics.selection(); setCalendar({ month, open: true }); };
   const collapse = () => setCalendar(value => ({ ...value, open: false }));

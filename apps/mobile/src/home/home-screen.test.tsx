@@ -1,4 +1,5 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import { clearConfirmedReads, invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 import type { MobileHomeResponse } from '@/api/home';
@@ -14,6 +15,7 @@ jest.mock('./home-page-control', () => jest.requireActual('./home-page-control.t
 const mockNavigate = jest.fn();
 const mockPush = jest.fn();
 const mockFocusEffects: (() => void)[] = [];
+const mockApiClient = {};
 const mockFetchHome = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockFetchDay = jest.fn<(client: unknown, date: string) => Promise<unknown>>();
 const mockFetchReport = jest.fn<(client: unknown, query: unknown) => Promise<unknown>>();
@@ -59,7 +61,7 @@ jest.mock('@/nutrition/config-provider', () => ({ useNutritionConfiguration: () 
 jest.mock('@/api', () => ({
   ...jest.requireActual<object>('@/api'),
   fetchMobileHome: (...args: unknown[]) => mockFetchHome(...args),
-  useMobileApi: () => ({ client: {} }),
+  useMobileApi: () => ({ client: mockApiClient }),
 }));
 jest.mock('@/api/history', () => ({ fetchHistoryDay: (c: unknown, d: string) => mockFetchDay(c, d) }));
 jest.mock('@/api/nutrition-report', () => ({ fetchNutritionReport: (c: unknown, q: unknown) => mockFetchReport(c, q) }));
@@ -177,6 +179,23 @@ describe('Home screen', () => {
     await focus();
     expect(mockFetchHome).toHaveBeenCalledTimes(3);
     expect(mockFetchDay.mock.calls.at(-1)![1]).toBe('2026-10-11');
+  });
+
+  it('refreshes on focus inside the interval when a write settled in another section since the last refresh', async () => {
+    await renderScreen();
+    await focus(); // first focus = initial reads
+    clock += 1_000;
+    await focus();
+    expect(mockFetchHome).toHaveBeenCalledTimes(1);
+    // A meal registered in Nutrición: the API client counts the settled write for this account.
+    invalidateConfirmedReads(mockApiClient as never, '/api/mobile/v1/nutrition/days/2026-10-10/meals');
+    clock += 1_000;
+    await focus();
+    expect(mockFetchHome).toHaveBeenCalledTimes(2); expect(mockFetchReport).toHaveBeenCalledTimes(2);
+    clock += 1_000;
+    await focus();
+    expect(mockFetchHome).toHaveBeenCalledTimes(2);
+    clearConfirmedReads(mockApiClient as never);
   });
 
   it('a read after midnight on Sunday asks for the new week', async () => {
