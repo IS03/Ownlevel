@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import type { MobileApiReadResult, MobileApiRequestResult } from '@/api/results';
 
 /**
@@ -12,7 +13,7 @@ export type ReadState<T> =
   | { status: 'unavailable' };
 type Loader<T> = (signal: AbortSignal) => Promise<MobileApiReadResult<T> | MobileApiRequestResult<T>>;
 
-export function useRead<T>(loader: Loader<T>, initial?: T) {
+export function useRead<T>(loader: Loader<T>, initial?: T, { loadOnMount = true }: { loadOnMount?: boolean } = {}) {
   const [state, setState] = useState<ReadState<T>>(initial === undefined ? { status: 'loading' } : { status: 'ready', data: initial, refreshing: true, stale: false });
   const controller = useRef<AbortController | null>(null);
   const start = useCallback(() => {
@@ -30,8 +31,16 @@ export function useRead<T>(loader: Loader<T>, initial?: T) {
     return start();
   }, [start]);
   useEffect(() => {
-    void start();
+    if (loadOnMount) void start();
     return () => controller.current?.abort();
-  }, [start]);
+  }, [start, loadOnMount]);
   return { state, reload };
+}
+
+/** Navigation owns the initial load and every return; it must not also load on mount. */
+export function useFocusedRead<T>(loader: Loader<T>) {
+  const read = useRead(loader, undefined, { loadOnMount: false });
+  const { reload } = read;
+  useFocusEffect(useCallback(() => { void reload(); }, [reload]));
+  return read;
 }
