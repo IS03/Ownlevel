@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { RefreshControl, StyleSheet, View } from 'react-native';
+import { RefreshControl, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchNutritionReport, reportQueryKey, type NutritionReport, type ReportQuery } from '@/api/nutrition-report';
@@ -12,6 +12,7 @@ import {
   SkeletonBlock,
   UnavailableState,
   spacing,
+  typography,
   useOwnlevelTheme,
 } from '@/design-system';
 import { ProgressScroll } from './progress-scroll';
@@ -35,6 +36,8 @@ function TimingEntry() {
     [query],
   );
   const { state, data } = useProgressResource(client, `timing|${progressRequestKey(query)}`, load);
+  // Two lines reserved (scaled with Dynamic Type): consulting, error and the usual result keep the row's height.
+  const { fontScale } = useWindowDimensions();
   const subtitle = data
     ? timingHeadline(data.current).text
     : state.status === 'loading'
@@ -49,7 +52,7 @@ function TimingEntry() {
       <AppIcon name="clock" color={colors.textMuted} size={20} />
       <View style={styles.grow}>
         <AppText variant="headline">Cuándo comés</AppText>
-        <AppText numeric muted variant="footnote">
+        <AppText numeric muted variant="footnote" style={{ minHeight: 2 * typography.footnote.lineHeight * fontScale }}>
           {subtitle}
         </AppText>
       </View>

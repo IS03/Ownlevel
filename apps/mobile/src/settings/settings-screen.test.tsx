@@ -2,7 +2,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import { invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Alert } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import type { MobileApiClient } from '@/api/client';
 import type { NutritionStages } from '@/api/nutrition-stages';
@@ -188,6 +188,22 @@ describe('Editorial settings', () => {
     fireEvent.press(view.getByLabelText('Plan'));
     expect(mockPush).toHaveBeenCalledWith('/settings/stages');
     expect(view.queryByText(/V2|heredada|borrador/)).toBeNull();
+  });
+  it('the refresh indicator stays out of the flow: rows keep their place when it appears and goes (#311)', async () => {
+    const view = render(element()); await view.findByText('Nacho');
+    view.unmount();
+    // A later visit outside the reuse window refreshes with the known name on screen.
+    const start = Date.now(); jest.spyOn(Date, 'now').mockReturnValue(start + 31_000);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const original = mockRead.getMockImplementation()!;
+    mockRead.mockImplementation(async options => { await gate; return original(options); });
+    const again = render(element());
+    expect(again.getByText('Nacho')).toBeTruthy();
+    const indicator = again.getByTestId('settings-refreshing');
+    expect(StyleSheet.flatten(indicator.props.style)).toMatchObject({ position: 'absolute', top: '100%' });
+    await act(async () => { release(); });
+    jest.mocked(Date.now).mockRestore();
   });
   it('shows cached headline immediately on reentry and no other user data', async () => {
     const view = render(element());
