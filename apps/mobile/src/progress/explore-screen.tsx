@@ -101,7 +101,7 @@ function Result({ request, onLoaded }: { request: ExploreRequest; onLoaded: (e: 
   const { colors } = useOwnlevelTheme();
   const { query, compare, compareText, today } = useProgressRange();
   const load = useCallback((c: NonNullable<typeof client>, s: AbortSignal) => fetchProgressExplore(c, query, request, s, compare), [query, request, compare]);
-  const { state, data: e, refresh } = useProgressResource(client, `${progressRequestKey(query, compare)}|${exploreRequestKey(request)}`, load);
+  const { state, data: e, refresh } = useProgressResource(client, `explore|${progressRequestKey(query, compare)}|${exploreRequestKey(request)}`, load);
   useEffect(() => { onLoaded(e ?? null); }, [e, onLoaded]);
   if (state.status === 'loading') return <SkeletonBlock height={220} />;
   if (!e) return <UnavailableState title="No pudimos cargar esta consulta" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente." action={<Button label="Reintentar" onPress={() => void refresh()} />} />;

@@ -16,6 +16,7 @@ import { ProgressOverviewScreen } from './overview-screen';
 import { ConnectionDetailScreen } from './connection-detail-screen';
 import { ProgressRangeProvider } from './progress-range-context';
 import { addDays, calendarRange, compareRange, daysBetween, initialProgressRange, progressRequest, type DateRange, type ProgressRangeState } from './progress-range';
+import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -104,7 +105,7 @@ function unavailable(dto: ProgressConnections, key: ConnectionStory['key']) {
 let mockTransform: (d: ProgressConnections) => ProgressConnections;
 let mockFailure: boolean, mockPending: boolean;
 let mockReleases: (() => void)[];
-beforeEach(() => {
+beforeEach(() => { clearConfirmedReads(mockClient as never);
   jest.clearAllMocks(); mockTransform = d => d; mockFailure = false; mockPending = false; mockReleases = [];
   mockRead.mockImplementation(async options => {
     const url = new URL(options.path, 'https://www.ownlevel.fit');
@@ -324,6 +325,7 @@ describe('connection detail (C2, C3)', () => {
     view = await detail('nope');
     expect(view.getByText('No encontramos esta historia')).toBeTruthy();
     view.unmount();
+    clearConfirmedReads(mockClient as never); // a later visit, outside the reuse window
     mockFailure = true;
     view = await detail('kcal_weight');
     expect(view.getByText('No pudimos cargar esta historia')).toBeTruthy();

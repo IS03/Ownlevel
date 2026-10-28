@@ -10,6 +10,7 @@ import { InfluenceBuildScreen } from './influence-build-screen';
 import { ProgressRangeProvider } from './progress-range-context';
 import type { ProgressRangeState } from './progress-range';
 import { QUESTIONS } from './influence-model';
+import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 
 const mockPush = jest.fn();
 let mockParams: Record<string, string> = {};
@@ -39,7 +40,7 @@ const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const }, ok = (d
 const flush = () => act(async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); });
 const wrap = (Screen: typeof InfluenceScreen, state?: ProgressRangeState) => render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
   <OwnlevelThemeProvider initialMode="light"><ProgressRangeProvider initialToday={TODAY} initialState={state}><Screen /></ProgressRangeProvider></OwnlevelThemeProvider></SafeAreaProvider>);
-beforeEach(() => {
+beforeEach(() => { clearConfirmedReads(mockClient as never);
   jest.clearAllMocks(); mockIntent = 0; mockParams = { ...definition, lag: '0' };
   mockRead.mockResolvedValue(ok({ today: TODAY, period, ...reading() }));
   mockSuggested.mockResolvedValue(ok({ today: TODAY, period, questions: [{ key: 'carbs_sets', ...reading() }, { key: 'steps_sleep', ...insufficient() }] }));

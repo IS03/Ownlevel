@@ -111,6 +111,17 @@ No se aprueba #303 ni se cierran #310/#311 por esta PR. El layout específico de
   - Compartir Cuerpo/Entrenamiento entre Inicio y Progreso no sirve: Inicio pide 7 y 30 días, y Progreso empieza en el mes calendario.
   - Deduplicar `fetchMobileHome` y la página 1 del historial entre Inicio y el hub ahorraría una lectura por primera visita, pero requiere pasar el disparador a cada loader. Es marginal frente al riesgo de que un refresh manual reutilice datos, así que queda documentado.
 
+## Bloque C · Ajustes y Progreso restante
+
+- Las demás lecturas de Progreso pasan por la familia `progress-extra` de `ConfirmedReadCache`, mediante `useProgressResource`, que conserva su firma. Son vistas, edición de vistas, conexiones, insight, Explorar y sus hojas, cuándo comés, etapas, influencia y detalle de ejercicio. Con esto, todo Progreso reutiliza lecturas confirmadas. Cada clave lleva el prefijo de su tipo de lectura. La entrada «Cuándo comés» de Progreso Nutrición y su pantalla comparten la lectura cuando no hay comparación (es la misma consulta).
+- Se agregan los dominios `views` e `insight`: guardar, renombrar, ordenar o borrar una vista, o descartar el insight, invalida esas lecturas. Las escrituras de datos (nutrición, cuerpo, entrenamiento y métricas) también las invalidan.
+- Los cambios rápidos de período o comparación reutilizan lo ya leído y cancelan las primeras cargas abandonadas.
+- Resumen de Ajustes:
+  - Al enfocar, vuelve a leer perfil, etapas y métricas (y recarga la configuración nutricional) sólo si no hay una lectura completa, si venció la ventana de 30 s o si hubo una escritura de la cuenta.
+  - Al volver del segundo plano, relee sólo si Ajustes está visible, y no en cada transición `inactive → active`.
+  - Una lectura parcial o fallida no abre la ventana.
+  - Los formularios (nombre, energía, datos físicos) siguen usando sus propios controladores y versiones.
+
 ## Siguientes intervenciones
 
 1. Consolidar la caché de reportes de Nutrición con su consumo desde Progreso; acotar retención y reutilizar consultas idénticas desde Inicio, sin otra copia del DTO. Adoptar luego vistas, conexiones y Explorar con sus claves e invalidaciones específicas, antes de afirmar que todo Progreso reutiliza lecturas.

@@ -6,6 +6,7 @@ import { OwnlevelThemeProvider } from '@/design-system';
 import type { ProgressInsight } from '@/api/progress-insight';
 import { InsightRow } from './insight-row';
 import { ProgressRangeProvider, useProgressRange } from './progress-range-context';
+import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 
 const mockPush = jest.fn();
 const mockFetch = jest.fn<() => Promise<unknown>>();
@@ -31,7 +32,7 @@ const flush = () => act(async () => { for (let i = 0; i < 10; i++) await Promise
 const wrap = () => render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
   <OwnlevelThemeProvider initialMode="light"><ProgressRangeProvider initialToday={TODAY}><InsightRow /><Unit /></ProgressRangeProvider></OwnlevelThemeProvider></SafeAreaProvider>);
 
-beforeEach(() => { jest.clearAllMocks(); mockFetch.mockResolvedValue({ status: 'ok', data: insight, meta }); });
+beforeEach(() => { clearConfirmedReads(mockClient as never); jest.clearAllMocks(); mockFetch.mockResolvedValue({ status: 'ok', data: insight, meta }); });
 
 describe('Automatic insight row', () => {
   it('says what happened, neutrally, with how many days; "Ver" opens the answer on the last 3 months', async () => {

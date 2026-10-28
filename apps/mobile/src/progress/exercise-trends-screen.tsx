@@ -416,7 +416,7 @@ export function ExerciseTrendsScreen() {
       fetchProgressTrainingExercise(c, query, id, signal, compare),
     [query, id, compare],
   );
-  const key = `${progressRequestKey(query, compare)}|${id}`;
+  const key = `exercise|${progressRequestKey(query, compare)}|${id}`;
   const { state, data, refresh } = useProgressResource(client, key, load);
   const notFound = state.status === 'unavailable' && state.result.meta.httpStatus === 404;
   return (

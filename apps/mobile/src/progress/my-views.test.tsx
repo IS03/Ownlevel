@@ -10,6 +10,7 @@ import { MyViews } from './my-views';
 import { PinViewSheet, suggestedViewName } from './pin-view-sheet';
 import { ViewsEditScreen } from './views-edit-screen';
 import { ProgressRangeProvider } from './progress-range-context';
+import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 
 const mockPush = jest.fn();
 const mockViews = jest.fn<(c: unknown, q: ProgressQuery) => Promise<unknown>>();
@@ -52,7 +53,7 @@ const flush = () => act(async () => { for (let i = 0; i < 10; i++) await Promise
 const wrap = (el: React.ReactElement) => render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
   <OwnlevelThemeProvider initialMode="light"><ProgressRangeProvider initialToday={TODAY}>{el}</ProgressRangeProvider></OwnlevelThemeProvider></SafeAreaProvider>);
 
-beforeEach(() => { jest.clearAllMocks(); mockViews.mockResolvedValue(ok(read('two'))); });
+beforeEach(() => { clearConfirmedReads(mockClient as never); jest.clearAllMocks(); mockViews.mockResolvedValue(ok(read('two'))); });
 
 describe('Mis vistas', () => {
   it('the API client opts into influence definitions', () => {
@@ -97,6 +98,7 @@ describe('Mis vistas', () => {
     const view = wrap(<MyViews />); await flush();
     expect(view.getByTestId('my-views-empty')).toBeTruthy();
     expect(view.getByText('Explorar tus datos')).toBeTruthy();
+    view.unmount(); clearConfirmedReads(mockClient as never); // a later visit, outside the reuse window
     mockViews.mockResolvedValueOnce({ status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } });
     const failed = wrap(<MyViews />); await flush();
     expect(failed.queryByTestId('my-views-empty')).toBeNull();

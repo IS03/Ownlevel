@@ -1,4 +1,5 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
@@ -199,6 +200,20 @@ describe('Editorial settings', () => {
     mockUser = 'other';
     const other = render(element());
     expect(other.queryByText('Nacho')).toBeNull();
+  });
+  it('re-entering inside the reuse window reads nothing again; a settled write or an expired window does', async () => {
+    const identityReads = () => mockRead.mock.calls.filter(([options]) => options.path === '/api/mobile/v1/profile').length;
+    const view = render(element()); await view.findByText('Nacho'); view.unmount();
+    expect(identityReads()).toBe(1);
+    const again = render(element()); await again.findByText('Nacho'); again.unmount();
+    expect(identityReads()).toBe(1);
+    invalidateConfirmedReads(mockClient as never, '/api/mobile/v1/profile');
+    const written = render(element()); await act(async () => {}); written.unmount();
+    expect(identityReads()).toBe(2);
+    const start = Date.now(); jest.spyOn(Date, 'now').mockReturnValue(start + 31_000);
+    const later = render(element()); await act(async () => {}); later.unmount();
+    expect(identityReads()).toBe(3);
+    jest.mocked(Date.now).mockRestore();
   });
   it('failed stage refresh replaces cached stage with neutral headline', async () => {
     currentStage('2026-12-22');

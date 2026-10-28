@@ -4,6 +4,8 @@ import { useFocusEffect } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
 import type { MobileApiClient } from '@/api/client';
+import { READ_REUSE_MS, settledWrites } from '@/api/confirmed-read-cache';
+import { shouldRefreshOnForeground } from '@/api/resource';
 import { fetchProfileIdentity, type ProfileIdentity } from '@/api/profile-identity';
 import { fetchNutritionStages, type NutritionStages } from '@/api/nutrition-stages';
 import { fetchMetricDefinitions, type MetricDefinitionsResponse } from '@/api/metric-definitions';
@@ -30,7 +32,16 @@ const empty: Overview = {
   identityLoading: true,
 };
 // Read-only memory cache, namespaced by authenticated client AND user. No private data on disk.
-const cache = new WeakMap<MobileApiClient, { userId: string; data: Overview }>();
+// `confirmedAt`/`writes`: when the last complete read happened and the account's settled writes at its start.
+const cache = new WeakMap<MobileApiClient, { userId: string; data: Overview; confirmedAt?: number; writes?: number }>();
+/** Same reuse window as the other retained presentation reads. */
+export const SETTINGS_OVERVIEW_REUSE_MS = READ_REUSE_MS;
+/** Focus re-reads only what may have changed: nothing complete yet, the window expired, or a write settled since. */
+export function settingsOverviewStale(client: MobileApiClient, userId: string, now = Date.now()) {
+  const stored = cache.get(client);
+  return stored?.userId !== userId || stored.confirmedAt === undefined || now - stored.confirmedAt >= SETTINGS_OVERVIEW_REUSE_MS
+    || stored.writes !== settledWrites(client);
+}
 export function useSettingsOverview() {
   const { client } = useMobileApi();
   const { session } = useMobileAuth();
@@ -67,7 +78,8 @@ export function useSettingsOverview() {
         },
       });
       const version = ++generation.current;
-      let remaining = 3;
+      const writes = settledWrites(client);
+      let remaining = 3, failed = false;
       let current: Overview = {
         ...base,
         refreshing: true,
@@ -86,49 +98,55 @@ export function useSettingsOverview() {
             (patch.stagesLoading ?? current.stagesLoading),
           refreshing: remaining > 0,
         };
-        cache.set(client, { userId, data: current });
+        // Only a complete, fully confirmed read opens the reuse window.
+        cache.set(client, { userId, data: current, ...(remaining === 0 && !failed ? { confirmedAt: Date.now(), writes } : {}) });
         setSnapshot({ client, userId, data: current });
       };
       // Publish each answer independently; a slow stage endpoint never hides the profile or summaries.
       void fetchProfileIdentity(client, signal)
         .then((r) =>
           publish({
-            identity: r.status === 'ok' ? r.data : base.identity,
+            identity: r.status === 'ok' ? r.data : (failed = true, base.identity),
             identityLoading: false,
           }),
         )
-        .catch(() => publish({ identityLoading: false }));
+        .catch(() => { failed = true; publish({ identityLoading: false }); });
       void fetchNutritionStages(client, signal)
         .then((r) =>
           publish({
-            stages: r.status === 'ok' ? (rememberStages(client, userId, r.data), r.data) : null,
+            stages: r.status === 'ok' ? (rememberStages(client, userId, r.data), r.data) : (failed = true, null),
             stagesLoading: false,
           }),
         )
-        .catch(() => publish({ stages: null, stagesLoading: false }));
+        .catch(() => { failed = true; publish({ stages: null, stagesLoading: false }); });
       void fetchMetricDefinitions(client, signal)
         .then((r) =>
           publish({
-            metrics: r.status === 'ok' ? r.data : base.metrics,
+            metrics: r.status === 'ok' ? r.data : (failed = true, base.metrics),
             metricsLoading: false,
           }),
         )
-        .catch(() => publish({ metricsLoading: false }));
+        .catch(() => { failed = true; publish({ metricsLoading: false }); });
       if (controller) void controller.load();
     },
     [client, userId, controller],
   );
+  const visible = useRef(false);
   useFocusEffect(
     useCallback(() => {
+      visible.current = true;
       const life = new AbortController();
-      refresh(life.signal);
-      return () => life.abort();
-    }, [refresh]),
+      if (client && settingsOverviewStale(client, userId)) refresh(life.signal);
+      return () => { visible.current = false; life.abort(); };
+    }, [client, userId, refresh]),
   );
   useEffect(() => {
     const life = new AbortController();
+    let previous = AppState.currentState;
+    // Back from the background while Ajustes is on screen; not on every inactive → active nor while hidden.
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') refresh(life.signal);
+      if (visible.current && shouldRefreshOnForeground(previous, state)) refresh(life.signal);
+      previous = state;
     });
     return () => {
       life.abort();

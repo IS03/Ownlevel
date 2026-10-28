@@ -8,6 +8,7 @@ import { OwnlevelThemeProvider } from '@/design-system';
 import { PeriodChart } from './period-chart';
 import { ProgressStagesScreen } from './stages-screen';
 import { chartBands, defaultCompare, stageDates, stageLength, stageRows, stagesRowDetail } from './stages-model';
+import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 
 const mockRead = jest.fn<MobileApiClient['read']>();
 const mockPush = jest.fn();
@@ -34,7 +35,7 @@ const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
 const screen = () => render(<SafeAreaInsetsContext.Provider value={{ top: 0, right: 0, bottom: 0, left: 0 }}>
   <OwnlevelThemeProvider><ProgressStagesScreen /></OwnlevelThemeProvider></SafeAreaInsetsContext.Provider>);
 
-beforeEach(() => { jest.clearAllMocks(); });
+beforeEach(() => { clearConfirmedReads(mockClient as never); jest.clearAllMocks(); });
 
 describe('stages model', () => {
   it('formats dates with an exclusive end and the week of a running stage', () => {

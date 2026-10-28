@@ -194,3 +194,17 @@ it.each([
   invalidateConfirmedReads(client, path);
   expect(entries.map(entry => entry.invalidated)).toEqual(expected); clearConfirmedReads(client);
 });
+it.each([
+  ['/api/mobile/v1/progress/views/v?expectedVersion=1', [true, false]],
+  ['/api/mobile/v1/progress/views/order', [true, false]],
+  ['/api/mobile/v1/progress/insight/dismiss', [true, false]],
+  ['/api/mobile/v1/nutrition/stages?targets=2', [true, true]],
+  ['/api/mobile/v1/training/routines/r/template', [true, true]],
+  ['/api/mobile/v1/profile', [false, false]],
+] as [string, boolean[]][])('maps %s to the other Progress readings (views, insight, connections…) and the overview', async (path, expected) => {
+  const client = {} as MobileApiClient, cache = confirmedReads(client);
+  const entries = (['progress-extra', 'overview'] as const).map(family => cache.get(family, '30', async () => ok(1)));
+  await Promise.all(entries.map(entry => cache.ensure(entry, 'initial')));
+  invalidateConfirmedReads(client, path);
+  expect(entries.map(entry => entry.invalidated)).toEqual(expected); clearConfirmedReads(client);
+});
