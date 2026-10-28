@@ -70,6 +70,26 @@ describe('native active-session controller', () => {
     expect((await repository.readDraft(EXERCISE_ID))?.draft).toMatchObject({ notes: 'while checking', sets: [{ actualWeightKg: '51,5', actualReps: '11', targetRir: null }] });
     expect(api.save).not.toHaveBeenCalled(); controller.dispose();
   });
+  it('settles an explicit flush during revalidation only after reconciliation and the confirmed save', async () => {
+    const { controller, api, repository } = setup(); await controller.refresh(); controller.suspend();
+    const read = deferred<Awaited<ReturnType<ActiveSessionApi['detail']>>>(); api.detail.mockReturnValueOnce(read.promise);
+    const resumed = controller.resume();
+    controller.change(EXERCISE_ID, draft => ({ ...draft, notes: 'saved after check' }), true);
+    let settled = false; const flushed = controller.flush(EXERCISE_ID).then(() => { settled = true; });
+    await settle(); expect(settled).toBe(false); expect(api.save).not.toHaveBeenCalled();
+    read.resolve(ok(testDetail())); await resumed; await flushed;
+    expect(api.save).toHaveBeenCalledTimes(1); expect(api.save).toHaveBeenCalledWith(EXERCISE_ID, VERSION, expect.objectContaining({ notes: 'saved after check' }));
+    expect(controller.getExercise(EXERCISE_ID)).toMatchObject({ phase: 'saved', dirty: false }); expect(await repository.readDraft(EXERCISE_ID)).toBeNull();
+    controller.dispose();
+  });
+  it('settles an explicit flush during an unavailable revalidation without sending, keeping the draft', async () => {
+    const { controller, api, repository } = setup(); await controller.refresh(); controller.suspend();
+    api.detail.mockResolvedValueOnce(unavailable); const resumed = controller.resume();
+    controller.change(EXERCISE_ID, draft => ({ ...draft, notes: 'offline' }), true);
+    await controller.flush(EXERCISE_ID); await resumed;
+    expect(api.save).not.toHaveBeenCalled(); expect(controller.getExercise(EXERCISE_ID)?.phase).toBe('scheduled');
+    expect((await repository.readDraft(EXERCISE_ID))?.draft.notes).toBe('offline'); controller.dispose();
+  });
   it('keeps local editing responsive while an earlier save drains, then uses its confirmed CAS for the newer draft', async () => {
     const { controller, api } = setup(); await controller.refresh();
     const save = deferred<Awaited<ReturnType<ActiveSessionApi['save']>>>(); api.save.mockReturnValueOnce(save.promise);

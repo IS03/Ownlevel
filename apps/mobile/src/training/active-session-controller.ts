@@ -206,6 +206,8 @@ export class ActiveSessionController {
   flush(id: string): Promise<void> {
     const entry = this.entries.get(id); if (!entry) return Promise.resolve();
     if (entry.timer) clearTimeout(entry.timer); entry.timer = null;
+    // A revalidation holds writes: wait for its CAS reconciliation instead of settling with nothing sent.
+    if (this.writesPaused && this.refreshFlight) return this.refreshFlight.then(() => this.flush(id));
     if (entry.flight) return entry.flight;
     if (!this.canWrite(entry) || !entry.snapshot.dirty) return Promise.resolve();
     const flight = this.drain(entry).finally(() => { if (entry.flight === flight) entry.flight = null; });
