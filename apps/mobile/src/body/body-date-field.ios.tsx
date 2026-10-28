@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 import { DatePicker, Host } from '@expo/ui/swift-ui';
-import { accessibilityLabel, datePickerStyle, labelsHidden, tint } from '@expo/ui/swift-ui/modifiers';
+import { accessibilityLabel, datePickerStyle, environment, labelsHidden, tint } from '@expo/ui/swift-ui/modifiers';
 
 import { AppText, spacing, useOwnlevelTheme } from '@/design-system';
 import { inputNutritionDate, parseInputNutritionDate } from '@/nutrition/day-format';
@@ -10,7 +10,10 @@ import type { BodyDateFieldProps } from './body-date-field.types';
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-/** The native compact date picker (up to today), writing back the same DD/MM/AAAA text the controller validates. */
+/**
+ * The native compact date picker (up to today), writing back the same DD/MM/AAAA text the controller validates.
+ * Spanish months whatever the device language ("28 oct 2026", not "28 Oct 2026"), like Nacimiento in Ajustes.
+ */
 export function BodyDateField({ value, today, editable, onChange, error }: BodyDateFieldProps) {
   const { colors, isDark } = useOwnlevelTheme();
   const date = parseInputNutritionDate(value) ?? today;
@@ -19,7 +22,7 @@ export function BodyDateField({ value, today, editable, onChange, error }: BodyD
       <AppText variant="body" style={styles.grow}>Fecha</AppText>
       {editable ? <Host colorScheme={isDark ? 'dark' : 'light'} matchContents testID="body-date-picker">
         <DatePicker selection={new Date(`${date}T12:00:00`)} range={{ end: new Date(`${today}T12:00:00`) }} displayedComponents={['date']}
-          modifiers={[datePickerStyle('compact'), labelsHidden(), tint(colors.primary), accessibilityLabel('Fecha')]}
+          modifiers={[datePickerStyle('compact'), labelsHidden(), environment('locale', 'es_AR'), tint(colors.primary), accessibilityLabel('Fecha')]}
           onDateChange={d => onChange(inputNutritionDate(iso(d)))} />
       </Host> : <AppText muted numeric variant="body" accessibilityLabel={`Fecha: ${formatBodyDate(date)}`}>{formatBodyDate(date)}</AppText>}
     </View>
