@@ -45,8 +45,9 @@ function fakeSupabase(tables: Record<string, Row[]>, maxRows: number) {
       from(table: string) {
         const filters: ((row: Row) => boolean)[] = [];
         let orders: { column: string; ascending: boolean }[] = [];
+        let embedDay = false, counted = false;
         const builder = {
-          select: () => builder,
+          select(columns: string, options?: { count?: string }) { embedDay = columns.includes("day:day_logs"); counted = options?.count === "exact"; return builder; },
           eq(column: string, value: unknown) { filters.push(row => row[column] === value); return builder; },
           in(column: string, values: unknown[]) {
             if (values.length > 100) throw new Error("URL too long");
@@ -62,9 +63,12 @@ function fakeSupabase(tables: Record<string, Row[]>, maxRows: number) {
               }
               return 0;
             });
-            const data = rows.slice(from, Math.min(to + 1, from + maxRows));
+            const page = rows.slice(from, Math.min(to + 1, from + maxRows));
+            // The session's own date comes embedded (owner-scoped, as RLS would).
+            const data = embedDay ? page.map(row => ({ ...row, day: tables.day_logs.find(d => d.id === row.day_log_id && d.user_id === row.user_id) ?? null })) : page;
             queries.push({ table, returned: data.length });
-            return Promise.resolve({ data, error: null });
+            const result = Promise.resolve({ data, error: null, ...(counted ? { count: rows.length } : {}) });
+            return Object.assign(result, { returns: () => result });
           },
         };
         return builder;
@@ -83,9 +87,10 @@ describe("Training loader reads every completed set (no PostgREST truncation, no
     expect(data.sets).toHaveLength(2400);
     expect(data.sets.some(set => set.actual_weight_kg === 999 || set.actual_reps === 1)).toBe(false);
     expect(new Set(data.sets.map(set => set.id)).size).toBe(2400);
-    // Deterministic, owner-scoped paging: 4 tables, each read until an empty page.
-    expect(new Set(fake.queries.map(q => q.table))).toEqual(new Set(["workout_sessions", "workout_session_exercises", "workout_sets", "day_logs"]));
-    expect(fake.queries.filter(q => q.table === "workout_sets").length).toBe(Math.ceil(2403 / cap) + 1);
+    // Deterministic, owner-scoped paging: 3 tables (dates come with the sessions), each read until its exact count.
+    expect(new Set(fake.queries.map(q => q.table))).toEqual(new Set(["workout_sessions", "workout_session_exercises", "workout_sets"]));
+    expect(fake.queries.filter(q => q.table === "workout_sets").length).toBe(Math.ceil(2403 / cap));
+    expect(fake.queries.every(q => q.returned > 0)).toBe(true);
   });
   it("current + previous period analytics use every set", async () => {
     const fake = fakeSupabase(dataset(), 1000);

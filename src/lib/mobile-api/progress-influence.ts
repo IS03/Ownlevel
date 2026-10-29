@@ -62,7 +62,8 @@ async function readSources(context: Context, ds: InfluenceDefinition[], defs: Me
   const needMetrics = [...measures].some(k => k.startsWith("metric."));
   const auth = webAuth(context);
   const [training, days, metricRows] = await Promise.all([
-    needTraining ? loadCompletedTrainingData(auth) : null,
+    // Records are built for the span below: sessions outside it never count.
+    needTraining ? loadCompletedTrainingData(auth, { ranges: [span] }) : null,
     needNutrition ? Promise.all(windows.map(async range => buildNutritionReportDays({ range, today, ...await readMobileNutritionFacts(context, range, today) }))).then(ds => ds.flat()) : [],
     needMetrics ? readAllDailyMetricValues(auth.supabase, auth.userId, span.start, span.end) : [],
   ]);

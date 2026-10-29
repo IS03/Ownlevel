@@ -159,7 +159,8 @@ export async function buildMobileProgressExplore(context: Context, input: Explor
   const needDays = m.kind === "nutrition" || input.days === "work" || input.days === "off";
   const auth = webAuth(context);
   const [source, nutritionDays] = await Promise.all([
-    needTraining ? loadCompletedTrainingData(auth) : Promise.resolve(null),
+    // Records are built per range below: sessions outside the ranges never count.
+    needTraining ? loadCompletedTrainingData(auth, { ranges }) : Promise.resolve(null),
     needDays ? Promise.all(ranges.map(async r => buildNutritionReportDays({ range: r, today, ...(await readMobileNutritionFacts(context, r, today)) }))) : Promise.resolve(null),
   ]);
   const records = ranges.map(r => source ? buildSessionRecords(source, r) : []);
