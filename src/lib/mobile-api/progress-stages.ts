@@ -105,7 +105,7 @@ export async function buildMobileProgressStages(context: Context, today: string)
     })), "nutrition"),
     settle(async () => (await listWeightHistory(1000, auth)).filter(p => Number.isFinite(p.weight_kg))
       .map(p => ({ date: p.log_date, value: p.weight_kg })).sort((a, b) => a.date.localeCompare(b.date)), "body"),
-    settle(async () => [...new Set((trainingLoadSamples(await loadCompletedTrainingData(auth)).get("training.load.sessions") ?? [])
+    settle(async () => [...new Set((trainingLoadSamples(await loadCompletedTrainingData(auth, { sessionsOnly: true })).get("training.load.sessions") ?? [])
       .map(s => s.date))], "training"),
   ]);
   return {
