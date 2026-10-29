@@ -1220,75 +1220,59 @@ export async function readAllTrainingRows<T>(
 const firstPageCount = (from: number) => (from === 0 ? { count: "exact" as const } : undefined);
 
 export type CompletedTrainingScope = {
-  /** Only sessions whose day falls in one of these inclusive ranges (and their exercises and sets). */
-  ranges?: readonly { start: string; end: string }[];
   /** Only sessions and their dates: no exercises or sets. */
   sessionsOnly?: boolean;
 };
 
 type EmbeddedDay = { day: { log_date: string } | null };
-/** The row exactly as the unscoped `select("*")` returned it: the embedded relation is only a filter/date carrier. */
-function withoutEmbed<T extends object, K extends keyof T>(row: T, key: K): Omit<T, K> {
-  const copy = { ...row };
-  delete copy[key];
-  return copy;
+/** The session row exactly as `select("*")` returns it: the embedded day only carries the date. */
+function withoutDay<T extends EmbeddedDay>(row: T): Omit<T, "day"> {
+  const copy: Partial<T> = { ...row };
+  delete copy.day;
+  return copy as Omit<T, "day">;
 }
 
 /**
  * Every completed session of the user with its exercises, completed sets and
  * dates, in a fixed number of paged queries (no per-session or per-exercise
  * fan-out, no `.in()` id lists). The date comes embedded in the session row.
- * Memberships are resolved in memory. A scope narrows what is read; callers use
- * it only when what they compute provably depends on nothing outside it.
+ * Memberships are resolved in memory. Date-range reads were measured against
+ * this one: their joins read ~40x more buffers, so every reader stays on it.
  */
 export async function loadCompletedTrainingData(
   context?: AuthenticatedRequestContext,
   scope: CompletedTrainingScope = {},
 ): Promise<CompletedTrainingData> {
   const { supabase, userId } = context ?? await getAuthedContext();
-  const empty = (): CompletedTrainingData => ({ sessions: [], sessionExercises: [], sets: [], dateByDayLog: new Map() });
-  if (scope.ranges && scope.ranges.length === 0) return empty();
-  const dates = scope.ranges?.map((range) => `and(log_date.gte.${range.start},log_date.lte.${range.end})`).join(",") ?? null;
-  const rows = await readAllTrainingRows("Leer progreso", (from, to) => {
-    const query = supabase
-      .from("workout_sessions")
-      .select(dates ? "*, day:day_logs!inner(log_date)" : "*, day:day_logs(log_date)", firstPageCount(from))
-      .eq("user_id", userId)
-      .eq("status", "completed");
-    return (dates ? query.or(dates, { referencedTable: "day" }) : query)
-      .order("ended_at", { ascending: false })
-      .order("id", { ascending: true })
-      .range(from, to)
-      .returns<(WorkoutSession & EmbeddedDay)[]>();
-  });
-  if (rows.length === 0) return empty();
-  const sessions: WorkoutSession[] = rows.map((row) => withoutEmbed(row, "day"));
+  const rows = await readAllTrainingRows("Leer progreso", (from, to) => supabase
+    .from("workout_sessions")
+    .select("*, day:day_logs(log_date)", firstPageCount(from))
+    .eq("user_id", userId)
+    .eq("status", "completed")
+    .order("ended_at", { ascending: false })
+    .order("id", { ascending: true })
+    .range(from, to)
+    .returns<(WorkoutSession & EmbeddedDay)[]>());
+  if (rows.length === 0) return { sessions: [], sessionExercises: [], sets: [], dateByDayLog: new Map() };
+  const sessions: WorkoutSession[] = rows.map(withoutDay);
   const dateByDayLog = new Map(rows.flatMap((row) => row.day ? [[row.day_log_id, row.day.log_date] as const] : []));
   if (scope.sessionsOnly) return { sessions, sessionExercises: [], sets: [], dateByDayLog };
 
   const sessionIds = new Set(sessions.map((session) => session.id));
   const [allExercises, allSets] = await Promise.all([
-    readAllTrainingRows("Leer ejercicios de progreso", (from, to) => {
-      const query = supabase
-        .from("workout_session_exercises")
-        .select(dates ? "*, session:workout_sessions!inner(day:day_logs!inner(log_date))" : "*", firstPageCount(from))
-        .eq("user_id", userId);
-      return (dates ? query.eq("session.status", "completed").or(dates, { referencedTable: "session.day" }) : query)
-        .order("id", { ascending: true })
-        .range(from, to)
-        .returns<(WorkoutSessionExercise & { session?: unknown })[]>();
-    }).then((exercises) => exercises.map((exercise) => withoutEmbed(exercise, "session"))),
-    readAllTrainingRows("Leer series de progreso", (from, to) => {
-      const query = supabase
-        .from("workout_sets")
-        .select(dates ? "*, exercise:workout_session_exercises!inner(session:workout_sessions!inner(day:day_logs!inner(log_date)))" : "*", firstPageCount(from))
-        .eq("user_id", userId)
-        .eq("is_completed", true);
-      return (dates ? query.eq("exercise.session.status", "completed").or(dates, { referencedTable: "exercise.session.day" }) : query)
-        .order("id", { ascending: true })
-        .range(from, to)
-        .returns<(WorkoutSet & { exercise?: unknown })[]>();
-    }).then((sets) => sets.map((set) => withoutEmbed(set, "exercise"))),
+    readAllTrainingRows<WorkoutSessionExercise>("Leer ejercicios de progreso", (from, to) => supabase
+      .from("workout_session_exercises")
+      .select("*", firstPageCount(from))
+      .eq("user_id", userId)
+      .order("id", { ascending: true })
+      .range(from, to)),
+    readAllTrainingRows<WorkoutSet>("Leer series de progreso", (from, to) => supabase
+      .from("workout_sets")
+      .select("*", firstPageCount(from))
+      .eq("user_id", userId)
+      .eq("is_completed", true)
+      .order("id", { ascending: true })
+      .range(from, to)),
   ]);
   const sessionExercises = allExercises.filter((exercise) => sessionIds.has(exercise.workout_session_id));
   const exerciseIds = new Set(sessionExercises.map((exercise) => exercise.id));

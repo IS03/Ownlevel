@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { loadCompletedTrainingData, readAllTrainingRows } from "./training-robust";
-import { buildSessionRecords } from "./training-analysis";
 import { trainingLoadSamples } from "../progress/training-performance";
 import { addProgressIsoDays } from "../progress/analytics";
 import type { WorkoutSession, WorkoutSessionExercise, WorkoutSet } from "./types";
@@ -13,9 +12,8 @@ type Tables = Record<"workout_sessions" | "workout_session_exercises" | "workout
 const id = (prefix: number, n: number) => `${String(prefix).padStart(8, "0")}-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
 /**
- * PostgREST emulation for these reads: owner filters, dotted filters on embedded
- * resources, `!inner` embeds (drop the parent without a match), `or` on a
- * referenced table, a stable order, a server cap per response and exact counts.
+ * PostgREST emulation for these reads: owner filters, an embedded day (owner-
+ * scoped, as RLS would), a stable order, a server cap per response and exact counts.
  */
 function fakeSupabase(tables: Tables, maxRows: number) {
   const queries: { table: string; returned: number; counted: boolean }[] = [];
@@ -52,20 +50,9 @@ function fakeSupabase(tables: Tables, maxRows: number) {
         const builder = {
           select(cols: string, options?: { count?: string }) { columns = cols; counted = options?.count === "exact"; return builder; },
           eq(path: string, value: unknown) { filters.push(row => at(row, path.split(".")) === value); return builder; },
-          or(expression: string, options: { referencedTable: string }) {
-            const ranges = [...expression.matchAll(/and\(log_date\.gte\.([\d-]+),log_date\.lte\.([\d-]+)\)/g)].map(m => [m[1], m[2]]);
-            filters.push(row => {
-              const date = at(row, [...options.referencedTable.split("."), "log_date"]);
-              return typeof date === "string" && ranges.some(([start, end]) => date >= start && date <= end);
-            });
-            return builder;
-          },
           order(column: string, options: { ascending: boolean }) { orders = [...orders, { column, ...options }]; return builder; },
           range(from: number, to: number) {
-            const inner = [...columns.matchAll(/(\w+):\w+!inner/g)].map(m => m[1]);
             const rows = rowsOf(table)
-              // An `!inner` embed (at any depth) without a match drops the parent row.
-              .filter(row => inner.every((alias, depth) => at(row, inner.slice(0, depth + 1)) != null))
               .filter(row => filters.every(f => f(row)))
               .sort((a, b) => {
                 for (const o of orders) {
@@ -208,23 +195,6 @@ describe("Training loader: same data with fewer requests", () => {
     expect(pages).toEqual([0, 1000, 1500]);
   });
 
-  const ranges = (start: number, end: number) => ({ start: addProgressIsoDays(TODAY, -start), end: addProgressIsoDays(TODAY, -end) });
-  it.each([
-    ["30 days", [ranges(29, 0)]],
-    ["30 days + previous", [ranges(29, 0), ranges(59, 30)]],
-    ["a range starting and ending on session days", [ranges(60, 4)]],
-    ["two gapped ranges", [ranges(120, 91), ranges(10, 0)]],
-    ["a range with no session", [ranges(900, 800)]],
-  ] as const)("ranges (%s) give the same session records as the full history", async (_label, scope) => {
-    const tables = dataset({ days: 400, completed: 300, perSession: 3, setsPerExercise: 4 });
-    const full = await run(tables, 1000, c => legacyLoad(c, USER));
-    const scoped = await run(tables, 250, c => loadCompletedTrainingData({ supabase: c, userId: USER }, { ranges: scope }));
-    for (const range of scope) expect(buildSessionRecords(scoped.data, range)).toEqual(buildSessionRecords(full.data, range));
-    // The influence span covers every range at once: same records over it.
-    const span = { start: scope.map(r => r.start).sort()[0], end: scope.map(r => r.end).sort().at(-1)! };
-    if (scope.length === 1) expect(buildSessionRecords(scoped.data, span)).toEqual(buildSessionRecords(full.data, span));
-    expect(scoped.data.sets.length).toBeLessThanOrEqual(full.data.sets.length);
-  });
   it("sessions only give the same training days for Etapas, without exercises or sets", async () => {
     const tables = dataset({ days: 400, completed: 300, perSession: 3, setsPerExercise: 4 });
     const full = await run(tables, 1000, c => legacyLoad(c, USER));
@@ -233,22 +203,13 @@ describe("Training loader: same data with fewer requests", () => {
     expect(dates(light.data)).toEqual(dates(full.data));
     expect(light.queries.map(q => q.table)).toEqual(["workout_sessions"]);
   });
-  it("an empty list of ranges reads nothing", async () => {
-    const after = await run(dataset({ days: 30, completed: 10, perSession: 2, setsPerExercise: 2 }), 1000,
-      c => loadCompletedTrainingData({ supabase: c, userId: USER }, { ranges: [] }));
-    expect(after.data.sessions).toEqual([]);
-    expect(after.queries).toEqual([]);
-  });
-
   it("reproducible scenario sized like the main account: requests and rows per endpoint", async () => {
     // ~80 days, 100 completed sessions, ~5 exercises and ~3 sets each (29/10/2026 volumes).
     const tables = dataset({ days: 80, completed: 100, perSession: 5, setsPerExercise: 3 });
     const measure = async (load: (c: never) => Promise<unknown>) => { const r = await run(tables, 1000, load); return { requests: r.queries.length, rows: rows(r.queries) }; };
-    const thirty = [ranges(29, 0)], compared = [ranges(29, 0), ranges(59, 30)];
     const table = {
-      "Resumen / Entrenamiento / Detalle / Inicio (historia completa)": [await measure(c => legacyLoad(c, USER)), await measure(c => loadCompletedTrainingData({ supabase: c, userId: USER }))],
-      "Explorar o Vista de entrenamiento, 30 días + anterior": [await measure(c => legacyLoad(c, USER)), await measure(c => loadCompletedTrainingData({ supabase: c, userId: USER }, { ranges: compared }))],
-      "Influencia / Insight, 30 días": [await measure(c => legacyLoad(c, USER)), await measure(c => loadCompletedTrainingData({ supabase: c, userId: USER }, { ranges: thirty }))],
+      // Resumen, Entrenamiento, Detalle, récords de Inicio, Explorar, Vistas, Influencia e Insight.
+      "Historia completa": [await measure(c => legacyLoad(c, USER)), await measure(c => loadCompletedTrainingData({ supabase: c, userId: USER }))],
       "Etapas": [await measure(c => legacyLoad(c, USER)), await measure(c => loadCompletedTrainingData({ supabase: c, userId: USER }, { sessionsOnly: true }))],
     };
     if (process.env.MEASURE) console.log(JSON.stringify(table, null, 1));
