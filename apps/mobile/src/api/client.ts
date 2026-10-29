@@ -4,7 +4,8 @@ import type {
 } from '@/auth/service';
 
 import type { MobileApiConfig } from './config';
-import { invalidateConfirmedReads } from './confirmed-read-cache';
+import { invalidateConfirmedReads, settledWrites } from './confirmed-read-cache';
+import { InFlightGet } from './in-flight-get';
 import type {
   MobileApiMethod,
   MobileApiReadResult,
@@ -180,6 +181,7 @@ export function createMobileApiClient({
   telemetry = mobileApiTelemetry,
 }: MobileApiClientDependencies): MobileApiClient {
   const versionHeaders = createMobileClientHeaders(runtime);
+  const pendingGets = new InFlightGet<{ status: number; ok: boolean; body: string }>(() => new MobileApiAbortError('caller'));
 
   function record<T>(
     options: MobileApiRequestOptions<T>,
@@ -206,27 +208,36 @@ export function createMobileApiClient({
     let result: MobileApiRequestResult<T>;
 
     try {
-      const response = await fetchWithDeadline(
-        fetchImplementation,
-        `${config.baseUrl}${options.path}`,
-        {
-          method: options.method,
-          cache: 'no-store',
-          headers: {
-            Accept: 'application/json',
-            Authorization: `Bearer ${accessToken}`,
+      const load = async (signal: AbortSignal | undefined) => {
+        const response = await fetchWithDeadline(
+          fetchImplementation,
+          `${config.baseUrl}${options.path}`,
+          {
+            method: options.method,
+            cache: 'no-store',
+            headers: {
+              Accept: 'application/json',
+              Authorization: `Bearer ${accessToken}`,
+              ...(options.body === undefined
+                ? {}
+                : { 'Content-Type': 'application/json' }),
+              ...versionHeaders,
+            },
             ...(options.body === undefined
               ? {}
-              : { 'Content-Type': 'application/json' }),
-            ...versionHeaders,
+              : { body: JSON.stringify(options.body) }),
           },
-          ...(options.body === undefined
-            ? {}
-            : { body: JSON.stringify(options.body) }),
-        },
-        options.signal,
-        config.timeoutMs,
-      );
+          signal,
+          config.timeoutMs,
+        );
+        return { status: response.status, ok: response.ok, body: response.status === 401 ? '' : await response.text() };
+      };
+      // Same client, Bearer context, exact URL and settled-write generation only.
+      // A post-write revalidation must never join an older request. Each caller
+      // parses its own JSON below; shared transports have independent cancellation.
+      const response = options.method === 'GET' && options.body === undefined
+        ? await pendingGets.run(JSON.stringify([accessToken, options.path, settledWrites(client)]), options.signal, load)
+        : await load(options.signal);
       const durationMs = now() - startedAt;
 
       if (response.status === 401) {
@@ -235,7 +246,7 @@ export function createMobileApiClient({
           meta: meta(durationMs, 401, 'unauthorized'),
         };
       } else {
-        const rawBody = await response.text();
+        const rawBody = response.body;
         const parsedJson = parseJson(rawBody);
         const responseBody = parsedJson.ok ? parsedJson.value : undefined;
 

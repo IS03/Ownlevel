@@ -1,12 +1,13 @@
 import type { ReactElement } from 'react';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { Alert } from 'react-native';
+import { Alert, RefreshControl } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { SessionDetailDto } from '@/api/active-session';
 import type { MobileApiResultMeta } from '@/api/results';
 import type { TrainingHistorySession } from '@/api/training-history';
+import { invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { testDetail } from './active-session-test-fixtures';
 import { CompletedSessionScreen, type CompletedSessionApi } from './history-session-screen';
@@ -14,6 +15,9 @@ import { SessionCorrectionScreen } from './session-correction-screen';
 import { ExerciseHistoryScreen } from './exercise-history-screen';
 import { HistoryScreen } from './history-screen';
 
+let mockScreenFocused = true;
+const mockFocusListeners = new Set<() => void>();
+const setFocused = (focused: boolean) => act(() => { mockScreenFocused = focused; mockFocusListeners.forEach(listener => listener()); });
 const mockPush = jest.fn(), mockReplace = jest.fn(), mockBack = jest.fn(), mockSetOptions = jest.fn();
 const mockParams: { current: Record<string, string> } = { current: {} };
 const mockFetchDetail = jest.fn<(...args: unknown[]) => Promise<unknown>>();
@@ -34,7 +38,11 @@ jest.mock('expo-router', () => {
   const MenuAction = ({ children, onPress }: { children: string; onPress: () => void }) => <Pressable accessibilityRole="button" accessibilityLabel={children} onPress={onPress}><Text>{children}</Text></Pressable>;
   return { useRouter: () => ({ push: mockPush, replace: mockReplace, back: mockBack, canGoBack: () => true }),
     useNavigation: () => ({ setOptions: mockSetOptions, dispatch: jest.fn() }),
-    useLocalSearchParams: () => mockParams.current, useFocusEffect: () => undefined,
+    useLocalSearchParams: () => mockParams.current, useFocusEffect: (callback: () => void | (() => void)) => {
+      const { useEffect, useSyncExternalStore } = jest.requireActual<typeof import('react')>('react');
+      const focused = useSyncExternalStore(listener => { mockFocusListeners.add(listener); return () => { mockFocusListeners.delete(listener); }; }, () => mockScreenFocused);
+      useEffect(() => { if (focused) return callback(); }, [callback, focused]);
+    },
     Stack: { Screen: () => null, Toolbar: Object.assign(Container, { Menu: Container, MenuAction }) } };
 });
 jest.mock('./exercise-segmented', () => jest.requireActual('./exercise-segmented.tsx'));
@@ -71,7 +79,7 @@ const row = (id: string, logDate: string): TrainingHistorySession => ({ id, rout
 const ID = (n: number) => `34300000-0000-4000-8000-00000000000${n}`;
 
 beforeEach(() => {
-  jest.clearAllMocks(); jest.restoreAllMocks(); mockParams.current = {};
+  jest.clearAllMocks(); jest.restoreAllMocks(); mockParams.current = {}; mockScreenFocused = true;
 });
 
 describe('completed session: correct + discard (M3.4-3)', () => {
@@ -211,6 +219,121 @@ describe('historical correction screen', () => {
 describe('history: one screen with calendar, day and exercises (HI1–HI3)', () => {
   const now = () => new Date(2026, 9, 2, 12);
   beforeEach(() => { mockParams.current = {}; mockMonth.mockImplementation(async (...args) => ok({ month: args[1], days: [{ date: '2026-10-01', sessions: 1, completedSets: 20, level: 3 }].filter(day => day.date.startsWith(args[1] as string)) })); });
+  it('starts only one sessions request when mounting an already-focused history', async () => {
+    mockHistory.mockReturnValue(new Promise(() => {}));
+    const view = wrap(<HistoryScreen now={now} />);
+    await flush();
+    expect(mockHistory).toHaveBeenCalledTimes(1);
+    expect(mockMonth.mock.calls.map(call => call[1])).toEqual(['2026-09', '2026-10']);
+    view.unmount();
+  });
+  describe('reads after mount (focus, writes, pull-to-refresh)', () => {
+    const page = ok({ sessions: [row(ID(1), '2026-10-02')], nextCursor: null });
+    const write = () => invalidateConfirmedReads(mockClient as never, '/api/mobile/v1/training/sessions/fixture/discard');
+    it('returning re-reads the sessions; the calendar only after a settled write', async () => {
+      mockHistory.mockResolvedValue(page);
+      const view = wrap(<HistoryScreen now={now} />);
+      await flush();
+      setFocused(false); setFocused(true); await flush();
+      expect(mockHistory).toHaveBeenCalledTimes(2);
+      expect(mockMonth).toHaveBeenCalledTimes(2);
+      setFocused(false); write(); setFocused(true); await flush();
+      expect(mockHistory).toHaveBeenCalledTimes(3);
+      expect(mockMonth.mock.calls.slice(2).map(call => call[1])).toEqual(['2026-09', '2026-10']);
+      view.unmount();
+    });
+    it('pull-to-refresh reads each resource once, and later renders do not read again', async () => {
+      mockHistory.mockResolvedValue(page);
+      const view = wrap(<HistoryScreen now={now} />);
+      await flush();
+      await act(async () => view.UNSAFE_getByType(RefreshControl).props.onRefresh());
+      await flush();
+      expect(mockHistory).toHaveBeenCalledTimes(2);
+      expect(mockMonth).toHaveBeenCalledTimes(4);
+      // Renders that change nothing it reads (opening the calendar shows a month already loaded).
+      fireEvent.press(view.getByRole('button', { name: 'Semana' })); await flush();
+      fireEvent.press(view.getByRole('button', { name: 'Semana' })); await flush();
+      expect(mockHistory).toHaveBeenCalledTimes(2);
+      expect(mockMonth).toHaveBeenCalledTimes(4);
+      view.unmount();
+    });
+    const month = (level: number | null) => (...args: unknown[]) => Promise.resolve(ok({ month: args[1],
+      days: level === null ? [] : [{ date: '2026-10-01', sessions: 1, completedSets: 20, level }].filter(day => day.date.startsWith(args[1] as string)) }));
+    const calendarDay = (view: ReturnType<typeof wrap>) => {
+      fireEvent.press(view.getByRole('button', { name: 'Semana' }));
+      const label = view.getByTestId('training-month-day-2026-10-01').props.accessibilityLabel as string;
+      fireEvent.press(view.getByRole('button', { name: 'Semana' }));
+      return label;
+    };
+    it('after registering a session elsewhere, returning shows it and its intensity', async () => {
+      mockHistory.mockResolvedValue(page); mockMonth.mockImplementation(month(null));
+      const view = wrap(<HistoryScreen now={now} />);
+      await flush();
+      expect(calendarDay(view)).toBe('Jueves 1, sin entrenamiento');
+      setFocused(false); write();
+      mockHistory.mockResolvedValue(ok({ sessions: [row(ID(1), '2026-10-02'), row(ID(4), '2026-10-01')], nextCursor: null }));
+      mockMonth.mockImplementation(month(2));
+      setFocused(true); await flush();
+      expect(view.getByTestId(`history-session-${ID(4)}`)).toBeTruthy();
+      expect(calendarDay(view)).toBe('Jueves 1, intensidad 2 de 4');
+      view.unmount();
+    });
+    it('after editing or discarding a session elsewhere, returning drops what changed', async () => {
+      mockHistory.mockResolvedValue(ok({ sessions: [row(ID(1), '2026-10-02'), row(ID(4), '2026-10-01')], nextCursor: null }));
+      mockMonth.mockImplementation(month(3));
+      const view = wrap(<HistoryScreen now={now} />);
+      await flush();
+      setFocused(false); write();
+      mockHistory.mockResolvedValue(page); mockMonth.mockImplementation(month(null));
+      setFocused(true); await flush();
+      expect(view.queryByTestId(`history-session-${ID(4)}`)).toBeNull();
+      expect(calendarDay(view)).toBe('Jueves 1, sin entrenamiento');
+      view.unmount();
+    });
+    it('a failed refresh keeps the last confirmed data, and the next refresh recovers', async () => {
+      mockHistory.mockResolvedValue(page); mockMonth.mockImplementation(month(3));
+      const view = wrap(<HistoryScreen now={now} />);
+      await flush();
+      mockHistory.mockResolvedValue(lost); mockMonth.mockResolvedValue(lost);
+      await act(async () => view.UNSAFE_getByType(RefreshControl).props.onRefresh()); await flush();
+      expect(view.getByTestId(`history-session-${ID(1)}`)).toBeTruthy();
+      expect(calendarDay(view)).toBe('Jueves 1, intensidad 3 de 4');
+      mockHistory.mockResolvedValue(ok({ sessions: [row(ID(1), '2026-10-02'), row(ID(4), '2026-10-01')], nextCursor: null }));
+      mockMonth.mockImplementation(month(4));
+      await act(async () => view.UNSAFE_getByType(RefreshControl).props.onRefresh()); await flush();
+      expect(view.getByTestId(`history-session-${ID(4)}`)).toBeTruthy();
+      expect(calendarDay(view)).toBe('Jueves 1, intensidad 4 de 4');
+      view.unmount();
+    });
+    it('leaving while the first read is in flight cancels it; opening again reads once and shows the data', async () => {
+      const signals: AbortSignal[] = [];
+      mockHistory.mockImplementation((...args) => { signals.push(args[2] as AbortSignal); return new Promise(() => {}); });
+      const first = wrap(<HistoryScreen now={now} />);
+      await flush(); first.unmount();
+      expect(signals).toHaveLength(1); expect(signals[0]!.aborted).toBe(true);
+      mockHistory.mockReset(); mockHistory.mockResolvedValue(page);
+      const again = wrap(<HistoryScreen now={now} />);
+      await flush();
+      expect(mockHistory).toHaveBeenCalledTimes(1);
+      expect(again.getByTestId(`history-session-${ID(1)}`)).toBeTruthy();
+      again.unmount();
+    });
+    it('changing the visible months keeps a post-write reload of a month it already had', async () => {
+      mockHistory.mockResolvedValue(page);
+      const view = wrap(<HistoryScreen now={now} />);
+      await flush();
+      let finish!: () => void;
+      mockMonth.mockImplementation(async (...args) => {
+        if (args[1] === '2026-10') await new Promise<void>(resolve => { finish = resolve; });
+        return ok({ month: args[1], days: [{ date: '2026-10-01', sessions: 2, completedSets: 40, level: 4 }].filter(day => day.date.startsWith(args[1] as string)) });
+      });
+      setFocused(false); write(); setFocused(true); await flush();
+      fireEvent.press(view.getByRole('button', { name: 'Semana' })); await flush();
+      await act(async () => finish()); await flush();
+      expect(view.getByLabelText('Jueves 1, intensidad 4 de 4')).toBeTruthy();
+      view.unmount();
+    });
+  });
   it('groups sessions by day with totals, appends the next page with the cursor and opens a session', async () => {
     mockHistory.mockResolvedValueOnce(ok({ sessions: [row(ID(1), '2026-10-02'), row(ID(2), '2026-10-01')], nextCursor: 'next_1' }))
       .mockResolvedValueOnce(ok({ sessions: [row(ID(2), '2026-10-01'), row(ID(3), '2026-09-20')], nextCursor: null }));

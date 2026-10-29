@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
+import { settledWrites } from '@/api/confirmed-read-cache';
 import { prefetchSessionSummary } from '@/api/session-summary';
 import type { MobileApiClient } from '@/api/client';
 import { fetchTrainingDay, fetchTrainingHistory, fetchTrainingHistoryExercises, fetchTrainingHistoryMonth, type TrainingHistoryExercise, type TrainingHistorySession } from '@/api/training-history';
@@ -20,7 +21,7 @@ import { ExerciseSegmented } from './exercise-segmented';
 import { GroupChip } from './group-chip';
 import { HistoryScroll, ListCard, SessionRow, StaleNotice } from './history-components';
 import { dayTotalsLabel, groupSessionsByDate, historyDayLabel, mergeHistoryPage, mondayOf, shiftDay, shortDate, volumeLabel } from './history-model';
-import { useRead } from './use-read';
+import { useFocusedRead } from './use-read';
 
 type Tab = 'sessions' | 'exercises';
 const TABS = [{ value: 'sessions', label: 'Sesiones' }, { value: 'exercises', label: 'Ejercicios' }] as const;
@@ -36,22 +37,35 @@ type MonthState = { levels: Map<string, Level> } | 'unavailable';
 function useHistoryMonths(client: MobileApiClient | null, months: readonly string[]) {
   const [data, setData] = useState<Record<string, MonthState>>({});
   const current = useRef(data);
+  // Per month: the latest reading of a month wins. A visible-months change must not drop a forced reload of a
+  // month it skips (it already has data), or that month would keep its pre-write level.
+  const generations = useRef(new Map<string, number>());
+  const writes = useRef(settledWrites(client));
   useEffect(() => { current.current = data; }, [data]);
   const key = months.join(',');
   const load = useCallback(async (force = false) => {
     if (!client) return;
     await Promise.all(key.split(',').map(async month => {
       if (!force && current.current[month] && current.current[month] !== 'unavailable') return;
+      const reading = (generations.current.get(month) ?? 0) + 1;
+      generations.current.set(month, reading);
       const result = await fetchTrainingHistoryMonth(client, month);
+      if (generations.current.get(month) !== reading) return;
       setData(old => ({ ...old, [month]: result.status === 'ok' ? { levels: new Map(result.data.days.map(day => [day.date, day.level])) }
         : old[month] && old[month] !== 'unavailable' ? old[month] : 'unavailable' }));
     }));
   }, [client, key]);
   useEffect(() => { void load(); }, [load]);
+  useFocusEffect(useCallback(() => {
+    const latest = settledWrites(client);
+    if (latest !== writes.current) void load(true);
+    writes.current = latest;
+  }, [client, load]));
+  const reload = useCallback(() => load(true), [load]);
   const states = months.map(month => data[month]);
   const levels: ReadonlyMap<string, Level> | null = states.every(state => state && state !== 'unavailable')
     ? new Map(states.flatMap(state => [...(state as { levels: Map<string, Level> }).levels])) : null;
-  return { levels, unavailable: states.some(state => state === 'unavailable'), reload: () => load(true) };
+  return { levels, unavailable: states.some(state => state === 'unavailable'), reload };
 }
 
 function Stat({ value, label }: { value: string; label: string }) {
@@ -62,8 +76,7 @@ function Stat({ value, label }: { value: string; label: string }) {
 function DaySessions({ client, date, today, onAll, onOpen }: { client: MobileApiClient | null; date: string; today: string; onAll: () => void; onOpen: (id: string) => void }) {
   const { colors } = useOwnlevelTheme();
   const load = useCallback((signal: AbortSignal) => client ? fetchTrainingDay(client, date, signal) : Promise.resolve(UNAVAILABLE), [client, date]);
-  const { state, reload } = useRead(load);
-  useFocusEffect(useCallback(() => { void reload(); }, [reload]));
+  const { state, reload } = useFocusedRead(load);
   const header = <View style={styles.dayHeader}>
     <AppText variant="title2">{historyDayLabel(date, today)}</AppText>
     <Pressable accessibilityRole="button" hitSlop={8} onPress={onAll}><AppText variant="subheadline" style={{ color: colors.primary }}>Ver todo</AppText></Pressable>
@@ -91,9 +104,8 @@ type More = { base: unknown; sessions: TrainingHistorySession[]; cursor: string 
 function AllSessions({ client, today, refreshKey, endKey, onOpen }: { client: MobileApiClient | null; today: string; refreshKey: number; endKey: number; onOpen: (id: string) => void }) {
   const { colors } = useOwnlevelTheme();
   const load = useCallback((signal: AbortSignal) => client ? fetchTrainingHistory(client, null, signal) : Promise.resolve(UNAVAILABLE), [client]);
-  const { state, reload } = useRead(load);
+  const { state, reload } = useFocusedRead(load);
   const [more, setMore] = useState<More | null>(null);
-  useFocusEffect(useCallback(() => { void reload(); }, [reload]));
   useEffect(() => { if (refreshKey) void reload(); }, [refreshKey, reload]);
   if (state.status !== 'ready') return state.status === 'loading' ? null : <Surface style={styles.group}>
     <AppText muted>No pudimos cargar tus sesiones. Tus datos siguen seguros.</AppText><Button label="Reintentar" onPress={() => void reload()} /></Surface>;
@@ -149,7 +161,13 @@ function SessionsTab({ initialDate, today, refreshKey, endKey, expanded, onExpan
   const months = expanded ? [month] : [...new Set([week.slice(0, 7), days[6]!.slice(0, 7)])];
   const intensity = useHistoryMonths(client, months);
   const { levels, reload: reloadIntensity } = intensity;
-  useEffect(() => { if (refreshKey) void reloadIntensity(); }, [refreshKey, reloadIntensity]);
+  // Only a new pull-to-refresh: reloadIntensity also changes with the visible months, which must not force a reload.
+  const refreshed = useRef(refreshKey);
+  useEffect(() => {
+    if (refreshed.current === refreshKey) return;
+    refreshed.current = refreshKey;
+    void reloadIntensity();
+  }, [refreshKey, reloadIntensity]);
   const trained = new Set(levels?.keys() ?? []);
   const marks = weekMarks(days, today, trained, new Set(levels ? months : [])).map(mark => ({ ...mark, level: levels?.get(mark.date) }));
   const cells = sixWeeks(monthCells(buildTrainingMonth(month), today, levels ? trained : null)).map(row => row.map(cell => cell && { ...cell, level: levels?.get(cell.date) }));
@@ -193,8 +211,7 @@ function ExercisesTab({ refreshKey, sort, onOpen }: { refreshKey: number; sort: 
   const { client } = useMobileApi();
   const [query, setQuery] = useState(''), [group, setGroup] = useState<string | null>(null);
   const load = useCallback((signal: AbortSignal) => client ? fetchTrainingHistoryExercises(client, signal) : Promise.resolve(UNAVAILABLE), [client]);
-  const { state, reload } = useRead(load);
-  useFocusEffect(useCallback(() => { void reload(); }, [reload]));
+  const { state, reload } = useFocusedRead(load);
   useEffect(() => { if (refreshKey) void reload(); }, [refreshKey, reload]);
   const rows = useMemo(() => {
     if (state.status !== 'ready') return [];
