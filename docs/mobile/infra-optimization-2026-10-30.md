@@ -9,6 +9,7 @@ Estado, mediciones y propuestas pendientes de este lote. Etiquetas: **[medido]**
 | #343 | Servidor (proxy) | El proxy ya no se invoca en `ownlevel.fit` / `www.ownlevel.fit` fuera de las páginas de sesión. Previews y `*.vercel.app` conservan la protección de previews en todas las rutas | No |
 | #344 | Mobile | Inicio refresca al volver a primer plano solo si está visible | **Sí, pendiente.** Diario instalado: `99fd0a1` (29/10 23:36:44 ART), anterior a #344 |
 | #347 | Servidor | El Resumen de Progreso lee Nutrición una vez para el período actual y el anterior (rango unido, cortado por fecha) en lugar de dos | No |
+| #350 | Mobile | Entrenar lee solo los meses que muestra y relee al volver a primer plano solo si está visible | **Sí, pendiente** (igual que #344) |
 
 Mediciones:
 
@@ -20,6 +21,10 @@ Mediciones:
   - lecturas reales de la app → 15/15 con 200.
 - **[medido, preview real de #343]** Sin autorización, `/login`, la API, `/mcp` y `/sw.js` → 302 al login de Vercel. Con autorización (enlace temporal de Vercel), `/login` → 200 pasando por el proxy. El bloqueo propio de OAuth (`OWNLEVEL_OAUTH_PREVIEW_LOCKDOWN`) solo está configurado para la rama `codex/ownlevel-oauth-mcp`: con el matcher nuevo lo cubren pruebas unitarias y `next dev`, no un preview.
 - **[medido, logs de Supabase]** #347: una apertura de la app pasó de 8 a 7 llamadas a `mobile_read_nutrition_report`, todas 200. El Resumen lee un solo rango (01/09–30/10).
+- **[medido, logs de Supabase]** #350, apertura de Diario `99fd0a1` del 30/10, 16:21:14 UTC. Los tres `/training` simultáneos piden meses distintos (septiembre, octubre y noviembre), y cada uno relee la sesión en curso: no son duplicados que la deduplicación haya dejado pasar. La segunda ronda, 12 s después, es la relectura tras la comida rápida confirmada a las 16:21:22. Se conserva.
+- **[medido, mocks]** #350, lecturas de Entrenar al 30/10 (inicio + `/training` + semana):
+  - carga, primer plano visible y foco tras una escritura: 5 (3 `/training`) → 3 (1);
+  - primer plano con Entrenar oculta: 5 → 0.
 - **[medido]** Filtro de builds (#339): el merge solo móvil de #344 quedó «Canceled by Ignored Build Step» en producción.
 - **Sin medir:** el efecto en CPU de Vercel de #343 y #347. Ver «Vercel · Usage».
 
@@ -83,6 +88,33 @@ Valores aproximados, leídos de los gráficos (±15 s de CPU, ±300 invocaciones
 - Con #344 instalado, su efecto entra recién desde el día de la instalación: separarlo en otra ventana.
 - Para valores diarios exactos se puede probar `vercel usage --breakdown daily` (CLI no instalada; no está confirmado que en Hobby muestre CPU).
 
+### Medición diaria de 24 h (retención de logs)
+
+Los logs de Supabase se conservan 24 h y cada consulta abarca como máximo 24 h. Consultar al terminar el día pierde su comienzo: a las 00:05 ART del 01/11 ya no están los primeros 5 minutos del 31/10. Los runtime logs de Vercel en Hobby duran 1 h.
+
+Procedimiento para el día D (hora ART = UTC−3):
+
+1. **Dos cortes, cada uno antes de que su primera hora cumpla 24 h:**
+   - ~12:15 ART de D: de 00:00 a 12:00 ART (03:00–15:00Z);
+   - ~00:15 ART de D+1: de 12:00 a 24:00 ART (15:00–03:00Z de D+1).
+
+   En ambos, la ventana tiene inicio y fin explícitos (`iso_timestamp_start`/`_end`).
+2. **Qué se guarda de cada corte:** solo agregados, en un archivo local fuera del repositorio:
+   - `/auth/v1/user` por hora, por sesión (prefijo corto del `session_id`) y por origen (país / organización);
+   - renovaciones de sesión (`/auth/v1/token`) por agente (`OWNLEVELDaily`, `OWNLEVELDev`);
+   - las rutas REST más pedidas;
+   - consultas idénticas repetidas en menos de 2 s;
+   - respuestas que no son 2xx.
+
+   No se guardan tokens, IDs de usuario ni valores de consulta.
+3. **Vercel:**
+   - `get_runtime_errors` de las últimas 24 h en el segundo corte;
+   - runtime logs solo en el momento, dentro de la hora siguiente a una apertura de la app;
+   - capturas de Usage el día D+1: Fluid Active CPU e Invocations con el valor de la barra de D, pestaña Projects y total del período.
+4. **Sin QA contra producción durante D.** Anotar las aperturas reales de la app y cualquier instalación de Diario.
+
+Relecturas del simulador (29–30/10): la build de desarrollo hizo las 7 lecturas de Inicio unos 2 s después de algunas renovaciones de sesión, aproximadamente cada 58 min. No ocurrió después de todas las renovaciones y el mecanismo no está confirmado: no se registra como un bucle. La app del simulador se cerró el 30/10 a las 14:01 ART.
+
 ## Supabase · `pg_stat_statements` (acumulado desde el 05/08/2026)
 
 ### Chequeo OAuth previo a cada solicitud (`ownlevel_restrict_oauth_data_api`)
@@ -145,7 +177,7 @@ Orden: primero beneficio demostrado; después menor riesgo y menor esfuerzo. Nin
 
 | # | Propuesta | Beneficio demostrado | Riesgo | Esfuerzo | Estado |
 |---|---|---|---|---|---|
-| 1 | Instalar Diario con #344 | **Sí:** 14 → 7 lecturas por vuelta a primer plano con Entrenar visible (simulador) | Bajo (sin cambios de servidor) | Bajo | Bloqueado: renovar la firma requiere iniciar sesión en Xcode → Settings → Accounts y conectar el iPhone. El perfil vence el 31/10/2026 a las 23:56 UTC |
+| 1 | Instalar Diario con #344 y #350 | **Sí:** 14 → 7 lecturas por vuelta a primer plano con Entrenar visible (simulador, #344); Entrenar 5 → 3 lecturas por ronda y 0 si está oculta (mocks, #350) | Bajo (sin cambios de servidor) | Bajo | Bloqueado: renovar la firma requiere iniciar sesión en Xcode → Settings → Accounts y conectar el iPhone. El perfil vence el 31/10/2026 a las 23:56 UTC |
 | 2 | Ventanas comparables en Usage | Habilita medir todo lo demás | Nulo | Bajo | Desde el 31/10, ver «Cómo medir» |
 | 3 | Explicar la diferencia de tiempos de `mobile_read_nutrition_report` (ejecutar la sentencia como la arma PostgREST con `EXPLAIN (ANALYZE, BUFFERS)` por rango, como el dueño) | No: la diferencia de tiempos no está atribuida | Bajo (solo lecturas) | Bajo | Pendiente. No justifica cambios hasta tener la causa |
 | 4 | Récords sin filas crudas (ver abajo) | No: [estimado] de ~2.700 filas a unos cientos por lectura | Medio–alto: migración y equivalencia exacta de `ComparableSet` por modo de carga | Alto | Pendiente; no se implementa todavía |
