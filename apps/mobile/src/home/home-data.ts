@@ -73,24 +73,28 @@ export function shouldRefreshOnFocus(
 
 /** Home's reads, issued in parallel; each block renders from its own state. */
 export function useHomeResources(client: MobileApiClient | null, now: () => Date = () => new Date()) {
+  // Home stays mounted as a tab: returning to the foreground refreshes it only when it is the visible screen. Hidden,
+  // it catches up on its next focus (interval, new day or a settled write), as when switching tabs.
+  const visible = useRef(false);
+  const foreground = useCallback(() => visible.current, []);
   const home = useApiResource(useCallback((signal: AbortSignal) =>
-    client ? fetchMobileHome(client, signal) : Promise.resolve(unavailable), [client]));
+    client ? fetchMobileHome(client, signal) : Promise.resolve(unavailable), [client]), { refreshOnForeground: foreground });
   const today = useApiResource(useCallback((signal: AbortSignal) =>
-    client ? fetchHistoryDay(client, homeDay(now()).today, signal) : Promise.resolve(unavailable), [client, now]));
+    client ? fetchHistoryDay(client, homeDay(now()).today, signal) : Promise.resolve(unavailable), [client, now]), { refreshOnForeground: foreground });
   const calories = useApiResource(useCallback((signal: AbortSignal) => {
     const day = homeDay(now());
     return client
       ? fetchNutritionReport(client, { period: 'custom', from: day.weekStart, to: day.today }, signal)
       : Promise.resolve(unavailable);
-  }, [client, now]));
+  }, [client, now]), { refreshOnForeground: foreground });
   const habits = useApiResource(useCallback((signal: AbortSignal) =>
-    client ? fetchProgressHabitWeek(client, homeDay(now()).weekStart, signal) : Promise.resolve(unavailable), [client, now]));
+    client ? fetchProgressHabitWeek(client, homeDay(now()).weekStart, signal) : Promise.resolve(unavailable), [client, now]), { refreshOnForeground: foreground });
   const training = useApiResource(useCallback((signal: AbortSignal) =>
-    client ? loadTrainingWeek(client, homeDay(now()).weekStart, signal) : Promise.resolve(unavailable), [client, now]));
+    client ? loadTrainingWeek(client, homeDay(now()).weekStart, signal) : Promise.resolve(unavailable), [client, now]), { refreshOnForeground: foreground });
   const progressBody = useApiResource(useCallback((signal: AbortSignal) =>
-    client ? fetchProgressBody(client, { period: '7' }, signal) : Promise.resolve(unavailable), [client]));
+    client ? fetchProgressBody(client, { period: '7' }, signal) : Promise.resolve(unavailable), [client]), { refreshOnForeground: foreground });
   const progressRecords = useApiResource(useCallback((signal: AbortSignal) =>
-    client ? fetchProgressTraining(client, { period: '30' }, signal) : Promise.resolve(unavailable), [client]));
+    client ? fetchProgressTraining(client, { period: '30' }, signal) : Promise.resolve(unavailable), [client]), { refreshOnForeground: foreground });
 
   const refreshHome = home.refresh, refreshToday = today.refresh;
   const refreshCalories = calories.refresh, refreshTraining = training.refresh, refreshHabits = habits.refresh;
@@ -119,10 +123,13 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
     if (changed) reloadAll(); else refreshAll();
   }, [client, markRefreshed, refreshAll, reloadAll]);
   useFocusEffect(useCallback(() => {
+    visible.current = true;
+    const blur = () => { visible.current = false; };
     const day = homeDay(now()).today;
     // The first focus coincides with the initial reads.
-    if (lastFocus.current === null) { markRefreshed(); return; }
+    if (lastFocus.current === null) { markRefreshed(); return blur; }
     if (shouldRefreshOnFocus(lastFocus.current, now().getTime(), day, settledWrites(client))) refreshNow();
+    return blur;
   }, [client, markRefreshed, now, refreshNow]));
 
   const invalidate = useCallback(() => { markRefreshed(); void Promise.all([reloadHome(), reloadToday(), reloadCalories()]); }, [markRefreshed, reloadHome, reloadToday, reloadCalories]);

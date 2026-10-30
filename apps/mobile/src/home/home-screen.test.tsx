@@ -1,4 +1,5 @@
 import { act, fireEvent, render, renderHook, waitFor, within } from '@testing-library/react-native';
+import { AppState } from 'react-native';
 import { clearConfirmedReads, invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
@@ -134,7 +135,16 @@ async function renderScreen() {
 const settle = () => act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
 // The start modal opens after the sheet's dismissal (SHEET_DISMISS_MS).
 const afterSheet = () => act(() => new Promise<void>(resolve => { setTimeout(resolve, 400); }));
-const focus = async () => { act(() => { mockFocusEffects.at(-1)!(); }); await settle(); };
+let blurHome: (() => void) | void;
+let appStateListeners: ((state: string) => void)[] = [];
+const focus = async () => { act(() => { blurHome = (mockFocusEffects.at(-1)! as () => (() => void) | void)(); }); await settle(); };
+const blur = () => { blurHome?.(); blurHome = undefined; };
+/** The app goes to the background and comes back (lock/unlock, app switcher). */
+const foreground = async () => {
+  const listeners = appStateListeners.map(listener => listener as (state: string) => void);
+  act(() => { listeners.forEach(listener => listener('background')); listeners.forEach(listener => listener('active')); });
+  await settle();
+};
 const allFetchers = () => [mockFetchHome, mockFetchDay, mockFetchReport, mockFetchHistory,
   mockFetchHabits, mockFetchProgressBody, mockFetchProgressRecords];
 
@@ -142,6 +152,11 @@ describe('Home screen', () => {
   beforeEach(() => {
     clock = SATURDAY_NIGHT.getTime();
     mockFocusEffects.length = 0;
+    appStateListeners = [];
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, listener) => {
+      appStateListeners.push(listener as (state: string) => void);
+      return { remove: () => { appStateListeners = appStateListeners.filter(item => item !== listener); } } as never;
+    });
     mockStartSession.mockReset();
     for (const mock of [mockNavigate, mockPush, mockConfigOpen, mockFetchProgressWeek, ...allFetchers()]) mock.mockReset();
     mockFetchHome.mockImplementation(() => ok(homeData()));
@@ -168,6 +183,22 @@ describe('Home screen', () => {
     // Blocks with their own reads render while Home is still loading.
     expect(view.getByTestId('home-register')).toBeTruthy();
     expect(view.getByTestId('home-nutrition-loading')).toBeTruthy();
+  });
+
+  it('returning to the foreground re-reads Home only while it is the visible tab', async () => {
+    await renderScreen();
+    await focus(); // first focus = initial reads
+    for (const fetcher of allFetchers()) expect(fetcher).toHaveBeenCalledTimes(1);
+    await foreground();
+    for (const fetcher of allFetchers()) expect(fetcher).toHaveBeenCalledTimes(2);
+    // Another tab (or the active session) is on screen: unlocking the phone reads nothing for a hidden Home.
+    blur();
+    await foreground(); await foreground();
+    for (const fetcher of allFetchers()) expect(fetcher).toHaveBeenCalledTimes(2);
+    // Shown again after the interval: it catches up on focus, the full history included.
+    clock += HOME_FOCUS_REFRESH_MS + 1_000;
+    await focus();
+    for (const fetcher of allFetchers()) expect(fetcher).toHaveBeenCalledTimes(3);
   });
 
   it('refreshes on tab focus only after the minimum interval, and always on a new day', async () => {

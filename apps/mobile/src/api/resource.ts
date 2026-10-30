@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import type { MobileApiReadResult, MobileApiUnavailableReason } from './results';
@@ -177,8 +177,14 @@ export class ApiResourceController<T> {
   }
 }
 
-export function useApiResource<T>(loader: ResourceLoader<T>) {
+/**
+ * `refreshOnForeground`: asked when the app returns to the foreground. A screen that stays mounted while hidden (a tab)
+ * passes its visibility, so it refreshes when shown instead of reading for nobody.
+ */
+export function useApiResource<T>(loader: ResourceLoader<T>, options: { refreshOnForeground?: () => boolean } = {}) {
   const [controller] = useState(() => new ApiResourceController(loader));
+  const foregroundRef = useRef(options.refreshOnForeground);
+  useEffect(() => { foregroundRef.current = options.refreshOnForeground; });
   const [state, setState] = useState<ApiResourceState<T>>(
     controller.getSnapshot(),
   );
@@ -188,7 +194,7 @@ export function useApiResource<T>(loader: ResourceLoader<T>) {
     void controller.refresh('initial');
     let previousAppState = AppState.currentState;
     const appStateSubscription = AppState.addEventListener('change', (nextState) => {
-      if (shouldRefreshOnForeground(previousAppState, nextState)) {
+      if (shouldRefreshOnForeground(previousAppState, nextState) && (foregroundRef.current?.() ?? true)) {
         void controller.refresh('foreground');
       }
       previousAppState = nextState;
