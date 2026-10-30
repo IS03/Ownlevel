@@ -369,6 +369,11 @@ function exerciseSummaries(
   return [...exercises.values()].sort((left, right) => right.lastDate.localeCompare(left.lastDate) || left.name.localeCompare(right.name, "es-AR"));
 }
 
+/** The period's exercise stats alone: the same records and rules as `buildTrainingAnalysis().exercises`, without timelines. */
+export function trainingExerciseStats(source: TrainingAnalysisSource, range: { start: string; end: string }): TrainingAnalysisExercise[] {
+  return exerciseSummaries(buildSessionRecords(source, range));
+}
+
 function buildExerciseTimeline(
   records: readonly SessionRecord[],
   range: { start: string; end: string },

@@ -8,7 +8,7 @@ import { OwnlevelThemeProvider } from '@/design-system';
 
 import { HOME_FOCUS_REFRESH_MS, useHomeResources } from './home-data';
 import { HomeScreen } from './home-screen';
-import { homeProgressHabits, homeProgressBody, homeProgressTraining } from './home-test-fixtures';
+import { homeProgressHabits, homeProgressBody, homeProgressRecords, homeProgressTraining } from './home-test-fixtures';
 
 // Screen navigation uses the portable control; the UIKit bridge has its own integration suite.
 jest.mock('./home-page-control', () => jest.requireActual('./home-page-control.tsx'));
@@ -83,8 +83,8 @@ jest.mock('@/api/progress', () => ({
   ...jest.requireActual<object>('@/api/progress'),
   fetchProgressHabitWeek: (...args: unknown[]) => mockFetchHabits(...args),
   fetchProgressBody: (...args: unknown[]) => mockFetchProgressBody(...args),
-  fetchProgressTraining: (c: unknown, q: { period: string }, s: unknown) => q.period === '7'
-    ? mockFetchProgressWeek(c, q, s) : mockFetchProgressRecords(c, q, s),
+  fetchProgressTraining: (...args: unknown[]) => mockFetchProgressWeek(...args),
+  fetchProgressTrainingRecords: (...args: unknown[]) => mockFetchProgressRecords(...args),
 }));
 // The real starter (verification, idempotency, conflicts) has its own tests; here it records the request.
 jest.mock('@/training/use-session-starter', () => ({
@@ -166,7 +166,7 @@ describe('Home screen', () => {
     mockFetchHabits.mockImplementation(() => ok(homeProgressHabits()));
     mockFetchProgressBody.mockImplementation(() => ok(homeProgressBody()));
     mockFetchProgressWeek.mockImplementation(() => ok(homeProgressTraining()));
-    mockFetchProgressRecords.mockImplementation(() => ok(homeProgressTraining('30')));
+    mockFetchProgressRecords.mockImplementation(() => ok(homeProgressRecords()));
   });
 
   it('issues every read in parallel, with the server day semantics for today and Monday', async () => {

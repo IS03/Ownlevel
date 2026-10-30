@@ -1,12 +1,12 @@
 import { fireEvent, render, within } from '@testing-library/react-native';
 import { describe, expect, it, jest } from '@jest/globals';
 
-import { parseProgressBody, parseProgressTraining, type ProgressBody, type ProgressTraining } from '@/api/progress';
+import { parseProgressBody, parseProgressTrainingRecords, type ProgressBody, type ProgressTrainingRecords } from '@/api/progress';
 import { OwnlevelThemeProvider } from '@/design-system';
 
 import { HomeProgress } from './home-progress';
 import type { HomeResource } from './home-resource';
-import { homeProgressBody, homeProgressTraining } from './home-test-fixtures';
+import { homeProgressBody, homeProgressRecords } from './home-test-fixtures';
 
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 
@@ -16,14 +16,14 @@ const loading = <T,>(): HomeResource<T> => ({ data: undefined, confirmedAt: null
 
 function show(overrides: Partial<React.ComponentProps<typeof HomeProgress>> = {}) {
   const onOpen = jest.fn(), onRetry = jest.fn(), onAll = jest.fn();
-  const props = { body: ready(homeProgressBody()), date: '2026-10-10', records: ready(homeProgressTraining('30')), onOpen, onRetry, onAll, ...overrides };
+  const props = { body: ready(homeProgressBody()), date: '2026-10-10', records: ready(homeProgressRecords()), onOpen, onRetry, onAll, ...overrides };
   return { ...render(<OwnlevelThemeProvider initialMode="light"><HomeProgress {...props} /></OwnlevelThemeProvider>), onOpen, onRetry, onAll };
 }
 
 describe('Home progress (grouped list)', () => {
   it('uses contract-valid snapshots: records of the last 30 days and the last weight with its date; no 7-day trainings card', () => {
     expect(parseProgressBody(homeProgressBody())).toBeDefined();
-    expect(parseProgressTraining(homeProgressTraining('30'))).toBeDefined();
+    expect(parseProgressTrainingRecords(homeProgressRecords())).toBeDefined();
     const view = show();
     const records = within(view.getByTestId('home-progress-records'));
     expect(records.getByText('1 récord en 30 días')).toBeTruthy();
@@ -36,7 +36,7 @@ describe('Home progress (grouped list)', () => {
   });
 
   it('several records: two names + "y N más", routed to the training list', () => {
-    const records = homeProgressTraining('30');
+    const records = homeProgressRecords();
     for (const name of ['Sentadilla', 'Remo', 'Dominadas']) records.personalRecords.push({ exerciseId: `${name}-id`, name, description: 'Nuevo mejor peso' });
     const view = show({ records: ready(records) });
     expect(view.getByText('4 récords en 30 días')).toBeTruthy();
@@ -53,7 +53,7 @@ describe('Home progress (grouped list)', () => {
   });
 
   it.each(['improved', 'declined'] as const)('without a PR shows a real %s exercise signal with its native units', status => {
-    const records = homeProgressTraining('30'); records.personalRecords = [];
+    const records = homeProgressRecords(); records.personalRecords = [];
     records.exercises = [{ id: 'machine-id', name: 'Remo', muscleLabel: 'Espalda', weightMode: 'unit_reps', status, reason: 'comparable',
       signal: { kind: 'load', description: '8 lingotes × 6 reps', currentValue: 8, referenceValue: 7, contextValue: 6 },
       isPersonalRecord: false, sessions: 3, sets: 9, lastDate: '2026-10-09' }];
@@ -65,8 +65,8 @@ describe('Home progress (grouped list)', () => {
 
   it('empty data and incomparable exercises stay neutral without fake records', () => {
     const body = homeProgressBody(); body.metrics = [];
-    const records = homeProgressTraining('30'); records.personalRecords = [];
-    records.summary.performance.comparable = 0;
+    const records = homeProgressRecords(); records.personalRecords = [];
+    records.performance.comparable = 0;
     const view = show({ body: ready(body), records: ready(records) });
     expect(view.getByText('Sin registros')).toBeTruthy();
     expect(view.getByText('Sin récords en 30 días')).toBeTruthy();
@@ -82,7 +82,7 @@ describe('Home progress (grouped list)', () => {
   });
 
   it('initial reads show placeholders; a failed refresh marks the retained snapshot as not updated', () => {
-    const view = show({ body: unavailable(homeProgressBody()), records: loading<ProgressTraining>() });
+    const view = show({ body: unavailable(homeProgressBody()), records: loading<ProgressTrainingRecords>() });
     expect(view.queryByText('Press banca')).toBeNull();
     expect(within(view.getByTestId('home-progress-weight')).getByText('Sin actualizar · Reintentar')).toBeTruthy();
   });

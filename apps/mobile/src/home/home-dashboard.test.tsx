@@ -11,7 +11,7 @@ import { HomeDashboard, type HomeDashboardProps } from './home-dashboard';
 import type { HomeTrainingWeek } from './home-data';
 import { calorieSplit } from './home-nutrition';
 import type { HomeResource } from './home-resource';
-import { homeProgressHabits, homeProgressBody, homeProgressTraining } from './home-test-fixtures';
+import { homeProgressHabits, homeProgressBody, homeProgressRecords } from './home-test-fixtures';
 
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('@/design-system', () => ({ ...jest.requireActual<object>('@/design-system'), useReduceMotion: () => true }));
@@ -108,7 +108,7 @@ function renderHome(overrides: Partial<HomeDashboardProps> = {}, theme: ThemeMod
     habits: ready(homeProgressHabits()),
     day: { today: TODAY, weekStart: WEEK },
     home: ready(home()),
-    progressBody: ready(homeProgressBody()), progressRecords: ready(homeProgressTraining('30')),
+    progressBody: ready(homeProgressBody()), progressRecords: ready(homeProgressRecords()),
     now: () => NOW,
     today: ready(todayDay()),
     training: ready(trainingWeek),

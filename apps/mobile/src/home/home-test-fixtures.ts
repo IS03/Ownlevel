@@ -1,4 +1,4 @@
-import { habitWeekRange, type ProgressHabitWeek, type ProgressBody, ProgressComparison, ProgressPeriod, ProgressTraining } from '@/api/progress';
+import { habitWeekRange, type ProgressHabitWeek, type ProgressBody, ProgressComparison, ProgressPeriod, ProgressTraining, ProgressTrainingRecords } from '@/api/progress';
 
 const period = (preset: '7' | '30'): ProgressPeriod => ({
   preset, start: preset === '7' ? '2026-10-04' : '2026-09-11', end: '2026-10-10', days: Number(preset),
@@ -20,6 +20,12 @@ export function homeProgressTraining(preset: '7' | '30' = '7'): ProgressTraining
     exercises: [], personalRecords: [{ exerciseId: 'bench-id', name: 'Press banca', description: 'Nuevo mejor peso: 80 kg × 5' }],
     feelings: [], muscles: [], routines: [],
   };
+}
+
+/** Home's records read: the same values as the 30-day training read. */
+export function homeProgressRecords(): ProgressTrainingRecords {
+  const training = homeProgressTraining('30');
+  return { today: training.today, period: training.period, performance: training.summary.performance, exercises: training.exercises, personalRecords: training.personalRecords };
 }
 
 export function homeProgressBody(): ProgressBody {

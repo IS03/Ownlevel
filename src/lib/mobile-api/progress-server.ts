@@ -12,14 +12,14 @@ import { MobileApiNotFoundError, MobileApiUnauthorizedError, MobileApiValidation
 import { mobileApiResponseHeaders } from "./http";
 import { NutritionReportDayChangedError, readMobileNutritionDays } from "./nutrition-report-server";
 import {
-  parseProgressNutritionTiming, PROGRESS_CUSTOM_MAX_DAYS, PROGRESS_DEFAULT_PRESET, habitWeekRange, parseProgressHabitWeek, parseProgressBody, parseProgressMetrics, parseProgressOverview, parseProgressQuery, parseProgressTraining, parseProgressTrainingExercise,
+  parseProgressNutritionTiming, PROGRESS_CUSTOM_MAX_DAYS, PROGRESS_DEFAULT_PRESET, habitWeekRange, parseProgressHabitWeek, parseProgressBody, parseProgressMetrics, parseProgressOverview, parseProgressQuery, parseProgressTraining, parseProgressTrainingExercise, parseProgressTrainingRecords,
   type ProgressHabitWeek, type BodyObservationDto, type ProgressBody, type ProgressBodyMetric, type ProgressDestination,
   type ProgressMetricDefinition, type ProgressMetrics, type ProgressOverview, type ProgressOverviewSparks, type ProgressPeriod, type ProgressQuery, type ProgressSection,
   type ProgressNutritionTiming, type ProgressSparkPoint,
 } from "./progress-contract";
 import { isNutritionDate } from "./nutrition-day-contract";
 import { authenticateMobileAccessToken, type MobileSupabaseAuthenticatedContext } from "./supabase";
-import { loadTrainingContext, trainingInPeriodDto, trainingDto, trainingExerciseDto, trainingSummaryDto } from "./progress-training";
+import { loadTrainingContext, loadTrainingRecords, trainingInPeriodDto, trainingDto, trainingExerciseDto, trainingSummaryDto } from "./progress-training";
 import { readNutritionTiming } from "./progress-nutrition-timing";
 import { bodyReport, comparisonDto, webAuth } from "./progress-sources";
 import { buildMobileProgressExplore } from "./progress-explore";
@@ -356,6 +356,10 @@ export const progressTrainingResponse = (request: Request) => progressReadRespon
     if (inPeriod !== null && inPeriod !== "1") throw new MobileApiValidationError("Parámetro no válido.");
     return buildMobileProgressTraining(context, query, today, inPeriod === "1");
   }, parseProgressTraining);
+/** Home's records card: a fraction of `/progress/training` (same values), which stays as is for installed builds. */
+export const progressTrainingRecordsResponse = (request: Request) => progressReadResponse(request, "training.records",
+  (context, params, today) => loadTrainingRecords(webAuth(context), resolveMobileProgressPeriod(progressQueryFromParams(params), today).period, today),
+  parseProgressTrainingRecords);
 export const progressTrainingExerciseResponse = (request: Request, exerciseId: string) => progressReadResponse(request, "training.exercise", (context, params, today) => {
   if (!/^[0-9a-f-]{36}$/i.test(exerciseId)) throw new MobileApiValidationError("Ejercicio no válido.");
   const query = progressQueryFromParams(params, ["charts"]), charts = params.get("charts");

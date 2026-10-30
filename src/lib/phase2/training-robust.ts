@@ -1255,7 +1255,18 @@ const firstPageCount = (from: number) => (from === 0 ? { count: "exact" as const
 export type CompletedTrainingScope = {
   /** Only sessions and their dates: no exercises or sets. */
   sessionsOnly?: boolean;
+  /**
+   * Same rows, only the columns the exercise stats and the performance comparison read (Home's records). The rows keep
+   * their full types: a reader of this scope must not read any other column.
+   */
+  recordColumns?: boolean;
 };
+
+export const RECORD_COLUMNS = {
+  sessions: "id, day_log_id, status, started_at, ended_at, routine_id, routine_name_snapshot, session_name",
+  exercises: "id, workout_session_id, exercise_id, is_completed, nombre_snapshot, grupo_muscular_snapshot, muscle_group_label_snapshot, weight_mode_snapshot",
+  sets: "id, workout_session_exercise_id, is_completed, actual_reps, actual_weight_kg",
+} as const;
 
 type EmbeddedDay = { day: { log_date: string } | null };
 /** The session row exactly as `select("*")` returns it: the embedded day only carries the date. */
@@ -1279,7 +1290,7 @@ export async function loadCompletedTrainingData(
   const { supabase, userId } = context ?? await getAuthedContext();
   const rows = await readAllTrainingRows("Leer progreso", (from, to) => supabase
     .from("workout_sessions")
-    .select("*, day:day_logs(log_date)", firstPageCount(from))
+    .select(`${scope.recordColumns ? RECORD_COLUMNS.sessions : "*"}, day:day_logs(log_date)`, firstPageCount(from))
     .eq("user_id", userId)
     .eq("status", "completed")
     .order("ended_at", { ascending: false })
@@ -1295,17 +1306,19 @@ export async function loadCompletedTrainingData(
   const [allExercises, allSets] = await Promise.all([
     readAllTrainingRows<WorkoutSessionExercise>("Leer ejercicios de progreso", (from, to) => supabase
       .from("workout_session_exercises")
-      .select("*", firstPageCount(from))
+      .select(scope.recordColumns ? RECORD_COLUMNS.exercises : "*", firstPageCount(from))
       .eq("user_id", userId)
       .order("id", { ascending: true })
-      .range(from, to)),
+      .range(from, to)
+      .returns<WorkoutSessionExercise[]>()),
     readAllTrainingRows<WorkoutSet>("Leer series de progreso", (from, to) => supabase
       .from("workout_sets")
-      .select("*", firstPageCount(from))
+      .select(scope.recordColumns ? RECORD_COLUMNS.sets : "*", firstPageCount(from))
       .eq("user_id", userId)
       .eq("is_completed", true)
       .order("id", { ascending: true })
-      .range(from, to)),
+      .range(from, to)
+      .returns<WorkoutSet[]>()),
   ]);
   const sessionExercises = allExercises.filter((exercise) => sessionIds.has(exercise.workout_session_id));
   const exerciseIds = new Set(sessionExercises.map((exercise) => exercise.id));
