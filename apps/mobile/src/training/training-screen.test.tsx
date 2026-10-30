@@ -33,6 +33,15 @@ jest.mock('@/api/home', () => ({ fetchMobileHome: (...args: unknown[]) => mockHo
 jest.mock('@/api/training', () => ({ fetchMobileTraining: (...args: unknown[]) => mockTraining(...args) }));
 jest.mock('@/api/training-history', () => ({
   fetchTrainingDay: (client: unknown, date: string) => mockTrainingDay(client, date),
+  // The single weekday read, served from the same per-day fixtures: same data, one request.
+  fetchTrainingWeekdaySessions: async (client: unknown, date: string, weeks: number) => {
+    const dates = Array.from({ length: weeks + 1 }, (_, i) => { const d = new Date(`${date}T12:00:00Z`); d.setUTCDate(d.getUTCDate() - 7 * i); return d.toISOString().slice(0, 10); });
+    const days = await Promise.all(dates.map(day => mockTrainingDay(client, day))) as { status: string; meta: unknown; data: { sessions: { id: string; routineId: string | null; logDate: string }[] } }[];
+    const failed = days.find(day => day.status !== 'ok');
+    if (failed) return failed;
+    const sessions = days.flatMap(day => day.data.sessions.map(({ id, routineId, logDate }) => ({ id, routineId, logDate })));
+    return { status: 'ok', meta: days[0]?.meta, data: { date, weeks, sessions } };
+  },
   fetchTrainingHistory: (...args: unknown[]) => mockHistory(...args),
 }));
 jest.mock('@/api', () => ({

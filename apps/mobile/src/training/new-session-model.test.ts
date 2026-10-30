@@ -6,9 +6,9 @@ import type { TrainingHistorySession } from '@/api/training-history';
 import { loadRecommendationData, recommendRoutine, sameWeekdayDates, weekdayName } from './new-session-model';
 
 const mockHistory = jest.fn<(...args: unknown[]) => Promise<unknown>>();
-const mockDay = jest.fn<(client: unknown, date: string) => Promise<unknown>>();
+const mockWeekdays = jest.fn<(client: unknown, date: string, weeks: number) => Promise<unknown>>();
 jest.mock('@/api/training-history', () => ({
-  fetchTrainingDay: (client: unknown, date: string) => mockDay(client, date),
+  fetchTrainingWeekdaySessions: (client: unknown, date: string, weeks: number) => mockWeekdays(client, date, weeks),
   fetchTrainingHistory: (...args: unknown[]) => mockHistory(...args),
 }));
 
@@ -53,19 +53,23 @@ describe('Routine recommendation', () => {
     expect(weekdayName('2026-10-10', true)).toBe('sábados');
   });
 
-  it('reads today and the same weekday of the last 12 weeks in parallel, plus one history page', async () => {
+  it('reads today and the same weekday of the last 12 weeks in one request, plus one history page', async () => {
     const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
     expect(sameWeekdayDates(TODAY)).toHaveLength(13);
     expect(sameWeekdayDates(TODAY).slice(0, 3)).toEqual([TODAY, '2026-10-02', '2026-09-25']);
     expect(sameWeekdayDates(TODAY).at(-1)).toBe('2026-07-17');
-    mockDay.mockReset(); mockHistory.mockReset();
-    mockDay.mockImplementation(async (_client, date) => ({ status: 'ok', meta, data: { date, sessions: date === '2026-10-02' ? [session('pull', date)] : [], summary: {} } }));
+    mockWeekdays.mockReset(); mockHistory.mockReset();
+    const pull = { id: 'pull-2026-10-02', routineId: 'pull', logDate: '2026-10-02' };
+    mockWeekdays.mockImplementation(async (_client, date, weeks) => ({ status: 'ok', meta, data: { date, weeks, sessions: [pull] } }));
     mockHistory.mockResolvedValue({ status: 'ok', meta, data: { sessions: [session('push', '2026-10-08')], nextCursor: 'p2' } });
     const data = await loadRecommendationData({} as MobileApiClient, TODAY);
-    expect(mockDay).toHaveBeenCalledTimes(13); expect(mockHistory).toHaveBeenCalledTimes(1);
-    expect(data).toEqual({ today: TODAY, sameWeekday: [session('pull', '2026-10-02')], recent: [session('push', '2026-10-08')] });
-    // One failed day: the recommendation is unknown, never guessed from partial days.
-    mockDay.mockImplementationOnce(async () => ({ status: 'unavailable', reason: 'network', meta }));
+    expect(mockWeekdays).toHaveBeenCalledTimes(1); expect(mockWeekdays.mock.calls[0].slice(1)).toEqual([TODAY, 12]);
+    expect(mockHistory).toHaveBeenCalledTimes(1);
+    expect(data).toEqual({ today: TODAY, sameWeekday: [pull], recent: [session('push', '2026-10-08')] });
+    // The same recommendation as from the full history sessions of those days.
+    expect(recommendRoutine(data.sameWeekday!, ACTIVE, TODAY)).toEqual(recommendRoutine([session('pull', '2026-10-02')], ACTIVE, TODAY));
+    // A failed read: the recommendation is unknown, never guessed.
+    mockWeekdays.mockImplementationOnce(async () => ({ status: 'unavailable', reason: 'network', meta }));
     expect((await loadRecommendationData({} as MobileApiClient, TODAY)).sameWeekday).toBeNull();
   });
 });

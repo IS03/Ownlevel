@@ -2,7 +2,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import { createMobileApiClient } from './client';
 import {
   correctSession, discardSession, fetchTrainingDay, fetchTrainingExerciseHistory, fetchTrainingHistory, fetchTrainingHistoryExercises,
-  parseSessionCorrected, parseTrainingDay, parseTrainingExerciseHistory, parseTrainingHistoryExercises, parseTrainingHistoryPage,
+  fetchTrainingWeekdaySessions, parseTrainingWeekdaySessions, parseSessionCorrected, parseTrainingDay, parseTrainingExerciseHistory, parseTrainingHistoryExercises, parseTrainingHistoryPage,
   type SessionCorrectionInput,
 } from './training-history';
 
@@ -121,5 +121,29 @@ describe('routine-scoped exercise history', () => {
     const fetch = jest.fn<typeof globalThis.fetch>().mockResolvedValue(response(200, expanded));
     await fetchTrainingExerciseHistory(client(fetch), exerciseId, 20, undefined, otherId);
     expect(String(fetch.mock.calls[0][0])).toContain(`historyByRoutine=1&routineId=${otherId}`);
+  });
+});
+
+describe('Recommendation sessions of the same weekday', () => {
+  const day = '2026-10-29', valid = { date: day, weeks: 12, sessions: [{ id: sessionId, routineId: otherId, logDate: '2026-10-22' }, { id: otherId, routineId: null, logDate: day }] };
+  it('accepts only the requested day and weeks, and sessions on those weekdays', () => {
+    expect(parseTrainingWeekdaySessions(valid, day, 12)).toEqual(valid);
+    expect(parseTrainingWeekdaySessions({ ...valid, sessions: [] }, day, 12)?.sessions).toEqual([]);
+    expect(parseTrainingWeekdaySessions({ ...valid, date: '2026-10-22' }, day, 12)).toBeUndefined();
+    expect(parseTrainingWeekdaySessions({ ...valid, weeks: 11 }, day, 12)).toBeUndefined();
+    expect(parseTrainingWeekdaySessions({ ...valid, extra: 1 }, day, 12)).toBeUndefined();
+    // Not the same weekday, or older than the window.
+    expect(parseTrainingWeekdaySessions({ ...valid, sessions: [{ id: sessionId, routineId: null, logDate: '2026-10-28' }] }, day, 12)).toBeUndefined();
+    expect(parseTrainingWeekdaySessions({ ...valid, sessions: [{ id: sessionId, routineId: null, logDate: '2026-07-23' }] }, day, 12)).toBeUndefined();
+    expect(parseTrainingWeekdaySessions({ ...valid, sessions: [{ id: 'x', routineId: null, logDate: day }] }, day, 12)).toBeUndefined();
+    expect(parseTrainingWeekdaySessions({ ...valid, sessions: [{ id: sessionId, routineId: null, logDate: day, name: 'PUSH' }] }, day, 12)).toBeUndefined();
+  });
+  it('one GET with the day and weeks; an invalid body is unavailable, never an empty week', async () => {
+    const fetchMock = jest.fn<typeof fetch>().mockResolvedValueOnce(response(200, valid)).mockResolvedValueOnce(response(200, { ...valid, weeks: 3 }));
+    const result = await fetchTrainingWeekdaySessions(client(fetchMock), day, 12);
+    expect(result.status).toBe('ok');
+    expect(String(fetchMock.mock.calls[0][0])).toBe(`https://example.test/api/mobile/v1/training/history/weekdays?date=${day}&weeks=12`);
+    expect(fetchMock.mock.calls[0][1]?.method ?? 'GET').toBe('GET');
+    expect((await fetchTrainingWeekdaySessions(client(fetchMock), day, 12)).status).not.toBe('ok');
   });
 });

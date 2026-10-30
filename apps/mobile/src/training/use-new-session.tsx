@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import type { MobileApiClient } from '@/api/client';
+import { settledWrites } from '@/api/confirmed-read-cache';
 import type { MobileHomeResponse } from '@/api/home';
 import type { HomeResource } from '@/home/home-resource';
 import { haptics } from '@/platform/haptics';
@@ -15,7 +16,8 @@ import type { SessionStartRequest } from './use-session-starter';
 const DATA_TTL = 5 * 60_000;
 const PREFETCH_DELAY_MS = 1_000;
 
-type Loaded = { at: number; data: RecommendationData };
+/** `writes`: the account's settled writes when the read started, so a later write (finish, edit, discard) makes it stale. */
+type Loaded = { at: number; writes: number; data: RecommendationData };
 
 /**
  * "Nueva sesión" for Home and Training: the native sheet (recommended / choose / free).
@@ -38,10 +40,11 @@ export function useNewSession({ client, home, onCreateRoutine, start, today }: {
     inflight.current?.controller.abort();
     const controller = new AbortController();
     inflight.current = { controller, today };
+    const writes = settledWrites(client);
     void loadRecommendationData(client, today, controller.signal).then(data => {
       if (controller.signal.aborted) return;
       inflight.current = null;
-      setLoaded({ at: Date.now(), data });
+      setLoaded({ at: Date.now(), writes, data });
     }).catch(() => { if (!controller.signal.aborted) inflight.current = null; });
   };
   const current = loaded?.data.today === today ? loaded : null;
@@ -83,7 +86,8 @@ export function useNewSession({ client, home, onCreateRoutine, start, today }: {
   );
   const open = () => {
     haptics.selection(); setPage('start'); setOpen(true);
-    if (!current || Date.now() - current.at > DATA_TTL) load(); // refresh quietly, keeping what is shown
+    // Refresh quietly, keeping what is shown: when old, after any settled write, or when the last read failed.
+    if (!current || Date.now() - current.at > DATA_TTL || current.writes !== settledWrites(client) || !current.data.sameWeekday) load();
   };
   return { element, open };
 }

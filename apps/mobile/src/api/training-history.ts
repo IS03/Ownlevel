@@ -25,6 +25,9 @@ export type TrainingDay = {
   sessions: TrainingHistorySession[];
   summary: { sessionCount: number; exercisesCompleted: number; completedSets: number; durationMilliseconds: number | null; volumeKg: number | null };
 };
+/** A day and the same weekday of the previous weeks: only what the routine recommendation reads. */
+export type TrainingWeekdaySession = Pick<TrainingHistorySession, 'id' | 'routineId' | 'logDate'>;
+export type TrainingWeekdaySessions = { date: string; weeks: number; sessions: TrainingWeekdaySession[] };
 export type TrainingHistoryMark = { weightKg: number | null; reps: number | null };
 export type TrainingHistoryExercise = {
   id: string; name: string; muscleGroup: string | null; muscleLabel: string | null; implement: string | null; weightMode: string | null;
@@ -88,6 +91,21 @@ export function parseTrainingDay(value: unknown, requested?: string): TrainingDa
   // A day's sessions all belong to that stored log date.
   if (!sessions || sessions.some(session => session.logDate !== value.date)) return undefined;
   return { date: value.date, sessions, summary: summary as TrainingDay['summary'] };
+}
+/** Every session must belong to `date` or to the same weekday of one of the previous `weeks`. */
+export function parseTrainingWeekdaySessions(value: unknown, date: string, weeks: number): TrainingWeekdaySessions | undefined {
+  if (!g.record(value, ['date', 'weeks', 'sessions']) || Object.keys(value).length !== 3 || value.date !== date || value.weeks !== weeks ||
+    !Array.isArray(value.sessions)) return undefined;
+  const days = new Set(Array.from({ length: weeks + 1 }, (_, index) => {
+    const day = new Date(`${date}T12:00:00Z`); day.setUTCDate(day.getUTCDate() - 7 * index); return day.toISOString().slice(0, 10);
+  }));
+  const sessions: TrainingWeekdaySession[] = [];
+  for (const item of value.sessions) {
+    if (!g.record(item, ['id', 'routineId', 'logDate']) || Object.keys(item).length !== 3 || !g.id(item.id) ||
+      !(item.routineId === null || g.id(item.routineId)) || !g.date(item.logDate) || !days.has(item.logDate)) return undefined;
+    sessions.push({ id: item.id, routineId: item.routineId, logDate: item.logDate });
+  }
+  return { date, weeks, sessions };
 }
 function parseMark(value: unknown): TrainingHistoryMark | null | undefined {
   if (value === null) return null;
@@ -165,6 +183,10 @@ export function parseSessionDiscarded(value: unknown): SessionDiscardedDto | und
 
 export function fetchTrainingHistory(client: MobileApiClient, cursor: string | null, signal?: AbortSignal): Promise<MobileApiReadResult<TrainingHistoryPage>> {
   return client.read({ path: `${BASE}/history?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, signal, parse: parseTrainingHistoryPage });
+}
+export function fetchTrainingWeekdaySessions(client: MobileApiClient, date: string, weeks: number, signal?: AbortSignal): Promise<MobileApiReadResult<TrainingWeekdaySessions>> {
+  return client.read({ path: `${BASE}/history/weekdays?date=${encodeURIComponent(date)}&weeks=${weeks}`, signal,
+    parse: value => parseTrainingWeekdaySessions(value, date, weeks) });
 }
 export function fetchTrainingDay(client: MobileApiClient, date: string, signal?: AbortSignal): Promise<MobileApiReadResult<TrainingDay>> {
   return client.read({ path: `${BASE}/days/${encodeURIComponent(date)}`, signal, parse: value => parseTrainingDay(value, date) });
