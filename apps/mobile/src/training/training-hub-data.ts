@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 
 import { fetchMobileHome, type MobileHomeResponse } from '@/api/home';
@@ -103,13 +103,16 @@ export function hubReadExpired(resource: { getSnapshot(): ApiResourceState<unkno
   return snapshot.status !== 'ready' || now - snapshot.current.confirmedAt >= HUB_CACHE_TTL;
 }
 
-export function useHubRead<T>(resource: ApiResourceController<T>) {
+/** `visible`: the hub stays mounted as a tab; hidden, it skips the foreground read and its next focus catches up. */
+export function useHubRead<T>(resource: ApiResourceController<T>, visible: () => boolean = () => true) {
   const state = useSyncExternalStore(resource.subscribe.bind(resource), resource.getSnapshot.bind(resource), resource.getSnapshot.bind(resource));
+  const visibleRef = useRef(visible);
+  useEffect(() => { visibleRef.current = visible; });
   useEffect(() => {
     if (hubReadExpired(resource)) void resource.refresh('initial');
     let previous = AppState.currentState;
     const subscription = AppState.addEventListener('change', next => {
-      if (shouldRefreshOnForeground(previous, next)) void resource.refresh('foreground');
+      if (shouldRefreshOnForeground(previous, next) && visibleRef.current()) void resource.refresh('foreground');
       previous = next;
     });
     return () => subscription.remove();

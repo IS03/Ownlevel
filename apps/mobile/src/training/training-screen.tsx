@@ -39,18 +39,22 @@ export function TrainingScreen({ now = systemNow }: { now?: () => Date }) {
   const [calendar, setCalendar] = useState<{ open: boolean; month: string }>({ month, open: false });
   const [collapsedHeight, setCollapsedHeight] = useState(COLLAPSED_FALLBACK);
   const cache = useMemo(() => new TrainingHubCache(client), [client]);
-  const home = useHubRead(cache.home);
-  const previousMonth = shiftHubMonth(month, -1);
-  const currentCalendar = useHubRead(cache.month(month));
-  useHubRead(cache.month(previousMonth));
+  // The hub stays mounted as a tab: returning to the foreground re-reads it only while it is on screen.
+  const visible = useRef(false);
+  const onScreen = useCallback(() => visible.current, []);
+  const home = useHubRead(cache.home, onScreen);
+  const currentCalendar = useHubRead(cache.month(month), onScreen);
+  // The previous month is only prefetched while the month is open, for its first "Mes anterior".
+  const previousMonth = calendar.open ? shiftHubMonth(month, -1) : month;
+  useHubRead(cache.month(previousMonth), onScreen);
   const shownMonth = calendar.open ? calendar.month : month;
-  const shownCalendar = useHubRead(cache.month(shownMonth));
-  const week = useHubRead(cache.week(today));
+  const shownCalendar = useHubRead(cache.month(shownMonth), onScreen);
+  const week = useHubRead(cache.week(today), onScreen);
   const dates = weekDates(mondayOf(today));
+  // The strip only marks days up to today: those fall in today's month or, early in a month, in the week's first one.
+  // A week ending in the next month leaves its days there ahead of today, so that month is not read.
   const firstWeekMonth = dates[0].slice(0, 7);
-  const lastWeekMonth = dates[6].slice(0, 7);
-  const firstMonth = useHubRead(cache.month(firstWeekMonth));
-  const lastMonth = useHubRead(cache.month(lastWeekMonth));
+  const firstMonth = useHubRead(cache.month(firstWeekMonth), onScreen);
 
   useEffect(() => {
     const interval = setInterval(() => setClock(now()), 30_000);
@@ -66,7 +70,7 @@ export function TrainingScreen({ now = systemNow }: { now?: () => Date }) {
     const settled = settledWrites(client), changed = settled !== writes.current;
     writes.current = settled;
     const resources = new Set([cache.home, cache.month(month), cache.month(previousMonth), cache.month(shownMonth),
-      cache.month(firstWeekMonth), cache.month(lastWeekMonth), cache.week(today)]);
+      cache.month(firstWeekMonth), cache.week(today)]);
     resources.forEach(resource => {
       // A read already in flight can predate the settled write: never join it as the new truth.
       if (changed) void resource.reload(trigger);
@@ -75,7 +79,11 @@ export function TrainingScreen({ now = systemNow }: { now?: () => Date }) {
   };
   const refreshRef = useRef(refresh);
   useEffect(() => { refreshRef.current = refresh; });
-  useFocusEffect(useCallback(() => { refreshRef.current('foreground', true); }, []));
+  useFocusEffect(useCallback(() => {
+    visible.current = true;
+    refreshRef.current('foreground', true);
+    return () => { visible.current = false; };
+  }, []));
 
   const expand = () => { haptics.selection(); setCalendar({ month, open: true }); };
   const collapse = () => setCalendar(value => ({ ...value, open: false }));
@@ -94,7 +102,7 @@ export function TrainingScreen({ now = systemNow }: { now?: () => Date }) {
   const newSession = useNewSession({ client, home, onCreateRoutine: () => router.push('/(tabs)/train/routines'), start: starter.start, today });
   const homeState = cache.home.getSnapshot();
 
-  const strip = knownTrainedDays([currentCalendar, firstMonth, lastMonth]);
+  const strip = knownTrainedDays([currentCalendar, firstMonth]);
   const shownRead = shownCalendar.data?.calendar;
   const shownDays = shownRead?.status === 'ok' ? shownRead.data.days.map(day => day.date) : null;
   // Swipe up closes the month; swipe down on the strip opens it (one commit when the gesture ends).

@@ -1,7 +1,7 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { clearConfirmedReads, invalidateConfirmedReads } from '@/api/confirmed-read-cache';
-import { Alert, RefreshControl } from 'react-native';
+import { Alert, AppState, RefreshControl } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { MobileHomeResponse } from '@/api/home';
 import type { TrainingHistorySession } from '@/api/training-history';
@@ -16,7 +16,7 @@ const mockStart = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockTrainingDay = jest.fn<(client: unknown, date: string) => Promise<unknown>>();
 const mockPush = jest.fn(); const mockReplace = jest.fn(); const mockHaptic = jest.fn();
 const mockClient = {};
-const mockFocus: (() => void)[] = [];
+const mockFocus: (() => (() => void) | void)[] = [];
 const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
 const routineId = '11111111-1111-4111-8111-111111111111';
 const sessionId = '22222222-2222-4222-8222-222222222222';
@@ -28,7 +28,7 @@ jest.mock('@expo/ui', () => {
   const { View } = jest.requireActual<typeof import('react-native')>('react-native');
   return { Host: View, RNHostView: View, BottomSheet: ({ isPresented, children }: { isPresented: boolean; children: React.ReactNode }) => isPresented ? <View>{children}</View> : null };
 });
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, replace: mockReplace }), useFocusEffect: (effect: () => void) => { mockFocus.push(effect); } }));
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, replace: mockReplace }), useFocusEffect: (effect: () => (() => void) | void) => { mockFocus.push(effect); } }));
 jest.mock('@/api/home', () => ({ fetchMobileHome: (...args: unknown[]) => mockHome(...args) }));
 jest.mock('@/api/training', () => ({ fetchMobileTraining: (...args: unknown[]) => mockTraining(...args) }));
 jest.mock('@/api/training-history', () => ({
@@ -96,14 +96,20 @@ function home(): MobileHomeResponse {
     ] },
   } };
 }
-function renderScreen() {
+function renderScreen(at = now) {
   return render(<SafeAreaProvider initialMetrics={{ frame: { height: 844, width: 390, x: 0, y: 0 }, insets: { top: 47, bottom: 34, left: 0, right: 0 } }}>
-    <OwnlevelThemeProvider initialMode="light"><TrainingScreen now={now} /></OwnlevelThemeProvider>
+    <OwnlevelThemeProvider initialMode="light"><TrainingScreen now={at} /></OwnlevelThemeProvider>
   </SafeAreaProvider>);
 }
+let appStateListeners: ((state: string) => void)[] = [];
 describe('Training native hub', () => {
   beforeEach(() => {
     mockFocus.length = 0;
+    appStateListeners = [];
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, listener) => {
+      appStateListeners.push(listener as (state: string) => void);
+      return { remove: () => { appStateListeners = appStateListeners.filter(item => item !== listener); } } as never;
+    });
     [mockHome, mockTraining, mockHistory, mockRoutines, mockStart, mockPush, mockReplace, mockHaptic, mockTrainingDay].forEach(mock => mock.mockReset());
     mockTrainingDay.mockImplementation(async (_client, date) => ok({ date, sessions: [], summary: { sessionCount: 0, exercisesCompleted: 0, completedSets: 0, durationMilliseconds: null, volumeKg: null } }));
     mockHome.mockResolvedValue(ok(home()));
@@ -127,8 +133,46 @@ describe('Training native hub', () => {
     const afterWrite = reads(), start = Date.now();
     jest.spyOn(Date, 'now').mockReturnValue(start + 31_000);
     await act(async () => { mockFocus.at(-1)!(); });
-    expect(reads()).toBe(afterWrite + 4); // home, the two distinct months and the week: the window expired
+    expect(reads()).toBe(afterWrite + 3); // home, the month and the week: the window expired
     jest.mocked(Date.now).mockRestore(); clearConfirmedReads(mockClient as never);
+  });
+  it('reads only the months its week shows up to today; the previous month waits for the open calendar', async () => {
+    // Thursday 30/10: the week runs to Sunday 2/11, whose November days are all still ahead.
+    const view = renderScreen(() => new Date('2026-10-30T18:00:00Z'));
+    await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar PUSH' })).toBeTruthy());
+    expect(mockTraining.mock.calls.map(call => call[1])).toEqual(['2026-10']);
+    expect(view.getByTestId('training-week-day-2026-11-01').props.accessibilityLabel).toBe('Domingo 1');
+    await act(async () => fireEvent.press(view.getByTestId('training-week-strip')));
+    expect(mockTraining.mock.calls.map(call => call[1])).toEqual(['2026-10', '2026-09']);
+    await act(async () => fireEvent.press(within(view.getByTestId('training-month-calendar')).getByRole('button', { name: 'Mes anterior' })));
+    expect(mockTraining).toHaveBeenCalledTimes(2);
+  });
+  it('a week that starts in the previous month still reads it for its past days', async () => {
+    // Sunday 1/11: Monday 26/10 to Saturday 31/10 are past days of October.
+    mockTraining.mockImplementation(async (_client, month) => ok({ activeSession: { status: 'ok', data: null },
+      calendar: { status: 'ok', data: { month, days: month === '2026-10' ? [{ date: '2026-10-27', colors: ['blue'] }] : [] } } }));
+    const view = renderScreen(() => new Date('2026-11-01T18:00:00Z'));
+    await waitFor(() => expect(view.getByTestId('training-day-filled-2026-10-27')).toBeTruthy());
+    expect(mockTraining.mock.calls.map(call => call[1]).sort()).toEqual(['2026-10', '2026-11']);
+    expect(view.getByTestId('training-week-day-2026-10-28').props.accessibilityLabel).toBe('Miércoles 28, sin entrenamiento');
+  });
+  it('returning to the foreground re-reads the hub only while it is on screen; hidden, its next focus catches up', async () => {
+    const foreground = () => act(async () => { [...appStateListeners].forEach(listener => listener('background')); [...appStateListeners].forEach(listener => listener('active')); });
+    const reads = () => mockHome.mock.calls.length + mockTraining.mock.calls.length + mockHistory.mock.calls.length;
+    const view = renderScreen(); await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar LEGS' })).toBeTruthy());
+    let blur: (() => void) | void;
+    await act(async () => { blur = mockFocus.at(-1)!(); });
+    const initial = reads();
+    await foreground();
+    expect(reads()).toBe(initial + 3); // on screen: home, the month and the week
+    await act(async () => { blur?.(); });
+    const hidden = reads(), start = Date.now();
+    await foreground();
+    expect(reads()).toBe(hidden); // another tab or the active session on screen: nothing read for nobody
+    jest.spyOn(Date, 'now').mockReturnValue(start + 31_000);
+    await act(async () => { mockFocus.at(-1)!(); });
+    expect(reads()).toBe(hidden + 3); // shown again after the window: everything expired is re-read
+    jest.mocked(Date.now).mockRestore();
   });
   it('returning after a write drops an older pending hub read even if its response arrives last', async () => {
     let finish!: (result: unknown) => void;
@@ -151,7 +195,7 @@ describe('Training native hub', () => {
     await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar LEGS' })).toBeTruthy());
     expect(view.getAllByRole('button').filter(node => node.props.accessibilityLabel?.startsWith('Iniciar ')).map(node => node.props.accessibilityLabel)).toEqual(['Iniciar PUSH', 'Iniciar PULL', 'Iniciar LEGS']);
     expect(view.queryByRole('button', { name: 'Iniciar ABS' })).toBeNull();
-    expect(mockTraining.mock.calls.map(call => call[1]).sort()).toEqual(['2026-09', '2026-10']);
+    expect(mockTraining.mock.calls.map(call => call[1])).toEqual(['2026-10']);
     expect(mockHistory).toHaveBeenCalledTimes(1); expect(mockStart).not.toHaveBeenCalled();
   });
   it('pinned week: no title or month row; trained days filled, today with its halo; tapping it expands the month in place, the backdrop closes it', async () => {
