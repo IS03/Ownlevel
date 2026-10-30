@@ -1,7 +1,7 @@
 import type { MobileApiClient } from './client';
 import { parseProgressExplore, type ExploreBreakdown, type ExploreDays } from '../../../../src/lib/mobile-api/progress-explore-contract';
 import {
-  parseProgressNutritionTiming, parseProgressHabitWeek, parseProgressBody, parseProgressMetrics, parseProgressOverview, parseProgressTraining, parseProgressTrainingExercise, progressQueryKey, progressQueryString,
+  parseProgressNutritionTiming, parseProgressHabitWeek, parseProgressBody, parseProgressMetrics, parseProgressOverview, parseProgressTraining, parseProgressTrainingExercise, parseProgressTrainingRecords, progressQueryKey, progressQueryString,
   type ProgressPeriod, type ProgressQuery,
 } from '../../../../src/lib/mobile-api/progress-contract';
 
@@ -39,6 +39,11 @@ export const fetchProgressMetrics = (client: MobileApiClient, query: ProgressQue
 export const fetchProgressTraining = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
   client.read({ path: `${BASE}/training?${qs(query, compare)}&inPeriod=1`, signal, parse: (raw: unknown) => {
     const data = parseProgressTraining(raw); return data && samePeriod(data.period, query, compare) ? data : undefined;
+  } });
+/** Home's records card: the records, exercise performance and comparable count of `/training`, without the rest. */
+export const fetchProgressTrainingRecords = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal) =>
+  client.read({ path: `${BASE}/training/records?${qs(query)}`, signal, parse: (raw: unknown) => {
+    const data = parseProgressTrainingRecords(raw); return data && samePeriod(data.period, query) ? data : undefined;
   } });
 export const fetchProgressTrainingExercise = (client: MobileApiClient, query: ProgressQuery, exerciseId: string, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
   client.read({ path: `${BASE}/training/exercises/${encodeURIComponent(exerciseId)}?${qs(query, compare)}&charts=1`, signal, parse: (raw: unknown) => {

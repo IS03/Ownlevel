@@ -6,7 +6,7 @@ import type { MobileApiClient } from '@/api/client';
 import { settledWrites } from '@/api/confirmed-read-cache';
 import { fetchHistoryDay } from '@/api/history';
 import { fetchNutritionReport } from '@/api/nutrition-report';
-import { fetchProgressHabitWeek, fetchProgressBody, fetchProgressTraining } from '@/api/progress';
+import { fetchProgressHabitWeek, fetchProgressBody, fetchProgressTrainingRecords } from '@/api/progress';
 import type { MobileApiReadResult } from '@/api/results';
 import { fetchTrainingHistory, type TrainingHistorySession } from '@/api/training-history';
 
@@ -94,7 +94,7 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
   const progressBody = useApiResource(useCallback((signal: AbortSignal) =>
     client ? fetchProgressBody(client, { period: '7' }, signal) : Promise.resolve(unavailable), [client]), { refreshOnForeground: foreground });
   const progressRecords = useApiResource(useCallback((signal: AbortSignal) =>
-    client ? fetchProgressTraining(client, { period: '30' }, signal) : Promise.resolve(unavailable), [client]), { refreshOnForeground: foreground });
+    client ? fetchProgressTrainingRecords(client, { period: '30' }, signal) : Promise.resolve(unavailable), [client]), { refreshOnForeground: foreground });
 
   const refreshHome = home.refresh, refreshToday = today.refresh;
   const refreshCalories = calories.refresh, refreshTraining = training.refresh, refreshHabits = habits.refresh;

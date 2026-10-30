@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import type { ProgressBody, ProgressTraining, ProgressTrainingExercise } from '@/api/progress';
+import type { ProgressBody, ProgressTrainingExercise, ProgressTrainingRecords } from '@/api/progress';
 import { AppText, InlineUnavailable, SkeletonBlock, useOwnlevelTheme } from '@/design-system';
 import { formatValue } from '@/progress/progress-format';
 
@@ -32,7 +32,7 @@ function exerciseChange(exercise: ProgressTrainingExercise): string {
 }
 
 /** Records of the last 30 days; without records, M7's mode-aware assessment (never a fake PR). */
-export function recordsSummary(data: ProgressTraining): RowSummary {
+export function recordsSummary(data: ProgressTrainingRecords): RowSummary {
   const records = data.personalRecords;
   if (records.length) {
     const names = records.slice(0, 2).map(record => record.name).join(', ');
@@ -47,7 +47,7 @@ export function recordsSummary(data: ProgressTraining): RowSummary {
   if (change) return { title: 'Rendimiento en 30 días', subtitle: exerciseChange(change), target: { kind: 'exercise', period: '30', exerciseId: change.id } };
   return {
     title: 'Sin récords en 30 días', target: { kind: 'training', period: '30' },
-    subtitle: data.summary.performance.comparable > 0 ? 'Seguí sumando entrenamientos' : 'Faltan entrenamientos comparables',
+    subtitle: data.performance.comparable > 0 ? 'Seguí sumando entrenamientos' : 'Faltan entrenamientos comparables',
   };
 }
 
@@ -89,7 +89,7 @@ function ReadRow<T extends { today: string }>({ date, icon, label, onOpen, onRet
 
 export function HomeProgress({ body, date, onAll, onOpen, onRetry, records }: {
   body: HomeResource<ProgressBody>; date: string; onAll: () => void; onOpen: (target: HomeProgressTarget) => void;
-  onRetry: () => void; records: HomeResource<ProgressTraining>;
+  onRetry: () => void; records: HomeResource<ProgressTrainingRecords>;
 }) {
   return (
     <HomeSection action="Ver todo" onAction={onAll} testID="home-progress" title="Progreso">

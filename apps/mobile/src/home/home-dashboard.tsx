@@ -4,7 +4,7 @@ import { Image, Pressable, StyleSheet, View } from 'react-native';
 import type { MobileHomeResponse, MobileHomeTodaySession } from '@/api/home';
 import type { HistoryDay } from '@/api/history';
 import type { NutritionReport } from '@/api/nutrition-report';
-import type { ProgressHabitWeek, ProgressBody, ProgressTraining } from '@/api/progress';
+import type { ProgressHabitWeek, ProgressBody, ProgressTrainingRecords } from '@/api/progress';
 import {
   AppIcon,
   AppText,
@@ -56,7 +56,7 @@ export type HomeDashboardProps = MetricPresentationProps & {
   /** Opens the start sheet ("¿Qué entrenás hoy?"); the session starts through the shared start flow. */
   onStartWorkout: () => void;
   progressBody: HomeResource<ProgressBody>;
-  progressRecords: HomeResource<ProgressTraining>;
+  progressRecords: HomeResource<ProgressTrainingRecords>;
   today: HomeResource<HistoryDay>;
   training: HomeResource<HomeTrainingWeek>;
 };

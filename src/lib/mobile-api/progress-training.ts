@@ -1,17 +1,17 @@
 import "server-only";
 import { loadCompletedTrainingData } from "@/lib/phase2/training-robust";
 import { listRoutines } from "@/lib/phase2/training";
-import { buildTrainingAnalysis, type TrainingAnalysis, type TrainingAnalysisSource } from "@/lib/phase2/training-analysis";
+import { buildTrainingAnalysis, trainingExerciseStats, type TrainingAnalysis, type TrainingAnalysisSource } from "@/lib/phase2/training-analysis";
 import { TRAINING_PROGRESS_METRICS } from "@/lib/progress/analytics";
 import { buildProgressComparison, type ProgressComparisonReport, type ProgressTemporalComparisonReference } from "@/lib/progress/comparisons";
 import {
-  compareTrainingExercisePerformance, buildTrainingGeneralAnalytics, buildTrainingLoadComparison, trainingLoadSamples, trainingPerformanceStrategy,
-  type TrainingExercisePerformance, type TrainingGeneralAnalytics,
+  compareTrainingExercisePerformance, buildTrainingGeneralAnalytics, buildTrainingPerformanceComparison, buildTrainingLoadComparison, trainingLoadSamples, trainingPerformanceStrategy,
+  type TrainingExercisePerformance, type TrainingGeneralAnalytics, type TrainingPerformanceSummary,
 } from "@/lib/progress/training-performance";
 import { buildTrainingExercisesAnalytics, type TrainingExerciseDetailAnalytics } from "@/lib/progress/training-exercises";
 import type { AuthenticatedRequestContext } from "@/lib/supabase/server";
 import type {
-  ProgressComparison, ProgressPeriod, ProgressTraining, ProgressTrainingExercise, ProgressTrainingExerciseDetail, ProgressTrainingSummary, ProgressTrainingInPeriod, ProgressExerciseCharts, ProgressExercisePoint,
+  ProgressComparison, ProgressPeriod, ProgressTraining, ProgressTrainingExercise, ProgressTrainingRecords, ProgressTrainingExerciseDetail, ProgressTrainingSummary, ProgressTrainingInPeriod, ProgressExerciseCharts, ProgressExercisePoint,
 } from "./progress-contract";
 
 type CompareDto = (result: ProgressComparisonReport["results"][number] | undefined) => ProgressComparison;
@@ -64,8 +64,12 @@ export function trainingSummaryDto(ctx: TrainingContext, period: ProgressPeriod,
       sets: compare(byKey(load, "training.load.sets")), minutes: compare(byKey(load, "training.load.duration")),
       setsPerSession: compare(byKey(load, "training.load.sets_per_session")),
     },
-    performance: { improved: perf.improved, stable: perf.stable, declined: perf.declined, comparable: perf.comparable, insufficient: perf.insufficient, headline: perf.headline },
+    performance: performanceDto(perf),
   };
+}
+
+function performanceDto(perf: TrainingPerformanceSummary): ProgressTrainingSummary["performance"] {
+  return { improved: perf.improved, stable: perf.stable, declined: perf.declined, comparable: perf.comparable, insufficient: perf.insufficient, headline: perf.headline };
 }
 
 function exerciseDto(item: TrainingExercisePerformance, stats: TrainingAnalysis["exercises"][number] | undefined): ProgressTrainingExercise {
@@ -76,20 +80,46 @@ function exerciseDto(item: TrainingExercisePerformance, stats: TrainingAnalysis[
   };
 }
 
+/** Trained in the period first (most sessions), then exercises only present in the previous period. */
+function exercisesDto(performance: TrainingExercisePerformance[], stats: TrainingAnalysis["exercises"]): ProgressTrainingExercise[] {
+  const statsById = new Map(stats.map(exercise => [exercise.id, exercise]));
+  return performance.map(item => exerciseDto(item, statsById.get(item.exerciseId)))
+    .sort((a, b) => Number(b.sessions > 0) - Number(a.sessions > 0) || b.sessions - a.sessions || a.name.localeCompare(b.name, "es-AR"));
+}
+
+function personalRecordsDto(performance: TrainingExercisePerformance[]): ProgressTraining["personalRecords"] {
+  return performance.filter(item => item.isPersonalRecord && item.signal).map(item => ({ exerciseId: item.exerciseId, name: item.name, description: item.signal!.description }));
+}
+
 export function trainingDto(ctx: TrainingContext, today: string, period: ProgressPeriod, compare: CompareDto): ProgressTraining {
-  const statsById = new Map(ctx.current.exercises.map(exercise => [exercise.id, exercise]));
   const performance = ctx.general.performance.exercises;
   return {
     today, period, summary: trainingSummaryDto(ctx, period, compare),
     series: ctx.current.timeline.map(point => ({ start: point.start, end: point.end, sessions: point.sessions, sets: point.sets, minutes: point.minutes })),
-    // Trained in the period first (most sessions), then exercises only present in the previous period.
-    exercises: performance.map(item => exerciseDto(item, statsById.get(item.exerciseId)))
-      .sort((a, b) => Number(b.sessions > 0) - Number(a.sessions > 0) || b.sessions - a.sessions || a.name.localeCompare(b.name, "es-AR")),
-    personalRecords: performance.filter(item => item.isPersonalRecord && item.signal).map(item => ({ exerciseId: item.exerciseId, name: item.name, description: item.signal!.description })),
+    exercises: exercisesDto(performance, ctx.current.exercises),
+    personalRecords: personalRecordsDto(performance),
     feelings: ctx.general.feelings.map(f => ({ key: f.key, label: f.label, average: f.average, scaleMaximum: f.scaleMaximum,
       registered: f.registeredCount, eligible: f.eligibleCount, ratio: f.coverageRatio })),
     muscles: ctx.current.muscles.filter(m => m.summary.hasData).map(m => ({ key: m.key, label: m.label, sets: m.summary.sets, sessions: m.summary.sessions, exercises: m.summary.exerciseCount })),
     routines: ctx.current.routines.filter(r => r.summary.hasData).map(r => ({ id: r.id, name: r.name, sessions: r.summary.sessions, sets: r.summary.sets, minutes: r.summary.minutes })),
+  };
+}
+
+/**
+ * Home's records card: the same personal records, exercise performance and comparable count as `trainingDto`, from the
+ * same functions, without the summary, series, feelings, muscles, routines or catalog read.
+ */
+export async function loadTrainingRecords(auth: AuthenticatedRequestContext, period: ProgressPeriod, today: string): Promise<ProgressTrainingRecords> {
+  return trainingRecordsDto(await loadCompletedTrainingData(auth, { recordColumns: true }), today, period);
+}
+
+export function trainingRecordsDto(source: TrainingAnalysisSource, today: string, period: ProgressPeriod): ProgressTrainingRecords {
+  const range = { start: period.start, end: period.end };
+  const performance = buildTrainingPerformanceComparison({ source, primaryPeriod: range, referencePeriod: { start: period.previousStart, end: period.previousEnd } });
+  return {
+    today, period, performance: performanceDto(performance.summary),
+    exercises: exercisesDto(performance.exercises, trainingExerciseStats(source, range)),
+    personalRecords: personalRecordsDto(performance.exercises),
   };
 }
 
