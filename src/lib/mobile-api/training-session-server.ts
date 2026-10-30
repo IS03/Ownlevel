@@ -1,7 +1,8 @@
 import "server-only";
 import {
   getTrainingHistoryDirectory, getWorkoutSessionDetail, listCompletedSessionHistory, listRecentRobustExerciseHistoryByExercise,
-  listRobustExerciseHistory, listCompleteRobustExerciseHistory, listCompletedSetsByDay, type RobustExerciseHistoryItem,
+  listRobustExerciseHistory, listCompleteRobustExerciseHistory, listCompletedSetsByDay, listCompletedSessionsOnDays,
+  type RobustExerciseHistoryItem,
 } from "../phase2/training-robust";
 import { listExercises } from "../phase2/training";
 import { buildTrainingHistoryExerciseDetail, sortTrainingHistoryExercises, type TrainingHistoryExerciseSession } from "../phase2/training-history";
@@ -25,6 +26,7 @@ import {
   type TrainingExerciseHistoryResponse, type TrainingExerciseHistorySessionDto, type TrainingHistoryExercisesResponse,
   type SessionExerciseSyncDto, type SessionStructuralDto, type TrainingDayResponse, type TrainingHistoryResponse,
   type TrainingHistorySessionDto, type TrainingHistoryMonthResponse, parseMobileTrainingMonth,
+  type TrainingWeekdaySessionsResponse, parseMobileTrainingWeeks,
 } from "./training-session";
 import { INTENSITY_WINDOW_DAYS, intensityLevel, intensityThresholds, isoDayShift, monthRange } from "./training-intensity";
 
@@ -242,6 +244,23 @@ export async function readMobileTrainingDay(date: unknown, context: MobileSupaba
   const logDate = parseMobileTrainingDate(date);
   const sessions = orderTrainingDaySessions(await listCompletedSessionHistory({ logDate, limit: 100 }, auth(context, performance)));
   return { date: logDate, sessions: sessions.map(historySessionDto), summary: summarizeTrainingDay(sessions) };
+}
+
+/**
+ * The day and the same weekday of the previous `weeks`, in that order, each day's sessions by start: the same list
+ * the client assembled from one /training/days read per date, without exercises or sets.
+ */
+export async function readMobileTrainingWeekdaySessions(searchParams: URLSearchParams, context: MobileSupabaseAuthenticatedContext,
+  performance: RequestPerformanceContext): Promise<TrainingWeekdaySessionsResponse> {
+  const date = parseMobileTrainingDate(searchParams.get("date"));
+  const weeks = parseMobileTrainingWeeks(searchParams.get("weeks"));
+  const dates = Array.from({ length: weeks + 1 }, (_, index) => isoDayShift(date, -7 * index));
+  const sessions = await listCompletedSessionsOnDays(dates, auth(context, performance));
+  return {
+    date, weeks,
+    sessions: dates.flatMap((day) => orderTrainingDaySessions(sessions.filter((session) => session.logDate === day)))
+      .map(({ id, routineId, logDate }) => ({ id, routineId, logDate })),
+  };
 }
 
 /** Today's log date as the domain assigns it (America/Argentina/Cordoba, like session start). */

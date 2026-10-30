@@ -307,6 +307,18 @@ export type TrainingHistoryMonthResponse = {
   month: string;
   days: Array<{ date: string; sessions: number; completedSets: number; level: 1 | 2 | 3 | 4 }>;
 };
+/** Completed sessions of `date` and of the same weekday in the previous `weeks`: the routine recommendation's input. */
+export type TrainingWeekdaySessionsResponse = {
+  date: string;
+  weeks: number;
+  sessions: Array<{ id: string; routineId: string | null; logDate: string }>;
+};
+export const TRAINING_WEEKDAY_WEEKS_MAX = 26;
+export function parseMobileTrainingWeeks(value: unknown): number {
+  const weeks = typeof value === "string" && /^\d{1,2}$/.test(value) ? Number(value) : NaN;
+  if (!Number.isInteger(weeks) || weeks < 1 || weeks > TRAINING_WEEKDAY_WEEKS_MAX) throw new MobileApiValidationError("Las semanas no son válidas.");
+  return weeks;
+}
 export type TrainingDayResponse = {
   date: string;
   sessions: TrainingHistorySessionDto[];
