@@ -42,8 +42,9 @@ export function CompletedSessionScreen({ api, sessionId, initialDetail, finished
   const navigation = useNavigation();
   const { colors } = useOwnlevelTheme();
   const load = useCallback((signal: AbortSignal) => api.detail(signal), [api]);
-  const { state, reload } = useRead(load, initialDetail);
-  // Re-read on focus so a correction made on the next screen shows confirmed server truth.
+  // Navigation owns every read: the first focus loads (or refreshes the detail handed over by finish), and each
+  // return re-reads so a correction made on the next screen shows confirmed server truth. No extra load on mount.
+  const { state, reload } = useRead(load, initialDetail, { loadOnMount: false });
   useFocusEffect(useCallback(() => { void reload(); }, [reload]));
   const [discarding, setDiscarding] = useState(false);
   const [notice, setNotice] = useState<{ text: string; tone: 'danger' | 'warning' } | null>(null);
