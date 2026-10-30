@@ -1,6 +1,7 @@
 import 'server-only';
 import { todayInCordoba } from '../phase2/cordoba-date';
-import { resolveNutritionReportRange } from '../nutrition/reports-core';
+import { buildNutritionReportDays, NUTRITION_REPORT_MAX_DAYS, resolveNutritionReportRange, type NutritionReportDay } from '../nutrition/reports-core';
+import { addProgressIsoDays } from '../progress/analytics';
 import { MobileApiValidationError } from './auth';
 import { isNutritionDate } from './nutrition-day-contract';
 import { parseReportQuery } from './nutrition-report-contract';
@@ -19,6 +20,30 @@ export async function readMobileNutritionFacts(context: MobileSupabaseAuthentica
   const facts=parseNutritionReportFacts(data);
   if(!facts) throw new Error('Report snapshot invalid');
   return facts;
+}
+
+/**
+ * Days of several ranges with as few snapshot reads as possible: ranges that touch or overlap share one read while
+ * their union fits the RPC's limit. The snapshot filters every fact by day (log, meals, workouts and the names of
+ * the stages those days reference) and each day is built only from its own facts, so the union's days cut by date
+ * are exactly the days each range would read alone.
+ */
+export async function readMobileNutritionDays(context: MobileSupabaseAuthenticatedContext, ranges: readonly { start: string; end: string }[], today: string): Promise<NutritionReportDay[][]> {
+  const spanDays = (start: string, end: string) => Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000) + 1;
+  const groups: { start: string; end: string; members: number[] }[] = [];
+  for (const index of ranges.map((_, i) => i).sort((a, b) => ranges[a].start.localeCompare(ranges[b].start))) {
+    const range = ranges[index], last = groups.at(-1);
+    const end = last && range.end > last.end ? range.end : last?.end;
+    if (last && end && range.start <= addProgressIsoDays(last.end, 1) && spanDays(last.start, end) <= NUTRITION_REPORT_MAX_DAYS) {
+      last.end = end; last.members.push(index);
+    } else groups.push({ start: range.start, end: range.end, members: [index] });
+  }
+  const days: NutritionReportDay[][] = new Array(ranges.length);
+  await Promise.all(groups.map(async (group) => {
+    const all = buildNutritionReportDays({ range: group, today, ...await readMobileNutritionFacts(context, group, today) });
+    for (const index of group.members) days[index] = all.filter((day) => day.date >= ranges[index].start && day.date <= ranges[index].end);
+  }));
+  return days;
 }
 
 export async function readMobileNutritionReport(params: URLSearchParams, context: MobileSupabaseAuthenticatedContext) {

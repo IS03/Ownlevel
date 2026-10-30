@@ -228,9 +228,9 @@ describe("GET /progress (overview)", () => {
     expect(o.evolution[0]).toMatchObject({ id: "body.weight", destination: { kind: "body" } });
     expect(o.nutrition.status === "ok" && o.nutrition.data).toMatchObject({ averageKcal: 2200, averageProteinG: 130, averageTargetKcal: 2100,
       calories: { status: "comparable", current: 2200, previous: 2000, deltaAbsolute: 200, deltaPercent: 10 } });
-    // Nutrition reuses the SAME report RPC, once per period.
+    // Nutrition reuses the SAME report RPC: the previous period touches this one, so both come from one read.
     const reports = rpcCalls.filter(c => c.name === "mobile_read_nutrition_report").map(c => c.args);
-    expect(reports).toEqual([{ p_start: d(-29), p_end: TODAY, p_expected_today: TODAY }, { p_start: d(-59), p_end: d(-30), p_expected_today: TODAY }]);
+    expect(reports).toEqual([{ p_start: d(-59), p_end: TODAY, p_expected_today: TODAY }]);
     const items = o.metrics.status === "ok" ? o.metrics.data.items : [];
     expect(items.map(i => i.name)).toEqual(["Pasos", "Lectura"]);
     expect(items[0]).toMatchObject({ average: 9000, comparison: { previous: 6000, deltaAbsolute: 3000, deltaPercent: 50 } });
