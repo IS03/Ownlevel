@@ -9,7 +9,7 @@ Estado, mediciones y propuestas pendientes de este lote. Etiquetas: **[medido]**
 | #343 | Servidor (proxy) | El proxy ya no se invoca en `ownlevel.fit` / `www.ownlevel.fit` fuera de las páginas de sesión. Previews y `*.vercel.app` conservan la protección de previews en todas las rutas | No |
 | #344 | Mobile | Inicio refresca al volver a primer plano solo si está visible | **Sí, pendiente.** Diario instalado: `99fd0a1` (29/10 23:36:44 ART), anterior a #344 |
 | #347 | Servidor | El Resumen de Progreso lee Nutrición una vez para el período actual y el anterior (rango unido, cortado por fecha) en lugar de dos | No |
-| #350 | Mobile | Entrenar lee solo los meses que muestra y relee al volver a primer plano solo si está visible | **Sí, pendiente** (igual que #344) |
+| #350 | Mobile | Entrenar lee solo los meses que muestra y relee al volver a primer plano solo si está visible | **Sí, pendiente** (igual que #344). Diario `99fd0a1` conserva el comportamiento anterior |
 
 Mediciones:
 
@@ -21,8 +21,8 @@ Mediciones:
   - lecturas reales de la app → 15/15 con 200.
 - **[medido, preview real de #343]** Sin autorización, `/login`, la API, `/mcp` y `/sw.js` → 302 al login de Vercel. Con autorización (enlace temporal de Vercel), `/login` → 200 pasando por el proxy. El bloqueo propio de OAuth (`OWNLEVEL_OAUTH_PREVIEW_LOCKDOWN`) solo está configurado para la rama `codex/ownlevel-oauth-mcp`: con el matcher nuevo lo cubren pruebas unitarias y `next dev`, no un preview.
 - **[medido, logs de Supabase]** #347: una apertura de la app pasó de 8 a 7 llamadas a `mobile_read_nutrition_report`, todas 200. El Resumen lee un solo rango (01/09–30/10).
-- **[medido, logs de Supabase]** #350, apertura de Diario `99fd0a1` del 30/10, 16:21:14 UTC. Los tres `/training` simultáneos piden meses distintos (septiembre, octubre y noviembre), y cada uno relee la sesión en curso: no son duplicados que la deduplicación haya dejado pasar. La segunda ronda, 12 s después, es la relectura tras la comida rápida confirmada a las 16:21:22. Se conserva.
-- **[medido, mocks]** #350, lecturas de Entrenar al 30/10 (inicio + `/training` + semana):
+- **[medido, logs de Supabase]** #350, apertura de Diario `99fd0a1` del 30/10, 16:21:14 UTC. Los tres `/training` simultáneos piden meses distintos (septiembre, octubre y noviembre), y cada uno relee la sesión en curso. Noviembre entraba por la semana del viernes 30/10, que va del lunes 26/10 al domingo 1/11: su único día de noviembre, todavía futuro. El mensaje del commit de #350 dice «1-2/11» por error. Los tres pedidos no son duplicados que la deduplicación haya dejado pasar. La segunda ronda, 12 s después, es la relectura tras la comida rápida confirmada a las 16:21:22. Se conserva.
+- **[medido, mocks]** #350, lecturas de Entrenar al 30/10 (inicio + `/training` + semana). Simulación del código de `main`, sin instalar: no describe la versión instalada.
   - carga, primer plano visible y foco tras una escritura: 5 (3 `/training`) → 3 (1);
   - primer plano con Entrenar oculta: 5 → 0.
 - **[medido]** Filtro de builds (#339): el merge solo móvil de #344 quedó «Canceled by Ignored Build Step» en producción.

@@ -137,7 +137,7 @@ describe('Training native hub', () => {
     jest.mocked(Date.now).mockRestore(); clearConfirmedReads(mockClient as never);
   });
   it('reads only the months its week shows up to today; the previous month waits for the open calendar', async () => {
-    // Thursday 30/10: the week runs to Sunday 2/11, whose November days are all still ahead.
+    // Friday 30/10: the week runs from Monday 26/10 to Sunday 1/11, its only November day, still ahead.
     const view = renderScreen(() => new Date('2026-10-30T18:00:00Z'));
     await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar PUSH' })).toBeTruthy());
     expect(mockTraining.mock.calls.map(call => call[1])).toEqual(['2026-10']);
