@@ -1,5 +1,5 @@
 import "server-only";
-import { loadCompletedTrainingData } from "@/lib/phase2/training-robust";
+import { loadCompletedTrainingData, loadTrainingRecordsData } from "@/lib/phase2/training-robust";
 import { listRoutines } from "@/lib/phase2/training";
 import { buildTrainingAnalysis, trainingExerciseStats, type TrainingAnalysis, type TrainingAnalysisSource } from "@/lib/phase2/training-analysis";
 import { TRAINING_PROGRESS_METRICS } from "@/lib/progress/analytics";
@@ -110,7 +110,9 @@ export function trainingDto(ctx: TrainingContext, today: string, period: Progres
  * same functions, without the summary, series, feelings, muscles, routines or catalog read.
  */
 export async function loadTrainingRecords(auth: AuthenticatedRequestContext, period: ProgressPeriod, today: string): Promise<ProgressTrainingRecords> {
-  return trainingRecordsDto(await loadCompletedTrainingData(auth, { recordColumns: true }), today, period);
+  // Rows from the earliest compared day; everything before it only feeds the record rule.
+  const from = period.previousStart < period.start ? period.previousStart : period.start;
+  return trainingRecordsDto(await loadTrainingRecordsData(auth, from), today, period);
 }
 
 export function trainingRecordsDto(source: TrainingAnalysisSource, today: string, period: ProgressPeriod): ProgressTrainingRecords {

@@ -12,7 +12,7 @@ import {
   requireAuthenticatedRequestContext,
   type AuthenticatedRequestContext,
 } from "@/lib/supabase/server";
-import { getPreviousProgressPeriod } from "../progress/analytics/periods";
+import { addProgressIsoDays, getPreviousProgressPeriod } from "../progress/analytics/periods";
 import type { ProgressTemporalComparisonReference } from "../progress/comparisons";
 import {
   buildTrainingGeneralAnalytics,
@@ -1325,6 +1325,52 @@ export async function loadCompletedTrainingData(
   const sets = allSets.filter((set) => exerciseIds.has(set.workout_session_exercise_id));
 
   return { sessions, sessionExercises, sets, dateByDayLog };
+}
+
+/** Older history as the record rule reads it: the best reps per (exercise, weight mode as stored, load > 0). */
+export type TrainingRecordHistoryRow = { exercise_id: string; weight_mode_snapshot: string | null; load: number; reps: number };
+export type TrainingRecordsRead = {
+  sessions: (WorkoutSession & EmbeddedDay)[]; exercises: WorkoutSessionExercise[]; sets: WorkoutSet[]; history: TrainingRecordHistoryRow[];
+};
+const RECORD_HISTORY_ID = "record-history";
+
+/**
+ * The records read as the analysis source: the window rows as they are, and older history as one completed session
+ * dated the day before `from` with one exercise and one set per aggregate. That date is outside the period and its
+ * previous one, and inside the history before them, the only place the comparison reads it.
+ */
+export function trainingRecordsSource(read: TrainingRecordsRead, from: string): CompletedTrainingData {
+  const sessions: WorkoutSession[] = read.sessions.map(withoutDay);
+  const dateByDayLog = new Map(read.sessions.flatMap((row) => row.day ? [[row.day_log_id, row.day.log_date] as const] : []));
+  const sessionExercises = [...read.exercises], sets = [...read.sets];
+  if (read.history.length) {
+    const date = addProgressIsoDays(from, -1);
+    dateByDayLog.set(RECORD_HISTORY_ID, date);
+    sessions.push({ id: RECORD_HISTORY_ID, day_log_id: RECORD_HISTORY_ID, status: "completed", started_at: null, ended_at: `${date}T00:00:00Z`,
+      routine_id: null, routine_name_snapshot: null, session_name: null } as unknown as WorkoutSession);
+    read.history.forEach((row, index) => {
+      const id = `${RECORD_HISTORY_ID}-${index}`;
+      sessionExercises.push({ id, workout_session_id: RECORD_HISTORY_ID, exercise_id: row.exercise_id, is_completed: true, nombre_snapshot: "",
+        grupo_muscular_snapshot: null, muscle_group_label_snapshot: null, weight_mode_snapshot: row.weight_mode_snapshot } as unknown as WorkoutSessionExercise);
+      sets.push({ id, workout_session_exercise_id: id, is_completed: true, actual_reps: row.reps, actual_weight_kg: row.load } as unknown as WorkoutSet);
+    });
+  }
+  return { sessions, sessionExercises, sets, dateByDayLog };
+}
+
+const isRecordsRead = (value: unknown): value is TrainingRecordsRead => !!value && typeof value === "object"
+  && ["sessions", "exercises", "sets", "history"].every((key) => Array.isArray((value as Record<string, unknown>)[key]));
+
+/**
+ * Home's records in one read (`mobile_read_training_records`): rows from `from` on, older history aggregated. Before
+ * that EXPAND is applied, or after its reversal, the narrow paged read returns the same records.
+ */
+export async function loadTrainingRecordsData(context: AuthenticatedRequestContext, from: string): Promise<CompletedTrainingData> {
+  const { data, error } = await context.supabase.rpc("mobile_read_training_records", { p_from: from });
+  if (error?.code === "PGRST202") return loadCompletedTrainingData(context, { recordColumns: true });
+  if (error) throw new Error(`Leer récords: ${error.message}`);
+  if (!isRecordsRead(data)) throw new Error("Leer récords: respuesta inválida.");
+  return trainingRecordsSource(data, from);
 }
 
 /**
