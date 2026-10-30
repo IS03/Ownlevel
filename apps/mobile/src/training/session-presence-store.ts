@@ -15,6 +15,8 @@ export type SessionPresenceApi = {
   active: () => Promise<MobileApiReadResult<MobileTrainingResponse>>;
   detail: (id: string) => Promise<MobileApiRequestResult<SessionDetailDto>>;
 };
+export const PRESENCE_REUSE_MS = 30_000;
+type PresenceReadOptions = { now?: () => number; writeRevision?: () => number };
 const empty: SessionPresence = { session: null, timer: null, unavailable: false, recovery: false };
 
 /** Read-only presentation shared by the tabs. The session controller still owns every write. */
@@ -25,7 +27,15 @@ export class SessionPresenceStore {
   private alive = true;
   private flight: Promise<void> | null = null;
 
-  constructor(private readonly api: SessionPresenceApi, private readonly storage: SessionStoragePort, private readonly owner: string) {}
+  private confirmedAt: number | null = null;
+  private confirmedWrites = -1;
+  private readonly now: () => number;
+  private readonly writeRevision: () => number;
+
+  constructor(private readonly api: SessionPresenceApi, private readonly storage: SessionStoragePort, private readonly owner: string,
+    { now = Date.now, writeRevision = () => 0 }: PresenceReadOptions = {}) {
+    this.now = now; this.writeRevision = writeRevision;
+  }
   getSnapshot = () => this.snapshot;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   activate() { this.alive = true; }
@@ -56,11 +66,21 @@ export class SessionPresenceStore {
     return () => { unsubscribe(); unsubscribeTimer(); };
   }
 
+  /** Navigation reuses a complete, successful discovery only while fresh and with no intervening writes. */
+  refreshIfNeeded(): Promise<void> {
+    if (this.confirmedAt !== null && !this.snapshot.unavailable && this.confirmedWrites === this.writeRevision()
+      && this.now() - this.confirmedAt < PRESENCE_REUSE_MS) return Promise.resolve();
+    return this.refresh();
+  }
+
+  /** Explicit/foreground reads bypass the navigation window. */
   refresh(): Promise<void> {
     if (!this.alive) return Promise.resolve();
     if (this.flight) return this.flight;
     const revision = this.revision;
-    const current = () => this.alive && this.revision === revision;
+    const writes = this.writeRevision();
+    const current = () => this.alive && this.revision === revision && this.writeRevision() === writes;
+    const confirmed = () => { this.confirmedAt = this.now(); this.confirmedWrites = writes; };
     const flight = (async () => {
       try {
         const result = await this.api.active();
@@ -71,23 +91,30 @@ export class SessionPresenceStore {
         const session = result.data.activeSession.data;
         // A pending finish/cancel still needs its established recovery screen.
         if (this.snapshot.recovery) return;
-        if (!session) { this.publish(empty); return; }
+        if (!session) { this.publish(empty); confirmed(); return; }
         const previousTimer = this.snapshot.session?.id === session.id ? this.snapshot.timer : null;
         this.publish({ session, timer: previousTimer, unavailable: false, recovery: false });
         const detail = await this.api.detail(session.id);
         if (!current()) return;
         if (detail.status === 'not_found' || (detail.status === 'ok' && detail.data.session.status !== 'in_progress')) {
-          this.publish(empty); return;
+          this.publish(empty); confirmed(); return;
         }
         if (detail.status !== 'ok') { this.publish({ ...this.snapshot, unavailable: true }); return; }
         const repository = new SessionDraftRepository(this.storage, this.owner, session.id);
         const storedTimer = await repository.readTimer();
         if (!current()) return;
         this.publish({ session, timer: restoreRestDeadline(storedTimer, new Set(detail.data.exercises.map(exercise => exercise.id))), unavailable: false, recovery: false });
+        confirmed();
       } catch {
         if (current()) this.publish({ ...this.snapshot, unavailable: true });
       }
-    })().finally(() => { if (this.flight === flight) this.flight = null; });
+    })().finally(() => {
+      if (this.flight !== flight) return;
+      this.flight = null;
+      // A route can join a read started before a write settled. Discard that response and revalidate once the
+      // flight finishes; a controller observation takes precedence and never causes a competing discovery.
+      if (this.alive && this.revision === revision && this.writeRevision() !== writes) return this.refresh();
+    });
     this.flight = flight; return flight;
   }
 }
