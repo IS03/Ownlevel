@@ -7,10 +7,10 @@ import type { BodyObservation, BodyProgressReport } from "@/lib/progress/body";
 import { buildProgressComparison, type ProgressComparisonReport } from "@/lib/progress/comparisons";
 import { buildProgressHomeModel, type ProgressHomeRow, type ProgressHomeInsight } from "@/lib/progress/home";
 import { DEFAULT_NUTRITION_COMPARISON_METRICS, nutritionSamplesByMetric } from "@/lib/nutrition/reports";
-import { aggregateNutritionReport, buildNutritionReportDays, resolveNutritionReportRange, type NutritionReportDay, type NutritionReportRange } from "@/lib/nutrition/reports-core";
+import { aggregateNutritionReport, resolveNutritionReportRange, type NutritionReportDay, type NutritionReportRange } from "@/lib/nutrition/reports-core";
 import { MobileApiNotFoundError, MobileApiUnauthorizedError, MobileApiValidationError, mobileBearerToken } from "./auth";
 import { mobileApiResponseHeaders } from "./http";
-import { NutritionReportDayChangedError, readMobileNutritionFacts } from "./nutrition-report-server";
+import { NutritionReportDayChangedError, readMobileNutritionDays } from "./nutrition-report-server";
 import {
   parseProgressNutritionTiming, PROGRESS_CUSTOM_MAX_DAYS, PROGRESS_DEFAULT_PRESET, habitWeekRange, parseProgressHabitWeek, parseProgressBody, parseProgressMetrics, parseProgressOverview, parseProgressQuery, parseProgressTraining, parseProgressTrainingExercise,
   type ProgressHabitWeek, type BodyObservationDto, type ProgressBody, type ProgressBodyMetric, type ProgressDestination,
@@ -102,12 +102,8 @@ async function isolated<T>(task: () => Promise<T>, label: string): Promise<Progr
 
 async function nutritionReport(context: Context, range: NutritionReportRange, period: ProgressPeriod, today: string) {
   const previousRange = { start: period.previousStart, end: period.previousEnd };
-  // The SAME M4.3-2 snapshot, once per period; no SQL reimplementation.
-  const [currentFacts, previousFacts] = await Promise.all([
-    readMobileNutritionFacts(context, range, today), readMobileNutritionFacts(context, previousRange, today),
-  ]);
-  const days = buildNutritionReportDays({ range, today, ...currentFacts });
-  const previousDays = buildNutritionReportDays({ range: previousRange, today, ...previousFacts });
+  // The SAME M4.3-2 snapshot (no SQL reimplementation): one read when the previous period touches this one.
+  const [days, previousDays] = await readMobileNutritionDays(context, [range, previousRange], today);
   const comparison = buildProgressComparison({
     metrics: NUTRITION_PROGRESS_METRICS.filter(metric => metric.key !== "nutrition.calorie_target"),
     selectedMetricKeys: [...DEFAULT_NUTRITION_COMPARISON_METRICS],
