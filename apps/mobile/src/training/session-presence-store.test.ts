@@ -7,12 +7,12 @@ import { EXERCISE_ID, SESSION_ID, testDetail } from './active-session-test-fixtu
 const meta = { durationMs: 0, httpStatus: 200, outcome: 'ok' as const };
 const ok = <T,>(data: T) => ({ status: 'ok' as const, data, meta });
 const active = (id: string | null = SESSION_ID) => ok({ activeSession: { status: 'ok' as const, data: id ? { id, name: 'Sesión libre', logDate: '2026-09-30' } : null }, calendar: { status: 'ok' as const, data: { month: '2026-09', days: [] } } });
-function setup() {
+function setup(options: { now?: () => number; writeRevision?: () => number } = {}) {
   const values = new Map<string, string>();
   const storage: SessionStoragePort = { getItem: async key => values.get(key) ?? null, setItem: async (key, value) => { values.set(key, value); },
     removeItem: async key => { values.delete(key); }, getAllKeys: async () => [...values.keys()] };
   const api: SessionPresenceApi = { active: jest.fn<SessionPresenceApi['active']>().mockResolvedValue(active()), detail: jest.fn<SessionPresenceApi['detail']>().mockResolvedValue(ok(testDetail())) };
-  const store = new SessionPresenceStore(api, storage, 'owner');
+  const store = new SessionPresenceStore(api, storage, 'owner', options);
   const unused = async () => { throw new Error('Unexpected session write in a presence test'); };
   const controllerApi: ActiveSessionApi = { detail: async () => ok(testDetail()), cancel: async () => ok({ status: 'cancelled', sessionId: SESSION_ID }),
     sync: unused, save: unused, add: unused, remove: unused, reorder: unused, finish: unused };
@@ -78,5 +78,66 @@ describe('session presence outside the workout', () => {
     expect(store.getSnapshot().recovery).toBe(true); detach(); controller.dispose();
     jest.mocked(api.active).mockResolvedValueOnce(active(null)); await store.refresh(); expect(store.getSnapshot().session?.id).toBe(SESSION_ID);
     store.dispose();
+  });
+});
+
+
+describe('bounded presence reuse between routes', () => {
+  it('joins simultaneous visits, reuses confirmed presence for 30 seconds, then reads again', async () => {
+    let now = 0;
+    const { store, api } = setup({ now: () => now });
+    await Promise.all([store.refreshIfNeeded(), store.refreshIfNeeded()]);
+    for (let visit = 0; visit < 5; visit++) await store.refreshIfNeeded();
+    expect(api.active).toHaveBeenCalledTimes(1); expect(api.detail).toHaveBeenCalledTimes(1);
+    now = 30_000; await store.refreshIfNeeded();
+    expect(api.active).toHaveBeenCalledTimes(2); expect(api.detail).toHaveBeenCalledTimes(2);
+    store.dispose();
+  });
+  it('reuses confirmed absence, but a settled write forces rediscovery immediately', async () => {
+    let writes = 0;
+    const { store, api } = setup({ writeRevision: () => writes });
+    jest.mocked(api.active).mockResolvedValueOnce(active(null));
+    await store.refreshIfNeeded(); await store.refreshIfNeeded();
+    expect(api.active).toHaveBeenCalledTimes(1); expect(api.detail).not.toHaveBeenCalled();
+    writes++; await store.refreshIfNeeded();
+    expect(api.active).toHaveBeenCalledTimes(2); expect(store.getSnapshot().session?.id).toBe(SESSION_ID);
+    writes++; jest.mocked(api.active).mockResolvedValueOnce(active(null)); await store.refreshIfNeeded();
+    expect(api.active).toHaveBeenCalledTimes(3); expect(store.getSnapshot().session).toBeNull(); store.dispose();
+  });
+  it('never caches failures as absence and retries on the next visit, even inside the window', async () => {
+    const { store, api } = setup(); await store.refreshIfNeeded();
+    jest.mocked(api.active).mockResolvedValueOnce({ status: 'unavailable', reason: 'network', meta: { durationMs: 0, httpStatus: null, outcome: 'unavailable' } });
+    await store.refresh();
+    expect(store.getSnapshot()).toMatchObject({ session: { id: SESSION_ID }, unavailable: true });
+    await store.refreshIfNeeded(); expect(api.active).toHaveBeenCalledTimes(3);
+    expect(store.getSnapshot().unavailable).toBe(false); store.dispose();
+  });
+  it('does not publish pre-write discovery and re-reads when a visit joins that obsolete flight', async () => {
+    let writes = 0;
+    const { store, api } = setup({ writeRevision: () => writes }); await store.refreshIfNeeded();
+    let resolve!: (result: Awaited<ReturnType<SessionPresenceApi['active']>>) => void;
+    jest.mocked(api.active).mockReturnValueOnce(new Promise(done => { resolve = done; }));
+    const snapshots: unknown[] = []; store.subscribe(() => snapshots.push(store.getSnapshot().session));
+    const old = store.refresh(); writes++; const visit = store.refreshIfNeeded();
+    resolve(active(null)); await Promise.all([old, visit]);
+    expect(snapshots).not.toContain(null); expect(api.active).toHaveBeenCalledTimes(3);
+    expect(store.getSnapshot().session?.id).toBe(SESSION_ID); store.dispose();
+  });
+  it('does not publish pre-write detail or restore its timer after a later write', async () => {
+    let writes = 0;
+    const { store, api } = setup({ writeRevision: () => writes }); await store.refreshIfNeeded();
+    let resolve!: (result: Awaited<ReturnType<SessionPresenceApi['detail']>>) => void;
+    jest.mocked(api.detail).mockReturnValueOnce(new Promise(done => { resolve = done; }));
+    const old = store.refresh(); await Promise.resolve(); writes++;
+    const closed = testDetail(); closed.session.status = 'completed'; resolve(ok(closed)); await old;
+    expect(api.active).toHaveBeenCalledTimes(3); expect(store.getSnapshot().session?.id).toBe(SESSION_ID); store.dispose();
+  });
+  it('does not schedule a post-write read after disposal', async () => {
+    let writes = 0;
+    const { store, api } = setup({ writeRevision: () => writes });
+    let resolve!: (result: Awaited<ReturnType<SessionPresenceApi['active']>>) => void;
+    jest.mocked(api.active).mockReturnValueOnce(new Promise(done => { resolve = done; }));
+    const pending = store.refresh(); writes++; store.dispose(); resolve(active()); await pending;
+    expect(api.active).toHaveBeenCalledTimes(1); expect(store.getSnapshot().session).toBeNull();
   });
 });

@@ -1,6 +1,8 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { AppState, Keyboard, Platform } from 'react-native';
+import { AppState, Keyboard, Platform, type AppStateStatus } from 'react-native';
+import { invalidateConfirmedReads } from '@/api/confirmed-read-cache';
+import type { MobileApiClient } from '@/api/client';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { ActiveSessionController, type ActiveSessionApi } from './active-session-controller';
@@ -175,6 +177,41 @@ describe('global session return dock', () => {
     act(() => { view.controller.skipRest(); });
     expect(view.queryByTestId('native-bottom-accessory')).toBeNull();
     detach(); view.controller.dispose();
+  });
+  it('reads presence once across five quick route changes, and revalidates after a settled write', async () => {
+    mockRead.mockClear(); mockRequest.mockClear();
+    const view = setup(); await waitFor(() => expect(view.getByTestId('session-return-dock')).toBeTruthy());
+    await act(async () => { await Promise.resolve(); });
+    for (const path of ['/nutrition', '/progress', '/train', '/settings', '/home']) {
+      mockPath = path; view.rerender(view.screen());
+      await act(async () => { await Promise.resolve(); });
+    }
+    expect(mockRead).toHaveBeenCalledTimes(1); expect(mockRequest).toHaveBeenCalledTimes(1);
+    invalidateConfirmedReads(mockClient as unknown as MobileApiClient, '/api/mobile/v1/training/sessions/id/finish');
+    mockRead.mockImplementationOnce(async () => ok({ activeSession: { status: 'ok', data: null }, calendar: { status: 'ok', data: { month: '2026-09', days: [] } } }));
+    mockPath = '/train'; view.rerender(view.screen());
+    await waitFor(() => expect(view.queryByTestId('session-return-dock')).toBeNull());
+    expect(mockRead).toHaveBeenCalledTimes(2); view.unmount(); view.controller.dispose();
+  });
+  it('forces one read on real foreground, ignores repeated active events, and leaves the session route to its controller', async () => {
+    AppState.currentState = 'active';
+    const listeners = new Set<(state: AppStateStatus) => void>();
+    const removals: ReturnType<typeof jest.fn>[] = [];
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_event, handler) => {
+      listeners.add(handler);
+      const remove = jest.fn(() => { listeners.delete(handler); }); removals.push(remove); return { remove };
+    });
+    const emit = async (state: AppStateStatus) => {
+      await act(async () => { AppState.currentState = state; for (const listener of listeners) listener(state); });
+    };
+    mockRead.mockClear(); mockRequest.mockClear();
+    const view = setup(); await waitFor(() => expect(view.getByTestId('session-return-dock')).toBeTruthy());
+    await emit('background'); await emit('active'); await emit('active');
+    expect(mockRead).toHaveBeenCalledTimes(2); expect(mockRequest).toHaveBeenCalledTimes(2);
+    mockPath = `/train/session/${SESSION_ID}`; view.rerender(view.screen());
+    await emit('inactive'); await emit('background'); await emit('active');
+    expect(mockRead).toHaveBeenCalledTimes(2); expect(mockRequest).toHaveBeenCalledTimes(2);
+    view.unmount(); expect(listeners.size).toBe(0); expect(removals.every(remove => remove.mock.calls.length === 1)).toBe(true); view.controller.dispose();
   });
   it('shows only the original four sections when the server confirms no active session', async () => {
     mockRead.mockImplementation(async () => ok({ activeSession: { status: 'ok', data: null }, calendar: { status: 'ok', data: { month: '2026-09', days: [] } } }));
