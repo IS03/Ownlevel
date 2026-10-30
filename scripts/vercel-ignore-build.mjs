@@ -4,10 +4,10 @@
 // Anything uncertain (no previous deployment, git error, empty diff) builds.
 import { execFileSync } from "node:child_process";
 
-/** Never part of `next build`. docs/brand is: src imports it through packages/brand (@brand). */
+/** Non-code inputs outside Web. Brand tokens and integration specs are Web inputs. */
 const OUTSIDE_WEB = [
   /^apps\/mobile\//,
-  /^docs\/(?!brand\/)/,
+  /^docs\/(?!(?:brand|integrations)\/)/,
   /^bocetos\//,
   /^ios\//,
   /^Logos\//,
@@ -16,6 +16,8 @@ const OUTSIDE_WEB = [
 ];
 
 function outsideWebBuild(file) {
+  // Root TypeScript includes code outside apps/mobile and docs as well.
+  if (!file.startsWith("apps/mobile/") && /\.[cm]?[jt]sx?$/i.test(file)) return false;
   return OUTSIDE_WEB.some((pattern) => pattern.test(file));
 }
 
@@ -25,7 +27,7 @@ function decide() {
   const git = (...args) => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   try {
     git("cat-file", "-e", `${previous}^{commit}`);
-    const files = git("diff", "--name-only", previous, "HEAD").split("\n").filter(Boolean);
+    const files = git("diff", "--no-renames", "--name-only", "-z", previous, "HEAD").split("\0").filter(Boolean);
     if (files.length === 0) return { build: true, reason: "no changed files" };
     const web = files.filter((file) => !outsideWebBuild(file));
     return web.length

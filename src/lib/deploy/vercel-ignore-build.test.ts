@@ -7,14 +7,17 @@ import { describe, expect, it } from "vitest";
 const SCRIPT = resolve("scripts/vercel-ignore-build.mjs");
 
 /** A repo with one commit (the "previous deployment"), then `files` changed in a second commit. */
-function decide(files: string[], env: Record<string, string | undefined> = {}) {
+function decide(files: string[], env: Record<string, string | undefined> = {}, rename?: [string, string]) {
   const repo = mkdtempSync(join(tmpdir(), "vercel-ignore-"));
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
   git("init", "-q"); git("config", "user.email", "t@t"); git("config", "user.name", "t");
-  writeFileSync(join(repo, "seed.txt"), "seed"); git("add", "."); git("commit", "-qm", "base");
+  const seed = rename?.[0] ?? "seed.txt";
+  mkdirSync(dirname(join(repo, seed)), { recursive: true });
+  writeFileSync(join(repo, seed), "seed"); git("add", "."); git("commit", "-qm", "base");
   const previous = git("rev-parse", "HEAD");
   for (const file of files) { mkdirSync(dirname(join(repo, file)), { recursive: true }); writeFileSync(join(repo, file), file); }
-  if (files.length) { git("add", "."); git("commit", "-qm", "change"); }
+  if (rename) { mkdirSync(dirname(join(repo, rename[1])), { recursive: true }); git("mv", rename[0], rename[1]); }
+  if (files.length || rename) { git("add", "."); git("commit", "-qm", "change"); }
   const run = spawnSync(process.execPath, [SCRIPT], { cwd: repo, encoding: "utf8", env: { PATH: process.env.PATH, VERCEL_GIT_PREVIOUS_SHA: previous, ...env } as unknown as NodeJS.ProcessEnv });
   return { status: run.status, log: run.stdout };
 }
@@ -39,6 +42,11 @@ describe("Vercel ignored build step: skip only changes outside the Web build", (
     [["public/brand/icon-192.png"]],
     [["docs/brand/ownlevel-marca/tema/tokens.ts"]], // src imports it through packages/brand
     [["packages/brand/src/tokens.ts"]],
+    [["docs/integrations/ownlevel-chatgpt-action.openapi.yaml"]],
+    [["ios/typechecked.ts"]],
+    [["supabase/functions/helper.ts"]],
+    [["Logos/component.tsx"]],
+    [["bocetos/example.mts"]],
     [["mobile/src/app.ts"]], // the legacy client is type-checked by next build
     [["scripts/testing/x.ts"]],
     [["package.json"]], [["package-lock.json"]], [["next.config.ts"]], [["tsconfig.json"]], [["vercel.json"]],
@@ -51,6 +59,9 @@ describe("Vercel ignored build step: skip only changes outside the Web build", (
     expect(decide(["apps/mobile/a.ts"], { VERCEL_GIT_PREVIOUS_SHA: undefined }).status).toBe(BUILD);
     expect(decide(["apps/mobile/a.ts"], { VERCEL_GIT_PREVIOUS_SHA: "0123456789abcdef0123456789abcdef01234567" }).status).toBe(BUILD);
     expect(decide([]).status).toBe(BUILD);
+  });
+  it("builds when a Web file is renamed into a Mobile-only directory", () => {
+    expect(decide([], {}, ["src/runtime.ts", "apps/mobile/runtime.ts"]).status).toBe(BUILD);
   });
   it("logs the decision", () => {
     expect(decide(["apps/mobile/a.ts"]).log).toMatch(/\[vercel-ignore-build\] skip: 1 file\(s\) changed, none in the Web build/);
