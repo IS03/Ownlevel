@@ -55,7 +55,12 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Must cover APIs and public files too: exclusions would bypass lockdown.
-  // Outside the opt-in preview, requiresSessionProxy preserves existing routing.
-  matcher: ["/:path*"],
+  matcher: [
+    // Session pages on every host (SESSION_PROXY_PATH_PREFIXES, "/" and "/login"): the Supabase session refresh.
+    "/", "/login", "/home/:path*", "/today/:path*", "/history/:path*", "/settings/:path*", "/train/:path*",
+    "/progress/:path*", "/calendar/:path*", "/oauth/consent/:path*",
+    // Every other path off the production domain: previews (and *.vercel.app aliases) keep the opt-in lockdown over
+    // APIs and public files. On ownlevel.fit the proxy would only pass them through, so it is not invoked there.
+    { source: "/:path*", missing: [{ type: "header", key: "host", value: "(www\\.)?ownlevel\\.fit" }] },
+  ],
 };

@@ -19,6 +19,7 @@ import {
   config,
   proxy,
   requiresSessionProxy,
+  SESSION_PROXY_PATH_PREFIXES,
 } from "./proxy";
 
 describe("session proxy routing", () => {
@@ -91,11 +92,26 @@ describe("session proxy routing", () => {
     expect(mocks.updateSession).not.toHaveBeenCalled();
   });
 
-  it("covers every request so APIs and static files cannot bypass lockdown", () => {
-    expect(config.matcher).toEqual(["/:path*"]);
-    for (const url of ["/", "/home", "/api/other", "/sw.js", "/file.png", "/_next/static/chunk.js", "/_next/image", "/.well-known/oauth-protected-resource/mcp"]) {
-      expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url })).toBe(true);
+  const EVERY_PATH = ["/", "/home", "/api/other", "/api/mobile/v1/training", "/sw.js", "/file.png", "/_next/static/chunk.js", "/_next/image",
+    "/.well-known/oauth-protected-resource/mcp", "/mcp", "/api/integrations/chatgpt/meals", "/auth/callback"];
+  const runs = (url: string, host: string) => unstable_doesMiddlewareMatch({ config, nextConfig: {}, url, headers: { host } });
+
+  it.each(["gymapp-git-feature-team.vercel.app", "gymapp-abc123-team.vercel.app", "localhost:3000", "ownlevel.fit.example.com", "evilownlevel.fit"])(
+    "off the production domain (%s) it covers every request, so APIs and static files cannot bypass the preview lockdown", (host) => {
+      for (const url of EVERY_PATH) expect(runs(url, host)).toBe(true);
+    });
+  it.each(["www.ownlevel.fit", "ownlevel.fit"])("on %s it runs only where the session refresh happens", (host) => {
+    for (const url of ["/", "/login", "/home", "/home/x", "/today", "/history/2026-10-01", "/settings", "/train/history", "/progress", "/calendar", "/oauth/consent"]) {
+      expect(requiresSessionProxy(url)).toBe(true);
+      expect(runs(url, host)).toBe(true);
     }
+    for (const url of ["/api/mobile/v1/training", "/api/mobile/v1/home", "/api/other", "/sw.js", "/_next/static/chunk.js", "/_next/image", "/mcp", "/auth/callback", "/homework", "/privacy"]) {
+      expect(requiresSessionProxy(url)).toBe(false);
+      expect(runs(url, host)).toBe(false);
+    }
+  });
+  it("lists every session prefix in the matcher", () => {
+    for (const prefix of SESSION_PROXY_PATH_PREFIXES) expect(config.matcher).toContain(`${prefix}/:path*`);
   });
 });
 
