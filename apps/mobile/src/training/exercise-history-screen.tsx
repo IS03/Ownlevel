@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchTrainingExerciseHistory, type TrainingExerciseHistorySession, type TrainingHistoryMark } from '@/api/training-history';
 import { AppIcon, AppText, Button, EmptyState, Surface, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
@@ -8,7 +8,7 @@ import { exerciseSetLabel } from './exercise-detail-model';
 import { GroupChip } from './group-chip';
 import { HistoryScroll, ListCard, ReadStateScreen, StaleNotice } from './history-components';
 import { bestSetBars, dayHeading, plural, sameMark, shortDate, weightModeUnit } from './history-model';
-import { useRead } from './use-read';
+import { useFocusedRead } from './use-read';
 
 const CHART_HEIGHT = 96;
 const number = (value: number) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(value);
@@ -74,8 +74,7 @@ function ExerciseHistoryContent({ exerciseId, routineId, options, overallBest, n
   }) : Promise.resolve({ status: 'unavailable' as const, reason: 'invalid_response' as const, meta: { durationMs: 0, httpStatus: null, outcome: 'unavailable' as const } }),
   // eslint-disable-next-line react-hooks/exhaustive-deps -- onRead is a fresh closure each render; reading again for it would loop.
   [client, exerciseId, limit, routineId]);
-  const { state, reload } = useRead(load);
-  useFocusEffect(useCallback(() => { void reload(); }, [reload]));
+  const { state, reload } = useFocusedRead(load);
   const screen = <Stack.Screen options={{ title: name, headerLargeTitleEnabled: Platform.OS === 'ios', headerLargeTitleStyle: { color: colors.text },
     headerStyle: { backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.background }, headerLargeStyle: { backgroundColor: 'transparent' } }} />;
   const filters = options.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters} style={styles.filterScroll} accessibilityLabel="Filtrar historial por rutina">

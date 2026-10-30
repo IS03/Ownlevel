@@ -421,3 +421,34 @@ describe('exercise history routine scope', () => {
     expect(view.getByRole('checkbox', { name: 'Todas' })).toBeTruthy();
   });
 });
+
+describe('detail screens read once per visit', () => {
+  it('a completed session: one detail read when it opens, one more when returning from correction', async () => {
+    mockParams.current = { id: ID(1) };
+    const detail = jest.fn<CompletedSessionApi['detail']>().mockResolvedValue(ok(completedDetail()));
+    const view = wrap(<CompletedSessionScreen api={{ detail, discard: jest.fn<CompletedSessionApi['discard']>() }} sessionId={ID(1)} onHome={jest.fn()} />);
+    await flush();
+    expect(detail).toHaveBeenCalledTimes(1);
+    expect(detail.mock.calls[0][0]?.aborted).toBe(false);
+    setFocused(false); setFocused(true); await flush();
+    expect(detail).toHaveBeenCalledTimes(2);
+    view.unmount();
+  });
+  it('handed over by finish: shown at once and confirmed with a single read', async () => {
+    const detail = jest.fn<CompletedSessionApi['detail']>().mockResolvedValue(ok(completedDetail()));
+    const view = wrap(<CompletedSessionScreen api={{ detail, discard: jest.fn<CompletedSessionApi['discard']>() }} sessionId={ID(1)} initialDetail={completedDetail()} onHome={jest.fn()} />);
+    await flush();
+    expect(detail).toHaveBeenCalledTimes(1);
+    view.unmount();
+  });
+  it('an exercise history: one read when it opens, one more when returning', async () => {
+    mockParams.current = { id: ID(3) };
+    mockExerciseHistory.mockResolvedValue(ok({ exercise: { id: ID(3), name: 'PRESS', muscleGroup: null, muscleLabel: null, implement: null, weightMode: null },
+      latest: null, best: null, sessions: [], hasMore: false, routines: [] }));
+    const view = wrap(<ExerciseHistoryScreen />); await flush();
+    expect(mockExerciseHistory).toHaveBeenCalledTimes(1);
+    setFocused(false); setFocused(true); await flush();
+    expect(mockExerciseHistory).toHaveBeenCalledTimes(2);
+    view.unmount();
+  });
+});
