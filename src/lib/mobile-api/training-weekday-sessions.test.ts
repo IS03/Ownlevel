@@ -46,7 +46,7 @@ function tables() {
 }
 
 /** PostgREST emulation for these reads: eq / in / not-null filters, order, limit, range, exact count; every query is logged. */
-function fake(t: Record<string, Row[]>) {
+function fake(t: Record<string, Row[]>, maxRows = Infinity) {
   const queries: string[] = [];
   const client = {
     from(table: string) {
@@ -58,7 +58,7 @@ function fake(t: Record<string, Row[]>) {
           for (const o of orders) { const x = String(a[o.column] ?? ""), y = String(b[o.column] ?? ""); if (x !== y) return (x < y ? -1 : 1) * (o.ascending ? 1 : -1); }
           return 0;
         });
-        const data = rows.slice(from, Math.min(to + 1, limit));
+        const data = rows.slice(from, Math.min(to + 1, limit, from + maxRows));
         return Promise.resolve({ data, error: null, ...(counted ? { count: rows.length } : {}) });
       };
       const builder = {
@@ -96,6 +96,15 @@ describe("Recommendation sessions of the same weekday (one read instead of one p
     // Database work: 2 queries, no exercises or sets, against up to 5 per date before.
     expect(after.queries).toEqual(["day_logs", "workout_sessions"]);
     expect(before.queries.length).toBeGreaterThanOrEqual(13 * 4);
+  });
+  it("a server cap of 4 rows per response: every session arrives once, across pages, ending on the exact count", async () => {
+    const data = tables();
+    const whole = await readMobileTrainingWeekdaySessions(params(TODAY, "12"), fake(data).context, perf);
+    const capped = fake(data, 4);
+    const paged = await readMobileTrainingWeekdaySessions(params(TODAY, "12"), capped.context, perf);
+    expect(paged).toEqual(whole);
+    expect(new Set(paged.sessions.map(s => s.id)).size).toBe(paged.sessions.length);
+    expect(capped.queries.filter(q => q === "workout_sessions").length).toBe(Math.ceil(whole.sessions.length / 4));
   });
   it("only the owner's completed, finished sessions of those days", async () => {
     const data = tables();
