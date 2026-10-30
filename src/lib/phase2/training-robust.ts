@@ -618,6 +618,39 @@ function sessionDurationMilliseconds(
   return Number.isFinite(milliseconds) && milliseconds >= 0 ? milliseconds : null;
 }
 
+/**
+ * Completed sessions of these days, owner-scoped: id, routine, date and start only. Two queries (the days, then
+ * their sessions), with the same filters as `listCompletedSessionHistory({ logDate })`; no exercises or sets.
+ */
+export async function listCompletedSessionsOnDays(logDates: readonly string[], context?: AuthenticatedRequestContext) {
+  const { supabase, userId } = context ?? await getAuthedContext();
+  if (logDates.length === 0) return [] as Array<{ id: string; routineId: string | null; logDate: string; startedAt: string }>;
+  const days = await readAllTrainingRows<{ id: string; log_date: string }>("Leer días de sesiones", (from, to) => supabase
+    .from("day_logs")
+    .select("id, log_date", firstPageCount(from))
+    .eq("user_id", userId)
+    .in("log_date", [...logDates])
+    .order("id", { ascending: true })
+    .range(from, to));
+  const dateByDayLog = new Map(days.map((day) => [day.id, day.log_date]));
+  if (dateByDayLog.size === 0) return [];
+  const sessions = await readAllTrainingRows<{ id: string; routine_id: string | null; day_log_id: string; started_at: string }>(
+    "Leer sesiones de los días", (from, to) => supabase
+      .from("workout_sessions")
+      .select("id, routine_id, day_log_id, started_at", firstPageCount(from))
+      .eq("user_id", userId)
+      .eq("status", "completed")
+      .not("ended_at", "is", null)
+      .in("day_log_id", [...dateByDayLog.keys()])
+      .order("ended_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to));
+  return sessions.flatMap((session) => {
+    const logDate = dateByDayLog.get(session.day_log_id);
+    return logDate ? [{ id: session.id, routineId: session.routine_id, logDate, startedAt: session.started_at }] : [];
+  });
+}
+
 export async function listCompletedSessionHistory(input?: {
   limit?: number;
   logDate?: string;

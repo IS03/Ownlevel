@@ -80,8 +80,8 @@ export function summarizeTrainingDay(
   };
 }
 
-export function orderTrainingDaySessions(
-  sessions: ReadonlyArray<CompletedSessionSummary>,
+export function orderTrainingDaySessions<T extends Pick<CompletedSessionSummary, "id" | "startedAt">>(
+  sessions: ReadonlyArray<T>,
 ) {
   return [...sessions].sort((left, right) => {
     const leftStart = new Date(left.startedAt).getTime();

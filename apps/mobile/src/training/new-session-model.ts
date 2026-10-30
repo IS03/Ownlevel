@@ -1,5 +1,5 @@
 import type { MobileApiClient } from '@/api/client';
-import { fetchTrainingDay, fetchTrainingHistory, type TrainingHistorySession } from '@/api/training-history';
+import { fetchTrainingHistory, fetchTrainingWeekdaySessions, type TrainingHistorySession, type TrainingWeekdaySession } from '@/api/training-history';
 import { addIsoDays } from '@/home/format';
 
 import { daysBetween, sessionDay } from './training-hub-model';
@@ -12,8 +12,8 @@ export const RECOMMENDATION_MIN_DAYS = 2;
 export type Recommendation = { routineId: string; days: number; doneToday: boolean };
 export type RecommendationData = {
   today: string;
-  /** Finished sessions of today and of the same weekday in the last 12 weeks; null when a day could not be read. */
-  sameWeekday: TrainingHistorySession[] | null;
+  /** Finished sessions of today and of the same weekday in the last 12 weeks; null when they could not be read. */
+  sameWeekday: TrainingWeekdaySession[] | null;
   /** The newest history page, for "hoy / ayer / hace N días"; null when unavailable. */
   recent: TrainingHistorySession[] | null;
 };
@@ -24,19 +24,16 @@ export function sameWeekdayDates(today: string, weeks = RECOMMENDATION_WEEKS): s
 }
 
 /**
- * What the recommendation needs, read in parallel: one small day read per relevant date
- * (13) and the newest history page. A failed day leaves the recommendation unknown (never
- * guessed from partial days); a failed page only drops the "last done" labels.
+ * What the recommendation needs, read in parallel: the sessions of today and of the same weekday
+ * in the last 12 weeks (one read: id, routine and date only) and the newest history page. A failed
+ * read leaves the recommendation unknown (never guessed); a failed page only drops the "last done" labels.
  */
 export async function loadRecommendationData(client: MobileApiClient, today: string, signal?: AbortSignal): Promise<RecommendationData> {
-  const [days, page] = await Promise.all([
-    Promise.all(sameWeekdayDates(today).map(date => fetchTrainingDay(client, date, signal))),
+  const [weekdays, page] = await Promise.all([
+    fetchTrainingWeekdaySessions(client, today, RECOMMENDATION_WEEKS, signal),
     fetchTrainingHistory(client, null, signal),
   ]);
-  const complete = days.every(day => day.status === 'ok');
-  const sessions = new Map<string, TrainingHistorySession>();
-  if (complete) days.forEach(day => { if (day.status === 'ok') day.data.sessions.forEach(session => sessions.set(session.id, session)); });
-  return { recent: page.status === 'ok' ? page.data.sessions : null, sameWeekday: complete ? [...sessions.values()] : null, today };
+  return { recent: page.status === 'ok' ? page.data.sessions : null, sameWeekday: weekdays.status === 'ok' ? weekdays.data.sessions : null, today };
 }
 
 const weekdayOf = (date: string) => new Date(`${date}T12:00:00Z`).getUTCDay();
@@ -47,7 +44,7 @@ const weekdayOf = (date: string) => new Date(`${date}T12:00:00Z`).getUTCDay();
  * recently. Only active routines; free sessions never count. Below `minDays`, there is no
  * recommendation. If it was already done today it is still the recommendation, flagged.
  */
-export function recommendRoutine(sessions: readonly TrainingHistorySession[], activeRoutineIds: readonly string[], today: string,
+export function recommendRoutine(sessions: readonly Pick<TrainingHistorySession, 'routineId' | 'logDate'>[], activeRoutineIds: readonly string[], today: string,
   weeks = RECOMMENDATION_WEEKS, minDays = RECOMMENDATION_MIN_DAYS): Recommendation | null {
   const active = new Set(activeRoutineIds);
   const weekday = weekdayOf(today);

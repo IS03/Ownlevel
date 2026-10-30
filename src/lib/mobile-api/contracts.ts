@@ -491,4 +491,5 @@ export type {
   SessionExerciseOrderInput, SessionExerciseOrderDto,
   SessionFinishMetadataDto, SessionFinishInput, SessionFinishedDto, SessionCorrectionSetDto, SessionCorrectionInput,
   SessionCorrectedDto, SessionDiscardedDto, TrainingHistorySessionDto, TrainingHistoryResponse, TrainingDayResponse,
+  TrainingWeekdaySessionsResponse,
 } from "./training-session";
