@@ -625,13 +625,14 @@ function sessionDurationMilliseconds(
 export async function listCompletedSessionsOnDays(logDates: readonly string[], context?: AuthenticatedRequestContext) {
   const { supabase, userId } = context ?? await getAuthedContext();
   if (logDates.length === 0) return [] as Array<{ id: string; routineId: string | null; logDate: string; startedAt: string }>;
-  const { data: days, error: daysError } = await supabase
+  const days = await readAllTrainingRows<{ id: string; log_date: string }>("Leer días de sesiones", (from, to) => supabase
     .from("day_logs")
-    .select("id, log_date")
+    .select("id, log_date", firstPageCount(from))
     .eq("user_id", userId)
-    .in("log_date", [...logDates]);
-  if (daysError) throw new Error(`Leer días de sesiones: ${daysError.message}`);
-  const dateByDayLog = new Map(((days ?? []) as Array<{ id: string; log_date: string }>).map((day) => [day.id, day.log_date]));
+    .in("log_date", [...logDates])
+    .order("id", { ascending: true })
+    .range(from, to));
+  const dateByDayLog = new Map(days.map((day) => [day.id, day.log_date]));
   if (dateByDayLog.size === 0) return [];
   const sessions = await readAllTrainingRows<{ id: string; routine_id: string | null; day_log_id: string; started_at: string }>(
     "Leer sesiones de los días", (from, to) => supabase
