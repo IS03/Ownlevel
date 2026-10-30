@@ -1,13 +1,14 @@
 # Optimización de infraestructura · 30/10/2026
 
-Estado, mediciones y propuestas pendientes de este lote. Etiquetas: **[medido]** dato observado; **[estimado]** cálculo sin medición directa.
+Estado, mediciones y propuestas pendientes de este lote. Etiquetas: **[medido]** dato observado; **[estimado]** cálculo sin medición directa; **[sin confirmar]** hipótesis que los datos no prueban.
 
 ## Cambios integrados
 
 | PR | Capa | Cambio | ¿Requiere actualizar Diario? |
 |---|---|---|---|
 | #343 | Servidor (proxy) | El proxy ya no se invoca en `ownlevel.fit` / `www.ownlevel.fit` fuera de las páginas de sesión. Previews y `*.vercel.app` conservan la protección de previews en todas las rutas | No |
-| #344 | Mobile | Inicio refresca al volver a primer plano solo si está visible | **Sí** (instalado: `99fd0a1`, 29/10 23:36:44 ART) |
+| #344 | Mobile | Inicio refresca al volver a primer plano solo si está visible | **Sí, pendiente.** Diario instalado: `99fd0a1` (29/10 23:36:44 ART), anterior a #344 |
+| #347 | Servidor | El Resumen de Progreso lee Nutrición una vez para el período actual y el anterior (rango unido, cortado por fecha) en lugar de dos | No |
 
 Mediciones:
 
@@ -17,8 +18,70 @@ Mediciones:
   - API sin token → 401;
   - `/sw.js` y el manifest → 200;
   - lecturas reales de la app → 15/15 con 200.
+- **[medido, preview real de #343]** Sin autorización, `/login`, la API, `/mcp` y `/sw.js` → 302 al login de Vercel. Con autorización (enlace temporal de Vercel), `/login` → 200 pasando por el proxy. El bloqueo propio de OAuth (`OWNLEVEL_OAUTH_PREVIEW_LOCKDOWN`) solo está configurado para la rama `codex/ownlevel-oauth-mcp`: con el matcher nuevo lo cubren pruebas unitarias y `next dev`, no un preview.
+- **[medido, logs de Supabase]** #347: una apertura de la app pasó de 8 a 7 llamadas a `mobile_read_nutrition_report`, todas 200. El Resumen lee un solo rango (01/09–30/10).
 - **[medido]** Filtro de builds (#339): el merge solo móvil de #344 quedó «Canceled by Ignored Build Step» en producción.
-- **Sin medir:** el ahorro de CPU del proxy. El plan Hobby no desglosa la CPU de Middleware/Proxy por ruta. Comparar Vercel → Usage (invocaciones y CPU de Middleware), 7 días antes y después del 30/10.
+- **Sin medir:** el efecto en CPU de Vercel de #343 y #347. Ver «Vercel · Usage».
+
+## Vercel · Usage (captura del 30/10, 13:47–13:49 hora del teléfono)
+
+**Filtros:** cuenta completa (Team Usage, 4 proyectos), plan Hobby, «Last 30 Days» = **Sep 30, 10 a.m. – Oct 30, 10 a.m.** La captura no muestra la zona horaria de la ventana ni de las barras diarias. Panel «Updated 2m ago».
+
+### Totales de la ventana [medido]
+
+| Métrica | Valor |
+|---|---|
+| Fluid Active CPU | **3h 47m / 4h** (margen: 13 min con el redondeo del panel) |
+| Function Invocations | **155.514 / 1.000.000** (Success 155.364 · User Error 150) |
+| Fluid Provisioned Memory | 51,4 GB-Hrs |
+| Function Duration | 0 GB-Hrs |
+| Fast Data Transfer | 25,45 GB |
+| Fast Origin Transfer | 998,36 MB |
+| CDN Requests | 131K |
+| CDN Request CPU Duration | 1m 23s |
+| ISR Reads / Writes | 45K / 4 |
+| Edge Function Execution Units · Edge Middleware Invocations · Microfrontends Routing · Global Config Reads | 0 |
+| Private Data Transfer · PrivateLink Data Transfer | 0 B |
+
+Fluid Active CPU por proyecto: **gymapp 3h 45m**, auslandaventures 1m 11s, vs-academico 37s, argentina-universo.sur 26s. Las invocaciones no se capturaron por proyecto.
+
+**Edge Middleware Invocations = 0** con el proxy activo durante toda la ventana: esa métrica no mide el proxy de Next 16. La comparación de «invocaciones y CPU de Middleware» que proponía este documento no es posible con ella.
+
+### Evolución diaria [estimado: lectura visual de las barras]
+
+Valores aproximados, leídos de los gráficos (±15 s de CPU, ±300 invocaciones). Como control, la suma de las barras da ~3h 45m y ~154,8K, contra 3h 47m y 155.514 del panel. El gráfico de CPU es de los 4 proyectos; el de invocaciones, de la cuenta.
+
+| Días | CPU por día (aprox.) | Invocaciones por día (aprox.) |
+|---|---|---|
+| 30/09–05/10 | 1–2,5 min | 0,9–2K |
+| 06/10–09/10 | 4–7 min | 4–5K |
+| 10/10 | ~10 min | ~11K |
+| 11/10 | ~1 min | ~0,8K |
+| 12/10–14/10 | 10–11,5 min | 8–10K |
+| **15/10–17/10 (pico)** | **~19,5 / ~20,5 / ~21 min** | ~9,4K / **~19K** / ~15K |
+| 18/10–21/10 | 5–11 min | 3,4–7K |
+| 22/10–24/10 | <2 min | 0,6–1,6K |
+| 25/10–28/10 | ~5 / ~9 / **~14** / ~13 min | ~2,9K / ~4,8K / ~8,5K / ~4,6K |
+| 29/10 | ~7 min | ~3,4K |
+| 30/10 (parcial, hasta 10 a.m.) | ~5 min | ~2,2K |
+
+### Cortes y comparabilidad
+
+| Corte | Momento (ART) | Qué cambia | Datos posteriores en esta captura |
+|---|---|---|---|
+| Diario `99fd0a1` instalado | 29/10 23:36:44 | Mobile #336–#340 en el iPhone | ≤ ~10,5 h (barra parcial del 30/10) |
+| #343 en producción | 30/10 09:42 | Proxy | ≤ 18 min, o ninguno si la ventana está en UTC |
+| #344 mergeado | 30/10 ~09:44 | Nada en el servidor; no instalado | — |
+| #347 en producción | 30/10 ~09:58 | Nutrición del Resumen | ≤ 2 min, o ninguno |
+
+**No se calcula ahorro.** La ventana es un acumulado de 30 días casi enteramente anterior a los cambios. La única porción posterior (30/10 hasta las 10 a.m.) es una barra diaria parcial, sin zona horaria visible, y está contaminada por el QA de este lote del 30/10: simulador contra producción, previews y verificaciones de logs, por ejemplo las aperturas de 09:43 y 09:59 ART. La variación entre días previos (de <1 min a ~21 min) es mayor que cualquier efecto esperable de estos cambios.
+
+### Cómo medir con ventanas comparables
+
+- Capturar con los mismos filtros (Team Usage) y además las pestañas **Projects** de Invocations y **Type / Runtime** de Fluid Active CPU.
+- Usar días completos posteriores a todos los cortes: desde el 31/10, 7 días, contra los 7 días completos anteriores al 29/10. Comparar CPU por invocación, no solo totales, porque el uso diario varía mucho.
+- Con #344 instalado, su efecto entra recién desde el día de la instalación: separarlo en otra ventana.
+- Para valores diarios exactos se puede probar `vercel usage --breakdown daily` (CLI no instalada; no está confirmado que en Hobby muestre CPU).
 
 ## Supabase · `pg_stat_statements` (acumulado desde el 05/08/2026)
 
@@ -44,11 +107,52 @@ Delta entre 29/10 ≈23:00 y 30/10 12:32 UTC (≈13,5 h):
 | `workout_sets.*` (historial de Progreso) | +376 | 17 ms | ~6,6 s |
 | `workout_session_exercises.*` | +152 | 22 ms | ~3,4 s |
 
-**[medido]** La actividad reciente de la base es baja en términos absolutos y la encabeza Nutrición, no Entrenamiento. Supabase no es el cuello de botella; el límite es la CPU de Vercel (Fluid Active CPU, 4 h por mes en Hobby).
+**[medido]** La actividad reciente de la base es baja en términos absolutos y la encabeza Nutrición, no Entrenamiento. El límite que preocupa es la CPU de Vercel, no Supabase.
 
 Para medir en adelante, repetir la misma consulta y restar contra esta tabla.
 
-## Propuesta pendiente (requiere migración): récords sin filas crudas
+## Nutrición · `mobile_read_nutrition_report`
+
+**Qué la dispara [medido en código y logs]:** cada solicitud a `/nutrition/reports` hace 1 llamada:
+- semana de Inicio;
+- 7 días de Nutrición;
+- precarga del mes del calendario, una vez por sesión de la app;
+- tendencias de Progreso.
+
+Además:
+- el Resumen de Progreso: 2 llamadas antes de #347, 1 después;
+- vistas y exploración: 1 por rango;
+- Insight y Qué influye: ventanas unidas (92 días);
+- Conexiones: ventana unida (actual + comparación);
+- etapas: 1 por etapa.
+
+Una apertura real de la app hacía 8 llamadas; desde #347, 7.
+
+**Datos leídos y datos usados [medido]:** la RPC filtra todo por `log_date` dentro del rango, y cada día del reporte se arma solo con sus propios datos. Por eso un rango unido, cortado por fecha, da los mismos días. Comprobado con datos reales: días 60/60, comidas 448/448, entrenamientos 70/70.
+
+**Tiempos: dos mediciones distintas, sin atribución.**
+- **[medido]** Ejecución aislada dentro de la base, como el dueño con RLS, una corrida por rango: 7 días ~1,2 ms; 14 días ~2 ms; 29 días ~6 ms; 58 días ~8,5 ms.
+- **[medido]** Media de `pg_stat_statements` para las llamadas que llegaron por PostgREST: 117 ms (desvío 197 ms, máximo 5,3 s). Es acumulada y mezcla rangos, usuarios, momentos y la sentencia que arma PostgREST.
+- **[sin confirmar]** Las dos cifras no miden lo mismo, así que la diferencia no muestra dónde está el sobrecosto. Pueden influir los rangos largos, la caché fría, la sentencia de PostgREST o los planes genéricos de plpgsql. Ninguna de esas causas está demostrada. Tampoco se midió cuánto de ese tiempo llega a la CPU activa de Vercel.
+
+**Descartado:**
+- la precarga del calendario es UX deliberada (1 lectura por sesión);
+- los rangos repetidos entre endpoints (el mismo mes lo leen el Resumen, la vista y la precarga) solo se evitan con una caché compartida o reestructurando endpoints. Quedan como propuesta.
+
+## Propuestas pendientes, por prioridad
+
+Orden: primero beneficio demostrado; después menor riesgo y menor esfuerzo. Ninguna tiene ahorro de CPU de Vercel medido.
+
+| # | Propuesta | Beneficio demostrado | Riesgo | Esfuerzo | Estado |
+|---|---|---|---|---|---|
+| 1 | Instalar Diario con #344 | **Sí:** 14 → 7 lecturas por vuelta a primer plano con Entrenar visible (simulador) | Bajo (sin cambios de servidor) | Bajo | Bloqueado: renovar la firma requiere iniciar sesión en Xcode → Settings → Accounts y conectar el iPhone. El perfil vence el 31/10/2026 a las 23:56 UTC |
+| 2 | Ventanas comparables en Usage | Habilita medir todo lo demás | Nulo | Bajo | Desde el 31/10, ver «Cómo medir» |
+| 3 | Explicar la diferencia de tiempos de `mobile_read_nutrition_report` (ejecutar la sentencia como la arma PostgREST con `EXPLAIN (ANALYZE, BUFFERS)` por rango, como el dueño) | No: la diferencia de tiempos no está atribuida | Bajo (solo lecturas) | Bajo | Pendiente. No justifica cambios hasta tener la causa |
+| 4 | Récords sin filas crudas (ver abajo) | No: [estimado] de ~2.700 filas a unos cientos por lectura | Medio–alto: migración y equivalencia exacta de `ComparableSet` por modo de carga | Alto | Pendiente; no se implementa todavía |
+| 5 | Caché compartida de rangos de Nutrición entre endpoints | No medido | Medio: invalidación tras escrituras y aislamiento por usuario | Medio–alto | Pendiente; no se implementa todavía |
+| 6 | Auth de la API móvil: `auth.getUser` → `getClaims` (JWKS) | No medido | Alto: cambia la semántica de revocación de sesiones | Medio | Requiere revisión de seguridad |
+
+### Detalle de la propuesta 4 (requiere migración): récords sin filas crudas
 
 **Problema [medido en código y volúmenes]:** `/progress/training`, el Resumen de Progreso, el detalle de ejercicio y los récords de Inicio leen el historial completo: ~2.700 filas, 4 solicitudes a PostgREST desde el PR #337. Lo hacen porque `recordSignal` necesita, por ejercicio, lo ocurrido antes del período:
 
@@ -69,12 +173,11 @@ El resto (resumen, serie temporal, músculos, rutinas, sensaciones) solo usa el 
 2. **ADOPT.** `loadTrainingContext` arma `TrainingAnalysisSource` con la ventana (período actual + anterior) y `historyBeforePrimary` con los agregados.
    - **Requisito:** reproducir exactamente la construcción de `ComparableSet` por modo de carga (`trainingPerformanceStrategy`: kg, lingotes, peso corporal, tiempo).
    - **Pruebas:** igualdad de DTO antes/después (`trainingDto`, `trainingExerciseDto`, récords de Inicio) sobre fixtures con cambios de modo de carga, cargas repetidas y sesiones descartadas, más una comparación en local contra la base real como la del PR #337.
-3. **OBSERVE.** Comparar `pg_stat_statements` (llamadas y bloques) y Vercel Usage antes y después.
+3. **OBSERVE.** Comparar `pg_stat_statements` (llamadas y bloques) y Vercel Usage con ventanas comparables, antes y después.
 4. **CONTRACT.** Retirar la lectura completa de los consumidores migrados.
 
 **Impacto esperado [estimado]:** filas por lectura de Progreso e Inicio de ~2.700 a unos cientos (período + agregados), constantes en el tiempo. No se declara ahorro de CPU hasta medirlo.
 
-## Otros pendientes
-- Instalar Diario con #344. Además, renovar la firma de Diario (perfil vence 31/10/2026 23:56 UTC): Xcode no tiene ninguna cuenta configurada. Requiere iniciar sesión en Xcode → Settings → Accounts y conectar el iPhone.
-- RPC de Nutrición (`mobile_read_nutrition_report` / `_day`): son las consultas más costosas recientes. Conviene investigarlas con `EXPLAIN` en un trabajo propio.
-- Auth de la API móvil: `auth.getUser` en cada solicitud. Un cambio a `getClaims` (JWKS) es de autenticación y requiere revisión de seguridad.
+## Proceso
+
+- Antes de mergear, verificar el check de **build** de Vercel sobre el **head exacto** del PR. Un comentario automático aprobado («Vercel Preview Comments») no lo reemplaza. En #347 el merge se hizo antes de que terminara ese check; el build de producción del mismo código terminó bien.
