@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { Platform, ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaInsetsContext, SafeAreaView } from 'react-native-safe-area-context';
@@ -54,6 +54,47 @@ describe('scrollable bottom protection', () => {
 
   it('preserves the safe area for non-scrolling screens with fixed controls', () => {
     const view = render(wrap(<Screen><Text>Control fijo</Text></Screen>));
+    expect(view.UNSAFE_getByType(SafeAreaView).props.edges).toEqual(['left', 'right', 'bottom']);
+  });
+});
+
+
+describe('optional floating-tab backdrop', () => {
+  it('covers the measured bar, stays fixed during scroll/bounce and never takes taps or changes content insets', () => {
+    const view = render(wrap(<ScrollScreen bottomBackdrop contentContainerStyle={{ paddingBottom: 40 }}>
+      <Text>Última comida</Text>
+    </ScrollScreen>));
+    const backdrop = () => view.getByTestId('scroll-bottom-backdrop', { includeHiddenElements: true });
+    const style = StyleSheet.flatten(backdrop().props.style);
+    expect(style).toMatchObject({ position: 'absolute', bottom: 0, height: 107 }); // 83 measured + 24 fade
+    expect(backdrop().props).toMatchObject({ pointerEvents: 'none', accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' });
+    const scroll = view.UNSAFE_getByType(ScrollView);
+    for (const y of [0, 700, 703, 1900, 2000, 1900, -30]) {
+      fireEvent.scroll(scroll, { nativeEvent: { contentOffset: { x: 0, y } } });
+      expect(StyleSheet.flatten(backdrop().props.style)).toEqual(style);
+    }
+    expect(scroll.props.contentInsetAdjustmentBehavior).toBe('automatic');
+    expect(scroll.props.contentInset).toBeUndefined();
+    expect(StyleSheet.flatten(scroll.props.contentContainerStyle).paddingBottom).toBe(40);
+    expect(view.getByText('Última comida')).toBeTruthy();
+  });
+  it('tracks safe-area changes, including an accessory, and omits itself when no bottom protection is needed', () => {
+    const screen = <ScrollScreen bottomBackdrop><Text>Última comida</Text></ScrollScreen>;
+    const view = render(wrap(screen, 34));
+    expect(StyleSheet.flatten(view.getByTestId('scroll-bottom-backdrop', { includeHiddenElements: true }).props.style).height).toBe(58);
+    view.rerender(wrap(screen, 125));
+    expect(StyleSheet.flatten(view.getByTestId('scroll-bottom-backdrop', { includeHiddenElements: true }).props.style).height).toBe(149);
+    view.rerender(wrap(screen, 0));
+    expect(view.queryByTestId('scroll-bottom-backdrop', { includeHiddenElements: true })).toBeNull();
+  });
+  it('preserves other screens and Android, and respects callers that own the bottom edge', () => {
+    const view = render(wrap(<ScrollScreen><Text>Otra pestaña</Text></ScrollScreen>));
+    expect(view.queryByTestId('scroll-bottom-backdrop', { includeHiddenElements: true })).toBeNull();
+    view.rerender(wrap(<ScrollScreen bottomBackdrop safeAreaEdges={['left', 'right']}><Text>Controles propios</Text></ScrollScreen>));
+    expect(view.queryByTestId('scroll-bottom-backdrop', { includeHiddenElements: true })).toBeNull();
+    jest.replaceProperty(Platform, 'OS', 'android');
+    view.rerender(wrap(<ScrollScreen bottomBackdrop><Text>Android</Text></ScrollScreen>));
+    expect(view.queryByTestId('scroll-bottom-backdrop', { includeHiddenElements: true })).toBeNull();
     expect(view.UNSAFE_getByType(SafeAreaView).props.edges).toEqual(['left', 'right', 'bottom']);
   });
 });

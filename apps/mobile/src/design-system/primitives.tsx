@@ -19,6 +19,7 @@ import {
 } from 'react-native-safe-area-context';
 import Animated, { type AnimatedRef } from 'react-native-reanimated';
 import { ScrollEdgeBlur } from './scroll-edge';
+import { ScrollBottomBackdrop } from './scroll-bottom-backdrop';
 import { HeaderHeightContext } from 'expo-router/build/react-navigation/elements/Header/HeaderHeightContext';
 
 import { atmosphere, glowGradient } from './atmosphere';
@@ -116,6 +117,8 @@ type ScrollScreenProps = PropsWithChildren<
      * fade below the status bar (a screen with a floating header passes content under it too).
      */
     scrollEdge?: boolean;
+    /** Keep scrolling text out of a floating native tab bar, with a fixed soft transition. iOS only. */
+    bottomBackdrop?: boolean;
     edgeExtra?: number;
     /** Length of the blur's soft bottom edge (see ScrollEdgeBlur). */
     edgeFade?: number;
@@ -136,6 +139,7 @@ export function ScrollScreen({
   glow = true,
   safeAreaEdges = ['left', 'right', 'bottom'],
   scrollEdge = false,
+  bottomBackdrop = false,
   edgeExtra = EDGE_EXTRA,
   edgeFade,
   scrollRef,
@@ -177,6 +181,7 @@ export function ScrollScreen({
       >
         {children}
       </Animated.ScrollView>
+      {bottomBackdrop && scrollsUnderBottom ? <ScrollBottomBackdrop inset={insets?.bottom ?? 0} /> : null}
       {scrollEdge && top > 0 ? <ScrollEdgeBlur visible={scrolled} height={top + edgeExtra} fade={edgeFade} testID="scroll-edge-blur" /> : null}
     </SafeAreaView>
   );
