@@ -1,6 +1,6 @@
 import { useContext, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
+import { SafeAreaInsetsContext, initialWindowMetrics } from 'react-native-safe-area-context';
 import { useMobileApi } from '@/api';
 import type { NutritionReport } from '@/api/nutrition-report';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -41,8 +41,11 @@ const monthName = (month: string, style: 'long' | 'short' = 'long') => new Intl.
 export function NutritionMonthSheet({ date, today, onClose, onSelect }: {
   date: string; today: string; onClose: () => void; onSelect: (date: string) => void;
 }) {
-  // Context (not the hook): it also opens from places rendered without a provider (tests, nested sheets).
-  const { colors } = useOwnlevelTheme(), bottom = useContext(SafeAreaInsetsContext)?.bottom ?? 0;
+  // The sheet is presented above the tab bar, so only the window's home indicator is below it (#358): the
+  // screen's own inset also counts the tab bar (83 instead of 34 pt). The app is portrait-only. Context (not the
+  // hook) is the fallback for places rendered without a provider (tests, nested sheets).
+  const { colors } = useOwnlevelTheme(), context = useContext(SafeAreaInsetsContext);
+  const bottom = initialWindowMetrics?.insets.bottom ?? context?.bottom ?? 0;
   // While the month/year wheels are up, only the handle drags the sheet: a drag near a wheel turns the wheel.
   const [picking, setPicking] = useState(false);
   return <AppSheet onClose={onClose} closeLabel="Cerrar calendario" dragFromContent={!picking} testID="nutrition-month-sheet"
