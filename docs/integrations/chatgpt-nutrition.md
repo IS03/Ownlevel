@@ -82,7 +82,8 @@ Dependencia externa: el GPT privado guarda la copia del esquema que importó. Pa
 «Mandá `time` y `meal_type` sólo si el usuario los dijo; `consumed_now: true` sólo si registra lo que está comiendo
 ahora y no dijo la hora». Hasta entonces, sus comidas llegan sin hora (marcadas como no informada).
 El conector MCP/OAuth lee el esquema en cada conexión. `consumed_now` requiere aplicar la migración
-`20261031210000_chatgpt_meal_registration_time_expand.sql`; sin ella, la comida se guarda como antes (sin hora).
+`20261031210000_chatgpt_meal_registration_time_expand.sql` (PR propio de EXPAND); sin ella, la comida se guarda
+como antes (sin hora).
 
 Si OWNLEVEL responde `409 possible_duplicate`, el GPT debe pedir confirmación.
 Sólo cuando el usuario confirme que fue otra comida puede reenviar con una

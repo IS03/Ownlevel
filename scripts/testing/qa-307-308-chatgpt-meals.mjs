@@ -145,47 +145,6 @@ try {
     await admin.query(await file('20261028084439_chatgpt_meal_parity_expand.sql'));
     assert.deepEqual((await admin.query('select jsonb_agg(to_jsonb(m) order by id) value from public.meal_entries m')).rows[0].value,before);
   });
-  // #308 registration time: v3 wrappers over v2, applied on top of the rows above.
-  const priorRows=(await admin.query('select jsonb_agg(to_jsonb(m) order by id) value from public.meal_entries m')).rows[0].value;
-  await admin.query(await file('20261031210000_chatgpt_meal_registration_time_expand.sql'));
-  const today=new Date(Date.now()-3*3600000).toISOString().slice(0,10), yesterday=new Date(Date.now()-27*3600000).toISOString().slice(0,10);
-  const v3=async(key,source,patch={})=>(await admin.query('select public.create_chatgpt_meal_for_integration_v3($1,$2,$3,null,$4,null,null,null,$5,false,$6,$7) r',[owner,patch.date??today,patch.title??'tostado',patch.calories??380,key,patch.label??null,source])).rows[0].r;
-  const source=raw=>{ if(typeof raw!=='string') return 'explicit'; const p=JSON.parse(raw); return p.originalTimeKnown!==false?'explicit':p.timeSource==='registration'?'registration':'unknown'; };
-  await check('EXPAND #308 adds v3 without touching any existing row or v2',async()=>{
-    assert.deepEqual((await admin.query('select jsonb_agg(to_jsonb(m) order by id) value from public.meal_entries m')).rows[0].value,priorRows);
-    const r=await v2('after-v3-untimed',null,null,{date:today,title:'v2 sigue igual',calories:111}); assert.equal(source((await row(r.meal.id)).raw_input),'unknown');
-  });
-  let registered;
-  await check('a meal eaten now keeps the registration instant as an approximate time, still not a known time (#308)',async()=>{
-    const r=await v3('now-1','registration',{label:'lunch'}); assert.equal(r.created,true); registered=r.meal.id;
-    const m=await row(registered); assert.equal(source(m.raw_input),'registration'); assert.equal(timed(m.raw_input),false);
-    assert.equal(m.meal_label,'lunch'); assert.equal(m.source_type,'chatgpt');
-    assert.ok(Math.abs(new Date(m.consumed_at).getTime()-Date.now())<60_000);
-  });
-  await check('replaying the same key returns the same meal and never re-marks or moves it',async()=>{
-    const before=await row(registered), r=await v3('now-1','registration',{label:'lunch'});
-    assert.equal(r.created,false); assert.equal(r.idempotent_replay,true); assert.equal(r.meal.id,registered);
-    const after=await row(registered); assert.equal(after.raw_input,before.raw_input); assert.equal(after.v,before.v);
-    assert.equal((await admin.query("select count(*)::int n from public.meal_entries where idempotency_key='now-1'")).rows[0].n,1);
-  });
-  await check('registration is refused for another day, an unknown source and a possible duplicate, writing nothing',async()=>{
-    const count=async()=>(await admin.query('select count(*)::int n from public.meal_entries')).rows[0].n, n=await count();
-    await assert.rejects(v3('now-yesterday','registration',{date:yesterday}),/invalid_request/);
-    await assert.rejects(v3('now-bad-source','guess'),/invalid_request/);
-    await assert.rejects(v3('now-dup','registration',{label:'lunch'}),/possible_duplicate/);
-    assert.equal(await count(),n);
-  });
-  await check('without a source v3 behaves as v2 (time not reported), and an app correction makes the time explicit',async()=>{
-    const r=await v3('v3-unknown',null,{title:'sin hora',calories:222}); assert.equal(source((await row(r.meal.id)).raw_input),'unknown');
-    const m=await row(registered);
-    const e=await mutate(a,edit(m.id,m.v,'fix-registration',{date:today,title:'tostado',calories:380,consumedAt:`${today}T12:15:00-03:00`},today));
-    assert.equal(e.response_status,200); assert.equal(source((await row(registered)).raw_input),'explicit');
-  });
-  await check('v3 grants: only service_role may call the integration and OAuth wrappers',async()=>{
-    const rows=(await admin.query("select proname,has_function_privilege('anon',oid,'EXECUTE') anon,has_function_privilege('authenticated',oid,'EXECUTE') authenticated,has_function_privilege('service_role',oid,'EXECUTE') service,prosecdef from pg_proc where proname in ('create_chatgpt_meal_for_integration_v3','create_chatgpt_meal_for_oauth_v3')")).rows;
-    assert.equal(rows.length,2); for(const r of rows){assert.equal(r.anon,false);assert.equal(r.authenticated,false);assert.equal(r.service,true);assert.equal(r.prosecdef,true);}
-    await assert.rejects(a.query("select public.create_chatgpt_meal_for_integration_v3($1,$2,'denied',null,1,null,null,null,'denied-v3',false,null,'registration')",[owner,today]),/permission denied/);
-  });
   console.log(`PostgreSQL: ${checks} groups PASS`);
 } finally {
   for(const c of clients) await c.end().catch(()=>{});
