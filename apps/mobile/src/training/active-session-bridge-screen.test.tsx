@@ -381,6 +381,27 @@ describe('native active session screen', () => {
     expect(view.queryByRole('checkbox', { name: 'Más peso' })).toBeNull();
     controller.dispose();
   });
+  it('marks «Próxima vez» as open while its options are up and restores it on every close, keeping its width (#360)', async () => {
+    const { controller, Screen } = fixture(); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
+    const trigger = () => view.getByTestId(`exercise-next-${EXERCISE_ID}`);
+    const style = () => StyleSheet.flatten(trigger().props.style);
+    const closed = style();
+    expect(trigger().props.accessibilityState).toMatchObject({ expanded: false });
+    for (const close of [() => fireEvent.press(view.getByLabelText('Cerrar opciones de próxima vez')),
+      () => fireEvent.press(view.getByRole('checkbox', { name: 'Más peso' }))]) {
+      fireEvent.press(view.getByRole('button', { name: 'Próxima vez' }));
+      expect(trigger().props.accessibilityState).toMatchObject({ expanded: true });
+      expect(style().backgroundColor).not.toBe(closed.backgroundColor);
+      expect(style().borderColor).not.toBe(closed.borderColor);
+      expect(style().minHeight).toBe(closed.minHeight);
+      close();
+      if (view.queryByLabelText('Cerrar opciones de próxima vez')) fireEvent.press(view.getByLabelText('Cerrar opciones de próxima vez'));
+      expect(trigger().props.accessibilityState).toMatchObject({ expanded: false });
+      expect(style()).toEqual(closed);
+    }
+    await act(async () => { await controller.flush(EXERCISE_ID); });
+    controller.dispose();
+  });
   it('saves the extra exercise opt-in through the existing draft and autosave path', async () => {
     const detail = testDetail(); detail.session.routineId = SECOND_ID; detail.session.routineNameSnapshot = 'PUSH'; detail.session.name = 'Mi sesión';
     const { controller, api, Screen } = fixture(detail); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
