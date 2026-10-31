@@ -46,7 +46,10 @@ function SessionProgressHeader({ controller, color, active }: { controller: Acti
   const { colors } = useOwnlevelTheme();
   return <View style={styles.progress}>
     <View style={styles.row}><AppText numeric muted style={styles.flex} variant="caption">{active ? 'En curso' : 'Sesión cerrada'} · {progress.completedSets}/{progress.totalSets} series · {progress.completedExercises}/{progress.exercises} ejercicios</AppText>
-      {progress.errors ? <AppText style={{ color: colors.danger }} variant="caption">{progress.errors} sin sincronizar</AppText> : progress.pending ? <AppText style={{ color: colors.primary }} variant="caption">Sincronizando</AppText> : null}
+      {/* Real failures only; drafts waiting for the connection are a quiet state, the session notice explains why (#356). */}
+      {progress.errors ? <AppText style={{ color: colors.danger }} variant="caption">{progress.errors} sin sincronizar</AppText>
+        : progress.offline && (progress.pending || progress.drafts) ? <AppText muted variant="caption">Guardado en el dispositivo</AppText>
+        : progress.pending ? <AppText style={{ color: colors.primary }} variant="caption">Sincronizando</AppText> : null}
     </View>
     <ProgressBar accessibilityLabel="Progreso del entrenamiento" color={color} maximumValue={Math.max(progress.totalSets, 1)} value={progress.completedSets} />
   </View>;

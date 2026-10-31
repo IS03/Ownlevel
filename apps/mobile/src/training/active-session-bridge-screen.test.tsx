@@ -381,6 +381,27 @@ describe('native active session screen', () => {
     expect(view.queryByRole('checkbox', { name: 'Más peso' })).toBeNull();
     controller.dispose();
   });
+  it('marks «Próxima vez» as open while its options are up and restores it on every close, keeping its width (#360)', async () => {
+    const { controller, Screen } = fixture(); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
+    const trigger = () => view.getByTestId(`exercise-next-${EXERCISE_ID}`);
+    const style = () => StyleSheet.flatten(trigger().props.style);
+    const closed = style();
+    expect(trigger().props.accessibilityState).toMatchObject({ expanded: false });
+    for (const close of [() => fireEvent.press(view.getByLabelText('Cerrar opciones de próxima vez')),
+      () => fireEvent.press(view.getByRole('checkbox', { name: 'Más peso' }))]) {
+      fireEvent.press(view.getByRole('button', { name: 'Próxima vez' }));
+      expect(trigger().props.accessibilityState).toMatchObject({ expanded: true });
+      expect(style().backgroundColor).not.toBe(closed.backgroundColor);
+      expect(style().borderColor).not.toBe(closed.borderColor);
+      expect(style().minHeight).toBe(closed.minHeight);
+      close();
+      if (view.queryByLabelText('Cerrar opciones de próxima vez')) fireEvent.press(view.getByLabelText('Cerrar opciones de próxima vez'));
+      expect(trigger().props.accessibilityState).toMatchObject({ expanded: false });
+      expect(style()).toEqual(closed);
+    }
+    await act(async () => { await controller.flush(EXERCISE_ID); });
+    controller.dispose();
+  });
   it('saves the extra exercise opt-in through the existing draft and autosave path', async () => {
     const detail = testDetail(); detail.session.routineId = SECOND_ID; detail.session.routineNameSnapshot = 'PUSH'; detail.session.name = 'Mi sesión';
     const { controller, api, Screen } = fixture(detail); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
@@ -533,6 +554,25 @@ describe('native active session screen', () => {
     jest.mocked(api.save).mockResolvedValue(offline); jest.mocked(api.sync).mockResolvedValue(offline);
     fireEvent.changeText(view.getByLabelText('Peso serie 1 de PRESS'), '49'); await act(async () => { await controller.flush(EXERCISE_ID); });
     expect(view.getByText('Pendiente de conexión · Guardado sin confirmar')).toBeTruthy(); expect(view.getByRole('button', { name: 'Comprobar cambios' })).toBeTruthy(); controller.dispose();
+  });
+  it('shows one actionable notice, not three, while a failed session read waits for the connection (#356)', async () => {
+    const { controller, api, Screen } = fixture(); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
+    const offline = { status: 'unavailable', reason: 'network', meta: { ...meta, outcome: 'unavailable' } } as const;
+    jest.mocked(api.detail).mockResolvedValueOnce(offline);
+    await act(async () => { await controller.refresh(); });
+    fireEvent.changeText(view.getByLabelText('Peso serie 1 de PRESS'), '49'); await act(async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); });
+    expect(view.getByText('No pudimos comprobar la sesión. Los borradores se conservan.')).toBeTruthy();
+    expect(view.getAllByRole('button', { name: 'Comprobar sesión' })).toHaveLength(1);
+    expect(view.queryByRole('button', { name: 'Reintentar lectura' })).toBeNull();
+    expect(view.queryByText(/sin sincronizar/)).toBeNull();
+    expect(view.queryByText(/Pendiente de conexión/)).toBeNull();
+    expect(view.getByText('Guardado en el dispositivo')).toBeTruthy();
+    // Recovery clears every trace and saves the draft through the normal CAS write.
+    jest.mocked(api.detail).mockResolvedValueOnce({ status: 'ok', data: testDetail(), meta });
+    await act(async () => { await controller.refresh(); await controller.flush(EXERCISE_ID); });
+    expect(api.save).toHaveBeenCalledTimes(1);
+    expect(view.queryByText('No pudimos comprobar la sesión. Los borradores se conservan.')).toBeNull();
+    expect(view.queryByText('Guardado en el dispositivo')).toBeNull(); controller.dispose();
   });
   it('keeps expanded rows visible across incomplete measurements, expand, drag, swipe, save and foreground reconciliation', async () => {
     const detail = testDetail(); detail.exercises[0].payload.sets.push({ ...detail.exercises[0].payload.sets[0], setNumber: 2, notes: 'second' });

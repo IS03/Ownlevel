@@ -71,6 +71,11 @@ function LibrarySheetBody({
   // RN already includes the KeyboardAvoidingView's local y in its overlap formula. Only its parent's
   // screen origin (the sheet) belongs in keyboardVerticalOffset; adding the local y counts it twice.
   const [keyboardOffset, setKeyboardOffset] = useState(0);
+  // #306: a browsing list with nothing below it runs to the sheet's bottom edge and keeps the home indicator as
+  // its own scroll padding, so rows pass under the indicator instead of being cut by a flat band. A footer, or a
+  // sheet embedded in another one, keeps the inset on the sheet.
+  const bottomInset = Math.max(insets.bottom, 16),
+    scrollsUnder = !embedded && !footer;
   return (
     <View style={styles.modal}>
       <Pressable
@@ -92,7 +97,7 @@ function LibrarySheetBody({
         style={[
           styles.sheet,
           embedded && { height: '100%' },
-          { backgroundColor: colors.background, paddingBottom: Math.max(insets.bottom, 16) },
+          { backgroundColor: colors.background, paddingBottom: scrollsUnder ? 0 : bottomInset },
         ]}
       >
         <ScreenGlow />
@@ -118,7 +123,11 @@ function LibrarySheetBody({
             </View>
             {right ?? <View style={{ width: 44 }} />}
           </View>
-          <ScrollView testID={testID} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+          <ScrollView
+            testID={testID}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={[styles.content, scrollsUnder && { paddingBottom: 16 + bottomInset }]}
+          >
             {browse ? (
               <AppText accessibilityRole="header" variant="largeTitle">
                 {title}

@@ -3,13 +3,14 @@ import "server-only";
 import { createAdminClient } from "../supabase/admin";
 import type { ChatgptMealInput, ChatgptMealSuccess } from "./chatgpt-contract";
 import { PossibleDuplicateError } from "./chatgpt-meals";
+import { callMealRpc } from "./meal-rpc";
 
 export async function persistChatgptMeal(
   userId: string,
   meal: ChatgptMealInput,
 ): Promise<ChatgptMealSuccess> {
   const admin = createAdminClient();
-  const { data, error } = await admin.rpc("create_chatgpt_meal_for_integration_v2", {
+  const { data, error } = await callMealRpc(admin, "create_chatgpt_meal_for_integration_v2", "create_chatgpt_meal_for_integration_v3", {
     p_user_id: userId,
     p_log_date: meal.date,
     p_title: meal.title,
@@ -22,11 +23,15 @@ export async function persistChatgptMeal(
     p_force_duplicate: meal.force_duplicate,
     p_consumed_at: meal.consumed_at,
     p_meal_label: meal.meal_type,
-  });
+  }, meal);
   if (error?.message.includes("possible_duplicate")) {
     throw new PossibleDuplicateError();
   }
-  if (error) throw new Error("No se pudo persistir la comida.");
+  if (error) {
+    // SQLSTATE only: never the message, which can echo the payload.
+    console.error("[ownlevel-chatgpt-api] persist_failed", { via: "token", code: error.code ?? "unknown" });
+    throw new Error("No se pudo persistir la comida.");
+  }
   const result = data as ChatgptMealSuccess;
   return {
     ok: true,

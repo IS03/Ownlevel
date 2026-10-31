@@ -57,7 +57,8 @@ export type SessionSnapshot = {
   /** Server truth returned by a confirmed (or replayed) finish. */
   finished: SessionFinishedDto | null;
 };
-export type SessionProgress = { completedSets: number; totalSets: number; completedExercises: number; exercises: number; pending: number; errors: number; drafts: number };
+/** `offline`: the last session read failed, so pending drafts wait on this device; not an error of any exercise (#356). */
+export type SessionProgress = { completedSets: number; totalSets: number; completedExercises: number; exercises: number; pending: number; errors: number; drafts: number; offline: boolean };
 type Entry = {
   snapshot: ExerciseSnapshot;
   base: SessionExercisePayloadDto;
@@ -78,7 +79,7 @@ export function sessionIntentKey() {
 export class ActiveSessionController {
   private snapshot: SessionSnapshot = { status: 'loading', detail: null, refreshing: false, fenced: false, storageError: false, notice: null, intent: null,
     interaction: null, summary: emptySessionSummary, summaryReady: false, finishing: false, finished: null };
-  private progress: SessionProgress = { completedSets: 0, totalSets: 0, completedExercises: 0, exercises: 0, pending: 0, errors: 0, drafts: 0 };
+  private progress: SessionProgress = { completedSets: 0, totalSets: 0, completedExercises: 0, exercises: 0, pending: 0, errors: 0, drafts: 0, offline: false };
   private readonly entries = new Map<string, Entry>();
   private readonly listeners = new Set<() => void>();
   private readonly exerciseListeners = new Map<string, Set<() => void>>();
@@ -146,7 +147,8 @@ export class ActiveSessionController {
     this.summarize();
   }
   private summarize() {
-    const next: SessionProgress = { completedSets: 0, totalSets: 0, completedExercises: 0, exercises: 0, pending: 0, errors: 0, drafts: 0 };
+    const next: SessionProgress = { completedSets: 0, totalSets: 0, completedExercises: 0, exercises: 0, pending: 0, errors: 0, drafts: 0,
+      offline: !this.networkReady && this.snapshot.status === 'ready' };
     const ids = this.snapshot.detail?.exercises.map(exercise => exercise.id) ?? [];
     for (const id of ids) {
       const snapshot = this.entries.get(id)?.snapshot; if (!snapshot) continue;
@@ -197,7 +199,8 @@ export class ActiveSessionController {
     try { exercisePayload(entry.snapshot.draft); }
     catch (error) { this.publish(entry, { phase: 'validation', error: error instanceof Error ? error.message : 'Revisá las series.' }); return; }
     if (!entry.snapshot.dirty && !entry.flight) { this.publish(entry, { phase: 'saved', error: null }); void this.clearDraft(entry); return; }
-    this.publish(entry, { phase: 'scheduled', error: this.networkReady ? null : 'Pendiente de conexión. Conservamos el borrador en este dispositivo.' });
+    // Waiting for the connection is not a failure: the draft is journaled and the session notice owns the cause (#356).
+    this.publish(entry, { phase: 'scheduled', error: null });
     if (entry.flight) return;
     if (entry.timer) clearTimeout(entry.timer);
     if (immediate) { void this.flush(id); return; }
@@ -340,7 +343,7 @@ export class ActiveSessionController {
       this.networkReady = false; this.writesPaused = false;
       this.update({ status: this.snapshot.detail ? 'ready' : 'unavailable', refreshing: false,
         notice: result.status === 'unauthorized' || result.status === 'auth_required' ? 'Necesitamos validar tu acceso antes de continuar.' : 'No pudimos comprobar la sesión. Los borradores se conservan.' });
-      return;
+      this.summarize(); return;
     }
     this.networkReady = true;
     this.orderNeedsCheck = false;

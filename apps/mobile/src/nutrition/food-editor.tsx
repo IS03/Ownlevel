@@ -218,12 +218,6 @@ export function FoodEditor({
               />
             ))}
           </View>
-          <Button
-            label="Actualizar catálogo"
-            disabled={state.listLoading}
-            onPress={() => void controller.load()}
-            variant="quiet"
-          />
         </>
       ) : draft ? (
         <>
