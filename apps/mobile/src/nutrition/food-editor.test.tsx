@@ -310,3 +310,23 @@ describe('Food creation from the day picker', () => {
     expect(f.view.UNSAFE_getAllByType(Modal)).toHaveLength(1);
   });
 });
+
+describe('Food library refresh (#359)', () => {
+  it('reads on open and reopen with no permanent refresh button, and recovers a failed read with one contextual retry', async () => {
+    const f = fixture();
+    await f.open();
+    expect(f.api.list).toHaveBeenCalledTimes(1);
+    expect(f.view.queryByText('Actualizar catálogo')).toBeNull();
+    jest.mocked(f.api.list).mockResolvedValueOnce({ status: 'unavailable', reason: 'server', meta: { ...meta, httpStatus: 503, outcome: 'unavailable' } });
+    await act(async () => { await f.c.load(); });
+    expect(f.view.getByText(/Mostramos la última lectura/)).toBeTruthy();
+    expect(f.view.getByTestId(`library-food-${personalFood.id}`)).toBeTruthy();
+    expect(f.view.getAllByRole('button', { name: 'Reintentar catálogo' })).toHaveLength(1);
+    await act(async () => { fireEvent.press(f.view.getByRole('button', { name: 'Reintentar catálogo' })); });
+    expect(f.view.queryByRole('button', { name: 'Reintentar catálogo' })).toBeNull();
+    expect(f.api.list).toHaveBeenCalledTimes(3);
+    await act(async () => { f.c.close(); });
+    await f.open();
+    expect(f.api.list).toHaveBeenCalledTimes(4);
+  });
+});
