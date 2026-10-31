@@ -76,6 +76,19 @@ Si OWNLEVEL responde `409 possible_duplicate`, el GPT debe pedir confirmación.
 Sólo cuando el usuario confirme que fue otra comida puede reenviar con una
 `idempotency_key` nueva y `force_duplicate=true`.
 
+Las calorías son un entero mayor que 0 en todas las superficies (Action, MCP y API); los macros aceptan 0 o
+`null`. Errores de `register_meal` en el MCP (#346), en `structuredContent.error`:
+
+| Código | Significa | Qué hacer |
+| --- | --- | --- |
+| `invalid_request` | Los datos no cumplen el contrato; no se envió nada. | Corregir el dato que nombra el mensaje. |
+| `possible_duplicate` | Hay una comida idéntica reciente. | Confirmar con el usuario antes de `force_duplicate`. |
+| `temporarily_unavailable` | Falló la red o la verificación; no se sabe si quedó guardada. | Reintentar con la misma `idempotency_key`. |
+| `internal_error` | OWNLEVEL no pudo guardarla. | Reintentar con la misma `idempotency_key`. |
+
+Los permisos vencidos o revocados vuelven como pedido de autorización, no como error de comida. Los logs registran
+sólo el código del error (y el SQLSTATE si falló la base), nunca el token ni la comida.
+
 ## Revocación y diagnóstico
 
 Revocar la clave la invalida inmediatamente. Después puede crearse otra. El
