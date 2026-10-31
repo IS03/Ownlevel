@@ -7,10 +7,10 @@ vi.mock("./supabase", () => ({ authenticateMobileAccessToken: vi.fn() }));
 vi.mock("@/lib/phase1/profile", () => ({ getMyProfile: vi.fn(async () => null) }));
 vi.mock("@/lib/phase1/day-log", () => ({ listWeightHistory: vi.fn(async () => []) }));
 vi.mock("@/lib/body-measurements", () => ({ listBodyMeasurements: vi.fn(async () => []) }));
-vi.mock("@/lib/phase2/training-robust", () => ({ loadCompletedTrainingData: vi.fn() }));
+vi.mock("@/lib/phase2/training-robust", () => ({ loadCompletedTrainingData: vi.fn(), loadTrainingRecordsData: vi.fn() }));
 vi.mock("@/lib/phase2/training", () => ({ listRoutines: vi.fn(async () => []) }));
 import { authenticateMobileAccessToken } from "./supabase";
-import { loadCompletedTrainingData } from "@/lib/phase2/training-robust";
+import { loadCompletedTrainingData, loadTrainingRecordsData } from "@/lib/phase2/training-robust";
 import { GET as trainingGET } from "@/app/api/mobile/v1/progress/training/route";
 import { GET as recordsGET } from "@/app/api/mobile/v1/progress/training/records/route";
 import { GET as exerciseGET } from "@/app/api/mobile/v1/progress/training/exercises/[id]/route";
@@ -177,7 +177,7 @@ describe("GET /progress/training — exercise performance by real weight mode", 
 });
 
 /** Only the columns `recordColumns` selects (the loader's own list): anything else read downstream shows up as a difference. */
-const { RECORD_COLUMNS } = await vi.importActual<typeof import("@/lib/phase2/training-robust")>("@/lib/phase2/training-robust");
+const { RECORD_COLUMNS, trainingRecordsSource } = await vi.importActual<typeof import("@/lib/phase2/training-robust")>("@/lib/phase2/training-robust");
 const columns = (list: string) => list.split(", ");
 function narrow(full: ReturnType<typeof source>) {
   const data = full as unknown as Record<"sessions" | "sessionExercises" | "sets", Record<string, unknown>[]> & { dateByDayLog: Map<string, string> };
@@ -185,9 +185,33 @@ function narrow(full: ReturnType<typeof source>) {
   return { sessions: pick(data.sessions, columns(RECORD_COLUMNS.sessions)), sessionExercises: pick(data.sessionExercises, columns(RECORD_COLUMNS.exercises)),
     sets: pick(data.sets, columns(RECORD_COLUMNS.sets)), dateByDayLog: data.dateByDayLog } as never;
 }
-/** Full rows for /progress/training; the narrow read (its own scope) for /progress/training/records. */
+type Row = Record<string, unknown>;
+/** What `mobile_read_training_records` returns for the fixture, with the migration's own filters. */
+function rpcRead(full: ReturnType<typeof source>, from: string) {
+  const data = full as unknown as { sessions: Row[]; sessionExercises: Row[]; sets: Row[]; dateByDayLog: Map<string, string> };
+  const date = (session: Row) => data.dateByDayLog.get(String(session.day_log_id));
+  const sessions = data.sessions.filter(session => session.status === "completed" && (date(session) ?? "") >= from && date(session) !== undefined);
+  const sessionIds = new Set(sessions.map(session => session.id));
+  const exercises = data.sessionExercises.filter(exercise => sessionIds.has(exercise.workout_session_id));
+  const exerciseIds = new Set(exercises.map(exercise => exercise.id));
+  const sets = data.sets.filter(set => set.is_completed && exerciseIds.has(set.workout_session_exercise_id));
+  const older = new Set(data.sessions.filter(session => session.status === "completed" && session.ended_at && date(session) !== undefined && date(session)! < from).map(session => session.id));
+  const olderExercises = new Map(data.sessionExercises.filter(exercise => exercise.is_completed && older.has(exercise.workout_session_id)).map(exercise => [exercise.id, exercise]));
+  const history = new Map<string, { exercise_id: string; weight_mode_snapshot: string | null; load: number; reps: number }>();
+  for (const set of data.sets) {
+    const exercise = olderExercises.get(set.workout_session_exercise_id), reps = set.actual_reps, load = set.actual_weight_kg;
+    if (!exercise || !set.is_completed || typeof reps !== "number" || reps <= 0 || typeof load !== "number" || !Number.isFinite(load) || load <= 0) continue;
+    const key = JSON.stringify([exercise.exercise_id, exercise.weight_mode_snapshot, load]);
+    if ((history.get(key)?.reps ?? 0) < reps) history.set(key, { exercise_id: String(exercise.exercise_id), weight_mode_snapshot: exercise.weight_mode_snapshot as string | null, load, reps });
+  }
+  const pick = (rows: Row[], list: string) => rows.map(row => Object.fromEntries(columns(list).map(column => [column, row[column]])));
+  return { sessions: pick(sessions, RECORD_COLUMNS.sessions).map(session => ({ ...session, day: { log_date: date(session) } })),
+    exercises: pick(exercises, RECORD_COLUMNS.exercises), sets: pick(sets, RECORD_COLUMNS.sets), history: [...history.values()] } as never;
+}
+/** Full rows for /progress/training; the records read (window rows plus aggregated history) for /progress/training/records. */
 function serve(full: ReturnType<typeof source>) {
   vi.mocked(loadCompletedTrainingData).mockImplementation(async (_auth, scope) => scope?.recordColumns ? narrow(full) : full);
+  vi.mocked(loadTrainingRecordsData).mockImplementation(async (_auth, from) => trainingRecordsSource(rpcRead(full, from), from));
 }
 const records = (path = "progress/training/records?period=30") => recordsGET(request(path)).then(r => read(r, parseProgressTrainingRecords));
 
@@ -206,6 +230,12 @@ describe("GET /progress/training/records — Home's records card", () => {
       { date: d(-2), exercises: [{ id: ex.squat, name: "Sentadilla", mode: "Total con barra", sets: [[5, 105]] }] },
       { date: d(-1), exercises: [bench([[10, 60]])] },
     ]],
+    ["older history only: zero, missing and repeated loads, another mode, a bodyweight exercise", [
+      { date: d(-300), exercises: [bench([[12, 60], [3, 0], [8, null], [0, 80]]), { id: ex.pullup, name: "Dominadas", mode: "Peso corporal", sets: [[15, null]] }] },
+      { date: d(-250), exercises: [bench([[6, 70], [12, 60]]), { id: ex.squat, name: "Sentadilla", mode: "Por mancuerna", sets: [[10, 200]] }] },
+      { date: d(-40), exercises: [bench([[8, 65]]), { id: ex.squat, name: "Sentadilla", mode: "Total con barra", sets: [[5, 90]] }, { id: ex.pullup, name: "Dominadas", mode: "Peso corporal", sets: [[10, null]] }] },
+      { date: d(-10), exercises: [bench([[13, 60], [6, 70]]), { id: ex.squat, name: "Sentadilla", mode: "Total con barra", sets: [[5, 100]] }, { id: ex.pullup, name: "Dominadas", mode: "Peso corporal", sets: [[11, null]] }] },
+    ]],
     ["a weight-mode change hides older loads; lingotes; repeated loads; the period's first day; renamed exercise", [
       { date: d(-200), exercises: [{ id: ex.bench, name: "Press plano", mode: "Por mancuerna", sets: [[12, 40], [6, 70]] }] },
       { date: d(-120), exercises: [bench([[8, 50], [8, 50], [6, 55]]), { id: ex.cable, name: "Remo", mode: "Lingotes (no kg)", sets: [[10, 8]] }] },
@@ -223,9 +253,17 @@ describe("GET /progress/training/records — Home's records card", () => {
     serve(source(scenarios[1][1]));
     expect((await records()).personalRecords.map(record => record.exerciseId).sort()).toEqual([ex.bench, ex.squat].sort());
   });
-  it("reads the narrow columns only, and is owner-scoped and authenticated", async () => {
+  it("an older session without an end stays out of the history, as in the full read", async () => {
+    const full = source(scenarios[2][1]) as unknown as { sessions: Row[] };
+    full.sessions[1].ended_at = null;
+    serve(full as never);
+    const [all, home] = [await training("progress/training?period=30"), await records()];
+    expect(home.personalRecords).toEqual(all.personalRecords);
+    expect(home.exercises).toEqual(all.exercises);
+  });
+  it("reads from the earliest compared day, and is owner-scoped and authenticated", async () => {
     await records();
-    expect(vi.mocked(loadCompletedTrainingData)).toHaveBeenCalledWith({ userId: "owner", supabase: {} }, { recordColumns: true });
+    expect(vi.mocked(loadTrainingRecordsData)).toHaveBeenCalledWith({ userId: "owner", supabase: {} }, d(-59));
     expect((await recordsGET(request("progress/training/records", ""))).status).toBe(401);
     expect((await recordsGET(request("progress/training/records?user_id=other"))).status).toBe(400);
   });
