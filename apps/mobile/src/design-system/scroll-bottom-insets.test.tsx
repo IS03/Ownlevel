@@ -2,6 +2,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { Platform, ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaInsetsContext, SafeAreaView } from 'react-native-safe-area-context';
+import { ScrollViewMarker } from 'react-native-screens/experimental';
 import { Screen, ScrollScreen } from './primitives';
 import { OwnlevelThemeProvider } from './theme';
 
@@ -96,5 +97,35 @@ describe('optional floating-tab backdrop', () => {
     view.rerender(wrap(<ScrollScreen bottomBackdrop><Text>Android</Text></ScrollScreen>));
     expect(view.queryByTestId('scroll-bottom-backdrop', { includeHiddenElements: true })).toBeNull();
     expect(view.UNSAFE_getByType(SafeAreaView).props.edges).toEqual(['left', 'right', 'bottom']);
+  });
+});
+
+describe('native bottom edge under the floating tab bar (#348)', () => {
+  const screen = () => render(wrap(<ScrollScreen bottomBackdrop contentContainerStyle={{ paddingBottom: 40 }}>
+    <Text>Última comida</Text>
+  </ScrollScreen>));
+  it('on iOS 26+ lets the native tab blur and fade the list: soft edge, no own layer, same insets', () => {
+    jest.spyOn(Platform, 'Version', 'get').mockReturnValue('26.0');
+    const view = screen();
+    const marker = view.UNSAFE_getByType(ScrollViewMarker);
+    expect(marker.props.scrollEdgeEffects).toEqual({ bottom: 'soft' });
+    expect(marker.findByType(ScrollView)).toBeTruthy();
+    expect(view.queryByTestId('scroll-bottom-backdrop', { includeHiddenElements: true })).toBeNull();
+    const scroll = view.UNSAFE_getByType(ScrollView);
+    expect(scroll.props.contentInsetAdjustmentBehavior).toBe('automatic');
+    expect(scroll.props.contentInset).toBeUndefined();
+    expect(StyleSheet.flatten(scroll.props.contentContainerStyle).paddingBottom).toBe(40);
+    expect(view.getByText('Última comida')).toBeTruthy();
+  });
+  it('keeps the fixed backdrop before iOS 26 and adds nothing on Android or screens without it', () => {
+    jest.spyOn(Platform, 'Version', 'get').mockReturnValue('18.6');
+    const older = screen();
+    expect(older.UNSAFE_queryByType(ScrollViewMarker)).toBeNull();
+    expect(older.getByTestId('scroll-bottom-backdrop', { includeHiddenElements: true })).toBeTruthy();
+    jest.spyOn(Platform, 'Version', 'get').mockReturnValue('26.0');
+    const plain = render(wrap(<ScrollScreen><Text>Inicio</Text></ScrollScreen>));
+    expect(plain.UNSAFE_queryByType(ScrollViewMarker)).toBeNull();
+    jest.replaceProperty(Platform, 'OS', 'android');
+    expect(screen().UNSAFE_queryByType(ScrollViewMarker)).toBeNull();
   });
 });

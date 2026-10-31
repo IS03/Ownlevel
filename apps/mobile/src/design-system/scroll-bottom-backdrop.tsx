@@ -1,4 +1,6 @@
-import { StyleSheet, View } from 'react-native';
+import type { PropsWithChildren } from 'react';
+import { Platform, StyleSheet, View } from 'react-native';
+import { ScrollViewMarker } from 'react-native-screens/experimental';
 import MaskedView from '@react-native-masked-view/masked-view';
 
 import { spacing } from './tokens';
@@ -21,4 +23,19 @@ export function ScrollBottomBackdrop({ inset }: { inset: number }) {
   </View>;
 }
 
-const styles = StyleSheet.create({ backdrop: { position: 'absolute', left: 0, right: 0, bottom: 0 } });
+/** UIKit's scroll edge effect under the native tab bar exists from iOS 26. */
+export function nativeBottomEdgeAvailable() {
+  return Platform.OS === 'ios' && Number.parseInt(String(Platform.Version), 10) >= 26;
+}
+
+/**
+ * Registers the scroll view with the native tab so iOS applies its soft bottom edge effect (#348): text is blurred
+ * and faded under the bar while the glass keeps refracting real content. No own layer, no change to insets.
+ * Uses react-native-screens' experimental marker (4.26.2, pinned by the lockfile); off renders the child as is.
+ */
+export function NativeBottomEdge({ enabled, children }: PropsWithChildren<{ enabled: boolean }>) {
+  if (!enabled) return <>{children}</>;
+  return <ScrollViewMarker style={styles.fill} scrollEdgeEffects={{ bottom: 'soft' }}>{children as NonNullable<typeof children>}</ScrollViewMarker>;
+}
+
+const styles = StyleSheet.create({ backdrop: { position: 'absolute', left: 0, right: 0, bottom: 0 }, fill: { flex: 1 } });
