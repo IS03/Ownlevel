@@ -27,11 +27,21 @@ const sheet = (props: { footer?: React.ReactNode; embedded?: boolean } = {}) =>
   );
 const paddingBottom = (view: ReturnType<typeof render>) =>
   StyleSheet.flatten(view.getByTestId('library-sheet').props.style).paddingBottom;
+const scrollPadding = (view: ReturnType<typeof render>) => {
+  const style = StyleSheet.flatten(view.getByTestId('library').props.contentContainerStyle);
+  return style.paddingBottom ?? style.padding;
+};
 
 describe('Library sheet (Alimentos, Comidas guardadas) — #306', () => {
   it('opened from a tab, reserves only the home indicator: the tab bar is behind the modal', () => {
+    expect(paddingBottom(sheet({ footer: <Text>Guardar</Text> }))).toBe(34);
+  });
+  it('a browsing list runs to the bottom edge and keeps the home indicator as scroll padding, not a band that cuts rows', () => {
     const view = sheet();
-    expect(paddingBottom(view)).toBe(34);
+    expect(paddingBottom(view)).toBe(0);
+    expect(scrollPadding(view)).toBe(16 + 34);
+    // With a footer the list ends at the footer; the inset stays under the footer.
+    expect(scrollPadding(sheet({ footer: <Text>Guardar</Text> }))).toBe(16);
   });
   it('a list with nothing below it has no footer padding cutting it short', () => {
     expect(sheet().queryByTestId('library-footer')).toBeNull();
@@ -65,11 +75,12 @@ describe('Library sheet (Alimentos, Comidas guardadas) — #306', () => {
       frame: { x: 0, y: 0, width: 874, height: 402 },
       insets: { top: 0, bottom: 21, left: 62, right: 62 },
     } }); });
-    expect(paddingBottom(view)).toBe(21);
+    expect(scrollPadding(view)).toBe(16 + 21);
   });
   it('embedded in another sheet keeps that sheet\'s insets and keyboard handling', () => {
     const view = sheet({ embedded: true });
     expect(paddingBottom(view)).toBe(83);
+    expect(scrollPadding(view)).toBe(16);
     expect(view.UNSAFE_getByType(KeyboardAvoidingView).props.keyboardVerticalOffset).toBe(0);
   });
 });
