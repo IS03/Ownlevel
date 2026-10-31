@@ -88,11 +88,13 @@ function MealRow({ meal, divider, highlighted, removing, removed, actions, onOpe
   const trembling = useAnimatedStyle(() => ({ transform: [{ translateX: shake.value }] }));
   const [width, setWidth] = useState(0);
   const menu = mealMenu(meal, actions);
-  const clock = meal.timeKnown ? time.format(new Date(meal.consumedAt)) : 'Sin hora';
+  // A meal registered as eaten now shows its registration time as approximate (#308), never as a said time.
+  const approximate = !meal.timeKnown && meal.timeSource === 'registration';
+  const clock = meal.timeKnown ? time.format(new Date(meal.consumedAt)) : approximate ? `≈ ${time.format(new Date(meal.consumedAt))}` : 'Sin hora';
   const estimated = meal.precision === 'estimated' ? ' · estimado' : '';
   // The row stays light (one-line title, rounded macros); the detail keeps every exact value.
   const meta = `${clock} · P ${rowGrams(meal.proteinG)} · C ${rowGrams(meal.carbsG)} · G ${rowGrams(meal.fatG)}${estimated}`;
-  const spoken = `${meal.timeKnown ? clock : 'Hora sin dato'} · Proteína ${amount(meal.proteinG, 'g')} · Carbohidratos ${amount(meal.carbsG, 'g')} · Grasas ${amount(meal.fatG, 'g')}${estimated}`;
+  const spoken = `${meal.timeKnown ? clock : approximate ? `Hora aproximada ${time.format(new Date(meal.consumedAt))}` : 'Hora sin dato'} · Proteína ${amount(meal.proteinG, 'g')} · Carbohidratos ${amount(meal.carbsG, 'g')} · Grasas ${amount(meal.fatG, 'g')}${estimated}`;
   // The swipe hands its own methods to the action, so no ref is read while rendering.
   const confirmDelete = (swipe?: SwipeableMethods) => { if (reduceMotion) swipe?.reset(); else swipe?.close(); Alert.alert('¿Eliminar esta comida?', 'Deja de contar en el día y desaparece de la lista.', [
     { text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: () => menu.remove?.(meal) }]); };

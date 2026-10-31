@@ -62,15 +62,28 @@ comida recién enviada. No incluye acumulados, objetivos ni otros datos del día
   `extra`) son opcionales. Se envían **sólo** si el usuario los dijo; el GPT no los deduce por la hora de envío.
 - Sin `time`, OWNLEVEL usa el momento de registro para ordenar el día, pero lo marca como horario no informado
   (igual que las comidas importadas): no aparece como hora confirmada ni cuenta en «Cuándo comés».
+- **Comida de ahora** (`consumed_now: true`, sin `time`): el usuario registra lo que está comiendo o acaba de comer
+  («subí esto», «estoy almorzando»). OWNLEVEL guarda el instante de registro (reloj de la base, no del mensaje) como
+  hora **aproximada**, con procedencia `registration`. Web y Mobile la muestran como «≈ 13:42», nunca como hora dicha.
+  Si no se nombró el tipo, Mobile sugiere el momento por esa hora («Almuerzo (sugerido)») sin guardarlo. La fecha
+  tiene que ser hoy en Córdoba: si no, `400 invalid_request` (también pasa cerca de medianoche si el GPT mandó la
+  fecha de ayer). «Lo que comí esta mañana» o «una comida de ayer» van sin `time` ni `consumed_now`: quedan sin hora.
+- Procedencia de la hora: `explicit` (dicha por el usuario o puesta desde la app), `registration` (aproximada) o
+  `unknown`. «Cuándo comés» cuenta sólo las `explicit`: las horas aproximadas no cambian las estadísticas ni se
+  reinterpretan datos viejos. Corregir la hora desde la app la vuelve `explicit`, sin duplicar la comida.
+- `time` prevalece siempre sobre `consumed_now`; `meal_type` dicho prevalece sobre cualquier sugerencia.
 - Una hora que no corresponde al día local de `date` se rechaza (`400 invalid_request`).
 - Desde OWNLEVEL Mobile, las comidas de ChatGPT se editan y borran como las manuales (fecha, hora, tipo, valores),
   con las mismas garantías (CAS, idempotencia, borrado lógico). La procedencia queda guardada internamente.
 - Las comidas de ChatGPT anteriores al 28/10/2026 no se reescribieron: conservan la hora de envío como hora.
 
-Dependencia externa: el GPT privado guarda la copia del esquema que importó. Para que envíe `time` y `meal_type`
-hay que **volver a importar** el esquema desde la URL de arriba y agregar a sus instrucciones: «Mandá `time` y
-`meal_type` sólo si el usuario los dijo». Hasta entonces, sus comidas llegan sin hora (marcadas como no informada).
-El conector MCP/OAuth lee el esquema en cada conexión.
+Dependencia externa: el GPT privado guarda la copia del esquema que importó. Para que envíe `time`, `meal_type` y
+`consumed_now` hay que **volver a importar** el esquema desde la URL de arriba y agregar a sus instrucciones:
+«Mandá `time` y `meal_type` sólo si el usuario los dijo; `consumed_now: true` sólo si registra lo que está comiendo
+ahora y no dijo la hora». Hasta entonces, sus comidas llegan sin hora (marcadas como no informada).
+El conector MCP/OAuth lee el esquema en cada conexión. `consumed_now` requiere aplicar la migración
+`20261031210000_chatgpt_meal_registration_time_expand.sql` (PR propio de EXPAND); sin ella, la comida se guarda
+como antes (sin hora).
 
 Si OWNLEVEL responde `409 possible_duplicate`, el GPT debe pedir confirmación.
 Sólo cuando el usuario confirme que fue otra comida puede reenviar con una

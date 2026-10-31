@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import { suggestedMealLabel } from './meal-timing-model';
+import { mealLabelAt, suggestedMealLabel } from './meal-timing-model';
 
 // Argentina is UTC−3 all year: 12:00Z is 09:00 local.
 const at = (iso: string) => new Date(iso);
@@ -13,5 +13,12 @@ describe('suggestedMealLabel', () => {
   it('does not guess late at night or for another day', () => {
     expect(suggestedMealLabel('2026-10-15', at('2026-10-15T03:19:00Z'))).toBeUndefined(); // 00:19 local
     expect(suggestedMealLabel('2026-10-14', at('2026-10-15T15:00:00Z'))).toBeUndefined();
+  });
+});
+describe('mealLabelAt (#308)', () => {
+  it('classifies a registration instant by the Argentina clock, with no band late at night', () => {
+    expect(mealLabelAt(at('2026-10-15T16:42:00Z'))).toBe('lunch'); // 13:42 local
+    expect(mealLabelAt(at('2026-10-15T23:00:00Z'))).toBe('dinner'); // 20:00 local
+    expect(mealLabelAt(at('2026-10-16T02:30:00Z'))).toBeUndefined(); // 23:30 local
   });
 });

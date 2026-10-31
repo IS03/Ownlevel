@@ -14,6 +14,8 @@ export type NutritionDayMeal = {
   consumedAt: string;
   updatedAt: string;
   timeKnown: boolean;
+  /** Optional for older servers: absent reads as explicit when timeKnown, unknown otherwise (#308). */
+  timeSource?: "explicit" | "registration" | "unknown";
   entryKind: "meal" | "legacy_daily_summary";
   sourceType: "manual" | "label" | "ai" | "chatgpt" | "sheet_import" | null;
   precision: "catalog" | "label" | "estimated" | "historical" | null;
@@ -92,10 +94,13 @@ function meal(value: unknown): NutritionDayMeal | undefined {
     || !oneOf(value.entryKind, ["meal", "legacy_daily_summary"])
     || !oneOf(value.sourceType, ["manual", "label", "ai", "chatgpt", "sheet_import", null])
     || !oneOf(value.precision, ["catalog", "label", "estimated", "historical", null])
-    || !oneOf(value.mealLabel, ["breakfast", "lunch", "snack", "dinner", "extra", null])) return undefined;
+    || !oneOf(value.mealLabel, ["breakfast", "lunch", "snack", "dinner", "extra", null])
+    || (value.timeSource !== undefined && (!oneOf(value.timeSource, ["explicit", "registration", "unknown"])
+      || (value.timeSource === "explicit") !== value.timeKnown))) return undefined;
   return { id: value.id, title: value.title, description: value.description, calories: value.calories as number | null,
     proteinG: value.proteinG as number | null, carbsG: value.carbsG as number | null, fatG: value.fatG as number | null,
     consumedAt: value.consumedAt, updatedAt: value.updatedAt, timeKnown: value.timeKnown,
+    ...(value.timeSource !== undefined ? { timeSource: value.timeSource as NutritionDayMeal["timeSource"] } : {}),
     entryKind: value.entryKind as NutritionDayMeal["entryKind"], sourceType: value.sourceType as NutritionDayMeal["sourceType"],
     precision: value.precision as NutritionDayMeal["precision"], mealLabel: value.mealLabel as NutritionDayMeal["mealLabel"] };
 }

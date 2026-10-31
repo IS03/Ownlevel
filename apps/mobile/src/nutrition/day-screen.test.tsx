@@ -285,6 +285,23 @@ describe('Native Nutrition day', () => {
     expect(view.getByText('Comida 2026-09-30')).toBeTruthy();
     expect(view.queryByText('Comida 2026-10-02')).toBeNull();
   });
+  it('shows a meal registered as eaten now with an approximate time and only a suggested moment (#308)', async () => {
+    const day = nutritionFixture('2026-10-02'), data = day.nutrition.status === 'ok' && day.nutrition.data.dayState === 'recorded' ? day.nutrition.data : undefined;
+    const registered = { ...data!.meals[0], timeKnown: false, timeSource: 'registration' as const, sourceType: 'chatgpt' as const };
+    mockRead.mockResolvedValue(ok('2026-10-02', { ...day, nutrition: { status: 'ok', data: { ...data!, meals: [registered] } } }) as never);
+    const view = render(element()); await view.findByText('Comida 2026-10-02');
+    expect(view.getByText(/^≈ 09:00 · P /)).toBeTruthy();
+    expect(view.queryByText(/^Sin hora/)).toBeNull();
+    fireEvent.press(view.getByText('Comida 2026-10-02'));
+    expect(await view.findByText('Desayuno (sugerido) · ≈ 09:00 (hora de registro)')).toBeTruthy();
+  });
+  it('keeps a meal without a time as Sin hora (#308)', async () => {
+    const day = nutritionFixture('2026-10-02'), data = day.nutrition.status === 'ok' && day.nutrition.data.dayState === 'recorded' ? day.nutrition.data : undefined;
+    const unknown = { ...data!.meals[0], timeKnown: false, timeSource: 'unknown' as const, sourceType: 'chatgpt' as const };
+    mockRead.mockResolvedValue(ok('2026-10-02', { ...day, nutrition: { status: 'ok', data: { ...data!, meals: [unknown] } } }) as never);
+    const view = render(element()); await view.findByText('Comida 2026-10-02');
+    expect(view.getByText(/^Sin hora · P /)).toBeTruthy();
+  });
   it('refreshes the selected date and keeps its last reading explicitly stale', async () => {
     mockRead.mockResolvedValueOnce(ok('2026-10-02') as never).mockResolvedValueOnce(failure as never);
     const view = render(element()); await view.findByText('Comida 2026-10-02');
