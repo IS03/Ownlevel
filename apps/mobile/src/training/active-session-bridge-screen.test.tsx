@@ -534,6 +534,25 @@ describe('native active session screen', () => {
     fireEvent.changeText(view.getByLabelText('Peso serie 1 de PRESS'), '49'); await act(async () => { await controller.flush(EXERCISE_ID); });
     expect(view.getByText('Pendiente de conexión · Guardado sin confirmar')).toBeTruthy(); expect(view.getByRole('button', { name: 'Comprobar cambios' })).toBeTruthy(); controller.dispose();
   });
+  it('shows one actionable notice, not three, while a failed session read waits for the connection (#356)', async () => {
+    const { controller, api, Screen } = fixture(); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
+    const offline = { status: 'unavailable', reason: 'network', meta: { ...meta, outcome: 'unavailable' } } as const;
+    jest.mocked(api.detail).mockResolvedValueOnce(offline);
+    await act(async () => { await controller.refresh(); });
+    fireEvent.changeText(view.getByLabelText('Peso serie 1 de PRESS'), '49'); await act(async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); });
+    expect(view.getByText('No pudimos comprobar la sesión. Los borradores se conservan.')).toBeTruthy();
+    expect(view.getAllByRole('button', { name: 'Comprobar sesión' })).toHaveLength(1);
+    expect(view.queryByRole('button', { name: 'Reintentar lectura' })).toBeNull();
+    expect(view.queryByText(/sin sincronizar/)).toBeNull();
+    expect(view.queryByText(/Pendiente de conexión/)).toBeNull();
+    expect(view.getByText('Guardado en el dispositivo')).toBeTruthy();
+    // Recovery clears every trace and saves the draft through the normal CAS write.
+    jest.mocked(api.detail).mockResolvedValueOnce({ status: 'ok', data: testDetail(), meta });
+    await act(async () => { await controller.refresh(); await controller.flush(EXERCISE_ID); });
+    expect(api.save).toHaveBeenCalledTimes(1);
+    expect(view.queryByText('No pudimos comprobar la sesión. Los borradores se conservan.')).toBeNull();
+    expect(view.queryByText('Guardado en el dispositivo')).toBeNull(); controller.dispose();
+  });
   it('keeps expanded rows visible across incomplete measurements, expand, drag, swipe, save and foreground reconciliation', async () => {
     const detail = testDetail(); detail.exercises[0].payload.sets.push({ ...detail.exercises[0].payload.sets[0], setNumber: 2, notes: 'second' });
     const { controller, api, Screen } = fixture(detail); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
