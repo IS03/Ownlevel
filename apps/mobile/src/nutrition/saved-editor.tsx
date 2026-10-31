@@ -273,12 +273,6 @@ export function SavedEditor({ controller, state }: { controller: SavedController
               />
             ))}
           </View>
-          <Button
-            label="Actualizar guardadas"
-            onPress={() => void controller.load()}
-            disabled={state.listLoading}
-            variant="quiet"
-          />
         </>
       ) : d ? (
         <>

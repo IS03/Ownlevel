@@ -39,6 +39,10 @@ describe('Personal Food controller and durable catalog intents',()=>{
   await f.controller.save(operation);expect(f.api.write).toHaveBeenCalledWith(expect.objectContaining({operation,id:foodId,expectedVersion:personalFood.version,fields:operation==='update'?expect.objectContaining({calories:25.75}):null}));
   expect(await f.repository.read()).toBeNull();
  });
+ it.each(['update','archive','reactivate'] as const)('a confirmed %s reloads the visible catalog by itself, with no manual refresh (#359)',async operation=>{
+  const f=fixture();await f.open();const before=jest.mocked(f.api.list).mock.calls.length;f.controller.begin(personalFood);if(operation==='update')f.controller.change('calories','25,75');
+  await f.controller.save(operation);await settle();expect(jest.mocked(f.api.list).mock.calls.length).toBe(before+1);expect(f.controller.getSnapshot().listError).toBe(false);
+ });
  it('foreground list refresh cannot replace an open draft; conflict requires explicit source review',async()=>{
   const f=fixture();await f.open();f.controller.begin(personalFood);f.controller.change('calories','75');await f.controller.load();expect(f.controller.getSnapshot().draft?.calories).toBe('75');
   const truth={...personalFood,calories:30,version:'b'.repeat(64)};
