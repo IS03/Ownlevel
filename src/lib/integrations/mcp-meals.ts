@@ -16,7 +16,7 @@ export const registerMealTool = {
       date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
       title: { type: "string", minLength: 1, maxLength: 120 },
       description: { type: "string", maxLength: 1000 },
-      calories: { type: "number", minimum: 0, maximum: 100000 },
+      calories: { type: "integer", minimum: 1, maximum: 100000, description: "Kilocalorías, entero mayor que 0 (misma regla que OWNLEVEL)." },
       protein_g: { anyOf: [{ type: "number", minimum: 0, maximum: 10000 }, { type: "null" }] },
       carbs_g: { anyOf: [{ type: "number", minimum: 0, maximum: 10000 }, { type: "null" }] },
       fat_g: { anyOf: [{ type: "number", minimum: 0, maximum: 10000 }, { type: "null" }] },
@@ -31,8 +31,15 @@ export const registerMealTool = {
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
 };
 
+/** The arguments break the meal contract; nothing was sent. Its message is user-facing. */
+export class McpMealInputError extends Error {}
+/** The API call failed or its answer was unreadable: whether the meal was saved is unknown. */
+export class McpMealTransportError extends Error {}
+
 export async function forwardOAuthMeal(args: unknown, bearer: string, fetcher: typeof fetch = fetch) {
-  const meal = parseChatgptMealInput(args);
+  let meal: ReturnType<typeof parseChatgptMealInput>;
+  try { meal = parseChatgptMealInput(args); }
+  catch (error) { throw new McpMealInputError(error instanceof Error ? error.message : "La solicitud no es válida."); }
   const { force_duplicate, consumed_at, meal_type, ...fields } = meal;
   // The route takes the time as the user said it ("HH:MM"), never the composed instant.
   const time = consumed_at ? consumed_at.slice(11, 16) : null;
@@ -42,11 +49,14 @@ export async function forwardOAuthMeal(args: unknown, bearer: string, fetcher: t
   // Disposable local tests keep the canonical HTTPS resource/audience, but
   // must never write to production. This override is forbidden in production.
   endpoint.pathname = "/api/integrations/chatgpt/meals";
-  const response = await fetcher(endpoint, { method: "POST", redirect: "error", cache: "no-store",
-    signal: AbortSignal.timeout(10_000), headers: { "Authorization": bearer, "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const body = await response.json() as ChatgptMealHttpResult["body"];
+  let response: Response, body: ChatgptMealHttpResult["body"];
+  try {
+    response = await fetcher(endpoint, { method: "POST", redirect: "error", cache: "no-store",
+      signal: AbortSignal.timeout(10_000), headers: { "Authorization": bearer, "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    body = await response.json() as ChatgptMealHttpResult["body"];
+  } catch { throw new McpMealTransportError("meal_api_unreachable"); }
   return { status: response.status, body };
 }
 
@@ -54,6 +64,16 @@ function toolError(message: string, challenge?: string) {
   return { content: [{ type: "text" as const, text: message }], isError: true,
     ...(challenge ? { _meta: { "mcp/www_authenticate": [challenge] } } : {}) };
 }
+
+export type McpMealFailureCode = "invalid_request" | "temporarily_unavailable" | "internal_error";
+
+/** A failure the model can tell apart by `error`; never internal detail, tokens or the meal payload. */
+function mealFailure(error: McpMealFailureCode, message: string) {
+  const body = { ok: false as const, error, message };
+  return { content: [{ type: "text" as const, text: JSON.stringify(body) }], structuredContent: body, isError: true };
+}
+
+const RETRY_SAME_KEY = "Si reintentás, usá la misma idempotency_key: no se duplica.";
 
 export async function handleMealsMcp(req: Request) {
   if (!ownlevelOAuthEnabled()) return Response.json({ error: "integration_disabled" }, { status: 503 });
@@ -74,18 +94,34 @@ export async function handleMealsMcp(req: Request) {
       // Discovery/initialize are public. Every actual invocation is authenticated
       // and authorized before forwarding; tools/list never implies permission.
       let result: Awaited<ReturnType<typeof forwardOAuthMeal>> | undefined;
+      // Caught inside the gate so a failure after authorization is never reported as missing authorization.
+      let failure: unknown;
       const authRequest = new Request(req.url, { headers: req.headers });
       const response = await withOwnlevelOAuth(authRequest, async () => {
-        result = await forwardOAuthMeal(params.arguments, req.headers.get("authorization")!);
+        try { result = await forwardOAuthMeal(params.arguments, req.headers.get("authorization")!); }
+        catch (error) { failure = error ?? new Error("unknown"); }
         return new Response(null, { status: 204 });
       });
+      if (failure instanceof McpMealInputError) return mealFailure("invalid_request", failure.message);
+      if (failure instanceof McpMealTransportError) {
+        console.error("[ownlevel-mcp] register_meal temporarily_unavailable");
+        return mealFailure("temporarily_unavailable", `No se pudo confirmar si la comida quedó registrada. ${RETRY_SAME_KEY}`);
+      }
+      if (failure) throw failure;
+      if (!result && response.status >= 500) {
+        console.error("[ownlevel-mcp] register_meal authorization_unavailable");
+        return mealFailure("temporarily_unavailable", `No se pudo verificar la conexión con OWNLEVEL. ${RETRY_SAME_KEY}`);
+      }
       if (!result) return toolError("Conectá OWNLEVEL y autorizá el registro de comidas.", response.headers.get("WWW-Authenticate") ?? undefined);
       if (result.status === 401 || result.status === 403) {
         const config = ownlevelOAuthConfig();
         return toolError("La conexión no tiene permiso vigente.", `Bearer resource_metadata="${config.metadataUrl}", error="${result.status === 401 ? "invalid_token" : "insufficient_scope"}"`);
       }
       return { content: [{ type: "text" as const, text: JSON.stringify(result.body) }], structuredContent: result.body, isError: !result.body.ok };
-    } catch { return toolError("No se pudo registrar la comida. Si reintentás, conservá la misma idempotency_key."); }
+    } catch {
+      console.error("[ownlevel-mcp] register_meal internal_error");
+      return mealFailure("internal_error", `No se pudo registrar la comida. ${RETRY_SAME_KEY}`);
+    }
   });
   await server.connect(transport);
   try {

@@ -14,7 +14,11 @@ export async function persistOAuthMeal(admin: SupabaseClient, identity: OAuthMea
   });
   if (error?.code === "42501") throw new OAuthPermissionDeniedError();
   if (error?.message.includes("possible_duplicate")) throw new PossibleDuplicateError();
-  if (error) throw new Error("No se pudo persistir la comida.");
+  if (error) {
+    // SQLSTATE only: never the message, which can echo the payload.
+    console.error("[ownlevel-chatgpt-api] persist_failed", { via: "oauth", code: error.code ?? "unknown" });
+    throw new Error("No se pudo persistir la comida.");
+  }
   const result = data as ChatgptMealSuccess;
   return { ok: true, created: result.created, idempotent_replay: result.idempotent_replay, meal: result.meal };
 }
