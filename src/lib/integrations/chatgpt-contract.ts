@@ -16,6 +16,7 @@ const ALLOWED_KEYS = new Set([
   "force_duplicate",
   "time",
   "meal_type",
+  "consumed_now",
 ]);
 
 export const CHATGPT_MEAL_TYPES = ["breakfast", "lunch", "snack", "dinner", "extra"] as const;
@@ -35,6 +36,11 @@ export type ChatgptMealInput = {
   consumed_at: string | null;
   /** Only when the user named it; never inferred from the moment it was sent. */
   meal_type: ChatgptMealType | null;
+  /**
+   * The user is registering what they eat now and said no time: the registration instant is kept as an
+   * approximate time (#308). Always false when a time was said, which prevails.
+   */
+  consumed_now: boolean;
 };
 
 export type ChatgptMealSuccess = {
@@ -139,6 +145,15 @@ export function parseChatgptMealInput(
   if (body.force_duplicate !== undefined && typeof body.force_duplicate !== "boolean") {
     throw new Error("force_duplicate debe ser booleano.");
   }
+  if (body.consumed_now !== undefined && typeof body.consumed_now !== "boolean") {
+    throw new Error("consumed_now debe ser booleano.");
+  }
+  const consumedAt = optionalConsumedAt(body.time, date);
+  const consumedNow = body.consumed_now === true && consumedAt === null;
+  // "Now" is today's Córdoba day: a meal of another day is never given the registration time.
+  if (consumedNow && date !== todayInCordoba(now)) {
+    throw new Error(`Una comida de ahora es de hoy (${todayInCordoba(now)}, hora de Córdoba). Mandá esa fecha, o la hora si la comiste en otro momento.`);
+  }
 
   return {
     date,
@@ -154,8 +169,9 @@ export function parseChatgptMealInput(
       200,
     ),
     force_duplicate: body.force_duplicate === true,
-    consumed_at: optionalConsumedAt(body.time, date),
+    consumed_at: consumedAt,
     meal_type: optionalMealType(body.meal_type),
+    consumed_now: consumedNow,
   };
 }
 

@@ -147,6 +147,9 @@ components:
           type: string
           enum: [breakfast, lunch, snack, dinner, extra]
           description: Sólo si el usuario nombró la comida (desayuno, almuerzo, merienda, cena o extra). No lo deduzcas por la hora de envío.
+        consumed_now:
+          type: boolean
+          description: true sólo si el usuario registra lo que está comiendo o acaba de comer ahora y no dijo la hora; OWNLEVEL guarda la hora de registro como aproximada. La fecha debe ser hoy (Córdoba). No lo uses para comidas de otro momento («esta mañana», «ayer»).
     MealSuccess:
       type: object
       additionalProperties: false

@@ -1,4 +1,4 @@
-import { nutritionMealTimeKnown } from "./nutrition-meal-time";
+import { nutritionMealTimeKnown, nutritionMealTimeSource } from "./nutrition-meal-time";
 import { MobileApiValidationError } from "./auth";
 import {
   isNutritionDate,
@@ -28,7 +28,8 @@ function nutritionData(raw: unknown, date: string): NutritionDayData | undefined
     id: m.id, title: m.title, description: m.description,
     calories: m.final_calories, proteinG: m.final_protein_g, carbsG: m.final_carbs_g, fatG: m.final_fat_g,
     consumedAt: m.consumed_at, updatedAt: m.updated_at,
-    timeKnown: nutritionMealTimeKnown(m.raw_input, m.entry_kind), entryKind: m.entry_kind,
+    timeKnown: nutritionMealTimeKnown(m.raw_input, m.entry_kind), timeSource: nutritionMealTimeSource(m.raw_input, m.entry_kind),
+    entryKind: m.entry_kind,
     sourceType: m.source_type, precision: m.precision_level, mealLabel: m.meal_label,
   }));
   // Totals remain canonical persisted aggregates. Only coverage is derived here.

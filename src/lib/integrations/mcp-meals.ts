@@ -24,6 +24,7 @@ export const registerMealTool = {
       force_duplicate: { type: "boolean" },
       time: { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", description: "Sólo si el usuario dijo a qué hora comió (HH:MM, hora de Córdoba). Si no lo dijo, omitilo: OWNLEVEL no inventa la hora." },
       meal_type: { type: "string", enum: ["breakfast", "lunch", "snack", "dinner", "extra"], description: "Sólo si el usuario nombró la comida (desayuno=breakfast, almuerzo=lunch, merienda=snack, cena=dinner, extra). No lo deduzcas por la hora." },
+      consumed_now: { type: "boolean", description: "true sólo si el usuario registra algo que está comiendo o acaba de comer ahora («subí esto», «estoy almorzando») y no dijo la hora: OWNLEVEL guarda la hora de registro como aproximada. La fecha debe ser hoy (Córdoba). No lo uses para comidas de otro momento («esta mañana», «ayer»): sin hora quedan sin hora." },
     },
   },
   securitySchemes: [{ type: "oauth2", scopes: OWNLEVEL_OAUTH_SCOPES }],
@@ -40,10 +41,10 @@ export async function forwardOAuthMeal(args: unknown, bearer: string, fetcher: t
   let meal: ReturnType<typeof parseChatgptMealInput>;
   try { meal = parseChatgptMealInput(args); }
   catch (error) { throw new McpMealInputError(error instanceof Error ? error.message : "La solicitud no es válida."); }
-  const { force_duplicate, consumed_at, meal_type, ...fields } = meal;
+  const { force_duplicate, consumed_at, meal_type, consumed_now, ...fields } = meal;
   // The route takes the time as the user said it ("HH:MM"), never the composed instant.
   const time = consumed_at ? consumed_at.slice(11, 16) : null;
-  const payload = { ...fields, ...(force_duplicate ? { force_duplicate: true } : {}), ...(time ? { time } : {}), ...(meal_type ? { meal_type } : {}) };
+  const payload = { ...fields, ...(force_duplicate ? { force_duplicate: true } : {}), ...(time ? { time } : {}), ...(meal_type ? { meal_type } : {}), ...(consumed_now ? { consumed_now: true } : {}) };
   // Fixed origin/resource, no user-controlled destination or redirect following.
   const endpoint = new URL(ownlevelIntegrationOrigin());
   // Disposable local tests keep the canonical HTTPS resource/audience, but

@@ -18,6 +18,7 @@ import {
   parseDailyHistoryOrigin,
 } from "@/lib/history/daily-history-navigation";
 import type { MealEntry } from "@/lib/phase1/types";
+import { nutritionMealTimeSource } from "@/lib/mobile-api/nutrition-meal-time";
 import { todayInCordoba } from "@/lib/phase2/cordoba-date";
 import { getVerifiedRequestContext } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
@@ -83,20 +84,14 @@ function energyBalanceLabel(value: number) {
   return "0 kcal · balance estimado";
 }
 
-function originalTimeKnown(rawInput: string | null) {
-  if (!rawInput) return true;
-  try {
-    return (JSON.parse(rawInput) as { originalTimeKnown?: boolean }).originalTimeKnown !== false;
-  } catch {
-    return true;
-  }
-}
-
 function historyMeal(meal: MealEntry): TodayMeal {
   const legacy = meal.entry_kind === "legacy_daily_summary";
+  const timeSource = nutritionMealTimeSource(meal.raw_input, meal.entry_kind);
   const context = [
-    !legacy && originalTimeKnown(meal.raw_input) ? formatTime(meal.consumed_at) : null,
-    !legacy && !originalTimeKnown(meal.raw_input) ? "Horario no informado" : null,
+    !legacy && timeSource === "explicit" ? formatTime(meal.consumed_at) : null,
+    // A meal registered as eaten now keeps its registration time as approximate (#308).
+    !legacy && timeSource === "registration" ? `≈ ${formatTime(meal.consumed_at)} · hora de registro` : null,
+    !legacy && timeSource === "unknown" ? "Horario no informado" : null,
     legacy ? "Sin desglose de comidas disponible." : null,
     !legacy && (meal.source_type === "sheet_import" || meal.source_type === "chatgpt")
       ? "Importado"
