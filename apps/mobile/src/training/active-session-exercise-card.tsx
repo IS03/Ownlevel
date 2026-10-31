@@ -54,6 +54,8 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
   const reducedMotion = useReduceMotion();
   const pendingSet = state?.draft.sets.find(set => !set.isCompleted)?.localId;
   const chevron = useAnimatedStyle(() => ({ transform: [{ rotate: withTiming(expanded ? '90deg' : '0deg', { duration: reducedMotion ? 0 : 220 }) }] }), [expanded, reducedMotion]);
+  // While its native popover is up, «Próxima vez» reads as the open control it is (#360): same width, no second CTA.
+  const nextChevron = useAnimatedStyle(() => ({ transform: [{ rotate: withTiming(nextOpen ? '180deg' : '0deg', { duration: reducedMotion ? 0 : 200 }) }] }), [nextOpen, reducedMotion]);
   const enabled = expanded && !locked && !!state && state.phase !== 'closed' && state.phase !== 'removed';
   const [previousEnabled, setPreviousEnabled] = useState(enabled);
   if (previousEnabled !== enabled) {
@@ -150,9 +152,10 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
         <View style={styles.nextAnchor}>
           <Pressable accessibilityRole="button" accessibilityLabel="Próxima vez" accessibilityState={{ expanded: nextOpen, disabled: !editable }} disabled={!editable}
             onPress={() => { if (controller.getSnapshot().interaction) return; Keyboard.dismiss(); haptics.selection(); setNextOpen(true); }}
-            style={[styles.nextTrigger, { backgroundColor: colors.surfaceRaised, borderColor: colors.border, opacity: editable ? 1 : 0.45 }]}>
+            style={[styles.nextTrigger, { backgroundColor: nextOpen ? colors.brandSubtle : colors.surfaceRaised, borderColor: nextOpen ? colors.primary : colors.border, opacity: editable ? 1 : 0.45 }]}
+            testID={`exercise-next-${id}`}>
             <AppText variant="caption" style={styles.shrink}>{draft.decision === 'increase_weight' ? 'Más peso' : draft.decision === 'increase_reps' ? 'Más reps' : draft.decision === 'custom' ? 'Recordatorio' : 'Próxima vez'}</AppText>
-            <AppIcon name="chevronDown" size={17} color={colors.textMuted} />
+            <Animated.View style={nextChevron}><AppIcon name="chevronDown" size={17} color={nextOpen ? colors.primary : colors.textMuted} /></Animated.View>
           </Pressable>
           <SessionNextOptions open={nextOpen} editable={editable} name={exercise.nameSnapshot} decision={draft.decision} decisionNote={draft.decisionNote}
             applyToRoutine={draft.applyToRoutine} routineLinked={!!exercise.routineExerciseId} addToRoutineName={addToRoutineName} onClose={() => setNextOpen(false)}
