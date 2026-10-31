@@ -117,6 +117,27 @@ describe('native active-session controller', () => {
     expect(api.save).toHaveBeenCalledTimes(1); expect(api.save).toHaveBeenCalledWith(EXERCISE_ID, VERSION, expect.objectContaining({ notes: 'second unlock' }));
     controller.dispose();
   });
+  it('treats a draft waiting for the connection as pending, not as an exercise error, and converges on recovery (#356)', async () => {
+    const { controller, api, repository } = setup(); await controller.refresh();
+    controller.suspend(); api.detail.mockResolvedValueOnce(unavailable); await controller.resume();
+    expect(controller.getSnapshot().notice).toBe('No pudimos comprobar la sesión. Los borradores se conservan.');
+    controller.change(EXERCISE_ID, draft => ({ ...draft, notes: 'sin señal' }));
+    expect(controller.getExercise(EXERCISE_ID)).toMatchObject({ phase: 'scheduled', error: null });
+    expect(controller.getProgress()).toMatchObject({ errors: 0, pending: 1, offline: true });
+    jest.advanceTimersByTime(900); await settle();
+    expect(api.save).not.toHaveBeenCalled(); expect((await repository.readDraft(EXERCISE_ID))?.draft.notes).toBe('sin señal');
+    controller.suspend(); await controller.resume(); await controller.flush(EXERCISE_ID);
+    expect(api.save).toHaveBeenCalledWith(EXERCISE_ID, VERSION, expect.objectContaining({ notes: 'sin señal' }));
+    expect(controller.getSnapshot().notice).toBeNull();
+    expect(controller.getExercise(EXERCISE_ID)).toMatchObject({ phase: 'saved', error: null });
+    expect(controller.getProgress()).toMatchObject({ errors: 0, pending: 0, offline: false }); controller.dispose();
+  });
+  it('still counts and shows real failures: an unconfirmed save keeps its error while offline (#356)', async () => {
+    const { controller, api } = setup(); await controller.refresh(); api.save.mockResolvedValueOnce(unavailable); api.sync.mockResolvedValueOnce(unavailable);
+    controller.change(EXERCISE_ID, draft => ({ ...draft, notes: 'incierto' }), true); await settle();
+    expect(controller.getExercise(EXERCISE_ID)?.phase).toBe('unconfirmed');
+    expect(controller.getProgress().errors).toBe(1); controller.dispose();
+  });
   it('keeps restored sets and their local identity during foreground reconciliation', async () => {
     const { api, repository } = setup();
     const draft = exerciseDraft(testPayload('restored')); draft.sets[0] = { ...draft.sets[0], actualWeightKg: '0', actualReps: '10', targetRir: 0 };
