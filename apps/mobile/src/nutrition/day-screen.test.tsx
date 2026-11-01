@@ -332,6 +332,29 @@ describe('Native Nutrition day', () => {
     expect(view.queryByText(/automática|sugerido/)).toBeNull();
     expect(view.getByText(/^≈ 09:00 · P /)).toBeTruthy();
   });
+  it('keeps confirmed automatic timing visible in the editor without promoting it on a title-only save (#308)', async () => {
+    const day = nutritionFixture('2026-10-02');
+    if (day.nutrition.status !== 'ok' || day.nutrition.data.dayState !== 'recorded') throw new Error('fixture');
+    const data = day.nutrition.data;
+    const registered = { ...data.meals[0], mealLabel: null, timeKnown: false, timeSource: 'registration' as const,
+      automaticMealLabel: 'breakfast' as const, sourceType: 'chatgpt' as const };
+    mockRead.mockResolvedValue(ok('2026-10-02', { ...day, nutrition: { status: 'ok', data: { ...data, meals: [registered] } } }) as never);
+    const view = render(element());
+    await view.findByText('Comida 2026-10-02');
+    fireEvent.press(view.getByText('Comida 2026-10-02'));
+    fireEvent.press(await view.findByText('Editar')); finishMealDismissal(view);
+    await view.findByTestId('manual-meal-editor');
+    expect(view.getByLabelText('Corregir hora aproximada 09:00')).toBeTruthy();
+    expect(within(view.getByTestId('manual-meal-editor')).getByText('Desayuno (automático)')).toBeTruthy();
+    fireEvent.changeText(view.getByLabelText('Título'), 'Otro título');
+    mockRequest.mockImplementation(async options => {
+      expect((options.body as { fields: object }).fields).toMatchObject({ mealLabel: null });
+      expect((options.body as { fields: object }).fields).not.toHaveProperty('consumedAt');
+      return { status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } } as never;
+    });
+    fireEvent.press(view.getByText('Guardar cambios'));
+    await waitFor(() => expect(mockRequest).toHaveBeenCalledTimes(1));
+  });
   it('keeps a meal without a time as Sin hora (#308)', async () => {
     const day = nutritionFixture('2026-10-02'), data = day.nutrition.status === 'ok' && day.nutrition.data.dayState === 'recorded' ? day.nutrition.data : undefined;
     const unknown = { ...data!.meals[0], timeKnown: false, timeSource: 'unknown' as const, sourceType: 'chatgpt' as const };
