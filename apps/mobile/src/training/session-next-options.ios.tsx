@@ -1,38 +1,31 @@
-import { StyleSheet } from 'react-native';
-import { Button, Divider, Host, Popover, Rectangle, Text, Toggle, VStack } from '@expo/ui/swift-ui';
-import { accessibilityLabel, buttonStyle, disabled, font, foregroundStyle, frame, padding, tint, toggleStyle } from '@expo/ui/swift-ui/modifiers';
-import { useOwnlevelTheme } from '@/design-system';
+import { useState } from 'react';
+import { requireNativeView } from 'expo';
+import { StyleSheet, type NativeSyntheticEvent, type ViewProps } from 'react-native';
+import { sizes, spacing, useOwnlevelTheme } from '@/design-system';
 import type { SessionNextOptionsProps } from './session-next-options.types';
 
-/** Native dismissal and explicit choices share the same controlled close path. */
+type NativeProps = ViewProps & {
+  openRequest: number; editable: boolean; name: string; decision: string; decisionNote: string;
+  applyToRoutine: boolean; applyLabel: string | null; extra: boolean; isDark: boolean;
+  accent: string; muted: string; contentPadding: number; contentSpacing: number; minTouch: number;
+  onPresentationChange: (event: NativeSyntheticEvent<{ presented: boolean }>) => void;
+  onDecision: (event: NativeSyntheticEvent<{ decision: SessionNextOptionsProps['decision'] }>) => void;
+  onApply: (event: NativeSyntheticEvent<{ value: boolean }>) => void;
+};
+const NativeOptions = requireNativeView<NativeProps>('OwnlevelFinishControls', 'NextSessionOptionsView');
+
+/** UIKit owns presentation through completed dismissal. React observes it; each tap is a separate request. */
 export function SessionNextOptions(props: SessionNextOptionsProps) {
   const { colors, isDark } = useOwnlevelTheme();
-  const applyLabel = props.routineLinked ? 'Tomar resultado de hoy' : `Sumar a ${props.addToRoutineName}`;
-  return <Host colorScheme={isDark ? 'dark' : 'light'} ignoreSafeArea="all" pointerEvents="none" style={StyleSheet.absoluteFill}>
-    <Popover isPresented={props.open} onIsPresentedChange={presented => { if (!presented) props.onClose(); }} attachmentAnchor="center" arrowEdge="trailing">
-      <Popover.Trigger><Rectangle modifiers={[foregroundStyle('clear'), frame({ maxWidth: 10_000, maxHeight: 10_000 })]} /></Popover.Trigger>
-      <Popover.Content>
-        <VStack alignment="leading" spacing={12} modifiers={[padding({ all: 24 }), frame({ width: 300 }), tint(colors.primary), disabled(!props.editable)]}>
-          <VStack alignment="leading" spacing={4} modifiers={[frame({ maxWidth: 10_000, alignment: 'leading' })]}>
-            <Text modifiers={[font({ textStyle: 'headline' })]}>Próxima vez</Text>
-            <Text modifiers={[font({ textStyle: 'caption' }), foregroundStyle(colors.textMuted)]}>{props.name}</Text>
-          </VStack>
-          <Divider />
-          <Toggle label="Más peso" systemImage={props.decision === 'increase_weight' ? 'checkmark' : 'plus'} isOn={props.decision === 'increase_weight'}
-            onIsOnChange={() => { props.onDecision('increase_weight'); props.onClose(); }} modifiers={[toggleStyle('button'), buttonStyle('plain'), foregroundStyle(colors.primary), frame({ minHeight: 44, maxWidth: 10_000, alignment: 'leading' })]} />
-          <Toggle label="Más repeticiones" systemImage={props.decision === 'increase_reps' ? 'checkmark' : 'plus'} isOn={props.decision === 'increase_reps'}
-              onIsOnChange={() => { props.onDecision('increase_reps'); props.onClose(); }} modifiers={[toggleStyle('button'), buttonStyle('plain'), foregroundStyle(colors.primary), frame({ minHeight: 44, maxWidth: 10_000, alignment: 'leading' })]} />
-          {props.decision === 'custom' ? <Toggle label={props.decisionNote || 'Recordatorio anterior'} systemImage="checkmark" isOn
-              onIsOnChange={() => { props.onDecision('custom'); props.onClose(); }} modifiers={[toggleStyle('button'), buttonStyle('plain'), foregroundStyle(colors.primary), frame({ minHeight: 44 })]} /> : null}
-          {props.routineLinked || props.addToRoutineName ? <><Divider />
-            {/* Plain label: the two-Text label never reported the switch change. */}
-            <Toggle isOn={props.applyToRoutine} label={applyLabel} onIsOnChange={value => { props.onApply(value); props.onClose(); }} modifiers={[toggleStyle('switch')]} />
-            {!props.routineLinked ? <Text modifiers={[font({ textStyle: 'caption' }), foregroundStyle(colors.textMuted)]}>Al finalizar, se agrega al final de la rutina con las series de hoy.</Text> : null}
-          </> : null}
-          <Divider />
-          <Button label="Cerrar" onPress={props.onClose} modifiers={[accessibilityLabel('Cerrar opciones de próxima vez'), buttonStyle('plain'), foregroundStyle(colors.text), frame({ minHeight: 44 })]} />
-        </VStack>
-      </Popover.Content>
-    </Popover>
-  </Host>;
+  // Remounting a collapsed card must not replay a request from its previous native view.
+  const [baselineRequest] = useState(() => props.open ? 0 : props.openRequest ?? 0);
+  const applyLabel = props.routineLinked ? 'Tomar resultado de hoy' : props.addToRoutineName ? `Sumar a ${props.addToRoutineName}` : null;
+  return <NativeOptions pointerEvents="none" style={StyleSheet.absoluteFill}
+    openRequest={Math.max(0, (props.openRequest ?? 0) - baselineRequest)} editable={props.editable} name={props.name} decision={props.decision}
+    decisionNote={props.decisionNote} applyToRoutine={props.applyToRoutine} applyLabel={applyLabel}
+    extra={!props.routineLinked} isDark={isDark} accent={colors.primary} muted={colors.textMuted}
+    contentPadding={spacing.xl} contentSpacing={spacing.sm} minTouch={sizes.touchTarget}
+    onPresentationChange={({ nativeEvent }) => { if (nativeEvent.presented) props.onOpen?.(); else props.onClose(); }}
+    onDecision={({ nativeEvent }) => props.onDecision(nativeEvent.decision)}
+    onApply={({ nativeEvent }) => props.onApply(nativeEvent.value)} />;
 }

@@ -10,9 +10,9 @@ describe('confirmed timing in the fallback editor (#308)', () => {
     const change = jest.fn();
     const view = render(<OwnlevelThemeProvider initialMode="light"><MealTiming date="2026-10-15" value={{ mealLabel: null }} disabled={false}
       reference={{ date: '2026-10-15', consumedAt: '2026-10-15T23:15:00Z', timeKnown: false, timeSource: 'registration', automaticMealLabel: 'dinner' }} onChange={change} /></OwnlevelThemeProvider>);
-    expect(view.getByText('Cena (automática)')).toBeTruthy();
-    expect(view.getByPlaceholderText('≈ 20:15 · hora de registro')).toBeTruthy();
-    fireEvent(view.getByLabelText('Hora HH:MM'), 'endEditing', { nativeEvent: { text: '' } });
+    expect(view.getByText('Cena')).toBeTruthy();
+    expect(view.getByDisplayValue('20:15')).toBeTruthy();
+    fireEvent(view.getByLabelText('Hora HH:MM'), 'endEditing', { nativeEvent: { text: '20:15' } });
     expect(change).not.toHaveBeenCalled();
     fireEvent(view.getByLabelText('Hora HH:MM'), 'endEditing', { nativeEvent: { text: '13:00' } });
     expect(change).toHaveBeenCalledWith(null, '2026-10-15T13:00:00-03:00');

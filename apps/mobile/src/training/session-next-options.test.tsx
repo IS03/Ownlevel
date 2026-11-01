@@ -1,74 +1,53 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { describe, expect, it, jest } from '@jest/globals';
-import type { ReactNode } from 'react';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { SessionNextOptions } from './session-next-options.ios';
 import type { SessionNextOptionsProps } from './session-next-options.types';
 
-// SwiftUI renders outside the RN tree on device. Model its controlled events,
-// including dismissal, without replacing the component under test.
-jest.mock('@expo/ui/swift-ui', () => {
-  const { Pressable, Text, View } = jest.requireActual<typeof import('react-native')>('react-native');
-  const Container = ({ children }: { children: ReactNode }) => <View>{children}</View>;
-  const Popover = ({ children, isPresented, onIsPresentedChange }: { children: ReactNode; isPresented: boolean; onIsPresentedChange: (open: boolean) => void }) =>
-    isPresented ? <View testID="native-next-popover" onAccessibilityEscape={() => onIsPresentedChange(false)}>{children}</View> : null;
-  Popover.Trigger = function Trigger() { return null; };
-  Popover.Content = Container;
-  return {
-    Host: Container, VStack: Container, Divider: () => null, Rectangle: () => null,
-    Button: ({ label, onPress }: { label: string; onPress: () => void }) => <Pressable accessibilityRole="button" onPress={onPress}><Text>{label}</Text></Pressable>,
-    Text: ({ children }: { children: ReactNode }) => <Text>{children}</Text>, Popover,
-    Toggle: ({ label, children, isOn, onIsOnChange }: { label?: string; children?: ReactNode; isOn: boolean; onIsOnChange: (on: boolean) => void }) =>
-      <Pressable accessibilityRole="checkbox" accessibilityLabel={label} accessibilityState={{ checked: isOn }} onPress={() => onIsOnChange(!isOn)}><Text>{label}</Text>{children}</Pressable>,
-  };
+// Exercise the real React/native boundary. Native lifecycle and touch delivery need simulator QA.
+jest.mock('expo', () => {
+  const { View } = jest.requireActual<typeof import('react-native')>('react-native');
+  return { ...jest.requireActual<object>('expo'), requireNativeView: () => View };
 });
-jest.mock('@expo/ui/swift-ui/modifiers', () => ({
-  accessibilityLabel: () => ({}), buttonStyle: () => ({}), buttonBorderShape: () => ({}), disabled: () => ({}), font: () => ({}), foregroundStyle: () => ({}), frame: () => ({}), padding: () => ({}), tint: () => ({}), toggleStyle: () => ({}),
-}));
-
-function setup(overrides: Partial<SessionNextOptionsProps> = {}) {
-  const props: SessionNextOptionsProps = { open: true, editable: true, name: 'Jalón neutro', decision: 'increase_reps', decisionNote: '',
-    applyToRoutine: false, routineLinked: true, onClose: jest.fn(), onDecision: jest.fn(), onApply: jest.fn(), ...overrides };
+function setup() {
+  const props: SessionNextOptionsProps = { open: true, openRequest: 1, editable: true, name: 'EJEMPLO', decision: 'increase_reps', decisionNote: '',
+    applyToRoutine: false, routineLinked: true, onOpen: jest.fn(), onClose: jest.fn(), onDecision: jest.fn(), onApply: jest.fn() };
   const screen = (value: SessionNextOptionsProps) => <OwnlevelThemeProvider initialMode="light"><SessionNextOptions {...value} /></OwnlevelThemeProvider>;
   return { ...render(screen(props)), props, screen };
 }
-describe('next-session iOS popover', () => {
-  it('closes on selection without coupling the decision to today’s result', () => {
+const native = (view: ReturnType<typeof setup>) => view.UNSAFE_getByProps({ pointerEvents: 'none', openRequest: view.props.openRequest });
+describe('next-session native boundary', () => {
+  it('sends a fresh request after an outside dismissal without echoing React open state', () => {
     const view = setup();
-    expect(view.getByRole('checkbox', { name: 'Más repeticiones' })).toBeChecked();
-    fireEvent.press(view.getByRole('checkbox', { name: 'Más repeticiones' }));
-    expect(view.props.onDecision).toHaveBeenCalledWith('increase_reps');
-    view.rerender(view.screen({ ...view.props, decision: 'maintain' }));
-    expect(view.getByRole('checkbox', { name: 'Más repeticiones' })).not.toBeChecked();
-    expect(view.props.onClose).toHaveBeenCalledTimes(1); expect(view.props.onApply).not.toHaveBeenCalled();
-    view.rerender(view.screen({ ...view.props, open: false })); expect(view.queryByTestId('native-next-popover')).toBeNull();
-    expect(view.queryByText('Quitar ajuste')).toBeNull();
-  });
-  it('keeps the result-of-today toggle independent, and only offers it for a linked routine', () => {
-    const view = setup();
-    fireEvent.press(view.getByText('Tomar resultado de hoy'));
-    expect(view.props.onApply).toHaveBeenCalledWith(true); expect(view.props.onDecision).not.toHaveBeenCalled();
+    expect(native(view).props).not.toHaveProperty('open');
+    fireEvent(native(view), 'presentationChange', { nativeEvent: { presented: false } });
     expect(view.props.onClose).toHaveBeenCalledTimes(1);
-    view.rerender(view.screen({ ...view.props, routineLinked: false })); expect(view.queryByText('Tomar resultado de hoy')).toBeNull();
-  });
-  it('closes through the actual native dismissal event and explicit close action', () => {
-    const view = setup();
-    fireEvent(view.getByTestId('native-next-popover'), 'accessibilityEscape');
-    expect(view.props.onClose).toHaveBeenCalledTimes(1);
-    fireEvent.press(view.getByText('Cerrar')); expect(view.props.onClose).toHaveBeenCalledTimes(2);
-    expect(view.props.onDecision).not.toHaveBeenCalled(); expect(view.props.onApply).not.toHaveBeenCalled();
-  });
-  it('offers an off-by-default Sumara-routine switch for extras and hides it in a free session', () => {
-    const view = setup({ routineLinked: false, addToRoutineName: 'PUSH' });
-    expect(view.getByRole('checkbox', { name: 'Sumar a PUSH' })).not.toBeChecked();
-    expect(view.getByText('Al finalizar, se agrega al final de la rutina con las series de hoy.')).toBeTruthy();
-    fireEvent.press(view.getByText('Sumar a PUSH')); expect(view.props.onApply).toHaveBeenCalledWith(true);
+    view.rerender(view.screen({ ...view.props, open: false }));
+    expect(native(view).props.openRequest).toBe(1);
+    view.props.openRequest = 2;
+    view.rerender(view.screen({ ...view.props, open: true }));
+    expect(native(view).props.openRequest).toBe(2);
+    fireEvent(native(view), 'presentationChange', { nativeEvent: { presented: true } });
+    expect(view.props.onOpen).toHaveBeenCalledTimes(1);
     expect(view.props.onDecision).not.toHaveBeenCalled();
-    view.rerender(view.screen({ ...view.props, addToRoutineName: null })); expect(view.queryByText('Sumar a PUSH')).toBeNull();
+    expect(view.queryByText('Cerrar')).toBeNull();
   });
-  it('preserves an existing custom reminder as a selected option that can be unticked', () => {
-    const view = setup({ decision: 'custom', decisionNote: 'Revisar agarre' });
-    expect(view.getByRole('checkbox', { name: 'Revisar agarre' })).toBeChecked();
-    fireEvent.press(view.getByRole('checkbox', { name: 'Revisar agarre' })); expect(view.props.onDecision).toHaveBeenCalledWith('custom');
+  it('does not replay an old request when a collapsed card remounts closed', () => {
+    const view = render(<OwnlevelThemeProvider initialMode="light"><SessionNextOptions open={false} openRequest={8} editable name="EJEMPLO" decision="maintain" decisionNote="" applyToRoutine={false} routineLinked onClose={() => {}} onDecision={() => {}} onApply={() => {}} /></OwnlevelThemeProvider>);
+    expect(view.UNSAFE_getByProps({ pointerEvents: 'none' }).props.openRequest).toBe(0);
+  });
+  it('keeps decisions and result-of-today independent and waits for native dismissal', () => {
+    const view = setup();
+    fireEvent(native(view), 'decision', { nativeEvent: { decision: 'increase_weight' } });
+    expect(view.props.onDecision).toHaveBeenCalledWith('increase_weight');
+    expect(view.props.onApply).not.toHaveBeenCalled();
+    expect(view.props.onClose).not.toHaveBeenCalled();
+    fireEvent(native(view), 'apply', { nativeEvent: { value: true } });
+    expect(view.props.onApply).toHaveBeenCalledWith(true);
+    expect(native(view).props.applyLabel).toBe('Tomar resultado de hoy');
+    view.rerender(view.screen({ ...view.props, routineLinked: false, addToRoutineName: 'PUSH' }));
+    expect(native(view).props.applyLabel).toBe('Sumar a PUSH');
+    view.rerender(view.screen({ ...view.props, routineLinked: false }));
+    expect(native(view).props.applyLabel).toBeNull();
   });
 });

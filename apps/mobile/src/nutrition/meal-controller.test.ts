@@ -20,6 +20,20 @@ function fixture() {
   return {controller,api,repository,storage,map,invalidate,meal:{...meal.data.meals[0],id,updatedAt:version,sourceType:'manual' as const}};
 }
 describe('Reliable manual meal writes',()=>{
+  it('opening and saving unchanged preserves registration provenance by omitting a time declaration', async () => {
+    const f = fixture(); await f.controller.initialize();
+    const meal = { ...f.meal, sourceType: 'chatgpt' as const, mealLabel: null,
+      timeKnown: false, timeSource: 'registration' as const, automaticMealLabel: 'breakfast' as const };
+    f.controller.open(date, meal);
+    expect(f.controller.dirty()).toBe(false);
+    expect(f.controller.getSnapshot().editor?.timingReference).toMatchObject({ consumedAt: meal.consumedAt, timeSource: 'registration' });
+    await f.controller.save();
+    const intent = (f.api.mutate as jest.Mock<MealApi['mutate']>).mock.calls[0][0];
+    expect(intent.fields).toMatchObject({ mealLabel: null });
+    expect(intent.fields).not.toHaveProperty('consumedAt');
+    expect(meal.timeSource).toBe('registration');
+  });
+
   it('form preserves null versus zero, comma decimals and integer calories without deriving calories',()=>{
     const d={...mealDraft(date),calories:'250',proteinG:'',carbsG:'12,25',fatG:'0'};
     expect(validateMealDraft(d).fields).toMatchObject({calories:250,proteinG:null,carbsG:12.25,fatG:0});

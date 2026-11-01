@@ -20,9 +20,9 @@ const element = (onChange: () => void) => <OwnlevelThemeProvider initialMode="li
 describe('iOS confirmed automatic timing (#308)', () => {
   it('shows approximate time and automatic moment; opening/canceling the picker never declares them', () => {
     const change = jest.fn(); const view = render(element(change));
-    expect(view.getByText('Cena (automática)')).toBeTruthy();
-    expect(view.getByText('≈ 20:15')).toBeTruthy();
-    fireEvent.press(view.getByLabelText('Corregir hora aproximada 20:15'));
+    expect(view.getAllByText('Cena')).toHaveLength(2);
+    expect(view.getByText('20:15')).toBeTruthy();
+    fireEvent.press(view.getByLabelText('Cambiar hora 20:15'));
     expect(view.getByTestId('native-timing-clock').props.selection.getHours()).toBe(20);
     expect(view.getByTestId('native-timing-clock').props.selection.getMinutes()).toBe(15);
     fireEvent.press(view.getByText('Cancelar'));
@@ -32,7 +32,7 @@ describe('iOS confirmed automatic timing (#308)', () => {
   });
   it('makes a time explicit only after deliberate confirmation', () => {
     const change = jest.fn(); const view = render(element(change));
-    fireEvent.press(view.getByLabelText('Corregir hora aproximada 20:15'));
+    fireEvent.press(view.getByLabelText('Cambiar hora 20:15'));
     expect(change).not.toHaveBeenCalled();
     fireEvent.press(view.getByText('Elegir esta hora'));
     expect(change).toHaveBeenCalledWith(null, '2026-10-15T20:15:00-03:00');

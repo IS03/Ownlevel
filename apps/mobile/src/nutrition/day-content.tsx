@@ -13,7 +13,6 @@ import { amount, number } from './day-format';
 import { NutritionDaySummary } from './day-summary';
 import { NutritionGlassButton, NutritionSectionHeading } from './day-controls';
 import { NutritionDayPanel, NutritionDayDetailSheet } from './day-panel';
-import { automaticMealMoment } from './meal-timing-model';
 
 export { metricValue } from './day-details';
 const mealLabels = { breakfast: 'Desayuno', lunch: 'Almuerzo', snack: 'Merienda', dinner: 'Cena', extra: 'Extra' };
@@ -23,13 +22,12 @@ export function rowGrams(value: number | null) {
   return value === null ? '—' : `${new Intl.NumberFormat('es-AR', { maximumFractionDigits: value < 10 ? 1 : 0 }).format(value)} g`;
 }
 
-/** The server's automatic moments stay distinct from declared ones, including in the group heading. */
+/** Group by the effective moment; provenance stays on the original DTO. */
 export function mealGroups(meals: NutritionDayMeal[]) {
   if (!meals.some(meal => meal.mealLabel || meal.automaticMealLabel)) return [{ key: 'all', label: null as string | null, meals }];
-  const groups = Object.entries(mealLabels).flatMap(([key, label]) => [
-    { key, label, meals: meals.filter(meal => meal.mealLabel === key) },
-    { key: `${key}-automatic`, label: automaticMealMoment(key as keyof typeof mealLabels), meals: meals.filter(meal => !meal.mealLabel && meal.automaticMealLabel === key) },
-  ]);
+  const groups = Object.entries(mealLabels).map(([key, label]) => (
+    { key, label, meals: meals.filter(meal => (meal.mealLabel ?? meal.automaticMealLabel) === key) }
+  ));
   return [...groups, { key: 'none', label: 'Sin momento', meals: meals.filter(meal => !meal.mealLabel && !meal.automaticMealLabel) }]
     .filter(group => group.meals.length > 0);
 }
@@ -92,13 +90,13 @@ function MealRow({ meal, divider, highlighted, removing, removed, actions, onOpe
   const trembling = useAnimatedStyle(() => ({ transform: [{ translateX: shake.value }] }));
   const [width, setWidth] = useState(0);
   const menu = mealMenu(meal, actions);
-  // A meal registered as eaten now shows its registration time as approximate (#308), never as a said time.
+  // Display the effective clock without changing its stored provenance (#308).
   const approximate = !meal.timeKnown && meal.timeSource === 'registration';
-  const clock = meal.timeKnown ? time.format(new Date(meal.consumedAt)) : approximate ? `≈ ${time.format(new Date(meal.consumedAt))}` : 'Sin hora';
+  const clock = meal.timeKnown || approximate ? time.format(new Date(meal.consumedAt)) : 'Sin hora';
   const estimated = meal.precision === 'estimated' ? ' · estimado' : '';
   // The row stays light (one-line title, rounded macros); the detail keeps every exact value.
   const meta = `${clock} · P ${rowGrams(meal.proteinG)} · C ${rowGrams(meal.carbsG)} · G ${rowGrams(meal.fatG)}${estimated}`;
-  const spoken = `${meal.timeKnown ? clock : approximate ? `Hora aproximada ${time.format(new Date(meal.consumedAt))}` : 'Hora sin dato'} · Proteína ${amount(meal.proteinG, 'g')} · Carbohidratos ${amount(meal.carbsG, 'g')} · Grasas ${amount(meal.fatG, 'g')}${estimated}`;
+  const spoken = `${meal.timeKnown || approximate ? clock : 'Hora sin dato'} · Proteína ${amount(meal.proteinG, 'g')} · Carbohidratos ${amount(meal.carbsG, 'g')} · Grasas ${amount(meal.fatG, 'g')}${estimated}`;
   // The swipe hands its own methods to the action, so no ref is read while rendering.
   const confirmDelete = (swipe?: SwipeableMethods) => { if (reduceMotion) swipe?.reset(); else swipe?.close(); Alert.alert('¿Eliminar esta comida?', 'Deja de contar en el día y desaparece de la lista.', [
     { text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: () => menu.remove?.(meal) }]); };

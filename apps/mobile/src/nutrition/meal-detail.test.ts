@@ -62,12 +62,16 @@ describe('drafts', () => {
 });
 
 describe('server moment presentation (#308)', () => {
-  it('separates declared, automatic and unknown moments without dropping or duplicating meals', () => {
+  it('groups effective moments without changing provenance, order or meal identity', () => {
     const meals = [meal({ id: 'declared', mealLabel: 'dinner' }),
       meal({ id: 'automatic', mealLabel: null, automaticMealLabel: 'dinner', sourceType: 'chatgpt' }),
       meal({ id: 'unknown', mealLabel: null })];
+    const original = JSON.stringify(meals);
     const groups = mealGroups(meals);
-    expect(groups.map(group => group.label)).toEqual(['Cena', 'Cena (automática)', 'Sin momento']);
+    expect(JSON.stringify(meals)).toBe(original);
+    expect(groups[0].meals[0]).toBe(meals[0]);
+    expect(groups[0].meals[1]).toBe(meals[1]);
+    expect(groups.map(group => group.label)).toEqual(['Cena', 'Sin momento']);
     expect(groups.flatMap(group => group.meals.map(m => m.id))).toEqual(['declared', 'automatic', 'unknown']);
     expect(mealGroups([meal({ mealLabel: null })])[0].label).toBeNull();
   });

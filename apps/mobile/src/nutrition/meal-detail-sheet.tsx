@@ -65,7 +65,7 @@ function DetailBody({ meal, calories, protein, entries, actions }: {
   const approximate = !meal.timeKnown && meal.timeSource === 'registration';
   const automatic = !meal.mealLabel ? meal.automaticMealLabel : null;
   const moment = [meal.mealLabel ? mealMoments[meal.mealLabel] : automatic ? automaticMealMoment(automatic) : null,
-    meal.timeKnown ? time.format(new Date(meal.consumedAt)) : approximate ? `≈ ${time.format(new Date(meal.consumedAt))} (hora de registro)` : null].filter(Boolean).join(' · ');
+    meal.timeKnown ? time.format(new Date(meal.consumedAt)) : approximate ? time.format(new Date(meal.consumedAt)) : null].filter(Boolean).join(' · ');
   const calorieShare = dayShare(meal.calories, calories, entries), proteinShare = dayShare(meal.proteinG, protein, entries);
   const showDescription = !!meal.description && meal.description !== meal.title;
   // Delete is one tap away (trash), confirmed once.
