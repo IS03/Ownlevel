@@ -1,6 +1,5 @@
 import type { PropsWithChildren } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
-import { ScrollViewMarker } from 'react-native-screens/experimental';
 import MaskedView from '@react-native-masked-view/masked-view';
 
 import { spacing } from './tokens';
@@ -23,19 +22,26 @@ export function ScrollBottomBackdrop({ inset }: { inset: number }) {
   </View>;
 }
 
-/** UIKit's scroll edge effect under the native tab bar exists from iOS 26. */
-export function nativeBottomEdgeAvailable() {
+/** The floating Liquid Glass tab bar exists from iOS 26; older systems keep the fixed backdrop. */
+export function glassTabBarAvailable() {
   return Platform.OS === 'ios' && Number.parseInt(String(Platform.Version), 10) >= 26;
 }
 
+/** Opacity left to content under the bar: shapes for the glass to refract, never readable text (#348). */
+export const CONTENT_UNDER_BAR_OPACITY = 0.03;
+const CONTENT_FADE_HEIGHT = spacing.xl + spacing.sm;
+
 /**
- * Registers the scroll view with the native tab so iOS applies its soft bottom edge effect (#348): text is blurred
- * and faded under the bar while the glass keeps refracting real content. No own layer, no change to insets.
- * Uses react-native-screens' experimental marker (4.26.2, pinned by the lockfile); off renders the child as is.
+ * Fades only the scrolling content as it reaches the floating tab bar (#348): rows keep their size and position (no
+ * blur, stacking or smear), the screen background and glow stay behind the glass, and content under the buttons is
+ * left at CONTENT_UNDER_BAR_OPACITY. The mask is fixed to the viewport; touches, insets and the last row are unchanged.
  */
-export function NativeBottomEdge({ enabled, children }: PropsWithChildren<{ enabled: boolean }>) {
-  if (!enabled) return <>{children}</>;
-  return <ScrollViewMarker style={styles.fill} scrollEdgeEffects={{ bottom: 'soft' }}>{children as NonNullable<typeof children>}</ScrollViewMarker>;
+export function BottomContentFade({ enabled, inset, children }: PropsWithChildren<{ enabled: boolean; inset: number }>) {
+  if (!enabled || inset <= 0) return <>{children}</>;
+  const faint = `rgba(0,0,0,${CONTENT_UNDER_BAR_OPACITY})`;
+  return <MaskedView style={styles.fill} testID="scroll-bottom-content-fade" maskElement={<View style={[StyleSheet.absoluteFill, {
+    experimental_backgroundImage: `linear-gradient(to top, ${faint} 0px, ${faint} ${inset}px, black ${inset + CONTENT_FADE_HEIGHT}px, black 100%)`,
+  }]} />}>{children}</MaskedView>;
 }
 
 const styles = StyleSheet.create({ backdrop: { position: 'absolute', left: 0, right: 0, bottom: 0 }, fill: { flex: 1 } });
