@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: OWNLEVEL Nutrition
-  version: 1.2.0
+  version: 1.3.0
   description: >-
     Comprueba una clave privada y registra comidas estructuradas en la cuenta
     OWNLEVEL vinculada. No ofrece operaciones de lectura nutricional.
@@ -108,7 +108,7 @@ components:
     MealInput:
       type: object
       additionalProperties: false
-      required: [title, calories, idempotency_key]
+      required: [title, calories, idempotency_key, consumed_now]
       properties:
         date:
           type: string
@@ -146,10 +146,10 @@ components:
         meal_type:
           type: string
           enum: [breakfast, lunch, snack, dinner, extra]
-          description: Sólo si el usuario nombró la comida (desayuno, almuerzo, merienda, cena o extra). No lo deduzcas por la hora de envío.
+          description: Sólo si el usuario nombró la comida (desayuno, almuerzo, merienda, cena o extra). Si se omite, el servidor resuelve el momento desde la hora efectiva y lo distingue como automático. No lo infieras en el complemento.
         consumed_now:
           type: boolean
-          description: true sólo si el usuario registra lo que está comiendo o acaba de comer ahora y no dijo la hora; OWNLEVEL guarda la hora de registro como aproximada. La fecha debe ser hoy (Córdoba). No lo uses para comidas de otro momento («esta mañana», «ayer»).
+          description: Obligatorio. true para «subí X comida» o consumo actual sin contexto histórico; el servidor guarda la hora aproximada de registro de Córdoba (omití date para usar hoy). false para comidas anteriores, incluso del mismo día («esta mañana», «antes», «ayer»); sin hora explícita permanecen sin hora ni momento automático. time y meal_type explícitos prevalecen.
     MealSuccess:
       type: object
       additionalProperties: false

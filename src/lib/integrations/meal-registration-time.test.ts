@@ -3,7 +3,7 @@ vi.mock("server-only", () => ({}));
 import { parseChatgptMealInput } from "./chatgpt-contract";
 import { callMealRpc } from "./meal-rpc";
 import { forwardOAuthMeal, registerMealTool } from "./mcp-meals";
-import { nutritionMealTimeKnown, nutritionMealTimeSource } from "../mobile-api/nutrition-meal-time";
+import { nutritionAutomaticMealLabel, nutritionMealTimeKnown, nutritionMealTimeSource } from "../mobile-api/nutrition-meal-time";
 import { parseNutritionDayData } from "../mobile-api/nutrition-day-contract";
 
 // 31/10/2026 13:42 in Córdoba (UTC-3).
@@ -31,7 +31,7 @@ describe("consumed_now signal (#308)", () => {
     expect(parseChatgptMealInput(meal, NOW).consumed_now).toBe(false);
   });
   it("is optional in the MCP tool and forwarded only when it applies", async () => {
-    expect(registerMealTool.inputSchema.required).not.toContain("consumed_now");
+    expect(registerMealTool.inputSchema.required).toContain("consumed_now");
     const fetcher = vi.fn(async () => Response.json({ ok: true }));
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://synthetic.supabase.co");
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "synthetic-public");
@@ -41,8 +41,39 @@ describe("consumed_now signal (#308)", () => {
     await forwardOAuthMeal({ ...meal, date: undefined, consumed_now: true, time: "12:00" }, "Bearer t", fetcher);
     const bodies = fetcher.mock.calls.map(c => JSON.parse((c as unknown as [URL, RequestInit])[1].body as string));
     expect(bodies[0].consumed_now).toBe(true);
-    expect(bodies[1]).not.toHaveProperty("consumed_now");
+    expect(bodies[1].consumed_now).toBe(false);
     vi.unstubAllEnvs();
+  });
+  it("keeps an explicit earlier-today signal through MCP and rejects a missing intent before transport", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://synthetic.supabase.co");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "synthetic-public");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "sb_secret_synthetic");
+    vi.stubEnv("OWNLEVEL_OAUTH_ENABLED", "true");
+    const fetcher = vi.fn(async () => Response.json({ ok: true }));
+    await forwardOAuthMeal({ ...meal, date: undefined, consumed_now: false }, "Bearer t", fetcher);
+    expect(JSON.parse((fetcher.mock.calls[0] as unknown as [URL, RequestInit])[1].body as string).consumed_now).toBe(false);
+    await expect(forwardOAuthMeal(meal, "Bearer t", fetcher)).rejects.toThrow("consumed_now");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(parseChatgptMealInput({ ...meal, consumed_now: false }, NOW)).toMatchObject({ consumed_now: false, consumed_at: null });
+    vi.unstubAllEnvs();
+  });
+});
+
+describe("server-resolved automatic moments (#308)", () => {
+  const registration = '{"originalTimeKnown":false,"timeSource":"registration"}';
+  it.each([
+    ['04:59', 'extra'], ['05:00', 'breakfast'], ['10:59', 'breakfast'], ['11:00', 'lunch'],
+    ['14:59', 'lunch'], ['15:00', 'snack'], ['18:59', 'snack'], ['19:00', 'dinner'],
+    ['22:59', 'dinner'], ['23:00', 'extra'], ['00:00', 'extra'],
+  ])("resolves Córdoba %s from the effective instant to %s", (clock, label) => {
+    expect(nutritionAutomaticMealLabel(registration, 'meal', `2026-10-31T${clock}:00-03:00`, null)).toBe(label);
+  });
+  it("uses an explicit effective time, preserves declared types, and never guesses an unknown same-day time", () => {
+    expect(nutritionAutomaticMealLabel(null, 'meal', '2026-10-30T13:15:00-03:00', null)).toBe('lunch');
+    expect(nutritionAutomaticMealLabel(registration, 'meal', NOW.toISOString(), 'dinner')).toBeNull();
+    expect(nutritionAutomaticMealLabel('{"originalTimeKnown":false}', 'meal', NOW.toISOString(), null)).toBeNull();
+    expect(nutritionAutomaticMealLabel(registration, 'legacy_daily_summary', NOW.toISOString(), null)).toBeNull();
+    expect(nutritionAutomaticMealLabel(registration, 'meal', 'invalid', null)).toBeNull();
   });
 });
 

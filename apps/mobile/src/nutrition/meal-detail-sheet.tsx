@@ -6,7 +6,7 @@ import { AppIcon, AppSheet, AppText, GlassSurface, brandTokens, pressedStyle, us
 import { RoutineSheetButton } from '@/training/routine-sheet-button';
 import { amount } from './day-format';
 import { mealShown } from './meal-sheet';
-import { mealLabelAt, mealMoments } from './meal-timing-model';
+import { automaticMealMoment, mealMoments } from './meal-timing-model';
 import { mealEditable } from './meal-form-model';
 
 const time = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Cordoba', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
@@ -61,10 +61,10 @@ function DetailBody({ meal, calories, protein, entries, actions }: {
   const [frame, setFrame] = useState(0), [content, setContent] = useState(0);
   const origin = meal.sourceType && meal.sourceType !== 'manual' ? origins[meal.sourceType] : undefined;
   const readOnlyNote = mealEditable(meal) ? null : origin?.note ?? (meal.entryKind === 'meal' ? 'Esta comida no se edita desde acá; podés repetirla o guardarla como tuya.' : 'Es un resumen histórico importado: no se edita ni se repite.');
-  // Approximate registration time (#308): shown as such, and its moment only as a suggestion when none was said.
+  // The server resolves automatic moments; neither display nor editing turns them into user declarations.
   const approximate = !meal.timeKnown && meal.timeSource === 'registration';
-  const suggested = approximate && !meal.mealLabel ? mealLabelAt(new Date(meal.consumedAt)) : undefined;
-  const moment = [meal.mealLabel ? mealMoments[meal.mealLabel] : suggested ? `${mealMoments[suggested]} (sugerido)` : null,
+  const automatic = !meal.mealLabel ? meal.automaticMealLabel : null;
+  const moment = [meal.mealLabel ? mealMoments[meal.mealLabel] : automatic ? automaticMealMoment(automatic) : null,
     meal.timeKnown ? time.format(new Date(meal.consumedAt)) : approximate ? `≈ ${time.format(new Date(meal.consumedAt))} (hora de registro)` : null].filter(Boolean).join(' · ');
   const calorieShare = dayShare(meal.calories, calories, entries), proteinShare = dayShare(meal.proteinG, protein, entries);
   const showDescription = !!meal.description && meal.description !== meal.title;

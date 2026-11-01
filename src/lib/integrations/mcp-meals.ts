@@ -9,11 +9,11 @@ import { readJsonRequestBody, RequestBodyTooLargeError } from "../security/reque
 
 export const registerMealTool = {
   name: "register_meal", title: "Registrar comida en OWNLEVEL",
-  description: "Registra una comida en tu cuenta. Conservá la misma idempotency_key al reintentar. Ante possible_duplicate pedí confirmación antes de usar force_duplicate=true. Nunca envíes user_id. El permiso meals:write es interno, no un scope OAuth.",
+  description: "Registra una comida en tu cuenta. «Subí X comida» sin contexto histórico significa consumo actual: enviá consumed_now=true y omití time si no dijeron una hora. OWNLEVEL resuelve la hora aproximada y el momento automático en Córdoba. Para algo de otro momento («esta mañana», «antes», «ayer»), enviá consumed_now=false aunque sea de hoy; sin hora dicha queda sin hora. Las indicaciones explícitas prevalecen. Conservá la misma idempotency_key al reintentar. Ante possible_duplicate pedí confirmación antes de usar force_duplicate=true. Nunca envíes user_id. El permiso meals:write es interno, no un scope OAuth.",
   inputSchema: { type: "object" as const, additionalProperties: false,
-    required: ["date", "title", "description", "calories", "protein_g", "carbs_g", "fat_g", "idempotency_key"],
+    required: ["title", "description", "calories", "protein_g", "carbs_g", "fat_g", "idempotency_key", "consumed_now"],
     properties: {
-      date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+      date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Fecha de consumo en Córdoba. Para consumo actual omitila: el servidor usa hoy. Para otra fecha, enviá la fecha indicada por el usuario." },
       title: { type: "string", minLength: 1, maxLength: 120 },
       description: { type: "string", maxLength: 1000 },
       calories: { type: "integer", minimum: 1, maximum: 100000, description: "Kilocalorías, entero mayor que 0 (misma regla que OWNLEVEL)." },
@@ -23,8 +23,8 @@ export const registerMealTool = {
       idempotency_key: { type: "string", minLength: 8, maxLength: 200 },
       force_duplicate: { type: "boolean" },
       time: { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", description: "Sólo si el usuario dijo a qué hora comió (HH:MM, hora de Córdoba). Si no lo dijo, omitilo: OWNLEVEL no inventa la hora." },
-      meal_type: { type: "string", enum: ["breakfast", "lunch", "snack", "dinner", "extra"], description: "Sólo si el usuario nombró la comida (desayuno=breakfast, almuerzo=lunch, merienda=snack, cena=dinner, extra). No lo deduzcas por la hora." },
-      consumed_now: { type: "boolean", description: "true sólo si el usuario registra algo que está comiendo o acaba de comer ahora («subí esto», «estoy almorzando») y no dijo la hora: OWNLEVEL guarda la hora de registro como aproximada. La fecha debe ser hoy (Córdoba). No lo uses para comidas de otro momento («esta mañana», «ayer»): sin hora quedan sin hora." },
+      meal_type: { type: "string", enum: ["breakfast", "lunch", "snack", "dinner", "extra"], description: "Enviá el momento declarado (desayuno=breakfast, almuerzo=lunch, merienda=snack, cena=dinner, extra). Si no lo nombró, omitilo: el servidor lo resuelve desde la hora efectiva y lo distingue como automático. No lo infieras en el complemento." },
+      consumed_now: { type: "boolean", description: "Obligatorio. true para «subí X comida», «subí esto» o consumo actual sin contexto histórico: se guarda la hora de registro aproximada. false para una comida anterior, incluso del mismo día («esta mañana», «antes», «ayer»): sin hora explícita queda sin hora ni momento automático. time y meal_type explícitos prevalecen." },
     },
   },
   securitySchemes: [{ type: "oauth2", scopes: OWNLEVEL_OAUTH_SCOPES }],
@@ -41,10 +41,13 @@ export async function forwardOAuthMeal(args: unknown, bearer: string, fetcher: t
   let meal: ReturnType<typeof parseChatgptMealInput>;
   try { meal = parseChatgptMealInput(args); }
   catch (error) { throw new McpMealInputError(error instanceof Error ? error.message : "La solicitud no es válida."); }
+  if (typeof (args as Record<string, unknown>).consumed_now !== 'boolean') {
+    throw new McpMealInputError('Indicá consumed_now: true para consumo actual o false para una comida anterior, incluso de hoy.');
+  }
   const { force_duplicate, consumed_at, meal_type, consumed_now, ...fields } = meal;
   // The route takes the time as the user said it ("HH:MM"), never the composed instant.
   const time = consumed_at ? consumed_at.slice(11, 16) : null;
-  const payload = { ...fields, ...(force_duplicate ? { force_duplicate: true } : {}), ...(time ? { time } : {}), ...(meal_type ? { meal_type } : {}), ...(consumed_now ? { consumed_now: true } : {}) };
+  const payload = { ...fields, consumed_now, ...(force_duplicate ? { force_duplicate: true } : {}), ...(time ? { time } : {}), ...(meal_type ? { meal_type } : {}) };
   // Fixed origin/resource, no user-controlled destination or redirect following.
   const endpoint = new URL(ownlevelIntegrationOrigin());
   // Disposable local tests keep the canonical HTTPS resource/audience, but

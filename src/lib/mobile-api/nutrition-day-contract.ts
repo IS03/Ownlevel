@@ -20,6 +20,8 @@ export type NutritionDayMeal = {
   sourceType: "manual" | "label" | "ai" | "chatgpt" | "sheet_import" | null;
   precision: "catalog" | "label" | "estimated" | "historical" | null;
   mealLabel: "breakfast" | "lunch" | "snack" | "dinner" | "extra" | null;
+  /** Server-derived from the effective time; never a declaration or a write-field default. Older servers omit it. */
+  automaticMealLabel?: NutritionDayMeal['mealLabel'];
 };
 export type NutritionDaySummary = {
   calories: NutritionNutrientTotal;
@@ -96,11 +98,15 @@ function meal(value: unknown): NutritionDayMeal | undefined {
     || !oneOf(value.precision, ["catalog", "label", "estimated", "historical", null])
     || !oneOf(value.mealLabel, ["breakfast", "lunch", "snack", "dinner", "extra", null])
     || (value.timeSource !== undefined && (!oneOf(value.timeSource, ["explicit", "registration", "unknown"])
-      || (value.timeSource === "explicit") !== value.timeKnown))) return undefined;
+      || (value.timeSource === "explicit") !== value.timeKnown))
+    || (value.automaticMealLabel !== undefined && (!oneOf(value.automaticMealLabel, ["breakfast", "lunch", "snack", "dinner", "extra", null])
+      || (value.automaticMealLabel !== null && (value.mealLabel !== null || value.entryKind !== 'meal' || value.sourceType !== 'chatgpt'
+        || (!value.timeKnown && value.timeSource !== 'registration')))))) return undefined;
   return { id: value.id, title: value.title, description: value.description, calories: value.calories as number | null,
     proteinG: value.proteinG as number | null, carbsG: value.carbsG as number | null, fatG: value.fatG as number | null,
     consumedAt: value.consumedAt, updatedAt: value.updatedAt, timeKnown: value.timeKnown,
     ...(value.timeSource !== undefined ? { timeSource: value.timeSource as NutritionDayMeal["timeSource"] } : {}),
+    ...(value.automaticMealLabel !== undefined ? { automaticMealLabel: value.automaticMealLabel as NutritionDayMeal['mealLabel'] } : {}),
     entryKind: value.entryKind as NutritionDayMeal["entryKind"], sourceType: value.sourceType as NutritionDayMeal["sourceType"],
     precision: value.precision as NutritionDayMeal["precision"], mealLabel: value.mealLabel as NutritionDayMeal["mealLabel"] };
 }

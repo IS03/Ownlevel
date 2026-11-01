@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { forwardOAuthMeal, handleMealsMcp, registerMealTool } from "./mcp-meals";
 const meal = { date: "2026-10-07", title: "Comida sintética", description: "Prueba local",
-  calories: 600, protein_g: null, carbs_g: 80, fat_g: null, idempotency_key: "synthetic-meal-1" };
+  calories: 600, protein_g: null, carbs_g: 80, fat_g: null, idempotency_key: "synthetic-meal-1", consumed_now: false };
 afterEach(() => vi.unstubAllEnvs());
 function config() {
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://synthetic.supabase.co");

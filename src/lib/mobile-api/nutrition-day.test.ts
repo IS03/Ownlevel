@@ -34,6 +34,35 @@ function snapshot() {
 }
 
 describe("Nutrition day exact-date contract", () => {
+  it("round-trips server automatic moments separately from declared labels, preserving the exact wire time (#308)", () => {
+    const raw = snapshot(), base = raw.nutrition.data.meals[0];
+    const precise = `${date}T23:42:00.123456+00:00`;
+    for (const [rawInput, declared, sourceType, automatic, known] of [
+      ['{"originalTimeKnown":false,"timeSource":"registration"}', null, 'chatgpt', 'dinner', false],
+      ['{"originalTimeKnown":false,"timeSource":"registration"}', 'lunch', 'chatgpt', null, false],
+      ['{"originalTimeKnown":false}', null, 'chatgpt', null, false],
+      [null, null, 'chatgpt', 'dinner', true],
+      [null, null, 'manual', null, true],
+    ] as const) {
+      const result = buildMobileNutritionDayResponse(date, { ...raw, today: date, nutrition: { status: 'ok', data: {
+        ...raw.nutrition.data, meals: [{ ...base, consumed_at: precise, raw_input: rawInput, meal_label: declared, source_type: sourceType }],
+      } } });
+      const parsed = parseMobileNutritionDayResponse(JSON.parse(JSON.stringify(result)));
+      expect(parsed).toEqual(result);
+      expect(parsed?.nutrition).toMatchObject({ data: { meals: [{ consumedAt: precise, timeKnown: known,
+        automaticMealLabel: automatic, mealLabel: declared }] } });
+      if (parsed?.nutrition.status === 'ok') {
+        const meal = parsed.nutrition.data.meals[0];
+        const dto = JSON.parse(JSON.stringify(parsed));
+        dto.nutrition.data.meals[0].automaticMealLabel = 'dinner';
+        if (declared || !known && meal.timeSource !== 'registration' || sourceType !== 'chatgpt') {
+          expect(parseMobileNutritionDayResponse(dto)).toBeUndefined();
+        }
+        delete dto.nutrition.data.meals[0].automaticMealLabel;
+        expect(parseMobileNutritionDayResponse(dto)).toBeDefined(); // Older server.
+      }
+    }
+  });
   it("preserves persisted snapshots, distinct balances, unknown and explicit zero", () => {
     const result = buildMobileNutritionDayResponse(date, snapshot());
     expect(result.nutrition).toMatchObject({ status: "ok", data: {

@@ -285,15 +285,24 @@ describe('Native Nutrition day', () => {
     expect(view.getByText('Comida 2026-09-30')).toBeTruthy();
     expect(view.queryByText('Comida 2026-10-02')).toBeNull();
   });
-  it('shows a meal registered as eaten now with an approximate time and only a suggested moment (#308)', async () => {
+  it('shows the server automatic moment in list and detail, alongside the approximate time (#308)', async () => {
+    const day = nutritionFixture('2026-10-02'), data = day.nutrition.status === 'ok' && day.nutrition.data.dayState === 'recorded' ? day.nutrition.data : undefined;
+    const registered = { ...data!.meals[0], timeKnown: false, timeSource: 'registration' as const, automaticMealLabel: 'breakfast' as const, sourceType: 'chatgpt' as const };
+    mockRead.mockResolvedValue(ok('2026-10-02', { ...day, nutrition: { status: 'ok', data: { ...data!, meals: [registered] } } }) as never);
+    const view = render(element()); await view.findByText('Comida 2026-10-02');
+    expect(view.getByText(/^≈ 09:00 · P /)).toBeTruthy();
+    expect(view.getByText('Desayuno (automático)')).toBeTruthy();
+    expect(view.queryByText(/^Sin hora/)).toBeNull();
+    fireEvent.press(view.getByText('Comida 2026-10-02'));
+    expect(await view.findByText('Desayuno (automático) · ≈ 09:00 (hora de registro)')).toBeTruthy();
+  });
+  it('keeps older servers compatible without inferring a moment on the phone (#308)', async () => {
     const day = nutritionFixture('2026-10-02'), data = day.nutrition.status === 'ok' && day.nutrition.data.dayState === 'recorded' ? day.nutrition.data : undefined;
     const registered = { ...data!.meals[0], timeKnown: false, timeSource: 'registration' as const, sourceType: 'chatgpt' as const };
     mockRead.mockResolvedValue(ok('2026-10-02', { ...day, nutrition: { status: 'ok', data: { ...data!, meals: [registered] } } }) as never);
     const view = render(element()); await view.findByText('Comida 2026-10-02');
+    expect(view.queryByText(/automática|sugerido/)).toBeNull();
     expect(view.getByText(/^≈ 09:00 · P /)).toBeTruthy();
-    expect(view.queryByText(/^Sin hora/)).toBeNull();
-    fireEvent.press(view.getByText('Comida 2026-10-02'));
-    expect(await view.findByText('Desayuno (sugerido) · ≈ 09:00 (hora de registro)')).toBeTruthy();
   });
   it('keeps a meal without a time as Sin hora (#308)', async () => {
     const day = nutritionFixture('2026-10-02'), data = day.nutrition.status === 'ok' && day.nutrition.data.dayState === 'recorded' ? day.nutrition.data : undefined;
