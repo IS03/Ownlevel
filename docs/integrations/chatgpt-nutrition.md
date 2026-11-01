@@ -60,18 +60,30 @@ comida recién enviada. No incluye acumulados, objetivos ni otros datos del día
 
 - `time` (`HH:MM`, hora de Córdoba del día en `date`) y `meal_type` (`breakfast`, `lunch`, `snack`, `dinner`,
   `extra`) son opcionales. Se envían **sólo** si el usuario los dijo; el GPT no los deduce por la hora de envío.
-- Sin `time`, OWNLEVEL usa el momento de registro para ordenar el día, pero lo marca como horario no informado
-  (igual que las comidas importadas): no aparece como hora confirmada ni cuenta en «Cuándo comés».
+- MCP exige `consumed_now` booleano. «Subí X comida» sin contexto histórico envía `true`; una comida de otro
+  momento («antes», «esta mañana», «ayer») envía `false`, incluso del mismo día. No se decide por `date === today`.
+  Si falta esa señal, MCP rechaza antes de enviar una escritura. La API legacy conserva su valor por defecto
+  `false` para clientes anteriores. El transporte conserva explícitamente el `false`.
+- Sin `time` y con `consumed_now:false`, la marca de registro sólo ordena el día: la hora sigue `unknown`,
+  sin momento automático. No aparece como hora confirmada ni cuenta en «Cuándo comés».
 - **Comida de ahora** (`consumed_now: true`, sin `time`): el usuario registra lo que está comiendo o acaba de comer
   («subí esto», «estoy almorzando»). OWNLEVEL guarda el instante de registro (reloj de la base, no del mensaje) como
   hora **aproximada**, con procedencia `registration`. Web y Mobile la muestran como «≈ 13:42», nunca como hora dicha.
-  Si no se nombró el tipo, Mobile sugiere el momento por esa hora («Almuerzo (sugerido)») sin guardarlo. La fecha
-  tiene que ser hoy en Córdoba: si no, `400 invalid_request` (también pasa cerca de medianoche si el GPT mandó la
-  fecha de ayer). «Lo que comí esta mañana» o «una comida de ayer» van sin `time` ni `consumed_now`: quedan sin hora.
+  Para consumo actual se puede omitir `date`: el servidor usa hoy en Córdoba. Una fecha explícita diferente se
+  rechaza con `400 invalid_request`, incluido el cruce de medianoche; no se cambia silenciosamente de día.
+- **Momento automático, resuelto por el servidor:** si no hay `meal_type` declarado y la hora efectiva es
+  `explicit` o `registration`, la lectura de Mobile API entrega `automaticMealLabel`: desayuno 05:00–10:59,
+  almuerzo 11:00–14:59, merienda 15:00–18:59, cena 19:00–22:59 y extra 23:00–04:59, siempre en Córdoba.
+  Usa `consumed_at`, no la hora de abrir la pantalla ni la del dispositivo. Aplica sólo a comidas ChatGPT.
+  Diario muestra «Cena (automática)» en lista y detalle, junto a la hora (aproximada cuando corresponde).
+  `mealLabel` sigue siendo lo declarado; `automaticMealLabel` es una proyección de lectura separada, nunca se
+  copia al formulario ni a una escritura. No se reescriben filas ni se modifica la clasificación histórica
+  persistida. Si se cambia la hora desde la app, el servidor deriva el momento de la nueva hora; un tipo
+  declarado prevalece. Comidas con hora desconocida, incluso de hoy, no reciben momento automático.
 - Procedencia de la hora: `explicit` (dicha por el usuario o puesta desde la app), `registration` (aproximada) o
   `unknown`. «Cuándo comés» cuenta sólo las `explicit`: las horas aproximadas no cambian las estadísticas ni se
   reinterpretan datos viejos. Corregir la hora desde la app la vuelve `explicit`, sin duplicar la comida.
-- `time` prevalece siempre sobre `consumed_now`; `meal_type` dicho prevalece sobre cualquier sugerencia.
+- `time` prevalece siempre sobre `consumed_now`; `meal_type` dicho prevalece sobre el momento automático.
 - Una hora que no corresponde al día local de `date` se rechaza (`400 invalid_request`).
 - Desde OWNLEVEL Mobile, las comidas de ChatGPT se editan y borran como las manuales (fecha, hora, tipo, valores),
   con las mismas garantías (CAS, idempotencia, borrado lógico). La procedencia queda guardada internamente.
@@ -79,11 +91,27 @@ comida recién enviada. No incluye acumulados, objetivos ni otros datos del día
 
 Dependencia externa: el GPT privado guarda la copia del esquema que importó. Para que envíe `time`, `meal_type` y
 `consumed_now` hay que **volver a importar** el esquema desde la URL de arriba y agregar a sus instrucciones:
-«Mandá `time` y `meal_type` sólo si el usuario los dijo; `consumed_now: true` sólo si registra lo que está comiendo
-ahora y no dijo la hora». Hasta entonces, sus comidas llegan sin hora (marcadas como no informada).
-El conector MCP/OAuth lee el esquema en cada conexión. `consumed_now` requiere aplicar la migración
+«Mandá `time` y `meal_type` sólo si el usuario los dijo. Para “subí X comida” sin contexto histórico mandá
+`consumed_now:true`; para una comida anterior, incluso de hoy, `consumed_now:false`. Omití `date` para consumo
+actual. El servidor resuelve hora y momento; no inventes valores explícitos».
+Después del despliegue de este descriptor, refrescar OWNLEVEL Comidas y abrir una conversación nueva para
+que use la señal obligatoria. MCP y GPT privado/Actions son configuraciones independientes.
+`consumed_now` requiere la migración
 `20261031210000_chatgpt_meal_registration_time_expand.sql` (PR propio de EXPAND); sin ella, la comida se guarda
-como antes (sin hora).
+como antes (sin hora). El cambio de momento automático no agrega migraciones: usa esa procedencia ya persistida.
+Para ver el campo aditivo en lista y detalle hay que actualizar Diario; versiones anteriores ignoran el campo.
+
+### QA físico de hora ausente — investigación separada
+
+El fallo de Diario `cbf039f` está registrado en [#308](https://github.com/IS03/Ownlevel/issues/308#issuecomment-6551929581).
+Lecturas posteriores comprobaron procedencia `registration` en los tres registros reportados, ya borrados
+lógicamente por el usuario. No se restauraron ni se crearon comidas para diagnosticar.
+Una lectura autenticada de producción de una comida existente conservó exactamente `consumedAt`, `timeKnown`,
+`timeSource` y `mealLabel` al atravesar el parser; los componentes reales del simulador mostraron su hora
+aproximada en lista y detalle. El bytecode de Diario contiene esas condiciones. Esto no identifica la causa
+de la diferencia observada en el iPhone: queda pendiente comprobar cierre completo/reapertura, actualización
+del día y lista/detalle de esa comida existente. El momento automático nuevo no se presenta como arreglo
+demostrado de la hora ausente. Mantener #308 abierto hasta validar ambos puntos en el teléfono.
 
 Si OWNLEVEL responde `409 possible_duplicate`, el GPT debe pedir confirmación.
 Sólo cuando el usuario confirme que fue otra comida puede reenviar con una

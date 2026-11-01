@@ -10,7 +10,7 @@ import { handleChatgptMealRequest } from "./chatgpt-meals";
 import { handleMealsMcp, registerMealTool } from "./mcp-meals";
 
 const meal = { date: "2026-10-07", title: "Comida sintética", description: "Prueba local",
-  calories: 600, protein_g: 0, carbs_g: 80, fat_g: null, idempotency_key: "synthetic-meal-346" };
+  calories: 600, protein_g: 0, carbs_g: 80, fat_g: null, idempotency_key: "synthetic-meal-346", consumed_now: false };
 const BEARER = "Bearer synthetic-user-token";
 
 beforeEach(() => {

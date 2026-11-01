@@ -1,7 +1,7 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import type { NutritionDayMeal } from '@/api/nutrition-day';
 
-import { mealMenu } from './day-content';
+import { mealGroups, mealMenu } from './day-content';
 import { dayShare } from './meal-detail-sheet';
 import { mealDraft, repeatMealDraft } from './meal-form-model';
 
@@ -43,6 +43,13 @@ describe('"En tu día" share', () => {
 });
 
 describe('drafts', () => {
+  it('keeps a server automatic moment and approximate time out of editable declarations (#308)', () => {
+    const automatic = meal({ mealLabel: null, automaticMealLabel: 'dinner', sourceType: 'chatgpt', timeKnown: false, timeSource: 'registration' });
+    const draft = mealDraft('2026-10-14', automatic);
+    expect(draft.mealLabel).toBeNull();
+    expect(draft).not.toHaveProperty('automaticMealLabel');
+    expect(draft).not.toHaveProperty('consumedAt');
+  });
   it('an edit keeps the meal moment and known time', () => {
     expect(mealDraft('2026-10-14', meal())).toMatchObject({ mealLabel: 'breakfast', consumedAt: '2026-10-14T12:17:00Z' });
     expect(mealDraft('2026-10-14', meal({ timeKnown: false }))).not.toHaveProperty('consumedAt');
@@ -51,5 +58,17 @@ describe('drafts', () => {
     const draft = repeatMealDraft('2026-10-15', meal({ calories: 130.4 }));
     expect(draft).toMatchObject({ title: 'CAFÉ', calories: '130', proteinG: '15', carbsG: '14,8', fatG: '' });
     expect(draft).not.toHaveProperty('consumedAt');
+  });
+});
+
+describe('server moment presentation (#308)', () => {
+  it('separates declared, automatic and unknown moments without dropping or duplicating meals', () => {
+    const meals = [meal({ id: 'declared', mealLabel: 'dinner' }),
+      meal({ id: 'automatic', mealLabel: null, automaticMealLabel: 'dinner', sourceType: 'chatgpt' }),
+      meal({ id: 'unknown', mealLabel: null })];
+    const groups = mealGroups(meals);
+    expect(groups.map(group => group.label)).toEqual(['Cena', 'Cena (automática)', 'Sin momento']);
+    expect(groups.flatMap(group => group.meals.map(m => m.id))).toEqual(['declared', 'automatic', 'unknown']);
+    expect(mealGroups([meal({ mealLabel: null })])[0].label).toBeNull();
   });
 });

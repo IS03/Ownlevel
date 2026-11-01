@@ -1,4 +1,4 @@
-import { nutritionMealTimeKnown, nutritionMealTimeSource } from "./nutrition-meal-time";
+import { nutritionAutomaticMealLabel, nutritionMealTimeKnown, nutritionMealTimeSource } from "./nutrition-meal-time";
 import { MobileApiValidationError } from "./auth";
 import {
   isNutritionDate,
@@ -29,6 +29,7 @@ function nutritionData(raw: unknown, date: string): NutritionDayData | undefined
     calories: m.final_calories, proteinG: m.final_protein_g, carbsG: m.final_carbs_g, fatG: m.final_fat_g,
     consumedAt: m.consumed_at, updatedAt: m.updated_at,
     timeKnown: nutritionMealTimeKnown(m.raw_input, m.entry_kind), timeSource: nutritionMealTimeSource(m.raw_input, m.entry_kind),
+    automaticMealLabel: m.source_type === 'chatgpt' ? nutritionAutomaticMealLabel(m.raw_input, m.entry_kind, m.consumed_at, m.meal_label) : null,
     entryKind: m.entry_kind,
     sourceType: m.source_type, precision: m.precision_level, mealLabel: m.meal_label,
   }));

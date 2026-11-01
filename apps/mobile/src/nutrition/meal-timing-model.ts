@@ -1,5 +1,8 @@
 import type { MealTiming as Timing } from '../../../../src/lib/mobile-api/nutrition-meal-contract';
 export const mealMoments = { breakfast: 'Desayuno', lunch: 'Almuerzo', snack: 'Merienda', dinner: 'Cena', extra: 'Extra' };
+export function automaticMealMoment(label: keyof typeof mealMoments) {
+  return `${mealMoments[label]} (${label === 'snack' || label === 'dinner' ? 'automática' : 'automático'})`;
+}
 /**
  * Today's moment from the Argentina clock (the nutrition day's zone), so a new meal starts on the
  * likely moment. Past days and late night get no guess: the user picks, or it stays without one.

@@ -146,7 +146,7 @@ try {
   assert.equal(unauthenticated.isError, true);
   assert.ok(unauthenticated._meta["mcp/www_authenticate"][0].includes("resource_metadata"));
   const meal = { date: "2026-10-07", title: "Prueba OAuth local", description: "Datos sintéticos",
-    calories: 650, protein_g: 50, carbs_g: 75, fat_g: null, idempotency_key: `local-${randomBytes(12).toString("hex")}` };
+    calories: 650, protein_g: 50, carbs_g: 75, fat_g: null, consumed_now: false, idempotency_key: `local-${randomBytes(12).toString("hex")}` };
   const registered = await mcp("tools/call", { name: "register_meal", arguments: meal }, token);
   assert.equal(registered.isError, false, "Authenticated MCP must forward to the local canonical API");
   assert.equal(registered.structuredContent.created, true);

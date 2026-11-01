@@ -13,6 +13,7 @@ import { amount, number } from './day-format';
 import { NutritionDaySummary } from './day-summary';
 import { NutritionGlassButton, NutritionSectionHeading } from './day-controls';
 import { NutritionDayPanel, NutritionDayDetailSheet } from './day-panel';
+import { automaticMealMoment } from './meal-timing-model';
 
 export { metricValue } from './day-details';
 const mealLabels = { breakfast: 'Desayuno', lunch: 'Almuerzo', snack: 'Merienda', dinner: 'Cena', extra: 'Extra' };
@@ -22,12 +23,15 @@ export function rowGrams(value: number | null) {
   return value === null ? '—' : `${new Intl.NumberFormat('es-AR', { maximumFractionDigits: value < 10 ? 1 : 0 }).format(value)} g`;
 }
 
-/** E5: grouped by moment in the server's order; without any moment the list stays flat (no invented "Otras" heading). */
+/** The server's automatic moments stay distinct from declared ones, including in the group heading. */
 export function mealGroups(meals: NutritionDayMeal[]) {
-  if (!meals.some(meal => meal.mealLabel)) return [{ key: 'all', label: null as string | null, meals }];
-  const order = [...Object.keys(mealLabels), 'none'] as const;
-  return order.map(key => ({ key, label: key === 'none' ? 'Sin momento' : mealLabels[key as keyof typeof mealLabels],
-    meals: meals.filter(meal => (meal.mealLabel ?? 'none') === key) })).filter(group => group.meals.length > 0);
+  if (!meals.some(meal => meal.mealLabel || meal.automaticMealLabel)) return [{ key: 'all', label: null as string | null, meals }];
+  const groups = Object.entries(mealLabels).flatMap(([key, label]) => [
+    { key, label, meals: meals.filter(meal => meal.mealLabel === key) },
+    { key: `${key}-automatic`, label: automaticMealMoment(key as keyof typeof mealLabels), meals: meals.filter(meal => !meal.mealLabel && meal.automaticMealLabel === key) },
+  ]);
+  return [...groups, { key: 'none', label: 'Sin momento', meals: meals.filter(meal => !meal.mealLabel && !meal.automaticMealLabel) }]
+    .filter(group => group.meals.length > 0);
 }
 /** The meal being deleted and the last one confirmed gone (see useMealNotice). */
 export type MealRemoval = { removing: string | null; removed: string | null };
