@@ -8,7 +8,7 @@ import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-han
 import Animated, { withSpring, withTiming } from 'react-native-reanimated';
 import type { MobileApiClient } from '@/api/client';
 import type { SessionDetailDto } from '@/api/active-session';
-import { OwnlevelThemeProvider, spacing } from '@/design-system';
+import { AppIcon, GlassSurface, OwnlevelThemeProvider, spacing } from '@/design-system';
 import { ActiveSessionController, type ActiveSessionApi } from './active-session-controller';
 import { SessionDraftRepository } from './active-session-storage';
 import { PostWorkoutScreen } from './post-workout-screen';
@@ -381,23 +381,26 @@ describe('native active session screen', () => {
     expect(view.queryByRole('checkbox', { name: 'Más peso' })).toBeNull();
     controller.dispose();
   });
-  it('marks «Próxima vez» as open while its options are up and restores it on every close, keeping its width (#360)', async () => {
+  it('marks «Próxima vez» open only through its fixed indicator and restores it on every close, with stable geometry (#360)', async () => {
     const { controller, Screen } = fixture(); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
     const trigger = () => view.getByTestId(`exercise-next-${EXERCISE_ID}`);
-    const style = () => StyleSheet.flatten(trigger().props.style);
-    const closed = style();
+    const indicator = () => within(trigger()).UNSAFE_getByType(AppIcon).props;
+    const glass = () => StyleSheet.flatten(within(trigger()).UNSAFE_getByType(GlassSurface).props.style);
+    const closed = { glass: glass(), indicator: indicator() };
     expect(trigger().props.accessibilityState).toMatchObject({ expanded: false });
+    const options = () => view.UNSAFE_getAllByType(Modal).find(node => node.props.visible)!;
+    // Explicit close, an outside/system dismissal and a selection (which keeps the options up until closed).
     for (const close of [() => fireEvent.press(view.getByLabelText('Cerrar opciones de próxima vez')),
-      () => fireEvent.press(view.getByRole('checkbox', { name: 'Más peso' }))]) {
+      () => fireEvent(options(), 'requestClose'),
+      () => { fireEvent.press(view.getByRole('checkbox', { name: 'Más peso' })); expect(trigger().props.accessibilityState).toMatchObject({ expanded: true }); fireEvent(options(), 'requestClose'); }]) {
       fireEvent.press(view.getByRole('button', { name: 'Próxima vez' }));
       expect(trigger().props.accessibilityState).toMatchObject({ expanded: true });
-      expect(style().backgroundColor).not.toBe(closed.backgroundColor);
-      expect(style().borderColor).not.toBe(closed.borderColor);
-      expect(style().minHeight).toBe(closed.minHeight);
+      expect(indicator()).toMatchObject({ name: 'chevronDown' }); expect(indicator().color).not.toBe(closed.indicator.color);
+      expect(glass()).toEqual(closed.glass);
       close();
-      if (view.queryByLabelText('Cerrar opciones de próxima vez')) fireEvent.press(view.getByLabelText('Cerrar opciones de próxima vez'));
+      expect(view.queryByRole('checkbox', { name: 'Más peso' })).toBeNull();
       expect(trigger().props.accessibilityState).toMatchObject({ expanded: false });
-      expect(style()).toEqual(closed);
+      expect(indicator()).toEqual(closed.indicator); expect(glass()).toEqual(closed.glass);
     }
     await act(async () => { await controller.flush(EXERCISE_ID); });
     controller.dispose();
@@ -523,14 +526,16 @@ describe('native active session screen', () => {
     expect(view.getByLabelText('Peso serie 1 de PRESS').props.value).toBe('.'); expect(view.getByLabelText('Contraer PRESS')).toBeTruthy();
     expect(mockSelection).toHaveBeenCalledTimes(1); expect(api.reorder).toHaveBeenCalledTimes(1); controller.dispose();
   });
-  it('hides idle/saved status, uses a compact saving spinner, and keeps conflicts actionable even collapsed', async () => {
+  it('hides idle/saved status, shows saving only in the session header, and keeps conflicts actionable even collapsed', async () => {
     const { controller, api, Screen } = fixture(); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
     expect(view.queryByText('Sin cambios pendientes')).toBeNull(); expect(view.queryByText('Guardado')).toBeNull();
     let resolve!: (result: Awaited<ReturnType<ActiveSessionApi['save']>>) => void;
     jest.mocked(api.save).mockReturnValueOnce(new Promise(done => { resolve = done; }));
     fireEvent.changeText(view.getByLabelText('Peso serie 1 de PRESS'), '45');
     await act(async () => { void controller.flush(EXERCISE_ID); for (let i = 0; i < 30; i++) await Promise.resolve(); });
-    expect(view.getByTestId(`exercise-saving-${EXERCISE_ID}`)).toBeTruthy(); expect(view.queryByText('Guardando…')).toBeNull();
+    // No per-card spinner: the header's «Sincronizando» carries it, so the counter and chevron keep their place.
+    expect(view.queryByTestId(`exercise-saving-${EXERCISE_ID}`)).toBeNull(); expect(view.queryByText('Guardando…')).toBeNull();
+    expect(view.getByText('Sincronizando')).toBeTruthy();
     await act(async () => { resolve({ status: 'ok', data: { sessionExerciseId: EXERCISE_ID, updatedAt: NEXT_VERSION }, meta }); await controller.flush(EXERCISE_ID); });
     expect(view.queryByTestId(`exercise-saving-${EXERCISE_ID}`)).toBeNull(); expect(view.queryByText('Guardado')).toBeNull();
     jest.mocked(api.save).mockResolvedValue({ status: 'conflict', code: 'SESSION_EXERCISE_CHANGED', message: 'changed', meta: { ...meta, outcome: 'conflict' } });
