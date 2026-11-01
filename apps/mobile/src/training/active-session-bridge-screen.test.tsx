@@ -332,19 +332,25 @@ describe('native active session screen', () => {
     fireEvent(view.getByRole('button', { name: 'Contraer PRESS' }), 'accessibilityTap'); expect(mockSelection).toHaveBeenCalledTimes(1);
     expect(view.queryByLabelText('Peso serie 1 de PRESS')).toBeNull();
     fireEvent(view.getByRole('button', { name: 'Expandir PRESS' }), 'accessibilityTap'); expect(mockSelection).toHaveBeenCalledTimes(2);
-    fireEvent.press(view.getByRole('button', { name: 'Próxima vez' })); mockSelection.mockClear();
+    mockSelection.mockClear();
     for (const label of ['Más peso', 'Más peso', 'Más repeticiones', 'Más repeticiones']) {
+      fireEvent.press(view.getByRole('button', { name: 'Próxima vez' }));
+      const before = mockSelection.mock.calls.length;
       fireEvent.press(view.getByRole('checkbox', { name: label })); await act(async () => { await controller.flush(EXERCISE_ID); });
-      expect(view.getByLabelText('Cerrar opciones de próxima vez')).toBeTruthy();
+      expect(mockSelection.mock.calls.length - before).toBe(1);
+      expect(view.queryByLabelText('Cerrar opciones de próxima vez')).toBeNull();
     }
-    expect(controller.getExercise(EXERCISE_ID)?.draft.decision).toBe('maintain'); expect(mockSelection).toHaveBeenCalledTimes(4);
+    expect(controller.getExercise(EXERCISE_ID)?.draft.decision).toBe('maintain');
+    fireEvent.press(view.getByRole('button', { name: 'Próxima vez' })); mockSelection.mockClear();
     fireEvent(view.getByLabelText('Tomar resultado de hoy'), 'valueChange', true); await act(async () => { await controller.flush(EXERCISE_ID); });
+    expect(mockSelection).toHaveBeenCalledTimes(1);
+    fireEvent.press(view.getByRole('button', { name: 'Próxima vez' })); mockSelection.mockClear();
     fireEvent(view.getByLabelText('Tomar resultado de hoy'), 'valueChange', false); await act(async () => { await controller.flush(EXERCISE_ID); });
-    expect(mockSelection).toHaveBeenCalledTimes(6);
+    expect(mockSelection).toHaveBeenCalledTimes(1); mockSelection.mockClear();
     fireEvent(view.getByRole('checkbox', { name: 'Serie 1 completada' }), 'accessibilityTap'); await act(async () => { await controller.flush(EXERCISE_ID); });
     fireEvent(view.getByRole('checkbox', { name: 'Serie 1 completada' }), 'accessibilityTap'); await act(async () => { await controller.flush(EXERCISE_ID); });
     // Complete → setComplete (impact medium); un-complete is silent. No success/warning.
-    expect(mockSelection).toHaveBeenCalledTimes(6); expect(mockTrigger.mock.calls).toEqual([['setComplete']]);
+    expect(mockSelection).not.toHaveBeenCalled(); expect(mockTrigger.mock.calls).toEqual([['setComplete']]);
     expect(mockSuccess).not.toHaveBeenCalled(); expect(mockWarning).not.toHaveBeenCalled();
     controller.dispose();
   });
@@ -360,16 +366,19 @@ describe('native active session screen', () => {
     expect(StyleSheet.flatten(view.getByLabelText('Mover serie 1').props.style).minHeight).toBeGreaterThanOrEqual(44);
     controller.dispose();
   });
-  it('switches the next-time adjustment without closing the menu or coupling it to today’s result', async () => {
+  it('reopens the last next-time adjustment without coupling it to today’s result', async () => {
     const detail = testDetail(); detail.exercises[0].routineExerciseId = SECOND_ID;
     const { controller, api, Screen } = fixture(detail); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
     fireEvent.press(view.getByRole('button', { name: 'Próxima vez' }));
     fireEvent(view.getByLabelText('Tomar resultado de hoy'), 'valueChange', true);
+    fireEvent.press(view.getByRole('button', { name: 'Próxima vez' }));
     fireEvent.press(view.getByRole('checkbox', { name: 'Más peso' }));
     await act(async () => { await controller.flush(EXERCISE_ID); });
     expect(controller.getExercise(EXERCISE_ID)?.draft.decision).toBe('increase_weight');
+    fireEvent.press(view.getByRole('button', { name: 'Próxima vez' }));
     fireEvent.press(view.getByRole('checkbox', { name: 'Más repeticiones' }));
     await act(async () => { await controller.flush(EXERCISE_ID); });
+    fireEvent.press(view.getByRole('button', { name: 'Próxima vez' }));
     expect(view.getByRole('checkbox', { name: 'Más peso' })).not.toBeChecked();
     expect(view.getByRole('checkbox', { name: 'Más repeticiones' })).toBeChecked();
     expect(controller.getExercise(EXERCISE_ID)?.draft.applyToRoutine).toBe(true);
@@ -377,11 +386,12 @@ describe('native active session screen', () => {
     await act(async () => { await controller.flush(EXERCISE_ID); });
     expect(api.save).toHaveBeenLastCalledWith(EXERCISE_ID, expect.any(String), expect.objectContaining({ decision: 'maintain', applyToRoutine: true }));
     expect(view.queryByText('Quitar ajuste')).toBeNull();
+    fireEvent.press(view.getByRole('button', { name: 'Próxima vez' }));
     fireEvent.press(view.getByLabelText('Cerrar opciones de próxima vez'));
     expect(view.queryByRole('checkbox', { name: 'Más peso' })).toBeNull();
     controller.dispose();
   });
-  it('marks «Próxima vez» open only through its fixed indicator and restores it on every close, with stable geometry (#360)', async () => {
+  it('changes the neutral surface, keeps its chevron fixed and restores the closed surface on every dismissal (#360)', async () => {
     const { controller, Screen } = fixture(); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
     const trigger = () => view.getByTestId(`exercise-next-${EXERCISE_ID}`);
     const indicator = () => within(trigger()).UNSAFE_getByType(AppIcon).props;
@@ -389,14 +399,16 @@ describe('native active session screen', () => {
     const closed = { glass: glass(), indicator: indicator() };
     expect(trigger().props.accessibilityState).toMatchObject({ expanded: false });
     const options = () => view.UNSAFE_getAllByType(Modal).find(node => node.props.visible)!;
-    // Explicit close, an outside/system dismissal and a selection (which keeps the options up until closed).
+    // Explicit close, outside/system dismissal and selection must all clear the surface immediately.
     for (const close of [() => fireEvent.press(view.getByLabelText('Cerrar opciones de próxima vez')),
       () => fireEvent(options(), 'requestClose'),
-      () => { fireEvent.press(view.getByRole('checkbox', { name: 'Más peso' })); expect(trigger().props.accessibilityState).toMatchObject({ expanded: true }); fireEvent(options(), 'requestClose'); }]) {
+      () => fireEvent.press(view.getByRole('checkbox', { name: 'Más peso' }))]) {
       fireEvent.press(view.getByRole('button', { name: 'Próxima vez' }));
       expect(trigger().props.accessibilityState).toMatchObject({ expanded: true });
-      expect(indicator()).toMatchObject({ name: 'chevronDown' }); expect(indicator().color).not.toBe(closed.indicator.color);
-      expect(glass()).toEqual(closed.glass);
+      expect(indicator()).toEqual(closed.indicator);
+      expect(glass().borderColor).not.toBe(closed.glass.borderColor);
+      expect({ ...glass(), borderColor: closed.glass.borderColor }).toEqual(closed.glass);
+      expect(within(trigger()).UNSAFE_getByType(GlassSurface).props.interactive).not.toBe(true);
       close();
       expect(view.queryByRole('checkbox', { name: 'Más peso' })).toBeNull();
       expect(trigger().props.accessibilityState).toMatchObject({ expanded: false });

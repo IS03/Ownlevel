@@ -1,8 +1,9 @@
 import { memo, type ReactNode, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { AppIcon, AppText, Button, GlassSurface, pressedStyle, radius, sizes, spacing, useOwnlevelTheme, useReduceMotion, brandTokens } from '@/design-system';
+import { AppIcon, AppText, Button, radius, sizes, spacing, useOwnlevelTheme, useReduceMotion, brandTokens } from '@/design-system';
 import Animated, { FadeIn, FadeInUp, LinearTransition, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SessionNextOptions } from './session-next-options';
+import { SessionNextTrigger } from './session-next-trigger';
 import type { NextSessionDecision } from './session-next-options.types';
 import { SessionGlassButton } from './session-glass-button';
 import { haptics, triggerHaptic } from '@/platform/haptics';
@@ -148,15 +149,10 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
           if (appended) setAddedSet(appended.localId);
         }} />
         <View style={styles.nextAnchor}>
-          {/* Glass like «+ Agregar serie»; while its popover is up only the fixed indicator turns accent (#360): no rotation, fill or size change. */}
-          <Pressable accessibilityRole="button" accessibilityLabel="Próxima vez" accessibilityState={{ expanded: nextOpen, disabled: !editable }} disabled={!editable}
+          <SessionNextTrigger open={nextOpen} disabled={!editable}
+            label={draft.decision === 'increase_weight' ? 'Más peso' : draft.decision === 'increase_reps' ? 'Más reps' : draft.decision === 'custom' ? 'Recordatorio' : 'Próxima vez'}
             onPress={() => { if (controller.getSnapshot().interaction) return; Keyboard.dismiss(); haptics.selection(); setNextOpen(true); }}
-            style={({ pressed }) => [!editable && styles.disabledTrigger, pressedStyle(pressed, reducedMotion)]} testID={`exercise-next-${id}`}>
-            <GlassSurface interactive style={[styles.nextTrigger, { borderColor: colors.border }]}>
-              <AppText variant="caption" style={styles.shrink}>{draft.decision === 'increase_weight' ? 'Más peso' : draft.decision === 'increase_reps' ? 'Más reps' : draft.decision === 'custom' ? 'Recordatorio' : 'Próxima vez'}</AppText>
-              <AppIcon name="chevronDown" size={17} color={nextOpen ? colors.primary : colors.textMuted} />
-            </GlassSurface>
-          </Pressable>
+            testID={`exercise-next-${id}`} />
           <SessionNextOptions open={nextOpen} editable={editable} name={exercise.nameSnapshot} decision={draft.decision} decisionNote={draft.decisionNote}
             applyToRoutine={draft.applyToRoutine} routineLinked={!!exercise.routineExerciseId} addToRoutineName={addToRoutineName} onClose={() => setNextOpen(false)}
             onDecision={(decision: NextSessionDecision) => {
@@ -240,7 +236,7 @@ function ActiveSetRow({ controller, id, name, set, index, count, editable, enter
   </NativeSwipeActions></View>;
 }
 const styles = StyleSheet.create({
-  card: { paddingVertical: spacing.md, gap: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth }, flex: { flex: 1 }, shrink: { flexShrink: 1 },
+  card: { paddingVertical: spacing.md, gap: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth }, flex: { flex: 1 },
   header: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', minHeight: 64 }, exerciseName: {},
   badge: { borderRadius: 10, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   reminder: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: 10, marginTop: spacing.xs },
@@ -254,7 +250,6 @@ const styles = StyleSheet.create({
   setBlock: { borderRadius: 12, paddingVertical: spacing.xs }, setGap: { marginBottom: spacing.sm },
   restRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 50 }, recovery: { gap: spacing.sm },
   // Fixed width: the label changes with the choice and must not move the popover's anchor.
-  nextAnchor: { width: 148 }, nextTrigger: { minHeight: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.xs, overflow: 'hidden' },
-  disabledTrigger: { opacity: 0.45 },
+  nextAnchor: { width: 148 },
   historyTrigger: { minHeight: sizes.touchTarget, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
 });

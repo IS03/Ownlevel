@@ -20,14 +20,14 @@ export function SessionNextOptions(props: SessionNextOptionsProps) {
           ...(props.decision === 'custom' ? [['custom', props.decisionNote || 'Recordatorio anterior']] : []),
         ] as [SessionNextOptionsProps['decision'], string][]).map(([decision, label]) => <Pressable key={decision} accessibilityRole="checkbox" accessibilityLabel={label}
           accessibilityState={{ checked: props.decision === decision, disabled: !props.editable }} disabled={!props.editable}
-          onPress={() => props.onDecision(decision)} style={styles.option}>
+          onPress={() => { props.onDecision(decision); props.onClose(); }} style={styles.option}>
           <AppIcon name={props.decision === decision ? 'checkmark' : 'plus'} size={20} color={colors.primary} />
           <AppText style={[styles.flex, { color: colors.primary }]}>{label}</AppText>
         </Pressable>)}
         {props.routineLinked || props.addToRoutineName ? <><Separator /><View style={styles.option}>
           <AppText style={styles.flex}>{applyLabel}</AppText>
           <Switch accessibilityLabel={applyLabel} disabled={!props.editable} value={props.applyToRoutine}
-            trackColor={{ true: colors.primary, false: colors.border }} onValueChange={props.onApply} />
+            trackColor={{ true: colors.primary, false: colors.border }} onValueChange={value => { props.onApply(value); props.onClose(); }} />
         </View>{!props.routineLinked ? <AppText muted variant="caption">Al finalizar, se agrega al final de la rutina con las series de hoy.</AppText> : null}</> : null}
       </View>
     </View>

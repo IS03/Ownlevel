@@ -1,10 +1,10 @@
 import { StyleSheet } from 'react-native';
-import { Divider, Host, Popover, Rectangle, Text, Toggle, VStack } from '@expo/ui/swift-ui';
-import { buttonStyle, disabled, font, foregroundStyle, frame, padding, tint, toggleStyle } from '@expo/ui/swift-ui/modifiers';
+import { Button, Divider, Host, Popover, Rectangle, Text, Toggle, VStack } from '@expo/ui/swift-ui';
+import { accessibilityLabel, buttonStyle, disabled, font, foregroundStyle, frame, padding, tint, toggleStyle } from '@expo/ui/swift-ui/modifiers';
 import { useOwnlevelTheme } from '@/design-system';
 import type { SessionNextOptionsProps } from './session-next-options.types';
 
-/** Controlled toggles keep the native popover open; outside taps dismiss it. */
+/** Native dismissal and explicit choices share the same controlled close path. */
 export function SessionNextOptions(props: SessionNextOptionsProps) {
   const { colors, isDark } = useOwnlevelTheme();
   const applyLabel = props.routineLinked ? 'Tomar resultado de hoy' : `Sumar a ${props.addToRoutineName}`;
@@ -19,16 +19,18 @@ export function SessionNextOptions(props: SessionNextOptionsProps) {
           </VStack>
           <Divider />
           <Toggle label="Más peso" systemImage={props.decision === 'increase_weight' ? 'checkmark' : 'plus'} isOn={props.decision === 'increase_weight'}
-            onIsOnChange={() => props.onDecision('increase_weight')} modifiers={[toggleStyle('button'), buttonStyle('plain'), foregroundStyle(colors.primary), frame({ minHeight: 44, maxWidth: 10_000, alignment: 'leading' })]} />
+            onIsOnChange={() => { props.onDecision('increase_weight'); props.onClose(); }} modifiers={[toggleStyle('button'), buttonStyle('plain'), foregroundStyle(colors.primary), frame({ minHeight: 44, maxWidth: 10_000, alignment: 'leading' })]} />
           <Toggle label="Más repeticiones" systemImage={props.decision === 'increase_reps' ? 'checkmark' : 'plus'} isOn={props.decision === 'increase_reps'}
-            onIsOnChange={() => props.onDecision('increase_reps')} modifiers={[toggleStyle('button'), buttonStyle('plain'), foregroundStyle(colors.primary), frame({ minHeight: 44, maxWidth: 10_000, alignment: 'leading' })]} />
+              onIsOnChange={() => { props.onDecision('increase_reps'); props.onClose(); }} modifiers={[toggleStyle('button'), buttonStyle('plain'), foregroundStyle(colors.primary), frame({ minHeight: 44, maxWidth: 10_000, alignment: 'leading' })]} />
           {props.decision === 'custom' ? <Toggle label={props.decisionNote || 'Recordatorio anterior'} systemImage="checkmark" isOn
-            onIsOnChange={() => props.onDecision('custom')} modifiers={[toggleStyle('button'), buttonStyle('plain'), foregroundStyle(colors.primary), frame({ minHeight: 44 })]} /> : null}
+              onIsOnChange={() => { props.onDecision('custom'); props.onClose(); }} modifiers={[toggleStyle('button'), buttonStyle('plain'), foregroundStyle(colors.primary), frame({ minHeight: 44 })]} /> : null}
           {props.routineLinked || props.addToRoutineName ? <><Divider />
             {/* Plain label: the two-Text label never reported the switch change. */}
-            <Toggle isOn={props.applyToRoutine} label={applyLabel} onIsOnChange={value => props.onApply(value)} modifiers={[toggleStyle('switch')]} />
+            <Toggle isOn={props.applyToRoutine} label={applyLabel} onIsOnChange={value => { props.onApply(value); props.onClose(); }} modifiers={[toggleStyle('switch')]} />
             {!props.routineLinked ? <Text modifiers={[font({ textStyle: 'caption' }), foregroundStyle(colors.textMuted)]}>Al finalizar, se agrega al final de la rutina con las series de hoy.</Text> : null}
           </> : null}
+          <Divider />
+          <Button label="Cerrar" onPress={props.onClose} modifiers={[accessibilityLabel('Cerrar opciones de próxima vez'), buttonStyle('plain'), foregroundStyle(colors.text), frame({ minHeight: 44 })]} />
         </VStack>
       </Popover.Content>
     </Popover>
