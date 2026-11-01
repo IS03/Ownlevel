@@ -20,7 +20,7 @@ describe('confirmed timing in an editable form (#308)', () => {
     timeSource: 'registration' as const, automaticMealLabel: 'dinner' as const };
   it('shows the server automatic values without adding them to the draft', () => {
     const draft = { mealLabel: null };
-    expect(mealTimingPresentation(reference.date, draft, reference)).toEqual({ clock: '20:15', approximate: true, moment: 'Cena (automática)' });
+    expect(mealTimingPresentation(reference.date, draft, reference)).toEqual({ clock: '20:15', approximate: true, moment: 'Cena' });
     expect(draft).toEqual({ mealLabel: null });
   });
   it('keeps unknown same-day times unknown and never carries a reference to another day', () => {
@@ -32,7 +32,7 @@ describe('confirmed timing in an editable form (#308)', () => {
   it('lets explicit edits win and leaves a changed time for the server to classify', () => {
     expect(mealTimingPresentation(reference.date, { mealLabel: 'lunch' }, reference).moment).toBe('Almuerzo');
     expect(mealTimingPresentation(reference.date, { mealLabel: null, consumedAt: '2026-10-15T13:00:00-03:00' }, reference))
-      .toEqual({ clock: '13:00', approximate: false, moment: 'Automático al guardar' });
+      .toEqual({ clock: '13:00', approximate: false, moment: 'Almuerzo' });
   });
 });
 describe('mealLabelAt (#308)', () => {

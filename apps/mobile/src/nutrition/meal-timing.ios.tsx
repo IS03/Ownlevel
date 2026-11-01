@@ -25,16 +25,15 @@ export function MealTiming({ date, value, reference, disabled, onChange }: MealT
             <Text modifiers={[font({ textStyle: 'subheadline', weight: 'semibold' }), foregroundStyle(colors.text)]}>{presentation.moment}</Text>
             <Image systemName="chevron.up.chevron.down" size={11} color={colors.textMuted} />
           </HStack>} modifiers={[accessibilityLabel('Elegir momento'), nativeDisabled(disabled)]}>
-            <NativeButton label={reference?.automaticMealLabel ? 'Momento automático' : 'Sin momento'} onPress={() => onChange(null, value.consumedAt)} />
+            <NativeButton label="Sin momento" onPress={() => onChange(null, value.consumedAt)} />
             {Object.entries(mealMoments).map(([key, label]) => <NativeButton key={key} label={label} onPress={() => onChange(key as keyof typeof mealMoments, value.consumedAt)} />)}
           </Menu>
         </Host>
-        <Pressable accessibilityRole="button" accessibilityLabel={presentation.approximate ? `Corregir hora aproximada ${shown}` : shown ? `Cambiar hora ${shown}` : 'Elegir hora opcional'} disabled={disabled} onPress={openClock}>
-          <GlassSurface interactive style={{ minHeight: 44, borderRadius: 22, paddingHorizontal: 12, justifyContent: 'center' }}><AppText numeric variant="footnote">{presentation.approximate ? `≈ ${shown}` : shown ?? 'Hora'}</AppText></GlassSurface>
+        <Pressable accessibilityRole="button" accessibilityLabel={shown ? `Cambiar hora ${shown}` : 'Elegir hora opcional'} disabled={disabled} onPress={openClock}>
+          <GlassSurface interactive style={{ minHeight: 44, borderRadius: 22, paddingHorizontal: 12, justifyContent: 'center' }}><AppText numeric variant="footnote">{shown ?? 'Hora'}</AppText></GlassSurface>
         </Pressable>
       </View>
     </View>
-    {presentation.approximate ? <AppText muted variant="caption">Hora aproximada de registro. Podés corregirla.</AppText> : null}
     {clockOpen ? <Modal visible transparent animationType="fade" onRequestClose={() => setClockOpen(false)}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.2)', justifyContent: 'flex-end' }}>
         <Animated.View entering={reduced ? FadeIn.duration(200) : SlideInDown.duration(300)} style={{ backgroundColor: colors.background, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingBottom: 40, gap: 16 }} accessibilityViewIsModal>

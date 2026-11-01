@@ -50,6 +50,7 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
   const [noteOpen, setNoteOpen] = useState(false), [durationOpen, setDurationOpen] = useState(false), [dialogOpen, setDialogOpen] = useState(false);
   const card = useRef<View>(null);
   const [nextOpen, setNextOpen] = useState(false);
+  const [nextRequest, setNextRequest] = useState(0);
   useEffect(() => { onSheetChange?.(id, noteOpen || nextOpen || durationOpen || dialogOpen); return () => onSheetChange?.(id, false); }, [id, noteOpen, nextOpen, durationOpen, dialogOpen, onSheetChange]);
   const [addedSet, setAddedSet] = useState<string | null>(null);
   const reducedMotion = useReduceMotion();
@@ -151,9 +152,9 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
         <View style={styles.nextAnchor}>
           <SessionNextTrigger open={nextOpen} disabled={!editable}
             label={draft.decision === 'increase_weight' ? 'Más peso' : draft.decision === 'increase_reps' ? 'Más reps' : draft.decision === 'custom' ? 'Recordatorio' : 'Próxima vez'}
-            onPress={() => { if (controller.getSnapshot().interaction) return; Keyboard.dismiss(); haptics.selection(); setNextOpen(true); }}
+            onPress={() => { if (controller.getSnapshot().interaction) return; Keyboard.dismiss(); haptics.selection(); setNextRequest(value => value + 1); setNextOpen(true); }}
             testID={`exercise-next-${id}`} />
-          <SessionNextOptions open={nextOpen} editable={editable} name={exercise.nameSnapshot} decision={draft.decision} decisionNote={draft.decisionNote}
+          <SessionNextOptions open={nextOpen} openRequest={nextRequest} onOpen={() => setNextOpen(true)} editable={editable} name={exercise.nameSnapshot} decision={draft.decision} decisionNote={draft.decisionNote}
             applyToRoutine={draft.applyToRoutine} routineLinked={!!exercise.routineExerciseId} addToRoutineName={addToRoutineName} onClose={() => setNextOpen(false)}
             onDecision={(decision: NextSessionDecision) => {
               if (!controller.canEdit(id) || controller.getSnapshot().interaction) return;

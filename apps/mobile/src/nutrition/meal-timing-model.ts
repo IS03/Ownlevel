@@ -2,7 +2,7 @@ import type { MealTiming as Timing } from '../../../../src/lib/mobile-api/nutrit
 import type { NutritionDayMeal } from '../../../../src/lib/mobile-api/nutrition-day-contract';
 export const mealMoments = { breakfast: 'Desayuno', lunch: 'Almuerzo', snack: 'Merienda', dinner: 'Cena', extra: 'Extra' };
 export function automaticMealMoment(label: keyof typeof mealMoments) {
-  return `${mealMoments[label]} (${label === 'snack' || label === 'dinner' ? 'automática' : 'automático'})`;
+  return mealMoments[label];
 }
 /**
  * Today's moment from the Argentina clock (the nutrition day's zone), so a new meal starts on the
@@ -29,6 +29,6 @@ export function mealTimingPresentation(date: string, value: Timing, reference?: 
   const unchangedTime = !value.consumedAt || value.consumedAt === source?.consumedAt;
   return { clock, approximate: !!approximate && !!clock,
     moment: value.mealLabel ? mealMoments[value.mealLabel]
-      : automatic ? unchangedTime ? automaticMealMoment(automatic) : 'Automático al guardar' : 'Sin momento' };
+      : automatic ? mealMoments[unchangedTime || !clock ? automatic : (mealLabelAt(new Date(instant!)) ?? 'extra')] : 'Sin momento' };
 }
 export type MealTimingProps = { date: string; value: Timing; reference?: MealTimingReference; disabled: boolean; onChange: (mealLabel: Timing['mealLabel'], consumedAt?: string) => void };

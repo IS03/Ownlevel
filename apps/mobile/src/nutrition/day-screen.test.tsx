@@ -339,11 +339,11 @@ describe('Native Nutrition day', () => {
     const registered = { ...data!.meals[0], timeKnown: false, timeSource: 'registration' as const, automaticMealLabel: 'breakfast' as const, sourceType: 'chatgpt' as const };
     mockRead.mockResolvedValue(ok('2026-10-02', { ...day, nutrition: { status: 'ok', data: { ...data!, meals: [registered] } } }) as never);
     const view = render(element()); await view.findByText('Comida 2026-10-02');
-    expect(view.getByText(/^≈ 09:00 · P /)).toBeTruthy();
-    expect(view.getByText('Desayuno (automático)')).toBeTruthy();
+    expect(view.getByText(/^09:00 · P /)).toBeTruthy();
+    expect(view.getByText('Desayuno')).toBeTruthy();
     expect(view.queryByText(/^Sin hora/)).toBeNull();
     fireEvent.press(view.getByText('Comida 2026-10-02'));
-    expect(await view.findByText('Desayuno (automático) · ≈ 09:00 (hora de registro)')).toBeTruthy();
+    expect(await view.findByText('Desayuno · 09:00')).toBeTruthy();
   });
   it('keeps older servers compatible without inferring a moment on the phone (#308)', async () => {
     const day = nutritionFixture('2026-10-02'), data = day.nutrition.status === 'ok' && day.nutrition.data.dayState === 'recorded' ? day.nutrition.data : undefined;
@@ -351,7 +351,7 @@ describe('Native Nutrition day', () => {
     mockRead.mockResolvedValue(ok('2026-10-02', { ...day, nutrition: { status: 'ok', data: { ...data!, meals: [registered] } } }) as never);
     const view = render(element()); await view.findByText('Comida 2026-10-02');
     expect(view.queryByText(/automática|sugerido/)).toBeNull();
-    expect(view.getByText(/^≈ 09:00 · P /)).toBeTruthy();
+    expect(view.getByText(/^09:00 · P /)).toBeTruthy();
   });
   it('keeps confirmed automatic timing visible in the editor without promoting it on a title-only save (#308)', async () => {
     const day = nutritionFixture('2026-10-02');
@@ -365,8 +365,8 @@ describe('Native Nutrition day', () => {
     fireEvent.press(view.getByText('Comida 2026-10-02'));
     fireEvent.press(await view.findByText('Editar')); finishMealDismissal(view);
     await view.findByTestId('manual-meal-editor');
-    expect(view.getByLabelText('Corregir hora aproximada 09:00')).toBeTruthy();
-    expect(within(view.getByTestId('manual-meal-editor')).getByText('Desayuno (automático)')).toBeTruthy();
+    expect(view.getByLabelText('Cambiar hora 09:00')).toBeTruthy();
+    expect(within(view.getByTestId('manual-meal-editor')).getAllByText('Desayuno')).toHaveLength(2);
     fireEvent.changeText(view.getByLabelText('Título'), 'Otro título');
     mockRequest.mockImplementation(async options => {
       expect((options.body as { fields: object }).fields).toMatchObject({ mealLabel: null });

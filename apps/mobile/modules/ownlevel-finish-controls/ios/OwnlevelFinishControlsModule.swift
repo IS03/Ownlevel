@@ -1,9 +1,28 @@
 import ExpoModulesCore
 import UIKit
+import SwiftUI
 
 public final class OwnlevelFinishControlsModule: Module {
   public func definition() -> ModuleDefinition {
     Name("OwnlevelFinishControls")
+    View(NextSessionOptionsView.self) {
+      Events("onPresentationChange", "onDecision", "onApply")
+      Prop("openRequest") { (view, value: Int) in view.requestOpen(value) }
+      Prop("editable") { (view, value: Bool) in view.editable = value }
+      Prop("name") { (view, value: String) in view.name = value }
+      Prop("decision") { (view, value: String) in view.decision = value }
+      Prop("decisionNote") { (view, value: String) in view.decisionNote = value }
+      Prop("applyToRoutine") { (view, value: Bool) in view.applyToRoutine = value }
+      Prop("applyLabel") { (view, value: String?) in view.applyLabel = value }
+      Prop("extra") { (view, value: Bool) in view.extra = value }
+      Prop("isDark") { (view, value: Bool) in view.overrideUserInterfaceStyle = value ? .dark : .light }
+      Prop("accent") { (view, value: UIColor) in view.accent = value }
+      Prop("muted") { (view, value: UIColor) in view.muted = value }
+      Prop("contentPadding") { (view, value: Double) in view.contentPadding = value }
+      Prop("contentSpacing") { (view, value: Double) in view.contentSpacing = value }
+      Prop("minTouch") { (view, value: Double) in view.minTouch = value }
+      OnViewDidUpdateProps { (view: NextSessionOptionsView) in view.refresh() }
+    }
     View(FinishScaleView.self) {
       Events("onValueCommit")
       Prop("value") { (view, value: Int?) in view.control.selectedSegmentIndex = value.map { $0 - 1 } ?? UISegmentedControl.noSegment }
@@ -132,5 +151,182 @@ public final class FinishPainView: ExpoView {
   @objc private func committed() {
     answered = true; control.value = control.value.rounded(); updateAppearance()
     onValueCommit(["value": Int(control.value)]) // One JS draft update per completed gesture.
+  }
+}
+
+
+/** Presentation requests are independent of React's observed open/closed state. */
+public final class NextSessionOptionsView: ExpoView, UIPopoverPresentationControllerDelegate {
+  let onPresentationChange = EventDispatcher()
+  let onDecision = EventDispatcher()
+  let onApply = EventDispatcher()
+  var editable = true
+  var name = "", decision = "maintain", decisionNote = ""
+  var applyToRoutine = false, extra = false
+  var applyLabel: String?
+  var accent = UIColor.label, muted = UIColor.secondaryLabel
+  var contentPadding = 0.0, contentSpacing = 0.0, minTouch = 0.0
+  private var lastRequest = 0
+  private var wantsOpen = false
+  private var dismissing = false
+  private var presenting = false
+  private var closeAfterPresentation = false
+  private lazy var outsideControl: NextSessionOutsideControl = {
+    let control = NextSessionOutsideControl()
+    control.accessibilityLabel = "Cerrar opciones de próxima vez"
+    control.addTarget(self, action: #selector(tappedOutside), for: .touchUpInside)
+    return control
+  }()
+  private var host: NextSessionOptionsHost?
+
+  func requestOpen(_ request: Int) {
+    guard request > lastRequest else { return }
+    lastRequest = request
+    wantsOpen = true
+    // Props arrive as a batch; refresh runs after editable/content have been applied.
+  }
+  public override func didMoveToWindow() {
+    super.didMoveToWindow()
+    if window == nil { outsideControl.removeFromSuperview(); wantsOpen = false; close() } else { refresh() }
+  }
+  public override func layoutSubviews() {
+    super.layoutSubviews()
+    host?.popoverPresentationController?.sourceRect = bounds
+  }
+  private func content() -> NextSessionOptionsContent {
+    NextSessionOptionsContent(name: name, decision: decision, note: decisionNote,
+      apply: applyToRoutine, applyLabel: applyLabel, extra: extra, accent: Color(accent), muted: Color(muted),
+      inset: contentPadding, gap: contentSpacing, minTouch: minTouch,
+      choose: { [weak self] decision in self?.onDecision(["decision": decision]); self?.close() },
+      applyChange: { [weak self] value in self?.onApply(["value": value]); self?.close() })
+  }
+  func refresh() {
+    if !editable { wantsOpen = false; close(); return }
+    host?.rootView = content()
+    host?.overrideUserInterfaceStyle = overrideUserInterfaceStyle
+    presentIfReady()
+  }
+  private func presentIfReady() {
+    guard wantsOpen, editable, !dismissing, host == nil, window != nil else { return }
+    var responder: UIResponder? = self
+    while responder != nil && !(responder is UIViewController) { responder = responder?.next }
+    guard let presenter = responder as? UIViewController else { return }
+    let controller = NextSessionOptionsHost(rootView: content())
+    controller.onEscape = { [weak self] in self?.close() }
+    controller.modalPresentationStyle = .popover
+    controller.view.accessibilityViewIsModal = true
+    controller.overrideUserInterfaceStyle = overrideUserInterfaceStyle
+    controller.sizingOptions = [.preferredContentSize]
+    guard let popover = controller.popoverPresentationController else { return }
+    popover.sourceView = self
+    popover.sourceRect = bounds
+    popover.permittedArrowDirections = .right
+    popover.delegate = self
+    // Own outside dismissal instead of UIKit's modal shield, which ignores a fast second tap during its fade.
+    // This transparent hit region exists only while presented. It excludes the real trigger and is removed
+    // synchronously on close, so neither controls behind the popover nor the next opening tap are activated by mistake.
+    popover.passthroughViews = [presenter.view]
+    outsideControl.anchor = superview
+    outsideControl.frame = presenter.view.bounds
+    outsideControl.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    presenter.view.addSubview(outsideControl)
+    host = controller
+    wantsOpen = false
+    presenting = true
+    presenter.present(controller, animated: !UIAccessibility.isReduceMotionEnabled) { [self, weak controller] in
+      guard controller === self.host else { return }
+      self.presenting = false
+      if self.closeAfterPresentation { self.closeAfterPresentation = false; self.close() }
+    }
+    onPresentationChange(["presented": true])
+  }
+  private func beginDismissal() {
+    guard !dismissing else { return }
+    dismissing = true
+    wantsOpen = false
+  }
+  private func close() {
+    guard let controller = host, !dismissing else { return }
+    if presenting { closeAfterPresentation = true; return }
+    beginDismissal()
+    // Complete native hit testing in the closing gesture, before reporting closed to React.
+    controller.dismiss(animated: false) { [weak self, weak controller] in
+      guard let controller else { return }
+      self?.finishedDismissal(controller)
+    }
+  }
+  private func finishedDismissal(_ controller: UIViewController) {
+    guard controller === host else { return }
+    host = nil
+    outsideControl.removeFromSuperview()
+    dismissing = false
+    presenting = false
+    closeAfterPresentation = false
+    onPresentationChange(["presented": false])
+    // A tap received during dismissal is presented by UIKit's completion, never a clock or JS echo.
+    presentIfReady()
+  }
+  @objc private func tappedOutside() { close() }
+  public func adaptivePresentationStyle(for controller: UIPresentationController) -> UIModalPresentationStyle { .none }
+  public func presentationControllerWillDismiss(_ presentationController: UIPresentationController) {
+    if presentationController.presentedViewController === host { beginDismissal() }
+  }
+  public func presentationControllerDidDismiss(_ presentationController: UIPresentationController) { finishedDismissal(presentationController.presentedViewController) }
+  public func popoverPresentationControllerShouldDismissPopover(_ popoverPresentationController: UIPopoverPresentationController) -> Bool {
+    // Outside taps use our hit region; accessibility escape uses the host. Avoid the modal dismissal shield.
+    return false
+  }
+  public func popoverPresentationControllerDidDismissPopover(_ popoverPresentationController: UIPopoverPresentationController) { finishedDismissal(popoverPresentationController.presentedViewController) }
+}
+
+private final class NextSessionOutsideControl: UIControl {
+  weak var anchor: UIView?
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    isAccessibilityElement = true
+    accessibilityTraits = .button
+  }
+  required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+  override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+    if let anchor, anchor.bounds.contains(convert(point, to: anchor)) { return false }
+    return super.point(inside: point, with: event)
+  }
+  override func accessibilityActivate() -> Bool { sendActions(for: .touchUpInside); return true }
+}
+
+private final class NextSessionOptionsHost: UIHostingController<NextSessionOptionsContent> {
+  var onEscape: (() -> Void)?
+  override func accessibilityPerformEscape() -> Bool { onEscape?(); return true }
+}
+
+private struct NextSessionOptionsContent: SwiftUI.View {
+  let name: String, decision: String, note: String
+  let apply: Bool, applyLabel: String?, extra: Bool
+  let accent: Color, muted: Color
+  let inset: Double, gap: Double, minTouch: Double
+  let choose: (String) -> Void, applyChange: (Bool) -> Void
+  var body: some SwiftUI.View {
+    VStack(alignment: .leading, spacing: gap) {
+      VStack(alignment: .leading, spacing: gap / 3) {
+        Text("Próxima vez").font(.headline)
+        Text(name).font(.caption).foregroundStyle(muted)
+      }.frame(maxWidth: .infinity, alignment: .leading)
+      Divider()
+      option("Más peso", value: "increase_weight")
+      option("Más repeticiones", value: "increase_reps")
+      if decision == "custom" { option(note.isEmpty ? "Recordatorio anterior" : note, value: "custom") }
+      if let applyLabel {
+        Divider()
+        Toggle(applyLabel, isOn: Binding(get: { apply }, set: applyChange)).toggleStyle(.switch)
+        if extra { Text("Al finalizar, se agrega al final de la rutina con las series de hoy.").font(.caption).foregroundStyle(muted) }
+      }
+    }.padding(inset).frame(width: 300).tint(accent)
+  }
+  private func option(_ label: String, value: String) -> some SwiftUI.View {
+    Toggle(isOn: Binding(get: { decision == value }, set: { _ in choose(value) })) {
+      Label(label, systemImage: decision == value ? "checkmark" : "plus")
+    }
+      .toggleStyle(.button).buttonStyle(.plain).foregroundStyle(accent)
+      .frame(maxWidth: .infinity, minHeight: minTouch, alignment: .leading)
   }
 }
