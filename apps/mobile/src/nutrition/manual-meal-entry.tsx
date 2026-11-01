@@ -55,7 +55,7 @@ export function ManualMealEntry({ controller, state, done = false }: { controlle
     </Pressable>
     <View style={styles.macros}>{(['proteinG', 'carbsG', 'fatG'] as const).map((key, i) => <Pressable accessible={false} key={key} onPress={() => focus(key)} style={[styles.macro, { backgroundColor: colors.surface }]}>
       <AppText muted variant="caption">{['Proteína', 'Carbos', 'Grasas'][i]}</AppText>{input(key, ['Proteína (g)', 'Carbohidratos (g)', 'Grasas (g)'][i])}</Pressable>)}</View>
-    <MealTiming date={date} value={draft} disabled={locked} onChange={(label, time) => controller.timing(label, time)} />
+    <MealTiming date={date} value={draft} reference={editor.timingReference} disabled={locked} onChange={(label, time) => controller.timing(label, time)} />
     {editing ? null : <View style={shared.row}><View style={shared.text}><AppText>Guardar en mis comidas</AppText><AppText muted variant="caption">Para cargarla con un toque la próxima</AppText></View><Switch accessibilityLabel="Guardar en mis comidas" disabled={locked} value={draft.saveToLibrary ?? false} onValueChange={value => controller.saveToLibrary(value)} trackColor={{ true: colors.primary, false: colors.border }} /></View>}
     {Object.entries(state.errors).map(([key, message]) => <AppText key={key} accessibilityRole="alert">{message}</AppText>)}
     {state.message && !done ? <AppText accessibilityRole="alert">{state.message}</AppText> : null}

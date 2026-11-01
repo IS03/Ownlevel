@@ -4,10 +4,11 @@ import type { MealMutationIntent, MealMutationResponse } from '@/api/nutrition-m
 import type { MobileNutritionDayResponse, NutritionDayMeal } from '../../../../src/lib/mobile-api/nutrition-day-contract';
 import { mealDraft, mealEditable, validateMealDraft, type MealDraft, repeatMealDraft } from './meal-form-model';
 import { MealIntentRepository, type StoredMealIntent } from './meal-storage';
+import type { MealTimingReference } from './meal-timing-model';
 export type MealApi = { mutate: (intent: MealMutationIntent) => Promise<MobileApiRequestResult<MealMutationResponse>>;
   read: (date: string) => Promise<MobileApiReadResult<MobileNutritionDayResponse>> };
 /** `headless`: a delete started from the day (undo, swipe) that never shows the editor; its recovery still can. */
-type Editor = { sourceDate: string; mealId: string | null; expectedUpdatedAt: string | null; draft: MealDraft; original: MealDraft; headless?: boolean };
+type Editor = { sourceDate: string; mealId: string | null; expectedUpdatedAt: string | null; draft: MealDraft; original: MealDraft; headless?: boolean; timingReference?: MealTimingReference };
 export type MealEditorState = { phase: 'loading' | 'idle' | 'pending' | 'uncertain' | 'duplicate' | 'conflict' | 'blocked' | 'confirmed';
   editor: Editor | null; intent: StoredMealIntent | null; message: string | null;
   errors: Partial<Record<keyof MealDraft, string>>; truth: NutritionDayMeal | null; truthDate: string | null };
@@ -35,7 +36,9 @@ export class MealController {
   open(date: string, meal?: NutritionDayMeal) {
     if (this.state.phase !== 'idle' || this.state.intent || (meal && !mealEditable(meal))) return;
     const draft = mealDraft(date, meal);
-    this.update({ editor: { sourceDate: date, mealId: meal?.id ?? null, expectedUpdatedAt: meal?.updatedAt ?? null, draft, original: draft }, errors: {}, message: null, truth: null, truthDate: null });
+    const timingReference = meal ? { date, consumedAt: meal.consumedAt, timeKnown: meal.timeKnown,
+      timeSource: meal.timeSource, automaticMealLabel: meal.automaticMealLabel } : undefined;
+    this.update({ editor: { sourceDate: date, mealId: meal?.id ?? null, expectedUpdatedAt: meal?.updatedAt ?? null, draft, original: draft, timingReference }, errors: {}, message: null, truth: null, truthDate: null });
   }
   /** Opens "A mano" prefilled from any meal (also ChatGPT/imported ones): it creates a new manual meal, never edits the source. */
   repeat(date: string, meal: NutritionDayMeal) {
@@ -164,7 +167,8 @@ export class MealController {
     if (!truth || !truthDate || !editor || this.state.phase !== 'conflict') return;
     // Explicit review only: preserve the draft, adopt the observed CAS and
     // require another deliberate Save. No retry with a new version here.
-    this.update({ phase: 'idle', editor: { ...editor, sourceDate: truthDate, expectedUpdatedAt: truth.updatedAt },
+    this.update({ phase: 'idle', editor: { ...editor, sourceDate: truthDate, expectedUpdatedAt: truth.updatedAt,
+      timingReference: { date: truthDate, consumedAt: truth.consumedAt, timeKnown: truth.timeKnown, timeSource: truth.timeSource, automaticMealLabel: truth.automaticMealLabel } },
       message: 'Revisá tu borrador y guardá sólo si querés aplicar estos valores a la versión mostrada.' });
   }
 }
