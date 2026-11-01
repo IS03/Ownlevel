@@ -16,13 +16,14 @@ jest.mock('@expo/ui/swift-ui', () => {
   Popover.Content = Container;
   return {
     Host: Container, VStack: Container, Divider: () => null, Rectangle: () => null,
+    Button: ({ label, onPress }: { label: string; onPress: () => void }) => <Pressable accessibilityRole="button" onPress={onPress}><Text>{label}</Text></Pressable>,
     Text: ({ children }: { children: ReactNode }) => <Text>{children}</Text>, Popover,
     Toggle: ({ label, children, isOn, onIsOnChange }: { label?: string; children?: ReactNode; isOn: boolean; onIsOnChange: (on: boolean) => void }) =>
       <Pressable accessibilityRole="checkbox" accessibilityLabel={label} accessibilityState={{ checked: isOn }} onPress={() => onIsOnChange(!isOn)}><Text>{label}</Text>{children}</Pressable>,
   };
 });
 jest.mock('@expo/ui/swift-ui/modifiers', () => ({
-  buttonStyle: () => ({}), buttonBorderShape: () => ({}), disabled: () => ({}), font: () => ({}), foregroundStyle: () => ({}), frame: () => ({}), padding: () => ({}), tint: () => ({}), toggleStyle: () => ({}),
+  accessibilityLabel: () => ({}), buttonStyle: () => ({}), buttonBorderShape: () => ({}), disabled: () => ({}), font: () => ({}), foregroundStyle: () => ({}), frame: () => ({}), padding: () => ({}), tint: () => ({}), toggleStyle: () => ({}),
 }));
 
 function setup(overrides: Partial<SessionNextOptionsProps> = {}) {
@@ -32,23 +33,30 @@ function setup(overrides: Partial<SessionNextOptionsProps> = {}) {
   return { ...render(screen(props)), props, screen };
 }
 describe('next-session iOS popover', () => {
-  it('keeps options controlled and open while toggling, and dismisses on an outside/escape event', () => {
+  it('closes on selection without coupling the decision to today’s result', () => {
     const view = setup();
     expect(view.getByRole('checkbox', { name: 'Más repeticiones' })).toBeChecked();
     fireEvent.press(view.getByRole('checkbox', { name: 'Más repeticiones' }));
     expect(view.props.onDecision).toHaveBeenCalledWith('increase_reps');
     view.rerender(view.screen({ ...view.props, decision: 'maintain' }));
     expect(view.getByRole('checkbox', { name: 'Más repeticiones' })).not.toBeChecked();
-    expect(view.getByTestId('native-next-popover')).toBeTruthy(); expect(view.props.onClose).not.toHaveBeenCalled();
-    fireEvent(view.getByTestId('native-next-popover'), 'accessibilityEscape'); expect(view.props.onClose).toHaveBeenCalledTimes(1);
+    expect(view.props.onClose).toHaveBeenCalledTimes(1); expect(view.props.onApply).not.toHaveBeenCalled();
+    view.rerender(view.screen({ ...view.props, open: false })); expect(view.queryByTestId('native-next-popover')).toBeNull();
     expect(view.queryByText('Quitar ajuste')).toBeNull();
   });
   it('keeps the result-of-today toggle independent, and only offers it for a linked routine', () => {
     const view = setup();
     fireEvent.press(view.getByText('Tomar resultado de hoy'));
     expect(view.props.onApply).toHaveBeenCalledWith(true); expect(view.props.onDecision).not.toHaveBeenCalled();
-    expect(view.props.onClose).not.toHaveBeenCalled();
+    expect(view.props.onClose).toHaveBeenCalledTimes(1);
     view.rerender(view.screen({ ...view.props, routineLinked: false })); expect(view.queryByText('Tomar resultado de hoy')).toBeNull();
+  });
+  it('closes through the actual native dismissal event and explicit close action', () => {
+    const view = setup();
+    fireEvent(view.getByTestId('native-next-popover'), 'accessibilityEscape');
+    expect(view.props.onClose).toHaveBeenCalledTimes(1);
+    fireEvent.press(view.getByText('Cerrar')); expect(view.props.onClose).toHaveBeenCalledTimes(2);
+    expect(view.props.onDecision).not.toHaveBeenCalled(); expect(view.props.onApply).not.toHaveBeenCalled();
   });
   it('offers an off-by-default Sumara-routine switch for extras and hides it in a free session', () => {
     const view = setup({ routineLinked: false, addToRoutineName: 'PUSH' });
