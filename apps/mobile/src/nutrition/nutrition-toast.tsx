@@ -47,17 +47,19 @@ const styles = StyleSheet.create({
 });
 
 /** Discreet glass pill above the tab bar, only while another day is shown: back to today in one tap. */
-export function TodayPill({ onPress }: { onPress: () => void }) {
+export function TodayPill({ onPress, onHeight }: { onPress: () => void; onHeight?: (height: number) => void }) {
   const { colors } = useOwnlevelTheme(), insets = useSafeAreaInsets(), reduced = useReduceMotion();
-  const motion = brandTokens.motion.duration.fast;
-  return <Animated.View pointerEvents="box-none" entering={reduced ? undefined : SlideInDown.duration(motion)} exiting={reduced ? undefined : SlideOutDown.duration(motion)}
+  return <View pointerEvents="box-none" testID="nutrition-today-dock" onLayout={event => onHeight?.(event.nativeEvent.layout.height)}
     style={[styles.pillDock, { bottom: insets.bottom + spacing.sm }]}>
     <Pressable accessibilityRole="button" accessibilityLabel="Volver a hoy" onPress={onPress} testID="nutrition-today-pill"
       style={({ pressed }) => pressedStyle(pressed, reduced)}>
-      <GlassSurface interactive style={styles.pill}>
+      {/* The glass reads a fixed backing, never magnified letters from the scrolling meal beneath it. */}
+      <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" testID="nutrition-today-backing"
+        style={[StyleSheet.absoluteFill, { borderRadius: brandTokens.radius.full, backgroundColor: colors.background }]} />
+      <GlassSurface style={styles.pill}>
         <AppIcon name="calendar" color={colors.primary} size={17} />
         <AppText variant="subheadline" style={{ color: colors.primary, fontWeight: '600' }}>Hoy</AppText>
       </GlassSurface>
     </Pressable>
-  </Animated.View>;
+  </View>;
 }

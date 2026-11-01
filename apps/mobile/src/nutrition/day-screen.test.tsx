@@ -1,13 +1,13 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { StrictMode } from 'react';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { Alert, Modal, AppState, type AppStateStatus, RefreshControl } from 'react-native';
+import { Alert, Modal, AppState, type AppStateStatus, RefreshControl, ScrollView, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import type { MobileApiClient } from '@/api/client';
 import type { MobileApiReadResult } from '@/api/results';
 import type { MobileNutritionDayResponse } from '@/api/nutrition-day';
-import { OwnlevelThemeProvider } from '@/design-system';
+import { GlassSurface, OwnlevelThemeProvider, spacing } from '@/design-system';
 import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 import { NutritionDayScreen } from './day-screen';
 import { NutritionConfigurationProvider } from './config-provider';
@@ -267,6 +267,27 @@ describe('Native Nutrition day', () => {
     await act(async () => { fireEvent.press(view.getByText('Comprobar intento guardado')); }); expect(await view.findByTestId('nutrition-meal-notice')).toBeTruthy(); expect(view.queryByText('Comida guardada.')).toBeNull();
     expect(mockRequest).toHaveBeenCalledTimes(2);
     expect(mockRequest.mock.calls[1][0].body).toEqual(mockRequest.mock.calls[0][0].body);
+  });
+  it('keeps the last meal clear of the measured Today control, without changing native insets (#348)', async () => {
+    mockRead.mockImplementation(async options => ok(options.path.split('/').pop()!) as never);
+    const view = render(element()); await view.findByText('Comida 2026-10-02');
+    const scroll = () => view.getByTestId('nutrition-day-screen').findByType(ScrollView);
+    const padding = () => { const style = StyleSheet.flatten(scroll().props.contentContainerStyle); return style.paddingBottom ?? style.padding; };
+    const normalPadding = padding();
+    fireEvent.press(view.getByTestId('nutrition-week-2026-10-01')); await view.findByText('Comida 2026-10-01');
+    const controlHeight = StyleSheet.flatten(within(view.getByTestId('nutrition-today-pill')).UNSAFE_getByType(GlassSurface).props.style).minHeight;
+    expect(padding()).toBe(normalPadding + controlHeight + spacing.sm);
+    // Measured height, rather than assuming the minimum touch target (Dynamic Type can make it taller).
+    fireEvent(view.getByTestId('nutrition-today-dock'), 'layout', { nativeEvent: { layout: { height: 72 } } });
+    expect(padding()).toBe(normalPadding + 72 + spacing.sm);
+    expect(scroll().props.contentInsetAdjustmentBehavior).toBe('automatic');
+    expect(scroll().props.contentInset).toBeUndefined();
+    const backing = view.getByTestId('nutrition-today-backing', { includeHiddenElements: true });
+    expect(backing.props).toMatchObject({ pointerEvents: 'none', accessibilityElementsHidden: true });
+    expect(StyleSheet.flatten(backing.props.style).backgroundColor).toBeTruthy();
+    fireEvent.press(view.getByTestId('nutrition-today-pill')); await view.findByText('Comida 2026-10-02');
+    expect(padding()).toBe(normalPadding);
+    expect(view.queryByTestId('nutrition-today-dock')).toBeNull();
   });
   it('loads today, distinguishes target/balance and navigates to date and back', async () => {
     mockRead.mockImplementation(async options => ok(options.path.split('/').pop()!) as never);

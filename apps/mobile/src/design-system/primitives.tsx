@@ -19,7 +19,7 @@ import {
 } from 'react-native-safe-area-context';
 import Animated, { type AnimatedRef } from 'react-native-reanimated';
 import { ScrollEdgeBlur } from './scroll-edge';
-import { BottomContentFade, ScrollBottomBackdrop, glassTabBarAvailable } from './scroll-bottom-backdrop';
+import { ScrollBottomBoundary, ScrollBottomBackdrop } from './scroll-bottom-backdrop';
 import { HeaderHeightContext } from 'expo-router/build/react-navigation/elements/Header/HeaderHeightContext';
 
 import { atmosphere, glowGradient } from './atmosphere';
@@ -117,7 +117,7 @@ type ScrollScreenProps = PropsWithChildren<
      * fade below the status bar (a screen with a floating header passes content under it too).
      */
     scrollEdge?: boolean;
-    /** Keep scrolling text out of a floating native tab bar, with a fixed soft transition. iOS only. */
+    /** Keep scrolling text out of a floating native tab bar, without fading or deforming it. iOS only. */
     bottomBackdrop?: boolean;
     edgeExtra?: number;
     /** Length of the blur's soft bottom edge (see ScrollEdgeBlur). */
@@ -156,9 +156,7 @@ export function ScrollScreen({
   // (including a native tab/accessory when present) once, inside the scrollable viewport.
   const manualBottom = scrollsUnderBottom && topInset === 'manual' ? insets?.bottom ?? 0 : 0;
   const [scrolled, setScrolled] = useState(false);
-  // #348: on iOS 26+ only the list's opacity fades before the glass tab bar (no blur or stacking of rows); older
-  // systems keep the fixed backdrop of #342.
-  const contentFade = bottomBackdrop && scrollsUnderBottom && glassTabBarAvailable();
+  const protectBottom = bottomBackdrop && scrollsUnderBottom;
 
   return (
     <SafeAreaView
@@ -167,7 +165,7 @@ export function ScrollScreen({
       testID={testID}
     >
       {glow ? <ScreenGlow /> : null}
-      <BottomContentFade enabled={contentFade} inset={insets?.bottom ?? 0}>
+      <ScrollBottomBoundary enabled={protectBottom}>
       <Animated.ScrollView
         ref={scrollRef}
         {...scrollViewProps}
@@ -185,8 +183,8 @@ export function ScrollScreen({
       >
         {children}
       </Animated.ScrollView>
-      </BottomContentFade>
-      {bottomBackdrop && scrollsUnderBottom && !contentFade ? <ScrollBottomBackdrop inset={insets?.bottom ?? 0} /> : null}
+      </ScrollBottomBoundary>
+      {protectBottom ? <ScrollBottomBackdrop inset={insets?.bottom ?? 0} /> : null}
       {scrollEdge && top > 0 ? <ScrollEdgeBlur visible={scrolled} height={top + edgeExtra} fade={edgeFade} testID="scroll-edge-blur" /> : null}
     </SafeAreaView>
   );
