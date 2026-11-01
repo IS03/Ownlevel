@@ -1,7 +1,7 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { StrictMode } from 'react';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { Modal, AppState, type AppStateStatus, RefreshControl } from 'react-native';
+import { Alert, Modal, AppState, type AppStateStatus, RefreshControl } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import type { MobileApiClient } from '@/api/client';
@@ -50,6 +50,10 @@ const failure: MobileApiReadResult<MobileNutritionDayResponse> = { status: 'unav
 const element = () => <SafeAreaInsetsContext.Provider value={{ top: 0, bottom: 0, left: 0, right: 0 }}><OwnlevelThemeProvider initialMode="light"><NutritionConfigurationProvider><NutritionDayScreen /></NutritionConfigurationProvider></OwnlevelThemeProvider></SafeAreaInsetsContext.Provider>;
 function finishMonthDismissal(view: ReturnType<typeof render>) {
   const sheet = view.UNSAFE_getAllByType(Modal).find(m => m.props.testID === 'nutrition-month-sheet-modal');
+  if (sheet) fireEvent(sheet, 'dismiss');
+}
+function finishMealDismissal(view: ReturnType<typeof render>) {
+  const sheet = view.UNSAFE_getAllByType(Modal).find(m => m.props.testID === 'meal-detail-sheet-modal');
   if (sheet) fireEvent(sheet, 'dismiss');
 }
 function finishDetailDismissal(view: ReturnType<typeof render>) {
@@ -195,6 +199,30 @@ describe('Native Nutrition day', () => {
     expect(await view.findByText('Deshecho')).toBeTruthy();
     expect(view.queryByTestId('manual-meal-editor')).toBeNull(); expect(view.queryByText('Comida eliminada.')).toBeNull();
     expect((mockRequest.mock.calls[1][0].body as { operation: string }).operation).toBe('delete');
+  });
+  it('the edit form has no delete button: deleting lives in the detail trash', async () => {
+    mockRead.mockImplementation(async () => ok(mockToday) as never);
+    const alert = jest.spyOn(Alert, 'alert');
+    const view = render(element()); await view.findByText('Comida 2026-10-02');
+    fireEvent.press(view.getByText('Comida 2026-10-02'));
+    fireEvent.press(await view.findByText('Editar')); finishMealDismissal(view);
+    expect(await view.findByTestId('manual-meal-editor')).toBeTruthy();
+    expect(view.queryByText('Eliminar comida')).toBeNull();
+    alert.mockRestore();
+  });
+  it('the detail trash still deletes the meal after one confirmation', async () => {
+    mockRead.mockImplementation(async () => ok(mockToday) as never);
+    const alert = jest.spyOn(Alert, 'alert');
+    const view = render(element()); await view.findByText('Comida 2026-10-02');
+    mockRequest.mockResolvedValueOnce({ status: 'ok', data: { status: 'deleted', mealId: '41100000-0000-4000-8000-000000000001', sourceDate: mockToday, destinationDate: mockToday, updatedAt: `${mockToday}T13:00:00Z` }, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } } as never);
+    fireEvent.press(view.getByText('Comida 2026-10-02'));
+    fireEvent.press(within(await view.findByTestId('meal-detail-sheet')).getByLabelText('Eliminar comida'));
+    expect(alert).toHaveBeenCalledWith('¿Eliminar esta comida?', expect.any(String), expect.any(Array));
+    const confirm = (alert.mock.calls.at(-1)![2] as { text: string; onPress?: () => void }[]).find(b => b.text === 'Eliminar')!;
+    act(() => confirm.onPress!());
+    await act(async () => { finishMealDismissal(view); });
+    await waitFor(() => expect((mockRequest.mock.calls[0][0].body as { operation: string }).operation).toBe('delete'));
+    alert.mockRestore();
   });
   it('keeps a form draft through refresh and fences the pre-write response after confirmed create', async () => {
     let latest = nutritionFixture();
