@@ -14,7 +14,7 @@ import { ReturnToHistoryDay } from '@/history/return-to-day';
 import { useDomainDate } from '@/history/use-domain-date';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
-import { AppText, Button, LoadingState, ScrollScreen, UnavailableState, spacing, usePullRefresh, useOwnlevelTheme } from '@/design-system';
+import { AppText, Button, LoadingState, ScrollScreen, UnavailableState, brandTokens, spacing, usePullRefresh, useOwnlevelTheme } from '@/design-system';
 import { nutritionToday } from './day-format';
 import { NutritionMonthSheet, prefetchCalendarMonth } from './day-calendar';
 import { headerDate } from '@/home/home-day';
@@ -39,10 +39,11 @@ import { foodQuickOption } from '@/api/nutrition-food';
 import { QuickEditor } from './quick-editor';
 import { useNutritionHomeEntry, type AddEntry } from './home-entry';
 
-function NutritionDayView({ revision, date, today, onSelect, onServerToday, onAdd, addChoices, addControl, highlightedMeal, removal, onManageFoods, onManageSaved, onConfigure, mealActions, onActivity, onContext, onMetric }: {
+function NutritionDayView({ revision, date, today, bottomClearance, onSelect, onServerToday, onAdd, addChoices, addControl, highlightedMeal, removal, onManageFoods, onManageSaved, onConfigure, mealActions, onActivity, onContext, onMetric }: {
   /** Bumped after a confirmed write: the day re-reads in place, so its numbers can move to the new values. */
   revision: number;
   date: string; today: string; onSelect: (date: string) => void; onServerToday: (date: string) => void;
+  bottomClearance: number;
   onAdd?: () => void; mealActions?: MealActions;
   onConfigure?: () => void; addChoices?: ReactNode; addControl?: ReactNode; highlightedMeal?: string; removal?: MealRemoval; onManageFoods?: () => void; onManageSaved?: () => void;
   onMetric?: (data: MobileNutritionDayResponse, metric: NutritionDayMetric) => void;
@@ -65,7 +66,8 @@ function NutritionDayView({ revision, date, today, onSelect, onServerToday, onAd
   const loaded = state.status === 'ready';
   useEffect(() => { if (loaded) prefetchCalendarMonth(client, date, today); }, [client, date, loaded, today]);
   const pull = usePullRefresh(state.status === 'ready' && state.refreshing, runRefresh);
-  return <ScrollScreen scrollEdge bottomBackdrop testID="nutrition-day-screen" refreshControl={
+  return <ScrollScreen scrollEdge bottomBackdrop testID="nutrition-day-screen"
+    contentContainerStyle={bottomClearance ? { paddingBottom: brandTokens.layout.screenPadding + bottomClearance } : undefined} refreshControl={
     <RefreshControl colors={[colors.primary]} onRefresh={pull.onRefresh}
       progressBackgroundColor={colors.surface} refreshing={pull.refreshing}
       testID="nutrition-refresh" tintColor={colors.primary} />
@@ -125,6 +127,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
   const saved=useSavedController(client,userId,invalidateQuick);
 
   const [today, setToday] = useState(() => nutritionToday());
+  const [todayPillHeight, setTodayPillHeight] = useState<number>(brandTokens.layout.minTouch);
   const [selected, setSelected] = useDomainDate(routeDate);
   // Today follows Cordoba midnight on focus/foreground; a chosen date stays fixed.
   const updateToday = useCallback(() => setToday(nutritionToday()), []);
@@ -162,8 +165,10 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
     {saved?.state.message&&!saved.state.open?<View style={styles.header}><AppText accessibilityRole="alert">{saved.state.message}</AppText>{saved.state.intent?<Button label="Revisar intento de guardadas" onPress={()=>saved.controller.showRecovery()}/>:null}{saved.state.phase==='blocked'?<Button label="Comprobar almacenamiento de guardadas" onPress={()=>void saved.controller.recover()}/>:null}</View>:null}
     {config?.state.message && !config.state.open ? <View style={styles.header}><AppText accessibilityRole="alert">{config.state.message}</AppText>{config.state.intent ? <Button label="Comprobar cambio guardado" onPress={()=>config.controller.showRecovery()} /> : null}{config.state.phase==='blocked'?<Button label="Comprobar cambio" onPress={()=>void config.controller.recover()}/>:null}</View>:null}
   </>;
+  const showTodayControl = date !== today && !(quick?.state.inlineKey && !quick.state.open) && !mealNotice.undoing && !mealNotice.result && !mealNotice.notice && !metricEntry.notice && !metricEntry.undoing;
   return <>
     <NutritionDayView key={`${userId}:${date}`} revision={revision} date={date} today={today}
+      bottomClearance={showTodayControl ? todayPillHeight + spacing.sm : 0}
       onSelect={setSelected} onServerToday={setToday}
       addControl={<NutritionAddMenu onManual={editable ? () => meals.controller.open(date) : undefined} onQuick={editable ? () => quick.controller.open(date) : undefined} onFood={editable ? () => foods.controller.open(date) : undefined} />}
       addChoices={statusBanners}
@@ -191,7 +196,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
     {metricEntry.undoing && writes && ['pending', 'confirmed'].includes(writes.state.phase) ? <MetricSavedNotice notice={{ date, message: 'Deshaciendo…', undo: null }} disabled pending onUndo={() => {}} onClose={() => {}} /> : null}
     {metricEntry.notice ? <MetricSavedNotice notice={metricEntry.notice} disabled={!editable || !!writes?.state.draft} onUndo={metricEntry.undoNotice} onClose={metricEntry.dismissNotice} /> : null}
     {/* Another day shown and no notice on screen: a discreet way back to today. */}
-    {date !== today && !(quick?.state.inlineKey && !quick.state.open) && !mealNotice.undoing && !mealNotice.result && !mealNotice.notice && !metricEntry.notice && !metricEntry.undoing ? <TodayPill onPress={showToday} /> : null}
+    {showTodayControl ? <TodayPill onPress={showToday} onHeight={setTodayPillHeight} /> : null}
     {/* One notice at a time: an add closed mid-way, a delete/undo running, its brief confirmation, or "Guardado · Deshacer". */}
     {quick?.state.inlineKey && !quick.state.open ? <NutritionToast testID="nutrition-quick-pending" state="pending" message="Agregando…" />
       : mealNotice.undoing ? <NutritionToast testID="nutrition-meal-pending" state="pending" message={mealNotice.undoing === 'undo' ? 'Deshaciendo…' : 'Eliminando…'} />
