@@ -28,9 +28,6 @@ export function ManualMealEntry({ controller, state, done = false }: { controlle
   const saving = running || (state.phase === 'confirmed' && !state.message);
   const parsed = validateMealDraft(draft);
   const editing = !!editor.mealId; // D3: editing reuses this screen with the meal's values.
-  const confirmDelete = () => Alert.alert('¿Eliminar esta comida?', 'Deja de contar en el día y desaparece de la lista.', [
-    { text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: () => void controller.save(false, true) },
-  ]);
   const close = () => {
     if (saving || done) return;
     if (state.intent || !controller.dirty()) controller.close();
@@ -70,7 +67,6 @@ export function ManualMealEntry({ controller, state, done = false }: { controlle
         : <AppText muted>Ya no está disponible para editar. Tu borrador sigue acá.</AppText>}
       {state.truthDate ? <Button label="Actualizar" variant="quiet" onPress={() => void controller.refreshConflict()} /> : null}
     </Surface> : null}
-    {editing && state.phase === 'idle' && !state.intent ? <Pressable accessibilityRole="button" disabled={locked} onPress={confirmDelete} style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><AppText variant="headline" style={{ color: colors.danger }}>Eliminar comida</AppText></Pressable> : null}
     {['uncertain', 'confirmed', 'blocked'].includes(state.phase) && !saving && !done ? <Button label={state.intent?.receipt ? 'Actualizar días confirmados' : 'Comprobar intento guardado'} onPress={() => void controller.recover()} /> : null}
     <View style={shared.footer}><SaveButton state={done ? 'done' : saving ? 'saving' : 'idle'} disabled={locked || !parsed.fields || (editing && !controller.dirty())}
       label={editing ? 'Guardar cambios' : `Agregar al día${parsed.fields ? ` · ${mealShown(parsed.fields.calories)} kcal` : ''}`} onPress={() => void controller.save()} />

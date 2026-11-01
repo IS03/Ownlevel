@@ -2,7 +2,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { Platform, ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaInsetsContext, SafeAreaView } from 'react-native-safe-area-context';
-import { ScrollViewMarker } from 'react-native-screens/experimental';
+import MaskedView from '@react-native-masked-view/masked-view';
 import { Screen, ScrollScreen } from './primitives';
 import { OwnlevelThemeProvider } from './theme';
 
@@ -100,16 +100,18 @@ describe('optional floating-tab backdrop', () => {
   });
 });
 
-describe('native bottom edge under the floating tab bar (#348)', () => {
+describe('content fade under the floating tab bar (#348)', () => {
   const screen = () => render(wrap(<ScrollScreen bottomBackdrop contentContainerStyle={{ paddingBottom: 40 }}>
     <Text>Última comida</Text>
   </ScrollScreen>));
-  it('on iOS 26+ lets the native tab blur and fade the list: soft edge, no own layer, same insets', () => {
+  it('on iOS 26+ fades only the list before the bar: no own backdrop, no native edge effect, same insets', () => {
     jest.spyOn(Platform, 'Version', 'get').mockReturnValue('26.0');
     const view = screen();
-    const marker = view.UNSAFE_getByType(ScrollViewMarker);
-    expect(marker.props.scrollEdgeEffects).toEqual({ bottom: 'soft' });
-    expect(marker.findByType(ScrollView)).toBeTruthy();
+    expect(view.getByTestId('scroll-bottom-content-fade')).toBeTruthy();
+    const mask = String(StyleSheet.flatten(view.UNSAFE_getByType(MaskedView).props.maskElement.props.style).experimental_backgroundImage);
+    // Content under the 83 pt bar stays at 3 % (shapes, not text), and is fully opaque 32 pt above it.
+    expect(mask).toBe('linear-gradient(to top, rgba(0,0,0,0.03) 0px, rgba(0,0,0,0.03) 83px, black 115px, black 100%)');
+    expect(view.UNSAFE_getByType(MaskedView).findByType(ScrollView)).toBeTruthy();
     expect(view.queryByTestId('scroll-bottom-backdrop', { includeHiddenElements: true })).toBeNull();
     const scroll = view.UNSAFE_getByType(ScrollView);
     expect(scroll.props.contentInsetAdjustmentBehavior).toBe('automatic');
@@ -120,12 +122,11 @@ describe('native bottom edge under the floating tab bar (#348)', () => {
   it('keeps the fixed backdrop before iOS 26 and adds nothing on Android or screens without it', () => {
     jest.spyOn(Platform, 'Version', 'get').mockReturnValue('18.6');
     const older = screen();
-    expect(older.UNSAFE_queryByType(ScrollViewMarker)).toBeNull();
+    expect(older.queryByTestId('scroll-bottom-content-fade')).toBeNull();
     expect(older.getByTestId('scroll-bottom-backdrop', { includeHiddenElements: true })).toBeTruthy();
     jest.spyOn(Platform, 'Version', 'get').mockReturnValue('26.0');
-    const plain = render(wrap(<ScrollScreen><Text>Inicio</Text></ScrollScreen>));
-    expect(plain.UNSAFE_queryByType(ScrollViewMarker)).toBeNull();
+    expect(render(wrap(<ScrollScreen><Text>Inicio</Text></ScrollScreen>)).queryByTestId('scroll-bottom-content-fade')).toBeNull();
     jest.replaceProperty(Platform, 'OS', 'android');
-    expect(screen().UNSAFE_queryByType(ScrollViewMarker)).toBeNull();
+    expect(screen().queryByTestId('scroll-bottom-content-fade')).toBeNull();
   });
 });

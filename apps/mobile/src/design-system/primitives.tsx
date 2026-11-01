@@ -19,7 +19,7 @@ import {
 } from 'react-native-safe-area-context';
 import Animated, { type AnimatedRef } from 'react-native-reanimated';
 import { ScrollEdgeBlur } from './scroll-edge';
-import { NativeBottomEdge, ScrollBottomBackdrop, nativeBottomEdgeAvailable } from './scroll-bottom-backdrop';
+import { BottomContentFade, ScrollBottomBackdrop, glassTabBarAvailable } from './scroll-bottom-backdrop';
 import { HeaderHeightContext } from 'expo-router/build/react-navigation/elements/Header/HeaderHeightContext';
 
 import { atmosphere, glowGradient } from './atmosphere';
@@ -156,9 +156,9 @@ export function ScrollScreen({
   // (including a native tab/accessory when present) once, inside the scrollable viewport.
   const manualBottom = scrollsUnderBottom && topInset === 'manual' ? insets?.bottom ?? 0 : 0;
   const [scrolled, setScrolled] = useState(false);
-  // #348: on iOS 26+ the native tab bar fades and blurs the list under it (Liquid Glass keeps its depth); older
+  // #348: on iOS 26+ only the list's opacity fades before the glass tab bar (no blur or stacking of rows); older
   // systems keep the fixed backdrop of #342.
-  const nativeEdge = bottomBackdrop && scrollsUnderBottom && nativeBottomEdgeAvailable();
+  const contentFade = bottomBackdrop && scrollsUnderBottom && glassTabBarAvailable();
 
   return (
     <SafeAreaView
@@ -167,7 +167,7 @@ export function ScrollScreen({
       testID={testID}
     >
       {glow ? <ScreenGlow /> : null}
-      <NativeBottomEdge enabled={nativeEdge}>
+      <BottomContentFade enabled={contentFade} inset={insets?.bottom ?? 0}>
       <Animated.ScrollView
         ref={scrollRef}
         {...scrollViewProps}
@@ -185,8 +185,8 @@ export function ScrollScreen({
       >
         {children}
       </Animated.ScrollView>
-      </NativeBottomEdge>
-      {bottomBackdrop && scrollsUnderBottom && !nativeEdge ? <ScrollBottomBackdrop inset={insets?.bottom ?? 0} /> : null}
+      </BottomContentFade>
+      {bottomBackdrop && scrollsUnderBottom && !contentFade ? <ScrollBottomBackdrop inset={insets?.bottom ?? 0} /> : null}
       {scrollEdge && top > 0 ? <ScrollEdgeBlur visible={scrolled} height={top + edgeExtra} fade={edgeFade} testID="scroll-edge-blur" /> : null}
     </SafeAreaView>
   );

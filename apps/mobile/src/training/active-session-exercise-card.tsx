@@ -1,6 +1,6 @@
 import { memo, type ReactNode, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, Alert, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { AppIcon, AppText, Button, radius, sizes, spacing, useOwnlevelTheme, useReduceMotion, brandTokens } from '@/design-system';
+import { Alert, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { AppIcon, AppText, Button, GlassSurface, pressedStyle, radius, sizes, spacing, useOwnlevelTheme, useReduceMotion, brandTokens } from '@/design-system';
 import Animated, { FadeIn, FadeInUp, LinearTransition, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SessionNextOptions } from './session-next-options';
 import type { NextSessionDecision } from './session-next-options.types';
@@ -54,8 +54,6 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
   const reducedMotion = useReduceMotion();
   const pendingSet = state?.draft.sets.find(set => !set.isCompleted)?.localId;
   const chevron = useAnimatedStyle(() => ({ transform: [{ rotate: withTiming(expanded ? '90deg' : '0deg', { duration: reducedMotion ? 0 : 220 }) }] }), [expanded, reducedMotion]);
-  // While its native popover is up, «Próxima vez» reads as the open control it is (#360): same width, no second CTA.
-  const nextChevron = useAnimatedStyle(() => ({ transform: [{ rotate: withTiming(nextOpen ? '180deg' : '0deg', { duration: reducedMotion ? 0 : 200 }) }] }), [nextOpen, reducedMotion]);
   const enabled = expanded && !locked && !!state && state.phase !== 'closed' && state.phase !== 'removed';
   const [previousEnabled, setPreviousEnabled] = useState(enabled);
   if (previousEnabled !== enabled) {
@@ -112,7 +110,7 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
           <AppIcon name="note" color={colors.textMuted} size={13} /><AppText muted variant="caption">Nota</AppText></View> : null}
       </View>
       <View style={[styles.badge, { backgroundColor: completion.complete ? colors.brandSubtle : colors.surfaceRaised }]}><AppText numeric style={{ color: completion.complete ? colors.primary : colors.textMuted }} variant="caption">{completion.completed}/{completion.total}</AppText></View>
-      {state.phase === 'saving' ? <ActivityIndicator testID={`exercise-saving-${id}`} accessibilityLabel="Sincronizando ejercicio" size="small" color={colors.textMuted} /> : null}
+      {/* Saving shows as «Sincronizando» in the session header: the counter and chevron never move. Failures stay below. */}
       <Animated.View style={chevron}><AppIcon name="chevronRight" color={colors.textMuted} size={15} /></Animated.View>
     </NativeDragHandle></NativeSwipeActions>
     {state.error || statusLabels[state.phase] ? <View style={styles.recovery}>
@@ -150,12 +148,14 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
           if (appended) setAddedSet(appended.localId);
         }} />
         <View style={styles.nextAnchor}>
+          {/* Glass like «+ Agregar serie»; while its popover is up only the fixed indicator turns accent (#360): no rotation, fill or size change. */}
           <Pressable accessibilityRole="button" accessibilityLabel="Próxima vez" accessibilityState={{ expanded: nextOpen, disabled: !editable }} disabled={!editable}
             onPress={() => { if (controller.getSnapshot().interaction) return; Keyboard.dismiss(); haptics.selection(); setNextOpen(true); }}
-            style={[styles.nextTrigger, { backgroundColor: nextOpen ? colors.brandSubtle : colors.surfaceRaised, borderColor: nextOpen ? colors.primary : colors.border, opacity: editable ? 1 : 0.45 }]}
-            testID={`exercise-next-${id}`}>
-            <AppText variant="caption" style={styles.shrink}>{draft.decision === 'increase_weight' ? 'Más peso' : draft.decision === 'increase_reps' ? 'Más reps' : draft.decision === 'custom' ? 'Recordatorio' : 'Próxima vez'}</AppText>
-            <Animated.View style={nextChevron}><AppIcon name="chevronDown" size={17} color={nextOpen ? colors.primary : colors.textMuted} /></Animated.View>
+            style={({ pressed }) => [!editable && styles.disabledTrigger, pressedStyle(pressed, reducedMotion)]} testID={`exercise-next-${id}`}>
+            <GlassSurface interactive style={[styles.nextTrigger, { borderColor: colors.border }]}>
+              <AppText variant="caption" style={styles.shrink}>{draft.decision === 'increase_weight' ? 'Más peso' : draft.decision === 'increase_reps' ? 'Más reps' : draft.decision === 'custom' ? 'Recordatorio' : 'Próxima vez'}</AppText>
+              <AppIcon name="chevronDown" size={17} color={nextOpen ? colors.primary : colors.textMuted} />
+            </GlassSurface>
           </Pressable>
           <SessionNextOptions open={nextOpen} editable={editable} name={exercise.nameSnapshot} decision={draft.decision} decisionNote={draft.decisionNote}
             applyToRoutine={draft.applyToRoutine} routineLinked={!!exercise.routineExerciseId} addToRoutineName={addToRoutineName} onClose={() => setNextOpen(false)}
@@ -254,6 +254,7 @@ const styles = StyleSheet.create({
   setBlock: { borderRadius: 12, paddingVertical: spacing.xs }, setGap: { marginBottom: spacing.sm },
   restRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 50 }, recovery: { gap: spacing.sm },
   // Fixed width: the label changes with the choice and must not move the popover's anchor.
-  nextAnchor: { width: 148 }, nextTrigger: { minHeight: 44, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.xs },
+  nextAnchor: { width: 148 }, nextTrigger: { minHeight: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.xs, overflow: 'hidden' },
+  disabledTrigger: { opacity: 0.45 },
   historyTrigger: { minHeight: sizes.touchTarget, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
 });
