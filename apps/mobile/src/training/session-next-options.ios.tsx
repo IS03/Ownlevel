@@ -5,7 +5,7 @@ import { sizes, spacing, useOwnlevelTheme } from '@/design-system';
 import type { SessionNextOptionsProps } from './session-next-options.types';
 
 type NativeProps = ViewProps & {
-  openRequest: number; editable: boolean; name: string; decision: string; decisionNote: string;
+  toggleRequest: number; editable: boolean; name: string; decision: string; decisionNote: string;
   applyToRoutine: boolean; applyLabel: string | null; extra: boolean; isDark: boolean;
   accent: string; muted: string; contentPadding: number; contentSpacing: number; minTouch: number;
   onPresentationChange: (event: NativeSyntheticEvent<{ presented: boolean }>) => void;
@@ -18,10 +18,10 @@ const NativeOptions = requireNativeView<NativeProps>('OwnlevelFinishControls', '
 export function SessionNextOptions(props: SessionNextOptionsProps) {
   const { colors, isDark } = useOwnlevelTheme();
   // Remounting a collapsed card must not replay a request from its previous native view.
-  const [baselineRequest] = useState(() => props.open ? 0 : props.openRequest ?? 0);
+  const [baselineRequest] = useState(() => props.open ? 0 : props.toggleRequest ?? 0);
   const applyLabel = props.routineLinked ? 'Tomar resultado de hoy' : props.addToRoutineName ? `Sumar a ${props.addToRoutineName}` : null;
   return <NativeOptions pointerEvents="none" style={StyleSheet.absoluteFill}
-    openRequest={Math.max(0, (props.openRequest ?? 0) - baselineRequest)} editable={props.editable} name={props.name} decision={props.decision}
+    toggleRequest={Math.max(0, (props.toggleRequest ?? 0) - baselineRequest)} editable={props.editable} name={props.name} decision={props.decision}
     decisionNote={props.decisionNote} applyToRoutine={props.applyToRoutine} applyLabel={applyLabel}
     extra={!props.routineLinked} isDark={isDark} accent={colors.primary} muted={colors.textMuted}
     contentPadding={spacing.xl} contentSpacing={spacing.sm} minTouch={sizes.touchTarget}

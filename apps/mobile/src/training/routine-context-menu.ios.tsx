@@ -7,7 +7,8 @@ import { routineMenuActions, type RoutineContextMenuProps, type TrainingContextM
 export function TrainingContextMenu({ children, disabled, width, onOpen, actions }: TrainingContextMenuProps) {
   const { isDark } = useOwnlevelTheme();
   if (disabled || width <= 0) return children;
-  return <Host colorScheme={isDark ? 'dark' : 'light'} matchContents={{ vertical: true }} style={{ width }}><ContextMenu>
+  // The scroll owns container insets; applying them inside each host shifts a partially visible row.
+  return <Host ignoreSafeArea="container" colorScheme={isDark ? 'dark' : 'light'} matchContents={{ vertical: true }} style={{ width }}><ContextMenu>
     <ContextMenu.Trigger><Group modifiers={[contentShape(shapes.rectangle()), onTapGesture(onOpen)]}><RNHostView matchContents><View style={{ width }}>{cloneElement(children, { pointerEvents: 'none' })}</View></RNHostView></Group></ContextMenu.Trigger>
     <ContextMenu.Items>{actions.map(action => <Fragment key={action.label}>{action.separated ? <Divider /> : null}<Button label={action.label} systemImage={action.symbol} role={action.destructive ? 'destructive' : undefined} onPress={action.onPress} /></Fragment>)}</ContextMenu.Items>
   </ContextMenu></Host>;
