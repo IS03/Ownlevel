@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { Platform, ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaInsetsContext, SafeAreaView } from 'react-native-safe-area-context';
 import MaskedView from '@react-native-masked-view/masked-view';
+import { BlurView } from 'expo-blur';
 import { ScrollViewMarker } from 'react-native-screens/experimental';
 import { Screen, ScrollScreen } from './primitives';
 import { OwnlevelThemeProvider } from './theme';
@@ -69,7 +70,7 @@ describe('scrollable bottom protection', () => {
 
 
 describe('optional floating-tab backdrop', () => {
-  it('covers the measured bar, stays fixed during scroll/bounce and never takes taps or changes content insets', () => {
+  it('configures a fixed blur backing without covering the scroll or taking taps', () => {
     const view = render(wrap(<ScrollScreen bottomBackdrop contentContainerStyle={{ paddingBottom: 40 }}>
       <Text>Última comida</Text>
     </ScrollScreen>));
@@ -78,7 +79,8 @@ describe('optional floating-tab backdrop', () => {
     expect(style).toMatchObject({ position: 'absolute', bottom: 0, height: 83 + 24 });
     const mask = view.UNSAFE_getByType(MaskedView);
     expect(mask.findAllByType(ScrollView)).toHaveLength(0);
-    expect(StyleSheet.flatten(mask.props.children.props.style)).toMatchObject({ backgroundColor: lightColors.background, opacity: 0.96 });
+    expect(mask.findByType(BlurView).props.tint).toBe('systemThinMaterialLight');
+    expect(StyleSheet.flatten(mask.props.children.props.style).backgroundColor).toBeUndefined();
     expect(backdrop().props).toMatchObject({ pointerEvents: 'none', accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' });
     const scroll = view.UNSAFE_getByType(ScrollView);
     for (const y of [0, 700, 703, 1900, 2000, 1900, -30]) {
@@ -94,7 +96,8 @@ describe('optional floating-tab backdrop', () => {
     jest.spyOn(glass, 'useReduceTransparency').mockReturnValue(true);
     const view = render(wrap(<ScrollScreen bottomBackdrop><Text>Última comida</Text></ScrollScreen>));
     const mask = view.UNSAFE_getByType(MaskedView);
-    expect(StyleSheet.flatten(mask.props.children.props.style).opacity).toBe(1);
+    expect(mask.findAllByType(BlurView)).toHaveLength(0);
+    expect(StyleSheet.flatten(mask.props.children.props.style)).toMatchObject({ backgroundColor: lightColors.background });
     expect(mask.findAllByType(ScrollView)).toHaveLength(0);
   });
   it('tracks safe-area changes, including an accessory, and omits itself when no bottom protection is needed', () => {
@@ -122,7 +125,7 @@ describe('ordinary scroll under the floating tab bar (#348)', () => {
   const screen = () => render(wrap(<ScrollScreen bottomBackdrop contentContainerStyle={{ paddingBottom: 40 }}>
     <Text>Última comida</Text>
   </ScrollScreen>));
-  it.each(['26.0', '27.2'])('explicitly disables the native bottom effect on iOS %s without masking scrolling content', version => {
+  it.each(['26.0', '27.2'])('requests the hidden bottom effect on iOS %s without masking scrolling content', version => {
     jest.spyOn(Platform, 'Version', 'get').mockReturnValue(version);
     const view = screen();
     expect(view.queryByTestId('scroll-bottom-content-fade')).toBeNull();

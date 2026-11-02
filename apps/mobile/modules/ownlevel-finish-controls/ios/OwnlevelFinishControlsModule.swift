@@ -1,13 +1,14 @@
 import ExpoModulesCore
 import UIKit
 import SwiftUI
+import Combine
 
 public final class OwnlevelFinishControlsModule: Module {
   public func definition() -> ModuleDefinition {
     Name("OwnlevelFinishControls")
     View(NextSessionOptionsView.self) {
       Events("onPresentationChange", "onDecision", "onApply")
-      Prop("openRequest") { (view, value: Int) in view.requestOpen(value) }
+      Prop("toggleRequest") { (view, value: Int) in view.requestToggle(value) }
       Prop("editable") { (view, value: Bool) in view.editable = value }
       Prop("name") { (view, value: String) in view.name = value }
       Prop("decision") { (view, value: String) in view.decision = value }
@@ -155,7 +156,7 @@ public final class FinishPainView: ExpoView {
 }
 
 
-/** Presentation requests are independent of React's observed open/closed state. */
+/** UIKit owns the transition; tap intents are reconciled only at its real completion boundaries. */
 public final class NextSessionOptionsView: ExpoView, UIPopoverPresentationControllerDelegate {
   let onPresentationChange = EventDispatcher()
   let onDecision = EventDispatcher()
@@ -166,167 +167,187 @@ public final class NextSessionOptionsView: ExpoView, UIPopoverPresentationContro
   var applyLabel: String?
   var accent = UIColor.label, muted = UIColor.secondaryLabel
   var contentPadding = 0.0, contentSpacing = 0.0, minTouch = 0.0
-  private var lastRequest = 0
-  private var wantsOpen = false
-  private var dismissing = false
-  private var presenting = false
-  private var closeAfterPresentation = false
-  private lazy var outsideControl: NextSessionOutsideControl = {
-    let control = NextSessionOutsideControl()
-    control.accessibilityLabel = "Cerrar opciones de próxima vez"
-    control.addTarget(self, action: #selector(tappedOutside), for: .touchUpInside)
-    return control
-  }()
+  private var presentation = NextSessionPresentation()
   private var host: NextSessionOptionsHost?
 
-  func requestOpen(_ request: Int) {
-    guard request > lastRequest else { return }
-    lastRequest = request
-    wantsOpen = true
-    // Props arrive as a batch; refresh runs after editable/content have been applied.
+  func requestToggle(_ request: Int) {
+    presentation.toggle(request: request)
   }
   public override func didMoveToWindow() {
     super.didMoveToWindow()
-    if window == nil { outsideControl.removeFromSuperview(); wantsOpen = false; close() } else { refresh() }
+    if window == nil { requestClose() } else { refresh() }
   }
   public override func layoutSubviews() {
     super.layoutSubviews()
     host?.popoverPresentationController?.sourceRect = bounds
   }
-  private func content() -> NextSessionOptionsContent {
-    NextSessionOptionsContent(name: name, decision: decision, note: decisionNote,
+  private func contentValues() -> NextSessionOptionsValues {
+    NextSessionOptionsValues(name: name, decision: decision, note: decisionNote,
       apply: applyToRoutine, applyLabel: applyLabel, extra: extra, accent: Color(accent), muted: Color(muted),
-      inset: contentPadding, gap: contentSpacing, minTouch: minTouch,
-      choose: { [weak self] decision in self?.onDecision(["decision": decision]); self?.close() },
-      applyChange: { [weak self] value in self?.onApply(["value": value]); self?.close() })
+      inset: contentPadding, gap: contentSpacing, minTouch: minTouch)
+  }
+  private func content() -> NextSessionOptionsContent {
+    NextSessionOptionsContent(model: NextSessionOptionsModel(value: contentValues()),
+      choose: { [weak self] decision in self?.onDecision(["decision": decision]); self?.requestClose() },
+      applyChange: { [weak self] value in self?.onApply(["value": value]) })
   }
   func refresh() {
-    if !editable { wantsOpen = false; close(); return }
-    host?.rootView = content()
-    host?.overrideUserInterfaceStyle = overrideUserInterfaceStyle
-    presentIfReady()
-  }
-  private func presentIfReady() {
-    guard wantsOpen, editable, !dismissing, host == nil, window != nil else { return }
-    var responder: UIResponder? = self
-    while responder != nil && !(responder is UIViewController) { responder = responder?.next }
-    guard let presenter = responder as? UIViewController else { return }
-    let controller = NextSessionOptionsHost(rootView: content())
-    controller.onEscape = { [weak self] in self?.close() }
-    controller.modalPresentationStyle = .popover
-    controller.view.accessibilityViewIsModal = true
-    controller.overrideUserInterfaceStyle = overrideUserInterfaceStyle
-    controller.sizingOptions = [.preferredContentSize]
-    guard let popover = controller.popoverPresentationController else { return }
-    popover.sourceView = self
-    popover.sourceRect = bounds
-    popover.permittedArrowDirections = .right
-    popover.delegate = self
-    // Own outside dismissal instead of UIKit's modal shield, which ignores a fast second tap during its fade.
-    // This transparent hit region exists only while presented. It excludes the real trigger and is removed
-    // synchronously on close, so neither controls behind the popover nor the next opening tap are activated by mistake.
-    popover.passthroughViews = [presenter.view]
-    outsideControl.anchor = superview
-    outsideControl.frame = presenter.view.bounds
-    outsideControl.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-    presenter.view.addSubview(outsideControl)
-    host = controller
-    wantsOpen = false
-    presenting = true
-    presenter.present(controller, animated: !UIAccessibility.isReduceMotionEnabled) { [self, weak controller] in
-      guard controller === self.host else { return }
-      self.presenting = false
-      if self.closeAfterPresentation { self.closeAfterPresentation = false; self.close() }
+    if !editable { presentation.close() }
+    // Keep one SwiftUI root and its accessibility/control identities for the lifetime of the host.
+    if presentation.acceptsContentUpdates {
+      if let host {
+        let model = host.rootView.model
+        model.receive(contentValues())
+        host.overrideUserInterfaceStyle = overrideUserInterfaceStyle
+      }
     }
-    onPresentationChange(["presented": true])
+    reconcilePresentation()
   }
-  private func beginDismissal() {
-    guard !dismissing else { return }
-    dismissing = true
-    wantsOpen = false
+  private func requestClose() {
+    presentation.close()
+    reconcilePresentation()
   }
-  private func close() {
-    guard let controller = host, !dismissing else { return }
-    if presenting { closeAfterPresentation = true; return }
-    beginDismissal()
-    // Complete native hit testing in the closing gesture, before reporting closed to React.
-    controller.dismiss(animated: false) { [weak self, weak controller] in
-      guard let controller else { return }
-      self?.finishedDismissal(controller)
+  private func reconcilePresentation() {
+    switch presentation.phase {
+    case .closed:
+      guard presentation.wantsPresented, editable, window != nil else { return }
+      var responder: UIResponder? = self
+      while responder != nil && !(responder is UIViewController) { responder = responder?.next }
+      guard let presenter = responder as? UIViewController else { return }
+      let controller = NextSessionOptionsHost(rootView: content())
+      controller.onEscape = { [weak self] in self?.requestClose() }
+      controller.onDidAppear = { [weak self, weak controller] in
+        guard let controller else { return }
+        self?.finishedPresentation(controller)
+      }
+      controller.onDidDismiss = { [weak self, weak controller] in
+        guard let controller else { return }
+        self?.finishedDismissal(controller)
+      }
+      controller.modalPresentationStyle = .popover
+      controller.overrideUserInterfaceStyle = overrideUserInterfaceStyle
+      controller.sizingOptions = [.preferredContentSize]
+      guard let popover = controller.popoverPresentationController else { return }
+      popover.sourceView = self
+      popover.sourceRect = bounds
+      popover.permittedArrowDirections = .right
+      popover.delegate = self
+      // UIKit handles outside taps; only the actual trigger is allowed through for a second tap.
+      popover.passthroughViews = superview.map { [$0] }
+      guard presentation.beginPresentation() else { return }
+      host = controller
+      presenter.present(controller, animated: true) { [weak self, weak controller] in
+        guard let controller else { return }
+        self?.finishedPresentation(controller)
+      }
+      onPresentationChange(["presented": true])
+    case .open:
+      guard let controller = host, presentation.beginDismissal() else { return }
+      controller.dismiss(animated: true) { [weak self, weak controller] in
+        guard let controller else { return }
+        self?.finishedDismissal(controller)
+      }
+    case .presenting, .dismissing:
+      break // An actual native completion, rather than a timer or React echo, reconciles the latest intent.
     }
+  }
+  private func finishedPresentation(_ controller: UIViewController) {
+    guard controller === host, presentation.didAppear() else { return }
+    refresh()
   }
   private func finishedDismissal(_ controller: UIViewController) {
-    guard controller === host else { return }
+    guard controller === host, presentation.didDisappear() else { return }
     host = nil
-    outsideControl.removeFromSuperview()
-    dismissing = false
-    presenting = false
-    closeAfterPresentation = false
     onPresentationChange(["presented": false])
-    // A tap received during dismissal is presented by UIKit's completion, never a clock or JS echo.
-    presentIfReady()
+    reconcilePresentation()
   }
-  @objc private func tappedOutside() { close() }
   public func adaptivePresentationStyle(for controller: UIPresentationController) -> UIModalPresentationStyle { .none }
   public func presentationControllerWillDismiss(_ presentationController: UIPresentationController) {
-    if presentationController.presentedViewController === host { beginDismissal() }
+    beginOutsideDismissal(presentationController)
+  }
+  private func beginOutsideDismissal(_ presentationController: UIPresentationController) {
+    guard presentationController.presentedViewController === host else { return }
+    presentation.willDismissFromOutside()
   }
   public func presentationControllerDidDismiss(_ presentationController: UIPresentationController) { finishedDismissal(presentationController.presentedViewController) }
   public func popoverPresentationControllerShouldDismissPopover(_ popoverPresentationController: UIPopoverPresentationController) -> Bool {
-    // Outside taps use our hit region; accessibility escape uses the host. Avoid the modal dismissal shield.
-    return false
+    // UIKit also asks this for passthrough taps; permission is not a dismissal notification.
+    return true
   }
   public func popoverPresentationControllerDidDismissPopover(_ popoverPresentationController: UIPopoverPresentationController) { finishedDismissal(popoverPresentationController.presentedViewController) }
 }
 
-private final class NextSessionOutsideControl: UIControl {
-  weak var anchor: UIView?
-  override init(frame: CGRect) {
-    super.init(frame: frame)
-    isAccessibilityElement = true
-    accessibilityTraits = .button
-  }
-  required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-  override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-    if let anchor, anchor.bounds.contains(convert(point, to: anchor)) { return false }
-    return super.point(inside: point, with: event)
-  }
-  override func accessibilityActivate() -> Bool { sendActions(for: .touchUpInside); return true }
-}
-
 private final class NextSessionOptionsHost: UIHostingController<NextSessionOptionsContent> {
   var onEscape: (() -> Void)?
+  var onDidAppear: (() -> Void)?
+  var onDidDismiss: (() -> Void)?
+  override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    onDidAppear?()
+  }
+  override func viewDidDisappear(_ animated: Bool) {
+    super.viewDidDisappear(animated)
+    if isBeingDismissed || presentingViewController == nil { onDidDismiss?() }
+  }
   override func accessibilityPerformEscape() -> Bool { onEscape?(); return true }
 }
 
-private struct NextSessionOptionsContent: SwiftUI.View {
+private struct NextSessionOptionsValues: Equatable {
   let name: String, decision: String, note: String
-  let apply: Bool, applyLabel: String?, extra: Bool
+  var apply: Bool
+  let applyLabel: String?, extra: Bool
   let accent: Color, muted: Color
   let inset: Double, gap: Double, minTouch: Double
+}
+
+private final class NextSessionOptionsModel: ObservableObject {
+  @Published var value: NextSessionOptionsValues
+  private var applyState: NextSessionApplyState
+  init(value: NextSessionOptionsValues) {
+    self.value = value
+    applyState = NextSessionApplyState(value.apply)
+  }
+  func receive(_ props: NextSessionOptionsValues) {
+    applyState.receive(props.apply)
+    var next = props
+    next.apply = applyState.value
+    if value != next { value = next }
+  }
+  func changeApply(_ apply: Bool) -> Bool {
+    guard applyState.change(apply) else { return false }
+    value.apply = apply
+    return true
+  }
+}
+
+private struct NextSessionOptionsContent: SwiftUI.View {
+  @ObservedObject var model: NextSessionOptionsModel
   let choose: (String) -> Void, applyChange: (Bool) -> Void
   var body: some SwiftUI.View {
-    VStack(alignment: .leading, spacing: gap) {
-      VStack(alignment: .leading, spacing: gap / 3) {
+    let value = model.value
+    VStack(alignment: .leading, spacing: value.gap) {
+      VStack(alignment: .leading, spacing: value.gap / 3) {
         Text("Próxima vez").font(.headline)
-        Text(name).font(.caption).foregroundStyle(muted)
+        Text(value.name).font(.caption).foregroundStyle(value.muted)
       }.frame(maxWidth: .infinity, alignment: .leading)
       Divider()
       option("Más peso", value: "increase_weight")
       option("Más repeticiones", value: "increase_reps")
-      if decision == "custom" { option(note.isEmpty ? "Recordatorio anterior" : note, value: "custom") }
-      if let applyLabel {
+      if value.decision == "custom" { option(value.note.isEmpty ? "Recordatorio anterior" : value.note, value: "custom") }
+      if let applyLabel = value.applyLabel {
         Divider()
-        Toggle(applyLabel, isOn: Binding(get: { apply }, set: applyChange)).toggleStyle(.switch)
-        if extra { Text("Al finalizar, se agrega al final de la rutina con las series de hoy.").font(.caption).foregroundStyle(muted) }
+        Toggle(applyLabel, isOn: Binding(get: { model.value.apply }, set: { apply in
+          if model.changeApply(apply) { applyChange(apply) }
+        })).toggleStyle(.switch)
+        if value.extra { Text("Al finalizar, se agrega al final de la rutina con las series de hoy.").font(.caption).foregroundStyle(value.muted) }
       }
-    }.padding(inset).frame(width: 300).tint(accent)
+    }.padding(value.inset).frame(width: 300).tint(value.accent)
   }
   private func option(_ label: String, value: String) -> some SwiftUI.View {
-    Toggle(isOn: Binding(get: { decision == value }, set: { _ in choose(value) })) {
-      Label(label, systemImage: decision == value ? "checkmark" : "plus")
+    Toggle(isOn: Binding(get: { model.value.decision == value }, set: { _ in choose(value) })) {
+      Label(label, systemImage: model.value.decision == value ? "checkmark" : "plus")
     }
-      .toggleStyle(.button).buttonStyle(.plain).foregroundStyle(accent)
-      .frame(maxWidth: .infinity, minHeight: minTouch, alignment: .leading)
+      .toggleStyle(.button).buttonStyle(.plain).foregroundStyle(model.value.accent)
+      .frame(maxWidth: .infinity, minHeight: model.value.minTouch, alignment: .leading)
   }
 }

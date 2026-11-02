@@ -1,5 +1,5 @@
 import { memo, type ReactNode, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Alert, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Keyboard, Pressable, Platform, StyleSheet, TextInput, View } from 'react-native';
 import { AppIcon, AppText, Button, radius, sizes, spacing, useOwnlevelTheme, useReduceMotion, brandTokens } from '@/design-system';
 import Animated, { FadeIn, FadeInUp, LinearTransition, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SessionNextOptions } from './session-next-options';
@@ -149,12 +149,13 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
           const appended = controller.getExercise(id)?.draft.sets.at(-1);
           if (appended) setAddedSet(appended.localId);
         }} />
-        <View style={styles.nextAnchor}>
+        {/* UIKit's passthrough region must remain this trigger's native container. */}
+        <View collapsable={false} style={styles.nextAnchor}>
           <SessionNextTrigger open={nextOpen} disabled={!editable}
             label={draft.decision === 'increase_weight' ? 'Más peso' : draft.decision === 'increase_reps' ? 'Más reps' : draft.decision === 'custom' ? 'Recordatorio' : 'Próxima vez'}
-            onPress={() => { if (controller.getSnapshot().interaction) return; Keyboard.dismiss(); haptics.selection(); setNextRequest(value => value + 1); setNextOpen(true); }}
+            onPress={() => { if (controller.getSnapshot().interaction) return; Keyboard.dismiss(); haptics.selection(); setNextRequest(value => value + 1); if (Platform.OS !== 'ios') setNextOpen(value => !value); }}
             testID={`exercise-next-${id}`} />
-          <SessionNextOptions open={nextOpen} openRequest={nextRequest} onOpen={() => setNextOpen(true)} editable={editable} name={exercise.nameSnapshot} decision={draft.decision} decisionNote={draft.decisionNote}
+          <SessionNextOptions open={nextOpen} toggleRequest={nextRequest} onOpen={() => setNextOpen(true)} editable={editable} name={exercise.nameSnapshot} decision={draft.decision} decisionNote={draft.decisionNote}
             applyToRoutine={draft.applyToRoutine} routineLinked={!!exercise.routineExerciseId} addToRoutineName={addToRoutineName} onClose={() => setNextOpen(false)}
             onDecision={(decision: NextSessionDecision) => {
               if (!controller.canEdit(id) || controller.getSnapshot().interaction) return;

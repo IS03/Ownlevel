@@ -10,12 +10,12 @@ jest.mock('expo', () => {
   return { ...jest.requireActual<object>('expo'), requireNativeView: () => View };
 });
 function setup() {
-  const props: SessionNextOptionsProps = { open: true, openRequest: 1, editable: true, name: 'EJEMPLO', decision: 'increase_reps', decisionNote: '',
+  const props: SessionNextOptionsProps = { open: true, toggleRequest: 1, editable: true, name: 'EJEMPLO', decision: 'increase_reps', decisionNote: '',
     applyToRoutine: false, routineLinked: true, onOpen: jest.fn(), onClose: jest.fn(), onDecision: jest.fn(), onApply: jest.fn() };
   const screen = (value: SessionNextOptionsProps) => <OwnlevelThemeProvider initialMode="light"><SessionNextOptions {...value} /></OwnlevelThemeProvider>;
   return { ...render(screen(props)), props, screen };
 }
-const native = (view: ReturnType<typeof setup>) => view.UNSAFE_getByProps({ pointerEvents: 'none', openRequest: view.props.openRequest });
+const native = (view: ReturnType<typeof setup>) => view.UNSAFE_getByProps({ pointerEvents: 'none', toggleRequest: view.props.toggleRequest });
 describe('next-session native boundary', () => {
   it('sends a fresh request after an outside dismissal without echoing React open state', () => {
     const view = setup();
@@ -23,18 +23,18 @@ describe('next-session native boundary', () => {
     fireEvent(native(view), 'presentationChange', { nativeEvent: { presented: false } });
     expect(view.props.onClose).toHaveBeenCalledTimes(1);
     view.rerender(view.screen({ ...view.props, open: false }));
-    expect(native(view).props.openRequest).toBe(1);
-    view.props.openRequest = 2;
+    expect(native(view).props.toggleRequest).toBe(1);
+    view.props.toggleRequest = 2;
     view.rerender(view.screen({ ...view.props, open: true }));
-    expect(native(view).props.openRequest).toBe(2);
+    expect(native(view).props.toggleRequest).toBe(2);
     fireEvent(native(view), 'presentationChange', { nativeEvent: { presented: true } });
     expect(view.props.onOpen).toHaveBeenCalledTimes(1);
     expect(view.props.onDecision).not.toHaveBeenCalled();
     expect(view.queryByText('Cerrar')).toBeNull();
   });
   it('does not replay an old request when a collapsed card remounts closed', () => {
-    const view = render(<OwnlevelThemeProvider initialMode="light"><SessionNextOptions open={false} openRequest={8} editable name="EJEMPLO" decision="maintain" decisionNote="" applyToRoutine={false} routineLinked onClose={() => {}} onDecision={() => {}} onApply={() => {}} /></OwnlevelThemeProvider>);
-    expect(view.UNSAFE_getByProps({ pointerEvents: 'none' }).props.openRequest).toBe(0);
+    const view = render(<OwnlevelThemeProvider initialMode="light"><SessionNextOptions open={false} toggleRequest={8} editable name="EJEMPLO" decision="maintain" decisionNote="" applyToRoutine={false} routineLinked onClose={() => {}} onDecision={() => {}} onApply={() => {}} /></OwnlevelThemeProvider>);
+    expect(view.UNSAFE_getByProps({ pointerEvents: 'none' }).props.toggleRequest).toBe(0);
   });
   it('keeps decisions and result-of-today independent and waits for native dismissal', () => {
     const view = setup();
