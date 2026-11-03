@@ -2,6 +2,17 @@
 
 Plan del 16/10, después de cerrar Nutrición (PR #252). Lo que falta para que la app esté completa antes del Release (M9.5): cómo entrás, quién sos, cómo configurás tu plan y cómo te vas.
 
+## Estado conciliado · 21/10/2026
+
+Este documento conserva la propuesta y los bocetos del 16/10; "Qué hay hoy" describe ese punto de partida, no el producto actual. La lista vigente es `bocetos/PENDIENTES.md` y el gate de Notion › M9.
+
+- Pasos 1, 2, 3 y 5 implementados: Ajustes/Cuenta, Etapas/plan/Energía/Datos físicos, métricas con ícono/orden y eliminación de cuenta. Pulido posterior hasta #297; eliminar cuenta sigue sin ejecutarse con la cuenta real durante QA.
+- Paso 4: entrada visual implementada, pero solo Google tiene flujo operativo. Apple y mail siguen pendientes; passkeys requiere investigación.
+- Paso 6 (B1–B5): primera vez guiada diferida. Los avisos retirados del editor en #295 se destinan a ella, pero todavía no se muestran mediante un onboarding implementado.
+- Paso 7: porción configurable y carga rápida en Inicio ya implementadas en #258; no requiere otro EXPAND de `quick_value`. El rótulo completo "+ 250 ml" era una propuesta visual, no el indicador "+" actual de #297.
+- Etapas: EXPAND/ADOPT y comparación de Progreso implementados (#254/#257/#260); extra de proteína y agua opcional adoptados en #292/#293. Solo faltan las franjas de etapa en el gráfico de Nutrición.
+- QA de simulador documentado en `qa/README.md` y PRs posteriores. Gestos/teclado, cambios de plan reales y accesibilidad en iPhone siguen pendientes de aprobación.
+
 ## Qué hay hoy
 
 - **Entrada:** una pantalla con "Continuar con Google". No hay bienvenida ni primera vez: una cuenta nueva cae en un Inicio vacío.

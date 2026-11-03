@@ -2,6 +2,13 @@
 
 Bloque A, punto 1 del plan. Comparar las etapas del plan nutricional en Progreso. Bocetos E1–E5 en `bocetos.entrenar.pen` (fila y≈33200) y en la galería.
 
+## Estado conciliado · 21/10/2026
+
+- Implementados en #260: lectura `GET /api/mobile/v1/progress/stages`, entrada Tus etapas, comparación/tabla y franjas opcionales en Peso. La lectura por etapa ya no está pendiente.
+- #300 revisó fechas para distinguir nombres repetidos y duración en días cuando no llega a una semana. La entrada vive en Más para mirar de Progreso.
+- Franjas/chip de etapas en Nutrición implementados localmente el 21/10: apagados por defecto, con límites por fecha también dentro de bloques y nombres/fechas visibles. En comparación describen el período actual. Sin cambios de objetivos, datos ni API.
+- **Pendiente:** QA físico de las franjas y de la comparación. El resto del documento conserva el diseño aprobado; no implica que todo siga por construir.
+
 ## Decisión del usuario (16/10)
 
 - Progreso sigue mostrando tu progreso en el período elegido. Se descartan "Etapa" en la barra de período (E1) y Comparar con lista de etapas (E2).

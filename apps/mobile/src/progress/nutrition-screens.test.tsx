@@ -3,17 +3,21 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { parseNutritionReport, type ReportQuery } from '@/api/nutrition-report';
+import type { NutritionStages } from '@/api/nutrition-stages';
 import { parseProgressNutritionTiming, type ProgressNutritionTiming } from '@/api/progress';
 import { reportFixture } from '@/nutrition/report-fixture.test-helper';
 import { ProgressRangeProvider } from './progress-range-context';
 import type { DateRange, ProgressRangeState } from './progress-range';
 import { NutritionTrendsScreen } from './nutrition-trends-screen';
 import { MealTimesScreen } from './meal-times-screen';
+import { NutritionChart } from './nutrition-chart';
 
 const TODAY = '2026-10-04',
   mockClient = {},
   mockPush = jest.fn();
 let mockParams: Record<string, string> = {};
+let mockStages: NutritionStages | null = null;
+jest.mock('@/stages/stages-provider', () => ({ useNutritionStages: () => ({ state: { list: mockStages } }) }));
 const mockReport = jest.fn<(client: unknown, q: ReportQuery) => Promise<unknown>>();
 const mockTiming = jest.fn<(client: unknown, q: ReportQuery, compare: DateRange | null) => Promise<unknown>>();
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -125,11 +129,66 @@ const flush = () =>
 beforeEach(() => {
   jest.clearAllMocks();
   mockParams = {};
+  mockStages = null;
   mockReport.mockImplementation(async (_c, q) => ok(report(q)));
   mockTiming.mockImplementation(async (_c, q, compare) => ok(timing(q, compare)));
 });
 
 describe('Progress Nutrition', () => {
+  const stages = () => ({
+    current: { id: 'current', name: 'Déficit', startsOn: '2026-10-03', endsOn: null, status: 'current' },
+    past: [{ id: 'past', name: 'Mantenimiento', startsOn: '2026-09-01', endsOn: '2026-10-03', status: 'past' }],
+  }) as unknown as NutritionStages;
+
+  it('toggles dated stage bands without filling missing data or changing targets and day navigation', async () => {
+    mockStages = stages();
+    const view = wrap(<NutritionTrendsScreen />);
+    await flush();
+    expect(view.queryByTestId('nutrition-chart-band-current', { includeHiddenElements: true })).toBeNull();
+    const target = view.getByTestId('nutrition-progress-target', { includeHiddenElements: true }).props.style;
+    fireEvent.press(view.getByRole('checkbox', { name: 'Etapas' }));
+    expect(view.getByTestId('nutrition-chart-band-past', { includeHiddenElements: true })).toHaveStyle({ left: '0%', width: '50%' });
+    expect(view.getByTestId('nutrition-chart-band-current', { includeHiddenElements: true })).toHaveStyle({ left: '50%', width: '50%' });
+    expect(view.getByText('Mantenimiento · 1 oct → 2 oct')).toBeTruthy();
+    expect(view.getByText('Déficit · 3 oct → 4 oct')).toBeTruthy();
+    expect(view.getByTestId('nutrition-chart-current-2026-10-02-gap')).toBeTruthy();
+    expect(view.getByTestId('nutrition-progress-target', { includeHiddenElements: true }).props.style).toEqual(target);
+    fireEvent.press(view.getByRole('button', { name: /1 oct, 100 kcal/ }));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/nutrition', params: { date: '2026-10-01' } });
+    fireEvent.press(view.getByRole('checkbox', { name: 'Etapas' }));
+    expect(view.queryByTestId('nutrition-chart-stages')).toBeNull();
+    expect(view.queryByTestId('nutrition-chart-band-past', { includeHiddenElements: true })).toBeNull();
+  });
+
+  it('places transitions inside aggregated blocks and keeps bands on current dates when the reference is longer', () => {
+    mockStages = stages();
+    const r = reportFixture({ period: 'custom', from: '2026-09-01', to: '2026-10-04' });
+    r.evolution = [{ start: '2026-09-29', end: '2026-10-04', includesToday: true, metrics: r.summary.metrics }];
+    const reference = { ...r, evolution: [
+      { ...r.evolution[0], start: '2026-08-01', end: '2026-08-07' },
+      { ...r.evolution[0], start: '2026-08-08', end: '2026-08-14' },
+    ] };
+    const view = wrap(<NutritionChart report={r} reference={reference} />, comparing);
+    fireEvent.press(view.getByRole('checkbox', { name: 'Etapas' }));
+    expect(view.getByText('Etapas del período actual')).toBeTruthy();
+    const pastStyle = view.getByTestId('nutrition-chart-band-past', { includeHiddenElements: true }).props.style.at(-1);
+    const currentStyle = view.getByTestId('nutrition-chart-band-current', { includeHiddenElements: true }).props.style.at(-1);
+    // Four of six days before the exclusive end; the current report occupies one of two slots.
+    expect(parseFloat(pastStyle.width)).toBeCloseTo(100 / 3);
+    expect(parseFloat(currentStyle.left)).toBeCloseTo(100 / 3);
+    expect(parseFloat(currentStyle.width)).toBeCloseTo(100 / 6);
+    expect(view.getByText('Mantenimiento · 29 sep → 2 oct')).toBeTruthy();
+    expect(view.getByText('Déficit · 3 oct → 4 oct')).toBeTruthy();
+  });
+
+  it('offers no stage toggle when stages are unavailable or outside the displayed dates', () => {
+    const view = wrap(<NutritionChart report={report()} />);
+    expect(view.queryByRole('checkbox', { name: 'Etapas' })).toBeNull();
+    mockStages = { ...stages(), current: null, past: [{ ...stages().past[0], endsOn: '2026-10-01' }] };
+    view.rerender(tree(<NutritionChart report={report()} />));
+    expect(view.queryByRole('checkbox', { name: 'Etapas' })).toBeNull();
+  });
+
   it('shows the current report, real gaps, the preserved detail and navigation, without comparison', async () => {
     expect(parseNutritionReport(report())).toBeDefined();
     expect(parseProgressNutritionTiming(timing())).toBeDefined();

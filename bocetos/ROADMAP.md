@@ -1,15 +1,28 @@
-# OWNLEVEL · Plan de roadmap (propuesta 16/10)
+# OWNLEVEL · Plan de roadmap (propuesta 16/10 · conciliación 21/10/2026)
 
-Referencia de trabajo. Junta lo que falta de M9 (resumen de Notion › M9 › "Plan siguiente (16/10)") y las propuestas nuevas para completar el roadmap. Lo que se decida acá se pasa a Notion (base de Ideas y página de M9).
+Referencia de trabajo. Sincronizado con Notion › M9 › "Roadmap actualizado (21/10)" y la base de Ideas. Las propuestas con decisiones abiertas no pasan a ser requisitos de release por estar enumeradas acá. Detalle de pantallas: `bocetos/PENDIENTES.md`.
 
-Estado de partida: M0–M8 cerrados. M9.0–M9.3 implementados y mergeados (PRs #176–#263). Falta QA físico, M9.4 Web y M9.5 Release.
+Estado: M0–M8 cerrados. Implementación y polish Mobile mergeados hasta **#301**, incluida la revisión de Progreso/Cuerpo del 21/10. M9 sigue en curso: QA físico de lo último, distribución pública y Web no están cerrados. No se modifica código ni se ejecuta una Release en esta conciliación.
 
 ---
 
 ## 0. Lo que falta de M9 (ya acordado)
 
-### Lo de Nacho (destraba el resto)
-- [ ] QA en iPhone de lo del 15–16/10:
+### 0.1 Uso personal: OWNLEVEL Diario sin Metro
+
+Este paso es distinto de publicar en TestFlight/App Store y no espera módulos, suplementos ni el rediseño Web.
+
+- [x] Variante iOS separada (#300): `EXPO_PUBLIC_IOS_VARIANT=daily`, nombre OWNLEVEL Diario, bundle ID `fit.ownlevel.app.daily`, callback y Keychain propios. Dev y Capacitor conservan sus identidades.
+- [x] Build Release arm64 sin firma y bundle embebido verificados; callback Diario agregado según confirmación del usuario.
+- [x] Recuperar cuenta Apple/Personal Team y renovar Development Debug en iPhone; Dev y Simulator funcionan con Metro. Este perfil **no** firma automáticamente el bundle ID Diario.
+- [ ] Recompilar **Diario con el código actualizado**, firmar e instalar sin reemplazar Dev.
+- [ ] QA sin Mac/Metro: login Google, callback, restore/refresh, lecturas reales, red caída y recuperación; comprobar que Dev sigue funcionando.
+- [ ] Confirmar expiración del perfil Diario y renovar sobre la misma app, sin desinstalar. La cuenta gratuita requiere renovación periódica también para Development.
+
+Guía operativa: `docs/mobile/ios-daily-release.md`. La prueba personal no cierra los gates de distribución pública de abajo.
+
+### QA físico y decisiones para distribución pública
+- [ ] Repetir en iPhone los cambios recientes (#284–#301):
   - Progreso, Entrada y splash.
   - Ajustes, Cuenta, Energía y Datos físicos.
   - Etapas, Tus etapas y métricas.
@@ -22,27 +35,36 @@ Estado de partida: M0–M8 cerrados. M9.0–M9.3 implementados y mergeados (PRs 
   - entrar con mail por código de 6 dígitos (recomendado) o por enlace mágico;
   - bundle ID y nombre de producción.
 
-### M9.5 Release
+### M9.5 · Distribución pública (pendiente)
 - [ ] Entrar con Apple (librería nativa + rebuild) y con mail.
 - [ ] Identidad de producción:
-  - variantes por `EXPO_PUBLIC_APP_ENV`;
+  - entorno público (`EXPO_PUBLIC_APP_ENV`) y variante final; Diario usa `EXPO_PUBLIC_IOS_VARIANT` y no define por sí solo la identidad de App Store;
   - nombre, bundle ID y scheme;
   - callback de Auth;
-  - ícono final y versionado.
+  - versionado y gates de assets de tienda; los íconos de marca ya están instalados, el archivo de Icon Composer sigue diferido en el plan M9.
 - [ ] Build de producción con EAS, TestFlight y App Privacy en App Store Connect.
 - [ ] QA de release en iOS y regresión base en Android.
 
 ### Cierre técnico (sin depender de Nacho)
-- [ ] Baseline de la raíz: 2 tests rotos (`daily-metrics/write-reliability`, `nutrition/pr73`) y 2 errores de lint heredados.
+- [ ] Baseline de raíz: el 21/10 se reprodujeron los fallos de `daily-metrics/write-reliability` y `nutrition/pr73` (2 tests fallan / 6 pasan en esas dos suites). Son aserciones heredadas sobre migración/writer; no se corrigen en esta revisión documental. Lint global pendiente de revalidar, sin afirmar un conteo actual.
 - [ ] CONTRACT: retirar la ruta vieja `/(tabs)/nutrition/reports`.
-- [ ] Registrar en `IDENTIDAD.md` el fondo con resplandor y franjas, y la lista real de pestañas.
+- [ ] CONTRACT diferido de Cuerpo: `ProgressHub` y ruta anterior, después de migrar/conservar la lectura de día desde Historial y los demás enlaces.
+- [x] Pestañas reales, excepción Tu día y estilo editorial registrados en `IDENTIDAD.md`.
+- [ ] Completar la decisión de atmósfera global/franjas de §9c; el resplandor editorial ya está mencionado, no toda la decisión global.
 - [ ] Franjas de etapa en el gráfico de Nutrición de Progreso.
+
+### Producto pendiente registrado (no bloquea instalar Diario)
+- [ ] Primera vez guiada B1–B5. #295 retiró avisos del editor para llevarlos allí; no implementó el onboarding.
+- [ ] EXPAND de Qué influye para fuerza, peso y energía al terminar; luego links hacia la pregunta real.
+- [ ] Decidir si el aviso automático usará Lo que se movió junto (hoy no lo hace).
+- [ ] Decidir carga rápida de métricas en Tu día, retorno de Para vos y edición/repetición de comidas externas conservando origen; aviso de duplicado rápido es opcional.
+- [x] Íconos y porción configurable de métricas, carga rápida en Inicio (#258/#297), análisis por ejercicio y tendencias de métricas/nutrición: ya implementados.
 
 ---
 
 ## 1. Producto: propuestas nuevas
 
-### 1.1 Elegir qué usás (módulos personalizables) · antes del Release · P1
+### 1.1 Elegir qué usás (módulos personalizables) · momento por decidir · P1
 **Qué es:** el usuario elige qué partes usa:
 - Entrenamiento
 - Nutrición
@@ -68,7 +90,7 @@ Estado de partida: M0–M8 cerrados. M9.0–M9.3 implementados y mergeados (PRs 
 - Progreso cruza dominios: si un módulo está apagado, sus medidas no se ofrecen. Los datos viejos siguen existiendo.
 - No confundir "módulo apagado" con "sin datos" (empty ≠ unavailable ≠ oculto).
 
-### 1.2 Suplementos · antes del Release · P1
+### 1.2 Suplementos · momento por decidir · P1
 **Qué es:** registrar los suplementos que tomás cada día. Es un módulo: si no lo usás, no existe.
 
 **Tu lista:**
@@ -164,12 +186,11 @@ Estado de partida: M0–M8 cerrados. M9.0–M9.3 implementados y mergeados (PRs 
    - S1 y S2;
    - cierre técnico;
    - bocetos de módulos (1.1) y suplementos (1.2).
-2. **Antes del Release:**
-   - módulos y suplementos implementados (EXPAND → Mobile);
-   - primera vez guiada con la pregunta de módulos;
+2. **Antes de la distribución pública:**
+   - solo si se aprueba incluirlos antes: módulos y suplementos (EXPAND → Mobile), y primera vez guiada con la pregunta de módulos;
    - S3, S4 y S5;
    - W1 página pública.
-3. **Release (M9.5):** Apple, mail, identidad de producción, EAS, TestFlight y App Store.
+3. **Distribución pública (M9.5):** Apple, mail, identidad de producción, EAS, TestFlight y App Store. La Release local Diario del §0.1 es una prueba personal anterior e independiente de estas decisiones.
 4. **Después del Release:**
    - M9.4 Web (W2–W6, S6);
    - exportar datos;

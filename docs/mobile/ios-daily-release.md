@@ -134,3 +134,11 @@ Referencias: [Expo: variantes simultáneas](https://docs.expo.dev/tutorial/eas/m
 - Redirect `ownlevel-daily://auth/callback` agregado en Supabase, confirmado por el usuario.
 - Se intentó resolver la cuenta desde la interfaz: se avanzó la preparación inicial de Xcode sin descargar el runtime opcional de simulador, pero luego la automatización de su ventana agotó el tiempo de respuesta. `xcodebuild -checkFirstLaunchStatus` terminó correctamente. El iPhone siguió desconectado; no se puede sustituir desde la Mac el desbloqueo/conexión física del teléfono ni una verificación personal de Apple.
 - **Pendiente:** recuperar cuenta de Xcode, iPhone conectado/desbloqueado, firma gratuita, instalación y QA físico de login/restore/lecturas. No se declara validado el uso diario hasta completar esos pasos. No se instaló ni sobrescribió ninguna app, no se cambió la base de datos y no se hizo commit/push/PR.
+
+## Actualización · 21/10/2026
+
+El resultado anterior registra el intento inicial, no un bloqueo vigente de la cuenta: el usuario volvió a iniciar sesión en Apple Accounts y se confirmó Personal Team. El 20/10 se compiló, verificó y actualizó **OWNLEVEL Dev Debug** en el iPhone, con un perfil válido que incluía el dispositivo; iPhone y Simulator quedaron conectados al mismo Metro. Esa instalación conservó la identidad Dev y no instaló Diario.
+
+La variante y esta guía se versionaron en #300; el polish de Progreso/Cuerpo de #301 también está mergeado. Antes de la próxima build hay que usar el contenido actualizado: el bundle sin firma verificado durante el intento inicial no contiene automáticamente cambios posteriores.
+
+**Siguiente, después de la revisión documental pedida por el usuario:** compilar/firmar/instalar Diario con el código actualizado y completar el QA sin Mac/Metro. Su bundle ID necesita su propio perfil; el perfil Dev no lo cubre. El callback Diario fue agregado según confirmación del usuario. Login, restore y lecturas reales en Diario siguen sin aprobarse. Esta conciliación no ejecutó builds ni modificó datos o configuración de Supabase.

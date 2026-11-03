@@ -2,25 +2,37 @@
 
 Lista viva de lo que sacamos de una pantalla para llevarlo a otra, y de los cambios de servidor que fueron apareciendo. Se actualiza en cada sesión de bocetos. Bocetos: `bocetos/bocetos.entrenar.pen`.
 
+## Estado conciliado · 21/10/2026
+
+Contrastado con el código y los PRs mergeados hasta **#301**, y con Notion › M9. M0–M8 siguen cerrados; M9 tiene la implementación visual y las revisiones recientes, pero no se cierra sin QA físico. Las secciones con fecha conservan decisiones anteriores; la segunda vuelta del 21/10 reemplaza los detalles de la primera donde se indique.
+
+Lo que sigue abierto:
+- **Uso personal sin Metro:** firmar, instalar y validar OWNLEVEL Diario con el código actualizado. La variante está implementada (#300); la build sin firma pasó, la cuenta Apple se recuperó y Dev se firmó en iPhone. Diario todavía no se instaló ni se probó con la Mac apagada. Guía: `docs/mobile/ios-daily-release.md`.
+- **QA físico:** cambios recientes de Progreso/Cuerpo, hojas y teclado, Ajustes/etapas, final de sesión, haptics, accesibilidad y gestos de Nutrición. Compilar, tests o merge no lo aprueban.
+- **Polish pendiente:** decidir la carga rápida de métricas en Tu día y si vuelven las sugerencias Para vos. Las franjas de etapas en Nutrición están implementadas localmente (21/10), con QA físico pendiente.
+- **Producto diferido:** primera vez guiada; Qué influye con fuerza, peso y energía; aviso automático basado en Lo que se movió junto; decisiones sobre comidas externas y duplicados rápidos.
+- **Cierre técnico:** dos tests de raíz siguen fallando (ver ROADMAP), lint por revalidar y CONTRACT de rutas anteriores conservando los links históricos.
+- **Distribución pública y Web:** Apple/mail, identidad pública, seguridad, privacidad de tienda y TestFlight/App Store siguen su gate propio. Módulos y suplementos son propuestas con alcance por decidir, no requisitos nuevos para instalar Diario. Detalle: `bocetos/ROADMAP.md`.
+
 ## Va a Ajustes (se diseña en la etapa Cuenta y Ajustes: `bocetos/ajustes/PLAN.md`)
 
 - ~~**Plan nutricional, Energía y Datos físicos en Ajustes:**~~ HECHO (16/10, PRs #255 y #257): Ajustes editorial, Energía y Datos físicos sin jerga (#255); plan por día, agua y extras dentro de Etapas (#257). Nutrición › `•••` abre las mismas pantallas.
 - ~~**Métricas:** crear, editar, archivar, eliminar y reordenar, **con ícono** (bocetos M4 y M5).~~ HECHO (16/10, PR #258, migración `20261016180618_metric_presentation_expand`): ícono, arrastrar para ordenar y carga rápida en Inicio. Pendiente proponer la carga rápida en Nutrición › Tu día.
-  - Hoy esto se abre desde Progreso › Métricas.
+  - La administración vive en Ajustes › Métricas. Progreso › Métricas muestra tendencias y ya no ofrece cargar/corregir (#301).
   - El orden es el que se ve en Inicio y en Nutrición.
-- **Carga rápida por métrica** (futuro): que cada uno configure su valor rápido (por ejemplo, "vaso de 250 ml") y el botón de la métrica pase a decir "+ 250 ml".
+- ~~**Porción configurable y carga rápida por métrica:**~~ HECHO (#258): se configura en el editor; un toque en Inicio suma esa porción y mantener apretado abre la carga completa. #297 agregó el pequeño "+" en el círculo. El rótulo completo "+ 250 ml" era una propuesta visual: no se presenta como implementado ni requiere otro EXPAND para configurar la porción.
 - Vibración: ya está en Ajustes (M9.1C).
 
 ## Va a Progreso (cuando lo diseñemos)
 
 - ~~**Reporte nutricional:**~~ HECHO (15/10, Progreso paso 5): Nutrición tiene su pantalla propia en Progreso, con el período y la comparación compartidos. Inicio, el resumen y el calendario abren esa pantalla; se retiró "Reporte" del `•••` de Nutrición.
   - CONTRACT pendiente: la ruta `/(tabs)/nutrition/reports` sigue viva para links anteriores, sin entradas desde la app. Retirarla en una etapa posterior.
-- **Análisis grande por ejercicio:** el historial de un ejercicio queda con un gráfico chico; el análisis completo va en Progreso.
-- **Tendencias de métricas** y de nutrición (promedios largos y comparaciones).
+- ~~**Análisis grande por ejercicio:**~~ HECHO en Progreso › Entrenamiento y el detalle por ejercicio (#233–#240; revisado en #300–#301). El historial conserva su función de registros.
+- ~~**Tendencias de métricas y nutrición:**~~ HECHO (#240 y Progreso paso 5; revisado en #300–#301), con períodos, objetivos y comparación.
 - **Bocetos de Progreso hechos (15/10, `bocetos/progreso/`, P1–P6):** el reporte nutricional pasa a P4 y el análisis por ejercicio a P3. "Reporte" ya se retiró del `•••` al implementar Progreso paso 5 (R5/R6).
 
 ### Se va de Progreso (bocetos P1–P6)
-- **"Explorar" y "Revisar datos":** duplicaban las filas de "Tus áreas".
+- **Accesos duplicados del primer boceto ("Explorar" / "Revisar datos"):** se retiraron. El Explorar actual sí está implementado como capacidad propia junto con Mis vistas (#241–#244); no está descartado.
 - **Historial:** vive en Entrenar.
   - Decisión (15/10): no tiene entrada propia. Entrenar y Nutrición tienen su historial y calendario; `/history/day/[date]` se usa como vista de un día desde los gráficos de Progreso.
 - **"Métricas diarias" (cargar y editar el día):** la carga de hoy ya está en Nutrición › "Tu día". La edición de días pasados va con el editor de Nutrición, y "Administrar métricas" va a Ajustes.
@@ -28,7 +40,7 @@ Lista viva de lo que sacamos de una pantalla para llevarlo a otra, y de los camb
 
 ## Queda en su sección, pero dentro de un menú
 
-- **Nutrición › `•••`:** Comidas guardadas, Alimentos y Plan nutricional (temporal, hasta que exista en Ajustes).
+- **Nutrición › `•••`:** Comidas guardadas, Alimentos y accesos al plan, Energía y Datos físicos. Estos últimos abren las mismas pantallas de Ajustes; ya no esperan otra implementación allí (#257, #284).
 
 ## Nutrición · decisiones del 16/10 (PR #252)
 
@@ -46,19 +58,21 @@ Lista viva de lo que sacamos de una pantalla para llevarlo a otra, y de los camb
 
 - **Entrar con Apple:** botón ya visible en la entrada (EN-C), sin funcionar. Falta: proveedor Apple en Supabase, capability en Apple Developer (lo hace el usuario), `expo-apple-authentication` y rebuild. App Store lo exige si hay Google.
 - **Entrar con tu mail:** botón visible, sin funcionar. Decidir: enlace mágico o código por mail (Supabase OTP).
-- **Passkey:** botón visible, sin funcionar. Requiere decidir proveedor (Supabase todavía no tiene passkeys nativas estables) y dominio asociado.
+- **Passkey:** botón visible, sin funcionar. Falta elegir una solución/proveedor compatible, verificar el soporte actual de Supabase y definir el dominio asociado. Esta revisión no certifica disponibilidad ni estabilidad externa.
 - ~~**Eliminar cuenta:**~~ HECHO (16/10, migración `20261016181514_account_deletion_expand`): AJ7 en Cuenta, borra todo (Mobile y Web) en una transacción. El botón de la Web está en Ajustes › Cuenta y seguridad (PR de pulido de marca).
 
-## Onboarding de una sola vez (19/10, PR #295)
+## Avisos para el futuro onboarding (19/10, PR #295) · PENDIENTE
 
-Avisos que salieron de Plan nutricional y se muestran una sola vez:
+El retiro de avisos del editor no implementó una primera vez guiada ni prueba que se muestren una sola vez. Se destinaron al futuro onboarding:
 - "Rige desde hoy. Los días anteriores conservan el plan que tenían."
 - "Elegí qué tipo de plan es para guardarlo."
 - "Calorías sugeridas. Podés ajustarlas antes de guardar."
 
+La validación "Elegí qué tipo de plan es para guardarlo" sigue existiendo al intentar guardar sin tipo; eso es distinto de una introducción. B1–B5 y el estado de primera vez siguen pendientes en `ajustes/PLAN.md` y Notion › Ideas.
+
 ## Va a Progreso (etapas, 16/10)
 
-- ~~**Comparar etapas (boceto ET2):**~~ HECHO (16/10, PR #260): sección "Tus etapas" en Progreso que se abre de a poco, renglón propio sin mezclarse con el período, chip "Etapas" en Peso y planes anteriores como etapas de solo lectura. Falta: franjas en el gráfico de Nutrición. Bocetos y decisión en `progreso-etapas/PLAN.md`.
+- ~~**Comparar etapas (boceto ET2):**~~ HECHO (16/10, PR #260): sección "Tus etapas" en Progreso que se abre de a poco, renglón propio sin mezclarse con el período, chip "Etapas" en Peso y planes anteriores como etapas de solo lectura. Franjas en Nutrición implementadas localmente el 21/10: chip apagado por defecto, límites por fecha incluso dentro de bloques y etiquetas del período actual; falta QA físico. Bocetos y decisión en `progreso-etapas/PLAN.md`.
 
 ## Progreso · lo que se movió junto (17/10)
 
@@ -68,9 +82,9 @@ Avisos que salieron de Plan nutricional y se muestran una sola vez:
   - **Comparación:** siempre frente al período anterior equivalente.
   - **PRs:** servidor #274 (sin migración), sección #275 y detalle #276.
   - **Plan:** `conexiones/PLAN.md`.
-- **Pendiente: Qué influye con fuerza y peso.**
+- **Pendiente: Qué influye con fuerza, peso y energía.**
   - Hoy acepta como resultado solo nutrición, entrenamiento y métricas.
-  - Hace falta un EXPAND para sumar el 1RM estimado por ejercicio y la tendencia de peso, por semana.
+  - Hace falta un EXPAND para sumar el 1RM estimado por ejercicio, la tendencia de peso por semana y la energía al terminar como resultados.
   - Cuando exista, el link "Mirar en Qué influye" del detalle puede preguntar por fuerza o peso, en vez de "series al día siguiente". También puede aparecer en "Calorías y peso", que hoy no tiene link.
 - **Pendiente:** que el aviso automático use estas historias.
 
@@ -82,6 +96,7 @@ Avisos que salieron de Plan nutricional y se muestran una sola vez:
   - **Recién terminás:** después de la animación de guardado se llena la semana, que no queda en la vista; después entra la página con el récord o la mejora (#279).
   - **QA en simulador:** arreglos para letra grande, y el récord ya no queda escondido en la lista plegada (#280).
   - **Plan:** `resumen-sesion/PLAN.md`.
+  - **Pulido posterior (#281–#283):** semana secuencial, récord y ejercicios visibles, controles de sesión y transición de guardado por fundido. `restEnd` y `personalRecord` están conectados; falta sentirlos en hardware, no implementarlos de nuevo.
 - **Pendiente: QA en el teléfono.**
   - Terminar un entrenamiento real y mirar la secuencia guardado → semana → página, con récord, sin récord y con Reducir movimiento.
   - Sentir el háptico del día que se llena.
@@ -90,7 +105,8 @@ Avisos que salieron de Plan nutricional y se muestran una sola vez:
 
 ## Cambios de servidor pendientes (EXPAND)
 
-- ~~**Plan nutricional en etapas** (16/10):~~ HECHO (16/10): servidor y Mobile API en #254 (migración `20261016121039_nutrition_plan_stages_expand`), pantallas en #257. Falta la lectura de Progreso por etapa (ver "Comparar etapas").
+- ~~**Plan nutricional en etapas** (16/10):~~ HECHO: servidor/API #254 (migración `20261016121039_nutrition_plan_stages_expand`), pantallas #257 y lectura de Progreso por etapa #260. Franjas de Nutrición implementadas localmente el 21/10, pendientes de QA físico; no requieren otro EXPAND de esa lectura.
+- ~~**Extra por entrenar en proteína y agua opcional en el plan:**~~ HECHO (#292 EXPAND, migración `20261020013939`; #293 ADOPT). La v2 suma proteína si hay objetivo; el agua puede tomar el objetivo de la métrica Agua. Los planes anteriores, snapshots y v1 conservan su semántica. Detalle: `docs/mobile/nutrition-training-extra-api.md`.
 
 - ~~**Progreso etapas 3 y 4 · Qué influye y aviso automático:**~~ HECHO (15/10, PRs #245–#249, migración `20261015222727_progress_insight_dismissals_expand`). Plan en `bocetos/que-influye/PLAN.md`.
 
@@ -103,7 +119,7 @@ Avisos que salieron de Plan nutricional y se muestran una sola vez:
 - ~~**Inicio · Hábitos:** lectura semanal propia.~~ HECHO (PR #222).
 - ~~**Historial:** intensidad relativa del calendario.~~ HECHO (rediseño HI1–HI5).
 - ~~**Nutrición · "Qué cambia hoy":**~~ HECHO (15/10, M9 paso 5): `breakdown` opcional en la lectura del día, resuelto en TypeScript sin migración. Incluye base, aportes de entrenamiento/trabajo configurados y modo del gasto; solo se publica para hoy si las fuentes pertenecen al usuario, no cambiaron después del snapshot y ambos totales cierran. Los ajustes manuales, históricos sin snapshot de la base, fuentes no disponibles, origen de entrenamiento ambiguo en reglas anteriores y reglas no aditivas devuelven `null`. Queda afuera guardar snapshots de la base para explicar días pasados y descomponer interacciones entre factores; requiere otro EXPAND.
-- **Métricas · ícono:** campo nuevo en la definición de la métrica (de un set cuidado de íconos: SF Symbols en iOS, Lucide en Android). Hoy solo las 4 del sistema tienen ícono; las que crea cada uno usan uno genérico.
+- ~~**Métricas · ícono propio:**~~ HECHO (#258; editor pulido en #297). La definición guarda el ícono elegido; no quedan limitadas a los íconos genéricos/de sistema.
 - ~~**Nutrición · momento y hora al cargar:**~~ HECHO (15/10, migración `20261015031555_mobile_meal_timing_expand`): la carga manual y la rápida aceptan `mealLabel` y `consumedAt` opcionales; sin ellos todo queda igual que antes.
 - ~~**Nutrición · "Guardar en mis comidas" desde la carga manual:**~~ HECHO (misma migración): registrar y guardar van en una sola operación con una sola clave.
 - **Nutrición · aviso de duplicado en la carga rápida (opcional):** hoy solo la carga manual detecta "posible duplicado". La carga rápida (guardadas, sugerencias, alimentos) no; por ahora lo cubre el aviso con "Deshacer".
@@ -116,8 +132,8 @@ Avisos que salieron de Plan nutricional y se muestran una sola vez:
 
 ## Decisiones de marca para registrar en IDENTIDAD.md (HECHO 16/10: registradas en Sistema)
 
-- **Vidrio en un panel de contenido:** "Tu día" de Nutrición va en un panel de Liquid Glass (boceto E5). La regla actual dice vidrio solo en controles, nunca en tarjetas. Hay que registrarlo como excepción justificada (es un panel de acciones: cargar métricas y abrir el detalle), con fallback sólido para "Reducir transparencia", Android e iOS anterior a 26.
-- **Nutrición sin tarjetas blancas:** contenido directo sobre el fondo con el resplandor champagne (§9c del plan M9), salvo el panel de vidrio de "Tu día".
+- **Registrado:** excepción Tu día, estilo editorial y las cuatro pestañas reales. Referencia vigente: `docs/brand/ownlevel-marca/IDENTIDAD.md`, sección Sistema; no queda una tarea de volver a registrar lo mismo.
+- **Pendiente distinto:** completar la decisión canónica sobre la atmósfera global y sus franjas de §9c de `docs/mobile/m9-brand-polish-plan.md`. La mención del resplandor editorial no cierra por sí sola toda esa decisión.
 
 ## Web
 
@@ -133,12 +149,13 @@ Avisos que salieron de Plan nutricional y se muestran una sola vez:
 - Paso 6 implementado. Listas, búsqueda, filtros, crear/editar, archivar/restaurar, menú nativo del editor y acciones de accesibilidad verificados en Simulator iOS 27, en claro y oscuro. Los registros creados para QA quedaron archivados.
 - Repetir en iPhone el gesto físico de mantener apretado y deslizar: el puente de Device Hub de esta sesión rechaza arrastres/coordenadas con `noWindowsAvailable`. La acción de deslizar se probó automáticamente (cierra el gesto y pide confirmación antes de archivar); el menú nativo y las acciones accesibles se probaron en Simulator.
 
-## QA del usuario pendiente (16/10)
+## QA del usuario pendiente (conciliado 21/10)
 - **Sesión terminada (17/10):** la secuencia real al guardar un entrenamiento (ver arriba).
-- **Progreso:** revisión y cambios del usuario (etapas 1–4 ya mergeadas).
-- **Cuenta, Ajustes y entrada (PRs #253–#259):** entrada y splash, Ajustes editorial, Cuenta, Energía, Datos físicos, Etapas y plan por día, métricas (ícono, orden, carga rápida) y eliminar cuenta (recorrer sin confirmar con la cuenta real).
+- **Progreso:** implementación y revisión de simulador mergeadas hasta #301. Repetir en iPhone Cuerpo/correcciones, hojas/teclado, gráficos, Lo que se movió junto y Tus etapas.
+- **Cuenta y Ajustes (pulido #284–#297):** el QA documentado de simulador no cierra gestos físicos, teclado, plan/etapas con datos reales, Deshacer ni accesibilidad hablada. Eliminar cuenta se recorre sin confirmar. El QA de Entrada/Inicio/Entrenar/Nutrición del 16/10 queda como evidencia histórica, no aprobación automática de cambios posteriores.
+- **Accesibilidad/plataformas:** texto grande, VoiceOver, Reducir movimiento/transparencia, haptics en iPhone; iOS 26 y regresión Android siguen sin cerrar en este corte.
 
-## Progreso · revisión del inicio (20/10)
+## Progreso · primera revisión (20/10; ver cambios de la segunda vuelta abajo)
 
 - **Orden nuevo:** Mis vistas → Tu {mes} → Lo destacado → Lo que se movió junto → Más para mirar (aviso automático, Tus etapas, Qué influye).
 - **Se movió:** el aviso "Notamos algo en tus datos" sale de Lo destacado a "Más para mirar". Mira los últimos 3 meses, no el período elegido.
@@ -192,7 +209,7 @@ Avisos que salieron de Plan nutricional y se muestran una sola vez:
   - Progreso › Cuerpo tiene los pesajes y mediciones para corregir, y un "+" flotante con Liquid Glass y vibración.
   - El "+" gira a ✕ y las opciones salen hacia arriba sin taparlo.
   - La ruta vieja `/(tabs)/progress/body` redirige ahí; queda solo para un día puntual (desde Historial).
-  - CONTRACT pendiente: retirar `ProgressHub` y la ruta vieja cuando no queden links.
+  - CONTRACT diferido: evaluar retirar `ProgressHub`; la ruta anterior todavía atiende el día puntual desde Historial (`date`) y tiene enlaces desde configuración. Migrar/conservar esos usos antes de retirarla.
 - **Hojas de carga:**
   - Peso: el número se ve arriba del teclado.
   - Medidas: hoja acotada arriba del teclado, que se cierra deslizando sin saltos. La fecha es nativa en iOS.
@@ -206,4 +223,4 @@ Avisos que salieron de Plan nutricional y se muestran una sola vez:
 - **Métricas:**
   - Chips con Liquid Glass.
   - Las archivadas van detrás de una línea, en gris y con el ícono de archivo.
-  - Se sacó "Cargar o corregir": Progreso es solo para ver.
+  - Se sacó "Cargar o corregir" de **Métricas**: esa pantalla es de tendencias. Cuerpo sí integra correcciones con el mismo `BodyController`; no se creó una escritura nueva.

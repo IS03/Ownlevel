@@ -4,6 +4,12 @@ Bocetos aprobados el 15/10: `bocetos/que-influye/` (T1–T6, fila y=23000 de `bo
 
 Base: etapas 1 y 2 (período y comparación compartidos, Explorar, Mis vistas).
 
+## Estado conciliado · 21/10/2026
+
+Los pasos 1–4 están implementados y mergeados (#245–#249). #300 revisó unidades/copy y movió el aviso automático a Más para mirar; usa los últimos tres meses, no el período elegido. El aviso no usa aún las historias de Lo que se movió junto.
+
+Quedan como EXPAND futuros los resultados de fuerza, peso y energía al terminar, y la decisión sobre usar esas historias en el aviso. El contrato actual excluye Cuerpo/Ejercicio como medidas de Qué influye. QA físico de los cambios recientes pendiente; no se reabren las etapas ya implementadas.
+
 ## Decisiones (aprobadas)
 
 - **Una pregunta compara dos grupos de días.** Se separan por una medida (arriba / abajo de la mediana, un corte propio, o sí / no para entrenamiento y trabajo). Se mira otra medida el mismo día, el día siguiente o 2 días después.

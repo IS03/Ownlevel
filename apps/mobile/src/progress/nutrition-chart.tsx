@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { NutritionReport } from '@/api/nutrition-report';
-import { AppText, Heading, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppText, Chip, Heading, spacing, useOwnlevelTheme } from '@/design-system';
+import { useNutritionStages } from '@/stages/stages-provider';
+import { nutritionChartBands } from './nutrition-chart-bands';
 import { formatValue } from './progress-format';
 import { periodHeading } from './progress-range';
 import { useProgressRange } from './progress-range-context';
@@ -36,9 +38,12 @@ export function NutritionChart({ report, reference }: { report: NutritionReport;
     router = useRouter();
   const { compareOn, compareText, state, today } = useProgressRange();
   const [width, setWidth] = useState(300);
+  const [showStages, setShowStages] = useState(false);
+  const stages = useNutritionStages()?.state.list;
   const daily = report.range.days <= 31,
     a = points(report, daily),
     b = reference ? points(reference, daily) : [];
+  const bands = nutritionChartBands(stages, a);
   const target = report.summary.metrics.targetCalories.value,
     max = Math.max(1, target ?? 0, ...a.map((p) => p.value ?? 0), ...b.map((p) => p.value ?? 0));
   const n = Math.max(a.length, b.length),
@@ -53,11 +58,30 @@ export function NutritionChart({ report, reference }: { report: NutritionReport;
           Cada barra es el promedio del bloque, sobre sus días con dato.
         </AppText>
       ) : null}
+      {bands.length ? (
+        <View style={styles.chips}>
+          <Chip kind="toggle" label="Etapas" selected={showStages} onPress={() => setShowStages(v => !v)} />
+        </View>
+      ) : null}
       <View
         testID="nutrition-progress-chart"
         onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
         style={styles.chart}
       >
+        {showStages ? bands.map(band => (
+          <View
+            key={band.id}
+            testID={`nutrition-chart-band-${band.id}`}
+            pointerEvents="none"
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            style={[styles.band, {
+              left: `${100 * band.left / n}%`, width: `${100 * (band.right - band.left) / n}%`,
+              backgroundColor: band.current ? colors.primary : colors.border,
+              opacity: band.current ? 0.14 : 0.45,
+            }]}
+          />
+        )) : null}
         {Array.from({ length: n }, (_, i) => (
           <View key={i} style={styles.slot}>
             <View style={[styles.pair, n > 31 && { gap: 0, paddingHorizontal: 0 }]}>
@@ -115,6 +139,16 @@ export function NutritionChart({ report, reference }: { report: NutritionReport;
           />
         ) : null}
       </View>
+      {showStages && bands.length ? (
+        <View style={styles.section} testID="nutrition-chart-stages">
+          <AppText muted variant="caption">{compareOn ? 'Etapas del período actual' : 'Etapas del período'}</AppText>
+          {bands.map(band => (
+            <AppText key={band.id} numeric variant="caption" style={{ color: band.current ? colors.primary : colors.textMuted }}>
+              {band.label} · {short(band.visibleStart)}{band.visibleEnd !== band.visibleStart ? ` → ${short(band.visibleEnd)}` : ''}
+            </AppText>
+          ))}
+        </View>
+      ) : null}
       {/* One legend line, only with what this chart actually shows. */}
       <View style={styles.legend} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         {target !== null ? (
@@ -137,6 +171,8 @@ export function NutritionChart({ report, reference }: { report: NutritionReport;
 }
 const styles = StyleSheet.create({
   section: { gap: spacing.sm },
+  chips: { flexDirection: 'row' },
+  band: { position: 'absolute', top: 0, height: 150 },
   chart: { minHeight: 182, flexDirection: 'row' },
   slot: { flex: 1, minWidth: 0, alignItems: 'center' },
   pair: { height: 150, flexDirection: 'row', gap: 2, width: '100%', paddingHorizontal: 1 },
