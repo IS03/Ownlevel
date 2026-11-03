@@ -1,7 +1,7 @@
 import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View, type NativeScrollEvent, type ScrollViewProps, type ViewProps } from 'react-native';
 import { Gesture, GestureDetector, type NativeGesture } from 'react-native-gesture-handler';
-import Animated, { makeMutable, measure, runOnJS, scrollTo, useAnimatedProps, useAnimatedRef, useAnimatedScrollHandler, useAnimatedStyle, useFrameCallback,
+import Animated, { makeMutable, measure, runOnJS, scrollTo, useAnimatedProps, useAnimatedReaction, useAnimatedRef, useAnimatedScrollHandler, useAnimatedStyle, useFrameCallback,
   useSharedValue, withSpring, withTiming, type AnimatedRef, type SharedValue } from 'react-native-reanimated';
 import { AppText, radius, sizes, spacing, useOwnlevelTheme } from '@/design-system';
 import { haptics } from '@/platform/haptics';
@@ -37,6 +37,18 @@ function gestureClock(): number {
  * (mount, expand/collapse) would overwrite each other and leave items unmeasured. */
 export function recordItemHeight(heights: SharedValue<Record<string, number>>, id: string, height: number) {
   heights.modify(current => { 'worklet'; return { ...current, [id]: height }; });
+}
+export type SlotState = { lifted: boolean; translation: number; slots: string };
+/** How an item reaches its translation. After a confirmed reorder the native
+ * flow order stays the mount order, so a card's height change (expand/collapse)
+ * also changes the compensating translation. Yoga has already moved the views:
+ * springing that change would slide the card through its old slot. Only a
+ * change of slots (drag, drop, revert, external order) animates. */
+export function slotMotion(previous: SlotState | null, next: SlotState): 'follow' | 'spring' | 'snap' {
+  'worklet';
+  if (next.lifted) return 'follow';
+  if (previous && (previous.lifted || previous.slots !== next.slots)) return 'spring';
+  return 'snap';
 }
 export function dragOrder(ids: readonly string[], heights: Record<string, number>, id: string, top: number): string[] {
   'worklet';
@@ -139,11 +151,20 @@ export function NativeReorderItem({ id, children, gap = spacing.sm }: { id: stri
   return <ReorderItem list={list} id={id} gap={gap}>{children}</ReorderItem>;
 }
 function ReorderItem({ list, id, gap, children }: { list: DragList; id: string; gap: number; children: ReactNode }) {
-  const scale = useSharedValue(1);
-  const style = useAnimatedStyle(() => {
+  const scale = useSharedValue(1), offset = useSharedValue(0);
+  useAnimatedReaction(() => {
     const lifted = list.active.value === id;
     const translation = (lifted ? list.top.value : itemTop(list.order.value, list.heights.value, id)) - itemTop(list.base.value, list.heights.value, id);
-    return { transform: [{ translateY: lifted ? translation : withSpring(translation, spring) }, { scale: scale.value }],
+    return { lifted, translation, slots: `${list.order.value.join('|')}/${list.base.value.join('|')}` };
+  }, (next, previous) => {
+    const motion = slotMotion(previous, next);
+    offset.set(motion === 'spring' ? withSpring(next.translation, spring) : next.translation);
+  });
+  const style = useAnimatedStyle(() => {
+    const lifted = list.active.value === id;
+    // The held card follows the finger directly; the reaction moves the rest.
+    const translateY = lifted ? list.top.value - itemTop(list.base.value, list.heights.value, id) : offset.value;
+    return { transform: [{ translateY }, { scale: scale.value }],
       zIndex: lifted ? 20 : 0, elevation: lifted ? 8 : 0, shadowOpacity: lifted ? 0.16 : 0,
       opacity: scale.value < 1 ? 0.94 : 1 };
   });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import type { SharedValue } from 'react-native-reanimated';
-import { DRAG_DELAY, dragOrder, isHoldActivation, itemTop, recordItemHeight } from './session-native-interactions';
+import { DRAG_DELAY, dragOrder, isHoldActivation, itemTop, recordItemHeight, slotMotion } from './session-native-interactions';
 
 // Reanimated JS-thread semantics: `.value` reads the UI runtime synchronously,
 // while `.set()`/`.modify()` are only scheduled there (flushed later, in order).
@@ -45,5 +45,25 @@ describe('native drag slot geometry', () => {
     expect(dragOrder(initial, heights, 'b', 80)).toEqual(initial);
     expect(dragOrder(initial, heights, 'b', -500)).toEqual(['b', 'a', 'c']);
     expect(dragOrder(initial, heights, 'b', 500)).toEqual(['a', 'c', 'b']);
+  });
+});
+describe('native drag slot motion', () => {
+  // Mounted as [declive, inclinado], reordered to [inclinado, declive]: inclinado
+  // stays compensated by the declive card height above it in native flow.
+  const slots = 'inclinado|declive/declive|inclinado';
+  it('opening a card after a reorder moves the others with the native layout, without sliding through the old slot', () => {
+    const heights = { declive: 96, inclinado: 96 };
+    const before = { lifted: false, translation: itemTop(['inclinado', 'declive'], heights, 'inclinado') - itemTop(['declive', 'inclinado'], heights, 'inclinado'), slots };
+    const opened = { ...heights, declive: 640 };
+    const after = { lifted: false, translation: itemTop(['inclinado', 'declive'], opened, 'inclinado') - itemTop(['declive', 'inclinado'], opened, 'inclinado'), slots };
+    expect([before.translation, after.translation]).toEqual([-96, -640]);
+    expect(slotMotion(before, after)).toBe('snap');
+  });
+  it('animates only a change of slots: drag, drop, revert or a new order', () => {
+    const resting = { lifted: false, translation: 0, slots: 'a|b/a|b' };
+    expect(slotMotion(resting, { lifted: false, translation: 96, slots: 'b|a/a|b' })).toBe('spring');
+    expect(slotMotion({ lifted: true, translation: 40, slots: 'b|a/a|b' }, { lifted: false, translation: 96, slots: 'b|a/a|b' })).toBe('spring');
+    expect(slotMotion(resting, { lifted: true, translation: 12, slots: 'a|b/a|b' })).toBe('follow');
+    expect(slotMotion(null, resting)).toBe('snap');
   });
 });
