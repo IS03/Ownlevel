@@ -1,6 +1,6 @@
 # Insights #367 — PR 2: EXPAND de sensaciones
 
-**Estado: migración preparada y probada en PostgreSQL efímero; NO aplicada en producción.** Sin deploy ni adopción cliente. Rama `codex/367-insights-pr2-expand`, apilada sobre `codex/367-insights-pr1-comparator` porque [#381](https://github.com/IS03/Ownlevel/pull/381) sigue abierto en `dde9ae4f5d6683fff918e02478bc2c8a0b4d6a16`. No se mergea #381/#380 ni se modifica el comparador revisado. Esta autorización corresponde únicamente al PR 2 de [#367](https://github.com/IS03/Ownlevel/issues/367).
+**Estado: migración preparada y probada únicamente en el fixture PostgreSQL efímero; NO aplicada en producción. La integración del esquema completo, el advisor y PostgREST local siguen BLOQUEADOS por herramientas del host (detalle al final).** Sin deploy ni adopción cliente. Rama `codex/367-insights-pr2-expand`, apilada sobre `codex/367-insights-pr1-comparator` porque [#381](https://github.com/IS03/Ownlevel/pull/381) sigue abierto en `dde9ae4f5d6683fff918e02478bc2c8a0b4d6a16`. No se mergea #381/#380 ni se modifica el comparador revisado. Esta autorización corresponde únicamente al PR 2 de [#367](https://github.com/IS03/Ownlevel/issues/367).
 
 ## Persistencia mínima
 
@@ -68,3 +68,28 @@ Para cumplir el límite de no desplegar al publicar el PR, `vercel.json` deshabi
 - Typecheck de raíz, ESLint focalizado y diff/whitespace: correctos. `supabase db advisors --type security --fail-on error` se intentó únicamente contra el stack local `127.0.0.1:55422`, pero está apagado; advisor completo pendiente. La prueba efímera sí verifica ACL efectiva, RLS y `search_path` del RPC privilegiado. Sin instalaciones de dependencias Expo ni cambios de locks. No se repiten QA/pruebas de #380 ni calibración/comparador #381.
 
 Brechas históricas del comparador siguen explícitas: configuración histórica verificable, unidad/procedencia e implemento ausente en ciertos snapshots no se reconstruyen desde el catálogo vigente; requieren decisión/EXPAND posterior si se necesitan. Este PR no cambia snapshots ni clasificaciones. Revisiones semánticas de métricas y revisión global de fuentes corresponden al futuro loader/invalidación, no son prerrequisitos de estos cuatro hechos. Tampoco hay captura cliente, journal, all-time, asociaciones, promoción ni garantías del objetivo hipotético del 1 %.
+
+## Verificación del stack completo — 03/11/2026: bloqueada
+
+Punto de partida verificado: checkout limpio en `codex/367-insights-pr2-expand`, HEAD y rama remota `192efa674e49ec9e5a0f6b59a2a2ec5d9356e53f`; #382 abierto, sin merge. Se consultaron AGENTS, esta documentación, la configuración local y el bootstrap versionado. No hubo correcciones de SQL/contratos ni cambios de aplicación en esta verificación.
+
+Entorno observado: Windows 11 Pro `10.0.26300` (build 26300), Node `v22.18.0`, npm `11.5.2`, Supabase CLI `3.0.0` vía npx, WinGet `1.29.380`. Docker/Podman no disponibles; Docker Desktop no figura instalado ni en las ubicaciones estándar. WSL informa que no está instalado; la sesión no es administradora y `HypervisorPresent=false` (esto no diagnostica por sí solo la configuración del BIOS).
+
+Preparación local intentada, sin elevar privilegios ni reiniciar Windows:
+
+1. `wsl --install --no-distribution --no-launch`: salida 1, informa WSL no instalado.
+2. WinGet verificó el paquete oficial `Microsoft.WSL` 2.7.14 y el hash del instalador. La instalación con ámbito user/silent falló con **`0x80073d28`: administrator privileges are required**. WSL no quedó instalado.
+3. Se creó solo una configuración temporal en `%TEMP%/ownlevel-382-fullstack-a55341f2ac`, con project_id único, seed/migraciones automáticas deshabilitados como en el proyecto y puertos libres asignados (API 59534, DB 59535). No se modificó `supabase/config.toml` del checkout ni se enlazó un proyecto remoto.
+4. Tras consultar `start --help`, se intentó `supabase start` en ese workdir aislado, conservando DB/Auth/Kong/PostgREST y excluyendo servicios auxiliares. Falló con **`DockerLifecycleInspectError`: docker: command not found (podman also not found)**, salida 1. No se creó instancia, base, contenedores ni volúmenes y no se reseteó una base existente.
+
+| Verificación solicitada | Resultado de este intento |
+| --- | --- |
+| Integración de toda la secuencia de migraciones, incluida #382 | **PENDIENTE/BLOQUEADA**: el stack no pudo arrancar; no se aplicó ninguna migración en esta verificación. El fixture previo no demuestra integración del esquema completo. |
+| Advisor de seguridad del stack aislado | **PENDIENTE/BLOQUEADO**: no existe instancia local arrancada contra la cual ejecutarlo. No hay informe ni afirmación de cero hallazgos. |
+| Hallazgos introducidos por #382 frente a preexistentes | **NO EVALUADOS**: requieren el advisor y la comparación con el esquema anterior a la migración. No se hizo limpieza de deuda histórica. |
+| Smoke PostgREST: usuarios sintéticos, lectura propia/ajena, guardar/replay/finish y contrato legacy | **PENDIENTES/BLOQUEADOS**: Auth/PostgREST no están disponibles. No se sustituyen por mocks HTTP ni por acceso SQL directo. |
+| Producción | **SIN APLICAR**: sin bases remotas, datos personales, deploy ni merges. |
+
+Las **51 pruebas y 88 aserciones** anteriores se mantienen como evidencia del head revisado, sin repetirse: no cambiaron sus fuentes ni aparecieron fallos de producto. No aprueban los tres controles pendientes del stack completo.
+
+Para desbloquear: instalar/habilitar WSL 2 desde una sesión de administrador y reiniciar si Windows lo solicita ([Microsoft](https://learn.microsoft.com/en-us/windows/wsl/install)); después instalar/iniciar Docker Desktop con contenedores Linux ([Docker](https://docs.docker.com/desktop/setup/install/windows-install/)). No se pide credencial alguna en el chat. Retomar con un proyecto temporal nuevo o comprobar que este sigue vacío, sin resetear instalaciones preexistentes. Aplicar en orden los SQL versionados, incluido `0001.sql` que el parser del CLI omite; el bootstrap existente documenta ese requisito pero está fijado a otro container y no se ejecutó contra él. Completar advisor antes/después y smoke PostgREST local; hasta entonces el resultado global continúa **no aprobado por falta de verificación de integración**.
