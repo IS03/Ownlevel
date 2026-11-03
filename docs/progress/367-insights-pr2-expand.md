@@ -1,6 +1,6 @@
 # Insights #367 — PR 2: EXPAND de sensaciones
 
-**Estado: migración preparada y probada únicamente en el fixture PostgreSQL efímero; NO aplicada en producción. La integración del esquema completo, el advisor y PostgREST local siguen BLOQUEADOS por herramientas del host (detalle al final).** Sin deploy ni adopción cliente. Rama `codex/367-insights-pr2-expand`, apilada sobre `codex/367-insights-pr1-comparator` porque [#381](https://github.com/IS03/Ownlevel/pull/381) sigue abierto en `dde9ae4f5d6683fff918e02478bc2c8a0b4d6a16`. No se mergea #381/#380 ni se modifica el comparador revisado. Esta autorización corresponde únicamente al PR 2 de [#367](https://github.com/IS03/Ownlevel/issues/367).
+**Estado: migración preparada y probada únicamente en el fixture PostgreSQL efímero; NO aplicada en producción. Docker/WSL ya están instalados, pero la preparación de WSL requiere otro reinicio y el motor sigue detenido. Integración del esquema completo, advisor y PostgREST local pendientes (detalle al final).** Sin deploy ni adopción cliente. Rama `codex/367-insights-pr2-expand`, apilada sobre `codex/367-insights-pr1-comparator` porque [#381](https://github.com/IS03/Ownlevel/pull/381) sigue abierto en `dde9ae4f5d6683fff918e02478bc2c8a0b4d6a16`. No se mergea #381/#380 ni se modifica el comparador revisado. Esta autorización corresponde únicamente al PR 2 de [#367](https://github.com/IS03/Ownlevel/issues/367).
 
 ## Persistencia mínima
 
@@ -93,3 +93,15 @@ Preparación local intentada, sin elevar privilegios ni reiniciar Windows:
 Las **51 pruebas y 88 aserciones** anteriores se mantienen como evidencia del head revisado, sin repetirse: no cambiaron sus fuentes ni aparecieron fallos de producto. No aprueban los tres controles pendientes del stack completo.
 
 Para desbloquear: instalar/habilitar WSL 2 desde una sesión de administrador y reiniciar si Windows lo solicita ([Microsoft](https://learn.microsoft.com/en-us/windows/wsl/install)); después instalar/iniciar Docker Desktop con contenedores Linux ([Docker](https://docs.docker.com/desktop/setup/install/windows-install/)). No se pide credencial alguna en el chat. Retomar con un proyecto temporal nuevo o comprobar que este sigue vacío, sin resetear instalaciones preexistentes. Aplicar en orden los SQL versionados, incluido `0001.sql` que el parser del CLI omite; el bootstrap existente documenta ese requisito pero está fijado a otro container y no se ejecutó contra él. Completar advisor antes/después y smoke PostgREST local; hasta entonces el resultado global continúa **no aprobado por falta de verificación de integración**.
+
+### Reanudación tras instalar WSL/Docker — 03/11/2026
+
+Checkout limpio y remoto verificados en `67aca462e9d793d6eaa610ac750983c92e62d531`; #382 continúa abierto. El bloqueo anterior de instalación ya no es el estado vigente: ahora están instalados WSL `3.0.3.0` (kernel `6.18.54.1-1`), Docker Desktop `4.97.0.244584` y Docker CLI `29.9.2` (API `1.56`), en Windows `10.0.26300.9818`. El ejecutable Docker está en la instalación per-user; no fue necesario reinstalar paquetes ni cambiar PATH persistente.
+
+Se abrió Docker Desktop y se inspeccionaron únicamente contextos locales `npipe`. `docker desktop status` informa `stopped`; `docker --context desktop-linux version` devuelve `Server=null`, error HTTP 500, salida 1. WSL informa que WSL 2 no puede iniciar. La comprobación del host indica `VirtualizationFirmwareEnabled=true`, `VirtualMachinePlatform InstallState=1` y `HypervisorPresent=false`: no se atribuye el problema a BIOS deshabilitado ni se interpreta el mensaje genérico de la API como una incompatibilidad demostrada de versión.
+
+Tras consultar la ayuda de WSL, se ejecutó la preparación rutinaria `wsl --install --no-distribution --no-launch`. Esta vez **terminó con salida 0**, pero Windows indicó expresamente: **“Los cambios se aplicarán una vez que se reinicie el sistema”**. No se reinició Windows automáticamente ni se modificó la configuración BCD. El motor sigue detenido al finalizar el intento.
+
+Resultado vigente: **esquema completo pendiente; advisor pendiente; smoke PostgREST/legacy pendientes; producción SIN APLICAR**. No se arrancó/resetó ninguna base, no se aplicaron migraciones y las 51 pruebas/88 aserciones previas se reutilizan sin repetirlas. Solo cambia esta documentación.
+
+Próximo paso concreto: guardar el trabajo y reiniciar Windows nuevamente para completar la preparación que acaba de confirmar WSL; abrir Docker Desktop y verificar una respuesta de **Server** del motor Linux. Cuando responda, continuar en un proyecto Supabase descartable nuevo con la secuencia SQL completa, advisor comparativo y smoke PostgREST, manteniendo intactas las instalaciones/bases existentes.
