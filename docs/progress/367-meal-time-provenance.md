@@ -49,6 +49,11 @@ Que llegue una hora no prueba que alguien la haya elegido:
 | Otro día, el mismo reloj de Córdoba, sin declaración | Se conserva: es mover de día |
 | Otra hora, sin declaración | `null`: el valor nuevo ya no está respaldado |
 
+**Escritura directa.** RLS permite que un token escriba sus propias filas, así que la regla no puede vivir solo en las funciones. Un trigger, que no afecta a las funciones porque corren como su dueño, hace que una sesión:
+- pueda insertar `default_clock` o nada, y ningún otro valor;
+- no pueda cambiar la procedencia de una fila;
+- pierda la procedencia si cambia la hora directamente.
+
 Una declaración sin hora, o con cualquier otro valor, se rechaza con `INVALID_MEAL_TIME`. Mobile solo puede declarar `user_declared`: `default_clock` lo decide el servidor y `registration_now` solo existe en ChatGPT.
 
 **Compatibilidad:**
@@ -90,10 +95,21 @@ Nada todavía. `raw_input` sigue siendo la fuente de la lectura legacy y de la i
 
 ## Validado
 
-En una pila local descartable, con 89 migraciones previas y esta encima (eliminada después: 0 contenedores, 0 volúmenes): creación, edición, registro rápido, los tres ChatGPT y v4 con usuarios reales y RLS. Ver `src/lib/mobile-api/meal-time-provenance.local.test.ts`.
+En una pila local descartable, con 89 migraciones previas (eliminada después: 0 contenedores, 0 volúmenes). La prueba escribe como un cliente instalado, aplica la migración ella misma y revisa qué pasó con eso. Ver `src/lib/mobile-api/meal-time-provenance.local.test.ts`.
+
+| Revisión | Comprobado |
+| --- | --- |
+| Compatibilidad | Una clave de idempotencia escrita antes del EXPAND reproduce su respuesta sin escribir. La misma clave con una declaración da `IDEMPOTENCY_KEY_REUSED`. `supabase/tests/mobile_meal_timing.sql` confirma el hash exacto de un pago sin claves nuevas |
+| Sin retroactividad | Las filas anteriores siguen nulas, también al reejecutar por v4 o al editarlas sin declarar. Solo una declaración nueva las cambia |
+| Dueño y permisos | Otra cuenta recibe 404 y no cambia nada. Anónimo y usuarios no pueden llamar a las funciones de ChatGPT. OAuth v4 respeta el grant, y sin él no escribe |
+| Atomicidad | Si la escritura falla después del registro de idempotencia no queda nada: ni hora, ni procedencia, ni clave, y la clave puede reintentarse |
+| Reglas | Omisión, reenvío, mover de día, otra hora y declaración con igual hora |
+| Hora automática | Una fila `default_clock` no pasa a declarada por edición, reenvío ni escritura directa |
+
+**Corregido en la revisión:** la columna se podía escribir directamente con un token. La prueba lo demostró (`user_declared` sobre una fila `default_clock`, y una declaración que sobrevivía a un cambio de hora) y el trigger lo cierra.
 
 **No validado:** rendimiento del `ALTER TABLE` en producción y el flujo con un GPT real.
 
 ## Reversión
 
-Está en el encabezado de la migración: desplegar código que no mande las claves, borrar v4, reaplicar las definiciones anteriores y recién entonces borrar la columna.
+Está en el encabezado de la migración: desplegar código que no mande las claves, borrar v4 y el trigger, reaplicar las definiciones anteriores y recién entonces borrar la columna.

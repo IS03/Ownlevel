@@ -14,6 +14,8 @@
 -- Reversal: deploy code that no longer sends the new keys or calls v4, then
 --   drop function if exists public.create_chatgpt_meal_for_oauth_v4(uuid,uuid,uuid,uuid,text,date,text,text,integer,numeric,numeric,numeric,text,boolean,timestamptz,text,text);
 --   drop function if exists public.create_chatgpt_meal_for_integration_v4(uuid,date,text,text,integer,numeric,numeric,numeric,text,boolean,timestamptz,text,text);
+--   drop trigger if exists meal_entries_guard_time_source on public.meal_entries;
+--   drop function if exists public.meal_entries_guard_time_source();
 -- reapply the previous definitions from 20261015031555, 20261028084439 and 20261031210000, and only then drop the column.
 begin;
 
@@ -23,6 +25,31 @@ alter table public.meal_entries
   check (consumed_at_source in ('user_declared', 'registration_now', 'default_clock', 'imported'));
 comment on column public.meal_entries.consumed_at_source is
   'Who set consumed_at. Null: unknown, including every row older than this column. Never backfilled or inferred.';
+
+-- RLS lets a token write its own rows directly, so the statement is guarded here and not only in the functions below,
+-- which run as their owner and skip this. A session can record that a clock filled the time, or nothing; it cannot declare,
+-- and a time changed directly can no longer be vouched for.
+create function public.meal_entries_guard_time_source()
+returns trigger language plpgsql security invoker set search_path = '' as $$
+begin
+  if current_user not in ('authenticated', 'anon') then return new; end if;
+  if tg_op = 'INSERT' then
+    if new.consumed_at_source is distinct from 'default_clock' and new.consumed_at_source is not null then
+      raise exception using errcode = '42501', message = 'consumed_at_source is written by the server';
+    end if;
+    return new;
+  end if;
+  if new.consumed_at_source is distinct from old.consumed_at_source then
+    raise exception using errcode = '42501', message = 'consumed_at_source is written by the server';
+  end if;
+  if new.consumed_at is distinct from old.consumed_at then new.consumed_at_source := null; end if;
+  return new;
+end;
+$$;
+revoke all on function public.meal_entries_guard_time_source() from public, anon, authenticated;
+create trigger meal_entries_guard_time_source
+  before insert or update of consumed_at, consumed_at_source on public.meal_entries
+  for each row execute function public.meal_entries_guard_time_source();
 
 create or replace function public.mobile_normalize_meal_timing(f jsonb, dt date)
 returns jsonb language plpgsql immutable security invoker set search_path='' set timezone='UTC'
