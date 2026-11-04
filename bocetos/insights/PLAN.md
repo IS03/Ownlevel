@@ -2,6 +2,8 @@
 
 Propuesta concreta y reversible para conectar el motor de [#367](https://github.com/IS03/Ownlevel/issues/367) a la app. El contrato está en [PR 4](../../docs/progress/367-insights-pr4-motor.md); las reglas visuales, en [IDENTIDAD.md](../../docs/brand/ownlevel-marca/IDENTIDAD.md). Pantallas de referencia: [flujo.html](flujo.html). No implementa nada todavía.
 
+**Bloqueo de contenido.** Con los datos actuales el motor no compara nada, porque la configuración histórica es desconocida. Las pantallas de `flujo.html` muestran cómo se vería **después** de la [captura o metodología que se decida](../../docs/progress/367-insights-expand-propuesta.md). PR 5 no debería empezar antes de esa decisión.
+
 ## Dónde vive
 
 **Decisión propuesta: Entrenar → Insights, con una entrada en el resumen post-entreno.**
@@ -50,6 +52,8 @@ Solo se muestra un enlace si hay ruta y evidencia. Un `sessionId` de un par siem
 | Cargando | Lectura en curso | Esqueletos con el alto final, sin saltos de layout |
 | Sin historial | `history.sessions = 0` | Pantalla con vista de ejemplo apagada y etiqueta **EJEMPLO**: «Con dos entrenamientos del mismo ejercicio empieza a compararse.» |
 | Hay sesiones, nada comparable | `totals.comparable = 0` | Motivos reales: «Todavía no hay una sesión anterior para comparar.» |
+| Configuración desconocida | `limits.configurationSnapshots.known = 0` o motivo `missing_context` | Se muestra lo registrado y se dice el límite: «Todavía no sabemos si estas sesiones se hicieron igual, así que no las comparamos.» No es un error ni un historial vacío |
+| Comida con hora sin confirmar | `carbsPre3h.state = unverified_meal_time_in_scope` | «Hay comidas cargadas, pero no sabemos si esa fue la hora en que comiste.» Sin valor de ventana |
 | Datos insuficientes | `insufficient_data` | «Todavía faltan días: tenés 12 de 20.» Sin gráfico vacío |
 | Sin señal clara | `no_clear_signal` | «Por ahora no se ve una relación clara.» Es un resultado, no un error |
 | Exploratorio | `exploratory` | «Para mirar con calma» y la frase del ejemplo de abajo |
@@ -86,6 +90,7 @@ Una serie: champagne, con el período anterior en gris.
 - **Tira por día:** proporción de ejercicios por debajo. **Cero es una marca visible en la base; un día sin comparación es un hueco**, no una barra de cero. No se interpola.
 - **Pares de una relación:** cada punto es un día. Los valores de cero y los negativos se conservan en su lugar: el eje no se recorta para que se vean mejor. Sin línea de tendencia ni rangos «óptimos».
 - **Unidades:** solo la unidad guardada de esa métrica. Si no tiene, no se inventa.
+- **Grupos:** comparación descriptiva, con los valores reales de `min` y `max` de cada lado: «con 1» y «con 0», o «hasta 1800» y «más de 1800». Si `groups` es nulo, se muestran los pares sin grupos. Los días con el mismo valor nunca se separan.
 
 ## Guías futuras
 
@@ -99,6 +104,8 @@ No se agrega todavía un GPT generador ni cambios automáticos de rutina. Una re
 
 ## Pendiente de decidir
 
+- **Configuración histórica:** captura hacia adelante, metodología parcial o ambas. Sin esto no hay comparaciones ni asociaciones. Ver la [propuesta](../../docs/progress/367-insights-expand-propuesta.md).
+- **Procedencia de la hora de comida:** EXPAND propuesto en el mismo documento. Sin él, las ventanas previas al entreno solo cuentan con comidas importadas con hora.
 - **Presupuesto de riesgo del 1 %:** sin aprobar. Hasta decidirlo, el estado «consistente» no existe en el contrato.
 - **Web:** Mobile primero. El contrato ya está listo para que Web lo consuma con la misma semántica; su diseño se resuelve con M9.4.
 - **Nombre:** «Insights» es provisorio. Hay que validar si convive con el voseo del resto de la app.

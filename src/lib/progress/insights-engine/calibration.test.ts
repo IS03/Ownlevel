@@ -16,10 +16,18 @@ describe("calibración sintética", () => {
     const none = runCalibration("independent", { histories: 12, seed: 5, permutations: 99, looks: 3 });
     expect(effect.plantedStrictGate!).toBeGreaterThan(0.5); expect(effect.anyStrictGate).toBeGreaterThan(none.anyStrictGate);
   });
+  it("treats a binary exposure like any other: reproducible, and not significant by construction", () => {
+    const config = { histories: 6, seed: 11, permutations: 49, looks: 3 };
+    const a = runCalibration("binary_exposure", config);
+    expect(runCalibration("binary_exposure", config)).toEqual(a);
+    expect(a.anyStrictGate).toBe(0);
+    expect(runCalibration("binary_effect", { ...config, histories: 12, permutations: 99 }).plantedExploratory!).toBeGreaterThan(0.5);
+  });
+  const only = process.env.INSIGHTS_CALIBRATION_SCENARIOS?.split(",");
   const out = process.env.INSIGHTS_CALIBRATION_OUT, histories = Number(process.env.INSIGHTS_CALIBRATION_HISTORIES ?? 0);
   it.runIf(!!out && histories > 0)("measured campaign", async () => {
     const results: (CalibrationResult & { seconds: number })[] = [];
-    for (const scenario of CALIBRATION_SCENARIOS) {
+    for (const scenario of CALIBRATION_SCENARIOS.filter(name => !only || only.includes(name))) {
       const started = Date.now();
       const steps = calibrationSteps(scenario, { histories, seed: 0x367a, permutations: 199 });
       let step = steps.next();

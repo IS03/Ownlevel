@@ -30,10 +30,16 @@ function localStack() {
     const email = `insights-${randomUUID()}@example.invalid`, password = randomBytes(24).toString("hex");
     const made = await admin.auth.admin.createUser({ email, password, email_confirm: true });
     if (made.error) throw made.error;
-    const client = createClient(status.API_URL, status.ANON_KEY, { auth: { persistSession: false } });
+    const http = { requests: 0, times: [] as { path: string; ms: number }[] };
+    const client = createClient(status.API_URL, status.ANON_KEY, { auth: { persistSession: false }, global: { fetch: async (...args: Parameters<typeof fetch>) => {
+      http.requests++;
+      const started = performance.now(), response = await fetch(...args);
+      http.times.push({ path: new URL(String(args[0])).pathname.split("/").pop()!, ms: Math.round(performance.now() - started) });
+      return response;
+    } } });
     const signed = await client.auth.signInWithPassword({ email, password });
     if (signed.error) throw signed.error;
-    return { id: made.data.user.id, client };
+    return { id: made.data.user.id, client, http };
   };
   return { status, sql, user };
 }
@@ -68,7 +74,10 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
       insert into public.meal_entries(id,user_id,day_log_id,title,final_calories,final_protein_g,final_carbs_g,final_fat_g,source_type,entry_kind,consumed_at)
         select '${meal}','${owner.id}',id,'SYNTHETIC',500,30,60,10,'manual','meal','2026-03-02T16:00:00Z' from public.day_logs where user_id='${owner.id}' and log_date='2026-03-02';
       notify pgrst,'reload schema';`);
+    owner.http.requests = 0;
     const source = await readConsistentInsightsSource(contextOf(owner.id, owner.client));
+    // Every request PostgREST really received: 2 revision rounds of 7 plus one page per stream.
+    expect(owner.http.requests).toBe(14 + 7);
     expect(source.sessions.map(row => row.id).sort()).toEqual([s1, s2].sort());
     expect(source.sessions.find(row => row.id === s2)!.date).toBe("2026-03-02");
     expect(source.exercises.every(row => row.exerciseId === exercise)).toBe(true);
@@ -80,9 +89,10 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
     const model = buildInsightsReadModel(source, { today: "2026-12-01", permutations: 19 });
     expect(parsePerformanceInsights(JSON.parse(JSON.stringify(model)))).toBeTruthy();
     const latest = model.facts.days[0]!;
-    expect(latest.date).toBe("2026-03-02"); expect(latest.sessions[0]!.exercises[0]).toMatchObject({ exerciseId: exercise, status: "improved", referenceSessionId: s1 });
+    expect(latest.date).toBe("2026-03-02"); expect(latest.sessions[0]!.exercises[0]).toMatchObject({ exerciseId: exercise, status: "insufficient_comparison", reason: "missing_context", referenceSessionId: null });
+    expect(model.limits.configurationSnapshots).toEqual({ known: 0, total: 2 }); expect(model.limits.mealTimeEvidence.unverified).toBe(1);
     expect(latest.sessions[0]!.context.feelings.energyPre).toMatchObject({ value: 4, timing: "before_start" });
-    expect(latest.sessions[0]!.context.carbsPre3h).toEqual({ value: 60, state: "recorded" });
+    expect(latest.sessions[0]!.context.carbsPre3h).toEqual({ value: null, state: "unverified_meal_time_in_scope" });
     expect(latest.context.metrics).toEqual([{ metricId: metric, value: 0 }]);
 
     // RLS, not the filter, is what protects other people's rows: the owner's token cannot read them by asking for that user.
@@ -116,19 +126,25 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
           update public.workout_sessions set status='completed',ended_at=(d::timestamp + interval '19 hours') at time zone 'UTC' where id=s;
         end loop; end $seed$;`);
     const seedSeconds = Math.round((performance.now() - seedStarted) / 1000);
-    const runs: { revisionMs: number; streamsMs: number; readMs: number; modelMs: number; bytes: number }[] = [];
+    const runs: { analyzed: boolean; revisionMs: number; revisionByTable: { path: string; ms: number }[]; streamsMs: number; readMs: number; requests: number; modelMs: number; bytes: number }[] = [];
     let rows = {};
+    // A freshly seeded database has no statistics yet: production runs with autovacuum, so both situations are measured.
     for (let run = 0; run < 7; run++) {
+      if (run === 2) sql("analyze;");
+      owner.http.times = [];
       const revisionStarted = performance.now();
       await readInsightsRevision(contextOf(id, owner.client));
       const revisionMs = Math.round(performance.now() - revisionStarted);
+      const revisionByTable = [...owner.http.times];
       await readInsightsSource(contextOf(id, owner.client));
       const streamsMs = Math.round(performance.now() - revisionStarted) - revisionMs;
+      owner.http.requests = 0;
       const started = performance.now();
       const source = await readConsistentInsightsSource(contextOf(id, owner.client));
       const read = performance.now();
+      const requests = owner.http.requests;
       const model = buildInsightsReadModel(source, { today: "2030-01-01" });
-      runs.push({ revisionMs, streamsMs, readMs: Math.round(read - started), modelMs: Math.round(performance.now() - read), bytes: Buffer.byteLength(JSON.stringify(model)) });
+      runs.push({ analyzed: run >= 2, revisionMs, revisionByTable, streamsMs, readMs: Math.round(read - started), requests, modelMs: Math.round(performance.now() - read), bytes: Buffer.byteLength(JSON.stringify(model)) });
       rows = { sessions: source.sessions.length, exercises: source.exercises.length, sets: source.sets.length, metricValues: source.metricValues.length, meals: source.meals.length, comparable: model.facts.totals.comparable, outcomeDays: model.history.outcomeDays };
     }
     writeFileSync(process.env.OWNLEVEL_INSIGHTS_LOCAL_SCALE_OUT!, JSON.stringify({ seedSeconds, rows, runs }, null, 2));

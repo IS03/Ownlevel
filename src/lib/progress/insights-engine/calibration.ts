@@ -3,7 +3,7 @@ import { seededRandom } from "./stats";
 import type { Candidate, ObservationRow } from "./types";
 
 /** Synthetic histories only. Never reads personal data and is not imported by the route. */
-export const CALIBRATION_SCENARIOS = ["independent", "autocorrelated", "spurious_trend", "routine_change", "outliers", "selective_absence", "many_candidates", "moderate_effect", "true_effect"] as const;
+export const CALIBRATION_SCENARIOS = ["independent", "autocorrelated", "spurious_trend", "routine_change", "outliers", "selective_absence", "many_candidates", "moderate_effect", "true_effect", "binary_exposure", "rare_binary_exposure", "ordinal_ties", "binary_routine_change", "binary_effect"] as const;
 export type CalibrationScenario = (typeof CALIBRATION_SCENARIOS)[number];
 export type CalibrationConfig = { histories: number; seed: number; months?: number; looks?: number; candidates?: number; permutations?: number };
 export type CalibrationResult = {
@@ -14,6 +14,13 @@ export type CalibrationResult = {
   plantedStrictGate: number | null; plantedExploratory: number | null;
 };
 
+/** Real exposures also repeat values: a yes/no metric, a rare event, a 1-5 scale. Thresholds are fixed proportions of the latent series. */
+function discretize(scenario: CalibrationScenario, value: number) {
+  if (scenario === "binary_exposure" || scenario === "binary_routine_change" || scenario === "binary_effect") return value > 0.43 ? 1 : 0;
+  if (scenario === "rare_binary_exposure") return value > 1.645 ? 1 : 0;
+  if (scenario === "ordinal_ties") return Math.min(5, Math.max(1, Math.round(value) + 3));
+  return value;
+}
 const logistic = (value: number) => 1 / (1 + Math.exp(-value));
 
 function normal(random: () => number) {
@@ -57,14 +64,15 @@ function simulate(scenario: CalibrationScenario, seed: number, months: number, c
     for (let k = 0; k < candidates; k++) {
       let value = exposures[k]![i]!;
       if (scenario === "spurious_trend") value += (k % 2 ? -1 : 1) * 3 * progress;
-      if (scenario === "routine_change") value += eraShiftX[era]![k]!;
+      if (scenario === "routine_change" || scenario === "binary_routine_change") value += eraShiftX[era]![k]!;
       if (scenario === "many_candidates") value = 0.6 * common[i]! + 0.8 * value;
       if (scenario === "outliers" && random() < 0.03) value += (random() < 0.5 ? -1 : 1) * 25;
-      exposures[k]![i] = value;
+      exposures[k]![i] = discretize(scenario, value);
     }
     let logit = -1 + 0.7 * latent;
     if (scenario === "spurious_trend") logit += 2 * progress - 1;
-    if (scenario === "routine_change") logit += eraShiftY[era]!;
+    if (scenario === "routine_change" || scenario === "binary_routine_change") logit += eraShiftY[era]!;
+    if (scenario === "binary_effect") logit += 1.2 * exposures[0]![i]!;
     if (scenario === "true_effect") logit += 0.9 * exposures[0]![i]!;
     if (scenario === "moderate_effect") logit += 0.45 * exposures[0]![i]!;
     const comparable = 1 + Math.floor(random() * 6);
@@ -76,7 +84,7 @@ function simulate(scenario: CalibrationScenario, seed: number, months: number, c
       const missing = scenario === "selective_absence" ? (y >= 0.5 ? 0.6 : 0.1) : 0.2;
       present[k]![i] = random() >= missing;
     }
-    rows.push({ date: dates[i]!, y, ySensitivity: y, routineKey: scenario === "routine_change" ? `routine-${era}` : "routine-0" });
+    rows.push({ date: dates[i]!, y, ySensitivity: y, routineKey: scenario === "routine_change" || scenario === "binary_routine_change" ? `routine-${era}` : "routine-0" });
   }
   return { rows, exposures, present, candidates };
 }
@@ -116,7 +124,7 @@ export function* calibrationSteps(scenario: CalibrationScenario, config: Calibra
     if (plantedE) plantedExploratory++;
     yield history;
   }
-  const total = config.histories, planted = scenario === "true_effect" || scenario === "moderate_effect";
+  const total = config.histories, planted = scenario === "true_effect" || scenario === "moderate_effect" || scenario === "binary_effect";
   return { scenario, histories: total, looks, candidates: candidatesUsed, permutations, meanPairsAtLastLook: total ? pairs / total : 0,
     anyExploratory: total ? exploratoryHistories / total : 0, anyStrictGate: total ? strictHistories / total : 0, strictGateWilsonUpper95: wilsonUpper(strictHistories, total),
     plantedStrictGate: planted && total ? plantedStrict / total : null, plantedExploratory: planted && total ? plantedExploratory / total : null };

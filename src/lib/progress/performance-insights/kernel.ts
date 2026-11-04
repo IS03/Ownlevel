@@ -64,14 +64,15 @@ function prepare(session: PerformanceSession): PreparedSession {
   return { session, time: interval(session), exposures };
 }
 
+const usableContext = (a: ExerciseExposure) => !!a.context && !contextIssue(a.context) && a.issue !== "mixed_context" && a.issue !== "duplicate_conflict";
 function compatibleContext(a: ExerciseExposure, b: ExerciseExposure) {
-  return a.context && b.context && !contextIssue(a.context) && !contextIssue(b.context)
-    && a.issue !== "mixed_context" && b.issue !== "mixed_context"
-    && a.issue !== "duplicate_conflict" && b.issue !== "duplicate_conflict"
-    && sameContext(a.context, b.context);
+  return usableContext(a) && usableContext(b) && sameContext(a.context!, b.context!);
 }
 
 function evaluate(current: PreparedSession, exposure: ExerciseExposure, candidates: readonly PreparedSession[], historyCoverage: HistoryCoverage, exclusionDetail: "full" | "summary") {
+  // Same result without one row per earlier session: this exposure cannot match any of them, so it never has a reference.
+  if (exclusionDetail === "summary" && !usableContext(exposure)) return compareExposure({ current: exposure, reference: null, history: [], historyCoverage,
+    exclusions: exposure.issue ? [{ reason: exposure.issue, sessionId: current.session.id, exerciseId: exposure.exerciseId, rowIds: exposure.blockIds }] : [], missingReason: "no_compatible_reference" });
   const exclusions: PerformanceExclusion[] = [];
   const eligible: Array<{ session: PerformanceSession; end: bigint; exposure: ExerciseExposure }> = [];
   for (const candidate of candidates) {

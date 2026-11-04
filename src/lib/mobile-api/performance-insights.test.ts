@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "../../app/api/mobile/v1/progress/performance-insights/route";
 import { parsePerformanceInsights } from "./performance-insights-contract";
@@ -48,12 +48,13 @@ function tablesFor(days: number) {
     workout_session_feelings: [],
     user_metrics: [{ id: METRIC, name: "Métrica", unit: null, value_type: "decimal", is_active: false, archived_at: "2026-02-01T00:00:00Z" }],
     daily_metric_values: reps.map((_, day) => ({ id: `v${day}`, metric_id: METRIC, metric_date: dateAt(day), value: String(day % 4) })),
-    meal_entries: [{ id: "m", consumed_at: `${dateAt(0)}T16:00:00.000Z`, created_at: `${dateAt(0)}T20:00:00.000Z`, raw_input: null, entry_kind: "meal", source_type: "manual", final_calories: 500, final_protein_g: "30", final_carbs_g: null, final_fat_g: 5, day_logs: { log_date: dateAt(0) } }],
+    meal_entries: [{ id: "m", consumed_at: `${dateAt(0)}T16:00:00.000Z`, raw_input: null, entry_kind: "meal", source_type: "manual", final_calories: 500, final_protein_g: "30", final_carbs_g: null, final_fat_g: 5, day_logs: { log_date: dateAt(0) } }],
   };
 }
 const request = (query = "") => new NextRequest(`http://127.0.0.1/api/mobile/v1/progress/performance-insights${query}`, { headers: { authorization: "Bearer synthetic" } });
 
 beforeEach(() => { mocks.auth.mockReset(); });
+afterEach(() => { vi.useRealTimers(); });
 
 describe("GET performance-insights", () => {
   it("reads the whole history through grouped streams, derives identity from the token and validates its own contract", async () => {
@@ -73,6 +74,41 @@ describe("GET performance-insights", () => {
     expect(calls.filter(row => row.table === "workout_session_feelings").every(row => row.filters.some(filter => filter[1] === "session.user_id" && filter[2] === USER))).toBe(true);
     expect(calls.find(row => row.table === "meal_entries" && row.range)!.filters).toContainEqual(["is", "deleted_at", null]);
     expect(calls.find(row => row.table === "workout_sessions" && row.range)!.filters).toContainEqual(["eq", "status", "completed"]);
+  });
+  it("keeps the unknown configuration unknown: nothing is compared and nothing reaches the associations", async () => {
+    mocks.auth.mockResolvedValue({ userId: USER, supabase: fakeSupabase(tablesFor(30)).client });
+    const body = await (await GET(request())).json();
+    expect(body.facts.totals).toMatchObject({ comparable: 0, insufficient: 30, total: 30, coverage: 0 });
+    expect(body.exclusions.performance.missing_context).toBe(30);
+    expect(body.history).toMatchObject({ sessions: 30, outcomeDays: 0 });
+    expect(body.limits.configurationSnapshots).toEqual({ known: 0, total: 30 });
+    expect(body.associations.items.every((item: { state: string }) => item.state === "insufficient_data")).toBe(true);
+  });
+  describe("total query cost, retries included", () => {
+    // Each stream of tablesFor(5) takes one page: P = 7, and a revision round is 7. A clean attempt is 7 + 7 + 7.
+    const attempt = 14 + 7;
+    const midnightAfter = (client: { from: (table: string) => unknown }, after: number) => {
+      let started = 0;
+      return { from(table: string) {
+        if (++started >= after) vi.setSystemTime(new Date("2026-06-02T12:00:00Z"));
+        return client.from(table);
+      } };
+    };
+    it.each([
+      ["steady sources", () => "same", null, 200, attempt],
+      ["a source changes once: one retry", (table: string, call: number) => table === "workout_sets" && call > 1 ? "b" : "a", null, 200, 2 * attempt],
+      ["sources keep changing: refused", (table: string, call: number) => table === "workout_sets" ? String(call) : "same", null, 503, 2 * attempt],
+      ["Córdoba midnight during the read", () => "same", attempt - 1, 200, 2 * attempt],
+      ["both retries: the worst case that still answers", (table: string, call: number) => table !== "workout_sets" || call === 1 ? "a" : call < 6 ? "b" : "c", 2 * attempt - 1, 200, 4 * attempt],
+    ] as const)("%s", async (_name, revision, midnight, status, expected) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-06-01T12:00:00Z") });
+      const fake = fakeSupabase(tablesFor(5), revision);
+      mocks.auth.mockResolvedValue({ userId: USER, supabase: midnight === null ? fake.client : midnightAfter(fake.client, midnight) });
+      expect((await GET(request())).status).toBe(status);
+      expect(fake.calls).toHaveLength(expected);
+      warn.mockRestore();
+    });
   });
   it("adds pages by rows and not by exercises, sessions or candidates", async () => {
     const small = fakeSupabase(tablesFor(1500));
@@ -108,8 +144,8 @@ describe("GET performance-insights", () => {
     mocks.auth.mockResolvedValue({ userId: USER, supabase: fakeSupabase(tablesFor(25)).client });
     const id = `metric:${METRIC}:same_day`;
     const body = await (await GET(request(`?association=${encodeURIComponent(id)}&limit=2`))).json();
-    expect(body.facts.days).toHaveLength(2); expect(body.associations.detail.id).toBe(id);
-    expect(body.associations.detail.pairs[0]).toMatchObject({ date: expect.any(String), exposure: expect.any(Number), outcome: expect.any(Number), sessionIds: [expect.any(String)] });
+    // Pairs exist only with comparable days; the pure read model covers them. Here the configuration is unknown.
+    expect(body.facts.days).toHaveLength(2); expect(body.associations.detail).toEqual({ id, pairs: [] });
     for (const query of ["?limit=0", "?limit=121", "?before=2026-02-31", "?other=1", "?limit=1&limit=2", "?association=%3Cx%3E"]) {
       expect((await GET(request(query))).status, query).toBe(400);
     }

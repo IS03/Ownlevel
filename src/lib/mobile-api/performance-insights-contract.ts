@@ -19,7 +19,7 @@ const FAMILY = new Set(["metric", "nutrition", "meal_window", "feeling"]);
 const WINDOW = new Set(["same_day", "previous_day", "pre_3h", "same_day_before_start", "session"]);
 const BASIS = new Set(["same_day_unordered", "previous_logical_day", "explicit_meal_time_before_start", "declared_pre_unverified_clock"]);
 const TIMING = new Set(["before_start", "before_first_set", "after_first_set", "after_end", "post_declared", "unknown"]);
-const CARBS = new Set(["recorded", "no_registered_meal", "partial_macro", "untimed_meal_in_scope", "no_start_time"]);
+const CARBS = new Set(["recorded", "no_registered_meal", "partial_macro", "untimed_meal_in_scope", "unverified_meal_time_in_scope", "no_start_time"]);
 
 const counts = (v: unknown) => object(v) && ["improved", "observedStable", "declined", "ambiguous", "insufficient", "total", "comparable"].every(k => count(v[k])) && numberOrNull(v.coverage);
 const tally = (v: unknown) => object(v) && Object.values(v).every(count);
@@ -38,12 +38,12 @@ const day = (v: unknown) => object(v) && date(v.date) && counts(v.counts) && cou
   && list(v.context.metrics, m => object(m) && typeof m.metricId === "string" && finite(m.value));
 const summary = (v: unknown) => object(v) && uuid(v.exerciseId) && typeof v.name === "string" && ["exposures", "improved", "observedStable", "declined", "ambiguous", "insufficient"].every(k => count(v[k]))
   && (v.lastDate === null || date(v.lastDate)) && STATUS.has(String(v.lastStatus)) && typeof v.lastReason === "string";
-const group = (v: unknown) => object(v) && count(v.days) && finite(v.meanOutcome);
+const group = (v: unknown) => object(v) && count(v.days) && finite(v.min) && finite(v.max) && finite(v.meanOutcome);
 const definition = (v: unknown) => object(v) && typeof v.id === "string" && FAMILY.has(String(v.family)) && WINDOW.has(String(v.window)) && BASIS.has(String(v.temporalBasis)) && typeof v.subject === "string";
 const association = (v: unknown) => object(v) && typeof v.id === "string" && definition(v.definition) && STATE.has(String(v.state)) && typeof v.reason === "string"
   && count(v.pairs) && count(v.outcomeDays) && numberOrNull(v.coverage) && tally(v.exclusions)
   && ["rho", "localRho", "permutationP", "familyAdjustedP"].every(k => numberOrNull(v[k]))
-  && (v.groups === null || (object(v.groups) && finite(v.groups.cut) && group(v.groups.low) && group(v.groups.high)))
+  && (v.groups === null || (object(v.groups) && v.groups.rule === "median_balanced_ties" && finite(v.groups.cut) && typeof v.groups.lowIncludesCut === "boolean" && group(v.groups.low) && group(v.groups.high)))
   && object(v.stability) && ["firstHalfRho", "secondHalfRho", "equalSessionRho", "withoutExtremesRho", "selectiveAbsenceGap"].every(k => numberOrNull((v.stability as Json)[k]))
   && (v.stability.leaveOneRoutineOutAgrees === null || typeof v.stability.leaveOneRoutineOutAgrees === "boolean")
   && object(v.sensitivities) && Object.values(v.sensitivities).every(s => object(s) && count(s.pairs) && numberOrNull(s.rho));
@@ -62,6 +62,7 @@ export function parsePerformanceInsights(raw: unknown): InsightsReadModel | unde
     || !object(associations.promotion) || associations.promotion.status !== "not_enabled" || !list(associations.items, association)) return undefined;
   const detail = associations.detail;
   if (detail !== null && !(object(detail) && typeof detail.id === "string" && list(detail.pairs, p => object(p) && date(p.date) && finite(p.exposure) && finite(p.outcome) && list(p.sessionIds, s => typeof s === "string")))) return undefined;
-  if (!object(exclusions) || !tally(exclusions.performance) || !tally(exclusions.source) || !object(limits)) return undefined;
+  if (!object(exclusions) || !tally(exclusions.performance) || !tally(exclusions.source) || !object(limits)
+    || !object(limits.configurationSnapshots) || !count(limits.configurationSnapshots.known) || !count(limits.configurationSnapshots.total) || !tally(limits.mealTimeEvidence)) return undefined;
   return raw as unknown as InsightsReadModel;
 }

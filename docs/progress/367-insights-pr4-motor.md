@@ -2,6 +2,8 @@
 
 Método **`insights-engine/1`**, contrato **`performance-insights/1`**, sobre el comparador [`insights-performance/1`](367-insights-pr1-comparador.md). Dominio puro en `src/lib/progress/insights-engine`, compartido por la API y por Expo. Ruta nueva y optativa: `GET /api/mobile/v1/progress/performance-insights`. **Sin UI, migraciones, datos personales, deploys ni builds.** La experiencia está propuesta en [bocetos/insights/PLAN.md](../../bocetos/insights/PLAN.md) y se implementa en PR 5.
 
+**Estado con datos reales: el motor no compara nada todavía.** La configuración histórica no existe y el método exige conocerla, así que todo ejercicio queda en `insufficient_comparison / missing_context`, sin días de resultado ni asociaciones. Es el comportamiento correcto del método publicado, no un fallo. Salir de ahí requiere una decisión: ver la [propuesta de EXPAND y metodología parcial](367-insights-expand-propuesta.md).
+
 **Dependencias.** Sale de main y no usa código exclusivo de #383: la tabla `workout_session_feelings` ya está publicada. Sin #383 mergeado no llegan sensaciones nuevas de los clientes, así que esos candidatos quedan en «datos insuficientes». `vercel.json` bloquea las previews de esta rama; si #380, #383 y este PR se integran en cualquier orden, ese archivo puede dar un conflicto trivial de una línea.
 
 ## Tres carriles
@@ -16,14 +18,36 @@ Método **`insights-engine/1`**, contrato **`performance-insights/1`**, sobre el
 
 - **Historial completo:** siete flujos paginados, sin período ni truncamiento. La salida se pagina con `before` y `limit` (14 días por defecto, máximo 120), y siempre informa el total. `association=<id>` agrega los pares de una relación con sus sesiones.
 - **Unidad:** se deriva del `weight_mode_snapshot` histórico, que define qué guarda el campo. Nunca del catálogo vigente.
-- **Configuración:** el producto nunca la capturó. El adaptador usa la identidad opaca `not_captured_by_product`, distinta del `none` verificado del PR 1, y el contrato lo declara en `limits.configurationCaptured = false`. Es una decisión reversible que conviene revisar: dos sesiones del mismo UUID, modo e implemento se comparan aunque cambie un agarre no registrado.
+- **Configuración:** el producto nunca la capturó y el loader lee `null`. Sigue siendo desconocida en ambos lados: `contextIssue` da `missing_context`, sin identidades por defecto ni datos del catálogo. `limits.configurationSnapshots` informa `known` y `total`. Los fixtures usan `none` para modelar una captura futura; el loader nunca lo escribe.
 - **Snapshot ausente:** si falta modo o implemento, queda `insufficient_comparison` con motivo.
-- **Hora de comida:** `nutritionMealTimeKnown` da por conocida una hora sin marca. Acá se exige más: si `consumed_at` coincide con `created_at`, es el valor por defecto de la columna y cuenta como `registration`. Solo `explicit` entra en el valor primario. No hizo falta migrar.
+- **Hora de comida:** ver [procedencia](#procedencia-de-la-hora-de-comida). Solo `explicit` entra en el valor primario.
 - **Faltantes:** día sin comidas, métrica sin valor o macro `null` quedan fuera y se cuentan por motivo. Un macro `null` deja el total como parcial, nunca como cero. Un cero registrado sí es un valor.
 - **Día abierto:** hoy no entra en asociaciones, porque su ingesta y sus métricas siguen abiertas. Sí aparece en hechos, con `openDay`.
 - **Ingesta:** todo se nombra como registrado; `limits.ingestionCompleteKnown = false`.
 - **Consistencia:** se compara una revisión de las siete fuentes (cantidad de filas y último cambio) antes y después de leer, con un reintento. Si sigue cambiando, responde 503: nunca publica una lectura parcial. Una sesión en curso no la altera.
 - **Errores:** un flujo fallido o un número ilegible da 503, no un historial vacío. `integrity = conflicting_duplicates` llega sin filas y no significa vacío.
+
+## Procedencia de la hora de comida
+
+`mealTimeEvidence` ya no reutiliza el helper legacy, que da por conocida una hora sin marca. El helper y sus consumidores no cambian. `created_at` dejó de leerse: unos timestamps distintos no prueban nada, porque Web escribe la hora de su propio reloj aunque nadie haya declarado una.
+
+| `raw_input` | Evidencia | Valor primario |
+| --- | --- | --- |
+| `originalTimeKnown: true`, sin `timeSource` | `explicit` | Sí |
+| `originalTimeKnown: false` y `timeSource: "registration"` | `registration` | No; solo sensibilidad |
+| `originalTimeKnown: false` | `unknown` | No |
+| `null`, JSON inválido, sin marca o con marcas contradictorias | `unverified` | No; solo sensibilidad |
+
+Hoy **solo la importación histórica** escribe la marca positiva: Web, Mobile y ChatGPT dejan `raw_input` nulo con o sin hora declarada ([tabla de productores](367-insights-expand-propuesta.md#a-procedencia-de-la-hora-de-comida)). No se admite por inferencia ninguna otra forma, aunque un caso sea deducible:
+
+- ChatGPT v2 con hora guarda `null`, igual que ChatGPT v1 sin hora.
+- `{"timeSource":"registration"}` sin la otra clave aparece al editar la hora de una comida de ChatGPT. Queda como `unverified`: es un residuo, no una marca escrita para esto.
+
+Consecuencias, conservadas en el contrato:
+
+- Un día con una comida `unverified` en alcance queda fuera de la ventana, con `unverified_meal_time_in_scope`.
+- La sensibilidad `with_unverified_time` muestra qué pasaría si se aceptaran; nunca reemplaza el valor primario.
+- `limits.mealTimeEvidence` da el denominador por tipo de evidencia.
 
 ## Candidatos y ventanas
 
@@ -43,7 +67,10 @@ Las sensaciones post quedan en contexto y no son candidatas. Las exposiciones de
 - **Resultado:** proporción diaria de descensos sobre comparaciones evaluables, con la variante de igual peso por sesión como sensibilidad.
 - **Estadístico:** Spearman para mostrar y, para decidir, Spearman sobre residuos locales (mediana móvil de ±28 días, con ventana simétrica en los bordes).
 - **Inferencia:** 499 permutaciones por bloques de 14 observaciones, con semilla fija. Todos los candidatos usan las mismas permutaciones, y el máximo controla la familia completa.
-- **Exploratorio:** al menos 20 pares y 5 por grupo, p ≤ 0,05, |rho| ≥ 0,25, |rho local| ≥ 0,15 y sin ausencia selectiva.
+- **Elegibilidad:** al menos 20 pares y 5 observaciones fuera del valor más repetido; si no, `sparse_variation`. No depende de cómo se dibujen los grupos.
+- **Grupos, solo descriptivos:** se corta en la mediana. Los empates van al lado que deja los grupos más parejos; a igual balance, los valores iguales a la mediana van arriba. El lado se elige solo con la exposición, nunca con el resultado, y los valores iguales no se separan. Una variable binaria conserva sus dos valores reales. Cada grupo informa `min` y `max`. Si un lado tiene menos de 5 días, `groups` es nulo sin afectar el estado.
+- **Sin extremos:** se quita el 5 % de cada punta por posición, con empates en orden de fecha. Quitar por valor vaciaba una variable binaria y le impedía pasar la compuerta estricta.
+- **Exploratorio:** además, p ≤ 0,05, |rho| ≥ 0,25, |rho local| ≥ 0,15 y sin ausencia selectiva.
 - **Compuerta estricta (interna):** además, al menos 40 pares, p ajustada ≤ 0,01, |rho| ≥ 0,3, |rho local| ≥ 0,2, cobertura ≥ 50 %, ambas mitades cronológicas del mismo signo con |rho| ≥ 0,15, estable con igual peso por sesión y sin extremos, y sin depender de una rutina. **No se publica:** el read model la elimina y solo la usa la calibración.
 
 ## Calibración sintética
@@ -69,7 +96,31 @@ Sensibilidad con efecto plantado en un candidato:
 | Moderado (0,45 en logit) | 73,2 % | 41,0 % |
 | Fuerte (0,9 en logit) | 100 % | 99,9 % |
 
-**Evaluación del 1 %: no aprobado y hoy no alcanzado en todos los escenarios.** Queda por debajo en independencia, dependencia temporal, outliers, ausencia selectiva y múltiples candidatos. Cambios de rutina lo supera (1,8 %), y en tendencias el punto queda debajo pero su intervalo no descarta superarlo. Por eso «consistente» sigue fuera del contrato.
+### Exposiciones con valores repetidos
+
+Antes, una exposición cuya mediana coincidía con su mínimo quedaba bloqueada, así que estos casos nunca se habían evaluado. Se agregaron cinco escenarios, con los mismos 1000 historiales, 12 actualizaciones y 199 permutaciones:
+
+| Escenario | Algún exploratorio | Compuerta estricta | Wilson sup. 95 % |
+| --- | --- | --- | --- |
+| Binaria, un tercio de los días | 1,4 % | 0,1 % | 0,56 % |
+| Binaria rara, 5 % de los días | 0,5 % | 0,0 % | 0,38 % |
+| Escala 1 a 5 con empates | 1,7 % | 0,2 % | 0,73 % |
+| Binaria con cambios de rutina | 24,5 % | **1,4 %** | **2,34 %** |
+
+Con un efecto plantado de 1,2 en logit sobre una binaria, el candidato pasa exploratorio en 99,1 % y la compuerta estricta en 92,4 %. Abrir estos casos no fuerza resultados: en nulos sin deriva quedan por debajo del 1 %, y el problema de los cambios de rutina es el mismo que en las exposiciones continuas.
+
+### Evidencia que sigue vigente
+
+| Evidencia | Estado | Por qué |
+| --- | --- | --- |
+| Calibración continua de la tabla anterior | **Vigente** | Elegibilidad y recorte dan lo mismo sin empates. Con 100 historiales por escenario, los 9 resultados son idénticos a los de `f839f29`. No se repitió con 1000 |
+| Fixtures de asociación, ranking y permutación | Vigente | Sin cambios en la estadística |
+| Calibración de exposiciones con empates | **Nueva** | Antes no existía |
+| Escala y PostgREST | **Medidos otra vez** | El cálculo cambió. Ver [Escala](#escala) |
+
+**La calibración no valida el motor con datos reales.** Sus series entran directo en la evaluación de asociaciones y no dependen de la configuración ni de la hora de comida. Mide la política estadística, que recién tendrá datos cuando se resuelva la configuración.
+
+**Evaluación del 1 %: no aprobado y hoy no alcanzado en todos los escenarios.** Queda por debajo en independencia, dependencia temporal, outliers, ausencia selectiva, múltiples candidatos y exposiciones repetidas sin deriva. Cambios de rutina lo supera (1,8 % continua, 1,4 % binaria), y en tendencias el punto queda debajo pero su intervalo no descarta superarlo. Por eso «consistente» sigue fuera del contrato.
 
 **Qué haría falta antes de habilitarlo:** decidir el presupuesto de riesgo y estratificar por etapa de rutina, ya que los residuos locales no absorben un cambio simultáneo en exposición y resultado. Exploratorio aparece hasta en un 23 % de los historiales nulos con deriva o cambios de rutina, así que debe quedar solo en detalle y con un texto que no afirme que se repite.
 
@@ -79,20 +130,55 @@ Sensibilidad con efecto plantado en un candidato:
 
 ## Escala
 
-Solo cálculo, con perfiles sintéticos y 499 permutaciones. Los objetivos eran propuestas de la Etapa 0, no compromisos.
+Solo cálculo, con perfiles sintéticos y 499 permutaciones. Los objetivos eran propuestas de la Etapa 0, no compromisos. «Hoy» son los datos que lee el loader, sin configuración ni marca de hora. «Con captura» modela los mismos datos después de un EXPAND.
 
-| Perfil | Sesiones | Series | Valores de métricas | Comidas | Candidatos | Cálculo (máx.) | Respuesta | Memoria adicional | Consultas |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 año | 218 | 5232 | 2323 | 1460 | 28 | 114 ms | 70 KiB | 34 MiB | 30 |
-| 5 años | 1311 | 31 464 | 29 127 | 7300 | 52 | 873 ms | 104 KiB | 114 MiB | 96 |
-| 10 años intensos | 3137 | 125 480 | 87 679 | 18 250 | 72 | **4,5 s** | **141 KiB** | **479 MiB** | 280 |
-| Objetivo | | | | | | ≤ 1 s | ≤ 128 KiB | ≤ 128 MiB | |
+| Perfil | Series | Candidatos | Datos | Comparaciones | Cálculo (máx.) | Respuesta | Memoria adicional |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 año | 5232 | 28 | Hoy | 0 | 43 ms | 62 KiB | 21 MiB |
+| | | | Con captura | 1278 | 98 ms | 72 KiB | 29 MiB |
+| 5 años | 31 464 | 52 | Hoy | 0 | 123 ms | 90 KiB | 89 MiB |
+| | | | Con captura | 7826 | 807 ms | 108 KiB | 109 MiB |
+| 10 años intensos | 125 480 | 72 | Hoy | 0 | 427 ms | 121 KiB | **212 MiB** |
+| | | | Con captura | 25 036 | **4,9 s** | **147 KiB** | **239 MiB** |
+| Objetivo | | | | | ≤ 1 s | ≤ 128 KiB | ≤ 128 MiB |
 
-El perfil de 10 años supera los tres objetivos. No se trunca: si esa escala se vuelve real, hay que revisar la arquitectura de forma explícita.
+El perfil de 10 años supera los objetivos. No se trunca: si esa escala se vuelve real, hay que revisar la arquitectura de forma explícita. La memoria se toma después de cada corrida, no es un pico real: **no se puede comparar con los 479 MiB informados antes**, y no pude explicar esa diferencia.
 
-**Consultas:** `suma(páginas de cada flujo) + 14`. Crecen con las filas, no con ejercicios, sesiones ni candidatos. La Etapa 0 proponía 2 comprobaciones de revisión; sin una RPC nueva son dos rondas de 7 consultas cada una.
+### Costo real de lectura
 
-**PostgREST local real**, sobre esquema completo (89 migraciones), con usuarios sintéticos, token real y RLS. A 5 años, con 7746 series (el seed crea menos series por ejercicio que el perfil de arriba): lectura consistente 568–623 ms y cálculo 723–797 ms. Son loopback y Docker en esta PC: **no representan la latencia de producción**.
+```text
+P = suma de páginas de los 7 flujos = suma(máximo(1, techo(filas / 1000)))
+un intento = 7 revisión antes + P + 7 revisión después = P + 14
+```
+
+**No son nueve lecturas**, como estimaba la Etapa 0: cada comprobación de revisión son 7 consultas, una por flujo.
+
+| Caso | Fórmula | 1 año (P = 16) | 5 años (P = 82) | 10 años (P = 266) |
+| --- | --- | --- | --- | --- |
+| Fuentes estables | P + 14 | 30 | 96 | 280 |
+| Una fuente cambia: un reintento | 2(P + 14) | 60 | 192 | 560 |
+| Siguen cambiando: 503 | 2(P + 14) | 60 | 192 | 560 |
+| Medianoche de Córdoba durante la lectura | 2(P + 14) | 60 | 192 | 560 |
+| Ambos reintentos, peor caso | 4(P + 14) | 120 | 384 | 1120 |
+
+Las cinco filas están verificadas contra la ruta real con un cliente que cuenta consultas (`performance-insights.test.ts`, con P = 7), y el caso estable también contra PostgREST. A esto se suma la autenticación del token. Las consultas crecen con las filas, no con ejercicios, sesiones ni candidatos.
+
+No se quita ninguna garantía para bajar el número. Hay una [alternativa con una RPC](367-insights-expand-propuesta.md#d-consistencia-con-menos-consultas), que recomiendo decidir con datos de OBSERVE.
+
+### PostgREST local real
+
+Sobre esquema completo (89 migraciones), con usuarios sintéticos, token real y RLS, en una pila descartable que se eliminó al terminar. El test falla si la lectura no hace exactamente `14 + P` consultas reales.
+
+A 5 años, con 8016 series (el seed crea una serie por ejercicio, menos que el perfil de arriba) y P = 60, cada lectura hizo **74 consultas**:
+
+| Base | Lectura consistente | Ronda de revisión | Revisión de `workout_sets` | Cálculo |
+| --- | --- | --- | --- | --- |
+| Con estadísticas (`ANALYZE`) | 313–351 ms | 41–45 ms | 39–46 ms | 75–86 ms |
+| Recién sembrada, sin estadísticas | **2,8–2,9 s** | **1,2 s** | **1,2 s** | 91–123 ms |
+
+Las rondas corren en paralelo, así que tardan lo que su consulta más lenta. **La revisión de `workout_sets` tiene un plan frágil:** cruza series, ejercicios y sesiones, y sin estadísticas tarda unas 30 veces más. Producción corre con autovacuum, pero hay que observarla, y este seed tiene menos series que un historial real de 5 años.
+
+Esta medición reemplaza a la anterior (568–623 ms de lectura), hecha sobre otra pila y sin registrar el estado de sus estadísticas. Son loopback y Docker en esta PC: **no representan la latencia de producción**.
 
 Tres optimizaciones salieron de esas mediciones, sin cambiar resultados:
 
@@ -102,13 +188,16 @@ Tres optimizaciones salieron de esas mediciones, sin cambiar resultados:
 
 ## Validación
 
-- `engine.test.ts`: 19 fixtures de decisiones exactas. `calibration.test.ts`: 2 reproducibles para CI. `scale.test.ts`: 1. `performance-insights.test.ts`: 6 de ruta y loader. Comparador: 67, con 1 nueva.
+- `engine.test.ts`: 27 fixtures de decisiones exactas. `calibration.test.ts`: 3 reproducibles para CI. `scale.test.ts`: 1. `performance-insights.test.ts`: 12 de ruta, loader y costo de consultas. Comparador: 67.
 - `performance-insights.local.test.ts`: 2 contra Supabase local descartable, que se omiten sin su configuración. Verifican los `select` reales, que el token del dueño no lee filas ajenas al pedirlas y que sin identidad se rechaza. La instancia se eliminó al terminar.
 - Tipos raíz y Mobile, y lint focalizado.
+- Regresiones de la revisión de #385: procedencia horaria, configuración desconocida y variables binarias con empates.
 - **Sin ejecutar:** el endpoint en producción, ni contra datos reales.
 
 ## Pendientes
 
+- **Decisión de configuración:** captura, metodología parcial o ambas. Bloquea hechos y asociaciones con datos reales.
+- EXPAND de procedencia de la hora de comida.
 - Decisión del presupuesto de riesgo y estratificación por rutina.
 - PR 5: pantallas, entrada post-entreno y su QA física, que queda diferida hasta que se avise.
 - Revisar con datos reales qué tan seguido falta `implement_snapshot`, sin consultar datos personales fuera de una decisión explícita.

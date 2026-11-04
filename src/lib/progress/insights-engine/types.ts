@@ -14,18 +14,21 @@ export type InsightsSource = {
   }[];
   exercises: readonly {
     id: string; sessionId: string; exerciseId: string; name: string; implement: string | null; weightMode: string | null; isCompleted: boolean;
+    /** Historical snapshot. No table stores one yet, so the loader reads null: unknown, never an identity by default. */
+    configuration: string | null;
   }[];
   sets: readonly { id: string; sessionExerciseId: string; actualReps: number | null; actualLoad: number | null; isCompleted: boolean; completedAt: string | null }[];
   feelings: readonly { sessionId: string; revision: number; facts: unknown }[];
   metricDefinitions: readonly { id: string; name: string; unit: string | null; valueType: string; archived: boolean }[];
   metricValues: readonly { metricId: string; date: string; value: unknown }[];
   meals: readonly {
-    id: string; date: string; consumedAt: string | null; createdAt: string | null; rawInput: unknown; entryKind: string | null; sourceType: string | null;
+    id: string; date: string; consumedAt: string | null; rawInput: unknown; entryKind: string | null; sourceType: string | null;
     calories: number | null; proteinG: number | null; carbsG: number | null; fatG: number | null;
   }[];
 };
 
-export type MealTimeEvidence = "explicit" | "registration" | "unknown";
+/** `explicit` needs a positive marker. `unverified` has an instant but no proof of who set it, or why. */
+export type MealTimeEvidence = "explicit" | "registration" | "unverified" | "unknown";
 export type FeelingKey = "energyPre" | "fatiguePre" | "energyPost" | "fatiguePost";
 /** Order of the capture against the session. The client clock is never treated as verified. */
 export type FeelingTiming = "before_start" | "before_first_set" | "after_first_set" | "after_end" | "post_declared" | "unknown";
@@ -50,14 +53,17 @@ export type Candidate = {
 export type ObservationRow = { date: string; y: number; ySensitivity: number; routineKey: string | null };
 
 export type AssociationState = "insufficient_data" | "no_clear_signal" | "exploratory";
-export type AssociationReason = "too_few_pairs" | "no_variation" | "no_local_variation" | "unbalanced_groups" | "weak_or_unstable" | "passes_exploratory_gate";
+export type AssociationReason = "too_few_pairs" | "no_variation" | "no_local_variation" | "sparse_variation" | "weak_or_unstable" | "passes_exploratory_gate";
+export type AssociationGroup = { days: number; min: number; max: number; meanOutcome: number };
+/** Split at the median on whichever side of the tie is more balanced, chosen from the exposure alone. Equal values never separate. */
+export type AssociationGroups = { rule: "median_balanced_ties"; cut: number; lowIncludesCut: boolean; low: AssociationGroup; high: AssociationGroup };
 export type AssociationResult = {
   id: string; definition: CandidateDefinition; state: AssociationState; reason: AssociationReason;
   pairs: number; outcomeDays: number; coverage: number | null;
   exclusions: Record<string, number>;
   rho: number | null; localRho: number | null; permutationP: number | null; familyAdjustedP: number | null;
-  /** Descriptive split at the median. Means of the day's decline proportion, not a percentage of strength. */
-  groups: { cut: number; low: { days: number; meanOutcome: number }; high: { days: number; meanOutcome: number } } | null;
+  /** Descriptive only and never used to decide the state. Means of the day's decline proportion, not a percentage of strength. */
+  groups: AssociationGroups | null;
   stability: {
     firstHalfRho: number | null; secondHalfRho: number | null; equalSessionRho: number | null; withoutExtremesRho: number | null;
     leaveOneRoutineOutAgrees: boolean | null; selectiveAbsenceGap: number | null;
@@ -76,7 +82,7 @@ export type SessionFact = {
   context: {
     feelings: Partial<Record<FeelingKey, SessionFeeling>>;
     legacy: { energyLevel: number | null; performanceLevel: number | null; painLevel: number | null };
-    carbsPre3h: { value: number | null; state: "recorded" | "no_registered_meal" | "partial_macro" | "untimed_meal_in_scope" | "no_start_time" };
+    carbsPre3h: { value: number | null; state: "recorded" | "no_registered_meal" | "partial_macro" | "untimed_meal_in_scope" | "unverified_meal_time_in_scope" | "no_start_time" };
   };
 };
 export type NutritionContext = {
@@ -119,5 +125,5 @@ export type InsightsReadModel = {
     performance: Partial<Record<ExclusionReason | string, number>>;
     source: Record<string, number>;
   };
-  limits: { configurationCaptured: false; unitBasis: "historical_weight_mode"; ingestionCompleteKnown: false; clockVerified: false };
+  limits: { configurationSnapshots: { known: number; total: number }; mealTimeEvidence: Record<MealTimeEvidence, number>; unitBasis: "historical_weight_mode"; ingestionCompleteKnown: false; clockVerified: false };
 };

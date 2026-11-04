@@ -1,5 +1,5 @@
 import { blockPermutation, dayNumber, localResidual, mean, median, ranks, seededRandom, spearman } from "./stats";
-import type { AssociationResult, Candidate, ObservationRow } from "./types";
+import type { AssociationGroups, AssociationResult, Candidate, ObservationRow } from "./types";
 
 /** Fixed before looking at any result. Calibration measures them; they are never tuned per user or per window. */
 export const ASSOCIATION_POLICY = {
@@ -44,6 +44,29 @@ function statistic(item: Prepared, y: Float64Array, permutation: Int32Array | nu
   return variance <= 0 ? 0 : cross / (item.xNorm * Math.sqrt(variance));
 }
 
+/** Presentation only. The side of the tie comes from the exposure alone, so an outcome can never pick the split. */
+export function descriptiveGroups(x: readonly number[], y: readonly number[]): AssociationGroups | null {
+  const cut = median(x), n = x.length;
+  const below = x.filter(value => value < cut).length, atOrBelow = x.filter(value => value <= cut).length;
+  const lowIncludesCut = Math.min(atOrBelow, n - atOrBelow) > Math.min(below, n - below);
+  const isLow = (value: number) => lowIncludesCut ? value <= cut : value < cut;
+  const side = (low: boolean) => {
+    const values = x.filter(value => isLow(value) === low);
+    return { days: values.length, min: Math.min(...values), max: Math.max(...values), meanOutcome: mean(y.filter((_, i) => isLow(x[i]!) === low)) };
+  };
+  const size = lowIncludesCut ? atOrBelow : below;
+  if (Math.min(size, n - size) < ASSOCIATION_POLICY.minPerGroup) return null;
+  return { rule: "median_balanced_ties", cut, lowIncludesCut, low: side(true), high: side(false) };
+}
+
+/** Observations away from the most repeated value: what the statistic has to work with, however the groups are drawn. */
+function nonModalObservations(x: readonly number[]) {
+  const counts = new Map<number, number>();
+  let modal = 0;
+  for (const value of x) { const count = (counts.get(value) ?? 0) + 1; counts.set(value, count); if (count > modal) modal = count; }
+  return x.length - modal;
+}
+
 function describe(candidate: Candidate, rows: readonly ObservationRow[], prepared: Prepared | null, permutations: number): AssociationEvaluation {
   const paired = rows.filter(row => candidate.values.has(row.date));
   const x = paired.map(row => candidate.values.get(row.date)!), y = paired.map(row => row.y);
@@ -57,13 +80,13 @@ function describe(candidate: Candidate, rows: readonly ObservationRow[], prepare
   const none = { rho: null, localRho: null, permutationP: null, familyAdjustedP: null, groups: null, stability: empty, sensitivities, strictGate: false };
   if (paired.length < ASSOCIATION_POLICY.minPairs) return { ...base, ...none, state: "insufficient_data", reason: "too_few_pairs" };
   if (!prepared) return { ...base, ...none, state: "insufficient_data", reason: new Set(x).size < 2 ? "no_variation" : "no_local_variation" };
-  const cut = median(x), low = paired.filter((_, i) => x[i]! < cut), high = paired.filter((_, i) => x[i]! >= cut);
-  const groups = low.length && high.length ? { cut, low: { days: low.length, meanOutcome: mean(low.map(row => row.y)) }, high: { days: high.length, meanOutcome: mean(high.map(row => row.y)) } } : null;
+  const groups = descriptiveGroups(x, y);
   const rho = spearman(x, y);
   const half = paired.length >> 1;
   const absent = rows.filter(row => !candidate.values.has(row.date));
-  const sortedX = [...x].sort((a, b) => a - b), trim = Math.max(1, Math.floor(x.length * 0.05));
-  const inner = paired.filter((_, i) => x[i]! > sortedX[trim - 1]! && x[i]! < sortedX[x.length - trim]!);
+  // By position, with ties in date order: dropping by value would empty a binary exposure.
+  const trim = Math.max(1, Math.floor(x.length * 0.05));
+  const inner = paired.map((_, i) => i).sort((a, b) => x[a]! - x[b]! || a - b).slice(trim, x.length - trim).sort((a, b) => a - b).map(i => paired[i]!);
   const routines = new Map<string, number>();
   for (const row of paired) if (row.routineKey) routines.set(row.routineKey, (routines.get(row.routineKey) ?? 0) + 1);
   const large = [...routines].filter(([, count]) => count >= ASSOCIATION_POLICY.routineMinPairs).map(([key]) => key);
@@ -81,9 +104,7 @@ function describe(candidate: Candidate, rows: readonly ObservationRow[], prepare
   };
   const p = (prepared.exceed + 1) / (permutations + 1), adjusted = (prepared.adjustedExceed + 1) / (permutations + 1);
   const result = { ...base, rho, localRho: prepared.observed, permutationP: p, familyAdjustedP: adjusted, groups, stability, sensitivities };
-  if (low.length < ASSOCIATION_POLICY.minPerGroup || high.length < ASSOCIATION_POLICY.minPerGroup) {
-    return { ...result, state: "insufficient_data", reason: "unbalanced_groups", strictGate: false };
-  }
+  if (nonModalObservations(x) < ASSOCIATION_POLICY.minPerGroup) return { ...result, state: "insufficient_data", reason: "sparse_variation", strictGate: false };
   const selective = stability.selectiveAbsenceGap !== null && Math.abs(stability.selectiveAbsenceGap) >= ASSOCIATION_POLICY.selectiveAbsenceGap;
   const direction = rho !== null && Math.sign(rho) === Math.sign(prepared.observed);
   const exploratory = direction && !selective && p <= ASSOCIATION_POLICY.exploratoryP && Math.abs(rho!) >= ASSOCIATION_POLICY.exploratoryRho

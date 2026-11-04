@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { nutritionMealTimeSource } from "../../mobile-api/nutrition-meal-time";
 import { parsePerformanceInsights } from "../../mobile-api/performance-insights-contract";
 import { buildPerformanceInsightsV1 } from "../performance-insights";
-import { evaluateAssociations } from "./associations";
+import { descriptiveGroups, evaluateAssociations } from "./associations";
 import { buildExposureTable } from "./exposures";
 import { buildInsightsReadModel } from "./read-model";
 import { mealTimeEvidence, parseSessionFeelings, toPerformanceSessions, unitOfHistoricalMode } from "./source-adapter";
@@ -11,19 +12,20 @@ import type { Candidate, InsightsSource, ObservationRow } from "./types";
 const EX_A = "93670000-0000-4000-8000-00000000000a", EX_B = "93670000-0000-4000-8000-00000000000b", METRIC = "93670000-0000-4000-8000-0000000000aa", ARCHIVED = "93670000-0000-4000-8000-0000000000ab";
 const dateAt = (day: number) => new Date(Date.UTC(2026, 0, 1 + day)).toISOString().slice(0, 10);
 
-/** Trains exercise A every day: reps follow the given series, so each day's outcome is decided by the fixture. */
-function history(reps: readonly number[], extra: Partial<InsightsSource> = {}): InsightsSource {
+/** Trains exercise A every day: reps follow the given series, so each day's outcome is decided by the fixture. Its verified configuration models a future capture; the real loader reads null. */
+function history(reps: readonly number[], extra: Partial<InsightsSource> = {}, configuration: string | null = "none"): InsightsSource {
   const sessions: InsightsSource["sessions"][number][] = [], exercises: InsightsSource["exercises"][number][] = [], sets: InsightsSource["sets"][number][] = [];
   reps.forEach((value, day) => {
     const date = dateAt(day), id = `s${day}`;
     sessions.push({ id, date, routineId: "r1", routineName: "Rutina", name: null, status: "completed", startedAt: `${date}T18:00:00.000Z`, endedAt: `${date}T19:00:00.000Z`, performanceLevel: null, painLevel: null, legacyEnergyLevel: null });
-    exercises.push({ id: `e${day}`, sessionId: id, exerciseId: EX_A, name: "Press", implement: "barra", weightMode: "Peso total", isCompleted: true });
+    exercises.push({ id: `e${day}`, sessionId: id, exerciseId: EX_A, name: "Press", implement: "barra", weightMode: "Peso total", isCompleted: true, configuration });
     sets.push({ id: `set${day}`, sessionExerciseId: `e${day}`, actualReps: value, actualLoad: 100, isCompleted: true, completedAt: `${date}T18:10:00.000Z` });
   });
   return { sessions, exercises, sets, feelings: [], metricDefinitions: [], metricValues: [], meals: [], ...extra };
 }
+const PROVEN = '{"originalTimeKnown":true}', REGISTRATION = '{"originalTimeKnown":false,"timeSource":"registration"}';
 const meal = (over: Partial<InsightsSource["meals"][number]> & { id: string; date: string }): InsightsSource["meals"][number] => ({
-  consumedAt: `${over.date}T16:00:00.000Z`, createdAt: `${over.date}T20:00:00.000Z`, rawInput: null, entryKind: "meal", sourceType: "manual", calories: 500, proteinG: 30, carbsG: 60, fatG: 10, ...over });
+  consumedAt: `${over.date}T16:00:00.000Z`, rawInput: PROVEN, entryKind: "meal", sourceType: "manual", calories: 500, proteinG: 30, carbsG: 60, fatG: 10, ...over });
 const candidateOf = (source: InsightsSource, id: string, today = "2027-01-01") => {
   const performance = buildPerformanceInsightsV1({ sessions: toPerformanceSessions(source).sessions, historyCoverage: "complete" });
   return buildExposureTable(source, performance.days, today).candidates.find(row => row.definition.id === id)!;
@@ -39,7 +41,7 @@ describe("hechos", () => {
     expect(latest!.declineProportion).toBe(1); expect(middle!.declineProportion).toBe(0);
     expect(latest!.sessions[0]!.exercises[0]).toMatchObject({ status: "declined", referenceSessionId: "s1", referenceAgeDays: 0 });
     expect(model.exclusions.performance.no_compatible_reference).toBe(1);
-    expect(model.limits).toMatchObject({ configurationCaptured: false, ingestionCompleteKnown: false, clockVerified: false });
+    expect(model.limits).toMatchObject({ configurationSnapshots: { known: 3, total: 3 }, ingestionCompleteKnown: false, clockVerified: false });
     expect(parsePerformanceInsights(JSON.parse(JSON.stringify(model)))).toBeTruthy();
   });
   it("derives the unit only from the historical mode and leaves a missing snapshot insufficient", () => {
@@ -63,6 +65,34 @@ describe("hechos", () => {
     const model = buildInsightsReadModel({ ...source, sessions: [...source.sessions, { ...source.sessions[0]!, endedAt: `${dateAt(0)}T20:00:00.000Z` }] }, { today: "2027-01-01", permutations: 19 });
     expect(model.integrity).toBe("conflicting_duplicates"); expect(model.facts.days).toEqual([]); expect(model.associations.items).toEqual([]);
     expect(parsePerformanceInsights(JSON.parse(JSON.stringify(model)))).toBeTruthy();
+  });
+});
+
+describe("configuración desconocida", () => {
+  const reps = oscillating(30);
+  it("stays unknown on both sides: nothing is compared and the denominators say why", () => {
+    const model = buildInsightsReadModel(history(reps, {}, null), { today: "2027-01-01", permutations: 19 });
+    expect(model.facts.totals).toMatchObject({ comparable: 0, insufficient: 30, total: 30, coverage: 0 });
+    expect(model.exclusions.performance.missing_context).toBe(30);
+    expect(model.facts.days[0]).toMatchObject({ declineProportion: null });
+    expect(model.facts.days[0]!.sessions[0]!.exercises[0]).toMatchObject({ status: "insufficient_comparison", reason: "missing_context", referenceSessionId: null, newHigh: false });
+    expect(model.history).toMatchObject({ sessions: 30, outcomeDays: 0 });
+    expect(model.limits.configurationSnapshots).toEqual({ known: 0, total: 30 });
+    expect(parsePerformanceInsights(JSON.parse(JSON.stringify(model)))).toBeTruthy();
+  });
+  it("does not compare a known configuration with an unknown one", () => {
+    const source = history(reps.slice(0, 3));
+    const model = buildInsightsReadModel({ ...source, exercises: source.exercises.map((row, i) => i === 2 ? { ...row, configuration: null } : row) }, { today: "2027-01-01", limit: 3, permutations: 19 });
+    expect(model.facts.days[0]!.sessions[0]!.exercises[0]).toMatchObject({ status: "insufficient_comparison", reason: "missing_context" });
+    expect(model.limits.configurationSnapshots).toEqual({ known: 2, total: 3 });
+  });
+  it("gives the same results in summary without one exclusion per earlier session", () => {
+    const sessions = toPerformanceSessions(history(reps, {}, null)).sessions;
+    const full = buildPerformanceInsightsV1({ sessions, historyCoverage: "complete" }), summary = buildPerformanceInsightsV1({ sessions, historyCoverage: "complete", exclusionDetail: "summary" });
+    const shape = (result: typeof full) => result.sessions.flatMap(row => row.exercises.map(({ status, reason, reference, evidence, records }) => ({ status, reason, reference, evidence, records })));
+    expect(shape(summary)).toEqual(shape(full));
+    const rows = (result: typeof full) => result.sessions.flatMap(row => row.exercises.flatMap(exercise => exercise.exclusions)).length;
+    expect(rows(full)).toBeGreaterThan(400); expect(rows(summary)).toBe(30);
   });
 });
 
@@ -92,11 +122,16 @@ describe("contexto y exposiciones", () => {
     expect(carbs.values.get(dateAt(1))).toBe(100); expect(protein.values.has(dateAt(1))).toBe(false); expect(protein.exclusions.partial_macro).toBe(1);
     expect(carbs.values.get(dateAt(3))).toBe(0); expect(carbs.values.has(dateAt(2))).toBe(false); expect(carbs.exclusions.no_active_meals).toBeGreaterThan(0);
   });
-  it("classifies meal time evidence strictly", () => {
-    const base = { consumedAt: "2026-01-02T16:00:00.000Z", createdAt: "2026-01-02T20:00:00.000Z", rawInput: null, entryKind: "meal" };
-    expect(mealTimeEvidence(base)).toBe("explicit");
-    expect(mealTimeEvidence({ ...base, createdAt: base.consumedAt })).toBe("registration");
-    expect(mealTimeEvidence({ ...base, rawInput: '{"originalTimeKnown":false,"timeSource":"registration"}' })).toBe("registration");
+  it("admits a meal time only with a positive marker: distinct timestamps prove nothing", () => {
+    const base = { consumedAt: "2026-01-02T16:00:00.000Z", createdAt: "2026-01-02T20:00:00.000Z", rawInput: null as unknown, entryKind: "meal" };
+    expect(mealTimeEvidence(base)).toBe("unverified");
+    expect(mealTimeEvidence({ ...base, rawInput: PROVEN })).toBe("explicit");
+    for (const rawInput of ["not json", "{}", "[1]", '"x"', "null", '{"timeSource":"registration"}', '{"originalTimeKnown":"true"}', '{"originalTimeKnown":true,"timeSource":"registration"}', { originalTimeKnown: true }]) {
+      expect(mealTimeEvidence({ ...base, rawInput }), JSON.stringify(rawInput)).toBe("unverified");
+    }
+    // The legacy helper and its consumers keep their reading.
+    expect(nutritionMealTimeSource(null, "meal")).toBe("explicit");
+    expect(mealTimeEvidence({ ...base, rawInput: REGISTRATION })).toBe("registration");
     expect(mealTimeEvidence({ ...base, rawInput: '{"originalTimeKnown":false}' })).toBe("unknown");
     expect(mealTimeEvidence({ ...base, entryKind: "legacy_daily_summary" })).toBe("unknown");
     expect(mealTimeEvidence({ ...base, consumedAt: "2026-01-02 16:00" })).toBe("unknown");
@@ -110,7 +145,9 @@ describe("contexto y exposiciones", () => {
       ["older than 3h", [meal({ id: "m", date: d, consumedAt: `${d}T14:59:00.000Z` })], undefined, "no_registered_meal_in_window"],
       ["null macro", [meal({ id: "m", date: d, carbsG: null })], undefined, "partial_macro"],
       ["recorded zero", [meal({ id: "m", date: d, carbsG: 0 })], 0],
-      ["default clock time", [meal({ id: "m", date: d, createdAt: `${d}T16:00:00.000Z` })], undefined, "untimed_meal_in_scope"],
+      ["no provenance", [meal({ id: "m", date: d, rawInput: null })], undefined, "unverified_meal_time_in_scope"],
+      ["invalid metadata", [meal({ id: "m", date: d, rawInput: "not json" })], undefined, "unverified_meal_time_in_scope"],
+      ["registration time", [meal({ id: "m", date: d, rawInput: REGISTRATION })], undefined, "untimed_meal_in_scope"],
       ["legacy summary", [meal({ id: "m", date: d, entryKind: "legacy_daily_summary" })], undefined, "untimed_meal_in_scope"],
     ];
     for (const [name, meals, expected, reason] of cases) {
@@ -126,8 +163,16 @@ describe("contexto y exposiciones", () => {
     const d = dateAt(4);
     const candidate = candidateOf(history(oscillating(6), { meals: [meal({ id: "x", date: d, consumedAt: `${d}T14:30:00.000Z`, carbsG: 30 })] }), "meal_window:carbsG:pre_3h");
     expect(candidate.values.has(d)).toBe(false); expect(candidate.sensitivities!.window_4h!.get(d)).toBe(30); expect(candidate.sensitivities!.window_2h!.has(d)).toBe(false);
-    const approximate = candidateOf(history(oscillating(6), { meals: [meal({ id: "x", date: d, createdAt: `${d}T16:00:00.000Z`, carbsG: 30 })] }), "meal_window:carbsG:pre_3h");
+    const approximate = candidateOf(history(oscillating(6), { meals: [meal({ id: "x", date: d, rawInput: REGISTRATION, carbsG: 30 })] }), "meal_window:carbsG:pre_3h");
     expect(approximate.values.has(d)).toBe(false); expect(approximate.sensitivities!.with_registration_time!.get(d)).toBe(30);
+    const unproven = candidateOf(history(oscillating(6), { meals: [meal({ id: "x", date: d, rawInput: null, carbsG: 30 })] }), "meal_window:carbsG:pre_3h");
+    expect(unproven.values.has(d)).toBe(false); expect(unproven.sensitivities!.with_registration_time!.has(d)).toBe(false); expect(unproven.sensitivities!.with_unverified_time!.get(d)).toBe(30);
+    expect(unproven.exclusions.unverified_meal_time_in_scope).toBeGreaterThan(0);
+    const sameDay = candidateOf(history(oscillating(6), { meals: [meal({ id: "x", date: d, rawInput: null })] }), "meal_window:carbsG:same_day_before_start");
+    expect(sameDay.values.has(d)).toBe(false); expect(sameDay.exclusions.unverified_meal_time_in_scope).toBe(1);
+    const model = buildInsightsReadModel(history(oscillating(6), { meals: [meal({ id: "x", date: d, rawInput: null }), meal({ id: "y", date: dateAt(1) })] }), { today: "2027-01-01", limit: 10, permutations: 19 });
+    expect(model.limits.mealTimeEvidence).toEqual({ explicit: 1, registration: 0, unverified: 1, unknown: 0 });
+    expect(model.facts.days.find(day => day.date === d)!.sessions[0]!.context.carbsPre3h).toEqual({ value: null, state: "unverified_meal_time_in_scope" });
   });
   it("uses pre feelings only when captured before the first set, and post feelings never as an exposure", () => {
     const d = dateAt(3), fact = (value: number, capturedAt: string | null, declaredMoment = "pre") => ({ value, instrumentVersion: "energy-fatigue/1", declaredMoment, declaredAt: capturedAt, capturedAt, source: "mobile", receivedAt: capturedAt ?? `${d}T19:00:00Z`, temporalQuality: capturedAt ? "unverified_client_clock" : "unknown" });
@@ -169,11 +214,49 @@ describe("asociaciones", () => {
     expect(evaluateAssociations(rows(noise), [candidate("x", noise.map(v => 1 - v))], { permutations: 49 })).toEqual(a);
     expect([...blockPermutation(50, 14, seededRandom(1))].sort((x, y) => x - y)).toEqual(Array.from({ length: 50 }, (_, i) => i));
   });
-  it("abstains below the minimum, without variation and with an unbalanced split", () => {
+  it("abstains below the minimum, without variation and with too little variation", () => {
     expect(evaluateAssociations(rows(noise.slice(0, 19)), [candidate("few", noise.slice(0, 19))], { permutations: 19 }).items[0]).toMatchObject({ state: "insufficient_data", reason: "too_few_pairs", rho: null, pairs: 19 });
     expect(evaluateAssociations(rows(noise), [candidate("flat", noise.map(() => 4))], { permutations: 19 }).items[0]).toMatchObject({ state: "insufficient_data", reason: "no_variation" });
-    expect(evaluateAssociations(rows(noise), [candidate("rare", noise.map((_, i) => i >= 50 && i < 53 ? 0 : 1))], { permutations: 19 }).items[0]).toMatchObject({ state: "insufficient_data", reason: "unbalanced_groups" });
+    expect(evaluateAssociations(rows(noise), [candidate("rare", noise.map((_, i) => i >= 50 && i < 53 ? 0 : 1))], { permutations: 19 }).items[0]).toMatchObject({ state: "insufficient_data", reason: "sparse_variation", groups: null });
     expect(evaluateAssociations(rows(noise), [candidate("binary", noise.map((_, i) => i % 2))], { permutations: 19 }).items[0]!.reason).not.toBe("no_variation");
+  });
+  describe("valores repetidos", () => {
+    const n = 60, x = Array.from({ length: n }, (_, i) => i % 3 === 0 ? 1 : 0);
+    it("keeps both real values of a binary exposure, even when the median is the minimum", () => {
+      const [item] = evaluateAssociations(rows(x.map(v => v ? 0.8 : 0.1)), [candidate("binary", x)], { permutations: 199 }).items;
+      expect(item!.reason).not.toBe("sparse_variation"); expect(item!.rho).toBeCloseTo(1);
+      expect(item!.groups).toEqual({ rule: "median_balanced_ties", cut: 0, lowIncludesCut: true, low: { days: 40, min: 0, max: 0, meanOutcome: expect.closeTo(0.1) }, high: { days: 20, min: 1, max: 1, meanOutcome: expect.closeTo(0.8) } });
+      expect(item!.stability.withoutExtremesRho).toBeCloseTo(1);
+      const mirrored = evaluateAssociations(rows(x.map(v => v ? 0.8 : 0.1)), [candidate("mirrored", x.map(v => 1 - v))], { permutations: 19 }).items[0]!;
+      expect(mirrored.groups).toMatchObject({ cut: 1, lowIncludesCut: false, low: { days: 20, min: 0, max: 0 }, high: { days: 40, min: 1, max: 1 } });
+    });
+    it("does not force a significant result on an unrelated binary exposure", () => {
+      const results = Array.from({ length: 30 }, (_, seed) => {
+        const own = seededRandom(5000 + seed), ys = x.map(() => own());
+        return evaluateAssociations(rows(ys), [candidate("binary", x)], { permutations: 99, seed }).items[0]!;
+      });
+      expect(results.every(item => item.groups !== null && item.groups.high.days === 20)).toBe(true);
+      expect(results.filter(item => item.strictGate)).toHaveLength(0);
+      expect(results.filter(item => item.state === "exploratory").length).toBeLessThanOrEqual(4);
+    });
+    it("never separates equal values, and the outcome cannot move the split", () => {
+      const tied = [1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3];
+      const groups = descriptiveGroups(tied, tied.map(() => 0.5))!;
+      expect(groups).toMatchObject({ cut: 2, lowIncludesCut: true, low: { days: 13, min: 1, max: 2 }, high: { days: 7, min: 3, max: 3 } });
+      const other = descriptiveGroups(tied, tied.map((_, i) => i / 20))!;
+      expect([other.cut, other.lowIncludesCut, other.low.days, other.high.days]).toEqual([groups.cut, groups.lowIncludesCut, groups.low.days, groups.high.days]);
+    });
+    it("separates eligibility from the groups: small sides hide the groups without deciding the state", () => {
+      const lopsided = Array.from({ length: 56 }, (_, i) => [10, 30, 50].includes(i) ? 1 : [5, 25, 45].includes(i) ? 3 : 2);
+      const [item] = evaluateAssociations(rows(lopsided.map((_, i) => (i * 7 % 10) / 10)), [candidate("lopsided", lopsided)], { permutations: 19 }).items;
+      expect(item!.groups).toBeNull(); expect(item!.reason).not.toBe("sparse_variation"); expect(item!.rho).not.toBeNull();
+    });
+    it("reaches the contract through the read model", () => {
+      const source = history(oscillating(30), { metricDefinitions: [{ id: METRIC, name: "M", unit: null, valueType: "integer", archived: false }], metricValues: oscillating(30).map((_, day) => ({ metricId: METRIC, date: dateAt(day), value: day % 3 ? 0 : 1 })) });
+      const model = buildInsightsReadModel(source, { today: "2027-01-01", permutations: 19 });
+      expect(model.associations.items.find(row => row.id === `metric:${METRIC}:same_day`)!.groups).toMatchObject({ rule: "median_balanced_ties", cut: 0, lowIncludesCut: true });
+      expect(parsePerformanceInsights(JSON.parse(JSON.stringify(model)))).toBeTruthy();
+    });
   });
   it("finds a strong planted relation only as exploratory, with coverage and groups", () => {
     const xs = noise.map(v => v + (random() - 0.5) * 0.2);

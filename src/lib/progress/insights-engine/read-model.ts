@@ -2,8 +2,8 @@ import { buildPerformanceInsightsV1 } from "../performance-insights";
 import type { PerformanceCounts, SessionPerformance } from "../performance-insights/types";
 import { evaluateAssociations } from "./associations";
 import { buildExposureTable } from "./exposures";
-import { toPerformanceSessions } from "./source-adapter";
-import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_RISK_BUDGET_CANDIDATE, type AssociationResult, type DayFact, type ExerciseSummary, type InsightsReadModel, type InsightsSource, type SessionFact } from "./types";
+import { mealTimeEvidence, toPerformanceSessions } from "./source-adapter";
+import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_RISK_BUDGET_CANDIDATE, type AssociationResult, type DayFact, type ExerciseSummary, type InsightsReadModel, type InsightsSource, type MealTimeEvidence, type SessionFact } from "./types";
 
 export const INSIGHTS_DEFAULT_DAYS = 14;
 export const INSIGHTS_MAX_DAYS = 120;
@@ -83,6 +83,8 @@ export function buildInsightsReadModel(source: InsightsSource, options: {
   const items: AssociationResult[] = evaluation.items.map(item => { const published: Omit<typeof item, "strictGate"> & { strictGate?: boolean } = { ...item }; delete published.strictGate; return published; });
   const requested = options.association ? table.candidates.find(candidate => candidate.definition.id === options.association) : undefined;
   const dates = performance.days.map(day => day.date);
+  const mealEvidence: Record<MealTimeEvidence, number> = { explicit: 0, registration: 0, unverified: 0, unknown: 0 };
+  for (const meal of source.meals) if (meal.entryKind === "meal") mealEvidence[mealTimeEvidence(meal)]++;
   return {
     contractVersion: INSIGHTS_CONTRACT, methodVersion: INSIGHTS_ENGINE_METHOD, performanceMethodVersion: performance.methodVersion,
     today: options.today, integrity: performance.integrity,
@@ -97,6 +99,6 @@ export function buildInsightsReadModel(source: InsightsSource, options: {
         return exposure === undefined ? [] : [{ date: row.date, exposure, outcome: row.y, sessionIds: table.sessionIdsByDate.get(row.date) ?? [] }];
       }) } : null },
     exclusions: { performance: performanceExclusions, source: sourceExclusions },
-    limits: { configurationCaptured: false, unitBasis: "historical_weight_mode", ingestionCompleteKnown: false, clockVerified: false },
+    limits: { configurationSnapshots: { known: source.exercises.filter(row => row.configuration?.trim()).length, total: source.exercises.length }, mealTimeEvidence: mealEvidence, unitBasis: "historical_weight_mode", ingestionCompleteKnown: false, clockVerified: false },
   };
 }

@@ -1,13 +1,7 @@
-import { nutritionMealTimeSource } from "../../mobile-api/nutrition-meal-time";
 import { normalizeWeightMode, weightModeStrategy } from "../../mobile-api/weight-modes";
 import type { PerformanceSession, PerformanceUnit } from "../performance-insights/types";
 import type { FeelingKey, InsightsSource, MealTimeEvidence, SessionFeeling } from "./types";
 
-/**
- * The product has never captured a configuration dimension: variants are separate exercise UUIDs. This opaque identity
- * says exactly that. It is not the comparator's verified "none", and the read model declares the limit.
- */
-export const CONFIGURATION_NOT_CAPTURED = "not_captured_by_product";
 const UNIT_BY_STRATEGY = { load_reps: "kg", unit_reps: "lingotes", bodyweight_reps: "reps", time: "seconds" } as const;
 
 /** The mode is the historical snapshot and defines what the recorded field holds. The current catalog is never read. */
@@ -34,7 +28,7 @@ export function toPerformanceSessions(source: InsightsSource): { sessions: Perfo
     const sets = setsByExercise.get(row.id) ?? [];
     attachedSets += sets.length;
     const block = { id: row.id, exerciseId: row.exerciseId, completed: row.isCompleted,
-      context: { weightMode: row.weightMode, unit: unitOfHistoricalMode(row.weightMode), implement: row.implement, configuration: CONFIGURATION_NOT_CAPTURED },
+      context: { weightMode: row.weightMode, unit: unitOfHistoricalMode(row.weightMode), implement: row.implement, configuration: row.configuration },
       sets: sets.map(set => ({ id: set.id, completed: set.isCompleted, amount: set.actualReps, load: set.actualLoad })) };
     const blocks = blocksBySession.get(row.sessionId);
     if (blocks) blocks.push(block); else blocksBySession.set(row.sessionId, [block]);
@@ -52,15 +46,19 @@ export function toPerformanceSessions(source: InsightsSource): { sessions: Perfo
 }
 
 /**
- * Strict evidence for a meal's time. The shared helper reads a missing marker as known, which is not enough here: a time
- * equal to the row's creation is the column default, so nobody declared it. It only enters a separate sensitivity.
+ * Strict provenance for a meal's time, separate from the legacy helper, which reads a missing marker as known. Web, Mobile
+ * and ChatGPT leave raw_input null both when a time was declared and when the clock filled it in, and timestamps cannot
+ * tell them apart: Web stamps its own clock. Only a positive marker proves a time; today only the sheet import writes one.
  */
-export function mealTimeEvidence(meal: Pick<InsightsSource["meals"][number], "consumedAt" | "createdAt" | "rawInput" | "entryKind">): MealTimeEvidence {
-  const consumed = instantMs(meal.consumedAt);
-  if (consumed === null) return "unknown";
-  const source = nutritionMealTimeSource(meal.rawInput, meal.entryKind);
-  if (source !== "explicit") return source;
-  return consumed === instantMs(meal.createdAt) ? "registration" : "explicit";
+export function mealTimeEvidence(meal: Pick<InsightsSource["meals"][number], "consumedAt" | "rawInput" | "entryKind">): MealTimeEvidence {
+  if (meal.entryKind !== "meal" || instantMs(meal.consumedAt) === null) return "unknown";
+  if (typeof meal.rawInput !== "string") return "unverified";
+  let facts: unknown;
+  try { facts = JSON.parse(meal.rawInput); } catch { return "unverified"; }
+  if (!facts || typeof facts !== "object" || Array.isArray(facts)) return "unverified";
+  const { originalTimeKnown, timeSource } = facts as { originalTimeKnown?: unknown; timeSource?: unknown };
+  if (originalTimeKnown === false) return timeSource === "registration" ? "registration" : "unknown";
+  return originalTimeKnown === true && timeSource === undefined ? "explicit" : "unverified";
 }
 
 const FEELING_KEYS: readonly FeelingKey[] = ["energyPre", "fatiguePre", "energyPost", "fatiguePost"];
