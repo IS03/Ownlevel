@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "../../app/api/mobile/v1/progress/performance-insights/route";
 import { parsePerformanceInsights } from "./performance-insights-contract";
-import { clearInsightsSnapshots } from "./performance-insights-server";
 
 const mocks = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("server-only", () => ({}));
@@ -49,12 +48,12 @@ function tablesFor(days: number) {
     workout_session_feelings: [],
     user_metrics: [{ id: METRIC, name: "Métrica", unit: null, value_type: "decimal", is_active: false, archived_at: "2026-02-01T00:00:00Z" }],
     daily_metric_values: reps.map((_, day) => ({ id: `v${day}`, metric_id: METRIC, metric_date: dateAt(day), value: String(day % 4) })),
-    meal_entries: [{ id: "m", consumed_at: `${dateAt(0)}T16:00:00.000Z`, consumed_at_source: null, raw_input: null, entry_kind: "meal", source_type: "manual", final_calories: 500, final_protein_g: "30", final_carbs_g: null, final_fat_g: 5, day_logs: { log_date: dateAt(0) } }],
+    meal_entries: [{ id: "m", consumed_at: `${dateAt(0)}T16:00:00.000Z`, consumed_at_source: null, raw_input: null, entry_kind: "meal", source_type: "manual", import_run_id: null, final_calories: 500, final_protein_g: "30", final_carbs_g: null, final_fat_g: 5, day_logs: { log_date: dateAt(0) } }],
   };
 }
 const request = (query = "") => new NextRequest(`http://127.0.0.1/api/mobile/v1/progress/performance-insights${query}`, { headers: { authorization: "Bearer synthetic" } });
 
-beforeEach(() => { mocks.auth.mockReset(); clearInsightsSnapshots(); });
+beforeEach(() => { mocks.auth.mockReset(); });
 afterEach(() => { vi.useRealTimers(); });
 
 describe("GET performance-insights", () => {
@@ -158,8 +157,7 @@ describe("GET performance-insights", () => {
       expect((await GET(request(query))).status, query).toBe(400);
     }
   }, 30_000);
-  describe("reutilización de la misma revisión", () => {
-    const pagesOf = (calls: Call[]) => calls.filter(call => call.range).length;
+  describe("identidad de cada lectura", () => {
     const parsed = async (query: string) => {
       const response = await GET(request(query));
       expect(response.status, query).toBe(200);
@@ -167,60 +165,36 @@ describe("GET performance-insights", () => {
       expect(parsePerformanceInsights(body), query).toBeTruthy();
       return body;
     };
-    it("answers days and relations of an unchanged history with a revision check alone, and the same content", async () => {
+    it("reads the whole history for every view, because nothing can vouch for an earlier result", async () => {
       const fake = fakeSupabase(tablesFor(40));
       mocks.auth.mockResolvedValue({ userId: USER, supabase: fake.client });
       const first = await parsed("?limit=5");
       expect(fake.calls).toHaveLength(7 + 14);
-      for (const query of ["?view=days&before=" + first.facts.page.nextBefore + "&limit=5", "?view=relations", `?association=${encodeURIComponent(`partial:metric:${METRIC}:same_day`)}`, "?limit=5"]) {
+      for (const query of ["?view=days&before=" + first.facts.page.nextBefore + "&limit=5", "?view=relations", `?association=${encodeURIComponent(`partial:metric:${METRIC}:same_day`)}`]) {
         const before = fake.calls.length;
         const body = await parsed(query);
-        expect(fake.calls.length - before, query).toBe(7);
-        expect(body.sourceRevision).toBe(first.sourceRevision);
+        expect(fake.calls.length - before, query).toBe(7 + 14);
+        expect(body.sourceRevision, query).toBe(first.sourceRevision);
       }
-      expect(pagesOf(fake.calls)).toBe(7);
-      clearInsightsSnapshots();
-      const fresh = fakeSupabase(tablesFor(40));
-      mocks.auth.mockResolvedValue({ userId: USER, supabase: fresh.client });
-      expect(await parsed("?view=relations")).toEqual(await (async () => { mocks.auth.mockResolvedValue({ userId: USER, supabase: fake.client }); clearInsightsSnapshots(); return parsed("?view=relations"); })());
     }, 60_000);
-    it("reads everything again as soon as the revision changes, and says so", async () => {
-      let revision = "a";
-      const fake = fakeSupabase(tablesFor(10), () => revision);
+    it("shows a change that leaves count and maximum exactly as they were, and gives it another identity", async () => {
+      const tables = tablesFor(10);
+      const fake = fakeSupabase(tables, () => "same");
       mocks.auth.mockResolvedValue({ userId: USER, supabase: fake.client });
-      const first = await parsed("");
-      revision = "b";
-      const before = fake.calls.length;
-      const page = await parsed("?view=days");
-      expect(fake.calls.length - before).toBe(7 + 14);
-      expect(page.sourceRevision).not.toBe(first.sourceRevision);
+      const first = await parsed("?limit=120");
+      expect(first.facts.days.find((day: { date: string }) => day.date === dateAt(3)).context.metrics[0].value).toBe(3);
+      tables.daily_metric_values[3]!.value = "2";
+      const second = await parsed("?limit=120");
+      expect(second.facts.days.find((day: { date: string }) => day.date === dateAt(3)).context.metrics[0].value).toBe(2);
+      expect(second.sourceRevision).not.toBe(first.sourceRevision);
     });
-    it("never serves one account's snapshot to another, even with the same revision", async () => {
+    it("keeps every account apart", async () => {
       const mine = fakeSupabase(tablesFor(6));
       mocks.auth.mockResolvedValue({ userId: USER, supabase: mine.client });
       await parsed("");
       const other = fakeSupabase(tablesFor(2));
       mocks.auth.mockResolvedValue({ userId: "93670000-0000-4000-8000-0000000000b2", supabase: other.client });
-      const body = await parsed("");
-      expect(body.history.sessions).toBe(2);
-      expect(pagesOf(other.calls)).toBe(7);
-    });
-    it("does not reuse a snapshot across the Córdoba day", async () => {
-      vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-06-01T12:00:00Z") });
-      const fake = fakeSupabase(tablesFor(4));
-      mocks.auth.mockResolvedValue({ userId: USER, supabase: fake.client });
-      await parsed("");
-      vi.setSystemTime(new Date("2026-06-02T12:00:00Z"));
-      const before = fake.calls.length;
-      expect((await parsed("")).today).toBe("2026-06-02");
-      expect(fake.calls.length - before).toBe(7 + 14);
-    });
-    it("still refuses when the token fails, before reusing anything", async () => {
-      const { MobileApiUnauthorizedError } = await import("./auth");
-      mocks.auth.mockResolvedValue({ userId: USER, supabase: fakeSupabase(tablesFor(4)).client });
-      await parsed("");
-      mocks.auth.mockRejectedValue(new MobileApiUnauthorizedError());
-      expect((await GET(request("?view=days"))).status).toBe(401);
+      expect((await parsed("")).history.sessions).toBe(2);
     });
   });
   it("requires a token", async () => {

@@ -49,9 +49,10 @@ export function toPerformanceSessions(source: InsightsSource): { sessions: Perfo
  * Strict provenance for a meal's time, separate from the legacy helper, which reads a missing marker as known. Web, Mobile
  * and ChatGPT leave raw_input null both when a time was declared and when the clock filled it in, and timestamps cannot
  * tell them apart: Web stamps its own clock. Only a positive marker proves a time: the recorded source, or the sheet import's flag
- * on rows older than that column. Nothing is backfilled or inferred, so a time sent without a statement stays unverified.
+ * on a row an import run wrote, older than that column. A token can write raw_input on its own rows, so anywhere else the flag is
+ * just text. Nothing is backfilled or inferred, so a time sent without a statement stays unverified.
  */
-export function mealTimeEvidence(meal: Pick<InsightsSource["meals"][number], "consumedAt" | "consumedAtSource" | "rawInput" | "entryKind">): MealTimeEvidence {
+export function mealTimeEvidence(meal: Pick<InsightsSource["meals"][number], "consumedAt" | "consumedAtSource" | "rawInput" | "entryKind" | "sourceType" | "importRunId">): MealTimeEvidence {
   if (meal.entryKind !== "meal" || instantMs(meal.consumedAt) === null) return "unknown";
   if (meal.consumedAtSource === "user_declared" || meal.consumedAtSource === "imported") return "explicit";
   if (meal.consumedAtSource === "registration_now") return "registration";
@@ -62,7 +63,7 @@ export function mealTimeEvidence(meal: Pick<InsightsSource["meals"][number], "co
   if (!facts || typeof facts !== "object" || Array.isArray(facts)) return "unverified";
   const { originalTimeKnown, timeSource } = facts as { originalTimeKnown?: unknown; timeSource?: unknown };
   if (originalTimeKnown === false) return timeSource === "registration" ? "registration" : "unknown";
-  return originalTimeKnown === true && timeSource === undefined ? "explicit" : "unverified";
+  return originalTimeKnown === true && timeSource === undefined && meal.sourceType === "sheet_import" && !!meal.importRunId ? "explicit" : "unverified";
 }
 
 const FEELING_KEYS: readonly FeelingKey[] = ["energyPre", "fatiguePre", "energyPost", "fatiguePost"];

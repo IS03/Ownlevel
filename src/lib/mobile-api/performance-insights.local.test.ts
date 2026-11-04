@@ -2,7 +2,7 @@
 // OWNLEVEL_INSIGHTS_LOCAL_STATUS=<status.json> OWNLEVEL_INSIGHTS_LOCAL_DB=<db container> npx vitest run src/lib/mobile-api/performance-insights.local.test.ts
 // OWNLEVEL_INSIGHTS_LOCAL_SCALE_OUT=<file> also measures the whole read over five synthetic years.
 import { randomBytes, randomUUID } from "node:crypto";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import { buildInsightsReadModel, insightsDaysPage, insightsRelation, insightsRelations, insightsSummary } from "../progress/insights-engine";
 import { parseCompleteInsights, parsePerformanceInsights } from "./performance-insights-contract";
 import { buildQuickOptions } from "./nutrition-quick-server";
-import { clearInsightsSnapshots, readConsistentInsightsSource, readInsightsSnapshot } from "./performance-insights-server";
+import { readConsistentInsightsSource, readInsightsRevision, readInsightsSnapshot, readInsightsSource } from "./performance-insights-server";
 import type { MobileSupabaseAuthenticatedContext } from "./supabase";
 
 vi.mock("server-only", () => ({}));
@@ -31,9 +31,10 @@ function localStack() {
     const email = `insights-${randomUUID()}@example.invalid`, password = randomBytes(24).toString("hex");
     const made = await admin.auth.admin.createUser({ email, password, email_confirm: true });
     if (made.error) throw made.error;
-    const http = { requests: 0, times: [] as { path: string; ms: number }[] };
+    const http = { requests: 0, times: [] as { path: string; ms: number }[], hook: null as ((url: string) => Promise<void>) | null };
     const client = createClient(status.API_URL, status.ANON_KEY, { auth: { persistSession: false }, global: { fetch: async (...args: Parameters<typeof fetch>) => {
       http.requests++;
+      await http.hook?.(decodeURIComponent(String(args[0])));
       const started = performance.now(), response = await fetch(...args);
       http.times.push({ path: new URL(String(args[0])).pathname.split("/").pop()!, ms: Math.round(performance.now() - started) });
       return response;
@@ -132,7 +133,7 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
       return data.meal.id as string;
     };
     const today = sql("select (now() at time zone 'America/Argentina/Cordoba')::date;");
-    const cases = ["2026-04-01", "2026-04-02", "2026-04-03", "2026-04-04", "2026-04-05", "2026-04-06", "2026-04-07", "2026-04-08", "2026-04-09", "2026-04-10", "2026-04-11", "2026-04-12"];
+    const cases = Array.from({ length: 17 }, (_, index) => `2026-04-${String(index + 1).padStart(2, "0")}`);
     cases.forEach((date, index) => train(date, 8 + index % 3));
     // In the next hour, so that a meal registered now falls inside its window; its day is compared, not left open, by reading from tomorrow.
     train(today, 9, sql("select to_char((now()+interval '1 hour') at time zone 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"');"), sql("select to_char((now()+interval '2 hours') at time zone 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"');"));
@@ -169,16 +170,44 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
     const web = await owner.client.from("meal_entries").insert({ user_id: id, day_log_id: sql(`select id from public.day_logs where user_id='${id}' and log_date='${cases[9]!}';`), title: "WEB", final_calories: 500, final_protein_g: 30, final_carbs_g: 60, final_fat_g: 10, source_type: "manual", entry_kind: "meal", consumed_at: `${cases[9]!}T16:00:00Z`, consumed_at_source: "default_clock" }).select("id").single();
     expect(web.error).toBeNull();
     check(cases[9]!, web.data!.id, "default_clock", untimed);
-    // An old import: no column, only its marker. The marker keeps working, and nothing was written to the column for it.
-    const imported = randomUUID();
-    sql(`insert into public.meal_entries(id,user_id,day_log_id,title,final_calories,final_protein_g,final_carbs_g,final_fat_g,source_type,entry_kind,consumed_at,raw_input)
-      select '${imported}','${id}',l.id,'IMPORTED',500,30,60,10,'manual','meal','${cases[10]!}T16:00:00Z','{"originalTimeKnown":true}' from public.day_logs l where l.user_id='${id}' and l.log_date='${cases[10]!}';`);
-    check(cases[10]!, imported, "NULL", recorded);
+    // An import, as the importer writes it, outside any session: no column, only its marker and its run.
+    const POSITIVE = '{"originalTimeKnown":true}';
+    const seedImported = (date: string) => { const meal = randomUUID(), run = randomUUID(); sql(`insert into public.nutrition_import_runs(id,user_id,source_name,source_sha256,counts,report) values('${run}','${id}','sintético','${randomBytes(32).toString("hex")}','{}','{}');
+      insert into public.meal_entries(id,user_id,day_log_id,title,final_calories,final_protein_g,final_carbs_g,final_fat_g,source_type,entry_kind,consumed_at,raw_input,legacy_import_source,legacy_import_id,import_run_id)
+      select '${meal}','${id}',l.id,'IMPORTED',500,30,60,10,'sheet_import','meal','${date}T16:00:00Z','${POSITIVE}','sheet','${meal}','${run}' from public.day_logs l where l.user_id='${id}' and l.log_date='${date}';`); return meal; };
+    check(cases[10]!, seedImported(cases[10]!), "NULL", recorded);
+    // A marker already written on an ordinary row, from before the guard: left as it is, and not believed.
+    const forged = await manual(cases[12]!, { consumedAt: at(cases[12]!) });
+    sql(`update public.meal_entries set raw_input='${POSITIVE}' where id='${forged.mealId}';`);
+    check(cases[12]!, forged.mealId, "NULL", unverified);
+    // Inserting the marker through PostgREST: refused, so the day has no meal at all.
+    const dayOf = (date: string) => sql(`select id from public.day_logs where user_id='${id}' and log_date='${date}';`);
+    const direct = (date: string, over: Record<string, unknown>) => owner.client.from("meal_entries").insert({ user_id: id, day_log_id: dayOf(date), title: "FORGED", final_calories: 500, final_protein_g: 30, final_carbs_g: 60, final_fat_g: 10, source_type: "manual", entry_kind: "meal", consumed_at: `${date}T16:00:00Z`, ...over }).select("id");
+    expect((await direct(cases[13]!, { raw_input: POSITIVE })).error?.code).toBe("42501");
+    const ownRun = randomUUID();
+    expect((await owner.client.from("nutrition_import_runs").insert({ id: ownRun, user_id: id, source_name: "x", source_sha256: randomBytes(32).toString("hex"), counts: {}, report: {} }).select("id")).error).toBeNull();
+    expect((await direct(cases[13]!, { raw_input: POSITIVE, source_type: "sheet_import", legacy_import_source: "x", legacy_import_id: randomUUID(), import_run_id: ownRun })).error?.code).toBe("42501");
+    expected[cases[13]!] = { source: "none", carbs: { value: null, state: "no_registered_meal" } };
+    // A marker's time changed directly, and the separate steps that try to recover it.
+    const changed = seedImported(cases[14]!);
+    const patch = (mealId: string, values: Record<string, unknown>) => owner.client.from("meal_entries").update(values).eq("id", mealId).select("id");
+    expect((await patch(changed, { consumed_at: `${cases[14]!}T15:30:00Z` })).error).toBeNull();
+    expect((await patch(changed, { consumed_at: `${cases[14]!}T16:00:00Z` })).error).toBeNull();
+    expect((await patch(changed, { raw_input: POSITIVE })).error?.code).toBe("42501");
+    expect((await patch(changed, { consumed_at_source: "imported" })).error?.code).toBe("42501");
+    check(cases[14]!, changed, "NULL", unverified);
+    // Adding a marker by update to an old client's meal.
+    const added = await manual(cases[15]!, { consumedAt: at(cases[15]!) });
+    expect((await patch(added.mealId, { raw_input: POSITIVE })).error?.code).toBe("42501");
+    check(cases[15]!, added.mealId, "NULL", unverified);
+    // An import edited without touching its time keeps it.
+    const kept = seedImported(cases[16]!);
+    expect((await patch(kept, { title: "RENAMED" })).error).toBeNull();
+    check(cases[16]!, kept, "NULL", recorded);
     expected[cases[11]!] = { source: "none", carbs: { value: null, state: "no_registered_meal" } };
     const nowMeal = await chatgpt("create_chatgpt_meal_for_integration_v3", today, { p_time_source: "registration" });
     check(today, nowMeal, "registration_now", untimed);
 
-    clearInsightsSnapshots();
     owner.http.requests = 0;
     const tomorrow = sql("select ((now() at time zone 'America/Argentina/Cordoba')::date + 1)::text;");
     const snapshot = await readInsightsSnapshot(contextOf(id, owner.client), tomorrow);
@@ -190,7 +219,7 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
       const day = summary.facts.days.find(item => item.date === date)!;
       expect(day.sessions[0]!.context.carbsPre3h, `${date}, ${row.source}`).toEqual(row.carbs);
     }
-    expect(summary.limits.mealTimeEvidence).toEqual({ explicit: 5, registration: 1, unverified: 3, unknown: 3 });
+    expect(summary.limits.mealTimeEvidence).toEqual({ explicit: 6, registration: 1, unverified: 6, unknown: 3 });
 
     // Into the window: only what was declared or imported becomes a pair, and each exclusion says why.
     const relation = insightsRelation(snapshot, "partial:meal_window:carbsG:pre_3h");
@@ -199,17 +228,83 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
     const declaredDays = Object.entries(expected).filter(([date, row]) => row.carbs.state === "recorded" && date !== cases[0]!).map(([date]) => date).sort();
     expect(relation.pairs!.map(pair => pair.date)).toEqual(declaredDays);
     expect(relation.pairs!.every(pair => pair.exposure === 60)).toBe(true);
-    expect(relation.item!.exclusions).toMatchObject({ unverified_meal_time_in_scope: 3, untimed_meal_in_scope: 4, no_registered_meal_in_window: 1 });
+    expect(relation.item!.exclusions).toMatchObject({ unverified_meal_time_in_scope: 6, untimed_meal_in_scope: 4, no_registered_meal_in_window: 2 });
 
-    // The same revision answers without reading again; a new meal changes it.
+    // Nothing is reused: the same content gets the same identity, and a new meal changes it.
     owner.http.requests = 0;
-    expect(await readInsightsSnapshot(contextOf(id, owner.client), tomorrow)).toBe(snapshot);
-    expect(owner.http.requests).toBe(7);
+    const again = await readInsightsSnapshot(contextOf(id, owner.client), tomorrow);
+    expect(owner.http.requests).toBe(14 + 7);
+    expect(again.revision).toBe(snapshot.revision);
     await manual(cases[11]!, { consumedAt: at(cases[11]!), consumedAtSource: "user_declared" });
     const after = await readInsightsSnapshot(contextOf(id, owner.client), tomorrow);
     expect(after).not.toBe(snapshot); expect(after.revision).not.toBe(snapshot.revision);
     expect(insightsSummary(after, { limit: 120 }).facts.days.find(day => day.date === cases[11]!)!.sessions[0]!.context.carbsPre3h).toEqual(recorded);
   }, 120_000);
+  // Two real transactions. B starts first, A starts and commits later, then B commits: B's row changes while count and max(updated_at) stay.
+  describe("colisión de la revisión de cantidad y máximo", () => {
+    const seed = async () => {
+      const { sql, user } = localStack();
+      const owner = await user(), id = owner.id, metric = randomUUID(), dates = ["2026-05-01", "2026-05-02"];
+      const value = (date: string, next: number) => `update public.daily_metric_values set value=${next} where user_id='${id}' and metric_id='${metric}' and metric_date='${date}';`;
+      sql(`select set_config('request.jwt.claim.sub','${id}',false);
+        insert into public.profiles(user_id) values('${id}') on conflict do nothing;
+        insert into public.user_metrics(id,user_id,name,value_type) values('${metric}','${id}','SYNTHETIC METRIC','decimal');
+        insert into public.daily_metric_values(user_id,metric_id,metric_date,value) values('${id}','${metric}','${dates[0]}',10),('${id}','${metric}','${dates[1]}',20);`);
+      /** Holds a transaction open: B's now() stays earlier than A's, whatever the wall clock does afterwards. */
+      const openTransaction = (statement: string) => {
+        const docker = process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, "Programs/DockerDesktop/resources/bin/docker.exe") : "docker";
+        const psql = spawn(docker, ["--context", "desktop-linux", "exec", "-i", container!, "psql", "-X", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-q"], { stdio: ["pipe", "ignore", "ignore"] });
+        const closed = new Promise<number | null>(resolve => psql.on("close", resolve));
+        psql.stdin.write(`begin;\n${statement}\n`);
+        return { commit: async () => { psql.stdin.end("commit;\n"); expect(await closed).toBe(0); } };
+      };
+      const applied = (updated: string) => sql(`select count(*) from public.daily_metric_values where user_id='${id}' and updated_at='${updated}';`);
+      return { sql, owner, id, metric, dates, value, openTransaction, applied, context: contextOf(id, owner.client) };
+    };
+    const valueOf = (source: { metricValues: readonly { date: string; value: unknown }[] }, date: string) => Number(source.metricValues.find(row => row.date === date)!.value);
+    /** Waits until the open transaction really holds its row: its update has been sent and its now() is earlier than A's. */
+    const settled = () => new Promise(resolve => setTimeout(resolve, 1500));
+    it("does not reuse an earlier result when the revision cannot see the change", async () => {
+      const { sql, value, dates, openTransaction, context, id, metric } = await seed();
+      const exercise = randomUUID(), session = randomUUID();
+      sql(`select set_config('request.jwt.claim.sub','${id}',false);
+        insert into public.exercises(id,user_id,nombre,weight_mode) values('${exercise}','${id}','SYNTHETIC','Peso total');
+        insert into public.day_logs(user_id,log_date) values('${id}','${dates[0]}') on conflict do nothing;
+        insert into public.workout_sessions(id,user_id,day_log_id,started_at) select '${session}','${id}',l.id,'${dates[0]}T18:00:00Z' from public.day_logs l where l.user_id='${id}' and l.log_date='${dates[0]}';
+        insert into public.workout_session_exercises(user_id,workout_session_id,exercise_id,exercise_order) values('${id}','${session}','${exercise}',1);
+        update public.workout_sessions set status='completed',ended_at='${dates[0]}T19:00:00Z' where id='${session}';`);
+      const shown = (snapshot: Awaited<ReturnType<typeof readInsightsSnapshot>>) => insightsSummary(snapshot, { limit: 120 }).facts.days.find(day => day.date === dates[0])!.context.metrics.find(row => row.metricId === metric)!.value;
+      const b = openTransaction(value(dates[0]!, 11));
+      await settled();
+      sql(value(dates[1]!, 21));
+      const warm = await readInsightsSnapshot(context, "2030-01-01");
+      expect(shown(warm)).toBe(10);
+      const before = await readInsightsRevision(context);
+      await b.commit();
+      // The collision itself: the row changed, and the count and maximum did not.
+      expect(valueOf((await readInsightsSource(context)), dates[0]!)).toBe(11);
+      expect(await readInsightsRevision(context)).toBe(before);
+      // What must hold anyway: what is shown is what is stored.
+      const next = await readInsightsSnapshot(context, "2030-01-01");
+      expect(shown(next)).toBe(11);
+      expect(next.revision).not.toBe(warm.revision);
+    }, 60_000);
+    it("LIMIT: the check around a read does not see that same change", async () => {
+      const { sql, value, dates, openTransaction, context, owner } = await seed();
+      const b = openTransaction(value(dates[0]!, 11));
+      await settled();
+      sql(value(dates[1]!, 21));
+      // Commits once the first revision is read, while the streams are being read.
+      let committed = false;
+      owner.http.hook = async url => { if (!committed && url.includes("metric_date") ) { committed = true; await b.commit(); } };
+      owner.http.requests = 0;
+      await readConsistentInsightsSource(context);
+      owner.http.hook = null;
+      expect(committed).toBe(true);
+      // No retry: 2 rounds of 7 and one page per stream. It published a read during which a source changed.
+      expect(owner.http.requests).toBe(14 + 7);
+    }, 60_000);
+  });
 
   it.runIf(!!process.env.OWNLEVEL_INSIGHTS_LOCAL_SCALE_OUT)("measures the whole read over five synthetic years", async () => {
     const { sql, user } = localStack();
@@ -243,16 +338,13 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
     // A freshly seeded database has no statistics yet: production runs with autovacuum, so both situations are measured.
     for (let run = 0; run < 7; run++) {
       if (run === 2) sql("analyze;");
-      clearInsightsSnapshots();
       const today = "2030-01-01";
       const full = await timed(() => readInsightsSnapshot(context, today));
-      const reuse = await timed(() => readInsightsSnapshot(context, today));
-      expect(reuse.value).toBe(full.value); expect(reuse.requests).toBe(7);
       const snapshot = full.value;
       const summary = insightsSummary(snapshot), next = summary.facts.page.nextBefore!;
       const relations = await timed(() => insightsRelations(snapshot));
       const pick = snapshot.partial.lane.candidates.find(row => row.values.size > 0)!.definition.id;
-      runs.push({ analyzed: run >= 2, fullRead: { ms: full.ms, requests: full.requests, slowest: full.slowest }, reuse: { ms: reuse.ms, requests: reuse.requests, slowest: reuse.slowest }, relationsMs: relations.ms,
+      runs.push({ analyzed: run >= 2, fullRead: { ms: full.ms, requests: full.requests, slowest: full.slowest }, relationsMs: relations.ms,
         responseKiB: { summary: kib(summary), daysPage: kib(insightsDaysPage(snapshot, { before: next })), relations: kib(relations.value), relationDetail: kib(insightsRelation(snapshot, pick)) } });
       rows = { sessions: snapshot.history.sessions, partialComparable: snapshot.partial.totals.comparable, partialOutcomeDays: snapshot.partial.outcomeDays, strictComparable: snapshot.totals.comparable };
     }

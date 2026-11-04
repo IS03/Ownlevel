@@ -24,7 +24,7 @@ Método **`insights-engine/1`**, contrato **`performance-insights/1`**, sobre el
 - **Faltantes:** día sin comidas, métrica sin valor o macro `null` quedan fuera y se cuentan por motivo. Un macro `null` deja el total como parcial, nunca como cero. Un cero registrado sí es un valor.
 - **Día abierto:** hoy no entra en asociaciones, porque su ingesta y sus métricas siguen abiertas. Sí aparece en hechos, con `openDay`.
 - **Ingesta:** todo se nombra como registrado; `limits.ingestionCompleteKnown = false`.
-- **Consistencia:** se compara una revisión de las siete fuentes (cantidad de filas y último cambio) antes y después de leer, con un reintento. Si sigue cambiando, responde 503: nunca publica una lectura parcial. Una sesión en curso no la altera.
+- **Consistencia, de mejor esfuerzo:** se compara una revisión de las siete fuentes (cantidad de filas y último cambio) antes y después de leer, con un reintento, y si detecta un cambio responde 503. **No garantiza detectar todos:** si una transacción que empezó antes confirma después de otra más nueva, la fila cambia sin mover ni la cantidad ni el máximo. Ver la [revisión transaccional propuesta](367-insights-source-revision.md). Una sesión en curso no la altera.
 - **Errores:** un flujo fallido o un número ilegible da 503, no un historial vacío. `integrity = conflicting_duplicates` llega sin filas y no significa vacío.
 
 ## Procedencia de la hora de comida
@@ -33,7 +33,8 @@ Método **`insights-engine/1`**, contrato **`performance-insights/1`**, sobre el
 
 | `raw_input` | Evidencia | Valor primario |
 | --- | --- | --- |
-| `originalTimeKnown: true`, sin `timeSource` | `explicit` | Sí |
+| `originalTimeKnown: true`, sin `timeSource`, en una fila de una importación (`source_type = sheet_import` y `import_run_id`) | `explicit` | Sí |
+| `originalTimeKnown: true` en cualquier otra fila | `unverified` | No: un token puede escribir ese texto en sus propias filas |
 | `originalTimeKnown: false` y `timeSource: "registration"` | `registration` | No; solo sensibilidad |
 | `originalTimeKnown: false` | `unknown` | No |
 | `null`, JSON inválido, sin marca o con marcas contradictorias | `unverified` | No; solo sensibilidad |
