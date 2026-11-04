@@ -57,10 +57,11 @@ Solo se muestra un enlace si hay ruta y evidencia. Un `sessionId` de un par siem
 | Comida con hora sin confirmar | `carbsPre3h.state = unverified_meal_time_in_scope` | «Hay comidas cargadas, pero no sabemos si esa fue la hora en que comiste.» Sin valor de ventana |
 | Datos insuficientes | `insufficient_data` | «Todavía faltan días: tenés 12 de 20.» Sin gráfico vacío |
 | Sin señal clara | `no_clear_signal` | «Por ahora no se ve una relación clara.» Es un resultado, no un error |
-| Exploratorio | `exploratory` | «Para mirar con calma» y la frase del ejemplo de abajo |
+| Exploratorio | `exploratory`, método estricto | «Para mirar con calma» y la frase del ejemplo de abajo |
+| Coincidencia | `coincidence_context_unknown`, método parcial | «Coincidieron». Dice que no sabemos si esos días cambió la variante, y que eso no dice que tenga que ver |
 | Error | HTTP 503 | «Uy, no pudimos leer tus datos. Tranqui: está todo guardado.» y reintentar |
 | Datos contradictorios | `integrity = conflicting_duplicates` | Mismo trato que error. **Nunca** se muestra como historial vacío |
-| Más días | `page.nextBefore` | Sigue cargando al llegar al final, con cursor |
+| Más días | `page.nextBefore` | Botón «Ver más días». Si los datos cambiaron, no se unen páginas: se actualiza la lista y se avisa |
 
 ## Textos de ejemplo
 
@@ -111,9 +112,10 @@ Diferencias con lo propuesto, para revisar en la QA física:
 
 | Propuesto | Implementado | Motivo |
 | --- | --- | --- |
-| Cargar más días al llegar al final | Botón «Ver más días» | Cada página es una lectura completa del servidor (96 consultas a 5 años). No conviene dispararla con un scroll |
+| Cargar más días al llegar al final | Botón «Ver más días» | Cuesta 7 consultas si el servidor conserva la lectura, y una lectura completa si no (96 a 5 años). No conviene dispararla con un scroll |
 | Puntos del gráfico tocables, de 44 pt | El gráfico no se toca; la lista de abajo lleva a cada día | Con muchos días, los puntos se superponen y no llegan a 44 pt |
-| Cursor `before` en los parámetros | Vista y filtro sí; las páginas extra, en memoria | Una página restaurada exigiría repetir sus lecturas al volver |
+| Cursor `before` en los parámetros | Vista, filtro y relaciones abiertas sí; las páginas extra, en memoria | Una página restaurada exigiría repetir sus lecturas al volver |
+| Relaciones visibles al abrir | Se piden al tocar «Para mirar con calma» | Son lo que cuesta calcular, y el plan ya las quería fuera de la primera lectura |
 | Enlace a tendencias de métricas | Sin enlace | Cruza de pestaña y requiere un botón de volver propio. Falta hacerlo |
 | Fila en el resumen post-entreno | Sin hacer | Toca el flujo de finalizar; conviene sumarlo con QA física |
 

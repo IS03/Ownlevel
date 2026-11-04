@@ -4,7 +4,7 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
-import { fetchPerformanceInsights, type AssociationResult, type DayFact, type InsightsReadModel, type PartialDayFact, type SessionFact } from '@/api/performance-insights';
+import { fetchInsightsDays, fetchInsightsRelations, fetchInsightsSummary, type DayFact, type InsightsSummary, type PartialDayFact, type PartialRelationSummary, type RelationSummary, type SessionFact } from '@/api/performance-insights';
 import { AppIcon, AppText, Button, ChipGroup, ExampleFrame, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, motionDurations, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import { useProgressResource } from '@/progress/use-progress-resource';
@@ -14,7 +14,8 @@ import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, PARTIAL_LIMIT, contextRows, d
 type View_ = 'days' | 'exercises';
 const VIEWS = [{ value: 'days', label: 'Días' }, { value: 'exercises', label: 'Ejercicios' }] as const;
 const STRIP = 72;
-const load = (client: MobileApiClient, signal: AbortSignal) => fetchPerformanceInsights(client, {}, signal);
+const loadSummary = (client: MobileApiClient, signal: AbortSignal) => fetchInsightsSummary(client, signal);
+const loadRelations = (client: MobileApiClient, signal: AbortSignal) => fetchInsightsRelations(client, signal);
 
 /** Label and value on one line; with large text they stack and wrap instead of squeezing (IDENTIDAD.md § Dynamic Type). */
 export function FactRow({ label, value, spoken, arrow }: { label: string; value: string | number; spoken?: string; arrow?: string }) {
@@ -60,10 +61,10 @@ function ExerciseRows({ lane, session, partial, router }: { lane: Lane; session:
   </Pressable>)}</>;
 }
 
-function DayDetail({ day, model, router }: { day: DayLanes; model: InsightsReadModel; router: ReturnType<typeof useRouter> }) {
+function DayDetail({ day, model, router }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter> }) {
   const { colors } = useOwnlevelTheme();
   const reduced = useReduceMotion();
-  const lanes: Lane[] = [...(day.strictCounts.comparable > 0 ? ['strict' as const] : []), ...(day.partial ? ['partial' as const] : [])];
+  const lanes: Lane[] = [...(day.strictCounts.comparable > 0 ? ['strict' as const] : []), ...(day.partialCounts?.total ? ['partial' as const] : [])];
   return <Animated.View entering={reduced ? FadeIn.duration(motionDurations.fast) : FadeInDown.duration(motionDurations.base)} style={styles.detail}>
     {day.strict.sessions.map(session => <View key={session.sessionId} style={styles.block}>
       <Pressable accessibilityRole="button" accessibilityLabel={`Abrir sesión ${session.routineName ?? session.name ?? ''}`.trim()} onPress={() => router.push({ pathname: '/(tabs)/train/history/[id]', params: { id: session.sessionId } })}
@@ -81,7 +82,7 @@ function DayDetail({ day, model, router }: { day: DayLanes; model: InsightsReadM
   </Animated.View>;
 }
 
-function DayRow({ day, model, router }: { day: DayLanes; model: InsightsReadModel; router: ReturnType<typeof useRouter> }) {
+function DayRow({ day, model, router }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter> }) {
   const { colors } = useOwnlevelTheme();
   const reduced = useReduceMotion();
   const [open, setOpen] = useState(false);
@@ -103,7 +104,7 @@ function DayRow({ day, model, router }: { day: DayLanes; model: InsightsReadMode
   </View>;
 }
 
-function Exercises({ model, router }: { model: InsightsReadModel; router: ReturnType<typeof useRouter> }) {
+function Exercises({ model, router }: { model: InsightsSummary; router: ReturnType<typeof useRouter> }) {
   const { colors } = useOwnlevelTheme();
   const lanes = [
     ...(model.facts.totals.comparable ? [{ lane: 'strict' as const, rows: model.facts.exercises }] : []),
@@ -125,11 +126,11 @@ function Exercises({ model, router }: { model: InsightsReadModel; router: Return
   </View>)}</>;
 }
 
-function RelationList({ lane, title, items, metrics, family, router, evaluated }: { lane: Lane; title: string; items: readonly AssociationResult[]; metrics: InsightsReadModel['metrics']; family: FamilyFilter; router: ReturnType<typeof useRouter>; evaluated: number }) {
+function RelationList({ lane, title, items, metrics, family, router, evaluated }: { lane: Lane; title: string; items: readonly (RelationSummary | PartialRelationSummary)[]; metrics: InsightsSummary['metrics']; family: FamilyFilter; router: ReturnType<typeof useRouter>; evaluated: number }) {
   const { colors } = useOwnlevelTheme();
   const [showWaiting, setShowWaiting] = useState(false);
   const groups = relationGroups([...items], family);
-  const row = (item: AssociationResult) => <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`${relationName(item, metrics)}: ${relationState(item)}${lane === 'partial' ? ', con contexto parcial' : ''}`}
+  const row = (item: RelationSummary | PartialRelationSummary) => <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`${relationName(item, metrics)}: ${relationState(item)}${lane === 'partial' ? ', con contexto parcial' : ''}`}
     onPress={() => router.push({ pathname: '/(tabs)/train/insights/[relation]', params: { relation: item.id } })}
     style={({ pressed }) => [styles.row, { borderColor: colors.border, opacity: pressed ? 0.55 : 1 }]}>
     <AppText style={styles.flex} numberOfLines={3}>{relationName(item, metrics)}</AppText>
@@ -146,18 +147,20 @@ function RelationList({ lane, title, items, metrics, family, router, evaluated }
       <AppIcon color={colors.textMuted} name={showWaiting ? 'chevronDown' : 'chevronRight'} size={15} />
     </Pressable> : null}
     {showWaiting ? groups.waiting.map(row) : null}
-    <AppText muted variant="caption">Evaluamos {evaluated} relaciones y te mostramos todas, también las que no dieron nada. Una relación no dice por qué pasó.</AppText>
+    <AppText muted variant="caption">Evaluamos {evaluated} relaciones y te mostramos todas, también las que no dieron nada. {lane === 'partial' ? 'Una coincidencia no dice por qué pasó.' : 'Una relación no dice por qué pasó.'}</AppText>
   </View>;
 }
 
-function Relations({ model, family, onFamily, router }: { model: InsightsReadModel; family: FamilyFilter; onFamily: (next: FamilyFilter) => void; router: ReturnType<typeof useRouter> }) {
-  const strict = model.history.outcomeDays > 0, partial = model.partial.outcomeDays > 0;
-  if (!strict && !partial) return null;
+/** Its own read, only once asked for: the relations are what costs, and they are never at the top. */
+function Relations({ client, family, onFamily, router }: { client: MobileApiClient | null; family: FamilyFilter; onFamily: (next: FamilyFilter) => void; router: ReturnType<typeof useRouter> }) {
+  const { state, data, refresh } = useProgressResource(client, 'performance-insights|relations', loadRelations);
+  if (state.status === 'loading' && !data) return <View testID="relations-loading" style={styles.block}><SkeletonBlock height={44} /><SkeletonBlock height={132} /></View>;
+  if (!data || data.integrity !== 'valid' || data.partial.integrity !== 'valid') return <InlineUnavailable message="No pudimos traer las relaciones." actionLabel="Reintentar" onAction={() => void refresh()} />;
   return <View style={styles.block}>
-    <Heading level={2}>Para mirar con calma</Heading>
+    {state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
     <ChipGroup accessibilityLabel="Filtrar relaciones" value={family} options={FAMILY_OPTIONS} onChange={onFamily} />
-    {strict ? <RelationList lane="strict" title={LANE_TITLE.strict} items={model.associations.items} metrics={model.metrics} family={family} router={router} evaluated={model.associations.candidatesEvaluated} /> : null}
-    {partial ? <RelationList lane="partial" title={LANE_TITLE.partial} items={model.partial.associations.items} metrics={model.metrics} family={family} router={router} evaluated={model.partial.associations.candidatesEvaluated} /> : null}
+    {data.strict.outcomeDays ? <RelationList lane="strict" title={LANE_TITLE.strict} items={data.strict.items} metrics={data.metrics} family={family} router={router} evaluated={data.strict.candidatesEvaluated} /> : null}
+    {data.partial.outcomeDays ? <RelationList lane="partial" title={LANE_TITLE.partial} items={data.partial.items} metrics={data.metrics} family={family} router={router} evaluated={data.partial.candidatesEvaluated} /> : null}
   </View>;
 }
 
@@ -169,9 +172,10 @@ export function InsightsScreen() {
   const params = useLocalSearchParams();
   const view: View_ = params.view === 'exercises' ? 'exercises' : 'days';
   const family = (FAMILY_OPTIONS.find(option => option.value === params.family)?.value ?? 'all') as FamilyFilter;
-  const { state, data, refresh } = useProgressResource(client, 'performance-insights', load);
-  const [more, setMore] = useState<{ base: InsightsReadModel; days: DayFact[]; partial: PartialDayFact[]; next: string | null } | null>(null);
-  const [morePhase, setMorePhase] = useState<'idle' | 'loading' | 'failed'>('idle');
+  const relationsOpen = params.relations === '1';
+  const { state, data, refresh } = useProgressResource(client, 'performance-insights', loadSummary);
+  const [more, setMore] = useState<{ base: InsightsSummary; days: DayFact[]; partial: PartialDayFact[]; next: string | null } | null>(null);
+  const [morePhase, setMorePhase] = useState<'idle' | 'loading' | 'failed' | 'changed'>('idle');
   const extra = more && more.base === data ? more : null;
   const days = useMemo(() => data ? joinDays([...data.facts.days, ...(extra?.days ?? [])], [...data.partial.days, ...(extra?.partial ?? [])]) : [], [data, extra]);
   const next = extra ? extra.next : data?.facts.page.nextBefore ?? null;
@@ -179,13 +183,16 @@ export function InsightsScreen() {
   const loadMore = async () => {
     if (!client || !data || !next || morePhase === 'loading') return;
     setMorePhase('loading');
-    const result = await fetchPerformanceInsights(client, { before: next });
+    const result = await fetchInsightsDays(client, next);
     if (result.status !== 'ok') { setMorePhase('failed'); return; }
+    // Something changed since this list was read: its days must not be joined with newer ones.
+    if (result.data.sourceRevision !== data.sourceRevision) { setMore(null); setMorePhase('changed'); void refresh(); return; }
     setMore({ base: data, days: [...(extra?.days ?? []), ...result.data.facts.days], partial: [...(extra?.partial ?? []), ...result.data.partial.days], next: result.data.facts.page.nextBefore });
     setMorePhase('idle');
   };
   const setView = (value: View_) => { haptics.selection(); router.setParams({ view: value }); };
   const setFamily = (value: FamilyFilter) => { haptics.selection(); router.setParams({ family: value }); };
+  const toggleRelations = () => { haptics.selection(); router.setParams({ relations: relationsOpen ? '0' : '1' }); };
   const refreshControl = <RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />;
   const scroll = (children: React.ReactNode) => <ScrollView testID="insights-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}>{children}</ScrollView>;
 
@@ -226,9 +233,17 @@ export function InsightsScreen() {
         {days.map(day => <DayRow key={day.date} day={day} model={data} router={router} />)}
         {next ? <Button label={morePhase === 'loading' ? 'Cargando…' : 'Ver más días'} variant="secondary" disabled={morePhase === 'loading'} onPress={() => void loadMore()} /> : null}
         {morePhase === 'failed' ? <InlineUnavailable message="No pudimos traer más días." actionLabel="Reintentar" onAction={() => void loadMore()} /> : null}
+        {morePhase === 'changed' ? <AppText muted variant="footnote" accessibilityLiveRegion="polite" testID="insights-changed">Tus datos cambiaron, así que actualizamos la lista.</AppText> : null}
         <AppText muted variant="caption" numeric style={styles.coverage}>{data.history.trainingDays} días entrenados en total</AppText>
       </View>
-      <Relations model={data} family={family} onFamily={setFamily} router={router} />
+      {data.relations.strict.outcomeDays || data.relations.partial.outcomeDays ? <View style={styles.block}>
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: relationsOpen }} accessibilityLabel={`Para mirar con calma, ${data.relations.partial.outcomeDays ? data.relations.partial.candidatesEvaluated : data.relations.strict.candidatesEvaluated} relaciones`} onPress={toggleRelations}
+          style={({ pressed }) => [styles.row, { borderColor: colors.border, opacity: pressed ? 0.55 : 1 }]}>
+          <Heading level={2} style={styles.flex}>Para mirar con calma</Heading>
+          <AppIcon color={colors.textMuted} name={relationsOpen ? 'chevronDown' : 'chevronRight'} size={15} />
+        </Pressable>
+        {relationsOpen ? <Relations client={client} family={family} onFamily={setFamily} router={router} /> : null}
+      </View> : null}
     </>}
   </>);
 }

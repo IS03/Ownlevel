@@ -6,13 +6,13 @@ Primera versión de la UI de Insights en Mobile (Entrenar → Insights), con los
 - Resultado con un solo número Hero, contexto, tira por día, días desplegables, vista por ejercicio y relaciones bajo «Para mirar con calma».
 - Detalle con frase sin causas, gráfico de pares, grupos, cobertura y días que abren su sesión exacta.
 - Estados distintos para vacío, nada comparable, faltan días, sin señal, error y datos contradictorios. Un cero es una marca y un día sin comparación es un hueco.
-- El carril parcial siempre lleva su rótulo y su límite. Nunca se suman métodos ni aparece «consistente».
+- El carril parcial siempre lleva su rótulo y su límite. Una relación parcial se muestra como «Coincidieron», y aclara que no sabemos si cambió la variante. Nunca se suman métodos ni aparece «consistente».
 
 ## Identidad
 Sin tarjetas, champagne solo en la serie, flechas sin color y cifras tabulares. Selector nativo de iOS (Liquid Glass en iOS 26) y barra nativa. Con `fontScale > 1.3`, etiqueta y valor se apilan. Motion 200/300 ms, con fundido si está activo Reducir movimiento. Tic de selección solo al cambiar vista o filtro.
 
 ## Costo
-Una lectura al abrir, sin prefetch. Más días solo con un toque, porque cada página es una lectura completa del servidor. El detalle pide `limit=1` y sus pares.
+Una lectura al abrir, sin prefetch. Las relaciones se piden al tocar «Para mirar con calma» y más días con un botón. Cada pedido usa su vista, y una página de otra revisión no se une a la lista.
 
 ## Validación
 Pruebas de pantalla y modelo con fixtures construidos por el motor real y pasados por el contrato, `tsc`, `eslint`. **QA física diferida y no aprobada:** no se vio en dispositivo.

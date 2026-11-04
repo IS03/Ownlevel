@@ -5,12 +5,12 @@ import { OwnlevelThemeProvider } from '@/design-system';
 import type { MobileApiClient } from '@/api/client';
 import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 import type { MobileApiReadResult } from '@/api/results';
-import { parsePerformanceInsights, type InsightsReadModel } from '@/api/performance-insights';
-import { buildInsightsReadModel } from '../../../../src/lib/progress/insights-engine/read-model';
+import { parseCompleteInsights, type InsightsReadModel } from '@/api/performance-insights';
+import { buildInsightsReadModel, createInsightsSnapshot, insightsDaysPage, insightsRelation, insightsRelations, insightsSummary } from '../../../../src/lib/progress/insights-engine/read-model';
 import type { InsightsSource } from '../../../../src/lib/progress/insights-engine/types';
 import { InsightsScreen } from './insights-screen';
 import { RelationDetailScreen } from './relation-detail-screen';
-import { exerciseSentence, heroOf, joinDays, relationGroups, relationSentence, stripMarks } from './insights-model';
+import { exerciseSentence, heroOf, joinDays, relationGroups, relationSentence, relationState, stripMarks } from './insights-model';
 
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -46,7 +46,18 @@ function history(reps: readonly (number | null)[], configuration: string | null 
 }
 const withMetric = (source: InsightsSource): InsightsSource => ({ ...source, metricDefinitions: [{ id: METRIC, name: 'Sueño', unit: 'h', valueType: 'decimal', archived: false }],
   metricValues: source.sessions.map((session, day) => ({ metricId: METRIC, date: session.date!, value: (day * 7) % 11 })) });
-const read = (source: InsightsSource, association?: string): InsightsReadModel => parsePerformanceInsights(JSON.parse(JSON.stringify(buildInsightsReadModel(source, { today: '2027-01-01', permutations: 19, association }))))!;
+const read = (source: InsightsSource, association?: string): InsightsReadModel => parseCompleteInsights(JSON.parse(JSON.stringify(buildInsightsReadModel(source, { today: '2027-01-01', permutations: 19, association }))))!;
+/** Answers as the route does, each view through its real parser: what the screens get is what the contract lets through. */
+const serve = (source: InsightsSource, revision = 'r1') => {
+  const snapshot = createInsightsSnapshot(source, { today: '2027-01-01', permutations: 19, revision });
+  return async (options: ReadOptions) => {
+    const query = new URL(`http://x${options.path}`).searchParams, association = query.get('association'), before = query.get('before') ?? undefined;
+    const body = association ? insightsRelation(snapshot, association) : query.get('view') === 'relations' ? insightsRelations(snapshot) : query.get('view') === 'days' ? insightsDaysPage(snapshot, { before }) : insightsSummary(snapshot);
+    const parsed = options.parse(JSON.parse(JSON.stringify(body)));
+    if (parsed === undefined) throw Error(`Contract rejected ${options.path}`);
+    return ok(parsed);
+  };
+};
 const screen = (ui: React.ReactElement) => render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}><OwnlevelThemeProvider initialMode="light">{ui}</OwnlevelThemeProvider></SafeAreaProvider>);
 const flush = () => act(async () => { for (let i = 0; i < 3; i++) await new Promise(resolve => setTimeout(resolve, 0)); });
 const open = async (ui: React.ReactElement) => { const view = screen(ui); await flush(); return view; };
@@ -75,10 +86,13 @@ describe('modelo de presentación', () => {
   it('never names a cause, and keeps every relation reachable', () => {
     const model = read(withMetric(history(oscillating)));
     const item = model.partial.associations.items.find(row => row.definition.subject === METRIC && row.definition.window === 'same_day')!;
-    const exploratory = { ...item, state: 'exploratory' as const, rho: -0.4, pairs: 34, outcomeDays: 120 };
-    const sentence = relationSentence('partial', exploratory, model.metrics);
-    expect(sentence).toBe('Los días con más sueño, menos ejercicios quedaron con registro inferior. Lo vimos en 34 de 120 días. Todavía no alcanza para decir que se repite.');
-    expect(sentence).not.toMatch(/porque|causa|deber|consistente|patr[oó]n/i);
+    const coincidence = { ...item, state: 'coincidence_context_unknown' as const, rho: -0.4, pairs: 34, outcomeDays: 120 };
+    const sentence = relationSentence('partial', coincidence, model.metrics);
+    expect(sentence).toBe('Los días con más sueño coincidieron con menos ejercicios con registro inferior, en 34 de 120 días. No sabemos si esos días cambiaste de variante, así que esto no dice que tenga que ver.');
+    expect(sentence).not.toMatch(/porque|causa|deber|consistente|patr[oó]n|mejor/i);
+    expect(relationState(coincidence)).toBe('Coincidieron');
+    const strictItem = { ...model.associations.items.find(row => row.definition.subject === METRIC)!, state: 'exploratory' as const, rho: 0.4, pairs: 34, outcomeDays: 120 };
+    expect(relationSentence('strict', strictItem, model.metrics)).toBe('Los días con más sueño, más ejercicios quedaron por debajo de la última vez. Lo vimos en 34 de 120 días. Todavía no alcanza para decir que se repite.');
     const groups = relationGroups(model.partial.associations.items, 'all');
     expect(groups.readable.length + groups.waiting.length).toBe(model.partial.associations.candidatesEvaluated);
   });
@@ -86,7 +100,7 @@ describe('modelo de presentación', () => {
 
 describe('pantalla', () => {
   it('shows the partial lane with its limit when the configuration is unknown, one hero and no strict words', async () => {
-    mockRead.mockResolvedValue(ok(read(history([8, 10, 9]))));
+    mockRead.mockImplementation(serve(history([8, 10, 9])));
     const view = await open(<InsightsScreen />);
     expect(view.getByTestId('insights-hero')).toBeTruthy();
     expect(view.getAllByText('1 de 1').length).toBeGreaterThan(0);
@@ -96,17 +110,17 @@ describe('pantalla', () => {
     expect(view.queryByText(/Mejoraron/)).toBeNull(); expect(view.queryByText(/^↓ Por debajo$/)).toBeNull();
   });
   it('shows the strict lane without the limit once the configuration is known', async () => {
-    mockRead.mockResolvedValue(ok(read(history([8, 10, 9], 'none'))));
+    mockRead.mockImplementation(serve(history([8, 10, 9], 'none')));
     const view = await open(<InsightsScreen />);
     expect(view.getByText(/^↓ Por debajo$/)).toBeTruthy();
     expect(view.queryByTestId('insights-partial-limit')).toBeNull();
   });
   it('tells empty, nothing comparable, failed and contradictory apart', async () => {
-    mockRead.mockResolvedValueOnce(ok(read(history([]))));
+    mockRead.mockImplementationOnce(serve(history([])));
     let view = await open(<InsightsScreen />);
     expect(view.getByTestId('insights-empty')).toBeTruthy(); expect(view.getByText('EJEMPLO')).toBeTruthy();
     view.unmount(); clearConfirmedReads(mockClient);
-    mockRead.mockResolvedValueOnce(ok(read(history([8]))));
+    mockRead.mockImplementationOnce(serve(history([8])));
     view = await open(<InsightsScreen />);
     expect(view.getByTestId('insights-nothing')).toBeTruthy(); expect(view.getByText('Todavía no hay una sesión anterior para comparar.')).toBeTruthy();
     view.unmount(); clearConfirmedReads(mockClient);
@@ -115,29 +129,46 @@ describe('pantalla', () => {
     expect(view.getByText('Uy, no pudimos leer tus datos')).toBeTruthy(); expect(view.queryByTestId('insights-empty')).toBeNull();
     view.unmount(); clearConfirmedReads(mockClient);
     const source = history([8, 9]);
-    mockRead.mockResolvedValueOnce(ok(read({ ...source, sessions: [...source.sessions, { ...source.sessions[0]!, endedAt: `${dateAt(0)}T20:00:00.000Z` }] })));
+    mockRead.mockImplementationOnce(serve({ ...source, sessions: [...source.sessions, { ...source.sessions[0]!, endedAt: `${dateAt(0)}T20:00:00.000Z` }] }));
     view = await open(<InsightsScreen />);
     expect(view.getByText('Uy, no pudimos leer tus datos')).toBeTruthy(); expect(view.queryByTestId('insights-empty')).toBeNull();
   });
   it('keeps the loaded days when another page fails', async () => {
-    const model = read(history(Array.from({ length: 20 }, (_, day) => 8 + day % 3)));
+    const source = history(Array.from({ length: 20 }, (_, day) => 8 + day % 3));
+    const model = read(source);
     expect(model.facts.page.nextBefore).not.toBeNull();
-    mockRead.mockResolvedValueOnce(ok(model)).mockResolvedValueOnce(lost);
+    mockRead.mockImplementationOnce(serve(source)).mockResolvedValueOnce(lost);
     const view = await open(<InsightsScreen />);
     const before = view.getAllByRole('button').length;
     fireEvent.press(view.getByText("Ver más días")); await flush();
     expect(view.getByText('No pudimos traer más días.')).toBeTruthy();
     expect(view.getAllByRole('button').length).toBeGreaterThanOrEqual(before);
     expect(mockRead).toHaveBeenCalledTimes(2);
-    expect(String(mockRead.mock.calls[1]![0].path)).toContain(`before=${model.facts.page.nextBefore}`);
+    expect(String(mockRead.mock.calls[1]![0].path)).toContain(`view=days&before=${model.facts.page.nextBefore}`);
+  });
+  it('joins a page of the same read, and never one of a read that changed', async () => {
+    const source = history(Array.from({ length: 20 }, (_, day) => 8 + day % 3));
+    mockRead.mockImplementation(serve(source));
+    const view = await open(<InsightsScreen />);
+    const rows = () => view.getAllByRole('button', { name: /comparables con contexto parcial/ }).length;
+    expect(rows()).toBe(14);
+    fireEvent.press(view.getByText('Ver más días')); await flush();
+    expect(rows()).toBe(19);
+    view.unmount(); clearConfirmedReads(mockClient); mockRead.mockReset();
+    mockRead.mockImplementationOnce(serve(source, 'r1')).mockImplementation(serve(source, 'r2'));
+    const changed = await open(<InsightsScreen />);
+    fireEvent.press(changed.getByText('Ver más días')); await flush();
+    expect(changed.getByTestId('insights-changed')).toBeTruthy();
+    expect(changed.getAllByRole('button', { name: /comparables con contexto parcial/ }).length).toBe(14);
   });
   it('makes one read when it opens and pages only on a tap', async () => {
-    mockRead.mockResolvedValue(ok(read(history(Array.from({ length: 20 }, (_, day) => 8 + day % 3)))));
+    mockRead.mockImplementation(serve(history(Array.from({ length: 20 }, (_, day) => 8 + day % 3))));
     await open(<InsightsScreen />);
     expect(mockRead).toHaveBeenCalledTimes(1);
+    expect(String(mockRead.mock.calls[0]![0].path)).not.toContain('view=');
   });
   it('opens the exact session and the exercise from the evidence, and keeps the view in the route', async () => {
-    mockRead.mockResolvedValue(ok(read(history([8, 10, 9]))));
+    mockRead.mockImplementation(serve(history([8, 10, 9])));
     const view = await open(<InsightsScreen />);
     fireEvent.press(view.getAllByRole('button', { name: /comparables con contexto parcial/ })[0]!);
     fireEvent.press(view.getByRole('button', { name: 'Abrir sesión Empuje' }));
@@ -149,17 +180,24 @@ describe('pantalla', () => {
   });
   it('lists exercises by lane and labels the partial one', async () => {
     mockParams = { view: 'exercises' };
-    mockRead.mockResolvedValue(ok(read(history([8, 10, 9]))));
+    mockRead.mockImplementation(serve(history([8, 10, 9])));
     const view = await open(<InsightsScreen />);
     expect(view.getByText('Con contexto parcial')).toBeTruthy(); expect(view.queryByText('Comparación completa')).toBeNull();
     fireEvent.press(view.getByRole('button', { name: /Press banca: 1 registro superior, 0 registro igual, 1 registro inferior, de 3 veces/ }));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id: EX } });
   });
-  it('shows relations only below the facts, with no strict list while it has no days', async () => {
-    mockRead.mockResolvedValue(ok(read(withMetric(history(oscillating)))));
+  it('reads relations only when asked for, and shows no strict list while it has no days', async () => {
+    mockRead.mockImplementation(serve(withMetric(history(oscillating))));
+    const closed = await open(<InsightsScreen />);
+    expect(closed.getByText('Para mirar con calma')).toBeTruthy();
+    expect(mockRead).toHaveBeenCalledTimes(1);
+    fireEvent.press(closed.getByRole('button', { name: /^Para mirar con calma/ }));
+    expect(mockSetParams).toHaveBeenCalledWith({ relations: '1' });
+    closed.unmount();
+    mockParams = { relations: '1' };
     const view = await open(<InsightsScreen />);
-    expect(view.getByText('Para mirar con calma')).toBeTruthy();
-    expect(view.getByText('Con contexto parcial')).toBeTruthy();
+    expect(String(mockRead.mock.calls.at(-1)![0].path)).toContain('view=relations');
+    expect(view.getAllByText('Con contexto parcial').length).toBeGreaterThan(0);
     expect(view.queryByText('Comparación completa')).toBeNull();
     fireEvent.press(view.getByText('Métricas'));
     expect(mockSetParams).toHaveBeenCalledWith({ family: 'metric' });
@@ -172,7 +210,7 @@ describe('detalle de una relación', () => {
   const id = `partial:metric:${METRIC}:same_day`;
   it('asks for its pairs, keeps the limit and opens each day from the list', async () => {
     mockParams = { relation: id };
-    mockRead.mockResolvedValue(ok(read(withMetric(history(oscillating)), id)));
+    mockRead.mockImplementation(serve(withMetric(history(oscillating))));
     const view = await open(<RelationDetailScreen />);
     expect(String(mockRead.mock.calls[0]![0].path)).toContain(`association=${encodeURIComponent(id)}`);
     expect(view.getByText('Sueño, ese día')).toBeTruthy();
@@ -186,7 +224,7 @@ describe('detalle de una relación', () => {
   });
   it('says so when the relation does not exist, instead of drawing an empty chart', async () => {
     mockParams = { relation: 'partial:metric:none:same_day' };
-    mockRead.mockResolvedValue(ok(read(history(oscillating))));
+    mockRead.mockImplementation(serve(history(oscillating)));
     const view = await open(<RelationDetailScreen />);
     expect(view.getByText('No encontramos esta relación')).toBeTruthy();
   });

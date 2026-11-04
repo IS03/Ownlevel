@@ -3,14 +3,14 @@ import { LayoutChangeEvent, Pressable, RefreshControl, ScrollView, StyleSheet, V
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
-import { fetchPerformanceInsights, type AssociationResult, type InsightsReadModel } from '@/api/performance-insights';
+import { fetchInsightsRelation, type InsightsRelationDetail } from '@/api/performance-insights';
 import { AppIcon, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
 import { formatValue } from '@/progress/progress-format';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { FactRow } from './insights-screen';
 import { LANE_TITLE, PARTIAL_LIMIT, coverageText, dayLabel, exclusionRows, exposureUnit, groupRows, relationName, relationSentence, relationState, shareText, type Lane } from './insights-model';
 
-type Pair = NonNullable<InsightsReadModel['associations']['detail']>['pairs'][number];
+type Pair = NonNullable<InsightsRelationDetail['pairs']>[number];
 const PLOT = 180, DOT = 8;
 
 /** Each point is a day. Zero and negative values keep their place: the axes span what was recorded, with no trend line or ideal range. */
@@ -33,16 +33,14 @@ export function RelationDetailScreen() {
   const params = useLocalSearchParams();
   const relation = typeof params.relation === 'string' ? params.relation : '';
   const lane: Lane = relation.startsWith('partial:') ? 'partial' : 'strict';
-  const load = useCallback((c: MobileApiClient, signal: AbortSignal) => fetchPerformanceInsights(c, { association: relation, limit: 1 }, signal), [relation]);
+  const load = useCallback((c: MobileApiClient, signal: AbortSignal) => fetchInsightsRelation(c, relation, signal), [relation]);
   const { state, data, refresh } = useProgressResource(client, `performance-insights|${relation}`, load);
   const refreshControl = <RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />;
   const scroll = (children: React.ReactNode) => <ScrollView testID="relation-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}>{children}</ScrollView>;
   if (state.status === 'loading' && !data) return scroll(<View style={styles.block} testID="relation-loading"><SkeletonBlock height={72} /><SkeletonBlock height={PLOT} /><SkeletonBlock height={120} /></View>);
   const retry = <Button label="Reintentar" onPress={() => void refresh()} />;
-  if (!data || data.integrity !== 'valid' || data.partial.integrity !== 'valid') return scroll(<UnavailableState title="Uy, no pudimos leer tus datos" description="Tranqui: está todo guardado." action={retry} />);
-  const items: readonly AssociationResult[] = lane === 'partial' ? data.partial.associations.items : data.associations.items;
-  const item = items.find(row => row.id === relation);
-  const pairs = (lane === 'partial' ? data.partial.associations.detail : data.associations.detail)?.pairs;
+  if (!data || data.integrity !== 'valid' || (data.partial && data.partial.integrity !== 'valid')) return scroll(<UnavailableState title="Uy, no pudimos leer tus datos" description="Tranqui: está todo guardado." action={retry} />);
+  const { item, pairs } = data;
   if (!item || !pairs) return scroll(<UnavailableState title="No encontramos esta relación" description="Volvé a Insights y elegila de nuevo." action={<Button label="Volver" onPress={() => router.back()} />} />);
   const unit = exposureUnit(item, data.metrics), name = relationName(item, data.metrics);
   const newestFirst = [...pairs].reverse();

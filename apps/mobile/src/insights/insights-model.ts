@@ -1,4 +1,4 @@
-import type { AssociationResult, DayFact, ExerciseSummary, InsightsReadModel, PartialDayFact, PartialExerciseSummary } from '@/api/performance-insights';
+import type { AssociationResult, DayFact, ExerciseSummary, InsightsSummary, PartialAssociationResult, PartialDayFact, PartialExerciseSummary, PartialRelationSummary, RelationSummary } from '@/api/performance-insights';
 import { formatValue } from '@/progress/progress-format';
 
 /** Pure presentation of the Insights read model. It never adds across methods and never computes a relation on the client. */
@@ -43,7 +43,7 @@ export function heroOf(days: readonly DayLanes[]): { day: DayLanes; lane: Lane; 
   return null;
 }
 export const heroCaption = (lane: Lane) => lane === 'strict' ? 'ejercicios comparables, contra su última vez' : 'ejercicios comparables con contexto parcial';
-export function primaryLane(model: InsightsReadModel): Lane { return model.facts.totals.comparable > 0 || model.partial.totals.comparable === 0 ? 'strict' : 'partial'; }
+export function primaryLane(model: InsightsSummary): Lane { return model.facts.totals.comparable > 0 || model.partial.totals.comparable === 0 ? 'strict' : 'partial'; }
 
 export type StripMark = { date: string; kind: 'value'; share: number } | { date: string; kind: 'zero' } | { date: string; kind: 'gap' };
 /** Oldest to newest. A zero is a mark at the base and a day without comparison is a gap: never a zero bar, never interpolated. */
@@ -95,7 +95,7 @@ export const summarySpoken = (lane: Lane, row: ExerciseSummary | PartialExercise
 };
 
 /** Why nothing compares, taken from the exclusions: empty history and missing context are different things. */
-export function nothingComparable(model: InsightsReadModel) {
+export function nothingComparable(model: InsightsSummary) {
   const counts = model.partial.exclusions.performance;
   const top = Object.entries(counts).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))[0]?.[0];
   return top === 'missing_context' ? 'Faltan el modo o el implemento en estas sesiones, así que no las comparamos.' : 'Todavía no hay una sesión anterior para comparar.';
@@ -103,9 +103,10 @@ export function nothingComparable(model: InsightsReadModel) {
 
 const NUTRIENT: Record<string, { name: string; unit: string }> = { calories: { name: 'Calorías registradas', unit: 'kcal' }, proteinG: { name: 'Proteína registrada', unit: 'g' }, carbsG: { name: 'Carbohidratos registrados', unit: 'g' }, fatG: { name: 'Grasas registradas', unit: 'g' } };
 const FEELING: Record<string, string> = { energyPre: 'Energía antes de entrenar', fatiguePre: 'Fatiga antes de entrenar', energyPost: 'Energía al terminar', fatiguePost: 'Fatiga al terminar' };
-type Metric = InsightsReadModel['metrics'][number];
+type Metric = InsightsSummary['metrics'][number];
+type AnyRelation = RelationSummary | PartialRelationSummary;
 /** Names what was recorded. A metric is found by UUID; its unit is the stored one, or none. */
-export function relationName(item: Pick<AssociationResult, 'definition'>, metrics: readonly Metric[]) {
+export function relationName(item: Pick<AnyRelation, 'definition'>, metrics: readonly Metric[]) {
   const { family, subject, window } = item.definition;
   if (family === 'meal_window') return window === 'pre_3h' ? 'Carbohidratos registrados, 3 h antes' : 'Carbohidratos registrados antes de entrenar';
   if (family === 'feeling') return FEELING[subject] ?? 'Sensación';
@@ -113,27 +114,32 @@ export function relationName(item: Pick<AssociationResult, 'definition'>, metric
   if (family === 'nutrition') return `${NUTRIENT[subject]?.name ?? 'Nutrición'}${when}`;
   return `${metrics.find(metric => metric.id === subject)?.name ?? 'Métrica'}${when}`;
 }
-export function exposureUnit(item: Pick<AssociationResult, 'definition'>, metrics: readonly Metric[]) {
+export function exposureUnit(item: Pick<AnyRelation, 'definition'>, metrics: readonly Metric[]) {
   const { family, subject } = item.definition;
   if (family === 'meal_window') return 'g';
   if (family === 'nutrition') return NUTRIENT[subject]?.unit ?? null;
   return family === 'metric' ? metrics.find(metric => metric.id === subject)?.unit ?? null : null;
 }
-export function relationState(item: Pick<AssociationResult, 'state' | 'reason' | 'pairs'>) {
+export function relationState(item: Pick<AnyRelation, 'state' | 'reason' | 'pairs'>) {
   if (item.state === 'exploratory') return 'Exploratorio';
+  if (item.state === 'coincidence_context_unknown') return 'Coincidieron';
   if (item.state === 'no_clear_signal') return 'Sin señal clara';
   return item.reason === 'too_few_pairs' ? `Faltan días: ${item.pairs} de ${MIN_PAIRS}` : 'Casi siempre el mismo valor';
 }
 const lowerName = (name: string) => name.charAt(0).toLocaleLowerCase('es-AR') + name.slice(1);
-/** Never a cause, a pattern or a recommendation. The most it can say is what is written here. */
-export function relationSentence(lane: Lane, item: AssociationResult, metrics: readonly Metric[]) {
+/**
+ * Never a cause, a pattern or a recommendation. The most it can say is what is written here. In the partial lane it cannot even
+ * say that: an unrecorded change of variant on those days would look the same, so it stays a coincidence and says why.
+ */
+export function relationSentence(lane: Lane, item: AssociationResult | PartialAssociationResult, metrics: readonly Metric[]) {
   const base = lowerName(relationName(item, metrics));
   if (item.state === 'insufficient_data') return item.reason === 'too_few_pairs' ? `Todavía faltan días: tenés ${item.pairs} de ${MIN_PAIRS}.` : 'Este dato casi no cambia entre días, así que no se puede mirar.';
   if (item.state === 'no_clear_signal' || item.rho === null) return 'Por ahora no se ve una relación clara.';
-  const more = item.rho < 0 ? 'menos' : 'más', outcome = lane === 'strict' ? 'quedaron por debajo de la última vez' : 'quedaron con registro inferior';
-  return `Los días con más ${base.replace(/, (ese día|día anterior)$/, '')}, ${more} ejercicios ${outcome}. Lo vimos en ${item.pairs} de ${item.outcomeDays} días. Todavía no alcanza para decir que se repite.`;
+  const more = item.rho < 0 ? 'menos' : 'más', subject = base.replace(/, (ese día|día anterior)$/, '');
+  if (item.state === 'coincidence_context_unknown') return `Los días con más ${subject} coincidieron con ${more} ejercicios con registro inferior, en ${item.pairs} de ${item.outcomeDays} días. No sabemos si esos días cambiaste de variante, así que esto no dice que tenga que ver.`;
+  return `Los días con más ${subject}, ${more} ejercicios quedaron por debajo de la última vez. Lo vimos en ${item.pairs} de ${item.outcomeDays} días. Todavía no alcanza para decir que se repite.`;
 }
-export const coverageText = (item: Pick<AssociationResult, 'pairs' | 'outcomeDays'>) => `Visto en ${item.pairs} de ${item.outcomeDays} días`;
+export const coverageText = (item: Pick<AnyRelation, 'pairs' | 'outcomeDays'>) => `Visto en ${item.pairs} de ${item.outcomeDays} días`;
 
 const EXCLUSIONS: Record<string, string> = {
   metric_not_recorded: 'Sin valor registrado', no_active_meals: 'Sin comidas registradas', partial_macro: 'Alguna comida sin ese dato', multiple_sessions_day: 'Días con más de una sesión', no_start_time: 'Sin hora de inicio',
@@ -143,7 +149,7 @@ const EXCLUSIONS: Record<string, string> = {
 export const exclusionRows = (exclusions: Record<string, number>) => Object.entries(exclusions).filter(([, days]) => days > 0).sort((a, b) => b[1] - a[1]).map(([key, days]) => ({ key, label: EXCLUSIONS[key] ?? 'Otro motivo', days }));
 
 const percent = (share: number) => `${Math.round(share * 100)} %`;
-export function groupRows(lane: Lane, item: AssociationResult, unit: string | null) {
+export function groupRows(lane: Lane, item: AssociationResult | PartialAssociationResult, unit: string | null) {
   if (!item.groups) return [];
   const outcome = lane === 'strict' ? 'por debajo' : 'con registro inferior';
   const side = (group: NonNullable<AssociationResult['groups']>['low']) => ({
@@ -153,11 +159,11 @@ export function groupRows(lane: Lane, item: AssociationResult, unit: string | nu
 }
 export const shareText = (lane: Lane, share: number) => `${percent(share)} ${lane === 'strict' ? 'por debajo' : 'con registro inferior'}`;
 
-export type FamilyFilter = 'all' | AssociationResult['definition']['family'];
+export type FamilyFilter = 'all' | AnyRelation['definition']['family'];
 export const FAMILY_OPTIONS: readonly { value: FamilyFilter; label: string }[] = [{ value: 'all', label: 'Todas' }, { value: 'metric', label: 'Métricas' }, { value: 'nutrition', label: 'Nutrición' }, { value: 'meal_window', label: 'Comidas' }, { value: 'feeling', label: 'Sensaciones' }];
-const STATE_ORDER = { exploratory: 0, no_clear_signal: 1, insufficient_data: 2 };
+const STATE_ORDER = { exploratory: 0, coincidence_context_unknown: 0, no_clear_signal: 1, insufficient_data: 2 };
 /** Every evaluated relation stays reachable, including those that said nothing: showing only hits would hide the denominator. */
-export function relationGroups<T extends AssociationResult>(items: readonly T[], family: FamilyFilter) {
+export function relationGroups<T extends AnyRelation>(items: readonly T[], family: FamilyFilter) {
   const shown = items.filter(item => family === 'all' || item.definition.family === family).sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state]);
   return { readable: shown.filter(item => item.state !== 'insufficient_data'), waiting: shown.filter(item => item.state === 'insufficient_data'), total: shown.length };
 }
