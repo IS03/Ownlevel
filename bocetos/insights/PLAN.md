@@ -150,7 +150,7 @@ Sin decidir: al volver a Insights, la pila de Progreso conserva la pantalla de t
 
 **No se integran entre sí:** #390 no contiene código de #383 ni de #389. #389 requiere la migración de #387, así que integrarlo acá volvería a #390 dependiente de ella.
 
-**Comprobación:** ver la descripción del PR.
+**Comprobación:** una integración temporal local de los tres fusiona sin conflictos y pasa tipos y suites dirigidas. Detalle en la [descripción del PR](../../docs/progress/367-insights-pr5-pr-description.md).
 
 ## Pendiente de decidir
 
