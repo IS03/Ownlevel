@@ -27,6 +27,7 @@ import { ExerciseEditorModal } from './exercise-editor-modal';
 import { useActiveSession } from './use-active-session';
 import { NativeReorderItem, NativeReorderList, SessionDragScrollContext, closeSwipeOnScroll } from './session-native-interactions';
 import { FinishSessionSheet } from './finish-session-sheet';
+import { TrainingFeelings } from './training-feelings';
 import { CompletedSessionScreen, completedSessionApi, type CompletedSessionApi } from './history-session-screen';
 
 function SessionClock({ session, progress }: { session: SessionDetailDto['session']; progress?: { completedSets: number; totalSets: number } }) {
@@ -273,6 +274,7 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
       {state.storageError ? <InlineUnavailable actionLabel="Reintentar" onAction={() => void controller.refresh()} message="No pudimos guardar o leer el borrador en el dispositivo. Mantené esta pantalla abierta hasta sincronizar." /> : null}
       {!active ? <Surface><AppText variant="label">Esta sesión ya no está en curso</AppText><AppText muted variant="caption">Mostramos la versión guardada en modo lectura.</AppText></Surface> : null}
       {intentPanel}
+        {controller.feelings ? <TrainingFeelings journal={controller.feelings} phase="pre" controller={controller} disabled={!active || state.finishing || !!state.intent} /> : null}
       {state.notice && !state.intent ? <InlineUnavailable message={state.notice} actionLabel="Comprobar sesión" onAction={() => void controller.refresh()} /> : null}
       <View style={styles.row}><AppText style={styles.flex} variant="heading">Ejercicios</AppText>
         {active ? <Button disabled={structuralLocked || Boolean(state.interaction)} label="+ Agregar" onPress={() => { afterRemoval(() => setPickerOpen(true)); }} variant="quiet" /> : null}</View>

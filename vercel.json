@@ -3,7 +3,8 @@
   "ignoreCommand": "node scripts/vercel-ignore-build.mjs",
   "git": {
     "deploymentEnabled": {
-      "codex/367-insights-pr2-expand": false
+      "codex/367-insights-pr2-expand": false,
+      "codex/367-insights-pr3-adopt": false
     }
   }
 }

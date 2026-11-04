@@ -1,6 +1,8 @@
-# Insights #367 — PR 2: EXPAND de sensaciones
+# Insights #367 — EXPAND y ADOPT de sensaciones
 
 **Estado vigente: EXPAND aplicado y verificado en Supabase de producción; ver sección final de rollout.**
+
+**PR 3: adopción Web/Expo y journal local implementados; entrega en borrador, QA física iOS pendiente.** Base `cf26212d1bc6df09fc359e1a6717d8a544d31258`. Este trabajo no aplica/reaplica migraciones ni cambia producción.
 
 ## Persistencia mínima
 
@@ -140,3 +142,36 @@ Verificado tras aplicar: las cinco funciones nuevas coinciden exactamente con su
 Advisor alojado: baseline de 3 INFO, 19 WARN de funciones SECURITY DEFINER y 1 WARN de Auth. Delta: solo el aviso esperado para `mutate_training_feelings_v1`, RPC privilegiada intencional con auth.uid/ownership/CAS/idempotencia. No se afirma cero avisos alojados. Referencia: https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable .
 
 #381 integrado en `d18af72a1f115789c63fed1c5ceafd0a84fd18f3`, Vercel Production READY. #382 retargeteado a main; publicación de su backend posterior a la verificación de EXPAND. Captura cliente/Diario y patrones siguen sin adoptar. No se repiten las pruebas locales vigentes: el seguimiento solo renombra el SQL sin cambiar su contenido, actualiza su ruta de fixture y documenta el rollout.
+
+## PR 3 — ADOPT y recuperación offline
+
+Rama `codex/367-insights-pr3-adopt` desde main actualizado y limpio; #381/#382 mergeados. Migración vigente `20261104011622_training_feelings_expand.sql`: **ya aplicada**, no se vuelve a ejecutar. Codebase Memory devolvió vacío; checkout y contratos publicados son la autoridad. Sin integración de #380, SQL nuevo, cambios de producción, deploy, build ni instalación de Diario. Se bloquea la preview automática de esta rama en `vercel.json`.
+
+Captura Web/Expo: bloque compacto pre al abrir la sesión; post reutiliza el espacio del formulario final. Energía y fatiga opcionales e independientes, 1–5 sin defaults; anclajes **muy baja/baja/media/alta/muy alta** y **ninguna/poca/moderada/mucha/muchísima**. Se puede quitar cada respuesta. Rendimiento, dolor y notas continúan separados. El control final de energía escribe `energyPost`, nunca energía legacy; se preservan sus valores anteriores. Lectura de sensaciones nuevas en sesión finalizada, sin convertir datos históricos. Controles con semántica accesible, tokens de marca y claro/oscuro; Windows valida render/contratos, no sustituye VoiceOver/QA física.
+
+El contrato portable conserva `training-feelings/1`; las entradas del servidor siguen traduciendo validación a los mismos errores HTTP. Web usa las mismas rutas Bearer y comprueba que la sesión autenticada corresponda al dueño del journal. Expo usa Mobile API, sin consultas directas a tablas. No cambia el comparador.
+
+Journal específico de sensaciones, compartido: `ownlevel.feelings.v1.<usuario>.<sesión>`, sobre localStorage Web y AsyncStorage Expo. Seleccionar persiste patch, fuente y hora real de captura, aunque sea tarde; reenviar conserva esos timestamps y no acredita anterioridad física. Quitar produce `clear`; omitir preserva. Antes de enviar se persiste el cuerpo exacto, CAS y clave. Se serializan lecturas/escrituras por dispositivo/registro; Web exige Web Locks para coordinar pestañas. Si no están disponibles, se muestra error y no se envía. No se guardan tokens en el journal ni se registran payloads privados.
+
+Recuperación tras navegar/reiniciar: intención pendiente visible; «Comprobar operación pendiente» repite exactamente cuerpo/clave. No hay reenvío automático con otra revisión ni nueva clave por timeout. Un conflicto relee lo guardado y exige «Conservar lo guardado» o «Revisar mis respuestas para reenviar»; la segunda opción preserva captura, libera el conflicto y requiere una nueva confirmación del usuario. Sin lectura inicial conocida, encontrar respuestas existentes también exige revisión. Un error de lectura mantiene el estado no confirmado/última lectura, nunca crea un vacío exitoso. Fallo de almacenamiento local bloquea el cierre hasta revisar el borrador; no se declara guardado. La persistencia depende del almacenamiento del dispositivo: borrar los datos del navegador/app elimina borradores locales.
+
+Finish drena primero los borradores existentes de series. Una pre pendiente debe confirmarse antes de congelar la revisión final. Con post seleccionadas o cualquier patch pendiente, usa `finish-with-feelings` con metadata legacy parcial explícita; sin sensaciones elegidas conserva el camino original y energía histórica. Expo integra el cuerpo nuevo en su journal estructural existente y conserva la recuperación de recibo/limpieza local. Tras recibo nuevo confirmado se relee el detalle de sesión para el resumen; si ese read falla, queda recuperable con la misma intención. Web no usa un mero estado «completed» como confirmación de una escritura nueva incierta. No se eliminan intenciones pendientes antes de confirmación durable.
+
+### Validación local y límite contractual
+
+- Raíz: typecheck, ESLint de archivos afectados sin warnings y **77 pruebas**: journal (11), transporte Web (3), render accesible claro/oscuro (3), interacción Web afectada (20), finish legacy (4) y contrato/HTTP del parser extraído (36). Se repite ese grupo de #382 porque se mueve su parser a un módulo portable; no sus suites SQL/advisor ni las de #381.
+- Expo: typecheck, lint sin warnings y `config:check` correctos. **148 pruebas únicas en 8 suites focalizadas**: captura/lectura, transporte, finish con journal, controlador/useActiveSession/client existentes y vistas de historial/post afectadas. Ejecutadas en tandas; pruebas de vistas emiten avisos `act` del entorno React, sin fallos. Datos sintéticos y transporte simulado: offline, navegación/reinicio, hora tardía, timeout tras commit, replay, CAS, dos usuarios/sesiones, limpieza parcial y coordinación de finish. No se afirma E2E contra el backend alojado ni QA nativa real. Se reutiliza la evidencia DB/PostgREST de #382; no se aplica SQL ni se repite su auditoría.
+- **Brecha demostrada del backend vigente:** `/finish?routineAdditions=1` devuelve el detalle de adiciones a rutina; `/finish-with-feelings` rechaza query params y su respuesta estricta contiene solo contrato/sesión/revisión/valores. Reproducción contractual: finalizar sintéticamente con sensaciones y una adición marcada; las funciones vigentes ejecutan/persisten la adición, pero el DTO nuevo no puede contener `routineAdditions`. Ver `training-feelings-contract.ts`, el handler de `finish-with-feelings` y la migración existente de adiciones a rutina. El cliente no inventa el resultado ni llama a otro finish: confirma la sesión y muestra aviso de detalle no disponible. Recuperar esos badges requiere una extensión **negociada** del backend en otro alcance autorizado, sin romper parsers estrictos. Este PR no la implementa.
+
+### Checklist única pendiente de QA física iOS
+
+- [ ] Claro/oscuro, tamaño de texto grande, VoiceOver y foco: controles 1–5, anclajes, quitar y ausencia de preselección; sin recortes ni colores valorativos.
+- [ ] Empezar/finalizar omitiendo todo; seleccionar/quitar energía y fatiga por separado; rendimiento, dolor, notas y energía histórica conservados.
+- [ ] Responder pre después de algunas series: hora real de captura; post con significado «cómo terminaste», sin segundo formulario de energía.
+- [ ] Sin conexión, elegir respuestas, salir/cerrar/reabrir; volver a conectar y comprobar la misma intención. No mostrar «guardado» antes de confirmar.
+- [ ] Simular respuesta perdida tras commit de save/finish; recuperar una sola operación, incluso después de reiniciar y con limpieza local interrumpida.
+- [ ] Conflicto desde otro cliente: comparar lo guardado, resolver expresamente, conservar captura al reenviar; nunca sobrescribir automáticamente.
+- [ ] Cambiar usuario y volver: sin cruces de respuestas/intenciones entre cuentas/sesiones. Lectura fallida diferenciada de ausencia confirmada.
+- [ ] Finish con efectos de rutina y post: confirmar sesión/sensaciones, revisar rutina y el aviso contractual de detalle no disponible; revisar resumen e historial.
+
+Entrega sin mergear. Próximo paso: revisión del borrador, QA física anterior y decisión separada sobre la brecha de detalle de rutina. Sin loader all-time, asociaciones, patrones, scores ni rediseño de Progreso.

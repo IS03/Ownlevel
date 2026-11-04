@@ -330,6 +330,7 @@ export function createMobileApiClient({
             conflictCode === 'ROUTINE_TEMPLATE_CHANGED' ||
             conflictCode === 'SESSION_EXERCISE_CHANGED' ||
             conflictCode === 'SESSION_CHANGED' ||
+            conflictCode === 'FEELINGS_CHANGED' ||
             conflictCode === 'SESSION_CLOSED' ||
             conflictCode === 'SESSION_EXERCISE_REMOVED' ||
             conflictCode === 'SESSION_EXERCISE_ALREADY_EXISTS' ||
