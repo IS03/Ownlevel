@@ -1,0 +1,31 @@
+import { seededRandom } from "./stats";
+import type { InsightsSource } from "./types";
+
+const uuid = (kind: number, index: number) => `${kind.toString(16).padStart(8, "0")}-0000-4000-8000-${index.toString(16).padStart(12, "0")}`;
+
+/** Synthetic profile: years of history at a realistic rhythm, without any personal data. */
+/** `captured` models the data after the proposed EXPAND; the default holds what the loader reads today: no configuration and no marker on meal times. */
+export function syntheticHistory(profile: { years: number; sessionsPerWeek: number; exercises: number; setsPerExercise: number; catalog: number; metrics: number; mealsPerDay: number }, seed = 1, captured = false): InsightsSource {
+  const random = seededRandom(seed);
+  const sessions: InsightsSource["sessions"][number][] = [], exercises: InsightsSource["exercises"][number][] = [], sets: InsightsSource["sets"][number][] = [];
+  const metricValues: InsightsSource["metricValues"][number][] = [], meals: InsightsSource["meals"][number][] = [], feelings: InsightsSource["feelings"][number][] = [];
+  const days = profile.years * 365;
+  const start = Date.UTC(2021, 0, 1);
+  for (let day = 0; day < days; day++) {
+    const date = new Date(start + day * 86_400_000).toISOString().slice(0, 10);
+    for (let metric = 0; metric < profile.metrics; metric++) if (random() < 0.8) metricValues.push({ metricId: uuid(2, metric), date, value: String(Math.round(random() * 100)) });
+    for (let meal = 0; meal < profile.mealsPerDay; meal++) meals.push({ id: uuid(3, meals.length), date, consumedAt: `${date}T${String(8 + meal * 3).padStart(2, "0")}:15:00.000Z`,
+      rawInput: captured ? '{"originalTimeKnown":true}' : null, entryKind: "meal", sourceType: "manual", calories: 400 + Math.round(random() * 400), proteinG: 20 + Math.round(random() * 30), carbsG: random() < 0.02 ? null : 30 + Math.round(random() * 70), fatG: 10 });
+    if (random() >= profile.sessionsPerWeek / 7) continue;
+    const id = uuid(1, sessions.length);
+    sessions.push({ id, date, routineId: uuid(4, sessions.length % 4), routineName: "Rutina", name: null, status: "completed", startedAt: `${date}T18:00:00.000Z`, endedAt: `${date}T19:15:00.000Z`, performanceLevel: 3, painLevel: 0, legacyEnergyLevel: null });
+    if (random() < 0.5) feelings.push({ sessionId: id, revision: 1, facts: { energyPre: { value: 1 + Math.floor(random() * 5), instrumentVersion: "energy-fatigue/1", declaredMoment: "pre", declaredAt: `${date}T17:55:00.000Z`, capturedAt: `${date}T17:55:00.000Z`, source: "mobile", receivedAt: `${date}T17:55:01.000Z`, temporalQuality: "unverified_client_clock" } } });
+    for (let index = 0; index < profile.exercises; index++) {
+      const rowId = uuid(5, exercises.length), exerciseIndex = (sessions.length * 3 + index) % profile.catalog;
+      exercises.push({ id: rowId, sessionId: id, exerciseId: uuid(6, exerciseIndex), name: `Ejercicio ${exerciseIndex}`, implement: "barra", weightMode: "Peso total", isCompleted: true, configuration: captured ? "none" : null });
+      // One load per exercise, so most exposures compare directly, as a stable program would.
+      for (let set = 0; set < profile.setsPerExercise; set++) sets.push({ id: uuid(7, sets.length), sessionExerciseId: rowId, actualReps: 8 + Math.floor(random() * 3), actualLoad: 40 + exerciseIndex, isCompleted: true, completedAt: `${date}T18:${String(10 + set).padStart(2, "0")}:00.000Z` });
+    }
+  }
+  return { sessions, exercises, sets, feelings, metricDefinitions: Array.from({ length: profile.metrics }, (_, metric) => ({ id: uuid(2, metric), name: `M${metric}`, unit: null, valueType: "decimal", archived: metric % 5 === 0 })), metricValues, meals };
+}

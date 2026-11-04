@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parsePerformanceInsights } from "../../mobile-api/performance-insights-contract";
+import { parseCompleteInsights } from "../../mobile-api/performance-insights-contract";
 import { buildPerformanceInsightsPartialV1, buildPerformanceInsightsV1 } from "../performance-insights";
 import { buildInsightsReadModel } from "./read-model";
 import { toPerformanceSessions } from "./source-adapter";
@@ -34,7 +34,7 @@ describe("método parcial", () => {
     expect(read.partial.totals).toEqual({ higher: 1, same: 0, lower: 1, ambiguous: 0, insufficient: 1, total: 3, comparable: 2, coverage: 2 / 3 });
     expect(read.partial.days[0]).toMatchObject({ lowerProportion: 1 });
     expect(read.partial.days[0]!.sessions[0]!.exercises[0]).toMatchObject({ reading: "lower_record", referenceSessionId: "s1" });
-    expect(parsePerformanceInsights(JSON.parse(JSON.stringify(read)))).toBeTruthy();
+    expect(parseCompleteInsights(JSON.parse(JSON.stringify(read)))).toBeTruthy();
   });
 
   it("speaks only of records: no strict status, decline or improvement crosses into the lane", () => {
@@ -131,7 +131,7 @@ describe("método parcial", () => {
     const source = history([8, 9]);
     const read = model({ ...source, sessions: [...source.sessions, { ...source.sessions[0]!, endedAt: `${dateAt(0)}T20:00:00.000Z` }] });
     expect(read.partial).toMatchObject({ integrity: "conflicting_duplicates", days: [] });
-    expect(parsePerformanceInsights(JSON.parse(JSON.stringify(read)))).toBeTruthy();
+    expect(parseCompleteInsights(JSON.parse(JSON.stringify(read)))).toBeTruthy();
   });
 
   it("excludes today's open day from the partial outcome and says so", () => {
@@ -156,13 +156,13 @@ describe("asociaciones parciales", () => {
     expect(read.partial.associations.outcome).toBe("daily_lower_record_proportion");
     expect(read.partial.associations.promotion).toEqual({ status: "not_enabled", reason: "partial_context" });
     expect(read.partial.associations.testableCandidates).toBeGreaterThan(0);
-    expect(parsePerformanceInsights(JSON.parse(JSON.stringify(read)))).toBeTruthy();
+    expect(parseCompleteInsights(JSON.parse(JSON.stringify(read)))).toBeTruthy();
   });
 
   it("never publishes a consistent state or the internal strict gate", () => {
     const read = buildInsightsReadModel(withMetric(history(oscillating)), { today: "2027-01-01", permutations: 49 });
     for (const item of read.partial.associations.items) {
-      expect(["insufficient_data", "no_clear_signal", "exploratory"]).toContain(item.state);
+      expect(["insufficient_data", "no_clear_signal", "coincidence_context_unknown"]).toContain(item.state);
       expect(item).not.toHaveProperty("strictGate");
     }
   });
@@ -181,14 +181,14 @@ describe("asociaciones parciales", () => {
 
   it("rejects a partial lane without its labels, or an item that hides what it is", () => {
     const read = JSON.parse(JSON.stringify(buildInsightsReadModel(withMetric(history(oscillating)), { today: "2027-01-01", permutations: 19 })));
-    expect(parsePerformanceInsights(read)).toBeTruthy();
-    expect(parsePerformanceInsights({ ...read, partial: undefined })).toBeUndefined();
-    expect(parsePerformanceInsights({ ...read, partial: { ...read.partial, contextCompleteness: "complete" } })).toBeUndefined();
-    expect(parsePerformanceInsights({ ...read, partial: { ...read.partial, methodVersion: "insights-performance/1" } })).toBeUndefined();
+    expect(parseCompleteInsights(read)).toBeTruthy();
+    expect(parseCompleteInsights({ ...read, partial: undefined })).toBeUndefined();
+    expect(parseCompleteInsights({ ...read, partial: { ...read.partial, contextCompleteness: "complete" } })).toBeUndefined();
+    expect(parseCompleteInsights({ ...read, partial: { ...read.partial, methodVersion: "insights-performance/1" } })).toBeUndefined();
     const items = read.partial.associations.items.map((item: { id: string }) => ({ ...item, id: item.id.replace("partial:", "") }));
-    expect(parsePerformanceInsights({ ...read, partial: { ...read.partial, associations: { ...read.partial.associations, items } } })).toBeUndefined();
-    expect(parsePerformanceInsights({ ...read, partial: { ...read.partial, associations: { ...read.partial.associations, promotion: { status: "enabled" } } } })).toBeUndefined();
-    expect(parsePerformanceInsights({ ...read, partial: { ...read.partial, partition: { total: 9, configurationKnown: 1, configurationUnknown: 1 } } })).toBeUndefined();
+    expect(parseCompleteInsights({ ...read, partial: { ...read.partial, associations: { ...read.partial.associations, items } } })).toBeUndefined();
+    expect(parseCompleteInsights({ ...read, partial: { ...read.partial, associations: { ...read.partial.associations, promotion: { status: "enabled" } } } })).toBeUndefined();
+    expect(parseCompleteInsights({ ...read, partial: { ...read.partial, partition: { total: 9, configurationKnown: 1, configurationUnknown: 1 } } })).toBeUndefined();
   });
 
   it("does not use an exercise of another context to fill the denominators", () => {

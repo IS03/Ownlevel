@@ -1,9 +1,11 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { todayInCordoba } from "@/lib/phase2/cordoba-date";
 import { readAllTrainingRows } from "@/lib/phase2/training-robust";
-import { buildInsightsReadModel, INSIGHTS_MAX_DAYS, type InsightsSource } from "@/lib/progress/insights-engine";
+import { createInsightsSnapshot, insightsDaysPage, insightsRelation, insightsRelations, insightsSummary, INSIGHTS_MAX_DAYS, type InsightsSnapshot, type InsightsSource } from "@/lib/progress/insights-engine";
 import { MobileApiValidationError } from "./auth";
 import { NutritionReportDayChangedError } from "./nutrition-report-server";
+import { InsightsSnapshotCache } from "./performance-insights-cache";
 import { parsePerformanceInsights } from "./performance-insights-contract";
 import { progressReadResponse } from "./progress-server";
 import type { MobileSupabaseAuthenticatedContext } from "./supabase";
@@ -96,29 +98,48 @@ export async function readInsightsRevision(context: Context): Promise<string> {
 }
 
 /** Publishes only a read whose seven sources did not change meanwhile. One retry; after that the read is unavailable, never partial. */
-export async function readConsistentInsightsSource(context: Context): Promise<InsightsSource> {
+export async function readConsistentInsightsSource(context: Context, known?: string): Promise<{ source: InsightsSource; revision: string }> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const before = await readInsightsRevision(context);
+    const before = attempt === 0 && known !== undefined ? known : await readInsightsRevision(context);
     const source = await readInsightsSource(context);
-    if (await readInsightsRevision(context) === before) return source;
+    if (await readInsightsRevision(context) === before) return { source, revision: before };
   }
   throw new Error("Insights sources kept changing");
 }
 
+const snapshots = new InsightsSnapshotCache<InsightsSnapshot>({ maxEntries: 3, ttlMs: 5 * 60_000 });
+export const clearInsightsSnapshots = () => snapshots.clear();
+const publicRevision = (revision: string) => createHash("sha256").update(revision).digest("hex").slice(0, 32);
+
+/** Reuses the snapshot only if the revision just read under this token still matches: the check is 7 queries against a whole read. */
+export async function readInsightsSnapshot(context: Context, today: string): Promise<InsightsSnapshot> {
+  const current = await readInsightsRevision(context);
+  const reused = snapshots.get(context.userId, current, today);
+  if (reused) return reused;
+  const { source, revision } = await readConsistentInsightsSource(context, current);
+  const snapshot = createInsightsSnapshot(source, { today, revision: publicRevision(revision) });
+  snapshots.set(context.userId, revision, today, snapshot);
+  return snapshot;
+}
+
 export function parseInsightsParams(params: URLSearchParams) {
   for (const key of new Set(params.keys())) {
-    if (!["before", "limit", "association"].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
+    if (!["view", "before", "limit", "association"].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
   }
-  const before = params.get("before") ?? undefined, limit = params.get("limit"), association = params.get("association") ?? undefined;
+  const before = params.get("before") ?? undefined, limit = params.get("limit"), association = params.get("association") ?? undefined, view = params.get("view") ?? "summary";
+  if (!["summary", "days", "relations"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
   if (before !== undefined && (!/^\d{4}-\d{2}-\d{2}$/.test(before) || new Date(`${before}T00:00:00Z`).toISOString().slice(0, 10) !== before)) throw new MobileApiValidationError("Fecha no válida.");
   if (limit !== null && (!/^\d{1,3}$/.test(limit) || +limit < 1 || +limit > INSIGHTS_MAX_DAYS)) throw new MobileApiValidationError(`El límite va de 1 a ${INSIGHTS_MAX_DAYS} días.`);
   if (association !== undefined && !/^[a-zA-Z0-9_:-]{1,120}$/.test(association)) throw new MobileApiValidationError("Relación no válida.");
-  return { before, limit: limit === null ? undefined : +limit, association };
+  return { view: view as "summary" | "days" | "relations", before, limit: limit === null ? undefined : +limit, association };
 }
 
 export const performanceInsightsResponse = (request: Request) => progressReadResponse(request, "performance-insights", async (context, params, today) => {
   const options = parseInsightsParams(params);
-  const model = buildInsightsReadModel(await readConsistentInsightsSource(context), { ...options, today });
+  const snapshot = await readInsightsSnapshot(context, today);
+  const model = options.association ? insightsRelation(snapshot, options.association)
+    : options.view === "relations" ? insightsRelations(snapshot)
+    : options.view === "days" ? insightsDaysPage(snapshot, options) : insightsSummary(snapshot, options);
   // A read straddling Córdoba midnight is retried by the shared GET handler.
   const after = todayInCordoba();
   if (after !== today) throw new NutritionReportDayChangedError(after);

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "../../app/api/mobile/v1/progress/performance-insights/route";
 import { parsePerformanceInsights } from "./performance-insights-contract";
+import { clearInsightsSnapshots } from "./performance-insights-server";
 
 const mocks = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("server-only", () => ({}));
@@ -53,7 +54,7 @@ function tablesFor(days: number) {
 }
 const request = (query = "") => new NextRequest(`http://127.0.0.1/api/mobile/v1/progress/performance-insights${query}`, { headers: { authorization: "Bearer synthetic" } });
 
-beforeEach(() => { mocks.auth.mockReset(); });
+beforeEach(() => { mocks.auth.mockReset(); clearInsightsSnapshots(); });
 afterEach(() => { vi.useRealTimers(); });
 
 describe("GET performance-insights", () => {
@@ -65,7 +66,8 @@ describe("GET performance-insights", () => {
     const body = await response.json();
     expect(parsePerformanceInsights(body)).toBeTruthy();
     expect(body.history.sessions).toBe(30); expect(body.metrics[0].archived).toBe(true);
-    expect(body.associations.candidatesEvaluated).toBe(2 + 8 + 2 + 2);
+    expect(body.view).toBe("summary"); expect(body.relations.strict.candidatesEvaluated).toBe(2 + 8 + 2 + 2);
+    expect(body).not.toHaveProperty("associations");
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     // 7 streams of one page each + 2 revision checks of 7 queries. Nothing per session, exercise or candidate.
     expect(calls).toHaveLength(7 + 14);
@@ -82,7 +84,10 @@ describe("GET performance-insights", () => {
     expect(body.exclusions.performance.missing_context).toBe(30);
     expect(body.history).toMatchObject({ sessions: 30, outcomeDays: 0 });
     expect(body.limits.configurationSnapshots).toEqual({ known: 0, total: 30 });
-    expect(body.associations.items.every((item: { state: string }) => item.state === "insufficient_data")).toBe(true);
+    expect(body.relations.strict).toEqual({ candidatesEvaluated: 14, outcomeDays: 0 });
+    const relations = await (await GET(request("?view=relations"))).json();
+    // A method without outcome days has no list to send, and says why instead of looking empty.
+    expect(relations.strict).toMatchObject({ items: [], candidatesEvaluated: 14, outcomeDays: 0 });
   });
   describe("total query cost, retries included", () => {
     // Each stream of tablesFor(5) takes one page: P = 7, and a revision round is 7. A clean attempt is 7 + 7 + 7.
@@ -143,13 +148,81 @@ describe("GET performance-insights", () => {
   it("returns the pairs of one relation on request and validates its parameters", async () => {
     mocks.auth.mockResolvedValue({ userId: USER, supabase: fakeSupabase(tablesFor(25)).client });
     const id = `metric:${METRIC}:same_day`;
-    const body = await (await GET(request(`?association=${encodeURIComponent(id)}&limit=2`))).json();
-    // Pairs exist only with comparable days; the pure read model covers them. Here the configuration is unknown.
-    expect(body.facts.days).toHaveLength(2); expect(body.associations.detail).toEqual({ id, pairs: [] });
-    for (const query of ["?limit=0", "?limit=121", "?before=2026-02-31", "?other=1", "?limit=1&limit=2", "?association=%3Cx%3E"]) {
+    const body = await (await GET(request(`?association=${encodeURIComponent(id)}`))).json();
+    // Under the strict method the configuration is unknown, so it has a relation with no pairs.
+    expect(body).toMatchObject({ view: "relation", lane: "strict", id, pairs: [] }); expect(body.item.state).toBe("insufficient_data");
+    const partial = await (await GET(request(`?association=${encodeURIComponent(`partial:${id}`)}`))).json();
+    expect(partial).toMatchObject({ view: "relation", lane: "partial" }); expect(partial.pairs.length).toBeGreaterThan(0);
+    expect(await (await GET(request("?association=partial:metric:none:same_day"))).json()).toMatchObject({ item: null, pairs: null });
+    for (const query of ["?limit=0", "?limit=121", "?before=2026-02-31", "?other=1", "?limit=1&limit=2", "?association=%3Cx%3E", "?view=all", "?view=complete"]) {
       expect((await GET(request(query))).status, query).toBe(400);
     }
   }, 30_000);
+  describe("reutilización de la misma revisión", () => {
+    const pagesOf = (calls: Call[]) => calls.filter(call => call.range).length;
+    const parsed = async (query: string) => {
+      const response = await GET(request(query));
+      expect(response.status, query).toBe(200);
+      const body = await response.json();
+      expect(parsePerformanceInsights(body), query).toBeTruthy();
+      return body;
+    };
+    it("answers days and relations of an unchanged history with a revision check alone, and the same content", async () => {
+      const fake = fakeSupabase(tablesFor(40));
+      mocks.auth.mockResolvedValue({ userId: USER, supabase: fake.client });
+      const first = await parsed("?limit=5");
+      expect(fake.calls).toHaveLength(7 + 14);
+      for (const query of ["?view=days&before=" + first.facts.page.nextBefore + "&limit=5", "?view=relations", `?association=${encodeURIComponent(`partial:metric:${METRIC}:same_day`)}`, "?limit=5"]) {
+        const before = fake.calls.length;
+        const body = await parsed(query);
+        expect(fake.calls.length - before, query).toBe(7);
+        expect(body.sourceRevision).toBe(first.sourceRevision);
+      }
+      expect(pagesOf(fake.calls)).toBe(7);
+      clearInsightsSnapshots();
+      const fresh = fakeSupabase(tablesFor(40));
+      mocks.auth.mockResolvedValue({ userId: USER, supabase: fresh.client });
+      expect(await parsed("?view=relations")).toEqual(await (async () => { mocks.auth.mockResolvedValue({ userId: USER, supabase: fake.client }); clearInsightsSnapshots(); return parsed("?view=relations"); })());
+    }, 60_000);
+    it("reads everything again as soon as the revision changes, and says so", async () => {
+      let revision = "a";
+      const fake = fakeSupabase(tablesFor(10), () => revision);
+      mocks.auth.mockResolvedValue({ userId: USER, supabase: fake.client });
+      const first = await parsed("");
+      revision = "b";
+      const before = fake.calls.length;
+      const page = await parsed("?view=days");
+      expect(fake.calls.length - before).toBe(7 + 14);
+      expect(page.sourceRevision).not.toBe(first.sourceRevision);
+    });
+    it("never serves one account's snapshot to another, even with the same revision", async () => {
+      const mine = fakeSupabase(tablesFor(6));
+      mocks.auth.mockResolvedValue({ userId: USER, supabase: mine.client });
+      await parsed("");
+      const other = fakeSupabase(tablesFor(2));
+      mocks.auth.mockResolvedValue({ userId: "93670000-0000-4000-8000-0000000000b2", supabase: other.client });
+      const body = await parsed("");
+      expect(body.history.sessions).toBe(2);
+      expect(pagesOf(other.calls)).toBe(7);
+    });
+    it("does not reuse a snapshot across the Córdoba day", async () => {
+      vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-06-01T12:00:00Z") });
+      const fake = fakeSupabase(tablesFor(4));
+      mocks.auth.mockResolvedValue({ userId: USER, supabase: fake.client });
+      await parsed("");
+      vi.setSystemTime(new Date("2026-06-02T12:00:00Z"));
+      const before = fake.calls.length;
+      expect((await parsed("")).today).toBe("2026-06-02");
+      expect(fake.calls.length - before).toBe(7 + 14);
+    });
+    it("still refuses when the token fails, before reusing anything", async () => {
+      const { MobileApiUnauthorizedError } = await import("./auth");
+      mocks.auth.mockResolvedValue({ userId: USER, supabase: fakeSupabase(tablesFor(4)).client });
+      await parsed("");
+      mocks.auth.mockRejectedValue(new MobileApiUnauthorizedError());
+      expect((await GET(request("?view=days"))).status).toBe(401);
+    });
+  });
   it("requires a token", async () => {
     const { MobileApiUnauthorizedError } = await import("./auth");
     mocks.auth.mockRejectedValue(new MobileApiUnauthorizedError());

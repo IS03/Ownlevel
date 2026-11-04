@@ -58,6 +58,9 @@ export function sameContext(a: HistoricalContext, b: HistoricalContext): boolean
     && (configurationKnown(a) ? a.configuration : null) === (configurationKnown(b) ? b.configuration : null);
 }
 
+/** Two usable contexts are the same one exactly when their keys match: `sameContext` as a value, for grouping a long history. */
+export const contextKey = (context: HistoricalContext) => JSON.stringify([normalizedMode(context.weightMode), context.unit, context.implement, configurationKnown(context) ? context.configuration : null]);
+
 function validSet(set: PerformanceSet, context: HistoricalContext): boolean {
   const strategy = weightModeStrategy(normalizeWeightMode(context.weightMode));
   if (set.amount === null || !Number.isFinite(set.amount) || set.amount < 0) return false;
