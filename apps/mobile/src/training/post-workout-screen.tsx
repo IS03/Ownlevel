@@ -1,3 +1,5 @@
+import { useRouter } from 'expo-router';
+import { insightsSessionHref } from '@/insights/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { AccessibilityInfo, Modal, ScrollView, StyleSheet, TextInput, View, type LayoutChangeEvent } from 'react-native';
 import Animated, { FadeIn, FadeInDown, useAnimatedProps, useAnimatedStyle, useSharedValue, withDelay, withSequence, withSpring, withTiming } from 'react-native-reanimated';
@@ -97,6 +99,7 @@ function HeroCard({ hero }: { hero: PostWorkoutHero }) {
 export function PostWorkoutContent({ finished, detail, readSummary, readWeek, onHome, onViewSession }: PostWorkoutProps) {
   const reduced = useReduceMotion(), { colors } = useOwnlevelTheme();
   const [summary, setSummary] = useState<SessionSummaryDto>();
+  const router = useRouter();
   const [week, setWeek] = useState<FinishWeek | null | undefined>(undefined);
   const [intro, setIntro] = useState(Boolean(readWeek)), [revealed, setRevealed] = useState(!readWeek);
   const model = postWorkoutModel(finished, summary, detail);
@@ -161,6 +164,8 @@ export function PostWorkoutContent({ finished, detail, readSummary, readWeek, on
       <Animated.View entering={enter(1)} style={styles.footer}>
         <Button label="Listo" onPress={onHome} />
         <Button label="Ver sesión" variant="quiet" onPress={onViewSession} />
+        {/* Facts of this session only, read when it opens: nothing about all-time relations runs at the end of a workout. */}
+        <Button label="Comparar en Insights" accessibilityLabel="Ver los hechos de esta sesión en Insights" variant="quiet" onPress={() => { router.replace('/(tabs)/train'); router.push(insightsSessionHref(finished.sessionId, finished.logDate)); }} />
       </Animated.View>
     </> : null}
     {intro ? <FinishWeekIntro week={week} onLeave={reveal} onDone={endIntro} /> : null}

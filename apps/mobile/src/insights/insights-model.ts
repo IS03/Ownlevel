@@ -43,6 +43,23 @@ export function heroOf(days: readonly DayLanes[]): { day: DayLanes; lane: Lane; 
   return null;
 }
 export const heroCaption = (lane: Lane) => lane === 'strict' ? 'ejercicios comparables, contra su última vez' : 'ejercicios comparables con contexto parcial';
+/** Two answers belong together only if they come from the same read of the same day. */
+export const sameRead = (a: Pick<InsightsSummary, 'sourceRevision' | 'today'>, b: Pick<InsightsSummary, 'sourceRevision' | 'today'>) => a.sourceRevision === b.sourceRevision && a.today === b.today;
+export const nextDate = (date: string) => new Date(Date.parse(`${date}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+
+/** One session's facts in its own method. A session lives in one day; the lane follows what it can compare. */
+export function focusOf(days: readonly DayLanes[], sessionId: string): { day: DayLanes; session: DayFact['sessions'][number]; partial: PartialDayFact['sessions'][number] | null; lane: Lane; counts: Counts } | null {
+  for (const day of days) {
+    const session = day.strict.sessions.find(row => row.sessionId === sessionId);
+    if (!session) continue;
+    const partial = day.partial?.sessions.find(row => row.sessionId === sessionId) ?? null;
+    const strict = strictCounts(session.counts);
+    if (strict.comparable > 0 || !partial?.counts.total) return { day, session, partial, lane: 'strict', counts: strict };
+    return { day, session, partial, lane: 'partial', counts: partialCounts(partial.counts) };
+  }
+  return null;
+}
+
 export function primaryLane(model: InsightsSummary): Lane { return model.facts.totals.comparable > 0 || model.partial.totals.comparable === 0 ? 'strict' : 'partial'; }
 
 export type StripMark = { date: string; kind: 'value'; share: number } | { date: string; kind: 'zero' } | { date: string; kind: 'gap' };
@@ -174,9 +191,8 @@ export function dayLabel(date: string) {
 }
 const CARBS: Record<string, string> = { no_registered_meal: 'Sin comidas con hora', partial_macro: 'Alguna comida sin ese dato', untimed_meal_in_scope: 'Comidas sin hora', unverified_meal_time_in_scope: 'Hay comidas, pero no sabemos si esa fue la hora', no_start_time: 'Sin hora de inicio' };
 /** What was recorded around the training. If it was not recorded it says so: never a zero. */
-export function contextRows(day: DayFact, metrics: readonly Metric[]) {
-  const session = day.sessions[0];
-  const rows: { key: string; label: string; value: string }[] = [];
+export function contextRows(day: DayFact, metrics: readonly Metric[], session: DayFact['sessions'][number] | undefined = day.sessions[0]) {
+  const rows: { key: string; label: string; value: string; metricId?: string }[] = [];
   if (session) {
     const feelings = session.context.feelings;
     for (const key of ['energyPre', 'fatiguePre', 'energyPost', 'fatiguePost'] as const) rows.push({ key, label: FEELING[key]!, value: feelings[key] ? `${feelings[key]!.value} de 5` : 'Sin registrar' });
@@ -187,7 +203,8 @@ export function contextRows(day: DayFact, metrics: readonly Metric[]) {
   rows.push({ key: 'calories', label: 'Calorías registradas', value: !nutrition ? 'Sin comidas registradas' : `${formatValue(nutrition.calories.recorded, 'kcal', 'integer')}${nutrition.calories.missing ? `, ${nutrition.calories.missing} sin dato` : ''}` });
   for (const metric of day.context.metrics) {
     const known = metrics.find(row => row.id === metric.metricId);
-    rows.push({ key: metric.metricId, label: known?.name ?? 'Métrica', value: formatValue(metric.value, known?.unit ?? null) });
+    // Only a metric the read names can open its trends.
+    rows.push({ key: metric.metricId, label: known?.name ?? 'Métrica', value: formatValue(metric.value, known?.unit ?? null), ...(known ? { metricId: known.id } : {}) });
   }
   return rows;
 }

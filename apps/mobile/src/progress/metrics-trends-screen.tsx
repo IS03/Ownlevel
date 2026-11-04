@@ -13,6 +13,8 @@ import { shortRange } from './progress-range';
 import { arrowDelta, formatValue } from './progress-format';
 import { useCachedRead } from '@/api/use-cached-read';
 import { ProgressReadStatus } from './progress-read-status';
+import { ReturnToInsights } from '@/insights/return-to-insights';
+import { useProgressRouteRange } from './use-progress-route-range';
 
 const PCT = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 });
 
@@ -101,19 +103,24 @@ function MetricChip({ label, selected, onPress, icon, quiet = false, archived = 
 }
 
 /** Métricas in Progreso (P6): one metric at a time, average per day with data, coverage always visible. No sums, no "target hit" days. */
-export function MetricsTrendsScreen() {
+function MetricsTrends() {
   const router = useRouter();
   const params = useLocalSearchParams<{ metric?: string }>();
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
   const { query, compare } = useProgressRange();
-  const [metricId, setMetricId] = useState<string | null>(typeof params.metric === 'string' ? params.metric : null);
+  const routeMetric = typeof params.metric === 'string' ? params.metric : null;
+  const [metricId, setMetricId] = useState<string | null>(routeMetric);
+  // A new link may reuse the mounted route: it chooses its metric once, and the chips stay free afterwards.
+  const [seenMetric, setSeenMetric] = useState(routeMetric);
+  if (seenMetric !== routeMetric) { setSeenMetric(routeMetric); setMetricId(routeMetric); }
   const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressMetrics(c, query, metricId, signal, compare), [query, metricId, compare]);
   const { state, data, refresh } = useCachedRead(client, 'metrics', `${progressRequestKey(query, compare)}|${metricId ?? ''}`, load);
   const [showArchived, setShowArchived] = useState(false);
   const active = data?.definitions.filter(d => d.isActive) ?? [];
   const archived = data?.definitions.filter(d => !d.isActive) ?? [];
   return <ProgressScroll title="Métricas" testID="metrics-trends-screen" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
+    <ReturnToInsights />
     <ProgressReadStatus state={state} />
     {state.status === 'loading' ? <SkeletonBlock height={200} />
       : !data ? <UnavailableState title="No pudimos cargar tus métricas" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente." action={<Button label="Reintentar" onPress={() => void refresh()} />} />
@@ -134,6 +141,11 @@ export function MetricsTrendsScreen() {
           : <AppText muted>No hay métricas para analizar.</AppText>}
       </>}
   </ProgressScroll>;
+}
+/** A link can bring a period along (from Insights, the month of that day). It applies before the first read. */
+export function MetricsTrendsScreen() {
+  const applied = useProgressRouteRange();
+  return applied ? <MetricsTrends /> : <SkeletonBlock height={200} />;
 }
 const styles = StyleSheet.create({
   numbers: { flexDirection: 'row', gap: spacing.lg },

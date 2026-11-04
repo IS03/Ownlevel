@@ -1,4 +1,4 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
@@ -10,11 +10,13 @@ import { buildInsightsReadModel, createInsightsSnapshot, insightsDaysPage, insig
 import type { InsightsSource } from '../../../../src/lib/progress/insights-engine/types';
 import { InsightsScreen } from './insights-screen';
 import { RelationDetailScreen } from './relation-detail-screen';
+import { insightsReturnHref, metricTrendHref } from './navigation';
 import { exerciseSentence, heroOf, joinDays, relationGroups, relationSentence, relationState, stripMarks } from './insights-model';
 
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 const mockPush = jest.fn(), mockSetParams = jest.fn();
+const requests = () => mockRead.mock.calls.map(call => String(call[0].path));
 let mockParams: Record<string, string> = {};
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, setParams: mockSetParams, back: jest.fn() }), useFocusEffect: () => undefined, useLocalSearchParams: () => mockParams }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn() }, triggerHaptic: jest.fn() }));
@@ -203,6 +205,157 @@ describe('pantalla', () => {
     expect(mockSetParams).toHaveBeenCalledWith({ family: 'metric' });
     fireEvent.press(view.getByRole('button', { name: /Sueño, ese día/ }));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/insights/[relation]', params: { relation: `partial:metric:${METRIC}:same_day` } });
+  });
+});
+
+describe('entrada desde el final de una sesión', () => {
+  const SESSION = '93670000-0000-4000-8000-000000000a01';
+  /** Sessions with real ids, so the route's session parameter can name one. */
+  const sessionsWithIds = (length: number) => { const source = history(Array.from({ length }, (_, day) => 8 + day % 3)); return { ...source, sessions: source.sessions.map(row => row.id === 's1' ? { ...row, id: SESSION } : row), exercises: source.exercises.map(row => row.sessionId === 's1' ? { ...row, sessionId: SESSION } : row) }; };
+  it('opens the facts of that session with one read and runs no relation', async () => {
+    mockParams = { session: SESSION, date: dateAt(1) };
+    mockRead.mockImplementation(serve(sessionsWithIds(3)));
+    const view = await open(<InsightsScreen />);
+    expect(view.getByTestId('insights-session')).toBeTruthy();
+    expect(view.queryByTestId('insights-hero')).toBeNull();
+    const facts = within(view.getByTestId('insights-session'));
+    expect(facts.getByText('1 de 1')).toBeTruthy();
+    expect(facts.getAllByText(/^↑ Registro superior$/).length).toBeGreaterThan(0);
+    expect(requests()).toEqual(['/api/mobile/v1/progress/performance-insights']);
+    expect(view.getByTestId('insights-partial-limit')).toBeTruthy();
+    expect(view.queryByText(/Exploratorio|Coincidieron/)).toBeNull();
+  });
+  it('asks for only its day when it is older than the first page, and never joins it to the list', async () => {
+    mockParams = { session: SESSION, date: dateAt(1) };
+    mockRead.mockImplementation(serve(sessionsWithIds(20)));
+    const view = await open(<InsightsScreen />);
+    expect(requests()).toEqual(['/api/mobile/v1/progress/performance-insights', `/api/mobile/v1/progress/performance-insights?view=days&before=${dateAt(2)}&limit=1`]);
+    expect(view.getByTestId('insights-session')).toBeTruthy();
+    expect(view.getAllByRole('button', { name: /comparables con contexto parcial/ })).toHaveLength(14);
+  });
+  it('tells loading, failure and absence apart', async () => {
+    mockParams = { session: SESSION, date: dateAt(1) };
+    const source = sessionsWithIds(20), answer = serve(source);
+    mockRead.mockImplementationOnce(answer).mockResolvedValueOnce(lost).mockImplementation(answer);
+    const failed = await open(<InsightsScreen />);
+    expect(failed.getByText('No pudimos traer los hechos de esta sesión.')).toBeTruthy();
+    expect(failed.queryByTestId('insights-session-absent')).toBeNull();
+    fireEvent.press(failed.getByText('Reintentar')); await flush();
+    expect(failed.getByTestId('insights-session')).toBeTruthy();
+    failed.unmount(); clearConfirmedReads(mockClient); mockRead.mockReset();
+    mockParams = { session: '93670000-0000-4000-8000-000000000a99', date: dateAt(19) };
+    mockRead.mockImplementation(serve(source));
+    const absent = await open(<InsightsScreen />);
+    expect(absent.getByTestId('insights-session-absent')).toBeTruthy();
+    expect(absent.queryByTestId('insights-empty')).toBeNull();
+    expect(requests()).toHaveLength(1);
+  });
+  it('does not show a day from another read: it reads the list again', async () => {
+    mockParams = { session: SESSION, date: dateAt(1) };
+    const source = sessionsWithIds(20);
+    mockRead.mockImplementationOnce(serve(source, 'r1')).mockImplementationOnce(serve(source, 'r2')).mockImplementation(serve(source, 'r2'));
+    const view = await open(<InsightsScreen />); await flush();
+    expect(requests().filter(path => path.endsWith('performance-insights')).length).toBeGreaterThanOrEqual(2);
+    expect(view.getByTestId('insights-session')).toBeTruthy();
+  });
+  it('ignores a session parameter that is not one', async () => {
+    mockParams = { session: 'x y', date: 'nope' };
+    mockRead.mockImplementation(serve(history([8, 10, 9])));
+    const view = await open(<InsightsScreen />);
+    expect(view.getByTestId('insights-hero')).toBeTruthy();
+  });
+});
+
+describe('enlace a las tendencias de una métrica', () => {
+  const metricSource = () => withMetric(history([8, 10, 9]));
+  it('opens the right metric on the month of that day, carrying the state of the screen', async () => {
+    mockParams = { family: 'metric', relations: '1', view: 'days' };
+    mockRead.mockImplementation(serve(metricSource()));
+    const view = await open(<InsightsScreen />);
+    fireEvent.press(view.getByRole('button', { name: /^Sueño: .*Ver tendencias$/ }));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/progress/trends/metrics', params: { metric: METRIC, from: '2026-01-01', to: '2026-01-31', insightsReturn: '1', insightsFamily: 'metric', insightsRelations: '1', insightsDate: dateAt(2) } });
+  });
+  it('comes back to that day open, in the same view, filter and relations', () => {
+    const href = metricTrendHref(METRIC, dateAt(2), { view: 'exercises', family: 'metric', relations: '1', date: dateAt(2) });
+    expect(insightsReturnHref(href.params)).toEqual({ pathname: '/(tabs)/train/insights', params: { view: 'exercises', family: 'metric', relations: '1', date: dateAt(2) } });
+  });
+  it('comes back to the relation it came from', () => {
+    expect(insightsReturnHref(metricTrendHref(METRIC, null, { relation: `partial:metric:${METRIC}:same_day` }).params)).toEqual({ pathname: '/(tabs)/train/insights/[relation]', params: { relation: `partial:metric:${METRIC}:same_day` } });
+  });
+  it('offers no return when it did not come from Insights, and drops what is not valid', () => {
+    expect(insightsReturnHref({ metric: METRIC })).toBeNull();
+    expect(insightsReturnHref({ insightsReturn: '1', insightsFamily: 'evil', insightsDate: '2026-02-31', insightsSession: '../x', insightsRelation: '<x>', insightsView: 'other' })).toEqual({ pathname: '/(tabs)/train/insights', params: {} });
+  });
+  it('keeps the current period when the link has no date', () => {
+    expect(metricTrendHref(METRIC, null, {}).params).toEqual({ metric: METRIC, insightsReturn: '1' });
+  });
+  it('opens the day the route selects, and keeps the selection in the route', async () => {
+    mockParams = { date: dateAt(1) };
+    mockRead.mockImplementation(serve(metricSource()));
+    const view = await open(<InsightsScreen />);
+    const selected = view.getByRole('button', { name: new RegExp('comparables con contexto parcial', 'i'), expanded: true });
+    expect(selected).toBeTruthy();
+    fireEvent.press(selected);
+    expect(mockSetParams).toHaveBeenCalledWith({ date: undefined });
+  });
+  it('opens trends from a metric relation, and no link from another family', async () => {
+    const id = `partial:metric:${METRIC}:same_day`;
+    mockParams = { relation: id };
+    mockRead.mockImplementation(serve(withMetric(history(oscillating))));
+    const view = await open(<RelationDetailScreen />);
+    fireEvent.press(view.getByRole('button', { name: 'Ver tendencias de Sueño' }));
+    const call = mockPush.mock.calls[0]![0] as { pathname: string; params: Record<string, string> };
+    expect(call.pathname).toBe('/(tabs)/progress/trends/metrics');
+    expect(call.params).toMatchObject({ metric: METRIC, insightsReturn: '1', insightsRelation: id });
+    view.unmount(); clearConfirmedReads(mockClient);
+    mockParams = { relation: 'partial:meal_window:carbsG:pre_3h' };
+    const other = await open(<RelationDetailScreen />);
+    expect(other.queryByRole('button', { name: /Ver tendencias/ })).toBeNull();
+  });
+});
+
+describe('filtros y revisiones', () => {
+  const long = () => history(Array.from({ length: 20 }, (_, day) => 8 + day % 3));
+  const rows = (view: ReturnType<typeof screen>) => view.getAllByRole('button', { name: /comparables con contexto parcial/ }).length;
+  it('keeps the paged days when the same read comes back, and drops them when another one does', async () => {
+    let revision = 'r1';
+    const source = long();
+    mockRead.mockImplementation(options => serve(source, revision)(options));
+    const view = await open(<InsightsScreen />);
+    fireEvent.press(view.getByText('Ver más días')); await flush();
+    expect(rows(view)).toBe(19);
+    await act(async () => { view.getByTestId('insights-screen').props.refreshControl.props.onRefresh(); }); await flush();
+    expect(rows(view)).toBe(19);
+    expect(view.queryByTestId('insights-changed')).toBeNull();
+    revision = 'r2';
+    await act(async () => { view.getByTestId('insights-screen').props.refreshControl.props.onRefresh(); }); await flush();
+    expect(rows(view)).toBe(14);
+    expect(view.getByTestId('insights-changed')).toBeTruthy();
+  });
+  it('does not show relations next to facts of another read', async () => {
+    mockParams = { relations: '1' };
+    const source = withMetric(history(oscillating));
+    mockRead.mockImplementation(serve(source, 'r1'));
+    const first = await open(<InsightsScreen />);
+    expect(first.getByText('Con contexto parcial')).toBeTruthy();
+    first.unmount(); clearConfirmedReads(mockClient); mockRead.mockReset();
+    let call = 0;
+    // The facts come from r1, the relations from r2, and from then on everything is r2.
+    mockRead.mockImplementation(options => { call++; return serve(source, call === 1 ? 'r1' : 'r2')(options); });
+    const view = await open(<InsightsScreen />); await flush();
+    expect(requests().filter(path => path.includes('view=relations')).length).toBeGreaterThanOrEqual(2);
+    expect(view.queryByTestId('relations-changed')).toBeNull();
+    expect(view.getByText('Con contexto parcial')).toBeTruthy();
+  });
+  it('changes the filter in the route, without asking for anything again', async () => {
+    mockParams = { relations: '1', family: 'nutrition' };
+    mockRead.mockImplementation(serve(withMetric(history(oscillating))));
+    const view = await open(<InsightsScreen />);
+    const before = mockRead.mock.calls.length;
+    fireEvent.press(view.getByText('Métricas'));
+    expect(mockSetParams).toHaveBeenCalledWith({ family: 'metric' });
+    expect(mockRead.mock.calls.length).toBe(before);
+    expect(view.queryByRole('button', { name: /Sueño, ese día/ })).toBeNull();
   });
 });
 

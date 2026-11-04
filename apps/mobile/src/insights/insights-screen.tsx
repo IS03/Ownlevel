@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -9,7 +9,8 @@ import { AppIcon, AppText, Button, ChipGroup, ExampleFrame, Heading, InlineUnava
 import { haptics } from '@/platform/haptics';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
-import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, PARTIAL_LIMIT, contextRows, dayLabel, exerciseSentence, heroCaption, heroOf, joinDays, nothingComparable, primaryLane, readingRows, reasonText, relationGroups, relationName, relationState, statusArrow, statusText, stripMarks, stripSummary, summarySpoken, summaryText, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
+import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, PARTIAL_LIMIT, contextRows, dayLabel, exerciseSentence, focusOf, heroCaption, heroOf, joinDays, nextDate, nothingComparable, primaryLane, readingRows, reasonText, relationGroups, relationName, relationState, sameRead, statusArrow, statusText, stripMarks, stripSummary, summarySpoken, summaryText, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
+import { insightsOriginOf, metricTrendHref, validSession } from './navigation';
 
 type View_ = 'days' | 'exercises';
 const VIEWS = [{ value: 'days', label: 'Días' }, { value: 'exercises', label: 'Ejercicios' }] as const;
@@ -26,6 +27,19 @@ export function FactRow({ label, value, spoken, arrow }: { label: string; value:
     <AppText style={!stacked ? styles.flex : undefined}>{arrow ? `${arrow}  ` : ''}{label}</AppText>
     <AppText muted numeric style={!stacked ? styles.factValue : undefined}>{value}</AppText>
   </View>;
+}
+/** What surrounded a training. A metric opens its own trends, on the month of that day. */
+function ContextList({ rows, date, onMetric }: { rows: ReturnType<typeof contextRows>; date: string; onMetric: (metricId: string, date: string) => void }) {
+  const { colors } = useOwnlevelTheme();
+  const reduced = useReduceMotion();
+  return <>{rows.map(row => row.metricId
+    ? <Pressable key={row.key} accessibilityRole="button" accessibilityLabel={`${row.label}: ${row.value}. Ver tendencias`} onPress={() => onMetric(row.metricId!, date)}
+      style={({ pressed }) => [styles.row, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
+      <AppText style={styles.flex}>{row.label}</AppText>
+      <AppText muted numeric style={styles.relationState}>{row.value}</AppText>
+      <AppIcon color={colors.textMuted} name="chevronRight" size={15} />
+    </Pressable>
+    : <FactRow key={row.key} label={row.label} value={row.value} />)}</>;
 }
 const Section = ({ title }: { title: string }) => <AppText muted variant="footnote" style={styles.section} accessibilityRole="header">{title}</AppText>;
 
@@ -61,7 +75,7 @@ function ExerciseRows({ lane, session, partial, router }: { lane: Lane; session:
   </Pressable>)}</>;
 }
 
-function DayDetail({ day, model, router }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter> }) {
+function DayDetail({ day, model, router, onMetric }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter>; onMetric: (metricId: string, date: string) => void }) {
   const { colors } = useOwnlevelTheme();
   const reduced = useReduceMotion();
   const lanes: Lane[] = [...(day.strictCounts.comparable > 0 ? ['strict' as const] : []), ...(day.partialCounts?.total ? ['partial' as const] : [])];
@@ -78,21 +92,24 @@ function DayDetail({ day, model, router }: { day: DayLanes; model: InsightsSumma
       </View>)}
     </View>)}
     <Section title="Alrededor de ese entrenamiento" />
-    {contextRows(day.strict, model.metrics).map(row => <FactRow key={row.key} label={row.label} value={row.value} />)}
+    <ContextList rows={contextRows(day.strict, model.metrics)} date={day.date} onMetric={onMetric} />
   </Animated.View>;
 }
 
-function DayRow({ day, model, router }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter> }) {
+function DayRow({ day, model, router, selected, onSelect, onMetric }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter>; selected: boolean; onSelect: (date: string | undefined) => void; onMetric: (metricId: string, date: string) => void }) {
   const { colors } = useOwnlevelTheme();
   const reduced = useReduceMotion();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(selected);
+  // The selected day comes from the route: coming back to it finds it open.
+  const [seen, setSeen] = useState(selected);
+  if (seen !== selected) { setSeen(selected); if (selected) setOpen(true); }
   const lane: Lane = day.strictCounts.comparable > 0 || !day.partialCounts?.comparable ? 'strict' : 'partial';
   const counts = lane === 'strict' ? day.strictCounts : day.partialCounts!;
   const value = counts.comparable ? `${counts.comparable} de ${counts.total}` : 'Sin comparar';
   const limit = lane === 'partial' && counts.comparable ? ' con contexto parcial' : '';
   return <View>
     <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${dayLabel(day.date)}${day.openDay ? ', día en curso' : ''}: ${counts.comparable ? `${counts.comparable} de ${counts.total} comparables${limit}` : 'sin comparar'}`}
-      onPress={() => setOpen(current => !current)} style={({ pressed }) => [styles.row, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
+      onPress={() => { onSelect(open ? undefined : day.date); setOpen(!open); }} style={({ pressed }) => [styles.row, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
       <View style={styles.flex}>
         <AppText>{dayLabel(day.date)}</AppText>
         {counts.comparable ? <AppText muted numeric variant="footnote">↑ {counts.up}  = {counts.same}  ↓ {counts.down}{limit ? ' · contexto parcial' : ''}</AppText> : null}
@@ -100,7 +117,7 @@ function DayRow({ day, model, router }: { day: DayLanes; model: InsightsSummary;
       <AppText muted numeric variant="subheadline">{value}</AppText>
       <AppIcon color={colors.textMuted} name={open ? 'chevronDown' : 'chevronRight'} size={15} />
     </Pressable>
-    {open ? <DayDetail day={day} model={model} router={router} /> : null}
+    {open ? <DayDetail day={day} model={model} router={router} onMetric={onMetric} /> : null}
   </View>;
 }
 
@@ -152,8 +169,13 @@ function RelationList({ lane, title, items, metrics, family, router, evaluated }
 }
 
 /** Its own read, only once asked for: the relations are what costs, and they are never at the top. */
-function Relations({ client, family, onFamily, router }: { client: MobileApiClient | null; family: FamilyFilter; onFamily: (next: FamilyFilter) => void; router: ReturnType<typeof useRouter> }) {
+function Relations({ client, family, onFamily, router, facts, onStale }: { client: MobileApiClient | null; family: FamilyFilter; onFamily: (next: FamilyFilter) => void; router: ReturnType<typeof useRouter>; facts: InsightsSummary; onStale: () => void }) {
   const { state, data, refresh } = useProgressResource(client, 'performance-insights|relations', loadRelations);
+  const stale = !!data && !sameRead(data, facts);
+  const pair = stale ? `${data.sourceRevision}|${facts.sourceRevision}` : null, handled = useRef<string | null>(null);
+  // Never next to facts of another read. Both get read again, once per pair, until they agree.
+  useEffect(() => { if (pair && handled.current !== pair) { handled.current = pair; void refresh(); onStale(); } }, [pair, refresh, onStale]);
+  if (stale && state.status === 'ready') return <View testID="relations-changed" style={styles.block}><AppText muted variant="footnote" accessibilityLiveRegion="polite">Tus datos cambiaron. Estamos actualizando las relaciones.</AppText><SkeletonBlock height={132} /></View>;
   if (state.status === 'loading' && !data) return <View testID="relations-loading" style={styles.block}><SkeletonBlock height={44} /><SkeletonBlock height={132} /></View>;
   if (!data || data.integrity !== 'valid' || data.partial.integrity !== 'valid') return <InlineUnavailable message="No pudimos traer las relaciones." actionLabel="Reintentar" onAction={() => void refresh()} />;
   return <View style={styles.block}>
@@ -173,10 +195,14 @@ export function InsightsScreen() {
   const view: View_ = params.view === 'exercises' ? 'exercises' : 'days';
   const family = (FAMILY_OPTIONS.find(option => option.value === params.family)?.value ?? 'all') as FamilyFilter;
   const relationsOpen = params.relations === '1';
+  const origin = insightsOriginOf(params);
+  const focusId = validSession(params.session) ? params.session : null, focusDate = origin.date ?? null;
   const { state, data, refresh } = useProgressResource(client, 'performance-insights', loadSummary);
   const [more, setMore] = useState<{ base: InsightsSummary; days: DayFact[]; partial: PartialDayFact[]; next: string | null } | null>(null);
-  const [morePhase, setMorePhase] = useState<'idle' | 'loading' | 'failed' | 'changed'>('idle');
-  const extra = more && more.base === data ? more : null;
+  const [morePhase, setMorePhase] = useState<'idle' | 'loading' | 'failed'>('idle');
+  // A refresh of the same read keeps what was already paged. Another read never joins it, and the person is told.
+  const extra = more && data && sameRead(more.base, data) ? more : null;
+  const pagesDropped = !!more && !!data && !extra;
   const days = useMemo(() => data ? joinDays([...data.facts.days, ...(extra?.days ?? [])], [...data.partial.days, ...(extra?.partial ?? [])]) : [], [data, extra]);
   const next = extra ? extra.next : data?.facts.page.nextBefore ?? null;
   // Each page runs a whole read on the server, so it follows a tap and never a scroll.
@@ -186,10 +212,34 @@ export function InsightsScreen() {
     const result = await fetchInsightsDays(client, next);
     if (result.status !== 'ok') { setMorePhase('failed'); return; }
     // Something changed since this list was read: its days must not be joined with newer ones.
-    if (result.data.sourceRevision !== data.sourceRevision) { setMore(null); setMorePhase('changed'); void refresh(); return; }
+    if (!sameRead(result.data, data)) { setMore({ base: data, days: extra?.days ?? [], partial: extra?.partial ?? [], next }); setMorePhase('idle'); void refresh(); return; }
     setMore({ base: data, days: [...(extra?.days ?? []), ...result.data.facts.days], partial: [...(extra?.partial ?? []), ...result.data.partial.days], next: result.data.facts.page.nextBefore });
     setMorePhase('idle');
   };
+  // The finished session may be older than the first page. Its day alone is asked for and shown apart: it never joins the list.
+  const onPage = useMemo(() => focusId ? focusOf(days, focusId) : null, [days, focusId]);
+  const readSettled = state.status === 'ready' && !state.refreshing;
+  const needsDay = !!focusId && !!focusDate && !onPage && !!next && readSettled && focusDate < (days.at(-1)?.date ?? '');
+  const [focusPage, setFocusPage] = useState<{ key: string; phase: 'failed' | 'ready'; days: DayLanes[] } | null>(null);
+  const [focusAttempt, setFocusAttempt] = useState(0);
+  const focusKey = data && needsDay ? `${focusId}|${focusDate}|${data.sourceRevision}|${data.today}|${focusAttempt}` : null;
+  useEffect(() => {
+    if (!focusKey || !client || !data || !focusDate) return;
+    let live = true;
+    void fetchInsightsDays(client, nextDate(focusDate), undefined, 1).then(result => {
+      if (!live) return;
+      if (result.status !== 'ok') { setFocusPage({ key: focusKey, phase: 'failed', days: [] }); return; }
+      if (!sameRead(result.data, data)) { void refresh(); return; }
+      setFocusPage({ key: focusKey, phase: 'ready', days: joinDays(result.data.facts.days, result.data.partial.days) });
+    });
+    return () => { live = false; };
+  }, [client, data, focusDate, focusKey, refresh]);
+  const shownFocusPage = focusPage && focusPage.key === focusKey ? focusPage : null;
+  const focus = onPage ?? (focusId && shownFocusPage ? focusOf(shownFocusPage.days, focusId) : null);
+  const focusLoading = !!focusId && !focus && (!readSettled || (needsDay && !shownFocusPage));
+  const focusFailed = !!focusId && !focus && needsDay && shownFocusPage?.phase === 'failed';
+  const openMetric = (metricId: string, date: string) => { haptics.selection(); router.push(metricTrendHref(metricId, date, { ...origin, date })); };
+  const selectDay = (date: string | undefined) => router.setParams({ date });
   const setView = (value: View_) => { haptics.selection(); router.setParams({ view: value }); };
   const setFamily = (value: FamilyFilter) => { haptics.selection(); router.setParams({ family: value }); };
   const toggleRelations = () => { haptics.selection(); router.setParams({ relations: relationsOpen ? '0' : '1' }); };
@@ -206,12 +256,30 @@ export function InsightsScreen() {
     <ExampleFrame><AppText muted variant="title1" numeric>4 de 6</AppText><AppText muted variant="footnote">ejercicios comparables</AppText></ExampleFrame>
   </View>);
 
-  const hero = heroOf(days);
-  const stripLane = hero?.lane ?? primaryLane(data);
+  const hero = focusId ? null : heroOf(days);
+  const stripLane = focus?.lane ?? hero?.lane ?? primaryLane(data);
   return scroll(<>
     {state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
     <ExerciseSegmented accessibilityLabel="Ver por días o por ejercicios" value={view} options={VIEWS} onChange={setView} />
     {view === 'exercises' ? <Exercises model={data} router={router} /> : <>
+      {focus ? <View style={styles.block} testID="insights-session">
+        <AppText muted>{dayLabel(focus.day.date)}{focus.day.openDay ? ' · en curso' : ''} · {focus.session.routineName ?? focus.session.name ?? 'Sesión'}</AppText>
+        {focus.counts.comparable ? <AppText numeric variant="heroNumber" accessibilityLabel={`${focus.counts.comparable} de ${focus.counts.total} ${heroCaption(focus.lane)}`}>{focus.counts.comparable} de {focus.counts.total}</AppText> : <Heading level={2}>Todavía sin comparaciones</Heading>}
+        {focus.counts.comparable ? <AppText muted>{heroCaption(focus.lane)}</AppText> : null}
+        {focus.counts.comparable ? readingRows(focus.lane, focus.counts).map(row => <FactRow key={row.label} arrow={row.arrow} label={row.label} value={row.value} spoken={row.spoken} />) : null}
+        {focus.counts.down ? <AppText muted variant="footnote">{EXPLAIN_DOWN}</AppText> : null}
+        {focus.lane === 'partial' ? <AppText muted variant="footnote" testID="insights-partial-limit">{PARTIAL_LIMIT}</AppText> : null}
+        <Section title={LANE_TITLE[focus.lane]} />
+        <ExerciseRows lane={focus.lane} session={focus.session} partial={focus.partial ?? undefined} router={router} />
+        <Section title="Alrededor de este entrenamiento" />
+        <ContextList rows={contextRows(focus.day.strict, data.metrics, focus.session)} date={focus.day.date} onMetric={openMetric} />
+      </View> : focusLoading ? <View testID="insights-session-loading" style={styles.block}><SkeletonBlock height={120} /><SkeletonBlock height={176} /></View>
+        : focusFailed ? <InlineUnavailable message="No pudimos traer los hechos de esta sesión." actionLabel="Reintentar" onAction={() => setFocusAttempt(current => current + 1)} />
+        : focusId ? <View style={styles.block} testID="insights-session-absent">
+          <Heading level={2}>Esta sesión todavía no aparece</Heading>
+          <AppText muted>Está guardada, pero esta lectura no la incluye. Podés actualizar en un rato.</AppText>
+          <Button label="Actualizar" variant="secondary" onPress={() => void refresh()} />
+        </View> : null}
       {hero ? <View style={styles.block} testID="insights-hero">
         <AppText muted>{dayLabel(hero.day.date)}{hero.day.openDay ? ' · en curso' : ''}</AppText>
         <AppText numeric variant="heroNumber" accessibilityLabel={`${hero.counts.comparable} de ${hero.counts.total} ${heroCaption(hero.lane)}`}>{hero.counts.comparable} de {hero.counts.total}</AppText>
@@ -219,21 +287,21 @@ export function InsightsScreen() {
         {readingRows(hero.lane, hero.counts).map(row => <FactRow key={row.label} arrow={row.arrow} label={row.label} value={row.value} spoken={row.spoken} />)}
         {hero.counts.down ? <AppText muted variant="footnote">{EXPLAIN_DOWN}</AppText> : null}
         {hero.lane === 'partial' ? <AppText muted variant="footnote" testID="insights-partial-limit">{PARTIAL_LIMIT}</AppText> : null}
-      </View> : <View style={styles.block} testID="insights-nothing">
+      </View> : focusId ? null : <View style={styles.block} testID="insights-nothing">
         <Heading level={2}>Todavía sin comparaciones</Heading>
         <AppText muted>{nothingComparable(data)}</AppText>
       </View>}
       {hero ? <View>
         <Section title="Alrededor de ese entrenamiento" />
-        {contextRows(hero.day.strict, data.metrics).map(row => <FactRow key={row.key} label={row.label} value={row.value} />)}
+        <ContextList rows={contextRows(hero.day.strict, data.metrics)} date={hero.day.date} onMetric={openMetric} />
       </View> : null}
       <Strip days={days} lane={stripLane} />
       <View>
         <Section title="Días" />
-        {days.map(day => <DayRow key={day.date} day={day} model={data} router={router} />)}
+        {days.map(day => <DayRow key={day.date} day={day} model={data} router={router} selected={!focusId && focusDate === day.date} onSelect={selectDay} onMetric={openMetric} />)}
         {next ? <Button label={morePhase === 'loading' ? 'Cargando…' : 'Ver más días'} variant="secondary" disabled={morePhase === 'loading'} onPress={() => void loadMore()} /> : null}
         {morePhase === 'failed' ? <InlineUnavailable message="No pudimos traer más días." actionLabel="Reintentar" onAction={() => void loadMore()} /> : null}
-        {morePhase === 'changed' ? <AppText muted variant="footnote" accessibilityLiveRegion="polite" testID="insights-changed">Tus datos cambiaron, así que actualizamos la lista.</AppText> : null}
+        {pagesDropped ? <AppText muted variant="footnote" accessibilityLiveRegion="polite" testID="insights-changed">Tus datos cambiaron, así que actualizamos la lista.</AppText> : null}
         <AppText muted variant="caption" numeric style={styles.coverage}>{data.history.trainingDays} días entrenados en total</AppText>
       </View>
       {data.relations.strict.outcomeDays || data.relations.partial.outcomeDays ? <View style={styles.block}>
@@ -242,7 +310,7 @@ export function InsightsScreen() {
           <Heading level={2} style={styles.flex}>Para mirar con calma</Heading>
           <AppIcon color={colors.textMuted} name={relationsOpen ? 'chevronDown' : 'chevronRight'} size={15} />
         </Pressable>
-        {relationsOpen ? <Relations client={client} family={family} onFamily={setFamily} router={router} /> : null}
+        {relationsOpen ? <Relations client={client} family={family} onFamily={setFamily} router={router} facts={data} onStale={refresh} /> : null}
       </View> : null}
     </>}
   </>);

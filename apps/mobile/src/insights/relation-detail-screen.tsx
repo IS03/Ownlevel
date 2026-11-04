@@ -8,6 +8,7 @@ import { AppIcon, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, Un
 import { formatValue } from '@/progress/progress-format';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { FactRow } from './insights-screen';
+import { metricTrendHref } from './navigation';
 import { LANE_TITLE, PARTIAL_LIMIT, coverageText, dayLabel, exclusionRows, exposureUnit, groupRows, relationName, relationSentence, relationState, shareText, type Lane } from './insights-model';
 
 type Pair = NonNullable<InsightsRelationDetail['pairs']>[number];
@@ -57,6 +58,12 @@ export function RelationDetailScreen() {
       <Plot pairs={pairs} summary={`${pairs.length} días. A la derecha, más ${name}. Arriba, más ejercicios ${lane === 'strict' ? 'por debajo' : 'con registro inferior'}. La lista de abajo tiene los mismos días.`} />
       <AppText muted variant="caption">Cada punto es un día. No marca un rango ideal.</AppText>
     </View> : null}
+    {item.definition.family === 'metric' && data.metrics.some(metric => metric.id === item.definition.subject)
+      ? <Pressable accessibilityRole="button" accessibilityLabel={`Ver tendencias de ${data.metrics.find(metric => metric.id === item.definition.subject)!.name}`}
+        onPress={() => router.push(metricTrendHref(item.definition.subject, newestFirst[0]?.date ?? null, { relation }))} style={({ pressed }) => [styles.row, { borderColor: colors.border, opacity: pressed ? 0.55 : 1 }]}>
+        <AppText style={styles.flex}>Ver tendencias de esta métrica</AppText>
+        <AppIcon color={colors.textMuted} name="chevronRight" size={15} />
+      </Pressable> : null}
     {groups.length ? <View>
       <AppText muted variant="footnote" style={styles.section} accessibilityRole="header">Comparación de los días</AppText>
       {groups.map(group => <FactRow key={group.label} label={`${group.label} · ${group.days}`} value={group.value} />)}
