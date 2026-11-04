@@ -1,8 +1,8 @@
-# Insights · propuesta de experiencia para PR 5
+# Insights · experiencia de PR 5
 
-Propuesta concreta y reversible para conectar el motor de [#367](https://github.com/IS03/Ownlevel/issues/367) a la app. El contrato está en [PR 4](../../docs/progress/367-insights-pr4-motor.md); las reglas visuales, en [IDENTIDAD.md](../../docs/brand/ownlevel-marca/IDENTIDAD.md). Pantallas de referencia: [flujo.html](flujo.html). No implementa nada todavía.
+Decisiones para conectar el motor de [#367](https://github.com/IS03/Ownlevel/issues/367) a la app. El contrato está en [PR 4](../../docs/progress/367-insights-pr4-motor.md); las reglas visuales, en [IDENTIDAD.md](../../docs/brand/ownlevel-marca/IDENTIDAD.md). Pantallas de referencia: [flujo.html](flujo.html). Implementado en `apps/mobile/src/insights`; ver [Estado de la implementación](#estado-de-la-implementación).
 
-**Bloqueo de contenido.** Con los datos actuales el motor no compara nada, porque la configuración histórica es desconocida. Las pantallas de `flujo.html` muestran cómo se vería **después** de la [captura o metodología que se decida](../../docs/progress/367-insights-expand-propuesta.md). PR 5 no debería empezar antes de esa decisión.
+**Dos métodos, siempre separados.** Con los datos actuales el método estricto no compara nada, porque la configuración histórica es desconocida. La pantalla usa el [método parcial](../../docs/progress/367-insights-partial-metodo.md), con su límite a la vista: «registro superior, igual o inferior con contexto parcial». Nunca se suman ni se presentan como la misma lectura. `flujo.html` muestra el vocabulario estricto.
 
 ## Dónde vive
 
@@ -52,7 +52,8 @@ Solo se muestra un enlace si hay ruta y evidencia. Un `sessionId` de un par siem
 | Cargando | Lectura en curso | Esqueletos con el alto final, sin saltos de layout |
 | Sin historial | `history.sessions = 0` | Pantalla con vista de ejemplo apagada y etiqueta **EJEMPLO**: «Con dos entrenamientos del mismo ejercicio empieza a compararse.» |
 | Hay sesiones, nada comparable | `totals.comparable = 0` | Motivos reales: «Todavía no hay una sesión anterior para comparar.» |
-| Configuración desconocida | `limits.configurationSnapshots.known = 0` o motivo `missing_context` | Se muestra lo registrado y se dice el límite: «Todavía no sabemos si estas sesiones se hicieron igual, así que no las comparamos.» No es un error ni un historial vacío |
+| Configuración desconocida | Carril `partial` | Registros con contexto parcial, con el límite escrito: no sabemos si cambió agarre, banco o posición. No es un error ni un historial vacío |
+| Falta modo o implemento | Motivo `missing_context` en el carril parcial | «Faltan el modo o el implemento en estas sesiones, así que no las comparamos.» |
 | Comida con hora sin confirmar | `carbsPre3h.state = unverified_meal_time_in_scope` | «Hay comidas cargadas, pero no sabemos si esa fue la hora en que comiste.» Sin valor de ventana |
 | Datos insuficientes | `insufficient_data` | «Todavía faltan días: tenés 12 de 20.» Sin gráfico vacío |
 | Sin señal clara | `no_clear_signal` | «Por ahora no se ve una relación clara.» Es un resultado, no un error |
@@ -102,10 +103,26 @@ Tres carriles separados que no se mezclan en una misma frase:
 
 No se agrega todavía un GPT generador ni cambios automáticos de rutina. Una relación nunca edita una rutina ni sugiere una carga.
 
+## Estado de la implementación
+
+Hecho: fila en Biblioteca, pantalla principal por días y por ejercicio, detalle de una relación, estados, contexto, tira por día y gráfico de pares.
+
+Diferencias con lo propuesto, para revisar en la QA física:
+
+| Propuesto | Implementado | Motivo |
+| --- | --- | --- |
+| Cargar más días al llegar al final | Botón «Ver más días» | Cada página es una lectura completa del servidor (96 consultas a 5 años). No conviene dispararla con un scroll |
+| Puntos del gráfico tocables, de 44 pt | El gráfico no se toca; la lista de abajo lleva a cada día | Con muchos días, los puntos se superponen y no llegan a 44 pt |
+| Cursor `before` en los parámetros | Vista y filtro sí; las páginas extra, en memoria | Una página restaurada exigiría repetir sus lecturas al volver |
+| Enlace a tendencias de métricas | Sin enlace | Cruza de pestaña y requiere un botón de volver propio. Falta hacerlo |
+| Fila en el resumen post-entreno | Sin hacer | Toca el flujo de finalizar; conviene sumarlo con QA física |
+
+Sin verificar: aspecto en dispositivo, Liquid Glass, Dynamic Type grande, VoiceOver real y movimiento. Solo pasaron las pruebas automáticas.
+
 ## Pendiente de decidir
 
-- **Configuración histórica:** captura hacia adelante, metodología parcial o ambas. Sin esto no hay comparaciones ni asociaciones. Ver la [propuesta](../../docs/progress/367-insights-expand-propuesta.md).
-- **Procedencia de la hora de comida:** EXPAND propuesto en el mismo documento. Sin él, las ventanas previas al entreno solo cuentan con comidas importadas con hora.
+- **Captura futura de configuración:** regla de producto sin definir. El método parcial permite seguir mientras tanto.
+- **Procedencia de la hora de comida:** [EXPAND y ADOPT en borrador](../../docs/progress/367-meal-time-provenance.md). Sin aplicarlos, las ventanas previas al entreno solo cuentan con comidas importadas con hora.
 - **Presupuesto de riesgo del 1 %:** sin aprobar. Hasta decidirlo, el estado «consistente» no existe en el contrato.
 - **Web:** Mobile primero. El contrato ya está listo para que Web lo consuma con la misma semántica; su diseño se resuelve con M9.4.
 - **Nombre:** «Insights» es provisorio. Hay que validar si convive con el voseo del resto de la app.
