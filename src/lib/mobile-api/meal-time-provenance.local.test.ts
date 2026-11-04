@@ -158,6 +158,96 @@ describe.runIf(!!statusFile && !!container)("procedencia de la hora contra Postg
     });
   });
 
+  describe("evidencia legacy en raw_input", () => {
+    const POSITIVE = '{"originalTimeKnown":true}';
+    const iso = (clock: string) => new Date(at(clock)).toISOString();
+    const raw = (id: string) => sql(`select coalesce(raw_input,'NULL') from public.meal_entries where id='${id}';`);
+    const dayId = () => sql(`select id from public.day_logs where user_id='${userId}' and log_date='${DAY}';`);
+    /** What the importer does, outside any session. */
+    const imported = () => {
+      const run = randomUUID(), meal = randomUUID();
+      sql(`insert into public.nutrition_import_runs(id,user_id,source_name,source_sha256,counts,report) values('${run}','${userId}','sintético','${randomBytes(32).toString("hex")}','{}','{}');
+        insert into public.meal_entries(id,user_id,day_log_id,title,final_calories,source_type,entry_kind,consumed_at,raw_input,legacy_import_source,legacy_import_id,import_run_id)
+        values('${meal}','${userId}','${dayId()}','IMPORTADA',100,'sheet_import','meal','${iso("13:00")}','${POSITIVE}','sheet','${meal}','${run}');`);
+      return { meal, run };
+    };
+    const row = () => ({ user_id: userId, day_log_id: dayId(), final_calories: 100, source_type: "manual", entry_kind: "meal", consumed_at: iso("10:00") });
+
+    it("does not let a token insert a marker, nor any other text there", async () => {
+      await create();
+      for (const raw_input of [POSITIVE, '{"originalTimeKnown":false,"timeSource":"registration"}', '{"originalTime\\u004bnown":true}', '{"originalTimeKnown":true,"x":"\\u0000"}', "texto"]) {
+        const { error } = await client.from("meal_entries").insert({ ...row(), title: "FORJADA", raw_input }).select("id");
+        expect(error?.code, raw_input).toBe("42501");
+      }
+      expect(sql("select count(*) from public.meal_entries where title='FORJADA';")).toBe("0");
+    });
+    it("does not let a token add or change a marker by update", async () => {
+      const meal = await create({ consumedAt: at("13:00") });
+      const added = await client.from("meal_entries").update({ raw_input: POSITIVE }).eq("id", meal.mealId).select("id");
+      expect(added.error?.code).toBe("42501");
+      expect(raw(meal.mealId)).toBe("NULL");
+      const { meal: importedMeal } = imported();
+      for (const raw_input of ['{"originalTimeKnown":false}', null]) {
+        expect((await client.from("meal_entries").update({ raw_input }).eq("id", importedMeal).select("id")).error?.code).toBe("42501");
+        expect(raw(importedMeal)).toBe(POSITIVE);
+      }
+    });
+    it("does not let a token claim a row came from an import, even with its own run", async () => {
+      const run = randomUUID(), own = await client.from("nutrition_import_runs").insert({ id: run, user_id: userId, source_name: "x", source_sha256: randomBytes(32).toString("hex"), counts: {}, report: {} }).select("id");
+      expect(own.error).toBeNull();
+      const forged = { source_type: "sheet_import", legacy_import_source: "x", legacy_import_id: randomUUID(), import_run_id: run };
+      expect((await client.from("meal_entries").insert({ ...row(), title: "FORJADA", ...forged }).select("id")).error?.code).toBe("42501");
+      const meal = await create();
+      expect((await client.from("meal_entries").update(forged).eq("id", meal.mealId).select("id")).error?.code).toBe("42501");
+      expect((await client.from("meal_entries").update({ source_type: "sheet_import" }).eq("id", meal.mealId).select("id")).error?.code).toBe("42501");
+    });
+    it("drops a marker when the time changes directly, and no later step brings it back", async () => {
+      const { meal, run } = imported();
+      expect((await client.from("meal_entries").update({ consumed_at: iso("16:00") }).eq("id", meal).select("id")).error).toBeNull();
+      expect(raw(meal)).toBe("NULL");
+      // Going back to the original time does not restore what it was.
+      expect((await client.from("meal_entries").update({ consumed_at: iso("13:00") }).eq("id", meal).select("id")).error).toBeNull();
+      expect(raw(meal)).toBe("NULL");
+      expect((await client.from("meal_entries").update({ raw_input: POSITIVE }).eq("id", meal).select("id")).error?.code).toBe("42501");
+      expect(raw(meal)).toBe("NULL");
+      // The row is still recognizably imported: that alone never made its time known.
+      expect(sql(`select import_run_id from public.meal_entries where id='${meal}';`)).toBe(run);
+      // Deleting it and writing it again is a new row of the session, with no evidence.
+      expect((await client.from("meal_entries").update({ deleted_at: new Date().toISOString() }).eq("id", meal).select("id")).error).toBeNull();
+      expect((await client.from("meal_entries").insert({ ...row(), title: "OTRA VEZ", raw_input: POSITIVE }).select("id")).error?.code).toBe("42501");
+    });
+    it("drops a marker when a function changes the time too, keeping the rest of the text", async () => {
+      const meal = await create({ consumedAt: at("13:00") });
+      sql(`update public.meal_entries set raw_input='{"originalTimeKnown":true,"sourceRow":7}' where id='${meal.mealId}';`);
+      const updatedAt = sql(`select updated_at from public.meal_entries where id='${meal.mealId}';`);
+      await edit({ mealId: meal.mealId, updatedAt }, { consumedAt: at("15:00") });
+      expect(JSON.parse(raw(meal.mealId))).toEqual({ sourceRow: 7 });
+    });
+    it("leaves an import alone when the time does not change", async () => {
+      const { meal } = imported();
+      expect((await client.from("meal_entries").update({ title: "RENOMBRADA" }).eq("id", meal).select("id")).error).toBeNull();
+      expect(raw(meal)).toBe(POSITIVE);
+      expect((await client.from("meal_entries").update({ consumed_at: iso("13:00") }).eq("id", meal).select("id")).error).toBeNull();
+      expect(raw(meal)).toBe(POSITIVE);
+    });
+    it("does not rewrite what is already stored, forged or not", async () => {
+      const meal = await create();
+      sql(`update public.meal_entries set raw_input='${POSITIVE}' where id='${meal.mealId}';`);
+      expect((await client.from("meal_entries").update({ title: "OTRA" }).eq("id", meal.mealId).select("id")).error).toBeNull();
+      expect(raw(meal.mealId)).toBe(POSITIVE);
+    });
+    it("keeps the writers that need it: ChatGPT's approximate time and the time cleared from the app", async () => {
+      const today = sql("select (now() at time zone 'America/Argentina/Cordoba')::date;");
+      const now = await admin.rpc("create_chatgpt_meal_for_integration_v3", chatgptArgs({ p_log_date: today, p_time_source: "registration" }));
+      expect(raw(now.data.meal.id)).toContain('"timeSource":"registration"');
+      const untimed = await admin.rpc("create_chatgpt_meal_for_integration_v2", chatgptArgs());
+      const updatedAt = sql(`select updated_at from public.meal_entries where id='${untimed.data.meal.id}';`);
+      await edit({ mealId: untimed.data.meal.id, updatedAt }, { consumedAt: at("13:00"), consumedAtSource: "user_declared" });
+      expect(raw(untimed.data.meal.id)).toBe("NULL");
+      expect(source(untimed.data.meal.id)).toBe("user_declared");
+    });
+  });
+
   describe("una hora automática nunca pasa a declarada", () => {
     const iso = (clock: string) => new Date(at(clock)).toISOString();
     it("does not let a token write a declaration around the functions", async () => {

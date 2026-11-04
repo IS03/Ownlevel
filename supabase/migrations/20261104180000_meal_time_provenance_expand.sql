@@ -26,29 +26,42 @@ alter table public.meal_entries
 comment on column public.meal_entries.consumed_at_source is
   'Who set consumed_at. Null: unknown, including every row older than this column. Never backfilled or inferred.';
 
--- RLS lets a token write its own rows directly, so the statement is guarded here and not only in the functions below,
--- which run as their owner and skip this. A session can record that a clock filled the time, or nothing; it cannot declare,
--- and a time changed directly can no longer be vouched for.
+-- RLS lets a token write its own rows directly, so this is guarded here and not only in the functions below, which run
+-- as their owner. A session can record that a clock filled the time, or nothing; it cannot declare, write the legacy
+-- evidence in raw_input or claim a row came from an import. No client writes those columns directly: only the RPCs and the
+-- importer do, and they are not sessions. Whoever changes a time, a positive marker vouched for the old one and goes away;
+-- nothing in a later operation can bring it back. Rows already written are left as they are.
 create function public.meal_entries_guard_time_source()
 returns trigger language plpgsql security invoker set search_path = '' as $$
+declare
+  parsed jsonb;
 begin
-  if current_user not in ('authenticated', 'anon') then return new; end if;
-  if tg_op = 'INSERT' then
-    if new.consumed_at_source is distinct from 'default_clock' and new.consumed_at_source is not null then
-      raise exception using errcode = '42501', message = 'consumed_at_source is written by the server';
+  if current_user in ('authenticated', 'anon') then
+    if tg_op = 'INSERT' then
+      if (new.consumed_at_source is not null and new.consumed_at_source <> 'default_clock') or new.raw_input is not null
+        or new.import_run_id is not null or new.legacy_import_source is not null or new.legacy_import_id is not null
+        or new.source_type is not distinct from 'sheet_import' then
+        raise exception using errcode = '42501', message = 'meal time evidence is written by the server';
+      end if;
+    elsif new.consumed_at_source is distinct from old.consumed_at_source or new.raw_input is distinct from old.raw_input
+      or new.import_run_id is distinct from old.import_run_id or new.legacy_import_source is distinct from old.legacy_import_source
+      or new.legacy_import_id is distinct from old.legacy_import_id
+      or (new.source_type is distinct from old.source_type and 'sheet_import' in (new.source_type, old.source_type)) then
+      raise exception using errcode = '42501', message = 'meal time evidence is written by the server';
+    elsif new.consumed_at is distinct from old.consumed_at then
+      new.consumed_at_source := null;
     end if;
-    return new;
   end if;
-  if new.consumed_at_source is distinct from old.consumed_at_source then
-    raise exception using errcode = '42501', message = 'consumed_at_source is written by the server';
+  if tg_op = 'UPDATE' and new.consumed_at is distinct from old.consumed_at and new.raw_input is not null then
+    begin parsed := new.raw_input::jsonb; exception when others then parsed := null; end;
+    if parsed -> 'originalTimeKnown' = 'true'::jsonb then new.raw_input := nullif((parsed - 'originalTimeKnown')::text, '{}'); end if;
   end if;
-  if new.consumed_at is distinct from old.consumed_at then new.consumed_at_source := null; end if;
   return new;
 end;
 $$;
 revoke all on function public.meal_entries_guard_time_source() from public, anon, authenticated;
 create trigger meal_entries_guard_time_source
-  before insert or update of consumed_at, consumed_at_source on public.meal_entries
+  before insert or update of consumed_at, consumed_at_source, raw_input, import_run_id, legacy_import_source, legacy_import_id, source_type on public.meal_entries
   for each row execute function public.meal_entries_guard_time_source();
 
 create or replace function public.mobile_normalize_meal_timing(f jsonb, dt date)
