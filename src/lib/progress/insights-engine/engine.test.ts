@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { nutritionMealTimeSource } from "../../mobile-api/nutrition-meal-time";
-import { parsePerformanceInsights } from "../../mobile-api/performance-insights-contract";
+import { parseCompleteInsights } from "../../mobile-api/performance-insights-contract";
 import { buildPerformanceInsightsV1 } from "../performance-insights";
 import { descriptiveGroups, evaluateAssociations } from "./associations";
 import { buildExposureTable, strictOutcomeDays } from "./exposures";
@@ -42,7 +42,7 @@ describe("hechos", () => {
     expect(latest!.sessions[0]!.exercises[0]).toMatchObject({ status: "declined", referenceSessionId: "s1", referenceAgeDays: 0 });
     expect(model.exclusions.performance.no_compatible_reference).toBe(1);
     expect(model.limits).toMatchObject({ configurationSnapshots: { known: 3, total: 3 }, ingestionCompleteKnown: false, clockVerified: false });
-    expect(parsePerformanceInsights(JSON.parse(JSON.stringify(model)))).toBeTruthy();
+    expect(parseCompleteInsights(JSON.parse(JSON.stringify(model)))).toBeTruthy();
   });
   it("derives the unit only from the historical mode and leaves a missing snapshot insufficient", () => {
     expect(unitOfHistoricalMode("Peso total")).toBe("kg"); expect(unitOfHistoricalMode("lingotes (no kg)")).toBe("lingotes"); expect(unitOfHistoricalMode(null)).toBeNull();
@@ -64,7 +64,7 @@ describe("hechos", () => {
     const source = history([8, 9]);
     const model = buildInsightsReadModel({ ...source, sessions: [...source.sessions, { ...source.sessions[0]!, endedAt: `${dateAt(0)}T20:00:00.000Z` }] }, { today: "2027-01-01", permutations: 19 });
     expect(model.integrity).toBe("conflicting_duplicates"); expect(model.facts.days).toEqual([]); expect(model.associations.items).toEqual([]);
-    expect(parsePerformanceInsights(JSON.parse(JSON.stringify(model)))).toBeTruthy();
+    expect(parseCompleteInsights(JSON.parse(JSON.stringify(model)))).toBeTruthy();
   });
 });
 
@@ -78,7 +78,7 @@ describe("configuración desconocida", () => {
     expect(model.facts.days[0]!.sessions[0]!.exercises[0]).toMatchObject({ status: "insufficient_comparison", reason: "missing_context", referenceSessionId: null, newHigh: false });
     expect(model.history).toMatchObject({ sessions: 30, outcomeDays: 0 });
     expect(model.limits.configurationSnapshots).toEqual({ known: 0, total: 30 });
-    expect(parsePerformanceInsights(JSON.parse(JSON.stringify(model)))).toBeTruthy();
+    expect(parseCompleteInsights(JSON.parse(JSON.stringify(model)))).toBeTruthy();
   });
   it("does not compare a known configuration with an unknown one", () => {
     const source = history(reps.slice(0, 3));
@@ -277,7 +277,7 @@ describe("asociaciones", () => {
       const source = history(oscillating(30), { metricDefinitions: [{ id: METRIC, name: "M", unit: null, valueType: "integer", archived: false }], metricValues: oscillating(30).map((_, day) => ({ metricId: METRIC, date: dateAt(day), value: day % 3 ? 0 : 1 })) });
       const model = buildInsightsReadModel(source, { today: "2027-01-01", permutations: 19 });
       expect(model.associations.items.find(row => row.id === `metric:${METRIC}:same_day`)!.groups).toMatchObject({ rule: "median_balanced_ties", cut: 0, lowIncludesCut: true });
-      expect(parsePerformanceInsights(JSON.parse(JSON.stringify(model)))).toBeTruthy();
+      expect(parseCompleteInsights(JSON.parse(JSON.stringify(model)))).toBeTruthy();
     });
   });
   it("finds a strong planted relation only as exploratory, with coverage and groups", () => {
