@@ -23,6 +23,7 @@ export const registerMealTool = {
       idempotency_key: { type: "string", minLength: 8, maxLength: 200 },
       force_duplicate: { type: "boolean" },
       time: { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", description: "Sólo si el usuario dijo a qué hora comió (HH:MM, hora de Córdoba). Si no lo dijo, omitilo: OWNLEVEL no inventa la hora." },
+      time_stated_by_user: { type: "boolean", description: "true sólo si el usuario dijo esa hora con sus palabras. Omitilo si la dedujiste o si no estás seguro. Requiere time." },
       meal_type: { type: "string", enum: ["breakfast", "lunch", "snack", "dinner", "extra"], description: "Enviá el momento declarado (desayuno=breakfast, almuerzo=lunch, merienda=snack, cena=dinner, extra). Si no lo nombró, omitilo: el servidor lo resuelve desde la hora efectiva y lo distingue como automático. No lo infieras en el complemento." },
       consumed_now: { type: "boolean", description: "Obligatorio. true para «subí X comida», «subí esto» o consumo actual sin contexto histórico: se guarda la hora de registro aproximada. false para una comida anterior, incluso del mismo día («esta mañana», «antes», «ayer»): sin hora explícita queda sin hora ni momento automático. time y meal_type explícitos prevalecen." },
     },
@@ -44,10 +45,10 @@ export async function forwardOAuthMeal(args: unknown, bearer: string, fetcher: t
   if (typeof (args as Record<string, unknown>).consumed_now !== 'boolean') {
     throw new McpMealInputError('Indicá consumed_now: true para consumo actual o false para una comida anterior, incluso de hoy.');
   }
-  const { force_duplicate, consumed_at, meal_type, consumed_now, ...fields } = meal;
+  const { force_duplicate, consumed_at, meal_type, consumed_now, time_stated, ...fields } = meal;
   // The route takes the time as the user said it ("HH:MM"), never the composed instant.
   const time = consumed_at ? consumed_at.slice(11, 16) : null;
-  const payload = { ...fields, consumed_now, ...(force_duplicate ? { force_duplicate: true } : {}), ...(time ? { time } : {}), ...(meal_type ? { meal_type } : {}) };
+  const payload = { ...fields, consumed_now, ...(force_duplicate ? { force_duplicate: true } : {}), ...(time ? { time } : {}), ...(time_stated ? { time_stated_by_user: true } : {}), ...(meal_type ? { meal_type } : {}) };
   // Fixed origin/resource, no user-controlled destination or redirect following.
   const endpoint = new URL(ownlevelIntegrationOrigin());
   // Disposable local tests keep the canonical HTTPS resource/audience, but

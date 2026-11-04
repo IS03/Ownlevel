@@ -17,6 +17,7 @@ const ALLOWED_KEYS = new Set([
   "time",
   "meal_type",
   "consumed_now",
+  "time_stated_by_user",
 ]);
 
 export const CHATGPT_MEAL_TYPES = ["breakfast", "lunch", "snack", "dinner", "extra"] as const;
@@ -41,6 +42,8 @@ export type ChatgptMealInput = {
    * approximate time (#308). Always false when a time was said, which prevails.
    */
   consumed_now: boolean;
+  /** The caller states that the user said this time. A time without this statement keeps an unknown origin. */
+  time_stated: boolean;
 };
 
 export type ChatgptMealSuccess = {
@@ -149,6 +152,9 @@ export function parseChatgptMealInput(
     throw new Error("consumed_now debe ser booleano.");
   }
   const consumedAt = optionalConsumedAt(body.time, date);
+  if (body.time_stated_by_user !== undefined && (typeof body.time_stated_by_user !== "boolean" || (body.time_stated_by_user && consumedAt === null))) {
+    throw new Error("time_stated_by_user es booleano y requiere time.");
+  }
   const consumedNow = body.consumed_now === true && consumedAt === null;
   // "Now" is today's Córdoba day: a meal of another day is never given the registration time.
   if (consumedNow && date !== todayInCordoba(now)) {
@@ -172,6 +178,7 @@ export function parseChatgptMealInput(
     consumed_at: consumedAt,
     meal_type: optionalMealType(body.meal_type),
     consumed_now: consumedNow,
+    time_stated: body.time_stated_by_user === true,
   };
 }
 

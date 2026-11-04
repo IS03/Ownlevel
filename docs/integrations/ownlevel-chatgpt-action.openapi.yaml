@@ -143,6 +143,9 @@ components:
           type: string
           pattern: '^([01]\d|2[0-3]):[0-5]\d$'
           description: Sólo si el usuario dijo a qué hora comió (HH:MM, hora de Córdoba, del día en date). Si no lo dijo, omitilo; OWNLEVEL no inventa la hora.
+        time_stated_by_user:
+          type: boolean
+          description: true sólo si el usuario dijo esa hora con sus palabras. Omitilo si la dedujiste o si no estás seguro. Requiere time.
         meal_type:
           type: string
           enum: [breakfast, lunch, snack, dinner, extra]

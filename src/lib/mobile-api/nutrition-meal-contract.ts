@@ -1,11 +1,14 @@
 import { isNutritionDate } from './nutrition-day-contract';
 
-export type MealTiming = { mealLabel?: 'breakfast' | 'lunch' | 'snack' | 'dinner' | 'extra' | null; consumedAt?: string };
+/** `user_declared`: the person chose this time. Never sent for a time the client only resends or recalculates. */
+export type MealTimeSource = 'user_declared';
+export type MealTiming = { mealLabel?: 'breakfast' | 'lunch' | 'snack' | 'dinner' | 'extra' | null; consumedAt?: string; consumedAtSource?: MealTimeSource };
 /** Absent fields keep the original v1 payload and ledger hash intact. */
 export function parseMealTiming(v: Record<string, unknown>, date: string): MealTiming | undefined {
   if ('mealLabel' in v && ![null, 'breakfast', 'lunch', 'snack', 'dinner', 'extra'].includes(v.mealLabel as string | null)) return undefined;
   if ('consumedAt' in v && (typeof v.consumedAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(v.consumedAt) || !isNutritionDate(v.consumedAt.slice(0,10)) || !Number.isFinite(Date.parse(v.consumedAt)) || new Date(Date.parse(v.consumedAt) - 3 * 3600000).toISOString().slice(0,10) !== date)) return undefined;
-  return { ...('mealLabel' in v ? { mealLabel: v.mealLabel as MealTiming['mealLabel'] } : {}), ...('consumedAt' in v ? { consumedAt: new Date(v.consumedAt as string).toISOString() } : {}) };
+  if ('consumedAtSource' in v && (v.consumedAtSource !== 'user_declared' || !('consumedAt' in v))) return undefined;
+  return { ...('mealLabel' in v ? { mealLabel: v.mealLabel as MealTiming['mealLabel'] } : {}), ...('consumedAt' in v ? { consumedAt: new Date(v.consumedAt as string).toISOString() } : {}), ...('consumedAtSource' in v ? { consumedAtSource: 'user_declared' as const } : {}) };
 }
 export type ManualMealFields = MealTiming & { date: string; title: string | null; description: string | null;
   calories: number; proteinG: number | null; carbsG: number | null; fatG: number | null; saveToLibrary?: boolean };
@@ -21,7 +24,7 @@ export const mealUuid = (v: unknown): v is string => typeof v === 'string' && /^
 export const mealVersion = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v) && Number.isFinite(Date.parse(v));
 const macro = (v: unknown, maximum = 99999999.99) => v === null || (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= maximum && Math.abs(v * 100 - Math.round(v * 100)) < 0.000001);
 export function parseManualMealFields(v: unknown): ManualMealFields | undefined {
-  if (!record(v) || Object.keys(v).some(k => !['date','title','description','calories','proteinG','carbsG','fatG','mealLabel','consumedAt','saveToLibrary'].includes(k)) || !isNutritionDate(v.date)
+  if (!record(v) || Object.keys(v).some(k => !['date','title','description','calories','proteinG','carbsG','fatG','mealLabel','consumedAt','consumedAtSource','saveToLibrary'].includes(k)) || !isNutritionDate(v.date)
     || ![v.title, v.description].every(t => t === null || typeof t === 'string')
     || typeof v.calories !== 'number' || !Number.isSafeInteger(v.calories) || v.calories <= 0 || v.calories > 2147483647
     || !macro(v.proteinG, 999999.99) || !macro(v.carbsG) || !macro(v.fatG)) return undefined;

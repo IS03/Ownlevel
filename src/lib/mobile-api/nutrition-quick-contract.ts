@@ -28,7 +28,7 @@ export function parseQuickSource(v: unknown): QuickSource | undefined {
     ? { kind: v.kind, id: v.id.toLowerCase(), version: v.version } : undefined;
 }
 export function parseQuickSelection(v: unknown): QuickSelection | undefined {
-  if (!record(v) || Object.keys(v).some(k => !['date','source','quantities','mealLabel','consumedAt'].includes(k)) || !isNutritionDate(v.date)) return undefined;
+  if (!record(v) || Object.keys(v).some(k => !['date','source','quantities','mealLabel','consumedAt','consumedAtSource'].includes(k)) || !isNutritionDate(v.date)) return undefined;
   const timing = parseMealTiming(v, v.date);
   if (!timing) return undefined;
   const source = parseQuickSource(v.source);
@@ -49,13 +49,13 @@ export function parseQuickSelection(v: unknown): QuickSelection | undefined {
   return { date: v.date, source, quantities, ...timing };
 }
 export function parseQuickIntent(v: unknown): QuickIntent | undefined {
-  if (!record(v) || Object.keys(v).some(k => !['date','source','quantities','operation','idempotencyKey','mealLabel','consumedAt'].includes(k)) || !['register','saveSuggestion'].includes(String(v.operation))
+  if (!record(v) || Object.keys(v).some(k => !['date','source','quantities','operation','idempotencyKey','mealLabel','consumedAt','consumedAtSource'].includes(k)) || !['register','saveSuggestion'].includes(String(v.operation))
     || typeof v.idempotencyKey !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(v.idempotencyKey)) return undefined;
   const selection = parseQuickSelection(quickSelectionOf(v as QuickIntent));
   if (!selection || v.operation === 'saveSuggestion' && selection.source.kind !== 'suggestion') return undefined;
   return { ...selection, operation: v.operation as QuickIntent['operation'], idempotencyKey: v.idempotencyKey };
 }
-export function quickSelectionOf(v: QuickSelection): QuickSelection { return { date: v.date, source: v.source, quantities: v.quantities, ...('mealLabel' in v ? { mealLabel: v.mealLabel } : {}), ...('consumedAt' in v ? { consumedAt: v.consumedAt } : {}) }; }
+export function quickSelectionOf(v: QuickSelection): QuickSelection { return { date: v.date, source: v.source, quantities: v.quantities, ...('mealLabel' in v ? { mealLabel: v.mealLabel } : {}), ...('consumedAt' in v ? { consumedAt: v.consumedAt } : {}), ...('consumedAtSource' in v ? { consumedAtSource: v.consumedAtSource } : {}) }; }
 export function sameQuickSelection(a: QuickSelection, b: QuickSelection) {
   return JSON.stringify(parseQuickSelection(quickSelectionOf(a))) === JSON.stringify(parseQuickSelection(quickSelectionOf(b)));
 }
