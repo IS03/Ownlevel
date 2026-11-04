@@ -1,6 +1,6 @@
 # Insights #367 — PR 2: EXPAND de sensaciones
 
-**Estado: migración preparada y probada sobre la secuencia completa de 88 migraciones en Supabase local descartable. Advisor de seguridad sin hallazgos antes/después; smoke Auth/PostgREST aprobado con 41 comprobaciones. NO aplicada en producción (evidencia vigente al final).** Sin deploy ni adopción cliente. Rama `codex/367-insights-pr2-expand`, apilada sobre `codex/367-insights-pr1-comparator` porque [#381](https://github.com/IS03/Ownlevel/pull/381) sigue abierto en `dde9ae4f5d6683fff918e02478bc2c8a0b4d6a16`. No se mergea #381/#380 ni se modifica el comparador revisado. Esta autorización corresponde únicamente al PR 2 de [#367](https://github.com/IS03/Ownlevel/issues/367).
+**Estado vigente: EXPAND aplicado y verificado en Supabase de producción; ver sección final de rollout.**
 
 ## Persistencia mínima
 
@@ -116,7 +116,7 @@ Esta sección reemplaza los estados pendientes de los intentos anteriores. Punto
 
 | Control | Resultado |
 | --- | --- |
-| Integración del esquema completo | **APROBADA localmente**: 87 SQL previos, luego `20261103023740_training_feelings_expand.sql`; 88 migraciones completas, en orden por nombre, sin editar/omitir SQL. Cada archivo aplicado mediante `psql -X -v ON_ERROR_STOP=1` dentro del contenedor nuevo, incluyendo `0001.sql`, que no reconoce el parser de nombres del CLI. Sin reset de bases existentes. |
+| Integración del esquema completo | **APROBADA localmente**: 87 SQL previos, luego `20261104011622_training_feelings_expand.sql`; 88 migraciones completas, en orden por nombre, sin editar/omitir SQL. Cada archivo aplicado mediante `psql -X -v ON_ERROR_STOP=1` dentro del contenedor nuevo, incluyendo `0001.sql`, que no reconoce el parser de nombres del CLI. Sin reset de bases existentes. |
 | Advisor de seguridad | **COMPLETADO**: `supabase@3.0.0 db advisors --workdir <aislado> --type security --fail-on error --output-format json`, primero después de los 87 SQL, luego después del EXPAND. Ambos: salida 0, `No issues found`, `results: []`, destino local explícito `127.0.0.1:56971`. **Cero hallazgos preexistentes y cero introducidos en este control**; no se corrigió deuda histórica. |
 | Smoke Auth/PostgREST | **APROBADOS: 41 comprobaciones**, dos usuarios sintéticos creados mediante Auth local y autenticados con contraseña; requests HTTP reales a `/rest/v1`, con bearer de cada usuario, sin service_role en las operaciones bajo prueba. |
 | Producción | **SIN APLICAR**. Sin base remota, deploy, merge ni PR 3. |
@@ -128,3 +128,15 @@ Las **51 pruebas y 88 aserciones previas se reutilizan sin repetirlas**: no hubo
 Evidencia local: `migrate-baseline.log`, `applied.json`, `advisor-before.log`, `advisor-after.log`, `smoke.mjs` y `smoke-report.json` en el directorio temporal indicado. No se publican claves/tokens de Auth. Migración verificada sin modificaciones respecto del head de implementación `192efa674e49ec9e5a0f6b59a2a2ec5d9356e53f`. Al terminar se detuvo **solo** ese project_id con `stop --no-backup`, eliminando sus contenedores/volúmenes sintéticos; no se tocaron otras instancias. Este seguimiento modifica únicamente documentación.
 
 Próximo paso: revisión de #382 y coordinación del rollout EXPAND en un entorno expresamente autorizado. La migración está **preparada y probada localmente**, no aplicada en producción; #382 permanece abierto y sin auto-merge. No se inicia ADOPT/PR 3.
+
+## EXPAND aplicado en producción — 03/11/2026 Córdoba
+
+Autorización explícita del usuario recibida antes de aplicar. Proyecto verificado: OWNLEVEL/gym, `vtxacamtayeqnogxyapd`. Se aplicó el SQL revisado de PR #382 con guards de dependencias y timeouts; sin backfill ni escrituras de sesiones/comidas.
+
+El conector asignó la versión `20261104011622` (UTC). El archivo originalmente revisado era `20261103023740_training_feelings_expand.sql`; se renombra a `20261104011622_training_feelings_expand.sql` y se actualiza el fixture, conservando **el mismo blob SQL**. La revisión automática rechazó reescribir el historial interno: no se reintentó por otra vía; se conserva el registro real y se alinea el repositorio.
+
+Verificado tras aplicar: las cinco funciones nuevas coinciden exactamente con sus cuerpos versionados; `finish_workout_session` y `lock_training_user_mutations` conservan su código. RLS habilitado, SELECT propio para authenticated, sin DML directo ni acceso anon; helpers no ejecutables por authenticated. Una sola entrada de historial con el nombre esperado.
+
+Advisor alojado: baseline de 3 INFO, 19 WARN de funciones SECURITY DEFINER y 1 WARN de Auth. Delta: solo el aviso esperado para `mutate_training_feelings_v1`, RPC privilegiada intencional con auth.uid/ownership/CAS/idempotencia. No se afirma cero avisos alojados. Referencia: https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable .
+
+#381 integrado en `d18af72a1f115789c63fed1c5ceafd0a84fd18f3`, Vercel Production READY. #382 retargeteado a main; publicación de su backend posterior a la verificación de EXPAND. Captura cliente/Diario y patrones siguen sin adoptar. No se repiten las pruebas locales vigentes: el seguimiento solo renombra el SQL sin cambiar su contenido, actualiza su ruta de fixture y documenta el rollout.

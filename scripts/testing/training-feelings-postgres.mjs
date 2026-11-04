@@ -38,7 +38,7 @@ try {
   await admin.query(await read('supabase/migrations/20261013233111_active_session_add_to_routine_expand.sql'));
   // Reproduce Supabase default grants to verify EFFECTIVE permissions, not only REVOKE text.
   await admin.query('create role service_role; alter default privileges in schema public grant execute on functions to anon,authenticated,service_role;');
-  const migration = await read('supabase/migrations/20261103023740_training_feelings_expand.sql');
+  const migration = await read('supabase/migrations/20261104011622_training_feelings_expand.sql');
   await admin.query(migration);
   check((await admin.query("select count(*)::int n from public.workout_session_feelings")).rows[0].n, 0);
   const acl = (await admin.query(`select prosecdef,proconfig,has_function_privilege('anon',oid,'execute') anon,
