@@ -18,7 +18,7 @@ export function syntheticHistory(profile: { years: number; sessionsPerWeek: numb
     const date = new Date(start + day * 86_400_000).toISOString().slice(0, 10);
     for (let metric = 0; metric < profile.metrics; metric++) if (random() < 0.8) metricValues.push({ metricId: uuid(2, metric), date, value: String(Math.round(random() * 100)) });
     for (let meal = 0; meal < profile.mealsPerDay; meal++) meals.push({ id: uuid(3, meals.length), date, consumedAt: `${date}T${String(8 + meal * 3).padStart(2, "0")}:15:00.000Z`,
-      rawInput: captured ? '{"originalTimeKnown":true}' : null, entryKind: "meal", sourceType: "manual", calories: 400 + Math.round(random() * 400), proteinG: 20 + Math.round(random() * 30), carbsG: random() < 0.02 ? null : 30 + Math.round(random() * 70), fatG: 10 });
+      rawInput: null, consumedAtSource: captured ? "user_declared" : null, entryKind: "meal", sourceType: "manual", calories: 400 + Math.round(random() * 400), proteinG: 20 + Math.round(random() * 30), carbsG: random() < 0.02 ? null : 30 + Math.round(random() * 70), fatG: 10 });
     if (random() >= profile.sessionsPerWeek / 7) continue;
     const id = uuid(1, sessions.length);
     sessions.push({ id, date, routineId: uuid(4, sessions.length % 4), routineName: "Rutina", name: null, status: "completed", startedAt: `${date}T18:00:00.000Z`, endedAt: `${date}T19:15:00.000Z`, performanceLevel: 3, painLevel: 0, legacyEnergyLevel: null });

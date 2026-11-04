@@ -27,6 +27,8 @@ export type InsightsSource = {
   metricValues: readonly { metricId: string; date: string; value: unknown }[];
   meals: readonly {
     id: string; date: string; consumedAt: string | null; rawInput: unknown; entryKind: string | null; sourceType: string | null;
+    /** Who set the time, recorded when it was written. Null: nobody can tell, including every row older than the column. */
+    consumedAtSource: string | null;
     calories: number | null; proteinG: number | null; carbsG: number | null; fatG: number | null;
   }[];
 };

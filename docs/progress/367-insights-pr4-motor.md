@@ -38,6 +38,8 @@ Método **`insights-engine/1`**, contrato **`performance-insights/1`**, sobre el
 | `originalTimeKnown: false` | `unknown` | No |
 | `null`, JSON inválido, sin marca o con marcas contradictorias | `unverified` | No; solo sensibilidad |
 
+**Con la [procedencia registrada](367-meal-time-provenance.md) aplicada**, la columna `consumed_at_source` se lee primero: `user_declared` e `imported` son `explicit`, `registration_now` es `registration` y `default_clock` es `unknown`. Si es nula, rige la tabla de arriba. Este loader **requiere esa migración**.
+
 Hoy **solo la importación histórica** escribe la marca positiva: Web, Mobile y ChatGPT dejan `raw_input` nulo con o sin hora declarada ([tabla de productores](367-insights-expand-propuesta.md#a-procedencia-de-la-hora-de-comida)). No se admite por inferencia ninguna otra forma, aunque un caso sea deducible:
 
 - ChatGPT v2 con hora guarda `null`, igual que ChatGPT v1 sin hora.

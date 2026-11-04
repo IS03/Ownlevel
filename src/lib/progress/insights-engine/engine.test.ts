@@ -25,7 +25,7 @@ function history(reps: readonly number[], extra: Partial<InsightsSource> = {}, c
 }
 const PROVEN = '{"originalTimeKnown":true}', REGISTRATION = '{"originalTimeKnown":false,"timeSource":"registration"}';
 const meal = (over: Partial<InsightsSource["meals"][number]> & { id: string; date: string }): InsightsSource["meals"][number] => ({
-  consumedAt: `${over.date}T16:00:00.000Z`, rawInput: PROVEN, entryKind: "meal", sourceType: "manual", calories: 500, proteinG: 30, carbsG: 60, fatG: 10, ...over });
+  consumedAt: `${over.date}T16:00:00.000Z`, consumedAtSource: null, rawInput: PROVEN, entryKind: "meal", sourceType: "manual", calories: 500, proteinG: 30, carbsG: 60, fatG: 10, ...over });
 const candidateOf = (source: InsightsSource, id: string, today = "2027-01-01") => {
   const performance = buildPerformanceInsightsV1({ sessions: toPerformanceSessions(source).sessions, historyCoverage: "complete" });
   return buildExposureTable(source, strictOutcomeDays(performance.days), today).candidates.find(row => row.definition.id === id)!;
@@ -123,7 +123,7 @@ describe("contexto y exposiciones", () => {
     expect(carbs.values.get(dateAt(3))).toBe(0); expect(carbs.values.has(dateAt(2))).toBe(false); expect(carbs.exclusions.no_active_meals).toBeGreaterThan(0);
   });
   it("admits a meal time only with a positive marker: distinct timestamps prove nothing", () => {
-    const base = { consumedAt: "2026-01-02T16:00:00.000Z", createdAt: "2026-01-02T20:00:00.000Z", rawInput: null as unknown, entryKind: "meal" };
+    const base = { consumedAtSource: null, consumedAt: "2026-01-02T16:00:00.000Z", createdAt: "2026-01-02T20:00:00.000Z", rawInput: null as unknown, entryKind: "meal" };
     expect(mealTimeEvidence(base)).toBe("unverified");
     expect(mealTimeEvidence({ ...base, rawInput: PROVEN })).toBe("explicit");
     for (const rawInput of ["not json", "{}", "[1]", '"x"', "null", '{"timeSource":"registration"}', '{"originalTimeKnown":"true"}', '{"originalTimeKnown":true,"timeSource":"registration"}', { originalTimeKnown: true }]) {
@@ -135,6 +135,28 @@ describe("contexto y exposiciones", () => {
     expect(mealTimeEvidence({ ...base, rawInput: '{"originalTimeKnown":false}' })).toBe("unknown");
     expect(mealTimeEvidence({ ...base, entryKind: "legacy_daily_summary" })).toBe("unknown");
     expect(mealTimeEvidence({ ...base, consumedAt: "2026-01-02 16:00" })).toBe("unknown");
+  });
+  it("reads the recorded source first: only a statement or an import counts as a known time", () => {
+    const row = (consumedAtSource: string | null, rawInput: unknown = null) => mealTimeEvidence({ consumedAt: "2026-01-02T16:00:00.000Z", consumedAtSource, rawInput, entryKind: "meal" });
+    expect(row("user_declared")).toBe("explicit");
+    expect(row("imported")).toBe("explicit");
+    expect(row("registration_now")).toBe("registration");
+    expect(row("default_clock")).toBe("unknown");
+    // A clock stays a clock, whatever an old marker says; an older row falls back to its marker.
+    expect(row("default_clock", PROVEN)).toBe("unknown");
+    expect(row(null)).toBe("unverified");
+    expect(row(null, PROVEN)).toBe("explicit");
+    expect(row(null, REGISTRATION)).toBe("registration");
+    expect(mealTimeEvidence({ consumedAt: "not a time", consumedAtSource: "user_declared", rawInput: null, entryKind: "meal" })).toBe("unknown");
+    expect(mealTimeEvidence({ consumedAt: "2026-01-02T16:00:00.000Z", consumedAtSource: "user_declared", rawInput: null, entryKind: "legacy_daily_summary" })).toBe("unknown");
+  });
+  it("counts a declared meal in the window and keeps a clock meal out of it, without zero", () => {
+    const d = dateAt(1);
+    const carbs = (over: Partial<InsightsSource["meals"][number]>) => buildInsightsReadModel(history(oscillating(3), { meals: [meal({ id: "m", date: d, rawInput: null, carbsG: 70, ...over })] }), { today: "2027-01-01", permutations: 19 })
+      .facts.days.find(day => day.date === d)!.sessions[0]!.context.carbsPre3h;
+    expect(carbs({ consumedAtSource: "user_declared" })).toEqual({ value: 70, state: "recorded" });
+    expect(carbs({ consumedAtSource: "default_clock" })).toEqual({ value: null, state: "untimed_meal_in_scope" });
+    expect(carbs({ consumedAtSource: null })).toEqual({ value: null, state: "unverified_meal_time_in_scope" });
   });
   it("counts only explicit meals before the start, across midnight, and never turns absence into zero", () => {
     const d = dateAt(4), early = dateAt(3);
