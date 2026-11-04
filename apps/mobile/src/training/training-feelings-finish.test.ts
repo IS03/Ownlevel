@@ -61,6 +61,15 @@ describe('ADOPT finish coordinates the existing session journal', () => {
     expect(resumed.getSnapshot().finished?.routineAdditions).toEqual([{ sessionExerciseId: EXERCISE_ID, exerciseId: EXERCISE_ID, name: 'ORIGINAL PRESS', outcome: 'added' }]);
     const calls = (f.port.write as jest.Mock).mock.calls; expect(calls[1][0]).toEqual(calls[0][0]); resumed.dispose();
   });
+  it('replays a durable v1 finish intent without negotiating or inventing routine additions', async () => {
+    const f = setup(); f.withRoutine(); const c = f.make();
+    const feelings = { contractVersion: 'training-feelings/1' as const, operation: 'finish' as const, expectedRevision: 0, patch: {}, idempotencyKey: 'old:finish', expectedSessionUpdatedAt: VERSION, metadata: {} };
+    await f.repository.writeIntent({ kind: 'finish', metadata: { energyLevel: 2, performanceLevel: 3, painLevel: 4, notes: 'legacy' }, idempotencyKey: feelings.idempotencyKey, feelings });
+    await c.refresh(); expect(c.getSnapshot().intent?.value).toMatchObject({ feelings });
+    expect(await c.retryIntent()).toBe(true);
+    expect(f.port.write).toHaveBeenCalledTimes(1); expect(f.port.write).toHaveBeenCalledWith(feelings); expect(f.effects()).toBe(1);
+    expect(c.getSnapshot().finished).toBeTruthy(); expect(c.getSnapshot().finished?.routineAdditions).toBeUndefined(); c.dispose();
+  });
   it('blocks a real conflict and releases it only after explicitly choosing which answers to keep', async () => {
     const f = setup(), c = f.make(); await c.refresh(); await c.feelings!.change('energyPost', 4); f.conflict();
     expect(await c.finish()).toBe(false); expect(c.feelings!.getSnapshot().blocked).toBe(true); expect(f.port.write).not.toHaveBeenCalled();

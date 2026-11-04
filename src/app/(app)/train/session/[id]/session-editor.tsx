@@ -1171,6 +1171,7 @@ export function SessionEditor({
       // Completion is already saved; rest timer cleanup is best-effort browser state.
     }
     router.refresh();
+    return "confirmed";
     }, () => {
       setGlobalPending(false);
       setFinishStage(null);

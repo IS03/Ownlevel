@@ -1,6 +1,7 @@
-/** Transient UI fences always end; durable journals are owned by the attempt, never by cleanup. */
-export async function runWorkoutFinishAttempt(attempt: () => Promise<void>, release: () => void, onFailure: () => void): Promise<void> {
-  try { await attempt(); }
+/** Transient UI fences end unless the finish was confirmed: the refreshed completed detail replaces them. Durable journals are owned by the attempt, never by cleanup. */
+export async function runWorkoutFinishAttempt(attempt: () => Promise<'confirmed' | void>, release: () => void, onFailure: () => void): Promise<void> {
+  let confirmed = false;
+  try { confirmed = (await attempt()) === 'confirmed'; }
   catch { onFailure(); }
-  finally { release(); }
+  finally { if (!confirmed) release(); }
 }
