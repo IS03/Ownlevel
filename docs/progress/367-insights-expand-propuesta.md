@@ -1,8 +1,15 @@
 # Insights #367 — Propuesta de EXPAND y metodología parcial
 
-**Propuesta para revisión. Nada de esto está implementado, migrado ni aprobado.** Sale de la revisión de [#385](https://github.com/IS03/Ownlevel/pull/385) y sigue el rollout EXPAND → ADOPT → OBSERVE → CONTRACT. Cada bloque va en su propio PR.
+Sale de la revisión de [#385](https://github.com/IS03/Ownlevel/pull/385) y sigue el rollout EXPAND → ADOPT → OBSERVE → CONTRACT. Cada bloque va en su propio PR.
 
-El motor ya conserva lo desconocido como desconocido: ver [motor y calibración](367-insights-pr4-motor.md). Por eso, **con los datos actuales no produce comparaciones**: todo queda en `insufficient_comparison / missing_context`. Hay que decidir entre el bloque B y el bloque C antes de que Hechos y Asociaciones tengan contenido.
+| Bloque | Estado |
+| --- | --- |
+| A. Procedencia horaria | **Reemplazado** por [procedencia de la hora](367-meal-time-provenance.md): que llegue una hora no prueba que alguien la haya elegido, así que la regla de abajo quedó descartada. Preparado en borrador; sin aplicar |
+| B. Captura de configuración | **Pendiente**: sin regla de producto. No se escribe `none` |
+| C. Método parcial | **Implementado** como [`insights-performance-partial/1`](367-insights-partial-metodo.md), en borrador |
+| D. RPC de revisiones | **Propuesta**: agrupar consultas por sí solo no demuestra que arregle el plan lento |
+
+El método estricto conserva lo desconocido como desconocido: ver [motor y calibración](367-insights-pr4-motor.md). Por eso, con los datos actuales no produce comparaciones. El método parcial permite continuar mientras se define la captura.
 
 ## A. Procedencia de la hora de comida
 
