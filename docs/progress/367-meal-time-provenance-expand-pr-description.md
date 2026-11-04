@@ -14,8 +14,14 @@ EXPAND de la procedencia de la hora de comida: `meal_entries.consumed_at_source`
 - Una declaración se registra aunque el valor sea igual.
 - Los clientes instalados no cambian de payload ni de hash de idempotencia.
 
+- Un trigger cierra la escritura directa con un token: una sesión no puede declarar, y cambiar la hora directamente borra la procedencia.
+
 ## Validación
-26 pruebas contra Postgres y PostgREST en una pila local descartable, con usuarios reales, RLS y las 89 migraciones previas (eliminada después: 0 contenedores, 0 volúmenes). 8 pruebas unitarias de contratos. Las suites de integraciones y nutrición pasan, salvo 3 fallos en archivos que este PR no toca (`nutrition-import.test.ts` y `pr73.test.ts`): rutas de Windows y CRLF en esta máquina.
+38 pruebas contra Postgres y PostgREST en una pila local descartable, con usuarios reales, RLS y las 89 migraciones previas (eliminada después: 0 contenedores, 0 volúmenes). La prueba escribe como cliente instalado, aplica la migración y revisa esas filas: claves antiguas, ausencia de retroactividad, dueño, OAuth y atomicidad. 8 pruebas de contratos. `mobile_meal_timing.sql` confirma el hash de un pago antiguo.
+
+**Fallos comprobados en la base (`b5e57e3`), no causados por este PR:**
+- 3 pruebas Web: `nutrition-import.test.ts` (1) y `pr73.test.ts` (2).
+- `supabase/tests/ownlevel_oauth_meals.sql` falla igual con y sin esta migración, en `ownlevel_oauth_grant_meals`. No investigué la causa. El camino de OAuth v4 sí está probado en la prueba local.
 
 **Sin validar:** el `ALTER TABLE` con datos de producción y el flujo con un GPT real.
 
