@@ -104,7 +104,7 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onSav
       {state.preview ? <View style={{ gap: 20 }} testID="quick-preview"><MealNutrients value={state.preview.snapshot} /><MealProjection date={state.date} nutrients={state.preview.snapshot} /></View>
         : estimate && !state.message ? <View style={{ gap: 20 }} testID="quick-estimate"><MealNutrients value={estimate} pending /><MealProjection date={state.date} nutrients={estimate} pending /></View>
         : state.previewLoading ? <LoadingState label="Calculando vista previa" /> : null}
-      <MealTiming date={state.date} value={draft} disabled={locked} onChange={(label, time) => controller.timing(label, time)} />
+      <MealTiming date={state.date} value={draft} disabled={locked} onChange={(label, time, declared) => controller.timing(label, time, declared)} />
       <View style={shared.footer}>
         <SaveButton state={saving && !state.inlineKey ? 'saving' : 'idle'} disabled={locked || !state.preview || state.previewLoading} label={`Agregar al día${state.preview ? ` · ${shown(state.preview.snapshot.calories)} kcal` : estimate && !state.message ? ` · ${shown(estimate.calories)} kcal` : ''}`} onPress={() => void controller.save()} />
         {draft.option.source.kind === 'suggestion' ? <Button disabled={locked || !state.preview || state.previewLoading} label="Guardar como habitual" onPress={() => void controller.save('saveSuggestion')} variant="quiet" /> : null}

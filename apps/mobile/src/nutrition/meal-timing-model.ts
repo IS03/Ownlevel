@@ -31,4 +31,4 @@ export function mealTimingPresentation(date: string, value: Timing, reference?: 
     moment: value.mealLabel ? mealMoments[value.mealLabel]
       : automatic ? mealMoments[unchangedTime || !clock ? automatic : (mealLabelAt(new Date(instant!)) ?? 'extra')] : 'Sin momento' };
 }
-export type MealTimingProps = { date: string; value: Timing; reference?: MealTimingReference; disabled: boolean; onChange: (mealLabel: Timing['mealLabel'], consumedAt?: string) => void };
+export type MealTimingProps = { date: string; value: Timing; reference?: MealTimingReference; disabled: boolean; /** `declared` only when the person chose the time here. Changing the moment resends the time without choosing it. */ onChange: (mealLabel: Timing['mealLabel'], consumedAt?: string, declared?: boolean) => void };
