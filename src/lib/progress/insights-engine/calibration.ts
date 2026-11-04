@@ -87,8 +87,8 @@ function wilsonUpper(successes: number, total: number) {
   return Math.min(1, (p + z * z / (2 * total) + z * Math.sqrt(p * (1 - p) / total + z * z / (4 * total * total))) / denominator);
 }
 
-/** Runs the same policy the read model uses, at each update of the last year, without choosing among candidates or looks. */
-export function runCalibration(scenario: CalibrationScenario, config: CalibrationConfig): CalibrationResult {
+/** Runs the same policy the read model uses, at each update of the last year, without choosing among candidates or looks. Yields after each history so a long campaign can release its event loop. */
+export function* calibrationSteps(scenario: CalibrationScenario, config: CalibrationConfig): Generator<number, CalibrationResult, void> {
   const months = config.months ?? 24, looks = config.looks ?? 12, wanted = config.candidates ?? 12, permutations = config.permutations ?? 199;
   let exploratoryHistories = 0, strictHistories = 0, plantedStrict = 0, plantedExploratory = 0, pairs = 0, candidatesUsed = wanted;
   for (let history = 0; history < config.histories; history++) {
@@ -114,9 +114,17 @@ export function runCalibration(scenario: CalibrationScenario, config: Calibratio
     if (anyStrict) strictHistories++;
     if (plantedS) plantedStrict++;
     if (plantedE) plantedExploratory++;
+    yield history;
   }
   const total = config.histories, planted = scenario === "true_effect" || scenario === "moderate_effect";
   return { scenario, histories: total, looks, candidates: candidatesUsed, permutations, meanPairsAtLastLook: total ? pairs / total : 0,
     anyExploratory: total ? exploratoryHistories / total : 0, anyStrictGate: total ? strictHistories / total : 0, strictGateWilsonUpper95: wilsonUpper(strictHistories, total),
     plantedStrictGate: planted && total ? plantedStrict / total : null, plantedExploratory: planted && total ? plantedExploratory / total : null };
+}
+
+export function runCalibration(scenario: CalibrationScenario, config: CalibrationConfig): CalibrationResult {
+  const steps = calibrationSteps(scenario, config);
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
 }
