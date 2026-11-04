@@ -10,7 +10,7 @@ if (!local) throw Error('Explicit isolated local workdir required');
 const config = readFileSync(join(local,'supabase/config.toml'),'utf8');
 const project = config.match(/^project_id\s*=\s*"(ownlevel-receipt-[a-f0-9]{8})"/m)?.[1];
 if (!project) throw Error('Refuse a non-disposable project');
-const root = resolve(import.meta.dirname,'../..'), migration = '20261104040000_training_feelings_finish_receipt.sql';
+const root = resolve(import.meta.dirname,'../..'), migration = '20261104024300_training_feelings_finish_receipt.sql';
 const docker = process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA,'Programs/DockerDesktop/resources/bin/docker.exe') : 'docker';
 function run(args, input) {
   const r = spawnSync(docker,args,{input,encoding:'utf8',maxBuffer:16*1024*1024});
