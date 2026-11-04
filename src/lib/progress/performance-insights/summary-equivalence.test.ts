@@ -1,0 +1,62 @@
+import { describe, expect, it } from "vitest";
+import { buildPerformanceInsightsPartialV1 } from ".";
+import { compareSessions } from "./kernel";
+import type { PerformanceExerciseBlock, PerformanceSession } from "./types";
+
+/** A small seeded generator, so a failure names the seed that reproduces it. */
+function randomFrom(seed: number) { let state = seed >>> 0; return () => { state = Math.imul(state ^ (state >>> 15), 0x2c1b3c6d) + 0x9e3779b9 >>> 0; return state / 2 ** 32; }; }
+const EXERCISES = [1, 2, 3].map(n => `93670000-0000-4000-8000-00000000000${n}`);
+const MODES = [["Peso total", "kg"], ["lingotes (no kg)", "lingotes"], ["Peso corporal", "reps"], ["Tiempo (segundos)", "seconds"]] as const;
+
+/** Messy on purpose: other implements, known and unknown configuration, ties in time, broken sessions, issues and repeated blocks. */
+function history(seed: number): PerformanceSession[] {
+  const random = randomFrom(seed), pick = <T,>(rows: readonly T[]) => rows[Math.floor(random() * rows.length)]!;
+  const sessions: PerformanceSession[] = [];
+  for (let day = 0; day < 40; day++) {
+    const date = new Date(Date.UTC(2026, 0, 1 + Math.floor(day / 2))).toISOString().slice(0, 10);
+    const tie = random() < 0.15 ? 0 : day % 2;
+    const exercises: PerformanceExerciseBlock[] = [];
+    for (const [index, exerciseId] of EXERCISES.entries()) {
+      if (random() < 0.3) continue;
+      const blocks = random() < 0.1 ? 2 : 1;
+      for (let block = 0; block < blocks; block++) {
+        const [weightMode, unit] = random() < 0.85 ? MODES[index % 2]! : pick(MODES);
+        const loaded = unit === "kg" || unit === "lingotes";
+        exercises.push({ id: `b${day}-${index}-${block}`, exerciseId, completed: random() > 0.05,
+          context: { weightMode: random() < 0.03 ? null : weightMode, unit, implement: random() < 0.03 ? null : pick(["barra", "barra", "barra", "mancuerna"]), configuration: pick([null, null, null, "none", "cerrado", " "]) },
+          sets: Array.from({ length: 1 + Math.floor(random() * 3) }, (_, set) => ({ id: `x${day}-${index}-${block}-${set}`, completed: random() > 0.1,
+            amount: random() < 0.02 ? null : Math.floor(random() * 4) * (random() < 0.9 ? 3 : 0), load: loaded ? pick([20, 25, 30]) : random() < 0.02 ? 5 : null })) });
+      }
+    }
+    sessions.push({ id: `s${String(day).padStart(2, "0")}`, date, routineId: "r", status: random() < 0.05 ? "active" : random() < 0.05 ? "discarded" : "completed",
+      startedAt: random() < 0.03 ? null : `${date}T${String(8 + tie * 4).padStart(2, "0")}:00:00.000Z`, endedAt: `${date}T${String(9 + tie * 4).padStart(2, "0")}:00:00.000Z`, chronology: random() < 0.03 ? "uncertain" : "verified", exercises });
+  }
+  return sessions;
+}
+
+describe("el resumen indexado equivale al recorrido completo", () => {
+  const seeds = Array.from({ length: 60 }, (_, seed) => seed + 1);
+  const rules = ["configuration_required", "configuration_unknown"] as const;
+  describe.each(rules)("%s", rule => {
+    it.each(seeds)("semilla %i: el mismo resultado, exclusiones incluidas, y las lecturas del detalle completo", seed => {
+      const input = { sessions: history(seed), historyCoverage: "complete" as const, exclusionDetail: "summary" as const };
+      const indexed = compareSessions(input, rule);
+      expect(indexed).toEqual(compareSessions(input, rule, false));
+      // The full detail only adds rows per other session: every reading, reference and record is the same.
+      const reading = (result: typeof indexed) => result.sessions.map(session => session.exercises.map(({ status, reason, evidence, records, volume, reference }) => ({ status, reason, evidence, records, volume, reference: reference?.sessionId ?? null })));
+      expect(reading(indexed)).toEqual(reading(compareSessions({ ...input, exclusionDetail: "full" }, rule)));
+    });
+    it("also without a history to compare with", () => {
+      const input = { sessions: history(7), historyCoverage: "unavailable" as const, exclusionDetail: "summary" as const };
+      expect(compareSessions(input, rule)).toEqual(compareSessions(input, rule, false));
+    });
+  });
+  it("the fixtures reach what they claim to: comparisons, ties, records and exclusions", () => {
+    const rows = Array.from({ length: 10 }, (_, seed) => buildPerformanceInsightsPartialV1({ sessions: history(seed + 1), historyCoverage: "complete", exclusionDetail: "summary" }).sessions.flatMap(session => session.exercises)).flat();
+    expect(rows.some(row => row.reading === "higher_record")).toBe(true);
+    expect(rows.some(row => row.reason === "reference_order_uncertain")).toBe(true);
+    expect(rows.some(row => row.records.facts.length > 0)).toBe(true);
+    expect(rows.some(row => row.exclusions.some(item => item.reason === "different_context"))).toBe(true);
+    expect(rows.some(row => row.reference?.exposure.issue)).toBe(true);
+  });
+});

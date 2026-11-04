@@ -1,8 +1,8 @@
 // Pure strict contract shared by the API and Expo. It accepts only this versioned shape: never a partial read as an empty one.
 import { INSIGHTS_PERFORMANCE_PARTIAL_METHOD, PARTIAL_CONTEXT } from "../progress/performance-insights/partial";
-import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD, PARTIAL_ASSOCIATION_PREFIX, type InsightsReadModel } from "../progress/insights-engine/types";
+import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from "../progress/insights-engine/types";
 
-export type { AssociationResult, AssociationState, CandidateDefinition, DayFact, ExerciseFact, ExerciseSummary, InsightsReadModel, NutritionContext, PartialAssociationResult, PartialDayFact, PartialExerciseFact, PartialExerciseSummary, PartialLane, SessionFact, SessionFeeling } from "../progress/insights-engine/types";
+export type { AssociationResult, AssociationState, CandidateDefinition, DayFact, ExerciseFact, ExerciseSummary, InsightsDaysPage, InsightsReadModel, InsightsRelationDetail, InsightsRelations, InsightsResponse, InsightsSummary, PartialAssociationState, PartialRelationSummary, RelationSummary, NutritionContext, PartialAssociationResult, PartialDayFact, PartialExerciseFact, PartialExerciseSummary, PartialLane, SessionFact, SessionFeeling } from "../progress/insights-engine/types";
 export const PERFORMANCE_INSIGHTS_PATH = "/api/mobile/v1/progress/performance-insights";
 
 type Json = Record<string, unknown>;
@@ -16,6 +16,8 @@ const uuid = (value: unknown) => typeof value === "string" && /^[0-9a-f]{8}-[0-9
 const list = (value: unknown, check: (row: unknown) => boolean) => Array.isArray(value) && value.every(check);
 const STATUS = new Set(["improved", "observed_stable", "declined", "ambiguous_evidence", "insufficient_comparison"]);
 const STATE = new Set(["insufficient_data", "no_clear_signal", "exploratory"]);
+/** No "exploratory" here: a partial reading can never arrive with the words of the strict method. */
+const PARTIAL_STATE = new Set(["insufficient_data", "no_clear_signal", "coincidence_context_unknown"]);
 const FAMILY = new Set(["metric", "nutrition", "meal_window", "feeling"]);
 const WINDOW = new Set(["same_day", "previous_day", "pre_3h", "same_day_before_start", "session"]);
 const BASIS = new Set(["same_day_unordered", "previous_logical_day", "explicit_meal_time_before_start", "declared_pre_unverified_clock"]);
@@ -41,7 +43,9 @@ const summary = (v: unknown) => object(v) && uuid(v.exerciseId) && typeof v.name
   && (v.lastDate === null || date(v.lastDate)) && STATUS.has(String(v.lastStatus)) && typeof v.lastReason === "string";
 const group = (v: unknown) => object(v) && count(v.days) && finite(v.min) && finite(v.max) && finite(v.meanOutcome);
 const definition = (v: unknown) => object(v) && typeof v.id === "string" && FAMILY.has(String(v.family)) && WINDOW.has(String(v.window)) && BASIS.has(String(v.temporalBasis)) && typeof v.subject === "string";
-const association = (v: unknown) => object(v) && typeof v.id === "string" && definition(v.definition) && STATE.has(String(v.state)) && typeof v.reason === "string"
+const relation = (v: unknown, states: Set<string>) => object(v) && typeof v.id === "string" && definition(v.definition) && states.has(String(v.state)) && typeof v.reason === "string"
+  && count(v.pairs) && count(v.outcomeDays);
+const associationBody = (v: unknown, states: Set<string>) => object(v) && relation(v, states)
   && count(v.pairs) && count(v.outcomeDays) && numberOrNull(v.coverage) && tally(v.exclusions)
   && ["rho", "localRho", "permutationP", "familyAdjustedP"].every(k => numberOrNull(v[k]))
   && (v.groups === null || (object(v.groups) && v.groups.rule === "median_balanced_ties" && finite(v.groups.cut) && typeof v.groups.lowIncludesCut === "boolean" && group(v.groups.low) && group(v.groups.high)))
@@ -56,31 +60,73 @@ const partialDay = (v: unknown) => object(v) && date(v.date) && partialCounts(v.
   && list(v.sessions, s => object(s) && typeof s.sessionId === "string" && partialCounts(s.counts) && list(s.exercises, partialExercise));
 const partialSummary = (v: unknown) => object(v) && uuid(v.exerciseId) && typeof v.name === "string" && ["exposures", "higher", "same", "lower", "ambiguous", "insufficient"].every(k => count(v[k]))
   && (v.lastDate === null || date(v.lastDate)) && READING.has(String(v.lastReading)) && typeof v.lastReason === "string";
-const partialAssociation = (v: unknown) => association(v) && (v as Json).contextCompleteness === PARTIAL_CONTEXT && String((v as Json).id).startsWith(PARTIAL_ASSOCIATION_PREFIX);
+const association = (v: unknown) => associationBody(v, STATE);
+const partialAssociation = (v: unknown) => associationBody(v, PARTIAL_STATE) && (v as Json).contextCompleteness === PARTIAL_CONTEXT && String((v as Json).id).startsWith(PARTIAL_ASSOCIATION_PREFIX);
 const pairs = (v: unknown) => v === null || (object(v) && typeof v.id === "string" && list(v.pairs, p => object(p) && date(p.date) && finite(p.exposure) && finite(p.outcome) && list(p.sessionIds, s => typeof s === "string")));
 /** Its labels are required: a partial reading can never arrive looking like one of the strict method. */
-const partialLane = (v: unknown) => object(v) && v.methodVersion === INSIGHTS_PERFORMANCE_PARTIAL_METHOD && v.engineMethodVersion === INSIGHTS_ENGINE_PARTIAL_METHOD && v.contextCompleteness === PARTIAL_CONTEXT
-  && (v.integrity === "valid" || v.integrity === "conflicting_duplicates") && object(v.partition) && count(v.partition.total) && count(v.partition.configurationKnown) && count(v.partition.configurationUnknown)
+const partialLabels = (v: unknown) => object(v) && v.methodVersion === INSIGHTS_PERFORMANCE_PARTIAL_METHOD && v.engineMethodVersion === INSIGHTS_ENGINE_PARTIAL_METHOD && v.contextCompleteness === PARTIAL_CONTEXT
+  && (v.integrity === "valid" || v.integrity === "conflicting_duplicates");
+const partialFacts = (v: unknown) => object(v) && partialLabels(v) && object(v.partition) && count(v.partition.total) && count(v.partition.configurationKnown) && count(v.partition.configurationUnknown)
   && v.partition.total === Number(v.partition.configurationKnown) + Number(v.partition.configurationUnknown)
   && count(v.outcomeDays) && partialCounts(v.totals) && list(v.exercises, partialSummary) && list(v.days, partialDay)
-  && object(v.associations) && v.associations.outcome === "daily_lower_record_proportion" && count(v.associations.candidatesEvaluated) && count(v.associations.testableCandidates) && count(v.associations.permutations)
-  && object(v.associations.promotion) && v.associations.promotion.status === "not_enabled" && list(v.associations.items, partialAssociation) && pairs(v.associations.detail)
   && object(v.exclusions) && tally(v.exclusions.performance) && tally(v.exclusions.days);
+const partialLane = (v: unknown) => partialFacts(v) && object(v) && object(v.associations) && v.associations.outcome === "daily_lower_record_proportion" && count(v.associations.candidatesEvaluated) && count(v.associations.testableCandidates) && count(v.associations.permutations)
+  && object(v.associations.promotion) && v.associations.promotion.status === "not_enabled" && list(v.associations.items, partialAssociation) && pairs(v.associations.detail);
 
-/** Consistent patterns stay impossible in this contract until the risk budget is decided. */
-export function parsePerformanceInsights(raw: unknown): InsightsReadModel | undefined {
-  if (!object(raw) || raw.contractVersion !== INSIGHTS_CONTRACT || raw.methodVersion !== INSIGHTS_ENGINE_METHOD || typeof raw.performanceMethodVersion !== "string"
-    || !date(raw.today) || (raw.integrity !== "valid" && raw.integrity !== "conflicting_duplicates")) return undefined;
+const versions = (raw: Json) => raw.contractVersion === INSIGHTS_CONTRACT && raw.methodVersion === INSIGHTS_ENGINE_METHOD && typeof raw.performanceMethodVersion === "string"
+  && date(raw.today) && (raw.integrity === "valid" || raw.integrity === "conflicting_duplicates");
+const page = (v: unknown) => object(v) && count(v.limit) && count(v.totalDays) && (v.nextBefore === null || date(v.nextBefore));
+const historyBlock = (v: unknown) => object(v) && v.coverage === "complete" && count(v.sessions) && count(v.trainingDays) && count(v.outcomeDays) && (v.firstDate === null || date(v.firstDate)) && (v.lastDate === null || date(v.lastDate));
+const metricList = (v: unknown) => list(v, m => object(m) && typeof m.id === "string" && typeof m.name === "string" && stringOrNull(m.unit) && typeof m.valueType === "string" && typeof m.archived === "boolean");
+const limitsBlock = (v: unknown) => object(v) && object(v.configurationSnapshots) && count(v.configurationSnapshots.known) && count(v.configurationSnapshots.total) && tally(v.mealTimeEvidence);
+const exclusionBlock = (v: unknown) => object(v) && tally(v.performance) && tally(v.source);
+const factsBlock = (v: unknown) => object(v) && counts(v.totals) && list(v.exercises, summary) && list(v.days, day) && page(v.page);
+/** An empty list is only allowed when the lane has no outcome days to evaluate: never a silent "no relations". */
+const relationLane = (v: Json, check: (row: unknown) => boolean) => count(v.outcomeDays) && count(v.candidatesEvaluated) && count(v.testableCandidates) && count(v.permutations) && object(v.promotion) && v.promotion.status === "not_enabled"
+  && list(v.items, check) && (v.items as unknown[]).length === (v.outcomeDays ? v.candidatesEvaluated : 0);
+const sameDays = (a: unknown, b: unknown) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((row, index) => (row as Json).date === (b[index] as Json).date);
+
+function parseSummary(raw: Json) {
+  const { history, facts, metrics, exclusions, limits, relations, partial } = raw;
+  const lane = (v: unknown) => object(v) && count(v.candidatesEvaluated) && count(v.outcomeDays);
+  if (!historyBlock(history) || !factsBlock(facts) || !metricList(metrics) || !exclusionBlock(exclusions) || !limitsBlock(limits) || !partialFacts(partial)) return undefined;
+  if (!object(relations) || !lane(relations.strict) || !lane(relations.partial) || !sameDays((facts as Json).days, (partial as Json).days)) return undefined;
+  return raw as unknown as InsightsSummary;
+}
+function parseDays(raw: Json) {
+  const { facts, partial } = raw;
+  if (!object(facts) || !list(facts.days, day) || !page(facts.page) || !object(partial) || !partialLabels(partial) || !list(partial.days, partialDay) || !sameDays(facts.days, partial.days)) return undefined;
+  return raw as unknown as InsightsDaysPage;
+}
+function parseRelations(raw: Json) {
+  const { strict, partial, metrics } = raw;
+  if (!metricList(metrics) || !object(strict) || !object(partial) || !partialLabels(partial)) return undefined;
+  if (!relationLane(strict, row => relation(row, STATE)) || !relationLane(partial, row => relation(row, PARTIAL_STATE) && String((row as Json).id).startsWith(PARTIAL_ASSOCIATION_PREFIX))) return undefined;
+  return raw as unknown as InsightsRelations;
+}
+function parseRelationDetail(raw: Json) {
+  const { lane, id, item, pairs: rows, metrics, partial } = raw;
+  if (!metricList(metrics) || typeof id !== "string" || (lane !== "strict" && lane !== "partial") || (lane === "partial" && !partialLabels(partial))) return undefined;
+  if (lane === "partial" ? !id.startsWith(PARTIAL_ASSOCIATION_PREFIX) : id.startsWith(PARTIAL_ASSOCIATION_PREFIX)) return undefined;
+  if (item === null) return rows === null ? raw as unknown as InsightsRelationDetail : undefined;
+  if (!(lane === "partial" ? partialAssociation(item) : association(item)) || (item as Json).id !== id) return undefined;
+  return pairs({ id, pairs: rows }) && rows !== null ? raw as unknown as InsightsRelationDetail : undefined;
+}
+
+/** The views the route answers with. Consistent patterns stay impossible in this contract until the risk budget is decided. */
+export function parsePerformanceInsights(raw: unknown): InsightsResponse | undefined {
+  if (!object(raw) || !versions(raw) || typeof raw.sourceRevision !== "string") return undefined;
+  return raw.view === "summary" ? parseSummary(raw) : raw.view === "days" ? parseDays(raw) : raw.view === "relations" ? parseRelations(raw) : raw.view === "relation" ? parseRelationDetail(raw) : undefined;
+}
+
+/** The whole pure model, for consumers of the domain module. The route never sends it. */
+export function parseCompleteInsights(raw: unknown): InsightsReadModel | undefined {
+  if (!object(raw) || !versions(raw)) return undefined;
   const { history, facts, metrics, associations, exclusions, limits } = raw;
-  if (!object(history) || history.coverage !== "complete" || !count(history.sessions) || !count(history.trainingDays) || !count(history.outcomeDays)
-    || (history.firstDate !== null && !date(history.firstDate)) || (history.lastDate !== null && !date(history.lastDate))) return undefined;
-  if (!object(facts) || !counts(facts.totals) || !list(facts.exercises, summary) || !list(facts.days, day) || !object(facts.page)
-    || !count(facts.page.limit) || !count(facts.page.totalDays) || (facts.page.nextBefore !== null && !date(facts.page.nextBefore))) return undefined;
-  if (!list(metrics, m => object(m) && typeof m.id === "string" && typeof m.name === "string" && stringOrNull(m.unit) && typeof m.valueType === "string" && typeof m.archived === "boolean")) return undefined;
+  if (!historyBlock(history) || !factsBlock(facts) || !metricList(metrics)) return undefined;
   if (!object(associations) || associations.outcome !== "daily_decline_proportion" || !count(associations.candidatesEvaluated) || !count(associations.testableCandidates) || !count(associations.permutations)
     || !object(associations.promotion) || associations.promotion.status !== "not_enabled" || !list(associations.items, association)) return undefined;
   if (!pairs(associations.detail) || !partialLane(raw.partial)) return undefined;
-  if (!object(exclusions) || !tally(exclusions.performance) || !tally(exclusions.source) || !object(limits)
-    || !object(limits.configurationSnapshots) || !count(limits.configurationSnapshots.known) || !count(limits.configurationSnapshots.total) || !tally(limits.mealTimeEvidence)) return undefined;
+  if (!exclusionBlock(exclusions) || !limitsBlock(limits)) return undefined;
   return raw as unknown as InsightsReadModel;
 }

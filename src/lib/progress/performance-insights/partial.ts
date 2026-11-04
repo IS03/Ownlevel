@@ -1,4 +1,4 @@
-import { configurationKnown } from "./exposure";
+import { configurationKnown, uniqueRows } from "./exposure";
 import { compareSessions } from "./kernel";
 import type { DailyPerformance, ExercisePerformance, HistoryCoverage, PerformanceSession, PerformanceStatus, SessionPerformance } from "./types";
 
@@ -33,8 +33,11 @@ const relabelExercise = ({ status, ...exercise }: ExercisePerformance): PartialE
 const relabelSession = (session: SessionPerformance): PartialSession => ({ ...session, ...LABELS, exercises: session.exercises.map(relabelExercise), counts: relabelCounts(session.counts) });
 
 /** Exposures that hold a known configuration, however many blocks they span. They belong to the strict lane alone. */
-function knownConfigurationExposures(sessions: readonly PerformanceSession[]) {
+function knownConfigurationExposures(rows: readonly PerformanceSession[]) {
   let known = 0, total = 0;
+  // Over the same deduplicated sessions the methods count. A contradictory history has no denominators at all.
+  const { unique: sessions, conflicts } = uniqueRows(rows);
+  if (conflicts.length) return { total: 0, configurationKnown: 0, configurationUnknown: 0 };
   for (const session of sessions) {
     if (session.status !== "completed") continue;
     const exercises = new Map<string, boolean>();

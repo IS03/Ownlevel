@@ -1,7 +1,7 @@
 import type { PartialDay } from "../performance-insights/partial";
 import type { DailyPerformance } from "../performance-insights/types";
 import { instantMs, mealTimeEvidence, parseSessionFeelings } from "./source-adapter";
-import type { Candidate, CandidateDefinition, InsightsSource, NutritionContext, ObservationRow, SessionFact, SessionFeeling } from "./types";
+import type { Candidate, CandidateDefinition, InsightsSource, MealTimeEvidence, NutritionContext, ObservationRow, SessionFact, SessionFeeling } from "./types";
 
 const HOUR = 3_600_000;
 /** Primary window fixed before any result, as a product decision rather than a physiological optimum. */
@@ -9,6 +9,13 @@ export const PRIMARY_MEAL_WINDOW_HOURS = 3;
 export const SENSITIVITY_MEAL_WINDOW_HOURS = [2, 4] as const;
 const NUTRIENTS = ["calories", "proteinG", "carbsG", "fatG"] as const;
 type Meal = InsightsSource["meals"][number];
+/** Every window of every day asks these again, and the evidence parses raw_input. A meal's answers never change. */
+const mealFacts = new WeakMap<Meal, { instant: number | null; evidence: MealTimeEvidence }>();
+function factsOf(meal: Meal) {
+  let facts = mealFacts.get(meal);
+  if (!facts) { facts = { instant: instantMs(meal.consumedAt), evidence: mealTimeEvidence(meal) }; mealFacts.set(meal, facts); }
+  return facts;
+}
 
 export const previousDate = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
 const bump = (record: Record<string, number>, key: string) => { record[key] = (record[key] ?? 0) + 1; };
@@ -64,9 +71,9 @@ function mealWindow(mealsByDate: ReadonlyMap<string, Meal[]>, date: string, star
   let total = 0, found = 0, partial = false, untimed = false, unverified = false;
   for (const day of scope) for (const meal of mealsByDate.get(day) ?? []) {
     const evidence = meal.entryKind === "meal" && accept(meal);
-    const instant = instantMs(meal.consumedAt);
+    const { instant, evidence: known } = factsOf(meal);
     if (!evidence) {
-      if (day === date || (instant !== null && instant >= from && instant < start)) { if (mealTimeEvidence(meal) === "unverified") unverified = true; else untimed = true; }
+      if (day === date || (instant !== null && instant >= from && instant < start)) { if (known === "unverified") unverified = true; else untimed = true; }
       continue;
     }
     if (instant === null || instant < from || instant >= start) continue;
@@ -75,18 +82,20 @@ function mealWindow(mealsByDate: ReadonlyMap<string, Meal[]>, date: string, star
   }
   return { total, found, partial, untimed, unverified };
 }
-const explicit = (meal: Meal) => mealTimeEvidence(meal) === "explicit";
-const declared = (meal: Meal) => { const evidence = mealTimeEvidence(meal); return evidence === "explicit" || evidence === "registration"; };
-const anyInstant = (meal: Meal) => mealTimeEvidence(meal) !== "unknown";
+const explicit = (meal: Meal) => factsOf(meal).evidence === "explicit";
+const declared = (meal: Meal) => { const { evidence } = factsOf(meal); return evidence === "explicit" || evidence === "registration"; };
+const anyInstant = (meal: Meal) => factsOf(meal).evidence !== "unknown";
 
 /**
  * One row per logical day with a comparable outcome. Today stays out: its intake and metrics are still open. A daily metric
  * contributes one observation per day, however many exercises were trained.
  */
-export function buildExposureTable(source: InsightsSource, days: readonly OutcomeDay[], today: string): ExposureTable {
-  const sourceExclusions: Record<string, number> = {};
-  const nutritionByDate = nutritionDays(source.meals, sourceExclusions);
-  const { series, byDate: metricsByDate } = metricSeries(source, sourceExclusions);
+export type ExposureContext = ReturnType<typeof buildExposureContext>;
+/** What was recorded, whatever method reads it. Built once: the two methods share it and differ only in their outcome days. */
+export function buildExposureContext(source: InsightsSource) {
+  const exclusions: Record<string, number> = {};
+  const nutritionByDate = nutritionDays(source.meals, exclusions);
+  const { series, byDate: metricsByDate } = metricSeries(source, exclusions);
   const mealsByDate = new Map<string, Meal[]>();
   for (const meal of source.meals) {
     const rows = mealsByDate.get(meal.date);
@@ -102,11 +111,17 @@ export function buildExposureTable(source: InsightsSource, days: readonly Outcom
   const feelingsBySession = new Map<string, Partial<Record<string, SessionFeeling>>>();
   for (const row of source.feelings) {
     const session = sessionById.get(row.sessionId);
-    if (!session) { bump(sourceExclusions, "feelings_without_session"); continue; }
+    if (!session) { bump(exclusions, "feelings_without_session"); continue; }
     const parsed = parseSessionFeelings(row.facts, session, firstSetAt.get(row.sessionId) ?? null);
-    for (let i = 0; i < parsed.invalid; i++) bump(sourceExclusions, "feeling_invalid");
+    for (let i = 0; i < parsed.invalid; i++) bump(exclusions, "feeling_invalid");
     feelingsBySession.set(row.sessionId, parsed.values);
   }
+  return { exclusions, nutritionByDate, series, metricsByDate, mealsByDate, sessionById, feelingsBySession };
+}
+
+export function buildExposureTable(source: InsightsSource, days: readonly OutcomeDay[], today: string, context: ExposureContext = buildExposureContext(source), sessionContext = true): ExposureTable {
+  const { nutritionByDate, series, metricsByDate, mealsByDate, sessionById, feelingsBySession } = context;
+  const sourceExclusions: Record<string, number> = { ...context.exclusions };
 
   const carbsPre3hBySession = new Map<string, SessionFact["context"]["carbsPre3h"]>();
   const sessionIdsByDate = new Map<string, string[]>();
@@ -116,7 +131,8 @@ export function buildExposureTable(source: InsightsSource, days: readonly Outcom
   for (const day of days) {
     const ids = day.sessions.map(session => session.sessionId);
     sessionIdsByDate.set(day.date, ids);
-    for (const id of ids) {
+    // What surrounded a session does not depend on the method: the second method reuses the first one's.
+    if (sessionContext) for (const id of ids) {
       const start = instantMs(sessionById.get(id)?.startedAt);
       if (start === null) { carbsPre3hBySession.set(id, { value: null, state: "no_start_time" }); continue; }
       const window = mealWindow(mealsByDate, day.date, start, start - PRIMARY_MEAL_WINDOW_HOURS * HOUR, explicit);
@@ -187,7 +203,7 @@ function mealCandidate(rows: readonly ObservationRow[], single: ReadonlyMap<stri
     const accept = window === "pre_3h" ? explicit : (meal: Meal) => explicit(meal) && meal.date === row.date;
     const result = mealWindow(mealsByDate, row.date, session.start, from, accept);
     if (window === "same_day_before_start") {
-      const evidence = (mealsByDate.get(row.date) ?? []).map(meal => mealTimeEvidence(meal));
+      const evidence = (mealsByDate.get(row.date) ?? []).map(meal => factsOf(meal).evidence);
       result.untimed = evidence.some(value => value === "unknown" || value === "registration");
       result.unverified = evidence.includes("unverified");
     }
