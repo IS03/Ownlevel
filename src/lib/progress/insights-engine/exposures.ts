@@ -1,3 +1,4 @@
+import type { PartialDay } from "../performance-insights/partial";
 import type { DailyPerformance } from "../performance-insights/types";
 import { instantMs, mealTimeEvidence, parseSessionFeelings } from "./source-adapter";
 import type { Candidate, CandidateDefinition, InsightsSource, NutritionContext, ObservationRow, SessionFact, SessionFeeling } from "./types";
@@ -11,6 +12,11 @@ type Meal = InsightsSource["meals"][number];
 
 export const previousDate = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
 const bump = (record: Record<string, number>, key: string) => { record[key] = (record[key] ?? 0) + 1; };
+
+/** What a method hands to the associations. The two methods never share a day's outcome. */
+export type OutcomeDay = { date: string; sessions: readonly { sessionId: string; routineId: string | null }[]; outcome: number | null; outcomeSensitivity: number | null };
+export const strictOutcomeDays = (days: readonly DailyPerformance[]): OutcomeDay[] => days.map(day => ({ date: day.date, sessions: day.sessions, outcome: day.candidateDeclineProportion, outcomeSensitivity: day.equalSessionWeightSensitivity }));
+export const partialOutcomeDays = (days: readonly PartialDay[]): OutcomeDay[] => days.map(day => ({ date: day.date, sessions: day.sessions, outcome: day.candidateLowerProportion, outcomeSensitivity: day.equalSessionWeightSensitivity }));
 
 export type ExposureTable = {
   rows: ObservationRow[]; candidates: Candidate[]; sourceExclusions: Record<string, number>;
@@ -77,7 +83,7 @@ const anyInstant = (meal: Meal) => mealTimeEvidence(meal) !== "unknown";
  * One row per logical day with a comparable outcome. Today stays out: its intake and metrics are still open. A daily metric
  * contributes one observation per day, however many exercises were trained.
  */
-export function buildExposureTable(source: InsightsSource, days: readonly DailyPerformance[], today: string): ExposureTable {
+export function buildExposureTable(source: InsightsSource, days: readonly OutcomeDay[], today: string): ExposureTable {
   const sourceExclusions: Record<string, number> = {};
   const nutritionByDate = nutritionDays(source.meals, sourceExclusions);
   const { series, byDate: metricsByDate } = metricSeries(source, sourceExclusions);
@@ -118,9 +124,9 @@ export function buildExposureTable(source: InsightsSource, days: readonly DailyP
         : window.found ? { value: window.total, state: "recorded" } : { value: null, state: "no_registered_meal" });
     }
     if (day.date >= today) { bump(notEvaluated, "day_still_open"); continue; }
-    if (day.candidateDeclineProportion === null) { bump(notEvaluated, "no_comparable_outcome"); continue; }
+    if (day.outcome === null) { bump(notEvaluated, "no_comparable_outcome"); continue; }
     const routines = [...new Set(day.sessions.map(session => session.routineId ?? "free"))];
-    rows.push({ date: day.date, y: day.candidateDeclineProportion, ySensitivity: day.equalSessionWeightSensitivity ?? day.candidateDeclineProportion,
+    rows.push({ date: day.date, y: day.outcome, ySensitivity: day.outcomeSensitivity ?? day.outcome,
       routineKey: routines.length === 1 ? routines[0]! : null });
     if (ids.length === 1) singleSession.set(day.date, { id: ids[0]!, start: instantMs(sessionById.get(ids[0]!)?.startedAt) });
   }

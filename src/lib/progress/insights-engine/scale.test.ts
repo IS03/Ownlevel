@@ -57,15 +57,15 @@ describe("escala con perfiles sintéticos", () => {
       globalThis.gc?.();
       const heapBefore = process.memoryUsage().heapUsed;
       const times: number[] = [];
-      let bytes = 0, candidates = 0, comparable = 0, outcomeDays = 0, heapPeak = 0;
+      let bytes = 0, candidates = 0, comparable = 0, outcomeDays = 0, partialComparable = 0, partialOutcomeDays = 0, partialCandidates = 0, heapPeak = 0;
       for (let run = 0; run < 5; run++) {
         const started = performance.now();
         const model = buildInsightsReadModel(source, { today: "2040-01-01" });
         times.push(performance.now() - started);
         heapPeak = Math.max(heapPeak, process.memoryUsage().heapUsed);
-        bytes = Buffer.byteLength(JSON.stringify(model)); candidates = model.associations.candidatesEvaluated; comparable = model.facts.totals.comparable; outcomeDays = model.history.outcomeDays;
+        bytes = Buffer.byteLength(JSON.stringify(model)); candidates = model.associations.candidatesEvaluated; comparable = model.facts.totals.comparable; outcomeDays = model.history.outcomeDays; partialComparable = model.partial.totals.comparable; partialOutcomeDays = model.partial.outcomeDays; partialCandidates = model.partial.associations.candidatesEvaluated;
       }
-      return { name, captured, rows, comparable, outcomeDays, sourcePages: pages, queries: { steady: pages + 14, sourceChangedRetry: 2 * (pages + 14), bothRetriesWorstCase: 4 * (pages + 14) }, candidates, msRuns: times.map(Math.round), msMax: Math.round(Math.max(...times)), responseKiB: Math.round(bytes / 1024), heapDeltaMiB: Math.round((heapPeak - heapBefore) / 1048576) };
+      return { name, captured, rows, comparable, outcomeDays, partialComparable, partialOutcomeDays, partialCandidates, sourcePages: pages, queries: { steady: pages + 14, sourceChangedRetry: 2 * (pages + 14), bothRetriesWorstCase: 4 * (pages + 14) }, candidates, msRuns: times.map(Math.round), msMax: Math.round(Math.max(...times)), responseKiB: Math.round(bytes / 1024), heapDeltaMiB: Math.round((heapPeak - heapBefore) / 1048576) };
     }));
     writeFileSync(out!, JSON.stringify(results, null, 2));
   }, 1_800_000);

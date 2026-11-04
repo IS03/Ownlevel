@@ -3,7 +3,7 @@ import { nutritionMealTimeSource } from "../../mobile-api/nutrition-meal-time";
 import { parsePerformanceInsights } from "../../mobile-api/performance-insights-contract";
 import { buildPerformanceInsightsV1 } from "../performance-insights";
 import { descriptiveGroups, evaluateAssociations } from "./associations";
-import { buildExposureTable } from "./exposures";
+import { buildExposureTable, strictOutcomeDays } from "./exposures";
 import { buildInsightsReadModel } from "./read-model";
 import { mealTimeEvidence, parseSessionFeelings, toPerformanceSessions, unitOfHistoricalMode } from "./source-adapter";
 import { blockPermutation, ranks, seededRandom, spearman } from "./stats";
@@ -28,7 +28,7 @@ const meal = (over: Partial<InsightsSource["meals"][number]> & { id: string; dat
   consumedAt: `${over.date}T16:00:00.000Z`, rawInput: PROVEN, entryKind: "meal", sourceType: "manual", calories: 500, proteinG: 30, carbsG: 60, fatG: 10, ...over });
 const candidateOf = (source: InsightsSource, id: string, today = "2027-01-01") => {
   const performance = buildPerformanceInsightsV1({ sessions: toPerformanceSessions(source).sessions, historyCoverage: "complete" });
-  return buildExposureTable(source, performance.days, today).candidates.find(row => row.definition.id === id)!;
+  return buildExposureTable(source, strictOutcomeDays(performance.days), today).candidates.find(row => row.definition.id === id)!;
 };
 const oscillating = (n: number) => Array.from({ length: n }, (_, day) => 8 + (day % 2 ? 1 : -1) * (day % 5 + 1));
 
@@ -113,7 +113,7 @@ describe("contexto y exposiciones", () => {
     const more = { ...source, exercises: [...source.exercises, ...source.exercises.map(row => ({ ...row, id: `${row.id}b`, exerciseId: EX_B }))],
       sets: [...source.sets, ...source.sets.map(row => ({ ...row, id: `${row.id}b`, sessionExerciseId: `${row.sessionExerciseId}b` }))] };
     const performance = buildPerformanceInsightsV1({ sessions: toPerformanceSessions(more).sessions, historyCoverage: "complete" });
-    const table = buildExposureTable(more, performance.days, "2027-01-01");
+    const table = buildExposureTable(more, strictOutcomeDays(performance.days), "2027-01-01");
     expect(table.rows.length).toBeLessThanOrEqual(4); expect(new Set(table.rows.map(row => row.date)).size).toBe(table.rows.length);
   });
   it("keeps missing nutrition away from zero and a partial macro away from a total", () => {
@@ -191,7 +191,7 @@ describe("contexto y exposiciones", () => {
   it("leaves today's open day out of associations, and multi-session days out of session exposures", () => {
     const source = history(oscillating(5));
     const performance = buildPerformanceInsightsV1({ sessions: toPerformanceSessions(source).sessions, historyCoverage: "complete" });
-    const table = buildExposureTable(source, performance.days, dateAt(4));
+    const table = buildExposureTable(source, strictOutcomeDays(performance.days), dateAt(4));
     expect(table.rows.some(row => row.date === dateAt(4))).toBe(false); expect(table.sourceExclusions.day_still_open).toBe(1);
     const twice = { ...source, sessions: [...source.sessions, { ...source.sessions[3]!, id: "again", startedAt: `${dateAt(3)}T20:00:00.000Z`, endedAt: `${dateAt(3)}T21:00:00.000Z` }],
       exercises: [...source.exercises, { ...source.exercises[3]!, id: "eagain", sessionId: "again" }], sets: [...source.sets, { ...source.sets[3]!, id: "setagain", sessionExerciseId: "eagain", completedAt: `${dateAt(3)}T20:10:00.000Z` }] };

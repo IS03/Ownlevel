@@ -1,7 +1,11 @@
+import type { INSIGHTS_PERFORMANCE_PARTIAL_METHOD, PARTIAL_CONTEXT, PartialCounts, PartialReading } from "../performance-insights/partial";
 import type { ExclusionReason, PerformanceCounts, PerformanceStatus } from "../performance-insights/types";
 
 /** Versioned, opt-in method. Facts, context and associations stay in separate lanes of the read model. */
 export const INSIGHTS_ENGINE_METHOD = "insights-engine/1" as const;
+/** Associations over the partial outcome: their own family, ids and calibration, never added to those of the strict method. */
+export const INSIGHTS_ENGINE_PARTIAL_METHOD = "insights-engine-partial/1" as const;
+export const PARTIAL_ASSOCIATION_PREFIX = "partial:";
 export const INSIGHTS_CONTRACT = "performance-insights/1" as const;
 export const INSIGHTS_RISK_BUDGET_CANDIDATE = 0.01;
 
@@ -102,6 +106,35 @@ export type ExerciseSummary = {
   lastDate: string | null; lastStatus: PerformanceStatus; lastReason: string;
 };
 
+export type PartialExerciseFact = {
+  exerciseId: string; name: string; reading: PartialReading; reason: string;
+  referenceSessionId: string | null; referenceAgeDays: number | null;
+  /** Highest value in this partial history. It is not a record of the strict method and never a claim about capacity. */
+  highestInPartialContext: boolean;
+};
+export type PartialSessionFact = { sessionId: string; counts: PartialCounts; exercises: PartialExerciseFact[] };
+/** Same dates and pagination as `facts.days`, with its own counts. Context stays in the strict day and belongs to neither method. */
+export type PartialDayFact = { date: string; counts: PartialCounts; evaluableSessions: number; lowerProportion: number | null; equalSessionSensitivity: number | null; openDay: boolean; sessions: PartialSessionFact[] };
+export type PartialExerciseSummary = {
+  exerciseId: string; name: string; exposures: number; higher: number; same: number; lower: number; ambiguous: number; insufficient: number;
+  lastDate: string | null; lastReading: PartialReading; lastReason: string;
+};
+export type PartialAssociationResult = AssociationResult & { contextCompleteness: typeof PARTIAL_CONTEXT };
+export type PartialLane = {
+  methodVersion: typeof INSIGHTS_PERFORMANCE_PARTIAL_METHOD; engineMethodVersion: typeof INSIGHTS_ENGINE_PARTIAL_METHOD; contextCompleteness: typeof PARTIAL_CONTEXT;
+  integrity: "valid" | "conflicting_duplicates";
+  /** Exposures with any known configuration count only for the strict method. Adding `comparable` across methods never counts one twice. */
+  partition: { total: number; configurationKnown: number; configurationUnknown: number };
+  outcomeDays: number; totals: PartialCounts; exercises: PartialExerciseSummary[]; days: PartialDayFact[];
+  associations: {
+    outcome: "daily_lower_record_proportion"; candidatesEvaluated: number; testableCandidates: number; permutations: number;
+    promotion: { status: "not_enabled"; reason: "partial_context" };
+    items: PartialAssociationResult[];
+    detail: { id: string; pairs: { date: string; exposure: number; outcome: number; sessionIds: string[] }[] } | null;
+  };
+  exclusions: { performance: Partial<Record<ExclusionReason | string, number>>; days: Record<string, number> };
+};
+
 export type InsightsReadModel = {
   contractVersion: typeof INSIGHTS_CONTRACT;
   methodVersion: typeof INSIGHTS_ENGINE_METHOD;
@@ -125,5 +158,7 @@ export type InsightsReadModel = {
     performance: Partial<Record<ExclusionReason | string, number>>;
     source: Record<string, number>;
   };
+  /** A separate method. Never merged into `facts` or `associations`, and always shown with its limit. */
+  partial: PartialLane;
   limits: { configurationSnapshots: { known: number; total: number }; mealTimeEvidence: Record<MealTimeEvidence, number>; unitBasis: "historical_weight_mode"; ingestionCompleteKnown: false; clockVerified: false };
 };

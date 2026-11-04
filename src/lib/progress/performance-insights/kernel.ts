@@ -1,5 +1,5 @@
 import { compareExposure } from "./comparator";
-import { buildExposure, contextIssue, sameContext, uniqueRows } from "./exposure";
+import { buildExposure, configurationKnown, contextIssue, sameContext, uniqueRows, type ContextRule } from "./exposure";
 import { INSIGHTS_PERFORMANCE_METHOD, type DailyPerformance, type ExerciseExposure, type ExercisePerformance, type HistoryCoverage, type PerformanceCounts, type PerformanceExclusion, type PerformanceSession, type SessionPerformance } from "./types";
 
 function validDate(value: string | null): value is string {
@@ -37,7 +37,7 @@ function counts(exercises: readonly ExercisePerformance[]): PerformanceCounts {
 
 type PreparedSession = { session: PerformanceSession; time: ReturnType<typeof interval>; exposures: ExerciseExposure[] };
 
-function prepare(session: PerformanceSession): PreparedSession {
+function prepare(session: PerformanceSession, rule: ContextRule): PreparedSession {
   const groups = new Map<string, typeof session.exercises[number][]>();
   for (const block of session.exercises) {
     // PostgreSQL UUID identity is case-insensitive; display names never define identity.
@@ -55,8 +55,10 @@ function prepare(session: PerformanceSession): PreparedSession {
       owners.set(id, ids);
     }
   }
-  const exposures = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([id, blocks]) => {
-    const exposure = buildExposure(session.id, id, blocks);
+  // The two methods partition exposures: one with any known configuration belongs to the strict lane only.
+  const inScope = ([, blocks]: [string, typeof session.exercises[number][]]) => rule !== "configuration_unknown" || !blocks.some(block => configurationKnown(block.context));
+  const exposures = [...groups].filter(inScope).sort(([a], [b]) => a.localeCompare(b)).map(([id, blocks]) => {
+    const exposure = buildExposure(session.id, id, blocks, rule);
     const conflict = blocks.some(block => duplicateBlockIds.has(block.id) || owners.get(`block:${block.id}`)!.size > 1
       || block.sets.some(set => duplicateSetIds.has(set.id) || owners.get(`set:${set.id}`)!.size > 1));
     return conflict ? { ...exposure, issue: "duplicate_conflict" as const } : exposure;
@@ -64,14 +66,14 @@ function prepare(session: PerformanceSession): PreparedSession {
   return { session, time: interval(session), exposures };
 }
 
-const usableContext = (a: ExerciseExposure) => !!a.context && !contextIssue(a.context) && a.issue !== "mixed_context" && a.issue !== "duplicate_conflict";
-function compatibleContext(a: ExerciseExposure, b: ExerciseExposure) {
-  return usableContext(a) && usableContext(b) && sameContext(a.context!, b.context!);
+const usableContext = (a: ExerciseExposure, rule: ContextRule) => !!a.context && !contextIssue(a.context, rule) && a.issue !== "mixed_context" && a.issue !== "duplicate_conflict";
+function compatibleContext(a: ExerciseExposure, b: ExerciseExposure, rule: ContextRule) {
+  return usableContext(a, rule) && usableContext(b, rule) && sameContext(a.context!, b.context!);
 }
 
-function evaluate(current: PreparedSession, exposure: ExerciseExposure, candidates: readonly PreparedSession[], historyCoverage: HistoryCoverage, exclusionDetail: "full" | "summary") {
+function evaluate(current: PreparedSession, exposure: ExerciseExposure, candidates: readonly PreparedSession[], historyCoverage: HistoryCoverage, exclusionDetail: "full" | "summary", rule: ContextRule) {
   // Same result without one row per earlier session: this exposure cannot match any of them, so it never has a reference.
-  if (exclusionDetail === "summary" && !usableContext(exposure)) return compareExposure({ current: exposure, reference: null, history: [], historyCoverage,
+  if (exclusionDetail === "summary" && !usableContext(exposure, rule)) return compareExposure({ current: exposure, reference: null, history: [], historyCoverage,
     exclusions: exposure.issue ? [{ reason: exposure.issue, sessionId: current.session.id, exerciseId: exposure.exerciseId, rowIds: exposure.blockIds }] : [], missingReason: "no_compatible_reference" });
   const exclusions: PerformanceExclusion[] = [];
   const eligible: Array<{ session: PerformanceSession; end: bigint; exposure: ExerciseExposure }> = [];
@@ -82,7 +84,7 @@ function evaluate(current: PreparedSession, exposure: ExerciseExposure, candidat
     if (candidate.session.status !== "completed") reason = "session_not_completed";
     else if (!candidate.time) reason = "uncertain_chronology";
     else if (!current.time || candidate.time.end >= current.time.start) reason = "not_before_start";
-    else if (!compatibleContext(exposure, previous)) reason = previous.issue ?? "different_context";
+    else if (!compatibleContext(exposure, previous, rule)) reason = previous.issue ?? "different_context";
     // Over a whole history every later session would add a row per exposure. It never was a candidate for this reference.
     if (reason === "not_before_start" && exclusionDetail === "summary" && current.time) continue;
     if (reason) exclusions.push({ reason, sessionId: candidate.session.id, exerciseId: exposure.exerciseId });
@@ -126,15 +128,22 @@ function aggregateDays(sessions: SessionPerformance[]): DailyPerformance[] {
   });
 }
 
+type ComparisonInput = { sessions: readonly PerformanceSession[]; historyCoverage: HistoryCoverage; exclusionDetail?: "full" | "summary" };
+
 /** Pure shared entrypoint for future Web/API consumers. No I/O, clock, catalog fallback or legacy adoption. */
-export function buildPerformanceInsightsV1(input: { sessions: readonly PerformanceSession[]; historyCoverage: HistoryCoverage; exclusionDetail?: "full" | "summary" }) {
+export function buildPerformanceInsightsV1(input: ComparisonInput) {
+  return compareSessions(input, "configuration_required");
+}
+
+/** Shared by both methods, which differ only in the context rule. `partial.ts` relabels every row before it leaves the kernel. */
+export function compareSessions(input: ComparisonInput, rule: ContextRule) {
   const unique = uniqueRows(input.sessions);
   const exclusions: PerformanceExclusion[] = unique.conflicts.map(sessionId => ({ reason: "duplicate_conflict", sessionId }));
   // Contradictory session versions cannot silently disappear from a day's denominator or reference history.
   if (unique.conflicts.length) return { methodVersion: INSIGHTS_PERFORMANCE_METHOD, historyCoverage: input.historyCoverage,
     integrity: "conflicting_duplicates" as const, deduplicatedSessions: unique.deduplicated,
     sessions: [] as SessionPerformance[], days: [] as DailyPerformance[], exclusions };
-  const prepared = unique.unique.map(prepare);
+  const prepared = unique.unique.map(session => prepare(session, rule));
   // Normalize source rows once. Only sessions containing the same UUID are reference candidates.
   const byExercise = new Map<string, PreparedSession[]>();
   for (const row of prepared) for (const exposure of row.exposures) {
@@ -147,7 +156,7 @@ export function buildPerformanceInsightsV1(input: { sessions: readonly Performan
       exclusions.push({ reason: "session_not_completed", sessionId: current.session.id });
       continue;
     }
-    const exercises = current.exposures.map(exposure => evaluate(current, exposure, byExercise.get(exposure.exerciseId)!, input.historyCoverage, input.exclusionDetail ?? "full"));
+    const exercises = current.exposures.map(exposure => evaluate(current, exposure, byExercise.get(exposure.exerciseId)!, input.historyCoverage, input.exclusionDetail ?? "full", rule));
     const sessionExclusions = exercises.flatMap(exercise => exercise.exclusions);
     if (!current.time) sessionExclusions.push({ reason: "uncertain_chronology", sessionId: current.session.id });
     const date = validDate(current.session.date) ? current.session.date : null;
