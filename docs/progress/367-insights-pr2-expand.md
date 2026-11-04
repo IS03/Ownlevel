@@ -202,7 +202,7 @@ La autenticación corre antes de validar la query, así que esos `401` **no prue
 
 ### Checklist única pendiente de QA física
 
-En iPhone con VoiceOver disponible. Usa producción y escribe entrenamientos reales: conviene una sesión corta prescindible.
+En iPhone con VoiceOver disponible, salvo el punto de Safari, que es Web. Usa producción y escribe entrenamientos reales: conviene una sesión corta prescindible.
 
 - [ ] **Accesibilidad y claro/oscuro:** texto grande, VoiceOver y foco en controles 1–5, anclajes y quitar; sin preselección, recortes ni colores valorativos.
 - [ ] **Omitir:** empezar y finalizar sin responder; rendimiento, dolor, notas y energía histórica conservados.
@@ -212,9 +212,8 @@ En iPhone con VoiceOver disponible. Usa producción y escribe entrenamientos rea
 - [ ] **Corte al finalizar:** activar modo avión justo al confirmar el finish, reabrir y recuperar; una sola sesión finalizada y mismo resumen.
 - [ ] **Conflictos:** cambiar las sensaciones desde otro cliente; se ve lo guardado, se resuelve expresamente, se conserva la captura al reenviar y nunca se sobrescribe solo.
 - [ ] **Recibo con adiciones a rutina:** finalizar con sensaciones y un ejercicio fuera de la rutina; el resumen muestra «se sumó a». Con corte al finalizar, cambiar rutina/notas desde otro cliente y recuperar: se mantienen nombre, resumen y adiciones originales. Solo el outcome `added` genera fila; los otros tres no muestran nada.
+- [ ] **Exclusión entre dos pestañas de Safari:** con la misma sesión en dos pestañas, elegir energía en una y fatiga en la otra, y guardar; al recargar ambas están las dos respuestas, sin conflicto contra vos mismo. Con una operación pendiente, tocar «Comprobar operación pendiente» en las dos casi a la vez; se confirma una sola y ninguna pestaña crea otra intención. Las pruebas simulan el lock: esta es la única comprobación real.
 
 **Cubierto por pruebas automatizadas, sin videos:** lock Web ausente/rechazado/throw, rechazos sueltos, intención v1 al reabrir, respuesta perdida a nivel de transporte, limpieza local interrumpida, ausencia de fallback a otro finish, aislamiento entre cuentas/sesiones y lectura fallida frente a ausencia confirmada. Los cuatro outcomes del recibo los valida el contrato con #384 local.
-
-**Sin cubrir por ninguna de las dos vías:** exclusión real entre pestañas de Safari (las pruebas simulan el lock). Se revisa aparte si se decide incluir Web en esta QA.
 
 Entrega sin mergear y sin deploys, builds ni instalaciones. **La QA física no está aprobada.** #383 sigue abierto, en borrador y sin auto-merge. Sin #380, loader all-time, asociaciones, patrones, scores, rediseño de Progreso ni PR 4.
