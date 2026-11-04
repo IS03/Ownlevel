@@ -71,7 +71,7 @@ function compatibleContext(a: ExerciseExposure, b: ExerciseExposure) {
     && sameContext(a.context, b.context);
 }
 
-function evaluate(current: PreparedSession, exposure: ExerciseExposure, candidates: readonly PreparedSession[], historyCoverage: HistoryCoverage) {
+function evaluate(current: PreparedSession, exposure: ExerciseExposure, candidates: readonly PreparedSession[], historyCoverage: HistoryCoverage, exclusionDetail: "full" | "summary") {
   const exclusions: PerformanceExclusion[] = [];
   const eligible: Array<{ session: PerformanceSession; end: bigint; exposure: ExerciseExposure }> = [];
   for (const candidate of candidates) {
@@ -82,6 +82,8 @@ function evaluate(current: PreparedSession, exposure: ExerciseExposure, candidat
     else if (!candidate.time) reason = "uncertain_chronology";
     else if (!current.time || candidate.time.end >= current.time.start) reason = "not_before_start";
     else if (!compatibleContext(exposure, previous)) reason = previous.issue ?? "different_context";
+    // Over a whole history every later session would add a row per exposure. It never was a candidate for this reference.
+    if (reason === "not_before_start" && exclusionDetail === "summary" && current.time) continue;
     if (reason) exclusions.push({ reason, sessionId: candidate.session.id, exerciseId: exposure.exerciseId });
     else eligible.push({ session: candidate.session, end: candidate.time!.end, exposure: previous });
   }
@@ -124,7 +126,7 @@ function aggregateDays(sessions: SessionPerformance[]): DailyPerformance[] {
 }
 
 /** Pure shared entrypoint for future Web/API consumers. No I/O, clock, catalog fallback or legacy adoption. */
-export function buildPerformanceInsightsV1(input: { sessions: readonly PerformanceSession[]; historyCoverage: HistoryCoverage }) {
+export function buildPerformanceInsightsV1(input: { sessions: readonly PerformanceSession[]; historyCoverage: HistoryCoverage; exclusionDetail?: "full" | "summary" }) {
   const unique = uniqueRows(input.sessions);
   const exclusions: PerformanceExclusion[] = unique.conflicts.map(sessionId => ({ reason: "duplicate_conflict", sessionId }));
   // Contradictory session versions cannot silently disappear from a day's denominator or reference history.
@@ -135,7 +137,8 @@ export function buildPerformanceInsightsV1(input: { sessions: readonly Performan
   // Normalize source rows once. Only sessions containing the same UUID are reference candidates.
   const byExercise = new Map<string, PreparedSession[]>();
   for (const row of prepared) for (const exposure of row.exposures) {
-    byExercise.set(exposure.exerciseId, [...(byExercise.get(exposure.exerciseId) ?? []), row]);
+    const rows = byExercise.get(exposure.exerciseId);
+    if (rows) rows.push(row); else byExercise.set(exposure.exerciseId, [row]);
   }
   const sessions: SessionPerformance[] = [];
   for (const current of prepared) {
@@ -143,7 +146,7 @@ export function buildPerformanceInsightsV1(input: { sessions: readonly Performan
       exclusions.push({ reason: "session_not_completed", sessionId: current.session.id });
       continue;
     }
-    const exercises = current.exposures.map(exposure => evaluate(current, exposure, byExercise.get(exposure.exerciseId)!, input.historyCoverage));
+    const exercises = current.exposures.map(exposure => evaluate(current, exposure, byExercise.get(exposure.exerciseId)!, input.historyCoverage, input.exclusionDetail ?? "full"));
     const sessionExclusions = exercises.flatMap(exercise => exercise.exclusions);
     if (!current.time) sessionExclusions.push({ reason: "uncertain_chronology", sessionId: current.session.id });
     const date = validDate(current.session.date) ? current.session.date : null;
