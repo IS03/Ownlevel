@@ -8,6 +8,22 @@ El motor de Insights lee `meal_entries.consumed_at_source`. Paso de ADOPT de la 
 - Con la columna nula rige la regla actual: `explicit` solo con la marca de importación, y `unverified` en cualquier otro caso. Sin backfill.
 
 ## Validación
-Regresiones de evidencia y de la ventana de 3 h, `tsc`, `eslint`. **Sin prueba contra PostgREST** de esta combinación: la columna se probó en el PR del EXPAND y el loader, con un cliente simulado.
+Regresiones de evidencia y de la ventana de 3 h, `tsc`, `eslint`.
+
+**Recorrido real** contra PostgREST en una pila local descartable con el esquema expandido y datos sintéticos, escribiendo cada comida por su camino real, leyendo con el loader y evaluando la ventana:
+
+| Productor | Se guarda | Ventana de 3 h |
+| --- | --- | --- |
+| Mobile manual y rápido, declarada | `user_declared` | Cuenta |
+| Mobile, declaración con igual hora en una edición | `user_declared` | Cuenta |
+| ChatGPT v4 | `user_declared` | Cuenta |
+| Importación antigua, solo con su marca | Nula | Cuenta |
+| Mobile antiguo, con hora | Nula | Sin valor: hora sin confirmar |
+| Mobile, otra hora sin declarar | Nula | Sin valor: hora sin confirmar |
+| ChatGPT v2, con hora | Nula | Sin valor: hora sin confirmar |
+| Mobile sin hora, ChatGPT sin hora, Web | `default_clock` | Sin valor: comida sin hora |
+| ChatGPT v3, «ahora» | `registration_now` | Sin valor; solo sensibilidad |
+
+Solo lo que cuenta llega a los pares de la relación, y cada exclusión dice por qué. La misma revisión responde con 7 consultas, y una comida nueva la cambia. No apareció ningún defecto en este recorrido.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
