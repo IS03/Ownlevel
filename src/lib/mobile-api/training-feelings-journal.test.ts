@@ -6,7 +6,7 @@ const initial = (): FeelingsResponse => ({ contractVersion: 'training-feelings/1
 function setup() {
   let server = initial(), key = 0, clock = new Date('2026-11-04T11:05:00Z');
   const values = new Map<string, string>(), receipts = new Map<string, FeelingsResponse>();
-  const storage: FeelingsStorage = { getItem: async k => values.get(k) ?? null, setItem: async (k, v) => { values.set(k, v); } };
+  const storage: FeelingsStorage = { getItem: async k => values.get(k) ?? null, setItem: async (k, v) => { values.set(k, v); }, lock: async (_key, action) => action() };
   const port: FeelingsPort = { read: vi.fn(async () => ({ status: 'ok', data: structuredClone(server) })), write: vi.fn(async (input: FeelingsInput) => {
     // Model only the published receipts/CAS contract; SQL guarantees retain #382's evidence.
     if (receipts.has(input.idempotencyKey)) return { status: 'ok', data: receipts.get(input.idempotencyKey)! };
@@ -26,6 +26,23 @@ function setup() {
   return { journal, values, storage, port, receipts, getServer: () => server, setServer: (s: FeelingsResponse) => { server = s; }, later: () => { clock = new Date('2026-11-05T11:05:00Z'); } };
 }
 describe('feelings journal ADOPT recovery', () => {
+  it.each(['missing', 'rejected', 'throws'] as const)('contains a %s Web lock failure, retains exact intent and recovers exclusively', async failure => {
+    const f = setup(), j = f.journal(); await j.refresh(); await j.change('energyPost', 4);
+    vi.mocked(f.port.write).mockResolvedValueOnce({ status: 'unavailable' }); await j.save();
+    const before = f.values.get(j.key), pending = j.getSnapshot().pending;
+    const errors: unknown[] = [], onUnhandled = (error: unknown) => errors.push(error);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      f.storage.lock = failure === 'missing' ? undefined : failure === 'throws' ? () => { throw Error('lock denied'); } : () => Promise.reject(Error('lock denied'));
+      await expect(j.refresh()).resolves.toBeNull();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      expect(errors).toEqual([]); expect(j.getSnapshot()).toMatchObject({ localError: true, lockError: true, busy: false });
+      expect(j.getSnapshot().error).toContain('bloqueo local'); expect(j.getSnapshot().pending).toEqual(pending); expect(f.values.get(j.key)).toBe(before);
+      const lock = vi.fn(); f.storage.lock = async (key, action) => { lock(key); return action(); };
+      await j.refresh(); expect(j.getSnapshot()).toMatchObject({ localError: false, lockError: false });
+      await j.retry(); expect(lock).toHaveBeenCalledTimes(2); expect(vi.mocked(f.port.write).mock.calls.at(-1)![0]).toEqual(pending);
+    } finally { process.off('unhandledRejection', onUnhandled); }
+  });
   it('omission sends nothing; records a late capture at the actual interaction time and uses explicit clear', async () => {
     const f = setup(), j = f.journal(); await j.refresh(); await j.save(); expect(f.port.write).not.toHaveBeenCalled();
     await j.change('energyPre', 4); f.later(); await j.save();
@@ -52,7 +69,9 @@ describe('feelings journal ADOPT recovery', () => {
     // Commit once, discard its response, and recover that receipt on the next request.
     f.port.write = vi.fn(async input => {
       const receipt = f.receipts.get(input.idempotencyKey);
-      if (receipt) return { status: 'ok', data: receipt };
+      if (receipt) return { status: 'ok', data: receipt, finished: { status: 'finished', sessionId: sid, sessionStatus: 'completed', name: 'SYNTHETIC', routineId: null,
+        logDate: '2026-11-04', startedAt: initial().sessionUpdatedAt, endedAt: receipt.endedAt!, sessionUpdatedAt: receipt.sessionUpdatedAt,
+        metadata: { energyLevel: null, performanceLevel: null, painLevel: null, notes: null }, exerciseCount: 1, completedExerciseCount: 1, completedSetCount: 1, routineAdditions: [] } };
       const committed = { ...f.getServer(), revision: 1, sessionStatus: 'completed' as const, endedAt: '2026-11-04T11:06:00Z' };
       f.receipts.set(input.idempotencyKey, committed); f.setServer(committed); return { status: 'unavailable' };
     });
@@ -110,5 +129,11 @@ describe('feelings journal ADOPT recovery', () => {
     await j.change('energyPre', 1);
     f.setServer({ ...f.getServer(), revision: 3, values: { energyPre: { value: 5, instrumentVersion: 'energy-fatigue/1', declaredMoment: 'pre', declaredAt: null, capturedAt: null, source: 'mobile', receivedAt: '2026-11-04T10:00:00Z', temporalQuality: 'unknown' } } });
     await j.save(); expect(j.getSnapshot().blocked).toBe(true); expect(f.port.write).not.toHaveBeenCalled();
+  });
+  it('never upgrades the negotiated mode of an already durable v1 finish on restart', async () => {
+    const f = setup(), j = f.journal(), old = { contractVersion: 'training-feelings/1' as const, operation: 'finish' as const, expectedRevision: 0, patch: {}, idempotencyKey: 'old:finish', expectedSessionUpdatedAt: initial().sessionUpdatedAt, metadata: {} };
+    f.values.set(j.key, JSON.stringify({ version: 1, server: initial(), patch: {}, baseRevision: 0, pending: old, blocked: false }));
+    await j.refresh(); expect(await j.prepareFinish({})).toEqual(old);
+    await j.retry(); expect(f.port.write).toHaveBeenCalledWith(old); expect(j.getSnapshot().finished).toBeUndefined();
   });
 });

@@ -72,6 +72,6 @@ export function TrainingFeelings({ journal, phase, disabled = false }: { journal
       <button type="button" disabled={state.busy} onClick={() => void journal.resolve('mine')}>Revisar mis respuestas para reenviar</button>
     </div> : state.pending ? <button type="button" disabled={state.busy} onClick={() => void retry()}>Comprobar operación pendiente</button>
       : phase === 'pre' && journal.hasWork() ? <button type="button" disabled={locked} onClick={() => void journal.save()}>Guardar sensaciones</button> : null}
-    {state.readError && !state.pending ? <button type="button" disabled={state.busy} onClick={() => void journal.refresh()}>Volver a leer sensaciones</button> : null}
+    {(state.readError || state.lockError) && !state.pending ? <button type="button" disabled={state.busy} onClick={() => void journal.refresh()}>Volver a leer sensaciones</button> : null}
   </section>;
 }

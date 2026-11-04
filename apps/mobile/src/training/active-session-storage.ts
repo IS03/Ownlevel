@@ -1,6 +1,6 @@
 import { parseSessionExerciseOrder, parseSessionFinishMetadata, type SessionAddInput, type SessionExerciseOrderInput, type SessionFinishMetadata } from '@/api/active-session';
 import { parseStoredExerciseDraft, parseStoredSummary, type RestDeadline, type SessionSummaryDraft, type StoredExerciseDraft } from './active-session-model';
-import { parseFeelingsInput, type FeelingsFinishInput } from '../../../../src/lib/mobile-api/training-feelings-contract';
+import { parseJournalFinishInput, type JournalFinishInput } from '../../../../src/lib/mobile-api/training-feelings-journal';
 
 export type SessionStoragePort = {
   getItem: (key: string) => Promise<string | null>;
@@ -14,7 +14,7 @@ export type StructuralIntent =
   | { kind: 'remove'; exerciseId: string; expectedUpdatedAt: string; idempotencyKey: string; draftWriteId?: string }
   | { kind: 'cancel'; idempotencyKey: string }
   // Metadata is frozen with the key: a recovery replays the identical request.
-  | { kind: 'finish'; metadata: SessionFinishMetadata; idempotencyKey: string; feelings?: FeelingsFinishInput };
+  | { kind: 'finish'; metadata: SessionFinishMetadata; idempotencyKey: string; feelings?: JournalFinishInput };
 // A shared queue per port/key prevents unmount/remount storage writes from racing.
 const queues = new WeakMap<SessionStoragePort, Map<string, Promise<unknown>>>();
 export class SessionDraftRepository {
@@ -84,7 +84,7 @@ export class SessionDraftRepository {
     if (intent.kind === 'cancel') return intent;
     if (intent.kind === 'finish' && parseSessionFinishMetadata(intent.metadata)) {
       if (intent.feelings) {
-        const feelings = parseFeelingsInput(intent.feelings, 'finish');
+        const feelings = parseJournalFinishInput(intent.feelings);
         if (feelings.idempotencyKey !== intent.idempotencyKey) throw new Error('Mismatched finish key');
       }
       return intent;

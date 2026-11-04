@@ -660,6 +660,12 @@ export class ActiveSessionController {
     if (!receipt) {
       return this.feelings.getSnapshot().blocked ? { status: 'conflict', code: 'FEELINGS_CHANGED', message: 'Revisá las sensaciones y el estado de la sesión.', meta: { durationMs: 0, httpStatus: 409, outcome: 'conflict' } } : unavailable;
     }
+    if (intent.feelings.receiptVersion) {
+      const original = this.feelings.getSnapshot().finished;
+      if (!original) return unavailable;
+      return { status: 'ok', meta: { durationMs: 0, httpStatus: 200, outcome: 'ok' }, data: original };
+    }
+    // Only old durable v1 intents lack a frozen summary. Never upgrade their receipt negotiation on replay.
     const read = await this.api.detail();
     if (read.status !== 'ok' || read.data.session.status !== 'completed' || !read.data.session.endedAt) return unavailable;
     const { session, exercises } = read.data;

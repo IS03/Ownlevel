@@ -70,6 +70,7 @@ import {
   ExerciseAutosaveQueue,
 } from "@/lib/phase2/exercise-autosave";
 import { resolveWorkoutFinishOutcome } from "@/lib/phase2/finish-reliability";
+import { runWorkoutFinishAttempt } from "@/lib/phase2/finish-attempt";
 import type { ExerciseAutosaveErrorCategory } from "@/lib/phase2/exercise-autosave";
 import type {
   SessionMetadataInput,
@@ -1064,6 +1065,7 @@ export function SessionEditor({
     setGlobalPending(true);
     setFinishStage("saving");
     setGlobalError(null);
+    await runWorkoutFinishAttempt(async () => {
     const failedExerciseIds =
       (await autosaveRef.current?.fenceAndFlushAll(exerciseIds)) ?? [];
     if (failedExerciseIds.length > 0) {
@@ -1094,9 +1096,9 @@ export function SessionEditor({
     let actionConfirmed = false;
     let legacyAttempted = false;
     let actionError: string | null = null;
-    await feelings.refresh();
-    const withFeelings = feelings.needsFinish();
     try {
+      await feelings.refresh();
+      const withFeelings = feelings.needsFinish();
       if (!feelings.getSnapshot().ready || feelings.getSnapshot().localError) throw new Error('Local feelings unavailable');
       if (withFeelings) {
         if (feelings.getSnapshot().pending?.operation === 'save' && !(await feelings.retry())) throw new Error('Pending pre feelings');
@@ -1169,6 +1171,15 @@ export function SessionEditor({
       // Completion is already saved; rest timer cleanup is best-effort browser state.
     }
     router.refresh();
+    }, () => {
+      setGlobalPending(false);
+      setFinishStage(null);
+      finishInFlightRef.current = false;
+      editingFencedRef.current = false;
+      autosaveRef.current?.releaseFence();
+    }, () => {
+      setGlobalError("No confirmamos la finalización. Los borradores y la operación pendiente se conservan; comprobá el estado antes de reintentar.");
+    });
   }
 
   async function cancelSession() {

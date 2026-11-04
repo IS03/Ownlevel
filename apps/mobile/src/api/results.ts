@@ -85,6 +85,7 @@ export type MobileApiMutationResult<T> =
         | 'SESSION_EXERCISE_CHANGED'
         | 'SESSION_CHANGED'
         | 'FEELINGS_CHANGED'
+        | 'FEELINGS_RECEIPT_VERSION_UNAVAILABLE'
         | 'SESSION_CLOSED'
         | 'SESSION_EXERCISE_REMOVED'
         | 'SESSION_EXERCISE_ALREADY_EXISTS'

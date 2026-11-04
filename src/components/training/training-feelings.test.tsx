@@ -10,11 +10,17 @@ import { TrainingFeelings } from './training-feelings';
 const sid = '93670000-0000-4000-8000-000000000010';
 async function journal() {
   const values = new Map<string, string>();
-  const j = new TrainingFeelingsJournal({ getItem: async k => values.get(k) ?? null, setItem: async (k, v) => { values.set(k, v); } },
+  const j = new TrainingFeelingsJournal({ getItem: async k => values.get(k) ?? null, setItem: async (k, v) => { values.set(k, v); }, lock: async (_key, action) => action() },
     { read: async () => ({ status: 'ok', data: { contractVersion: 'training-feelings/1', sessionId: sid, sessionStatus: 'in_progress', sessionUpdatedAt: '2026-11-04T10:00:00Z', endedAt: null, revision: 0, values: {} } }), write: async () => ({ status: 'unavailable' }) }, 'owner', sid, 'web', () => 'synthetic:1');
   await j.refresh(); return j;
 }
 describe('Web feeling controls', () => {
+  it('shows a failed lock as recoverable instead of an empty confirmed read', async () => {
+    const j = new TrainingFeelingsJournal({ getItem: async () => null, setItem: async () => undefined, lock: () => Promise.reject(Error('denied')) },
+      { read: async () => ({ status: 'unavailable' }), write: async () => ({ status: 'unavailable' }) }, 'owner', sid, 'web', () => 'synthetic:lock');
+    await j.refresh(); const html = renderToStaticMarkup(createElement(TrainingFeelings, { journal: j, phase: 'pre' }));
+    expect(html).toContain('No pudimos obtener el bloqueo local'); expect(html).toContain('Volver a leer sensaciones'); expect(html).toContain('Borrador local sin confirmar'); expect(html).not.toContain('Sin respuestas pendientes');
+  });
   it.each(['light', 'dark'])('uses accessible anchored controls without preselection (%s)', async scheme => {
     theme.current = scheme;
     const html = renderToStaticMarkup(createElement(TrainingFeelings, { journal: await journal(), phase: 'post' }));
