@@ -27,6 +27,8 @@ export type InsightsSource = {
   metricValues: readonly { metricId: string; date: string; value: unknown }[];
   meals: readonly {
     id: string; date: string; consumedAt: string | null; rawInput: unknown; entryKind: string | null; sourceType: string | null;
+    /** The import run that wrote this row, if one did. It is what makes a marker in raw_input believable. */
+    importRunId: string | null;
     calories: number | null; proteinG: number | null; carbsG: number | null; fatG: number | null;
   }[];
 };

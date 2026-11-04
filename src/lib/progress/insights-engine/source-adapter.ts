@@ -48,9 +48,10 @@ export function toPerformanceSessions(source: InsightsSource): { sessions: Perfo
 /**
  * Strict provenance for a meal's time, separate from the legacy helper, which reads a missing marker as known. Web, Mobile
  * and ChatGPT leave raw_input null both when a time was declared and when the clock filled it in, and timestamps cannot
- * tell them apart: Web stamps its own clock. Only a positive marker proves a time; today only the sheet import writes one.
+ * tell them apart: Web stamps its own clock. Only a positive marker proves a time, and only the sheet import writes one. A token can
+ * write raw_input on its own rows, so the marker counts only on a row an import run wrote: anywhere else it is just text.
  */
-export function mealTimeEvidence(meal: Pick<InsightsSource["meals"][number], "consumedAt" | "rawInput" | "entryKind">): MealTimeEvidence {
+export function mealTimeEvidence(meal: Pick<InsightsSource["meals"][number], "consumedAt" | "rawInput" | "entryKind" | "sourceType" | "importRunId">): MealTimeEvidence {
   if (meal.entryKind !== "meal" || instantMs(meal.consumedAt) === null) return "unknown";
   if (typeof meal.rawInput !== "string") return "unverified";
   let facts: unknown;
@@ -58,7 +59,7 @@ export function mealTimeEvidence(meal: Pick<InsightsSource["meals"][number], "co
   if (!facts || typeof facts !== "object" || Array.isArray(facts)) return "unverified";
   const { originalTimeKnown, timeSource } = facts as { originalTimeKnown?: unknown; timeSource?: unknown };
   if (originalTimeKnown === false) return timeSource === "registration" ? "registration" : "unknown";
-  return originalTimeKnown === true && timeSource === undefined ? "explicit" : "unverified";
+  return originalTimeKnown === true && timeSource === undefined && meal.sourceType === "sheet_import" && !!meal.importRunId ? "explicit" : "unverified";
 }
 
 const FEELING_KEYS: readonly FeelingKey[] = ["energyPre", "fatiguePre", "energyPost", "fatiguePost"];
