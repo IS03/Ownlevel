@@ -43,6 +43,7 @@ export class MobileApiConflictError extends Error {
       | "ROUTINE_TEMPLATE_CHANGED"
       | "SESSION_EXERCISE_CHANGED"
       | "SESSION_CHANGED"
+      | "FEELINGS_CHANGED"
       | "SESSION_CLOSED"
       | "SESSION_EXERCISE_REMOVED"
       | "SESSION_EXERCISE_ALREADY_EXISTS"
