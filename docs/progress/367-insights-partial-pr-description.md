@@ -22,13 +22,21 @@ Los cambios no registrados son supuestos, porque el dato real no existe.
 
 **Límite importante:** si la variante cambia junto con la exposición, la compuerta estricta pasa en 44,7 % de los historiales y el exploratorio en 77,9 %. El método no puede distinguirlo de un efecto real. Por eso se rotula siempre, nunca se presenta como causa y no se promueve. El objetivo del 1 % sigue sin aprobar.
 
+**Publicación:** por ese límite, pasar la compuerta en este método se publica como `coincidence_context_unknown`, nunca como `exploratory`, y no aparece hasta que se pide la lista.
+
 ## Costo
-- Consultas sin cambios: `P + 14` por intento. El loader no se tocó.
-- Cálculo máximo: 134 ms a 1 año, 1,10 s a 5 años, 6,4 s a 10 años.
-- Respuesta por defecto: 122, 177 y 241 KiB. **Desde 5 años queda fuera de los objetivos de 1 s y 128 KiB.** Hay una propuesta sin aplicar para reducir el tamaño.
+El endpoint separa [vistas](367-insights-partial-metodo.md#vistas-y-reutilización): resumen, días, relaciones y una relación. Otra vista de la misma revisión cuesta 7 consultas, con clave de cuenta, revisión y día. Sin historial truncado y con los mismos resultados.
+
+| A 10 años | Antes | Ahora |
+| --- | --- | --- |
+| Primera pantalla, cálculo | 6,4 s | 877 ms mediana, 1,03 s máximo |
+| Primera pantalla, respuesta | 241 KiB | 123 KiB |
+| Más días | Lectura y cálculo completos, 280 consultas | 7 consultas si la revisión coincide y sigue en memoria |
+
+**Sigue fuera de presupuesto a 10 años:** una relación pesa 258 KiB y el pico de memoria es 210 MiB. La tasa de aciertos real no se conoce.
 
 ## Validación
-Comparador estricto (67 pruebas) sin cambios en sus expectativas, 20 pruebas nuevas del método, calibración reproducible, `tsc` y `eslint`. Sin datos reales.
+Comparador estricto (67 pruebas) sin cambios en sus expectativas, equivalencia del resumen en 120 historiales aleatorios, vistas contra el modelo completo, huella de resultados idéntica, PostgREST local real, `tsc` y `eslint`. Sin datos reales. No se repitió ninguna campaña: ni la compuerta ni los resultados cambiaron.
 
 ## Pendiente
 Regla de producto de captura, presupuesto de riesgo. «Consistente» sigue deshabilitado.

@@ -11,8 +11,8 @@ Existe porque la configuración histórica (agarre, banco, posición) nunca se c
 | Compara | Mismo UUID, modo, unidad e implemento históricos, con configuración desconocida en ambos lados |
 | Nunca compara | Conocida contra desconocida; modo, unidad o implemento faltantes o distintos |
 | Nunca hace | Completar datos desde el catálogo vigente, escribir `none`, reconstruir historia |
-| Dice | «Registro superior, igual o inferior con contexto parcial» |
-| No dice | Mejora, descenso, capacidad, fuerza ni causa. Esas palabras no existen en el carril: `higher_record`, `same_record`, `lower_record` |
+| Dice | «Registro superior, igual o inferior con contexto parcial». Una asociación que pasa la compuerta solo es una coincidencia: `coincidence_context_unknown` |
+| No dice | Mejora, descenso, capacidad, fuerza ni causa, tampoco energía o comida como explicación. Esas palabras no existen en el carril: `higher_record`, `same_record`, `lower_record` |
 | Máximos | `highestInPartialContext`, separados de los récords estrictos |
 | «Consistente» | Imposible: `promotion.status = not_enabled`, motivo `partial_context` |
 
@@ -23,13 +23,13 @@ Cada ejercicio de cada sesión cae de un solo lado:
 - **Alguna configuración conocida** en cualquiera de sus bloques → solo método estricto.
 - **Toda desconocida** → carril parcial.
 
-`partial.partition` da `total`, `configurationKnown` y `configurationUnknown`, y el contrato rechaza una suma que no cierre.
+`partial.partition` da `total`, `configurationKnown` y `configurationUnknown`, y el contrato rechaza una suma que no cierre. Se cuenta sobre las mismas sesiones que los métodos, sin filas repetidas, y queda en cero si el historial es contradictorio.
 
 **Denominadores.** `facts.totals.total` sigue contando todas las exposiciones: su semántica no cambió, y las desconocidas figuran allí como `missing_context`. `partial.totals.total` cuenta solo las desconocidas. `comparable` es disjunto entre métodos; **`total` no se puede sumar**. La UI no suma ninguno.
 
 ## Contrato
 
-Carril `partial`, aditivo en `performance-insights/1`, que sigue sin consumidores. Sin sus rótulos, el contrato rechaza toda la lectura.
+Carril `partial`, en `performance-insights/1`, que sigue sin consumidores publicados. Sin sus rótulos, el contrato rechaza toda la lectura. Un carril parcial no puede traer el estado `exploratory`, y uno estricto no puede traer `coincidence_context_unknown`.
 
 | Campo | Contenido |
 | --- | --- |
@@ -39,7 +39,7 @@ Carril `partial`, aditivo en `performance-insights/1`, que sigue sin consumidore
 | `associations` | Familia propia con ids `partial:...`, resultado `daily_lower_record_proportion` y corrección solo sobre sus candidatos |
 | `exclusions` | Por ejercicio y por día |
 
-`association=partial:<id>` trae los pares de esa relación; el id sin prefijo trae los del estricto.
+`association=partial:<id>` trae esa relación con sus pares; el id sin prefijo trae la del estricto.
 
 ## Calibración
 
@@ -84,7 +84,9 @@ Cambios independientes de la exposición agregan ruido, no asociaciones falsas.
 | --- | --- | --- | --- |
 | Con la exposición alta se usa una variante más difícil, y solo esa sesión | **44,7 %** | 47,80 % | **77,9 %** |
 
-**El método no puede distinguir esto de un efecto real.** Si en los días de poca energía elegís una variante más fácil sin registrarla, aparece una relación que no viene de la energía. Por eso nunca se presenta como causa, se rotula siempre y no puede promoverse. La frecuencia real no se conoce: este escenario no estima cuánto ocurre, muestra qué pasa si ocurre.
+**El método no puede distinguir esto de un efecto real.** Si en los días de poca energía elegís una variante más fácil sin registrarla, aparece una relación que no viene de la energía. Tampoco hay diagnóstico posible con estos datos: un efecto real y un cambio ligado dejan el mismo rastro en las lecturas. La frecuencia real no se conoce: este escenario no estima cuánto ocurre, muestra qué pasa si ocurre.
+
+**Qué se publica por eso.** Pasar la compuerta en este método no se llama «exploratorio», como en el estricto: se llama `coincidence_context_unknown` y la frase dice que los días coincidieron y que no sabemos si cambió la variante. No puede promoverse, no aparece hasta que se pide la lista y nunca arma una frase con causa. **La compuerta y las cifras de calibración no cambiaron:** cambió lo que se afirma cuando pasa.
 
 ### Efecto real plantado
 
@@ -99,24 +101,82 @@ A 0,2 repeticiones casi no hay potencia, con o sin cambios: un efecto débil pue
 
 **El objetivo del 1 % sigue sin aprobar**, y estas cifras tampoco lo aprueban para este método.
 
+## Vistas y reutilización
+
+El endpoint ya no manda todo junto. Todas las vistas salen de una misma lectura consistente, identificada por `sourceRevision`.
+
+| Vista | Pedido | Contiene | No hace |
+| --- | --- | --- | --- |
+| `summary` | Por defecto | Totales, ejercicios, días, contexto y cuántas relaciones hay | Permutaciones |
+| `days` | `view=days&before=` | Solo los días pedidos, de ambos métodos | Permutaciones ni reenviar totales |
+| `relations` | `view=relations` | Una línea por relación, con estado, pares y días | Enviar estabilidad, sensibilidades ni pares |
+| `relation` | `association=<id>` | El resultado completo de una relación y sus pares | Evaluar la familia del otro método |
+
+**Nada se oculta.** Un método con días de resultado manda todas sus relaciones, y el contrato rechaza una lista más corta. Un método sin días de resultado manda su cantidad y `outcomeDays = 0`, sin una lista idéntica por candidato. Un id desconocido responde `item: null`, nunca una relación vacía.
+
+**Reutilización.** Lo calculado queda en memoria del proceso, con clave de cuenta (del token), revisión y día de Córdoba, 3 entradas y 5 minutos. Cada pedido vuelve a leer la revisión bajo RLS: si coincide, responde sin leer el historial; si cambió, lee todo de nuevo. El token se valida siempre. Es de mejor esfuerzo: en otra instancia de Vercel es un fallo de caché y cuesta una lectura completa, igual que antes. **La tasa de aciertos real no se conoce:** requiere OBSERVE.
+
+**Identidad y consistencia.** Una entrada nunca cruza cuentas ni días. Las páginas llevan `sourceRevision`, y la UI no une páginas de revisiones distintas.
+
 ## Costo y escala
 
-**Consultas:** sin cambios respecto de PR 4, porque el método es cálculo puro sobre la misma lectura: `P + 14` por intento (96 a 5 años, 280 a 10 años; ver [costo real](367-insights-pr4-motor.md#costo-real-de-lectura)). No se repitió la medición contra PostgREST porque el loader no cambió; esa evidencia sigue valiendo. La RPC de revisiones sigue como propuesta: agrupar consultas por sí solo no demuestra que arregle el plan lento de `workout_sets`.
+**Metodología.** Perfiles sintéticos, cada uno en su propio proceso (`scale.test.ts`), cinco corridas, con mediana y máximo. *Retenida* es el heap vivo que agrega la instantánea tras forzar recolección, con sus relaciones evaluadas. *Pico* es el máximo residente del proceso menos el residente con la fuente ya construida: incluye basura sin recolectar, no el costo de leer de la base y abarca las cinco corridas. Consultas: `P` son las páginas de los siete flujos.
 
-**Cálculo con ambos métodos** (5 corridas, perfil sintético, máximo):
+**Consultas**
 
-| Perfil | Datos | Comparables | Tiempo | Respuesta por defecto |
+| Pedido | Fórmula | 1 año | 5 años | 10 años |
 | --- | --- | --- | --- | --- |
-| 1 año | Hoy (parcial) | 1278 | 134 ms | 122 KiB |
-| 5 años | Hoy (parcial) | 7826 | **1,10 s** | **177 KiB** |
-| 10 años | Hoy (parcial) | 25 036 | **6,4 s** | **241 KiB** |
-| 1 año | Con captura (estricto) | 1278 | 151 ms | 97 KiB |
-| 5 años | Con captura (estricto) | 7826 | **1,16 s** | **150 KiB** |
-| 10 años | Con captura (estricto) | 25 036 | **6,3 s** | **203 KiB** |
+| Lectura completa (primera vez o revisión distinta) | `P + 14` | 30 | 96 | 280 |
+| Con un reintento (fuente que cambia, 503 o medianoche) | `2(P + 14)` | 60 | 192 | 560 |
+| Ambos reintentos | `4(P + 14)` | 120 | 384 | 1120 |
+| **Otra vista de la misma revisión** | **7** | 7 | 7 | 7 |
 
-**Quedan fuera de los objetivos** de 1 s y 128 KiB desde 5 años. Lo que más pesa en el tamaño es publicar los ítems de los dos métodos: el carril sin días de resultado igual manda todos sus candidatos. **Propuesta sin aplicar:** omitir `items` en un carril con `outcomeDays = 0`; ahorraría unos 45 KiB a 5 años. El tiempo está dominado por las permutaciones. Los perfiles son sintéticos y densos; falta OBSERVE.
+**Cálculo** (datos de hoy, carril parcial; mediana / máximo)
 
-La memoria medida (452 MiB a 10 años) es el `heapUsed` tras cinco corridas sin forzar recolección, no un pico: no sirve para comparar.
+| Perfil | Antes, todo junto | Primera lectura | Relaciones, la primera vez | Más días o una relación ya evaluada |
+| --- | --- | --- | --- | --- |
+| 1 año | 134 ms | 52 / 76 ms | 23 / 28 ms | < 2 ms |
+| 5 años | 1,10 s | 271 / 377 ms | 257 / 261 ms | < 2 ms |
+| 10 años | 6,4 s | **877 ms / 1,03 s** | 904 / 920 ms | < 2 ms |
+
+Con configuración conocida los tiempos son del mismo orden: 42, 240 y 740 ms la primera lectura; 24, 274 y 948 ms las relaciones.
+
+**Respuesta** (KiB; datos de hoy)
+
+| Perfil | `summary` | `days` | `relations` | `relation` | Antes |
+| --- | --- | --- | --- | --- | --- |
+| 1 año | 78 | 63 | 11 | 22 | 122 |
+| 5 años | 93 | 70 | 21 | 120 | 177 |
+| 10 años | 123 | 89 | 29 | **258** | 241 |
+
+**Memoria** (datos de hoy)
+
+| Perfil | Retenida por una instantánea | Pico |
+| --- | --- | --- |
+| 1 año | 2 MiB | 41 MiB |
+| 5 años | 7 MiB | 79 MiB |
+| 10 años | 15 MiB | **210 MiB** |
+
+**PostgREST local real a 5 años** (1312 sesiones, 7832 comparables; pila descartable):
+
+| Base | Lectura completa | Otra vista | Relaciones, la primera vez |
+| --- | --- | --- | --- |
+| Con estadísticas | 517–656 ms, 72 consultas | 39–45 ms, 7 consultas | 201–214 ms |
+| Recién sembrada, sin estadísticas | **3,0–3,1 s**, 72 consultas | **1,2 s**, 7 consultas | 198–202 ms |
+
+**Sigue fuera de presupuesto:**
+- **Una relación a 10 años:** 258 KiB contra 128. Son sus 3136 pares, que son la evidencia. No se recortan.
+- **Primera lectura a 10 años:** el máximo toca 1,03 s de cálculo, antes de sumar la lectura de 280 consultas.
+- **Pico de memoria a 10 años:** 210 MiB contra 128. Es un límite superior porque abarca cinco corridas, pero no se probó en la función real de Vercel.
+- **Revisión sin estadísticas:** 1,2 s. Cada pedido la paga, también al reutilizar. La RPC de revisiones sigue como propuesta: agrupar consultas por sí solo no demuestra que arregle el plan lento de `workout_sets`.
+
+**Por qué no cambian los resultados:**
+- El resumen indexa la historia de cada ejercicio por contexto, en lugar de recorrerla por cada exposición. 120 historiales aleatorios con contextos mezclados, empates, sesiones rotas y bloques repetidos dan **exactamente** lo mismo que el recorrido, exclusiones incluidas.
+- Una huella de los resultados de un año, tomada antes de tocar el código, es idéntica después, salvo el nombre del estado parcial.
+- Cada vista se compara contra el modelo completo.
+- La muestra de 20 historiales de la calibración parcial sale idéntica en sus 8 escenarios originales.
+
+**Para qué calibraciones vale:** ninguna campaña se invalidó, porque ni la compuerta ni los resultados del comparador cambiaron. No se repitieron.
 
 ## Qué sigue valiendo
 
@@ -124,10 +184,11 @@ La memoria medida (452 MiB a 10 años) es el `heapUsed` tras cinco corridas sin 
 | --- | --- |
 | Pruebas del comparador estricto (67) | Pasan sin cambios en sus expectativas |
 | Calibración estricta y binaria | Vigente: la política de asociaciones no cambió |
-| PostgREST local de PR 4 | Vigente para consultas; el tiempo de cálculo es el de esta tabla |
+| Calibración parcial | Vigente: comparador y compuerta dan lo mismo |
+| PostgREST local de PR 4 | Reemplazada por la medición de arriba |
 
 ## Pendiente
 
 - Captura futura de configuración: **la regla de producto sigue sin definir**. No se escribe `none` ni se impone que toda variante sea otro ejercicio.
 - Presupuesto de riesgo. «Consistente» sigue deshabilitado.
-- Decidir la omisión de `items` y la latencia con datos de OBSERVE.
+- Tasa de aciertos de la reutilización y latencia real: requieren OBSERVE.

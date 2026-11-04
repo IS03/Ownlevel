@@ -16,7 +16,7 @@ Método **`insights-engine/1`**, contrato **`performance-insights/1`**, sobre el
 
 ## Decisiones de datos
 
-- **Historial completo:** siete flujos paginados, sin período ni truncamiento. La salida se pagina con `before` y `limit` (14 días por defecto, máximo 120), y siempre informa el total. `association=<id>` agrega los pares de una relación con sus sesiones.
+- **Historial completo:** siete flujos paginados, sin período ni truncamiento. La salida se separa en [vistas](367-insights-partial-metodo.md#vistas-y-reutilización): resumen, más días, relaciones y una relación. Todas salen de la misma lectura, y `before` y `limit` paginan los días (14 por defecto, máximo 120) e informan el total.
 - **Unidad:** se deriva del `weight_mode_snapshot` histórico, que define qué guarda el campo. Nunca del catálogo vigente.
 - **Configuración:** el producto nunca la capturó y el loader lee `null`. Sigue siendo desconocida en ambos lados: `contextIssue` da `missing_context`, sin identidades por defecto ni datos del catálogo. `limits.configurationSnapshots` informa `known` y `total`. Los fixtures usan `none` para modelar una captura futura; el loader nunca lo escribe.
 - **Snapshot ausente:** si falta modo o implemento, queda `insufficient_comparison` con motivo.
