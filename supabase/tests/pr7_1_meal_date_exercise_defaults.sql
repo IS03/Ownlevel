@@ -17,6 +17,8 @@ insert into public.day_logs (id, user_id, log_date) values
   ('27100000-0000-4000-8000-000000000101', '27100000-0000-4000-8000-000000000001', '2026-08-19'),
   ('27100000-0000-4000-8000-000000000102', '27100000-0000-4000-8000-000000000001', '2026-08-20');
 
+-- An imported row is written by the importer, outside any session; moving it afterwards is what a session does.
+reset role;
 insert into public.meal_entries (
   id, user_id, day_log_id, title, final_calories, final_protein_g,
   source_type, entry_kind, legacy_import_source, legacy_import_id, raw_input
@@ -27,6 +29,7 @@ insert into public.meal_entries (
   'COMIDA SINTÉTICA', 500, 30, 'sheet_import', 'meal',
   'fixture', 'meal-1', '{"originalTimeKnown":false}'
 );
+set local role authenticated;
 
 update public.meal_entries
 set day_log_id = '27100000-0000-4000-8000-000000000101'

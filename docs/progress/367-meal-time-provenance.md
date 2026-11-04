@@ -50,9 +50,15 @@ Que llegue una hora no prueba que alguien la haya elegido:
 | Otra hora, sin declaración | `null`: el valor nuevo ya no está respaldado |
 
 **Escritura directa.** RLS permite que un token escriba sus propias filas, así que la regla no puede vivir solo en las funciones. Un trigger, que no afecta a las funciones porque corren como su dueño, hace que una sesión:
-- pueda insertar `default_clock` o nada, y ningún otro valor;
+- pueda insertar `default_clock` o nada en la columna, y ningún otro valor;
 - no pueda cambiar la procedencia de una fila;
+- no pueda escribir ni cambiar `raw_input`, que ningún cliente escribe directamente;
+- no pueda decir que una fila viene de una importación (`import_run_id`, `legacy_import_*`, `source_type = sheet_import`), aunque cree su propia corrida;
 - pierda la procedencia si cambia la hora directamente.
+
+**Marca legacy.** `originalTimeKnown: true` respalda una hora concreta. Quien cambie esa hora, sesión o función, le quita la marca y conserva el resto del texto. Ningún paso posterior la recupera: volver a la hora original, reescribir `raw_input` o borrar y crear de nuevo no la devuelven.
+
+El motor además solo cree en la marca sobre una fila de una importación ([#385](367-insights-pr4-motor.md#procedencia-de-la-hora-de-comida)). Con eso, una marca que ya estuviera escrita en una fila común queda sin confirmar, sin reescribir nada. El guardia evita que aparezcan nuevas; el motor no confía en las viejas.
 
 Una declaración sin hora, o con cualquier otro valor, se rechaza con `INVALID_MEAL_TIME`. Mobile solo puede declarar `user_declared`: `default_clock` lo decide el servidor y `registration_now` solo existe en ChatGPT.
 
@@ -105,8 +111,13 @@ En una pila local descartable, con 89 migraciones previas (eliminada después: 0
 | Atomicidad | Si la escritura falla después del registro de idempotencia no queda nada: ni hora, ni procedencia, ni clave, y la clave puede reintentarse |
 | Reglas | Omisión, reenvío, mover de día, otra hora y declaración con igual hora |
 | Hora automática | Una fila `default_clock` no pasa a declarada por edición, reenvío ni escritura directa |
+| Evidencia legacy | Insertar, agregar o cambiar la marca se rechaza, también con escapes Unicode o texto que `jsonb` no acepta. Cambiar la hora la quita, y operaciones separadas no la recuperan. Una importación legítima conserva su marca si la hora no cambia |
 
-**Corregido en la revisión:** la columna se podía escribir directamente con un token. La prueba lo demostró (`user_declared` sobre una fila `default_clock`, y una declaración que sobrevivía a un cambio de hora) y el trigger lo cierra.
+**Corregido en la revisión:**
+- La columna se podía escribir directamente con un token: `user_declared` sobre una fila `default_clock`, y una declaración que sobrevivía a un cambio de hora.
+- `raw_input` y los campos de importación tampoco estaban vigilados, y una hora cambiada conservaba su marca positiva.
+
+**Límite:** el motor solo reconoce las importaciones por `source_type` e `import_run_id`, que es lo que escribe `scripts/nutrition-import/apply.ts`. No revisé filas de producción. Una fila con marca y sin esos campos queda sin confirmar, que es el lado prudente.
 
 **No validado:** rendimiento del `ALTER TABLE` en producción y el flujo con un GPT real.
 
