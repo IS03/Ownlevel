@@ -7,6 +7,8 @@ import type { SessionSummaryDto, SessionSummaryLoader } from '@/api/session-summ
 import { AppIcon, AppText, brandTokens, Button, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import { FeelingDots } from './feeling-dots';
+import { RecordedTrainingFeelings } from './recorded-training-feelings';
+import type { FeelingsResponse } from '../../../../src/lib/mobile-api/training-feelings-contract';
 import type { FinishWeek } from './finish-week';
 import { FinishWeekIntro } from './finish-week-intro';
 import { postWorkoutModel, type PostWorkoutHero } from './post-workout-model';
@@ -19,6 +21,7 @@ const light = brandTokens.palette.light;
 const AnimatedInput = Animated.createAnimatedComponent(TextInput);
 
 type PostWorkoutProps = {
+  feelings?: FeelingsResponse['values'];
   finished: SessionFinishedDto; detail?: SessionDetailDto; readSummary?: SessionSummaryLoader; readWeek?: FinishWeekLoader;
   onHome: () => void; onViewSession: () => void;
 };
@@ -94,7 +97,7 @@ function HeroCard({ hero }: { hero: PostWorkoutHero }) {
  * record or improvement block (only when true), every exercise with how it went against the last time, what was added to
  * the routine and the feelings. Auxiliary reads never gate success or manufacture empty or zero values.
  */
-export function PostWorkoutContent({ finished, detail, readSummary, readWeek, onHome, onViewSession }: PostWorkoutProps) {
+export function PostWorkoutContent({ finished, detail, readSummary, readWeek, onHome, onViewSession, feelings }: PostWorkoutProps) {
   const reduced = useReduceMotion(), { colors } = useOwnlevelTheme();
   const [summary, setSummary] = useState<SessionSummaryDto>();
   const [week, setWeek] = useState<FinishWeek | null | undefined>(undefined);
@@ -157,6 +160,8 @@ export function PostWorkoutContent({ finished, detail, readSummary, readWeek, on
           {model.feelings.length ? <View style={styles.feelingRow}>{model.feelings.map(feeling => <FeelingDots key={feeling.key} feeling={feeling} />)}</View> : null}
           {model.note ? <AppText style={styles.italic}>“{model.note}”</AppText> : null}
         </Animated.View> : null}
+        {feelings ? <RecordedTrainingFeelings values={feelings} /> : null}
+        {feelings && finished.routineId && finished.routineAdditions === undefined ? <AppText muted variant="footnote">El detalle de lo agregado a la rutina no está disponible en esta confirmación. Podés revisar tu rutina.</AppText> : null}
       </ScrollView>
       <Animated.View entering={enter(1)} style={styles.footer}>
         <Button label="Listo" onPress={onHome} />
