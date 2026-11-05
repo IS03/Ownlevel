@@ -27,7 +27,7 @@ EXPAND de una revisión transaccional de las fuentes de Insights: un contador po
 ## Límites
 - **Serializa el commit de las escrituras de una misma cuenta.** Son breves, pero no lo medí con carga real.
 - `TRUNCATE` y `session_replication_role = replica` no disparan triggers. Ningún camino del producto los usa.
-- La escritura por filas agrega una consulta por fila dentro de un commit grande, y el índice de bloqueo de una sesión. Falta OBSERVE.
+- Las series y los ejercicios agregan una consulta por fila dentro del commit, con un bloqueo compartido sobre su sesión. Falta OBSERVE.
 
 ## Siguiente
 ADOPT en un PR apilado sobre #386. Aplicar esta migración antes de mergearlo.
