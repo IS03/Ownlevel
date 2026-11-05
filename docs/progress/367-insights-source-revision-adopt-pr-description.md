@@ -1,7 +1,7 @@
 ## Resumen
 ADOPT de la [revisión de las fuentes](367-insights-source-revision.md): el motor lee el contador transaccional y vuelve a reutilizar resultados, ahora con un criterio fiable.
 
-**Base: #386.** **No mergear ni desplegar antes de aplicar la migración del EXPAND de la revisión ([#391](https://github.com/IS03/Ownlevel/pull/391), en `d20ff78`):** sin la tabla, el endpoint responde 503. Esa migración vive solo en #391: este PR no la copia ni la modifica.
+**Base: `main`.** **Orden de rollout, SHAs y comprobaciones:** [paquete de autorización](https://github.com/IS03/Ownlevel/blob/integration/367-insights-candidate/docs/progress/367-autorizacion-migraciones.md). **No mergear ni desplegar antes de aplicar la migración del EXPAND de la revisión ([#391](https://github.com/IS03/Ownlevel/pull/391), en `d20ff78`):** sin la tabla, el endpoint responde 503. Esa migración vive solo en #391: este PR no la copia ni la modifica.
 
 ## Cambios
 - El control durante una lectura usa el contador, antes y después. Un cambio confirmado se detecta y se lee de nuevo.
