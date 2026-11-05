@@ -61,10 +61,65 @@ Son tres, no dos: también `workout_session_exercises_unique_order`.
 | Alguien tiene el contador | Rutinas y vistas no esperan. Otro commit con fuentes sí, y termina |
 | Finish que suma a la rutina frente a una rutina retenida | Espera al inicio, y ambos confirman |
 | Finish, rutinas y métricas a la vez por PostgREST | Sin errores, contador exacto |
-| Cruce: fuente y misma posición, en vistas y en orden de sesión | **Deadlock**. Uno confirma y el otro recibe `40P01`. Contador y unicidad quedan bien |
+| Cruce: fuente y misma posición, en vistas y en orden de sesión | La segunda espera sin tener el contador. Uno confirma y el otro recibe `23505`, sin deadlock |
 | El mismo cruce de vistas sin fuentes | Espera y `23505`, sin deadlock |
 
-El cruce es efecto del contador: cambia el error y agrega la espera de `deadlock_timeout`. Las funciones revisadas no llegan ahí, porque las vistas no escriben fuentes y las de sesión bloquean la sesión primero. No se probó un `PATCH` con token sobre `exercise_order` en esa ventana.
+Con la primera versión de #391 ese cruce daba `40P01`. La sección siguiente cuenta por qué y cómo se cerró.
+
+## Cruce con token
+
+**Es alcanzable con un token: era un bloqueo de #391.** Corrección comprobada en esta rama; #391 sigue sin ella.
+
+Cada request de PostgREST es una transacción: `BEGIN`, una sentencia y `COMMIT`, leído del log del servidor. Con la migración de #391 en `567200269112`:
+
+| Operación con token | Clase | Resultado |
+| --- | --- | --- |
+| `PATCH` de `exercise_order`, otro token o sin token | Sin efecto | 200 sin filas: la RLS no las muestra |
+| `POST`, `PATCH` y `DELETE` sobre `progress_views` | Rechazada por permisos | 403, `42501` |
+| `mobile_reorder_progress_views` cruzada | Termina sin deadlock | El segundo espera al inicio y recibe `40001`. El contador no se mueve |
+| `PATCH` de una fila a la misma posición, con gancho y sin él (300 pares) | Termina sin deadlock | Un ganador, 409 con `23505`. El recheck va antes que el contador en la cola |
+| `PATCH` de dos filas de sesiones distintas, con gancho | **Permitida, da `40P01`** | 500. El ganador depende del momento, y cada transacción es entera o nada |
+| El mismo `PATCH` frente a uno de 4001 filas, sin gancho, 100 ms después | **Permitida, da `40P01`** | **9 de 15 rondas** |
+
+Las funciones que escriben vistas no escriben fuentes y se ordenan por usuario, así que ese cruce queda solo para quien escribe sin pasar por ellas: no es alcanzable con token.
+
+El `PATCH` directo no es un camino de los clientes: Web y Mobile usan funciones que bloquean la sesión primero. Pero el permiso existe y lo usa cualquiera con su propio token. Solo se afecta a sí mismo.
+
+### Corrección
+Dos pasadas en `insights_source_changed`: ver el encabezado de la migración. Es un cambio sobre un archivo aún no aplicado en producción.
+
+- **Una primera versión no sirvió:** `SET CONSTRAINTS ... IMMEDIATE` desde el trigger. En un commit los eventos ya están marcados y no adelanta nada. El deadlock seguía.
+- **Otra versión tuvo costo cuadrático:** borrar cada nota buscándola entre las de la transacción llevó el `PATCH` grande a 2,4 s por ronda. Por eso se borra por id.
+
+Resultado con la corrección:
+
+| Prueba | Antes | Ahora |
+| --- | --- | --- |
+| Dos filas con gancho, 200 ms y 1500 ms | `40P01` | T1 confirma, T2 recibe 409 `23505`. T2 entera sin aplicar, contador +1 |
+| 4001 filas sin gancho, 100 ms | 9 `40P01` en 15 rondas | 0 en 75 |
+| 4001 filas sin gancho, 30 ms y 200 ms | 0 en 15 cada una (sin ventana) | 0 en 15 cada una |
+| Cruces de vistas y de sesión desde `psql` | `40P01` | `23505` |
+| Tiempo por ronda de 4001 filas, 200 ms | unos 320 ms | unos 375 ms |
+
+Las suites de revisión (42), lectura (6 + 1 omitida), integración (10), cruce con token (15) y recibo (35 comprobaciones) pasan sobre esta versión. La de procedencia (46) no se repitió: no toca estos objetos. No se midió con carga real.
+
+La prueba `sin gancho` depende del momento: 0 deadlocks con la corrección se explica por el orden de la cola, no por esas rondas. Las pruebas con gancho sí fuerzan el cruce en cada corrida.
+
+### Reproducir
+El gancho existe solo en la base descartable: frena una request después de escribir y antes de confirmar. No escribe nada ni toma bloqueos del producto.
+
+```bash
+export OWNLEVEL_INSIGHTS_LOCAL_STATUS=<status.json> OWNLEVEL_INSIGHTS_LOCAL_DB=supabase_db_ownlevel-receipt-<8 hex>
+npx vitest run src/lib/mobile-api/insights-token-crossing.local.test.ts
+```
+
+Para ver el fallo, aplicar antes la versión anterior: `git show 03d12c732143:supabase/migrations/20261104190000_insights_source_revision_expand.sql`.
+
+Los dos requests, con `$SHARED` el ejercicio de las 4001 filas y `$HEAD` y `$TAIL` dos filas de sesiones distintas, una de ellas en la sesión de una de esas filas:
+
+```bash
+curl -X PATCH "$API/rest/v1/workout_session_exercises?exercise_id=eq.$SHARED&select=id" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -H "Prefer: return=representation" -d '{"exercise_order":3000}' & sleep 0.1; curl -X PATCH "$API/rest/v1/workout_session_exercises?id=in.($HEAD,$TAIL)&select=id" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -H "Prefer: return=representation" -d '{"exercise_order":3000}'; wait
+```
 
 ## Fallos separados de main
 

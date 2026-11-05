@@ -346,8 +346,8 @@ describe.runIf(!!statusFile && !!container)("Insights integrado, contra Postgres
       holder.close();
     }, 90_000);
 
-    // The one shape left: two transactions cross on the counter and on a same-position recheck. Only the second one to write has a recheck queued.
-    it.each(["position", "session"] as const)("cruce sintético con otro recheck pendiente (%s): uno solo confirma, y el contador cuenta eso", async which => {
+    // Two transactions cross on the counter and on a same-position recheck. Only the second one to write has a recheck queued, and it runs before the counter.
+    it.each(["position", "session"] as const)("cruce con otro recheck pendiente (%s): espera sin tener el contador, y es violación de unicidad", async which => {
       const { sql, user } = stack(), owner = await user(), metrics = seedMetrics(sql, owner.id);
       const views = which === "position" ? seedViews(sql, owner.id) : null, session = which === "session" ? seedSession(sql, owner.id) : null;
       const before = counter(sql, owner.id);
@@ -362,8 +362,10 @@ describe.runIf(!!statusFile && !!container)("Insights integrado, contra Postgres
       const t1Commit = t1.step("commit;");
       await Promise.all([t1Commit, t2Commit]);
       const errors = [t1.errors(), t2.errors()], failed = errors.filter(text => text.includes("ERROR"));
-      expect(failed[0] ?? "").toContain("deadlock detected");
       expect(failed).toHaveLength(1);
+      expect(t1.errors()).toBe("");
+      expect(t2.errors()).toContain(views ? "progress_views_position_key" : "workout_session_exercises_unique_order");
+      expect(t2.errors()).not.toContain("deadlock");
       const stored = views ? sql(`select count(*) from public.progress_views where user_id='${owner.id}' and position=5;`) : sql(`select count(*) from public.workout_session_exercises where workout_session_id='${session!.session}' and exercise_order=50;`);
       expect(stored).toBe("1");
       expect(counter(sql, owner.id)).toBe(before + 1);

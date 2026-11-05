@@ -24,6 +24,11 @@ La garantía que daba `FOR SHARE` se conserva, y se prueba forzando los dos órd
 - Si la sesión se completa primero, quien escribía la lee completada y mueve el contador.
 - Si quien escribía llega primero, confirma antes, y quien ve el contador nuevo también ve esa escritura.
 
+### Dos pasadas
+Nada espera a otra transacción con el bloqueo tomado. El trigger de cada fuente solo anota el cambio en `insights_source_pending`, una tabla sin WAL cuyas filas no sobreviven a su transacción. Eso encola un segundo trigger diferido, y Postgres dispara lo encolado durante un commit después de todos los eventos que ya estaban, rechecks de unicidad incluidos. El bloqueo, el estado de la sesión y el contador pertenecen a esa segunda vuelta.
+
+Tomar el bloqueo en la primera vuelta **tenía deadlock real, alcanzable con un solo token**: un `PATCH` de 4001 filas y otro de 2 filas, 100 ms después, dieron 9 `40P01` en 15 rondas, sin ningún gancho. Ahora dan 0 en 105 rondas, y el segundo recibe el `23505` que recibía antes del contador. `SET CONSTRAINTS` desde el trigger no alcanza: en un commit todos los eventos ya están marcados, y no adelanta nada.
+
 ## Padre anterior y nuevo
 La base **permite** estos movimientos, también con el token de su dueño: no hay ninguna guarda. La versión anterior consultaba solo el padre nuevo y **perdía el cambio**: sacar un ejercicio o una serie de una sesión completada no movía el contador.
 
@@ -55,15 +60,15 @@ Además:
 
 **Fallan igual con y sin esta migración**, comparado en la misma pila: `active_session_add_to_routine.sql` (`uniq_routines_user_nombre_norm`), `active_session_append_empty.sql` y `m3_3b_active_session.sql` (`not_authenticated`). No investigué la causa.
 
-**Costo de escritura:** sin diferencia detectable, pero la medición es débil: 30 series y 366 comidas, con el arranque de `psql` dominando los ~190–240 ms.
+**Costo de escritura:** sin diferencia detectable, pero la medición es débil: 30 series y 366 comidas, con el arranque de `psql` dominando los ~190–250 ms. Un `PATCH` de 4001 filas, en pares con otro: de unos 320 a 375 ms por ronda.
 
 ## Límites
 - **Serializa el commit de las escrituras de una misma cuenta, también las de una sesión en curso.** Son breves, pero no lo medí con carga real.
 - Depende de `READ COMMITTED`, que es lo que usa el producto. Una transacción `REPEATABLE READ` leería un estado viejo de la sesión.
 - Una transacción que escriba en dos cuentas, en orden opuesto a otra, puede tener deadlock. Ningún camino del producto lo hace, y un token no puede.
-- Un constraint diferido que espere después de este bloqueo podría cerrar un ciclo. Los únicos diferidos existentes son el orden de ejercicios de rutina y de vistas de progreso. No los probé en esta combinación.
+- Cada cambio distinto agrega un insert y un delete dentro del commit, además de las consultas de la segunda vuelta.
 - `TRUNCATE` y `session_replication_role = replica` no disparan triggers. Ningún camino del producto los usa.
-- Las series y los ejercicios agregan hasta dos consultas por fila dentro del commit. Falta OBSERVE.
+- Las series y los ejercicios agregan hasta dos consultas por cambio distinto dentro del commit. Falta OBSERVE.
 
 ## Siguiente
 ADOPT en #392, apilado sobre #386. Aplicar esta migración antes de mergearlo.
