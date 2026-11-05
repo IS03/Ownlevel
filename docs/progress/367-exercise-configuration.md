@@ -74,4 +74,8 @@ Desde ADOPT:
 - Esa exposición deja de contar en el carril parcial.
 - El historial desconocido no se vuelve estricto: sigue en el parcial.
 
+**Bloques y cambios dentro de una sesión:**
+- **El mismo ejercicio en dos bloques con variantes distintas,** o una conocida y otra desconocida, es una sola exposición con dos contextos: `mixed_context`, nunca una comparación. Mobile y Web lo avisan en cada fila.
+- **Un bloque tiene una sola variante.** Si la persona cambió de agarre a mitad del bloque, lo que queda registrado es lo último que eligió. No hay forma de declarar un cambio dentro del bloque: en ese caso conviene dejarla sin registrar.
+
 La tabla entra en la revisión de fuentes (#391) igual que una serie: a través de su ejercicio de sesión, y solo cuando la sesión está completada.

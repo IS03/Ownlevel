@@ -1,6 +1,6 @@
 # #367 — Matriz de cobertura de Insights
 
-Estado al 2026-11-06, después de la captura de configuración. Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya en código leído, no en que exista una tabla o una pantalla.**
+Estado al 2026-11-06, con la captura de configuración en #394 y #395, sin aplicar ni mergear. Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya en código leído, no en que exista una tabla o una pantalla.**
 
 **Código de referencia** (`src/lib/progress/insights-engine/`, salvo que se indique otra ruta):
 - `exposures.ts`: `buildExposureContext`, `buildExposureTable`, `mealCandidate`;
@@ -65,9 +65,10 @@ Estado al 2026-11-06, después de la captura de configuración. Contrasta lo que
 - **Fuente:** `workout_session_exercise_configurations`, nueva.
 - **Unidad y tiempo:** ejercicio de sesión, registrada para esa sesión.
 - **Cruce:** decide qué exposiciones son comparables.
-- **Estado: implementado, sin migración aplicada** (ver «Captura» abajo).
+- **Estado: implementado y verificado en local, sin migración aplicada ni build** (ver «Captura» abajo).
   - El historial queda desconocido y sigue en el carril parcial.
   - Dos configuraciones conocidas distintas no se comparan.
+  - La fase dice si se registró durante la sesión o después; el comparador usa las dos y no afirma cuándo se capturó.
   - Dos bloques distintos en la misma sesión dan `mixed_context`.
 
 **Entrenamiento frente a sus referencias anteriores**
@@ -216,26 +217,52 @@ El servidor puede mostrar un momento automático, marcado como automático. **El
 
 ### Configuración del ejercicio
 
-Modelo y reglas: [367-exercise-configuration.md](367-exercise-configuration.md).
+Modelo y reglas: [367-exercise-configuration.md](367-exercise-configuration.md). Rollout: [367-exercise-configuration-rollout.md](367-exercise-configuration-rollout.md).
 
-**Hasta aplicar el EXPAND, ninguna sesión tiene configuración conocida:** el carril estricto no compara nada y todo queda en el parcial. Eso no cambia hasta que la persona registre variantes en sesiones nuevas.
+| Dónde | En curso | Completada | Estado |
+| --- | --- | --- | --- |
+| Mobile | Fila «Variante» en el ejercicio abierto | Sección «Variantes» | Implementado; sin build ni QA física |
+| Web | Bajo la nota de cada ejercicio, en el editor de sesión | El mismo bloque en la sesión completada | Implementado; sin deploy |
 
-## Siguiente incremento recomendado
+**Mismo comportamiento en las dos plataformas:**
+- el mismo contrato, la misma ruta, el mismo journal y los mismos textos;
+- nunca se prellena;
+- «Como la última vez» es una elección explícita y guarda su procedencia;
+- lo registrado después dice «registrada después»;
+- un ejercicio repetido con otra variante en la misma sesión avisa que así no se compara.
 
-**Fecha del sueño: declarar a qué noche corresponde.**
+**Comprobado en PostgreSQL 17.6 con PostgREST** (`exercise-configuration.local.test.ts`):
+- escritura → loader → comparador;
+- `mixed_context` con dos bloques;
+- invalidación al corregir una sesión completada.
 
-Es el caso con más riesgo de asociación mal fechada. Pasos y calorías, en cambio, ya declaran su límite.
+**Qué falta:**
+- aplicar la migración, mergear y desplegar;
+- build y QA física;
+- OBSERVE.
 
-1. **Decisión de producto:** el sueño cargado en la fecha D es la noche que termina la mañana de D. La captura lo dice («Cuánto dormiste anoche»).
-2. **Los valores nuevos se marcan con esa convención al guardarse.** Los históricos quedan sin convención declarada.
+**Hasta entonces, ninguna sesión tiene configuración conocida:** el carril estricto no compara nada y todo queda en el parcial. Después de aplicar, eso solo cambia a medida que la persona registre variantes. Una variante nueva necesita una sesión anterior con la misma para compararse, y la pantalla lo dice.
 
-**Consecuencias:**
-- Para valores con convención, el candidato del sueño pasa a `night_before_logical_day` y deja de probarse en dos ventanas. Hay una hipótesis menos en la corrección.
-- **Los valores históricos no se reinterpretan.** O se excluyen del candidato nuevo, o se informan aparte como «convención no declarada».
-- Hace falta un EXPAND en métricas diarias con procedencia por valor (columna nueva, omitido conserva) y su ADOPT. No cambia ventanas de comida ni pasos.
-- La campaña estadística se repite solo si el candidato nuevo entra a la misma familia de corrección. Si se publica como un candidato reemplazado, se recalcula su calibración y nada más.
+## Próximos incrementos, separados de esta tanda
 
-**Después, en este orden:**
-1. Editar la variante desde la sesión completada. La API ya lo acepta y falta la pantalla.
-2. Mostrar en el contexto del día todas las sesiones y los cuatro macros.
-3. Decidir si las sensaciones posteriores se publican como un resultado propio, separado del rendimiento.
+**No se implementaron.** Cada uno necesita su propio EXPAND o su propia decisión, y ninguno se mezcla con #394 o #395.
+
+**1. Convención del sueño.** Declarar a qué noche corresponde la fecha. Es el caso con más riesgo de asociación mal fechada.
+- **Decisión de producto:** el sueño cargado en la fecha D es la noche que termina la mañana de D, y la captura lo dice («Cuánto dormiste anoche»).
+- **Valores nuevos:** quedan marcados con esa convención al guardarse.
+- **Valores históricos:** no se reinterpretan. O se excluyen del candidato nuevo, o se informan aparte como «convención no declarada».
+- **Candidato:** con convención pasa a `night_before_logical_day` y deja de probarse en dos ventanas, así que hay una hipótesis menos en la corrección.
+- **Requiere** un EXPAND en métricas diarias, con procedencia por valor, y su ADOPT.
+- **Campaña estadística:** se repite solo si el candidato entra a la misma familia de corrección.
+
+**2. Peso corporal en Insights.** Leer las tablas de cuerpo como contexto diario, nunca como carga.
+- **Antes, decidir:**
+  - qué medición del día vale si hay varias;
+  - cómo se distingue un día sin medición de un valor.
+- **Requiere** un candidato nuevo de familia propia, con su lectura en el loader y su costo de páginas.
+
+**3. Todas las sesiones y los cuatro macros en el contexto del día.** Es solo presentación: hoy la vista toma la primera sesión y solo las calorías.
+- No cambia el motor ni los denominadores.
+- Requiere ajustar `contextRows` y su contrato de vista.
+
+**Después:** decidir si las sensaciones posteriores se publican como un resultado propio, separado del rendimiento.
