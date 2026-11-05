@@ -1,7 +1,7 @@
 ## Resumen
 ADOPT de la [revisión de las fuentes](367-insights-source-revision.md): el motor lee el contador transaccional y vuelve a reutilizar resultados, ahora con un criterio fiable.
 
-**Base: #386.** **No mergear ni desplegar antes de aplicar la migración del EXPAND de la revisión:** sin la tabla, el endpoint responde 503.
+**Base: #386.** **No mergear ni desplegar antes de aplicar la migración del EXPAND de la revisión (#391):** sin la tabla, el endpoint responde 503.
 
 ## Cambios
 - El control durante una lectura usa el contador, antes y después. Un cambio confirmado se detecta y se lee de nuevo.
@@ -21,6 +21,8 @@ ADOPT de la [revisión de las fuentes](367-insights-source-revision.md): el moto
 Con el esquema expandido en PostgREST local y dos transacciones reales:
 - Un resultado en caché caliente se invalida cuando confirma una transacción más vieja, y la pantalla muestra el valor nuevo.
 - Ese mismo cambio, durante una lectura, se detecta: dos intentos, y publica el valor confirmado.
+- Una serie o un ejercicio que sale de una sesión completada, o una serie que entra en una, invalida el resultado caliente. **Con la migración anterior de #391 la revisión quedaba idéntica.**
+- Si uno retiene una sesión completada y otro confirma una métrica y una serie de ella, los dos terminan y cada uno invalida. **Con la migración anterior, ese commit quedaba esperando** hasta el timeout de la prueba.
 
 Pruebas del endpoint: costo con reintentos, medianoche, cuentas separadas, contador sin fila, tabla ausente y token inválido.
 

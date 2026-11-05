@@ -169,6 +169,73 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
       expect(owner.http.requests).toBe(2 * (2 + 7));
       expect(valueOf(source, dates[0]!)).toBe(11);
     }, 60_000);
+
+    const withSessions = async () => {
+      const seeded = await seed();
+      const { sql, id } = seeded;
+      const session = (date: string) => {
+        const row = randomUUID(), library = randomUUID(), exercise = randomUUID();
+        sql(`select set_config('request.jwt.claim.sub','${id}',false);
+          insert into public.exercises(id,user_id,nombre,weight_mode) values('${library}','${id}','SYNTHETIC ${library.slice(0, 8)}','Peso total');
+          insert into public.day_logs(user_id,log_date) values('${id}','${date}') on conflict do nothing;
+          insert into public.workout_sessions(id,user_id,day_log_id,started_at) select '${row}','${id}',l.id,'${date}T18:00:00Z' from public.day_logs l where l.user_id='${id}' and l.log_date='${date}';
+          insert into public.workout_session_exercises(id,user_id,workout_session_id,exercise_id,exercise_order) values('${exercise}','${id}','${row}','${library}',1);`);
+        return { row, exercise, set: sql(`select id from public.workout_sets where workout_session_exercise_id='${exercise}' order by set_number limit 1;`) };
+      };
+      const finished = (date: string) => {
+        const made = session(date);
+        sql(`select set_config('request.jwt.claim.sub','${id}',false); update public.workout_sessions set status='completed',ended_at='${date}T19:00:00Z' where id='${made.row}';`);
+        return made;
+      };
+      clearInsightsSnapshots();
+      return { ...seeded, session, finished };
+    };
+    it("does not reuse a warm result when a set or an exercise leaves a completed session or enters one", async () => {
+      const { owner, context, session, finished } = await withSessions();
+      const done = finished("2026-06-01"), other = finished("2026-06-02"), open = session("2026-06-03");
+      const warmed = async () => { const warm = await readInsightsSnapshot(context, "2030-01-01"); expect(await readInsightsSnapshot(context, "2030-01-01")).toBe(warm); return warm; };
+
+      // A set leaves for the session in progress: its origin is what changes.
+      let warm = await warmed();
+      expect((await readInsightsSource(context)).sets.map(row => row.id)).toContain(done.set);
+      expect((await owner.client.from("workout_sets").update({ workout_session_exercise_id: open.exercise, set_number: 40 }).eq("id", done.set)).error).toBeNull();
+      expect((await readInsightsSnapshot(context, "2030-01-01")).revision).not.toBe(warm.revision);
+      expect((await readInsightsSource(context)).sets.map(row => row.id)).not.toContain(done.set);
+
+      // And comes back: now its destination is what changes.
+      warm = await warmed();
+      expect((await owner.client.from("workout_sets").update({ workout_session_exercise_id: other.exercise, set_number: 41 }).eq("id", done.set)).error).toBeNull();
+      expect((await readInsightsSnapshot(context, "2030-01-01")).revision).not.toBe(warm.revision);
+      expect((await readInsightsSource(context)).sets.map(row => row.id)).toContain(done.set);
+
+      // An exercise leaves.
+      warm = await warmed();
+      expect((await owner.client.from("workout_session_exercises").update({ workout_session_id: open.row, exercise_order: 50 }).eq("id", other.exercise)).error).toBeNull();
+      expect((await readInsightsSnapshot(context, "2030-01-01")).revision).not.toBe(warm.revision);
+      expect((await readInsightsSource(context)).exercises.map(row => row.id)).not.toContain(other.exercise);
+    }, 60_000);
+    it("invalidates twice and fails neither when one holds a completed session and the other commits a metric and a set of it", async () => {
+      const { sql, id, value, dates, openTransaction, context, finished } = await withSessions();
+      const done = finished("2026-06-05");
+      const as = `select set_config('request.jwt.claim.sub','${id}',false);`;
+      const holder = openTransaction(`${as} update public.workout_sessions set session_name='RETENIDA' where id='${done.row}';`);
+      const writer = openTransaction(`${as} ${value(dates[0]!, 11)} update public.workout_sets set actual_reps=12 where id='${done.set}';`);
+      await settled();
+      const warm = await readInsightsSnapshot(context, "2030-01-01");
+      // A commit that waited for the holder would never get here: the holder has not committed yet.
+      await writer.commit();
+      const afterWriter = await readInsightsSnapshot(context, "2030-01-01");
+      expect(afterWriter.revision).not.toBe(warm.revision);
+      let source = await readInsightsSource(context);
+      expect(valueOf(source, dates[0]!)).toBe(11);
+      expect(source.sets.find(row => row.id === done.set)!.actualReps).toBe(12);
+      expect(source.sessions.find(row => row.id === done.row)!.name).toBeNull();
+      await holder.commit();
+      expect((await readInsightsSnapshot(context, "2030-01-01")).revision).not.toBe(afterWriter.revision);
+      source = await readInsightsSource(context);
+      expect(source.sessions.find(row => row.id === done.row)!.name).toBe("RETENIDA");
+      expect(sql(`select session_name from public.workout_sessions where id='${done.row}';`)).toBe("RETENIDA");
+    }, 60_000);
   });
 
   it.runIf(!!process.env.OWNLEVEL_INSIGHTS_LOCAL_SCALE_OUT)("measures the whole read over five synthetic years", async () => {
