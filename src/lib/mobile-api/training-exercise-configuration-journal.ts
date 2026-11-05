@@ -104,6 +104,18 @@ export class ExerciseConfigurationJournal {
     await this.persist({ pending });
     return this.submit();
   });
+  /**
+   * Another block of the same exercise in this session with a different answer, unknown included. The comparator reads them
+   * as one exposure, and two contexts in it make it not comparable.
+   */
+  mixed(sessionExerciseId: string) {
+    const items = this.state.server?.items ?? [];
+    const own = items.find(item => item.sessionExerciseId === sessionExerciseId.toLowerCase());
+    if (!own) return false;
+    const value = this.view(own.sessionExerciseId).value;
+    return items.some(item => item.exerciseId === own.exerciseId && item.sessionExerciseId !== own.sessionExerciseId
+      && !sameConfiguration(this.view(item.sessionExerciseId).value, value));
+  }
   view(sessionExerciseId: string): ConfigurationView {
     const id = sessionExerciseId.toLowerCase();
     const item = this.state.server?.items.find(entry => entry.sessionExerciseId === id) ?? null;

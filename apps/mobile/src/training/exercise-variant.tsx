@@ -3,7 +3,7 @@ import { Keyboard, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon, AppSheet, AppText, Button, Chip, TextField, spacing, useAppSheetDismiss, useOwnlevelTheme } from '@/design-system';
 import type { MobileApiClient } from '@/api/client';
-import { CONFIGURATION_LABEL_MAX, ExerciseConfigurationJournal, exerciseConfigurationApi, normalizeConfigurationLabel, sameConfiguration,
+import { CONFIGURATION_AFTER_NOTE, CONFIGURATION_HINT, CONFIGURATION_LABEL_MAX, CONFIGURATION_MIXED_NOTE, ExerciseConfigurationJournal, exerciseConfigurationApi, normalizeConfigurationLabel, sameConfiguration,
   type ConfigurationValue, type ConfigurationView, type PreviousConfiguration } from '@/api/training-exercise-configuration';
 import { haptics } from '@/platform/haptics';
 import { activeSessionStorage } from './active-session-native-storage';
@@ -20,20 +20,6 @@ export function useExerciseConfigurations(client: MobileApiClient, userId: strin
 export function variantText(value: { kind: string; label: string | null } | null) {
   return value === null ? 'Sin registrar' : value.kind === 'not_applicable' ? 'No aplica' : value.label!;
 }
-/** What registering a variant does, without promising a comparison it cannot make yet. */
-export const VARIANT_HINT = 'Opcional. Separa las sesiones que hiciste de otra forma: agarre, banco, posición o accesorio. Para compararla hace falta una sesión anterior con la misma variante.';
-/**
- * Another block of the same exercise in this session with a different answer, unknown included. The comparator reads both
- * as one exposure, and two different contexts in it make it not comparable.
- */
-export function mixedVariant(journal: ExerciseConfigurationJournal, sessionExerciseId: string) {
-  const items = journal.getSnapshot().server?.items ?? [];
-  const own = items.find(item => item.sessionExerciseId === sessionExerciseId.toLowerCase());
-  if (!own) return false;
-  const value = journal.view(own.sessionExerciseId).value;
-  return items.some(item => item.exerciseId === own.exerciseId && item.sessionExerciseId !== own.sessionExerciseId
-    && !sameConfiguration(journal.view(item.sessionExerciseId).value, value));
-}
 
 /** A row in the open exercise: what was recorded for this session, and a way to change it. */
 export function ExerciseVariantRow({ journal, sessionExerciseId, name, editable }: { journal: ExerciseConfigurationJournal; sessionExerciseId: string; name: string; editable: boolean }) {
@@ -49,7 +35,7 @@ export function ExerciseVariantRow({ journal, sessionExerciseId, name, editable 
   </View> : null;
   const unconfirmed = view.state === 'unconfirmed';
   const after = view.state === 'saved' && view.item?.value?.recordedPhase === 'after_session';
-  const mixed = mixedVariant(journal, sessionExerciseId);
+  const mixed = journal.mixed(sessionExerciseId);
   return <View testID={`exercise-variant-${sessionExerciseId}`}>
     <View style={styles.row}>
       <AppIcon name="filter" color={colors.textMuted} size={17} />
@@ -58,7 +44,7 @@ export function ExerciseVariantRow({ journal, sessionExerciseId, name, editable 
       {unconfirmed ? <Button disabled={snapshot.busy} label="Reintentar" onPress={() => void journal.retry()} variant="quiet" />
         : <Button disabled={!editable || snapshot.busy || !!snapshot.pending} label={view.value === null ? 'Registrar' : 'Cambiar'} onPress={() => { Keyboard.dismiss(); haptics.selection(); setOpen(true); }} variant="quiet" />}
     </View>
-    {mixed ? <AppText muted variant="caption">Este ejercicio está dos veces en la sesión con otra variante: así no se compara.</AppText> : null}
+    {mixed ? <AppText muted variant="caption">{CONFIGURATION_MIXED_NOTE}</AppText> : null}
     {unconfirmed || (snapshot.error && view.state === 'saved' && !snapshot.pending) ? <AppText accessibilityLiveRegion="polite" muted variant="caption">{snapshot.error ?? 'Variante sin confirmar.'}</AppText> : null}
     {open ? <ExerciseVariantSheet name={name} view={view} onClose={() => setOpen(false)}
       onSave={value => journal.choose(sessionExerciseId, value).then(result => result === true)} /> : null}
@@ -96,7 +82,7 @@ function VariantForm({ name, view, onSave }: { name: string; view: Configuration
         <View style={styles.flex}><AppText accessibilityRole="header" variant="headline">Variante</AppText><AppText muted variant="footnote">{name}</AppText></View>
         <Button disabled={saving} label="Cancelar" onPress={() => dismiss()} variant="quiet" />
       </View>
-      <AppText muted variant="footnote">{VARIANT_HINT}</AppText>
+      <AppText muted variant="footnote">{CONFIGURATION_HINT}</AppText>
       <TextField label="¿Cómo la hiciste hoy?" placeholder="Ej.: agarre neutro, banco a 30°" value={text} onChangeText={setText} maxLength={CONFIGURATION_LABEL_MAX}
         disabled={saving} autoCapitalize="sentences" returnKeyType="done" onSubmitEditing={() => { if (typed && !sameConfiguration(current, typed)) void save(typed); }} testID="exercise-variant-input" />
       <View style={styles.chips}>
@@ -118,7 +104,7 @@ export function SessionVariants({ journal, exercises, editable }: { journal: Exe
   if (!exercises.length) return null;
   return <View style={styles.section} testID="session-variants">
     <AppText accessibilityRole="header" variant="headline">Variantes</AppText>
-    <AppText muted variant="footnote">{VARIANT_HINT} Lo que registres ahora queda marcado como registrado después de la sesión.</AppText>
+    <AppText muted variant="footnote">{CONFIGURATION_HINT} {CONFIGURATION_AFTER_NOTE}</AppText>
     {exercises.map(exercise => <View key={exercise.id}>
       <AppText variant="subheadline">{exercise.nameSnapshot}</AppText>
       <ExerciseVariantRow journal={journal} sessionExerciseId={exercise.id} name={exercise.nameSnapshot} editable={editable} />

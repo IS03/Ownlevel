@@ -3,6 +3,10 @@
 export class TrainingExerciseConfigurationValidationError extends Error {}
 export const TRAINING_EXERCISE_CONFIGURATION_CONTRACT = "training-exercise-configuration/1" as const;
 export const CONFIGURATION_LABEL_MAX = 80;
+/** Shared copy: what registering a variant does, without promising a comparison it cannot make yet. */
+export const CONFIGURATION_HINT = "Opcional. Separa las sesiones que hiciste de otra forma: agarre, banco, posición o accesorio. Para compararla hace falta una sesión anterior con la misma variante.";
+export const CONFIGURATION_AFTER_NOTE = "Lo que registres ahora queda marcado como registrado después de la sesión.";
+export const CONFIGURATION_MIXED_NOTE = "Este ejercicio está dos veces en la sesión con otra variante: así no se compara.";
 
 export type ConfigurationSource = "entered" | "repeated_previous";
 export type ConfigurationValue =

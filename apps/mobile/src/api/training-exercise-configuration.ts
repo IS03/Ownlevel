@@ -3,7 +3,7 @@ import type { ConfigurationPort } from '../../../../src/lib/mobile-api/training-
 import type { MobileApiClient } from './client';
 export { ExerciseConfigurationJournal } from '../../../../src/lib/mobile-api/training-exercise-configuration-journal';
 export type { ConfigurationView } from '../../../../src/lib/mobile-api/training-exercise-configuration-journal';
-export { CONFIGURATION_LABEL_MAX, normalizeConfigurationLabel, sameConfiguration } from '../../../../src/lib/mobile-api/training-exercise-configuration-contract';
+export { CONFIGURATION_AFTER_NOTE, CONFIGURATION_HINT, CONFIGURATION_LABEL_MAX, CONFIGURATION_MIXED_NOTE, normalizeConfigurationLabel, sameConfiguration } from '../../../../src/lib/mobile-api/training-exercise-configuration-contract';
 export type { ConfigurationValue, PreviousConfiguration } from '../../../../src/lib/mobile-api/training-exercise-configuration-contract';
 
 /** #367: what the person recorded about the variant of each exercise in one session. */
