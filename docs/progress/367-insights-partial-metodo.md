@@ -114,9 +114,9 @@ El endpoint ya no manda todo junto. Todas las vistas salen de una misma lectura 
 
 **Nada se oculta.** Un método con días de resultado manda todas sus relaciones, y el contrato rechaza una lista más corta. Un método sin días de resultado manda su cantidad y `outcomeDays = 0`, sin una lista idéntica por candidato. Un id desconocido responde `item: null`, nunca una relación vacía.
 
-**Reutilización.** Lo calculado queda en memoria del proceso, con clave de cuenta (del token), revisión y día de Córdoba, 3 entradas y 5 minutos. Cada pedido vuelve a leer la revisión bajo RLS: si coincide, responde sin leer el historial; si cambió, lee todo de nuevo. El token se valida siempre. Es de mejor esfuerzo: en otra instancia de Vercel es un fallo de caché y cuesta una lectura completa, igual que antes. **La tasa de aciertos real no se conoce:** requiere OBSERVE.
+**Sin reutilización en este PR.** Cada vista es una lectura completa. Un primer diseño guardaba el resultado por revisión, pero `count + max(updated_at)` no identifica todos los cambios: con dos transacciones reales, la pantalla mostraba 10 con la base en 11. Ver [revisión de las fuentes](367-insights-source-revision.md). La reutilización vuelve en un PR aparte, con un contador que la base mueve en la misma transacción.
 
-**Identidad y consistencia.** Una entrada nunca cruza cuentas ni días. Las páginas llevan `sourceRevision`, y la UI no une páginas de revisiones distintas.
+**Identidad y consistencia.** `sourceRevision` es un hash de las filas que leyó esa respuesta, y la UI no une páginas con hashes distintos. **El control durante la lectura es de mejor esfuerzo:** no detecta el cambio de una transacción que empezó antes y confirma después de otra más nueva.
 
 ## Costo y escala
 
@@ -126,20 +126,19 @@ El endpoint ya no manda todo junto. Todas las vistas salen de una misma lectura 
 
 | Pedido | Fórmula | 1 año | 5 años | 10 años |
 | --- | --- | --- | --- | --- |
-| Lectura completa (primera vez o revisión distinta) | `P + 14` | 30 | 96 | 280 |
+| Cualquier vista | `P + 14` | 30 | 96 | 280 |
 | Con un reintento (fuente que cambia, 503 o medianoche) | `2(P + 14)` | 60 | 192 | 560 |
 | Ambos reintentos | `4(P + 14)` | 120 | 384 | 1120 |
-| **Otra vista de la misma revisión** | **7** | 7 | 7 | 7 |
 
-**Cálculo** (datos de hoy, carril parcial; mediana / máximo)
+**Cálculo por pedido** (datos de hoy, carril parcial; mediana / máximo)
 
-| Perfil | Antes, todo junto | Primera lectura | Relaciones, la primera vez | Más días o una relación ya evaluada |
+| Perfil | Antes, todo junto | Resumen o más días | Relaciones | Una relación |
 | --- | --- | --- | --- | --- |
-| 1 año | 134 ms | 52 / 76 ms | 23 / 28 ms | < 2 ms |
-| 5 años | 1,10 s | 271 / 377 ms | 257 / 261 ms | < 2 ms |
-| 10 años | 6,4 s | **877 ms / 1,03 s** | 904 / 920 ms | < 2 ms |
+| 1 año | 134 ms | 52 / 76 ms | + 23 / 28 ms | + hasta 28 ms |
+| 5 años | 1,10 s | 271 / 377 ms | + 257 / 261 ms | + hasta 261 ms |
+| 10 años | 6,4 s | **877 ms / 1,03 s** | + 904 / 920 ms | + hasta 920 ms |
 
-Con configuración conocida los tiempos son del mismo orden: 42, 240 y 740 ms la primera lectura; 24, 274 y 948 ms las relaciones.
+Con configuración conocida los tiempos son del mismo orden. A esto se suma un hash de las filas leídas, de unos 50 ms a 5 años.
 
 **Respuesta** (KiB; datos de hoy)
 
@@ -149,26 +148,20 @@ Con configuración conocida los tiempos son del mismo orden: 42, 240 y 740 ms la
 | 5 años | 93 | 70 | 21 | 120 | 177 |
 | 10 años | 123 | 89 | 29 | **258** | 241 |
 
-**Memoria** (datos de hoy)
+**Memoria** (datos de hoy): pico de 41, 79 y **210 MiB** a 1, 5 y 10 años.
 
-| Perfil | Retenida por una instantánea | Pico |
-| --- | --- | --- |
-| 1 año | 2 MiB | 41 MiB |
-| 5 años | 7 MiB | 79 MiB |
-| 10 años | 15 MiB | **210 MiB** |
+**PostgREST local real a 5 años** (unas 1320 sesiones; pila descartable):
 
-**PostgREST local real a 5 años** (1312 sesiones, 7832 comparables; pila descartable):
-
-| Base | Lectura completa | Otra vista | Relaciones, la primera vez |
-| --- | --- | --- | --- |
-| Con estadísticas | 517–656 ms, 72 consultas | 39–45 ms, 7 consultas | 201–214 ms |
-| Recién sembrada, sin estadísticas | **3,0–3,1 s**, 72 consultas | **1,2 s**, 7 consultas | 198–202 ms |
+| Base | Cualquier vista |
+| --- | --- |
+| Con estadísticas | 562–720 ms, 72 consultas |
+| Recién sembrada, sin estadísticas | **3,1–3,2 s**, 72 consultas |
 
 **Sigue fuera de presupuesto:**
+- **Lectura en frío a 10 años:** 280 consultas, y el cálculo llega a 1,03 s. **Es lo que cuesta cada pedido en este PR**, también «Ver más días».
 - **Una relación a 10 años:** 258 KiB contra 128. Son sus 3136 pares, que son la evidencia. No se recortan.
-- **Primera lectura a 10 años:** el máximo toca 1,03 s de cálculo, antes de sumar la lectura de 280 consultas.
 - **Pico de memoria a 10 años:** 210 MiB contra 128. Es un límite superior porque abarca cinco corridas, pero no se probó en la función real de Vercel.
-- **Revisión sin estadísticas:** 1,2 s. Cada pedido la paga, también al reutilizar. La RPC de revisiones sigue como propuesta: agrupar consultas por sí solo no demuestra que arregle el plan lento de `workout_sets`.
+- **Revisión sin estadísticas:** 1,2 s en cada pedido.
 
 **Por qué no cambian los resultados:**
 - El resumen indexa la historia de cada ejercicio por contexto, en lugar de recorrerla por cada exposición. 120 historiales aleatorios con contextos mezclados, empates, sesiones rotas y bloques repetidos dan **exactamente** lo mismo que el recorrido, exclusiones incluidas.
@@ -191,4 +184,5 @@ Con configuración conocida los tiempos son del mismo orden: 42, 240 y 740 ms la
 
 - Captura futura de configuración: **la regla de producto sigue sin definir**. No se escribe `none` ni se impone que toda variante sea otro ejercicio.
 - Presupuesto de riesgo. «Consistente» sigue deshabilitado.
-- Tasa de aciertos de la reutilización y latencia real: requieren OBSERVE.
+- Revisión transaccional y reutilización: PR aparte, con [su límite](367-insights-source-revision.md).
+- Latencia real: requiere OBSERVE.

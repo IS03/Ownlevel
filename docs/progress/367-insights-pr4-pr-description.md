@@ -16,7 +16,8 @@ Motor de Insights para #367: loader agrupado de todo el historial, read model pu
 
 ## Correcciones de la revisión
 
-- **Procedencia horaria:** una hora es `explicit` solo con marca positiva, que hoy solo escribe la importación. Sin metadata, inválida o ambigua queda `unverified`. El helper legacy no cambia.
+- **Procedencia horaria:** una hora es `explicit` solo con marca positiva **en una fila de una importación** (`source_type = sheet_import` e `import_run_id`). Un token puede escribir esa marca en sus propias filas, así que en cualquier otra queda `unverified`, igual que sin metadata, inválida o ambigua.
+- **Consistencia, de mejor esfuerzo:** cantidad y máximo no identifican todos los cambios. Ver [revisión de las fuentes](367-insights-source-revision.md). El helper legacy no cambia.
 - **Configuración:** el adaptador conserva `null`. Se quitó `not_captured_by_product`.
 - **Binarias y empates:** elegibilidad (`sparse_variation`) separada de los grupos, que respetan los dos valores reales y los empates, sin mirar el resultado.
 - **Costo:** `P + 14` por intento y hasta `4(P + 14)` con ambos reintentos, medido contra la ruta.
