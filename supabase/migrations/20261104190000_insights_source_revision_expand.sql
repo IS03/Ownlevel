@@ -19,6 +19,12 @@
 --     move the counter, so whoever sees the new counter also sees that write.
 --   - The holder only waits for the counter row, which nobody writes without this lock. Deleting an account is the exception:
 --     it removes that row by cascade, but only after its explicit deletes, and it takes no lock here once its user is gone.
+--   - Nothing waits for another transaction while holding it. A deferred uniqueness recheck does wait for one, so taking the lock
+--     before it deadlocks against that transaction: reproduced with one token, a PATCH of several rows against a larger one.
+--     So there are two passes. The trigger on the sources only notes what changed. Noting it queues a second deferred trigger,
+--     and Postgres fires what is queued during a commit in a later round, after every event already there, rechecks included.
+--     The lock, the session state and the counter all belong to that round. SET CONSTRAINTS from the trigger cannot do this: at
+--     commit every pending event is already marked as in progress, so it fires nothing.
 -- This relies on READ COMMITTED, which every path of the product uses: a new snapshot per statement.
 --
 -- The trigger is deferred to commit, so none of this adds a lock ordering inside existing functions. One transaction moves it
@@ -27,6 +33,7 @@
 --
 -- Reversal: deploy code that no longer reads the table, then
 --   drop trigger insights_source_changed on each of the eight tables below;
+--   drop table public.insights_source_pending; drop function public.insights_apply_source_change();
 --   drop function public.insights_source_changed(); drop function public.insights_session_counts(uuid);
 --   drop function public.insights_bump_source_revision(uuid); drop function public.insights_lock_source_revision(uuid);
 --   drop table public.insights_source_revisions;
@@ -80,60 +87,96 @@ end;
 $$;
 revoke all on function public.insights_session_counts(uuid) from public, anon, authenticated;
 
+-- What changed, until the second pass. Its rows exist only inside the transaction that wrote them: nothing to keep, and no WAL.
+-- A rollback, a lost connection or a crash takes them with the transaction, and a commit deletes them in the second pass.
+create unlogged table public.insights_source_pending (
+  id bigint generated always as identity primary key,
+  tx xid8 not null default pg_catalog.pg_current_xact_id(),
+  source text not null check (source in ('direct', 'session', 'exercise', 'feelings')),
+  has_old boolean not null,
+  has_new boolean not null,
+  old_user uuid,
+  new_user uuid,
+  old_parent uuid,
+  new_parent uuid
+);
+-- One row per distinct change: a transaction that writes thirty sets of an exercise notes it once. The key starts with its own
+-- transaction, so writing here never waits for anyone.
+create unique index insights_source_pending_once on public.insights_source_pending (tx, source, has_old, has_new, old_user, new_user, old_parent, new_parent) nulls not distinct;
+alter table public.insights_source_pending enable row level security;
+-- Only the definer functions below touch it. The default privileges would leave it, and its sequence, open to these roles.
+revoke all on table public.insights_source_pending from public, anon, authenticated, service_role;
+revoke all on sequence public.insights_source_pending_id_seq from public, anon, authenticated, service_role;
+
 create function public.insights_source_changed()
 returns trigger language plpgsql security definer set search_path = '' as $$
-declare
-  v_old_user uuid;
-  v_new_user uuid;
-  v_old_session uuid;
-  v_new_session uuid;
 begin
-  -- Two accounts only when something moves between them, which no token can do. They are locked in a fixed order.
   if tg_table_name = 'workout_sessions' then
-    if old.status = 'completed' or new.status = 'completed' then
-      perform public.insights_bump_source_revision(least(old.user_id, new.user_id));
-      perform public.insights_bump_source_revision(greatest(old.user_id, new.user_id));
+    if old.status is distinct from 'completed' and new.status is distinct from 'completed' then
+      return null;
     end if;
-    return null;
-  elsif tg_table_name not in ('workout_session_exercises', 'workout_sets', 'workout_session_feelings') then
-    perform public.insights_bump_source_revision(least(old.user_id, new.user_id));
-    perform public.insights_bump_source_revision(greatest(old.user_id, new.user_id));
+  end if;
+  if tg_table_name = 'workout_session_feelings' then
+    insert into public.insights_source_pending (source, has_old, has_new, old_parent, new_parent)
+      values ('feelings', tg_op <> 'INSERT', tg_op <> 'DELETE', old.session_id, new.session_id) on conflict do nothing;
+  elsif tg_table_name = 'workout_session_exercises' then
+    insert into public.insights_source_pending (source, has_old, has_new, old_user, new_user, old_parent, new_parent)
+      values ('session', tg_op <> 'INSERT', tg_op <> 'DELETE', old.user_id, new.user_id, old.workout_session_id, new.workout_session_id) on conflict do nothing;
+  elsif tg_table_name = 'workout_sets' then
+    insert into public.insights_source_pending (source, has_old, has_new, old_user, new_user, old_parent, new_parent)
+      values ('exercise', tg_op <> 'INSERT', tg_op <> 'DELETE', old.user_id, new.user_id, old.workout_session_exercise_id, new.workout_session_exercise_id) on conflict do nothing;
+  else
+    insert into public.insights_source_pending (source, has_old, has_new, old_user, new_user)
+      values ('direct', tg_op <> 'INSERT', tg_op <> 'DELETE', old.user_id, new.user_id) on conflict do nothing;
+  end if;
+  return null;
+end;
+$$;
+revoke all on function public.insights_source_changed() from public, anon, authenticated;
+
+create function public.insights_apply_source_change()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  v_old_user uuid := new.old_user;
+  v_new_user uuid := new.new_user;
+  v_old_session uuid := new.old_parent;
+  v_new_session uuid := new.new_parent;
+begin
+  delete from public.insights_source_pending p where p.id = new.id;
+  -- Two accounts only when something moves between them, which no token can do. They are locked in a fixed order.
+  if new.source = 'direct' then
+    perform public.insights_bump_source_revision(least(v_old_user, v_new_user));
+    perform public.insights_bump_source_revision(greatest(v_old_user, v_new_user));
     return null;
   end if;
-
-  if tg_table_name = 'workout_session_feelings' then
-    v_old_session := old.session_id;
-    v_new_session := new.session_id;
+  if new.source = 'feelings' then
     -- With no session left, its own deletion already moved the counter if it was completed.
-    select s.user_id into v_old_user from public.workout_sessions s where s.id = v_old_session;
-    select s.user_id into v_new_user from public.workout_sessions s where s.id = v_new_session;
-  else
-    v_old_user := old.user_id;
-    v_new_user := new.user_id;
+    select s.user_id into v_old_user from public.workout_sessions s where s.id = new.old_parent;
+    select s.user_id into v_new_user from public.workout_sessions s where s.id = new.new_parent;
   end if;
 
   -- First the lock, then the sessions: see the header.
   perform public.insights_lock_source_revision(least(v_old_user, v_new_user));
   perform public.insights_lock_source_revision(greatest(v_old_user, v_new_user));
 
-  if tg_table_name = 'workout_session_exercises' then
-    v_old_session := old.workout_session_id;
-    v_new_session := new.workout_session_id;
-  elsif tg_table_name = 'workout_sets' then
-    select x.workout_session_id into v_old_session from public.workout_session_exercises x where x.id = old.workout_session_exercise_id;
-    select x.workout_session_id into v_new_session from public.workout_session_exercises x where x.id = new.workout_session_exercise_id;
+  if new.source = 'exercise' then
+    select x.workout_session_id into v_old_session from public.workout_session_exercises x where x.id = new.old_parent;
+    select x.workout_session_id into v_new_session from public.workout_session_exercises x where x.id = new.new_parent;
   end if;
 
-  if tg_op <> 'INSERT' and public.insights_session_counts(v_old_session) then
+  if new.has_old and public.insights_session_counts(v_old_session) then
     perform public.insights_bump_source_revision(v_old_user);
   end if;
-  if tg_op <> 'DELETE' and public.insights_session_counts(v_new_session) then
+  if new.has_new and public.insights_session_counts(v_new_session) then
     perform public.insights_bump_source_revision(v_new_user);
   end if;
   return null;
 end;
 $$;
-revoke all on function public.insights_source_changed() from public, anon, authenticated;
+revoke all on function public.insights_apply_source_change() from public, anon, authenticated;
+
+create constraint trigger insights_apply_source_change after insert on public.insights_source_pending
+  deferrable initially deferred for each row execute function public.insights_apply_source_change();
 
 create constraint trigger insights_source_changed after insert or update or delete on public.workout_sessions
   deferrable initially deferred for each row execute function public.insights_source_changed();
