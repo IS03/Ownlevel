@@ -1,7 +1,7 @@
 ## Resumen
 El motor de Insights lee `meal_entries.consumed_at_source`. Paso de ADOPT de la [procedencia de la hora](367-meal-time-provenance.md).
 
-**Depende del método parcial** (base: `codex/367-insights-partial-method`). **No mergear ni desplegar antes de aplicar la migración del EXPAND:** el loader selecciona la columna, y sin ella el endpoint responde 503.
+**Base: `main`, que ya tiene el método parcial.** **Orden de rollout, SHAs y comprobaciones:** [paquete de autorización](https://github.com/IS03/Ownlevel/blob/integration/367-insights-candidate/docs/progress/367-autorizacion-migraciones.md). **No mergear ni desplegar antes de aplicar la migración del EXPAND de #387:** el loader selecciona la columna, y sin ella el endpoint responde 503.
 
 ## Cambios
 - `user_declared` e `imported` cuentan como hora conocida. `registration_now` es aproximada y solo entra en sensibilidades. `default_clock` queda fuera de la ventana, y un cero nunca reemplaza al dato.
