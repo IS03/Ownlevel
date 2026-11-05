@@ -2,7 +2,7 @@ import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 import type { MobileApiClient } from '@/api/client';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { AppState } from 'react-native';
+import { AppState, RefreshControl } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { parseProgressBody, parseProgressMetrics, parseProgressOverview, type ProgressBody, type ProgressComparison, type ProgressMetrics, type ProgressOverview, type ProgressQuery } from '@/api/progress';
@@ -330,7 +330,7 @@ describe('Metrics Trends', () => {
     view.rerender(wrapped(<MetricsTrendsScreen />)); await flush();
     expect(mockMetrics.mock.calls.at(-1)![2]).toBe('otra-metrica');
   });
-  it('one metric at a time: average per day with data, current target, coverage, zero vs gaps, and opens a day', async () => {
+  it('one metric at a time: average, target, coverage and inspectable zero vs gaps without navigation', async () => {
     mockParams = { metric: ids.steps };
     const view = wrap(<MetricsTrendsScreen />); await flush();
     expect(mockMetrics).toHaveBeenLastCalledWith(mockClient, MONTH, ids.steps, null);
@@ -341,13 +341,15 @@ describe('Metrics Trends', () => {
     expect(view.queryByTestId('metric-trend-comparison')).toBeNull();
     expect(view.getAllByTestId(/^metric-trend-chart-.*-gap$/)).toHaveLength(4);
     expect(view.getAllByTestId(/^metric-trend-chart-.*-zero$/)).toHaveLength(2);
-    fireEvent.press(view.getByRole('button', { name: '29 sep, 0 pasos' }));
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/history/day/[date]', params: { date: '2026-09-29' } });
+    fireEvent.press(view.getByRole('button', { name: '29 sep, 29/09/2026, 0 pasos' }));
+    expect(view.getByTestId('metric-trend-readout').props.accessibilityLabel).toBe('29/09/2026, 0 pasos');
+    expect(mockPush).not.toHaveBeenCalled();
     // The legend says the target is the current one, and names the gaps the chart has.
     const legend = within(view.getByTestId('metric-trend-legend'));
     expect(legend.getByText('objetivo actual 10.000 pasos')).toBeTruthy(); expect(legend.getByText('hueco: sin dato')).toBeTruthy();
     expect(within(view.getByTestId('metric-trend-stats')).getByText('Mediana')).toBeTruthy();
     fireEvent.press(view.getByRole('radio', { name: 'Sueño' })); await flush();
+    expect(view.getByTestId('metric-trend-readout').props.accessibilityLabel).toMatch(/^Tocá una barra,/);
     expect(mockMetrics).toHaveBeenLastCalledWith(mockClient, MONTH, ids.sleep, null);
     expect(within(view.getByTestId('metric-trend-summary')).getByText('7 h 30 min')).toBeTruthy();
     // Archived metrics wait behind one chip.
@@ -362,6 +364,23 @@ describe('Metrics Trends', () => {
     const view = wrap(<MetricsTrendsScreen />, comparing); await flush();
     expect(within(view.getByTestId('metric-trend-summary')).getByText('1–5 sep 0 pasos · sin cambio')).toBeTruthy();
     expect(view.getByText('1–5 sep 3 de 7')).toBeTruthy();
+  });
+  it('clears inspection when refreshing or changing period, including a failed refresh with retained data', async () => {
+    mockParams = { metric: ids.steps };
+    const view = wrap(<MetricsTrendsScreen />); await flush();
+    const select = () => fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
+    const readout = () => view.getByTestId('metric-trend-readout').props.accessibilityLabel;
+    select(); expect(readout()).toBe('29/09/2026, 0 pasos');
+    let settle!: (result: unknown) => void;
+    mockMetrics.mockImplementationOnce(() => new Promise(resolve => { settle = resolve; }));
+    act(() => { view.UNSAFE_getByType(RefreshControl).props.onRefresh?.(); });
+    expect(readout()).toMatch(/^Tocá una barra,/);
+    await act(async () => { settle(lost); }); await flush();
+    expect(readout()).toMatch(/^Tocá una barra,/);
+    select(); expect(readout()).toBe('29/09/2026, 0 pasos');
+    fireEvent(view.getByTestId('progress-period-caption'), 'accessibilityAction', { nativeEvent: { actionName: 'decrement' } }); await flush();
+    expect(readout()).toMatch(/^Tocá una barra,/);
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });
 

@@ -1,11 +1,11 @@
 import { useCallback, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchProgressMetrics, progressRequestKey, type ProgressMetrics } from '@/api/progress';
 import { AppIcon, AppText, Button, GlassSurface, InlineUnavailable, SkeletonBlock, UnavailableState, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion, type AppIconName } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
-import { PeriodChart } from './period-chart';
+import { MetricTrendChart } from './metric-trend-chart';
 import { ProgressRow } from './progress-row';
 import { ProgressScroll } from './progress-scroll';
 import { useProgressRange } from './progress-range-context';
@@ -18,8 +18,9 @@ import { useProgressRouteRange } from './use-progress-route-range';
 
 const PCT = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 });
 
-function Detail({ data, onDay }: { data: ProgressMetrics; onDay: (date: string) => void }) {
+function Detail({ data }: { data: ProgressMetrics }) {
   const { colors } = useOwnlevelTheme();
+  const { fontScale } = useWindowDimensions();
   const { compareText, today } = useProgressRange();
   const m = data.metric!, s = data.summary!, v = (n: number | null) => formatValue(n, m.unit, m.valueType);
   const low = s.coverageRatio !== null && s.coverageRatio < 0.5;
@@ -40,25 +41,20 @@ function Detail({ data, onDay }: { data: ProgressMetrics; onDay: (date: string) 
   ];
   return <>
     <View style={styles.numbers} testID="metric-trend-summary">
-      <View style={styles.grow}>
-        <AppText numeric variant="largeTitle">{s.average === null ? '—' : v(s.average)}</AppText>
+      <View style={styles.summaryGroup}>
+        <AppText numeric variant="title1">{s.average === null ? '—' : v(s.average)}</AppText>
         <AppText muted variant="caption">promedio por día con dato</AppText>
         {m.currentTarget !== null ? <AppText muted numeric variant="caption">objetivo {v(m.currentTarget)}</AppText> : null}
         {compareText ? <AppText numeric variant="caption" testID="metric-trend-comparison">{compareText} {data.previous?.average == null ? 'sin datos'
           : `${v(data.previous.average)}${c && c.status === 'comparable' && c.deltaAbsolute !== null ? ` · ${arrowDelta(c.deltaAbsolute, m.unit, m.valueType)}` : ''}`}</AppText> : null}
       </View>
-      <View style={[styles.divider, { backgroundColor: colors.border }]} />
-      <View style={styles.grow}>
-        <AppText numeric variant="largeTitle">{s.registeredDays} de {s.eligibleDays}</AppText>
+      <View style={styles.summaryGroup}>
+        <AppText numeric variant="headline">{s.registeredDays} de {s.eligibleDays}</AppText>
         <AppText variant="caption" style={{ color: low ? colors.text : colors.textMuted }}>días con dato{low ? ' · pocos para un promedio' : ''}</AppText>
         {compareText && data.previous ? <AppText numeric muted variant="caption">{compareText} {data.previous.registeredDays} de {data.previous.eligibleDays}</AppText> : null}
       </View>
     </View>
-    <PeriodChart testID="metric-trend-chart" mode="bars" target={m.currentTarget} points={data.series.map(p => ({
-      key: p.start, label: day(p.start), value: p.value,
-      text: `${p.value === null ? 'sin dato' : v(p.value)}${p.samples > 1 ? `, promedio de ${p.samples} días` : ''}`,
-      ...(p.start === p.end && p.value !== null ? { onPress: () => onDay(p.start), hint: 'Abre el día en Historial' } : {}),
-    }))} />
+    <MetricTrendChart data={data} />
     {/* One legend line, only with what this chart shows. */}
     <View style={styles.legend} testID="metric-trend-legend">
       {!daily ? <AppText muted variant="caption">{data.period.bucket === 'week' ? 'cada barra: promedio de la semana' : 'cada barra: promedio del mes'}</AppText> : null}
@@ -69,17 +65,19 @@ function Detail({ data, onDay }: { data: ProgressMetrics; onDay: (date: string) 
       {gaps ? <AppText muted variant="caption">hueco: sin dato</AppText> : null}
       {data.period.includesToday ? <AppText muted variant="caption">hoy cuenta cuando termina</AppText> : null}
     </View>
-    <View style={styles.stats} testID="metric-trend-stats">
+    <View style={[styles.stats, fontScale > 1.3 && styles.stacked]} testID="metric-trend-stats">
       {stats.map((x, i) => <View key={x.key} accessible accessibilityLabel={`${x.label}, ${x.value}${x.when}`}
-        style={[styles.stat, i > 0 && [styles.statDivider, { borderColor: colors.border }]]}>
+        style={[styles.stat, fontScale > 1.3 && styles.stackedStat, i > 0 && [fontScale > 1.3 ? styles.statTopDivider : styles.statDivider, { borderColor: colors.border }]]}>
         <AppText muted variant="caption">{x.label}</AppText>
         <AppText numeric variant="headline">{x.value}</AppText>
         {x.when ? <AppText muted numeric variant="caption">{x.when.replace(/^ · /, '')}</AppText> : null}
       </View>)}
     </View>
     <ProgressRow label={`Del primer al último dato, ${s.trendDelta === null ? 'datos insuficientes' : arrowDelta(s.trendDelta, m.unit, m.valueType)}`}>
-      <View style={styles.grow}><AppText>Del primer al último dato</AppText></View>
-      <AppText numeric variant="headline">{s.trendDelta === null ? 'Sin datos suficientes' : `${arrowDelta(s.trendDelta, m.unit, m.valueType)}${s.trendPercentDelta !== null && s.trendDelta !== 0 ? ` (${PCT.format(Math.abs(s.trendPercentDelta))} %)` : ''}`}</AppText>
+      <View style={[styles.trend, fontScale > 1.3 && styles.stacked]}>
+        <AppText style={[styles.grow, fontScale > 1.3 && styles.stackedText]}>Del primer al último dato</AppText>
+        <AppText numeric variant="headline" style={[styles.grow, fontScale > 1.3 && styles.stackedText]}>{s.trendDelta === null ? 'Sin datos suficientes' : `${arrowDelta(s.trendDelta, m.unit, m.valueType)}${s.trendPercentDelta !== null && s.trendDelta !== 0 ? ` (${PCT.format(Math.abs(s.trendPercentDelta))} %)` : ''}`}</AppText>
+      </View>
     </ProgressRow>
   </>;
 }
@@ -104,7 +102,6 @@ function MetricChip({ label, selected, onPress, icon, quiet = false, archived = 
 
 /** Métricas in Progreso (P6): one metric at a time, average per day with data, coverage always visible. No sums, no "target hit" days. */
 function MetricsTrends() {
-  const router = useRouter();
   const params = useLocalSearchParams<{ metric?: string }>();
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
@@ -137,7 +134,7 @@ function MetricsTrends() {
               <MetricChip key={d.id} label={d.name} quiet archived selected={d.id === data.metric?.id} onPress={() => setMetricId(d.id)} />) : null}
           </> : null}
         </ScrollView>
-        {data.metric && data.summary ? <Detail data={data} onDay={date => router.push({ pathname: '/history/day/[date]', params: { date } })} />
+        {data.metric && data.summary ? <Detail key={`${progressRequestKey(query, compare)}|${metricId}|${state.status === 'ready' && state.refreshing}`} data={data} />
           : <AppText muted>No hay métricas para analizar.</AppText>}
       </>}
   </ProgressScroll>;
@@ -148,9 +145,14 @@ export function MetricsTrendsScreen() {
   return applied ? <MetricsTrends /> : <SkeletonBlock height={200} />;
 }
 const styles = StyleSheet.create({
-  numbers: { flexDirection: 'row', gap: spacing.lg },
+  numbers: { gap: spacing.md },
+  summaryGroup: { gap: spacing.xs },
   grow: { flex: 1, gap: 2 },
-  divider: { width: StyleSheet.hairlineWidth },
+  trend: { flex: 1, flexDirection: 'row', gap: spacing.md },
+  stacked: { flexDirection: 'column' },
+  stackedText: { flex: 0 },
+  stackedStat: { flexBasis: 'auto', flexGrow: 0 },
+  statTopDivider: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: spacing.md },
   chipRow: { flexGrow: 0, marginHorizontal: -16 },
   chip: { minHeight: 36, borderRadius: 18, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 6 },
   rule: { width: StyleSheet.hairlineWidth, height: 24, marginHorizontal: 4 },
