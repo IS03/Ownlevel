@@ -58,6 +58,6 @@ Además elimina la consulta de `workout_sets` con plan frágil, que tardaba 1,2 
 - Serializa el commit de las escrituras de una misma cuenta, también las de una sesión en curso. Son breves, pero no se midió con carga real.
 - Depende de `READ COMMITTED`, que es lo que usa el producto.
 - Una transacción que escriba en dos cuentas, en orden opuesto a otra, puede tener deadlock. Ningún camino del producto lo hace, y un token no puede.
-- Un constraint diferido que espere después de este bloqueo podría cerrar un ciclo. No se probó con los dos que existen: orden de ejercicios de rutina y de vistas de progreso.
+- Un constraint diferido que espere después de este bloqueo cierra un ciclo: reproducido con commits reales en vistas de progreso y orden de ejercicios de sesión, cuando dos transacciones escriben una fuente y la misma posición. Uno solo confirma y el otro recibe `40P01` en vez de `23505`, tras esperar `deadlock_timeout`. Ninguna función del producto llega ahí: las vistas no escriben fuentes y las funciones de sesión bloquean la sesión primero. El orden de rutinas no llega, porque el bloqueo por usuario lo ordena antes del commit. Falta decidir qué hacer con un `PATCH` directo con token sobre `exercise_order`, que no se probó en esa ventana.
 - `TRUNCATE` y `session_replication_role = replica` no disparan triggers. Ningún camino del producto los usa.
 - Cubre lo que Insights lee hoy. Una fuente nueva necesita su trigger.
