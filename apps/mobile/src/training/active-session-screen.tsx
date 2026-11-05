@@ -28,6 +28,8 @@ import { useActiveSession } from './use-active-session';
 import { NativeReorderItem, NativeReorderList, SessionDragScrollContext, closeSwipeOnScroll } from './session-native-interactions';
 import { FinishSessionSheet } from './finish-session-sheet';
 import { TrainingFeelings } from './training-feelings';
+import { ExerciseVariantRow, useExerciseConfigurations } from './exercise-variant';
+import type { ExerciseConfigurationJournal } from '@/api/training-exercise-configuration';
 import { CompletedSessionScreen, completedSessionApi, type CompletedSessionApi } from './history-session-screen';
 
 function SessionClock({ session, progress }: { session: SessionDetailDto['session']; progress?: { completedSets: number; totalSets: number } }) {
@@ -81,9 +83,12 @@ function RestTimerView({ controller, timer }: { controller: ActiveSessionControl
 }
 export function ActiveSessionScreen({ client, userId, sessionId }: { client: MobileApiClient; userId: string; sessionId: string }) {
   const { controller, state } = useActiveSession(client, userId, sessionId);
-  return <ActiveSessionView controller={controller} state={state} client={client} />;
+  const configurations = useExerciseConfigurations(client, userId, sessionId);
+  return <ActiveSessionView controller={controller} state={state} client={client} configurations={configurations} />;
 }
-export function ActiveSessionView({ controller, state, client }: { controller: ActiveSessionController; state: ReturnType<ActiveSessionController['getSnapshot']>; client: MobileApiClient }) {
+export function ActiveSessionView({ controller, state, client, configurations }: { controller: ActiveSessionController; state: ReturnType<ActiveSessionController['getSnapshot']>; client: MobileApiClient;
+  /** #367: optional. Without it the session works exactly as before. */
+  configurations?: ExerciseConfigurationJournal }) {
   const { colors } = useOwnlevelTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -141,6 +146,9 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
   const dragScroll = useMemo(() => ({ ref: scrollRef, y: scrollY, contentHeight, gesture: scrollGesture, owner: dragOwner }), [scrollRef, scrollY, contentHeight, scrollGesture, dragOwner]);
   const detail = state.detail;
   const existingIds = useMemo(() => new Set(detail?.exercises.map(exercise => exercise.exerciseId) ?? []), [detail]);
+  // An added or removed exercise needs its own row in the variant read.
+  const sessionExerciseIds = detail?.exercises.map(exercise => exercise.id).join(',') ?? '';
+  useEffect(() => { if (sessionExerciseIds) void configurations?.refresh(); }, [configurations, sessionExerciseIds]);
   const returnToTraining = useCallback(() => { actions.cancelWindow(); router.replace('/(tabs)/train'); }, [actions, router]);
   // Cancelling is not an achievement: no success haptic.
   useEffect(() => { if (state.status === 'cancelled') returnToTraining(); }, [returnToTraining, state.status]);
@@ -284,6 +292,7 @@ export function ActiveSessionView({ controller, state, client }: { controller: A
         {detail.exercises.map(exercise => <NativeReorderItem key={exercise.id} id={exercise.id} gap={0}>
           <ActiveExerciseCard reveal={revealed?.id === exercise.id ? revealed.n : 0} addToRoutineName={detail.session.routineId ? detail.session.routineNameSnapshot ?? detail.session.name : null} controller={controller} id={exercise.id} expanded={expanded === exercise.id} locked={locked} refreshing={state.refreshing} reorderDisabled={structuralLocked} onToggle={toggle} onHistory={showHistory} onRemove={remove} onSheetChange={cardSheet}
             onReveal={top => { if (reveal.current === exercise.id) { reveal.current = null; scrollRef.current?.scrollTo({ y: Math.max(0, scrollY.get() + top - headerHeight - spacing.md), animated: !reduceMotion }); } }}
+            variant={configurations ? <ExerciseVariantRow journal={configurations} sessionExerciseId={exercise.id} name={exercise.nameSnapshot} editable={active && !locked} /> : null}
             historyCard={exercise.routineExerciseId === null && dismissed !== null && !dismissed.includes(exercise.exerciseId) && detail.quickHistory.status === 'ok' && quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).some(item => item.sets.some(set => set.isCompleted)) ?
               <SessionLastHistory history={quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).find(item => item.sets.some(set => set.isCompleted))!} disabled={locked} onUse={() => { if (detail.quickHistory.status === 'ok') applyHistory(exercise.id, quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).find(item => item.sets.some(set => set.isCompleted))!, exercise.exerciseId); }} onDismiss={() => dismissHistory(exercise.exerciseId)} /> : null} />
         </NativeReorderItem>)}
