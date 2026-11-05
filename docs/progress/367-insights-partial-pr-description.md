@@ -25,18 +25,20 @@ Los cambios no registrados son supuestos, porque el dato real no existe.
 **Publicación:** por ese límite, pasar la compuerta en este método se publica como `coincidence_context_unknown`, nunca como `exploratory`, y no aparece hasta que se pide la lista.
 
 ## Costo
-El endpoint separa [vistas](367-insights-partial-metodo.md#vistas-y-reutilización): resumen, días, relaciones y una relación. Otra vista de la misma revisión cuesta 7 consultas, con clave de cuenta, revisión y día. Sin historial truncado y con los mismos resultados.
+El endpoint separa [vistas](367-insights-partial-metodo.md#vistas-y-reutilización): resumen, días, relaciones y una relación. Sin historial truncado y con los mismos resultados. **Cada vista es una lectura completa:** quité la reutilización del diseño anterior porque `count + max(updated_at)` no identifica todos los cambios, y con dos transacciones reales mostraba 10 con la base en 11. Ver [revisión de las fuentes](367-insights-source-revision.md).
 
 | A 10 años | Antes | Ahora |
 | --- | --- | --- |
 | Primera pantalla, cálculo | 6,4 s | 877 ms mediana, 1,03 s máximo |
 | Primera pantalla, respuesta | 241 KiB | 123 KiB |
-| Más días | Lectura y cálculo completos, 280 consultas | 7 consultas si la revisión coincide y sigue en memoria |
+| Más días | Lectura y cálculo completos, 280 consultas | Lectura completa, 280 consultas, sin permutaciones |
 
-**Sigue fuera de presupuesto a 10 años:** una relación pesa 258 KiB y el pico de memoria es 210 MiB. La tasa de aciertos real no se conoce.
+**Sigue fuera de presupuesto a 10 años:** una relación pesa 258 KiB, el pico de memoria es 210 MiB y cada lectura cuesta 280 consultas.
+
+**El control durante una lectura es de mejor esfuerzo:** no detecta el cambio de una transacción que empezó antes y confirma después de otra más nueva. Una prueba deja escrito ese límite. La revisión transaccional va en un PR aparte.
 
 ## Validación
-Comparador estricto (67 pruebas) sin cambios en sus expectativas, equivalencia del resumen en 120 historiales aleatorios, vistas contra el modelo completo, huella de resultados idéntica, PostgREST local real, `tsc` y `eslint`. Sin datos reales. No se repitió ninguna campaña: ni la compuerta ni los resultados cambiaron.
+Comparador estricto (67 pruebas) sin cambios en sus expectativas, equivalencia del resumen en 120 historiales aleatorios, vistas contra el modelo completo, huella de resultados idéntica, reproducción con dos transacciones contra PostgREST local real, `tsc` y `eslint`. Sin datos reales. No se repitió ninguna campaña: ni la compuerta ni los resultados cambiaron.
 
 ## Pendiente
 Regla de producto de captura, presupuesto de riesgo. «Consistente» sigue deshabilitado.
