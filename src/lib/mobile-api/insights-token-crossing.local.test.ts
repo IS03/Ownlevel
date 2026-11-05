@@ -1,5 +1,9 @@
 // Disposable local Supabase ONLY: the API must be loopback and the database container disposable. Skipped without the explicit status file.
-// Needs the integrated schema. Each write is a real PostgREST request under a synthetic user's token.
+// Each write is a real PostgREST request under a synthetic user's token.
+// Needs the schema of this branch WITH 20261104190000 applied: insights-source-revision.local.test.ts applies it, so run that one first, or apply the file by hand.
+// Everything else it creates itself: synthetic Auth users, their profile, sessions, metrics, routines and views, plus the test_hold hook below, removed at the end.
+// To see the failure: apply the file as of 567200269112 instead, and run the tests named "de varias filas". They end in 40P01.
+// Without the campaign: OWNLEVEL_CROSSING_ROUNDS=3 OWNLEVEL_CROSSING_BIG_ROUNDS=3. The rounds only look for the window; the tests with the hook force it.
 // OWNLEVEL_INSIGHTS_LOCAL_STATUS=<status.json> OWNLEVEL_INSIGHTS_LOCAL_DB=<db container> npx vitest run src/lib/mobile-api/insights-token-crossing.local.test.ts
 //
 // A request is one transaction, so a token cannot hold it open. To cross two of them on demand, a trigger that exists only in this
@@ -277,14 +281,285 @@ describe.runIf(!!statusFile && !!container)("el cruce del contador, con token re
     expect(deadlocks).toBe(0); expect(tally.deadlock ?? 0).toBe(0);
   }, 590_000);
 
-  it("la segunda pasada no deja rastro ni se puede tocar con un token", async () => {
-    const owner = await user();
-    expect(sql(`select count(*) from public.insights_source_pending;`)).toBe("0");
-    for (const reply of [await rest("GET", "insights_source_pending?select=tx", owner.token), await rest("POST", "insights_source_pending", owner.token, { source: "direct", has_old: false, has_new: true, new_user: owner.id })]) {
-      expect(reply.status).toBe(403); expect(reply.code).toBe("42501");
-    }
-    expect((await rest("POST", "rpc/insights_apply_source_change", owner.token, {})).status).not.toBe(200);
-  }, 60_000);
+  describe("la tabla de la segunda pasada", () => {
+    it("no se puede tocar: ni con un token, ni sin él, ni con service_role", async () => {
+      const owner = await user();
+      for (const token of [owner.token, null, status.SERVICE_ROLE_KEY]) {
+        for (const reply of [await rest("GET", "insights_source_pending?select=tx", token), await rest("POST", "insights_source_pending", token, { source: "direct", has_old: false, has_new: true, new_user: owner.id }), await rest("DELETE", "insights_source_pending?source=eq.direct", token)]) {
+          expect(reply.code).toBe("42501");
+        }
+      }
+      expect((await rest("POST", "rpc/insights_apply_source_change", owner.token, {})).status).not.toBe(200);
+      expect(sql(`select r.rolname from pg_roles r where r.rolname in ('anon','authenticated','service_role')
+        and (has_table_privilege(r.oid,'public.insights_source_pending','select,insert,update,delete,truncate,references,trigger,maintain') or has_sequence_privilege(r.oid,'public.insights_source_pending_id_seq','usage,select,update'));`)).toBe("");
+    }, 60_000);
+
+    it("es unlogged, con RLS y sin políticas, y ninguna publicación la lleva", () => {
+      expect(sql(`select string_agg(c.relname||'='||c.relpersistence::text,',' order by c.relname) from pg_class c where c.relname in ('insights_source_pending','insights_source_pending_id_seq','insights_source_pending_once');`)).toBe("insights_source_pending=u,insights_source_pending_id_seq=u,insights_source_pending_once=u");
+      expect(sql(`select c.relrowsecurity from pg_class c where c.oid='public.insights_source_pending'::regclass;`)).toBe("t");
+      expect(sql(`select count(*) from pg_policy p where p.polrelid='public.insights_source_pending'::regclass;`)).toBe("0");
+      expect(sql(`select count(*) from pg_publication_tables p where p.tablename='insights_source_pending';`)).toBe("0");
+    });
+
+    it("todo lo diferido corre en la primera vuelta y no escribe fuentes: ningún recheck puede quedar después del contador", () => {
+      const functions = sql(`select distinct p.proname from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_proc p on p.oid=t.tgfoid
+        where t.tgdeferrable and c.relnamespace in ('public'::regnamespace,'ownlevel_private'::regnamespace) order by 1;`).split("\n");
+      expect(functions).toEqual(["insights_apply_source_change", "insights_source_changed", "unique_key_recheck"]);
+      expect(sql(`select count(*) from pg_trigger t join pg_proc p on p.oid=t.tgfoid where p.proname='unique_key_recheck' and t.tgrelid in ('public.progress_views'::regclass,'public.routine_exercises'::regclass,'public.workout_session_exercises'::regclass);`)).toBe("3");
+      expect(sql(`select count(*) from pg_trigger t where t.tgname='insights_apply_source_change' and t.tgrelid='public.insights_source_pending'::regclass and t.tginitdeferred;`)).toBe("1");
+    });
+
+    const openConnections: Array<() => void> = [];
+    afterEach(() => { for (const end of openConnections.splice(0)) end(); });
+    /** A real connection. Each step ends at its own barrier; psql goes on after an error, which stays in `errors()`. */
+    const connect = () => {
+      const name = `crossing_${randomBytes(4).toString("hex")}`;
+      const psql = spawn(docker, ["--context", "desktop-linux", "exec", "-i", container!, "psql", "-X", "-U", "postgres", "-d", "postgres", "-q", "-At"], { stdio: "pipe" });
+      let out = "", errors = "", barrier = 0;
+      psql.stdout.on("data", chunk => { out += chunk; });
+      psql.stderr.on("data", chunk => { errors += chunk; });
+      psql.stdin.write(`set application_name='${name}'; set lock_timeout='12s';\n`);
+      const step = (statement: string) => {
+        const mark = `BARRIER_${name}_${++barrier}`;
+        psql.stdin.write(`${statement}\n\\echo ${mark}\n`);
+        return new Promise<void>((resolve, reject) => {
+          const limit = Date.now() + 20_000;
+          const check = () => { if (out.includes(mark)) resolve(); else if (Date.now() > limit) reject(Error(`${mark} not reached: ${statement}\n${errors}`)); else setTimeout(check, 25); };
+          check();
+        });
+      };
+      const terminate = () => { try { sql(`select pg_terminate_backend(pid) from pg_stat_activity where application_name='${name}';`); } catch { /* Already gone. */ } };
+      openConnections.push(() => { psql.kill(); terminate(); });
+      /** How many notes this connection sees, its own transaction included. */
+      const ownNotes = async () => { const start = out.length; await step(`select 'notes='||count(*) from public.insights_source_pending;`); return Number(/notes=(\d+)/.exec(out.slice(start))?.[1] ?? -1); };
+      return { name, step, ownNotes, terminate, errors: () => errors, close: () => { psql.stdin.end(); } };
+    };
+    const finishedOrWaiting = async (who: { name: string }, step: Promise<void>) => {
+      let finished = false;
+      void step.then(() => { finished = true; }, () => { finished = true; });
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (finished) return "finished";
+        if (sql(`select wait_event_type from pg_stat_activity where application_name='${who.name}';`) === "Lock") return "waiting";
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      return "neither";
+    };
+    const asUser = (id: string) => `select set_config('request.jwt.claim.sub','${id}',false);`;
+    const committedNotes = () => sql(`select count(*) from public.insights_source_pending;`);
+    // A note is written during the commit. This fires the first pass earlier, and only that one, to look at the note from inside.
+    const firstPassNow = "set constraints public.insights_source_changed immediate;";
+    const seedMetrics = (id: string) => {
+      const a = randomUUID(), b = randomUUID();
+      sql(`insert into public.user_metrics(id,user_id,name,unit,value_type) values('${a}','${id}','M${a.slice(0, 8)}',null,'decimal'),('${b}','${id}','M${b.slice(0, 8)}',null,'decimal');
+        insert into public.daily_metric_values(user_id,metric_id,metric_date,value) values('${id}','${a}','2026-06-10',1),('${id}','${b}','2026-06-10',1);`);
+      return { write: (metric: string) => `update public.daily_metric_values set value=value+1 where metric_id='${metric}';`, value: (metric: string) => sql(`select value from public.daily_metric_values where metric_id='${metric}';`), a, b };
+    };
+    const seedRoutine = (id: string) => {
+      const routine = randomUUID(), three = randomUUID(), four = randomUUID(), first = randomUUID(), second = randomUUID();
+      sql(`insert into public.routines(id,user_id,nombre) values('${routine}','${id}','R${routine.slice(0, 8)}');
+        insert into public.exercises(id,user_id,nombre,weight_mode) values('${three}','${id}','H${three.slice(0, 8)}','Peso total'),('${four}','${id}','F${four.slice(0, 8)}','Peso total');
+        insert into public.routine_exercises(id,routine_id,exercise_id,exercise_order) values('${first}','${routine}','${three}',1),('${second}','${routine}','${four}',2);`);
+      return { routine, first, second };
+    };
+    const seedViews = (id: string) => {
+      const a = randomUUID(), b = randomUUID();
+      sql(`insert into public.progress_views(id,user_id,position,name,definition) values('${a}','${id}',1,'A','{"measure":"x"}'),('${b}','${id}',2,'B','{"measure":"x"}');`);
+      return { a, b };
+    };
+
+    it("commit: la nota solo existe dentro de su transacción, una por cambio distinto, y se borra al confirmar", async () => {
+      const owner = await user(), metrics = seedMetrics(owner.id), before = counter(owner.id), tx = connect();
+      await tx.step(`begin; ${firstPassNow} ${metrics.write(metrics.a)} ${metrics.write(metrics.a)} ${metrics.write(metrics.b)}`);
+      expect(await tx.ownNotes()).toBe(1);
+      expect(committedNotes()).toBe("0");
+      await tx.step("commit;");
+      expect(tx.errors()).toBe("");
+      expect(await tx.ownNotes()).toBe(0);
+      expect(committedNotes()).toBe("0");
+      expect(counter(owner.id)).toBe(before + 1);
+      tx.close();
+    }, 60_000);
+
+    it("rollback: sin notas ni contador, y lo siguiente confirma con normalidad", async () => {
+      const owner = await user(), metrics = seedMetrics(owner.id), before = counter(owner.id), tx = connect(), value = metrics.value(metrics.a);
+      await tx.step(`begin; ${firstPassNow} ${metrics.write(metrics.a)}`);
+      expect(await tx.ownNotes()).toBe(1);
+      await tx.step("rollback;");
+      expect(await tx.ownNotes()).toBe(0);
+      expect(committedNotes()).toBe("0");
+      expect(metrics.value(metrics.a)).toBe(value);
+      expect(counter(owner.id)).toBe(before);
+      await tx.step(`begin; ${metrics.write(metrics.a)} commit;`);
+      expect(tx.errors()).toBe("");
+      expect(counter(owner.id)).toBe(before + 1);
+      tx.close();
+    }, 60_000);
+
+    it("savepoint: lo deshecho no cuenta, y anotar de nuevo sí", async () => {
+      const owner = await user(), metrics = seedMetrics(owner.id), before = counter(owner.id), tx = connect();
+      await tx.step(`begin; ${firstPassNow} savepoint s; ${metrics.write(metrics.a)}`);
+      expect(await tx.ownNotes()).toBe(1);
+      await tx.step("rollback to s;");
+      expect(await tx.ownNotes()).toBe(0);
+      await tx.step("commit;");
+      expect(counter(owner.id)).toBe(before);
+      await tx.step(`begin; ${firstPassNow} savepoint s; ${metrics.write(metrics.a)} rollback to s; ${metrics.write(metrics.a)} savepoint t; ${metrics.write(metrics.b)} rollback to t;`);
+      expect(await tx.ownNotes()).toBe(1);
+      await tx.step("commit;");
+      expect(tx.errors()).toBe("");
+      expect(counter(owner.id)).toBe(before + 1);
+      expect(committedNotes()).toBe("0");
+      tx.close();
+    }, 60_000);
+
+    it("desconexión antes del commit: sin notas ni contador, y sin dejar ningún bloqueo", async () => {
+      const owner = await user(), metrics = seedMetrics(owner.id), before = counter(owner.id), value = metrics.value(metrics.a), tx = connect();
+      await tx.step(`begin; ${firstPassNow} ${metrics.write(metrics.a)}`);
+      expect(await tx.ownNotes()).toBe(1);
+      tx.terminate();
+      await until("the connection gone", () => sql(`select count(*) from pg_stat_activity where application_name='${tx.name}';`) === "0");
+      expect(committedNotes()).toBe("0");
+      expect(metrics.value(metrics.a)).toBe(value);
+      expect(counter(owner.id)).toBe(before);
+      const next = connect();
+      await next.step(`begin; ${metrics.write(metrics.a)} commit;`);
+      expect(next.errors()).toBe("");
+      expect(counter(owner.id)).toBe(before + 1);
+      next.close();
+    }, 60_000);
+
+    it("desconexión durante la segunda pasada, esperando el bloqueo: nada queda, ni la escritura", async () => {
+      const owner = await user(), metrics = seedMetrics(owner.id), before = counter(owner.id), value = metrics.value(metrics.a);
+      const holder = connect(), tx = connect();
+      await holder.step(`begin; select pg_advisory_xact_lock(hashtextextended('${owner.id}',367));`);
+      await tx.step(`begin; ${metrics.write(metrics.a)}`);
+      const committing = tx.step("commit;");
+      void committing.catch(() => undefined);
+      expect(await finishedOrWaiting(tx, committing)).toBe("waiting");
+      tx.terminate();
+      await until("the connection gone", () => sql(`select count(*) from pg_stat_activity where application_name='${tx.name}';`) === "0");
+      await holder.step("rollback;");
+      expect(committedNotes()).toBe("0");
+      expect(metrics.value(metrics.a)).toBe(value);
+      expect(counter(owner.id)).toBe(before);
+      holder.close();
+    }, 60_000);
+
+    it("concurrentes con la misma nota: ninguna espera a la otra al anotar, cada una ve la suya y cuentan las dos", async () => {
+      const owner = await user(), metrics = seedMetrics(owner.id), before = counter(owner.id), t1 = connect(), t2 = connect();
+      await t1.step(`begin; ${firstPassNow} ${metrics.write(metrics.a)}`);
+      const write = t2.step(`begin; ${firstPassNow} ${metrics.write(metrics.b)}`);
+      expect(await finishedOrWaiting(t2, write)).toBe("finished");
+      await write;
+      expect(await t1.ownNotes()).toBe(1);
+      expect(await t2.ownNotes()).toBe(1);
+      await Promise.all([t1.step("commit;"), t2.step("commit;")]);
+      expect(t1.errors() + t2.errors()).toBe("");
+      expect(committedNotes()).toBe("0");
+      expect(counter(owner.id)).toBe(before + 2);
+      t1.close(); t2.close();
+    }, 60_000);
+
+    // The other deferred constraints, with real commits. The hook is not needed here: an open connection holds a transaction by itself.
+    it("orden de rutinas: dos escrituras de producto se ordenan antes del commit, sin ciclo", async () => {
+      const owner = await user(), metrics = seedMetrics(owner.id), routine = seedRoutine(owner.id), before = counter(owner.id);
+      const t1 = connect(), t2 = connect();
+      await t1.step(`${asUser(owner.id)} begin; ${metrics.write(metrics.a)} update public.routine_exercises set exercise_order=5 where id='${routine.first}';`);
+      await t2.step(`${asUser(owner.id)} begin; ${metrics.write(metrics.b)}`);
+      const insert = t2.step(`update public.routine_exercises set exercise_order=5 where id='${routine.second}';`);
+      // Same user and a same-order write: the existing per-user lock makes it wait here, holding nothing of the counter.
+      expect(await finishedOrWaiting(t2, insert)).toBe("waiting");
+      await t1.step("commit;");
+      await insert;
+      await t2.step("commit;");
+      expect(t1.errors()).toBe("");
+      expect(t2.errors()).toContain("routine_exercises_unique_order");
+      expect(t2.errors()).not.toContain("deadlock");
+      expect(counter(owner.id)).toBe(before + 1); // Only what committed.
+      expect(sql(`select exercise_order from public.routine_exercises where id='${routine.first}';`)).toBe("5");
+      expect(sql(`select exercise_order from public.routine_exercises where id='${routine.second}';`)).toBe("2");
+      t1.close(); t2.close();
+    }, 90_000);
+
+    it("orden de rutinas y vistas: un intercambio dentro de la misma transacción convive con el contador", async () => {
+      const owner = await user(), metrics = seedMetrics(owner.id), routine = seedRoutine(owner.id), views = seedViews(owner.id), before = counter(owner.id);
+      const tx = connect();
+      await tx.step(`${asUser(owner.id)} begin; ${metrics.write(metrics.a)}
+        update public.routine_exercises set exercise_order=case id when '${routine.first}' then 2 else 1 end where id in ('${routine.first}','${routine.second}');
+        update public.progress_views set position=case id when '${views.a}' then 2 else 1 end where id in ('${views.a}','${views.b}');
+        ${metrics.write(metrics.b)} commit;`);
+      expect(tx.errors()).toBe("");
+      expect(counter(owner.id)).toBe(before + 1);
+      expect(sql(`select exercise_order from public.routine_exercises where id='${routine.first}';`)).toBe("2");
+      expect(sql(`select position from public.progress_views where id='${views.a}';`)).toBe("2");
+      tx.close();
+    }, 90_000);
+
+    it("mientras una transacción tiene el contador: rutinas y vistas no esperan, y otro commit con fuentes sí", async () => {
+      const owner = await user(), metrics = seedMetrics(owner.id), routine = seedRoutine(owner.id), views = seedViews(owner.id), before = counter(owner.id);
+      const holding = connect(), routineWriter = connect(), viewWriter = connect(), metricWriter = connect();
+      // Firing the deferred triggers now holds the counter's lock exactly as a commit does, with time to act around it.
+      await holding.step(`${asUser(owner.id)} begin; ${metrics.write(metrics.a)} set constraints all immediate;`);
+      const moving = routineWriter.step(`${asUser(owner.id)} begin; select public.move_routine_exercise('${routine.first}',1); commit;`);
+      expect(await finishedOrWaiting(routineWriter, moving)).toBe("finished");
+      await moving;
+      const reordering = viewWriter.step(`${asUser(owner.id)} begin; select * from ownlevel_private.reorder_progress_views(array['${views.b}','${views.a}']::uuid[],0,'reorder-${randomUUID()}'); commit;`);
+      expect(await finishedOrWaiting(viewWriter, reordering)).toBe("finished");
+      await reordering;
+      expect(routineWriter.errors() + viewWriter.errors()).toBe("");
+      expect(sql(`select exercise_order from public.routine_exercises where id='${routine.first}';`)).toBe("2");
+      expect(sql(`select position from public.progress_views where id='${views.a}';`)).toBe("2");
+      await metricWriter.step(`${asUser(owner.id)} begin; ${metrics.write(metrics.b)}`);
+      const committing = metricWriter.step("commit;");
+      expect(await finishedOrWaiting(metricWriter, committing)).toBe("waiting");
+      await holding.step("commit;");
+      await committing;
+      expect(holding.errors() + metricWriter.errors()).toBe("");
+      expect(counter(owner.id)).toBe(before + 2);
+      holding.close(); routineWriter.close(); viewWriter.close(); metricWriter.close();
+    }, 90_000);
+
+    // Two transactions cross on the counter and on a same-position recheck. Only the second one to write has a recheck queued, and it runs before the counter.
+    it.each(["position", "session"] as const)("cruce con otro recheck pendiente (%s): espera sin tener el contador, y es violación de unicidad", async which => {
+      const owner = await user(), metrics = seedMetrics(owner.id);
+      const views = which === "position" ? seedViews(owner.id) : null, session = which === "session" ? seedSession(owner.id, "in_progress", "2026-06-11") : null;
+      const before = counter(owner.id);
+      const first = views ? `insert into public.progress_views(id,user_id,position,name,definition) values('${randomUUID()}','${owner.id}',5,'C','{"measure":"x"}');` : `update public.workout_session_exercises set exercise_order=50 where id='${session!.x1}';`;
+      const second = views ? `insert into public.progress_views(id,user_id,position,name,definition) values('${randomUUID()}','${owner.id}',5,'D','{"measure":"x"}');` : `update public.workout_session_exercises set exercise_order=50 where id='${session!.x2}';`;
+      const t1 = connect(), t2 = connect();
+      // T1 writes the position first and has no recheck queued. T2 finds it in progress, so it has one, after its counter write.
+      await t1.step(`begin; ${first} ${metrics.write(metrics.a)}`);
+      await t2.step(`begin; ${metrics.write(metrics.b)} ${second}`);
+      const t2Commit = t2.step("commit;");
+      expect(await finishedOrWaiting(t2, t2Commit)).toBe("waiting");
+      await Promise.all([t1.step("commit;"), t2Commit]);
+      expect(t1.errors()).toBe("");
+      expect(t2.errors()).toContain(views ? "progress_views_position_key" : "workout_session_exercises_unique_order");
+      expect(t2.errors()).not.toContain("deadlock");
+      const stored = views ? sql(`select count(*) from public.progress_views where user_id='${owner.id}' and position=5;`) : sql(`select count(*) from public.workout_session_exercises where workout_session_id='${session!.session}' and exercise_order=50;`);
+      expect(stored).toBe("1");
+      expect(counter(owner.id)).toBe(before + 1);
+      expect(committedNotes()).toBe("0");
+      t1.close(); t2.close();
+    }, 90_000);
+
+    it("el mismo cruce de posición sin escrituras en fuentes: espera y violación de unicidad, nunca deadlock", async () => {
+      const owner = await user(), before = counter(owner.id);
+      const row = (name: string) => `insert into public.progress_views(id,user_id,position,name,definition) values('${randomUUID()}','${owner.id}',5,'${name}','{"measure":"x"}');`;
+      const t1 = connect(), t2 = connect();
+      await t1.step(`begin; ${row("C")}`);
+      await t2.step(`begin; ${row("D")}`);
+      const t2Commit = t2.step("commit;");
+      expect(await finishedOrWaiting(t2, t2Commit)).toBe("waiting");
+      await t1.step("commit;");
+      await t2Commit;
+      expect(t1.errors()).toBe("");
+      expect(t2.errors()).toContain("progress_views_position_key");
+      expect(t2.errors()).not.toContain("deadlock");
+      expect(counter(owner.id)).toBe(before);
+      t1.close(); t2.close();
+    }, 90_000);
+  });
 
   describe("vistas de progreso, con los permisos reales", () => {
     const seedViews = (id: string) => {

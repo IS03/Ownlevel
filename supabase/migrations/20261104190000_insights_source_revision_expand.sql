@@ -88,6 +88,7 @@ $$;
 revoke all on function public.insights_session_counts(uuid) from public, anon, authenticated;
 
 -- What changed, until the second pass. Its rows exist only inside the transaction that wrote them: nothing to keep, and no WAL.
+-- A rollback, a lost connection or a crash takes them with the transaction, and a commit deletes them in the second pass.
 create unlogged table public.insights_source_pending (
   id bigint generated always as identity primary key,
   tx xid8 not null default pg_catalog.pg_current_xact_id(),
@@ -103,7 +104,9 @@ create unlogged table public.insights_source_pending (
 -- transaction, so writing here never waits for anyone.
 create unique index insights_source_pending_once on public.insights_source_pending (tx, source, has_old, has_new, old_user, new_user, old_parent, new_parent) nulls not distinct;
 alter table public.insights_source_pending enable row level security;
-revoke all on table public.insights_source_pending from public, anon, authenticated;
+-- Only the definer functions below touch it. The default privileges would leave it, and its sequence, open to these roles.
+revoke all on table public.insights_source_pending from public, anon, authenticated, service_role;
+revoke all on sequence public.insights_source_pending_id_seq from public, anon, authenticated, service_role;
 
 create function public.insights_source_changed()
 returns trigger language plpgsql security definer set search_path = '' as $$
