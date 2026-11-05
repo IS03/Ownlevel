@@ -114,9 +114,9 @@ El endpoint ya no manda todo junto. Todas las vistas salen de una misma lectura 
 
 **Nada se oculta.** Un método con días de resultado manda todas sus relaciones, y el contrato rechaza una lista más corta. Un método sin días de resultado manda su cantidad y `outcomeDays = 0`, sin una lista idéntica por candidato. Un id desconocido responde `item: null`, nunca una relación vacía.
 
-**Sin reutilización en este PR.** Cada vista es una lectura completa. Un primer diseño guardaba el resultado por revisión, pero `count + max(updated_at)` no identifica todos los cambios: con dos transacciones reales, la pantalla mostraba 10 con la base en 11. Ver [revisión de las fuentes](367-insights-source-revision.md). La reutilización vuelve en un PR aparte, con un contador que la base mueve en la misma transacción.
+**Reutilización.** Lo calculado queda en memoria del proceso, con clave de cuenta (del token), contador y día de Córdoba, 3 entradas y 5 minutos. Cada pedido vuelve a leer el contador bajo RLS: si coincide, responde sin leer el historial; si se movió, lee todo de nuevo. El token se valida siempre. **Es una optimización, no una garantía:** en otra instancia de Vercel se paga la lectura completa, y la tasa de aciertos real no se conoce. Ver [revisión de las fuentes](367-insights-source-revision.md).
 
-**Identidad y consistencia.** `sourceRevision` es un hash de las filas que leyó esa respuesta, y la UI no une páginas con hashes distintos. **El control durante la lectura es de mejor esfuerzo:** no detecta el cambio de una transacción que empezó antes y confirma después de otra más nueva.
+**Identidad y consistencia.** `sourceRevision` sale del contador, y la UI no une páginas con revisiones distintas. Un cambio confirmado en las fuentes cubiertas mueve el contador, también durante una lectura: se reintenta una vez, y después responde 503.
 
 ## Costo y escala
 
@@ -126,9 +126,10 @@ El endpoint ya no manda todo junto. Todas las vistas salen de una misma lectura 
 
 | Pedido | Fórmula | 1 año | 5 años | 10 años |
 | --- | --- | --- | --- | --- |
-| Cualquier vista | `P + 14` | 30 | 96 | 280 |
-| Con un reintento (fuente que cambia, 503 o medianoche) | `2(P + 14)` | 60 | 192 | 560 |
-| Ambos reintentos | `4(P + 14)` | 120 | 384 | 1120 |
+| Lectura completa | `P + 2` | 18 | 84 | 268 |
+| Con un reintento (fuente que cambia, 503 o medianoche) | `2(P + 2)` | 36 | 168 | 536 |
+| Ambos reintentos | `4(P + 2)` | 72 | 336 | 1072 |
+| **Otra vista, si sigue en memoria** | **1** | 1 | 1 | 1 |
 
 **Cálculo por pedido** (datos de hoy, carril parcial; mediana / máximo)
 
@@ -138,7 +139,7 @@ El endpoint ya no manda todo junto. Todas las vistas salen de una misma lectura 
 | 5 años | 1,10 s | 271 / 377 ms | + 257 / 261 ms | + hasta 261 ms |
 | 10 años | 6,4 s | **877 ms / 1,03 s** | + 904 / 920 ms | + hasta 920 ms |
 
-Con configuración conocida los tiempos son del mismo orden. A esto se suma un hash de las filas leídas, de unos 50 ms a 5 años.
+Con configuración conocida los tiempos son del mismo orden. Si sigue en memoria, más días o una relación ya evaluada tardan menos de 2 ms.
 
 **Respuesta** (KiB; datos de hoy)
 
@@ -152,16 +153,15 @@ Con configuración conocida los tiempos son del mismo orden. A esto se suma un h
 
 **PostgREST local real a 5 años** (unas 1320 sesiones; pila descartable):
 
-| Base | Cualquier vista |
-| --- | --- |
-| Con estadísticas | 562–720 ms, 72 consultas |
-| Recién sembrada, sin estadísticas | **3,1–3,2 s**, 72 consultas |
+| Base | Lectura completa (60 consultas) | Otra vista (1 consulta) | Relaciones, la primera vez |
+| --- | --- | --- | --- |
+| Con estadísticas | 426–634 ms | 3 ms | 203–226 ms |
+| Recién sembrada, sin estadísticas | 618–734 ms | 3 ms | 205–206 ms |
 
 **Sigue fuera de presupuesto:**
-- **Lectura en frío a 10 años:** 280 consultas, y el cálculo llega a 1,03 s. **Es lo que cuesta cada pedido en este PR**, también «Ver más días».
+- **Lectura en frío a 10 años:** 268 consultas, y el cálculo llega a 1,03 s. Es lo que cuesta cada pedido que no encuentra la lectura en memoria.
 - **Una relación a 10 años:** 258 KiB contra 128. Son sus 3136 pares, que son la evidencia. No se recortan.
 - **Pico de memoria a 10 años:** 210 MiB contra 128. Es un límite superior porque abarca cinco corridas, pero no se probó en la función real de Vercel.
-- **Revisión sin estadísticas:** 1,2 s en cada pedido.
 
 **Por qué no cambian los resultados:**
 - El resumen indexa la historia de cada ejercicio por contexto, en lugar de recorrerla por cada exposición. 120 historiales aleatorios con contextos mezclados, empates, sesiones rotas y bloques repetidos dan **exactamente** lo mismo que el recorrido, exclusiones incluidas.

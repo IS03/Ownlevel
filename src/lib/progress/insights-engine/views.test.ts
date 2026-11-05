@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { InsightsSnapshotCache } from "../../mobile-api/performance-insights-cache";
 import { parseCompleteInsights, parsePerformanceInsights } from "../../mobile-api/performance-insights-contract";
 import { buildInsightsReadModel, createInsightsSnapshot, insightsDaysPage, insightsRelation, INSIGHTS_RECENT_PAIRS, insightsRelations, insightsSummary } from "./read-model";
 import { syntheticHistory } from "./scale-fixture";
@@ -148,5 +149,33 @@ describe("publicación de asociaciones parciales", () => {
     const crossed = roundTrip(insightsRelations(createInsightsSnapshot(reactive("none"), { ...options, permutations: 99, revision: "r" })));
     const strictForged = crossed.strict.items.map(row => ({ ...row, state: "coincidence_context_unknown" }));
     expect(parsePerformanceInsights({ ...crossed, strict: { ...crossed.strict, items: strictForged } })).toBeUndefined();
+  });
+});
+
+describe("caché de instantáneas", () => {
+  const make = (now: { value: number }) => new InsightsSnapshotCache<string>({ maxEntries: 2, ttlMs: 1000, now: () => now.value });
+  it("serves only the same account, revision and day, while it lasts", () => {
+    const now = { value: 0 }, cache = make(now);
+    cache.set("a", "r1", "d1", "x");
+    expect(cache.get("a", "r1", "d1")).toBe("x");
+    expect(cache.get("b", "r1", "d1")).toBeNull();
+    expect(cache.get("a", "r1", "d2")).toBeNull();
+    cache.set("a", "r1", "d1", "x");
+    expect(cache.get("a", "r2", "d1")).toBeNull();
+    // A stale entry is gone, not merely skipped.
+    expect(cache.get("a", "r1", "d1")).toBeNull();
+    cache.set("a", "r1", "d1", "x");
+    now.value = 1000;
+    expect(cache.get("a", "r1", "d1")).toBeNull();
+  });
+  it("keeps one entry per account and evicts the least recently used", () => {
+    const cache = make({ value: 0 });
+    cache.set("a", "r1", "d", "1"); cache.set("a", "r2", "d", "2");
+    expect(cache.get("a", "r1", "d")).toBeNull();
+    cache.set("a", "r2", "d", "2"); cache.set("b", "r", "d", "b");
+    cache.get("a", "r2", "d");
+    cache.set("c", "r", "d", "c");
+    expect(cache.get("b", "r", "d")).toBeNull();
+    expect(cache.get("a", "r2", "d")).toBe("2");
   });
 });
