@@ -87,3 +87,34 @@ Tres ramas publicadas desde `main` `07ee16a`, con previews deshabilitadas. **Los
 
 **Sin cambios:** ninguna migración nueva aplicada, ningún merge y ningún despliegue. «Consistente» sigue deshabilitado y #367 sigue abierto.
 
+## Continuidad: variantes completas y verificadas (2026-11-06)
+
+ChatGPT abrió los PR en borrador. **No hay merges, migraciones remotas ni deploys.** Producción sigue en `07ee16a`.
+
+| PR | Rama | Head | Necesita antes |
+| --- | --- | --- | --- |
+| #393 | `codex/367-chatgpt-capture-schema` | `bac622d01b09e7d9306ef564ce0d1b70f9a8fb74` | Nada; sin cambios en esta tanda |
+| #394 | `codex/367-exercise-configuration-expand` | `a51f0858139d3f62b61e4ebfb2d394a6532a4a4c` | Aplicar `20261106120000_training_exercise_configuration_expand.sql`, blob `85aaeb254c68bafe2a9834e9d118f415f3075648` |
+| #395 | `codex/367-exercise-configuration-adopt` | `a8924704443cbddb84331d45b3e988d3f6d097f8` | La migración y #394; contiene sus commits |
+
+**El blob de la migración cambió frente al paquete anterior** (`25457aa…`): agrega `recorded_phase`. Nunca se aplicó fuera de bases descartables.
+
+**Verificado en PostgreSQL 17.6.1.105 con PostgREST y Auth,** en la pila local descartable `ownlevel-receipt-81c940df`:
+- las 8 pruebas afectadas de #391 y las 3 guardas de cruce;
+- 5 pruebas de configuración de punta a punta.
+
+**Captura:**
+- Mobile: en curso y en la sesión completada.
+- Web: en el editor de sesión, en curso y completada.
+
+**Descripciones vigentes:** `docs/progress/367-chatgpt-capture-pr-description.md` (en #393), `367-exercise-configuration-expand-pr-description.md` (en #394) y `367-exercise-configuration-adopt-pr-description.md` (en #395). No se editaron en GitHub: esta máquina no tiene sesión.
+
+**Enlaces:**
+- [Paquete de rollout](https://github.com/IS03/Ownlevel/blob/codex/367-exercise-configuration-adopt/docs/progress/367-exercise-configuration-rollout.md)
+- [Matriz](https://github.com/IS03/Ownlevel/blob/codex/367-exercise-configuration-adopt/docs/progress/367-matriz-cobertura.md)
+- [Checklist física única](https://github.com/IS03/Ownlevel/blob/codex/367-exercise-configuration-adopt/docs/progress/367-qa-fisica.md)
+
+**Próximos incrementos, separados y sin implementar:** convención del sueño, peso corporal en Insights, y todas las sesiones y macros en el contexto del día.
+
+«Consistente» sigue deshabilitado y #367 sigue abierto.
+
