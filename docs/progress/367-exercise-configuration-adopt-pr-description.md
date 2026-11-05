@@ -81,7 +81,7 @@ Archivo: `exercise-configuration.local.test.ts`, **5 pruebas, todas pasan**.
   - texto, No aplica y borrado con revisiones 0, 1 y 2;
   - lectura fallida;
   - sesión completada con «registrada después» y aviso de bloques.
-- `npm run validate`: resultado en la entrega de esta tanda.
+- `npm run validate`: `typecheck` y `lint` limpios; 1614 pruebas pasan y 4 fallan en `active-session-bridge-screen.test.tsx`, igual que en `main` sin estos cambios. `config:check` corrido aparte.
 
 ### Reutilizado y no repetido
 - La evidencia de #394 en 18.6 embebido.
