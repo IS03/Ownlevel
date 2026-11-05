@@ -3,7 +3,7 @@
 // Needs a schema WITHOUT the migration: it measures a write before applying it, and applies it itself.
 import { randomBytes, randomUUID } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -129,6 +129,9 @@ describe.runIf(!!statusFile && !!container)("revisión transaccional de las fuen
     expect(sessions).toHaveLength(30);
 
     sql(readFileSync(join(process.cwd(), "supabase/migrations/20261105211040_insights_source_revision_expand.sql"), "utf8") + "\nnotify pgrst,'reload schema';");
+    // Later migrations can add sources to the counter (#367 configuration): the tests below run against the function as it is now.
+    for (const name of readdirSync(join(process.cwd(), "supabase/migrations")).filter(file => file.endsWith(".sql") && file > "20261105211040_insights_source_revision_expand.sql").sort())
+      sql(readFileSync(join(process.cwd(), "supabase/migrations", name), "utf8") + "\nnotify pgrst,'reload schema';");
     for (let attempt = 0; attempt < 50; attempt++) {
       const probe = await owner.client.from("insights_source_revisions").select("revision").limit(1);
       if (!probe.error) break;
@@ -192,6 +195,8 @@ describe.runIf(!!statusFile && !!container)("revisión transaccional de las fuen
       expect(await moved(update(`update public.workout_session_exercises set implement_snapshot='barra' where workout_session_id='${session}';`))).toBe(1);
       expect(await moved(update(`update public.workout_sets t set actual_reps=9 from public.workout_session_exercises x where x.id=t.workout_session_exercise_id and x.workout_session_id='${session}';`))).toBe(1);
       expect(await moved(update(`insert into public.workout_session_feelings(session_id,revision,facts,updated_at) values('${session}',1,'{}',now());`))).toBe(1);
+      expect(await moved(update(`insert into public.workout_session_exercise_configurations(session_exercise_id,user_id,revision,kind,label,source,recorded_phase,updated_at) select x.id,x.user_id,1,'recorded','Agarre neutro','entered','during_session',now() from public.workout_session_exercises x where x.workout_session_id='${session}';`))).toBe(1);
+      expect(await moved(update(`update public.workout_session_exercise_configurations c set label='Agarre prono' from public.workout_session_exercises x where x.id=c.session_exercise_id and x.workout_session_id='${session}';`))).toBe(1);
       expect(await moved(update(`update public.day_logs set log_date='2026-07-02' where user_id='${owner.id}' and log_date='${date}';`))).toBe(1);
       expect(await moved(update(`update public.workout_sessions set status='discarded' where id='${session}';`))).toBe(1);
     });
@@ -200,6 +205,7 @@ describe.runIf(!!statusFile && !!container)("revisión transaccional de las fuen
       expect(await moved(update(`update public.workout_sets t set actual_reps=9 from public.workout_session_exercises x where x.id=t.workout_session_exercise_id and x.workout_session_id='${session}';`))).toBe(0);
       expect(await moved(update(`update public.workout_session_exercises set implement_snapshot='barra' where workout_session_id='${session}';`))).toBe(0);
       expect(await moved(update(`update public.workout_sessions set session_name='EN CURSO' where id='${session}';`))).toBe(0);
+      expect(await moved(update(`insert into public.workout_session_exercise_configurations(session_exercise_id,user_id,revision,kind,label,source,recorded_phase,updated_at) select x.id,x.user_id,1,'recorded','Agarre neutro','entered','during_session',now() from public.workout_session_exercises x where x.workout_session_id='${session}';`))).toBe(0);
       expect(await moved(update(`update public.day_logs set steps=100 where user_id='${owner.id}' and log_date='${date}';`))).toBe(0);
       expect(await moved(() => complete(session, date))).toBe(1);
     });
@@ -218,6 +224,18 @@ describe.runIf(!!statusFile && !!container)("revisión transaccional de las fuen
       expect(afterCompleting).toBe(seen + 1);
       await writer.end();
       // Its write lands in a session that is now completed, so it has to count.
+      expect(await revision()).toBe(afterCompleting + 1);
+    }, 30_000);
+    it("sees a session completed while another transaction was writing a configuration under it", async () => {
+      const date = "2026-07-21", session = seedSession(owner.id, date);
+      const writer = open(`insert into public.workout_session_exercise_configurations(session_exercise_id,user_id,revision,kind,label,source,recorded_phase,updated_at) select x.id,x.user_id,1,'recorded','Agarre neutro','entered','during_session',now() from public.workout_session_exercises x where x.workout_session_id='${session}';`);
+      await settle();
+      const seen = await revision();
+      complete(session, date);
+      const afterCompleting = await revision();
+      expect(afterCompleting).toBe(seen + 1);
+      await writer.end();
+      // Like a set: the configuration lands in a session that is now completed, so it counts.
       expect(await revision()).toBe(afterCompleting + 1);
     }, 30_000);
   });
