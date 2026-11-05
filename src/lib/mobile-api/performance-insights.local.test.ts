@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import { buildInsightsReadModel, insightsDaysPage, insightsRelation, insightsRelations, insightsSummary } from "../progress/insights-engine";
 import { parseCompleteInsights, parsePerformanceInsights } from "./performance-insights-contract";
 import { buildQuickOptions } from "./nutrition-quick-server";
-import { readConsistentInsightsSource, readInsightsRevision, readInsightsSnapshot, readInsightsSource } from "./performance-insights-server";
+import { clearInsightsSnapshots, readConsistentInsightsSource, readInsightsRevision, readInsightsSnapshot, readInsightsSource } from "./performance-insights-server";
 import type { MobileSupabaseAuthenticatedContext } from "./supabase";
 
 vi.mock("server-only", () => ({}));
@@ -78,8 +78,8 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
       notify pgrst,'reload schema';`);
     owner.http.requests = 0;
     const { source } = await readConsistentInsightsSource(contextOf(owner.id, owner.client));
-    // Every request PostgREST really received: 2 revision rounds of 7 plus one page per stream.
-    expect(owner.http.requests).toBe(14 + 7);
+    // Every request PostgREST really received: the counter before and after, plus one page per stream.
+    expect(owner.http.requests).toBe(2 + 7);
     expect(source.sessions.map(row => row.id).sort()).toEqual([s1, s2].sort());
     expect(source.sessions.find(row => row.id === s2)!.date).toBe("2026-03-02");
     expect(source.exercises.every(row => row.exerciseId === exercise)).toBe(true);
@@ -212,7 +212,7 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
     const tomorrow = sql("select ((now() at time zone 'America/Argentina/Cordoba')::date + 1)::text;");
     const snapshot = await readInsightsSnapshot(contextOf(id, owner.client), tomorrow);
     const pages = owner.http.requests;
-    expect(pages).toBe(14 + 7);
+    expect(pages).toBe(2 + 7);
     const summary = insightsSummary(snapshot, { limit: 120 });
     expect(parsePerformanceInsights(JSON.parse(JSON.stringify(summary)))).toBeTruthy();
     for (const [date, row] of Object.entries(expected)) {
@@ -230,18 +230,20 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
     expect(relation.pairs!.every(pair => pair.exposure === 60)).toBe(true);
     expect(relation.item!.exclusions).toMatchObject({ unverified_meal_time_in_scope: 6, untimed_meal_in_scope: 4, no_registered_meal_in_window: 2 });
 
-    // Nothing is reused: the same content gets the same identity, and a new meal changes it.
+    // With the counter still, the same result is reused for one query; a real meal moves it and forces a whole read.
     owner.http.requests = 0;
     const again = await readInsightsSnapshot(contextOf(id, owner.client), tomorrow);
-    expect(owner.http.requests).toBe(14 + 7);
-    expect(again.revision).toBe(snapshot.revision);
+    expect(owner.http.requests).toBe(1);
+    expect(again).toBe(snapshot);
     await manual(cases[11]!, { consumedAt: at(cases[11]!), consumedAtSource: "user_declared" });
+    owner.http.requests = 0;
     const after = await readInsightsSnapshot(contextOf(id, owner.client), tomorrow);
+    expect(owner.http.requests).toBe(2 + 7);
     expect(after).not.toBe(snapshot); expect(after.revision).not.toBe(snapshot.revision);
     expect(insightsSummary(after, { limit: 120 }).facts.days.find(day => day.date === cases[11]!)!.sessions[0]!.context.carbsPre3h).toEqual(recorded);
   }, 120_000);
   // Two real transactions. B starts first, A starts and commits later, then B commits: B's row changes while count and max(updated_at) stay.
-  describe("colisión de la revisión de cantidad y máximo", () => {
+  describe("la colisión de cantidad y máximo, con el contador", () => {
     const seed = async () => {
       const { sql, user } = localStack();
       const owner = await user(), id = owner.id, metric = randomUUID(), dates = ["2026-05-01", "2026-05-02"];
@@ -264,7 +266,7 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
     const valueOf = (source: { metricValues: readonly { date: string; value: unknown }[] }, date: string) => Number(source.metricValues.find(row => row.date === date)!.value);
     /** Waits until the open transaction really holds its row: its update has been sent and its now() is earlier than A's. */
     const settled = () => new Promise(resolve => setTimeout(resolve, 1500));
-    it("does not reuse an earlier result when the revision cannot see the change", async () => {
+    it("does not reuse a warm result when an older transaction commits after a newer one", async () => {
       const { sql, value, dates, openTransaction, context, id, metric } = await seed();
       const exercise = randomUUID(), session = randomUUID();
       sql(`select set_config('request.jwt.claim.sub','${id}',false);
@@ -273,23 +275,24 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
         insert into public.workout_sessions(id,user_id,day_log_id,started_at) select '${session}','${id}',l.id,'${dates[0]}T18:00:00Z' from public.day_logs l where l.user_id='${id}' and l.log_date='${dates[0]}';
         insert into public.workout_session_exercises(user_id,workout_session_id,exercise_id,exercise_order) values('${id}','${session}','${exercise}',1);
         update public.workout_sessions set status='completed',ended_at='${dates[0]}T19:00:00Z' where id='${session}';`);
+      clearInsightsSnapshots();
       const shown = (snapshot: Awaited<ReturnType<typeof readInsightsSnapshot>>) => insightsSummary(snapshot, { limit: 120 }).facts.days.find(day => day.date === dates[0])!.context.metrics.find(row => row.metricId === metric)!.value;
       const b = openTransaction(value(dates[0]!, 11));
       await settled();
       sql(value(dates[1]!, 21));
       const warm = await readInsightsSnapshot(context, "2030-01-01");
       expect(shown(warm)).toBe(10);
+      // Warm: the same counter gives the same result without reading again.
+      expect(await readInsightsSnapshot(context, "2030-01-01")).toBe(warm);
       const before = await readInsightsRevision(context);
       await b.commit();
-      // The collision itself: the row changed, and the count and maximum did not.
       expect(valueOf((await readInsightsSource(context)), dates[0]!)).toBe(11);
-      expect(await readInsightsRevision(context)).toBe(before);
-      // What must hold anyway: what is shown is what is stored.
+      expect(await readInsightsRevision(context)).not.toBe(before);
       const next = await readInsightsSnapshot(context, "2030-01-01");
       expect(shown(next)).toBe(11);
       expect(next.revision).not.toBe(warm.revision);
     }, 60_000);
-    it("LIMIT: the check around a read does not see that same change", async () => {
+    it("detects that same change during a read, and reads again", async () => {
       const { sql, value, dates, openTransaction, context, owner } = await seed();
       const b = openTransaction(value(dates[0]!, 11));
       await settled();
@@ -298,11 +301,79 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
       let committed = false;
       owner.http.hook = async url => { if (!committed && url.includes("metric_date") ) { committed = true; await b.commit(); } };
       owner.http.requests = 0;
-      await readConsistentInsightsSource(context);
+      const { source } = await readConsistentInsightsSource(context);
       owner.http.hook = null;
       expect(committed).toBe(true);
-      // No retry: 2 rounds of 7 and one page per stream. It published a read during which a source changed.
-      expect(owner.http.requests).toBe(14 + 7);
+      // A retry: two attempts of the counter twice and one page per stream. The read it publishes has the committed value.
+      expect(owner.http.requests).toBe(2 * (2 + 7));
+      expect(valueOf(source, dates[0]!)).toBe(11);
+    }, 60_000);
+
+    const withSessions = async () => {
+      const seeded = await seed();
+      const { sql, id } = seeded;
+      const session = (date: string) => {
+        const row = randomUUID(), library = randomUUID(), exercise = randomUUID();
+        sql(`select set_config('request.jwt.claim.sub','${id}',false);
+          insert into public.exercises(id,user_id,nombre,weight_mode) values('${library}','${id}','SYNTHETIC ${library.slice(0, 8)}','Peso total');
+          insert into public.day_logs(user_id,log_date) values('${id}','${date}') on conflict do nothing;
+          insert into public.workout_sessions(id,user_id,day_log_id,started_at) select '${row}','${id}',l.id,'${date}T18:00:00Z' from public.day_logs l where l.user_id='${id}' and l.log_date='${date}';
+          insert into public.workout_session_exercises(id,user_id,workout_session_id,exercise_id,exercise_order) values('${exercise}','${id}','${row}','${library}',1);`);
+        return { row, exercise, set: sql(`select id from public.workout_sets where workout_session_exercise_id='${exercise}' order by set_number limit 1;`) };
+      };
+      const finished = (date: string) => {
+        const made = session(date);
+        sql(`select set_config('request.jwt.claim.sub','${id}',false); update public.workout_sessions set status='completed',ended_at='${date}T19:00:00Z' where id='${made.row}';`);
+        return made;
+      };
+      clearInsightsSnapshots();
+      return { ...seeded, session, finished };
+    };
+    it("does not reuse a warm result when a set or an exercise leaves a completed session or enters one", async () => {
+      const { owner, context, session, finished } = await withSessions();
+      const done = finished("2026-06-01"), other = finished("2026-06-02"), open = session("2026-06-03");
+      const warmed = async () => { const warm = await readInsightsSnapshot(context, "2030-01-01"); expect(await readInsightsSnapshot(context, "2030-01-01")).toBe(warm); return warm; };
+
+      // A set leaves for the session in progress: its origin is what changes.
+      let warm = await warmed();
+      expect((await readInsightsSource(context)).sets.map(row => row.id)).toContain(done.set);
+      expect((await owner.client.from("workout_sets").update({ workout_session_exercise_id: open.exercise, set_number: 40 }).eq("id", done.set)).error).toBeNull();
+      expect((await readInsightsSnapshot(context, "2030-01-01")).revision).not.toBe(warm.revision);
+      expect((await readInsightsSource(context)).sets.map(row => row.id)).not.toContain(done.set);
+
+      // And comes back: now its destination is what changes.
+      warm = await warmed();
+      expect((await owner.client.from("workout_sets").update({ workout_session_exercise_id: other.exercise, set_number: 41 }).eq("id", done.set)).error).toBeNull();
+      expect((await readInsightsSnapshot(context, "2030-01-01")).revision).not.toBe(warm.revision);
+      expect((await readInsightsSource(context)).sets.map(row => row.id)).toContain(done.set);
+
+      // An exercise leaves.
+      warm = await warmed();
+      expect((await owner.client.from("workout_session_exercises").update({ workout_session_id: open.row, exercise_order: 50 }).eq("id", other.exercise)).error).toBeNull();
+      expect((await readInsightsSnapshot(context, "2030-01-01")).revision).not.toBe(warm.revision);
+      expect((await readInsightsSource(context)).exercises.map(row => row.id)).not.toContain(other.exercise);
+    }, 60_000);
+    it("invalidates twice and fails neither when one holds a completed session and the other commits a metric and a set of it", async () => {
+      const { sql, id, value, dates, openTransaction, context, finished } = await withSessions();
+      const done = finished("2026-06-05");
+      const as = `select set_config('request.jwt.claim.sub','${id}',false);`;
+      const holder = openTransaction(`${as} update public.workout_sessions set session_name='RETENIDA' where id='${done.row}';`);
+      const writer = openTransaction(`${as} ${value(dates[0]!, 11)} update public.workout_sets set actual_reps=12 where id='${done.set}';`);
+      await settled();
+      const warm = await readInsightsSnapshot(context, "2030-01-01");
+      // A commit that waited for the holder would never get here: the holder has not committed yet.
+      await writer.commit();
+      const afterWriter = await readInsightsSnapshot(context, "2030-01-01");
+      expect(afterWriter.revision).not.toBe(warm.revision);
+      let source = await readInsightsSource(context);
+      expect(valueOf(source, dates[0]!)).toBe(11);
+      expect(source.sets.find(row => row.id === done.set)!.actualReps).toBe(12);
+      expect(source.sessions.find(row => row.id === done.row)!.name).toBeNull();
+      await holder.commit();
+      expect((await readInsightsSnapshot(context, "2030-01-01")).revision).not.toBe(afterWriter.revision);
+      source = await readInsightsSource(context);
+      expect(source.sessions.find(row => row.id === done.row)!.name).toBe("RETENIDA");
+      expect(sql(`select session_name from public.workout_sessions where id='${done.row}';`)).toBe("RETENIDA");
     }, 60_000);
   });
 
@@ -338,13 +409,16 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
     // A freshly seeded database has no statistics yet: production runs with autovacuum, so both situations are measured.
     for (let run = 0; run < 7; run++) {
       if (run === 2) sql("analyze;");
+      clearInsightsSnapshots();
       const today = "2030-01-01";
       const full = await timed(() => readInsightsSnapshot(context, today));
+      const reuse = await timed(() => readInsightsSnapshot(context, today));
+      expect(reuse.value).toBe(full.value); expect(reuse.requests).toBe(1);
       const snapshot = full.value;
       const summary = insightsSummary(snapshot), next = summary.facts.page.nextBefore!;
       const relations = await timed(() => insightsRelations(snapshot));
       const pick = snapshot.partial.lane.candidates.find(row => row.values.size > 0)!.definition.id;
-      runs.push({ analyzed: run >= 2, fullRead: { ms: full.ms, requests: full.requests, slowest: full.slowest }, relationsMs: relations.ms,
+      runs.push({ analyzed: run >= 2, fullRead: { ms: full.ms, requests: full.requests, slowest: full.slowest }, reuse: { ms: reuse.ms, requests: reuse.requests, slowest: reuse.slowest }, relationsMs: relations.ms,
         responseKiB: { summary: kib(summary), daysPage: kib(insightsDaysPage(snapshot, { before: next })), relations: kib(relations.value), relationDetail: kib(insightsRelation(snapshot, pick)) } });
       rows = { sessions: snapshot.history.sessions, partialComparable: snapshot.partial.totals.comparable, partialOutcomeDays: snapshot.partial.outcomeDays, strictComparable: snapshot.totals.comparable };
     }
