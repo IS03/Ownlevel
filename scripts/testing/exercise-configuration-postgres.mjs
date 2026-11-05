@@ -10,7 +10,7 @@ import { bootstrapTrainingPostgres, readTrainingTestFile as read, trainingSqlFun
 
 if (!process.env.OWNLEVEL_TEST_MODULES) throw Error('Set OWNLEVEL_TEST_MODULES to external embedded-postgres tooling.');
 const { default: EmbeddedPostgres } = await import(pathToFileURL(join(process.env.OWNLEVEL_TEST_MODULES, 'embedded-postgres/dist/index.js')));
-const MIGRATION = 'supabase/migrations/20261106120000_training_exercise_configuration_expand.sql';
+const MIGRATION = 'supabase/migrations/20261105223915_training_exercise_configuration_expand.sql';
 const REVISION = 'supabase/migrations/20261105211040_insights_source_revision_expand.sql';
 const dir = await mkdtemp(join(tmpdir(), 'ownlevel-configuration-'));
 const listener = createServer(); await new Promise(r => listener.listen(0, '127.0.0.1', r));
