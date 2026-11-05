@@ -209,14 +209,18 @@ export function insightsRelations(snapshot: InsightsSnapshot): InsightsRelations
       items: snapshot.partial.outcomeDays ? partial.items.map(item => relationSummary<PartialRelationSummary>(item)) : [] } };
 }
 
+/** Pairs a relation answers with unless all of them are asked for. Its numbers always come from every pair. */
+export const INSIGHTS_RECENT_PAIRS = 60;
+
 /** One relation with its evidence. Evaluates only its own method's family. An unknown id is null, never an empty relation. */
-export function insightsRelation(snapshot: InsightsSnapshot, id: string): InsightsRelationDetail {
+export function insightsRelation(snapshot: InsightsSnapshot, id: string, options: { pairs?: "all" | "recent" } = {}): InsightsRelationDetail {
   const isPartial = id.startsWith(PARTIAL_ASSOCIATION_PREFIX);
   const shared = { view: "relation" as const, ...versions(snapshot), metrics: snapshot.metrics, id, ...(isPartial ? { partial: partialLabels(snapshot) } : {}) };
   const chosen: Lane<AssociationResult | PartialAssociationResult> = isPartial ? snapshot.partial.lane : snapshot.strict;
   const candidate = chosen.candidates.find(row => row.definition.id === id);
   const item = candidate ? chosen.evaluate().items.find(row => row.id === id) ?? null : null;
-  return { ...shared, lane: isPartial ? "partial" : "strict", item, pairs: candidate && item ? pairsOf(chosen, candidate) : null };
+  const pairs = candidate && item ? pairsOf(chosen, candidate) : null;
+  return { ...shared, lane: isPartial ? "partial" : "strict", item, pairs: pairs && options.pairs === "recent" ? pairs.slice(-INSIGHTS_RECENT_PAIRS) : pairs, pairsTotal: pairs?.length ?? 0 };
 }
 
 /** Everything at once, for the pure consumers and the tests that compare the views against it. The route serves the views. */

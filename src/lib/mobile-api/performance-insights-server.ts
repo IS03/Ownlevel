@@ -115,20 +115,22 @@ export async function readInsightsSnapshot(context: Context, today: string): Pro
 
 export function parseInsightsParams(params: URLSearchParams) {
   for (const key of new Set(params.keys())) {
-    if (!["view", "before", "limit", "association"].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
+    if (!["view", "before", "limit", "association", "pairs"].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
   }
   const before = params.get("before") ?? undefined, limit = params.get("limit"), association = params.get("association") ?? undefined, view = params.get("view") ?? "summary";
   if (!["summary", "days", "relations"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
   if (before !== undefined && (!/^\d{4}-\d{2}-\d{2}$/.test(before) || new Date(`${before}T00:00:00Z`).toISOString().slice(0, 10) !== before)) throw new MobileApiValidationError("Fecha no válida.");
   if (limit !== null && (!/^\d{1,3}$/.test(limit) || +limit < 1 || +limit > INSIGHTS_MAX_DAYS)) throw new MobileApiValidationError(`El límite va de 1 a ${INSIGHTS_MAX_DAYS} días.`);
   if (association !== undefined && !/^[a-zA-Z0-9_:-]{1,120}$/.test(association)) throw new MobileApiValidationError("Relación no válida.");
-  return { view: view as "summary" | "days" | "relations", before, limit: limit === null ? undefined : +limit, association };
+  const pairs = params.get("pairs");
+  if (pairs !== null && (pairs !== "all" || association === undefined)) throw new MobileApiValidationError("Parámetro no válido.");
+  return { view: view as "summary" | "days" | "relations", before, limit: limit === null ? undefined : +limit, association, ...(pairs === "all" ? { pairs: "all" as const } : {}) };
 }
 
 export const performanceInsightsResponse = (request: Request) => progressReadResponse(request, "performance-insights", async (context, params, today) => {
   const options = parseInsightsParams(params);
   const snapshot = await readInsightsSnapshot(context, today);
-  const model = options.association ? insightsRelation(snapshot, options.association)
+  const model = options.association ? insightsRelation(snapshot, options.association, { pairs: options.pairs ?? "recent" })
     : options.view === "relations" ? insightsRelations(snapshot)
     : options.view === "days" ? insightsDaysPage(snapshot, options) : insightsSummary(snapshot, options);
   // A read straddling Córdoba midnight is retried by the shared GET handler.

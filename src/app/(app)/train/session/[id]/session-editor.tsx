@@ -70,6 +70,7 @@ import {
   ExerciseAutosaveQueue,
 } from "@/lib/phase2/exercise-autosave";
 import { resolveWorkoutFinishOutcome } from "@/lib/phase2/finish-reliability";
+import { runWorkoutFinishAttempt } from "@/lib/phase2/finish-attempt";
 import type { ExerciseAutosaveErrorCategory } from "@/lib/phase2/exercise-autosave";
 import type {
   SessionMetadataInput,
@@ -101,6 +102,7 @@ import { CompletedSessionActions } from "./completed-session-actions";
 import { WorkoutFinishedDialog } from "./workout-finished-dialog";
 import { QuickExerciseHistorySheet } from "./quick-exercise-history-sheet";
 import type { ExerciseReportSession } from "@/lib/phase2/exercise-insights";
+import { TrainingFeelings, useWebTrainingFeelings } from "@/components/training/training-feelings";
 
 const NEXT_SESSION_DECISIONS: Array<{
   value: SelectableTrainingDecision;
@@ -439,12 +441,14 @@ function PainSlider({
 }
 
 export function SessionEditor({
+  userId,
   detail,
   libraryExercises,
   recentHistoryByExerciseId,
   returnHref,
   returnLabel,
 }: {
+  userId: string;
   detail: WorkoutSessionClientDetail;
   libraryExercises: Array<{
     id: string;
@@ -458,6 +462,7 @@ export function SessionEditor({
   returnHref?: string | null;
   returnLabel?: string;
 }) {
+  const feelings = useWebTrainingFeelings(userId, detail.session.id);
   const router = useRouter();
   const readOnly = detail.session.status !== "in_progress";
   const exerciseIds = useMemo(
@@ -1060,6 +1065,7 @@ export function SessionEditor({
     setGlobalPending(true);
     setFinishStage("saving");
     setGlobalError(null);
+    await runWorkoutFinishAttempt(async () => {
     const failedExerciseIds =
       (await autosaveRef.current?.fenceAndFlushAll(exerciseIds)) ?? [];
     if (failedExerciseIds.length > 0) {
@@ -1088,20 +1094,39 @@ export function SessionEditor({
 
     setFinishStage("finishing");
     let actionConfirmed = false;
+    let legacyAttempted = false;
     let actionError: string | null = null;
     try {
-      const result = await finishWorkoutSessionAction({
-        sessionId: detail.session.id,
-        metadata,
-      });
-      actionConfirmed = result.ok;
-      if (!result.ok) actionError = result.error;
+      await feelings.refresh();
+      const withFeelings = feelings.needsFinish();
+      if (!feelings.getSnapshot().ready || feelings.getSnapshot().localError) throw new Error('Local feelings unavailable');
+      if (withFeelings) {
+        if (feelings.getSnapshot().pending?.operation === 'save' && !(await feelings.retry())) throw new Error('Pending pre feelings');
+        const changed = {
+          ...(metadata.performance_level !== baseMetadata.performance_level ? { performanceLevel: metadata.performance_level } : {}),
+          ...(metadata.pain_level !== baseMetadata.pain_level ? { painLevel: metadata.pain_level } : {}),
+          ...(metadata.notes !== baseMetadata.notes ? { notes: metadata.notes || null } : {}),
+        };
+        const input = await feelings.prepareFinish(changed);
+        if (!input) throw new Error('Feelings need review');
+        const receipt = await feelings.retry();
+        actionConfirmed = receipt?.sessionStatus === 'completed' && !!(await feelings.confirmFinish());
+        if (!actionConfirmed) actionError = 'No confirmamos el entrenamiento. Comprobá las sensaciones pendientes y la misma operación.';
+      } else {
+        legacyAttempted = true;
+        const result = await finishWorkoutSessionAction({
+          sessionId: detail.session.id,
+          metadata: { ...metadata, energy_level: baseMetadata.energy_level },
+        });
+        actionConfirmed = result.ok;
+        if (!result.ok) actionError = result.error;
+      }
     } catch {
       actionError = "No recibimos la confirmación de la finalización.";
     }
 
     let verification: "completed" | "in_progress" | "unknown" = "unknown";
-    if (!actionConfirmed) {
+    if (!actionConfirmed && legacyAttempted) {
       try {
         const result = await getWorkoutSessionCompletionStateAction({
           sessionId: detail.session.id,
@@ -1146,6 +1171,16 @@ export function SessionEditor({
       // Completion is already saved; rest timer cleanup is best-effort browser state.
     }
     router.refresh();
+    return "confirmed";
+    }, () => {
+      setGlobalPending(false);
+      setFinishStage(null);
+      finishInFlightRef.current = false;
+      editingFencedRef.current = false;
+      autosaveRef.current?.releaseFence();
+    }, () => {
+      setGlobalError("No confirmamos la finalización. Los borradores y la operación pendiente se conservan; comprobá el estado antes de reintentar.");
+    });
   }
 
   async function cancelSession() {
@@ -1191,6 +1226,7 @@ export function SessionEditor({
 
   return (
     <div className="space-y-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+      <TrainingFeelings journal={feelings} phase="pre" disabled={interactionLocked} />
       <header
         className={cn(
           "relative space-y-2 rounded-2xl border border-border/70 bg-background px-3 py-3 shadow-sm",
@@ -1903,14 +1939,8 @@ export function SessionEditor({
           </summary>
           <CardContent className="border-t border-border/70 px-3 pb-3 pt-3">
           <fieldset className="space-y-3.5 disabled:opacity-80" disabled={interactionLocked}>
-          <RatingPicker
-            label="Energía"
-            value={metadata.energy_level}
-            minimum={1}
-            maximum={5}
-            disabled={interactionLocked}
-            onChange={(value) => updateMetadata((current) => ({ ...current, energy_level: value }))}
-          />
+          <TrainingFeelings journal={feelings} phase="post" disabled={interactionLocked} />
+          {readOnly && metadata.energy_level !== null ? <p>Energía registrada (histórica): {metadata.energy_level} / 5</p> : null}
           <RatingPicker
             label="Rendimiento"
             value={metadata.performance_level}

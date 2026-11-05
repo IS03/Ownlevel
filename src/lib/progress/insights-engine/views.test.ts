@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { InsightsSnapshotCache } from "../../mobile-api/performance-insights-cache";
 import { parseCompleteInsights, parsePerformanceInsights } from "../../mobile-api/performance-insights-contract";
-import { buildInsightsReadModel, createInsightsSnapshot, insightsDaysPage, insightsRelation, insightsRelations, insightsSummary } from "./read-model";
+import { buildInsightsReadModel, createInsightsSnapshot, insightsDaysPage, insightsRelation, INSIGHTS_RECENT_PAIRS, insightsRelations, insightsSummary } from "./read-model";
 import { syntheticHistory } from "./scale-fixture";
 import type { InsightsSource, PartialAssociationResult } from "./types";
 
@@ -50,6 +50,21 @@ describe("vistas contra el modelo completo", () => {
       const expected = buildInsightsReadModel(source, { ...options, association: chosen.id });
       expect(detail.pairs).toEqual((captured ? expected.associations.detail : expected.partial.associations.detail)!.pairs);
     });
+  });
+  it("answers with the newest pairs unless all are asked for, and its numbers still come from all of them", () => {
+    const snapshot = createInsightsSnapshot(syntheticHistory({ ...PROFILE, years: 2 }, 7, false), options);
+    const candidate = snapshot.partial.lane.candidates.find(row => row.values.size > INSIGHTS_RECENT_PAIRS)!;
+    const every = insightsRelation(snapshot, candidate.definition.id), recent = insightsRelation(snapshot, candidate.definition.id, { pairs: "recent" });
+    expect(every.pairsTotal).toBe(every.pairs!.length);
+    expect(every.pairsTotal).toBeGreaterThan(INSIGHTS_RECENT_PAIRS);
+    expect(recent.pairs).toEqual(every.pairs!.slice(-INSIGHTS_RECENT_PAIRS));
+    expect(recent.pairsTotal).toBe(every.pairsTotal);
+    expect(recent.item).toEqual(every.item);
+    expect(recent.sourceRevision).toBe(every.sourceRevision);
+    expect(parsePerformanceInsights(roundTrip(recent))).toBeTruthy();
+    // A total smaller than what came, or no total, is not a page of anything.
+    expect(parsePerformanceInsights({ ...roundTrip(recent), pairsTotal: 1 })).toBeUndefined();
+    expect(parsePerformanceInsights({ ...roundTrip(recent), pairsTotal: undefined })).toBeUndefined();
   });
   it("evaluates only the family it was asked for, and only once", () => {
     const snapshot = createInsightsSnapshot(syntheticHistory(PROFILE, 7, false), options);

@@ -94,7 +94,7 @@ export function TrainingScreen({ now = systemNow }: { now?: () => Date }) {
     const path = `/(tabs)/train/session/${id}` as const;
     if (replace) router.replace(path); else router.push(path);
   };
-  const onLibrary = (target: 'routines' | 'exercises' | 'history') => router.push(`/(tabs)/train/${target}`);
+  const onLibrary = (target: 'routines' | 'exercises' | 'history' | 'insights') => router.push(`/(tabs)/train/${target}`);
   // "Nueva sesión" / "Entrenar otra vez": the shared native sheet; ▶ on a routine still starts it directly.
   // Starts with no chooser in between: ▶ (after its confirmation) and every "Nueva sesión" option.
   const starter = useSessionStarter({ onSession: id => toSession(id, true) });

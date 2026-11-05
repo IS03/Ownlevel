@@ -2,7 +2,7 @@ import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 import type { MobileApiClient } from '@/api/client';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { AppState } from 'react-native';
+import { AppState, RefreshControl } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { parseProgressBody, parseProgressMetrics, parseProgressOverview, type ProgressBody, type ProgressComparison, type ProgressMetrics, type ProgressOverview, type ProgressQuery } from '@/api/progress';
@@ -13,7 +13,7 @@ import { NutritionReportsRoute } from '@/nutrition/report-route';
 import { ProgressRangeProvider } from './progress-range-context';
 import type { DateRange, ProgressRangeState } from './progress-range';
 
-const mockPush = jest.fn();
+const mockPush = jest.fn(), mockNavigate = jest.fn();
 let mockParams: Record<string, string> = {};
 const mockOverview = jest.fn<(c: unknown, q: ProgressQuery, compare: DateRange | null) => Promise<unknown>>();
 const mockBody = jest.fn<(c: unknown, q: ProgressQuery, compare: DateRange | null) => Promise<unknown>>();
@@ -23,7 +23,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocusEffect: (callback: () => void | (() => void)) => { jest.requireActual<typeof import('react')>('react').useEffect(callback, [callback]); }, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, navigate: mockNavigate }), useFocusEffect: (callback: () => void | (() => void)) => { jest.requireActual<typeof import('react')>('react').useEffect(callback, [callback]); }, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn(), success: jest.fn(), warning: jest.fn() }, triggerHaptic: jest.fn() }));
 const mockClient = { request: jest.fn(), read: jest.fn() } as unknown as MobileApiClient;
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
@@ -116,8 +116,9 @@ function metrics(id: string | null): ProgressMetrics {
 const flush = () => act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
 const MONTH = { period: 'custom' as const, from: '2026-10-01', to: TODAY };
 const comparing: ProgressRangeState = { unit: 'month', anchor: TODAY, custom: null, compare: { kind: 'previous' } };
-const wrap = (el: React.ReactElement, initialState?: ProgressRangeState) => render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
+const wrapped = (el: React.ReactElement, initialState?: ProgressRangeState) => (<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
   <OwnlevelThemeProvider initialMode="light"><ProgressRangeProvider initialToday={TODAY} initialState={initialState}>{el}</ProgressRangeProvider></OwnlevelThemeProvider></SafeAreaProvider>);
+const wrap = (el: React.ReactElement, initialState?: ProgressRangeState) => render(wrapped(el, initialState));
 
 const listeners: ((s: string) => void)[] = [];
 beforeEach(() => {
@@ -312,7 +313,24 @@ describe('Body Trends', () => {
 });
 
 describe('Metrics Trends', () => {
-  it('one metric at a time: average per day with data, current target, coverage, zero vs gaps, and opens a day', async () => {
+  it('opened from Insights: the chosen metric, the month of that day before the first read, and a way back', async () => {
+    mockParams = { metric: ids.steps, from: '2026-09-01', to: '2026-09-30', insightsReturn: '1', insightsFamily: 'metric', insightsDate: '2026-09-15' };
+    const view = wrap(<MetricsTrendsScreen />); await flush();
+    expect(mockMetrics.mock.calls.every(call => call[2] === ids.steps)).toBe(true);
+    expect(mockMetrics.mock.calls.length).toBeGreaterThan(0);
+    for (const call of mockMetrics.mock.calls) expect(JSON.stringify(call[1])).toContain('2026-09');
+    fireEvent.press(view.getByRole('button', { name: 'Volver a Insights' }));
+    expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/(tabs)/train/insights', params: { family: 'metric', date: '2026-09-15' } });
+  });
+  it('shows no way back unless it came from Insights, and a new link chooses its metric on a mounted route', async () => {
+    mockParams = { metric: ids.steps };
+    const view = wrap(<MetricsTrendsScreen />); await flush();
+    expect(view.queryByRole('button', { name: 'Volver a Insights' })).toBeNull();
+    mockParams = { metric: 'otra-metrica' };
+    view.rerender(wrapped(<MetricsTrendsScreen />)); await flush();
+    expect(mockMetrics.mock.calls.at(-1)![2]).toBe('otra-metrica');
+  });
+  it('one metric at a time: average, target, coverage and inspectable zero vs gaps without navigation', async () => {
     mockParams = { metric: ids.steps };
     const view = wrap(<MetricsTrendsScreen />); await flush();
     expect(mockMetrics).toHaveBeenLastCalledWith(mockClient, MONTH, ids.steps, null);
@@ -323,13 +341,15 @@ describe('Metrics Trends', () => {
     expect(view.queryByTestId('metric-trend-comparison')).toBeNull();
     expect(view.getAllByTestId(/^metric-trend-chart-.*-gap$/)).toHaveLength(4);
     expect(view.getAllByTestId(/^metric-trend-chart-.*-zero$/)).toHaveLength(2);
-    fireEvent.press(view.getByRole('button', { name: '29 sep, 0 pasos' }));
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/history/day/[date]', params: { date: '2026-09-29' } });
+    fireEvent.press(view.getByRole('button', { name: '29 sep, 29/09/2026, 0 pasos' }));
+    expect(view.getByTestId('metric-trend-readout').props.accessibilityLabel).toBe('29/09/2026, 0 pasos');
+    expect(mockPush).not.toHaveBeenCalled();
     // The legend says the target is the current one, and names the gaps the chart has.
     const legend = within(view.getByTestId('metric-trend-legend'));
     expect(legend.getByText('objetivo actual 10.000 pasos')).toBeTruthy(); expect(legend.getByText('hueco: sin dato')).toBeTruthy();
     expect(within(view.getByTestId('metric-trend-stats')).getByText('Mediana')).toBeTruthy();
     fireEvent.press(view.getByRole('radio', { name: 'Sueño' })); await flush();
+    expect(view.getByTestId('metric-trend-readout').props.accessibilityLabel).toMatch(/^Tocá una barra,/);
     expect(mockMetrics).toHaveBeenLastCalledWith(mockClient, MONTH, ids.sleep, null);
     expect(within(view.getByTestId('metric-trend-summary')).getByText('7 h 30 min')).toBeTruthy();
     // Archived metrics wait behind one chip.
@@ -344,6 +364,23 @@ describe('Metrics Trends', () => {
     const view = wrap(<MetricsTrendsScreen />, comparing); await flush();
     expect(within(view.getByTestId('metric-trend-summary')).getByText('1–5 sep 0 pasos · sin cambio')).toBeTruthy();
     expect(view.getByText('1–5 sep 3 de 7')).toBeTruthy();
+  });
+  it('clears inspection when refreshing or changing period, including a failed refresh with retained data', async () => {
+    mockParams = { metric: ids.steps };
+    const view = wrap(<MetricsTrendsScreen />); await flush();
+    const select = () => fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
+    const readout = () => view.getByTestId('metric-trend-readout').props.accessibilityLabel;
+    select(); expect(readout()).toBe('29/09/2026, 0 pasos');
+    let settle!: (result: unknown) => void;
+    mockMetrics.mockImplementationOnce(() => new Promise(resolve => { settle = resolve; }));
+    act(() => { view.UNSAFE_getByType(RefreshControl).props.onRefresh?.(); });
+    expect(readout()).toMatch(/^Tocá una barra,/);
+    await act(async () => { settle(lost); }); await flush();
+    expect(readout()).toMatch(/^Tocá una barra,/);
+    select(); expect(readout()).toBe('29/09/2026, 0 pasos');
+    fireEvent(view.getByTestId('progress-period-caption'), 'accessibilityAction', { nativeEvent: { actionName: 'decrement' } }); await flush();
+    expect(readout()).toMatch(/^Tocá una barra,/);
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });
 
