@@ -18,7 +18,8 @@ export function uniqueRows<T extends { id: string }>(rows: readonly T[]) {
   const conflicts: string[] = [];
   let deduplicated = 0;
   for (const [id, group] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
-    if (new Set(group.map(fingerprint)).size > 1) conflicts.push(id);
+    // A row alone cannot contradict itself, and fingerprinting a whole session is the costliest step over a long history.
+    if (group.length > 1 && new Set(group.map(fingerprint)).size > 1) conflicts.push(id);
     else {
       unique.push(group[0]!);
       deduplicated += group.length - 1;
@@ -27,8 +28,17 @@ export function uniqueRows<T extends { id: string }>(rows: readonly T[]) {
   return { unique, conflicts, deduplicated };
 }
 
+/** Reference selection compares each exposure with its whole history, and only a handful of mode spellings exist. */
+const normalizedModes = new Map<string, string | null>();
+function normalizedMode(value: string | null): string | null {
+  if (value === null) return null;
+  let mode = normalizedModes.get(value);
+  if (mode === undefined) { mode = normalizeWeightMode(value); normalizedModes.set(value, mode); }
+  return mode;
+}
+
 export function contextIssue(context: HistoricalContext): ExclusionReason | null {
-  const mode = normalizeWeightMode(context.weightMode);
+  const mode = normalizedMode(context.weightMode);
   if (!mode || !context.unit || !context.implement?.trim() || !context.configuration?.trim()) return "missing_context";
   const strategy = weightModeStrategy(mode);
   if (strategy === "unsupported") return "unsupported_mode";
@@ -37,7 +47,7 @@ export function contextIssue(context: HistoricalContext): ExclusionReason | null
 }
 
 export function sameContext(a: HistoricalContext, b: HistoricalContext): boolean {
-  return normalizeWeightMode(a.weightMode) === normalizeWeightMode(b.weightMode)
+  return normalizedMode(a.weightMode) === normalizedMode(b.weightMode)
     && a.unit === b.unit && a.implement === b.implement && a.configuration === b.configuration;
 }
 
