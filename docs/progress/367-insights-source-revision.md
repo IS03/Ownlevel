@@ -32,7 +32,7 @@ La fila B cambió y la revisión es idéntica.
 | EXPAND de la revisión | No aplica: ningún código lo lee | | |
 | ADOPT de la revisión | Sí, por contador | Contador | Detecta todo cambio confirmado en las fuentes cubiertas |
 
-Una prueba en #386 deja escrito ese límite: si dejara de ser cierto, fallaría.
+Una prueba en #386 deja escrito ese límite: si dejara de ser cierto, fallaría. En este PR, la misma prueba comprueba que el cambio se detecta y se lee de nuevo.
 
 ## La revisión transaccional
 
