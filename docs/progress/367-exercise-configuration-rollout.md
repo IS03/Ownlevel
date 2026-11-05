@@ -1,17 +1,17 @@
 # #367 — Paquete de rollout: configuración del ejercicio
 
-**Sin autorizar.** Este paquete no aplica nada: describe qué aplicar, en qué orden y cómo comprobarlo.
+**Autorizado expresamente y migración aplicada el 2026-11-05.** Versión efectiva de Supabase: `20261105223915`. #393 y #394 ya están mergeados; esta entrega completa la adopción en #395. No volver a aplicar la migración. El SQL conserva el blob aprobado. El registro de cierre y despliegues está en [continuidad de producción](https://github.com/IS03/Ownlevel/blob/integration/367-insights-candidate/docs/progress/367-variantes-rollout-produccion-2026-11-05.md).
 
 ## Migración
 
 | Archivo | PR | Blob |
 | --- | --- | --- |
-| `supabase/migrations/20261106120000_training_exercise_configuration_expand.sql` | #394 | `85aaeb254c68bafe2a9834e9d118f415f3075648` |
+| `supabase/migrations/20261105223915_training_exercise_configuration_expand.sql` | #394 | `85aaeb254c68bafe2a9834e9d118f415f3075648` |
 
 Antes de aplicar, comprobar que el archivo de la rama tenga ese blob:
 
 ```bash
-git rev-parse origin/codex/367-exercise-configuration-expand:supabase/migrations/20261106120000_training_exercise_configuration_expand.sql
+git rev-parse origin/codex/367-exercise-configuration-expand:supabase/migrations/20261105223915_training_exercise_configuration_expand.sql
 ```
 
 **Supabase puede asignar otra versión al aplicar,** como pasó con #387 y #391. En ese caso se renombra el archivo en Git para que coincida y se conserva el blob. No se toca el historial remoto.

@@ -1,6 +1,6 @@
 # #367 EXPAND — Configuración del ejercicio por sesión (#394)
 
-**Base: `main`.** No necesita código de otro PR pendiente. **Sin aplicar en producción.**
+**Base: `main`.** No necesita código de otro PR pendiente. **Aplicada en producción el 2026-11-05 como `20261105223915`, con el mismo blob SQL.**
 
 El ADOPT es #395: aplicar esta migración antes de mergearlo.
 
@@ -9,7 +9,7 @@ El ADOPT es #395: aplicar esta migración antes de mergearlo.
 
 ## Qué agrega
 
-`supabase/migrations/20261106120000_training_exercise_configuration_expand.sql`, blob `85aaeb254c68bafe2a9834e9d118f415f3075648`.
+`supabase/migrations/20261105223915_training_exercise_configuration_expand.sql`, blob `85aaeb254c68bafe2a9834e9d118f415f3075648`.
 
 **Tabla `workout_session_exercise_configurations`.** Una fila por ejercicio de sesión, con su propia revisión.
 - **Sin backfill:** todo el historial queda desconocido.

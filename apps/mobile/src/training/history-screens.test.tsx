@@ -31,6 +31,9 @@ const mockMonth = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockSuccess = jest.fn();
 const mockClient = { request: jest.fn(), read: jest.fn() };
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
+// The completed session can show variants (#367): without a signed-in user here it renders exactly as before.
+jest.mock('@/auth', () => ({ ...jest.requireActual<object>('@/auth'), useMobileAuth: () => ({ session: null }) }));
+jest.mock('@react-native-async-storage/async-storage', () => ({ __esModule: true, default: { getItem: async () => null, setItem: async () => undefined, removeItem: async () => undefined, getAllKeys: async () => [] } }));
 jest.mock('expo-router', () => {
   const { Pressable, Text } = jest.requireActual<typeof import('react-native')>('react-native');
   const Container = ({ children }: { children?: React.ReactNode }) => children ?? null;

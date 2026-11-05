@@ -103,6 +103,7 @@ import { WorkoutFinishedDialog } from "./workout-finished-dialog";
 import { QuickExerciseHistorySheet } from "./quick-exercise-history-sheet";
 import type { ExerciseReportSession } from "@/lib/phase2/exercise-insights";
 import { TrainingFeelings, useWebTrainingFeelings } from "@/components/training/training-feelings";
+import { useWebExerciseConfigurations, WebExerciseVariant } from "@/components/training/exercise-variant";
 
 const NEXT_SESSION_DECISIONS: Array<{
   value: SelectableTrainingDecision;
@@ -469,6 +470,8 @@ export function SessionEditor({
     () => detail.exercises.map((exercise) => exercise.id),
     [detail.exercises],
   );
+  // #367: optional variant per session exercise, the same journal and route as Mobile.
+  const configurations = useWebExerciseConfigurations(userId, detail.session.id, exerciseIds);
   const metadataKey = sessionMetadataDraftKey(detail.session.id);
   const draftKeys = useMemo(
     () => [
@@ -1884,6 +1887,13 @@ export function SessionEditor({
                           </p>
                         ) : null}
                       </div>
+                      <WebExerciseVariant
+                        journal={configurations}
+                        sessionExerciseId={exercise.id}
+                        name={exercise.nombre_snapshot}
+                        editable={detail.session.status !== "discarded"}
+                        completed={detail.session.status === "completed"}
+                      />
                     </div>
                   </section>
 
