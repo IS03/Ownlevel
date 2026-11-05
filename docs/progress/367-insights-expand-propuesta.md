@@ -7,7 +7,7 @@ Sale de la revisión de [#385](https://github.com/IS03/Ownlevel/pull/385) y sigu
 | A. Procedencia horaria | **Reemplazado** por [procedencia de la hora](367-meal-time-provenance.md): que llegue una hora no prueba que alguien la haya elegido, así que la regla de abajo quedó descartada. Preparado en borrador; sin aplicar |
 | B. Captura de configuración | **Pendiente**: sin regla de producto. No se escribe `none` |
 | C. Método parcial | **Implementado** como [`insights-performance-partial/1`](367-insights-partial-metodo.md), en borrador |
-| D. RPC de revisiones | **Propuesta**: agrupar consultas por sí solo no demuestra que arregle el plan lento |
+| D. RPC de revisiones | **Descartada**: agrupar `count + max` no corrige la colisión que encontró la revisión. La reemplaza una [revisión transaccional](367-insights-source-revision.md) |
 
 El método estricto conserva lo desconocido como desconocido: ver [motor y calibración](367-insights-pr4-motor.md). Por eso, con los datos actuales no produce comparaciones. El método parcial permite continuar mientras se define la captura.
 
@@ -82,19 +82,4 @@ B y C no se excluyen: C cubre el pasado con su límite declarado y B da comparac
 
 ## D. Consistencia con menos consultas
 
-**Situación.** Cada intento hace 14 consultas de revisión más las páginas. El total y los reintentos están medidos en el [motor](367-insights-pr4-motor.md#costo-real-de-lectura).
-
-**Propuesta.** Una sola RPC con todas las revisiones:
-
-```sql
-create function public.insights_source_revision()
-returns jsonb language sql stable security invoker set search_path = '' as $$ ... $$;
-```
-
-- `security invoker`, para seguir bajo RLS. Identidad tomada de `auth.uid()`, sin `service_role`.
-- Las siete cuentas salen de un mismo snapshot. La garantía es la misma o mejor, y no hay que quitar nada.
-- Costo por intento: `páginas + 2` en lugar de `páginas + 14`.
-
-**Recomendación: decidirlo con datos de OBSERVE.** A 5 años ahorra 12 de 96 consultas, y con estadísticas la revisión pesa poco: unos 85 ms de 330 ms en la pila local. Pero sin estadísticas la revisión de `workout_sets` subió a 1,2 s por ronda. Si eso aparece en producción, esta RPC deja de ser una optimización menor: permite controlar esa consulta en un solo lugar. La medición es de una pila local, y por eso no alcanza para decidir hoy.
-
-No se proponen paginación parcial, truncamiento ni lecturas sin comprobación de revisión: cualquiera de ellas quitaría una garantía del motor.
+**Descartada.** Esta RPC agrupaba la misma cantidad y el mismo máximo, y conservaba su colisión. Ver [revisión de las fuentes](367-insights-source-revision.md).
