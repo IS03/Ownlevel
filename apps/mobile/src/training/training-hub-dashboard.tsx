@@ -237,7 +237,7 @@ export function TrainingHubDashboard({ calendar, home, now, observedSessions, on
   onRefresh, onRoutine, onSession, onStart, today, week }: {
   calendar: HomeResource<MobileTrainingResponse>; home: HomeResource<MobileHomeResponse>;
   now: number; observedSessions: TrainingHistorySession[]; today: string; week: HomeResource<HubWeek>;
-  onContinue: (id: string) => void; onLibrary: (target: 'routines' | 'exercises' | 'history') => void;
+  onContinue: (id: string) => void; onLibrary: (target: 'routines' | 'exercises' | 'history' | 'insights') => void;
   onOpenDay: (date: string) => void; onPlay: (id: string) => void; onRefresh: () => void; onRoutine: (id: string) => void; onSession: (id: string) => void;
   onStart: () => void;
 }) {
@@ -271,6 +271,8 @@ export function TrainingHubDashboard({ calendar, home, now, observedSessions, on
         <HubRow accessibilityLabel="Abrir Ejercicios" icon="book" onPress={() => onLibrary('exercises')} title="Ejercicios" />
         <Line />
         <HubRow accessibilityLabel="Abrir Historial" icon="clock" onPress={() => onLibrary('history')} title="Historial" />
+        <Line />
+        <HubRow accessibilityLabel="Abrir Insights" icon="compare" onPress={() => onLibrary('insights')} title="Insights" />
       </View>
     </View>
   );

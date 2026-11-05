@@ -13,7 +13,7 @@ import { NutritionReportsRoute } from '@/nutrition/report-route';
 import { ProgressRangeProvider } from './progress-range-context';
 import type { DateRange, ProgressRangeState } from './progress-range';
 
-const mockPush = jest.fn();
+const mockPush = jest.fn(), mockNavigate = jest.fn();
 let mockParams: Record<string, string> = {};
 const mockOverview = jest.fn<(c: unknown, q: ProgressQuery, compare: DateRange | null) => Promise<unknown>>();
 const mockBody = jest.fn<(c: unknown, q: ProgressQuery, compare: DateRange | null) => Promise<unknown>>();
@@ -23,7 +23,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocusEffect: (callback: () => void | (() => void)) => { jest.requireActual<typeof import('react')>('react').useEffect(callback, [callback]); }, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, navigate: mockNavigate }), useFocusEffect: (callback: () => void | (() => void)) => { jest.requireActual<typeof import('react')>('react').useEffect(callback, [callback]); }, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn(), success: jest.fn(), warning: jest.fn() }, triggerHaptic: jest.fn() }));
 const mockClient = { request: jest.fn(), read: jest.fn() } as unknown as MobileApiClient;
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
@@ -116,8 +116,9 @@ function metrics(id: string | null): ProgressMetrics {
 const flush = () => act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
 const MONTH = { period: 'custom' as const, from: '2026-10-01', to: TODAY };
 const comparing: ProgressRangeState = { unit: 'month', anchor: TODAY, custom: null, compare: { kind: 'previous' } };
-const wrap = (el: React.ReactElement, initialState?: ProgressRangeState) => render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
+const wrapped = (el: React.ReactElement, initialState?: ProgressRangeState) => (<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
   <OwnlevelThemeProvider initialMode="light"><ProgressRangeProvider initialToday={TODAY} initialState={initialState}>{el}</ProgressRangeProvider></OwnlevelThemeProvider></SafeAreaProvider>);
+const wrap = (el: React.ReactElement, initialState?: ProgressRangeState) => render(wrapped(el, initialState));
 
 const listeners: ((s: string) => void)[] = [];
 beforeEach(() => {
@@ -312,6 +313,23 @@ describe('Body Trends', () => {
 });
 
 describe('Metrics Trends', () => {
+  it('opened from Insights: the chosen metric, the month of that day before the first read, and a way back', async () => {
+    mockParams = { metric: ids.steps, from: '2026-09-01', to: '2026-09-30', insightsReturn: '1', insightsFamily: 'metric', insightsDate: '2026-09-15' };
+    const view = wrap(<MetricsTrendsScreen />); await flush();
+    expect(mockMetrics.mock.calls.every(call => call[2] === ids.steps)).toBe(true);
+    expect(mockMetrics.mock.calls.length).toBeGreaterThan(0);
+    for (const call of mockMetrics.mock.calls) expect(JSON.stringify(call[1])).toContain('2026-09');
+    fireEvent.press(view.getByRole('button', { name: 'Volver a Insights' }));
+    expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/(tabs)/train/insights', params: { family: 'metric', date: '2026-09-15' } });
+  });
+  it('shows no way back unless it came from Insights, and a new link chooses its metric on a mounted route', async () => {
+    mockParams = { metric: ids.steps };
+    const view = wrap(<MetricsTrendsScreen />); await flush();
+    expect(view.queryByRole('button', { name: 'Volver a Insights' })).toBeNull();
+    mockParams = { metric: 'otra-metrica' };
+    view.rerender(wrapped(<MetricsTrendsScreen />)); await flush();
+    expect(mockMetrics.mock.calls.at(-1)![2]).toBe('otra-metrica');
+  });
   it('one metric at a time: average per day with data, current target, coverage, zero vs gaps, and opens a day', async () => {
     mockParams = { metric: ids.steps };
     const view = wrap(<MetricsTrendsScreen />); await flush();

@@ -9,6 +9,8 @@ import { postWorkoutModel } from './post-workout-model';
 import type { FinishWeek } from './finish-week';
 import { EXERCISE_ID, SECOND_ID, SESSION_ID, testDetail, testFinished } from './active-session-test-fixtures';
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
+const mockRouter = { replace: jest.fn(), push: jest.fn() };
+jest.mock('expo-router', () => ({ useRouter: () => mockRouter }));
 
 const THIRD = '44444444-4444-4444-8444-444444444444', PREV = '77777777-7777-4777-8777-777777777777';
 const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
@@ -109,5 +111,14 @@ describe('the receipt screen', () => {
     expect(slow.queryByText('PUSH guardado')).toBeNull();
     act(() => { jest.advanceTimersByTime(1300); });
     expect(slow.getByText('PUSH guardado')).toBeTruthy();
+  });
+  it('opens the facts of this session in Insights, reading nothing on the way', () => {
+    mockRouter.replace.mockClear(); mockRouter.push.mockClear();
+    const read = jest.fn<SessionSummaryLoader>(), view = render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}><OwnlevelThemeProvider initialMode="light"><PostWorkoutScreen finished={finished()} detail={detail()} onHome={() => undefined} onViewSession={() => undefined} /></OwnlevelThemeProvider></SafeAreaProvider>);
+    fireEvent.press(view.getByRole('button', { name: 'Ver los hechos de esta sesión en Insights' }));
+    expect(mockRouter.replace).toHaveBeenCalledWith('/(tabs)/train');
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/(tabs)/train/insights', params: { session: SESSION_ID, date: finished().logDate } });
+    expect(mockRouter.replace.mock.invocationCallOrder[0]).toBeLessThan(mockRouter.push.mock.invocationCallOrder[0]!);
+    expect(read).not.toHaveBeenCalled();
   });
 });
