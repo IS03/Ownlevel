@@ -5,6 +5,7 @@ import { readAllTrainingRows } from "@/lib/phase2/training-robust";
 import { createInsightsSnapshot, insightsDaysPage, insightsRelation, insightsRelations, insightsSummary, INSIGHTS_MAX_DAYS, type InsightsSnapshot, type InsightsSource } from "@/lib/progress/insights-engine";
 import { MobileApiValidationError } from "./auth";
 import { NutritionReportDayChangedError } from "./nutrition-report-server";
+import { InsightsSnapshotCache } from "./performance-insights-cache";
 import { parsePerformanceInsights } from "./performance-insights-contract";
 import { progressReadResponse } from "./progress-server";
 import type { MobileSupabaseAuthenticatedContext } from "./supabase";
@@ -78,54 +79,38 @@ export async function readInsightsSource(context: Context): Promise<InsightsSour
 }
 
 /**
- * Row count and last change of each stream. Counts catch hard deletes; an in-progress session does not disturb completed history.
- * NOT a guarantee: a transaction that started earlier and commits after a newer one changes a row without moving either value.
+ * The counter the database moves in the same transaction as any change to these sources. Seeing the same value twice means no
+ * such transaction committed in between. No row yet means nothing changed since it exists: 0, never an error. Needs the EXPAND.
  */
 export async function readInsightsRevision(context: Context): Promise<string> {
-  const { supabase, userId } = context;
-  const latest = (query: PromiseLike<{ data: unknown; error: unknown; count: number | null }>) => Promise.resolve(query).then(({ data, error, count }) => {
-    if (error || !Array.isArray(data)) throw new Error("Insights revision unavailable");
-    return `${count ?? "?"}:${(data[0] as { updated_at?: string } | undefined)?.updated_at ?? ""}`;
-  });
-  const parts = await Promise.all([
-    latest(supabase.from("workout_sessions").select("updated_at", { count: "exact" }).eq("user_id", userId).eq("status", "completed").order("updated_at", { ascending: false }).limit(1)),
-    latest(supabase.from("workout_session_exercises").select("updated_at,session:workout_sessions!inner(status)", { count: "exact" }).eq("user_id", userId).eq("session.status", "completed").order("updated_at", { ascending: false }).limit(1)),
-    latest(supabase.from("workout_sets").select("updated_at,exercise:workout_session_exercises!inner(session:workout_sessions!inner(status))", { count: "exact" }).eq("user_id", userId).eq("exercise.session.status", "completed").order("updated_at", { ascending: false }).limit(1)),
-    latest(supabase.from("workout_session_feelings").select("updated_at,session:workout_sessions!inner(user_id,status)", { count: "exact" }).eq("session.user_id", userId).eq("session.status", "completed").order("updated_at", { ascending: false }).limit(1)),
-    latest(supabase.from("user_metrics").select("updated_at", { count: "exact" }).eq("user_id", userId).order("updated_at", { ascending: false }).limit(1)),
-    latest(supabase.from("daily_metric_values").select("updated_at", { count: "exact" }).eq("user_id", userId).order("updated_at", { ascending: false }).limit(1)),
-    latest(supabase.from("meal_entries").select("updated_at", { count: "exact" }).eq("user_id", userId).is("deleted_at", null).order("updated_at", { ascending: false }).limit(1)),
-  ]);
-  return parts.join("|");
+  const { data, error } = await context.supabase.from("insights_source_revisions").select("revision").eq("user_id", context.userId).maybeSingle();
+  if (error) throw new Error("Insights revision unavailable");
+  return String((data as { revision?: number } | null)?.revision ?? 0);
 }
 
-/** Refuses a read during which it detected a change, after one retry. Best effort: see `readInsightsRevision`. */
-export async function readConsistentInsightsSource(context: Context): Promise<{ source: InsightsSource }> {
+/** Publishes only a read whose sources did not change meanwhile. One retry; after that the read is unavailable, never partial. */
+export async function readConsistentInsightsSource(context: Context, known?: string): Promise<{ source: InsightsSource; revision: string }> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const before = await readInsightsRevision(context);
+    const before = attempt === 0 && known !== undefined ? known : await readInsightsRevision(context);
     const source = await readInsightsSource(context);
-    if (await readInsightsRevision(context) === before) return { source };
+    if (await readInsightsRevision(context) === before) return { source, revision: before };
   }
   throw new Error("Insights sources kept changing");
 }
 
-/** What this read holds, row by row: two answers join only if they really saw the same rows. Count and maximum could not tell. */
-function contentRevision(source: InsightsSource) {
-  const hash = createHash("sha256");
-  for (const rows of [source.sessions, source.exercises, source.sets, source.feelings, source.metricDefinitions, source.metricValues, source.meals]) {
-    for (const row of rows) hash.update(JSON.stringify(row));
-    hash.update("|");
-  }
-  return hash.digest("hex").slice(0, 32);
-}
+const snapshots = new InsightsSnapshotCache<InsightsSnapshot>({ maxEntries: 3, ttlMs: 5 * 60_000 });
+export const clearInsightsSnapshots = () => snapshots.clear();
+const publicRevision = (userId: string, revision: string) => createHash("sha256").update(`${userId}|${revision}`).digest("hex").slice(0, 32);
 
-/**
- * Always a whole read. Nothing is reused: count and maximum can stay the same while a row changes, so they cannot decide that an
- * earlier result is still true. Reuse needs a revision the database moves in the same transaction as the data.
- */
+/** Reuses the snapshot only if the counter just read under this token still matches: one query against a whole read. An optimization, never a guarantee of a hit. */
 export async function readInsightsSnapshot(context: Context, today: string): Promise<InsightsSnapshot> {
-  const { source } = await readConsistentInsightsSource(context);
-  return createInsightsSnapshot(source, { today, revision: contentRevision(source) });
+  const current = await readInsightsRevision(context);
+  const reused = snapshots.get(context.userId, current, today);
+  if (reused) return reused;
+  const { source, revision } = await readConsistentInsightsSource(context, current);
+  const snapshot = createInsightsSnapshot(source, { today, revision: publicRevision(context.userId, revision) });
+  snapshots.set(context.userId, revision, today, snapshot);
+  return snapshot;
 }
 
 export function parseInsightsParams(params: URLSearchParams) {
