@@ -17,13 +17,17 @@ Regresiones de evidencia y de la ventana de 3 h, `tsc`, `eslint`.
 | Mobile manual y rápido, declarada | `user_declared` | Cuenta |
 | Mobile, declaración con igual hora en una edición | `user_declared` | Cuenta |
 | ChatGPT v4 | `user_declared` | Cuenta |
-| Importación antigua, solo con su marca | Nula | Cuenta |
+| Importación, con su marca y su corrida | Nula | Cuenta |
+| Importación editada sin tocar la hora | Nula | Cuenta |
+| Importación con la hora cambiada, y vuelta a la original | Nula, sin marca | Sin valor: hora sin confirmar |
+| Marca ya escrita en una fila común | Nula | Sin valor: hora sin confirmar |
+| Marca insertada o agregada con un token, también con corrida propia | **Rechazado** | Sin valor |
 | Mobile antiguo, con hora | Nula | Sin valor: hora sin confirmar |
 | Mobile, otra hora sin declarar | Nula | Sin valor: hora sin confirmar |
 | ChatGPT v2, con hora | Nula | Sin valor: hora sin confirmar |
 | Mobile sin hora, ChatGPT sin hora, Web | `default_clock` | Sin valor: comida sin hora |
 | ChatGPT v3, «ahora» | `registration_now` | Sin valor; solo sensibilidad |
 
-Solo lo que cuenta llega a los pares de la relación, y cada exclusión dice por qué. La misma revisión responde con 7 consultas, y una comida nueva la cambia. No apareció ningún defecto en este recorrido.
+Solo lo que cuenta llega a los pares de la relación, y cada exclusión dice por qué. El mismo contenido conserva su identidad, y una comida nueva la cambia.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
