@@ -97,7 +97,7 @@ El gancho solo existe en la base descartable: frena una request después de escr
 - Serializa el commit de las escrituras de una misma cuenta, también las de una sesión en curso. Son breves, pero no se midió con carga real.
 - Agrega un insert y un delete por cambio distinto. En una pila local sin carga, el peor caso medido (4000 notas en una escritura) sumó unos 60 ms, un 30 %. No predice producción: falta OBSERVE.
 - Depende de `READ COMMITTED`, que es lo que usa el producto. Una transacción `REPEATABLE READ` leería un estado viejo de la sesión.
-- El orden entre vueltas es lo observado en PostgreSQL 17.11, no una garantía que haya confirmado en el manual. No comparé la versión menor de producción, y una actualización mayor debería repetir las pruebas de cruce.
+- El orden entre vueltas es lo observado en PostgreSQL 17.11 y en 17.6.1.105, la versión de producción leída el 2026-11-05. No es una garantía que haya confirmado en el manual: una actualización mayor debería repetir las pruebas de cruce.
 - Una transacción que escriba en dos cuentas, en orden opuesto a otra, puede tener deadlock. Ningún camino del producto lo hace, y un token no puede.
 - Hoy lo único diferido son los rechecks de orden de rutinas, vistas de progreso y ejercicios de sesión, y estos dos triggers. Un trigger diferido futuro que escriba en estas tablas podría encolar un recheck después del contador; una prueba de #391 falla si aparece.
 - `SET CONSTRAINTS ALL IMMEDIATE` adelanta las dos pasadas y toma el bloqueo antes del commit. Ningún camino del producto lo hace, y un token no puede.

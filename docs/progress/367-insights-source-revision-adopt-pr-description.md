@@ -40,6 +40,6 @@ Pruebas del endpoint: costo con reintentos, medianoche, cuentas separadas, conta
 **Sin correr:** la suite de esta rama contra `d20ff78`. Este cambio solo toca documentación.
 
 ## Límites que siguen
-Depende de `READ COMMITTED`. El orden entre vueltas es lo observado en PostgreSQL 17.11. Un trigger diferido futuro podría romperlo. Sin probar: carga real, réplicas de lectura y restauración a un punto en el tiempo. Falta OBSERVE.
+Depende de `READ COMMITTED`. El orden entre vueltas es lo observado en PostgreSQL 17.11 y 17.6.1.105, la versión de producción. Un trigger diferido futuro podría romperlo. Sin probar: carga real, réplicas de lectura y restauración a un punto en el tiempo. Falta OBSERVE.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
