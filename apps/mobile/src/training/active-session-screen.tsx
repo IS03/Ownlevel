@@ -261,7 +261,7 @@ export function ActiveSessionView({ controller, state, client, configurations }:
   // (e.g. a finish whose outcome is unknown) keep the recovery panel visible here.
   if (detail.session.status !== 'in_progress' && !state.intent && (!state.finished || !finishOpen || finishTransitionDone)) {
     // After the sheet's own receipt ("Ver sesión"), the read-only view must not present it a second time.
-    return <CompletedSessionScreen api={closedApi} sessionId={detail.session.id} initialDetail={detail} finished={finishTransitionDone ? null : state.finished}
+    return <CompletedSessionScreen api={closedApi} sessionId={detail.session.id} initialDetail={detail} finished={finishTransitionDone ? null : state.finished} configurations={configurations}
       onHome={returnHome} onTraining={returnToTraining} />;
   }
   const active = detail.session.status === 'in_progress';

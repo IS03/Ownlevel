@@ -3,8 +3,8 @@ import { describe, expect, it, jest } from '@jest/globals';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { ExerciseConfigurationJournal } from '@/api/training-exercise-configuration';
-import type { ConfigurationInput, ConfigurationsResponse } from '../../../../src/lib/mobile-api/training-exercise-configuration-contract';
-import { ExerciseVariantRow } from './exercise-variant';
+import type { ConfigurationInput, ConfigurationValue, ConfigurationsResponse } from '../../../../src/lib/mobile-api/training-exercise-configuration-contract';
+import { ExerciseVariantRow, SessionVariants } from './exercise-variant';
 
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('@react-native-async-storage/async-storage', () => ({ __esModule: true, default: { getItem: async () => null, setItem: async () => undefined, removeItem: async () => undefined } }));
@@ -17,10 +17,11 @@ jest.mock('@/design-system/app-sheet', () => {
 });
 
 const SESSION = '93671000-0000-4000-8000-000000000021', PRESS = '93671000-0000-4000-8000-000000000031', EARLIER = '93671000-0000-4000-8000-000000000030';
-const read = (revision: number, value: ConfigurationsResponse['items'][number]['value'], previous = true): ConfigurationsResponse => ({
+type Phase = 'during_session' | 'after_session';
+const read = (revision: number, value: ConfigurationValue | null, previous = true, recordedPhase: Phase = 'during_session', extra: ConfigurationsResponse['items'] = []): ConfigurationsResponse => ({
   contractVersion: 'training-exercise-configuration/1', sessionId: SESSION, sessionStatus: 'in_progress',
-  items: [{ sessionExerciseId: PRESS, exerciseId: '93671000-0000-4000-8000-000000000010', revision, value,
-    previous: previous ? { sessionExerciseId: EARLIER, sessionId: '93671000-0000-4000-8000-000000000020', endedAt: '2026-11-01T11:00:00+00:00', value: { kind: 'recorded', label: 'Agarre neutro' } } : null }],
+  items: [{ sessionExerciseId: PRESS, exerciseId: '93671000-0000-4000-8000-000000000010', revision, value: value && { ...value, recordedPhase },
+    previous: previous ? { sessionExerciseId: EARLIER, sessionId: '93671000-0000-4000-8000-000000000020', endedAt: '2026-11-01T11:00:00+00:00', value: { kind: 'recorded', label: 'Agarre neutro' } } : null }, ...extra],
 });
 function setup(initial = read(0, null)) {
   const values = new Map<string, string>(), writes: ConfigurationInput[] = [];
@@ -71,5 +72,19 @@ describe('optional exercise variant', () => {
     await act(async () => { await journal.refresh(); });
     expect(view.getByText('Variante no disponible por ahora')).toBeTruthy();
     expect(view.queryByText('Registrar')).toBeNull();
+  });
+  it('on a completed session, says a variant was recorded afterwards, and warns when two blocks differ', async () => {
+    const second = '93671000-0000-4000-8000-000000000032';
+    const other = { sessionExerciseId: second, exerciseId: '93671000-0000-4000-8000-000000000010', revision: 1,
+      value: { kind: 'recorded' as const, label: 'Agarre prono', source: 'entered' as const, repeatedFrom: null, recordedPhase: 'after_session' as const }, previous: null };
+    const journal = new ExerciseConfigurationJournal({ getItem: async () => null, setItem: async () => undefined },
+      { read: async () => ({ status: 'ok', data: read(1, { kind: 'recorded', label: 'Agarre neutro', source: 'entered', repeatedFrom: null }, false, 'after_session', [other]) }), write: async () => ({ status: 'unavailable' }) }, 'owner', SESSION, () => 'k');
+    const view = render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
+      <OwnlevelThemeProvider initialMode="light"><SessionVariants journal={journal} exercises={[{ id: PRESS, nameSnapshot: 'Press' }, { id: second, nameSnapshot: 'Press' }]} editable /></OwnlevelThemeProvider></SafeAreaProvider>);
+    await act(async () => { await journal.refresh(); });
+    expect(view.getByText('Variante · Agarre neutro · registrada después')).toBeTruthy();
+    expect(view.getAllByText('Este ejercicio está dos veces en la sesión con otra variante: así no se compara.')).toHaveLength(2);
+    expect(view.getByText(/hace falta una sesión anterior con la misma variante/)).toBeTruthy();
+    expect(view.queryByText(/compará|se compara ahora/)).toBeNull();
   });
 });
