@@ -18,7 +18,8 @@ export function uniqueRows<T extends { id: string }>(rows: readonly T[]) {
   const conflicts: string[] = [];
   let deduplicated = 0;
   for (const [id, group] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
-    if (new Set(group.map(fingerprint)).size > 1) conflicts.push(id);
+    // A row alone cannot contradict itself, and fingerprinting a whole session is the costliest step over a long history.
+    if (group.length > 1 && new Set(group.map(fingerprint)).size > 1) conflicts.push(id);
     else {
       unique.push(group[0]!);
       deduplicated += group.length - 1;
@@ -27,9 +28,23 @@ export function uniqueRows<T extends { id: string }>(rows: readonly T[]) {
   return { unique, conflicts, deduplicated };
 }
 
-export function contextIssue(context: HistoricalContext): ExclusionReason | null {
-  const mode = normalizeWeightMode(context.weightMode);
-  if (!mode || !context.unit || !context.implement?.trim() || !context.configuration?.trim()) return "missing_context";
+/** Reference selection compares each exposure with its whole history, and only a handful of mode spellings exist. */
+const normalizedModes = new Map<string, string | null>();
+function normalizedMode(value: string | null): string | null {
+  if (value === null) return null;
+  let mode = normalizedModes.get(value);
+  if (mode === undefined) { mode = normalizeWeightMode(value); normalizedModes.set(value, mode); }
+  return mode;
+}
+
+/** Strict method: the configuration must be historical and known. Partial method: it stays unknown and is never compared. */
+export type ContextRule = "configuration_required" | "configuration_unknown";
+export const configurationKnown = (context: HistoricalContext) => !!context.configuration?.trim();
+
+export function contextIssue(context: HistoricalContext, rule: ContextRule = "configuration_required"): ExclusionReason | null {
+  const mode = normalizedMode(context.weightMode);
+  if (!mode || !context.unit || !context.implement?.trim()) return "missing_context";
+  if (rule === "configuration_required" && !configurationKnown(context)) return "missing_context";
   const strategy = weightModeStrategy(mode);
   if (strategy === "unsupported") return "unsupported_mode";
   const unit = { load_reps: "kg", unit_reps: "lingotes", bodyweight_reps: "reps", time: "seconds" }[strategy];
@@ -37,9 +52,14 @@ export function contextIssue(context: HistoricalContext): ExclusionReason | null
 }
 
 export function sameContext(a: HistoricalContext, b: HistoricalContext): boolean {
-  return normalizeWeightMode(a.weightMode) === normalizeWeightMode(b.weightMode)
-    && a.unit === b.unit && a.implement === b.implement && a.configuration === b.configuration;
+  return normalizedMode(a.weightMode) === normalizedMode(b.weightMode)
+    && a.unit === b.unit && a.implement === b.implement
+    // Blank is the same unknown as null. A known value only ever matches itself.
+    && (configurationKnown(a) ? a.configuration : null) === (configurationKnown(b) ? b.configuration : null);
 }
+
+/** Two usable contexts are the same one exactly when their keys match: `sameContext` as a value, for grouping a long history. */
+export const contextKey = (context: HistoricalContext) => JSON.stringify([normalizedMode(context.weightMode), context.unit, context.implement, configurationKnown(context) ? context.configuration : null]);
 
 function validSet(set: PerformanceSet, context: HistoricalContext): boolean {
   const strategy = weightModeStrategy(normalizeWeightMode(context.weightMode));
@@ -54,7 +74,7 @@ function validSet(set: PerformanceSet, context: HistoricalContext): boolean {
 }
 
 /** Merge repeated blocks only after verifying their historical context. One exposure per exercise/session. */
-export function buildExposure(sessionId: string, exerciseId: string, blocks: readonly PerformanceExerciseBlock[]): ExerciseExposure {
+export function buildExposure(sessionId: string, exerciseId: string, blocks: readonly PerformanceExerciseBlock[], rule: ContextRule = "configuration_required"): ExerciseExposure {
   const rows = uniqueRows(blocks);
   const sets = uniqueRows(rows.unique.flatMap(block => block.sets));
   const context = rows.unique[0]?.context ?? null;
@@ -62,7 +82,7 @@ export function buildExposure(sessionId: string, exerciseId: string, blocks: rea
   if (!isExerciseUuid(exerciseId)) issue = "invalid_exercise_id";
   else if (rows.conflicts.length || sets.conflicts.length) issue = "duplicate_conflict";
   else if (!context) issue = "missing_context";
-  else issue = rows.unique.map(block => contextIssue(block.context)).find(Boolean) ?? null;
+  else issue = rows.unique.map(block => contextIssue(block.context, rule)).find(Boolean) ?? null;
   if (!issue && context && rows.unique.some(block => !sameContext(context, block.context))) issue = "mixed_context";
   if (!issue && rows.unique.some(block => !block.completed)) issue = "incomplete_exercise";
   const completed = sets.unique.filter(set => set.completed);

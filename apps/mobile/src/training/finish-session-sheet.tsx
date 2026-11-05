@@ -16,6 +16,7 @@ import { FinishSaveAnimation, type SaveOrigin } from './finish-save-animation';
 import { PostWorkoutContent, type FinishWeekLoader } from './post-workout-screen';
 import type { SessionSummaryLoader } from '@/api/session-summary';
 import { RoutineSheetButton } from './routine-sheet-button';
+import { TrainingFeelings } from './training-feelings';
 export { SummaryScale } from './summary-scale'; // Correction retains its existing presentation/semantics.
 
 export function finishPreviewVolume(controller: ActiveSessionController): number | null {
@@ -82,7 +83,8 @@ export function FinishSessionSheet({ controller, onClose, onDiscard, readSummary
               <AppIcon name="info" color={colors.textMuted} size={20} /><AppText style={styles.flex} variant="subheadline">Todavía no marcaste ninguna serie. Marcalas en la sesión para poder guardar.</AppText>
             </View> : null}
             <View style={[styles.questions, !editable && styles.dim]} pointerEvents={editable ? 'auto' : 'none'} accessibilityElementsHidden={empty} importantForAccessibility={empty ? 'no-hide-descendants' : 'auto'}>
-              {(['energyLevel', 'performanceLevel'] as const).map(field => {
+              {controller.feelings ? <TrainingFeelings journal={controller.feelings} phase="post" controller={controller} disabled={!editable} /> : null}
+              {((controller.feelings ? ['performanceLevel'] : ['energyLevel', 'performanceLevel']) as ('energyLevel' | 'performanceLevel')[]).map(field => {
                 const label = field === 'energyLevel' ? 'Energía' : 'Rendimiento';
                 return <View key={field} style={styles.scale}>
                   <View style={styles.scaleHeader}><AppText variant="headline">{label}</AppText></View>
@@ -119,7 +121,7 @@ export function FinishSessionSheet({ controller, onClose, onDiscard, readSummary
       </Animated.View>
       <FinishSaveAnimation running={running} confirmed={confirmed} origin={origin} reveal={reveal} onReady={showReceipt} />
       {receipt && state.finished ? <Animated.View entering={FadeIn.duration(reduceMotion ? brandTokens.motion.duration.fast : brandTokens.motion.duration.base)} style={StyleSheet.absoluteFill}>
-        <PostWorkoutContent finished={state.finished} detail={state.detail ?? undefined} readSummary={readSummary} readWeek={readWeek} onHome={onDone} onViewSession={onViewSession} />
+        <PostWorkoutContent finished={state.finished} feelings={controller.feelings?.getSnapshot().server?.values} detail={state.detail ?? undefined} readSummary={readSummary} readWeek={readWeek} onHome={onDone} onViewSession={onViewSession} />
       </Animated.View> : null}
       {noteOpen ? <FinishNoteSheet value={summary.notes ?? ''} onClose={() => setNoteOpen(false)} onSave={notes => change({ notes })} /> : null}
     </GestureHandlerRootView>

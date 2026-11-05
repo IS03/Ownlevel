@@ -17,14 +17,18 @@ import { ReadStateScreen } from './history-components';
 import { useRead } from './use-read';
 import { TrainingContextMenu } from './routine-context-menu';
 import { RoutineSheetButton } from './routine-sheet-button';
+import { trainingFeelingsApi } from '@/api/training-feelings';
+import type { FeelingsPort } from '../../../../src/lib/mobile-api/training-feelings-journal';
+import { RecordedTrainingFeelings } from './recorded-training-feelings';
 
 export type CompletedSessionApi = {
+  feelings?: FeelingsPort['read'];
   summary?: SessionSummaryLoader;
   detail: (signal?: AbortSignal) => Promise<MobileApiRequestResult<SessionDetailDto>>;
   discard: (idempotencyKey: string) => Promise<MobileApiRequestResult<SessionDiscardedDto>>;
 };
 export function completedSessionApi(client: MobileApiClient, sessionId: string): CompletedSessionApi {
-  return { summary: () => readSessionSummary(client, sessionId), detail: signal => fetchSessionDetail(client, sessionId, signal), discard: key => discardSession(client, sessionId, key) };
+  return { feelings: trainingFeelingsApi(client, sessionId).read, summary: () => readSessionSummary(client, sessionId), detail: signal => fetchSessionDetail(client, sessionId, signal), discard: key => discardSession(client, sessionId, key) };
 }
 const newKey = () => typeof globalThis.crypto?.randomUUID === 'function' ? globalThis.crypto.randomUUID()
   : `discard-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -105,6 +109,7 @@ export function CompletedSessionScreen({ api, sessionId, initialDetail, finished
     {pendingKey || discarding ? <Button label={discarding ? 'Eliminando…' : 'Reintentar eliminación'} variant="quiet" disabled={discarding} onPress={() => void runDiscard()} /> : null}
   </View> : null;
   return <>{menu}<CompletedSessionView detail={detail} finished={finished} readSummary={api.summary} onHome={onHome} onTraining={onTraining} actions={actions}
+    extraSummary={api.feelings ? <RecordedTrainingFeelings key={sessionId} read={api.feelings} /> : null}
     banner={<><ReturnToHistoryDay />{state.stale ? <Surface><AppText muted variant="caption">No se pudo actualizar. Mostramos la última lectura confirmada.</AppText></Surface> : null}</>}
     onOpenExercise={exerciseId => router.push(`/(tabs)/train/history/exercise/${exerciseId}${detail.session.routineId ? `?routineId=${encodeURIComponent(detail.session.routineId)}` : ''}`)} /></>;
 }

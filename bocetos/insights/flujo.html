@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flujo de Insights</title>
+<style>
+/* Sketch only. Values mirror docs/brand/ownlevel-marca/tema/tokens.ts; app code keeps reading them from packages/brand. */
+:root{--bg:#F3F1EC;--surface:#FFFFFF;--raised:#EAE7DF;--line:#E0DCD0;--ink:#18181B;--muted:#62626A;--accent:#705F36;--accent-soft:rgba(201,182,138,.32);--glass:rgba(255,255,255,.72);--sans:-apple-system,BlinkMacSystemFont,"SF Pro Text",Roboto,"Segoe UI",sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#09090B;--surface:#18181B;--raised:#27272A;--line:rgba(255,255,255,.08);--ink:#F4F4F5;--muted:#9F9FA9;--accent:#C9B68A;--accent-soft:rgba(201,182,138,.16);--glass:rgba(39,39,42,.72)}}
+:root[data-theme="dark"]{--bg:#09090B;--surface:#18181B;--raised:#27272A;--line:rgba(255,255,255,.08);--ink:#F4F4F5;--muted:#9F9FA9;--accent:#C9B68A;--accent-soft:rgba(201,182,138,.16);--glass:rgba(39,39,42,.72)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--raised);color:var(--ink);font:17px/1.35 var(--sans)}
+.wrap{max-width:1320px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:28px;margin:0 0 4px}
+.lede{color:var(--muted);margin:0 0 8px;max-width:64ch;font-size:15px}
+.switch{font:600 15px var(--sans);min-height:44px;padding:0 14px;border-radius:14px;border:1px solid var(--line);background:var(--surface);color:var(--ink);margin:0 0 20px;cursor:pointer}
+.boards{display:grid;gap:20px;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
+figure{margin:0}
+figcaption{font-size:13px;color:var(--muted);margin:0 0 8px}
+figcaption b{color:var(--ink);display:block;font-size:15px}
+.phone{background:var(--bg);border-radius:28px;padding:16px;min-height:620px;position:relative;overflow:hidden;border:1px solid var(--line)}
+.tag{display:inline-block;font:500 12px var(--sans);letter-spacing:.06em;color:var(--muted);border:1px solid var(--line);border-radius:10px;padding:2px 8px;margin-bottom:12px}
+.bar{display:flex;gap:4px;padding:4px;border-radius:14px;background:var(--glass);backdrop-filter:blur(16px);border:1px solid var(--line);margin-bottom:16px}
+.bar span{flex:1;min-height:36px;display:grid;place-items:center;border-radius:10px;font-size:15px;color:var(--muted)}
+.bar .on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.title{font-size:22px;font-weight:700;margin:0 0 4px}
+.hero{font-size:56px;font-weight:700;line-height:1.05;font-variant-numeric:tabular-nums;margin:4px 0 0}
+.sub{color:var(--muted);font-size:15px;margin:0 0 16px}
+.sec{font-size:13px;color:var(--muted);margin:20px 0 4px}
+.row{display:flex;justify-content:space-between;gap:12px;align-items:center;min-height:44px;border-bottom:1px solid var(--line);font-size:15px}
+.row span:last-child{color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
+.note{font-size:13px;color:var(--muted);margin:12px 0 0}
+.strip{display:flex;align-items:flex-end;gap:3px;height:72px;border-bottom:1px solid var(--line);margin:8px 0 4px}
+.strip i{flex:1;background:var(--accent);border-radius:2px 2px 0 0;display:block}
+.strip i.zero{height:3px!important;background:var(--muted)}
+.strip i.gap{background:none}
+.plot{height:150px;border-left:1px solid var(--line);border-bottom:1px solid var(--line);position:relative;margin:8px 0}
+.plot b{position:absolute;width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.state{margin:8px 0 0;font-size:15px}
+.action{font:600 15px var(--sans);min-height:50px;width:100%;border-radius:14px;border:1px solid var(--line);background:var(--surface);color:var(--ink);margin-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Flujo de Insights</h1>
+<p class="lede">Referencia para PR 5: resultado, contexto, relaciones y evidencia. Todos los números son de ejemplo. El detalle de cada decisión está en PLAN.md.</p>
+<button class="switch" type="button" id="theme">Cambiar claro/oscuro</button>
+<div class="boards">
+
+<figure><figcaption><b>I1 · Resultado y contexto</b>Entrenar → Insights. Único número Hero; flechas, sin color.</figcaption>
+<div class="phone"><span class="tag">EJEMPLO</span>
+<div class="bar"><span class="on">Días</span><span>Ejercicios</span></div>
+<p class="title">Martes</p><p class="hero">4 de 6</p><p class="sub">ejercicios comparables, contra su última vez</p>
+<div class="row"><span>↑ Mejoraron</span><span>2</span></div>
+<div class="row"><span>= Igual</span><span>1</span></div>
+<div class="row"><span>↓ Por debajo</span><span>1</span></div>
+<div class="row"><span>Mezclado o sin comparar</span><span>2</span></div>
+<p class="sec">Alrededor de ese entrenamiento</p>
+<div class="row"><span>Energía antes</span><span>Alta</span></div>
+<div class="row"><span>Fatiga antes</span><span>Sin registrar</span></div>
+<div class="row"><span>Carbohidratos registrados, 3 h antes</span><span>Sin comidas con hora</span></div>
+</div></figure>
+
+<figure><figcaption><b>I2 · Días y relaciones</b>Un cero es una marca en la base; un día sin comparación es un hueco.</figcaption>
+<div class="phone"><span class="tag">EJEMPLO</span>
+<div class="bar"><span class="on">Días</span><span>Ejercicios</span></div>
+<p class="title">Por debajo de la última vez</p><p class="sub">Proporción de ejercicios comparables</p>
+<div class="strip" role="img" aria-label="Tira de 12 días con ceros marcados y dos días sin comparación">
+<i style="height:40%"></i><i class="zero"></i><i style="height:20%"></i><i class="gap"></i><i style="height:60%"></i><i class="zero"></i><i class="zero"></i><i style="height:25%"></i><i class="gap"></i><i style="height:33%"></i><i class="zero"></i><i style="height:50%"></i></div>
+<p class="note">Base = cero · Hueco = sin comparación</p>
+<p class="sec">Para mirar con calma</p>
+<div class="row"><span>Carbohidratos antes de entrenar</span><span>Exploratorio</span></div>
+<div class="row"><span>Energía antes de entrenar</span><span>Sin señal clara</span></div>
+<div class="row"><span>Una métrica, día anterior</span><span>Faltan días: 12 de 20</span></div>
+<p class="note">Evaluamos 14 relaciones. Te mostramos todas, también las que no dieron nada.</p>
+</div></figure>
+
+<figure><figcaption><b>I3 · Detalle de una relación</b>Sin causas, sin rangos ideales. Cada punto lleva a su día.</figcaption>
+<div class="phone"><span class="tag">EJEMPLO</span>
+<p class="title">Carbohidratos antes de entrenar</p>
+<p class="state">Los días con más carbohidratos registrados, menos ejercicios quedaron por debajo. Todavía no alcanza para decir que se repite.</p>
+<div class="plot" role="img" aria-label="Pares de exposición y resultado, con alternativa en lista">
+<b style="left:8%;top:30%"></b><b style="left:18%;top:62%"></b><b style="left:27%;top:40%"></b><b style="left:36%;top:70%"></b><b style="left:47%;top:55%"></b><b style="left:58%;top:78%"></b><b style="left:68%;top:66%"></b><b style="left:80%;top:88%"></b><b style="left:90%;top:82%"></b></div>
+<div class="row"><span>Visto en</span><span>34 de 120 días</span></div>
+<div class="row"><span>Sin comidas con hora</span><span>61 días</span></div>
+<div class="row"><span>Comidas sin hora ese día</span><span>25 días</span></div>
+<p class="sec">Días</p>
+<div class="row"><span>3 de noviembre</span><span>Ver sesión ›</span></div>
+<div class="row"><span>31 de octubre</span><span>Ver sesión ›</span></div>
+</div></figure>
+
+<figure><figcaption><b>I4 · Estados</b>Vacío, faltan datos y error son distintos.</figcaption>
+<div class="phone"><span class="tag">EJEMPLO</span>
+<p class="sec">Sin historial</p>
+<p class="state">Con dos entrenamientos del mismo ejercicio empieza a compararse.</p>
+<p class="sec">Datos insuficientes</p>
+<p class="state">Todavía faltan días: tenés 12 de 20.</p>
+<p class="sec">Sin señal clara</p>
+<p class="state">Por ahora no se ve una relación clara.</p>
+<p class="sec">Error de lectura</p>
+<p class="state">Uy, no pudimos leer tus datos. Tranqui: está todo guardado.</p>
+<button class="action" type="button">Reintentar</button>
+</div></figure>
+
+</div></div>
+<script>
+document.getElementById('theme').addEventListener('click', () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  root.dataset.theme = dark ? 'light' : 'dark';
+});
+</script>
+</body>
+</html>
