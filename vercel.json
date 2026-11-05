@@ -5,7 +5,9 @@
     "deploymentEnabled": {
       "codex/367-insights-pr2-expand": false,
       "codex/367-insights-pr3-adopt": false,
-      "codex/367-feelings-finish-receipt": false
+      "codex/367-feelings-finish-receipt": false,
+      "codex/367-insights-source-revision-expand": false,
+      "codex/367-insights-source-revision-adopt": false
     }
   }
 }
