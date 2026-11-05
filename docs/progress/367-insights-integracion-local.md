@@ -28,11 +28,11 @@ Registro de la ejecución autónoma del 2026-11-05. El índice del mapa de códi
 | #385 | Mergeado | `5e95a17` | `4d0f58e` | `dpl_9bFGSWR…`, `READY` |
 | #386 | Mergeado | `1deaef4` | `c0df3bd` | `dpl_2H9SeWx…`, `READY` |
 | #390 | Mergeado | `5e8a74a` | `26081d9` | `dpl_5rSQ6hj…`, `READY` |
-| #387 | Bloqueado por su migración | `5be52e1` | No | No |
-| #388 | Bloqueado: el `INSERT` de Web falla sin la columna | `a3ab104` | No | No |
-| #391 | Bloqueado por su migración | `8de4fe3` | No | No |
-| #392 | Bloqueado: responde 503 sin la tabla | `1b808b5` | No | No |
-| #389 | Bloqueado: responde 503 sin la columna | `361d687` | No | No |
+| #387 | Bloqueado por su migración | `238cffe` | No | No |
+| #388 | Bloqueado: el `INSERT` de Web falla sin la columna | `4b9f69a` | No | No |
+| #391 | Bloqueado por su migración | `aff664c` | No | No |
+| #392 | Bloqueado: responde 503 sin la tabla | `57894ad` | No | No |
+| #389 | Bloqueado: responde 503 sin la columna | `70c188a` | No | No |
 
 Paquete para decidir: [autorización de migraciones](367-autorizacion-migraciones.md).
 
@@ -68,13 +68,25 @@ Medido con el perfil sintético de 10 años, método parcial, sin calibraciones 
 
 **Heads de #387, #388, #389, #391 y #392, después de incorporar `main`:** tipos raíz y Mobile y pruebas unitarias de cada uno. Sus migraciones no cambiaron de blob.
 
+### Rollout sin conflictos
+
+Se pidió resolver conflictos que GitHub marcaba en los cinco PR. **Al revisar, la API no los marcaba:** daba `clean` en #388, #389, #391 y #392, los cinco tenían `main` incorporado, y #387 figuraba `unknown`, con su referencia de merge sin recalcular desde un head viejo. **Los problemas reales aparecían al mergearlos uno detrás de otro:**
+
+| Problema | Cuándo | Corrección |
+| --- | --- | --- |
+| Conflicto en `vercel.json` | #391 después de #387 o #388 | Bloque idéntico en #387, #388, #391 y #392 |
+| Clave duplicada en `vercel.json`, sin conflicto | #392 después de #391 | El mismo bloque |
+| Conflicto en los imports de `performance-insights.local.test.ts` | Entre #392 y #389 | Imports de #389 en otra línea |
+| Test que fallaría, sin conflicto: `14 + 7` consultas y sin reutilización | #389 con #392 | #389 ya no fija costo ni reutilización |
+
+**Verificado:** merge secuencial simulado en cuatro órdenes, sin conflictos y con un único árbol. El candidato difiere de ese árbol solo en sus archivos propios: este registro, el paquete, `insights-integration.local.test.ts` y su entrada en `vercel.json`. Blobs de las migraciones sin cambios. Sobre el candidato: tipos raíz, lint de los tests tocados y 131 pruebas sin base de datos, con 138 omitidas por requerirla. **No se repitió ninguna suite de PostgreSQL ni la de Mobile:** no cambiaron SQL, consultas, contratos ni código de la aplicación.
+
 ### Bloqueos
 
 | Bloqueo | Motivo | Quién |
 | --- | --- | --- |
 | Migraciones de #387 y #391 | Sin autorización para producción | Vos |
 | Sus consumidores: #388, #389 y #392 | Dependen de ellas | Después de eso |
-| Bases de #388, #389 y #392 | Cambiarlas a `main` requiere sesión de GitHub | Vos, o con sesión |
 | Descripciones y estado de borrador en GitHub | Requieren sesión de GitHub | Vos, o con sesión |
 | Cerrar #367 | Faltan migraciones, ADOPT, OBSERVE, QA física y la decisión sobre el presupuesto del 1 % | Sigue abierto |
 
