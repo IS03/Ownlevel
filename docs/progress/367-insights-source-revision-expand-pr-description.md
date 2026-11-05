@@ -1,5 +1,5 @@
 ## Resumen
-EXPAND de una revisión transaccional de las fuentes de Insights: un contador por cuenta que la base mueve en la misma transacción que los datos. **Base: `main`.** Independiente de los demás PR de #367. **Sin aplicar en producción, y ningún código lo lee todavía.**
+EXPAND de una revisión transaccional de las fuentes de Insights: un contador por cuenta que la base mueve en la misma transacción que los datos. **Base: `main`.** No necesita código de otro PR pendiente. **Orden de rollout, SHAs y comprobaciones:** [paquete de autorización](https://github.com/IS03/Ownlevel/blob/integration/367-insights-candidate/docs/progress/367-autorizacion-migraciones.md). **Sin aplicar en producción, y ningún código lo lee todavía.**
 
 ## Por qué
 `count + max(updated_at)` no identifica todos los cambios. `updated_at` es la hora en que empezó la transacción, así que una que empezó antes y confirma después de otra más nueva cambia una fila sin mover ninguno de los dos valores. Reproducido con dos transacciones reales. Agrupar esas consultas en una RPC no lo arregla, y una secuencia tampoco: sus valores se entregan antes de confirmar.
@@ -179,6 +179,6 @@ OWNLEVEL_CROSSING_ROUNDS=3 OWNLEVEL_CROSSING_BIG_ROUNDS=3 npx vitest run src/lib
 - Las series y los ejercicios agregan hasta dos consultas por cambio distinto dentro del commit. Falta OBSERVE.
 
 ## Siguiente
-ADOPT en #392, apilado sobre #386. Aplicar esta migración antes de mergearlo.
+ADOPT en #392, con base `main`. Aplicar esta migración antes de mergearlo.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
