@@ -138,7 +138,7 @@ Medido en una sola sesión de `psql`, con la versión anterior y la final altern
 **Límites de esta evidencia:**
 - Es una pila local en Docker, sin carga ni escritores concurrentes. No predice producción: falta OBSERVE.
 - Las pruebas sin gancho dependen del momento. Lo que fuerza el cruce en cada corrida son las pruebas con gancho, y el cierre se apoya en el orden de la cola, no en esas rondas.
-- Ese orden es comportamiento del motor, comprobado en Postgres 17.11. No lo apoyo en una garantía del manual: una actualización mayor debería repetir estas pruebas.
+- Ese orden es comportamiento del motor, comprobado en Postgres 17.11 y en 17.6.1.105, la versión de producción leída el 2026-11-05. En esa versión, la migración anterior también da `40P01` y las suites de revisión (42) y de cruce (29) pasan. No lo apoyo en una garantía del manual: una actualización mayor debería repetir estas pruebas.
 
 ## Reproducir
 Pila local descartable, con la base en un contenedor `supabase_db_ownlevel-receipt-<8 hex>`; las pruebas rechazan cualquier otra. Sin el archivo de estado se omiten.
