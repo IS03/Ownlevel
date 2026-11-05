@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { AppText, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppText, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
 
 export type PeriodChartPoint = { key: string; label: string; value: number | null; text: string; onPress?: () => void; hint?: string; soft?: boolean;
   /** `dots` only: the value written over the dot ("62,7"); shown for every point when there are few, otherwise first, last, lowest and highest. */
@@ -16,14 +16,16 @@ const H = 140, DOT = 8, LABEL = 18;
  * - `dots`: a position between the lowest and highest value shown (weight, measures), where bars from 0 would hide the change.
  * Bars are full champagne and dots stress the latest record; `soft` marks a point still in progress.
  */
-export function PeriodChart({ points, mode, target, bands, testID }: {
+export function PeriodChart({ points, mode, target, bands, testID, inspection }: {
   points: PeriodChartPoint[]; mode: 'bars' | 'dots'; target?: number | null; bands?: PeriodChartBand[]; testID: string;
+  /** Opt-in for Métricas: inspect even empty buckets, with scrollable 44 pt targets and narrower marks. */
+  inspection?: { selectedKey: string | null; onSelect: (key: string) => void };
 }) {
   const { colors } = useOwnlevelTheme();
   const [width, setWidth] = useState(300);
   const known = points.map(p => p.value).filter((v): v is number => v !== null);
   const high = Math.max(mode === 'bars' ? 1 : -Infinity, ...known, ...(mode === 'bars' && target ? [target] : []));
-  const low = mode === 'dots' ? Math.min(...known) : 0;
+  const low = mode === 'dots' ? Math.min(...known) : inspection ? Math.min(0, ...known, target ?? 0) : 0;
   const lastKnown = points.map(p => p.value !== null).lastIndexOf(true);
   const n = points.length, step = Math.ceil(n / 5);
   const labeled = (i: number) => n <= 6 || i === n - 1 || (i % step === 0 && n - 1 - i >= step / 2);
@@ -36,10 +38,12 @@ export function PeriodChart({ points, mode, target, bands, testID }: {
   const room = written.size ? LABEL : 0;
   // Dots sit a few points above the dates, so the lowest one never touches its label.
   const lift = mode === 'dots' ? 4 : 0;
-  const y = (v: number) => mode === 'bars' ? (H * v) / high : high === low ? (H - room) / 2 : lift + ((v - low) / (high - low)) * (H - DOT - room - lift);
-  return <View testID={testID} onLayout={e => setWidth(e.nativeEvent.layout.width)} style={styles.chart}>
-    {mode === 'bars' && target ? <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none"
-      testID={`${testID}-target`} style={[styles.target, { top: H - y(target), borderColor: colors.text }]} /> : null}
+  const y = (v: number) => mode === 'bars' ? (H * v) / (high - low) : high === low ? (H - room) / 2 : lift + ((v - low) / (high - low)) * (H - DOT - room - lift);
+  const baseline = mode === 'bars' ? y(-low) : 0;
+  return <View testID={testID} onLayout={e => setWidth(e.nativeEvent.layout.width)} style={[styles.chart, inspection && { flex: 1, minWidth: n * brandTokens.layout.minTouch }]}>
+    {inspection && low < 0 ? <View pointerEvents="none" style={[styles.target, { top: H - baseline, borderColor: colors.border }]} /> : null}
+    {mode === 'bars' && target != null && (target !== 0 || inspection) ? <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none"
+      testID={`${testID}-target`} style={[styles.target, { top: H - baseline - y(target), borderColor: colors.text }]} /> : null}
     {points.map((p, i) => {
       // Bars are all champagne (soft only while in progress); dots stress the latest record, as in the sketches.
       const full = mode === 'bars' ? !p.soft : i === lastKnown && !p.soft;
@@ -50,17 +54,22 @@ export function PeriodChart({ points, mode, target, bands, testID }: {
           {written.has(i) && p.valueText ? <AppText numeric variant="caption" numberOfLines={1} accessibilityElementsHidden importantForAccessibility="no"
             style={[styles.value, { bottom: y(p.value) + DOT + 2, color: full ? colors.text : colors.textMuted }]}>{p.valueText}</AppText> : null}
         </>
-        : <View style={{ height: p.value === 0 ? 1 : Math.max(2, y(p.value)), backgroundColor: p.value === 0 ? colors.border : color, opacity: p.value === 0 ? 1 : opacity,
-          borderTopLeftRadius: p.value === 0 ? 0 : 3, borderTopRightRadius: p.value === 0 ? 0 : 3 }} />;
+        : <View style={[{ height: p.value === 0 ? 1 : Math.max(2, inspection ? Math.abs(y(p.value)) : y(p.value)), backgroundColor: p.value === 0 ? colors.border : color, opacity: p.value === 0 ? 1 : opacity,
+          borderTopLeftRadius: p.value === 0 ? 0 : 3, borderTopRightRadius: p.value === 0 ? 0 : 3 }, inspection && { position: 'absolute', bottom: baseline + Math.min(0, y(p.value)), width: spacing.lg, maxWidth: '100%', alignSelf: 'center' }]} />;
       const kind = p.value === null ? 'gap' : p.value === 0 && mode === 'bars' ? 'zero' : 'mark';
       const a11y = `${p.label}, ${p.text}`;
       const band = bandOf(p.key), firstOfBand = !!band && (i === 0 || bandOf(points[i - 1].key)?.id !== band.id);
       const backdrop = band ? <View pointerEvents="none" testID={`${testID}-band-${band.id}-${p.key}`}
         style={[{ position: 'absolute', top: 0, bottom: 0, left: -(n > 20 ? 1 : 3), right: -(n > 20 ? 1 : 3) }, { backgroundColor: band.current ? colors.primary : colors.border, opacity: band.current ? 0.14 : 0.45 }]} /> : null;
       const tag = firstOfBand ? <AppText numberOfLines={1} variant="caption" style={[styles.band, { color: band!.current ? colors.primary : colors.textMuted }]}>{band!.label}</AppText> : null;
-      const body = <><View style={styles.plot}>{backdrop}{tag}{mark}</View>
-        <AppText muted numeric variant="caption" numberOfLines={1} style={[styles.date, { width: Math.max(44, width / 5) }]}>{labeled(i) ? p.label : ''}</AppText></>;
-      return p.onPress && p.value !== null
+      const selected = inspection?.selectedKey === p.key;
+      const body = <><View style={[styles.plot, selected && { borderColor: colors.primary, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.inner }]}>{backdrop}{tag}{mark}</View>
+        <AppText muted numeric variant="caption" numberOfLines={inspection ? undefined : 1} style={[styles.date, { width: inspection ? Math.max(brandTokens.layout.minTouch, width / n - spacing.sm) : Math.max(44, width / 5) }]}>{labeled(i) ? p.label : ''}</AppText></>;
+      return inspection
+        ? <Pressable key={p.key} testID={`${testID}-${p.key}-${kind}`} accessibilityRole="button" accessibilityLabel={a11y}
+          accessibilityState={{ selected }} accessibilityHint="Tocá para ver el detalle. Tocá otra vez para quitar la selección."
+          onPress={() => inspection.onSelect(p.key)} style={[styles.slot, { minWidth: brandTokens.layout.minTouch, paddingHorizontal: spacing.xs }]}>{body}</Pressable>
+        : p.onPress && p.value !== null
         ? <Pressable key={p.key} testID={`${testID}-${p.key}-${kind}`} accessibilityRole="button" accessibilityLabel={a11y} accessibilityHint={p.hint} onPress={p.onPress} style={[styles.slot, { paddingHorizontal: n > 20 ? 1 : 3 }]}>{body}</Pressable>
         : <View key={p.key} testID={`${testID}-${p.key}-${kind}`} accessible accessibilityLabel={a11y} style={[styles.slot, { paddingHorizontal: n > 20 ? 1 : 3 }]}>{body}</View>;
     })}

@@ -1,6 +1,8 @@
-# Insights #367 — PR 2: EXPAND de sensaciones
+# Insights #367 — EXPAND y ADOPT de sensaciones
 
 **Estado vigente: EXPAND aplicado y verificado en Supabase de producción; ver sección final de rollout.**
+
+**PR 3: adopción Web/Expo y journal local implementados; borrador #383, QA física pendiente. [#384](https://github.com/IS03/Ownlevel/pull/384) (recibo completo de finish) ya está mergeado y publicado, con su migración aplicada; ver [integración tras su rollout](#integración-tras-el-rollout-de-384--4-de-noviembre-de-2026).** #383 se actualizó con main y no aplica/reaplica migraciones ni cambia producción.
 
 ## Persistencia mínima
 
@@ -140,3 +142,78 @@ Verificado tras aplicar: las cinco funciones nuevas coinciden exactamente con su
 Advisor alojado: baseline de 3 INFO, 19 WARN de funciones SECURITY DEFINER y 1 WARN de Auth. Delta: solo el aviso esperado para `mutate_training_feelings_v1`, RPC privilegiada intencional con auth.uid/ownership/CAS/idempotencia. No se afirma cero avisos alojados. Referencia: https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable .
 
 #381 integrado en `d18af72a1f115789c63fed1c5ceafd0a84fd18f3`, Vercel Production READY. #382 retargeteado a main; publicación de su backend posterior a la verificación de EXPAND. Captura cliente/Diario y patrones siguen sin adoptar. No se repiten las pruebas locales vigentes: el seguimiento solo renombra el SQL sin cambiar su contenido, actualiza su ruta de fixture y documenta el rollout.
+
+## PR 3 — ADOPT y recuperación offline
+
+Rama `codex/367-insights-pr3-adopt` desde main actualizado y limpio; #381/#382 mergeados. Migración vigente `20261104011622_training_feelings_expand.sql`: **ya aplicada**, no se vuelve a ejecutar. Codebase Memory devolvió vacío; checkout y contratos publicados son la autoridad. Sin integración de #380, SQL nuevo, cambios de producción, deploy, build ni instalación de Diario. Se bloquea la preview automática de esta rama en `vercel.json`.
+
+Captura Web/Expo: bloque compacto pre al abrir la sesión; post reutiliza el espacio del formulario final. Energía y fatiga opcionales e independientes, 1–5 sin defaults; anclajes **muy baja/baja/media/alta/muy alta** y **ninguna/poca/moderada/mucha/muchísima**. Se puede quitar cada respuesta. Rendimiento, dolor y notas continúan separados. El control final de energía escribe `energyPost`, nunca energía legacy; se preservan sus valores anteriores. Lectura de sensaciones nuevas en sesión finalizada, sin convertir datos históricos. Controles con semántica accesible, tokens de marca y claro/oscuro; Windows valida render/contratos, no sustituye VoiceOver/QA física.
+
+El contrato portable conserva `training-feelings/1`; las entradas del servidor siguen traduciendo validación a los mismos errores HTTP. Web usa las mismas rutas Bearer y comprueba que la sesión autenticada corresponda al dueño del journal. Expo usa Mobile API, sin consultas directas a tablas. No cambia el comparador.
+
+Journal específico de sensaciones, compartido: `ownlevel.feelings.v1.<usuario>.<sesión>`, sobre localStorage Web y AsyncStorage Expo. Seleccionar persiste patch, fuente y hora real de captura, aunque sea tarde; reenviar conserva esos timestamps y no acredita anterioridad física. Quitar produce `clear`; omitir preserva. Antes de enviar se persiste el cuerpo exacto, CAS y clave. Se serializan lecturas/escrituras por dispositivo/registro; Web exige Web Locks para coordinar pestañas. Si no están disponibles, se muestra error y no se envía. No se guardan tokens en el journal ni se registran payloads privados.
+
+Recuperación tras navegar/reiniciar: intención pendiente visible; «Comprobar operación pendiente» repite exactamente cuerpo/clave. No hay reenvío automático con otra revisión ni nueva clave por timeout. Un conflicto relee lo guardado y exige «Conservar lo guardado» o «Revisar mis respuestas para reenviar»; la segunda opción preserva captura, libera el conflicto y requiere una nueva confirmación del usuario. Sin lectura inicial conocida, encontrar respuestas existentes también exige revisión. Un error de lectura mantiene el estado no confirmado/última lectura, nunca crea un vacío exitoso. Fallo de almacenamiento local bloquea el cierre hasta revisar el borrador; no se declara guardado. La persistencia depende del almacenamiento del dispositivo: borrar los datos del navegador/app elimina borradores locales.
+
+Finish drena primero los borradores existentes de series. Una pre pendiente debe confirmarse antes de congelar la revisión final. Con post seleccionadas o cualquier patch pendiente, usa `finish-with-feelings` con metadata legacy parcial explícita; sin sensaciones elegidas conserva el camino original y energía histórica. Expo integra el cuerpo nuevo en su journal estructural existente y conserva la recuperación de recibo/limpieza local. Las intenciones nuevas negocian el recibo completo de #384: resumen y adiciones salen del snapshot original, sin depender de una lectura posterior de detail. Web no usa un mero estado «completed» como confirmación de una escritura nueva incierta. No se eliminan intenciones pendientes antes de confirmación durable.
+
+### Validación inicial y dependencia contractual
+
+- Raíz: typecheck, ESLint de archivos afectados sin warnings y **77 pruebas**: journal (11), transporte Web (3), render accesible claro/oscuro (3), interacción Web afectada (20), finish legacy (4) y contrato/HTTP del parser extraído (36). Se repite ese grupo de #382 porque se mueve su parser a un módulo portable; no sus suites SQL/advisor ni las de #381.
+- Expo: typecheck, lint sin warnings y `config:check` correctos. **148 pruebas únicas en 8 suites focalizadas**: captura/lectura, transporte, finish con journal, controlador/useActiveSession/client existentes y vistas de historial/post afectadas. Ejecutadas en tandas; pruebas de vistas emiten avisos `act` del entorno React, sin fallos. Datos sintéticos y transporte simulado: offline, navegación/reinicio, hora tardía, timeout tras commit, replay, CAS, dos usuarios/sesiones, limpieza parcial y coordinación de finish. No se afirma E2E contra el backend alojado ni QA nativa real. Se reutiliza la evidencia DB/PostgREST de #382; no se aplica SQL ni se repite su auditoría.
+- La brecha de `routineAdditions` del backend v1 se resolvió en [#384](https://github.com/IS03/Ownlevel/pull/384), ya en main. Sin negociación, su respuesta instalada sigue intacta. Ver [contrato, seguridad y evidencia local de la extensión](367-insights-finish-receipt-expand.md). #383 consume esa extensión; su SQL/backend llegan solo por el merge de main, sin cambios.
+
+### Correcciones previas a integrar #383
+
+Punto de partida `c822c84eda00bf9f0de271e4eef49bb9fc59e55d`. `TrainingFeelingsJournal.run` captura también ausencia/rechazo/throw de Web Locks, termina busy, publica error recuperable y mantiene exactamente borradores/intenciones. La limpieza de la cola usa handlers de resolución/rechazo, sin un `finally` que genere otro rechazo suelto. Restablecer el lock permite comprobar/reintentar bajo exclusión; nunca se sustituye por ejecución Web sin lock. El intento Web completo usa try/catch/finally: refresh y drenaje de series quedan protegidos, y siempre se liberan indicadores/fences transitorios; ese cleanup no toca el journal durable.
+
+Cada intención finish nueva persiste `receiptVersion=training-feelings-finish/2` **solo en el journal**. El adaptador la traduce a `?routineAdditions=1` y envía el cuerpo v1 original sin ese campo. El recibo negociado contiene `feelings` y el snapshot `finished` con `routineAdditions`, congelados por #384. Se valida/persiste el snapshot y se entrega directamente al resumen Mobile, incluso si falla detail; no se reconstruyen adiciones desde la rutina actual ni se hace otro finish. Respuesta incompleta o backend antiguo no provoca fallback: conserva la intención recuperable.
+
+Las intenciones v1 ya persistidas conservan su negociación, cuerpo y clave al reiniciar: no se convierten ni se enriquecen retrospectivamente. Sus recibos carecen del resumen original completo; mantienen la recuperación compatible anterior, con detalle de rutina desconocido explícito. Intentar upgrade de una clave v1 confirmada en #384 devuelve `FEELINGS_RECEIPT_VERSION_UNAVAILABLE`.
+
+Seguimiento local: **45 pruebas raíz focalizadas** (lock/avisos, finish Web, journal/negociación, transporte/render e interacción afectada), **74 pruebas Mobile únicas** (6 de transporte, 5 de finish con sensaciones y 63 regresiones del controlador). Tipos raíz/Mobile y lint correctos. Se incluyen ausencia de unhandledRejection, recuperación con el lock restablecido, intención v1 conservada y pérdida/replay de la respuesta con adiciones aun con detail no disponible. En #384, **45 pruebas HTTP/contrato y 35 comprobaciones reales Auth/PostgREST** más advisor local antes/después validan la transacción y su replay tras cambiar el estado actual. No se repiten suites ajenas ni las auditorías de #380/#381.
+
+### Integración tras el rollout de #384 — 4 de noviembre de 2026
+
+`origin/main` (`b5e57e3d1a6fc19c439e81161fff20de1c00388a`) se incorporó por merge, sin conflictos. Backend, migraciones, runner y documento de #384 quedan idénticos a main (`git diff origin/main` vacío para esas rutas). La migración canónica es `20261104024300_training_feelings_finish_receipt.sql`; reemplaza el nombre preparado `20261104040000`, con el mismo SQL.
+
+**Corrección demostrada.** Desde `aa461ec`, `runWorkoutFinishAttempt` liberaba los bloqueos también después de un finish Web confirmado. Hasta que llegara el refresh, «Finalizar» y la edición quedaban activos otra vez, y un segundo toque podía congelar otra intención con clave nueva contra una sesión cerrada. Ahora solo se liberan si el intento no confirma, como antes de la adopción; un fallo sigue liberándolos sin tocar el journal. Se agrega además la prueba de una intención v1 durable a través del controlador Mobile, que no tenía cobertura de punta a punta.
+
+**Evidencia local (datos sintéticos y transporte simulado).** Tipos raíz/Mobile, lint focalizado y `config:check` correctos. Repetidas solo las suites afectadas: **92 pruebas raíz en 7 suites** (intento de finish, transporte Web, journal, negociación HTTP de #384, contrato/HTTP v1, render e interacción) y **14 pruebas Mobile en 3 suites** (finish con journal, transporte, captura). Revisado en código y pruebas:
+
+| Punto | Resultado |
+| --- | --- |
+| Intenciones nuevas negocian `training-feelings-finish/2` | Web y Mobile envían `?routineAdditions=1` y el cuerpo v1, sin `receiptVersion` en el cable. |
+| Intenciones v1 pendientes | Conservan ruta, cuerpo y clave; no reciben adiciones inventadas. |
+| Recibo original y `routineAdditions` | Llegan al resumen Mobile desde el snapshot, aun con detail indisponible. El resumen Web no muestra adiciones, ni antes ni ahora. |
+| Respuesta perdida/reinicio | Repite cuerpo y clave originales, con un solo efecto de dominio. |
+| Lock Web fallido | Conserva las respuestas y permite recuperar bajo lock, sin rechazos sueltos. |
+| Bloqueos transitorios de finish | Se liberan ante fallo o resultado sin confirmar; no se borran intenciones inciertas. |
+
+Se reutilizan sin repetir las 35 comprobaciones Auth/PostgREST y el advisor local de #384, las 63 regresiones del controlador y la evidencia DB de #382. No hay migraciones nuevas.
+
+**Comprobaciones alojadas sin identidad (solo lectura o rechazo, sin escrituras).**
+
+- Vercel: despliegue de producción `dpl_D43P4qzqMsCBErcYF7xF2FxuJjRU` en `READY` para `b5e57e3`.
+- Historial de Supabase: incluye `20261104024300 training_feelings_finish_receipt` como última versión y no contiene `20261104040000`.
+- `https://www.ownlevel.fit`, ruta `finish-with-feelings` con sesión sintética: POST sin `Authorization` devuelve `401` con `?routineAdditions=1`, sin query y con `?routineAdditions=2`; OPTIONS devuelve `204`.
+
+La autenticación corre antes de validar la query, así que esos `401` **no prueban la negociación ni el contenido del recibo**. **Nunca se ejecutó un finish autenticado en producción**: el recibo real contra el backend alojado solo se comprobará en la QA física.
+
+### Checklist única pendiente de QA física
+
+En iPhone con VoiceOver disponible, salvo el punto de Safari, que es Web. Usa producción y escribe entrenamientos reales: conviene una sesión corta prescindible.
+
+- [ ] **Accesibilidad y claro/oscuro:** texto grande, VoiceOver y foco en controles 1–5, anclajes y quitar; sin preselección, recortes ni colores valorativos.
+- [ ] **Omitir:** empezar y finalizar sin responder; rendimiento, dolor, notas y energía histórica conservados.
+- [ ] **Responder y quitar:** elegir y quitar energía y fatiga por separado; una no arrastra a la otra.
+- [ ] **Pre/post:** responder pre después de algunas series conserva la hora real de captura; post significa «cómo terminaste», sin segundo formulario de energía.
+- [ ] **Reinicio/offline:** sin conexión, elegir respuestas, cerrar y reabrir; al reconectar se comprueba la misma intención. No dice «guardado» antes de confirmar.
+- [ ] **Corte al finalizar:** activar modo avión justo al confirmar el finish, reabrir y recuperar; una sola sesión finalizada y mismo resumen.
+- [ ] **Conflictos:** cambiar las sensaciones desde otro cliente; se ve lo guardado, se resuelve expresamente, se conserva la captura al reenviar y nunca se sobrescribe solo.
+- [ ] **Recibo con adiciones a rutina:** finalizar con sensaciones y un ejercicio fuera de la rutina; el resumen muestra «se sumó a». Con corte al finalizar, cambiar rutina/notas desde otro cliente y recuperar: se mantienen nombre, resumen y adiciones originales. Solo el outcome `added` genera fila; los otros tres no muestran nada.
+- [ ] **Exclusión entre dos pestañas de Safari:** con la misma sesión en dos pestañas, elegir energía en una y fatiga en la otra, y guardar; al recargar ambas están las dos respuestas, sin conflicto contra vos mismo. Con una operación pendiente, tocar «Comprobar operación pendiente» en las dos casi a la vez; se confirma una sola y ninguna pestaña crea otra intención. Las pruebas simulan el lock: esta es la única comprobación real.
+
+**Cubierto por pruebas automatizadas, sin videos:** lock Web ausente/rechazado/throw, rechazos sueltos, intención v1 al reabrir, respuesta perdida a nivel de transporte, limpieza local interrumpida, ausencia de fallback a otro finish, aislamiento entre cuentas/sesiones y lectura fallida frente a ausencia confirmada. Los cuatro outcomes del recibo los valida el contrato con #384 local.
+
+Entrega sin mergear y sin deploys, builds ni instalaciones. **La QA física no está aprobada.** #383 sigue abierto, en borrador y sin auto-merge. Sin #380, loader all-time, asociaciones, patrones, scores, rediseño de Progreso ni PR 4.

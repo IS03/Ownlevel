@@ -6,4 +6,6 @@ export type RoutineFormSheetProps = {
   open: boolean;
   pending: boolean;
   onClose: () => void;
+  /** iOS: runs only once the native presentation has fully dismissed. */
+  onDismissed?: () => void;
 };

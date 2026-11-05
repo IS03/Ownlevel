@@ -1,5 +1,5 @@
-import { compareExposure } from "./comparator";
-import { buildExposure, contextIssue, sameContext, uniqueRows } from "./exposure";
+import { compareExposure, indexRecords } from "./comparator";
+import { buildExposure, configurationKnown, contextIssue, contextKey, sameContext, uniqueRows, type ContextRule } from "./exposure";
 import { INSIGHTS_PERFORMANCE_METHOD, type DailyPerformance, type ExerciseExposure, type ExercisePerformance, type HistoryCoverage, type PerformanceCounts, type PerformanceExclusion, type PerformanceSession, type SessionPerformance } from "./types";
 
 function validDate(value: string | null): value is string {
@@ -37,7 +37,7 @@ function counts(exercises: readonly ExercisePerformance[]): PerformanceCounts {
 
 type PreparedSession = { session: PerformanceSession; time: ReturnType<typeof interval>; exposures: ExerciseExposure[] };
 
-function prepare(session: PerformanceSession): PreparedSession {
+function prepare(session: PerformanceSession, rule: ContextRule): PreparedSession {
   const groups = new Map<string, typeof session.exercises[number][]>();
   for (const block of session.exercises) {
     // PostgreSQL UUID identity is case-insensitive; display names never define identity.
@@ -55,8 +55,10 @@ function prepare(session: PerformanceSession): PreparedSession {
       owners.set(id, ids);
     }
   }
-  const exposures = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([id, blocks]) => {
-    const exposure = buildExposure(session.id, id, blocks);
+  // The two methods partition exposures: one with any known configuration belongs to the strict lane only.
+  const inScope = ([, blocks]: [string, typeof session.exercises[number][]]) => rule !== "configuration_unknown" || !blocks.some(block => configurationKnown(block.context));
+  const exposures = [...groups].filter(inScope).sort(([a], [b]) => a.localeCompare(b)).map(([id, blocks]) => {
+    const exposure = buildExposure(session.id, id, blocks, rule);
     const conflict = blocks.some(block => duplicateBlockIds.has(block.id) || owners.get(`block:${block.id}`)!.size > 1
       || block.sets.some(set => duplicateSetIds.has(set.id) || owners.get(`set:${set.id}`)!.size > 1));
     return conflict ? { ...exposure, issue: "duplicate_conflict" as const } : exposure;
@@ -64,14 +66,75 @@ function prepare(session: PerformanceSession): PreparedSession {
   return { session, time: interval(session), exposures };
 }
 
-function compatibleContext(a: ExerciseExposure, b: ExerciseExposure) {
-  return a.context && b.context && !contextIssue(a.context) && !contextIssue(b.context)
-    && a.issue !== "mixed_context" && b.issue !== "mixed_context"
-    && a.issue !== "duplicate_conflict" && b.issue !== "duplicate_conflict"
-    && sameContext(a.context, b.context);
+const usableContext = (a: ExerciseExposure, rule: ContextRule) => !!a.context && !contextIssue(a.context, rule) && a.issue !== "mixed_context" && a.issue !== "duplicate_conflict";
+function compatibleContext(a: ExerciseExposure, b: ExerciseExposure, rule: ContextRule) {
+  return usableContext(a, rule) && usableContext(b, rule) && sameContext(a.context!, b.context!);
 }
 
-function evaluate(current: PreparedSession, exposure: ExerciseExposure, candidates: readonly PreparedSession[], historyCoverage: HistoryCoverage) {
+/** One exercise's history, grouped by context: what a summary needs without visiting every earlier session per exposure. */
+type ExerciseIndex = {
+  candidates: PreparedSession[];
+  groups: Map<string, { sessions: PreparedSession[]; ends: bigint[]; exposures: ExerciseExposure[]; records: ReturnType<typeof indexRecords> }>;
+  /** Every candidate is completed, dated and in one context: nothing to exclude for an exposure of that context. */
+  uniform: boolean;
+};
+function indexExercise(exerciseId: string, candidates: PreparedSession[], rule: ContextRule): ExerciseIndex {
+  const rows = new Map<string, { row: PreparedSession; exposure: ExerciseExposure; end: bigint }[]>();
+  let broken = false;
+  for (const row of candidates) {
+    const exposure = row.exposures.find(item => item.exerciseId === exerciseId)!;
+    if (row.session.status !== "completed" || !row.time || !usableContext(exposure, rule)) { broken = true; continue; }
+    const key = contextKey(exposure.context!), group = rows.get(key);
+    if (group) group.push({ row, exposure, end: row.time.end }); else rows.set(key, [{ row, exposure, end: row.time.end }]);
+  }
+  const groups: ExerciseIndex["groups"] = new Map();
+  for (const [key, group] of rows) {
+    group.sort((a, b) => a.end === b.end ? a.row.session.id.localeCompare(b.row.session.id) : a.end < b.end ? -1 : 1);
+    const exposures = group.map(entry => entry.exposure);
+    groups.set(key, { sessions: group.map(entry => entry.row), ends: group.map(entry => entry.end), exposures, records: indexRecords(exposures) });
+  }
+  return { candidates, groups, uniform: !broken && groups.size <= 1 };
+}
+
+/** Same result as `evaluate` in summary mode, without its walk over the whole history. */
+function evaluateIndexed(current: PreparedSession & { time: NonNullable<PreparedSession["time"]> }, exposure: ExerciseExposure, index: ExerciseIndex, historyCoverage: HistoryCoverage, rule: ContextRule) {
+  const group = index.groups.get(contextKey(exposure.context!));
+  const exclusions: PerformanceExclusion[] = [];
+  if (!index.uniform || !group) for (const candidate of index.candidates) {
+    if (candidate.session.id === current.session.id) continue;
+    const previous = candidate.exposures.find(item => item.exerciseId === exposure.exerciseId)!;
+    let reason: PerformanceExclusion["reason"] | null = null;
+    if (candidate.session.status !== "completed") reason = "session_not_completed";
+    else if (!candidate.time) reason = "uncertain_chronology";
+    else if (candidate.time.end >= current.time.start) continue;
+    else if (!compatibleContext(exposure, previous, rule)) reason = previous.issue ?? "different_context";
+    if (reason) exclusions.push({ reason, sessionId: candidate.session.id, exerciseId: exposure.exerciseId });
+  }
+  // How many of the group ended before this session started.
+  let count = 0;
+  if (group) { let low = 0, high = group.ends.length; while (low < high) { const middle = (low + high) >> 1; if (group.ends[middle]! < current.time.start) low = middle + 1; else high = middle; } count = low; }
+  let reference: ExercisePerformance["reference"] = null;
+  let missingReason: ExercisePerformance["reason"] = "no_compatible_reference";
+  if (historyCoverage === "unavailable") missingReason = "history_unavailable";
+  else if (count) {
+    const top = group!.ends[count - 1]!;
+    let first = count - 1;
+    while (first > 0 && group!.ends[first - 1] === top) first--;
+    if (count - first > 1) {
+      missingReason = "reference_order_uncertain";
+      for (let at = first; at < count; at++) exclusions.push({ reason: "reference_order_uncertain", sessionId: group!.sessions[at]!.session.id, exerciseId: exposure.exerciseId });
+    } else reference = { sessionId: group!.sessions[first]!.session.id, endedAt: group!.sessions[first]!.session.endedAt!, ageMs: Number(current.time.start - top) / 1_000_000, exposure: group!.exposures[first]! };
+  }
+  if (exposure.issue) exclusions.push({ reason: exposure.issue, sessionId: current.session.id, exerciseId: exposure.exerciseId, rowIds: exposure.blockIds });
+  if (reference?.exposure.issue) exclusions.push({ reason: reference.exposure.issue, sessionId: reference.sessionId, exerciseId: exposure.exerciseId, rowIds: reference.exposure.blockIds });
+  return compareExposure({ current: exposure, reference, history: [], records: group ? group.records.facts(exposure, count) : [], historyCoverage, exclusions, missingReason });
+}
+
+function evaluate(current: PreparedSession, exposure: ExerciseExposure, candidates: readonly PreparedSession[], historyCoverage: HistoryCoverage, exclusionDetail: "full" | "summary", rule: ContextRule, index?: ExerciseIndex) {
+  // Same result without one row per earlier session: this exposure cannot match any of them, so it never has a reference.
+  if (exclusionDetail === "summary" && !usableContext(exposure, rule)) return compareExposure({ current: exposure, reference: null, history: [], historyCoverage,
+    exclusions: exposure.issue ? [{ reason: exposure.issue, sessionId: current.session.id, exerciseId: exposure.exerciseId, rowIds: exposure.blockIds }] : [], missingReason: "no_compatible_reference" });
+  if (exclusionDetail === "summary" && index && current.time) return evaluateIndexed(current as PreparedSession & { time: NonNullable<PreparedSession["time"]> }, exposure, index, historyCoverage, rule);
   const exclusions: PerformanceExclusion[] = [];
   const eligible: Array<{ session: PerformanceSession; end: bigint; exposure: ExerciseExposure }> = [];
   for (const candidate of candidates) {
@@ -81,7 +144,9 @@ function evaluate(current: PreparedSession, exposure: ExerciseExposure, candidat
     if (candidate.session.status !== "completed") reason = "session_not_completed";
     else if (!candidate.time) reason = "uncertain_chronology";
     else if (!current.time || candidate.time.end >= current.time.start) reason = "not_before_start";
-    else if (!compatibleContext(exposure, previous)) reason = previous.issue ?? "different_context";
+    else if (!compatibleContext(exposure, previous, rule)) reason = previous.issue ?? "different_context";
+    // Over a whole history every later session would add a row per exposure. It never was a candidate for this reference.
+    if (reason === "not_before_start" && exclusionDetail === "summary" && current.time) continue;
     if (reason) exclusions.push({ reason, sessionId: candidate.session.id, exerciseId: exposure.exerciseId });
     else eligible.push({ session: candidate.session, end: candidate.time!.end, exposure: previous });
   }
@@ -123,27 +188,42 @@ function aggregateDays(sessions: SessionPerformance[]): DailyPerformance[] {
   });
 }
 
+type ComparisonInput = { sessions: readonly PerformanceSession[]; historyCoverage: HistoryCoverage; exclusionDetail?: "full" | "summary" };
+
 /** Pure shared entrypoint for future Web/API consumers. No I/O, clock, catalog fallback or legacy adoption. */
-export function buildPerformanceInsightsV1(input: { sessions: readonly PerformanceSession[]; historyCoverage: HistoryCoverage }) {
+export function buildPerformanceInsightsV1(input: ComparisonInput) {
+  return compareSessions(input, "configuration_required");
+}
+
+/** Shared by both methods, which differ only in the context rule. `partial.ts` relabels every row before it leaves the kernel. */
+export function compareSessions(input: ComparisonInput, rule: ContextRule, indexed = true) {
   const unique = uniqueRows(input.sessions);
   const exclusions: PerformanceExclusion[] = unique.conflicts.map(sessionId => ({ reason: "duplicate_conflict", sessionId }));
   // Contradictory session versions cannot silently disappear from a day's denominator or reference history.
   if (unique.conflicts.length) return { methodVersion: INSIGHTS_PERFORMANCE_METHOD, historyCoverage: input.historyCoverage,
     integrity: "conflicting_duplicates" as const, deduplicatedSessions: unique.deduplicated,
     sessions: [] as SessionPerformance[], days: [] as DailyPerformance[], exclusions };
-  const prepared = unique.unique.map(prepare);
+  const prepared = unique.unique.map(session => prepare(session, rule));
   // Normalize source rows once. Only sessions containing the same UUID are reference candidates.
   const byExercise = new Map<string, PreparedSession[]>();
   for (const row of prepared) for (const exposure of row.exposures) {
-    byExercise.set(exposure.exerciseId, [...(byExercise.get(exposure.exerciseId) ?? []), row]);
+    const rows = byExercise.get(exposure.exerciseId);
+    if (rows) rows.push(row); else byExercise.set(exposure.exerciseId, [row]);
   }
+  const indexes = new Map<string, ExerciseIndex>();
+  const indexOf = (exerciseId: string) => {
+    let index = indexes.get(exerciseId);
+    if (!index) { index = indexExercise(exerciseId, byExercise.get(exerciseId)!, rule); indexes.set(exerciseId, index); }
+    return index;
+  };
   const sessions: SessionPerformance[] = [];
   for (const current of prepared) {
     if (current.session.status !== "completed") {
       exclusions.push({ reason: "session_not_completed", sessionId: current.session.id });
       continue;
     }
-    const exercises = current.exposures.map(exposure => evaluate(current, exposure, byExercise.get(exposure.exerciseId)!, input.historyCoverage));
+    const detail = input.exclusionDetail ?? "full";
+    const exercises = current.exposures.map(exposure => evaluate(current, exposure, byExercise.get(exposure.exerciseId)!, input.historyCoverage, detail, rule, detail === "summary" && indexed ? indexOf(exposure.exerciseId) : undefined));
     const sessionExclusions = exercises.flatMap(exercise => exercise.exclusions);
     if (!current.time) sessionExclusions.push({ reason: "uncertain_chronology", sessionId: current.session.id });
     const date = validDate(current.session.date) ? current.session.date : null;

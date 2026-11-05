@@ -122,7 +122,8 @@ describe("PR 14 — interacción de sesión", () => {
   it("usa controles táctiles discretos para el resumen sin editar identidad histórica", () => {
     expect(editor).toContain("function RatingPicker");
     expect(editor).toContain("function PainSlider");
-    expect(editor).toContain('label="Energía"');
+    expect(editor).toContain('<TrainingFeelings journal={feelings} phase="post"');
+    expect(editor).toContain('Energía registrada (histórica)');
     expect(editor).toContain('label="Rendimiento"');
     expect(editor).toContain('htmlFor="session-notes">Notas</Label>');
     expect(editor).not.toContain("Notas (opcional)");

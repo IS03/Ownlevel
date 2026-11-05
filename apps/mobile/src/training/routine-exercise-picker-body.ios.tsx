@@ -29,7 +29,8 @@ export function RoutineExercisePickerBody(props: RoutineExercisePickerBodyProps)
               : [buttonStyle('plain'), disabled(props.disabled), foregroundStyle(props.group === option.value ? colors.primary : colors.text), padding({ horizontal: 16, vertical: 12 }), background(props.group === option.value ? colors.brandSubtle : colors.surface, shapes.roundedRectangle({ cornerRadius: 10 }))]} />)}
         </HStack>
       </ScrollView>
-      <List modifiers={[listStyle('insetGrouped'), scrollContentBackground('hidden'), scrollDismissesKeyboard('immediately')]}>
+      {/* Filters already provide the section spacing; insetGrouped adds an empty section header above the rows. */}
+      <List modifiers={[listStyle('inset'), scrollContentBackground('hidden'), scrollDismissesKeyboard('immediately')]}>
         {props.session && props.canCreate ? <Button label={props.query.trim() ? `Crear “${props.query.trim()}”` : 'Crear ejercicio nuevo'} systemImage="square.and.pencil" onPress={props.onCreate} modifiers={[disabled(props.disabled), foregroundStyle(colors.primary), listRowBackground(colors.surface)]} /> : null}
         {props.rows.map(exercise => <HStack key={exercise.id} spacing={12} modifiers={[listRowBackground(colors.surface), frame({ minHeight: brandTokens.layout.inputHeight }), contentShape(shapes.rectangle()),
           disabled(props.disabled || props.existing.has(exercise.id)), accessibilityAddTraits(['isButton']), onTapGesture(() => { if (!props.disabled && !props.existing.has(exercise.id)) props.onToggle(exercise.id); }),
