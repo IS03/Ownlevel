@@ -10,6 +10,7 @@ import { haptics } from '@/platform/haptics';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, PARTIAL_LIMIT, contextRows, dayLabel, exerciseSentence, focusOf, heroCaption, heroOf, joinDays, nextDate, nothingComparable, primaryLane, readingRows, reasonText, relationGroups, relationName, relationState, sameRead, statusArrow, statusText, stripMarks, stripSummary, summarySpoken, summaryText, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
+import { InsightRow } from './insight-row';
 import { insightsOriginOf, metricTrendHref, validSession } from './navigation';
 
 type View_ = 'days' | 'exercises';
@@ -30,15 +31,8 @@ export function FactRow({ label, value, spoken, arrow }: { label: string; value:
 }
 /** What surrounded a training. A metric opens its own trends, on the month of that day. */
 function ContextList({ rows, date, onMetric }: { rows: ReturnType<typeof contextRows>; date: string; onMetric: (metricId: string, date: string) => void }) {
-  const { colors } = useOwnlevelTheme();
-  const reduced = useReduceMotion();
   return <>{rows.map(row => row.metricId
-    ? <Pressable key={row.key} accessibilityRole="button" accessibilityLabel={`${row.label}: ${row.value}. Ver tendencias`} onPress={() => onMetric(row.metricId!, date)}
-      style={({ pressed }) => [styles.row, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
-      <AppText style={styles.flex}>{row.label}</AppText>
-      <AppText muted numeric style={styles.relationState}>{row.value}</AppText>
-      <AppIcon color={colors.textMuted} name="chevronRight" size={15} />
-    </Pressable>
+    ? <InsightRow key={row.key} label={row.label} value={row.value} spoken={`${row.label}: ${row.value}. Ver tendencias`} onPress={() => onMetric(row.metricId!, date)} />
     : <FactRow key={row.key} label={row.label} value={row.value} />)}</>;
 }
 const Section = ({ title }: { title: string }) => <AppText muted variant="footnote" style={styles.section} accessibilityRole="header">{title}</AppText>;
@@ -60,32 +54,20 @@ function Strip({ days, lane }: { days: readonly DayLanes[]; lane: Lane }) {
 }
 
 function ExerciseRows({ lane, session, partial, router }: { lane: Lane; session: SessionFact; partial: PartialDayFact['sessions'][number] | undefined; router: ReturnType<typeof useRouter> }) {
-  const { colors } = useOwnlevelTheme();
   const rows = lane === 'strict' ? session.exercises.map(row => ({ id: row.exerciseId, name: row.name, status: row.status as string, reason: row.reason, age: row.referenceAgeDays }))
     : (partial?.exercises ?? []).map(row => ({ id: row.exerciseId, name: row.name, status: row.reading as string, reason: row.reason, age: row.referenceAgeDays }));
-  return <>{rows.map(row => <Pressable key={row.id} accessibilityRole="button" accessibilityLabel={exerciseSentence(lane, row.name, row.status, row.reason, row.age)}
-    onPress={() => router.push({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id: row.id, ...(session.routineId ? { routineId: session.routineId } : {}) } })}
-    style={({ pressed }) => [styles.row, { borderColor: colors.border, opacity: pressed ? 0.55 : 1 }]}>
-    <View style={styles.flex}>
-      <AppText numberOfLines={2}>{row.name || 'Ejercicio'}</AppText>
-      {!statusArrow(row.status) ? <AppText muted variant="footnote">{reasonText(lane, row.reason)}</AppText> : null}
-    </View>
-    <AppText muted variant="subheadline" numeric>{statusArrow(row.status)} {statusText(lane, row.status)}</AppText>
-    <AppIcon color={colors.textMuted} name="chevronRight" size={15} />
-  </Pressable>)}</>;
+  return <>{rows.map(row => <InsightRow key={row.id} label={row.name || 'Ejercicio'} detail={!statusArrow(row.status) ? reasonText(lane, row.reason) : undefined}
+    value={`${statusArrow(row.status)} ${statusText(lane, row.status)}`} spoken={exerciseSentence(lane, row.name, row.status, row.reason, row.age)}
+    onPress={() => router.push({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id: row.id, ...(session.routineId ? { routineId: session.routineId } : {}) } })} />)}</>;
 }
 
 function DayDetail({ day, model, router, onMetric }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter>; onMetric: (metricId: string, date: string) => void }) {
-  const { colors } = useOwnlevelTheme();
   const reduced = useReduceMotion();
   const lanes: Lane[] = [...(day.strictCounts.comparable > 0 ? ['strict' as const] : []), ...(day.partialCounts?.total ? ['partial' as const] : [])];
   return <Animated.View entering={reduced ? FadeIn.duration(motionDurations.fast) : FadeInDown.duration(motionDurations.base)} style={styles.detail}>
     {day.strict.sessions.map(session => <View key={session.sessionId} style={styles.block}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Abrir sesión ${session.routineName ?? session.name ?? ''}`.trim()} onPress={() => router.push({ pathname: '/(tabs)/train/history/[id]', params: { id: session.sessionId } })}
-        style={({ pressed }) => [styles.row, { borderColor: colors.border, opacity: pressed ? 0.55 : 1 }]}>
-        <AppText variant="headline" style={styles.flex}>{session.routineName ?? session.name ?? 'Sesión'}</AppText>
-        <AppIcon color={colors.textMuted} name="chevronRight" size={15} />
-      </Pressable>
+      <InsightRow heading label={session.routineName ?? session.name ?? 'Sesión'} spoken={`Abrir sesión ${session.routineName ?? session.name ?? ''}`.trim()}
+        onPress={() => router.push({ pathname: '/(tabs)/train/history/[id]', params: { id: session.sessionId } })} />
       {lanes.map(lane => <View key={lane}>
         <Section title={LANE_TITLE[lane]} />
         <ExerciseRows lane={lane} session={session} partial={day.partial?.sessions.find(row => row.sessionId === session.sessionId)} router={router} />
@@ -97,8 +79,6 @@ function DayDetail({ day, model, router, onMetric }: { day: DayLanes; model: Ins
 }
 
 function DayRow({ day, model, router, selected, onSelect, onMetric }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter>; selected: boolean; onSelect: (date: string | undefined) => void; onMetric: (metricId: string, date: string) => void }) {
-  const { colors } = useOwnlevelTheme();
-  const reduced = useReduceMotion();
   const [open, setOpen] = useState(selected);
   // The selected day comes from the route: coming back to it finds it open.
   const [seen, setSeen] = useState(selected);
@@ -108,21 +88,14 @@ function DayRow({ day, model, router, selected, onSelect, onMetric }: { day: Day
   const value = counts.comparable ? `${counts.comparable} de ${counts.total}` : 'Sin comparar';
   const limit = lane === 'partial' && counts.comparable ? ' con contexto parcial' : '';
   return <View>
-    <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${dayLabel(day.date)}${day.openDay ? ', día en curso' : ''}: ${counts.comparable ? `${counts.comparable} de ${counts.total} comparables${limit}` : 'sin comparar'}`}
-      onPress={() => { onSelect(open ? undefined : day.date); setOpen(!open); }} style={({ pressed }) => [styles.row, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
-      <View style={styles.flex}>
-        <AppText>{dayLabel(day.date)}</AppText>
-        {counts.comparable ? <AppText muted numeric variant="footnote">↑ {counts.up}  = {counts.same}  ↓ {counts.down}{limit ? ' · contexto parcial' : ''}</AppText> : null}
-      </View>
-      <AppText muted numeric variant="subheadline">{value}</AppText>
-      <AppIcon color={colors.textMuted} name={open ? 'chevronDown' : 'chevronRight'} size={15} />
-    </Pressable>
+    <InsightRow label={dayLabel(day.date)} value={value} expanded={open} detail={counts.comparable ? `↑ ${counts.up}  = ${counts.same}  ↓ ${counts.down}${limit ? ' · contexto parcial' : ''}` : undefined}
+      spoken={`${dayLabel(day.date)}${day.openDay ? ', día en curso' : ''}: ${counts.comparable ? `${counts.comparable} de ${counts.total} comparables${limit}` : 'sin comparar'}`}
+      onPress={() => { onSelect(open ? undefined : day.date); setOpen(!open); }} />
     {open ? <DayDetail day={day} model={model} router={router} onMetric={onMetric} /> : null}
   </View>;
 }
 
 function Exercises({ model, router }: { model: InsightsSummary; router: ReturnType<typeof useRouter> }) {
-  const { colors } = useOwnlevelTheme();
   const lanes = [
     ...(model.facts.totals.comparable ? [{ lane: 'strict' as const, rows: model.facts.exercises }] : []),
     ...(model.partial.totals.total ? [{ lane: 'partial' as const, rows: model.partial.exercises }] : []),
@@ -131,38 +104,21 @@ function Exercises({ model, router }: { model: InsightsSummary; router: ReturnTy
   return <>{lanes.map(({ lane, rows }) => <View key={lane} style={styles.block}>
     <Section title={LANE_TITLE[lane]} />
     {lane === 'partial' ? <AppText muted variant="footnote">{PARTIAL_LIMIT}</AppText> : null}
-    {rows.map(row => <Pressable key={row.exerciseId} accessibilityRole="button" accessibilityLabel={summarySpoken(lane, row)}
-      onPress={() => router.push({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id: row.exerciseId } })}
-      style={({ pressed }) => [styles.row, { borderColor: colors.border, opacity: pressed ? 0.55 : 1 }]}>
-      <View style={styles.flex}>
-        <AppText numberOfLines={2}>{row.name || 'Ejercicio'}</AppText>
-        <AppText muted numeric variant="footnote">{summaryText(lane, row)}  · {row.exposures} veces</AppText>
-      </View>
-      <AppIcon color={colors.textMuted} name="chevronRight" size={15} />
-    </Pressable>)}
+    {rows.map(row => <InsightRow key={row.exerciseId} label={row.name || 'Ejercicio'} detail={`${summaryText(lane, row)}  · ${row.exposures} veces`} spoken={summarySpoken(lane, row)}
+      onPress={() => router.push({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id: row.exerciseId } })} />)}
   </View>)}</>;
 }
 
 function RelationList({ lane, title, items, metrics, family, router, evaluated }: { lane: Lane; title: string; items: readonly (RelationSummary | PartialRelationSummary)[]; metrics: InsightsSummary['metrics']; family: FamilyFilter; router: ReturnType<typeof useRouter>; evaluated: number }) {
-  const { colors } = useOwnlevelTheme();
   const [showWaiting, setShowWaiting] = useState(false);
   const groups = relationGroups([...items], family);
-  const row = (item: RelationSummary | PartialRelationSummary) => <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`${relationName(item, metrics)}: ${relationState(item)}${lane === 'partial' ? ', con contexto parcial' : ''}`}
-    onPress={() => router.push({ pathname: '/(tabs)/train/insights/[relation]', params: { relation: item.id } })}
-    style={({ pressed }) => [styles.row, { borderColor: colors.border, opacity: pressed ? 0.55 : 1 }]}>
-    <AppText style={styles.flex} numberOfLines={3}>{relationName(item, metrics)}</AppText>
-    <AppText muted variant="subheadline" numeric style={styles.relationState}>{relationState(item)}</AppText>
-    <AppIcon color={colors.textMuted} name="chevronRight" size={15} />
-  </Pressable>;
+  const row = (item: RelationSummary | PartialRelationSummary) => <InsightRow key={item.id} label={relationName(item, metrics)} value={relationState(item)}
+    spoken={`${relationName(item, metrics)}: ${relationState(item)}${lane === 'partial' ? ', con contexto parcial' : ''}`}
+    onPress={() => router.push({ pathname: '/(tabs)/train/insights/[relation]', params: { relation: item.id } })} />;
   return <View style={styles.block}>
     <Section title={title} />
     {groups.readable.map(row)}
-    {groups.waiting.length ? <Pressable accessibilityRole="button" accessibilityState={{ expanded: showWaiting }} accessibilityLabel={`${groups.waiting.length} relaciones todavía sin datos suficientes`} onPress={() => setShowWaiting(current => !current)}
-      style={({ pressed }) => [styles.row, { borderColor: colors.border, opacity: pressed ? 0.55 : 1 }]}>
-      <AppText muted style={styles.flex}>Todavía sin datos suficientes</AppText>
-      <AppText muted numeric variant="subheadline">{groups.waiting.length}</AppText>
-      <AppIcon color={colors.textMuted} name={showWaiting ? 'chevronDown' : 'chevronRight'} size={15} />
-    </Pressable> : null}
+    {groups.waiting.length ? <InsightRow muted label="Todavía sin datos suficientes" value={groups.waiting.length} expanded={showWaiting} spoken={`${groups.waiting.length} relaciones todavía sin datos suficientes`} onPress={() => setShowWaiting(current => !current)} /> : null}
     {showWaiting ? groups.waiting.map(row) : null}
     <AppText muted variant="caption">Evaluamos {evaluated} relaciones y te mostramos todas, también las que no dieron nada. {lane === 'partial' ? 'Una coincidencia no dice por qué pasó.' : 'Una relación no dice por qué pasó.'}</AppText>
   </View>;
@@ -190,6 +146,7 @@ function Relations({ client, family, onFamily, router, facts, onStale }: { clien
 export function InsightsScreen() {
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
+  const reduced = useReduceMotion();
   const router = useRouter();
   const params = useLocalSearchParams();
   const view: View_ = params.view === 'exercises' ? 'exercises' : 'days';
@@ -306,7 +263,7 @@ export function InsightsScreen() {
       </View>
       {data.relations.strict.outcomeDays || data.relations.partial.outcomeDays ? <View style={styles.block}>
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: relationsOpen }} accessibilityLabel={`Para mirar con calma, ${data.relations.partial.outcomeDays ? data.relations.partial.candidatesEvaluated : data.relations.strict.candidatesEvaluated} relaciones`} onPress={toggleRelations}
-          style={({ pressed }) => [styles.row, { borderColor: colors.border, opacity: pressed ? 0.55 : 1 }]}>
+          style={({ pressed }) => [styles.row, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
           <Heading level={2} style={styles.flex}>Para mirar con calma</Heading>
           <AppIcon color={colors.textMuted} name={relationsOpen ? 'chevronDown' : 'chevronRight'} size={15} />
         </Pressable>
@@ -326,7 +283,6 @@ const styles = StyleSheet.create({
   factStacked: { alignItems: 'flex-start', flexDirection: 'column', gap: 2 },
   factValue: { flexShrink: 1, textAlign: 'right' },
   row: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth },
-  relationState: { flexShrink: 1, textAlign: 'right' },
   strip: { flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
   stripSlot: { flex: 1, justifyContent: 'flex-end' },
   coverage: { paddingTop: spacing.sm },

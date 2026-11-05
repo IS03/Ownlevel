@@ -105,12 +105,14 @@ function parseRelations(raw: Json) {
   return raw as unknown as InsightsRelations;
 }
 function parseRelationDetail(raw: Json) {
-  const { lane, id, item, pairs: rows, metrics, partial } = raw;
+  const { lane, id, item, pairs: rows, pairsTotal, metrics, partial } = raw;
+  if (!count(pairsTotal)) return undefined;
   if (!metricList(metrics) || typeof id !== "string" || (lane !== "strict" && lane !== "partial") || (lane === "partial" && !partialLabels(partial))) return undefined;
   if (lane === "partial" ? !id.startsWith(PARTIAL_ASSOCIATION_PREFIX) : id.startsWith(PARTIAL_ASSOCIATION_PREFIX)) return undefined;
-  if (item === null) return rows === null ? raw as unknown as InsightsRelationDetail : undefined;
+  if (item === null) return rows === null && pairsTotal === 0 ? raw as unknown as InsightsRelationDetail : undefined;
   if (!(lane === "partial" ? partialAssociation(item) : association(item)) || (item as Json).id !== id) return undefined;
-  return pairs({ id, pairs: rows }) && rows !== null ? raw as unknown as InsightsRelationDetail : undefined;
+  // Fewer than the total is a page of the newest ones: the total is what says more exist.
+  return pairs({ id, pairs: rows }) && Array.isArray(rows) && rows.length <= (pairsTotal as number) ? raw as unknown as InsightsRelationDetail : undefined;
 }
 
 /** The views the route answers with. Consistent patterns stay impossible in this contract until the risk budget is decided. */

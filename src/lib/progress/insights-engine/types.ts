@@ -155,7 +155,7 @@ export type InsightsRelations = InsightsVersions & { view: "relations"; metrics:
   strict: Omit<InsightsReadModel["associations"], "items" | "detail"> & { outcomeDays: number; items: RelationSummary[] };
   partial: PartialLabels & Omit<PartialLane["associations"], "items" | "detail"> & { outcomeDays: number; items: PartialRelationSummary[] } };
 export type InsightsRelationDetail = InsightsVersions & { view: "relation"; metrics: InsightsReadModel["metrics"]; lane: "strict" | "partial"; id: string;
-  item: AssociationResult | PartialAssociationResult | null; pairs: { date: string; exposure: number; outcome: number; sessionIds: string[] }[] | null; partial?: PartialLabels };
+  item: AssociationResult | PartialAssociationResult | null; pairs: { date: string; exposure: number; outcome: number; sessionIds: string[] }[] | null; pairsTotal: number; partial?: PartialLabels };
 export type InsightsResponse = InsightsSummary | InsightsDaysPage | InsightsRelations | InsightsRelationDetail;
 
 export type InsightsReadModel = {
