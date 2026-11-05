@@ -130,7 +130,7 @@ Diferencias con lo propuesto, para revisar en la QA física:
 
 | Propuesto | Implementado | Motivo |
 | --- | --- | --- |
-| Cargar más días al llegar al final | Botón «Ver más días» | Cuesta 7 consultas si el servidor conserva la lectura, y una lectura completa si no (96 a 5 años). No conviene dispararla con un scroll |
+| Cargar más días al llegar al final | Botón «Ver más días» | Cada página es una lectura completa del servidor (96 consultas a 5 años). No conviene dispararla con un scroll |
 | Puntos del gráfico tocables, de 44 pt | El gráfico no se toca; la lista de abajo lleva a cada día | Con muchos días, los puntos se superponen y no llegan a 44 pt |
 | Cursor `before` en los parámetros | Vista, filtro y relaciones abiertas sí; las páginas extra, en memoria | Una página restaurada exigiría repetir sus lecturas al volver |
 | Relaciones visibles al abrir | Se piden al tocar «Para mirar con calma» | Son lo que cuesta calcular, y el plan ya las quería fuera de la primera lectura |

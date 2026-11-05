@@ -16,7 +16,7 @@ Sin tarjetas, champagne solo en la serie, flechas sin color y cifras tabulares. 
 ## Costo
 Una lectura al abrir, sin prefetch. Las relaciones se piden al tocar «Para mirar con calma» y más días con un botón. Una sesión anterior a la primera página pide solo su día. Refrescar la misma lectura conserva los días ya cargados; otra lectura los descarta y lo dice, y las relaciones no se muestran junto a hechos de otra lectura.
 
-**Límites a 10 años, sin resolver:** el detalle de una relación pesa 258 KiB, el pico de memoria es 210 MiB y una lectura en frío cuesta 280 consultas. La reutilización en memoria es una optimización, no una garantía: en otra instancia de Vercel se paga la lectura completa, y eso incluye abrir Insights al terminar un entrenamiento.
+**Límites a 10 años, sin resolver:** el detalle de una relación pesa 258 KiB, el pico de memoria es 210 MiB y una lectura cuesta 280 consultas. **Sobre #386 no hay reutilización:** cada pedido es una lectura completa, también abrir Insights al terminar un entrenamiento o ver más días. Con el [ADOPT de la revisión](367-insights-source-revision.md) sería una optimización, no una garantía. La UI no cambia en ningún caso: une páginas por `sourceRevision`, que es fiable en las dos variantes.
 
 ## Dependencias
 Base: #386, sobre #385. **Sin código de #383 ni de #389.**
