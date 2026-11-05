@@ -2,15 +2,17 @@ import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import type { MobileApiClient } from '@/api/client';
-import { ActiveSessionController, activeSessionApi } from './active-session-controller';
+import { ActiveSessionController, activeSessionApi, sessionIntentKey } from './active-session-controller';
 import { SessionDraftRepository } from './active-session-storage';
 import { activeSessionStorage } from './active-session-native-storage';
+import { trainingFeelingsApi, TrainingFeelingsJournal } from '@/api/training-feelings';
 import { useSessionPresenceStore } from './session-presence-provider';
 
 export function useActiveSession(client: MobileApiClient, userId: string, sessionId: string) {
   const presence = useSessionPresenceStore();
   const controller = useMemo(() => new ActiveSessionController(activeSessionApi(client, sessionId),
-    new SessionDraftRepository(activeSessionStorage, userId, sessionId)), [client, sessionId, userId]);
+    new SessionDraftRepository(activeSessionStorage, userId, sessionId), sessionIntentKey, Date.now,
+    new TrainingFeelingsJournal(activeSessionStorage, trainingFeelingsApi(client, sessionId), userId, sessionId, 'mobile', sessionIntentKey)), [client, sessionId, userId]);
   useEffect(() => {
     controller.activate();
     if (AppState.currentState !== 'active') controller.suspend();

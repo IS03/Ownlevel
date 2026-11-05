@@ -71,6 +71,7 @@ export default async function SessionPage({
   return (
     <div className="lg:mx-auto lg:max-w-[760px]">
       <SessionEditor
+        userId={auth.userId}
         key={editorKey}
         detail={clientDetail}
         recentHistoryByExerciseId={serializeRecentHistory(recentHistory)}

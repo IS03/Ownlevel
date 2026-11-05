@@ -10,6 +10,6 @@ export function SessionRestDuration({ onClose, onStart }: { onClose: () => void;
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}><AppText variant="headline" style={{ flex: 1 }}>Iniciar descanso</AppText><RoutineSheetButton label="Cerrar duración de descanso" icon="close" onPress={onClose} /></View>
     <TextField numeric label="Duración en segundos" keyboardType="number-pad" value={value} onChangeText={setValue} maxLength={4} />
     <AppText muted variant="footnote">Elegí entre 1 y 3600 segundos. Se usa solo para este descanso.</AppText>
-    <Button label="Iniciar descanso" disabled={!valid} onPress={() => { if (valid) onStart(seconds); }} />
+    <Button label="Iniciar descanso" disabled={!valid} onPress={() => { if (valid) { onStart(seconds); onClose(); } }} />
   </View></RoutineFormSheet>;
 }
