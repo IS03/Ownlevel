@@ -2,7 +2,7 @@
 
 Método **`insights-engine/1`**, contrato **`performance-insights/1`**, sobre el comparador [`insights-performance/1`](367-insights-pr1-comparador.md). Dominio puro en `src/lib/progress/insights-engine`, compartido por la API y por Expo. Ruta nueva y optativa: `GET /api/mobile/v1/progress/performance-insights`. **Sin UI, migraciones, datos personales, deploys ni builds.** La experiencia está propuesta en [bocetos/insights/PLAN.md](../../bocetos/insights/PLAN.md) y se implementa en PR 5.
 
-**Estado con datos reales: el motor no compara nada todavía.** La configuración histórica no existe y el método exige conocerla, así que todo ejercicio queda en `insufficient_comparison / missing_context`, sin días de resultado ni asociaciones. Es el comportamiento correcto del método publicado, no un fallo. Salir de ahí requiere una decisión: ver la [propuesta de EXPAND y metodología parcial](367-insights-expand-propuesta.md).
+**Estado con datos reales: el motor no compara nada todavía.** La configuración histórica no existe y el método exige conocerla, así que todo ejercicio queda en `insufficient_comparison / missing_context`, sin días de resultado ni asociaciones. Es el comportamiento correcto del método publicado, no un fallo. El [método parcial](367-insights-partial-metodo.md), en un PR apilado, cubre ese historial con su límite declarado y sin cambiar nada de lo que describe este documento.
 
 **Dependencias.** Sale de main y no usa código exclusivo de #383: la tabla `workout_session_feelings` ya está publicada. Sin #383 mergeado no llegan sensaciones nuevas de los clientes, así que esos candidatos quedan en «datos insuficientes». `vercel.json` bloquea las previews de esta rama; si #380, #383 y este PR se integran en cualquier orden, ese archivo puede dar un conflicto trivial de una línea.
 
@@ -16,7 +16,7 @@ Método **`insights-engine/1`**, contrato **`performance-insights/1`**, sobre el
 
 ## Decisiones de datos
 
-- **Historial completo:** siete flujos paginados, sin período ni truncamiento. La salida se pagina con `before` y `limit` (14 días por defecto, máximo 120), y siempre informa el total. `association=<id>` agrega los pares de una relación con sus sesiones.
+- **Historial completo:** siete flujos paginados, sin período ni truncamiento. La salida se separa en [vistas](367-insights-partial-metodo.md#vistas-y-reutilización): resumen, más días, relaciones y una relación. Todas salen de la misma lectura, y `before` y `limit` paginan los días (14 por defecto, máximo 120) e informan el total.
 - **Unidad:** se deriva del `weight_mode_snapshot` histórico, que define qué guarda el campo. Nunca del catálogo vigente.
 - **Configuración:** el producto nunca la capturó y el loader lee `null`. Sigue siendo desconocida en ambos lados: `contextIssue` da `missing_context`, sin identidades por defecto ni datos del catálogo. `limits.configurationSnapshots` informa `known` y `total`. Los fixtures usan `none` para modelar una captura futura; el loader nunca lo escribe.
 - **Snapshot ausente:** si falta modo o implemento, queda `insufficient_comparison` con motivo.
