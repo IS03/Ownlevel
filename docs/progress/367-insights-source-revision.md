@@ -36,9 +36,11 @@ Una prueba en #386 deja escrito ese límite: si dejara de ser cierto, fallaría.
 
 ## La revisión transaccional
 
-`insights_source_revisions` guarda un contador por cuenta. Un trigger diferido lo mueve en la misma transacción que los datos, al confirmar, una vez por transacción. Quien ve el mismo valor dos veces sabe que no confirmó ninguna transacción que tocara esas fuentes.
+`insights_source_revisions` guarda un contador por cuenta. Un trigger diferido lo mueve en la misma transacción que los datos, al confirmar, una vez por transacción y por cuenta. Quien ve el mismo valor dos veces sabe que no confirmó ninguna transacción que tocara esas fuentes.
 
-**Cubre:** sesiones completadas y lo que cuelga de ellas, sensaciones, definiciones y valores de métricas, comidas, y la fecha lógica del día. Una sesión en curso no lo mueve, porque Insights no la lee y un entrenamiento no debe hacer fallar las lecturas. Si esa sesión se completa mientras otra transacción escribe bajo ella, esa escritura cuenta: se comprueba con un bloqueo compartido.
+**Cubre:** sesiones completadas y lo que cuelga de ellas, sensaciones, definiciones y valores de métricas, comidas, y la fecha lógica del día. Una sesión en curso o descartada no lo mueve, porque Insights no la lee y un entrenamiento no debe hacer fallar las lecturas. Una fila movida entre sesiones cuenta por los dos lados: la base permite esos movimientos, también con el token de su dueño.
+
+**Orden de los bloqueos:** cada evento toma un solo bloqueo, uno de aviso por cuenta, al confirmar, y recién entonces lee el estado de la sesión, sin bloquearla. Un commit nunca espera una sesión ni una serie. Un primer diseño revisaba la sesión con `FOR SHARE` y tenía deadlock real, reproducido con conexiones y barreras. Una sesión completada mientras otra transacción escribe bajo ella sigue contando: se prueba forzando los dos órdenes.
 
 **Costo por lectura:**
 
@@ -53,6 +55,9 @@ Además elimina la consulta de `workout_sets` con plan frágil, que tardaba 1,2 
 
 ## Límites de la revisión transaccional
 
-- Serializa el commit de las escrituras de una misma cuenta. Son breves, pero no se midió con carga real.
+- Serializa el commit de las escrituras de una misma cuenta, también las de una sesión en curso. Son breves, pero no se midió con carga real.
+- Depende de `READ COMMITTED`, que es lo que usa el producto.
+- Una transacción que escriba en dos cuentas, en orden opuesto a otra, puede tener deadlock. Ningún camino del producto lo hace, y un token no puede.
+- Un constraint diferido que espere después de este bloqueo podría cerrar un ciclo. No se probó con los dos que existen: orden de ejercicios de rutina y de vistas de progreso.
 - `TRUNCATE` y `session_replication_role = replica` no disparan triggers. Ningún camino del producto los usa.
 - Cubre lo que Insights lee hoy. Una fuente nueva necesita su trigger.
