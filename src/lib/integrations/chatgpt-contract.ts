@@ -4,7 +4,8 @@ import {
 } from "../nutrition/meal-macros";
 import { todayInCordoba } from "../phase2/cordoba-date";
 
-const ALLOWED_KEYS = new Set([
+/** Every field the GPT action and the MCP tool may send; both published schemas are tested against this list. */
+export const CHATGPT_MEAL_INPUT_KEYS = [
   "date",
   "title",
   "description",
@@ -18,7 +19,8 @@ const ALLOWED_KEYS = new Set([
   "meal_type",
   "consumed_now",
   "time_stated_by_user",
-]);
+] as const;
+const ALLOWED_KEYS = new Set<string>(CHATGPT_MEAL_INPUT_KEYS);
 
 export const CHATGPT_MEAL_TYPES = ["breakfast", "lunch", "snack", "dinner", "extra"] as const;
 export type ChatgptMealType = (typeof CHATGPT_MEAL_TYPES)[number];

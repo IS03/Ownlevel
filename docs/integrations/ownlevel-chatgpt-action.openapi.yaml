@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: OWNLEVEL Nutrition
-  version: 1.3.0
+  version: 1.4.0
   description: >-
     Comprueba una clave privada y registra comidas estructuradas en la cuenta
     OWNLEVEL vinculada. No ofrece operaciones de lectura nutricional.
@@ -44,6 +44,10 @@ paths:
         Registra una comida en la fecha indicada. Omití un macro cuando no pueda
         estimarse: null significa desconocido y 0 significa conocido y realmente cero.
         No inventes valores. Conservá la misma idempotency_key al reintentar una acción.
+        Hora: mandá time y time_stated_by_user=true sólo si el usuario dijo la hora; una hora
+        deducida no se declara. Sin hora dicha, consumed_now=true guarda la hora aproximada de
+        registro y consumed_now=false la deja desconocida. Mandá meal_type sólo si el usuario
+        nombró la comida: nunca lo deduzcas por la hora.
       security:
         - bearerAuth: []
       requestBody:

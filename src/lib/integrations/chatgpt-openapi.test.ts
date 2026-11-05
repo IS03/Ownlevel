@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("server-only", () => ({}));
 
 const schemaPath = "docs/integrations/ownlevel-chatgpt-action.openapi.yaml";
 const schema = readFileSync(schemaPath, "utf8");
@@ -47,5 +49,31 @@ describe("OWNLEVEL ChatGPT OpenAPI", () => {
       "required: [ok, created, idempotent_replay, meal]",
     );
     expect(successSchema).not.toMatch(/day:|total_|target_/i);
+  });
+});
+
+describe("#367: lo que el GPT puede declarar sobre la hora", () => {
+  const mealInput = schema.slice(schema.indexOf("    MealInput:"), schema.indexOf("    MealSuccess:"));
+  const openApiFields = [...mealInput.matchAll(/^ {8}([a-z_]+):$/gm)].map(match => match[1]).sort();
+
+  it("el esquema importado, la herramienta MCP y el parser aceptan los mismos campos", async () => {
+    const { CHATGPT_MEAL_INPUT_KEYS } = await import("./chatgpt-contract");
+    const { registerMealTool } = await import("./mcp-meals");
+    expect(openApiFields).toEqual([...CHATGPT_MEAL_INPUT_KEYS].sort());
+    expect(Object.keys(registerMealTool.inputSchema.properties).sort()).toEqual([...CHATGPT_MEAL_INPUT_KEYS].sort());
+  });
+
+  it("describe hora declarada, hora aproximada de ahora, hora desconocida y momento nombrado", async () => {
+    const { registerMealTool } = await import("./mcp-meals");
+    const mcp = `${registerMealTool.description} ${JSON.stringify(registerMealTool.inputSchema.properties)}`;
+    for (const text of [schema, mcp]) {
+      expect(text).toContain("time_stated_by_user");
+      expect(text).toMatch(/s[oó]lo si el usuario dijo/);
+      expect(text).toMatch(/hora (de registro )?aproximada|hora aproximada de\s+registro/);
+      expect(text).toMatch(/sin hora|desconocida/);
+      expect(text).toMatch(/nunca lo deduzcas por la hora|No lo infieras/);
+    }
+    // A new version tells the owner, in the GPT editor, that the imported copy is the current one.
+    expect(schema).toContain("version: 1.4.0");
   });
 });
