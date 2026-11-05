@@ -195,7 +195,7 @@ describe.runIf(!!statusFile && !!container)("revisión transaccional de las fuen
       expect(await moved(update(`update public.workout_session_exercises set implement_snapshot='barra' where workout_session_id='${session}';`))).toBe(1);
       expect(await moved(update(`update public.workout_sets t set actual_reps=9 from public.workout_session_exercises x where x.id=t.workout_session_exercise_id and x.workout_session_id='${session}';`))).toBe(1);
       expect(await moved(update(`insert into public.workout_session_feelings(session_id,revision,facts,updated_at) values('${session}',1,'{}',now());`))).toBe(1);
-      expect(await moved(update(`insert into public.workout_session_exercise_configurations(session_exercise_id,user_id,revision,kind,label,source,updated_at) select x.id,x.user_id,1,'recorded','Agarre neutro','entered',now() from public.workout_session_exercises x where x.workout_session_id='${session}';`))).toBe(1);
+      expect(await moved(update(`insert into public.workout_session_exercise_configurations(session_exercise_id,user_id,revision,kind,label,source,recorded_phase,updated_at) select x.id,x.user_id,1,'recorded','Agarre neutro','entered','during_session',now() from public.workout_session_exercises x where x.workout_session_id='${session}';`))).toBe(1);
       expect(await moved(update(`update public.workout_session_exercise_configurations c set label='Agarre prono' from public.workout_session_exercises x where x.id=c.session_exercise_id and x.workout_session_id='${session}';`))).toBe(1);
       expect(await moved(update(`update public.day_logs set log_date='2026-07-02' where user_id='${owner.id}' and log_date='${date}';`))).toBe(1);
       expect(await moved(update(`update public.workout_sessions set status='discarded' where id='${session}';`))).toBe(1);
@@ -205,7 +205,7 @@ describe.runIf(!!statusFile && !!container)("revisión transaccional de las fuen
       expect(await moved(update(`update public.workout_sets t set actual_reps=9 from public.workout_session_exercises x where x.id=t.workout_session_exercise_id and x.workout_session_id='${session}';`))).toBe(0);
       expect(await moved(update(`update public.workout_session_exercises set implement_snapshot='barra' where workout_session_id='${session}';`))).toBe(0);
       expect(await moved(update(`update public.workout_sessions set session_name='EN CURSO' where id='${session}';`))).toBe(0);
-      expect(await moved(update(`insert into public.workout_session_exercise_configurations(session_exercise_id,user_id,revision,kind,label,source,updated_at) select x.id,x.user_id,1,'recorded','Agarre neutro','entered',now() from public.workout_session_exercises x where x.workout_session_id='${session}';`))).toBe(0);
+      expect(await moved(update(`insert into public.workout_session_exercise_configurations(session_exercise_id,user_id,revision,kind,label,source,recorded_phase,updated_at) select x.id,x.user_id,1,'recorded','Agarre neutro','entered','during_session',now() from public.workout_session_exercises x where x.workout_session_id='${session}';`))).toBe(0);
       expect(await moved(update(`update public.day_logs set steps=100 where user_id='${owner.id}' and log_date='${date}';`))).toBe(0);
       expect(await moved(() => complete(session, date))).toBe(1);
     });
@@ -228,7 +228,7 @@ describe.runIf(!!statusFile && !!container)("revisión transaccional de las fuen
     }, 30_000);
     it("sees a session completed while another transaction was writing a configuration under it", async () => {
       const date = "2026-07-21", session = seedSession(owner.id, date);
-      const writer = open(`insert into public.workout_session_exercise_configurations(session_exercise_id,user_id,revision,kind,label,source,updated_at) select x.id,x.user_id,1,'recorded','Agarre neutro','entered',now() from public.workout_session_exercises x where x.workout_session_id='${session}';`);
+      const writer = open(`insert into public.workout_session_exercise_configurations(session_exercise_id,user_id,revision,kind,label,source,recorded_phase,updated_at) select x.id,x.user_id,1,'recorded','Agarre neutro','entered','during_session',now() from public.workout_session_exercises x where x.workout_session_id='${session}';`);
       await settle();
       const seen = await revision();
       complete(session, date);
