@@ -8,6 +8,9 @@ export type ConfigurationSource = "entered" | "repeated_previous";
 export type ConfigurationValue =
   | { kind: "recorded"; label: string; source: ConfigurationSource; repeatedFrom: string | null }
   | { kind: "not_applicable"; label: null; source: ConfigurationSource; repeatedFrom: string | null };
+/** Set by the server from the session status at the write. A value added after the workout is never one captured during it. */
+export type RecordedPhase = "during_session" | "after_session";
+export type StoredConfigurationValue = ConfigurationValue & { recordedPhase: RecordedPhase };
 export type PreviousConfiguration = {
   sessionExerciseId: string;
   sessionId: string;
@@ -19,7 +22,7 @@ export type ConfigurationItem = {
   exerciseId: string;
   revision: number;
   /** Null: unknown. Every session recorded before this capture, and any explicitly cleared. */
-  value: ConfigurationValue | null;
+  value: StoredConfigurationValue | null;
   /** The single known value of the latest completed session that ended before this one started. An offer, not a fact of this session. */
   previous: PreviousConfiguration | null;
 };
@@ -67,12 +70,21 @@ function label(value: unknown) {
 
 function parseValue(input: unknown): ConfigurationValue | null {
   if (input === null) return null;
+  // The client never sends a phase: the server sets it.
   const row = object(input, ["kind", "label", "source", "repeatedFrom"]);
   if (row.source !== "entered" && row.source !== "repeated_previous") return invalid();
   const repeatedFrom = row.source === "repeated_previous" ? uuid(row.repeatedFrom) : row.repeatedFrom === null ? null : invalid();
   if (row.kind === "recorded") return { kind: "recorded", label: label(row.label), source: row.source, repeatedFrom };
   if (row.kind === "not_applicable" && row.label === null) return { kind: "not_applicable", label: null, source: row.source, repeatedFrom };
   return invalid();
+}
+
+function parseStored(input: unknown): StoredConfigurationValue | null {
+  if (input === null) return null;
+  const row = object(input, ["kind", "label", "source", "repeatedFrom", "recordedPhase"]);
+  if (row.recordedPhase !== "during_session" && row.recordedPhase !== "after_session") return invalid();
+  const { recordedPhase, ...value } = row;
+  return { ...parseValue(value)!, recordedPhase };
 }
 
 export function parseConfigurationInput(value: unknown): ConfigurationInput {
@@ -99,7 +111,7 @@ export function parseConfigurationsResponse(value: unknown): ConfigurationsRespo
   const items = row.items.map((entry): ConfigurationItem => {
     const item = object(entry, ["sessionExerciseId", "exerciseId", "revision", "value", "previous"]);
     return { sessionExerciseId: uuid(item.sessionExerciseId), exerciseId: uuid(item.exerciseId), revision: revision(item.revision),
-      value: parseValue(item.value), previous: parsePrevious(item.previous) };
+      value: parseStored(item.value), previous: parsePrevious(item.previous) };
   });
   if (new Set(items.map(item => item.sessionExerciseId)).size !== items.length) return invalid();
   return { contractVersion: TRAINING_EXERCISE_CONFIGURATION_CONTRACT, sessionId: uuid(row.sessionId),

@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { configurationIdentity, parseConfigurationInput, parseConfigurationsResponse, type ConfigurationInput, type ConfigurationsResponse } from "./training-exercise-configuration-contract";
+import { configurationIdentity, parseConfigurationInput, parseConfigurationsResponse, type ConfigurationInput, type ConfigurationValue, type ConfigurationsResponse } from "./training-exercise-configuration-contract";
 import { ExerciseConfigurationJournal, type ConfigurationResult } from "./training-exercise-configuration-journal";
 
 const SESSION = "93671000-0000-4000-8000-000000000021", EXERCISE = "93671000-0000-4000-8000-000000000010";
 const PRESS = "93671000-0000-4000-8000-000000000031", EARLIER = "93671000-0000-4000-8000-000000000030";
 const recorded = (label: string) => ({ kind: "recorded" as const, label, source: "entered" as const, repeatedFrom: null });
-const response = (revision: number, value: ConfigurationsResponse["items"][number]["value"] = null): ConfigurationsResponse => ({
+const response = (revision: number, input: ConfigurationValue | null = null, recordedPhase: "during_session" | "after_session" = "during_session"): ConfigurationsResponse => ({
   contractVersion: "training-exercise-configuration/1", sessionId: SESSION, sessionStatus: "in_progress",
-  items: [{ sessionExerciseId: PRESS, exerciseId: EXERCISE, revision, value,
+  items: [{ sessionExerciseId: PRESS, exerciseId: EXERCISE, revision, value: input && { ...input, recordedPhase },
     previous: { sessionExerciseId: EARLIER, sessionId: "93671000-0000-4000-8000-000000000020", endedAt: "2026-11-01T11:00:00.000000+00:00", value: { kind: "recorded", label: "Agarre neutro" } } }],
 });
 const input = (value: ConfigurationInput["value"], extra: Record<string, unknown> = {}) => ({ contractVersion: "training-exercise-configuration/1", sessionExerciseId: PRESS, expectedRevision: 0, value, idempotencyKey: "k-1", ...extra });
@@ -28,6 +28,12 @@ describe("training-exercise-configuration/1", () => {
     for (const extra of [{ userId: SESSION }, { expectedRevision: -1 }, { expectedRevision: 1.5 }, { contractVersion: "old" }, { idempotencyKey: "a b" }])
       expect(() => parseConfigurationInput(input(null, extra))).toThrow();
     expect(() => parseConfigurationInput({ contractVersion: "training-exercise-configuration/1", sessionExerciseId: PRESS, expectedRevision: 0, idempotencyKey: "k" })).toThrow();
+  });
+  it("keeps the phase the server set, and never takes one from the client", () => {
+    expect(parseConfigurationsResponse(response(1, recorded("x"), "after_session")).items[0]!.value?.recordedPhase).toBe("after_session");
+    const body = response(1, recorded("x"));
+    expect(() => parseConfigurationsResponse({ ...body, items: [{ ...body.items[0], value: recorded("x") }] })).toThrow();
+    expect(() => parseConfigurationInput(input({ ...recorded("x"), recordedPhase: "during_session" } as never))).toThrow();
   });
   it("parses a read, and refuses a duplicated row or an unknown status", () => {
     expect(parseConfigurationsResponse(response(1, recorded("Agarre neutro"))).items[0]!.previous!.value.label).toBe("Agarre neutro");
@@ -71,7 +77,7 @@ describe("ExerciseConfigurationJournal", () => {
     expect(writes.map(body => body.idempotencyKey)).toEqual(["key-0", "key-0"]);
     expect(writes[1]).toEqual(writes[0]);
     expect(writes[0]!.expectedRevision).toBe(0);
-    expect(reopened.view(PRESS)).toMatchObject({ value: recorded("Agarre neutro"), state: "saved" });
+    expect(reopened.view(PRESS)).toMatchObject({ value: { ...recorded("Agarre neutro"), recordedPhase: "during_session" }, state: "saved" });
     expect(reopened.getSnapshot().pending).toBeNull();
   });
   it("shows the saved value on a conflict and never sends a new write by itself", async () => {
@@ -92,7 +98,7 @@ describe("ExerciseConfigurationJournal", () => {
     expect(port.write).not.toHaveBeenCalled();
     expect(await journal.choose(PRESS, null)).toBe(false);
     expect(journal.getSnapshot().pending).toBeNull();
-    expect(journal.view(PRESS).value).toEqual(recorded("Agarre neutro"));
+    expect(journal.view(PRESS).value).toMatchObject(recorded("Agarre neutro"));
   });
   it("keeps training independent: a failed read leaves no item and no write", async () => {
     const port = { read: vi.fn(async (): Promise<ConfigurationResult> => ({ status: "unavailable" })), write: vi.fn() };
@@ -119,7 +125,7 @@ describe("PATCH/GET exercise-configurations", () => {
     const { PATCH } = await import("../../app/api/mobile/v1/training/sessions/[sessionId]/exercise-configurations/route");
     const result = await PATCH(call("PATCH", input(recorded("Agarre neutro"))), params);
     expect(result.status).toBe(200);
-    expect((await result.json()).items[0].value).toEqual(recorded("Agarre neutro"));
+    expect((await result.json()).items[0].value).toEqual({ ...recorded("Agarre neutro"), recordedPhase: "during_session" });
     expect(rpc).toHaveBeenCalledWith("mutate_training_exercise_configuration_v1", { p_session_id: SESSION, p_input: input(recorded("Agarre neutro")) });
     expect(JSON.stringify(rpc.mock.calls)).not.toContain("derived-from-bearer");
   });
