@@ -1,6 +1,6 @@
 # #367 — Integración local de Insights
 
-Rama local `integration/367-insights-local`, sin publicar. Sirve para comprobar la combinación, no para mergearla: cada PR entra por su cuenta. El detalle de cada cambio está en la descripción de su PR.
+Rama local `integration/367-insights-candidate`, sin publicar. Sirve para comprobar la combinación, no para mergearla: cada PR entra por su cuenta. `integration/367-insights-local` queda en `e570011da8afd0bbc9ee01b6add34de5a4d601c3` como checkpoint. El detalle de cada cambio está en la descripción de su PR.
 
 ## Commits integrados
 
@@ -18,6 +18,13 @@ Sobre `origin/main` en `b5e57e3d1a6fc19c439e81161fff20de1c00388a`, en este orden
 | #391 | `567200269112ca381037f79aa2f9a4172a3af973` | `dcfcf40` |
 | #392 | `e39182377bbbdb23b6a95b9a170bb58474f5a1bd` | `79f6f06` |
 
+El candidato suma, sobre el checkpoint:
+
+| PR | Commit | Merge local |
+| --- | --- | --- |
+| #391 | `d20ff7885ed43237492baa76861b7f30720d3ba5` | `d65ca5b` |
+| #392 | `5065a987364f98265ca0f1b0f88f4a9aff305360` | `029a62a` |
+
 #380 no se integró. Contra esta rama choca en `metrics-trends-screen.tsx`, `progress-screens.test.tsx` y `vercel.json`.
 
 ## Conflictos resueltos
@@ -25,6 +32,8 @@ Sobre `origin/main` en `b5e57e3d1a6fc19c439e81161fff20de1c00388a`, en este orden
 - **`vercel.json`** (#385, #386, #391, #392): unión de los bloqueos. Quedan 11 ramas.
 - **`performance-insights.local.test.ts`** (#392 contra #389): se conservan los imports de los dos. La cadena de comidas de #389 pasa a esperar la lectura de #392.
 - **`performance-insights-server.ts`**: sin conflicto de texto. Queda la lectura por contador de #392, sin las 14 consultas de revisión.
+
+Al actualizar el candidato chocaron la migración, la suite de cruce, las dos descripciones de la revisión y su documento. En todos queda la versión publicada. Las resoluciones de arriba no se tocaron: el merge no cambia `vercel.json`, `performance-insights.local.test.ts` ni `performance-insights-server.ts` respecto del checkpoint.
 
 Sin conflicto de texto, pero revisados: `post-workout-screen.tsx` (#383 y #390) y `apps/mobile/src/api/performance-insights.ts` (#389 y #390).
 
@@ -36,7 +45,57 @@ Sin conflicto de texto, pero revisados: `post-workout-screen.tsx` (#383 y #390) 
 | Segunda lectura sin cambios | `14 + 7` | `1`, mismo resultado |
 | Lectura después de registrar una comida | `14 + 7` | `2 + 7`, revisión nueva |
 
-## Verificación
+## Candidato actualizado
+
+**La migración es la publicada, byte a byte:** el blob `25181ddd08295d1c143ba9771d739dcd9150f40e` es el mismo en `d20ff78` y en el candidato. Frente al checkpoint agrega las revocaciones de `insights_source_pending` y su secuencia.
+
+### Corrido sobre el candidato
+Base local descartable con todo el esquema integrado, en el orden de abajo:
+
+| Suite | Árbol | Resultado |
+| --- | --- | --- |
+| `performance-insights.local.test.ts` de #392 | `5065a98`, exacto | 5 pasan, 1 omitida (escala) |
+| `performance-insights.local.test.ts` del candidato | Candidato | 6 pasan, 1 omitida (escala) |
+| `insights-integration.local.test.ts`, 5 casos | Candidato | 5 pasan |
+
+La corrida de `5065a98` usó un esquema con más que lo que #392 necesita: también tenía la procedencia horaria.
+
+Los 5 casos, con lo que comprueban:
+
+| Caso | Recibo | Contador | Sin efectos parciales | Invalidación |
+| --- | --- | --- | --- | --- |
+| Finish con respuesta perdida | Misma clave, misma respuesta, sin segunda escritura | +1, y la otra cuenta no se mueve | Una sola fila agregada a la rutina | Revisión nueva y lectura reutilizada en 1 consulta |
+| Corrección, sensaciones, comida y descarte | Reejecución de la corrección sin efecto | +1 por cada uno; una versión vieja no lo mueve | `SESSION_CHANGED` no cambia nada | Revisión nueva tras cada cambio; `2 + 7` consultas tras corregir |
+| Finish frente a rutina retenida que confirma | 3 resultados por ejercicio | +2 | La retención y la métrica quedan; orden `1,2` | Lectura nueva con la sesión |
+| Finish frente a rutina retenida que hace rollback, caso nuevo | 3 resultados por ejercicio | +1 | La retención y la métrica no quedan; orden `1,2` | Lectura nueva con la sesión |
+| Finish, 4 movimientos de rutina y 8 métricas a la vez por PostgREST | 3 resultados por ejercicio | +9, uno por commit | Sin errores, órdenes `1,2` y cada métrica con un valor de sus escritores | Lectura nueva con la sesión |
+
+Los casos de rutina retenida y de escrituras a la vez se reforzaron para comprobar recibo, efectos parciales e invalidación, que antes no miraban. Los dos últimos, además, que `insights_source_pending` queda vacía.
+
+### Errores del servidor en esta corrida
+Log de Postgres y de Kong, desde que se aplicó la migración. **0 deadlocks y 0 respuestas 5xx.** Los 8 errores de Postgres son rechazos que las pruebas provocan y comprueban:
+
+| Error | Veces | Respuesta | Origen |
+| --- | --- | --- | --- |
+| `permission denied for table insights_source_revisions` | 2 | 401 | Lectura anónima, una por cada corrida de la suite de ADOPT |
+| `meal time evidence is written by the server` | 5 | 403 | Escrituras directas de procedencia, en la cadena de comidas |
+| `SESSION_CHANGED` | 1 | 409 | Corrección con una versión vieja |
+
+Al terminar: 0 notas, 0 posiciones duplicadas en vistas, rutinas y sesiones, 0 transacciones abiertas y 0 bloqueos de aviso.
+
+### Acreditado sobre el mismo contenido, sin repetir
+- **Con la migración `25181dd`, en #391 y sin la procedencia:** revisión 42, cruce 29, recibo 35, limpieza, reinicio y caída. Incluye una copia de los 6 casos de constraints diferidos que quedan omitidos en la suite integrada.
+- **En el checkpoint, sin las revocaciones:** procedencia 46, y la campaña de 75 rondas.
+
+### Límites
+- Una sola corrida de cada caso. Los concurrentes dependen del momento: pasar una vez no prueba que no exista otra intercalación.
+- **No es una garantía general de ausencia de deadlocks.** El orden de la cola es lo observado en PostgreSQL 17.11.
+- Base local sin carga real, sin réplicas y sin restauración a un punto en el tiempo. Falta OBSERVE.
+- La lectura de escala se omitió. Siguen sin resolver a 10 años el detalle de una relación, el pico de memoria y el costo de lectura en frío.
+- `meal-time-provenance` y el recibo no corrieron sobre esta combinación exacta de procedencia y revocaciones.
+- #380 sigue sin integrarse, y la QA física está diferida.
+
+## Verificación del checkpoint
 
 Base local descartable, con migraciones aplicadas en el orden de abajo:
 
@@ -68,7 +127,7 @@ Con la primera versión de #391 ese cruce daba `40P01`. La sección siguiente cu
 
 ## Cruce con token
 
-**Es alcanzable con un token: era un bloqueo de #391.** Corrección comprobada en esta rama; #391 sigue sin ella.
+**Es alcanzable con un token: era un bloqueo de #391.** Corregido y publicado en `d20ff78`. Las tablas de esta sección son del checkpoint, salvo donde se indica.
 
 Cada request de PostgREST es una transacción: `BEGIN`, una sentencia y `COMMIT`, leído del log del servidor. Con la migración de #391 en `567200269112`:
 
@@ -113,7 +172,7 @@ export OWNLEVEL_INSIGHTS_LOCAL_STATUS=<status.json> OWNLEVEL_INSIGHTS_LOCAL_DB=s
 npx vitest run src/lib/mobile-api/insights-token-crossing.local.test.ts
 ```
 
-Para ver el fallo, aplicar antes la versión anterior: `git show 03d12c732143:supabase/migrations/20261104190000_insights_source_revision_expand.sql`.
+Para ver el fallo, aplicar antes la versión anterior: `git show 567200269112:supabase/migrations/20261104190000_insights_source_revision_expand.sql`.
 
 Los dos requests, con `$SHARED` el ejercicio de las 4001 filas y `$HEAD` y `$TAIL` dos filas de sesiones distintas, una de ellas en la sesión de una de esas filas:
 

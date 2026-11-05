@@ -328,9 +328,11 @@ describe.runIf(!!statusFile && !!container)("Insights integrado, contra Postgres
       holder.close(); routineWriter.close(); viewWriter.close(); metricWriter.close();
     }, 90_000);
 
-    it("finish que suma a la rutina frente a una rutina retenida: espera al inicio, y ambos confirman", async () => {
+    it.each(["commit", "rollback"] as const)("finish que suma a la rutina frente a una rutina retenida (%s): espera al inicio, y solo queda lo confirmado", async ending => {
       const { sql, user } = stack(); clearInsightsSnapshots();
-      const owner = await user(), seed = seedFinishable(sql, owner.id), metrics = seedMetrics(sql, owner.id), before = counter(sql, owner.id);
+      const owner = await user(), seed = seedFinishable(sql, owner.id), metrics = seedMetrics(sql, owner.id);
+      const warm = await readInsightsSnapshot(owner.context, TODAY), before = counter(sql, owner.id);
+      expect(factOf(warm, seed.session)).toBeUndefined();
       const holder = connect(sql);
       const routineExercise = sql(`select id from public.routine_exercises where routine_id='${seed.routine}' and exercise_id='${seed.existing}';`);
       await holder.step(`${asUser(owner.id)} begin; update public.routine_exercises set notes='retenida' where id='${routineExercise}'; ${metrics.write(metrics.a)}`);
@@ -338,11 +340,25 @@ describe.runIf(!!statusFile && !!container)("Insights integrado, contra Postgres
       const finishing = finish(owner, seed.session).then(result => { finished = true; return result; });
       await new Promise(resolve => setTimeout(resolve, 1500));
       expect(finished).toBe(false);
-      await holder.step("commit;");
-      expect(await (await finishing).confirmFinish()).toBe(true);
+      await holder.step(`${ending};`);
+      const journal = await finishing;
+      const receipt = journal.getSnapshot().finished!;
+      expect(receipt.sessionId).toBe(seed.session);
+      expect(receipt.routineAdditions!.map(row => row.outcome).sort()).toEqual(["added", "already_in_routine", "no_completed_sets"]);
+      expect(await journal.confirmFinish()).toBe(true);
       expect(holder.errors()).toBe("");
-      expect(counter(sql, owner.id)).toBe(before + 2);
+      // The counter counts what committed, and the held transaction is all of it or none of it.
+      const kept = ending === "commit";
+      expect(counter(sql, owner.id)).toBe(before + (kept ? 2 : 1));
+      expect(sql(`select notes is not distinct from 'retenida' from public.routine_exercises where id='${routineExercise}';`)).toBe(kept ? "t" : "f");
+      expect(sql(`select value=${kept ? 2 : 1} from public.daily_metric_values where metric_id='${metrics.a}';`)).toBe("t");
       expect(sql(`select string_agg(re.exercise_order::text,',' order by re.exercise_order) from public.routine_exercises re where re.routine_id='${seed.routine}';`)).toBe("1,2");
+      expect(sql(`select count(*) from public.workout_sessions where id='${seed.session}' and status='completed';`)).toBe("1");
+      expect(sql(`select count(*) from public.insights_source_pending;`)).toBe("0");
+      // Invalidated: a new read sees the finished session.
+      const fresh = await readInsightsSnapshot(owner.context, TODAY);
+      expect(fresh.revision).not.toBe(warm.revision);
+      expect(factOf(fresh, seed.session)?.sessionId).toBe(seed.session);
       holder.close();
     }, 90_000);
 
@@ -395,16 +411,27 @@ describe.runIf(!!statusFile && !!container)("Insights integrado, contra Postgres
       const seed = seedFinishable(sql, owner.id, "2026-06-12");
       const errors: unknown[] = [];
       const record = async (work: PromiseLike<{ error: unknown }>) => { const { error } = await work; if (error) errors.push(error); };
-      const before = counter(sql, owner.id);
+      const warm = await readInsightsSnapshot(owner.context, TODAY), before = counter(sql, owner.id);
       const metricWrites = 8;
-      await Promise.all([
-        finish(owner, seed.session).then(journal => journal.confirmFinish()),
+      const finishing = finish(owner, seed.session).then(async journal => { const receipt = journal.getSnapshot().finished!; expect(await journal.confirmFinish()).toBe(true); return receipt; });
+      const [receipt] = await Promise.all([
+        finishing,
         ...Array.from({ length: 4 }, (_, index) => record(owner.client.rpc("move_routine_exercise", { p_routine_exercise_id: routine.first, p_direction: index % 2 ? -1 : 1 }))),
         ...Array.from({ length: metricWrites }, (_, index) => record(owner.client.from("daily_metric_values").update({ value: index }).eq("metric_id", index % 2 ? metrics.a : metrics.b))),
       ]);
       expect(errors).toEqual([]);
+      // Every commit counted, each write landed whole, and nothing is left between them.
       expect(counter(sql, owner.id)).toBe(before + 1 + metricWrites);
+      expect(receipt.sessionId).toBe(seed.session);
+      expect(receipt.routineAdditions!.map(row => row.outcome).sort()).toEqual(["added", "already_in_routine", "no_completed_sets"]);
+      expect(sql(`select count(*) from public.workout_sessions where id='${seed.session}' and status='completed';`)).toBe("1");
+      expect(sql(`select string_agg(re.exercise_order::text,',' order by re.exercise_order) from public.routine_exercises re where re.routine_id='${seed.routine}';`)).toBe("1,2");
+      expect(sql(`select string_agg(re.exercise_order::text,',' order by re.exercise_order) from public.routine_exercises re where re.routine_id='${routine.routine}';`)).toBe("1,2");
+      expect(sql(`select value in (1,3,5,7) from public.daily_metric_values where metric_id='${metrics.a}';`)).toBe("t");
+      expect(sql(`select value in (0,2,4,6) from public.daily_metric_values where metric_id='${metrics.b}';`)).toBe("t");
+      expect(sql(`select count(*) from public.insights_source_pending;`)).toBe("0");
       const fresh = await readInsightsSnapshot(owner.context, TODAY);
+      expect(fresh.revision).not.toBe(warm.revision);
       expect(factOf(fresh, seed.session)?.sessionId).toBe(seed.session);
     }, 120_000);
   });
