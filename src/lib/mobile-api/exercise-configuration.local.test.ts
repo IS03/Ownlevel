@@ -121,7 +121,8 @@ describe.runIf(!!statusFile && !!container)("configuración por sesión con Post
     expect((await mutate(owner, sessions[2]!, { sessionExerciseId: blocks[2], expectedRevision: 0, value: recorded("Agarre neutro", "repeated_previous", blocks[1]!), idempotencyKey: "rep-wrong" })).error?.message).toBe("REPEATED_CONFIGURATION_MISMATCH");
     expect((await mutate(owner, sessions[2]!, { sessionExerciseId: blocks[2], expectedRevision: 0, value: recorded("Agarre neutro", "repeated_previous", blocks[3]!), idempotencyKey: "rep-later" })).error?.message).toBe("REPEATED_CONFIGURATION_MISMATCH");
     expect((await mutate(owner, sessions[2]!, { sessionExerciseId: blocks[2], expectedRevision: 0, value: recorded("Agarre neutro", "repeated_previous", blocks[0]!), idempotencyKey: "rep-ok" })).error).toBeNull();
-    expect((await read(sessions[2]!)).items[0]!.value).toEqual(recorded("Agarre neutro", "repeated_previous", blocks[0]!));
+    // Recorded on a completed session: the server says it came after the workout.
+    expect((await read(sessions[2]!)).items[0]!.value).toEqual({ ...recorded("Agarre neutro", "repeated_previous", blocks[0]!), recordedPhase: "after_session" });
   });
 
   it("PostgREST embebe la configuración como objeto (uno a uno), y nulo sin fila", async () => {
