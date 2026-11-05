@@ -26,6 +26,19 @@ const old = () => session("before", "2026-10-01", [block("before-block", [[20, 1
 const now = () => session("current", "2026-11-02", [block("current-block", [[20, 12]])]);
 const currentResult = (sessions: PerformanceSession[], coverage: HistoryCoverage = "complete") => run(sessions, coverage).sessions.find(row => row.sessionId === "current")!.exercises[0]!;
 
+describe("detalle de exclusiones", () => {
+  it("summary drops only later sessions and keeps every status", () => {
+    const session = (id: string, day: number, reps: number): PerformanceSession => ({ id, date: `2026-01-0${day}`, routineId: null, status: "completed", startedAt: `2026-01-0${day}T10:00:00Z`, endedAt: `2026-01-0${day}T11:00:00Z`, chronology: "verified",
+      exercises: [{ id: `b${id}`, exerciseId: "93670000-0000-4000-8000-00000000000a", completed: true, context: { weightMode: "Peso total", unit: "kg", implement: "barra", configuration: "none" }, sets: [{ id: `s${id}`, completed: true, amount: reps, load: 50 }] }] });
+    const sessions = [session("a", 1, 8), session("b", 2, 9), session("c", 3, 7)];
+    const full = buildPerformanceInsightsV1({ sessions, historyCoverage: "complete" }), summary = buildPerformanceInsightsV1({ sessions, historyCoverage: "complete", exclusionDetail: "summary" });
+    const statuses = (run: typeof full) => run.sessions.flatMap(row => row.exercises.map(exercise => [exercise.status, exercise.reference?.sessionId ?? null]));
+    expect(statuses(summary)).toEqual(statuses(full));
+    expect(full.sessions.flatMap(row => row.exclusions).some(row => row.reason === "not_before_start")).toBe(true);
+    expect(summary.sessions.flatMap(row => row.exclusions).some(row => row.reason === "not_before_start")).toBe(false);
+  });
+});
+
 describe("Insights performance/1: factual classification", () => {
   it.each([
     { label: "more reps", a: [[20, 12]], b: [[20, 10]], status: "improved" },
