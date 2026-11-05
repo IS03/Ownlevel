@@ -1,5 +1,5 @@
 // Disposable local Supabase ONLY (#367 configuration): PostgreSQL + PostgREST + Auth, never a remote project. Skipped without the status file.
-// Needs the schema of this branch with 20261105211040 and 20261106120000 applied: run insights-source-revision.local.test.ts first,
+// Needs the schema of this branch with 20261105211040 and 20261105223915 applied: run insights-source-revision.local.test.ts first,
 // which applies both, or apply them by hand.
 // OWNLEVEL_INSIGHTS_LOCAL_STATUS=<status.json> OWNLEVEL_INSIGHTS_LOCAL_DB=<db container> npx vitest run src/lib/mobile-api/exercise-configuration.local.test.ts
 import { randomBytes, randomUUID } from "node:crypto";
