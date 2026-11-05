@@ -3,7 +3,7 @@
 // OWNLEVEL_INSIGHTS_LOCAL_STATUS=<status.json> OWNLEVEL_INSIGHTS_LOCAL_DB=<db container> npx vitest run src/lib/mobile-api/sleep-weight.local.test.ts
 import { randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -140,4 +140,39 @@ describe.runIf(!!statusFile && !!container)("sueño y peso con PostgREST real", 
     // Method 1 is its own entry: it never serves, or is served, a method 2 answer.
     expect(insightsSummary(await readInsightsSnapshot(contextOf(owner.id, owner.client), "2026-05-01")).methodVersion).toBe("insights-engine/1");
   }, 60_000);
+});
+
+describe.runIf(!!statusFile && !!container && !!process.env.OWNLEVEL_LOADER_COST_OUT)("costo del loader: las dos lecturas que cambian", () => {
+  it("times the old and the new select of sessions and of metric values, same rows, alternated", async () => {
+    const status = JSON.parse(readFileSync(statusFile!, "utf8").replace(/^\uFEFF/, ""));
+    const docker = process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, "Programs/DockerDesktop/resources/bin/docker.exe") : "docker";
+    const sql = (input: string) => { const run = spawnSync(docker, ["--context", "desktop-linux", "exec", "-i", container!, "psql", "-X", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-At"], { input, encoding: "utf8", maxBuffer: 1 << 26 }); if (run.status !== 0) throw Error(run.stderr); return run.stdout.trim(); };
+    const admin = createClient(status.API_URL, status.SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+    const client = createClient(status.API_URL, status.ANON_KEY, { auth: { persistSession: false } });
+    const email = `cost-${randomUUID()}@example.invalid`, password = randomBytes(24).toString("hex");
+    const made = await admin.auth.admin.createUser({ email, password, email_confirm: true }); if (made.error) throw made.error;
+    await client.auth.signInWithPassword({ email, password }); const id = made.data.user.id;
+    sql(`insert into public.profiles(user_id) values('${id}') on conflict do nothing;`); await client.rpc("ensure_user_metrics");
+    // One year: a session every other day with its weight, a sleep value every day, half of them declared.
+    sql(`select set_config('request.jwt.claim.sub','${id}',false);
+      insert into public.day_logs(user_id,log_date,weight_kg) select '${id}',d::date,80+(extract(doy from d)::int%10)/10.0 from generate_series('2025-01-01'::date,'2025-12-31'::date,'1 day') d;
+      insert into public.workout_sessions(user_id,day_log_id,started_at,status,ended_at) select '${id}',l.id,l.log_date+time '18:00','completed',l.log_date+time '19:00' from public.day_logs l where l.user_id='${id}' and extract(doy from l.log_date)::int%2=0;
+      insert into public.daily_metric_values(user_id,metric_id,metric_date,value) select '${id}',m.id,l.log_date,420 from public.day_logs l, public.user_metrics m where l.user_id='${id}' and m.user_id='${id}' and m.system_key='sleep';
+      insert into public.daily_metric_value_conventions(value_id,user_id,convention,declared_updated_at,declared_value,declared_date) select v.id,v.user_id,'sleep_night_ending_on_date/1',v.updated_at,v.value,v.metric_date from public.daily_metric_values v where v.user_id='${id}' and extract(doy from v.metric_date)::int%2=0;`);
+    const selects = {
+      sessionsBefore: () => client.from("workout_sessions").select("id,routine_id,routine_name_snapshot,session_name,status,started_at,ended_at,energy_level,performance_level,pain_level,day:day_logs!inner(log_date)").eq("user_id", id).eq("status", "completed").order("id").range(0, 999),
+      sessionsAfter: () => client.from("workout_sessions").select("id,routine_id,routine_name_snapshot,session_name,status,started_at,ended_at,energy_level,performance_level,pain_level,day:day_logs!inner(log_date,weight_kg)").eq("user_id", id).eq("status", "completed").order("id").range(0, 999),
+      valuesBefore: () => client.from("daily_metric_values").select("id,metric_id,metric_date,value").eq("user_id", id).order("id").range(0, 999),
+      valuesAfter: () => client.from("daily_metric_values").select("id,metric_id,metric_date,value,updated_at,night:daily_metric_value_conventions(convention,declared_updated_at,declared_value,declared_date)").eq("user_id", id).order("id").range(0, 999),
+    };
+    const times: Record<string, number[]> = {}, bytes: Record<string, number> = {};
+    for (let round = 0; round < 12; round++) for (const [key, run] of Object.entries(selects)) {
+      const started = performance.now(), { data, error } = await run(); if (error) throw error;
+      (times[key] ??= []).push(performance.now() - started); bytes[key] = JSON.stringify(data).length;
+    }
+    const median = (rows: number[]) => [...rows].sort((a, b) => a - b)[rows.length >> 1]!;
+    const result = Object.fromEntries(Object.entries(times).map(([key, rows]) => [key, { medianMs: Math.round(median(rows.slice(2)) * 10) / 10, bytes: bytes[key] }]));
+    writeFileSync(process.env.OWNLEVEL_LOADER_COST_OUT!, JSON.stringify(result, null, 2));
+    expect(Object.keys(result)).toHaveLength(4);
+  }, 120_000);
 });

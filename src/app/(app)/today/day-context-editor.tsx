@@ -89,7 +89,7 @@ export function DayContextEditor({
       debounceMs: 650,
       initial: initialDraft,
       save: async (draft) => {
-        const result = await saveDailyMetricsAction({ date, values: draft, declaresSleepNight: metrics.some((metric) => metric.system_key === "sleep") });
+        const result = await saveDailyMetricsAction({ date, values: draft, declaresSleepNight: true }); // The sleep field always shows which night it is (#367).
         if (!result.ok) throw new Error(result.error);
       },
       onStateChange: (state) => {

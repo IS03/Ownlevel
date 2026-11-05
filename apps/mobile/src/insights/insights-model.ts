@@ -166,7 +166,7 @@ export const coverageText = (item: Pick<AnyRelation, 'pairs' | 'outcomeDays'>) =
  */
 export function exposureMeaning(item: Pick<AnyRelation, 'definition'>): string | null {
   const { family, window } = item.definition;
-  if (family === 'body') return 'Usa el peso que registraste en Cuerpo para la misma fecha del entrenamiento, un valor por día aunque hayas entrenado dos veces. No sabemos si lo mediste antes o después de entrenar: es contexto del día, no un antecedente.';
+  if (family === 'body') return 'Usa el peso que registraste en Cuerpo para la misma fecha del entrenamiento, un valor por día aunque hayas entrenado dos veces. No sabemos si lo mediste antes o después de entrenar: es contexto del día, no un antecedente. El peso cambia despacio: si los dos cambian con el tiempo, pueden coincidir sin tener que ver.';
   if (family === 'sleep' && window === 'night_before') return 'Cada día usa el sueño que registraste para esa fecha como la noche que terminó esa mañana. Solo cuentan los valores guardados con esa aclaración.';
   if (family === 'sleep') return 'Estos valores se guardaron sin decir a qué noche corresponden: pueden ser de la noche anterior o de la siguiente. Por eso van aparte y no se suman a la noche declarada.';
   return null;

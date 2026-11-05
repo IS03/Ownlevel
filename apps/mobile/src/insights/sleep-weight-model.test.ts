@@ -15,6 +15,7 @@ describe('#367 sueño y peso en Insights', () => {
     expect(exposureMeaning(def('sleep', 'night_before'))).toContain('la noche que terminó esa mañana');
     expect(exposureMeaning(def('sleep', 'previous_day'))).toContain('no se suman a la noche declarada');
     expect(exposureMeaning(def('body', 'same_day'))).toContain('No sabemos si lo mediste antes o después de entrenar');
+    expect(exposureMeaning(def('body', 'same_day'))).toContain('pueden coincidir sin tener que ver');
     for (const text of [exposureMeaning(def('sleep', 'night_before'))!, exposureMeaning(def('body', 'same_day'))!]) expect(text).not.toMatch(/porque|causa|mejor|deberías/i);
   });
   it('lists what was left out and why, never missing sleep as zero hours', () => {

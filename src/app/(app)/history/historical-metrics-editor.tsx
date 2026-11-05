@@ -58,7 +58,7 @@ export function HistoricalMetricsEditor({ date, metrics }: Props) {
     event.preventDefault();
     setError(null);
     startTransition(async () => {
-      const result = await saveHistoricalDailyMetricsAction({ date, values, declaresSleepNight: metrics.some((metric) => metric.system_key === "sleep") });
+      const result = await saveHistoricalDailyMetricsAction({ date, values, declaresSleepNight: true }); // The sleep field always shows which night it is (#367).
       if (!result.ok) return setError(result.error);
       setOpen(false);
       router.refresh();
