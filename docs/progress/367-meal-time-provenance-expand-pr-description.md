@@ -1,7 +1,7 @@
 ## Resumen
 EXPAND de la procedencia de la hora de comida: `meal_entries.consumed_at_source` registra quién fijó la hora al escribirla. Reglas, productores y orden de rollout: [procedencia](367-meal-time-provenance.md).
 
-**Base: `main`.** Independiente de #380, #383 y #385. **Sin aplicar en producción.**
+**Base: `main`.** No necesita código de otro PR pendiente. **Sin aplicar en producción.** **Orden de rollout, SHAs y comprobaciones:** [paquete de autorización](https://github.com/IS03/Ownlevel/blob/integration/367-insights-candidate/docs/progress/367-autorizacion-migraciones.md).
 
 ## Cambios
 - Migración aditiva: columna nullable, sin valor por defecto y **sin backfill**.
@@ -27,6 +27,6 @@ EXPAND de la procedencia de la hora de comida: `meal_entries.consumed_at_source`
 **Sin validar:** el `ALTER TABLE` con datos de producción y el flujo con un GPT real.
 
 ## Siguiente
-ADOPT en un PR apilado. Aplicar esta migración antes de mergearlo.
+ADOPT en #388 (clientes) y #389 (motor). Aplicar esta migración antes de mergear este PR y esos dos.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

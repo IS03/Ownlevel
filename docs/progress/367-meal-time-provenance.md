@@ -78,12 +78,12 @@ Una declaración sin hora, o con cualquier otro valor, se rechaza con `INVALID_M
 Mientras tanto ningún cliente las manda, y las RPC ya escriben `default_clock` y `registration_now`.
 
 ### ADOPT
-PR apilado sobre este, listo pero sin mergear:
+#388, que contiene este PR y va después de él, listo pero sin mergear:
 1. **Mobile:** solo la hoja de hora marca `user_declared`. Cambiar el momento, mover de día o abrir una edición no marca nada.
 2. **Web:** `createMealEntry` escribe `default_clock` si nadie pasó una hora. **Requiere la migración aplicada**: si no, el insert falla.
 3. **ChatGPT:** volver a importar el esquema de la acción y agregar `time_stated_by_user` a las instrucciones. Es un paso manual en la configuración del GPT, y lo hace la persona dueña del GPT.
 
-Motor de Insights, en otro PR apilado sobre el método parcial, porque depende de #385: el loader lee la columna. **Requiere la migración aplicada**, o el endpoint responde 503.
+Motor de Insights, en #389, con base `main`: el loader lee la columna. **Requiere la migración aplicada**, o el endpoint responde 503.
 
 | Columna | `raw_input` | Evidencia en el motor |
 | --- | --- | --- |
