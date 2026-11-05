@@ -1,6 +1,6 @@
 // Disposable local Supabase ONLY: the API must be loopback and the database container disposable. Skipped without the explicit status file.
 // Each write is a real PostgREST request under a synthetic user's token.
-// Needs the schema of this branch WITH 20261104190000 applied: insights-source-revision.local.test.ts applies it, so run that one first, or apply the file by hand.
+// Needs the schema of this branch WITH 20261105211040 applied: insights-source-revision.local.test.ts applies it, so run that one first, or apply the file by hand.
 // Everything else it creates itself: synthetic Auth users, their profile, sessions, metrics, routines and views, plus the test_hold hook below, removed at the end.
 // To see the failure: apply the file as of 567200269112 instead, and run the tests named "de varias filas". They end in 40P01.
 // Without the campaign: OWNLEVEL_CROSSING_ROUNDS=3 OWNLEVEL_CROSSING_BIG_ROUNDS=3. The rounds only look for the window; the tests with the hook force it.

@@ -1,3 +1,9 @@
+# Estado vigente — rollout 2026-11-05
+
+Los cinco PR se mergearon y las migraciones ya están aplicadas. Ver [registro de producción](367-rollout-produccion-2026-11-05.md) para SHAs, versiones efectivas y límites. Lo que sigue es el registro histórico de preparación; sus estados de «sin aplicar» describen esas corridas anteriores.
+
+---
+
 # #367 — Integración local de Insights
 
 Rama `integration/367-insights-candidate`, publicada y con sus previews bloqueadas. Sirve para revisar la combinación, no para mergearla: cada PR entra por su cuenta. `integration/367-insights-local` queda en `e570011da8afd0bbc9ee01b6add34de5a4d601c3` como checkpoint. El detalle de cada cambio está en la descripción de su PR.
