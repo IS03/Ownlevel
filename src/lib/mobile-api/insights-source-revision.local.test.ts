@@ -6,7 +6,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 const statusFile = process.env.OWNLEVEL_INSIGHTS_LOCAL_STATUS, container = process.env.OWNLEVEL_INSIGHTS_LOCAL_DB;
 const docker = process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, "Programs/DockerDesktop/resources/bin/docker.exe") : "docker";
@@ -32,6 +32,46 @@ describe.runIf(!!statusFile && !!container)("revisión transaccional de las fuen
     return { end: async (last: "commit" | "rollback" = "commit") => { psql.stdin.end(`${last};\n`); return closed; } };
   };
   const settle = () => new Promise(resolve => setTimeout(resolve, 1500));
+  // A failed assertion must not leave a lock behind for the next test.
+  const openConnections: Array<() => void> = [];
+  afterEach(() => { for (const end of openConnections.splice(0)) end(); });
+  /** A real connection. Each step ends at its own barrier, and neither a lock nor a step can hang past a bounded timeout. */
+  const connect = () => {
+    const name = `revision_${randomBytes(4).toString("hex")}`;
+    const psql = spawn(docker, ["--context", "desktop-linux", "exec", "-i", container!, "psql", "-X", "-U", "postgres", "-d", "postgres", "-q", "-At"], { stdio: "pipe" });
+    let out = "", errors = "", barrier = 0;
+    psql.stdout.on("data", chunk => { out += chunk; });
+    psql.stderr.on("data", chunk => { errors += chunk; });
+    psql.stdin.write(`set application_name='${name}'; set lock_timeout='12s';\n`);
+    const step = (statement: string) => {
+      const mark = `BARRIER_${name}_${++barrier}`;
+      psql.stdin.write(`${statement}\n\\echo ${mark}\n`);
+      return new Promise<void>((resolve, reject) => {
+        const limit = Date.now() + 20_000;
+        const check = () => { if (out.includes(mark)) resolve(); else if (Date.now() > limit) reject(Error(`${mark} not reached: ${statement}\n${errors}`)); else setTimeout(check, 20); };
+        check();
+      });
+    };
+    const close = () => { psql.stdin.end(); };
+    openConnections.push(() => { psql.kill(); sql(`select pg_terminate_backend(pid) from pg_stat_activity where application_name='${name}';`); });
+    return { name, step, errors: () => errors, close };
+  };
+  /** Whether a step finished by itself or is waiting for a lock that someone else holds. */
+  const finishedOrWaiting = async (who: { name: string }, step: Promise<void>) => {
+    let finished = false;
+    void step.then(() => { finished = true; }, () => { finished = true; });
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (finished) return "finished";
+      if (sql(`select wait_event_type from pg_stat_activity where application_name='${who.name}';`) === "Lock") return "waiting";
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    return "neither";
+  };
+  const asSession = (id: string) => `select set_config('request.jwt.claim.sub','${id}',false);`;
+  const setsOf = (session: string, values: string) => `update public.workout_sets t set ${values} from public.workout_session_exercises x where x.id=t.workout_session_exercise_id and x.workout_session_id='${session}';`;
+  const repsOf = (session: string) => sql(`select distinct t.actual_reps from public.workout_sets t join public.workout_session_exercises x on x.id=t.workout_session_exercise_id where x.workout_session_id='${session}';`);
+  /** What a commit waits for: the lock of one account, held from outside to force an order. */
+  const hold = (id: string) => `begin; select pg_advisory_xact_lock(hashtextextended('${id}',367));`;
 
   const seedProfile = (id: string) => sql(`select set_config('request.jwt.claim.sub','${id}',false); insert into public.profiles(user_id) values('${id}') on conflict do nothing;`);
   const seedSession = (id: string, date: string, reps = 8) => {
@@ -58,7 +98,7 @@ describe.runIf(!!statusFile && !!container)("revisión transaccional de las fuen
     const status = JSON.parse(readFileSync(statusFile!, "utf8").replace(/^﻿/, ""));
     if (new URL(status.API_URL).hostname !== "127.0.0.1") throw Error("Loopback API required");
     sql = (input: string) => {
-      const run = spawnSync(docker, ["--context", "desktop-linux", "exec", "-i", container!, "psql", "-X", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-At"], { input, encoding: "utf8", maxBuffer: 1 << 26 });
+      const run = spawnSync(docker, ["--context", "desktop-linux", "exec", "-i", container!, "psql", "-X", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-At"], { input, encoding: "utf8", maxBuffer: 1 << 26, timeout: 60_000 });
       if (run.status !== 0) throw Error(run.stderr || run.stdout);
       return run.stdout.trim();
     };
@@ -182,6 +222,188 @@ describe.runIf(!!statusFile && !!container)("revisión transaccional de las fuen
     }, 30_000);
   });
 
+  describe("orden de los bloqueos, con conexiones reales", () => {
+    let user: { client: SupabaseClient; id: string };
+    beforeAll(async () => { user = await signIn(); seedProfile(user.id); });
+    const completed = (date: string) => { const session = seedSession(user.id, date); complete(session, date); return session; };
+
+    it("does not deadlock: one holds a completed session, the other changes a metric and then a set of that session", async () => {
+      const session = completed("2026-10-01"), metric = metricValues(user.id), t1 = connect(), t2 = connect();
+      await t1.step(`${asSession(user.id)} begin; update public.workout_sessions set session_name='T1' where id='${session}';`);
+      await t2.step(`${asSession(user.id)} begin; update public.daily_metric_values set value=5 where metric_id='${metric}' and metric_date='2026-06-01'; ${setsOf(session, "actual_reps=12")}`);
+      const before = await revision(user);
+      // The metric comes first in the queue. If the set then waited for T1 with the counter already held, T1's commit would close the cycle.
+      const commit2 = t2.step("commit;");
+      const seen = await finishedOrWaiting(t2, commit2);
+      await t1.step("commit;");
+      await commit2;
+      t1.close(); t2.close();
+      expect(t1.errors() + t2.errors()).toBe("");
+      expect(seen).toBe("finished");
+      expect(await revision(user)).toBe(before + 2);
+      expect(sql(`select session_name from public.workout_sessions where id='${session}';`)).toBe("T1");
+      expect(repsOf(session)).toBe("12");
+      expect(Number(sql(`select value from public.daily_metric_values where metric_id='${metric}' and metric_date='2026-06-01';`))).toBe(5);
+    }, 60_000);
+    it("does not deadlock: one holds a set and commits while the other holds its session and waits for that set", async () => {
+      const session = completed("2026-10-02"), t1 = connect(), t2 = connect();
+      await t1.step(`${asSession(user.id)} begin; update public.workout_sessions set session_name='T1' where id='${session}';`);
+      await t2.step(`${asSession(user.id)} begin; ${setsOf(session, "actual_reps=13")}`);
+      const before = await revision(user);
+      const write1 = t1.step(setsOf(session, "actual_weight_kg=60"));
+      expect(await finishedOrWaiting(t1, write1)).toBe("waiting");
+      await t2.step("commit;");
+      await write1;
+      await t1.step("commit;");
+      t1.close(); t2.close();
+      expect(t1.errors() + t2.errors()).toBe("");
+      expect(await revision(user)).toBe(before + 2);
+      expect(repsOf(session)).toBe("13");
+    }, 60_000);
+    it("lets concurrent writers under one completed session finish, and counts all of them", async () => {
+      const session = completed("2026-10-03");
+      asUser(user.id, `insert into public.workout_sets(user_id,workout_session_exercise_id,set_number) select x.user_id,x.id,n from public.workout_session_exercises x, generate_series(20,27) n where x.workout_session_id='${session}';`);
+      const all = sql(`select t.id from public.workout_sets t join public.workout_session_exercises x on x.id=t.workout_session_exercise_id where x.workout_session_id='${session}';`).split("\n");
+      const before = await revision(user);
+      const writes = all.map(id => user.client.from("workout_sets").update({ actual_reps: 7 }).eq("id", id).select("id"));
+      for (const { error, data } of await Promise.all(writes)) { expect(error).toBeNull(); expect(data).toHaveLength(1); }
+      expect(await revision(user)).toBe(before + all.length);
+    }, 60_000);
+    it("a writer that commits before the session completes does not move it; the completion that comes after does", async () => {
+      const date = "2026-10-04", session = seedSession(user.id, date), writer = connect(), completer = connect();
+      await completer.step(`${asSession(user.id)} begin; update public.workout_sessions set status='completed',ended_at='${date}T19:00:00Z' where id='${session}';`);
+      await writer.step(`${asSession(user.id)} begin; ${setsOf(session, "actual_reps=14")}`);
+      const before = await revision(user);
+      const commit = writer.step("commit;");
+      expect(await finishedOrWaiting(writer, commit)).toBe("finished");
+      expect(await revision(user)).toBe(before);
+      await completer.step("commit;");
+      writer.close(); completer.close();
+      expect(writer.errors() + completer.errors()).toBe("");
+      // Whoever sees the new counter also sees that set.
+      expect(await revision(user)).toBe(before + 1);
+      expect(repsOf(session)).toBe("14");
+    }, 60_000);
+    it("a writer queued behind a completion reads the session after it, so it counts", async () => {
+      const date = "2026-10-05", session = seedSession(user.id, date), gate = connect(), completer = connect(), writer = connect();
+      await completer.step(`${asSession(user.id)} begin; update public.workout_sessions set status='completed',ended_at='${date}T19:00:00Z' where id='${session}';`);
+      await writer.step(`${asSession(user.id)} begin; ${setsOf(session, "actual_reps=15")}`);
+      const before = await revision(user);
+      await gate.step(hold(user.id));
+      const completing = completer.step("commit;");
+      expect(await finishedOrWaiting(completer, completing)).toBe("waiting");
+      const writing = writer.step("commit;");
+      expect(await finishedOrWaiting(writer, writing)).toBe("waiting");
+      await gate.step("commit;");
+      await completing; await writing;
+      gate.close(); completer.close(); writer.close();
+      expect(gate.errors() + completer.errors() + writer.errors()).toBe("");
+      expect(await revision(user)).toBe(before + 2);
+    }, 60_000);
+    it("a commit waiting for its own account does not hold up another account", async () => {
+      const other = await signIn();
+      seedProfile(other.id);
+      const row = meal(user.id), gate = connect(), writer = connect();
+      await gate.step(hold(user.id));
+      await writer.step(`begin; update public.meal_entries set title='ESPERA' where id='${row}';`);
+      const commit = writer.step("commit;");
+      expect(await finishedOrWaiting(writer, commit)).toBe("waiting");
+      expect(await moved(() => meal(other.id), other)).toBe(1);
+      await gate.step("commit;");
+      await commit;
+      gate.close(); writer.close();
+      expect(gate.errors() + writer.errors()).toBe("");
+    }, 60_000);
+    it("deleting an account while a write of it is about to commit finishes both", async () => {
+      const gone = await signIn();
+      seedProfile(gone.id);
+      const row = meal(gone.id), writer = connect();
+      await writer.step(`${asSession(gone.id)} begin; update public.meal_entries set title='ULTIMA' where id='${row}';`);
+      // A query is lazy: this sends it now.
+      const deleting = Promise.resolve(gone.client.rpc("mobile_delete_account", { p_confirmation: "ELIMINAR" }));
+      let blocked = false;
+      for (let attempt = 0; attempt < 100 && !blocked; attempt++) {
+        blocked = sql(`select count(*) from pg_stat_activity a, pg_stat_activity w where w.application_name='${writer.name}' and w.pid = any(pg_blocking_pids(a.pid));`) !== "0";
+        if (!blocked) await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      expect(blocked).toBe(true);
+      await writer.step("commit;");
+      writer.close();
+      const { data, error } = await deleting;
+      expect(writer.errors()).toBe("");
+      expect(error).toBeNull(); expect(data).toEqual({ status: "deleted" });
+      expect(sql(`select count(*) from public.insights_source_revisions where user_id='${gone.id}';`)).toBe("0");
+    }, 60_000);
+  });
+
+  describe("padre anterior y nuevo", () => {
+    let user: { client: SupabaseClient; id: string };
+    const parents = { completed: "", in_progress: "", discarded: "" };
+    let order = 100;
+    beforeAll(async () => {
+      user = await signIn();
+      seedProfile(user.id);
+      parents.completed = seedSession(user.id, "2026-11-01");
+      complete(parents.completed, "2026-11-01");
+      parents.discarded = seedSession(user.id, "2026-11-02");
+      asUser(user.id, `update public.workout_sessions set status='discarded' where id='${parents.discarded}';`);
+      parents.in_progress = seedSession(user.id, "2026-11-03");
+    });
+    const addExercise = (session: string, who = user.id) => {
+      const row = randomUUID(), library = randomUUID();
+      asUser(who, `insert into public.exercises(id,user_id,nombre,weight_mode) values('${library}','${who}','MOVIDO ${library.slice(0, 8)}','Peso total');
+        insert into public.workout_session_exercises(id,user_id,workout_session_id,exercise_id,exercise_order) values('${row}','${who}','${session}','${library}',${++order});`);
+      return row;
+    };
+    const firstSet = (exercise: string) => sql(`select id from public.workout_sets where workout_session_exercise_id='${exercise}' order by set_number limit 1;`);
+    const cases = [["completed", "in_progress", 1], ["completed", "discarded", 1], ["in_progress", "completed", 1], ["discarded", "completed", 1], ["in_progress", "discarded", 0], ["discarded", "in_progress", 0]] as const;
+
+    it.each(cases)("an exercise moved by its owner from %s to %s moves the counter %i time(s)", async (from, to, times) => {
+      const row = addExercise(parents[from]);
+      expect(await moved(async () => {
+        const { data, error } = await user.client.from("workout_session_exercises").update({ workout_session_id: parents[to], exercise_order: ++order }).eq("id", row).select("workout_session_id");
+        expect(error).toBeNull(); expect(data).toEqual([{ workout_session_id: parents[to] }]);
+      }, user)).toBe(times);
+    });
+    it.each(cases)("a set moved by its owner from %s to %s moves the counter %i time(s)", async (from, to, times) => {
+      const source = addExercise(parents[from]), target = addExercise(parents[to]), row = firstSet(source);
+      expect(row).not.toBe("");
+      expect(await moved(async () => {
+        const { data, error } = await user.client.from("workout_sets").update({ workout_session_exercise_id: target, set_number: 40 }).eq("id", row).select("workout_session_exercise_id");
+        expect(error).toBeNull(); expect(data).toEqual([{ workout_session_exercise_id: target }]);
+      }, user)).toBe(times);
+    });
+    it.each(cases)("feelings moved from %s to %s move the counter %i time(s)", async (from, to, times) => {
+      asUser(user.id, `delete from public.workout_session_feelings where session_id in ('${parents.completed}','${parents.in_progress}','${parents.discarded}');
+        insert into public.workout_session_feelings(session_id,revision,facts,updated_at) values('${parents[from]}',1,'{}',now());`);
+      // Only the server writes feelings: a token cannot move them.
+      const refused = await user.client.from("workout_session_feelings").update({ session_id: parents[to] }).eq("session_id", parents[from]).select("session_id");
+      expect(refused.data ?? []).toEqual([]);
+      expect(await moved(() => asUser(user.id, `update public.workout_session_feelings set session_id='${parents[to]}' where session_id='${parents[from]}';`), user)).toBe(times);
+    });
+    it("moves once when one transaction moves several rows, and remembers the origin of a chain of moves", async () => {
+      const a = addExercise(parents.completed), b = addExercise(parents.completed);
+      expect(await moved(() => asUser(user.id, `begin; update public.workout_session_exercises set workout_session_id='${parents.in_progress}',exercise_order=${++order} where id='${a}'; update public.workout_session_exercises set workout_session_id='${parents.in_progress}',exercise_order=${++order} where id='${b}'; commit;`), user)).toBe(1);
+      // Out of a completed session and on to another open one, in one transaction: the origin still lost a row.
+      const c = addExercise(parents.completed);
+      expect(await moved(() => asUser(user.id, `begin; update public.workout_session_exercises set workout_session_id='${parents.discarded}',exercise_order=${++order} where id='${c}'; update public.workout_session_exercises set workout_session_id='${parents.in_progress}',exercise_order=${++order} where id='${c}'; commit;`), user)).toBe(1);
+    });
+    it("a set moved to another account moves both counters, and a token cannot do it", async () => {
+      const other = await signIn();
+      seedProfile(other.id);
+      const theirs = seedSession(other.id, "2026-11-10");
+      complete(theirs, "2026-11-10");
+      const theirExercise = addExercise(theirs, other.id), source = addExercise(parents.completed), row = firstSet(source);
+      const before = [await revision(user), await revision(other)];
+      const refused = await user.client.from("workout_sets").update({ workout_session_exercise_id: theirExercise, set_number: 41 }).eq("id", row).select("id");
+      expect(refused.error !== null || (refused.data ?? []).length === 0).toBe(true);
+      expect([await revision(user), await revision(other)]).toEqual(before);
+      expect(sql(`select workout_session_exercise_id from public.workout_sets where id='${row}';`)).toBe(source);
+      asUser(user.id, `update public.workout_sets set workout_session_exercise_id='${theirExercise}',set_number=41 where id='${row}';`);
+      expect([await revision(user), await revision(other)]).toEqual([before[0] + 1, before[1] + 1]);
+    }, 30_000);
+  });
+
   describe("no rompe lo que ya funciona", () => {
     it("lets concurrent writers of one account finish, and counts all of them", async () => {
       const rows = Array.from({ length: 12 }, () => meal(owner.id, "2026-08-01"));
@@ -203,6 +425,8 @@ describe.runIf(!!statusFile && !!container)("revisión transaccional de las fuen
       expect((await owner.client.from("insights_source_revisions").insert({ user_id: owner.id, revision: 99 })).error).not.toBeNull();
       expect((await owner.client.rpc("insights_bump_source_revision", { p_user: owner.id })).error).not.toBeNull();
       expect((await anonymous.rpc("insights_bump_source_revision", { p_user: owner.id })).error).not.toBeNull();
+      expect((await owner.client.rpc("insights_lock_source_revision", { p_user: owner.id })).error).not.toBeNull();
+      expect((await owner.client.rpc("insights_session_counts", { p_session: randomUUID() })).error).not.toBeNull();
     });
     it("reads as nothing for an account that has not changed, not as an error", async () => {
       const fresh = await signIn();
@@ -221,6 +445,16 @@ describe.runIf(!!statusFile && !!container)("revisión transaccional de las fuen
       expect(sql(`select count(*) from auth.users where id='${gone.id}';`)).toBe("0");
       expect(sql(`select count(*) from public.insights_source_revisions where user_id='${gone.id}';`)).toBe("0");
       expect(sql(`select count(*) from public.meal_entries where user_id='${gone.id}';`)).toBe("0");
+    }, 30_000);
+    it("works through the functions that finish and discard a session, each moving it once", async () => {
+      const date = "2026-09-10", session = seedSession(owner.id, date);
+      asUser(owner.id, `update public.workout_session_exercises set is_completed=true where workout_session_id='${session}';`);
+      expect(await moved(async () => { const { error } = await owner.client.rpc("finish_workout_session", { p_session_id: session, p_metadata: {} }); expect(error).toBeNull(); })).toBe(1);
+      expect(sql(`select status from public.workout_sessions where id='${session}';`)).toBe("completed");
+      const key = randomUUID();
+      expect(await moved(async () => { const { error } = await owner.client.rpc("mobile_discard_completed_session", { p_session_id: session, p_idempotency_key: key }); expect(error).toBeNull(); })).toBe(1);
+      expect(sql(`select status from public.workout_sessions where id='${session}';`)).toBe("discarded");
+      expect(await moved(async () => { const { error } = await owner.client.rpc("mobile_discard_completed_session", { p_session_id: session, p_idempotency_key: key }); expect(error).toBeNull(); })).toBe(0);
     }, 30_000);
     it("works through the functions that already write meals", async () => {
       const key = randomUUID(), intent = { operation: "create", sourceDate: DAY, mealId: null, expectedUpdatedAt: null, forceDuplicate: true, idempotencyKey: key, fields: { date: DAY, title: "RPC", description: null, calories: 500, proteinG: 30, carbsG: 60, fatG: 10 } };

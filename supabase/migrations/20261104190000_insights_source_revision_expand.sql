@@ -2,21 +2,33 @@
 --
 -- count + max(updated_at) cannot decide whether a result is still true. updated_at is the time a transaction started, so one
 -- that started earlier and commits after a newer one changes a row without moving either value. Sequences have the same gap:
--- they are handed out before commit. This counter moves at commit, under a row lock, so a reader that sees the same value
--- twice knows that no transaction touching these sources committed in between.
+-- they are handed out before commit. This counter moves at commit, so a reader that sees the same value twice knows that no
+-- transaction touching these sources committed in between.
 --
 -- It moves for what Insights reads: completed sessions and everything under them, feelings, metric definitions and values,
--- meals, and the logical date of a day. An in-progress session does not move it: Insights does not read that yet, and a
--- workout must not make every read fail. Its writes check the session under a share lock, so a commit that completes it
--- cannot slip between the check and this transaction's commit.
+-- meals, and the logical date of a day. An in-progress or discarded session does not move it: Insights does not read those,
+-- and a workout must not make every read fail. A row moved between sessions counts from both sides: its origin lost it and
+-- its destination gained it, so either one being read is enough.
 --
--- The trigger is deferred to commit so the lock comes last and is held only for the commit, without new lock orderings
--- inside existing functions. One transaction moves it once. It starts at no row, read as 0; nothing is backfilled because
--- nothing needs to be. No code reads it until ADOPT.
+-- Lock order. Every event takes one lock: an advisory lock per account, at commit. Writers of an account pass through it one at
+-- a time, and each reads the state of its session AFTER getting it, in a new snapshot, without locking that session. So:
+--   - A commit never waits for a session or a set. It has already written, and those rows may be held by someone who is about
+--     to wait for this same commit: waiting for a share lock on the session here deadlocks, reproduced with two connections.
+--   - A session completed while another transaction writes under it cannot slip through: if the completion got here first, the
+--     writer reads it as completed and moves the counter; if the writer got here first, it commits before the completion can
+--     move the counter, so whoever sees the new counter also sees that write.
+--   - The holder only waits for the counter row, which nobody writes without this lock. Deleting an account is the exception:
+--     it removes that row by cascade, but only after its explicit deletes, and it takes no lock here once its user is gone.
+-- This relies on READ COMMITTED, which every path of the product uses: a new snapshot per statement.
+--
+-- The trigger is deferred to commit, so none of this adds a lock ordering inside existing functions. One transaction moves it
+-- once per account. It starts at no row, read as 0; nothing is backfilled because nothing needs to be. No code reads it until
+-- ADOPT.
 --
 -- Reversal: deploy code that no longer reads the table, then
 --   drop trigger insights_source_changed on each of the eight tables below;
---   drop function public.insights_source_changed(); drop function public.insights_bump_source_revision(uuid);
+--   drop function public.insights_source_changed(); drop function public.insights_session_counts(uuid);
+--   drop function public.insights_bump_source_revision(uuid); drop function public.insights_lock_source_revision(uuid);
 --   drop table public.insights_source_revisions;
 begin;
 
@@ -30,50 +42,93 @@ create policy insights_source_revisions_select_own on public.insights_source_rev
 revoke all on table public.insights_source_revisions from public, anon, authenticated;
 grant select on table public.insights_source_revisions to authenticated;
 
-create function public.insights_bump_source_revision(p_user uuid)
+create function public.insights_lock_source_revision(p_user uuid)
 returns void language plpgsql security definer set search_path = '' as $$
 begin
-  if p_user is null or current_setting('ownlevel.insights_revision_moved', true) is not distinct from p_user::text then return; end if;
-  -- Deleting an account also deletes its rows, and fires this: a user who no longer exists has nothing to move.
+  -- Deleting an account fires this after its user is gone: it has nothing left to move, and must not wait for anyone.
+  if p_user is not null and exists (select 1 from auth.users u where u.id = p_user) then
+    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_user::text, 367));
+  end if;
+end;
+$$;
+revoke all on function public.insights_lock_source_revision(uuid) from public, anon, authenticated;
+
+create function public.insights_bump_source_revision(p_user uuid)
+returns void language plpgsql security definer set search_path = '' as $$
+declare
+  v_moved text := coalesce(current_setting('ownlevel.insights_revision_moved', true), '');
+begin
+  if p_user is null or position(p_user::text in v_moved) > 0 then return; end if;
+  perform public.insights_lock_source_revision(p_user);
   insert into public.insights_source_revisions as r (user_id, revision)
     select p_user, 1 where exists (select 1 from auth.users u where u.id = p_user)
     on conflict (user_id) do update set revision = r.revision + 1;
-  perform set_config('ownlevel.insights_revision_moved', p_user::text, true);
+  perform set_config('ownlevel.insights_revision_moved', v_moved || p_user::text, true);
 end;
 $$;
 revoke all on function public.insights_bump_source_revision(uuid) from public, anon, authenticated;
 
+create function public.insights_session_counts(p_session uuid)
+returns boolean language plpgsql security definer set search_path = '' as $$
+declare
+  v_status text;
+begin
+  select s.status into v_status from public.workout_sessions s where s.id = p_session;
+  -- A parent that cannot be found might have been completed: moving it needlessly is safe, missing a change is not.
+  return v_status is distinct from 'in_progress' and v_status is distinct from 'discarded';
+end;
+$$;
+revoke all on function public.insights_session_counts(uuid) from public, anon, authenticated;
+
 create function public.insights_source_changed()
 returns trigger language plpgsql security definer set search_path = '' as $$
 declare
-  v_user uuid;
-  v_status text;
-  v_session uuid;
+  v_old_user uuid;
+  v_new_user uuid;
+  v_old_session uuid;
+  v_new_session uuid;
 begin
+  -- Two accounts only when something moves between them, which no token can do. They are locked in a fixed order.
   if tg_table_name = 'workout_sessions' then
-    if (tg_op <> 'DELETE' and new.status = 'completed') or (tg_op <> 'INSERT' and old.status = 'completed') then
-      perform public.insights_bump_source_revision(case when tg_op = 'DELETE' then old.user_id else new.user_id end);
+    if old.status = 'completed' or new.status = 'completed' then
+      perform public.insights_bump_source_revision(least(old.user_id, new.user_id));
+      perform public.insights_bump_source_revision(greatest(old.user_id, new.user_id));
     end if;
-  elsif tg_table_name = 'workout_session_feelings' then
-    select s.user_id, s.status into v_user, v_status from public.workout_sessions s
-      where s.id = case when tg_op = 'DELETE' then old.session_id else new.session_id end for share;
+    return null;
+  elsif tg_table_name not in ('workout_session_exercises', 'workout_sets', 'workout_session_feelings') then
+    perform public.insights_bump_source_revision(least(old.user_id, new.user_id));
+    perform public.insights_bump_source_revision(greatest(old.user_id, new.user_id));
+    return null;
+  end if;
+
+  if tg_table_name = 'workout_session_feelings' then
+    v_old_session := old.session_id;
+    v_new_session := new.session_id;
     -- With no session left, its own deletion already moved the counter if it was completed.
-    if v_status = 'completed' then perform public.insights_bump_source_revision(v_user); end if;
-  elsif tg_table_name in ('workout_session_exercises', 'workout_sets') then
-    v_user := case when tg_op = 'DELETE' then old.user_id else new.user_id end;
-    if tg_table_name = 'workout_session_exercises' then
-      v_session := case when tg_op = 'DELETE' then old.workout_session_id else new.workout_session_id end;
-    else
-      select x.workout_session_id into v_session from public.workout_session_exercises x
-        where x.id = case when tg_op = 'DELETE' then old.workout_session_exercise_id else new.workout_session_exercise_id end;
-    end if;
-    select s.status into v_status from public.workout_sessions s where s.id = v_session for share;
-    -- A parent that cannot be found might have been completed: moving it needlessly is safe, missing a change is not.
-    if v_status is distinct from 'in_progress' and v_status is distinct from 'discarded' then
-      perform public.insights_bump_source_revision(v_user);
-    end if;
+    select s.user_id into v_old_user from public.workout_sessions s where s.id = v_old_session;
+    select s.user_id into v_new_user from public.workout_sessions s where s.id = v_new_session;
   else
-    perform public.insights_bump_source_revision(case when tg_op = 'DELETE' then old.user_id else new.user_id end);
+    v_old_user := old.user_id;
+    v_new_user := new.user_id;
+  end if;
+
+  -- First the lock, then the sessions: see the header.
+  perform public.insights_lock_source_revision(least(v_old_user, v_new_user));
+  perform public.insights_lock_source_revision(greatest(v_old_user, v_new_user));
+
+  if tg_table_name = 'workout_session_exercises' then
+    v_old_session := old.workout_session_id;
+    v_new_session := new.workout_session_id;
+  elsif tg_table_name = 'workout_sets' then
+    select x.workout_session_id into v_old_session from public.workout_session_exercises x where x.id = old.workout_session_exercise_id;
+    select x.workout_session_id into v_new_session from public.workout_session_exercises x where x.id = new.workout_session_exercise_id;
+  end if;
+
+  if tg_op <> 'INSERT' and public.insights_session_counts(v_old_session) then
+    perform public.insights_bump_source_revision(v_old_user);
+  end if;
+  if tg_op <> 'DELETE' and public.insights_session_counts(v_new_session) then
+    perform public.insights_bump_source_revision(v_new_user);
   end if;
   return null;
 end;
