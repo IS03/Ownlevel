@@ -2,14 +2,14 @@
 // OWNLEVEL_INSIGHTS_LOCAL_STATUS=<status.json> OWNLEVEL_INSIGHTS_LOCAL_DB=<db container> npx vitest run src/lib/mobile-api/performance-insights.local.test.ts
 // OWNLEVEL_INSIGHTS_LOCAL_SCALE_OUT=<file> also measures the whole read over five synthetic years.
 import { randomBytes, randomUUID } from "node:crypto";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
-import { buildInsightsReadModel } from "../progress/insights-engine";
-import { parsePerformanceInsights } from "./performance-insights-contract";
-import { readConsistentInsightsSource, readInsightsRevision, readInsightsSource } from "./performance-insights-server";
+import { buildInsightsReadModel, insightsDaysPage, insightsRelation, insightsRelations, insightsSummary } from "../progress/insights-engine";
+import { parseCompleteInsights } from "./performance-insights-contract";
+import { readConsistentInsightsSource, readInsightsRevision, readInsightsSnapshot, readInsightsSource } from "./performance-insights-server";
 import type { MobileSupabaseAuthenticatedContext } from "./supabase";
 
 vi.mock("server-only", () => ({}));
@@ -30,9 +30,10 @@ function localStack() {
     const email = `insights-${randomUUID()}@example.invalid`, password = randomBytes(24).toString("hex");
     const made = await admin.auth.admin.createUser({ email, password, email_confirm: true });
     if (made.error) throw made.error;
-    const http = { requests: 0, times: [] as { path: string; ms: number }[] };
+    const http = { requests: 0, times: [] as { path: string; ms: number }[], hook: null as ((url: string) => Promise<void>) | null };
     const client = createClient(status.API_URL, status.ANON_KEY, { auth: { persistSession: false }, global: { fetch: async (...args: Parameters<typeof fetch>) => {
       http.requests++;
+      await http.hook?.(decodeURIComponent(String(args[0])));
       const started = performance.now(), response = await fetch(...args);
       http.times.push({ path: new URL(String(args[0])).pathname.split("/").pop()!, ms: Math.round(performance.now() - started) });
       return response;
@@ -75,7 +76,7 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
         select '${meal}','${owner.id}',id,'SYNTHETIC',500,30,60,10,'manual','meal','2026-03-02T16:00:00Z' from public.day_logs where user_id='${owner.id}' and log_date='2026-03-02';
       notify pgrst,'reload schema';`);
     owner.http.requests = 0;
-    const source = await readConsistentInsightsSource(contextOf(owner.id, owner.client));
+    const { source } = await readConsistentInsightsSource(contextOf(owner.id, owner.client));
     // Every request PostgREST really received: 2 revision rounds of 7 plus one page per stream.
     expect(owner.http.requests).toBe(14 + 7);
     expect(source.sessions.map(row => row.id).sort()).toEqual([s1, s2].sort());
@@ -87,7 +88,7 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
     expect(source.meals.map(row => row.id)).toEqual([meal]);
 
     const model = buildInsightsReadModel(source, { today: "2026-12-01", permutations: 19 });
-    expect(parsePerformanceInsights(JSON.parse(JSON.stringify(model)))).toBeTruthy();
+    expect(parseCompleteInsights(JSON.parse(JSON.stringify(model)))).toBeTruthy();
     const latest = model.facts.days[0]!;
     expect(latest.date).toBe("2026-03-02"); expect(latest.sessions[0]!.exercises[0]).toMatchObject({ exerciseId: exercise, status: "insufficient_comparison", reason: "missing_context", referenceSessionId: null });
     expect(model.limits.configurationSnapshots).toEqual({ known: 0, total: 2 }); expect(model.limits.mealTimeEvidence.unverified).toBe(1);
@@ -97,10 +98,76 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
 
     // RLS, not the filter, is what protects other people's rows: the owner's token cannot read them by asking for that user.
     const stolen = await readConsistentInsightsSource(contextOf(other.id, owner.client));
-    expect(stolen).toMatchObject({ sessions: [], exercises: [], sets: [], feelings: [], metricValues: [], meals: [] });
+    expect(stolen.source).toMatchObject({ sessions: [], exercises: [], sets: [], feelings: [], metricValues: [], meals: [] });
     const anonymous = createClient(status.API_URL, status.ANON_KEY, { auth: { persistSession: false } });
     await expect(readConsistentInsightsSource(contextOf(owner.id, anonymous))).rejects.toThrow();
   }, 120_000);
+
+  // Two real transactions. B starts first, A starts and commits later, then B commits: B's row changes while count and max(updated_at) stay.
+  describe("colisión de la revisión de cantidad y máximo", () => {
+    const seed = async () => {
+      const { sql, user } = localStack();
+      const owner = await user(), id = owner.id, metric = randomUUID(), dates = ["2026-05-01", "2026-05-02"];
+      const value = (date: string, next: number) => `update public.daily_metric_values set value=${next} where user_id='${id}' and metric_id='${metric}' and metric_date='${date}';`;
+      sql(`select set_config('request.jwt.claim.sub','${id}',false);
+        insert into public.profiles(user_id) values('${id}') on conflict do nothing;
+        insert into public.user_metrics(id,user_id,name,value_type) values('${metric}','${id}','SYNTHETIC METRIC','decimal');
+        insert into public.daily_metric_values(user_id,metric_id,metric_date,value) values('${id}','${metric}','${dates[0]}',10),('${id}','${metric}','${dates[1]}',20);`);
+      /** Holds a transaction open: B's now() stays earlier than A's, whatever the wall clock does afterwards. */
+      const openTransaction = (statement: string) => {
+        const docker = process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, "Programs/DockerDesktop/resources/bin/docker.exe") : "docker";
+        const psql = spawn(docker, ["--context", "desktop-linux", "exec", "-i", container!, "psql", "-X", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-q"], { stdio: ["pipe", "ignore", "ignore"] });
+        const closed = new Promise<number | null>(resolve => psql.on("close", resolve));
+        psql.stdin.write(`begin;\n${statement}\n`);
+        return { commit: async () => { psql.stdin.end("commit;\n"); expect(await closed).toBe(0); } };
+      };
+      const applied = (updated: string) => sql(`select count(*) from public.daily_metric_values where user_id='${id}' and updated_at='${updated}';`);
+      return { sql, owner, id, metric, dates, value, openTransaction, applied, context: contextOf(id, owner.client) };
+    };
+    const valueOf = (source: { metricValues: readonly { date: string; value: unknown }[] }, date: string) => Number(source.metricValues.find(row => row.date === date)!.value);
+    /** Waits until the open transaction really holds its row: its update has been sent and its now() is earlier than A's. */
+    const settled = () => new Promise(resolve => setTimeout(resolve, 1500));
+    it("does not reuse an earlier result when the revision cannot see the change", async () => {
+      const { sql, value, dates, openTransaction, context, id, metric } = await seed();
+      const exercise = randomUUID(), session = randomUUID();
+      sql(`select set_config('request.jwt.claim.sub','${id}',false);
+        insert into public.exercises(id,user_id,nombre,weight_mode) values('${exercise}','${id}','SYNTHETIC','Peso total');
+        insert into public.day_logs(user_id,log_date) values('${id}','${dates[0]}') on conflict do nothing;
+        insert into public.workout_sessions(id,user_id,day_log_id,started_at) select '${session}','${id}',l.id,'${dates[0]}T18:00:00Z' from public.day_logs l where l.user_id='${id}' and l.log_date='${dates[0]}';
+        insert into public.workout_session_exercises(user_id,workout_session_id,exercise_id,exercise_order) values('${id}','${session}','${exercise}',1);
+        update public.workout_sessions set status='completed',ended_at='${dates[0]}T19:00:00Z' where id='${session}';`);
+      const shown = (snapshot: Awaited<ReturnType<typeof readInsightsSnapshot>>) => insightsSummary(snapshot, { limit: 120 }).facts.days.find(day => day.date === dates[0])!.context.metrics.find(row => row.metricId === metric)!.value;
+      const b = openTransaction(value(dates[0]!, 11));
+      await settled();
+      sql(value(dates[1]!, 21));
+      const warm = await readInsightsSnapshot(context, "2030-01-01");
+      expect(shown(warm)).toBe(10);
+      const before = await readInsightsRevision(context);
+      await b.commit();
+      // The collision itself: the row changed, and the count and maximum did not.
+      expect(valueOf((await readInsightsSource(context)), dates[0]!)).toBe(11);
+      expect(await readInsightsRevision(context)).toBe(before);
+      // What must hold anyway: what is shown is what is stored.
+      const next = await readInsightsSnapshot(context, "2030-01-01");
+      expect(shown(next)).toBe(11);
+      expect(next.revision).not.toBe(warm.revision);
+    }, 60_000);
+    it("LIMIT: the check around a read does not see that same change", async () => {
+      const { sql, value, dates, openTransaction, context, owner } = await seed();
+      const b = openTransaction(value(dates[0]!, 11));
+      await settled();
+      sql(value(dates[1]!, 21));
+      // Commits once the first revision is read, while the streams are being read.
+      let committed = false;
+      owner.http.hook = async url => { if (!committed && url.includes("metric_date") ) { committed = true; await b.commit(); } };
+      owner.http.requests = 0;
+      await readConsistentInsightsSource(context);
+      owner.http.hook = null;
+      expect(committed).toBe(true);
+      // No retry: 2 rounds of 7 and one page per stream. It published a read during which a source changed.
+      expect(owner.http.requests).toBe(14 + 7);
+    }, 60_000);
+  });
 
   it.runIf(!!process.env.OWNLEVEL_INSIGHTS_LOCAL_SCALE_OUT)("measures the whole read over five synthetic years", async () => {
     const { sql, user } = localStack();
@@ -126,26 +193,23 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
           update public.workout_sessions set status='completed',ended_at=(d::timestamp + interval '19 hours') at time zone 'UTC' where id=s;
         end loop; end $seed$;`);
     const seedSeconds = Math.round((performance.now() - seedStarted) / 1000);
-    const runs: { analyzed: boolean; revisionMs: number; revisionByTable: { path: string; ms: number }[]; streamsMs: number; readMs: number; requests: number; modelMs: number; bytes: number }[] = [];
+    const context = contextOf(id, owner.client);
+    const kib = (value: unknown) => Math.round(Buffer.byteLength(JSON.stringify(value)) / 102.4) / 10;
+    const timed = async <T,>(work: () => Promise<T> | T) => { owner.http.requests = 0; owner.http.times = []; const started = performance.now(); const value = await work(); return { value, ms: Math.round(performance.now() - started), requests: owner.http.requests, slowest: [...owner.http.times].sort((a, b) => b.ms - a.ms)[0] }; };
+    const runs: unknown[] = [];
     let rows = {};
     // A freshly seeded database has no statistics yet: production runs with autovacuum, so both situations are measured.
     for (let run = 0; run < 7; run++) {
       if (run === 2) sql("analyze;");
-      owner.http.times = [];
-      const revisionStarted = performance.now();
-      await readInsightsRevision(contextOf(id, owner.client));
-      const revisionMs = Math.round(performance.now() - revisionStarted);
-      const revisionByTable = [...owner.http.times];
-      await readInsightsSource(contextOf(id, owner.client));
-      const streamsMs = Math.round(performance.now() - revisionStarted) - revisionMs;
-      owner.http.requests = 0;
-      const started = performance.now();
-      const source = await readConsistentInsightsSource(contextOf(id, owner.client));
-      const read = performance.now();
-      const requests = owner.http.requests;
-      const model = buildInsightsReadModel(source, { today: "2030-01-01" });
-      runs.push({ analyzed: run >= 2, revisionMs, revisionByTable, streamsMs, readMs: Math.round(read - started), requests, modelMs: Math.round(performance.now() - read), bytes: Buffer.byteLength(JSON.stringify(model)) });
-      rows = { sessions: source.sessions.length, exercises: source.exercises.length, sets: source.sets.length, metricValues: source.metricValues.length, meals: source.meals.length, comparable: model.facts.totals.comparable, outcomeDays: model.history.outcomeDays };
+      const today = "2030-01-01";
+      const full = await timed(() => readInsightsSnapshot(context, today));
+      const snapshot = full.value;
+      const summary = insightsSummary(snapshot), next = summary.facts.page.nextBefore!;
+      const relations = await timed(() => insightsRelations(snapshot));
+      const pick = snapshot.partial.lane.candidates.find(row => row.values.size > 0)!.definition.id;
+      runs.push({ analyzed: run >= 2, fullRead: { ms: full.ms, requests: full.requests, slowest: full.slowest }, relationsMs: relations.ms,
+        responseKiB: { summary: kib(summary), daysPage: kib(insightsDaysPage(snapshot, { before: next })), relations: kib(relations.value), relationDetail: kib(insightsRelation(snapshot, pick)) } });
+      rows = { sessions: snapshot.history.sessions, partialComparable: snapshot.partial.totals.comparable, partialOutcomeDays: snapshot.partial.outcomeDays, strictComparable: snapshot.totals.comparable };
     }
     writeFileSync(process.env.OWNLEVEL_INSIGHTS_LOCAL_SCALE_OUT!, JSON.stringify({ seedSeconds, rows, runs }, null, 2));
   }, 1_500_000);

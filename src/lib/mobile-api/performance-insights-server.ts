@@ -1,7 +1,8 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { todayInCordoba } from "@/lib/phase2/cordoba-date";
 import { readAllTrainingRows } from "@/lib/phase2/training-robust";
-import { buildInsightsReadModel, INSIGHTS_MAX_DAYS, type InsightsSource } from "@/lib/progress/insights-engine";
+import { createInsightsSnapshot, insightsDaysPage, insightsRelation, insightsRelations, insightsSummary, INSIGHTS_MAX_DAYS, type InsightsSnapshot, type InsightsSource } from "@/lib/progress/insights-engine";
 import { MobileApiValidationError } from "./auth";
 import { NutritionReportDayChangedError } from "./nutrition-report-server";
 import { parsePerformanceInsights } from "./performance-insights-contract";
@@ -99,29 +100,52 @@ export async function readInsightsRevision(context: Context): Promise<string> {
 }
 
 /** Refuses a read during which it detected a change, after one retry. Best effort: see `readInsightsRevision`. */
-export async function readConsistentInsightsSource(context: Context): Promise<InsightsSource> {
+export async function readConsistentInsightsSource(context: Context): Promise<{ source: InsightsSource }> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const before = await readInsightsRevision(context);
     const source = await readInsightsSource(context);
-    if (await readInsightsRevision(context) === before) return source;
+    if (await readInsightsRevision(context) === before) return { source };
   }
   throw new Error("Insights sources kept changing");
 }
 
+/** What this read holds, row by row: two answers join only if they really saw the same rows. Count and maximum could not tell. */
+function contentRevision(source: InsightsSource) {
+  const hash = createHash("sha256");
+  for (const rows of [source.sessions, source.exercises, source.sets, source.feelings, source.metricDefinitions, source.metricValues, source.meals]) {
+    for (const row of rows) hash.update(JSON.stringify(row));
+    hash.update("|");
+  }
+  return hash.digest("hex").slice(0, 32);
+}
+
+/**
+ * Always a whole read. Nothing is reused: count and maximum can stay the same while a row changes, so they cannot decide that an
+ * earlier result is still true. Reuse needs a revision the database moves in the same transaction as the data.
+ */
+export async function readInsightsSnapshot(context: Context, today: string): Promise<InsightsSnapshot> {
+  const { source } = await readConsistentInsightsSource(context);
+  return createInsightsSnapshot(source, { today, revision: contentRevision(source) });
+}
+
 export function parseInsightsParams(params: URLSearchParams) {
   for (const key of new Set(params.keys())) {
-    if (!["before", "limit", "association"].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
+    if (!["view", "before", "limit", "association"].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
   }
-  const before = params.get("before") ?? undefined, limit = params.get("limit"), association = params.get("association") ?? undefined;
+  const before = params.get("before") ?? undefined, limit = params.get("limit"), association = params.get("association") ?? undefined, view = params.get("view") ?? "summary";
+  if (!["summary", "days", "relations"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
   if (before !== undefined && (!/^\d{4}-\d{2}-\d{2}$/.test(before) || new Date(`${before}T00:00:00Z`).toISOString().slice(0, 10) !== before)) throw new MobileApiValidationError("Fecha no válida.");
   if (limit !== null && (!/^\d{1,3}$/.test(limit) || +limit < 1 || +limit > INSIGHTS_MAX_DAYS)) throw new MobileApiValidationError(`El límite va de 1 a ${INSIGHTS_MAX_DAYS} días.`);
   if (association !== undefined && !/^[a-zA-Z0-9_:-]{1,120}$/.test(association)) throw new MobileApiValidationError("Relación no válida.");
-  return { before, limit: limit === null ? undefined : +limit, association };
+  return { view: view as "summary" | "days" | "relations", before, limit: limit === null ? undefined : +limit, association };
 }
 
 export const performanceInsightsResponse = (request: Request) => progressReadResponse(request, "performance-insights", async (context, params, today) => {
   const options = parseInsightsParams(params);
-  const model = buildInsightsReadModel(await readConsistentInsightsSource(context), { ...options, today });
+  const snapshot = await readInsightsSnapshot(context, today);
+  const model = options.association ? insightsRelation(snapshot, options.association)
+    : options.view === "relations" ? insightsRelations(snapshot)
+    : options.view === "days" ? insightsDaysPage(snapshot, options) : insightsSummary(snapshot, options);
   // A read straddling Córdoba midnight is retried by the shared GET handler.
   const after = todayInCordoba();
   if (after !== today) throw new NutritionReportDayChangedError(after);
