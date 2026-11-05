@@ -16,10 +16,12 @@ Sin tarjetas, champagne solo en la serie, flechas sin color y cifras tabulares. 
 ## Costo
 Una lectura al abrir, sin prefetch. Las relaciones se piden al tocar «Para mirar con calma» y más días con un botón. Una sesión anterior a la primera página pide solo su día. Refrescar la misma lectura conserva los días ya cargados; otra lectura los descarta y lo dice, y las relaciones no se muestran junto a hechos de otra lectura.
 
-**Límites a 10 años, sin resolver:** el detalle de una relación pesa 258 KiB, el pico de memoria es 210 MiB y una lectura cuesta 280 consultas. **Sobre #386 no hay reutilización:** cada pedido es una lectura completa, también abrir Insights al terminar un entrenamiento o ver más días. Con el [ADOPT de la revisión](367-insights-source-revision.md) sería una optimización, no una garantía. La UI no cambia en ningún caso: une páginas por `sourceRevision`, que es fiable en las dos variantes.
+**Detalle de una relación:** responde con los 60 días más nuevos, 10,9 KiB a 10 años, frente a 258 KiB. Sus números siempre salen de todos los pares, y dice «Los últimos 60 de N días». Todos los días se piden con un toque, y son una respuesta entera de su lectura: nunca se juntan con otra. La lista crece a mano.
+
+**Límites a 10 años, sin resolver:** el pico de memoria es 209 MiB y una lectura completa cuesta 280 consultas, o 268 con #392. Con todos los pares, el detalle sigue pesando 258 KiB. **Sobre #386 no hay reutilización:** cada pedido es una lectura completa, también abrir Insights al terminar un entrenamiento o ver más días. Con el [ADOPT de la revisión](367-insights-source-revision.md) sería una optimización, no una garantía. La UI no cambia en ningún caso: une páginas por `sourceRevision`, que es fiable en las dos variantes.
 
 ## Dependencias
-Base: #386, sobre #385. **Sin código de #383 ni de #389.**
+Sobre `main`, con #380, #383, #385 y #386 ya integrados. **Sin código de #389 ni de #392, y sin migraciones nuevas.**
 
 | PR | Relación | Sin él |
 | --- | --- | --- |
@@ -28,10 +30,13 @@ Base: #386, sobre #385. **Sin código de #383 ni de #389.**
 
 **Comprobado con una integración temporal local de #390, #383 y #389**, sin publicar y ya borrada: fusionan sin conflictos, `tsc` raíz y Mobile pasan, y las suites de Insights, post-entreno, sensaciones y Progreso pasan (65 en Mobile; 105 en la raíz, 3 omitidas). No es una prueba de los tres desplegados.
 
+## Filas
+`InsightRow` reúne las filas que abren algo. Con `fontScale > 1.3` etiqueta y valor se apilan, ningún nombre se corta, y el toque usa el `pressedStyle` de marca.
+
 ## Validación
 Pruebas dirigidas de navegación, contexto y solicitudes, con fixtures construidos por el motor real y pasados por el contrato. `tsc` y `npm run lint`. `active-session-bridge-screen.test.tsx` sigue con 4 fallos, los mismos que en `main` (`b5e57e3`).
 
-**QA física diferida y no aprobada:** no se vio en dispositivo, y el cruce de pestañas solo se probó con el router simulado.
+**QA física diferida y no aprobada:** no se vio en dispositivo, y el cruce de pestañas solo se probó con el router simulado. Lista única: [QA física](367-qa-fisica.md).
 
 ## Pendiente
 - Al volver, la pila de Progreso conserva la pantalla de tendencias arriba, y el enlace cambia el período compartido de Progreso. Revisar en QA física.

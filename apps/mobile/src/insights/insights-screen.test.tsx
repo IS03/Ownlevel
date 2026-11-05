@@ -54,7 +54,7 @@ const serve = (source: InsightsSource, revision = 'r1') => {
   const snapshot = createInsightsSnapshot(source, { today: '2027-01-01', permutations: 19, revision });
   return async (options: ReadOptions) => {
     const query = new URL(`http://x${options.path}`).searchParams, association = query.get('association'), before = query.get('before') ?? undefined;
-    const body = association ? insightsRelation(snapshot, association) : query.get('view') === 'relations' ? insightsRelations(snapshot) : query.get('view') === 'days' ? insightsDaysPage(snapshot, { before }) : insightsSummary(snapshot);
+    const body = association ? insightsRelation(snapshot, association, { pairs: query.get('pairs') === 'all' ? 'all' : 'recent' }) : query.get('view') === 'relations' ? insightsRelations(snapshot) : query.get('view') === 'days' ? insightsDaysPage(snapshot, { before }) : insightsSummary(snapshot);
     const parsed = options.parse(JSON.parse(JSON.stringify(body)));
     if (parsed === undefined) throw Error(`Contract rejected ${options.path}`);
     return ok(parsed);
@@ -374,6 +374,55 @@ describe('detalle de una relación', () => {
     const row = view.getAllByRole('button', { name: /Abrir sesión$/ })[0]!;
     fireEvent.press(row);
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/history/[id]', params: { id: expect.stringMatching(/^s\d+$/) } });
+  });
+  it('reads the newest days, says how many there are, and brings all of them only when asked', async () => {
+    mockParams = { relation: id };
+    const long = Array.from({ length: 90 }, (_, day) => 8 + (day % 2 ? 1 : -1) * (day % 5 + 1));
+    mockRead.mockImplementation(serve(withMetric(history(long))));
+    const view = await open(<RelationDetailScreen />);
+    expect(mockRead).toHaveBeenCalledTimes(1);
+    expect(String(mockRead.mock.calls[0]![0].path)).not.toContain('pairs=');
+    fireEvent(view.getByTestId('relation-plot'), 'layout', { nativeEvent: { layout: { width: 300, height: 180 } } });
+    expect(view.getAllByTestId('relation-dot')).toHaveLength(60);
+    expect(view.getByText('Los números de esta relación ya cuentan todos los días.')).toBeTruthy();
+    expect(view.getAllByRole('button', { name: /Abrir (sesión|día)$/ })).toHaveLength(60);
+    const button = view.getByRole('button', { name: /^Ver los \d+ días$/ });
+    const total = Number(/\d+/.exec(button.props.accessibilityLabel)?.[0]);
+    expect(total).toBeGreaterThan(60);
+    expect(view.getByTestId('relation-plot').props.accessibilityLabel).toContain(`Los últimos 60 de ${total} días.`);
+    fireEvent.press(button); await flush();
+    expect(String(mockRead.mock.calls[1]![0].path)).toContain('pairs=all');
+    expect(mockRead).toHaveBeenCalledTimes(2);
+    fireEvent(view.getByTestId('relation-plot'), 'layout', { nativeEvent: { layout: { width: 300, height: 180 } } });
+    expect(view.getAllByTestId('relation-dot')).toHaveLength(total);
+    expect(view.queryByText('Los números de esta relación ya cuentan todos los días.')).toBeNull();
+    // The list grows by hand: every day is reachable, none of them drawn before it is asked for.
+    fireEvent.press(view.getByRole('button', { name: 'Mostrar más días' }));
+    expect(view.getAllByRole('button', { name: /Abrir (sesión|día)$/ })).toHaveLength(Math.min(total, 120));
+  });
+  it('keeps the recent answer and offers a retry when every day cannot be read', async () => {
+    mockParams = { relation: id };
+    const long = Array.from({ length: 90 }, (_, day) => 8 + (day % 2 ? 1 : -1) * (day % 5 + 1));
+    const answer = serve(withMetric(history(long)));
+    mockRead.mockImplementation(async (options: ReadOptions) => String(options.path).includes('pairs=all') ? lost : answer(options));
+    const view = await open(<RelationDetailScreen />);
+    fireEvent.press(view.getByRole('button', { name: /^Ver los \d+ días$/ })); await flush();
+    expect(view.getByText('No pudimos traer todos los días.')).toBeTruthy();
+    expect(view.getAllByRole('button', { name: /Abrir (sesión|día)$/ })).toHaveLength(60);
+  });
+  it('an answer of a newer read replaces the whole relation: its days are never joined to the older ones', async () => {
+    mockParams = { relation: id };
+    const long = Array.from({ length: 90 }, (_, day) => 8 + (day % 2 ? 1 : -1) * (day % 5 + 1));
+    const older = serve(withMetric(history(long)), 'r1'), newer = serve(withMetric(history(long)), 'r2');
+    let changed = false;
+    mockRead.mockImplementation(async (options: ReadOptions) => { if (String(options.path).includes('pairs=all')) changed = true; return (changed ? newer : older)(options); });
+    const view = await open(<RelationDetailScreen />);
+    fireEvent.press(view.getByRole('button', { name: /^Ver los \d+ días$/ })); await flush();
+    // Read again, because the answer belonged to another read. Once both agree, every day shows, from that read alone.
+    expect(mockRead.mock.calls.length).toBeGreaterThanOrEqual(3);
+    fireEvent(view.getByTestId('relation-plot'), 'layout', { nativeEvent: { layout: { width: 300, height: 180 } } });
+    expect(view.getAllByTestId('relation-dot').length).toBeGreaterThan(60);
+    expect(view.queryByRole('button', { name: /^Ver los \d+ días$/ })).toBeNull();
   });
   it('says so when the relation does not exist, instead of drawing an empty chart', async () => {
     mockParams = { relation: 'partial:metric:none:same_day' };
