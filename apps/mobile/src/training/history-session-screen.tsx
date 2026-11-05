@@ -20,6 +20,9 @@ import { RoutineSheetButton } from './routine-sheet-button';
 import { trainingFeelingsApi } from '@/api/training-feelings';
 import type { FeelingsPort } from '../../../../src/lib/mobile-api/training-feelings-journal';
 import { RecordedTrainingFeelings } from './recorded-training-feelings';
+import { useMobileAuth } from '@/auth';
+import type { ExerciseConfigurationJournal } from '@/api/training-exercise-configuration';
+import { SessionVariants, useExerciseConfigurations } from './exercise-variant';
 
 export type CompletedSessionApi = {
   feelings?: FeelingsPort['read'];
@@ -37,9 +40,11 @@ const newKey = () => typeof globalThis.crypto?.randomUUID === 'function' ? globa
  * A closed session from server truth, with the Web historical actions:
  * correct (completed only) and discard (confirmed, idempotent, never a hard delete).
  */
-export function CompletedSessionScreen({ api, sessionId, initialDetail, finished = null, onHome, onTraining }: {
+export function CompletedSessionScreen({ api, sessionId, initialDetail, finished = null, onHome, onTraining, configurations }: {
   api: CompletedSessionApi; sessionId: string; initialDetail?: SessionDetailDto; finished?: SessionFinishedDto | null;
   onHome: () => void; onTraining?: () => void;
+  /** #367: optional variant answers, editable while the session is completed. */
+  configurations?: ExerciseConfigurationJournal;
 }) {
   const router = useRouter();
   const origin = historyReturnParams(useLocalSearchParams());
@@ -109,7 +114,8 @@ export function CompletedSessionScreen({ api, sessionId, initialDetail, finished
     {pendingKey || discarding ? <Button label={discarding ? 'Eliminando…' : 'Reintentar eliminación'} variant="quiet" disabled={discarding} onPress={() => void runDiscard()} /> : null}
   </View> : null;
   return <>{menu}<CompletedSessionView detail={detail} finished={finished} readSummary={api.summary} onHome={onHome} onTraining={onTraining} actions={actions}
-    extraSummary={api.feelings ? <RecordedTrainingFeelings key={sessionId} read={api.feelings} /> : null}
+    extraSummary={<>{api.feelings ? <RecordedTrainingFeelings key={sessionId} read={api.feelings} /> : null}
+      {configurations ? <SessionVariants journal={configurations} exercises={detail.exercises} editable={completed && !discarding} /> : null}</>}
     banner={<><ReturnToHistoryDay />{state.stale ? <Surface><AppText muted variant="caption">No se pudo actualizar. Mostramos la última lectura confirmada.</AppText></Surface> : null}</>}
     onOpenExercise={exerciseId => router.push(`/(tabs)/train/history/exercise/${exerciseId}${detail.session.routineId ? `?routineId=${encodeURIComponent(detail.session.routineId)}` : ''}`)} /></>;
 }
@@ -126,6 +132,12 @@ export function HistorySessionRoute() {
 function HistorySessionContent({ client, sessionId, onHome }: { client: MobileApiClient; sessionId: string; onHome: () => void }) {
   // The comparison starts with the detail read, not after it.
   const [api] = useState(() => { void prefetchSessionSummary(client, sessionId); return completedSessionApi(client, sessionId); });
-  return <CompletedSessionScreen api={api} sessionId={sessionId} onHome={onHome} />;
+  const { session } = useMobileAuth();
+  return session ? <HistorySessionWithVariants client={client} userId={session.user.id} api={api} sessionId={sessionId} onHome={onHome} />
+    : <CompletedSessionScreen api={api} sessionId={sessionId} onHome={onHome} />;
+}
+function HistorySessionWithVariants({ client, userId, api, sessionId, onHome }: { client: MobileApiClient; userId: string; api: CompletedSessionApi; sessionId: string; onHome: () => void }) {
+  const configurations = useExerciseConfigurations(client, userId, sessionId);
+  return <CompletedSessionScreen api={api} sessionId={sessionId} onHome={onHome} configurations={configurations} />;
 }
 const styles = StyleSheet.create({ actions: { gap: spacing.sm } });

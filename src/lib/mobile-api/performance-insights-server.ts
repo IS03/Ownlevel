@@ -9,6 +9,7 @@ import { InsightsSnapshotCache } from "./performance-insights-cache";
 import { parsePerformanceInsights } from "./performance-insights-contract";
 import { progressReadResponse } from "./progress-server";
 import type { MobileSupabaseAuthenticatedContext } from "./supabase";
+import { configurationIdentity } from "./training-exercise-configuration-contract";
 
 type Context = MobileSupabaseAuthenticatedContext;
 const firstPage = (from: number) => (from === 0 ? { count: "exact" as const } : undefined);
@@ -26,7 +27,11 @@ const strictNumber = (value: unknown) => {
 
 type SessionRow = { id: string; routine_id: string | null; routine_name_snapshot: string | null; session_name: string | null; status: "completed"; started_at: string | null; ended_at: string | null;
   energy_level: number | null; performance_level: number | null; pain_level: number | null; day: { log_date: string } };
-type ExerciseRow = { id: string; workout_session_id: string; exercise_id: string; nombre_snapshot: string; implement_snapshot: string | null; weight_mode_snapshot: string | null; is_completed: boolean };
+type ExerciseRow = { id: string; workout_session_id: string; exercise_id: string; nombre_snapshot: string; implement_snapshot: string | null; weight_mode_snapshot: string | null; is_completed: boolean;
+  /** One-to-one by primary key: PostgREST sends an object, the generated types say a list. Both are read the same way. */
+  configuration?: ConfigurationRow | ConfigurationRow[] | null };
+type ConfigurationRow = { kind: string | null; label: string | null };
+const oneConfiguration = (value: ExerciseRow["configuration"]) => Array.isArray(value) ? value.length === 1 ? value[0]! : null : value ?? null;
 type SetRow = { id: string; workout_session_exercise_id: string; actual_reps: number | null; actual_weight_kg: number | string | null; is_completed: boolean; completed_at: string | null };
 type MetricRow = { id: string; name: string; unit: string | null; value_type: string; is_active: boolean; archived_at: string | null };
 type ValueRow = { id: string; metric_id: string; metric_date: string; value: unknown };
@@ -42,7 +47,7 @@ export async function readInsightsSource(context: Context): Promise<InsightsSour
       .select("id,routine_id,routine_name_snapshot,session_name,status,started_at,ended_at,energy_level,performance_level,pain_level,day:day_logs!inner(log_date)", firstPage(from))
       .eq("user_id", userId).eq("status", "completed").order("id").range(from, from + 999).returns<SessionRow[]>()),
     readAllTrainingRows<ExerciseRow>("Leer ejercicios de Insights", from => supabase.from("workout_session_exercises")
-      .select("id,workout_session_id,exercise_id,nombre_snapshot,implement_snapshot,weight_mode_snapshot,is_completed", firstPage(from))
+      .select("id,workout_session_id,exercise_id,nombre_snapshot,implement_snapshot,weight_mode_snapshot,is_completed,configuration:workout_session_exercise_configurations(kind,label)", firstPage(from))
       .eq("user_id", userId).order("id").range(from, from + 999)),
     readAllTrainingRows<SetRow>("Leer series de Insights", from => supabase.from("workout_sets")
       .select("id,workout_session_exercise_id,actual_reps,actual_weight_kg,is_completed,completed_at", firstPage(from))
@@ -67,8 +72,8 @@ export async function readInsightsSource(context: Context): Promise<InsightsSour
     sessions: sessions.map(row => ({ id: row.id, date: row.day.log_date, routineId: row.routine_id, routineName: row.routine_name_snapshot, name: row.session_name, status: row.status,
       startedAt: row.started_at, endedAt: row.ended_at, performanceLevel: row.performance_level, painLevel: row.pain_level, legacyEnergyLevel: row.energy_level })),
     exercises: completedExercises.map(row => ({ id: row.id, sessionId: row.workout_session_id, exerciseId: row.exercise_id, name: row.nombre_snapshot, implement: row.implement_snapshot, weightMode: row.weight_mode_snapshot, isCompleted: row.is_completed,
-      // No column stores it yet. Unknown stays unknown: the catalog is not history and nothing is invented.
-      configuration: null })),
+      // Recorded by the person for this session, or unknown. The catalog is not history and nothing is invented.
+      configuration: configurationIdentity(oneConfiguration(row.configuration)) })),
     sets: sets.filter(row => kept.has(row.workout_session_exercise_id)).map(row => ({ id: row.id, sessionExerciseId: row.workout_session_exercise_id, actualReps: strictNumber(row.actual_reps), actualLoad: strictNumber(row.actual_weight_kg), isCompleted: row.is_completed, completedAt: row.completed_at })),
     feelings: feelings.map(row => ({ sessionId: row.session_id, revision: row.revision, facts: row.facts })),
     metricDefinitions: definitions.map(row => ({ id: row.id, name: row.name, unit: row.unit, valueType: row.value_type, archived: !row.is_active || row.archived_at !== null })),

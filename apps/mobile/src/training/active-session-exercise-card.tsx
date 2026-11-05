@@ -37,10 +37,12 @@ function SeriesColumns({ ordinal, kg, reps, rir, completed, header = false }: {
     <View style={styles.completedColumn}>{completed}</View>
   </View>;
 }
-export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller, id, expanded, locked, refreshing = false, reorderDisabled = false, addToRoutineName, onToggle, onHistory, onRemove, historyCard, onSheetChange, onReveal, reveal = 0 }: {
+export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller, id, expanded, locked, refreshing = false, reorderDisabled = false, addToRoutineName, onToggle, onHistory, onRemove, historyCard, variant, onSheetChange, onReveal, reveal = 0 }: {
   /** Bumped after "Usar": the set rows remount and cascade in with the copied values. */
   reveal?: number;
-  controller: ActiveSessionController; id: string; expanded: boolean; locked: boolean; refreshing?: boolean; reorderDisabled?: boolean; addToRoutineName?: string | null; historyCard?: ReactNode; onSheetChange?: (id: string, open: boolean) => void; onReveal?: (top: number) => void;
+  controller: ActiveSessionController; id: string; expanded: boolean; locked: boolean; refreshing?: boolean; reorderDisabled?: boolean; addToRoutineName?: string | null; historyCard?: ReactNode;
+  /** #367: the optional variant row of this session exercise. */
+  variant?: ReactNode; onSheetChange?: (id: string, open: boolean) => void; onReveal?: (top: number) => void;
   onToggle: (id: string) => void; onHistory: (id: string) => void; onRemove: (id: string, name: string) => void;
 }) {
   const subscribe = useCallback((listener: () => void) => controller.subscribeExercise(id, listener), [controller, id]);
@@ -131,6 +133,7 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
           onPress={() => { Keyboard.dismiss(); onHistory(id); }} style={[styles.historyTrigger, { opacity: locked ? 0.45 : 1 }]}>
           <AppIcon name="clock" color={colors.textMuted} size={17} /><AppText muted variant="caption">Historial</AppText>
         </Pressable></View>
+      {variant}
       {historyCard}
       <SeriesColumns header ordinal={<AppText muted style={styles.columnTitle} variant="footnote">#</AppText>}
         kg={<AppText muted style={styles.columnTitle} variant="footnote">KG</AppText>} reps={<AppText muted style={styles.columnTitle} variant="footnote">REPS</AppText>}

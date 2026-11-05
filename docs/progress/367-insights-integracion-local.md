@@ -1,3 +1,9 @@
+# Estado vigente — variantes desplegadas, 2026-11-05
+
+#393, #394 y #395 están mergeados y desplegados en READY. La migración efectiva es 20261105223915, con SQL intacto. Ver [registro de cierre](367-variantes-rollout-produccion-2026-11-05.md). QA física y OBSERVE siguen pendientes. El contenido siguiente conserva el historial de preparación y sus estados anteriores.
+
+---
+
 # Estado vigente — rollout 2026-11-05
 
 Los cinco PR se mergearon y las migraciones ya están aplicadas. Ver [registro de producción](367-rollout-produccion-2026-11-05.md) para SHAs, versiones efectivas y límites. Lo que sigue es el registro histórico de preparación; sus estados de «sin aplicar» describen esas corridas anteriores.

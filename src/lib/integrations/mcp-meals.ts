@@ -9,7 +9,7 @@ import { readJsonRequestBody, RequestBodyTooLargeError } from "../security/reque
 
 export const registerMealTool = {
   name: "register_meal", title: "Registrar comida en OWNLEVEL",
-  description: "Registra una comida en tu cuenta. «Subí X comida» sin contexto histórico significa consumo actual: enviá consumed_now=true y omití time si no dijeron una hora. OWNLEVEL resuelve la hora aproximada y el momento automático en Córdoba. Para algo de otro momento («esta mañana», «antes», «ayer»), enviá consumed_now=false aunque sea de hoy; sin hora dicha queda sin hora. Las indicaciones explícitas prevalecen. Conservá la misma idempotency_key al reintentar. Ante possible_duplicate pedí confirmación antes de usar force_duplicate=true. Nunca envíes user_id. El permiso meals:write es interno, no un scope OAuth.",
+  description: "Registra una comida en tu cuenta. «Subí X comida» sin contexto histórico significa consumo actual: enviá consumed_now=true y omití time si no dijeron una hora. OWNLEVEL resuelve la hora aproximada y el momento automático en Córdoba. Para algo de otro momento («esta mañana», «antes», «ayer»), enviá consumed_now=false aunque sea de hoy; sin hora dicha queda sin hora. Mandá time_stated_by_user=true sólo si el usuario dijo la hora con sus palabras; una hora deducida no se declara. Mandá meal_type sólo si nombró la comida: nunca lo deduzcas por la hora. Las indicaciones explícitas prevalecen. Conservá la misma idempotency_key al reintentar. Ante possible_duplicate pedí confirmación antes de usar force_duplicate=true. Nunca envíes user_id. El permiso meals:write es interno, no un scope OAuth.",
   inputSchema: { type: "object" as const, additionalProperties: false,
     required: ["title", "description", "calories", "protein_g", "carbs_g", "fat_g", "idempotency_key", "consumed_now"],
     properties: {
@@ -90,7 +90,7 @@ export async function handleMealsMcp(req: Request) {
     try { ({ body: parsedBody } = await readJsonRequestBody(req, 32_768)); }
     catch (error) { return Response.json({ error: "invalid_request" }, { status: error instanceof RequestBodyTooLargeError ? 413 : 400 }); }
   }
-  const server = new Server({ name: "ownlevel-meals", version: "2.0.0" }, { capabilities: { tools: {} } });
+  const server = new Server({ name: "ownlevel-meals", version: "2.1.0" }, { capabilities: { tools: {} } });
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true, maxRequestBodySize: 32_768 });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [registerMealTool] }));
   server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {

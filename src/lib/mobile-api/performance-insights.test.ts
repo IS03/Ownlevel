@@ -234,3 +234,43 @@ describe("GET performance-insights", () => {
     expect((await GET(request())).status).toBe(401);
   });
 });
+
+describe("#367: the configuration recorded per session", () => {
+  const withConfigurations = (pick: (day: number) => { kind: string | null; label: string | null } | null) => {
+    const tables = tablesFor(30);
+    tables.workout_session_exercises = tables.workout_session_exercises.map((row, day) => ({ ...row, configuration: pick(day) }));
+    return tables;
+  };
+  const read = async (tables: ReturnType<typeof tablesFor>) => {
+    clearInsightsSnapshots();
+    const { client, calls } = fakeSupabase(tables);
+    mocks.auth.mockResolvedValue({ userId: USER, supabase: client });
+    return { body: await (await GET(request())).json(), calls };
+  };
+  it("reads it with the exercises, in the same page: no extra stream", async () => {
+    const { calls } = await read(withConfigurations(() => null));
+    expect(calls).toHaveLength(7 + 2);
+    expect(calls.find(call => call.table === "workout_session_exercises")!.selected).toContain("configuration:workout_session_exercise_configurations(kind,label)");
+  });
+  it("compares a known configuration with itself only, ignoring case, and leaves the partial lane", async () => {
+    const { body } = await read(withConfigurations(day => ({ kind: "recorded", label: day % 2 ? "Agarre neutro" : "agarre NEUTRO" })));
+    expect(body.limits.configurationSnapshots).toEqual({ known: 30, total: 30 });
+    expect(body.facts.totals).toMatchObject({ total: 30, comparable: 29, insufficient: 1 });
+    expect(body.partial.totals).toMatchObject({ total: 0, comparable: 0 });
+  });
+  it("never compares two different known configurations", async () => {
+    const { body } = await read(withConfigurations(day => day % 2 ? { kind: "recorded", label: "Banco plano" } : { kind: "recorded", label: "Banco 30°" }));
+    expect(body.facts.totals).toMatchObject({ total: 30, comparable: 28, insufficient: 2 });
+  });
+  it("keeps not applicable apart from a named one, and an unknown one on the partial lane", async () => {
+    const { body } = await read(withConfigurations(day => day < 10 ? null : day < 20 ? { kind: "not_applicable", label: null } : { kind: "recorded", label: "Agarre neutro" }));
+    expect(body.limits.configurationSnapshots).toEqual({ known: 20, total: 30 });
+    expect(body.facts.totals).toMatchObject({ total: 30, comparable: 18 });
+    expect(body.partial.totals).toMatchObject({ total: 10, comparable: 9 });
+  });
+  it("reads a cleared configuration as unknown", async () => {
+    const { body } = await read(withConfigurations(() => ({ kind: null, label: null })));
+    expect(body.limits.configurationSnapshots).toEqual({ known: 0, total: 30 });
+    expect(body.facts.totals).toMatchObject({ comparable: 0 });
+  });
+});
