@@ -1,6 +1,82 @@
 # #367 — Integración local de Insights
 
-Rama local `integration/367-insights-candidate`, sin publicar. Sirve para comprobar la combinación, no para mergearla: cada PR entra por su cuenta. `integration/367-insights-local` queda en `e570011da8afd0bbc9ee01b6add34de5a4d601c3` como checkpoint. El detalle de cada cambio está en la descripción de su PR.
+Rama `integration/367-insights-candidate`, publicada y con sus previews bloqueadas. Sirve para revisar la combinación, no para mergearla: cada PR entra por su cuenta. `integration/367-insights-local` queda en `e570011da8afd0bbc9ee01b6add34de5a4d601c3` como checkpoint. El detalle de cada cambio está en la descripción de su PR.
+
+## Estado de la entrega
+
+Registro de la ejecución autónoma del 2026-11-05. El índice del mapa de código devolvió vacío, así que todo sale del checkout y de GitHub.
+
+### Plan
+
+| Tarea | Depende de | Acepta si | Estado |
+| --- | --- | --- | --- |
+| #380 en el candidato | Nada | Conflictos unidos, tipos y pruebas, sin deploy | Hecho |
+| Merge de #380 y #383 | Backend en producción | Tipos, lint, pruebas y deploy `READY` | Hecho |
+| Merge de #385 y #386 | Sin esquema nuevo | Ídem | Hecho |
+| Conexiones y filas de #390 | #386 | Conexiones cubiertas, pruebas y merge | Hecho |
+| Mejora de escala | #390 | Medido y sin perder datos | Parcial: ver abajo |
+| Paquete de migraciones | #387, #391 | Listo para decidir | Hecho |
+| Migraciones y sus consumidores | **Autorización** | Paquete | **Bloqueado** |
+| QA física | **Indicación** | [Lista única](367-qa-fisica.md) | **Pendiente** |
+
+### Pull requests
+
+| PR | Estado | Head | En `main` | Producción |
+| --- | --- | --- | --- | --- |
+| #380 | Mergeado | `24af8ca` | `31cbfd7` | `dpl_CuAkVrT…`, `READY` |
+| #383 | Mergeado | `d6332f3` | `d777bfb` | `dpl_Ca8p49X…`, `READY` |
+| #385 | Mergeado | `5e95a17` | `4d0f58e` | `dpl_9bFGSWR…`, `READY` |
+| #386 | Mergeado | `1deaef4` | `c0df3bd` | `dpl_2H9SeWx…`, `READY` |
+| #390 | Mergeado | `5e8a74a` | `26081d9` | `dpl_5rSQ6hj…`, `READY` |
+| #387 | Bloqueado por su migración | `5be52e1` | No | No |
+| #388 | Bloqueado: el `INSERT` de Web falla sin la columna | `a3ab104` | No | No |
+| #391 | Bloqueado por su migración | `8de4fe3` | No | No |
+| #392 | Bloqueado: responde 503 sin la tabla | `1b808b5` | No | No |
+| #389 | Bloqueado: responde 503 sin la columna | `361d687` | No | No |
+
+Paquete para decidir: [autorización de migraciones](367-autorizacion-migraciones.md).
+
+### Cómo se mergeó
+No hay sesión de GitHub en esta máquina: ni `gh`, ni navegador autenticado, ni Claude in Chrome conectado. `git push` sí funciona, y `main` no tiene protección ni checks requeridos. Por eso cada merge fue un `git merge --no-ff` publicado a `main`, de a uno, sin force y después del deploy anterior. GitHub los registró como mergeados.
+
+- **Quedan marcados como borrador** en GitHub, aunque mergeados, porque sacarlos de borrador requiere sesión.
+- **#386 y #390 tenían base apilada.** Avancé esas bases con un fast-forward para que GitHub los registre. Por eso `codex/367-insights-pr4-engine` y `codex/367-insights-partial-method` ya no están en sus heads originales.
+- **Descripciones:** no se pudieron editar en GitHub. Las versiones nuevas están en `docs/progress/`, en cada rama.
+
+### Correcciones en #390
+- **Filas:** con `fontScale > 1.3`, varias filas apretaban etiqueta y valor y cortaban nombres, contra la regla de marca. `InsightRow` las apila y no corta.
+- **Escala:** ver abajo.
+
+### Escala a 10 años
+
+| | Antes | Ahora |
+| --- | --- | --- |
+| Detalle de una relación | 258 KiB | **10,9 KiB**, con los 60 días más nuevos. Sus números cuentan todos los días |
+| El mismo detalle, con todos los días | 258 KiB | 258 KiB, a pedido |
+| Pico de memoria | 210 MiB | 209 MiB. **Sin resolver** |
+| Lectura en frío, con ADOPT | 268 consultas | 268. **Sin resolver** |
+
+Medido con el perfil sintético de 10 años, método parcial, sin calibraciones nuevas.
+
+**Propuesta para memoria y lecturas. Requiere una decisión, no se implementó:** una tabla de hechos diarios por cuenta, escrita en un EXPAND propio y mantenida con el contador de #391. El motor leería días ya resumidos en lugar de cada serie. Baja las dos cosas, pero agrega una copia que puede divergir y una migración con backfill, así que antes conviene medir con el historial real, que no leí.
+
+### Validación de esta ejecución
+
+**Sobre `main`, antes de cada merge:** tipos raíz y Mobile, lint y pruebas de lo afectado. Con #383, la suite de entrenamiento de Mobile da 5 fallos: los 4 de `active-session-bridge-screen.test.tsx` son idénticos en `31cbfd7`, sin #383; el de `session-return-dock.test.tsx` ya estaba registrado y solo falla en conjunto. Producción: sin errores de runtime en las últimas 2 horas, `/login` 200 y rutas nuevas 401 sin token. **No se ejecutó ningún finish ni escritura en la cuenta real.**
+
+**Sobre Postgres 17.6.1.105, la versión de producción, con el candidato en `83d4458`:** ver el paquete. Es lo que más cambia la evidencia anterior, que era de 17.11.
+
+**Heads de #387, #388, #389, #391 y #392, después de incorporar `main`:** tipos raíz y Mobile y pruebas unitarias de cada uno. Sus migraciones no cambiaron de blob.
+
+### Bloqueos
+
+| Bloqueo | Motivo | Quién |
+| --- | --- | --- |
+| Migraciones de #387 y #391 | Sin autorización para producción | Vos |
+| Sus consumidores: #388, #389 y #392 | Dependen de ellas | Después de eso |
+| Bases de #388, #389 y #392 | Cambiarlas a `main` requiere sesión de GitHub | Vos, o con sesión |
+| Descripciones y estado de borrador en GitHub | Requieren sesión de GitHub | Vos, o con sesión |
+| Cerrar #367 | Faltan migraciones, ADOPT, OBSERVE, QA física y la decisión sobre el presupuesto del 1 % | Sigue abierto |
 
 ## Commits integrados
 
@@ -25,7 +101,7 @@ El candidato suma, sobre el checkpoint:
 | #391 | `d20ff7885ed43237492baa76861b7f30720d3ba5` | `d65ca5b` |
 | #392 | `5065a987364f98265ca0f1b0f88f4a9aff305360` | `029a62a` |
 
-#380 no se integró. Contra esta rama choca en `metrics-trends-screen.tsx`, `progress-screens.test.tsx` y `vercel.json`.
+Después se integraron #380 y `main`. En `metrics-trends-screen.tsx`, `progress-screens.test.tsx` y `vercel.json` quedan juntos los dos lados: selección de barras sin abrir Día, enlace desde Insights con retorno y todos los bloqueos de previews.
 
 ## Conflictos resueltos
 
@@ -93,7 +169,7 @@ Al terminar: 0 notas, 0 posiciones duplicadas en vistas, rutinas y sesiones, 0 t
 - Base local sin carga real, sin réplicas y sin restauración a un punto en el tiempo. Falta OBSERVE.
 - La lectura de escala se omitió. Siguen sin resolver a 10 años el detalle de una relación, el pico de memoria y el costo de lectura en frío.
 - `meal-time-provenance` y el recibo no corrieron sobre esta combinación exacta de procedencia y revocaciones.
-- #380 sigue sin integrarse, y la QA física está diferida.
+- La QA física está diferida.
 
 ## Verificación del checkpoint
 
@@ -192,7 +268,7 @@ Mismos fallos en esta rama y en `b5e57e3`:
 
 ## Orden de migraciones, backend y adopción
 
-Producción está en `20261104024300_training_feelings_finish_receipt` (lectura del historial del 2026-11-05).
+Producción está en `20261104024300_training_feelings_finish_receipt` (lectura del historial del 2026-11-05). Lo que sigue es el orden original; el vigente, con lo ya mergeado, está en [el paquete](367-autorizacion-migraciones.md).
 
 1. **Migraciones**, en este orden: `20261104180000_meal_time_provenance_expand`, `20261104190000_insights_source_revision_expand`.
 2. **Backend EXPAND:** #387 y #391.
