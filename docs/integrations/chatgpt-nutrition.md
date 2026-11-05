@@ -83,7 +83,7 @@ comida recién enviada. No incluye acumulados, objetivos ni otros datos del día
 - Procedencia de la hora: `explicit` (dicha por el usuario o puesta desde la app), `registration` (aproximada) o
   `unknown`. «Cuándo comés» cuenta sólo las `explicit`: las horas aproximadas no cambian las estadísticas ni se
   reinterpretan datos viejos. Corregir la hora desde la app la vuelve `explicit`, sin duplicar la comida.
-- `time_stated_by_user: true` declara que el usuario dijo esa hora con sus palabras (requiere `time`). Sin esa declaración la hora se guarda igual, pero su origen queda desconocido y no entra en las ventanas de Insights. Para adoptarla hay que volver a importar el esquema y agregar a las instrucciones: «Enviá `time_stated_by_user:true` solo si el usuario dijo la hora; omitilo si la dedujiste». Ver [procedencia](../progress/367-meal-time-provenance.md).
+- `time_stated_by_user: true` declara que el usuario dijo esa hora con sus palabras (requiere `time`). Sin esa declaración la hora se guarda igual, pero su origen queda desconocido y no entra en las ventanas de Insights. Ver [procedencia](../progress/367-meal-time-provenance.md) y el [paso manual](#paso-manual-actualizar-las-conexiones-de-chatgpt-367).
 - `time` prevalece siempre sobre `consumed_now`; `meal_type` dicho prevalece sobre el momento automático.
 - Una hora que no corresponde al día local de `date` se rechaza (`400 invalid_request`).
 - Desde OWNLEVEL Mobile, las comidas de ChatGPT se editan y borran como las manuales (fecha, hora, tipo, valores),
@@ -147,3 +147,39 @@ Fuentes oficiales consultadas al definir este flujo:
 - https://developers.openai.com/api/docs/actions/getting-started
 - https://help.openai.com/en/articles/8554397-creating-and-editing-gpts
 - https://developers.openai.com/api/docs/guides/developer-mode
+
+## Paso manual: actualizar las conexiones de ChatGPT (#367)
+
+Producción ya publica `time_stated_by_user` en los dos descriptores; lo comprobé con lecturas anónimas, sin credenciales:
+`GET /api/integrations/chatgpt/openapi` y `tools/list` de `POST /mcp`. **Publicar el archivo no cambia una conexión
+ya instalada:** ChatGPT guarda su propia copia. Son dos conexiones independientes y cada una se actualiza por separado.
+
+| Conexión | Qué guarda ChatGPT | Cómo se actualiza |
+| --- | --- | --- |
+| GPT privado con Action (OpenAPI) | La copia del esquema que se importó | El dueño vuelve a importarlo |
+| Conector OWNLEVEL Comidas (MCP) | La lista de herramientas leída al conectar | El dueño la refresca desde la configuración del conector |
+
+**1. GPT privado.** En el editor del GPT, **Configure → Actions → la Action de OWNLEVEL → Import from URL**:
+
+```text
+https://www.ownlevel.fit/api/integrations/chatgpt/openapi
+```
+
+Agregar a sus instrucciones, tal cual:
+
+> Para la hora de una comida: mandá `time` y `time_stated_by_user: true` solo si el usuario dijo la hora con sus
+> palabras. Si la dedujiste, no la declares. Sin hora dicha, mandá `consumed_now: true` si come ahora (OWNLEVEL
+> guarda una hora aproximada) y `consumed_now: false` si fue antes (la hora queda desconocida). Mandá `meal_type`
+> solo si el usuario nombró la comida; nunca lo deduzcas por la hora.
+
+**Comprobación:** en el editor de esquema importado figuran `version: 1.4.0` y `time_stated_by_user`. Guardar el GPT.
+
+**2. Conector MCP.** En ChatGPT, **Configuración → Apps y conectores → OWNLEVEL Comidas → Actualizar** (o desconectar y
+volver a conectar si la opción no aparece; los nombres del menú cambian entre versiones de ChatGPT). La descripción de la herramienta ya lleva la regla; no hace falta otro texto.
+
+**Comprobación:** en el detalle de `register_meal` aparece el parámetro `time_stated_by_user`. Abrir una conversación
+nueva: las ya abiertas conservan la lista anterior.
+
+**Después, con uso normal y sin comidas de prueba:** la próxima comida con hora dicha aparece en Diario con su hora, y
+Insights la cuenta en las ventanas de comida. Si no, la conexión sigue usando la copia vieja. No hace falta registrar
+nada para comprobar los pasos 1 y 2.
