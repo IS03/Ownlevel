@@ -1,7 +1,7 @@
 ## Resumen
 ADOPT de la [procedencia de la hora](367-meal-time-provenance.md) en los clientes.
 
-**Base: `codex/367-meal-time-provenance-expand`. No mergear antes de aplicar la migración:** el insert de Web escribe la columna nueva y fallaría sin ella.
+**Base: `main`. Contiene los commits de #387, así que su diff los muestra hasta que #387 se mergee. Va después de #387.** **No mergear antes de aplicar la migración:** el insert de Web escribe la columna nueva y fallaría sin ella. **Orden de rollout, SHAs y comprobaciones:** [paquete de autorización](https://github.com/IS03/Ownlevel/blob/integration/367-insights-candidate/docs/progress/367-autorizacion-migraciones.md).
 
 ## Cambios
 - **Mobile:** declara `user_declared` solo desde la hoja de hora o el campo de hora, incluso si se vuelve a elegir el mismo valor. Abrir una edición, cambiar el momento, mover de día o repetir una comida no declaran nada.
