@@ -8,8 +8,9 @@ import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 import { buildInsightsReadModel, insightsDaysPage, insightsRelation, insightsRelations, insightsSummary } from "../progress/insights-engine";
-import { parseCompleteInsights, parsePerformanceInsights } from "./performance-insights-contract";
 import { buildQuickOptions } from "./nutrition-quick-server";
+import { parsePerformanceInsights } from "./performance-insights-contract";
+import { parseCompleteInsights } from "./performance-insights-contract";
 import { readConsistentInsightsSource, readInsightsRevision, readInsightsSnapshot, readInsightsSource } from "./performance-insights-server";
 import type { MobileSupabaseAuthenticatedContext } from "./supabase";
 
@@ -208,11 +209,8 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
     const nowMeal = await chatgpt("create_chatgpt_meal_for_integration_v3", today, { p_time_source: "registration" });
     check(today, nowMeal, "registration_now", untimed);
 
-    owner.http.requests = 0;
     const tomorrow = sql("select ((now() at time zone 'America/Argentina/Cordoba')::date + 1)::text;");
     const snapshot = await readInsightsSnapshot(contextOf(id, owner.client), tomorrow);
-    const pages = owner.http.requests;
-    expect(pages).toBe(14 + 7);
     const summary = insightsSummary(snapshot, { limit: 120 });
     expect(parsePerformanceInsights(JSON.parse(JSON.stringify(summary)))).toBeTruthy();
     for (const [date, row] of Object.entries(expected)) {
@@ -230,11 +228,7 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
     expect(relation.pairs!.every(pair => pair.exposure === 60)).toBe(true);
     expect(relation.item!.exclusions).toMatchObject({ unverified_meal_time_in_scope: 6, untimed_meal_in_scope: 4, no_registered_meal_in_window: 2 });
 
-    // Nothing is reused: the same content gets the same identity, and a new meal changes it.
-    owner.http.requests = 0;
-    const again = await readInsightsSnapshot(contextOf(id, owner.client), tomorrow);
-    expect(owner.http.requests).toBe(14 + 7);
-    expect(again.revision).toBe(snapshot.revision);
+    // A new meal changes the answer. What a read costs, and what it reuses, is tested with the revision: not here.
     await manual(cases[11]!, { consumedAt: at(cases[11]!), consumedAtSource: "user_declared" });
     const after = await readInsightsSnapshot(contextOf(id, owner.client), tomorrow);
     expect(after).not.toBe(snapshot); expect(after.revision).not.toBe(snapshot.revision);
