@@ -14,7 +14,8 @@ describe('confirmed timing in the fallback editor (#308)', () => {
     expect(view.getByDisplayValue('20:15')).toBeTruthy();
     fireEvent(view.getByLabelText('Hora HH:MM'), 'endEditing', { nativeEvent: { text: '20:15' } });
     expect(change).not.toHaveBeenCalled();
+    fireEvent.changeText(view.getByLabelText('Hora HH:MM'), '13:00');
     fireEvent(view.getByLabelText('Hora HH:MM'), 'endEditing', { nativeEvent: { text: '13:00' } });
-    expect(change).toHaveBeenCalledWith(null, '2026-10-15T13:00:00-03:00');
+    expect(change).toHaveBeenCalledWith(null, '2026-10-15T13:00:00-03:00', true);
   });
 });

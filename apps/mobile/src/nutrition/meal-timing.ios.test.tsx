@@ -35,6 +35,6 @@ describe('iOS confirmed automatic timing (#308)', () => {
     fireEvent.press(view.getByLabelText('Cambiar hora 20:15'));
     expect(change).not.toHaveBeenCalled();
     fireEvent.press(view.getByText('Elegir esta hora'));
-    expect(change).toHaveBeenCalledWith(null, '2026-10-15T20:15:00-03:00');
+    expect(change).toHaveBeenCalledWith(null, '2026-10-15T20:15:00-03:00', true);
   });
 });

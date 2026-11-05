@@ -132,10 +132,10 @@ describe('Reliable manual meal writes',()=>{
 describe('M9 manual entry and Undo', () => {
   it('persists atomic library/timing fields before sending and replays unchanged after restart', async () => {
     const f = fixture(); await f.controller.initialize(); f.controller.open(date); f.controller.change('title', 'QA'); f.controller.change('calories', '123');
-    f.controller.timing('lunch', `${date}T13:40:00-03:00`); f.controller.saveToLibrary(true);
+    f.controller.timing('lunch', `${date}T13:40:00-03:00`, true); f.controller.saveToLibrary(true);
     (f.api.mutate as jest.Mock<MealApi['mutate']>).mockResolvedValueOnce(failure);
     await f.controller.save(); const stored = (await f.repository.read())!;
-    expect(stored.intent.fields).toMatchObject({ mealLabel: 'lunch', consumedAt: `${date}T16:40:00.000Z`, saveToLibrary: true, proteinG: null });
+    expect(stored.intent.fields).toMatchObject({ mealLabel: 'lunch', consumedAt: `${date}T16:40:00.000Z`, consumedAtSource: 'user_declared', saveToLibrary: true, proteinG: null });
     const next = new MealController(f.api, f.repository, f.invalidate); await next.initialize();
     expect(f.api.mutate).toHaveBeenCalledTimes(1); await next.recover(); expect(f.api.mutate).toHaveBeenLastCalledWith(stored.intent);
   });

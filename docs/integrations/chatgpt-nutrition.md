@@ -83,6 +83,7 @@ comida recién enviada. No incluye acumulados, objetivos ni otros datos del día
 - Procedencia de la hora: `explicit` (dicha por el usuario o puesta desde la app), `registration` (aproximada) o
   `unknown`. «Cuándo comés» cuenta sólo las `explicit`: las horas aproximadas no cambian las estadísticas ni se
   reinterpretan datos viejos. Corregir la hora desde la app la vuelve `explicit`, sin duplicar la comida.
+- `time_stated_by_user: true` declara que el usuario dijo esa hora con sus palabras (requiere `time`). Sin esa declaración la hora se guarda igual, pero su origen queda desconocido y no entra en las ventanas de Insights. Para adoptarla hay que volver a importar el esquema y agregar a las instrucciones: «Enviá `time_stated_by_user:true` solo si el usuario dijo la hora; omitilo si la dedujiste». Ver [procedencia](../progress/367-meal-time-provenance.md).
 - `time` prevalece siempre sobre `consumed_now`; `meal_type` dicho prevalece sobre el momento automático.
 - Una hora que no corresponde al día local de `date` se rechaza (`400 invalid_request`).
 - Desde OWNLEVEL Mobile, las comidas de ChatGPT se editan y borran como las manuales (fecha, hora, tipo, valores),
