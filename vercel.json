@@ -17,7 +17,9 @@
       "codex/367-insights-meal-source-adopt": false,
       "codex/367-chatgpt-capture-schema": false,
       "codex/367-exercise-configuration-expand": false,
-      "codex/367-exercise-configuration-adopt": false
+      "codex/367-exercise-configuration-adopt": false,
+      "codex/367-sleep-weight-expand": false,
+      "codex/367-sleep-weight-adopt": false
     }
   }
 }
