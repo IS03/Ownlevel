@@ -71,7 +71,7 @@ describe.runIf(!!statusFile && !!container)("procedencia de la hora contra Postg
     old.chatgptTimed = (await admin.rpc("create_chatgpt_meal_for_integration_v2", chatgptArgs({ p_consumed_at: at("13:00"), p_idempotency_key: old.chatgptKey }))).data.meal.id;
     old.chatgptUntimed = (await admin.rpc("create_chatgpt_meal_for_integration_v2", chatgptArgs())).data.meal.id;
 
-    sql(readFileSync(join(process.cwd(), "supabase/migrations/20261104180000_meal_time_provenance_expand.sql"), "utf8") + "\nnotify pgrst,'reload schema';");
+    sql(readFileSync(join(process.cwd(), "supabase/migrations/20261105210605_meal_time_provenance_expand.sql"), "utf8") + "\nnotify pgrst,'reload schema';");
     for (let attempt = 0; attempt < 50; attempt++) {
       const probe = await admin.rpc("create_chatgpt_meal_for_integration_v4", { p_user_id: userId, p_log_date: null, p_title: "x", p_description: null, p_calories: 1, p_protein_g: null, p_carbs_g: null, p_fat_g: null, p_idempotency_key: "probe" });
       if (probe.error?.code !== "PGRST202") break;
