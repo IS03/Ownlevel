@@ -174,6 +174,8 @@ export async function createMeal(
       user_id: userId,
       day_log_id: dayLog.id,
       consumed_at: input.consumed_at ?? new Date().toISOString(),
+      // The app's clock filled it in. A time passed by a caller says nothing about who chose it, so it stays unknown.
+      consumed_at_source: input.consumed_at ? null : "default_clock",
       title: input.title ?? null,
       description: input.description ?? null,
       final_calories: calories,

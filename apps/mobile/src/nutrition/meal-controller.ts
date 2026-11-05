@@ -55,8 +55,8 @@ export class MealController {
     this.update({ editor: { ...editor, draft: { ...editor.draft, [field]: value, ...moved } }, errors: {},
       ...(this.state.phase === 'duplicate' ? { phase: 'idle' as const, message: null } : {}) });
   }
-  timing(mealLabel: MealDraft['mealLabel'], consumedAt?: string) {
-    if (this.state.editor && !this.state.intent && !this.busy && this.state.phase === 'idle') this.update({ editor: { ...this.state.editor, draft: { ...this.state.editor.draft, mealLabel, ...(consumedAt ? { consumedAt } : {}) } } });
+  timing(mealLabel: MealDraft['mealLabel'], consumedAt?: string, declared = false) {
+    if (this.state.editor && !this.state.intent && !this.busy && this.state.phase === 'idle') this.update({ editor: { ...this.state.editor, draft: { ...this.state.editor.draft, mealLabel, ...(consumedAt ? { consumedAt } : {}), ...(declared ? { consumedAtSource: 'user_declared' as const } : {}) } } });
   }
   saveToLibrary(value: boolean) {
     if (this.state.editor && !this.state.editor.mealId && !this.state.intent && !this.busy && this.state.phase === 'idle') this.update({ editor: { ...this.state.editor, draft: { ...this.state.editor.draft, saveToLibrary: value } } });

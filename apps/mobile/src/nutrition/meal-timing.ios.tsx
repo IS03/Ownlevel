@@ -39,7 +39,7 @@ export function MealTiming({ date, value, reference, disabled, onChange }: MealT
         <Animated.View entering={reduced ? FadeIn.duration(200) : SlideInDown.duration(300)} style={{ backgroundColor: colors.background, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingBottom: 40, gap: 16 }} accessibilityViewIsModal>
           <SheetHandle /><AppText variant="headline">Hora de la comida</AppText>
           <Host colorScheme={isDark ? 'dark' : 'light'} style={{ height: 200, width: '100%' }}><DatePicker title="Hora" selection={clock} displayedComponents={['hourAndMinute']} modifiers={[datePickerStyle('wheel'), tint(colors.primary)]} onDateChange={setClock} /></Host>
-          <Button label="Elegir esta hora" onPress={() => { onChange(value.mealLabel ?? null, `${date}T${String(clock.getHours()).padStart(2,'0')}:${String(clock.getMinutes()).padStart(2,'0')}:00-03:00`); setClockOpen(false); }} />
+          <Button label="Elegir esta hora" onPress={() => { onChange(value.mealLabel ?? null, `${date}T${String(clock.getHours()).padStart(2,'0')}:${String(clock.getMinutes()).padStart(2,'0')}:00-03:00`, true); setClockOpen(false); }} />
           <Button label="Cancelar" variant="quiet" onPress={() => setClockOpen(false)} />
         </Animated.View>
       </View>

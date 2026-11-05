@@ -1,7 +1,7 @@
 import { suggestedMealLabel } from './meal-timing-model';
 import { parseQuickOption, parseQuickSelection, type QuickNutrients, type QuickOption, type QuickSelection } from '@/api/nutrition-quick';
 import { isNutritionDate } from '@/api/nutrition-day';
-export type QuickDraft = Pick<QuickSelection, 'mealLabel' | 'consumedAt'> & { date: string; option: QuickOption; quantities: Record<string, string> };
+export type QuickDraft = Pick<QuickSelection, 'mealLabel' | 'consumedAt' | 'consumedAtSource'> & { date: string; option: QuickOption; quantities: Record<string, string> };
 export function quickDraft(date: string, option: QuickOption): QuickDraft {
   const moment = suggestedMealLabel(date);
   return { ...(moment ? { mealLabel: moment } : {}), date, option, quantities: Object.fromEntries(option.items.map(i => [i.id, String(i.quantity).replace('.', ',')])) };
@@ -15,7 +15,7 @@ export function selectionFromDraft(draft: QuickDraft): { selection?: QuickSelect
     return { itemId: i.id, quantity };
   }) : null;
   if (Object.keys(errors).length) return { errors };
-  const selection = parseQuickSelection({ date: draft.date, source: draft.option.source, quantities, ...('mealLabel' in draft ? { mealLabel: draft.mealLabel } : {}), ...('consumedAt' in draft ? { consumedAt: draft.consumedAt } : {}) });
+  const selection = parseQuickSelection({ date: draft.date, source: draft.option.source, quantities, ...('mealLabel' in draft ? { mealLabel: draft.mealLabel } : {}), ...('consumedAt' in draft ? { consumedAt: draft.consumedAt } : {}), ...('consumedAtSource' in draft ? { consumedAtSource: draft.consumedAtSource } : {}) });
   return { ...(selection ? { selection } : {}), errors };
 }
 export function parseQuickDraft(v: unknown): QuickDraft | undefined {
@@ -24,7 +24,7 @@ export function parseQuickDraft(v: unknown): QuickDraft | undefined {
   if (!isNutritionDate(d.date) || !option || !d.quantities || typeof d.quantities !== 'object' || Array.isArray(d.quantities)) return undefined;
   const quantities = d.quantities as Record<string, unknown>;
   if (Object.keys(quantities).length !== option.items.length || option.items.some(i => typeof quantities[i.id] !== 'string')) return undefined;
-  const draft = { date: d.date, option, quantities: quantities as Record<string, string>, ...('mealLabel' in d ? { mealLabel: d.mealLabel as QuickDraft['mealLabel'] } : {}), ...('consumedAt' in d ? { consumedAt: d.consumedAt as string } : {}) };
+  const draft = { date: d.date, option, quantities: quantities as Record<string, string>, ...('mealLabel' in d ? { mealLabel: d.mealLabel as QuickDraft['mealLabel'] } : {}), ...('consumedAt' in d ? { consumedAt: d.consumedAt as string } : {}), ...('consumedAtSource' in d ? { consumedAtSource: d.consumedAtSource as QuickDraft['consumedAtSource'] } : {}) };
   return selectionFromDraft(draft).selection ? draft : undefined;
 }
 /**

@@ -83,9 +83,9 @@ export class QuickController {
     } finally { if (this.backgroundInline === key) this.backgroundInline = null; }
   }
   removeAdded(key: string) { const added = { ...this.state.added }; delete added[key]; this.update({ added }); }
-  timing(mealLabel: QuickDraft['mealLabel'], consumedAt?: string) {
+  timing(mealLabel: QuickDraft['mealLabel'], consumedAt?: string, declared = false) {
     if (this.state.draft && !this.state.intent && !this.busy && this.state.phase === 'idle') {
-      this.previewGeneration++; this.update({ draft: { ...this.state.draft, mealLabel, ...(consumedAt ? { consumedAt } : {}) }, preview: null, previewLoading: false });
+      this.previewGeneration++; this.update({ draft: { ...this.state.draft, mealLabel, ...(consumedAt ? { consumedAt } : {}), ...(declared ? { consumedAtSource: 'user_declared' as const } : {}) }, preview: null, previewLoading: false });
     }
   }
   private confirmedListeners = new Set<(meal: import('@/api/nutrition-day').NutritionDayMeal, date: string) => void>();
@@ -122,7 +122,7 @@ export class QuickController {
     if (!truth || !draft || this.state.phase !== 'conflict' || this.busy) return;
     // Deliberate review only. Web may replace ingredient IDs; preserve the old
     // draft as visible reference, never silently assign an old quantity to a new item.
-    const next = { ...quickDraft(draft.date, truth), ...('mealLabel' in draft ? { mealLabel: draft.mealLabel } : {}), ...('consumedAt' in draft ? { consumedAt: draft.consumedAt } : {}) };
+    const next = { ...quickDraft(draft.date, truth), ...('mealLabel' in draft ? { mealLabel: draft.mealLabel } : {}), ...('consumedAt' in draft ? { consumedAt: draft.consumedAt } : {}), ...('consumedAtSource' in draft ? { consumedAtSource: draft.consumedAtSource } : {}) };
     for (const item of truth.items) if (draft.quantities[item.id] !== undefined) next.quantities[item.id] = draft.quantities[item.id];
     this.update({ phase: 'idle', inlineKey: null, draft: next, previousDraft: draft, truth: null, preview: null, message: 'Revisá esta versión y calculá una nueva vista previa antes de confirmar.' });
   }
