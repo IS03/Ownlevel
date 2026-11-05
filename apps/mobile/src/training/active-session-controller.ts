@@ -11,6 +11,7 @@ import {
 } from './active-session-model';
 import { SessionDraftRepository, type StructuralIntent } from './active-session-storage';
 import { recordSessionResume } from './session-resume-telemetry';
+import type { TrainingFeelingsJournal } from '@/api/training-feelings';
 
 export type ActiveSessionApi = {
   detail: () => Promise<MobileApiRequestResult<SessionDetailDto>>;
@@ -104,7 +105,8 @@ export class ActiveSessionController {
   /** Plain server read for the closed-session view (no draft/intent side effects). */
   readonly readDetail = () => this.api.detail();
   constructor(private readonly api: ActiveSessionApi, private readonly repository: SessionDraftRepository,
-    private readonly generateKey: () => string = sessionIntentKey, private readonly now: () => number = Date.now) {}
+    private readonly generateKey: () => string = sessionIntentKey, private readonly now: () => number = Date.now,
+    readonly feelings: TrainingFeelingsJournal | null = null) {}
   getSnapshot = () => this.snapshot;
   getProgress = () => this.progress;
   getTimer = () => this.rest;
@@ -119,8 +121,8 @@ export class ActiveSessionController {
     const listeners = this.exerciseListeners.get(id) ?? new Set(); listeners.add(listener); this.exerciseListeners.set(id, listeners);
     return () => { listeners.delete(listener); };
   }
-  activate() { this.disposed = false; this.foreground = true; }
-  dispose() { this.disposed = true; this.drag = null; this.pauseTimers(); }
+  activate() { this.disposed = false; this.foreground = true; this.feelings?.activate(); }
+  dispose() { this.disposed = true; this.drag = null; this.pauseTimers(); this.feelings?.dispose(); }
   suspend() { this.foreground = false; this.cancelDrag(); this.pauseTimers(); }
   resume() {
     const wasSuspended = !this.foreground, startedAt = this.now();
@@ -324,6 +326,7 @@ export class ActiveSessionController {
     this.refreshFlight = flight; return flight;
   }
   private async loadDetail() {
+    void this.feelings?.refresh();
     this.writesPaused = true; this.pauseTimers(); this.update({ refreshing: true, storageError: false });
     await Promise.all([...this.entries.values()].map(entry => entry.flight));
     await Promise.all([...this.recoveryFlights.values()]);
@@ -349,7 +352,8 @@ export class ActiveSessionController {
     this.orderNeedsCheck = false;
     const detail = result.data;
     if (!this.snapshot.summaryReady) {
-      try { this.update({ summary: (await this.repository.readSummary()) ?? emptySessionSummary, summaryReady: true }); }
+      try { this.update({ summary: (await this.repository.readSummary()) ?? { energyLevel: detail.session.metadata.energyLevel,
+        performanceLevel: detail.session.metadata.performanceLevel, painLevel: detail.session.metadata.painLevel, notes: detail.session.metadata.notes ?? '' }, summaryReady: true }); }
       catch { this.update({ storageError: true }); }
       if (this.disposed) return;
     }
@@ -496,7 +500,7 @@ export class ActiveSessionController {
     if (this.disposed) return false;
     const result = await this.safe<SessionStructuralDto | SessionExerciseOrderDto | SessionFinishedDto>(() => intent.kind === 'add' ? this.api.add(intent.input) : intent.kind === 'remove'
       ? this.api.remove(intent.exerciseId, intent.expectedUpdatedAt, intent.idempotencyKey) : intent.kind === 'reorder' ? this.api.reorder(intent.input)
-      : intent.kind === 'finish' ? this.api.finish({ metadata: intent.metadata, idempotencyKey: intent.idempotencyKey }) : this.api.cancel(intent.idempotencyKey));
+      : intent.kind === 'finish' ? intent.feelings ? this.finishWithFeelings(intent) : this.api.finish({ metadata: intent.metadata, idempotencyKey: intent.idempotencyKey }) : this.api.cancel(intent.idempotencyKey));
     if (this.disposed) return false;
     if (result.status === 'ok' && intent.kind === 'finish') return this.confirmFinish(intent, result.data as SessionFinishedDto);
     if (result.status === 'not_found' && intent.kind === 'finish') {
@@ -545,6 +549,9 @@ export class ActiveSessionController {
       }
       await this.loadDetail(); return true;
     }
+    if (intent.kind === 'finish' && intent.feelings && (result.status === 'conflict' || result.status === 'validation')) {
+      this.update({ intent: { value: intent, phase: 'blocked' }, notice: 'Revisá las sensaciones y lo guardado antes de resolver esta finalización.' }); return false;
+    }
     if (result.status === 'validation' || (result.status === 'conflict' && result.code !== 'IDEMPOTENCY_KEY_REUSED')) {
       if (result.status === 'conflict' && (result.code === 'SESSION_CLOSED' || result.code === 'SESSION_EXERCISE_REMOVED')) {
         this.update({ fenced: true }); this.pauseTimers();
@@ -578,7 +585,7 @@ export class ActiveSessionController {
   finish(): Promise<boolean> {
     if (this.finishFlight) return this.finishFlight;
     if (this.structuralFlight) return this.structuralFlight;
-    const flight = this.prepareFinish().finally(() => { if (this.finishFlight === flight) this.finishFlight = null; });
+    const flight = this.prepareFinish().finally(() => { this.update({ finishing: false }); if (this.finishFlight === flight) this.finishFlight = null; });
     this.finishFlight = flight; return flight;
   }
   private finishBlockers(): string[] {
@@ -623,12 +630,57 @@ export class ActiveSessionController {
     }
     if (this.progress.completedSets === 0) { this.update({ finishing: false, notice: 'Marcá al menos una serie antes de finalizar.' }); return false; }
     // Synchronous hand-off: startIntent sets the intent lock before any await.
-    this.update({ finishing: false });
-    return this.startIntent({ kind: 'finish', metadata: finishMetadata(this.snapshot.summary), idempotencyKey: this.generateKey() });
+    const metadata = finishMetadata(this.snapshot.summary);
+    if (this.feelings) {
+      await this.feelings.refresh();
+      if (this.disposed) return false;
+      if (!this.feelings.getSnapshot().ready || this.feelings.getSnapshot().localError) {
+        this.update({ notice: 'No pudimos comprobar el borrador local de sensaciones. Revisá tus respuestas antes de finalizar.' }); return false;
+      }
+      if (this.feelings.needsFinish()) {
+        // Drain pre saves before freezing the final revision. Unknown writes must recover first.
+        if (this.feelings.getSnapshot().pending?.operation === 'save' && !(await this.feelings.retry())) {
+          this.update({ notice: 'Comprobá las sensaciones pendientes antes de finalizar.' }); return false;
+        }
+        const legacy = this.snapshot.detail!.session.metadata;
+        const changed = Object.fromEntries((['performanceLevel', 'painLevel', 'notes'] as const)
+          .filter(key => metadata[key] !== legacy[key]).map(key => [key, metadata[key]]));
+        const feelings = await this.feelings.prepareFinish(changed);
+        if (!feelings) { this.update({ notice: 'No finalizamos: revisá las sensaciones pendientes.' }); return false; }
+        return this.startIntent({ kind: 'finish', metadata, idempotencyKey: feelings.idempotencyKey, feelings });
+      }
+      // The visible energy control now means energyPost. Never clear/alias legacy energy.
+      metadata.energyLevel = this.snapshot.detail?.session.metadata.energyLevel ?? null;
+    }
+    return this.startIntent({ kind: 'finish', metadata, idempotencyKey: this.generateKey() });
+  }
+  private async finishWithFeelings(intent: Extract<StructuralIntent, { kind: 'finish' }>): Promise<MobileApiRequestResult<SessionFinishedDto>> {
+    if (!this.feelings || !intent.feelings) return unavailable;
+    const receipt = await this.feelings.replayFinish(intent.feelings);
+    if (!receipt) {
+      return this.feelings.getSnapshot().blocked ? { status: 'conflict', code: 'FEELINGS_CHANGED', message: 'Revisá las sensaciones y el estado de la sesión.', meta: { durationMs: 0, httpStatus: 409, outcome: 'conflict' } } : unavailable;
+    }
+    if (intent.feelings.receiptVersion) {
+      const original = this.feelings.getSnapshot().finished;
+      if (!original) return unavailable;
+      return { status: 'ok', meta: { durationMs: 0, httpStatus: 200, outcome: 'ok' }, data: original };
+    }
+    // Only old durable v1 intents lack a frozen summary. Never upgrade their receipt negotiation on replay.
+    const read = await this.api.detail();
+    if (read.status !== 'ok' || read.data.session.status !== 'completed' || !read.data.session.endedAt) return unavailable;
+    const { session, exercises } = read.data;
+    return { status: 'ok', meta: read.meta, data: { status: 'finished', sessionId: session.id, sessionStatus: 'completed',
+      name: session.name, routineId: session.routineId, logDate: session.logDate, startedAt: session.startedAt, endedAt: session.endedAt!, sessionUpdatedAt: session.updatedAt,
+      metadata: { energyLevel: session.metadata.energyLevel, performanceLevel: session.metadata.performanceLevel, painLevel: session.metadata.painLevel, notes: session.metadata.notes },
+      exerciseCount: exercises.length, completedExerciseCount: exercises.filter(x => x.payload.isCompleted).length,
+      completedSetCount: exercises.reduce((n, x) => n + x.payload.sets.filter(s => s.isCompleted).length, 0) } };
   }
   private async confirmFinish(intent: Extract<StructuralIntent, { kind: 'finish' }>, finished: SessionFinishedDto): Promise<boolean> {
     // Server truth confirmed: only now drop drafts, timer, summary and the replay key.
-    try { await this.repository.clearSession(); }
+    try {
+      if (intent.feelings && !(await this.feelings?.confirmFinish())) throw new Error('Pending feelings cleanup');
+      await this.repository.clearSession();
+    }
     catch { this.update({ storageError: true, intent: { value: intent, phase: 'uncertain' }, notice: 'El entrenamiento se guardó. Reintentá la limpieza local.' }); return false; }
     for (const entry of this.entries.values()) { entry.paused = true; if (entry.timer) clearTimeout(entry.timer); entry.timer = null; }
     this.setRest(null, false);
@@ -642,8 +694,15 @@ export class ActiveSessionController {
   }
   async discardBlockedIntent() {
     if (this.snapshot.intent?.phase !== 'blocked' || this.structuralFlight) return;
+    if (this.snapshot.intent.value.kind === 'finish' && this.snapshot.intent.value.feelings && this.feelings?.getSnapshot().blocked) {
+      if (!(await this.feelings.resolve('server'))) return;
+    }
     try { await this.repository.clearIntent(); }
     catch { this.update({ storageError: true }); return; }
     this.update({ intent: null }); await this.refresh();
+  }
+  async resolveFeelings(choice: 'server' | 'mine') {
+    if (!(await this.feelings?.resolve(choice))) return;
+    if (this.snapshot.intent?.value.kind === 'finish' && this.snapshot.intent.phase === 'blocked') await this.discardBlockedIntent();
   }
 }
