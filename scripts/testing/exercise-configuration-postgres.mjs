@@ -28,6 +28,8 @@ async function connect() { const client = pg.getPgClient(); clients.push(client)
 const check = (actual, expected) => { assert.deepEqual(actual, expected); assertions++; };
 const reject = async (promise, message) => { await assert.rejects(promise, e => e.message === message || e.code === message); assertions++; };
 const recorded = (label, source = 'entered', repeatedFrom = null) => ({ kind: 'recorded', label, source, repeatedFrom });
+// What the server keeps: the value plus the phase it set itself.
+const stored = (value, recordedPhase = 'during_session') => ({ ...value, recordedPhase });
 const input = (key, sessionExerciseId, expectedRevision, value, extra = {}) => ({ contractVersion: 'training-exercise-configuration/1', sessionExerciseId, expectedRevision, value, idempotencyKey: key, ...extra });
 try {
   await pg.initialise(); await pg.start(); started = true;
@@ -117,7 +119,7 @@ try {
     recorded('a\u0001b'), recorded(3), { kind: 'none', label: null, source: 'entered', repeatedFrom: null },
     { kind: 'not_applicable', label: 'x', source: 'entered', repeatedFrom: null }, recorded('x', 'catalog'),
     recorded('x', 'entered', aPress), recorded('x', 'repeated_previous'), recorded('x', 'repeated_previous', 'nope'),
-    { ...recorded('x'), userId: other }, [], 'none'])
+    { ...recorded('x'), userId: other }, { ...recorded('x'), recordedPhase: 'during_session' }, [], 'none'])
     await reject(mutate(user, B, input('invalid', bPress, 0, value)), 'INVALID_CONFIGURATION_INPUT');
   for (const extra of [{ userId: other }, { expectedRevision: -1 }, { expectedRevision: 0.5 }, { contractVersion: 'old' }, { sessionExerciseId: 'x' }, { idempotencyKey: 'a b' }])
     await reject(mutate(user, B, input('invalid', bPress, 0, null, extra)), 'INVALID_CONFIGURATION_INPUT');
@@ -129,7 +131,7 @@ try {
   const first = input('set-1', bPress, 0, recorded('  Agarre \n  neutro  '));
   const r1 = await mutate(user, B, first);
   check(r1.replayed, false);
-  check(item(r1.response_body, bPress).value, recorded('Agarre neutro'));
+  check(item(r1.response_body, bPress).value, stored(recorded('Agarre neutro')));
   check(item(r1.response_body, bPress).revision, 1);
   check(item(r1.response_body, bRow).value, null);
   check(await updatedAt(bPress), before); // The set autosave CAS token does not move.
@@ -141,13 +143,13 @@ try {
   check(item((await mutate(user, B, input('same', bPress, 1, recorded('Agarre neutro')))).response_body, bPress).revision, 1);
   // The catalog changes tomorrow: the session keeps what was recorded.
   await admin.query("update public.exercises set implement='Barra', weight_mode='Peso total', notes='otra' where id=$1", [press]);
-  check(item(await readState(), bPress).value, recorded('Agarre neutro'));
+  check(item(await readState(), bPress).value, stored(recorded('Agarre neutro')));
   const cleared = (await mutate(user, B, input('clear', bPress, 1, null))).response_body;
   check([item(cleared, bPress).revision, item(cleared, bPress).value], [2, null]);
   check((await admin.query('select kind,label,source from public.workout_session_exercise_configurations where session_exercise_id=$1', [bPress])).rows, [{ kind: null, label: null, source: null }]);
   check(item((await mutate(user, B, input('clear-again', bPress, 2, null))).response_body, bPress).revision, 2);
   check(item((await mutate(user, B, input('na', bRow, 0, { kind: 'not_applicable', label: null, source: 'entered', repeatedFrom: null }))).response_body, bRow).value,
-    { kind: 'not_applicable', label: null, source: 'entered', repeatedFrom: null });
+    stored({ kind: 'not_applicable', label: null, source: 'entered', repeatedFrom: null }));
   // Another user sees nothing, even with a direct SELECT.
   await user2.query("select set_config('request.jwt.claim.sub',$1,false)", [other]);
   check((await user2.query('select * from public.workout_session_exercise_configurations')).rows, []);
@@ -182,7 +184,7 @@ try {
   await reject(mutate(user, B, input('rep-self', bPress, current, recorded('Banco 30°', 'repeated_previous', bPress))), 'REPEATED_CONFIGURATION_MISMATCH');
   await reject(mutate(user, B, input('rep-foreign', bPress, current, recorded('x', 'repeated_previous', fPress))), 'REPEATED_CONFIGURATION_MISMATCH');
   const repeated = item((await mutate(user, B, input('rep', bPress, current, recorded('agarre neutro', 'repeated_previous', aPress)))).response_body, bPress);
-  check(repeated.value, recorded('agarre neutro', 'repeated_previous', aPress));
+  check(repeated.value, stored(recorded('agarre neutro', 'repeated_previous', aPress)));
   console.log('PASS previous value: order, ambiguity, case, and checked provenance for "same as last time"');
 
   // Insights revision: completing the session moves it; later writes on a completed session move it once each.
@@ -191,7 +193,7 @@ try {
   check(await revision(), r0 + 1);
   await save(B, bPress, recorded('Agarre neutro'), 'after-finish');
   check(await revision(), r0 + 2);
-  check(item(await readState(), bPress).value, recorded('Agarre neutro'));
+  check(item(await readState(), bPress).value, stored(recorded('Agarre neutro'), 'after_session')); // Written after the workout, and said so.
   await admin.query('delete from public.workout_session_exercises where id=$1', [bRow]);
   check(await revision(), r0 + 3);
   check((await admin.query('select count(*)::int n from public.workout_session_exercise_configurations where session_exercise_id=$1', [bRow])).rows[0].n, 0);

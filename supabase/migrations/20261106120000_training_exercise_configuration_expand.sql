@@ -12,6 +12,9 @@
 --   source 'entered'           the person wrote or chose it for this session.
 --   source 'repeated_previous' the person chose "same as last time": repeated_from names that earlier row, which this
 --                              function checks against the same exercise, a completed earlier session and the same value.
+--   recorded_phase             set by the server from the session status at the write, never by the client:
+--                              'during_session' while it is in progress, 'after_session' once it is completed. A value
+--                              written or corrected later says so: it is never presented as captured during the workout.
 --
 -- Writes go through mutate_training_exercise_configuration_v1 only: user lock, idempotency ledger and a revision per session
 -- exercise (CAS), like training feelings. It has its own table so that a write never moves the exercise's updated_at, which
@@ -47,11 +50,12 @@ create table public.workout_session_exercise_configurations (
   label text,
   source text check (source in ('entered', 'repeated_previous')),
   repeated_from uuid,
+  recorded_phase text check (recorded_phase in ('during_session', 'after_session')),
   updated_at timestamptz not null,
   constraint workout_session_exercise_configurations_shape check (
-    (kind is null and label is null and source is null and repeated_from is null)
-    or (kind = 'not_applicable' and label is null and source is not null)
-    or (kind = 'recorded' and label is not null and source is not null)),
+    (kind is null and label is null and source is null and repeated_from is null and recorded_phase is null)
+    or (kind = 'not_applicable' and label is null and source is not null and recorded_phase is not null)
+    or (kind = 'recorded' and label is not null and source is not null and recorded_phase is not null)),
   constraint workout_session_exercise_configurations_repeated check (
     source is null or (source = 'repeated_previous') = (repeated_from is not null)),
   constraint workout_session_exercise_configurations_label check (
@@ -80,7 +84,7 @@ begin
   -- exercise. If that session holds two different ones, there is no single previous value and nothing is offered.
   select coalesce(jsonb_agg(jsonb_build_object(
       'sessionExerciseId', x.id, 'exerciseId', x.exercise_id, 'revision', coalesce(c.revision, 0),
-      'value', case when c.kind is null then null else jsonb_build_object('kind', c.kind, 'label', c.label, 'source', c.source, 'repeatedFrom', c.repeated_from) end,
+      'value', case when c.kind is null then null else jsonb_build_object('kind', c.kind, 'label', c.label, 'source', c.source, 'repeatedFrom', c.repeated_from, 'recordedPhase', c.recorded_phase) end,
       'previous', case when pv.n = 1 then jsonb_build_object('sessionExerciseId', pv.id, 'sessionId', ls.id, 'endedAt', ls.ended_at,
         'value', jsonb_build_object('kind', pv.kind, 'label', pv.label)) end)
       order by x.exercise_order, x.id), '[]'::jsonb)
@@ -197,14 +201,16 @@ begin
     raise exception using errcode = 'P0001', message = 'REPEATED_CONFIGURATION_MISMATCH';
   end if;
 
-  -- The same value again keeps the revision: nothing changed. Clearing an unknown one writes nothing.
+  -- The same value again keeps the revision, and the phase it was first recorded in: nothing changed. Clearing an unknown
+  -- one writes nothing.
   if (c.kind, c.label, c.source, c.repeated_from) is distinct from (v_kind, v_label, v_source, v_from) then
     v_revision := v_revision + 1;
     insert into public.workout_session_exercise_configurations as t
-      (session_exercise_id, user_id, revision, kind, label, source, repeated_from, updated_at)
-      values (x.id, u, v_revision, v_kind, v_label, v_source, v_from, clock_timestamp())
+      (session_exercise_id, user_id, revision, kind, label, source, repeated_from, recorded_phase, updated_at)
+      values (x.id, u, v_revision, v_kind, v_label, v_source, v_from,
+        case when v_kind is null then null when s.status = 'in_progress' then 'during_session' else 'after_session' end, clock_timestamp())
     on conflict (session_exercise_id) do update set revision = excluded.revision, kind = excluded.kind, label = excluded.label,
-      source = excluded.source, repeated_from = excluded.repeated_from, updated_at = excluded.updated_at;
+      source = excluded.source, repeated_from = excluded.repeated_from, recorded_phase = excluded.recorded_phase, updated_at = excluded.updated_at;
   end if;
 
   result := public.read_training_exercise_configurations_v1(s.id);

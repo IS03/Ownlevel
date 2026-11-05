@@ -26,6 +26,12 @@ Tabla `workout_session_exercise_configurations`, una fila por ejercicio de sesi�
 - `entered`: la escribió o eligió para esta sesión.
 - `repeated_previous`: eligió «Igual que la última vez». `repeated_from` apunta a esa fila anterior. El servidor comprueba que sea del mismo ejercicio, de una sesión completada que terminó antes de que esta empezara, y que tenga el mismo valor.
 
+**Fase (`recorded_phase`), la pone el servidor según el estado de la sesión al escribir:**
+- `during_session`: se registró con la sesión en curso.
+- `after_session`: se registró o corrigió con la sesión ya completada.
+
+Registrarla después no permite afirmar que se capturó durante el entrenamiento: la fase lo dice. Repetir el mismo valor conserva la fase original.
+
 **Reglas:**
 - No se rellena el historial y no se escribe «none» por lo desconocido.
 - **El catálogo no es historia.** Cambiarlo mañana no toca una sesión anterior.
