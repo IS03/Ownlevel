@@ -128,7 +128,7 @@ describe.runIf(!!statusFile && !!container)("revisión transaccional de las fuen
     timings.rows = Number(sql(`select count(*) from public.workout_sets where user_id='${costUser.id}';`)); timings.mealRows = Number(sql(`select count(*) from public.meal_entries where user_id='${costUser.id}';`));
     expect(sessions).toHaveLength(30);
 
-    sql(readFileSync(join(process.cwd(), "supabase/migrations/20261104190000_insights_source_revision_expand.sql"), "utf8") + "\nnotify pgrst,'reload schema';");
+    sql(readFileSync(join(process.cwd(), "supabase/migrations/20261105211040_insights_source_revision_expand.sql"), "utf8") + "\nnotify pgrst,'reload schema';");
     for (let attempt = 0; attempt < 50; attempt++) {
       const probe = await owner.client.from("insights_source_revisions").select("revision").limit(1);
       if (!probe.error) break;
