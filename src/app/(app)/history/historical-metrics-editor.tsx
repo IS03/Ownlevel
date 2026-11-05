@@ -1,6 +1,8 @@
 "use client";
 
+import { todayInCordoba } from "@/lib/phase2/cordoba-date";
 import { useMemo, useState, useTransition } from "react";
+import { sleepNightCaption } from "@/lib/daily-metrics/sleep-night";
 import { useRouter } from "next/navigation";
 import { ResponsiveDialog } from "@/app/(app)/today/responsive-dialog";
 import { Button } from "@/components/ui/button";
@@ -56,7 +58,7 @@ export function HistoricalMetricsEditor({ date, metrics }: Props) {
     event.preventDefault();
     setError(null);
     startTransition(async () => {
-      const result = await saveHistoricalDailyMetricsAction({ date, values });
+      const result = await saveHistoricalDailyMetricsAction({ date, values, declaresSleepNight: metrics.some((metric) => metric.system_key === "sleep") });
       if (!result.ok) return setError(result.error);
       setOpen(false);
       router.refresh();
@@ -89,6 +91,7 @@ export function HistoricalMetricsEditor({ date, metrics }: Props) {
                       <legend className="ml-[-0.25rem] px-1 text-xs font-normal leading-4 text-muted-foreground transition-colors group-focus-within:text-primary">
                         {metric.name}
                       </legend>
+                      {metric.system_key === "sleep" ? <p className="pt-1 text-xs text-muted-foreground">{sleepNightCaption(date, todayInCordoba())}</p> : null}
                       <div className="grid grid-cols-2 divide-x">
                         <div className="flex min-w-0 items-center gap-2 pr-3">
                           <Input

@@ -125,6 +125,8 @@ type AnyRelation = RelationSummary | PartialRelationSummary;
 /** Names what was recorded. A metric is found by UUID; its unit is the stored one, or none. */
 export function relationName(item: Pick<AnyRelation, 'definition'>, metrics: readonly Metric[]) {
   const { family, subject, window } = item.definition;
+  if (family === 'body') return 'Peso corporal de ese día';
+  if (family === 'sleep') return window === 'night_before' ? 'Sueño de la noche anterior' : `Sueño sin noche declarada${window === 'previous_day' ? ', fecha anterior' : ', misma fecha'}`;
   if (family === 'meal_window') return window === 'pre_3h' ? 'Carbohidratos registrados, 3 h antes' : 'Carbohidratos registrados antes de entrenar';
   if (family === 'feeling') return FEELING[subject] ?? 'Sensación';
   const when = window === 'previous_day' ? ', día anterior' : ', ese día';
@@ -134,8 +136,9 @@ export function relationName(item: Pick<AnyRelation, 'definition'>, metrics: rea
 export function exposureUnit(item: Pick<AnyRelation, 'definition'>, metrics: readonly Metric[]) {
   const { family, subject } = item.definition;
   if (family === 'meal_window') return 'g';
+  if (family === 'body') return 'kg';
   if (family === 'nutrition') return NUTRIENT[subject]?.unit ?? null;
-  return family === 'metric' ? metrics.find(metric => metric.id === subject)?.unit ?? null : null;
+  return family === 'metric' || family === 'sleep' ? metrics.find(metric => metric.id === subject)?.unit ?? null : null;
 }
 export function relationState(item: Pick<AnyRelation, 'state' | 'reason' | 'pairs'>) {
   if (item.state === 'exploratory') return 'Exploratorio';
@@ -157,11 +160,24 @@ export function relationSentence(lane: Lane, item: AssociationResult | PartialAs
   return `Los días con más ${subject}, ${more} ejercicios quedaron por debajo de la última vez. Lo vimos en ${item.pairs} de ${item.outcomeDays} días. Todavía no alcanza para decir que se repite.`;
 }
 export const coverageText = (item: Pick<AnyRelation, 'pairs' | 'outcomeDays'>) => `Visto en ${item.pairs} de ${item.outcomeDays} días`;
+/**
+ * What each exposure is, said every time: which night, which weight and from what date. Written before any result. The outcome is
+ * the same as for every relation: the share of exercises below their last comparable time, each day counted once.
+ */
+export function exposureMeaning(item: Pick<AnyRelation, 'definition'>): string | null {
+  const { family, window } = item.definition;
+  if (family === 'body') return 'Usa el peso que registraste en Cuerpo para la misma fecha del entrenamiento, un valor por día aunque hayas entrenado dos veces. No sabemos si lo mediste antes o después de entrenar: es contexto del día, no un antecedente.';
+  if (family === 'sleep' && window === 'night_before') return 'Cada día usa el sueño que registraste para esa fecha como la noche que terminó esa mañana. Solo cuentan los valores guardados con esa aclaración.';
+  if (family === 'sleep') return 'Estos valores se guardaron sin decir a qué noche corresponden: pueden ser de la noche anterior o de la siguiente. Por eso van aparte y no se suman a la noche declarada.';
+  return null;
+}
 
 const EXCLUSIONS: Record<string, string> = {
   metric_not_recorded: 'Sin valor registrado', no_active_meals: 'Sin comidas registradas', partial_macro: 'Alguna comida sin ese dato', multiple_sessions_day: 'Días con más de una sesión', no_start_time: 'Sin hora de inicio',
   untimed_meal_in_scope: 'Comidas sin hora', unverified_meal_time_in_scope: 'Comidas con hora sin confirmar', no_registered_meal_in_window: 'Sin comidas con hora en esa ventana',
   feeling_not_recorded: 'Sin sensación registrada', feeling_capture_unknown: 'No sabemos cuándo se respondió', feeling_after_first_set: 'Respondida después de empezar',
+  sleep_not_recorded: 'Sin sueño registrado', sleep_night_undeclared: 'Sueño sin noche declarada', sleep_declaration_outdated: 'Sueño editado sin volver a declarar la noche',
+  sleep_night_declared: 'Ya cuenta como noche declarada', weight_not_recorded: 'Sin peso ese día', weight_invalid: 'Peso no válido',
 };
 export const exclusionRows = (exclusions: Record<string, number>) => Object.entries(exclusions).filter(([, days]) => days > 0).sort((a, b) => b[1] - a[1]).map(([key, days]) => ({ key, label: EXCLUSIONS[key] ?? 'Otro motivo', days }));
 
@@ -203,8 +219,11 @@ export function contextRows(day: DayFact, metrics: readonly Metric[], session: D
   rows.push({ key: 'calories', label: 'Calorías registradas', value: !nutrition ? 'Sin comidas registradas' : `${formatValue(nutrition.calories.recorded, 'kcal', 'integer')}${nutrition.calories.missing ? `, ${nutrition.calories.missing} sin dato` : ''}` });
   for (const metric of day.context.metrics) {
     const known = metrics.find(row => row.id === metric.metricId);
+    const night = metric.sleepNight === undefined ? '' : metric.sleepNight === 'declared' ? ', noche que terminó esa mañana' : ', sin noche declarada';
     // Only a metric the read names can open its trends.
-    rows.push({ key: metric.metricId, label: known?.name ?? 'Métrica', value: formatValue(metric.value, known?.unit ?? null), ...(known ? { metricId: known.id } : {}) });
+    rows.push({ key: metric.metricId, label: `${known?.name ?? 'Métrica'}${night}`, value: formatValue(metric.value, known?.unit ?? null), ...(known ? { metricId: known.id } : {}) });
   }
+  const weight = day.context.bodyWeight;
+  if (weight) rows.push({ key: 'body-weight', label: 'Peso corporal, ese día', value: weight.state === 'recorded' && weight.value !== null ? formatValue(weight.value, 'kg') : weight.state === 'invalid' ? 'Peso no válido' : 'Sin registrar' });
   return rows;
 }

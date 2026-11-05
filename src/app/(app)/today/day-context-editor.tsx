@@ -1,6 +1,8 @@
 "use client";
 
+import { todayInCordoba } from "@/lib/phase2/cordoba-date";
 import Link from "next/link";
+import { sleepNightCaption } from "@/lib/daily-metrics/sleep-night";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronRight } from "lucide-react";
@@ -87,7 +89,7 @@ export function DayContextEditor({
       debounceMs: 650,
       initial: initialDraft,
       save: async (draft) => {
-        const result = await saveDailyMetricsAction({ date, values: draft });
+        const result = await saveDailyMetricsAction({ date, values: draft, declaresSleepNight: metrics.some((metric) => metric.system_key === "sleep") });
         if (!result.ok) throw new Error(result.error);
       },
       onStateChange: (state) => {
@@ -168,6 +170,7 @@ export function DayContextEditor({
                     </div>
                   </div>
 
+                  {metric.system_key === "sleep" ? <p className="text-xs text-muted-foreground">{sleepNightCaption(date, todayInCordoba())}</p> : null}
                   {metric.value_type === "duration" ? (
                     <div className="space-y-2">
                       <div className="grid grid-cols-2 gap-2">

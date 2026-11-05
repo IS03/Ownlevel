@@ -1,6 +1,6 @@
 // Pure strict contract shared by the API and Expo. It accepts only this versioned shape: never a partial read as an empty one.
 import { INSIGHTS_PERFORMANCE_PARTIAL_METHOD, PARTIAL_CONTEXT } from "../progress/performance-insights/partial";
-import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from "../progress/insights-engine/types";
+import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from "../progress/insights-engine/types";
 
 export type { AssociationResult, AssociationState, CandidateDefinition, DayFact, ExerciseFact, ExerciseSummary, InsightsDaysPage, InsightsReadModel, InsightsRelationDetail, InsightsRelations, InsightsResponse, InsightsSummary, PartialAssociationState, PartialRelationSummary, RelationSummary, NutritionContext, PartialAssociationResult, PartialDayFact, PartialExerciseFact, PartialExerciseSummary, PartialLane, SessionFact, SessionFeeling } from "../progress/insights-engine/types";
 export const PERFORMANCE_INSIGHTS_PATH = "/api/mobile/v1/progress/performance-insights";
@@ -18,9 +18,10 @@ const STATUS = new Set(["improved", "observed_stable", "declined", "ambiguous_ev
 const STATE = new Set(["insufficient_data", "no_clear_signal", "exploratory"]);
 /** No "exploratory" here: a partial reading can never arrive with the words of the strict method. */
 const PARTIAL_STATE = new Set(["insufficient_data", "no_clear_signal", "coincidence_context_unknown"]);
-const FAMILY = new Set(["metric", "nutrition", "meal_window", "feeling"]);
-const WINDOW = new Set(["same_day", "previous_day", "pre_3h", "same_day_before_start", "session"]);
-const BASIS = new Set(["same_day_unordered", "previous_logical_day", "explicit_meal_time_before_start", "declared_pre_unverified_clock"]);
+// Method 2 adds sleep and body. A /1 answer never carries them, so a client built for /1 that never asks for /2 is unaffected.
+const FAMILY = new Set(["metric", "nutrition", "meal_window", "feeling", "sleep", "body"]);
+const WINDOW = new Set(["same_day", "previous_day", "pre_3h", "same_day_before_start", "session", "night_before"]);
+const BASIS = new Set(["same_day_unordered", "previous_logical_day", "explicit_meal_time_before_start", "declared_pre_unverified_clock", "declared_night_ending_on_day", "undeclared_sleep_date"]);
 const TIMING = new Set(["before_start", "before_first_set", "after_first_set", "after_end", "post_declared", "unknown"]);
 const CARBS = new Set(["recorded", "no_registered_meal", "partial_macro", "untimed_meal_in_scope", "unverified_meal_time_in_scope", "no_start_time"]);
 
@@ -64,7 +65,7 @@ const association = (v: unknown) => associationBody(v, STATE);
 const partialAssociation = (v: unknown) => associationBody(v, PARTIAL_STATE) && (v as Json).contextCompleteness === PARTIAL_CONTEXT && String((v as Json).id).startsWith(PARTIAL_ASSOCIATION_PREFIX);
 const pairs = (v: unknown) => v === null || (object(v) && typeof v.id === "string" && list(v.pairs, p => object(p) && date(p.date) && finite(p.exposure) && finite(p.outcome) && list(p.sessionIds, s => typeof s === "string")));
 /** Its labels are required: a partial reading can never arrive looking like one of the strict method. */
-const partialLabels = (v: unknown) => object(v) && v.methodVersion === INSIGHTS_PERFORMANCE_PARTIAL_METHOD && v.engineMethodVersion === INSIGHTS_ENGINE_PARTIAL_METHOD && v.contextCompleteness === PARTIAL_CONTEXT
+const partialLabels = (v: unknown) => object(v) && v.methodVersion === INSIGHTS_PERFORMANCE_PARTIAL_METHOD && (v.engineMethodVersion === INSIGHTS_ENGINE_PARTIAL_METHOD || v.engineMethodVersion === INSIGHTS_ENGINE_PARTIAL_METHOD_V2) && v.contextCompleteness === PARTIAL_CONTEXT
   && (v.integrity === "valid" || v.integrity === "conflicting_duplicates");
 const partialFacts = (v: unknown) => object(v) && partialLabels(v) && object(v.partition) && count(v.partition.total) && count(v.partition.configurationKnown) && count(v.partition.configurationUnknown)
   && v.partition.total === Number(v.partition.configurationKnown) + Number(v.partition.configurationUnknown)
@@ -73,7 +74,7 @@ const partialFacts = (v: unknown) => object(v) && partialLabels(v) && object(v.p
 const partialLane = (v: unknown) => partialFacts(v) && object(v) && object(v.associations) && v.associations.outcome === "daily_lower_record_proportion" && count(v.associations.candidatesEvaluated) && count(v.associations.testableCandidates) && count(v.associations.permutations)
   && object(v.associations.promotion) && v.associations.promotion.status === "not_enabled" && list(v.associations.items, partialAssociation) && pairs(v.associations.detail);
 
-const versions = (raw: Json) => raw.contractVersion === INSIGHTS_CONTRACT && raw.methodVersion === INSIGHTS_ENGINE_METHOD && typeof raw.performanceMethodVersion === "string"
+const versions = (raw: Json) => raw.contractVersion === INSIGHTS_CONTRACT && (raw.methodVersion === INSIGHTS_ENGINE_METHOD || raw.methodVersion === INSIGHTS_ENGINE_METHOD_V2) && typeof raw.performanceMethodVersion === "string"
   && date(raw.today) && (raw.integrity === "valid" || raw.integrity === "conflicting_duplicates");
 const page = (v: unknown) => object(v) && count(v.limit) && count(v.totalDays) && (v.nextBefore === null || date(v.nextBefore));
 const historyBlock = (v: unknown) => object(v) && v.coverage === "complete" && count(v.sessions) && count(v.trainingDays) && count(v.outcomeDays) && (v.firstDate === null || date(v.firstDate)) && (v.lastDate === null || date(v.lastDate));

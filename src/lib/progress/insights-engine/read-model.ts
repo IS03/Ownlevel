@@ -1,9 +1,9 @@
 import { buildPerformanceInsightsPartialV1, buildPerformanceInsightsV1, type PartialExercise, type PartialSession } from "../performance-insights";
 import type { PerformanceCounts, SessionPerformance } from "../performance-insights/types";
 import { evaluateAssociations, type AssociationEvaluation } from "./associations";
-import { buildExposureContext, buildExposureTable, partialOutcomeDays, strictOutcomeDays, type ExposureTable } from "./exposures";
+import { buildExposureContext, buildExposureTable, partialOutcomeDays, strictOutcomeDays, weightOfDay, type ExposureTable } from "./exposures";
 import { mealTimeEvidence, toPerformanceSessions } from "./source-adapter";
-import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_RISK_BUDGET_CANDIDATE, PARTIAL_ASSOCIATION_PREFIX, type AssociationResult, type Candidate, type DayFact, type ExerciseSummary, type InsightsDaysPage, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsSource, type InsightsSummary, type MealTimeEvidence, type PartialAssociationResult, type PartialDayFact, type PartialExerciseFact, type PartialExerciseSummary, type PartialLane, type PartialRelationSummary, type RelationSummary, type SessionFact } from "./types";
+import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, type InsightsEngineMethod, type SleepNightEvidence, INSIGHTS_RISK_BUDGET_CANDIDATE, PARTIAL_ASSOCIATION_PREFIX, type AssociationResult, type Candidate, type DayFact, type ExerciseSummary, type InsightsDaysPage, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsSource, type InsightsSummary, type MealTimeEvidence, type PartialAssociationResult, type PartialDayFact, type PartialExerciseFact, type PartialExerciseSummary, type PartialLane, type PartialRelationSummary, type RelationSummary, type SessionFact } from "./types";
 
 export const INSIGHTS_DEFAULT_DAYS = 14;
 export const INSIGHTS_MAX_DAYS = 120;
@@ -82,13 +82,15 @@ export type InsightsSnapshot = ReturnType<typeof createInsightsSnapshot>;
  * Everything the views publish, computed once from one consistent read. It keeps published facts and exposure tables, not the
  * source rows or every set, so it can stay around while the same revision is being looked at. Pure: no I/O, clock or catalog.
  */
-export function createInsightsSnapshot(source: InsightsSource, options: { today: string; revision?: string; permutations?: number }) {
+export function createInsightsSnapshot(source: InsightsSource, options: { today: string; revision?: string; permutations?: number; method?: InsightsEngineMethod }) {
+  const method = options.method ?? 1;
   const adapted = toPerformanceSessions(source);
   const performance = buildPerformanceInsightsV1({ sessions: adapted.sessions, historyCoverage: "complete", exclusionDetail: "summary" });
   const partial = buildPerformanceInsightsPartialV1({ sessions: adapted.sessions, historyCoverage: "complete", exclusionDetail: "summary" });
   const context = buildExposureContext(source);
-  const table = buildExposureTable(source, strictOutcomeDays(performance.days), options.today, context);
-  const partialTable = buildExposureTable(source, partialOutcomeDays(partial.days), options.today, context, false);
+  const sleepIds = new Set(source.metricDefinitions.filter(metric => metric.systemKey === "sleep").map(metric => metric.id));
+  const table = buildExposureTable(source, strictOutcomeDays(performance.days), options.today, context, true, method);
+  const partialTable = buildExposureTable(source, partialOutcomeDays(partial.days), options.today, context, false, method);
   // Its own family: the correction covers exactly the candidates tested against this outcome.
   const partialCandidates = partialTable.candidates.map(candidate => ({ ...candidate, definition: { ...candidate.definition, id: PARTIAL_ASSOCIATION_PREFIX + candidate.definition.id } }));
 
@@ -117,7 +119,9 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
   const days: DayFact[] = ordered.map(day => ({
     date: day.date, counts: day.counts, evaluableSessions: day.evaluableSessions, declineProportion: day.candidateDeclineProportion,
     equalSessionSensitivity: day.equalSessionWeightSensitivity, openDay: day.date >= options.today,
-    context: { metrics: table.metricsByDate.get(day.date) ?? [], nutrition: table.nutritionByDate.get(day.date) ?? null },
+    context: { metrics: method === 2 ? (table.metricsByDate.get(day.date) ?? []).map(row => sleepIds.has(row.metricId) ? { ...row, sleepNight: context.sleepEvidence.get(row.metricId)?.get(day.date) ?? "undeclared" } : row)
+      : table.metricsByDate.get(day.date) ?? [], nutrition: table.nutritionByDate.get(day.date) ?? null,
+      ...(method === 2 ? { bodyWeight: weightOfDay(context.weightByDate.get(day.date)) } : {}) },
     sessions: day.sessions.map((session): SessionFact => {
       const row = sessionById.get(session.sessionId);
       return { sessionId: session.sessionId, name: row?.name ?? null, routineId: session.routineId, routineName: row?.routineName ?? null,
@@ -157,12 +161,13 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
   const mealEvidence: Record<MealTimeEvidence, number> = { explicit: 0, registration: 0, unverified: 0, unknown: 0 };
   for (const meal of source.meals) if (meal.entryKind === "meal") mealEvidence[mealTimeEvidence(meal)]++;
   return {
-    today: options.today, revision: options.revision ?? "", performanceMethodVersion: performance.methodVersion, integrity: performance.integrity, days, partialDays,
+    today: options.today, revision: options.revision ?? "", method, performanceMethodVersion: performance.methodVersion, integrity: performance.integrity, days, partialDays,
     history: { coverage: "complete" as const, firstDate: dates[0] ?? null, lastDate: dates.at(-1) ?? null, sessions: performance.sessions.length, trainingDays: dates.length, outcomeDays: table.rows.length },
     totals, exercises: exerciseSummaries(performance.sessions, names),
     metrics: source.metricDefinitions.map(metric => ({ id: metric.id, name: metric.name, unit: metric.unit, valueType: metric.valueType, archived: metric.archived })),
     exclusions: { performance: performanceExclusions, source: sourceExclusions },
-    limits: { configurationSnapshots: { known: source.exercises.filter(row => row.configuration?.trim()).length, total: source.exercises.length }, mealTimeEvidence: mealEvidence, unitBasis: "historical_weight_mode" as const, ingestionCompleteKnown: false as const, clockVerified: false as const },
+    limits: { configurationSnapshots: { known: source.exercises.filter(row => row.configuration?.trim()).length, total: source.exercises.length }, mealTimeEvidence: mealEvidence, unitBasis: "historical_weight_mode" as const, ingestionCompleteKnown: false as const, clockVerified: false as const,
+      ...(method === 2 ? methodTwoLimits(source) : {}) },
     strict: lane(performance.integrity === "valid", table, table.candidates, options.permutations, publish),
     partial: { methodVersion: partial.methodVersion, contextCompleteness: partial.contextCompleteness, integrity: partial.integrity, partition: partial.partition, outcomeDays: partialTable.rows.length, totals: partialTotals, exercises: partialSummaries(partial.sessions, names), exclusions: { performance: partialExclusions, days: dayExclusions },
       lane: lane(partial.integrity === "valid", partialTable, partialCandidates, options.permutations, publishPartial) },
@@ -179,9 +184,20 @@ function pageOf(snapshot: InsightsSnapshot, options: { before?: string; limit?: 
 }
 const strictPromotion = { status: "not_enabled", reason: "risk_budget_not_approved", candidateRiskBudget: INSIGHTS_RISK_BUDGET_CANDIDATE } as const;
 const partialPromotion = { status: "not_enabled", reason: "partial_context" } as const;
-const versions = (snapshot: InsightsSnapshot) => ({ contractVersion: INSIGHTS_CONTRACT, methodVersion: INSIGHTS_ENGINE_METHOD, performanceMethodVersion: snapshot.performanceMethodVersion,
+/** Method 2 also says how many sleep values have a declared night, and how many training days have a usable weight. */
+function methodTwoLimits(source: InsightsSource) {
+  const sleepIds = new Set(source.metricDefinitions.filter(metric => metric.systemKey === "sleep").map(metric => metric.id));
+  const sleepNights: Record<SleepNightEvidence, number> = { declared: 0, undeclared: 0, stale_declaration: 0 };
+  for (const row of source.metricValues) if (sleepIds.has(row.metricId)) sleepNights[row.sleepNight ?? "undeclared"]++;
+  const bodyWeight = { recorded: 0, not_recorded: 0, invalid: 0 };
+  for (const date of new Set(source.sessions.map(session => session.date).filter((date): date is string => !!date)))
+    bodyWeight[weightOfDay(source.sessions.find(session => session.date === date)?.dayWeightKg).state]++;
+  return { sleepNights, bodyWeightTrainingDays: bodyWeight };
+}
+const engineVersion = (snapshot: InsightsSnapshot) => snapshot.method === 2 ? INSIGHTS_ENGINE_METHOD_V2 : INSIGHTS_ENGINE_METHOD;
+const versions = (snapshot: InsightsSnapshot) => ({ contractVersion: INSIGHTS_CONTRACT, methodVersion: engineVersion(snapshot), performanceMethodVersion: snapshot.performanceMethodVersion,
   today: snapshot.today, integrity: snapshot.integrity, sourceRevision: snapshot.revision });
-const partialLabels = (snapshot: InsightsSnapshot) => ({ methodVersion: snapshot.partial.methodVersion, engineMethodVersion: INSIGHTS_ENGINE_PARTIAL_METHOD, contextCompleteness: snapshot.partial.contextCompleteness, integrity: snapshot.partial.integrity });
+const partialLabels = (snapshot: InsightsSnapshot) => ({ methodVersion: snapshot.partial.methodVersion, engineMethodVersion: snapshot.method === 2 ? INSIGHTS_ENGINE_PARTIAL_METHOD_V2 : INSIGHTS_ENGINE_PARTIAL_METHOD, contextCompleteness: snapshot.partial.contextCompleteness, integrity: snapshot.partial.integrity });
 
 /** What opens the screen: facts, context and denominators. Says how many relations exist without running them. */
 export function insightsSummary(snapshot: InsightsSnapshot, options: { before?: string; limit?: number } = {}): InsightsSummary {

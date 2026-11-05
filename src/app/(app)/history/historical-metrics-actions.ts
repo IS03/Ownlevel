@@ -9,6 +9,7 @@ type Result = { ok: true } | { ok: false; error: string };
 export async function saveHistoricalDailyMetricsAction(input: {
   date: string;
   values: Record<string, string>;
+  declaresSleepNight?: boolean;
 }): Promise<Result> {
   try {
     if (input.date > todayInCordoba()) {
