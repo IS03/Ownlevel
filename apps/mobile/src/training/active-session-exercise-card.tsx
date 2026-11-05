@@ -173,7 +173,7 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
         <Button disabled={!editable} label={timer?.exerciseId === id ? 'Saltar descanso' : 'Iniciar descanso'} onPress={() => { haptics.selection(); if (timer?.exerciseId === id) controller.skipRest(); else if (restSeconds(exercise) === null) setDurationOpen(true); else controller.startRest(id); }} variant="quiet" />
       </View>
     </Animated.View> : null}
-     {durationOpen ? <SessionRestDuration onClose={() => setDurationOpen(false)} onStart={seconds => { controller.startRest(id, seconds); setDurationOpen(false); }} /> : null}
+     {durationOpen ? <SessionRestDuration onClose={() => setDurationOpen(false)} onStart={seconds => controller.startRest(id, seconds)} /> : null}
      {noteOpen ? <SessionNoteSheet name={exercise.nameSnapshot} value={draft.notes} editable={editable}
        onSave={async notes => {
          if (!controller.canEdit(id)) return false;
