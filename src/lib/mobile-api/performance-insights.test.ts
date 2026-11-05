@@ -48,7 +48,7 @@ function tablesFor(days: number) {
     workout_session_feelings: [],
     user_metrics: [{ id: METRIC, name: "Métrica", unit: null, value_type: "decimal", is_active: false, archived_at: "2026-02-01T00:00:00Z" }],
     daily_metric_values: reps.map((_, day) => ({ id: `v${day}`, metric_id: METRIC, metric_date: dateAt(day), value: String(day % 4) })),
-    meal_entries: [{ id: "m", consumed_at: `${dateAt(0)}T16:00:00.000Z`, raw_input: null, entry_kind: "meal", source_type: "manual", import_run_id: null, final_calories: 500, final_protein_g: "30", final_carbs_g: null, final_fat_g: 5, day_logs: { log_date: dateAt(0) } }],
+    meal_entries: [{ id: "m", consumed_at: `${dateAt(0)}T16:00:00.000Z`, consumed_at_source: null, raw_input: null, entry_kind: "meal", source_type: "manual", import_run_id: null, final_calories: 500, final_protein_g: "30", final_carbs_g: null, final_fat_g: 5, day_logs: { log_date: dateAt(0) } }],
   };
 }
 const request = (query = "") => new NextRequest(`http://127.0.0.1/api/mobile/v1/progress/performance-insights${query}`, { headers: { authorization: "Bearer synthetic" } });

@@ -29,7 +29,7 @@ type ExerciseRow = { id: string; workout_session_id: string; exercise_id: string
 type SetRow = { id: string; workout_session_exercise_id: string; actual_reps: number | null; actual_weight_kg: number | string | null; is_completed: boolean; completed_at: string | null };
 type MetricRow = { id: string; name: string; unit: string | null; value_type: string; is_active: boolean; archived_at: string | null };
 type ValueRow = { id: string; metric_id: string; metric_date: string; value: unknown };
-type MealRow = { id: string; consumed_at: string | null; raw_input: unknown; entry_kind: string | null; source_type: string | null; import_run_id: string | null;
+type MealRow = { id: string; consumed_at: string | null; consumed_at_source: string | null; raw_input: unknown; entry_kind: string | null; source_type: string | null; import_run_id: string | null;
   final_calories: unknown; final_protein_g: unknown; final_carbs_g: unknown; final_fat_g: unknown; day_logs: { log_date: string } };
 type FeelingRow = { session_id: string; revision: number; facts: unknown };
 
@@ -55,7 +55,7 @@ export async function readInsightsSource(context: Context): Promise<InsightsSour
     readAllTrainingRows<ValueRow>("Leer valores de Insights", from => supabase.from("daily_metric_values")
       .select("id,metric_id,metric_date,value", firstPage(from)).eq("user_id", userId).order("id").range(from, from + 999)),
     readAllTrainingRows<MealRow>("Leer comidas de Insights", from => supabase.from("meal_entries")
-      .select("id,consumed_at,raw_input,entry_kind,source_type,import_run_id,final_calories,final_protein_g,final_carbs_g,final_fat_g,day_logs!inner(log_date)", firstPage(from))
+      .select("id,consumed_at,consumed_at_source,raw_input,entry_kind,source_type,import_run_id,final_calories,final_protein_g,final_carbs_g,final_fat_g,day_logs!inner(log_date)", firstPage(from))
       .eq("user_id", userId).is("deleted_at", null).order("id").range(from, from + 999).returns<MealRow[]>()),
   ]);
   // Without joins on every page: rows of an in-progress or discarded session are dropped here, against the completed sessions just read.
@@ -72,7 +72,7 @@ export async function readInsightsSource(context: Context): Promise<InsightsSour
     feelings: feelings.map(row => ({ sessionId: row.session_id, revision: row.revision, facts: row.facts })),
     metricDefinitions: definitions.map(row => ({ id: row.id, name: row.name, unit: row.unit, valueType: row.value_type, archived: !row.is_active || row.archived_at !== null })),
     metricValues: values.map(row => ({ metricId: row.metric_id, date: row.metric_date, value: row.value })),
-    meals: meals.map(row => ({ id: row.id, date: row.day_logs.log_date, consumedAt: row.consumed_at, rawInput: row.raw_input, entryKind: row.entry_kind, sourceType: row.source_type, importRunId: row.import_run_id,
+    meals: meals.map(row => ({ id: row.id, date: row.day_logs.log_date, consumedAt: row.consumed_at, consumedAtSource: row.consumed_at_source, rawInput: row.raw_input, entryKind: row.entry_kind, sourceType: row.source_type, importRunId: row.import_run_id,
       calories: strictNumber(row.final_calories), proteinG: strictNumber(row.final_protein_g), carbsG: strictNumber(row.final_carbs_g), fatG: strictNumber(row.final_fat_g) })),
   };
 }

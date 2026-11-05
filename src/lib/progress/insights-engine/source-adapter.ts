@@ -48,11 +48,15 @@ export function toPerformanceSessions(source: InsightsSource): { sessions: Perfo
 /**
  * Strict provenance for a meal's time, separate from the legacy helper, which reads a missing marker as known. Web, Mobile
  * and ChatGPT leave raw_input null both when a time was declared and when the clock filled it in, and timestamps cannot
- * tell them apart: Web stamps its own clock. Only a positive marker proves a time, and only the sheet import writes one. A token can
- * write raw_input on its own rows, so the marker counts only on a row an import run wrote: anywhere else it is just text.
+ * tell them apart: Web stamps its own clock. Only a positive marker proves a time: the recorded source, or the sheet import's flag
+ * on a row an import run wrote, older than that column. A token can write raw_input on its own rows, so anywhere else the flag is
+ * just text. Nothing is backfilled or inferred, so a time sent without a statement stays unverified.
  */
-export function mealTimeEvidence(meal: Pick<InsightsSource["meals"][number], "consumedAt" | "rawInput" | "entryKind" | "sourceType" | "importRunId">): MealTimeEvidence {
+export function mealTimeEvidence(meal: Pick<InsightsSource["meals"][number], "consumedAt" | "consumedAtSource" | "rawInput" | "entryKind" | "sourceType" | "importRunId">): MealTimeEvidence {
   if (meal.entryKind !== "meal" || instantMs(meal.consumedAt) === null) return "unknown";
+  if (meal.consumedAtSource === "user_declared" || meal.consumedAtSource === "imported") return "explicit";
+  if (meal.consumedAtSource === "registration_now") return "registration";
+  if (meal.consumedAtSource === "default_clock") return "unknown";
   if (typeof meal.rawInput !== "string") return "unverified";
   let facts: unknown;
   try { facts = JSON.parse(meal.rawInput); } catch { return "unverified"; }

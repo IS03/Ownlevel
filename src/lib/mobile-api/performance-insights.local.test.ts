@@ -8,7 +8,8 @@ import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 import { buildInsightsReadModel, insightsDaysPage, insightsRelation, insightsRelations, insightsSummary } from "../progress/insights-engine";
-import { parseCompleteInsights } from "./performance-insights-contract";
+import { parseCompleteInsights, parsePerformanceInsights } from "./performance-insights-contract";
+import { buildQuickOptions } from "./nutrition-quick-server";
 import { readConsistentInsightsSource, readInsightsRevision, readInsightsSnapshot, readInsightsSource } from "./performance-insights-server";
 import type { MobileSupabaseAuthenticatedContext } from "./supabase";
 
@@ -103,6 +104,142 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
     await expect(readConsistentInsightsSource(contextOf(owner.id, anonymous))).rejects.toThrow();
   }, 120_000);
 
+  // Needs the schema of the time provenance EXPAND. Every meal comes through the path that really writes it.
+  it("carries each meal's time from its producer to the eligibility of the window", async () => {
+    const { status, sql, user } = localStack();
+    const owner = await user(), exercise = randomUUID(), id = owner.id;
+    const admin = createClient(status.API_URL, status.SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+    sql(`select set_config('request.jwt.claim.sub','${id}',false);
+      insert into public.profiles(user_id) values('${id}') on conflict do nothing;
+      insert into public.exercises(id,user_id,nombre,weight_mode) values('${exercise}','${id}','SYNTHETIC PRESS','Peso total');`);
+    const train = (date: string, reps: number, start = `${date}T18:00:00Z`, end = `${date}T19:00:00Z`) => { const session = randomUUID(); sql(`
+      select set_config('request.jwt.claim.sub','${id}',false);
+      insert into public.day_logs(user_id,log_date) values('${id}','${date}') on conflict do nothing;
+      insert into public.workout_sessions(id,user_id,day_log_id,started_at) select '${session}','${id}',id,'${start}' from public.day_logs where user_id='${id}' and log_date='${date}';
+      insert into public.workout_session_exercises(user_id,workout_session_id,exercise_id,exercise_order) values('${id}','${session}','${exercise}',1);
+      update public.workout_session_exercises set is_completed=true,implement_snapshot='barra',weight_mode_snapshot='Peso total' where workout_session_id='${session}';
+      update public.workout_sets t set actual_reps=${reps},actual_weight_kg=50,is_completed=true,completed_at='${start}' from public.workout_session_exercises x where x.id=t.workout_session_exercise_id and x.workout_session_id='${session}';
+      update public.workout_sessions set status='completed',ended_at='${end}' where id='${session}';`); };
+    const at = (date: string) => `${date}T13:00:00-03:00`; // 16:00 UTC: two hours before the session.
+    const manual = async (date: string, over: Record<string, unknown>) => {
+      const { data, error } = await owner.client.rpc("mobile_mutate_manual_meal", { p_intent: { operation: "create", sourceDate: date, mealId: null, expectedUpdatedAt: null, forceDuplicate: true, idempotencyKey: randomUUID(),
+        fields: { date, title: "SYNTHETIC", description: null, calories: 500, proteinG: 30, carbsG: 60, fatG: 10, ...over } } });
+      expect(error).toBeNull(); expect(data[0].response_status).toBe(201);
+      return data[0].response_body as { mealId: string; updatedAt: string };
+    };
+    const chatgpt = async (name: string, date: string, over: Record<string, unknown>) => {
+      const { data, error } = await admin.rpc(name, { p_user_id: id, p_log_date: date, p_title: `G${randomUUID().slice(0, 8)}`, p_description: null, p_calories: 500, p_protein_g: 30, p_carbs_g: 60, p_fat_g: 10, p_idempotency_key: randomUUID(), p_force_duplicate: true, ...over });
+      expect(error).toBeNull();
+      return data.meal.id as string;
+    };
+    const today = sql("select (now() at time zone 'America/Argentina/Cordoba')::date;");
+    const cases = Array.from({ length: 17 }, (_, index) => `2026-04-${String(index + 1).padStart(2, "0")}`);
+    cases.forEach((date, index) => train(date, 8 + index % 3));
+    // In the next hour, so that a meal registered now falls inside its window; its day is compared, not left open, by reading from tomorrow.
+    train(today, 9, sql("select to_char((now()+interval '1 hour') at time zone 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"');"), sql("select to_char((now()+interval '2 hours') at time zone 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"');"));
+
+    const expected: Record<string, { source: string; carbs: { value: number | null; state: string } }> = {};
+    const stored = (mealId: string) => sql(`select coalesce(consumed_at_source,'NULL') from public.meal_entries where id='${mealId}';`);
+    const check = (date: string, mealId: string, source: string, carbs: { value: number | null; state: string }) => { expected[date] = { source, carbs }; expect(stored(mealId), date).toBe(source); };
+    const recorded = { value: 60, state: "recorded" }, unverified = { value: null, state: "unverified_meal_time_in_scope" }, untimed = { value: null, state: "untimed_meal_in_scope" };
+
+    check(cases[0]!, (await manual(cases[0]!, { consumedAt: at(cases[0]!), consumedAtSource: "user_declared" })).mealId, "user_declared", recorded);
+    check(cases[1]!, (await manual(cases[1]!, { consumedAt: at(cases[1]!) })).mealId, "NULL", unverified);
+    check(cases[2]!, (await manual(cases[2]!, {})).mealId, "default_clock", untimed);
+    const edited = await manual(cases[3]!, { consumedAt: at(cases[3]!), consumedAtSource: "user_declared" });
+    const change = await owner.client.rpc("mobile_mutate_manual_meal", { p_intent: { operation: "edit", sourceDate: cases[3]!, mealId: edited.mealId, expectedUpdatedAt: edited.updatedAt, forceDuplicate: false, idempotencyKey: randomUUID(),
+      fields: { date: cases[3]!, title: "SYNTHETIC", description: null, calories: 500, proteinG: 30, carbsG: 60, fatG: 10, consumedAt: `${cases[3]!}T14:00:00-03:00` } } });
+    expect(change.data[0].response_status).toBe(200);
+    check(cases[3]!, edited.mealId, "NULL", unverified);
+    const declaredAgain = await manual(cases[4]!, { consumedAt: at(cases[4]!) });
+    const statement = await owner.client.rpc("mobile_mutate_manual_meal", { p_intent: { operation: "edit", sourceDate: cases[4]!, mealId: declaredAgain.mealId, expectedUpdatedAt: declaredAgain.updatedAt, forceDuplicate: false, idempotencyKey: randomUUID(),
+      fields: { date: cases[4]!, title: "SYNTHETIC", description: null, calories: 500, proteinG: 30, carbsG: 60, fatG: 10, consumedAt: at(cases[4]!), consumedAtSource: "user_declared" } } });
+    expect(statement.data[0].response_status).toBe(200);
+    check(cases[4]!, declaredAgain.mealId, "user_declared", recorded);
+    const name = `H${randomUUID().slice(0, 8)}`.toUpperCase();
+    sql(`insert into public.saved_meals(user_id,name,template_type,calories,protein_g,carbs_g,fat_g) values('${id}','${name}','manual',400,20,60,10);`);
+    const options = buildQuickOptions((await owner.client.rpc("mobile_read_quick_options", {}, { get: true })).data);
+    if (!options || options.saved.status !== "ok") throw Error("Quick options unavailable");
+    const option = options.saved.items.find((item: { name: string }) => item.name === name)!;
+    const quick = await owner.client.rpc("mobile_confirm_quick_meal", { p_intent: { operation: "register", date: cases[5]!, source: option.source, quantities: null, idempotencyKey: randomUUID(), consumedAt: at(cases[5]!), consumedAtSource: "user_declared" } });
+    expect(quick.data[0].response_status).toBe(201);
+    check(cases[5]!, quick.data[0].response_body.resourceId, "user_declared", recorded);
+    check(cases[6]!, await chatgpt("create_chatgpt_meal_for_integration_v4", cases[6]!, { p_consumed_at: at(cases[6]!), p_time_source: "user_declared" }), "user_declared", recorded);
+    check(cases[7]!, await chatgpt("create_chatgpt_meal_for_integration_v2", cases[7]!, { p_consumed_at: at(cases[7]!) }), "NULL", unverified);
+    check(cases[8]!, await chatgpt("create_chatgpt_meal_for_integration_v2", cases[8]!, {}), "default_clock", untimed);
+    const web = await owner.client.from("meal_entries").insert({ user_id: id, day_log_id: sql(`select id from public.day_logs where user_id='${id}' and log_date='${cases[9]!}';`), title: "WEB", final_calories: 500, final_protein_g: 30, final_carbs_g: 60, final_fat_g: 10, source_type: "manual", entry_kind: "meal", consumed_at: `${cases[9]!}T16:00:00Z`, consumed_at_source: "default_clock" }).select("id").single();
+    expect(web.error).toBeNull();
+    check(cases[9]!, web.data!.id, "default_clock", untimed);
+    // An import, as the importer writes it, outside any session: no column, only its marker and its run.
+    const POSITIVE = '{"originalTimeKnown":true}';
+    const seedImported = (date: string) => { const meal = randomUUID(), run = randomUUID(); sql(`insert into public.nutrition_import_runs(id,user_id,source_name,source_sha256,counts,report) values('${run}','${id}','sintético','${randomBytes(32).toString("hex")}','{}','{}');
+      insert into public.meal_entries(id,user_id,day_log_id,title,final_calories,final_protein_g,final_carbs_g,final_fat_g,source_type,entry_kind,consumed_at,raw_input,legacy_import_source,legacy_import_id,import_run_id)
+      select '${meal}','${id}',l.id,'IMPORTED',500,30,60,10,'sheet_import','meal','${date}T16:00:00Z','${POSITIVE}','sheet','${meal}','${run}' from public.day_logs l where l.user_id='${id}' and l.log_date='${date}';`); return meal; };
+    check(cases[10]!, seedImported(cases[10]!), "NULL", recorded);
+    // A marker already written on an ordinary row, from before the guard: left as it is, and not believed.
+    const forged = await manual(cases[12]!, { consumedAt: at(cases[12]!) });
+    sql(`update public.meal_entries set raw_input='${POSITIVE}' where id='${forged.mealId}';`);
+    check(cases[12]!, forged.mealId, "NULL", unverified);
+    // Inserting the marker through PostgREST: refused, so the day has no meal at all.
+    const dayOf = (date: string) => sql(`select id from public.day_logs where user_id='${id}' and log_date='${date}';`);
+    const direct = (date: string, over: Record<string, unknown>) => owner.client.from("meal_entries").insert({ user_id: id, day_log_id: dayOf(date), title: "FORGED", final_calories: 500, final_protein_g: 30, final_carbs_g: 60, final_fat_g: 10, source_type: "manual", entry_kind: "meal", consumed_at: `${date}T16:00:00Z`, ...over }).select("id");
+    expect((await direct(cases[13]!, { raw_input: POSITIVE })).error?.code).toBe("42501");
+    const ownRun = randomUUID();
+    expect((await owner.client.from("nutrition_import_runs").insert({ id: ownRun, user_id: id, source_name: "x", source_sha256: randomBytes(32).toString("hex"), counts: {}, report: {} }).select("id")).error).toBeNull();
+    expect((await direct(cases[13]!, { raw_input: POSITIVE, source_type: "sheet_import", legacy_import_source: "x", legacy_import_id: randomUUID(), import_run_id: ownRun })).error?.code).toBe("42501");
+    expected[cases[13]!] = { source: "none", carbs: { value: null, state: "no_registered_meal" } };
+    // A marker's time changed directly, and the separate steps that try to recover it.
+    const changed = seedImported(cases[14]!);
+    const patch = (mealId: string, values: Record<string, unknown>) => owner.client.from("meal_entries").update(values).eq("id", mealId).select("id");
+    expect((await patch(changed, { consumed_at: `${cases[14]!}T15:30:00Z` })).error).toBeNull();
+    expect((await patch(changed, { consumed_at: `${cases[14]!}T16:00:00Z` })).error).toBeNull();
+    expect((await patch(changed, { raw_input: POSITIVE })).error?.code).toBe("42501");
+    expect((await patch(changed, { consumed_at_source: "imported" })).error?.code).toBe("42501");
+    check(cases[14]!, changed, "NULL", unverified);
+    // Adding a marker by update to an old client's meal.
+    const added = await manual(cases[15]!, { consumedAt: at(cases[15]!) });
+    expect((await patch(added.mealId, { raw_input: POSITIVE })).error?.code).toBe("42501");
+    check(cases[15]!, added.mealId, "NULL", unverified);
+    // An import edited without touching its time keeps it.
+    const kept = seedImported(cases[16]!);
+    expect((await patch(kept, { title: "RENAMED" })).error).toBeNull();
+    check(cases[16]!, kept, "NULL", recorded);
+    expected[cases[11]!] = { source: "none", carbs: { value: null, state: "no_registered_meal" } };
+    const nowMeal = await chatgpt("create_chatgpt_meal_for_integration_v3", today, { p_time_source: "registration" });
+    check(today, nowMeal, "registration_now", untimed);
+
+    owner.http.requests = 0;
+    const tomorrow = sql("select ((now() at time zone 'America/Argentina/Cordoba')::date + 1)::text;");
+    const snapshot = await readInsightsSnapshot(contextOf(id, owner.client), tomorrow);
+    const pages = owner.http.requests;
+    expect(pages).toBe(14 + 7);
+    const summary = insightsSummary(snapshot, { limit: 120 });
+    expect(parsePerformanceInsights(JSON.parse(JSON.stringify(summary)))).toBeTruthy();
+    for (const [date, row] of Object.entries(expected)) {
+      const day = summary.facts.days.find(item => item.date === date)!;
+      expect(day.sessions[0]!.context.carbsPre3h, `${date}, ${row.source}`).toEqual(row.carbs);
+    }
+    expect(summary.limits.mealTimeEvidence).toEqual({ explicit: 6, registration: 1, unverified: 6, unknown: 3 });
+
+    // Into the window: only what was declared or imported becomes a pair, and each exclusion says why.
+    const relation = insightsRelation(snapshot, "partial:meal_window:carbsG:pre_3h");
+    expect(parsePerformanceInsights(JSON.parse(JSON.stringify(relation)))).toBeTruthy();
+    // The first training day has nothing to compare with, so it is not an outcome day.
+    const declaredDays = Object.entries(expected).filter(([date, row]) => row.carbs.state === "recorded" && date !== cases[0]!).map(([date]) => date).sort();
+    expect(relation.pairs!.map(pair => pair.date)).toEqual(declaredDays);
+    expect(relation.pairs!.every(pair => pair.exposure === 60)).toBe(true);
+    expect(relation.item!.exclusions).toMatchObject({ unverified_meal_time_in_scope: 6, untimed_meal_in_scope: 4, no_registered_meal_in_window: 2 });
+
+    // Nothing is reused: the same content gets the same identity, and a new meal changes it.
+    owner.http.requests = 0;
+    const again = await readInsightsSnapshot(contextOf(id, owner.client), tomorrow);
+    expect(owner.http.requests).toBe(14 + 7);
+    expect(again.revision).toBe(snapshot.revision);
+    await manual(cases[11]!, { consumedAt: at(cases[11]!), consumedAtSource: "user_declared" });
+    const after = await readInsightsSnapshot(contextOf(id, owner.client), tomorrow);
+    expect(after).not.toBe(snapshot); expect(after.revision).not.toBe(snapshot.revision);
+    expect(insightsSummary(after, { limit: 120 }).facts.days.find(day => day.date === cases[11]!)!.sessions[0]!.context.carbsPre3h).toEqual(recorded);
+  }, 120_000);
   // Two real transactions. B starts first, A starts and commits later, then B commits: B's row changes while count and max(updated_at) stay.
   describe("colisión de la revisión de cantidad y máximo", () => {
     const seed = async () => {
