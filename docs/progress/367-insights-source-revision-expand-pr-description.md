@@ -27,7 +27,7 @@ La garantía que daba `FOR SHARE` se conserva, y se prueba forzando los dos órd
 ### Dos pasadas
 Nada espera a otra transacción con el bloqueo tomado. El trigger de cada fuente solo anota el cambio en `insights_source_pending`, una tabla sin WAL cuyas filas no sobreviven a su transacción. Eso encola un segundo trigger diferido, y Postgres dispara lo encolado durante un commit después de todos los eventos que ya estaban, rechecks de unicidad incluidos. El bloqueo, el estado de la sesión y el contador pertenecen a esa segunda vuelta.
 
-Tomar el bloqueo en la primera vuelta **tenía deadlock real, alcanzable con un solo token**: un `PATCH` de 4001 filas y otro de 2 filas, 100 ms después, dieron 9 `40P01` en 15 rondas, sin ningún gancho. Ahora dan 0 en 105 rondas, y el segundo recibe el `23505` que recibía antes del contador. `SET CONSTRAINTS` desde el trigger no alcanza: en un commit todos los eventos ya están marcados, y no adelanta nada.
+Tomar el bloqueo en la primera vuelta **tenía deadlock real, alcanzable con un solo token**: un `PATCH` de 4001 filas y otro de 2 filas, 100 ms después, dieron 9 `40P01` en 15 rondas, sin ningún gancho. Ahora dan 0 en 75 rondas con ese mismo retardo, y el segundo recibe el `23505` que recibía antes del contador. `SET CONSTRAINTS` desde el trigger no alcanza: en un commit todos los eventos ya están marcados, y no adelanta nada.
 
 ## Padre anterior y nuevo
 La base **permite** estos movimientos, también con el token de su dueño: no hay ninguna guarda. La versión anterior consultaba solo el padre nuevo y **perdía el cambio**: sacar un ejercicio o una serie de una sesión completada no movía el contador.
