@@ -70,3 +70,20 @@ El paquete anterior y sus resultados siguen disponibles en el commit 1fc1b23bf28
 Hacer fetch y actualizar main antes de continuar. No aplicar las versiones antiguas del plan ni reparar el historial para sustituir los timestamps efectivos. Las rutas vigentes son las dos de la tabla superior.
 
 La rama integration/367-insights-candidate incorpora main final y preserva el registro y la prueba exclusivos de integración. Sus previews están explícitamente deshabilitadas. Los checkpoints locales del usuario no se modificaron.
+
+## Continuidad: captura y cobertura (2026-11-06)
+
+Tres ramas publicadas desde `main` `07ee16a`, con previews deshabilitadas. **Los PR en borrador no están creados:** esta máquina no tiene sesión de GitHub. El texto de cada uno está en su rama.
+
+| Rama | Head | Necesita antes | Descripción |
+| --- | --- | --- | --- |
+| `codex/367-chatgpt-capture-schema` | `bac622d01b09e7d9306ef564ce0d1b70f9a8fb74` | Nada | `docs/progress/367-chatgpt-capture-pr-description.md` |
+| `codex/367-exercise-configuration-expand` | `64761eea02525d591e45e88f5eaf03502e3b92e5` | Aplicar su migración `20261106120000_training_exercise_configuration_expand.sql`, blob `25457aa321349d3b6ac43ba8737146f0d0aa824e` | `docs/progress/367-exercise-configuration-expand-pr-description.md` |
+| `codex/367-exercise-configuration-adopt` | `3d1474daa735676f7b136410aed086c2c21cdc4e` | La migración y el EXPAND; contiene sus commits | `docs/progress/367-exercise-configuration-adopt-pr-description.md` |
+
+**Paso manual de ChatGPT:** sigue pendiente en cada conexión instalada, y lo hace su dueño: [chatgpt-nutrition.md](https://github.com/IS03/Ownlevel/blob/codex/367-chatgpt-capture-schema/docs/integrations/chatgpt-nutrition.md#paso-manual-actualizar-las-conexiones-de-chatgpt-367).
+
+**Matriz de cobertura:** [367-matriz-cobertura.md](https://github.com/IS03/Ownlevel/blob/codex/367-exercise-configuration-adopt/docs/progress/367-matriz-cobertura.md). La checklist de QA física sigue siendo una sola, ahora con la variante: [367-qa-fisica.md](https://github.com/IS03/Ownlevel/blob/codex/367-exercise-configuration-adopt/docs/progress/367-qa-fisica.md).
+
+**Sin cambios:** ninguna migración nueva aplicada, ningún merge y ningún despliegue. «Consistente» sigue deshabilitado y #367 sigue abierto.
+
