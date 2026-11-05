@@ -48,7 +48,7 @@ describe("escala con perfiles sintéticos", () => {
       clock("relationsAgain", () => JSON.stringify(insightsRelations(snapshot)));
       const pick = (captured ? snapshot.strict.candidates : snapshot.partial.lane.candidates).find(row => row.values.size > 0)!.definition.id;
       const detail = clock("relationDetail", () => JSON.stringify(insightsRelation(snapshot, pick)));
-      bytes = { summary: kib(JSON.parse(summary as string)), daysPage: kib(JSON.parse(days as string)), relations: kib(JSON.parse(relations as string)), relationDetail: kib(JSON.parse(detail as string)) };
+      bytes = { summary: kib(JSON.parse(summary as string)), daysPage: kib(JSON.parse(days as string)), relations: kib(JSON.parse(relations as string)), relationDetail: kib(JSON.parse(detail as string)), relationDetailRecent: kib(insightsRelation(snapshot, pick, { pairs: "recent" })) };
       comparable = { strict: snapshot.totals.comparable, partial: snapshot.partial.totals.comparable, strictDays: snapshot.history.outcomeDays, partialDays: snapshot.partial.outcomeDays };
       candidates = snapshot.strict.candidates.length;
       globalThis.gc?.();

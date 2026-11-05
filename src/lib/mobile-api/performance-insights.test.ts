@@ -153,7 +153,7 @@ describe("GET performance-insights", () => {
     const partial = await (await GET(request(`?association=${encodeURIComponent(`partial:${id}`)}`))).json();
     expect(partial).toMatchObject({ view: "relation", lane: "partial" }); expect(partial.pairs.length).toBeGreaterThan(0);
     expect(await (await GET(request("?association=partial:metric:none:same_day"))).json()).toMatchObject({ item: null, pairs: null });
-    for (const query of ["?limit=0", "?limit=121", "?before=2026-02-31", "?other=1", "?limit=1&limit=2", "?association=%3Cx%3E", "?view=all", "?view=complete"]) {
+    for (const query of ["?limit=0", "?limit=121", "?before=2026-02-31", "?other=1", "?limit=1&limit=2", "?association=%3Cx%3E", "?view=all", "?view=complete", "?pairs=all", "?association=metric:x:same_day&pairs=some"]) {
       expect((await GET(request(query))).status, query).toBe(400);
     }
   }, 30_000);

@@ -65,10 +65,10 @@ function ExerciseRow({ exercise, open, first, onToggle, onOpenExercise }: {
  * SF1 · a closed session seen again. Server truth only; Corregir/Eliminar live in the screen's •••.
  * The comparison with the last time arrives with the summary read and never blocks the session itself.
  */
-export function CompletedSessionView({ detail, finished, onHome, onTraining, onOpenExercise, actions, banner, readSummary }: {
+export function CompletedSessionView({ detail, finished, onHome, onTraining, onOpenExercise, actions, banner, readSummary, extraSummary }: {
   readSummary?: SessionSummaryLoader;
   detail: SessionDetailDto; finished: SessionFinishedDto | null; onHome: () => void; onTraining?: () => void;
-  onOpenExercise?: (exerciseId: string) => void; actions?: ReactNode; banner?: ReactNode;
+  onOpenExercise?: (exerciseId: string) => void; actions?: ReactNode; banner?: ReactNode; extraSummary?: ReactNode;
 }) {
   const { colors, isDark } = useOwnlevelTheme(), reduced = useReduceMotion(), { fontScale } = useWindowDimensions();
   const [postWorkoutOpen, setPostWorkoutOpen] = useState(Boolean(finished));
@@ -114,6 +114,7 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
       {model.feelings.length ? <View style={styles.feelingRow}>{model.feelings.map(feeling => <FeelingDots key={feeling.key} feeling={feeling} />)}</View> : null}
       {model.note ? <AppText style={styles.italic}>“{model.note}”</AppText> : null}
     </View> : null}
+    {extraSummary}
     {model.muscles.length ? <View style={styles.section} testID="revisit-muscles">
       <Heading level={2}>A dónde fue el trabajo</Heading>
       {model.muscles.map((muscle, index) => {
