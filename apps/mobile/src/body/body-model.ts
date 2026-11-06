@@ -36,7 +36,7 @@ function parseDecimal(text: string, max: number, label: string, allowZero: boole
   if (!/^\d+([.,]\d+)?$/.test(raw)) return { error: `${label} no es un número válido.` };
   const value = Number(raw.replace(',', '.'));
   if (!Number.isFinite(value) || value > max || (allowZero ? value < 0 : value <= 0)) {
-    return { error: allowZero ? `${label} debe estar entre 0 y ${String(max).replace('.', ',')}.` : `${label} debe ser mayor a 0 y hasta ${max}.` };
+    return { error: allowZero ? `${label} debe estar entre 0 y ${String(max).replace('.', ',')}.` : `${label} debe ser mayor a 0 y hasta ${String(max).replace('.', ',')}.` };
   }
   if (Math.abs(value * 100 - Math.round(value * 100)) > 1e-7) return { error: `${label} puede tener como máximo dos decimales.` };
   return { value };
@@ -53,7 +53,7 @@ export function validateWeightDraft(draft: WeightDraft, today: string): { date: 
   const errors: Record<string, string> = {};
   const date = parseDate(draft.date, today);
   if ('error' in date) errors.date = date.error;
-  const weight = parseDecimal(draft.weight, BODY_WEIGHT_MAX_KG, 'El peso', true);
+  const weight = parseDecimal(draft.weight, BODY_WEIGHT_MAX_KG, 'El peso', false);
   if ('error' in weight) errors.weight = weight.error;
   else if (weight.value === null) errors.weight = 'El peso es obligatorio.';
   if (Object.keys(errors).length || 'error' in date || 'error' in weight || weight.value === null) return { errors };

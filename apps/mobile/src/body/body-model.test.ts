@@ -7,9 +7,10 @@ describe('Body model: missing != zero and domain validation', () => {
     expect(formatKg(null)).toBe('—'); expect(formatKg(0)).toBe('0 kg'); expect(formatKg(80.5)).toBe('80,5 kg');
     expect(weightDraft(TODAY, null).weight).toBe(''); expect(weightDraft(TODAY, 80.25)).toEqual({ date: '04/10/2026', weight: '80,25' });
   });
-  it('validates weight like the domain (comma, 0..999.99, two decimals) and blocks future dates', () => {
+  it('validates weight like the domain (comma, above 0 up to 999.99, two decimals) and blocks future dates', () => {
     expect(validateWeightDraft({ date: '04/10/2026', weight: '80,5' }, TODAY)).toEqual({ date: TODAY, weightKg: 80.5 });
-    expect(validateWeightDraft({ date: '04/10/2026', weight: '0' }, TODAY)).toEqual({ date: TODAY, weightKg: 0 });
+    // 0 kg is not a weight (#367): a new one is rejected. Deleting a weight is its own action, not a 0.
+    expect(validateWeightDraft({ date: '04/10/2026', weight: '0' }, TODAY)).toEqual({ errors: { weight: 'El peso debe ser mayor a 0 y hasta 999,99.' } });
     expect(validateWeightDraft({ date: '04/10/2026', weight: '' }, TODAY)).toEqual({ errors: { weight: 'El peso es obligatorio.' } });
     for (const bad of ['1000', '80,123', 'abc', '-1']) expect(validateWeightDraft({ date: '04/10/2026', weight: bad }, TODAY)).toHaveProperty('errors.weight');
     expect(validateWeightDraft({ date: '05/10/2026', weight: '80' }, TODAY)).toEqual({ errors: { date: 'No se puede registrar en una fecha futura.' } });

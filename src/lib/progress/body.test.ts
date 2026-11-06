@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { BodyMeasurement } from "../body-measurement-types";
 import { resolveProgressPeriod } from "./analytics";
 import {
+  bodyAvailableMetricDefinitions,
   bodyMetricObservations,
   bodyTrend,
   buildBodyProgressReport,
 } from "./body";
 import { BODY_PROGRESS_METRICS } from "./analytics/catalog";
+import { weightMetricSamples } from "./analytics/adapters";
 import type { WeightHistoryPoint } from "../weight-history";
 
 function measurement(overrides: Partial<BodyMeasurement> = {}): BodyMeasurement {
@@ -142,5 +144,46 @@ describe("Cuerpo V2 analytics", () => {
     const period = resolveProgressPeriod({ preset: "custom", from: "2026-08-01", to: "2026-09-01" }, "2026-09-12");
     expect(period.current).toEqual({ start: "2026-08-01", end: "2026-09-01" });
     expect(period.previous).toEqual({ start: "2026-06-30", end: "2026-07-31" });
+  });
+
+  it("deja fuera los pesos en 0 kg de gráfico, cambio y comparación, y cuenta su exclusión sin borrarlos (#367)", () => {
+    const current = { start: "2026-09-01", end: "2026-09-30" }, previous = { start: "2026-08-02", end: "2026-08-31" };
+    const weights: WeightHistoryPoint[] = [
+      { id: "p1", log_date: "2026-08-05", weight_kg: 0 },
+      { id: "p2", log_date: "2026-08-10", weight_kg: 81 },
+      { id: "p3", log_date: "2026-08-30", weight_kg: 80 },
+      { id: "c0", log_date: "2026-09-01", weight_kg: 0 },
+      { id: "c1", log_date: "2026-09-02", weight_kg: 79.5 },
+      { id: "c2", log_date: "2026-09-20", weight_kg: 79 },
+      { id: "c3", log_date: "2026-09-30", weight_kg: 0 },
+    ];
+    const report = buildBodyProgressReport({ weightHistory: weights, currentWeightKg: 0, measurements: [], period: current, referencePeriod: previous });
+    const weight = report.metrics.find((metric) => metric.key === "body.weight")!;
+    expect(weight.current.map((entry) => entry.id)).toEqual(["c1", "c2"]);
+    expect(weight.first!.id).toBe("c1");
+    expect(weight.last!.id).toBe("c2");
+    expect(weight.latest!.id).toBe("c2");
+    expect(weight.change).toBeCloseTo(-0.5);
+    expect(weight.referenceChange).toBeCloseTo(-1);
+    expect(weight.reference.map((entry) => entry.id)).toEqual(["p2", "p3"]);
+    // Only the period's: the one of August is outside it.
+    expect(report.excludedInvalidWeightCount).toBe(2);
+    expect(report.state.some((metric) => metric.key === "body.weight")).toBe(true);
+  });
+
+  it("separa ausencia, cero e inválido: sin pesos no hay métrica; sólo ceros la conserva sin observaciones ni perfil en 0", () => {
+    const period = { start: "2026-09-01", end: "2026-09-30" }, referencePeriod = { start: "2026-08-02", end: "2026-08-31" };
+    const empty = buildBodyProgressReport({ weightHistory: [], currentWeightKg: null, measurements: [], period, referencePeriod });
+    expect(empty.metrics.find((metric) => metric.key === "body.weight")!.latest).toBeNull();
+    expect(empty.excludedInvalidWeightCount).toBe(0);
+    const zeros: WeightHistoryPoint[] = [{ id: "z", log_date: "2026-09-10", weight_kg: 0 }];
+    const onlyZero = buildBodyProgressReport({ weightHistory: zeros, currentWeightKg: 0, measurements: [], period, referencePeriod });
+    const weight = onlyZero.metrics.find((metric) => metric.key === "body.weight")!;
+    expect(weight.latest).toBeNull();
+    expect(weight.change).toBeNull();
+    expect(onlyZero.excludedInvalidWeightCount).toBe(1);
+    expect(bodyAvailableMetricDefinitions({ weightHistory: zeros, currentWeightKg: null, measurements: [] }).some((metric) => metric.key === "body.weight")).toBe(true);
+    expect(bodyAvailableMetricDefinitions({ weightHistory: [], currentWeightKg: 0, measurements: [] }).some((metric) => metric.key === "body.weight")).toBe(false);
+    expect(weightMetricSamples(zeros)).toEqual([]);
   });
 });

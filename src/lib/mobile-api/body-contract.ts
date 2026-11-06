@@ -55,6 +55,8 @@ const keys = (v: Record<string, unknown>, names: readonly string[]) => Object.ke
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY = /^[A-Za-z0-9._:-]{1,128}$/;
 const twoDecimals = (n: number) => Math.abs(n * 100 - Math.round(n * 100)) < 1e-7;
+/** A weight to write: above zero. Reading keeps isBodyWeight, so a stored 0 kg still reads and can be corrected or deleted. */
+export const isNewBodyWeight = (v: unknown): v is number => isBodyWeight(v) && v > 0;
 export const isBodyWeight = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= BODY_WEIGHT_MAX_KG && twoDecimals(v);
 export const isBodyMeasurementCm = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v > 0 && v <= BODY_MEASUREMENT_MAX_CM && twoDecimals(v);
 const nullableText = (v: unknown): v is string | null => v === null || typeof v === "string";
@@ -98,8 +100,9 @@ export function parseBodyOverview(v: unknown): BodyOverview | undefined {
 export function parseBodyWeightIntent(v: unknown): BodyWeightIntent | undefined {
   if (!bodyRecord(v) || !keys(v, ["operation", "date", "expectedWeightKg", "weightKg", "idempotencyKey"])
     || (v.operation !== "set" && v.operation !== "delete") || !isNutritionDate(v.date)
+    // The expectation may be a stored 0 kg: correcting or deleting it must stay possible. Only a new value must be a weight.
     || (v.expectedWeightKg !== null && !isBodyWeight(v.expectedWeightKg))
-    || (v.operation === "set" ? !isBodyWeight(v.weightKg) : v.weightKg !== null)
+    || (v.operation === "set" ? !isNewBodyWeight(v.weightKg) : v.weightKg !== null)
     || typeof v.idempotencyKey !== "string" || !KEY.test(v.idempotencyKey)) return;
   return v as BodyWeightIntent;
 }

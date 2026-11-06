@@ -337,6 +337,10 @@ export async function listRecentDays(limit = 14): Promise<DayLog[]> {
   return (data ?? []) as DayLog[];
 }
 
+/**
+ * The newest `limit` weights, oldest first. Only for callers that want a recent window (Ajustes asks for one to know
+ * whether a history exists). Analysis reads listAllWeightHistory: a window would lose references it needs.
+ */
 export async function listWeightHistory(limit = 366, context?: AuthenticatedRequestContext): Promise<WeightHistoryPoint[]> {
   const supabase = context?.supabase ?? await createClient();
   const userId = context?.userId ?? await getAuthedUserId();
@@ -347,11 +351,42 @@ export async function listWeightHistory(limit = 366, context?: AuthenticatedRequ
     .select("id, log_date, weight_kg")
     .eq("user_id", userId)
     .not("weight_kg", "is", null)
-    .order("log_date", { ascending: true })
+    .order("log_date", { ascending: false })
     .limit(safeLimit);
 
   if (error) throw new Error(`Leer historial de peso: ${error.message}`);
-  return (data ?? []) as WeightHistoryPoint[];
+  return ((data ?? []) as WeightHistoryPoint[]).reverse();
+}
+
+export const WEIGHT_HISTORY_PAGE = 1000;
+/** About 270 years of daily weights. Past it the read fails instead of returning part of the history. */
+export const WEIGHT_HISTORY_MAX_PAGES = 100;
+
+/**
+ * Every recorded weight, oldest first, in pages by date: one per user and date, so `log_date > last` never skips
+ * or repeats a row. It stops on an empty page, not on a short one, so a server row cap below the page size cannot
+ * end it early. It never returns a truncated history: past the limit it throws.
+ */
+export async function listAllWeightHistory(context?: AuthenticatedRequestContext): Promise<WeightHistoryPoint[]> {
+  const supabase = context?.supabase ?? await createClient();
+  const userId = context?.userId ?? await getAuthedUserId();
+  const rows: WeightHistoryPoint[] = [];
+  let after: string | null = null;
+  for (let page = 0; page < WEIGHT_HISTORY_MAX_PAGES; page++) {
+    let query = supabase
+      .from("day_logs")
+      .select("id, log_date, weight_kg")
+      .eq("user_id", userId)
+      .not("weight_kg", "is", null);
+    if (after !== null) query = query.gt("log_date", after);
+    const { data, error } = await query.order("log_date", { ascending: true }).limit(WEIGHT_HISTORY_PAGE);
+    if (error) throw new Error(`Leer historial de peso: ${error.message}`);
+    const batch = (data ?? []) as WeightHistoryPoint[];
+    if (batch.length === 0) return rows;
+    rows.push(...batch);
+    after = batch.at(-1)!.log_date;
+  }
+  throw new Error("Leer historial de peso: el historial supera el máximo que se puede leer completo.");
 }
 
 export async function getLatestWeightHistoryEntry(): Promise<WeightHistoryPoint | null> {

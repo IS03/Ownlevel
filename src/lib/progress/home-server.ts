@@ -3,7 +3,7 @@ import "server-only";
 import { listBodyMeasurements } from "@/lib/body-measurements";
 import { getDailyMetricsReport } from "@/lib/daily-metrics/reports";
 import { getNutritionReportWithProgressComparison } from "@/lib/nutrition/reports";
-import { listWeightHistory } from "@/lib/phase1/day-log";
+import { listAllWeightHistory } from "@/lib/phase1/day-log";
 import { getMyProfile } from "@/lib/phase1/profile";
 import { isTrainingAnalysisPeriod, type TrainingAnalysisPeriod } from "@/lib/phase2/training-analysis";
 import { getTrainingGeneralAnalysis } from "@/lib/phase2/training-robust";
@@ -88,7 +88,7 @@ export async function getProgressHomeData(
     }, today, auth), auth.requestPerformance),
     isolated("progress.body", () => Promise.all([
       getMyProfile(auth),
-      listWeightHistory(1000, auth),
+      listAllWeightHistory(auth),
       listBodyMeasurements(1000, auth),
     ]).then(([profile, weightHistory, measurements]) => buildBodyProgressReport({
       weightHistory,
