@@ -120,7 +120,7 @@ El endpoint ya no manda todo junto. Todas las vistas salen de una misma lectura 
 
 ## Costo y escala
 
-**Metodología.** Perfiles sintéticos, cada uno en su propio proceso (`scale.test.ts`), cinco corridas, con mediana y máximo. *Retenida* es el heap vivo que agrega la instantánea tras forzar recolección, con sus relaciones evaluadas. *Pico* es el máximo residente del proceso menos el residente con la fuente ya construida: incluye basura sin recolectar, no el costo de leer de la base y abarca las cinco corridas. Consultas: `P` son las páginas de los siete flujos.
+**Metodología.** Perfiles sintéticos, cada uno en su propio proceso (`scale.test.ts`), cinco corridas, con mediana y máximo. *Retenida* es el heap vivo que agrega la instantánea tras forzar recolección, con sus relaciones evaluadas. *Pico* es el máximo residente del proceso menos el residente con la fuente ya construida: incluye basura sin recolectar, no el costo de leer de la base y abarca las cinco corridas. Consultas: `P` son las páginas de los flujos: siete hasta 2026-11, seis desde que las series viajan con sus ejercicios (ver «Lectura en frío, 2026-11»).
 
 **Consultas**
 
@@ -284,6 +284,52 @@ Dentro del ruido: no hay costo medible.
   - el contexto de exposición.
 - **Para bajarlo más** hay que cambiar cómo se recorre la historia, por ejemplo por ejercicio y no todas las sesiones a la vez. Es un cambio de arquitectura del comparador; no se hizo.
 - **Producción:** no se midió en la función real de Vercel.
+
+## Lectura en frío, 2026-11
+
+Medido contra PostgREST real, en una pila local descartable con las 93 migraciones de main (`03fc8f7`):
+- **Pila:** PostgreSQL 17.11, PostgREST 16.5, `max_rows = 1000`.
+- **Datos:** dos usuarios sembrados una sola vez, con semilla fija.
+  - 5 años: 1305 sesiones y 31.320 series.
+  - 10 años: 2575 sesiones, 15.450 ejercicios, 61.800 series, 58.399 valores diarios y 14.600 comidas.
+- **Comparación:** main y la rama leyeron los mismos usuarios. Siete lecturas en frío cada vez; se informa la mediana.
+
+**Diagnóstico** (main, 10 años: 159 consultas, 34,2 MiB, 3,16 s)
+- **Series:** 62 consultas y 13,7 MiB.
+- **Valores diarios:** 59 consultas y 11,9 MiB.
+- **Costo de las páginas:** cada flujo pagina de a una, y los siete corren en paralelo. La latencia la fija el flujo más largo.
+- **Offset:** cada página de valores cuesta más cuanto más adentro está. Con `EXPLAIN ANALYZE`, 4 ms en la primera, 26 ms con offset 29.000 y 32 ms con offset 57.000.
+
+**Qué cambió:** las series viajan dentro de la página de su ejercicio.
+- La consulta es `sets:workout_sets(...)`, filtrada por dueño (`sets.user_id`) y ordenada por id.
+- Después se aplanan y se ordenan por id, como lo hacía el flujo que reemplazan. Las del ejercicio de una sesión no completada se descartan como antes.
+- **Tope de filas:** `max_rows` limita las filas de primer nivel (pedir 5000 devuelve 1000), no las embebidas. Una página de 1000 ejercicios trajo sus 4000 series.
+- **No se tocaron:**
+  - el tamaño de página;
+  - la identidad, RLS y el contador transaccional;
+  - el reintento, la distinción entre error y vacío, y los contratos.
+
+| Lectura en frío local | Antes | Después |
+| --- | --- | --- |
+| 5 años: consultas | 84 | **52** |
+| 5 años: bytes recibidos | 17,2 MiB | 15,4 MiB |
+| 5 años: tiempo, mediana | 1254 ms | 1200 ms |
+| 10 años: consultas | 159 | **97** |
+| 10 años: bytes recibidos | 34,2 MiB | 30,7 MiB |
+| 10 años: tiempo, mediana | 3157 ms | 3030 ms |
+
+**Perfil sintético del benchmark** (5 series por ejercicio y 30 métricas): la lectura completa pasa de 18, 84 y 268 consultas a **12, 52 y 142** a 1, 5 y 10 años.
+
+**Equivalencia**
+- **Datos locales:** con los mismos usuarios, la fuente que recibe el motor y todas las vistas de los dos métodos dan el mismo hash antes y después: 7 de 7 en cada perfil. Abarcan páginas, relaciones y la evidencia de cada relación.
+- **Prueba local dirigida:** 1180 series en una página de ejercicios, por encima del tope de 1000, más series de otra persona y de una sesión no completada. La fuente trae exactamente las del dueño en sesiones completadas, en el orden de la base y en 2 + 6 pedidos.
+- **Suites locales:** Insights, sueño y peso (sobre PostgreSQL 17.6), configuración (17.6) y cruce de token pasan.
+- **Suite sin cubrir:** `insights-source-revision` no usa el cargador y necesita un esquema previo a su migración; no se corrió.
+
+**Límites**
+- **Latencia:** baja poco, 4 %. Ahora la fija el flujo de valores diarios, con 59 páginas secuenciales cada vez más caras por el offset.
+- **Propuesta:** paginar por clave (`id > último`) en lugar de offset. Mantiene el orden y la estabilidad, y cada página costaría como la primera. No cambia las consultas, así que es una mejora de latencia, no de cantidad.
+- **Producción:** no se midió. La pila local no reproduce la red ni el pooler de producción.
 
 ## Qué sigue valiendo
 

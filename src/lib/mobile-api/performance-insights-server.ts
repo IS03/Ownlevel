@@ -30,10 +30,15 @@ type SessionRow = { id: string; routine_id: string | null; routine_name_snapshot
   energy_level: number | null; performance_level: number | null; pain_level: number | null; day: { log_date: string; weight_kg?: number | string | null } };
 type ExerciseRow = { id: string; workout_session_id: string; exercise_id: string; nombre_snapshot: string; implement_snapshot: string | null; weight_mode_snapshot: string | null; is_completed: boolean;
   /** One-to-one by primary key: PostgREST sends an object, the generated types say a list. Both are read the same way. */
-  configuration?: ConfigurationRow | ConfigurationRow[] | null };
+  configuration?: ConfigurationRow | ConfigurationRow[] | null;
+  /** The exercise's own sets, embedded: one request per page of exercises instead of a stream of its own. */
+  sets: EmbeddedSetRow[] };
 type ConfigurationRow = { kind: string | null; label: string | null };
 const oneConfiguration = (value: ExerciseRow["configuration"]) => Array.isArray(value) ? value.length === 1 ? value[0]! : null : value ?? null;
 type SetRow = { id: string; workout_session_exercise_id: string; actual_reps: number | null; actual_weight_kg: number | string | null; is_completed: boolean; completed_at: string | null };
+type EmbeddedSetRow = Omit<SetRow, "workout_session_exercise_id">;
+/** uuid order is byte order, which is the order of their canonical text: the same order as `order("id")` in the database. */
+const byId = (a: { id: string }, b: { id: string }) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 type MetricRow = { id: string; name: string; unit: string | null; value_type: string; is_active: boolean; archived_at: string | null; system_key?: string | null };
 type NightRow = { convention: string; declared_updated_at: string; declared_value: number | string; declared_date: string };
 type ValueRow = { id: string; metric_id: string; metric_date: string; value: unknown; updated_at?: string; night?: NightRow | NightRow[] | null };
@@ -52,19 +57,20 @@ type MealRow = { id: string; consumed_at: string | null; consumed_at_source: str
   final_calories: unknown; final_protein_g: unknown; final_carbs_g: unknown; final_fat_g: unknown; day_logs: { log_date: string } };
 type FeelingRow = { session_id: string; revision: number; facts: unknown };
 
-/** Seven grouped streams, whole history, one stable order each. Pages grow with rows, never with exercises or candidates. */
+/**
+ * Six grouped streams, whole history, one stable order each. Pages grow with rows, never with exercises or candidates.
+ * Sets travel inside their exercise's page (#367): PostgREST's row cap applies to the page's exercises, not to the rows
+ * embedded in them, so each exercise brings all of its own sets, filtered by owner and ordered by id.
+ */
 export async function readInsightsSource(context: Context): Promise<InsightsSource> {
   const { supabase, userId } = context;
-  const [sessions, exercises, sets, feelings, definitions, values, meals] = await Promise.all([
+  const [sessions, exercises, feelings, definitions, values, meals] = await Promise.all([
     readAllTrainingRows<SessionRow>("Leer sesiones de Insights", from => supabase.from("workout_sessions")
       .select("id,routine_id,routine_name_snapshot,session_name,status,started_at,ended_at,energy_level,performance_level,pain_level,day:day_logs!inner(log_date,weight_kg)", firstPage(from))
       .eq("user_id", userId).eq("status", "completed").order("id").range(from, from + 999).returns<SessionRow[]>()),
     readAllTrainingRows<ExerciseRow>("Leer ejercicios de Insights", from => supabase.from("workout_session_exercises")
-      .select("id,workout_session_id,exercise_id,nombre_snapshot,implement_snapshot,weight_mode_snapshot,is_completed,configuration:workout_session_exercise_configurations(kind,label)", firstPage(from))
-      .eq("user_id", userId).order("id").range(from, from + 999)),
-    readAllTrainingRows<SetRow>("Leer series de Insights", from => supabase.from("workout_sets")
-      .select("id,workout_session_exercise_id,actual_reps,actual_weight_kg,is_completed,completed_at", firstPage(from))
-      .eq("user_id", userId).order("id").range(from, from + 999)),
+      .select("id,workout_session_id,exercise_id,nombre_snapshot,implement_snapshot,weight_mode_snapshot,is_completed,configuration:workout_session_exercise_configurations(kind,label),sets:workout_sets(id,actual_reps,actual_weight_kg,is_completed,completed_at)", firstPage(from))
+      .eq("user_id", userId).eq("sets.user_id", userId).order("id").order("id", { referencedTable: "sets" }).range(from, from + 999).returns<ExerciseRow[]>()),
     readAllTrainingRows<FeelingRow>("Leer sensaciones de Insights", from => supabase.from("workout_session_feelings")
       .select("session_id,revision,facts,session:workout_sessions!inner(user_id,status)", firstPage(from))
       .eq("session.user_id", userId).eq("session.status", "completed").order("session_id").range(from, from + 999)),
@@ -80,14 +86,15 @@ export async function readInsightsSource(context: Context): Promise<InsightsSour
   // Without joins on every page: rows of an in-progress or discarded session are dropped here, against the completed sessions just read.
   const completed = new Set(sessions.map(row => row.id));
   const completedExercises = exercises.filter(row => completed.has(row.workout_session_id));
-  const kept = new Set(completedExercises.map(row => row.id));
+  // The same rows, in the same order, as the stream they replace: every set of a completed session's exercise, by id.
+  const sets = completedExercises.flatMap(row => row.sets.map(set => ({ ...set, workout_session_exercise_id: row.id }))).sort(byId);
   return {
     sessions: sessions.map(row => ({ id: row.id, date: row.day.log_date, dayWeightKg: strictNumber(row.day.weight_kg), routineId: row.routine_id, routineName: row.routine_name_snapshot, name: row.session_name, status: row.status,
       startedAt: row.started_at, endedAt: row.ended_at, performanceLevel: row.performance_level, painLevel: row.pain_level, legacyEnergyLevel: row.energy_level })),
     exercises: completedExercises.map(row => ({ id: row.id, sessionId: row.workout_session_id, exerciseId: row.exercise_id, name: row.nombre_snapshot, implement: row.implement_snapshot, weightMode: row.weight_mode_snapshot, isCompleted: row.is_completed,
       // Recorded by the person for this session, or unknown. The catalog is not history and nothing is invented.
       configuration: configurationIdentity(oneConfiguration(row.configuration)) })),
-    sets: sets.filter(row => kept.has(row.workout_session_exercise_id)).map(row => ({ id: row.id, sessionExerciseId: row.workout_session_exercise_id, actualReps: strictNumber(row.actual_reps), actualLoad: strictNumber(row.actual_weight_kg), isCompleted: row.is_completed, completedAt: row.completed_at })),
+    sets: sets.map(row => ({ id: row.id, sessionExerciseId: row.workout_session_exercise_id, actualReps: strictNumber(row.actual_reps), actualLoad: strictNumber(row.actual_weight_kg), isCompleted: row.is_completed, completedAt: row.completed_at })),
     feelings: feelings.map(row => ({ sessionId: row.session_id, revision: row.revision, facts: row.facts })),
     metricDefinitions: definitions.map(row => ({ id: row.id, name: row.name, unit: row.unit, valueType: row.value_type, archived: !row.is_active || row.archived_at !== null, systemKey: row.system_key ?? null })),
     metricValues: values.map(row => ({ metricId: row.metric_id, date: row.metric_date, value: row.value, sleepNight: sleepNightOf(row) })),
