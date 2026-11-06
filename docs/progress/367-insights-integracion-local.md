@@ -1,18 +1,22 @@
-# Estado vigente — lectura en frío de Insights, en revisión
+# Estado vigente — lectura en frío de Insights, en revisión (#409)
 
-Main `03fc8f7` incluye #408. Rama `codex/367-insights-cold-read`, publicada en `30e863edb9b623b4b2641f3a1c0e24b0e753af42`, con previews bloqueadas. Sin migración ni RPC. Sin cambios de identidad, RLS, contador, contratos ni métodos.
+Rama `codex/367-insights-cold-read`, ahora en `bbddaa6a6af65cee8fd923484b908c51a43ef88c` sobre main `03fc8f7`, con previews bloqueadas. Sin migración ni RPC.
 
-- **Qué hace:** las series viajan embebidas en la página de su ejercicio, con filtro de dueño y orden por id. El cargador las aplana y las ordena como el flujo que reemplazan. Pasa de siete flujos a seis.
-- **Límite del servidor:** `max_rows` limita las filas de primer nivel, no las embebidas. Comprobado con PostgREST local.
-- **Medido contra PostgREST local, con los mismos usuarios sembrados, a 10 años:**
-  - 159 → 97 consultas;
-  - 34,2 → 30,7 MiB;
-  - 3157 → 3030 ms.
-  - En el perfil sintético, 268 → 142 consultas.
-- **Equivalencia:** 7 de 7 hashes de la fuente y de las vistas por perfil. Más una prueba local con más de 1000 series en una página y las suites locales afectadas.
-- **Límite:** la latencia casi no baja. La fija el flujo de valores diarios, con 59 páginas por offset.
-- **Propuesta:** paginar por clave.
-- **Producción:** no se midió.
+**Corrección de la revisión:** PostgREST 16.5 corta también cada lista embebida en `max_rows`. Un padre con 1500 hijos recibe 1000; la versión anterior lo negaba.
+- **Por qué hoy no se corta ninguna lista de series:** el esquema limita un ejercicio de sesión a 50 series (`workout_sets_set_number_check` con `workout_sets_unique_number`). La 51 es rechazada.
+- **Control sin suponerlo:** un conteo único de series corre en paralelo. Si las listas suman menos, se lee el flujo de series paginado, como antes. Nunca una lista parcial, nunca un pedido por ejercicio.
+- **Equivalencia:**
+  - todos los ids de series de main y de la rama coinciden con SQL, con ejercicios de 50 series;
+  - 8 de 8 hashes de fuente y vistas contra main;
+  - pruebas locales nuevas de 50 series y de la serie 51 rechazada;
+  - pruebas unitarias de listas cortadas.
+- **Medición a 10 años, PostgreSQL 17.6:**
+  - consultas: 162 → 98;
+  - bytes: 34,8 → 31,1 MiB;
+  - tiempo: 2361 → 2425 ms, sin mejora confiable.
+- **Pendiente:**
+  - paginar por clave para la latencia;
+  - producción, no medida.
 - **Detalle:** [descripción del PR](367-lectura-en-frio-pr-description.md) en esa rama.
 
 ---
