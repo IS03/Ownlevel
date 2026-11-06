@@ -1,4 +1,23 @@
-# Estado vigente — salida compacta del comparador, en revisión
+# Estado vigente — lectura en frío de Insights, en revisión
+
+Main `03fc8f7` incluye #408. Rama `codex/367-insights-cold-read`, publicada en `30e863edb9b623b4b2641f3a1c0e24b0e753af42`, con previews bloqueadas. Sin migración ni RPC. Sin cambios de identidad, RLS, contador, contratos ni métodos.
+
+- **Qué hace:** las series viajan embebidas en la página de su ejercicio, con filtro de dueño y orden por id. El cargador las aplana y las ordena como el flujo que reemplazan. Pasa de siete flujos a seis.
+- **Límite del servidor:** `max_rows` limita las filas de primer nivel, no las embebidas. Comprobado con PostgREST local.
+- **Medido contra PostgREST local, con los mismos usuarios sembrados, a 10 años:**
+  - 159 → 97 consultas;
+  - 34,2 → 30,7 MiB;
+  - 3157 → 3030 ms.
+  - En el perfil sintético, 268 → 142 consultas.
+- **Equivalencia:** 7 de 7 hashes de la fuente y de las vistas por perfil. Más una prueba local con más de 1000 series en una página y las suites locales afectadas.
+- **Límite:** la latencia casi no baja. La fija el flujo de valores diarios, con 59 páginas por offset.
+- **Propuesta:** paginar por clave.
+- **Producción:** no se midió.
+- **Detalle:** [descripción del PR](367-lectura-en-frio-pr-description.md) en esa rama.
+
+---
+
+# Estado anterior — salida compacta del comparador, mergeada en #408
 
 Main `2eb08b1` incluye #407. Rama `codex/367-comparator-compact`, publicada en `67b3fb712d32780f8141379739ae919c07384439`, con previews bloqueadas. Sin cambios de método, contrato, caché ni RLS. La salida completa sigue siendo la predeterminada.
 
