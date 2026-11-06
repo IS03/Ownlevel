@@ -1,15 +1,15 @@
 # #367 — Paquete de rollout: noche del sueño y peso corporal
 
-**Sin autorizar.** Este paquete no aplica nada.
+**Rollout autorizado por el usuario. Migración aplicada**, versión efectiva `20261106024523`. No volver a aplicarla. Git conserva el mismo blob SQL y se alinea con el historial registrado por Supabase. La integración de los PR y sus despliegues se completa después de esa aplicación.
 
 ## Migración
 
 | Archivo | Blob |
 | --- | --- |
-| `supabase/migrations/20261107120000_sleep_night_and_body_weight_sources_expand.sql` | `39644f101e44ac25b303278392523cb4456e928d` |
+| `supabase/migrations/20261106024523_sleep_night_and_body_weight_sources_expand.sql` | `39644f101e44ac25b303278392523cb4456e928d` |
 
 ```bash
-git rev-parse origin/codex/367-sleep-weight-expand:supabase/migrations/20261107120000_sleep_night_and_body_weight_sources_expand.sql
+git rev-parse origin/codex/367-sleep-weight-expand:supabase/migrations/20261106024523_sleep_night_and_body_weight_sources_expand.sql
 ```
 
 **Si Supabase asigna otra versión al aplicar:** renombrar el archivo en Git para que coincida y conservar el blob, como con #387, #391 y #394. No tocar el historial remoto.

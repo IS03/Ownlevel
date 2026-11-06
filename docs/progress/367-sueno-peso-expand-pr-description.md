@@ -1,13 +1,13 @@
 # #367 EXPAND — Noche del sueño y peso corporal como fuente
 
-**Base: `main`.** No necesita código de otro PR pendiente. **Sin aplicar en producción.** El ADOPT está en `codex/367-sleep-weight-adopt`.
+**Base: `main`.** No necesita código de otro PR pendiente. **Aplicada en producción el 5 de noviembre de 2026 (Córdoba), versión efectiva `20261106024523`, con el mismo blob SQL.** El ADOPT está en `codex/367-sleep-weight-adopt`.
 
 - Semántica y método: [367-sueno-peso.md](367-sueno-peso.md).
 - Rollout: [367-sueno-peso-rollout.md](367-sueno-peso-rollout.md).
 
 ## Qué agrega
 
-`supabase/migrations/20261107120000_sleep_night_and_body_weight_sources_expand.sql`, blob `39644f101e44ac25b303278392523cb4456e928d`.
+`supabase/migrations/20261106024523_sleep_night_and_body_weight_sources_expand.sql`, blob `39644f101e44ac25b303278392523cb4456e928d`.
 
 **Tabla `daily_metric_value_conventions`:**
 - guarda la declaración de qué noche es un valor de sueño, atada a su `updated_at`, valor y fecha;
