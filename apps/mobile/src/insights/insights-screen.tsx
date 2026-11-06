@@ -11,7 +11,7 @@ import { useProgressResource } from '@/progress/use-progress-resource';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, NUTRITION_SCOPE, PARTIAL_LIMIT, contextRows, dayLabel, dayLanes, daySessions, referenceText, sessionLanes, feelingClockNote, nutritionRows, sessionName, sessionRows, sessionTime, exerciseSentence, focusOf, heroCaption, heroOf, joinDays, nextDate, nothingComparable, primaryLane, readingRows, reasonText, relationGroups, relationName, relationState, sameRead, statusArrow, statusText, stripMarks, stripSummary, summarySpoken, summaryText, type ContextRow, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
 import { InsightRow } from './insight-row';
-import { dayWeightHref, insightsOriginOf, metricTrendHref, nutritionDayHref, validSession } from './navigation';
+import { dayWeightHref, insightsEvidenceHref, insightsOriginOf, metricTrendHref, nutritionDayHref, validSession, type InsightsOrigin } from './navigation';
 
 type View_ = 'days' | 'exercises';
 const VIEWS = [{ value: 'days', label: 'Días' }, { value: 'exercises', label: 'Ejercicios' }] as const;
@@ -90,28 +90,29 @@ function Strip({ days, lane }: { days: readonly DayLanes[]; lane: Lane }) {
   </View>;
 }
 
-function ExerciseRows({ lane, session, partial, router }: { lane: Lane; session: SessionFact; partial: PartialDayFact['sessions'][number] | undefined; router: ReturnType<typeof useRouter> }) {
-  const rows = lane === 'strict' ? session.exercises.map(row => ({ id: row.exerciseId, name: row.name, status: row.status as string, reason: row.reason, age: row.referenceAgeDays, date: row.referenceDate }))
-    : (partial?.exercises ?? []).map(row => ({ id: row.exerciseId, name: row.name, status: row.reading as string, reason: row.reason, age: row.referenceAgeDays, date: row.referenceDate }));
+/** Each row opens the evidence of its own comparison: read when that detail opens, never one read per row here. */
+function ExerciseRows({ lane, session, partial, router, revision, origin }: { lane: Lane; session: SessionFact; partial: PartialDayFact['sessions'][number] | undefined; router: ReturnType<typeof useRouter>; revision: string; origin: InsightsOrigin }) {
+  const rows = lane === 'strict' ? session.exercises.map(row => ({ id: row.exerciseId, name: row.name, status: row.status as string, reason: row.reason, age: row.referenceAgeDays, date: row.referenceDate, reference: row.referenceSessionId }))
+    : (partial?.exercises ?? []).map(row => ({ id: row.exerciseId, name: row.name, status: row.reading as string, reason: row.reason, age: row.referenceAgeDays, date: row.referenceDate, reference: row.referenceSessionId }));
   // A comparison names its compatible reference; a row without one says why it was not compared.
   return <>{rows.map(row => <InsightRow key={row.id} label={row.name || 'Ejercicio'} detail={statusArrow(row.status) ? referenceText(row.age, row.date) ?? undefined : reasonText(lane, row.reason)}
     value={`${statusArrow(row.status)} ${statusText(lane, row.status)}`} spoken={exerciseSentence(lane, row.name, row.status, row.reason, row.age, row.date)}
-    onPress={() => router.push({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id: row.id, ...(session.routineId ? { routineId: session.routineId } : {}) } })} />)}</>;
+    onPress={() => router.push(insightsEvidenceHref({ session: session.sessionId, exercise: row.id, lane, reference: row.reference, result: row.status, revision }, origin))} />)}</>;
 }
 
-function DayDetail({ day, model, router, onMetric, onNutrition, onBody }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter> } & DayActions) {
+function DayDetail({ day, model, router, origin, onMetric, onNutrition, onBody }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter>; origin: InsightsOrigin } & DayActions) {
   const reduced = useReduceMotion();
   const lanes: Lane[] = dayLanes(day);
   return <Animated.View entering={reduced ? FadeIn.duration(motionDurations.fast) : FadeInDown.duration(motionDurations.base)} style={styles.detail}>
     <DaySessions day={day} router={router} exercises={session => lanes.map(lane => <View key={lane}>
       <Section title={LANE_TITLE[lane]} />
-      <ExerciseRows lane={lane} session={session} partial={day.partial?.sessions.find(row => row.sessionId === session.sessionId)} router={router} />
+      <ExerciseRows lane={lane} session={session} partial={day.partial?.sessions.find(row => row.sessionId === session.sessionId)} router={router} revision={model.sourceRevision} origin={{ ...origin, date: day.date }} />
     </View>)} />
     <DayShared day={day} metrics={model.metrics} onMetric={onMetric} onNutrition={onNutrition} onBody={onBody} />
   </Animated.View>;
 }
 
-function DayRow({ day, model, router, selected, onSelect, onMetric, onNutrition, onBody }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter>; selected: boolean; onSelect: (date: string | undefined) => void } & DayActions) {
+function DayRow({ day, model, router, origin, selected, onSelect, onMetric, onNutrition, onBody }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter>; origin: InsightsOrigin; selected: boolean; onSelect: (date: string | undefined) => void } & DayActions) {
   const [open, setOpen] = useState(selected);
   // The selected day comes from the route: coming back to it finds it open.
   const [seen, setSeen] = useState(selected);
@@ -124,7 +125,7 @@ function DayRow({ day, model, router, selected, onSelect, onMetric, onNutrition,
     <InsightRow label={dayLabel(day.date)} value={value} expanded={open} detail={counts.comparable ? `↑ ${counts.up}  = ${counts.same}  ↓ ${counts.down}${limit ? ' · contexto parcial' : ''}` : undefined}
       spoken={`${dayLabel(day.date)}${day.openDay ? ', día en curso' : ''}: ${counts.comparable ? `${counts.comparable} de ${counts.total} comparables${limit}` : 'sin comparar'}`}
       onPress={() => { onSelect(open ? undefined : day.date); setOpen(!open); }} />
-    {open ? <DayDetail day={day} model={model} router={router} onMetric={onMetric} onNutrition={onNutrition} onBody={onBody} /> : null}
+    {open ? <DayDetail day={day} model={model} router={router} origin={origin} onMetric={onMetric} onNutrition={onNutrition} onBody={onBody} /> : null}
   </View>;
 }
 
@@ -273,7 +274,7 @@ export function InsightsScreen() {
             {readingRows(lane, counts).map(row => <FactRow key={row.label} arrow={row.arrow} label={row.label} value={row.value} spoken={row.spoken} />)}
             {lane === 'partial' ? <AppText muted variant="footnote">{PARTIAL_LIMIT}</AppText> : null}
           </> : null}
-          <ExerciseRows lane={lane} session={focus.session} partial={focus.partial ?? undefined} router={router} />
+          <ExerciseRows lane={lane} session={focus.session} partial={focus.partial ?? undefined} router={router} revision={data.sourceRevision} origin={origin} />
         </View>)}
         <Section title={focus.day.strict.sessions.length > 1 ? 'Sesiones de ese día' : 'Esta sesión'} />
         <DaySessions day={focus.day} originId={focus.session.sessionId} router={router} />
@@ -304,7 +305,7 @@ export function InsightsScreen() {
       <Strip days={days} lane={stripLane} />
       <View>
         <Section title="Días" />
-        {days.map(day => <DayRow key={day.date} day={day} model={data} router={router} selected={!focusId && focusDate === day.date} onSelect={selectDay} onMetric={openMetric} onNutrition={openNutrition} onBody={openBody} />)}
+        {days.map(day => <DayRow key={day.date} day={day} model={data} router={router} origin={origin} selected={!focusId && focusDate === day.date} onSelect={selectDay} onMetric={openMetric} onNutrition={openNutrition} onBody={openBody} />)}
         {next ? <Button label={morePhase === 'loading' ? 'Cargando…' : 'Ver más días'} variant="secondary" disabled={morePhase === 'loading'} onPress={() => void loadMore()} /> : null}
         {morePhase === 'failed' ? <InlineUnavailable message="No pudimos traer más días." actionLabel="Reintentar" onAction={() => void loadMore()} /> : null}
         {pagesDropped ? <AppText muted variant="footnote" accessibilityLiveRegion="polite" testID="insights-changed">Tus datos cambiaron, así que actualizamos la lista.</AppText> : null}

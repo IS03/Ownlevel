@@ -47,6 +47,15 @@ export function bodyWeightHref(range: { from: string; to: string } | null, origi
 }
 export const dayWeightHref = (date: string, origin: InsightsOrigin) => { const month = calendarRange('month', date); return bodyWeightHref({ from: month.start, to: month.end }, origin); };
 
+/**
+ * The evidence of one comparison Insights showed: the selected exercise of that session, in that method, with the reference and
+ * result it showed and the read they came from, so the detail can tell whether it still says the same. The origin travels along.
+ */
+export function insightsEvidenceHref(selection: { session: string; exercise: string; lane: 'strict' | 'partial'; reference: string | null; result: string; revision: string }, origin: InsightsOrigin) {
+  return { pathname: '/(tabs)/train/insights/evidence' as const, params: { session: selection.session, exercise: selection.exercise, lane: selection.lane, reference: selection.reference ?? 'none',
+    result: selection.result, revision: selection.revision, insightsReturn: '1', ...hrefParams(origin) } };
+}
+
 /** Where "Volver a Insights" goes, if this route was opened from there. */
 export function insightsReturnHref(params: Params) {
   if (params.insightsReturn !== '1') return null;

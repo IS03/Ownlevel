@@ -1,6 +1,6 @@
 # #367 — Matriz de cobertura de Insights
 
-Estado al 2026-11-06, verificado con el historial de `main` (`bd5407e`):
+Estado al 2026-11-06, verificado con el historial de `main` (`1fe5715`):
 - **Mergeados y desplegados:** #393 a #395, y #397 y #398 (sueño y peso). Detalle en [367-sueno-peso.md](367-sueno-peso.md).
 - **Mergeados en `main`:**
   - #403 (`8dd3d01`): contexto diario completo;
@@ -8,9 +8,12 @@ Estado al 2026-11-06, verificado con el historial de `main` (`bd5407e`):
   - #405 (`9425e62`): pesos en 0 kg e historial de peso;
   - #406 (`f53fae0`): historial de medidas;
   - #407 (`2eb08b1`) y #408 (`03fc8f7`): memoria del motor;
-  - #409 (`bd5407e`): lectura en frío.
+  - #409 (`bd5407e`): lectura en frío;
+  - #410 (`1fe5715`): resumen factual post-entreno y vista de una sesión.
 - **Pendiente en todos:** la parte de Mobile necesita build. La QA física no está aprobada.
-- **En revisión:** el resumen factual post-entreno, en `codex/367-post-workout-summary`. Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya en código leído, no en que exista una tabla o una pantalla.**
+- **En revisión:** la evidencia de comparación por ejercicio, en `codex/367-exercise-evidence`.
+
+Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya en código leído, no en que exista una tabla o una pantalla.**
 
 **Código de referencia** (`src/lib/progress/insights-engine/`, salvo que se indique otra ruta):
 - `exposures.ts`: `buildExposureContext`, `buildExposureTable`, `mealCandidate`;
@@ -88,10 +91,18 @@ Estado al 2026-11-06, verificado con el historial de `main` (`bd5407e`):
 - **Estado: accesible.**
   - La pantalla muestra estado, motivo y antigüedad de la referencia.
   - Los motivos de exclusión tienen texto propio: `missing_context`, `different_context`, `mixed_context`, `no_compatible_reference`.
-  - **Vista de una sesión** (`codex/367-post-workout-summary`, se abre desde el resumen post-entreno con la sesión de origen):
+  - **Vista de una sesión** (#410, se abre desde el resumen post-entreno con la sesión de origen):
     - cada método por separado, con sus conteos y su texto. El estricto aparece cuando tiene un ejercicio con configuración conocida, aunque no tenga comparables; la configuración desconocida sola nunca lo abre (#410);
     - «Mezclado» y «Sin comparar» como filas distintas;
     - cada ejercicio comparado nombra la fecha de su referencia compatible (`referenceDate`, campo opcional del contrato).
+  - **Evidencia de un ejercicio** (`codex/367-exercise-evidence`): tocar un ejercicio de un día o de una sesión abre lo que sostiene su resultado.
+    - Una vista nueva del mismo contrato, `view=evidence`, con sesión, ejercicio y método. Se lee solo al abrir el detalle: nunca por tarjeta ni al terminar.
+    - La lectura trae solo el historial de ese ejercicio: sus filas en sesiones terminadas, con sesión, configuración y series. No toca el resto del historial ni el snapshot.
+    - Corre el comparador compartido con salida completa sobre ese historial (`insightsExerciseEvidence`). No clasifica por su cuenta. Las pruebas comprueban que decide lo mismo que el historial entero.
+    - Muestra el resultado, la referencia compatible con su fecha, las señales con su ancla, y cada serie de los dos lados en su unidad. Marca cuáles usó cada señal y cuáles quedaron afuera.
+    - Explica las señales cruzadas y la falta de ancla: más carga con menos repeticiones no es mejora. El récord va aparte del resultado y, en el carril parcial, se rotula como lo más alto con contexto parcial.
+    - Sin volumen, porcentajes, e1RM ni causas.
+    - Si los datos cambiaron desde Insights y la referencia o el resultado ya no son los mismos, no muestra otra comparación en su lugar: pide volver a Insights.
   - **Resumen post-entreno:** sus marcas («récord», «↗», «=») salen de otra regla: la última vez con el mismo modo de carga, sin implemento ni variante. Se rotulan así y nunca como lecturas de Insights. Al terminar no se lee Insights: se abre con un toque.
 
 **Varias sesiones en un día**
@@ -296,13 +307,14 @@ Modelo y reglas: [367-exercise-configuration.md](367-exercise-configuration.md).
 - decidir si las sensaciones posteriores se publican como un resultado propio, separado del rendimiento;
 - paginar por clave los valores diarios, para la latencia de la lectura en frío (ver #409).
 
-**En revisión:** resumen factual post-entreno, en `codex/367-post-workout-summary`.
+**En revisión:** evidencia de comparación por ejercicio, en `codex/367-exercise-evidence`.
 
 **Mergeados en `main`:**
 - #403: todas las sesiones y los cuatro macros en el contexto del día;
 - #404: tendencias de peso enlazadas entre Insights y Cuerpo;
 - #405 y #406: pesos en 0 kg e historiales completos de peso y medidas;
 - #407 y #408: memoria del motor;
-- #409: lectura en frío.
+- #409: lectura en frío;
+- #410: resumen factual post-entreno.
 
 **Hasta acá:** presentación y lectura, sin cambio de método. Mobile sigue necesitando build y QA física, que no está aprobada.

@@ -1,5 +1,5 @@
 import type { INSIGHTS_PERFORMANCE_PARTIAL_METHOD, PARTIAL_CONTEXT, PartialCounts, PartialReading } from "../performance-insights/partial";
-import type { ExclusionReason, PerformanceCounts, PerformanceStatus } from "../performance-insights/types";
+import type { DirectEvidence, ExclusionReason, PerformanceCounts, PerformanceStatus, PerformanceUnit, RecordFact } from "../performance-insights/types";
 
 /** Versioned, opt-in method. Facts, context and associations stay in separate lanes of the read model. */
 export const INSIGHTS_ENGINE_METHOD = "insights-engine/1" as const;
@@ -181,7 +181,24 @@ export type InsightsRelations = InsightsVersions & { view: "relations"; metrics:
   partial: PartialLabels & Omit<PartialLane["associations"], "items" | "detail"> & { outcomeDays: number; items: PartialRelationSummary[] } };
 export type InsightsRelationDetail = InsightsVersions & { view: "relation"; metrics: InsightsReadModel["metrics"]; lane: "strict" | "partial"; id: string;
   item: AssociationResult | PartialAssociationResult | null; pairs: { date: string; exposure: number; outcome: number; sessionIds: string[] }[] | null; pairsTotal: number; partial?: PartialLabels };
-export type InsightsResponse = InsightsSummary | InsightsDaysPage | InsightsRelations | InsightsRelationDetail;
+/** One side of a comparison as recorded: every set of that exposure, in its original field and unit, with the ones it left out. */
+export type EvidenceSide = { sessionId: string; date: string | null; sets: { id: string; completed: boolean; amount: number | null; load: number | null }[]; excludedSetIds: string[] };
+/**
+ * The evidence behind one exercise of one session, in one method: what the shared comparator saw, never a classification of its
+ * own. Asked for only when its detail opens. `status` belongs to the strict lane and `reading` to the partial one, as in the facts.
+ */
+export type ExerciseEvidence = {
+  name: string; reason: string;
+  context: { weightMode: string | null; unit: PerformanceUnit | null; implement: string | null; configuration: string | null } | null;
+  current: EvidenceSide;
+  reference: (EvidenceSide & { ageDays: number }) | null;
+  evidence: DirectEvidence[];
+  /** Highest values of the compatible history, apart from the result: a record is not an improvement over the reference. */
+  records: RecordFact[];
+  exclusions: Partial<Record<ExclusionReason, number>>;
+} & ({ status: PerformanceStatus } | { reading: PartialReading });
+export type InsightsExerciseEvidence = InsightsVersions & { view: "evidence"; lane: "strict" | "partial"; sessionId: string; exerciseId: string; item: ExerciseEvidence | null; partial?: PartialLabels };
+export type InsightsResponse = InsightsSummary | InsightsDaysPage | InsightsRelations | InsightsRelationDetail | InsightsExerciseEvidence;
 
 export type InsightsReadModel = {
   contractVersion: typeof INSIGHTS_CONTRACT;

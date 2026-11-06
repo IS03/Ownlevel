@@ -109,3 +109,15 @@ Requiere una build de Mobile con `codex/367-post-workout-summary`. Sin migració
 - [ ] **Comparar en Insights:** abre esta sesión. Cada método va por separado con sus conteos («Mezclado» y «Sin comparar» separados), y cada ejercicio comparado dice frente a qué fecha.
 - [ ] **Sin comparables:** una sesión con un ejercicio mezclado y otro sin referencia dice «Todavía sin comparaciones», muestra «0 de 2» y las dos filas. Un ejercicio con variante conocida y señales cruzadas aparece en «Comparación completa» aunque haya otro con variante desconocida.
 - [ ] **Texto grande, VoiceOver y Reducir movimiento** en el resumen y en esa vista.
+
+## Evidencia de comparación por ejercicio
+Requiere una build de Mobile con `codex/367-exercise-evidence` y la API de esa rama. Sin migración.
+- [ ] **Abrir:** en Insights, tocar un ejercicio de un día o de una sesión abre «Evidencia». La lista de Insights no hace lecturas nuevas; la evidencia se lee al abrir.
+- [ ] **Referencia:** dice frente a qué fecha se comparó y es la misma que mostraba la fila de Insights, no la última sesión. Con otra variante en la sesión anterior, la referencia es la última con la misma.
+- [ ] **Señales y series:** «Con 80 kg: 8 → 10 reps» o «A 8 reps: 80 → 85 kg», con flecha y sin color. Las series de las dos sesiones aparecen en su unidad (kg, lingotes, reps o s); las que usó la comparación dicen «En la comparación» y las excluidas, «No se cuenta». Un dato faltante dice «sin dato», nunca 0.
+- [ ] **Mezclado:** con señales cruzadas o con más carga y menos repeticiones explica por qué no es mejora. Nunca dice «Mejoró».
+- [ ] **Récord aparte:** la sección de récords está separada del resultado. En el carril parcial dice «Lo más alto con contexto parcial» y aclara que no es un récord; también se muestra el límite del contexto parcial.
+- [ ] **Datos cambiados:** con Insights abierto, editar la sesión desde otro dispositivo y abrir el ejercicio. Si cambió la referencia o el resultado, dice «Esta comparación cambió» y ofrece volver; si es la misma, avisa que los datos son los de ahora.
+- [ ] **Volver:** el botón atrás vuelve a Insights en el mismo día o sesión. «Abrir esta sesión», «Abrir la sesión de referencia» y «Ver historial de este ejercicio» abren lo suyo.
+- [ ] **Sin red:** muestra «Uy, no pudimos leer tus datos» con «Reintentar», nunca una comparación vacía.
+- [ ] **Texto grande, VoiceOver y Reducir movimiento:** las filas se apilan sin cortar números; cada serie y señal se lee completa.
