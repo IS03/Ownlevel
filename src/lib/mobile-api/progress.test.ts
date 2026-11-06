@@ -7,13 +7,13 @@ vi.mock("@/lib/phase2/cordoba-date", () => ({ todayInCordoba: () => clock.today 
 vi.mock("./supabase", () => ({ authenticateMobileAccessToken: vi.fn() }));
 vi.mock("@/lib/phase1/profile", () => ({ getMyProfile: vi.fn() }));
 vi.mock("@/lib/phase1/day-log", () => ({ listAllWeightHistory: vi.fn() }));
-vi.mock("@/lib/body-measurements", () => ({ listBodyMeasurements: vi.fn() }));
+vi.mock("@/lib/body-measurements", () => ({ listAllBodyMeasurements: vi.fn() }));
 vi.mock("@/lib/phase2/training-robust", () => ({ loadCompletedTrainingData: vi.fn() }));
 vi.mock("@/lib/phase2/training", () => ({ listRoutines: vi.fn() }));
 import { authenticateMobileAccessToken } from "./supabase";
 import { getMyProfile } from "@/lib/phase1/profile";
 import { listAllWeightHistory } from "@/lib/phase1/day-log";
-import { listBodyMeasurements } from "@/lib/body-measurements";
+import { listAllBodyMeasurements } from "@/lib/body-measurements";
 import { loadCompletedTrainingData } from "@/lib/phase2/training-robust";
 import { listRoutines } from "@/lib/phase2/training";
 import { GET as habitsGET } from "@/app/api/mobile/v1/progress/habits/route";
@@ -95,7 +95,7 @@ beforeEach(() => {
   vi.mocked(authenticateMobileAccessToken).mockResolvedValue({ userId: "owner", supabase: supabase() } as never);
   vi.mocked(getMyProfile).mockResolvedValue({ current_weight_kg: 80 } as never);
   vi.mocked(listAllWeightHistory).mockResolvedValue([]);
-  vi.mocked(listBodyMeasurements).mockResolvedValue([]);
+  vi.mocked(listAllBodyMeasurements).mockResolvedValue([]);
   vi.mocked(loadCompletedTrainingData).mockResolvedValue({ sessions: [], sessionExercises: [], sets: [], dateByDayLog: new Map() });
   vi.mocked(listRoutines).mockResolvedValue([]);
 });
@@ -171,7 +171,7 @@ describe("GET /progress/body", () => {
     expect((await json(await bodyGET(request("progress/body")), parseProgressBody)).metrics).toEqual([]);
   });
   it("suspect measurements are excluded and counted; imported ones count and are flagged; previous period change comes from the engine", async () => {
-    vi.mocked(listBodyMeasurements).mockResolvedValue([
+    vi.mocked(listAllBodyMeasurements).mockResolvedValue([
       measurement(d(-40), { waist_cm: 90 }), measurement(d(-35), { waist_cm: 89 }),
       measurement(d(-20), { waist_cm: 88, legacy_import_source: "sheet" }), measurement(d(-10), { waist_cm: 70, quality_status: "suspect" }), measurement(d(-2), { waist_cm: 87 }),
     ] as never);

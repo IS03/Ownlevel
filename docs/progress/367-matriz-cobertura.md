@@ -277,9 +277,9 @@ Modelo y reglas: [367-exercise-configuration.md](367-exercise-configuration.md).
 
 **No se implementaron.**
 
-**1. Medidas corporales con más de 1000 registros.** `listBodyMeasurements` tiene el mismo patrón que tenía el peso: ascendente con `limit(1000)`. Se puede aplicar la misma lectura por páginas.
+**En revisión:** medidas corporales con más de 1000 registros, en `codex/367-body-measurements-history`. `listAllBodyMeasurements` lee todo por páginas de fecha e id. Las mediciones sospechosas siguen excluidas y contadas.
 
-**En revisión:** peso en cero y límite de lectura del peso, en `codex/367-body-weight-fixes`. No afecta a Insights, que ya trata el cero como inválido.
+**Mergeado en #405:** peso en cero y límite de lectura del peso. No afecta a Insights, que ya trata el cero como inválido.
 
 **Después:** decidir si las sensaciones posteriores se publican como un resultado propio, separado del rendimiento.
 

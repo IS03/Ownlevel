@@ -1,6 +1,6 @@
 import "server-only";
 
-import { listBodyMeasurements } from "@/lib/body-measurements";
+import { listAllBodyMeasurements } from "@/lib/body-measurements";
 import { getNutritionReport } from "@/lib/nutrition/reports";
 import { listAllWeightHistory } from "@/lib/phase1/day-log";
 import { loadCompletedTrainingData } from "@/lib/phase2/training-robust";
@@ -72,7 +72,7 @@ export async function getRelationshipsWorkspace(
       .lte("metric_date", period.current.end),
     getNutritionReport({ period: "custom", from: period.current.start, to: period.current.end }, today, auth),
     listAllWeightHistory(auth),
-    listBodyMeasurements(1000, auth),
+    listAllBodyMeasurements(auth),
     loadCompletedTrainingData(auth),
   ]);
   if (valuesResult.error) throw new Error(`Leer valores para Relaciones: ${valuesResult.error.message}`);

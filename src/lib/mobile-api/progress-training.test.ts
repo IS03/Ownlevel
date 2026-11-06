@@ -6,7 +6,7 @@ vi.mock("@/lib/phase2/cordoba-date", () => ({ todayInCordoba: () => "2026-10-05"
 vi.mock("./supabase", () => ({ authenticateMobileAccessToken: vi.fn() }));
 vi.mock("@/lib/phase1/profile", () => ({ getMyProfile: vi.fn(async () => null) }));
 vi.mock("@/lib/phase1/day-log", () => ({ listAllWeightHistory: vi.fn(async () => []) }));
-vi.mock("@/lib/body-measurements", () => ({ listBodyMeasurements: vi.fn(async () => []) }));
+vi.mock("@/lib/body-measurements", () => ({ listAllBodyMeasurements: vi.fn(async () => []) }));
 vi.mock("@/lib/phase2/training-robust", () => ({ loadCompletedTrainingData: vi.fn(), loadTrainingRecordsData: vi.fn() }));
 vi.mock("@/lib/phase2/training", () => ({ listRoutines: vi.fn(async () => []) }));
 import { authenticateMobileAccessToken } from "./supabase";

@@ -99,3 +99,4 @@ Requiere desplegar `codex/367-body-weight-fixes`. Web sin build; Mobile solo par
   - Se puede corregir a un peso real o borrarlo.
   - No aparece en el gráfico ni en el cambio. Web dice cuántos quedaron fuera.
 - [ ] **Historial largo:** con más de 1000 pesajes, Cuerpo, Inicio, Etapas y Relaciones muestran los más recientes. El cambio del período usa sus primeros y últimos pesajes reales.
+- [ ] **Medidas, historial largo** (`codex/367-body-measurements-history`): con más de 1000 mediciones, Cuerpo, Inicio y Relaciones muestran las más recientes. Una medición marcada para revisión sigue fuera del análisis y contada.

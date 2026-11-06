@@ -1,6 +1,6 @@
 import "server-only";
 
-import { listBodyMeasurements } from "@/lib/body-measurements";
+import { listAllBodyMeasurements } from "@/lib/body-measurements";
 import { getDailyMetricsReport } from "@/lib/daily-metrics/reports";
 import { getNutritionReportWithProgressComparison } from "@/lib/nutrition/reports";
 import { listAllWeightHistory } from "@/lib/phase1/day-log";
@@ -89,7 +89,7 @@ export async function getProgressHomeData(
     isolated("progress.body", () => Promise.all([
       getMyProfile(auth),
       listAllWeightHistory(auth),
-      listBodyMeasurements(1000, auth),
+      listAllBodyMeasurements(auth),
     ]).then(([profile, weightHistory, measurements]) => buildBodyProgressReport({
       weightHistory,
       currentWeightKg: profile?.current_weight_kg ?? null,

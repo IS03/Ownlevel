@@ -1,5 +1,5 @@
 import "server-only";
-import { listBodyMeasurements } from "@/lib/body-measurements";
+import { listAllBodyMeasurements } from "@/lib/body-measurements";
 import { listAllWeightHistory } from "@/lib/phase1/day-log";
 import { getMyProfile } from "@/lib/phase1/profile";
 import { bodyAvailableMetricDefinitions, buildBodyProgressReport } from "@/lib/progress/body";
@@ -28,7 +28,7 @@ export function comparisonDto(result: ProgressComparisonMetricResult | undefined
 
 export async function bodyReport(context: Context, range: NutritionReportRange, period: ProgressPeriod) {
   const auth = webAuth(context);
-  const [profile, weightHistory, measurements] = await Promise.all([getMyProfile(auth), listAllWeightHistory(auth), listBodyMeasurements(1000, auth)]);
+  const [profile, weightHistory, measurements] = await Promise.all([getMyProfile(auth), listAllWeightHistory(auth), listAllBodyMeasurements(auth)]);
   const currentWeightKg = profile?.current_weight_kg ?? null;
   return {
     report: buildBodyProgressReport({ weightHistory, currentWeightKg, measurements, period: range,

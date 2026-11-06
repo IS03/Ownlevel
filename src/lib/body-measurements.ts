@@ -127,6 +127,10 @@ export function bodyMeasurementMatchesInput(
   );
 }
 
+/**
+ * The newest `limit` measurements, oldest first. Only for a recent window. Analysis reads listAllBodyMeasurements: a window
+ * would lose references it needs (the previous period, the first record of a long one).
+ */
 export async function listBodyMeasurements(limit = 366, context?: AuthenticatedRequestContext): Promise<BodyMeasurement[]> {
   const { supabase, userId } = await getAuthedContext(context);
   const safeLimit = Math.min(Math.max(limit, 1), 1000);
@@ -134,10 +138,49 @@ export async function listBodyMeasurements(limit = 366, context?: AuthenticatedR
     .from("body_measurements")
     .select("*")
     .eq("user_id", userId)
-    .order("measured_on", { ascending: true })
+    .order("measured_on", { ascending: false })
+    .order("id", { ascending: false })
     .limit(safeLimit);
   if (error) throw new Error(`Leer medidas corporales: ${error.message}`);
-  return (data ?? []) as BodyMeasurement[];
+  return ((data ?? []) as BodyMeasurement[]).reverse();
+}
+
+export const BODY_MEASUREMENT_PAGE = 1000;
+/** Far beyond any real history. Past it the read fails instead of returning part of it. */
+export const BODY_MEASUREMENT_MAX_PAGES = 100;
+const CURSOR_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const CURSOR_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Every measurement, oldest first, in keyset pages on (measured_on, id). The schema keeps one per user and date
+ * (body_measurements_user_date_unique), but the cursor does not rely on it: with the id as tie-breaker a repeated date
+ * is never skipped or repeated. It stops on an empty page, so a server row cap below the page size cannot end it early,
+ * and it throws instead of returning a truncated history or reading a failure as an empty one. Suspect rows come back
+ * too: the analysis excludes and counts them.
+ */
+export async function listAllBodyMeasurements(context?: AuthenticatedRequestContext): Promise<BodyMeasurement[]> {
+  const { supabase, userId } = await getAuthedContext(context);
+  const rows: BodyMeasurement[] = [];
+  let cursor: { date: string; id: string } | null = null;
+  for (let page = 0; page < BODY_MEASUREMENT_MAX_PAGES; page++) {
+    let query = supabase.from("body_measurements").select("*").eq("user_id", userId);
+    if (cursor) {
+      // Both values come from rows just read; checked anyway, since they are written into a filter.
+      if (!CURSOR_DATE.test(cursor.date) || !CURSOR_ID.test(cursor.id)) throw new Error("Leer medidas corporales: cursor no válido.");
+      query = query.or(`measured_on.gt.${cursor.date},and(measured_on.eq.${cursor.date},id.gt.${cursor.id})`);
+    }
+    const { data, error } = await query
+      .order("measured_on", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(BODY_MEASUREMENT_PAGE);
+    if (error) throw new Error(`Leer medidas corporales: ${error.message}`);
+    const batch = (data ?? []) as BodyMeasurement[];
+    if (batch.length === 0) return rows;
+    rows.push(...batch);
+    const last = batch.at(-1)!;
+    cursor = { date: last.measured_on, id: last.id };
+  }
+  throw new Error("Leer medidas corporales: el historial supera el máximo que se puede leer completo.");
 }
 
 export async function getLatestBodyMeasurement(): Promise<BodyMeasurement | null> {
