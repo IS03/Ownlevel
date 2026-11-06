@@ -77,7 +77,8 @@ describe("medidas corporales", () => {
   it("lee cronológicamente y crea sin reemplazar una fila existente", async () => {
     await expect(listBodyMeasurements()).resolves.toEqual([row]);
     expect(builder.eq).toHaveBeenCalledWith("user_id", "user-1");
-    expect(builder.order).toHaveBeenCalledWith("measured_on", { ascending: true });
+    // A window of the newest: read newest first, returned oldest first.
+    expect(builder.order).toHaveBeenCalledWith("measured_on", { ascending: false });
 
     builder.single.mockResolvedValue({ data: row, error: null });
     await expect(upsertBodyMeasurement(input)).resolves.toEqual(row);
