@@ -1,6 +1,6 @@
-import { buildPerformanceInsightsPartialV1, buildPerformanceInsightsV1, type PartialExercise, type PartialSession } from "../performance-insights";
-import type { PartialCounts } from "../performance-insights/partial";
-import type { PerformanceCounts, PerformanceSession, SessionPerformance } from "../performance-insights/types";
+import { buildPerformanceInsightsPartialV1, buildPerformanceInsightsV1 } from "../performance-insights";
+import type { PartialCounts, PartialExerciseOf, PartialSessionOf } from "../performance-insights/partial";
+import type { CompactExercisePerformance, PerformanceCounts, PerformanceSession, SessionPerformanceOf } from "../performance-insights/types";
 import { evaluateAssociations, type AssociationEvaluation } from "./associations";
 import { buildExposureContext, buildExposureTable, partialOutcomeDays, strictOutcomeDays, weightOfDay, type ExposureTable } from "./exposures";
 import { mealTimeEvidence, toPerformanceSessions } from "./source-adapter";
@@ -18,16 +18,19 @@ const DAY_MS = 86_400_000;
 type FactSession<E> = { sessionId: string; date: string | null; routineId: string | null; counts: E extends ExerciseFact ? PerformanceCounts : PartialCounts; exercises: E[] };
 const nameOf = (names: ReadonlyMap<string, string>, sessionId: string, exerciseId: string) => names.get(`${sessionId}:${exerciseId}`);
 
-/** The strict comparator, reduced to what is published. Each session is reduced once, whether it is reached by its day or not. */
+/**
+ * The strict comparator, reduced to what is published. It asks for the compact output: the same classification, references and
+ * records, without the exposures, evidence and volumes that Insights never shows. Each session is reduced once.
+ */
 function factsOfStrict(sessions: readonly PerformanceSession[], names: ReadonlyMap<string, string>) {
-  const performance = buildPerformanceInsightsV1({ sessions, historyCoverage: "complete", exclusionDetail: "summary" });
-  const reduced = new Map<SessionPerformance, FactSession<ExerciseFact>>();
-  const reduce = (session: SessionPerformance) => {
+  const performance = buildPerformanceInsightsV1({ sessions, historyCoverage: "complete", exclusionDetail: "summary", output: "compact" });
+  const reduced = new Map<SessionPerformanceOf<CompactExercisePerformance>, FactSession<ExerciseFact>>();
+  const reduce = (session: SessionPerformanceOf<CompactExercisePerformance>) => {
     let row = reduced.get(session);
     if (!row) reduced.set(session, row = { sessionId: session.sessionId, date: session.date, routineId: session.routineId, counts: session.counts,
       exercises: session.exercises.map((exercise): ExerciseFact => ({ exerciseId: exercise.exerciseId, name: nameOf(names, session.sessionId, exercise.exerciseId) ?? "",
         status: exercise.status, reason: exercise.reason, referenceSessionId: exercise.reference?.sessionId ?? null,
-        referenceAgeDays: exercise.reference ? Math.floor(exercise.reference.ageMs / DAY_MS) : null, newHigh: exercise.records.facts.some(fact => fact.isNewHigh) })) });
+        referenceAgeDays: exercise.reference ? Math.floor(exercise.reference.ageMs / DAY_MS) : null, newHigh: exercise.records.some(fact => fact.isNewHigh) })) });
     return row;
   };
   return { methodVersion: performance.methodVersion, integrity: performance.integrity, exclusionReasons: performance.exclusions.map(row => row.reason),
@@ -37,9 +40,9 @@ function factsOfStrict(sessions: readonly PerformanceSession[], names: ReadonlyM
 }
 /** The partial comparator, reduced the same way. */
 function factsOfPartial(sessions: readonly PerformanceSession[], names: ReadonlyMap<string, string>) {
-  const partial = buildPerformanceInsightsPartialV1({ sessions, historyCoverage: "complete", exclusionDetail: "summary" });
-  const reduced = new Map<PartialSession, FactSession<PartialExerciseFact>>();
-  const reduce = (session: PartialSession) => {
+  const partial = buildPerformanceInsightsPartialV1({ sessions, historyCoverage: "complete", exclusionDetail: "summary", output: "compact" });
+  const reduced = new Map<PartialSessionOf<CompactExercisePerformance>, FactSession<PartialExerciseFact>>();
+  const reduce = (session: PartialSessionOf<CompactExercisePerformance>) => {
     let row = reduced.get(session);
     if (!row) reduced.set(session, row = { sessionId: session.sessionId, date: session.date, routineId: session.routineId, counts: session.counts,
       exercises: session.exercises.map(exercise => partialFact(exercise, nameOf(names, session.sessionId, exercise.exerciseId) ?? "")) });
@@ -87,9 +90,9 @@ function partialSummaries(sessions: readonly FactSession<PartialExerciseFact>[],
   return [...summaries.values()].sort((a, b) => (b.lastDate ?? "").localeCompare(a.lastDate ?? "") || a.exerciseId.localeCompare(b.exerciseId));
 }
 
-const partialFact = (exercise: PartialExercise, name: string): PartialExerciseFact => ({ exerciseId: exercise.exerciseId, name, reading: exercise.reading, reason: exercise.reason,
+const partialFact = (exercise: PartialExerciseOf<CompactExercisePerformance>, name: string): PartialExerciseFact => ({ exerciseId: exercise.exerciseId, name, reading: exercise.reading, reason: exercise.reason,
   referenceSessionId: exercise.reference?.sessionId ?? null, referenceAgeDays: exercise.reference ? Math.floor(exercise.reference.ageMs / DAY_MS) : null,
-  highestInPartialContext: exercise.records.facts.some(fact => fact.isNewHigh) });
+  highestInPartialContext: exercise.records.some(fact => fact.isNewHigh) });
 
 const publish = (item: AssociationEvaluation): AssociationResult => { const published: Omit<AssociationEvaluation, "strictGate"> & { strictGate?: boolean } = { ...item }; delete published.strictGate; return published; };
 /**

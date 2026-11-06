@@ -129,3 +129,18 @@ export type DailyPerformance = {
   equalSessionWeightSensitivity: number | null;
   exclusions: PerformanceExclusion[];
 };
+
+/**
+ * The same classification as ExercisePerformance, without what only describes it: the exposures and their set copies, the
+ * evidence behind the status and the volumes. Reasons, reference (without its exposure), records and exclusions are kept.
+ * Asked for with `output: "compact"`; every other consumer keeps the full output.
+ */
+export type CompactExercisePerformance = Pick<ExercisePerformance, "methodVersion" | "exerciseId" | "status" | "reason" | "exclusions"> & {
+  reference: Omit<NonNullable<ExercisePerformance["reference"]>, "exposure"> | null;
+  /** `records.facts` of the full output. */
+  records: RecordFact[];
+};
+export type ComparisonOutput = "full" | "compact";
+export type ExerciseOf<O extends ComparisonOutput> = O extends "compact" ? CompactExercisePerformance : ExercisePerformance;
+export type SessionPerformanceOf<E> = Omit<SessionPerformance, "exercises"> & { exercises: E[] };
+export type DailyPerformanceOf<E> = Omit<DailyPerformance, "sessions"> & { sessions: SessionPerformanceOf<E>[] };

@@ -1,6 +1,6 @@
 import { normalizeWeightMode, weightModeStrategy } from "../../mobile-api/weight-modes";
 import { sameContext, volumeFact } from "./exposure";
-import { INSIGHTS_PERFORMANCE_METHOD, type DirectEvidence, type ExerciseExposure, type ExercisePerformance, type HistoryCoverage, type PerformanceSet, type RecordFact } from "./types";
+import { INSIGHTS_PERFORMANCE_METHOD, type CompactExercisePerformance, type ComparisonOutput, type DirectEvidence, type ExerciseExposure, type ExercisePerformance, type HistoryCoverage, type PerformanceSet, type RecordFact } from "./types";
 
 function maxima(sets: PerformanceSet[], anchor: "load" | "amount", value: "load" | "amount") {
   const result = new Map<number, { value: number; ids: string[] }>();
@@ -116,8 +116,22 @@ export function indexRecords(entries: readonly ExerciseExposure[]) {
   } };
 }
 
-/** Internal exposure comparator. Chronology and reference selection belong to the shared session kernel. */
-export function compareExposure(input: {
+/**
+ * The classification, shared by both outputs: status, reason and the evidence it rests on. Evidence is always computed,
+ * since the status comes from it; only the full output keeps it.
+ */
+function classify(current: ExerciseExposure, reference: ExercisePerformance["reference"], missingReason: ExercisePerformance["reason"]): Pick<ExercisePerformance, "status" | "reason" | "evidence"> {
+  if (current.issue || !reference) return { status: "insufficient_comparison", reason: current.issue ?? missingReason, evidence: [] };
+  if (reference.exposure.issue) return { status: "insufficient_comparison", reason: reference.exposure.issue, evidence: [] };
+  const { evidence, unanchored } = directEvidence(current, reference.exposure);
+  const up = evidence.some(signal => signal.delta > 0), down = evidence.some(signal => signal.delta < 0);
+  if (up && down) return { status: "ambiguous_evidence", reason: "crossed_signals", evidence };
+  // Neither an unanchored tradeoff nor the absence of a direct signal establishes stability.
+  if (unanchored || !evidence.length) return { status: "ambiguous_evidence", reason: "unanchored_evidence", evidence };
+  return { status: up ? "improved" : down ? "declined" : "observed_stable", reason: "direct_evidence", evidence };
+}
+
+type ExposureComparison = {
   current: ExerciseExposure;
   reference: ExercisePerformance["reference"];
   history: readonly ExerciseExposure[];
@@ -126,24 +140,22 @@ export function compareExposure(input: {
   historyCoverage: HistoryCoverage;
   exclusions: ExercisePerformance["exclusions"];
   missingReason: ExercisePerformance["reason"];
-}): ExercisePerformance {
+};
+/** Internal exposure comparator. Chronology and reference selection belong to the shared session kernel. */
+export function compareExposure(input: ExposureComparison): ExercisePerformance;
+export function compareExposure(input: ExposureComparison, output: "compact"): CompactExercisePerformance;
+export function compareExposure(input: ExposureComparison, output: ComparisonOutput): ExercisePerformance | CompactExercisePerformance;
+export function compareExposure(input: ExposureComparison, output: ComparisonOutput = "full"): ExercisePerformance | CompactExercisePerformance {
   const { current, reference } = input;
-  const result: ExercisePerformance = {
-    methodVersion: INSIGHTS_PERFORMANCE_METHOD, exerciseId: current.exerciseId,
-    status: "insufficient_comparison", reason: current.issue ?? input.missingReason,
-    current, reference, evidence: [],
-    records: { scope: "provided_compatible_history", historyCoverage: input.historyCoverage,
-      facts: input.historyCoverage === "unavailable" ? [] : input.records ?? recordFacts(current, input.history) },
+  const facts = input.historyCoverage === "unavailable" ? [] : input.records ?? recordFacts(current, input.history);
+  const { status, reason, evidence } = classify(current, reference, input.missingReason);
+  if (output === "compact") return { methodVersion: INSIGHTS_PERFORMANCE_METHOD, exerciseId: current.exerciseId, status, reason,
+    reference: reference ? { sessionId: reference.sessionId, endedAt: reference.endedAt, ageMs: reference.ageMs } : null, records: facts, exclusions: input.exclusions };
+  return {
+    methodVersion: INSIGHTS_PERFORMANCE_METHOD, exerciseId: current.exerciseId, status, reason,
+    current, reference, evidence,
+    records: { scope: "provided_compatible_history", historyCoverage: input.historyCoverage, facts },
     volume: { current: volumeFact(current), reference: reference ? volumeFact(reference.exposure) : null },
     exclusions: input.exclusions,
   };
-  if (current.issue || !reference) return result;
-  if (reference.exposure.issue) return { ...result, reason: reference.exposure.issue };
-  const { evidence, unanchored } = directEvidence(current, reference.exposure);
-  const up = evidence.some(signal => signal.delta > 0), down = evidence.some(signal => signal.delta < 0);
-  result.evidence = evidence;
-  if (up && down) return { ...result, status: "ambiguous_evidence", reason: "crossed_signals" };
-  // Neither an unanchored tradeoff nor the absence of a direct signal establishes stability.
-  if (unanchored || !evidence.length) return { ...result, status: "ambiguous_evidence", reason: "unanchored_evidence" };
-  return { ...result, status: up ? "improved" : down ? "declined" : "observed_stable", reason: "direct_evidence" };
 }
