@@ -135,7 +135,11 @@ export function PostWorkoutContent({ finished, detail, readSummary, readWeek, on
         </Animated.View>
         {model.hero ? <HeroCard hero={model.hero} /> : null}
         {exercises?.length ? <View testID="post-workout-exercises">
-          <Animated.View entering={enter(2)}><AppText muted variant="footnote" style={styles.section}>Ejercicios</AppText></Animated.View>
+          <Animated.View entering={enter(2)}>
+            <AppText muted variant="footnote" style={styles.section}>Ejercicios</AppText>
+            {/* These marks are the receipt's own rule, not Insights' comparison: they must not read as the same thing. */}
+            {exercises.some(exercise => exercise.status) ? <AppText muted variant="caption" testID="post-workout-rule">Frente a la última vez con el mismo modo de carga. Insights compara además implemento y variante, y puede leer distinto.</AppText> : null}
+          </Animated.View>
           {exercises.map((exercise, index) => {
             const status = exercise.status, record = status?.kind === 'record';
             return <Animated.View key={exercise.id} entering={enter(3 + index)}
@@ -163,7 +167,7 @@ export function PostWorkoutContent({ finished, detail, readSummary, readWeek, on
           {model.feelings.length ? <View style={styles.feelingRow}>{model.feelings.map(feeling => <FeelingDots key={feeling.key} feeling={feeling} />)}</View> : null}
           {model.note ? <AppText style={styles.italic}>“{model.note}”</AppText> : null}
         </Animated.View> : null}
-        {feelings ? <RecordedTrainingFeelings values={feelings} /> : null}
+        {feelings ? <RecordedTrainingFeelings values={feelings} session={{ startedAt: finished.startedAt, endedAt: finished.endedAt }} /> : null}
         {feelings && finished.routineId && finished.routineAdditions === undefined ? <AppText muted variant="footnote">El detalle de lo agregado a la rutina no está disponible en esta confirmación. Podés revisar tu rutina.</AppText> : null}
       </ScrollView>
       <Animated.View entering={enter(1)} style={styles.footer}>

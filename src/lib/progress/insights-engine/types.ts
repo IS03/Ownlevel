@@ -97,7 +97,10 @@ export type AssociationResult = {
 
 export type ExerciseFact = {
   exerciseId: string; name: string; status: PerformanceStatus; reason: string;
-  referenceSessionId: string | null; referenceAgeDays: number | null; newHigh: boolean;
+  referenceSessionId: string | null; referenceAgeDays: number | null;
+  /** Logical date of the compatible reference session, when there is one. Added later: an older answer may not carry it. */
+  referenceDate?: string | null;
+  newHigh: boolean;
 };
 export type SessionFact = {
   sessionId: string; name: string | null; routineId: string | null; routineName: string | null; startedAt: string | null; endedAt: string | null;
@@ -133,6 +136,8 @@ export type ExerciseSummary = {
 export type PartialExerciseFact = {
   exerciseId: string; name: string; reading: PartialReading; reason: string;
   referenceSessionId: string | null; referenceAgeDays: number | null;
+  /** Logical date of the reference session, as in the strict fact. */
+  referenceDate?: string | null;
   /** Highest value in this partial history. It is not a record of the strict method and never a claim about capacity. */
   highestInPartialContext: boolean;
 };
