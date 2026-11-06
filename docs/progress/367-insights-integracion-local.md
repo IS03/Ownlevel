@@ -1,4 +1,20 @@
-# Estado vigente — correcciones de peso en Cuerpo, en revisión
+# Estado vigente — historial completo de medidas corporales, en revisión
+
+Main `236a3e4` incluye #404 (tendencias de peso) y #405 (pesos en 0 kg e historial de peso completo).
+
+Rama `codex/367-body-measurements-history`, publicada en `45def1b6b95af5f3330ff1642b3148659c21aa30` sobre ese main, con previews bloqueadas. Solo servidor y Web: sin migración, sin cambios de contrato de Mobile y sin tocar Insights.
+
+- **Qué corrige:** `listBodyMeasurements(1000)` leía las 1000 mediciones más viejas. Ahora `listAllBodyMeasurements` lee todas por páginas de `(measured_on, id)`. Lo usan Cuerpo en Web, el informe de Mobile, Inicio y Relaciones.
+- **Cursor:** el esquema mantiene una medición por usuario y fecha. El id desempata igual, así que una fecha repetida tampoco se saltea ni se repite.
+- **Sin cortes ni vacíos falsos:** termina con una página vacía, falla pasado el máximo y una falla nunca se lee como historial vacío.
+- **Sospechosas:** siguen excluidas y contadas.
+- **Validación:** 6 regresiones nuevas y 330 pruebas afectadas pasan, con tipos y lint sin errores.
+- **Detalle:** [descripción del PR](367-medidas-historial-pr-description.md) en esa rama.
+- **Estado:** #367 sigue abierto.
+
+---
+
+# Estado anterior — correcciones de peso en Cuerpo, mergeadas en #405
 
 Rama `codex/367-body-weight-fixes`, publicada en `cc84221b4e59d4f04d7746bdb8241e3c19357e59` sobre main `8dd3d01`, con previews bloqueadas. Separada de #404. Sin migración ni cambio de contrato de Mobile; Web y servidor.
 
@@ -16,7 +32,7 @@ Rama `codex/367-body-weight-fixes`, publicada en `cc84221b4e59d4f04d7746bdb8241e
 
 ---
 
-# Estado vigente — tendencias de peso, en revisión (#404)
+# Estado anterior — tendencias de peso, mergeadas en #404
 
 Rama `codex/367-weight-trends`, publicada en `dfbd06c1f6727b384650f0af22442a1c8edadbe5` sobre main `8dd3d01` (#403 mergeado), con previews bloqueadas. Solo Mobile: sin migración, backend ni cambio de método. Sin mergear ni build.
 
