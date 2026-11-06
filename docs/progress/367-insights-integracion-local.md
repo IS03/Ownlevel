@@ -1,4 +1,97 @@
-# Estado vigente — evidencia de comparación por ejercicio, en revisión
+# Handoff — retomar #367 en un chat nuevo (2026-11-06)
+
+**Para Claude o Codex.** Leer esto primero. No repetir auditorías ni pruebas ya hechas: lo vigente está acá.
+
+## Estado real
+
+- **`origin/main` = `96b4a63`** (merge de #411). Incluye todo lo de abajo.
+- **Checkout `C:\Proyectos\Ownlevel`:**
+  - en `codex/367-exercise-evidence` (`b6ad514`), limpio y ya mergeado;
+  - la rama local `main` quedó en `1fe5715`, 3 commits detrás de `origin/main`;
+  - **antes de trabajar:** `git status -sb`, luego `git switch main` y `git pull --ff-only`, y crear la rama nueva desde ahí.
+- **Worktree sobrante:** `C:\Users\senes\AppData\Local\Temp\ownlevel-feelings-receipt`, en `codex/367-feelings-finish-receipt` (`c97bb3d`). Está limpio y ya mergeado; se puede quitar con `git worktree remove`.
+- **Pendiente local o remoto:** ninguno.
+  - Sin cambios sin commitear ni ramas sin publicar.
+  - No hay pilas locales de Supabase corriendo.
+  - Esta rama de integración (`integration/367-insights-candidate`) solo guarda esta continuidad y no se mergea.
+- **Notion:** no se actualizó (regla de AGENTS.md).
+
+## Entregas integradas en main, hasta #411
+
+- **#393 a #395, #397 y #398:** convención del sueño, peso del día, configuración del ejercicio y procedencia de la hora de comida. Mergeados y con sus migraciones aplicadas en producción. Detalle en [367-sueno-peso.md](367-sueno-peso.md) y [367-exercise-configuration-rollout.md](367-exercise-configuration-rollout.md).
+- **#403:** contexto diario completo: todas las sesiones y los cuatro macros.
+- **#404:** tendencias de peso enlazadas entre Insights y Cuerpo.
+- **#405 y #406:** pesos en 0 kg e historiales completos de peso y medidas.
+- **#407 y #408:** memoria del motor. El comparador tiene una salida compacta para Insights.
+- **#409:** lectura en frío. Las series vienen embebidas, con una guarda de conteo y un stream de respaldo.
+- **#410:** resumen factual post-entreno y vista de una sesión, con cada método por separado y la fecha de la referencia.
+- **#411:** evidencia de comparación por ejercicio.
+  - `view=evidence`: una lectura acotada a un ejercicio, con el comparador compartido en salida completa.
+  - Pantalla «Evidencia» en Mobile: series con su número y su bloque, récord aparte, y nunca otra referencia en lugar de la tocada.
+  - Prueba contra PostgREST local.
+
+Ninguna de esas entregas de Mobile tiene build. La QA física no está aprobada.
+
+## Leer antes de tocar código
+
+**Leerlos en `main`:** esta rama de integración tiene copias más viejas de los documentos de `docs/progress/`.
+
+1. `AGENTS.md` (o `CLAUDE.md`): reglas, marca y flujo.
+2. [367-matriz-cobertura.md](367-matriz-cobertura.md): qué está accesible y qué no. Para la próxima etapa, las secciones «Sensaciones» y «Próximos incrementos».
+3. [367-insights-partial-metodo.md](367-insights-partial-metodo.md): métodos, carriles, memoria y lectura en frío.
+4. [367-qa-fisica.md](367-qa-fisica.md): la única checklist de QA, todavía sin aprobar.
+5. Para UI: `docs/brand/ownlevel-marca/IDENTIDAD.md` y `tema/tokens.ts`.
+
+**Código de entrada:**
+- motor: `src/lib/progress/insights-engine/` (`read-model.ts`, `exposures.ts`, `associations.ts`, `source-adapter.ts`, `evidence.ts`);
+- comparador: `src/lib/progress/performance-insights/`;
+- contrato y loader: `src/lib/mobile-api/performance-insights-contract.ts` y `performance-insights-server.ts`;
+- Mobile: `apps/mobile/src/insights/`.
+
+## Validaciones vigentes (no repetir)
+
+- **Web** (motor, comparador, contrato y ruta): 393 pruebas, más `performance-insights-evidence.local.test.ts` contra PostgREST local.
+- **Mobile:** 1653 de 1657 en la suite completa, con tipos, lint y config limpios.
+- **Fallos preexistentes, iguales en main:**
+  - Mobile: 4 de `active-session-bridge-screen`;
+  - raíz: `training-session.test.ts` «retains ownership, source validation…»;
+  - `session-return-dock` puede fallar por carga.
+- **Pruebas locales:** se activan con `OWNLEVEL_INSIGHTS_LOCAL_STATUS` y `OWNLEVEL_INSIGHTS_LOCAL_DB`. Solo con pilas descartables `ownlevel-receipt-<8hex>` y API en loopback.
+
+## Límites y pendientes
+
+- **«Consistente» sigue deshabilitado.** Sin causas, recomendaciones ni asociaciones nuevas.
+- **#367 sigue abierto.**
+- **Sin builds ni QA física** sin autorización expresa.
+- **Migraciones remotas:** solo con autorización y siguiendo EXPAND → ADOPT → OBSERVE → CONTRACT.
+- **Sin probar en local:** la relectura de una lista de series cortada. No puede ocurrir con `max_rows = 1000` y el límite de 50 series por bloque; queda cubierta por la prueba de la ruta.
+- **Latencia:** no hay mediciones de producción de la lectura de evidencia.
+- **Fuera de alcance por ahora:**
+  - paginar por clave los valores diarios para la lectura en frío;
+  - conexiones de ChatGPT instaladas, que deben refrescarse para tomar el esquema publicado.
+
+## Siguiente etapa: energía y fatiga posteriores como resultados independientes
+
+**Hoy** (ver «Sensaciones» en la matriz):
+- `energyPost` y `fatiguePost` se guardan en `workout_session_feelings` y se muestran como contexto de su sesión;
+- no son candidato ni resultado: usarlas como antecedente invertiría el orden temporal.
+
+**Objetivo:** publicarlas como resultados propios, separados del rendimiento. Nunca se suman, se promedian ni se combinan con él.
+
+**Decisiones abiertas** (proponerlas antes de implementar):
+- **unidad:** sesión o día. Un día con varias sesiones hoy se excluye de las sensaciones (`multiple_sessions_day`);
+- **qué se compara:** la escala ordinal 1–5 sin promedios ni puntajes, o la proporción de días con un valor dado;
+- **qué antecedentes:** cuáles valen sin invertir el tiempo (comida previa, sueño de la noche anterior, energía previa), con sus mismas reglas de ventana;
+- **método:** si se necesita una versión nueva del motor o del contrato. Un resultado nuevo es una capacidad nueva: va en su propio PR y con su propia versión, nunca escondido en un cambio visual.
+
+**Invariantes a conservar:**
+- **Datos:** faltante ≠ cero; ilegible, tardía y sin registrar quedan distintas; la energía heredada (`energy_level`) nunca pasa a ser posterior.
+- **Integridad:** sin texto causal; un fallo de lectura nunca se ve como un vacío.
+- **Lectura:** la revisión de fuentes, sin consultas por tarjeta.
+
+---
+
+# Estado anterior — evidencia de comparación por ejercicio, mergeada en #411 (`96b4a63`)
 
 Main `1fe5715` incluye #410. Rama `codex/367-exercise-evidence`, publicada en `37c681e`, con previews bloqueadas. Sin migración ni cambio de método. PR en borrador pendiente: el navegador integrado no tiene sesión en GitHub.
 
