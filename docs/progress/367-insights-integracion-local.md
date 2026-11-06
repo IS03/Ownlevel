@@ -1,4 +1,22 @@
-# Estado vigente — tendencias de peso, en revisión
+# Estado vigente — correcciones de peso en Cuerpo, en revisión
+
+Rama `codex/367-body-weight-fixes`, publicada en `cc84221b4e59d4f04d7746bdb8241e3c19357e59` sobre main `8dd3d01`, con previews bloqueadas. Separada de #404. Sin migración ni cambio de contrato de Mobile; Web y servidor.
+
+- **0 kg:**
+  - Una sola regla, `isValidBodyWeightKg` (mayor a 0). Saca el 0 kg del gráfico, del cambio, de la comparación, de las relaciones y de Etapas.
+  - Conserva el registro, lo cuenta (`excludedInvalidWeightCount`) y lo muestra en Web.
+  - Web, la API de Mobile y el formulario de Mobile rechazan los 0 kg nuevos.
+  - Corregir o borrar un 0 kg sigue funcionando.
+- **Historial de más de 1000 pesajes:** `listAllWeightHistory` lee todo por páginas de fecha, termina con una página vacía y falla en vez de truncar. `listWeightHistory(limit)` ahora devuelve los más recientes.
+- **#404 ajustado** (`363deb35289c4987f63ee674a9e5da31d3db7d33`): su aviso de 0 kg es correcto con y sin esta corrección. Probé el merge local de las dos ramas, sin conflictos, y lo descarté.
+- **Pendiente:**
+  - restricción de base `weight_kg > 0`, que requiere migración;
+  - `listBodyMeasurements`, con el mismo límite de 1000.
+- **Detalle:** [descripción del PR](367-peso-correcciones-pr-description.md) en esa rama.
+
+---
+
+# Estado vigente — tendencias de peso, en revisión (#404)
 
 Rama `codex/367-weight-trends`, publicada en `dfbd06c1f6727b384650f0af22442a1c8edadbe5` sobre main `8dd3d01` (#403 mergeado), con previews bloqueadas. Solo Mobile: sin migración, backend ni cambio de método. Sin mergear ni build.
 
