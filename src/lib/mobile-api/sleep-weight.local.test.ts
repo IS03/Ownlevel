@@ -125,8 +125,8 @@ describe.runIf(!!statusFile && !!container)("sueño y peso con PostgREST real", 
       update public.workout_sessions set status='completed',ended_at='2026-04-09T19:00:00Z' where id='${session}';`);
     const before = owner.requests();
     const source = await readInsightsSource(contextOf(owner.id, owner.client));
-    // Six streams of one page each (sets ride with their exercises): weight and the night ride in the pages already read.
-    expect(owner.requests() - before).toBe(6);
+    // Six streams of one page each (sets ride with their exercises) and the count of sets: weight and the night ride in the pages already read.
+    expect(owner.requests() - before).toBe(7);
     expect(source.sessions.find(row => row.id === session)?.dayWeightKg).toBe(80.4);
     clearInsightsSnapshots();
     const first = await readInsightsSnapshot(contextOf(owner.id, owner.client), "2026-05-01", 2);

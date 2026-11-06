@@ -1,64 +1,66 @@
 # #367 — Lectura en frío de Insights: series dentro de sus ejercicios
 
-**Abrir Insights sin caché pide 39 % menos consultas, con resultados idénticos.** La latencia casi no cambia: ver «Límites».
+**Abrir Insights sin caché pide 40 % menos consultas y recibe 11 % menos bytes, con resultados idénticos.** La latencia no mejora de forma confiable: ver «Límites».
 
 ## Qué cambió
 
 - **Series embebidas.** El cargador (`readInsightsSource`) ya no tiene un flujo propio de series. Viajan dentro de la página de su ejercicio:
-  - con `sets:workout_sets(id,actual_reps,actual_weight_kg,is_completed,completed_at)`;
-  - filtradas por dueño (`sets.user_id`);
-  - y ordenadas por id dentro de cada ejercicio.
-- **La misma fuente que antes.** Al recibirlas, el cargador las aplana, descarta las de ejercicios de sesiones no completadas, como antes, y las ordena por id. El motor recibe la misma fuente, en el mismo orden.
-- **Lo que no cambia:**
-  - el tamaño de página;
-  - la identidad, RLS y el contador transaccional;
-  - el reintento y la distinción entre error y vacío;
-  - los métodos y los contratos instalados;
-  - el historial: nada se trunca.
-- **Pruebas actualizadas:** cuentan seis flujos en lugar de siete.
+  - `sets:workout_sets(id,actual_reps,actual_weight_kg,is_completed,completed_at)`;
+  - filtradas por dueño (`sets.user_id`) y ordenadas por id.
+- **La misma fuente.** Se aplanan, se descartan las de sesiones no completadas y se ordenan por id: el motor recibe la misma fuente que antes.
+- **Control de listas cortadas** (revisión de #409). En paralelo se cuenta una vez cuántas series tiene la persona (`count=exact`, sin filas).
+  - Si las listas embebidas suman menos, se leen las series como su propio flujo paginado, como antes.
+  - Nunca se publica una lista parcial, y nunca se hace un pedido por ejercicio.
+  - Si el conteo falla, la lectura no está disponible.
+- **Lo que no cambia:** el tamaño de página, la identidad, RLS, el contador transaccional, el reintento, la distinción entre error y vacío, los métodos y los contratos instalados.
 
-## Límite efectivo del servidor, comprobado
+## El tope de PostgREST, comprobado
 
-Pila local descartable (PostgreSQL 17.11 y 17.6, PostgREST 16.5, `max_rows = 1000`):
-- pedir 5000 filas de primer nivel devuelve 1000;
-- una página de 1000 ejercicios trae sus 4000 series embebidas, completas.
+Pila local descartable: PostgreSQL 17.6 y 17.11, PostgREST 16.5, `max_rows = 1000`.
 
-El tope limita las filas de primer nivel, no las embebidas.
+- **Primer nivel:** pedir 5000 filas devuelve 1000.
+- **Listas embebidas:** **también se cortan, una por una.** Un padre con 1500 hijos recibe 1000. La primera versión de este PR decía lo contrario; está corregido.
+- **Agregados:** un `count` embebido no se corta.
+- **Por qué hoy no se corta ninguna lista de series:** el esquema limita un ejercicio de sesión a 50 series (`workout_sets_set_number_check` 1–50 con `workout_sets_unique_number`). En la pila, la serie 51, una segunda 50 y renumerar a 1000 son rechazadas.
+- **El control de arriba:** cubre el caso de que cambie el esquema o el tope.
 
 ## Equivalencia
 
-- **Mismos datos sembrados.** Main y la rama leyeron los mismos dos usuarios (5 y 10 años, con 4 series por ejercicio). La fuente que recibe el motor y todas las vistas de los dos métodos dan el mismo hash antes y después: **7 de 7** en cada perfil. Abarcan todas las páginas, relaciones y detalles con su evidencia.
-- **Prueba local nueva:**
-  - **Escenario:** 1180 series en una página de ejercicios, por encima del tope, más series de otra persona y de una sesión no completada.
-  - **Resultado:** la fuente trae exactamente las del dueño en sesiones completadas, en el orden de la base, con 2 + 6 pedidos.
-- **Pruebas que pasan:**
-  - **Locales:** Insights (7), cruce de token (29) en 17.11; sueño y peso (4) y configuración (5) en 17.6.
-  - **Unitarias del endpoint:** 23.
-  - **API móvil:** 718. La única falla, `training-session.test.ts`, es la preexistente de main.
-- **No se corrió:** `insights-source-revision.local` no usa el cargador y necesita un esquema anterior a su propia migración.
+- **Contra SQL:** todos los ids de series de main, de la rama sin control y de la rama final coinciden con SQL, en el mismo orden: 32.684 a 5 años y 64.434 a 10 años. Esos datos incluyen ejercicios con 50 series y una sesión en curso.
+- **Contra main:** la fuente completa y todas las vistas de los dos métodos dan el mismo hash, 8 de 8 en cada perfil.
+- **Pruebas locales nuevas:**
+  - 50 series en un ejercicio y la 51 rechazada;
+  - 1180 series en una página, con series de otra persona y de una sesión no completada.
+- **Pruebas unitarias nuevas:**
+  - listas cortadas al tope que se recuperan con un único flujo paginado, sin pedidos por ejercicio;
+  - un conteo fallido que da no disponible.
+- **Suites que pasan:**
+  - locales: Insights (8), sueño y peso (4), configuración (5) y cruce de token (29);
+  - unitarias del endpoint: 25.
 - **Tipos y lint:** sin errores ni advertencias.
 
 ## Medición, antes y después
 
-Lectura completa en frío contra PostgREST local. Siete lecturas, mediana.
+Lectura completa en frío contra PostgREST local (PostgreSQL 17.6), siete lecturas, mediana.
 
-| | 5 años, antes | 5 años, después | 10 años, antes | 10 años, después |
-| --- | --- | --- | --- | --- |
-| Consultas | 84 | **52** | 159 | **97** |
-| Bytes recibidos | 17,2 MiB | 15,4 MiB | 34,2 MiB | 30,7 MiB |
-| Tiempo | 1254 ms | 1200 ms | 3157 ms | 3030 ms |
+| | Consultas | Bytes | Tiempo |
+| --- | --- | --- | --- |
+| 5 años, main | 85 | 17,5 MiB | 911 ms |
+| 5 años, rama | **53** | 15,7 MiB | 960 ms |
+| 10 años, main | 162 | 34,8 MiB | 2361 ms |
+| 10 años, rama | **98** | 31,1 MiB | 2425 ms |
 
-**Perfil sintético del benchmark** (5 series por ejercicio y 30 métricas): la lectura completa pasa de 18, 84 y 268 a **12, 52 y 142 consultas** a 1, 5 y 10 años.
-
-**Memoria:** el motor recibe la misma fuente, así que la memoria del cálculo no cambia.
+- **Otra pila (17.11, antes del control):** 159 → 97 consultas y 3157 → 3030 ms.
+- **Control descartado:** un conteo embebido por ejercicio sumaba unos 120 ms a 10 años. El conteo único no agrega tiempo medible.
+- **Perfil sintético:** de 18, 84 y 268 a **13, 53 y 143 consultas** a 1, 5 y 10 años.
+- **Memoria del cálculo:** sin cambio, porque es la misma fuente.
 
 ## Límites
 
-- **Latencia:** baja apenas un 4 %. La fija ahora el flujo de valores diarios, con 59 páginas secuenciales a 10 años. Por el offset, cada página cuesta más cuanto más adentro está: 4 ms en la primera y 32 ms con offset 57.000 (`EXPLAIN ANALYZE`).
-- **Propuesta, no implementada:** paginar por clave (`id > último`). Bajaría el tiempo por página, no la cantidad de consultas.
-- **Producción:** no se midió. La pila local no reproduce la red ni el pooler.
-- **Sin migración ni RPC.**
+- **Latencia:** sin mejora confiable (±3–4 % según la pila). La fija el flujo de valores diarios: 59 páginas por offset a 10 años, de 4 ms la primera a 32 ms la última.
+- **Propuesta:** paginar por clave. Bajaría el tiempo por página, no la cantidad de consultas.
+- **Producción:** no se midió. Sin migración ni RPC.
 
-Metodología: [367-insights-partial-metodo.md](367-insights-partial-metodo.md), sección «Lectura en frío, 2026-11». Previews bloqueadas para `codex/367-insights-cold-read` en `vercel.json`.
+Metodología: [367-insights-partial-metodo.md](367-insights-partial-metodo.md), sección «Lectura en frío, 2026-11». Previews bloqueadas para `codex/367-insights-cold-read`.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

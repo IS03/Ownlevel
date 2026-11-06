@@ -60,8 +60,9 @@ describe("escala con perfiles sintéticos", () => {
     }
     const usage = process.resourceUsage().maxRSS * 1024;
     writeFileSync(out!, JSON.stringify({ name, captured, method, rows, comparable, candidatesPerMethod: candidates, sourcePages: pages,
-      // The loader today: the six streams' pages and two counter reads; a reuse reads only the counter (367-insights-partial-metodo.md).
-      queries: { reuse: 1, fullRead: pages + 2, fullReadOneRetry: 2 * (pages + 2), bothRetriesWorstCase: 4 * (pages + 2) },
+      // The loader today: the six streams' pages, the count of sets and two counter reads; a reuse reads only the counter (367-insights-partial-metodo.md).
+      // Plus one count of the sets, which tells whole embedded lists from cut ones (#409).
+      queries: { reuse: 1, fullRead: pages + 3, fullReadOneRetry: 2 * (pages + 3), bothRetriesWorstCase: 4 * (pages + 3) },
       ms: Object.fromEntries(Object.entries(times).map(([key, values]) => [key, stats(values)])), responseKiB: bytes,
       retainedMiB: mib(retained), peakAboveSourceMiB: mib(usage - rssBase), gcAvailable: !!globalThis.gc }, null, 2));
   }, 1_800_000);

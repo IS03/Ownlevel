@@ -39,6 +39,7 @@ type SetRow = { id: string; workout_session_exercise_id: string; actual_reps: nu
 type EmbeddedSetRow = Omit<SetRow, "workout_session_exercise_id">;
 /** uuid order is byte order, which is the order of their canonical text: the same order as `order("id")` in the database. */
 const byId = (a: { id: string }, b: { id: string }) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+const SET_COLUMNS = "id,actual_reps,actual_weight_kg,is_completed,completed_at";
 type MetricRow = { id: string; name: string; unit: string | null; value_type: string; is_active: boolean; archived_at: string | null; system_key?: string | null };
 type NightRow = { convention: string; declared_updated_at: string; declared_value: number | string; declared_date: string };
 type ValueRow = { id: string; metric_id: string; metric_date: string; value: unknown; updated_at?: string; night?: NightRow | NightRow[] | null };
@@ -59,17 +60,21 @@ type FeelingRow = { session_id: string; revision: number; facts: unknown };
 
 /**
  * Six grouped streams, whole history, one stable order each. Pages grow with rows, never with exercises or candidates.
- * Sets travel inside their exercise's page (#367): PostgREST's row cap applies to the page's exercises, not to the rows
- * embedded in them, so each exercise brings all of its own sets, filtered by owner and ordered by id.
+ *
+ * Sets travel inside their exercise's page (#367), filtered by owner and ordered by id. PostgREST caps every embedded list at
+ * max-rows as well as the page itself (checked on 16.5: one parent with 1500 children receives 1000). The schema keeps a
+ * session exercise at 50 sets at most (`workout_sets_set_number_check` with `workout_sets_unique_number`), so a list is not
+ * cut while max-rows is at least 50. That is not assumed: one count of the person's sets runs alongside, and if the embedded
+ * lists add up to less, the sets are read as their own paged stream instead, as before. Never a partial list.
  */
 export async function readInsightsSource(context: Context): Promise<InsightsSource> {
   const { supabase, userId } = context;
-  const [sessions, exercises, feelings, definitions, values, meals] = await Promise.all([
+  const [sessions, exercises, feelings, definitions, values, meals, setTotal] = await Promise.all([
     readAllTrainingRows<SessionRow>("Leer sesiones de Insights", from => supabase.from("workout_sessions")
       .select("id,routine_id,routine_name_snapshot,session_name,status,started_at,ended_at,energy_level,performance_level,pain_level,day:day_logs!inner(log_date,weight_kg)", firstPage(from))
       .eq("user_id", userId).eq("status", "completed").order("id").range(from, from + 999).returns<SessionRow[]>()),
     readAllTrainingRows<ExerciseRow>("Leer ejercicios de Insights", from => supabase.from("workout_session_exercises")
-      .select("id,workout_session_id,exercise_id,nombre_snapshot,implement_snapshot,weight_mode_snapshot,is_completed,configuration:workout_session_exercise_configurations(kind,label),sets:workout_sets(id,actual_reps,actual_weight_kg,is_completed,completed_at)", firstPage(from))
+      .select(`id,workout_session_id,exercise_id,nombre_snapshot,implement_snapshot,weight_mode_snapshot,is_completed,configuration:workout_session_exercise_configurations(kind,label),sets:workout_sets(${SET_COLUMNS})`, firstPage(from))
       .eq("user_id", userId).eq("sets.user_id", userId).order("id").order("id", { referencedTable: "sets" }).range(from, from + 999).returns<ExerciseRow[]>()),
     readAllTrainingRows<FeelingRow>("Leer sensaciones de Insights", from => supabase.from("workout_session_feelings")
       .select("session_id,revision,facts,session:workout_sessions!inner(user_id,status)", firstPage(from))
@@ -82,10 +87,17 @@ export async function readInsightsSource(context: Context): Promise<InsightsSour
     readAllTrainingRows<MealRow>("Leer comidas de Insights", from => supabase.from("meal_entries")
       .select("id,consumed_at,consumed_at_source,raw_input,entry_kind,source_type,import_run_id,final_calories,final_protein_g,final_carbs_g,final_fat_g,day_logs!inner(log_date)", firstPage(from))
       .eq("user_id", userId).is("deleted_at", null).order("id").range(from, from + 999).returns<MealRow[]>()),
+    // How many sets the embedded lists must add up to: the same rows the stream they replace counted on its first page.
+    countSets(context),
   ]);
   // Without joins on every page: rows of an in-progress or discarded session are dropped here, against the completed sessions just read.
   const completed = new Set(sessions.map(row => row.id));
   const completedExercises = exercises.filter(row => completed.has(row.workout_session_id));
+  // A cut list makes the embedded total fall short: read every set as its own stream then. Never a partial list.
+  if (exercises.reduce((sum, row) => sum + row.sets.length, 0) !== setTotal) {
+    const byExercise = await readSetStream(context);
+    for (const row of exercises) row.sets = byExercise.get(row.id) ?? [];
+  }
   // The same rows, in the same order, as the stream they replace: every set of a completed session's exercise, by id.
   const sets = completedExercises.flatMap(row => row.sets.map(set => ({ ...set, workout_session_exercise_id: row.id }))).sort(byId);
   return {
@@ -101,6 +113,24 @@ export async function readInsightsSource(context: Context): Promise<InsightsSour
     meals: meals.map(row => ({ id: row.id, date: row.day_logs.log_date, consumedAt: row.consumed_at, consumedAtSource: row.consumed_at_source, rawInput: row.raw_input, entryKind: row.entry_kind, sourceType: row.source_type, importRunId: row.import_run_id,
       calories: strictNumber(row.final_calories), proteinG: strictNumber(row.final_protein_g), carbsG: strictNumber(row.final_carbs_g), fatG: strictNumber(row.final_fat_g) })),
   };
+}
+
+async function countSets(context: Context) {
+  const { count, error } = await context.supabase.from("workout_sets").select("id", { count: "exact", head: true }).eq("user_id", context.userId);
+  if (error || typeof count !== "number") throw new Error("Leer cantidad de series de Insights");
+  return count;
+}
+/** Every set of the person in pages by id: the stream the embedded lists replace, read only when they fall short. */
+async function readSetStream(context: Context) {
+  const { supabase, userId } = context;
+  const rows = await readAllTrainingRows<SetRow>("Leer series de Insights", from => supabase.from("workout_sets")
+    .select(`workout_session_exercise_id,${SET_COLUMNS}`, firstPage(from)).eq("user_id", userId).order("id").range(from, from + 999));
+  const byExercise = new Map<string, EmbeddedSetRow[]>();
+  for (const { workout_session_exercise_id: exercise, ...set } of rows) {
+    const list = byExercise.get(exercise);
+    if (list) list.push(set); else byExercise.set(exercise, [set]);
+  }
+  return byExercise;
 }
 
 /**

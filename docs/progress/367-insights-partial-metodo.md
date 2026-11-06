@@ -120,7 +120,7 @@ El endpoint ya no manda todo junto. Todas las vistas salen de una misma lectura 
 
 ## Costo y escala
 
-**Metodología.** Perfiles sintéticos, cada uno en su propio proceso (`scale.test.ts`), cinco corridas, con mediana y máximo. *Retenida* es el heap vivo que agrega la instantánea tras forzar recolección, con sus relaciones evaluadas. *Pico* es el máximo residente del proceso menos el residente con la fuente ya construida: incluye basura sin recolectar, no el costo de leer de la base y abarca las cinco corridas. Consultas: `P` son las páginas de los flujos: siete hasta 2026-11, seis desde que las series viajan con sus ejercicios (ver «Lectura en frío, 2026-11»).
+**Metodología.** Perfiles sintéticos, cada uno en su propio proceso (`scale.test.ts`), cinco corridas, con mediana y máximo. *Retenida* es el heap vivo que agrega la instantánea tras forzar recolección, con sus relaciones evaluadas. *Pico* es el máximo residente del proceso menos el residente con la fuente ya construida: incluye basura sin recolectar, no el costo de leer de la base y abarca las cinco corridas. Consultas: `P` son las páginas de los flujos: siete hasta 2026-11, seis desde que las series viajan con sus ejercicios, más un conteo de series (ver «Lectura en frío, 2026-11»).
 
 **Consultas**
 
@@ -287,49 +287,60 @@ Dentro del ruido: no hay costo medible.
 
 ## Lectura en frío, 2026-11
 
-Medido contra PostgREST real, en una pila local descartable con las 93 migraciones de main (`03fc8f7`):
-- **Pila:** PostgreSQL 17.11, PostgREST 16.5, `max_rows = 1000`.
-- **Datos:** dos usuarios sembrados una sola vez, con semilla fija.
-  - 5 años: 1305 sesiones y 31.320 series.
-  - 10 años: 2575 sesiones, 15.450 ejercicios, 61.800 series, 58.399 valores diarios y 14.600 comidas.
-- **Comparación:** main y la rama leyeron los mismos usuarios. Siete lecturas en frío cada vez; se informa la mediana.
+Corregido en la revisión de #409. Una versión anterior de esta sección decía que `max_rows` no limita las filas embebidas, y era falso.
 
-**Diagnóstico** (main, 10 años: 159 consultas, 34,2 MiB, 3,16 s)
+**Medición:** contra PostgREST real, en pilas locales descartables con las 93 migraciones de main (`03fc8f7`). Usuarios sembrados una sola vez con semilla fija y 4 series por ejercicio. Main y la rama leyeron los mismos usuarios, siete lecturas en frío cada vez; se informa la mediana.
+
+**Diagnóstico** (main, 10 años)
+- **Volumen:** 159–162 consultas y unos 34,5 MiB.
 - **Series:** 62 consultas y 13,7 MiB.
 - **Valores diarios:** 59 consultas y 11,9 MiB.
-- **Costo de las páginas:** cada flujo pagina de a una, y los siete corren en paralelo. La latencia la fija el flujo más largo.
-- **Offset:** cada página de valores cuesta más cuanto más adentro está. Con `EXPLAIN ANALYZE`, 4 ms en la primera, 26 ms con offset 29.000 y 32 ms con offset 57.000.
+- **Costo por página:** cada flujo pagina de a una, y la latencia la fija el más largo. El offset hace más cara cada página: 4 ms la primera, 32 ms con offset 57.000 (`EXPLAIN ANALYZE`).
 
-**Qué cambió:** las series viajan dentro de la página de su ejercicio.
-- La consulta es `sets:workout_sets(...)`, filtrada por dueño (`sets.user_id`) y ordenada por id.
-- Después se aplanan y se ordenan por id, como lo hacía el flujo que reemplazan. Las del ejercicio de una sesión no completada se descartan como antes.
-- **Tope de filas:** `max_rows` limita las filas de primer nivel (pedir 5000 devuelve 1000), no las embebidas. Una página de 1000 ejercicios trajo sus 4000 series.
-- **No se tocaron:**
-  - el tamaño de página;
-  - la identidad, RLS y el contador transaccional;
-  - el reintento, la distinción entre error y vacío, y los contratos.
+**El tope de PostgREST** (16.5, `max_rows = 1000`)
+- **Primer nivel:** pedir 5000 filas devuelve 1000.
+- **Listas embebidas:** también se cortan, una por una. Un padre con 1500 hijos recibe 1000, aunque la página tenga un solo padre.
+- **Agregados:** un `count` embebido no se corta: el mismo padre informa sus 1500.
 
-| Lectura en frío local | Antes | Después |
-| --- | --- | --- |
-| 5 años: consultas | 84 | **52** |
-| 5 años: bytes recibidos | 17,2 MiB | 15,4 MiB |
-| 5 años: tiempo, mediana | 1254 ms | 1200 ms |
-| 10 años: consultas | 159 | **97** |
-| 10 años: bytes recibidos | 34,2 MiB | 30,7 MiB |
-| 10 años: tiempo, mediana | 3157 ms | 3030 ms |
+**Por qué ninguna lista de series se corta hoy**
+- El esquema limita un ejercicio de sesión a 50 series: `workout_sets_set_number_check` (1–50) con `workout_sets_unique_number`, desde `20260810112232_training_robust_rebuild.sql`.
+- En la pila local, la serie 51, una segunda serie 50 y renumerar a 1000 son rechazadas (23514 y 23505).
+- Mientras `max_rows` sea al menos 50, ninguna lista se corta.
 
-**Perfil sintético del benchmark** (5 series por ejercicio y 30 métricas): la lectura completa pasa de 18, 84 y 268 consultas a **12, 52 y 142** a 1, 5 y 10 años.
+**Qué cambió**
+- **Series embebidas:** las series viajan dentro de la página de su ejercicio, con `sets:workout_sets(...)` filtradas por dueño y ordenadas por id. Después se aplanan y se ordenan como el flujo que reemplazan.
+- **Control de listas cortadas, sin suponer las dos condiciones anteriores:** en paralelo se cuenta una vez cuántas series tiene la persona (`count=exact`, sin filas). Si las listas embebidas suman menos, la lectura vuelve a leer las series como su propio flujo paginado, como antes.
+  - Nunca se publica una lista parcial, y nunca se hace un pedido por ejercicio.
+  - Si el conteo falla, la lectura no está disponible: nunca se interpreta como menos series.
+- **Descartado:** un conteo embebido por ejercicio. Daba el mismo control, pero sumaba unos 120 ms a 10 años.
+- **No se tocaron:** el tamaño de página, la identidad, RLS, el contador y los contratos.
+
+**Medición** (PostgreSQL 17.6, con ejercicios de 50 series y una sesión en curso)
+
+| | Consultas | Bytes | Tiempo, mediana |
+| --- | --- | --- | --- |
+| 5 años, main | 85 | 17,5 MiB | 911 ms |
+| 5 años, rama | **53** | 15,7 MiB | 960 ms |
+| 10 años, main | 162 | 34,8 MiB | 2361 ms |
+| 10 años, rama | **98** | 31,1 MiB | 2425 ms |
+
+- **Otra pila (PostgreSQL 17.11, antes del control):** 159 → 97 consultas y 3157 → 3030 ms.
+- **Latencia:** no hay una mejora confiable; las diferencias de ±3–4 % están dentro de la variación entre pilas y corridas.
+- **Perfil sintético del benchmark:** la lectura completa pasa de 18, 84 y 268 a **13, 53 y 143 consultas** a 1, 5 y 10 años (`P + 3`).
 
 **Equivalencia**
-- **Datos locales:** con los mismos usuarios, la fuente que recibe el motor y todas las vistas de los dos métodos dan el mismo hash antes y después: 7 de 7 en cada perfil. Abarcan páginas, relaciones y la evidencia de cada relación.
-- **Prueba local dirigida:** 1180 series en una página de ejercicios, por encima del tope de 1000, más series de otra persona y de una sesión no completada. La fuente trae exactamente las del dueño en sesiones completadas, en el orden de la base y en 2 + 6 pedidos.
-- **Suites locales:** Insights, sueño y peso (sobre PostgreSQL 17.6), configuración (17.6) y cruce de token pasan.
-- **Suite sin cubrir:** `insights-source-revision` no usa el cargador y necesita un esquema previo a su migración; no se corrió.
+- **Contra SQL:** todos los ids de series de main, de la rama sin el control y de la rama final coinciden con SQL, con el orden incluido: 32.684 a 5 años y 64.434 a 10 años.
+- **Contra main:** la fuente completa y todas las vistas de los dos métodos dan el mismo hash en la rama, 8 de 8 en cada perfil.
+- **Pruebas locales:**
+  - 50 series en un ejercicio, el máximo del esquema, y la 51 rechazada;
+  - 1180 series en una página;
+  - series de otra persona y de una sesión no completada.
+- **Pruebas unitarias:** listas cortadas que se recuperan con un solo flujo paginado, sin pedidos por ejercicio, y un conteo fallido que se reporta como no disponible.
 
 **Límites**
-- **Latencia:** baja poco, 4 %. Ahora la fija el flujo de valores diarios, con 59 páginas secuenciales cada vez más caras por el offset.
-- **Propuesta:** paginar por clave (`id > último`) en lugar de offset. Mantiene el orden y la estabilidad, y cada página costaría como la primera. No cambia las consultas, así que es una mejora de latencia, no de cantidad.
-- **Producción:** no se midió. La pila local no reproduce la red ni el pooler de producción.
+- **Latencia:** sin mejora. La fija el flujo de valores diarios, con 59 páginas por offset.
+- **Propuesta:** paginar por clave (`id > último`), que bajaría el tiempo por página, no la cantidad de consultas.
+- **Producción:** no se midió.
 
 ## Qué sigue valiendo
 
