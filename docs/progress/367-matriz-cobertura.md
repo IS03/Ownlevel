@@ -1,6 +1,6 @@
 # #367 — Matriz de cobertura de Insights
 
-Estado al 2026-11-06, con la captura de configuración en #394 y #395, sin aplicar ni mergear. Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya en código leído, no en que exista una tabla o una pantalla.**
+Estado al 2026-11-07. #393, #394 y #395 ya están mergeados y desplegados. El sueño con noche declarada y el peso corporal están en `codex/367-sleep-weight-expand` y `codex/367-sleep-weight-adopt`, sin aplicar ni mergear: detalle en [367-sueno-peso.md](367-sueno-peso.md). Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya en código leído, no en que exista una tabla o una pantalla.**
 
 **Código de referencia** (`src/lib/progress/insights-engine/`, salvo que se indique otra ruta):
 - `exposures.ts`: `buildExposureContext`, `buildExposureTable`, `mealCandidate`;
@@ -65,7 +65,7 @@ Estado al 2026-11-06, con la captura de configuración en #394 y #395, sin aplic
 - **Fuente:** `workout_session_exercise_configurations`, nueva.
 - **Unidad y tiempo:** ejercicio de sesión, registrada para esa sesión.
 - **Cruce:** decide qué exposiciones son comparables.
-- **Estado: implementado y verificado en local, sin migración aplicada ni build** (ver «Captura» abajo).
+- **Estado: accesible en producción; Mobile pendiente de build** (ver «Captura» abajo).
   - El historial queda desconocido y sigue en el carril parcial.
   - Dos configuraciones conocidas distintas no se comparan.
   - La fase dice si se registró durante la sesión o después; el comparador usa las dos y no afirma cuándo se capturó.
@@ -128,15 +128,16 @@ Estado al 2026-11-06, con la captura de configuración en #394 y #395, sin aplic
 ### Métricas diarias y cuerpo
 
 **Sueño**
-- **Fuente:** `daily_metric_values` de la métrica `sleep`, en minutos (`src/lib/daily-metrics/core.ts`).
+- **Fuente:** `daily_metric_values` de la métrica `system_key = 'sleep'`, en minutos. Nunca por su nombre.
 - **Unidad:** día lógico de la métrica.
-- **Tiempo:** dos candidatos por métrica.
-  - `same_day`: la misma fecha, sin orden respecto de la sesión.
-  - `previous_day`: la fecha anterior.
-- **Cruce:** resultado del día.
-- **Estado: limitado.**
-  - **Nada declara a qué noche corresponde una fecha.** El sueño de la noche anterior al entrenamiento puede estar en `same_day` o en `previous_day` según cómo lo cargue la persona.
-  - El motor prueba los dos, lo que suma un candidato a la corrección por multiplicidad.
+- **Método 1:** sin cambios. Dos candidatos, `same_day` y `previous_day`, con fecha ambigua.
+- **Método 2, convención declarada** (`sleep_night_ending_on_date/1`): el valor de la fecha D es la noche que terminó la mañana de D.
+  - **Tiempo:** `night_before`, cruzado con el entrenamiento del día D y con ningún otro día.
+  - **Cruce:** resultado del día.
+  - **Valores sin declarar:** `sleep_undeclared:*:same_day` y `previous_day`, aparte, con su límite visible. Nunca reutilizan una noche declarada.
+- **Estado: implementado y verificado en local; sin migración aplicada ni build.**
+  - **Historial:** sin backfill. Todo valor anterior queda sin convención.
+  - **Clientes viejos:** no declaran, y una edición suya invalida una declaración anterior.
 
 **Pasos**
 - **Fuente:** la métrica `steps` (entero).
@@ -148,11 +149,15 @@ Estado al 2026-11-06, con la captura de configuración en #394 y #395, sin aplic
   - **Nada indica si el total del día está completo.** Solo se excluye el día de hoy.
 
 **Peso corporal**
-- **Fuente:** ninguna en Insights: el loader no lee tablas de cuerpo.
-- **Unidad, tiempo y cruce:** no aplican.
-- **Estado: pendiente.**
-  - Nunca se confunde con la carga levantada: la carga sale solo de `workout_sets`.
-  - Otra superficie de Progreso (Influencias) tiene relaciones con cuerpo; no forma parte de este motor.
+- **Fuente:** `day_logs.weight_kg`, el mismo registro de Cuerpo, con un valor por fecha lógica.
+- **Unidad:** día. Varias sesiones de un día aportan un solo valor.
+- **Tiempo:** `same_day_unordered`. No sabemos si se midió antes o después de entrenar: es contexto del día, no un antecedente.
+- **Cruce:** resultado del día, solo con el método 2.
+- **Estado: implementado y verificado en local; sin migración aplicada ni build.**
+  - Sin peso, peso cero e inválido quedan distintos.
+  - No se usa una medición futura.
+  - Nunca se confunde con la carga levantada.
+- **Pendiente:** tendencias, ventanas y cambios porcentuales.
 
 **Otras métricas numéricas**
 - **Fuente:** todas las de `user_metrics`, por UUID, incluidas las archivadas.
@@ -243,26 +248,14 @@ Modelo y reglas: [367-exercise-configuration.md](367-exercise-configuration.md).
 
 **Hasta entonces, ninguna sesión tiene configuración conocida:** el carril estricto no compara nada y todo queda en el parcial. Después de aplicar, eso solo cambia a medida que la persona registre variantes. Una variante nueva necesita una sesión anterior con la misma para compararse, y la pantalla lo dice.
 
-## Próximos incrementos, separados de esta tanda
+## Próximos incrementos
 
-**No se implementaron.** Cada uno necesita su propio EXPAND o su propia decisión, y ninguno se mezcla con #394 o #395.
+**No se implementaron.**
 
-**1. Convención del sueño.** Declarar a qué noche corresponde la fecha. Es el caso con más riesgo de asociación mal fechada.
-- **Decisión de producto:** el sueño cargado en la fecha D es la noche que termina la mañana de D, y la captura lo dice («Cuánto dormiste anoche»).
-- **Valores nuevos:** quedan marcados con esa convención al guardarse.
-- **Valores históricos:** no se reinterpretan. O se excluyen del candidato nuevo, o se informan aparte como «convención no declarada».
-- **Candidato:** con convención pasa a `night_before_logical_day` y deja de probarse en dos ventanas, así que hay una hipótesis menos en la corrección.
-- **Requiere** un EXPAND en métricas diarias, con procedencia por valor, y su ADOPT.
-- **Campaña estadística:** se repite solo si el candidato entra a la misma familia de corrección.
-
-**2. Peso corporal en Insights.** Leer las tablas de cuerpo como contexto diario, nunca como carga.
-- **Antes, decidir:**
-  - qué medición del día vale si hay varias;
-  - cómo se distingue un día sin medición de un valor.
-- **Requiere** un candidato nuevo de familia propia, con su lectura en el loader y su costo de páginas.
-
-**3. Todas las sesiones y los cuatro macros en el contexto del día.** Es solo presentación: hoy la vista toma la primera sesión y solo las calorías.
+**1. Todas las sesiones y los cuatro macros en el contexto del día.** Es solo presentación: hoy la vista toma la primera sesión y solo las calorías.
 - No cambia el motor ni los denominadores.
 - Requiere ajustar `contextRows` y su contrato de vista.
+
+**2. Tendencias de peso.** Ventanas y cambios porcentuales, con su propia familia y su propia simulación.
 
 **Después:** decidir si las sensaciones posteriores se publican como un resultado propio, separado del rendimiento.

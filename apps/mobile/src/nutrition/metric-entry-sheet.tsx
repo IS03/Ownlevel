@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ComponentProps, type RefObject } from 'react';
+import { sleepNightCaption } from '../../../../src/lib/daily-metrics/sleep-night';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon, AppSheet, AppText, Button, GlassSurface, useAppSheetDismiss, pressedStyle, useOwnlevelTheme, useReduceMotion, brandTokens } from '@/design-system';
@@ -91,7 +92,8 @@ function MetricForm({ id, controller, state, input }: { id: string; controller: 
           <View style={styles.header}>
             <SheetControl label={`Cerrar ${metric.label} sin guardar`} icon="close" disabled={running} onPress={onClose} />
             <View style={styles.title}><AppText accessibilityRole="header" variant="headline" style={styles.center}>{metric.label}</AppText>
-              <AppText muted numeric variant="caption" style={styles.center}>{subtitle}</AppText></View>
+              <AppText muted numeric variant="caption" style={styles.center}>{subtitle}</AppText>
+              {metric.systemKey === 'sleep' ? <AppText muted variant="caption" style={styles.center}>{sleepNightCaption(data.date, data.today)}</AppText> : null}</View>
             <SheetControl label={`Guardar ${metric.label}`} icon="checkmark" disabled={saveDisabled} accent pending={running} onPress={() => void controller.save()} />
           </View>
           {metric.value !== null ? <View pointerEvents={locked ? 'none' : 'auto'} accessibilityElementsHidden={locked} style={styles.mode}>

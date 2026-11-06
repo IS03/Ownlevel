@@ -221,7 +221,7 @@ describe('entrada desde el final de una sesión', () => {
     const facts = within(view.getByTestId('insights-session'));
     expect(facts.getByText('1 de 1')).toBeTruthy();
     expect(facts.getAllByText(/^↑ Registro superior$/).length).toBeGreaterThan(0);
-    expect(requests()).toEqual(['/api/mobile/v1/progress/performance-insights']);
+    expect(requests()).toEqual(['/api/mobile/v1/progress/performance-insights?method=2']);
     expect(view.getByTestId('insights-partial-limit')).toBeTruthy();
     expect(view.queryByText(/Exploratorio|Coincidieron/)).toBeNull();
   });
@@ -229,7 +229,7 @@ describe('entrada desde el final de una sesión', () => {
     mockParams = { session: SESSION, date: dateAt(1) };
     mockRead.mockImplementation(serve(sessionsWithIds(20)));
     const view = await open(<InsightsScreen />);
-    expect(requests()).toEqual(['/api/mobile/v1/progress/performance-insights', `/api/mobile/v1/progress/performance-insights?view=days&before=${dateAt(2)}&limit=1`]);
+    expect(requests()).toEqual(['/api/mobile/v1/progress/performance-insights?method=2', `/api/mobile/v1/progress/performance-insights?method=2&view=days&before=${dateAt(2)}&limit=1`]);
     expect(view.getByTestId('insights-session')).toBeTruthy();
     expect(view.getAllByRole('button', { name: /comparables con contexto parcial/ })).toHaveLength(14);
   });
@@ -255,7 +255,8 @@ describe('entrada desde el final de una sesión', () => {
     const source = sessionsWithIds(20);
     mockRead.mockImplementationOnce(serve(source, 'r1')).mockImplementationOnce(serve(source, 'r2')).mockImplementation(serve(source, 'r2'));
     const view = await open(<InsightsScreen />); await flush();
-    expect(requests().filter(path => path.endsWith('performance-insights')).length).toBeGreaterThanOrEqual(2);
+    // Every view asks for method 2 (#367); the summary carries no view.
+    expect(requests().filter(path => path.endsWith('performance-insights?method=2')).length).toBeGreaterThanOrEqual(2);
     expect(view.getByTestId('insights-session')).toBeTruthy();
   });
   it('ignores a session parameter that is not one', async () => {

@@ -1,4 +1,5 @@
 import { parseDayWriteIntent, type DayWriteIntent } from '@/api/nutrition-day-write';
+import { SLEEP_NIGHT_CONVENTION } from '../../../../src/lib/daily-metrics/sleep-night';
 import type { MobileNutritionDayResponse } from '@/api/nutrition-day';
 export type MetricInput = { value: string; hours: string; minutes: string };
 export type DayWriteDraft = { kind: 'metrics' | 'context'; baseline: MobileNutritionDayResponse; metrics: Record<string, MetricInput>; target: string; expenditure: string };
@@ -45,7 +46,8 @@ export function buildDayWriteIntent(d: DayWriteDraft, idempotencyKey: string): {
       const input=d.metrics[m.id];
       const value=input ? metricInputValue(input,m.valueType) : undefined;
       if (value === undefined || (m.systemKey === 'steps' && value !== null && value>2147483647)) { errors[m.id]=m.valueType==='duration' ? 'Usá horas enteras y minutos de 0 a 59.' : 'Usá un valor no negativo del tipo indicado.'; continue; }
-      if (value !== m.value) changes.push({metricId:m.id,definitionUpdatedAt:m.definitionUpdatedAt!,expectedUpdatedAt:m.updatedAt,value});
+      // The sleep sheet says which night it is (#367): a value written there declares it. Clearing declares nothing.
+      if (value !== m.value) changes.push({metricId:m.id,definitionUpdatedAt:m.definitionUpdatedAt!,expectedUpdatedAt:m.updatedAt,value,...(m.systemKey === 'sleep' && value !== null ? { sleepNight: SLEEP_NIGHT_CONVENTION } : {})});
     }
     if (Object.keys(errors).length) return { errors };
     if (!changes.length) return { errors,empty:true };

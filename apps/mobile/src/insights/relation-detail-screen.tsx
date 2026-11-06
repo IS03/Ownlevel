@@ -10,7 +10,7 @@ import { useProgressResource } from '@/progress/use-progress-resource';
 import { FactRow } from './insights-screen';
 import { InsightRow } from './insight-row';
 import { metricTrendHref } from './navigation';
-import { LANE_TITLE, PARTIAL_LIMIT, coverageText, dayLabel, exclusionRows, exposureUnit, groupRows, relationName, relationSentence, relationState, sameRead, shareText, type Lane } from './insights-model';
+import { exposureMeaning, LANE_TITLE, PARTIAL_LIMIT, coverageText, dayLabel, exclusionRows, exposureUnit, groupRows, relationName, relationSentence, relationState, sameRead, shareText, type Lane } from './insights-model';
 
 type Pair = NonNullable<InsightsRelationDetail['pairs']>[number];
 const PLOT = 180, DOT = 8, LIST_STEP = 60;
@@ -68,6 +68,7 @@ export function RelationDetailScreen() {
       <Heading level={2}>{name}</Heading>
       <AppText muted variant="footnote" testID="relation-lane">{relationState(item)} · {LANE_TITLE[lane]}</AppText>
       <AppText>{relationSentence(lane, item, data.metrics)}</AppText>
+      {exposureMeaning(item) ? <AppText muted variant="footnote" testID="relation-exposure-meaning">{exposureMeaning(item)}</AppText> : null}
       {lane === 'partial' ? <AppText muted variant="footnote" testID="relation-partial-limit">{PARTIAL_LIMIT}</AppText> : null}
     </View>
     {pairs.length >= 2 ? <View style={styles.block}>
@@ -75,7 +76,8 @@ export function RelationDetailScreen() {
       <AppText muted numeric variant="caption">{scope}Cada punto es un día. No marca un rango ideal.</AppText>
       {some ? <AppText muted variant="caption">Los números de esta relación ya cuentan todos los días.</AppText> : null}
     </View> : null}
-    {item.definition.family === 'metric' && data.metrics.some(metric => metric.id === item.definition.subject)
+    {item.definition.family === 'body' ? <InsightRow label="Ver tu peso en Cuerpo" spoken="Ver tu peso en Cuerpo" onPress={() => router.push('/(tabs)/progress/trends/body')} /> : null}
+    {(item.definition.family === 'metric' || item.definition.family === 'sleep') && data.metrics.some(metric => metric.id === item.definition.subject)
       ? <InsightRow label="Ver tendencias de esta métrica" spoken={`Ver tendencias de ${data.metrics.find(metric => metric.id === item.definition.subject)!.name}`}
         onPress={() => router.push(metricTrendHref(item.definition.subject, newestFirst[0]?.date ?? null, { relation }))} /> : null}
     {groups.length ? <View>
