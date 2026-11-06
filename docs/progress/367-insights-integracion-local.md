@@ -1,4 +1,24 @@
-# Estado vigente — lectura en frío de Insights, en revisión (#409)
+# Estado vigente — resumen factual post-entreno, en revisión
+
+Main `bd5407e` incluye #409. Rama `codex/367-post-workout-summary`, publicada en `40455116c2db996dc6b97c805add45f35cc9c235`, con previews bloqueadas. Sin migración ni cambio de método.
+
+- **Resumen post-entreno:**
+  - rotula que sus marcas son la regla de «la última vez con el mismo modo de carga», no la comparación de Insights;
+  - muestra las sensaciones ordinales, antes → después, con su horario conocido;
+  - no lee Insights al terminar.
+- **Insights, vista de una sesión:**
+  - cada método por separado con sus conteos;
+  - «Mezclado» y «Sin comparar» separados;
+  - fecha de cada referencia compatible (`referenceDate`, opcional en el contrato);
+  - sensaciones ordinales con ilegible y tardía distintas.
+- **Equivalencia:** 53 de 53 vistas idénticas a main sin `referenceDate`; pasan 376 pruebas del motor y 82 de Mobile.
+- **Matriz:** estados corregidos con Git (#403 a #409 mergeados), sin aprobar QA.
+- **Pendiente:** build de Mobile y QA física. El detalle de la sesión no trae la hora de la primera serie.
+- **Detalle:** [descripción del PR](367-resumen-post-entreno-pr-description.md) en esa rama.
+
+---
+
+# Estado anterior — lectura en frío de Insights, mergeada en #409 (`bd5407e`)
 
 Rama `codex/367-insights-cold-read`, ahora en `bbddaa6a6af65cee8fd923484b908c51a43ef88c` sobre main `03fc8f7`, con previews bloqueadas. Sin migración ni RPC.
 
