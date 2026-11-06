@@ -79,8 +79,8 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
       notify pgrst,'reload schema';`);
     owner.http.requests = 0;
     const { source } = await readConsistentInsightsSource(contextOf(owner.id, owner.client));
-    // Every request PostgREST really received: the counter before and after, plus one page per stream.
-    expect(owner.http.requests).toBe(2 + 7);
+    // Every request PostgREST really received: the counter before and after, one page per stream (sets ride with exercises) and the count of sets.
+    expect(owner.http.requests).toBe(2 + 6 + 1);
     expect(source.sessions.map(row => row.id).sort()).toEqual([s1, s2].sort());
     expect(source.sessions.find(row => row.id === s2)!.date).toBe("2026-03-02");
     expect(source.exercises.every(row => row.exerciseId === exercise)).toBe(true);
@@ -103,6 +103,66 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
     expect(stolen.source).toMatchObject({ sessions: [], exercises: [], sets: [], feelings: [], metricValues: [], meals: [] });
     const anonymous = createClient(status.API_URL, status.ANON_KEY, { auth: { persistSession: false } });
     await expect(readConsistentInsightsSource(contextOf(owner.id, anonymous))).rejects.toThrow();
+  }, 120_000);
+
+  it("brings every set inside its exercise's page past the row cap, by owner and in the database's id order (#367)", async () => {
+    const { sql, user } = localStack();
+    const owner = await user(), other = await user();
+    const exercise = randomUUID(), foreign = randomUUID();
+    // 300 exercises with 4 sets each: 1200 sets on one page of exercises, over PostgREST's cap of 1000 rows per request.
+    // An in-progress session's sets and another person's never reach the source.
+    sql(`select set_config('request.jwt.claim.sub','${owner.id}',false);
+      insert into public.profiles(user_id) values('${owner.id}'),('${other.id}') on conflict do nothing;
+      insert into public.exercises(id,user_id,nombre,weight_mode) values('${exercise}','${owner.id}','SYNTHETIC PRESS','Peso total'),('${foreign}','${other.id}','SYNTHETIC OTHER','Peso total');
+      do $seed$ declare who uuid; ex uuid; s uuid; d date; begin
+        for who, ex in select * from (values('${owner.id}'::uuid,'${exercise}'::uuid),('${other.id}'::uuid,'${foreign}'::uuid)) v loop
+          for i in 0..59 loop
+            d := '2026-01-01'::date + i; s := gen_random_uuid();
+            perform set_config('request.jwt.claim.sub', who::text, false);
+            insert into public.day_logs(user_id,log_date) values(who,d) on conflict do nothing;
+            insert into public.workout_sessions(id,user_id,day_log_id,started_at) select s,who,id,(d::timestamp + interval '18 hours') at time zone 'UTC' from public.day_logs where user_id=who and log_date=d;
+            for k in 1..5 loop insert into public.workout_session_exercises(user_id,workout_session_id,exercise_id,exercise_order) values(who,s,ex,k); end loop;
+            update public.workout_session_exercises set is_completed=true,implement_snapshot='barra',weight_mode_snapshot='Peso total' where workout_session_id=s;
+            insert into public.workout_sets(user_id,workout_session_exercise_id,set_number) select who,x.id,g from public.workout_session_exercises x cross join generate_series(2,4) g where x.workout_session_id=s;
+            update public.workout_sets t set actual_reps=8,actual_weight_kg=50,is_completed=true,completed_at=(d::timestamp + interval '18 hours 10 minutes') at time zone 'UTC' from public.workout_session_exercises x where x.id=t.workout_session_exercise_id and x.workout_session_id=s;
+            if i < 59 then update public.workout_sessions set status='completed',ended_at=(d::timestamp + interval '19 hours') at time zone 'UTC' where id=s; end if;
+          end loop;
+        end loop; end $seed$;
+      notify pgrst,'reload schema';`);
+    const expected = sql(`select string_agg(t.id::text, ',' order by t.id) from public.workout_sets t join public.workout_session_exercises x on x.id=t.workout_session_exercise_id
+      join public.workout_sessions s on s.id=x.workout_session_id where t.user_id='${owner.id}' and s.status='completed'`).split(",");
+    expect(expected).toHaveLength(59 * 5 * 4);
+    owner.http.requests = 0;
+    const { source } = await readConsistentInsightsSource(contextOf(owner.id, owner.client));
+    expect(owner.http.requests).toBe(2 + 6 + 1);
+    expect(source.sets.map(row => row.id)).toEqual(expected);
+    expect(new Set(source.sets.map(row => row.sessionExerciseId)).size).toBe(59 * 5);
+    expect(source.sets.every(row => row.actualReps === 8 && row.actualLoad === 50 && row.isCompleted)).toBe(true);
+  }, 300_000);
+
+  it("reads the longest list the schema allows, 50 sets on one exercise, whole: the 51st is refused by the database (#367)", async () => {
+    const { sql, user } = localStack();
+    const owner = await user();
+    const exercise = randomUUID(), session = randomUUID();
+    sql(`select set_config('request.jwt.claim.sub','${owner.id}',false);
+      insert into public.profiles(user_id) values('${owner.id}') on conflict do nothing;
+      insert into public.exercises(id,user_id,nombre,weight_mode) values('${exercise}','${owner.id}','SYNTHETIC LONG','Peso total');
+      insert into public.day_logs(user_id,log_date) values('${owner.id}','2026-02-01');
+      insert into public.workout_sessions(id,user_id,day_log_id,started_at) select '${session}','${owner.id}',id,'2026-02-01T18:00:00Z' from public.day_logs where user_id='${owner.id}' and log_date='2026-02-01';
+      insert into public.workout_session_exercises(user_id,workout_session_id,exercise_id,exercise_order) values('${owner.id}','${session}','${exercise}',1);
+      update public.workout_session_exercises set is_completed=true,implement_snapshot='barra',weight_mode_snapshot='Peso total' where workout_session_id='${session}';
+      insert into public.workout_sets(user_id,workout_session_exercise_id,set_number) select '${owner.id}',x.id,g from public.workout_session_exercises x cross join generate_series(2,50) g where x.workout_session_id='${session}';
+      update public.workout_sets t set actual_reps=8,actual_weight_kg=50,is_completed=true,completed_at='2026-02-01T18:10:00Z' from public.workout_session_exercises x where x.id=t.workout_session_exercise_id and x.workout_session_id='${session}';
+      update public.workout_sessions set status='completed',ended_at='2026-02-01T19:00:00Z' where id='${session}';`);
+    expect(() => sql(`insert into public.workout_sets(user_id,workout_session_exercise_id,set_number) select '${owner.id}',id,51 from public.workout_session_exercises where workout_session_id='${session}';`)).toThrow(/workout_sets_set_number_check/);
+    expect(() => sql(`insert into public.workout_sets(user_id,workout_session_exercise_id,set_number) select '${owner.id}',id,50 from public.workout_session_exercises where workout_session_id='${session}';`)).toThrow(/workout_sets_unique_number/);
+    const expected = sql(`select string_agg(id::text, ',' order by id) from public.workout_sets where user_id='${owner.id}'`).split(",");
+    expect(expected).toHaveLength(50);
+    owner.http.requests = 0;
+    const { source } = await readConsistentInsightsSource(contextOf(owner.id, owner.client));
+    // The whole list in the exercises' page, matching the count: the sets are not read again as a stream.
+    expect(owner.http.requests).toBe(2 + 6 + 1);
+    expect(source.sets.map(row => row.id)).toEqual(expected);
   }, 120_000);
 
   // Needs the schema of the time provenance EXPAND. Every meal comes through the path that really writes it.
@@ -297,7 +357,7 @@ describe.runIf(!!statusFile && !!container)("loader contra PostgREST local desca
       owner.http.hook = null;
       expect(committed).toBe(true);
       // A retry: two attempts of the counter twice and one page per stream. The read it publishes has the committed value.
-      expect(owner.http.requests).toBe(2 * (2 + 7));
+      expect(owner.http.requests).toBe(2 * (2 + 6 + 1));
       expect(valueOf(source, dates[0]!)).toBe(11);
     }, 60_000);
 

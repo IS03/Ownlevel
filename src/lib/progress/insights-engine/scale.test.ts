@@ -34,8 +34,10 @@ describe("escala con perfiles sintéticos", () => {
     const method = process.env.INSIGHTS_SCALE_METHOD === "2" ? 2 as const : 1 as const;
     const source = syntheticHistory(PROFILES[name!], 1, captured);
     const rows = { sessions: source.sessions.length, exercises: source.exercises.length, sets: source.sets.length, metricValues: source.metricValues.length, meals: source.meals.length, feelings: source.feelings.length };
-    // One page per 1000 rows, at least one per stream; the extra one is the metric definitions.
-    const pages = Object.values(rows).reduce((sum, count) => sum + Math.max(1, Math.ceil(count / 1000)), 1);
+    // One page per 1000 rows, at least one per stream; the extra one is the metric definitions. Sets ride inside the
+    // exercises' pages (#367), so they add bytes to those pages and no page of their own.
+    const streams = [rows.sessions, rows.exercises, rows.metricValues, rows.meals, rows.feelings];
+    const pages = streams.reduce((sum, count) => sum + Math.max(1, Math.ceil(count / 1000)), 1);
     globalThis.gc?.();
     const rssBase = process.memoryUsage().rss, heapBase = process.memoryUsage().heapUsed;
     const times = { snapshot: [] as number[], summary: [] as number[], daysPage: [] as number[], relationsFirst: [] as number[], relationsAgain: [] as number[], relationDetail: [] as number[] };
@@ -58,8 +60,9 @@ describe("escala con perfiles sintéticos", () => {
     }
     const usage = process.resourceUsage().maxRSS * 1024;
     writeFileSync(out!, JSON.stringify({ name, captured, method, rows, comparable, candidatesPerMethod: candidates, sourcePages: pages,
-      // The loader today: the seven streams' pages and two counter reads; a reuse reads only the counter (367-insights-partial-metodo.md).
-      queries: { reuse: 1, fullRead: pages + 2, fullReadOneRetry: 2 * (pages + 2), bothRetriesWorstCase: 4 * (pages + 2) },
+      // The loader today: the six streams' pages, the count of sets and two counter reads; a reuse reads only the counter (367-insights-partial-metodo.md).
+      // Plus one count of the sets, which tells whole embedded lists from cut ones (#409).
+      queries: { reuse: 1, fullRead: pages + 3, fullReadOneRetry: 2 * (pages + 3), bothRetriesWorstCase: 4 * (pages + 3) },
       ms: Object.fromEntries(Object.entries(times).map(([key, values]) => [key, stats(values)])), responseKiB: bytes,
       retainedMiB: mib(retained), peakAboveSourceMiB: mib(usage - rssBase), gcAvailable: !!globalThis.gc }, null, 2));
   }, 1_800_000);

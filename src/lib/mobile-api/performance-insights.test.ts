@@ -11,19 +11,19 @@ vi.mock("./supabase", () => ({ authenticateMobileAccessToken: mocks.auth }));
 const USER = "93670000-0000-4000-8000-0000000000a1", EXERCISE = "93670000-0000-4000-8000-00000000000a", METRIC = "93670000-0000-4000-8000-0000000000aa";
 const dateAt = (day: number) => new Date(Date.UTC(2026, 0, 1 + day)).toISOString().slice(0, 10);
 
-type Call = { table: string; selected: string; filters: [string, ...unknown[]][]; range: [number, number] | null; limit: number | null };
+type Call = { table: string; selected: string; filters: [string, ...unknown[]][]; range: [number, number] | null; limit: number | null; head?: boolean };
 /** Answers from in-memory tables and records each query: the assertions are about what is read, and how many times. */
-function fakeSupabase(tables: Record<string, Record<string, unknown>[]>, revisionOf: (call: number) => number | null = () => 1) {
+function fakeSupabase(tables: Record<string, Record<string, unknown>[]>, revisionOf: (call: number) => number | null = () => 1, embeddedCap = Infinity) {
   const calls: Call[] = [];
   let revisionCalls = 0;
   const from = (table: string) => {
     const call: Call = { table, selected: "", filters: [], range: null, limit: null };
     const builder: Record<string, unknown> = {
-      select(columns: string) { call.selected = columns; return builder; },
+      select(columns: string, options?: { head?: boolean }) { call.selected = columns; call.head = !!options?.head; return builder; },
       eq(...args: unknown[]) { call.filters.push(["eq", ...args]); return builder; },
       is(...args: unknown[]) { call.filters.push(["is", ...args]); return builder; },
       in(...args: unknown[]) { call.filters.push(["in", ...args]); return builder; },
-      order() { return builder; }, returns() { return builder; },
+      order(...args: unknown[]) { if (args[1] && typeof args[1] === "object") call.filters.push(["order", ...args]); return builder; }, returns() { return builder; },
       range(start: number, end: number) { call.range = [start, end]; return builder; },
       maybeSingle() { return builder; },
       then(resolve: (value: unknown) => void) {
@@ -32,7 +32,17 @@ function fakeSupabase(tables: Record<string, Record<string, unknown>[]>, revisio
         if (table === "insights_source_revisions") {
           try { const revision = revisionOf(++revisionCalls); resolve({ data: revision === null ? null : { revision }, error: null }); }
           catch { resolve({ data: null, error: { code: "42P01" } }); }
-        } else resolve({ data: rows.slice(call.range![0], call.range![1] + 1), error: null, count: call.range![0] === 0 ? rows.length : null });
+        } else {
+          // A count without rows (head): what the loader compares the embedded lists against.
+          if (call.head) { resolve({ data: null, error: null, count: rows.length }); return; }
+          const page = rows.slice(call.range![0], call.range![1] + 1);
+          // PostgREST embeds each exercise's sets when the select names them, as the loader's does, and cuts each embedded list at
+          // max-rows (embeddedCap here).
+          const own = (id: unknown) => (tables.workout_sets ?? []).filter(set => set.workout_session_exercise_id === id);
+          const embedded = table === "workout_session_exercises" && call.selected.includes("sets:workout_sets(")
+            ? page.map(row => ({ ...row, sets: own(row.id).slice(0, embeddedCap).map(set => Object.fromEntries(Object.entries(set).filter(([key]) => key !== "workout_session_exercise_id"))) })) : page;
+          resolve({ data: embedded, error: null, count: call.range![0] === 0 ? rows.length : null });
+        }
       },
     };
     return builder;
@@ -69,8 +79,17 @@ describe("GET performance-insights", () => {
     expect(body.view).toBe("summary"); expect(body.relations.strict.candidatesEvaluated).toBe(2 + 8 + 2 + 2);
     expect(body).not.toHaveProperty("associations");
     expect(response.headers.get("Cache-Control")).toBe("no-store");
-    // 7 streams of one page each and the counter before and after. Nothing per session, exercise or candidate.
-    expect(calls).toHaveLength(7 + 2);
+    // 6 streams of one page each, the count of sets, and the counter before and after. Nothing per session, exercise or candidate.
+    expect(calls).toHaveLength(6 + 1 + 2);
+    // Sets ride inside the exercises' pages, filtered by owner and ordered: no stream of their own.
+    const exercises = calls.find(row => row.table === "workout_session_exercises")!;
+    expect(exercises.selected).toContain("sets:workout_sets(id,actual_reps,actual_weight_kg,is_completed,completed_at)");
+    expect(exercises.filters).toContainEqual(["eq", "sets.user_id", USER]);
+    expect(exercises.filters).toContainEqual(["order", "id", { referencedTable: "sets" }]);
+    // One count of the person's sets, without rows, tells whole lists from cut ones. The stream itself is not read.
+    const count = calls.find(row => row.table === "workout_sets")!;
+    expect(count.head).toBe(true); expect(count.range).toBeNull(); expect(count.filters).toContainEqual(["eq", "user_id", USER]);
+    expect(calls.filter(row => row.table === "workout_sets")).toHaveLength(1);
     expect(calls.some(call => call.filters.some(filter => filter[0] === "in"))).toBe(false);
     for (const call of calls.filter(row => row.table !== "workout_session_feelings")) expect(call.filters).toContainEqual(["eq", "user_id", USER]);
     expect(calls.filter(row => row.table === "workout_session_feelings").every(row => row.filters.some(filter => filter[1] === "session.user_id" && filter[2] === USER))).toBe(true);
@@ -90,8 +109,8 @@ describe("GET performance-insights", () => {
     expect(relations.strict).toMatchObject({ items: [], candidatesEvaluated: 14, outcomeDays: 0 });
   });
   describe("total query cost, retries included", () => {
-    // Each stream of tablesFor(5) takes one page: P = 7, and the counter is read before and after. A clean attempt is 1 + 7 + 1.
-    const attempt = 2 + 7;
+    // Each stream of tablesFor(5) takes one page: P = 6, plus the count of sets, and the counter before and after: 1 + 6 + 1 + 1.
+    const attempt = 2 + 6 + 1;
     const midnightAfter = (client: { from: (table: string) => unknown }, after: number) => {
       let started = 0;
       return { from(table: string) {
@@ -119,14 +138,14 @@ describe("GET performance-insights", () => {
     const small = fakeSupabase(tablesFor(1500));
     mocks.auth.mockResolvedValue({ userId: USER, supabase: small.client });
     expect((await GET(request("?limit=5"))).status).toBe(200);
-    // Each of the four 1500-row streams takes 2 pages; the other three take one.
-    expect(small.calls.filter(call => call.range)).toHaveLength(4 * 2 + 3);
+    // Each of the three 1500-row streams takes 2 pages (sets ride with their exercises); the other three take one.
+    expect(small.calls.filter(call => call.range)).toHaveLength(3 * 2 + 3);
   }, 60_000);
   it("retries once when a source changes during the read and then refuses to publish", async () => {
     const once = fakeSupabase(tablesFor(5), call => call <= 1 ? 1 : 2);
     mocks.auth.mockResolvedValue({ userId: USER, supabase: once.client });
     expect((await GET(request())).status).toBe(200);
-    expect(once.calls.filter(call => call.table === "workout_sets" && call.range)).toHaveLength(2);
+    expect(once.calls.filter(call => call.table === "workout_session_exercises" && call.range)).toHaveLength(2);
 
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const moving = fakeSupabase(tablesFor(5), call => call);
@@ -170,14 +189,14 @@ describe("GET performance-insights", () => {
       const fake = fakeSupabase(tablesFor(40));
       mocks.auth.mockResolvedValue({ userId: USER, supabase: fake.client });
       const first = await parsed("?limit=5");
-      expect(fake.calls).toHaveLength(7 + 2);
+      expect(fake.calls).toHaveLength(6 + 1 + 2);
       for (const query of ["?view=days&before=" + first.facts.page.nextBefore + "&limit=5", "?view=relations", `?association=${encodeURIComponent(`partial:metric:${METRIC}:same_day`)}`, "?limit=5"]) {
         const before = fake.calls.length;
         const body = await parsed(query);
         expect(fake.calls.length - before, query).toBe(1);
         expect(body.sourceRevision).toBe(first.sourceRevision);
       }
-      expect(pagesOf(fake.calls)).toBe(7);
+      expect(pagesOf(fake.calls)).toBe(6);
     }, 60_000);
     it("reads everything again as soon as the counter moves, and says so", async () => {
       let revision = 1;
@@ -187,7 +206,7 @@ describe("GET performance-insights", () => {
       revision = 2;
       const before = fake.calls.length;
       const page = await parsed("?view=days");
-      expect(fake.calls.length - before).toBe(7 + 2);
+      expect(fake.calls.length - before).toBe(6 + 1 + 2);
       expect(page.sourceRevision).not.toBe(first.sourceRevision);
     });
     it("reads as 0 an account with no counter yet, and is unavailable if it cannot be read", async () => {
@@ -208,7 +227,7 @@ describe("GET performance-insights", () => {
       const body = await parsed("");
       expect(body.history.sessions).toBe(2);
       expect(body.sourceRevision).not.toBe(first.sourceRevision);
-      expect(pagesOf(other.calls)).toBe(7);
+      expect(pagesOf(other.calls)).toBe(6);
     });
     it("does not reuse a snapshot across the Córdoba day", async () => {
       vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-06-01T12:00:00Z") });
@@ -218,7 +237,7 @@ describe("GET performance-insights", () => {
       vi.setSystemTime(new Date("2026-06-02T12:00:00Z"));
       const before = fake.calls.length;
       expect((await parsed("")).today).toBe("2026-06-02");
-      expect(fake.calls.length - before).toBe(7 + 2);
+      expect(fake.calls.length - before).toBe(6 + 1 + 2);
     });
     it("still refuses when the token fails, before reusing anything", async () => {
       const { MobileApiUnauthorizedError } = await import("./auth");
@@ -249,7 +268,7 @@ describe("#367: the configuration recorded per session", () => {
   };
   it("reads it with the exercises, in the same page: no extra stream", async () => {
     const { calls } = await read(withConfigurations(() => null));
-    expect(calls).toHaveLength(7 + 2);
+    expect(calls).toHaveLength(6 + 1 + 2);
     expect(calls.find(call => call.table === "workout_session_exercises")!.selected).toContain("configuration:workout_session_exercise_configurations(kind,label)");
   });
   it("compares a known configuration with itself only, ignoring case, and leaves the partial lane", async () => {
@@ -272,5 +291,41 @@ describe("#367: the configuration recorded per session", () => {
     const { body } = await read(withConfigurations(() => ({ kind: null, label: null })));
     expect(body.limits.configurationSnapshots).toEqual({ known: 0, total: 30 });
     expect(body.facts.totals).toMatchObject({ comparable: 0 });
+  });
+});
+
+describe("#367 series embebidas: una lista cortada nunca se publica", () => {
+  const threeSets = () => {
+    const tables = tablesFor(210);
+    tables.workout_sets = tables.workout_session_exercises.flatMap((exercise, day) => [0, 1, 2].map(set => ({ id: `set${String(day).padStart(3, "0")}-${set}`, workout_session_exercise_id: exercise.id,
+      actual_reps: 8 + set, actual_weight_kg: "100.00", is_completed: true, completed_at: `${dateAt(day)}T18:1${set}:00.000Z` })));
+    return tables;
+  };
+  const sourceOf = async (fake: ReturnType<typeof fakeSupabase>) => {
+    const { readInsightsSource } = await import("./performance-insights-server");
+    return readInsightsSource({ userId: USER, supabase: fake.client } as never);
+  };
+  it("reads the sets as their own paged stream when the embedded lists add up to less than the count: one stream, never a request per exercise", async () => {
+    const whole = fakeSupabase(threeSets());
+    const expected = await sourceOf(whole);
+    expect(whole.calls.filter(call => call.table === "workout_sets" && call.range)).toHaveLength(0);
+    // PostgREST cuts each embedded list at max-rows: here 2 of every exercise's 3 sets arrive.
+    const cut = fakeSupabase(threeSets(), undefined, 2);
+    const source = await sourceOf(cut);
+    expect(source.sets).toEqual(expected.sets);
+    expect(source.sets).toHaveLength(630);
+    const stream = cut.calls.filter(call => call.table === "workout_sets" && call.range);
+    expect(stream).toHaveLength(1);
+    expect(stream[0]!.filters).toContainEqual(["eq", "user_id", USER]);
+    expect(cut.calls.some(call => call.filters.some(filter => filter[0] === "in"))).toBe(false);
+  });
+  it("fails as unavailable, not as fewer sets, when the count cannot be read", async () => {
+    const fake = fakeSupabase(threeSets());
+    const failing = { from(table: string) {
+      const builder = fake.client.from(table) as Record<string, unknown>;
+      if (table !== "workout_sets") return builder;
+      return { ...builder, select: () => ({ eq: () => ({ then: (resolve: (value: unknown) => void) => resolve({ data: null, error: { message: "timeout" }, count: null }) }) }) };
+    } };
+    await expect(sourceOf({ client: failing } as never)).rejects.toThrow("Leer cantidad de series de Insights");
   });
 });
