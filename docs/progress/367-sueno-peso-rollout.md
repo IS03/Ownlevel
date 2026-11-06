@@ -6,7 +6,7 @@
 
 | Archivo | Blob |
 | --- | --- |
-| `supabase/migrations/20261107120000_sleep_night_and_body_weight_sources_expand.sql` | `c1470c85d825908d8a490b30f13e498109ffd96c` |
+| `supabase/migrations/20261107120000_sleep_night_and_body_weight_sources_expand.sql` | `39644f101e44ac25b303278392523cb4456e928d` |
 
 ```bash
 git rev-parse origin/codex/367-sleep-weight-expand:supabase/migrations/20261107120000_sleep_night_and_body_weight_sources_expand.sql
@@ -68,3 +68,7 @@ Está en la cabecera de la migración. **Primero va el código** que ya no llama
   - 503 de Insights;
   - cuántos valores de sueño quedan declarados frente a desactualizados.
 - **Sin build:** la captura Mobile llega al teléfono con una build autorizada, y Web con el deploy.
+
+
+## Corrección de revisión
+Se completó la cabecera de reversión con `drop function public.declare_sleep_nights_written(date, uuid[]);`, después de quitar los envoltorios y antes de quitar `declare_sleep_night_v1`. Solo cambió un comentario SQL y las referencias al blob. El SQL ejecutable es idéntico; la validación local publicada se conserva sin repetir campañas.
