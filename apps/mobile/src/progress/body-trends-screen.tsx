@@ -33,7 +33,7 @@ function metricLine(m: ProgressBodyMetric) {
   return `${value} · ${arrowDelta(m.change, m.unit)}`;
 }
 
-function Selected({ metric, excluded }: { metric: ProgressBodyMetric; excluded: number }) {
+function Selected({ metric, excluded, storedZeros = [] }: { metric: ProgressBodyMetric; excluded: number; storedZeros?: readonly string[] }) {
   const router = useRouter();
   const { colors } = useOwnlevelTheme();
   const { compareText, state, setState, today } = useProgressRange();
@@ -50,8 +50,10 @@ function Selected({ metric, excluded }: { metric: ProgressBodyMetric; excluded: 
   const stages = useNutritionStages()?.state.list;
   const bands = metric.key === 'body.weight' ? chartBands(stages, metric.observations.map(o => o.date)) : [];
   const count = metric.observations.length;
-  // A stored weight of 0 kg is not a weight, but the server still counts it: said where it is, never hidden or re-computed here.
-  const zeros = metric.key === 'body.weight' ? metric.observations.filter(o => o.value <= 0) : [];
+  // A stored 0 kg is not a weight. A server that still counts it sends it as an observation: said so, never re-computed here.
+  // A server that already leaves it out does not send it: the records of the period say it is there and does not count.
+  const counted = metric.key === 'body.weight' ? metric.observations.filter(o => o.value <= 0).map(o => o.date) : [];
+  const left = counted.length ? [] : storedZeros;
   const plain = (v: number) => formatValue(v, null);
   // The trend line only when it adds to the arrow: records that zig-zag, or only two of them.
   const trendNote = metric.trend === 'variable' || metric.confidence === 'limited' ? trendText(metric.trend, metric.confidence) : null;
@@ -86,8 +88,10 @@ function Selected({ metric, excluded }: { metric: ProgressBodyMetric; excluded: 
         hint: 'Abre el día en Historial', onPress: () => router.push({ pathname: '/history/day/[date]', params: { date: o.date } }),
       }))} /></View>
     </>}
-    {zeros.length ? <AppText muted numeric variant="caption" testID="body-trend-zero">
-      {zeros.length === 1 ? `El pesaje del ${day(zeros[0]!.date)} está en 0 kg` : `${zeros.length} pesajes están en 0 kg`}: no es un peso, pero hoy entra en el cambio. Corregilo en tus pesajes.
+    {counted.length ? <AppText muted numeric variant="caption" testID="body-trend-zero">
+      {counted.length === 1 ? `El pesaje del ${day(counted[0]!)} está en 0 kg` : `${counted.length} pesajes están en 0 kg`}: no es un peso, pero todavía entra en el cambio. Corregilo en tus pesajes.
+    </AppText> : left.length ? <AppText muted numeric variant="caption" testID="body-trend-zero">
+      {left.length === 1 ? `El pesaje del ${day(left[0]!)} está en 0 kg` : `${left.length} pesajes están en 0 kg`}: no es un peso, así que no cuenta en el gráfico ni en el cambio. Podés corregirlo o borrarlo en tus pesajes.
     </AppText> : null}
     {trendNote || excluded > 0 ? <AppText muted variant="caption">
       {trendNote}{excluded > 0 ? `${trendNote ? ' ' : ''}${excluded} medición sospechosa excluida; podés corregirla en Cuerpo.` : ''}
@@ -113,7 +117,8 @@ function Content({ data, selected, body }: { data: ProgressBody; selected: strin
   const editable = !!body && body.state.phase === 'idle' && !body.state.intent && !body.state.editor;
   return <>
     {selected ? null : <Heading level={2}>{metric.label}</Heading>}
-    <Selected metric={metric} excluded={data.excludedSuspect} />
+    <Selected metric={metric} excluded={data.excludedSuspect} storedZeros={metric.key === 'body.weight' ? (body?.state.read.weights ?? [])
+      .filter(row => row.weightKg <= 0 && row.date >= data.period.start && row.date <= data.period.end).map(row => row.date) : []} />
     {body?.state.read.overview ? <View style={styles.section} testID="body-trend-records">
       <AppText muted variant="footnote">{metric.key === 'body.weight' ? 'Tus pesajes · tocá uno para corregirlo' : 'Tus mediciones · tocá una para corregirla'}</AppText>
       {metric.key === 'body.weight' ? <WeightRecords state={body.state} controller={body.controller} editable={editable} limit={selected ? undefined : 5} />

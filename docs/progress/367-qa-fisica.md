@@ -82,7 +82,7 @@ Requiere una build de Mobile con `codex/367-weight-trends`. No requiere migraci�
 - [ ] **Vuelta:** «Volver a Insights» regresa a la misma sesión, al mismo día abierto o a la misma relación.
 - [ ] **Referencias:** el cambio dice desde qué peso y desde qué fecha. Cada punto abre su día en Historial, y volver regresa a Cuerpo.
 - [ ] **Sin datos:** un mes sin pesajes dice «Sin registros» y ofrece el último, sin inventar puntos. Un solo pesaje no muestra cambio.
-- [ ] **Cero:** un pesaje de 0 kg cargado desde Web aparece nombrado con su fecha y con el aviso.
+- [ ] **Cero:** un pesaje guardado en 0 kg aparece nombrado con su fecha y con el aviso que corresponde al servidor desplegado. En los pesajes dice «No cuenta: no es un peso».
 - [ ] **Texto grande, VoiceOver y Reducir movimiento** en Cuerpo y en esas filas de Insights.
 
 ## Después de las migraciones

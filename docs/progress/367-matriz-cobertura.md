@@ -175,10 +175,11 @@ Estado al 2026-11-06. #393 a #395, y #397 y #398 (sueño y peso), están mergead
   - «Ver tu peso en Cuerpo» de la relación abre el tramo de sus días, el último año como máximo.
   - Las dos vuelven a Insights con la fecha, la sesión o la relación de origen.
   - Abierto desde Insights, Cuerpo aclara que el peso de un día no dice si te pesaste antes o después de entrenar.
-- **Cero:** Web y las importaciones aceptan 0 kg (`MIN_WEIGHT_KG = 0`); Mobile no.
+- **Cero:** Web, Mobile e importaciones aceptaban 0 kg (`MIN_WEIGHT_KG = 0`, `allowZero` en el formulario de Mobile).
   - Insights lo trata como inválido. El informe de Cuerpo (`buildBodyProgressReport`) lo cuenta como medición.
-  - Cuerpo ahora lo nombra con su fecha y avisa que entra en el cambio. **Propuesta de backend:** excluirlo del informe y contarlo aparte, como los sospechosos.
-- **Límite de lectura:** `listWeightHistory` ordena de más viejo a más nuevo y corta en 1000. Con más de 1000 pesajes se pierden los más recientes. **Propuesta de backend:** leer los más recientes primero, o paginar.
+  - **Corregido en `codex/367-body-weight-fixes`:** queda fuera del gráfico, el cambio y la comparación, contado y conservado en el historial, y se rechazan los 0 kg nuevos.
+  - Cuerpo en Mobile lo nombra con su fecha, con un aviso correcto antes y después de esa corrección.
+- **Límite de lectura:** `listWeightHistory` ordenaba de más viejo a más nuevo y cortaba en 1000, así que perdía los más recientes. **Corregido en `codex/367-body-weight-fixes`:** el informe lee el historial completo por páginas.
 - **No incluido:** cambios porcentuales, ventanas móviles y cualquier familia estadística nueva. Nada de eso es necesario para describir la evolución.
 
 **Otras métricas numéricas**
@@ -276,7 +277,9 @@ Modelo y reglas: [367-exercise-configuration.md](367-exercise-configuration.md).
 
 **No se implementaron.**
 
-**1. Peso en cero y límite de lectura, en el backend de Cuerpo.** Ver «Peso corporal». Es un cambio de backend con su propio PR: no afecta a Insights, que ya trata el cero como inválido.
+**1. Medidas corporales con más de 1000 registros.** `listBodyMeasurements` tiene el mismo patrón que tenía el peso: ascendente con `limit(1000)`. Se puede aplicar la misma lectura por páginas.
+
+**En revisión:** peso en cero y límite de lectura del peso, en `codex/367-body-weight-fixes`. No afecta a Insights, que ya trata el cero como inválido.
 
 **Después:** decidir si las sensaciones posteriores se publican como un resultado propio, separado del rendimiento.
 

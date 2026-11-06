@@ -27,7 +27,10 @@ No se duplicó nada.
 **Lo que dice Cuerpo**
 - **Abierto desde Insights:** «El peso de un día no dice si te pesaste antes o después de entrenar.»
 - **Referencia del cambio:** ahora nombra la fecha de partida. Por ejemplo: «en octubre · desde 82 kg el 10 sep».
-- **Cero:** un pesaje guardado en 0 kg se nombra con su fecha y se avisa que hoy entra en el cambio. No se oculta ni se recalcula en el teléfono.
+- **Cero:** un pesaje guardado en 0 kg se nombra con su fecha. El aviso es correcto con los dos servidores, y nunca se recalcula en el teléfono:
+  - **Servidor que todavía lo cuenta** (lo manda como observación): «no es un peso, pero todavía entra en el cambio».
+  - **Servidor corregido** (`codex/367-body-weight-fixes`, ya no lo manda): lo toma de los pesajes del período y dice que no cuenta en el gráfico ni en el cambio.
+- **Pesajes:** un 0 kg dice «No cuenta: no es un peso» y nunca es la referencia del cambio del pesaje siguiente.
 
 ## Contrato y costo
 
@@ -39,24 +42,23 @@ No se duplicó nada.
 - **Nuevas:**
   - Cuerpo desde Insights: el período del enlace en todas las lecturas, el aviso y la vuelta con fecha y sesión.
   - Cuerpo sin Insights: sin vuelta ni aviso.
-  - Un pesaje en 0 kg nombrado, sin cambiar el cambio que da el servidor.
+  - Un pesaje en 0 kg con el servidor que todavía lo cuenta: nombrado, sin cambiar el cambio que da el servidor.
+  - Un pesaje en 0 kg con el servidor corregido: el aviso sale de los pesajes del período, la fila lo marca y el cambio de la fila siguiente lo saltea.
   - El peso del día abre el mes correcto y vuelve.
   - La relación abre su tramo, con el último año como máximo, o sin fechas, y vuelve a la relación.
 - **Ajustada:** el texto de referencia del cambio.
 - **Mobile:**
   - tipos y lint sin errores ni advertencias;
-  - Progreso, Insights, Cuerpo y Nutrición: 233 pruebas pasan.
+  - Progreso, Insights, Cuerpo y Nutrición: 233 pruebas pasan. Después del ajuste del aviso, Progreso y Cuerpo: 57.
 - **Sin cambios de Web ni del backend.** No se repitieron campañas ni suites amplias, y no se hizo QA física.
 
 ## Límites y propuestas
 
-- **Peso en cero, propuesta de backend:**
-  - Web y las importaciones aceptan 0 kg (`MIN_WEIGHT_KG = 0`); Mobile no.
-  - Insights lo trata como inválido, pero `buildBodyProgressReport` lo cuenta como medición en Web y en Mobile.
-  - Propuesta: excluirlo del informe y contarlo aparte, como los sospechosos, y rechazar 0 en el formulario de Web.
-- **Límite de lectura, propuesta de backend:**
-  - `listWeightHistory` ordena de más viejo a más nuevo con `limit(1000)`, así que con más de 1000 pesajes se pierden los más recientes.
-  - Propuesta: leer los más recientes primero y reordenar, o paginar.
+- **Correcciones de backend, en su propio PR** (`codex/367-body-weight-fixes`):
+  - **Cero:** Web, Mobile e importaciones aceptaban 0 kg (`MIN_WEIGHT_KG = 0` y `allowZero` en el formulario de Mobile), y el informe de Cuerpo lo contaba como medición. Ahora queda fuera del análisis, contado y conservado, y se rechazan los 0 kg nuevos.
+  - **Límite de lectura:** `listWeightHistory` perdía los pesajes más recientes después de 1000. Ahora el informe lee el historial completo por páginas.
+  - **Orden de merge:** este PR funciona antes o después de ese, y su aviso es correcto en los dos casos.
+- **Límite del aviso con el servidor corregido:** sale de los pesajes que Cuerpo ya cargó, los 30 más recientes y los que se pidan con «Ver más pesajes». Un 0 kg del período más viejo que eso no se nombra, pero tampoco cuenta.
 - **No incluido:** cambios porcentuales, ventanas móviles ni familias estadísticas nuevas.
 - **Principios que se mantienen:**
   - «Consistente» sigue deshabilitado.
