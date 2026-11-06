@@ -1,4 +1,22 @@
-# Estado vigente — historial completo de medidas corporales, en revisión
+# Estado vigente — memoria del motor de Insights, en revisión
+
+Main `f53fae0` incluye #406. Rama `codex/367-insights-memory`, publicada en `640f0e759ae78366f48b3b54e9dd12a42300152c`, con previews bloqueadas. Solo `read-model.ts` y tipos de `exposures.ts`. Sin cambios de método, contrato, caché ni RLS.
+
+- **Qué cambia:**
+  - cada comparador se reduce a sus hechos publicados antes de que corra el siguiente;
+  - las sesiones adaptadas no sobreviven a los comparadores;
+  - cada carril guarda solo filas, candidatos y sesiones por día.
+- **Equivalencia:** 53 de 53 hashes de todas las vistas, páginas y detalles de relaciones iguales, más una prueba dirigida y las 296 del motor.
+- **Memoria a 10 años, método 2:**
+  - piso de heap: 220 → 175 MiB;
+  - retenida por instantánea: 15,5 → 13,1 MiB.
+- **Sin cambio:** pico residente (unos 213 MiB), tiempo dentro del ruido, consultas (268) y respuestas.
+- **Pendiente:** un modo del comparador que no materialice evidencia, propuesto y no hecho. La lectura en frío y el detalle de 258 KiB siguen igual.
+- **Detalle:** [descripción del PR](367-insights-memoria-pr-description.md) y [metodología](367-insights-partial-metodo.md), en esa rama.
+
+---
+
+# Estado anterior — historial completo de medidas corporales, mergeado en #406
 
 Main `236a3e4` incluye #404 (tendencias de peso) y #405 (pesos en 0 kg e historial de peso completo).
 
