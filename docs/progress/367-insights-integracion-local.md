@@ -1,4 +1,17 @@
-# Estado vigente — resumen factual post-entreno, en revisión
+# Estado vigente — evidencia de comparación por ejercicio, en revisión
+
+Main `1fe5715` incluye #410. Rama `codex/367-exercise-evidence`, publicada en `37c681e`, con previews bloqueadas. Sin migración ni cambio de método. PR en borrador pendiente: el navegador integrado no tiene sesión en GitHub.
+
+- **API:** vista `view=evidence` del contrato `performance-insights/1`, con sesión, ejercicio y método. Lee solo el historial de ese ejercicio bajo el mismo contador y corre el comparador compartido con salida completa. Sin clasificación propia, volumen, porcentajes ni e1RM.
+- **Costo:** 3 pedidos por apertura (contador, una página de filas del ejercicio, contador), más uno solo si una lista de series vino cortada. Cálculo de 1,2 a 2,7 ms frente a 81 a 132 ms del snapshot completo, en la historia sintética. Ninguna lectura por fila de Insights.
+- **Mobile:** las filas de ejercicio de un día o de una sesión abren «Evidencia». Muestra la referencia con su fecha, las señales, las series en su unidad, el récord aparte y los motivos de mezclado o sin comparar. Nunca pone otra referencia o resultado en lugar del que se tocó.
+- **Equivalencia:** para cada ejercicio publicado en los dos carriles, mismo resultado, motivo y referencia que Insights, con el historial completo o solo el del ejercicio. Pasan 392 pruebas de Web y 51 de Mobile Insights. En la suite completa de Mobile, solo fallan las 4 preexistentes de `active-session-bridge-screen`.
+- **Pendiente:** build de Mobile y QA física ([lista única](367-qa-fisica.md)).
+- **Detalle:** [descripción del PR](367-evidencia-ejercicio-pr-description.md) en esa rama.
+
+---
+
+# Estado anterior — resumen factual post-entreno, mergeado en #410 (`1fe5715`)
 
 Main `bd5407e` incluye #409. Rama `codex/367-post-workout-summary`, publicada en `40455116c2db996dc6b97c805add45f35cc9c235`, con previews bloqueadas. Sin migración ni cambio de método.
 
