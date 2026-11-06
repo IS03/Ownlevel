@@ -22,8 +22,10 @@ const bump = (record: Record<string, number>, key: string) => { record[key] = (r
 
 /** What a method hands to the associations. The two methods never share a day's outcome. */
 export type OutcomeDay = { date: string; sessions: readonly { sessionId: string; routineId: string | null }[]; outcome: number | null; outcomeSensitivity: number | null };
-export const strictOutcomeDays = (days: readonly DailyPerformance[]): OutcomeDay[] => days.map(day => ({ date: day.date, sessions: day.sessions, outcome: day.candidateDeclineProportion, outcomeSensitivity: day.equalSessionWeightSensitivity }));
-export const partialOutcomeDays = (days: readonly PartialDay[]): OutcomeDay[] => days.map(day => ({ date: day.date, sessions: day.sessions, outcome: day.candidateLowerProportion, outcomeSensitivity: day.equalSessionWeightSensitivity }));
+/** What a day must carry to become an outcome day. A comparator's day has it, and so does the read model's compact copy of one. */
+type OutcomeSource = Pick<DailyPerformance, "date" | "equalSessionWeightSensitivity"> & { sessions: OutcomeDay["sessions"] };
+export const strictOutcomeDays = (days: readonly (OutcomeSource & Pick<DailyPerformance, "candidateDeclineProportion">)[]): OutcomeDay[] => days.map(day => ({ date: day.date, sessions: day.sessions, outcome: day.candidateDeclineProportion, outcomeSensitivity: day.equalSessionWeightSensitivity }));
+export const partialOutcomeDays = (days: readonly (OutcomeSource & Pick<PartialDay, "candidateLowerProportion">)[]): OutcomeDay[] => days.map(day => ({ date: day.date, sessions: day.sessions, outcome: day.candidateLowerProportion, outcomeSensitivity: day.equalSessionWeightSensitivity }));
 
 export type ExposureTable = {
   rows: ObservationRow[]; candidates: Candidate[]; sourceExclusions: Record<string, number>;

@@ -1,16 +1,57 @@
 import { buildPerformanceInsightsPartialV1, buildPerformanceInsightsV1, type PartialExercise, type PartialSession } from "../performance-insights";
-import type { PerformanceCounts, SessionPerformance } from "../performance-insights/types";
+import type { PartialCounts } from "../performance-insights/partial";
+import type { PerformanceCounts, PerformanceSession, SessionPerformance } from "../performance-insights/types";
 import { evaluateAssociations, type AssociationEvaluation } from "./associations";
 import { buildExposureContext, buildExposureTable, partialOutcomeDays, strictOutcomeDays, weightOfDay, type ExposureTable } from "./exposures";
 import { mealTimeEvidence, toPerformanceSessions } from "./source-adapter";
-import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, type InsightsEngineMethod, type SleepNightEvidence, INSIGHTS_RISK_BUDGET_CANDIDATE, PARTIAL_ASSOCIATION_PREFIX, type AssociationResult, type Candidate, type DayFact, type ExerciseSummary, type InsightsDaysPage, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsSource, type InsightsSummary, type MealTimeEvidence, type PartialAssociationResult, type PartialDayFact, type PartialExerciseFact, type PartialExerciseSummary, type PartialLane, type PartialRelationSummary, type RelationSummary, type SessionFact } from "./types";
+import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, type InsightsEngineMethod, type SleepNightEvidence, INSIGHTS_RISK_BUDGET_CANDIDATE, PARTIAL_ASSOCIATION_PREFIX, type AssociationResult, type Candidate, type DayFact, type ExerciseFact, type ExerciseSummary, type InsightsDaysPage, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsSource, type InsightsSummary, type MealTimeEvidence, type PartialAssociationResult, type PartialDayFact, type PartialExerciseFact, type PartialExerciseSummary, type PartialLane, type PartialRelationSummary, type RelationSummary, type SessionFact } from "./types";
 
 export const INSIGHTS_DEFAULT_DAYS = 14;
 export const INSIGHTS_MAX_DAYS = 120;
 const emptyCounts = (): PerformanceCounts => ({ improved: 0, observedStable: 0, declined: 0, ambiguous: 0, insufficient: 0, total: 0, comparable: 0, coverage: null });
 const DAY_MS = 86_400_000;
 
-function exerciseSummaries(sessions: readonly SessionPerformance[], names: ReadonlyMap<string, string>): ExerciseSummary[] {
+/**
+ * What the read model keeps of a comparator's session: its published facts. The comparator's evidence, records, volumes and
+ * per-exercise exposures stay inside it and become garbage as soon as these are taken (see factsOfStrict, factsOfPartial).
+ */
+type FactSession<E> = { sessionId: string; date: string | null; routineId: string | null; counts: E extends ExerciseFact ? PerformanceCounts : PartialCounts; exercises: E[] };
+const nameOf = (names: ReadonlyMap<string, string>, sessionId: string, exerciseId: string) => names.get(`${sessionId}:${exerciseId}`);
+
+/** The strict comparator, reduced to what is published. Each session is reduced once, whether it is reached by its day or not. */
+function factsOfStrict(sessions: readonly PerformanceSession[], names: ReadonlyMap<string, string>) {
+  const performance = buildPerformanceInsightsV1({ sessions, historyCoverage: "complete", exclusionDetail: "summary" });
+  const reduced = new Map<SessionPerformance, FactSession<ExerciseFact>>();
+  const reduce = (session: SessionPerformance) => {
+    let row = reduced.get(session);
+    if (!row) reduced.set(session, row = { sessionId: session.sessionId, date: session.date, routineId: session.routineId, counts: session.counts,
+      exercises: session.exercises.map((exercise): ExerciseFact => ({ exerciseId: exercise.exerciseId, name: nameOf(names, session.sessionId, exercise.exerciseId) ?? "",
+        status: exercise.status, reason: exercise.reason, referenceSessionId: exercise.reference?.sessionId ?? null,
+        referenceAgeDays: exercise.reference ? Math.floor(exercise.reference.ageMs / DAY_MS) : null, newHigh: exercise.records.facts.some(fact => fact.isNewHigh) })) });
+    return row;
+  };
+  return { methodVersion: performance.methodVersion, integrity: performance.integrity, exclusionReasons: performance.exclusions.map(row => row.reason),
+    sessions: performance.sessions.map(reduce),
+    days: performance.days.map(day => ({ date: day.date, counts: day.counts, evaluableSessions: day.evaluableSessions, candidateDeclineProportion: day.candidateDeclineProportion,
+      equalSessionWeightSensitivity: day.equalSessionWeightSensitivity, sessions: day.sessions.map(reduce) })) };
+}
+/** The partial comparator, reduced the same way. */
+function factsOfPartial(sessions: readonly PerformanceSession[], names: ReadonlyMap<string, string>) {
+  const partial = buildPerformanceInsightsPartialV1({ sessions, historyCoverage: "complete", exclusionDetail: "summary" });
+  const reduced = new Map<PartialSession, FactSession<PartialExerciseFact>>();
+  const reduce = (session: PartialSession) => {
+    let row = reduced.get(session);
+    if (!row) reduced.set(session, row = { sessionId: session.sessionId, date: session.date, routineId: session.routineId, counts: session.counts,
+      exercises: session.exercises.map(exercise => partialFact(exercise, nameOf(names, session.sessionId, exercise.exerciseId) ?? "")) });
+    return row;
+  };
+  return { methodVersion: partial.methodVersion, contextCompleteness: partial.contextCompleteness, integrity: partial.integrity, partition: partial.partition,
+    exclusionReasons: partial.exclusions.map(row => row.reason), sessions: partial.sessions.map(reduce),
+    days: partial.days.map(day => ({ date: day.date, counts: day.counts, evaluableSessions: day.evaluableSessions, candidateLowerProportion: day.candidateLowerProportion,
+      equalSessionWeightSensitivity: day.equalSessionWeightSensitivity, sessions: day.sessions.map(reduce) })) };
+}
+
+function exerciseSummaries(sessions: readonly FactSession<ExerciseFact>[], names: ReadonlyMap<string, string>): ExerciseSummary[] {
   const summaries = new Map<string, ExerciseSummary>();
   // Sessions arrive by logical date, so the last row of each exercise is its latest exposure.
   for (const session of sessions) for (const exercise of session.exercises) {
@@ -29,7 +70,7 @@ function exerciseSummaries(sessions: readonly SessionPerformance[], names: Reado
   return [...summaries.values()].sort((a, b) => (b.lastDate ?? "").localeCompare(a.lastDate ?? "") || a.exerciseId.localeCompare(b.exerciseId));
 }
 
-function partialSummaries(sessions: readonly PartialSession[], names: ReadonlyMap<string, string>): PartialExerciseSummary[] {
+function partialSummaries(sessions: readonly FactSession<PartialExerciseFact>[], names: ReadonlyMap<string, string>): PartialExerciseSummary[] {
   const summaries = new Map<string, PartialExerciseSummary>();
   for (const session of sessions) for (const exercise of session.exercises) {
     const name = names.get(`${session.sessionId}:${exercise.exerciseId}`);
@@ -64,11 +105,16 @@ type Lane<T> = {
   evaluate: () => { items: T[]; testable: number; permutations: number };
   candidates: readonly Candidate[]; rows: ExposureTable["rows"]; sessionIdsByDate: ExposureTable["sessionIdsByDate"];
 };
-function lane<T>(valid: boolean, table: ExposureTable, candidates: readonly Candidate[], permutations: number | undefined, map: (item: AssociationEvaluation) => T): Lane<T> {
+/**
+ * Holds only what its relations need. The rest of the exposure table (nutrition, metrics, feelings and meal windows by day)
+ * is already copied into the published days, so a snapshot kept for reuse does not keep it twice.
+ */
+function lane<T>(valid: boolean, table: Pick<ExposureTable, "rows" | "sessionIdsByDate">, candidates: readonly Candidate[], permutations: number | undefined, map: (item: AssociationEvaluation) => T): Lane<T> {
   let result: ReturnType<Lane<T>["evaluate"]> | null = null;
-  return { candidates, rows: table.rows, sessionIdsByDate: table.sessionIdsByDate, evaluate: () => {
+  const { rows, sessionIdsByDate } = table;
+  return { candidates, rows, sessionIdsByDate, evaluate: () => {
     if (result) return result;
-    const evaluation = valid ? evaluateAssociations(table.rows, candidates, { permutations }) : { items: [], testable: 0, permutations: permutations ?? 0 };
+    const evaluation = valid ? evaluateAssociations(rows, candidates, { permutations }) : { items: [], testable: 0, permutations: permutations ?? 0 };
     return (result = { items: evaluation.items.map(map), testable: evaluation.testable, permutations: evaluation.permutations });
   } };
 }
@@ -84,9 +130,15 @@ export type InsightsSnapshot = ReturnType<typeof createInsightsSnapshot>;
  */
 export function createInsightsSnapshot(source: InsightsSource, options: { today: string; revision?: string; permutations?: number; method?: InsightsEngineMethod }) {
   const method = options.method ?? 1;
-  const adapted = toPerformanceSessions(source);
-  const performance = buildPerformanceInsightsV1({ sessions: adapted.sessions, historyCoverage: "complete", exclusionDetail: "summary" });
-  const partial = buildPerformanceInsightsPartialV1({ sessions: adapted.sessions, historyCoverage: "complete", exclusionDetail: "summary" });
+  const names = new Map<string, string>();
+  for (const row of source.exercises) { names.set(`${row.sessionId}:${row.exerciseId.toLowerCase()}`, row.name); }
+  // One comparator at a time, each reduced to its published facts before the next starts. The adapted sessions live only in
+  // this block: nothing after it holds the comparators' evidence, so it is not alive while the exposure tables are built.
+  const { performance, partial, orphanRows } = (() => {
+    const adapted = toPerformanceSessions(source);
+    const strictFacts = factsOfStrict(adapted.sessions, names);
+    return { performance: strictFacts, partial: factsOfPartial(adapted.sessions, names), orphanRows: adapted.orphanRows };
+  })();
   const context = buildExposureContext(source);
   const sleepIds = new Set(source.metricDefinitions.filter(metric => metric.systemKey === "sleep").map(metric => metric.id));
   const table = buildExposureTable(source, strictOutcomeDays(performance.days), options.today, context, true, method);
@@ -95,8 +147,6 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
   const partialCandidates = partialTable.candidates.map(candidate => ({ ...candidate, definition: { ...candidate.definition, id: PARTIAL_ASSOCIATION_PREFIX + candidate.definition.id } }));
 
   const sessionById = new Map(source.sessions.map(session => [session.id, session]));
-  const names = new Map<string, string>();
-  for (const row of source.exercises) { names.set(`${row.sessionId}:${row.exerciseId.toLowerCase()}`, row.name); }
 
   const totals = emptyCounts();
   const performanceExclusions: Record<string, number> = {};
@@ -111,10 +161,10 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
   }
   totals.comparable = totals.improved + totals.observedStable + totals.declined;
   totals.coverage = totals.total ? totals.comparable / totals.total : null;
-  for (const row of performance.exclusions) performanceExclusions[row.reason] = (performanceExclusions[row.reason] ?? 0) + 1;
+  for (const reason of performance.exclusionReasons) performanceExclusions[reason] = (performanceExclusions[reason] ?? 0) + 1;
 
   const sourceExclusions = { ...table.sourceExclusions };
-  if (adapted.orphanRows) sourceExclusions.orphan_rows = adapted.orphanRows;
+  if (orphanRows) sourceExclusions.orphan_rows = orphanRows;
   const ordered = [...performance.days].sort((a, b) => b.date.localeCompare(a.date));
   const days: DayFact[] = ordered.map(day => ({
     date: day.date, counts: day.counts, evaluableSessions: day.evaluableSessions, declineProportion: day.candidateDeclineProportion,
@@ -125,10 +175,7 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
     sessions: day.sessions.map((session): SessionFact => {
       const row = sessionById.get(session.sessionId);
       return { sessionId: session.sessionId, name: row?.name ?? null, routineId: session.routineId, routineName: row?.routineName ?? null,
-        startedAt: row?.startedAt ?? null, endedAt: row?.endedAt ?? null, counts: session.counts,
-        exercises: session.exercises.map(exercise => ({ exerciseId: exercise.exerciseId, name: names.get(`${session.sessionId}:${exercise.exerciseId}`) ?? "",
-          status: exercise.status, reason: exercise.reason, referenceSessionId: exercise.reference?.sessionId ?? null,
-          referenceAgeDays: exercise.reference ? Math.floor(exercise.reference.ageMs / DAY_MS) : null, newHigh: exercise.records.facts.some(fact => fact.isNewHigh) })),
+        startedAt: row?.startedAt ?? null, endedAt: row?.endedAt ?? null, counts: session.counts, exercises: session.exercises,
         context: { feelings: table.feelingsBySession.get(session.sessionId) ?? {},
           ...(context.unreadableFeelingsBySession.has(session.sessionId) ? { unreadableFeelings: context.unreadableFeelingsBySession.get(session.sessionId)! } : {}),
           legacy: { energyLevel: row?.legacyEnergyLevel ?? null, performanceLevel: row?.performanceLevel ?? null, painLevel: row?.painLevel ?? null },
@@ -149,12 +196,12 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
   }
   partialTotals.comparable = partialTotals.higher + partialTotals.same + partialTotals.lower;
   partialTotals.coverage = partialTotals.total ? partialTotals.comparable / partialTotals.total : null;
-  for (const row of partial.exclusions) partialExclusions[row.reason] = (partialExclusions[row.reason] ?? 0) + 1;
+  for (const reason of partial.exclusionReasons) partialExclusions[reason] = (partialExclusions[reason] ?? 0) + 1;
   const partialByDate = new Map(partial.days.map(day => [day.date, day]));
   const partialDays: PartialDayFact[] = days.map(({ date }) => {
     const day = partialByDate.get(date)!;
     return { date, counts: day.counts, evaluableSessions: day.evaluableSessions, lowerProportion: day.candidateLowerProportion, equalSessionSensitivity: day.equalSessionWeightSensitivity, openDay: date >= options.today,
-      sessions: day.sessions.map(session => ({ sessionId: session.sessionId, counts: session.counts, exercises: session.exercises.map(exercise => partialFact(exercise, names.get(`${session.sessionId}:${exercise.exerciseId}`) ?? "")) })) };
+      sessions: day.sessions.map(session => ({ sessionId: session.sessionId, counts: session.counts, exercises: session.exercises })) };
   });
   const dayExclusions: Record<string, number> = {};
   for (const key of ["day_still_open", "no_comparable_outcome"]) if (partialTable.sourceExclusions[key]) dayExclusions[key] = partialTable.sourceExclusions[key]!;

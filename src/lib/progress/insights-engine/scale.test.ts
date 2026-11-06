@@ -30,6 +30,8 @@ describe("escala con perfiles sintéticos", () => {
   const out = process.env.INSIGHTS_SCALE_OUT, name = process.env.INSIGHTS_SCALE_PROFILE as keyof typeof PROFILES | undefined;
   it.runIf(!!out && !!name)("measured profile", () => {
     const captured = process.env.INSIGHTS_SCALE_CAPTURED === "1";
+    // Mobile asks for method 2; method 1 stays the default for clients that do not.
+    const method = process.env.INSIGHTS_SCALE_METHOD === "2" ? 2 as const : 1 as const;
     const source = syntheticHistory(PROFILES[name!], 1, captured);
     const rows = { sessions: source.sessions.length, exercises: source.exercises.length, sets: source.sets.length, metricValues: source.metricValues.length, meals: source.meals.length, feelings: source.feelings.length };
     // One page per 1000 rows, at least one per stream; the extra one is the metric definitions.
@@ -40,7 +42,7 @@ describe("escala con perfiles sintéticos", () => {
     let bytes = {}, retained = 0, comparable = {}, candidates = 0;
     for (let run = 0; run < 5; run++) {
       const clock = (key: keyof typeof times, work: () => unknown) => { const started = performance.now(); const value = work(); times[key].push(performance.now() - started); return value; };
-      const snapshot = clock("snapshot", () => createInsightsSnapshot(source, { today: "2040-01-01", revision: "r" })) as ReturnType<typeof createInsightsSnapshot>;
+      const snapshot = clock("snapshot", () => createInsightsSnapshot(source, { today: "2040-01-01", revision: "r", method })) as ReturnType<typeof createInsightsSnapshot>;
       const summary = clock("summary", () => JSON.stringify(insightsSummary(snapshot)));
       const next = insightsSummary(snapshot).facts.page.nextBefore!;
       const days = clock("daysPage", () => JSON.stringify(insightsDaysPage(snapshot, { before: next })));
@@ -55,8 +57,9 @@ describe("escala con perfiles sintéticos", () => {
       retained = process.memoryUsage().heapUsed - heapBase;
     }
     const usage = process.resourceUsage().maxRSS * 1024;
-    writeFileSync(out!, JSON.stringify({ name, captured, rows, comparable, candidatesPerMethod: candidates, sourcePages: pages,
-      queries: { reuse: 7, fullRead: pages + 14, fullReadOneRetry: 2 * (pages + 14), bothRetriesWorstCase: 4 * (pages + 14) },
+    writeFileSync(out!, JSON.stringify({ name, captured, method, rows, comparable, candidatesPerMethod: candidates, sourcePages: pages,
+      // The loader today: the seven streams' pages and two counter reads; a reuse reads only the counter (367-insights-partial-metodo.md).
+      queries: { reuse: 1, fullRead: pages + 2, fullReadOneRetry: 2 * (pages + 2), bothRetriesWorstCase: 4 * (pages + 2) },
       ms: Object.fromEntries(Object.entries(times).map(([key, values]) => [key, stats(values)])), responseKiB: bytes,
       retainedMiB: mib(retained), peakAboveSourceMiB: mib(usage - rssBase), gcAvailable: !!globalThis.gc }, null, 2));
   }, 1_800_000);
