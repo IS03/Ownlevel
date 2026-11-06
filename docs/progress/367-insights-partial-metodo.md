@@ -149,7 +149,7 @@ Con configuración conocida los tiempos son del mismo orden. Si sigue en memoria
 | 5 años | 93 | 70 | 21 | 120 | 177 |
 | 10 años | 123 | 89 | 29 | **258** | 241 |
 
-**Memoria** (datos de hoy): pico de 41, 79 y **210 MiB** a 1, 5 y 10 años.
+**Memoria** (datos de hoy): pico de 41, 79 y **210 MiB** a 1, 5 y 10 años. Medición vigente, con el piso de heap necesario: ver «Memoria del motor, 2026-11» más abajo.
 
 **PostgREST local real a 5 años** (unas 1320 sesiones; pila descartable):
 
@@ -170,6 +170,63 @@ Con configuración conocida los tiempos son del mismo orden. Si sigue en memoria
 - La muestra de 20 historiales de la calibración parcial sale idéntica en sus 8 escenarios originales.
 
 **Para qué calibraciones vale:** ninguna campaña se invalidó, porque ni la compuerta ni los resultados del comparador cambiaron. No se repitieron.
+
+## Memoria del motor, 2026-11
+
+Medido sobre main `f53fae0` y sobre `codex/367-insights-memory`, con el mismo equipo, los mismos datos sintéticos y el mismo procedimiento. Las cifras anteriores de esta página (209–210 MiB, 268 consultas) eran de otro código.
+
+**Qué se mide**
+- **Retenida:** heap vivo que agrega la instantánea, con sus relaciones evaluadas, tras forzar la recolección. Es lo que ocupa cada entrada reutilizable en memoria.
+- **Pico residente:** como arriba, máximo residente menos el residente con la fuente construida, a lo largo de cinco corridas.
+- **Piso de heap:** el `--max-old-space-size` más chico con el que una instantánea de 10 años y las relaciones de los dos métodos terminan, en su propio proceso. Incluye la fuente (67,5 MiB) y el proceso de prueba. Es la memoria viva que hace falta; el residente no la muestra, porque V8 no devuelve memoria entre fases.
+
+**Qué se encontró**
+- A 10 años, la salida completa de cada comparador quedaba viva hasta el final de la construcción, junto con la otra y con las sesiones adaptadas:
+  - estricto: 26 MiB;
+  - parcial: 68 MiB, con evidencia, récords, volúmenes y exposiciones por ejercicio;
+  - sesiones adaptadas: 12,6 MiB.
+- El modelo de lectura solo usa unos pocos campos por ejercicio.
+- Cada carril reutilizable retenía la tabla de exposición entera, cuando sus relaciones solo necesitan filas, candidatos y sesiones por día.
+
+**Qué cambió (`read-model.ts`)**
+- Cada comparador se calcula dentro de un ayudante que devuelve solo los hechos publicados. Su salida completa queda como basura antes de que corra el siguiente.
+- Las sesiones adaptadas solo viven mientras corren los comparadores.
+- Cada carril guarda `rows`, `candidates` y `sessionIdsByDate`.
+- Sin cambios en comparadores, candidatos, ventanas, denominadores, métodos, contratos, caché ni RLS.
+
+| Perfil | Retenida, antes → después | Pico residente, antes → después |
+| --- | --- | --- |
+| 1 año, método 2 | 2,0 → 1,9 MiB | 40,4 → 41,6 MiB |
+| 5 años, método 2 | 7,4 → 6,5 MiB | 83,5 → 80,6 MiB |
+| 10 años, método 2 | **15,5 → 13,1 MiB** | 213,4 → 213,9 MiB |
+| 10 años, método 1 | 14,5 → 13,4 MiB | 212,4 → 213,6 MiB |
+| 10 años, método 2, configuración capturada | 13,7 → 11,2 MiB | 177,4 → 178,9 MiB |
+
+**Piso de heap, 10 años, método 2, con las relaciones de los dos métodos**
+- **Antes:** 220 MiB, 4 de 4. Con 215 MiB terminó 1 de 4; con 210, 0 de 4.
+- **Después:** 175 MiB, 5 de 5. Con 172 MiB terminó 1 de 1; con 170, 0 de 5.
+- Unos **45 MiB menos de memoria viva necesaria**.
+
+**Tiempo (10 años, método 2, mediana / máximo):**
+- instantánea: 1095 / 1139 → 1126 / 1226 ms;
+- relaciones: 1061 / 1149 → 1085 / 1171 ms.
+
+Está dentro de la variación entre corridas de este equipo. No hay una mejora ni un costo medible.
+
+**Consultas y respuesta:** sin cambios.
+- **Consultas:** 18, 84 y 268 a 1, 5 y 10 años (`P + 2`).
+- **Respuestas a 10 años** (`summary`, `days`, `relations`, `relation`): 123,9, 89,8, 29,4 y 258,1 KiB.
+
+**Equivalencia**
+- **Huella:** `equivalence-fingerprint.test.ts` hashea todas las vistas, todas las páginas de días y la evidencia completa de cada relación de los dos métodos. Cubre cinco historiales sintéticos de 1 y 5 años, con y sin configuración, más el modelo completo y sus detalles.
+- **Resultado:** 53 de 53 hashes iguales antes y después. Dos corridas del código anterior dieron hashes idénticos.
+- **Prueba dirigida:** `memory.test.ts` reconstruye los hechos desde la salida completa de cada comparador, como lo hacía el código anterior, y los compara con la instantánea.
+- **Pruebas del motor, contrato y comparador:** 296 pasan. Insights en Mobile: 49.
+
+**Sigue fuera de presupuesto**
+- **Pico residente a 10 años:** unos 213 MiB, sin cambio. Lo fija el trabajo interno de cada comparador. Medido solo, el parcial lleva el residente a 109 MiB sobre la base, contando las sesiones adaptadas.
+- **Bajarlo exige otro cambio, más grande:** que el comparador ofrezca un modo que no materialice evidencia, volúmenes ni copias de series para quien solo usa estado, motivo, referencia y récord. Ese cambio toca `performance-insights` y necesita su propia equivalencia. No se hizo aquí.
+- **Sin cambios:** la lectura en frío (268 consultas) y el detalle de una relación (258 KiB).
 
 ## Qué sigue valiendo
 
