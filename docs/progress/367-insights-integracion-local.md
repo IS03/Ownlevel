@@ -1,4 +1,22 @@
-# Estado vigente — memoria del motor de Insights, en revisión
+# Estado vigente — salida compacta del comparador, en revisión
+
+Main `2eb08b1` incluye #407. Rama `codex/367-comparator-compact`, publicada en `67b3fb712d32780f8141379739ae919c07384439`, con previews bloqueadas. Sin cambios de método, contrato, caché ni RLS. La salida completa sigue siendo la predeterminada.
+
+- **Qué hace:** con `output: "compact"`, el mismo recorrido y la misma clasificación (`classify`) entregan estado, motivo, referencia, récords y exclusiones. No entregan exposiciones con series, evidencia ni volúmenes. Solo Insights la pide.
+- **Equivalencia:**
+  - la compacta es la proyección exacta de la completa en 30 historiales desordenados, en todos los modos;
+  - la salida completa coincide con main en 401 de 401 hashes;
+  - las vistas de Insights coinciden en 53 de 53.
+- **Memoria a 10 años, método 2:**
+  - pico residente: 213,7 → 169,8 MiB;
+  - piso de heap: 180 → 135 MiB.
+- **Sin cambio:** memoria retenida, tiempo, consultas y respuestas.
+- **Límite:** 170 MiB sigue por encima del presupuesto de 128. Bajar más requiere recorrer la historia por partes, un cambio de arquitectura del comparador que queda pendiente.
+- **Detalle:** [descripción del PR](367-comparador-compacto-pr-description.md) en esa rama.
+
+---
+
+# Estado anterior — memoria del motor de Insights, mergeada en #407
 
 Main `f53fae0` incluye #406. Rama `codex/367-insights-memory`, publicada en `640f0e759ae78366f48b3b54e9dd12a42300152c`, con previews bloqueadas. Solo `read-model.ts` y tipos de `exposures.ts`. Sin cambios de método, contrato, caché ni RLS.
 
