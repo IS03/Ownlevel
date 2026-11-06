@@ -1,4 +1,5 @@
 import { Alert,KeyboardAvoidingView,Modal,Platform,StyleSheet,TextInput,View } from 'react-native';
+import { sleepNightCaption } from '../../../../src/lib/daily-metrics/sleep-night';
 import { AppText,Button,Heading,ScrollScreen,Surface,spacing,useOwnlevelTheme, brandTokens } from '@/design-system';
 import type { NutritionDayContext,NutritionDayMetric } from '@/api/nutrition-day';
 import type { DayWriteController,DayWriteState } from './day-write-controller';
@@ -44,6 +45,7 @@ export function DayWriteEditor({controller,state}:{controller:DayWriteController
           </Surface>;
           const raw=d.metrics[m.id];return <Surface key={m.id}>
             <AppText variant="label">{m.label}{m.isActive?'':' · archivada'}</AppText>
+            {m.systemKey==='sleep'?<AppText muted variant="caption">{sleepNightCaption(d.baseline.date,d.baseline.today)}</AppText>:null}
             <AppText muted>{m.valueType==='duration'?'Duración en horas y minutos':`${m.valueType==='integer'?'Entero':'Decimal · coma o punto'}${m.unit?' · '+m.unit:''}`}</AppText>
             {m.target!==null?<AppText muted>Objetivo actual: {metricDisplay({...m,value:m.target})}</AppText>:null}
             {m.valueType==='duration'?<View style={styles.row}>

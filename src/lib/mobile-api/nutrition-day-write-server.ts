@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { MobileApiUnauthorizedError, MobileApiValidationError, mobileBearerToken } from './auth';
 import { authenticateMobileMutationAccessToken } from './supabase';
 import { mobileApiResponseHeaders, readMobileJson } from './http';
-import { parseDayWriteIntent, parseDayWriteResponse, type DayWriteIntent } from './nutrition-day-write-contract';
+import { parseDayWriteIntent, parseDayWriteResponse, splitSleepNights, type DayWriteIntent } from './nutrition-day-write-contract';
 export async function nutritionDayWriteResponse(request: Request, operation: DayWriteIntent['operation'], date: string) {
   let status = 503;
   let body: unknown = { error: 'DATA_UNAVAILABLE' };
@@ -11,7 +11,11 @@ export async function nutritionDayWriteResponse(request: Request, operation: Day
     const context = await authenticateMobileMutationAccessToken(mobileBearerToken(request.headers.get('authorization')));
     const intent = parseDayWriteIntent(await readMobileJson(request));
     if (!intent || intent.operation !== operation || intent.date !== date) throw new MobileApiValidationError('Revisá los cambios de esta fecha.');
-    const { data, error } = await context.supabase.rpc('mobile_mutate_nutrition_day', { p_intent: intent });
+    const { intent: written, sleepNightMetricIds } = splitSleepNights(intent);
+    // Only a client that showed the convention declares a night, in the same transaction as the write (#367).
+    const { data, error } = sleepNightMetricIds.length
+      ? await context.supabase.rpc('mobile_mutate_nutrition_day_v2', { p_intent: written, p_sleep_night_metric_ids: sleepNightMetricIds })
+      : await context.supabase.rpc('mobile_mutate_nutrition_day', { p_intent: written });
     if (error) {
       if (['22023','22007','22008','22P02','22003','23514'].includes(error.code)) throw new MobileApiValidationError('Revisá los valores y sus límites.');
       throw new Error('Day mutation unavailable');

@@ -250,9 +250,11 @@ export async function saveDailyMetricValue(input: {
   if (error) throw metricWriteError("Guardar valor", error);
 }
 
+/** declaresSleepNight: the editor showed which night the sleep value means (#367). Without it nothing is declared. */
 export async function saveDailyMetricValues(input: {
   date: string;
   values: Record<string, unknown>;
+  declaresSleepNight?: boolean;
 }): Promise<void> {
   return saveDailyMetricValuesInternal(input, false);
 }
@@ -261,6 +263,7 @@ export async function saveDailyMetricValues(input: {
 export async function saveHistoricalDailyMetricValues(input: {
   date: string;
   values: Record<string, unknown>;
+  declaresSleepNight?: boolean;
 }): Promise<void> {
   return saveDailyMetricValuesInternal(input, true);
 }
@@ -268,6 +271,7 @@ export async function saveHistoricalDailyMetricValues(input: {
 async function saveDailyMetricValuesInternal(input: {
   date: string;
   values: Record<string, unknown>;
+  declaresSleepNight?: boolean;
 }, historical: boolean): Promise<void> {
   const auth = await context();
   const { supabase, userId } = auth;
@@ -275,7 +279,7 @@ async function saveDailyMetricValuesInternal(input: {
   const metricIds = Object.keys(input.values);
   if (!metricIds.length) return;
 
-  const metricsQuery = supabase.from("user_metrics").select("id,value_type,is_active")
+  const metricsQuery = supabase.from("user_metrics").select("id,value_type,is_active,system_key")
     .eq("user_id", userId).in("id", metricIds);
   const [metrics, existing] = await Promise.all([
     historical ? metricsQuery : metricsQuery.eq("is_active", true),
@@ -305,11 +309,13 @@ async function saveDailyMetricValuesInternal(input: {
     layer: "database",
     ...auth.requestPerformance,
   }, async () => {
-    const saved = await supabase.rpc("save_daily_metric_values", {
-      p_metric_date: input.date,
-      p_values: Object.fromEntries(parsed.map((item) => [item.metricId, item.value])),
-      p_historical: historical,
-    });
+    const values = Object.fromEntries(parsed.map((item) => [item.metricId, item.value]));
+    // The night is declared with the write, in its transaction, and only for a sleep value this save sets.
+    const sleepNights = input.declaresSleepNight ? (metrics.data ?? [])
+      .filter((metric) => metric.system_key === "sleep" && values[String(metric.id)] !== null).map((metric) => String(metric.id)) : [];
+    const saved = sleepNights.length
+      ? await supabase.rpc("save_daily_metric_values_v2", { p_metric_date: input.date, p_values: values, p_historical: historical, p_sleep_night_metric_ids: sleepNights })
+      : await supabase.rpc("save_daily_metric_values", { p_metric_date: input.date, p_values: values, p_historical: historical });
     if (saved.error) {
       throw metricWriteError("Guardar valores diarios", saved.error, saved.error);
     }

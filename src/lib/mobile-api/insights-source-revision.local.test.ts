@@ -188,6 +188,24 @@ describe.runIf(!!statusFile && !!container)("revisión transaccional de las fuen
       expect(await moved(update(`update public.daily_metric_values set value=1 where metric_id='${metric}' and metric_date='2026-06-01';`))).toBe(1);
       expect(await moved(update(`delete from public.daily_metric_values where metric_id='${metric}' and metric_date='2026-06-01';`))).toBe(1);
     });
+    it("body weight (#367): a weight that appears, changes or goes away moves it; a day log without weight or its totals do not", async () => {
+      const day = "2026-06-20";
+      expect(await moved(update(`insert into public.day_logs(user_id,log_date) values('${owner.id}','${day}');`))).toBe(0);
+      expect(await moved(update(`update public.day_logs set weight_kg=80.5 where user_id='${owner.id}' and log_date='${day}';`))).toBe(1);
+      expect(await moved(update(`update public.day_logs set weight_kg=80.5 where user_id='${owner.id}' and log_date='${day}';`))).toBe(0);
+      expect(await moved(update(`update public.day_logs set steps=1000 where user_id='${owner.id}' and log_date='${day}';`))).toBe(0);
+      expect(await moved(update(`update public.day_logs set weight_kg=null where user_id='${owner.id}' and log_date='${day}';`))).toBe(1);
+      expect(await moved(update(`insert into public.day_logs(user_id,log_date,weight_kg) values('${owner.id}','2026-06-21',81);`))).toBe(1);
+      expect(await moved(update(`delete from public.day_logs where user_id='${owner.id}' and log_date='2026-06-21';`))).toBe(1);
+    });
+    it("sleep night declarations (#367) move it like the value they describe, once per transaction", async () => {
+      const metric = metricValues(owner.id);
+      const value = sql(`select id from public.daily_metric_values where metric_id='${metric}' and metric_date='2026-06-01';`);
+      const declare = `insert into public.daily_metric_value_conventions(value_id,user_id,convention,declared_updated_at,declared_value,declared_date) select id,user_id,'sleep_night_ending_on_date/1',updated_at,value,metric_date from public.daily_metric_values where id='${value}';`;
+      expect(await moved(update(declare))).toBe(1);
+      expect(await moved(update(`begin; update public.daily_metric_values set value=11 where id='${value}'; update public.daily_metric_value_conventions set declared_value=11 where value_id='${value}'; commit;`))).toBe(1);
+      expect(await moved(update(`delete from public.daily_metric_value_conventions where value_id='${value}';`))).toBe(1);
+    });
     it("a completed session and everything under it, feelings and the day's date", async () => {
       const date = "2026-07-01", session = seedSession(owner.id, date);
       expect(await moved(() => complete(session, date))).toBe(1);

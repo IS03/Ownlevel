@@ -68,7 +68,7 @@ describe("PR75 · métricas históricas canónicas", () => {
     expect(loader).toContain("getHistoricalDailyMetrics(date, context)");
     expect(page).toContain("metrics.recorded.length");
     expect(page).not.toContain('label: "Pasos"');
-    expect(editor).toContain("saveHistoricalDailyMetricsAction({ date, values })");
+    expect(editor).toContain("saveHistoricalDailyMetricsAction({ date, values, declaresSleepNight: true })");
   });
 });
 

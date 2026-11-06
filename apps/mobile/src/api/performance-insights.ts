@@ -4,7 +4,8 @@ import { parsePerformanceInsights, PERFORMANCE_INSIGHTS_PATH, type InsightsDaysP
 export * from '../../../../src/lib/mobile-api/performance-insights-contract';
 
 function read<T extends InsightsResponse>(client: MobileApiClient, view: T['view'], query: Record<string, string | undefined>, signal?: AbortSignal) {
-  const params = new URLSearchParams();
+  // Method 2 (#367): declared sleep nights and same-day body weight. Every view of one screen asks for the same family.
+  const params = new URLSearchParams({ method: '2' });
   for (const [key, value] of Object.entries(query)) if (value) params.set(key, value);
   const search = params.toString();
   // An answer of another view is not this one, however valid it is.

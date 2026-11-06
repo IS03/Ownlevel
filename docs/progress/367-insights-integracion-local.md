@@ -1,3 +1,9 @@
+# Estado vigente — sueño y peso desplegados
+
+#397 y #398 están mergeados y desplegados en READY. Main: 71c7dd3c1240fb221486190a0ebb65bd6a80f22b. Ver [registro vigente](367-sueno-peso-rollout-produccion-2026-11-06.md). Lo siguiente conserva el historial de preparación y sus estados anteriores.
+
+---
+
 # Estado vigente — variantes desplegadas, 2026-11-05
 
 #393, #394 y #395 están mergeados y desplegados en READY. La migración efectiva es 20261105223915, con SQL intacto. Ver [registro de cierre](367-variantes-rollout-produccion-2026-11-05.md). QA física y OBSERVE siguen pendientes. El contenido siguiente conserva el historial de preparación y sus estados anteriores.

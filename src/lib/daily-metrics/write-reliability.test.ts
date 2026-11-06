@@ -75,3 +75,29 @@ describe("atomic daily metric writes", () => {
     expect(migration).not.toContain("security definer");
   });
 });
+
+describe("#367 the night of a sleep value", () => {
+  const SLEEP = "00000000-0000-4000-8000-0000000000aa", STEPS = "00000000-0000-4000-8000-0000000000bb";
+  const setup = () => {
+    const definitions = metricsQuery([
+      { id: SLEEP, value_type: "duration", is_active: true, system_key: "sleep" },
+      { id: STEPS, value_type: "integer", is_active: true, system_key: "steps" },
+    ]);
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: null });
+    mocks.requireAuthenticatedRequestContext.mockResolvedValue({ userId: "user-1", supabase: { from: vi.fn(() => definitions), rpc } });
+    return rpc;
+  };
+  it("declares it, in the same RPC as the write, only when the editor showed the convention and only for a sleep value set", async () => {
+    const rpc = setup();
+    await saveDailyMetricValues({ date: "2026-11-04", values: { [SLEEP]: "420", [STEPS]: "9000" }, declaresSleepNight: true });
+    expect(rpc).toHaveBeenCalledWith("save_daily_metric_values_v2", { p_metric_date: "2026-11-04", p_values: { [SLEEP]: 420, [STEPS]: 9000 }, p_historical: false, p_sleep_night_metric_ids: [SLEEP] });
+  });
+  it("declares nothing for an older caller, or when the sleep value is cleared", async () => {
+    let rpc = setup();
+    await saveDailyMetricValues({ date: "2026-11-04", values: { [SLEEP]: "420", [STEPS]: "1" } });
+    expect(rpc).toHaveBeenCalledWith("save_daily_metric_values", expect.objectContaining({ p_values: { [SLEEP]: 420, [STEPS]: 1 } }));
+    rpc = setup();
+    await saveDailyMetricValues({ date: "2026-11-04", values: { [SLEEP]: "", [STEPS]: "1" }, declaresSleepNight: true });
+    expect(rpc).toHaveBeenCalledWith("save_daily_metric_values", expect.objectContaining({ p_values: { [SLEEP]: null, [STEPS]: 1 } }));
+  });
+});

@@ -51,6 +51,17 @@ Todo esto *requiere la migración de configuración* y, en Mobile, una build.
 - [ ] **Insights:** dos sesiones con la misma variante se comparan en «Comparación completa»; con distintas dice «Se hizo de otra forma que la anterior». Corregir la variante de una sesión completada actualiza la vista.
 - [ ] **Texto largo y Dynamic Type:** etiquetas de 80 caracteres sin recortes; VoiceOver y lectores de pantalla en Web leen «Variante de …», con «registrada después» cuando corresponde.
 
+## Sueño con noche declarada y peso corporal
+Todo esto *requiere la migración de sueño y peso* y, en Mobile, una build.
+- [ ] **Sueño, hoy:** la hoja de Mobile, el editor del día y Hoy en Web dicen «Cuánto dormiste anoche: la noche que terminó esta mañana».
+- [ ] **Sueño, otra fecha:** Historial en Web y el editor del día en Mobile, para ayer y para un día anterior, nombran esa mañana y nunca dicen «anoche».
+- [ ] **Opcional:** guardar sin sueño no bloquea nada. Borrar sueño no deja un cero en ningún lado.
+- [ ] **Insights, sueño:** «Sueño de la noche anterior» explica qué noche usa. Los valores viejos aparecen aparte como «sin noche declarada», con su límite.
+- [ ] **Insights, peso:** «Peso corporal de ese día» dice qué peso y de qué fecha, que es contexto del día y que puede coincidir con el tiempo. «Ver tu peso en Cuerpo» abre Cuerpo, y volver regresa a la relación.
+- [ ] **Días y exclusiones:** el contexto del día muestra el peso y si el sueño tiene noche declarada. La cobertura dice cuántos días cuentan y cuáles quedaron fuera y por qué.
+- [ ] **Corrección:** cambiar el peso o el sueño de un día ya mostrado actualiza la relación al volver a abrirla.
+- [ ] **Texto grande, VoiceOver y Reducir movimiento** en esas pantallas.
+
 ## Después de las migraciones
 - [ ] *Requiere migración.* **Hora de comida (#388):** elegir la hora la declara, incluso con el mismo valor. Abrir una edición, mover de día o repetir una comida no declara nada.
 - [ ] *Requiere migración.* **Ventana previa (#389):** una comida con hora declarada cuenta; una con reloj automático no.

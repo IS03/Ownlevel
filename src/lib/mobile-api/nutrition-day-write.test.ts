@@ -62,3 +62,22 @@ describe('Date-scoped authenticated routes',()=>{
   rpc.mockResolvedValueOnce({data:[{response_status:200,response_body:{status:'saved',date:'2026-10-02',operation:'metrics'}}],error:null});expect((await metrics(request(),{params:Promise.resolve({date})})).status).toBe(503);
  });
 });
+describe('#367 sleep night in a day write',()=>{
+ const sleep={...intent.changes[0],value:420,sleepNight:'sleep_night_ending_on_date/1'};
+ it('accepts the declaration only with a value and the exact convention, and keeps it out of what the writer hashes',async()=>{
+  const { splitSleepNights }=await import('./nutrition-day-write-contract');
+  const parsed=parseDayWriteIntent({...intent,changes:[sleep]})!;
+  expect(parsed).toMatchObject({changes:[{sleepNight:'sleep_night_ending_on_date/1'}]});
+  expect(splitSleepNights(parsed)).toEqual({intent:{...intent,changes:[{...intent.changes[0],value:420}]},sleepNightMetricIds:[id]});
+  for(const change of [{...sleep,value:null},{...sleep,sleepNight:'yes'},{...sleep,sleepNight:true}])expect(parseDayWriteIntent({...intent,changes:[change]})).toBeUndefined();
+ });
+ it('routes a declaring write to the v2 wrapper and every other write to the unchanged v1',async()=>{
+  const receipt={status:'saved',date,operation:'metrics'};
+  rpc.mockResolvedValueOnce({data:[{response_status:200,response_body:receipt,replayed:false}],error:null});
+  expect((await metrics(request({...intent,changes:[sleep]}),{params:Promise.resolve({date})})).status).toBe(200);
+  expect(rpc).toHaveBeenLastCalledWith('mobile_mutate_nutrition_day_v2',{p_intent:{...intent,changes:[{...intent.changes[0],value:420}]},p_sleep_night_metric_ids:[id]});
+  rpc.mockResolvedValueOnce({data:[{response_status:200,response_body:receipt,replayed:false}],error:null});
+  await metrics(request(),{params:Promise.resolve({date})});
+  expect(rpc).toHaveBeenLastCalledWith('mobile_mutate_nutrition_day',{p_intent:intent});
+ });
+});

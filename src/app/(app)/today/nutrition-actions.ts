@@ -23,7 +23,7 @@ function refreshNutritionPages() {
 }
 
 export async function saveDailyMetricsAction(input: {
-  date: string; values: Record<string, string>;
+  date: string; values: Record<string, string>; declaresSleepNight?: boolean;
 }): Promise<Result> {
   try {
     await saveDailyMetricValues(input);

@@ -1,7 +1,7 @@
 import type { PartialDay } from "../performance-insights/partial";
 import type { DailyPerformance } from "../performance-insights/types";
 import { instantMs, mealTimeEvidence, parseSessionFeelings } from "./source-adapter";
-import type { Candidate, CandidateDefinition, InsightsSource, MealTimeEvidence, NutritionContext, ObservationRow, SessionFact, SessionFeeling } from "./types";
+import type { Candidate, CandidateDefinition, InsightsEngineMethod, InsightsSource, MealTimeEvidence, NutritionContext, ObservationRow, SessionFact, SessionFeeling, SleepNightEvidence } from "./types";
 
 const HOUR = 3_600_000;
 /** Primary window fixed before any result, as a product decision rather than a physiological optimum. */
@@ -116,11 +116,24 @@ export function buildExposureContext(source: InsightsSource) {
     for (let i = 0; i < parsed.invalid; i++) bump(exclusions, "feeling_invalid");
     feelingsBySession.set(row.sessionId, parsed.values);
   }
-  return { exclusions, nutritionByDate, series, metricsByDate, mealsByDate, sessionById, feelingsBySession };
+  // The body domain keeps one weight per logical date. Several sessions of a day share it: it is one value of that day.
+  const weightByDate = new Map<string, number | null>();
+  for (const session of source.sessions) if (session.date && session.dayWeightKg !== undefined && !weightByDate.has(session.date)) weightByDate.set(session.date, session.dayWeightKg);
+  const sleepEvidence = new Map<string, Map<string, SleepNightEvidence>>();
+  for (const row of source.metricValues) {
+    const byDate = sleepEvidence.get(row.metricId) ?? new Map<string, SleepNightEvidence>();
+    byDate.set(row.date, row.sleepNight ?? "undeclared"); sleepEvidence.set(row.metricId, byDate);
+  }
+  return { exclusions, nutritionByDate, series, metricsByDate, mealsByDate, sessionById, feelingsBySession, weightByDate, sleepEvidence };
+}
+/** Weight of a day as the body domain stores it: a positive number, or not a weight. Zero never means "nothing". */
+export function weightOfDay(value: number | null | undefined): { value: number | null; state: "recorded" | "not_recorded" | "invalid" } {
+  if (value === null || value === undefined) return { value: null, state: "not_recorded" };
+  return Number.isFinite(value) && value > 0 ? { value, state: "recorded" } : { value: null, state: "invalid" };
 }
 
-export function buildExposureTable(source: InsightsSource, days: readonly OutcomeDay[], today: string, context: ExposureContext = buildExposureContext(source), sessionContext = true): ExposureTable {
-  const { nutritionByDate, series, metricsByDate, mealsByDate, sessionById, feelingsBySession } = context;
+export function buildExposureTable(source: InsightsSource, days: readonly OutcomeDay[], today: string, context: ExposureContext = buildExposureContext(source), sessionContext = true, method: InsightsEngineMethod = 1): ExposureTable {
+  const { nutritionByDate, series, metricsByDate, mealsByDate, sessionById, feelingsBySession, weightByDate, sleepEvidence } = context;
   const sourceExclusions: Record<string, number> = { ...context.exclusions };
 
   const carbsPre3hBySession = new Map<string, SessionFact["context"]["carbsPre3h"]>();
@@ -152,6 +165,7 @@ export function buildExposureTable(source: InsightsSource, days: readonly Outcom
   const definition = (value: CandidateDefinition) => value;
   for (const metric of [...source.metricDefinitions].sort((a, b) => a.id.localeCompare(b.id))) {
     const values = series.get(metric.id) ?? new Map<string, number>();
+    if (method === 2 && metric.systemKey === "sleep") { candidates.push(...sleepCandidates(metric.id, values, sleepEvidence.get(metric.id), rows)); continue; }
     for (const window of ["same_day", "previous_day"] as const) {
       const paired = new Map<string, number>(), exclusions: Record<string, number> = {};
       for (const row of rows) {
@@ -174,6 +188,17 @@ export function buildExposureTable(source: InsightsSource, days: readonly Outcom
       temporalBasis: window === "same_day" ? "same_day_unordered" : "previous_logical_day" }) });
   }
   candidates.push(mealCandidate(rows, singleSession, mealsByDate, "pre_3h"), mealCandidate(rows, singleSession, mealsByDate, "same_day_before_start"));
+  if (method === 2) {
+    // One value per logical day, whatever the number of sessions: rows are days. Its time is unknown, so it is context of the day.
+    const paired = new Map<string, number>(), exclusions: Record<string, number> = {};
+    for (const row of rows) {
+      const weight = weightOfDay(weightByDate.get(row.date));
+      if (weight.state === "not_recorded") bump(exclusions, "weight_not_recorded");
+      else if (weight.state === "invalid") bump(exclusions, "weight_invalid");
+      else paired.set(row.date, weight.value!);
+    }
+    candidates.push({ values: paired, exclusions, definition: definition({ id: "body:weight_kg:same_day", family: "body", window: "same_day", subject: "weight_kg", temporalBasis: "same_day_unordered" }) });
+  }
   for (const key of ["energyPre", "fatiguePre"] as const) {
     const paired = new Map<string, number>(), exclusions: Record<string, number> = {};
     for (const row of rows) {
@@ -188,6 +213,34 @@ export function buildExposureTable(source: InsightsSource, days: readonly Outcom
     candidates.push({ values: paired, exclusions, definition: definition({ id: `feeling:${key}:session`, family: "feeling", window: "session", subject: key, temporalBasis: "declared_pre_unverified_clock" }) });
   }
   return { rows, candidates, sourceExclusions, nutritionByDate, metricsByDate, feelingsBySession, carbsPre3hBySession, sessionIdsByDate };
+}
+
+/**
+ * A declared value of date D is the night that ended the morning of D: it pairs with the training of D only, never also with D + 1.
+ * Values without a declaration keep the two old windows, apart, labeled as undeclared, and never use a declared value.
+ */
+function sleepCandidates(metricId: string, values: ReadonlyMap<string, number>, evidence: ReadonlyMap<string, SleepNightEvidence> | undefined, rows: readonly ObservationRow[]): Candidate[] {
+  const declared = (date: string) => evidence?.get(date) === "declared";
+  const night = new Map<string, number>(), nightExclusions: Record<string, number> = {};
+  for (const row of rows) {
+    const value = values.get(row.date);
+    if (value === undefined) bump(nightExclusions, "sleep_not_recorded");
+    else if (!declared(row.date)) bump(nightExclusions, evidence?.get(row.date) === "stale_declaration" ? "sleep_declaration_outdated" : "sleep_night_undeclared");
+    else night.set(row.date, value);
+  }
+  const result: Candidate[] = [{ values: night, exclusions: nightExclusions,
+    definition: { id: `sleep:${metricId}:night_before`, family: "sleep", window: "night_before", subject: metricId, temporalBasis: "declared_night_ending_on_day" } }];
+  for (const window of ["same_day", "previous_day"] as const) {
+    const paired = new Map<string, number>(), exclusions: Record<string, number> = {};
+    for (const row of rows) {
+      const date = window === "same_day" ? row.date : previousDate(row.date), value = values.get(date);
+      if (value === undefined) bump(exclusions, "sleep_not_recorded");
+      else if (declared(date)) bump(exclusions, "sleep_night_declared");
+      else paired.set(row.date, value);
+    }
+    result.push({ values: paired, exclusions, definition: { id: `sleep_undeclared:${metricId}:${window}`, family: "sleep", window, subject: metricId, temporalBasis: "undeclared_sleep_date" } });
+  }
+  return result;
 }
 
 function mealCandidate(rows: readonly ObservationRow[], single: ReadonlyMap<string, { id: string; start: number | null }>, mealsByDate: ReadonlyMap<string, Meal[]>, window: "pre_3h" | "same_day_before_start"): Candidate {

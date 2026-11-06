@@ -3,8 +3,14 @@ import type { ExclusionReason, PerformanceCounts, PerformanceStatus } from "../p
 
 /** Versioned, opt-in method. Facts, context and associations stay in separate lanes of the read model. */
 export const INSIGHTS_ENGINE_METHOD = "insights-engine/1" as const;
+/** Opt-in (#367): the family adds declared sleep nights and same-day body weight. A client that does not ask keeps /1. */
+export const INSIGHTS_ENGINE_METHOD_V2 = "insights-engine/2" as const;
+export type InsightsEngineMethodVersion = typeof INSIGHTS_ENGINE_METHOD | typeof INSIGHTS_ENGINE_METHOD_V2;
+export type InsightsEngineMethod = 1 | 2;
 /** Associations over the partial outcome: their own family, ids and calibration, never added to those of the strict method. */
 export const INSIGHTS_ENGINE_PARTIAL_METHOD = "insights-engine-partial/1" as const;
+export const INSIGHTS_ENGINE_PARTIAL_METHOD_V2 = "insights-engine-partial/2" as const;
+export type InsightsEnginePartialMethodVersion = typeof INSIGHTS_ENGINE_PARTIAL_METHOD | typeof INSIGHTS_ENGINE_PARTIAL_METHOD_V2;
 export const PARTIAL_ASSOCIATION_PREFIX = "partial:";
 export const INSIGHTS_CONTRACT = "performance-insights/1" as const;
 export const INSIGHTS_RISK_BUDGET_CANDIDATE = 0.01;
@@ -15,6 +21,8 @@ export type InsightsSource = {
     id: string; date: string | null; routineId: string | null; routineName: string | null; name: string | null;
     status: "in_progress" | "completed" | "discarded"; startedAt: string | null; endedAt: string | null;
     performanceLevel: number | null; painLevel: number | null; legacyEnergyLevel: number | null;
+    /** day_logs.weight_kg of the session's logical day, the body domain's one value per date. Null: none recorded. */
+    dayWeightKg?: number | null;
   }[];
   exercises: readonly {
     id: string; sessionId: string; exerciseId: string; name: string; implement: string | null; weightMode: string | null; isCompleted: boolean;
@@ -23,8 +31,10 @@ export type InsightsSource = {
   }[];
   sets: readonly { id: string; sessionExerciseId: string; actualReps: number | null; actualLoad: number | null; isCompleted: boolean; completedAt: string | null }[];
   feelings: readonly { sessionId: string; revision: number; facts: unknown }[];
-  metricDefinitions: readonly { id: string; name: string; unit: string | null; valueType: string; archived: boolean }[];
-  metricValues: readonly { metricId: string; date: string; value: unknown }[];
+  /** systemKey identifies the account's sleep metric; a name or a unit never does. */
+  metricDefinitions: readonly { id: string; name: string; unit: string | null; valueType: string; archived: boolean; systemKey?: string | null }[];
+  /** sleepNight: whether the value carries a valid declaration of which night it means. Absent: undeclared. */
+  metricValues: readonly { metricId: string; date: string; value: unknown; sleepNight?: SleepNightEvidence }[];
   meals: readonly {
     id: string; date: string; consumedAt: string | null; rawInput: unknown; entryKind: string | null; sourceType: string | null;
     /** Who set the time, recorded when it was written. Null: nobody can tell, including every row older than the column. */
@@ -37,15 +47,21 @@ export type InsightsSource = {
 
 /** `explicit` needs a positive marker. `unverified` has an instant but no proof of who set it, or why. */
 export type MealTimeEvidence = "explicit" | "registration" | "unverified" | "unknown";
+/** declared: the night that ended the morning of its date, for this exact version of the value. stale: declared for an older one. */
+export type SleepNightEvidence = "declared" | "undeclared" | "stale_declaration";
 export type FeelingKey = "energyPre" | "fatiguePre" | "energyPost" | "fatiguePost";
 /** Order of the capture against the session. The client clock is never treated as verified. */
 export type FeelingTiming = "before_start" | "before_first_set" | "after_first_set" | "after_end" | "post_declared" | "unknown";
 export type SessionFeeling = { value: number; timing: FeelingTiming; temporalQuality: "unknown" | "unverified_client_clock" };
 
-export type CandidateFamily = "metric" | "nutrition" | "meal_window" | "feeling";
-export type CandidateWindow = "same_day" | "previous_day" | "pre_3h" | "same_day_before_start" | "session";
+export type CandidateFamily = "metric" | "nutrition" | "meal_window" | "feeling" | "sleep" | "body";
+export type CandidateWindow = "same_day" | "previous_day" | "pre_3h" | "same_day_before_start" | "session" | "night_before";
 /** What can be said about the order of the exposure and the training. Same-day totals have no order. */
-export type TemporalBasis = "same_day_unordered" | "previous_logical_day" | "explicit_meal_time_before_start" | "declared_pre_unverified_clock";
+export type TemporalBasis = "same_day_unordered" | "previous_logical_day" | "explicit_meal_time_before_start" | "declared_pre_unverified_clock"
+  /** Sleep declared as the night that ended the morning of the training day. */
+  | "declared_night_ending_on_day"
+  /** Sleep with no declared night: its date could mean either night, so it stays apart and says so. */
+  | "undeclared_sleep_date";
 export type CandidateDefinition = {
   id: string; family: CandidateFamily; window: CandidateWindow; temporalBasis: TemporalBasis;
   /** Metric UUID, nutrient or feeling key. Never interpreted through a name or a unit. */
@@ -103,7 +119,9 @@ export type DayFact = {
   date: string; counts: PerformanceCounts; evaluableSessions: number;
   declineProportion: number | null; equalSessionSensitivity: number | null; openDay: boolean;
   sessions: SessionFact[];
-  context: { metrics: { metricId: string; value: number }[]; nutrition: NutritionContext };
+  context: { metrics: { metricId: string; value: number; sleepNight?: SleepNightEvidence }[]; nutrition: NutritionContext;
+    /** Method 2: the day's weight from the body domain, with why it is missing. Its time is unknown: context, not an antecedent. */
+    bodyWeight?: { value: number | null; state: "recorded" | "not_recorded" | "invalid" } };
 };
 export type ExerciseSummary = {
   exerciseId: string; name: string; exposures: number; improved: number; observedStable: number; declined: number; ambiguous: number; insufficient: number;
@@ -127,7 +145,7 @@ export type PartialExerciseSummary = {
 export type PartialAssociationState = "insufficient_data" | "no_clear_signal" | "coincidence_context_unknown";
 export type PartialAssociationResult = Omit<AssociationResult, "state" | "reason"> & { state: PartialAssociationState; reason: Exclude<AssociationReason, "passes_exploratory_gate"> | "coincides_context_unknown"; contextCompleteness: typeof PARTIAL_CONTEXT };
 export type PartialLane = {
-  methodVersion: typeof INSIGHTS_PERFORMANCE_PARTIAL_METHOD; engineMethodVersion: typeof INSIGHTS_ENGINE_PARTIAL_METHOD; contextCompleteness: typeof PARTIAL_CONTEXT;
+  methodVersion: typeof INSIGHTS_PERFORMANCE_PARTIAL_METHOD; engineMethodVersion: InsightsEnginePartialMethodVersion; contextCompleteness: typeof PARTIAL_CONTEXT;
   integrity: "valid" | "conflicting_duplicates";
   /** Exposures with any known configuration count only for the strict method. Adding `comparable` across methods never counts one twice. */
   partition: { total: number; configurationKnown: number; configurationUnknown: number };
@@ -141,7 +159,7 @@ export type PartialLane = {
   exclusions: { performance: Partial<Record<ExclusionReason | string, number>>; days: Record<string, number> };
 };
 
-type InsightsVersions = { contractVersion: typeof INSIGHTS_CONTRACT; methodVersion: typeof INSIGHTS_ENGINE_METHOD; performanceMethodVersion: string; today: string; integrity: "valid" | "conflicting_duplicates";
+type InsightsVersions = { contractVersion: typeof INSIGHTS_CONTRACT; methodVersion: InsightsEngineMethodVersion; performanceMethodVersion: string; today: string; integrity: "valid" | "conflicting_duplicates";
   /** Identifies the read behind this answer. Pages of a different revision must not be joined. */
   sourceRevision: string };
 type PartialLabels = Pick<PartialLane, "methodVersion" | "engineMethodVersion" | "contextCompleteness" | "integrity">;
@@ -160,7 +178,7 @@ export type InsightsResponse = InsightsSummary | InsightsDaysPage | InsightsRela
 
 export type InsightsReadModel = {
   contractVersion: typeof INSIGHTS_CONTRACT;
-  methodVersion: typeof INSIGHTS_ENGINE_METHOD;
+  methodVersion: InsightsEngineMethodVersion;
   performanceMethodVersion: string;
   today: string;
   integrity: "valid" | "conflicting_duplicates";

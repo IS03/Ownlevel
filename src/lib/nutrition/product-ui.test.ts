@@ -159,7 +159,7 @@ describe("PR 7 — experiencia nutricional", () => {
     expect(() => parseOptionalNumber("1.5", "Pasos", { integer: true, min: 0 })).toThrow("entero");
     expect(() => parseOptionalNumber("-1", "Mate", { min: 0 })).toThrow("al menos 0");
     expect(history).toContain("<HistoricalMetricsEditor date={requestedDate} metrics={metrics.editable}");
-    expect(historicalMetricsEditor).toContain("saveHistoricalDailyMetricsAction({ date, values })");
+    expect(historicalMetricsEditor).toContain("saveHistoricalDailyMetricsAction({ date, values, declaresSleepNight: true })");
     expect(historicalMetricsEditor).toContain("if (!result.ok)");
     expect(historicalMetricsEditor).toContain("setOpen(false)");
     expect(historicalMetricsEditor).not.toContain("saveDailyActivityAction");
