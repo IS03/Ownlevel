@@ -1,4 +1,23 @@
-# Estado vigente — contexto diario completo, en revisión
+# Estado vigente — tendencias de peso, en revisión
+
+Rama `codex/367-weight-trends`, publicada en `dfbd06c1f6727b384650f0af22442a1c8edadbe5` sobre main `8dd3d01` (#403 mergeado), con previews bloqueadas. Solo Mobile: sin migración, backend ni cambio de método. Sin mergear ni build.
+
+- **Qué hace:**
+  - El peso del día en Insights abre Cuerpo en el mes de ese día.
+  - La relación de peso abre el tramo de sus días.
+  - Cuerpo aplica ese período antes de leer y aclara que el peso de un día no dice cuándo se pesó respecto del entrenamiento.
+  - Cuerpo fecha la referencia del cambio, nombra los pesajes en 0 kg y vuelve a la misma sesión, día o relación de Insights.
+- **Reutiliza:** las tendencias descriptivas que Cuerpo ya tenía.
+- **Propuestas de backend, sin implementar:**
+  - excluir del informe de Cuerpo los pesajes en 0 kg, que Insights ya trata como inválidos;
+  - leer los pesajes más recientes primero: hoy `listWeightHistory` corta los 1000 más viejos.
+- **Detalle y validación:** [descripción del PR](367-tendencias-peso-pr-description.md) en esa rama.
+- **QA física:** diferida, en la [lista única](367-qa-fisica.md).
+- **Estado:** #367 sigue abierto.
+
+---
+
+# Estado anterior — contexto diario completo, mergeado en #403 (`8dd3d01`)
 
 Rama `codex/367-day-context`, publicada en `effbd7dbcb7fbfe8e40d76b806e0910cb4849a49` sobre main `71c7dd3`, con previews bloqueadas. Sin migración, sin mergear ni build.
 
