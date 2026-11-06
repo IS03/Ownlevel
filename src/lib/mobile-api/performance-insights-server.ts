@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { todayInCordoba } from "@/lib/phase2/cordoba-date";
 import { readAllTrainingRows } from "@/lib/phase2/training-robust";
-import { createInsightsSnapshot, insightsDaysPage, insightsRelation, insightsRelations, insightsSummary, INSIGHTS_MAX_DAYS, type InsightsSnapshot, type InsightsSource } from "@/lib/progress/insights-engine";
+import { createInsightsSnapshot, insightsDaysPage, insightsExerciseEvidence, insightsRelation, insightsRelations, insightsSummary, INSIGHTS_MAX_DAYS, type EvidenceLane, type InsightsSnapshot, type InsightsSource } from "@/lib/progress/insights-engine";
 import type { InsightsEngineMethod } from "@/lib/progress/insights-engine/types";
 import { MobileApiValidationError } from "./auth";
 import { NutritionReportDayChangedError } from "./nutrition-report-server";
@@ -133,6 +133,48 @@ async function readSetStream(context: Context) {
   return byExercise;
 }
 
+/** The evidence detail also reads where each set sits for the person: its block's order and its number. Insights does not. */
+const EVIDENCE_SET_COLUMNS = `${SET_COLUMNS},set_number`;
+type EvidenceSetRow = EmbeddedSetRow & { set_number: number };
+/** Exported for the local PostgREST test, which reads the raw shape with this same select. */
+export const EXERCISE_EVIDENCE_SELECT = `id,workout_session_id,exercise_id,exercise_order,nombre_snapshot,implement_snapshot,weight_mode_snapshot,is_completed,configuration:workout_session_exercise_configurations(kind,label),sets:workout_sets(${EVIDENCE_SET_COLUMNS}),set_count:workout_sets(count),session:workout_sessions!inner(id,routine_id,status,started_at,ended_at,day:day_logs!inner(log_date))`;
+type EvidenceRow = Omit<ExerciseRow, "sets"> & { exercise_order: number; sets: EvidenceSetRow[]; set_count: { count: number }[];
+  session: { id: string; routine_id: string | null; status: "completed"; started_at: string | null; ended_at: string | null; day: { log_date: string } } };
+/**
+ * The history of one exercise and nothing else (#367): its rows in completed sessions, each with its session, its configuration
+ * and its sets, by id. Pages grow with the times it was done, never with the rest of the history. Each row also counts its own
+ * sets, so a list PostgREST cut at max-rows is noticed and read again from its own stream, for those rows only. Never a partial list.
+ */
+export async function readExerciseSource(context: Context, exerciseId: string): Promise<InsightsSource> {
+  const { supabase, userId } = context;
+  const rows = await readAllTrainingRows<EvidenceRow>("Leer historial del ejercicio", from => supabase.from("workout_session_exercises")
+    .select(EXERCISE_EVIDENCE_SELECT, firstPage(from))
+    .eq("user_id", userId).eq("exercise_id", exerciseId).eq("session.status", "completed").eq("sets.user_id", userId).eq("set_count.user_id", userId)
+    .order("id").order("id", { referencedTable: "sets" }).range(from, from + 999).returns<EvidenceRow[]>());
+  const expected = (row: EvidenceRow) => row.set_count[0]?.count;
+  const cut = rows.filter(row => row.sets.length !== expected(row));
+  if (cut.length) {
+    const owners = new Set(cut.map(row => row.id));
+    const stream = await readAllTrainingRows<SetRow & { set_number: number }>("Leer series del ejercicio", from => supabase.from("workout_sets")
+      .select(`workout_session_exercise_id,${EVIDENCE_SET_COLUMNS}`, firstPage(from)).eq("user_id", userId).in("workout_session_exercise_id", [...owners]).order("id").range(from, from + 999));
+    const byOwner = new Map<string, EvidenceSetRow[]>();
+    for (const { workout_session_exercise_id: owner, ...set } of stream) byOwner.set(owner, [...(byOwner.get(owner) ?? []), set]);
+    for (const row of cut) row.sets = byOwner.get(row.id) ?? [];
+    if (cut.some(row => row.sets.length !== expected(row))) throw new Error("Leer series del ejercicio");
+  }
+  const sessions = new Map(rows.map(row => [row.session.id, row.session]));
+  const sets = rows.flatMap(row => row.sets.map(set => ({ ...set, workout_session_exercise_id: row.id }))).sort(byId);
+  return {
+    sessions: [...sessions.values()].sort(byId).map(row => ({ id: row.id, date: row.day.log_date, routineId: row.routine_id, routineName: null, name: null, status: row.status,
+      startedAt: row.started_at, endedAt: row.ended_at, performanceLevel: null, painLevel: null, legacyEnergyLevel: null })),
+    exercises: rows.map(row => ({ id: row.id, sessionId: row.workout_session_id, exerciseId: row.exercise_id, name: row.nombre_snapshot, implement: row.implement_snapshot, weightMode: row.weight_mode_snapshot, isCompleted: row.is_completed,
+      configuration: configurationIdentity(oneConfiguration(row.configuration)), order: row.exercise_order })),
+    sets: sets.map(row => ({ id: row.id, sessionExerciseId: row.workout_session_exercise_id, actualReps: strictNumber(row.actual_reps), actualLoad: strictNumber(row.actual_weight_kg), isCompleted: row.is_completed, completedAt: row.completed_at,
+      setNumber: row.set_number })),
+    feelings: [], metricDefinitions: [], metricValues: [], meals: [],
+  };
+}
+
 /**
  * The counter the database moves in the same transaction as any change to these sources. Seeing the same value twice means no
  * such transaction committed in between. No row yet means nothing changed since it exists: 0, never an error. Needs the EXPAND.
@@ -148,6 +190,16 @@ export async function readConsistentInsightsSource(context: Context, known?: str
   for (let attempt = 0; attempt < 2; attempt++) {
     const before = attempt === 0 && known !== undefined ? known : await readInsightsRevision(context);
     const source = await readInsightsSource(context);
+    if (await readInsightsRevision(context) === before) return { source, revision: before };
+  }
+  throw new Error("Insights sources kept changing");
+}
+
+/** The same guarantee for one exercise's history: published only if the counter did not move while it was read. One retry. */
+export async function readConsistentExerciseSource(context: Context, exerciseId: string): Promise<{ source: InsightsSource; revision: string }> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const before = await readInsightsRevision(context);
+    const source = await readExerciseSource(context, exerciseId);
     if (await readInsightsRevision(context) === before) return { source, revision: before };
   }
   throw new Error("Insights sources kept changing");
@@ -170,24 +222,42 @@ export async function readInsightsSnapshot(context: Context, today: string, meth
   return snapshot;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EVIDENCE_KEYS = ["session", "exercise", "lane"];
 export function parseInsightsParams(params: URLSearchParams) {
   for (const key of new Set(params.keys())) {
-    if (!["view", "before", "limit", "association", "pairs", "method"].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
+    if (!["view", "before", "limit", "association", "pairs", "method", ...EVIDENCE_KEYS].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
   }
   const before = params.get("before") ?? undefined, limit = params.get("limit"), association = params.get("association") ?? undefined, view = params.get("view") ?? "summary";
-  if (!["summary", "days", "relations"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
+  if (!["summary", "days", "relations", "evidence"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
+  const method = params.get("method");
+  if (method !== null && method !== "2") throw new MobileApiValidationError("Método no válido.");
+  const engineMethod = (method === "2" ? 2 : 1) as InsightsEngineMethod;
+  // One exercise of one session, in one method: the whole selection or nothing, and nothing else beside it.
+  if (view === "evidence" || EVIDENCE_KEYS.some(key => params.has(key))) {
+    const session = params.get("session"), exercise = params.get("exercise"), lane = params.get("lane");
+    if (view !== "evidence" || [...params.keys()].some(key => !["view", "method", ...EVIDENCE_KEYS].includes(key))) throw new MobileApiValidationError("Parámetro no válido.");
+    if (!session || !UUID.test(session) || !exercise || !UUID.test(exercise) || (lane !== "strict" && lane !== "partial")) throw new MobileApiValidationError("Comparación no válida.");
+    return { view: "evidence" as const, method: engineMethod, selection: { sessionId: session.toLowerCase(), exerciseId: exercise.toLowerCase(), lane: lane as EvidenceLane } };
+  }
   if (before !== undefined && (!/^\d{4}-\d{2}-\d{2}$/.test(before) || new Date(`${before}T00:00:00Z`).toISOString().slice(0, 10) !== before)) throw new MobileApiValidationError("Fecha no válida.");
   if (limit !== null && (!/^\d{1,3}$/.test(limit) || +limit < 1 || +limit > INSIGHTS_MAX_DAYS)) throw new MobileApiValidationError(`El límite va de 1 a ${INSIGHTS_MAX_DAYS} días.`);
   if (association !== undefined && !/^[a-zA-Z0-9_:-]{1,120}$/.test(association)) throw new MobileApiValidationError("Relación no válida.");
-  const method = params.get("method");
-  if (method !== null && method !== "2") throw new MobileApiValidationError("Método no válido.");
   const pairs = params.get("pairs");
   if (pairs !== null && (pairs !== "all" || association === undefined)) throw new MobileApiValidationError("Parámetro no válido.");
-  return { view: view as "summary" | "days" | "relations", before, limit: limit === null ? undefined : +limit, association, method: (method === "2" ? 2 : 1) as InsightsEngineMethod, ...(pairs === "all" ? { pairs: "all" as const } : {}) };
+  return { view: view as "summary" | "days" | "relations", before, limit: limit === null ? undefined : +limit, association, method: engineMethod, ...(pairs === "all" ? { pairs: "all" as const } : {}) };
 }
 
 export const performanceInsightsResponse = (request: Request) => progressReadResponse(request, "performance-insights", async (context, params, today) => {
   const options = parseInsightsParams(params);
+  if (options.view === "evidence") {
+    // Never the whole history: the selected exercise's sessions only, under the same counter as Insights.
+    const { source, revision } = await readConsistentExerciseSource(context, options.selection.exerciseId);
+    const evidence = insightsExerciseEvidence(source, options.selection, { today, revision: publicRevision(context.userId, revision), method: options.method });
+    const after = todayInCordoba();
+    if (after !== today) throw new NutritionReportDayChangedError(after);
+    return evidence;
+  }
   const snapshot = await readInsightsSnapshot(context, today, options.method);
   const model = options.association ? insightsRelation(snapshot, options.association, { pairs: options.pairs ?? "recent" })
     : options.view === "relations" ? insightsRelations(snapshot)

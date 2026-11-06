@@ -1,8 +1,8 @@
 // Pure strict contract shared by the API and Expo. It accepts only this versioned shape: never a partial read as an empty one.
 import { INSIGHTS_PERFORMANCE_PARTIAL_METHOD, PARTIAL_CONTEXT } from "../progress/performance-insights/partial";
-import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from "../progress/insights-engine/types";
+import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from "../progress/insights-engine/types";
 
-export type { AssociationResult, AssociationState, CandidateDefinition, DayFact, ExerciseFact, ExerciseSummary, InsightsDaysPage, InsightsReadModel, InsightsRelationDetail, InsightsRelations, InsightsResponse, InsightsSummary, PartialAssociationState, PartialRelationSummary, RelationSummary, NutritionContext, PartialAssociationResult, PartialDayFact, PartialExerciseFact, PartialExerciseSummary, PartialLane, SessionFact, SessionFeeling } from "../progress/insights-engine/types";
+export type { AssociationResult, AssociationState, CandidateDefinition, DayFact, EvidenceSet, EvidenceSide, ExerciseEvidence, ExerciseFact, InsightsExerciseEvidence, ExerciseSummary, InsightsDaysPage, InsightsReadModel, InsightsRelationDetail, InsightsRelations, InsightsResponse, InsightsSummary, PartialAssociationState, PartialRelationSummary, RelationSummary, NutritionContext, PartialAssociationResult, PartialDayFact, PartialExerciseFact, PartialExerciseSummary, PartialLane, SessionFact, SessionFeeling } from "../progress/insights-engine/types";
 export const PERFORMANCE_INSIGHTS_PATH = "/api/mobile/v1/progress/performance-insights";
 
 type Json = Record<string, unknown>;
@@ -121,10 +121,37 @@ function parseRelationDetail(raw: Json) {
   return pairs({ id, pairs: rows }) && Array.isArray(rows) && rows.length <= (pairsTotal as number) ? raw as unknown as InsightsRelationDetail : undefined;
 }
 
+const UNIT = new Set(["kg", "lingotes", "reps", "seconds"]);
+const SIGNAL = new Set(["reps_at_load", "load_at_reps", "bodyweight_reps", "time"]);
+const RECORD = new Set(["load", "reps_at_load", "bodyweight_reps", "time"]);
+const ids = (v: unknown) => list(v, row => typeof row === "string");
+const countOrNull = (v: unknown) => v === null || count(v);
+const evidenceSet = (v: unknown) => object(v) && typeof v.id === "string" && typeof v.blockId === "string" && countOrNull(v.blockOrder) && countOrNull(v.setNumber)
+  && typeof v.completed === "boolean" && numberOrNull(v.amount) && numberOrNull(v.load);
+const evidenceSide = (v: unknown) => object(v) && uuid(v.sessionId) && (v.date === null || date(v.date)) && list(v.sets, evidenceSet) && ids(v.excludedSetIds);
+const signal = (v: unknown) => object(v) && SIGNAL.has(String(v.kind)) && numberOrNull(v.anchor) && finite(v.current) && finite(v.reference) && finite(v.delta) && ids(v.currentSetIds) && ids(v.referenceSetIds);
+const record = (v: unknown) => object(v) && RECORD.has(String(v.kind)) && numberOrNull(v.anchor) && finite(v.current) && finite(v.previousMaximum) && typeof v.isNewHigh === "boolean";
+const evidenceContext = (v: unknown) => v === null || (object(v) && stringOrNull(v.weightMode) && (v.unit === null || UNIT.has(String(v.unit))) && stringOrNull(v.implement) && stringOrNull(v.configuration));
+/** What a comparison rests on. A signal must point at sets of its own sides: evidence that names no recorded set is not evidence. */
+const evidenceItem = (v: unknown, lane: "strict" | "partial") => {
+  if (!object(v) || typeof v.name !== "string" || typeof v.reason !== "string" || !evidenceContext(v.context) || !evidenceSide(v.current) || !list(v.evidence, signal) || !list(v.records, record) || !tally(v.exclusions)) return false;
+  if (lane === "strict" ? !STATUS.has(String(v.status)) || "reading" in v : !READING.has(String(v.reading)) || "status" in v) return false;
+  const reference = v.reference;
+  if (reference !== null && (!evidenceSide(reference) || !count((reference as Json).ageDays))) return false;
+  const own = (side: unknown) => new Set(((side as Json | null)?.sets as Json[] | undefined ?? []).map(set => set.id));
+  const current = own(v.current), earlier = own(reference);
+  return (v.evidence as Json[]).every(row => (reference !== null) && (row.currentSetIds as string[]).every(id => current.has(id)) && (row.referenceSetIds as string[]).every(id => earlier.has(id)));
+};
+function parseEvidence(raw: Json) {
+  const { lane, sessionId, exerciseId, item, partial } = raw;
+  if ((lane !== "strict" && lane !== "partial") || !uuid(sessionId) || !uuid(exerciseId) || (lane === "partial" && !partialLabels(partial))) return undefined;
+  return item === null || (evidenceItem(item, lane) && String(((item as Json).current as Json).sessionId).toLowerCase() === String(sessionId).toLowerCase()) ? raw as unknown as InsightsExerciseEvidence : undefined;
+}
+
 /** The views the route answers with. Consistent patterns stay impossible in this contract until the risk budget is decided. */
 export function parsePerformanceInsights(raw: unknown): InsightsResponse | undefined {
   if (!object(raw) || !versions(raw) || typeof raw.sourceRevision !== "string") return undefined;
-  return raw.view === "summary" ? parseSummary(raw) : raw.view === "days" ? parseDays(raw) : raw.view === "relations" ? parseRelations(raw) : raw.view === "relation" ? parseRelationDetail(raw) : undefined;
+  return raw.view === "summary" ? parseSummary(raw) : raw.view === "days" ? parseDays(raw) : raw.view === "relations" ? parseRelations(raw) : raw.view === "relation" ? parseRelationDetail(raw) : raw.view === "evidence" ? parseEvidence(raw) : undefined;
 }
 
 /** The whole pure model, for consumers of the domain module. The route never sends it. */

@@ -177,7 +177,10 @@ describe('pantalla', () => {
     fireEvent.press(view.getAllByRole('button', { name: 'Abrir sesión Empuje, 15:00–16:00' })[0]!);
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/history/[id]', params: { id: 's2' } });
     fireEvent.press(view.getByRole('button', { name: /^Press banca, registro inferior con contexto parcial/ }));
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id: EX, routineId: 'r1' } });
+    // The row opens the evidence of that comparison, with the reference and result shown here and the read they came from.
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/insights/evidence', params: expect.objectContaining({ session: 's2', exercise: EX, lane: 'partial', reference: 's1', result: 'lower_record', revision: 'r1', insightsReturn: '1' }) });
+    // Nothing is read for it here: the detail reads when it opens.
+    expect(requests().some(path => path.includes('view=evidence'))).toBe(false);
     fireEvent.press(view.getByText('Ejercicios'));
     expect(mockSetParams).toHaveBeenCalledWith({ view: 'exercises' });
   });

@@ -1,5 +1,5 @@
 import type { MobileApiClient } from './client';
-import { parsePerformanceInsights, PERFORMANCE_INSIGHTS_PATH, type InsightsDaysPage, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from '../../../../src/lib/mobile-api/performance-insights-contract';
+import { parsePerformanceInsights, PERFORMANCE_INSIGHTS_PATH, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from '../../../../src/lib/mobile-api/performance-insights-contract';
 
 export * from '../../../../src/lib/mobile-api/performance-insights-contract';
 
@@ -17,3 +17,6 @@ export const fetchInsightsDays = (client: MobileApiClient, before: string, signa
 export const fetchInsightsRelations = (client: MobileApiClient, signal?: AbortSignal) => read<InsightsRelations>(client, 'relations', { view: 'relations' }, signal);
 /** The newest pairs of a relation and its numbers, computed from all of them. Every pair only when the person asks. */
 export const fetchInsightsRelation = (client: MobileApiClient, association: string, signal?: AbortSignal, pairs?: 'all') => read<InsightsRelationDetail>(client, 'relation', { association, pairs }, signal);
+/** The evidence of one comparison, read only when its detail opens: one exercise's history, never one read per row of the screen. */
+export const fetchInsightsEvidence = (client: MobileApiClient, selection: { session: string; exercise: string; lane: 'strict' | 'partial' }, signal?: AbortSignal) =>
+  read<InsightsExerciseEvidence>(client, 'evidence', { view: 'evidence', session: selection.session, exercise: selection.exercise, lane: selection.lane }, signal);

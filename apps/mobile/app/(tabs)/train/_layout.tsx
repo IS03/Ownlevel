@@ -21,6 +21,7 @@ export default function TrainLayout() {
       <Stack.Screen name="history/exercise/[id]" options={{ title: 'Ejercicio' }} />
       <Stack.Screen name="insights/index" options={{ title: 'Insights' }} />
       <Stack.Screen name="insights/[relation]" options={{ title: 'Relación' }} />
+      <Stack.Screen name="insights/evidence" options={{ title: 'Evidencia' }} />
       <Stack.Screen name="calendar" options={{ title: 'Calendario' }} />
       <Stack.Screen name="day/[date]" options={{ title: 'Día' }} />
       <Stack.Screen name="correct/[id]" options={{ title: 'Corregir sesión' }} />
