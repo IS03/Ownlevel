@@ -11,7 +11,7 @@ import { useProgressResource } from '@/progress/use-progress-resource';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, NUTRITION_SCOPE, PARTIAL_LIMIT, contextRows, dayLabel, daySessions, feelingClockNote, nutritionRows, sessionName, sessionRows, sessionTime, exerciseSentence, focusOf, heroCaption, heroOf, joinDays, nextDate, nothingComparable, primaryLane, readingRows, reasonText, relationGroups, relationName, relationState, sameRead, statusArrow, statusText, stripMarks, stripSummary, summarySpoken, summaryText, type ContextRow, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
 import { InsightRow } from './insight-row';
-import { insightsOriginOf, metricTrendHref, nutritionDayHref, validSession } from './navigation';
+import { dayWeightHref, insightsOriginOf, metricTrendHref, nutritionDayHref, validSession } from './navigation';
 
 type View_ = 'days' | 'exercises';
 const VIEWS = [{ value: 'days', label: 'Días' }, { value: 'exercises', label: 'Ejercicios' }] as const;
@@ -33,9 +33,10 @@ export function FactRow({ label, value, spoken, arrow, detail }: { label: string
   </View>;
 }
 /** Recorded context. A metric opens its own trends, on the month of that day. */
-function ContextList({ rows, date, onMetric }: { rows: readonly ContextRow[]; date?: string; onMetric?: (metricId: string, date: string) => void }) {
+function ContextList({ rows, date, onMetric, onBody }: { rows: readonly ContextRow[]; date?: string; onMetric?: (metricId: string, date: string) => void; onBody?: (date: string) => void }) {
   return <>{rows.map(row => row.metricId && date && onMetric
     ? <InsightRow key={row.key} label={row.label} value={row.value} spoken={`${row.label}: ${row.value}. Ver tendencias`} onPress={() => onMetric(row.metricId!, date)} />
+    : row.body && date && onBody ? <InsightRow key={row.key} label={row.label} value={row.value} spoken={`${row.label}: ${row.value}. Ver en Cuerpo`} onPress={() => onBody(date)} />
     : <FactRow key={row.key} label={row.label} value={row.value} detail={row.detail} spoken={row.spoken} />)}</>;
 }
 const Section = ({ title }: { title: string }) => <AppText muted variant="footnote" style={styles.section} accessibilityRole="header">{title}</AppText>;
@@ -60,15 +61,16 @@ function DaySessions({ day, originId = null, router, exercises }: { day: DayLane
     {clock ? <AppText muted variant="caption">{clock}</AppText> : null}
   </View>;
 }
+type DayActions = { onMetric: (metricId: string, date: string) => void; onNutrition: (date: string) => void; onBody: (date: string) => void };
 /** What belongs to the whole day, shown once: never repeated under each session as if each had its own. */
-function DayShared({ day, metrics, onMetric, onNutrition }: { day: DayLanes; metrics: InsightsSummary['metrics']; onMetric: (metricId: string, date: string) => void; onNutrition: (date: string) => void }) {
+function DayShared({ day, metrics, onMetric, onNutrition, onBody }: { day: DayLanes; metrics: InsightsSummary['metrics'] } & DayActions) {
   const rows = contextRows(day.strict, metrics);
   return <View testID="insights-day-shared">
     <Section title="Alimentación registrada ese día" />
     <ContextList rows={nutritionRows(day.strict)} />
     <AppText muted variant="caption" style={styles.note}>{NUTRITION_SCOPE}</AppText>
     <InsightRow label="Ver Nutrición de ese día" spoken={`Ver Nutrición del ${dayLabel(day.date)}`} onPress={() => onNutrition(day.date)} />
-    {rows.length ? <><Section title="Métricas de ese día" /><ContextList rows={rows} date={day.date} onMetric={onMetric} /></> : null}
+    {rows.length ? <><Section title="Métricas de ese día" /><ContextList rows={rows} date={day.date} onMetric={onMetric} onBody={onBody} /></> : null}
   </View>;
 }
 
@@ -96,8 +98,7 @@ function ExerciseRows({ lane, session, partial, router }: { lane: Lane; session:
     onPress={() => router.push({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id: row.id, ...(session.routineId ? { routineId: session.routineId } : {}) } })} />)}</>;
 }
 
-type DayActions = { onMetric: (metricId: string, date: string) => void; onNutrition: (date: string) => void };
-function DayDetail({ day, model, router, onMetric, onNutrition }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter> } & DayActions) {
+function DayDetail({ day, model, router, onMetric, onNutrition, onBody }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter> } & DayActions) {
   const reduced = useReduceMotion();
   const lanes: Lane[] = [...(day.strictCounts.comparable > 0 ? ['strict' as const] : []), ...(day.partialCounts?.total ? ['partial' as const] : [])];
   return <Animated.View entering={reduced ? FadeIn.duration(motionDurations.fast) : FadeInDown.duration(motionDurations.base)} style={styles.detail}>
@@ -105,11 +106,11 @@ function DayDetail({ day, model, router, onMetric, onNutrition }: { day: DayLane
       <Section title={LANE_TITLE[lane]} />
       <ExerciseRows lane={lane} session={session} partial={day.partial?.sessions.find(row => row.sessionId === session.sessionId)} router={router} />
     </View>)} />
-    <DayShared day={day} metrics={model.metrics} onMetric={onMetric} onNutrition={onNutrition} />
+    <DayShared day={day} metrics={model.metrics} onMetric={onMetric} onNutrition={onNutrition} onBody={onBody} />
   </Animated.View>;
 }
 
-function DayRow({ day, model, router, selected, onSelect, onMetric, onNutrition }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter>; selected: boolean; onSelect: (date: string | undefined) => void } & DayActions) {
+function DayRow({ day, model, router, selected, onSelect, onMetric, onNutrition, onBody }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter>; selected: boolean; onSelect: (date: string | undefined) => void } & DayActions) {
   const [open, setOpen] = useState(selected);
   // The selected day comes from the route: coming back to it finds it open.
   const [seen, setSeen] = useState(selected);
@@ -122,7 +123,7 @@ function DayRow({ day, model, router, selected, onSelect, onMetric, onNutrition 
     <InsightRow label={dayLabel(day.date)} value={value} expanded={open} detail={counts.comparable ? `↑ ${counts.up}  = ${counts.same}  ↓ ${counts.down}${limit ? ' · contexto parcial' : ''}` : undefined}
       spoken={`${dayLabel(day.date)}${day.openDay ? ', día en curso' : ''}: ${counts.comparable ? `${counts.comparable} de ${counts.total} comparables${limit}` : 'sin comparar'}`}
       onPress={() => { onSelect(open ? undefined : day.date); setOpen(!open); }} />
-    {open ? <DayDetail day={day} model={model} router={router} onMetric={onMetric} onNutrition={onNutrition} /> : null}
+    {open ? <DayDetail day={day} model={model} router={router} onMetric={onMetric} onNutrition={onNutrition} onBody={onBody} /> : null}
   </View>;
 }
 
@@ -228,6 +229,7 @@ export function InsightsScreen() {
   const focusFailed = !!focusId && !focus && needsDay && shownFocusPage?.phase === 'failed';
   const openMetric = (metricId: string, date: string) => { haptics.selection(); router.push(metricTrendHref(metricId, date, { ...origin, date })); };
   const openNutrition = (date: string) => { haptics.selection(); router.push(nutritionDayHref(date, { ...origin, date })); };
+  const openBody = (date: string) => { haptics.selection(); router.push(dayWeightHref(date, { ...origin, date })); };
   const selectDay = (date: string | undefined) => router.setParams({ date });
   const setView = (value: View_) => { haptics.selection(); router.setParams({ view: value }); };
   const setFamily = (value: FamilyFilter) => { haptics.selection(); router.setParams({ family: value }); };
@@ -262,7 +264,7 @@ export function InsightsScreen() {
         <ExerciseRows lane={focus.lane} session={focus.session} partial={focus.partial ?? undefined} router={router} />
         <Section title={focus.day.strict.sessions.length > 1 ? 'Sesiones de ese día' : 'Esta sesión'} />
         <DaySessions day={focus.day} originId={focus.session.sessionId} router={router} />
-        <DayShared day={focus.day} metrics={data.metrics} onMetric={openMetric} onNutrition={openNutrition} />
+        <DayShared day={focus.day} metrics={data.metrics} onMetric={openMetric} onNutrition={openNutrition} onBody={openBody} />
       </View> : focusLoading ? <View testID="insights-session-loading" style={styles.block}><SkeletonBlock height={120} /><SkeletonBlock height={176} /></View>
         : focusFailed ? <InlineUnavailable message="No pudimos traer los hechos de esta sesión." actionLabel="Reintentar" onAction={() => setFocusAttempt(current => current + 1)} />
         : focusId ? <View style={styles.block} testID="insights-session-absent">
@@ -284,12 +286,12 @@ export function InsightsScreen() {
       {hero ? <View testID="insights-hero-context">
         <Section title={hero.day.strict.sessions.length > 1 ? 'Sesiones de ese día' : 'Esa sesión'} />
         <DaySessions day={hero.day} router={router} />
-        <DayShared day={hero.day} metrics={data.metrics} onMetric={openMetric} onNutrition={openNutrition} />
+        <DayShared day={hero.day} metrics={data.metrics} onMetric={openMetric} onNutrition={openNutrition} onBody={openBody} />
       </View> : null}
       <Strip days={days} lane={stripLane} />
       <View>
         <Section title="Días" />
-        {days.map(day => <DayRow key={day.date} day={day} model={data} router={router} selected={!focusId && focusDate === day.date} onSelect={selectDay} onMetric={openMetric} onNutrition={openNutrition} />)}
+        {days.map(day => <DayRow key={day.date} day={day} model={data} router={router} selected={!focusId && focusDate === day.date} onSelect={selectDay} onMetric={openMetric} onNutrition={openNutrition} onBody={openBody} />)}
         {next ? <Button label={morePhase === 'loading' ? 'Cargando…' : 'Ver más días'} variant="secondary" disabled={morePhase === 'loading'} onPress={() => void loadMore()} /> : null}
         {morePhase === 'failed' ? <InlineUnavailable message="No pudimos traer más días." actionLabel="Reintentar" onAction={() => void loadMore()} /> : null}
         {pagesDropped ? <AppText muted variant="footnote" accessibilityLiveRegion="polite" testID="insights-changed">Tus datos cambiaron, así que actualizamos la lista.</AppText> : null}

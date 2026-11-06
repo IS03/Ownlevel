@@ -9,7 +9,7 @@ import { formatValue } from '@/progress/progress-format';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { FactRow } from './insights-screen';
 import { InsightRow } from './insight-row';
-import { metricTrendHref } from './navigation';
+import { bodyWeightHref, metricTrendHref } from './navigation';
 import { exposureMeaning, LANE_TITLE, PARTIAL_LIMIT, coverageText, dayLabel, exclusionRows, exposureUnit, groupRows, relationName, relationSentence, relationState, sameRead, shareText, type Lane } from './insights-model';
 
 type Pair = NonNullable<InsightsRelationDetail['pairs']>[number];
@@ -76,7 +76,8 @@ export function RelationDetailScreen() {
       <AppText muted numeric variant="caption">{scope}Cada punto es un día. No marca un rango ideal.</AppText>
       {some ? <AppText muted variant="caption">Los números de esta relación ya cuentan todos los días.</AppText> : null}
     </View> : null}
-    {item.definition.family === 'body' ? <InsightRow label="Ver tu peso en Cuerpo" spoken="Ver tu peso en Cuerpo" onPress={() => router.push('/(tabs)/progress/trends/body')} /> : null}
+    {item.definition.family === 'body' ? <InsightRow label="Ver tu peso en Cuerpo" detail={pairs.length ? 'En los mismos días de esta relación' : undefined} spoken="Ver tu peso en Cuerpo, en los mismos días de esta relación"
+      onPress={() => router.push(bodyWeightHref(pairs.length ? { from: pairs[0]!.date, to: pairs.at(-1)!.date } : null, { relation }))} /> : null}
     {(item.definition.family === 'metric' || item.definition.family === 'sleep') && data.metrics.some(metric => metric.id === item.definition.subject)
       ? <InsightRow label="Ver tendencias de esta métrica" spoken={`Ver tendencias de ${data.metrics.find(metric => metric.id === item.definition.subject)!.name}`}
         onPress={() => router.push(metricTrendHref(item.definition.subject, newestFirst[0]?.date ?? null, { relation }))} /> : null}

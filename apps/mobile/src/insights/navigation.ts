@@ -1,5 +1,5 @@
 import { isNutritionDate } from '@/api/nutrition-day';
-import { calendarRange } from '@/progress/progress-range';
+import { PROGRESS_MAX_DAYS, addDays, calendarRange, daysBetween } from '@/progress/progress-range';
 
 /** What Insights was showing. Every value is checked on the way back: a route parameter is never trusted as an address. */
 export type InsightsOrigin = { view?: 'exercises'; family?: string; relations?: '1'; date?: string; session?: string; relation?: string };
@@ -36,6 +36,16 @@ export function metricTrendHref(metric: string, date: string | null, origin: Ins
 
 /** The Nutrition day of that date. Crossing tabs loses the way back, so the origin travels along, as with a metric. */
 export const nutritionDayHref = (date: string, origin: InsightsOrigin) => ({ pathname: '/(tabs)/nutrition' as const, params: { date, insightsReturn: '1', ...hrefParams(origin) } });
+
+/**
+ * The weight in Cuerpo over the days Insights was looking at: the month of one day, or the span of a relation's days (its newest
+ * year at most, the longest period Progreso reads). Without dates the period the person already had stays. The origin travels along.
+ */
+export function bodyWeightHref(range: { from: string; to: string } | null, origin: InsightsOrigin) {
+  const from = range && daysBetween(range.from, range.to) > PROGRESS_MAX_DAYS ? addDays(range.to, 1 - PROGRESS_MAX_DAYS) : range?.from;
+  return { pathname: '/(tabs)/progress/trends/body' as const, params: { metric: 'body.weight', ...(range ? { from: from!, to: range.to } : {}), insightsReturn: '1', ...hrefParams(origin) } };
+}
+export const dayWeightHref = (date: string, origin: InsightsOrigin) => { const month = calendarRange('month', date); return bodyWeightHref({ from: month.start, to: month.end }, origin); };
 
 /** Where "Volver a Insights" goes, if this route was opened from there. */
 export function insightsReturnHref(params: Params) {

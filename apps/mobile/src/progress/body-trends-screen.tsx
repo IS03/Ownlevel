@@ -20,6 +20,8 @@ import { PROGRESS_UNITS, periodHeading, shortRange, type ProgressUnit } from './
 import { arrowDelta, formatValue, trendText } from './progress-format';
 import { useCachedRead } from '@/api/use-cached-read';
 import { ProgressReadStatus } from './progress-read-status';
+import { ReturnToInsights } from '@/insights/return-to-insights';
+import { useProgressRouteRange } from './use-progress-route-range';
 
 const LONGER: Partial<Record<ProgressUnit, ProgressUnit>> = { week: '3m', '2w': '3m', '3w': '3m', month: '3m', '3m': '6m', '6m': 'year' };
 
@@ -48,6 +50,8 @@ function Selected({ metric, excluded }: { metric: ProgressBodyMetric; excluded: 
   const stages = useNutritionStages()?.state.list;
   const bands = metric.key === 'body.weight' ? chartBands(stages, metric.observations.map(o => o.date)) : [];
   const count = metric.observations.length;
+  // A stored weight of 0 kg is not a weight, but the server still counts it: said where it is, never hidden or re-computed here.
+  const zeros = metric.key === 'body.weight' ? metric.observations.filter(o => o.value <= 0) : [];
   const plain = (v: number) => formatValue(v, null);
   // The trend line only when it adds to the arrow: records that zig-zag, or only two of them.
   const trendNote = metric.trend === 'variable' || metric.confidence === 'limited' ? trendText(metric.trend, metric.confidence) : null;
@@ -66,7 +70,7 @@ function Selected({ metric, excluded }: { metric: ProgressBodyMetric; excluded: 
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
         <View style={styles.grow}>
           <AppText numeric variant="largeTitle">{arrowDelta(metric.change, metric.unit)}</AppText>
-          <AppText muted numeric variant="caption">{metric.first ? `${within} · desde ${formatValue(metric.first.value, metric.unit)}` : within}</AppText>
+          <AppText muted numeric variant="caption">{metric.first ? `${within} · desde ${formatValue(metric.first.value, metric.unit)} el ${day(metric.first.date)}` : within}</AppText>
           {compareText ? <AppText numeric variant="caption">{compareText} {metric.referenceChange === null
             ? `sin cambio medible (${metric.referenceCount} registro${metric.referenceCount === 1 ? '' : 's'})` : arrowDelta(metric.referenceChange, metric.unit)}</AppText> : null}
         </View>
@@ -82,6 +86,9 @@ function Selected({ metric, excluded }: { metric: ProgressBodyMetric; excluded: 
         hint: 'Abre el día en Historial', onPress: () => router.push({ pathname: '/history/day/[date]', params: { date: o.date } }),
       }))} /></View>
     </>}
+    {zeros.length ? <AppText muted numeric variant="caption" testID="body-trend-zero">
+      {zeros.length === 1 ? `El pesaje del ${day(zeros[0]!.date)} está en 0 kg` : `${zeros.length} pesajes están en 0 kg`}: no es un peso, pero hoy entra en el cambio. Corregilo en tus pesajes.
+    </AppText> : null}
     {trendNote || excluded > 0 ? <AppText muted variant="caption">
       {trendNote}{excluded > 0 ? `${trendNote ? ' ' : ''}${excluded} medición sospechosa excluida; podés corregirla en Cuerpo.` : ''}
     </AppText> : null}
@@ -130,12 +137,12 @@ function Content({ data, selected, body }: { data: ProgressBody; selected: strin
  * Cuerpo (P5), the only Body screen: values inside the period, a dot per real record (no smoothing, no interpolation,
  * no body fat), the records to correct right under them, and one floating "+" to load a weight or measures here.
  */
-export function BodyTrendsScreen() {
+function BodyTrends() {
   const { client } = useMobileApi();
   const { session } = useMobileAuth();
   const { colors } = useOwnlevelTheme();
   const { query, compare } = useProgressRange();
-  const params = useLocalSearchParams<{ metric?: string; registrar?: string }>();
+  const params = useLocalSearchParams<{ metric?: string; registrar?: string; insightsReturn?: string }>();
   const selected = typeof params.metric === 'string' && params.metric ? params.metric : null;
   const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressBody(c, query, signal, compare), [query, compare]);
   const { state, data, refresh } = useCachedRead(client, 'body', progressRequestKey(query, compare), load);
@@ -154,6 +161,9 @@ export function BodyTrendsScreen() {
   const editable = !!body?.state.read.overview && body.state.phase === 'idle' && !body.state.intent && !body.state.editor;
   return <><ProgressScroll title={title} testID="body-trends-screen" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing}
     onRefresh={() => { void refresh(); void body?.controller.load(); }} tintColor={colors.primary} />}>
+    <ReturnToInsights />
+    {/* Insights reads the weight of a day: it says nothing about when you weighed in, before or after training. */}
+    {params.insightsReturn === '1' ? <AppText muted variant="footnote" testID="body-from-insights">El peso de un día no dice si te pesaste antes o después de entrenar.</AppText> : null}
     <ProgressReadStatus state={state} />
     {body ? <BodyStatus state={body.state} controller={body.controller} /> : null}
     {state.status === 'loading' ? <SkeletonBlock height={200} />
@@ -171,6 +181,11 @@ export function BodyTrendsScreen() {
     ]} />
     <BodyEditors state={body.state} controller={body.controller} />
   </> : null}</>;
+}
+/** A link can bring a period along (from Insights, the month of a day or the days of a relation). It applies before the first read. */
+export function BodyTrendsScreen() {
+  const applied = useProgressRouteRange();
+  return applied ? <BodyTrends /> : <SkeletonBlock height={200} />;
 }
 const styles = StyleSheet.create({
   section: { gap: spacing.sm },
