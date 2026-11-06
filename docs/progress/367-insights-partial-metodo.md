@@ -223,10 +223,67 @@ Está dentro de la variación entre corridas de este equipo. No hay una mejora n
 - **Prueba dirigida:** `memory.test.ts` reconstruye los hechos desde la salida completa de cada comparador, como lo hacía el código anterior, y los compara con la instantánea.
 - **Pruebas del motor, contrato y comparador:** 296 pasan. Insights en Mobile: 49.
 
-**Sigue fuera de presupuesto**
+**Sigue fuera de presupuesto** (al cerrar #407; ver la salida compacta abajo)
 - **Pico residente a 10 años:** unos 213 MiB, sin cambio. Lo fija el trabajo interno de cada comparador. Medido solo, el parcial lleva el residente a 109 MiB sobre la base, contando las sesiones adaptadas.
 - **Bajarlo exige otro cambio, más grande:** que el comparador ofrezca un modo que no materialice evidencia, volúmenes ni copias de series para quien solo usa estado, motivo, referencia y récord. Ese cambio toca `performance-insights` y necesita su propia equivalencia. No se hizo aquí.
 - **Sin cambios:** la lectura en frío (268 consultas) y el detalle de una relación (258 KiB).
+
+## Salida compacta del comparador, 2026-11
+
+Medido sobre main `2eb08b1` (con #407) y sobre `codex/367-comparator-compact`, con el mismo equipo, datos y procedimiento.
+
+**Qué cambió**
+- **Opción nueva:** `output: "compact"` en `buildPerformanceInsightsV1`, `buildPerformanceInsightsPartialV1` y `compareSessions`.
+- **Lo que no cambia:**
+  - es el mismo recorrido, la misma selección de referencias, los mismos récords y las mismas exclusiones;
+  - la clasificación sale de una función compartida, `classify`, y la evidencia se sigue calculando porque de ella sale el estado.
+- **Lo que no se entrega:**
+  - la exposición actual y la de la referencia, con sus copias de series;
+  - la evidencia;
+  - los volúmenes.
+  - De los récords se entregan sus hechos.
+- **Quién la usa:** solo Insights la pide. Los demás consumidores, y el valor por defecto, siguen recibiendo la salida completa.
+
+**Pico residente** (cinco corridas, máximo menos el residente con la fuente construida)
+
+| Perfil | Antes | Después |
+| --- | --- | --- |
+| 1 año, método 2 | 40,5 MiB | 39,4 MiB |
+| 5 años, método 2 | 81,8 MiB | 71,2 MiB |
+| 10 años, método 2 | **213,7 MiB** | **169,8 MiB** |
+| 10 años, método 1 | 213,4 MiB | 166,0 MiB |
+| 10 años, configuración capturada | 179,3 MiB | 139,7 MiB |
+
+**Piso de heap** (10 años, método 2, con las relaciones de los dos métodos)
+- **Antes:** 180 MiB en 5 de 5 corridas; 175 MiB en 4 de 5; 170 MiB en 0 de 3.
+- **Después:** 135 MiB en 4 de 4; 130 MiB en 2 de 4; 128 y 125 MiB en 0 de 2.
+- **Resultado:** unos 45 MiB menos de memoria viva necesaria.
+
+**Retenida:** sin cambio (13,1 MiB a 10 años con el método 2). La salida reducida de #407 ya no guardaba evidencia.
+
+**Tiempo** (10 años, mediana):
+- instantánea: 1093 → 1090 ms;
+- relaciones: 1093 → 1058 ms.
+
+Dentro del ruido: no hay costo medible.
+
+**Consultas y respuestas:** sin cambio (268 consultas; 123,9 / 89,8 / 29,4 / 258,1 KiB).
+
+**Equivalencia**
+- **Proyección:** la compacta es exactamente la proyección de la completa (`compact-output.test.ts`).
+  - Se comprueba en 30 historiales desordenados, con las dos reglas de contexto, los dos niveles de detalle, con y sin índice, y con historial disponible o no.
+  - También en el método parcial.
+  - Los historiales alcanzan cada estado, empates, récords, configuración desconocida, referencias con problema y los cuatro modos de carga.
+- **Salida completa:** el hash de la salida completa del comparador es idéntico en main y en la rama, en 401 de 401 combinaciones.
+- **Vistas de Insights:** 53 de 53 hashes iguales (`equivalence-fingerprint.test.ts`).
+
+**Sigue fuera de presupuesto**
+- **Pico residente a 10 años:** 170 MiB, contra un presupuesto de 128. El resto es el trabajo que el algoritmo sí necesita:
+  - las exposiciones preparadas de todas las sesiones, con sus series;
+  - los índices por ejercicio y contexto;
+  - el contexto de exposición.
+- **Para bajarlo más** hay que cambiar cómo se recorre la historia, por ejemplo por ejercicio y no todas las sesiones a la vez. Es un cambio de arquitectura del comparador; no se hizo.
+- **Producción:** no se midió en la función real de Vercel.
 
 ## Qué sigue valiendo
 
