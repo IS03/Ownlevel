@@ -29,12 +29,15 @@ const counts = (v: unknown) => object(v) && ["improved", "observedStable", "decl
 const tally = (v: unknown) => object(v) && Object.values(v).every(count);
 const recorded = (v: unknown) => object(v) && finite(v.recorded) && count(v.missing);
 const nutrition = (v: unknown) => v === null || (object(v) && count(v.activeMeals) && recorded(v.calories) && recorded(v.proteinG) && recorded(v.carbsG) && recorded(v.fatG));
+const FEELING_KEY = new Set(["energyPre", "fatiguePre", "energyPost", "fatiguePost"]);
 const feeling = (v: unknown) => object(v) && count(v.value) && TIMING.has(String(v.timing)) && (v.temporalQuality === "unknown" || v.temporalQuality === "unverified_client_clock");
 const exercise = (v: unknown) => object(v) && uuid(v.exerciseId) && typeof v.name === "string" && STATUS.has(String(v.status)) && typeof v.reason === "string"
   && stringOrNull(v.referenceSessionId) && numberOrNull(v.referenceAgeDays) && typeof v.newHigh === "boolean";
 const session = (v: unknown) => object(v) && typeof v.sessionId === "string" && stringOrNull(v.name) && stringOrNull(v.routineId) && stringOrNull(v.routineName)
   && stringOrNull(v.startedAt) && stringOrNull(v.endedAt) && counts(v.counts) && list(v.exercises, exercise) && object(v.context)
   && object(v.context.feelings) && Object.values(v.context.feelings).every(feeling)
+  // Optional and added later: a client that does not know it ignores it, and one that does never reads it as "not recorded".
+  && (v.context.unreadableFeelings === undefined || list(v.context.unreadableFeelings, key => FEELING_KEY.has(String(key))))
   && object(v.context.legacy) && numberOrNull(v.context.legacy.energyLevel) && numberOrNull(v.context.legacy.performanceLevel) && numberOrNull(v.context.legacy.painLevel)
   && object(v.context.carbsPre3h) && numberOrNull(v.context.carbsPre3h.value) && CARBS.has(String(v.context.carbsPre3h.state));
 const day = (v: unknown) => object(v) && date(v.date) && counts(v.counts) && count(v.evaluableSessions) && numberOrNull(v.declineProportion) && numberOrNull(v.equalSessionSensitivity)

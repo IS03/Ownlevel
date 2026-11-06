@@ -62,6 +62,18 @@ Todo esto *requiere la migración de sueño y peso* y, en Mobile, una build.
 - [ ] **Corrección:** cambiar el peso o el sueño de un día ya mostrado actualiza la relación al volver a abrirla.
 - [ ] **Texto grande, VoiceOver y Reducir movimiento** en esas pantallas.
 
+## Contexto diario completo
+Requiere una build de Mobile con `codex/367-day-context`. No requiere migración.
+- [ ] **Una sesión:** el día muestra su nombre y horario, «Antes de entrenar» y «Al terminar», y una sola vez «Alimentación registrada ese día» y «Métricas de ese día».
+- [ ] **Dos sesiones el mismo día:** aparecen las dos, en el orden en que empezaron, cada una con sus propias sensaciones. Calorías, métricas y peso aparecen una sola vez, no debajo de cada sesión.
+- [ ] **Sin horario:** si a una sesión le falta la hora de inicio, dice «Sin horario» y el día dice «No sabemos en qué orden fueron».
+- [ ] **Sensaciones:** sin respuestas dice «Sin registrar». Una previa respondida después de empezar lo aclara debajo. Una energía vieja aparece como «registro anterior», nunca como «Al terminar».
+- [ ] **Macros:** con una comida sin carbohidratos, el total dice «parcial» y cuántas comidas no tienen el dato. Un cero cargado se ve como 0 g. Un día sin comidas dice «Sin comidas registradas».
+- [ ] **Desde el resumen post-entreno:** se abre esa sesión, y entre las sesiones del día se marca «Esta sesión».
+- [ ] **Nutrición:** «Ver Nutrición de ese día» abre esa fecha, y «Volver a Insights» vuelve a la misma sesión o al mismo día abierto.
+- [ ] **Corrección:** cambiar una comida o una sensación de un día ya mostrado actualiza el contexto al volver, sin mezclar datos viejos y nuevos.
+- [ ] **Texto grande, VoiceOver y Reducir movimiento:** las filas se apilan sin cortarse; VoiceOver lee el nombre, el horario y si es la sesión de origen.
+
 ## Después de las migraciones
 - [ ] *Requiere migración.* **Hora de comida (#388):** elegir la hora la declara, incluso con el mismo valor. Abrir una edición, mover de día o repetir una comida no declara nada.
 - [ ] *Requiere migración.* **Ventana previa (#389):** una comida con hora declarada cuenta; una con reloj automático no.

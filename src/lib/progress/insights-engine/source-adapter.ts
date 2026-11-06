@@ -71,15 +71,17 @@ const FEELING_KEYS: readonly FeelingKey[] = ["energyPre", "fatiguePre", "energyP
 /** Validates again what the database guarantees. A malformed fact is excluded and counted, never read as absent. */
 export function parseSessionFeelings(facts: unknown, session: { startedAt: string | null; endedAt: string | null }, firstSetAt: number | null) {
   const values: Partial<Record<FeelingKey, SessionFeeling>> = {};
+  // Which answers exist but cannot be read: shown as unreadable, never as "not recorded". The count of exclusions is unchanged.
+  const unreadable: FeelingKey[] = [];
   let invalid = 0;
-  if (!facts || typeof facts !== "object" || Array.isArray(facts)) return { values, invalid: 1 };
+  if (!facts || typeof facts !== "object" || Array.isArray(facts)) return { values, invalid: 1, unreadable: [...FEELING_KEYS] };
   for (const key of FEELING_KEYS) {
     const raw = (facts as Record<string, unknown>)[key];
     if (raw === undefined) continue;
     const fact = raw as { value?: unknown; capturedAt?: unknown; declaredMoment?: unknown };
     const pre = key.endsWith("Pre");
     if (!raw || typeof raw !== "object" || typeof fact.value !== "number" || !Number.isInteger(fact.value) || fact.value < 1 || fact.value > 5
-      || fact.declaredMoment !== (pre ? "pre" : "post") || (fact.capturedAt !== null && typeof fact.capturedAt !== "string")) { invalid++; continue; }
+      || fact.declaredMoment !== (pre ? "pre" : "post") || (fact.capturedAt !== null && typeof fact.capturedAt !== "string")) { invalid++; unreadable.push(key); continue; }
     const captured = typeof fact.capturedAt === "string" ? instantMs(fact.capturedAt) : null;
     const start = instantMs(session.startedAt), end = instantMs(session.endedAt);
     const timing: SessionFeeling["timing"] = !pre ? "post_declared" : captured === null ? "unknown"
@@ -87,5 +89,5 @@ export function parseSessionFeelings(facts: unknown, session: { startedAt: strin
       : firstSetAt !== null && captured <= firstSetAt ? "before_first_set" : firstSetAt !== null ? "after_first_set" : "unknown";
     values[key] = { value: fact.value, timing, temporalQuality: captured === null ? "unknown" : "unverified_client_clock" };
   }
-  return { values, invalid };
+  return { values, invalid, unreadable };
 }

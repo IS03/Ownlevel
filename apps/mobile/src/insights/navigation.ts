@@ -34,6 +34,9 @@ export function metricTrendHref(metric: string, date: string | null, origin: Ins
   return { pathname: '/(tabs)/progress/trends/metrics' as const, params: { metric, ...(range ? { from: range.start, to: range.end } : {}), insightsReturn: '1', ...hrefParams(origin) } };
 }
 
+/** The Nutrition day of that date. Crossing tabs loses the way back, so the origin travels along, as with a metric. */
+export const nutritionDayHref = (date: string, origin: InsightsOrigin) => ({ pathname: '/(tabs)/nutrition' as const, params: { date, insightsReturn: '1', ...hrefParams(origin) } });
+
 /** Where "Volver a Insights" goes, if this route was opened from there. */
 export function insightsReturnHref(params: Params) {
   if (params.insightsReturn !== '1') return null;

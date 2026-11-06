@@ -1,4 +1,5 @@
 import type { AssociationResult, DayFact, ExerciseSummary, InsightsSummary, PartialAssociationResult, PartialDayFact, PartialExerciseSummary, PartialRelationSummary, RelationSummary } from '@/api/performance-insights';
+import { formatClockTime } from '@/home/format';
 import { formatValue } from '@/progress/progress-format';
 
 /** Pure presentation of the Insights read model. It never adds across methods and never computes a relation on the client. */
@@ -206,17 +207,76 @@ export function dayLabel(date: string) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 const CARBS: Record<string, string> = { no_registered_meal: 'Sin comidas con hora', partial_macro: 'Alguna comida sin ese dato', untimed_meal_in_scope: 'Comidas sin hora', unverified_meal_time_in_scope: 'Hay comidas, pero no sabemos si esa fue la hora', no_start_time: 'Sin hora de inicio' };
-/** What was recorded around the training. If it was not recorded it says so: never a zero. */
-export function contextRows(day: DayFact, metrics: readonly Metric[], session: DayFact['sessions'][number] | undefined = day.sessions[0]) {
-  const rows: { key: string; label: string; value: string; metricId?: string }[] = [];
-  if (session) {
-    const feelings = session.context.feelings;
-    for (const key of ['energyPre', 'fatiguePre', 'energyPost', 'fatiguePost'] as const) rows.push({ key, label: FEELING[key]!, value: feelings[key] ? `${feelings[key]!.value} de 5` : 'Sin registrar' });
-    const carbs = session.context.carbsPre3h;
-    rows.push({ key: 'carbs', label: 'Carbohidratos registrados, 3 h antes', value: carbs.state === 'recorded' && carbs.value !== null ? formatValue(carbs.value, 'g') : CARBS[carbs.state] ?? 'Sin registrar' });
+type Session = DayFact['sessions'][number];
+export type ContextRow = { key: string; label: string; value: string; detail?: string; spoken?: string; metricId?: string };
+const instant = (iso: string | null) => iso === null ? null : Number.isFinite(Date.parse(iso)) ? Date.parse(iso) : null;
+
+/**
+ * The day's sessions in the order they started, only when that order is known: every start readable and none tied. Otherwise
+ * the server's stable order stays and orderKnown is false, so the screen never numbers or sequences them.
+ */
+export function daySessions(day: Pick<DayFact, 'sessions'>): { sessions: Session[]; orderKnown: boolean } {
+  const starts = day.sessions.map(session => instant(session.startedAt));
+  const known = starts.every(start => start !== null) && new Set(starts).size === starts.length;
+  if (!known) return { sessions: [...day.sessions], orderKnown: day.sessions.length < 2 };
+  return { sessions: day.sessions.map((session, index) => ({ session, start: starts[index]! })).sort((a, b) => a.start - b.start).map(row => row.session), orderKnown: true };
+}
+export const sessionName = (session: Pick<Session, 'routineName' | 'name'>) => session.routineName ?? session.name ?? 'Sesión';
+/** Clock time where it was recorded, in the app's time zone. Without a start there is no time to show, never a guessed one. */
+export function sessionTime(session: Pick<Session, 'startedAt' | 'endedAt'>) {
+  const start = instant(session.startedAt), end = instant(session.endedAt);
+  if (start === null) return 'Sin horario';
+  return end !== null && end >= start ? `${formatClockTime(session.startedAt!)}–${formatClockTime(session.endedAt!)}` : `Desde ${formatClockTime(session.startedAt!)}`;
+}
+
+const LATE: Partial<Record<string, string>> = { after_first_set: 'Respondida después de empezar', after_end: 'Respondida al terminar', unknown: 'No sabemos cuándo se respondió' };
+/**
+ * Before and after, one row each. Not recorded, unreadable and answered late stay distinct. The legacy energy has no moment
+ * of its own, so it is its own row and never stands in for the energy at the end.
+ */
+export function sessionRows(session: Session): ContextRow[] {
+  const { feelings, unreadableFeelings = [], legacy, carbsPre3h } = session.context;
+  const rows: ContextRow[] = [];
+  const part = (key: 'energyPre' | 'fatiguePre' | 'energyPost' | 'fatiguePost', name: string) =>
+    feelings[key] ? `${name} ${feelings[key]!.value} de 5` : unreadableFeelings.includes(key) ? `${name} no se pudo leer` : `${name} sin registrar`;
+  const anyFeeling = Object.keys(feelings).length > 0 || unreadableFeelings.length > 0;
+  if (!anyFeeling) rows.push({ key: 'feelings', label: 'Sensaciones', value: 'Sin registrar' });
+  else for (const [moment, label, energy, fatigue] of [['pre', 'Antes de entrenar', 'energyPre', 'fatiguePre'], ['post', 'Al terminar', 'energyPost', 'fatiguePost']] as const) {
+    const value = `${part(energy, 'Energía')} · ${part(fatigue, 'Fatiga')}`;
+    // Only an answer before starting has a moment to check. A late one stays visible, with when it was given.
+    const late = moment === 'pre' ? [...new Set([feelings[energy]?.timing, feelings[fatigue]?.timing].map(timing => timing && LATE[timing]).filter(Boolean))].join('. ') : '';
+    rows.push({ key: `feelings-${moment}`, label, value, ...(late ? { detail: late } : {}), spoken: `${label}: ${value.replace(' · ', ', ')}${late ? `. ${late}` : ''}` });
   }
+  if (legacy.energyLevel !== null) rows.push({ key: 'legacy-energy', label: 'Energía, registro anterior', value: `${legacy.energyLevel} de 5`, detail: 'Sin momento: no es la energía al terminar' });
+  rows.push({ key: 'carbs', label: 'Carbohidratos registrados, 3 h antes', value: carbsPre3h.state === 'recorded' && carbsPre3h.value !== null ? formatValue(carbsPre3h.value, 'g') : CARBS[carbsPre3h.state] ?? 'Sin registrar' });
+  return rows;
+}
+/** The phone's clock dates each answer: said once, only where there is an answer before starting. */
+export const feelingClockNote = (sessions: readonly Session[]) => sessions.some(session => session.context.feelings.energyPre || session.context.feelings.fatiguePre)
+  ? 'El momento de cada respuesta sale del reloj del teléfono.' : null;
+
+const MACROS = [['calories', 'Calorías', 'kcal'], ['proteinG', 'Proteínas', 'g'], ['carbsG', 'Carbohidratos', 'g'], ['fatG', 'Grasas', 'g']] as const;
+/**
+ * The day's canonical totals, as the server summed them. A meal without a macro adds nothing to it: the total says it is
+ * partial and how many meals lack it. A known zero is a zero; no meals, or no meal with that macro, is "sin dato".
+ */
+export function nutritionRows(day: Pick<DayFact, 'context'>): ContextRow[] {
   const nutrition = day.context.nutrition;
-  rows.push({ key: 'calories', label: 'Calorías registradas', value: !nutrition ? 'Sin comidas registradas' : `${formatValue(nutrition.calories.recorded, 'kcal', 'integer')}${nutrition.calories.missing ? `, ${nutrition.calories.missing} sin dato` : ''}` });
+  if (!nutrition || nutrition.activeMeals === 0) return [{ key: 'meals', label: 'Comidas', value: 'Sin comidas registradas' }];
+  return MACROS.map(([key, label, unit]) => {
+    const { recorded, missing } = nutrition[key];
+    const amount = formatValue(recorded, unit, key === 'calories' ? 'integer' : 'decimal');
+    if (missing >= nutrition.activeMeals) return { key, label, value: 'Sin dato', spoken: `${label}: ninguna comida registrada tiene ese dato` };
+    if (!missing) return { key, label, value: amount };
+    const detail = `${missing} de ${nutrition.activeMeals} comidas sin ese dato`;
+    return { key, label, value: `${amount}, parcial`, detail, spoken: `${label}: ${amount}, total parcial, ${detail}` };
+  });
+}
+export const NUTRITION_SCOPE = 'Suma lo que registraste ese día. No dice si es todo lo que comiste ni si fue antes de entrenar.';
+
+/** What belongs to the whole day: one value each, however many sessions there were. If it was not recorded it says so: never a zero. */
+export function contextRows(day: DayFact, metrics: readonly Metric[]) {
+  const rows: ContextRow[] = [];
   for (const metric of day.context.metrics) {
     const known = metrics.find(row => row.id === metric.metricId);
     const night = metric.sleepNight === undefined ? '' : metric.sleepNight === 'declared' ? ', noche que terminó esa mañana' : ', sin noche declarada';

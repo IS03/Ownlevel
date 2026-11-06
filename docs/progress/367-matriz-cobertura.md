@@ -1,6 +1,6 @@
 # #367 — Matriz de cobertura de Insights
 
-Estado al 2026-11-07. #393, #394 y #395 ya están mergeados y desplegados. El sueño con noche declarada y el peso corporal están en `codex/367-sleep-weight-expand` y `codex/367-sleep-weight-adopt`, sin aplicar ni mergear: detalle en [367-sueno-peso.md](367-sueno-peso.md). Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya en código leído, no en que exista una tabla o una pantalla.**
+Estado al 2026-11-06. #393 a #395, y #397 y #398 (sueño y peso), están mergeados y desplegados: detalle en [367-sueno-peso.md](367-sueno-peso.md). El contexto diario completo (todas las sesiones y los cuatro macros) está en `codex/367-day-context`, sin mergear ni build. Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya en código leído, no en que exista una tabla o una pantalla.**
 
 **Código de referencia** (`src/lib/progress/insights-engine/`, salvo que se indique otra ruta):
 - `exposures.ts`: `buildExposureContext`, `buildExposureTable`, `mealCandidate`;
@@ -83,9 +83,10 @@ Estado al 2026-11-07. #393, #394 y #395 ya están mergeados y desplegados. El su
 - **Fuente:** sesiones con el mismo `day_logs.log_date`.
 - **Unidad y tiempo:** día.
 - **Cruce:** el resultado diario suma todas; la sensibilidad da igual peso a cada sesión.
-- **Estado: accesible como resultado, limitado como contexto.**
-  - Sensaciones y ventanas de comida se excluyen del día con `multiple_sessions_day`.
-  - El contexto del día en pantalla toma la primera sesión (`contextRows(day, metrics)` sin sesión).
+- **Estado: accesible como resultado y como contexto; limitado como asociación.**
+  - Sensaciones y ventanas de comida se excluyen del día con `multiple_sessions_day`. Mostrar todas las sesiones no cambia eso.
+  - **Contexto en pantalla** (`codex/367-day-context`): cada sesión con su nombre, horario, sensaciones y carbohidratos de 3 h, y una sola vez lo que es del día.
+  - **Orden:** el de inicio solo si todas tienen hora de inicio legible y sin empate. Si no, la pantalla dice que no sabe el orden y no numera.
 
 ### Sensaciones
 
@@ -103,7 +104,7 @@ Estado al 2026-11-07. #393, #394 y #395 ya están mergeados y desplegados. El su
 - **Unidad y tiempo:** sesión, declarada al terminar.
 - **Cruce:** ninguno.
 - **Estado: no expuesto como resultado.**
-  - Se guarda y la pantalla la muestra como contexto del día.
+  - Se guarda y la pantalla la muestra como contexto de su sesión, en cada sesión del día.
   - No es candidato ni resultado: usarla como antecedente invertiría el orden temporal.
 
 **Fatiga previa**
@@ -116,6 +117,12 @@ Estado al 2026-11-07. #393, #394 y #395 ya están mergeados y desplegados. El su
 - **Unidad y tiempo:** sesión, al terminar.
 - **Cruce:** ninguno.
 - **Estado: no expuesto como resultado.** Igual que la energía posterior.
+
+**Cómo se muestran** (`codex/367-day-context`)
+- **Sin registrar, ilegible y tardía son distintas.** Una respuesta mal formada sigue excluida y contada (`feeling_invalid`), y además la sesión la nombra en `context.unreadableFeelings`: se ve «no se pudo leer», nunca «sin registrar».
+- **Tardía:** una previa respondida después de empezar, al terminar o en un momento desconocido lo dice debajo de la fila.
+- **Energía heredada** (`workout_sessions.energy_level`): fila propia, «registro anterior», sin momento. Nunca pasa a ser energía posterior.
+- **Lectura no disponible:** si falla la lectura, falla la pantalla entera, como antes. No hay un vacío falso por sesión.
 
 **Energía anterior a #383** (`energy_level`)
 - **Fuente:** `workout_sessions.energy_level`.
@@ -135,7 +142,7 @@ Estado al 2026-11-07. #393, #394 y #395 ya están mergeados y desplegados. El su
   - **Tiempo:** `night_before`, cruzado con el entrenamiento del día D y con ningún otro día.
   - **Cruce:** resultado del día.
   - **Valores sin declarar:** `sleep_undeclared:*:same_day` y `previous_day`, aparte, con su límite visible. Nunca reutilizan una noche declarada.
-- **Estado: implementado y verificado en local; sin migración aplicada ni build.**
+- **Estado: accesible en producción** (migración `20261106024523`); Mobile pendiente de build.
   - **Historial:** sin backfill. Todo valor anterior queda sin convención.
   - **Clientes viejos:** no declaran, y una edición suya invalida una declaración anterior.
 
@@ -153,7 +160,7 @@ Estado al 2026-11-07. #393, #394 y #395 ya están mergeados y desplegados. El su
 - **Unidad:** día. Varias sesiones de un día aportan un solo valor.
 - **Tiempo:** `same_day_unordered`. No sabemos si se midió antes o después de entrenar: es contexto del día, no un antecedente.
 - **Cruce:** resultado del día, solo con el método 2.
-- **Estado: implementado y verificado en local; sin migración aplicada ni build.**
+- **Estado: accesible en producción;** Mobile pendiente de build.
   - Sin peso, peso cero e inválido quedan distintos.
   - No se usa una medición futura.
   - Nunca se confunde con la carga levantada.
@@ -173,9 +180,11 @@ Estado al 2026-11-07. #393, #394 y #395 ya están mergeados y desplegados. El su
 - **Unidad:** día.
 - **Tiempo:** `same_day`, sin orden, y `previous_day`.
 - **Cruce:** resultado del día.
-- **Estado: accesible como relación, parcial en el contexto.**
+- **Estado: accesible como relación y como contexto.**
   - Un macro faltante excluye el día (`partial_macro`); nunca se vuelve cero.
-  - La pantalla del día muestra solo calorías, no proteína, carbohidratos ni grasas.
+  - **Contexto en pantalla** (`codex/367-day-context`): calorías, proteínas, carbohidratos y grasas, del mismo `NutritionContext` que usa el motor. La pantalla no suma nada.
+  - **Estados:** cero conocido; «sin dato» cuando ninguna comida tiene ese macro; «parcial» con cuántas comidas no lo tienen; «sin comidas registradas».
+  - **Alcance:** el texto dice que suma lo registrado. No afirma que sea todo lo que se comió ni que haya sido antes de entrenar.
 
 **Comida antes de entrenar**
 - **Fuente:** comidas con hora **explícita** (`mealTimeEvidence` = `explicit`): declarada por la persona (`user_declared`) o importada.
@@ -252,10 +261,8 @@ Modelo y reglas: [367-exercise-configuration.md](367-exercise-configuration.md).
 
 **No se implementaron.**
 
-**1. Todas las sesiones y los cuatro macros en el contexto del día.** Es solo presentación: hoy la vista toma la primera sesión y solo las calorías.
-- No cambia el motor ni los denominadores.
-- Requiere ajustar `contextRows` y su contrato de vista.
-
-**2. Tendencias de peso.** Ventanas y cambios porcentuales, con su propia familia y su propia simulación.
+**1. Tendencias de peso.** Ventanas y cambios porcentuales, con su propia familia y su propia simulación.
 
 **Después:** decidir si las sensaciones posteriores se publican como un resultado propio, separado del rendimiento.
+
+**Hecho en `codex/367-day-context`:** todas las sesiones y los cuatro macros en el contexto del día. Es solo presentación, sin cambio de método.

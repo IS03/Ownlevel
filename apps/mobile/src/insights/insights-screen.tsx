@@ -9,9 +9,9 @@ import { AppIcon, AppText, Button, ChipGroup, ExampleFrame, Heading, InlineUnava
 import { haptics } from '@/platform/haptics';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
-import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, PARTIAL_LIMIT, contextRows, dayLabel, exerciseSentence, focusOf, heroCaption, heroOf, joinDays, nextDate, nothingComparable, primaryLane, readingRows, reasonText, relationGroups, relationName, relationState, sameRead, statusArrow, statusText, stripMarks, stripSummary, summarySpoken, summaryText, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
+import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, NUTRITION_SCOPE, PARTIAL_LIMIT, contextRows, dayLabel, daySessions, feelingClockNote, nutritionRows, sessionName, sessionRows, sessionTime, exerciseSentence, focusOf, heroCaption, heroOf, joinDays, nextDate, nothingComparable, primaryLane, readingRows, reasonText, relationGroups, relationName, relationState, sameRead, statusArrow, statusText, stripMarks, stripSummary, summarySpoken, summaryText, type ContextRow, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
 import { InsightRow } from './insight-row';
-import { insightsOriginOf, metricTrendHref, validSession } from './navigation';
+import { insightsOriginOf, metricTrendHref, nutritionDayHref, validSession } from './navigation';
 
 type View_ = 'days' | 'exercises';
 const VIEWS = [{ value: 'days', label: 'Días' }, { value: 'exercises', label: 'Ejercicios' }] as const;
@@ -20,22 +20,57 @@ const loadSummary = (client: MobileApiClient, signal: AbortSignal) => fetchInsig
 const loadRelations = (client: MobileApiClient, signal: AbortSignal) => fetchInsightsRelations(client, signal);
 
 /** Label and value on one line; with large text they stack and wrap instead of squeezing (IDENTIDAD.md § Dynamic Type). */
-export function FactRow({ label, value, spoken, arrow }: { label: string; value: string | number; spoken?: string; arrow?: string }) {
+export function FactRow({ label, value, spoken, arrow, detail }: { label: string; value: string | number; spoken?: string; arrow?: string; detail?: string }) {
   const { colors } = useOwnlevelTheme();
   const { fontScale } = useWindowDimensions();
   const stacked = fontScale > 1.3;
-  return <View accessible accessibilityLabel={spoken ?? `${label}: ${value}`} style={[styles.fact, stacked && styles.factStacked, { borderColor: colors.border }]}>
-    <AppText style={!stacked ? styles.flex : undefined}>{arrow ? `${arrow}  ` : ''}{label}</AppText>
+  return <View accessible accessibilityLabel={spoken ?? `${label}: ${value}${detail ? `. ${detail}` : ''}`} style={[styles.fact, stacked && styles.factStacked, { borderColor: colors.border }]}>
+    <View style={!stacked ? styles.flex : undefined}>
+      <AppText>{arrow ? `${arrow}  ` : ''}{label}</AppText>
+      {detail ? <AppText muted variant="footnote">{detail}</AppText> : null}
+    </View>
     <AppText muted numeric style={!stacked ? styles.factValue : undefined}>{value}</AppText>
   </View>;
 }
-/** What surrounded a training. A metric opens its own trends, on the month of that day. */
-function ContextList({ rows, date, onMetric }: { rows: ReturnType<typeof contextRows>; date: string; onMetric: (metricId: string, date: string) => void }) {
-  return <>{rows.map(row => row.metricId
+/** Recorded context. A metric opens its own trends, on the month of that day. */
+function ContextList({ rows, date, onMetric }: { rows: readonly ContextRow[]; date?: string; onMetric?: (metricId: string, date: string) => void }) {
+  return <>{rows.map(row => row.metricId && date && onMetric
     ? <InsightRow key={row.key} label={row.label} value={row.value} spoken={`${row.label}: ${row.value}. Ver tendencias`} onPress={() => onMetric(row.metricId!, date)} />
-    : <FactRow key={row.key} label={row.label} value={row.value} />)}</>;
+    : <FactRow key={row.key} label={row.label} value={row.value} detail={row.detail} spoken={row.spoken} />)}</>;
 }
 const Section = ({ title }: { title: string }) => <AppText muted variant="footnote" style={styles.section} accessibilityRole="header">{title}</AppText>;
+
+/** One session: who it was and when, then what was recorded in it. Opening it goes to its read-only detail. */
+function SessionBlock({ session, origin, router, children }: { session: SessionFact; origin: boolean; router: ReturnType<typeof useRouter>; children?: React.ReactNode }) {
+  const name = sessionName(session), time = sessionTime(session);
+  return <View style={styles.block} testID={`insights-day-session-${session.sessionId}`}>
+    <InsightRow heading label={name} detail={origin ? `${time} · Esta sesión` : time} spoken={`Abrir sesión ${name}, ${time}${origin ? ', esta sesión' : ''}`}
+      onPress={() => router.push({ pathname: '/(tabs)/train/history/[id]', params: { id: session.sessionId } })} />
+    <ContextList rows={sessionRows(session)} />
+    {children}
+  </View>;
+}
+/** Every session of the day. In the order they started only when that is known; otherwise the screen says it does not know. */
+function DaySessions({ day, originId = null, router, exercises }: { day: DayLanes; originId?: string | null; router: ReturnType<typeof useRouter>; exercises?: (session: SessionFact) => React.ReactNode }) {
+  const { sessions, orderKnown } = daySessions(day.strict);
+  const clock = feelingClockNote(sessions);
+  return <View style={styles.detail}>
+    {sessions.length > 1 ? <AppText muted variant="footnote" numeric testID="insights-day-order">{orderKnown ? `${sessions.length} sesiones, en el orden en que empezaron.` : `${sessions.length} sesiones. No sabemos en qué orden fueron.`}</AppText> : null}
+    {sessions.map(session => <SessionBlock key={session.sessionId} session={session} origin={session.sessionId === originId} router={router}>{exercises?.(session)}</SessionBlock>)}
+    {clock ? <AppText muted variant="caption">{clock}</AppText> : null}
+  </View>;
+}
+/** What belongs to the whole day, shown once: never repeated under each session as if each had its own. */
+function DayShared({ day, metrics, onMetric, onNutrition }: { day: DayLanes; metrics: InsightsSummary['metrics']; onMetric: (metricId: string, date: string) => void; onNutrition: (date: string) => void }) {
+  const rows = contextRows(day.strict, metrics);
+  return <View testID="insights-day-shared">
+    <Section title="Alimentación registrada ese día" />
+    <ContextList rows={nutritionRows(day.strict)} />
+    <AppText muted variant="caption" style={styles.note}>{NUTRITION_SCOPE}</AppText>
+    <InsightRow label="Ver Nutrición de ese día" spoken={`Ver Nutrición del ${dayLabel(day.date)}`} onPress={() => onNutrition(day.date)} />
+    {rows.length ? <><Section title="Métricas de ese día" /><ContextList rows={rows} date={day.date} onMetric={onMetric} /></> : null}
+  </View>;
+}
 
 function Strip({ days, lane }: { days: readonly DayLanes[]; lane: Lane }) {
   const { colors } = useOwnlevelTheme();
@@ -61,24 +96,20 @@ function ExerciseRows({ lane, session, partial, router }: { lane: Lane; session:
     onPress={() => router.push({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id: row.id, ...(session.routineId ? { routineId: session.routineId } : {}) } })} />)}</>;
 }
 
-function DayDetail({ day, model, router, onMetric }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter>; onMetric: (metricId: string, date: string) => void }) {
+type DayActions = { onMetric: (metricId: string, date: string) => void; onNutrition: (date: string) => void };
+function DayDetail({ day, model, router, onMetric, onNutrition }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter> } & DayActions) {
   const reduced = useReduceMotion();
   const lanes: Lane[] = [...(day.strictCounts.comparable > 0 ? ['strict' as const] : []), ...(day.partialCounts?.total ? ['partial' as const] : [])];
   return <Animated.View entering={reduced ? FadeIn.duration(motionDurations.fast) : FadeInDown.duration(motionDurations.base)} style={styles.detail}>
-    {day.strict.sessions.map(session => <View key={session.sessionId} style={styles.block}>
-      <InsightRow heading label={session.routineName ?? session.name ?? 'Sesión'} spoken={`Abrir sesión ${session.routineName ?? session.name ?? ''}`.trim()}
-        onPress={() => router.push({ pathname: '/(tabs)/train/history/[id]', params: { id: session.sessionId } })} />
-      {lanes.map(lane => <View key={lane}>
-        <Section title={LANE_TITLE[lane]} />
-        <ExerciseRows lane={lane} session={session} partial={day.partial?.sessions.find(row => row.sessionId === session.sessionId)} router={router} />
-      </View>)}
-    </View>)}
-    <Section title="Alrededor de ese entrenamiento" />
-    <ContextList rows={contextRows(day.strict, model.metrics)} date={day.date} onMetric={onMetric} />
+    <DaySessions day={day} router={router} exercises={session => lanes.map(lane => <View key={lane}>
+      <Section title={LANE_TITLE[lane]} />
+      <ExerciseRows lane={lane} session={session} partial={day.partial?.sessions.find(row => row.sessionId === session.sessionId)} router={router} />
+    </View>)} />
+    <DayShared day={day} metrics={model.metrics} onMetric={onMetric} onNutrition={onNutrition} />
   </Animated.View>;
 }
 
-function DayRow({ day, model, router, selected, onSelect, onMetric }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter>; selected: boolean; onSelect: (date: string | undefined) => void; onMetric: (metricId: string, date: string) => void }) {
+function DayRow({ day, model, router, selected, onSelect, onMetric, onNutrition }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter>; selected: boolean; onSelect: (date: string | undefined) => void } & DayActions) {
   const [open, setOpen] = useState(selected);
   // The selected day comes from the route: coming back to it finds it open.
   const [seen, setSeen] = useState(selected);
@@ -91,7 +122,7 @@ function DayRow({ day, model, router, selected, onSelect, onMetric }: { day: Day
     <InsightRow label={dayLabel(day.date)} value={value} expanded={open} detail={counts.comparable ? `↑ ${counts.up}  = ${counts.same}  ↓ ${counts.down}${limit ? ' · contexto parcial' : ''}` : undefined}
       spoken={`${dayLabel(day.date)}${day.openDay ? ', día en curso' : ''}: ${counts.comparable ? `${counts.comparable} de ${counts.total} comparables${limit}` : 'sin comparar'}`}
       onPress={() => { onSelect(open ? undefined : day.date); setOpen(!open); }} />
-    {open ? <DayDetail day={day} model={model} router={router} onMetric={onMetric} /> : null}
+    {open ? <DayDetail day={day} model={model} router={router} onMetric={onMetric} onNutrition={onNutrition} /> : null}
   </View>;
 }
 
@@ -196,6 +227,7 @@ export function InsightsScreen() {
   const focusLoading = !!focusId && !focus && (!readSettled || (needsDay && !shownFocusPage));
   const focusFailed = !!focusId && !focus && needsDay && shownFocusPage?.phase === 'failed';
   const openMetric = (metricId: string, date: string) => { haptics.selection(); router.push(metricTrendHref(metricId, date, { ...origin, date })); };
+  const openNutrition = (date: string) => { haptics.selection(); router.push(nutritionDayHref(date, { ...origin, date })); };
   const selectDay = (date: string | undefined) => router.setParams({ date });
   const setView = (value: View_) => { haptics.selection(); router.setParams({ view: value }); };
   const setFamily = (value: FamilyFilter) => { haptics.selection(); router.setParams({ family: value }); };
@@ -220,7 +252,7 @@ export function InsightsScreen() {
     <ExerciseSegmented accessibilityLabel="Ver por días o por ejercicios" value={view} options={VIEWS} onChange={setView} />
     {view === 'exercises' ? <Exercises model={data} router={router} /> : <>
       {focus ? <View style={styles.block} testID="insights-session">
-        <AppText muted>{dayLabel(focus.day.date)}{focus.day.openDay ? ' · en curso' : ''} · {focus.session.routineName ?? focus.session.name ?? 'Sesión'}</AppText>
+        <AppText muted numeric>{dayLabel(focus.day.date)}{focus.day.openDay ? ' · en curso' : ''} · {sessionName(focus.session)} · {sessionTime(focus.session)}</AppText>
         {focus.counts.comparable ? <AppText numeric variant="heroNumber" accessibilityLabel={`${focus.counts.comparable} de ${focus.counts.total} ${heroCaption(focus.lane)}`}>{focus.counts.comparable} de {focus.counts.total}</AppText> : <Heading level={2}>Todavía sin comparaciones</Heading>}
         {focus.counts.comparable ? <AppText muted>{heroCaption(focus.lane)}</AppText> : null}
         {focus.counts.comparable ? readingRows(focus.lane, focus.counts).map(row => <FactRow key={row.label} arrow={row.arrow} label={row.label} value={row.value} spoken={row.spoken} />) : null}
@@ -228,8 +260,9 @@ export function InsightsScreen() {
         {focus.lane === 'partial' ? <AppText muted variant="footnote" testID="insights-partial-limit">{PARTIAL_LIMIT}</AppText> : null}
         <Section title={LANE_TITLE[focus.lane]} />
         <ExerciseRows lane={focus.lane} session={focus.session} partial={focus.partial ?? undefined} router={router} />
-        <Section title="Alrededor de este entrenamiento" />
-        <ContextList rows={contextRows(focus.day.strict, data.metrics, focus.session)} date={focus.day.date} onMetric={openMetric} />
+        <Section title={focus.day.strict.sessions.length > 1 ? 'Sesiones de ese día' : 'Esta sesión'} />
+        <DaySessions day={focus.day} originId={focus.session.sessionId} router={router} />
+        <DayShared day={focus.day} metrics={data.metrics} onMetric={openMetric} onNutrition={openNutrition} />
       </View> : focusLoading ? <View testID="insights-session-loading" style={styles.block}><SkeletonBlock height={120} /><SkeletonBlock height={176} /></View>
         : focusFailed ? <InlineUnavailable message="No pudimos traer los hechos de esta sesión." actionLabel="Reintentar" onAction={() => setFocusAttempt(current => current + 1)} />
         : focusId ? <View style={styles.block} testID="insights-session-absent">
@@ -248,14 +281,15 @@ export function InsightsScreen() {
         <Heading level={2}>Todavía sin comparaciones</Heading>
         <AppText muted>{nothingComparable(data)}</AppText>
       </View>}
-      {hero ? <View>
-        <Section title="Alrededor de ese entrenamiento" />
-        <ContextList rows={contextRows(hero.day.strict, data.metrics)} date={hero.day.date} onMetric={openMetric} />
+      {hero ? <View testID="insights-hero-context">
+        <Section title={hero.day.strict.sessions.length > 1 ? 'Sesiones de ese día' : 'Esa sesión'} />
+        <DaySessions day={hero.day} router={router} />
+        <DayShared day={hero.day} metrics={data.metrics} onMetric={openMetric} onNutrition={openNutrition} />
       </View> : null}
       <Strip days={days} lane={stripLane} />
       <View>
         <Section title="Días" />
-        {days.map(day => <DayRow key={day.date} day={day} model={data} router={router} selected={!focusId && focusDate === day.date} onSelect={selectDay} onMetric={openMetric} />)}
+        {days.map(day => <DayRow key={day.date} day={day} model={data} router={router} selected={!focusId && focusDate === day.date} onSelect={selectDay} onMetric={openMetric} onNutrition={openNutrition} />)}
         {next ? <Button label={morePhase === 'loading' ? 'Cargando…' : 'Ver más días'} variant="secondary" disabled={morePhase === 'loading'} onPress={() => void loadMore()} /> : null}
         {morePhase === 'failed' ? <InlineUnavailable message="No pudimos traer más días." actionLabel="Reintentar" onAction={() => void loadMore()} /> : null}
         {pagesDropped ? <AppText muted variant="footnote" accessibilityLiveRegion="polite" testID="insights-changed">Tus datos cambiaron, así que actualizamos la lista.</AppText> : null}
@@ -286,4 +320,5 @@ const styles = StyleSheet.create({
   strip: { flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
   stripSlot: { flex: 1, justifyContent: 'flex-end' },
   coverage: { paddingTop: spacing.sm },
+  note: { paddingVertical: spacing.xs },
 });
