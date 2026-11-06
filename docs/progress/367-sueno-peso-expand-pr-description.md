@@ -7,7 +7,7 @@
 
 ## Qué agrega
 
-`supabase/migrations/20261107120000_sleep_night_and_body_weight_sources_expand.sql`, blob `c1470c85d825908d8a490b30f13e498109ffd96c`.
+`supabase/migrations/20261107120000_sleep_night_and_body_weight_sources_expand.sql`, blob `39644f101e44ac25b303278392523cb4456e928d`.
 
 **Tabla `daily_metric_value_conventions`:**
 - guarda la declaración de qué noche es un valor de sueño, atada a su `updated_at`, valor y fecha;
@@ -53,3 +53,7 @@ Pila local descartable `ownlevel-receipt-130a93f1`, con las 92 migraciones de `m
 
 - **La suite de #391 corrió antes de la corrección del identificador ambiguo.** Esa corrección está en los envoltorios, que la suite no ejercita; los triggers no cambiaron.
 - **Declarar con la escritura toma el bloqueo por cuenta de #391 al confirmar,** como cualquier valor de métrica. No lo medí con carga.
+
+
+## Corrección de revisión
+Se completó la cabecera de reversión con `drop function public.declare_sleep_nights_written(date, uuid[]);`, después de quitar los envoltorios y antes de quitar `declare_sleep_night_v1`. Solo cambió un comentario SQL y las referencias al blob. El SQL ejecutable es idéntico; la validación local publicada se conserva sin repetir campañas.

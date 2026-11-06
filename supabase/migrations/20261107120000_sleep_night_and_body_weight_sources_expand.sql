@@ -28,6 +28,7 @@
 --   drop trigger insights_source_weight_inserted on public.day_logs; drop trigger insights_source_weight_changed on public.day_logs;
 --   drop trigger insights_source_weight_deleted on public.day_logs;
 --   drop function public.mobile_mutate_nutrition_day_v2(jsonb, uuid[]); drop function public.save_daily_metric_values_v2(date, jsonb, boolean, uuid[]);
+--   drop function public.declare_sleep_nights_written(date, uuid[]);
 --   drop function public.declare_sleep_night_v1(date, uuid, timestamptz); drop table public.daily_metric_value_conventions;
 begin;
 
