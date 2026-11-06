@@ -11,6 +11,7 @@ import { AppState, RefreshControl, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { selectedRouteDate } from '@/history/navigation';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
+import { ReturnToInsights } from '@/insights/return-to-insights';
 import { useDomainDate } from '@/history/use-domain-date';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
@@ -74,6 +75,7 @@ function NutritionDayView({ revision, date, today, bottomClearance, onSelect, on
   }>
     <View style={styles.header}>
       <ReturnToHistoryDay />
+      <ReturnToInsights />
       <View style={styles.topBar}>
         <View style={styles.title}>
           <AppText muted variant="footnote">{selectedLabel}</AppText>

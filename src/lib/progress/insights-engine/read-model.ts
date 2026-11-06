@@ -130,6 +130,7 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
           status: exercise.status, reason: exercise.reason, referenceSessionId: exercise.reference?.sessionId ?? null,
           referenceAgeDays: exercise.reference ? Math.floor(exercise.reference.ageMs / DAY_MS) : null, newHigh: exercise.records.facts.some(fact => fact.isNewHigh) })),
         context: { feelings: table.feelingsBySession.get(session.sessionId) ?? {},
+          ...(context.unreadableFeelingsBySession.has(session.sessionId) ? { unreadableFeelings: context.unreadableFeelingsBySession.get(session.sessionId)! } : {}),
           legacy: { energyLevel: row?.legacyEnergyLevel ?? null, performanceLevel: row?.performanceLevel ?? null, painLevel: row?.painLevel ?? null },
           carbsPre3h: table.carbsPre3hBySession.get(session.sessionId) ?? { value: null, state: "no_start_time" } } };
     }),

@@ -1,7 +1,7 @@
 import type { PartialDay } from "../performance-insights/partial";
 import type { DailyPerformance } from "../performance-insights/types";
 import { instantMs, mealTimeEvidence, parseSessionFeelings } from "./source-adapter";
-import type { Candidate, CandidateDefinition, InsightsEngineMethod, InsightsSource, MealTimeEvidence, NutritionContext, ObservationRow, SessionFact, SessionFeeling, SleepNightEvidence } from "./types";
+import type { Candidate, CandidateDefinition, FeelingKey, InsightsEngineMethod, InsightsSource, MealTimeEvidence, NutritionContext, ObservationRow, SessionFact, SessionFeeling, SleepNightEvidence } from "./types";
 
 const HOUR = 3_600_000;
 /** Primary window fixed before any result, as a product decision rather than a physiological optimum. */
@@ -109,12 +109,14 @@ export function buildExposureContext(source: InsightsSource) {
     if (sessionId && at !== null && at < (firstSetAt.get(sessionId) ?? Infinity)) firstSetAt.set(sessionId, at);
   }
   const feelingsBySession = new Map<string, Partial<Record<string, SessionFeeling>>>();
+  const unreadableFeelingsBySession = new Map<string, FeelingKey[]>();
   for (const row of source.feelings) {
     const session = sessionById.get(row.sessionId);
     if (!session) { bump(exclusions, "feelings_without_session"); continue; }
     const parsed = parseSessionFeelings(row.facts, session, firstSetAt.get(row.sessionId) ?? null);
     for (let i = 0; i < parsed.invalid; i++) bump(exclusions, "feeling_invalid");
     feelingsBySession.set(row.sessionId, parsed.values);
+    if (parsed.unreadable.length) unreadableFeelingsBySession.set(row.sessionId, parsed.unreadable);
   }
   // The body domain keeps one weight per logical date. Several sessions of a day share it: it is one value of that day.
   const weightByDate = new Map<string, number | null>();
@@ -124,7 +126,7 @@ export function buildExposureContext(source: InsightsSource) {
     const byDate = sleepEvidence.get(row.metricId) ?? new Map<string, SleepNightEvidence>();
     byDate.set(row.date, row.sleepNight ?? "undeclared"); sleepEvidence.set(row.metricId, byDate);
   }
-  return { exclusions, nutritionByDate, series, metricsByDate, mealsByDate, sessionById, feelingsBySession, weightByDate, sleepEvidence };
+  return { exclusions, nutritionByDate, series, metricsByDate, mealsByDate, sessionById, feelingsBySession, unreadableFeelingsBySession, weightByDate, sleepEvidence };
 }
 /** Weight of a day as the body domain stores it: a positive number, or not a weight. Zero never means "nothing". */
 export function weightOfDay(value: number | null | undefined): { value: number | null; state: "recorded" | "not_recorded" | "invalid" } {

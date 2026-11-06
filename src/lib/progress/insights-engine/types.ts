@@ -105,6 +105,8 @@ export type SessionFact = {
   /** Context recorded around the training. Post feelings stay here and are never an exposure. */
   context: {
     feelings: Partial<Record<FeelingKey, SessionFeeling>>;
+    /** Answers that exist but could not be read. Present only when there is one: an absent key is "not recorded". */
+    unreadableFeelings?: FeelingKey[];
     legacy: { energyLevel: number | null; performanceLevel: number | null; painLevel: number | null };
     carbsPre3h: { value: number | null; state: "recorded" | "no_registered_meal" | "partial_macro" | "untimed_meal_in_scope" | "unverified_meal_time_in_scope" | "no_start_time" };
   };

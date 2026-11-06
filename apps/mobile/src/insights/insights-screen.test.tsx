@@ -173,7 +173,8 @@ describe('pantalla', () => {
     mockRead.mockImplementation(serve(history([8, 10, 9])));
     const view = await open(<InsightsScreen />);
     fireEvent.press(view.getAllByRole('button', { name: /comparables con contexto parcial/ })[0]!);
-    fireEvent.press(view.getByRole('button', { name: 'Abrir sesión Empuje' }));
+    // The hero's day and the open day are the same: both name the session with its time.
+    fireEvent.press(view.getAllByRole('button', { name: 'Abrir sesión Empuje, 15:00–16:00' })[0]!);
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/history/[id]', params: { id: 's2' } });
     fireEvent.press(view.getByRole('button', { name: /^Press banca, registro inferior con contexto parcial/ }));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id: EX, routineId: 'r1' } });
