@@ -22,6 +22,11 @@ Completa lo que faltaba para entender una sesión recién terminada. Solo presen
 - **Vista de una sesión:**
   - cada método va en su sección, con su propio denominador («1 de 1 ejercicios comparables con contexto parcial») y el límite del parcial;
   - nunca se suman.
+- **Resultados sin comparables** (revisión de #410):
+  - **Carril estricto:** se muestra cuando tiene un ejercicio propio, aunque esté mezclado o sin comparar. Propio quiere decir con configuración conocida: uno que el método parcial no contiene. Antes se ocultaba si no había comparables y existía el parcial.
+  - **Configuración desconocida:** nunca abre por sí sola el carril estricto. Ahí figura como «sin comparar · todavía no sabemos si se hizo igual», nunca como una comparación.
+  - **Encabezado:** sin comparables dice «Todavía sin comparaciones» y su denominador («0 de 2 …»), y muestra igual «Mezclado» y «Sin comparar».
+  - **Detalle de un día:** usa la misma regla (`dayLanes`).
 - **Referencia compatible:** cada ejercicio comparado dice «Frente al martes 3 de marzo». VoiceOver lee «…, frente a la sesión del martes 3 de marzo». Un ejercicio sin comparar dice por qué.
 - **Contrato:**
   - `referenceDate`, opcional en `ExerciseFact` y `PartialExerciseFact`: la fecha lógica de la sesión de referencia;
@@ -46,6 +51,11 @@ Completa lo que faltaba para entender una sesión recién terminada. Solo presen
 ## Validación
 
 - **Pruebas nuevas:**
+  - **#410:**
+    - configuración conocida con señales cruzadas junto a una desconocida: los dos carriles, con sus denominadores;
+    - sesión sin comparables, con resultados mezclados y sin comparar, en el encabezado y en el día;
+    - sesión mixta con comparables, sin cambios;
+    - la configuración desconocida sola no abre el carril estricto;
   - modelo: filas separadas, métodos por sesión, texto de la referencia, sensaciones ordinales;
   - vista de la sesión abierta desde el post-entreno: dos métodos con sus denominadores, referencia con fecha, sensaciones ordinales con captura tardía, sin porcentajes ni causas;
   - resumen post-entreno: rótulo de la regla, sensaciones ordinales con su horario, sin respuestas;
@@ -55,7 +65,7 @@ Completa lo que faltaba para entender una sesión recién terminada. Solo presen
   - la de memoria, que reconstruye los hechos con la fecha.
 - **Pruebas que pasan:**
   - motor, comparador y contrato: 376;
-  - Mobile, Insights y post-entreno: 82.
+  - Mobile, Insights y post-entreno: 82 en la primera entrega y 69 en las suites afectadas por #410.
 - **Tipos y lint:** sin errores en Web y Mobile.
 
 ## Pendientes

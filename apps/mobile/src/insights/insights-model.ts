@@ -65,12 +65,28 @@ export function focusOf(days: readonly DayLanes[], sessionId: string): { day: Da
 }
 
 /**
- * The methods a session is shown in, each with its own counts: the strict one when it compared something (or there is nothing
- * partial), the partial one when it holds exercises. The first is the one `focusOf` leads with. They are never added.
+ * Whether the strict method holds an exercise of its own here. The partial method holds exactly the exercises whose
+ * configuration is unknown, so any other strict exercise has a known configuration: its result is strict evidence even when
+ * it is mixed or not compared. An exercise of unknown configuration never opens the strict lane on its own.
+ */
+function hasStrictEvidence(session: DayFact['sessions'][number], partial: PartialDayFact['sessions'][number] | null | undefined) {
+  const unknown = new Set((partial?.exercises ?? []).map(row => row.exerciseId));
+  return session.exercises.some(row => !unknown.has(row.exerciseId));
+}
+/**
+ * The methods a session is shown in, each with its own counts and denominator: the strict one when it holds an exercise of its
+ * own (compared or not) or there is nothing partial, the partial one when it holds exercises. They are never added.
  */
 export function sessionLanes(session: DayFact['sessions'][number], partial: PartialDayFact['sessions'][number] | null): { lane: Lane; counts: Counts }[] {
   const strict = strictCounts(session.counts), other = partial ? partialCounts(partial.counts) : null;
-  return [...(strict.comparable > 0 || !other?.total ? [{ lane: 'strict' as const, counts: strict }] : []), ...(other?.total ? [{ lane: 'partial' as const, counts: other }] : [])];
+  const showStrict = strict.comparable > 0 || !other?.total || hasStrictEvidence(session, partial);
+  return [...(showStrict ? [{ lane: 'strict' as const, counts: strict }] : []), ...(other?.total ? [{ lane: 'partial' as const, counts: other }] : [])];
+}
+/** The same rule for a day: the strict lane is there when any of its sessions holds strict evidence of its own. */
+export function dayLanes(day: DayLanes): Lane[] {
+  const showStrict = day.strictCounts.comparable > 0 || !day.partialCounts?.total
+    || day.strict.sessions.some(session => hasStrictEvidence(session, day.partial?.sessions.find(row => row.sessionId === session.sessionId)));
+  return [...(showStrict ? ['strict' as const] : []), ...(day.partialCounts?.total ? ['partial' as const] : [])];
 }
 
 export function primaryLane(model: InsightsSummary): Lane { return model.facts.totals.comparable > 0 || model.partial.totals.comparable === 0 ? 'strict' : 'partial'; }

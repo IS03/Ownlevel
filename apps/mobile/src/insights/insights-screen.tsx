@@ -9,7 +9,7 @@ import { AppIcon, AppText, Button, ChipGroup, ExampleFrame, Heading, InlineUnava
 import { haptics } from '@/platform/haptics';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
-import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, NUTRITION_SCOPE, PARTIAL_LIMIT, contextRows, dayLabel, daySessions, referenceText, sessionLanes, feelingClockNote, nutritionRows, sessionName, sessionRows, sessionTime, exerciseSentence, focusOf, heroCaption, heroOf, joinDays, nextDate, nothingComparable, primaryLane, readingRows, reasonText, relationGroups, relationName, relationState, sameRead, statusArrow, statusText, stripMarks, stripSummary, summarySpoken, summaryText, type ContextRow, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
+import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, NUTRITION_SCOPE, PARTIAL_LIMIT, contextRows, dayLabel, dayLanes, daySessions, referenceText, sessionLanes, feelingClockNote, nutritionRows, sessionName, sessionRows, sessionTime, exerciseSentence, focusOf, heroCaption, heroOf, joinDays, nextDate, nothingComparable, primaryLane, readingRows, reasonText, relationGroups, relationName, relationState, sameRead, statusArrow, statusText, stripMarks, stripSummary, summarySpoken, summaryText, type ContextRow, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
 import { InsightRow } from './insight-row';
 import { dayWeightHref, insightsOriginOf, metricTrendHref, nutritionDayHref, validSession } from './navigation';
 
@@ -101,7 +101,7 @@ function ExerciseRows({ lane, session, partial, router }: { lane: Lane; session:
 
 function DayDetail({ day, model, router, onMetric, onNutrition, onBody }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter> } & DayActions) {
   const reduced = useReduceMotion();
-  const lanes: Lane[] = [...(day.strictCounts.comparable > 0 ? ['strict' as const] : []), ...(day.partialCounts?.total ? ['partial' as const] : [])];
+  const lanes: Lane[] = dayLanes(day);
   return <Animated.View entering={reduced ? FadeIn.duration(motionDurations.fast) : FadeInDown.duration(motionDurations.base)} style={styles.detail}>
     <DaySessions day={day} router={router} exercises={session => lanes.map(lane => <View key={lane}>
       <Section title={LANE_TITLE[lane]} />
@@ -258,13 +258,17 @@ export function InsightsScreen() {
         <AppText muted numeric>{dayLabel(focus.day.date)}{focus.day.openDay ? ' · en curso' : ''} · {sessionName(focus.session)} · {sessionTime(focus.session)}</AppText>
         {focus.counts.comparable ? <AppText numeric variant="heroNumber" accessibilityLabel={`${focus.counts.comparable} de ${focus.counts.total} ${heroCaption(focus.lane)}`}>{focus.counts.comparable} de {focus.counts.total}</AppText> : <Heading level={2}>Todavía sin comparaciones</Heading>}
         {focus.counts.comparable ? <AppText muted>{heroCaption(focus.lane)}</AppText> : null}
-        {focus.counts.comparable ? readingRows(focus.lane, focus.counts).map(row => <FactRow key={row.label} arrow={row.arrow} label={row.label} value={row.value} spoken={row.spoken} />) : null}
+        {/* Without a comparison the results still count: mixed evidence and no comparison stay visible, with their method. */}
+        {focus.counts.total ? <>
+          {focus.counts.comparable ? null : <AppText muted numeric variant="footnote" testID="insights-session-denominator">0 de {focus.counts.total} {heroCaption(focus.lane)}</AppText>}
+          {readingRows(focus.lane, focus.counts).map(row => <FactRow key={row.label} arrow={row.arrow} label={row.label} value={row.value} spoken={row.spoken} />)}
+        </> : null}
         {focus.counts.down ? <AppText muted variant="footnote">{EXPLAIN_DOWN}</AppText> : null}
         {focus.lane === 'partial' ? <AppText muted variant="footnote" testID="insights-partial-limit">{PARTIAL_LIMIT}</AppText> : null}
         {/* Each method apart, with its own words and denominator: the first one's counts are above, a second one brings its own. */}
-        {sessionLanes(focus.session, focus.partial).map(({ lane, counts }, index) => <View key={lane} testID={`insights-session-lane-${lane}`}>
+        {sessionLanes(focus.session, focus.partial).map(({ lane, counts }) => <View key={lane} testID={`insights-session-lane-${lane}`}>
           <Section title={LANE_TITLE[lane]} />
-          {index > 0 ? <>
+          {lane !== focus.lane ? <>
             <AppText muted numeric variant="footnote">{counts.comparable} de {counts.total} {heroCaption(lane)}</AppText>
             {readingRows(lane, counts).map(row => <FactRow key={row.label} arrow={row.arrow} label={row.label} value={row.value} spoken={row.spoken} />)}
             {lane === 'partial' ? <AppText muted variant="footnote">{PARTIAL_LIMIT}</AppText> : null}

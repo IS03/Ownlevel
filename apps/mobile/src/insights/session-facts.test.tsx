@@ -8,7 +8,7 @@ import type { DayFact } from '@/api/performance-insights';
 import { createInsightsSnapshot, insightsDaysPage, insightsSummary } from '../../../../src/lib/progress/insights-engine/read-model';
 import type { InsightsSource } from '../../../../src/lib/progress/insights-engine/types';
 import { InsightsScreen } from './insights-screen';
-import { exerciseSentence, readingRows, referenceText, sessionLanes } from './insights-model';
+import { dayLanes, exerciseSentence, joinDays, readingRows, referenceText, sessionLanes } from './insights-model';
 import { feelingTransition } from '@/training/feeling-transition';
 
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
@@ -45,6 +45,25 @@ function source(): InsightsSource {
       fatiguePre: { value: 3, capturedAt: `${dateAt(2)}T17:55:00.000Z`, declaredMoment: 'pre' },
       energyPost: { value: 4, capturedAt: `${dateAt(2)}T19:01:00.000Z`, declaredMoment: 'post' } } }] };
 }
+/**
+ * Sessions built from a spec: each exercise with its configuration (known: 'none'; unknown: null) and its sets as load × reps.
+ * Two sessions on two days, the second one is the one looked at.
+ */
+type Spec = { id: string; name: string; configuration: string | null; sets: [number, number][][] };
+function sourceOf(specs: Spec[]): InsightsSource {
+  const days = specs[0]!.sets.length;
+  const sessions = Array.from({ length: days }, (_, n) => ({ id: session(10 + n), date: dateAt(n), routineId: 'r', routineName: 'Empuje', name: null, status: 'completed' as const,
+    startedAt: `${dateAt(n)}T18:00:00.000Z`, endedAt: `${dateAt(n)}T19:00:00.000Z`, performanceLevel: null, painLevel: null, legacyEnergyLevel: null }));
+  const exercises: InsightsSource['exercises'][number][] = [], sets: InsightsSource['sets'][number][] = [];
+  for (const spec of specs) spec.sets.forEach((done, n) => {
+    if (!done.length) return;
+    const id = `${spec.name}${n}`;
+    exercises.push({ id, sessionId: session(10 + n), exerciseId: spec.id, name: spec.name, implement: 'barra', weightMode: 'Peso total', isCompleted: true, configuration: spec.configuration });
+    done.forEach(([load, reps], k) => sets.push({ id: `${id}-${k}`, sessionExerciseId: id, actualReps: reps, actualLoad: load, isCompleted: true, completedAt: `${dateAt(n)}T18:${String(10 + k).padStart(2, '0')}:00.000Z` }));
+  });
+  return { sessions, exercises, sets, feelings: [], metricDefinitions: [], metricValues: [], meals: [] };
+}
+const CROSSED: Spec = { id: KNOWN, name: 'Press banca', configuration: 'none', sets: [[[100, 8], [90, 10]], [[100, 9], [90, 9]]] };
 const serve = (input: InsightsSource) => {
   const snapshot = createInsightsSnapshot(input, { today: '2027-01-01', permutations: 19, revision: 'r', method: 2 });
   return async (options: ReadOptions) => {
@@ -112,5 +131,64 @@ describe('#367 hechos de una sesión: pantalla abierta desde el post-entreno', (
     expect(focus.getByText('Antes: respondida después de empezar')).toBeTruthy();
     expect(focus.queryByText(/de 5/)).toBeNull(); expect(focus.queryByText(/%/)).toBeNull();
     expect(focus.queryByText(/porque|causa|recomend/i)).toBeNull();
+  });
+});
+
+describe('#367 resultados sin comparables (#410)', () => {
+  const open = async (input: InsightsSource, sessionId: string, date: string) => {
+    mockParams = { session: sessionId, date };
+    mockRead.mockImplementation(serve(input));
+    const view = render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}><OwnlevelThemeProvider initialMode="light"><InsightsScreen /></OwnlevelThemeProvider></SafeAreaProvider>);
+    await flush();
+    return view;
+  };
+  const daysOf = (input: InsightsSource) => { const summary = insightsSummary(createInsightsSnapshot(input, { today: '2027-01-01', permutations: 19, method: 2 })); return joinDays(summary.facts.days, summary.partial.days); };
+
+  it('1. keeps a known configuration with crossed signals in the strict lane next to an unknown one in the partial lane', async () => {
+    const input = sourceOf([CROSSED, { id: UNKNOWN, name: 'Remo', configuration: null, sets: [[[60, 10]], [[60, 10]]] }]);
+    const [day] = daysOf(input), last = day!.strict.sessions[0]!, partial = day!.partial!.sessions[0]!;
+    // The strict lane holds mixed evidence of its own: it stays, with its denominator, even with nothing comparable.
+    expect(sessionLanes(last, partial).map(row => [row.lane, row.counts.comparable, row.counts.ambiguous, row.counts.insufficient, row.counts.total]))
+      .toEqual([['strict', 0, 1, 1, 2], ['partial', 1, 0, 0, 1]]);
+    expect(dayLanes(day!)).toEqual(['strict', 'partial']);
+    const view = await open(input, session(11), dateAt(1));
+    const strict = within(view.getByTestId('insights-session-lane-strict')), partialLane = within(view.getByTestId('insights-session-lane-partial'));
+    expect(strict.getByText('0 de 2 ejercicios comparables, contra su última vez')).toBeTruthy();
+    expect(strict.getByLabelText('Mezclado: 1')).toBeTruthy(); expect(strict.getByLabelText('Sin comparar: 1')).toBeTruthy();
+    expect(strict.getByRole('button', { name: 'Press banca, mezclado, subió por un lado y bajó por otro' })).toBeTruthy();
+    // The unknown configuration is never a strict comparison: there it is "not compared", and its reading lives in the partial lane.
+    expect(strict.getByRole('button', { name: 'Remo, sin comparar, todavía no sabemos si se hizo igual' })).toBeTruthy();
+    expect(partialLane.getByRole('button', { name: /^Remo, registro igual con contexto parcial/ })).toBeTruthy();
+    expect(partialLane.queryByText('Press banca')).toBeNull();
+    // Never added: the header speaks for one method, with its own count.
+    expect(within(view.getByTestId('insights-session')).getAllByText(/de \d+ ejercicios comparables/).map(node => node.props.children)).not.toContain('1 de 3 ejercicios comparables, contra su última vez');
+  });
+
+  it('2. shows a session without comparisons, with its mixed and not compared results, in the header and the day', async () => {
+    const input = sourceOf([CROSSED, { id: UNKNOWN, name: 'Remo', configuration: 'none', sets: [[], [[60, 10]]] }]);
+    const [day] = daysOf(input), last = day!.strict.sessions[0]!;
+    expect(sessionLanes(last, day!.partial?.sessions[0] ?? null).map(row => row.lane)).toEqual(['strict']);
+    expect(dayLanes(day!)).toEqual(['strict']);
+    const view = await open(input, session(11), dateAt(1));
+    const focus = within(view.getByTestId('insights-session'));
+    expect(focus.getByText('Todavía sin comparaciones')).toBeTruthy();
+    expect(focus.getByTestId('insights-session-denominator').props.children).toEqual(['0 de ', 2, ' ', 'ejercicios comparables, contra su última vez']);
+    expect(focus.getByLabelText('Mezclado: 1')).toBeTruthy(); expect(focus.getByLabelText('Sin comparar: 1')).toBeTruthy();
+    expect(focus.getByRole('button', { name: 'Remo, sin comparar, todavía sin una sesión anterior para comparar' })).toBeTruthy();
+    expect(focus.queryByTestId('insights-session-lane-partial')).toBeNull();
+  });
+
+  it('3. keeps a mixed session with comparisons as before: strict first, partial apart, each with its own counts', () => {
+    const snapshot = createInsightsSnapshot(source(), { today: '2027-01-01', permutations: 19, method: 2 });
+    const summary = insightsSummary(snapshot), [day] = joinDays(summary.facts.days, summary.partial.days);
+    expect(sessionLanes(day!.strict.sessions[0]!, day!.partial!.sessions[0]!).map(row => [row.lane, row.counts.comparable, row.counts.total])).toEqual([['strict', 1, 2], ['partial', 1, 1]]);
+    expect(dayLanes(day!)).toEqual(['strict', 'partial']);
+  });
+
+  it('an unknown configuration alone never opens the strict lane', () => {
+    const input = sourceOf([{ id: UNKNOWN, name: 'Remo', configuration: null, sets: [[[60, 10]], [[60, 11]]] }]);
+    const [day] = daysOf(input);
+    expect(sessionLanes(day!.strict.sessions[0]!, day!.partial!.sessions[0]!).map(row => row.lane)).toEqual(['partial']);
+    expect(dayLanes(day!)).toEqual(['partial']);
   });
 });

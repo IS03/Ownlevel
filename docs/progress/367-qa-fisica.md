@@ -107,4 +107,5 @@ Requiere una build de Mobile con `codex/367-post-workout-summary`. Sin migració
 - [ ] **Marcas del resumen** («récord», «↗», «=»): debajo de «Ejercicios» dice que son frente a la última vez con el mismo modo de carga y que Insights puede leer distinto.
 - [ ] **Sensaciones:** «Energía: baja → alta» y «Fatiga: …», sin números ni porcentajes. Sin respuestas dice «Sin respuestas registradas»; una previa tardía lo aclara debajo.
 - [ ] **Comparar en Insights:** abre esta sesión. Cada método va por separado con sus conteos («Mezclado» y «Sin comparar» separados), y cada ejercicio comparado dice frente a qué fecha.
+- [ ] **Sin comparables:** una sesión con un ejercicio mezclado y otro sin referencia dice «Todavía sin comparaciones», muestra «0 de 2» y las dos filas. Un ejercicio con variante conocida y señales cruzadas aparece en «Comparación completa» aunque haya otro con variante desconocida.
 - [ ] **Texto grande, VoiceOver y Reducir movimiento** en el resumen y en esa vista.

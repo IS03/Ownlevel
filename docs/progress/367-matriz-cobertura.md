@@ -89,7 +89,7 @@ Estado al 2026-11-06, verificado con el historial de `main` (`bd5407e`):
   - La pantalla muestra estado, motivo y antigüedad de la referencia.
   - Los motivos de exclusión tienen texto propio: `missing_context`, `different_context`, `mixed_context`, `no_compatible_reference`.
   - **Vista de una sesión** (`codex/367-post-workout-summary`, se abre desde el resumen post-entreno con la sesión de origen):
-    - cada método por separado, con sus conteos y su texto;
+    - cada método por separado, con sus conteos y su texto. El estricto aparece cuando tiene un ejercicio con configuración conocida, aunque no tenga comparables; la configuración desconocida sola nunca lo abre (#410);
     - «Mezclado» y «Sin comparar» como filas distintas;
     - cada ejercicio comparado nombra la fecha de su referencia compatible (`referenceDate`, campo opcional del contrato).
   - **Resumen post-entreno:** sus marcas («récord», «↗», «=») salen de otra regla: la última vez con el mismo modo de carga, sin implemento ni variante. Se rotulan así y nunca como lecturas de Insights. Al terminar no se lee Insights: se abre con un toque.
