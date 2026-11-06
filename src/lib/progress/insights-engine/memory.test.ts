@@ -16,6 +16,8 @@ describe("hechos reducidos de los comparadores", () => {
     const source = syntheticHistory(profile, 4, captured);
     const snapshot = createInsightsSnapshot(source, { today: "2030-01-01", method: 2 });
     const names = new Map(source.exercises.map(row => [`${row.sessionId}:${row.exerciseId.toLowerCase()}`, row.name]));
+    // The reference's logical date (#367): added to the published facts, read from the sessions it names.
+    const dates = new Map(source.sessions.map(row => [row.id, row.date]));
     const adapted = toPerformanceSessions(source).sessions;
     const strict = buildPerformanceInsightsV1({ sessions: adapted, historyCoverage: "complete", exclusionDetail: "summary" });
     const partial = buildPerformanceInsightsPartialV1({ sessions: adapted, historyCoverage: "complete", exclusionDetail: "summary" });
@@ -28,11 +30,11 @@ describe("hechos reducidos de los comparadores", () => {
         sessionId: session.sessionId, counts: session.counts,
         exercises: session.exercises.map(exercise => ({ exerciseId: exercise.exerciseId, name: names.get(`${session.sessionId}:${exercise.exerciseId}`) ?? "",
           status: exercise.status, reason: exercise.reason, referenceSessionId: exercise.reference?.sessionId ?? null,
-          referenceAgeDays: exercise.reference ? Math.floor(exercise.reference.ageMs / DAY_MS) : null, newHigh: exercise.records.facts.some(fact => fact.isNewHigh) })) })));
+          referenceAgeDays: exercise.reference ? Math.floor(exercise.reference.ageMs / DAY_MS) : null, referenceDate: exercise.reference ? dates.get(exercise.reference.sessionId) ?? null : null, newHigh: exercise.records.facts.some(fact => fact.isNewHigh) })) })));
       const fullPartial = partialByDate.get(day.date)!;
       expect(snapshot.partialDays[index]!.sessions).toEqual(fullPartial.sessions.map(session => ({ sessionId: session.sessionId, counts: session.counts,
         exercises: session.exercises.map(exercise => ({ exerciseId: exercise.exerciseId, name: names.get(`${session.sessionId}:${exercise.exerciseId}`) ?? "", reading: exercise.reading,
-          reason: exercise.reason, referenceSessionId: exercise.reference?.sessionId ?? null, referenceAgeDays: exercise.reference ? Math.floor(exercise.reference.ageMs / DAY_MS) : null,
+          reason: exercise.reason, referenceSessionId: exercise.reference?.sessionId ?? null, referenceAgeDays: exercise.reference ? Math.floor(exercise.reference.ageMs / DAY_MS) : null, referenceDate: exercise.reference ? dates.get(exercise.reference.sessionId) ?? null : null,
           highestInPartialContext: exercise.records.facts.some(fact => fact.isNewHigh) })) })));
     }
     expect(snapshot.history.sessions).toBe(strict.sessions.length);

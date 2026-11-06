@@ -112,6 +112,29 @@ describe('the receipt screen', () => {
     act(() => { jest.advanceTimersByTime(1300); });
     expect(slow.getByText('PUSH guardado')).toBeTruthy();
   });
+  it('says the marks follow the receipt\'s own rule, not Insights\' comparison, only when there are marks (#367)', async () => {
+    const view = wrap({ readSummary: async () => ({ status: 'ok', data: summary(), meta }) });
+    await act(async () => {});
+    expect(view.getByTestId('post-workout-rule').props.children).toBe('Frente a la última vez con el mismo modo de carga. Insights compara además implemento y variante, y puede leer distinto.');
+    const without = wrap();
+    expect(without.queryByTestId('post-workout-rule')).toBeNull();
+  });
+  it('shows the recorded feelings as ordinal answers before → after, and when a "before" answer came late (#367)', () => {
+    const receipt = finished();
+    const fact = (value: number, capturedAt: string | null, moment: 'pre' | 'post') => ({ value, instrumentVersion: 'energy-fatigue/1', declaredMoment: moment, declaredAt: capturedAt ?? receipt.startedAt, capturedAt, source: 'mobile' });
+    const later = new Date(Date.parse(receipt.startedAt) + 20 * 60_000).toISOString();
+    const view = wrap({ feelings: { energyPre: fact(2, later, 'pre'), energyPost: fact(4, receipt.endedAt, 'post'), fatiguePre: fact(3, null, 'pre') } as never });
+    const block = view.getByTestId('recorded-training-feelings');
+    expect(view.getByText('Energía: baja → alta')).toBeTruthy();
+    expect(view.getByText('Fatiga: moderada → sin registrar')).toBeTruthy();
+    // Only what can be known here: an answer after the start (the first set's time is not in the receipt), and one without a time.
+    expect(view.getByText('Antes: respondida después de iniciar la sesión')).toBeTruthy();
+    expect(view.getByText('Antes: sin hora de respuesta')).toBeTruthy();
+    expect(view.getByLabelText('Energía: baja antes de entrenar, alta al terminar. Antes: respondida después de iniciar la sesión')).toBeTruthy();
+    expect(block).toBeTruthy(); expect(view.queryByText(/%|promedio/)).toBeNull();
+    const empty = wrap({ feelings: {} });
+    expect(empty.getByText('Sin respuestas registradas.')).toBeTruthy();
+  });
   it('opens the facts of this session in Insights, reading nothing on the way', () => {
     mockRouter.replace.mockClear(); mockRouter.push.mockClear();
     const read = jest.fn<SessionSummaryLoader>(), view = render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}><OwnlevelThemeProvider initialMode="light"><PostWorkoutScreen finished={finished()} detail={detail()} onHome={() => undefined} onViewSession={() => undefined} /></OwnlevelThemeProvider></SafeAreaProvider>);

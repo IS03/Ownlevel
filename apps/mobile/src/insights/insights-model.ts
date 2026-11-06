@@ -1,6 +1,7 @@
 import type { AssociationResult, DayFact, ExerciseSummary, InsightsSummary, PartialAssociationResult, PartialDayFact, PartialExerciseSummary, PartialRelationSummary, RelationSummary } from '@/api/performance-insights';
 import { formatClockTime } from '@/home/format';
 import { formatValue } from '@/progress/progress-format';
+import { feelingTransition, type FeelingSide } from '@/training/feeling-transition';
 
 /** Pure presentation of the Insights read model. It never adds across methods and never computes a relation on the client. */
 export type Lane = 'strict' | 'partial';
@@ -9,9 +10,9 @@ export const PARTIAL_LIMIT = 'Comparamos el mismo ejercicio, modo, unidad e impl
 export const EXPLAIN_DOWN = 'Puede ser programación, descarga o el día.';
 const MIN_PAIRS = 20;
 
-type Counts = { up: number; same: number; down: number; other: number; comparable: number; total: number };
-const strictCounts = (c: DayFact['counts']): Counts => ({ up: c.improved, same: c.observedStable, down: c.declined, other: c.ambiguous + c.insufficient, comparable: c.comparable, total: c.total });
-const partialCounts = (c: PartialDayFact['counts']): Counts => ({ up: c.higher, same: c.same, down: c.lower, other: c.ambiguous + c.insufficient, comparable: c.comparable, total: c.total });
+type Counts = { up: number; same: number; down: number; ambiguous: number; insufficient: number; comparable: number; total: number };
+const strictCounts = (c: DayFact['counts']): Counts => ({ up: c.improved, same: c.observedStable, down: c.declined, ambiguous: c.ambiguous, insufficient: c.insufficient, comparable: c.comparable, total: c.total });
+const partialCounts = (c: PartialDayFact['counts']): Counts => ({ up: c.higher, same: c.same, down: c.lower, ambiguous: c.ambiguous, insufficient: c.insufficient, comparable: c.comparable, total: c.total });
 
 export type ReadingRow = { arrow: string; label: string; value: number; spoken: string };
 export function readingRows(lane: Lane, counts: Counts): ReadingRow[] {
@@ -21,7 +22,9 @@ export function readingRows(lane: Lane, counts: Counts): ReadingRow[] {
     { arrow: '↑', label: words.up, value: counts.up, spoken: `${words.up}${suffix}: ${counts.up}` },
     { arrow: '=', label: words.same, value: counts.same, spoken: `${words.same}${suffix}: ${counts.same}` },
     { arrow: '↓', label: words.down, value: counts.down, spoken: `${words.down}${suffix}: ${counts.down}` },
-    { arrow: '', label: 'Mezclado o sin comparar', value: counts.other, spoken: `Mezclado o sin comparar: ${counts.other}` },
+    // Mixed evidence and no comparison are different facts: one compared and found both directions, the other could not compare.
+    { arrow: '', label: 'Mezclado', value: counts.ambiguous, spoken: `Mezclado${suffix}: ${counts.ambiguous}` },
+    { arrow: '', label: 'Sin comparar', value: counts.insufficient, spoken: `Sin comparar: ${counts.insufficient}` },
   ];
 }
 
@@ -61,6 +64,15 @@ export function focusOf(days: readonly DayLanes[], sessionId: string): { day: Da
   return null;
 }
 
+/**
+ * The methods a session is shown in, each with its own counts: the strict one when it compared something (or there is nothing
+ * partial), the partial one when it holds exercises. The first is the one `focusOf` leads with. They are never added.
+ */
+export function sessionLanes(session: DayFact['sessions'][number], partial: PartialDayFact['sessions'][number] | null): { lane: Lane; counts: Counts }[] {
+  const strict = strictCounts(session.counts), other = partial ? partialCounts(partial.counts) : null;
+  return [...(strict.comparable > 0 || !other?.total ? [{ lane: 'strict' as const, counts: strict }] : []), ...(other?.total ? [{ lane: 'partial' as const, counts: other }] : [])];
+}
+
 export function primaryLane(model: InsightsSummary): Lane { return model.facts.totals.comparable > 0 || model.partial.totals.comparable === 0 ? 'strict' : 'partial'; }
 
 export type StripMark = { date: string; kind: 'value'; share: number } | { date: string; kind: 'zero' } | { date: string; kind: 'gap' };
@@ -94,14 +106,22 @@ const PARTIAL_READING: Record<string, string> = { higher_record: 'Registro super
 const ARROW: Record<string, string> = { improved: '↑', higher_record: '↑', observed_stable: '=', same_record: '=', declined: '↓', lower_record: '↓' };
 export const statusArrow = (status: string) => ARROW[status] ?? '';
 export const statusText = (lane: Lane, status: string) => (lane === 'strict' ? STRICT_STATUS : PARTIAL_READING)[status] ?? 'Sin comparar';
-/** A row read as a sentence: "Press banca, registro inferior con contexto parcial, hace 3 días". */
-export function exerciseSentence(lane: Lane, name: string, status: string, reason: string, ageDays: number | null) {
+/** A row read as a sentence: "Press banca, registro inferior con contexto parcial, hace 3 días, frente a la sesión del lunes 2 de marzo". */
+export function exerciseSentence(lane: Lane, name: string, status: string, reason: string, ageDays: number | null, referenceDate?: string | null) {
   const comparable = !!ARROW[status];
   const reading = statusText(lane, status).toLocaleLowerCase('es-AR'), limit = lane === 'partial' && comparable ? ' con contexto parcial' : '';
   const age = !comparable || ageDays === null ? '' : ageDays === 0 ? ', el mismo día' : ageDays === 1 ? ', hace 1 día' : `, hace ${ageDays} días`;
+  const against = comparable && referenceDate ? `, frente a la sesión del ${lowerDay(referenceDate)}` : '';
   const why = comparable ? '' : reasonText(lane, reason) ? `, ${reasonText(lane, reason).toLocaleLowerCase('es-AR')}` : '';
-  return `${name || 'Ejercicio'}, ${reading}${limit}${age}${why}`;
+  return `${name || 'Ejercicio'}, ${reading}${limit}${age}${against}${why}`;
 }
+/** Which earlier session a reading was compared with, by its date; an answer of an older server only knows how long ago. */
+export function referenceText(ageDays: number | null, referenceDate?: string | null) {
+  if (referenceDate) return `Frente al ${lowerDay(referenceDate)}`;
+  if (ageDays === null) return null;
+  return ageDays === 0 ? 'Frente a una sesión del mismo día' : ageDays === 1 ? 'Frente a una sesión de hace 1 día' : `Frente a una sesión de hace ${ageDays} días`;
+}
+const lowerDay = (date: string) => { const text = dayLabel(date); return text.charAt(0).toLocaleLowerCase('es-AR') + text.slice(1); };
 export const summaryText = (lane: Lane, row: ExerciseSummary | PartialExerciseSummary) => {
   const [up, same, down] = lane === 'strict' ? [(row as ExerciseSummary).improved, (row as ExerciseSummary).observedStable, (row as ExerciseSummary).declined] : [(row as PartialExerciseSummary).higher, (row as PartialExerciseSummary).same, (row as PartialExerciseSummary).lower];
   return `↑ ${up}  = ${same}  ↓ ${down}`;
@@ -229,23 +249,23 @@ export function sessionTime(session: Pick<Session, 'startedAt' | 'endedAt'>) {
   return end !== null && end >= start ? `${formatClockTime(session.startedAt!)}–${formatClockTime(session.endedAt!)}` : `Desde ${formatClockTime(session.startedAt!)}`;
 }
 
-const LATE: Partial<Record<string, string>> = { after_first_set: 'Respondida después de empezar', after_end: 'Respondida al terminar', unknown: 'No sabemos cuándo se respondió' };
+const LATE: Partial<Record<string, string>> = { after_first_set: 'respondida después de empezar', after_end: 'respondida al terminar', unknown: 'no sabemos cuándo se respondió' };
 /**
- * Before and after, one row each. Not recorded, unreadable and answered late stay distinct. The legacy energy has no moment
- * of its own, so it is its own row and never stands in for the energy at the end.
+ * Energy and fatigue as ordinal answers, before → after ("Energía: baja → alta"). Not recorded, unreadable and answered late
+ * stay distinct. The legacy energy has no moment of its own, so it is its own row and never stands in for the energy at the end.
  */
 export function sessionRows(session: Session): ContextRow[] {
   const { feelings, unreadableFeelings = [], legacy, carbsPre3h } = session.context;
   const rows: ContextRow[] = [];
-  const part = (key: 'energyPre' | 'fatiguePre' | 'energyPost' | 'fatiguePost', name: string) =>
-    feelings[key] ? `${name} ${feelings[key]!.value} de 5` : unreadableFeelings.includes(key) ? `${name} no se pudo leer` : `${name} sin registrar`;
+  const side = (key: 'energyPre' | 'fatiguePre' | 'energyPost' | 'fatiguePost'): FeelingSide =>
+    feelings[key] ? { value: feelings[key]!.value } : unreadableFeelings.includes(key) ? 'unreadable' : 'missing';
   const anyFeeling = Object.keys(feelings).length > 0 || unreadableFeelings.length > 0;
   if (!anyFeeling) rows.push({ key: 'feelings', label: 'Sensaciones', value: 'Sin registrar' });
-  else for (const [moment, label, energy, fatigue] of [['pre', 'Antes de entrenar', 'energyPre', 'fatiguePre'], ['post', 'Al terminar', 'energyPost', 'fatiguePost']] as const) {
-    const value = `${part(energy, 'Energía')} · ${part(fatigue, 'Fatiga')}`;
+  else for (const [kind, pre, post] of [['energy', 'energyPre', 'energyPost'], ['fatigue', 'fatiguePre', 'fatiguePost']] as const) {
+    const line = feelingTransition(kind, side(pre), side(post));
     // Only an answer before starting has a moment to check. A late one stays visible, with when it was given.
-    const late = moment === 'pre' ? [...new Set([feelings[energy]?.timing, feelings[fatigue]?.timing].map(timing => timing && LATE[timing]).filter(Boolean))].join('. ') : '';
-    rows.push({ key: `feelings-${moment}`, label, value, ...(late ? { detail: late } : {}), spoken: `${label}: ${value.replace(' · ', ', ')}${late ? `. ${late}` : ''}` });
+    const timing = feelings[pre]?.timing, late = timing ? LATE[timing] : undefined;
+    rows.push({ key: `feelings-${kind}`, label: line.label, value: line.value, ...(late ? { detail: `Antes: ${late}` } : {}), spoken: `${line.spoken}${late ? `. Antes: ${late}` : ''}` });
   }
   if (legacy.energyLevel !== null) rows.push({ key: 'legacy-energy', label: 'Energía, registro anterior', value: `${legacy.energyLevel} de 5`, detail: 'Sin momento: no es la energía al terminar' });
   rows.push({ key: 'carbs', label: 'Carbohidratos registrados, 3 h antes', value: carbsPre3h.state === 'recorded' && carbsPre3h.value !== null ? formatValue(carbsPre3h.value, 'g') : CARBS[carbsPre3h.state] ?? 'Sin registrar' });

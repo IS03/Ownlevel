@@ -21,6 +21,7 @@
       "codex/367-body-weight-fixes": false,
       "codex/367-insights-memory": false,
       "codex/367-comparator-compact": false,
+      "codex/367-post-workout-summary": false,
       "codex/367-insights-cold-read": false,
       "codex/367-body-measurements-history": false,
       "codex/367-sleep-weight-expand": false,

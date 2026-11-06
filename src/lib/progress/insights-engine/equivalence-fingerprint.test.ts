@@ -10,7 +10,9 @@ import { syntheticHistory } from "./scale-fixture";
  * `INSIGHTS_FINGERPRINT_OUT=<file> npx vitest run src/lib/progress/insights-engine/equivalence-fingerprint.test.ts`
  */
 const out = process.env.INSIGHTS_FINGERPRINT_OUT;
-const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+// INSIGHTS_FINGERPRINT_OMIT=a,b hashes without those fields, to compare a change that only adds them.
+const omitted = new Set((process.env.INSIGHTS_FINGERPRINT_OMIT ?? "").split(",").filter(Boolean));
+const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value, (key, field) => omitted.has(key) ? undefined : field)).digest("hex");
 it.runIf(!!out)("fingerprint of every view", () => {
   const year = { years: 1, sessionsPerWeek: 4, exercises: 6, setsPerExercise: 4, catalog: 30, metrics: 8, mealsPerDay: 4 };
   const five = { years: 5, sessionsPerWeek: 5, exercises: 6, setsPerExercise: 4, catalog: 40, metrics: 20, mealsPerDay: 4 };

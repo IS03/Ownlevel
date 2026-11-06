@@ -1,6 +1,16 @@
 # #367 — Matriz de cobertura de Insights
 
-Estado al 2026-11-06. #393 a #395, y #397 y #398 (sueño y peso), están mergeados y desplegados: detalle en [367-sueno-peso.md](367-sueno-peso.md). El contexto diario completo (todas las sesiones y los cuatro macros) se mergeó en #403 (`8dd3d01`), pendiente de build. Las tendencias de peso enlazadas con Insights están en `codex/367-weight-trends`, sin mergear ni build. Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya en código leído, no en que exista una tabla o una pantalla.**
+Estado al 2026-11-06, verificado con el historial de `main` (`bd5407e`):
+- **Mergeados y desplegados:** #393 a #395, y #397 y #398 (sueño y peso). Detalle en [367-sueno-peso.md](367-sueno-peso.md).
+- **Mergeados en `main`:**
+  - #403 (`8dd3d01`): contexto diario completo;
+  - #404 (`236a3e4`): tendencias de peso con Insights;
+  - #405 (`9425e62`): pesos en 0 kg e historial de peso;
+  - #406 (`f53fae0`): historial de medidas;
+  - #407 (`2eb08b1`) y #408 (`03fc8f7`): memoria del motor;
+  - #409 (`bd5407e`): lectura en frío.
+- **Pendiente en todos:** la parte de Mobile necesita build. La QA física no está aprobada.
+- **En revisión:** el resumen factual post-entreno, en `codex/367-post-workout-summary`. Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya en código leído, no en que exista una tabla o una pantalla.**
 
 **Código de referencia** (`src/lib/progress/insights-engine/`, salvo que se indique otra ruta):
 - `exposures.ts`: `buildExposureContext`, `buildExposureTable`, `mealCandidate`;
@@ -78,6 +88,11 @@ Estado al 2026-11-06. #393 a #395, y #397 y #398 (sueño y peso), están mergead
 - **Estado: accesible.**
   - La pantalla muestra estado, motivo y antigüedad de la referencia.
   - Los motivos de exclusión tienen texto propio: `missing_context`, `different_context`, `mixed_context`, `no_compatible_reference`.
+  - **Vista de una sesión** (`codex/367-post-workout-summary`, se abre desde el resumen post-entreno con la sesión de origen):
+    - cada método por separado, con sus conteos y su texto;
+    - «Mezclado» y «Sin comparar» como filas distintas;
+    - cada ejercicio comparado nombra la fecha de su referencia compatible (`referenceDate`, campo opcional del contrato).
+  - **Resumen post-entreno:** sus marcas («récord», «↗», «=») salen de otra regla: la última vez con el mismo modo de carga, sin implemento ni variante. Se rotulan así y nunca como lecturas de Insights. Al terminar no se lee Insights: se abre con un toque.
 
 **Varias sesiones en un día**
 - **Fuente:** sesiones con el mismo `day_logs.log_date`.
@@ -118,9 +133,11 @@ Estado al 2026-11-06. #393 a #395, y #397 y #398 (sueño y peso), están mergead
 - **Cruce:** ninguno.
 - **Estado: no expuesto como resultado.** Igual que la energía posterior.
 
-**Cómo se muestran** (#403)
+**Cómo se muestran** (#403; formato ordinal en `codex/367-post-workout-summary`)
+- **Valores ordinales registrados**, antes → al terminar: «Energía: baja → alta», «Fatiga: moderada → sin registrar». Sin números de la escala, promedios ni puntaje combinado. Igual en Insights y en el resumen post-entreno.
 - **Sin registrar, ilegible y tardía son distintas.** Una respuesta mal formada sigue excluida y contada (`feeling_invalid`), y además la sesión la nombra en `context.unreadableFeelings`: se ve «no se pudo leer», nunca «sin registrar».
 - **Tardía:** una previa respondida después de empezar, al terminar o en un momento desconocido lo dice debajo de la fila.
+  - **En el resumen post-entreno** no se conoce la hora de la primera serie. Solo dice «sin hora de respuesta», «respondida después de iniciar la sesión» o «respondida al terminar», sin decidir si fue antes de la primera serie.
 - **Energía heredada** (`workout_sessions.energy_level`): fila propia, «registro anterior», sin momento. Nunca pasa a ser energía posterior.
 - **Lectura no disponible:** si falla la lectura, falla la pantalla entera, como antes. No hay un vacío falso por sesión.
 
@@ -170,16 +187,16 @@ Estado al 2026-11-06. #393 a #395, y #397 y #398 (sueño y peso), están mergead
   - Comparación opcional con otro período.
   - Un punto por registro real: sin suavizar ni interpolar. Cada punto abre su día en Historial.
   - Pesajes sospechosos excluidos y contados; pesajes para corregir debajo.
-- **Enlace con Insights** (`codex/367-weight-trends`):
+- **Enlace con Insights** (#404):
   - El peso del contexto del día abre Cuerpo en el mes de ese día.
   - «Ver tu peso en Cuerpo» de la relación abre el tramo de sus días, el último año como máximo.
   - Las dos vuelven a Insights con la fecha, la sesión o la relación de origen.
   - Abierto desde Insights, Cuerpo aclara que el peso de un día no dice si te pesaste antes o después de entrenar.
 - **Cero:** Web, Mobile e importaciones aceptaban 0 kg (`MIN_WEIGHT_KG = 0`, `allowZero` en el formulario de Mobile).
   - Insights lo trata como inválido. El informe de Cuerpo (`buildBodyProgressReport`) lo cuenta como medición.
-  - **Corregido en `codex/367-body-weight-fixes`:** queda fuera del gráfico, el cambio y la comparación, contado y conservado en el historial, y se rechazan los 0 kg nuevos.
+  - **Corregido en #405:** queda fuera del gráfico, el cambio y la comparación, contado y conservado en el historial, y se rechazan los 0 kg nuevos.
   - Cuerpo en Mobile lo nombra con su fecha, con un aviso correcto antes y después de esa corrección.
-- **Límite de lectura:** `listWeightHistory` ordenaba de más viejo a más nuevo y cortaba en 1000, así que perdía los más recientes. **Corregido en `codex/367-body-weight-fixes`:** el informe lee el historial completo por páginas.
+- **Límite de lectura:** `listWeightHistory` ordenaba de más viejo a más nuevo y cortaba en 1000, así que perdía los más recientes. **Corregido en #405:** el informe lee el historial completo por páginas.
 - **No incluido:** cambios porcentuales, ventanas móviles y cualquier familia estadística nueva. Nada de eso es necesario para describir la evolución.
 
 **Otras métricas numéricas**
@@ -275,15 +292,17 @@ Modelo y reglas: [367-exercise-configuration.md](367-exercise-configuration.md).
 
 ## Próximos incrementos
 
-**No se implementaron.**
+**No se implementaron:**
+- decidir si las sensaciones posteriores se publican como un resultado propio, separado del rendimiento;
+- paginar por clave los valores diarios, para la latencia de la lectura en frío (ver #409).
 
-**En revisión:** medidas corporales con más de 1000 registros, en `codex/367-body-measurements-history`. `listAllBodyMeasurements` lee todo por páginas de fecha e id. Las mediciones sospechosas siguen excluidas y contadas.
+**En revisión:** resumen factual post-entreno, en `codex/367-post-workout-summary`.
 
-**Mergeado en #405:** peso en cero y límite de lectura del peso. No afecta a Insights, que ya trata el cero como inválido.
+**Mergeados en `main`:**
+- #403: todas las sesiones y los cuatro macros en el contexto del día;
+- #404: tendencias de peso enlazadas entre Insights y Cuerpo;
+- #405 y #406: pesos en 0 kg e historiales completos de peso y medidas;
+- #407 y #408: memoria del motor;
+- #409: lectura en frío.
 
-**Después:** decidir si las sensaciones posteriores se publican como un resultado propio, separado del rendimiento.
-
-**Hechos:**
-- **#403:** todas las sesiones y los cuatro macros en el contexto del día.
-- **`codex/367-weight-trends`:** tendencias de peso enlazadas entre Insights y Cuerpo.
-- Los dos son solo presentación, sin cambio de método.
+**Hasta acá:** presentación y lectura, sin cambio de método. Mobile sigue necesitando build y QA física, que no está aprobada.

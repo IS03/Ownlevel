@@ -99,11 +99,15 @@ describe('#367 contexto diario: presentación', () => {
   it('keeps not recorded, unreadable and late answers apart, and the legacy energy on its own', () => {
     const [morning, evening] = daySessions(day(D1)).sessions;
     expect(sessionRows(morning!).slice(0, 2)).toEqual([
-      expect.objectContaining({ label: 'Antes de entrenar', value: 'Energía 4 de 5 · Fatiga sin registrar' }),
-      expect.objectContaining({ label: 'Al terminar', value: 'Energía sin registrar · Fatiga 2 de 5' }),
+      // Ordinal answers, before → after: never a number of the scale, an average or a combined score.
+      expect.objectContaining({ label: 'Energía', value: 'alta → sin registrar' }),
+      expect.objectContaining({ label: 'Fatiga', value: 'sin registrar → poca' }),
     ]);
     expect(sessionRows(morning!)[0]!.detail).toBeUndefined();
-    expect(sessionRows(evening!)[0]).toMatchObject({ value: 'Energía 2 de 5 · Fatiga no se pudo leer', detail: 'Respondida después de empezar' });
+    expect(sessionRows(evening!)[0]).toMatchObject({ label: 'Energía', value: 'baja → sin registrar', detail: 'Antes: respondida después de empezar' });
+    expect(sessionRows(evening!)[1]).toMatchObject({ label: 'Fatiga', value: 'no se pudo leer → sin registrar' });
+    expect(sessionRows(evening!)[1]!.detail).toBeUndefined();
+    expect(sessionRows(evening!)[0]!.spoken).toBe('Energía: baja antes de entrenar, sin registrar al terminar. Antes: respondida después de empezar');
     const nothing = day(D0).sessions[0]!;
     expect(sessionRows(nothing)[0]).toEqual({ key: 'feelings', label: 'Sensaciones', value: 'Sin registrar' });
     const legacy = sessionRows({ ...nothing, context: { ...nothing.context, legacy: { energyLevel: 3, performanceLevel: null, painLevel: null } } });
@@ -131,7 +135,7 @@ describe('#367 contexto diario: pantalla', () => {
     expect(names).toEqual(['Abrir sesión Empuje, 09:00–10:00', 'Abrir sesión Piernas, 17:00–18:00']);
     expect(hero.getAllByTestId('insights-day-shared')).toHaveLength(1);
     expect(hero.getAllByText('Calorías')).toHaveLength(1);
-    expect(hero.getByText('Respondida después de empezar')).toBeTruthy();
+    expect(hero.getByText('Antes: respondida después de empezar')).toBeTruthy();
     expect(hero.getByText('El momento de cada respuesta sale del reloj del teléfono.')).toBeTruthy();
     expect(hero.queryByText(/todo lo que comiste/)).toBeTruthy();
     fireEvent.press(hero.getByRole('button', { name: /^Abrir sesión Piernas/ }));
@@ -156,11 +160,11 @@ describe('#367 contexto diario: pantalla', () => {
     const changed = source();
     mockRead.mockImplementation(options => serve(revision === 'r1' ? source() : { ...changed, feelings: [] }, revision)(options));
     const view = await open();
-    expect(within(view.getByTestId('insights-session')).getByText('Respondida después de empezar')).toBeTruthy();
+    expect(within(view.getByTestId('insights-session')).getByText('Antes: respondida después de empezar')).toBeTruthy();
     revision = 'r2';
     await act(async () => { view.getByTestId('insights-screen').props.refreshControl.props.onRefresh(); }); await flush();
     const focus = within(view.getByTestId('insights-session'));
-    expect(focus.queryByText('Respondida después de empezar')).toBeNull();
+    expect(focus.queryByText('Antes: respondida después de empezar')).toBeNull();
     expect(focus.getAllByText('Sensaciones')).toHaveLength(2);
   });
 });

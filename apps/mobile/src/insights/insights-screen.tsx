@@ -9,7 +9,7 @@ import { AppIcon, AppText, Button, ChipGroup, ExampleFrame, Heading, InlineUnava
 import { haptics } from '@/platform/haptics';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
-import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, NUTRITION_SCOPE, PARTIAL_LIMIT, contextRows, dayLabel, daySessions, feelingClockNote, nutritionRows, sessionName, sessionRows, sessionTime, exerciseSentence, focusOf, heroCaption, heroOf, joinDays, nextDate, nothingComparable, primaryLane, readingRows, reasonText, relationGroups, relationName, relationState, sameRead, statusArrow, statusText, stripMarks, stripSummary, summarySpoken, summaryText, type ContextRow, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
+import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, NUTRITION_SCOPE, PARTIAL_LIMIT, contextRows, dayLabel, daySessions, referenceText, sessionLanes, feelingClockNote, nutritionRows, sessionName, sessionRows, sessionTime, exerciseSentence, focusOf, heroCaption, heroOf, joinDays, nextDate, nothingComparable, primaryLane, readingRows, reasonText, relationGroups, relationName, relationState, sameRead, statusArrow, statusText, stripMarks, stripSummary, summarySpoken, summaryText, type ContextRow, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
 import { InsightRow } from './insight-row';
 import { dayWeightHref, insightsOriginOf, metricTrendHref, nutritionDayHref, validSession } from './navigation';
 
@@ -91,10 +91,11 @@ function Strip({ days, lane }: { days: readonly DayLanes[]; lane: Lane }) {
 }
 
 function ExerciseRows({ lane, session, partial, router }: { lane: Lane; session: SessionFact; partial: PartialDayFact['sessions'][number] | undefined; router: ReturnType<typeof useRouter> }) {
-  const rows = lane === 'strict' ? session.exercises.map(row => ({ id: row.exerciseId, name: row.name, status: row.status as string, reason: row.reason, age: row.referenceAgeDays }))
-    : (partial?.exercises ?? []).map(row => ({ id: row.exerciseId, name: row.name, status: row.reading as string, reason: row.reason, age: row.referenceAgeDays }));
-  return <>{rows.map(row => <InsightRow key={row.id} label={row.name || 'Ejercicio'} detail={!statusArrow(row.status) ? reasonText(lane, row.reason) : undefined}
-    value={`${statusArrow(row.status)} ${statusText(lane, row.status)}`} spoken={exerciseSentence(lane, row.name, row.status, row.reason, row.age)}
+  const rows = lane === 'strict' ? session.exercises.map(row => ({ id: row.exerciseId, name: row.name, status: row.status as string, reason: row.reason, age: row.referenceAgeDays, date: row.referenceDate }))
+    : (partial?.exercises ?? []).map(row => ({ id: row.exerciseId, name: row.name, status: row.reading as string, reason: row.reason, age: row.referenceAgeDays, date: row.referenceDate }));
+  // A comparison names its compatible reference; a row without one says why it was not compared.
+  return <>{rows.map(row => <InsightRow key={row.id} label={row.name || 'Ejercicio'} detail={statusArrow(row.status) ? referenceText(row.age, row.date) ?? undefined : reasonText(lane, row.reason)}
+    value={`${statusArrow(row.status)} ${statusText(lane, row.status)}`} spoken={exerciseSentence(lane, row.name, row.status, row.reason, row.age, row.date)}
     onPress={() => router.push({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id: row.id, ...(session.routineId ? { routineId: session.routineId } : {}) } })} />)}</>;
 }
 
@@ -260,8 +261,16 @@ export function InsightsScreen() {
         {focus.counts.comparable ? readingRows(focus.lane, focus.counts).map(row => <FactRow key={row.label} arrow={row.arrow} label={row.label} value={row.value} spoken={row.spoken} />) : null}
         {focus.counts.down ? <AppText muted variant="footnote">{EXPLAIN_DOWN}</AppText> : null}
         {focus.lane === 'partial' ? <AppText muted variant="footnote" testID="insights-partial-limit">{PARTIAL_LIMIT}</AppText> : null}
-        <Section title={LANE_TITLE[focus.lane]} />
-        <ExerciseRows lane={focus.lane} session={focus.session} partial={focus.partial ?? undefined} router={router} />
+        {/* Each method apart, with its own words and denominator: the first one's counts are above, a second one brings its own. */}
+        {sessionLanes(focus.session, focus.partial).map(({ lane, counts }, index) => <View key={lane} testID={`insights-session-lane-${lane}`}>
+          <Section title={LANE_TITLE[lane]} />
+          {index > 0 ? <>
+            <AppText muted numeric variant="footnote">{counts.comparable} de {counts.total} {heroCaption(lane)}</AppText>
+            {readingRows(lane, counts).map(row => <FactRow key={row.label} arrow={row.arrow} label={row.label} value={row.value} spoken={row.spoken} />)}
+            {lane === 'partial' ? <AppText muted variant="footnote">{PARTIAL_LIMIT}</AppText> : null}
+          </> : null}
+          <ExerciseRows lane={lane} session={focus.session} partial={focus.partial ?? undefined} router={router} />
+        </View>)}
         <Section title={focus.day.strict.sessions.length > 1 ? 'Sesiones de ese día' : 'Esta sesión'} />
         <DaySessions day={focus.day} originId={focus.session.sessionId} router={router} />
         <DayShared day={focus.day} metrics={data.metrics} onMetric={openMetric} onNutrition={openNutrition} onBody={openBody} />
