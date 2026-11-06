@@ -10,7 +10,7 @@ import { parseSessionFeelings } from '../../../../src/lib/progress/insights-engi
 import type { InsightsSource } from '../../../../src/lib/progress/insights-engine/types';
 import { InsightsScreen } from './insights-screen';
 import { daySessions, nutritionRows, sessionRows, sessionTime } from './insights-model';
-import { insightsReturnHref, nutritionDayHref } from './navigation';
+import { bodyWeightHref, dayWeightHref, insightsReturnHref, nutritionDayHref } from './navigation';
 
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -162,5 +162,25 @@ describe('#367 contexto diario: pantalla', () => {
     const focus = within(view.getByTestId('insights-session'));
     expect(focus.queryByText('Respondida después de empezar')).toBeNull();
     expect(focus.getAllByText('Sensaciones')).toHaveLength(2);
+  });
+});
+
+describe('#367 peso del día hacia Cuerpo', () => {
+  it('opens Cuerpo on the month of that day, with the origin to come back', async () => {
+    mockParams = { session: EVENING, date: D1 };
+    mockRead.mockImplementation(serve(source()));
+    const view = await open();
+    fireEvent.press(within(view.getByTestId('insights-session')).getByRole('button', { name: /^Peso corporal, ese día: Sin registrar\. Ver en Cuerpo$/ }));
+    const href = mockPush.mock.calls.at(-1)![0] as ReturnType<typeof dayWeightHref>;
+    expect(href).toEqual({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.weight', from: '2026-03-01', to: '2026-03-31', insightsReturn: '1', insightsDate: D1, insightsSession: EVENING } });
+    expect(insightsReturnHref(href.params)).toEqual({ pathname: '/(tabs)/train/insights', params: { date: D1, session: EVENING } });
+  });
+  it('a relation opens the span of its days, its newest year at most, and comes back to the relation', () => {
+    const relation = 'partial:body:weight_kg:same_day';
+    expect(bodyWeightHref({ from: '2026-01-05', to: '2026-03-03' }, { relation }).params).toMatchObject({ from: '2026-01-05', to: '2026-03-03' });
+    expect(bodyWeightHref({ from: '2024-01-01', to: '2026-03-03' }, { relation }).params).toMatchObject({ from: '2025-03-03', to: '2026-03-03' });
+    const none = bodyWeightHref(null, { relation });
+    expect(none.params).toEqual({ metric: 'body.weight', insightsReturn: '1', insightsRelation: relation });
+    expect(insightsReturnHref(none.params)).toEqual({ pathname: '/(tabs)/train/insights/[relation]', params: { relation } });
   });
 });

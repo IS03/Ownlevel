@@ -208,7 +208,7 @@ export function dayLabel(date: string) {
 }
 const CARBS: Record<string, string> = { no_registered_meal: 'Sin comidas con hora', partial_macro: 'Alguna comida sin ese dato', untimed_meal_in_scope: 'Comidas sin hora', unverified_meal_time_in_scope: 'Hay comidas, pero no sabemos si esa fue la hora', no_start_time: 'Sin hora de inicio' };
 type Session = DayFact['sessions'][number];
-export type ContextRow = { key: string; label: string; value: string; detail?: string; spoken?: string; metricId?: string };
+export type ContextRow = { key: string; label: string; value: string; detail?: string; spoken?: string; metricId?: string; body?: true };
 const instant = (iso: string | null) => iso === null ? null : Number.isFinite(Date.parse(iso)) ? Date.parse(iso) : null;
 
 /**
@@ -284,6 +284,7 @@ export function contextRows(day: DayFact, metrics: readonly Metric[]) {
     rows.push({ key: metric.metricId, label: `${known?.name ?? 'Métrica'}${night}`, value: formatValue(metric.value, known?.unit ?? null), ...(known ? { metricId: known.id } : {}) });
   }
   const weight = day.context.bodyWeight;
-  if (weight) rows.push({ key: 'body-weight', label: 'Peso corporal, ese día', value: weight.state === 'recorded' && weight.value !== null ? formatValue(weight.value, 'kg') : weight.state === 'invalid' ? 'Peso no válido' : 'Sin registrar' });
+  // Opens Cuerpo on that month: to see it in its evolution, or to load or correct it.
+  if (weight) rows.push({ key: 'body-weight', label: 'Peso corporal, ese día', value: weight.state === 'recorded' && weight.value !== null ? formatValue(weight.value, 'kg') : weight.state === 'invalid' ? 'Peso no válido' : 'Sin registrar', body: true });
   return rows;
 }

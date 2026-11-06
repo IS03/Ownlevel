@@ -74,6 +74,17 @@ Requiere una build de Mobile con `codex/367-day-context`. No requiere migración
 - [ ] **Corrección:** cambiar una comida o una sensación de un día ya mostrado actualiza el contexto al volver, sin mezclar datos viejos y nuevos.
 - [ ] **Texto grande, VoiceOver y Reducir movimiento:** las filas se apilan sin cortarse; VoiceOver lee el nombre, el horario y si es la sesión de origen.
 
+## Tendencias de peso entre Insights y Cuerpo
+Requiere una build de Mobile con `codex/367-weight-trends`. No requiere migración.
+- [ ] **Desde el día:** en el contexto de un día de Insights, «Peso corporal, ese día» abre Cuerpo en el mes de ese día, con el peso arriba.
+- [ ] **Desde la relación:** «Ver tu peso en Cuerpo» abre los mismos días de la relación.
+- [ ] **Aviso:** abierto desde Insights, Cuerpo dice que el peso de un día no dice si te pesaste antes o después de entrenar. Abierto desde Progreso, no lo dice.
+- [ ] **Vuelta:** «Volver a Insights» regresa a la misma sesión, al mismo día abierto o a la misma relación.
+- [ ] **Referencias:** el cambio dice desde qué peso y desde qué fecha. Cada punto abre su día en Historial, y volver regresa a Cuerpo.
+- [ ] **Sin datos:** un mes sin pesajes dice «Sin registros» y ofrece el último, sin inventar puntos. Un solo pesaje no muestra cambio.
+- [ ] **Cero:** un pesaje guardado en 0 kg aparece nombrado con su fecha y con el aviso que corresponde al servidor desplegado. En los pesajes dice «No cuenta: no es un peso».
+- [ ] **Texto grande, VoiceOver y Reducir movimiento** en Cuerpo y en esas filas de Insights.
+
 ## Después de las migraciones
 - [ ] *Requiere migración.* **Hora de comida (#388):** elegir la hora la declara, incluso con el mismo valor. Abrir una edición, mover de día o repetir una comida no declara nada.
 - [ ] *Requiere migración.* **Ventana previa (#389):** una comida con hora declarada cuenta; una con reloj automático no.

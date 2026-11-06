@@ -46,9 +46,10 @@ export function WeightRecords({ state, controller, editable, limit }: { state: B
   return <View style={styles.section} testID="body-weight-records">
     {shown.length ? <View>
       {shown.map((entry: BodyWeightEntry, index) => {
-        const before = weights[index + 1] ?? null;
-        return <Row key={entry.date} divided={index > 0} title={shortDate(entry.date, today)} detail={before ? change(entry.weightKg - before.weightKg, 'kg') : undefined}
-          value={formatKg(entry.weightKg)} label={`Peso del ${formatBodyDate(entry.date)}: ${formatKg(entry.weightKg)}`}
+        // A stored 0 kg is not a weight (#367): it stays to correct or delete, and never measures a change.
+        const valid = entry.weightKg > 0, before = weights.slice(index + 1).find(row => row.weightKg > 0) ?? null;
+        return <Row key={entry.date} divided={index > 0} title={shortDate(entry.date, today)} detail={!valid ? 'No cuenta: no es un peso' : before ? change(entry.weightKg - before.weightKg, 'kg') : undefined}
+          value={formatKg(entry.weightKg)} label={`Peso del ${formatBodyDate(entry.date)}: ${formatKg(entry.weightKg)}${valid ? '' : '. No cuenta: no es un peso'}`}
           onPress={editable ? () => controller.openWeight(entry) : undefined} />;
       })}
     </View> : <AppText muted>Todavía no registraste peso.</AppText>}

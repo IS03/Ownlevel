@@ -29,12 +29,13 @@ const mockClient = { request: jest.fn(), read: jest.fn() } as unknown as MobileA
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
 jest.mock('@/auth', () => ({ useMobileAuth: () => ({ session: { user: { id: 'owner' } } }) }));
 // Cuerpo's records and sheets run on the real BodyController over a fake Body API (no network, no storage).
+let mockBodyWeights: { date: string; weightKg: number }[] | null = null;
 jest.mock('@/body/use-body-controller', () => {
   const { useState, useEffect, useSyncExternalStore } = jest.requireActual<typeof import('react')>('react');
   const { BodyController } = jest.requireActual<typeof import('@/body/body-controller')>('@/body/body-controller');
   const fx = jest.requireActual<typeof import('@/body/body-fixture.test-helper')>('@/body/body-fixture.test-helper');
   return { useBodyController: () => {
-    const [controller] = useState(() => new BodyController(fx.fakeApi(), fx.repository(fx.memoryStorage().port), () => 'body:1'));
+    const [controller] = useState(() => new BodyController(fx.fakeApi(mockBodyWeights ? fx.overview({}, mockBodyWeights) : undefined), fx.repository(fx.memoryStorage().port), () => 'body:1'));
     useEffect(() => { void controller.initialize(); }, [controller]);
     const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
     return { controller, state };
@@ -123,7 +124,7 @@ const wrap = (el: React.ReactElement, initialState?: ProgressRangeState) => rend
 const listeners: ((s: string) => void)[] = [];
 beforeEach(() => {
   clearConfirmedReads(mockClient);
-  jest.clearAllMocks(); mockParams = {}; listeners.length = 0;
+  jest.clearAllMocks(); mockParams = {}; listeners.length = 0; mockBodyWeights = null;
   jest.spyOn(AppState, 'addEventListener').mockImplementation((_e, l) => { listeners.push(l as (s: string) => void); return { remove: jest.fn() } as never; });
   mockOverview.mockImplementation(async (_c, q) => ok(overview({}, q.period)));
   mockBody.mockImplementation(async () => ok(body()));
@@ -278,7 +279,7 @@ describe('Body Trends', () => {
     expect(mockBody).toHaveBeenLastCalledWith(mockClient, MONTH, null);
     const summary = within(view.getByTestId('body-trend-summary'));
     expect(summary.getByText('80,5 kg')).toBeTruthy(); expect(summary.getByText('último registro · 1 oct')).toBeTruthy();
-    expect(summary.getByText('↘ 1,5 kg')).toBeTruthy(); expect(summary.getByText('en octubre · desde 82 kg')).toBeTruthy();
+    expect(summary.getByText('↘ 1,5 kg')).toBeTruthy(); expect(summary.getByText('en octubre · desde 82 kg el 10 sep')).toBeTruthy();
     // The arrow already says it went down: no extra trend line, and no technical note about dots.
     expect(summary.queryByText(/Tendencia en bajada/)).toBeNull(); expect(summary.queryByText(/Un punto por registro/)).toBeNull();
     expect(summary.getByText(/1 medición sospechosa excluida; podés corregirla en Cuerpo\./)).toBeTruthy();
@@ -304,6 +305,43 @@ describe('Body Trends', () => {
     fireEvent.press(view.getByTestId('body-trend-widen')); await flush();
     expect(mockBody).toHaveBeenLastCalledWith(mockClient, expect.objectContaining({ period: 'custom' }), null);
     expect(view.queryByText('Un solo registro en octubre. Con dos o más vas a ver cómo cambió.')).toBeNull();
+  });
+  it('opened from Insights (#367): the weight on the month of that day before the first read, its limit and a way back', async () => {
+    mockParams = { metric: 'body.weight', from: '2026-09-01', to: '2026-09-30', insightsReturn: '1', insightsDate: '2026-09-15', insightsSession: '93670000-0000-4000-8000-000000000b02' };
+    const view = wrap(<BodyTrendsScreen />); await flush();
+    expect(mockBody.mock.calls.length).toBeGreaterThan(0);
+    for (const call of mockBody.mock.calls) expect(call[1]).toEqual({ period: 'custom', from: '2026-09-01', to: '2026-09-30' });
+    expect(view.getByTestId('body-from-insights').props.children).toBe('El peso de un día no dice si te pesaste antes o después de entrenar.');
+    fireEvent.press(view.getByRole('button', { name: 'Volver a Insights' }));
+    expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/(tabs)/train/insights', params: { date: '2026-09-15', session: '93670000-0000-4000-8000-000000000b02' } });
+  });
+  it('without Insights there is no way back and no limit note', async () => {
+    const view = wrap(<BodyTrendsScreen />); await flush();
+    expect(view.queryByRole('button', { name: 'Volver a Insights' })).toBeNull();
+    expect(view.queryByTestId('body-from-insights')).toBeNull();
+  });
+  it('a stored 0 kg is named with its date, never dropped or re-computed here', async () => {
+    // A server that still counts it: it arrives as an observation, and the notice says it still enters the change.
+    mockBody.mockImplementation(async () => { const data = body(); const weight = data.metrics[0]!; weight.observations = [...weight.observations, obs('2026-10-02', 0)]; return ok(data); });
+    const view = wrap(<BodyTrendsScreen />); await flush();
+    expect(view.getByTestId('body-trend-zero')).toBeTruthy();
+    expect(within(view.getByTestId('body-trend-zero')).getByText(/El pesaje del 2 oct está en 0 kg: no es un peso, pero todavía entra en el cambio/)).toBeTruthy();
+    expect(within(view.getByTestId('body-trend-summary')).getByText('↘ 1,5 kg')).toBeTruthy();
+    view.unmount(); clearConfirmedReads(mockClient);
+    mockBody.mockImplementation(async () => ok(body()));
+    const clean = wrap(<BodyTrendsScreen />); await flush();
+    expect(clean.queryByTestId('body-trend-zero')).toBeNull();
+  });
+  it('a server that leaves 0 kg out: the record of the period says it does not count, and never measures a change (#367)', async () => {
+    mockBodyWeights = [{ date: '2026-10-04', weightKg: 80.5 }, { date: '2026-10-02', weightKg: 0 }, { date: '2026-10-01', weightKg: 81 }];
+    const view = wrap(<BodyTrendsScreen />); await flush();
+    expect(within(view.getByTestId('body-trend-zero')).getByText(/El pesaje del 2 oct está en 0 kg: no es un peso, así que no cuenta en el gráfico ni en el cambio/)).toBeTruthy();
+    const records = within(view.getByTestId('body-trend-records'));
+    expect(records.getByLabelText('Peso del 2 oct 2026: 0 kg. No cuenta: no es un peso')).toBeTruthy();
+    // 80,5 against 81, never against the 0 kg in between.
+    expect(records.getByText('No cuenta: no es un peso')).toBeTruthy();
+    expect(records.getByText('↘ 0,5 kg')).toBeTruthy();
+    expect(records.queryByText('↗ 80,5 kg')).toBeNull();
   });
   it('keeps the comparison chosen on the hub', async () => {
     const view = wrap(<BodyTrendsScreen />, comparing); await flush();
