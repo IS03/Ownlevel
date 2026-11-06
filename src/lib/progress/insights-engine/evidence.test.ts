@@ -128,6 +128,30 @@ describe("#367 evidencia de un ejercicio: la misma comparación que publicó Ins
     expect(evidence(history([[{ sets: [[8, 80]] }], [{ sets: [[9, 80]] }]]), "partial").item).toBeNull();
   });
 
+  it("lists every recorded set with its block and set number, whatever the order of their ids (#411)", () => {
+    // Two blocks of the same exercise in one session. Ids run against the numbers: the last set has the smallest id.
+    const date = "2029-03-02", earlier = "2029-03-01";
+    const at = (day: string) => ({ routineId: null, routineName: null, name: null, status: "completed" as const, startedAt: `${day}T18:00:00.000Z`, endedAt: `${day}T19:00:00.000Z`, performanceLevel: null, painLevel: null, legacyEnergyLevel: null });
+    const block = (row: string, session: string, order: number) => ({ id: row, sessionId: session, exerciseId: EXERCISE, name: "Press banca", implement: "barra", weightMode: "Peso total", isCompleted: true, configuration: "recorded:agarre medio", order });
+    const set = (n: number, row: string, number: number, reps: number, completed = true) => ({ id: id(5, n), sessionExerciseId: row, actualReps: reps, actualLoad: 80, isCompleted: completed, completedAt: null, setNumber: number });
+    const [a, b, r] = [id(3, 900), id(3, 800), id(3, 700)];
+    const source: InsightsSource = { sessions: [{ id: id(2, 0), date: earlier, ...at(earlier) }, { id: id(2, 1), date, ...at(date) }],
+      exercises: [block(r, id(2, 0), 1), block(a, id(2, 1), 2), block(b, id(2, 1), 5)],
+      sets: [set(9, r, 1, 8), set(1, a, 3, 9, false), set(2, a, 2, 10), set(3, a, 1, 10), set(4, b, 1, 9)], feelings: [], metricDefinitions: [], metricValues: [], meals: [] };
+    const item = evidence(source).item!;
+    expect(result(item)).toBe("improved");
+    // Every set, the incomplete one included, with where it sits for the person. The list keeps the comparator's id order.
+    expect(item.current.sets.map(row => [row.id, row.blockId, row.blockOrder, row.setNumber, row.completed])).toEqual([
+      [id(5, 1), a, 2, 3, false], [id(5, 2), a, 2, 2, true], [id(5, 3), a, 2, 1, true], [id(5, 4), b, 5, 1, true]]);
+    expect(item.current.excludedSetIds).toEqual([id(5, 1)]);
+    // The comparison is the comparator's, with or without the numbers.
+    const unnumbered = { ...source, exercises: source.exercises.map(row => ({ ...row, order: undefined })), sets: source.sets.map(row => ({ ...row, setNumber: undefined })) };
+    const plain = evidence(unnumbered).item!;
+    expect({ ...plain, current: undefined, reference: undefined }).toEqual({ ...item, current: undefined, reference: undefined });
+    expect(plain.current.sets.every(row => row.setNumber === null && row.blockOrder === null)).toBe(true);
+    expect(parsePerformanceInsights(JSON.parse(JSON.stringify(evidence(source))))).toBeDefined();
+  });
+
   it("is absent, not empty, for an exercise or session the history does not hold", () => {
     const source = history([[{ sets: [[8, 80]] }], [{ sets: [[9, 80]] }]]);
     expect(evidence(source, "strict", OTHER).item).toBeNull();
@@ -146,5 +170,9 @@ describe("#367 evidencia de un ejercicio: la misma comparación que publicó Ins
     expect(parsePerformanceInsights(unit)).toBeUndefined();
     const moved = structuredClone(body); moved.item.current.sessionId = id(2, 99);
     expect(parsePerformanceInsights(moved)).toBeUndefined();
+    const number = structuredClone(body); number.item.current.sets[0].setNumber = 1.5;
+    expect(parsePerformanceInsights(number)).toBeUndefined();
+    const owner = structuredClone(body); delete owner.item.current.sets[0].blockId;
+    expect(parsePerformanceInsights(owner)).toBeUndefined();
   });
 });

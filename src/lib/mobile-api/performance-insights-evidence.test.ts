@@ -52,10 +52,11 @@ function exerciseHistory(days: number) {
   const rows: Row[] = [], sets: Row[] = [];
   for (let day = 0; day < days; day++) for (const [index, exercise] of [EXERCISE, OTHER].entries()) {
     const id = uuid(3, day * 2 + index), status = day === days - 1 && index === 1 ? "in_progress" : "completed";
-    rows.push({ id, workout_session_id: uuid(2, day), exercise_id: exercise, user_id: USER, nombre_snapshot: "Press banca", implement_snapshot: "barra", weight_mode_snapshot: "Peso total", is_completed: true,
+    rows.push({ id, workout_session_id: uuid(2, day), exercise_id: exercise, exercise_order: index + 1, user_id: USER, nombre_snapshot: "Press banca", implement_snapshot: "barra", weight_mode_snapshot: "Peso total", is_completed: true,
       configuration: { kind: "recorded", label: "Agarre medio" },
       session: { id: uuid(2, day), routine_id: null, status, started_at: `${dateAt(day)}T18:00:00.000Z`, ended_at: `${dateAt(day)}T19:00:00.000Z`, day: { log_date: dateAt(day) } } });
-    for (let n = 0; n < 3; n++) sets.push({ id: uuid(4, (day * 2 + index) * 10 + n), workout_session_exercise_id: id, user_id: USER, actual_reps: 8 + (day % 3), actual_weight_kg: "80.00", is_completed: true, completed_at: `${dateAt(day)}T18:1${n}:00.000Z` });
+    // Ids run against the set numbers, as nothing guarantees they follow them.
+    for (let n = 0; n < 3; n++) sets.push({ id: uuid(4, (day * 2 + index) * 10 + n), workout_session_exercise_id: id, user_id: USER, set_number: 3 - n, actual_reps: 8 + (day % 3), actual_weight_kg: "80.00", is_completed: true, completed_at: `${dateAt(day)}T18:1${n}:00.000Z` });
   }
   return { rows, sets };
 }
@@ -75,11 +76,14 @@ describe("#367 GET evidencia: una lectura acotada a la comparación elegida", ()
     expect(parsePerformanceInsights(body)?.view).toBe("evidence");
     expect(body.item).toMatchObject({ name: "Press banca", current: { sessionId: uuid(2, 4), date: dateAt(4) }, reference: { sessionId: uuid(2, 3), date: dateAt(3), ageDays: 0 } });
     expect(body.item!.current.sets).toHaveLength(3);
+    expect(body.item!.current.sets.map(set => [set.blockOrder, set.setNumber])).toEqual([[1, 3], [1, 2], [1, 1]]);
     // The counter, one page of this exercise's rows with their sets and sessions, the counter again. Nothing else of the history.
     expect(fake.calls.map(call => call.table)).toEqual(["insights_source_revisions", "workout_session_exercises", "insights_source_revisions"]);
     const page = fake.calls[1]!;
     expect(page.filters).toEqual(expect.arrayContaining([["eq", "user_id", USER], ["eq", "exercise_id", EXERCISE], ["eq", "session.status", "completed"], ["eq", "sets.user_id", USER], ["eq", "set_count.user_id", USER]]));
     expect(page.selected).toContain("set_count:workout_sets(count)");
+    expect(page.selected).toContain("exercise_order");
+    expect(page.selected).toContain("sets:workout_sets(id,actual_reps,actual_weight_kg,is_completed,completed_at,set_number)");
     expect(page.selected).toContain("session:workout_sessions!inner(");
   });
 
@@ -90,6 +94,7 @@ describe("#367 GET evidencia: una lectura acotada a la comparación elegida", ()
     const body = await (await GET(request(evidenceQuery(uuid(2, 3))))).json() as InsightsExerciseEvidence;
     expect(body.item!.current.sets).toHaveLength(3);
     expect(body.item!.reference!.sets).toHaveLength(3);
+    expect(body.item!.current.sets.map(set => set.setNumber)).toEqual([3, 2, 1]);
     const stream = fake.calls.filter(call => call.table === "workout_sets");
     expect(stream).toHaveLength(1);
     const owners = stream[0]!.filters.find(filter => filter[0] === "in")![2] as string[];

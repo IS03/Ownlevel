@@ -18,10 +18,17 @@ export function exerciseSubset(source: InsightsSource, exerciseId: string): Insi
     feelings: [], metricDefinitions: [], metricValues: [], meals: [] };
 }
 
-const side = (exposure: ExerciseExposure, dates: ReadonlyMap<string, string | null>): EvidenceSide => ({ sessionId: exposure.sessionId, date: dates.get(exposure.sessionId) ?? null,
-  sets: exposure.sets.map(set => ({ id: set.id, completed: set.completed, amount: set.amount, load: set.load })), excludedSetIds: [...exposure.excludedSetIds] });
+type Rows = { dates: ReadonlyMap<string, string | null>; blocks: ReadonlyMap<string, InsightsSource["exercises"][number]>; setsOf: ReadonlyMap<string, InsightsSource["sets"][number][]> };
+/**
+ * The comparator keeps only the completed sets of an exposure. The detail lists every recorded set of its blocks, read from the same
+ * rows with the same fields the comparator was given (`toPerformanceSessions`), so a set left out is still seen and said why.
+ */
+const side = (exposure: ExerciseExposure, rows: Rows): EvidenceSide => ({ sessionId: exposure.sessionId, date: rows.dates.get(exposure.sessionId) ?? null,
+  sets: exposure.blockIds.flatMap(blockId => (rows.setsOf.get(blockId) ?? []).map(set => ({ id: set.id, blockId, blockOrder: rows.blocks.get(blockId)?.order ?? null,
+    setNumber: set.setNumber ?? null, completed: set.isCompleted, amount: set.actualReps, load: set.actualLoad }))).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  excludedSetIds: [...exposure.excludedSetIds] });
 
-function evidenceOf(row: Pick<ExercisePerformance, "reason" | "current" | "reference" | "evidence" | "records" | "exclusions">, name: string, dates: ReadonlyMap<string, string | null>): Omit<ExerciseEvidence, "status" | "reading"> {
+function evidenceOf(row: Pick<ExercisePerformance, "reason" | "current" | "reference" | "evidence" | "records" | "exclusions">, name: string, dates: Rows): Omit<ExerciseEvidence, "status" | "reading"> {
   const exclusions: Partial<Record<ExclusionReason, number>> = {};
   for (const exclusion of row.exclusions) exclusions[exclusion.reason] = (exclusions[exclusion.reason] ?? 0) + 1;
   return { name, reason: row.reason, context: row.current.context ? { ...row.current.context } : null, current: side(row.current, dates),
@@ -40,7 +47,9 @@ export function insightsExerciseEvidence(source: InsightsSource, selection: { se
   const sessions = toPerformanceSessions(source).sessions;
   const input = { sessions, historyCoverage: "complete" as const, exclusionDetail: "summary" as const };
   const strict = buildPerformanceInsightsV1(input);
-  const dates = new Map(source.sessions.map(row => [row.id, row.date]));
+  const setsOf = new Map<string, InsightsSource["sets"][number][]>();
+  for (const set of source.sets) setsOf.set(set.sessionExerciseId, [...(setsOf.get(set.sessionExerciseId) ?? []), set]);
+  const dates: Rows = { dates: new Map(source.sessions.map(row => [row.id, row.date])), blocks: new Map(source.exercises.map(row => [row.id, row])), setsOf };
   const sessionId = selection.sessionId.toLowerCase(), exerciseId = selection.exerciseId.toLowerCase();
   const name = source.exercises.find(row => row.sessionId.toLowerCase() === sessionId && row.exerciseId.toLowerCase() === exerciseId)?.name ?? "";
   const header = { view: "evidence" as const, contractVersion: INSIGHTS_CONTRACT, methodVersion: method === 2 ? INSIGHTS_ENGINE_METHOD_V2 : INSIGHTS_ENGINE_METHOD,

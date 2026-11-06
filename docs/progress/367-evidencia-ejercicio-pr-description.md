@@ -34,7 +34,7 @@ Desde un ejercicio de Insights se puede ver qué registros sostienen su resultad
   - la pantalla lee una vez al abrir. Muestra:
     - el resultado con su flecha y la fecha de la referencia;
     - las señales («Con 80 kg: 8 → 10 reps», «A 8 reps: 80 → 85 kg»);
-    - las series de las dos sesiones en su unidad, marcando cuáles usó la comparación y cuáles no se cuentan;
+    - todas las series registradas de las dos sesiones, en su unidad, con su número de serie y su bloque. Marca cuáles usó la comparación y cuáles no se cuentan, como las sin completar;
     - los récords aparte;
     - el contexto registrado;
     - enlaces a las dos sesiones y al historial del ejercicio;
@@ -42,6 +42,28 @@ Desde un ejercicio de Insights se puede ver qué registros sostienen su resultad
   - **carril parcial:** rotula su límite, y lo más alto se muestra como «lo más alto con contexto parcial», no como récord;
   - **si los datos cambiaron desde Insights:** con la misma referencia y el mismo resultado lo avisa y muestra los datos de ahora. Si cambió alguno, no pone otra comparación en su lugar y ofrece volver a Insights;
   - **lo que no cambia:** la vista por ejercicios sigue abriendo el historial del ejercicio. El finish no lee nada.
+
+## Revisión de #411
+
+- **Números de serie:** la pantalla numeraba las series por su posición en la lista, que viene ordenada por UUID. Ahora cada serie lleva su `set_number` y su bloque (`exercise_order` en la sesión).
+  - Se muestran ordenadas por bloque y por número, en una copia: la lista y el comparador no cambian.
+  - Con más de un bloque del mismo ejercicio dice «Bloque 1 · Serie 2». Sin número conocido dice «Serie sin número», y sin orden de bloque, «Bloque sin orden». Nunca inventa una secuencia.
+- **Series sin completar:** el comparador conserva solo las series completas de una exposición. La evidencia ahora lista todas las series de sus bloques, leídas de las mismas filas que recibe el comparador. Una serie sin completar aparece como «Sin completar, no se cuenta»; antes no aparecía.
+- **Contrato:** cada serie trae `blockId`, `blockOrder` y `setNumber` (entero o `null`). La vista es nueva en esta rama, así que no hay respuestas anteriores que conservar.
+- **Lectura:** suma `exercise_order` y `set_number` a la misma consulta, sin pedidos nuevos. Insights no los lee.
+- **Prueba contra PostgREST local descartable** (PostgreSQL 17.6.1.105, `max_rows = 1000`, 93 migraciones; la pila se borró al terminar):
+  - 230 sesiones de una persona: cinco bloques del ejercicio por sesión, otro ejercicio entre ellos, tres series por bloque, series sin completar y variantes en algunos bloques. La última sesión queda en curso. Otra cuenta entrena su propio ejercicio;
+  - **forma real**, con el mismo select:
+    - `sets` es una lista con las seis columnas;
+    - `set_count` es `[{ count: 3 }]`;
+    - `session` y `session.day` son objetos;
+    - `configuration` es un objeto o `null`, nunca una lista;
+    - `exercise_order` es un número;
+  - **1145 filas en dos páginas:** contador, dos páginas y contador. No hizo falta el stream de series porque ninguna lista vino cortada;
+  - **valores iguales a SQL:** ids, sesiones y orden de cada fila, su configuración, y cada una de las 3435 series con número, reps, carga y estado, en orden por id. Las 229 sesiones terminadas tienen su fecha y la sesión en curso queda afuera;
+  - **misma evidencia que con el historial completo** de Insights, en los dos carriles, en una muestra de sesiones;
+  - **aislamiento:** otra cuenta no lee nada del ejercicio, ni siquiera nombrando el id de la dueña con su propio token. La dueña no lee nada del ejercicio ajeno.
+  - **Sin probar ahí:** la relectura de una lista cortada. Con `max_rows = 1000` y el límite de 50 series por bloque no puede ocurrir; queda cubierta por la prueba de la ruta.
 
 ## Costo de lectura y límites
 
@@ -63,15 +85,18 @@ Desde un ejercicio de Insights se puede ver qué registros sostienen su resultad
   - la revisión cubre todas las fuentes de Insights: anotar una comida después de abrir Insights también cuenta como cambio. En ese caso se avisa que los datos son los de ahora; no se rechaza la evidencia;
   - la configuración se muestra con la identidad guardada, que va en minúsculas;
   - las exclusiones de sesiones candidatas no se listan: solo las series excluidas de los dos lados.
+  - la prueba local mide la forma y los valores, no la latencia en producción.
 
 ## Validación
 
 - **Equivalencia:** para cada ejercicio de cada sesión publicada en los dos carriles, la evidencia da el mismo resultado, motivo, referencia, fecha y antigüedad que Insights. Da exactamente lo mismo con el historial completo que con solo las sesiones del ejercicio. Se probó con y sin configuración conocida.
 - **Pruebas nuevas:**
-  - **motor:** referencia compatible distinta de la última sesión, más carga con menos repeticiones, señales cruzadas con sus series, los cuatro modos en su unidad, modos distintos sin comparar, récord separado, carriles con sus palabras, ausencia;
+  - **motor:** series con UUID en orden contrario a su número, en dos bloques del mismo ejercicio y una sin completar (#411); referencia compatible distinta de la última sesión, más carga con menos repeticiones, señales cruzadas con sus series, los cuatro modos en su unidad, modos distintos sin comparar, récord separado, carriles con sus palabras, ausencia;
   - **contrato:** rechaza señales con series ajenas, palabras del otro carril, unidad desconocida y una sesión distinta;
-  - **ruta:** solo el historial del ejercicio, por token y bajo el contador; relectura de listas cortadas solo para esas filas; un reintento y después no disponible; ausencia; parámetros completos, bien formados y solos;
+  - **local:** `performance-insights-evidence.local.test.ts`, contra PostgREST descartable (ver arriba);
+  - **ruta:** `exercise_order` y `set_number` en el select y en la respuesta; solo el historial del ejercicio, por token y bajo el contador; relectura de listas cortadas solo para esas filas; un reintento y después no disponible; ausencia; parámetros completos, bien formados y solos;
   - **Mobile:**
+    - etiquetas por bloque y número aunque los UUID vayan al revés, y neutrales sin número (#411);
     - una lectura al abrir, con la selección justa;
     - señales y series en su unidad;
     - mezclado por cruce y por falta de ancla, con récord aparte;
@@ -82,8 +107,8 @@ Desde un ejercicio de Insights se puede ver qué registros sostienen su resultad
     - ida y vuelta de la navegación.
 - **Prueba ajustada:** la de Insights que abría el historial del ejercicio ahora espera la evidencia y comprueba que no se lee nada al tocar.
 - **Pruebas que pasan:**
-  - Web, motor, comparador y contrato: 392;
-  - Mobile Insights: 51.
+  - Web, motor, comparador y contrato: 393, más la prueba local;
+  - Mobile Insights: 52.
 - **Tipos y lint:** sin errores en Web y Mobile.
 
 ## Pendientes

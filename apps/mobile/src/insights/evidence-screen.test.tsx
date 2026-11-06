@@ -163,6 +163,29 @@ describe('#367 evidencia de una comparación', () => {
     expect(view.queryByTestId('evidence-signals')).toBeNull();
   });
 
+  it('names each set by its block and recorded number, never by its place in the id order (#411)', async () => {
+    // One session with two blocks of the exercise; the ids run against the set numbers and one set was left unfinished.
+    const source = history([[[8, 80]], []]);
+    const session = id(2, 1), [first, second] = [id(3, 91), id(3, 90)];
+    const block = (row: string, order: number) => ({ id: row, sessionId: session, exerciseId: EX, name: 'Press banca', implement: 'barra', weightMode: 'Peso total', isCompleted: true, configuration: 'recorded:agarre medio', order });
+    const set = (n: number, row: string, setNumber: number, reps: number, isCompleted = true) => ({ id: id(5, n), sessionExerciseId: row, actualReps: reps, actualLoad: 80, isCompleted, completedAt: null, setNumber });
+    const twoBlocks: InsightsSource = { ...source, exercises: [...source.exercises.filter(row => row.sessionId !== session), block(first, 2), block(second, 6)],
+      sets: [...source.sets, set(1, first, 3, 9, false), set(2, first, 2, 10), set(3, first, 1, 10), set(4, second, 2, 9), set(5, second, 1, 9)] };
+    mockParams = selection();
+    mockRead.mockImplementation(serve(twoBlocks));
+    const view = await open();
+    const labels = within(view.getByTestId('evidence-current')).getAllByText(/^Bloque/).map(node => [node.props.children].flat().join(''));
+    expect(labels).toEqual(['Bloque 1 · Serie 1', 'Bloque 1 · Serie 2', 'Bloque 1 · Serie 3', 'Bloque 2 · Serie 1', 'Bloque 2 · Serie 2']);
+    expect(view.getByLabelText('Bloque 1 · Serie 3: 80 kg × 9. Sin completar, no se cuenta')).toBeTruthy();
+    expect(view.getByLabelText('Bloque 1 · Serie 1: 80 kg × 10. En la comparación')).toBeTruthy();
+    // One block, with numbers unknown: neutral labels, no invented sequence.
+    view.unmount(); clearConfirmedReads(mockClient);
+    mockRead.mockImplementation(serve(history([[[8, 80]], [[10, 80], [9, 80]]])));
+    const plain = await open();
+    expect(within(plain.getByTestId('evidence-current')).getAllByText('Serie sin número')).toHaveLength(2);
+    expect(within(plain.getByTestId('evidence-current')).queryByText(/^Bloque/)).toBeNull();
+  });
+
   it('travels from Insights with everything it needs and nothing it does not trust', () => {
     const href = insightsEvidenceHref({ session: id(2, 1), exercise: EX, lane: 'strict', reference: null, result: 'insufficient_comparison', revision: REVISION }, { session: id(2, 1), date: '2029-03-03' });
     expect(href.pathname).toBe('/(tabs)/train/insights/evidence');

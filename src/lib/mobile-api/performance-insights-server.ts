@@ -133,7 +133,12 @@ async function readSetStream(context: Context) {
   return byExercise;
 }
 
-type EvidenceRow = ExerciseRow & { set_count: { count: number }[];
+/** The evidence detail also reads where each set sits for the person: its block's order and its number. Insights does not. */
+const EVIDENCE_SET_COLUMNS = `${SET_COLUMNS},set_number`;
+type EvidenceSetRow = EmbeddedSetRow & { set_number: number };
+/** Exported for the local PostgREST test, which reads the raw shape with this same select. */
+export const EXERCISE_EVIDENCE_SELECT = `id,workout_session_id,exercise_id,exercise_order,nombre_snapshot,implement_snapshot,weight_mode_snapshot,is_completed,configuration:workout_session_exercise_configurations(kind,label),sets:workout_sets(${EVIDENCE_SET_COLUMNS}),set_count:workout_sets(count),session:workout_sessions!inner(id,routine_id,status,started_at,ended_at,day:day_logs!inner(log_date))`;
+type EvidenceRow = Omit<ExerciseRow, "sets"> & { exercise_order: number; sets: EvidenceSetRow[]; set_count: { count: number }[];
   session: { id: string; routine_id: string | null; status: "completed"; started_at: string | null; ended_at: string | null; day: { log_date: string } } };
 /**
  * The history of one exercise and nothing else (#367): its rows in completed sessions, each with its session, its configuration
@@ -143,16 +148,16 @@ type EvidenceRow = ExerciseRow & { set_count: { count: number }[];
 export async function readExerciseSource(context: Context, exerciseId: string): Promise<InsightsSource> {
   const { supabase, userId } = context;
   const rows = await readAllTrainingRows<EvidenceRow>("Leer historial del ejercicio", from => supabase.from("workout_session_exercises")
-    .select(`id,workout_session_id,exercise_id,nombre_snapshot,implement_snapshot,weight_mode_snapshot,is_completed,configuration:workout_session_exercise_configurations(kind,label),sets:workout_sets(${SET_COLUMNS}),set_count:workout_sets(count),session:workout_sessions!inner(id,routine_id,status,started_at,ended_at,day:day_logs!inner(log_date))`, firstPage(from))
+    .select(EXERCISE_EVIDENCE_SELECT, firstPage(from))
     .eq("user_id", userId).eq("exercise_id", exerciseId).eq("session.status", "completed").eq("sets.user_id", userId).eq("set_count.user_id", userId)
     .order("id").order("id", { referencedTable: "sets" }).range(from, from + 999).returns<EvidenceRow[]>());
   const expected = (row: EvidenceRow) => row.set_count[0]?.count;
   const cut = rows.filter(row => row.sets.length !== expected(row));
   if (cut.length) {
     const owners = new Set(cut.map(row => row.id));
-    const stream = await readAllTrainingRows<SetRow>("Leer series del ejercicio", from => supabase.from("workout_sets")
-      .select(`workout_session_exercise_id,${SET_COLUMNS}`, firstPage(from)).eq("user_id", userId).in("workout_session_exercise_id", [...owners]).order("id").range(from, from + 999));
-    const byOwner = new Map<string, EmbeddedSetRow[]>();
+    const stream = await readAllTrainingRows<SetRow & { set_number: number }>("Leer series del ejercicio", from => supabase.from("workout_sets")
+      .select(`workout_session_exercise_id,${EVIDENCE_SET_COLUMNS}`, firstPage(from)).eq("user_id", userId).in("workout_session_exercise_id", [...owners]).order("id").range(from, from + 999));
+    const byOwner = new Map<string, EvidenceSetRow[]>();
     for (const { workout_session_exercise_id: owner, ...set } of stream) byOwner.set(owner, [...(byOwner.get(owner) ?? []), set]);
     for (const row of cut) row.sets = byOwner.get(row.id) ?? [];
     if (cut.some(row => row.sets.length !== expected(row))) throw new Error("Leer series del ejercicio");
@@ -163,8 +168,9 @@ export async function readExerciseSource(context: Context, exerciseId: string): 
     sessions: [...sessions.values()].sort(byId).map(row => ({ id: row.id, date: row.day.log_date, routineId: row.routine_id, routineName: null, name: null, status: row.status,
       startedAt: row.started_at, endedAt: row.ended_at, performanceLevel: null, painLevel: null, legacyEnergyLevel: null })),
     exercises: rows.map(row => ({ id: row.id, sessionId: row.workout_session_id, exerciseId: row.exercise_id, name: row.nombre_snapshot, implement: row.implement_snapshot, weightMode: row.weight_mode_snapshot, isCompleted: row.is_completed,
-      configuration: configurationIdentity(oneConfiguration(row.configuration)) })),
-    sets: sets.map(row => ({ id: row.id, sessionExerciseId: row.workout_session_exercise_id, actualReps: strictNumber(row.actual_reps), actualLoad: strictNumber(row.actual_weight_kg), isCompleted: row.is_completed, completedAt: row.completed_at })),
+      configuration: configurationIdentity(oneConfiguration(row.configuration)), order: row.exercise_order })),
+    sets: sets.map(row => ({ id: row.id, sessionExerciseId: row.workout_session_exercise_id, actualReps: strictNumber(row.actual_reps), actualLoad: strictNumber(row.actual_weight_kg), isCompleted: row.is_completed, completedAt: row.completed_at,
+      setNumber: row.set_number })),
     feelings: [], metricDefinitions: [], metricValues: [], meals: [],
   };
 }

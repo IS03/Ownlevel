@@ -2,7 +2,7 @@
 import { INSIGHTS_PERFORMANCE_PARTIAL_METHOD, PARTIAL_CONTEXT } from "../progress/performance-insights/partial";
 import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from "../progress/insights-engine/types";
 
-export type { AssociationResult, AssociationState, CandidateDefinition, DayFact, EvidenceSide, ExerciseEvidence, ExerciseFact, InsightsExerciseEvidence, ExerciseSummary, InsightsDaysPage, InsightsReadModel, InsightsRelationDetail, InsightsRelations, InsightsResponse, InsightsSummary, PartialAssociationState, PartialRelationSummary, RelationSummary, NutritionContext, PartialAssociationResult, PartialDayFact, PartialExerciseFact, PartialExerciseSummary, PartialLane, SessionFact, SessionFeeling } from "../progress/insights-engine/types";
+export type { AssociationResult, AssociationState, CandidateDefinition, DayFact, EvidenceSet, EvidenceSide, ExerciseEvidence, ExerciseFact, InsightsExerciseEvidence, ExerciseSummary, InsightsDaysPage, InsightsReadModel, InsightsRelationDetail, InsightsRelations, InsightsResponse, InsightsSummary, PartialAssociationState, PartialRelationSummary, RelationSummary, NutritionContext, PartialAssociationResult, PartialDayFact, PartialExerciseFact, PartialExerciseSummary, PartialLane, SessionFact, SessionFeeling } from "../progress/insights-engine/types";
 export const PERFORMANCE_INSIGHTS_PATH = "/api/mobile/v1/progress/performance-insights";
 
 type Json = Record<string, unknown>;
@@ -125,7 +125,9 @@ const UNIT = new Set(["kg", "lingotes", "reps", "seconds"]);
 const SIGNAL = new Set(["reps_at_load", "load_at_reps", "bodyweight_reps", "time"]);
 const RECORD = new Set(["load", "reps_at_load", "bodyweight_reps", "time"]);
 const ids = (v: unknown) => list(v, row => typeof row === "string");
-const evidenceSet = (v: unknown) => object(v) && typeof v.id === "string" && typeof v.completed === "boolean" && numberOrNull(v.amount) && numberOrNull(v.load);
+const countOrNull = (v: unknown) => v === null || count(v);
+const evidenceSet = (v: unknown) => object(v) && typeof v.id === "string" && typeof v.blockId === "string" && countOrNull(v.blockOrder) && countOrNull(v.setNumber)
+  && typeof v.completed === "boolean" && numberOrNull(v.amount) && numberOrNull(v.load);
 const evidenceSide = (v: unknown) => object(v) && uuid(v.sessionId) && (v.date === null || date(v.date)) && list(v.sets, evidenceSet) && ids(v.excludedSetIds);
 const signal = (v: unknown) => object(v) && SIGNAL.has(String(v.kind)) && numberOrNull(v.anchor) && finite(v.current) && finite(v.reference) && finite(v.delta) && ids(v.currentSetIds) && ids(v.referenceSetIds);
 const record = (v: unknown) => object(v) && RECORD.has(String(v.kind)) && numberOrNull(v.anchor) && finite(v.current) && finite(v.previousMaximum) && typeof v.isNewHigh === "boolean";

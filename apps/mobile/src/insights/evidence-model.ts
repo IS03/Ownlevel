@@ -83,13 +83,22 @@ export function contextRows(item: ExerciseEvidence) {
   ];
 }
 
-/** Which sets of a side a signal used, and which ones the comparator left out: every set stays listed. */
+const nullsLast = (a: number | null, b: number | null) => a === b ? 0 : a === null ? 1 : b === null ? -1 : a - b;
+/**
+ * Every set of a side, as the person recorded it: by block (its order in the session) and by `set_number`, never by position in
+ * the list, which is the comparator's id order. A copy is sorted; the comparison is untouched. Unknown numbers are said, not made up.
+ */
 export function sideRows(side: EvidenceSide, item: ExerciseEvidence, which: 'current' | 'reference') {
   const used = new Set(item.evidence.flatMap(signal => which === 'current' ? signal.currentSetIds : signal.referenceSetIds));
   const excluded = new Set(side.excludedSetIds), unit = item.context?.unit;
-  return side.sets.map((set, index) => {
-    const note = excluded.has(set.id) ? 'No se cuenta' : !set.completed ? 'Sin completar' : used.has(set.id) ? 'En la comparación' : undefined;
-    return { key: set.id, label: `Serie ${index + 1}`, value: setText(set, unit), detail: note, spoken: `Serie ${index + 1}: ${setText(set, unit)}${note ? `. ${note}` : ''}` };
+  const sets = [...side.sets].sort((a, b) => nullsLast(a.blockOrder, b.blockOrder) || a.blockId.localeCompare(b.blockId) || nullsLast(a.setNumber, b.setNumber) || a.id.localeCompare(b.id));
+  // Blocks are named by their place among this exercise's blocks only when every one of them has a known order.
+  const blocks = [...new Set(sets.map(set => set.blockId))], ordered = sets.every(set => set.blockOrder !== null);
+  return sets.map(set => {
+    const block = blocks.length < 2 ? '' : ordered ? `Bloque ${blocks.indexOf(set.blockId) + 1} · ` : 'Bloque sin orden · ';
+    const label = `${block}${set.setNumber === null ? 'Serie sin número' : `Serie ${set.setNumber}`}`;
+    const note = !set.completed ? 'Sin completar, no se cuenta' : excluded.has(set.id) ? 'No se cuenta' : used.has(set.id) ? 'En la comparación' : undefined;
+    return { key: set.id, label, value: setText(set, unit), detail: note, spoken: `${label}: ${setText(set, unit)}${note ? `. ${note}` : ''}` };
   });
 }
 export const sideTitle = (side: EvidenceSide, which: 'current' | 'reference') => `${which === 'current' ? 'Esta sesión' : 'Sesión de referencia'}${side.date ? ` · ${dayLabel(side.date)}` : ''}`;

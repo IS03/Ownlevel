@@ -99,7 +99,8 @@ Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya
     - Una vista nueva del mismo contrato, `view=evidence`, con sesión, ejercicio y método. Se lee solo al abrir el detalle: nunca por tarjeta ni al terminar.
     - La lectura trae solo el historial de ese ejercicio: sus filas en sesiones terminadas, con sesión, configuración y series. No toca el resto del historial ni el snapshot.
     - Corre el comparador compartido con salida completa sobre ese historial (`insightsExerciseEvidence`). No clasifica por su cuenta. Las pruebas comprueban que decide lo mismo que el historial entero.
-    - Muestra el resultado, la referencia compatible con su fecha, las señales con su ancla, y cada serie de los dos lados en su unidad. Marca cuáles usó cada señal y cuáles quedaron afuera.
+    - Muestra el resultado, la referencia compatible con su fecha, las señales con su ancla, y cada serie registrada de los dos lados en su unidad, con su número y su bloque (#411). Marca cuáles usó cada señal y cuáles quedaron afuera, como las sin completar.
+    - La lectura se probó contra PostgREST local descartable: forma real, dos páginas, valores iguales a SQL, sesiones en curso excluidas y aislamiento entre cuentas.
     - Explica las señales cruzadas y la falta de ancla: más carga con menos repeticiones no es mejora. El récord va aparte del resultado y, en el carril parcial, se rotula como lo más alto con contexto parcial.
     - Sin volumen, porcentajes, e1RM ni causas.
     - Si los datos cambiaron desde Insights y la referencia o el resultado ya no son los mismos, no muestra otra comparación en su lugar: pide volver a Insights.
