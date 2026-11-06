@@ -1,3 +1,16 @@
+# Estado vigente — contexto diario completo, en revisión
+
+Rama `codex/367-day-context`, publicada en `effbd7dbcb7fbfe8e40d76b806e0910cb4849a49` sobre main `71c7dd3`, con previews bloqueadas. Sin migración, sin mergear ni build.
+
+- **Qué hace:** en Mobile, el contexto del día muestra todas sus sesiones y los cuatro macros registrados. Cada sesión tiene nombre, horario, sensaciones antes y al terminar y carbohidratos de 3 h. Lo del día aparece una sola vez.
+- **Método:** sin cambios. Mismas exclusiones `multiple_sessions_day`, los mismos candidatos, ventanas, denominadores y versiones.
+- **Contrato:** agrega el campo opcional `sessions[].context.unreadableFeelings`, sin consultas nuevas. Los clientes anteriores lo ignoran.
+- **Detalle y validación:** [descripción del PR](367-contexto-diario-pr-description.md) en esa rama.
+- **QA física:** diferida, en la [lista única](367-qa-fisica.md).
+- **Próximo:** tendencias de peso. #367 sigue abierto.
+
+---
+
 # Estado vigente — sueño y peso desplegados
 
 #397 y #398 están mergeados y desplegados en READY. Main: 71c7dd3c1240fb221486190a0ebb65bd6a80f22b. Ver [registro vigente](367-sueno-peso-rollout-produccion-2026-11-06.md). Lo siguiente conserva el historial de preparación y sus estados anteriores.
