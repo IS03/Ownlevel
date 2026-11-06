@@ -1,5 +1,6 @@
 import "server-only";
-import { listWeightHistory } from "@/lib/phase1/day-log";
+import { listAllWeightHistory } from "@/lib/phase1/day-log";
+import { isValidBodyWeightKg } from "@/lib/weight-history";
 import { loadCompletedTrainingData } from "@/lib/phase2/training-robust";
 import { trainingLoadSamples } from "@/lib/progress/training-performance";
 import { buildNutritionReportDays, type NutritionReportDay } from "@/lib/nutrition/reports-core";
@@ -103,7 +104,7 @@ export async function buildMobileProgressStages(context: Context, today: string)
       const range = stageWindow(stage, today);
       return buildNutritionReportDays({ range, today, ...await readMobileNutritionFacts(context, range, today) });
     })), "nutrition"),
-    settle(async () => (await listWeightHistory(1000, auth)).filter(p => Number.isFinite(p.weight_kg))
+    settle(async () => (await listAllWeightHistory(auth)).filter(p => isValidBodyWeightKg(p.weight_kg))
       .map(p => ({ date: p.log_date, value: p.weight_kg })).sort((a, b) => a.date.localeCompare(b.date)), "body"),
     settle(async () => [...new Set((trainingLoadSamples(await loadCompletedTrainingData(auth, { sessionsOnly: true })).get("training.load.sessions") ?? [])
       .map(s => s.date))], "training"),

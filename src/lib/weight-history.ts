@@ -1,5 +1,14 @@
+/** Exclusive: a body weight is above zero. 0 kg is not a weight, it is a value that was stored by mistake. */
 export const MIN_WEIGHT_KG = 0;
 export const MAX_WEIGHT_KG = 999.99;
+
+/**
+ * Whether a stored value is a body weight that analysis can use. Records that fail it stay in the history, to be seen,
+ * corrected or deleted, but never enter a chart, a change or a comparison.
+ */
+export function isValidBodyWeightKg(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > MIN_WEIGHT_KG && value <= MAX_WEIGHT_KG;
+}
 
 export type WeightHistoryPoint = {
   id: string;
@@ -20,10 +29,11 @@ export function parseOptionalWeight(value: string | null | undefined): ParsedWei
   if (!Number.isFinite(weight)) {
     return { ok: false, error: "Ingresá un peso numérico válido." };
   }
-  if (weight < MIN_WEIGHT_KG || weight > MAX_WEIGHT_KG) {
+  // An empty field still clears the weight (above). Zero is rejected: it is not a weight.
+  if (weight <= MIN_WEIGHT_KG || weight > MAX_WEIGHT_KG) {
     return {
       ok: false,
-      error: `El peso debe estar entre ${MIN_WEIGHT_KG} y ${MAX_WEIGHT_KG} kg.`,
+      error: "El peso tiene que ser mayor a 0 y hasta 999,99 kg.",
     };
   }
 

@@ -79,3 +79,12 @@ Requiere una build de Mobile con `codex/367-day-context`. No requiere migración
 - [ ] *Requiere migración.* **Ventana previa (#389):** una comida con hora declarada cuenta; una con reloj automático no.
 - [ ] *Requiere migración.* **Reutilización (#392):** volver a una vista sin cambios es inmediato; registrar una comida la actualiza.
 - [ ] **ChatGPT:** las migraciones ya están aplicadas. Falta el paso manual de quien administra cada conexión (GPT con Action y conector MCP), con su comprobación: [paso manual](../integrations/chatgpt-nutrition.md#paso-manual-actualizar-las-conexiones-de-chatgpt-367).
+
+## Pesos inválidos e historial completo en Cuerpo
+Requiere desplegar `codex/367-body-weight-fixes`. Web sin build; Mobile solo para el formulario. Sin migración.
+- [ ] **Cargar 0 kg:** Web (Cuerpo y Ajustes) y Mobile lo rechazan con un mensaje. Vaciar el peso en Ajustes o borrar un pesaje sigue funcionando.
+- [ ] **Un 0 kg ya guardado:**
+  - Sigue en el historial con «no cuenta: no es un peso».
+  - Se puede corregir a un peso real o borrarlo.
+  - No aparece en el gráfico ni en el cambio. Web dice cuántos quedaron fuera.
+- [ ] **Historial largo:** con más de 1000 pesajes, Cuerpo, Inicio, Etapas y Relaciones muestran los más recientes. El cambio del período usa sus primeros y últimos pesajes reales.

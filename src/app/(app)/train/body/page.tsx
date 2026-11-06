@@ -7,7 +7,7 @@ import { BodyProgressWorkspace } from "@/components/body/body-progress-workspace
 import { ComparisonConfigurator } from "@/components/progress/comparison-configurator";
 import { listBodyMeasurements } from "@/lib/body-measurements";
 import { getMyProfile } from "@/lib/phase1/profile";
-import { listWeightHistory } from "@/lib/phase1/day-log";
+import { listAllWeightHistory } from "@/lib/phase1/day-log";
 import { todayInCordoba } from "@/lib/phase2/cordoba-date";
 import { bodyAvailableMetricDefinitions } from "@/lib/progress/body";
 import { getPreviousProgressPeriod, resolveProgressPeriod } from "@/lib/progress/analytics";
@@ -34,7 +34,7 @@ export default async function BodyPage({ searchParams }: { searchParams: Promise
   }, today);
   const [profile, weightHistory, measurements] = await Promise.all([
     getMyProfile(auth),
-    listWeightHistory(1000, auth),
+    listAllWeightHistory(auth),
     listBodyMeasurements(1000, auth),
   ]);
   const availableMetrics = bodyAvailableMetricDefinitions({

@@ -6,13 +6,13 @@ vi.mock("../phase2/cordoba-date", () => ({ todayInCordoba: () => clock.today }))
 vi.mock("@/lib/phase2/cordoba-date", () => ({ todayInCordoba: () => clock.today }));
 vi.mock("./supabase", () => ({ authenticateMobileAccessToken: vi.fn() }));
 vi.mock("@/lib/phase1/profile", () => ({ getMyProfile: vi.fn() }));
-vi.mock("@/lib/phase1/day-log", () => ({ listWeightHistory: vi.fn() }));
+vi.mock("@/lib/phase1/day-log", () => ({ listAllWeightHistory: vi.fn() }));
 vi.mock("@/lib/body-measurements", () => ({ listBodyMeasurements: vi.fn() }));
 vi.mock("@/lib/phase2/training-robust", () => ({ loadCompletedTrainingData: vi.fn() }));
 vi.mock("@/lib/phase2/training", () => ({ listRoutines: vi.fn() }));
 import { authenticateMobileAccessToken } from "./supabase";
 import { getMyProfile } from "@/lib/phase1/profile";
-import { listWeightHistory } from "@/lib/phase1/day-log";
+import { listAllWeightHistory } from "@/lib/phase1/day-log";
 import { listBodyMeasurements } from "@/lib/body-measurements";
 import { loadCompletedTrainingData } from "@/lib/phase2/training-robust";
 import { listRoutines } from "@/lib/phase2/training";
@@ -94,7 +94,7 @@ beforeEach(() => {
   values = []; dayLogs = [];
   vi.mocked(authenticateMobileAccessToken).mockResolvedValue({ userId: "owner", supabase: supabase() } as never);
   vi.mocked(getMyProfile).mockResolvedValue({ current_weight_kg: 80 } as never);
-  vi.mocked(listWeightHistory).mockResolvedValue([]);
+  vi.mocked(listAllWeightHistory).mockResolvedValue([]);
   vi.mocked(listBodyMeasurements).mockResolvedValue([]);
   vi.mocked(loadCompletedTrainingData).mockResolvedValue({ sessions: [], sessionExercises: [], sets: [], dateByDayLog: new Map() });
   vi.mocked(listRoutines).mockResolvedValue([]);
@@ -145,19 +145,30 @@ describe("GET /progress/body", () => {
   it("sparse data stays insufficient; profile weight is never an observation; 2 obs = limited; ≥3 consistent = direction", async () => {
     let body = await json(await bodyGET(request("progress/body")), parseProgressBody);
     expect(body.metrics).toEqual([]); // profile weight only: no dated observation
-    vi.mocked(listWeightHistory).mockResolvedValue([{ id: "w1", log_date: d(-3), weight_kg: 81 }]);
+    vi.mocked(listAllWeightHistory).mockResolvedValue([{ id: "w1", log_date: d(-3), weight_kg: 81 }]);
     body = await json(await bodyGET(request("progress/body")), parseProgressBody);
     expect(body.metrics[0]).toMatchObject({ key: "body.weight", change: null, trend: "unavailable", confidence: "unavailable", observations: [{ date: d(-3), value: 81 }] });
-    vi.mocked(listWeightHistory).mockResolvedValue([{ id: "w1", log_date: d(-10), weight_kg: 81 }, { id: "w2", log_date: d(-3), weight_kg: 80 }]);
+    vi.mocked(listAllWeightHistory).mockResolvedValue([{ id: "w1", log_date: d(-10), weight_kg: 81 }, { id: "w2", log_date: d(-3), weight_kg: 80 }]);
     body = await json(await bodyGET(request("progress/body")), parseProgressBody);
     expect(body.metrics[0]).toMatchObject({ change: -1, trend: "decreased", confidence: "limited" });
-    vi.mocked(listWeightHistory).mockResolvedValue([81, 80.5, 80.5, 79.8].map((w, i) => ({ id: `w${i}`, log_date: d(-20 + i * 5), weight_kg: w })));
+    vi.mocked(listAllWeightHistory).mockResolvedValue([81, 80.5, 80.5, 79.8].map((w, i) => ({ id: `w${i}`, log_date: d(-20 + i * 5), weight_kg: w })));
     body = await json(await bodyGET(request("progress/body")), parseProgressBody);
     expect(body.metrics[0]).toMatchObject({ trend: "decreased", confidence: "supported", first: { value: 81 }, last: { value: 79.8 } });
     expect(body.metrics[0].change).toBeCloseTo(-1.2);
-    vi.mocked(listWeightHistory).mockResolvedValue([80, 79, 78, 81].map((w, i) => ({ id: `w${i}`, log_date: d(-20 + i * 5), weight_kg: w })));
+    vi.mocked(listAllWeightHistory).mockResolvedValue([80, 79, 78, 81].map((w, i) => ({ id: `w${i}`, log_date: d(-20 + i * 5), weight_kg: w })));
     body = await json(await bodyGET(request("progress/body")), parseProgressBody);
     expect(body.metrics[0]).toMatchObject({ trend: "variable", confidence: "supported", change: 1 });
+  });
+  it("a stored 0 kg is not an observation, a change or the latest weight; the answer keeps the shape installed clients read (#367)", async () => {
+    vi.mocked(listAllWeightHistory).mockResolvedValue([{ id: "w1", log_date: d(-10), weight_kg: 81 }, { id: "w2", log_date: d(-5), weight_kg: 0 }, { id: "w3", log_date: d(-3), weight_kg: 80 }, { id: "w4", log_date: d(-1), weight_kg: 0 }]);
+    const raw = await (await bodyGET(request("progress/body"))).clone().json();
+    expect(Object.keys(raw.data ?? raw).sort()).toEqual(["excludedSuspect", "metrics", "period", "today"]);
+    const body = await json(await bodyGET(request("progress/body")), parseProgressBody);
+    expect(body.metrics[0]).toMatchObject({ change: -1, latest: { date: d(-3), value: 80 }, last: { value: 80 } });
+    expect(body.metrics[0].observations.map(o => o.value)).toEqual([81, 80]);
+    vi.mocked(listAllWeightHistory).mockResolvedValue([{ id: "w2", log_date: d(-5), weight_kg: 0 }]);
+    // Only a 0 kg and no profile weight: nothing to show as a weight, never a 0 kg "last record".
+    expect((await json(await bodyGET(request("progress/body")), parseProgressBody)).metrics).toEqual([]);
   });
   it("suspect measurements are excluded and counted; imported ones count and are flagged; previous period change comes from the engine", async () => {
     vi.mocked(listBodyMeasurements).mockResolvedValue([
@@ -221,7 +232,7 @@ describe("GET /progress (overview)", () => {
     for (let i = 1; i <= 60; i += 1) dayLogs.push(log(d(-i), { total_calories_consumed: i < 30 ? 2200 : 2000, total_protein_g: i < 30 ? 130 : 110 }));
     for (let i = 0; i < 60; i += 1) values.push({ metric_id: ids.steps, metric_date: d(-i), value: i < 30 ? 9000 : 6000 });
     for (let i = 0; i < 10; i += 1) values.push({ metric_id: ids.custom, metric_date: d(-i), value: 5 });
-    vi.mocked(listWeightHistory).mockResolvedValue([{ id: "w1", log_date: d(-25), weight_kg: 82 }, { id: "w2", log_date: d(-5), weight_kg: 80.5 }]);
+    vi.mocked(listAllWeightHistory).mockResolvedValue([{ id: "w1", log_date: d(-25), weight_kg: 82 }, { id: "w2", log_date: d(-5), weight_kg: 80.5 }]);
     const o: ProgressOverview = await json(await overviewGET(request("progress")), parseProgressOverview);
     expect(o.period).toMatchObject({ preset: "30", days: 30, end: TODAY });
     expect(o.training.status === "ok" && o.training.data).toMatchObject({ sessions: 0, trainingDays: 0, sets: 0, minutes: 0 });
@@ -240,7 +251,7 @@ describe("GET /progress (overview)", () => {
   });
   it("each domain is independently available: a failing source is unavailable, never zero or empty", async () => {
     nutritionFails = true;
-    vi.mocked(listWeightHistory).mockRejectedValue(new Error("db"));
+    vi.mocked(listAllWeightHistory).mockRejectedValue(new Error("db"));
     vi.mocked(loadCompletedTrainingData).mockRejectedValue(new Error("db"));
     const o: ProgressOverview = await json(await overviewGET(request("progress?period=7")), parseProgressOverview);
     expect(o.nutrition).toEqual({ status: "unavailable" });
@@ -250,7 +261,7 @@ describe("GET /progress (overview)", () => {
   });
   it("sparks only on request (EXPAND): per-bucket gaps stay null, comparison buckets only while comparing", async () => {
     for (const i of [1, 2, 4, 10]) dayLogs.push(log(d(-i), { total_calories_consumed: 1800 + i * 10 }));
-    vi.mocked(listWeightHistory).mockResolvedValue([{ id: "w0", log_date: d(-10), weight_kg: 81 }, { id: "w1", log_date: d(-6), weight_kg: 82 }, { id: "w2", log_date: d(-2), weight_kg: 80.5 }]);
+    vi.mocked(listAllWeightHistory).mockResolvedValue([{ id: "w0", log_date: d(-10), weight_kg: 81 }, { id: "w1", log_date: d(-6), weight_kg: 82 }, { id: "w2", log_date: d(-2), weight_kg: 80.5 }]);
     const plain = await overviewGET(request(`progress?period=custom&from=${d(-6)}&to=${TODAY}`));
     expect("sparks" in (await plain.json())).toBe(false);
     const o: ProgressOverview = await json(await overviewGET(request(`progress?period=custom&from=${d(-6)}&to=${TODAY}&spark=1`)), parseProgressOverview);
@@ -555,7 +566,7 @@ describe('Progress explore read (stage 2, step 1)', () => {
     expect(e.reference).toMatchObject({ value: 5000, coverage: { days: 1, eligible: 7 } });
   });
   it('body: last record and first-to-last change, never a breakdown', async () => {
-    vi.mocked(listWeightHistory).mockResolvedValue([{ id: 'w1', log_date: d(-4), weight_kg: 82 }, { id: 'w2', log_date: d(-1), weight_kg: 80.5 }]);
+    vi.mocked(listAllWeightHistory).mockResolvedValue([{ id: 'w1', log_date: d(-4), weight_kg: 82 }, { id: 'w2', log_date: d(-1), weight_kg: 80.5 }]);
     const e = await read('measure=body.weight');
     expect(e.current).toMatchObject({ value: 80.5, change: -1.5, groups: [], unassigned: 0 });
     expect((await get('measure=body.weight&breakdown=weekday')).status).toBe(400);

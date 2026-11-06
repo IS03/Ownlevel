@@ -53,6 +53,12 @@ describe("M5.1 Body contract", () => {
     expect(parseBodyWeightIntent({ ...weightIntent, operation: "delete", weightKg: null, expectedWeightKg: 80 })).toBeDefined();
     expect(parseBodyWeightReceipt(weightReceipt)).toEqual(weightReceipt);
   });
+  it("a new weight of 0 kg is rejected; a stored 0 kg can still be corrected or deleted, and still reads (#367)", () => {
+    expect(parseBodyWeightIntent({ ...weightIntent, weightKg: 0 })).toBeUndefined();
+    expect(parseBodyWeightIntent({ ...weightIntent, weightKg: 79.5, expectedWeightKg: 0 })?.weightKg).toBe(79.5);
+    expect(parseBodyWeightIntent({ ...weightIntent, operation: "delete", weightKg: null, expectedWeightKg: 0 })).toBeDefined();
+    expect(parseBodyWeightReceipt({ ...weightReceipt, operation: "delete", weightKg: null })).toBeDefined();
+  });
   it("measurement intents carry CAS for update/delete and never for create", () => {
     expect(parseBodyMeasurementIntent({ operation: "create", measurementId: null, expectedUpdatedAt: null, fields, idempotencyKey: "m:1" })).toBeDefined();
     expect(parseBodyMeasurementIntent({ operation: "create", measurementId: id, expectedUpdatedAt: null, fields, idempotencyKey: "m:1" })).toBeUndefined();

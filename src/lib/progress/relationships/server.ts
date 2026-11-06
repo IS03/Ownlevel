@@ -2,7 +2,7 @@ import "server-only";
 
 import { listBodyMeasurements } from "@/lib/body-measurements";
 import { getNutritionReport } from "@/lib/nutrition/reports";
-import { listWeightHistory } from "@/lib/phase1/day-log";
+import { listAllWeightHistory } from "@/lib/phase1/day-log";
 import { loadCompletedTrainingData } from "@/lib/phase2/training-robust";
 import {
   bodyMeasurementSamples,
@@ -71,7 +71,7 @@ export async function getRelationshipsWorkspace(
       .gte("metric_date", period.current.start)
       .lte("metric_date", period.current.end),
     getNutritionReport({ period: "custom", from: period.current.start, to: period.current.end }, today, auth),
-    listWeightHistory(1000, auth),
+    listAllWeightHistory(auth),
     listBodyMeasurements(1000, auth),
     loadCompletedTrainingData(auth),
   ]);

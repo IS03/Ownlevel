@@ -4,7 +4,7 @@ import {
   type BodyMeasurement,
   type BodyMeasurementField,
 } from "../body-measurement-types";
-import type { WeightHistoryPoint } from "../weight-history";
+import { isValidBodyWeightKg, type WeightHistoryPoint } from "../weight-history";
 import {
   BODY_PROGRESS_METRICS,
   bodyMeasurementSamples,
@@ -72,6 +72,8 @@ export type BodyProgressReport = {
   insights: BodyProgressInsight[];
   sideDifferences: BodySideDifference[];
   excludedSuspectCount: number;
+  /** Weights stored as 0 kg (or otherwise not a weight) inside the period: kept in the history, left out of the analysis. */
+  excludedInvalidWeightCount: number;
 };
 
 const BODY_PRIORITY = [
@@ -120,7 +122,7 @@ export function bodyMetricObservations(input: {
 }): BodyObservation[] {
   if (input.metric.source.adapter === "weight_history") {
     return input.weightHistory
-      .filter((entry) => finite(entry.weight_kg))
+      .filter((entry) => isValidBodyWeightKg(entry.weight_kg))
       .map((entry) => ({
         id: entry.id,
         date: entry.log_date,
@@ -276,7 +278,7 @@ export function buildBodyProgressReport(input: {
     referenceChange: comparisonByKey.get(metric.key)?.valueB ?? null,
   }));
   const weight = metrics.find((metric) => metric.key === "body.weight");
-  if (weight && !weight.latest && finite(input.currentWeightKg)) {
+  if (weight && !weight.latest && isValidBodyWeightKg(input.currentWeightKg)) {
     weight.latest = {
       id: "profile-current-weight",
       date: "",
@@ -312,6 +314,9 @@ export function buildBodyProgressReport(input: {
     excludedSuspectCount: input.measurements.filter((entry) => (
       entry.quality_status === "suspect" && inRange(entry.measured_on, input.period)
     )).length,
+    excludedInvalidWeightCount: input.weightHistory.filter((entry) => (
+      !isValidBodyWeightKg(entry.weight_kg) && inRange(entry.log_date, input.period)
+    )).length,
   };
 }
 
@@ -321,7 +326,8 @@ export function bodyAvailableMetricDefinitions(input: {
   measurements: readonly BodyMeasurement[];
 }): ProgressMetricDefinition[] {
   return BODY_PROGRESS_METRICS.filter((metric) => {
-    if (metric.key === "body.weight") return input.weightHistory.length > 0 || finite(input.currentWeightKg);
+    // Any stored weight keeps the metric listed, a 0 kg one included: its record must stay reachable to correct it.
+    if (metric.key === "body.weight") return input.weightHistory.length > 0 || isValidBodyWeightKg(input.currentWeightKg);
     return bodyMetricObservations({ metric, weightHistory: input.weightHistory, measurements: input.measurements }).length > 0;
   });
 }

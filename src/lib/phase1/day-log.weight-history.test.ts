@@ -74,7 +74,8 @@ describe("persistencia de historial de peso", () => {
     expect(client.from).toHaveBeenCalledWith("day_logs");
     expect(builder.eq).toHaveBeenCalledWith("user_id", userId);
     expect(builder.not).toHaveBeenCalledWith("weight_kg", "is", null);
-    expect(builder.order).toHaveBeenCalledWith("log_date", { ascending: true });
+    // The newest window: read newest first, returned oldest first.
+    expect(builder.order).toHaveBeenCalledWith("log_date", { ascending: false });
   });
 
   it("registra o reemplaza el peso de un único day log sin insertar duplicados", async () => {

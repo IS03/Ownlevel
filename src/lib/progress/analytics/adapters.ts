@@ -1,4 +1,5 @@
 import type { BodyMeasurement, BodyMeasurementField } from "../../body-measurement-types";
+import { isValidBodyWeightKg } from "../../weight-history";
 import type { MetricReportValueFact } from "../../daily-metrics/reports-core";
 import type { NutritionReportDay } from "../../nutrition/reports-core";
 import {
@@ -59,8 +60,9 @@ export function dailyMetricSamples(
     .map((value) => ({ date: value.metric_date, value: value.value }));
 }
 
+/** Only real weights: a stored 0 kg is not a sample, it is an excluded record (see buildBodyProgressReport). */
 export function weightMetricSamples(entries: readonly WeightHistoryPoint[]): ProgressMetricSample[] {
-  return entries.map((entry) => ({ date: entry.log_date, value: entry.weight_kg }));
+  return entries.filter((entry) => isValidBodyWeightKg(entry.weight_kg)).map((entry) => ({ date: entry.log_date, value: entry.weight_kg }));
 }
 
 export function bodyMeasurementSamples(

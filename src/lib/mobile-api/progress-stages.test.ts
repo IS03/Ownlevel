@@ -3,13 +3,13 @@ import { NextRequest } from "next/server";
 vi.mock("server-only", () => ({}));
 vi.mock("./supabase", () => ({ authenticateMobileAccessToken: vi.fn() }));
 vi.mock("./nutrition-report-server", async (orig) => ({ ...(await orig<typeof import("./nutrition-report-server")>()), readMobileNutritionFacts: vi.fn() }));
-vi.mock("@/lib/phase1/day-log", () => ({ listWeightHistory: vi.fn() }));
+vi.mock("@/lib/phase1/day-log", () => ({ listAllWeightHistory: vi.fn() }));
 vi.mock("@/lib/phase2/training-robust", () => ({ loadCompletedTrainingData: vi.fn() }));
 vi.mock("@/lib/progress/training-performance", () => ({ trainingLoadSamples: vi.fn() }));
 vi.mock("@/lib/phase2/cordoba-date", () => ({ todayInCordoba: () => "2026-10-16" }));
 import { authenticateMobileAccessToken } from "./supabase";
 import { readMobileNutritionFacts } from "./nutrition-report-server";
-import { listWeightHistory } from "@/lib/phase1/day-log";
+import { listAllWeightHistory } from "@/lib/phase1/day-log";
 import { loadCompletedTrainingData } from "@/lib/phase2/training-robust";
 import { trainingLoadSamples } from "@/lib/progress/training-performance";
 import { GET } from "@/app/api/mobile/v1/progress/stages/route";
@@ -82,7 +82,7 @@ describe("GET /api/mobile/v1/progress/stages", () => {
     legacyRows = [];
     rpc.mockResolvedValue({ data: list, error: null });
     vi.mocked(readMobileNutritionFacts).mockResolvedValue({ dayLogs: [], meals: [], workouts: [] } as never);
-    vi.mocked(listWeightHistory).mockResolvedValue([{ id: "w", log_date: "2026-10-01", weight_kg: 84 }] as never);
+    vi.mocked(listAllWeightHistory).mockResolvedValue([{ id: "w", log_date: "2026-10-01", weight_kg: 84 }] as never);
     vi.mocked(loadCompletedTrainingData).mockResolvedValue({} as never);
     vi.mocked(trainingLoadSamples).mockReturnValue(new Map([["training.load.sessions", [{ date: "2026-10-02", value: 1 }]]]) as never);
   });
@@ -96,7 +96,7 @@ describe("GET /api/mobile/v1/progress/stages", () => {
     expect(readMobileNutritionFacts).toHaveBeenCalledWith(expect.anything(), { start: "2026-06-16", end: "2026-09-28" }, "2026-10-16");
   });
   it("reports an unreadable source as unavailable instead of empty stages", async () => {
-    vi.mocked(listWeightHistory).mockRejectedValue(new Error("down"));
+    vi.mocked(listAllWeightHistory).mockRejectedValue(new Error("down"));
     const body = parseProgressStages(await (await GET(request())).json())!;
     expect(body.sources.body).toBe("unavailable");
     expect(body.stages[0].weightPerWeekKg).toBeNull();

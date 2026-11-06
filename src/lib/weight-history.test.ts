@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatWeightKg,
+  isValidBodyWeightKg,
   parseOptionalWeight,
   shouldRecordCurrentWeight,
   shouldRecordProfileWeight,
@@ -23,6 +24,11 @@ describe("historial de peso", () => {
     expect(parseOptionalWeight("")).toEqual({ ok: true, value: null });
     expect(parseOptionalWeight("NaN").ok).toBe(false);
     expect(parseOptionalWeight("-1").ok).toBe(false);
+    // Zero is not a weight (#367); an empty field still clears it.
+    expect(parseOptionalWeight("0")).toEqual({ ok: false, error: "El peso tiene que ser mayor a 0 y hasta 999,99 kg." });
+    expect(parseOptionalWeight("0,00").ok).toBe(false);
+    expect(parseOptionalWeight("0.01")).toEqual({ ok: true, value: 0.01 });
+    expect([0, -1, Number.NaN, 1000, 0.01, 80].map(isValidBodyWeightKg)).toEqual([false, false, false, false, true, true]);
     expect(parseOptionalWeight("1000").ok).toBe(false);
     expect(parseOptionalWeight("64.888").ok).toBe(false);
   });
