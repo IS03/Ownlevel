@@ -4,31 +4,34 @@
 
 ## Estado real
 
-- **`origin/main` = `53147e7`** (merge de #415). Incluye todo lo de abajo.
-- **Checkout `C:\Proyectos\Ownlevel`:** en `codex/367-period-summary` (`36a1308`), limpio y publicado.
+- **`origin/main` = `e50e60a`** (merge de #416). Incluye todo lo de abajo.
+- **Checkout `C:\Proyectos\Ownlevel`:** en `codex/367-feeling-stratified` (`3cec638`), limpio y publicado.
   - **Antes de trabajar:** `git status -sb`, luego `git switch main` y `git pull --ff-only`, y crear la rama nueva desde ahí.
 - **Worktree sobrante:** `C:\Users\senes\AppData\Local\Temp\ownlevel-feelings-receipt`, en `codex/367-feelings-finish-receipt` (`c97bb3d`). Está limpio y ya mergeado; se puede quitar con `git worktree remove`.
-- **Pendiente local o remoto:** la rama `codex/367-period-summary`, publicada y **sin PR**. El navegador integrado no tiene sesión en GitHub: hay que abrir el borrador a mano, con el texto de `docs/progress/367-resumen-periodo-pr-description.md`. Ver «En curso».
+- **Pendiente local o remoto:** la rama `codex/367-feeling-stratified`, publicada y **sin PR**. El navegador integrado no tiene sesión en GitHub: hay que abrir el borrador a mano, con el texto de `docs/progress/367-sensaciones-estratificado-pr-description.md`. Ver «En curso».
   - No hay pilas locales de Supabase corriendo.
   - Esta rama de integración (`integration/367-insights-candidate`) solo guarda esta continuidad y no se mergea.
 - **Notion:** no se actualizó (regla de AGENTS.md).
 
-## En curso — fase 4: resumen de los últimos tres meses
+## En curso — energía y fatiga al terminar: método experimental estratificado
 
-Rama `codex/367-period-summary`, publicada en `36a1308` sobre main `53147e7`. Previews bloqueadas. Sin migración. Las vistas existentes no cambian: 53 de 53 idénticas a `main`.
+Rama `codex/367-feeling-stratified`, publicada en `3cec638` sobre main `e50e60a`. Previews bloqueadas. Sin migración. Solo tres archivos de código nuevos; ningún método ni vista existente cambia. Método, preregistro, desarrollo y validación en `docs/progress/367-sensaciones-estratificado-metodo.md` de esa rama.
 
-- **Implementado y publicado en la rama:**
-  - `view=period` (`insights-period/1`, `src/lib/progress/insights-engine/period.ts`): los tres meses calendario completos anteriores al mes en curso, por la fecha de Córdoba;
-  - contenido: entrenamiento con los métodos estricto y parcial separados, rutinas (en orden o alternadas), sensaciones al terminar (#412), comidas registradas con cobertura por días, y peso semanal (#415) desde todos los pesajes del período;
-  - la ruta reutiliza el snapshot y lee los pesos del período en una sola lectura paginada de `day_logs`, bajo el mismo contador;
-  - pantalla Mobile «Últimos 3 meses», con resumen escrito determinístico, enlaces a los detalles y vuelta desde Cuerpo (`insightsSummary=1`).
-- **Validado:**
-  - pruebas: Web 170, Mobile 68 en las suites afectadas; tipos y lint sin errores;
-  - costo: con caché, 3 pedidos; la vista 0,29 ms y 8,3 KB; el snapshot igual que en `main`, 244 ms con 1311 sesiones.
-- **Sin asociaciones:** el resumen no las calcula. Las de sensaciones, alimentación horaria y peso siguen sin publicarse.
-- **Fases de la hoja de ruta:** las cuatro tienen su primera entrega. Lo que sigue abierto son métodos de asociación que pasen su calibración, cada uno con su propio preregistro.
+- **Orden verificable:**
+  - preregistro (`185e5fc`);
+  - código (`488ea69`);
+  - resultados de desarrollo, escritos antes de la validación (`71ebf36`);
+  - una sola validación reservada, con semilla `0x5171` y 500 historiales por escenario (`3cec638`).
+- **Método** (`insights-feeling-stratified/1`): las mismas filas y candidatos de #412, con correlación y permutaciones dentro de rutina × bloque de 42 días.
+- **Resultado: no valida.**
+  - Los ocho nulos quedan entre 1,6 % y 4,0 % en la compuerta estricta (cotas de 3,13 % a 6,10 %), y en cinco el intervalo entero está arriba del 1 %. Es una limitación del método, no falta de precisión.
+  - Resuelve la confusión de #412: rutinas alternadas 100 % → 2,0 %, y tendencias y cambios registrados de cerca de 5 % a menos de 2 %.
+  - Empeora el nulo sin confusión: independiente 0,4 % → 2,0 %.
+  - Potencia similar a la de #412.
+- **Validado:** 5 pruebas del método y 12 en las suites afectadas; tipos y lint sin errores.
+- **Siguiente paso posible:** un tercer preregistro que combine el nulo estratificado con los controles de la compuerta de #412 y corrija las miradas repetidas.
 
-## Entregas integradas en main, hasta #415
+## Entregas integradas en main, hasta #416
 
 - **#393 a #395, #397 y #398:** convención del sueño, peso del día, configuración del ejercicio y procedencia de la hora de comida. Mergeados y con sus migraciones aplicadas en producción. Detalle en [367-sueno-peso.md](367-sueno-peso.md) y [367-exercise-configuration-rollout.md](367-exercise-configuration-rollout.md).
 - **#403:** contexto diario completo: todas las sesiones y los cuatro macros.
@@ -37,6 +40,7 @@ Rama `codex/367-period-summary`, publicada en `36a1308` sobre main `53147e7`. Pr
 - **#407 y #408:** memoria del motor. El comparador tiene una salida compacta para Insights.
 - **#409:** lectura en frío. Las series vienen embebidas, con una guarda de conteo y un stream de respaldo.
 - **#410:** resumen factual post-entreno y vista de una sesión, con cada método por separado y la fecha de la referencia.
+- **#416:** resumen de los últimos tres meses en Insights (`view=period`): descripción determinística, sin asociaciones, con el período validado desde `today` y energía y fatiga con su propia cobertura.
 - **#415:** evolución semanal del peso en Cuerpo (`body-weekly/1`), con el análisis frente a la semana anterior experimental y sin publicar; el cambio que no se puede calcular se distingue de uno igual a 0 kg.
 - **#413:** proteína, calorías y última comida antes del inicio como contexto de la sesión (`preStart`). Sus candidatos no validaron y quedan fuera de las asociaciones; las ventanas usan los días de Córdoba que realmente tocan.
 - **#412:** energía y fatiga al terminar como resultados, solo descritos (`view=feelings`, pantalla «Cómo terminaste»). Sus asociaciones no se publican: su calibración no alcanza el objetivo propuesto. El snapshot no las prepara.
