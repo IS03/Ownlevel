@@ -329,3 +329,21 @@ describe("#367 series embebidas: una lista cortada nunca se publica", () => {
     await expect(sourceOf({ client: failing } as never)).rejects.toThrow("Leer cantidad de series de Insights");
   });
 });
+
+describe("#367 GET energía y fatiga al terminar", () => {
+  it("answers from the same snapshot as the other views, in its own contract, and takes no period, page or filter", async () => {
+    const fake = fakeSupabase(tablesFor(10));
+    mocks.auth.mockResolvedValue({ userId: USER, supabase: fake.client });
+    const summary = await (await GET(request("?method=2"))).json();
+    const before = fake.calls.length;
+    const response = await GET(request("?method=2&view=feelings"));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(parsePerformanceInsights(body)?.view).toBe("feelings");
+    expect(body.sourceRevision).toBe(summary.sourceRevision);
+    // The cached snapshot answers it: only the counter is read again.
+    expect(fake.calls.length - before).toBe(1);
+    expect(body.outcomes.map((row: { kind: string }) => row.kind)).toEqual(["energy", "fatigue"]);
+    for (const query of ["?view=feelings&before=2026-01-10", "?view=feelings&limit=5", "?view=feelings&association=x"]) expect((await GET(request(query))).status).toBe(400);
+  });
+});

@@ -311,6 +311,9 @@ export function InsightsScreen() {
         {pagesDropped ? <AppText muted variant="footnote" accessibilityLiveRegion="polite" testID="insights-changed">Tus datos cambiaron, así que actualizamos la lista.</AppText> : null}
         <AppText muted variant="caption" numeric style={styles.coverage}>{data.history.trainingDays} días entrenados en total</AppText>
       </View>
+      {/* Its own read, on a tap: the end answers described, never next to the training results as if they were one. */}
+      <InsightRow label="Cómo terminaste" detail="Energía y fatiga al terminar, según cómo empezaste" spoken="Cómo terminaste: energía y fatiga al terminar, según cómo empezaste"
+        onPress={() => { haptics.selection(); router.push('/(tabs)/train/insights/feelings'); }} />
       {data.relations.strict.outcomeDays || data.relations.partial.outcomeDays ? <View style={styles.block}>
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: relationsOpen }} accessibilityLabel={`Para mirar con calma, ${data.relations.partial.outcomeDays ? data.relations.partial.candidatesEvaluated : data.relations.strict.candidatesEvaluated} relaciones`} onPress={toggleRelations}
           style={({ pressed }) => [styles.row, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>

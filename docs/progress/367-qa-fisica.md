@@ -102,7 +102,7 @@ Requiere desplegar `codex/367-body-weight-fixes`. Web sin build; Mobile solo par
 - [ ] **Medidas, historial largo** (`codex/367-body-measurements-history`): con más de 1000 mediciones, Cuerpo, Inicio y Relaciones muestran las más recientes. Una medición marcada para revisión sigue fuera del análisis y contada.
 
 ## Resumen factual post-entreno
-Requiere una build de Mobile con `codex/367-post-workout-summary`. Sin migración.
+Requiere una build de Mobile desde `main` (#410). Sin migración.
 - [ ] **Al terminar:** el resumen aparece enseguida; no espera ni lee Insights. Si el resumen no carga, el entrenamiento sigue guardado y no se vuelve a terminar.
 - [ ] **Marcas del resumen** («récord», «↗», «=»): debajo de «Ejercicios» dice que son frente a la última vez con el mismo modo de carga y que Insights puede leer distinto.
 - [ ] **Sensaciones:** «Energía: baja → alta» y «Fatiga: …», sin números ni porcentajes. Sin respuestas dice «Sin respuestas registradas»; una previa tardía lo aclara debajo.
@@ -111,7 +111,7 @@ Requiere una build de Mobile con `codex/367-post-workout-summary`. Sin migració
 - [ ] **Texto grande, VoiceOver y Reducir movimiento** en el resumen y en esa vista.
 
 ## Evidencia de comparación por ejercicio
-Requiere una build de Mobile con `codex/367-exercise-evidence` y la API de esa rama. Sin migración.
+Requiere una build de Mobile desde `main` (#411) y la API desplegada de `main`. Sin migración.
 - [ ] **Abrir:** en Insights, tocar un ejercicio de un día o de una sesión abre «Evidencia». La lista de Insights no hace lecturas nuevas; la evidencia se lee al abrir.
 - [ ] **Referencia:** dice frente a qué fecha se comparó y es la misma que mostraba la fila de Insights, no la última sesión. Con otra variante en la sesión anterior, la referencia es la última con la misma.
 - [ ] **Señales y series:** «Con 80 kg: 8 → 10 reps» o «A 8 reps: 80 → 85 kg», con flecha y sin color. Todas las series de las dos sesiones aparecen en su unidad (kg, lingotes, reps o s), con el número de serie que tienen en Entrenar; con dos bloques del mismo ejercicio, «Bloque 1 · Serie 2». Las que usó la comparación dicen «En la comparación», las sin completar «Sin completar, no se cuenta» y otras excluidas «No se cuenta». Un dato faltante dice «sin dato», nunca 0.
@@ -121,3 +121,14 @@ Requiere una build de Mobile con `codex/367-exercise-evidence` y la API de esa r
 - [ ] **Volver:** el botón atrás vuelve a Insights en el mismo día o sesión. «Abrir esta sesión», «Abrir la sesión de referencia» y «Ver historial de este ejercicio» abren lo suyo.
 - [ ] **Sin red:** muestra «Uy, no pudimos leer tus datos» con «Reintentar», nunca una comparación vacía.
 - [ ] **Texto grande, VoiceOver y Reducir movimiento:** las filas se apilan sin cortar números; cada serie y señal se lee completa.
+
+## Cómo terminaste: energía y fatiga al terminar
+Requiere una build de Mobile con `codex/367-feeling-outcomes` y la API de esa rama. Sin migración.
+- [ ] **Abrir:** en Insights, «Cómo terminaste» abre la pantalla con una sola lectura. Insights no lee nada nuevo al abrirse.
+- [ ] **Cada sensación por su lado:** «Energía al terminar» y «Fatiga al terminar» en secciones separadas. Ninguna se calcula a partir de la otra.
+- [ ] **Por cómo empezaste:** cada fila dice «Antes: alta · N sesiones» y debajo «Al terminar: muy alta 2 · alta 6 …», con palabras de la escala y cantidades. Sin números de la escala, promedios, porcentajes ni puntajes.
+- [ ] **Sin previa que sirva:** las sesiones sin respuesta antes, ilegibles, sin hora o respondidas después de empezar van en su propia fila, con el motivo.
+- [ ] **Fuera de las cuentas:** las respondidas más de 2 h después de terminar, sin hora, ilegibles, con otra escala o sin respuesta aparecen aparte. La energía del registro anterior se cuenta aparte y no como energía al terminar.
+- [ ] **Sin asociaciones:** al pie dice que todavía no se muestra con qué coinciden. No aparece ninguna relación nueva en «Para mirar con calma».
+- [ ] **Sin red:** «Uy, no pudimos leer tus datos» con «Reintentar», nunca una pantalla vacía.
+- [ ] **Texto grande y VoiceOver:** cada fila se lee completa («Energía alta antes de entrenar: 2 sesiones. Al terminar, energía muy alta 1, alta 1»).

@@ -1,5 +1,5 @@
 import type { MobileApiClient } from './client';
-import { parsePerformanceInsights, PERFORMANCE_INSIGHTS_PATH, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from '../../../../src/lib/mobile-api/performance-insights-contract';
+import { parsePerformanceInsights, PERFORMANCE_INSIGHTS_PATH, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from '../../../../src/lib/mobile-api/performance-insights-contract';
 
 export * from '../../../../src/lib/mobile-api/performance-insights-contract';
 
@@ -20,3 +20,5 @@ export const fetchInsightsRelation = (client: MobileApiClient, association: stri
 /** The evidence of one comparison, read only when its detail opens: one exercise's history, never one read per row of the screen. */
 export const fetchInsightsEvidence = (client: MobileApiClient, selection: { session: string; exercise: string; lane: 'strict' | 'partial' }, signal?: AbortSignal) =>
   read<InsightsExerciseEvidence>(client, 'evidence', { view: 'evidence', session: selection.session, exercise: selection.exercise, lane: selection.lane }, signal);
+/** Energy and fatigue at the end, described. Only when its screen opens. */
+export const fetchInsightsFeelings = (client: MobileApiClient, signal?: AbortSignal) => read<InsightsFeelingOutcomes>(client, 'feelings', { view: 'feelings' }, signal);

@@ -1,8 +1,8 @@
 // Pure strict contract shared by the API and Expo. It accepts only this versioned shape: never a partial read as an empty one.
 import { INSIGHTS_PERFORMANCE_PARTIAL_METHOD, PARTIAL_CONTEXT } from "../progress/performance-insights/partial";
-import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from "../progress/insights-engine/types";
+import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from "../progress/insights-engine/types";
 
-export type { AssociationResult, AssociationState, CandidateDefinition, DayFact, EvidenceSet, EvidenceSide, ExerciseEvidence, ExerciseFact, InsightsExerciseEvidence, ExerciseSummary, InsightsDaysPage, InsightsReadModel, InsightsRelationDetail, InsightsRelations, InsightsResponse, InsightsSummary, PartialAssociationState, PartialRelationSummary, RelationSummary, NutritionContext, PartialAssociationResult, PartialDayFact, PartialExerciseFact, PartialExerciseSummary, PartialLane, SessionFact, SessionFeeling } from "../progress/insights-engine/types";
+export type { AssociationResult, AssociationState, CandidateDefinition, DayFact, EvidenceSet, EvidenceSide, ExerciseEvidence, FeelingOutcomeKind, FeelingOutcomeSummary, InsightsFeelingOutcomes, ExerciseFact, InsightsExerciseEvidence, ExerciseSummary, InsightsDaysPage, InsightsReadModel, InsightsRelationDetail, InsightsRelations, InsightsResponse, InsightsSummary, PartialAssociationState, PartialRelationSummary, RelationSummary, NutritionContext, PartialAssociationResult, PartialDayFact, PartialExerciseFact, PartialExerciseSummary, PartialLane, SessionFact, SessionFeeling } from "../progress/insights-engine/types";
 export const PERFORMANCE_INSIGHTS_PATH = "/api/mobile/v1/progress/performance-insights";
 
 type Json = Record<string, unknown>;
@@ -148,10 +148,38 @@ function parseEvidence(raw: Json) {
   return item === null || (evidenceItem(item, lane) && String(((item as Json).current as Json).sessionId).toLowerCase() === String(sessionId).toLowerCase()) ? raw as unknown as InsightsExerciseEvidence : undefined;
 }
 
+const five = (v: unknown) => list(v, count) && (v as unknown[]).length === 5;
+const sum = (v: unknown) => (v as number[]).reduce((total, value) => total + value, 0);
+const PRIOR_REASONS = ["not_recorded", "unreadable", "capture_unknown", "after_first_set"];
+/**
+ * Every count adds up: answered ones split into captures and sources, the ones at the finish into prior levels and the not
+ * comparable, and those by reason. A summary whose parts do not match its whole is refused, never shown.
+ */
+function feelingOutcome(v: unknown, kind: string) {
+  if (!object(v) || v.kind !== kind || v.outcomeKey !== `${kind}Post` || v.priorKey !== `${kind}Pre` || v.instrument !== "energy-fatigue/1" || v.methodVersion !== "insights-feeling-outcomes/1") return false;
+  const { sessions, capture, source, byPrior, priorNotComparable, days, associations } = v;
+  if (!object(sessions) || !["completed", "answered", "notRecorded", "unreadable", "otherInstrument"].every(k => count(sessions[k]))) return false;
+  if ((sessions.answered as number) + (sessions.notRecorded as number) + (sessions.unreadable as number) + (sessions.otherInstrument as number) !== sessions.completed) return false;
+  if (!object(capture) || !["atFinish", "late", "captureUnknown", "beforeStart"].every(k => count(capture[k])) || sum(Object.values(capture)) !== sessions.answered) return false;
+  if (!object(source) || !["mobile", "web", "unknown"].every(k => count(source[k])) || sum(Object.values(source)) !== sessions.answered) return false;
+  if (!Array.isArray(byPrior) || byPrior.length !== 5 || !byPrior.every((row, index) => object(row) && row.prior === index + 1 && five(row.posts))) return false;
+  if (!object(priorNotComparable) || !five(priorNotComparable.posts) || !object(priorNotComparable.reasons) || !PRIOR_REASONS.every(k => count((priorNotComparable.reasons as Json)[k]))) return false;
+  if (sum(Object.values(priorNotComparable.reasons as Json)) !== sum(priorNotComparable.posts)) return false;
+  if (sum(byPrior.flatMap(row => (row as Json).posts as number[])) + sum(priorNotComparable.posts) !== capture.atFinish) return false;
+  if (kind === "energy" ? !count(v.legacyEnergyOnly) : v.legacyEnergyOnly !== null) return false;
+  if (!(v.firstDate === null || date(v.firstDate)) || !(v.lastDate === null || date(v.lastDate))) return false;
+  if (!object(days) || !count(days.eligible) || !tally(days.exclusions) || (days.eligible as number) + sum(Object.values(days.exclusions as Json)) !== capture.atFinish) return false;
+  return object(associations) && associations.status === "not_published" && associations.reason === "validation_pending" && count(associations.candidates);
+}
+function parseFeelings(raw: Json) {
+  const { outcomes } = raw;
+  return Array.isArray(outcomes) && outcomes.length === 2 && feelingOutcome(outcomes[0], "energy") && feelingOutcome(outcomes[1], "fatigue") ? raw as unknown as InsightsFeelingOutcomes : undefined;
+}
+
 /** The views the route answers with. Consistent patterns stay impossible in this contract until the risk budget is decided. */
 export function parsePerformanceInsights(raw: unknown): InsightsResponse | undefined {
   if (!object(raw) || !versions(raw) || typeof raw.sourceRevision !== "string") return undefined;
-  return raw.view === "summary" ? parseSummary(raw) : raw.view === "days" ? parseDays(raw) : raw.view === "relations" ? parseRelations(raw) : raw.view === "relation" ? parseRelationDetail(raw) : raw.view === "evidence" ? parseEvidence(raw) : undefined;
+  return raw.view === "summary" ? parseSummary(raw) : raw.view === "days" ? parseDays(raw) : raw.view === "relations" ? parseRelations(raw) : raw.view === "relation" ? parseRelationDetail(raw) : raw.view === "evidence" ? parseEvidence(raw) : raw.view === "feelings" ? parseFeelings(raw) : undefined;
 }
 
 /** The whole pure model, for consumers of the domain module. The route never sends it. */

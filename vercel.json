@@ -28,7 +28,8 @@
       "codex/367-sleep-weight-adopt": false,
       "codex/367-day-context": false,
       "codex/367-weight-trends": false,
-      "codex/367-exercise-evidence": false
+      "codex/367-exercise-evidence": false,
+      "codex/367-feeling-outcomes": false
     }
   }
 }
