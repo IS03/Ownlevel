@@ -1,11 +1,13 @@
 import type { PartialDay } from "../performance-insights/partial";
 import type { DailyPerformance } from "../performance-insights/types";
 import { instantMs, mealTimeEvidence, parseSessionFeelings } from "./source-adapter";
-import type { Candidate, CandidateDefinition, FeelingKey, InsightsEngineMethod, InsightsSource, MealTimeEvidence, NutritionContext, ObservationRow, SessionFact, SessionFeeling, SleepNightEvidence } from "./types";
+import type { Candidate, CandidateDefinition, FeelingKey, InsightsEngineMethod, InsightsSource, MealTimeEvidence, NutritionContext, ObservationRow, PreStartWindow, SessionFact, SessionFeeling, SleepNightEvidence } from "./types";
 
 const HOUR = 3_600_000;
 /** Primary window fixed before any result, as a product decision rather than a physiological optimum. */
 export const PRIMARY_MEAL_WINDOW_HOURS = 3;
+/** How far back the last meal with an explicit time is looked for. A product bound fixed before any result, not a fasting threshold. */
+export const LAST_MEAL_LOOKBACK_HOURS = 12;
 export const SENSITIVITY_MEAL_WINDOW_HOURS = [2, 4] as const;
 const NUTRIENTS = ["calories", "proteinG", "carbsG", "fatG"] as const;
 type Meal = InsightsSource["meals"][number];
@@ -33,6 +35,7 @@ export type ExposureTable = {
   metricsByDate: ReadonlyMap<string, { metricId: string; value: number }[]>;
   feelingsBySession: ReadonlyMap<string, Partial<Record<string, SessionFeeling>>>;
   carbsPre3hBySession: ReadonlyMap<string, SessionFact["context"]["carbsPre3h"]>;
+  preStartBySession: ReadonlyMap<string, NonNullable<SessionFact["context"]["preStart"]>>;
   sessionIdsByDate: ReadonlyMap<string, string[]>;
 };
 
@@ -67,23 +70,43 @@ function metricSeries(source: InsightsSource, exclusions: Record<string, number>
   return { series, byDate };
 }
 
-/** Sum of the carbohydrates recorded with an explicit time. Absence never becomes zero or fasting. */
-function mealWindow(mealsByDate: ReadonlyMap<string, Meal[]>, date: string, start: number, from: number, accept: (meal: Meal) => boolean) {
+type WindowNutrient = "carbsG" | "proteinG" | "calories";
+/**
+ * Sum of one nutrient recorded with an explicit time in [from, start), and the latest such meal. Absence never becomes zero or
+ * fasting; a recorded zero stays zero. One rule for every nutrient: the window, the provenance and which meal is in are the
+ * carbohydrates' (#367). `unknownScope: "window_dates"` also flags a meal without any instant on the day before, for windows that
+ * reach back into it; the carbohydrates keep their published rule (`session_date`).
+ */
+function mealWindow(mealsByDate: ReadonlyMap<string, Meal[]>, date: string, start: number, from: number, accept: (meal: Meal) => boolean,
+  nutrient: WindowNutrient = "carbsG", unknownScope: "session_date" | "window_dates" = "session_date") {
   const scope = [previousDate(date), date];
-  let total = 0, found = 0, partial = false, untimed = false, unverified = false;
+  let total = 0, found = 0, partial = false, untimed = false, unverified = false, latest: number | null = null;
   for (const day of scope) for (const meal of mealsByDate.get(day) ?? []) {
     const evidence = meal.entryKind === "meal" && accept(meal);
     const { instant, evidence: known } = factsOf(meal);
     if (!evidence) {
-      if (day === date || (instant !== null && instant >= from && instant < start)) { if (known === "unverified") unverified = true; else untimed = true; }
+      if (day === date || (instant !== null && instant >= from && instant < start) || (unknownScope === "window_dates" && instant === null && meal.entryKind === "meal")) { if (known === "unverified") unverified = true; else untimed = true; }
       continue;
     }
     if (instant === null || instant < from || instant >= start) continue;
     found++;
-    if (meal.carbsG === null || !Number.isFinite(meal.carbsG)) partial = true; else total += meal.carbsG;
+    if (latest === null || instant > latest) latest = instant;
+    const value = meal[nutrient];
+    if (value === null || !Number.isFinite(value)) partial = true; else total += value;
   }
-  return { total, found, partial, untimed, unverified };
+  return { total, found, partial, untimed, unverified, latest };
 }
+const windowState = (window: ReturnType<typeof mealWindow>): PreStartWindow => window.partial ? { value: null, state: "partial_macro" } : window.untimed ? { value: null, state: "untimed_meal_in_scope" }
+  : window.unverified ? { value: null, state: "unverified_meal_time_in_scope" } : window.found ? { value: window.total, state: "recorded" } : { value: null, state: "no_registered_meal" };
+/** What was recorded before a session starts, for its context: the three-hour windows and the last meal with an explicit time. */
+function preStartOf(mealsByDate: ReadonlyMap<string, Meal[]>, date: string, start: number): NonNullable<SessionFact["context"]["preStart"]> {
+  const from = start - PRIMARY_MEAL_WINDOW_HOURS * HOUR;
+  const last = mealWindow(mealsByDate, date, start, start - LAST_MEAL_LOOKBACK_HOURS * HOUR, explicit, "carbsG", "window_dates");
+  return { proteinG: windowState(mealWindow(mealsByDate, date, start, from, explicit, "proteinG")), calories: windowState(mealWindow(mealsByDate, date, start, from, explicit, "calories")),
+    lastExplicitMeal: { hours: last.latest === null ? null : (start - last.latest) / HOUR, state: last.latest === null ? "no_explicit_meal_in_12h" : "recorded", untimedInScope: last.untimed, unverifiedInScope: last.unverified } };
+}
+const NO_START: NonNullable<SessionFact["context"]["preStart"]> = { proteinG: { value: null, state: "no_start_time" }, calories: { value: null, state: "no_start_time" },
+  lastExplicitMeal: { hours: null, state: "no_start_time", untimedInScope: false, unverifiedInScope: false } };
 const explicit = (meal: Meal) => factsOf(meal).evidence === "explicit";
 const declared = (meal: Meal) => { const { evidence } = factsOf(meal); return evidence === "explicit" || evidence === "registration"; };
 const anyInstant = (meal: Meal) => factsOf(meal).evidence !== "unknown";
@@ -136,11 +159,16 @@ export function weightOfDay(value: number | null | undefined): { value: number |
   return Number.isFinite(value) && value > 0 ? { value, state: "recorded" } : { value: null, state: "invalid" };
 }
 
-export function buildExposureTable(source: InsightsSource, days: readonly OutcomeDay[], today: string, context: ExposureContext = buildExposureContext(source), sessionContext = true, method: InsightsEngineMethod = 1): ExposureTable {
+/**
+ * `mealTiming`: also build the phase 2 candidates (protein and calories in 3 h, hours since the last explicit meal). EXPERIMENTAL
+ * until their preregistered validation passes (367-alimentacion-horaria-metodo.md): no view asks for them.
+ */
+export function buildExposureTable(source: InsightsSource, days: readonly OutcomeDay[], today: string, context: ExposureContext = buildExposureContext(source), sessionContext = true, method: InsightsEngineMethod = 1, mealTiming = false): ExposureTable {
   const { nutritionByDate, series, metricsByDate, mealsByDate, sessionById, feelingsBySession, weightByDate, sleepEvidence } = context;
   const sourceExclusions: Record<string, number> = { ...context.exclusions };
 
   const carbsPre3hBySession = new Map<string, SessionFact["context"]["carbsPre3h"]>();
+  const preStartBySession = new Map<string, NonNullable<SessionFact["context"]["preStart"]>>();
   const sessionIdsByDate = new Map<string, string[]>();
   const rows: ObservationRow[] = [];
   const singleSession = new Map<string, { id: string; start: number | null }>();
@@ -151,10 +179,9 @@ export function buildExposureTable(source: InsightsSource, days: readonly Outcom
     // What surrounded a session does not depend on the method: the second method reuses the first one's.
     if (sessionContext) for (const id of ids) {
       const start = instantMs(sessionById.get(id)?.startedAt);
-      if (start === null) { carbsPre3hBySession.set(id, { value: null, state: "no_start_time" }); continue; }
-      const window = mealWindow(mealsByDate, day.date, start, start - PRIMARY_MEAL_WINDOW_HOURS * HOUR, explicit);
-      carbsPre3hBySession.set(id, window.partial ? { value: null, state: "partial_macro" } : window.untimed ? { value: null, state: "untimed_meal_in_scope" } : window.unverified ? { value: null, state: "unverified_meal_time_in_scope" }
-        : window.found ? { value: window.total, state: "recorded" } : { value: null, state: "no_registered_meal" });
+      if (start === null) { carbsPre3hBySession.set(id, { value: null, state: "no_start_time" }); preStartBySession.set(id, NO_START); continue; }
+      carbsPre3hBySession.set(id, windowState(mealWindow(mealsByDate, day.date, start, start - PRIMARY_MEAL_WINDOW_HOURS * HOUR, explicit)));
+      preStartBySession.set(id, preStartOf(mealsByDate, day.date, start));
     }
     if (day.date >= today) { bump(notEvaluated, "day_still_open"); continue; }
     if (day.outcome === null) { bump(notEvaluated, "no_comparable_outcome"); continue; }
@@ -192,6 +219,7 @@ export function buildExposureTable(source: InsightsSource, days: readonly Outcom
       temporalBasis: window === "same_day" ? "same_day_unordered" : "previous_logical_day" }) });
   }
   candidates.push(mealCandidate(rows, singleSession, mealsByDate, "pre_3h"), mealCandidate(rows, singleSession, mealsByDate, "same_day_before_start"));
+  if (mealTiming) candidates.push(mealCandidate(rows, singleSession, mealsByDate, "pre_3h", "proteinG"), mealCandidate(rows, singleSession, mealsByDate, "pre_3h", "calories"), lastMealCandidate(rows, singleSession, mealsByDate));
   if (method === 2) {
     // One value per logical day, whatever the number of sessions: rows are days. Its time is unknown, so it is context of the day.
     const paired = new Map<string, number>(), exclusions: Record<string, number> = {};
@@ -216,7 +244,7 @@ export function buildExposureTable(source: InsightsSource, days: readonly Outcom
     }
     candidates.push({ values: paired, exclusions, definition: definition({ id: `feeling:${key}:session`, family: "feeling", window: "session", subject: key, temporalBasis: "declared_pre_unverified_clock" }) });
   }
-  return { rows, candidates, sourceExclusions, nutritionByDate, metricsByDate, feelingsBySession, carbsPre3hBySession, sessionIdsByDate };
+  return { rows, candidates, sourceExclusions, nutritionByDate, metricsByDate, feelingsBySession, carbsPre3hBySession, preStartBySession, sessionIdsByDate };
 }
 
 /**
@@ -247,7 +275,7 @@ function sleepCandidates(metricId: string, values: ReadonlyMap<string, number>, 
   return result;
 }
 
-function mealCandidate(rows: readonly ObservationRow[], single: ReadonlyMap<string, { id: string; start: number | null }>, mealsByDate: ReadonlyMap<string, Meal[]>, window: "pre_3h" | "same_day_before_start"): Candidate {
+function mealCandidate(rows: readonly ObservationRow[], single: ReadonlyMap<string, { id: string; start: number | null }>, mealsByDate: ReadonlyMap<string, Meal[]>, window: "pre_3h" | "same_day_before_start", nutrient: WindowNutrient = "carbsG"): Candidate {
   const paired = new Map<string, number>(), exclusions: Record<string, number> = {};
   const sensitivities: Record<string, Map<string, number>> = window === "pre_3h"
     ? { ...Object.fromEntries(SENSITIVITY_MEAL_WINDOW_HOURS.map(hours => [`window_${hours}h`, new Map<string, number>()])), with_registration_time: new Map<string, number>(), with_unverified_time: new Map<string, number>() } : {};
@@ -258,7 +286,7 @@ function mealCandidate(rows: readonly ObservationRow[], single: ReadonlyMap<stri
     const dayStart = session.start - 86_400_000 * 2;
     const from = window === "pre_3h" ? session.start - PRIMARY_MEAL_WINDOW_HOURS * HOUR : dayStart;
     const accept = window === "pre_3h" ? explicit : (meal: Meal) => explicit(meal) && meal.date === row.date;
-    const result = mealWindow(mealsByDate, row.date, session.start, from, accept);
+    const result = mealWindow(mealsByDate, row.date, session.start, from, accept, nutrient);
     if (window === "same_day_before_start") {
       const evidence = (mealsByDate.get(row.date) ?? []).map(meal => factsOf(meal).evidence);
       result.untimed = evidence.some(value => value === "unknown" || value === "registration");
@@ -271,14 +299,30 @@ function mealCandidate(rows: readonly ObservationRow[], single: ReadonlyMap<stri
     else paired.set(row.date, result.total);
     if (window === "pre_3h") {
       for (const hours of SENSITIVITY_MEAL_WINDOW_HOURS) {
-        const other = mealWindow(mealsByDate, row.date, session.start, session.start - hours * HOUR, explicit);
+        const other = mealWindow(mealsByDate, row.date, session.start, session.start - hours * HOUR, explicit, nutrient);
         if (!other.untimed && !other.unverified && !other.partial && other.found) sensitivities[`window_${hours}h`]!.set(row.date, other.total);
       }
-      const approximate = mealWindow(mealsByDate, row.date, session.start, from, declared);
+      const approximate = mealWindow(mealsByDate, row.date, session.start, from, declared, nutrient);
       if (!approximate.untimed && !approximate.unverified && !approximate.partial && approximate.found) sensitivities.with_registration_time!.set(row.date, approximate.total);
-      const unproven = mealWindow(mealsByDate, row.date, session.start, from, anyInstant);
+      const unproven = mealWindow(mealsByDate, row.date, session.start, from, anyInstant, nutrient);
       if (!unproven.untimed && !unproven.partial && unproven.found) sensitivities.with_unverified_time!.set(row.date, unproven.total);
     }
   }
-  return { values: paired, exclusions, sensitivities, definition: { id: `meal_window:carbsG:${window}`, family: "meal_window", window, subject: "carbsG", temporalBasis: "explicit_meal_time_before_start" } };
+  return { values: paired, exclusions, sensitivities, definition: { id: `meal_window:${nutrient}:${window}`, family: "meal_window", window, subject: nutrient, temporalBasis: "explicit_meal_time_before_start" } };
+}
+
+/** Hours since the last meal with an explicit time, on days whose window holds no meal it could not place. Censored days stay out. */
+function lastMealCandidate(rows: readonly ObservationRow[], single: ReadonlyMap<string, { id: string; start: number | null }>, mealsByDate: ReadonlyMap<string, Meal[]>): Candidate {
+  const paired = new Map<string, number>(), exclusions: Record<string, number> = {};
+  for (const row of rows) {
+    const session = single.get(row.date);
+    if (!session) { bump(exclusions, "multiple_sessions_day"); continue; }
+    if (session.start === null) { bump(exclusions, "no_start_time"); continue; }
+    const last = preStartOf(mealsByDate, row.date, session.start).lastExplicitMeal;
+    if (last.untimedInScope) bump(exclusions, "untimed_meal_in_scope");
+    else if (last.unverifiedInScope) bump(exclusions, "unverified_meal_time_in_scope");
+    else if (last.hours === null) bump(exclusions, "no_explicit_meal_in_12h");
+    else paired.set(row.date, last.hours);
+  }
+  return { values: paired, exclusions, definition: { id: "meal_timing:hours_since_last_explicit:pre_start", family: "meal_window", window: "pre_start_12h", subject: "hours_since_last_explicit", temporalBasis: "explicit_meal_time_before_start" } };
 }

@@ -35,13 +35,20 @@ const feeling = (v: unknown) => object(v) && count(v.value) && TIMING.has(String
 const referenceDate = (v: unknown) => v === undefined || v === null || date(v);
 const exercise = (v: unknown) => object(v) && uuid(v.exerciseId) && typeof v.name === "string" && STATUS.has(String(v.status)) && typeof v.reason === "string"
   && stringOrNull(v.referenceSessionId) && numberOrNull(v.referenceAgeDays) && referenceDate(v.referenceDate) && typeof v.newHigh === "boolean";
+/** A value is only there when its state says it was recorded; every other state has none. */
+const preWindow = (v: unknown) => object(v) && numberOrNull(v.value) && CARBS.has(String(v.state)) && (v.state === "recorded") === (v.value !== null) && (v.value === null || (v.value as number) >= 0);
+const LAST_MEAL = new Set(["recorded", "no_explicit_meal_in_12h", "no_start_time"]);
+/** #367 phase 2. Optional: an older server does not send it. Hours since the last explicit meal are within (0, 12]. */
+const preStart = (v: unknown) => object(v) && preWindow(v.proteinG) && preWindow(v.calories) && object(v.lastExplicitMeal)
+  && LAST_MEAL.has(String(v.lastExplicitMeal.state)) && typeof v.lastExplicitMeal.untimedInScope === "boolean" && typeof v.lastExplicitMeal.unverifiedInScope === "boolean"
+  && (v.lastExplicitMeal.state === "recorded" ? finite(v.lastExplicitMeal.hours) && (v.lastExplicitMeal.hours as number) > 0 && (v.lastExplicitMeal.hours as number) <= 12 : v.lastExplicitMeal.hours === null);
 const session = (v: unknown) => object(v) && typeof v.sessionId === "string" && stringOrNull(v.name) && stringOrNull(v.routineId) && stringOrNull(v.routineName)
   && stringOrNull(v.startedAt) && stringOrNull(v.endedAt) && counts(v.counts) && list(v.exercises, exercise) && object(v.context)
   && object(v.context.feelings) && Object.values(v.context.feelings).every(feeling)
   // Optional and added later: a client that does not know it ignores it, and one that does never reads it as "not recorded".
   && (v.context.unreadableFeelings === undefined || list(v.context.unreadableFeelings, key => FEELING_KEY.has(String(key))))
   && object(v.context.legacy) && numberOrNull(v.context.legacy.energyLevel) && numberOrNull(v.context.legacy.performanceLevel) && numberOrNull(v.context.legacy.painLevel)
-  && object(v.context.carbsPre3h) && numberOrNull(v.context.carbsPre3h.value) && CARBS.has(String(v.context.carbsPre3h.state));
+  && preWindow(v.context.carbsPre3h) && (v.context.preStart === undefined || preStart(v.context.preStart));
 const day = (v: unknown) => object(v) && date(v.date) && counts(v.counts) && count(v.evaluableSessions) && numberOrNull(v.declineProportion) && numberOrNull(v.equalSessionSensitivity)
   && typeof v.openDay === "boolean" && list(v.sessions, session) && object(v.context) && nutrition(v.context.nutrition)
   && list(v.context.metrics, m => object(m) && typeof m.metricId === "string" && finite(m.value));

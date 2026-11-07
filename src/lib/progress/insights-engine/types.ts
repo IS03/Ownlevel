@@ -58,7 +58,7 @@ export type FeelingTiming = "before_start" | "before_first_set" | "after_first_s
 export type SessionFeeling = { value: number; timing: FeelingTiming; temporalQuality: "unknown" | "unverified_client_clock" };
 
 export type CandidateFamily = "metric" | "nutrition" | "meal_window" | "feeling" | "sleep" | "body";
-export type CandidateWindow = "same_day" | "previous_day" | "pre_3h" | "same_day_before_start" | "session" | "night_before";
+export type CandidateWindow = "same_day" | "previous_day" | "pre_3h" | "same_day_before_start" | "session" | "night_before" | "pre_start_12h";
 /** What can be said about the order of the exposure and the training. Same-day totals have no order. */
 export type TemporalBasis = "same_day_unordered" | "previous_logical_day" | "explicit_meal_time_before_start" | "declared_pre_unverified_clock"
   /** Sleep declared as the night that ended the morning of the training day. */
@@ -105,6 +105,7 @@ export type ExerciseFact = {
   referenceDate?: string | null;
   newHigh: boolean;
 };
+export type PreStartWindow = { value: number | null; state: "recorded" | "no_registered_meal" | "partial_macro" | "untimed_meal_in_scope" | "unverified_meal_time_in_scope" | "no_start_time" };
 export type SessionFact = {
   sessionId: string; name: string | null; routineId: string | null; routineName: string | null; startedAt: string | null; endedAt: string | null;
   counts: PerformanceCounts; exercises: ExerciseFact[];
@@ -114,7 +115,20 @@ export type SessionFact = {
     /** Answers that exist but could not be read. Present only when there is one: an absent key is "not recorded". */
     unreadableFeelings?: FeelingKey[];
     legacy: { energyLevel: number | null; performanceLevel: number | null; painLevel: number | null };
-    carbsPre3h: { value: number | null; state: "recorded" | "no_registered_meal" | "partial_macro" | "untimed_meal_in_scope" | "unverified_meal_time_in_scope" | "no_start_time" };
+    carbsPre3h: PreStartWindow;
+    /**
+     * #367 phase 2, optional: an older server does not send it, and a client that does not know it ignores it. Same window, rules and
+     * provenance as `carbsPre3h`; calories are the recorded ones, never rebuilt from macros.
+     */
+    preStart?: {
+      proteinG: PreStartWindow; calories: PreStartWindow;
+      /**
+       * The last meal recorded with an explicit time in the 12 h before the start: the last one recorded, not the last one eaten.
+       * None is censored (`no_explicit_meal_in_12h`), never 12 h or fasting. Meals without an explicit time that could fall in the
+       * window are flagged, never placed.
+       */
+      lastExplicitMeal: { hours: number | null; state: "recorded" | "no_explicit_meal_in_12h" | "no_start_time"; untimedInScope: boolean; unverifiedInScope: boolean };
+    };
   };
 };
 export type NutritionContext = {
