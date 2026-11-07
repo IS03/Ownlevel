@@ -5,7 +5,7 @@
 ## Estado real
 
 - **`origin/main` = `1fe995e`** (merge de #417). Incluye todo lo de abajo.
-- **Checkout `C:\Proyectos\Ownlevel`:** en `codex/367-feeling-sequential` (`dd39767`), limpio y publicado.
+- **Checkout `C:\Proyectos\Ownlevel`:** en `codex/367-feeling-sequential` (`0b95284`), limpio y publicado.
   - **Antes de trabajar:** `git status -sb`, luego `git switch main` y `git pull --ff-only`, y crear la rama nueva desde ahí.
 - **Worktree sobrante:** `C:\Users\senes\AppData\Local\Temp\ownlevel-feelings-receipt`, en `codex/367-feelings-finish-receipt` (`c97bb3d`). Está limpio y ya mergeado; se puede quitar con `git worktree remove`.
 - **Pendiente local o remoto:** la rama `codex/367-feeling-sequential`, publicada y **sin PR**. El navegador integrado no tiene sesión en GitHub: hay que abrir el borrador a mano, con el texto de `docs/progress/367-sensaciones-secuencial-pr-description.md`. Ver «En curso».
@@ -15,19 +15,22 @@
 
 ## En curso — diseño secuencial con candidatos anteriores (energía y fatiga al terminar)
 
-Rama `codex/367-feeling-sequential`, publicada en `dd39767` sobre main `1fe995e`. Previews bloqueadas. Sin migración. Solo diseño, prototipo aislado y viabilidad. **No hay validación** y nada llega a las vistas. Diseño en `docs/progress/367-sensaciones-secuencial-metodo.md` de esa rama, commiteado antes del prototipo (`e5b9f65`).
+Rama `codex/367-feeling-sequential`, publicada en `0b95284` sobre main `1fe995e`. Previews bloqueadas. Sin migración. Solo diseño, prototipo aislado y viabilidad. **No hay validación** y nada llega a las vistas. Diseño en `docs/progress/367-sensaciones-secuencial-metodo.md` de esa rama, commiteado antes del prototipo (`e5b9f65`).
 
 - **Diseño** (`insights-feeling-sequential/1`):
-  - solo candidatos demostradamente anteriores al inicio: día anterior, comida con hora explícita y noche declarada. El mismo día sin orden queda afuera;
+  - solo candidatos demostradamente anteriores al inicio: día anterior y comida con hora explícita. Quedan afuera el mismo día sin orden y la noche declarada, que no demuestra anterioridad a una sesión de madrugada (#419);
   - control sobre candidatos (máximo de la familia), los dos resultados (α partido) y las miradas: calendario trimestral fijo y α_k = 0,005 / (k (k + 1)) por resultado;
   - se mantienen los estratos de #417 y una sola compuerta, sin exploratorio sin corregir.
+- **Revisión de #419:**
+  - un candidato detenido por el recorte conserva su punto de parada y devuelve un descarte con la cota (h + 1)/(B_k + 1), nunca un p sobre permutaciones en las que no se lo contó;
+  - el diseño aclara que repartir α no garantiza por sí solo el error total: depende de la validez de cada prueba.
 - **Resolución y costo:** permutaciones = 10 / α_k, unas 4 000 en la mirada 1 y unas 144 000 en la 8. Se miran primero las compuertas descriptivas y después se aplica el recorte de Besag y Clifford.
 - **Código:** `feeling-sequential.ts` y sus pruebas, nuevos. En `feeling-stratified.ts` solo se exportaron funciones internas, sin cambio de comportamiento.
-- **Validado:** 19 pruebas en las suites afectadas; tipos y lint sin errores.
+- **Validado:** 14 pruebas en las suites afectadas tras #419 (9 del prototipo); tipos y lint sin errores.
 - **Viabilidad** (20 historiales, no es validación):
   - los nulos casi nunca permutan (2 a 4 permutaciones por mirada, menos de 65 ms por resultado);
   - los efectos sembrados del día anterior se encuentran en 20/20, con unas 23 600 permutaciones por mirada y unos 4,5 s por resultado.
-- **Antes de una validación reservada**, de 1 000 historiales por escenario: agregar a la simulación comidas con hora y sueño declarado, ceder el hilo en el generador y fijar una semilla nueva. No se hizo.
+- **Antes de una validación reservada**, de 1 000 historiales por escenario: agregar a la simulación comidas con hora explícita, ceder el hilo en el generador y fijar una semilla nueva. No se hizo.
 
 ## Entregas integradas en main, hasta #417
 
