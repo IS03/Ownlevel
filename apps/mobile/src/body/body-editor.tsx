@@ -82,7 +82,7 @@ function WeightForm({ editor, state, controller }: { editor: WeightEditor; state
   const today = state.read.overview?.today ?? '';
   const editable = state.phase === 'idle' && !state.intent;
   const editing = editor.mode === 'edit';
-  const busy = state.phase === 'pending';
+  const busy = state.phase === 'pending' || state.phase === 'reconciling';
   // The last known weight is the grey hint behind an empty field: typing starts from nothing, never from "0".
   const hint = editor.baseline ?? state.read.overview?.current?.weightKg ?? null;
   const placeholder = hint === null ? '0' : String(hint).replace('.', ',');
@@ -137,7 +137,7 @@ function LongSheetBody({ header, children }: { header: (close: () => void) => Re
 export function MeasurementEditorSheet({ editor, state, controller }: { editor: MeasurementEditor; state: BodyState; controller: BodyController }) {
   const { colors } = useOwnlevelTheme();
   const editable = state.phase === 'idle' && !state.intent;
-  const busy = state.phase === 'pending';
+  const busy = state.phase === 'pending' || state.phase === 'reconciling';
   const baseline = editor.baseline;
   const suspect = baseline?.qualityStatus === 'suspect';
   const legacy = baseline ? (['armCm', 'thighCm'] as const).filter(f => baseline[f] !== null) : [];
