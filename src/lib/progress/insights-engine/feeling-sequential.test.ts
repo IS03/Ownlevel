@@ -2,7 +2,7 @@ import { writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { buildExposureContext } from "./exposures";
 import { prepareFeelingAssociations } from "./feeling-outcomes";
-import { evaluateSequential, eligibleCandidates, alphaAtLook, permutationsAtLook, scheduledDates, sequentialAnalysis, SEQUENTIAL_POLICY } from "./feeling-sequential";
+import { evaluateSequential, eligibleCandidates, alphaAtLook, permutationsAtLook, scheduledDates, sequentialAnalysis, NIGHT_NOT_SHOWN_BEFORE, SEQUENTIAL_POLICY, type SequentialItem } from "./feeling-sequential";
 import { STRATIFIED_SCENARIOS, PLANTED_METRIC, simulateSource } from "./feeling-stratified-calibration";
 import { evaluateStratified } from "./feeling-stratified";
 import { seededRandom } from "./stats";
@@ -27,7 +27,7 @@ describe("#367 diseño secuencial: candidatos anteriores y miradas controladas",
     const source = simulateSource(STRATIFIED_SCENARIOS.independent, 3, 24);
     const { candidates } = prepareFeelingAssociations(source, "energy", { today: "2021-12-01", method: 2, context: buildExposureContext(source) });
     const { eligible, excluded } = eligibleCandidates(candidates);
-    expect(eligible.every(row => ["previous_logical_day", "explicit_meal_time_before_start", "declared_night_ending_on_day"].includes(row.definition.temporalBasis))).toBe(true);
+    expect(eligible.every(row => ["previous_logical_day", "explicit_meal_time_before_start"].includes(row.definition.temporalBasis))).toBe(true);
     expect(eligible.some(row => row.definition.id.endsWith(":same_day"))).toBe(false);
     // Six same-day metrics, four same-day nutrients and the day's body weight (method 2).
     expect(excluded.filter(row => row.reason === "same_day_unordered").map(row => row.id).sort()).toEqual(expect.arrayContaining([expect.stringContaining("body:weight_kg:same_day")]));
@@ -87,9 +87,46 @@ describe("#367 diseño secuencial: candidatos anteriores y miradas controladas",
     }
     expect(fixture).not.toBeNull();
     const late = evaluateSequential(fixture!.rows, [candidate(fixture!.values, "weak")], 8, { maxPermutations: 144_000 });
-    expect(late.items[0]).toMatchObject({ reason: "permutation_tested", passes: false });
+    expect(late.items[0]).toMatchObject({ reason: "stopped_early", familyAdjustedP: null, passes: false });
     expect(late.permutationsUsed).toBeLessThan(5_000);
-    expect(late.items[0]!.familyAdjustedP!).toBeGreaterThan(alphaAtLook(8));
+    expect(late.items[0]!.stopped!.pLowerBound).toBeGreaterThan(alphaAtLook(8));
+  });
+
+  it("keeps each candidate's stopping point, and never gives a stopped one a p over permutations it was not counted in (#419)", () => {
+    // 40 days: one candidate that permutations never reach, and one just over the descriptive gates that they keep reaching.
+    // The fixture is the first seed that builds both; nothing in the method is tuned to it.
+    let fixture: { rows: ObservationRow[]; strong: Map<string, number>; weak: Map<string, number> } | null = null;
+    for (let seed = 1; seed < 2000 && !fixture; seed++) {
+      const r = seededRandom(seed), rows: ObservationRow[] = [], strong = new Map<string, number>(), weak = new Map<string, number>();
+      for (let day = 0; day < 40; day++) { const x = r(), y = x + 0.05 * r(); rows.push({ date: date(day), y, ySensitivity: 0, routineKey: "A" }); strong.set(date(day), x); weak.set(date(day), 0.3 * y + r()); }
+      const probe = evaluateSequential(rows, [candidate(strong, "strong"), candidate(weak, "weak")], 1, { maxPermutations: 1 });
+      if (probe.items.every(item => item.reason === "permutation_tested")) fixture = { rows, strong, weak };
+    }
+    expect(fixture).not.toBeNull();
+    const result = evaluateSequential(fixture!.rows, [candidate(fixture!.strong, "strong"), candidate(fixture!.weak, "weak")], 1);
+    const [strong, weak] = result.items as [SequentialItem, SequentialItem];
+    const allowed = permutationsAtLook(1);
+    // The strong one is counted over the whole run, which goes to the bound because of it.
+    expect(result.permutationsUsed).toBe(allowed);
+    expect(strong).toMatchObject({ reason: "permutation_tested", permutations: allowed, stopped: null, passes: true });
+    expect(strong.familyAdjustedP).toBeCloseTo(1 / (allowed + 1), 10);
+    // The weak one stopped long before, keeps where it stopped, and gives a bound, not a p over the strong one's permutations.
+    expect(weak).toMatchObject({ reason: "stopped_early", familyAdjustedP: null, passes: false });
+    expect(weak.permutations).toBe(weak.stopped!.at);
+    expect(weak.stopped!.at).toBeLessThan(allowed / 4);
+    expect(weak.stopped!.exceedances).toBe(SEQUENTIAL_POLICY.stopExceedances);
+    expect(weak.stopped!.pLowerBound).toBeCloseTo((SEQUENTIAL_POLICY.stopExceedances + 1) / (allowed + 1), 12);
+    expect(weak.stopped!.pLowerBound).toBeGreaterThan(alphaAtLook(1));
+  });
+
+  it("does not take a declared night for one that ended before a session at dawn, and leaves the published sleep candidate alone (#419)", () => {
+    const night: Candidate = { values: new Map([["2029-03-02", 7]]), exclusions: {}, definition: { id: "sleep:m:night_before", family: "sleep", window: "night_before", subject: "m", temporalBasis: "declared_night_ending_on_day" } };
+    const day = candidate(new Map([["2029-03-02", 1]]), "metric:m:previous_day");
+    const { eligible, excluded } = eligibleCandidates([night, day]);
+    expect(eligible.map(row => row.definition.id)).toEqual(["metric:m:previous_day"]);
+    expect(excluded).toEqual([{ id: "sleep:m:night_before", reason: NIGHT_NOT_SHOWN_BEFORE }]);
+    // The candidate itself, and so the published sleep context and families, are not changed by being left out here.
+    expect(night.definition.temporalBasis).toBe("declared_night_ending_on_day");
   });
 
   it("finds a planted effect of the day before, at a look the design reaches", () => {

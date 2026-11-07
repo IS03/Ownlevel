@@ -31,7 +31,6 @@ Antecedentes:
 | --- | --- | --- |
 | `previous_logical_day` | métricas y nutrición del día anterior | el día lógico anterior termina antes del día de la sesión |
 | `explicit_meal_time_before_start` | carbohidratos en las 3 h previas y antes del inicio, con hora explícita | la hora es explícita y anterior al inicio |
-| `declared_night_ending_on_day` | sueño con noche declarada | la noche terminó la mañana del día de la sesión |
 
 **Quedan afuera:**
 
@@ -39,6 +38,7 @@ Antecedentes:
 | --- | --- | --- |
 | `same_day_unordered` | métricas y nutrición del mismo día, peso del día | no se sabe si son de antes o de después de entrenar |
 | `undeclared_sleep_date` | sueño sin noche declarada | la fecha puede ser cualquiera de dos noches |
+| `declared_night_ending_on_day` | sueño con noche declarada (#419) | la noche termina el día D, pero no se sabe a qué hora. Una sesión de madrugada de D puede empezar antes de que termine, así que no está demostrado que sea anterior. Queda afuera mientras no haya una hora de despertar registrada. El contexto de sueño publicado no cambia |
 | familia `feeling` | sensaciones previas | son el marco del resultado, no exposiciones |
 
 Los candidatos de la fase 2 (proteína y calorías en 3 h, última comida) no forman parte de las familias públicas y tampoco entran aquí.
@@ -56,6 +56,13 @@ Los candidatos de la fase 2 (proteína y calorías en 3 h, última comida) no fo
   - **Gasto de α por mirada:** α_k = 0,005 / (k (k + 1)) por resultado. La suma sobre todas las miradas posibles es 0,005, así que el control vale también para una historia que sigue creciendo, sin horizonte fijo.
   - Ejemplos: α_1 = 0,0025; α_4 = 0,00025; α_8 = 0,0000694.
 - **Total por historial:** con estas tres capas, la probabilidad de algún falso positivo en cualquier candidato, cualquiera de los dos resultados y cualquier mirada queda acotada por 0,01. Es una cota de unión: es conservadora si las miradas están correlacionadas, y lo están.
+- **Esa cota no está garantizada por el reparto en sí** (#419). La desigualdad de Bonferroni suma errores de pruebas que tienen que ser válidas una por una: cada prueba de una mirada tiene que dar, bajo su nulo, un p que no subestime la probabilidad real. Depende de supuestos:
+  - **intercambiabilidad dentro de los estratos:** si un cambio a mitad de bloque o una rutina sin registrar la rompen, una prueba puede ser liberal, y el reparto no lo compensa;
+  - **exposición anterior de verdad:** un candidato mal clasificado como anterior trae una relación que ninguna prueba distingue;
+  - **ausencia ignorable:** con ausencia selectiva, la prueba responde otra pregunta, la de los días presentes;
+  - **p de Monte Carlo correcto:** el de una corrida completa y, para un candidato detenido, solo su cota (ver abajo).
+
+  Por eso el error total se mide en la validación reservada y no se da por cierto a partir del reparto.
 
 ### Compuerta única
 
@@ -75,9 +82,13 @@ Estados: `insufficient_data`, `no_clear_signal`, `passes_sequential_gate`.
   - Mirada 4: unas 40 000.
   - Mirada 8: unas 144 000.
 - **Costo con un recorte secuencial** (Besag y Clifford): cada permutación compara el máximo de la familia contra cada candidato.
-  - Un candidato deja de permutarse cuando acumula h = 10 excedencias: su p ya no puede bajar de 10/(b + 1), y si α_k es menor queda decidido sin pasar.
+  - Un candidato deja de contarse cuando acumula h = 10 excedencias y ya no puede pasar: aunque no hubiera ninguna más, su p sobre toda la corrida, (h + 1)/(B_k + 1), quedaría por encima de α_k.
+  - **Lo que devuelve un candidato detenido** (corregido en #419):
+    - no un p sino un descarte (`stopped_early`), con dónde se detuvo (`stopped.at`), sus excedencias y una cota explícita: su p sobre las B_k permutaciones permitidas sería al menos (h + 1)/(B_k + 1);
+    - antes se le calculaba un cociente con todas las permutaciones de la corrida, también las que corrieron por otro candidato después de que dejó de contarse. Ese cociente no es un p de nada;
+    - solo un candidato contado hasta el final tiene p (`familyAdjustedP`), sobre todas las permutaciones de la corrida.
   - La corrida termina cuando todos los candidatos se decidieron o se llega a B_k.
-  - Bajo el nulo, casi todos se deciden en las primeras decenas o cientos de permutaciones, y solo un candidato fuerte llega a B_k. El p es válido con el recorte.
+  - Bajo el nulo, casi todos se deciden en las primeras decenas o cientos de permutaciones, y solo un candidato fuerte llega a B_k.
 - **Costo por permutación:** O(filas × candidatos), unas 350 filas por 10 a 20 candidatos.
 
   La medición de viabilidad de abajo da el tiempo real.
@@ -98,7 +109,7 @@ Estados: `insufficient_data`, `no_clear_signal`, `passes_sequential_gate`.
 **No se corre en esta entrega.**
 
 - **Recorrido:**
-  - filas fuente simuladas, como en #417, ampliadas con métricas del día anterior, comidas con hora explícita y sueño declarado, para que haya candidatos elegibles;
+  - filas fuente simuladas, como en #417, ampliadas con métricas del día anterior y comidas con hora explícita, para que haya candidatos elegibles de las dos bases;
   - el calendario de miradas trimestrales real, 24 meses (8 miradas) y 36 meses (12 miradas).
 - **Escenarios nulos:**
   - independiente;
@@ -124,6 +135,10 @@ Estados: `insufficient_data`, `no_clear_signal`, `passes_sequential_gate`.
 
 ## Medición de viabilidad
 
+**Vigencia después de #419:** las cifras siguen valiendo.
+- La simulación no tiene sueño, así que sacar la noche declarada no cambia la familia de 12.
+- El cambio en los candidatos detenidos cambia lo que se informa de ellos, no las permutaciones que corren ni quién pasa: un candidato solo se detiene cuando ya no podía pasar.
+
 **Qué es:** una corrida chica para saber si el diseño se puede calcular y si encuentra lo que tiene que encontrar.
 
 **Qué no es:** una validación. Con 20 historiales, 0 aciertos dan una cota de Wilson cercana al 16 %, así que **no dice nada sobre el objetivo del 1 %**.
@@ -140,7 +155,7 @@ Estados: `insufficient_data`, `no_clear_signal`, `passes_sequential_gate`.
 
 **Candidatos:**
 - 23 por resultado: 12 elegibles y 11 afuera (6 métricas y 4 nutrientes del mismo día, y el peso del día);
-- en esta simulación solo las 6 métricas del día anterior tienen datos: no hay comidas ni sueño declarado. La futura validación tiene que agregarlos para probar esas bases.
+- en esta simulación solo las 6 métricas del día anterior tienen datos: no hay comidas. La futura validación tiene que agregarlas para probar esa base. El sueño declarado ya no entra (#419).
 
 **Lo que muestra:**
 - **El recorte por compuertas descriptivas casi elimina el costo bajo el nulo.** Casi ninguna mirada tiene un candidato que pueda pasar, así que casi nunca se permuta.
@@ -155,7 +170,7 @@ Estados: `insufficient_data`, `no_clear_signal`, `passes_sequential_gate`.
 **Defecto de la herramienta, no del método:** la medición corre en un solo bloque síncrono, y vitest avisa «Timeout calling onTaskUpdate» aunque la prueba pase. Una campaña completa tendría que ceder el hilo entre historiales, como las anteriores.
 
 **Lo que falta antes de una validación:**
-- las bases de comidas con hora explícita y sueño declarado en la simulación;
+- la base de comidas con hora explícita en la simulación;
 - un generador que ceda el hilo;
 - una semilla reservada nueva.
 

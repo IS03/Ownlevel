@@ -139,7 +139,7 @@ Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya
 - **Estado: descriptivo accesible, asociaciones sin publicar** (#412).
   - «Cómo terminaste» cuenta las respuestas al terminar por nivel previo y deja aparte las tardías, las que no tienen hora, las ilegibles, las de otro instrumento y la energía heredada.
   - **Diseño secuencial** (`insights-feeling-sequential/1`, `codex/367-feeling-sequential`; [367-sensaciones-secuencial-metodo.md](367-sensaciones-secuencial-metodo.md)):
-    - solo candidatos anteriores al inicio;
+    - solo candidatos anteriores al inicio: día anterior y comidas con hora explícita. La noche declarada queda afuera porque no demuestra anterioridad a una sesión de madrugada (#419);
     - miradas trimestrales fijas, con α gastado por mirada y partido entre los dos resultados.
 
     Prototipo y medición de viabilidad, sin validación ni publicación.
