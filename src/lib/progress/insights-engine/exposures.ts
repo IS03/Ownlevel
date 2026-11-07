@@ -1,5 +1,6 @@
 import type { PartialDay } from "../performance-insights/partial";
 import type { DailyPerformance } from "../performance-insights/types";
+import { cordobaDateOf } from "../../phase2/cordoba-date";
 import { instantMs, mealTimeEvidence, parseSessionFeelings } from "./source-adapter";
 import type { Candidate, CandidateDefinition, FeelingKey, InsightsEngineMethod, InsightsSource, MealTimeEvidence, NutritionContext, ObservationRow, PreStartWindow, SessionFact, SessionFeeling, SleepNightEvidence } from "./types";
 
@@ -71,21 +72,35 @@ function metricSeries(source: InsightsSource, exclusions: Record<string, number>
 }
 
 type WindowNutrient = "carbsG" | "proteinG" | "calories";
+/** Every Córdoba date the window [from, start) touches, by its instants: one for an afternoon window, two when it crosses midnight. */
+function overlappedDates(from: number, start: number) {
+  const dates: string[] = [];
+  for (let date = cordobaDateOf(from), last = cordobaDateOf(start - 1); date <= last; date = nextDate(date)) dates.push(date);
+  return dates;
+}
+const nextDate = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 /**
  * Sum of one nutrient recorded with an explicit time in [from, start), and the latest such meal. Absence never becomes zero or
  * fasting; a recorded zero stays zero. One rule for every nutrient: the window, the provenance and which meal is in are the
- * carbohydrates' (#367). `unknownScope: "window_dates"` also flags a meal without any instant on the day before, for windows that
- * reach back into it; the carbohydrates keep their published rule (`session_date`).
+ * carbohydrates' (#367).
+ *
+ * Which meal without an explicit time makes the window unknown:
+ * - `session_date`, the carbohydrates' published rule, kept for compatibility: any on the session's logical date, or one whose
+ *   instant falls in the window;
+ * - `overlap` (#413), for the newer windows: any dated on a Córdoba date the window really touches, or one whose instant falls in
+ *   it. A meal without time the day before makes a window that reaches past midnight unknown, and leaves an afternoon one alone.
  */
 function mealWindow(mealsByDate: ReadonlyMap<string, Meal[]>, date: string, start: number, from: number, accept: (meal: Meal) => boolean,
-  nutrient: WindowNutrient = "carbsG", unknownScope: "session_date" | "window_dates" = "session_date") {
-  const scope = [previousDate(date), date];
+  nutrient: WindowNutrient = "carbsG", unknownScope: "session_date" | "overlap" = "session_date") {
+  const touched = unknownScope === "overlap" ? new Set(overlappedDates(from, start)) : null;
+  const scope = [...new Set([previousDate(date), date, ...(touched ?? [])])];
   let total = 0, found = 0, partial = false, untimed = false, unverified = false, latest: number | null = null;
   for (const day of scope) for (const meal of mealsByDate.get(day) ?? []) {
     const evidence = meal.entryKind === "meal" && accept(meal);
     const { instant, evidence: known } = factsOf(meal);
     if (!evidence) {
-      if (day === date || (instant !== null && instant >= from && instant < start) || (unknownScope === "window_dates" && instant === null && meal.entryKind === "meal")) { if (known === "unverified") unverified = true; else untimed = true; }
+      const inScope = touched ? touched.has(day) : day === date;
+      if (inScope || (instant !== null && instant >= from && instant < start)) { if (known === "unverified") unverified = true; else untimed = true; }
       continue;
     }
     if (instant === null || instant < from || instant >= start) continue;
@@ -101,8 +116,8 @@ const windowState = (window: ReturnType<typeof mealWindow>): PreStartWindow => w
 /** What was recorded before a session starts, for its context: the three-hour windows and the last meal with an explicit time. */
 function preStartOf(mealsByDate: ReadonlyMap<string, Meal[]>, date: string, start: number): NonNullable<SessionFact["context"]["preStart"]> {
   const from = start - PRIMARY_MEAL_WINDOW_HOURS * HOUR;
-  const last = mealWindow(mealsByDate, date, start, start - LAST_MEAL_LOOKBACK_HOURS * HOUR, explicit, "carbsG", "window_dates");
-  return { proteinG: windowState(mealWindow(mealsByDate, date, start, from, explicit, "proteinG")), calories: windowState(mealWindow(mealsByDate, date, start, from, explicit, "calories")),
+  const last = mealWindow(mealsByDate, date, start, start - LAST_MEAL_LOOKBACK_HOURS * HOUR, explicit, "carbsG", "overlap");
+  return { proteinG: windowState(mealWindow(mealsByDate, date, start, from, explicit, "proteinG", "overlap")), calories: windowState(mealWindow(mealsByDate, date, start, from, explicit, "calories", "overlap")),
     lastExplicitMeal: { hours: last.latest === null ? null : (start - last.latest) / HOUR, state: last.latest === null ? "no_explicit_meal_in_12h" : "recorded", untimedInScope: last.untimed, unverifiedInScope: last.unverified } };
 }
 const NO_START: NonNullable<SessionFact["context"]["preStart"]> = { proteinG: { value: null, state: "no_start_time" }, calories: { value: null, state: "no_start_time" },
@@ -286,7 +301,9 @@ function mealCandidate(rows: readonly ObservationRow[], single: ReadonlyMap<stri
     const dayStart = session.start - 86_400_000 * 2;
     const from = window === "pre_3h" ? session.start - PRIMARY_MEAL_WINDOW_HOURS * HOUR : dayStart;
     const accept = window === "pre_3h" ? explicit : (meal: Meal) => explicit(meal) && meal.date === row.date;
-    const result = mealWindow(mealsByDate, row.date, session.start, from, accept, nutrient);
+    // The carbohydrates keep their published rule; the newer nutrients use the days the window really touches (#413).
+    const scope = nutrient === "carbsG" ? "session_date" : "overlap";
+    const result = mealWindow(mealsByDate, row.date, session.start, from, accept, nutrient, scope);
     if (window === "same_day_before_start") {
       const evidence = (mealsByDate.get(row.date) ?? []).map(meal => factsOf(meal).evidence);
       result.untimed = evidence.some(value => value === "unknown" || value === "registration");
@@ -299,12 +316,12 @@ function mealCandidate(rows: readonly ObservationRow[], single: ReadonlyMap<stri
     else paired.set(row.date, result.total);
     if (window === "pre_3h") {
       for (const hours of SENSITIVITY_MEAL_WINDOW_HOURS) {
-        const other = mealWindow(mealsByDate, row.date, session.start, session.start - hours * HOUR, explicit, nutrient);
+        const other = mealWindow(mealsByDate, row.date, session.start, session.start - hours * HOUR, explicit, nutrient, scope);
         if (!other.untimed && !other.unverified && !other.partial && other.found) sensitivities[`window_${hours}h`]!.set(row.date, other.total);
       }
-      const approximate = mealWindow(mealsByDate, row.date, session.start, from, declared, nutrient);
+      const approximate = mealWindow(mealsByDate, row.date, session.start, from, declared, nutrient, scope);
       if (!approximate.untimed && !approximate.unverified && !approximate.partial && approximate.found) sensitivities.with_registration_time!.set(row.date, approximate.total);
-      const unproven = mealWindow(mealsByDate, row.date, session.start, from, anyInstant, nutrient);
+      const unproven = mealWindow(mealsByDate, row.date, session.start, from, anyInstant, nutrient, scope);
       if (!unproven.untimed && !unproven.partial && unproven.found) sensitivities.with_unverified_time!.set(row.date, unproven.total);
     }
   }

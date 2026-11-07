@@ -154,6 +154,29 @@ Historias sintéticas de `scale-fixture.ts`, método 2. «Evaluables» son los q
 
 **Una lectura posible, sin cambiar la decisión:** el aumento del exploratorio es mayor que lo que tres candidatos independientes harían esperar. Los nuevos están presentes en el 40 % de los días, con menos pares, y el exploratorio no corrige por familia. Es una hipótesis para un método futuro, no una razón para reinterpretar este resultado.
 
+### Corrección de #413: comidas sin hora al cruzar la medianoche
+
+**El defecto:** proteína y calorías en 3 h usaban la regla publicada de los carbohidratos. Solo una comida sin hora del día de la sesión volvía desconocida la ventana. Un entrenamiento a la 01:00 publicaba un total como conocido aunque una comida sin hora del día anterior pudiera caer en las 3 h previas. Al revés, las 12 h señalaban siempre una comida sin hora del día anterior, aunque la ventana no llegara a ese día.
+
+**La regla corregida**, igual para el contexto y para los candidatos experimentales nuevos:
+- una comida sin hora explícita vuelve desconocida la ventana si está fechada en un día de Córdoba que la ventana realmente toca, o si su instante cae adentro;
+- los días que toca salen de los instantes de la ventana, con la fecha de Córdoba (`cordobaDateOf`, la misma zona que `todayInCordoba`);
+- **resultado:** una ventana de 22:00 a 01:00 toca los dos días; una de 15:00 a 18:00, solo uno. Lo mismo vale para las 12 h.
+
+**Lo que no cambia:**
+- los carbohidratos conservan su regla publicada (`session_date`), por compatibilidad;
+- **53 de 53** vistas siguen idénticas a `main` sin `preStart`.
+
+**Regresiones:**
+- entrenamiento a la 01:00 con una comida sin hora del día anterior: proteína, calorías y candidatos quedan desconocidos;
+- cruce de medianoche con comidas explícitas: total válido;
+- ventana de tarde con comidas sin hora del día anterior: no la afectan, y las 12 h tampoco.
+
+**Alcance de la calibración: no cambia.**
+- La campaña de esta fase simula los candidatos nuevos con su presencia fija (40 % de los días) y no modela horas de comida ni su elegibilidad. Por eso sus cifras y la decisión siguen vigentes, y no se repitió.
+- La corrección cambia qué días reales tienen dato: menos a la madrugada, más a la tarde. No cambia cómo se juzga la familia.
+- Los candidatos siguen sin publicarse.
+
 ### Validación
 
 - **Pruebas nuevas:**

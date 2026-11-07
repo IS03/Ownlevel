@@ -137,7 +137,7 @@ Requiere una build de Mobile con `codex/367-feeling-outcomes` y la API de esa ra
 Requiere una build de Mobile con `codex/367-meal-timing` y la API de esa rama. Sin migración.
 - [ ] **Contexto de la sesión:** debajo de «Carbohidratos registrados, 3 h antes» aparecen «Proteína registrada, 3 h antes», «Calorías registradas, 3 h antes» y «Última comida registrada con hora», cada una en su fila, con su unidad (g, kcal, «Hace 2 h 30 min»).
 - [ ] **Hora explícita:** una comida cargada con hora elegida cuenta. Una cargada «ahora», sin elegir hora, no cuenta como explícita: la fila dice «Comidas sin hora».
-- [ ] **Medianoche:** una comida a las 23:00 cuenta para un entrenamiento a la 1:00 del día siguiente.
+- [ ] **Medianoche:** una comida a las 23:00 con hora cuenta para un entrenamiento a la 1:00 del día siguiente. Si el día anterior tiene una comida sin hora, proteína y calorías dicen «Comidas sin hora». Esa misma comida no cambia un entrenamiento de la tarde.
 - [ ] **Faltantes:** sin comidas dice «Sin comidas con hora», nunca 0. Un cero registrado dice «0 g». Una comida sin calorías hace que las calorías digan «Alguna comida sin ese dato», sin calcularlas desde los macros.
 - [ ] **Última comida:** sin ninguna con hora en las 12 h previas dice «Ninguna con hora en las 12 h previas», nunca «12 h» ni «ayuno». Con comidas sin hora cerca, lo aclara debajo.
 - [ ] **Sin asociaciones nuevas:** «Para mirar con calma» no muestra relaciones de proteína, calorías ni tiempo desde la última comida.

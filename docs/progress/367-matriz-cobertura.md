@@ -255,7 +255,8 @@ Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya
 - **Cruce:** ninguno publicado.
 - **Estado: accesible como contexto; los candidatos no validaron.**
   - **Contexto en pantalla:** tres filas separadas, con el motivo cuando falta: comidas sin hora o con hora no verificada, macro faltante, sin comidas, o sin hora de inicio.
-  - **Última comida:** es la última registrada, no la última consumida. Sin ninguna en 12 h queda censurada, nunca «12 h» ni ayuno. Si hay comidas que no puede ubicar, también del día anterior, lo dice.
+  - **Última comida:** es la última registrada, no la última consumida. Sin ninguna en 12 h queda censurada, nunca «12 h» ni ayuno.
+  - **Medianoche** (#413): una comida sin hora vuelve desconocida la ventana solo si es de un día de Córdoba que la ventana toca. A la 01:00 cuenta la del día anterior; a la tarde, no. Los carbohidratos conservan su regla publicada.
   - **Asociaciones:** la calibración preregistrada sube el exploratorio entre 4 y 9 puntos. Los tres candidatos quedan fuera de las familias públicas y de su preparación en las vistas.
 
 **Comida después de entrenar**
