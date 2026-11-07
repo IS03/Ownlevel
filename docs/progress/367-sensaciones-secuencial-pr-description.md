@@ -1,5 +1,7 @@
 # #367 — Energía y fatiga al terminar: diseño secuencial con candidatos anteriores
 
+**Descripción histórica de #419.** La continuación con simulador y corrida reservada tiene [su descripción de PR borrador](367-sensaciones-secuencial-validacion-pr-description.md) y [resultados](367-sensaciones-secuencial-resultados.md).
+
 Diseño y prototipo aislado de un método experimental que trata los dos problemas encontrados en #412 y #417:
 - revisiones repetidas sin control;
 - candidatos del mismo día que pueden reflejar algo ocurrido después de entrenar.

@@ -1,6 +1,6 @@
 # #367 — Energía y fatiga al terminar: diseño secuencial con candidatos anteriores
 
-**Diseño, antes de cualquier campaña.** Este documento fija el método y los criterios de una futura validación reservada. El prototipo que lo acompaña (`feeling-sequential.ts`) sirve solo para probar que el diseño se puede calcular: **no hay corrida de validación, no se habilita ninguna asociación y nada llega a las vistas.** El 1 % sigue siendo un objetivo propuesto, no una tolerancia aprobada, y «consistente» sigue deshabilitado.
+**Diseño de #419, fijado antes de la campaña.** El prototipo (`feeling-sequential.ts`) permanece experimental y aislado de las vistas. La continuación del 7/11 ejecutó una única [validación reservada](367-sensaciones-secuencial-resultados.md), con [protocolo definitivo previo](367-sensaciones-secuencial-protocolo.md): cuatro nulos no acreditaron el criterio propuesto; la línea se detuvo sin potencia ni recalibración. **No se habilita ninguna asociación.** El 1 % sigue siendo un objetivo propuesto, no una tolerancia aprobada, y «consistente» sigue deshabilitado.
 
 Antecedentes:
 - [367-sensaciones-resultado-metodo.md](367-sensaciones-resultado-metodo.md) (#412);
@@ -106,7 +106,10 @@ Estados: `insufficient_data`, `no_clear_signal`, `passes_sequential_gate`.
 
 ## Futura validación reservada
 
-**No se corre en esta entrega.**
+**No se corrió en #419.** La continuación queda fijada antes de ejecutarla en
+[el protocolo definitivo](367-sensaciones-secuencial-protocolo.md) y su JSON: ese protocolo resuelve los horizontes anidados,
+los cuatro escenarios de potencia, la disponibilidad temporal y la parada si los nulos no cumplen. La propuesta original de abajo
+se conserva como antecedente; no sustituye al protocolo ejecutable.
 
 - **Recorrido:**
   - filas fuente simuladas, como en #417, ampliadas con métricas del día anterior y comidas con hora explícita, para que haya candidatos elegibles de las dos bases;
@@ -123,7 +126,7 @@ Estados: `insufficient_data`, `no_clear_signal`, `passes_sequential_gate`.
   - **inversa del mismo día**, que ahora es un nulo: su candidato ya no entra.
 - **Potencia:** efecto moderado y fuerte de una métrica del día anterior y de los carbohidratos con hora explícita.
 - **Tamaño:** 1 000 historiales por escenario, con semilla reservada nueva.
-  - Con 0 a 4 aciertos en 1 000, la cota de Wilson queda ≤ 1,0 % (4/1 000 da 1,02 %; 3/1 000 da 0,88 %).
+  - Con 0 a 3 aciertos en 1 000, la cota de Wilson bilateral al 95 % queda ≤ 1,0 % (4/1 000 da 1,02 % y no cumple; 3/1 000 da 0,88 %).
   - 500 no alcanzan para separar 0,5 % de 1 %.
 - **Criterio:** la cota superior de Wilson al 95 % de «algún paso en cualquier candidato, cualquiera de los dos resultados y cualquier mirada» queda ≤ 1 % en todos los nulos. Si un intervalo incluye el 1 %, se informa como evidencia insuficiente, no como aprobado.
 - **Se informa además:**
@@ -174,4 +177,4 @@ Estados: `insufficient_data`, `no_clear_signal`, `passes_sequential_gate`.
 - un generador que ceda el hilo;
 - una semilla reservada nueva.
 
-Nada de esto se hizo todavía: este cambio se detiene en el diseño y el prototipo.
+Eso quedaba pendiente al cerrar #419. La continuación completó el simulador y una única campaña con [protocolo previo](367-sensaciones-secuencial-protocolo.md); [no acreditó el criterio y se detuvo](367-sensaciones-secuencial-resultados.md), sin potencia ni recalibración.
