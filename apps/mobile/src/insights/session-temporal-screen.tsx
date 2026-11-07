@@ -28,7 +28,7 @@ export function SessionTemporalScreen() {
   const session = validSession(params.session) ? params.session : null;
   const origin=insightsOriginOf(params);
   const {revision:_revision,temporal:_temporal,...returnOrigin}=origin;
-  const returnHref = { pathname: '/(tabs)/train/insights' as const, params: { ...returnOrigin,date: date ?? '', ...(session ? { session } : {}) } };
+  const returnHref = { pathname: '/(tabs)/train/insights' as const, params: { ...returnOrigin,...(origin.explore&&origin.revision?{revision:origin.revision}:{}),date: date ?? '', ...(session ? { session } : {}) } };
   const openDay = (day: string) => router.push(nutritionDayHref(day, { ...origin,temporal: '1', date: date!, revision: data!.sourceRevision, ...(session ? { session } : {}) }));
   const evidence = (ref: NonNullable<Session['before']['evidence']>, label: string) => <View style={styles.block}>
     <AppText variant="headline">{label} · {ref.total} registros</AppText>

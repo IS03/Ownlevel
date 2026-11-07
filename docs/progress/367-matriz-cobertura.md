@@ -2,6 +2,8 @@
 
 **Actualización preparada 2026-11-07 sobre #422 (`6d94f31`):** #423 (borrador) agrega contexto temporal por sesión; la entrega apilada de semanas agrega `period-explore` con todos los días del mismo trimestre, conteos completos/parciales separados, sensaciones ordinales, nutrientes, medianas corporales y retorno por origen. Sin asociaciones nuevas. [Estado, costos y pruebas](367-ecosistema-mobile-ejecucion.md). Código preparado no acredita build ni QA física.
 
+La exploración semanal está en #424; #425/#426 corrigen #399/#418 sin depender de Insights. Gate Mobile global **pendiente** por un fallo del dock en la única corrida completa, no reproducido por sus 69 pruebas relacionadas en main ni en la combinación. No se presenta como fallo demostrado de main ni como aprobación total.
+
 Estado al 2026-11-06, verificado con el historial de `main` (`96b4a63`):
 - **Mergeados y desplegados:** #393 a #395, y #397 y #398 (sueño y peso). Detalle en [367-sueno-peso.md](367-sueno-peso.md).
 - **Mergeados en `main`:**

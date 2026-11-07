@@ -10,6 +10,8 @@ Este documento fija el orden y las reglas de cada fase. **Lo que dice «diseño�
 
 **Checkpoints preparados:** contexto temporal en #423; semanas/días apilados sobre esa rama, con un único trimestre fijado, evidencia de comparación existente y retornos a la selección. Se completaron las etapas descriptivas 1–3 en código; aceptación física pendiente. Costos, contratos y verificación local en el plan enlazado. No adelantan el estado metodológico de asociaciones ni cierran #367.
 
+Entregas: #423 → #424; #425 (#399) y #426 (#418) independientes sobre main. Una validación Mobile completa dejó un fallo del dock sin causa acreditada; las 69 pruebas relacionadas pasan en main y combinación, por lo que el gate global queda pendiente. Detalle exacto en el checkpoint enlazado. Sin nuevas campañas estadísticas ni aprobación de QA.
+
 #419 está integrado; #420 sigue borrador y separado, y su validación reservada **no acreditó el criterio**. La investigación está detenida: no ejecutar las calibraciones, campañas o potencia descritas como futuro en los diseños históricos de abajo. Asociaciones experimentales y «consistente» permanecen deshabilitadas. Las fases descriptivas no dependen de reabrir esa investigación.
 
 ## Reglas comunes

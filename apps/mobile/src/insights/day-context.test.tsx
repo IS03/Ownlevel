@@ -14,9 +14,9 @@ import { bodyWeightHref, dayWeightHref, insightsReturnHref, nutritionDayHref } f
 
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
-const mockPush = jest.fn(), mockSetParams = jest.fn();
+const mockPush = jest.fn(), mockSetParams = jest.fn(), mockNavigate = jest.fn();
 let mockParams: Record<string, string> = {};
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, setParams: mockSetParams, back: jest.fn() }), useFocusEffect: () => undefined, useLocalSearchParams: () => mockParams }));
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, setParams: mockSetParams, navigate: mockNavigate, back: jest.fn() }), useFocusEffect: () => undefined, useLocalSearchParams: () => mockParams }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn() }, triggerHaptic: jest.fn() }));
 type ReadOptions = Parameters<MobileApiClient['read']>[0];
 const mockRead = jest.fn<(options: ReadOptions) => Promise<unknown>>();
@@ -179,6 +179,8 @@ describe('#367 contexto diario: pantalla', () => {
     expect(insightsReturnHref(href.params)).toMatchObject({ pathname: '/(tabs)/train/insights', params: { date: D1, before: '2026-03-04', explore: '1', asOf: '2026-04-01', week: D0 } });
     fireEvent.press(focus.getByRole('button', { name: /Ver horarios y comidas/ }));
     expect(mockPush.mock.calls.at(-1)![0]).toMatchObject({ pathname: '/(tabs)/train/insights/temporal', params: { date: D1, before: '2026-03-04', explore: '1', asOf: '2026-04-01', week: D0, revision: 'r1' } });
+    fireEvent.press(view.getByRole('button', { name: 'Volver a la semana' }));
+    expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights/weeks', params: { asOf: '2026-04-01', week: D0, revision: 'older' } });
   });
 });
 

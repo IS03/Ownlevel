@@ -39,3 +39,9 @@ it('distinguishes errors, empty and invalid dates and retries without another sc
   const empty=render(wrap());await empty.findByText('Sin sesiones finalizadas ese día.');empty.unmount();mockRead.mockClear();mockParams={date:'2026-02-30'};
   const invalid=render(wrap());expect(invalid.getByText('No pudimos identificar el día')).toBeTruthy();expect(mockRead).not.toHaveBeenCalled();
 });
+it('keeps the week revision when returning through temporal context',async()=>{
+  mockParams={date:'2026-08-03',revision:'old',explore:'1',asOf:'2026-11-07',week:'2026-08-03',before:'2026-08-04'};
+  serve();const view=render(wrap());await view.findByText('Horarios y comidas');
+  fireEvent.press(view.getByRole('button',{name:'Volver al día en Insights'}));
+  expect(mockNavigate).toHaveBeenLastCalledWith({pathname:'/(tabs)/train/insights',params:mockParams});
+});

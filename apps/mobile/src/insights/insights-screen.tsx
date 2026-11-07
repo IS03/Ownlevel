@@ -256,7 +256,7 @@ export function InsightsScreen() {
   const hero = focusId ? null : heroOf(days);
   const stripLane = focus?.lane ?? hero?.lane ?? primaryLane(data);
   return scroll(<>
-    {origin.explore&&origin.asOf&&origin.week?<Button label="Volver a la semana" variant="secondary" onPress={()=>router.navigate(explorationHref(origin.asOf!,origin.week))}/>:null}
+    {origin.explore&&origin.asOf&&origin.week?<Button label="Volver a la semana" variant="secondary" onPress={()=>router.navigate(explorationHref(origin.asOf!,origin.week,origin.revision))}/>:null}
     {origin.explore&&origin.revision&&origin.revision!==data.sourceRevision?<AppText>Los registros cambiaron desde la semana. Esta lectura completa está actualizada.</AppText>:null}
     {state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
     <ExerciseSegmented accessibilityLabel="Ver por días o por ejercicios" value={view} options={VIEWS} onChange={setView} />
