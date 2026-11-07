@@ -21,18 +21,18 @@ export type StratifiedItem = {
   rho: number | null; permutationP: number | null; familyAdjustedP: number | null; firstHalfRho: number | null; secondHalfRho: number | null;
   state: "insufficient_data" | "no_clear_signal" | "exploratory"; strictGate: boolean;
 };
-type Prepared = { candidate: Candidate; strata: { rows: Int32Array; cx: Float64Array }[]; cxSquares: number; keptPairs: number; pairs: number; nonModal: number;
+export type Prepared = { candidate: Candidate; strata: { rows: Int32Array; cx: Float64Array }[]; cxSquares: number; keptPairs: number; pairs: number; nonModal: number;
   observed: number; exceed: number; adjustedExceed: number };
 
-const centered = (values: number[]) => { const order = ranks(values); const mean = (values.length + 1) / 2; return Float64Array.from(order, value => value - mean); };
+export const centered = (values: number[]) => { const order = ranks(values); const mean = (values.length + 1) / 2; return Float64Array.from(order, value => value - mean); };
 /** Strata of the outcome's rows: recorded routine by calendar block, counted from the first row. Never drawn from any result. */
-function strataOf(rows: readonly ObservationRow[]) {
+export function strataOf(rows: readonly ObservationRow[]) {
   const first = rows.length ? dayNumber(rows[0]!.date) : 0;
   return rows.map(row => `${row.routineKey ?? "free"}|${Math.floor((dayNumber(row.date) - first) / STRATIFIED_POLICY.blockDays)}`);
 }
 
 /** Σ cx·v over the strata, over √(Σcx² · Σ(v − mean of the stratum)²): a correlation inside strata, for any assignment v of the outcome. */
-function statistic(item: Prepared, value: (row: number) => number) {
+export function statistic(item: Prepared, value: (row: number) => number) {
   let cross = 0, squares = 0;
   for (const stratum of item.strata) {
     let mean = 0;
@@ -43,7 +43,7 @@ function statistic(item: Prepared, value: (row: number) => number) {
   return squares > 0 && item.cxSquares > 0 ? cross / Math.sqrt(item.cxSquares * squares) : 0;
 }
 
-function prepare(candidate: Candidate, rows: readonly ObservationRow[], stratum: readonly string[]): Prepared {
+export function prepare(candidate: Candidate, rows: readonly ObservationRow[], stratum: readonly string[]): Prepared {
   const groups = new Map<string, number[]>();
   let pairs = 0;
   rows.forEach((row, index) => { if (!candidate.values.has(row.date)) return; pairs++; const key = stratum[index]!; const list = groups.get(key); if (list) list.push(index); else groups.set(key, [index]); });
@@ -57,7 +57,7 @@ function prepare(candidate: Candidate, rows: readonly ObservationRow[], stratum:
 }
 
 /** The same correlation over the rows of half the history, by date: the halves are reported and gate the strict state. */
-function halfRho(item: Prepared, rows: readonly ObservationRow[], stratum: readonly string[], y: Float64Array, from: number, to: number) {
+export function halfRho(item: Prepared, rows: readonly ObservationRow[], stratum: readonly string[], y: Float64Array, from: number, to: number) {
   const dates = new Set(rows.slice(from, to).map(row => row.date));
   const half: Candidate = { ...item.candidate, values: new Map([...item.candidate.values].filter(([date]) => dates.has(date))) };
   const prepared = prepare(half, rows, stratum);
