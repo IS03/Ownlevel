@@ -3,7 +3,7 @@ import { validPeriodAnchor } from '@/api/performance-insights';
 import { PROGRESS_MAX_DAYS, addDays, calendarRange, daysBetween } from '@/progress/progress-range';
 
 /** What Insights was showing. Every value is checked on the way back: a route parameter is never trusted as an address. */
-export type InsightsOrigin = { view?: 'exercises'; family?: string; relations?: '1'; date?: string; session?: string; relation?: string; summary?: '1'; period?: 'feelings' | 'nutrition'; asOf?: string; revision?: string };
+export type InsightsOrigin = { view?: 'exercises'; family?: string; relations?: '1'; date?: string; session?: string; relation?: string; summary?: '1'; period?: 'feelings' | 'nutrition'; asOf?: string; revision?: string; temporal?: '1'; explore?: '1'; week?: string; before?: string };
 const FAMILIES = ['metric', 'nutrition', 'meal_window', 'feeling'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RELATION = /^[a-zA-Z0-9_:-]{1,120}$/;
@@ -18,6 +18,9 @@ const clean = (raw: Params): InsightsOrigin => ({
   ...(validSession(raw.session) ? { session: raw.session } : {}),
   ...(typeof raw.relation === 'string' && RELATION.test(raw.relation) ? { relation: raw.relation } : {}),
   ...(raw.summary === '1' ? { summary: '1' as const } : {}),
+  ...(raw.temporal === '1' && isNutritionDate(raw.date) ? { temporal: '1' as const } : {}),
+  ...(raw.explore === '1' && validPeriodAnchor(raw.asOf) && isNutritionDate(raw.week) ? { explore: '1' as const,week:raw.week } : {}),
+  ...(isNutritionDate(raw.before) ? {before:raw.before} : {}),
   ...((raw.period === 'feelings' || raw.period === 'nutrition') && validPeriodAnchor(raw.asOf) ? { period: raw.period, asOf: raw.asOf } : {}),
   ...(validPeriodAnchor(raw.asOf) ? { asOf: raw.asOf } : {}),
   ...(typeof raw.revision === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(raw.revision) ? { revision: raw.revision } : {}),
@@ -42,6 +45,7 @@ export function metricTrendHref(metric: string, date: string | null, origin: Ins
 /** The Nutrition day of that date. Crossing tabs loses the way back, so the origin travels along, as with a metric. */
 export const nutritionDayHref = (date: string, origin: InsightsOrigin) => ({ pathname: '/(tabs)/nutrition' as const, params: { date, insightsReturn: '1', ...hrefParams(origin) } });
 export const periodSummaryHref = (asOf?: string) => ({ pathname: '/(tabs)/train/insights/period' as const, params: asOf ? { asOf } : {} });
+export const explorationHref = (asOf: string,week?:string,revision?:string) => ({pathname:'/(tabs)/train/insights/weeks' as const,params:{asOf,...(week?{week}:{}),...(revision?{revision}:{})}});
 export const periodDetailHref = (kind: 'feelings' | 'nutrition', asOf: string, revision?: string) => ({
   pathname: kind === 'feelings' ? '/(tabs)/train/insights/period-feelings' as const : '/(tabs)/train/insights/period-nutrition' as const,
   params: { asOf, ...(revision ? { revision } : {}) },
@@ -70,7 +74,10 @@ export function insightsEvidenceHref(selection: { session: string; exercise: str
 export function insightsReturnHref(params: Params) {
   if (params.insightsReturn !== '1') return null;
   const origin = clean({ view: params.insightsView, family: params.insightsFamily, relations: params.insightsRelations, date: params.insightsDate, session: params.insightsSession, relation: params.insightsRelation, summary: params.insightsSummary,
-    period: params.insightsPeriod, asOf: params.insightsAsOf, revision: params.insightsRevision });
+    period: params.insightsPeriod, asOf: params.insightsAsOf, revision: params.insightsRevision, temporal: params.insightsTemporal,explore:params.insightsExplore,week:params.insightsWeek,before:params.insightsBefore });
+  if (params.insightsTemporal !== undefined) { const {temporal:_temporal,...route}=origin;return origin.temporal&&origin.date?{pathname:'/(tabs)/train/insights/temporal' as const,params:route}:null; }
+  if(params.insightsExplore!==undefined&&!origin.explore)return null;
+  if(origin.explore&&origin.asOf&&origin.week&&!origin.date)return explorationHref(origin.asOf,origin.week,origin.revision);
   if (params.insightsPeriod !== undefined && !origin.period) return null;
   if (origin.period && origin.asOf) return periodDetailHref(origin.period, origin.asOf, origin.revision);
   if (origin.relation) return { pathname: '/(tabs)/train/insights/[relation]' as const, params: { relation: origin.relation } };

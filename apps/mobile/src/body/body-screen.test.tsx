@@ -108,6 +108,26 @@ describe('Body records and sheets', () => {
     expect(api.weight).toHaveBeenCalledWith(expect.objectContaining({ operation: 'set', date: TODAY, weightKg: 79.5, expectedWeightKg: null }));
     expect(view.queryByTestId('body-editor')).toBeNull(); expect(view.getByText('Peso guardado. Tu peso actual ahora es 79,5 kg.')).toBeTruthy();
   });
+  it.each([false, true])('keeps confirmed readback busy; recovery only on failure (%s)', async fails => {
+    const { view, api } = await mount();
+    let resolveRead!: (value: Awaited<ReturnType<typeof api.overview>>) => void;
+    api.overview.mockImplementationOnce(() => new Promise(resolve => { resolveRead = resolve; }));
+    api.weight.mockResolvedValue(ok({ status: 'confirmed', operation: 'set', date: TODAY, weightKg: 79.5, current: { date: TODAY, weightKg: 79.5 }, profileWeightKg: 79.5, currentWeightChanged: true }));
+    fireEvent.press(view.getByLabelText('Peso del 4 oct 2026: 80,5 kg'));
+    fireEvent.changeText(view.getByLabelText('Peso'), '79,5');
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar' })); });
+    expect(api.weight).toHaveBeenCalledTimes(1);
+    expect(view.queryByRole('button', { name: 'Actualizar lectura' })).toBeNull();
+    expect(view.getByRole('button', { name: 'Guardar' }).props.accessibilityState.busy).toBe(true);
+    await act(async () => { resolveRead(fails ? { status: 'unavailable', reason: 'network', meta: { durationMs: 0, httpStatus: null, outcome: 'unavailable' } } : ok(overview())); });
+    if (fails) {
+      expect(view.getByRole('button', { name: 'Actualizar lectura' })).toBeTruthy();
+      expect(view.getByText(/Guardado confirmado/)).toBeTruthy();
+      await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Actualizar lectura' })); });
+    }
+    expect(api.weight).toHaveBeenCalledTimes(1);
+    expect(view.queryByTestId('body-editor')).toBeNull();
+  });
   it('a conflict keeps the open draft and offers an explicit review', async () => {
     const { view, api } = await mount();
     api.weight.mockResolvedValue(conflict('WEIGHT_CHANGED', 'El peso de esa fecha cambió desde que lo abriste.'));

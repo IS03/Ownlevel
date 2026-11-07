@@ -189,4 +189,31 @@ describe.runIf(!!db && !!base && !!task)('#421 exact period readers on disposabl
     const expected = periodNutritionDetail(await readPeriodMeals(clientFor(OWNER).context(), AS_OF), TODAY, AS_OF, body.sourceRevision, 2);
     expect(body).toEqual(expected);
   }, 120_000);
+  it('publishes temporal context through the exact canonical paginated reader, with SQL posterior totals', async () => {
+    sql(`insert into public.meal_entries(user_id,day_log_id,source_type,consumed_at,consumed_at_source,final_calories,final_protein_g,final_carbs_g,final_fat_g)
+      select '${OWNER}',id,'sheet_import',at::timestamptz,provenance,kcal,protein,carbs,fat from public.day_logs
+      cross join (values ('2026-08-03T20:00:00-03:00','user_declared',150,0,null::numeric,2),('2026-08-03T21:00:00-03:00','user_declared',0,0,0,0),('2026-08-03T22:00:00-03:00','user_declared',900,90,90,90),('2026-08-03T20:30:00-03:00','default_clock',999,99,99,99)) v(at,provenance,kcal,protein,carbs,fat)
+      where user_id='${OWNER}' and log_date='2026-08-03';`);
+    const who=clientFor(OWNER);mock.auth.mockResolvedValue(who.context());
+    const response=await GET(new NextRequest('http://localhost/api/mobile/v1/progress/performance-insights?view=session-temporal&method=2&date=2026-08-03',{headers:{authorization:'Bearer synthetic-not-a-token'}})),body=await response.json();
+    expect(response.status).toBe(200);expect(parsePerformanceInsights(body)).toBeDefined();expect(body.sessions).toHaveLength(51);
+    const truth=json(`select json_build_object('recorded',sum(m.final_calories),'missing',count(*) filter(where m.final_calories is null)) from public.meal_entries m where m.user_id='${OWNER}' and m.deleted_at is null and m.entry_kind='meal' and m.consumed_at_source='user_declared' and m.consumed_at>='2026-08-03T19:00:00-03:00' and m.consumed_at<'2026-08-03T22:00:00-03:00'`);
+    for(const session of body.sessions){expect(session.post.knownMeals).toBe(2);expect(session.post.uncertainMeals).toBe(1);expect(session.post.nutrients.calories).toEqual(truth);expect(session.post.nutrients.carbsG).toEqual({recorded:0,missing:1});}
+    expect(who.traces.filter(t=>t.table==='meal_entries')).toHaveLength(2);expect(who.traces.filter(t=>t.table==='insights_source_revisions')).toHaveLength(2);
+    console.log(JSON.stringify({view:'session-temporal',queries:who.traces.length,sessions:body.sessions.length,bytes:Buffer.byteLength(JSON.stringify(body))}));
+    mock.auth.mockResolvedValue(clientFor(OTHER).context(OWNER));
+    const other=await GET(new NextRequest('http://localhost/api/mobile/v1/progress/performance-insights?view=session-temporal&method=2&date=2026-08-03',{headers:{authorization:'Bearer synthetic-not-a-token'}}));expect((await other.json()).sessions).toEqual([]);
+  },120_000);
+  it('publishes weekly exploration under one revision with SQL body and nutrient references and all empty calendar days',async()=>{
+    sql(`update public.day_logs set weight_kg=case log_date when '2026-08-03' then 80 when '2026-08-05' then 79 else 78 end where user_id='${OWNER}' and log_date in ('2026-08-03','2026-08-05','2026-08-07');`);
+    const who=clientFor(OWNER);mock.auth.mockResolvedValue(who.context());const response=await route('period-explore'),body=await response.json();
+    expect(response.status).toBe(200);expect(parsePerformanceInsights(body)).toBeDefined();const days=body.weeks.flatMap((w:{days:unknown[]})=>w.days);expect(days).toHaveLength(92);
+    const week=body.weeks.find((w:{start:string})=>w.start==='2026-08-03');
+    const median=Number(sql(`select percentile_cont(0.5) within group(order by weight_kg) from public.day_logs where user_id='${OWNER}' and log_date between '2026-08-03' and '2026-08-09' and weight_kg>0`));
+    expect(week.weight.median).toBe(median);expect(week.weight.weighIns).toHaveLength(3);
+    const food=body.weeks.flatMap((w:{days:{date:string,nutrition:{calories:{recorded:number}}}[]})=>w.days).find((d:{date:string})=>d.date==='2026-09-15');
+    const total=Number(sql(`select sum(final_calories) from public.meal_entries m join public.day_logs l on l.id=m.day_log_id where m.user_id='${OWNER}' and m.deleted_at is null and l.log_date='2026-09-15'`));expect(food.nutrition.calories.recorded).toBe(total);
+    expect(who.traces.filter(t=>t.table==='meal_entries')).toHaveLength(2);expect(who.traces.filter(t=>t.table==='insights_source_revisions')).toHaveLength(2);
+    console.log(JSON.stringify({view:'period-explore',queries:who.traces.length,days:days.length,bytes:Buffer.byteLength(JSON.stringify(body))}));
+  },120_000);
 });

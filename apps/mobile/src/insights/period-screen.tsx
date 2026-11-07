@@ -10,7 +10,7 @@ import { useProgressResource } from '@/progress/use-progress-resource';
 import { weeklyRows } from '@/progress/weekly-weights';
 import { FactRow } from './insights-screen';
 import { InsightRow } from './insight-row';
-import { bodyWeightHref, periodDetailHref } from './navigation';
+import { bodyWeightHref, periodDetailHref, explorationHref } from './navigation';
 import { usePeriodReturn } from './use-period-return';
 import { FACTS_ONLY, exactPeriodDate, feelingRows, nutritionRows, periodEmpty, periodHeading, periodSentences, routineRows, trainingRows } from './period-model';
 
@@ -44,6 +44,7 @@ export function PeriodScreen() {
     {state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
     <Heading level={2}>Sin registros en estos tres meses</Heading>
     <AppText muted numeric>{heading.range}. {heading.months}</AppText>
+    <InsightRow label="Recorrer semanas y días" spoken="Recorrer semanas y días de estos mismos tres meses" onPress={()=>open(explorationHref(data.asOf,undefined,data.sourceRevision))}/>
     <InsightRow label="Ver energía y fatiga del período" spoken="Ver energía y fatiga de los mismos tres meses" onPress={() => open(periodDetailHref('feelings', data.asOf, data.sourceRevision))} />
     <InsightRow label="Ver los días con alimentación registrada" spoken="Ver los días con alimentación registrada de los mismos tres meses" onPress={() => open(periodDetailHref('nutrition', data.asOf, data.sourceRevision))} />
     <InsightRow label="Ver Cómo terminaste" detail="En todo tu historial, según cómo empezaste" spoken="Ver Cómo terminaste, en todo tu historial" onPress={() => open('/(tabs)/train/insights/feelings')} />
@@ -55,6 +56,7 @@ export function PeriodScreen() {
       <Heading level={2}>Últimos 3 meses</Heading>
       <AppText numeric testID="period-range">{heading.range}</AppText>
       <AppText muted variant="footnote">{heading.months}</AppText>
+      <InsightRow label="Recorrer semanas y días" spoken="Recorrer semanas y días de estos mismos tres meses" onPress={()=>open(explorationHref(data.asOf,undefined,data.sourceRevision))}/>
       {data.asOf.slice(0, 7) !== data.today.slice(0, 7) ? <AppText muted>Conservamos el período que abriste el {exactPeriodDate(data.asOf)}.</AppText> : null}
     </View>
     <View style={styles.block} testID="period-written">
