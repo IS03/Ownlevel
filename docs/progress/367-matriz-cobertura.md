@@ -1,5 +1,9 @@
 # #367 — Matriz de cobertura de Insights
 
+**Actualización preparada 2026-11-07 sobre #422 (`6d94f31`):** #423 (borrador) agrega contexto temporal por sesión; la entrega apilada de semanas agrega `period-explore` con todos los días del mismo trimestre, conteos completos/parciales separados, sensaciones ordinales, nutrientes, medianas corporales y retorno por origen. Sin asociaciones nuevas. [Estado, costos y pruebas](367-ecosistema-mobile-ejecucion.md). Código preparado no acredita build ni QA física.
+
+La exploración semanal está en #424; #425/#426 corrigen #399/#418 sin depender de Insights. Gate Mobile global **pendiente** por un fallo del dock en la única corrida completa, no reproducido por sus 69 pruebas relacionadas en main ni en la combinación. No se presenta como fallo demostrado de main ni como aprobación total.
+
 Estado al 2026-11-06, verificado con el historial de `main` (`96b4a63`):
 - **Mergeados y desplegados:** #393 a #395, y #397 y #398 (sueño y peso). Detalle en [367-sueno-peso.md](367-sueno-peso.md).
 - **Mergeados en `main`:**
@@ -114,6 +118,8 @@ Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya
   - **Resumen post-entreno:** sus marcas («récord», «↗», «=») salen de otra regla: la última vez con el mismo modo de carga, sin implemento ni variante. Se rotulan así y nunca como lecturas de Insights. Al terminar no se lee Insights: se abre con un toque.
 
 **Varias sesiones en un día**
+
+**Ampliación Mobile preparada (`codex/367-session-temporal-context`):** detalle optativo `view=session-temporal`, con todas las sesiones del día, inicio/final y duración entre timestamps (no tiempo activo), y comidas previas/posteriores con retorno a ese día desde Nutrición. Reutiliza sin cambios las reglas previas, incluida la semántica legacy de carbohidratos. Ventana posterior descriptiva `[final, final+3 h)`, provisional al corte si sigue abierta, cuatro nutrientes con faltantes independientes y horas inciertas separadas. Ventanas solapadas pueden compartir registros, sin asignación exclusiva ni nuevas asociaciones. [Reglas previas al código, orden y checkpoints](367-ecosistema-mobile-ejecucion.md). Esto no acredita QA física ni despliegue.
 - **Fuente:** sesiones con el mismo `day_logs.log_date`.
 - **Unidad y tiempo:** día.
 - **Cruce:** el resultado diario suma todas; la sensibilidad da igual peso a cada sesión.

@@ -10,6 +10,15 @@ function fixture(){const map=new Map<string,string>(),port={getItem:async(k:stri
  const c=new SavedController(api,repo,invalidate,()=>`key:${map.size}`);return {c,api,repo,map,invalidate,open:async()=>{await c.initialize();c.open();await settle();}};
 }
 describe('Reliable Saved Meals drafts and mutations',()=>{
+ it.each(['receipt','cleanup'])('retains a confirmed receipt after local %s failure without resending',async stage=>{
+  const f=fixture();await f.open();f.c.begin(personalSaved);f.c.change('calories','333');
+  const write=f.repo.write.bind(f.repo);
+  if(stage==='receipt')jest.spyOn(f.repo,'write').mockImplementationOnce(write).mockRejectedValueOnce(Error('disk')).mockImplementation(write);
+  else jest.spyOn(f.repo,'clear').mockRejectedValueOnce(Error('disk'));
+  await f.c.save();expect(f.c.getSnapshot()).toMatchObject({phase:'blocked',intent:{receipt:expect.any(Object)}});
+  expect(f.c.getSnapshot().message).toContain('confirmada');
+  await f.c.recover();expect(f.api.write).toHaveBeenCalledTimes(1);expect(f.c.getSnapshot()).toMatchObject({phase:'idle',intent:null});
+ });
  it('ordered ingredients can move without modifying their snapshots',async()=>{const f=fixture();await f.open();f.c.begin(undefined,'composite');f.c.addIngredient(personalFood);const second={...personalFood,id:'42300000-0000-4000-8000-000000000099',name:'SEGUNDO'};f.c.addIngredient(second);f.c.moveIngredient(1,-1);expect(f.c.getSnapshot().draft!.items.map(i=>i.food?.id)).toEqual([second.id,personalFood.id]);expect(f.c.getSnapshot().draft!.items[1].food).toEqual(personalFood);});
  it('manual null/zero, decimal macros, integer calories and name validation',()=>{const d=savedDraft(personalSaved);expect(d.calories).toBe('');expect(d.proteinG).toBe('0');expect(validateSavedDraft(d).fields).toMatchObject({calories:null,proteinG:0,fatG:1.25});for(const patch of [{calories:'22,5'},{proteinG:'-1'},{name:''},{proteinG:'',fatG:''}])expect(validateSavedDraft({...d,...patch}).fields).toBeUndefined();});
  it('composed selection captures Food, forbids duplicate, preserves 3-decimal base without silently rounding quantity',async()=>{const f=fixture();await f.open();f.c.begin(undefined,'composite');f.c.change('name','Compuesta');f.c.addIngredient(personalFood);f.c.addIngredient(personalFood);expect(f.c.getSnapshot().draft!.items).toHaveLength(1);expect(f.c.getSnapshot().draft!.items[0].quantity).toBe('');expect(validateSavedDraft(f.c.getSnapshot().draft!).fields).toBeUndefined();f.c.quantity(0,'0,25');expect(draftTotals(f.c.getSnapshot().draft!)?.calories).toBe(45);expect(validateSavedDraft(f.c.getSnapshot().draft!).fields?.items[0]).toMatchObject({kind:'food',version:personalFood.version,quantity:0.25});f.c.removeIngredient(0);expect(f.c.getSnapshot().draft!.items).toEqual([]);});

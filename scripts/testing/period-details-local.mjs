@@ -9,7 +9,9 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 const root = resolve(import.meta.dirname, '../..');
 const feelingsOnly = process.argv.length === 3 && process.argv[2] === '--feelings-only';
-assert.ok(process.argv.length === 2 || feelingsOnly, 'Only --feelings-only is supported');
+const temporalOnly = process.argv.length === 3 && process.argv[2] === '--temporal-only';
+const weeksOnly=process.argv.length===3&&process.argv[2]==='--weeks-only';
+assert.ok(process.argv.length === 2 || feelingsOnly || temporalOnly || weeksOnly, 'Only --feelings-only / --temporal-only / --weeks-only is supported');
 const task = `ownlevel-period-${randomUUID().slice(0, 8)}`;
 const db = `${task}-db`, rest = `${task}-rest`;
 const auth = `${task}-auth-migrations`;
@@ -86,7 +88,7 @@ try {
   }
   console.log(JSON.stringify({ stack: task, postgres: sql('show server_version'), postgrest: docker(['exec', rest, 'postgrest', '--version']), migrations: migrations.length, lastMigration: migrations.at(-1), url, maxRows: 1000 }));
   const exitCode = await new Promise((done, reject) => {
-    const child = spawn(process.execPath, [resolve(root, 'node_modules/vitest/vitest.mjs'), 'run', 'src/lib/mobile-api/performance-insights-period-details.local.test.ts', ...(feelingsOnly ? ['-t', 'resolves every nested feeling/set join'] : [])], {
+    const child = spawn(process.execPath, [resolve(root, 'node_modules/vitest/vitest.mjs'), 'run', 'src/lib/mobile-api/performance-insights-period-details.local.test.ts', ...(feelingsOnly ? ['-t', 'resolves every nested feeling/set join'] : temporalOnly ? ['-t','publishes temporal context'] : weeksOnly?['-t','publishes weekly exploration']:[])], {
       cwd: root, stdio: 'inherit', env: { ...process.env, OWNLEVEL_PERIOD_LOCAL_DB: db, OWNLEVEL_PERIOD_LOCAL_URL: url, OWNLEVEL_PERIOD_LOCAL_TASK: task },
     });
     child.once('error', reject); child.once('exit', code => done(code ?? 1));

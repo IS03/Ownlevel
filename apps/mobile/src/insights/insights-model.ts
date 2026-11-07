@@ -270,7 +270,7 @@ const LATE: Partial<Record<string, string>> = { after_first_set: 'respondida des
  * Energy and fatigue as ordinal answers, before → after ("Energía: baja → alta"). Not recorded, unreadable and answered late
  * stay distinct. The legacy energy has no moment of its own, so it is its own row and never stands in for the energy at the end.
  */
-export function sessionRows(session: Session): ContextRow[] {
+export function sessionRows(session: Pick<Session, 'context'>): ContextRow[] {
   const { feelings, unreadableFeelings = [], legacy, carbsPre3h } = session.context;
   const rows: ContextRow[] = [];
   const side = (key: 'energyPre' | 'fatiguePre' | 'energyPost' | 'fatiguePost'): FeelingSide =>

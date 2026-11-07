@@ -262,6 +262,12 @@ export function buildExposureTable(source: InsightsSource, days: readonly Outcom
   return { rows, candidates, sourceExclusions, nutritionByDate, metricsByDate, feelingsBySession, carbsPre3hBySession, preStartBySession, sessionIdsByDate };
 }
 
+/** Presentation reuses these published rules, including carbohydrates' legacy unknown scope. */
+export function foodBeforeSession(mealsByDate: ReadonlyMap<string, Meal[]>, date: string, start: number | null) {
+  return start === null ? { carbsPre3h: { value: null, state: "no_start_time" } as PreStartWindow, preStart: NO_START }
+    : { carbsPre3h: windowState(mealWindow(mealsByDate, date, start, start - PRIMARY_MEAL_WINDOW_HOURS * HOUR, explicit)), preStart: preStartOf(mealsByDate, date, start) };
+}
+
 /**
  * A declared value of date D is the night that ended the morning of D: it pairs with the training of D only, never also with D + 1.
  * Values without a declaration keep the two old windows, apart, labeled as undeclared, and never use a declared value.
