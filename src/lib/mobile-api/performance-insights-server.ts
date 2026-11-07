@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { todayInCordoba } from "@/lib/phase2/cordoba-date";
 import { readAllTrainingRows } from "@/lib/phase2/training-robust";
-import { createInsightsSnapshot, insightsDaysPage, insightsExerciseEvidence, insightsFeelingOutcomes, insightsRelation, insightsRelations, insightsSummary, INSIGHTS_MAX_DAYS, type EvidenceLane, type InsightsSnapshot, type InsightsSource } from "@/lib/progress/insights-engine";
+import { createInsightsSnapshot, insightsDaysPage, insightsExerciseEvidence, insightsFeelingOutcomes, insightsPeriodSummary, periodOf, insightsRelation, insightsRelations, insightsSummary, INSIGHTS_MAX_DAYS, type EvidenceLane, type InsightsSnapshot, type InsightsSource } from "@/lib/progress/insights-engine";
 import type { InsightsEngineMethod } from "@/lib/progress/insights-engine/types";
 import { MobileApiValidationError } from "./auth";
 import { NutritionReportDayChangedError } from "./nutrition-report-server";
@@ -205,6 +205,31 @@ export async function readConsistentExerciseSource(context: Context, exerciseId:
   throw new Error("Insights sources kept changing");
 }
 
+/**
+ * Every weight of a date range, trained or not: one paged read of `day_logs`, by the token's user and in date order. The weights a
+ * session carries are only the days with training, never the history (#367 phase 4).
+ */
+export async function readPeriodWeights(context: Context, range: { start: string; end: string }) {
+  const { supabase, userId } = context;
+  const rows = await readAllTrainingRows<{ log_date: string; weight_kg: number | string | null }>("Leer pesos del período", from => supabase.from("day_logs")
+    .select("log_date,weight_kg", firstPage(from)).eq("user_id", userId).gte("log_date", range.start).lte("log_date", range.end).not("weight_kg", "is", null)
+    .order("log_date").range(from, from + 999));
+  return rows.map(row => ({ date: row.log_date, value: strictNumber(row.weight_kg)! }));
+}
+
+/**
+ * The summary of the last three whole months: the Insights snapshot and that period's weights, published only if the counter did
+ * not move between them (a weight that changes moves it). One retry; after that the read is unavailable, never mixed.
+ */
+async function readConsistentPeriod(context: Context, today: string, method: InsightsEngineMethod) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const snapshot = await readInsightsSnapshot(context, today, method);
+    const weights = await readPeriodWeights(context, periodOf(today));
+    if (publicRevision(context.userId, await readInsightsRevision(context)) === snapshot.revision) return insightsPeriodSummary(snapshot, weights);
+  }
+  throw new Error("Insights sources kept changing");
+}
+
 const snapshots = new InsightsSnapshotCache<InsightsSnapshot>({ maxEntries: 3, ttlMs: 5 * 60_000 });
 export const clearInsightsSnapshots = () => snapshots.clear();
 const publicRevision = (userId: string, revision: string) => createHash("sha256").update(`${userId}|${revision}`).digest("hex").slice(0, 32);
@@ -229,7 +254,7 @@ export function parseInsightsParams(params: URLSearchParams) {
     if (!["view", "before", "limit", "association", "pairs", "method", ...EVIDENCE_KEYS].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
   }
   const before = params.get("before") ?? undefined, limit = params.get("limit"), association = params.get("association") ?? undefined, view = params.get("view") ?? "summary";
-  if (!["summary", "days", "relations", "evidence", "feelings"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
+  if (!["summary", "days", "relations", "evidence", "feelings", "period"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
   const method = params.get("method");
   if (method !== null && method !== "2") throw new MobileApiValidationError("Método no válido.");
   const engineMethod = (method === "2" ? 2 : 1) as InsightsEngineMethod;
@@ -246,8 +271,8 @@ export function parseInsightsParams(params: URLSearchParams) {
   const pairs = params.get("pairs");
   if (pairs !== null && (pairs !== "all" || association === undefined)) throw new MobileApiValidationError("Parámetro no válido.");
   // Described outcomes over the whole history: no period, filter or page to pick a pattern by.
-  if (view === "feelings" && [...params.keys()].some(key => key !== "view" && key !== "method")) throw new MobileApiValidationError("Parámetro no válido.");
-  return { view: view as "summary" | "days" | "relations" | "feelings", before, limit: limit === null ? undefined : +limit, association, method: engineMethod, ...(pairs === "all" ? { pairs: "all" as const } : {}) };
+  if ((view === "feelings" || view === "period") && [...params.keys()].some(key => key !== "view" && key !== "method")) throw new MobileApiValidationError("Parámetro no válido.");
+  return { view: view as "summary" | "days" | "relations" | "feelings" | "period", before, limit: limit === null ? undefined : +limit, association, method: engineMethod, ...(pairs === "all" ? { pairs: "all" as const } : {}) };
 }
 
 export const performanceInsightsResponse = (request: Request) => progressReadResponse(request, "performance-insights", async (context, params, today) => {
@@ -259,6 +284,12 @@ export const performanceInsightsResponse = (request: Request) => progressReadRes
     const after = todayInCordoba();
     if (after !== today) throw new NutritionReportDayChangedError(after);
     return evidence;
+  }
+  if (options.view === "period") {
+    const model = await readConsistentPeriod(context, today, options.method);
+    const after = todayInCordoba();
+    if (after !== today) throw new NutritionReportDayChangedError(after);
+    return model;
   }
   const snapshot = await readInsightsSnapshot(context, today, options.method);
   const model = options.association ? insightsRelation(snapshot, options.association, { pairs: options.pairs ?? "recent" })

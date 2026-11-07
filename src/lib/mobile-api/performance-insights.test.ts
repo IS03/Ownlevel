@@ -23,6 +23,9 @@ function fakeSupabase(tables: Record<string, Record<string, unknown>[]>, revisio
       eq(...args: unknown[]) { call.filters.push(["eq", ...args]); return builder; },
       is(...args: unknown[]) { call.filters.push(["is", ...args]); return builder; },
       in(...args: unknown[]) { call.filters.push(["in", ...args]); return builder; },
+      gte(...args: unknown[]) { call.filters.push(["gte", ...args]); return builder; },
+      lte(...args: unknown[]) { call.filters.push(["lte", ...args]); return builder; },
+      not(...args: unknown[]) { call.filters.push(["not", ...args]); return builder; },
       order(...args: unknown[]) { if (args[1] && typeof args[1] === "object") call.filters.push(["order", ...args]); return builder; }, returns() { return builder; },
       range(start: number, end: number) { call.range = [start, end]; return builder; },
       maybeSingle() { return builder; },
@@ -345,5 +348,37 @@ describe("#367 GET energía y fatiga al terminar", () => {
     expect(fake.calls.length - before).toBe(1);
     expect(body.outcomes.map((row: { kind: string }) => row.kind)).toEqual(["energy", "fatigue"]);
     for (const query of ["?view=feelings&before=2026-01-10", "?view=feelings&limit=5", "?view=feelings&association=x"]) expect((await GET(request(query))).status).toBe(400);
+  });
+});
+
+describe("#367 GET resumen de los últimos tres meses", () => {
+  it("reuses the snapshot, reads the period's weights once, by token and dates, and answers in its own contract", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-02-10T15:00:00Z"));
+    const tables = { ...tablesFor(40), day_logs: [{ log_date: "2026-01-05", weight_kg: "80.10" }, { log_date: "2026-01-07", weight_kg: "80.30" }, { log_date: "2026-01-09", weight_kg: "80.20" }] };
+    const fake = fakeSupabase(tables);
+    mocks.auth.mockResolvedValue({ userId: USER, supabase: fake.client });
+    const first = await (await GET(request("?method=2"))).json();
+    const before = fake.calls.length;
+    const response = await GET(request("?method=2&view=period"));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(parsePerformanceInsights(body)?.view).toBe("period");
+    expect(body.sourceRevision).toBe(first.sourceRevision);
+    expect(body.period).toEqual({ start: "2025-11-01", end: "2026-01-31", months: ["2025-11", "2025-12", "2026-01"], days: 92 });
+    // Counter (snapshot reused), one page of weights, counter again. No read per week, month or card.
+    const calls = fake.calls.slice(before);
+    expect(calls.map(call => call.table)).toEqual(["insights_source_revisions", "day_logs", "insights_source_revisions"]);
+    expect(calls[1]!.filters).toEqual(expect.arrayContaining([["eq", "user_id", USER], ["gte", "log_date", "2025-11-01"], ["lte", "log_date", "2026-01-31"]]));
+    expect(body.weight.weeks.find((week: { start: string }) => week.start === "2026-01-05")).toMatchObject({ median: 80.2 });
+    expect(Buffer.byteLength(JSON.stringify(body))).toBeLessThan(40_000);
+  });
+  it("reads again once if the counter moved, then is unavailable rather than mixing sources", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-02-10T15:00:00Z"));
+    let revision = 1;
+    const moving = fakeSupabase({ ...tablesFor(5), day_logs: [] }, () => revision++);
+    mocks.auth.mockResolvedValue({ userId: USER, supabase: moving.client });
+    const failed = await GET(request("?method=2&view=period"));
+    expect(failed.status).toBe(503);
+    for (const query of ["?view=period&before=2026-01-01", "?view=period&limit=3", "?view=period&association=x"]) expect((await GET(request(query))).status).toBe(400);
   });
 });

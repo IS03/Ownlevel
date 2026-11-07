@@ -14,7 +14,8 @@ Estado al 2026-11-06, verificado con el historial de `main` (`96b4a63`):
 - **Pendiente en todos:** la parte de Mobile necesita build. La QA física no está aprobada.
 - **Mergeado en `main`:** #412 (`a8972a5`), energía y fatiga al terminar descritas, sin asociaciones.
 - **Mergeado en `main`:** #413 (`ac6667b`), alimentación antes del inicio como contexto, con sus candidatos sin publicar.
-- **En revisión:** fase 3, evolución semanal del peso, en `codex/367-body-weekly`. Hoja de ruta: [367-hoja-de-ruta-ecosistema.md](367-hoja-de-ruta-ecosistema.md).
+- **Mergeado en `main`:** #415 (`53147e7`), evolución semanal del peso en Cuerpo, con el análisis experimental sin publicar.
+- **En revisión:** fase 4, resumen de los últimos tres meses, en `codex/367-period-summary`. Hoja de ruta: [367-hoja-de-ruta-ecosistema.md](367-hoja-de-ruta-ecosistema.md).
 
 Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya en código leído, no en que exista una tabla o una pantalla.**
 
@@ -214,7 +215,7 @@ Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya
 - **Límite de lectura:** `listWeightHistory` ordenaba de más viejo a más nuevo y cortaba en 1000, así que perdía los más recientes. **Corregido en #405:** el informe lee el historial completo por páginas.
 - **No incluido:** cambios porcentuales y ventanas móviles. Nada de eso es necesario para describir la evolución.
 
-**Evolución semanal del peso** (fase 3, `codex/367-body-weekly`; método en [367-evolucion-corporal-metodo.md](367-evolucion-corporal-metodo.md))
+**Evolución semanal del peso** (fase 3, #415; método en [367-evolucion-corporal-metodo.md](367-evolucion-corporal-metodo.md))
 - **Fuente:** los pesos del período que Cuerpo ya lee. Sin consultas ni contratos nuevos.
 - **Unidad:** semana de lunes a domingo en Córdoba; solo semanas enteras del período, y la semana en curso queda afuera.
 - **Resultado descriptivo:** mediana con al menos 3 pesajes válidos, con sus fechas; cambio solo entre semanas seguidas, nunca interpolado.
@@ -329,6 +330,29 @@ Modelo y reglas: [367-exercise-configuration.md](367-exercise-configuration.md).
 
 **El historial anterior sigue sin configuración conocida:** queda en el carril parcial. El estricto solo crece a medida que la persona registra variantes. Una variante nueva necesita una sesión anterior con la misma para compararse, y la pantalla lo dice.
 
+## Resumen de los últimos tres meses
+
+Fase 4, `codex/367-period-summary`, `view=period`, método `insights-period/1`.
+
+- **Período:** los tres meses calendario completos anteriores al mes en curso, por la fecha de Córdoba, con fechas exactas. No se elige por los resultados. El mes en curso nunca entra, tampoco el día 1.
+- **Fuentes y costo:**
+  - el snapshot de Insights, reutilizado, más una lectura paginada de los pesos del período (`day_logs`, por el usuario del token, entre las dos fechas). Incluye los días sin entrenamiento; los pesos embebidos en las sesiones no se usan como historial;
+  - las dos fuentes quedan bajo el mismo contador de revisión: un peso que cambia lo mueve. Se reintenta una vez y después la lectura no está disponible;
+  - **pedidos:** con el snapshot en caché, 3 (contador, una página de pesos, contador). En frío se suma la lectura completa de Insights, que la vista ya hacía;
+  - **vista:** 0,3 ms y 8,3 KB en una historia de 5 años. El snapshot tarda lo mismo que en `main` (244 ms, 1311 sesiones).
+- **Contenido**, cada parte con su propio método:
+  - **Entrenamiento:** sesiones, días y días con más de una sesión. Los conteos estricto y parcial van separados, sumando los conteos de cada día.
+  - **Rutinas:** las registradas, con su primera y última fecha. Un orden solo si una terminó antes de que empezara la otra; si no, «alternadas».
+  - **Sensaciones al terminar:** la misma descripción que `view=feelings`, con las sesiones del período. Respuestas en palabras de la escala, con su cobertura.
+  - **Comidas:** días con comidas sobre los días del período. Por macro, días con el dato completo, días en que falta, total registrado y mediana diaria. Nunca como ingesta completa.
+  - **Peso:** `body-weekly/1` sobre todos los pesajes del período.
+- **Resumen escrito:** determinístico, una frase por hecho con su cifra. Separa los hechos de las asociaciones: no calcula ninguna para el período (`associations.status = "not_computed_for_period"`) y remite a las relaciones existentes.
+- **Equivalencia con `main`:** las 53 vistas existentes son idénticas.
+- **Mobile:**
+  - «Últimos 3 meses» en Insights;
+  - estados distintos para vacío, cobertura insuficiente (sin semanas con 3 pesajes) y lectura fallida;
+  - enlaces a los días de Insights, a «Cómo terminaste» y al peso en Cuerpo con los mismos tres meses, con vuelta al resumen.
+
 ## Próximos incrementos
 
 **Orden y reglas:** [367-hoja-de-ruta-ecosistema.md](367-hoja-de-ruta-ecosistema.md). Siguen alimentación y tiempo (tres candidatos nuevos), evolución corporal y resúmenes de período, todos en diseño.
@@ -337,7 +361,7 @@ Modelo y reglas: [367-exercise-configuration.md](367-exercise-configuration.md).
 - un método de asociaciones para las sensaciones posteriores que pase la calibración con cambios de rutina y tendencias;
 - paginar por clave los valores diarios, para la latencia de la lectura en frío (ver #409).
 
-**En revisión:** fase 3, evolución semanal del peso, en `codex/367-body-weekly`. Descripción publicada en Cuerpo; el análisis no validó y queda experimental.
+**En revisión:** fase 4, resumen de los últimos tres meses, en `codex/367-period-summary`. Solo descripción, sin asociaciones.
 
 **Mergeados en `main`:**
 - #403: todas las sesiones y los cuatro macros en el contexto del día;
@@ -348,6 +372,7 @@ Modelo y reglas: [367-exercise-configuration.md](367-exercise-configuration.md).
 - #410: resumen factual post-entreno;
 - #411: evidencia de comparación por ejercicio;
 - #412: energía y fatiga al terminar, descritas;
-- #413: alimentación antes del inicio como contexto.
+- #413: alimentación antes del inicio como contexto;
+- #415: evolución semanal del peso en Cuerpo.
 
 **Hasta acá:** presentación y lectura, sin cambio de método. Mobile sigue necesitando build y QA física, que no está aprobada.
