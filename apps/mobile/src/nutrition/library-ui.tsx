@@ -288,7 +288,7 @@ export function LibraryRow({
         {
           borderColor: colors.border,
           backgroundColor: highlighted ? colors.brandSubtle : 'transparent',
-          borderRadius: highlighted ? 12 : 0,
+          borderRadius: brandTokens.radius.inner,
           opacity: disabled ? 0.45 : pressed ? 0.6 : 1,
         },
       ]}
@@ -473,6 +473,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     paddingVertical: 12,
+    paddingHorizontal: brandTokens.space.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   text: { flex: 1, gap: 4 },

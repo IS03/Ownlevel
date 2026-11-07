@@ -3,7 +3,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import { KeyboardAvoidingView, StyleSheet, Text } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
-import { LibrarySheet } from './library-ui';
+import { LibrarySheet, LibraryRow } from './library-ui';
 
 // The window: home indicator only. Inside a tab the screen's own insets also count the tab bar (34 + 49).
 jest.mock('react-native-safe-area-context', () => {
@@ -33,6 +33,17 @@ const scrollPadding = (view: ReturnType<typeof render>) => {
 };
 
 describe('Library sheet (Alimentos, Comidas guardadas) — #306', () => {
+  it('gives the saved-row highlight inner space without changing its geometry', () => {
+    const row = (highlighted: boolean) => <OwnlevelThemeProvider initialMode="light"><LibraryRow name="Comida" calories={0} detail="P —" highlighted={highlighted} onOpen={() => {}} /></OwnlevelThemeProvider>;
+    const view = render(row(false));
+    const style = () => StyleSheet.flatten(view.getByRole('button', { name: /^Editar Comida,/ }).props.style);
+    const before = style();
+    view.rerender(row(true)); const highlighted = style();
+    expect(highlighted.paddingHorizontal).toBeGreaterThan(0);
+    for (const key of ['paddingHorizontal', 'paddingVertical', 'minHeight', 'borderBottomWidth', 'borderRadius']) expect(highlighted[key]).toBe(before[key]);
+    expect(highlighted.backgroundColor).not.toBe(before.backgroundColor);
+    view.rerender(row(false)); expect(style()).toEqual(before);
+  });
   it('opened from a tab, reserves only the home indicator: the tab bar is behind the modal', () => {
     expect(paddingBottom(sheet({ footer: <Text>Guardar</Text> }))).toBe(34);
   });
