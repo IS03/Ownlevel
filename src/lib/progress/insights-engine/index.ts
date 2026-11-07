@@ -2,6 +2,6 @@ export { ASSOCIATION_POLICY, evaluateAssociations } from "./associations";
 export { buildExposureContext, buildExposureTable, PRIMARY_MEAL_WINDOW_HOURS, SENSITIVITY_MEAL_WINDOW_HOURS } from "./exposures";
 export { buildInsightsReadModel, createInsightsSnapshot, insightsDaysPage, insightsFeelingOutcomes, insightsRelation, insightsRelations, insightsSummary, INSIGHTS_DEFAULT_DAYS, INSIGHTS_MAX_DAYS, type InsightsSnapshot } from "./read-model";
 export { exerciseSubset, insightsExerciseEvidence, type EvidenceLane } from "./evidence";
-export { FEELING_OUTCOME_METHOD, stratifiedRows } from "./feeling-outcomes";
+export { describeFeelingOutcome, FEELING_OUTCOME_METHOD, prepareFeelingAssociations, stratifiedRows } from "./feeling-outcomes";
 export { mealTimeEvidence, parseSessionFeelings, toPerformanceSessions } from "./source-adapter";
 export * from "./types";

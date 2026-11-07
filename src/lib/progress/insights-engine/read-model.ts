@@ -3,7 +3,7 @@ import type { PartialCounts, PartialExerciseOf, PartialSessionOf } from "../perf
 import type { CompactExercisePerformance, PerformanceCounts, PerformanceSession, SessionPerformanceOf } from "../performance-insights/types";
 import { evaluateAssociations, type AssociationEvaluation } from "./associations";
 import { buildExposureContext, buildExposureTable, partialOutcomeDays, strictOutcomeDays, weightOfDay, type ExposureTable } from "./exposures";
-import { buildFeelingOutcome, FEELING_OUTCOME_KINDS } from "./feeling-outcomes";
+import { describeFeelingOutcome, FEELING_OUTCOME_KINDS } from "./feeling-outcomes";
 import { mealTimeEvidence, toPerformanceSessions } from "./source-adapter";
 import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, type InsightsEngineMethod, type InsightsFeelingOutcomes, type SleepNightEvidence, INSIGHTS_RISK_BUDGET_CANDIDATE, PARTIAL_ASSOCIATION_PREFIX, type AssociationResult, type Candidate, type DayFact, type ExerciseFact, type ExerciseSummary, type InsightsDaysPage, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsSource, type InsightsSummary, type MealTimeEvidence, type PartialAssociationResult, type PartialDayFact, type PartialExerciseFact, type PartialExerciseSummary, type PartialLane, type PartialRelationSummary, type RelationSummary, type SessionFact } from "./types";
 
@@ -213,11 +213,9 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
   const dayExclusions: Record<string, number> = {};
   for (const key of ["day_still_open", "no_comparable_outcome"]) if (partialTable.sourceExclusions[key]) dayExclusions[key] = partialTable.sourceExclusions[key]!;
 
-  // Two outcomes of their own, each with its own family of candidates. Described now; their associations stay internal.
-  const feelingOutcomes = FEELING_OUTCOME_KINDS.map(kind => {
-    const outcome = buildFeelingOutcome(source, kind, context, options.today, method);
-    return { summary: outcome.summary, lane: lane(performance.integrity === "valid", outcome, outcome.candidates, options.permutations, (item: AssociationEvaluation) => item) };
-  });
+  // Two outcomes of their own, described. Their associations are not published, so nothing of them is prepared or kept here:
+  // `prepareFeelingAssociations` builds them only when asked for explicitly.
+  const feelingOutcomes = FEELING_OUTCOME_KINDS.map(kind => describeFeelingOutcome(source, kind, context, options.today));
 
   const mealEvidence: Record<MealTimeEvidence, number> = { explicit: 0, registration: 0, unverified: 0, unknown: 0 };
   for (const meal of source.meals) if (meal.entryKind === "meal") mealEvidence[mealTimeEvidence(meal)]++;
@@ -232,7 +230,7 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
     strict: lane(performance.integrity === "valid", table, table.candidates, options.permutations, publish),
     partial: { methodVersion: partial.methodVersion, contextCompleteness: partial.contextCompleteness, integrity: partial.integrity, partition: partial.partition, outcomeDays: partialTable.rows.length, totals: partialTotals, exercises: partialSummaries(partial.sessions, names), exclusions: { performance: partialExclusions, days: dayExclusions },
       lane: lane(partial.integrity === "valid", partialTable, partialCandidates, options.permutations, publishPartial) },
-    /** Internal until validated: no view publishes `lane`. */
+    /** Counts and states only (`view=feelings`). */
     feelingOutcomes,
   };
 }
@@ -264,7 +262,7 @@ const partialLabels = (snapshot: InsightsSnapshot) => ({ methodVersion: snapshot
 
 /** Energy and fatigue at the end as outcomes, described: counts by answer and by the prior answer. No association is published. */
 export function insightsFeelingOutcomes(snapshot: InsightsSnapshot): InsightsFeelingOutcomes {
-  return { view: "feelings", ...versions(snapshot), outcomes: snapshot.feelingOutcomes.map(outcome => outcome.summary) };
+  return { view: "feelings", ...versions(snapshot), outcomes: snapshot.feelingOutcomes };
 }
 
 /** What opens the screen: facts, context and denominators. Says how many relations exist without running them. */

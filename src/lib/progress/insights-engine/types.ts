@@ -227,7 +227,7 @@ export type FeelingOutcomeSummary = {
   legacyEnergyOnly: number | null;
   firstDate: string | null; lastDate: string | null;
   days: { eligible: number; exclusions: Record<string, number> };
-  associations: { status: "not_published"; reason: "validation_pending"; candidates: number };
+  associations: { status: "not_published"; reason: "validation_pending" };
 };
 export type InsightsFeelingOutcomes = InsightsVersions & { view: "feelings"; outcomes: FeelingOutcomeSummary[] };
 export type InsightsResponse = InsightsSummary | InsightsDaysPage | InsightsRelations | InsightsRelationDetail | InsightsExerciseEvidence | InsightsFeelingOutcomes;

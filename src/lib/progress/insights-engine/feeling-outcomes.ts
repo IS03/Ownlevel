@@ -1,4 +1,5 @@
-import { buildExposureTable, type ExposureContext, type OutcomeDay } from "./exposures";
+import { evaluateAssociations } from "./associations";
+import { buildExposureContext, buildExposureTable, type ExposureContext, type OutcomeDay } from "./exposures";
 import { instantMs } from "./source-adapter";
 import { ranks } from "./stats";
 import type { Candidate, FeelingOutcomeKind, FeelingOutcomeSummary, InsightsEngineMethod, InsightsSource, ObservationRow } from "./types";
@@ -63,11 +64,8 @@ export function stratifiedRows(observations: readonly Pick<Observation, "date" |
 type PreReason = "not_recorded" | "unreadable" | "capture_unknown" | "after_first_set";
 const zeros = () => [0, 0, 0, 0, 0];
 
-/**
- * Descriptive facts and the internal outcome lane of one kind. The facts describe sessions; the lane counts days. The lane's
- * associations are computed only on request and are not published until their validation is complete.
- */
-export function buildFeelingOutcome(source: InsightsSource, kind: FeelingOutcomeKind, context: ExposureContext, today: string, method: InsightsEngineMethod) {
+/** One pass over the sessions: the descriptive facts, and the days the associations would use. Nothing analytic is built here. */
+function scan(source: InsightsSource, kind: FeelingOutcomeKind, context: Pick<ExposureContext, "feelingsBySession" | "unreadableFeelingsBySession">, today: string) {
   const postKey = kind === "energy" ? "energyPost" : "fatiguePost", preKey = kind === "energy" ? "energyPre" : "fatiguePre";
   const factsBySession = new Map(source.feelings.map(row => [row.sessionId, row.facts]));
   const completed = source.sessions.filter(session => session.status === "completed" && !!session.date);
@@ -84,7 +82,7 @@ export function buildFeelingOutcome(source: InsightsSource, kind: FeelingOutcome
     legacyEnergyOnly: kind === "energy" ? 0 : null,
     firstDate: null, lastDate: null,
     days: { eligible: 0, exclusions: {} },
-    associations: { status: "not_published", reason: "validation_pending", candidates: 0 },
+    associations: { status: "not_published", reason: "validation_pending" },
   };
   const observations: Observation[] = [];
   const bump = (key: string) => { summary.days.exclusions[key] = (summary.days.exclusions[key] ?? 0) + 1; };
@@ -115,13 +113,29 @@ export function buildFeelingOutcome(source: InsightsSource, kind: FeelingOutcome
     observations.push({ date: session.date!, sessionId: session.id, routineId: session.routineId, post: fact.value, pre: pre!.value });
   }
   summary.days.eligible = observations.length;
+  return { summary, observations, postKey };
+}
+
+/** What `view=feelings` publishes: counts and states only. The observations are dropped here, never kept by a snapshot. */
+export function describeFeelingOutcome(source: InsightsSource, kind: FeelingOutcomeKind, context: Pick<ExposureContext, "feelingsBySession" | "unreadableFeelingsBySession">, today: string): FeelingOutcomeSummary {
+  return scan(source, kind, context, today).summary;
+}
+
+/**
+ * EXPERIMENTAL, only when asked for explicitly (tests, calibration, a future validated method): the ranked days, the exposure
+ * table and the candidates of one outcome, and their evaluation. No view calls this, and no snapshot holds what it builds.
+ */
+export function prepareFeelingAssociations(source: InsightsSource, kind: FeelingOutcomeKind, options: { today: string; method: InsightsEngineMethod; context?: ExposureContext }) {
+  const context = options.context ?? buildExposureContext(source);
+  const { observations, postKey } = scan(source, kind, context, options.today);
   const rows = stratifiedRows(observations);
-  const days: OutcomeDay[] = rows.map(row => { const observation = observations.find(item => item.date === row.date)!;
+  const byDate = new Map(observations.map(item => [item.date, item]));
+  const days: OutcomeDay[] = rows.map(row => { const observation = byDate.get(row.date)!;
     return { date: row.date, sessions: [{ sessionId: observation.sessionId, routineId: observation.routineId }], outcome: row.y, outcomeSensitivity: row.y }; });
-  const table = buildExposureTable(source, days, today, context, false, method);
+  const table = buildExposureTable(source, days, options.today, context, false, options.method);
   // The prior answers are the stratum, not exposures: testing them here would test the outcome against its own frame.
   const candidates: Candidate[] = table.candidates.filter(candidate => candidate.definition.family !== "feeling")
     .map(candidate => ({ ...candidate, definition: { ...candidate.definition, id: `${FEELING_OUTCOME_PREFIX}${postKey}:${candidate.definition.id}` } }));
-  summary.associations.candidates = candidates.length;
-  return { summary, rows: table.rows, sessionIdsByDate: table.sessionIdsByDate, candidates };
+  return { rows: table.rows, sessionIdsByDate: table.sessionIdsByDate, candidates,
+    evaluate: (permutations?: number) => evaluateAssociations(table.rows, candidates, { permutations }) };
 }

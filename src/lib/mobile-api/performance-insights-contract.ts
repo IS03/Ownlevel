@@ -169,7 +169,7 @@ function feelingOutcome(v: unknown, kind: string) {
   if (kind === "energy" ? !count(v.legacyEnergyOnly) : v.legacyEnergyOnly !== null) return false;
   if (!(v.firstDate === null || date(v.firstDate)) || !(v.lastDate === null || date(v.lastDate))) return false;
   if (!object(days) || !count(days.eligible) || !tally(days.exclusions) || (days.eligible as number) + sum(Object.values(days.exclusions as Json)) !== capture.atFinish) return false;
-  return object(associations) && associations.status === "not_published" && associations.reason === "validation_pending" && count(associations.candidates);
+  return object(associations) && associations.status === "not_published" && associations.reason === "validation_pending" && Object.keys(associations).length === 2;
 }
 function parseFeelings(raw: Json) {
   const { outcomes } = raw;

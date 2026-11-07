@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parsePerformanceInsights } from "../../mobile-api/performance-insights-contract";
 import { buildExposureContext } from "./exposures";
-import { buildFeelingOutcome, FEELING_OUTCOME_PREFIX, stratifiedRows } from "./feeling-outcomes";
+import * as exposures from "./exposures";
+import { describeFeelingOutcome, FEELING_OUTCOME_PREFIX, prepareFeelingAssociations, stratifiedRows } from "./feeling-outcomes";
 import { createInsightsSnapshot, insightsFeelingOutcomes, insightsRelations, insightsSummary } from "./read-model";
 import type { InsightsSource } from "./types";
 
@@ -28,7 +29,8 @@ function history(days: Day[]): InsightsSource {
   return { sessions, exercises: [], sets: [], feelings, metricDefinitions: [], metricValues: [], meals: [] };
 }
 const both = (energy: number, fatigue: number) => ({ energy: { value: energy }, fatigue: { value: fatigue } });
-const outcome = (source: InsightsSource, kind: "energy" | "fatigue") => buildFeelingOutcome(source, kind, buildExposureContext(source), today, 2);
+const outcome = (source: InsightsSource, kind: "energy" | "fatigue") => ({ summary: describeFeelingOutcome(source, kind, buildExposureContext(source), today),
+  ...prepareFeelingAssociations(source, kind, { today, method: 2 }) });
 
 describe("#367 energía y fatiga al terminar como resultados", () => {
   it("counts each answer at the finish by its prior answer, and keeps late, unknown, unreadable and other instruments apart", () => {
@@ -90,10 +92,14 @@ describe("#367 energía y fatiga al terminar como resultados", () => {
     const source = history(Array.from({ length: 30 }, (_, day) => ({ date: `2029-0${3 + Math.floor(day / 28)}-${String(day % 28 + 1).padStart(2, "0")}`, pre: both(1 + day % 5, 1 + (day * 2) % 5), post: both(1 + (day * 3) % 5, 1 + day % 5) })));
     const snapshot = createInsightsSnapshot({ ...source, metricDefinitions: [{ id: id(9, 1), name: "M", unit: null, valueType: "decimal", archived: false }],
       metricValues: source.sessions.map((session, day) => ({ metricId: id(9, 1), date: session.date!, value: day % 7 })) }, { today, method: 2, permutations: 19 });
-    for (const { lane, summary } of snapshot.feelingOutcomes) {
-      expect(lane.candidates.length).toBe(summary.associations.candidates);
-      expect(lane.candidates.every(candidate => candidate.definition.family !== "feeling" && candidate.definition.id.startsWith(`${FEELING_OUTCOME_PREFIX}${summary.outcomeKey}:`))).toBe(true);
-      expect(lane.evaluate().items).toHaveLength(lane.candidates.length);
+    for (const summary of snapshot.feelingOutcomes) {
+      // Prepared only on an explicit request, never by the snapshot.
+      const prepared = prepareFeelingAssociations(source.metricDefinitions.length ? source : { ...source, metricDefinitions: [{ id: id(9, 1), name: "M", unit: null, valueType: "decimal", archived: false }],
+        metricValues: source.sessions.map((session, day) => ({ metricId: id(9, 1), date: session.date!, value: day % 7 })) }, summary.kind, { today, method: 2 });
+      expect(prepared.candidates.length).toBeGreaterThan(0);
+      expect(prepared.candidates.every(candidate => candidate.definition.family !== "feeling" && candidate.definition.id.startsWith(`${FEELING_OUTCOME_PREFIX}${summary.outcomeKey}:`))).toBe(true);
+      expect(prepared.rows).toHaveLength(summary.days.eligible);
+      expect(prepared.evaluate(19).items).toHaveLength(prepared.candidates.length);
     }
     const body = JSON.parse(JSON.stringify(insightsFeelingOutcomes(snapshot)));
     expect(body.outcomes.map((row: { associations: unknown }) => row.associations)).toEqual([expect.objectContaining({ status: "not_published" }), expect.objectContaining({ status: "not_published" })]);
@@ -101,6 +107,22 @@ describe("#367 energía y fatiga al terminar como resultados", () => {
     // The other views do not carry them.
     for (const view of [insightsSummary(snapshot), insightsRelations(snapshot)]) expect(JSON.stringify(view)).not.toContain(FEELING_OUTCOME_PREFIX);
     expect(parsePerformanceInsights(body)?.view).toBe("feelings");
+  });
+
+  it("describes without preparing any association: no ranks, exposure table or candidates for the views (#412)", () => {
+    const source = history(Array.from({ length: 30 }, (_, day) => ({ date: `2029-0${3 + Math.floor(day / 28)}-${String(day % 28 + 1).padStart(2, "0")}`, pre: both(1 + day % 5, 2), post: both(1 + (day * 3) % 5, 3) })));
+    const table = vi.spyOn(exposures, "buildExposureTable");
+    const snapshot = createInsightsSnapshot(source, { today, method: 2 });
+    // The performance lanes build theirs, strict and partial; the feelings add none.
+    expect(table).toHaveBeenCalledTimes(2);
+    for (const view of [insightsFeelingOutcomes(snapshot), insightsSummary(snapshot), insightsRelations(snapshot)]) JSON.stringify(view);
+    expect(table).toHaveBeenCalledTimes(2);
+    table.mockRestore();
+    // What the snapshot keeps of them is the published description and nothing else.
+    expect(snapshot.feelingOutcomes).toEqual(insightsFeelingOutcomes(snapshot).outcomes);
+    for (const summary of snapshot.feelingOutcomes) expect(Object.keys(summary).sort()).toEqual(["associations", "byPrior", "capture", "days", "firstDate", "instrument", "kind", "lastDate", "legacyEnergyOnly", "methodVersion", "outcomeKey", "priorKey", "priorNotComparable", "sessions", "source"]);
+    // And the experimental preparation, asked for, rests on the same days the description counts.
+    for (const summary of snapshot.feelingOutcomes) expect(prepareFeelingAssociations(source, summary.kind, { today, method: 2 }).rows).toHaveLength(summary.days.eligible);
   });
 
   it("is refused by the contract when its parts do not add up to the whole", () => {
@@ -111,6 +133,7 @@ describe("#367 energía y fatiga al terminar como resultados", () => {
       (b: typeof body) => { b.outcomes[0].capture.late++; },
       (b: typeof body) => { b.outcomes[1].legacyEnergyOnly = 0; },
       (b: typeof body) => { b.outcomes[0].associations.status = "published"; },
+      (b: typeof body) => { b.outcomes[0].associations.items = []; },
       (b: typeof body) => { b.outcomes.reverse(); },
       (b: typeof body) => { b.outcomes[0].byPrior[0].posts.push(0); },
     ]) { const copy = structuredClone(body); tamper(copy); expect(parsePerformanceInsights(copy)).toBeUndefined(); }
