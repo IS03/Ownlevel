@@ -109,7 +109,21 @@ Solo para encontrar errores de programación. Semilla `0x5170`, 100 historiales:
 
 ## Desarrollo
 
-*(Se completa después de la corrida de desarrollo.)*
+Corrida con el código de `488ea69`: semilla `0x5170`, 100 historiales por escenario, 199 permutaciones, unos 80 s por escenario. Se escribió antes de correr la validación reservada.
+
+| Escenario | Filas elegibles al final | Retenidas en estratos | Nuevo: algún exploratorio | Nuevo: estricta | Wilson sup. | #412: estricta |
+| --- | --- | --- | --- | --- | --- | --- |
+| Independiente | 357 | 100 % | 8 % | 1 % | 5,45 % | 0 % |
+| Cambios de rutina registrados | 355 | 99 % | 19 % | 3 % | 8,45 % | 4 % |
+| Tendencia | 357 | 100 % | 9 % | 1 % | 5,45 % | 3 % |
+| Efecto moderado plantado | 357 | 100 % | 100 % | 98 % (plantado) | — | 98 % (plantado) |
+
+**Revisión de errores:**
+- el único acierto estricto del escenario independiente se inspeccionó. Es un candidato con ρ = 0,33 en 144 pares, y la misma dirección en las dos mitades (0,34 y 0,33);
+- no se encontró un error de programación: el cálculo es correcto, y con 100 historiales un acierto es compatible con el azar (cota de 5,45 %);
+- **no se corrigió nada ni se cambió ningún parámetro.**
+
+**Lo que no se puede decir con esto:** 100 historiales no separan un 1 % de un 0,5 %. Las cifras de desarrollo no deciden nada: la decisión es la de la validación reservada.
 
 ## Validación reservada
 
