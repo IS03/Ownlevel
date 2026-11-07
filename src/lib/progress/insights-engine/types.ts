@@ -206,7 +206,31 @@ export type ExerciseEvidence = {
   exclusions: Partial<Record<ExclusionReason, number>>;
 } & ({ status: PerformanceStatus } | { reading: PartialReading });
 export type InsightsExerciseEvidence = InsightsVersions & { view: "evidence"; lane: "strict" | "partial"; sessionId: string; exerciseId: string; item: ExerciseEvidence | null; partial?: PartialLabels };
-export type InsightsResponse = InsightsSummary | InsightsDaysPage | InsightsRelations | InsightsRelationDetail | InsightsExerciseEvidence;
+export type FeelingOutcomeKind = "energy" | "fatigue";
+/**
+ * One post feeling as an outcome of its own (#367), described: counts of sessions by its ordinal answer (index 0 is answer 1), apart
+ * by the prior answer of the same kind. Nothing is averaged, inverted, summed or subtracted. `days` is what the associations
+ * would use; they are not published (`associations.status`), whatever they would say.
+ */
+export type FeelingOutcomeSummary = {
+  kind: FeelingOutcomeKind; outcomeKey: "energyPost" | "fatiguePost"; priorKey: "energyPre" | "fatiguePre"; instrument: "energy-fatigue/1"; methodVersion: "insights-feeling-outcomes/1";
+  sessions: { completed: number; answered: number; notRecorded: number; unreadable: number; otherInstrument: number };
+  /** Of the answered ones: at the finish (start to two hours after the end), later, unknown, or impossibly before the start. */
+  capture: { atFinish: number; late: number; captureUnknown: number; beforeStart: number };
+  /** Where each answered one was given. */
+  source: { mobile: number; web: number; unknown: number };
+  /** Answers at the finish only, by the comparable prior answer of the same kind (1 to 5)... */
+  byPrior: { prior: number; posts: number[] }[];
+  /** ...and those whose prior answer cannot frame them, with why. */
+  priorNotComparable: { posts: number[]; reasons: Record<"not_recorded" | "unreadable" | "capture_unknown" | "after_first_set", number> };
+  /** Energy only: sessions with the old flow's energy and no answer at the end. It is never read as one. */
+  legacyEnergyOnly: number | null;
+  firstDate: string | null; lastDate: string | null;
+  days: { eligible: number; exclusions: Record<string, number> };
+  associations: { status: "not_published"; reason: "validation_pending" };
+};
+export type InsightsFeelingOutcomes = InsightsVersions & { view: "feelings"; outcomes: FeelingOutcomeSummary[] };
+export type InsightsResponse = InsightsSummary | InsightsDaysPage | InsightsRelations | InsightsRelationDetail | InsightsExerciseEvidence | InsightsFeelingOutcomes;
 
 export type InsightsReadModel = {
   contractVersion: typeof INSIGHTS_CONTRACT;

@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { todayInCordoba } from "@/lib/phase2/cordoba-date";
 import { readAllTrainingRows } from "@/lib/phase2/training-robust";
-import { createInsightsSnapshot, insightsDaysPage, insightsExerciseEvidence, insightsRelation, insightsRelations, insightsSummary, INSIGHTS_MAX_DAYS, type EvidenceLane, type InsightsSnapshot, type InsightsSource } from "@/lib/progress/insights-engine";
+import { createInsightsSnapshot, insightsDaysPage, insightsExerciseEvidence, insightsFeelingOutcomes, insightsRelation, insightsRelations, insightsSummary, INSIGHTS_MAX_DAYS, type EvidenceLane, type InsightsSnapshot, type InsightsSource } from "@/lib/progress/insights-engine";
 import type { InsightsEngineMethod } from "@/lib/progress/insights-engine/types";
 import { MobileApiValidationError } from "./auth";
 import { NutritionReportDayChangedError } from "./nutrition-report-server";
@@ -229,7 +229,7 @@ export function parseInsightsParams(params: URLSearchParams) {
     if (!["view", "before", "limit", "association", "pairs", "method", ...EVIDENCE_KEYS].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
   }
   const before = params.get("before") ?? undefined, limit = params.get("limit"), association = params.get("association") ?? undefined, view = params.get("view") ?? "summary";
-  if (!["summary", "days", "relations", "evidence"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
+  if (!["summary", "days", "relations", "evidence", "feelings"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
   const method = params.get("method");
   if (method !== null && method !== "2") throw new MobileApiValidationError("Método no válido.");
   const engineMethod = (method === "2" ? 2 : 1) as InsightsEngineMethod;
@@ -245,7 +245,9 @@ export function parseInsightsParams(params: URLSearchParams) {
   if (association !== undefined && !/^[a-zA-Z0-9_:-]{1,120}$/.test(association)) throw new MobileApiValidationError("Relación no válida.");
   const pairs = params.get("pairs");
   if (pairs !== null && (pairs !== "all" || association === undefined)) throw new MobileApiValidationError("Parámetro no válido.");
-  return { view: view as "summary" | "days" | "relations", before, limit: limit === null ? undefined : +limit, association, method: engineMethod, ...(pairs === "all" ? { pairs: "all" as const } : {}) };
+  // Described outcomes over the whole history: no period, filter or page to pick a pattern by.
+  if (view === "feelings" && [...params.keys()].some(key => key !== "view" && key !== "method")) throw new MobileApiValidationError("Parámetro no válido.");
+  return { view: view as "summary" | "days" | "relations" | "feelings", before, limit: limit === null ? undefined : +limit, association, method: engineMethod, ...(pairs === "all" ? { pairs: "all" as const } : {}) };
 }
 
 export const performanceInsightsResponse = (request: Request) => progressReadResponse(request, "performance-insights", async (context, params, today) => {
@@ -261,6 +263,7 @@ export const performanceInsightsResponse = (request: Request) => progressReadRes
   const snapshot = await readInsightsSnapshot(context, today, options.method);
   const model = options.association ? insightsRelation(snapshot, options.association, { pairs: options.pairs ?? "recent" })
     : options.view === "relations" ? insightsRelations(snapshot)
+    : options.view === "feelings" ? insightsFeelingOutcomes(snapshot)
     : options.view === "days" ? insightsDaysPage(snapshot, options) : insightsSummary(snapshot, options);
   // A read straddling Córdoba midnight is retried by the shared GET handler.
   const after = todayInCordoba();

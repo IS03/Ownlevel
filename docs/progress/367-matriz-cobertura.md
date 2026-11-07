@@ -1,6 +1,6 @@
 # #367 — Matriz de cobertura de Insights
 
-Estado al 2026-11-06, verificado con el historial de `main` (`1fe5715`):
+Estado al 2026-11-06, verificado con el historial de `main` (`96b4a63`):
 - **Mergeados y desplegados:** #393 a #395, y #397 y #398 (sueño y peso). Detalle en [367-sueno-peso.md](367-sueno-peso.md).
 - **Mergeados en `main`:**
   - #403 (`8dd3d01`): contexto diario completo;
@@ -9,9 +9,10 @@ Estado al 2026-11-06, verificado con el historial de `main` (`1fe5715`):
   - #406 (`f53fae0`): historial de medidas;
   - #407 (`2eb08b1`) y #408 (`03fc8f7`): memoria del motor;
   - #409 (`bd5407e`): lectura en frío;
-  - #410 (`1fe5715`): resumen factual post-entreno y vista de una sesión.
+  - #410 (`1fe5715`): resumen factual post-entreno y vista de una sesión;
+  - #411 (`96b4a63`): evidencia de comparación por ejercicio.
 - **Pendiente en todos:** la parte de Mobile necesita build. La QA física no está aprobada.
-- **En revisión:** la evidencia de comparación por ejercicio, en `codex/367-exercise-evidence`.
+- **En revisión:** energía y fatiga al terminar como resultados, en `codex/367-feeling-outcomes`. Hoja de ruta: [367-hoja-de-ruta-ecosistema.md](367-hoja-de-ruta-ecosistema.md).
 
 Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya en código leído, no en que exista una tabla o una pantalla.**
 
@@ -95,7 +96,7 @@ Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya
     - cada método por separado, con sus conteos y su texto. El estricto aparece cuando tiene un ejercicio con configuración conocida, aunque no tenga comparables; la configuración desconocida sola nunca lo abre (#410);
     - «Mezclado» y «Sin comparar» como filas distintas;
     - cada ejercicio comparado nombra la fecha de su referencia compatible (`referenceDate`, campo opcional del contrato).
-  - **Evidencia de un ejercicio** (`codex/367-exercise-evidence`): tocar un ejercicio de un día o de una sesión abre lo que sostiene su resultado.
+  - **Evidencia de un ejercicio** (#411): tocar un ejercicio de un día o de una sesión abre lo que sostiene su resultado.
     - Una vista nueva del mismo contrato, `view=evidence`, con sesión, ejercicio y método. Se lee solo al abrir el detalle: nunca por tarjeta ni al terminar.
     - La lectura trae solo el historial de ese ejercicio: sus filas en sesiones terminadas, con sesión, configuración y series. No toca el resto del historial ni el snapshot.
     - Corre el comparador compartido con salida completa sobre ese historial (`insightsExerciseEvidence`). No clasifica por su cuenta. Las pruebas comprueban que decide lo mismo que el historial entero.
@@ -127,12 +128,13 @@ Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya
   - El reloj no está verificado (`declared_pre_unverified_clock`).
 
 **Energía posterior**
-- **Fuente:** `energyPost`.
-- **Unidad y tiempo:** sesión, declarada al terminar.
-- **Cruce:** ninguno.
-- **Estado: no expuesto como resultado.**
-  - Se guarda y la pantalla la muestra como contexto de su sesión, en cada sesión del día.
-  - No es candidato ni resultado: usarla como antecedente invertiría el orden temporal.
+- **Fuente:** `energyPost`, del instrumento `energy-fatigue/1`.
+- **Unidad y tiempo:** como resultado, el día cerrado con una sola sesión. La respuesta tiene que estar capturada entre el inicio y 2 h después del final. Método: [367-sensaciones-resultado-metodo.md](367-sensaciones-resultado-metodo.md).
+- **Cruce:** resultado propio, ordenado dentro de su nivel de energía previa. Nunca es antecedente: invertiría el orden temporal.
+- **Estado: descriptivo accesible, asociaciones sin publicar** (`codex/367-feeling-outcomes`).
+  - «Cómo terminaste» cuenta las respuestas al terminar por nivel previo y deja aparte las tardías, las que no tienen hora, las ilegibles, las de otro instrumento y la energía heredada.
+  - Las asociaciones no se publican y las vistas no las preparan (#412): el cálculo experimental solo se construye si se pide. La calibración no alcanza el objetivo de validación propuesto (1 %, no aprobado como tolerancia): da 7,2 % con cambios de rutina y 6,2 % con tendencias.
+  - Sigue como contexto de su sesión en Insights y en el resumen post-entreno.
 
 **Fatiga previa**
 - **Fuente:** `fatiguePre`.
@@ -141,11 +143,10 @@ Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya
 
 **Fatiga posterior**
 - **Fuente:** `fatiguePost`.
-- **Unidad y tiempo:** sesión, al terminar.
-- **Cruce:** ninguno.
-- **Estado: no expuesto como resultado.** Igual que la energía posterior.
+- **Unidad, tiempo y cruce:** igual que la energía posterior, con su propia familia y estratificada por la fatiga previa. Nunca se calcula invirtiendo la energía.
+- **Estado: descriptivo accesible, asociaciones sin publicar.** Igual que la energía posterior.
 
-**Cómo se muestran** (#403; formato ordinal en `codex/367-post-workout-summary`)
+**Cómo se muestran** (#403; formato ordinal en #410)
 - **Valores ordinales registrados**, antes → al terminar: «Energía: baja → alta», «Fatiga: moderada → sin registrar». Sin números de la escala, promedios ni puntaje combinado. Igual en Insights y en el resumen post-entreno.
 - **Sin registrar, ilegible y tardía son distintas.** Una respuesta mal formada sigue excluida y contada (`feeling_invalid`), y además la sesión la nombra en `context.unreadableFeelings`: se ve «no se pudo leer», nunca «sin registrar».
 - **Tardía:** una previa respondida después de empezar, al terminar o en un momento desconocido lo dice debajo de la fila.
@@ -280,8 +281,8 @@ Modelo y reglas: [367-exercise-configuration.md](367-exercise-configuration.md).
 
 | Dónde | En curso | Completada | Estado |
 | --- | --- | --- | --- |
-| Mobile | Fila «Variante» en el ejercicio abierto | Sección «Variantes» | Implementado; sin build ni QA física |
-| Web | Bajo la nota de cada ejercicio, en el editor de sesión | El mismo bloque en la sesión completada | Implementado; sin deploy |
+| Mobile | Fila «Variante» en el ejercicio abierto | Sección «Variantes» | Mergeado (#395); sin build ni QA física |
+| Web | Bajo la nota de cada ejercicio, en el editor de sesión | El mismo bloque en la sesión completada | Mergeado y desplegado con #395 |
 
 **Mismo comportamiento en las dos plataformas:**
 - el mismo contrato, la misma ruta, el mismo journal y los mismos textos;
@@ -295,20 +296,23 @@ Modelo y reglas: [367-exercise-configuration.md](367-exercise-configuration.md).
 - `mixed_context` con dos bloques;
 - invalidación al corregir una sesión completada.
 
+**Migración aplicada el 2026-11-05** (`20261105223915`); #393 a #395 mergeados.
+
 **Qué falta:**
-- aplicar la migración, mergear y desplegar;
-- build y QA física;
+- build y QA física de Mobile;
 - OBSERVE.
 
-**Hasta entonces, ninguna sesión tiene configuración conocida:** el carril estricto no compara nada y todo queda en el parcial. Después de aplicar, eso solo cambia a medida que la persona registre variantes. Una variante nueva necesita una sesión anterior con la misma para compararse, y la pantalla lo dice.
+**El historial anterior sigue sin configuración conocida:** queda en el carril parcial. El estricto solo crece a medida que la persona registra variantes. Una variante nueva necesita una sesión anterior con la misma para compararse, y la pantalla lo dice.
 
 ## Próximos incrementos
 
+**Orden y reglas:** [367-hoja-de-ruta-ecosistema.md](367-hoja-de-ruta-ecosistema.md). Siguen alimentación y tiempo (tres candidatos nuevos), evolución corporal y resúmenes de período, todos en diseño.
+
 **No se implementaron:**
-- decidir si las sensaciones posteriores se publican como un resultado propio, separado del rendimiento;
+- un método de asociaciones para las sensaciones posteriores que pase la calibración con cambios de rutina y tendencias;
 - paginar por clave los valores diarios, para la latencia de la lectura en frío (ver #409).
 
-**En revisión:** evidencia de comparación por ejercicio, en `codex/367-exercise-evidence`.
+**En revisión:** energía y fatiga al terminar como resultados, en `codex/367-feeling-outcomes`. Descripción publicada; asociaciones sin publicar.
 
 **Mergeados en `main`:**
 - #403: todas las sesiones y los cuatro macros en el contexto del día;
@@ -316,6 +320,7 @@ Modelo y reglas: [367-exercise-configuration.md](367-exercise-configuration.md).
 - #405 y #406: pesos en 0 kg e historiales completos de peso y medidas;
 - #407 y #408: memoria del motor;
 - #409: lectura en frío;
-- #410: resumen factual post-entreno.
+- #410: resumen factual post-entreno;
+- #411: evidencia de comparación por ejercicio.
 
 **Hasta acá:** presentación y lectura, sin cambio de método. Mobile sigue necesitando build y QA física, que no está aprobada.
