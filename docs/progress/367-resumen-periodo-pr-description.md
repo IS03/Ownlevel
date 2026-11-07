@@ -25,6 +25,15 @@
   - desde Cuerpo, «Volver a Insights» vuelve al resumen (`insightsSummary=1`);
   - estados distintos para vacío, cobertura insuficiente y lectura fallida.
 
+## Revisión de #416
+
+- **Sensaciones en el resumen escrito:** antes una sola frase decía «Respondiste cómo terminaste» contando solo la energía. Ahora hay una frase por sensación, con su cobertura real: «Energía al terminar: respondida en 2 de 3 sesiones; 1 sin respuesta» y «Fatiga al terminar: respondida en 1 de 3 sesiones; 1 más tarde y 1 sin respuesta». Una respuesta tardía, sin hora o ilegible nunca se cuenta como ausente.
+- **Período en el contrato:** `parsePeriod` aceptaba fechas que contradecían el período anunciado: fin a mitad de mes, meses no consecutivos o desordenados, cantidad de días incorrecta, o un período corrido de mes. Ahora calcula el período esperado desde `today` (`periodOf`, en `period-range.ts`, sin dependencias para que el contrato no cargue el motor) y exige que coincidan inicio, fin, meses y días. Semanas, pesajes y fechas de rutinas tienen que caer dentro del período.
+- **Regresiones:**
+  - energía y fatiga con coberturas distintas, con una respuesta tardía y una ausente;
+  - fin a mitad de mes, meses desordenados o salteados, días incorrectos, período corrido, `today` que no corresponde, rutina fuera del período, semana y pesaje fuera del período;
+  - aceptación correcta en un cruce de año y en febrero bisiesto.
+
 ## Evidencia
 
 - **Equivalencia con `main`:** las 53 vistas existentes son idénticas en la huella de equivalencia.
@@ -43,8 +52,8 @@
   - **ruta:** reutilización, filtros de la lectura de pesos, reintento y parámetros;
   - **Mobile:** una lectura, fechas, resumen escrito sin causas, métodos separados, detalles con vuelta, alternancia, cobertura insuficiente, vacío y lectura fallida.
 - **Pruebas que pasan:**
-  - Web: 170 en motor, cuerpo y ruta;
-  - Mobile: 68 en las suites afectadas;
+  - Web: 170 en motor, cuerpo y ruta. Con #416: 61 en las suites afectadas;
+  - Mobile: 68 en las suites afectadas. Con #416: 42;
   - tipos y lint sin errores.
 - **Sin campañas estadísticas:** es una presentación descriptiva.
 

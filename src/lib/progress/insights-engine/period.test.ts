@@ -84,12 +84,38 @@ describe("#367 fase 4: los últimos tres meses completos", () => {
     expect(JSON.stringify(body)).not.toMatch(/"rho"|"permutationP"|feeling_outcome:|meal_timing:|body_week:/);
   });
 
+  it("is accepted with the period its own date announces, across a year and in a leap February (#416)", () => {
+    for (const today of ["2027-01-15", "2028-03-01"]) {
+      const body = JSON.parse(JSON.stringify(summary(history([]), today, [{ date: periodOf(today).start, value: 80 }])));
+      expect(body.period).toEqual(periodOf(today));
+      expect(parsePerformanceInsights(body)?.view).toBe("period");
+    }
+  });
+
+  it("is refused when a week or a weigh-in falls outside the period (#416)", () => {
+    const weights = ["2026-08-03", "2026-08-05", "2026-08-07"].map(date => ({ date, value: 80 }));
+    const body = JSON.parse(JSON.stringify(summary(history([]), "2026-11-06", weights)));
+    expect(parsePerformanceInsights(body)).toBeDefined();
+    const week = structuredClone(body); week.weight.weeks[0].start = "2026-07-27";
+    expect(parsePerformanceInsights(week)).toBeUndefined();
+    const weighIn = structuredClone(body); weighIn.weight.weeks[0].weighIns[0].date = "2026-07-31";
+    expect(parsePerformanceInsights(weighIn)).toBeUndefined();
+  });
+
   it("is refused by the contract when its dates or counts do not hold", () => {
     const body = JSON.parse(JSON.stringify(summary(history([{ date: "2026-08-03" }], [{ date: "2026-08-03", calories: 2000 }]), "2026-11-06")));
     expect(parsePerformanceInsights(body)).toBeDefined();
     for (const tamper of [
       (b: typeof body) => { b.period.start = "2026-08-02"; },
       (b: typeof body) => { b.period.months = ["2026-08", "2026-09"]; },
+      // #416: dates that contradict the period its own date announces.
+      (b: typeof body) => { b.period.end = "2026-10-15"; },
+      (b: typeof body) => { b.period.months = ["2026-08", "2026-10", "2026-09"]; },
+      (b: typeof body) => { b.period.months = ["2026-07", "2026-09", "2026-10"]; },
+      (b: typeof body) => { b.period.days = 90; },
+      (b: typeof body) => { b.period = { start: "2026-07-01", end: "2026-09-30", months: ["2026-07", "2026-08", "2026-09"], days: 92 }; },
+      (b: typeof body) => { b.today = "2026-12-03"; },
+      (b: typeof body) => { b.routines.items[0].last = "2026-11-02"; },
       (b: typeof body) => { b.training.multipleSessionDays = 5; },
       (b: typeof body) => { b.nutrition.nutrients.calories.partialDays = 3; },
       (b: typeof body) => { b.associations = { status: "computed" }; },

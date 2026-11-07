@@ -23,14 +23,17 @@ jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
 const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
 const lost = { status: 'unavailable' as const, reason: 'network' as const, meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' as const } };
 const id = (group: number, n: number) => `93670000-0000-4000-8${String(group).padStart(3, '0')}-${String(n).padStart(12, '0')}`;
-function history(sessions: { date: string; routine: string; reps: number; post?: number }[], meals: string[] = []): InsightsSource {
+function history(sessions: { date: string; routine: string; reps: number; post?: number; fatigue?: { value: number; late?: boolean } }[], meals: string[] = []): InsightsSource {
   const source: InsightsSource = { sessions: [], exercises: [], sets: [], feelings: [], metricDefinitions: [], metricValues: [], meals: [] };
   sessions.forEach((row, n) => {
     (source.sessions as InsightsSource['sessions'][number][]).push({ id: id(2, n), date: row.date, routineId: row.routine, routineName: row.routine, name: null, status: 'completed',
       startedAt: `${row.date}T18:00:00-03:00`, endedAt: `${row.date}T19:00:00-03:00`, performanceLevel: null, painLevel: null, legacyEnergyLevel: null });
     (source.exercises as InsightsSource['exercises'][number][]).push({ id: id(3, n), sessionId: id(2, n), exerciseId: id(1, 1), name: 'Press', implement: 'barra', weightMode: 'Peso total', isCompleted: true, configuration: 'recorded:a' });
     (source.sets as InsightsSource['sets'][number][]).push({ id: id(4, n), sessionExerciseId: id(3, n), actualReps: row.reps, actualLoad: 60, isCompleted: true, completedAt: null });
-    if (row.post) (source.feelings as InsightsSource['feelings'][number][]).push({ sessionId: id(2, n), revision: 1, facts: { energyPost: { value: row.post, instrumentVersion: 'energy-fatigue/1', declaredMoment: 'post', declaredAt: null, capturedAt: `${row.date}T19:05:00-03:00`, source: 'mobile' } } });
+    const fact = (value: number, at: string) => ({ value, instrumentVersion: 'energy-fatigue/1', declaredMoment: 'post', declaredAt: null, capturedAt: at, source: 'mobile' });
+    const facts = { ...(row.post ? { energyPost: fact(row.post, `${row.date}T19:05:00-03:00`) } : {}),
+      ...(row.fatigue ? { fatiguePost: fact(row.fatigue.value, row.fatigue.late ? `${row.date}T23:30:00-03:00` : `${row.date}T19:05:00-03:00`) } : {}) };
+    if (Object.keys(facts).length) (source.feelings as InsightsSource['feelings'][number][]).push({ sessionId: id(2, n), revision: 1, facts });
   });
   meals.forEach((date, n) => (source.meals as InsightsSource['meals'][number][]).push({ id: id(5, n), date, consumedAt: null, consumedAtSource: null, rawInput: null, entryKind: 'meal', sourceType: 'manual', importRunId: null, calories: 2000, proteinG: 120, carbsG: 200, fatG: 60 }));
   return source;
@@ -68,6 +71,16 @@ describe('#367 fase 4: resumen de los últimos tres meses', () => {
     expect(training.getByText('Comparación completa')).toBeTruthy(); expect(training.getByText('Con contexto parcial')).toBeTruthy();
     expect(within(view.getByTestId('period-feelings')).getByText('alta 1 · baja 1')).toBeTruthy();
     expect(within(view.getByTestId('period-weight')).getByText('Mediana 79,5 kg')).toBeTruthy();
+  });
+
+  it('writes energy and fatigue apart, each with its real coverage, and never takes a late answer for a missing one (#416)', async () => {
+    // Energy: answered at the finish twice, missing once. Fatigue: once at the finish, once 4 h 30 min after the end, once missing.
+    mockRead.mockImplementation(serve(history([{ date: '2026-08-03', routine: 'A', reps: 8, post: 4, fatigue: { value: 2 } }, { date: '2026-08-10', routine: 'A', reps: 8, post: 3, fatigue: { value: 3, late: true } },
+      { date: '2026-08-17', routine: 'A', reps: 8 }])));
+    const written = within((await open()).getByTestId('period-written'));
+    expect(written.getByText('Energía al terminar: respondida en 2 de 3 sesiones; 1 sin respuesta.')).toBeTruthy();
+    expect(written.getByText('Fatiga al terminar: respondida en 1 de 3 sesiones; 1 más tarde y 1 sin respuesta.')).toBeTruthy();
+    expect(written.queryByText(/Respondiste cómo terminaste/)).toBeNull();
   });
 
   it('opens each detail and comes back to the summary from Cuerpo', async () => {

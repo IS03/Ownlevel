@@ -34,8 +34,8 @@ export function periodSentences(data: Summary): string[] {
     : 'No hay entrenamientos terminados en estos tres meses.');
   if (training.strict.comparable) sentences.push(`Comparación completa: ${training.strict.comparable} de ${training.strict.total} ejercicios comparables.`);
   if (training.partial.comparable) sentences.push(`Con contexto parcial: ${training.partial.comparable} de ${training.partial.total}, contados aparte.`);
-  const energy = data.feelings[0]!;
-  sentences.push(energy.sessions.completed ? `Respondiste cómo terminaste en ${energy.capture.atFinish} de ${plural(energy.sessions.completed, 'sesión', 'sesiones')}.` : 'Sin sesiones para responder cómo terminaste.');
+  // Each feeling on its own, with its own coverage: an answer given later is not a missing one, and neither is a count of the other.
+  for (const summary of data.feelings) sentences.push(feelingSentence(summary));
   sentences.push(`Registraste comidas en ${nutrition.daysWithMeals} de ${data.period.days} días. Es lo registrado, no necesariamente todo lo que comiste.`);
   const withMedian = weight.weeks.filter(week => week.median !== null).length, changes = weight.changes.filter(change => change.change !== null).length;
   sentences.push(weight.weighIns
@@ -44,6 +44,20 @@ export function periodSentences(data: Summary): string[] {
   if (routines.order === 'sequence') sentences.push(`Rutinas, una después de otra: ${routines.items.map(row => row.name ?? 'Sin rutina').join(', ')}.`);
   if (routines.order === 'alternating') sentences.push(`Alternaste ${routines.items.length} rutinas: ${routines.items.map(row => row.name ?? 'Sin rutina').join(', ')}.`);
   return sentences;
+}
+/**
+ * "Energía al terminar: respondida en 12 de 20 sesiones; 2 más tarde y 6 sin respuesta." Answered at the finish, later or without
+ * a time, unreadable or on another scale, and not answered: separate counts that add up to the sessions.
+ */
+export function feelingSentence(summary: Summary['feelings'][number]) {
+  const name = summary.kind === 'energy' ? 'Energía al terminar' : 'Fatiga al terminar';
+  const { sessions, capture } = summary;
+  if (!sessions.completed) return `${name}: sin sesiones en estos tres meses.`;
+  const later = capture.late, noTime = capture.captureUnknown + capture.beforeStart, unreadable = sessions.unreadable + sessions.otherInstrument;
+  const rest = [later ? `${later} más tarde` : null, noTime ? `${noTime} sin hora de respuesta` : null, unreadable ? `${plural(unreadable, 'ilegible', 'ilegibles')}` : null,
+    sessions.notRecorded ? `${sessions.notRecorded} sin respuesta` : null].filter(Boolean) as string[];
+  const tail = rest.length ? `; ${rest.length > 1 ? `${rest.slice(0, -1).join(', ')} y ${rest.at(-1)}` : rest[0]}` : '';
+  return `${name}: respondida en ${capture.atFinish} de ${plural(sessions.completed, 'sesión', 'sesiones')}${tail}.`;
 }
 export const FACTS_ONLY = 'Son hechos de tus registros. Este resumen no busca relaciones; las que ya existen están en «Para mirar con calma», sobre todo tu historial.';
 

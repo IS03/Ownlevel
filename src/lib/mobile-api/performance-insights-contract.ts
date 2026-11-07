@@ -1,5 +1,6 @@
 // Pure strict contract shared by the API and Expo. It accepts only this versioned shape: never a partial read as an empty one.
 import { INSIGHTS_PERFORMANCE_PARTIAL_METHOD, PARTIAL_CONTEXT } from "../progress/performance-insights/partial";
+import { periodOf } from "../progress/insights-engine/period-range";
 import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from "../progress/insights-engine/types";
 
 export type { AssociationResult, AssociationState, CandidateDefinition, DayFact, EvidenceSet, EvidenceSide, ExerciseEvidence, FeelingOutcomeKind, FeelingOutcomeSummary, InsightsFeelingOutcomes, InsightsPeriodSummary, ExerciseFact, InsightsExerciseEvidence, ExerciseSummary, InsightsDaysPage, InsightsReadModel, InsightsRelationDetail, InsightsRelations, InsightsResponse, InsightsSummary, PartialAssociationState, PartialRelationSummary, RelationSummary, NutritionContext, PartialAssociationResult, PartialDayFact, PartialExerciseFact, PartialExerciseSummary, PartialLane, SessionFact, SessionFeeling } from "../progress/insights-engine/types";
@@ -198,8 +199,13 @@ const nutrientBlock = (v: unknown, daysWithMeals: number) => object(v) && count(
  */
 function parsePeriod(raw: Json) {
   const { period, training, routines, feelings, nutrition, weight, associations } = raw;
-  if (raw.periodMethodVersion !== "insights-period/1" || !object(period) || !date(period.start) || !date(period.end) || !list(period.months, month) || (period.months as unknown[]).length !== 3 || !count(period.days)) return undefined;
-  if (String(period.start).slice(8) !== "01" || String(period.start).slice(0, 7) !== (period.months as string[])[0] || String(period.end).slice(0, 7) !== (period.months as string[])[2]) return undefined;
+  if (raw.periodMethodVersion !== "insights-period/1" || !object(period) || !date(period.start) || !date(period.end) || !list(period.months, month) || !count(period.days)) return undefined;
+  // The period is the one its own date announces (#416): the three whole months before today's, with their exact first and last
+  // day, in order, and their number of days. Any other dates contradict what the answer says it describes.
+  const expected = periodOf(String(raw.today));
+  if (period.start !== expected.start || period.end !== expected.end || period.days !== expected.days
+    || (period.months as string[]).length !== expected.months.length || (period.months as string[]).some((value, index) => value !== expected.months[index])) return undefined;
+  const inside = (value: unknown) => date(value) && (value as string) >= expected.start && (value as string) <= expected.end;
   if (!object(training) || !count(training.sessions) || !count(training.trainingDays) || !count(training.multipleSessionDays) || !counts(training.strict) || !partialCounts(training.partial)) return undefined;
   if ((training.trainingDays as number) > (training.sessions as number) || (training.multipleSessionDays as number) > (training.trainingDays as number)) return undefined;
   if (!object(routines) || !["none", "single", "sequence", "alternating"].includes(String(routines.order))
@@ -210,6 +216,9 @@ function parsePeriod(raw: Json) {
   if (!object(weight) || weight.methodVersion !== "body-weekly/1" || !list(weight.weeks, week) || !list(weight.changes, weekChange) || !count(weight.weighIns)
     || !object(weight.outside) || !count(weight.outside.partialWeeks) || !count(weight.outside.currentWeek) || !count(weight.outside.invalid)) return undefined;
   if ((weight.changes as unknown[]).length !== Math.max(0, (weight.weeks as unknown[]).length - 1)) return undefined;
+  // Every dated part lies inside the period: whole weeks, their weigh-ins and the routines' first and last sessions.
+  if (!(weight.weeks as Json[]).every(row => inside(row.start) && inside(row.end) && (row.weighIns as Json[]).every(entry => inside(entry.date)))) return undefined;
+  if (!(routines.items as Json[]).every(row => inside(row.first) && inside(row.last) && (row.first as string) <= (row.last as string))) return undefined;
   return object(associations) && associations.status === "not_computed_for_period" ? raw as unknown as InsightsPeriodSummary : undefined;
 }
 

@@ -6,20 +6,9 @@ import type { ExposureContext } from "./exposures";
 import { describeFeelingOutcome, FEELING_OUTCOME_KINDS } from "./feeling-outcomes";
 import type { DayFact, FeelingOutcomeSummary, InsightsSource, PartialDayFact } from "./types";
 
-/**
- * #367 phase 4: the last three whole calendar months, by the Córdoba date. Fixed by the date alone, never by what the months hold;
- * the month in progress is never one of them.
- */
-export const PERIOD_MONTHS = 3;
+import { PERIOD_MONTHS, periodOf, type InsightsPeriod } from "./period-range";
+export { PERIOD_MONTHS, periodOf, type InsightsPeriod };
 export const PERIOD_METHOD = "insights-period/1" as const;
-export type InsightsPeriod = { start: string; end: string; months: string[]; days: number };
-export function periodOf(today: string, months = PERIOD_MONTHS): InsightsPeriod {
-  const [year, month] = [Number(today.slice(0, 4)), Number(today.slice(5, 7))];
-  const first = new Date(Date.UTC(year, month - 1 - months, 1)), last = new Date(Date.UTC(year, month - 1, 0));
-  const list = Array.from({ length: months }, (_, index) => new Date(Date.UTC(year, month - 1 - months + index, 1)).toISOString().slice(0, 7));
-  const start = first.toISOString().slice(0, 10), end = last.toISOString().slice(0, 10);
-  return { start, end, months: list, days: Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000) + 1 };
-}
 const within = (date: string | null | undefined, period: Pick<InsightsPeriod, "start" | "end">) => !!date && date >= period.start && date <= period.end;
 
 type Nutrient = "calories" | "proteinG" | "carbsG" | "fatG";
