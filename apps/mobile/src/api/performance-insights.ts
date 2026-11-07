@@ -1,5 +1,5 @@
 import type { MobileApiClient } from './client';
-import { parsePerformanceInsights, PERFORMANCE_INSIGHTS_PATH, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from '../../../../src/lib/mobile-api/performance-insights-contract';
+import { parsePerformanceInsights, PERFORMANCE_INSIGHTS_PATH, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from '../../../../src/lib/mobile-api/performance-insights-contract';
 
 export * from '../../../../src/lib/mobile-api/performance-insights-contract';
 
@@ -22,3 +22,5 @@ export const fetchInsightsEvidence = (client: MobileApiClient, selection: { sess
   read<InsightsExerciseEvidence>(client, 'evidence', { view: 'evidence', session: selection.session, exercise: selection.exercise, lane: selection.lane }, signal);
 /** Energy and fatigue at the end, described. Only when its screen opens. */
 export const fetchInsightsFeelings = (client: MobileApiClient, signal?: AbortSignal) => read<InsightsFeelingOutcomes>(client, 'feelings', { view: 'feelings' }, signal);
+/** The last three whole months, described. Only when its screen opens: never at the end of a session or from another tab. */
+export const fetchInsightsPeriod = (client: MobileApiClient, signal?: AbortSignal) => read<InsightsPeriodSummary>(client, 'period', { view: 'period' }, signal);

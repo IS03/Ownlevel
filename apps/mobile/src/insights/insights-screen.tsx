@@ -312,6 +312,9 @@ export function InsightsScreen() {
         <AppText muted variant="caption" numeric style={styles.coverage}>{data.history.trainingDays} días entrenados en total</AppText>
       </View>
       {/* Its own read, on a tap: the end answers described, never next to the training results as if they were one. */}
+      {/* Its own read, on a tap: the last three whole months, facts only. */}
+      <InsightRow label="Últimos 3 meses" detail="Entrenamiento, sensaciones, comidas y peso, con sus fechas" spoken="Últimos 3 meses: entrenamiento, sensaciones, comidas y peso, con sus fechas"
+        onPress={() => { haptics.selection(); router.push('/(tabs)/train/insights/period'); }} />
       <InsightRow label="Cómo terminaste" detail="Energía y fatiga al terminar, según cómo empezaste" spoken="Cómo terminaste: energía y fatiga al terminar, según cómo empezaste"
         onPress={() => { haptics.selection(); router.push('/(tabs)/train/insights/feelings'); }} />
       {data.relations.strict.outcomeDays || data.relations.partial.outcomeDays ? <View style={styles.block}>

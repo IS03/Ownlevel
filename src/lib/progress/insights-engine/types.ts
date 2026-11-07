@@ -244,7 +244,9 @@ export type FeelingOutcomeSummary = {
   associations: { status: "not_published"; reason: "validation_pending" };
 };
 export type InsightsFeelingOutcomes = InsightsVersions & { view: "feelings"; outcomes: FeelingOutcomeSummary[] };
-export type InsightsResponse = InsightsSummary | InsightsDaysPage | InsightsRelations | InsightsRelationDetail | InsightsExerciseEvidence | InsightsFeelingOutcomes;
+/** #367 phase 4: the last three whole months, described. Only when its screen opens. */
+export type InsightsPeriodSummary = InsightsVersions & import("./period").PeriodSummaryBody;
+export type InsightsResponse = InsightsSummary | InsightsDaysPage | InsightsRelations | InsightsRelationDetail | InsightsExerciseEvidence | InsightsFeelingOutcomes | InsightsPeriodSummary;
 
 export type InsightsReadModel = {
   contractVersion: typeof INSIGHTS_CONTRACT;

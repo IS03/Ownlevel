@@ -1,8 +1,8 @@
 // Pure strict contract shared by the API and Expo. It accepts only this versioned shape: never a partial read as an empty one.
 import { INSIGHTS_PERFORMANCE_PARTIAL_METHOD, PARTIAL_CONTEXT } from "../progress/performance-insights/partial";
-import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from "../progress/insights-engine/types";
+import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from "../progress/insights-engine/types";
 
-export type { AssociationResult, AssociationState, CandidateDefinition, DayFact, EvidenceSet, EvidenceSide, ExerciseEvidence, FeelingOutcomeKind, FeelingOutcomeSummary, InsightsFeelingOutcomes, ExerciseFact, InsightsExerciseEvidence, ExerciseSummary, InsightsDaysPage, InsightsReadModel, InsightsRelationDetail, InsightsRelations, InsightsResponse, InsightsSummary, PartialAssociationState, PartialRelationSummary, RelationSummary, NutritionContext, PartialAssociationResult, PartialDayFact, PartialExerciseFact, PartialExerciseSummary, PartialLane, SessionFact, SessionFeeling } from "../progress/insights-engine/types";
+export type { AssociationResult, AssociationState, CandidateDefinition, DayFact, EvidenceSet, EvidenceSide, ExerciseEvidence, FeelingOutcomeKind, FeelingOutcomeSummary, InsightsFeelingOutcomes, InsightsPeriodSummary, ExerciseFact, InsightsExerciseEvidence, ExerciseSummary, InsightsDaysPage, InsightsReadModel, InsightsRelationDetail, InsightsRelations, InsightsResponse, InsightsSummary, PartialAssociationState, PartialRelationSummary, RelationSummary, NutritionContext, PartialAssociationResult, PartialDayFact, PartialExerciseFact, PartialExerciseSummary, PartialLane, SessionFact, SessionFeeling } from "../progress/insights-engine/types";
 export const PERFORMANCE_INSIGHTS_PATH = "/api/mobile/v1/progress/performance-insights";
 
 type Json = Record<string, unknown>;
@@ -183,10 +183,40 @@ function parseFeelings(raw: Json) {
   return Array.isArray(outcomes) && outcomes.length === 2 && feelingOutcome(outcomes[0], "energy") && feelingOutcome(outcomes[1], "fatigue") ? raw as unknown as InsightsFeelingOutcomes : undefined;
 }
 
+const month = (v: unknown) => typeof v === "string" && /^\d{4}-\d{2}$/.test(v);
+const nonNegative = (v: unknown) => finite(v) && (v as number) >= 0;
+const weighIn = (v: unknown) => object(v) && date(v.date) && finite(v.value) && (v.value as number) > 0;
+const week = (v: unknown) => object(v) && date(v.start) && date(v.end) && list(v.weighIns, weighIn) && (v.median === null || (finite(v.median) && (v.weighIns as unknown[]).length >= 3))
+  && (v.median !== null || (v.weighIns as unknown[]).length < 3);
+const CHANGE = new Set(["computed", "week_insufficient", "previous_week_insufficient"]);
+const weekChange = (v: unknown) => object(v) && date(v.weekStart) && date(v.previousStart) && CHANGE.has(String(v.reason)) && (v.reason === "computed") === finite(v.change) && (v.change === null || finite(v.change));
+const nutrientBlock = (v: unknown, daysWithMeals: number) => object(v) && count(v.knownDays) && count(v.partialDays) && (v.knownDays as number) + (v.partialDays as number) === daysWithMeals
+  && nonNegative(v.recorded) && (v.dailyMedian === null ? v.knownDays === 0 : nonNegative(v.dailyMedian) && (v.knownDays as number) > 0);
+/**
+ * The last three whole months. Its dates must be what they say (whole months, the counts adding up), each part keeps its own
+ * method, and no association comes in it.
+ */
+function parsePeriod(raw: Json) {
+  const { period, training, routines, feelings, nutrition, weight, associations } = raw;
+  if (raw.periodMethodVersion !== "insights-period/1" || !object(period) || !date(period.start) || !date(period.end) || !list(period.months, month) || (period.months as unknown[]).length !== 3 || !count(period.days)) return undefined;
+  if (String(period.start).slice(8) !== "01" || String(period.start).slice(0, 7) !== (period.months as string[])[0] || String(period.end).slice(0, 7) !== (period.months as string[])[2]) return undefined;
+  if (!object(training) || !count(training.sessions) || !count(training.trainingDays) || !count(training.multipleSessionDays) || !counts(training.strict) || !partialCounts(training.partial)) return undefined;
+  if ((training.trainingDays as number) > (training.sessions as number) || (training.multipleSessionDays as number) > (training.trainingDays as number)) return undefined;
+  if (!object(routines) || !["none", "single", "sequence", "alternating"].includes(String(routines.order))
+    || !list(routines.items, row => object(row) && stringOrNull(row.routineId) && stringOrNull(row.name) && count(row.sessions) && date(row.first) && date(row.last))) return undefined;
+  if (!Array.isArray(feelings) || feelings.length !== 2 || !feelingOutcome(feelings[0], "energy") || !feelingOutcome(feelings[1], "fatigue")) return undefined;
+  if (!object(nutrition) || !count(nutrition.daysWithMeals) || (nutrition.daysWithMeals as number) > (period.days as number) || !object(nutrition.nutrients)
+    || !["calories", "proteinG", "carbsG", "fatG"].every(key => nutrientBlock((nutrition.nutrients as Json)[key], nutrition.daysWithMeals as number))) return undefined;
+  if (!object(weight) || weight.methodVersion !== "body-weekly/1" || !list(weight.weeks, week) || !list(weight.changes, weekChange) || !count(weight.weighIns)
+    || !object(weight.outside) || !count(weight.outside.partialWeeks) || !count(weight.outside.currentWeek) || !count(weight.outside.invalid)) return undefined;
+  if ((weight.changes as unknown[]).length !== Math.max(0, (weight.weeks as unknown[]).length - 1)) return undefined;
+  return object(associations) && associations.status === "not_computed_for_period" ? raw as unknown as InsightsPeriodSummary : undefined;
+}
+
 /** The views the route answers with. Consistent patterns stay impossible in this contract until the risk budget is decided. */
 export function parsePerformanceInsights(raw: unknown): InsightsResponse | undefined {
   if (!object(raw) || !versions(raw) || typeof raw.sourceRevision !== "string") return undefined;
-  return raw.view === "summary" ? parseSummary(raw) : raw.view === "days" ? parseDays(raw) : raw.view === "relations" ? parseRelations(raw) : raw.view === "relation" ? parseRelationDetail(raw) : raw.view === "evidence" ? parseEvidence(raw) : raw.view === "feelings" ? parseFeelings(raw) : undefined;
+  return raw.view === "summary" ? parseSummary(raw) : raw.view === "days" ? parseDays(raw) : raw.view === "relations" ? parseRelations(raw) : raw.view === "relation" ? parseRelationDetail(raw) : raw.view === "evidence" ? parseEvidence(raw) : raw.view === "feelings" ? parseFeelings(raw) : raw.view === "period" ? parsePeriod(raw) : undefined;
 }
 
 /** The whole pure model, for consumers of the domain module. The route never sends it. */

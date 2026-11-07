@@ -4,8 +4,10 @@ import type { CompactExercisePerformance, PerformanceCounts, PerformanceSession,
 import { evaluateAssociations, type AssociationEvaluation } from "./associations";
 import { buildExposureContext, buildExposureTable, partialOutcomeDays, strictOutcomeDays, weightOfDay, type ExposureTable } from "./exposures";
 import { describeFeelingOutcome, FEELING_OUTCOME_KINDS } from "./feeling-outcomes";
+import { periodFacts, periodSummary } from "./period";
+import type { WeighIn } from "../body-evolution/weekly";
 import { mealTimeEvidence, toPerformanceSessions } from "./source-adapter";
-import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, type InsightsEngineMethod, type InsightsFeelingOutcomes, type SleepNightEvidence, INSIGHTS_RISK_BUDGET_CANDIDATE, PARTIAL_ASSOCIATION_PREFIX, type AssociationResult, type Candidate, type DayFact, type ExerciseFact, type ExerciseSummary, type InsightsDaysPage, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsSource, type InsightsSummary, type MealTimeEvidence, type PartialAssociationResult, type PartialDayFact, type PartialExerciseFact, type PartialExerciseSummary, type PartialLane, type PartialRelationSummary, type RelationSummary, type SessionFact } from "./types";
+import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, type InsightsEngineMethod, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type SleepNightEvidence, INSIGHTS_RISK_BUDGET_CANDIDATE, PARTIAL_ASSOCIATION_PREFIX, type AssociationResult, type Candidate, type DayFact, type ExerciseFact, type ExerciseSummary, type InsightsDaysPage, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsSource, type InsightsSummary, type MealTimeEvidence, type PartialAssociationResult, type PartialDayFact, type PartialExerciseFact, type PartialExerciseSummary, type PartialLane, type PartialRelationSummary, type RelationSummary, type SessionFact } from "./types";
 
 export const INSIGHTS_DEFAULT_DAYS = 14;
 export const INSIGHTS_MAX_DAYS = 120;
@@ -233,6 +235,8 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
       lane: lane(partial.integrity === "valid", partialTable, partialCandidates, options.permutations, publishPartial) },
     /** Counts and states only (`view=feelings`). */
     feelingOutcomes,
+    /** The last three whole months (`view=period`): feelings and nutrition of those dates, with the same functions. */
+    periodFacts: periodFacts(source, context, options.today),
   };
 }
 
@@ -264,6 +268,11 @@ const partialLabels = (snapshot: InsightsSnapshot) => ({ methodVersion: snapshot
 /** Energy and fatigue at the end as outcomes, described: counts by answer and by the prior answer. No association is published. */
 export function insightsFeelingOutcomes(snapshot: InsightsSnapshot): InsightsFeelingOutcomes {
   return { view: "feelings", ...versions(snapshot), outcomes: snapshot.feelingOutcomes };
+}
+
+/** The last three whole months, described, with every weigh-in of the period read for it. No pattern is looked for in them. */
+export function insightsPeriodSummary(snapshot: InsightsSnapshot, weights: readonly WeighIn[]): InsightsPeriodSummary {
+  return { ...versions(snapshot), ...periodSummary(snapshot, weights) };
 }
 
 /** What opens the screen: facts, context and denominators. Says how many relations exist without running them. */

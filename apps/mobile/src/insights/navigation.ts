@@ -2,7 +2,7 @@ import { isNutritionDate } from '@/api/nutrition-day';
 import { PROGRESS_MAX_DAYS, addDays, calendarRange, daysBetween } from '@/progress/progress-range';
 
 /** What Insights was showing. Every value is checked on the way back: a route parameter is never trusted as an address. */
-export type InsightsOrigin = { view?: 'exercises'; family?: string; relations?: '1'; date?: string; session?: string; relation?: string };
+export type InsightsOrigin = { view?: 'exercises'; family?: string; relations?: '1'; date?: string; session?: string; relation?: string; summary?: '1' };
 const FAMILIES = ['metric', 'nutrition', 'meal_window', 'feeling'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RELATION = /^[a-zA-Z0-9_:-]{1,120}$/;
@@ -16,6 +16,7 @@ const clean = (raw: Params): InsightsOrigin => ({
   ...(isNutritionDate(raw.date) ? { date: raw.date } : {}),
   ...(validSession(raw.session) ? { session: raw.session } : {}),
   ...(typeof raw.relation === 'string' && RELATION.test(raw.relation) ? { relation: raw.relation } : {}),
+  ...(raw.summary === '1' ? { summary: '1' as const } : {}),
 });
 /** The state of the Insights screen, read from its own route. */
 export const insightsOriginOf = (params: Params): InsightsOrigin => { const { relation: _relation, ...origin } = clean(params); return origin; };
@@ -59,7 +60,9 @@ export function insightsEvidenceHref(selection: { session: string; exercise: str
 /** Where "Volver a Insights" goes, if this route was opened from there. */
 export function insightsReturnHref(params: Params) {
   if (params.insightsReturn !== '1') return null;
-  const origin = clean({ view: params.insightsView, family: params.insightsFamily, relations: params.insightsRelations, date: params.insightsDate, session: params.insightsSession, relation: params.insightsRelation });
+  const origin = clean({ view: params.insightsView, family: params.insightsFamily, relations: params.insightsRelations, date: params.insightsDate, session: params.insightsSession, relation: params.insightsRelation, summary: params.insightsSummary });
   if (origin.relation) return { pathname: '/(tabs)/train/insights/[relation]' as const, params: { relation: origin.relation } };
+  // Opened from the summary of the last three months: back to it, which reads again when it opens.
+  if (origin.summary) return { pathname: '/(tabs)/train/insights/period' as const, params: {} };
   return { pathname: '/(tabs)/train/insights' as const, params: origin };
 }
