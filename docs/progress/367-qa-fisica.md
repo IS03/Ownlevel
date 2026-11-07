@@ -148,6 +148,6 @@ Requiere una build de Mobile con `codex/367-body-weekly`. Sin migración ni API 
 - [ ] **Dónde:** en Cuerpo → peso, debajo del gráfico, «Semana a semana», con las semanas más nuevas primero.
 - [ ] **Semanas:** de lunes a domingo. La semana en curso no aparece. Con un período de un mes, una semana cortada por el inicio del período no aparece como semana, y el pie dice cuántos pesajes quedaron fuera.
 - [ ] **Mediana:** con 3 o más pesajes válidos dice «Mediana 80,2 kg» y los días («3 pesajes: lun 12, mié 14, vie 16»). Con menos, «Sin mediana». Un 0 kg guardado no cuenta como pesaje.
-- [ ] **Cambio:** «↘ 0,6 kg frente a la semana anterior», sin color ni palabras como «mejor». Después de una semana vacía o con menos de 3 pesajes dice por qué no hay cambio, nunca compara con dos semanas atrás.
+- [ ] **Cambio:** «↘ 0,6 kg frente a la semana anterior», sin color ni palabras como «mejor». Dos semanas con la misma mediana dicen «= 0 kg, igual que la semana anterior». Después de una semana vacía o con menos de 3 pesajes dice «No se puede calcular el cambio» y el motivo; nunca «0 kg», «igual» ni «sin cambio», y nunca compara con dos semanas atrás.
 - [ ] **Sin juicios ni recomendaciones:** no hay calorías sugeridas, puntaje ni causas.
 - [ ] **Texto grande y VoiceOver:** cada semana se lee completa y las filas se apilan sin cortar números.

@@ -13,6 +13,7 @@ Método, preregistro y resultados: [367-evolucion-corporal-metodo.md](367-evoluc
   - cambio solo entre dos semanas seguidas con mediana. Una semana vacía o insuficiente corta la cadena y lo dice; nada se interpola.
 - **Cuerpo en Mobile:** «Semana a semana» debajo del gráfico de peso.
   - Semanas más nuevas primero, con mediana, días de los pesajes y cambio con flecha y magnitud, sin color ni juicios.
+  - **Cambio que no se pudo calcular** (#415): dice «No se puede calcular el cambio» con su motivo, por ejemplo «esta semana tiene menos de 3 pesajes». «0 kg» o «igual» quedan solo para un cambio calculado: «= 0 kg, igual que la semana anterior».
   - Usa los pesos del período que la pantalla ya leyó. `parseProgressBody` exige claves exactas: agregar un campo a esa respuesta rompería clientes instalados.
 - **Análisis experimental** (`insights-body-weekly/1`, `analysis.ts`):
   - una fila por cambio semanal W−1→W, fechada con el lunes de W;
@@ -39,7 +40,7 @@ Método, preregistro y resultados: [367-evolucion-corporal-metodo.md](367-evoluc
 - **Costo:** sin consultas nuevas. Un año de pesajes diarios (52 semanas) se describe en 0,3 a 0,7 ms, medido con otros procesos en paralelo.
 - **Pruebas que pasan:**
   - descripción, análisis y calibración en Web: 9;
-  - Mobile: 3 nuevas y las 83 de Cuerpo, Progreso e Inicio;
+  - Mobile: 4 nuevas, entre ellas la regresión de #415 que separa una semana con pesajes insuficientes de dos semanas con medianas iguales, y las 83 de Cuerpo, Progreso e Inicio;
   - tipos y lint sin errores.
 
 ## Límites

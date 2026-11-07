@@ -9,9 +9,16 @@ const WEEKDAY = new Intl.DateTimeFormat('es-AR', { weekday: 'short', timeZone: '
 const weekday = (date: string) => `${WEEKDAY.format(new Date(`${date}T12:00:00Z`)).replace('.', '')} ${Number(date.slice(8, 10))}`;
 const weighIns = (count: number) => count === 1 ? '1 pesaje' : `${count} pesajes`;
 const REASON = {
-  week_insufficient: `sin cambio: esta semana tiene menos de ${MIN_WEEKLY_WEIGH_INS} pesajes`,
-  previous_week_insufficient: `sin cambio: la semana anterior tiene menos de ${MIN_WEEKLY_WEIGH_INS} pesajes`,
+  week_insufficient: `No se puede calcular el cambio: esta semana tiene menos de ${MIN_WEEKLY_WEIGH_INS} pesajes`,
+  previous_week_insufficient: `No se puede calcular el cambio: la semana anterior tiene menos de ${MIN_WEEKLY_WEIGH_INS} pesajes`,
 } as const;
+/**
+ * A change that was computed. Zero is a real equality between two medians, said as such: "sin cambio" would read like the
+ * comparison that could not be made (#415).
+ */
+export function changeText(change: number) {
+  return Math.abs(change) < 1e-9 ? '= 0 kg, igual que la semana anterior' : `${arrowDelta(change, 'kg')} frente a la semana anterior`;
+}
 
 /**
  * One row per whole closed week of the period, newest first: its median, its weigh-ins with their dates, and the change from the
@@ -24,7 +31,7 @@ export function weeklyRows(weekly: BodyWeekly, today: string) {
     const value = week.median === null ? 'Sin mediana' : `Mediana ${formatValue(week.median, 'kg')}`;
     const dates = week.weighIns.length ? `${weighIns(week.weighIns.length)}: ${week.weighIns.map(row => weekday(row.date)).join(', ')}` : 'Sin pesajes';
     const change = changes.get(week.start);
-    const versus = !change ? null : change.change === null ? REASON[change.reason as keyof typeof REASON] : `${arrowDelta(change.change, 'kg')} frente a la semana anterior`;
+    const versus = !change ? null : change.change === null ? REASON[change.reason as keyof typeof REASON] : changeText(change.change);
     const detail = versus ? `${dates} · ${versus}` : dates;
     return { key: week.start, label, value, detail, spoken: `${label}: ${value.toLocaleLowerCase('es-AR')}. ${detail}` };
   });

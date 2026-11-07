@@ -19,8 +19,21 @@ describe('#367 fase 3: semana a semana en Cuerpo', () => {
     const rows = weeklyRows(weeklyWeights(observations, period, today), today);
     expect(rows.map(row => [row.label, row.value])).toEqual([['Semana 19–25 mar', 'Sin mediana'], ['Semana 12–18 mar', 'Mediana 79,6 kg'], ['Semana 5–11 mar', 'Mediana 80,2 kg']]);
     expect(rows[1]!.detail).toBe('3 pesajes: lun 12, mié 14, vie 16 · ↘ 0,6 kg frente a la semana anterior');
-    expect(rows[0]!.detail).toBe('1 pesaje: mar 20 · sin cambio: esta semana tiene menos de 3 pesajes');
+    expect(rows[0]!.detail).toBe('1 pesaje: mar 20 · No se puede calcular el cambio: esta semana tiene menos de 3 pesajes');
     expect(rows[2]!.detail).toBe('3 pesajes: lun 5, mié 7, vie 9');
+  });
+  it('tells a change that could not be computed from two equal medians (#415)', () => {
+    // Week of the 5th: three weigh-ins, median 80. Week of the 12th: same median. Week of the 19th: only two.
+    const equal = [w('2029-03-05', 79.8), w('2029-03-07', 80), w('2029-03-09', 80.2), w('2029-03-12', 80.1), w('2029-03-14', 80), w('2029-03-16', 79.9), w('2029-03-19', 80), w('2029-03-21', 80)];
+    const rows = weeklyRows(weeklyWeights(equal, { start: '2029-03-05', end: '2029-03-25' }, '2029-03-27'), '2029-03-27');
+    const insufficient = rows.find(row => row.key === '2029-03-19')!, same = rows.find(row => row.key === '2029-03-12')!;
+    expect(same.value).toBe('Mediana 80 kg');
+    expect(same.detail).toMatch(/· = 0 kg, igual que la semana anterior$/);
+    expect(insufficient.value).toBe('Sin mediana');
+    expect(insufficient.detail).toMatch(/· No se puede calcular el cambio: esta semana tiene menos de 3 pesajes$/);
+    // Neither borrows the other's words.
+    expect(insufficient.detail).not.toMatch(/0 kg|igual|sin cambio/);
+    expect(same.detail).not.toMatch(/No se puede|sin cambio/);
   });
   it('says what is left out and never judges the change', () => {
     const view = render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}>
