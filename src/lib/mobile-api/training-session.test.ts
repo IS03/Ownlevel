@@ -214,9 +214,10 @@ describe("M3.3B Bearer server adapters", () => {
   });
 });
 
-const sql = readFileSync("supabase/migrations/20260929220000_mobile_active_session_expand.sql", "utf8");
-function sqlFunction(name: string) {
-  const match = sql.match(new RegExp(`create(?: or replace)? function public\\.${name}\\([\\s\\S]*?\\n\\$\\$;`));
+const normalizeSql = (source: string) => source.replace(/\r\n/g, "\n");
+const sql = normalizeSql(readFileSync("supabase/migrations/20260929220000_mobile_active_session_expand.sql", "utf8"));
+function sqlFunction(name: string, source = sql) {
+  const match = normalizeSql(source).match(new RegExp(`create(?: or replace)? function public\\.${name}\\([\\s\\S]*?\\n\\$\\$;`));
   expect(match, name).not.toBeNull(); return match![0];
 }
 describe("M3.3B shared SQL concurrency/security contract", () => {
@@ -280,10 +281,15 @@ describe("M3.3B shared SQL concurrency/security contract", () => {
 
 // Step 2 must preserve the shared security/locking prefix and structure CAS.
 describe("active-session blank append migration", () => {
-  const migration = readFileSync("supabase/migrations/20261013231609_active_session_append_empty_sets.sql", "utf8");
-  it("retains ownership, source validation, active-session lock and duplicate checks verbatim", () => {
-    const original = sqlFunction("append_workout_exercise");
-    const checks = original.slice(original.indexOf("begin\n"), original.indexOf("  v_sets :="));
+  const originalSource = readFileSync("supabase/migrations/20260929220000_mobile_active_session_expand.sql", "utf8");
+  const migrationSource = readFileSync("supabase/migrations/20261013231609_active_session_append_empty_sets.sql", "utf8");
+  it.each([['LF', '\n'], ['CRLF', '\r\n']])("retains ownership, source validation, active-session lock and duplicate checks verbatim with %s", (_name, eol) => {
+    const original = sqlFunction("append_workout_exercise", originalSource.replace(/\r?\n/g, eol));
+    const migration = normalizeSql(migrationSource.replace(/\r?\n/g, eol));
+    const start = original.indexOf("begin\n"), end = original.indexOf("  v_sets :=");
+    // A failed delimiter search must not turn the security-prefix check into toContain("").
+    expect(start).toBeGreaterThanOrEqual(0); expect(end).toBeGreaterThan(start);
+    const checks = original.slice(start, end);
     expect(migration).toContain(checks);
     expect(migration).toContain("security invoker\nset search_path = ''");
     expect(migration).toContain("where id = p_session_id and user_id = v_user_id;");

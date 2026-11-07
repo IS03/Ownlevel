@@ -5,7 +5,7 @@ import type {SavedDetail,SavedList,PersonalSavedMeal,SavedIntent,SavedReceipt} f
 import {SavedIntentRepository,type StoredSavedIntent} from './saved-storage';
 type Filter='active'|'archived'|'all';
 export type SavedApi={foods:()=>Promise<MobileApiReadResult<FoodsResponse>>;list:(filter:Filter,q:string)=>Promise<MobileApiReadResult<SavedList>>;detail:(id:string)=>Promise<MobileApiReadResult<SavedDetail>>;write:(intent:SavedIntent)=>Promise<MobileApiRequestResult<SavedReceipt>>};
-export type SavedState={phase:'loading'|'idle'|'pending'|'uncertain'|'confirmed'|'conflict'|'blocked';open:boolean;mode:'browse'|'create'|'edit';
+export type SavedState={phase:'loading'|'idle'|'pending'|'reconciling'|'uncertain'|'confirmed'|'conflict'|'blocked';open:boolean;mode:'browse'|'create'|'edit';
  search:string;filter:Filter;meals:PersonalSavedMeal[]|null;listLoading:boolean;listError:boolean;draft:SavedDraft|null;editing:PersonalSavedMeal|null;truth:PersonalSavedMeal|null;
  pickerFoods:PersonalFood[]|null;pickerLoading:boolean;pickerError:boolean;intent:StoredSavedIntent|null;message:string|null;errors:Record<string,string>};
 export class SavedController {
@@ -52,13 +52,13 @@ export class SavedController {
     const stored:StoredSavedIntent={version:1,intent,draft:parsed?.fields?this.state.draft:null,editing};
     this.busy=true;this.update({phase:'pending',message:null});
     try{await this.repository.write(stored);this.update({intent:stored});await this.send(stored);}
-    catch{this.update({phase:'blocked',message:'No pudimos conservar el intento local. Comprobá el almacenamiento.'});}finally{this.busy=false;}}
+    catch{this.update({phase:'blocked',message:this.getSnapshot().intent?.receipt?'La operación está confirmada. No pudimos actualizar su recibo local; conservamos el intento. Comprobá el almacenamiento.':'No pudimos conservar el intento local. Comprobá el almacenamiento.'});}finally{this.busy=false;}}
   async recover(){if(this.disposed||this.busy)return;if(!this.state.intent){await this.initialize();return;}this.busy=true;this.update({phase:'pending',message:null});
     try{const intent=this.state.intent;if(intent.receipt)await this.confirmed(intent);else await this.send(intent);}
-    catch{this.update({phase:'uncertain',message:'El intento sigue guardado. No pudimos comprobar el resultado.'});}finally{this.busy=false;}}
+    catch{this.update({phase:this.state.intent?.receipt?'confirmed':'uncertain',message:this.state.intent?.receipt?'La operación está confirmada. No pudimos completar la recuperación del recibo local; conservamos el intento.':'El intento sigue guardado. No pudimos comprobar el resultado.'});}finally{this.busy=false;}}
   private async send(stored:StoredSavedIntent){if(this.disposed)return;let result:MobileApiRequestResult<SavedReceipt>;
     try{result=await this.api.write(stored.intent);}catch{this.update({phase:'uncertain',message:'No sabemos si se guardó. Comprobar usa el mismo intento.'});return;}
-    if(result.status==='ok'){const confirmed={...stored,receipt:result.data};this.update({phase:'confirmed',intent:confirmed});await this.repository.write(confirmed);await this.confirmed(confirmed);return;}
+    if(result.status==='ok'){const confirmed={...stored,receipt:result.data};this.update({phase:'reconciling',intent:confirmed});await this.repository.write(confirmed);await this.confirmed(confirmed);return;}
     if(['conflict','validation','not_found'].includes(result.status)){await this.repository.clear(stored.intent.idempotencyKey);
       this.update({intent:null,phase:result.status==='validation'||result.status==='conflict'&&result.code==='SAVED_NAME_EXISTS'?'idle':'conflict',message:'message' in result?result.message:'La comida guardada ya no está disponible.',truth:null});
       if(stored.intent.id)await this.loadTruth(stored.intent.id);await this.load();return;}
@@ -73,8 +73,8 @@ export class SavedController {
       return match?{...i,snapshot:match}:i;});
     if(items.some(i=>i.snapshot&&!truth.items.some(t=>t.id===i.snapshot!.id))){this.update({message:'Los componentes cambiaron. Podés adoptar los ingredientes actuales conservando nombre y descripción.'});return;}
     this.update({phase:'idle',editing:truth,draft:{...draft,items},truth:null,message:'Revisá tu borrador frente a los datos actuales antes de guardar otra vez.'});}
-  private async confirmed(stored:StoredSavedIntent){const receipt=stored.receipt!;const detail=await this.api.detail(receipt.id);if(this.disposed)return;
-    if(detail.status!=='ok'){this.update({phase:'confirmed',message:'Operación confirmada. Falta actualizar el catálogo de guardadas; no vuelvas a enviarla.'});return;}
+  private async confirmed(stored:StoredSavedIntent){this.update({phase:'reconciling',message:null});const receipt=stored.receipt!;const detail=await this.api.detail(receipt.id).catch(()=>null);if(this.disposed)return;
+    if(!detail||detail.status!=='ok'){this.update({phase:'confirmed',message:'Operación confirmada. Falta actualizar el catálogo de guardadas; no vuelvas a enviarla.'});return;}
     await this.load();if(this.disposed)return;if(this.state.listError){this.update({phase:'confirmed',message:'Operación confirmada. Falta actualizar la lista.'});return;}
     await this.repository.clear(stored.intent.idempotencyKey);this.onConfirmed();this.update({phase:'idle',intent:null,mode:'browse',draft:null,editing:null,truth:null,errors:{},message:receipt.operation==='delete'?'Comida guardada eliminada. El histórico no cambia.':detail.data.meal?'Catálogo actualizado.':'Operación confirmada. La comida guardada ya no está en el catálogo de guardadas.'});}
 }

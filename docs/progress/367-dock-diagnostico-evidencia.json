@@ -1,0 +1,722 @@
+{
+  "conclusion": "sin causa acreditada; sin reproduccion nueva; no se afirma reparacion ni preexistencia",
+  "treesAndProtocol": {
+    "main": "6d94f31ca42839012b62b75aa96764bf39742560",
+    "pr423": "8b286f5d3b895d07b0c9a81f59ce52a94160cf69",
+    "pr424": "25982d693b4635b981dd401264af997db84e19d4",
+    "pr425": "007bd6d16b162832ea759f571dd57ec03334852e",
+    "pr426": "f14ed277588e8ef5af28b2b7c4c769eaecb59e58",
+    "originalCombination": "654a0c970a0bae7b8706f1a2ff0c9ec6a1427e7a",
+    "reconstructedCombination": "b588af51446d22590805aad4ae876fa63233ad82",
+    "originalSeed": "not available",
+    "controlledSeed": 367423426,
+    "workers": 1,
+    "osVersion": "Microsoft Windows NT 10.0.26300.0",
+    "node": "v22.18.0",
+    "npm": "11.5.2"
+  },
+  "versions": {
+    "node": "v22.18.0",
+    "platform": "win32",
+    "arch": "x64",
+    "packages": {
+      "jest": "29.7.0",
+      "jest-expo": "57.0.5",
+      "react": "19.2.3",
+      "react-native": "0.86.3",
+      "react-test-renderer": "19.2.3",
+      "@testing-library/react-native": "13.3.3",
+      "react-native-reanimated": "4.5.1",
+      "typescript": "6.0.3"
+    }
+  },
+  "configComparison": {
+    "configDifferencesExceptIdentityAndLocations": [],
+    "workers": [
+      1,
+      1
+    ],
+    "seeds": [
+      367423426,
+      367423426
+    ],
+    "sequencerSame": true
+  },
+  "original": {
+    "command": "npm run validate",
+    "cwd": "apps/mobile",
+    "jestCommand": "jest --runInBand",
+    "seed": null,
+    "logSha256": "8f3e2e6e3f29498d04a04cb135600e38e0109d8a834918b4dbf150ad8ef66e89",
+    "suitesPassed": 204,
+    "suitesFailed": 1,
+    "testsPassed": 1698,
+    "testsFailed": 1,
+    "jestDurationSeconds": 199.644,
+    "expected": null,
+    "received": "React Test Renderer View with _fiber",
+    "assertion": "expect(view.queryByTestId('session-return-dock')).toBeNull()",
+    "location": "src/training/session-return-dock.test.tsx:193:18",
+    "originalCacheArchived": false,
+    "originalConcurrentLoadAvailable": false
+  },
+  "observedReportOrder": [
+    "src/nutrition/day-screen.test.tsx",
+    "src/entry/sign-in.test.tsx",
+    "src/training/active-session-bridge-screen.test.tsx",
+    "src/training/training-screen.test.tsx",
+    "src/training/routine-editor-screen.test.tsx",
+    "src/nutrition/food-editor.test.tsx",
+    "src/body/body-screen.test.tsx",
+    "src/home/home-screen.test.tsx",
+    "src/nutrition/saved-editor.test.tsx",
+    "src/insights/period-details-screen.test.tsx",
+    "src/insights/session-temporal-screen.test.tsx",
+    "src/insights/day-context.test.tsx",
+    "src/progress/progress-screens.test.tsx",
+    "src/settings/settings-screen.test.tsx",
+    "src/insights/insights-screen.test.tsx",
+    "src/home/home-dashboard.test.tsx",
+    "src/training/routines-screen.test.tsx",
+    "src/training/session-return-dock.test.tsx",
+    "src/nutrition/day-home.test.tsx",
+    "src/progress/connections.test.tsx",
+    "src/insights/evidence-screen.test.tsx",
+    "src/training/history-screens.test.tsx",
+    "src/nutrition/quick-editor.test.tsx",
+    "src/insights/period-screen.test.tsx",
+    "src/nutrition/config-provider.test.tsx",
+    "src/metrics/daily-metrics-screen.test.tsx",
+    "src/training/exercise-library-screen.test.tsx",
+    "src/progress/weekly-weights.test.tsx",
+    "src/home/home-register.test.tsx",
+    "src/insights/week-exploration-screen.test.tsx",
+    "src/progress/training-screens.test.tsx",
+    "src/history/history-screen.test.tsx",
+    "src/progress/nutrition-screens.test.tsx",
+    "src/insights/feelings-screen.test.tsx",
+    "src/progress/influence-screens.test.tsx",
+    "src/home/use-home-metric-entry.test.tsx",
+    "src/nutrition/metric-entry.test.tsx",
+    "src/nutrition/report-screen.test.tsx",
+    "src/insights/session-facts.test.tsx",
+    "src/training/exercise-detail-screen.test.tsx",
+    "src/stages/stages-ui.test.tsx",
+    "src/nutrition/library-ui.test.tsx",
+    "src/training/routine-order-list.test.ts",
+    "src/training/active-session-exercise-card.test.ts",
+    "src/training/use-session-starter.test.tsx",
+    "src/stages/stages-provider.test.tsx",
+    "src/nutrition/config-editor.test.tsx",
+    "src/progress/stages.test.tsx",
+    "src/progress/explore-screen.test.tsx",
+    "src/design-system/icons.test.tsx",
+    "src/body/body-controller.test.ts",
+    "src/training/session-rest-duration.ios.test.tsx",
+    "src/metrics/definitions-screen.test.tsx",
+    "src/training/post-workout-screen.test.tsx",
+    "src/training/training-week-calendar.test.tsx",
+    "src/stages/plan-week-dismiss.test.tsx",
+    "src/nutrition/day-details.test.tsx",
+    "src/nutrition/day-calendar-insets.test.tsx",
+    "src/progress/insight-row.test.tsx",
+    "src/training/exercise-variant.test.tsx",
+    "src/training/routine-targets-sheet.test.tsx",
+    "src/training/training-feelings.test.tsx",
+    "src/home/home-carousel.test.tsx",
+    "src/training/routine-rest-picker.ios.test.tsx",
+    "src/home/home-week.test.tsx",
+    "src/training/training-dashboard.test.tsx",
+    "src/training/routine-context-menu.ios.test.tsx",
+    "src/progress/my-views.test.tsx",
+    "src/training/routine-exercise-list.test.tsx",
+    "src/training/session-note-sheet.test.tsx",
+    "src/stages/kind-picker.ios.test.tsx",
+    "src/training/active-session-sheets.test.tsx",
+    "src/nutrition/metric-duration.ios.test.tsx",
+    "src/nutrition/meal-detail.test.ts",
+    "src/nutrition/meal-timing.ios.test.tsx",
+    "src/home/home-habits.test.tsx",
+    "src/design-system/app-sheet.test.tsx",
+    "src/progress/metric-trend-chart.test.tsx",
+    "src/metrics/definition-drag-list.test.tsx",
+    "src/home/home-nutrition-switch.test.tsx",
+    "src/settings/delete-account-screen.test.tsx",
+    "src/training/session-native-layout.test.tsx",
+    "src/training/routine-editor-sheet.ios.test.tsx",
+    "src/training/session-scroll-header.test.tsx",
+    "src/body/body-add-menu.test.tsx",
+    "src/nutrition/day-write-editor.test.tsx",
+    "src/training/new-session-sheet.test.tsx",
+    "src/insights/insight-row.test.tsx",
+    "src/body/body-date-field.ios.test.tsx",
+    "src/home/home-page-control.ios.test.tsx",
+    "src/home/home-progress.test.tsx",
+    "src/stages/native-hosts-safe-area.ios.test.tsx",
+    "src/training/exercise-add-routine-sheet.test.tsx",
+    "src/settings/physical-controls.ios.test.tsx",
+    "src/nutrition/meal-timing-fallback.test.tsx",
+    "src/settings/diagnostics-screen.test.tsx",
+    "src/nutrition/use-tweened-number.test.ts",
+    "src/settings/settings-layout.test.tsx",
+    "src/settings/editorial.test.tsx",
+    "src/home/home-add-menu.test.tsx",
+    "src/training/session-next-options.test.tsx",
+    "src/home/home-actions.test.tsx",
+    "src/training/session-native-interactions.test.ts",
+    "src/design-system/components.test.tsx",
+    "src/progress/mini-chart.test.ts",
+    "src/home/home-day.test.ts",
+    "src/design-system/brand.test.ts",
+    "src/design-system/scroll-bottom-insets.test.tsx",
+    "src/auth/provider.test.tsx",
+    "src/design-system/primitives.test.tsx",
+    "src/training/use-active-session.test.tsx",
+    "src/design-system/theme-persistence.test.tsx",
+    "src/history/history-resource.test.tsx",
+    "src/training/use-exercise-library.test.tsx",
+    "src/nutrition/config-controller.test.ts",
+    "src/entry/motion-model.test.ts",
+    "src/training/session-revisit-model.test.ts",
+    "src/training/completed-session-model.test.ts",
+    "src/training/exercise-detail-model.test.ts",
+    "src/api/provider.test.tsx",
+    "src/training/active-session-controller.test.ts",
+    "src/design-system/tokens.test.tsx",
+    "src/platform/haptics.test.ts",
+    "src/nutrition/saved-controller.test.ts",
+    "src/progress/progress-read-reuse.test.tsx",
+    "src/nutrition/report-invalidation.test.tsx",
+    "src/training/start-confirm-lock.test.tsx",
+    "src/api/client.test.ts",
+    "src/training/use-new-session.test.tsx",
+    "src/training/session-exercise-actions.test.ts",
+    "src/entry/use-native-splash.test.tsx",
+    "src/api/session-highlights.test.ts",
+    "src/nutrition/day-resource.test.tsx",
+    "src/api/training-feelings.test.ts",
+    "src/api/active-session.test.ts",
+    "src/training/train-layout.test.tsx",
+    "src/api/confirmed-read-cache.test.ts",
+    "src/api/progress-habits.test.ts",
+    "src/api/exercise-order.test.ts",
+    "src/api/progress-training-records.test.ts",
+    "src/api/training-exercise-configuration.test.ts",
+    "src/api/training-history.test.ts",
+    "src/api/nutrition-day-write.test.ts",
+    "src/nutrition/home-entry.test.ts",
+    "src/metrics/presentation-resource.test.tsx",
+    "src/api/nutrition-quick.test.ts",
+    "src/api/nutrition-stages-write.test.ts",
+    "src/insights/meal-timing-rows.test.ts",
+    "src/training/history-redesign-model.test.ts",
+    "src/api/nutrition-meal.test.ts",
+    "src/api/training-sessions.test.ts",
+    "src/nutrition/meal-controller.test.ts",
+    "src/api/runtime.test.ts",
+    "src/api/session-summary.test.ts",
+    "src/training/history-model.test.ts",
+    "src/api/config.test.ts",
+    "src/training/training-feelings-finish.test.ts",
+    "src/nutrition/quick-controller.test.ts",
+    "src/stages/stages-controller.test.ts",
+    "src/api/home.test.ts",
+    "src/progress/progress-range.test.ts",
+    "src/metrics/definitions-controller.test.ts",
+    "src/auth/service.test.ts",
+    "src/body/body-model.test.ts",
+    "src/auth/client.test.ts",
+    "src/training/session-presence-store.test.ts",
+    "src/training/training-hub-data.test.ts",
+    "src/training/active-session-model.test.ts",
+    "src/settings/display-name-controller.test.ts",
+    "src/training/routine-editor-model.test.ts",
+    "src/nutrition/day-format.test.ts",
+    "src/training/finish-week.test.ts",
+    "src/nutrition/food-controller.test.ts",
+    "src/api/resource.test.ts",
+    "src/nutrition/day-write-controller.test.ts",
+    "src/config/public-env-policy.test.ts",
+    "src/body/body-exact-date.test.ts",
+    "src/insights/sleep-weight-model.test.ts",
+    "src/training/start-workout-model.test.ts",
+    "src/metrics/daily-metrics-shared-intent.test.ts",
+    "src/api/exercises.test.ts",
+    "src/nutrition/meal-time-declaration.test.ts",
+    "src/training/exercise-library-model.test.ts",
+    "src/nutrition/archived-today.test.ts",
+    "src/stages/stages-model.test.ts",
+    "src/training/new-session-model.test.ts",
+    "src/training/calendar.test.ts",
+    "src/design-system/theme.test.ts",
+    "src/api/nutrition-saved.test.ts",
+    "src/api/nutrition-food.test.ts",
+    "src/auth/callback.test.ts",
+    "src/training/training-hub-model.test.ts",
+    "src/stages/stages-cache.test.ts",
+    "src/api/routine-library.test.ts",
+    "src/api/nutrition-config.test.ts",
+    "src/training/routine-colors.test.ts",
+    "src/api/training.test.ts",
+    "src/api/routine-editor.test.ts",
+    "src/home/format.test.ts",
+    "src/nutrition/sleep-night.test.ts",
+    "src/nutrition/meal-timing-model.test.ts",
+    "src/api/nutrition-stages.test.ts",
+    "src/api/nutrition-day.test.ts",
+    "src/auth/state.test.ts",
+    "src/api/routines.test.ts"
+  ],
+  "observedOrderFileSha256": "0f3b2f87a35123ea559ff3f34296a346e844b4ddb78fbf7c43003e1befc592ae",
+  "sequencerFileSha256": "022b57ca4b264c111295f9c832236e8219769f8c7c4b96ce123a9e00850270ad",
+  "runs": [
+    {
+      "name": "main-full",
+      "start": "2026-11-07T18:30:23.7231525-03:00",
+      "end": "2026-11-07T18:34:21.1487142-03:00",
+      "exit": 0,
+      "tree": "6d94f31ca42839012b62b75aa96764bf39742560",
+      "success": true,
+      "suites": {
+        "total": 203,
+        "passed": 203,
+        "failed": 0,
+        "runtimeErrors": 0
+      },
+      "tests": {
+        "total": 1683,
+        "passed": 1683,
+        "failed": 0,
+        "pending": 0
+      },
+      "elapsedTestWindowMs": 235166,
+      "orderMatchesExpected": true,
+      "openHandlesDetectionEnabled": false,
+      "reportedOpenHandles": null,
+      "dock": {
+        "status": "passed",
+        "startTime": 1794087124620,
+        "endTime": 1794087127378,
+        "tests": [
+          {
+            "name": "global session return dock respects manual Progress insets without changing the other native tabs (ios)",
+            "status": "passed",
+            "durationMs": 11
+          },
+          {
+            "name": "global session return dock respects manual Progress insets without changing the other native tabs (android)",
+            "status": "passed",
+            "durationMs": 9
+          },
+          {
+            "name": "global session return dock preserves the native Keyboard receiver when initial visibility is false",
+            "status": "passed",
+            "durationMs": 12
+          },
+          {
+            "name": "global session return dock preserves the native Keyboard receiver when initial visibility is true",
+            "status": "passed",
+            "durationMs": 2
+          },
+          {
+            "name": "global session return dock opens the existing workout from other tabs and hides the dock only in that workout",
+            "status": "passed",
+            "durationMs": 60
+          },
+          {
+            "name": "global session return dock keeps the same countdown and one haptic while changing sections and after the workout screen detaches",
+            "status": "passed",
+            "durationMs": 11
+          },
+          {
+            "name": "global session return dock clears the previous account’s timer when authentication changes",
+            "status": "passed",
+            "durationMs": 69
+          },
+          {
+            "name": "global session return dock gets out of the way while the keyboard is open",
+            "status": "passed",
+            "durationMs": 4
+          },
+          {
+            "name": "global session return dock keeps four native sections, opens the existing session and hides the expired native accessory",
+            "status": "passed",
+            "durationMs": 30
+          },
+          {
+            "name": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+            "status": "passed",
+            "durationMs": 1659
+          },
+          {
+            "name": "global session return dock forces one read on real foreground, ignores repeated active events, and leaves the session route to its controller",
+            "status": "passed",
+            "durationMs": 64
+          },
+          {
+            "name": "global session return dock shows only the original four sections when the server confirms no active session",
+            "status": "passed",
+            "durationMs": 8
+          }
+        ]
+      },
+      "jsonSha256": "976f98dc17e5b8d3814f384a024c5d6a4d90a03930c34196b98e486119815d54",
+      "logSha256": "27733918f61939b80d5ed726615004cf6d7be21cc4d90405062921cd3144f1ec"
+    },
+    {
+      "name": "combination-full",
+      "start": "2026-11-07T18:35:34.7283397-03:00",
+      "end": "2026-11-07T18:39:33.0435341-03:00",
+      "exit": 0,
+      "tree": "b588af51446d22590805aad4ae876fa63233ad82",
+      "success": true,
+      "suites": {
+        "total": 205,
+        "passed": 205,
+        "failed": 0,
+        "runtimeErrors": 0
+      },
+      "tests": {
+        "total": 1700,
+        "passed": 1700,
+        "failed": 0,
+        "pending": 0
+      },
+      "elapsedTestWindowMs": 236131,
+      "orderMatchesExpected": true,
+      "openHandlesDetectionEnabled": false,
+      "reportedOpenHandles": null,
+      "dock": {
+        "status": "passed",
+        "startTime": 1794087433590,
+        "endTime": 1794087436123,
+        "tests": [
+          {
+            "name": "global session return dock respects manual Progress insets without changing the other native tabs (ios)",
+            "status": "passed",
+            "durationMs": 10
+          },
+          {
+            "name": "global session return dock respects manual Progress insets without changing the other native tabs (android)",
+            "status": "passed",
+            "durationMs": 7
+          },
+          {
+            "name": "global session return dock preserves the native Keyboard receiver when initial visibility is false",
+            "status": "passed",
+            "durationMs": 11
+          },
+          {
+            "name": "global session return dock preserves the native Keyboard receiver when initial visibility is true",
+            "status": "passed",
+            "durationMs": 2
+          },
+          {
+            "name": "global session return dock opens the existing workout from other tabs and hides the dock only in that workout",
+            "status": "passed",
+            "durationMs": 59
+          },
+          {
+            "name": "global session return dock keeps the same countdown and one haptic while changing sections and after the workout screen detaches",
+            "status": "passed",
+            "durationMs": 15
+          },
+          {
+            "name": "global session return dock clears the previous account’s timer when authentication changes",
+            "status": "passed",
+            "durationMs": 62
+          },
+          {
+            "name": "global session return dock gets out of the way while the keyboard is open",
+            "status": "passed",
+            "durationMs": 4
+          },
+          {
+            "name": "global session return dock keeps four native sections, opens the existing session and hides the expired native accessory",
+            "status": "passed",
+            "durationMs": 29
+          },
+          {
+            "name": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+            "status": "passed",
+            "durationMs": 1450
+          },
+          {
+            "name": "global session return dock forces one read on real foreground, ignores repeated active events, and leaves the session route to its controller",
+            "status": "passed",
+            "durationMs": 56
+          },
+          {
+            "name": "global session return dock shows only the original four sections when the server confirms no active session",
+            "status": "passed",
+            "durationMs": 5
+          }
+        ]
+      },
+      "jsonSha256": "8dc76964d99766a8327881ed79cb460124a27847a3b1e0318d61fb1afea8742a",
+      "logSha256": "30a8be058a33c71fab25d57f1318051683106290c51e67bfecf57af000dd2b02"
+    },
+    {
+      "name": "original-prefix",
+      "start": "2026-11-07T18:42:16.9358272-03:00",
+      "end": "2026-11-07T18:43:58.2950831-03:00",
+      "exit": 0,
+      "tree": "654a0c970a0bae7b8706f1a2ff0c9ec6a1427e7a",
+      "success": true,
+      "suites": {
+        "total": 18,
+        "passed": 18,
+        "failed": 0,
+        "runtimeErrors": 0
+      },
+      "tests": {
+        "total": 377,
+        "passed": 377,
+        "failed": 0,
+        "pending": 0
+      },
+      "elapsedTestWindowMs": 99559,
+      "orderMatchesExpected": true,
+      "openHandlesDetectionEnabled": false,
+      "reportedOpenHandles": null,
+      "dock": {
+        "status": "passed",
+        "startTime": 1794087835392,
+        "endTime": 1794087837987,
+        "tests": [
+          {
+            "name": "global session return dock respects manual Progress insets without changing the other native tabs (ios)",
+            "status": "passed",
+            "durationMs": 12
+          },
+          {
+            "name": "global session return dock respects manual Progress insets without changing the other native tabs (android)",
+            "status": "passed",
+            "durationMs": 5
+          },
+          {
+            "name": "global session return dock preserves the native Keyboard receiver when initial visibility is false",
+            "status": "passed",
+            "durationMs": 10
+          },
+          {
+            "name": "global session return dock preserves the native Keyboard receiver when initial visibility is true",
+            "status": "passed",
+            "durationMs": 2
+          },
+          {
+            "name": "global session return dock opens the existing workout from other tabs and hides the dock only in that workout",
+            "status": "passed",
+            "durationMs": 70
+          },
+          {
+            "name": "global session return dock keeps the same countdown and one haptic while changing sections and after the workout screen detaches",
+            "status": "passed",
+            "durationMs": 14
+          },
+          {
+            "name": "global session return dock clears the previous account’s timer when authentication changes",
+            "status": "passed",
+            "durationMs": 61
+          },
+          {
+            "name": "global session return dock gets out of the way while the keyboard is open",
+            "status": "passed",
+            "durationMs": 4
+          },
+          {
+            "name": "global session return dock keeps four native sections, opens the existing session and hides the expired native accessory",
+            "status": "passed",
+            "durationMs": 27
+          },
+          {
+            "name": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+            "status": "passed",
+            "durationMs": 1454
+          },
+          {
+            "name": "global session return dock forces one read on real foreground, ignores repeated active events, and leaves the session route to its controller",
+            "status": "passed",
+            "durationMs": 57
+          },
+          {
+            "name": "global session return dock shows only the original four sections when the server confirms no active session",
+            "status": "passed",
+            "durationMs": 4
+          }
+        ]
+      },
+      "jsonSha256": "4ff40073bd8f6c3f5503a2d88c91c5c709f30017856ba8708c0c8eff7cb22071",
+      "logSha256": "608df1d7267003b724782759e7b6a29077e541390f06131c66c81a48889e9617"
+    },
+    {
+      "name": "related-handles",
+      "start": "2026-11-07T18:44:19.5892535-03:00",
+      "end": "2026-11-07T18:45:00.0747142-03:00",
+      "exit": 0,
+      "tree": "b588af51446d22590805aad4ae876fa63233ad82",
+      "success": true,
+      "suites": {
+        "total": 3,
+        "passed": 3,
+        "failed": 0,
+        "runtimeErrors": 0
+      },
+      "tests": {
+        "total": 69,
+        "passed": 69,
+        "failed": 0,
+        "pending": 0
+      },
+      "elapsedTestWindowMs": 38236,
+      "orderMatchesExpected": true,
+      "openHandlesDetectionEnabled": true,
+      "reportedOpenHandles": 0,
+      "dock": {
+        "status": "passed",
+        "startTime": 1794087896526,
+        "endTime": 1794087899511,
+        "tests": [
+          {
+            "name": "global session return dock respects manual Progress insets without changing the other native tabs (ios)",
+            "status": "passed",
+            "durationMs": 21
+          },
+          {
+            "name": "global session return dock respects manual Progress insets without changing the other native tabs (android)",
+            "status": "passed",
+            "durationMs": 11
+          },
+          {
+            "name": "global session return dock preserves the native Keyboard receiver when initial visibility is false",
+            "status": "passed",
+            "durationMs": 17
+          },
+          {
+            "name": "global session return dock preserves the native Keyboard receiver when initial visibility is true",
+            "status": "passed",
+            "durationMs": 8
+          },
+          {
+            "name": "global session return dock opens the existing workout from other tabs and hides the dock only in that workout",
+            "status": "passed",
+            "durationMs": 71
+          },
+          {
+            "name": "global session return dock keeps the same countdown and one haptic while changing sections and after the workout screen detaches",
+            "status": "passed",
+            "durationMs": 18
+          },
+          {
+            "name": "global session return dock clears the previous account’s timer when authentication changes",
+            "status": "passed",
+            "durationMs": 75
+          },
+          {
+            "name": "global session return dock gets out of the way while the keyboard is open",
+            "status": "passed",
+            "durationMs": 10
+          },
+          {
+            "name": "global session return dock keeps four native sections, opens the existing session and hides the expired native accessory",
+            "status": "passed",
+            "durationMs": 28
+          },
+          {
+            "name": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+            "status": "passed",
+            "durationMs": 1682
+          },
+          {
+            "name": "global session return dock forces one read on real foreground, ignores repeated active events, and leaves the session route to its controller",
+            "status": "passed",
+            "durationMs": 60
+          },
+          {
+            "name": "global session return dock shows only the original four sections when the server confirms no active session",
+            "status": "passed",
+            "durationMs": 9
+          }
+        ]
+      },
+      "jsonSha256": "814577621bdc761ba20a5b16205c2022b5b8cc8270003196e618730eaa62b9d1",
+      "logSha256": "b389eee7b5f6767a4124eb8e87b621bf355395f03f19c386e6bc3fb95ccb183a"
+    }
+  ],
+  "checks": {
+    "main": {
+      "typecheck": "passed",
+      "lint": "passed",
+      "configCheck": "passed",
+      "logSha256": "a002731f7e7cc06e2a56b62ba5efb67ff2c608d327132e0cdf7adebb94951513"
+    },
+    "combination": {
+      "start": "2026-11-07T18:40:27.4654295-03:00",
+      "end": "2026-11-07T18:41:17.1964977-03:00",
+      "exit": 0,
+      "tree": "b588af51446d22590805aad4ae876fa63233ad82",
+      "typecheck": "passed",
+      "lint": "passed",
+      "configCheck": "passed",
+      "logSha256": "a002731f7e7cc06e2a56b62ba5efb67ff2c608d327132e0cdf7adebb94951513"
+    }
+  },
+  "launchErrorBeforeJest": {
+    "start": "2026-11-07T18:41:57.6191771-03:00",
+    "end": "2026-11-07T18:41:57.9610938-03:00",
+    "exit": 1,
+    "tree": "654a0c970a0bae7b8706f1a2ff0c9ec6a1427e7a",
+    "message": "Unknown command: \"pm\"",
+    "classifiedAs": "npm launcher failure; Jest did not start; not a test result"
+  },
+  "limits": {
+    "fullComparisons": 2,
+    "targetedRuns": 2,
+    "productOrTestsChanged": false,
+    "preexistingCauseProven": false,
+    "physicalQa": false,
+    "originalSeedOrCacheReproduced": false
+  },
+  "unchangedSourceBlobs": [
+    {
+      "file": "apps/mobile/src/training/session-return-dock.test.tsx",
+      "main": "40a7142d029f06da3ea96e4a39769db182c91665",
+      "combination": "40a7142d029f06da3ea96e4a39769db182c91665"
+    },
+    {
+      "file": "apps/mobile/src/training/session-presence-provider.tsx",
+      "main": "a1c2ad41e9d7e3409f6f6ae009657b3822958711",
+      "combination": "a1c2ad41e9d7e3409f6f6ae009657b3822958711"
+    },
+    {
+      "file": "apps/mobile/src/training/session-presence-store.ts",
+      "main": "ac986aa2c746b55856a0cbcb7c10592fb21c9268",
+      "combination": "ac986aa2c746b55856a0cbcb7c10592fb21c9268"
+    },
+    {
+      "file": "apps/mobile/src/api/confirmed-read-cache.ts",
+      "main": "eaa808624dde1a2bc55595f0a8a45ced25642732",
+      "combination": "eaa808624dde1a2bc55595f0a8a45ced25642732"
+    },
+    {
+      "file": "apps/mobile/jest.config.js",
+      "main": "c11e32df4e44a077f1cde8858c70d9669d1d9b47",
+      "combination": "c11e32df4e44a077f1cde8858c70d9669d1d9b47"
+    },
+    {
+      "file": "apps/mobile/jest.setup.js",
+      "main": "812db2b3f942a2d1c8d83e4a938bcdb534fdfe4a",
+      "combination": "812db2b3f942a2d1c8d83e4a938bcdb534fdfe4a"
+    },
+    {
+      "file": "apps/mobile/package-lock.json",
+      "main": "663dd77415e5e90cd7e745ffe40e005960c0787f",
+      "combination": "663dd77415e5e90cd7e745ffe40e005960c0787f"
+    },
+    {
+      "file": "package-lock.json",
+      "main": "655fa9c5ed4ab6a884f7d271a5b65164edb5dd7a",
+      "combination": "655fa9c5ed4ab6a884f7d271a5b65164edb5dd7a"
+    }
+  ]
+}

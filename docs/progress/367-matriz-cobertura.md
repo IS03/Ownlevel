@@ -1,5 +1,9 @@
 # #367 — Matriz de cobertura de Insights
 
+**Actualización preparada 2026-11-07 sobre #422 (`6d94f31`):** #423 (borrador) agrega contexto temporal por sesión; la entrega apilada de semanas agrega `period-explore` con todos los días del mismo trimestre, conteos completos/parciales separados, sensaciones ordinales, nutrientes, medianas corporales y retorno por origen. Sin asociaciones nuevas. [Estado, costos y pruebas](367-ecosistema-mobile-ejecucion.md). Código preparado no acredita build ni QA física.
+
+La exploración semanal está en #424; #425/#426 corrigen #399/#418 sin depender de Insights. Gate Mobile global **pendiente** por un fallo del dock en la única corrida completa, no reproducido por sus 69 pruebas relacionadas en main ni en la combinación. No se presenta como fallo demostrado de main ni como aprobación total.
+
 Estado al 2026-11-06, verificado con el historial de `main` (`96b4a63`):
 - **Mergeados y desplegados:** #393 a #395, y #397 y #398 (sueño y peso). Detalle en [367-sueno-peso.md](367-sueno-peso.md).
 - **Mergeados en `main`:**
@@ -17,7 +21,8 @@ Estado al 2026-11-06, verificado con el historial de `main` (`96b4a63`):
 - **Mergeado en `main`:** #415 (`53147e7`), evolución semanal del peso en Cuerpo, con el análisis experimental sin publicar.
 - **Mergeado en `main`:** #416 (`e50e60a`), resumen de los últimos tres meses.
 - **Mergeado en `main`:** #417 (`1fe995e`), método estratificado para energía y fatiga al terminar, que no valida.
-- **Mergeado:** #419 (`f32289a`), diseño secuencial aislado. La continuación `codex/367-feeling-sequential-validation` realizó una única [validación reservada](367-sensaciones-secuencial-resultados.md), preregistrada: cuatro nulos no acreditan el criterio; línea detenida, potencia no ejecutada, sin asociaciones públicas. Hoja de ruta: [367-hoja-de-ruta-ecosistema.md](367-hoja-de-ruta-ecosistema.md).
+- **Mergeado en `main`:** #419 (`f32289a`), método secuencial experimental, aislado de las vistas.
+- **Validación experimental #420:** una única [campaña reservada](367-sensaciones-secuencial-resultados.md) no acreditó el criterio en cuatro nulos. Investigación detenida, potencia no ejecutada, sin recalibración ni asociaciones públicas. Integrar su evidencia no habilita el método.
 
 Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya en código leído, no en que exista una tabla o una pantalla.**
 
@@ -113,6 +118,8 @@ Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya
   - **Resumen post-entreno:** sus marcas («récord», «↗», «=») salen de otra regla: la última vez con el mismo modo de carga, sin implemento ni variante. Se rotulan así y nunca como lecturas de Insights. Al terminar no se lee Insights: se abre con un toque.
 
 **Varias sesiones en un día**
+
+**Ampliación Mobile preparada (`codex/367-session-temporal-context`):** detalle optativo `view=session-temporal`, con todas las sesiones del día, inicio/final y duración entre timestamps (no tiempo activo), y comidas previas/posteriores con retorno a ese día desde Nutrición. Reutiliza sin cambios las reglas previas, incluida la semántica legacy de carbohidratos. Ventana posterior descriptiva `[final, final+3 h)`, provisional al corte si sigue abierta, cuatro nutrientes con faltantes independientes y horas inciertas separadas. Ventanas solapadas pueden compartir registros, sin asignación exclusiva ni nuevas asociaciones. [Reglas previas al código, orden y checkpoints](367-ecosistema-mobile-ejecucion.md). Esto no acredita QA física ni despliegue.
 - **Fuente:** sesiones con el mismo `day_logs.log_date`.
 - **Unidad y tiempo:** día.
 - **Cruce:** el resultado diario suma todas; la sensibilidad da igual peso a cada sesión.
@@ -360,6 +367,18 @@ Fase 4, `codex/367-period-summary`, `view=period`, método `insights-period/1`.
   - «Últimos 3 meses» en Insights;
   - estados distintos para vacío, cobertura insuficiente (sin semanas con 3 pesajes) y lectura fallida;
   - enlaces a los días de Insights, a «Cómo terminaste» y al peso en Cuerpo con los mismos tres meses, con vuelta al resumen.
+
+### Detalles descriptivos del período — `codex/367-period-details`
+
+Preparados sobre `f32289a`, sin migración ni despliegue. [Decisiones, contratos y validación](367-detalles-periodo-pr-description.md).
+
+- **Período conservado:** nuevas vistas optativas `period-at`, `period-feelings` y `period-nutrition`, con `asOf` explícito. `today` sigue siendo la fecha de lectura. Las rutas conservan el ancla al cambiar de mes/año; el resumen se revalida al volver. `view=period` y las respuestas instaladas siguen iguales.
+- **Energía/fatiga:** descripción existente, ordinal y separada, solo sesiones finalizadas del período. Respuestas válidas, tardías, sin hora, anteriores al inicio, ilegibles, otra escala y ausentes distinguidas. La primera serie preserva el criterio temporal previo. «Cómo terminaste» conserva su acceso independiente a todo el historial.
+- **Alimentación:** días con registros, incluidos días sin entrenamiento; calorías, proteínas, carbohidratos y grasas con sus faltantes independientes. Cero conocido, ausencia de dato, total parcial y días sin comidas registrados no se confunden. Abrir Nutrición lleva a esa fecha y conserva el retorno al detalle de origen.
+- **Lectura:** agrupada y acotada por fechas, bajo el contador por cuenta antes/después; un reintento completo, después no disponible. No se mezclan revisiones. Una lectura vieja conservada tras un error queda identificada. Sin lecturas al finalizar entrenamiento.
+- **Costo en fixture pequeña:** sensaciones 5 consultas / 2.129 bytes; alimentación 3 / 1.221 bytes. Incluyen ambos controles de revisión, sin consultas por fila o día. Las páginas crecen con filas fuente (1.001 comidas: 4 consultas), no con tarjetas. No son mediciones productivas ni SLA.
+- **Verificación real #421:** PostgreSQL 17.6/PostgREST 16.5, 93 migraciones completas. Tres regresiones locales aprobadas: joins y filtros anidados, RLS entre dos identidades sintéticas, equivalencia con SQL/resumen, cero/faltantes/legacy/borradas y cambio real del contador entre páginas. Completas 1.005 sesiones/respuestas, 1.722 series elegibles y 1.006 comidas, sin duplicados. Costos de esta fixture paginada: sensaciones 8 consultas / 2.185 bytes, alimentación 4 / 1.616 bytes. Pila descartable eliminada; sin cambios de lector, migraciones nuevas, tokens existentes ni producción. Login/JWT y QA física no acreditados por estas pruebas. Runner y límites en la descripción enlazada.
+- **Límite:** sin asociaciones, puntajes, promedios de sensaciones, recomendaciones, ventanas nuevas ni cambios de método. QA física pendiente en la lista única.
 
 ## Próximos incrementos
 

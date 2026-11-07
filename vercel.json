@@ -3,6 +3,9 @@
   "ignoreCommand": "node scripts/vercel-ignore-build.mjs",
   "git": {
     "deploymentEnabled": {
+      "codex/367-dock-diagnosis": false,
+      "codex/399-body-confirmed-refresh": false,
+      "codex/418-saved-confirmed-refresh": false,
       "codex/367-insights-pr2-expand": false,
       "codex/367-insights-pr3-adopt": false,
       "codex/367-feelings-finish-receipt": false,
@@ -35,6 +38,10 @@
       "codex/367-period-summary": false,
       "codex/367-feeling-stratified": false,
       "codex/367-feeling-sequential": false,
+      "codex/367-period-details": false,
+      "codex/known-training-regressions": false,
+      "codex/367-session-temporal-context": false,
+      "codex/367-week-exploration": false,
       "codex/367-feeling-sequential-validation": false
     }
   }

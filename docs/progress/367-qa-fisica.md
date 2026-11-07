@@ -5,6 +5,9 @@ Una sola lista para todo lo que sale de los PR de #367 y de #380. No se duplica 
 Lo marcado con *requiere migración* solo se puede revisar después de aplicar las migraciones de #387 y #391 y publicar sus PR.
 
 ## Común a todas las pantallas
+
+- [ ] **#399 — Peso/medidas:** durante guardado y relectura confirmada, el control sigue ocupado, sin «Actualizar lectura» ni nuevo envío. Solo tras fallar la relectura se ofrece recuperar; completar recuperación no repite la mutación. Verificar desde Inicio y Cuerpo, también recibo local/restauración/conflicto. Corrección preparada, sin QA física aprobada.
+- [ ] **#418 — Comidas guardadas:** formulario sin la aclaración de vacío/cero, conservando ambos valores. Durante confirmación/relectura no aparecen controles de recuperación/cierre de intento; ante fallo sí, sin reenviar escrituras confirmadas. Resaltado con espacio interior estable al aparecer/desaparecer, tanto en guardadas como en Alimentos; claro/oscuro, texto grande y VoiceOver. Corrección preparada, sin QA física aprobada.
 - [ ] Claro y oscuro, según las paletas de marca.
 - [ ] Dynamic Type mayor a 1,3: etiqueta y valor apilados, sin recortes.
 - [ ] VoiceOver: el orden tiene sentido, los botones se anuncian y lo expandido se dice.
@@ -153,8 +156,9 @@ Requiere una build de Mobile con `codex/367-body-weekly`. Sin migración ni API 
 - [ ] **Texto grande y VoiceOver:** cada semana se lee completa y las filas se apilan sin cortar números.
 
 ## Resumen de los últimos tres meses (fase 4)
-Requiere una build de Mobile con `codex/367-period-summary` y la API de esa rama. Sin migración.
-- [ ] **Abrir:** en Insights, «Últimos 3 meses» abre el resumen y lee una sola vez. Terminar un entrenamiento o cambiar de pestaña no lo lee.
+Requiere una build autorizada de Mobile y la API correspondiente. Los detalles de `codex/367-period-details` siguen sin desplegar ni verificar en teléfono. Sin migración. Las pruebas automatizadas no marcan esta lista como aprobada.
+Integración de lectores completada en pila descartable PostgreSQL 17.6/PostgREST 16.5 con el esquema completo y RLS sintético (#421); [resultados y límites](367-detalles-periodo-pr-description.md). No sustituye ninguna casilla de QA física.
+- [ ] **Abrir:** en Insights, «Últimos 3 meses» abre el resumen; los detalles solo se leen al abrirlos. Terminar un entrenamiento no lee ninguna de estas vistas. Volver a una vista abierta revalida su lectura completa.
 - [ ] **Fechas:** dice el rango exacto («1 ago – 31 oct») y los tres meses. El mes en curso no entra, tampoco el día 1 de un mes.
 - [ ] **Resumen escrito:** frases cortas con cifras. Ninguna dice que una cosa explica otra, ni da causas, rangos óptimos o recomendaciones.
 - [ ] **Entrenamiento:** «Comparación completa» y «Con contexto parcial» en filas separadas. Las rutinas en orden solo si una terminó antes de la otra; si se alternaron, lo dice.
@@ -164,3 +168,25 @@ Requiere una build de Mobile con `codex/367-period-summary` y la API de esa rama
 - [ ] **Detalles y vuelta:** «Ver tu peso en Cuerpo» abre los mismos tres meses y «Volver a Insights» vuelve al resumen. «Ver los días en Insights» y «Ver Cómo terminaste» vuelven con atrás.
 - [ ] **Estados:** un período sin registros dice «Sin registros en estos tres meses». Sin red: «Uy, no pudimos leer tus datos», nunca vacío.
 - [ ] **Texto grande y VoiceOver:** las filas se apilan sin cortar números y se leen completas.
+- [ ] **Detalle de sensaciones:** abrir desde el resumen, comprobar las fechas completas y coberturas separadas de energía/fatiga. Válidas, tardías, ausentes, ilegibles, sin hora, anteriores al inicio y otra escala tienen filas distintas; sin promedios ni puntajes. Volver al resumen conserva esas fechas. «Cómo terminaste · todo el historial» sigue siendo independiente.
+- [ ] **Detalle de comidas:** fechas en orden reciente, incluidos días sin entrenamiento; cuatro nutrientes por día. Cero conocido se ve como cero, todo faltante como «Sin dato» y dato parcialmente presente como «parcial». Días sin comidas solo en cobertura; no se inventan ceros. Se aclara que no es ingesta completa.
+- [ ] **Día y retorno:** resumen → comidas del período → Nutrición en la fecha elegida → «Volver a las comidas del período» → resumen. Conservar fechas y origen también después de cambiar de mes/año; si queda abierto un período anterior, el resumen lo indica.
+- [ ] **Revisión y error:** modificar una fuente fuera de la pantalla y volver; se reemplaza la lectura completa, avisando si cambió desde el resumen. Sin red se distingue no disponible de vacío; si queda una lectura anterior, se identifica. Reintentar mantiene las fechas. Cambio de cuenta no conserva cifras de la anterior.
+- [ ] **Vacío y cobertura distinta:** sin sesiones pero con comidas, sin comidas pero con sesiones y período totalmente vacío. Cada detalle mantiene su propio denominador, con retorno disponible.
+- [ ] **Presentación de detalles:** claro/oscuro, iPhone angosto, texto grande y VoiceOver; fechas, unidades, numeradores y acciones legibles, filas apiladas y última acción fuera de la barra inferior. Sin juicios de color sobre datos personales.
+
+## Contexto temporal de sesión — Mobile (preparado)
+
+Sin build, despliegue ni QA física acreditados. Reglas y checkpoints en [ejecución Mobile](367-ecosistema-mobile-ejecucion.md).
+- [ ] Día con una o varias sesiones: abrir «Ver horarios y comidas de estas sesiones»; conservar todas, inicio/final y duración entre horas conocidas. Sin final/inicio, cronología inválida y duración cero son estados distintos. Comprobar fecha/hora de Córdoba, especialmente medianoche y año nuevo.
+- [ ] Previas: carbohidratos, proteína, calorías y última comida con hora, sin reconstruir calorías. Ventana/cobertura y motivos visibles; acceder a Nutrición en cada fecha y volver al contexto de origen. La regla legacy de carbohidratos conserva su alcance, aunque difiera de proteína/calorías.
+- [ ] Posteriores: `[final, final+3 h)`, cuatro nutrientes y faltantes independientes; cero explícito frente a «Sin dato». Ventana abierta marcada provisional al corte mostrado. Comidas sin hora fiable y resúmenes legacy no se suman como comidas con hora explícita. Las mismas comidas pueden figurar en ventanas solapadas y se aclara que no explican rendimiento previo.
+- [ ] Evidencia: muestra acotada con conteo total y acceso a todas sus fechas en Nutrición. Revisiones cambiadas, error con lectura anterior identificada, reintento y cambio de cuenta sin mezclar datos.
+- [ ] Claro/oscuro, iPhone compacto, texto grande, VoiceOver y Reducir movimiento; no tapar acciones con la barra inferior. Sin precarga al finalizar o en pestañas que nunca abrieron el detalle.
+
+## Semanas y conexiones del período — Mobile (preparado)
+
+- [ ] Resumen de tres meses → «Recorrer semanas y días», también en un período vacío. Fechas idénticas, semanas vacías visibles y bordes recortados identificados. Cambiar de semana no muestra una nueva carga de red.
+- [ ] Conteos completos/parciales separados; energía/fatiga ordinales con exclusiones; alimentación con cero/faltante/parcial y días registrados; peso corporal diario y mediana solo en semanas elegibles. No confundir el peso con cargas de ejercicios.
+- [ ] Semana → día histórico → sesión/ejercicio/evidencia y contexto temporal → Nutrición/Cuerpo/métrica → regreso al mismo día/semana. Probar diciembre/enero, varias sesiones y ausencia de entrenamiento. Mantener disponibles los detalles de #421.
+- [ ] Modificar una fuente y volver: reemplazo completo de lectura y aviso de revisión; sin red, última lectura identificada o indisponibilidad con reintento. Cambio de cuenta aislado. Claro/oscuro, texto grande, VoiceOver y ancho compacto sin recortar cifras o acciones.

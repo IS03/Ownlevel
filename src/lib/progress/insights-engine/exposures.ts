@@ -40,7 +40,7 @@ export type ExposureTable = {
   sessionIdsByDate: ReadonlyMap<string, string[]>;
 };
 
-function nutritionDays(meals: readonly Meal[], exclusions: Record<string, number>) {
+export function nutritionDays(meals: readonly Pick<Meal, "date" | "entryKind" | "calories" | "proteinG" | "carbsG" | "fatG">[], exclusions: Record<string, number>) {
   const byDate = new Map<string, NonNullable<NutritionContext>>();
   for (const meal of meals) {
     if (meal.entryKind !== "meal" && meal.entryKind !== "legacy_daily_summary") { bump(exclusions, "meal_other_kind"); continue; }
@@ -260,6 +260,12 @@ export function buildExposureTable(source: InsightsSource, days: readonly Outcom
     candidates.push({ values: paired, exclusions, definition: definition({ id: `feeling:${key}:session`, family: "feeling", window: "session", subject: key, temporalBasis: "declared_pre_unverified_clock" }) });
   }
   return { rows, candidates, sourceExclusions, nutritionByDate, metricsByDate, feelingsBySession, carbsPre3hBySession, preStartBySession, sessionIdsByDate };
+}
+
+/** Presentation reuses these published rules, including carbohydrates' legacy unknown scope. */
+export function foodBeforeSession(mealsByDate: ReadonlyMap<string, Meal[]>, date: string, start: number | null) {
+  return start === null ? { carbsPre3h: { value: null, state: "no_start_time" } as PreStartWindow, preStart: NO_START }
+    : { carbsPre3h: windowState(mealWindow(mealsByDate, date, start, start - PRIMARY_MEAL_WINDOW_HOURS * HOUR, explicit)), preStart: preStartOf(mealsByDate, date, start) };
 }
 
 /**

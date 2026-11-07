@@ -28,7 +28,7 @@ export type BodyRead = {
 };
 export type BodyState = {
   read: BodyRead;
-  phase: 'loading' | 'idle' | 'pending' | 'uncertain' | 'confirmed' | 'conflict' | 'blocked';
+  phase: 'loading' | 'idle' | 'pending' | 'reconciling' | 'uncertain' | 'confirmed' | 'conflict' | 'blocked';
   editor: BodyEditor | null; intent: StoredBodyIntent | null; message: string | null; errors: Record<string, string>; notice: string | null;
 };
 const emptyRead: BodyRead = { status: 'loading', overview: null, refreshing: false, stale: false, weights: [], weightsCursor: null,
@@ -212,7 +212,9 @@ export class BodyController {
       await this.repository.write(stored);
       this.update({ intent: stored });
       await this.send(stored);
-    } catch { this.update({ phase: 'blocked', message: 'No pudimos conservar el cambio en el teléfono. No enviamos nada; revisá el almacenamiento.' }); }
+    } catch { this.update({ phase: 'blocked', message: this.state.intent?.receipt
+      ? 'El cambio está confirmado. No pudimos actualizar su recibo local; conservamos el intento. Revisá el almacenamiento.'
+      : 'No pudimos conservar el cambio en el teléfono. No enviamos nada; revisá el almacenamiento.' }); }
     finally { this.busy = false; }
   }
   async recover() {
@@ -221,7 +223,9 @@ export class BodyController {
     if (!stored) { await this.initialize(); return; }
     this.busy = true; this.update({ phase: 'pending', message: null });
     try { if (stored.receipt) await this.confirmed(stored); else await this.send(stored); }
-    catch { this.update({ phase: 'uncertain', message: 'Conservamos el cambio. No pudimos comprobar su resultado.' }); }
+    catch { this.update({ phase: this.state.intent?.receipt ? 'confirmed' : 'uncertain', message: this.state.intent?.receipt
+      ? 'El cambio está confirmado. No pudimos completar la recuperación de su recibo local; conservamos el intento.'
+      : 'Conservamos el cambio. No pudimos comprobar su resultado.' }); }
     finally { this.busy = false; }
   }
   private async send(stored: StoredBodyIntent) {
@@ -230,7 +234,7 @@ export class BodyController {
     catch { this.update({ phase: 'uncertain', message: 'No sabemos si se guardó. Comprobar reenvía el mismo cambio, sin duplicarlo.' }); return; }
     if (result.status === 'ok') {
       const confirmed = { ...stored, receipt: result.data } as StoredBodyIntent;
-      this.update({ phase: 'confirmed', intent: confirmed });
+      this.update({ phase: 'reconciling', intent: confirmed });
       await this.repository.write(confirmed);
       await this.confirmed(confirmed);
       return;
@@ -245,6 +249,7 @@ export class BodyController {
     this.update({ phase: 'uncertain', message: 'El resultado es incierto. Conservamos el cambio para comprobarlo cuando quieras.' });
   }
   private async confirmed(stored: StoredBodyIntent) {
+    this.update({ phase: 'reconciling', message: null });
     const fresh = await this.load();
     if (this.disposed) return;
     if (!fresh) { this.update({ phase: 'confirmed', message: 'Guardado confirmado. Falta actualizar la lectura; no vuelvas a enviarlo.' }); return; }

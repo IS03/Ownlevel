@@ -5,10 +5,9 @@ import type { MobileApiClient } from '@/api/client';
 import { fetchInsightsFeelings } from '@/api/performance-insights';
 import { AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
 import { useProgressResource } from '@/progress/use-progress-resource';
-import { FactRow } from './insights-screen';
-import { NOT_PUBLISHED, asideRows, outcomeTitle, priorRows, scopeText } from './feelings-model';
+import { NOT_PUBLISHED } from './feelings-model';
+import { FeelingOutcomeSections } from './feeling-outcome-sections';
 
-const Section = ({ title }: { title: string }) => <AppText muted variant="footnote" style={styles.section} accessibilityRole="header">{title}</AppText>;
 
 /** Insights → how sessions ended: energy and fatigue at the end, each on its own, by how it started. One read when it opens. */
 export function FeelingsScreen() {
@@ -26,15 +25,7 @@ export function FeelingsScreen() {
       <Heading level={2}>Cómo terminaste</Heading>
       <AppText muted>Energía y fatiga al terminar, cada una por su lado, según cómo empezaste.</AppText>
     </View>
-    {data.outcomes.map(summary => <View key={summary.kind} testID={`feelings-${summary.kind}`}>
-      <AppText variant="headline" accessibilityRole="header">{outcomeTitle(summary)}</AppText>
-      <AppText muted variant="footnote" numeric style={styles.note}>{scopeText(summary)}</AppText>
-      {priorRows(summary).map(row => <FactRow key={row.key} label={row.label} value={row.value} detail={row.detail} spoken={row.spoken} />)}
-      {asideRows(summary).length ? <>
-        <Section title="Fuera de estas cuentas" />
-        {asideRows(summary).map(row => <FactRow key={row.key} label={row.label} value={row.value} detail={row.detail} />)}
-      </> : null}
-    </View>)}
+    <FeelingOutcomeSections outcomes={data.outcomes} />
     <AppText muted variant="footnote" testID="feelings-not-published">{NOT_PUBLISHED}</AppText>
   </>);
 }
