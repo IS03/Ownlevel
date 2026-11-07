@@ -4,36 +4,32 @@
 
 ## Estado real
 
-- **`origin/main` = `e50e60a`** (merge de #416). Incluye todo lo de abajo.
-- **Checkout `C:\Proyectos\Ownlevel`:** en `codex/367-feeling-stratified` (`067db18`), limpio y publicado.
+- **`origin/main` = `1fe995e`** (merge de #417). Incluye todo lo de abajo.
+- **Checkout `C:\Proyectos\Ownlevel`:** en `codex/367-feeling-sequential` (`dd39767`), limpio y publicado.
   - **Antes de trabajar:** `git status -sb`, luego `git switch main` y `git pull --ff-only`, y crear la rama nueva desde ahí.
 - **Worktree sobrante:** `C:\Users\senes\AppData\Local\Temp\ownlevel-feelings-receipt`, en `codex/367-feelings-finish-receipt` (`c97bb3d`). Está limpio y ya mergeado; se puede quitar con `git worktree remove`.
-- **Pendiente local o remoto:** la rama `codex/367-feeling-stratified`, publicada y **sin PR**. El navegador integrado no tiene sesión en GitHub: hay que abrir el borrador a mano, con el texto de `docs/progress/367-sensaciones-estratificado-pr-description.md`. Ver «En curso».
+- **Pendiente local o remoto:** la rama `codex/367-feeling-sequential`, publicada y **sin PR**. El navegador integrado no tiene sesión en GitHub: hay que abrir el borrador a mano, con el texto de `docs/progress/367-sensaciones-secuencial-pr-description.md`. Ver «En curso».
   - No hay pilas locales de Supabase corriendo.
   - Esta rama de integración (`integration/367-insights-candidate`) solo guarda esta continuidad y no se mergea.
 - **Notion:** no se actualizó (regla de AGENTS.md).
 
-## En curso — energía y fatiga al terminar: método experimental estratificado
+## En curso — diseño secuencial con candidatos anteriores (energía y fatiga al terminar)
 
-Rama `codex/367-feeling-stratified`, publicada en `067db18` sobre main `e50e60a`. Previews bloqueadas. Sin migración. Solo tres archivos de código nuevos; ningún método ni vista existente cambia. Método, preregistro, desarrollo y validación en `docs/progress/367-sensaciones-estratificado-metodo.md` de esa rama.
+Rama `codex/367-feeling-sequential`, publicada en `dd39767` sobre main `1fe995e`. Previews bloqueadas. Sin migración. Solo diseño, prototipo aislado y viabilidad. **No hay validación** y nada llega a las vistas. Diseño en `docs/progress/367-sensaciones-secuencial-metodo.md` de esa rama, commiteado antes del prototipo (`e5b9f65`).
 
-- **Orden verificable:**
-  - preregistro (`185e5fc`);
-  - código (`488ea69`);
-  - resultados de desarrollo, escritos antes de la validación (`71ebf36`);
-  - una sola validación reservada, con semilla `0x5171` y 500 historiales por escenario (`3cec638`).
-- **Método** (`insights-feeling-stratified/1`): las mismas filas y candidatos de #412, con correlación y permutaciones dentro de rutina × bloque de 42 días.
-- **Resultado: no valida.**
-  - Los ocho nulos quedan entre 1,6 % y 4,0 % en la compuerta estricta, con cotas superiores de 3,13 % a 6,10 %.
-  - **Seis nulos, contando horarios inciertos, tienen el límite inferior por encima del 1 %.** En tendencia y cambio de rutina registrado el intervalo incluye el 1 %: la evidencia es insuficiente para ese objetivo, no un rechazo definitivo (revisado en #417).
-  - Redujo los falsos positivos en ciertos escenarios de confusión, sin validar: rutinas alternadas 100 % → 2,0 %, y tendencias y cambios registrados de cerca de 5 % a menos de 2 %.
-  - Empeora el nulo sin confusión: independiente 0,4 % → 2,0 %.
-  - Potencia similar a la de #412.
-- **Validado:** 5 pruebas del método y 12 en las suites afectadas; tipos y lint sin errores.
-- **Cerrado este resultado** (#417): cifras, preregistro y decisión «no valida» sin cambios; solo se ajustaron las conclusiones.
-- **Siguiente paso posible, todavía no iniciado:** un tercer preregistro que combine el nulo estratificado con los controles de la compuerta de #412 y corrija las miradas repetidas.
+- **Diseño** (`insights-feeling-sequential/1`):
+  - solo candidatos demostradamente anteriores al inicio: día anterior, comida con hora explícita y noche declarada. El mismo día sin orden queda afuera;
+  - control sobre candidatos (máximo de la familia), los dos resultados (α partido) y las miradas: calendario trimestral fijo y α_k = 0,005 / (k (k + 1)) por resultado;
+  - se mantienen los estratos de #417 y una sola compuerta, sin exploratorio sin corregir.
+- **Resolución y costo:** permutaciones = 10 / α_k, unas 4 000 en la mirada 1 y unas 144 000 en la 8. Se miran primero las compuertas descriptivas y después se aplica el recorte de Besag y Clifford.
+- **Código:** `feeling-sequential.ts` y sus pruebas, nuevos. En `feeling-stratified.ts` solo se exportaron funciones internas, sin cambio de comportamiento.
+- **Validado:** 19 pruebas en las suites afectadas; tipos y lint sin errores.
+- **Viabilidad** (20 historiales, no es validación):
+  - los nulos casi nunca permutan (2 a 4 permutaciones por mirada, menos de 65 ms por resultado);
+  - los efectos sembrados del día anterior se encuentran en 20/20, con unas 23 600 permutaciones por mirada y unos 4,5 s por resultado.
+- **Antes de una validación reservada**, de 1 000 historiales por escenario: agregar a la simulación comidas con hora y sueño declarado, ceder el hilo en el generador y fijar una semilla nueva. No se hizo.
 
-## Entregas integradas en main, hasta #416
+## Entregas integradas en main, hasta #417
 
 - **#393 a #395, #397 y #398:** convención del sueño, peso del día, configuración del ejercicio y procedencia de la hora de comida. Mergeados y con sus migraciones aplicadas en producción. Detalle en [367-sueno-peso.md](367-sueno-peso.md) y [367-exercise-configuration-rollout.md](367-exercise-configuration-rollout.md).
 - **#403:** contexto diario completo: todas las sesiones y los cuatro macros.
@@ -42,6 +38,7 @@ Rama `codex/367-feeling-stratified`, publicada en `067db18` sobre main `e50e60a`
 - **#407 y #408:** memoria del motor. El comparador tiene una salida compacta para Insights.
 - **#409:** lectura en frío. Las series vienen embebidas, con una guarda de conteo y un stream de respaldo.
 - **#410:** resumen factual post-entreno y vista de una sesión, con cada método por separado y la fecha de la referencia.
+- **#417:** método estratificado experimental para energía y fatiga al terminar. Preregistrado, con validación reservada: no valida y queda fuera de las vistas. Las conclusiones están moderadas.
 - **#416:** resumen de los últimos tres meses en Insights (`view=period`): descripción determinística, sin asociaciones, con el período validado desde `today` y energía y fatiga con su propia cobertura.
 - **#415:** evolución semanal del peso en Cuerpo (`body-weekly/1`), con el análisis frente a la semana anterior experimental y sin publicar; el cambio que no se puede calcular se distingue de uno igual a 0 kg.
 - **#413:** proteína, calorías y última comida antes del inicio como contexto de la sesión (`preStart`). Sus candidatos no validaron y quedan fuera de las asociaciones; las ventanas usan los días de Córdoba que realmente tocan.
