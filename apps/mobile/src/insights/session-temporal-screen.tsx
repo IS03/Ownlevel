@@ -9,7 +9,7 @@ import { useProgressResource } from '@/progress/use-progress-resource';
 import { formatClockTime } from '@/home/format';
 import { FactRow } from './insights-screen';
 import { InsightRow } from './insight-row';
-import { nutritionDayHref, validSession } from './navigation';
+import { insightsOriginOf, nutritionDayHref, validSession } from './navigation';
 import { exactPeriodDate } from './period-model';
 import { hoursText, sessionRows } from './insights-model';
 import { formatValue } from '@/progress/progress-format';
@@ -26,8 +26,10 @@ export function SessionTemporalScreen() {
   const { state, data, refresh } = useProgressResource(date ? client : null, `performance-insights|session-temporal|${date}`, load);
   usePeriodReturn(refresh);
   const session = validSession(params.session) ? params.session : null;
-  const returnHref = { pathname: '/(tabs)/train/insights' as const, params: { date: date ?? '', ...(session ? { session } : {}) } };
-  const openDay = (day: string) => router.push(nutritionDayHref(day, { temporal: '1', date: date!, revision: data!.sourceRevision, ...(session ? { session } : {}) }));
+  const origin=insightsOriginOf(params);
+  const {revision:_revision,temporal:_temporal,...returnOrigin}=origin;
+  const returnHref = { pathname: '/(tabs)/train/insights' as const, params: { ...returnOrigin,...(origin.explore&&origin.revision?{revision:origin.revision}:{}),date: date ?? '', ...(session ? { session } : {}) } };
+  const openDay = (day: string) => router.push(nutritionDayHref(day, { ...origin,temporal: '1', date: date!, revision: data!.sourceRevision, ...(session ? { session } : {}) }));
   const evidence = (ref: NonNullable<Session['before']['evidence']>, label: string) => <View style={styles.block}>
     <AppText variant="headline">{label} · {ref.total} registros</AppText>
     {ref.rows.map(m => <InsightRow key={m.id} label={m.entryKind === 'legacy_daily_summary' ? `${exactPeriodDate(m.date)} · Resumen diario heredado` : m.timeEvidence === 'explicit' && m.at ? clock(m.at) : `${exactPeriodDate(m.date)} · Hora no comprobada`}

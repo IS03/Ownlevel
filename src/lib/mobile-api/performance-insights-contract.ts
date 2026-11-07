@@ -3,6 +3,8 @@ import { INSIGHTS_PERFORMANCE_PARTIAL_METHOD, PARTIAL_CONTEXT } from "../progres
 import { periodOf } from "../progress/insights-engine/period-range";
 export type { SessionTemporalDay } from '../progress/insights-engine/session-temporal';
 import type { SessionTemporalDay } from '../progress/insights-engine/session-temporal';
+export type { PeriodExploration } from '../progress/insights-engine/week-exploration';
+import type { PeriodExploration } from '../progress/insights-engine/week-exploration';
 export type { InsightsPinnedPeriodSummary, InsightsPeriodFeelings, InsightsPeriodNutrition } from "../progress/insights-engine/types";
 import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary, type InsightsPinnedPeriodSummary, type InsightsPeriodFeelings, type InsightsPeriodNutrition } from "../progress/insights-engine/types";
 
@@ -262,6 +264,7 @@ function parsePeriod(raw: Json) {
 export function parsePerformanceInsights(raw: unknown): InsightsResponse | undefined {
   if (!object(raw) || !versions(raw) || typeof raw.sourceRevision !== "string") return undefined;
   if (raw.view === 'session-temporal') return parseTemporal(raw);
+  if (raw.view === 'period-explore') return parseExploration(raw);
   if (raw.view === "period-feelings") return parsePeriodFeelings(raw);
   if (raw.view === "period-nutrition") return parsePeriodNutrition(raw);
   if (raw.view === "period-at") return pinnedFrame(raw) && parsePeriod({ ...raw, today: raw.asOf }) ? raw as unknown as InsightsPinnedPeriodSummary : undefined;
@@ -269,6 +272,27 @@ export function parsePerformanceInsights(raw: unknown): InsightsResponse | undef
 }
 
 const instantValue = (v: unknown) => typeof v === 'string' && /(?:Z|[+-]\d{2}:\d{2})$/.test(v) && Number.isFinite(Date.parse(v));
+function parseExploration(raw: Json) {
+  if(!pinnedFrame(raw)||raw.explorationMethodVersion!=='insights-week-explore/1'||raw.associations!=='not_computed'||!Array.isArray(raw.weeks)||!Array.isArray(raw.metrics))return undefined;
+  if(!raw.metrics.every(m=>object(m)&&uuid(m.id)&&typeof m.name==='string'&&stringOrNull(m.unit)&&typeof m.valueType==='string'&&typeof m.archived==='boolean'))return undefined;
+  let expected=String((raw.period as Json).start),total=0;
+  for(const w of raw.weeks) {
+    if(!object(w)||!validPeriodAnchor(w.start)||!validPeriodAnchor(w.end)||typeof w.wholeWeek!=='boolean'||!Array.isArray(w.days)||!w.days.length||w.days.length>7||w.start!==expected||!Array.isArray(w.feelings)||w.feelings.length!==2||!feelingOutcome(w.feelings[0],'energy')||!feelingOutcome(w.feelings[1],'fatigue'))return undefined;
+    if(w.weight!==null&&(!object(w.weight)||!validPeriodAnchor(w.weight.start)||!validPeriodAnchor(w.weight.end)||!numberOrNull(w.weight.median)||!list(w.weight.weighIns,weighIn)))return undefined;
+    if(object(w.weight)&&(w.weight.start!==w.start||w.weight.end!==w.end||!Array.isArray(w.weight.weighIns)||w.weight.weighIns.some(v=>!object(v)||String(v.date)<w.start!||String(v.date)>w.end!)||w.weight.median!==null&&((w.weight.weighIns as unknown[]).length<3||Number(w.weight.median)<=0)))return undefined;
+    if(w.weightChange!==null&&(!object(w.weightChange)||!validPeriodAnchor(w.weightChange.weekStart)||!validPeriodAnchor(w.weightChange.previousStart)||!numberOrNull(w.weightChange.change)||!['computed','week_insufficient','previous_week_insufficient'].includes(String(w.weightChange.reason))))return undefined;
+    for(const d of w.days) {
+      if(!object(d)||d.date!==expected||!(d.training===null||object(d.training)&&count(d.training.sessions)&&Number(d.training.sessions)>0&&counts(d.training.counts))||!(d.partial===null||object(d.partial)&&partialCounts(d.partial.counts))||!nutrition(d.nutrition)
+        ||!object(d.weight)||!['recorded','not_recorded','invalid'].includes(String(d.weight.state))||!numberOrNull(d.weight.value)||(d.weight.state==='recorded' ? !finite(d.weight.value)||d.weight.value<=0 : d.weight.value!==null)
+        ||!Array.isArray(d.metrics)||!d.metrics.every(m=>object(m)&&uuid(m.metricId)&&finite(m.value)))return undefined;
+      expected=new Date(Date.parse(`${expected}T12:00:00Z`)+86_400_000).toISOString().slice(0,10);total++;
+    }
+    if(w.end!==String((w.days[w.days.length-1] as Json).date))return undefined;
+    const full=w.days.length===7&&new Date(`${w.start}T12:00:00Z`).getUTCDay()===1;
+    if(w.wholeWeek!==full||!full&&w.weight!==null)return undefined;
+  }
+  return total===(raw.period as Json).days?raw as unknown as PeriodExploration:undefined;
+}
 function refs(v: unknown): boolean {
   return object(v) && count(v.total) && count(v.omitted) && Array.isArray(v.rows) && v.rows.length <= 20 && v.rows.length + Number(v.omitted) === v.total
     && Array.isArray(v.dates) && v.dates.every(validPeriodAnchor) && new Set(v.dates).size === v.dates.length

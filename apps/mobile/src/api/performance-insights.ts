@@ -27,6 +27,8 @@ export const fetchInsightsFeelings = (client: MobileApiClient, signal?: AbortSig
 /** The last three whole months, described. Only when its screen opens: never at the end of a session or from another tab. */
 export const fetchInsightsPeriod = (client: MobileApiClient, signal?: AbortSignal) => read<InsightsPeriodSummary>(client, 'period', { view: 'period' }, signal);
 export const fetchInsightsPinnedPeriod = (client: MobileApiClient, asOf?: string, signal?: AbortSignal) => read<InsightsPinnedPeriodSummary>(client, 'period-at', { view: 'period-at', asOf }, signal);
+export const fetchPeriodExploration = (client: MobileApiClient, asOf: string, signal?: AbortSignal) => read<import('./performance-insights').PeriodExploration>(client,'period-explore',{view:'period-explore',asOf},signal);
+export const fetchInsightsSummaryBefore = (client: MobileApiClient,before: string|undefined,signal?:AbortSignal) => read<InsightsSummary>(client,'summary',{before},signal);
 export const fetchInsightsPeriodFeelings = (client: MobileApiClient, asOf: string, signal?: AbortSignal) => read<InsightsPeriodFeelings>(client, 'period-feelings', { view: 'period-feelings', asOf }, signal);
 export const fetchInsightsPeriodNutrition = (client: MobileApiClient, asOf: string, signal?: AbortSignal) => read<InsightsPeriodNutrition>(client, 'period-nutrition', { view: 'period-nutrition', asOf }, signal);
 export const fetchSessionTemporal = (client: MobileApiClient, date: string, signal?: AbortSignal) => client.read<import('./performance-insights').SessionTemporalDay>({

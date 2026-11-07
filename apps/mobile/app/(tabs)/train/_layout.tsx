@@ -27,6 +27,7 @@ export default function TrainLayout() {
       <Stack.Screen name="insights/period-feelings" options={{ title: 'Sensaciones del período' }} />
       <Stack.Screen name="insights/period-nutrition" options={{ title: 'Comidas del período' }} />
       <Stack.Screen name="insights/temporal" options={{ title: 'Horarios y comidas' }} />
+      <Stack.Screen name="insights/weeks" options={{ title: 'Semanas y días' }} />
       <Stack.Screen name="calendar" options={{ title: 'Calendario' }} />
       <Stack.Screen name="day/[date]" options={{ title: 'Día' }} />
       <Stack.Screen name="correct/[id]" options={{ title: 'Corregir sesión' }} />

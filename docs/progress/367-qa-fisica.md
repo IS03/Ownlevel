@@ -180,3 +180,10 @@ Sin build, despliegue ni QA física acreditados. Reglas y checkpoints en [ejecuc
 - [ ] Posteriores: `[final, final+3 h)`, cuatro nutrientes y faltantes independientes; cero explícito frente a «Sin dato». Ventana abierta marcada provisional al corte mostrado. Comidas sin hora fiable y resúmenes legacy no se suman como comidas con hora explícita. Las mismas comidas pueden figurar en ventanas solapadas y se aclara que no explican rendimiento previo.
 - [ ] Evidencia: muestra acotada con conteo total y acceso a todas sus fechas en Nutrición. Revisiones cambiadas, error con lectura anterior identificada, reintento y cambio de cuenta sin mezclar datos.
 - [ ] Claro/oscuro, iPhone compacto, texto grande, VoiceOver y Reducir movimiento; no tapar acciones con la barra inferior. Sin precarga al finalizar o en pestañas que nunca abrieron el detalle.
+
+## Semanas y conexiones del período — Mobile (preparado)
+
+- [ ] Resumen de tres meses → «Recorrer semanas y días», también en un período vacío. Fechas idénticas, semanas vacías visibles y bordes recortados identificados. Cambiar de semana no muestra una nueva carga de red.
+- [ ] Conteos completos/parciales separados; energía/fatiga ordinales con exclusiones; alimentación con cero/faltante/parcial y días registrados; peso corporal diario y mediana solo en semanas elegibles. No confundir el peso con cargas de ejercicios.
+- [ ] Semana → día histórico → sesión/ejercicio/evidencia y contexto temporal → Nutrición/Cuerpo/métrica → regreso al mismo día/semana. Probar diciembre/enero, varias sesiones y ausencia de entrenamiento. Mantener disponibles los detalles de #421.
+- [ ] Modificar una fuente y volver: reemplazo completo de lectura y aviso de revisión; sin red, última lectura identificada o indisponibilidad con reintento. Cambio de cuenta aislado. Claro/oscuro, texto grande, VoiceOver y ancho compacto sin recortar cifras o acciones.
