@@ -6,6 +6,7 @@ Lo marcado con *requiere migración* solo se puede revisar después de aplicar l
 
 ## Común a todas las pantallas
 
+- [ ] **#399 — Peso/medidas:** durante guardado y relectura confirmada, el control sigue ocupado, sin «Actualizar lectura» ni nuevo envío. Solo tras fallar la relectura se ofrece recuperar; completar recuperación no repite la mutación. Verificar desde Inicio y Cuerpo, también recibo local/restauración/conflicto. Corrección preparada, sin QA física aprobada.
 - [ ] **#418 — Comidas guardadas:** formulario sin la aclaración de vacío/cero, conservando ambos valores. Durante confirmación/relectura no aparecen controles de recuperación/cierre de intento; ante fallo sí, sin reenviar escrituras confirmadas. Resaltado con espacio interior estable al aparecer/desaparecer, tanto en guardadas como en Alimentos; claro/oscuro, texto grande y VoiceOver. Corrección preparada, sin QA física aprobada.
 - [ ] Claro y oscuro, según las paletas de marca.
 - [ ] Dynamic Type mayor a 1,3: etiqueta y valor apilados, sin recortes.
@@ -173,3 +174,19 @@ Integración de lectores completada en pila descartable PostgreSQL 17.6/PostgRES
 - [ ] **Revisión y error:** modificar una fuente fuera de la pantalla y volver; se reemplaza la lectura completa, avisando si cambió desde el resumen. Sin red se distingue no disponible de vacío; si queda una lectura anterior, se identifica. Reintentar mantiene las fechas. Cambio de cuenta no conserva cifras de la anterior.
 - [ ] **Vacío y cobertura distinta:** sin sesiones pero con comidas, sin comidas pero con sesiones y período totalmente vacío. Cada detalle mantiene su propio denominador, con retorno disponible.
 - [ ] **Presentación de detalles:** claro/oscuro, iPhone angosto, texto grande y VoiceOver; fechas, unidades, numeradores y acciones legibles, filas apiladas y última acción fuera de la barra inferior. Sin juicios de color sobre datos personales.
+
+## Contexto temporal de sesión — Mobile (preparado)
+
+Sin build, despliegue ni QA física acreditados. Reglas y checkpoints en [ejecución Mobile](367-ecosistema-mobile-ejecucion.md).
+- [ ] Día con una o varias sesiones: abrir «Ver horarios y comidas de estas sesiones»; conservar todas, inicio/final y duración entre horas conocidas. Sin final/inicio, cronología inválida y duración cero son estados distintos. Comprobar fecha/hora de Córdoba, especialmente medianoche y año nuevo.
+- [ ] Previas: carbohidratos, proteína, calorías y última comida con hora, sin reconstruir calorías. Ventana/cobertura y motivos visibles; acceder a Nutrición en cada fecha y volver al contexto de origen. La regla legacy de carbohidratos conserva su alcance, aunque difiera de proteína/calorías.
+- [ ] Posteriores: `[final, final+3 h)`, cuatro nutrientes y faltantes independientes; cero explícito frente a «Sin dato». Ventana abierta marcada provisional al corte mostrado. Comidas sin hora fiable y resúmenes legacy no se suman como comidas con hora explícita. Las mismas comidas pueden figurar en ventanas solapadas y se aclara que no explican rendimiento previo.
+- [ ] Evidencia: muestra acotada con conteo total y acceso a todas sus fechas en Nutrición. Revisiones cambiadas, error con lectura anterior identificada, reintento y cambio de cuenta sin mezclar datos.
+- [ ] Claro/oscuro, iPhone compacto, texto grande, VoiceOver y Reducir movimiento; no tapar acciones con la barra inferior. Sin precarga al finalizar o en pestañas que nunca abrieron el detalle.
+
+## Semanas y conexiones del período — Mobile (preparado)
+
+- [ ] Resumen de tres meses → «Recorrer semanas y días», también en un período vacío. Fechas idénticas, semanas vacías visibles y bordes recortados identificados. Cambiar de semana no muestra una nueva carga de red.
+- [ ] Conteos completos/parciales separados; energía/fatiga ordinales con exclusiones; alimentación con cero/faltante/parcial y días registrados; peso corporal diario y mediana solo en semanas elegibles. No confundir el peso con cargas de ejercicios.
+- [ ] Semana → día histórico → sesión/ejercicio/evidencia y contexto temporal → Nutrición/Cuerpo/métrica → regreso al mismo día/semana. Probar diciembre/enero, varias sesiones y ausencia de entrenamiento. Mantener disponibles los detalles de #421.
+- [ ] Modificar una fuente y volver: reemplazo completo de lectura y aviso de revisión; sin red, última lectura identificada o indisponibilidad con reintento. Cambio de cuenta aislado. Claro/oscuro, texto grande, VoiceOver y ancho compacto sin recortar cifras o acciones.
