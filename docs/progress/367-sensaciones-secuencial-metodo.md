@@ -106,7 +106,10 @@ Estados: `insufficient_data`, `no_clear_signal`, `passes_sequential_gate`.
 
 ## Futura validación reservada
 
-**No se corre en esta entrega.**
+**No se corrió en #419.** La continuación queda fijada antes de ejecutarla en
+[el protocolo definitivo](367-sensaciones-secuencial-protocolo.md) y su JSON: ese protocolo resuelve los horizontes anidados,
+los cuatro escenarios de potencia, la disponibilidad temporal y la parada si los nulos no cumplen. La propuesta original de abajo
+se conserva como antecedente; no sustituye al protocolo ejecutable.
 
 - **Recorrido:**
   - filas fuente simuladas, como en #417, ampliadas con métricas del día anterior y comidas con hora explícita, para que haya candidatos elegibles de las dos bases;
@@ -123,7 +126,7 @@ Estados: `insufficient_data`, `no_clear_signal`, `passes_sequential_gate`.
   - **inversa del mismo día**, que ahora es un nulo: su candidato ya no entra.
 - **Potencia:** efecto moderado y fuerte de una métrica del día anterior y de los carbohidratos con hora explícita.
 - **Tamaño:** 1 000 historiales por escenario, con semilla reservada nueva.
-  - Con 0 a 4 aciertos en 1 000, la cota de Wilson queda ≤ 1,0 % (4/1 000 da 1,02 %; 3/1 000 da 0,88 %).
+  - Con 0 a 3 aciertos en 1 000, la cota de Wilson bilateral al 95 % queda ≤ 1,0 % (4/1 000 da 1,02 % y no cumple; 3/1 000 da 0,88 %).
   - 500 no alcanzan para separar 0,5 % de 1 %.
 - **Criterio:** la cota superior de Wilson al 95 % de «algún paso en cualquier candidato, cualquiera de los dos resultados y cualquier mirada» queda ≤ 1 % en todos los nulos. Si un intervalo incluye el 1 %, se informa como evidencia insuficiente, no como aprobado.
 - **Se informa además:**
