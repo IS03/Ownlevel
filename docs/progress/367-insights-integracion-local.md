@@ -10,11 +10,28 @@
   - la rama local `main` quedó en `1fe5715`, 3 commits detrás de `origin/main`;
   - **antes de trabajar:** `git status -sb`, luego `git switch main` y `git pull --ff-only`, y crear la rama nueva desde ahí.
 - **Worktree sobrante:** `C:\Users\senes\AppData\Local\Temp\ownlevel-feelings-receipt`, en `codex/367-feelings-finish-receipt` (`c97bb3d`). Está limpio y ya mergeado; se puede quitar con `git worktree remove`.
-- **Pendiente local o remoto:** ninguno.
-  - Sin cambios sin commitear ni ramas sin publicar.
+- **Pendiente local o remoto:** la rama `codex/367-feeling-outcomes` (`721c27a`), publicada y **sin PR**. El navegador integrado no tiene sesión en GitHub: hay que abrir el borrador a mano, con el texto de `docs/progress/367-sensaciones-resultado-pr-description.md`. Ver «En curso».
+  - El checkout está en esa rama, limpio.
   - No hay pilas locales de Supabase corriendo.
   - Esta rama de integración (`integration/367-insights-candidate`) solo guarda esta continuidad y no se mergea.
 - **Notion:** no se actualizó (regla de AGENTS.md).
+
+## En curso — energía y fatiga al terminar como resultados
+
+Rama `codex/367-feeling-outcomes`, publicada en `721c27a` sobre main `96b4a63`. Previews bloqueadas. Sin migración ni cambios en las vistas existentes.
+
+- **Implementado y publicado en la rama:**
+  - método `insights-feeling-outcomes/1` (`feeling-outcomes.ts`). Unidad: día cerrado con una sola sesión. Captura: entre el inicio y 2 h después del final. Cada día se ordena dentro de su nivel previo del mismo tipo;
+  - descripción en `view=feelings`, que sale del mismo snapshot;
+  - pantalla Mobile «Cómo terminaste».
+- **Implementado y sin publicar:**
+  - las asociaciones, en un carril interno (`snapshot.feelingOutcomes[].lane`). Ninguna vista lo expone.
+- **Validado:**
+  - pasan 403 pruebas de Web y 46 de Mobile Insights; tipos y lint sin errores;
+  - calibración nueva: 500 historiales por escenario, con resultados en `docs/progress/367-sensaciones-resultado-metodo.md` de esa rama. **No cumple el presupuesto:** con cambios de rutina da 7,2 % y con tendencias 6,2 %, y los nulos también quedan con cotas arriba del 1 %. El estrato frena una exposición que solo sigue a la previa (0 %, contra 100 % sin estrato).
+- **Siguiente paso:** un método de asociaciones que pase esa calibración. Opciones en el documento de método: permutar dentro de cada era de rutina, cambiar la ventana de tendencia, o corregir los dos resultados en conjunto. Cada una es un método nuevo con su propia calibración.
+- **Hoja de ruta:** [367-hoja-de-ruta-ecosistema.md](367-hoja-de-ruta-ecosistema.md), en la rama. Siguen alimentación y tiempo (tres candidatos iniciales), evolución corporal semanal y resúmenes de 3 meses. Todo es diseño.
+- **Matriz y QA:** matriz corregida (#410, #411 y la configuración aplicada); sección nueva en la checklist única.
 
 ## Entregas integradas en main, hasta #411
 
@@ -70,7 +87,7 @@ Ninguna de esas entregas de Mobile tiene build. La QA física no está aprobada.
   - paginar por clave los valores diarios para la lectura en frío;
   - conexiones de ChatGPT instaladas, que deben refrescarse para tomar el esquema publicado.
 
-## Siguiente etapa: energía y fatiga posteriores como resultados independientes
+## Siguiente etapa (iniciada en `codex/367-feeling-outcomes`, ver «En curso»): energía y fatiga posteriores como resultados independientes
 
 **Hoy** (ver «Sensaciones» en la matriz):
 - `energyPost` y `fatiguePost` se guardan en `workout_session_feelings` y se muestran como contexto de su sesión;
