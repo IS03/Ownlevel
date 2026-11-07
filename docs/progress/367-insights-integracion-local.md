@@ -5,7 +5,7 @@
 ## Estado real
 
 - **`origin/main` = `e50e60a`** (merge de #416). Incluye todo lo de abajo.
-- **Checkout `C:\Proyectos\Ownlevel`:** en `codex/367-feeling-stratified` (`3cec638`), limpio y publicado.
+- **Checkout `C:\Proyectos\Ownlevel`:** en `codex/367-feeling-stratified` (`067db18`), limpio y publicado.
   - **Antes de trabajar:** `git status -sb`, luego `git switch main` y `git pull --ff-only`, y crear la rama nueva desde ahí.
 - **Worktree sobrante:** `C:\Users\senes\AppData\Local\Temp\ownlevel-feelings-receipt`, en `codex/367-feelings-finish-receipt` (`c97bb3d`). Está limpio y ya mergeado; se puede quitar con `git worktree remove`.
 - **Pendiente local o remoto:** la rama `codex/367-feeling-stratified`, publicada y **sin PR**. El navegador integrado no tiene sesión en GitHub: hay que abrir el borrador a mano, con el texto de `docs/progress/367-sensaciones-estratificado-pr-description.md`. Ver «En curso».
@@ -15,7 +15,7 @@
 
 ## En curso — energía y fatiga al terminar: método experimental estratificado
 
-Rama `codex/367-feeling-stratified`, publicada en `3cec638` sobre main `e50e60a`. Previews bloqueadas. Sin migración. Solo tres archivos de código nuevos; ningún método ni vista existente cambia. Método, preregistro, desarrollo y validación en `docs/progress/367-sensaciones-estratificado-metodo.md` de esa rama.
+Rama `codex/367-feeling-stratified`, publicada en `067db18` sobre main `e50e60a`. Previews bloqueadas. Sin migración. Solo tres archivos de código nuevos; ningún método ni vista existente cambia. Método, preregistro, desarrollo y validación en `docs/progress/367-sensaciones-estratificado-metodo.md` de esa rama.
 
 - **Orden verificable:**
   - preregistro (`185e5fc`);
@@ -24,12 +24,14 @@ Rama `codex/367-feeling-stratified`, publicada en `3cec638` sobre main `e50e60a`
   - una sola validación reservada, con semilla `0x5171` y 500 historiales por escenario (`3cec638`).
 - **Método** (`insights-feeling-stratified/1`): las mismas filas y candidatos de #412, con correlación y permutaciones dentro de rutina × bloque de 42 días.
 - **Resultado: no valida.**
-  - Los ocho nulos quedan entre 1,6 % y 4,0 % en la compuerta estricta (cotas de 3,13 % a 6,10 %), y en cinco el intervalo entero está arriba del 1 %. Es una limitación del método, no falta de precisión.
-  - Resuelve la confusión de #412: rutinas alternadas 100 % → 2,0 %, y tendencias y cambios registrados de cerca de 5 % a menos de 2 %.
+  - Los ocho nulos quedan entre 1,6 % y 4,0 % en la compuerta estricta, con cotas superiores de 3,13 % a 6,10 %.
+  - **Seis nulos, contando horarios inciertos, tienen el límite inferior por encima del 1 %.** En tendencia y cambio de rutina registrado el intervalo incluye el 1 %: la evidencia es insuficiente para ese objetivo, no un rechazo definitivo (revisado en #417).
+  - Redujo los falsos positivos en ciertos escenarios de confusión, sin validar: rutinas alternadas 100 % → 2,0 %, y tendencias y cambios registrados de cerca de 5 % a menos de 2 %.
   - Empeora el nulo sin confusión: independiente 0,4 % → 2,0 %.
   - Potencia similar a la de #412.
 - **Validado:** 5 pruebas del método y 12 en las suites afectadas; tipos y lint sin errores.
-- **Siguiente paso posible:** un tercer preregistro que combine el nulo estratificado con los controles de la compuerta de #412 y corrija las miradas repetidas.
+- **Cerrado este resultado** (#417): cifras, preregistro y decisión «no valida» sin cambios; solo se ajustaron las conclusiones.
+- **Siguiente paso posible, todavía no iniciado:** un tercer preregistro que combine el nulo estratificado con los controles de la compuerta de #412 y corrija las miradas repetidas.
 
 ## Entregas integradas en main, hasta #416
 
