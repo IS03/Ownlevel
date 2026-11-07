@@ -15,7 +15,7 @@ import {
 } from '@/nutrition/metric-entry-model';
 import { MetricSavedNotice } from '@/nutrition/metric-notice';
 import { useDayWriteController } from '@/nutrition/use-day-write-controller';
-import { useMetricEntry } from '@/nutrition/use-metric-entry';
+import { dayWriteInFlight, useMetricEntry } from '@/nutrition/use-metric-entry';
 import { useMetricPresentations } from '@/metrics/presentation-provider';
 import { triggerMetricHaptic } from '@/platform/haptics';
 import { NutritionToast } from '@/nutrition/nutrition-toast';
@@ -197,8 +197,7 @@ export function useHomeMetricEntry(onSaved: () => void) {
           onClose={entry.close}
         />
       ) : null}
-      {entry.undoing &&
-      (state?.phase === 'pending' || state?.phase === 'confirmed') ? (
+      {entry.undoing && dayWriteInFlight(state) ? (
         <MetricSavedNotice
           notice={{ date: today, message: 'Deshaciendo…', undo: null }}
           disabled
@@ -213,6 +212,7 @@ export function useHomeMetricEntry(onSaved: () => void) {
           disabled={!!state?.draft || state?.phase !== 'idle'}
           onUndo={entry.undoNotice}
           onClose={entry.dismissNotice}
+          onPrevious={entry.previousNotice}
         />
       ) : null}
       {quickNotice ? (
@@ -224,6 +224,7 @@ export function useHomeMetricEntry(onSaved: () => void) {
       {!entry.entry &&
       state &&
       ['uncertain', 'confirmed', 'blocked', 'conflict'].includes(state.phase) &&
+      !dayWriteInFlight(state) &&
       writes ? (
         <NutritionToast
           message={

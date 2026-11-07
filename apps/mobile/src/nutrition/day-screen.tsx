@@ -27,7 +27,7 @@ import { useNutritionDayResource } from './day-resource';
 import { useMealController } from './use-meal-controller';
 import { useDayWriteController } from './use-day-write-controller';
 import { DayWriteEditor } from './day-write-editor';
-import { useMetricEntry } from './use-metric-entry';
+import { dayWriteInFlight, useMetricEntry } from './use-metric-entry';
 import { MetricEntrySheet } from './metric-entry-sheet';
 import { MetricSavedNotice } from './metric-notice';
 import {subscribeMetricDefinitionsChanged} from '@/metrics/presentation-resource';
@@ -194,9 +194,9 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
     {saved?<SavedEditor controller={saved.controller} state={saved.state}/>:null}
     {writes && metricEntry.entry && writes.state.draft ? <MetricEntrySheet id={metricEntry.entry.id} controller={writes.controller} state={writes.state} onClose={metricEntry.close} /> : null}
     {/* An undo from the notice never shows the full metrics editor; only a write that really needs recovery does. */}
-    {writes && !metricEntry.entry && !(metricEntry.undoing && !['uncertain', 'blocked', 'conflict'].includes(writes.state.phase)) ? <DayWriteEditor controller={writes.controller} state={writes.state} /> : null}
-    {metricEntry.undoing && writes && ['pending', 'confirmed'].includes(writes.state.phase) ? <MetricSavedNotice notice={{ date, message: 'Deshaciendo…', undo: null }} disabled pending onUndo={() => {}} onClose={() => {}} /> : null}
-    {metricEntry.notice ? <MetricSavedNotice notice={metricEntry.notice} disabled={!editable || !!writes?.state.draft} onUndo={metricEntry.undoNotice} onClose={metricEntry.dismissNotice} /> : null}
+    {writes && !metricEntry.entry && !(metricEntry.undoing && dayWriteInFlight(writes.state)) ? <DayWriteEditor controller={writes.controller} state={writes.state} /> : null}
+    {metricEntry.undoing && writes && dayWriteInFlight(writes.state) ? <MetricSavedNotice notice={{ date, message: 'Deshaciendo…', undo: null }} disabled pending onUndo={() => {}} onClose={() => {}} /> : null}
+    {metricEntry.notice ? <MetricSavedNotice notice={metricEntry.notice} disabled={!editable || !!writes?.state.draft} onUndo={metricEntry.undoNotice} onClose={metricEntry.dismissNotice} onPrevious={metricEntry.previousNotice} /> : null}
     {/* Another day shown and no notice on screen: a discreet way back to today. */}
     {showTodayControl ? <TodayPill onPress={showToday} onHeight={setTodayPillHeight} /> : null}
     {/* One notice at a time: an add closed mid-way, a delete/undo running, its brief confirmation, or "Guardado · Deshacer". */}
