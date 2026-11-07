@@ -21,6 +21,7 @@ Este documento fija el orden y las reglas de cada fase. **Lo que dice «diseño�
 
 Ver [367-sensaciones-resultado-metodo.md](367-sensaciones-resultado-metodo.md).
 - **Publicado:** la descripción (`view=feelings`) y la pantalla «Cómo terminaste».
+- **Segundo método experimental** (`codex/367-feeling-stratified`): permutación dentro de rutina × bloque de 42 días, preregistrado y con validación reservada. Reduce los falsos positivos en escenarios de confusión por rutina y tendencia, pero los nulos quedan entre 1,6 % y 4,0 %: tampoco valida.
 - **Sin publicar ni preparar en las vistas:** las asociaciones. La calibración no alcanza el objetivo de validación propuesto (1 %, no aprobado como tolerancia) con cambios de rutina y tendencias, ni tampoco en los nulos.
 
 ## Fase 2 — Alimentación y tiempo
