@@ -4,37 +4,33 @@
 
 ## Estado real
 
-- **`origin/main` = `a8972a5`** (merge de #412). Incluye todo lo de abajo.
-- **Checkout `C:\Proyectos\Ownlevel`:** en `codex/367-meal-timing` (`82657c2`), limpio y publicado.
+- **`origin/main` = `ac6667b`** (merge de #413). Incluye todo lo de abajo.
+- **Checkout `C:\Proyectos\Ownlevel`:** en `codex/367-body-weekly` (`c252243`), limpio y publicado.
   - **Antes de trabajar:** `git status -sb`, luego `git switch main` y `git pull --ff-only`, y crear la rama nueva desde ahí.
 - **Worktree sobrante:** `C:\Users\senes\AppData\Local\Temp\ownlevel-feelings-receipt`, en `codex/367-feelings-finish-receipt` (`c97bb3d`). Está limpio y ya mergeado; se puede quitar con `git worktree remove`.
-- **Pendiente local o remoto:** la rama `codex/367-meal-timing`, publicada y **sin PR**. El navegador integrado no tiene sesión en GitHub: hay que abrir el borrador a mano, con el texto de `docs/progress/367-alimentacion-horaria-pr-description.md`. Ver «En curso».
+- **Pendiente local o remoto:** la rama `codex/367-body-weekly`, publicada y **sin PR**. El navegador integrado no tiene sesión en GitHub: hay que abrir el borrador a mano, con el texto de `docs/progress/367-evolucion-corporal-pr-description.md`. Ver «En curso».
   - No hay pilas locales de Supabase corriendo.
   - Esta rama de integración (`integration/367-insights-candidate`) solo guarda esta continuidad y no se mergea.
 - **Notion:** no se actualizó (regla de AGENTS.md).
 
-## En curso — fase 2: alimentación antes del inicio
+## En curso — fase 3: evolución semanal del peso
 
-Rama `codex/367-meal-timing`, publicada en `82657c2` sobre main `a8972a5`. Previews bloqueadas. Sin migración. Método, preregistro y resultados en `docs/progress/367-alimentacion-horaria-metodo.md` de esa rama. El preregistro está en su propio commit, `c68d6ba`.
+Rama `codex/367-body-weekly`, publicada en `c252243` sobre main `ac6667b`. Previews bloqueadas. Sin migración, sin API nueva y sin cambios de contrato. Método, preregistro y resultados en `docs/progress/367-evolucion-corporal-metodo.md` de esa rama. El preregistro está en su propio commit, `baaa94d`.
 
 - **Implementado y publicado en la rama:**
-  - `mealWindow` recibe el nutriente: proteína y calorías registradas en 3 h usan la ventana, la procedencia y la regla de los carbohidratos;
-  - la última comida registrada con hora explícita en 12 h, censurada si no hay ninguna;
-  - las tres van como contexto opcional de la sesión (`preStart`), con filas separadas en Mobile.
-- **Implementado y sin publicar:** los tres candidatos. Solo se construyen con `buildExposureTable(..., mealTiming = true)`, que ninguna vista llama.
+  - `body-weekly/1` (`src/lib/progress/body-evolution/weekly.ts`): semanas de lunes a domingo, solo enteras y cerradas, mediana con al menos 3 pesajes válidos (`isNewBodyWeight`) y cambio solo entre semanas seguidas;
+  - «Semana a semana» en Cuerpo, desde los pesos del período que la pantalla ya lee. `parseProgressBody` exige claves exactas, así que no se tocó esa respuesta.
+- **Implementado y sin publicar:** `insights-body-weekly/1` (`analysis.ts`). Cambio W−1→W frente a calorías, proteína, entrenamientos y series de W−1, con la cobertura de comidas. Ninguna vista lo prepara.
 - **Validado:**
-  - huella de equivalencia: sin `preStart`, 53 de 53 vistas idénticas a `main`;
-  - pruebas: Web 411 de 412 (la otra, por tiempo bajo la carga de la campaña; pasa sola) y Mobile Insights 59; tipos y lint sin errores;
-  - calibración preregistrada (`family-extension.campaign.test.ts`), 500 historiales pareados por escenario en el carril estricto y 300 en el parcial.
+  - pruebas: Web 104 en las suites afectadas, y Mobile 3 nuevas más 83 de Cuerpo, Progreso e Inicio; tipos y lint sin errores;
+  - calibración desde filas fuente simuladas: 500 historiales por escenario.
 - **Resultado: no valida.**
-  - La compuerta estricta no empeora.
-  - «Algún exploratorio» sube entre 4,2 y 9,2 puntos, por encima del límite de +2.
-  - La dependencia temporal con 26 candidatos da una cota de 1,12 %.
-  - Los candidatos quedan fuera de las asociaciones. El 1 % sigue siendo un objetivo propuesto, no una tolerancia aprobada.
-- **Familias reales:** de 13 a 53 candidatos según la cuenta. Los nuevos agregan 2 evaluables con horas explícitas y 0 sin ellas.
-- **Siguiente paso posible, fuera de esta tanda:** un método que no infle el exploratorio, con su propio preregistro.
+  - Compuerta estricta con cota de 1,75 % en el nulo independiente y 1,12 % con dependencia temporal: por encima del objetivo propuesto del 1 %.
+  - Potencia baja: 47 % exploratorio frente al efecto plantado, con unos 62 cambios semanales.
+- **Costo:** sin consultas nuevas. Un año de pesajes se describe en menos de 1 ms.
+- **Siguiente paso posible, fuera de esta tanda:** un método con más semanas por cuenta o menos miradas, con su propio preregistro. La fase 4, resúmenes de período, no se empezó.
 
-## Entregas integradas en main, hasta #412
+## Entregas integradas en main, hasta #413
 
 - **#393 a #395, #397 y #398:** convención del sueño, peso del día, configuración del ejercicio y procedencia de la hora de comida. Mergeados y con sus migraciones aplicadas en producción. Detalle en [367-sueno-peso.md](367-sueno-peso.md) y [367-exercise-configuration-rollout.md](367-exercise-configuration-rollout.md).
 - **#403:** contexto diario completo: todas las sesiones y los cuatro macros.
@@ -43,6 +39,7 @@ Rama `codex/367-meal-timing`, publicada en `82657c2` sobre main `a8972a5`. Previ
 - **#407 y #408:** memoria del motor. El comparador tiene una salida compacta para Insights.
 - **#409:** lectura en frío. Las series vienen embebidas, con una guarda de conteo y un stream de respaldo.
 - **#410:** resumen factual post-entreno y vista de una sesión, con cada método por separado y la fecha de la referencia.
+- **#413:** proteína, calorías y última comida antes del inicio como contexto de la sesión (`preStart`). Sus candidatos no validaron y quedan fuera de las asociaciones; las ventanas usan los días de Córdoba que realmente tocan.
 - **#412:** energía y fatiga al terminar como resultados, solo descritos (`view=feelings`, pantalla «Cómo terminaste»). Sus asociaciones no se publican: su calibración no alcanza el objetivo propuesto. El snapshot no las prepara.
 - **#411:** evidencia de comparación por ejercicio.
   - `view=evidence`: una lectura acotada a un ejercicio, con el comparador compartido en salida completa.
