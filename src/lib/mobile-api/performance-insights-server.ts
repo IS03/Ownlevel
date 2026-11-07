@@ -14,6 +14,7 @@ import { configurationIdentity } from "./training-exercise-configuration-contrac
 import { periodFeelingDetail, periodNutritionDetail, type PeriodFeelingSource, type PeriodMeal } from "../progress/insights-engine/period-details";
 import { instantMs } from "../progress/insights-engine/source-adapter";
 import { sessionTemporalDay } from '../progress/insights-engine/session-temporal';
+import { periodExploration } from '../progress/insights-engine/week-exploration';
 
 type Context = MobileSupabaseAuthenticatedContext;
 const firstPage = (from: number) => (from === 0 ? { count: "exact" as const } : undefined);
@@ -308,7 +309,7 @@ export function parseInsightsParams(params: URLSearchParams) {
     if (!["view", "before", "limit", "association", "pairs", "method", "asOf", "date", ...EVIDENCE_KEYS].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
   }
   const before = params.get("before") ?? undefined, limit = params.get("limit"), association = params.get("association") ?? undefined, view = params.get("view") ?? "summary";
-  if (!["summary", "days", "relations", "evidence", "feelings", "period", "period-at", "period-feelings", "period-nutrition", "session-temporal"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
+  if (!["summary", "days", "relations", "evidence", "feelings", "period", "period-at", "period-feelings", "period-nutrition", "period-explore", "session-temporal"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
   const method = params.get("method");
   if (method !== null && method !== "2") throw new MobileApiValidationError("Método no válido.");
   const engineMethod = (method === "2" ? 2 : 1) as InsightsEngineMethod;
@@ -318,10 +319,11 @@ export function parseInsightsParams(params: URLSearchParams) {
     return { view: 'session-temporal' as const, date };
   }
   if (params.has('date')) throw new MobileApiValidationError('Parámetro no válido.');
-  if (view === "period-at" || view === "period-feelings" || view === "period-nutrition") {
+  if (view === "period-at" || view === "period-feelings" || view === "period-nutrition" || view === 'period-explore') {
     if ([...params.keys()].some(key => !["view", "method", "asOf"].includes(key))) throw new MobileApiValidationError("Parámetro no válido.");
     const asOf = params.get("asOf") ?? undefined;
     if (asOf !== undefined && !validPeriodAnchor(asOf)) throw new MobileApiValidationError("Fecha de referencia no válida.");
+    if(view==='period-explore')return{view:'period-explore' as const,method:engineMethod,asOf};
     return view === "period-at" ? { view: "period-at" as const, method: engineMethod, asOf } : view === "period-feelings" ? { view: "period-feelings" as const, method: engineMethod, asOf }
       : { view: "period-nutrition" as const, method: engineMethod, asOf };
   }
@@ -345,6 +347,17 @@ export function parseInsightsParams(params: URLSearchParams) {
 
 export const performanceInsightsResponse = (request: Request) => progressReadResponse(request, "performance-insights", async (context, params, today) => {
   const options = parseInsightsParams(params);
+  if(options.view==='period-explore') {
+    const asOf=options.asOf??today;if(asOf>today)throw new MobileApiValidationError('Fecha futura.');
+    for(let attempt=0;attempt<2;attempt++) {
+      const revision=await readInsightsRevision(context);
+      const [source,weights]=await Promise.all([readInsightsSource(context),readPeriodWeights(context,periodOf(asOf))]);
+      if(await readInsightsRevision(context)!==revision)continue;
+      const model=periodExploration(source,weights,today,asOf,publicRevision(context.userId,revision),options.method);
+      const after=todayInCordoba();if(after!==today)throw new NutritionReportDayChangedError(after);return model;
+    }
+    throw Error('Exploration sources kept changing');
+  }
   if (options.view === 'session-temporal') {
     if (options.date > today) throw new MobileApiValidationError('Fecha futura.');
     for (let attempt = 0; attempt < 2; attempt++) {

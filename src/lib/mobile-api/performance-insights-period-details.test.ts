@@ -50,6 +50,15 @@ const request = (query: string) => new NextRequest(`http://localhost/api/mobile/
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2027-01-02T15:00:00Z')); clearInsightsSnapshots(); });
 afterEach(() => vi.useRealTimers());
 describe('bounded period details route', () => {
+  it('publishes one revision for weeks, all calendar days and body/nutrition sources, preserving the anchor across New Year',async()=>{
+    const db=database();mocks.auth.mockResolvedValue({supabase:db.client,userId:USER});
+    const res=await GET(request('view=period-explore&asOf=2026-11-07')),body=await res.json();
+    expect(res.status).toBe(200);expect(parsePerformanceInsights(body)?.view).toBe('period-explore');expect(body.weeks.flatMap((w:{days:unknown[]})=>w.days)).toHaveLength(92);
+    expect(db.calls).toHaveLength(10);console.log('period-explore route fixture bytes:',Buffer.byteLength(JSON.stringify(body)));
+    mocks.auth.mockResolvedValue({supabase:db.client,userId:USER.replace(/1$/,'2')});const other=await(await GET(request('view=period-explore&asOf=2026-11-07'))).json();expect(other.weeks.every((w:{days:{training:unknown,nutrition:unknown}[]})=>w.days.every(d=>d.training===null&&d.nutrition===null))).toBe(true);
+    const moving=database(n=>n);mocks.auth.mockResolvedValue({supabase:moving.client,userId:USER});expect((await GET(request('view=period-explore&asOf=2026-11-07'))).status).toBe(503);
+    const once=database(n=>n===1?1:2);mocks.auth.mockResolvedValue({supabase:once.client,userId:USER});expect((await GET(request('view=period-explore&asOf=2026-11-07'))).status).toBe(200);expect(once.calls).toHaveLength(20);
+  });
   it('reads temporal context through the canonical grouped source under one revision; old views and parameters stay separate', async () => {
     const db=database(); mocks.auth.mockResolvedValue({supabase:db.client,userId:USER});
     const response=await GET(request('view=session-temporal&date=2026-08-03')), body=await response.json();

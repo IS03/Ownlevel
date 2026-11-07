@@ -167,6 +167,19 @@ describe('#367 contexto diario: pantalla', () => {
     expect(focus.queryByText('Antes: respondida después de empezar')).toBeNull();
     expect(focus.getAllByText('Sensaciones')).toHaveLength(2);
   });
+  it('opens a historical day from its week and preserves the period through Nutrition and temporal evidence', async () => {
+    mockParams = { date: D1, before: '2026-03-04', explore: '1', asOf: '2026-04-01', week: D0, revision: 'older' };
+    mockRead.mockImplementation(serve(source()));
+    const view = await open();
+    expect(mockRead.mock.calls[0]![0].path).toContain('before=2026-03-04');
+    expect(view.getByRole('button', { name: 'Volver a la semana' })).toBeTruthy();
+    const focus = within(view.getByTestId('insights-hero-context'));
+    fireEvent.press(focus.getByRole('button', { name: /^Ver Nutrición/ }));
+    const href = mockPush.mock.calls.at(-1)![0] as ReturnType<typeof nutritionDayHref>;
+    expect(insightsReturnHref(href.params)).toMatchObject({ pathname: '/(tabs)/train/insights', params: { date: D1, before: '2026-03-04', explore: '1', asOf: '2026-04-01', week: D0 } });
+    fireEvent.press(focus.getByRole('button', { name: /Ver horarios y comidas/ }));
+    expect(mockPush.mock.calls.at(-1)![0]).toMatchObject({ pathname: '/(tabs)/train/insights/temporal', params: { date: D1, before: '2026-03-04', explore: '1', asOf: '2026-04-01', week: D0, revision: 'r1' } });
+  });
 });
 
 describe('#367 peso del día hacia Cuerpo', () => {

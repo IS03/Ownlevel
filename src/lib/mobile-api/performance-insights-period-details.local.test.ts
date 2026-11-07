@@ -204,4 +204,16 @@ describe.runIf(!!db && !!base && !!task)('#421 exact period readers on disposabl
     mock.auth.mockResolvedValue(clientFor(OTHER).context(OWNER));
     const other=await GET(new NextRequest('http://localhost/api/mobile/v1/progress/performance-insights?view=session-temporal&method=2&date=2026-08-03',{headers:{authorization:'Bearer synthetic-not-a-token'}}));expect((await other.json()).sessions).toEqual([]);
   },120_000);
+  it('publishes weekly exploration under one revision with SQL body and nutrient references and all empty calendar days',async()=>{
+    sql(`update public.day_logs set weight_kg=case log_date when '2026-08-03' then 80 when '2026-08-05' then 79 else 78 end where user_id='${OWNER}' and log_date in ('2026-08-03','2026-08-05','2026-08-07');`);
+    const who=clientFor(OWNER);mock.auth.mockResolvedValue(who.context());const response=await route('period-explore'),body=await response.json();
+    expect(response.status).toBe(200);expect(parsePerformanceInsights(body)).toBeDefined();const days=body.weeks.flatMap((w:{days:unknown[]})=>w.days);expect(days).toHaveLength(92);
+    const week=body.weeks.find((w:{start:string})=>w.start==='2026-08-03');
+    const median=Number(sql(`select percentile_cont(0.5) within group(order by weight_kg) from public.day_logs where user_id='${OWNER}' and log_date between '2026-08-03' and '2026-08-09' and weight_kg>0`));
+    expect(week.weight.median).toBe(median);expect(week.weight.weighIns).toHaveLength(3);
+    const food=body.weeks.flatMap((w:{days:{date:string,nutrition:{calories:{recorded:number}}}[]})=>w.days).find((d:{date:string})=>d.date==='2026-09-15');
+    const total=Number(sql(`select sum(final_calories) from public.meal_entries m join public.day_logs l on l.id=m.day_log_id where m.user_id='${OWNER}' and m.deleted_at is null and l.log_date='2026-09-15'`));expect(food.nutrition.calories.recorded).toBe(total);
+    expect(who.traces.filter(t=>t.table==='meal_entries')).toHaveLength(2);expect(who.traces.filter(t=>t.table==='insights_source_revisions')).toHaveLength(2);
+    console.log(JSON.stringify({view:'period-explore',queries:who.traces.length,days:days.length,bytes:Buffer.byteLength(JSON.stringify(body))}));
+  },120_000);
 });
