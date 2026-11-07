@@ -4,33 +4,31 @@
 
 ## Estado real
 
-- **`origin/main` = `ac6667b`** (merge de #413). Incluye todo lo de abajo.
-- **Checkout `C:\Proyectos\Ownlevel`:** en `codex/367-body-weekly` (`c252243`), limpio y publicado.
+- **`origin/main` = `53147e7`** (merge de #415). Incluye todo lo de abajo.
+- **Checkout `C:\Proyectos\Ownlevel`:** en `codex/367-period-summary` (`36a1308`), limpio y publicado.
   - **Antes de trabajar:** `git status -sb`, luego `git switch main` y `git pull --ff-only`, y crear la rama nueva desde ahí.
 - **Worktree sobrante:** `C:\Users\senes\AppData\Local\Temp\ownlevel-feelings-receipt`, en `codex/367-feelings-finish-receipt` (`c97bb3d`). Está limpio y ya mergeado; se puede quitar con `git worktree remove`.
-- **Pendiente local o remoto:** la rama `codex/367-body-weekly`, publicada y **sin PR**. El navegador integrado no tiene sesión en GitHub: hay que abrir el borrador a mano, con el texto de `docs/progress/367-evolucion-corporal-pr-description.md`. Ver «En curso».
+- **Pendiente local o remoto:** la rama `codex/367-period-summary`, publicada y **sin PR**. El navegador integrado no tiene sesión en GitHub: hay que abrir el borrador a mano, con el texto de `docs/progress/367-resumen-periodo-pr-description.md`. Ver «En curso».
   - No hay pilas locales de Supabase corriendo.
   - Esta rama de integración (`integration/367-insights-candidate`) solo guarda esta continuidad y no se mergea.
 - **Notion:** no se actualizó (regla de AGENTS.md).
 
-## En curso — fase 3: evolución semanal del peso
+## En curso — fase 4: resumen de los últimos tres meses
 
-Rama `codex/367-body-weekly`, publicada en `c252243` sobre main `ac6667b`. Previews bloqueadas. Sin migración, sin API nueva y sin cambios de contrato. Método, preregistro y resultados en `docs/progress/367-evolucion-corporal-metodo.md` de esa rama. El preregistro está en su propio commit, `baaa94d`.
+Rama `codex/367-period-summary`, publicada en `36a1308` sobre main `53147e7`. Previews bloqueadas. Sin migración. Las vistas existentes no cambian: 53 de 53 idénticas a `main`.
 
 - **Implementado y publicado en la rama:**
-  - `body-weekly/1` (`src/lib/progress/body-evolution/weekly.ts`): semanas de lunes a domingo, solo enteras y cerradas, mediana con al menos 3 pesajes válidos (`isNewBodyWeight`) y cambio solo entre semanas seguidas;
-  - «Semana a semana» en Cuerpo, desde los pesos del período que la pantalla ya lee. `parseProgressBody` exige claves exactas, así que no se tocó esa respuesta.
-- **Implementado y sin publicar:** `insights-body-weekly/1` (`analysis.ts`). Cambio W−1→W frente a calorías, proteína, entrenamientos y series de W−1, con la cobertura de comidas. Ninguna vista lo prepara.
+  - `view=period` (`insights-period/1`, `src/lib/progress/insights-engine/period.ts`): los tres meses calendario completos anteriores al mes en curso, por la fecha de Córdoba;
+  - contenido: entrenamiento con los métodos estricto y parcial separados, rutinas (en orden o alternadas), sensaciones al terminar (#412), comidas registradas con cobertura por días, y peso semanal (#415) desde todos los pesajes del período;
+  - la ruta reutiliza el snapshot y lee los pesos del período en una sola lectura paginada de `day_logs`, bajo el mismo contador;
+  - pantalla Mobile «Últimos 3 meses», con resumen escrito determinístico, enlaces a los detalles y vuelta desde Cuerpo (`insightsSummary=1`).
 - **Validado:**
-  - pruebas: Web 104 en las suites afectadas, y Mobile 3 nuevas más 83 de Cuerpo, Progreso e Inicio; tipos y lint sin errores;
-  - calibración desde filas fuente simuladas: 500 historiales por escenario.
-- **Resultado: no valida.**
-  - Compuerta estricta con cota de 1,75 % en el nulo independiente y 1,12 % con dependencia temporal: por encima del objetivo propuesto del 1 %.
-  - Potencia baja: 47 % exploratorio frente al efecto plantado, con unos 62 cambios semanales.
-- **Costo:** sin consultas nuevas. Un año de pesajes se describe en menos de 1 ms.
-- **Siguiente paso posible, fuera de esta tanda:** un método con más semanas por cuenta o menos miradas, con su propio preregistro. La fase 4, resúmenes de período, no se empezó.
+  - pruebas: Web 170, Mobile 68 en las suites afectadas; tipos y lint sin errores;
+  - costo: con caché, 3 pedidos; la vista 0,29 ms y 8,3 KB; el snapshot igual que en `main`, 244 ms con 1311 sesiones.
+- **Sin asociaciones:** el resumen no las calcula. Las de sensaciones, alimentación horaria y peso siguen sin publicarse.
+- **Fases de la hoja de ruta:** las cuatro tienen su primera entrega. Lo que sigue abierto son métodos de asociación que pasen su calibración, cada uno con su propio preregistro.
 
-## Entregas integradas en main, hasta #413
+## Entregas integradas en main, hasta #415
 
 - **#393 a #395, #397 y #398:** convención del sueño, peso del día, configuración del ejercicio y procedencia de la hora de comida. Mergeados y con sus migraciones aplicadas en producción. Detalle en [367-sueno-peso.md](367-sueno-peso.md) y [367-exercise-configuration-rollout.md](367-exercise-configuration-rollout.md).
 - **#403:** contexto diario completo: todas las sesiones y los cuatro macros.
@@ -39,6 +37,7 @@ Rama `codex/367-body-weekly`, publicada en `c252243` sobre main `ac6667b`. Previ
 - **#407 y #408:** memoria del motor. El comparador tiene una salida compacta para Insights.
 - **#409:** lectura en frío. Las series vienen embebidas, con una guarda de conteo y un stream de respaldo.
 - **#410:** resumen factual post-entreno y vista de una sesión, con cada método por separado y la fecha de la referencia.
+- **#415:** evolución semanal del peso en Cuerpo (`body-weekly/1`), con el análisis frente a la semana anterior experimental y sin publicar; el cambio que no se puede calcular se distingue de uno igual a 0 kg.
 - **#413:** proteína, calorías y última comida antes del inicio como contexto de la sesión (`preStart`). Sus candidatos no validaron y quedan fuera de las asociaciones; las ventanas usan los días de Córdoba que realmente tocan.
 - **#412:** energía y fatiga al terminar como resultados, solo descritos (`view=feelings`, pantalla «Cómo terminaste»). Sus asociaciones no se publican: su calibración no alcanza el objetivo propuesto. El snapshot no las prepara.
 - **#411:** evidencia de comparación por ejercicio.
