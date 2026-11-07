@@ -1,0 +1,30 @@
+{
+  "id": "insights-feeling-sequential-reserved/1",
+  "method": "insights-feeling-sequential/1",
+  "histories": 1000,
+  "horizons": [24, 36],
+  "seed": 2624053941,
+  "target": 0.01,
+  "workers": 8,
+  "maxWallHours": 24,
+  "output": "tmp/insights-sequential-reserved-v1",
+  "nullScenarios": [
+    "independent", "autocorrelated", "trend", "routine_change", "unrecorded_change",
+    "alternating_routines", "selective_absence", "uncertain_timing", "reverse_same_day"
+  ],
+  "scenarios": [
+    "independent", "autocorrelated", "trend", "routine_change", "unrecorded_change",
+    "alternating_routines", "selective_absence", "uncertain_timing", "reverse_same_day",
+    "previous_moderate", "previous_strong", "meal_moderate", "meal_strong"
+  ],
+  "sealedFiles": [
+    "docs/progress/367-sensaciones-secuencial-protocolo.md",
+    "src/lib/progress/insights-engine/feeling-sequential-simulation.ts",
+    "src/lib/progress/insights-engine/feeling-sequential-simulation.test.ts",
+    "scripts/insights/sequential-validation-core.mjs",
+    "scripts/insights/sequential-validation-core.test.mjs",
+    "scripts/insights/feeling-sequential-worker.mjs",
+    "scripts/insights/feeling-sequential-validation.mjs",
+    "vercel.json"
+  ]
+}

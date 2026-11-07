@@ -32,7 +32,7 @@ Entregas: #423 → #424; #425 (#399) y #426 (#418) independientes sobre main. Un
 Ver [367-sensaciones-resultado-metodo.md](367-sensaciones-resultado-metodo.md).
 - **Publicado:** la descripción (`view=feelings`) y la pantalla «Cómo terminaste».
 - **Segundo método experimental** (`codex/367-feeling-stratified`): permutación dentro de rutina × bloque de 42 días, preregistrado y con validación reservada. Reduce los falsos positivos en escenarios de confusión por rutina y tendencia, pero los nulos quedan entre 1,6 % y 4,0 %: tampoco valida.
-- **Tercer diseño** (`codex/367-feeling-sequential`): solo candidatos anteriores al inicio, y control de falsos positivos que cubre candidatos, los dos resultados y las miradas trimestrales. Solo diseño, prototipo y viabilidad; la validación reservada está planeada con 1 000 historiales por escenario y no se corrió.
+- **Tercer diseño** (#419, `f32289a`; continuación `codex/367-feeling-sequential-validation`): candidatos anteriores y control de candidatos/resultados/miradas. Una única [validación reservada](367-sensaciones-secuencial-resultados.md), preregistrada: 1.000 historias por nulo, horizontes anidados 24/36 meses; cuatro nulos no acreditan la cota superior propuesta. **Línea detenida**, potencia no ejecutada por la regla previa, sin recalibrar ni publicar asociaciones.
 - **Sin publicar ni preparar en las vistas:** las asociaciones. La calibración no alcanza el objetivo de validación propuesto (1 %, no aprobado como tolerancia) con cambios de rutina y tendencias, ni tampoco en los nulos.
 
 ## Fase 2 — Alimentación y tiempo
