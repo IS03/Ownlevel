@@ -1,6 +1,6 @@
 # #367 — Energía y fatiga al terminar: diseño secuencial con candidatos anteriores
 
-**Diseño, antes de cualquier campaña.** Este documento fija el método y los criterios de una futura validación reservada. El prototipo que lo acompaña (`feeling-sequential.ts`) sirve solo para probar que el diseño se puede calcular: **no hay corrida de validación, no se habilita ninguna asociación y nada llega a las vistas.** El 1 % sigue siendo un objetivo propuesto, no una tolerancia aprobada, y «consistente» sigue deshabilitado.
+**Diseño de #419, fijado antes de la campaña.** El prototipo (`feeling-sequential.ts`) permanece experimental y aislado de las vistas. La continuación del 7/11 ejecutó una única [validación reservada](367-sensaciones-secuencial-resultados.md), con [protocolo definitivo previo](367-sensaciones-secuencial-protocolo.md): cuatro nulos no acreditaron el criterio propuesto; la línea se detuvo sin potencia ni recalibración. **No se habilita ninguna asociación.** El 1 % sigue siendo un objetivo propuesto, no una tolerancia aprobada, y «consistente» sigue deshabilitado.
 
 Antecedentes:
 - [367-sensaciones-resultado-metodo.md](367-sensaciones-resultado-metodo.md) (#412);
@@ -177,4 +177,4 @@ se conserva como antecedente; no sustituye al protocolo ejecutable.
 - un generador que ceda el hilo;
 - una semilla reservada nueva.
 
-Nada de esto se hizo todavía: este cambio se detiene en el diseño y el prototipo.
+Eso quedaba pendiente al cerrar #419. La continuación completó el simulador y una única campaña con [protocolo previo](367-sensaciones-secuencial-protocolo.md); [no acreditó el criterio y se detuvo](367-sensaciones-secuencial-resultados.md), sin potencia ni recalibración.
