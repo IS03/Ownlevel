@@ -142,3 +142,12 @@ Requiere una build de Mobile con `codex/367-meal-timing` y la API de esa rama. S
 - [ ] **Última comida:** sin ninguna con hora en las 12 h previas dice «Ninguna con hora en las 12 h previas», nunca «12 h» ni «ayuno». Con comidas sin hora cerca, lo aclara debajo.
 - [ ] **Sin asociaciones nuevas:** «Para mirar con calma» no muestra relaciones de proteína, calorías ni tiempo desde la última comida.
 - [ ] **Texto grande y VoiceOver:** las filas se apilan sin cortar los valores y se leen completas.
+
+## Evolución semanal del peso en Cuerpo (fase 3)
+Requiere una build de Mobile con `codex/367-body-weekly`. Sin migración ni API nueva.
+- [ ] **Dónde:** en Cuerpo → peso, debajo del gráfico, «Semana a semana», con las semanas más nuevas primero.
+- [ ] **Semanas:** de lunes a domingo. La semana en curso no aparece. Con un período de un mes, una semana cortada por el inicio del período no aparece como semana, y el pie dice cuántos pesajes quedaron fuera.
+- [ ] **Mediana:** con 3 o más pesajes válidos dice «Mediana 80,2 kg» y los días («3 pesajes: lun 12, mié 14, vie 16»). Con menos, «Sin mediana». Un 0 kg guardado no cuenta como pesaje.
+- [ ] **Cambio:** «↘ 0,6 kg frente a la semana anterior», sin color ni palabras como «mejor». Después de una semana vacía o con menos de 3 pesajes dice por qué no hay cambio, nunca compara con dos semanas atrás.
+- [ ] **Sin juicios ni recomendaciones:** no hay calorías sugeridas, puntaje ni causas.
+- [ ] **Texto grande y VoiceOver:** cada semana se lee completa y las filas se apilan sin cortar números.

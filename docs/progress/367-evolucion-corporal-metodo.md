@@ -90,4 +90,55 @@ Fijadas aquí, cuatro, todas de la **semana W−1**: la anterior del par, la que
 
 ## Resultados
 
-*(Se completa después de correr la calibración.)*
+Corridos después del preregistro (`baaa94d`), con lo que fijó ese commit. No se cambió ninguna regla, umbral ni escenario.
+
+### Lo que se publica
+
+- **«Semana a semana» en Cuerpo, debajo del gráfico de peso** (`apps/mobile/src/progress/weekly-weights.tsx`). Usa el módulo compartido `src/lib/progress/body-evolution/weekly.ts`. Por semana:
+  - mediana, o «Sin mediana»;
+  - pesajes con su día;
+  - cambio frente a la semana anterior, con flecha y magnitud, o por qué no lo hay.
+
+  Al pie dice cuántos pesajes quedaron afuera por caer en semanas incompletas o en curso.
+- **Costo:**
+  - sin consultas nuevas y sin cambios de contrato: usa los pesos del período que Cuerpo ya lee (`fetchProgressBody`);
+  - `parseProgressBody` exige claves exactas, así que agregar un campo a esa respuesta rompería clientes instalados: se evitó;
+  - calcular un año de pesajes diarios (52 semanas, 51 cambios) toma de 0,3 a 0,7 ms por llamada, medido con otros procesos en paralelo.
+
+### Análisis experimental
+
+**Recorrido:** `prepareBodyWeeklyAssociations` (`analysis.ts`) recibe filas fuente (`InsightsSource` y los pesos del día) y usa la misma descripción. Ninguna vista lo llama: el snapshot de Insights y sus vistas no lo contienen.
+
+**Calibración** (`calibration.ts`, `analysis.test.ts`): simula filas fuente y corre el mismo código. 500 historiales por escenario, 24 meses, 12 actualizaciones, 199 permutaciones, semilla `0x367e`. Unos 22 s por escenario.
+
+| Escenario | Cambios al final | Días con comidas por semana | Algún exploratorio | Compuerta estricta | Wilson sup. 95 % |
+| --- | --- | --- | --- | --- | --- |
+| Independiente | 62 | 4,9 | 12,6 % | 0,6 % | **1,75 %** |
+| Dependencia temporal | 62 | 4,9 | 11,4 % | 0,2 % | **1,12 %** |
+| Tendencias espurias | 62 | 4,9 | 12,2 % | 0,6 % | 1,75 % |
+| Cambios de rutina | 62 | 4,9 | 10,0 % | 0,4 % | 1,45 % |
+| Ausencia selectiva | 27 | 4,4 | 0 % | 0 % | 0,76 % |
+| Efecto plantado (calorías de W−1) | 62 | 4,9 | 52,4 % | 14,2 % | — |
+
+- **Candidato de calorías en el efecto plantado:** exploratorio en 47,0 % y compuerta estricta en 13,8 %. En los nulos, exploratorio entre 0 % y 3,4 % y nunca la estricta.
+- **Ausencia selectiva:** deja menos de la mitad de las filas (27 contra 62). Su 0 % viene de tener pocas filas, no de un método robusto.
+
+### Decisión: no valida
+
+- **Criterio 1: no se cumple.** La cota de Wilson de la compuerta estricta queda por encima del 1 % en independiente (1,75 %) y en dependencia temporal (1,12 %). El 1 % es el objetivo propuesto, no una tolerancia aprobada.
+- **El análisis queda experimental y sin publicar.** No se ajustó ningún umbral para que pase.
+- **Lo que se aprende, sin cambiar la decisión:**
+  - con unos 60 cambios semanales en 2 años, la potencia frente a un efecto moderado es baja (47 % exploratorio);
+  - «algún exploratorio» ronda el 12 % en los nulos con solo 4 candidatos, por las 12 actualizaciones.
+
+  Un método futuro necesitaría más semanas por cuenta o menos miradas, con su propio preregistro.
+
+### Validación
+
+- **Pruebas nuevas:**
+  - **descripción:** semanas enteras, semana en curso, bordes del período, 0 kg inválido, mínimo de 3, mediana par, nunca entre semanas separadas;
+  - **análisis:** exposiciones de W−1, cobertura de comidas, día sin comidas o valor desconocido nunca como cero, 0 entrenamientos como cero real, y que ninguna vista lo prepara;
+  - **calibración:** reproducible, y el efecto plantado se detecta más que el nulo;
+  - **Mobile:** filas, fechas, cambio, afuera, sin juicios y estado vacío.
+- **Pruebas que pasan:** cuerpo y Progreso en Mobile, 83 en las suites existentes más 3 nuevas. Las suites de Web de esta fase también pasan.
+- **Tipos y lint:** sin errores en Web y Mobile.
