@@ -150,15 +150,20 @@ Corrida única con el código de `488ea69`, sin cambios después del desarrollo:
 ### Decisión: no valida
 
 - **Criterio 1: no se cumple en ninguno de los ocho nulos.** Las cotas superiores van de 3,13 % a 6,10 %, todas por encima del objetivo propuesto del 1 %.
-- **Limitación del método, no falta de precisión.** En cinco nulos el intervalo entero queda por encima del 1 %: independiente, dependencia temporal, cambio sin registrar, rutinas alternadas y ausencia selectiva. Con horarios inciertos también, desde 2,60 %. En tendencia y en cambio de rutina registrado, el límite inferior (0,81 % y 0,95 %) apenas toca el 1 %, pero las cotas superiores (3,13 % y 3,39 %) lo superan con holgura. Más historiales no harían aprobar ninguno.
+- **Qué es limitación y qué es falta de precisión** (revisado en #417):
+  - **en seis nulos el límite inferior del intervalo supera el 1 %**: independiente (1,09 %), dependencia temporal (1,53 %), cambio sin registrar (1,98 %), rutinas alternadas (1,09 %), ausencia selectiva (1,09 %) y horarios inciertos (2,60 %). En esos seis, la tasa de falsos positivos de este método está, con esta evidencia, por encima del objetivo;
+  - **en tendencia y en cambio de rutina registrado el intervalo incluye el 1 %** (0,81–3,13 % y 0,95–3,39 %). La evidencia de hoy es insuficiente para afirmar que alcancen el objetivo, y también para descartarlo. Más historiales podrían acotarlo hacia cualquiera de los dos lados.
+- **La decisión no depende de esos dos:** el criterio pide que la cota superior quede ≤ 1 % en los ocho nulos, y los seis anteriores no lo cumplen.
 - **El método queda experimental y documentado.** No se publica, no se repitió la corrida y no se ajustó ningún parámetro.
 
-### Qué resolvió y qué no
+### Qué mejoró y qué no
 
-- **Resolvió la confusión por rutina y por tiempo**, que era el defecto de #412:
+- **Redujo los falsos positivos en los escenarios de confusión** donde #412 fallaba, sin llegar a validar (revisado en #417):
   - con rutinas alternadas, #412 da 100 % y este método 2,0 %;
   - con cambios de rutina registrados, 4,8 % contra 1,8 %;
   - con tendencias, 4,6 % contra 1,6 %.
+
+  Es una reducción medida en estas simulaciones, no una corrección de la confusión: en esos escenarios la tasa sigue sin quedar demostradamente por debajo del objetivo.
 - **Empeoró el nulo sin confusión:**
   - independiente, 2,0 % contra 0,4 %;
   - dependencia temporal, 2,6 % contra 1,0 %.

@@ -137,7 +137,7 @@ Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya
 - **Cruce:** resultado propio, ordenado dentro de su nivel de energía previa. Nunca es antecedente: invertiría el orden temporal.
 - **Estado: descriptivo accesible, asociaciones sin publicar** (#412).
   - «Cómo terminaste» cuenta las respuestas al terminar por nivel previo y deja aparte las tardías, las que no tienen hora, las ilegibles, las de otro instrumento y la energía heredada.
-  - **Método estratificado experimental** (`insights-feeling-stratified/1`, `codex/367-feeling-stratified`; [367-sensaciones-estratificado-metodo.md](367-sensaciones-estratificado-metodo.md)): permuta dentro de rutina × bloque de 42 días. Resuelve la confusión por rutina y tendencia (rutinas alternadas: 100 % → 2,0 %), pero sus nulos dan entre 1,6 % y 4,0 % en la compuerta estricta: no valida y no se publica.
+  - **Método estratificado experimental** (`insights-feeling-stratified/1`, `codex/367-feeling-stratified`; [367-sensaciones-estratificado-metodo.md](367-sensaciones-estratificado-metodo.md)): permuta dentro de rutina × bloque de 42 días. Reduce los falsos positivos en escenarios de confusión por rutina y tendencia (rutinas alternadas: 100 % → 2,0 %), pero sus nulos dan entre 1,6 % y 4,0 % en la compuerta estricta: no valida y no se publica.
   - Las asociaciones no se publican y las vistas no las preparan (#412): el cálculo experimental solo se construye si se pide. La calibración no alcanza el objetivo de validación propuesto (1 %, no aprobado como tolerancia): da 7,2 % con cambios de rutina y 6,2 % con tendencias.
   - Sigue como contexto de su sesión en Insights y en el resumen post-entreno.
 

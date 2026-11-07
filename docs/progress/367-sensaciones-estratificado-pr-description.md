@@ -39,12 +39,21 @@ Método, preregistro, desarrollo y validación: [367-sensaciones-estratificado-m
 | Inversa del mismo día (limitación) | 85,8 % | — | 90,6 % |
 | Efecto moderado (potencia) | 96,4 % | — | 98,6 % |
 
-- **No valida:** los ocho nulos quedan por encima del 1 %. En cinco el intervalo entero está arriba, y en horarios inciertos también, así que es una limitación del método y no falta de precisión.
-- **Resolvió la confusión por rutina y tiempo:** rutinas alternadas, 100 % → 2,0 %; tendencias y cambios registrados, cerca de 5 % → menos de 2 %.
+- **No valida:** las cotas superiores de los ocho nulos quedan por encima del 1 %.
+  - En **seis**, el límite inferior también supera el 1 %, contando horarios inciertos. Con esta evidencia, la tasa del método está arriba del objetivo.
+  - En **tendencia y cambio de rutina registrado**, el intervalo incluye el 1 %. La evidencia es insuficiente para ese objetivo: no confirma ni descarta que lo alcancen.
+- **Redujo los falsos positivos en ciertos escenarios de confusión**, sin validar: rutinas alternadas, 100 % → 2,0 %; tendencias y cambios registrados, cerca de 5 % → menos de 2 %.
 - **Empeoró el nulo sin confusión:** independiente, 0,4 % → 2,0 %. Probablemente por una compuerta con menos controles que la de #412 y por las 12 miradas sin corregir; no se comprobó.
 - **Pérdida de cobertura:** por estratos chicos, menos del 1,2 %. Las respuestas tardías excluidas bajan las filas un 25 %, y esa exclusión, que depende del resultado, sube los falsos positivos.
 - **Potencia:** casi igual a la de #412.
 - **Pruebas:** 5 pruebas del método (estratos, pérdida, reproducibilidad, recorrido real y efecto plantado); tipos y lint sin errores. Ningún archivo existente de código cambió.
+
+## Revisión de #417
+
+Solo cambian las conclusiones; cifras, preregistro y decisión siguen iguales, y no se corrió nada nuevo:
+- «resolvió la confusión» pasa a «redujo los falsos positivos en ciertos escenarios, sin validar»;
+- son seis los nulos con límite inferior por encima del 1 %, contando horarios inciertos;
+- en tendencia y cambio registrado los intervalos incluyen el 1 %: la evidencia es insuficiente, no un rechazo definitivo.
 
 ## Límites
 
