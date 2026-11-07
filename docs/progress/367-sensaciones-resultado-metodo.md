@@ -1,6 +1,11 @@
 # #367 — Energía y fatiga al terminar como resultados
 
-Método `insights-feeling-outcomes/1` (`src/lib/progress/insights-engine/feeling-outcomes.ts`). Se fijó antes de mirar resultados. Comparte el motor de asociaciones y su política con el rendimiento (`associations.ts`). **Las asociaciones no se publican:** la validación de abajo no pasa. Se publica solo la descripción, en `view=feelings`.
+Método `insights-feeling-outcomes/1` (`src/lib/progress/insights-engine/feeling-outcomes.ts`). Se fijó antes de mirar resultados. Comparte el motor de asociaciones y su política con el rendimiento (`associations.ts`). **Las asociaciones no se publican:** la validación de abajo no alcanza el objetivo propuesto. Se publica solo la descripción, en `view=feelings`.
+
+**Qué se calcula en cada lectura** (#412):
+- solo la descripción (`describeFeelingOutcome`): conteos y estados;
+- la preparación experimental (`prepareFeelingAssociations`: días ordenados, tabla de exposiciones, candidatos y evaluación) se construye solo cuando se pide expresamente, en pruebas o calibración;
+- ninguna vista ni ningún snapshot la construye ni la retiene.
 
 ## Qué es cada resultado
 
@@ -78,19 +83,37 @@ Método `insights-feeling-outcomes/1` (`src/lib/progress/insights-engine/feeling
 
 **Lo que muestra:**
 - **El estrato cumple su función.** Una exposición que solo sigue a la energía previa pasa la compuerta en 0 % con estrato y en 100 % sin él.
-- **El presupuesto no se cumple en ningún escenario.** El candidato del presupuesto es 1 % por historial (`INSIGHTS_RISK_BUDGET_CANDIDATE`), y la cota de Wilson queda arriba aun en los nulos:
+- **No se alcanza el objetivo propuesto en ningún escenario.** El 1 % por historial (`INSIGHTS_RISK_BUDGET_CANDIDATE`) es el **objetivo de validación propuesto**, no una tolerancia aprobada: «consistente» sigue deshabilitado porque ese presupuesto no está aprobado (`risk_budget_not_approved`). Aun así, la cota de Wilson queda por encima del objetivo incluso en los nulos:
   - independiente, 1,45 %;
   - dependencia temporal, 1,75 %;
   - cambios de rutina y tendencias, entre 6 % y 7 %, con cotas cercanas al 10 %. Es cuatro veces más que en el rendimiento: dos resultados juntos y una escala con empates amplifican la deriva.
 - **La potencia es alta** con los efectos plantados, pero eso no compensa los falsos positivos.
 
-**Decisión: no se publican.** La vista dice `associations: { status: "not_published", reason: "validation_pending" }`. El carril queda interno (`snapshot.feelingOutcomes[].lane`), sin ninguna vista que lo exponga.
+**Decisión: no se publican.** La vista dice `associations: { status: "not_published", reason: "validation_pending" }`. El cálculo experimental vive fuera del snapshot (`prepareFeelingAssociations`) y ninguna vista lo usa.
+
+**Sin cambios en esta tanda:** no se intentó habilitar las asociaciones ni se ajustaron umbrales para que pasen. Las cifras de arriba siguen vigentes: la separación de #412 deja el cálculo experimental idéntico (ver «Equivalencia de #412»).
 
 **Para volver a intentarlo**, cada cambio es un cambio de método con su propia calibración. Ninguno se ajusta mirando datos de nadie:
 - **permutaciones dentro de cada era de rutina**, o la rutina como estrato además de la previa;
 - **una ventana de tendencia local más corta**, o diferencias sobre la media móvil;
 - **una corrección conjunta de los dos resultados:** el máximo de ambas familias en la misma permutación;
 - **mostrar los dos resultados juntos como una sola familia** al publicarlos.
+
+## Equivalencia y costo de #412
+
+- **Equivalencia** con el código anterior (`721c27a`), sobre 4 historiales sintéticos de 2 años con las cuatro respuestas (algunas faltantes o tardías) y los dos métodos. Son 8 resultados, 2171 días y 166 evaluaciones de candidatos, 134 de ellas por encima del mínimo de pares:
+  - descripción idéntica, salvo `associations.candidates`, que se quitó porque necesitaba la tabla;
+  - días ordenados, candidatos y evaluación idénticos.
+- **La calibración no se repitió:** usa `stratifiedRows` y `evaluateAssociations`, que no cambiaron.
+- **Costo, medido de forma acotada.** Historia sintética de 5 años, 1311 sesiones con las cuatro respuestas, método 2. Mediana de 7 construcciones en un proceso con `--expose-gc`. «Retenido» es lo que un snapshot vivo más agrega al heap después de una recolección.
+
+  | Versión | Construcción del snapshot | Retenido por snapshot |
+  | --- | --- | --- |
+  | `main` (`96b4a63`), sin sensaciones como resultado | 245 ms | 7,2 MiB |
+  | Rama antes de #412 (`721c27a`) | 323 ms | 19,1 MiB |
+  | Rama con #412 | 233 ms | 7,2 MiB |
+
+  No es una medición de producción.
 
 ## Qué se publica (`view=feelings`)
 

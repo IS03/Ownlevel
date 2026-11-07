@@ -21,7 +21,7 @@ Este documento fija el orden y las reglas de cada fase. **Lo que dice «diseño�
 
 Ver [367-sensaciones-resultado-metodo.md](367-sensaciones-resultado-metodo.md).
 - **Publicado:** la descripción (`view=feelings`) y la pantalla «Cómo terminaste».
-- **Sin publicar:** las asociaciones. La calibración no cumple el presupuesto con cambios de rutina y tendencias.
+- **Sin publicar ni preparar en las vistas:** las asociaciones. La calibración no alcanza el objetivo de validación propuesto (1 %, no aprobado como tolerancia) con cambios de rutina y tendencias, ni tampoco en los nulos.
 
 ## Fase 2 — Alimentación y tiempo (siguiente incremento, diseño)
 

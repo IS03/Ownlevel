@@ -133,7 +133,7 @@ Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya
 - **Cruce:** resultado propio, ordenado dentro de su nivel de energía previa. Nunca es antecedente: invertiría el orden temporal.
 - **Estado: descriptivo accesible, asociaciones sin publicar** (`codex/367-feeling-outcomes`).
   - «Cómo terminaste» cuenta las respuestas al terminar por nivel previo y deja aparte las tardías, las que no tienen hora, las ilegibles, las de otro instrumento y la energía heredada.
-  - Las asociaciones se calculan internamente y no se publican. La calibración no cumple el presupuesto con cambios de rutina (7,2 %) ni con tendencias (6,2 %).
+  - Las asociaciones no se publican y las vistas no las preparan (#412): el cálculo experimental solo se construye si se pide. La calibración no alcanza el objetivo de validación propuesto (1 %, no aprobado como tolerancia): da 7,2 % con cambios de rutina y 6,2 % con tendencias.
   - Sigue como contexto de su sesión en Insights y en el resumen post-entreno.
 
 **Fatiga previa**
