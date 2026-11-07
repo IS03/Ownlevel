@@ -100,6 +100,7 @@ describe('Native Saved Meal management', () => {
     fireEvent.changeText(f.view.getByLabelText('Nombre'), 'Manual');
     fireEvent.changeText(f.view.getByLabelText('Proteína (g)'), '0');
     expect(f.view.getByLabelText('Calorías').props.value).toBe('');
+    expect(f.view.queryByText('Vacío significa sin dato; 0 es un valor explícito.')).toBeNull();
     await act(async () => {
       fireEvent.press(f.view.getByText('Guardar'));
     });
@@ -168,6 +169,24 @@ describe('Native Saved Meal management', () => {
 });
 
 describe('Saved library presentation safeguards', () => {
+  it.each(['detail', 'list', 'throw'])('recovers confirmed %s failure without another write', async failure => {
+    const f = fixture(); await f.open();
+    fireEvent.press(f.view.getByLabelText(/^Editar CAFÉ,/));
+    fireEvent.changeText(f.view.getByLabelText('Calorías'), '321');
+    const unavailable = { status: 'unavailable' as const, reason: 'network' as const, meta: { ...meta, outcome: 'unavailable' as const } };
+    if (failure === 'list') (f.api.list as jest.Mock<SavedApi['list']>).mockResolvedValueOnce(unavailable);
+    else {
+      const detail = f.api.detail; let first = true;
+      f.api.detail = async id => { if (first) { first = false; if (failure === 'throw') throw Error('offline'); return unavailable; } return detail(id); };
+    }
+    await act(async () => fireEvent.press(f.view.getByText('Guardar')));
+    expect(f.view.getByText('Actualizar catálogo confirmado')).toBeTruthy();
+    expect(f.view.getByText('Cerrar · conservar intento')).toBeTruthy();
+    expect(f.view.getByLabelText('Calorías').props.value).toBe('321');
+    await act(async () => fireEvent.press(f.view.getByText('Actualizar catálogo confirmado')));
+    expect(f.api.write).toHaveBeenCalledTimes(1);
+    expect(f.view.getByText('Guardado')).toBeTruthy();
+  });
   it('disables an unchanged or invalid draft and shows Guardado only after catalog verification', async () => {
     const f = fixture();
     await f.open();
@@ -177,16 +196,24 @@ describe('Saved library presentation safeguards', () => {
     expect(f.view.getByText('Guardar')).toBeDisabled();
     fireEvent.changeText(f.view.getByLabelText('Nombre'), 'Nombre nuevo');
     let finish!: (r: Awaited<ReturnType<SavedApi['detail']>>) => void;
+    let finishList!: (r: Awaited<ReturnType<SavedApi['list']>>) => void;
     f.api.detail = () =>
       new Promise((resolve) => {
         finish = resolve;
       });
+    (f.api.list as jest.Mock<SavedApi['list']>).mockImplementationOnce(() => new Promise(resolve => { finishList = resolve; }));
     await act(async () => {
       fireEvent.press(f.view.getByText('Guardar'));
     });
     expect(f.view.queryByText('Guardado')).toBeNull();
-    expect(f.c.getSnapshot().phase).toBe('confirmed');
+    expect(f.view.queryByText('Actualizar catálogo confirmado')).toBeNull();
+    expect(f.view.queryByText('Cerrar · conservar intento')).toBeNull();
+    expect(f.c.getSnapshot().phase).toBe('reconciling');
     await act(async () => finish({ status: 'ok', data: { status: 'ok', meal: personalSaved }, meta }));
+    expect(f.view.queryByText('Guardado')).toBeNull();
+    expect(f.view.queryByText('Actualizar catálogo confirmado')).toBeNull();
+    expect(f.view.queryByText('Cerrar · conservar intento')).toBeNull();
+    await act(async () => finishList({ status: 'ok', data: { status: 'ok', meals: [personalSaved] }, meta }));
     expect(f.view.getByText('Guardado')).toBeTruthy();
     expect(f.view.queryByLabelText('Nombre')).toBeNull();
     expect(f.view.queryByText('Deshacer')).toBeNull();

@@ -5,6 +5,8 @@ Una sola lista para todo lo que sale de los PR de #367 y de #380. No se duplica 
 Lo marcado con *requiere migración* solo se puede revisar después de aplicar las migraciones de #387 y #391 y publicar sus PR.
 
 ## Común a todas las pantallas
+
+- [ ] **#418 — Comidas guardadas:** formulario sin la aclaración de vacío/cero, conservando ambos valores. Durante confirmación/relectura no aparecen controles de recuperación/cierre de intento; ante fallo sí, sin reenviar escrituras confirmadas. Resaltado con espacio interior estable al aparecer/desaparecer, tanto en guardadas como en Alimentos; claro/oscuro, texto grande y VoiceOver. Corrección preparada, sin QA física aprobada.
 - [ ] Claro y oscuro, según las paletas de marca.
 - [ ] Dynamic Type mayor a 1,3: etiqueta y valor apilados, sin recortes.
 - [ ] VoiceOver: el orden tiene sentido, los botones se anuncian y lo expandido se dice.

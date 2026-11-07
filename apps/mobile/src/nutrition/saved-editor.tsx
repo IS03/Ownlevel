@@ -65,7 +65,7 @@ export function SavedEditor({ controller, state }: { controller: SavedController
     }
   }
   if (!state.open) return null;
-  const pending = state.phase === 'pending' || state.phase === 'loading',
+  const pending = state.phase === 'pending' || state.phase === 'loading' || state.phase === 'reconciling',
     locked = state.phase !== 'idle' || !!state.intent,
     d = state.draft;
   const discard = (action: () => void) =>
@@ -280,9 +280,6 @@ export function SavedEditor({ controller, state }: { controller: SavedController
           {d.templateType === 'manual' ? (
             <>
               <LibraryNutrients fields={(key, label, big) => input(key, label, big)} />
-              <AppText muted variant="caption">
-                Vacío significa sin dato; 0 es un valor explícito.
-              </AppText>
             </>
           ) : (
             <>
@@ -457,7 +454,7 @@ export function SavedEditor({ controller, state }: { controller: SavedController
         />
       ) : null}
       {pending ? <LoadingState label="Guardando comida" /> : null}
-      {state.intent ? (
+      {state.intent && !pending ? (
         <Button label="Cerrar · conservar intento" variant="quiet" disabled={pending} onPress={close} />
       ) : null}
     </LibrarySheet>
