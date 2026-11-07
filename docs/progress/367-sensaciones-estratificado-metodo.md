@@ -127,4 +127,55 @@ Corrida con el código de `488ea69`: semilla `0x5170`, 100 historiales por escen
 
 ## Validación reservada
 
-*(Se completa después de la corrida única.)*
+Corrida única con el código de `488ea69`, sin cambios después del desarrollo: semilla `0x5171`, 500 historiales por escenario, 199 permutaciones, entre 6 y 10 minutos por escenario.
+
+**«Alguna compuerta estricta»** en cualquiera de los dos resultados, con su intervalo de Wilson al 95 %. Las mismas filas, juzgadas con este método y con el de #412:
+
+| Escenario | Tipo | Filas | Retenidas | Nuevo | Wilson 95 % | #412 | Wilson 95 % |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Independiente | nulo | 357 | 99,9 % | 2,0 % | 1,09–3,64 % | 0,4 % | 0,11–1,45 % |
+| Dependencia temporal | nulo | 357 | 99,9 % | 2,6 % | 1,53–4,40 % | 1,0 % | 0,43–2,32 % |
+| Tendencia | nulo | 357 | 99,9 % | 1,6 % | 0,81–3,13 % | 4,6 % | 3,08–6,81 % |
+| Cambio de rutina registrado | nulo | 356 | 99,0 % | 1,8 % | 0,95–3,39 % | 4,8 % | 3,25–7,04 % |
+| Cambio sin registrar | nulo | 356 | 99,9 % | 3,2 % | 1,98–5,13 % | 5,0 % | 3,41–7,28 % |
+| Rutinas alternadas | nulo | 357 | 98,8 % | 2,0 % | 1,09–3,64 % | **100 %** | 99,2–100 % |
+| Ausencia selectiva | nulo | 357 | 99,8 % | 2,0 % | 1,09–3,64 % | 0,8 % | 0,31–2,04 % |
+| Horarios inciertos | nulo | 267 | 99,6 % | 4,0 % | 2,60–6,10 % | 2,0 % | 1,09–3,64 % |
+| Inversa del mismo día | limitación | 357 | 99,9 % | 85,8 % | — | 90,6 % | — |
+| Efecto moderado | potencia | 357 | 99,9 % | 96,4 % (plantado) | — | 98,6 % (plantado) | — |
+| Efecto fuerte | potencia | 357 | 99,9 % | 100 % (plantado) | — | 100 % (plantado) | — |
+
+**«Algún exploratorio»:** entre 12,4 % y 21,4 % en los nulos; 38,2 % con horarios inciertos.
+
+### Decisión: no valida
+
+- **Criterio 1: no se cumple en ninguno de los ocho nulos.** Las cotas superiores van de 3,13 % a 6,10 %, todas por encima del objetivo propuesto del 1 %.
+- **Limitación del método, no falta de precisión.** En cinco nulos el intervalo entero queda por encima del 1 %: independiente, dependencia temporal, cambio sin registrar, rutinas alternadas y ausencia selectiva. Con horarios inciertos también, desde 2,60 %. En tendencia y en cambio de rutina registrado, el límite inferior (0,81 % y 0,95 %) apenas toca el 1 %, pero las cotas superiores (3,13 % y 3,39 %) lo superan con holgura. Más historiales no harían aprobar ninguno.
+- **El método queda experimental y documentado.** No se publica, no se repitió la corrida y no se ajustó ningún parámetro.
+
+### Qué resolvió y qué no
+
+- **Resolvió la confusión por rutina y por tiempo**, que era el defecto de #412:
+  - con rutinas alternadas, #412 da 100 % y este método 2,0 %;
+  - con cambios de rutina registrados, 4,8 % contra 1,8 %;
+  - con tendencias, 4,6 % contra 1,6 %.
+- **Empeoró el nulo sin confusión:**
+  - independiente, 2,0 % contra 0,4 %;
+  - dependencia temporal, 2,6 % contra 1,0 %.
+
+  La causa más probable, sin comprobar: la compuerta de este método solo pide p ajustado, |ρ| y las dos mitades, sin los controles extra de #412 (tendencia local, sensibilidad, sin extremos). Además se mira 12 veces por historial sin corregir esas miradas.
+- **Resolución de las permutaciones:** con 199, el p ajustado más chico posible es 1/200 = 0,005, justo el umbral, así que la compuerta pide que ninguna permutación iguale al observado. Con las 499 por defecto la resolución es más fina. No se midió.
+- **Horarios inciertos:** excluir las respuestas tardías baja las filas de 357 a 267 (25 % de cobertura) y sube los falsos positivos a 4,0 %, porque la exclusión depende del resultado. El método no corrige ese sesgo.
+- **Inversa del mismo día:** 85,8 %, como se esperaba. Es una limitación de los candidatos «mismo día, sin orden», no del método: ningún estadístico puede saber si la métrica se registró antes o después.
+- **Pérdida de cobertura por estratos chicos:** menos del 1,2 % de los pares en todos los escenarios.
+- **Potencia:** 96,4 % con el efecto moderado y 100 % con el fuerte. Muy parecida a la de #412, así que estratificar casi no cuesta potencia en estas simulaciones.
+
+### Para un próximo preregistro
+
+No se implementa nada de esto:
+- combinar el nulo estratificado con los controles de la compuerta de #412;
+- corregir las miradas repetidas, gastando el α a lo largo de las actualizaciones;
+- usar 499 permutaciones también en la simulación;
+- excluir los candidatos «mismo día, sin orden» de las sensaciones al terminar, por la limitación inversa.
+
+Cada opción es un método nuevo con su preregistro y su validación reservada.

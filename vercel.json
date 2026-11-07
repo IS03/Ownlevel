@@ -32,7 +32,8 @@
       "codex/367-feeling-outcomes": false,
       "codex/367-meal-timing": false,
       "codex/367-body-weekly": false,
-      "codex/367-period-summary": false
+      "codex/367-period-summary": false,
+      "codex/367-feeling-stratified": false
     }
   }
 }
