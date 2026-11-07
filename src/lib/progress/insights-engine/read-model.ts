@@ -186,7 +186,8 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
         context: { feelings: table.feelingsBySession.get(session.sessionId) ?? {},
           ...(context.unreadableFeelingsBySession.has(session.sessionId) ? { unreadableFeelings: context.unreadableFeelingsBySession.get(session.sessionId)! } : {}),
           legacy: { energyLevel: row?.legacyEnergyLevel ?? null, performanceLevel: row?.performanceLevel ?? null, painLevel: row?.painLevel ?? null },
-          carbsPre3h: table.carbsPre3hBySession.get(session.sessionId) ?? { value: null, state: "no_start_time" } } };
+          carbsPre3h: table.carbsPre3hBySession.get(session.sessionId) ?? { value: null, state: "no_start_time" },
+          ...(table.preStartBySession.has(session.sessionId) ? { preStart: table.preStartBySession.get(session.sessionId)! } : {}) } };
     }),
   }));
 

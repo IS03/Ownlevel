@@ -284,8 +284,24 @@ export function sessionRows(session: Session): ContextRow[] {
     rows.push({ key: `feelings-${kind}`, label: line.label, value: line.value, ...(late ? { detail: `Antes: ${late}` } : {}), spoken: `${line.spoken}${late ? `. Antes: ${late}` : ''}` });
   }
   if (legacy.energyLevel !== null) rows.push({ key: 'legacy-energy', label: 'Energía, registro anterior', value: `${legacy.energyLevel} de 5`, detail: 'Sin momento: no es la energía al terminar' });
-  rows.push({ key: 'carbs', label: 'Carbohidratos registrados, 3 h antes', value: carbsPre3h.state === 'recorded' && carbsPre3h.value !== null ? formatValue(carbsPre3h.value, 'g') : CARBS[carbsPre3h.state] ?? 'Sin registrar' });
+  const windowValue = (window: typeof carbsPre3h, unit: string) => window.state === 'recorded' && window.value !== null ? formatValue(window.value, unit) : CARBS[window.state] ?? 'Sin registrar';
+  rows.push({ key: 'carbs', label: 'Carbohidratos registrados, 3 h antes', value: windowValue(carbsPre3h, 'g') });
+  // #367 phase 2: only from a server that sends it. Amount, energy and distance in time stay separate rows, never one figure.
+  const pre = session.context.preStart;
+  if (pre) {
+    rows.push({ key: 'protein', label: 'Proteína registrada, 3 h antes', value: windowValue(pre.proteinG, 'g') });
+    rows.push({ key: 'calories', label: 'Calorías registradas, 3 h antes', value: windowValue(pre.calories, 'kcal') });
+    const last = pre.lastExplicitMeal;
+    const value = last.state === 'recorded' && last.hours !== null ? `Hace ${hoursText(last.hours)}` : last.state === 'no_start_time' ? 'Sin hora de inicio' : 'Ninguna con hora en las 12 h previas';
+    const detail = last.untimedInScope ? 'Hay comidas sin hora que podrían ser posteriores' : last.unverifiedInScope ? 'Hay comidas con una hora que no sabemos si es la real' : last.state === 'recorded' ? 'La última registrada con hora, no necesariamente la última que comiste' : undefined;
+    rows.push({ key: 'last-meal', label: 'Última comida registrada con hora', value, ...(detail ? { detail } : {}), spoken: `Última comida registrada con hora: ${value.toLocaleLowerCase('es-AR')}${detail ? `. ${detail}` : ''}` });
+  }
   return rows;
+}
+/** "2 h 30 min", "45 min": minutes rounded, never a decimal of hours. */
+export function hoursText(hours: number) {
+  const minutes = Math.round(hours * 60), h = Math.floor(minutes / 60), m = minutes % 60;
+  return h ? (m ? `${h} h ${m} min` : `${h} h`) : `${m} min`;
 }
 /** The phone's clock dates each answer: said once, only where there is an answer before starting. */
 export const feelingClockNote = (sessions: readonly Session[]) => sessions.some(session => session.context.feelings.energyPre || session.context.feelings.fatiguePre)
