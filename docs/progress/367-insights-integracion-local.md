@@ -4,36 +4,37 @@
 
 ## Estado real
 
-- **`origin/main` = `96b4a63`** (merge de #411). Incluye todo lo de abajo.
-- **Checkout `C:\Proyectos\Ownlevel`:**
-  - en `codex/367-exercise-evidence` (`b6ad514`), limpio y ya mergeado;
-  - la rama local `main` quedó en `1fe5715`, 3 commits detrás de `origin/main`;
-  - **antes de trabajar:** `git status -sb`, luego `git switch main` y `git pull --ff-only`, y crear la rama nueva desde ahí.
+- **`origin/main` = `a8972a5`** (merge de #412). Incluye todo lo de abajo.
+- **Checkout `C:\Proyectos\Ownlevel`:** en `codex/367-meal-timing` (`82657c2`), limpio y publicado.
+  - **Antes de trabajar:** `git status -sb`, luego `git switch main` y `git pull --ff-only`, y crear la rama nueva desde ahí.
 - **Worktree sobrante:** `C:\Users\senes\AppData\Local\Temp\ownlevel-feelings-receipt`, en `codex/367-feelings-finish-receipt` (`c97bb3d`). Está limpio y ya mergeado; se puede quitar con `git worktree remove`.
-- **Pendiente local o remoto:** la rama `codex/367-feeling-outcomes` (`721c27a`), publicada y **sin PR**. El navegador integrado no tiene sesión en GitHub: hay que abrir el borrador a mano, con el texto de `docs/progress/367-sensaciones-resultado-pr-description.md`. Ver «En curso».
-  - El checkout está en esa rama, limpio.
+- **Pendiente local o remoto:** la rama `codex/367-meal-timing`, publicada y **sin PR**. El navegador integrado no tiene sesión en GitHub: hay que abrir el borrador a mano, con el texto de `docs/progress/367-alimentacion-horaria-pr-description.md`. Ver «En curso».
   - No hay pilas locales de Supabase corriendo.
   - Esta rama de integración (`integration/367-insights-candidate`) solo guarda esta continuidad y no se mergea.
 - **Notion:** no se actualizó (regla de AGENTS.md).
 
-## En curso — energía y fatiga al terminar como resultados
+## En curso — fase 2: alimentación antes del inicio
 
-Rama `codex/367-feeling-outcomes`, publicada en `721c27a` sobre main `96b4a63`. Previews bloqueadas. Sin migración ni cambios en las vistas existentes.
+Rama `codex/367-meal-timing`, publicada en `82657c2` sobre main `a8972a5`. Previews bloqueadas. Sin migración. Método, preregistro y resultados en `docs/progress/367-alimentacion-horaria-metodo.md` de esa rama. El preregistro está en su propio commit, `c68d6ba`.
 
 - **Implementado y publicado en la rama:**
-  - método `insights-feeling-outcomes/1` (`feeling-outcomes.ts`). Unidad: día cerrado con una sola sesión. Captura: entre el inicio y 2 h después del final. Cada día se ordena dentro de su nivel previo del mismo tipo;
-  - descripción en `view=feelings`, que sale del mismo snapshot;
-  - pantalla Mobile «Cómo terminaste».
-- **Implementado y sin publicar:**
-  - las asociaciones, en un carril interno (`snapshot.feelingOutcomes[].lane`). Ninguna vista lo expone.
+  - `mealWindow` recibe el nutriente: proteína y calorías registradas en 3 h usan la ventana, la procedencia y la regla de los carbohidratos;
+  - la última comida registrada con hora explícita en 12 h, censurada si no hay ninguna;
+  - las tres van como contexto opcional de la sesión (`preStart`), con filas separadas en Mobile.
+- **Implementado y sin publicar:** los tres candidatos. Solo se construyen con `buildExposureTable(..., mealTiming = true)`, que ninguna vista llama.
 - **Validado:**
-  - pasan 403 pruebas de Web y 46 de Mobile Insights; tipos y lint sin errores;
-  - calibración nueva: 500 historiales por escenario, con resultados en `docs/progress/367-sensaciones-resultado-metodo.md` de esa rama. **No cumple el presupuesto:** con cambios de rutina da 7,2 % y con tendencias 6,2 %, y los nulos también quedan con cotas arriba del 1 %. El estrato frena una exposición que solo sigue a la previa (0 %, contra 100 % sin estrato).
-- **Siguiente paso:** un método de asociaciones que pase esa calibración. Opciones en el documento de método: permutar dentro de cada era de rutina, cambiar la ventana de tendencia, o corregir los dos resultados en conjunto. Cada una es un método nuevo con su propia calibración.
-- **Hoja de ruta:** [367-hoja-de-ruta-ecosistema.md](367-hoja-de-ruta-ecosistema.md), en la rama. Siguen alimentación y tiempo (tres candidatos iniciales), evolución corporal semanal y resúmenes de 3 meses. Todo es diseño.
-- **Matriz y QA:** matriz corregida (#410, #411 y la configuración aplicada); sección nueva en la checklist única.
+  - huella de equivalencia: sin `preStart`, 53 de 53 vistas idénticas a `main`;
+  - pruebas: Web 411 de 412 (la otra, por tiempo bajo la carga de la campaña; pasa sola) y Mobile Insights 59; tipos y lint sin errores;
+  - calibración preregistrada (`family-extension.campaign.test.ts`), 500 historiales pareados por escenario en el carril estricto y 300 en el parcial.
+- **Resultado: no valida.**
+  - La compuerta estricta no empeora.
+  - «Algún exploratorio» sube entre 4,2 y 9,2 puntos, por encima del límite de +2.
+  - La dependencia temporal con 26 candidatos da una cota de 1,12 %.
+  - Los candidatos quedan fuera de las asociaciones. El 1 % sigue siendo un objetivo propuesto, no una tolerancia aprobada.
+- **Familias reales:** de 13 a 53 candidatos según la cuenta. Los nuevos agregan 2 evaluables con horas explícitas y 0 sin ellas.
+- **Siguiente paso posible, fuera de esta tanda:** un método que no infle el exploratorio, con su propio preregistro.
 
-## Entregas integradas en main, hasta #411
+## Entregas integradas en main, hasta #412
 
 - **#393 a #395, #397 y #398:** convención del sueño, peso del día, configuración del ejercicio y procedencia de la hora de comida. Mergeados y con sus migraciones aplicadas en producción. Detalle en [367-sueno-peso.md](367-sueno-peso.md) y [367-exercise-configuration-rollout.md](367-exercise-configuration-rollout.md).
 - **#403:** contexto diario completo: todas las sesiones y los cuatro macros.
@@ -42,6 +43,7 @@ Rama `codex/367-feeling-outcomes`, publicada en `721c27a` sobre main `96b4a63`. 
 - **#407 y #408:** memoria del motor. El comparador tiene una salida compacta para Insights.
 - **#409:** lectura en frío. Las series vienen embebidas, con una guarda de conteo y un stream de respaldo.
 - **#410:** resumen factual post-entreno y vista de una sesión, con cada método por separado y la fecha de la referencia.
+- **#412:** energía y fatiga al terminar como resultados, solo descritos (`view=feelings`, pantalla «Cómo terminaste»). Sus asociaciones no se publican: su calibración no alcanza el objetivo propuesto. El snapshot no las prepara.
 - **#411:** evidencia de comparación por ejercicio.
   - `view=evidence`: una lectura acotada a un ejercicio, con el comparador compartido en salida completa.
   - Pantalla «Evidencia» en Mobile: series con su número y su bloque, récord aparte, y nunca otra referencia en lugar de la tocada.
