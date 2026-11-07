@@ -124,4 +124,39 @@ Estados: `insufficient_data`, `no_clear_signal`, `passes_sequential_gate`.
 
 ## Medición de viabilidad
 
-*(Se completa después de la medición chica del prototipo.)*
+**Qué es:** una corrida chica para saber si el diseño se puede calcular y si encuentra lo que tiene que encontrar.
+
+**Qué no es:** una validación. Con 20 historiales, 0 aciertos dan una cota de Wilson cercana al 16 %, así que **no dice nada sobre el objetivo del 1 %**.
+
+**Cómo se corrió:** prototipo de `1eebb32`, 20 historiales por escenario, 24 meses, todas las miradas trimestrales de cada historial y los dos resultados. Las filas fuente son las de `feeling-stratified-calibration.ts`. El efecto del día anterior se sembró sobre ellas, desplazando la energía al terminar según la métrica 0 del día anterior.
+
+| Escenario | Miradas por resultado | Permutaciones por mirada | Candidatos que llegan a permutarse por mirada | Algún paso | Paso del sembrado | Análisis más lento (todas las miradas) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Independiente | 7 | 3 | 0,02 | 0/20 | — | 63 ms |
+| Cambio de rutina registrado | 7 | 2 | 0,01 | 0/20 | — | 42 ms |
+| Inversa del mismo día | 7 | 4 | 0,01 | 0/20 | — | 43 ms |
+| Efecto del día anterior, moderado | 7 | 23 558 | 0,46 | 20/20 | 20/20 | 4,4 s |
+| Efecto del día anterior, fuerte | 7 | 23 746 | 0,47 | 20/20 | 20/20 | 4,5 s |
+
+**Candidatos:**
+- 23 por resultado: 12 elegibles y 11 afuera (6 métricas y 4 nutrientes del mismo día, y el peso del día);
+- en esta simulación solo las 6 métricas del día anterior tienen datos: no hay comidas ni sueño declarado. La futura validación tiene que agregarlos para probar esas bases.
+
+**Lo que muestra:**
+- **El recorte por compuertas descriptivas casi elimina el costo bajo el nulo.** Casi ninguna mirada tiene un candidato que pueda pasar, así que casi nunca se permuta.
+- **Cuando hay señal, se paga la resolución:** las miradas tardías necesitan hasta 112 000 permutaciones (mirada 7) para un candidato que no se decide antes. Un análisis completo de un resultado tarda unos 4,5 s en este caso.
+- **La inversa del mismo día deja de ser un problema por construcción:** su candidato no entra en la familia.
+- **Los efectos sembrados se encuentran.** Son efectos grandes en una escala de 5 puntos; la potencia frente a efectos chicos no se midió.
+
+**Costo estimado de la futura validación** (1 000 historiales por escenario):
+- nueve nulos a unos 0,1 s por historial, unos 15 minutos;
+- dos de potencia a unos 9 s por historial (los dos resultados), unas 5 horas en serie o menos de una hora en paralelo.
+
+**Defecto de la herramienta, no del método:** la medición corre en un solo bloque síncrono, y vitest avisa «Timeout calling onTaskUpdate» aunque la prueba pase. Una campaña completa tendría que ceder el hilo entre historiales, como las anteriores.
+
+**Lo que falta antes de una validación:**
+- las bases de comidas con hora explícita y sueño declarado en la simulación;
+- un generador que ceda el hilo;
+- una semilla reservada nueva.
+
+Nada de esto se hizo todavía: este cambio se detiene en el diseño y el prototipo.
