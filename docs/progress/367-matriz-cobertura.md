@@ -13,7 +13,8 @@ Estado al 2026-11-06, verificado con el historial de `main` (`96b4a63`):
   - #411 (`96b4a63`): evidencia de comparación por ejercicio.
 - **Pendiente en todos:** la parte de Mobile necesita build. La QA física no está aprobada.
 - **Mergeado en `main`:** #412 (`a8972a5`), energía y fatiga al terminar descritas, sin asociaciones.
-- **En revisión:** fase 2, alimentación antes del inicio, en `codex/367-meal-timing`. Hoja de ruta: [367-hoja-de-ruta-ecosistema.md](367-hoja-de-ruta-ecosistema.md).
+- **Mergeado en `main`:** #413 (`ac6667b`), alimentación antes del inicio como contexto, con sus candidatos sin publicar.
+- **En revisión:** fase 3, evolución semanal del peso, en `codex/367-body-weekly`. Hoja de ruta: [367-hoja-de-ruta-ecosistema.md](367-hoja-de-ruta-ecosistema.md).
 
 Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya en código leído, no en que exista una tabla o una pantalla.**
 
@@ -211,7 +212,16 @@ Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya
   - **Corregido en #405:** queda fuera del gráfico, el cambio y la comparación, contado y conservado en el historial, y se rechazan los 0 kg nuevos.
   - Cuerpo en Mobile lo nombra con su fecha, con un aviso correcto antes y después de esa corrección.
 - **Límite de lectura:** `listWeightHistory` ordenaba de más viejo a más nuevo y cortaba en 1000, así que perdía los más recientes. **Corregido en #405:** el informe lee el historial completo por páginas.
-- **No incluido:** cambios porcentuales, ventanas móviles y cualquier familia estadística nueva. Nada de eso es necesario para describir la evolución.
+- **No incluido:** cambios porcentuales y ventanas móviles. Nada de eso es necesario para describir la evolución.
+
+**Evolución semanal del peso** (fase 3, `codex/367-body-weekly`; método en [367-evolucion-corporal-metodo.md](367-evolucion-corporal-metodo.md))
+- **Fuente:** los pesos del período que Cuerpo ya lee. Sin consultas ni contratos nuevos.
+- **Unidad:** semana de lunes a domingo en Córdoba; solo semanas enteras del período, y la semana en curso queda afuera.
+- **Resultado descriptivo:** mediana con al menos 3 pesajes válidos, con sus fechas; cambio solo entre semanas seguidas, nunca interpolado.
+- **Estado: descripción accesible en Cuerpo; análisis experimental sin publicar.**
+  - **«Semana a semana»** debajo del gráfico de peso, con flecha y magnitud, sin color ni juicios.
+  - **Análisis** (`insights-body-weekly/1`): cambio W−1→W frente a calorías, proteína, entrenamientos y series de W−1, con la cobertura de comidas. La calibración desde filas fuente da una compuerta estricta con cota de 1,75 % en el nulo independiente, así que no valida.
+  - Ninguna vista lo prepara.
 
 **Otras métricas numéricas**
 - **Fuente:** todas las de `user_metrics`, por UUID, incluidas las archivadas.
@@ -245,7 +255,7 @@ Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya
   - La hora aproximada de «ahora» queda en una sensibilidad aparte (`with_registration_time`).
   - Sin comida registrada en la ventana: `no_registered_meal_in_window`. **No se interpreta como ayuno.**
 
-**Proteína, calorías y última comida antes de entrenar** (fase 2, `codex/367-meal-timing`; método en [367-alimentacion-horaria-metodo.md](367-alimentacion-horaria-metodo.md))
+**Proteína, calorías y última comida antes de entrenar** (fase 2, #413; método en [367-alimentacion-horaria-metodo.md](367-alimentacion-horaria-metodo.md))
 - **Fuente:** las mismas comidas y la misma agregación que los carbohidratos (`mealWindow`). Las calorías son las registradas, nunca reconstruidas desde los macros.
 - **Unidad:** sesión. Se muestra en cada sesión, también en días con varias.
 - **Tiempo:**
@@ -327,7 +337,7 @@ Modelo y reglas: [367-exercise-configuration.md](367-exercise-configuration.md).
 - un método de asociaciones para las sensaciones posteriores que pase la calibración con cambios de rutina y tendencias;
 - paginar por clave los valores diarios, para la latencia de la lectura en frío (ver #409).
 
-**En revisión:** fase 2, alimentación antes del inicio, en `codex/367-meal-timing`. Contexto publicado; los tres candidatos no validaron y quedan fuera de las asociaciones.
+**En revisión:** fase 3, evolución semanal del peso, en `codex/367-body-weekly`. Descripción publicada en Cuerpo; el análisis no validó y queda experimental.
 
 **Mergeados en `main`:**
 - #403: todas las sesiones y los cuatro macros en el contexto del día;
@@ -337,6 +347,7 @@ Modelo y reglas: [367-exercise-configuration.md](367-exercise-configuration.md).
 - #409: lectura en frío;
 - #410: resumen factual post-entreno;
 - #411: evidencia de comparación por ejercicio;
-- #412: energía y fatiga al terminar, descritas.
+- #412: energía y fatiga al terminar, descritas;
+- #413: alimentación antes del inicio como contexto.
 
 **Hasta acá:** presentación y lectura, sin cambio de método. Mobile sigue necesitando build y QA física, que no está aprobada.

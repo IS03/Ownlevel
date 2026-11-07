@@ -22,6 +22,7 @@ import { useCachedRead } from '@/api/use-cached-read';
 import { ProgressReadStatus } from './progress-read-status';
 import { ReturnToInsights } from '@/insights/return-to-insights';
 import { useProgressRouteRange } from './use-progress-route-range';
+import { WeeklyWeights } from './weekly-weights';
 
 const LONGER: Partial<Record<ProgressUnit, ProgressUnit>> = { week: '3m', '2w': '3m', '3w': '3m', month: '3m', '3m': '6m', '6m': 'year' };
 
@@ -119,6 +120,8 @@ function Content({ data, selected, body }: { data: ProgressBody; selected: strin
     {selected ? null : <Heading level={2}>{metric.label}</Heading>}
     <Selected metric={metric} excluded={data.excludedSuspect} storedZeros={metric.key === 'body.weight' ? (body?.state.read.weights ?? [])
       .filter(row => row.weightKg <= 0 && row.date >= data.period.start && row.date <= data.period.end).map(row => row.date) : []} />
+    {/* The weeks of the weights this read already brought: no other request. Body weight, never a lifted load. */}
+    {metric.key === 'body.weight' ? <WeeklyWeights observations={metric.observations} period={data.period} today={data.today} /> : null}
     {body?.state.read.overview ? <View style={styles.section} testID="body-trend-records">
       <AppText muted variant="footnote">{metric.key === 'body.weight' ? 'Tus pesajes · tocá uno para corregirlo' : 'Tus mediciones · tocá una para corregirla'}</AppText>
       {metric.key === 'body.weight' ? <WeightRecords state={body.state} controller={body.controller} editable={editable} limit={selected ? undefined : 5} />

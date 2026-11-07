@@ -58,13 +58,13 @@ export type FeelingTiming = "before_start" | "before_first_set" | "after_first_s
 export type SessionFeeling = { value: number; timing: FeelingTiming; temporalQuality: "unknown" | "unverified_client_clock" };
 
 export type CandidateFamily = "metric" | "nutrition" | "meal_window" | "feeling" | "sleep" | "body";
-export type CandidateWindow = "same_day" | "previous_day" | "pre_3h" | "same_day_before_start" | "session" | "night_before" | "pre_start_12h";
+export type CandidateWindow = "same_day" | "previous_day" | "pre_3h" | "same_day_before_start" | "session" | "night_before" | "pre_start_12h" | "previous_week";
 /** What can be said about the order of the exposure and the training. Same-day totals have no order. */
 export type TemporalBasis = "same_day_unordered" | "previous_logical_day" | "explicit_meal_time_before_start" | "declared_pre_unverified_clock"
   /** Sleep declared as the night that ended the morning of the training day. */
   | "declared_night_ending_on_day"
   /** Sleep with no declared night: its date could mean either night, so it stays apart and says so. */
-  | "undeclared_sleep_date";
+  | "undeclared_sleep_date" | "previous_calendar_week";
 export type CandidateDefinition = {
   id: string; family: CandidateFamily; window: CandidateWindow; temporalBasis: TemporalBasis;
   /** Metric UUID, nutrient or feeling key. Never interpreted through a name or a unit. */

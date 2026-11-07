@@ -61,7 +61,13 @@ Ver [367-sensaciones-resultado-metodo.md](367-sensaciones-resultado-metodo.md).
 - recalcular la calibración de las familias afectadas (rendimiento estricto, parcial y, si se publican, sensaciones), con 3 candidatos más por familia;
 - el escenario de [tamaño de familia](367-insights-pr4-motor.md) ya mide 12 contra 14 candidatos y se extiende a 17.
 
-## Fase 3 — Evolución corporal (diseño)
+## Fase 3 — Evolución corporal
+
+**Estado** (`codex/367-body-weekly`, método, preregistro y resultados en [367-evolucion-corporal-metodo.md](367-evolucion-corporal-metodo.md)):
+- «Semana a semana» se publica en Cuerpo, desde la lectura que Cuerpo ya hace;
+- el análisis frente a alimentación y actividad de la semana anterior no validó: la compuerta estricta queda por encima del 1 % en los nulos. Queda experimental y sin publicar.
+
+**Diseño original**, sin cambios:
 
 - **Resultado nuevo e independiente:** el cambio de peso corporal.
   - **Unidad:** la semana. Un día no tiene evolución corporal.
