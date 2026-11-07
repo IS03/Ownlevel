@@ -29,3 +29,7 @@ export const fetchInsightsPeriod = (client: MobileApiClient, signal?: AbortSigna
 export const fetchInsightsPinnedPeriod = (client: MobileApiClient, asOf?: string, signal?: AbortSignal) => read<InsightsPinnedPeriodSummary>(client, 'period-at', { view: 'period-at', asOf }, signal);
 export const fetchInsightsPeriodFeelings = (client: MobileApiClient, asOf: string, signal?: AbortSignal) => read<InsightsPeriodFeelings>(client, 'period-feelings', { view: 'period-feelings', asOf }, signal);
 export const fetchInsightsPeriodNutrition = (client: MobileApiClient, asOf: string, signal?: AbortSignal) => read<InsightsPeriodNutrition>(client, 'period-nutrition', { view: 'period-nutrition', asOf }, signal);
+export const fetchSessionTemporal = (client: MobileApiClient, date: string, signal?: AbortSignal) => client.read<import('./performance-insights').SessionTemporalDay>({
+  path: `${PERFORMANCE_INSIGHTS_PATH}?method=2&view=session-temporal&date=${encodeURIComponent(date)}`, signal,
+  parse: raw => { const parsed = parsePerformanceInsights(raw); return parsed?.view === 'session-temporal' && parsed.date === date ? parsed : undefined; },
+});

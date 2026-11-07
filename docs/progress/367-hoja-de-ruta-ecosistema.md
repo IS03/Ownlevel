@@ -4,6 +4,12 @@
 
 Este documento fija el orden y las reglas de cada fase. **Lo que dice «diseño» no está implementado.** El estado real de cada fila está en la [matriz](367-matriz-cobertura.md).
 
+## Ejecución Mobile autorizada — 7 de noviembre de 2026
+
+[Plan ejecutable y decisiones](367-ecosistema-mobile-ejecucion.md): primero contexto temporal completo por sesión, luego exploración conjunta de semanas y conexiones del período; después #399 y #418 en PRs separados. #421 ya aporta los detalles de período. La rama de contexto temporal prepara una vista descriptiva nueva, sin cambios de Web ni #402.
+
+#419 está integrado; #420 sigue borrador y separado, y su validación reservada **no acreditó el criterio**. La investigación está detenida: no ejecutar las calibraciones, campañas o potencia descritas como futuro en los diseños históricos de abajo. Asociaciones experimentales y «consistente» permanecen deshabilitadas. Las fases descriptivas no dependen de reabrir esa investigación.
+
 ## Reglas comunes
 
 - **Un resultado nuevo es una familia nueva**, con su propia calibración. Nunca hereda la del rendimiento.

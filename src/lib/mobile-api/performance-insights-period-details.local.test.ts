@@ -189,4 +189,19 @@ describe.runIf(!!db && !!base && !!task)('#421 exact period readers on disposabl
     const expected = periodNutritionDetail(await readPeriodMeals(clientFor(OWNER).context(), AS_OF), TODAY, AS_OF, body.sourceRevision, 2);
     expect(body).toEqual(expected);
   }, 120_000);
+  it('publishes temporal context through the exact canonical paginated reader, with SQL posterior totals', async () => {
+    sql(`insert into public.meal_entries(user_id,day_log_id,source_type,consumed_at,consumed_at_source,final_calories,final_protein_g,final_carbs_g,final_fat_g)
+      select '${OWNER}',id,'sheet_import',at::timestamptz,provenance,kcal,protein,carbs,fat from public.day_logs
+      cross join (values ('2026-08-03T20:00:00-03:00','user_declared',150,0,null::numeric,2),('2026-08-03T21:00:00-03:00','user_declared',0,0,0,0),('2026-08-03T22:00:00-03:00','user_declared',900,90,90,90),('2026-08-03T20:30:00-03:00','default_clock',999,99,99,99)) v(at,provenance,kcal,protein,carbs,fat)
+      where user_id='${OWNER}' and log_date='2026-08-03';`);
+    const who=clientFor(OWNER);mock.auth.mockResolvedValue(who.context());
+    const response=await GET(new NextRequest('http://localhost/api/mobile/v1/progress/performance-insights?view=session-temporal&method=2&date=2026-08-03',{headers:{authorization:'Bearer synthetic-not-a-token'}})),body=await response.json();
+    expect(response.status).toBe(200);expect(parsePerformanceInsights(body)).toBeDefined();expect(body.sessions).toHaveLength(51);
+    const truth=json(`select json_build_object('recorded',sum(m.final_calories),'missing',count(*) filter(where m.final_calories is null)) from public.meal_entries m where m.user_id='${OWNER}' and m.deleted_at is null and m.entry_kind='meal' and m.consumed_at_source='user_declared' and m.consumed_at>='2026-08-03T19:00:00-03:00' and m.consumed_at<'2026-08-03T22:00:00-03:00'`);
+    for(const session of body.sessions){expect(session.post.knownMeals).toBe(2);expect(session.post.uncertainMeals).toBe(1);expect(session.post.nutrients.calories).toEqual(truth);expect(session.post.nutrients.carbsG).toEqual({recorded:0,missing:1});}
+    expect(who.traces.filter(t=>t.table==='meal_entries')).toHaveLength(2);expect(who.traces.filter(t=>t.table==='insights_source_revisions')).toHaveLength(2);
+    console.log(JSON.stringify({view:'session-temporal',queries:who.traces.length,sessions:body.sessions.length,bytes:Buffer.byteLength(JSON.stringify(body))}));
+    mock.auth.mockResolvedValue(clientFor(OTHER).context(OWNER));
+    const other=await GET(new NextRequest('http://localhost/api/mobile/v1/progress/performance-insights?view=session-temporal&method=2&date=2026-08-03',{headers:{authorization:'Bearer synthetic-not-a-token'}}));expect((await other.json()).sessions).toEqual([]);
+  },120_000);
 });

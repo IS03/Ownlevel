@@ -1,0 +1,42 @@
+# #367 — Ejecución del ecosistema Mobile
+
+Base: `main` en `6d94f31` (#422), checkout limpio. #420 continúa borrador y separado; investigación detenida. Sin Web ni #402.
+
+| Capacidad | Estado comprobado / trabajo acotado |
+|---|---|
+| Comparación de carga/reps, referencia compatible y evidencia | Ya implementada; conservar métodos, modos y unidades. |
+| Todas las sesiones del día, sensaciones, cuatro nutrientes diarios y métricas | Ya implementados; completar enlaces y contexto temporal, no duplicar su dashboard. |
+| Inicio/final | Fuentes presentes; falta duración y evidencia temporal accesible. Falta de timestamps se declara. |
+| Proteína, calorías, carbohidratos y última comida previos | Ya calculados; reutilizar exactamente, incluido el alcance legacy de carbohidratos. Falta acceso agrupado a sus registros. |
+| Comidas posteriores | Falta descripción/presentación. Usar fuentes existentes, sin candidatos ni asociaciones nuevos. |
+| Peso y medianas semanales; detalles de tres meses | Ya implementados y verificados en #421; falta exploración conjunta semana/día y conservar el origen entre recorridos. |
+| Asociaciones de sensaciones, horarios y evolución corporal | Bloqueadas por validación. No ampliar, recalibrar ni publicar. |
+| Registro completo de ingesta, horas desconocidas, contexto histórico no capturado | Faltan datos; no completar retrospectivamente ni inferir ausencia de consumo. |
+
+## Orden ejecutable
+
+1. **PR funcional de contexto temporal:** desde día/sesión, detalle agrupado de todas las sesiones de ese día, inicio/final/duración y evidencia previa/posterior. Vista optativa nueva, lectores compartidos y contador por cuenta. Reutilizar el lector agrupado vigente; no agregar consultas por sesión/tarjeta. Verificar costo y paginación con fixtures. No calcular asociaciones al abrir este detalle.
+2. **Exploración semanal y conexiones del período:** ampliar el recorrido existente de tres meses con semanas/días, denominadores independientes y enlaces al día/sesión/evidencia y dominios. Reutilizar #421 y medianas de Cuerpo; no mezclar revisiones ni crear otro dashboard.
+3. **Después del núcleo funcional:** #399 y #418 en PRs separados. Reproducir con relecturas controladas, preservar recibos/journals/recuperación y distinguir transitorio confirmado de fallo real.
+4. Pruebas dirigidas por entrega, tipos/lint; lectores/joins nuevos contra PostgREST descartable. Al cerrar la combinación, una validación Mobile completa. QA únicamente en la checklist existente, sin aprobarla físicamente.
+
+## Decisión previa al código: ventana posterior `session-temporal/1`
+
+- Una única ventana descriptiva: **[final de sesión, final + 3 horas)** en instantes. La igualdad con el final entra; la igualdad con final+3 h queda fuera. Las 3 h dan coherencia de presentación con el contexto previo, **no validez fisiológica**.
+- Fecha y hora en Córdoba (`America/Argentina/Cordoba`). Duración solo entre inicio/final válidos y ordenados; no es tiempo activo. Sin final no existe ventana calculable. No usar `created_at`/`updated_at` como hora del hecho.
+- Sumar únicamente registros con hora explícita según `mealTimeEvidence`, nunca convertir macros en calorías. Cada nutriente mantiene su suma conocida y su propio contador faltante. Sin comidas no es cero/ayuno ni ingesta completa.
+- Si la ventana no terminó al corte de lectura, se rotula **provisional**. No incluir horas futuras al corte; mostrar ese corte y actualizar al reabrir/refrescar, sin polling oculto.
+- Una comida sin hora fiable puede pertenecer a la ventana si su fecha lógica toca alguna fecha de Córdoba de la ventana o su hora incierta cae dentro. Se cuenta como incertidumbre y se ofrece su fecha para consultar; no se coloca artificialmente.
+- Medianoche usa instantes y todas las fechas tocadas. Ventanas solapadas pueden mostrar el mismo registro en ambas sesiones; no hay asignación exclusiva ni observaciones analíticas nuevas. Mostrar solapamientos conocidos, sin afirmar exclusividad cuando faltan horarios.
+- El contexto posterior no explica el rendimiento ya sucedido. Los valores previos conservan exactamente sus reglas publicadas; carbohidratos legacy no se corrigen silenciosamente.
+
+Checkpoints, SHAs, validación y pendientes se agregarán al completar cada entrega. No declarar #367 terminado mientras persistan bloqueos metodológicos o QA.
+
+## Checkpoint 1 — Contexto temporal preparado
+
+- Vista optativa `session-temporal/1`, sin modificar respuestas existentes ni algoritmos publicados. Horarios de Córdoba, duración entre timestamps, contexto previo intacto, cobertura de 3 h y registro de la última hora explícita. Posterior con cuatro nutrientes, incertidumbre, provisionalidad, solapamientos y muestra de hasta 20 registros por bloque con conteo total y acceso a sus fechas originales.
+- Mobile abre el detalle desde todas las sesiones del día, conserva día/sesión y revisión para el retorno desde Nutrición. Al volver a Insights se revalida la lectura completa. Vacío, error, lectura anterior identificada y reintento separados. No se monta al terminar ni en Inicio.
+- **Pruebas:** raíz 47 únicas (4 temporales, 9 de ventanas previas, 6 de API de detalles y 28 de regresiones de API); Mobile 59 únicas (55 de contexto temporal/Insights/día/hechos de sesión y 4 de presentación previa). Tipos raíz/Mobile y lint aprobados. La validación Mobile completa se reserva para terminar la combinación.
+- **PostgREST real:** `node scripts/testing/period-details-local.mjs --temporal-only`; PostgreSQL 17.6, PostgREST 16.5, las 93 migraciones, fixture sintética >1.000 filas y dos identidades bajo RLS. SQL independiente confirma totales posteriores, faltantes y límite superior excluido. La pila se eliminó. Se reutiliza el lector canónico exacto, sin consultas o joins nuevos.
+- **Costo:** 9 consultas agrupadas en la fixture pequeña de API (1.492 bytes). En la fixture local de paginación: 13 consultas, 51 sesiones del día y 193.046 bytes. Esta última es un caso de estrés de varias sesiones, no una latencia representativa ni SLA. El detalle lee el historial fuente vigente al abrir: no agrega caché de fuentes ni finge que el costo es acotado solo al día. No calcula comparadores/asociaciones ni suma pedidos por sesión; la muestra acota filas de evidencia, no la cantidad de sesiones que se conservan.
+- **Pendientes de la tanda:** exploración conjunta semanal y conexión del período (etapas 2–3); después #399 y #418 en ramas separadas. Login/JWT y QA física no se acreditan con el transporte sintético local. No se cerró #367.

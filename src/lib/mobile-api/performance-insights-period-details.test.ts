@@ -50,6 +50,17 @@ const request = (query: string) => new NextRequest(`http://localhost/api/mobile/
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2027-01-02T15:00:00Z')); clearInsightsSnapshots(); });
 afterEach(() => vi.useRealTimers());
 describe('bounded period details route', () => {
+  it('reads temporal context through the canonical grouped source under one revision; old views and parameters stay separate', async () => {
+    const db=database(); mocks.auth.mockResolvedValue({supabase:db.client,userId:USER});
+    const response=await GET(request('view=session-temporal&date=2026-08-03')), body=await response.json();
+    expect(response.status).toBe(200); expect(parsePerformanceInsights(body)?.view).toBe('session-temporal'); expect(body.sessions).toHaveLength(1);
+    expect(db.calls).toHaveLength(9); console.log('session-temporal fixture bytes:', Buffer.byteLength(JSON.stringify(body)));
+    mocks.auth.mockResolvedValue({supabase:db.client,userId:USER.replace(/1$/,'2')});
+    expect((await (await GET(request('view=session-temporal&date=2026-08-03'))).json()).sessions).toEqual([]);
+    for(const q of ['view=session-temporal&date=2026-02-30','view=session-temporal&date=2028-01-01','view=session-temporal&date=2026-08-03&asOf=2026-11-07','view=summary&date=2026-08-03']) expect((await GET(request(q))).status).toBe(400);
+    const moving=database(n=>n); mocks.auth.mockResolvedValue({supabase:moving.client,userId:USER}); expect((await GET(request('view=session-temporal&date=2026-08-03'))).status).toBe(503);
+    const broken=database(()=>1,'meal_entries'); mocks.auth.mockResolvedValue({supabase:broken.client,userId:USER}); expect((await GET(request('view=session-temporal&date=2026-08-03'))).status).toBe(503);
+  });
   it('reads three period streams under one counter, preserves before-first-set timing, and isolates accounts', async () => {
     const db = database(); mocks.auth.mockResolvedValue({ supabase: db.client, userId: USER });
     const response = await GET(request('view=period-feelings&asOf=2026-11-07')), body = await response.json();

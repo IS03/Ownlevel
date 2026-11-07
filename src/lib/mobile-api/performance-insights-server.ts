@@ -13,6 +13,7 @@ import type { MobileSupabaseAuthenticatedContext } from "./supabase";
 import { configurationIdentity } from "./training-exercise-configuration-contract";
 import { periodFeelingDetail, periodNutritionDetail, type PeriodFeelingSource, type PeriodMeal } from "../progress/insights-engine/period-details";
 import { instantMs } from "../progress/insights-engine/source-adapter";
+import { sessionTemporalDay } from '../progress/insights-engine/session-temporal';
 
 type Context = MobileSupabaseAuthenticatedContext;
 const firstPage = (from: number) => (from === 0 ? { count: "exact" as const } : undefined);
@@ -304,13 +305,19 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EVIDENCE_KEYS = ["session", "exercise", "lane"];
 export function parseInsightsParams(params: URLSearchParams) {
   for (const key of new Set(params.keys())) {
-    if (!["view", "before", "limit", "association", "pairs", "method", "asOf", ...EVIDENCE_KEYS].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
+    if (!["view", "before", "limit", "association", "pairs", "method", "asOf", "date", ...EVIDENCE_KEYS].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
   }
   const before = params.get("before") ?? undefined, limit = params.get("limit"), association = params.get("association") ?? undefined, view = params.get("view") ?? "summary";
-  if (!["summary", "days", "relations", "evidence", "feelings", "period", "period-at", "period-feelings", "period-nutrition"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
+  if (!["summary", "days", "relations", "evidence", "feelings", "period", "period-at", "period-feelings", "period-nutrition", "session-temporal"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
   const method = params.get("method");
   if (method !== null && method !== "2") throw new MobileApiValidationError("Método no válido.");
   const engineMethod = (method === "2" ? 2 : 1) as InsightsEngineMethod;
+  if (view === 'session-temporal') {
+    const date = params.get('date');
+    if (method !== '2' || !validPeriodAnchor(date) || [...params.keys()].some(k => !['view','method','date'].includes(k))) throw new MobileApiValidationError('Fecha o parámetros no válidos.');
+    return { view: 'session-temporal' as const, date };
+  }
+  if (params.has('date')) throw new MobileApiValidationError('Parámetro no válido.');
   if (view === "period-at" || view === "period-feelings" || view === "period-nutrition") {
     if ([...params.keys()].some(key => !["view", "method", "asOf"].includes(key))) throw new MobileApiValidationError("Parámetro no válido.");
     const asOf = params.get("asOf") ?? undefined;
@@ -338,6 +345,17 @@ export function parseInsightsParams(params: URLSearchParams) {
 
 export const performanceInsightsResponse = (request: Request) => progressReadResponse(request, "performance-insights", async (context, params, today) => {
   const options = parseInsightsParams(params);
+  if (options.view === 'session-temporal') {
+    if (options.date > today) throw new MobileApiValidationError('Fecha futura.');
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const revision = await readInsightsRevision(context), source = await readInsightsSource(context);
+      if (await readInsightsRevision(context) !== revision) continue;
+      const result = sessionTemporalDay(source, options.date, new Date().toISOString(), publicRevision(context.userId, revision));
+      const after = todayInCordoba(); if (after !== today) throw new NutritionReportDayChangedError(after);
+      return result;
+    }
+    throw Error('Temporal sources kept changing');
+  }
   if (options.view === "period-at" || options.view === "period-feelings" || options.view === "period-nutrition") {
     const asOf = options.asOf ?? today;
     if (asOf > today) throw new MobileApiValidationError("Fecha de referencia futura.");
