@@ -12,7 +12,8 @@ Estado al 2026-11-06, verificado con el historial de `main` (`96b4a63`):
   - #410 (`1fe5715`): resumen factual post-entreno y vista de una sesión;
   - #411 (`96b4a63`): evidencia de comparación por ejercicio.
 - **Pendiente en todos:** la parte de Mobile necesita build. La QA física no está aprobada.
-- **En revisión:** energía y fatiga al terminar como resultados, en `codex/367-feeling-outcomes`. Hoja de ruta: [367-hoja-de-ruta-ecosistema.md](367-hoja-de-ruta-ecosistema.md).
+- **Mergeado en `main`:** #412 (`a8972a5`), energía y fatiga al terminar descritas, sin asociaciones.
+- **En revisión:** fase 2, alimentación antes del inicio, en `codex/367-meal-timing`. Hoja de ruta: [367-hoja-de-ruta-ecosistema.md](367-hoja-de-ruta-ecosistema.md).
 
 Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya en código leído, no en que exista una tabla o una pantalla.**
 
@@ -131,7 +132,7 @@ Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya
 - **Fuente:** `energyPost`, del instrumento `energy-fatigue/1`.
 - **Unidad y tiempo:** como resultado, el día cerrado con una sola sesión. La respuesta tiene que estar capturada entre el inicio y 2 h después del final. Método: [367-sensaciones-resultado-metodo.md](367-sensaciones-resultado-metodo.md).
 - **Cruce:** resultado propio, ordenado dentro de su nivel de energía previa. Nunca es antecedente: invertiría el orden temporal.
-- **Estado: descriptivo accesible, asociaciones sin publicar** (`codex/367-feeling-outcomes`).
+- **Estado: descriptivo accesible, asociaciones sin publicar** (#412).
   - «Cómo terminaste» cuenta las respuestas al terminar por nivel previo y deja aparte las tardías, las que no tienen hora, las ilegibles, las de otro instrumento y la energía heredada.
   - Las asociaciones no se publican y las vistas no las preparan (#412): el cálculo experimental solo se construye si se pide. La calibración no alcanza el objetivo de validación propuesto (1 %, no aprobado como tolerancia): da 7,2 % con cambios de rutina y 6,2 % con tendencias.
   - Sigue como contexto de su sesión en Insights y en el resumen post-entreno.
@@ -244,6 +245,19 @@ Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya
   - La hora aproximada de «ahora» queda en una sensibilidad aparte (`with_registration_time`).
   - Sin comida registrada en la ventana: `no_registered_meal_in_window`. **No se interpreta como ayuno.**
 
+**Proteína, calorías y última comida antes de entrenar** (fase 2, `codex/367-meal-timing`; método en [367-alimentacion-horaria-metodo.md](367-alimentacion-horaria-metodo.md))
+- **Fuente:** las mismas comidas y la misma agregación que los carbohidratos (`mealWindow`). Las calorías son las registradas, nunca reconstruidas desde los macros.
+- **Unidad:** sesión. Se muestra en cada sesión, también en días con varias.
+- **Tiempo:**
+  - proteína y calorías en las 3 h previas;
+  - horas desde la última comida registrada con hora explícita, dentro de las 12 h previas;
+  - en los dos casos, solo consumo anterior al inicio, cruzando la medianoche.
+- **Cruce:** ninguno publicado.
+- **Estado: accesible como contexto; los candidatos no validaron.**
+  - **Contexto en pantalla:** tres filas separadas, con el motivo cuando falta: comidas sin hora o con hora no verificada, macro faltante, sin comidas, o sin hora de inicio.
+  - **Última comida:** es la última registrada, no la última consumida. Sin ninguna en 12 h queda censurada, nunca «12 h» ni ayuno. Si hay comidas que no puede ubicar, también del día anterior, lo dice.
+  - **Asociaciones:** la calibración preregistrada sube el exploratorio entre 4 y 9 puntos. Los tres candidatos quedan fuera de las familias públicas y de su preparación en las vistas.
+
 **Comida después de entrenar**
 - **Fuente:** ninguna separada.
 - **Estado: pendiente.**
@@ -312,7 +326,7 @@ Modelo y reglas: [367-exercise-configuration.md](367-exercise-configuration.md).
 - un método de asociaciones para las sensaciones posteriores que pase la calibración con cambios de rutina y tendencias;
 - paginar por clave los valores diarios, para la latencia de la lectura en frío (ver #409).
 
-**En revisión:** energía y fatiga al terminar como resultados, en `codex/367-feeling-outcomes`. Descripción publicada; asociaciones sin publicar.
+**En revisión:** fase 2, alimentación antes del inicio, en `codex/367-meal-timing`. Contexto publicado; los tres candidatos no validaron y quedan fuera de las asociaciones.
 
 **Mergeados en `main`:**
 - #403: todas las sesiones y los cuatro macros en el contexto del día;
@@ -321,6 +335,7 @@ Modelo y reglas: [367-exercise-configuration.md](367-exercise-configuration.md).
 - #407 y #408: memoria del motor;
 - #409: lectura en frío;
 - #410: resumen factual post-entreno;
-- #411: evidencia de comparación por ejercicio.
+- #411: evidencia de comparación por ejercicio;
+- #412: energía y fatiga al terminar, descritas.
 
 **Hasta acá:** presentación y lectura, sin cambio de método. Mobile sigue necesitando build y QA física, que no está aprobada.

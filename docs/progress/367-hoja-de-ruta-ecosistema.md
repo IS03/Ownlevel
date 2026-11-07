@@ -23,7 +23,13 @@ Ver [367-sensaciones-resultado-metodo.md](367-sensaciones-resultado-metodo.md).
 - **Publicado:** la descripción (`view=feelings`) y la pantalla «Cómo terminaste».
 - **Sin publicar ni preparar en las vistas:** las asociaciones. La calibración no alcanza el objetivo de validación propuesto (1 %, no aprobado como tolerancia) con cambios de rutina y tendencias, ni tampoco en los nulos.
 
-## Fase 2 — Alimentación y tiempo (siguiente incremento, diseño)
+## Fase 2 — Alimentación y tiempo
+
+**Estado** (`codex/367-meal-timing`, método y resultados en [367-alimentacion-horaria-metodo.md](367-alimentacion-horaria-metodo.md)):
+- los tres valores se publican como contexto de la sesión;
+- los tres candidatos **no validaron** con la calibración preregistrada: el exploratorio sube entre 4 y 9 puntos. Quedan fuera de las asociaciones públicas y de su preparación en las vistas.
+
+**Diseño original**, sin cambios:
 
 **Lo que ya existe:**
 - totales del día y del día anterior para los cuatro macros, «mismo día, sin orden»;

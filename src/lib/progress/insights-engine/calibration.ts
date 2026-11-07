@@ -136,3 +136,66 @@ export function runCalibration(scenario: CalibrationScenario, config: Calibratio
   while (!step.done) step = steps.next();
   return step.value;
 }
+
+/**
+ * #367 phase 2: the same histories, judged with the current family and with three more candidates, so the difference is the
+ * extension alone. The extra series come from a stream of their own, so the base family sees exactly what `calibrationSteps`
+ * sees. ASSUMPTIONS, not data: two extras follow candidate 1, the carbohydrate window (protein ρ ≈ 0.7, calories ρ ≈ 0.85); the
+ * third, hours since the last meal, is independent. All three are present on the same days, about half of candidate 1's.
+ */
+export type ExtensionResult = { scenario: CalibrationScenario; histories: number; looks: number; permutations: number; baseCandidates: number; extendedCandidates: number;
+  base: { anyExploratory: number; anyStrictGate: number; strictGateWilsonUpper95: number; meanTestable: number };
+  extended: { anyExploratory: number; anyStrictGate: number; strictGateWilsonUpper95: number; meanTestable: number };
+  /** Paired: histories where the extended family passes and the base one does not, and the reverse. */
+  onlyExtendedStrict: number; onlyBaseStrict: number; onlyExtendedExploratory: number; onlyBaseExploratory: number };
+export function* familyExtensionSteps(scenario: CalibrationScenario, config: CalibrationConfig): Generator<number, ExtensionResult, void> {
+  const months = config.months ?? 24, looks = config.looks ?? 12, wanted = config.candidates ?? 12, permutations = config.permutations ?? 199;
+  const tally = () => ({ exploratory: 0, strict: 0, testable: 0 });
+  const base = tally(), extended = tally();
+  let onlyExtendedStrict = 0, onlyBaseStrict = 0, onlyExtendedExploratory = 0, onlyBaseExploratory = 0;
+  for (let history = 0; history < config.histories; history++) {
+    const seed = (config.seed + Math.imul(history + 1, 0x9e3779b1)) >>> 0;
+    const data = simulate(scenario, seed, months, wanted);
+    const extra = seededRandom((seed ^ 0x36a2f) >>> 0), n = data.rows.length;
+    const anchor = data.exposures[1]!, mean = anchor.reduce((sum, value) => sum + value, 0) / n;
+    const spread = Math.sqrt(anchor.reduce((sum, value) => sum + (value - mean) ** 2, 0) / n) || 1;
+    let independent = normal(extra);
+    const extras = [0.7, 0.85].map(rho => anchor.map(value => rho * (value - mean) / spread + Math.sqrt(1 - rho * rho) * normal(extra)));
+    extras.push(anchor.map(() => (independent = 0.3 * independent + Math.sqrt(1 - 0.09) * normal(extra))));
+    const extraPresent = data.present[1]!.map(present => present && extra() < 0.5);
+    const seen = { base: { exploratory: false, strict: false }, extended: { exploratory: false, strict: false } };
+    for (let look = 0; look < looks; look++) {
+      const fraction = (months - looks + look + 1) / months;
+      const rows = data.rows.slice(0, Math.floor(data.rows.length * fraction));
+      const series = (values: readonly number[], present: readonly boolean[], k: number): Candidate => {
+        const map = new Map<string, number>();
+        rows.forEach((row, index) => { if (present[index]) map.set(row.date, values[index]!); });
+        return { values: map, exclusions: {}, definition: { id: `synthetic:${k}`, family: "metric", window: "same_day", subject: String(k), temporalBasis: "same_day_unordered" } };
+      };
+      const current = data.exposures.map((values, k) => series(values, data.present[k]!, k));
+      const more = [...current, ...extras.map((values, k) => series(values, extraPresent, data.candidates + k))];
+      for (const [family, candidates] of [["base", current], ["extended", more]] as const) {
+        const result = evaluateAssociations(rows, candidates, { permutations, seed: (config.seed ^ history) >>> 0 });
+        if (result.items.some(item => item.state === "exploratory")) seen[family].exploratory = true;
+        if (result.items.some(item => item.strictGate)) seen[family].strict = true;
+        if (look === looks - 1) (family === "base" ? base : extended).testable += result.testable;
+      }
+    }
+    for (const family of ["base", "extended"] as const) { const into = family === "base" ? base : extended; if (seen[family].exploratory) into.exploratory++; if (seen[family].strict) into.strict++; }
+    if (seen.extended.strict && !seen.base.strict) onlyExtendedStrict++;
+    if (seen.base.strict && !seen.extended.strict) onlyBaseStrict++;
+    if (seen.extended.exploratory && !seen.base.exploratory) onlyExtendedExploratory++;
+    if (seen.base.exploratory && !seen.extended.exploratory) onlyBaseExploratory++;
+    yield history;
+  }
+  const total = config.histories, share = (value: number) => total ? value / total : 0;
+  const summary = (row: ReturnType<typeof tally>) => ({ anyExploratory: share(row.exploratory), anyStrictGate: share(row.strict), strictGateWilsonUpper95: wilsonUpper(row.strict, total), meanTestable: share(row.testable) });
+  return { scenario, histories: total, looks, permutations, baseCandidates: wanted, extendedCandidates: wanted + 3, base: summary(base), extended: summary(extended),
+    onlyExtendedStrict: share(onlyExtendedStrict), onlyBaseStrict: share(onlyBaseStrict), onlyExtendedExploratory: share(onlyExtendedExploratory), onlyBaseExploratory: share(onlyBaseExploratory) };
+}
+export function runFamilyExtension(scenario: CalibrationScenario, config: CalibrationConfig): ExtensionResult {
+  const steps = familyExtensionSteps(scenario, config);
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
+}

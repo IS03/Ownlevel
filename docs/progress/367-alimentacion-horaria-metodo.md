@@ -90,4 +90,78 @@ Ninguna ventana ni umbral se elige por el resultado.
 
 ## Resultados
 
-*(Se completa después de correr la calibración.)*
+Corridos después del preregistro (`c68d6ba`), con lo que fijó ese commit. No se cambió ninguna ventana, umbral, tamaño ni escenario.
+
+### Lo que se publica
+
+- **Contexto de la sesión** (`SessionFact.context.preStart`, opcional): proteína y calorías registradas en 3 h, y la última comida registrada con hora explícita en 12 h, cada una con su estado. Mobile las muestra como filas separadas, con el motivo cuando falta el valor.
+- **Equivalencia con `main`** (`equivalence-fingerprint.test.ts`): sin `preStart`, **53 de 53** vistas son idénticas. Con el campo cambian solo las 23 que llevan sesiones.
+- **Costo:** sin consultas nuevas. Los valores salen de las comidas que la lectura ya trae, en el mismo recorrido que los carbohidratos.
+
+### Candidatos que el motor realmente evalúa
+
+Historias sintéticas de `scale-fixture.ts`, método 2. «Evaluables» son los que pasan el mínimo de pares y de variación (`testable`).
+
+| Cuenta | Definidos | Evaluables, carril estricto (con horas explícitas) | Evaluables, carril parcial (sin horas explícitas) |
+| --- | --- | --- | --- |
+| Sin métricas, 2 años | 13 → 16 | 9 → 11 | 7 → 7 |
+| 5 métricas, 2 años | 23 → 26 | 19 → 21 | 17 → 17 |
+| 20 métricas, 5 años | 53 → 56 | 49 → 51 | 47 → 47 |
+
+- **Sin horas explícitas** los candidatos nuevos no suman nada evaluable.
+- **Con horas explícitas** suman 2. El tiempo desde la última comida no varía en esta historia: las comidas tienen horario fijo.
+- **No hay una familia típica de 17:** depende de las métricas de cada cuenta y de qué hay registrado.
+
+### Calibración (`family-extension.campaign.test.ts`)
+
+**Carril estricto:** pareado, el mismo historial con y sin los 3 candidatos. 500 historiales por escenario, semilla `0x3672`.
+
+| Escenario | Familia | Algún exploratorio | Compuerta estricta | Wilson sup. 95 % |
+| --- | --- | --- | --- | --- |
+| Independiente | 13 → 16 | 1,8 % → 6,2 % | 0 % → 0 % | 0,76 % → 0,76 % |
+| Independiente | 23 → 26 | 2,0 % → 8,6 % | 0 % → 0 % | 0,76 % → 0,76 % |
+| Dependencia temporal | 13 → 16 | 3,4 % → 9,2 % | 0 % → 0 % | 0,76 % → 0,76 % |
+| Dependencia temporal | 23 → 26 | 6,8 % → 12,4 % | 0,2 % → 0,2 % | **1,12 % → 1,12 %** |
+| Tendencias espurias | 13 → 16 | 22,2 % → 31,4 % | 0,8 % → 0 % | 2,04 % → 0,76 % |
+| Tendencias espurias | 23 → 26 | 38,2 % → 44,8 % | 0,8 % → 0 % | 2,04 % → 0,76 % |
+| Cambios de rutina | 13 → 16 | 24,2 % → 28,4 % | 0,8 % → 0,2 % | 2,04 % → 1,12 % |
+| Cambios de rutina | 23 → 26 | 37,8 % → 43,2 % | 1,6 % → 0 % | 3,13 % → 0,76 % |
+| Ausencia selectiva | 13 → 16 | 0 % → 6,4 % | 0 % → 0 % | 0,76 % → 0,76 % |
+| Ausencia selectiva | 23 → 26 | 0 % → 5,4 % | 0 % → 0 % | 0,76 % → 0,76 % |
+
+**Carril parcial:** no pareado. 300 historiales, semilla `0x3673`.
+
+| Escenario | Familia | Algún exploratorio | Compuerta estricta | Wilson sup. 95 % |
+| --- | --- | --- | --- | --- |
+| Sin cambios ocultos | 13 | 0,7 % | 0 % | 1,26 % |
+| Sin cambios ocultos | 16 | 1,7 % | 0 % | 1,26 % |
+| Cambios ocultos 15 % | 13 | 0,3 % | 0 % | 1,26 % |
+| Cambios ocultos 15 % | 16 | 2,0 % | 0,3 % | 1,86 % |
+
+### Decisión: no valida
+
+- **Condición 1 (estricto): no se cumple.**
+  - **La compuerta estricta no empeora** en ningún caso: con más candidatos el máximo de la familia es más exigente, y baja (por ejemplo 1,6 % → 0 % con cambios de rutina).
+  - **«Algún exploratorio» sube** entre 4,2 y 9,2 puntos en todos los escenarios y tamaños, por encima del límite de +2. En el pareado, la familia ampliada agrega un exploratorio que la base no tenía en 4,2 % a 9,2 % de los historiales, y nunca quita uno.
+- **Condición 2: no se cumple en un tamaño.** Dependencia temporal con 26 candidatos da una cota de 1,12 % (la misma que la base con 23). El 1 % sigue siendo el objetivo propuesto, no una tolerancia aprobada.
+- **Condición 3 (parcial): se cumple.** Exploratorio +1,0 y +1,7 puntos; estricta +0,0 y +0,3.
+
+**Consecuencia, como se preregistró:**
+- los tres candidatos quedan fuera de las familias públicas y de su preparación en las vistas. Solo se construyen con `buildExposureTable(..., mealTiming = true)`, que ninguna vista llama;
+- se publican solo los valores del contexto de la sesión.
+
+**Lo que no se hizo:** no se ajustaron ventanas, umbrales, presencia ni tamaños para que pase.
+
+**Una lectura posible, sin cambiar la decisión:** el aumento del exploratorio es mayor que lo que tres candidatos independientes harían esperar. Los nuevos están presentes en el 40 % de los días, con menos pares, y el exploratorio no corrige por familia. Es una hipótesis para un método futuro, no una razón para reinterpretar este resultado.
+
+### Validación
+
+- **Pruebas nuevas:**
+  - **motor:** medianoche, cero registrado, calorías sin reconstruir, macro desconocido, hora de registro y no verificada, alcance de 12 h contra la regla publicada de los carbohidratos, censura, varias sesiones, y candidatos fuera de las familias públicas;
+  - **contrato:** `preStart` opcional y validado;
+  - **Mobile:** filas, motivos, servidor anterior y formato de duraciones;
+  - **calibración:** la familia base de la ampliación es exactamente la de `calibrationSteps`, y es reproducible.
+- **Pruebas que pasan:**
+  - Web (motor, comparador, contrato y ruta): 411 de 412 con la campaña corriendo en paralelo. La que falló, `evidence.test.ts`, superó el tiempo bajo esa carga y pasa sola (11 de 11);
+  - Mobile Insights: 59.
+- **Tipos y lint:** sin errores en Web y Mobile.
