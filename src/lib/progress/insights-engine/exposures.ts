@@ -40,7 +40,7 @@ export type ExposureTable = {
   sessionIdsByDate: ReadonlyMap<string, string[]>;
 };
 
-function nutritionDays(meals: readonly Meal[], exclusions: Record<string, number>) {
+export function nutritionDays(meals: readonly Pick<Meal, "date" | "entryKind" | "calories" | "proteinG" | "carbsG" | "fatG">[], exclusions: Record<string, number>) {
   const byDate = new Map<string, NonNullable<NutritionContext>>();
   for (const meal of meals) {
     if (meal.entryKind !== "meal" && meal.entryKind !== "legacy_daily_summary") { bump(exclusions, "meal_other_kind"); continue; }

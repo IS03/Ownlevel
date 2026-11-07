@@ -246,7 +246,13 @@ export type FeelingOutcomeSummary = {
 export type InsightsFeelingOutcomes = InsightsVersions & { view: "feelings"; outcomes: FeelingOutcomeSummary[] };
 /** #367 phase 4: the last three whole months, described. Only when its screen opens. */
 export type InsightsPeriodSummary = InsightsVersions & import("./period").PeriodSummaryBody;
-export type InsightsResponse = InsightsSummary | InsightsDaysPage | InsightsRelations | InsightsRelationDetail | InsightsExerciseEvidence | InsightsFeelingOutcomes | InsightsPeriodSummary;
+/** Opt-in pinned summary. `today` remains the read date; `asOf` alone chooses the three complete months. */
+export type InsightsPinnedPeriodSummary = InsightsVersions & Omit<import("./period").PeriodSummaryBody, "view"> & { view: "period-at"; asOf: string };
+export type InsightsPeriodFeelings = InsightsVersions & { view: "period-feelings"; asOf: string; periodMethodVersion: "insights-period/1";
+  period: import("./period-range").InsightsPeriod; outcomes: FeelingOutcomeSummary[] };
+export type InsightsPeriodNutrition = InsightsVersions & { view: "period-nutrition"; asOf: string; periodMethodVersion: "insights-period/1";
+  period: import("./period-range").InsightsPeriod; days: ({ date: string } & NonNullable<NutritionContext>)[]; daysWithoutMeals: number; ingestionCompleteKnown: false };
+export type InsightsResponse = InsightsSummary | InsightsDaysPage | InsightsRelations | InsightsRelationDetail | InsightsExerciseEvidence | InsightsFeelingOutcomes | InsightsPeriodSummary | InsightsPinnedPeriodSummary | InsightsPeriodFeelings | InsightsPeriodNutrition;
 
 export type InsightsReadModel = {
   contractVersion: typeof INSIGHTS_CONTRACT;

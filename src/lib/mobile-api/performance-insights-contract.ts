@@ -1,7 +1,8 @@
 // Pure strict contract shared by the API and Expo. It accepts only this versioned shape: never a partial read as an empty one.
 import { INSIGHTS_PERFORMANCE_PARTIAL_METHOD, PARTIAL_CONTEXT } from "../progress/performance-insights/partial";
 import { periodOf } from "../progress/insights-engine/period-range";
-import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from "../progress/insights-engine/types";
+export type { InsightsPinnedPeriodSummary, InsightsPeriodFeelings, InsightsPeriodNutrition } from "../progress/insights-engine/types";
+import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary, type InsightsPinnedPeriodSummary, type InsightsPeriodFeelings, type InsightsPeriodNutrition } from "../progress/insights-engine/types";
 
 export type { AssociationResult, AssociationState, CandidateDefinition, DayFact, EvidenceSet, EvidenceSide, ExerciseEvidence, FeelingOutcomeKind, FeelingOutcomeSummary, InsightsFeelingOutcomes, InsightsPeriodSummary, ExerciseFact, InsightsExerciseEvidence, ExerciseSummary, InsightsDaysPage, InsightsReadModel, InsightsRelationDetail, InsightsRelations, InsightsResponse, InsightsSummary, PartialAssociationState, PartialRelationSummary, RelationSummary, NutritionContext, PartialAssociationResult, PartialDayFact, PartialExerciseFact, PartialExerciseSummary, PartialLane, SessionFact, SessionFeeling } from "../progress/insights-engine/types";
 export const PERFORMANCE_INSIGHTS_PATH = "/api/mobile/v1/progress/performance-insights";
@@ -184,6 +185,39 @@ function parseFeelings(raw: Json) {
   return Array.isArray(outcomes) && outcomes.length === 2 && feelingOutcome(outcomes[0], "energy") && feelingOutcome(outcomes[1], "fatigue") ? raw as unknown as InsightsFeelingOutcomes : undefined;
 }
 
+/** The reference date is explicit in new opt-in views; installed clients keep `view=period` unchanged. */
+export function validPeriodAnchor(value: unknown): value is string {
+  if (!date(value) || (value as string) < "0100-01-01") return false;
+  const ms = Date.parse(`${value}T00:00:00Z`);
+  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === value;
+}
+function pinnedFrame(raw: Json) {
+  if (!validPeriodAnchor(raw.asOf) || raw.asOf > String(raw.today) || !object(raw.period) || raw.periodMethodVersion !== "insights-period/1") return false;
+  const expected = periodOf(raw.asOf), p = raw.period;
+  return p.start === expected.start && p.end === expected.end && p.days === expected.days && Array.isArray(p.months)
+    && p.months.length === 3 && p.months.every((m, i) => m === expected.months[i]);
+}
+function parsePeriodFeelings(raw: Json) {
+  if (!pinnedFrame(raw) || !parseFeelings(raw)) return undefined;
+  const p = raw.period as Json;
+  return (raw.outcomes as Json[]).every(o => (o.firstDate === null || String(o.firstDate) >= String(p.start) && String(o.firstDate) <= String(p.end))
+    && (o.lastDate === null || String(o.lastDate) >= String(p.start) && String(o.lastDate) <= String(p.end))) ? raw as unknown as InsightsPeriodFeelings : undefined;
+}
+function parsePeriodNutrition(raw: Json) {
+  if (!pinnedFrame(raw) || raw.ingestionCompleteKnown !== false || !Array.isArray(raw.days) || !count(raw.daysWithoutMeals)) return undefined;
+  const p = raw.period as Json;
+  if (raw.days.length + (raw.daysWithoutMeals as number) !== p.days) return undefined;
+  const valid = raw.days.every((d: unknown, index: number) => {
+    if (!object(d) || !validPeriodAnchor(d.date) || d.date < String(p.start) || d.date > String(p.end) || !count(d.activeMeals) || (d.activeMeals as number) < 1) return false;
+    if (index && String((raw.days as Json[])[index - 1]!.date) <= String(d.date)) return false;
+    return ["calories", "proteinG", "carbsG", "fatG"].every(key => {
+      const n = d[key]; return object(n) && finite(n.recorded) && count(n.missing) && (n.missing as number) <= (d.activeMeals as number)
+        && (n.missing !== d.activeMeals || n.recorded === 0);
+    });
+  });
+  return valid ? raw as unknown as InsightsPeriodNutrition : undefined;
+}
+
 const month = (v: unknown) => typeof v === "string" && /^\d{4}-\d{2}$/.test(v);
 const nonNegative = (v: unknown) => finite(v) && (v as number) >= 0;
 const weighIn = (v: unknown) => object(v) && date(v.date) && finite(v.value) && (v.value as number) > 0;
@@ -225,6 +259,9 @@ function parsePeriod(raw: Json) {
 /** The views the route answers with. Consistent patterns stay impossible in this contract until the risk budget is decided. */
 export function parsePerformanceInsights(raw: unknown): InsightsResponse | undefined {
   if (!object(raw) || !versions(raw) || typeof raw.sourceRevision !== "string") return undefined;
+  if (raw.view === "period-feelings") return parsePeriodFeelings(raw);
+  if (raw.view === "period-nutrition") return parsePeriodNutrition(raw);
+  if (raw.view === "period-at") return pinnedFrame(raw) && parsePeriod({ ...raw, today: raw.asOf }) ? raw as unknown as InsightsPinnedPeriodSummary : undefined;
   return raw.view === "summary" ? parseSummary(raw) : raw.view === "days" ? parseDays(raw) : raw.view === "relations" ? parseRelations(raw) : raw.view === "relation" ? parseRelationDetail(raw) : raw.view === "evidence" ? parseEvidence(raw) : raw.view === "feelings" ? parseFeelings(raw) : raw.view === "period" ? parsePeriod(raw) : undefined;
 }
 

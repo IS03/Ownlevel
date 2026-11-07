@@ -7,10 +7,12 @@ import type { InsightsEngineMethod } from "@/lib/progress/insights-engine/types"
 import { MobileApiValidationError } from "./auth";
 import { NutritionReportDayChangedError } from "./nutrition-report-server";
 import { InsightsSnapshotCache } from "./performance-insights-cache";
-import { parsePerformanceInsights } from "./performance-insights-contract";
+import { parsePerformanceInsights, validPeriodAnchor } from "./performance-insights-contract";
 import { progressReadResponse } from "./progress-server";
 import type { MobileSupabaseAuthenticatedContext } from "./supabase";
 import { configurationIdentity } from "./training-exercise-configuration-contract";
+import { periodFeelingDetail, periodNutritionDetail, type PeriodFeelingSource, type PeriodMeal } from "../progress/insights-engine/period-details";
+import { instantMs } from "../progress/insights-engine/source-adapter";
 
 type Context = MobileSupabaseAuthenticatedContext;
 const firstPage = (from: number) => (from === 0 ? { count: "exact" as const } : undefined);
@@ -217,14 +219,65 @@ export async function readPeriodWeights(context: Context, range: { start: string
   return rows.map(row => ({ date: row.log_date, value: strictNumber(row.weight_kg)! }));
 }
 
+/** Three bounded streams, not a request per session. Completed sets preserve before-first-set timing exactly. */
+export async function readPeriodFeelingSource(context: Context, asOf: string): Promise<PeriodFeelingSource> {
+  const { supabase, userId } = context, period = periodOf(asOf);
+  type FirstSet = { id: string; completed_at: string; exercise: { workout_session_id: string } };
+  const [sessions, feelings, firstSets] = await Promise.all([
+    readAllTrainingRows<SessionRow>("Leer sesiones del período", from => supabase.from("workout_sessions")
+      .select("id,routine_id,routine_name_snapshot,session_name,status,started_at,ended_at,energy_level,performance_level,pain_level,day:day_logs!inner(log_date)", firstPage(from))
+      .eq("user_id", userId).eq("status", "completed").gte("day.log_date", period.start).lte("day.log_date", period.end).order("id").range(from, from + 999).returns<SessionRow[]>()),
+    readAllTrainingRows<FeelingRow>("Leer respuestas del período", from => supabase.from("workout_session_feelings")
+      .select("session_id,revision,facts,session:workout_sessions!inner(user_id,status,day:day_logs!inner(log_date))", firstPage(from))
+      .eq("session.user_id", userId).eq("session.status", "completed").gte("session.day.log_date", period.start).lte("session.day.log_date", period.end).order("session_id").range(from, from + 999)),
+    readAllTrainingRows<FirstSet>("Leer primeras series del período", from => supabase.from("workout_sets")
+      .select("id,completed_at,exercise:workout_session_exercises!inner(workout_session_id,session:workout_sessions!inner(user_id,status,day:day_logs!inner(log_date)))", firstPage(from))
+      .eq("user_id", userId).eq("is_completed", true).not("completed_at", "is", null).eq("exercise.session.user_id", userId).eq("exercise.session.status", "completed")
+      .gte("exercise.session.day.log_date", period.start).lte("exercise.session.day.log_date", period.end).order("id").range(from, from + 999).returns<FirstSet[]>()),
+  ]);
+  const firstSetBySession = new Map<string, number>();
+  for (const row of firstSets) {
+    const at = instantMs(row.completed_at); if (at === null) continue;
+    const id = row.exercise.workout_session_id; firstSetBySession.set(id, Math.min(firstSetBySession.get(id) ?? Infinity, at));
+  }
+  return { sessions: sessions.map(row => ({ id: row.id, date: row.day.log_date, routineId: row.routine_id, routineName: row.routine_name_snapshot,
+    name: row.session_name, status: row.status, startedAt: row.started_at, endedAt: row.ended_at, performanceLevel: row.performance_level, painLevel: row.pain_level, legacyEnergyLevel: row.energy_level })),
+    feelings: feelings.map(row => ({ sessionId: row.session_id, revision: row.revision, facts: row.facts })), firstSetBySession };
+}
+
+async function readConsistentPeriodFeelings(context: Context, today: string, asOf: string, method: InsightsEngineMethod) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const revision = await readInsightsRevision(context), source = await readPeriodFeelingSource(context, asOf);
+    if (await readInsightsRevision(context) === revision) return periodFeelingDetail(source, today, asOf, publicRevision(context.userId, revision), method);
+  }
+  throw new Error("Period sources kept changing");
+}
+/** One bounded stream, including dates with no training. No food timestamps or analytical windows are needed. */
+export async function readPeriodMeals(context: Context, asOf: string): Promise<PeriodMeal[]> {
+  const period = periodOf(asOf);
+  type PeriodMealRow = Pick<MealRow, "id" | "entry_kind" | "final_calories" | "final_protein_g" | "final_carbs_g" | "final_fat_g" | "day_logs">;
+  const rows = await readAllTrainingRows<PeriodMealRow>("Leer comidas del período", from => context.supabase.from("meal_entries")
+    .select("id,entry_kind,final_calories,final_protein_g,final_carbs_g,final_fat_g,day_logs!inner(log_date)", firstPage(from))
+    .eq("user_id", context.userId).is("deleted_at", null).in("entry_kind", ["meal", "legacy_daily_summary"])
+    .gte("day_logs.log_date", period.start).lte("day_logs.log_date", period.end).order("id").range(from, from + 999).returns<PeriodMealRow[]>());
+  return rows.map(r => ({ date: r.day_logs.log_date, entryKind: r.entry_kind, calories: strictNumber(r.final_calories), proteinG: strictNumber(r.final_protein_g), carbsG: strictNumber(r.final_carbs_g), fatG: strictNumber(r.final_fat_g) }));
+}
+async function readConsistentPeriodNutrition(context: Context, today: string, asOf: string, method: InsightsEngineMethod) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const revision = await readInsightsRevision(context), meals = await readPeriodMeals(context, asOf);
+    if (await readInsightsRevision(context) === revision) return periodNutritionDetail(meals, today, asOf, publicRevision(context.userId, revision), method);
+  }
+  throw new Error("Period sources kept changing");
+}
+
 /**
  * The summary of the last three whole months: the Insights snapshot and that period's weights, published only if the counter did
  * not move between them (a weight that changes moves it). One retry; after that the read is unavailable, never mixed.
  */
-async function readConsistentPeriod(context: Context, today: string, method: InsightsEngineMethod) {
+async function readConsistentPeriod(context: Context, today: string, method: InsightsEngineMethod, asOf = today) {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const snapshot = await readInsightsSnapshot(context, today, method);
-    const weights = await readPeriodWeights(context, periodOf(today));
+    const snapshot = await readInsightsSnapshot(context, asOf, method);
+    const weights = await readPeriodWeights(context, periodOf(asOf));
     if (publicRevision(context.userId, await readInsightsRevision(context)) === snapshot.revision) return insightsPeriodSummary(snapshot, weights);
   }
   throw new Error("Insights sources kept changing");
@@ -251,13 +304,21 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EVIDENCE_KEYS = ["session", "exercise", "lane"];
 export function parseInsightsParams(params: URLSearchParams) {
   for (const key of new Set(params.keys())) {
-    if (!["view", "before", "limit", "association", "pairs", "method", ...EVIDENCE_KEYS].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
+    if (!["view", "before", "limit", "association", "pairs", "method", "asOf", ...EVIDENCE_KEYS].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
   }
   const before = params.get("before") ?? undefined, limit = params.get("limit"), association = params.get("association") ?? undefined, view = params.get("view") ?? "summary";
-  if (!["summary", "days", "relations", "evidence", "feelings", "period"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
+  if (!["summary", "days", "relations", "evidence", "feelings", "period", "period-at", "period-feelings", "period-nutrition"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
   const method = params.get("method");
   if (method !== null && method !== "2") throw new MobileApiValidationError("Método no válido.");
   const engineMethod = (method === "2" ? 2 : 1) as InsightsEngineMethod;
+  if (view === "period-at" || view === "period-feelings" || view === "period-nutrition") {
+    if ([...params.keys()].some(key => !["view", "method", "asOf"].includes(key))) throw new MobileApiValidationError("Parámetro no válido.");
+    const asOf = params.get("asOf") ?? undefined;
+    if (asOf !== undefined && !validPeriodAnchor(asOf)) throw new MobileApiValidationError("Fecha de referencia no válida.");
+    return view === "period-at" ? { view: "period-at" as const, method: engineMethod, asOf } : view === "period-feelings" ? { view: "period-feelings" as const, method: engineMethod, asOf }
+      : { view: "period-nutrition" as const, method: engineMethod, asOf };
+  }
+  if (params.has("asOf")) throw new MobileApiValidationError("Parámetro no válido.");
   // One exercise of one session, in one method: the whole selection or nothing, and nothing else beside it.
   if (view === "evidence" || EVIDENCE_KEYS.some(key => params.has(key))) {
     const session = params.get("session"), exercise = params.get("exercise"), lane = params.get("lane");
@@ -277,6 +338,15 @@ export function parseInsightsParams(params: URLSearchParams) {
 
 export const performanceInsightsResponse = (request: Request) => progressReadResponse(request, "performance-insights", async (context, params, today) => {
   const options = parseInsightsParams(params);
+  if (options.view === "period-at" || options.view === "period-feelings" || options.view === "period-nutrition") {
+    const asOf = options.asOf ?? today;
+    if (asOf > today) throw new MobileApiValidationError("Fecha de referencia futura.");
+    const model = options.view === "period-feelings" ? await readConsistentPeriodFeelings(context, today, asOf, options.method)
+      : options.view === "period-nutrition" ? await readConsistentPeriodNutrition(context, today, asOf, options.method)
+      : { ...await readConsistentPeriod(context, today, options.method, asOf), view: "period-at" as const, today, asOf };
+    const after = todayInCordoba(); if (after !== today) throw new NutritionReportDayChangedError(after);
+    return model;
+  }
   if (options.view === "evidence") {
     // Never the whole history: the selected exercise's sessions only, under the same counter as Insights.
     const { source, revision } = await readConsistentExerciseSource(context, options.selection.exerciseId);

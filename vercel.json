@@ -34,7 +34,8 @@
       "codex/367-body-weekly": false,
       "codex/367-period-summary": false,
       "codex/367-feeling-stratified": false,
-      "codex/367-feeling-sequential": false
+      "codex/367-feeling-sequential": false,
+      "codex/367-period-details": false
     }
   }
 }

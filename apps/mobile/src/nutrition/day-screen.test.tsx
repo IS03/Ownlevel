@@ -17,6 +17,8 @@ import { personalFood } from './food-fixture.test-helper';
 import type { QuickSelection } from '@/api/nutrition-quick';
 
 const mockPush = jest.fn();
+const mockNavigate = jest.fn();
+let mockParams: Record<string, string> = {};
 const mockRead = jest.fn<MobileApiClient['read']>();
 const mockRequest = jest.fn<MobileApiClient['request']>();
 let mockClient = { read: mockRead, request: mockRequest };
@@ -27,7 +29,7 @@ jest.mock('./day-format', () => ({
 }));
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
 jest.mock('@/auth', () => ({ useMobileAuth: () => ({ session: { user: { id: mockUser } } }) }));
-jest.mock('expo-router', () => ({ useLocalSearchParams: () => ({}), useRouter: () => ({ navigate: jest.fn(), push: mockPush }),
+jest.mock('expo-router', () => ({ useLocalSearchParams: () => mockParams, useRouter: () => ({ navigate: mockNavigate, push: mockPush }),
   // The day screen is the focused tab.
   useFocusEffect: (callback: () => void | (() => void)) => jest.requireActual<typeof import('react')>('react').useEffect(callback, [callback]) }));
 jest.mock('@/api/nutrition-report', () => ({
@@ -63,6 +65,7 @@ function finishDetailDismissal(view: ReturnType<typeof render>) {
 const appStateListeners: ((state: AppStateStatus) => void)[] = [];
 describe('Native Nutrition day', () => {
   beforeEach(async () => {
+    mockParams = {}; mockNavigate.mockReset();
     clearConfirmedReads(mockClient as unknown as MobileApiClient);
     await AsyncStorage.clear(); mockRequest.mockReset();
     mockRead.mockReset(); mockUser = 'owner'; mockClient = { read: mockRead, request: mockRequest }; mockToday = '2026-10-02';
@@ -71,6 +74,21 @@ describe('Native Nutrition day', () => {
       appStateListeners.push(listener);
       return { remove: () => { const index = appStateListeners.indexOf(listener); if (index >= 0) appStateListeners.splice(index, 1); } };
     });
+  });
+  it('opens the period food date from Insights and returns to that exact three-month detail across New Year', async () => {
+    mockToday = '2027-01-02';
+    mockParams = { date: '2026-08-11', insightsReturn: '1', insightsPeriod: 'nutrition', insightsAsOf: '2026-11-07', insightsRevision: 'r1' };
+    mockRead.mockImplementation(async options => {
+      const date = options.path.split('/').pop()!;
+      return ok(date, { ...nutritionFixture(date), today: mockToday }) as never;
+    });
+    const view = render(element());
+    await view.findByRole('button', { name: 'Volver a las comidas del período' });
+    await waitFor(() => expect(mockRead.mock.calls.some(([o]) => o.path === '/api/mobile/v1/nutrition/days/2026-08-11')).toBe(true));
+    expect(mockRead.mock.calls.some(([o]) => o.path === '/api/mobile/v1/nutrition/days/2027-01-02')).toBe(false);
+    fireEvent.press(view.getByRole('button', { name: 'Volver a las comidas del período' }));
+    expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights/period-nutrition', params: { asOf: '2026-11-07', revision: 'r1' } });
+    expect(mockRequest).not.toHaveBeenCalled();
   });
   it('the calendar is just the month: no average and no report shortcut', async () => {
     mockRead.mockImplementation(async options => ok(options.path.split('/').pop()!) as never);

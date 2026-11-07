@@ -17,7 +17,8 @@ Estado al 2026-11-06, verificado con el historial de `main` (`96b4a63`):
 - **Mergeado en `main`:** #415 (`53147e7`), evolución semanal del peso en Cuerpo, con el análisis experimental sin publicar.
 - **Mergeado en `main`:** #416 (`e50e60a`), resumen de los últimos tres meses.
 - **Mergeado en `main`:** #417 (`1fe995e`), método estratificado para energía y fatiga al terminar, que no valida.
-- **En revisión:** diseño secuencial con candidatos anteriores al inicio, para energía y fatiga al terminar, en `codex/367-feeling-sequential`. Solo diseño y prototipo, sin validación. Hoja de ruta: [367-hoja-de-ruta-ecosistema.md](367-hoja-de-ruta-ecosistema.md).
+- **Mergeado en `main`:** #419 (`f32289a`), método secuencial experimental, aislado de las vistas.
+- **En borrador y separado:** #420. La validación reservada no acreditó el criterio: investigación detenida, sin nuevas campañas, potencia ni recalibración. Asociaciones experimentales deshabilitadas. No se incorporan sus archivos a esta entrega.
 
 Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya en código leído, no en que exista una tabla o una pantalla.**
 
@@ -360,6 +361,17 @@ Fase 4, `codex/367-period-summary`, `view=period`, método `insights-period/1`.
   - «Últimos 3 meses» en Insights;
   - estados distintos para vacío, cobertura insuficiente (sin semanas con 3 pesajes) y lectura fallida;
   - enlaces a los días de Insights, a «Cómo terminaste» y al peso en Cuerpo con los mismos tres meses, con vuelta al resumen.
+
+### Detalles descriptivos del período — `codex/367-period-details`
+
+Preparados sobre `f32289a`, sin migración ni despliegue. [Decisiones, contratos y validación](367-detalles-periodo-pr-description.md).
+
+- **Período conservado:** nuevas vistas optativas `period-at`, `period-feelings` y `period-nutrition`, con `asOf` explícito. `today` sigue siendo la fecha de lectura. Las rutas conservan el ancla al cambiar de mes/año; el resumen se revalida al volver. `view=period` y las respuestas instaladas siguen iguales.
+- **Energía/fatiga:** descripción existente, ordinal y separada, solo sesiones finalizadas del período. Respuestas válidas, tardías, sin hora, anteriores al inicio, ilegibles, otra escala y ausentes distinguidas. La primera serie preserva el criterio temporal previo. «Cómo terminaste» conserva su acceso independiente a todo el historial.
+- **Alimentación:** días con registros, incluidos días sin entrenamiento; calorías, proteínas, carbohidratos y grasas con sus faltantes independientes. Cero conocido, ausencia de dato, total parcial y días sin comidas registrados no se confunden. Abrir Nutrición lleva a esa fecha y conserva el retorno al detalle de origen.
+- **Lectura:** agrupada y acotada por fechas, bajo el contador por cuenta antes/después; un reintento completo, después no disponible. No se mezclan revisiones. Una lectura vieja conservada tras un error queda identificada. Sin lecturas al finalizar entrenamiento.
+- **Costo en fixture pequeña:** sensaciones 5 consultas / 2.129 bytes; alimentación 3 / 1.221 bytes. Incluyen ambos controles de revisión, sin consultas por fila o día. Las páginas crecen con filas fuente (1.001 comidas: 4 consultas), no con tarjetas. No son mediciones productivas ni SLA.
+- **Límite:** sin asociaciones, puntajes, promedios de sensaciones, recomendaciones, ventanas nuevas ni cambios de método. QA física pendiente en la lista única.
 
 ## Próximos incrementos
 
