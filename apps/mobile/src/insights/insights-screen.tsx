@@ -11,6 +11,7 @@ import { useProgressResource } from '@/progress/use-progress-resource';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, NUTRITION_SCOPE, PARTIAL_LIMIT, contextRows, dayLabel, dayLanes, daySessions, referenceText, sessionLanes, feelingClockNote, nutritionRows, sessionName, sessionRows, sessionTime, exerciseSentence, focusOf, heroCaption, heroOf, joinDays, nextDate, nothingComparable, primaryLane, readingRows, reasonText, relationGroups, relationName, relationState, sameRead, statusArrow, statusText, stripMarks, stripSummary, summarySpoken, summaryText, type ContextRow, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
 import { InsightRow } from './insight-row';
+import { usePeriodReturn } from './use-period-return';
 import { dayWeightHref, insightsEvidenceHref, insightsOriginOf, metricTrendHref, nutritionDayHref, validSession, type InsightsOrigin } from './navigation';
 
 type View_ = 'days' | 'exercises';
@@ -52,13 +53,14 @@ function SessionBlock({ session, origin, router, children }: { session: SessionF
   </View>;
 }
 /** Every session of the day. In the order they started only when that is known; otherwise the screen says it does not know. */
-function DaySessions({ day, originId = null, router, exercises }: { day: DayLanes; originId?: string | null; router: ReturnType<typeof useRouter>; exercises?: (session: SessionFact) => React.ReactNode }) {
+function DaySessions({ day, originId = null, router, exercises, revision }: { day: DayLanes; originId?: string | null; router: ReturnType<typeof useRouter>; exercises?: (session: SessionFact) => React.ReactNode; revision: string }) {
   const { sessions, orderKnown } = daySessions(day.strict);
   const clock = feelingClockNote(sessions);
   return <View style={styles.detail}>
     {sessions.length > 1 ? <AppText muted variant="footnote" numeric testID="insights-day-order">{orderKnown ? `${sessions.length} sesiones, en el orden en que empezaron.` : `${sessions.length} sesiones. No sabemos en qué orden fueron.`}</AppText> : null}
     {sessions.map(session => <SessionBlock key={session.sessionId} session={session} origin={session.sessionId === originId} router={router}>{exercises?.(session)}</SessionBlock>)}
     {clock ? <AppText muted variant="caption">{clock}</AppText> : null}
+    <InsightRow label="Ver horarios y comidas de estas sesiones" spoken={`Ver horarios y comidas de todas las sesiones del ${dayLabel(day.date)}`} onPress={() => router.push({ pathname: '/(tabs)/train/insights/temporal', params: { date: day.date, revision, ...(originId ? { session: originId } : {}) } })} />
   </View>;
 }
 type DayActions = { onMetric: (metricId: string, date: string) => void; onNutrition: (date: string) => void; onBody: (date: string) => void };
@@ -104,7 +106,7 @@ function DayDetail({ day, model, router, origin, onMetric, onNutrition, onBody }
   const reduced = useReduceMotion();
   const lanes: Lane[] = dayLanes(day);
   return <Animated.View entering={reduced ? FadeIn.duration(motionDurations.fast) : FadeInDown.duration(motionDurations.base)} style={styles.detail}>
-    <DaySessions day={day} router={router} exercises={session => lanes.map(lane => <View key={lane}>
+    <DaySessions day={day} router={router} revision={model.sourceRevision} exercises={session => lanes.map(lane => <View key={lane}>
       <Section title={LANE_TITLE[lane]} />
       <ExerciseRows lane={lane} session={session} partial={day.partial?.sessions.find(row => row.sessionId === session.sessionId)} router={router} revision={model.sourceRevision} origin={{ ...origin, date: day.date }} />
     </View>)} />
@@ -189,6 +191,7 @@ export function InsightsScreen() {
   const origin = insightsOriginOf(params);
   const focusId = validSession(params.session) ? params.session : null, focusDate = origin.date ?? null;
   const { state, data, refresh } = useProgressResource(client, 'performance-insights', loadSummary);
+  usePeriodReturn(refresh);
   const [more, setMore] = useState<{ base: InsightsSummary; days: DayFact[]; partial: PartialDayFact[]; next: string | null } | null>(null);
   const [morePhase, setMorePhase] = useState<'idle' | 'loading' | 'failed'>('idle');
   // A refresh of the same read keeps what was already paged. Another read never joins it, and the person is told.
@@ -277,7 +280,7 @@ export function InsightsScreen() {
           <ExerciseRows lane={lane} session={focus.session} partial={focus.partial ?? undefined} router={router} revision={data.sourceRevision} origin={origin} />
         </View>)}
         <Section title={focus.day.strict.sessions.length > 1 ? 'Sesiones de ese día' : 'Esta sesión'} />
-        <DaySessions day={focus.day} originId={focus.session.sessionId} router={router} />
+        <DaySessions day={focus.day} originId={focus.session.sessionId} router={router} revision={data.sourceRevision} />
         <DayShared day={focus.day} metrics={data.metrics} onMetric={openMetric} onNutrition={openNutrition} onBody={openBody} />
       </View> : focusLoading ? <View testID="insights-session-loading" style={styles.block}><SkeletonBlock height={120} /><SkeletonBlock height={176} /></View>
         : focusFailed ? <InlineUnavailable message="No pudimos traer los hechos de esta sesión." actionLabel="Reintentar" onAction={() => setFocusAttempt(current => current + 1)} />
@@ -299,7 +302,7 @@ export function InsightsScreen() {
       </View>}
       {hero ? <View testID="insights-hero-context">
         <Section title={hero.day.strict.sessions.length > 1 ? 'Sesiones de ese día' : 'Esa sesión'} />
-        <DaySessions day={hero.day} router={router} />
+        <DaySessions day={hero.day} router={router} revision={data.sourceRevision} />
         <DayShared day={hero.day} metrics={data.metrics} onMetric={openMetric} onNutrition={openNutrition} onBody={openBody} />
       </View> : null}
       <Strip days={days} lane={stripLane} />

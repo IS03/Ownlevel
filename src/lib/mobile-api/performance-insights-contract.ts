@@ -1,6 +1,8 @@
 // Pure strict contract shared by the API and Expo. It accepts only this versioned shape: never a partial read as an empty one.
 import { INSIGHTS_PERFORMANCE_PARTIAL_METHOD, PARTIAL_CONTEXT } from "../progress/performance-insights/partial";
 import { periodOf } from "../progress/insights-engine/period-range";
+export type { SessionTemporalDay } from '../progress/insights-engine/session-temporal';
+import type { SessionTemporalDay } from '../progress/insights-engine/session-temporal';
 export type { InsightsPinnedPeriodSummary, InsightsPeriodFeelings, InsightsPeriodNutrition } from "../progress/insights-engine/types";
 import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary, type InsightsPinnedPeriodSummary, type InsightsPeriodFeelings, type InsightsPeriodNutrition } from "../progress/insights-engine/types";
 
@@ -259,10 +261,43 @@ function parsePeriod(raw: Json) {
 /** The views the route answers with. Consistent patterns stay impossible in this contract until the risk budget is decided. */
 export function parsePerformanceInsights(raw: unknown): InsightsResponse | undefined {
   if (!object(raw) || !versions(raw) || typeof raw.sourceRevision !== "string") return undefined;
+  if (raw.view === 'session-temporal') return parseTemporal(raw);
   if (raw.view === "period-feelings") return parsePeriodFeelings(raw);
   if (raw.view === "period-nutrition") return parsePeriodNutrition(raw);
   if (raw.view === "period-at") return pinnedFrame(raw) && parsePeriod({ ...raw, today: raw.asOf }) ? raw as unknown as InsightsPinnedPeriodSummary : undefined;
   return raw.view === "summary" ? parseSummary(raw) : raw.view === "days" ? parseDays(raw) : raw.view === "relations" ? parseRelations(raw) : raw.view === "relation" ? parseRelationDetail(raw) : raw.view === "evidence" ? parseEvidence(raw) : raw.view === "feelings" ? parseFeelings(raw) : raw.view === "period" ? parsePeriod(raw) : undefined;
+}
+
+const instantValue = (v: unknown) => typeof v === 'string' && /(?:Z|[+-]\d{2}:\d{2})$/.test(v) && Number.isFinite(Date.parse(v));
+function refs(v: unknown): boolean {
+  return object(v) && count(v.total) && count(v.omitted) && Array.isArray(v.rows) && v.rows.length <= 20 && v.rows.length + Number(v.omitted) === v.total
+    && Array.isArray(v.dates) && v.dates.every(validPeriodAnchor) && new Set(v.dates).size === v.dates.length
+    && new Set(v.rows.map(r => object(r) ? r.id : null)).size === v.rows.length
+    && v.rows.every(r => object(r) && uuid(r.id) && validPeriodAnchor(r.date) && ['meal','legacy_daily_summary'].includes(String(r.entryKind)) && (r.at === null || instantValue(r.at))
+      && ['explicit','registration','unverified','unknown'].includes(String(r.timeEvidence)) && ['calories','proteinG','carbsG','fatG'].every(k => r[k] === null || finite(r[k]) && Number(r[k]) >= 0));
+}
+function parseTemporal(raw: Json) {
+  if (raw.contextMethodVersion !== 'session-temporal/1' || raw.timezone !== 'America/Argentina/Cordoba' || !validPeriodAnchor(raw.date) || raw.date > String(raw.today)
+    || !instantValue(raw.calculatedAt) || raw.ingestionCompleteKnown !== false || raw.associations !== 'not_computed' || !Array.isArray(raw.sessions)) return undefined;
+  if (new Set(raw.sessions.map(s => object(s) ? s.sessionId : null)).size !== raw.sessions.length) return undefined;
+  const valid = raw.sessions.every(s => {
+    if (!object(s) || !uuid(s.sessionId) || typeof s.name !== 'string' || ![s.startedAt,s.endedAt].every(v => v === null || instantValue(v))
+      || !numberOrNull(s.durationMinutes) || s.durationMinutes !== null && Number(s.durationMinutes) < 0 || !object(s.before) || !preWindow(s.before.carbsPre3h) || !preStart(s.before.preStart)
+      || !(s.before.evidence === null || refs(s.before.evidence)) || !refs(s.before.lastMeal)
+      || !(s.before.coverage3h === null || object(s.before.coverage3h) && count(s.before.coverage3h.knownMeals) && count(s.before.coverage3h.uncertainMeals))
+      || !['recorded','no_end_time','invalid_time'].includes(String(s.timingState))) return false;
+    if (s.timingState !== 'recorded') return s.post === null && s.durationMinutes === null && (s.timingState !== 'no_end_time' || s.endedAt === null);
+    if (!instantValue(s.endedAt) || Date.parse(String(s.endedAt)) > Date.parse(String(raw.calculatedAt))
+      || (s.startedAt === null ? s.durationMinutes !== null : s.durationMinutes !== (Date.parse(String(s.endedAt)) - Date.parse(String(s.startedAt))) / 60_000)) return false;
+    const p = s.post;
+    return object(p) && instantValue(p.from) && instantValue(p.to) && instantValue(s.endedAt) && Date.parse(String(p.from)) === Date.parse(String(s.endedAt))
+      && Date.parse(String(p.to)) - Date.parse(String(p.from)) === 3 * 3_600_000 && typeof p.provisional === 'boolean'
+      && p.provisional === (Date.parse(String(raw.calculatedAt)) < Date.parse(String(p.to))) && count(p.knownMeals) && count(p.uncertainMeals)
+      && refs(p.evidence) && (p.evidence as Json).total === Number(p.knownMeals) + Number(p.uncertainMeals)
+      && Array.isArray(p.overlaps) && p.overlaps.every(uuid) && new Set(p.overlaps).size === p.overlaps.length && !p.overlaps.includes(s.sessionId)
+      && object(p.nutrients) && ['calories','proteinG','carbsG','fatG'].every(k => { const n = (p.nutrients as Json)[k]; return object(n) && finite(n.recorded) && n.recorded >= 0 && count(n.missing) && Number(n.missing) <= Number(p.knownMeals) && (n.missing !== p.knownMeals || n.recorded === 0); });
+  });
+  return valid ? raw as unknown as SessionTemporalDay : undefined;
 }
 
 /** The whole pure model, for consumers of the domain module. The route never sends it. */
