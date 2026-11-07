@@ -154,6 +154,7 @@ Requiere una build de Mobile con `codex/367-body-weekly`. Sin migración ni API 
 
 ## Resumen de los últimos tres meses (fase 4)
 Requiere una build autorizada de Mobile y la API correspondiente. Los detalles de `codex/367-period-details` siguen sin desplegar ni verificar en teléfono. Sin migración. Las pruebas automatizadas no marcan esta lista como aprobada.
+Integración de lectores completada en pila descartable PostgreSQL 17.6/PostgREST 16.5 con el esquema completo y RLS sintético (#421); [resultados y límites](367-detalles-periodo-pr-description.md). No sustituye ninguna casilla de QA física.
 - [ ] **Abrir:** en Insights, «Últimos 3 meses» abre el resumen; los detalles solo se leen al abrirlos. Terminar un entrenamiento no lee ninguna de estas vistas. Volver a una vista abierta revalida su lectura completa.
 - [ ] **Fechas:** dice el rango exacto («1 ago – 31 oct») y los tres meses. El mes en curso no entra, tampoco el día 1 de un mes.
 - [ ] **Resumen escrito:** frases cortas con cifras. Ninguna dice que una cosa explica otra, ni da causas, rangos óptimos o recomendaciones.
