@@ -151,3 +151,16 @@ Requiere una build de Mobile con `codex/367-body-weekly`. Sin migración ni API 
 - [ ] **Cambio:** «↘ 0,6 kg frente a la semana anterior», sin color ni palabras como «mejor». Dos semanas con la misma mediana dicen «= 0 kg, igual que la semana anterior». Después de una semana vacía o con menos de 3 pesajes dice «No se puede calcular el cambio» y el motivo; nunca «0 kg», «igual» ni «sin cambio», y nunca compara con dos semanas atrás.
 - [ ] **Sin juicios ni recomendaciones:** no hay calorías sugeridas, puntaje ni causas.
 - [ ] **Texto grande y VoiceOver:** cada semana se lee completa y las filas se apilan sin cortar números.
+
+## Resumen de los últimos tres meses (fase 4)
+Requiere una build de Mobile con `codex/367-period-summary` y la API de esa rama. Sin migración.
+- [ ] **Abrir:** en Insights, «Últimos 3 meses» abre el resumen y lee una sola vez. Terminar un entrenamiento o cambiar de pestaña no lo lee.
+- [ ] **Fechas:** dice el rango exacto («1 ago – 31 oct») y los tres meses. El mes en curso no entra, tampoco el día 1 de un mes.
+- [ ] **Resumen escrito:** frases cortas con cifras. Ninguna dice que una cosa explica otra, ni da causas, rangos óptimos o recomendaciones.
+- [ ] **Entrenamiento:** «Comparación completa» y «Con contexto parcial» en filas separadas. Las rutinas en orden solo si una terminó antes de la otra; si se alternaron, lo dice.
+- [ ] **Sensaciones:** energía y fatiga al terminar en palabras de la escala, con cuántas sesiones respondieron. Sin promedios ni puntajes.
+- [ ] **Comidas:** «Comidas registradas · N de 92 días». Aclara que un día sin comidas no es cero y que es lo registrado.
+- [ ] **Peso:** semanas enteras con mediana y cambio, incluidos los pesajes de días sin entrenar. Sin semanas con 3 pesajes, lo dice.
+- [ ] **Detalles y vuelta:** «Ver tu peso en Cuerpo» abre los mismos tres meses y «Volver a Insights» vuelve al resumen. «Ver los días en Insights» y «Ver Cómo terminaste» vuelven con atrás.
+- [ ] **Estados:** un período sin registros dice «Sin registros en estos tres meses». Sin red: «Uy, no pudimos leer tus datos», nunca vacío.
+- [ ] **Texto grande y VoiceOver:** las filas se apilan sin cortar números y se leen completas.

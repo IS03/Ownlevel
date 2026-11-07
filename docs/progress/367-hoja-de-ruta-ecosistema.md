@@ -84,7 +84,11 @@ Ver [367-sensaciones-resultado-metodo.md](367-sensaciones-resultado-metodo.md).
   - su propia calibración, con escenarios de deriva lenta.
 - **Alcance de una asociación semanal:** nunca explica una sesión. La frase habla de semanas.
 
-## Fase 4 — Resúmenes de período (diseño)
+## Fase 4 — Resúmenes de período
+
+**Estado** (`codex/367-period-summary`): «Últimos 3 meses» en Insights. Descripción determinística de los tres meses calendario completos anteriores al mes en curso, sin asociaciones. Detalle en la [matriz](367-matriz-cobertura.md).
+
+**Diseño original**, sin cambios:
 
 - **Períodos fijos:** 3 meses, sin elegir el inicio por el resultado.
 - **Qué se muestra:**
