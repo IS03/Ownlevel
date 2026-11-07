@@ -16,7 +16,8 @@ Estado al 2026-11-06, verificado con el historial de `main` (`96b4a63`):
 - **Mergeado en `main`:** #413 (`ac6667b`), alimentación antes del inicio como contexto, con sus candidatos sin publicar.
 - **Mergeado en `main`:** #415 (`53147e7`), evolución semanal del peso en Cuerpo, con el análisis experimental sin publicar.
 - **Mergeado en `main`:** #416 (`e50e60a`), resumen de los últimos tres meses.
-- **En revisión:** método experimental estratificado para energía y fatiga al terminar, en `codex/367-feeling-stratified`. No valida y no se publica. Hoja de ruta: [367-hoja-de-ruta-ecosistema.md](367-hoja-de-ruta-ecosistema.md).
+- **Mergeado en `main`:** #417 (`1fe995e`), método estratificado para energía y fatiga al terminar, que no valida.
+- **En revisión:** diseño secuencial con candidatos anteriores al inicio, para energía y fatiga al terminar, en `codex/367-feeling-sequential`. Solo diseño y prototipo, sin validación. Hoja de ruta: [367-hoja-de-ruta-ecosistema.md](367-hoja-de-ruta-ecosistema.md).
 
 Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya en código leído, no en que exista una tabla o una pantalla.**
 
@@ -137,7 +138,12 @@ Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya
 - **Cruce:** resultado propio, ordenado dentro de su nivel de energía previa. Nunca es antecedente: invertiría el orden temporal.
 - **Estado: descriptivo accesible, asociaciones sin publicar** (#412).
   - «Cómo terminaste» cuenta las respuestas al terminar por nivel previo y deja aparte las tardías, las que no tienen hora, las ilegibles, las de otro instrumento y la energía heredada.
-  - **Método estratificado experimental** (`insights-feeling-stratified/1`, `codex/367-feeling-stratified`; [367-sensaciones-estratificado-metodo.md](367-sensaciones-estratificado-metodo.md)): permuta dentro de rutina × bloque de 42 días. Reduce los falsos positivos en escenarios de confusión por rutina y tendencia (rutinas alternadas: 100 % → 2,0 %), pero sus nulos dan entre 1,6 % y 4,0 % en la compuerta estricta: no valida y no se publica.
+  - **Diseño secuencial** (`insights-feeling-sequential/1`, `codex/367-feeling-sequential`; [367-sensaciones-secuencial-metodo.md](367-sensaciones-secuencial-metodo.md)):
+    - solo candidatos anteriores al inicio: día anterior y comidas con hora explícita. La noche declarada queda afuera porque no demuestra anterioridad a una sesión de madrugada (#419);
+    - miradas trimestrales fijas, con α gastado por mirada y partido entre los dos resultados.
+
+    Prototipo y medición de viabilidad, sin validación ni publicación.
+  - **Método estratificado experimental** (`insights-feeling-stratified/1`, #417; [367-sensaciones-estratificado-metodo.md](367-sensaciones-estratificado-metodo.md)): permuta dentro de rutina × bloque de 42 días. Reduce los falsos positivos en escenarios de confusión por rutina y tendencia (rutinas alternadas: 100 % → 2,0 %), pero sus nulos dan entre 1,6 % y 4,0 % en la compuerta estricta: no valida y no se publica.
   - Las asociaciones no se publican y las vistas no las preparan (#412): el cálculo experimental solo se construye si se pide. La calibración no alcanza el objetivo de validación propuesto (1 %, no aprobado como tolerancia): da 7,2 % con cambios de rutina y 6,2 % con tendencias.
   - Sigue como contexto de su sesión en Insights y en el resumen post-entreno.
 
@@ -363,7 +369,7 @@ Fase 4, `codex/367-period-summary`, `view=period`, método `insights-period/1`.
 - un método de asociaciones para las sensaciones posteriores que pase la calibración con cambios de rutina y tendencias;
 - paginar por clave los valores diarios, para la latencia de la lectura en frío (ver #409).
 
-**En revisión:** método experimental estratificado para energía y fatiga al terminar, en `codex/367-feeling-stratified`. No valida; queda experimental.
+**En revisión:** diseño secuencial para energía y fatiga al terminar, en `codex/367-feeling-sequential`. Solo diseño y prototipo.
 
 **Mergeados en `main`:**
 - #403: todas las sesiones y los cuatro macros en el contexto del día;
@@ -376,6 +382,7 @@ Fase 4, `codex/367-period-summary`, `view=period`, método `insights-period/1`.
 - #412: energía y fatiga al terminar, descritas;
 - #413: alimentación antes del inicio como contexto;
 - #415: evolución semanal del peso en Cuerpo;
-- #416: resumen de los últimos tres meses.
+- #416: resumen de los últimos tres meses;
+- #417: método estratificado para energía y fatiga al terminar, sin validar.
 
 **Hasta acá:** presentación y lectura, sin cambio de método. Mobile sigue necesitando build y QA física, que no está aprobada.
