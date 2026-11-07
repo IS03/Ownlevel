@@ -49,7 +49,23 @@ jest.mock('expo-router', () => {
 });
 jest.mock('expo-router/build/react-navigation/core/usePreventRemove', () => ({ usePreventRemove: () => undefined }));
 jest.mock('./routine-exercise-picker-body', () => jest.requireActual('./routine-exercise-picker-body.tsx'));
-jest.mock('./session-next-options', () => jest.requireActual('./session-next-options.tsx'));
+jest.mock('./session-next-options', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  const { Platform } = jest.requireActual<typeof import('react-native')>('react-native');
+  const { SessionNextOptions: Controls } = jest.requireActual<typeof import('./session-next-options')>('./session-next-options.tsx');
+  // The iOS trigger sends a request; UIKit reports presentation back through onOpen/onClose.
+  // Keep inspectable fallback controls, but model that native acknowledgement instead of ignoring toggleRequest.
+  return { SessionNextOptions: (props: import('./session-next-options.types').SessionNextOptionsProps) => {
+    const request = props.toggleRequest ?? 0, previous = React.useRef(request);
+    const { open, onOpen, onClose } = props;
+    React.useEffect(() => {
+      if (previous.current === request) return;
+      previous.current = request;
+      if (Platform.OS === 'ios') { if (open) onClose(); else onOpen?.(); }
+    }, [request, open, onOpen, onClose]);
+    return <Controls {...props} />;
+  } };
+});
 jest.mock('./active-session-native-storage', () => ({ activeSessionStorage: {} }));
 jest.mock('@/api', () => ({ fetchMobileTrainingExercises: (...args: unknown[]) => mockCatalog(...args),
   useApiResource: jest.requireActual<typeof import('@/api/resource')>('@/api/resource').useApiResource }));
