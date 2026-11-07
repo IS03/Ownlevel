@@ -8,12 +8,17 @@ import type { MobileApiReadResult } from '@/api/results';
 import { createInsightsSnapshot, insightsPeriodSummary } from '../../../../src/lib/progress/insights-engine/read-model';
 import type { InsightsSource } from '../../../../src/lib/progress/insights-engine/types';
 import { PeriodScreen } from './period-screen';
-import { insightsReturnHref } from './navigation';
+import { insightsReturnHref, periodDetailHref } from './navigation';
 
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 const mockPush = jest.fn();
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, back: jest.fn() }), useFocusEffect: () => undefined, useLocalSearchParams: () => ({}) }));
+const mockFocus = new Set<() => void | (() => void)>();
+let mockParams: Record<string, string> = {};
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, back: jest.fn() }), useLocalSearchParams: () => mockParams,
+  useFocusEffect: (callback: () => void | (() => void)) => jest.requireActual<typeof import('react')>('react').useEffect(() => {
+    mockFocus.add(callback); const cleanup = callback(); return () => { mockFocus.delete(callback); cleanup?.(); };
+  }, [callback]) }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn() }, triggerHaptic: jest.fn() }));
 type ReadOptions = Parameters<MobileApiClient['read']>[0];
 const mockRead = jest.fn<(options: ReadOptions) => Promise<MobileApiReadResult<unknown>>>();
@@ -38,8 +43,8 @@ function history(sessions: { date: string; routine: string; reps: number; post?:
   meals.forEach((date, n) => (source.meals as InsightsSource['meals'][number][]).push({ id: id(5, n), date, consumedAt: null, consumedAtSource: null, rawInput: null, entryKind: 'meal', sourceType: 'manual', importRunId: null, calories: 2000, proteinG: 120, carbsG: 200, fatG: 60 }));
   return source;
 }
-const serve = (source: InsightsSource, weights: { date: string; value: number }[] = []) => async (options: ReadOptions) => {
-  const body = insightsPeriodSummary(createInsightsSnapshot(source, { today: '2026-11-06', revision: 'r1', method: 2 }), weights);
+const serve = (source: InsightsSource, weights: { date: string; value: number }[] = [], readToday = '2026-11-06') => async (options: ReadOptions) => {
+  const body = { ...insightsPeriodSummary(createInsightsSnapshot(source, { today: '2026-11-06', revision: 'r1', method: 2 }), weights), view: 'period-at', asOf: '2026-11-06', today: readToday };
   const parsed = options.parse(JSON.parse(JSON.stringify(body)));
   if (parsed === undefined) throw Error(`Contract rejected ${options.path}`);
   return { status: 'ok' as const, data: parsed, meta };
@@ -50,7 +55,7 @@ const open = async () => {
   return view;
 };
 const weights = ['2026-08-03', '2026-08-05', '2026-08-07', '2026-08-10', '2026-08-12', '2026-08-14'].map((date, n) => ({ date, value: n < 3 ? 80 : 79.5 }));
-beforeEach(() => { mockPush.mockClear(); mockRead.mockReset(); clearConfirmedReads(mockClient); });
+beforeEach(() => { mockParams = {}; mockFocus.clear(); mockPush.mockClear(); mockRead.mockReset(); clearConfirmedReads(mockClient); });
 
 describe('#367 fase 4: resumen de los últimos tres meses', () => {
   it('reads once when it opens and writes the period with its exact dates and figures, facts only', async () => {
@@ -88,8 +93,12 @@ describe('#367 fase 4: resumen de los últimos tres meses', () => {
     const view = await open();
     fireEvent.press(view.getByRole('button', { name: 'Ver tu peso en Cuerpo, en los mismos tres meses' }));
     const href = mockPush.mock.calls.at(-1)![0] as { pathname: string; params: Record<string, string> };
-    expect(href).toMatchObject({ pathname: '/(tabs)/progress/trends/body', params: { from: '2026-08-01', to: '2026-10-31', insightsReturn: '1', insightsSummary: '1' } });
-    expect(insightsReturnHref(href.params)).toEqual({ pathname: '/(tabs)/train/insights/period', params: {} });
+    expect(href).toMatchObject({ pathname: '/(tabs)/progress/trends/body', params: { from: '2026-08-01', to: '2026-10-31', insightsReturn: '1', insightsSummary: '1', insightsAsOf: '2026-11-06' } });
+    expect(insightsReturnHref(href.params)).toEqual({ pathname: '/(tabs)/train/insights/period', params: { asOf: '2026-11-06' } });
+    fireEvent.press(view.getByRole('button', { name: 'Ver energía y fatiga de los mismos tres meses' }));
+    expect(mockPush).toHaveBeenLastCalledWith(periodDetailHref('feelings', '2026-11-06', 'r1'));
+    fireEvent.press(view.getByRole('button', { name: 'Ver los días con alimentación registrada de los mismos tres meses' }));
+    expect(mockPush).toHaveBeenLastCalledWith(periodDetailHref('nutrition', '2026-11-06', 'r1'));
     fireEvent.press(view.getByRole('button', { name: 'Ver Cómo terminaste, en todo tu historial' }));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/train/insights/feelings');
     fireEvent.press(view.getByRole('button', { name: 'Ver los días en Insights' }));
@@ -108,10 +117,29 @@ describe('#367 fase 4: resumen de los últimos tres meses', () => {
     mockRead.mockImplementation(serve(history([])));
     const empty = await open();
     expect(empty.getByTestId('period-empty')).toBeTruthy();
+    fireEvent.press(empty.getByRole('button', { name: 'Ver los días con alimentación registrada de los mismos tres meses' }));
+    expect(mockPush).toHaveBeenLastCalledWith(periodDetailHref('nutrition', '2026-11-06', 'r1'));
+    expect(empty.getByRole('button', { name: 'Ver Cómo terminaste, en todo tu historial' })).toBeTruthy();
+    mockRead.mockResolvedValue(lost);
+    await act(async () => { for (const callback of [...mockFocus]) callback(); });
+    expect(empty.getByText('No pudimos actualizar. Mostramos la última lectura.')).toBeTruthy();
     empty.unmount(); clearConfirmedReads(mockClient);
     mockRead.mockResolvedValue(lost);
     const failed = await open();
     expect(failed.getByText('Uy, no pudimos leer tus datos')).toBeTruthy();
     expect(failed.queryByTestId('period-empty')).toBeNull();
+  });
+
+  it('pins the first response when returning across month/year and never silently replaces an invalid scope', async () => {
+    const source = history([{ date: '2026-08-03', routine: 'A', reps: 8 }]);
+    mockRead.mockImplementation(serve(source)); const view = await open();
+    expect(mockRead.mock.calls[0]![0].path).not.toContain('asOf=');
+    mockRead.mockImplementation(serve(source, [], '2027-01-02'));
+    await act(async () => { for (const callback of [...mockFocus]) callback(); });
+    expect(mockRead).toHaveBeenCalledTimes(2); expect(mockRead.mock.calls[1]![0].path).toContain('asOf=2026-11-06');
+    expect(view.getByTestId('period-range')).toHaveTextContent('1 ago – 31 oct 2026');
+    expect(view.getByText('Conservamos el período que abriste el 06/11/2026.')).toBeTruthy();
+    view.unmount(); mockRead.mockClear(); mockParams = { asOf: '2026-02-30' };
+    const invalid = await open(); expect(invalid.getByText('No pudimos identificar el período')).toBeTruthy(); expect(mockRead).not.toHaveBeenCalled();
   });
 });

@@ -153,8 +153,9 @@ Requiere una build de Mobile con `codex/367-body-weekly`. Sin migración ni API 
 - [ ] **Texto grande y VoiceOver:** cada semana se lee completa y las filas se apilan sin cortar números.
 
 ## Resumen de los últimos tres meses (fase 4)
-Requiere una build de Mobile con `codex/367-period-summary` y la API de esa rama. Sin migración.
-- [ ] **Abrir:** en Insights, «Últimos 3 meses» abre el resumen y lee una sola vez. Terminar un entrenamiento o cambiar de pestaña no lo lee.
+Requiere una build autorizada de Mobile y la API correspondiente. Los detalles de `codex/367-period-details` siguen sin desplegar ni verificar en teléfono. Sin migración. Las pruebas automatizadas no marcan esta lista como aprobada.
+Integración de lectores completada en pila descartable PostgreSQL 17.6/PostgREST 16.5 con el esquema completo y RLS sintético (#421); [resultados y límites](367-detalles-periodo-pr-description.md). No sustituye ninguna casilla de QA física.
+- [ ] **Abrir:** en Insights, «Últimos 3 meses» abre el resumen; los detalles solo se leen al abrirlos. Terminar un entrenamiento no lee ninguna de estas vistas. Volver a una vista abierta revalida su lectura completa.
 - [ ] **Fechas:** dice el rango exacto («1 ago – 31 oct») y los tres meses. El mes en curso no entra, tampoco el día 1 de un mes.
 - [ ] **Resumen escrito:** frases cortas con cifras. Ninguna dice que una cosa explica otra, ni da causas, rangos óptimos o recomendaciones.
 - [ ] **Entrenamiento:** «Comparación completa» y «Con contexto parcial» en filas separadas. Las rutinas en orden solo si una terminó antes de la otra; si se alternaron, lo dice.
@@ -164,3 +165,9 @@ Requiere una build de Mobile con `codex/367-period-summary` y la API de esa rama
 - [ ] **Detalles y vuelta:** «Ver tu peso en Cuerpo» abre los mismos tres meses y «Volver a Insights» vuelve al resumen. «Ver los días en Insights» y «Ver Cómo terminaste» vuelven con atrás.
 - [ ] **Estados:** un período sin registros dice «Sin registros en estos tres meses». Sin red: «Uy, no pudimos leer tus datos», nunca vacío.
 - [ ] **Texto grande y VoiceOver:** las filas se apilan sin cortar números y se leen completas.
+- [ ] **Detalle de sensaciones:** abrir desde el resumen, comprobar las fechas completas y coberturas separadas de energía/fatiga. Válidas, tardías, ausentes, ilegibles, sin hora, anteriores al inicio y otra escala tienen filas distintas; sin promedios ni puntajes. Volver al resumen conserva esas fechas. «Cómo terminaste · todo el historial» sigue siendo independiente.
+- [ ] **Detalle de comidas:** fechas en orden reciente, incluidos días sin entrenamiento; cuatro nutrientes por día. Cero conocido se ve como cero, todo faltante como «Sin dato» y dato parcialmente presente como «parcial». Días sin comidas solo en cobertura; no se inventan ceros. Se aclara que no es ingesta completa.
+- [ ] **Día y retorno:** resumen → comidas del período → Nutrición en la fecha elegida → «Volver a las comidas del período» → resumen. Conservar fechas y origen también después de cambiar de mes/año; si queda abierto un período anterior, el resumen lo indica.
+- [ ] **Revisión y error:** modificar una fuente fuera de la pantalla y volver; se reemplaza la lectura completa, avisando si cambió desde el resumen. Sin red se distingue no disponible de vacío; si queda una lectura anterior, se identifica. Reintentar mantiene las fechas. Cambio de cuenta no conserva cifras de la anterior.
+- [ ] **Vacío y cobertura distinta:** sin sesiones pero con comidas, sin comidas pero con sesiones y período totalmente vacío. Cada detalle mantiene su propio denominador, con retorno disponible.
+- [ ] **Presentación de detalles:** claro/oscuro, iPhone angosto, texto grande y VoiceOver; fechas, unidades, numeradores y acciones legibles, filas apiladas y última acción fuera de la barra inferior. Sin juicios de color sobre datos personales.

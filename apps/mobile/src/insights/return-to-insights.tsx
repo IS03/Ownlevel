@@ -6,5 +6,6 @@ import { insightsReturnHref } from './navigation';
 export function ReturnToInsights() {
   const params = useLocalSearchParams(), router = useRouter();
   const href = insightsReturnHref(params);
-  return href ? <Button label="Volver a Insights" variant="secondary" onPress={() => router.navigate(href)} /> : null;
+  const label = href?.pathname === '/(tabs)/train/insights/period-nutrition' ? 'Volver a las comidas del período' : 'Volver a Insights';
+  return href ? <Button label={label} variant="secondary" onPress={() => router.navigate(href)} /> : null;
 }

@@ -60,8 +60,7 @@
 ## Límites
 
 - **Período fijo:** siempre los últimos tres meses completos. No se puede elegir otro.
-- **Sensaciones:** el enlace a «Cómo terminaste» abre todo el historial, no solo el período, y lo dice.
-- **Comidas:** no hay un detalle propio del período.
+- **Ampliación posterior preparada:** [detalles del período](367-detalles-periodo-pr-description.md), con energía/fatiga y días de alimentación, fechas conservadas y vuelta. «Cómo terminaste» mantiene su acceso independiente a todo el historial. Esta ampliación no cambia `view=period` ni sus cifras.
 - **Sin producción:** no se midió con datos reales ni en producción.
 
 ## Pendientes

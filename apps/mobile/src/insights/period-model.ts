@@ -1,4 +1,4 @@
-import type { InsightsPeriodSummary } from '@/api/performance-insights';
+import type { InsightsPeriodSummary, InsightsPinnedPeriodSummary } from '@/api/performance-insights';
 import { formatValue } from '@/progress/progress-format';
 import { shortRange } from '@/progress/progress-range';
 import { postsText } from './feelings-model';
@@ -7,7 +7,9 @@ import { postsText } from './feelings-model';
  * The summary of the last three whole months, written from its figures alone: the same input always gives the same words. Facts
  * only: no sentence joins two of them into a cause, and none speaks of an association.
  */
-type Summary = InsightsPeriodSummary;
+type Summary = InsightsPeriodSummary | InsightsPinnedPeriodSummary;
+export const exactPeriodDate = (date: string) => date.split('-').reverse().join('/');
+export const exactPeriodRange = (period: { start: string; end: string }) => `${exactPeriodDate(period.start)} – ${exactPeriodDate(period.end)}`;
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const monthName = (month: string) => MONTHS[Number(month.slice(5, 7)) - 1]!;
