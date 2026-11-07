@@ -6,6 +6,8 @@ Lo marcado con *requiere migración* solo se puede revisar después de aplicar l
 
 ## Común a todas las pantallas
 
+- [ ] **#396 — Estado de sesión:** comprobación en cabecera sin banner invasivo; copia local siempre identificada, inspeccionar estado y reintentar. Sin saltos de lista al refrescar. Pendientes sin falsa confirmación; auth, conflicto, almacenamiento, operación incierta y sesión cerrada/removida visibles una vez con recuperación. Wi-Fi/datos, foreground, claro/oscuro, texto grande, VoiceOver, Reducir movimiento. Preparado, sin QA aprobada.
+
 - [ ] **#399 — Peso/medidas:** durante guardado y relectura confirmada, el control sigue ocupado, sin «Actualizar lectura» ni nuevo envío. Solo tras fallar la relectura se ofrece recuperar; completar recuperación no repite la mutación. Verificar desde Inicio y Cuerpo, también recibo local/restauración/conflicto. Corrección preparada, sin QA física aprobada.
 - [ ] **#418 — Comidas guardadas:** formulario sin la aclaración de vacío/cero, conservando ambos valores. Durante confirmación/relectura no aparecen controles de recuperación/cierre de intento; ante fallo sí, sin reenviar escrituras confirmadas. Resaltado con espacio interior estable al aparecer/desaparecer, tanto en guardadas como en Alimentos; claro/oscuro, texto grande y VoiceOver. Corrección preparada, sin QA física aprobada.
 - [ ] Claro y oscuro, según las paletas de marca.
