@@ -13,6 +13,20 @@ async function setup(api = fakeApi(), storage = memoryStorage()) {
 }
 
 describe('Body controller — weight', () => {
+  it.each(['receipt', 'cleanup'])('keeps a confirmed write recoverable when local %s fails', async stage => {
+    const { controller, api, storage } = await setup(fakeApi(overview({}, [])));
+    const write = storage.port.setItem;
+    if (stage === 'receipt') jest.spyOn(storage.port, 'setItem').mockImplementationOnce(write).mockRejectedValueOnce(new Error('disk')).mockImplementation(write);
+    else jest.spyOn(storage.port, 'removeItem').mockRejectedValueOnce(new Error('disk'));
+    api.weight.mockResolvedValue(ok(receipt()));
+    controller.openWeight(); controller.change('weight', '79,5');
+    await controller.saveWeight();
+    expect(controller.getSnapshot()).toMatchObject({ phase: 'blocked', intent: { receipt: receipt() } });
+    expect(controller.getSnapshot().message).toContain('confirmado');
+    await controller.recover();
+    expect(api.weight).toHaveBeenCalledTimes(1);
+    expect(controller.getSnapshot()).toMatchObject({ phase: 'idle', intent: null });
+  });
   it('records a new weight with "expected none", persisting the intent before sending', async () => {
     const { controller, api, storage } = await setup(fakeApi(overview({}, [{ date: '2026-10-02', weightKg: 81 }])));
     api.weight.mockImplementation(async () => { expect([...storage.store.values()][0]).toContain('"expectedWeightKg":null'); return ok(receipt()); });
