@@ -37,10 +37,10 @@ function SeriesColumns({ ordinal, kg, reps, rir, completed, header = false }: {
     <View style={styles.completedColumn}>{completed}</View>
   </View>;
 }
-export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller, id, expanded, locked, refreshing = false, reorderDisabled = false, addToRoutineName, onToggle, onHistory, onRemove, historyCard, variant, onSheetChange, onReveal, reveal = 0 }: {
+export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller, id, expanded, locked, refreshing = false, sessionStorageError = false, reorderDisabled = false, addToRoutineName, onToggle, onHistory, onRemove, historyCard, variant, onSheetChange, onReveal, reveal = 0 }: {
   /** Bumped after "Usar": the set rows remount and cascade in with the copied values. */
   reveal?: number;
-  controller: ActiveSessionController; id: string; expanded: boolean; locked: boolean; refreshing?: boolean; reorderDisabled?: boolean; addToRoutineName?: string | null; historyCard?: ReactNode;
+  controller: ActiveSessionController; id: string; expanded: boolean; locked: boolean; refreshing?: boolean; sessionStorageError?: boolean; reorderDisabled?: boolean; addToRoutineName?: string | null; historyCard?: ReactNode;
   /** #367: the optional variant row of this session exercise. */
   variant?: ReactNode; onSheetChange?: (id: string, open: boolean) => void; onReveal?: (top: number) => void;
   onToggle: (id: string) => void; onHistory: (id: string) => void; onRemove: (id: string, name: string) => void;
@@ -117,7 +117,7 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
       {/* Saving shows as «Sincronizando» in the session header: the counter and chevron never move. Failures stay below. */}
       <Animated.View style={chevron}><AppIcon name="chevronRight" color={colors.textMuted} size={15} /></Animated.View>
     </NativeDragHandle></NativeSwipeActions>
-    {state.error || statusLabels[state.phase] ? <View style={styles.recovery}>
+    {!(sessionStorageError && !state.storageReady) && (state.error || statusLabels[state.phase]) ? <View style={styles.recovery}>
       <AppText accessibilityLiveRegion="polite" style={{ color: phaseIsFailure(state.phase) || !statusLabels[state.phase] ? colors.danger : colors.text }} variant="caption">{statusLabels[state.phase] ?? state.error}</AppText>
       {state.error && statusLabels[state.phase] ? <AppText accessibilityRole="alert" style={{ color: colors.danger }} variant="caption">{state.error}</AppText> : null}
       {['conflict', 'stale', 'retryable', 'unconfirmed'].includes(state.phase) ? <>

@@ -169,11 +169,11 @@ describe('Native Nutrition day', () => {
       }
       return { status: 'ok', data: { status: 'saved', operation: body.operation, date: body.date }, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } } as never;
     });
-    const view = render(element()); await view.findByText('Detalle'); fireEvent.press(view.getByText('Detalle')); await view.findByText('Ajustar hoy'); fireEvent.press(view.getByText('Ajustar hoy')); finishDetailDismissal(view);
-    expect(view.getByText('Automático: 1.800 kcal')).toBeTruthy();
-    fireEvent.changeText(view.getByLabelText('Override objetivo'), '1900'); await act(async () => { fireEvent.press(view.getByText('Guardar cambios')); });
+    const view = render(element()); await view.findByText('Detalle'); fireEvent.press(view.getByText('Detalle')); await view.findByText('Ajustar hoy'); fireEvent.press(view.getByText('Ajustar hoy')); expect(view.queryByTestId('nutrition-context-sheet')).toBeNull(); finishDetailDismissal(view);
+    expect(view.getByText('Guardado: 1.800 kcal')).toBeTruthy();expect(view.getByText('Automático: 1.800 kcal')).toBeTruthy();
+    fireEvent.changeText(view.getByLabelText('Objetivo de calorías (kcal)'), '1900'); await act(async () => { fireEvent.press(view.getByText('Guardar cambios')); });
     await waitFor(() => expect(view.queryByTestId('nutrition-day-write-editor')).toBeNull());
-    fireEvent.press(await view.findByText('Detalle')); fireEvent.press(await view.findByText('Ajustar hoy')); finishDetailDismissal(view); expect(view.getByText('Override diario: 1.900 kcal')).toBeTruthy(); expect(view.getByText('Efectivo: 1.900 kcal')).toBeTruthy();
+    fireEvent.press(await view.findByText('Detalle')); fireEvent.press(await view.findByText('Ajustar hoy')); finishDetailDismissal(view); expect(view.getByText(/Guardado: 1.900 kcal/)).toBeTruthy(); expect(view.getByLabelText('Objetivo de calorías (kcal)').props.value).toBe('1900');
     fireEvent.press(view.getByText('Usar objetivo automático')); await act(async () => { fireEvent.press(view.getByText('Guardar cambios')); });
     await waitFor(() => expect(view.queryByTestId('nutrition-day-write-editor')).toBeNull());
     expect(mockRequest.mock.calls[1][0].body).toMatchObject({ operation: 'context', changes: { target: { action: 'clear' } } });

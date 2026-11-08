@@ -1,0 +1,7 @@
+# #414 — Ajustes de una fecha
+
+Base main `4859c01`, independiente de #396. El editor compartido todavía exponía contexto con Modal full-screen, tarjetas y términos «Override/Efectivo». Ahora ese modo utiliza la hoja compartida de la app, con scroll y soporte existente de viewport/teclado: no se fija una altura para esconder contenido. Fecha completa, alcance diario, valores guardados/automáticos, entrada manual y acción clara para restaurar cada automático. Dynamic Type apila referencias; no hay colores nuevos ni vidrio en campos/secciones.
+
+El editor legacy de métricas mantiene su recorrido y validación. Controlador, journal, contratos, CAS y cálculos intactos. La fase confirmada sin mensaje de error permanece ocupada durante persistencia/relectura; una relectura fallida ofrece recuperación sin reenviar la escritura. Conflictos conservan el borrador y exigen revisión explícita. El cierre de Tu día antes de abrir el editor no se modificó.
+
+Pruebas con controlador real y respuestas retenidas: éxito/fallo intermedio, reintento sin nueva mutación, conflicto/revisión, borrar automático, cero inválido y borrador sucio. Regresiones del día, Tu día, métricas y controlador. Renderer RN programático en claro/oscuro y ancho sintético; las pruebas del callback de dismiss verifican orden JS, no una transición UIKit ejecutada. Sin simulador iOS disponible ni instalaciones/build. QA física solo en [checklist única](367-qa-fisica.md); issue abierto. Resultados definitivos en el PR y validación combinada al cerrar la tanda.

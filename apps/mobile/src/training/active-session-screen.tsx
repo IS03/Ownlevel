@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, AccessibilityInfo, Alert, AppState, Keyboard, KeyboardAvoidingView, Platform, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Alert, AppState, Keyboard, KeyboardAvoidingView, Platform, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedProps, useAnimatedRef, useAnimatedScrollHandler, useSharedValue, runOnJS } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,6 +15,7 @@ import { ReturnToHistoryDay } from '@/history/return-to-day';
 import { haptics, triggerHaptic } from '@/platform/haptics';
 import { ActiveSessionController, sessionIntentKey } from './active-session-controller';
 import { ActiveExerciseCard } from './active-session-exercise-card';
+import { SessionVerification, isLocalSessionRead } from './session-verification';
 import { SessionExerciseActions } from './session-exercise-actions';
 import { SessionScrollHeader, advanceSessionHeader, INITIAL_SESSION_HEADER } from './session-scroll-header';
 import { SessionLastHistory } from './session-last-history';
@@ -48,10 +49,10 @@ function SessionProgressHeader({ controller, color, active }: { controller: Acti
   const progress = useSyncExternalStore(controller.subscribeProgress, controller.getProgress, controller.getProgress);
   const { colors } = useOwnlevelTheme();
   return <View style={styles.progress}>
-    <View style={styles.row}><AppText numeric muted style={styles.flex} variant="caption">{active ? 'En curso' : 'Sesión cerrada'} · {progress.completedSets}/{progress.totalSets} series · {progress.completedExercises}/{progress.exercises} ejercicios</AppText>
+    <View style={styles.row}><AppText numeric muted style={styles.flex} variant="caption">{active ? progress.offline ? 'Copia local' : 'En curso' : 'Sesión cerrada'} · {progress.completedSets}/{progress.totalSets} series · {progress.completedExercises}/{progress.exercises} ejercicios</AppText>
       {/* Real failures only; drafts waiting for the connection are a quiet state, the session notice explains why (#356). */}
       {progress.errors ? <AppText style={{ color: colors.danger }} variant="caption">{progress.errors} sin sincronizar</AppText>
-        : progress.offline && (progress.pending || progress.drafts) ? <AppText muted variant="caption">Guardado en el dispositivo</AppText>
+        : progress.offline && (progress.pending || progress.drafts) ? <AppText muted variant="caption">Cambios sin confirmar</AppText>
         : progress.pending ? <AppText style={{ color: colors.primary }} variant="caption">Sincronizando</AppText> : null}
     </View>
     <ProgressBar accessibilityLabel="Progreso del entrenamiento" color={color} maximumValue={Math.max(progress.totalSets, 1)} value={progress.completedSets} />
@@ -275,22 +276,22 @@ export function ActiveSessionView({ controller, state, client, configurations }:
       <View style={styles.sessionHeader}>
         <ReturnToHistoryDay />
         <View onLayout={event => { titleBottom.set(event.nativeEvent.layout.y + event.nativeEvent.layout.height + spacing.lg); }} style={styles.row}><Heading level={1} style={[styles.sessionTitle, styles.flex]}>{detail.session.name}</Heading><SessionClock session={detail.session} />
-          {state.refreshing || state.intent?.phase === 'running' ? <ActivityIndicator testID="session-background-sync" accessibilityLabel="Sincronizando sesión" size="small" color={colors.textMuted} /> : null}
+          <SessionVerification controller={controller} />
         </View>
         <SessionProgressHeader controller={controller} color={accent} active={active} />
       </View>
-      {state.storageError ? <InlineUnavailable actionLabel="Reintentar" onAction={() => void controller.refresh()} message="No pudimos guardar o leer el borrador en el dispositivo. Mantené esta pantalla abierta hasta sincronizar." /> : null}
+      {state.storageError && !state.intent ? <InlineUnavailable actionLabel="Reintentar" onAction={() => void controller.refresh()} message="No pudimos guardar o leer el borrador en el dispositivo. Mantené esta pantalla abierta hasta sincronizar." /> : null}
       {!active ? <Surface><AppText variant="label">Esta sesión ya no está en curso</AppText><AppText muted variant="caption">Mostramos la versión guardada en modo lectura.</AppText></Surface> : null}
       {intentPanel}
         {controller.feelings ? <TrainingFeelings journal={controller.feelings} phase="pre" controller={controller} disabled={!active || state.finishing || !!state.intent} /> : null}
-      {state.notice && !state.intent ? <InlineUnavailable message={state.notice} actionLabel="Comprobar sesión" onAction={() => void controller.refresh()} /> : null}
+      {state.notice && !state.intent && !state.storageError && !isLocalSessionRead(state) ? <InlineUnavailable message={state.notice} actionLabel="Comprobar sesión" onAction={() => void controller.refresh()} /> : null}
       <View style={styles.row}><AppText style={styles.flex} variant="heading">Ejercicios</AppText>
         {active ? <Button disabled={structuralLocked || Boolean(state.interaction)} label="+ Agregar" onPress={() => { afterRemoval(() => setPickerOpen(true)); }} variant="quiet" /> : null}</View>
       {detail.exercises.length ? <NativeReorderList ids={detail.exercises.map(exercise => exercise.id)}
         onLift={() => { const accepted = !structuralLocked && controller.beginExerciseDrag(); if (accepted) Keyboard.dismiss(); return accepted; }}
         onDrop={ids => controller.dropExercises(ids)} onCancel={() => controller.cancelDrag()}>
         {detail.exercises.map(exercise => <NativeReorderItem key={exercise.id} id={exercise.id} gap={0}>
-          <ActiveExerciseCard reveal={revealed?.id === exercise.id ? revealed.n : 0} addToRoutineName={detail.session.routineId ? detail.session.routineNameSnapshot ?? detail.session.name : null} controller={controller} id={exercise.id} expanded={expanded === exercise.id} locked={locked} refreshing={state.refreshing} reorderDisabled={structuralLocked} onToggle={toggle} onHistory={showHistory} onRemove={remove} onSheetChange={cardSheet}
+          <ActiveExerciseCard reveal={revealed?.id === exercise.id ? revealed.n : 0} addToRoutineName={detail.session.routineId ? detail.session.routineNameSnapshot ?? detail.session.name : null} controller={controller} id={exercise.id} expanded={expanded === exercise.id} locked={locked} refreshing={state.refreshing} sessionStorageError={state.storageError} reorderDisabled={structuralLocked} onToggle={toggle} onHistory={showHistory} onRemove={remove} onSheetChange={cardSheet}
             onReveal={top => { if (reveal.current === exercise.id) { reveal.current = null; scrollRef.current?.scrollTo({ y: Math.max(0, scrollY.get() + top - headerHeight - spacing.md), animated: !reduceMotion }); } }}
             variant={configurations ? <ExerciseVariantRow journal={configurations} sessionExerciseId={exercise.id} name={exercise.nameSnapshot} editable={active && !locked} /> : null}
             historyCard={exercise.routineExerciseId === null && dismissed !== null && !dismissed.includes(exercise.exerciseId) && detail.quickHistory.status === 'ok' && quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).some(item => item.sets.some(set => set.isCompleted)) ?

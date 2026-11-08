@@ -1,24 +1,17 @@
 import { Alert,KeyboardAvoidingView,Modal,Platform,StyleSheet,TextInput,View } from 'react-native';
 import { sleepNightCaption } from '../../../../src/lib/daily-metrics/sleep-night';
 import { AppText,Button,Heading,ScrollScreen,Surface,spacing,useOwnlevelTheme, brandTokens } from '@/design-system';
-import type { NutritionDayContext,NutritionDayMetric } from '@/api/nutrition-day';
+import type { NutritionDayMetric } from '@/api/nutrition-day';
 import type { DayWriteController,DayWriteState } from './day-write-controller';
-import { displayNutritionDate,amount } from './day-format';
+import { displayNutritionDate } from './day-format';
+import { DayContextEditor } from './day-context-editor';
 function metricDisplay(m:NutritionDayMetric){
   if(m.value===null)return 'Sin dato';
   return m.valueType==='duration'?`${Math.floor(m.value/60)} h ${m.value%60} min`:`${m.value}${m.unit?' '+m.unit:''}`;
 }
-function ContextValues({c,field}:{c:NutritionDayContext;field:'target'|'expenditure'}){
-  const target=field==='target';
-  const override=target?c.targetOverrideKcal:c.expenditureOverrideKcal;
-  return <>
-    <AppText>Automático: {amount(target?c.targetAutomaticKcal:c.expenditureAutomaticKcal,'kcal')}</AppText>
-    <AppText>Override diario: {override===null?'Sin ajuste':amount(override,'kcal')}</AppText>
-    <AppText>Efectivo: {amount(target?c.calorieTarget:c.expenditureKcal,'kcal')}</AppText>
-  </>;
-}
 export function DayWriteEditor({controller,state}:{controller:DayWriteController;state:DayWriteState}){
   const {colors}=useOwnlevelTheme(),d=state.draft;if(!d)return null;
+  if(d.kind==='context')return <DayContextEditor controller={controller} state={state}/>;
   const locked=!!state.intent||['pending','loading','blocked','confirmed'].includes(state.phase),running=state.phase==='pending';
   const close=()=>{
     if(running)return;
@@ -30,16 +23,14 @@ export function DayWriteEditor({controller,state}:{controller:DayWriteController
     editable={!locked} keyboardType={decimal?'decimal-pad':'number-pad'} onChangeText={onChangeText} placeholder="Sin dato" placeholderTextColor={colors.textMuted}
     style={[styles.input,{color:colors.text,borderColor:colors.border}]} value={value}/>;
   const metrics=d.baseline.activity.status==='ok'?d.baseline.activity.data.metrics:[];
-  const c=d.baseline.nutrition.status==='ok'&&d.baseline.nutrition.data.dayState==='recorded'?d.baseline.nutrition.data.context:null;
   const truth=state.truth;
-  const truthContext=truth?.nutrition.status==='ok'&&truth.nutrition.data.dayState==='recorded'?truth.nutrition.data.context:null;
   return <Modal animationType="slide" onRequestClose={close} presentationStyle="fullScreen" visible>
     <KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':undefined} style={styles.screen}>
       <ScrollScreen safeAreaEdges={['top','left','right','bottom']} testID="nutrition-day-write-editor">
-        <Heading level={2}>{d.kind==='metrics'?'Métricas del día':'Ajustar contexto'}</Heading>
+        <Heading level={2}>Métricas del día</Heading>
         <AppText>{displayNutritionDate(d.baseline.date)} · Sólo esta fecha</AppText>
-        <AppText muted>{d.kind==='metrics'?'Vacío significa sin registro. Cero es un valor. Se guardan juntos sólo los cambios.':'Estos ajustes diarios no cambian tu plan ni la configuración general.'}</AppText>
-        {d.kind==='metrics'?metrics.map(m=>{
+        <AppText muted>Vacío significa sin registro. Cero es un valor. Se guardan juntos sólo los cambios.</AppText>
+        {metrics.map(m=>{
           if(!m.isActive&&d.baseline.date>=d.baseline.today)return <Surface key={m.id}>
             <AppText variant="label">{m.label} · archivada</AppText><AppText>{metricDisplay(m)} · Sólo lectura hoy</AppText>
           </Surface>;
@@ -55,19 +46,11 @@ export function DayWriteEditor({controller,state}:{controller:DayWriteController
             {state.errors[m.id]?<AppText accessibilityRole="alert" style={{color:colors.danger}}>{state.errors[m.id]}</AppText>:null}
             <Button disabled={locked} label={`Quitar valor de ${m.label}`} variant="quiet" onPress={()=>{for(const field of ['value','hours','minutes'] as const)controller.changeMetric(m.id,field,'');}}/>
           </Surface>;
-        }):c?(['target','expenditure'] as const).map(field=><Surface key={field}>
-          <Heading level={2}>{field==='target'?'Objetivo nutricional':'Gasto energético'}</Heading>
-          <ContextValues c={c} field={field}/>
-          <AppText variant="label">Override diario (kcal) · vacío usa automático</AppText>
-          {input(field==='target'?'Override objetivo':'Override gasto',d[field],v=>controller.changeContext(field,v))}
-          {state.errors[field]?<AppText accessibilityRole="alert" style={{color:colors.danger}}>{state.errors[field]}</AppText>:null}
-          <Button disabled={locked} label={field==='target'?'Usar objetivo automático':'Usar gasto automático'} onPress={()=>controller.changeContext(field,'')} variant="secondary"/>
-        </Surface>):null}
+        })}
         {state.errors.form?<AppText accessibilityRole="alert">{state.errors.form}</AppText>:null}
         {state.message?<AppText accessibilityRole="alert">{state.message}</AppText>:null}
         {state.phase==='conflict'?<Surface><Heading level={2}>Versión del servidor</Heading>
           {d.kind==='metrics'&&truth?.activity.status==='ok'?truth.activity.data.metrics.map(m=><AppText key={m.id}>{m.label}{m.isActive?'':' · archivada'}: {metricDisplay(m)}</AppText>):null}
-          {d.kind==='context'&&truthContext?<><ContextValues c={truthContext} field="target"/><ContextValues c={truthContext} field="expenditure"/></>:null}
           {!truth?<AppText>No pudimos confirmar los datos actuales. Tu borrador sigue intacto.</AppText>:null}
           <Button label="Actualizar versión del servidor" onPress={()=>void controller.refreshConflict()} variant="secondary"/>
           {truth?<Button label="Revisar mi borrador sobre esta versión" onPress={()=>controller.reviewWithServerVersion()} variant="secondary"/>:null}
