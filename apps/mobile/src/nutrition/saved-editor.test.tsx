@@ -1,6 +1,6 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { describe, expect, it, jest } from '@jest/globals';
-import { Alert } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { SavedController, type SavedApi } from './saved-controller';
@@ -169,6 +169,54 @@ describe('Native Saved Meal management', () => {
 });
 
 describe('Saved library presentation safeguards', () => {
+  it.each(['create', 'edit'] as const)('uses one stable progress action through %s, receipt and both catalog reads (#435)', async mode => {
+    const f = fixture(); await f.open();
+    if (mode === 'create') {
+      chooseCreate(f.view, 1);
+      fireEvent.changeText(f.view.getByLabelText('Nombre'), 'EJEMPLO');
+      fireEvent.changeText(f.view.getByLabelText('Proteína (g)'), '0');
+    } else {
+      fireEvent.press(f.view.getByLabelText(/^Editar CAFÉ,/));
+      fireEvent.changeText(f.view.getByLabelText('Calorías'), '321');
+    }
+    let finishWrite!: (value: Awaited<ReturnType<SavedApi['write']>>) => void;
+    let finishDetail!: (value: Awaited<ReturnType<SavedApi['detail']>>) => void;
+    let finishList!: (value: Awaited<ReturnType<SavedApi['list']>>) => void;
+    jest.mocked(f.api.write).mockImplementationOnce(() => new Promise(resolve => { finishWrite = resolve; }));
+    f.api.detail = () => new Promise(resolve => { finishDetail = resolve; });
+    jest.mocked(f.api.list).mockImplementationOnce(() => new Promise(resolve => { finishList = resolve; }));
+    const footer = f.view.getByTestId('saved-editor-footer');
+    const button = f.view.getByRole('button', { name: 'Guardar' });
+    const geometry = StyleSheet.flatten(button.props.style);
+    await act(async () => { fireEvent.press(button); });
+    const progress = (label: string) => {
+      expect(f.view.getByTestId('saved-editor-footer')).toBe(footer);
+      const current = f.view.getByRole('button', { name: label });
+      expect(current).toBe(button);
+      expect(StyleSheet.flatten(current.props.style).minHeight).toBe(geometry.minHeight);
+      expect(current).toBeDisabled();
+      expect(f.view.getAllByRole('button', { busy: true })).toHaveLength(1);
+      expect(f.view.UNSAFE_getAllByType(ActivityIndicator)).toHaveLength(1);
+      expect(f.view.queryByText('Guardando comida')).toBeNull();
+      expect(f.view.queryByText('Actualizar catálogo confirmado')).toBeNull();
+      expect(f.view.queryByText('Cerrar · conservar intento')).toBeNull();
+      expect(f.view.queryByText('Guardado')).toBeNull();
+    };
+    expect(f.c.getSnapshot().phase).toBe('pending');
+    progress('Guardando…');
+    await act(async () => { await f.c.save(); });
+    expect(f.api.write).toHaveBeenCalledTimes(1);
+    await act(async () => { finishWrite({ status: 'ok', data: { ...savedReceipt, operation: mode === 'create' ? 'create' : 'update' }, meta }); });
+    expect(f.c.getSnapshot()).toMatchObject({ phase: 'reconciling', intent: { receipt: expect.any(Object) } });
+    progress('Actualizando…');
+    await act(async () => { finishDetail({ status: 'ok', data: { status: 'ok', meal: personalSaved }, meta }); });
+    progress('Actualizando…');
+    await act(async () => { finishList({ status: 'ok', data: { status: 'ok', meals: [personalSaved] }, meta }); });
+    expect(f.c.getSnapshot()).toMatchObject({ phase: 'idle', intent: null, draft: null, mode: 'browse' });
+    expect(f.api.write).toHaveBeenCalledTimes(1);
+    expect(f.view.getByText('Guardado')).toBeTruthy();
+    expect(f.view.queryAllByRole('button', { busy: true })).toHaveLength(0);
+  });
   it.each(['detail', 'list', 'throw'])('recovers confirmed %s failure without another write', async failure => {
     const f = fixture(); await f.open();
     fireEvent.press(f.view.getByLabelText(/^Editar CAFÉ,/));

@@ -186,7 +186,9 @@ export function SavedEditor({ controller, state }: { controller: SavedController
             {notice.notice}
             {!browse && !picker && d ? (
               <Button
-                label={pending ? 'Guardando…' : 'Guardar'}
+                label={state.phase === 'reconciling' ? 'Actualizando…' : pending ? 'Guardando…' : 'Guardar'}
+                loading={pending}
+                accessibilityHint={state.phase === 'reconciling' ? 'La comida está guardada. Falta actualizar el catálogo.' : undefined}
                 disabled={saveDisabled}
                 onPress={() => void controller.save()}
               />
@@ -453,7 +455,7 @@ export function SavedEditor({ controller, state }: { controller: SavedController
           onPress={() => void controller.recover()}
         />
       ) : null}
-      {pending ? <LoadingState label="Guardando comida" /> : null}
+      {pending && (browse || picker || !d) ? <LoadingState label="Guardando comida" /> : null}
       {state.intent && !pending ? (
         <Button label="Cerrar · conservar intento" variant="quiet" disabled={pending} onPress={close} />
       ) : null}
