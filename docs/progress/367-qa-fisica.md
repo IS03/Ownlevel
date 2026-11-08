@@ -6,6 +6,7 @@ Lo marcado con *requiere migración* solo se puede revisar después de aplicar l
 
 ## Común a todas las pantallas
 
+- [ ] **#396 — Estado de sesión:** comprobación en cabecera sin banner invasivo; copia local siempre identificada, inspeccionar estado y reintentar. Sin saltos de lista al refrescar. Pendientes sin falsa confirmación; auth, conflicto, almacenamiento, operación incierta y sesión cerrada/removida visibles una vez con recuperación. Wi-Fi/datos, foreground, claro/oscuro, texto grande, VoiceOver, Reducir movimiento. Preparado, sin QA aprobada.
 - [ ] **#414 — Ajustes de la fecha:** Tu día termina de cerrar antes de abrir el editor. Fecha completa, automático/manual y restablecer cada campo sin cambiar el otro. Hoja compartida desplazable, teclado numérico, texto grande, VoiceOver, claro/oscuro y Reducir movimiento. Confirmación en curso sin CTA de recuperación; error/conflicto conserva borrador y recibo. Cancelar pide confirmación si corresponde. Preparado, sin QA aprobada.
 
 - [ ] **#399 — Peso/medidas:** durante guardado y relectura confirmada, el control sigue ocupado, sin «Actualizar lectura» ni nuevo envío. Solo tras fallar la relectura se ofrece recuperar; completar recuperación no repite la mutación. Verificar desde Inicio y Cuerpo, también recibo local/restauración/conflicto. Corrección preparada, sin QA física aprobada.
