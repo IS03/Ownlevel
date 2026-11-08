@@ -46,7 +46,8 @@
       "codex/known-training-regressions": false,
       "codex/367-session-temporal-context": false,
       "codex/367-week-exploration": false,
-      "codex/367-feeling-sequential-validation": false
+      "codex/367-feeling-sequential-validation": false,
+      "claude/400-duration-sheet-fit": false
     }
   }
 }

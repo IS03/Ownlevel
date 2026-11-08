@@ -31,6 +31,11 @@ jest.mock('@/training/exercise-segmented', () => ({
   },
 }));
 jest.mock('./metric-duration', () => jest.requireActual('./metric-duration.tsx'));
+// The window: home indicator only. Inside a tab the screen's own insets also count the tab bar (34 + 49).
+jest.mock('react-native-safe-area-context', () => {
+  const actual = jest.requireActual<typeof import('react-native-safe-area-context')>('react-native-safe-area-context');
+  return { ...actual, initialWindowMetrics: { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, bottom: 34, left: 0, right: 0 } } };
+});
 const date = '2026-10-02', meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
 const failure = { status: 'unavailable' as const, reason: 'network' as const, meta: { ...meta, outcome: 'unavailable' as const } };
 const conflict = { status: 'conflict' as const, code: 'METRICS_CHANGED' as const, message: 'El valor cambió en otro dispositivo.', meta: { ...meta, httpStatus: 409, outcome: 'conflict' as const } };
@@ -74,9 +79,9 @@ function Harness({ f }: { f: ReturnType<typeof setup> }) {
     {entry.notice ? <MetricSavedNotice notice={entry.notice} disabled={state.phase !== 'idle'} onUndo={entry.undoNotice} onClose={entry.dismissNotice} onPrevious={entry.previousNotice} /> : null}
   </>;
 }
-async function open(f = setup()) {
+async function open(f = setup(), screenBottom = 34) {
   await f.controller.initialize();
-  const view = render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, bottom: 34, left: 0, right: 0 } }}><OwnlevelThemeProvider initialMode="light"><Harness f={f} /></OwnlevelThemeProvider></SafeAreaProvider>);
+  const view = render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, bottom: screenBottom, left: 0, right: 0 } }}><OwnlevelThemeProvider initialMode="light"><Harness f={f} /></OwnlevelThemeProvider></SafeAreaProvider>);
   await act(async () => { fireEvent.press(view.getByTestId(`nutrition-metric-${metricId}`)); });
   return { f, view };
 }
@@ -154,6 +159,16 @@ it('opens a duration metric directly without waiting for a keyboard notification
   const { view } = await open(setup(null, 'duration'));
   expect(view.UNSAFE_getByType(AppSheet).props.nativeKeyboard).toBeUndefined();
   expect(view.UNSAFE_getByType(AppSheet).props.onShow).toBeUndefined();
+});
+it('duration sheet opened from a tab reserves only the home indicator: the tab bar is behind it (#400)', async () => {
+  const bottom = async (type?: 'duration') => {
+    const { view } = await open(setup(60, type), 83);
+    const value = StyleSheet.flatten(view.getByTestId('nutrition-metric-sheet').props.style).paddingBottom;
+    view.unmount(); return value;
+  };
+  expect(await bottom('duration')).toBe(34);
+  // The keyboard sheet keeps the screen inset it pairs with the native keyboard motion.
+  expect(await bottom()).toBe(83);
 });
 it('gives Nutrition panel presses a wider, subtler fading highlight without moving the content', async () => {
   const { view } = await open();
