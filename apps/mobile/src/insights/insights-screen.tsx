@@ -100,9 +100,11 @@ function ExerciseRows({ lane, session, partial, router, revision, origin, explai
   return <>{rows.map(row => {
     const explanation = explain && !explained.has(row.reason) ? reasonDetail(lane, row.reason) : null;
     explained.add(row.reason);
-    const detail = statusArrow(row.status) ? referenceText(row.age, row.date) : [reasonText(lane, row.reason), explanation].filter(Boolean).join('. ');
+    const reference = referenceText(row.age, row.date);
+    const unclassifiedReference = explain && !statusArrow(row.status) ? reference : null;
+    const detail = statusArrow(row.status) ? reference : [reasonText(lane, row.reason), unclassifiedReference, explanation].filter(Boolean).join('. ');
     return <InsightRow key={row.id} label={row.name || 'Ejercicio'} detail={detail ?? undefined}
-      value={`${statusArrow(row.status)} ${statusText(lane, row.status)}`} spoken={`${exerciseSentence(lane, row.name, row.status, row.reason, row.age, row.date)}${explanation ? `. ${explanation}` : ''}. Ver evidencia y series`}
+      value={`${statusArrow(row.status)} ${statusText(lane, row.status)}`} spoken={`${exerciseSentence(lane, row.name, row.status, row.reason, row.age, row.date)}${unclassifiedReference ? `. ${unclassifiedReference}` : ''}${explanation ? `. ${explanation}` : ''}. Ver evidencia y series`}
       onPress={() => router.push(insightsEvidenceHref({ session: session.sessionId, exercise: row.id, lane, reference: row.reference, result: row.status, revision }, origin))} />;
   })}</>;
 }

@@ -199,7 +199,7 @@ describe('#367 resultados sin comparables (#410)', () => {
     const lane = within(view.getByTestId('insights-session-lane-strict'));
     expect(lane.getByText('0 de 1 ejercicios comparables, contra su última vez')).toBeTruthy();
     fireEvent.press(lane.getByRole('button', { name: /^Press banca, sin comparar, sin series completas/ }));
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights/evidence', params: expect.objectContaining({ session: session(11), exercise: KNOWN, result: 'insufficient_comparison', reference: 'none' }) });
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights/evidence', params: expect.objectContaining({ session: session(11), exercise: KNOWN, result: 'insufficient_comparison', reference: session(10) }) });
     expect(lane.queryByLabelText('Por debajo: 1')).toBeNull();
   });
 });
