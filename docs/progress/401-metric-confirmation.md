@@ -1,0 +1,17 @@
+# #401 — Confirmación compacta y Deshacer
+
+Base main `4859c01`, independiente de #396/#414. La confirmación de métricas reutilizaba el toast genérico con vidrio, ancho completo y X. El hook mantenía una única respuesta y la borraba al abrir/registrar la siguiente métrica. Se introduce una presentación exclusiva para confirmaciones de métricas, sin rediseñar NutritionToast ni sus consumidores de comidas, definiciones, información o error.
+
+Cápsula sólida de ancho según contenido, check con champagne existente, números tabulares y texto sin truncar. No se agrega salvia: respeta el único acento de [identidad](../brand/ownlevel-marca/IDENTIDAD.md). Posición con resguardo de tab bar/insets, contenedor box-none, gesto descendente limitado a la cápsula y alternativa mediante acción de accesibilidad/escape. Se envía el anuncio de accesibilidad; UIKit/VoiceOver y reconocimiento físico del gesto siguen pendientes. Con texto grande se apila; movimiento reducido omite traslación y conserva fundidos funcionales.
+
+## Política de guardados consecutivos
+
+- Cola efímera de presentación por controlador/cuenta y fecha. No es otro journal, no modifica ni persiste intenciones. Cambio de cuenta y desmontaje limpian el estado/timer de UI.
+- Una sola superficie: la última confirmación se muestra primero y «Anterior» permite recorrer las conservadas. Descartar o expirar quita solo esa confirmación.
+- Se conservan **10 segundos visibles por turno**. Un editor, recuperación o confirmación nueva pausa el aviso anterior; al volver recibe 10 segundos completos. Es una extensión deliberada para no consumir Deshacer mientras está oculto, nunca un recorte a 2–4 s.
+- Las reversiones de otras métricas conservan su snapshot/CAS original. Un guardado posterior conocido de la misma métrica invalida su CAS anterior: se conserva la confirmación con «reemplazado por otro registro» y sin ese Deshacer. No se rebasa. El último Deshacer sigue restaurando exactamente el valor anterior de su propia operación; no se inventa undo múltiple.
+- Mutación, lectura de confirmación y limpieza durable siguen en el controlador existente. El aviso muestra el nombre/valor de esa lectura; si la métrica no está disponible no fabrica un éxito con valor del draft. Null y cero siguen distintos.
+
+Se reprodujo otra brecha de presentación en Inicio reteniendo la relectura posterior al recibo: aparecía «Comprobar» mientras seguía pendiente. Se distingue `pending`/confirmado sin mensaje de fallo de confirmado que requiere recuperación. También Deshacer deja de mostrar progreso perpetuo si la relectura falla: vuelve a los controles existentes, sin reenviar la mutación confirmada. Error/conflicto/resultado incierto no utiliza la cápsula descartable de éxito.
+
+65 pruebas dirigidas únicas: confirmación realmente leída, estados intermedios, timeout/respuesta perdida, CAS, null/cero, cola de métricas distintas, CAS viejo de la misma métrica retirado explícitamente, temporizador/pausa/desmontaje/cuenta, accesibilidad y callbacks del gesto. El harness sintético ahora valida el CAS por UUID para probar dos métricas, conservando las verificaciones de cuerpo/versión; no simula reconocimiento UIKit. Tipos/lint se verifican por etapa y validación Mobile completa una vez en combinación al terminar. No se cambiaron controlador, contratos, backend, journal o idempotencia. QA física solo en [checklist única](367-qa-fisica.md); issue abierto.

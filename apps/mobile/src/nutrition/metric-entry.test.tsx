@@ -14,7 +14,7 @@ import { nutritionFixture } from './day-fixture.test-helper';
 import { NutritionDayPanel } from './day-panel';
 import { MetricEntrySheet } from './metric-entry-sheet';
 import { MetricSavedNotice } from './metric-notice';
-import { useMetricEntry } from './use-metric-entry';
+import { dayWriteInFlight, useMetricEntry } from './use-metric-entry';
 import { confirmedMetricUndo, metricEntryCandidate, metricRaw, quickMetricValue, sameMetricTimestamp } from './metric-entry-model';
 
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -44,17 +44,17 @@ function setup(value: number | null = 0.5, type: NutritionDayMetric['valueType']
   }
   const map = new Map<string, string>();
   const port: NutritionStoragePort = { getItem: async key => map.get(key) ?? null, setItem: async (key, value) => { map.set(key, value); }, removeItem: async key => { map.delete(key); } };
-  const apply = (value: number | null) => {
+  const apply = (value: number | null, id = metricId) => {
     current = JSON.parse(JSON.stringify(current));
-    if (current.activity.status === 'ok') { current.activity.data.metrics[0].value = value; current.activity.data.metrics[0].updatedAt = value === null ? null : `${date}T13:00:00.${String(++revision).padStart(6, '0')}Z`; }
+    if (current.activity.status === 'ok') { const metric=current.activity.data.metrics.find(m=>m.id===id)!;metric.value = value; metric.updatedAt = value === null ? null : `${date}T13:00:00.${String(++revision).padStart(6, '0')}Z`; }
   };
   const read = jest.fn<DayWriteApi['read']>().mockImplementation(async () => ({ status: 'ok', data: JSON.parse(JSON.stringify(current)), meta }));
   const mutate = jest.fn<DayWriteApi['mutate']>().mockImplementation(async intent => {
     expect(intent.operation).toBe('metrics');
     if (intent.operation !== 'metrics' || current.activity.status !== 'ok') throw new Error('Unexpected operation');
-    expect(intent.changes).toHaveLength(1); expect(intent.changes[0].metricId).toBe(metricId);
-    if (intent.changes[0].expectedUpdatedAt !== current.activity.data.metrics[0].updatedAt) return conflict;
-    apply(intent.changes[0].value);
+    expect(intent.changes).toHaveLength(1); const metric=current.activity.data.metrics.find(m=>m.id===intent.changes[0].metricId);expect(metric).toBeDefined();
+    if (intent.changes[0].expectedUpdatedAt !== metric!.updatedAt) return conflict;
+    apply(intent.changes[0].value,intent.changes[0].metricId);
     return { status: 'ok', data: { status: 'saved', operation: 'metrics', date }, meta };
   });
   let key = 0;
@@ -68,9 +68,10 @@ function Harness({ f }: { f: ReturnType<typeof setup> }) {
   return <>
     <NutritionDayPanel data={f.data()} onDetail={() => f.controller.open('metrics', f.data())} onMetric={entry.open} />
     {entry.entry && state.draft ? <MetricEntrySheet id={entry.entry.id} controller={f.controller} state={state} onClose={entry.close} /> : null}
-    {!entry.entry && !(entry.undoing && state.phase === 'pending') ? <DayWriteEditor controller={f.controller} state={state} /> : null}
+    {!entry.entry && !(entry.undoing && dayWriteInFlight(state)) ? <DayWriteEditor controller={f.controller} state={state} /> : null}
+    {entry.undoing && dayWriteInFlight(state) ? <MetricSavedNotice notice={{date,message:'Deshaciendo…',undo:null}} disabled pending onUndo={()=>{}} onClose={()=>{}}/>:null}
     {state.message && !state.draft && !entry.feedbackHandled ? <AppText>{state.message}</AppText> : null}
-    {entry.notice ? <MetricSavedNotice notice={entry.notice} disabled={state.phase !== 'idle'} onUndo={entry.undoNotice} onClose={entry.dismissNotice} /> : null}
+    {entry.notice ? <MetricSavedNotice notice={entry.notice} disabled={state.phase !== 'idle'} onUndo={entry.undoNotice} onClose={entry.dismissNotice} onPrevious={entry.previousNotice} /> : null}
   </>;
 }
 async function open(f = setup()) {
@@ -81,6 +82,67 @@ async function open(f = setup()) {
 }
 const save = async (view: Awaited<ReturnType<typeof open>>['view'], label = 'Agua') => { await act(async () => { fireEvent.press(view.getByLabelText(`Guardar ${label}`)); }); };
 beforeEach(() => { jest.clearAllMocks(); });
+const recordedMetric=(f:ReturnType<typeof setup>,index=0)=>{const data=f.data();if(data.activity.status!=='ok')throw Error('fixture');return data.activity.data.metrics[index];};
+it('preserves different-metric undo slots while later confirmations arrive',async()=>{
+  const f=setup(1);await f.controller.initialize();const hook=renderHook(()=>useMetricEntry(f.controller,date));
+  await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f),0.25);});
+  await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f,1),2);});
+  expect(hook.result.current.notice?.message).toBe('Otra métrica: 102');expect(hook.result.current.notice?.queuedCount).toBe(1);
+  act(()=>hook.result.current.previousNotice());expect(hook.result.current.notice?.undo?.before.value).toBe(1);
+  await act(async()=>hook.result.current.undoNotice());
+  expect(recordedMetric(f).value).toBe(1);expect(recordedMetric(f,1).value).toBe(102);expect(f.mutate).toHaveBeenCalledTimes(3);
+  hook.unmount();f.controller.dispose();
+});
+it('explicitly retires an older same-metric CAS without silently losing the confirmation',async()=>{
+  const f=setup(1);await f.controller.initialize();const hook=renderHook(()=>useMetricEntry(f.controller,date));
+  await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f),0.25);});
+  await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f),0.25);});
+  act(()=>hook.result.current.previousNotice());
+  expect(hook.result.current.notice?.message).toContain('reemplazado por otro registro');expect(hook.result.current.notice?.undo).toBeNull();
+  await act(async()=>hook.result.current.undoNotice());expect(f.mutate).toHaveBeenCalledTimes(2);
+  act(()=>hook.result.current.dismissNotice());await act(async()=>hook.result.current.undoNotice());
+  expect(recordedMetric(f).value).toBe(1.25);expect(f.mutate).toHaveBeenCalledTimes(3);hook.unmount();f.controller.dispose();
+});
+it('keeps ten visible seconds per slot, pauses behind an editor and clears its timer on unmount',async()=>{
+  jest.useFakeTimers();
+  try{
+    const f=setup(1);await f.controller.initialize();const hook=renderHook(()=>useMetricEntry(f.controller,date));
+    await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f),0.25);});
+    act(()=>jest.advanceTimersByTime(9000));
+    act(()=>hook.result.current.open(f.data(),recordedMetric(f)));expect(hook.result.current.notice).toBeNull();
+    act(()=>jest.advanceTimersByTime(20000));act(()=>hook.result.current.close());expect(hook.result.current.notice?.undo).not.toBeNull();
+    await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f,1),2);});
+    act(()=>jest.advanceTimersByTime(9999));expect(hook.result.current.notice?.message).toBe('Otra métrica: 102');
+    act(()=>jest.advanceTimersByTime(1));expect(hook.result.current.notice?.message).toBe('Agua: 1,25 L');expect(hook.result.current.notice?.undo).not.toBeNull();
+    act(()=>jest.advanceTimersByTime(9999));expect(hook.result.current.notice).not.toBeNull();
+    expect(jest.getTimerCount()).toBe(1);hook.unmount();expect(jest.getTimerCount()).toBe(0);f.controller.dispose();
+  }finally{jest.useRealTimers();}
+});
+it('never carries confirmation slots across controller/account identity',async()=>{
+  const f=setup(1),other=setup(2);await f.controller.initialize();await other.controller.initialize();
+  const hook=renderHook(({controller}:{controller:DayWriteController})=>useMetricEntry(controller,date),{initialProps:{controller:f.controller}});
+  await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f),0.25);});
+  expect(hook.result.current.notice).not.toBeNull();hook.rerender({controller:other.controller});expect(hook.result.current.notice).toBeNull();
+  hook.unmount();f.controller.dispose();other.controller.dispose();
+});
+it('does not fabricate a named success or undo when the confirmed read no longer contains the metric',async()=>{
+  const f=setup(1);await f.controller.initialize();
+  f.read.mockImplementationOnce(async()=>{const data=JSON.parse(JSON.stringify(f.data())) as MobileNutritionDayResponse;if(data.activity.status==='ok')data.activity.data.metrics=[];return {status:'ok',data,meta};});
+  const hook=renderHook(()=>useMetricEntry(f.controller,date));await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f),0.25);});
+  expect(f.mutate).toHaveBeenCalledTimes(1);expect(hook.result.current.notice).toBeNull();expect(hook.result.current.feedbackHandled).toBe(false);
+  hook.unmount();f.controller.dispose();
+});
+it('keeps undo readback pending until a real failure, then recovers its receipt without another write',async()=>{
+  const {f,view}=await open();fireEvent.changeText(view.getByLabelText('Valor de Agua'),'0,25');await save(view);
+  let release!:(r:Awaited<ReturnType<DayWriteApi['read']>>)=>void;
+  f.read.mockReturnValueOnce(new Promise(done=>{release=done;}));
+  await act(async()=>{fireEvent.press(view.getByLabelText('Deshacer cambio de métrica'));});
+  expect(view.getByText('Deshaciendo…')).toBeTruthy();expect(view.queryByText('Actualizar fecha confirmada')).toBeNull();
+  await act(async()=>{release(failure);});
+  expect(view.queryByText('Deshaciendo…')).toBeNull();expect(view.getByText('Actualizar fecha confirmada')).toBeTruthy();
+  await act(async()=>{fireEvent.press(view.getByText('Actualizar fecha confirmada'));});
+  expect(f.mutate).toHaveBeenCalledTimes(2);expect(view.getByText('Agua: 0,5 L · deshecho')).toBeTruthy();
+});
 it('opts the shared Home/Nutrition metric sheet into closing its keyboard at the start of the exit', async () => {
   const { view } = await open();
   expect(view.UNSAFE_getByType(AppSheet).props.dismissKeyboardOnClose).toBe(true);
@@ -179,7 +241,7 @@ describe('individual metric sheet and existing writer', () => {
     expect(second).toMatchObject({ changes: [{ value: 0.5, expectedUpdatedAt: `${date}T13:00:00.000001Z` }] });
     expect(second.idempotencyKey).not.toBe(first.idempotencyKey); expect(f.data().activity).toMatchObject({ data: { metrics: [{ value: 0.5 }, { value: 100 }] } });
     expect(view.getByText('Agua: 0,5 L · deshecho')).toBeTruthy(); expect(view.queryByText('Deshacer')).toBeNull();
-    fireEvent.press(view.getByLabelText('Cerrar aviso de métrica'));
+    fireEvent(view.getByLabelText('Agua: 0,5 L · deshecho'), 'accessibilityAction', {nativeEvent:{actionName:'dismiss'}});
     expect(view.queryByText('Cambios guardados.')).toBeNull();
   });
   it('starts missing values in replace, omits add/target, and can save zero then undo to null', async () => {

@@ -1,4 +1,6 @@
-import { act, renderHook, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { OwnlevelThemeProvider } from '@/design-system';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { MobileApiClient } from '@/api/client';
 import type { MobileNutritionDayResponse } from '@/api/nutrition-day';
@@ -13,6 +15,7 @@ const mockRead = jest.fn<MobileApiClient['read']>(),
 const mockClient = { read: mockRead, request: mockRequest };
 const mockMemory = new Map<string, string>();
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
+jest.mock('expo-symbols',()=>({SymbolView:()=>null}));
 jest.mock('@/auth', () => ({
   useMobileAuth: () => ({ session: { user: { id: 'owner' } } }),
 }));
@@ -95,6 +98,23 @@ beforeEach(() => {
   });
 });
 describe('Home quick entry orchestration', () => {
+  it('shows recovery only after confirmed readback fails, never while it is still pending', async()=>{
+    let model!:ReturnType<typeof useHomeMetricEntry>;
+    function Harness(){model=useHomeMetricEntry(()=>{});return <SafeAreaProvider initialMetrics={{frame:{x:0,y:0,width:390,height:844},insets:{top:44,bottom:83,left:0,right:0}}}><OwnlevelThemeProvider initialMode="light">{model.element}</OwnlevelThemeProvider></SafeAreaProvider>;}
+    const view=render(<Harness/>);await waitFor(()=>expect(model.locked).toBe(false));
+    const held:((value:unknown)=>void)[]=[];let afterWrite=false;
+    const original=mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementationOnce(async options=>{const result=await original(options);afterWrite=true;return result;});
+    mockRead.mockImplementation(async()=>afterWrite?new Promise(done=>held.push(done)) as never:({status:'ok',data:JSON.parse(JSON.stringify(day)),meta}) as never);
+    let flight!:Promise<void>;
+    await act(async()=>{flight=model.open(id,tap());});await waitFor(()=>expect(held.length).toBeGreaterThan(0));
+    expect(view.queryByLabelText('Comprobar cambio de métrica')).toBeNull();
+    expect(view.queryByTestId('nutrition-metric-notice')).toBeNull();
+    await act(async()=>{for(const release of held)release({status:'unavailable',reason:'network',meta:{...meta,outcome:'unavailable'}});await flight;});
+    expect(view.getByLabelText('Comprobar cambio de métrica')).toBeTruthy();
+    afterWrite=false;await act(async()=>{fireEvent.press(view.getByLabelText('Comprobar cambio de métrica'));});
+    expect(mockRequest).toHaveBeenCalledTimes(1);expect(view.getByText('Agua: 1,75 L')).toBeTruthy();
+  });
   it('blocks the second synchronous tap and writes the displayed snapshot exactly once', async () => {
     const onSaved = jest.fn(),
       hook = renderHook(() => useHomeMetricEntry(onSaved));
