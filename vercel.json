@@ -5,6 +5,7 @@
     "deploymentEnabled": {
       "codex/dock-revalidation-test": false,
       "codex/396-session-status": false,
+      "codex/414-daily-context": false,
       "codex/367-dock-diagnosis": false,
       "codex/399-body-confirmed-refresh": false,
       "codex/418-saved-confirmed-refresh": false,
