@@ -192,9 +192,9 @@ describe('#367 resultados sin comparables (#410)', () => {
     expect(dayLanes(day!)).toEqual(['partial']);
   });
   it('keeps an exercise with no usable sets unclassified as a decline and opens its evidence', async () => {
-    const input = sourceOf([{ id: KNOWN, name: 'Press banca', configuration: 'none', sets: [[[60, 10]], []] }]);
+    const source = sourceOf([{ id: KNOWN, name: 'Press banca', configuration: 'none', sets: [[[60, 10]], []] }]);
     // sourceOf omits an exercise for an empty list; this case needs the exercise, with no sets.
-    input.exercises.push({ ...input.exercises[0]!, id: 'no-sets', sessionId: session(11) });
+    const input = { ...source, exercises: [...source.exercises, { ...source.exercises[0]!, id: 'no-sets', sessionId: session(11) }] };
     const view = await open(input, session(11), dateAt(1));
     const lane = within(view.getByTestId('insights-session-lane-strict'));
     expect(lane.getByText('0 de 1 ejercicios comparables, contra su última vez')).toBeTruthy();
