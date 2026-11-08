@@ -1,22 +1,17 @@
 const path = require('node:path');
 const { getDefaultConfig } = require('expo/metro-config');
 const { assertPublicEnv } = require('./src/config/public-env-policy');
+const { SHARED_SOURCE_FOLDERS } = require('./src/config/shared-source-folders');
 
 // Every bundle (dev server, export, native embed) refuses unsafe public env values.
 assertPublicEnv(process.env);
 
 const config = getDefaultConfig(__dirname);
-// The portable Nutrition wire contract is shared with the Next API. Expose
-// this source directory, without adding the root dependency tree to Metro.
+// Pure code shared with Web lives above apps/mobile. Expose only the folders the app
+// imports (listed, with reasons, in shared-source-folders.js and guarded by its test),
+// without adding the root dependency tree to Metro.
 config.watchFolders = [
   ...config.watchFolders,
-  path.resolve(__dirname, '../../src/lib/mobile-api'),
-  // Pure date/range helpers used by the portable influence contract and client.
-  path.resolve(__dirname, '../../src/lib/progress/analytics'),
-  // Pure Nutrition engine factors (plan-v2-core) for the local Energía preview.
-  path.resolve(__dirname, '../../src/lib/nutrition'),
-  // Shared brand tokens: the runtime entry and the single file holding the values.
-  path.resolve(__dirname, '../../packages/brand/src'),
-  path.resolve(__dirname, '../../docs/brand/ownlevel-marca/tema'),
+  ...SHARED_SOURCE_FOLDERS.map((folder) => path.resolve(__dirname, '../..', folder)),
 ];
 module.exports = config;
