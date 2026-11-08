@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { selectedRouteDate } from '@/history/navigation';
@@ -8,6 +8,7 @@ import { useMobileAuth } from '@/auth';
 import type { BodyMeasurement, BodyMeasurementField, BodyWeightEntry } from '@/api/body';
 import { AppIcon, AppText, Button, Heading, InlineUnavailable, ScrollScreen, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
 import type { BodyController, BodyState } from './body-controller';
+import type { WeightEditor } from './body-storage';
 import { MeasurementEditorSheet, WeightEditorSheet } from './body-editor';
 import { formatBodyDate, formatCm, formatKg, measurementBadges, measurementValues } from './body-model';
 import { useBodyController } from './use-body-controller';
@@ -107,8 +108,21 @@ export function BodyStatus({ state, controller }: { state: BodyState; controller
 /** The open weight or measurement sheet, if any. */
 export function BodyEditors({ state, controller }: { state: BodyState; controller: BodyController }) {
   const editor = state.editor;
+  const weight = editor?.kind === 'weight' ? editor : null;
+  const confirmed = !editor && state.phase === 'idle' && !state.intent && !!state.notice;
+  const [presented, setPresented] = useState<{ controller: BodyController; editor: WeightEditor | null }>({ controller, editor: weight });
+  // The controller clears its draft after receipt + readback. Keep only the visible weight form until
+  // AppSheet completes its native exit, as other retained editor presentations do. Never retain another owner.
+  if (presented.controller !== controller || (editor && presented.editor !== weight) || (!editor && !confirmed && presented.editor)) {
+    setPresented({ controller, editor: weight });
+  }
+  const closingWeight = confirmed && presented.controller === controller ? presented.editor : null;
+  const shownWeight = weight ?? closingWeight;
   return <>
-    {editor?.kind === 'weight' ? <WeightEditorSheet editor={editor} state={state} controller={controller} /> : null}
+    {shownWeight ? <WeightEditorSheet editor={shownWeight} state={state} controller={controller} closing={!!closingWeight} onDismissed={() => {
+      if (controller.getSnapshot().editor === shownWeight) controller.close();
+      setPresented({ controller, editor: null });
+    }} /> : null}
     {editor?.kind === 'measurement' ? <MeasurementEditorSheet editor={editor} state={state} controller={controller} /> : null}
   </>;
 }

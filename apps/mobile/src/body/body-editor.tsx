@@ -67,22 +67,25 @@ function useClose(state: BodyState, controller: BodyController) {
   return { locked, beforeDismiss };
 }
 
-export function WeightEditorSheet({ editor, state, controller }: { editor: WeightEditor; state: BodyState; controller: BodyController }) {
+export function WeightEditorSheet({ editor, state, controller, closing = false, onDismissed }: {
+  editor: WeightEditor; state: BodyState; controller: BodyController; closing?: boolean; onDismissed: () => void;
+}) {
   const { colors } = useOwnlevelTheme(), insets = useSafeAreaInsets();
   const { locked, beforeDismiss } = useClose(state, controller);
   // iOS: UIKit focuses the field and moves the sheet with the keyboard in one transaction, so the number is never covered.
   const ios = Platform.OS === 'ios';
-  return <AppSheet onClose={() => controller.close()} closeLabel="Cerrar carga de peso" locked={locked} beforeDismiss={beforeDismiss} dismissKeyboardOnClose
+  return <AppSheet onClose={onDismissed} closeLabel="Cerrar carga de peso" locked={locked} beforeDismiss={beforeDismiss} dismissKeyboardOnClose
     nativeKeyboard={ios} keyboardInset={Math.max(insets.bottom, 16) - 8} style={{ backgroundColor: colors.background, maxHeight: '90%' }} testID="body-weight-sheet">
-    <WeightForm editor={editor} state={state} controller={controller} />
+    <WeightForm editor={editor} state={state} controller={controller} closing={closing} />
   </AppSheet>;
 }
-function WeightForm({ editor, state, controller }: { editor: WeightEditor; state: BodyState; controller: BodyController }) {
+function WeightForm({ editor, state, controller, closing }: { editor: WeightEditor; state: BodyState; controller: BodyController; closing: boolean }) {
   const { colors } = useOwnlevelTheme(), insets = useSafeAreaInsets(), dismiss = useAppSheetDismiss();
   const today = state.read.overview?.today ?? '';
-  const editable = state.phase === 'idle' && !state.intent;
+  const editable = state.phase === 'idle' && !state.intent && !closing;
   const editing = editor.mode === 'edit';
-  const busy = state.phase === 'pending' || state.phase === 'reconciling';
+  const busy = state.phase === 'pending' || state.phase === 'reconciling' || closing;
+  useEffect(() => { if (closing) dismiss(); }, [closing, dismiss]);
   // The last known weight is the grey hint behind an empty field: typing starts from nothing, never from "0".
   const hint = editor.baseline ?? state.read.overview?.current?.weightKg ?? null;
   const placeholder = hint === null ? '0' : String(hint).replace('.', ',');
@@ -105,7 +108,7 @@ function WeightForm({ editor, state, controller }: { editor: WeightEditor; state
       {state.errors.weight ? <AppText accessibilityRole="alert" style={[styles.center, { color: colors.danger }]} variant="footnote">{state.errors.weight}</AppText> : null}
       {editing ? null : <BodyDateField value={editor.draft.date} today={today} editable={editable} onChange={v => controller.change('date', v)} error={state.errors.date} />}
       <Status state={state} controller={controller} />
-      {editing && state.phase === 'idle' ? <DeleteLink label="Eliminar peso" confirm="¿Eliminar el peso de esta fecha? El resto del día se conserva." onPress={() => void controller.deleteWeight()} /> : null}
+      {editing && editable ? <DeleteLink label="Eliminar peso" confirm="¿Eliminar el peso de esta fecha? El resto del día se conserva." onPress={() => void controller.deleteWeight()} /> : null}
     </ScrollView>
     </View>
   </KeyboardAvoidingView>;
