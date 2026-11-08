@@ -1,9 +1,11 @@
 import { useSyncExternalStore } from 'react';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
-import { describe, expect, it, jest } from '@jest/globals';
-import { Alert, View } from 'react-native';
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import { Alert, Modal, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
+import { KeyboardSheetMotion } from '@/design-system/keyboard-sheet-motion';
+import { WeightEditorSheet } from './body-editor';
 import { createMobileApiClient } from '@/api/client';
 import { mutateBodyMeasurement, mutateBodyWeight } from '@/api/body';
 import { BodyController } from './body-controller';
@@ -14,6 +16,9 @@ import { ProgressHub } from './progress-hub';
 import { MID, TODAY, conflict, fakeApi, measurement, memoryStorage, ok, overview, repository } from './body-fixture.test-helper';
 
 const mockPush = jest.fn();
+let mockReduced = false;
+jest.mock('@/design-system/motion', () => ({ ...jest.requireActual<object>('@/design-system/motion'), useReduceMotion: () => mockReduced }));
+afterEach(() => { mockReduced = false; });
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('@react-native-async-storage/async-storage', () => ({ __esModule: true, default: {} }));
 const mockSetParams = jest.fn();
@@ -49,6 +54,13 @@ async function mount(api = fakeApi()) {
   const view = wrap(<Harness controller={controller} />);
   await act(async () => { await controller.initialize(); });
   return { view, controller, api };
+}
+function finishWeightExit(view: ReturnType<typeof wrap>) {
+  const motion = view.UNSAFE_getByType(KeyboardSheetMotion);
+  expect(motion.props.closing).toBe(true);
+  act(() => motion.props.onClosed());
+  const modal = view.UNSAFE_getAllByType(Modal).find(node => node.props.testID === 'body-weight-sheet-modal')!;
+  fireEvent(modal, 'dismiss');
 }
 
 function EntryHarness({ controller }: { controller: BodyController }) {
@@ -106,6 +118,7 @@ describe('Body records and sheets', () => {
     await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar' })); });
     await flush();
     expect(api.weight).toHaveBeenCalledWith(expect.objectContaining({ operation: 'set', date: TODAY, weightKg: 79.5, expectedWeightKg: null }));
+    finishWeightExit(view);
     expect(view.queryByTestId('body-editor')).toBeNull(); expect(view.getByText('Peso guardado. Tu peso actual ahora es 79,5 kg.')).toBeTruthy();
   });
   it.each([false, true])('keeps confirmed readback busy; recovery only on failure (%s)', async fails => {
@@ -123,10 +136,71 @@ describe('Body records and sheets', () => {
     if (fails) {
       expect(view.getByRole('button', { name: 'Actualizar lectura' })).toBeTruthy();
       expect(view.getByText(/Guardado confirmado/)).toBeTruthy();
+      expect(view.UNSAFE_getByType(KeyboardSheetMotion).props.closing).toBe(false);
+      expect(view.getByLabelText('Peso').props.value).toBe('79,5');
       await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Actualizar lectura' })); });
     }
     expect(api.weight).toHaveBeenCalledTimes(1);
+    finishWeightExit(view);
     expect(view.queryByTestId('body-editor')).toBeNull();
+  });
+  it.each([false, true])('keeps the confirmed weight form until native exit and Modal dismissal (Reduce Motion %s, #436)', async reduced => {
+    mockReduced = reduced;
+    const { view, api, controller } = await mount();
+    let finishWrite!: (value: Awaited<ReturnType<typeof api.weight>>) => void;
+    let finishRead!: (value: Awaited<ReturnType<typeof api.overview>>) => void;
+    api.weight.mockImplementationOnce(() => new Promise(resolve => { finishWrite = resolve; }));
+    api.overview.mockImplementationOnce(() => new Promise(resolve => { finishRead = resolve; }));
+    fireEvent.press(view.getByLabelText('Peso del 4 oct 2026: 80,5 kg'));
+    fireEvent.changeText(view.getByLabelText('Peso'), '79,5');
+    fireEvent(view.getByTestId('body-weight-sheet'), 'layout', { nativeEvent: { layout: { height: 300 } } });
+    const modal = () => view.UNSAFE_getAllByType(Modal).find(node => node.props.testID === 'body-weight-sheet-modal')!;
+    fireEvent(modal(), 'show');
+    const motion = () => view.UNSAFE_getByType(KeyboardSheetMotion);
+    const field = view.getByLabelText('Peso');
+    expect(motion().props).toMatchObject({ presented: true, closing: false, reduceMotion: reduced });
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar' })); });
+    expect(motion().props.closing).toBe(false);
+    await act(async () => { finishWrite(ok({ status: 'confirmed', operation: 'set', date: TODAY, weightKg: 79.5,
+      current: { date: TODAY, weightKg: 79.5 }, profileWeightKg: 79.5, currentWeightChanged: true })); });
+    expect(controller.getSnapshot()).toMatchObject({ phase: 'reconciling', intent: { receipt: expect.any(Object) } });
+    expect(motion().props.closing).toBe(false);
+    expect(view.queryByRole('button', { name: 'Actualizar lectura' })).toBeNull();
+    await act(async () => { finishRead(ok(overview({}, [{ date: TODAY, weightKg: 79.5 }]))); });
+    // Business state is complete, but the same visible form must survive the native exit.
+    expect(controller.getSnapshot()).toMatchObject({ phase: 'idle', editor: null, intent: null });
+    expect(view.getByLabelText('Peso')).toBe(field);
+    expect(field.props.value).toBe('79,5');
+    expect(field.props.editable).toBe(false);
+    expect(view.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    expect(motion().props).toMatchObject({ closing: true, sheetHeight: 300, reduceMotion: reduced });
+    expect(modal().props.visible).toBe(true);
+    await act(async () => { await controller.saveWeight(); });
+    expect(api.weight).toHaveBeenCalledTimes(1);
+    act(() => motion().props.onClosed());
+    expect(modal().props.visible).toBe(false);
+    expect(view.UNSAFE_getByType(WeightEditorSheet)).toBeTruthy();
+    fireEvent(modal(), 'dismiss');
+    expect(view.queryByTestId('body-editor')).toBeNull();
+    expect(view.UNSAFE_queryAllByType(WeightEditorSheet)).toHaveLength(0);
+    expect(view.getByText('Peso guardado. Tu peso actual ahora es 79,5 kg.')).toBeTruthy();
+    fireEvent.press(view.getByLabelText('Peso del 4 oct 2026: 79,5 kg'));
+    expect(motion().props.closing).toBe(false);
+    expect(view.getByLabelText('Peso').props.editable).toBe(true);
+  });
+  it('does not retain a weight presentation when the controller/owner changes', async () => {
+    const first = new BodyController(fakeApi(), repository(memoryStorage().port));
+    const second = new BodyController(fakeApi(), repository(memoryStorage().port));
+    const screen = (controller: BodyController) => <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
+      <OwnlevelThemeProvider initialMode="light"><Harness controller={controller} /></OwnlevelThemeProvider></SafeAreaProvider>;
+    const view = render(screen(first));
+    await act(async () => { await first.initialize(); await second.initialize(); });
+    fireEvent.press(view.getByLabelText('Peso del 4 oct 2026: 80,5 kg'));
+    fireEvent.changeText(view.getByLabelText('Peso'), '99');
+    view.rerender(screen(second));
+    expect(view.queryByLabelText('Peso')).toBeNull();
+    expect(view.UNSAFE_queryAllByType(WeightEditorSheet)).toHaveLength(0);
+    expect(first.getSnapshot().editor?.draft).toMatchObject({ weight: '99' });
   });
   it('a conflict keeps the open draft and offers an explicit review', async () => {
     const { view, api } = await mount();
