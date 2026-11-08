@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ComponentProps, type RefObject } from 'react';
 import { sleepNightCaption } from '../../../../src/lib/daily-metrics/sleep-night';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon, AppSheet, AppText, Button, GlassSurface, useAppSheetDismiss, pressedStyle, useOwnlevelTheme, useReduceMotion, brandTokens } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
@@ -48,7 +48,10 @@ function MetricForm({ id, controller, state, input }: { id: string; controller: 
   // A typed number starts empty with a grey "0" behind it: typing 500 gives 500, never 0500.
   // Durations keep their wheels at 0 h 0 min when there is something to add to.
   const [raw, setRaw] = useState<MetricInput>(() => metricRaw(duration && metric.value !== null ? 0 : null, duration));
-  const restInset = Math.max(insets.bottom, 16);
+  // The duration sheet covers the tab bar, so only the window's home indicator is below it (#400, as #358): inside a
+  // tab the screen's own inset also counts the tab bar (83 instead of 34 pt). The app is portrait-only. The keyboard
+  // sheet keeps its own inset pairing with the native keyboard motion.
+  const restInset = Math.max(duration ? initialWindowMetrics?.insets.bottom ?? insets.bottom : insets.bottom, 16);
   // Sent, or confirmed while the day is re-read: still saving for the user (no recovery choice flashing by).
   const running = state.phase === 'pending' || (state.phase === 'confirmed' && !state.message);
   const locked = !!state.intent || !['idle', 'conflict'].includes(state.phase);
