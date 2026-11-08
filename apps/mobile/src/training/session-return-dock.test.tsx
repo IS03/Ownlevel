@@ -189,9 +189,33 @@ describe('global session return dock', () => {
     expect(mockRead).toHaveBeenCalledTimes(1); expect(mockRequest).toHaveBeenCalledTimes(1);
     invalidateConfirmedReads(mockClient as unknown as MobileApiClient, '/api/mobile/v1/training/sessions/id/finish');
     mockRead.mockImplementationOnce(async () => ok({ activeSession: { status: 'ok', data: null }, calendar: { status: 'ok', data: { month: '2026-09', days: [] } } }));
-    mockPath = '/train'; view.rerender(view.screen());
+    mockPath = '/train'; await view.rerenderAsync(view.screen());
     await waitFor(() => expect(view.queryByTestId('session-return-dock')).toBeNull());
     expect(mockRead).toHaveBeenCalledTimes(2); view.unmount(); view.controller.dispose();
+  });
+  it('keeps the dock during a pending revalidation and commits its removal without duplicate reads', async () => {
+    mockRead.mockClear(); mockRequest.mockClear();
+    const view = setup();
+    try {
+      await act(async () => { await view.getStore().refresh(); });
+      expect(view.getByTestId('session-return-dock')).toBeTruthy();
+      const absent = ok({ activeSession: { status: 'ok' as const, data: null }, calendar: { status: 'ok' as const, data: { month: '2026-09', days: [] } } });
+      let deliver!: (value: typeof absent) => void;
+      const response = new Promise<typeof absent>(resolve => { deliver = resolve; });
+      mockRead.mockImplementationOnce(() => response);
+      invalidateConfirmedReads(mockClient as unknown as MobileApiClient, '/api/mobile/v1/training/sessions/id/finish');
+      mockPath = '/train'; await view.rerenderAsync(view.screen());
+      expect(mockRead).toHaveBeenCalledTimes(2);
+      expect(view.getStore().getSnapshot().session?.id).toBe(SESSION_ID);
+      expect(view.getByTestId('session-return-dock')).toBeTruthy();
+      mockPath = '/nutrition'; await view.rerenderAsync(view.screen());
+      expect(mockRead).toHaveBeenCalledTimes(2);
+      expect(view.getByTestId('session-return-dock')).toBeTruthy();
+      await act(async () => { deliver(absent); });
+      expect(view.getStore().getSnapshot().session).toBeNull();
+      expect(view.queryByTestId('session-return-dock')).toBeNull();
+      expect(mockRead).toHaveBeenCalledTimes(2); expect(mockRequest).toHaveBeenCalledTimes(1);
+    } finally { view.unmount(); view.controller.dispose(); }
   });
   it('forces one read on real foreground, ignores repeated active events, and leaves the session route to its controller', async () => {
     AppState.currentState = 'active';
