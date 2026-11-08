@@ -197,7 +197,7 @@ describe('#367 peso del día hacia Cuerpo', () => {
     fireEvent.press(within(view.getByTestId('insights-session')).getByRole('button', { name: /^Peso corporal, ese día: Sin registrar\. Ver en Cuerpo$/ }));
     const href = mockPush.mock.calls.at(-1)![0] as ReturnType<typeof dayWeightHref>;
     expect(href).toEqual({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.weight', from: '2026-03-01', to: '2026-03-31', insightsReturn: '1', insightsDate: D1, insightsSession: EVENING } });
-    expect(insightsReturnHref(href.params)).toEqual({ pathname: '/(tabs)/train/insights', params: { date: D1, session: EVENING, fromSession: '1', revision: 'r1' } });
+    expect(insightsReturnHref(href.params)).toEqual({ pathname: '/(tabs)/train/insights', params: { date: D1, session: EVENING } });
   });
   it('a relation opens the span of its days, its newest year at most, and comes back to the relation', () => {
     const relation = 'partial:body:weight_kg:same_day';
