@@ -1,0 +1,1928 @@
+{
+  "schema": "ownlevel-dock-diagnostic/1",
+  "base": "552dc723c4363733350920b91a15c64ab1903268",
+  "main": "4859c017dafe7d640eeb4c807c388582363d6650",
+  "source": "7910e4d518572143c21a8edbaf03f8cb8431de5d",
+  "reproductionSource": "eac67a97ebbc898ac32c02438c38d675ebe2ab4f",
+  "cleanFix": "ae5259edda79e3e25530d2a256eb3d7c4f55bdfc",
+  "combinationFix": "6124bd671cbb718e1acb2f4fd70d0f0928b02bf6",
+  "heads": {
+    "pr428": "e22259bc132df22ce5adb8f834ada9c83df031c2",
+    "pr429": "0de199bc67e3df46b1cdd61b7feaa6e7fac8a1be",
+    "pr430": "024c9b6e2145729c84e6d2c6c7710a50fc58da44"
+  },
+  "command": "npm test -- --json --outputFile=<artifact-dir>/results.json --showSeed",
+  "effectiveScript": "jest --runInBand",
+  "configuration": "unchanged jest.config.js, setup, default sequencer and cache; no worker/timeout override; no seed selected",
+  "seed": 149602922,
+  "versions": {
+    "react-native-reanimated": "4.5.1",
+    "@testing-library/react-native": "13.3.3",
+    "react-native": "0.86.3",
+    "jest-expo": "57.0.5",
+    "react": "19.2.3",
+    "react-test-renderer": "19.2.3",
+    "jest": "29.7.0",
+    "typescript": "6.0.3"
+  },
+  "node": "v22.18.0",
+  "npm": "11.5.2",
+  "buffer": {
+    "limit": 4096,
+    "events": 368,
+    "dropped": 0
+  },
+  "traceExcerpt": [
+    {
+      "seq": 349,
+      "time": 1794135039680,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "test.invalidation.before",
+      "data": {
+        "store": 23,
+        "revision": 0,
+        "writes": 0,
+        "confirmedWrites": 0,
+        "confirmedAt": 1794135039615,
+        "flight": false,
+        "alive": true,
+        "session": true,
+        "timer": false,
+        "unavailable": false,
+        "recovery": false,
+        "listeners": 2,
+        "route": "/home",
+        "calls": 1,
+        "details": 1,
+        "dock": true
+      }
+    },
+    {
+      "seq": 350,
+      "time": 1794135039680,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "cache.invalidate.start",
+      "data": {
+        "cache": 25,
+        "writes": 0,
+        "entries": 0,
+        "changed": [
+          "training"
+        ]
+      }
+    },
+    {
+      "seq": 351,
+      "time": 1794135039680,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "cache.invalidate.end",
+      "data": {
+        "cache": 25,
+        "writes": 1
+      }
+    },
+    {
+      "seq": 352,
+      "time": 1794135039680,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "test.invalidation.after",
+      "data": {
+        "store": 23,
+        "revision": 0,
+        "writes": 1,
+        "confirmedWrites": 0,
+        "confirmedAt": 1794135039615,
+        "flight": false,
+        "alive": true,
+        "session": true,
+        "timer": false,
+        "unavailable": false,
+        "recovery": false,
+        "listeners": 2,
+        "route": "/home",
+        "calls": 1,
+        "details": 1,
+        "dock": true
+      }
+    },
+    {
+      "seq": 353,
+      "time": 1794135039680,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "mock.install.start",
+      "data": {
+        "mock": "active.absent.once"
+      }
+    },
+    {
+      "seq": 354,
+      "time": 1794135039680,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "mock.install.end",
+      "data": {
+        "mock": "active.absent.once"
+      }
+    },
+    {
+      "seq": 355,
+      "time": 1794135039681,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "test.route.before-render",
+      "data": {
+        "store": 23,
+        "revision": 0,
+        "writes": 1,
+        "confirmedWrites": 0,
+        "confirmedAt": 1794135039615,
+        "flight": false,
+        "alive": true,
+        "session": true,
+        "timer": false,
+        "unavailable": false,
+        "recovery": false,
+        "listeners": 2,
+        "route": "/train",
+        "calls": 1,
+        "details": 1,
+        "dock": true
+      }
+    },
+    {
+      "seq": 356,
+      "time": 1794135039682,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "provider.appstate.unsubscribe",
+      "data": {
+        "store": 23,
+        "route": "/home"
+      }
+    },
+    {
+      "seq": 357,
+      "time": 1794135039682,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "provider.route",
+      "data": {
+        "store": 23,
+        "route": "/train"
+      }
+    },
+    {
+      "seq": 358,
+      "time": 1794135039682,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "refreshIfNeeded",
+      "data": {
+        "store": 23,
+        "revision": 0,
+        "writes": 1,
+        "confirmedWrites": 0,
+        "confirmedAt": 1794135039615,
+        "flight": false,
+        "alive": true,
+        "session": true,
+        "timer": false,
+        "unavailable": false,
+        "recovery": false,
+        "listeners": 2
+      }
+    },
+    {
+      "seq": 359,
+      "time": 1794135039682,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "flight.start",
+      "data": {
+        "store": 23,
+        "revision": 0,
+        "writes": 1,
+        "confirmedWrites": 0,
+        "confirmedAt": 1794135039615,
+        "flight": false,
+        "alive": true,
+        "session": true,
+        "timer": false,
+        "unavailable": false,
+        "recovery": false,
+        "listeners": 2,
+        "read": 26,
+        "startedRevision": 0,
+        "startedWrites": 1
+      }
+    },
+    {
+      "seq": 360,
+      "time": 1794135039682,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "presence.read.start",
+      "data": {
+        "store": 23,
+        "revision": 0,
+        "writes": 1,
+        "confirmedWrites": 0,
+        "confirmedAt": 1794135039615,
+        "flight": false,
+        "alive": true,
+        "session": true,
+        "timer": false,
+        "unavailable": false,
+        "recovery": false,
+        "listeners": 2,
+        "read": 26
+      }
+    },
+    {
+      "seq": 361,
+      "time": 1794135039682,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "mock.deliver",
+      "data": {
+        "mock": "active.absent.once",
+        "session": false,
+        "call": 2
+      }
+    },
+    {
+      "seq": 362,
+      "time": 1794135039682,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "flight.installed",
+      "data": {
+        "store": 23,
+        "revision": 0,
+        "writes": 1,
+        "confirmedWrites": 0,
+        "confirmedAt": 1794135039615,
+        "flight": true,
+        "alive": true,
+        "session": true,
+        "timer": false,
+        "unavailable": false,
+        "recovery": false,
+        "listeners": 2,
+        "read": 26
+      }
+    },
+    {
+      "seq": 363,
+      "time": 1794135040447,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "presence.read.end",
+      "data": {
+        "store": 23,
+        "revision": 0,
+        "writes": 1,
+        "confirmedWrites": 0,
+        "confirmedAt": 1794135039615,
+        "flight": true,
+        "alive": true,
+        "session": true,
+        "timer": false,
+        "unavailable": false,
+        "recovery": false,
+        "listeners": 2,
+        "read": 26,
+        "status": "ok",
+        "activeStatus": "ok",
+        "responseSession": false
+      }
+    },
+    {
+      "seq": 364,
+      "time": 1794135040447,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "publication.commit",
+      "data": {
+        "store": 23,
+        "revision": 0,
+        "writes": 1,
+        "confirmedWrites": 0,
+        "confirmedAt": 1794135039615,
+        "flight": true,
+        "alive": true,
+        "session": true,
+        "timer": false,
+        "unavailable": false,
+        "recovery": false,
+        "listeners": 2,
+        "nextSession": false,
+        "nextUnavailable": false,
+        "nextRecovery": false
+      }
+    },
+    {
+      "seq": 365,
+      "time": 1794135040447,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "read.confirmed",
+      "data": {
+        "store": 23,
+        "revision": 0,
+        "writes": 1,
+        "confirmedWrites": 1,
+        "confirmedAt": 1794135040447,
+        "flight": true,
+        "alive": true,
+        "session": false,
+        "timer": false,
+        "unavailable": false,
+        "recovery": false,
+        "listeners": 2,
+        "read": 26
+      }
+    },
+    {
+      "seq": 366,
+      "time": 1794135040447,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "flight.end",
+      "data": {
+        "store": 23,
+        "revision": 0,
+        "writes": 1,
+        "confirmedWrites": 1,
+        "confirmedAt": 1794135040447,
+        "flight": true,
+        "alive": true,
+        "session": false,
+        "timer": false,
+        "unavailable": false,
+        "recovery": false,
+        "listeners": 2,
+        "read": 26,
+        "ownsFlight": true
+      }
+    },
+    {
+      "seq": 367,
+      "time": 1794135041209,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "expectation.timeout",
+      "data": {
+        "store": 23,
+        "revision": 0,
+        "writes": 1,
+        "confirmedWrites": 1,
+        "confirmedAt": 1794135040447,
+        "flight": false,
+        "alive": true,
+        "session": false,
+        "timer": false,
+        "unavailable": false,
+        "recovery": false,
+        "listeners": 2,
+        "route": "/train",
+        "calls": 2,
+        "details": 1,
+        "dock": false
+      }
+    },
+    {
+      "seq": 368,
+      "time": 1794135041209,
+      "test": "global session return dock reads presence once across five quick route changes, and revalidates after a settled write",
+      "event": "expectation.rejected",
+      "data": {
+        "store": 23,
+        "revision": 0,
+        "writes": 1,
+        "confirmedWrites": 1,
+        "confirmedAt": 1794135040447,
+        "flight": false,
+        "alive": true,
+        "session": false,
+        "timer": false,
+        "unavailable": false,
+        "recovery": false,
+        "listeners": 2,
+        "route": "/train",
+        "calls": 2,
+        "details": 1,
+        "dock": false
+      }
+    }
+  ],
+  "order": [
+    {
+      "path": "src/training/active-session-bridge-screen.test.tsx",
+      "start": 1794134985512,
+      "end": 1794134993968,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/day-screen.test.tsx",
+      "start": 1794134994112,
+      "end": 1794135001445,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/training-screen.test.tsx",
+      "start": 1794135002090,
+      "end": 1794135007390,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/routine-editor-screen.test.tsx",
+      "start": 1794135007453,
+      "end": 1794135012185,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/food-editor.test.tsx",
+      "start": 1794135012240,
+      "end": 1794135015903,
+      "status": "passed"
+    },
+    {
+      "path": "src/home/home-screen.test.tsx",
+      "start": 1794135016018,
+      "end": 1794135020542,
+      "status": "passed"
+    },
+    {
+      "path": "src/progress/progress-screens.test.tsx",
+      "start": 1794135020597,
+      "end": 1794135024567,
+      "status": "passed"
+    },
+    {
+      "path": "src/settings/settings-screen.test.tsx",
+      "start": 1794135024725,
+      "end": 1794135028647,
+      "status": "passed"
+    },
+    {
+      "path": "src/insights/insights-screen.test.tsx",
+      "start": 1794135028708,
+      "end": 1794135032237,
+      "status": "passed"
+    },
+    {
+      "path": "src/entry/sign-in.test.tsx",
+      "start": 1794135032320,
+      "end": 1794135035061,
+      "status": "passed"
+    },
+    {
+      "path": "src/home/home-dashboard.test.tsx",
+      "start": 1794135035115,
+      "end": 1794135037651,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/metric-notice.test.tsx",
+      "start": 1794135037702,
+      "end": 1794135038497,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/session-return-dock.test.tsx",
+      "start": 1794135038555,
+      "end": 1794135041288,
+      "status": "failed"
+    },
+    {
+      "path": "src/training/routines-screen.test.tsx",
+      "start": 1794135041348,
+      "end": 1794135043740,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/day-home.test.tsx",
+      "start": 1794135043795,
+      "end": 1794135046165,
+      "status": "passed"
+    },
+    {
+      "path": "src/progress/connections.test.tsx",
+      "start": 1794135046237,
+      "end": 1794135048538,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/quick-editor.test.tsx",
+      "start": 1794135048624,
+      "end": 1794135050909,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/history-screens.test.tsx",
+      "start": 1794135050962,
+      "end": 1794135053210,
+      "status": "passed"
+    },
+    {
+      "path": "src/insights/evidence-screen.test.tsx",
+      "start": 1794135053263,
+      "end": 1794135055271,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/saved-editor.test.tsx",
+      "start": 1794135055338,
+      "end": 1794135057245,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/config-provider.test.tsx",
+      "start": 1794135057393,
+      "end": 1794135059230,
+      "status": "passed"
+    },
+    {
+      "path": "src/insights/period-screen.test.tsx",
+      "start": 1794135059279,
+      "end": 1794135061099,
+      "status": "passed"
+    },
+    {
+      "path": "src/insights/session-temporal-screen.test.tsx",
+      "start": 1794135061165,
+      "end": 1794135062936,
+      "status": "passed"
+    },
+    {
+      "path": "src/body/body-screen.test.tsx",
+      "start": 1794135062995,
+      "end": 1794135064783,
+      "status": "passed"
+    },
+    {
+      "path": "src/home/home-register.test.tsx",
+      "start": 1794135064842,
+      "end": 1794135066607,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/exercise-library-screen.test.tsx",
+      "start": 1794135066666,
+      "end": 1794135068480,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/metric-entry.test.tsx",
+      "start": 1794135068534,
+      "end": 1794135070244,
+      "status": "passed"
+    },
+    {
+      "path": "src/metrics/daily-metrics-screen.test.tsx",
+      "start": 1794135070303,
+      "end": 1794135072045,
+      "status": "passed"
+    },
+    {
+      "path": "src/insights/period-details-screen.test.tsx",
+      "start": 1794135072104,
+      "end": 1794135073811,
+      "status": "passed"
+    },
+    {
+      "path": "src/progress/training-screens.test.tsx",
+      "start": 1794135073878,
+      "end": 1794135075496,
+      "status": "passed"
+    },
+    {
+      "path": "src/history/history-screen.test.tsx",
+      "start": 1794135075569,
+      "end": 1794135077143,
+      "status": "passed"
+    },
+    {
+      "path": "src/insights/week-exploration-screen.test.tsx",
+      "start": 1794135077199,
+      "end": 1794135078836,
+      "status": "passed"
+    },
+    {
+      "path": "src/insights/day-context.test.tsx",
+      "start": 1794135078891,
+      "end": 1794135080493,
+      "status": "passed"
+    },
+    {
+      "path": "src/progress/influence-screens.test.tsx",
+      "start": 1794135080546,
+      "end": 1794135082135,
+      "status": "passed"
+    },
+    {
+      "path": "src/insights/feelings-screen.test.tsx",
+      "start": 1794135082195,
+      "end": 1794135083842,
+      "status": "passed"
+    },
+    {
+      "path": "src/home/use-home-metric-entry.test.tsx",
+      "start": 1794135083896,
+      "end": 1794135085521,
+      "status": "passed"
+    },
+    {
+      "path": "src/progress/nutrition-screens.test.tsx",
+      "start": 1794135085574,
+      "end": 1794135087098,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/report-screen.test.tsx",
+      "start": 1794135087173,
+      "end": 1794135088631,
+      "status": "passed"
+    },
+    {
+      "path": "src/insights/session-facts.test.tsx",
+      "start": 1794135088690,
+      "end": 1794135090191,
+      "status": "passed"
+    },
+    {
+      "path": "src/progress/weekly-weights.test.tsx",
+      "start": 1794135090246,
+      "end": 1794135091721,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/exercise-detail-screen.test.tsx",
+      "start": 1794135091771,
+      "end": 1794135093186,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/active-session-exercise-card.test.ts",
+      "start": 1794135093244,
+      "end": 1794135094625,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/library-ui.test.tsx",
+      "start": 1794135094681,
+      "end": 1794135096074,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/routine-order-list.test.ts",
+      "start": 1794135096134,
+      "end": 1794135097556,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/use-session-starter.test.tsx",
+      "start": 1794135097606,
+      "end": 1794135098996,
+      "status": "passed"
+    },
+    {
+      "path": "src/stages/stages-ui.test.tsx",
+      "start": 1794135099049,
+      "end": 1794135100410,
+      "status": "passed"
+    },
+    {
+      "path": "src/stages/stages-provider.test.tsx",
+      "start": 1794135100494,
+      "end": 1794135101786,
+      "status": "passed"
+    },
+    {
+      "path": "src/design-system/icons.test.tsx",
+      "start": 1794135101835,
+      "end": 1794135103002,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/config-editor.test.tsx",
+      "start": 1794135103055,
+      "end": 1794135104250,
+      "status": "passed"
+    },
+    {
+      "path": "src/progress/explore-screen.test.tsx",
+      "start": 1794135104301,
+      "end": 1794135105417,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/session-rest-duration.ios.test.tsx",
+      "start": 1794135105475,
+      "end": 1794135106579,
+      "status": "passed"
+    },
+    {
+      "path": "src/progress/stages.test.tsx",
+      "start": 1794135106632,
+      "end": 1794135107766,
+      "status": "passed"
+    },
+    {
+      "path": "src/metrics/definitions-screen.test.tsx",
+      "start": 1794135107823,
+      "end": 1794135108898,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/training-week-calendar.test.tsx",
+      "start": 1794135108948,
+      "end": 1794135110018,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/routine-rest-picker.ios.test.tsx",
+      "start": 1794135110075,
+      "end": 1794135110977,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/post-workout-screen.test.tsx",
+      "start": 1794135111033,
+      "end": 1794135111976,
+      "status": "passed"
+    },
+    {
+      "path": "src/stages/plan-week-dismiss.test.tsx",
+      "start": 1794135112031,
+      "end": 1794135112971,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/exercise-variant.test.tsx",
+      "start": 1794135113028,
+      "end": 1794135113984,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/active-session-sheets.test.tsx",
+      "start": 1794135114032,
+      "end": 1794135114875,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/day-details.test.tsx",
+      "start": 1794135114927,
+      "end": 1794135115892,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/day-calendar-insets.test.tsx",
+      "start": 1794135115941,
+      "end": 1794135116866,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/routine-targets-sheet.test.tsx",
+      "start": 1794135116924,
+      "end": 1794135117815,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/day-write-editor.test.tsx",
+      "start": 1794135117869,
+      "end": 1794135118751,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/training-feelings.test.tsx",
+      "start": 1794135118802,
+      "end": 1794135119759,
+      "status": "passed"
+    },
+    {
+      "path": "src/home/home-week.test.tsx",
+      "start": 1794135119813,
+      "end": 1794135120704,
+      "status": "passed"
+    },
+    {
+      "path": "src/home/home-carousel.test.tsx",
+      "start": 1794135120753,
+      "end": 1794135121593,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/training-dashboard.test.tsx",
+      "start": 1794135121642,
+      "end": 1794135122470,
+      "status": "passed"
+    },
+    {
+      "path": "src/progress/my-views.test.tsx",
+      "start": 1794135122525,
+      "end": 1794135123357,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/session-note-sheet.test.tsx",
+      "start": 1794135123416,
+      "end": 1794135124253,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/meal-detail.test.ts",
+      "start": 1794135124306,
+      "end": 1794135125138,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/routine-context-menu.ios.test.tsx",
+      "start": 1794135125188,
+      "end": 1794135126027,
+      "status": "passed"
+    },
+    {
+      "path": "src/stages/kind-picker.ios.test.tsx",
+      "start": 1794135126078,
+      "end": 1794135126867,
+      "status": "passed"
+    },
+    {
+      "path": "src/home/home-habits.test.tsx",
+      "start": 1794135126917,
+      "end": 1794135127725,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/metric-duration.ios.test.tsx",
+      "start": 1794135127774,
+      "end": 1794135128635,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/routine-editor-sheet.ios.test.tsx",
+      "start": 1794135128685,
+      "end": 1794135129456,
+      "status": "passed"
+    },
+    {
+      "path": "src/home/home-progress.test.tsx",
+      "start": 1794135129513,
+      "end": 1794135130217,
+      "status": "passed"
+    },
+    {
+      "path": "src/home/home-nutrition-switch.test.tsx",
+      "start": 1794135130268,
+      "end": 1794135131030,
+      "status": "passed"
+    },
+    {
+      "path": "src/design-system/app-sheet.test.tsx",
+      "start": 1794135131078,
+      "end": 1794135131909,
+      "status": "passed"
+    },
+    {
+      "path": "src/settings/delete-account-screen.test.tsx",
+      "start": 1794135131958,
+      "end": 1794135132683,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/meal-timing.ios.test.tsx",
+      "start": 1794135132731,
+      "end": 1794135133555,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/session-native-layout.test.tsx",
+      "start": 1794135133614,
+      "end": 1794135134377,
+      "status": "passed"
+    },
+    {
+      "path": "src/progress/metric-trend-chart.test.tsx",
+      "start": 1794135134431,
+      "end": 1794135135192,
+      "status": "passed"
+    },
+    {
+      "path": "src/stages/native-hosts-safe-area.ios.test.tsx",
+      "start": 1794135135247,
+      "end": 1794135135946,
+      "status": "passed"
+    },
+    {
+      "path": "src/home/home-page-control.ios.test.tsx",
+      "start": 1794135135995,
+      "end": 1794135136747,
+      "status": "passed"
+    },
+    {
+      "path": "src/metrics/definition-drag-list.test.tsx",
+      "start": 1794135136798,
+      "end": 1794135137525,
+      "status": "passed"
+    },
+    {
+      "path": "src/progress/insight-row.test.tsx",
+      "start": 1794135137580,
+      "end": 1794135138279,
+      "status": "passed"
+    },
+    {
+      "path": "src/settings/editorial.test.tsx",
+      "start": 1794135138330,
+      "end": 1794135139056,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/session-scroll-header.test.tsx",
+      "start": 1794135139105,
+      "end": 1794135139818,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/new-session-sheet.test.tsx",
+      "start": 1794135139872,
+      "end": 1794135140603,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/routine-exercise-list.test.tsx",
+      "start": 1794135140654,
+      "end": 1794135141394,
+      "status": "passed"
+    },
+    {
+      "path": "src/settings/physical-controls.ios.test.tsx",
+      "start": 1794135141445,
+      "end": 1794135142176,
+      "status": "passed"
+    },
+    {
+      "path": "src/settings/diagnostics-screen.test.tsx",
+      "start": 1794135142236,
+      "end": 1794135142956,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/use-tweened-number.test.ts",
+      "start": 1794135143004,
+      "end": 1794135143767,
+      "status": "passed"
+    },
+    {
+      "path": "src/body/body-add-menu.test.tsx",
+      "start": 1794135143821,
+      "end": 1794135144572,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/exercise-add-routine-sheet.test.tsx",
+      "start": 1794135144631,
+      "end": 1794135145315,
+      "status": "passed"
+    },
+    {
+      "path": "src/settings/settings-layout.test.tsx",
+      "start": 1794135145365,
+      "end": 1794135146098,
+      "status": "passed"
+    },
+    {
+      "path": "src/home/home-actions.test.tsx",
+      "start": 1794135146147,
+      "end": 1794135146860,
+      "status": "passed"
+    },
+    {
+      "path": "src/insights/insight-row.test.tsx",
+      "start": 1794135146917,
+      "end": 1794135147647,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/meal-timing-fallback.test.tsx",
+      "start": 1794135147698,
+      "end": 1794135148434,
+      "status": "passed"
+    },
+    {
+      "path": "src/body/body-date-field.ios.test.tsx",
+      "start": 1794135148483,
+      "end": 1794135149202,
+      "status": "passed"
+    },
+    {
+      "path": "src/home/home-add-menu.test.tsx",
+      "start": 1794135149252,
+      "end": 1794135149937,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/session-next-options.test.tsx",
+      "start": 1794135149987,
+      "end": 1794135150703,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/session-native-interactions.test.ts",
+      "start": 1794135150754,
+      "end": 1794135151422,
+      "status": "passed"
+    },
+    {
+      "path": "src/progress/mini-chart.test.ts",
+      "start": 1794135151481,
+      "end": 1794135152141,
+      "status": "passed"
+    },
+    {
+      "path": "src/design-system/components.test.tsx",
+      "start": 1794135152188,
+      "end": 1794135152845,
+      "status": "passed"
+    },
+    {
+      "path": "src/home/home-day.test.ts",
+      "start": 1794135152896,
+      "end": 1794135153617,
+      "status": "passed"
+    },
+    {
+      "path": "src/design-system/scroll-bottom-insets.test.tsx",
+      "start": 1794135153670,
+      "end": 1794135154321,
+      "status": "passed"
+    },
+    {
+      "path": "src/design-system/brand.test.ts",
+      "start": 1794135154369,
+      "end": 1794135155026,
+      "status": "passed"
+    },
+    {
+      "path": "src/design-system/primitives.test.tsx",
+      "start": 1794135155075,
+      "end": 1794135155674,
+      "status": "passed"
+    },
+    {
+      "path": "src/auth/provider.test.tsx",
+      "start": 1794135155726,
+      "end": 1794135156328,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/use-active-session.test.tsx",
+      "start": 1794135156383,
+      "end": 1794135156906,
+      "status": "passed"
+    },
+    {
+      "path": "src/design-system/theme-persistence.test.tsx",
+      "start": 1794135156956,
+      "end": 1794135157467,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/use-exercise-library.test.tsx",
+      "start": 1794135157518,
+      "end": 1794135157903,
+      "status": "passed"
+    },
+    {
+      "path": "src/history/history-resource.test.tsx",
+      "start": 1794135157957,
+      "end": 1794135158296,
+      "status": "passed"
+    },
+    {
+      "path": "src/entry/motion-model.test.ts",
+      "start": 1794135158354,
+      "end": 1794135158713,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/config-controller.test.ts",
+      "start": 1794135158770,
+      "end": 1794135159104,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/session-revisit-model.test.ts",
+      "start": 1794135159156,
+      "end": 1794135159462,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/exercise-detail-model.test.ts",
+      "start": 1794135159519,
+      "end": 1794135159796,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/completed-session-model.test.ts",
+      "start": 1794135159853,
+      "end": 1794135160116,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/provider.test.tsx",
+      "start": 1794135160165,
+      "end": 1794135160423,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/report-invalidation.test.tsx",
+      "start": 1794135160431,
+      "end": 1794135160684,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/active-session-controller.test.ts",
+      "start": 1794135160751,
+      "end": 1794135161004,
+      "status": "passed"
+    },
+    {
+      "path": "src/progress/progress-read-reuse.test.tsx",
+      "start": 1794135161062,
+      "end": 1794135161310,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/home-entry.test.ts",
+      "start": 1794135161378,
+      "end": 1794135161593,
+      "status": "passed"
+    },
+    {
+      "path": "src/platform/haptics.test.ts",
+      "start": 1794135161651,
+      "end": 1794135161899,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/day-resource.test.tsx",
+      "start": 1794135161951,
+      "end": 1794135162175,
+      "status": "passed"
+    },
+    {
+      "path": "src/design-system/tokens.test.tsx",
+      "start": 1794135162232,
+      "end": 1794135162473,
+      "status": "passed"
+    },
+    {
+      "path": "src/entry/use-native-splash.test.tsx",
+      "start": 1794135162525,
+      "end": 1794135162745,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/client.test.ts",
+      "start": 1794135162801,
+      "end": 1794135163059,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/start-confirm-lock.test.tsx",
+      "start": 1794135163112,
+      "end": 1794135163348,
+      "status": "passed"
+    },
+    {
+      "path": "src/metrics/presentation-resource.test.tsx",
+      "start": 1794135163399,
+      "end": 1794135163614,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/training-feelings.test.ts",
+      "start": 1794135163671,
+      "end": 1794135163903,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/use-new-session.test.tsx",
+      "start": 1794135163959,
+      "end": 1794135164203,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/nutrition-stages-write.test.ts",
+      "start": 1794135164257,
+      "end": 1794135164467,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/train-layout.test.tsx",
+      "start": 1794135164518,
+      "end": 1794135164751,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/training-history.test.ts",
+      "start": 1794135164811,
+      "end": 1794135165023,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/nutrition-quick.test.ts",
+      "start": 1794135165079,
+      "end": 1794135165302,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/active-session.test.ts",
+      "start": 1794135165358,
+      "end": 1794135165581,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/session-highlights.test.ts",
+      "start": 1794135165631,
+      "end": 1794135165838,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/confirmed-read-cache.test.ts",
+      "start": 1794135165892,
+      "end": 1794135166106,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/progress-training-records.test.ts",
+      "start": 1794135166205,
+      "end": 1794135166428,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/training-exercise-configuration.test.ts",
+      "start": 1794135166484,
+      "end": 1794135166703,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/session-exercise-actions.test.ts",
+      "start": 1794135166752,
+      "end": 1794135166957,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/progress-habits.test.ts",
+      "start": 1794135167013,
+      "end": 1794135167214,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/nutrition-day-write.test.ts",
+      "start": 1794135167264,
+      "end": 1794135167485,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/session-summary.test.ts",
+      "start": 1794135167534,
+      "end": 1794135167755,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/runtime.test.ts",
+      "start": 1794135167805,
+      "end": 1794135168013,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/training-sessions.test.ts",
+      "start": 1794135168071,
+      "end": 1794135168284,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/session-presence-store.test.ts",
+      "start": 1794135168334,
+      "end": 1794135168524,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/nutrition-meal.test.ts",
+      "start": 1794135168582,
+      "end": 1794135168802,
+      "status": "passed"
+    },
+    {
+      "path": "src/insights/sleep-weight-model.test.ts",
+      "start": 1794135168852,
+      "end": 1794135169026,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/training-hub-data.test.ts",
+      "start": 1794135169078,
+      "end": 1794135169254,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/exercise-order.test.ts",
+      "start": 1794135169306,
+      "end": 1794135169509,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/saved-controller.test.ts",
+      "start": 1794135169560,
+      "end": 1794135169758,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/routine-editor-model.test.ts",
+      "start": 1794135169815,
+      "end": 1794135170015,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/food-controller.test.ts",
+      "start": 1794135170066,
+      "end": 1794135170254,
+      "status": "passed"
+    },
+    {
+      "path": "src/stages/stages-controller.test.ts",
+      "start": 1794135170307,
+      "end": 1794135170487,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/history-model.test.ts",
+      "start": 1794135170541,
+      "end": 1794135170719,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/meal-controller.test.ts",
+      "start": 1794135170774,
+      "end": 1794135170969,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/active-session-model.test.ts",
+      "start": 1794135171025,
+      "end": 1794135171219,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/quick-controller.test.ts",
+      "start": 1794135171269,
+      "end": 1794135171451,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/training-feelings-finish.test.ts",
+      "start": 1794135171503,
+      "end": 1794135171691,
+      "status": "passed"
+    },
+    {
+      "path": "src/insights/meal-timing-rows.test.ts",
+      "start": 1794135171741,
+      "end": 1794135171923,
+      "status": "passed"
+    },
+    {
+      "path": "src/body/body-controller.test.ts",
+      "start": 1794135171988,
+      "end": 1794135172211,
+      "status": "passed"
+    },
+    {
+      "path": "src/settings/display-name-controller.test.ts",
+      "start": 1794135172270,
+      "end": 1794135172460,
+      "status": "passed"
+    },
+    {
+      "path": "src/metrics/definitions-controller.test.ts",
+      "start": 1794135172517,
+      "end": 1794135172704,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/day-write-controller.test.ts",
+      "start": 1794135172761,
+      "end": 1794135172948,
+      "status": "passed"
+    },
+    {
+      "path": "src/body/body-model.test.ts",
+      "start": 1794135173005,
+      "end": 1794135173193,
+      "status": "passed"
+    },
+    {
+      "path": "src/auth/callback.test.ts",
+      "start": 1794135173253,
+      "end": 1794135173431,
+      "status": "passed"
+    },
+    {
+      "path": "src/stages/stages-model.test.ts",
+      "start": 1794135173487,
+      "end": 1794135173661,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/meal-time-declaration.test.ts",
+      "start": 1794135173715,
+      "end": 1794135173903,
+      "status": "passed"
+    },
+    {
+      "path": "src/design-system/theme.test.ts",
+      "start": 1794135173965,
+      "end": 1794135174140,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/routine-library.test.ts",
+      "start": 1794135174197,
+      "end": 1794135174383,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/exercise-library-model.test.ts",
+      "start": 1794135174438,
+      "end": 1794135174628,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/meal-timing-model.test.ts",
+      "start": 1794135174678,
+      "end": 1794135174852,
+      "status": "passed"
+    },
+    {
+      "path": "src/metrics/daily-metrics-shared-intent.test.ts",
+      "start": 1794135174913,
+      "end": 1794135175100,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/nutrition-config.test.ts",
+      "start": 1794135175155,
+      "end": 1794135175315,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/finish-week.test.ts",
+      "start": 1794135175368,
+      "end": 1794135175544,
+      "status": "passed"
+    },
+    {
+      "path": "src/stages/stages-cache.test.ts",
+      "start": 1794135175605,
+      "end": 1794135175786,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/archived-today.test.ts",
+      "start": 1794135175839,
+      "end": 1794135176018,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/config.test.ts",
+      "start": 1794135176069,
+      "end": 1794135176239,
+      "status": "passed"
+    },
+    {
+      "path": "src/auth/state.test.ts",
+      "start": 1794135176294,
+      "end": 1794135176453,
+      "status": "passed"
+    },
+    {
+      "path": "src/auth/service.test.ts",
+      "start": 1794135176506,
+      "end": 1794135176701,
+      "status": "passed"
+    },
+    {
+      "path": "src/auth/client.test.ts",
+      "start": 1794135176757,
+      "end": 1794135176941,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/nutrition-day.test.ts",
+      "start": 1794135176994,
+      "end": 1794135177151,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/exercises.test.ts",
+      "start": 1794135177200,
+      "end": 1794135177365,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/day-format.test.ts",
+      "start": 1794135177417,
+      "end": 1794135177583,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/nutrition-food.test.ts",
+      "start": 1794135177638,
+      "end": 1794135177815,
+      "status": "passed"
+    },
+    {
+      "path": "src/body/body-exact-date.test.ts",
+      "start": 1794135177874,
+      "end": 1794135178066,
+      "status": "passed"
+    },
+    {
+      "path": "src/config/public-env-policy.test.ts",
+      "start": 1794135178121,
+      "end": 1794135178287,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/training.test.ts",
+      "start": 1794135178341,
+      "end": 1794135178503,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/training-hub-model.test.ts",
+      "start": 1794135178554,
+      "end": 1794135178730,
+      "status": "passed"
+    },
+    {
+      "path": "src/progress/progress-range.test.ts",
+      "start": 1794135178783,
+      "end": 1794135178967,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/routine-colors.test.ts",
+      "start": 1794135179025,
+      "end": 1794135179205,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/new-session-model.test.ts",
+      "start": 1794135179259,
+      "end": 1794135179420,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/routine-editor.test.ts",
+      "start": 1794135179469,
+      "end": 1794135179632,
+      "status": "passed"
+    },
+    {
+      "path": "src/home/format.test.ts",
+      "start": 1794135179685,
+      "end": 1794135179848,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/resource.test.ts",
+      "start": 1794135179905,
+      "end": 1794135180086,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/routines.test.ts",
+      "start": 1794135180146,
+      "end": 1794135180322,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/history-redesign-model.test.ts",
+      "start": 1794135180380,
+      "end": 1794135180548,
+      "status": "passed"
+    },
+    {
+      "path": "src/nutrition/sleep-night.test.ts",
+      "start": 1794135180599,
+      "end": 1794135180768,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/nutrition-stages.test.ts",
+      "start": 1794135180822,
+      "end": 1794135180986,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/nutrition-saved.test.ts",
+      "start": 1794135181039,
+      "end": 1794135181205,
+      "status": "passed"
+    },
+    {
+      "path": "src/api/home.test.ts",
+      "start": 1794135181265,
+      "end": 1794135181441,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/start-workout-model.test.ts",
+      "start": 1794135181499,
+      "end": 1794135181665,
+      "status": "passed"
+    },
+    {
+      "path": "src/training/calendar.test.ts",
+      "start": 1794135181716,
+      "end": 1794135181909,
+      "status": "passed"
+    }
+  ],
+  "runs": [
+    {
+      "file": "results.json",
+      "suitesPassed": 205,
+      "suitesFailed": 1,
+      "testsPassed": 1718,
+      "testsFailed": 1,
+      "testsPending": 0,
+      "success": false,
+      "startTime": 1794134985360,
+      "seed": 149602922
+    },
+    {
+      "file": "target-before.json",
+      "suitesPassed": 1,
+      "suitesFailed": 0,
+      "testsPassed": 1,
+      "testsFailed": 0,
+      "testsPending": 11,
+      "success": true,
+      "startTime": 1794135211673,
+      "seed": 1624591040
+    },
+    {
+      "file": "formatter-before.json",
+      "suitesPassed": 1,
+      "suitesFailed": 0,
+      "testsPassed": 12,
+      "testsFailed": 0,
+      "testsPending": 0,
+      "success": true,
+      "startTime": 1794135267975,
+      "seed": -1968051078
+    },
+    {
+      "file": "replay-before.json",
+      "suitesPassed": 0,
+      "suitesFailed": 1,
+      "testsPassed": 0,
+      "testsFailed": 1,
+      "testsPending": 11,
+      "success": false,
+      "startTime": 1794135388590,
+      "seed": 1174646437
+    },
+    {
+      "file": "replay-after.json",
+      "suitesPassed": 1,
+      "suitesFailed": 0,
+      "testsPassed": 1,
+      "testsFailed": 0,
+      "testsPending": 11,
+      "success": true,
+      "startTime": 1794135409548,
+      "seed": -2084229904
+    },
+    {
+      "file": "replay-v2-before.json",
+      "suitesPassed": 0,
+      "suitesFailed": 1,
+      "testsPassed": 0,
+      "testsFailed": 1,
+      "testsPending": 11,
+      "success": false,
+      "startTime": 1794135582132,
+      "seed": -703252161
+    },
+    {
+      "file": "replay-v2-after.json",
+      "suitesPassed": 1,
+      "suitesFailed": 0,
+      "testsPassed": 1,
+      "testsFailed": 0,
+      "testsPending": 11,
+      "success": true,
+      "startTime": 1794135599883,
+      "seed": 715742208
+    },
+    {
+      "file": "final-related.json",
+      "suitesPassed": 3,
+      "suitesFailed": 0,
+      "testsPassed": 70,
+      "testsFailed": 0,
+      "testsPending": 0,
+      "success": true,
+      "startTime": 1794135477623,
+      "seed": 253610018
+    },
+    {
+      "file": "combination-related.json",
+      "suitesPassed": 3,
+      "suitesFailed": 0,
+      "testsPassed": 73,
+      "testsFailed": 0,
+      "testsPending": 0,
+      "success": true,
+      "startTime": 1794135653223,
+      "seed": 611886205
+    }
+  ],
+  "artifacts": [
+    {
+      "file": "combination-related.json",
+      "bytes": 32294,
+      "sha256": "AFFA0BE132A23C2BD338473B535C142F390358BB90F477408898C7AA8F0312BB"
+    },
+    {
+      "file": "combination-related.log",
+      "bytes": 70734,
+      "sha256": "3CB5D2ADB46DDFF942968BFE3FF2B878229AA7D8C2B19FBD8C9FB546194AA3C3"
+    },
+    {
+      "file": "config.log",
+      "bytes": 7249,
+      "sha256": "4CDA4CD5C516EA5DD6E5F28600B9936E95D28E48D499036247704CFF2001401B"
+    },
+    {
+      "file": "final-related.json",
+      "bytes": 30970,
+      "sha256": "23CE4D3186DAEA36041F1C9D411114D97A84BA296A7970E5F04E54E9AEF88A85"
+    },
+    {
+      "file": "final-related.log",
+      "bytes": 63806,
+      "sha256": "2FEB4CF851F8D5F58F8A70A0A11527194119210D352E93FFCAF25BEFAA61E29D"
+    },
+    {
+      "file": "formatter-before-trace.json",
+      "bytes": 183672,
+      "sha256": "68D98D4D1FEFF9844A2CA20DC5FCA07B18190AD82B3B03F5D5345DB2915FC5E5"
+    },
+    {
+      "file": "formatter-before.json",
+      "bytes": 5662,
+      "sha256": "3496BF60603027BEA5259E115B4718EE7C8F1828F48D266152F0F162425B7791"
+    },
+    {
+      "file": "formatter-before.log",
+      "bytes": 5058,
+      "sha256": "0D1BF357982483357129837BBEAD28F94FA89C46AFB46F0D274F5D4DFE234FA5"
+    },
+    {
+      "file": "formatter-probe.patch",
+      "bytes": 2692,
+      "sha256": "235E36E4C17AAF91A90FCEAF1B1164671158DF8EAA286E9C456E074420A7D0F8"
+    },
+    {
+      "file": "full.log",
+      "bytes": 2719725,
+      "sha256": "1C540F052028C15301A695104D3FD41116A01D3EE1BE6E67C27BF6A7906A2CB8"
+    },
+    {
+      "file": "instrumentation.patch",
+      "bytes": 20122,
+      "sha256": "48285FF8B34221E7B2EA5B371E0EED5D36396C29994F60B343DC49CFE5370694"
+    },
+    {
+      "file": "manifest.json",
+      "bytes": 3225,
+      "sha256": "D6D38ACA2EA967F106EAB67C8E4ADBF2864A188FD253414E9DD93C46108030C1"
+    },
+    {
+      "file": "order.json",
+      "bytes": 29699,
+      "sha256": "AB3140D4F2E5AF2CCB5A369EA9F3F7B377EA618E281C0D2479948EF5858DD9C1"
+    },
+    {
+      "file": "poll-probe.patch",
+      "bytes": 1460,
+      "sha256": "D0950140E74DCCD42481552F38A6D14C1229AA995E02A1EDA76810F8B368114E"
+    },
+    {
+      "file": "replay-after-trace.json",
+      "bytes": 33548,
+      "sha256": "2BAFB3B1361896F21DBB778CBADA6762C08C0B4C7E85618E6333EBC591274238"
+    },
+    {
+      "file": "replay-after.json",
+      "bytes": 5698,
+      "sha256": "99CFA8BF7A52C4B3D5284B50C92DB5369C14842CE4289ABE8A989030F8EFC7E9"
+    },
+    {
+      "file": "replay-after.log",
+      "bytes": 1916,
+      "sha256": "A7B1A7E219811283256D3C65111B19592B58108E10644F1F82B5AE15D9F7094A"
+    },
+    {
+      "file": "replay-after.patch",
+      "bytes": 3088,
+      "sha256": "D83319C08DC2F29778B4BA7ED4C945E20B07F3A558F72FE3D91060509D3FBCC0"
+    },
+    {
+      "file": "replay-before-trace.json",
+      "bytes": 34399,
+      "sha256": "7B77B2F41DD1F87915E39F357A09F3174B8EB71E3B71A11AFD4768900A2245E4"
+    },
+    {
+      "file": "replay-before.json",
+      "bytes": 9528,
+      "sha256": "F947CAD9BF6B714F4E7EB3C59AF6B6FB861373B68E639E50931F3D46410ACFD1"
+    },
+    {
+      "file": "replay-before.log",
+      "bytes": 3555,
+      "sha256": "EB8F0480D23BB03F30E2A51F84BFA65BA6147C78253CB3CFB96B9F2AE92E617B"
+    },
+    {
+      "file": "replay-before.patch",
+      "bytes": 2851,
+      "sha256": "51CB46C31D28CC8A613E3596A084926E2C8CB74293B153AEF92301E39FE8FFA3"
+    },
+    {
+      "file": "replay-v2-after-trace.json",
+      "bytes": 33163,
+      "sha256": "79A6DC0AF0E2A5C2138728CBA4D97670E2FDB8A002FA6E353BC610F93FF10B7E"
+    },
+    {
+      "file": "replay-v2-after.json",
+      "bytes": 5697,
+      "sha256": "BC3231C2140F14B8BE01E09BEE3C7D5F30186778C192C12ACB5341481B9546BC"
+    },
+    {
+      "file": "replay-v2-after.log",
+      "bytes": 1919,
+      "sha256": "C1BB87CCBB9F1C19E6DD62F5422F68F673EEB096167C3FFA23025DB3CD4739F7"
+    },
+    {
+      "file": "replay-v2-after.patch",
+      "bytes": 3408,
+      "sha256": "A47373497620FE144EB9C6917E33E99EDB37FA96C8AF1DE8D8B2895020F9213E"
+    },
+    {
+      "file": "replay-v2-before-trace.json",
+      "bytes": 34675,
+      "sha256": "DB96A8F0C2638BADD7E7BCC210EE025BA43A3DED84B8340AAB07967B0C3AC3E4"
+    },
+    {
+      "file": "replay-v2-before.json",
+      "bytes": 9528,
+      "sha256": "56518989E28AD01860A7ADAE840656B784BC699C6ECE359707EF637056FCD21E"
+    },
+    {
+      "file": "replay-v2-before.log",
+      "bytes": 3546,
+      "sha256": "722B2DF6DFCAD033126B1EA60E79BD285F3FCF924016CA9DAB91531019262B63"
+    },
+    {
+      "file": "replay-v2-before.patch",
+      "bytes": 3171,
+      "sha256": "1FF5B38692D073C70FF46828394E242615B9153DFC7753F60222FE157BA7D7E9"
+    },
+    {
+      "file": "results.json",
+      "bytes": 730452,
+      "sha256": "EFE9758CF33F0023C4C8D4D99985FD917D065C4C015433415EDC3DA6B7155E85"
+    },
+    {
+      "file": "target-before-trace.json",
+      "bytes": 33423,
+      "sha256": "888C59A75646ADF4BD47D136C482A881CA6B6BF023430C25CE1AFA61782893AA"
+    },
+    {
+      "file": "target-before.json",
+      "bytes": 5699,
+      "sha256": "320BE4F92AA74082B448DDB938462D581994B3C0AD64D0739D73C3C91BCBF4C7"
+    },
+    {
+      "file": "target-before.log",
+      "bytes": 1913,
+      "sha256": "6135228CAB1FFB2A93342444EA7CB9E96414070F6B3ADC8E44DD91E5F39E8DD2"
+    },
+    {
+      "file": "trace.json",
+      "bytes": 183363,
+      "sha256": "468CFF546342ADD8D3501EEEE1F2079FC9019F89749892BA2A6E9531B6E16E41"
+    }
+  ],
+  "limits": [
+    "Only one complete diagnostic run; no full post-fix validation.",
+    "Raw full trace, JSON and logs retained locally; published excerpt keeps event numbers.",
+    "Replay v1 superseded by v2 to respect canceled timers.",
+    "Replay controls dispatch order, not elapsed wall-clock time or timeout settings.",
+    "No temporary probe in deliverable app sources. No physical QA."
+  ]
+}
