@@ -1,4 +1,4 @@
-import { act, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
@@ -116,14 +116,14 @@ describe('#367 hechos de una sesión: pantalla abierta desde el post-entreno', (
     const focus = within(view.getByTestId('insights-session'));
     const strict = within(view.getByTestId('insights-session-lane-strict')), partial = within(view.getByTestId('insights-session-lane-partial'));
     expect(strict.getByText('Comparación completa')).toBeTruthy();
-    expect(strict.getByRole('button', { name: /^Press banca, mejoró, el mismo día, frente a la sesión del martes,? 3 de marzo$/ })).toBeTruthy();
+    expect(strict.getByRole('button', { name: /^Press banca, mejoró, el mismo día, frente a la sesión del martes,? 3 de marzo\. Ver evidencia y series$/ })).toBeTruthy();
     // The partial method brings its own count and limit; it is never added to the strict one.
     expect(partial.getByText('Con contexto parcial')).toBeTruthy();
     expect(partial.getByText('1 de 1 ejercicios comparables con contexto parcial')).toBeTruthy();
-    expect(partial.getByRole('button', { name: /^Remo, registro inferior con contexto parcial, el mismo día, frente a la sesión del martes,? 3 de marzo$/ })).toBeTruthy();
+    expect(partial.getByRole('button', { name: /^Remo, registro inferior con contexto parcial, el mismo día, frente a la sesión del martes,? 3 de marzo\. Ver evidencia y series$/ })).toBeTruthy();
     expect(partial.getByText(/No sabemos si cambiaste agarre/)).toBeTruthy();
     // The strict method counts every exercise: one of unknown configuration is in its denominator, not compared, and says why.
-    expect(strict.getByRole('button', { name: 'Remo, sin comparar, todavía no sabemos si se hizo igual' })).toBeTruthy();
+    expect(strict.getByRole('button', { name: /^Remo, sin comparar, todavía no sabemos si se hizo igual/ })).toBeTruthy();
     expect(partial.queryByText('Press banca')).toBeNull();
     // Feelings: ordinal, before → after, and an answer given late says so.
     expect(focus.getByText('baja → alta')).toBeTruthy();
@@ -155,9 +155,9 @@ describe('#367 resultados sin comparables (#410)', () => {
     const strict = within(view.getByTestId('insights-session-lane-strict')), partialLane = within(view.getByTestId('insights-session-lane-partial'));
     expect(strict.getByText('0 de 2 ejercicios comparables, contra su última vez')).toBeTruthy();
     expect(strict.getByLabelText('Mezclado: 1')).toBeTruthy(); expect(strict.getByLabelText('Sin comparar: 1')).toBeTruthy();
-    expect(strict.getByRole('button', { name: 'Press banca, mezclado, subió por un lado y bajó por otro' })).toBeTruthy();
+    expect(strict.getByRole('button', { name: /^Press banca, mezclado, subió por un lado y bajó por otro/ })).toBeTruthy();
     // The unknown configuration is never a strict comparison: there it is "not compared", and its reading lives in the partial lane.
-    expect(strict.getByRole('button', { name: 'Remo, sin comparar, todavía no sabemos si se hizo igual' })).toBeTruthy();
+    expect(strict.getByRole('button', { name: /^Remo, sin comparar, todavía no sabemos si se hizo igual/ })).toBeTruthy();
     expect(partialLane.getByRole('button', { name: /^Remo, registro igual con contexto parcial/ })).toBeTruthy();
     expect(partialLane.queryByText('Press banca')).toBeNull();
     // Never added: the header speaks for one method, with its own count.
@@ -172,9 +172,9 @@ describe('#367 resultados sin comparables (#410)', () => {
     const view = await open(input, session(11), dateAt(1));
     const focus = within(view.getByTestId('insights-session'));
     expect(focus.getByText('Todavía sin comparaciones')).toBeTruthy();
-    expect(focus.getByTestId('insights-session-denominator').props.children).toEqual(['0 de ', 2, ' ', 'ejercicios comparables, contra su última vez']);
+    expect(focus.getByText('0 de 2 ejercicios comparables, contra su última vez')).toBeTruthy();
     expect(focus.getByLabelText('Mezclado: 1')).toBeTruthy(); expect(focus.getByLabelText('Sin comparar: 1')).toBeTruthy();
-    expect(focus.getByRole('button', { name: 'Remo, sin comparar, todavía sin una sesión anterior para comparar' })).toBeTruthy();
+    expect(focus.getByRole('button', { name: /^Remo, sin comparar, todavía sin una sesión anterior para comparar/ })).toBeTruthy();
     expect(focus.queryByTestId('insights-session-lane-partial')).toBeNull();
   });
 
@@ -190,5 +190,16 @@ describe('#367 resultados sin comparables (#410)', () => {
     const [day] = daysOf(input);
     expect(sessionLanes(day!.strict.sessions[0]!, day!.partial!.sessions[0]!).map(row => row.lane)).toEqual(['partial']);
     expect(dayLanes(day!)).toEqual(['partial']);
+  });
+  it('keeps an exercise with no usable sets unclassified as a decline and opens its evidence', async () => {
+    const input = sourceOf([{ id: KNOWN, name: 'Press banca', configuration: 'none', sets: [[[60, 10]], []] }]);
+    // sourceOf omits an exercise for an empty list; this case needs the exercise, with no sets.
+    input.exercises.push({ ...input.exercises[0]!, id: 'no-sets', sessionId: session(11) });
+    const view = await open(input, session(11), dateAt(1));
+    const lane = within(view.getByTestId('insights-session-lane-strict'));
+    expect(lane.getByText('0 de 1 ejercicios comparables, contra su última vez')).toBeTruthy();
+    fireEvent.press(lane.getByRole('button', { name: /^Press banca, sin comparar, sin series completas/ }));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights/evidence', params: expect.objectContaining({ session: session(11), exercise: KNOWN, result: 'insufficient_comparison', reference: 'none' }) });
+    expect(lane.queryByLabelText('Por debajo: 1')).toBeNull();
   });
 });

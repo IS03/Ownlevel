@@ -9,7 +9,7 @@ import { AppIcon, AppText, Button, ChipGroup, ExampleFrame, Heading, InlineUnava
 import { haptics } from '@/platform/haptics';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
-import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, NUTRITION_SCOPE, PARTIAL_LIMIT, contextRows, dayLabel, dayLanes, daySessions, referenceText, sessionLanes, feelingClockNote, nutritionRows, sessionName, sessionRows, sessionTime, exerciseSentence, focusOf, heroCaption, heroOf, joinDays, nextDate, nothingComparable, primaryLane, readingRows, reasonText, relationGroups, relationName, relationState, sameRead, statusArrow, statusText, stripMarks, stripSummary, summarySpoken, summaryText, type ContextRow, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
+import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, NUTRITION_SCOPE, PARTIAL_LIMIT, contextRows, dayLabel, dayLanes, daySessions, referenceText, sessionLanes, feelingClockNote, nutritionRows, sessionName, sessionRows, sessionTime, exerciseSentence, focusOf, heroCaption, heroOf, joinDays, nextDate, nothingComparable, primaryLane, readingRows, reasonDetail, reasonText, relationGroups, relationName, relationState, sameRead, statusArrow, statusText, stripMarks, stripSummary, summarySpoken, summaryText, type ContextRow, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
 import { InsightRow } from './insight-row';
 import { usePeriodReturn } from './use-period-return';
 import { dayWeightHref, explorationHref, insightsEvidenceHref, insightsOriginOf, metricTrendHref, nutritionDayHref, validSession, type InsightsOrigin } from './navigation';
@@ -92,13 +92,19 @@ function Strip({ days, lane }: { days: readonly DayLanes[]; lane: Lane }) {
 }
 
 /** Each row opens the evidence of its own comparison: read when that detail opens, never one read per row here. */
-function ExerciseRows({ lane, session, partial, router, revision, origin }: { lane: Lane; session: SessionFact; partial: PartialDayFact['sessions'][number] | undefined; router: ReturnType<typeof useRouter>; revision: string; origin: InsightsOrigin }) {
+function ExerciseRows({ lane, session, partial, router, revision, origin, explain = false }: { lane: Lane; session: SessionFact; partial: PartialDayFact['sessions'][number] | undefined; router: ReturnType<typeof useRouter>; revision: string; origin: InsightsOrigin; explain?: boolean }) {
   const rows = lane === 'strict' ? session.exercises.map(row => ({ id: row.exerciseId, name: row.name, status: row.status as string, reason: row.reason, age: row.referenceAgeDays, date: row.referenceDate, reference: row.referenceSessionId }))
     : (partial?.exercises ?? []).map(row => ({ id: row.exerciseId, name: row.name, status: row.reading as string, reason: row.reason, age: row.referenceAgeDays, date: row.referenceDate, reference: row.referenceSessionId }));
   // A comparison names its compatible reference; a row without one says why it was not compared.
-  return <>{rows.map(row => <InsightRow key={row.id} label={row.name || 'Ejercicio'} detail={statusArrow(row.status) ? referenceText(row.age, row.date) ?? undefined : reasonText(lane, row.reason)}
-    value={`${statusArrow(row.status)} ${statusText(lane, row.status)}`} spoken={exerciseSentence(lane, row.name, row.status, row.reason, row.age, row.date)}
-    onPress={() => router.push(insightsEvidenceHref({ session: session.sessionId, exercise: row.id, lane, reference: row.reference, result: row.status, revision }, origin))} />)}</>;
+  const explained = new Set<string>();
+  return <>{rows.map(row => {
+    const explanation = explain && !explained.has(row.reason) ? reasonDetail(lane, row.reason) : null;
+    explained.add(row.reason);
+    const detail = statusArrow(row.status) ? referenceText(row.age, row.date) : [reasonText(lane, row.reason), explanation].filter(Boolean).join('. ');
+    return <InsightRow key={row.id} label={row.name || 'Ejercicio'} detail={detail ?? undefined}
+      value={`${statusArrow(row.status)} ${statusText(lane, row.status)}`} spoken={`${exerciseSentence(lane, row.name, row.status, row.reason, row.age, row.date)}${explanation ? `. ${explanation}` : ''}. Ver evidencia y series`}
+      onPress={() => router.push(insightsEvidenceHref({ session: session.sessionId, exercise: row.id, lane, reference: row.reference, result: row.status, revision }, origin))} />;
+  })}</>;
 }
 
 function DayDetail({ day, model, router, origin, onMetric, onNutrition, onBody }: { day: DayLanes; model: InsightsSummary; router: ReturnType<typeof useRouter>; origin: InsightsOrigin } & DayActions) {
@@ -184,7 +190,7 @@ export function InsightsScreen() {
   const reduced = useReduceMotion();
   const router = useRouter();
   const params = useLocalSearchParams();
-  const view: View_ = params.view === 'exercises' ? 'exercises' : 'days';
+  const view: View_ = params.view === 'exercises' && !validSession(params.session) ? 'exercises' : 'days';
   const family = (FAMILY_OPTIONS.find(option => option.value === params.family)?.value ?? 'all') as FamilyFilter;
   const relationsOpen = params.relations === '1';
   const origin = insightsOriginOf(params);
@@ -233,21 +239,25 @@ export function InsightsScreen() {
   const focus = onPage ?? (focusId && shownFocusPage ? focusOf(shownFocusPage.days, focusId) : null);
   const focusLoading = !!focusId && !focus && (!readSettled || (needsDay && !shownFocusPage));
   const focusFailed = !!focusId && !focus && needsDay && shownFocusPage?.phase === 'failed';
-  const openMetric = (metricId: string, date: string) => { haptics.selection(); router.push(metricTrendHref(metricId, date, { ...origin, date })); };
-  const openNutrition = (date: string) => { haptics.selection(); router.push(nutritionDayHref(date, { ...origin, date })); };
-  const openBody = (date: string) => { haptics.selection(); router.push(dayWeightHref(date, { ...origin, date })); };
+  const openMetric = (metricId: string, date: string) => { haptics.selection(); router.push(metricTrendHref(metricId, date, { ...origin, date, ...(origin.fromSession && data ? { revision: data.sourceRevision } : {}) })); };
+  const openNutrition = (date: string) => { haptics.selection(); router.push(nutritionDayHref(date, { ...origin, date, ...(origin.fromSession && data ? { revision: data.sourceRevision } : {}) })); };
+  const openBody = (date: string) => { haptics.selection(); router.push(dayWeightHref(date, { ...origin, date, ...(origin.fromSession && data ? { revision: data.sourceRevision } : {}) })); };
   const selectDay = (date: string | undefined) => router.setParams({ date });
   const setView = (value: View_) => { haptics.selection(); router.setParams({ view: value }); };
   const setFamily = (value: FamilyFilter) => { haptics.selection(); router.setParams({ family: value }); };
   const toggleRelations = () => { haptics.selection(); router.setParams({ relations: relationsOpen ? '0' : '1' }); };
   const refreshControl = <RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />;
-  const scroll = (children: React.ReactNode) => <ScrollView testID="insights-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}>{children}</ScrollView>;
+  const returnToSession = origin.fromSession && focusId ? <Button label="Volver a la sesión" variant="quiet" onPress={() => {
+    if (router.canGoBack()) router.back();
+    else router.replace({ pathname: '/(tabs)/train/history/[id]', params: { id: focusId } });
+  }} /> : null;
+  const scroll = (children: React.ReactNode) => <ScrollView testID="insights-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}>{children}{returnToSession}</ScrollView>;
 
   if (state.status === 'loading' && !data) return scroll(<View testID="insights-loading" style={styles.block}><SkeletonBlock height={44} /><SkeletonBlock height={120} /><SkeletonBlock height={176} /><SkeletonBlock height={220} /></View>);
   const failed = <UnavailableState title="Uy, no pudimos leer tus datos" description="Tranqui: está todo guardado." action={<Button label="Reintentar" onPress={() => void refresh()} />} />;
   // Contradictory rows are not an empty history: it is shown like a failed read.
   if (!data || data.integrity !== 'valid' || data.partial.integrity !== 'valid') return scroll(failed);
-  if (data.history.sessions === 0) return scroll(<View style={styles.block} testID="insights-empty">
+  if (data.history.sessions === 0 && !focusId) return scroll(<View style={styles.block} testID="insights-empty">
     <Heading level={2}>Todavía no hay sesiones</Heading>
     <AppText muted>Con dos entrenamientos del mismo ejercicio empieza a compararse.</AppText>
     <ExampleFrame><AppText muted variant="title1" numeric>4 de 6</AppText><AppText muted variant="footnote">ejercicios comparables</AppText></ExampleFrame>
@@ -259,78 +269,78 @@ export function InsightsScreen() {
     {origin.explore&&origin.asOf&&origin.week?<Button label="Volver a la semana" variant="secondary" onPress={()=>router.navigate(explorationHref(origin.asOf!,origin.week,origin.revision))}/>:null}
     {origin.explore&&origin.revision&&origin.revision!==data.sourceRevision?<AppText>Los registros cambiaron desde la semana. Esta lectura completa está actualizada.</AppText>:null}
     {state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
-    <ExerciseSegmented accessibilityLabel="Ver por días o por ejercicios" value={view} options={VIEWS} onChange={setView} />
+    {origin.fromSession && origin.revision && origin.revision !== data.sourceRevision ? <AppText muted testID="insights-session-revised">Los registros cambiaron desde el origen. Esta lectura completa está actualizada.</AppText> : null}
+    {!focusId ? <ExerciseSegmented accessibilityLabel="Ver por días o por ejercicios" value={view} options={VIEWS} onChange={setView} /> : null}
     {view === 'exercises' ? <Exercises model={data} router={router} /> : <>
       {focus ? <View style={styles.block} testID="insights-session">
-        <AppText muted numeric>{dayLabel(focus.day.date)}{focus.day.openDay ? ' · en curso' : ''} · {sessionName(focus.session)} · {sessionTime(focus.session)}</AppText>
-        {focus.counts.comparable ? <AppText numeric variant="heroNumber" accessibilityLabel={`${focus.counts.comparable} de ${focus.counts.total} ${heroCaption(focus.lane)}`}>{focus.counts.comparable} de {focus.counts.total}</AppText> : <Heading level={2}>Todavía sin comparaciones</Heading>}
-        {focus.counts.comparable ? <AppText muted>{heroCaption(focus.lane)}</AppText> : null}
-        {/* Without a comparison the results still count: mixed evidence and no comparison stay visible, with their method. */}
-        {focus.counts.total ? <>
-          {focus.counts.comparable ? null : <AppText muted numeric variant="footnote" testID="insights-session-denominator">0 de {focus.counts.total} {heroCaption(focus.lane)}</AppText>}
-          {readingRows(focus.lane, focus.counts).map(row => <FactRow key={row.label} arrow={row.arrow} label={row.label} value={row.value} spoken={row.spoken} />)}
-        </> : null}
-        {focus.counts.down ? <AppText muted variant="footnote">{EXPLAIN_DOWN}</AppText> : null}
-        {focus.lane === 'partial' ? <AppText muted variant="footnote" testID="insights-partial-limit">{PARTIAL_LIMIT}</AppText> : null}
-        {/* Each method apart, with its own words and denominator: the first one's counts are above, a second one brings its own. */}
-        {sessionLanes(focus.session, focus.partial).map(({ lane, counts }) => <View key={lane} testID={`insights-session-lane-${lane}`}>
-          <Section title={LANE_TITLE[lane]} />
-          {lane !== focus.lane ? <>
-            <AppText muted numeric variant="footnote">{counts.comparable} de {counts.total} {heroCaption(lane)}</AppText>
-            {readingRows(lane, counts).map(row => <FactRow key={row.label} arrow={row.arrow} label={row.label} value={row.value} spoken={row.spoken} />)}
-            {lane === 'partial' ? <AppText muted variant="footnote">{PARTIAL_LIMIT}</AppText> : null}
-          </> : null}
-          <ExerciseRows lane={lane} session={focus.session} partial={focus.partial ?? undefined} router={router} revision={data.sourceRevision} origin={origin} />
+        <Heading level={1}>{sessionName(focus.session)}</Heading>
+        <AppText muted numeric>{dayLabel(focus.day.date)} de {focus.day.date.slice(0, 4)} · {sessionTime(focus.session)}</AppText>
+        <Section title="Ejercicios y comparación" />
+        <AppText muted variant="footnote">Cada ejercicio tiene su propia referencia. Tocá uno para ver sus series y la evidencia.</AppText>
+        {!sessionLanes(focus.session, focus.partial).some(({ counts }) => counts.comparable > 0) ? <Heading level={2}>Todavía sin comparaciones</Heading> : null}
+        {sessionLanes(focus.session, focus.partial).map(({ lane, counts }) => <View key={lane} style={styles.block} testID={`insights-session-lane-${lane}`}>
+          <Heading level={2}>{LANE_TITLE[lane]}</Heading>
+          <AppText numeric>{counts.comparable} de {counts.total} {heroCaption(lane)}</AppText>
+          {readingRows(lane, counts).filter(row => row.value > 0).map(row => <FactRow key={row.label} arrow={row.arrow} label={row.label} value={row.value} spoken={row.spoken} />)}
+          {counts.down ? <AppText muted variant="footnote">{EXPLAIN_DOWN}</AppText> : null}
+          {lane === 'partial' ? <AppText muted variant="footnote" testID="insights-partial-limit">{PARTIAL_LIMIT}</AppText> : null}
+          <ExerciseRows explain lane={lane} session={focus.session} partial={focus.partial ?? undefined} router={router} revision={data.sourceRevision} origin={{ ...origin, revision: data.sourceRevision }} />
         </View>)}
-        <Section title={focus.day.strict.sessions.length > 1 ? 'Sesiones de ese día' : 'Esta sesión'} />
-        <DaySessions day={focus.day} originId={focus.session.sessionId} router={router} revision={data.sourceRevision} origin={origin} />
+        <Section title="Sensaciones y alimentación" />
+        <ContextList rows={sessionRows(focus.session)} />
+        {feelingClockNote([focus.session]) ? <AppText muted variant="caption">{feelingClockNote([focus.session])}</AppText> : null}
+        <InsightRow label="Ver horarios y comidas registradas" detail="Inicio, final y registros previos y posteriores de ese día. No explican el resultado."
+          spoken={`Ver horarios y comidas registradas del ${dayLabel(focus.day.date)}, incluidas las otras sesiones de ese día`}
+          onPress={() => router.push({ pathname: '/(tabs)/train/insights/temporal', params: { ...origin, date: focus.day.date, session: focus.session.sessionId, revision: data.sourceRevision } })} />
         <DayShared day={focus.day} metrics={data.metrics} onMetric={openMetric} onNutrition={openNutrition} onBody={openBody} />
       </View> : focusLoading ? <View testID="insights-session-loading" style={styles.block}><SkeletonBlock height={120} /><SkeletonBlock height={176} /></View>
         : focusFailed ? <InlineUnavailable message="No pudimos traer los hechos de esta sesión." actionLabel="Reintentar" onAction={() => setFocusAttempt(current => current + 1)} />
         : focusId ? <View style={styles.block} testID="insights-session-absent">
           <Heading level={2}>Esta sesión todavía no aparece</Heading>
-          <AppText muted>Está guardada, pero esta lectura no la incluye. Podés actualizar en un rato.</AppText>
+          <AppText muted>Esta lectura no la incluye. Puede haber cambiado o haberse eliminado. Podés actualizar o volver al detalle.</AppText>
           <Button label="Actualizar" variant="secondary" onPress={() => void refresh()} />
         </View> : null}
-      {hero ? <View style={styles.block} testID="insights-hero">
-        <AppText muted>{dayLabel(hero.day.date)}{hero.day.openDay ? ' · en curso' : ''}</AppText>
-        <AppText numeric variant="heroNumber" accessibilityLabel={`${hero.counts.comparable} de ${hero.counts.total} ${heroCaption(hero.lane)}`}>{hero.counts.comparable} de {hero.counts.total}</AppText>
-        <AppText muted>{heroCaption(hero.lane)}</AppText>
-        {readingRows(hero.lane, hero.counts).map(row => <FactRow key={row.label} arrow={row.arrow} label={row.label} value={row.value} spoken={row.spoken} />)}
-        {hero.counts.down ? <AppText muted variant="footnote">{EXPLAIN_DOWN}</AppText> : null}
-        {hero.lane === 'partial' ? <AppText muted variant="footnote" testID="insights-partial-limit">{PARTIAL_LIMIT}</AppText> : null}
-      </View> : focusId ? null : <View style={styles.block} testID="insights-nothing">
-        <Heading level={2}>Todavía sin comparaciones</Heading>
-        <AppText muted>{nothingComparable(data)}</AppText>
-      </View>}
-      {hero ? <View testID="insights-hero-context">
-        <Section title={hero.day.strict.sessions.length > 1 ? 'Sesiones de ese día' : 'Esa sesión'} />
-        <DaySessions day={hero.day} router={router} revision={data.sourceRevision} origin={origin} />
-        <DayShared day={hero.day} metrics={data.metrics} onMetric={openMetric} onNutrition={openNutrition} onBody={openBody} />
-      </View> : null}
-      <Strip days={days} lane={stripLane} />
-      <View>
-        <Section title="Días" />
-        {days.map(day => <DayRow key={day.date} day={day} model={data} router={router} origin={origin} selected={!focusId && focusDate === day.date} onSelect={selectDay} onMetric={openMetric} onNutrition={openNutrition} onBody={openBody} />)}
-        {next ? <Button label={morePhase === 'loading' ? 'Cargando…' : 'Ver más días'} variant="secondary" disabled={morePhase === 'loading'} onPress={() => void loadMore()} /> : null}
-        {morePhase === 'failed' ? <InlineUnavailable message="No pudimos traer más días." actionLabel="Reintentar" onAction={() => void loadMore()} /> : null}
-        {pagesDropped ? <AppText muted variant="footnote" accessibilityLiveRegion="polite" testID="insights-changed">Tus datos cambiaron, así que actualizamos la lista.</AppText> : null}
-        <AppText muted variant="caption" numeric style={styles.coverage}>{data.history.trainingDays} días entrenados en total</AppText>
-      </View>
-      {/* Its own read, on a tap: the end answers described, never next to the training results as if they were one. */}
-      {/* Its own read, on a tap: the last three whole months, facts only. */}
-      <InsightRow label="Últimos 3 meses" detail="Entrenamiento, sensaciones, comidas y peso, con sus fechas" spoken="Últimos 3 meses: entrenamiento, sensaciones, comidas y peso, con sus fechas"
-        onPress={() => { haptics.selection(); router.push('/(tabs)/train/insights/period'); }} />
-      <InsightRow label="Cómo terminaste" detail="Energía y fatiga al terminar, según cómo empezaste" spoken="Cómo terminaste: energía y fatiga al terminar, según cómo empezaste"
-        onPress={() => { haptics.selection(); router.push('/(tabs)/train/insights/feelings'); }} />
-      {data.relations.strict.outcomeDays || data.relations.partial.outcomeDays ? <View style={styles.block}>
-        <Pressable accessibilityRole="button" accessibilityState={{ expanded: relationsOpen }} accessibilityLabel={`Para mirar con calma, ${data.relations.partial.outcomeDays ? data.relations.partial.candidatesEvaluated : data.relations.strict.candidatesEvaluated} relaciones`} onPress={toggleRelations}
-          style={({ pressed }) => [styles.row, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
-          <Heading level={2} style={styles.flex}>Para mirar con calma</Heading>
-          <AppIcon color={colors.textMuted} name={relationsOpen ? 'chevronDown' : 'chevronRight'} size={15} />
-        </Pressable>
-        {relationsOpen ? <Relations client={client} family={family} onFamily={setFamily} router={router} facts={data} onStale={refresh} /> : null}
-      </View> : null}
+      {!focusId ? <>
+        {hero ? <View style={styles.block} testID="insights-hero">
+          <AppText muted>{dayLabel(hero.day.date)}{hero.day.openDay ? ' · en curso' : ''}</AppText>
+          <AppText numeric variant="heroNumber" accessibilityLabel={`${hero.counts.comparable} de ${hero.counts.total} ${heroCaption(hero.lane)}`}>{hero.counts.comparable} de {hero.counts.total}</AppText>
+          <AppText muted>{heroCaption(hero.lane)}</AppText>
+          {readingRows(hero.lane, hero.counts).map(row => <FactRow key={row.label} arrow={row.arrow} label={row.label} value={row.value} spoken={row.spoken} />)}
+          {hero.counts.down ? <AppText muted variant="footnote">{EXPLAIN_DOWN}</AppText> : null}
+          {hero.lane === 'partial' ? <AppText muted variant="footnote" testID="insights-partial-limit">{PARTIAL_LIMIT}</AppText> : null}
+        </View> : focusId ? null : <View style={styles.block} testID="insights-nothing">
+          <Heading level={2}>Todavía sin comparaciones</Heading>
+          <AppText muted>{nothingComparable(data)}</AppText>
+        </View>}
+        {hero ? <View testID="insights-hero-context">
+          <Section title={hero.day.strict.sessions.length > 1 ? 'Sesiones de ese día' : 'Esa sesión'} />
+          <DaySessions day={hero.day} router={router} revision={data.sourceRevision} origin={origin} />
+          <DayShared day={hero.day} metrics={data.metrics} onMetric={openMetric} onNutrition={openNutrition} onBody={openBody} />
+        </View> : null}
+        <Strip days={days} lane={stripLane} />
+        <View>
+          <Section title="Días" />
+          {days.map(day => <DayRow key={day.date} day={day} model={data} router={router} origin={origin} selected={!focusId && focusDate === day.date} onSelect={selectDay} onMetric={openMetric} onNutrition={openNutrition} onBody={openBody} />)}
+          {next ? <Button label={morePhase === 'loading' ? 'Cargando…' : 'Ver más días'} variant="secondary" disabled={morePhase === 'loading'} onPress={() => void loadMore()} /> : null}
+          {morePhase === 'failed' ? <InlineUnavailable message="No pudimos traer más días." actionLabel="Reintentar" onAction={() => void loadMore()} /> : null}
+          {pagesDropped ? <AppText muted variant="footnote" accessibilityLiveRegion="polite" testID="insights-changed">Tus datos cambiaron, así que actualizamos la lista.</AppText> : null}
+          <AppText muted variant="caption" numeric style={styles.coverage}>{data.history.trainingDays} días entrenados en total</AppText>
+        </View>
+        {/* Its own read, on a tap: the end answers described, never next to the training results as if they were one. */}
+        {/* Its own read, on a tap: the last three whole months, facts only. */}
+        <InsightRow label="Últimos 3 meses" detail="Entrenamiento, sensaciones, comidas y peso, con sus fechas" spoken="Últimos 3 meses: entrenamiento, sensaciones, comidas y peso, con sus fechas"
+          onPress={() => { haptics.selection(); router.push('/(tabs)/train/insights/period'); }} />
+        <InsightRow label="Cómo terminaste" detail="Energía y fatiga al terminar, según cómo empezaste" spoken="Cómo terminaste: energía y fatiga al terminar, según cómo empezaste"
+          onPress={() => { haptics.selection(); router.push('/(tabs)/train/insights/feelings'); }} />
+        {data.relations.strict.outcomeDays || data.relations.partial.outcomeDays ? <View style={styles.block}>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: relationsOpen }} accessibilityLabel={`Para mirar con calma, ${data.relations.partial.outcomeDays ? data.relations.partial.candidatesEvaluated : data.relations.strict.candidatesEvaluated} relaciones`} onPress={toggleRelations}
+            style={({ pressed }) => [styles.row, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
+            <Heading level={2} style={styles.flex}>Para mirar con calma</Heading>
+            <AppIcon color={colors.textMuted} name={relationsOpen ? 'chevronDown' : 'chevronRight'} size={15} />
+          </Pressable>
+          {relationsOpen ? <Relations client={client} family={family} onFamily={setFamily} router={router} facts={data} onStale={refresh} /> : null}
+        </View> : null}
+      </> : <InsightRow label="Ver todos los días en Insights" spoken="Ver todos los días en Insights" onPress={() => router.setParams({ session: undefined, fromSession: undefined, view: undefined })} />}
     </>}
   </>);
 }

@@ -117,6 +117,17 @@ export function reasonText(lane: Lane, reason: string) {
   return REASONS[reason] ?? 'Sin comparar';
 }
 
+/** A limit of the recorded evidence, never an instruction promising a different result. */
+export function reasonDetail(lane: Lane, reason: string) {
+  if (reason === 'missing_context') return lane === 'strict'
+    ? 'Falta parte del contexto: modo, unidad, implemento o variante. No podemos suponer que se hizo igual.'
+    : 'El método parcial también necesita modo, unidad e implemento registrados.';
+  if (reason === 'no_compatible_reference') return 'No encontramos una sesión anterior compatible con este registro.';
+  if (reason === 'crossed_signals') return 'Las señales van en direcciones distintas; no se resume como mejora ni descenso.';
+  if (reason === 'no_completed_sets') return 'No hay series terminadas que este método pueda usar.';
+  return null;
+}
+
 const STRICT_STATUS: Record<string, string> = { improved: 'Mejoró', observed_stable: 'Igual', declined: 'Por debajo', ambiguous_evidence: 'Mezclado', insufficient_comparison: 'Sin comparar' };
 const PARTIAL_READING: Record<string, string> = { higher_record: 'Registro superior', same_record: 'Registro igual', lower_record: 'Registro inferior', ambiguous_evidence: 'Mezclado', insufficient_comparison: 'Sin comparar' };
 const ARROW: Record<string, string> = { improved: '↑', higher_record: '↑', observed_stable: '=', same_record: '=', declined: '↓', lower_record: '↓' };

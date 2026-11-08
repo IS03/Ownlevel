@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Alert, RefreshControl } from 'react-native';
@@ -7,9 +7,10 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { SessionDetailDto } from '@/api/active-session';
 import type { MobileApiResultMeta } from '@/api/results';
 import type { TrainingHistorySession } from '@/api/training-history';
+import { MobileApiProvider, useMobileApi as useRealMobileApi } from '@/api/provider';
 import { invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import { OwnlevelThemeProvider } from '@/design-system';
-import { testDetail } from './active-session-test-fixtures';
+import { testDetail, testFinished } from './active-session-test-fixtures';
 import { CompletedSessionScreen, type CompletedSessionApi } from './history-session-screen';
 import { SessionCorrectionScreen } from './session-correction-screen';
 import { ExerciseHistoryScreen } from './exercise-history-screen';
@@ -29,11 +30,15 @@ const mockDay = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockTraining = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockMonth = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockSuccess = jest.fn();
+let mockOwner: string | null = null;
+const mockAccess = jest.fn(), mockRevalidate = jest.fn();
 const mockClient = { request: jest.fn(), read: jest.fn() };
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 // The completed session can show variants (#367): without a signed-in user here it renders exactly as before.
-jest.mock('@/auth', () => ({ ...jest.requireActual<object>('@/auth'), useMobileAuth: () => ({ session: null }) }));
+jest.mock('@/auth', () => ({ ...jest.requireActual<object>('@/auth'), useMobileAuth: () => ({ session: mockOwner ? { user: { id: mockOwner } } : null, getAccessTokenForApi: mockAccess, revalidateApiSession: mockRevalidate }) }));
 jest.mock('@react-native-async-storage/async-storage', () => ({ __esModule: true, default: { getItem: async () => null, setItem: async () => undefined, removeItem: async () => undefined, getAllKeys: async () => [] } }));
+jest.mock('@/api/config', () => ({ readMobileApiConfig: () => ({ appEnv: 'development', baseUrl: 'https://example.test', host: 'example.test', timeoutMs: 1000 }) }));
+jest.mock('@/api/runtime', () => ({ createMobileClientRuntime: () => ({ appVersion: '1', build: '1', platform: 'ios' }), createMobileClientHeaders: () => ({}) }));
 jest.mock('expo-router', () => {
   const { Pressable, Text } = jest.requireActual<typeof import('react-native')>('react-native');
   const Container = ({ children }: { children?: React.ReactNode }) => children ?? null;
@@ -67,10 +72,11 @@ const meta: MobileApiResultMeta = { durationMs: 1, httpStatus: 200, outcome: 'ok
 const ok = <T,>(data: T) => ({ status: 'ok' as const, data, meta });
 const lost = { status: 'unavailable' as const, reason: 'network' as const, meta: { ...meta, httpStatus: null, outcome: 'unavailable' as const } };
 const flush = () => act(async () => { for (let index = 0; index < 10; index++) await Promise.resolve(); });
-function wrap(element: ReactElement) {
-  return render(<GestureHandlerRootView><SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
+function historyRoot(element: ReactElement) {
+  return (<GestureHandlerRootView><SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
     <OwnlevelThemeProvider initialMode="light">{element}</OwnlevelThemeProvider></SafeAreaProvider></GestureHandlerRootView>);
 }
+function wrap(element: ReactElement) { return render(historyRoot(element)); }
 function completedDetail(): SessionDetailDto {
   const detail = testDetail();
   detail.session = { ...detail.session, status: 'completed', endedAt: '2026-09-30T13:05:00.000000+00:00' };
@@ -82,13 +88,64 @@ const row = (id: string, logDate: string): TrainingHistorySession => ({ id, rout
 const ID = (n: number) => `34300000-0000-4000-8000-00000000000${n}`;
 
 beforeEach(() => {
-  jest.clearAllMocks(); jest.restoreAllMocks(); mockParams.current = {}; mockScreenFocused = true;
+  jest.clearAllMocks(); jest.restoreAllMocks(); mockParams.current = {}; mockScreenFocused = true; mockOwner = null;
 });
 
 describe('completed session: correct + discard (M3.4-3)', () => {
   function api(discard: CompletedSessionApi['discard']): CompletedSessionApi {
     return { detail: jest.fn<CompletedSessionApi['detail']>().mockResolvedValue(ok(completedDetail())), discard };
   }
+  it('keeps context accessible after closing the receipt and reopening an old session, without reading Insights', async () => {
+    const detail = completedDetail(); detail.session.logDate = '2025-01-02';
+    const receipt = { ...testFinished(), logDate: detail.session.logDate };
+    const load = jest.fn<CompletedSessionApi['detail']>().mockResolvedValue(ok(detail));
+    const api = { detail: load, discard: jest.fn<CompletedSessionApi['discard']>() };
+    const view = wrap(<CompletedSessionScreen api={api} sessionId={detail.session.id} initialDetail={detail} finished={receipt} onHome={jest.fn()} />);
+    await flush();
+    fireEvent.press(within(view.getByTestId('post-workout-screen')).getByRole('button', { name: 'Ver sesión' }));
+    expect(view.queryByTestId('post-workout-screen')).toBeNull();
+    fireEvent.press(view.getByRole('button', { name: 'Ver contexto y comparación' }));
+    const href = { pathname: '/(tabs)/train/insights', params: { session: detail.session.id, date: '2025-01-02', fromSession: '1' } };
+    expect(mockPush).toHaveBeenLastCalledWith(href);
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(mockClient.read.mock.calls.filter(([options]) => String((options as { path: string }).path).includes('performance-insights'))).toHaveLength(0);
+    view.unmount();
+    const reopened = wrap(<CompletedSessionScreen api={api} sessionId={detail.session.id} onHome={jest.fn()} />);
+    await flush();
+    fireEvent.press(reopened.getByRole('button', { name: 'Ver contexto y comparación' }));
+    expect(mockPush).toHaveBeenLastCalledWith(href);
+  });
+  it('retires the completed detail and its context link on a direct account switch through the real provider', async () => {
+    mockOwner = 'a';
+    const detail = completedDetail();
+    let finishOther!: (value: Awaited<ReturnType<CompletedSessionApi['detail']>>) => void;
+    const first = { detail: jest.fn<CompletedSessionApi['detail']>().mockResolvedValue(ok(detail)), discard: jest.fn<CompletedSessionApi['discard']>() };
+    const other = { detail: jest.fn<CompletedSessionApi['detail']>().mockImplementation(() => new Promise(resolve => { finishOther = resolve; })), discard: jest.fn<CompletedSessionApi['discard']>() };
+    function ScopedSession() {
+      const { client } = useRealMobileApi();
+      const [api] = useState(() => mockOwner === 'a' ? first : other);
+      return client ? <CompletedSessionScreen api={api} sessionId={detail.session.id} onHome={jest.fn()} /> : null;
+    }
+    const tree = () => historyRoot(<MobileApiProvider><ScopedSession /></MobileApiProvider>);
+    const view = render(tree()); await flush();
+    expect(view.getByRole('button', { name: 'Ver contexto y comparación' })).toBeTruthy();
+    mockOwner = 'b'; view.rerender(tree()); await flush();
+    expect(view.queryByRole('button', { name: 'Ver contexto y comparación' })).toBeNull();
+    expect(other.detail).toHaveBeenCalledTimes(1); expect(first.detail).toHaveBeenCalledTimes(1);
+    await act(async () => { finishOther({ status: 'not_found', message: 'No disponible', meta }); });
+    expect(view.queryByTestId('completed-session')).toBeNull();
+    expect(view.queryByRole('button', { name: 'Ver contexto y comparación' })).toBeNull();
+  });
+  it.each(['in_progress', 'discarded', 'invalid_id', 'invalid_date', 'not_found'] as const)('does not link %s to Insights', async kind => {
+    const detail = completedDetail();
+    if (kind === 'in_progress' || kind === 'discarded') detail.session.status = kind;
+    if (kind === 'invalid_id') detail.session.id = 'bad/id';
+    if (kind === 'invalid_date') detail.session.logDate = '2026-02-30';
+    const load = jest.fn<CompletedSessionApi['detail']>().mockResolvedValue(kind === 'not_found' ? { status: 'not_found', message: 'No disponible', meta } : ok(detail));
+    const view = wrap(<CompletedSessionScreen api={{ detail: load, discard: jest.fn<CompletedSessionApi['discard']>() }} sessionId={detail.session.id} onHome={jest.fn()} />);
+    await flush();
+    expect(view.queryByRole('button', { name: 'Ver contexto y comparación' })).toBeNull();
+  });
   it('confirms, replays an unconfirmed discard with the same key, and leaves only after server confirmation', async () => {
     const discard = jest.fn<CompletedSessionApi['discard']>().mockResolvedValueOnce(lost)
       .mockResolvedValueOnce(ok({ status: 'discarded', sessionId: ID(1), sessionUpdatedAt: '2026-10-01T00:00:00Z' }));
