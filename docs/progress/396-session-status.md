@@ -1,0 +1,7 @@
+# #396 — Estado proporcionado de sesión
+
+Base main `4859c01`. El controlador ya distingue lectura fallida/copia local y conserva borradores; la vista convertía siempre el texto genérico de lectura en un banner. Se conserva el controlador íntegro: sin cambios de autosave, CAS, auth, journal, formatos, polling o backend.
+
+Un control de estado estable en la cabecera muestra comprobación en curso y permite inspeccionar la última lectura/copia local y los pendientes. La copia local aparece como tal en el progreso, incluso sin borradores. Reintentar sigue llamando a la lectura vigente; no confirma ni reenvía escrituras por su cuenta. No hay temporizadores para esconder fallos. El aviso compacto se aplica solo al texto canónico de lectura con sesión utilizable; avisos de auth, fencing/terminal, errores de escritura/conflicto y recuperación siguen accionables. Almacenamiento tiene un mensaje principal, sin duplicarlo en cada ejercicio ni en una intención pendiente que ya posee su recuperación.
+
+Pruebas dirigidas retienen lecturas, verifican fallo/reintento con borradores, auth, almacenamiento y desmontaje; regresiones de controlador y hook sin modificar sus garantías. El renderer de React Native permite inspeccionar estado/composición, no acreditar UIKit ni geometría física. No hay simulador iOS disponible en Windows; no se instalaron herramientas. Checklist física única: [QA](367-qa-fisica.md). Issue sigue abierto. Resultados definitivos y combinación se consignan en el PR.
