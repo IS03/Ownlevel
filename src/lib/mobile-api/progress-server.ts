@@ -1,3 +1,4 @@
+import { progressEditorialFindings } from './progress-findings';
 import "server-only";
 import { NextResponse } from "next/server";
 import { getDailyMetricsReport } from "@/lib/daily-metrics/reports";
@@ -156,7 +157,7 @@ function overviewSparks(period: ProgressPeriod, comparing: boolean, sections: {
   };
 }
 
-export async function buildMobileProgressOverview(context: Context, query: MobileProgressQuery, today: string, withSparks = false, withInPeriod = false, withPanorama = false): Promise<ProgressOverview> {
+export async function buildMobileProgressOverview(context: Context, query: MobileProgressQuery, today: string, withSparks = false, withInPeriod = false, withPanorama = false, withFindings = false): Promise<ProgressOverview> {
   const { range, period } = resolveMobileProgressPeriod(query, today);
   const [body, nutrition, metrics, training] = await Promise.all([
     isolated(() => bodyReport(context, range, period), "body"),
@@ -212,10 +213,11 @@ export async function buildMobileProgressOverview(context: Context, query: Mobil
     } } : { status: "unavailable" },
     training: training.status === "ok" ? { status: "ok", data: trainingSummaryDto(training.data, period, comparisonDto) } : { status: "unavailable" },
   };
-  if (withInPeriod) {
-    const p = training.status === "ok" ? trainingInPeriodDto(training.data, period) : null;
-    overview.inPeriod = p ? { improved: p.improved, comparable: p.improved + p.stable + p.declined } : null;
-  }
+  const inPeriod = (withInPeriod || withFindings) && training.status === 'ok' ? trainingInPeriodDto(training.data, period) : null;
+  if (withInPeriod) overview.inPeriod = inPeriod ? {improved: inPeriod.improved, comparable: inPeriod.improved + inPeriod.stable + inPeriod.declined} : null;
+  if (withFindings) overview.findings = progressEditorialFindings({period, inPeriod,
+    training: training.status === 'ok' ? training.data : null,
+    nutrition: nutrition.status === 'ok' ? nutrition.data.comparison : null});
   if (withSparks) overview.sparks = overviewSparks(period, !!query.compare, {
     body: body.status === "ok" ? body.data : null, nutrition: nutrition.status === "ok" ? nutrition.data : null,
     training: training.status === "ok" ? training.data : null,
@@ -345,11 +347,13 @@ export const progressHabitWeekResponse = (request: Request) => progressReadRespo
 export const progressOverviewResponse = (request: Request) => progressReadResponse(request, "overview", (context, params, today) => {
   const spark = params.get("spark");
   if (spark !== null && spark !== "1") throw new MobileApiValidationError("Parámetro no válido.");
-  const query = progressQueryFromParams(params, ["spark", "inPeriod", "panorama"]);
+  const query = progressQueryFromParams(params, ["spark", "inPeriod", "panorama", "findings"]);
   const inPeriod = params.get("inPeriod");
   if (inPeriod !== null && inPeriod !== "1") throw new MobileApiValidationError("Parámetro no válido.");
   const panorama=params.get("panorama");if(panorama!==null&&panorama!=="1")throw new MobileApiValidationError("Parámetro no válido.");
-  return buildMobileProgressOverview(context, query, today, spark === "1", inPeriod === "1",panorama==="1");
+  const findings = params.get('findings');
+  if (findings !== null && findings !== '1') throw new MobileApiValidationError('Parámetro no válido.');
+  return buildMobileProgressOverview(context, query, today, spark === "1", inPeriod === "1",panorama==="1",findings==='1');
 }, parseProgressOverview);
 export const progressBodyResponse = (request: Request) => progressReadResponse(request, "body",
   (context, params, today) => buildMobileProgressBody(context, progressQueryFromParams(params), today), parseProgressBody);

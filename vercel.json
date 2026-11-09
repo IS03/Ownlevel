@@ -3,6 +3,7 @@
   "ignoreCommand": "node scripts/vercel-ignore-build.mjs",
   "git": {
     "deploymentEnabled": {
+      "codex/402-progress-findings": false,
       "codex/402-progress-first-delivery": false,
       "codex/367-compare-weeks": false,
       "codex/insights-session-context": false,

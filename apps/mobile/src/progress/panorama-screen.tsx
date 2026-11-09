@@ -3,11 +3,12 @@ import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { useCachedRead } from '@/api/use-cached-read';
-import { fetchProgressPanorama, type ProgressOverview, type ProgressDestination, type ProgressSpark } from '@/api/progress';
+import { fetchProgressFindings, type ProgressEditorialFinding, type ProgressOverview, type ProgressDestination, type ProgressSpark } from '@/api/progress';
 import { AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
 import { periodSummaryHref, explorationHref } from '@/insights/navigation';
 import { exactPeriodDate, exactPeriodRange } from '@/insights/period-model';
-import { addDays } from './progress-range';
+import { addDays, progressStateForRange } from './progress-range';
+import { ProgressFindings } from './progress-findings';
 import { useProgressRange } from './progress-range-context';
 import { ProgressScroll } from './progress-scroll';
 import { ProgressReadStatus } from './progress-read-status';
@@ -77,16 +78,23 @@ export function ProgressPanorama({ data, onOpen }: {
    </View>
  </View>;
 }
-function OverviewContent() {
-    const { client } = useMobileApi(), router = useRouter(), { today } = useProgressRange();
+function OverviewContent({selected, onSelect}: {selected: string | null; onSelect: (id: string | null) => void}) {
+    const { client } = useMobileApi(), router = useRouter(), { today, state: rangeState, setState } = useProgressRange();
     const from = addDays(today, -29), query = { period: 'custom' as const, from, to: today };
-    const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressPanorama(c, { period: 'custom', from, to: today }, signal), [from, today]);
+    const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressFindings(c, { period: 'custom', from, to: today }, signal), [from, today]);
     const { state, data, refresh } = useCachedRead(client, 'overview', `panorama|${from}|${today}`, load);
     const origin = { fromProgress: '1' as const };
-    const open = (d: ProgressDestination) => { const dest = destinationRoute(d); router.push({ pathname: dest.pathname, params: { ...dest.extra, from: query.from, to: query.to } }); };
+    const open = (d: ProgressDestination, finding?: ProgressEditorialFinding) => {
+        // Training/exercise details also use the shared range; set it before mounting their reader.
+        const next = progressStateForRange(query.from, query.to, rangeState, today);
+        if (next) setState({...next, compare: finding?.method === 'progress-nutrition'
+          ? {kind: 'custom', range: {start: finding.reference.start!, end: finding.reference.end}} : {kind: 'none'}});
+        const dest = destinationRoute(d);
+        router.push({pathname: dest.pathname, params: {...dest.extra, from: query.from, to: query.to}});
+    };
     return <ProgressScroll root periodControls={false} title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()}/>}>
    <ProgressReadStatus state={state}/>
-   {data ? <>{state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Conservamos la última lectura confirmada." actionLabel="Reintentar" onAction={() => void refresh()}/> : null}<ProgressPanorama data={data} onOpen={open}/></> : state.status === 'loading' ? <SkeletonBlock height={176}/> : <UnavailableState title="No pudimos leer tu progreso" description="Tus registros siguen guardados." action={<Button label="Reintentar" onPress={() => void refresh()}/>}/>}
+   {data ? <>{state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Conservamos la última lectura confirmada." actionLabel="Reintentar" onAction={() => void refresh()}/> : null}<ProgressFindings items={data.findings} sourcesUnavailable={data.training.status !== 'ok' || data.nutrition.status !== 'ok'} selected={selected} onSelect={onSelect} onOpen={item => open(item.destination, item)}/><ProgressPanorama data={data} onOpen={open}/></> : state.status === 'loading' ? <SkeletonBlock height={176}/> : <UnavailableState title="No pudimos leer tu progreso" description="Tus registros siguen guardados." action={<Button label="Reintentar" onPress={() => void refresh()}/>}/>}
    <View style={styles.explore}>
      <Heading level={2}>Mirar en contexto</Heading>
      <Button label="Ver contexto y comparación de sesiones" variant="secondary" onPress={() => router.navigate({ pathname: '/(tabs)/train/insights', params: origin })}/>
@@ -101,5 +109,14 @@ function OverviewContent() {
  </ProgressScroll>;
 }
 /** Unmount this reading while the tab/route is hidden; confirmed cache restores it synchronously on return. */
-export function ProgressOverviewScreen() { const [visible, setVisible] = useState(false); useFocusEffect(useCallback(() => { setVisible(true); return () => setVisible(false); }, [])); return visible ? <OverviewContent /> : null; }
+export function ProgressOverviewScreen() {
+    const {client} = useMobileApi();
+    const [visible, setVisible] = useState(false);
+    // Only local disclosure state survives the trip. Readings stay in the existing account-scoped cache.
+    const [selection, setSelection] = useState<{client: typeof client; id: string | null}>({client, id: null});
+    if (selection.client !== client) setSelection({client, id: null});
+    useFocusEffect(useCallback(() => {setVisible(true); return () => setVisible(false);}, []));
+    return visible ? <OverviewContent selected={selection.client === client ? selection.id : null}
+      onSelect={id => setSelection({client, id})}/> : null;
+}
 const styles = StyleSheet.create({ areas: { gap: spacing.lg }, area: { gap: spacing.sm, paddingBottom: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth }, preview: { gap: spacing.xs }, explore: { gap: spacing.md, paddingTop: spacing.xl } });
