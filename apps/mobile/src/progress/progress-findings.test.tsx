@@ -45,6 +45,6 @@ it('names an equal comparable result as a comparison, without inventing an impro
     const item = {...editorialFixture()[1]!, description: 'Sin cambio claro'};
     const view = render(wrap([item], item.id));
     expect(view.getByText('Comparación · Press banca')).toBeTruthy();
-    expect(view.getByText(/^Sin cambio claro\nProgreso/)).toBeTruthy();
+    expect(view.getByText(/^Sin cambio claro\s+Progreso/)).toBeTruthy();
     expect(view.getByText(/3 sesiones con series utilizables/)).toBeTruthy();
 });
