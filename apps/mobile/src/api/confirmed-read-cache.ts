@@ -4,11 +4,12 @@ import { ApiResourceController, type ResourceRefreshTrigger } from './resource';
 
 export type ReadFamily = 'overview' | 'body' | 'training' | 'metrics' | 'nutrition-report' | 'nutrition-day' | 'progress-extra';
 type Domain = 'body' | 'training' | 'metrics' | 'nutrition' | 'views' | 'insight';
-type Loader<T> = (signal: AbortSignal) => Promise<MobileApiReadResult<T>>;
+type Loader<T> = (signal: AbortSignal, background?: boolean) => Promise<MobileApiReadResult<T>>;
 export type RetainedRead<T> = {
   resource: ApiResourceController<T>; family: ReadFamily; mounted: number; focused: number; invalidated: boolean;
   /** Write count when the latest read was started by that write's invalidation; -1 for any other read. */
   readEpoch: number;
+  background?: boolean;
 };
 export const READ_REUSE_MS = 30_000;
 export const RETAINED_READ_LIMIT = 40;
@@ -30,6 +31,10 @@ export class ConfirmedReadCache {
   private readonly entries = new Map<string, RetainedRead<unknown>>();
   private writes = 0;
   private invalidating = false;
+  private retired = false;
+  private readonly foreground = new Map<RetainedRead<unknown>, Promise<void>>();
+  private queued: { entry: RetainedRead<unknown>; owner: symbol }[] = [];
+  private warming: { entry: RetainedRead<unknown>; owner: symbol; promoted: boolean } | null = null;
   constructor(private readonly now: () => number = () => Date.now(), private readonly measure = record) {}
   get<T>(family: ReadFamily, key: string, load: Loader<T>): RetainedRead<T> {
     const scopedKey = `${family}|${key}`;
@@ -44,7 +49,7 @@ export class ConfirmedReadCache {
         const started = this.now();
         entry.readEpoch = this.invalidating ? this.writes : -1;
         let result: MobileApiReadResult<T>;
-        try { result = await load(signal); }
+        try { result = await load(signal, entry.background); }
         catch { result = { status: 'unavailable', reason: 'network', meta: { durationMs: 0, httpStatus: null, outcome: 'unavailable' } }; }
         if (!signal.aborted) {
           if (result.status === 'ok') entry.invalidated = false;
@@ -60,24 +65,74 @@ export class ConfirmedReadCache {
     this.trim(scopedKey);
     return entry;
   }
-  ensure<T>(entry: RetainedRead<T>, trigger: ResourceRefreshTrigger): Promise<void> {
+  ensure<T>(entry: RetainedRead<T>, trigger: ResourceRefreshTrigger, background = false): Promise<void> {
+    if (this.retired) return Promise.resolve();
     const state = entry.resource.getSnapshot();
     const age = state.status === 'ready' ? Math.max(0, this.now() - state.current.confirmedAt) : Infinity;
     if (trigger === 'initial' && !entry.invalidated && age < READ_REUSE_MS) {
       this.measure({ event: 'reuse', family: entry.family, trigger, ageMs: age }); return Promise.resolve();
     }
+    if (!background) this.prioritize(entry);
     this.measure({ event: entry.resource.isRefreshing() ? 'join' : 'network', family: entry.family, trigger });
-    return entry.resource.refresh(trigger);
+    entry.background = background;
+    const pending = entry.resource.refresh(trigger);
+    if (!background) this.track(entry, pending);
+    return pending;
   }
   /**
    * After a confirmed write: join only the read the client started when that write settled; any other in-flight read
    * may predate the write, so it is dropped and read again.
    */
   reload<T>(entry: RetainedRead<T>): Promise<void> {
+    if (this.retired) return Promise.resolve();
+    this.prioritize(entry); entry.background = false;
     entry.invalidated = true;
     if (entry.resource.isRefreshing() && entry.readEpoch === this.writes) return this.ensure(entry, 'manual');
     this.measure({ event: 'network', family: entry.family, trigger: 'manual' });
-    return entry.resource.reload('manual');
+    const pending = entry.resource.reload('manual'); this.track(entry, pending); return pending;
+  }
+  /** One low-priority read at a time, using the SAME retained controllers. No recursive discovery or own data store. */
+  prefetch<T>(entries: readonly RetainedRead<T>[]): () => void {
+    const owner = Symbol('prefetch');
+    if (this.retired) return () => {};
+    for (const value of entries.slice(0, 3)) {
+      const entry = value as RetainedRead<unknown>;
+      if (this.warming?.entry !== entry && !this.queued.some(job => job.entry === entry)) this.queued.push({ entry, owner });
+    }
+    void Promise.resolve().then(() => this.pump());
+    return () => {
+      this.queued = this.queued.filter(job => job.owner !== owner);
+      void Promise.resolve().then(() => {
+        if (this.warming?.owner === owner && !this.warming.promoted && !this.warming.entry.mounted && !this.warming.entry.focused) this.warming.entry.resource.cancelRefresh();
+      });
+    };
+  }
+  private prioritize<T>(value: RetainedRead<T>) {
+    const entry = value as RetainedRead<unknown>;
+    this.queued = this.queued.filter(job => job.entry !== entry);
+    if (this.warming?.entry === entry) this.warming.promoted = true;
+    else this.warming?.entry.resource.cancelRefresh();
+  }
+  private track<T>(value: RetainedRead<T>, pending: Promise<void>) {
+    const entry = value as RetainedRead<unknown>;
+    this.foreground.set(entry, pending);
+    void pending.finally(() => { if (this.foreground.get(entry) === pending) this.foreground.delete(entry); this.pump(); });
+  }
+  private pump() {
+    if (this.retired || this.warming || this.foreground.size) return;
+    while (this.queued.length) {
+      const job = this.queued.shift()!, { entry } = job;
+      if (![...this.entries.values()].includes(entry) || entry.resource.isRefreshing()) continue;
+      const state = entry.resource.getSnapshot();
+      if (state.status === 'ready' && !entry.invalidated && this.now() - state.current.confirmedAt < READ_REUSE_MS) continue;
+      const active = { ...job, promoted: false }; this.warming = active;
+      void this.ensure(entry, 'initial', true).finally(() => {
+        entry.background = false;
+        if (this.warming === active) this.warming = null;
+        this.pump();
+      });
+      return;
+    }
   }
   mount<T>(entry: RetainedRead<T>) {
     entry.mounted++;
@@ -94,6 +149,8 @@ export class ConfirmedReadCache {
   }
   invalidate(changed: readonly Domain[]) {
     this.writes++;
+    // A write owns recovery. Do not restart a cancelled prefetch from an older navigation batch.
+    this.queued = this.queued.filter(job => !domains[job.entry.family].some(domain => changed.includes(domain)));
     for (const entry of this.entries.values()) {
       if (!domains[entry.family].some(domain => changed.includes(domain))) continue;
       entry.invalidated = true;
@@ -108,12 +165,13 @@ export class ConfirmedReadCache {
   }
   /** Settled writes through this account's client so far (any domain): screens with their own reads compare it on focus. */
   settledWrites() { return this.writes; }
-  clear() { this.entries.forEach(entry => entry.resource.dispose()); this.entries.clear(); }
+  clear() { this.retired = true; this.queued = []; this.entries.forEach(entry => entry.resource.dispose()); this.entries.clear(); }
   private trim(protectedKey?: string) {
     for (const [key, entry] of this.entries) {
       if (this.entries.size <= RETAINED_READ_LIMIT) break;
-      if (entry.mounted || key === protectedKey) continue;
+      if (entry.mounted || key === protectedKey || this.warming?.entry === entry || this.foreground.has(entry)) continue;
       entry.resource.dispose(); this.entries.delete(key); this.measure({ event: 'evict', family: entry.family });
+      this.queued = this.queued.filter(job => job.entry !== entry);
     }
   }
 }

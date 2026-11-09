@@ -28,7 +28,7 @@ const shiftMonth = (month: string, delta: number) => {
 /** Warms the month the calendar opens on, so its rings and average show at once. */
 export function prefetchCalendarMonth(client: Parameters<typeof prefetchNutritionReport>[0], date: string, today: string) {
   const month = `${date.slice(0, 7)}-01`;
-  if (month <= today) prefetchNutritionReport(client, monthReportQuery(month, today));
+  if (month <= today) return prefetchNutritionReport(client, monthReportQuery(month, today));
 }
 const monthName = (month: string, style: 'long' | 'short' = 'long') => new Intl.DateTimeFormat('es-AR', { month: style, year: 'numeric', timeZone: 'UTC' })
   .format(new Date(`${month}T12:00:00Z`)).replace(/^./u, c => c.toLocaleUpperCase('es-AR'));

@@ -10,7 +10,7 @@ import {
 
 import { useMobileAuth } from '@/auth';
 
-import { createMobileApiClient, type MobileApiClient } from './client';
+import { createMobileApiClient, createPassiveTokenPort, type MobileApiClient } from './client';
 import { readMobileApiConfig, type MobileApiConfig } from './config';
 import { createMobileClientRuntime, type MobileClientRuntime } from './runtime';
 import { clearConfirmedReads } from './confirmed-read-cache';
@@ -27,6 +27,8 @@ const MobileApiContext = createContext<MobileApiContextValue | null>(null);
 export function MobileApiProvider({ children }: PropsWithChildren) {
   const { getAccessTokenForApi, revalidateApiSession, session } = useMobileAuth();
   const owner = session?.user.id ?? null;
+  const passive = useMemo(() => createPassiveTokenPort(owner), [owner]);
+  useLayoutEffect(() => { passive.update(session); return () => passive.update(null); }, [passive, session]);
 
   const value = useMemo<MobileApiContextValue>(() => {
     try {
@@ -36,6 +38,7 @@ export function MobileApiProvider({ children }: PropsWithChildren) {
         client: owner ? createMobileApiClient({
           auth: {
             getAccessToken: getAccessTokenForApi,
+            peekAccessToken: passive.peek,
             revalidateAfterUnauthorized: revalidateApiSession,
           },
           config,
@@ -53,7 +56,7 @@ export function MobileApiProvider({ children }: PropsWithChildren) {
         runtime: null,
       };
     }
-  }, [getAccessTokenForApi, revalidateApiSession, owner]);
+  }, [getAccessTokenForApi, revalidateApiSession, owner, passive]);
   const previous = useRef<MobileApiClient | null>(null);
   useLayoutEffect(() => {
     if (previous.current && previous.current !== value.client) clearConfirmedReads(previous.current);

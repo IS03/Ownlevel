@@ -7,6 +7,7 @@ import type {
 
 import {
   createMobileApiClient,
+  createPassiveTokenPort,
   type MobileApiAuthPort,
   type MobileApiClientDependencies,
 } from './client';
@@ -66,6 +67,30 @@ function dependencies(overrides: {
 
 afterEach(() => {
   jest.useRealTimers();
+});
+
+it('speculative GETs use only the current token and never renew or invalidate the session on failure', async () => {
+  const setup = dependencies({ fetchImplementation: jest.fn<typeof fetch>().mockResolvedValue(response(401, {})) });
+  setup.values.auth.peekAccessToken = () => ({ status: 'ok', accessToken });
+  const client = createMobileApiClient(setup.values);
+  expect((await client.read({ path: '/api/mobile/v1/nutrition/days/2026-10-01', parse: v => v, background: true })).status).toBe('unauthorized');
+  expect(setup.getAccessToken).not.toHaveBeenCalled(); expect(setup.revalidateAfterUnauthorized).not.toHaveBeenCalled();
+  await client.read({ path: '/api/mobile/v1/nutrition/days/2026-10-01', parse: v => v });
+  expect(setup.getAccessToken).toHaveBeenCalledTimes(1); expect(setup.revalidateAfterUnauthorized).toHaveBeenCalledTimes(1);
+});
+it('skips a speculative GET without a current token rather than starting authentication recovery', async () => {
+  const fetcher = jest.fn<typeof fetch>(), setup = dependencies({ fetchImplementation: fetcher });
+  const client = createMobileApiClient(setup.values);
+  expect((await client.read({ path: '/api/mobile/v1/nutrition/days/2026-10-01', parse: v => v, background: true })).status).toBe('unavailable');
+  expect(fetcher).not.toHaveBeenCalled(); expect(setup.getAccessToken).not.toHaveBeenCalled();
+});
+it('retires passive tokens on logout/account mismatch and skips expired snapshots', () => {
+  jest.useFakeTimers(); jest.setSystemTime(100_000);
+  const port = createPassiveTokenPort('a');
+  port.update({ user: { id: 'a' }, access_token: accessToken, expires_at: 101 }); expect(port.peek().status).toBe('ok');
+  jest.advanceTimersByTime(1000); expect(port.peek().status).toBe('unavailable');
+  port.update({ user: { id: 'b' }, access_token: accessToken, expires_at: 999 }); expect(port.peek().status).toBe('unavailable');
+  port.update(null); expect(port.peek().status).toBe('unavailable');
 });
 
 it.each([false, true])('invalidates retained analytical reads after a settled write (ambiguous=%s), without caching operational reads', async ambiguous => {
@@ -585,4 +610,30 @@ describe('in-flight GET transport reuse', () => {
     expect((await Promise.all([first, second])).every(result => result.status === 'conflict')).toBe(true);
   });
 
+});
+
+it.each(['expired','settled-401','adopted-401'] as const)('keeps interactive recovery usable after %s prefetch through the real client/cache',async scenario=>{
+ let finish!: (v:Response)=>void;
+ const pending=new Promise<Response>(r=>{finish=r;});
+ const fetcher=jest.fn<typeof fetch>();
+ if(scenario==='adopted-401')fetcher.mockReturnValueOnce(pending);
+ else if(scenario==='settled-401')fetcher.mockResolvedValueOnce(response(401,{}));
+ fetcher.mockResolvedValue(response(200,{value:'available'}));
+ const setup=dependencies({fetchImplementation:fetcher});
+ const port=createPassiveTokenPort('owner');port.update({user:{id:'owner'},access_token:accessToken,expires_at:scenario==='expired'?1:Math.floor(Date.now()/1000)+60});
+ setup.values.auth.peekAccessToken=port.peek;
+ const client=createMobileApiClient(setup.values),cache=confirmedReads(client);
+ const entry=cache.get('nutrition-day','day', (signal,background)=>client.read({path:'/api/mobile/v1/nutrition/days/2026-10-01',signal,background,parse:raw=>raw}));
+ const tick=async()=>{for(let i=0;i<30;i++)await Promise.resolve();};
+ cache.prefetch([entry]);await tick();
+ expect(setup.getAccessToken).not.toHaveBeenCalled();expect(setup.revalidateAfterUnauthorized).not.toHaveBeenCalled();
+ if(scenario==='adopted-401') {
+   const opened=cache.ensure(entry,'initial');await tick();expect(fetcher).toHaveBeenCalledTimes(1);
+   finish(response(401,{}));await opened;await tick();expect(entry.resource.getSnapshot().status).toBe('unauthorized');
+   expect(setup.getAccessToken).not.toHaveBeenCalled();expect(setup.revalidateAfterUnauthorized).not.toHaveBeenCalled();
+ }
+ await cache.ensure(entry,'initial');await tick();
+ expect(entry.resource.getSnapshot()).toMatchObject({status:'ready',current:{data:{value:'available'}}});
+ expect(setup.getAccessToken).toHaveBeenCalledTimes(1);expect(setup.revalidateAfterUnauthorized).not.toHaveBeenCalled();
+ expect(fetcher).toHaveBeenCalledTimes(scenario==='expired'?1:2);clearConfirmedReads(client);
 });

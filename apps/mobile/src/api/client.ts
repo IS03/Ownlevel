@@ -23,8 +23,21 @@ import {
 
 type RuntimeParser<T> = (value: unknown) => T | undefined;
 
+/** Passive token view, retired on owner change; never calls Supabase or changes auth state. */
+export function createPassiveTokenPort(owner: string | null) {
+  type Known = { user: { id: string }; access_token: string; expires_at?: number } | null;
+  let known: Known = null;
+  return {
+    update: (session: Known) => { known = session?.user.id === owner ? session : null; },
+    peek: (): MobileApiAccessTokenResult => known?.access_token && known.expires_at && known.expires_at * 1000 > Date.now()
+      ? { status: 'ok', accessToken: known.access_token } : { status: 'unavailable', session: null },
+  };
+}
+
 export type MobileApiAuthPort = {
   getAccessToken: () => Promise<MobileApiAccessTokenResult>;
+  /** Snapshot only: no refresh, notification or session transition for speculative reads. */
+  peekAccessToken?: () => MobileApiAccessTokenResult;
   revalidateAfterUnauthorized: (
     rejectedAccessToken: string,
   ) => Promise<MobileApiSessionRevalidationResult>;
@@ -49,7 +62,7 @@ export type MobileApiRequestOptions<T> = {
 
 export type MobileApiClient = {
   read: <T>(
-    options: Omit<MobileApiRequestOptions<T>, 'method'> & { method?: 'GET' },
+    options: Omit<MobileApiRequestOptions<T>, 'method'> & { method?: 'GET'; background?: boolean },
   ) => Promise<MobileApiReadResult<T>>;
   request: <T>(
     options: MobileApiRequestOptions<T>,
@@ -394,6 +407,7 @@ export function createMobileApiClient({
 
   async function request<T>(
     options: MobileApiRequestOptions<T>,
+    background = false,
   ): Promise<MobileApiRequestResult<T>> {
     const startedAt = now();
     if (callerAborted(options.signal)) {
@@ -404,7 +418,7 @@ export function createMobileApiClient({
 
     let tokenResult: MobileApiAccessTokenResult;
     try {
-      tokenResult = await auth.getAccessToken();
+      tokenResult = background ? auth.peekAccessToken?.() ?? { status: 'unavailable', session: null } : await auth.getAccessToken();
     } catch {
       const result = unavailable('auth', now() - startedAt, null);
       record(options, result);
@@ -426,7 +440,7 @@ export function createMobileApiClient({
     }
 
     const firstResult = await attempt(options, tokenResult.accessToken);
-    if (firstResult.status !== 'unauthorized') {
+    if (firstResult.status !== 'unauthorized' || background) {
       return firstResult;
     }
 
@@ -455,9 +469,10 @@ export function createMobileApiClient({
   }
 
   async function read<T>(
-    options: Omit<MobileApiRequestOptions<T>, 'method'> & { method?: 'GET' },
+    options: Omit<MobileApiRequestOptions<T>, 'method'> & { method?: 'GET'; background?: boolean },
   ): Promise<MobileApiReadResult<T>> {
-    const result = await request({ ...options, method: 'GET' });
+    const { background, ...requestOptions } = options;
+    const result = await request({ ...requestOptions, method: 'GET' }, background);
     if (
       result.status === 'validation' ||
       result.status === 'not_found' ||

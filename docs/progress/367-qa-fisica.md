@@ -200,3 +200,12 @@ Sin build, despliegue ni QA física acreditados. Reglas y checkpoints en [ejecuc
 - [ ] Conteos completos/parciales separados; energía/fatiga ordinales con exclusiones; alimentación con cero/faltante/parcial y días registrados; peso corporal diario y mediana solo en semanas elegibles. No confundir el peso con cargas de ejercicios.
 - [ ] Semana → día histórico → sesión/ejercicio/evidencia y contexto temporal → Nutrición/Cuerpo/métrica → regreso al mismo día/semana. Probar diciembre/enero, varias sesiones y ausencia de entrenamiento. Mantener disponibles los detalles de #421.
 - [ ] Modificar una fuente y volver: reemplazo completo de lectura y aviso de revisión; sin red, última lectura identificada o indisponibilidad con reintento. Cambio de cuenta aislado. Claro/oscuro, texto grande, VoiceOver y ancho compacto sin recortar cifras o acciones.
+
+
+## Precarga útil de Nutrición — pendiente
+
+- [ ] Token pasivo vencido, 401 antes de navegar y 401 después de adoptar la petición: sin cierre de sesión provocado por precarga; abrir/reintentar recupera por la vía interactiva y no muestra falso vacío.
+
+- [ ] Inicio → Nutrición → ayer, dejando completar Inicio y también navegando durante la precarga: mostrar la fecha correcta sin carga innecesaria cuando existe lectura; conservar «Lectura de…» / «Actualizando…». Las lecturas de Inicio tienen prioridad y el detalle no se confunde con el resumen.
+- [ ] Fechas rápidas hacia atrás/adelante: solo vecinas, sin fechas futuras ni recorrido automático del calendario. Cambiar comidas/métricas, mover o borrar una comida y reabrir un día precargado: invalidación/relectura correctas, sin modificar borrador/pendiente ni aceptar una respuesta atrasada.
+- [ ] Sin red o token vencido durante precarga: Inicio sin aviso invasivo ni cierre de sesión; al abrir, lectura anterior identificada o indisponibilidad/reintento, nunca falso vacío. Cambiar cuenta/logout: sin datos anteriores. Claro/oscuro, texto grande, VoiceOver y navegación fluida. No aprobado por tests.
