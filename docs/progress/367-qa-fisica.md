@@ -36,6 +36,7 @@ Lo marcado con *requiere migración* solo se puede revisar después de aplicar l
 - [ ] **Valores largos:** unidades y series largas, sin saltos de altura. Cuerpo y Explorar siguen igual.
 
 ## Sensaciones y finish (#383)
+- [ ] **#449 — Captura compacta:** en la sesión, «Al empezar» plegado con «Responder»; guardar una vez y queda el resumen con «Editar»; volver a la sesión o reabrir no lo pide de nuevo. Un borrador, una respuesta perdida o un conflicto mantienen la sección abierta con su recuperación. «Al terminar» nunca trae la previa; un borrador previo se avisa como «de al empezar». Rendimiento percibido, dolor y nota en «Más detalles». Con 0 series solo explicación, Volver y Descartar. Sin botones «Quitar»: tocar de nuevo deja sin responder (VoiceOver lo anuncia). Texto grande, claro/oscuro, Reducir movimiento. Preparado, sin QA aprobada.
 - [ ] **Captura:** pre compacto y omitible; post dentro del formulario final. Responder, quitar y omitir. Sin valores por defecto.
 - [ ] **Recuperación:** reiniciar y quedarse sin conexión con respuestas pendientes. Corte al finalizar: mismas respuestas y misma operación.
 - [ ] **Conflicto:** editar en otro dispositivo y elegir qué conservar. Nada se sobrescribe solo.
