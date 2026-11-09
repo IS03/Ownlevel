@@ -3,14 +3,21 @@ import { validPeriodAnchor } from '@/api/performance-insights';
 import { PROGRESS_MAX_DAYS, addDays, calendarRange, daysBetween } from '@/progress/progress-range';
 
 /** What Insights was showing. Every value is checked on the way back: a route parameter is never trusted as an address. */
-export type InsightsOrigin = { view?: 'exercises'; family?: string; relations?: '1'; date?: string; session?: string; fromSession?: '1'; relation?: string; summary?: '1'; period?: 'feelings' | 'nutrition'; asOf?: string; revision?: string; temporal?: '1'; explore?: '1'; week?: string; before?: string };
+export type InsightsOrigin = { view?: 'exercises'; family?: string; relations?: '1'; date?: string; session?: string; fromSession?: '1'; relation?: string; summary?: '1'; period?: 'feelings' | 'nutrition'; asOf?: string; revision?: string; temporal?: '1'; explore?: '1'; week?: string; before?: string; coincidence?: 'protein'|'timing'|'body'; coincidenceGroup?: string };
 const FAMILIES = ['metric', 'nutrition', 'meal_window', 'feeling'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RELATION = /^[a-zA-Z0-9_:-]{1,120}$/;
 type Params = Record<string, unknown>;
+export function coincidenceSelection(raw: Params): Pick<InsightsOrigin,'coincidence'|'coincidenceGroup'> {
+  const kind=raw.coincidence;
+  if(kind!=='protein'&&kind!=='timing'&&kind!=='body')return {};
+  const groups=kind==='timing'?['morning','midday','afternoon','night','excluded']:['lower','upper','excluded'];
+  return {coincidence:kind,...(typeof raw.coincidenceGroup==='string'&&groups.includes(raw.coincidenceGroup)?{coincidenceGroup:raw.coincidenceGroup}:{})};
+}
 
 export const validSession = (value: unknown): value is string => typeof value === 'string' && UUID.test(value);
 const clean = (raw: Params): InsightsOrigin => ({
+  ...coincidenceSelection(raw),
   ...(raw.view === 'exercises' ? { view: 'exercises' as const } : {}),
   ...(typeof raw.family === 'string' && FAMILIES.includes(raw.family) ? { family: raw.family } : {}),
   ...(raw.relations === '1' ? { relations: '1' as const } : {}),
@@ -47,7 +54,7 @@ export function metricTrendHref(metric: string, date: string | null, origin: Ins
 /** The Nutrition day of that date. Crossing tabs loses the way back, so the origin travels along, as with a metric. */
 export const nutritionDayHref = (date: string, origin: InsightsOrigin) => ({ pathname: '/(tabs)/nutrition' as const, params: { date, insightsReturn: '1', ...hrefParams(origin) } });
 export const periodSummaryHref = (asOf?: string) => ({ pathname: '/(tabs)/train/insights/period' as const, params: asOf ? { asOf } : {} });
-export const explorationHref = (asOf: string,week?:string,revision?:string) => ({pathname:'/(tabs)/train/insights/weeks' as const,params:{asOf,...(week?{week}:{}),...(revision?{revision}:{})}});
+export const explorationHref = (asOf: string,week?:string,revision?:string,selection:Pick<InsightsOrigin,'coincidence'|'coincidenceGroup'>={}) => ({pathname:'/(tabs)/train/insights/weeks' as const,params:{asOf,...(week?{week}:{}),...(revision?{revision}:{}),...coincidenceSelection(selection)}});
 export const periodDetailHref = (kind: 'feelings' | 'nutrition', asOf: string, revision?: string) => ({
   pathname: kind === 'feelings' ? '/(tabs)/train/insights/period-feelings' as const : '/(tabs)/train/insights/period-nutrition' as const,
   params: { asOf, ...(revision ? { revision } : {}) },
@@ -76,10 +83,11 @@ export function insightsEvidenceHref(selection: { session: string; exercise: str
 export function insightsReturnHref(params: Params) {
   if (params.insightsReturn !== '1') return null;
   const origin = clean({ view: params.insightsView, family: params.insightsFamily, relations: params.insightsRelations, date: params.insightsDate, session: params.insightsSession, fromSession: params.insightsFromSession, relation: params.insightsRelation, summary: params.insightsSummary,
-    period: params.insightsPeriod, asOf: params.insightsAsOf, revision: params.insightsRevision, temporal: params.insightsTemporal,explore:params.insightsExplore,week:params.insightsWeek,before:params.insightsBefore });
+    period: params.insightsPeriod, asOf: params.insightsAsOf, revision: params.insightsRevision, temporal: params.insightsTemporal,explore:params.insightsExplore,week:params.insightsWeek,before:params.insightsBefore,coincidence:params.insightsCoincidence,coincidenceGroup:params.insightsCoincidenceGroup });
+  if(params.insightsCoincidence!==undefined&&!origin.coincidence||params.insightsCoincidenceGroup!==undefined&&!origin.coincidenceGroup)return null;
   if (params.insightsTemporal !== undefined) { const {temporal:_temporal,...route}=origin;return origin.temporal&&origin.date?{pathname:'/(tabs)/train/insights/temporal' as const,params:route}:null; }
   if(params.insightsExplore!==undefined&&!origin.explore)return null;
-  if(origin.explore&&origin.asOf&&origin.week&&!origin.date)return explorationHref(origin.asOf,origin.week,origin.revision);
+  if(origin.explore&&origin.asOf&&origin.week&&!origin.date)return explorationHref(origin.asOf,origin.week,origin.revision,origin);
   if (params.insightsPeriod !== undefined && !origin.period) return null;
   if (origin.period && origin.asOf) return periodDetailHref(origin.period, origin.asOf, origin.revision);
   if (origin.relation) return { pathname: '/(tabs)/train/insights/[relation]' as const, params: { relation: origin.relation } };

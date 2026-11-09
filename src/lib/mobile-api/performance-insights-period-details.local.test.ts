@@ -214,6 +214,13 @@ describe.runIf(!!db && !!base && !!task)('#421 exact period readers on disposabl
     const food=body.weeks.flatMap((w:{days:{date:string,nutrition:{calories:{recorded:number}}}[]})=>w.days).find((d:{date:string})=>d.date==='2026-09-15');
     const total=Number(sql(`select sum(final_calories) from public.meal_entries m join public.day_logs l on l.id=m.day_log_id where m.user_id='${OWNER}' and m.deleted_at is null and l.log_date='2026-09-15'`));expect(food.nutrition.calories.recorded).toBe(total);
     expect(who.traces.filter(t=>t.table==='meal_entries')).toHaveLength(2);expect(who.traces.filter(t=>t.table==='insights_source_revisions')).toHaveLength(2);
-    console.log(JSON.stringify({view:'period-explore',queries:who.traces.length,days:days.length,bytes:Buffer.byteLength(JSON.stringify(body))}));
+    expect(body.coincidences.claim).toBe('descriptive_only');
+    expect(body.coincidences.weekRows.find((w:{start:string})=>w.start==='2026-08-03').median).toBe(median);
+    expect(who.traces).toHaveLength(14); // Existing grouped reader, including both revision checks and meal pages.
+    const legacy={...body};delete legacy.coincidences;
+    console.log(JSON.stringify({view:'period-explore',queries:who.traces.length,days:days.length,bytesBefore:Buffer.byteLength(JSON.stringify(legacy)),bytesAfter:Buffer.byteLength(JSON.stringify(body)),addedQueries:0}));
+    mock.auth.mockResolvedValue(clientFor(OTHER).context(OWNER));
+    const other=await route('period-explore'),otherBody=await other.json();
+    expect(otherBody.coincidences.sessionRows).toEqual([]);expect(otherBody.coincidences.protein.total).toBe(0);
   },120_000);
 });

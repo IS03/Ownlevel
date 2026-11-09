@@ -272,6 +272,41 @@ export function parsePerformanceInsights(raw: unknown): InsightsResponse | undef
 }
 
 const instantValue = (v: unknown) => typeof v === 'string' && /(?:Z|[+-]\d{2}:\d{2})$/.test(v) && Number.isFinite(Date.parse(v));
+function coincidences(v: unknown, period: Json): boolean {
+  if(!object(v)||v.methodVersion!=='insights-coincidences/1'||v.claim!=='descriptive_only'||!Array.isArray(v.sessionRows)||!Array.isArray(v.weekRows))return false;
+  const inside=(d:unknown)=>validPeriodAnchor(d)&&d>=String(period.start)&&d<=String(period.end);
+  const post=(p:unknown)=>object(p)&&['recorded','before_end','late','unknown_time','not_recorded','unreadable','other_instrument'].includes(String(p.state))&&(p.state==='recorded'?Number.isInteger(p.value)&&Number(p.value)>=1&&Number(p.value)<=5:p.value===null);
+  if(!v.sessionRows.every(r=>object(r)&&uuid(r.id)&&inside(r.date)&&typeof r.name==='string'&&stringOrNull(r.routineId)&&stringOrNull(r.routineName)&&stringOrNull(r.startedAt)&&counts(r.strict)&&(r.partial===null||partialCounts(r.partial))
+    &&object(r.protein)&&['recorded','no_registered_meal','partial_macro','untimed_meal_in_scope','unverified_meal_time_in_scope','no_start_time','invalid','unavailable'].includes(String(r.protein.state))&&(r.protein.state==='recorded'?finite(r.protein.value)&&r.protein.value>=0:r.protein.value===null)
+    &&(r.band===null||['morning','midday','afternoon','night'].includes(String(r.band)))&&object(r.post)&&post(r.post.energy)&&post(r.post.fatigue)))return false;
+  const ids=new Set(v.sessionRows.map(r=>(r as Json).id));if(ids.size!==v.sessionRows.length)return false;
+  const status=(s:unknown)=>s==='described'||s==='insufficient';
+  const references=(g:Json)=>Array.isArray(g.ids)&&new Set(g.ids).size===g.ids.length&&g.ids.every(id=>ids.has(id))&&g.sessions===g.ids.length;
+  const routines=(g:Json)=>Array.isArray(g.routines)&&g.routines.every(r=>object(r)&&stringOrNull(r.id)&&stringOrNull(r.name)&&count(r.sessions))&&g.routines.reduce((s,r)=>s+Number((r as Json).sessions),0)===g.sessions;
+  const total=(c:unknown,keys:string[])=>object(c)&&keys.every(k=>count(c[k]))&&Number(c.comparable)<=Number(c.total);
+  if(!object(v.protein)||!numberOrNull(v.protein.cut)||!status(v.protein.status)||typeof v.protein.strictReady!=='boolean'||typeof v.protein.partialReady!=='boolean'||v.protein.total!==ids.size||!count(v.protein.eligible)||!tally(v.protein.exclusions)
+    ||!Array.isArray(v.protein.groups)||v.protein.groups.length!==2||!v.protein.groups.every((g,i)=>object(g)&&g.key===(i?'upper':'lower')&&references(g)&&routines(g)&&count(g.strictSessions)&&count(g.partialSessions)&&Number(g.strictSessions)<=Number(g.sessions)&&Number(g.partialSessions)<=Number(g.sessions)
+      &&total(g.strict,['improved','observedStable','declined','ambiguous','insufficient','total','comparable'])&&total(g.partial,['higher','same','lower','ambiguous','insufficient','total','comparable'])))return false;
+  const pg=v.protein.groups as Json[];
+  const uniquePartition=(groups:Json[],key:string)=>{const refs=groups.flatMap(g=>g[key] as unknown[]);return new Set(refs).size===refs.length;};
+  if(!uniquePartition(pg,'ids'))return false;
+  if(pg.reduce((n,g)=>n+Number(g.sessions),0)!==v.protein.eligible||Number(v.protein.eligible)+Object.values(v.protein.exclusions as Json).reduce<number>((n,c)=>n+Number(c),0)!==ids.size)return false;
+  const ordinal=(o:unknown,n:unknown)=>object(o)&&Array.isArray(o.posts)&&o.posts.length===5&&o.posts.every(count)&&o.total===n&&count(o.eligible)&&tally(o.exclusions)&&o.posts.reduce((s,x)=>s+Number(x),0)===o.eligible
+    &&Number(o.eligible)+Object.values(o.exclusions as Json).reduce<number>((s,x)=>s+Number(x),0)===n;
+  if(!object(v.timing)||v.timing.total!==ids.size||!count(v.timing.unknownStart)||typeof v.timing.energyReady!=='boolean'||typeof v.timing.fatigueReady!=='boolean'||!Array.isArray(v.timing.groups)||v.timing.groups.length!==4
+    ||!v.timing.groups.every((g,i)=>object(g)&&g.key===['morning','midday','afternoon','night'][i]&&references(g)&&routines(g)&&ordinal(g.energy,g.sessions)&&ordinal(g.fatigue,g.sessions)))return false;
+  if((v.timing.groups as Json[]).reduce((n,g)=>n+Number(g.sessions),0)+Number(v.timing.unknownStart)!==ids.size)return false;
+  if(!uniquePartition(v.timing.groups as Json[],'ids'))return false;
+  if(!v.weekRows.every(w=>object(w)&&inside(w.start)&&inside(w.end)&&String(w.start)<=String(w.end)&&typeof w.wholeWeek==='boolean'&&numberOrNull(w.proteinPerRecordedDay)&&count(w.completeDays)&&count(w.partialDays)&&count(w.unknownDays)
+    &&numberOrNull(w.median)&&Array.isArray(w.weighIns)&&w.weighIns.every(weighIn)&&numberOrNull(w.change)&&['computed','week_insufficient','previous_week_insufficient','no_previous_week'].includes(String(w.changeReason))&&(w.changeReason==='computed'?w.change!==null:w.change===null)
+    &&(w.previousStart===null||validPeriodAnchor(w.previousStart))&&Array.isArray(w.days)&&w.days.length>=1&&w.days.length<=7&&Number(w.completeDays)+Number(w.partialDays)+Number(w.unknownDays)===w.days.length
+    &&w.days.every(d=>object(d)&&inside(d.date)&&count(d.records)&&(d.protein===null||recorded(d.protein)))))return false;
+  const starts=new Set(v.weekRows.map(w=>(w as Json).start));if(starts.size!==v.weekRows.length)return false;
+  if(!object(v.body)||!numberOrNull(v.body.cut)||!status(v.body.status)||v.body.total!==starts.size||!count(v.body.excludedNutrition)||!Array.isArray(v.body.groups)||v.body.groups.length!==2
+    ||!v.body.groups.every((g,i)=>object(g)&&g.key===(i?'upper':'lower')&&Array.isArray(g.starts)&&new Set(g.starts).size===g.starts.length&&g.starts.every(s=>starts.has(s))&&g.weeks===g.starts.length
+      &&['eligible','increased','same','decreased','completeDays','partialDays','unknownDays'].every(k=>count(g[k]))&&Number(g.eligible)<=Number(g.weeks)&&Number(g.increased)+Number(g.same)+Number(g.decreased)===g.eligible))return false;
+  return uniquePartition(v.body.groups as Json[],'starts')&&(v.body.groups as Json[]).reduce((n,g)=>n+Number(g.weeks),0)+Number(v.body.excludedNutrition)===starts.size;
+}
 function parseExploration(raw: Json) {
   if(!pinnedFrame(raw)||raw.explorationMethodVersion!=='insights-week-explore/1'||raw.associations!=='not_computed'||!Array.isArray(raw.weeks)||!Array.isArray(raw.metrics))return undefined;
   if(!raw.metrics.every(m=>object(m)&&uuid(m.id)&&typeof m.name==='string'&&stringOrNull(m.unit)&&typeof m.valueType==='string'&&typeof m.archived==='boolean'))return undefined;
@@ -291,6 +326,7 @@ function parseExploration(raw: Json) {
     const full=w.days.length===7&&new Date(`${w.start}T12:00:00Z`).getUTCDay()===1;
     if(w.wholeWeek!==full||!full&&w.weight!==null)return undefined;
   }
+  if(raw.coincidences!==undefined&&!coincidences(raw.coincidences,raw.period as Json))return undefined;
   return total===(raw.period as Json).days?raw as unknown as PeriodExploration:undefined;
 }
 function refs(v: unknown): boolean {

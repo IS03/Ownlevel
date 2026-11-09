@@ -4,6 +4,7 @@ import { buildExposureContext, weightOfDay } from './exposures';
 import { describeFeelingOutcome, FEELING_OUTCOME_KINDS } from './feeling-outcomes';
 import { periodDetailFrame } from './period-details';
 import type { InsightsSource, InsightsEngineMethod } from './types';
+import { descriptiveCoincidences } from './descriptive-coincidences';
 
 const shift = (date: string, n: number) => new Date(Date.parse(`${date}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0,10);
 /** One bounded period projection. No hypothesis search: comparator facts, ordinal descriptions and body-weekly/1 only. */
@@ -28,6 +29,7 @@ export function periodExploration(source: InsightsSource, weights: readonly Weig
       weight:body.weeks.find(w=>w.start===weekStart)??null,weightChange:body.changes.find(w=>w.weekStart===weekStart)??null});
   }
   return {...frame,integrity:snapshot.integrity,view:'period-explore' as const,explorationMethodVersion:'insights-week-explore/1' as const,
-    metrics:snapshot.metrics,weeks,associations:'not_computed' as const};
+    metrics:snapshot.metrics,weeks,associations:'not_computed' as const,
+    ...(method===2?{coincidences:descriptiveCoincidences(source,snapshot,weeks,frame.period)}:{})};
 }
 export type PeriodExploration = ReturnType<typeof periodExploration>;

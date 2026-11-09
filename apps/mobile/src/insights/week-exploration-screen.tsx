@@ -12,7 +12,8 @@ import { postsText } from './feelings-model';
 import { FactRow } from './insights-screen';
 import { InsightRow } from './insight-row';
 import { exactPeriodRange,exactPeriodDate } from './period-model';
-import { bodyWeightHref,metricTrendHref,nutritionDayHref,periodSummaryHref } from './navigation';
+import { bodyWeightHref,metricTrendHref,nutritionDayHref,periodSummaryHref,coincidenceSelection } from './navigation';
+import { Coincidences } from './coincidences';
 import { nextDate } from './insights-model';
 import { usePeriodReturn } from './use-period-return';
 
@@ -23,7 +24,8 @@ export function WeekExplorationScreen() {
   const {state,data,refresh}=useProgressResource(asOf?client:null,`performance-insights|period-explore|${asOf}`,load);usePeriodReturn(refresh);
   const requested=typeof params.week==='string'?params.week:undefined;
   const index=data?(requested?data.weeks.findIndex(w=>w.start===requested):data.weeks.length-1):-1,week=data?.weeks[index];
-  const origin={explore:'1' as const,asOf:asOf!,week:week?.start,revision:data?.sourceRevision};
+  const selection=coincidenceSelection(params);
+  const origin={explore:'1' as const,asOf:asOf!,week:week?.start,revision:data?.sourceRevision,...selection};
   const days=week?.days??[],trained=days.filter(d=>d.training?.sessions),sessionCount=trained.reduce((n,d)=>n+d.training!.sessions,0);
   const c=(lane:'training'|'partial',key:string)=>days.reduce((n,d)=>n+Number((d[lane]?.counts as unknown as Record<string,number>|undefined)?.[key]??0),0);
   return <ScrollView contentInsetAdjustmentBehavior="automatic" style={{backgroundColor:colors.background}} contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={state.status==='ready'&&state.refreshing} onRefresh={()=>void refresh()}/>}>
@@ -31,6 +33,7 @@ export function WeekExplorationScreen() {
       {state.status!=='ready'?<InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura completa." actionLabel="Reintentar" onAction={()=>void refresh()}/>:null}
       <Heading level={2}>Semanas y días</Heading><AppText numeric>{exactPeriodRange(data.period)}</AppText>
       {typeof params.revision==='string'&&params.revision!==data.sourceRevision?<AppText testID="week-revised">Los registros cambiaron desde el origen. Esta lectura completa está actualizada.</AppText>:null}
+      <Coincidences data={data.coincidences} origin={origin} selection={selection} onSelect={value=>router.setParams({coincidence:value.coincidence,coincidenceGroup:value.coincidenceGroup})}/>
       <View style={styles.controls}><Button label="Semana anterior" disabled={index===0} onPress={()=>router.setParams({week:data.weeks[index-1]!.start})}/><Button label="Semana siguiente" disabled={index===data.weeks.length-1} onPress={()=>router.setParams({week:data.weeks[index+1]!.start})}/></View>
       <Heading level={2}>{exactPeriodRange(week)}</Heading>{!week.wholeWeek?<AppText muted>Semana recortada por los límites del período.</AppText>:null}
       <FactRow label="Entrenamiento" value={`${sessionCount} sesiones · ${trained.length} de ${days.length} días`}/>
