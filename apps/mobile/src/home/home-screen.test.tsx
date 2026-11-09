@@ -32,7 +32,12 @@ let mockStarterOnSession: ((id: string) => void) | null = null;
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ navigate: mockNavigate, push: mockPush }),
-  useFocusEffect: (effect: () => void) => { mockFocusEffects.push(effect); },
+  useFocusEffect: (effect: () => void) => {
+    jest.requireActual<typeof import('react')>('react').useEffect(() => {
+      mockFocusEffects.push(effect);
+      return () => { const i = mockFocusEffects.indexOf(effect); if (i >= 0) mockFocusEffects.splice(i, 1); };
+    }, [effect]);
+  },
 }));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('@expo/ui', () => {
@@ -65,7 +70,7 @@ jest.mock('@/api', () => ({
   useMobileApi: () => ({ client: mockApiClient }),
 }));
 jest.mock('@/api/history', () => ({ fetchHistoryDay: (c: unknown, d: string) => mockFetchDay(c, d) }));
-jest.mock('@/api/nutrition-report', () => ({ fetchNutritionReport: (c: unknown, q: unknown) => mockFetchReport(c, q) }));
+jest.mock('@/api/nutrition-report', () => ({ ...jest.requireActual<typeof import('@/api/nutrition-report')>('@/api/nutrition-report'), fetchNutritionReport: (c: unknown, q: unknown) => mockFetchReport(c, q) }));
 jest.mock('@/api/training-history', () => ({
   fetchTrainingDay: (client: unknown, date: string) => mockFetchTrainingDay(client, date),
   // The single weekday read, served from the same per-day fixtures: same data, one request.
@@ -137,7 +142,7 @@ const settle = () => act(async () => { for (let i = 0; i < 6; i++) await Promise
 const afterSheet = () => act(() => new Promise<void>(resolve => { setTimeout(resolve, 400); }));
 let blurHome: (() => void) | void;
 let appStateListeners: ((state: string) => void)[] = [];
-const focus = async () => { act(() => { blurHome = (mockFocusEffects.at(-1)! as () => (() => void) | void)(); }); await settle(); };
+const focus = async () => { act(() => { const cleanups = mockFocusEffects.slice().map(effect => (effect as () => (() => void) | void)()); blurHome = () => cleanups.forEach(cleanup => cleanup?.()); }); await settle(); };
 const blur = () => { blurHome?.(); blurHome = undefined; };
 /** The app goes to the background and comes back (lock/unlock, app switcher). */
 const foreground = async () => {
@@ -150,6 +155,7 @@ const allFetchers = () => [mockFetchHome, mockFetchDay, mockFetchReport, mockFet
 
 describe('Home screen', () => {
   beforeEach(() => {
+    clearConfirmedReads(mockApiClient as never);
     clock = SATURDAY_NIGHT.getTime();
     mockFocusEffects.length = 0;
     appStateListeners = [];

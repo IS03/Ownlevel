@@ -34,7 +34,7 @@ Se reutiliza `ApiResourceController`, incluyendo la última respuesta confirmada
 - Un cliente nuevo al cambiar cuenta/cerrar sesión; se retira el caché anterior y se reinicia el árbol dependiente de esa cuenta, incluidos lectores locales no compartidos. Renovar el token de la misma cuenta conserva cliente, árbol y controlador de entrenamiento. También quedan aisladas por cuenta las cachés existentes que ya usan `WeakMap<MobileApiClient, …>`.
 - Retorno por foco dentro de 30 s: muestra la lectura confirmada sin otro GET. Al vencer la ventana, la lectura sigue visible y se revalida. No se renueva `confirmedAt` por reutilizarla.
 - Foreground de una pantalla enfocada y refresh manual: consulta remota incluso dentro de la ventana. Las pantallas ocultas adoptadas no disparan GET al volver del background.
-- Dos consumidores de una misma clave comparten el controlador y su petición en curso. Una revalidación ya solicitada puede terminar después de salir para aprovecharla al volver; una primera carga que nadie espera (cambios rápidos de fecha o período) se cancela. No se precargan pantallas no visitadas.
+- Dos consumidores de una misma clave comparten el controlador y su petición en curso. Una revalidación ya solicitada puede terminar después de salir para aprovecharla al volver; una primera carga que nadie espera (cambios rápidos de fecha o período) se cancela. La precarga acotada de Nutrición autorizada después se describe al final; las demás pantallas no se precargan por esta regla.
 - La interfaz muestra «Lectura de las …» o «Actualizando · lectura de las …» con `AppText` de marca y cifras tabulares. Los errores conservan sus avisos existentes. Identidad: [fuente canónica](../brand/ownlevel-marca/IDENTIDAD.md).
 - Una denegación explícita de autorización retira la respuesta protegida anterior. Una falla transitoria mantiene la información conocida, diferenciada de una lectura fresca o un vacío real.
 
@@ -139,3 +139,31 @@ Pendientes documentados (sin evidencia o marginales):
 - Invalidación más fina por fecha o campo, si releer de más resulta costoso.
 - La revalidación fallida con datos visibles se indica en Nutrición y en Progreso (por la hora de lectura), pero no en todas las pantallas. Unificarlo es trabajo visual de otros issues.
 - QA físico integral pendiente (ver «QA físico»).
+
+
+## Precarga útil de Nutrición — continuidad del 9 de noviembre de 2026
+
+Inicio reutiliza el recurso `nutrition-report` para su reporte semanal: la misma cuenta/rango/día de Córdoba que Nutrición. Este reporte **no es el detalle completo del día** y no siembra una respuesta `nutrition-day`. Tras asentar sus siete lecturas prioritarias y estando enfocado, Inicio solicita el detalle completo de hoy y ayer; no espera esas respuestas para mostrar ni usar Inicio. No pide Insights.
+
+Se amplió **ConfirmedReadCache**, sin segundo almacén/controlador: cola con una sola precarga activa para días y el prefetch de calendario existente. Una lectura explícita pendiente tiene prioridad; si corresponde a la precarga se suma al mismo controlador/petición. Si corresponde a otra fecha, aborta la precarga y la respuesta tardía no publica. Al salir se retira la cola de ese origen; el cambio de foco deja un turno para que el nuevo consumidor adopte la petición en vuelo. Un detalle cargado por precarga no ejecuta efectos de pantalla y no produce una cadena de fechas.
+
+Dentro del día enfocado, después de cargarlo, se preparan el anterior y el siguiente si no es futuro, y luego el calendario usando el mismo planificador. Fechas válidas, como máximo dos vecinas por origen; sin polling ni reintento automático de un error de precarga. El límite retenido continúa en 40 entradas no montadas, con LRU existente; también se retiran de la cola las entradas expulsadas. Las claves usan cliente de la cuenta + día de Córdoba + fecha/rango real. La ventana existente de 30 s solo decide reutilización: **no garantiza consistencia**. Invalidaciones conservadoras de comidas/métricas/cuerpo/entrenamiento se mantienen y eliminan trabajo pendiente del origen anterior; la recuperación posterior al write sigue en `reload`, nunca en la precarga.
+
+La vista pasiva de token solo usa la sesión conocida y vigente, se retira con la cuenta y no invoca Supabase, refresh ni revalidación de un 401. Error/auth en precarga no cambia la sesión ni el estado de Inicio. Al abrir/reintentar se conserva el flujo interactivo habitual. Una denegación retira datos protegidos según la política existente. Los formularios, borradores, intentos persistidos, recibos, CAS y escrituras no se modifican. Nutrición muestra la hora de lectura/actualización mediante el componente ya existente, junto al aviso de error y la recuperación habituales.
+
+### Medición comparable, exclusivamente con fixture local
+
+Jest con reloj controlado, mismas siete respuestas de Inicio a 1.000 ms y detalle completo del día a 3.000 ms. Comparación con la precarga desactivada/activada; se abre hoy a 7.000 ms y ayer a 10.000 ms, dentro de la ventana de reutilización. Aísla el lector de días; el reporte semanal compartido se comprueba por separado.
+
+| Observación | Sin precarga | Con precarga |
+| --- | --- | --- |
+| Inicio prioritario, t=0 | 7 lecturas | 7 lecturas |
+| Detalles completos antes de navegar | Ninguno | Hoy a t=1.000; ayer a t=4.000, secuenciales |
+| Tiempo desde abrir hoy hasta estado disponible | 3.000 ms | 0 ms, primer render del hook |
+| Peticiones al tocar ayer | 1 | 0 |
+| Tiempo desde tocar ayer hasta estado disponible | 3.000 ms | 0 ms, primer render del hook |
+| Total Inicio → hoy → ayer en este fixture | 9 | 9 |
+
+La prueba de apertura durante la precarga también comparte la petición. Otra regresión muestra que el reporte semanal de Inicio sirve a Nutrición sin repetirlo. Si el usuario nunca abre esos días, la precarga cuesta hasta dos GET adicionales; si todavía no terminó, se comparte la espera real. No son tiempos de dibujo de iPhone ni latencias de producción; no se publicó una mejora porcentual. Errores no se convierten en vacíos y una falla no se reintenta en bucle.
+
+Pruebas dirigidas: prioridad, concurrencia, adopción al cambiar foco, límite, fechas futuras, no cascada, cambios de día, escritura/invalidación, respuesta atrasada, cuenta/logout, token pasivo, error/reintento, reporte compartido y regresiones de los editores. Los tests de pantalla se adaptaron para responder por fecha y separar lecturas especulativas: una cola `mockResolvedValueOnce` no puede destinar al ayer precargado el error que pretendía simular al refrescar hoy. Se corrigieron además el mock de múltiples focos, un cierre de efecto y retornos/tipos de fixtures; los fallos quedaron conservados. QA física pendiente en la [checklist única](../progress/367-qa-fisica.md).

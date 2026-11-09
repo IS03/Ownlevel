@@ -21,6 +21,7 @@ describe('Settled nutrition writes invalidate shared report readings', () => {
   it('an old prefetch cannot answer a screen after a settled write', async () => {
     const { read, client, resolve } = pending();
     prefetchNutritionReport(client, { period: '7' });
+    await act(async () => {}); // The shared low-priority queue starts after foreground reads in this turn.
     invalidateConfirmedReads(client, '/api/mobile/v1/nutrition/config');
     resolve(ok('2026-10-01'));
     await act(async () => {});

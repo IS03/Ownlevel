@@ -10,7 +10,7 @@ export type {
   NutritionDayContext, NutritionDayBreakdown, NutritionDayFactor, NutritionDaySummary, NutritionNutrientTotal,
 } from '../../../../src/lib/mobile-api/nutrition-day-contract';
 
-export function fetchMobileNutritionDay(client: MobileApiClient, date: string, signal?: AbortSignal) {
+export function fetchMobileNutritionDay(client: MobileApiClient, date: string, signal?: AbortSignal, background = false) {
   return client.read({
     path: `/api/mobile/v1/nutrition/days/${encodeURIComponent(date)}`,
     parse: value => {
@@ -18,5 +18,6 @@ export function fetchMobileNutritionDay(client: MobileApiClient, date: string, s
       return data?.date === date ? data : undefined;
     },
     signal,
+    ...(background ? { background: true } : {}),
   });
 }

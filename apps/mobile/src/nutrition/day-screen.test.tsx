@@ -21,7 +21,9 @@ const mockNavigate = jest.fn();
 let mockParams: Record<string, string> = {};
 const mockRead = jest.fn<MobileApiClient['read']>();
 const mockRequest = jest.fn<MobileApiClient['request']>();
-let mockClient = { read: mockRead, request: mockRequest };
+const mockBackgroundRead = jest.fn<MobileApiClient['read']>(async options => ({ status: 'ok', data: nutritionFixture(options.path.split('/').at(-1)!), meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } }) as never);
+const screenClient = () => ({ read: ((options: Parameters<MobileApiClient['read']>[0]) => options.background ? mockBackgroundRead(options) : mockRead(options)) as MobileApiClient['read'], request: mockRequest });
+let mockClient = screenClient();
 let mockUser = 'owner';
 let mockToday = '2026-10-02';
 jest.mock('./day-format', () => ({
@@ -68,7 +70,9 @@ describe('Native Nutrition day', () => {
     mockParams = {}; mockNavigate.mockReset();
     clearConfirmedReads(mockClient as unknown as MobileApiClient);
     await AsyncStorage.clear(); mockRequest.mockReset();
-    mockRead.mockReset(); mockUser = 'owner'; mockClient = { read: mockRead, request: mockRequest }; mockToday = '2026-10-02';
+    mockRead.mockReset(); mockBackgroundRead.mockReset();
+    mockBackgroundRead.mockImplementation(async options => ({ status: 'ok', data: nutritionFixture(options.path.split('/').at(-1)!), meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } }) as never);
+    mockUser = 'owner'; mockClient = screenClient(); mockToday = '2026-10-02';
     appStateListeners.length = 0;
     jest.spyOn(AppState, 'addEventListener').mockImplementation((_event, listener) => {
       appStateListeners.push(listener);
@@ -426,15 +430,13 @@ describe('Native Nutrition day', () => {
     mockRead.mockResolvedValueOnce(ok('2026-10-02') as never).mockResolvedValue(failure as never);
     const view = render(element()); await view.findByText('Comida 2026-10-02');
     // A different account always gets a different API client (MobileApiProvider): nothing retained crosses over.
-    mockUser = 'second-user'; mockClient = { read: mockRead, request: mockRequest }; view.rerender(element());
+    mockUser = 'second-user'; mockClient = screenClient(); view.rerender(element());
     await view.findByText('No pudimos cargar este día');
     expect(view.queryByText('Comida 2026-10-02')).toBeNull();
   });
   it('distinguishes missing day, no meals, partial sections and total failure', async () => {
     const missing = nutritionFixture();
     missing.nutrition = { status: 'ok', data: { dayState: 'missing', summary: null, context: null, meals: [] } };
-    mockRead.mockResolvedValueOnce(ok('2026-10-02', missing) as never);
-    const view = render(element()); await view.findByText('Sin día registrado');
     const empty = nutritionFixture('2026-10-01');
     if (empty.nutrition.status === 'ok' && empty.nutrition.data.dayState === 'recorded') {
       empty.nutrition.data.meals = [];
@@ -445,11 +447,12 @@ describe('Native Nutrition day', () => {
       empty.nutrition.data.context.energyBalanceKcal = -2200;
     }
     empty.activity = { status: 'unavailable' };
-    mockRead.mockResolvedValueOnce(ok('2026-10-01', empty) as never);
+    const answer = (options: Parameters<MobileApiClient['read']>[0]) => Promise.resolve((options.path.endsWith('2026-10-02') ? ok('2026-10-02', missing) : options.path.endsWith('2026-10-01') ? ok('2026-10-01', empty) : failure) as never);
+    mockRead.mockImplementation(answer); mockBackgroundRead.mockImplementation(answer);
+    const view = render(element()); await view.findByText('Sin día registrado');
     fireEvent.press(view.getByTestId('nutrition-week-2026-10-01'));
     await view.findByText('Sin comidas registradas');
     expect(view.getByText('Las métricas de esta fecha no están disponibles. Deslizá para reintentar.')).toBeTruthy();
-    mockRead.mockResolvedValueOnce(failure as never);
     fireEvent.press(view.getByTestId('nutrition-week-2026-09-30'));
     await waitFor(() => expect(view.getByText('No pudimos cargar este día')).toBeTruthy());
     expect(view.queryByText('Sin comidas registradas')).toBeNull();

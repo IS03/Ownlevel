@@ -9,11 +9,11 @@ import { nutritionToday } from '@/nutrition/day-format';
 
 /** Opt-in presentation reads only. Operational/CAS reads never pass through this hook. */
 export function useCachedRead<T>(client: MobileApiClient | null, family: ReadFamily, key: string,
-  load: (client: MobileApiClient, signal: AbortSignal) => Promise<MobileApiReadResult<T>>) {
+  load: (client: MobileApiClient, signal: AbortSignal, background?: boolean) => Promise<MobileApiReadResult<T>>) {
   const day = nutritionToday();
   const [, updateDay] = useState(day);
   const cache = client ? confirmedReads(client) : null;
-  const entry = useMemo(() => cache && client ? cache.get(family, scopedReadKey(key, day), signal => load(client, signal)) : null, [cache, client, family, day, key, load]);
+  const entry = useMemo(() => cache && client ? cache.get(family, scopedReadKey(key, day), (signal, background) => load(client, signal, background)) : null, [cache, client, family, day, key, load]);
   const unavailable = useMemo(() => new ApiResourceController<T>(() => Promise.resolve({ status: 'auth_required',
     meta: { durationMs: 0, httpStatus: null, outcome: 'auth_required' } })), []);
   const resource = entry?.resource ?? unavailable;

@@ -7,6 +7,7 @@ import type {
 
 import {
   createMobileApiClient,
+  createPassiveTokenPort,
   type MobileApiAuthPort,
   type MobileApiClientDependencies,
 } from './client';
@@ -66,6 +67,30 @@ function dependencies(overrides: {
 
 afterEach(() => {
   jest.useRealTimers();
+});
+
+it('speculative GETs use only the current token and never renew or invalidate the session on failure', async () => {
+  const setup = dependencies({ fetchImplementation: jest.fn<typeof fetch>().mockResolvedValue(response(401, {})) });
+  setup.values.auth.peekAccessToken = () => ({ status: 'ok', accessToken });
+  const client = createMobileApiClient(setup.values);
+  expect((await client.read({ path: '/api/mobile/v1/nutrition/days/2026-10-01', parse: v => v, background: true })).status).toBe('unauthorized');
+  expect(setup.getAccessToken).not.toHaveBeenCalled(); expect(setup.revalidateAfterUnauthorized).not.toHaveBeenCalled();
+  await client.read({ path: '/api/mobile/v1/nutrition/days/2026-10-01', parse: v => v });
+  expect(setup.getAccessToken).toHaveBeenCalledTimes(1); expect(setup.revalidateAfterUnauthorized).toHaveBeenCalledTimes(1);
+});
+it('skips a speculative GET without a current token rather than starting authentication recovery', async () => {
+  const fetcher = jest.fn<typeof fetch>(), setup = dependencies({ fetchImplementation: fetcher });
+  const client = createMobileApiClient(setup.values);
+  expect((await client.read({ path: '/api/mobile/v1/nutrition/days/2026-10-01', parse: v => v, background: true })).status).toBe('unavailable');
+  expect(fetcher).not.toHaveBeenCalled(); expect(setup.getAccessToken).not.toHaveBeenCalled();
+});
+it('retires passive tokens on logout/account mismatch and skips expired snapshots', () => {
+  jest.useFakeTimers(); jest.setSystemTime(100_000);
+  const port = createPassiveTokenPort('a');
+  port.update({ user: { id: 'a' }, access_token: accessToken, expires_at: 101 }); expect(port.peek().status).toBe('ok');
+  jest.advanceTimersByTime(1000); expect(port.peek().status).toBe('unavailable');
+  port.update({ user: { id: 'b' }, access_token: accessToken, expires_at: 999 }); expect(port.peek().status).toBe('unavailable');
+  port.update(null); expect(port.peek().status).toBe('unavailable');
 });
 
 it.each([false, true])('invalidates retained analytical reads after a settled write (ambiguous=%s), without caching operational reads', async ambiguous => {

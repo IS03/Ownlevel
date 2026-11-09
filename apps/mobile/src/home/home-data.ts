@@ -1,16 +1,18 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useFocusEffect } from 'expo-router';
 
 import { fetchMobileHome, useApiResource } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { settledWrites } from '@/api/confirmed-read-cache';
 import { fetchHistoryDay } from '@/api/history';
-import { fetchNutritionReport } from '@/api/nutrition-report';
+import { useNutritionReportResource } from '@/nutrition/report-resource';
 import { fetchProgressHabitWeek, fetchProgressBody, fetchProgressTrainingRecords } from '@/api/progress';
 import type { MobileApiReadResult } from '@/api/results';
 import { fetchTrainingHistory, type TrainingHistorySession } from '@/api/training-history';
 
 import { homeDay } from './home-day';
+import { prefetchNutritionDays } from '@/nutrition/day-resource';
+import { shiftNutritionDate } from '@/nutrition/day-format';
 
 /**
  * Completed sessions of the current week (Monday → today) plus whether the user ever trained.
@@ -76,17 +78,15 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
   // Home stays mounted as a tab: returning to the foreground refreshes it only when it is the visible screen. Hidden,
   // it catches up on its next focus (interval, new day or a settled write), as when switching tabs.
   const visible = useRef(false);
+  const stopWarming = useRef<(() => void) | null>(null);
+  const warmOnFocus = useRef<() => void>(() => {});
   const foreground = useCallback(() => visible.current, []);
   const home = useApiResource(useCallback((signal: AbortSignal) =>
     client ? fetchMobileHome(client, signal) : Promise.resolve(unavailable), [client]), { refreshOnForeground: foreground });
   const today = useApiResource(useCallback((signal: AbortSignal) =>
     client ? fetchHistoryDay(client, homeDay(now()).today, signal) : Promise.resolve(unavailable), [client, now]), { refreshOnForeground: foreground });
-  const calories = useApiResource(useCallback((signal: AbortSignal) => {
-    const day = homeDay(now());
-    return client
-      ? fetchNutritionReport(client, { period: 'custom', from: day.weekStart, to: day.today }, signal)
-      : Promise.resolve(unavailable);
-  }, [client, now]), { refreshOnForeground: foreground });
+  const reportDay = homeDay(now());
+  const calories = useNutritionReportResource(client, { period: 'custom', from: reportDay.weekStart, to: reportDay.today });
   const habits = useApiResource(useCallback((signal: AbortSignal) =>
     client ? fetchProgressHabitWeek(client, homeDay(now()).weekStart, signal) : Promise.resolve(unavailable), [client, now]), { refreshOnForeground: foreground });
   const training = useApiResource(useCallback((signal: AbortSignal) =>
@@ -124,15 +124,29 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
   }, [client, markRefreshed, refreshAll, reloadAll]);
   useFocusEffect(useCallback(() => {
     visible.current = true;
-    const blur = () => { visible.current = false; };
+    const blur = () => { visible.current = false; stopWarming.current?.(); };
     const day = homeDay(now()).today;
     // The first focus coincides with the initial reads.
-    if (lastFocus.current === null) { markRefreshed(); return blur; }
+    if (lastFocus.current === null) { markRefreshed(); warmOnFocus.current(); return blur; }
     if (shouldRefreshOnFocus(lastFocus.current, now().getTime(), day, settledWrites(client))) refreshNow();
+    else warmOnFocus.current();
     return blur;
   }, [client, markRefreshed, now, refreshNow]));
 
   const invalidate = useCallback(() => { markRefreshed(); void Promise.all([reloadHome(), reloadToday(), reloadCalories()]); }, [markRefreshed, reloadHome, reloadToday, reloadCalories]);
+
+  const homeSettled = [home, today, calories, habits, training, progressBody, progressRecords].every(resource =>
+    resource.state.status !== 'loading' && !(resource.state.status === 'ready' && resource.state.refreshing));
+  const warmDay = homeDay(now()).today;
+  useEffect(() => {
+    const start = () => {
+      stopWarming.current?.();
+      stopWarming.current = client && homeSettled && visible.current
+        ? prefetchNutritionDays(client, [warmDay, shiftNutritionDate(warmDay, -1)], warmDay) : null;
+    };
+    warmOnFocus.current = start; start();
+    return () => { stopWarming.current?.(); stopWarming.current = null; };
+  }, [client, homeSettled, warmDay]);
 
   return { calories, habits, home, progressBody, progressRecords, refresh: refreshNow, invalidate, today, training };
 }
