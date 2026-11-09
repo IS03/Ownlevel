@@ -268,3 +268,33 @@ describe("GET /progress/training/records — Home's records card", () => {
     expect((await recordsGET(request("progress/training/records?user_id=other"))).status).toBe(400);
   });
 });
+
+describe('overview editorial findings — canonical sources, opt-in and fixed identity order', () => {
+  const path = 'progress?period=30&spark=1&inPeriod=1&panorama=1';
+  it('does not invent a record or comparison from no data or one first session', async () => {
+    expect((await read(await overviewGET(request(`${path}&findings=1`)), parseProgressOverview)).findings).toEqual([]);
+    vi.mocked(loadCompletedTrainingData).mockResolvedValue(source([{date: d(-1), exercises: [bench([[8,60]])]}]));
+    expect((await read(await overviewGET(request(`${path}&findings=1`)), parseProgressOverview)).findings).toEqual([]);
+  });
+  it('keeps a historical record and a contextual improvement of the same exercise distinct, without another source read', async () => {
+    const specs = [{date: d(-40), exercises: [bench([[8,60]])]},
+      {date: d(-5), exercises: [bench([[9,60]])]}, {date: d(-1), exercises: [bench([[10,60]])]}];
+    vi.mocked(loadCompletedTrainingData).mockResolvedValue(source(specs));
+    const before = await read(await overviewGET(request(path)), parseProgressOverview);
+    expect(before.findings).toBeUndefined();
+    vi.mocked(loadCompletedTrainingData).mockClear();
+    const after = await read(await overviewGET(request(`${path}&findings=1`)), parseProgressOverview);
+    const {findings, ...rest} = after; expect(rest).toEqual(before);
+    expect(loadCompletedTrainingData).toHaveBeenCalledTimes(1);
+    expect(findings).toHaveLength(2);
+    expect(findings![0]).toMatchObject({kind: 'record', method: 'progress-record', title: 'Press banca',
+      // The existing record rule chooses the first new rep record at the highest load, not max reps on that load.
+      description: 'Nuevo récord de reps: 9 con 60 kg', reference: {start: null, end: d(-30)},
+      coverage: {current: 2, unit: 'sets'}, destination: {exerciseId: ex.bench}});
+    expect(findings![1]).toMatchObject({kind: 'change', method: 'progress-first-last',
+      reference: {start: d(-5), end: d(-5)}, observedDate: d(-1), coverage: {current: 2, unit: 'sessions'}});
+    vi.mocked(loadCompletedTrainingData).mockResolvedValue(source([...specs].reverse()));
+    expect((await read(await overviewGET(request(`${path}&findings=1`)), parseProgressOverview)).findings!.map(f => [f.id,f.method])).toEqual(findings!.map(f => [f.id,f.method]));
+    console.log(JSON.stringify({fixture: 'record-and-context', beforeBytes: Buffer.byteLength(JSON.stringify(before)), afterBytes: Buffer.byteLength(JSON.stringify(after)), trainingSourceReadsBefore: 1, trainingSourceReadsAfter: 1}));
+  });
+});

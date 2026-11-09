@@ -6,10 +6,12 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import type { MobileApiClient } from '@/api/client';
 import { clearConfirmedReads, invalidateConfirmedReads } from '@/api/confirmed-read-cache';
-import { ProgressRangeProvider } from './progress-range-context';
+import { ExerciseTrendsScreen } from './exercise-trends-screen';
+import { useProgressRange, ProgressRangeProvider } from './progress-range-context';
 import { ProgressOverviewScreen } from './panorama-screen';
 import { ProgressPeriodOverviewScreen } from './overview-screen';
-import { panoramaFixture, PANORAMA_TODAY } from './panorama-fixture.test-helper';
+import { panoramaFixture, editorialFixture, PANORAMA_TODAY } from './panorama-fixture.test-helper';
+import { fetchProgressPanorama } from '@/api/progress';
 import { ReturnToProgress } from '@/insights/return-to-progress';
 import { bodyWeightHref, insightsReturnHref, insightsOriginOf, nutritionDayHref, explorationHref, periodSummaryHref, periodDetailHref } from '@/insights/navigation';
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
@@ -19,8 +21,8 @@ let mockParams: Record<string, string> = {}, mockFocused = true;
 const mockLife = new Set<{
     focus: () => void;
     blur: () => void;
-}>(), mockPush = jest.fn(), mockNavigate = jest.fn();
-jest.mock('expo-router', () => ({ Stack: { Screen: () => null }, useLocalSearchParams: () => mockParams, useRouter: () => ({ push: mockPush, navigate: mockNavigate }), useFocusEffect: (cb: () => void | (() => void)) => { jest.requireActual<{
+}>(), mockPush = jest.fn(), mockNavigate = jest.fn(), mockBack = jest.fn();
+jest.mock('expo-router', () => ({ Stack: { Screen: () => null }, useLocalSearchParams: () => mockParams, useRouter: () => ({ push: mockPush, navigate: mockNavigate, back: mockBack }), useFocusEffect: (cb: () => void | (() => void)) => { jest.requireActual<{
         useEffect: typeof useEffect;
     }>('react').useEffect(() => { let release: void | (() => void); const life = { focus: () => { release = cb(); }, blur: () => { release?.(); release = undefined; } }; mockLife.add(life); if (mockFocused)
         life.focus(); return () => { life.blur(); mockLife.delete(life); }; }, [cb]); } }));
@@ -34,6 +36,7 @@ beforeEach(() => { mockParams = {}; mockFocused = true; mockLife.clear(); mockPu
     const payload = structuredClone(mockData);
     if (!o.path.includes('panorama=1'))
         delete payload.panorama;
+    if (!o.path.includes('findings=1')) delete payload.findings;
     return { status: 'ok', data: o.parse(payload), meta } as never;
 } return { status: 'unavailable', reason: 'network', meta: { ...meta, httpStatus: null, outcome: 'unavailable' } }; }); });
 it('opens one bounded request instead of four, with no Insights/hidden detail read, and preserves the configurable surface', async () => {
@@ -143,7 +146,8 @@ it('uses a single compatibility fallback on an old-server 400, but never retries
     const view = render(wrap());
     await view.findByTestId('progress-panorama');
     expect(read).toHaveBeenCalledTimes(2);
-    expect(read.mock.calls[1]![0].path).not.toContain('panorama=1');
+    expect(read.mock.calls[1]![0].path).not.toContain('findings=1');
+    expect(read.mock.calls[1]![0].path).toContain('panorama=1');
     view.unmount();
     clearConfirmedReads(mockClient);
     read.mockClear();
@@ -169,4 +173,74 @@ it('does not turn a failed domain into an empty period, while keeping the availa
     expect(view.getByRole('button', {name: 'Ver peso y medidas'})).toBeTruthy();
     expect(view.getByText('2.190 kcal por día utilizado')).toBeTruthy();
     expect(read).toHaveBeenCalledTimes(1);
+});
+
+it('opens one disclosure without reads, retains it on return, then opens the exercise with its actual window before its first read', async () => {
+    mockData.findings = editorialFixture();
+    let range: ReturnType<typeof useProgressRange> | undefined;
+    function InspectRange() {range = useProgressRange(); return null;}
+    const node = <><ProgressOverviewScreen/><InspectRange/></>;
+    const view = render(wrap(node)); await view.findByTestId('progress-panorama');
+    // Deliberately leave an unrelated A/B question in the shared configuration.
+    await act(async () => range!.setState({unit: 'week', anchor: '2026-10-01', custom: null, compare: {kind: 'last_year'}}));
+    fireEvent.press(view.getByRole('button', {name: /Ver referencia de Press banca.*Nuevo récord/}));
+    expect(read).toHaveBeenCalledTimes(1);
+    await act(async () => {mockFocused = false; [...mockLife].forEach(x => x.blur());});
+    await act(async () => {mockFocused = true; [...mockLife].forEach(x => x.focus());});
+    expect(view.getByRole('button', {name: 'Ver registros de Press banca'})).toBeTruthy();
+    expect(read).toHaveBeenCalledTimes(1);
+    fireEvent.press(view.getByRole('button', {name: 'Ver registros de Press banca'}));
+    expect(range!.query).toEqual({period: 'custom', from: '2026-10-11', to: PANORAMA_TODAY});
+    expect(range!.compare).toBeNull();
+    const href = mockPush.mock.calls.at(-1)![0] as {params: Record<string,string>}; mockParams = href.params;
+    view.rerender(wrap(<ExerciseTrendsScreen/>));
+    await view.findByText('No pudimos cargar el ejercicio');
+    expect(read.mock.calls.at(-1)![0].path).toContain(`from=2026-10-11&to=${PANORAMA_TODAY}`);
+    fireEvent.press(view.getByTestId('progress-back')); expect(mockBack).toHaveBeenCalledTimes(1);
+});
+it('opens the canonical nutrition reference instead of an inherited A/B and never fetches on disclosure', async () => {
+    mockData.findings = editorialFixture();
+    let range: ReturnType<typeof useProgressRange> | undefined;
+    function InspectRange() {range = useProgressRange(); return null;}
+    const view = render(wrap(<><ProgressOverviewScreen/><InspectRange/></>)); await view.findByTestId('progress-panorama');
+    await act(async () => range!.setState({...range!.state, compare: {kind: 'last_year'}}));
+    fireEvent.press(view.getByRole('button', {name: /Ver referencia de Calorías registradas/}));
+    expect(view.getByText('Actual: 10 de 29 días. Referencia: 15 de 30 días.')).toBeTruthy();
+    expect(read).toHaveBeenCalledTimes(1);
+    fireEvent.press(view.getByRole('button', {name: 'Ver registros de Calorías registradas'}));
+    expect(range!.compare).toEqual({start: '2026-09-11', end: '2026-10-10'});
+    expect(mockPush).toHaveBeenLastCalledWith({pathname: '/(tabs)/progress/trends/nutrition', params: {from: '2026-10-11', to: PANORAMA_TODAY}});
+});
+it('replaces confirmed findings after invalidation, keeps them during refresh and removes them on account change', async () => {
+    mockData.findings = editorialFixture(); const view = render(wrap()); await view.findByTestId('progress-panorama');
+    let finish!: (value: unknown) => void;
+    read.mockImplementationOnce(() => new Promise(resolve => {finish = resolve as typeof finish;}));
+    await act(async () => {invalidateConfirmedReads(mockClient, '/api/mobile/v1/body/weight');});
+    expect(view.getByText('Récord · Press banca')).toBeTruthy();
+    const fresh = {...mockData, findings: []};
+    await act(async () => finish({status: 'ok', data: fresh, meta}));
+    expect(view.queryByText('Récord · Press banca')).toBeNull();
+    expect(view.getByText('No hay hallazgos para destacar en esta ventana.')).toBeTruthy();
+    mockClient = {read: jest.fn<MobileApiClient['read']>().mockResolvedValue({status: 'auth_required', meta: {...meta, httpStatus: null, outcome: 'auth_required'}})} as unknown as MobileApiClient;
+    view.rerender(wrap()); await view.findByText('No pudimos leer tu progreso');
+    expect(view.queryByTestId('progress-findings')).toBeNull();
+});
+
+it('adds the summaries to the same one-request opening, and supports older servers without retrying auth', async () => {
+    mockData.findings = editorialFixture();
+    await fetchProgressPanorama(mockClient, {period: 'custom', from: '2026-10-11', to: PANORAMA_TODAY});
+    expect(read).toHaveBeenCalledTimes(1); const before = read.mock.calls[0]![0].path;
+    read.mockClear(); const view = render(wrap()); await view.findByTestId('progress-panorama');
+    expect(read).toHaveBeenCalledTimes(1); const after = read.mock.calls[0]![0].path;
+    expect(after).toBe(`${before}&findings=1`);
+    console.info('[402 findings request comparison]', {GETBefore: 1, GETAfter: 1, before, after});
+    view.unmount(); clearConfirmedReads(mockClient); read.mockClear();
+    const old400 = {status: 'unavailable' as const, reason: 'invalid_response' as const, meta: {...meta, httpStatus: 400, outcome: 'unavailable' as const}};
+    read.mockResolvedValueOnce(old400).mockResolvedValueOnce(old400);
+    const old = render(wrap()); await old.findByTestId('progress-panorama');
+    expect(read).toHaveBeenCalledTimes(3);
+    expect(read.mock.calls[1]![0].path).toContain('panorama=1'); expect(read.mock.calls[1]![0].path).not.toContain('findings=1');
+    expect(read.mock.calls[2]![0].path).not.toContain('panorama=1');
+    expect(old.getByText('Los hallazgos no están disponibles en esta lectura.')).toBeTruthy();
+    expect(old.queryByText('No hay hallazgos para destacar en esta ventana.')).toBeNull();
 });

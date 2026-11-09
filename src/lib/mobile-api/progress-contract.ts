@@ -70,6 +70,14 @@ export type ProgressTrainingSummary = {
 };
 export type ProgressPanorama = { weight: { count: number; first: { date: string; value: number } | null; last: { date: string; value: number } | null } | null;
   nutrition: { caloriesDays: number; proteinDays: number; targetDays: number } | null };
+/** Editorial projection of existing Progreso methods, not the Insights comparators or an inference. */
+export type ProgressEditorialFinding = {
+  id: string; kind: 'record' | 'change'; method: 'progress-record' | 'progress-first-last' | 'progress-nutrition';
+  title: string; description: string; period: {start: string; end: string}; observedDate: string | null;
+  reference: {start: string | null; end: string};
+  coverage: {current: number; reference: number | null; eligibleCurrent: number | null; eligibleReference: number | null; unit: 'sets' | 'sessions' | 'days'};
+  destination: ProgressDestination;
+};
 export type ProgressOverview = {
   today: string; period: ProgressPeriod;
   evolution: ProgressRow[]; changes: ProgressFinding[];
@@ -80,6 +88,8 @@ export type ProgressOverview = {
   /** Only when requested (`spark=1`): mini charts for the Progreso rows. */
   sparks?: ProgressOverviewSparks;
   panorama?: ProgressPanorama;
+  /** Only with findings=1. Missing field means an older server, not zero findings. */
+  findings?: ProgressEditorialFinding[];
   inPeriod?: { improved: number; comparable: number } | null;
 };
 /** One bucket of a mini chart. null = no data in the bucket (a gap, never 0). */
@@ -296,8 +306,33 @@ function parseSparks(v: unknown): ProgressOverviewSparks | undefined {
   const nutrition = v.nutrition === null ? null : parseSpark(v.nutrition, x => num(x) && x >= 0);
   return weight !== undefined && training !== undefined && nutrition !== undefined ? { weight, training, nutrition } : undefined;
 }
+function parseEditorialFinding(v: unknown, period: ProgressPeriod): ProgressEditorialFinding | undefined {
+  if (!record(v) || !keys(v, ['id','kind','method','title','description','period','observedDate','reference','coverage','destination'])
+    || !str(v.id) || !str(v.title) || !str(v.description) || !record(v.period) || !keys(v.period,['start','end'])
+    || v.period.start !== period.start || v.period.end !== period.end || !record(v.reference) || !keys(v.reference,['start','end'])
+    || !isNutritionDate(v.reference.end) || !(v.reference.start === null || isNutritionDate(v.reference.start) && v.reference.start <= v.reference.end)
+    || !(v.observedDate === null || isNutritionDate(v.observedDate) && v.observedDate >= period.start && v.observedDate <= period.end)
+    || !record(v.coverage) || !keys(v.coverage,['current','reference','eligibleCurrent','eligibleReference','unit'])) return;
+  const c = v.coverage, r = v.reference, destination = parseDestination(v.destination);
+  if (!isNutritionDate(r.end)) return;
+  if (!destination || !count(c.current) || c.current < 1 || !(c.reference === null || count(c.reference))
+    || !(c.eligibleCurrent === null || count(c.eligibleCurrent) && c.eligibleCurrent >= c.current)
+    || !(c.eligibleReference === null || count(c.eligibleReference) && typeof c.reference === 'number' && c.eligibleReference >= c.reference)) return;
+  if (v.method === 'progress-record') {
+    if (v.kind !== 'record' || destination.kind !== 'training_exercise' || c.unit !== 'sets' || c.reference !== null
+      || c.eligibleCurrent !== null || c.eligibleReference !== null || r.start !== null || r.end >= period.start || v.observedDate !== null) return;
+  } else if (v.method === 'progress-first-last') {
+    if (v.kind !== 'change' || destination.kind !== 'training_exercise' || c.unit !== 'sessions' || c.current < 2 || c.reference !== null
+      || c.eligibleCurrent !== null || c.eligibleReference !== null || r.start !== r.end || r.end < period.start || !isNutritionDate(v.observedDate) || r.end > v.observedDate) return;
+  } else if (v.method === 'progress-nutrition') {
+    if (v.kind !== 'change' || destination.kind !== 'nutrition' || c.unit !== 'days' || !count(c.reference) || c.reference < 1
+      || !count(c.eligibleCurrent) || c.eligibleCurrent > period.days || !count(c.eligibleReference)
+      || r.start !== period.previousStart || r.end !== period.previousEnd || v.observedDate !== null) return;
+  } else return;
+  return {...v, destination} as ProgressEditorialFinding;
+}
 export function parseProgressOverview(v: unknown): ProgressOverview | undefined {
-  if (!record(v) || !keys(v, [...OVERVIEW_KEYS, ...("sparks" in v ? ["sparks"] : []), ...("inPeriod" in v ? ["inPeriod"] : []), ...("panorama" in v ? ["panorama"] : [])]) || !isNutritionDate(v.today)) return;
+  if (!record(v) || !keys(v, [...OVERVIEW_KEYS, ...("sparks" in v ? ["sparks"] : []), ...("inPeriod" in v ? ["inPeriod"] : []), ...("panorama" in v ? ["panorama"] : []), ...("findings" in v ? ["findings"] : [])]) || !isNutritionDate(v.today)) return;
   const inPeriod = v.inPeriod;
   if ("inPeriod" in v && inPeriod !== null && (!record(inPeriod) || !keys(inPeriod, ["improved", "comparable"]) || !count(inPeriod.improved) || !count(inPeriod.comparable) || inPeriod.improved > inPeriod.comparable)) return;
   const sparks = "sparks" in v ? parseSparks(v.sparks) : null;
@@ -323,11 +358,13 @@ export function parseProgressOverview(v: unknown): ProgressOverview | undefined 
     }
     if(p.nutrition!==null&&(!record(p.nutrition)||!keys(p.nutrition,['caloriesDays','proteinDays','targetDays'])||!['caloriesDays','proteinDays','targetDays'].every(k=>count((p.nutrition as Record<string,unknown>)[k])&&Number((p.nutrition as Record<string,unknown>)[k])<=period.days)||Number(p.nutrition.targetDays)>Number(p.nutrition.caloriesDays)))return;
   }
+  const findings = 'findings' in v ? list(v.findings, x => parseEditorialFinding(x, period)) : undefined;
+  if ('findings' in v && (!findings || findings.length > 3 || new Set(findings.map(f => f.id)).size !== findings.length)) return;
   // At most 2 findings per domain.
   const perDomain = new Map<string, number>();
   for (const f of changes) perDomain.set(f.domain, (perDomain.get(f.domain) ?? 0) + 1);
   if ([...perDomain.values()].some(n => n > 2)) return;
-  return { today: v.today, period, evolution, changes, nutrition, metrics, body, training, ...(sparks ? { sparks } : {}), ...("panorama" in v ? {panorama:v.panorama as ProgressPanorama} : {}), ...("inPeriod" in v ? { inPeriod: inPeriod as ProgressOverview["inPeriod"] } : {}) };
+  return { today: v.today, period, evolution, changes, nutrition, metrics, body, training, ...(findings ? {findings} : {}), ...(sparks ? { sparks } : {}), ...("panorama" in v ? {panorama:v.panorama as ProgressPanorama} : {}), ...("inPeriod" in v ? { inPeriod: inPeriod as ProgressOverview["inPeriod"] } : {}) };
 }
 
 const COMPARISON_KEYS = ["sessions", "trainingDays", "sets", "minutes", "setsPerSession"] as const;

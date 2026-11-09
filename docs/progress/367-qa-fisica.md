@@ -224,3 +224,10 @@ Pendiente físico; las capturas con fixture local en la app Dev no aprueban esto
 - [ ] Progreso → tres meses / semanas / contexto de sesiones → evidencia, comidas o Cuerpo → regreso al origen; conservar período, A/B, semana, grupo, página y revisión. «Volver a Progreso» visible solo con ese origen. Entrar desde Entrenar mantiene su retorno anterior; revisión cambiada usa el aviso/relectura ya existente.
 - [ ] «Explorar período y A/B»: Mis vistas, rangos, comparación, récords/cambios, conexiones, observaciones y Etapas siguen operativos. Métricas personales y Recorrido por fecha accesibles. Tocar un gráfico solo inspecciona; abrir detalle requiere la acción explícita.
 - [ ] Claro/oscuro, iPhone compacto/grande, cifras/nombres largos, texto accesible y VoiceOver (orden, unidades, fechas, selección del gráfico). Reducir movimiento y último control por encima de la barra inferior. Volver a pestaña con lectura disponible sin skeleton innecesario ni lectura del trimestre desde portada.
+
+
+### Hallazgos de portada #402 — siguiente incremento
+
+- [ ] Sin hallazgos, primer dato y servidor sin el campo: distinguir ausencia de observaciones e indisponibilidad. Con datos, hasta tres en orden fijo: récord, primera/última sesión y cambio alimentario elegible. Récord y cambio del mismo ejercicio conservan significados distintos; «Progreso» no se presenta como comparador de Insights ni asociación validada.
+- [ ] Desplegar una referencia/cobertura por vez; abrir sus registros con la ventana correcta, y con la referencia explícita de Nutrición sin heredar otro A/B. Volver conserva la selección. Revalidar, editar/borrar y cambiar cuenta: contenido confirmado identificado, nuevo resultado coherente o ausencia, nunca datos anteriores de otra cuenta.
+- [ ] Claro/oscuro, nombre largo, letra accesible, VoiceOver (método, botón, estado desplegado, fechas y cobertura), Reducir movimiento y barra inferior. Coincidencias por la entrada de semanas existente, sin lectura profunda al abrir portada. Capturas locales no aprueban QA física ni navegación nativa completa.

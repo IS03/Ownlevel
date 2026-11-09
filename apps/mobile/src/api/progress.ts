@@ -82,3 +82,11 @@ export const fetchProgressPanorama=async(client:MobileApiClient,query:ProgressQu
  // Older servers reject the opt-in parameter. One read-only compatibility fallback; never on auth/network errors.
  return result.status==='unavailable'&&result.meta.httpStatus===400&&!signal?.aborted?fetchProgressOverview(client,query,signal):result;
 };
+
+/** Editorial metadata shares the overview request. A server without it still supplies the complete panorama. */
+export const fetchProgressFindings = async (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal) => {
+  const result = await client.read({path: `${BASE}?${qs(query)}&spark=1&inPeriod=1&panorama=1&findings=1`, signal, parse: (raw: unknown) => {
+    const data = parseProgressOverview(raw); return data && samePeriod(data.period, query) ? data : undefined;
+  }});
+  return result.status === 'unavailable' && result.meta.httpStatus === 400 && !signal?.aborted ? fetchProgressPanorama(client, query, signal) : result;
+};

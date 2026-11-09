@@ -706,6 +706,27 @@ La portada Mobile pasa a una composición editorial de Entrenamiento, Cuerpo y N
 **Continuidad #402:** jerarquizar hallazgos canónicos en portada sin recalcular/rankear métodos, afinar la densidad conjunta en iPhone y decidir ventanas distintas por dominio solo si sus fuentes lo permiten. Última sesión y mayor profundidad gráfica quedan para siguientes incrementos. Esta entrega no termina #402/#367, no habilita asociaciones ni ejecuta #441. La comprobación física vive en la [checklist única](progress/367-qa-fisica.md#progreso-vnext--primera-entrega-402).
 
 
+### Hallazgos editoriales de portada — siguiente entrega #402
+
+Inventario fijado sin consultar resultados personales: **hasta tres observaciones**, en este orden: (1) un récord ya clasificado por `training.general.performance`, (2) un resultado comparable de primera/última sesión de `trainingInPeriodDto`, (3) un cambio de promedio registrado de Nutrición con elegibilidad y clasificación canónicas, primero calorías y después proteína. Dentro de los ejercicios se elige por UUID ascendente, sin priorizar signo o magnitud. Se conservan resultados iguales cuando el comparador los clasifica como comparables; evidencia ambigua/insuficiente no se transforma en hallazgo. No hay cupos que deban llenarse.
+
+Cada observación incluye método **Progreso** (no se convierte en un método de Insights), ventana, referencia, cobertura disponible y destino a registros. Un récord conserva la marca que selecciona el motor existente; no se redefine como la mejor serie de la ventana. Su cobertura cuenta series actuales evaluadas, sin inventar un denominador histórico. La comparación primera/última conserva sus fechas y sesiones utilizables. Nutrición conserva denominadores distintos de días cerrados con dato del nutriente; registro completo entre comidas registradas no confirma ingesta completa. Se deduplican solo resultados semánticamente idénticos, incluyendo método/referencia/cobertura: un récord y un cambio del mismo ejercicio permanecen distintos.
+
+Las coincidencias descriptivas no están resueltas en el overview; continúan en el acceso existente a semanas/A-B/coincidencias, bajo demanda. No se leen grupos de Insights ni se inventa una coincidencia para cubrir una posición editorial. También permanece disponible toda la composición de «Explorar período y A/B».
+
+La proyección opcional `findings=1` usa los contextos ya resueltos del mismo overview, reutilizando el cálculo `inPeriod` una sola vez. Se transportan como máximo tres resúmenes, no listas de sesiones/IDs. El flag ausente mantiene idéntica la respuesta previa, incluso para el cliente de #448. Mobile acepta campo ausente como **no disponible**, distinto de lista vacía; ante 400 prueba una vez el panorama previo (y su fallback ya existente si el servidor es aún anterior), nunca ante 401/red. La apertura actual sigue siendo un GET y ninguna lectura de Insights. Mediciones y validación se registran sobre el candidato en el PR.
+
+Medición del mismo fixture/rango/caché vacía antes y después: **1 → 1 GET**; desplegar/cerrar un hallazgo no agrega peticiones. JSON UTF-8 del overview:
+
+| Fixture | Antes | Después | Fuentes |
+|---|---:|---:|---|
+| Récord y cambio del mismo ejercicio (2 hallazgos) | 2.165 B | 3.159 B | 1 lectura de Training → 1 |
+| Tres posiciones ocupadas, incluyendo Nutrición | 3.926 B | 5.347 B | 2 RPC y 2 comprobaciones por owner → iguales |
+
+El desglose exacto del candidato se conserva en el PR; estas son mediciones controladas de transporte, no latencia ni consultas en producción. Servidor #448: 2 GET por el fallback del nuevo flag, conservando fechas/cobertura; servidor anterior a #448: hasta 3 GET por la cadena finita de compatibilidad. No hay reintentos de autenticación o red por estos flags. Al abrir registros se ejecutan las lecturas habituales del detalle, a pedido.
+
+La referencia/cobertura se despliega de a una, con `InsightRow`, texto adaptable y VoiceOver; solo la acción explícita abre registros. La selección local se conserva al volver y se retira al cambiar de cuenta; lecturas e invalidaciones siguen en la caché existente. Al abrir registros desde portada se aplica la ventana compartida antes del primer lector, con comparación apagada para el ejercicio y referencia explícita para el cambio alimentario; así no hereda un A/B ajeno. Los detalles mantienen su relectura habitual de Progreso: no se introduce una revisión fijada de Insights ni se promete reproducir una observación después de editar sus registros.
+
 ## Función y jerarquía
 
 **IMPLEMENTADO:** `/progress` sintetiza y navega; no duplica reportes ni muestra grandes gráficos.
