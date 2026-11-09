@@ -1,8 +1,10 @@
+import {createInsightsSnapshot} from './read-model';
+import {descriptiveCoincidences} from './descriptive-coincidences';
 import {expect,it} from 'vitest';
 import {periodExploration} from './week-exploration';
 import {descriptiveFixture,descriptiveBodyFixture,descriptiveId} from './descriptive-fixture.test-helper';
 import {parsePerformanceInsights} from '../../mobile-api/performance-insights-contract';
-const run=(source=descriptiveFixture(),weights:{date:string;value:number}[]=[])=>periodExploration(source,weights,'2026-11-09','2026-11-07','fixed-r1',2);
+const run=(source=descriptiveFixture(),weights:{date:string;value:number}[]=[])=>{const frame=periodExploration(source,weights,'2026-11-09','2026-11-07','fixed-r1',2);const old:{coincidences?:ReturnType<typeof descriptiveCoincidences>}={coincidences:descriptiveCoincidences(source,createInsightsSnapshot(source,{today:'2026-11-07',revision:'fixed-r1',method:2}),frame.weeks,frame.period)};return {...frame,...old};};
 it('keeps a fixed inventory, exposure-only median groups and independent comparator lanes even with identical outcomes',()=>{
   const source=descriptiveFixture(),data=run(source),c=data.coincidences!;
   expect(c.protein.cut).toBe(25);expect(c.protein.groups.map(g=>g.sessions)).toEqual([6,6]);
@@ -17,7 +19,6 @@ it('keeps a fixed inventory, exposure-only median groups and independent compara
   expect(c.protein.groups[0]!.routines[0]!.name).toBe('Rutina A');expect(c.protein.groups[1]!.routines[0]!.name).toBe('Rutina B');
   expect(data.associations).toBe('not_computed');expect(parsePerformanceInsights(data)).toBeDefined();
   const legacy=structuredClone(data);delete legacy.coincidences;expect(parsePerformanceInsights(legacy)).toBeDefined();
-  console.info('descriptive fixture payload bytes',JSON.stringify({before:Buffer.byteLength(JSON.stringify(legacy)),after:Buffer.byteLength(JSON.stringify(data)),addedQueries:0}));
 });
 it('keeps explicit zero, missing protein/time and posterior meals separate; windows cross midnight',()=>{
   const source=descriptiveFixture(),session=source.sessions[1]!,meal=source.meals[1]!;

@@ -5,7 +5,7 @@ import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {OwnlevelThemeProvider} from '@/design-system';
 import type{MobileApiClient} from '@/api/client';
 import {clearConfirmedReads} from '@/api/confirmed-read-cache';
-import {periodExploration} from '../../../../src/lib/progress/insights-engine/week-exploration';
+import {periodExploration,periodCoincidenceEvidence} from '../../../../src/lib/progress/insights-engine/week-exploration';
 import {periodDetailsFixture} from '../../../../src/lib/progress/insights-engine/period-details-fixture';
 import {descriptiveFixture,descriptiveBodyFixture,descriptiveId} from '../../../../src/lib/progress/insights-engine/descriptive-fixture.test-helper';
 import {createInsightsSnapshot,insightsSummary} from '../../../../src/lib/progress/insights-engine/read-model';
@@ -44,13 +44,14 @@ it('keeps errors recoverable and invalid scopes unavailable instead of reading a
   view.unmount();clearConfirmedReads(mockClient);mockRead.mockClear();mockParams={asOf:'2026-02-30'};const invalid=render(wrap());expect(invalid.getByText('Período no válido')).toBeTruthy();expect(mockRead).not.toHaveBeenCalled();
 });
 it('opens fixed descriptions and their records locally, retaining selection through session evidence and temporal context',async()=>{
-  const payload=periodExploration(descriptiveFixture(),[],'2026-11-09','2026-11-07','r2',2);
-  mockRead.mockImplementation(async o=>({status:'ok',data:o.parse(payload),meta})as never);
+  const source=descriptiveFixture(),payload=periodExploration(source,[],'2026-11-09','2026-11-07','r2',2);
+  mockRead.mockImplementation(async o=>{const q=new URL(`http://fixture${o.path}`).searchParams;return {status:'ok',data:o.parse(q.get('view')==='coincidence-evidence'?periodCoincidenceEvidence(source,[],'2026-11-09','2026-11-07','r2',q.get('revision')!,{kind:q.get('kind') as 'protein'|'timing',group:q.get('group') as 'lower'},Number(q.get('offset'))):payload),meta} as never;});
   const view=render(wrap());await view.findByText('Coincidencias descriptivas de tus registros');
   const select=(name:string)=>{fireEvent.press(view.getByRole('button',{name}));mockParams={...mockParams,...mockSetParams.mock.calls.at(-1)![0] as Record<string,string>};view.rerender(wrap());};
   select('Abrir proteína previa y resultados por ejercicio, descripción de registros');
   expect(view.getAllByText('Método completo').length).toBe(2);expect(view.getAllByText('Método parcial').length).toBe(2);
-  select('Ver 6 registros del grupo hasta la mediana');
+  expect(mockRead).toHaveBeenCalledTimes(1);
+  await act(async()=>{select('Ver 6 registros del grupo hasta la mediana');});
   expect(view.getByTestId(`coincidence-session-${descriptiveId(10)}`)).toBeTruthy();
   fireEvent.press(view.getByRole('button',{name:/Ver sesión y evidencia del 03\/08\/2026/}));
   const session=mockPush.mock.calls.at(-1)![0] as {params:Record<string,string>};
@@ -60,7 +61,7 @@ it('opens fixed descriptions and their records locally, retaining selection thro
   expect(mockPush).toHaveBeenLastCalledWith({pathname:'/(tabs)/train/insights/temporal',params:expect.objectContaining({session:descriptiveId(10),date:'2026-08-03',coincidenceGroup:'lower'})});
   select('Abrir horarios y distribuciones de energía y fatiga post');
   expect(view.getAllByText('Energía post').length).toBe(4);expect(view.getAllByText('Fatiga post').length).toBe(4);
-  expect(mockRead).toHaveBeenCalledTimes(1);
+  expect(mockRead).toHaveBeenCalledTimes(2);
 });
 it('keeps week/date/revision/group through nutrition and body records, including a computed zero and insufficient weeks',async()=>{
   const {source,weights}=descriptiveBodyFixture(),payload=periodExploration(source,weights,'2026-11-09','2026-11-07','r3',2);
@@ -79,7 +80,7 @@ it('keeps week/date/revision/group through nutrition and body records, including
 it('distinguishes insufficient observations from a compatible older response without descriptive support',async()=>{
   const payload=data();mockRead.mockImplementation(async o=>({status:'ok',data:o.parse(payload),meta})as never);mockParams={...mockParams,coincidence:'protein'};
   const view=render(wrap());await view.findByText('Sin contraste descriptivo suficiente. No significa que no haya relación.');
-  const legacy=structuredClone(payload);delete legacy.coincidences;
+  const legacy=structuredClone(payload);delete legacy.coincidenceSummary;
   mockRead.mockImplementation(async o=>({status:'ok',data:o.parse(legacy),meta})as never);
   view.unmount();clearConfirmedReads(mockClient);const old=render(wrap());await old.findByText('Estas coincidencias todavía no están disponibles. Podés seguir recorriendo semanas y días.');
   expect(old.queryByText('No pudimos leer las semanas')).toBeNull();
@@ -93,13 +94,39 @@ it('does not carry descriptions across logout/accounts or revive a late reading 
   clearConfirmedReads(retired);mockClient=null as unknown as MobileApiClient;view.rerender(wrap());
   await act(async()=>{finish();});
   expect(view.queryByTestId(`coincidence-session-${descriptiveId(10)}`)).toBeNull();
-  const nextRead=jest.fn<MobileApiClient['read']>().mockImplementation(async o=>({status:'ok',data:o.parse(data()),meta})as never);
+  const nextSource=periodDetailsFixture();
+  const nextRead=jest.fn<MobileApiClient['read']>().mockImplementation(async o=>{const q=new URL(`http://fixture${o.path}`).searchParams;return {status:'ok',data:o.parse(q.get('view')==='coincidence-evidence'?periodCoincidenceEvidence(nextSource,[],'2027-01-02','2026-11-07','r2',q.get('revision')!,{kind:'protein',group:'lower'},0):data()),meta} as never;});
   mockClient={read:nextRead,request:jest.fn()} as unknown as MobileApiClient;view.rerender(wrap());
   await view.findByText('Coincidencias descriptivas de tus registros');
-  expect(view.queryByTestId(`coincidence-session-${descriptiveId(10)}`)).toBeNull();expect(nextRead).toHaveBeenCalledTimes(1);
+  expect(view.queryByTestId(`coincidence-session-${descriptiveId(10)}`)).toBeNull();expect(nextRead).toHaveBeenCalledTimes(2);expect(nextRead.mock.calls.map(([o])=>new URL(`http://fixture${o.path}`).searchParams.get('view'))).toEqual(['period-explore','coincidence-evidence']);
 });
 
 const compareParams=()=>({asOf:'2026-11-07',week:'2026-08-10',compare:'1',weekA:'2026-08-03',weekB:'2026-08-10',revision:'r1'});
+it('pages grouped evidence on demand and keeps A/B, group, page and revision on return',async()=>{
+ const source=descriptiveFixture(),base=source.sessions[1]!;for(let i=0;i<55;i++)source.sessions.push({...base,id:descriptiveId(200+i)});
+ mockParams={...compareParams(),coincidence:'timing',coincidenceGroup:'morning',coincidencePage:'25'};
+ let fail=false;
+ mockRead.mockImplementation(async o=>{const q=new URL(`http://fixture${o.path}`).searchParams;if(fail&&q.get('view')==='coincidence-evidence')return {status:'unavailable',reason:'network',meta:{...meta,httpStatus:null,outcome:'unavailable'}};return {status:'ok',data:o.parse(q.get('view')==='coincidence-evidence'?periodCoincidenceEvidence(source,[],'2026-11-09','2026-11-07','r2',q.get('revision')!,{kind:'timing',group:'morning'},Number(q.get('offset'))):periodExploration(source,[],'2026-11-09','2026-11-07','r2',2)),meta} as never;});
+ const view=render(wrap());await view.findByText('Registros 26–50 de 61');expect(mockRead).toHaveBeenCalledTimes(2);
+ fail=true;fireEvent.press(view.getByRole('button',{name:'Ver siguientes registros'}));mockParams={...mockParams,...mockSetParams.mock.calls.at(-1)![0] as Record<string,string>};view.rerender(wrap());
+ await view.findByText('No pudimos leer la evidencia. No significa que el grupo esté vacío.');expect(view.queryByText('Registros 26–50 de 61')).toBeNull();
+ fail=false;await act(async()=>{fireEvent.press(view.getByRole('button',{name:'Reintentar evidencia'}));});
+ expect(view.getByText('Registros 51–61 de 61')).toBeTruthy();expect(view.queryByRole('button',{name:'Ver siguientes registros'})).toBeNull();
+ fireEvent.press(view.getAllByRole('button',{name:/^Ver sesión y evidencia del/})[0]!);
+ const href=mockPush.mock.calls.at(-1)![0] as {params:Record<string,string>};expect(href.params).toMatchObject({compare:'1',weekA:'2026-08-03',weekB:'2026-08-10',coincidence:'timing',coincidenceGroup:'morning',coincidencePage:'50',revision:'r2'});
+ const back=explorationHref(href.params.asOf!,href.params.week,href.params.revision,href.params);
+ expect(back.params).toMatchObject({compare:'1',weekA:'2026-08-03',weekB:'2026-08-10',coincidencePage:'50',coincidenceGroup:'morning'});
+ const n=nutritionDayHref('2026-08-03',{...href.params,date:undefined,session:undefined});expect(insightsReturnHref(n.params)).toEqual(back);
+});
+it('refuses evidence from a newer revision until the complete summary is refreshed',async()=>{
+ const source=descriptiveFixture();let revision='r2';mockParams={...mockParams,coincidence:'protein'};
+ mockRead.mockImplementation(async o=>{const q=new URL(`http://fixture${o.path}`).searchParams;const raw=q.get('view')==='coincidence-evidence'?periodCoincidenceEvidence(source,[],'2026-11-09','2026-11-07',revision,q.get('revision')!,{kind:'protein',group:'lower'},0):periodExploration(source,[],'2026-11-09','2026-11-07',revision,2);return {status:'ok',data:o.parse(raw),meta} as never;});
+ const view=render(wrap());await view.findByText('Coincidencias descriptivas de tus registros');revision='r3';
+ fireEvent.press(view.getByRole('button',{name:'Ver 6 registros del grupo hasta la mediana'}));mockParams={...mockParams,...mockSetParams.mock.calls.at(-1)![0] as Record<string,string>};view.rerender(wrap());
+ await view.findByText('Los registros cambiaron. Actualizá el resumen antes de abrir su evidencia.');expect(view.queryByTestId(`coincidence-session-${descriptiveId(10)}`)).toBeNull();
+ await act(async()=>{fireEvent.press(view.getByRole('button',{name:'Actualizar resumen'}));});
+ await view.findByTestId(`coincidence-session-${descriptiveId(10)}`);expect(mockRead).toHaveBeenCalledTimes(4);
+});
 it('selects and swaps by calendar, keeps partial dates visible and changes no read on local selection or records',async()=>{
   const view=render(wrap());await view.findByText('Semanas y días');
   const apply=()=>{const update=mockSetParams.mock.calls.at(-1)![0] as Record<string,string|undefined>;mockParams=Object.fromEntries(Object.entries({...mockParams,...update}).filter(([,value])=>value!==undefined)) as Record<string,string>;view.rerender(wrap());};
