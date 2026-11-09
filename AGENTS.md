@@ -275,6 +275,16 @@ Split work only for real reasons such as:
 
 ## Documentation
 
+## Coordinación entre chats y agentes (noviembre 2026)
+
+- Manual operativo, estado histórico y protocolo de traspaso: [docs/coordination/ROADMAP-OPERATIVO.md](docs/coordination/ROADMAP-OPERATIVO.md).
+- Prompts de contexto para chats de Dirección, iOS/QA, Producto, Investigación y para retomar #402 con un único agente de código: [docs/coordination/PROMPTS-DE-CHATS.md](docs/coordination/PROMPTS-DE-CHATS.md).
+- Prioridades de producto: roadmap principal de Notion. Estado de implementación: GitHub issues, PRs, commits y código; código local no publicado puede diferir y debe inspeccionarse antes de cambiar de rama.
+- WIP: un solo agente escribiendo código de producto para la tarea activa. QA e investigación pueden correr en paralelo sin editar archivos compartidos ni producción.
+- Para #402 retomar el trabajo local de hallazgos de portada si existe; #448 ya está integrado. #441 sigue DRAFT experimental y no se incorpora como feature sin un gate de validación autorizado.
+- Diferenciar test automatizado, merge, despliegue Web, build de OWNLEVEL Diario, instalación y QA física. La QA física no bloquea merges por defecto pero nunca se supone realizada.
+- Evitar recargar la documentación entera para cambios triviales: consultar el manual operativo cuando se planifique una nueva iniciativa, se transfiera trabajo o se reconcilien estados.
+
 Notion contains:
 - Product Roadmap;
 - Mobile milestone pages;
