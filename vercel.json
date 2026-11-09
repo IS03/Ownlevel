@@ -59,7 +59,8 @@
       "codex/367-premeal-descriptions": false,
       "codex/367-premeal-feelings": false,
       "codex/367-weekly-nutrition": false,
-      "claude/449-compact-feelings": false
+      "claude/449-compact-feelings": false,
+      "claude/nutrition-tab-glass": false
     }
   }
 }
