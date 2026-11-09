@@ -71,12 +71,14 @@ describe("joint temporal research inference", () => {
     const resolved = resolveResearchForecast(committed, f.id, resolution(f));
     expect(resolved.evidence.n).toBe(1);
     expect(resolveResearchForecast(resolved, f.id, resolution(f))).toBe(resolved);
+    expect(resolveResearchForecast(resolved, f.id, Object.fromEntries(Object.entries(resolution(f)).reverse()) as Resolution)).toBe(resolved);
     expect(resolveResearchForecast(resolved, f.id, resolution(f, 1)).invalidReason).toBe("outcome_revision");
     expect(commitResearchForecast(resolved, { ...f, digest: "edited" }).invalidReason).toBe("prediction_revision");
     const closed = closeResearchCut(resolved, { month: 12, completed: 1, revisionHash: "v1" });
     expect(closeResearchCut(closed, { month: 12, completed: 1, revisionHash: "v2" }).invalidReason).toBe("closed_cut_revision");
     const next = { ...models[3], month: 15, historyHashes: { ...models[3].historyHashes, [anchor]: "edited" } };
     expect(openResearchBlock(closed, next).invalidReason).toBe("snapshot_history_revision");
+    expect(openResearchBlock(opened(), { ...models[3], historyHashes: next.historyHashes }).invalidReason).toBe("snapshot_history_revision");
   });
   it("does not drop evidence because coverage later fails, and distinguishes abstention from not rejected", () => {
     let ledger = opened();

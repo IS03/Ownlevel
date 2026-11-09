@@ -25,9 +25,9 @@ function valid(ledger: ResearchLedger) {
 }
 export function openResearchBlock(ledger: ResearchLedger, model: BlockModel): ResearchLedger {
   valid(ledger); if (ledger.invalidReason) return ledger;
+  if (Object.entries(ledger.snapshotHashes).some(([day, hash]) => model.historyHashes[day] !== hash)) return invalidate(ledger, "snapshot_history_revision");
   if (ledger.block) return ledger.block.month === model.month && ledger.block.modelHash === model.modelHash ? ledger : invalidate(ledger, "model_or_history_revision");
   if (model.anchor !== ledger.anchor || model.month !== POLICY.months[ledger.cuts.length]) return invalidate(ledger, "unscheduled_or_repeated_cut");
-  if (Object.entries(ledger.snapshotHashes).some(([day, hash]) => model.historyHashes[day] !== hash)) return invalidate(ledger, "snapshot_history_revision");
   return { ...ledger, snapshotHashes: { ...model.historyHashes }, block: { month: model.month, trainingHash: model.trainingHash, modelHash: model.modelHash, reasons: [...model.reasons] } };
 }
 /** A receipt is accepted BEFORE its target is resolved. A pure module cannot certify wall clocks or prevent discarding the ledger. */
@@ -48,7 +48,7 @@ export function resolveResearchForecast(ledger: ResearchLedger, id: string, reso
   valid(ledger); if (ledger.invalidReason) return ledger;
   const index = ledger.entries.findIndex(entry => entry.forecast.id === id), entry = ledger.entries[index];
   if (!entry) return invalidate(ledger, "outcome_without_prediction");
-  const resolutionHash = digest(resolution);
+  const resolutionHash = digest([resolution.value, resolution.capturedAt, resolution.resolvedAt, resolution.instrumentVersion, resolution.declaredMoment, resolution.completedOnDay]);
   if (entry.resolution) return entry.resolutionHash === resolutionHash ? ledger : invalidate(ledger, "outcome_revision");
   const at = instantMs(resolution.resolvedAt), captured = instantMs(resolution.capturedAt), commit = instantMs(entry.forecast.committedAt)!, end = instantMs(entry.forecast.endedAt)!;
   const valueValid = resolution.value !== null && Number.isInteger(resolution.value) && resolution.value >= 1 && resolution.value <= 5;
@@ -66,7 +66,7 @@ export function resolveResearchForecast(ledger: ResearchLedger, id: string, reso
 /** Coverage gates presentation ONLY. Already revealed scores are never removed because a block's coverage is low. */
 export function closeResearchCut(ledger: ResearchLedger, input: { month: number; completed: number; revisionHash: string }): ResearchLedger {
   valid(ledger); if (ledger.invalidReason) return ledger;
-  const inputHash = digest(input), previous = ledger.cuts.find(cut => cut.month === input.month);
+  const inputHash = digest([input.month, input.completed, input.revisionHash]), previous = ledger.cuts.find(cut => cut.month === input.month);
   if (previous) return previous.inputHash === inputHash ? ledger : invalidate(ledger, "closed_cut_revision");
   if (!ledger.block || ledger.block.month !== input.month || !input.revisionHash || ledger.entries.some(entry => entry.resolution === null)) return invalidate(ledger, "unresolved_or_unscheduled_cut");
   const entries = ledger.entries.filter(entry => entry.forecast.month === input.month), scored = entries.filter(entry => entry.eligible).length;

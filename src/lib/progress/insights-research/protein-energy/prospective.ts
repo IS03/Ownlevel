@@ -14,7 +14,8 @@ export type Forecast = { month: number; modelHash: string; trainingHash: string;
 export const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 export function forecastDigest(value: Omit<Forecast, "digest"> | Forecast): string {
   const { month, modelHash, trainingHash, id, date, endedAt, committedAt, features, baseline, extended, sourceHash } = value;
-  return digest({ month, modelHash, trainingHash, id, date, endedAt, committedAt, features, baseline, extended, sourceHash });
+  return digest({ month, modelHash, trainingHash, id, date, endedAt, committedAt,
+    features: [features.id, features.date, features.routine, features.pre, features.hour, features.weekday, features.protein], baseline, extended, sourceHash });
 }
 export function fitBlock(anchor: string, month: number, training: Snapshot, previousSnapshots: readonly Snapshot[] = []): BlockModel {
   if (!POLICY.months.includes(month) || training.asOf !== monthAfter(anchor, month - 3)) throw new Error("Wrong training boundary");
@@ -53,12 +54,16 @@ export function forecastBeforeResponse(model: BlockModel, input: { source: Insig
   if (object(facts)?.energyPost !== undefined) return { forecast: null, reasons: ["outcome_already_available"] };
   if (!session.date || !validDay(session.date)) return { forecast: null, reasons: ["invalid_logical_date"] };
   const day = cordobaDateOf(at), next = (date: string) => new Date(Date.parse(date) + 86_400_000).toISOString().slice(0, 10), nextDay = next(day);
+  const start = instantMs(session.startedAt);
+  if (start === null) return { forecast: null, reasons: ["unknown_start_time"] };
+  const previousDay = new Date(Date.parse(session.date) - 86_400_000).toISOString().slice(0, 10);
+  const mealDates = new Set([previousDay, session.date, cordobaDateOf(start - 3 * 3_600_000), cordobaDateOf(start - 1)]);
   // Project only feature inputs. Irrelevant future rows/labels must not enter even the commitment's hash.
   const sessions = input.source.sessions.filter(row => row.date === session.date && (instantMs(row.endedAt) ?? Infinity) < at), ids = new Set(sessions.map(row => row.id));
   const exercises = input.source.exercises.filter(row => ids.has(row.sessionId)), exerciseIds = new Set(exercises.map(row => row.id));
   const known: InsightsSource = { sessions, exercises, sets: input.source.sets.filter(row => exerciseIds.has(row.sessionExerciseId) && (instantMs(row.completedAt) ?? Infinity) < at),
     feelings: input.source.feelings.filter(row => ids.has(row.sessionId)).map(row => ({ ...row, facts: { energyPre: object(row.facts)?.energyPre } })),
-    meals: input.source.meals.filter(row => row.date <= day && (instantMs(row.consumedAt) ?? -Infinity) < at), metricDefinitions: [], metricValues: [] };
+    meals: input.source.meals.filter(row => mealDates.has(row.date) && (instantMs(row.consumedAt) ?? -Infinity) < at), metricDefinitions: [], metricValues: [] };
   // This upper calendar bound includes the current day; knownAt is the actual source cutoff. No future rows are claimed known.
   const snapshot = { asOf: nextDay, revision: input.revision, source: known };
   const features = prepare(snapshot, session.date, next(session.date), at).rows.find(row => row.id === input.sessionId);
