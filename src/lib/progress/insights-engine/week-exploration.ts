@@ -3,6 +3,7 @@ import { createInsightsSnapshot } from './read-model';
 import { buildExposureContext, weightOfDay } from './exposures';
 import { describeFeelingOutcome, FEELING_OUTCOME_KINDS } from './feeling-outcomes';
 import { periodDetailFrame } from './period-details';
+import type { WeeklyTrainingCoverage } from './descriptive-weeks';
 import { describePriorFeelings, type PriorFeelingDescription } from './prior-feelings';
 import type { InsightsSource, InsightsEngineMethod } from './types';
 import { coincidenceSummary,coincidencePage,type CoincidenceSelection } from './descriptive-transport';
@@ -29,8 +30,13 @@ function explorationData(source: InsightsSource, weights: readonly WeighIn[], to
     const sessions=source.sessions.filter(s=>s.date && s.date>=start && s.date<=end);
     // Optional additive contract: installed clients ignore it; new clients can still read older servers.
     const prior: { priorFeelings?: PriorFeelingDescription[] } = { priorFeelings: describePriorFeelings(sessions, context, feelingFacts) };
+    const completed=sessions.filter(s=>s.status==='completed');
+    const trainingCoverage:{trainingCoverage?:WeeklyTrainingCoverage}={trainingCoverage:{
+      strictSessions:days.reduce((n,d)=>n+(strict.get(d.date)?.sessions.filter(s=>s.counts.comparable>0).length??0),0),
+      partialSessions:days.reduce((n,d)=>n+(partial.get(d.date)?.sessions.filter(s=>s.counts.comparable>0).length??0),0),
+      routines:{distinct:new Set(completed.flatMap(s=>s.routineId?[s.routineId]:[])).size,unknownSessions:completed.filter(s=>s.routineId===null).length}}};
     weeks.push({start,end,wholeWeek:start===weekStart&&end===weekEnd,days,
-      ...prior,
+      ...prior,...trainingCoverage,
       feelings:FEELING_OUTCOME_KINDS.map(kind=>describeFeelingOutcome({...source,sessions},kind,context,today)),
       weight:body.weeks.find(w=>w.start===weekStart)??null,weightChange:body.changes.find(w=>w.weekStart===weekStart)??null});
   }

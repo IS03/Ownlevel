@@ -8,6 +8,7 @@ import { readInsightsSource, readPeriodFeelingSource, readPeriodMeals } from "./
 import { parsePerformanceInsights } from "./performance-insights-contract";
 import { periodFeelingDetail, periodNutritionDetail } from "../progress/insights-engine/period-details";
 import { createInsightsSnapshot, insightsPeriodSummary } from "../progress/insights-engine/read-model";
+import {weeklyNutritionGroups,WEEKLY_NUTRIENTS} from '../progress/insights-engine/descriptive-weeks';
 import type { MobileSupabaseAuthenticatedContext } from "./supabase";
 
 vi.mock("server-only", () => ({}));
@@ -218,7 +219,7 @@ describe.runIf(!!db && !!base && !!task)('#421 exact period readers on disposabl
     expect(body.coincidenceSummary.claim).toBe('descriptive_only');expect(body.coincidences).toBeUndefined();
     expect(who.traces).toHaveLength(14);
     const legacy={...body};delete legacy.coincidenceSummary;
-    console.log(JSON.stringify({fixture:'stress',view:'period-explore',queries:who.traces.length,days:days.length,baseBytes:bytes(legacy),summaryBytes:bytes(body.coincidenceSummary),initialBytes:bytes(body)}));
+    console.log(JSON.stringify({fixture:'stress',view:'period-explore',queries:who.traces.length,days:days.length,baseBytes:bytes(legacy),withoutWeeklyCoverageBytes:bytes({...body,weeks:body.weeks.map(({trainingCoverage:_c,...w}:Record<string,unknown>)=>w)}),summaryBytes:bytes(body.coincidenceSummary),initialBytes:bytes(body)}));
     const expected=json(`select json_agg(s.id order by l.log_date,s.id) from public.workout_sessions s join public.day_logs l on l.id=s.day_log_id where s.user_id='${OWNER}' and s.status='completed' and l.log_date between '${body.period.start}' and '${body.period.end}'`);
     let offset:number|null=0;const seen:string[]=[];let evidenceBytes=0,evidenceQueries=0,pages=0;
     while(offset!==null) {
@@ -249,7 +250,7 @@ describe.runIf(!!db && !!base && !!task)('#421 exact period readers on disposabl
     const smallInitialQueries=own.traces.length;
     const ownPage=await(await route(`coincidence-evidence&kind=timing&group=afternoon&revision=${ownSummary.sourceRevision}`)).json();expect(ownPage.total).toBe(3);expect(ownPage.sessionRows.every((r:{id:string})=>!expected.includes(r.id))).toBe(true);
     const smallPageQueries=own.traces.length-smallInitialQueries;
-    console.log(JSON.stringify({fixture:'small',sessions:3,initialQueries:smallInitialQueries,initialBytes:bytes(ownSummary),summaryBytes:bytes(ownSummary.coincidenceSummary),evidenceQueries:smallPageQueries,evidenceBytes:bytes(ownPage),evidenceRows:ownPage.sessionRows.length}));
+    console.log(JSON.stringify({fixture:'small',sessions:3,initialQueries:smallInitialQueries,initialBytes:bytes(ownSummary),withoutWeeklyCoverageBytes:bytes({...ownSummary,weeks:ownSummary.weeks.map(({trainingCoverage:_c,...w}:Record<string,unknown>)=>w)}),summaryBytes:bytes(ownSummary.coincidenceSummary),evidenceQueries:smallPageQueries,evidenceBytes:bytes(ownPage),evidenceRows:ownPage.sessionRows.length}));
     for(const kind of ['calories','carbs','lastMeal']) {
       const before=own.traces.length;
       const page=await(await route(`coincidence-evidence&kind=${kind}&group=excluded&revision=${ownSummary.sourceRevision}`)).json();
@@ -301,6 +302,39 @@ describe.runIf(!!db && !!base && !!task)('#421 exact period readers on disposabl
         or (f.facts->'energyPre'->>'capturedAt')::timestamptz<=(select min(t.completed_at) from public.workout_sets t join public.workout_session_exercises x on x.id=t.workout_session_exercise_id where x.workout_session_id=s.id and t.is_completed))`));
     expect(body.weeks.reduce((n:number,w:{priorFeelings:{eligible:number}[]})=>n+w.priorFeelings[0]!.eligible,0)).toBe(priorEligible);
     expect(priorEligible).toBeGreaterThan(0);
+    for(const week of body.weeks) {
+      const counts=json(`select json_build_object('sessions',count(*),'distinct',count(distinct s.routine_id),'unknown',count(*) filter(where s.routine_id is null)) from public.workout_sessions s join public.day_logs l on l.id=s.day_log_id where s.user_id='${OWNER}' and s.status='completed' and l.log_date between '${week.start}' and '${week.end}'`);
+      expect(week.days.reduce((n:number,d:{training:{sessions:number}|null})=>n+(d.training?.sessions??0),0)).toBe(counts.sessions);
+      expect(week.trainingCoverage.routines).toEqual({distinct:counts.distinct,unknownSessions:counts.unknown});
+      expect(week.trainingCoverage.strictSessions).toBe(0); // The SQL fixture has no recorded variant; never strict-comparable.
+    }
+    // More synthetic meals only AFTER measuring the same small/stress fixture. Four whole weeks, no owner data mixed in.
+    sql(`insert into public.day_logs(user_id,log_date) select '${OTHER}','2026-08-17'::date+i from generate_series(0,27) i on conflict do nothing;
+      insert into public.meal_entries(user_id,day_log_id,source_type,final_calories,final_protein_g,final_carbs_g,final_fat_g)
+      select '${OTHER}',d.id,'sheet_import',case when i%7=5 then 0 when i<14 then 0 else 400 end,
+        case when i%7=5 then null when i<14 then 10 else 40 end,case when i%7=5 then null when i<14 then 100 else 0 end,case when i%7=5 then 0 else 5 end
+      from generate_series(0,27) i join public.day_logs d on d.user_id='${OTHER}' and d.log_date='2026-08-17'::date+i where i%7<>6;
+      insert into public.meal_entries(user_id,day_log_id,source_type,final_calories,final_protein_g,final_carbs_g,final_fat_g)
+      select '${OTHER}',d.id,'sheet_import',0,null,0,null from public.day_logs d where d.user_id='${OTHER}' and d.log_date between '2026-08-17' and '2026-09-13' and extract(isodow from d.log_date)=5;`);
+    mock.auth.mockResolvedValue(own.context());const weekly=await(await route('period-explore')).json();expect(parsePerformanceInsights(weekly)).toBeDefined();
+    for(const [nutrient,column] of [['calories','final_calories'],['proteinG','final_protein_g'],['carbsG','final_carbs_g'],['fatG','final_fat_g']] as const) {
+      expect(WEEKLY_NUTRIENTS).toContain(nutrient);
+      const truth=json(`with daily as (
+        select l.log_date,sum(m.${column}) recorded,count(m.id) meals,count(m.${column}) known
+        from public.day_logs l left join public.meal_entries m on m.day_log_id=l.id and m.user_id='${OTHER}' and m.deleted_at is null and m.entry_kind='meal'
+        where l.user_id='${OTHER}' and l.log_date between '2026-08-17' and '2026-09-13' group by l.log_date
+      ),weeks as (
+        select date_trunc('week',log_date)::date as start,avg(recorded) filter(where meals>0 and known=meals) amount,
+          count(*) filter(where meals>0 and known=meals) usable,count(*) filter(where meals>0 and known>0 and known<meals) partial,
+          count(*) filter(where meals>0 and known=0) unknown,count(*) filter(where meals=0) no_meals from daily group by 1
+      ) select json_agg(json_build_object('start',start,'amount',amount,'usable',usable,'partial',partial,'unknown',unknown,'no_meals',no_meals) order by start) from weeks`);
+      const projected=weeklyNutritionGroups(weekly.weeks,nutrient);
+      for(const t of truth){const row=projected.rows.find(w=>w.start===t.start)!;expect(row.amountPerRecordedDay).toBeCloseTo(t.amount,10);expect([row.completeDays,row.partialDays,row.unknownDays,row.noMealDays]).toEqual([t.usable,t.partial,t.unknown,t.no_meals]);}
+      const independentCut=Number(sql(`select percentile_cont(0.5) within group(order by n) from (select avg(n) n from (select l.log_date,sum(m.${column}) n from public.day_logs l join public.meal_entries m on m.day_log_id=l.id and m.user_id='${OTHER}' and m.deleted_at is null and m.entry_kind='meal' where l.user_id='${OTHER}' and l.log_date between '2026-08-17' and '2026-09-13' group by l.log_date having count(m.${column})=count(*)) d group by date_trunc('week',log_date) having count(*)>=4) w`));
+      expect(projected.cut).toBeCloseTo(independentCut,10);
+      for(const group of projected.groups)expect(group.weeks.map(w=>w.start)).toEqual(truth.filter((t:{amount:number})=>group.key==='lower'?t.amount<=independentCut:t.amount>independentCut).map((t:{start:string})=>t.start));
+    }
+
 
   },120_000);
 });

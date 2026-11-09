@@ -41,3 +41,5 @@ export const fetchCoincidenceEvidence=(client:MobileApiClient,asOf:string,revisi
   path:`${PERFORMANCE_INSIGHTS_PATH}?${new URLSearchParams({method:'2',view:'coincidence-evidence',asOf,revision,kind,group,offset:String(offset)})}`,signal,
   parse:raw=>{const p=parsePerformanceInsights(raw);return p?.view==='coincidence-evidence'&&p.asOf===asOf&&p.requestedRevision===revision&&p.selection.kind===kind&&p.selection.group===group&&p.offset===offset?p:undefined;},
 });
+
+export { weeklyNutritionGroups,WEEKLY_NUTRIENTS,type WeeklyNutrient } from '../../../../src/lib/progress/insights-engine/descriptive-weeks';

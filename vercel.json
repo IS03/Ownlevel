@@ -56,7 +56,8 @@
       "codex/nutrition-adjacent-prefetch": false,
       "codex/367-descriptive-coincidences": false,
       "codex/367-premeal-descriptions": false,
-      "codex/367-premeal-feelings": false
+      "codex/367-premeal-feelings": false,
+      "codex/367-weekly-nutrition": false
     }
   }
 }

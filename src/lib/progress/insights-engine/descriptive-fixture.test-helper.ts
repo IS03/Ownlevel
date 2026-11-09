@@ -26,3 +26,17 @@ export function descriptiveBodyFixture() {
 export function descriptivePreMealFixture() {
  const s=descriptiveFixture();s.meals.forEach((m,i)=>{m.calories=i<7?0:600;m.carbsG=i<7?0:100;if(i>=7)m.consumedAt=`${m.date}T13:30:00-03:00`;});return s;
 }
+/** Eight complete nutrition weeks, two independent comparator lanes and a reference before the quarter. */
+export function descriptiveWeeklyFixture() {
+ const base=descriptiveFixture(),body=descriptiveBodyFixture(),sessions:InsightsSource['sessions'][number][]=[],exercises:InsightsSource['exercises'][number][]=[],sets:InsightsSource['sets'][number][]=[];
+ body.source.meals.forEach((m,i)=>{const week=Math.floor(i/7);m.calories=week<4?0:400;m.carbsG=week<4?100:0;m.fatG=5;});
+ for(let week=-1;week<8;week++){
+  const date=new Date(Date.parse('2026-08-03')+week*7*86400000).toISOString().slice(0,10),id=descriptiveId(30000+week+1);
+  sessions.push({...base.sessions[1]!,id,date,startedAt:`${date}T18:00:00-03:00`,endedAt:`${date}T19:00:00-03:00`,routineId:descriptiveId(31000+(week<4?0:1)),routineName:week<4?'Rutina A':'Rutina B'});
+  for(let lane=0;lane<2;lane++){
+   const x=descriptiveId(32000+(week+1)*2+lane);exercises.push({...base.exercises[1]!,id:x,sessionId:id,exerciseId:descriptiveId(33000+lane),configuration:lane===0?'recorded:prueba':null});
+   sets.push({...base.sets[1]!,id:descriptiveId(34000+(week+1)*2+lane),sessionExerciseId:x,actualLoad:20+week,actualReps:8,completedAt:`${date}T18:10:00-03:00`});
+  }
+ }
+ return {source:{...body.source,sessions,exercises,sets,feelings:[]},weights:body.weights};
+}

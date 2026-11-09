@@ -1,8 +1,9 @@
+import { WeeklyCoincidences } from './weekly-coincidences';
 import { Fragment,useCallback } from 'react';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { useProgressResource } from '@/progress/use-progress-resource';
-import { fetchCoincidenceEvidence,coincidenceWeeks,isFoodKind,type FoodKind,type CoincidenceSelection,type CoincidenceEvidence,type PeriodExploration } from '@/api/performance-insights';
+import { fetchCoincidenceEvidence,isFoodKind,type FoodKind,type CoincidenceSelection,type CoincidenceEvidence,type PeriodExploration } from '@/api/performance-insights';
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AppText, Heading, Button, SkeletonBlock, spacing } from '@/design-system';
@@ -11,12 +12,12 @@ import { formatValue } from '@/progress/progress-format';
 import { FactRow } from './insights-screen';
 import { InsightRow } from './insight-row';
 import { postsText } from './feelings-model';
-import { bodyWeightHref, nutritionDayHref, type InsightsOrigin } from './navigation';
-import { exactPeriodDate, exactPeriodRange } from './period-model';
+import { type InsightsOrigin } from './navigation';
+import { exactPeriodDate } from './period-model';
 import { nextDate } from './insights-model';
 
 type Model=NonNullable<PeriodExploration['coincidenceSummary']>;
-type Selection=Pick<InsightsOrigin,'coincidence'|'coincidenceGroup'|'coincidencePage'|'coincidenceView'>;
+type Selection=Pick<InsightsOrigin,'coincidence'|'coincidenceGroup'|'coincidencePage'|'coincidenceView'|'weeklyNutrient'|'weeklyOutcome'>;
 const BANDS={morning:'Mañana · 05–11',midday:'Mediodía · 11–15',afternoon:'Tarde · 15–20',night:'Noche · 20–05'};
 const REASONS:Record<string,string>={no_registered_meal:'sin registro elegible en la ventana',partial_macro:'nutriente incompleto',untimed_meal_in_scope:'comida sin hora de consumo explícita en el alcance',unverified_meal_time_in_scope:'hora sin verificar',no_start_time:'sin hora de inicio',invalid:'cantidad no válida',unavailable:'dato no disponible',
   no_explicit_meal_in_12h:'sin última comida explícita conocida en 12 h (dato censurado)',before_end:'antes de finalizar',late:'tardía',unknown_time:'sin momento legible',not_recorded:'sin respuesta',unreadable:'respuesta ilegible',other_instrument:'otra escala'};
@@ -49,19 +50,6 @@ export function Coincidences({data,weeks,origin,selection,onSelect,onRefresh}:{d
   const cut=(value:number|null,unit='g')=>value===null?'sin cantidad para formar grupos':`hasta ${formatValue(value,unit)} / más de ${formatValue(value,unit)}`;
   const food=(kind:FoodKind)=>kind==='protein'?data?.protein:data?.preMeal?.[kind];
   const post=(p:CoincidenceEvidence['sessionRows'][number]['post']['energy'],kind:'energy'|'fatigue')=>p.state==='recorded'?FEELING_LABELS[kind][p.value!-1]:REASONS[p.state];
-  const allWeeks=coincidenceWeeks(weeks);
-  const weekRows=(starts:string[])=>allWeeks.filter(w=>starts.includes(w.start)).map(w=>{
-    const reference=allWeeks.find(r=>r.start===w.previousStart);
-    return <View key={w.start} style={styles.record}>
-      <AppText variant="headline" numeric>{exactPeriodRange(w)}</AppText>
-      {!w.wholeWeek?<AppText muted>Semana recortada por los límites del período; no se usa como semana completa.</AppText>:null}
-      <AppText numeric>Proteína: {gram(w.proteinPerRecordedDay)} por día; {w.completeDays} días completos. Mediana corporal: {w.median===null?'sin mediana':formatValue(w.median,'kg')}; cambio: {w.change===null?'no calculable':formatValue(w.change,'kg')}.</AppText>
-      <AppText muted>{w.changeReason==='week_insufficient'?'Esta semana no reúne 3 pesajes.':w.changeReason==='previous_week_insufficient'?'La semana de referencia no reúne 3 pesajes.':w.changeReason==='no_previous_week'?'Sin semana de referencia en el período.':'Cambio entre medianas consecutivas elegibles.'}</AppText>
-      <AppText muted numeric>{w.previousStart?`Referencia: ${exactPeriodDate(w.previousStart)}, mediana ${reference?.median==null?'no disponible':formatValue(reference.median,'kg')}. `:''}{w.weighIns.map(v=>`${exactPeriodDate(v.date)}: ${formatValue(v.value,'kg')}`).join(' · ')||'Sin pesajes elegibles de esta semana.'}</AppText>
-      <InsightRow label="Ver pesajes y semana de referencia" spoken={`Ver pesajes y referencia de ${exactPeriodRange(w)}`} onPress={()=>router.push(bodyWeightHref({from:reference?.start??w.start,to:w.end},origin))}/>
-      {w.days.map(d=><InsightRow key={d.date} label={exactPeriodDate(d.date)} detail={d.protein?`${gram(d.protein.recorded)} registrados; ${d.protein.missing} de ${d.records} registros sin proteína`:'Sin alimentación registrada; no es cero'} spoken={`Abrir Nutrición del ${exactPeriodDate(d.date)} y sus registros`} onPress={()=>router.push(nutritionDayHref(d.date,origin))}/>)}
-    </View>;
-  });
   const sessionRows=(rows:CoincidenceEvidence['sessionRows'])=>rows.map(row=><View key={row.id} style={styles.record} testID={`coincidence-session-${row.id}`}>
     <AppText variant="headline">{exactPeriodDate(row.date)} · {row.name}</AppText>
     <AppText muted numeric>Proteína previa registrada: {row.protein.value===null?REASONS[row.protein.state]:gram(row.protein.value)}.</AppText>
@@ -83,7 +71,7 @@ export function Coincidences({data,weeks,origin,selection,onSelect,onRefresh}:{d
   return <View style={styles.section} testID="descriptive-coincidences">
     <Heading level={2}>Coincidencias descriptivas de tus registros</Heading>
     <AppText muted>No acreditan una relación ni su causa. Los grupos pueden tener distinta cobertura y rutinas.</AppText>
-    {!data?<AppText>Estas coincidencias todavía no están disponibles. Podés seguir recorriendo semanas y días.</AppText>:<>
+    {!data?<AppText>Las coincidencias por sesión todavía no están disponibles. Podés seguir recorriendo semanas y días.</AppText>:<>
       {FOOD_ORDER.map(kind=>{const f=food(kind),title=FOOD_TITLE[kind],unit=kind==='calories'?'kcal':'g';return <Fragment key={kind}>
         <InsightRow label={title} detail={f?`${f.eligible} de ${f.total} sesiones con dato${f.eligibleDays===undefined?'':` · ${f.eligibleDays} de ${f.totalDays} días`} · ${kind==='lastMeal'?'Franjas fijas hasta 1 h / más de 1–3 h / más de 3–12 h':cut(f.cut,unit)}`:'No disponible en esta lectura'} spoken={`Abrir ${title[0]!.toLowerCase()+title.slice(1)}, descripción de registros`} expanded={selected===kind} onPress={()=>choose(kind)}/>
         {selected===kind?!f?<AppText>Esta descripción no está disponible en esta lectura. Podés seguir recorriendo los registros existentes.</AppText>:<View style={styles.detail}>
@@ -131,23 +119,8 @@ export function Coincidences({data,weeks,origin,selection,onSelect,onRefresh}:{d
           {selection.coincidenceGroup===g.key?evidence(g.key):null}
         </View>)}
       </View>:null}
-      <InsightRow label="Proteína semanal y peso corporal" detail={`${data.body.total-data.body.excludedNutrition} de ${data.body.total} semanas con cobertura de proteína · ${cut(data.body.cut)}`} spoken="Abrir proteína registrada semanal y cambios de mediana de peso corporal" expanded={selected==='body'} onPress={()=>choose('body')}/>
-      {selected==='body'?<View style={styles.detail}>
-        <AppText muted>Proteína registrada por día con dato completo en los registros; mínimo 4 de 7 días. Igual cobertura no demuestra ingesta completa. Coincidencia de la misma semana, sin atribuir un cambio del peso a la alimentación.</AppText>
-        {data.body.status==='insufficient'?<AppText>{noContrast}</AppText>:null}
-        <AppText muted numeric>{data.body.excludedNutrition} semanas sin esa cobertura; los días parciales o desconocidos no se dividen como cero.</AppText>
-        <InsightRow label="Ver semanas fuera de los grupos" spoken="Ver semanas con cobertura insuficiente o recortadas" expanded={selection.coincidenceGroup==='excluded'} onPress={()=>group('excluded')}/>
-        {selection.coincidenceGroup==='excluded'?weekRows(allWeeks.filter(w=>w.proteinPerRecordedDay===null).map(w=>w.start)):null}
-        {data.body.groups.map(g=><View key={g.key} style={styles.group}>
-          <AppText variant="headline">{data.body.cut===null?'Grupo sin cantidades elegibles':`${g.key==='lower'?'Hasta':'Más de'} ${gram(data.body.cut)} por día registrado`}</AppText>
-          <FactRow label="Cambio de mediana corporal" value={`${g.eligible} de ${g.weeks} semanas calculables`} detail={`Subió ${g.increased}; igual ${g.same}; bajó ${g.decreased}. Sin diferencia calculable: ${g.weeks-g.eligible}.`}/>
-          <AppText muted numeric>{g.completeDays} días completos en proteína, {g.partialDays} parciales, {g.unknownDays} desconocidos.</AppText>
-          <InsightRow label={`Ver semanas del grupo ${g.key==='lower'?'hasta la mediana':'sobre la mediana'}`} spoken={`Ver ${g.weeks} semanas y sus registros`} expanded={selection.coincidenceGroup===g.key} onPress={()=>group(g.key)}/>
-          {selection.coincidenceGroup===g.key?weekRows(allWeeks.filter(w=>w.proteinPerRecordedDay!==null&&data.body.cut!==null&&(g.key==='lower'?w.proteinPerRecordedDay<=data.body.cut:w.proteinPerRecordedDay>data.body.cut)).map(w=>w.start)):null}
-        </View>)}
-        <AppText muted variant="caption">Semanas enteras y al menos 3 pesajes por semana; cambios solo entre consecutivas elegibles, sin interpolar. Es peso corporal, no carga levantada.</AppText>
-      </View>:null}
     </>}
+    <WeeklyCoincidences weeks={weeks} origin={origin} selection={selection} onSelect={onSelect}/>
   </View>;
 }
 const styles=StyleSheet.create({section:{gap:spacing.sm},detail:{gap:spacing.md},group:{gap:spacing.xs,paddingVertical:spacing.sm},record:{gap:spacing.xs,paddingVertical:spacing.md}});
