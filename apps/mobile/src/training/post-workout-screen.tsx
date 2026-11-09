@@ -103,6 +103,7 @@ export function PostWorkoutContent({ finished, detail, readSummary, readWeek, on
   const reduced = useReduceMotion(), { colors } = useOwnlevelTheme();
   const [summary, setSummary] = useState<SessionSummaryDto>();
   const router = useRouter();
+  const insights = insightsSessionHref(finished.sessionId, finished.logDate);
   const [week, setWeek] = useState<FinishWeek | null | undefined>(undefined);
   const [intro, setIntro] = useState(Boolean(readWeek)), [revealed, setRevealed] = useState(!readWeek);
   const model = postWorkoutModel(finished, summary, detail);
@@ -174,7 +175,10 @@ export function PostWorkoutContent({ finished, detail, readSummary, readWeek, on
         <Button label="Listo" onPress={onHome} />
         <Button label="Ver sesión" variant="quiet" onPress={onViewSession} />
         {/* Facts of this session only, read when it opens: nothing about all-time relations runs at the end of a workout. */}
-        <Button label="Comparar en Insights" accessibilityLabel="Ver los hechos de esta sesión en Insights" variant="quiet" onPress={() => { router.replace('/(tabs)/train'); router.push(insightsSessionHref(finished.sessionId, finished.logDate)); }} />
+        {insights ? <Button label="Ver contexto y comparación" variant="quiet" onPress={() => {
+          router.replace({ pathname: '/(tabs)/train/history/[id]', params: { id: finished.sessionId } });
+          router.push(insights);
+        }} /> : null}
       </Animated.View>
     </> : null}
     {intro ? <FinishWeekIntro week={week} onLeave={reveal} onDone={endIntro} /> : null}

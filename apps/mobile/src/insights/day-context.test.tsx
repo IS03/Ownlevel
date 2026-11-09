@@ -10,7 +10,7 @@ import { parseSessionFeelings } from '../../../../src/lib/progress/insights-engi
 import type { InsightsSource } from '../../../../src/lib/progress/insights-engine/types';
 import { InsightsScreen } from './insights-screen';
 import { daySessions, nutritionRows, sessionRows, sessionTime } from './insights-model';
-import { bodyWeightHref, dayWeightHref, insightsReturnHref, nutritionDayHref } from './navigation';
+import { bodyWeightHref, dayWeightHref, insightsReturnHref, insightsSessionHref, nutritionDayHref } from './navigation';
 
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -141,18 +141,21 @@ describe('#367 contexto diario: pantalla', () => {
     fireEvent.press(hero.getByRole('button', { name: /^Abrir sesión Piernas/ }));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/history/[id]', params: { id: EVENING } });
   });
-  it('opened from the end of a session, finds it among the day\'s sessions and comes back to it from Nutrición', async () => {
-    mockParams = { session: EVENING, date: D1 };
+  it('focuses the completed session, keeps the day accessible and returns from Nutrition with its revision', async () => {
+    mockParams = insightsSessionHref(EVENING, D1)!.params;
     mockRead.mockImplementation(serve(source()));
     const view = await open();
     const focus = within(view.getByTestId('insights-session'));
-    expect(focus.getByText(/Piernas · 17:00–18:00/)).toBeTruthy();
-    expect(focus.getByRole('button', { name: 'Abrir sesión Piernas, 17:00–18:00, esta sesión' })).toBeTruthy();
-    expect(focus.getByRole('button', { name: 'Abrir sesión Empuje, 09:00–10:00' })).toBeTruthy();
+    expect(focus.getByRole('header', { name: 'Piernas' })).toBeTruthy();
+    expect(focus.getByText(/2026 · 17:00–18:00/)).toBeTruthy();
+    expect(focus.getByText('baja → sin registrar')).toBeTruthy();
+    expect(focus.queryByText('alta → sin registrar')).toBeNull();
+    fireEvent.press(focus.getByRole('button', { name: /^Ver horarios y comidas registradas/ }));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights/temporal', params: { session: EVENING, date: D1, fromSession: '1', revision: 'r1' } });
     fireEvent.press(focus.getByRole('button', { name: /^Ver Nutrición/ }));
     const href = mockPush.mock.calls.at(-1)![0] as ReturnType<typeof nutritionDayHref>;
-    expect(href).toEqual({ pathname: '/(tabs)/nutrition', params: { date: D1, insightsReturn: '1', insightsDate: D1, insightsSession: EVENING } });
-    expect(insightsReturnHref(href.params)).toEqual({ pathname: '/(tabs)/train/insights', params: { date: D1, session: EVENING } });
+    expect(href).toEqual({ pathname: '/(tabs)/nutrition', params: { date: D1, insightsReturn: '1', insightsDate: D1, insightsSession: EVENING, insightsFromSession: '1', insightsRevision: 'r1' } });
+    expect(insightsReturnHref(href.params)).toEqual({ pathname: '/(tabs)/train/insights', params: { date: D1, session: EVENING, fromSession: '1', revision: 'r1' } });
   });
   it('a newer read replaces the day instead of mixing sessions of two reads', async () => {
     mockParams = { session: EVENING, date: D1 };
@@ -165,7 +168,9 @@ describe('#367 contexto diario: pantalla', () => {
     await act(async () => { view.getByTestId('insights-screen').props.refreshControl.props.onRefresh(); }); await flush();
     const focus = within(view.getByTestId('insights-session'));
     expect(focus.queryByText('Antes: respondida después de empezar')).toBeNull();
-    expect(focus.getAllByText('Sensaciones')).toHaveLength(2);
+    expect(focus.getByLabelText('Sensaciones: Sin registrar')).toBeTruthy();
+    expect(focus.queryByText('baja → sin registrar')).toBeNull();
+    expect(focus.queryByText('no se pudo leer → sin registrar')).toBeNull();
   });
   it('opens a historical day from its week and preserves the period through Nutrition and temporal evidence', async () => {
     mockParams = { date: D1, before: '2026-03-04', explore: '1', asOf: '2026-04-01', week: D0, revision: 'older' };

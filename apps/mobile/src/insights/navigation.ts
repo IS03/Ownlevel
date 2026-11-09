@@ -3,7 +3,7 @@ import { validPeriodAnchor } from '@/api/performance-insights';
 import { PROGRESS_MAX_DAYS, addDays, calendarRange, daysBetween } from '@/progress/progress-range';
 
 /** What Insights was showing. Every value is checked on the way back: a route parameter is never trusted as an address. */
-export type InsightsOrigin = { view?: 'exercises'; family?: string; relations?: '1'; date?: string; session?: string; relation?: string; summary?: '1'; period?: 'feelings' | 'nutrition'; asOf?: string; revision?: string; temporal?: '1'; explore?: '1'; week?: string; before?: string };
+export type InsightsOrigin = { view?: 'exercises'; family?: string; relations?: '1'; date?: string; session?: string; fromSession?: '1'; relation?: string; summary?: '1'; period?: 'feelings' | 'nutrition'; asOf?: string; revision?: string; temporal?: '1'; explore?: '1'; week?: string; before?: string };
 const FAMILIES = ['metric', 'nutrition', 'meal_window', 'feeling'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RELATION = /^[a-zA-Z0-9_:-]{1,120}$/;
@@ -16,6 +16,7 @@ const clean = (raw: Params): InsightsOrigin => ({
   ...(raw.relations === '1' ? { relations: '1' as const } : {}),
   ...(isNutritionDate(raw.date) ? { date: raw.date } : {}),
   ...(validSession(raw.session) ? { session: raw.session } : {}),
+  ...(raw.fromSession === '1' && validSession(raw.session) && isNutritionDate(raw.date) ? { fromSession: '1' as const } : {}),
   ...(typeof raw.relation === 'string' && RELATION.test(raw.relation) ? { relation: raw.relation } : {}),
   ...(raw.summary === '1' ? { summary: '1' as const } : {}),
   ...(raw.temporal === '1' && isNutritionDate(raw.date) ? { temporal: '1' as const } : {}),
@@ -31,7 +32,8 @@ export const insightsOriginOf = (params: Params): InsightsOrigin => { const { re
 const hrefParams = (origin: InsightsOrigin) => Object.fromEntries(Object.entries(origin).map(([key, value]) => [`insights${key[0]!.toUpperCase()}${key.slice(1)}`, value]));
 
 /** From the end of a session straight to its facts. Asks for nothing here: the screen reads when it opens. */
-export const insightsSessionHref = (session: string, date: string) => ({ pathname: '/(tabs)/train/insights' as const, params: { session, date } });
+export const insightsSessionHref = (session: string, date: string) => validSession(session) && isNutritionDate(date)
+  ? { pathname: '/(tabs)/train/insights' as const, params: { session, date, fromSession: '1' as const } } : null;
 
 /**
  * A metric in Progreso, chosen, and the month of the day it was seen on. Crossing tabs loses the stack's way back, so the
@@ -73,7 +75,7 @@ export function insightsEvidenceHref(selection: { session: string; exercise: str
 /** Where "Volver a Insights" goes, if this route was opened from there. */
 export function insightsReturnHref(params: Params) {
   if (params.insightsReturn !== '1') return null;
-  const origin = clean({ view: params.insightsView, family: params.insightsFamily, relations: params.insightsRelations, date: params.insightsDate, session: params.insightsSession, relation: params.insightsRelation, summary: params.insightsSummary,
+  const origin = clean({ view: params.insightsView, family: params.insightsFamily, relations: params.insightsRelations, date: params.insightsDate, session: params.insightsSession, fromSession: params.insightsFromSession, relation: params.insightsRelation, summary: params.insightsSummary,
     period: params.insightsPeriod, asOf: params.insightsAsOf, revision: params.insightsRevision, temporal: params.insightsTemporal,explore:params.insightsExplore,week:params.insightsWeek,before:params.insightsBefore });
   if (params.insightsTemporal !== undefined) { const {temporal:_temporal,...route}=origin;return origin.temporal&&origin.date?{pathname:'/(tabs)/train/insights/temporal' as const,params:route}:null; }
   if(params.insightsExplore!==undefined&&!origin.explore)return null;

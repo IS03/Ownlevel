@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useRouter } from 'expo-router';
+import { insightsSessionHref } from '@/insights/navigation';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import type { SessionDetailDto, SessionFinishedDto } from '@/api/active-session';
 import type { SessionSummaryDto, SessionSummaryLoader } from '@/api/session-summary';
@@ -72,6 +74,8 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
 }) {
   const { colors, isDark } = useOwnlevelTheme(), reduced = useReduceMotion(), { fontScale } = useWindowDimensions();
   const [postWorkoutOpen, setPostWorkoutOpen] = useState(Boolean(finished));
+  const router = useRouter();
+  const insights = detail.session.status === 'completed' ? insightsSessionHref(detail.session.id, detail.session.logDate) : null;
   const [summary, setSummary] = useState<SessionSummaryDto>();
   const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set());
   const [showAll, setShowAll] = useState(false);
@@ -113,6 +117,10 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
     {model.feelings.length || model.note ? <View style={styles.feelings} testID="completed-summary">
       {model.feelings.length ? <View style={styles.feelingRow}>{model.feelings.map(feeling => <FeelingDots key={feeling.key} feeling={feeling} />)}</View> : null}
       {model.note ? <AppText style={styles.italic}>“{model.note}”</AppText> : null}
+    </View> : null}
+    {insights ? <View style={styles.section}>
+      <Button label="Ver contexto y comparación" variant="secondary" onPress={() => router.push(insights)} />
+      <AppText muted variant="footnote">Comparación por ejercicio, sensaciones y comidas registradas.</AppText>
     </View> : null}
     {extraSummary}
     {model.muscles.length ? <View style={styles.section} testID="revisit-muscles">

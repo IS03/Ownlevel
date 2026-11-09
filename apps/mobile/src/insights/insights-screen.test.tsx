@@ -10,15 +10,16 @@ import { buildInsightsReadModel, createInsightsSnapshot, insightsDaysPage, insig
 import type { InsightsSource } from '../../../../src/lib/progress/insights-engine/types';
 import { InsightsScreen } from './insights-screen';
 import { RelationDetailScreen } from './relation-detail-screen';
-import { insightsReturnHref, metricTrendHref } from './navigation';
+import { insightsReturnHref, insightsSessionHref, insightsOriginOf, metricTrendHref } from './navigation';
 import { exerciseSentence, heroOf, joinDays, relationGroups, relationSentence, relationState, stripMarks } from './insights-model';
 
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
-const mockPush = jest.fn(), mockSetParams = jest.fn();
+const mockPush = jest.fn(), mockSetParams = jest.fn(), mockBack = jest.fn(), mockReplace = jest.fn();
+let mockCanGoBack = true;
 const requests = () => mockRead.mock.calls.map(call => String(call[0].path));
 let mockParams: Record<string, string> = {};
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, setParams: mockSetParams, back: jest.fn() }), useFocusEffect: () => undefined, useLocalSearchParams: () => mockParams }));
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, setParams: mockSetParams, back: mockBack, replace: mockReplace, canGoBack: () => mockCanGoBack }), useFocusEffect: () => undefined, useLocalSearchParams: () => mockParams }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn() }, triggerHaptic: jest.fn() }));
 jest.mock('@/training/exercise-segmented', () => {
   const { Pressable, Text, View } = jest.requireActual<typeof import('react-native')>('react-native');
@@ -65,7 +66,7 @@ const flush = () => act(async () => { for (let i = 0; i < 3; i++) await new Prom
 const open = async (ui: React.ReactElement) => { const view = screen(ui); await flush(); return view; };
 const oscillating = Array.from({ length: 40 }, (_, day) => 8 + (day % 2 ? 1 : -1) * (day % 5 + 1));
 
-beforeEach(() => { mockParams = {}; mockPush.mockClear(); mockSetParams.mockClear(); mockRead.mockReset(); clearConfirmedReads(mockClient); });
+beforeEach(() => { mockParams = {}; mockCanGoBack = true; mockBack.mockClear(); mockReplace.mockClear(); mockPush.mockClear(); mockSetParams.mockClear(); mockRead.mockReset(); clearConfirmedReads(mockClient); });
 
 describe('modelo de presentación', () => {
   it('leads with the strict method only when it compared something, and never adds the two', () => {
@@ -223,11 +224,44 @@ describe('entrada desde el final de una sesión', () => {
     expect(view.getByTestId('insights-session')).toBeTruthy();
     expect(view.queryByTestId('insights-hero')).toBeNull();
     const facts = within(view.getByTestId('insights-session'));
-    expect(facts.getByText('1 de 1')).toBeTruthy();
+    expect(facts.getByText('1 de 1 ejercicios comparables con contexto parcial')).toBeTruthy();
     expect(facts.getAllByText(/^↑ Registro superior$/).length).toBeGreaterThan(0);
     expect(requests()).toEqual(['/api/mobile/v1/progress/performance-insights?method=2']);
     expect(view.getByTestId('insights-partial-limit')).toBeTruthy();
     expect(view.queryByText(/Exploratorio|Coincidieron/)).toBeNull();
+  });
+  it('keeps the session origin and current revision through evidence and temporal routes, then goes back without another push', async () => {
+    mockParams = { ...insightsSessionHref(SESSION, dateAt(1))!.params, revision: 'r1' };
+    mockRead.mockImplementation(serve(sessionsWithIds(3), 'r2'));
+    const view = await open(<InsightsScreen />);
+    expect(view.getByTestId('insights-session-revised')).toBeTruthy();
+    fireEvent.press(within(view.getByTestId('insights-session-lane-partial')).getByRole('button', { name: /^Press banca,/ }));
+    const evidence = mockPush.mock.calls.at(-1)![0] as { pathname: string; params: Record<string, string> };
+    expect(evidence.pathname).toBe('/(tabs)/train/insights/evidence');
+    expect(evidence.params).toMatchObject({ session: SESSION, revision: 'r2', insightsFromSession: '1' });
+    expect(insightsReturnHref(evidence.params)).toEqual({ pathname: '/(tabs)/train/insights', params: { session: SESSION, date: dateAt(1), fromSession: '1', revision: 'r2' } });
+    fireEvent.press(view.getByRole('button', { name: /^Ver horarios y comidas registradas del/ }));
+    const temporal = mockPush.mock.calls.at(-1)![0] as { pathname: string; params: Record<string, string> };
+    expect(temporal.pathname).toBe('/(tabs)/train/insights/temporal');
+    expect(insightsOriginOf(temporal.params)).toMatchObject({ session: SESSION, date: dateAt(1), fromSession: '1', revision: 'r2' });
+    expect(requests()).toHaveLength(1);
+    fireEvent.press(view.getByRole('button', { name: 'Volver a la sesión' }));
+    expect(mockBack).toHaveBeenCalledTimes(1); expect(mockReplace).not.toHaveBeenCalled();
+    mockCanGoBack = false;
+    fireEvent.press(view.getByRole('button', { name: 'Volver a la sesión' }));
+    expect(mockReplace).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/history/[id]', params: { id: SESSION } });
+  });
+  it('keeps return available on a failed read and retries only on request', async () => {
+    mockParams = insightsSessionHref(SESSION, dateAt(1))!.params;
+    mockRead.mockResolvedValueOnce(lost).mockImplementation(serve(sessionsWithIds(3)));
+    const view = await open(<InsightsScreen />);
+    expect(view.getByRole('button', { name: 'Volver a la sesión' })).toBeTruthy();
+    expect(view.queryByTestId('insights-session')).toBeNull(); expect(requests()).toHaveLength(1);
+    fireEvent.press(view.getByRole('button', { name: 'Reintentar' })); await flush();
+    expect(view.getByTestId('insights-session')).toBeTruthy(); expect(requests()).toHaveLength(2);
+    expect(insightsSessionHref('bad/id', dateAt(1))).toBeNull();
+    expect(insightsSessionHref(SESSION, '2026-02-30')).toBeNull();
+    expect(insightsOriginOf({ session: 'bad/id', date: dateAt(1), fromSession: '1' }).fromSession).toBeUndefined();
   });
   it('asks for only its day when it is older than the first page, and never joins it to the list', async () => {
     mockParams = { session: SESSION, date: dateAt(1) };
@@ -235,7 +269,9 @@ describe('entrada desde el final de una sesión', () => {
     const view = await open(<InsightsScreen />);
     expect(requests()).toEqual(['/api/mobile/v1/progress/performance-insights?method=2', `/api/mobile/v1/progress/performance-insights?method=2&view=days&before=${dateAt(2)}&limit=1`]);
     expect(view.getByTestId('insights-session')).toBeTruthy();
-    expect(view.getAllByRole('button', { name: /comparables con contexto parcial/ })).toHaveLength(14);
+    expect(view.queryByRole('button', { name: 'Ver más días' })).toBeNull();
+    fireEvent.press(view.getByRole('button', { name: 'Ver todos los días en Insights' }));
+    expect(mockSetParams).toHaveBeenLastCalledWith({ session: undefined, fromSession: undefined, view: undefined });
   });
   it('tells loading, failure and absence apart', async () => {
     mockParams = { session: SESSION, date: dateAt(1) };

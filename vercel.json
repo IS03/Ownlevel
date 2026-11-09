@@ -3,6 +3,7 @@
   "ignoreCommand": "node scripts/vercel-ignore-build.mjs",
   "git": {
     "deploymentEnabled": {
+      "codex/insights-session-context": false,
       "codex/435-saved-meal-progress": false,
       "claude/mobile-metro-watchfolders": false,
       "codex/dock-revalidation-test": false,

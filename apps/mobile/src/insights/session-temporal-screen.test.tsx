@@ -45,3 +45,14 @@ it('keeps the week revision when returning through temporal context',async()=>{
   fireEvent.press(view.getByRole('button',{name:'Volver al día en Insights'}));
   expect(mockNavigate).toHaveBeenLastCalledWith({pathname:'/(tabs)/train/insights',params:mockParams});
 });
+
+it('preserves the completed session and revision through Nutrition and returns to its focused facts', async () => {
+  const session = '93670000-0000-4000-8000-000000000a01';
+  mockParams = { date: '2026-08-03', session, fromSession: '1', revision: 'old' };
+  serve(); const view = render(wrap()); await view.findByText('Horarios y comidas');
+  fireEvent.press(view.getByRole('button', { name: 'Ver Nutrición del 03/08/2026' }));
+  const href = mockPush.mock.calls.at(-1)![0] as { params: Record<string, string> };
+  expect(insightsReturnHref(href.params)).toEqual({ pathname: '/(tabs)/train/insights/temporal', params: { date: '2026-08-03', session, fromSession: '1', revision: 'new' } });
+  fireEvent.press(view.getByRole('button', { name: 'Volver al día en Insights' }));
+  expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights', params: { date: '2026-08-03', session, fromSession: '1', revision: 'old' } });
+});
