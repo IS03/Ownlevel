@@ -806,6 +806,7 @@ describe('native finish screen (M3.4-2)', () => {
     expect(view.queryByText('Quitar')).toBeNull(); // Re-tapping a value clears it; no extra control shifts the layout.
     expect(view.getByText('320')).toBeTruthy(); expect(view.getByText('kg de volumen')).toBeTruthy();
     fireEvent.press(view.getByTestId('summary-energyLevel-4'));
+    fireEvent.press(view.getByTestId('finish-details-toggle')); // Performance, pain and note live one level below.
     fireEvent(view.getByTestId('summary-painLevel-slider'), 'accessibilityAction', { nativeEvent: { actionName: 'increment' } });
     fireEvent.press(view.getByTestId('summary-performanceLevel-3')); fireEvent.press(view.getByTestId('summary-performanceLevel-3'));
     await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar entrenamiento' })); for (let i = 0; i < 40; i++) await Promise.resolve(); });
@@ -830,6 +831,9 @@ describe('native finish screen (M3.4-2)', () => {
     expect(controller.getSnapshot().summary.energyLevel).toBeNull();
     fireEvent.press(view.getByTestId('summary-energyLevel-4')); expect(controller.getSnapshot().summary.energyLevel).toBe(4);
     fireEvent.press(view.getByTestId('summary-energyLevel-4')); expect(controller.getSnapshot().summary.energyLevel).toBeNull();
+    expect(view.getByTestId('finish-details-toggle').props.accessibilityState).toMatchObject({ expanded: false });
+    fireEvent.press(view.getByTestId('finish-details-toggle'));
+    expect(view.getByTestId('finish-details-toggle').props.accessibilityState).toMatchObject({ expanded: true });
     fireEvent.press(view.getByRole('button', { name: 'Sin dolor' })); expect(controller.getSnapshot().summary.painLevel).toBe(0);
     fireEvent.press(view.getByRole('button', { name: 'Sin dolor' })); expect(controller.getSnapshot().summary.painLevel).toBeNull();
     fireEvent.press(view.getByTestId('finish-open-note')); fireEvent.changeText(view.getByTestId('finish-note-input'), 'Borrador');
@@ -843,7 +847,9 @@ describe('native finish screen (M3.4-2)', () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     fireEvent.press(view.getByRole('button', { name: 'Finalizar entrenamiento' }));
     expect(view.getByTestId('finish-no-sets')).toBeTruthy(); expect(view.queryByRole('button', { name: 'Guardar entrenamiento' })).toBeNull();
-    expect(view.getByTestId('summary-energyLevel-4', { includeHiddenElements: true }).props.accessibilityState.disabled).toBe(true);
+    // No disabled questionnaire behind the explanation: only the way back and the discard (#449).
+    expect(view.queryByTestId('summary-energyLevel-4', { includeHiddenElements: true })).toBeNull();
+    expect(view.queryByTestId('finish-details-toggle', { includeHiddenElements: true })).toBeNull();
     fireEvent.press(view.getByRole('button', { name: '← Volver a la sesión' })); expect(view.queryByTestId('finish-session-sheet')).toBeNull();
     fireEvent.press(view.getByRole('button', { name: 'Finalizar entrenamiento' }));
     fireEvent.press(view.getByRole('button', { name: 'Descartar entrenamiento' })); expect(alert).toHaveBeenCalled(); expect(api.finish).not.toHaveBeenCalled();
@@ -862,6 +868,7 @@ describe('native finish screen (M3.4-2)', () => {
     const { controller, Screen } = fixture(); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
     await completeSet(view, controller);
     fireEvent.press(view.getByRole('button', { name: 'Finalizar entrenamiento' }));
+    fireEvent.press(view.getByTestId('finish-details-toggle'));
     const slider = view.getByTestId('summary-painLevel-slider');
     fireEvent(slider, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 328, height: 44 } } });
     await act(async () => { await Promise.resolve(); }); // RNGH applies handler updates in a microtask
