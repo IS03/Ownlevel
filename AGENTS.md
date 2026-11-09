@@ -273,8 +273,6 @@ Split work only for real reasons such as:
 - security;
 - meaningful QA boundary.
 
-## Documentation
-
 ## Coordinación entre chats y agentes (noviembre 2026)
 
 - Manual operativo, estado histórico y protocolo de traspaso: [docs/coordination/ROADMAP-OPERATIVO.md](docs/coordination/ROADMAP-OPERATIVO.md).
@@ -284,6 +282,8 @@ Split work only for real reasons such as:
 - Para #402 retomar el trabajo local de hallazgos de portada si existe; #448 ya está integrado. #441 sigue DRAFT experimental y no se incorpora como feature sin un gate de validación autorizado.
 - Diferenciar test automatizado, merge, despliegue Web, build de OWNLEVEL Diario, instalación y QA física. La QA física no bloquea merges por defecto pero nunca se supone realizada.
 - Evitar recargar la documentación entera para cambios triviales: consultar el manual operativo cuando se planifique una nueva iniciativa, se transfiera trabajo o se reconcilien estados.
+
+## Documentation
 
 Notion contains:
 - Product Roadmap;
