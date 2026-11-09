@@ -54,7 +54,11 @@ export function Coincidences({data,weeks,origin,selection,onSelect,onRefresh}:{d
     <InsightRow label="Ver sesión y evidencia por ejercicio" spoken={`Ver sesión y evidencia del ${exactPeriodDate(row.date)}, ${row.name}`} onPress={()=>router.push({pathname:'/(tabs)/train/insights',params:{...origin,date:row.date,session:row.id,before:nextDate(row.date)}})}/>
     <InsightRow label="Ver horarios y comidas" spoken={`Ver horarios y comidas de ${row.name}, ${exactPeriodDate(row.date)}`} onPress={()=>router.push({pathname:'/(tabs)/train/insights/temporal',params:{...origin,date:row.date,session:row.id}})}/>
   </View>);
-  const evidence=(group:string)=>selected==='protein'||selected==='timing'?<SessionEvidence key={`${origin.revision}|${selected}|${group}`} origin={origin} kind={selected} group={group} offset={Number(selection.coincidencePage??0)} renderRows={sessionRows} onPage={offset=>onSelect({...selection,coincidencePage:String(offset)})} onRefresh={onRefresh}/>:null;
+  const evidence=(group:string)=>{
+    if(!data||(selected!=='protein'&&selected!=='timing'))return null;
+    const total=selected==='protein'?(group==='excluded'?data.protein.total-data.protein.eligible:data.protein.groups.find(g=>g.key===group)?.sessions??0):(group==='excluded'?data.timing.unknownStart:data.timing.groups.find(g=>g.key===group)?.sessions??0);
+    return <SessionEvidence key={`${origin.revision}|${selected}|${group}`} origin={origin} kind={selected} group={group} total={total} offset={Number(selection.coincidencePage??0)} renderRows={sessionRows} onPage={offset=>onSelect({...selection,coincidencePage:String(offset)})} onRefresh={onRefresh}/>;
+  };
   return <View style={styles.section} testID="descriptive-coincidences">
     <Heading level={2}>Coincidencias descriptivas de tus registros</Heading>
     <AppText muted>No acreditan una relación ni su causa. Los grupos pueden tener distinta cobertura y rutinas.</AppText>
@@ -112,10 +116,12 @@ export function Coincidences({data,weeks,origin,selection,onSelect,onRefresh}:{d
 }
 const styles=StyleSheet.create({section:{gap:spacing.sm},detail:{gap:spacing.md},group:{gap:spacing.xs,paddingVertical:spacing.sm},record:{gap:spacing.xs,paddingVertical:spacing.md}});
 
-function SessionEvidence({origin,kind,group,offset,renderRows,onPage,onRefresh}:{origin:InsightsOrigin;kind:'protein'|'timing';group:string;offset:number;renderRows:(rows:CoincidenceEvidence['sessionRows'])=>React.ReactNode;onPage:(offset:number)=>void;onRefresh:()=>void}) {
+function SessionEvidence({origin,kind,group,total,offset,renderRows,onPage,onRefresh}:{origin:InsightsOrigin;kind:'protein'|'timing';group:string;total:number;offset:number;renderRows:(rows:CoincidenceEvidence['sessionRows'])=>React.ReactNode;onPage:(offset:number)=>void;onRefresh:()=>void}) {
   const {client}=useMobileApi(),asOf=origin.asOf!,revision=origin.revision!;
   const load=useCallback((c:MobileApiClient,signal:AbortSignal)=>fetchCoincidenceEvidence(c,asOf,revision,kind,group,offset,signal),[asOf,revision,kind,group,offset]);
-  const {data,state,refresh}=useProgressResource(client,`coincidence-evidence|${asOf}|${revision}|${kind}|${group}|${offset}`,load);
+  const validPage=offset===0||offset<total;
+  const {data,state,refresh}=useProgressResource(validPage?client:null,`coincidence-evidence|${asOf}|${revision}|${kind}|${group}|${offset}`,load);
+  if(!validPage)return <View><AppText>Esta página ya no pertenece al grupo actualizado.</AppText><Button label="Volver a la primera página" onPress={()=>onPage(0)}/></View>;
   if(!data)return state.status==='loading'?<SkeletonBlock height={96}/>:<View><AppText>No pudimos leer la evidencia. No significa que el grupo esté vacío.</AppText><Button label="Reintentar evidencia" onPress={()=>void refresh()}/></View>;
   if(data.status==='revision_changed'||data.sourceRevision!==revision)return <View><AppText>Los registros cambiaron. Actualizá el resumen antes de abrir su evidencia.</AppText><Button label="Actualizar resumen" onPress={onRefresh}/></View>;
   return <View style={styles.detail}>

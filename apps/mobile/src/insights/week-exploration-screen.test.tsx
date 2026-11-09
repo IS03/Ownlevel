@@ -127,6 +127,16 @@ it('refuses evidence from a newer revision until the complete summary is refresh
  await act(async()=>{fireEvent.press(view.getByRole('button',{name:'Actualizar resumen'}));});
  await view.findByTestId(`coincidence-session-${descriptiveId(10)}`);expect(mockRead).toHaveBeenCalledTimes(4);
 });
+it('offers a first-page return when a refreshed group shrinks below the open page, without retrying an invalid cursor',async()=>{
+ const source=descriptiveFixture(),base=source.sessions[1]!;for(let i=0;i<55;i++)source.sessions.push({...base,id:descriptiveId(200+i)});
+ let revision='r2';mockParams={...compareParams(),coincidence:'timing',coincidenceGroup:'morning',coincidencePage:'50'};
+ mockRead.mockImplementation(async o=>{const q=new URL(`http://fixture${o.path}`).searchParams;return {status:'ok',data:o.parse(q.get('view')==='coincidence-evidence'?periodCoincidenceEvidence(source,[],'2026-11-09','2026-11-07',revision,q.get('revision')!,{kind:'timing',group:'morning'},Number(q.get('offset'))):periodExploration(source,[],'2026-11-09','2026-11-07',revision,2)),meta} as never;});
+ const view=render(wrap());await view.findByText('Registros 51–61 de 61');source.sessions.splice(13);revision='r3';
+ await act(async()=>{await view.UNSAFE_getByType(RefreshControl).props.onRefresh();});
+ expect(view.getByText('Esta página ya no pertenece al grupo actualizado.')).toBeTruthy();expect(view.queryByText('Registros 51–61 de 61')).toBeNull();expect(mockRead).toHaveBeenCalledTimes(3);
+ fireEvent.press(view.getByRole('button',{name:'Volver a la primera página'}));mockParams={...mockParams,...mockSetParams.mock.calls.at(-1)![0] as Record<string,string>};view.rerender(wrap());
+ await view.findByText('Registros 1–6 de 6');expect(mockRead).toHaveBeenCalledTimes(4);expect(mockParams).toMatchObject({weekA:'2026-08-03',weekB:'2026-08-10',coincidencePage:'0'});
+});
 it('selects and swaps by calendar, keeps partial dates visible and changes no read on local selection or records',async()=>{
   const view=render(wrap());await view.findByText('Semanas y días');
   const apply=()=>{const update=mockSetParams.mock.calls.at(-1)![0] as Record<string,string|undefined>;mockParams=Object.fromEntries(Object.entries({...mockParams,...update}).filter(([,value])=>value!==undefined)) as Record<string,string>;view.rerender(wrap());};
