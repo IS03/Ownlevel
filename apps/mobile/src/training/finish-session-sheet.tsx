@@ -37,6 +37,15 @@ const number = (value: number) => new Intl.NumberFormat('es-AR', { maximumFracti
 function Stat({ value, label }: { value: string; label: string }) {
   return <View style={styles.stat}><AppText numeric variant="title2">{value}</AppText><AppText muted variant="caption">{label}</AppText></View>;
 }
+function SummaryField({ field, label, title = label, value, editable, onChange }: {
+  field: 'energyLevel' | 'performanceLevel'; label: string; title?: string; value: number | null; editable: boolean; onChange: (value: number | null) => void;
+}) {
+  return <View style={styles.scale}>
+    <View style={styles.scaleHeader}><AppText variant="headline">{title}</AppText></View>
+    <FinishScaleControl field={field} label={label} value={value} disabled={!editable} onChange={onChange} />
+    <View style={styles.ends}><AppText muted variant="caption">Baja</AppText><AppText muted variant="caption">Alta</AppText></View>
+  </View>;
+}
 /** F1→F3→F4 in one modal: the confirmed receipt fades in over the grown champagne circle, so the session never flashes between them. */
 export function FinishSessionSheet({ controller, onClose, onDiscard, readSummary, readWeek, onDone, onViewSession }: {
   controller: ActiveSessionController; onClose: () => void; onDiscard?: () => void;
@@ -52,7 +61,7 @@ export function FinishSessionSheet({ controller, onClose, onDiscard, readSummary
   const blockedByOther = Boolean(state.intent && !finishIntent);
   const editable = !empty && state.summaryReady && !running && !state.intent && !state.fenced;
   const summary = pending ?? state.summary;
-  const [noteOpen, setNoteOpen] = useState(false), [receipt, setReceipt] = useState(false), [now, setNow] = useState(Date.now);
+  const [noteOpen, setNoteOpen] = useState(false), [details, setDetails] = useState(false), [receipt, setReceipt] = useState(false), [now, setNow] = useState(Date.now);
   const [origin, setOrigin] = useState<SaveOrigin>({ x: 16, y: window.height - 130, width: window.width - 32 });
   const button = useRef<View>(null), reveal = useSharedValue(0);
   const showReceipt = useCallback(() => setReceipt(true), []); // Stable: the animation must not restart its sequence on re-render.
@@ -66,6 +75,9 @@ export function FinishSessionSheet({ controller, onClose, onDiscard, readSummary
   const detail = state.detail;
   const volume = finishPreviewVolume(controller);
   const title = detail?.session.routineId ? `Terminar ${detail.session.name}` : 'Terminar entrenamiento';
+  const detailSummary = [summary.performanceLevel !== null ? `Rendimiento ${summary.performanceLevel}` : null,
+    summary.painLevel !== null ? `Dolor ${summary.painLevel}/10` : null, // 0/10 is an answer; unanswered stays out.
+    summary.notes ? 'Con nota' : null].filter(Boolean).join(' · ') || 'Rendimiento percibido, dolor y nota';
   const subtitle = detail ? `${compactWeekdayDate(detail.session.logDate)} · ${formatTimeRange(detail.session.startedAt, detail.session.startedAt).split('–')[0]}` : '';
   return <Modal visible transparent presentationStyle="overFullScreen" animationType={reduceMotion ? 'fade' : 'slide'} onRequestClose={close}>
     <GestureHandlerRootView style={[styles.root, { backgroundColor: `${brandTokens.palette.dark.bg}66` }]}>
@@ -82,31 +94,35 @@ export function FinishSessionSheet({ controller, onClose, onDiscard, readSummary
             {empty ? <View accessibilityRole="text" style={[styles.empty, { backgroundColor: colors.surfaceRaised }]} testID="finish-no-sets">
               <AppIcon name="info" color={colors.textMuted} size={20} /><AppText style={styles.flex} variant="subheadline">Todavía no marcaste ninguna serie. Marcalas en la sesión para poder guardar.</AppText>
             </View> : null}
-            <View style={[styles.questions, !editable && styles.dim]} pointerEvents={editable ? 'auto' : 'none'} accessibilityElementsHidden={empty} importantForAccessibility={empty ? 'no-hide-descendants' : 'auto'}>
+            {/* Without a completed set nothing can be saved: no disabled questionnaire, only the explanation and the way back. */}
+            {empty ? null : <View style={[styles.questions, !editable && styles.dim]} pointerEvents={editable ? 'auto' : 'none'}>
               {controller.feelings ? <TrainingFeelings journal={controller.feelings} phase="post" controller={controller} disabled={!editable} /> : null}
-              {((controller.feelings ? ['performanceLevel'] : ['energyLevel', 'performanceLevel']) as ('energyLevel' | 'performanceLevel')[]).map(field => {
-                const label = field === 'energyLevel' ? 'Energía' : 'Rendimiento';
-                return <View key={field} style={styles.scale}>
-                  <View style={styles.scaleHeader}><AppText variant="headline">{label}</AppText></View>
-                  <FinishScaleControl field={field} label={label} value={summary[field]} disabled={!editable} onChange={value => change({ [field]: value })} />
-                  <View style={styles.ends}><AppText muted variant="caption">Baja</AppText><AppText muted variant="caption">Alta</AppText></View>
-                </View>;
-              })}
-              <View style={styles.scale}>
-                {/* No "Quitar": "Sin dolor" sets 0 and a second tap returns to unanswered (null). Fixed heights: nothing below jumps. */}
-                <View style={styles.scaleHeader}><AppText variant="headline">Dolor</AppText>
-                  <GlassSurface interactive style={styles.shortcut}><Pressable accessibilityRole="button" accessibilityLabel="Sin dolor" accessibilityHint={summary.painLevel === 0 ? 'Tocá de nuevo para dejarlo sin responder' : undefined}
-                    accessibilityState={{ selected: summary.painLevel === 0, disabled: !editable }} disabled={!editable} onPress={() => change({ painLevel: summary.painLevel === 0 ? null : 0 })} style={styles.shortcutPress}>
-                    <AppText variant="subheadline" style={{ color: summary.painLevel === 0 ? colors.primary : colors.text, fontWeight: '600' }}>Sin dolor</AppText>
-                  </Pressable></GlassSurface></View>
-                <FinishPainControl field="painLevel" label="Dolor" value={summary.painLevel} disabled={!editable} onChange={painLevel => change({ painLevel })} />
-              </View>
-              <Pressable accessibilityRole="button" accessibilityLabel={summary.notes ? `Editar nota: ${summary.notes}` : 'Agregar una nota'} disabled={!editable} onPress={() => setNoteOpen(true)}
-                style={[styles.note, { backgroundColor: colors.surface }]} testID="finish-open-note">
-                <AppIcon name="note" color={colors.textMuted} size={20} /><View style={styles.flex}><AppText numberOfLines={2}>{summary.notes || 'Agregar una nota'}</AppText>
-                  {!summary.notes ? <AppText muted variant="caption">Cómo te sentiste, algo para la próxima</AppText> : null}</View><AppIcon name="chevronRight" color={colors.textMuted} size={17} />
+              {/* Older servers without feelings keep their single energy answer here, as the main question. */}
+              {controller.feelings ? null : <SummaryField field="energyLevel" label="Energía" value={summary.energyLevel} editable={editable} onChange={energyLevel => change({ energyLevel })} />}
+              {/* Perceived performance, pain and the note: optional details, one level below. */}
+              <Pressable accessibilityRole="button" accessibilityLabel={`Más detalles, opcional: ${detailSummary}`} accessibilityState={{ expanded: details }}
+                onPress={() => setDetails(value => !value)} style={styles.detailsRow} testID="finish-details-toggle">
+                <View style={styles.flex}><AppText variant="subheadline">Más detalles</AppText><AppText muted numeric variant="caption">{detailSummary}</AppText></View>
+                <View style={details ? styles.flip : undefined}><AppIcon name="chevronDown" color={colors.textMuted} size={17} /></View>
               </Pressable>
-            </View>
+              {details ? <View style={styles.questions}>
+                <SummaryField field="performanceLevel" label="Rendimiento" title="Rendimiento percibido" value={summary.performanceLevel} editable={editable} onChange={performanceLevel => change({ performanceLevel })} />
+                <View style={styles.scale}>
+                  {/* No "Quitar": "Sin dolor" sets 0 and a second tap returns to unanswered (null). Fixed heights: nothing below jumps. */}
+                  <View style={styles.scaleHeader}><AppText variant="headline">Dolor</AppText>
+                    <GlassSurface interactive style={styles.shortcut}><Pressable accessibilityRole="button" accessibilityLabel="Sin dolor" accessibilityHint={summary.painLevel === 0 ? 'Tocá de nuevo para dejarlo sin responder' : undefined}
+                      accessibilityState={{ selected: summary.painLevel === 0, disabled: !editable }} disabled={!editable} onPress={() => change({ painLevel: summary.painLevel === 0 ? null : 0 })} style={styles.shortcutPress}>
+                      <AppText variant="subheadline" style={{ color: summary.painLevel === 0 ? colors.primary : colors.text, fontWeight: '600' }}>Sin dolor</AppText>
+                    </Pressable></GlassSurface></View>
+                  <FinishPainControl field="painLevel" label="Dolor" value={summary.painLevel} disabled={!editable} onChange={painLevel => change({ painLevel })} />
+                </View>
+                <Pressable accessibilityRole="button" accessibilityLabel={summary.notes ? `Editar nota: ${summary.notes}` : 'Agregar una nota'} disabled={!editable} onPress={() => setNoteOpen(true)}
+                  style={[styles.note, { backgroundColor: colors.surface }]} testID="finish-open-note">
+                  <AppIcon name="note" color={colors.textMuted} size={20} /><View style={styles.flex}><AppText numberOfLines={2}>{summary.notes || 'Agregar una nota'}</AppText>
+                    {!summary.notes ? <AppText muted variant="caption">Cómo te sentiste, algo para la próxima</AppText> : null}</View><AppIcon name="chevronRight" color={colors.textMuted} size={17} />
+                </Pressable>
+              </View> : null}
+            </View>}
           </ScrollView>
           <View style={styles.footer}>
             {status ? <AppText accessibilityLiveRegion="polite" style={{ color: finishIntent?.phase === 'uncertain' ? colors.text : colors.danger }} variant="footnote">{status}</AppText> : null}
@@ -136,5 +152,6 @@ const styles = StyleSheet.create({
   ends: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: brandTokens.space.xs }, shortcut: { borderRadius: brandTokens.radius.full }, shortcutPress: { minHeight: 44, justifyContent: 'center', paddingHorizontal: brandTokens.space.md },
   note: { flexDirection: 'row', gap: brandTokens.space.sm, alignItems: 'center', padding: brandTokens.space.md, borderRadius: brandTokens.radius.inner, minHeight: 64 },
   discard: { minHeight: 50, alignItems: 'center', justifyContent: 'center' },
+  detailsRow: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.sm, minHeight: brandTokens.layout.minTouch }, flip: { transform: [{ rotate: '180deg' }] },
   footer: { padding: brandTokens.space.md, gap: brandTokens.space.xxs },
 });

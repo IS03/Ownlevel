@@ -6,7 +6,7 @@ import { AppState, RefreshControl } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { parseProgressBody, parseProgressMetrics, parseProgressOverview, type ProgressBody, type ProgressComparison, type ProgressMetrics, type ProgressOverview, type ProgressQuery } from '@/api/progress';
-import { ProgressOverviewScreen } from './overview-screen';
+import { ProgressPeriodOverviewScreen as ProgressOverviewScreen } from './overview-screen';
 import { BodyTrendsScreen } from './body-trends-screen';
 import { MetricsTrendsScreen } from './metrics-trends-screen';
 import { NutritionReportsRoute } from '@/nutrition/report-route';

@@ -685,6 +685,27 @@ El resultado presenta período, variables, ventana, unidad observacional, muestr
 
 # Home de Progreso
 
+## Primera adopción Mobile de Progreso VNext — #402 (09/11/2026)
+
+La portada Mobile pasa a una composición editorial de Entrenamiento, Cuerpo y Nutrición, sin selector global obligatorio. Esta primera entrega usa **los últimos 30 días hasta hoy Córdoba**, con fechas explícitas. La composición configurable anterior sigue completa en «Explorar período y A/B» (`progress/period`): Mis vistas, áreas, récords/cambios, conexiones, observaciones, Etapas y sus detalles no se sustituyen. Métricas personales y Recorrido por fecha conservan sus destinos existentes. El resto de este capítulo documenta el modelo canónico y la Home Web, que esta entrega no modifica.
+
+| Elemento Mobile | Fuente reutilizada y significado | Límite de la primera entrega |
+|---|---|---|
+| Entrenamiento | `ProgressOverview.training`: sesiones/días y series completadas; `sparks.training` representa **actividad**. `inPeriod` compara primera contra última sesión compatible del ejercicio dentro de la ventana. | Actividad no mide rendimiento. El conteo comparable no es un récord histórico, suma de kg ni score de fuerza; el detalle conserva referencias/métodos. |
+| Cuerpo | Observaciones canónicas de `bodyReport`: último pesaje **de la ventana**, fecha y cantidad; diferencia primera/última solo con dos registros. `sparks.weight` es el último pesaje real de cada intervalo. | Un registro no produce tendencia; no se arrastra un peso exterior a la ventana ni se rellenan huecos. No es una nueva tendencia semanal. |
+| Nutrición | `aggregateNutritionReport`: promedios registrados por días cerrados con dato completo del nutriente entre las comidas registradas; denominadores propios de kcal/proteína y objetivo histórico acreditado. `sparks.nutrition` usa los mismos días, promediados por intervalo. | Hoy no entra al promedio; días con registro, días usados y población con objetivo son distintos. Ingesta no registrada no es cero ni ayuno. No se añade gasto estimado: el overview no lo transporta. |
+
+**Brecha y compatibilidad mínima:** el overview ya contiene los valores/gráficos, pero no las fechas exactas del primer/último pesaje ni los denominadores independientes de Nutrición. `panorama=1` añade únicamente esos metadatos desde las mismas lecturas ya resueltas; no crea otro lector, endpoint, join, consulta histórica ni cálculo analítico. Sin el opt-in la respuesta anterior permanece idéntica para clientes instalados. Mobile acepta respuestas sin el campo e identifica fecha/cobertura no disponibles; ante un servidor que rechaza el flag con 400 hace una sola lectura de compatibilidad, sin tratar 401 o errores de red como versión antigua.
+
+**Recorridos a pedido:** «Últimos tres meses», «Semanas, A/B y coincidencias descriptivas» y «Ver contexto y comparación de sesiones» abren las rutas existentes de Entrenar. `InsightsOrigin.fromProgress='1'`, validado y propagado por los helpers actuales, habilita «Volver a Progreso» con destino fijo. El retorno desde Nutrición/Cuerpo/métricas y evidencia conserva período, A/B, semana, grupo, página, sensación y revisión existentes; Entrenar sin ese origen conserva su recorrido. Selecciones y revisiones siguen a cargo de sus pantallas, no de una copia en Progreso.
+
+**Costo comprobado con fixture controlada (no producción):** misma cuenta, rango y caché vacía; abrir la composición anterior dispara 4 GET (overview, vistas, conexiones e insight); la nueva abre 1 GET de overview. Mostrar/tocar los enlaces sin montar su destino no añade lecturas Insights. El overview medido pasa de **3.334 a 3.513 bytes JSON UTF-8 (+179)**; su fixture conserva **2 RPC y 2 comprobaciones de lectura por owner**, sin fuentes adicionales. El servidor anterior requiere 2 GET solo en el fallback 400. Vistas/conexiones/observaciones se leen al abrir el período configurable; Insights empieza al abrir su destino. No se midió latencia de producción ni una mejora porcentual.
+
+**Caché e interacción:** `useCachedRead`/invalidaciones confirmadas existentes, clave propia por cliente/cuenta y ventana; última lectura conservada durante revalidación/error. Portada desmontada al perder foco para no iniciar lecturas oculta. `PeriodChart` y tokens existentes: toque inspecciona rango/valor/agregación; solo el botón abre el detalle. Header proporcional a Dynamic Type y sin reducción por scroll con Reducir movimiento. Observación visual acotada con app Dev existente, fixture en memoria, claro/oscuro y tamaño accesible; no acredita navegación nativa completa, VoiceOver ni QA física. Harness y Metro propios retirados al entregar.
+
+**Continuidad #402:** jerarquizar hallazgos canónicos en portada sin recalcular/rankear métodos, afinar la densidad conjunta en iPhone y decidir ventanas distintas por dominio solo si sus fuentes lo permiten. Última sesión y mayor profundidad gráfica quedan para siguientes incrementos. Esta entrega no termina #402/#367, no habilita asociaciones ni ejecuta #441. La comprobación física vive en la [checklist única](progress/367-qa-fisica.md#progreso-vnext--primera-entrega-402).
+
+
 ## Función y jerarquía
 
 **IMPLEMENTADO:** `/progress` sintetiza y navega; no duplica reportes ni muestra grandes gráficos.
