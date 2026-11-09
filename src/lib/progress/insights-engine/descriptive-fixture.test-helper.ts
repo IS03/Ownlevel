@@ -23,3 +23,6 @@ export function descriptiveBodyFixture() {
   }
   return {source:{...base,sessions:[],exercises:[],sets:[],feelings:[],meals},weights};
 }
+export function descriptivePreMealFixture() {
+ const s=descriptiveFixture();s.meals.forEach((m,i)=>{m.calories=i<7?0:600;m.carbsG=i<7?0:100;if(i>=7)m.consumedAt=`${m.date}T13:30:00-03:00`;});return s;
+}
