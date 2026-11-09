@@ -18,7 +18,7 @@ jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('@/auth', () => ({ useMobileAuth: () => ({ session: { user: { id: mockOwner } }, getAccessTokenForApi: mockAccess, revalidateApiSession: mockRevalidate }) }));
 jest.mock('@/api/config', () => ({ readMobileApiConfig: () => ({ appEnv: 'development', baseUrl: 'https://example.test', host: 'example.test', timeoutMs: 1000 }) }));
 jest.mock('@/api/runtime', () => ({ createMobileClientRuntime: () => ({ appVersion: '1', build: '1', platform: 'ios' }) }));
-jest.mock('@/api/client', () => ({ createMobileApiClient: () => { const owner = mockOwner; return { read: (o: Parameters<MobileApiClient['read']>[0]) => mockRead(owner, o), request: jest.fn() }; } }));
+jest.mock('@/api/client', () => ({ ...jest.requireActual<typeof import('@/api/client')>('@/api/client'), createMobileApiClient: () => { const owner = mockOwner; return { read: (o: Parameters<MobileApiClient['read']>[0]) => mockRead(owner, o), request: jest.fn() }; } }));
 jest.mock('@/api', () => jest.requireActual('@/api/provider'));
 jest.mock('expo-router', () => ({ useLocalSearchParams: () => ({ asOf: '2026-11-07', week: '2026-08-10', compare: '1', weekA: '2026-08-03', weekB: '2026-08-10' }), useRouter: () => ({ setParams: jest.fn(), navigate: jest.fn(), push: jest.fn() }), useFocusEffect: () => undefined }));
 const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
