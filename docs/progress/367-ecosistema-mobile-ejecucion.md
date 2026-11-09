@@ -1,6 +1,8 @@
 # #367 — Ejecución del ecosistema Mobile
 
-Base: `main` en `6d94f31` (#422), checkout limpio. #420 continúa borrador y separado; investigación detenida. Sin Web ni #402.
+Estado actual de partida: `origin/main` `5e4a31c` (#439). Contexto temporal, semanas/días y acceso persistente ya están integrados. La validación reservada de #420 no acreditó su criterio: los métodos experimentales siguen fuera del producto. Esta tarea autoriza un diseño dirigido nuevo, sin campañas ni #402.
+
+Los checkpoints y el orden de ejecución siguientes conservan el estado histórico sobre `6d94f31` (#422); no describen entregas pendientes actuales.
 
 | Capacidad | Estado comprobado / trabajo acotado |
 |---|---|
@@ -13,7 +15,7 @@ Base: `main` en `6d94f31` (#422), checkout limpio. #420 continúa borrador y sep
 | Asociaciones de sensaciones, horarios y evolución corporal | Bloqueadas por validación. No ampliar, recalibrar ni publicar. |
 | Registro completo de ingesta, horas desconocidas, contexto histórico no capturado | Faltan datos; no completar retrospectivamente ni inferir ausencia de consumo. |
 
-## Orden ejecutable
+## Orden original — histórico
 
 1. **PR funcional de contexto temporal:** desde día/sesión, detalle agrupado de todas las sesiones de ese día, inicio/final/duración y evidencia previa/posterior. Vista optativa nueva, lectores compartidos y contador por cuenta. Reutilizar el lector agrupado vigente; no agregar consultas por sesión/tarjeta. Verificar costo y paginación con fixtures. No calcular asociaciones al abrir este detalle.
 2. **Exploración semanal y conexiones del período:** ampliar el recorrido existente de tres meses con semanas/días, denominadores independientes y enlaces al día/sesión/evidencia y dominios. Reutilizar #421 y medianas de Cuerpo; no mezclar revisiones ni crear otro dashboard.
@@ -114,3 +116,38 @@ Los mínimos son reglas de presentación para no llamar contraste a uno o dos re
 **Costo comprobado:** fixture PostgREST local descartable con 1.005 sesiones y más de 1.000 comidas, RLS entre dos identidades sintéticas y paginación: 14 consultas existentes, 92 días; respuesta sin/con proyección **45.039 / 658.076 bytes**, sin consultas adicionales. La proyección añade evidencia por sesión, por eso crece el payload; no es una cifra típica de producción. Fixture pura de 12 sesiones: 43.613 / 62.336 bytes. Cambiar descripción/grupo no hace peticiones. No se cambió el lector ni su contrato SQL; servidor anterior sigue siendo compatible. Stack local retirado, sin datos personales ni escrituras de prueba en producción. Logs y exports conservados fuera del repo en `~/.codex/artifacts/ownlevel-prefetch-descriptive-20261108`.
 
 **Límite y continuidad:** no se publican asociaciones estadísticamente validadas, causalidad, recomendaciones ni supuesta ingesta completa; no se habilitan métodos anteriores o «consistente». Las ausencias de horarios o registros no se reconstruyen. No se necesitan nuevas capturas para estas tres descripciones; las conclusiones inferenciales siguen bloqueadas por su validación separada. QA física pendiente en la checklist única y #432; #367 sigue abierto. Sin build/instalación de Diario ni ejecución de la reserva.
+
+
+## Contrato de entrega: Comparar semanas — 08/11/2026
+
+La comparación descriptiva permite contrastar dos semanas elegidas dentro del trimestre ya leído por `period-explore`; no sustituye el descubrimiento automático pendiente. El cuadro distingue capacidades actuales de esta entrega en preparación.
+
+| Pregunta de Nacho | Qué responde hoy / información existente | Falta en esta entrega o continuidad | Depende de validar | No se puede saber |
+|---|---|---|---|---|
+| 1. Entrenamiento en semanas con distintos macros | Días/sesiones, resultados con referencia compatible y nutrientes diarios con faltantes; exploración semanal individual. | Selección A/B, cobertura y resumen descriptivo conjuntos (esta entrega). Descubrimiento de relaciones, pendiente. | Afirmar una asociación repetida, no el contraste factual. | Ingesta real completa o mejora de fuerza a partir de sumar cargas. |
+| 2. Peso en esas semanas | Pesajes fechados, `body-weekly/1`, mínimo 3 y semana completa. | Diferencia entre las dos medianas elegidas con distancia temporal (esta entrega). | Asociar la evolución al entrenamiento/alimentación. | Medianas de semanas insuficientes, composición corporal ni causa del cambio. |
+| 3. Qué había registrado antes y cómo terminó | Sesión → evidencia y horarios/comidas, ventanas existentes, energía/fatiga post y límites horarios. | Acceso desde cada semana A/B conservando origen (esta entrega). | Relacionar automáticamente una exposición previa con el resultado. | Comidas no registradas, hora desconocida ni efecto causal de una comida. |
+| 4. Entrenar en distintos horarios | Inicio/final por sesión y contexto temporal consultable. | Desde A/B se abren sesiones con sus horarios. Una comparación agrupada por horarios no se implementa ahora. | Descubrir diferencias estables por horario. | Orden fiable sin timestamps o efecto aislado del horario. |
+| 5. Distribución de energía/fatiga | Post ordinal y cobertura; previas en el contexto de cada sesión. La lectura semanal no transporta todas las previas. | Extensión descriptiva opcional de previas en la misma respuesta; antes/después separados (esta entrega). Estratificar automáticamente por condiciones queda pendiente. | Asociaciones de sensaciones condicionadas a exposiciones. | Respuestas ausentes, equivalencia de otras escalas o temporalidad no capturada. |
+| 6. Qué se repite y qué evidencia sostiene | Trimestre, semanas, hechos, referencias y coberturas; relaciones previamente publicadas con sus límites. | Comparación factual A/B ahora; diseño de una sola pregunta automática después, separado y sin publicación. | Todo descubrimiento nuevo y «consistente». | Causalidad, representatividad de lo no registrado ni patrones garantizados por ausencia de falsos positivos en una simulación. |
+
+**Fórmulas descriptivas fijadas antes del código.** Por nutriente y semana, se reutilizan las sumas diarias canónicas. Un día con dato tiene al menos un registro activo que aporta ese nutriente (`activeMeals - missing > 0`). Total conocido = suma de `recorded` de esos días; promedio por día con dato = total / cantidad de esos días, **no** / 7 ni / días con entrenamiento. Sin ningún día con dato, ambos son desconocidos; cero explícito cuenta como dato. Un día es completo si todos sus registros aportan ese nutriente, parcial si solo algunos, sin dato si tiene comidas pero ninguna aporta el nutriente; días sin comidas van aparte. Se muestran los cuatro conteos, días del intervalo y registros conocidos/faltantes junto a cada cifra; no prueban ingesta completa. Cualquier diferencia de cobertura acompaña el resumen.
+
+Entrenamiento suma únicamente conteos factuales diarios de cada método por separado. Cada ejercicio conserva su referencia compatible, incluso fuera de la semana: estos resultados **no** comparan directamente A con B ni miden un cambio de fuerza. Peso usa exclusivamente las medianas canónicas; diferencia B−A solo con ambas semanas elegibles y se nombra la separación calendario. Sin mediana no se calcula cero.
+
+Previas: por energía/fatiga, cinco conteos ordinales de respuestas de `energy-fatigue/1` ubicadas antes del inicio/primera serie según el clasificador vigente; tardías, temporalidad desconocida, ausentes, ilegibles y otra escala se cuentan aparte sobre todas las sesiones completadas de la semana. Post conserva íntegro el método publicado (ventana de captura actual, sin promedios de escala). No se cambia ningún campo existente: `priorFeelings` es una extensión opcional de `period-explore`; si falta en un servidor anterior, el cliente lo declara no disponible y conserva los enlaces al detalle. Fuente, consultas, paginación y contador de revisión permanecen iguales.
+
+Selección inicial por calendario: B es la semana actualmente abierta y A la anterior; al comienzo se usan las primeras dos. Las fechas son visibles, las dos selecciones son distintas y se pueden intercambiar. Cambiar selección es local. Se reutilizan ruta/lector y enlaces de registros; el origen conserva ambas semanas, trimestre, revisión y el bloque de registros abierto. El resumen usa exclusivamente los valores/coberturas mostrados, sin buscar relaciones. Leyenda: «Comparación de registros; no determina qué produjo el cambio».
+
+
+### Entrega preparada: A/B sobre `period-explore`
+
+Implementación en `codex/367-compare-weeks`, base main `5e4a31c`; no está integrada ni instalada. Desde «Semanas y días» se activa «Comparar semanas». Las dos selecciones y el bloque de registros abierto viajan con el origen validado por la ruta existente, incluidos cruces a Nutrición, Cuerpo, métricas, día y evidencia. Un retorno temporal con comparación inválida se rechaza antes de construir la ruta. La sesión antigua reutiliza el cursor ya vigente. El lector por cuenta y el guard de revisiones siguen siendo los mismos; cambiar A/B, intercambiar o desplegar registros no solicita datos.
+
+Se conservó la vista de una sola semana extrayendo su presentación de días a `WeekRecords`, compartida con A/B. Comparación, agregados y resumen son funciones de presentación sobre el payload agrupado. Fuente canónica y servidor: solo se agrega `priorFeelings` opcional a cada semana, con partición de cobertura y validación estricta; no hay consultas/joins ni endpoints nuevos. Rollout compatible: servidor amplía la respuesta ignorada por clientes instalados; cliente nuevo con servidor anterior declara la distribución previa no disponible, conservando acceso a sesiones. No cambia ningún campo previo ni precisa migración. Esta entrega prepara producto descriptivo y el diseño de continuidad automática; no hace descubrimientos estadísticos nuevos.
+
+Pruebas dirigidas: calendario/selección/intercambio, nutrientes por denominadores independientes, ceros/faltantes, medianas insuficientes/diferencia cero y orientación B−A, borde de trimestre/año, métodos separados, referencia fuera de B, retorno/revisión, error/reintento, compatibilidad sin previas y cuenta cambiada con respuesta antigua en vuelo. Se reutilizan fixtures y guardas reales. Tipos raíz/Mobile y lint dirigido verificados; resultado de la única validación Mobile final y export iOS se publicará con el candidato exacto en el PR. La matriz y esta sección distinguen expresamente el producto de base y el preparado, sin cerrar #367.
+
+**PostgREST local real:** `node scripts/testing/period-details-local.mjs --weeks-only`, PostgreSQL 17.6, PostgREST 16.5 y 93 migraciones; fixture con paginación >1.000 filas, SQL independiente de nutrientes, mediana y previas. Resultado: **14 consultas, 92 días, 49.364 bytes**; mismo número de consultas que la exploración previa. Es costo de fixture, no SLA. El lector fuente sigue paginando historial completo; cambiar selección no lo vuelve a invocar. La pila descartable fue eliminada; sin datos personales ni cambios remotos.
+
+QA física pendiente exclusivamente en la [checklist única](367-qa-fisica.md), índice #432. No se usó simulador en esta entrega, ni se compiló/instaló Diario. El [diseño automático dirigido](367-hoja-de-ruta-ecosistema.md#continuidad-automática-dirigida--diseño-separado-sin-implementación-ni-campaña) registra el objetivo de investigación autorizado (1 % a 24 meses, evaluación adicional a 36 y potencia), el presupuesto conjunto y sus límites; no se ejecutaron campañas ni se recalibró un método.

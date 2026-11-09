@@ -1,5 +1,6 @@
-import {act,fireEvent,render} from '@testing-library/react-native';
+import {act,fireEvent,render,within} from '@testing-library/react-native';
 import {beforeEach,it,expect,jest} from '@jest/globals';
+import {RefreshControl} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {OwnlevelThemeProvider} from '@/design-system';
 import type{MobileApiClient} from '@/api/client';
@@ -7,6 +8,8 @@ import {clearConfirmedReads} from '@/api/confirmed-read-cache';
 import {periodExploration} from '../../../../src/lib/progress/insights-engine/week-exploration';
 import {periodDetailsFixture} from '../../../../src/lib/progress/insights-engine/period-details-fixture';
 import {descriptiveFixture,descriptiveBodyFixture,descriptiveId} from '../../../../src/lib/progress/insights-engine/descriptive-fixture.test-helper';
+import {createInsightsSnapshot,insightsSummary} from '../../../../src/lib/progress/insights-engine/read-model';
+import {InsightsScreen} from './insights-screen';
 import {WeekExplorationScreen} from './week-exploration-screen';
 import {insightsReturnHref,nutritionDayHref,metricTrendHref,bodyWeightHref,explorationHref} from './navigation';
 jest.mock('@react-native-async-storage/async-storage',()=>jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
@@ -16,7 +19,7 @@ let mockParams:Record<string,string>={};const mockPush=jest.fn(),mockNavigate=je
 jest.mock('expo-router',()=>({useRouter:()=>({push:mockPush,navigate:mockNavigate,setParams:mockSetParams}),useLocalSearchParams:()=>mockParams,useFocusEffect:()=>undefined}));
 const mockRead=jest.fn<MobileApiClient['read']>();let mockClient={read:mockRead,request:jest.fn()} as unknown as MobileApiClient;
 jest.mock('@/api',()=>({useMobileApi:()=>({client:mockClient})}));
-const data=()=>periodExploration(periodDetailsFixture(),[],'2027-01-02','2026-11-07','r2',2);
+const data=(weights:{date:string;value:number}[]=[])=>periodExploration(periodDetailsFixture(),weights,'2027-01-02','2026-11-07','r2',2);
 const meta={durationMs:1,httpStatus:200,outcome:'ok' as const};
 const wrap=()=> <SafeAreaProvider initialMetrics={{frame:{x:0,y:0,width:320,height:800},insets:{top:0,left:0,right:0,bottom:0}}}><OwnlevelThemeProvider initialMode="dark"><WeekExplorationScreen/></OwnlevelThemeProvider></SafeAreaProvider>;
 beforeEach(()=>{mockClient={read:mockRead,request:jest.fn()} as unknown as MobileApiClient;mockRead.mockReset();mockPush.mockReset();mockNavigate.mockReset();mockSetParams.mockReset();mockParams={asOf:'2026-11-07',week:'2026-08-10',revision:'r1'};clearConfirmedReads(mockClient);mockRead.mockImplementation(async o=>({status:'ok',data:o.parse(data()),meta})as never);});
@@ -94,4 +97,84 @@ it('does not carry descriptions across logout/accounts or revive a late reading 
   mockClient={read:nextRead,request:jest.fn()} as unknown as MobileApiClient;view.rerender(wrap());
   await view.findByText('Coincidencias descriptivas de tus registros');
   expect(view.queryByTestId(`coincidence-session-${descriptiveId(10)}`)).toBeNull();expect(nextRead).toHaveBeenCalledTimes(1);
+});
+
+const compareParams=()=>({asOf:'2026-11-07',week:'2026-08-10',compare:'1',weekA:'2026-08-03',weekB:'2026-08-10',revision:'r1'});
+it('selects and swaps by calendar, keeps partial dates visible and changes no read on local selection or records',async()=>{
+  const view=render(wrap());await view.findByText('Semanas y días');
+  const apply=()=>{const update=mockSetParams.mock.calls.at(-1)![0] as Record<string,string|undefined>;mockParams=Object.fromEntries(Object.entries({...mockParams,...update}).filter(([,value])=>value!==undefined)) as Record<string,string>;view.rerender(wrap());};
+  fireEvent.press(view.getByRole('button',{name:'Comparar semanas'}));apply();
+  expect(within(view.getByTestId('week-selection-A')).getByText(/03\/08\/2026.*09\/08\/2026/)).toBeTruthy();
+  expect(within(view.getByTestId('week-selection-B')).getByText(/10\/08\/2026.*16\/08\/2026/)).toBeTruthy();
+  expect(view.getByText('Comparación de registros; no determina qué produjo el cambio.')).toBeTruthy();
+  expect(within(view.getByTestId('week-nutrient-calories')).getByText('50 kcal')).toBeTruthy();
+  expect(within(view.getByTestId('week-nutrient-proteinG')).getByText('0 g')).toBeTruthy();
+  fireEvent.press(view.getByRole('button',{name:'Intercambiar A y B'}));apply();
+  expect(within(view.getByTestId('week-selection-A')).getByText(/10\/08\/2026.*16\/08\/2026/)).toBeTruthy();
+  fireEvent.press(view.getByRole('button',{name:'Semana anterior para A'}));apply();
+  expect(within(view.getByTestId('week-selection-A')).getByText(/Semana recortada.*2 días/)).toBeTruthy();
+  fireEvent.press(view.getByRole('button',{name:'Ver días y registros de B'}));apply();
+  expect(view.getByTestId('week-records-B')).toBeTruthy();
+  fireEvent.press(view.getByRole('button',{name:'Abrir Nutrición del 03/08/2026'}));
+  const href=mockPush.mock.calls.at(-1)![0] as ReturnType<typeof nutritionDayHref>;
+  const returned=insightsReturnHref(href.params);
+  expect(returned).toEqual({pathname:'/(tabs)/train/insights/weeks',params:{asOf:'2026-11-07',week:'2026-08-03',compare:'1',weekA:'2026-08-01',weekB:'2026-08-03',weekSide:'B',revision:'r2'}});
+  expect(mockRead).toHaveBeenCalledTimes(1);
+  expect(insightsReturnHref({...href.params,insightsWeekA:'invalid'})).toBeNull();
+  expect(insightsReturnHref({...href.params,insightsTemporal:'1',insightsWeekA:'invalid'})).toBeNull();
+});
+it('preserves selection on a new complete revision and never joins its figures to the old one',async()=>{
+  mockParams=compareParams();let revision='r2';
+  mockRead.mockImplementation(async o=>{const d=data();return {status:'ok',data:o.parse({...d,sourceRevision:revision,weeks:d.weeks.map(w=>({...w,days:w.days.map(day=>day.nutrition?{...day,nutrition:{...day.nutrition,calories:{...day.nutrition.calories,recorded:revision==='r3'?day.nutrition.calories.recorded*2:day.nutrition.calories.recorded}}}:day)}))}),meta} as never;});
+  const view=render(wrap());await view.findByText('Comparar semanas');
+  expect(within(view.getByTestId('week-nutrient-calories')).getByText('50 kcal')).toBeTruthy();
+  revision='r3';await act(async()=>{await view.UNSAFE_getByType(RefreshControl).props.onRefresh();});
+  const calories=within(view.getByTestId('week-nutrient-calories'));
+  expect(calories.getByText('100 kcal')).toBeTruthy();expect(calories.queryByText('50 kcal')).toBeNull();
+  expect(mockRead).toHaveBeenCalledTimes(2);expect(mockParams.weekA).toBe('2026-08-03');expect(mockParams.weekB).toBe('2026-08-10');
+  fireEvent.press(view.getByRole('button',{name:'Ver días y registros de A'}));
+  const update=mockSetParams.mock.calls.at(-1)![0] as Record<string,string>;mockParams={...mockParams,...update};view.rerender(wrap());
+  fireEvent.press(view.getByRole('button',{name:'Ver sesiones y comparaciones del 03/08/2026'}));
+  expect(mockPush).toHaveBeenLastCalledWith({pathname:'/(tabs)/train/insights',params:expect.objectContaining({date:'2026-08-03',before:'2026-08-04',compare:'1',weekA:'2026-08-03',weekB:'2026-08-10',weekSide:'A',revision:'r3'})});
+});
+it('does not invent prior distributions on an older server or replace invalid selected weeks silently',async()=>{
+  mockParams=compareParams();mockRead.mockImplementation(async o=>{const d=data();for(const w of d.weeks)delete w.priorFeelings;return {status:'ok',data:o.parse(d),meta} as never;});
+  const view=render(wrap());await view.findByText('Comparar semanas');
+  expect(view.getAllByText('No disponible en esta lectura')).toHaveLength(4);expect(mockRead).toHaveBeenCalledTimes(1);
+  mockParams={...mockParams,weekA:'2025-01-01'};view.rerender(wrap());
+  expect(view.getByText('Semanas fuera del período')).toBeTruthy();expect(view.queryByTestId('week-comparison')).toBeNull();expect(mockRead).toHaveBeenCalledTimes(1);
+});
+
+it('opens the existing exercise evidence with a reference outside B, preserving both selected weeks',async()=>{
+  const base=periodDetailsFixture();
+  const source={...base,exercises:base.exercises.map(e=>({...e,implement:'barra',weightMode:'Peso total',configuration:'none'}))};
+  const snapshot=createInsightsSnapshot(source,{today:'2027-01-02',revision:'r2',method:2});
+  mockParams={...compareParams(),weekSide:'B'};
+  mockRead.mockImplementation(async o=>{const query=new URL(`http://fixture${o.path}`).searchParams;
+    const raw=query.get('view')==='period-explore'?periodExploration(source,[],'2027-01-02','2026-11-07','r2',2):insightsSummary(snapshot);
+    return {status:'ok',data:o.parse(raw),meta} as never;
+  });
+  const view=render(wrap());await view.findByText('Comparar semanas');
+  fireEvent.press(view.getByRole('button',{name:'Ver sesiones y comparaciones del 10/08/2026'}));
+  const dayHref=mockPush.mock.calls.at(-1)![0] as {params:Record<string,string>};view.unmount();mockParams=dayHref.params;
+  const facts=render(<SafeAreaProvider initialMetrics={{frame:{x:0,y:0,width:320,height:800},insets:{top:0,left:0,right:0,bottom:0}}}><OwnlevelThemeProvider initialMode="dark"><InsightsScreen/></OwnlevelThemeProvider></SafeAreaProvider>);
+  const exercise=await facts.findByRole('button',{name:/^Ejercicio, igual.*frente a la sesión del domingo.*9 de agosto/});
+  fireEvent.press(exercise);
+  const evidence=mockPush.mock.calls.at(-1)![0] as {pathname:string;params:Record<string,string>};
+  expect(evidence.pathname).toBe('/(tabs)/train/insights/evidence');
+  expect(evidence.params).toMatchObject({reference:'93670000-0000-4000-8000-000000000006',result:'observed_stable',revision:'r2',insightsWeekA:'2026-08-03',insightsWeekB:'2026-08-10',insightsCompare:'1'});
+  expect(insightsReturnHref(evidence.params)).toMatchObject({pathname:'/(tabs)/train/insights',params:{date:'2026-08-10',weekA:'2026-08-03',weekB:'2026-08-10',weekSide:'B',compare:'1'}});
+  fireEvent.press(facts.getByRole('button',{name:'Volver a comparar semanas'}));
+  expect(mockNavigate).toHaveBeenLastCalledWith({pathname:'/(tabs)/train/insights/weeks',params:{asOf:'2026-11-07',week:'2026-08-10',revision:'r2',weekA:'2026-08-03',weekB:'2026-08-10',weekSide:'B',compare:'1'}});
+  expect(mockRead).toHaveBeenCalledTimes(2);
+});
+
+it('keeps A/B and the pinned period after a failed comparison read and an explicit retry',async()=>{
+  mockParams=compareParams();mockRead.mockResolvedValueOnce({status:'unavailable',reason:'network',meta:{durationMs:1,httpStatus:null,outcome:'unavailable'}});
+  const view=render(wrap());await view.findByText('No pudimos leer las semanas');
+  expect(mockRead).toHaveBeenCalledTimes(1);expect(view.queryByTestId('week-comparison')).toBeNull();
+  await act(async()=>{fireEvent.press(view.getByRole('button',{name:'Reintentar'}));});
+  expect(view.getByTestId('week-selection-A')).toBeTruthy();expect(view.getByTestId('week-selection-B')).toBeTruthy();
+  expect(mockParams).toMatchObject({asOf:'2026-11-07',weekA:'2026-08-03',weekB:'2026-08-10'});expect(mockRead).toHaveBeenCalledTimes(2);
+  expect(mockRead.mock.calls.every(([o])=>String(o.path).includes('asOf=2026-11-07'))).toBe(true);
 });

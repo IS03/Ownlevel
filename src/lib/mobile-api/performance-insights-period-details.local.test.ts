@@ -222,5 +222,16 @@ describe.runIf(!!db && !!base && !!task)('#421 exact period readers on disposabl
     mock.auth.mockResolvedValue(clientFor(OTHER).context(OWNER));
     const other=await route('period-explore'),otherBody=await other.json();
     expect(otherBody.coincidences.sessionRows).toEqual([]);expect(otherBody.coincidences.protein.total).toBe(0);
+
+    const priorEligible=Number(sql(`select count(*) from public.workout_sessions s join public.day_logs l on l.id=s.day_log_id join public.workout_session_feelings f on f.session_id=s.id
+      where s.user_id='${OWNER}' and s.status='completed' and l.log_date between '${body.period.start}' and '${body.period.end}'
+      and f.facts->'energyPre'->>'instrumentVersion'='energy-fatigue/1' and f.facts->'energyPre'->>'declaredMoment'='pre'
+      and (f.facts->'energyPre'->>'value')::integer between 1 and 5
+      and (f.facts->'energyPre'->>'capturedAt')::timestamptz<=s.ended_at
+      and ((f.facts->'energyPre'->>'capturedAt')::timestamptz<=s.started_at
+        or (f.facts->'energyPre'->>'capturedAt')::timestamptz<=(select min(t.completed_at) from public.workout_sets t join public.workout_session_exercises x on x.id=t.workout_session_exercise_id where x.workout_session_id=s.id and t.is_completed))`));
+    expect(body.weeks.reduce((n:number,w:{priorFeelings:{eligible:number}[]})=>n+w.priorFeelings[0]!.eligible,0)).toBe(priorEligible);
+    expect(priorEligible).toBeGreaterThan(0);
+    console.log(JSON.stringify({view:'period-explore',queries:who.traces.length,days:days.length,bytes:Buffer.byteLength(JSON.stringify(body))}));
   },120_000);
 });

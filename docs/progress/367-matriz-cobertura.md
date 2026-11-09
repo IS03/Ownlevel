@@ -1,5 +1,9 @@
 # #367 — Matriz de cobertura de Insights
 
+**Estado actual 08/11/2026, main `5e4a31c` (#439):** contexto temporal, exploración de semanas/días y acceso persistente desde sesión terminada ya están integrados. Esta entrega prepara A/B descriptivo sobre la misma lectura y mantiene pendiente el descubrimiento automático. [Contrato vigente de seis preguntas](367-ecosistema-mobile-ejecucion.md#contrato-de-entrega-comparar-semanas--08112026). #367 permanece abierto y QA física parcial en #432.
+
+### Antecedentes conservados — estados al 06–07/11, no gates actuales
+
 **Actualización preparada 2026-11-07 sobre #422 (`6d94f31`):** #423 (borrador) agrega contexto temporal por sesión; la entrega apilada de semanas agrega `period-explore` con todos los días del mismo trimestre, conteos completos/parciales separados, sensaciones ordinales, nutrientes, medianas corporales y retorno por origen. Sin asociaciones nuevas. [Estado, costos y pruebas](367-ecosistema-mobile-ejecucion.md). Código preparado no acredita build ni QA física.
 
 La exploración semanal está en #424; #425/#426 corrigen #399/#418 sin depender de Insights. Gate Mobile global **pendiente** por un fallo del dock en la única corrida completa, no reproducido por sus 69 pruebas relacionadas en main ni en la combinación. No se presenta como fallo demostrado de main ni como aprobación total.
@@ -55,7 +59,7 @@ Contrasta lo que hace el motor con el objetivo de producto. **Cada fila se apoya
 - **Coincidencias:** asociaciones entre días.
 - **Incertidumbre:** exclusiones, cobertura y método.
 
-**Ninguna fila es una causa.** «Consistente» sigue deshabilitado y el objetivo de riesgo del 1 % sigue sin aprobar.
+**Ninguna fila es una causa.** «Consistente» sigue deshabilitado y el 1 % quedó aprobado el 08/11 solo como objetivo de investigación a 24 meses (con evaluación a 36), no como método acreditado ni garantía de producto. [Presupuesto conjunto y protocolo futuro](367-hoja-de-ruta-ecosistema.md#continuidad-automática-dirigida--diseño-separado-sin-implementación-ni-campaña).
 
 ## Matriz
 
@@ -380,7 +384,7 @@ Preparados sobre `f32289a`, sin migración ni despliegue. [Decisiones, contratos
 - **Verificación real #421:** PostgreSQL 17.6/PostgREST 16.5, 93 migraciones completas. Tres regresiones locales aprobadas: joins y filtros anidados, RLS entre dos identidades sintéticas, equivalencia con SQL/resumen, cero/faltantes/legacy/borradas y cambio real del contador entre páginas. Completas 1.005 sesiones/respuestas, 1.722 series elegibles y 1.006 comidas, sin duplicados. Costos de esta fixture paginada: sensaciones 8 consultas / 2.185 bytes, alimentación 4 / 1.616 bytes. Pila descartable eliminada; sin cambios de lector, migraciones nuevas, tokens existentes ni producción. Login/JWT y QA física no acreditados por estas pruebas. Runner y límites en la descripción enlazada.
 - **Límite:** sin asociaciones, puntajes, promedios de sensaciones, recomendaciones, ventanas nuevas ni cambios de método. QA física pendiente en la lista única.
 
-## Próximos incrementos
+## Estado histórico de incrementos — 07/11/2026
 
 **Orden y reglas:** [367-hoja-de-ruta-ecosistema.md](367-hoja-de-ruta-ecosistema.md). Siguen alimentación y tiempo (tres candidatos nuevos), evolución corporal y resúmenes de período, todos en diseño.
 
