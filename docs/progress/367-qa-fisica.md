@@ -204,6 +204,8 @@ Sin build, despliegue ni QA física acreditados. Reglas y checkpoints en [ejecuc
 
 ## Precarga útil de Nutrición — pendiente
 
+- [ ] Token pasivo vencido, 401 antes de navegar y 401 después de adoptar la petición: sin cierre de sesión provocado por precarga; abrir/reintentar recupera por la vía interactiva y no muestra falso vacío.
+
 - [ ] Inicio → Nutrición → ayer, dejando completar Inicio y también navegando durante la precarga: mostrar la fecha correcta sin carga innecesaria cuando existe lectura; conservar «Lectura de…» / «Actualizando…». Las lecturas de Inicio tienen prioridad y el detalle no se confunde con el resumen.
 - [ ] Fechas rápidas hacia atrás/adelante: solo vecinas, sin fechas futuras ni recorrido automático del calendario. Cambiar comidas/métricas, mover o borrar una comida y reabrir un día precargado: invalidación/relectura correctas, sin modificar borrador/pendiente ni aceptar una respuesta atrasada.
 - [ ] Sin red o token vencido durante precarga: Inicio sin aviso invasivo ni cierre de sesión; al abrir, lectura anterior identificada o indisponibilidad/reintento, nunca falso vacío. Cambiar cuenta/logout: sin datos anteriores. Claro/oscuro, texto grande, VoiceOver y navegación fluida. No aprobado por tests.
