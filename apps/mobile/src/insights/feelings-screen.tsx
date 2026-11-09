@@ -1,3 +1,4 @@
+import { ReturnToProgress } from './return-to-progress';
 import { useCallback } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useMobileApi } from '@/api';
@@ -16,7 +17,7 @@ export function FeelingsScreen() {
   const load = useCallback((c: MobileApiClient, signal: AbortSignal) => fetchInsightsFeelings(c, signal), []);
   const { state, data, refresh } = useProgressResource(client, 'performance-insights|feelings', load);
   const refreshControl = <RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />;
-  const scroll = (children: React.ReactNode) => <ScrollView testID="feelings-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}>{children}</ScrollView>;
+  const scroll = (children: React.ReactNode) => <ScrollView testID="feelings-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}><ReturnToProgress/>{children}</ScrollView>;
   if (state.status === 'loading' && !data) return scroll(<View style={styles.block} testID="feelings-loading"><SkeletonBlock height={72} /><SkeletonBlock height={176} /><SkeletonBlock height={176} /></View>);
   if (!data || data.integrity !== 'valid') return scroll(<UnavailableState title="Uy, no pudimos leer tus datos" description="Tranqui: está todo guardado." action={<Button label="Reintentar" onPress={() => void refresh()} />} />);
   return scroll(<>

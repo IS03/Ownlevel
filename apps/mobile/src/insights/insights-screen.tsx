@@ -1,3 +1,4 @@
+import { ReturnToProgress } from './return-to-progress';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
@@ -12,7 +13,7 @@ import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, NUTRITION_SCOPE, PARTIAL_LIMIT, contextRows, dayLabel, dayLanes, daySessions, referenceText, sessionLanes, feelingClockNote, nutritionRows, sessionName, sessionRows, sessionTime, exerciseSentence, focusOf, heroCaption, heroOf, joinDays, nextDate, nothingComparable, primaryLane, readingRows, reasonDetail, reasonText, relationGroups, relationName, relationState, sameRead, statusArrow, statusText, stripMarks, stripSummary, summarySpoken, summaryText, type ContextRow, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
 import { InsightRow } from './insight-row';
 import { usePeriodReturn } from './use-period-return';
-import { dayWeightHref, explorationHref, insightsEvidenceHref, insightsOriginOf, metricTrendHref, nutritionDayHref, validSession, type InsightsOrigin } from './navigation';
+import { withProgressOrigin,progressOriginParams,dayWeightHref, explorationHref, insightsEvidenceHref, insightsOriginOf, metricTrendHref, nutritionDayHref, validSession, type InsightsOrigin } from './navigation';
 
 type View_ = 'days' | 'exercises';
 const VIEWS = [{ value: 'days', label: 'Días' }, { value: 'exercises', label: 'Ejercicios' }] as const;
@@ -153,11 +154,12 @@ function Exercises({ model, router }: { model: InsightsSummary; router: ReturnTy
 }
 
 function RelationList({ lane, title, items, metrics, family, router, evaluated }: { lane: Lane; title: string; items: readonly (RelationSummary | PartialRelationSummary)[]; metrics: InsightsSummary['metrics']; family: FamilyFilter; router: ReturnType<typeof useRouter>; evaluated: number }) {
+  const relationOrigin=progressOriginParams(useLocalSearchParams());
   const [showWaiting, setShowWaiting] = useState(false);
   const groups = relationGroups([...items], family);
   const row = (item: RelationSummary | PartialRelationSummary) => <InsightRow key={item.id} label={relationName(item, metrics)} value={relationState(item)}
     spoken={`${relationName(item, metrics)}: ${relationState(item)}${lane === 'partial' ? ', con contexto parcial' : ''}`}
-    onPress={() => router.push({ pathname: '/(tabs)/train/insights/[relation]', params: { relation: item.id } })} />;
+    onPress={() => router.push({ pathname: '/(tabs)/train/insights/[relation]', params: { ...relationOrigin,relation: item.id } })} />;
   return <View style={styles.block}>
     <Section title={title} />
     {groups.readable.map(row)}
@@ -253,7 +255,7 @@ export function InsightsScreen() {
     if (router.canGoBack()) router.back();
     else router.replace({ pathname: '/(tabs)/train/history/[id]', params: { id: focusId } });
   }} /> : null;
-  const scroll = (children: React.ReactNode) => <ScrollView testID="insights-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}>{children}{returnToSession}</ScrollView>;
+  const scroll = (children: React.ReactNode) => <ScrollView testID="insights-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}><ReturnToProgress/>{children}{returnToSession}</ScrollView>;
 
   if (state.status === 'loading' && !data) return scroll(<View testID="insights-loading" style={styles.block}><SkeletonBlock height={44} /><SkeletonBlock height={120} /><SkeletonBlock height={176} /><SkeletonBlock height={220} /></View>);
   const failed = <UnavailableState title="Uy, no pudimos leer tus datos" description="Tranqui: está todo guardado." action={<Button label="Reintentar" onPress={() => void refresh()} />} />;
@@ -331,9 +333,9 @@ export function InsightsScreen() {
         {/* Its own read, on a tap: the end answers described, never next to the training results as if they were one. */}
         {/* Its own read, on a tap: the last three whole months, facts only. */}
         <InsightRow label="Últimos 3 meses" detail="Entrenamiento, sensaciones, comidas y peso, con sus fechas" spoken="Últimos 3 meses: entrenamiento, sensaciones, comidas y peso, con sus fechas"
-          onPress={() => { haptics.selection(); router.push('/(tabs)/train/insights/period'); }} />
+          onPress={() => { haptics.selection(); router.push(withProgressOrigin('/(tabs)/train/insights/period',origin)); }} />
         <InsightRow label="Cómo terminaste" detail="Energía y fatiga al terminar, según cómo empezaste" spoken="Cómo terminaste: energía y fatiga al terminar, según cómo empezaste"
-          onPress={() => { haptics.selection(); router.push('/(tabs)/train/insights/feelings'); }} />
+          onPress={() => { haptics.selection(); router.push(withProgressOrigin('/(tabs)/train/insights/feelings',origin)); }} />
         {data.relations.strict.outcomeDays || data.relations.partial.outcomeDays ? <View style={styles.block}>
           <Pressable accessibilityRole="button" accessibilityState={{ expanded: relationsOpen }} accessibilityLabel={`Para mirar con calma, ${data.relations.partial.outcomeDays ? data.relations.partial.candidatesEvaluated : data.relations.strict.candidatesEvaluated} relaciones`} onPress={toggleRelations}
             style={({ pressed }) => [styles.row, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>

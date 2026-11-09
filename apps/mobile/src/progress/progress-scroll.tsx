@@ -1,9 +1,9 @@
 import { cloneElement, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, View, type RefreshControlProps } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions, type RefreshControlProps } from 'react-native';
 import Animated, { Extrapolation, interpolate, useAnimatedRef, useAnimatedStyle, useScrollViewOffset } from 'react-native-reanimated';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppIcon, AppText, GlassSurface, ScrollScreen, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, GlassSurface, ScrollScreen, useOwnlevelTheme,useReduceMotion } from '@/design-system';
 import { CompareHeaderButton, PeriodBar, ProgressPeriodBlock, STRIP } from './period-controls';
 import { CompareSheet, CustomRangeSheet } from './period-sheets';
 import { rangeShortLabel } from './progress-range';
@@ -20,14 +20,17 @@ const SMALL = 21;
  * uses). Scrolling, the title never moves sideways: it shrinks in place on the left, and the period you are reading
  * fades in under it ("Este mes", "Mes anterior", "17 sep – 16 oct").
  */
-export function ProgressScroll({ title, testID, refreshControl, children, compactTitle, multilineTitle = false, root = false }: {
+export function ProgressScroll({ title, testID, refreshControl, children, compactTitle, multilineTitle = false, root = false, periodControls = true }: {
   title: string; testID: string; refreshControl?: React.ReactElement<RefreshControlProps>; children: ReactNode; multilineTitle?: boolean; compactTitle?: string;
   /** The tab's first screen: no back button and a large title. */
-  root?: boolean;
+  root?: boolean; periodControls?: boolean;
 }) {
-  const router = useRouter();
+  const router = useRouter(),reduced=useReduceMotion();
   const { colors } = useOwnlevelTheme();
   const { top } = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
+  // The fixed header must make room for Dynamic Type, including accessibility sizes.
+  const barHeight = BAR * Math.max(1, fontScale);
   const { state, today } = useProgressRange();
   const [sheet, setSheet] = useState<'custom' | 'compare' | null>(null);
   const [pulled, setPulled] = useState(false);
@@ -38,18 +41,18 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
   const open = { onCustom: () => setSheet('custom'), onCompare: () => setSheet('compare') };
   const scroll = useAnimatedRef<Animated.ScrollView>();
   const offset = useScrollViewOffset(scroll);
-  const header = top + BAR;
+  const header = top + barHeight;
   const big = root ? 34 : 22;
   // Scaled from the left edge, so the title stays where it is and only gets smaller.
   const titleStyle = useAnimatedStyle(() => {
-    const t = interpolate(offset.value, [0, SHRINK], [0, 1], Extrapolation.CLAMP);
+    const t = reduced?0:interpolate(offset.value, [0, SHRINK], [0, 1], Extrapolation.CLAMP);
     return { transform: [{ translateY: -8 * t }, { scale: 1 - (1 - SMALL / big) * t }] };
   });
   const rangeStyle = useAnimatedStyle(() => ({ opacity: interpolate(offset.value, [SHRINK * 0.5, SHRINK], [0, 1], Extrapolation.CLAMP) }));
   const barTitle = compactTitle ?? title;
   return <>
     <Stack.Screen options={{ title: barTitle, headerShown: false }} />
-    <ScrollScreen testID={testID} scrollRef={scroll} scrollEdge edgeExtra={BAR + 8} edgeFade={10} topInset="manual"
+    <ScrollScreen testID={testID} scrollRef={scroll} scrollEdge edgeExtra={barHeight + 8} edgeFade={10} topInset="manual"
       // The spinner shows below the fixed header, not behind it.
       refreshControl={refreshControl ? cloneElement(refreshControl, {
         progressViewOffset: header,
@@ -59,28 +62,28 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
       }) : undefined}
       contentContainerStyle={{ paddingTop: header }}>
       {/* The strip opens the page and scrolls away with it; only the title bar stays. */}
-      <View style={styles.stripSlot}><PeriodBar onCustom={open.onCustom} /></View>
+      {periodControls?<View style={styles.stripSlot}><PeriodBar onCustom={open.onCustom} /></View>:null}
       {multilineTitle ? <AppText accessibilityRole="header" variant="title1">{title}</AppText> : null}
-      <ProgressPeriodBlock {...open} />
+      {periodControls?<ProgressPeriodBlock {...open} />:null}
       {children}
       {/* The floating tab bar sits over the end of the page: the last row always scrolls clear of it. */}
       <View style={styles.tabRoom} />
     </ScrollScreen>
     <View pointerEvents="box-none" style={[styles.header, { paddingTop: top }]}>
-      <View pointerEvents="box-none" style={styles.bar}>
+      <View pointerEvents="box-none" style={[styles.bar, { height: barHeight }]}>
         {root ? null : <Pressable accessibilityRole="button" accessibilityLabel="Volver" hitSlop={4} onPress={() => router.back()} testID="progress-back">
           <GlassSurface interactive style={styles.backButton}><AppIcon name="chevronLeft" color={colors.text} size={20} /></GlassSurface>
         </Pressable>}
-        <View pointerEvents="none" style={styles.titleSlot}>
+        <View pointerEvents="none" style={[styles.titleSlot, { height: barHeight }]}>
           <Animated.View style={[styles.title, titleStyle]}>
             <AppText accessibilityRole="header" numberOfLines={1} variant={root ? 'largeTitle' : 'title2'}>{multilineTitle ? barTitle : title}</AppText>
           </Animated.View>
-          <Animated.View accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
-            style={[styles.rangeUnder, rangeStyle]} testID="progress-compact-range">
+          {periodControls?<Animated.View accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
+            style={[styles.rangeUnder, { top: barHeight / 2 + 6 * fontScale }, rangeStyle]} testID="progress-compact-range">
             <AppText muted numberOfLines={1} numeric variant="caption">{rangeShortLabel(state, today)}</AppText>
-          </Animated.View>
+          </Animated.View>:null}
         </View>
-        <CompareHeaderButton onPress={() => setSheet('compare')} />
+        {periodControls?<CompareHeaderButton onPress={() => setSheet('compare')} />:null}
       </View>
     </View>
     {sheet === 'custom' ? <CustomRangeSheet onClose={() => setSheet(null)} /> : null}

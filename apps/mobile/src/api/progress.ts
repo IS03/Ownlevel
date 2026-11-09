@@ -75,3 +75,10 @@ export const fetchProgressExplore = (client: MobileApiClient, query: ProgressQue
       return data && samePeriod(data.period, query, compare) && data.measure.key === request.measure && data.breakdown === request.breakdown
         && data.days === request.days && data.series === request.series && (data.reference !== null) === !!compare ? data : undefined;
     } });
+
+/** Same bounded overview read; opt-in exact dates and nutrient denominators, no extra sources. */
+export const fetchProgressPanorama=async(client:MobileApiClient,query:ProgressQuery,signal?:AbortSignal)=>{
+ const result=await client.read({path:`${BASE}?${qs(query)}&spark=1&inPeriod=1&panorama=1`,signal,parse:(raw:unknown)=>{const data=parseProgressOverview(raw);return data&&samePeriod(data.period,query)?data:undefined;}});
+ // Older servers reject the opt-in parameter. One read-only compatibility fallback; never on auth/network errors.
+ return result.status==='unavailable'&&result.meta.httpStatus===400&&!signal?.aborted?fetchProgressOverview(client,query,signal):result;
+};

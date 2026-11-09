@@ -213,3 +213,14 @@ Sin build, despliegue ni QA física acreditados. Reglas y checkpoints en [ejecuc
 - [ ] Inicio → Nutrición → ayer, dejando completar Inicio y también navegando durante la precarga: mostrar la fecha correcta sin carga innecesaria cuando existe lectura; conservar «Lectura de…» / «Actualizando…». Las lecturas de Inicio tienen prioridad y el detalle no se confunde con el resumen.
 - [ ] Fechas rápidas hacia atrás/adelante: solo vecinas, sin fechas futuras ni recorrido automático del calendario. Cambiar comidas/métricas, mover o borrar una comida y reabrir un día precargado: invalidación/relectura correctas, sin modificar borrador/pendiente ni aceptar una respuesta atrasada.
 - [ ] Sin red o token vencido durante precarga: Inicio sin aviso invasivo ni cierre de sesión; al abrir, lectura anterior identificada o indisponibilidad/reintento, nunca falso vacío. Cambiar cuenta/logout: sin datos anteriores. Claro/oscuro, texto grande, VoiceOver y navegación fluida. No aprobado por tests.
+
+
+## Progreso VNext — primera entrega #402
+
+Pendiente físico; las capturas con fixture local en la app Dev no aprueban estos puntos. Alcance/fuentes/costo: [Progreso VNext Mobile](../progress-v2.md#primera-adopción-mobile-de-progreso-vnext--402-09112026). No se repite aquí la QA profunda de Insights de las secciones anteriores.
+
+- [ ] Abrir Progreso con primer registro, pocos datos e historial amplio: reconocer Entrenamiento/Cuerpo/Nutrición, fechas de los 30 días, cobertura y hoy en curso sin elegir período. Series = actividad; primera/última sesión comparable ≠ récord. Un pesaje no produce tendencia; sin pesajes en la ventana no se arrastra otro.
+- [ ] Kcal/proteína y objetivo histórico con sus poblaciones propias; ceros, faltantes, días parciales y hoy honestos. Fallo de un área distinguible de vacío; revalidar sin borrar la lectura visible, guardar/editar/borrar y volver sin datos desactualizados. Logout/cambio de cuenta sin registros previos.
+- [ ] Progreso → tres meses / semanas / contexto de sesiones → evidencia, comidas o Cuerpo → regreso al origen; conservar período, A/B, semana, grupo, página y revisión. «Volver a Progreso» visible solo con ese origen. Entrar desde Entrenar mantiene su retorno anterior; revisión cambiada usa el aviso/relectura ya existente.
+- [ ] «Explorar período y A/B»: Mis vistas, rangos, comparación, récords/cambios, conexiones, observaciones y Etapas siguen operativos. Métricas personales y Recorrido por fecha accesibles. Tocar un gráfico solo inspecciona; abrir detalle requiere la acción explícita.
+- [ ] Claro/oscuro, iPhone compacto/grande, cifras/nombres largos, texto accesible y VoiceOver (orden, unidades, fechas, selección del gráfico). Reducir movimiento y último control por encima de la barra inferior. Volver a pestaña con lectura disponible sin skeleton innecesario ni lectura del trimestre desde portada.
