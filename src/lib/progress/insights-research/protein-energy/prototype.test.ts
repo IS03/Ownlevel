@@ -147,4 +147,27 @@ describe("isolated protein → energy research prototype", () => {
     expect(snapshotHash(snapshot)).toBe(hash);
     snapshot.revision += "-edited"; expect(snapshotHash(snapshot)).not.toBe(hash);
   });
+  it("excludes unverified clocks/instruments and malformed logical dates without replacing unknowns with zero", () => {
+    const snapshot = clone(histories[1]);
+    snapshot.source.sessions[0].startedAt = "2022-01-01T18:00:00"; // No offset: not an instant.
+    snapshot.source.sessions[1].date = "2022-02-31";
+    const facts = snapshot.source.feelings[2].facts as Record<string, Record<string, unknown>>;
+    facts.energyPost.instrumentVersion = "legacy";
+    const result = prepare(snapshot, anchor);
+    expect(result.exclusions.invalid_session_time).toBe(1);
+    expect(result.exclusions.invalid_date).toBe(1);
+    expect(result.targetCounts.other_instrument).toBe(1);
+    expect(result.rows.find(row => row.id === snapshot.source.sessions[2].id)?.target.value).toBeNull();
+  });
+  it("uses first completed set timing only when it was known before the cut", () => {
+    const snapshot = clone(histories[1]), session = snapshot.source.sessions[0], start = Date.parse(session.startedAt!);
+    const facts = snapshot.source.feelings[0].facts as Record<string, Record<string, unknown>>;
+    facts.energyPre.capturedAt = new Date(start + 60_000).toISOString();
+    expect(prepare(snapshot, anchor).rows.some(row => row.id === session.id)).toBe(false);
+    (snapshot.source.exercises as unknown[]).push({ id: "block", sessionId: session.id, exerciseId: "exercise", name: "Fixture", implement: null, weightMode: null, isCompleted: true, configuration: null });
+    (snapshot.source.sets as unknown[]).push({ id: "set", sessionExerciseId: "block", actualReps: 5, actualLoad: null, isCompleted: true, completedAt: new Date(start + 120_000).toISOString() });
+    expect(prepare(snapshot, anchor).rows.some(row => row.id === session.id)).toBe(true);
+    snapshot.source.sets[0].completedAt = "2022-04-02T00:00:00-03:00";
+    expect(prepare(snapshot, anchor).rows.some(row => row.id === session.id)).toBe(false);
+  });
 });
