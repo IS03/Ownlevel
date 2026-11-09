@@ -3,10 +3,9 @@ import { afterEach, beforeEach, expect, it, jest } from '@jest/globals';
 import type { MobileApiClient } from '@/api/client';
 import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 import { nutritionFixture } from '@/nutrition/day-fixture.test-helper';
-import { useNutritionDayResource } from '@/nutrition/day-resource';
+import { prefetchNutritionDays, useNutritionDayResource } from '@/nutrition/day-resource';
 import { useHomeResources } from './home-data';
 import { useNutritionReportResource } from '@/nutrition/report-resource';
-import { prefetchNutritionDays } from '@/nutrition/day-resource';
 
 let mockWarmEnabled = true;
 let mockEvents: { name: string; at: number }[] = [];
