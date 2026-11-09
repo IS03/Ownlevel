@@ -1,3 +1,4 @@
+import { priorFeelingFact } from './prior-feelings';
 import {descriptiveCarbsBeforeSession} from './exposures';
 import { coincidenceWeeks } from "./descriptive-weeks";
 import { median } from "../body-evolution/weekly";
@@ -25,9 +26,9 @@ function postOf(facts: unknown, key: "energyPost" | "fatiguePost", endedAt: stri
     : fact.capturedAt > end + POST_CAPTURE_GRACE_HOURS * 3_600_000 ? "late" : "recorded";
   return { state, value: state === "recorded" ? fact.value : null };
 }
-function ordinal(rows: { post: { energy: Post; fatigue: Post } }[], kind: "energy" | "fatigue") {
+function ordinal(rows: { post: { energy: Post; fatigue: Post }; prior?: { energy: Post; fatigue: Post } }[], kind: "energy" | "fatigue", moment: "post" | "prior" = "post") {
   const posts = [0, 0, 0, 0, 0], exclusions: Record<string, number> = {};
-  for (const row of rows) { const p = row.post[kind]; if (p.state === "recorded") posts[p.value! - 1]!++; else exclusions[p.state] = (exclusions[p.state] ?? 0) + 1; }
+  for (const row of rows) { const p = row[moment]![kind]; if (p.state === "recorded") posts[p.value! - 1]!++; else exclusions[p.state] = (exclusions[p.state] ?? 0) + 1; }
   return { posts, eligible: posts.reduce((a, b) => a + b, 0), total: rows.length, exclusions };
 }
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -75,6 +76,7 @@ export function descriptiveCoincidences(source: InsightsSource, snapshot: Snapsh
       protein,preMeal:{calories:recordedWindow(fact?.context.preStart?.calories),carbs:recordedWindow(descriptiveCarbsBeforeSession(mealsByDate,s.date!,start)),lastMeal},
       concurrency:{sameDaySessions:byDate.get(s.date!)??1,overlap3h:overlap3.get(s.id)??null,overlap12h:overlap12.get(s.id)??null},band: bandOf(s.startedAt),
       strict: fact?.counts ?? { improved: 0, observedStable: 0, declined: 0, ambiguous: 0, insufficient: 0, comparable: 0, total: 0, coverage: null },
+      prior: { energy: priorFeelingFact(fact?.context ?? { feelings: {} }, facts.get(s.id), 'energyPre'), fatigue: priorFeelingFact(fact?.context ?? { feelings: {} }, facts.get(s.id), 'fatiguePre') },
       partial: partial.get(s.id)?.counts ?? null, post: { energy: postOf(facts.get(s.id), "energyPost", s.endedAt), fatigue: postOf(facts.get(s.id), "fatiguePost", s.endedAt) } };
   }).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   const food=(kind:'protein'|'calories'|'carbs'|'lastMeal')=>{
@@ -83,12 +85,13 @@ export function descriptiveCoincidences(source: InsightsSource, snapshot: Snapsh
     const keys=kind==='lastMeal'?['within1h','oneTo3h','over3h'] as const:['lower','upper'] as const;
     const groupOf=(value:number|null)=>value===null?null:kind==='lastMeal'?(value<=1?'within1h':value<=3?'oneTo3h':'over3h'):side(value,cut);
     const groups=keys.map(key=>{const selected=rows.filter(row=>groupOf(valueOf(row).value)===key),strictRows=selected.filter(row=>row.strict.comparable>0),partialRows=selected.filter(row=>(row.partial?.comparable??0)>0);
-      return {key,ids:selected.map(row=>row.id),sessions:selected.length,days:new Set(selected.map(r=>r.date)).size,strict:countsOf(selected),partial:partialOf(selected),strictSessions:strictRows.length,partialSessions:partialRows.length,strictDays:new Set(strictRows.map(r=>r.date)).size,partialDays:new Set(partialRows.map(r=>r.date)).size,routines:routines(selected)};});
+      return {key,ids:selected.map(row=>row.id),sessions:selected.length,days:new Set(selected.map(r=>r.date)).size,strict:countsOf(selected),partial:partialOf(selected),strictSessions:strictRows.length,partialSessions:partialRows.length,strictDays:new Set(strictRows.map(r=>r.date)).size,partialDays:new Set(partialRows.map(r=>r.date)).size,routines:routines(selected),feelings:{energy:{pre:ordinal(selected,'energy','prior'),post:ordinal(selected,'energy'),paired:selected.filter(r=>r.prior.energy.state==='recorded'&&r.post.energy.state==='recorded').length},fatigue:{pre:ordinal(selected,'fatigue','prior'),post:ordinal(selected,'fatigue'),paired:selected.filter(r=>r.prior.fatigue.state==='recorded'&&r.post.fatigue.state==='recorded').length}}};});
     const exclusions:Record<string,number>={};for(const row of rows)if(valueOf(row).value===null){const reason=valueOf(row).state;exclusions[reason]=(exclusions[reason]??0)+1;}
+    const feelingReadiness={energy:groups.filter(g=>g.feelings.energy.post.eligible>=3).length>=2,fatigue:groups.filter(g=>g.feelings.fatigue.post.eligible>=3).length>=2};
     const strictReady=groups.filter(g=>g.strictSessions>=3).length>=2,partialReady=groups.filter(g=>g.partialSessions>=3).length>=2;
     const constant=eligible.length>0&&new Set(eligible.map(r=>valueOf(r).value)).size===1;
     const contrast=eligible.length===0?'no_data':constant?'constant':groups.filter(g=>g.sessions>0).length<2?'empty_group':strictReady||partialReady?'available':'too_few_comparable';
-    return {cut,total:rows.length,eligible:eligible.length,totalDays:new Set(rows.map(r=>r.date)).size,eligibleDays:new Set(eligible.map(r=>r.date)).size,multiSessionDays:new Set(rows.filter(r=>r.concurrency.sameDaySessions>1).map(r=>r.date)).size,overlappingSessions:rows.filter(r=>(kind==='lastMeal'?r.concurrency.overlap12h:r.concurrency.overlap3h)!>0).length,unknownOverlapSessions:rows.filter(r=>r.concurrency.overlap3h===null).length,groups,exclusions,status:strictReady||partialReady?'described' as const:'insufficient' as const,contrast,strictReady,partialReady};
+    return {cut,total:rows.length,eligible:eligible.length,totalDays:new Set(rows.map(r=>r.date)).size,eligibleDays:new Set(eligible.map(r=>r.date)).size,multiSessionDays:new Set(rows.filter(r=>r.concurrency.sameDaySessions>1).map(r=>r.date)).size,overlappingSessions:rows.filter(r=>(kind==='lastMeal'?r.concurrency.overlap12h:r.concurrency.overlap3h)!>0).length,unknownOverlapSessions:rows.filter(r=>r.concurrency.overlap3h===null).length,groups,exclusions,feelingReadiness,status:strictReady||partialReady?'described' as const:'insufficient' as const,contrast,strictReady,partialReady};
   };
   const protein=food('protein'),preMeal={calories:food('calories'),carbs:food('carbs'),lastMeal:food('lastMeal')};
   const timingGroups = BANDS.map(key => {

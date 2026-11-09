@@ -279,12 +279,31 @@ export function parsePerformanceInsights(raw: unknown): InsightsResponse | undef
 
 const instantValue = (v: unknown) => typeof v === 'string' && /(?:Z|[+-]\d{2}:\d{2})$/.test(v) && Number.isFinite(Date.parse(v));
 const coincidencePost=(p:unknown)=>object(p)&&['recorded','before_end','late','unknown_time','not_recorded','unreadable','other_instrument'].includes(String(p.state))&&(p.state==='recorded'?Number.isInteger(p.value)&&Number(p.value)>=1&&Number(p.value)<=5:p.value===null);
+const coincidencePrior=(p:unknown)=>coincidencePost(p)&&object(p)&&p.state!=='before_end';
+function foodFeelings(v:Json):boolean {
+  if(v.feelingReadiness===undefined && Array.isArray(v.groups)&&v.groups.every(g=>object(g)&&g.feelings===undefined))return true;
+  if(!object(v.feelingReadiness)||!Array.isArray(v.groups))return false;
+  const ordinal=(o:unknown,n:unknown)=>object(o)&&o.total===n&&count(o.eligible)&&Array.isArray(o.posts)&&o.posts.length===5&&o.posts.every(count)&&o.posts.reduce((a,b)=>a+Number(b),0)===o.eligible&&tally(o.exclusions)&&Number(o.eligible)+Object.values(o.exclusions as Json).reduce<number>((a,b)=>a+Number(b),0)===n;
+  for(const kind of ['energy','fatigue']) {
+    if(!v.groups.every(g=>{
+      if(!object(g)||!object(g.feelings)||!object(g.feelings[kind]))return false;
+      const f=g.feelings[kind];
+      return ordinal(f.pre,g.sessions)&&ordinal(f.post,g.sessions)&&count(f.paired)&&Number(f.paired)<=Math.min(Number((f.pre as Json).eligible),Number((f.post as Json).eligible))&&Number(f.paired)>=Number((f.pre as Json).eligible)+Number((f.post as Json).eligible)-Number(g.sessions)
+        &&Object.keys((f.pre as Json).exclusions as Json).every(k=>['late','unknown_time','not_recorded','unreadable','other_instrument'].includes(k))
+        &&Object.keys((f.post as Json).exclusions as Json).every(k=>['before_end','late','unknown_time','not_recorded','unreadable','other_instrument'].includes(k));
+    }))return false;
+    const supported=v.groups.filter(g=>{const f=((g as Json).feelings as Json)[kind] as Json;return Number((f.post as Json).eligible)>=3;}).length>=2;
+    if(v.feelingReadiness[kind]!==supported)return false;
+  }
+  return true;
+}
 function foodValue(v:unknown,last=false):boolean {
  return object(v)&&['recorded','no_registered_meal','partial_macro','untimed_meal_in_scope','unverified_meal_time_in_scope','no_start_time','invalid','unavailable','no_explicit_meal_in_12h'].includes(String(v.state))&&(v.state==='recorded'?finite(v.value)&&v.value>=0&&(!last||v.value>0&&v.value<=12):v.value===null);
 }
 function coincidenceRow(r:unknown,inside:(d:unknown)=>boolean) {
   return object(r)&&uuid(r.id)&&inside(r.date)&&typeof r.name==='string'&&stringOrNull(r.routineId)&&stringOrNull(r.routineName)&&stringOrNull(r.startedAt)&&counts(r.strict)&&(r.partial===null||partialCounts(r.partial))
     &&object(r.protein)&&['recorded','no_registered_meal','partial_macro','untimed_meal_in_scope','unverified_meal_time_in_scope','no_start_time','invalid','unavailable'].includes(String(r.protein.state))&&(r.protein.state==='recorded'?finite(r.protein.value)&&r.protein.value>=0:r.protein.value===null)
+    &&(r.prior===undefined||object(r.prior)&&coincidencePrior(r.prior.energy)&&coincidencePrior(r.prior.fatigue))
     &&(r.preMeal===undefined||object(r.preMeal)&&foodValue(r.preMeal.calories)&&foodValue(r.preMeal.carbs)&&foodValue(r.preMeal.lastMeal,true))
     &&(r.concurrency===undefined||object(r.concurrency)&&count(r.concurrency.sameDaySessions)&&Number(r.concurrency.sameDaySessions)>0&&['overlap3h','overlap12h'].every(k=>(r.concurrency as Json)[k]===null||count((r.concurrency as Json)[k])))
     &&(r.band===null||['morning','midday','afternoon','night'].includes(String(r.band)))&&object(r.post)&&coincidencePost(r.post.energy)&&coincidencePost(r.post.fatigue);
@@ -412,6 +431,7 @@ function compactCoincidences(v:unknown):boolean {
   const ordinal=(o:unknown,n:unknown)=>object(o)&&o.total===n&&count(o.eligible)&&Array.isArray(o.posts)&&o.posts.length===5&&o.posts.every(count)&&o.posts.reduce((a,b)=>a+Number(b),0)===o.eligible&&tally(o.exclusions)&&Number(o.eligible)+Object.values(o.exclusions as Json).reduce<number>((a,b)=>a+Number(b),0)===n;
   if(!object(v.protein)||!numberOrNull(v.protein.cut)||!count(v.protein.total)||!count(v.protein.eligible)||!tally(v.protein.exclusions)||typeof v.protein.strictReady!=='boolean'||typeof v.protein.partialReady!=='boolean'||!['described','insufficient'].includes(String(v.protein.status))||!Array.isArray(v.protein.groups)||v.protein.groups.length!==2
     ||!v.protein.groups.every((g,i)=>object(g)&&g.key===(i?'upper':'lower')&&g.ids===undefined&&count(g.sessions)&&object(g.strict)&&counts({...g.strict,coverage:null})&&object(g.partial)&&partialCounts({...g.partial,coverage:null})&&count(g.strictSessions)&&count(g.partialSessions)&&routines(g.routines)))return false;
+  if(!foodFeelings(v.protein)||v.preMeal!==undefined&&(!foodFeelings((v.preMeal as Json).calories as Json)||!foodFeelings((v.preMeal as Json).carbs as Json)||!foodFeelings((v.preMeal as Json).lastMeal as Json)))return false;
   if(!object(v.timing)||v.timing.total!==v.protein.total||!count(v.timing.unknownStart)||typeof v.timing.energyReady!=='boolean'||typeof v.timing.fatigueReady!=='boolean'||!Array.isArray(v.timing.groups)||v.timing.groups.length!==4
     ||!v.timing.groups.every((g,i)=>object(g)&&g.key===['morning','midday','afternoon','night'][i]&&g.ids===undefined&&count(g.sessions)&&ordinal(g.energy,g.sessions)&&ordinal(g.fatigue,g.sessions)&&routines(g.routines)))return false;
   if(!object(v.body)||!numberOrNull(v.body.cut)||!count(v.body.total)||!count(v.body.excludedNutrition)||!['described','insufficient'].includes(String(v.body.status))||!Array.isArray(v.body.groups)||v.body.groups.length!==2
