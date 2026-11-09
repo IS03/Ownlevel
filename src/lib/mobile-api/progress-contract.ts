@@ -68,6 +68,8 @@ export type ProgressTrainingSummary = {
   comparisons: { sessions: ProgressComparison; trainingDays: ProgressComparison; sets: ProgressComparison; minutes: ProgressComparison; setsPerSession: ProgressComparison };
   performance: { improved: number; stable: number; declined: number; comparable: number; insufficient: number; headline: string };
 };
+export type ProgressPanorama = { weight: { count: number; first: { date: string; value: number } | null; last: { date: string; value: number } | null } | null;
+  nutrition: { caloriesDays: number; proteinDays: number; targetDays: number } | null };
 export type ProgressOverview = {
   today: string; period: ProgressPeriod;
   evolution: ProgressRow[]; changes: ProgressFinding[];
@@ -77,6 +79,7 @@ export type ProgressOverview = {
   training: ProgressSection<ProgressTrainingSummary>;
   /** Only when requested (`spark=1`): mini charts for the Progreso rows. */
   sparks?: ProgressOverviewSparks;
+  panorama?: ProgressPanorama;
   inPeriod?: { improved: number; comparable: number } | null;
 };
 /** One bucket of a mini chart. null = no data in the bucket (a gap, never 0). */
@@ -294,7 +297,7 @@ function parseSparks(v: unknown): ProgressOverviewSparks | undefined {
   return weight !== undefined && training !== undefined && nutrition !== undefined ? { weight, training, nutrition } : undefined;
 }
 export function parseProgressOverview(v: unknown): ProgressOverview | undefined {
-  if (!record(v) || !keys(v, [...OVERVIEW_KEYS, ...("sparks" in v ? ["sparks"] : []), ...("inPeriod" in v ? ["inPeriod"] : [])]) || !isNutritionDate(v.today)) return;
+  if (!record(v) || !keys(v, [...OVERVIEW_KEYS, ...("sparks" in v ? ["sparks"] : []), ...("inPeriod" in v ? ["inPeriod"] : []), ...("panorama" in v ? ["panorama"] : [])]) || !isNutritionDate(v.today)) return;
   const inPeriod = v.inPeriod;
   if ("inPeriod" in v && inPeriod !== null && (!record(inPeriod) || !keys(inPeriod, ["improved", "comparable"]) || !count(inPeriod.improved) || !count(inPeriod.comparable) || inPeriod.improved > inPeriod.comparable)) return;
   const sparks = "sparks" in v ? parseSparks(v.sparks) : null;
@@ -311,11 +314,20 @@ export function parseProgressOverview(v: unknown): ProgressOverview | undefined 
     ? { excludedSuspect: d.excludedSuspect, trackedMetrics: d.trackedMetrics } : undefined);
   const training = section(v.training, parseTrainingSummary);
   if (!period || period.end > v.today || !evolution || !changes || changes.length > 3 || !nutrition || !metrics || !body || !training) return;
+  if ('panorama' in v) {
+    const p=v.panorama, observation=(o:unknown)=>record(o)&&keys(o,['date','value'])&&isNutritionDate(o.date)&&o.date>=period.start&&o.date<=period.end&&num(o.value)&&o.value>0;
+    if(!record(p)||!keys(p,['weight','nutrition']))return;
+    if(p.weight!==null) {const w=p.weight;if(!record(w)||!keys(w,['count','first','last'])||!count(w.count)||w.count>period.days
+      ||(w.count===0? w.first!==null||w.last!==null:!observation(w.first)||!observation(w.last)))return;
+      if(record(w.first)&&record(w.last)&&String(w.first.date)>String(w.last.date))return;
+    }
+    if(p.nutrition!==null&&(!record(p.nutrition)||!keys(p.nutrition,['caloriesDays','proteinDays','targetDays'])||!['caloriesDays','proteinDays','targetDays'].every(k=>count((p.nutrition as Record<string,unknown>)[k])&&Number((p.nutrition as Record<string,unknown>)[k])<=period.days)||Number(p.nutrition.targetDays)>Number(p.nutrition.caloriesDays)))return;
+  }
   // At most 2 findings per domain.
   const perDomain = new Map<string, number>();
   for (const f of changes) perDomain.set(f.domain, (perDomain.get(f.domain) ?? 0) + 1);
   if ([...perDomain.values()].some(n => n > 2)) return;
-  return { today: v.today, period, evolution, changes, nutrition, metrics, body, training, ...(sparks ? { sparks } : {}), ...("inPeriod" in v ? { inPeriod: inPeriod as ProgressOverview["inPeriod"] } : {}) };
+  return { today: v.today, period, evolution, changes, nutrition, metrics, body, training, ...(sparks ? { sparks } : {}), ...("panorama" in v ? {panorama:v.panorama as ProgressPanorama} : {}), ...("inPeriod" in v ? { inPeriod: inPeriod as ProgressOverview["inPeriod"] } : {}) };
 }
 
 const COMPARISON_KEYS = ["sessions", "trainingDays", "sets", "minutes", "setsPerSession"] as const;

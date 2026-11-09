@@ -306,3 +306,16 @@ it('retains weekly selection across revision refresh and clears account-owned re
  const empty={...f.source,sessions:[],exercises:[],sets:[],meals:[],feelings:[]};const nextRead=jest.fn<MobileApiClient['read']>().mockImplementation(async o=>({status:'ok',data:o.parse(periodExploration(empty,[],'2026-11-09','2026-11-07','other',2)),meta})as never);
  mockClient={read:nextRead,request:jest.fn()} as unknown as MobileApiClient;await act(async()=>view.rerender(wrap()));expect(view.queryByTestId('weekly-record-2026-08-03')).toBeNull();expect(nextRead).toHaveBeenCalledTimes(1);
 });
+
+it('keeps Progreso, A/B and the current revision through a source day, with no read to change the local selection', async () => {
+  mockParams = {...mockParams, fromProgress: '1', compare: '1', weekA: '2026-08-03', weekB: '2026-08-10'};
+  const view = render(wrap()); await view.findByTestId('week-comparison');
+  fireEvent.press(view.getByRole('button', {name: 'Ver días y registros de B'}));
+  mockParams = {...mockParams, ...mockSetParams.mock.calls.at(-1)![0] as Record<string, string>}; view.rerender(wrap());
+  fireEvent.press(view.getAllByRole('button', {name: /Abrir Nutrición del 11\/08\/2026/})[0]!);
+  const href = mockPush.mock.calls.at(-1)![0] as ReturnType<typeof nutritionDayHref>;
+  expect(insightsReturnHref(href.params)).toMatchObject({params: {fromProgress: '1', compare: '1', weekA: '2026-08-03', weekB: '2026-08-10', revision: 'r2'}});
+  fireEvent.press(view.getByRole('button', {name: 'Volver a Progreso'}));
+  expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress');
+  expect(mockRead).toHaveBeenCalledTimes(1);
+});

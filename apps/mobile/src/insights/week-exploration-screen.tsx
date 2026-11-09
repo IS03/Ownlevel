@@ -1,3 +1,4 @@
+import { ReturnToProgress } from './return-to-progress';
 import { useCallback } from 'react';
 import { ScrollView,StyleSheet,View,RefreshControl } from 'react-native';
 import { useLocalSearchParams,useRouter } from 'expo-router';
@@ -29,6 +30,7 @@ export function WeekExplorationScreen() {
   const days=week?.days??[],trained=days.filter(d=>d.training?.sessions),sessionCount=trained.reduce((n,d)=>n+d.training!.sessions,0);
   const c=(lane:'training'|'partial',key:string)=>days.reduce((n,d)=>n+Number((d[lane]?.counts as unknown as Record<string,number>|undefined)?.[key]??0),0);
   return <ScrollView contentInsetAdjustmentBehavior="automatic" style={{backgroundColor:colors.background}} contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={state.status==='ready'&&state.refreshing} onRefresh={()=>void refresh()}/>}>
+    <ReturnToProgress/>
     {!asOf?<UnavailableState title="Período no válido" description="Abrí las semanas desde el resumen."/>:state.status==='loading'&&!data?<SkeletonBlock height={176}/>:!data||data.integrity!=='valid'?<UnavailableState title="No pudimos leer las semanas" description="Tus registros siguen guardados." action={<Button label="Reintentar" onPress={()=>void refresh()}/>}/>:params.compare==='1'?<>
       {state.status!=='ready'?<InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura completa." actionLabel="Reintentar" onAction={()=>void refresh()}/>:null}
       {typeof params.revision==='string'&&params.revision!==data.sourceRevision?<AppText testID="week-revised">Los registros cambiaron desde el origen. Esta lectura completa está actualizada.</AppText>:null}
@@ -55,7 +57,7 @@ export function WeekExplorationScreen() {
       <WeekRecords week={week} metrics={data.metrics} origin={origin}/>
       <AppText muted>Hechos para explorar, no asociaciones validadas. No se combinan cargas de ejercicios ni escalas ordinales en un puntaje.</AppText>
     </>}
-    <Button label="Volver al resumen" variant="secondary" onPress={()=>router.navigate(periodSummaryHref(asOf??undefined))}/>
+    <Button label="Volver al resumen" variant="secondary" onPress={()=>router.navigate(periodSummaryHref(asOf??undefined,insightsOriginOf(params)))}/>
   </ScrollView>;
 }
 const styles=StyleSheet.create({scroll:{padding:brandTokens.layout.screenPadding,paddingBottom:brandTokens.layout.tabBarHeight+spacing.xxl,gap:spacing.lg},controls:{gap:spacing.xs}});

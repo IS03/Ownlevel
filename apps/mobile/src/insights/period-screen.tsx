@@ -1,3 +1,4 @@
+import { ReturnToProgress } from './return-to-progress';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useCallback, useRef } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -10,7 +11,7 @@ import { useProgressResource } from '@/progress/use-progress-resource';
 import { weeklyRows } from '@/progress/weekly-weights';
 import { FactRow } from './insights-screen';
 import { InsightRow } from './insight-row';
-import { bodyWeightHref, periodDetailHref, explorationHref } from './navigation';
+import { bodyWeightHref, periodDetailHref, explorationHref, insightsOriginOf,progressOriginParams,withProgressOrigin } from './navigation';
 import { usePeriodReturn } from './use-period-return';
 import { FACTS_ONLY, exactPeriodDate, feelingRows, nutritionRows, periodEmpty, periodHeading, periodSentences, routineRows, trainingRows } from './period-model';
 
@@ -22,6 +23,7 @@ export function PeriodScreen() {
   const { colors } = useOwnlevelTheme();
   const router = useRouter();
   const params = useLocalSearchParams();
+  const origin=insightsOriginOf(params);
   const routeAnchor = validPeriodAnchor(params.asOf) ? params.asOf : undefined;
   const anchor = useRef<{ client: MobileApiClient; route: string | undefined; captured: string } | null>(null);
   const load = useCallback(async (c: MobileApiClient, signal: AbortSignal) => {
@@ -34,7 +36,7 @@ export function PeriodScreen() {
   const { state, data, refresh } = useProgressResource(invalidAnchor ? null : client, `performance-insights|period-at|${routeAnchor ?? 'current'}`, load);
   usePeriodReturn(refresh);
   const refreshControl = <RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />;
-  const scroll = (children: React.ReactNode) => <ScrollView testID="period-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}>{children}</ScrollView>;
+  const scroll = (children: React.ReactNode) => <ScrollView testID="period-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}><ReturnToProgress/>{children}</ScrollView>;
   if (invalidAnchor) return scroll(<UnavailableState title="No pudimos identificar el período" description="Volvé a abrir el resumen desde Insights." />);
   if (state.status === 'loading' && !data) return scroll(<View style={styles.block} testID="period-loading"><SkeletonBlock height={72} /><SkeletonBlock height={132} /><SkeletonBlock height={176} /></View>);
   if (!data || data.integrity !== 'valid') return scroll(<UnavailableState title="Uy, no pudimos leer tus datos" description="Tranqui: está todo guardado." action={<Button label="Reintentar" onPress={() => void refresh()} />} />);
@@ -44,10 +46,10 @@ export function PeriodScreen() {
     {state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
     <Heading level={2}>Sin registros en estos tres meses</Heading>
     <AppText muted numeric>{heading.range}. {heading.months}</AppText>
-    <InsightRow label="Recorrer semanas y días" spoken="Recorrer semanas y días de estos mismos tres meses" onPress={()=>open(explorationHref(data.asOf,undefined,data.sourceRevision))}/>
-    <InsightRow label="Ver energía y fatiga del período" spoken="Ver energía y fatiga de los mismos tres meses" onPress={() => open(periodDetailHref('feelings', data.asOf, data.sourceRevision))} />
-    <InsightRow label="Ver los días con alimentación registrada" spoken="Ver los días con alimentación registrada de los mismos tres meses" onPress={() => open(periodDetailHref('nutrition', data.asOf, data.sourceRevision))} />
-    <InsightRow label="Ver Cómo terminaste" detail="En todo tu historial, según cómo empezaste" spoken="Ver Cómo terminaste, en todo tu historial" onPress={() => open('/(tabs)/train/insights/feelings')} />
+    <InsightRow label="Recorrer semanas y días" spoken="Recorrer semanas y días de estos mismos tres meses" onPress={()=>open(explorationHref(data.asOf,undefined,data.sourceRevision,origin))}/>
+    <InsightRow label="Ver energía y fatiga del período" spoken="Ver energía y fatiga de los mismos tres meses" onPress={() => open(periodDetailHref('feelings', data.asOf, data.sourceRevision,origin))} />
+    <InsightRow label="Ver los días con alimentación registrada" spoken="Ver los días con alimentación registrada de los mismos tres meses" onPress={() => open(periodDetailHref('nutrition', data.asOf, data.sourceRevision,origin))} />
+    <InsightRow label="Ver Cómo terminaste" detail="En todo tu historial, según cómo empezaste" spoken="Ver Cómo terminaste, en todo tu historial" onPress={() => open(withProgressOrigin('/(tabs)/train/insights/feelings',origin))} />
   </View>);
   const weeks = weeklyRows(data.weight, data.today);
   return scroll(<>
@@ -56,7 +58,7 @@ export function PeriodScreen() {
       <Heading level={2}>Últimos 3 meses</Heading>
       <AppText numeric testID="period-range">{heading.range}</AppText>
       <AppText muted variant="footnote">{heading.months}</AppText>
-      <InsightRow label="Recorrer semanas y días" spoken="Recorrer semanas y días de estos mismos tres meses" onPress={()=>open(explorationHref(data.asOf,undefined,data.sourceRevision))}/>
+      <InsightRow label="Recorrer semanas y días" spoken="Recorrer semanas y días de estos mismos tres meses" onPress={()=>open(explorationHref(data.asOf,undefined,data.sourceRevision,origin))}/>
       {data.asOf.slice(0, 7) !== data.today.slice(0, 7) ? <AppText muted>Conservamos el período que abriste el {exactPeriodDate(data.asOf)}.</AppText> : null}
     </View>
     <View style={styles.block} testID="period-written">
@@ -68,26 +70,26 @@ export function PeriodScreen() {
       {trainingRows(data).map(row => <FactRow key={row.key} label={row.label} value={row.value} detail={row.detail} />)}
       {routineRows(data, data.today).map(row => <FactRow key={row.key} label={row.label} value={row.value} detail={row.detail} />)}
       {data.routines.order === 'alternating' ? <AppText muted variant="caption" style={styles.note}>Las rutinas se alternaron: no hay un orden de una a otra.</AppText> : null}
-      <InsightRow label="Ver los días en Insights" spoken="Ver los días en Insights" onPress={() => open('/(tabs)/train/insights')} />
+      <InsightRow label="Ver los días en Insights" spoken="Ver los días en Insights" onPress={() => open(withProgressOrigin('/(tabs)/train/insights',origin))} />
     </View>
     <View testID="period-feelings">
       <Section title="Sensaciones al terminar" />
       {feelingRows(data).map(row => <FactRow key={row.key} label={row.label} value={row.value} detail={row.detail} />)}
-      <InsightRow label="Ver energía y fatiga del período" spoken="Ver energía y fatiga de los mismos tres meses" onPress={() => open(periodDetailHref('feelings', data.asOf, data.sourceRevision))} />
-      <InsightRow label="Ver Cómo terminaste" detail="En todo tu historial, según cómo empezaste" spoken="Ver Cómo terminaste, en todo tu historial" onPress={() => open('/(tabs)/train/insights/feelings')} />
+      <InsightRow label="Ver energía y fatiga del período" spoken="Ver energía y fatiga de los mismos tres meses" onPress={() => open(periodDetailHref('feelings', data.asOf, data.sourceRevision,origin))} />
+      <InsightRow label="Ver Cómo terminaste" detail="En todo tu historial, según cómo empezaste" spoken="Ver Cómo terminaste, en todo tu historial" onPress={() => open(withProgressOrigin('/(tabs)/train/insights/feelings',origin))} />
     </View>
     <View testID="period-nutrition">
       <Section title={`Comidas registradas · ${data.nutrition.daysWithMeals} de ${data.period.days} días`} />
       {nutritionRows(data).map(row => <FactRow key={row.key} label={row.label} value={row.value} detail={row.detail} />)}
       <AppText muted variant="caption" style={styles.note}>Un día sin comidas registradas no cuenta como cero.</AppText>
-      <InsightRow label="Ver los días con alimentación registrada" spoken="Ver los días con alimentación registrada de los mismos tres meses" onPress={() => open(periodDetailHref('nutrition', data.asOf, data.sourceRevision))} />
+      <InsightRow label="Ver los días con alimentación registrada" spoken="Ver los días con alimentación registrada de los mismos tres meses" onPress={() => open(periodDetailHref('nutrition', data.asOf, data.sourceRevision,origin))} />
     </View>
     <View testID="period-weight">
       <Section title="Peso, semana a semana" />
       {weeks.length ? weeks.map(row => <FactRow key={row.key} label={row.label} value={row.value} detail={row.detail} spoken={row.spoken} />)
         : <AppText muted variant="footnote">Sin semanas enteras en el período.</AppText>}
       {data.weight.weighIns && !weeks.some(row => row.value !== 'Sin mediana') ? <AppText muted variant="footnote" testID="period-weight-insufficient">Ninguna semana tiene 3 pesajes: no hay medianas para comparar.</AppText> : null}
-      <InsightRow label="Ver tu peso en Cuerpo" detail="Los mismos tres meses" spoken="Ver tu peso en Cuerpo, en los mismos tres meses" onPress={() => open(bodyWeightHref({ from: data.period.start, to: data.period.end }, { summary: '1', asOf: data.asOf }))} />
+      <InsightRow label="Ver tu peso en Cuerpo" detail="Los mismos tres meses" spoken="Ver tu peso en Cuerpo, en los mismos tres meses" onPress={() => open(bodyWeightHref({ from: data.period.start, to: data.period.end }, {...progressOriginParams(origin), summary: '1', asOf: data.asOf }))} />
     </View>
   </>);
 }

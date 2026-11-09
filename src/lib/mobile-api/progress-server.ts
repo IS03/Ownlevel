@@ -156,7 +156,7 @@ function overviewSparks(period: ProgressPeriod, comparing: boolean, sections: {
   };
 }
 
-export async function buildMobileProgressOverview(context: Context, query: MobileProgressQuery, today: string, withSparks = false, withInPeriod = false): Promise<ProgressOverview> {
+export async function buildMobileProgressOverview(context: Context, query: MobileProgressQuery, today: string, withSparks = false, withInPeriod = false, withPanorama = false): Promise<ProgressOverview> {
   const { range, period } = resolveMobileProgressPeriod(query, today);
   const [body, nutrition, metrics, training] = await Promise.all([
     isolated(() => bodyReport(context, range, period), "body"),
@@ -220,6 +220,13 @@ export async function buildMobileProgressOverview(context: Context, query: Mobil
     body: body.status === "ok" ? body.data : null, nutrition: nutrition.status === "ok" ? nutrition.data : null,
     training: training.status === "ok" ? training.data : null,
   });
+  if(withPanorama) {
+    const w=body.status==='ok'?body.data.report.metrics.find(m=>m.field==='weight_kg'&&body.data.available.has(m.key)):null;
+    const obs=(x:{date:string;value:number}|undefined)=>x?{date:x.date,value:x.value}:null;
+    const days=nutrition.status==='ok'?nutrition.data.days.filter(d=>d.hasNutrition&&d.isComplete):null;
+    overview.panorama={weight:body.status==='ok'?{count:w?.current.length??0,first:obs(w?.current[0]),last:obs(w?.current.at(-1))}:null,
+      nutrition:days?{caloriesDays:days.filter(d=>d.calories!==null).length,proteinDays:days.filter(d=>d.proteinG!==null).length,targetDays:days.filter(d=>d.calories!==null&&d.targetCalories!==null&&d.targetDeviationKcal!==null).length}:null};
+  }
   return overview;
 }
 
@@ -338,10 +345,11 @@ export const progressHabitWeekResponse = (request: Request) => progressReadRespo
 export const progressOverviewResponse = (request: Request) => progressReadResponse(request, "overview", (context, params, today) => {
   const spark = params.get("spark");
   if (spark !== null && spark !== "1") throw new MobileApiValidationError("Parámetro no válido.");
-  const query = progressQueryFromParams(params, ["spark", "inPeriod"]);
+  const query = progressQueryFromParams(params, ["spark", "inPeriod", "panorama"]);
   const inPeriod = params.get("inPeriod");
   if (inPeriod !== null && inPeriod !== "1") throw new MobileApiValidationError("Parámetro no válido.");
-  return buildMobileProgressOverview(context, query, today, spark === "1", inPeriod === "1");
+  const panorama=params.get("panorama");if(panorama!==null&&panorama!=="1")throw new MobileApiValidationError("Parámetro no válido.");
+  return buildMobileProgressOverview(context, query, today, spark === "1", inPeriod === "1",panorama==="1");
 }, parseProgressOverview);
 export const progressBodyResponse = (request: Request) => progressReadResponse(request, "body",
   (context, params, today) => buildMobileProgressBody(context, progressQueryFromParams(params), today), parseProgressBody);

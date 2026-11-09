@@ -9,6 +9,7 @@ export default function ProgressLayout() {
     // (hidden here too, so the native bar never flashes and never shifts the content inset on the way back).
     <ProgressRangeProvider><Stack screenOptions={useStackScreenOptions()}>
       <Stack.Screen name="index" options={{ headerShown: false, title: 'Progreso' }} />
+      <Stack.Screen name="period" options={{ headerShown: false, title: 'Explorar período' }} />
       <Stack.Screen name="body" options={{ title: 'Cuerpo' }} />
       <Stack.Screen name="metrics" options={{ title: 'Métricas diarias' }} />
       <Stack.Screen name="trends/body" options={{ headerShown: false, title: 'Cuerpo' }} />

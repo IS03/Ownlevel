@@ -12,7 +12,7 @@ import {
 import type { ProgressOverview, ProgressPeriod } from '@/api/progress';
 import { ConnectionsSection } from './connections-section';
 import { CONNECTION_NAMES, connectionTitle, connectionsPeriodText, roundConnections } from './connections-model';
-import { ProgressOverviewScreen } from './overview-screen';
+import { ProgressPeriodOverviewScreen as ProgressOverviewScreen } from './overview-screen';
 import { ConnectionDetailScreen } from './connection-detail-screen';
 import { ProgressRangeProvider } from './progress-range-context';
 import { addDays, calendarRange, compareRange, daysBetween, initialProgressRange, progressRequest, type DateRange, type ProgressRangeState } from './progress-range';

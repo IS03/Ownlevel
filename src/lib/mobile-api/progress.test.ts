@@ -33,6 +33,7 @@ type Value = { metric_id: string; metric_date: string; value: number };
 let values: Value[] = [];
 let dayLogs: NutritionReportDayLogFact[] = [];
 let nutritionFails = false;
+let unknownNutrients: Record<string, {calories?: boolean; protein?: boolean}> = {};
 const rpcCalls: { name: string; args: unknown }[] = [];
 const definitions = () => [
   { id: ids.steps, system_key: "steps", name: "Pasos", unit: "pasos", value_type: "integer", target_value: 10000, sort_order: 0, is_active: true, archived_at: null },
@@ -58,7 +59,7 @@ function supabase() {
       if (nutritionFails) return { data: null, error: { code: "XX000" } };
       const logs = dayLogs.filter(l => l.log_date >= args.p_start && l.log_date <= args.p_end);
       return { data: { status: "ok", today: TODAY, start: args.p_start, end: args.p_end, dayLogs: logs,
-        meals: logs.map(l => ({ day_log_id: l.id, entry_kind: "meal", final_calories: l.total_calories_consumed, final_protein_g: l.total_protein_g, final_carbs_g: 0, final_fat_g: 0, source_type: "manual", deleted_at: null })),
+        meals: logs.map(l => ({ day_log_id: l.id, entry_kind: "meal", final_calories: unknownNutrients[l.log_date]?.calories ? null : l.total_calories_consumed, final_protein_g: unknownNutrients[l.log_date]?.protein ? null : l.total_protein_g, final_carbs_g: 0, final_fat_g: 0, source_type: "manual", deleted_at: null })),
         workouts: [], goalNames: [] }, error: null };
     },
     from(table: string) {
@@ -91,7 +92,7 @@ async function json<T>(response: Response, parse: (v: unknown) => T | undefined)
 
 beforeEach(() => {
   vi.clearAllMocks(); rpcCalls.length = 0; nutritionFails = false; clock.today = TODAY; metricDefinitions = null; metricsFail = false; readOwners.length = 0;
-  values = []; dayLogs = [];
+  values = []; dayLogs = []; unknownNutrients = {};
   vi.mocked(authenticateMobileAccessToken).mockResolvedValue({ userId: "owner", supabase: supabase() } as never);
   vi.mocked(getMyProfile).mockResolvedValue({ current_weight_kg: 80 } as never);
   vi.mocked(listAllWeightHistory).mockResolvedValue([]);
@@ -577,4 +578,32 @@ describe('Progress explore read (stage 2, step 1)', () => {
       expect((await get(q)).status).toBe(400);
     expect((await get(`measure=metric.${ids.archived.replace('5', '9')}`)).status).toBe(400);
   });
+});
+
+describe('Progress panorama opt-in EXPAND',()=>{
+ it('reuses source reads, keeps old responses unchanged and returns exact weight dates and nutrient denominators',async()=>{
+  vi.mocked(listAllWeightHistory).mockResolvedValue([{id:'p1',log_date:d(-6),weight_kg:82},{id:'p2',log_date:d(-2),weight_kg:80.5}]);
+  const plain=await (await overviewGET(request('progress?period=30&spark=1&inPeriod=1'))).json(),baseRpc=rpcCalls.length,baseReads=readOwners.length;
+  rpcCalls.length=0;readOwners.length=0;
+  const expanded=await (await overviewGET(request('progress?period=30&spark=1&inPeriod=1&panorama=1'))).json();
+  expect(parseProgressOverview(expanded)).toBeDefined();expect(plain.panorama).toBeUndefined();
+  const {panorama,...rest}=expanded;expect(rest).toEqual(plain);expect(rpcCalls.length).toBe(baseRpc);expect(readOwners.length).toBe(baseReads);
+  expect(panorama.weight.last).toEqual({date:d(-2),value:80.5});expect(panorama.weight.first).toEqual({date:d(-6),value:82});expect(panorama.weight.count).toBeGreaterThan(0);
+  expect(panorama.nutrition.caloriesDays).toBeLessThanOrEqual(expanded.nutrition.data.completedDays);
+  expect(panorama.nutrition.targetDays).toBeLessThanOrEqual(panorama.nutrition.caloriesDays);
+  console.log(JSON.stringify({fixture:'progress-overview',beforeBytes:Buffer.byteLength(JSON.stringify(plain)),afterBytes:Buffer.byteLength(JSON.stringify(expanded)),rpcBefore:baseRpc,rpcAfter:rpcCalls.length,ownerReadChecksBefore:baseReads,ownerReadChecksAfter:readOwners.length}));
+  for(const change of [(v:typeof expanded)=>{v.panorama.weight.last.date='2027-01-01';},(v:typeof expanded)=>{v.panorama.weight.count=0;},(v:typeof expanded)=>{v.panorama.nutrition.targetDays=999;}]){const bad=structuredClone(expanded);change(bad);expect(parseProgressOverview(bad)).toBeUndefined();}
+  expect((await overviewGET(request('progress?panorama=yes'))).status).toBe(400);
+ });
+});
+
+it('panorama uses the canonical nutrient populations: explicit zero, unknown, missing target and today stay distinct', async () => {
+  dayLogs = [log(d(-3), {total_calories_consumed: 0, total_protein_g: 0}),
+    log(d(-2), {total_protein_g: 0, nutrition_target_kcal_snapshot: null}),
+    log(d(-1), {total_calories_consumed: 0, total_protein_g: 100}),
+    log(TODAY, {total_calories_consumed: 4000, total_protein_g: 400})];
+  unknownNutrients = {[d(-2)]: {protein: true}, [d(-1)]: {calories: true}};
+  const body = await json(await overviewGET(request('progress?period=30&panorama=1')), parseProgressOverview);
+  expect(body.panorama?.nutrition).toEqual({caloriesDays: 2, proteinDays: 2, targetDays: 1});
+  expect(body.nutrition).toMatchObject({status: 'ok', data: {averageKcal: 1000, averageProteinG: 50, registeredDays: 4, completedDays: 3}});
 });

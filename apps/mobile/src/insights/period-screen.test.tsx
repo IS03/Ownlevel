@@ -12,10 +12,10 @@ import { insightsReturnHref, periodDetailHref } from './navigation';
 
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
-const mockPush = jest.fn();
+const mockPush = jest.fn(), mockNavigate = jest.fn();
 const mockFocus = new Set<() => void | (() => void)>();
 let mockParams: Record<string, string> = {};
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, back: jest.fn() }), useLocalSearchParams: () => mockParams,
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, navigate: mockNavigate, back: jest.fn() }), useLocalSearchParams: () => mockParams,
   useFocusEffect: (callback: () => void | (() => void)) => jest.requireActual<typeof import('react')>('react').useEffect(() => {
     mockFocus.add(callback); const cleanup = callback(); return () => { mockFocus.delete(callback); cleanup?.(); };
   }, [callback]) }));
@@ -55,7 +55,7 @@ const open = async () => {
   return view;
 };
 const weights = ['2026-08-03', '2026-08-05', '2026-08-07', '2026-08-10', '2026-08-12', '2026-08-14'].map((date, n) => ({ date, value: n < 3 ? 80 : 79.5 }));
-beforeEach(() => { mockParams = {}; mockFocus.clear(); mockPush.mockClear(); mockRead.mockReset(); clearConfirmedReads(mockClient); });
+beforeEach(() => { mockParams = {}; mockFocus.clear(); mockPush.mockClear(); mockNavigate.mockClear(); mockRead.mockReset(); clearConfirmedReads(mockClient); });
 
 describe('#367 fase 4: resumen de los últimos tres meses', () => {
   it('reads once when it opens and writes the period with its exact dates and figures, facts only', async () => {
@@ -142,4 +142,19 @@ describe('#367 fase 4: resumen de los últimos tres meses', () => {
     view.unmount(); mockRead.mockClear(); mockParams = { asOf: '2026-02-30' };
     const invalid = await open(); expect(invalid.getByText('No pudimos identificar el período')).toBeTruthy(); expect(mockRead).not.toHaveBeenCalled();
   });
+});
+
+it('keeps Progreso as origin through summary, domain details and weeks without changing the pinned read', async () => {
+  mockParams = {asOf: '2026-11-06', fromProgress: '1'};
+  mockRead.mockImplementation(serve(history([{date: '2026-08-03', routine: 'A', reps: 8}]), weights));
+  const view = await open();
+  expect(mockRead).toHaveBeenCalledTimes(1);
+  fireEvent.press(view.getByRole('button', {name: 'Ver tu peso en Cuerpo, en los mismos tres meses'}));
+  const body = mockPush.mock.calls.at(-1)![0] as {params: Record<string, string>};
+  expect(insightsReturnHref(body.params)).toEqual({pathname: '/(tabs)/train/insights/period', params: {asOf: '2026-11-06', fromProgress: '1'}});
+  fireEvent.press(view.getByRole('button', {name: 'Recorrer semanas y días de estos mismos tres meses'}));
+  expect(mockPush).toHaveBeenLastCalledWith({pathname: '/(tabs)/train/insights/weeks', params: {asOf: '2026-11-06', revision: 'r1', fromProgress: '1'}});
+  fireEvent.press(view.getByRole('button', {name: 'Volver a Progreso'}));
+  expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress');
+  expect(mockRead).toHaveBeenCalledTimes(1);
 });

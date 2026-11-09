@@ -1,3 +1,4 @@
+import { ReturnToProgress } from './return-to-progress';
 import { useCallback } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -40,6 +41,7 @@ export function SessionTemporalScreen() {
   </View>;
   return <ScrollView testID="session-temporal-screen" contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: colors.background }} contentContainerStyle={styles.scroll}
     refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
+    <ReturnToProgress/>
     {!date ? <UnavailableState title="No pudimos identificar el día" description="Abrí el contexto desde Insights." />
       : state.status === 'loading' && !data ? <SkeletonBlock height={176} />
       : !data ? <UnavailableState title="No pudimos leer el contexto" description="Tus registros siguen guardados." action={<Button label="Reintentar" onPress={() => void refresh()} />} />
