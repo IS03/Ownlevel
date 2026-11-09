@@ -1,6 +1,6 @@
 # #367 — Matriz de cobertura de Insights
 
-**Estado actual 08/11/2026, main `5e4a31c` (#439):** contexto temporal, exploración de semanas/días y acceso persistente desde sesión terminada ya están integrados. Esta entrega prepara A/B descriptivo sobre la misma lectura y mantiene pendiente el descubrimiento automático. [Contrato vigente de seis preguntas](367-ecosistema-mobile-ejecucion.md#contrato-de-entrega-comparar-semanas--08112026). #367 permanece abierto y QA física parcial en #432.
+**Estado actual 09/11/2026, main `bb75762` (#445):** A/B de semanas, precarga de Nutrición, coincidencias descriptivas, alimentación previa y energía/fatiga por sus grupos ya están integrados. Esta entrega prepara los cuatro nutrientes semanales frente a entrenamiento/peso, sobre las mismas semanas y sin lecturas al seleccionar. Descripciones no acreditan asociaciones; el descubrimiento inferencial automático sigue pendiente y #441 aislado. [Contrato y estado de ejecución](367-ecosistema-mobile-ejecucion.md). #367 abierto y QA física pendiente en #432. Las notas fechadas siguientes conservan el historial y sus límites.
 
 ### Antecedentes conservados — estados al 06–07/11, no gates actuales
 

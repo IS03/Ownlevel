@@ -346,6 +346,12 @@ function parseExploration(raw: Json) {
   let expected=String((raw.period as Json).start),total=0;
   for(const w of raw.weeks) {
     if(!object(w)||!validPeriodAnchor(w.start)||!validPeriodAnchor(w.end)||typeof w.wholeWeek!=='boolean'||!Array.isArray(w.days)||!w.days.length||w.days.length>7||w.start!==expected||!Array.isArray(w.feelings)||w.feelings.length!==2||!feelingOutcome(w.feelings[0],'energy')||!feelingOutcome(w.feelings[1],'fatigue'))return undefined;
+    if(w.trainingCoverage!==undefined) {
+      const c=w.trainingCoverage,sessions=(w.days as Json[]).reduce((n,d)=>n+(object(d)&&object(d.training)?Number(d.training.sessions):0),0);
+      const comparable=(key:'training'|'partial')=>(w.days as Json[]).reduce((n,d)=>n+(object(d)&&object(d[key])&&object((d[key] as Json).counts)?Number(((d[key] as Json).counts as Json).comparable):0),0);
+      if(!object(c)||!count(c.strictSessions)||!count(c.partialSessions)||Number(c.strictSessions)>sessions||Number(c.partialSessions)>sessions||Number(c.strictSessions)>comparable('training')||Number(c.partialSessions)>comparable('partial')
+        ||!object(c.routines)||!count(c.routines.distinct)||!count(c.routines.unknownSessions)||Number(c.routines.distinct)+Number(c.routines.unknownSessions)>sessions)return undefined;
+    }
     if(w.priorFeelings!==undefined) {
       if(!Array.isArray(w.priorFeelings)||w.priorFeelings.length!==2)return undefined;
       for(const [i,kind] of ['energy','fatigue'].entries()) {

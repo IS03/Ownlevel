@@ -8,7 +8,7 @@ import type {CoincidenceSelection} from '@/api/performance-insights';
 import {clearConfirmedReads} from '@/api/confirmed-read-cache';
 import {periodExploration,periodCoincidenceEvidence} from '../../../../src/lib/progress/insights-engine/week-exploration';
 import {periodDetailsFixture} from '../../../../src/lib/progress/insights-engine/period-details-fixture';
-import {descriptiveFixture,descriptiveBodyFixture,descriptivePreMealFixture,descriptiveId} from '../../../../src/lib/progress/insights-engine/descriptive-fixture.test-helper';
+import {descriptiveFixture,descriptiveBodyFixture,descriptivePreMealFixture,descriptiveWeeklyFixture,descriptiveId} from '../../../../src/lib/progress/insights-engine/descriptive-fixture.test-helper';
 import {createInsightsSnapshot,insightsSummary} from '../../../../src/lib/progress/insights-engine/read-model';
 import {InsightsScreen} from './insights-screen';
 import {WeekExplorationScreen} from './week-exploration-screen';
@@ -83,7 +83,7 @@ it('distinguishes insufficient observations from a compatible older response wit
   const view=render(wrap());await view.findByText('Sin contraste descriptivo suficiente. No significa que no haya relación.');
   const legacy=structuredClone(payload);delete legacy.coincidenceSummary;
   mockRead.mockImplementation(async o=>({status:'ok',data:o.parse(legacy),meta})as never);
-  view.unmount();clearConfirmedReads(mockClient);const old=render(wrap());await old.findByText('Estas coincidencias todavía no están disponibles. Podés seguir recorriendo semanas y días.');
+  view.unmount();clearConfirmedReads(mockClient);const old=render(wrap());await old.findByText('Las coincidencias por sesión todavía no están disponibles. Podés seguir recorriendo semanas y días.');
   expect(old.queryByText('No pudimos leer las semanas')).toBeNull();
 });
 it('does not carry descriptions across logout/accounts or revive a late reading from the retired account',async()=>{
@@ -224,7 +224,7 @@ it('opens the fixed premeal choices locally and requests only the selected group
  const select=async(name:string)=>{await act(async()=>{fireEvent.press(view.getByRole('button',{name}));mockParams={...mockParams,...mockSetParams.mock.calls.at(-1)![0] as Record<string,string>};view.rerender(wrap());});};
  const calories='Abrir calorías previas y entrenamiento, descripción de registros',carbs='Abrir carbohidratos previos y entrenamiento, descripción de registros',last='Abrir última comida registrada y entrenamiento, descripción de registros';
  const choices=within(view.getByTestId('descriptive-coincidences')).getAllByRole('button').map(b=>b.props.accessibilityLabel);
- expect(choices).toEqual(['Abrir proteína previa y entrenamiento, descripción de registros',calories,carbs,last,'Abrir horarios y distribuciones de energía y fatiga post','Abrir proteína registrada semanal y cambios de mediana de peso corporal']);
+ expect(choices).toEqual(['Abrir proteína previa y entrenamiento, descripción de registros',calories,carbs,last,'Abrir horarios y distribuciones de energía y fatiga post','Abrir alimentación semanal, entrenamiento y peso corporal']);
  await select(calories);expect(mockRead).toHaveBeenCalledTimes(1);expect(view.getAllByText(/Hasta 300 kcal/).length).toBeGreaterThan(0);
  await select('Ver 6 registros del grupo hasta la mediana');expect(view.getByTestId(`coincidence-session-${descriptiveId(10)}`)).toBeTruthy();expect(mockRead).toHaveBeenCalledTimes(2);
  fireEvent.press(view.getAllByRole('button',{name:/^Ver sesión y evidencia del/})[0]!);
@@ -271,4 +271,38 @@ it('shows unavailable feeling fields on old servers distinctly from empty groups
  const view=render(wrap());await view.findByText('Coincidencias descriptivas de tus registros');
  expect(view.getByText('Las distribuciones por alimentación no están disponibles en esta versión del servidor; no significa que falten respuestas.')).toBeTruthy();
  expect(within(view.getByTestId('descriptive-coincidences')).queryByText('Energía al terminar')).toBeNull();expect(mockRead).toHaveBeenCalledTimes(1);
+});
+
+it('switches weekly nutrients and training/body locally with coverage, separate methods and preserved return identity',async()=>{
+ const f=descriptiveWeeklyFixture(),payload=periodExploration(f.source,f.weights,'2026-11-09','2026-11-07','r2',2);
+ mockRead.mockImplementation(async o=>({status:'ok',data:o.parse(payload),meta})as never);mockParams={...compareParams(),coincidence:'body'};
+ const view=render(wrap());await view.findByTestId('weekly-coincidences');
+ const press=async(name:string)=>{await act(async()=>{fireEvent.press(view.getByRole('button',{name}));mockParams={...mockParams,...mockSetParams.mock.calls.at(-1)![0] as Record<string,string>};view.rerender(wrap());});};
+ await press('Elegir calorías semanales');await press('Ver resultados de entrenamiento por alimentación semanal');
+ const block=within(view.getByTestId('weekly-coincidences'));
+ expect(block.getAllByText('Método completo')).toHaveLength(2);expect(block.getAllByText('Método parcial')).toHaveLength(2);expect(block.getByText(/Corte: hasta 200 kcal/)).toBeTruthy();expect(block.getAllByText(/4 sesiones en 4 días entrenados/)).toHaveLength(2);expect(mockRead).toHaveBeenCalledTimes(1);
+ await press('Ver 4 semanas y sus registros del grupo hasta la mediana');
+ fireEvent.press(view.getByRole('button',{name:'Abrir Nutrición del 03/08/2026 y sus registros'}));
+ const meal=mockPush.mock.calls.at(-1)![0] as ReturnType<typeof nutritionDayHref>;expect(insightsReturnHref(meal.params)).toMatchObject({params:{coincidence:'body',weeklyNutrient:'calories',weeklyOutcome:'training',coincidenceGroup:'lower',weekA:'2026-08-03',weekB:'2026-08-10',revision:'r2'}});
+ fireEvent.press(block.getByRole('button',{name:'Ver sesiones y comparaciones del 03/08/2026'}));const session=mockPush.mock.calls.at(-1)![0] as {params:Record<string,string>};expect(session.params).toMatchObject({date:'2026-08-03',before:'2026-08-04',weeklyNutrient:'calories',weeklyOutcome:'training',coincidenceGroup:'lower'});
+ await press('Ver peso corporal por alimentación semanal');expect(mockParams.coincidenceGroup).toBe('lower');expect(block.getByText(/hay solapamiento temporal/)).toBeTruthy();expect(block.getAllByText(/cambio: 0 kg/).length).toBeGreaterThan(0);
+ fireEvent.press(view.getByRole('button',{name:'Ver pesajes y referencia de 10/08/2026 – 16/08/2026'}));const weight=mockPush.mock.calls.at(-1)![0] as ReturnType<typeof bodyWeightHref>;expect(insightsReturnHref(weight.params)).toMatchObject({params:{weeklyNutrient:'calories',weeklyOutcome:'weight',coincidenceGroup:'lower'}});
+ await press('Elegir grasas semanales');expect(block.getByText(/los valores son iguales/)).toBeTruthy();expect(mockParams.coincidenceGroup).toBeUndefined();expect(block.getByRole('button',{name:'Ver 0 semanas y sus registros del grupo sobre la mediana'})).toBeTruthy();
+ await press('Elegir carbohidratos semanales');expect(block.getByText(/Corte: hasta 50 g/)).toBeTruthy();expect(mockRead).toHaveBeenCalledTimes(1);
+ expect(insightsReturnHref({...meal.params,insightsWeeklyNutrient:'salt'})).toBeNull();expect(insightsReturnHref({...meal.params,insightsWeeklyOutcome:'causality'})).toBeNull();
+});
+it('computes weekly groups on older responses without inventing missing session/routine coverage',async()=>{
+ const f=descriptiveWeeklyFixture(),payload=periodExploration(f.source,f.weights,'2026-11-09','2026-11-07','r2',2);delete payload.coincidenceSummary;for(const w of payload.weeks)delete w.trainingCoverage;
+ mockParams={...mockParams,coincidence:'body',weeklyNutrient:'carbsG',weeklyOutcome:'training',coincidenceGroup:'upper'};mockRead.mockImplementation(async o=>({status:'ok',data:o.parse(payload),meta})as never);
+ const view=render(wrap());await view.findByTestId('weekly-coincidences');const block=within(view.getByTestId('weekly-coincidences'));
+ expect(within(block.getByTestId('weekly-record-2026-08-03')).getAllByText(/sesiones comparables no disponibles en esta versión/)).toHaveLength(2);expect(block.getAllByText('Cobertura por sesión y rutinas no disponibles en esta versión del servidor. Los conteos de ejercicios y días siguen disponibles.')).toHaveLength(4);expect(mockRead).toHaveBeenCalledTimes(1);
+});
+it('retains weekly selection across revision refresh and clears account-owned records on account change',async()=>{
+ const f=descriptiveWeeklyFixture();let revision='r2';mockParams={...mockParams,coincidence:'body',weeklyNutrient:'fatG',weeklyOutcome:'training',coincidenceGroup:'lower'};
+ mockRead.mockImplementation(async o=>({status:'ok',data:o.parse(periodExploration(f.source,f.weights,'2026-11-09','2026-11-07',revision,2)),meta})as never);
+ const view=render(wrap());await view.findByTestId('weekly-record-2026-08-03');revision='r3';
+ const refresh=view.UNSAFE_getByType(RefreshControl);await act(async()=>{refresh.props.onRefresh();});expect(mockParams).toMatchObject({weeklyNutrient:'fatG',weeklyOutcome:'training',coincidenceGroup:'lower'});
+ fireEvent.press(view.getByRole('button',{name:'Abrir Nutrición del 03/08/2026 y sus registros'}));const meal=mockPush.mock.calls.at(-1)![0] as ReturnType<typeof nutritionDayHref>;expect(meal.params.insightsRevision).toBe('r3');
+ const empty={...f.source,sessions:[],exercises:[],sets:[],meals:[],feelings:[]};const nextRead=jest.fn<MobileApiClient['read']>().mockImplementation(async o=>({status:'ok',data:o.parse(periodExploration(empty,[],'2026-11-09','2026-11-07','other',2)),meta})as never);
+ mockClient={read:nextRead,request:jest.fn()} as unknown as MobileApiClient;await act(async()=>view.rerender(wrap()));expect(view.queryByTestId('weekly-record-2026-08-03')).toBeNull();expect(nextRead).toHaveBeenCalledTimes(1);
 });
