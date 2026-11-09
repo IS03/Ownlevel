@@ -52,8 +52,9 @@ function duplicateKeys<T>(rows: readonly T[], key: (row: T) => string): Set<stri
 }
 
 /** Pure preparation of caller-supplied as-of snapshots, never a live reader or a reconstruction from today's view. */
-export function prepare(snapshot: Snapshot, from: string, until = snapshot.asOf): Preparation {
-  const cutoff = midnight(snapshot.asOf);
+export function prepare(snapshot: Snapshot, from: string, until = snapshot.asOf, knownAt?: number): Preparation {
+  const boundary = midnight(snapshot.asOf), cutoff = knownAt ?? boundary;
+  if (!Number.isFinite(cutoff) || cutoff > boundary) throw new Error("Invalid known-at instant");
   if (!validDay(from) || !validDay(until) || until > snapshot.asOf || from > until || !snapshot.revision) throw new Error("Invalid snapshot interval/revision");
   // The canonical meal helper caches by object identity and assumes immutable meals. Give each preparation its own identities,
   // so a caller's in-memory revision cannot reuse provenance cached during an earlier invocation.
