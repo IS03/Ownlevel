@@ -3,6 +3,7 @@ import { Alert, Platform, StyleSheet, View } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { historyReturnParams } from '@/history/navigation';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
+import { ReturnToExerciseChart, exerciseChartReturnHref } from '@/progress/exercise-navigation';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchSessionDetail, type SessionDetailDto, type SessionFinishedDto } from '@/api/active-session';
@@ -47,7 +48,9 @@ export function CompletedSessionScreen({ api, sessionId, initialDetail, finished
   configurations?: ExerciseConfigurationJournal;
 }) {
   const router = useRouter();
-  const origin = historyReturnParams(useLocalSearchParams());
+  const params = useLocalSearchParams();
+  const origin = historyReturnParams(params);
+  const sourceExerciseId = exerciseChartReturnHref(params)?.params.id;
   const navigation = useNavigation();
   const { colors } = useOwnlevelTheme();
   const load = useCallback((signal: AbortSignal) => api.detail(signal), [api]);
@@ -63,10 +66,11 @@ export function CompletedSessionScreen({ api, sessionId, initialDetail, finished
   useLayoutEffect(() => {
     if (status && status !== 'in_progress') navigation.setOptions({ title: status === 'discarded' ? 'Sesión eliminada' : '' });
   }, [navigation, status]);
-  if (state.status !== 'ready') return <ReadStateScreen header={<ReturnToHistoryDay />} state={state} onRetry={() => void reload()} testID="history-session" notFoundTitle="Sesión no disponible" />;
+  const returnHeader = <><ReturnToHistoryDay /><ReturnToExerciseChart /></>;
+  if (state.status !== 'ready') return <ReadStateScreen header={returnHeader} state={state} onRetry={() => void reload()} testID="history-session" notFoundTitle="Sesión no disponible" />;
   const detail = state.data;
   if (detail.session.status === 'in_progress') {
-    return <ScrollScreen testID="history-session-in-progress"><ReturnToHistoryDay /><UnavailableState title="La sesión está en curso" description="Abrila para seguir entrenando o finalizarla."
+    return <ScrollScreen testID="history-session-in-progress">{returnHeader}<UnavailableState title="La sesión está en curso" description="Abrila para seguir entrenando o finalizarla."
       action={<Button label="Abrir sesión" onPress={() => router.replace(`/(tabs)/train/session/${sessionId}`)} />} /></ScrollScreen>;
   }
   const leave = () => { if (router.canGoBack()) router.back(); else router.replace('/(tabs)/train/history'); };
@@ -113,10 +117,10 @@ export function CompletedSessionScreen({ api, sessionId, initialDetail, finished
     {notice ? <Surface accessibilityRole="alert"><AppText style={{ color: notice.tone === 'danger' ? colors.danger : colors.text }} variant="caption">{notice.text}</AppText></Surface> : null}
     {pendingKey || discarding ? <Button label={discarding ? 'Eliminando…' : 'Reintentar eliminación'} variant="quiet" disabled={discarding} onPress={() => void runDiscard()} /> : null}
   </View> : null;
-  return <>{menu}<CompletedSessionView detail={detail} finished={finished} readSummary={api.summary} onHome={onHome} onTraining={onTraining} actions={actions}
+  return <>{menu}<CompletedSessionView initialExerciseId={sourceExerciseId} detail={detail} finished={finished} readSummary={api.summary} onHome={onHome} onTraining={onTraining} actions={actions}
     extraSummary={<>{api.feelings ? <RecordedTrainingFeelings key={sessionId} read={api.feelings} /> : null}
       {configurations ? <SessionVariants journal={configurations} exercises={detail.exercises} editable={completed && !discarding} /> : null}</>}
-    banner={<><ReturnToHistoryDay />{state.stale ? <Surface><AppText muted variant="caption">No se pudo actualizar. Mostramos la última lectura confirmada.</AppText></Surface> : null}</>}
+    banner={<>{returnHeader}{state.stale ? <Surface><AppText muted variant="caption">No se pudo actualizar. Mostramos la última lectura confirmada.</AppText></Surface> : null}</>}
     onOpenExercise={exerciseId => router.push(`/(tabs)/train/history/exercise/${exerciseId}${detail.session.routineId ? `?routineId=${encodeURIComponent(detail.session.routineId)}` : ''}`)} /></>;
 }
 

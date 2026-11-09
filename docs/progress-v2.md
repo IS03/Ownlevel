@@ -382,6 +382,14 @@ El detalle de grupo/subzona combina performance comparable por ejercicios y carg
 - Historial y contexto conservan implemento, modo, notas y decisiones reales.
 - No se inventa e1RM ni se agrega kg entre ejercicios.
 
+### Exploración Mobile del ejercicio — #402 (09/11/2026)
+
+Desde Entrenamiento de Progreso, tocar un punto **inspecciona sin navegar**: fecha con año, medida/unidad, período elegido o de comparación, referencia de lectura y serie de origen del 1RM estimado. La referencia conserva el criterio del gráfico existente (primera sesión con dato, o la última sesión de referencia con mejor serie registrada); no crea otra clasificación de rendimiento. Volumen/repeticiones/tiempo totales siguen describiendo actividad. Hueco, cero, modo incompatible, respuesta antigua sin `charts` y fallo de lectura conservan estados distintos.
+
+«Ver sesión y series originales» abre el detalle histórico existente, deja visible y desplegado el ejercicio de origen incluso en una sesión larga y ofrece «Volver al gráfico del ejercicio». El destino es fijo y el ID se valida. El stack de Progreso retiene período/A-B, medida e inspección durante la ida/vuelta; al cambiar cuenta, ejercicio o ventana se retira la selección anterior. No es persistencia tras cerrar el proceso. Revalidar conserva la lectura confirmada; editar/eliminar usa las invalidaciones existentes y no permite abrir un punto que dejó de estar en la nueva lectura.
+
+Se reutilizan `ProgressExerciseCharts`, `fetchProgressTrainingExercise`, `useProgressResource`, `ProgressRangeProvider`, el gráfico nativo existente, `HistorySessionRoute` y `CompletedSessionView`. Sin cambios de API, payload, cálculos estadísticos o caché. Abrir el ejercicio conserva su GET; inspeccionar/cambiar medida añade **0 peticiones**. Volver reutiliza la lectura válida; una invalidación dispara la política de relectura habitual. Abrir la sesión conserva sus lecturas existentes a pedido. Targets de al menos 44 pt, scroll horizontal para historial denso, fechas completas para VoiceOver y controles que envuelven/apilan con texto accesible. QA física pendiente en la [checklist única](progress/367-qa-fisica.md#gráficos-de-entrenamiento-402--inspección-y-fuente).
+
 # Nutrición
 
 ## Semántica energética

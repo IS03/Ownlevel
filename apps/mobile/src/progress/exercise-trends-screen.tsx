@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Pressable, RefreshControl, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -15,6 +15,7 @@ import {
   AppIcon,
   AppText,
   Button,
+  ChipGroup,
   Heading,
   InlineUnavailable,
   SkeletonBlock,
@@ -31,8 +32,12 @@ import { periodHeading } from './progress-range';
 import { arrowDelta, formatValue } from './progress-format';
 import { REASON_LABELS, STATUS_LABELS } from './training-trends-screen';
 import { useProgressResource } from './use-progress-resource';
+import { exerciseSessionHref } from './exercise-navigation';
 
 type Measure = ProgressExerciseCharts['measures'][number];
+type PointSelection = { sessionId: string; reference: boolean } | null;
+type Inspection = { measure: Measure['key'] | null; point: PointSelection };
+const fullDate = (date: string) => new Intl.DateTimeFormat('es-AR', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${date}T12:00:00Z`));
 const shortDate = (date: string, weekday = false) => {
   const text = new Intl.DateTimeFormat('es-AR', {
     timeZone: 'UTC',
@@ -101,11 +106,12 @@ function Moving({ to, prop, reduced, style, children }: { to: number; prop: 'hei
   return <Animated.View style={[style, animated]}>{children}</Animated.View>;
 }
 
-function ExerciseChart({ data, measure }: { data: ProgressTrainingExerciseDetail; measure: Measure }) {
+function ExerciseChart({ data, measure, selected, onSelect }: { data: ProgressTrainingExerciseDetail; measure: Measure; selected: PointSelection; onSelect: (point: PointSelection) => void }) {
   const { colors } = useOwnlevelTheme(),
     router = useRouter(),
     reduced = useReduceMotion();
-  const { compareOn, compareText } = useProgressRange();
+  const { compareOn, compareText, compare } = useProgressRange();
+  const { fontScale } = useWindowDimensions();
   const [width, setWidth] = useState(300);
   const level = ['estimated_1rm', 'best_set', 'best_time'].includes(measure.key);
   const reference = compareOn ? measure.reference : null;
@@ -134,92 +140,107 @@ function ExerciseChart({ data, measure }: { data: ProgressTrainingExerciseDetail
     ...(compareOn ? referenceSlots.map((s) => ({ ...s, point: referenceById.get(s.sessionId), reference: true })) : []),
     ...currentSlots.map((s) => ({ ...s, point: currentById.get(s.sessionId), reference: false })),
   ];
-  const n = slots.length,
-    step = Math.ceil(n / 5);
-  const labeled = (index: number) => n <= 6 || index === n - 1 || (index % step === 0 && n - 1 - index >= step / 2);
   const last = measure.points.at(-1)?.sessionId;
   // Level charts carry their value over the dot: all of them when few, otherwise first, last, lowest and highest.
   const own = slots.flatMap((sl, i) => (sl.point && !sl.reference ? [i] : []));
   const byValue = [...own].sort((a, b) => slots[a].point!.value - slots[b].point!.value);
   const written = new Set(!level ? [] : own.length <= 6 ? own : [own[0], own[own.length - 1], byValue[0], byValue[byValue.length - 1]]);
-  const room = written.size ? 18 : 0;
-  if (!values.length)
-    return (
-      <AppText muted>
-        Sin valores válidos para {measure.label.toLocaleLowerCase('es-AR')} en los períodos elegidos.
-      </AppText>
-    );
+  const room = written.size ? 18 * Math.max(1, fontScale) : 0;
+  const selectedSlot = slots.find(slot => slot.sessionId === selected?.sessionId && slot.reference === selected.reference);
+  const first = measure.points[0];
+  const referenceSession = data.charts?.measures.find(m => m.key === 'best_set' || m.key === 'best_time')?.reference?.at(-1);
+  const comparisonPoint = compareOn ? reference?.find(p => p.sessionId === referenceSession?.sessionId) : first;
+  const frame = selectedSlot?.reference ? `Período de comparación · ${compare ? `${fullDate(compare.start)} – ${fullDate(compare.end)}` : compareText}` : `Período elegido · ${fullDate(data.period.start)} – ${fullDate(data.period.end)}`;
+  const interpretation = ['volume', 'total_reps', 'total_time'].includes(measure.key)
+    ? 'Actividad registrada; no mide fuerza ni demuestra una mejora de rendimiento.'
+    : measure.derived ? 'Estimación de la serie indicada; no es una prueba máxima.'
+    : measure.key === 'best_set' ? 'Carga y repeticiones se leen juntas. Más carga con menos repeticiones no implica mejora.'
+    : 'Mejor tiempo registrado por sesión; no resume todo el entrenamiento.';
+  if (!slots.length) return <AppText muted>Sin valores válidos para {measure.label.toLocaleLowerCase('es-AR')} en los períodos elegidos.</AppText>;
   return (
     <View style={styles.section}>
       <AppText muted variant="caption">
         {measure.label} por sesión{measure.key === 'volume' ? ` · ${measureUnit(measure)}` : ''}
         {compareOn ? ` · ${compareText} en gris` : ''}
       </AppText>
-      <View testID="exercise-trend-chart" style={styles.plot} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-        {slots.map((slot, index) => {
-          const p = slot.point;
-          const height = p ? (level ? (high === low ? 0.5 : (p.value - low) / (high - low)) : p.value / high) : 0;
-          const lift = 4 + height * (136 - room - 4);
-          const color = slot.reference ? colors.textMuted : colors.primary;
-          const opacity = slot.reference ? 0.4 : slot.sessionId === last ? 1 : 0.38;
-          const key = `${slot.reference ? 'reference' : 'current'}-${slot.sessionId}`;
-          const mark = (
-            <>
-              <View style={styles.column} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-                {p ? (
-                  level ? (
-                    <>
-                      {written.has(index) ? (
-                        <Moving to={lift + 10} reduced={reduced} prop="bottom" style={styles.value}>
-                          <AppText numeric variant="caption" numberOfLines={1} style={{ textAlign: 'center', color: slot.sessionId === last ? colors.text : colors.textMuted }}>
-                            {formatValue(p.value, null)}
-                          </AppText>
-                        </Moving>
-                      ) : null}
-                      <Moving to={lift} reduced={reduced} prop="marginBottom"
-                        style={{ width: 8, height: 8, borderRadius: radius.full, backgroundColor: color, opacity }} />
-                    </>
-                  ) : (
-                    <Moving to={height * 144} reduced={reduced} prop="height"
-                      style={{ width: '60%', maxWidth: 32, backgroundColor: color, opacity, borderTopLeftRadius: 2, borderTopRightRadius: 2 }} />
-                  )
-                ) : null}
-              </View>
-              <AppText
-                numeric
-                muted
-                variant="caption"
-                numberOfLines={1}
-                style={[styles.date, { width: Math.max(44, width / 5) }]}
-              >
-                {labeled(index) ? shortDate(slot.date) : ' '}
-              </AppText>
-            </>
-          );
-          return p ? (
-            <Pressable
-              key={key}
-              testID={`exercise-point-${key}`}
-              style={styles.chartSlot}
-              accessibilityRole="button"
-              accessibilityLabel={`${shortDate(slot.date)}, ${measure.label}, ${pointText(measure, p)}${slot.reference ? `, período de comparación ${compareText}` : ''}`}
-              accessibilityHint="Abre la sesión"
-              onPress={() => router.push({ pathname: '/(tabs)/train/history/[id]', params: { id: p.sessionId } })}
-            >
-              {mark}
-            </Pressable>
-          ) : (
-            <View
-              key={key}
-              testID={`exercise-gap-${key}`}
-              style={styles.chartSlot}
-              accessible
-              accessibilityLabel={`${shortDate(slot.date)}, sin dato para ${measure.label.toLocaleLowerCase('es-AR')}`}
-            >
-              {mark}
-            </View>
-          );
-        })}
+      {!values.length ? <AppText muted>Sin valores válidos para {measure.label.toLocaleLowerCase('es-AR')} en los períodos elegidos.</AppText> : null}
+      <View onLayout={e => setWidth(e.nativeEvent.layout.width)}>
+        <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ minWidth: '100%' }} accessibilityLabel={`Evolución de ${measure.label.toLocaleLowerCase('es-AR')}`}>
+          <View testID="exercise-trend-chart" style={[styles.plot, { width: Math.max(width, slots.length * 56 * Math.max(1, fontScale)), minHeight: 144 + 32 * Math.max(1, fontScale) }]} >
+            {slots.map((slot, index) => {
+              const p = slot.point;
+              const height = p ? (level ? (high === low ? 0.5 : (p.value - low) / (high - low)) : (high === 0 ? 0 : p.value / high)) : 0;
+              const lift = 4 + height * (136 - room - 4);
+              const isSelected = slot.sessionId === selectedSlot?.sessionId && slot.reference === selectedSlot.reference;
+              const color = slot.reference ? colors.textMuted : colors.primary;
+              const opacity = slot.reference ? 0.4 : slot.sessionId === last ? 1 : 0.38;
+              const key = `${slot.reference ? 'reference' : 'current'}-${slot.sessionId}`;
+              const mark = (
+                <>
+                  <View style={styles.column} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                    {p ? (
+                      level ? (
+                        <>
+                          {written.has(index) ? (
+                            <Moving to={lift + 10} reduced={reduced} prop="bottom" style={styles.value}>
+                              <AppText numeric variant="caption" numberOfLines={1} style={{ textAlign: 'center', color: slot.sessionId === last ? colors.text : colors.textMuted }}>
+                                {formatValue(p.value, null)}
+                              </AppText>
+                            </Moving>
+                          ) : null}
+                          <Moving to={lift} reduced={reduced} prop="marginBottom"
+                            style={{ width: 8, height: 8, borderRadius: radius.full, backgroundColor: color, opacity }} />
+                        </>
+                      ) : (
+                        <Moving to={height * 144} reduced={reduced} prop="height"
+                          style={{ width: '60%', maxWidth: 32, backgroundColor: color, opacity, borderTopLeftRadius: 2, borderTopRightRadius: 2 }} />
+                      )
+                    ) : null}
+                  </View>
+                  <AppText
+                    numeric
+                    muted
+                    variant="caption"
+                    numberOfLines={1}
+                    style={[styles.date, { width: 56 * Math.max(1, fontScale) }]}
+                  >
+                    {shortDate(slot.date)}
+                  </AppText>
+                </>
+              );
+              return (
+                <Pressable
+                  key={key}
+                  testID={`exercise-${p ? 'point' : 'gap'}-${key}`}
+                  style={[styles.chartSlot, { minHeight: 144 + 32 * Math.max(1, fontScale) }, isSelected && { backgroundColor: colors.surfaceRaised, borderRadius: radius.inner }]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
+                  accessibilityLabel={`${fullDate(slot.date)}, ${measure.label}, ${p ? pointText(measure, p) : 'sin dato'}${slot.reference ? `, período de comparación ${compareText}` : ', período elegido'}`}
+                  accessibilityHint="Muestra fecha, valor y referencia. Después podés abrir la sesión original."
+                  onPress={() => onSelect(isSelected ? null : { sessionId: slot.sessionId, reference: slot.reference })}
+                >
+                  {mark}
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
+      </View>
+      <View testID="exercise-point-inspection" style={styles.inspection}>
+        <View accessible accessibilityLiveRegion="polite" accessibilityLabel={selectedSlot ? `${fullDate(selectedSlot.date)}, ${measure.label}, ${selectedSlot.point ? pointText(measure, selectedSlot.point) : 'Sin dato'}, ${frame}` : 'Tocá un punto para consultar fecha, valor y referencia sin salir del gráfico.'}>
+          <AppText variant="headline">{selectedSlot ? fullDate(selectedSlot.date) : 'Tocá un punto'}</AppText>
+          <AppText numeric>{selectedSlot ? `${measure.label} · ${selectedSlot.point ? pointText(measure, selectedSlot.point) : 'Sin dato'}` : 'Consultá fecha, valor y referencia sin salir del gráfico.'}</AppText>
+          {selectedSlot ? <AppText muted variant="caption">{frame}</AppText> : null}
+        </View>
+        {selected && !selectedSlot ? <AppText muted variant="caption">La sesión seleccionada ya no está en esta lectura. Elegí otro punto.</AppText> : null}
+        {selectedSlot ? <>
+          {!selectedSlot.point ? <AppText muted variant="caption">La sesión existe, pero no tiene un valor utilizable para esta medida. No equivale a cero; podés revisar las series originales.</AppText> : null}
+          {selectedSlot.point?.best && measure.derived ? <AppText numeric muted variant="caption">Serie de origen: {formatValue(selectedSlot.point.best.weightKg, 'kg')} × {formatValue(selectedSlot.point.best.reps, 'reps')}.</AppText> : null}
+          {!selectedSlot.reference ? <AppText numeric muted variant="caption">{comparisonPoint ? `Referencia de lectura: ${fullDate(comparisonPoint.date)} · ${pointText(measure, comparisonPoint)}. ${compareOn ? 'Última sesión de referencia con una mejor serie registrada.' : 'Primera sesión con dato de esta medida en el período.'}` : 'Sin valor utilizable en la sesión de referencia.'} Esta referencia describe los valores del gráfico; no es una nueva clasificación de rendimiento.</AppText> : <AppText muted variant="caption">Registro del período de comparación, separado del período elegido.</AppText>}
+          <Button label="Ver sesión y series originales" variant="secondary" onPress={() => router.push(exerciseSessionHref(data.exercise.id, selectedSlot.sessionId))} />
+        </> : null}
+        <AppText muted variant="caption">{interpretation}</AppText>
+        <AppText muted variant="caption">{measure.points.length} de {data.sessions.length} sesiones del período elegido con dato para esta medida{compareOn ? `. Comparación: ${reference?.length ?? 0} sesiones con dato` : ''}.</AppText>
       </View>
       {measure.points.length === 1 ? (
         <AppText muted variant="caption">
@@ -230,11 +251,11 @@ function ExerciseChart({ data, measure }: { data: ProgressTrainingExerciseDetail
   );
 }
 
-function Measures({ data }: { data: ProgressTrainingExerciseDetail }) {
+function Measures({ data, inspection, onInspect }: { data: ProgressTrainingExerciseDetail; inspection: Inspection; onInspect: (next: Inspection) => void }) {
   const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
   const { compareOn, compareText, state, today } = useProgressRange();
-  const [selected, setSelected] = useState(data.charts?.measures[0]?.key ?? 'best_set');
-  const measure = data.charts?.measures.find((m) => m.key === selected) ?? data.charts?.measures[0];
+  const { fontScale } = useWindowDimensions();
+  const measure = data.charts?.measures.find((m) => m.key === inspection.measure) ?? data.charts?.measures[0];
   if (!data.charts) return <AppText muted>No pudimos consultar las medidas del ejercicio.</AppText>;
   if (data.charts.strategy === 'unsupported')
     return (
@@ -252,6 +273,7 @@ function Measures({ data }: { data: ProgressTrainingExerciseDetail }) {
     last = measure.points.at(-1),
     ref = compareOn ? measure.reference?.find((p) => p.sessionId === lastReferenceSession?.sessionId) : null;
   const within = state.unit === 'month' ? periodHeading(state, today).replace(/^Tu /, 'en ') : 'en el período';
+  const MeasureSelector = fontScale > 1.3 ? ChipGroup : ExerciseSegmented;
   const unit = measureUnit(measure);
   const change = compareOn
     ? latest && ref
@@ -268,14 +290,14 @@ function Measures({ data }: { data: ProgressTrainingExerciseDetail }) {
     : `Sin valor válido para ${measure.label.toLocaleLowerCase('es-AR')} en la última sesión.`;
   return (
     <View style={styles.section} testID="exercise-trend-summary">
-      {/* Native segmented control (Liquid Glass on iOS 26). */}
-      <ExerciseSegmented
+      {/* Native segments at standard size; wrapping brand choices at accessible sizes. */}
+      <MeasureSelector
         accessibilityLabel="Medida del ejercicio"
         value={measure.key}
         options={data.charts.measures.map((m) => ({ value: m.key, label: m.label }))}
-        onChange={setSelected}
+        onChange={key => onInspect({ measure: key as Measure['key'], point: inspection.point })}
       />
-      <Animated.View key={measure.key} entering={FadeIn.duration(reduced ? 0 : 200)} style={styles.numbers}>
+      <Animated.View key={measure.key} entering={FadeIn.duration(reduced ? 0 : 200)} style={[styles.numbers, fontScale > 1.3 && styles.stackedNumbers]}>
         <View style={styles.grow}>
           <View style={styles.valueLine}>
             <AppText
@@ -299,7 +321,7 @@ function Measures({ data }: { data: ProgressTrainingExerciseDetail }) {
         </View>
         {change ? (
           <>
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <View style={[styles.divider, fontScale > 1.3 && styles.stackedDivider, { backgroundColor: colors.border }]} />
             <View style={styles.grow} testID="exercise-trend-change">
               <AppText numeric variant="largeTitle">{change.value}</AppText>
               <AppText numeric muted variant="caption">{change.caption}</AppText>
@@ -308,12 +330,12 @@ function Measures({ data }: { data: ProgressTrainingExerciseDetail }) {
         ) : null}
       </Animated.View>
       {compareOn && !change ? <AppText muted variant="caption">Sin comparación: {compareText} sin valor comparable.</AppText> : null}
-      <ExerciseChart data={data} measure={measure} />
+      <ExerciseChart data={data} measure={measure} selected={inspection.point} onSelect={point => onInspect({ measure: measure.key, point })} />
     </View>
   );
 }
 
-function Content({ data }: { data: ProgressTrainingExerciseDetail }) {
+function Content({ data, inspection, onInspect }: { data: ProgressTrainingExerciseDetail; inspection: Inspection; onInspect: (next: Inspection) => void }) {
   const router = useRouter(),
     { colors } = useOwnlevelTheme();
   const { compareOn, compareText } = useProgressRange(),
@@ -330,7 +352,7 @@ function Content({ data }: { data: ProgressTrainingExerciseDetail }) {
       <AppText muted variant="caption">
         {data.exercise.muscleLabel} · {data.exercise.weightMode ?? 'Sin modo de carga'}
       </AppText>
-      <Measures data={data} />
+      <Measures data={data} inspection={inspection} onInspect={onInspect} />
       <View style={styles.section} testID="exercise-trend-sessions">
         <Heading level={2}>Sesiones del período</Heading>
         {sessions.length ? (
@@ -347,7 +369,7 @@ function Content({ data }: { data: ProgressTrainingExerciseDetail }) {
                 key={`${s.sessionId}-${index}`}
                 testID={`exercise-session-${s.sessionId}`}
                 label={`${title}, ${detail}`}
-                onPress={() => router.push({ pathname: '/(tabs)/train/history/[id]', params: { id: s.sessionId } })}
+                onPress={() => router.push(exerciseSessionHref(data.exercise.id, s.sessionId))}
               >
                 <View style={styles.grow}>
                   <AppText variant="label">{title}</AppText>
@@ -407,7 +429,7 @@ function Content({ data }: { data: ProgressTrainingExerciseDetail }) {
 export function ExerciseTrendsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
-  const id = String(params.id ?? '');
+  const id = typeof params.id === 'string' ? params.id : '';
   const { client } = useMobileApi(),
     { colors } = useOwnlevelTheme();
   const { query, compare } = useProgressRange();
@@ -418,6 +440,13 @@ export function ExerciseTrendsScreen() {
   );
   const key = `exercise|${progressRequestKey(query, compare)}|${id}`;
   const { state, data, refresh } = useProgressResource(client, key, load);
+  // The source screen stays mounted across tabs. Keep its inspection above loading/content branches,
+  // but never carry a point to another account, exercise, period or comparison.
+  const [saved, setSaved] = useState({ client, key, inspection: { measure: null, point: null } as Inspection });
+  const sameScope = saved.client === client && saved.key === key;
+  const inspection: Inspection = sameScope ? saved.inspection : { measure: null, point: null };
+  if (!sameScope) setSaved({ client, key, inspection });
+  const onInspect = (next: Inspection) => setSaved({ client, key, inspection: next });
   const notFound = state.status === 'unavailable' && state.result.meta.httpStatus === 404;
   return (
     <ProgressScroll
@@ -454,7 +483,7 @@ export function ExerciseTrendsScreen() {
               onAction={() => void refresh()}
             />
           ) : null}
-          <Content key={key} data={data} />
+          <Content key={key} data={data} inspection={inspection} onInspect={onInspect} />
         </>
       )}
       <FlatRow
@@ -485,7 +514,10 @@ const styles = StyleSheet.create({
   valueLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.xs },
   chip: { borderRadius: radius.chip, paddingHorizontal: spacing.xs, paddingVertical: spacing.xs },
   plot: { flexDirection: 'row', alignItems: 'flex-end', minHeight: 176 },
-  chartSlot: { flex: 1, minWidth: 0, minHeight: 176 },
+  chartSlot: { flex: 1, minWidth: 44, minHeight: 176 },
+  inspection: { gap: spacing.sm, paddingVertical: spacing.sm },
+  stackedNumbers: { flexDirection: 'column' },
+  stackedDivider: { width: '100%', height: StyleSheet.hairlineWidth },
   column: { height: 144, alignItems: 'center', justifyContent: 'flex-end' },
   value: { position: 'absolute', left: -24, right: -24, textAlign: 'center' },
   date: { position: 'absolute', top: 144, marginTop: spacing.xs, alignSelf: 'center', textAlign: 'center' },

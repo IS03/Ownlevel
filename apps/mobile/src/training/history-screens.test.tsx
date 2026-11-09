@@ -10,7 +10,7 @@ import type { TrainingHistorySession } from '@/api/training-history';
 import { MobileApiProvider, useMobileApi as useRealMobileApi } from '@/api/provider';
 import { invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import { OwnlevelThemeProvider } from '@/design-system';
-import { testDetail, testFinished } from './active-session-test-fixtures';
+import { testDetail, testFinished, testExercise } from './active-session-test-fixtures';
 import { CompletedSessionScreen, type CompletedSessionApi } from './history-session-screen';
 import { SessionCorrectionScreen } from './session-correction-screen';
 import { ExerciseHistoryScreen } from './exercise-history-screen';
@@ -19,6 +19,7 @@ import { HistoryScreen } from './history-screen';
 let mockScreenFocused = true;
 const mockFocusListeners = new Set<() => void>();
 const setFocused = (focused: boolean) => act(() => { mockScreenFocused = focused; mockFocusListeners.forEach(listener => listener()); });
+const mockNavigate = jest.fn();
 const mockPush = jest.fn(), mockReplace = jest.fn(), mockBack = jest.fn(), mockSetOptions = jest.fn();
 const mockParams: { current: Record<string, string> } = { current: {} };
 const mockFetchDetail = jest.fn<(...args: unknown[]) => Promise<unknown>>();
@@ -44,7 +45,7 @@ jest.mock('expo-router', () => {
   const Container = ({ children }: { children?: React.ReactNode }) => children ?? null;
   // Toolbar menu actions render as plain buttons so the ••• actions stay testable.
   const MenuAction = ({ children, onPress }: { children: string; onPress: () => void }) => <Pressable accessibilityRole="button" accessibilityLabel={children} onPress={onPress}><Text>{children}</Text></Pressable>;
-  return { useRouter: () => ({ push: mockPush, replace: mockReplace, back: mockBack, canGoBack: () => true }),
+  return { useRouter: () => ({ push: mockPush, navigate: mockNavigate, replace: mockReplace, back: mockBack, canGoBack: () => true }),
     useNavigation: () => ({ setOptions: mockSetOptions, dispatch: jest.fn() }),
     useLocalSearchParams: () => mockParams.current, useFocusEffect: (callback: () => void | (() => void)) => {
       const { useEffect, useSyncExternalStore } = jest.requireActual<typeof import('react')>('react');
@@ -95,6 +96,23 @@ describe('completed session: correct + discard (M3.4-3)', () => {
   function api(discard: CompletedSessionApi['discard']): CompletedSessionApi {
     return { detail: jest.fn<CompletedSessionApi['detail']>().mockResolvedValue(ok(completedDetail())), discard };
   }
+  it('shows original completed sets and returns to the originating exercise chart, including a failed detail read', async () => {
+    const exerciseId = ID(7);
+    const original = completedDetail();
+    original.exercises = Array.from({ length: 7 }, (_, i) => { const e = testExercise(ID(i + 1), i + 1); e.payload.sets[0].isCompleted = true; return e; });
+    mockParams.current = { id: ID(1), fromProgressExercise: exerciseId };
+    const view = wrap(<CompletedSessionScreen api={{ ...api(jest.fn<CompletedSessionApi['discard']>()), detail: jest.fn<CompletedSessionApi['detail']>().mockResolvedValue(ok(original)) }} sessionId={ID(1)} initialDetail={original} onHome={jest.fn()} />);
+    await flush();
+    expect(view.getByTestId('completed-session')).toBeTruthy();
+    expect(within(view.getByTestId(`revisit-detail-${exerciseId}`)).getByLabelText('Serie 1: 40 kg × 8')).toBeTruthy();
+    expect(view.getByTestId(`revisit-toggle-${exerciseId}`).props.accessibilityState.expanded).toBe(true);
+    fireEvent.press(view.getByRole('button', { name: 'Volver al gráfico del ejercicio' }));
+    expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: exerciseId } });
+    view.unmount();
+    const detail = jest.fn<CompletedSessionApi['detail']>().mockResolvedValue({ status: 'unavailable', reason: 'network', meta });
+    const failed = wrap(<CompletedSessionScreen api={{ detail, discard: jest.fn<CompletedSessionApi['discard']>() }} sessionId={ID(1)} onHome={jest.fn()} />); await flush();
+    expect(failed.getByRole('button', { name: 'Volver al gráfico del ejercicio' })).toBeTruthy();
+  });
   it('keeps context accessible after closing the receipt and reopening an old session, without reading Insights', async () => {
     const detail = completedDetail(); detail.session.logDate = '2025-01-02';
     const receipt = { ...testFinished(), logDate: detail.session.logDate };
