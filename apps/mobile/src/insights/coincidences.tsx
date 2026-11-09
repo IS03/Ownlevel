@@ -16,7 +16,7 @@ import { exactPeriodDate, exactPeriodRange } from './period-model';
 import { nextDate } from './insights-model';
 
 type Model=NonNullable<PeriodExploration['coincidenceSummary']>;
-type Selection=Pick<InsightsOrigin,'coincidence'|'coincidenceGroup'|'coincidencePage'>;
+type Selection=Pick<InsightsOrigin,'coincidence'|'coincidenceGroup'|'coincidencePage'|'coincidenceView'>;
 const BANDS={morning:'Mañana · 05–11',midday:'Mediodía · 11–15',afternoon:'Tarde · 15–20',night:'Noche · 20–05'};
 const REASONS:Record<string,string>={no_registered_meal:'sin registro elegible en la ventana',partial_macro:'nutriente incompleto',untimed_meal_in_scope:'comida sin hora de consumo explícita en el alcance',unverified_meal_time_in_scope:'hora sin verificar',no_start_time:'sin hora de inicio',invalid:'cantidad no válida',unavailable:'dato no disponible',
   no_explicit_meal_in_12h:'sin última comida explícita conocida en 12 h (dato censurado)',before_end:'antes de finalizar',late:'tardía',unknown_time:'sin momento legible',not_recorded:'sin respuesta',unreadable:'respuesta ilegible',other_instrument:'otra escala'};
@@ -25,17 +25,27 @@ const noContrast='Sin contraste descriptivo suficiente. No significa que no haya
 const routines=(r:{distinct:number;unknownSessions:number})=>`${r.distinct} rutinas registradas; ${r.unknownSessions} sesiones con rutina desconocida. Los nombres están en la evidencia.`;
 const gram=(v:number|null)=>v===null?'Sin dato':formatValue(v,'g');
 const FOOD_ORDER:FoodKind[]=['protein','calories','carbs','lastMeal'];
-const FOOD_TITLE:Record<FoodKind,string>={protein:'Proteína previa y resultados por ejercicio',calories:'Calorías previas y resultados por ejercicio',carbs:'Carbohidratos previos y resultados por ejercicio',lastMeal:'Última comida registrada y resultados'};
+const FOOD_TITLE:Record<FoodKind,string>={protein:'Proteína previa y entrenamiento',calories:'Calorías previas y entrenamiento',carbs:'Carbohidratos previos y entrenamiento',lastMeal:'Última comida registrada y entrenamiento'};
 const LAST_GROUP:Record<string,string>={within1h:'Hasta 1 h',oneTo3h:'Más de 1–3 h',over3h:'Más de 3–12 h'};
 const foodValue=(value:{value:number|null;state:string}|undefined,kind:FoodKind)=>!value?'Dato no disponible':value.value===null?REASONS[value.state]??'Dato no disponible':kind==='lastMeal'?(value.value*60<1?'Menos de 1 min':formatValue(value.value*60,'min')):formatValue(value.value,kind==='calories'?'kcal':'g');
 
+
+function GroupFeelings({value}:{value:Model['protein']['groups'][number]['feelings']}) {
+  if(!value)return null;
+  return <>{(['energy','fatigue'] as const).map(kind=>{const f=value[kind],name=kind==='energy'?'Energía':'Fatiga';return <View key={kind}>
+    <FactRow label={`${name} al terminar`} value={`${f.post.eligible} de ${f.post.total} sesiones`} detail={`${postsText(kind,f.post.posts)||'Sin respuestas elegibles'}. Fuera del conteo: ${exclusions(f.post.exclusions)}.`}/>
+    <FactRow label={`${name} antes`} value={`${f.pre.eligible} de ${f.pre.total} sesiones`} detail={`${postsText(kind,f.pre.posts)||'Sin respuestas elegibles'}. Fuera del conteo: ${exclusions(f.pre.exclusions)}.`}/>
+    <AppText muted numeric>{f.paired} sesiones con ambas respuestas elegibles de {kind==='energy'?'energía':'fatiga'}. Solo antes: {f.pre.eligible-f.paired}; solo al terminar: {f.post.eligible-f.paired}. Las poblaciones previa y posterior pueden ser distintas; mostrarlas no ajusta la comparación.</AppText>
+  </View>;})}</>;
+}
 
 /** Summaries and weekly evidence reuse the period reading. Session evidence is a single explicit grouped page. */
 export function Coincidences({data,weeks,origin,selection,onSelect,onRefresh}:{data:Model|undefined;weeks:PeriodExploration['weeks'];origin:InsightsOrigin;selection:Selection;onSelect:(value:Selection)=>void;onRefresh:()=>void}) {
   const router=useRouter();
   const choose=(kind:NonNullable<Selection['coincidence']>)=>onSelect(selection.coincidence===kind?{}:{coincidence:kind});
   const group=(key:string)=>onSelect({...selection,coincidencePage:undefined,coincidenceGroup:selection.coincidenceGroup===key?undefined:key});
-  const selected=selection.coincidence;
+  const selected=selection.coincidence,showFeelings=selection.coincidenceView==='feelings';
+  const mode=(feelings:boolean)=>onSelect({...selection,coincidenceView:feelings?'feelings':undefined});
   const cut=(value:number|null,unit='g')=>value===null?'sin cantidad para formar grupos':`hasta ${formatValue(value,unit)} / más de ${formatValue(value,unit)}`;
   const food=(kind:FoodKind)=>kind==='protein'?data?.protein:data?.preMeal?.[kind];
   const post=(p:CoincidenceEvidence['sessionRows'][number]['post']['energy'],kind:'energy'|'fatigue')=>p.state==='recorded'?FEELING_LABELS[kind][p.value!-1]:REASONS[p.state];
@@ -57,6 +67,7 @@ export function Coincidences({data,weeks,origin,selection,onSelect,onRefresh}:{d
     <AppText muted numeric>Proteína previa registrada: {row.protein.value===null?REASONS[row.protein.state]:gram(row.protein.value)}.</AppText>
     {row.preMeal?<AppText muted numeric>Calorías previas: {foodValue(row.preMeal.calories,'calories')}. Carbohidratos previos: {foodValue(row.preMeal.carbs,'carbs')}. Última comida explícita registrada: {foodValue(row.preMeal.lastMeal,'lastMeal')}.</AppText>:null}
     {row.concurrency?<AppText muted numeric>{row.concurrency.sameDaySessions} sesiones en esa fecha; {(selected==='lastMeal'?row.concurrency.overlap12h:row.concurrency.overlap3h)===null?'solapamiento desconocido':`${selected==='lastMeal'?row.concurrency.overlap12h:row.concurrency.overlap3h} ventanas previas solapadas`}. No son ensayos independientes.</AppText>:null}
+    {showFeelings?row.prior?<AppText muted>Energía antes: {post(row.prior.energy,'energy')}. Fatiga antes: {post(row.prior.fatigue,'fatigue')}.</AppText>:<AppText muted>Respuestas previas no disponibles en esta versión del servidor.</AppText>:null}
     <AppText muted>Energía post: {post(row.post.energy,'energy')}. Fatiga post: {post(row.post.fatigue,'fatigue')}.</AppText>
     <AppText muted variant="caption">{row.routineName??(row.routineId?'Rutina sin nombre':'Rutina desconocida')}. Completo: {row.strict.comparable} de {row.strict.total} ejercicios comparables. Parcial: {row.partial?.comparable??0} de {row.partial?.total??0}.</AppText>
     <InsightRow label="Ver sesión y evidencia por ejercicio" spoken={`Ver sesión y evidencia del ${exactPeriodDate(row.date)}, ${row.name}`} onPress={()=>router.push({pathname:'/(tabs)/train/insights',params:{...origin,date:row.date,session:row.id,before:nextDate(row.date)}})}/>
@@ -78,23 +89,31 @@ export function Coincidences({data,weeks,origin,selection,onSelect,onRefresh}:{d
         {selected===kind?!f?<AppText>Esta descripción no está disponible en esta lectura. Podés seguir recorriendo los registros existentes.</AppText>:<View style={styles.detail}>
           <AppText muted>{kind==='lastMeal'?'Tiempo desde la última comida registrada con hora explícita dentro de 12 h. Franjas de lectura fijadas antes de mirar resultados; no son horarios recomendados.':`${kind==='protein'?'Proteína':kind==='calories'?'Calorías':'Carbohidratos'} registrados con hora explícita en las 3 h previas. Grupos por la mediana de cantidades, sin elegir según el resultado.`}</AppText>
           {kind==='carbs'?<AppText muted variant="caption">Las comidas sin hora en cualquiera de los días de Córdoba que toca la ventana impiden calcular esta cantidad. El contexto histórico conserva su regla por fecha de sesión y puede diferir al cruzar medianoche.</AppText>:null}
-          {f.status==='insufficient'?<AppText>{noContrast}</AppText>:null}
+          {!showFeelings&&f.status==='insufficient'?<AppText>{noContrast}</AppText>:null}
           {f.contrast==='constant'?<AppText>Los valores registrados son iguales; no forman un contraste entre grupos.</AppText>:f.contrast==='empty_group'?<AppText>Hay menos de dos grupos con registros. Los grupos vacíos no se comparan.</AppText>:null}
           <AppText muted numeric>Excluidas: {exclusions(f.exclusions)}. {kind==='lastMeal'?'Última registrada no significa última consumida. Sin hora conocida no se inventa una distancia ni se interpreta ayuno.':'Sin registro no es cero ni significa que no comiste.'}</AppText>
           {f.multiSessionDays!==undefined?<AppText muted numeric>En todas las sesiones del período: {f.multiSessionDays} días con varias sesiones; {f.overlappingSessions} sesiones con ventanas de {kind==='lastMeal'?'12':'3'} h solapadas; {f.unknownOverlapSessions} sin inicio para ubicarlas. No son ensayos independientes.</AppText>:<AppText muted>Días y solapamientos no disponibles en esta lectura.</AppText>}
           <InsightRow label={`Ver sesiones fuera de los grupos de ${kind==='protein'?'proteína':kind==='calories'?'calorías':kind==='carbs'?'carbohidratos':'última comida'}`} spoken={`Ver fechas, faltantes y exclusiones de ${kind==='protein'?'proteína previa':kind==='calories'?'calorías previas':kind==='carbs'?'carbohidratos previos':'última comida registrada'}`} expanded={selection.coincidenceGroup==='excluded'} onPress={()=>group('excluded')}/>
           {selection.coincidenceGroup==='excluded'?evidence('excluded'):null}
+          <InsightRow label="Resultados del entrenamiento" spoken="Ver resultados del entrenamiento" expanded={!showFeelings} onPress={()=>mode(false)}/>
+          <InsightRow label="Energía y fatiga" spoken="Ver energía y fatiga según alimentación previa" expanded={showFeelings} onPress={()=>mode(true)}/>
+          {showFeelings?<AppText muted>Al terminar: desde el final hasta 2 h después. Antes: previo al inicio o hasta la primera serie registrada. Horas de captura no verificadas; las respuestas durante la sesión, tardías o sin hora se cuentan aparte.</AppText>:null}
+          {showFeelings?!f.feelingReadiness?<AppText>Las distribuciones por alimentación no están disponibles en esta versión del servidor; no significa que falten respuestas.</AppText>:<>
+            {(['energy','fatigue'] as const).map(kind=>!f.feelingReadiness![kind]?<AppText key={kind} muted>{kind==='energy'?'Energía':'Fatiga'}: sin contraste descriptivo suficiente. Se necesitan al menos dos grupos con 3 respuestas al terminar cada uno; no significa que no haya relación.</AppText>:null)}
+          </>:null}
           {f.groups.map(g=><View key={g.key} style={styles.group}>
             <AppText variant="headline">{kind==='lastMeal'?LAST_GROUP[g.key]:f.cut===null?'Grupo sin cantidades elegibles':`${g.key==='lower'?'Hasta':'Más de'} ${formatValue(f.cut,unit)}`} · {g.sessions} sesiones{g.days===undefined?'':` · ${g.days} días`}</AppText>
             {g.sessions===0?<AppText muted>Sin sesiones en este grupo; no se compara con los otros grupos.</AppText>:null}
+            {showFeelings?<GroupFeelings value={g.feelings}/>:<>
             <FactRow label="Método completo" value={`${g.strict.comparable} de ${g.strict.total} ejercicios`} detail={`Mejoraron ${g.strict.improved}; registro similar ${g.strict.observedStable}; descendieron ${g.strict.declined}; ambiguos ${g.strict.ambiguous}; insuficientes ${g.strict.insufficient}. ${g.strictSessions} sesiones comparables${g.strictDays===undefined?'':` en ${g.strictDays} días`}.`}/>
             <FactRow label="Método parcial" value={`${g.partial.comparable} de ${g.partial.total} ejercicios`} detail={`Registro superior ${g.partial.higher}; mismo ${g.partial.same}; inferior ${g.partial.lower}; ambiguos ${g.partial.ambiguous}; insuficientes ${g.partial.insufficient}. ${g.partialSessions} sesiones comparables${g.partialDays===undefined?'':` en ${g.partialDays} días`}; no se suma al completo.`}/>
+            </>}
             <AppText muted variant="caption">{routines(g.routines)}</AppText>
             <InsightRow label={`Ver registros del grupo ${kind==='lastMeal'?LAST_GROUP[g.key]:g.key==='lower'?'hasta la mediana':'sobre la mediana'}`} spoken={`Ver ${g.sessions} registros del grupo ${kind==='lastMeal'?LAST_GROUP[g.key]:g.key==='lower'?'hasta la mediana':'sobre la mediana'}`} expanded={selection.coincidenceGroup===g.key} onPress={()=>group(g.key)}/>
             {selection.coincidenceGroup===g.key?evidence(g.key):null}
           </View>)}
-          <AppText muted variant="caption">{kind==='lastMeal'?'Se necesitan dos franjas con al menos 3 sesiones comparables cada una, en el mismo método.':'Se necesitan al menos 3 sesiones comparables en cada grupo, en el mismo método.'}</AppText>
-          <AppText muted variant="caption">Cada ejercicio usa su referencia compatible, que puede estar fuera del grupo o período. No se comparan directamente estos grupos ni se suman récords o cargas como progreso.</AppText>
+          {!showFeelings?<><AppText muted variant="caption">{kind==='lastMeal'?'Se necesitan dos franjas con al menos 3 sesiones comparables cada una, en el mismo método.':'Se necesitan al menos 3 sesiones comparables en cada grupo, en el mismo método.'}</AppText>
+          <AppText muted variant="caption">Cada ejercicio usa su referencia compatible, que puede estar fuera del grupo o período. No se comparan directamente estos grupos ni se suman récords o cargas como progreso.</AppText></>:null}
         </View>:null}
       </Fragment>;})}
       <InsightRow label="Horarios y respuestas post" detail={`${data.timing.total-data.timing.unknownStart} de ${data.timing.total} sesiones con hora de inicio`} spoken="Abrir horarios y distribuciones de energía y fatiga post" expanded={selected==='timing'} onPress={()=>choose('timing')}/>

@@ -259,13 +259,33 @@ describe.runIf(!!db && !!base && !!task)('#421 exact period readers on disposabl
     sql(`insert into public.meal_entries(user_id,day_log_id,source_type,consumed_at,consumed_at_source,final_calories,final_protein_g,final_carbs_g,final_fat_g)
       select '${OTHER}',d.id,'sheet_import',v.at::timestamptz,'user_declared',v.kcal,10,v.carbs,0 from public.day_logs d join (values ('2026-08-03'::date,'2026-08-03T17:00:00-03:00',0,0),('2026-08-04'::date,'2026-08-04T16:00:00-03:00',200,20),('2026-08-05'::date,'2026-08-05T15:00:00-03:00',400,40)) v(day,at,kcal,carbs) on d.log_date=v.day where d.user_id='${OTHER}';`);
     const positive=await(await route('period-explore')).json();
-    for(const [kind,group] of [['calories','lower'],['carbs','upper'],['lastMeal','oneTo3h']]) {
+    for(const [kind,group] of [['protein','lower'],['calories','lower'],['carbs','upper'],['lastMeal','oneTo3h']]) {
       const page=await(await route(`coincidence-evidence&kind=${kind}&group=${group}&revision=${positive.sourceRevision}`)).json();expect(parsePerformanceInsights(page)).toBeDefined();
       const truth=json(`select json_agg(json_build_object('id',s.id,'calories',m.final_calories,'carbs',m.final_carbs_g,'hours',extract(epoch from(s.started_at-m.consumed_at))/3600) order by l.log_date,s.id) from public.workout_sessions s join public.day_logs l on l.id=s.day_log_id join public.meal_entries m on m.day_log_id=l.id where s.user_id='${OTHER}' and m.user_id='${OTHER}' and l.log_date between '2026-08-03' and '2026-08-05' and m.consumed_at_source='user_declared'`);
-      const selected=truth.filter((r:{calories:number;carbs:number;hours:number})=>kind==='calories'?r.calories<=200:kind==='carbs'?r.carbs>20:r.hours>1&&r.hours<=3);
+      const selected=truth.filter((r:{calories:number;carbs:number;hours:number})=>kind==='protein'?true:kind==='calories'?r.calories<=200:kind==='carbs'?r.carbs>20:r.hours>1&&r.hours<=3);
       expect(page.sessionRows.map((r:{id:string})=>r.id)).toEqual(selected.map((r:{id:string})=>r.id));
       for(const row of page.sessionRows){const q=truth.find((r:{id:string})=>r.id===row.id);expect(row.preMeal).toEqual({calories:{state:'recorded',value:q.calories},carbs:{state:'recorded',value:q.carbs},lastMeal:{state:'recorded',value:q.hours}});}
       expect(page.sessionRows.every((r:{id:string})=>!expected.includes(r.id))).toBe(true);
+      const descriptor=kind==='protein'?positive.coincidenceSummary.protein:positive.coincidenceSummary.preMeal[kind];
+      const groupSummary=descriptor.groups.find((g:{key:string})=>g.key===group);
+      // Independent SQL enumeration, not the JS classifier: same eligible post window and existing first-set prior rule.
+      for(const feeling of ['energy','fatigue']) {
+        const ids=selected.map((r:{id:string})=>`'${r.id}'`).join(',');
+        const truth=json(`with answers as (
+          select s.id,s.started_at,s.ended_at,f.facts->'${feeling}Post' as post,f.facts->'${feeling}Pre' as pre,
+            (select min(t.completed_at) from public.workout_sets t join public.workout_session_exercises x on x.id=t.workout_session_exercise_id where x.workout_session_id=s.id and t.is_completed) as first_set
+          from public.workout_sessions s join public.workout_session_feelings f on f.session_id=s.id where s.user_id='${OTHER}' and s.id in (${ids})
+        ),eligible as (
+          select *, (post->>'instrumentVersion'='energy-fatigue/1' and post->>'declaredMoment'='post' and (post->>'value')::integer between 1 and 5
+            and (post->>'capturedAt')::timestamptz between ended_at and ended_at+interval '2 hours') as post_ok,
+            (pre->>'instrumentVersion'='energy-fatigue/1' and pre->>'declaredMoment'='pre' and (pre->>'value')::integer between 1 and 5
+            and (pre->>'capturedAt')::timestamptz<=ended_at and ((pre->>'capturedAt')::timestamptz<=started_at or (pre->>'capturedAt')::timestamptz<=first_set)) as pre_ok from answers
+        ) select json_build_object('pre',(select json_agg(n order by level) from (select level,count(*) filter(where pre_ok and (pre->>'value')::integer=level) n from eligible cross join generate_series(1,5) level group by level) q),
+          'post',(select json_agg(n order by level) from (select level,count(*) filter(where post_ok and (post->>'value')::integer=level) n from eligible cross join generate_series(1,5) level group by level) q),
+          'paired',count(*) filter(where pre_ok and post_ok)) from eligible`);
+        expect(groupSummary.feelings[feeling].pre.posts).toEqual(truth.pre);expect(groupSummary.feelings[feeling].post.posts).toEqual(truth.post);expect(groupSummary.feelings[feeling].paired).toBe(truth.paired);
+        for(const row of page.sessionRows)expect(row.prior).toBeDefined();
+      }
     }
     // An older revision never receives pages from the new meal write.
     const stale=await(await route(`coincidence-evidence&kind=calories&group=excluded&revision=${ownSummary.sourceRevision}`)).json();expect(stale.status).toBe('revision_changed');expect(stale.sessionRows).toEqual([]);

@@ -3,17 +3,17 @@ import { validPeriodAnchor,isFoodKind,validCoincidenceSelection,type FoodKind } 
 import { PROGRESS_MAX_DAYS, addDays, calendarRange, daysBetween } from '@/progress/progress-range';
 
 /** What Insights was showing. Every value is checked on the way back: a route parameter is never trusted as an address. */
-export type InsightsOrigin = { view?: 'exercises'; family?: string; relations?: '1'; date?: string; session?: string; fromSession?: '1'; relation?: string; summary?: '1'; period?: 'feelings' | 'nutrition'; asOf?: string; revision?: string; temporal?: '1'; explore?: '1'; week?: string; before?: string; coincidence?: FoodKind|'timing'|'body'; coincidenceGroup?: string; coincidencePage?: string; compare?: '1'; weekA?: string; weekB?: string; weekSide?: 'A' | 'B' };
+export type InsightsOrigin = { view?: 'exercises'; family?: string; relations?: '1'; date?: string; session?: string; fromSession?: '1'; relation?: string; summary?: '1'; period?: 'feelings' | 'nutrition'; asOf?: string; revision?: string; temporal?: '1'; explore?: '1'; week?: string; before?: string; coincidence?: FoodKind|'timing'|'body'; coincidenceGroup?: string; coincidencePage?: string; coincidenceView?: 'feelings'; compare?: '1'; weekA?: string; weekB?: string; weekSide?: 'A' | 'B' };
 const FAMILIES = ['metric', 'nutrition', 'meal_window', 'feeling'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RELATION = /^[a-zA-Z0-9_:-]{1,120}$/;
 type Params = Record<string, unknown>;
-export function coincidenceSelection(raw: Params): Pick<InsightsOrigin,'coincidence'|'coincidenceGroup'|'coincidencePage'> {
+export function coincidenceSelection(raw: Params): Pick<InsightsOrigin,'coincidence'|'coincidenceGroup'|'coincidencePage'|'coincidenceView'> {
   const kind=raw.coincidence;
   if(!isFoodKind(kind)&&kind!=='timing'&&kind!=='body')return {};
   const validGroup=(value:unknown)=>kind==='body'?['lower','upper','excluded'].includes(String(value)):validCoincidenceSelection(kind,value);
   const page=typeof raw.coincidencePage==='string'&&/^\d{1,7}$/.test(raw.coincidencePage)&&Number(raw.coincidencePage)%25===0&&kind!=='body'&&typeof raw.coincidenceGroup==='string'&&validGroup(raw.coincidenceGroup)?raw.coincidencePage:undefined;
-  return {coincidence:kind,...(page?{coincidencePage:page}:{}),...(typeof raw.coincidenceGroup==='string'&&validGroup(raw.coincidenceGroup)?{coincidenceGroup:raw.coincidenceGroup}:{})};
+  return {coincidence:kind,...(isFoodKind(kind)&&raw.coincidenceView==='feelings'?{coincidenceView:'feelings' as const}:{}),...(page?{coincidencePage:page}:{}),...(typeof raw.coincidenceGroup==='string'&&validGroup(raw.coincidenceGroup)?{coincidenceGroup:raw.coincidenceGroup}:{})};
 }
 
 const comparisonParams = (raw: Params): Pick<InsightsOrigin, 'compare' | 'weekA' | 'weekB' | 'weekSide'> =>
@@ -90,8 +90,9 @@ export function insightsEvidenceHref(selection: { session: string; exercise: str
 export function insightsReturnHref(params: Params) {
   if (params.insightsReturn !== '1') return null;
   const origin = clean({ view: params.insightsView, family: params.insightsFamily, relations: params.insightsRelations, date: params.insightsDate, session: params.insightsSession, fromSession: params.insightsFromSession, relation: params.insightsRelation, summary: params.insightsSummary,
-    period: params.insightsPeriod, asOf: params.insightsAsOf, revision: params.insightsRevision, temporal: params.insightsTemporal,explore:params.insightsExplore,week:params.insightsWeek,before:params.insightsBefore,compare:params.insightsCompare,weekA:params.insightsWeekA,weekB:params.insightsWeekB,weekSide:params.insightsWeekSide,coincidence:params.insightsCoincidence,coincidenceGroup:params.insightsCoincidenceGroup,coincidencePage:params.insightsCoincidencePage });
+    period: params.insightsPeriod, asOf: params.insightsAsOf, revision: params.insightsRevision, temporal: params.insightsTemporal,explore:params.insightsExplore,week:params.insightsWeek,before:params.insightsBefore,compare:params.insightsCompare,weekA:params.insightsWeekA,weekB:params.insightsWeekB,weekSide:params.insightsWeekSide,coincidence:params.insightsCoincidence,coincidenceGroup:params.insightsCoincidenceGroup,coincidencePage:params.insightsCoincidencePage,coincidenceView:params.insightsCoincidenceView });
   if(params.insightsCoincidence!==undefined&&!origin.coincidence||params.insightsCoincidenceGroup!==undefined&&!origin.coincidenceGroup)return null;
+  if(params.insightsCoincidenceView!==undefined&&!origin.coincidenceView)return null;
   if(params.insightsCoincidencePage!==undefined&&!origin.coincidencePage)return null;
   if(params.insightsCompare!==undefined&&!origin.compare)return null;
   if (params.insightsTemporal !== undefined) { const {temporal:_temporal,...route}=origin;return origin.temporal&&origin.date?{pathname:'/(tabs)/train/insights/temporal' as const,params:route}:null; }

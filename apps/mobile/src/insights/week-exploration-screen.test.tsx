@@ -49,7 +49,7 @@ it('opens fixed descriptions and their records locally, retaining selection thro
   mockRead.mockImplementation(async o=>{const q=new URL(`http://fixture${o.path}`).searchParams;return {status:'ok',data:o.parse(q.get('view')==='coincidence-evidence'?periodCoincidenceEvidence(source,[],'2026-11-09','2026-11-07','r2',q.get('revision')!,{kind:q.get('kind') as 'protein'|'timing',group:q.get('group') as 'lower'},Number(q.get('offset'))):payload),meta} as never;});
   const view=render(wrap());await view.findByText('Coincidencias descriptivas de tus registros');
   const select=(name:string)=>{fireEvent.press(view.getByRole('button',{name}));mockParams={...mockParams,...mockSetParams.mock.calls.at(-1)![0] as Record<string,string>};view.rerender(wrap());};
-  select('Abrir proteína previa y resultados por ejercicio, descripción de registros');
+  select('Abrir proteína previa y entrenamiento, descripción de registros');
   expect(view.getAllByText('Método completo').length).toBe(2);expect(view.getAllByText('Método parcial').length).toBe(2);
   expect(mockRead).toHaveBeenCalledTimes(1);
   await act(async()=>{select('Ver 6 registros del grupo hasta la mediana');});
@@ -222,9 +222,9 @@ it('opens the fixed premeal choices locally and requests only the selected group
  mockRead.mockImplementation(async o=>{const q=new URL(`http://fixture${o.path}`).searchParams;return {status:'ok',data:o.parse(q.get('view')==='coincidence-evidence'?periodCoincidenceEvidence(source,[],'2026-11-09','2026-11-07','r2',q.get('revision')!,{kind:q.get('kind'),group:q.get('group')} as CoincidenceSelection,Number(q.get('offset'))):periodExploration(source,[],'2026-11-09','2026-11-07','r2',2)),meta} as never;});
  mockParams={...compareParams()};const view=render(wrap());await view.findByText('Coincidencias descriptivas de tus registros');
  const select=async(name:string)=>{await act(async()=>{fireEvent.press(view.getByRole('button',{name}));mockParams={...mockParams,...mockSetParams.mock.calls.at(-1)![0] as Record<string,string>};view.rerender(wrap());});};
- const calories='Abrir calorías previas y resultados por ejercicio, descripción de registros',carbs='Abrir carbohidratos previos y resultados por ejercicio, descripción de registros',last='Abrir última comida registrada y resultados, descripción de registros';
+ const calories='Abrir calorías previas y entrenamiento, descripción de registros',carbs='Abrir carbohidratos previos y entrenamiento, descripción de registros',last='Abrir última comida registrada y entrenamiento, descripción de registros';
  const choices=within(view.getByTestId('descriptive-coincidences')).getAllByRole('button').map(b=>b.props.accessibilityLabel);
- expect(choices).toEqual(['Abrir proteína previa y resultados por ejercicio, descripción de registros',calories,carbs,last,'Abrir horarios y distribuciones de energía y fatiga post','Abrir proteína registrada semanal y cambios de mediana de peso corporal']);
+ expect(choices).toEqual(['Abrir proteína previa y entrenamiento, descripción de registros',calories,carbs,last,'Abrir horarios y distribuciones de energía y fatiga post','Abrir proteína registrada semanal y cambios de mediana de peso corporal']);
  await select(calories);expect(mockRead).toHaveBeenCalledTimes(1);expect(view.getAllByText(/Hasta 300 kcal/).length).toBeGreaterThan(0);
  await select('Ver 6 registros del grupo hasta la mediana');expect(view.getByTestId(`coincidence-session-${descriptiveId(10)}`)).toBeTruthy();expect(mockRead).toHaveBeenCalledTimes(2);
  fireEvent.press(view.getAllByRole('button',{name:/^Ver sesión y evidencia del/})[0]!);
@@ -241,4 +241,34 @@ it('does not invent new summaries or day coverage on an older response and never
  mockParams={...mockParams,coincidence:'calories'};mockRead.mockImplementation(async o=>({status:'ok',data:o.parse(payload),meta})as never);
  const view=render(wrap());await view.findByText('Esta descripción no está disponible en esta lectura. Podés seguir recorriendo los registros existentes.');expect(mockRead).toHaveBeenCalledTimes(1);
  mockParams={...mockParams,coincidence:'protein'};view.rerender(wrap());expect(view.getByText('Días y solapamientos no disponibles en esta lectura.')).toBeTruthy();expect(mockRead).toHaveBeenCalledTimes(1);
+});
+
+it('switches food results/ordinal feelings locally, shows different prior populations, and retains mode/group/page on return',async()=>{
+ const source=descriptivePreMealFixture(),base=source.sessions[1]!,f=source.feelings[1]!;
+ for(let i=0;i<50;i++){const id=descriptiveId(22000+i);source.sessions.push({...base,id});source.feelings.push({...f,sessionId:id});}
+ for(let i=1;i<source.feelings.length;i++){const facts=source.feelings[i]!.facts as Record<string,Record<string,unknown>>;facts.energyPre={...facts.energyPre!,value:i<7?1:4};if(i===1)delete facts.energyPost;}
+ mockParams={...compareParams(),coincidence:'calories'};
+ mockRead.mockImplementation(async o=>{const q=new URL(`http://fixture${o.path}`).searchParams;return {status:'ok',data:o.parse(q.get('view')==='coincidence-evidence'?periodCoincidenceEvidence(source,[],'2026-11-09','2026-11-07','r2',q.get('revision')!,{kind:'calories',group:'lower'},Number(q.get('offset'))):periodExploration(source,[],'2026-11-09','2026-11-07','r2',2)),meta} as never;});
+ const view=render(wrap());await view.findByText('Coincidencias descriptivas de tus registros');
+ const press=async(name:string)=>{await act(async()=>{fireEvent.press(view.getByRole('button',{name}));const p=mockSetParams.mock.calls.at(-1)?.[0];if(p)mockParams={...mockParams,...p as Record<string,string>};view.rerender(wrap());});};
+ await press('Ver energía y fatiga según alimentación previa');expect(mockRead).toHaveBeenCalledTimes(1);
+ const descriptions=within(view.getByTestId('descriptive-coincidences'));expect(descriptions.queryByText('Método completo')).toBeNull();expect(descriptions.getAllByText('Energía al terminar')).toHaveLength(2);expect(descriptions.getAllByText('Fatiga al terminar')).toHaveLength(2);
+ expect(view.getAllByText(/Las poblaciones previa y posterior pueden ser distintas/)).toHaveLength(4);
+ expect(view.getAllByText(/Muy baja|muy baja/).length).toBeGreaterThan(0);
+ await press('Ver 56 registros del grupo hasta la mediana');expect(mockRead).toHaveBeenCalledTimes(2);
+ await press('Ver siguientes registros');expect(mockRead).toHaveBeenCalledTimes(3);expect(view.getByText('Registros 26–50 de 56')).toBeTruthy();
+ fireEvent.press(view.getAllByRole('button',{name:/^Ver horarios y comidas de/})[0]!);
+ const temporal=mockPush.mock.calls.at(-1)![0] as {params:Record<string,string>};expect(temporal.params).toMatchObject({coincidence:'calories',coincidenceView:'feelings',coincidenceGroup:'lower',coincidencePage:'25',weekA:'2026-08-03',weekB:'2026-08-10',revision:'r2'});
+ const href=nutritionDayHref('2026-08-03',{...temporal.params,session:undefined,date:undefined,temporal:undefined});
+ expect(insightsReturnHref(href.params)).toMatchObject({params:{coincidenceView:'feelings',coincidenceGroup:'lower',coincidencePage:'25',weekA:'2026-08-03',weekB:'2026-08-10'}});
+ expect(insightsReturnHref({...href.params,insightsCoincidenceView:'invalid'})).toBeNull();
+ await press('Ver resultados del entrenamiento');expect(view.getAllByText('Método completo')).toHaveLength(2);expect(mockRead).toHaveBeenCalledTimes(3);
+});
+it('shows unavailable feeling fields on old servers distinctly from empty groups and never rereads on a mode switch',async()=>{
+ const payload=periodExploration(descriptivePreMealFixture(),[],'2026-11-09','2026-11-07','r2',2);
+ for(const d of [payload.coincidenceSummary!.protein,...Object.values(payload.coincidenceSummary!.preMeal!)]){delete d.feelingReadiness;for(const g of d.groups)delete g.feelings;}
+ mockParams={...mockParams,coincidence:'protein',coincidenceView:'feelings'};mockRead.mockImplementation(async o=>({status:'ok',data:o.parse(payload),meta})as never);
+ const view=render(wrap());await view.findByText('Coincidencias descriptivas de tus registros');
+ expect(view.getByText('Las distribuciones por alimentación no están disponibles en esta versión del servidor; no significa que falten respuestas.')).toBeTruthy();
+ expect(within(view.getByTestId('descriptive-coincidences')).queryByText('Energía al terminar')).toBeNull();expect(mockRead).toHaveBeenCalledTimes(1);
 });
