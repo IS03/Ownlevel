@@ -1,3 +1,5 @@
+export {isFoodKind,validCoincidenceSelection} from '../progress/insights-engine/descriptive-transport';
+export type {FoodKind,CoincidenceSelection} from '../progress/insights-engine/descriptive-transport';
 import { validCoincidenceSelection } from '../progress/insights-engine/descriptive-transport';
 export { coincidenceWeeks } from '../progress/insights-engine/descriptive-weeks';
 export type { CoincidenceEvidence } from '../progress/insights-engine/week-exploration';
@@ -277,9 +279,14 @@ export function parsePerformanceInsights(raw: unknown): InsightsResponse | undef
 
 const instantValue = (v: unknown) => typeof v === 'string' && /(?:Z|[+-]\d{2}:\d{2})$/.test(v) && Number.isFinite(Date.parse(v));
 const coincidencePost=(p:unknown)=>object(p)&&['recorded','before_end','late','unknown_time','not_recorded','unreadable','other_instrument'].includes(String(p.state))&&(p.state==='recorded'?Number.isInteger(p.value)&&Number(p.value)>=1&&Number(p.value)<=5:p.value===null);
+function foodValue(v:unknown,last=false):boolean {
+ return object(v)&&['recorded','no_registered_meal','partial_macro','untimed_meal_in_scope','unverified_meal_time_in_scope','no_start_time','invalid','unavailable','no_explicit_meal_in_12h'].includes(String(v.state))&&(v.state==='recorded'?finite(v.value)&&v.value>=0&&(!last||v.value>0&&v.value<=12):v.value===null);
+}
 function coincidenceRow(r:unknown,inside:(d:unknown)=>boolean) {
   return object(r)&&uuid(r.id)&&inside(r.date)&&typeof r.name==='string'&&stringOrNull(r.routineId)&&stringOrNull(r.routineName)&&stringOrNull(r.startedAt)&&counts(r.strict)&&(r.partial===null||partialCounts(r.partial))
     &&object(r.protein)&&['recorded','no_registered_meal','partial_macro','untimed_meal_in_scope','unverified_meal_time_in_scope','no_start_time','invalid','unavailable'].includes(String(r.protein.state))&&(r.protein.state==='recorded'?finite(r.protein.value)&&r.protein.value>=0:r.protein.value===null)
+    &&(r.preMeal===undefined||object(r.preMeal)&&foodValue(r.preMeal.calories)&&foodValue(r.preMeal.carbs)&&foodValue(r.preMeal.lastMeal,true))
+    &&(r.concurrency===undefined||object(r.concurrency)&&count(r.concurrency.sameDaySessions)&&Number(r.concurrency.sameDaySessions)>0&&['overlap3h','overlap12h'].every(k=>(r.concurrency as Json)[k]===null||count((r.concurrency as Json)[k])))
     &&(r.band===null||['morning','midday','afternoon','night'].includes(String(r.band)))&&object(r.post)&&coincidencePost(r.post.energy)&&coincidencePost(r.post.fatigue);
 }
 function coincidences(v: unknown, period: Json): boolean {
@@ -391,8 +398,16 @@ export function parseCompleteInsights(raw: unknown): InsightsReadModel | undefin
   return raw as unknown as InsightsReadModel;
 }
 
+function foodDescription(v:unknown,last=false):boolean {
+ if(!object(v)||!numberOrNull(v.cut)||v.cut!==null&&Number(v.cut)<0||last&&v.cut!==null||!count(v.total)||!count(v.eligible)||!tally(v.exclusions)||!['described','insufficient'].includes(String(v.status))||typeof v.strictReady!=='boolean'||typeof v.partialReady!=='boolean'||!Array.isArray(v.groups)||v.groups.length!==(last?3:2))return false;
+ const keys=last?['within1h','oneTo3h','over3h']:['lower','upper'];
+ if(!['totalDays','eligibleDays','multiSessionDays','overlappingSessions','unknownOverlapSessions'].every(k=>count(v[k]))||Number(v.eligibleDays)>Number(v.totalDays)||Number(v.eligible)>Number(v.total)||Number(v.totalDays)>Number(v.total)||Number(v.eligibleDays)>Number(v.eligible)||Number(v.multiSessionDays)>Number(v.totalDays)||Number(v.overlappingSessions)+Number(v.unknownOverlapSessions)>Number(v.total)||!['no_data','constant','empty_group','available','too_few_comparable'].includes(String(v.contrast)))return false;
+ if(!v.groups.every((g,i)=>object(g)&&g.key===keys[i]&&g.ids===undefined&&count(g.sessions)&&count(g.days)&&Number(g.days)<=Number(g.sessions)&&Number(g.days)<=Number(v.eligibleDays)&&count(g.strictSessions)&&count(g.partialSessions)&&count(g.strictDays)&&count(g.partialDays)&&Number(g.strictSessions)<=Number(g.sessions)&&Number(g.partialSessions)<=Number(g.sessions)&&Number(g.strictDays)<=Number(g.strictSessions)&&Number(g.partialDays)<=Number(g.partialSessions)&&object(g.strict)&&counts({...g.strict,coverage:null})&&object(g.partial)&&partialCounts({...g.partial,coverage:null})&&object(g.routines)&&count(g.routines.distinct)&&count(g.routines.unknownSessions)))return false;
+ return v.groups.reduce((n,g)=>n+Number((g as Json).sessions),0)===v.eligible&&Number(v.eligible)+Object.values(v.exclusions as Json).reduce<number>((n,c)=>n+Number(c),0)===v.total;
+}
 function compactCoincidences(v:unknown):boolean {
   if(!object(v)||v.methodVersion!=='insights-coincidences/2'||v.claim!=='descriptive_only'||v.sessionRows!==undefined||v.weekRows!==undefined)return false;
+  if(v.preMeal!==undefined&&(!object(v.preMeal)||!foodDescription(v.preMeal.calories)||!foodDescription(v.preMeal.carbs)||!foodDescription(v.preMeal.lastMeal,true)))return false;
   const routines=(o:unknown)=>object(o)&&count(o.distinct)&&count(o.unknownSessions);
   const ordinal=(o:unknown,n:unknown)=>object(o)&&o.total===n&&count(o.eligible)&&Array.isArray(o.posts)&&o.posts.length===5&&o.posts.every(count)&&o.posts.reduce((a,b)=>a+Number(b),0)===o.eligible&&tally(o.exclusions)&&Number(o.eligible)+Object.values(o.exclusions as Json).reduce<number>((a,b)=>a+Number(b),0)===n;
   if(!object(v.protein)||!numberOrNull(v.protein.cut)||!count(v.protein.total)||!count(v.protein.eligible)||!tally(v.protein.exclusions)||typeof v.protein.strictReady!=='boolean'||typeof v.protein.partialReady!=='boolean'||!['described','insufficient'].includes(String(v.protein.status))||!Array.isArray(v.protein.groups)||v.protein.groups.length!==2
@@ -412,6 +427,7 @@ function parseCoincidencePage(raw:Json) {
   const end=Number(raw.offset)+raw.sessionRows.length;
   if(raw.nextOffset!==(end<Number(raw.total)?end:null))return undefined;
   const inside=(d:unknown)=>validPeriodAnchor(d)&&d>=String((raw.period as Json).start)&&d<=String((raw.period as Json).end);
+  if(['calories','carbs','lastMeal'].includes(String(raw.selection.kind))&&raw.sessionRows.some(r=>!object(r)||r.preMeal===undefined||r.concurrency===undefined))return undefined;
   if(!raw.sessionRows.every(r=>coincidenceRow(r,inside)))return undefined;
   if(new Set(raw.sessionRows.map(r=>(r as Json).id)).size!==raw.sessionRows.length)return undefined;
   return raw as unknown as import('../progress/insights-engine/week-exploration').CoincidenceEvidence;

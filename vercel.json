@@ -54,7 +54,8 @@
       "codex/436-weight-sheet-dismiss": false,
       "claude/400-duration-sheet-fit": false,
       "codex/nutrition-adjacent-prefetch": false,
-      "codex/367-descriptive-coincidences": false
+      "codex/367-descriptive-coincidences": false,
+      "codex/367-premeal-descriptions": false
     }
   }
 }

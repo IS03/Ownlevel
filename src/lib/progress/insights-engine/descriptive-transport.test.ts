@@ -22,3 +22,14 @@ it('checks page boundaries, request selection and revision instead of silently a
  expect(parseInsightsParams(new URLSearchParams(base+'&kind=timing&group=morning&offset=25'))).toMatchObject({view:'coincidence-evidence',offset:25});
  for(const extra of ['kind=timing&group=lower','kind=protein&group=night','kind=timing&group=morning&offset=1','kind=timing&group=morning&offset=0&offset=25'])expect(()=>parseInsightsParams(new URLSearchParams(base+'&'+extra))).toThrow();
 });
+it.each(['calories','carbs','lastMeal'] as const)('pages %s with shared session rows, complete counts and fixed revision',kind=>{
+ const s=source(),group=kind==='lastMeal'?'within1h' as const:'lower' as const;
+ s.meals.forEach((m,i)=>{m.calories=i<7?0:600;m.carbsG=i<7?0:100;if(i>=7)m.consumedAt=`${m.date}T13:30:00-03:00`;});
+ const initial=periodExploration(s,[],'2026-11-09','2026-11-07','r1',2),seen:string[]=[];
+ expect(initial.coincidenceSummary!.preMeal![kind].groups.find(g=>g.key===group)!.sessions).toBe(61);
+ for(const offset of [0,25,50]){const page=periodCoincidenceEvidence(s,[],'2026-11-09','2026-11-07','r1','r1',{kind,group},offset);expect(page.total).toBe(61);expect(parsePerformanceInsights(page)).toBeDefined();seen.push(...page.sessionRows.map(r=>r.id));expect(page.sessionRows.every(r=>r.preMeal&&r.concurrency)).toBe(true);}
+ expect(seen).toEqual(s.sessions.filter(r=>r.date!>='2026-08-01'&&r.date!<='2026-10-31'&&r.startedAt!.includes('T08:')).sort((a,b)=>a.date!.localeCompare(b.date!)||a.id.localeCompare(b.id)).map(r=>r.id));expect(new Set(seen).size).toBe(61);
+ const revised=periodCoincidenceEvidence(s,[],'2026-11-09','2026-11-07','r2','r1',{kind,group},25);expect(revised.status).toBe('revision_changed');expect(revised.sessionRows).toEqual([]);
+ const query='view=coincidence-evidence&method=2&asOf=2026-11-07&revision='+'a'.repeat(32)+'&kind='+kind;
+ expect(()=>parseInsightsParams(new URLSearchParams(query+'&group='+(kind==='lastMeal'?'lower':'within1h')))).toThrow();
+});

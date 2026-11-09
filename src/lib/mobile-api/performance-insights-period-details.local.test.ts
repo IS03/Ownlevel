@@ -1,4 +1,3 @@
-import {descriptiveCoincidences} from '../progress/insights-engine/descriptive-coincidences';
 // Opt-in REAL PostgreSQL/PostgREST regression, provisioned and removed by scripts/testing/period-details-local.mjs.
 import { spawnSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
@@ -234,6 +233,13 @@ describe.runIf(!!db && !!base && !!task)('#421 exact period readers on disposabl
     }
     expect(seen).toEqual(expected);expect(new Set(seen).size).toBe(expected.length);
     console.log(JSON.stringify({fixture:'stress',view:'all-evidence-pages',pages,queries:evidenceQueries,bytes:evidenceBytes,rows:seen.length}));
+    for(const kind of ['calories','carbs','lastMeal']) {
+      const before=who.traces.length;
+      const page=await(await route(`coincidence-evidence&kind=${kind}&group=excluded&revision=${body.sourceRevision}`)).json();
+      expect(parsePerformanceInsights(page)).toBeDefined();expect(page.total).toBe(expected.length);expect(page.sessionRows.map((r:{id:string})=>r.id)).toEqual(expected.slice(0,25));
+      expect(page.sessionRows.every((r:{preMeal:Record<string,{value:number|null}>})=>r.preMeal[kind]!.value===null)).toBe(true);
+      console.log(JSON.stringify({fixture:'stress',kind,initialQueries:14,initialBytes:bytes(body),evidenceQueries:who.traces.length-before,evidenceBytes:bytes(page),evidenceRows:page.sessionRows.length}));
+    }
     for(const invalid of ['group=lower&kind=timing','kind=timing&group=afternoon&offset=1','kind=protein&group=night'])expect((await route(`coincidence-evidence&revision=${body.sourceRevision}&${invalid}`)).status).toBe(400);
     mock.auth.mockResolvedValue(clientFor(OTHER).context(OWNER));
     const otherBody=await(await route('period-explore')).json();expect(otherBody.coincidenceSummary.protein.total).toBe(0);
@@ -243,9 +249,26 @@ describe.runIf(!!db && !!base && !!task)('#421 exact period readers on disposabl
     const smallInitialQueries=own.traces.length;
     const ownPage=await(await route(`coincidence-evidence&kind=timing&group=afternoon&revision=${ownSummary.sourceRevision}`)).json();expect(ownPage.total).toBe(3);expect(ownPage.sessionRows.every((r:{id:string})=>!expected.includes(r.id))).toBe(true);
     const smallPageQueries=own.traces.length-smallInitialQueries;
-    const ownSource=await readInsightsSource(own.context()),oldSmall={...ownSummary};delete oldSmall.coincidenceSummary;
-    oldSmall.coincidences=descriptiveCoincidences(ownSource,createInsightsSnapshot(ownSource,{today:AS_OF,revision:ownSummary.sourceRevision,method:2}),ownSummary.weeks,ownSummary.period);
-    console.log(JSON.stringify({fixture:'small',sessions:3,initialQueries:smallInitialQueries,initialBytes:bytes(ownSummary),oldInitialBytes:bytes(oldSmall),summaryBytes:bytes(ownSummary.coincidenceSummary),evidenceQueries:smallPageQueries,evidenceBytes:bytes(ownPage),evidenceRows:ownPage.sessionRows.length}));
+    console.log(JSON.stringify({fixture:'small',sessions:3,initialQueries:smallInitialQueries,initialBytes:bytes(ownSummary),summaryBytes:bytes(ownSummary.coincidenceSummary),evidenceQueries:smallPageQueries,evidenceBytes:bytes(ownPage),evidenceRows:ownPage.sessionRows.length}));
+    for(const kind of ['calories','carbs','lastMeal']) {
+      const before=own.traces.length;
+      const page=await(await route(`coincidence-evidence&kind=${kind}&group=excluded&revision=${ownSummary.sourceRevision}`)).json();
+      expect(page.total).toBe(3);expect(parsePerformanceInsights(page)).toBeDefined();
+      console.log(JSON.stringify({fixture:'small',kind,initialQueries:smallInitialQueries,initialBytes:bytes(ownSummary),evidenceQueries:own.traces.length-before,evidenceBytes:bytes(page),evidenceRows:page.sessionRows.length}));
+    }
+    sql(`insert into public.meal_entries(user_id,day_log_id,source_type,consumed_at,consumed_at_source,final_calories,final_protein_g,final_carbs_g,final_fat_g)
+      select '${OTHER}',d.id,'sheet_import',v.at::timestamptz,'user_declared',v.kcal,10,v.carbs,0 from public.day_logs d join (values ('2026-08-03'::date,'2026-08-03T17:00:00-03:00',0,0),('2026-08-04'::date,'2026-08-04T16:00:00-03:00',200,20),('2026-08-05'::date,'2026-08-05T15:00:00-03:00',400,40)) v(day,at,kcal,carbs) on d.log_date=v.day where d.user_id='${OTHER}';`);
+    const positive=await(await route('period-explore')).json();
+    for(const [kind,group] of [['calories','lower'],['carbs','upper'],['lastMeal','oneTo3h']]) {
+      const page=await(await route(`coincidence-evidence&kind=${kind}&group=${group}&revision=${positive.sourceRevision}`)).json();expect(parsePerformanceInsights(page)).toBeDefined();
+      const truth=json(`select json_agg(json_build_object('id',s.id,'calories',m.final_calories,'carbs',m.final_carbs_g,'hours',extract(epoch from(s.started_at-m.consumed_at))/3600) order by l.log_date,s.id) from public.workout_sessions s join public.day_logs l on l.id=s.day_log_id join public.meal_entries m on m.day_log_id=l.id where s.user_id='${OTHER}' and m.user_id='${OTHER}' and l.log_date between '2026-08-03' and '2026-08-05' and m.consumed_at_source='user_declared'`);
+      const selected=truth.filter((r:{calories:number;carbs:number;hours:number})=>kind==='calories'?r.calories<=200:kind==='carbs'?r.carbs>20:r.hours>1&&r.hours<=3);
+      expect(page.sessionRows.map((r:{id:string})=>r.id)).toEqual(selected.map((r:{id:string})=>r.id));
+      for(const row of page.sessionRows){const q=truth.find((r:{id:string})=>r.id===row.id);expect(row.preMeal).toEqual({calories:{state:'recorded',value:q.calories},carbs:{state:'recorded',value:q.carbs},lastMeal:{state:'recorded',value:q.hours}});}
+      expect(page.sessionRows.every((r:{id:string})=>!expected.includes(r.id))).toBe(true);
+    }
+    // An older revision never receives pages from the new meal write.
+    const stale=await(await route(`coincidence-evidence&kind=calories&group=excluded&revision=${ownSummary.sourceRevision}`)).json();expect(stale.status).toBe('revision_changed');expect(stale.sessionRows).toEqual([]);
     mock.auth.mockResolvedValue(who.context());
     sql(`update public.workout_session_feelings set revision=revision+1 where session_id='${expected[0]}'`);
     const changed=await(await route(`coincidence-evidence&kind=timing&group=afternoon&revision=${body.sourceRevision}&offset=25`)).json();expect(changed.status).toBe('revision_changed');expect(changed.sessionRows).toEqual([]);expect(parsePerformanceInsights(changed)).toBeDefined();

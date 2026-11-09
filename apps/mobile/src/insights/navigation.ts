@@ -1,19 +1,19 @@
 import { isNutritionDate } from '@/api/nutrition-day';
-import { validPeriodAnchor } from '@/api/performance-insights';
+import { validPeriodAnchor,isFoodKind,validCoincidenceSelection,type FoodKind } from '@/api/performance-insights';
 import { PROGRESS_MAX_DAYS, addDays, calendarRange, daysBetween } from '@/progress/progress-range';
 
 /** What Insights was showing. Every value is checked on the way back: a route parameter is never trusted as an address. */
-export type InsightsOrigin = { view?: 'exercises'; family?: string; relations?: '1'; date?: string; session?: string; fromSession?: '1'; relation?: string; summary?: '1'; period?: 'feelings' | 'nutrition'; asOf?: string; revision?: string; temporal?: '1'; explore?: '1'; week?: string; before?: string; coincidence?: 'protein'|'timing'|'body'; coincidenceGroup?: string; coincidencePage?: string; compare?: '1'; weekA?: string; weekB?: string; weekSide?: 'A' | 'B' };
+export type InsightsOrigin = { view?: 'exercises'; family?: string; relations?: '1'; date?: string; session?: string; fromSession?: '1'; relation?: string; summary?: '1'; period?: 'feelings' | 'nutrition'; asOf?: string; revision?: string; temporal?: '1'; explore?: '1'; week?: string; before?: string; coincidence?: FoodKind|'timing'|'body'; coincidenceGroup?: string; coincidencePage?: string; compare?: '1'; weekA?: string; weekB?: string; weekSide?: 'A' | 'B' };
 const FAMILIES = ['metric', 'nutrition', 'meal_window', 'feeling'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RELATION = /^[a-zA-Z0-9_:-]{1,120}$/;
 type Params = Record<string, unknown>;
 export function coincidenceSelection(raw: Params): Pick<InsightsOrigin,'coincidence'|'coincidenceGroup'|'coincidencePage'> {
   const kind=raw.coincidence;
-  if(kind!=='protein'&&kind!=='timing'&&kind!=='body')return {};
-  const groups=kind==='timing'?['morning','midday','afternoon','night','excluded']:['lower','upper','excluded'];
-  const page=typeof raw.coincidencePage==='string'&&/^\d{1,7}$/.test(raw.coincidencePage)&&Number(raw.coincidencePage)%25===0&&kind!=='body'&&typeof raw.coincidenceGroup==='string'&&groups.includes(raw.coincidenceGroup)?raw.coincidencePage:undefined;
-  return {coincidence:kind,...(page?{coincidencePage:page}:{}),...(typeof raw.coincidenceGroup==='string'&&groups.includes(raw.coincidenceGroup)?{coincidenceGroup:raw.coincidenceGroup}:{})};
+  if(!isFoodKind(kind)&&kind!=='timing'&&kind!=='body')return {};
+  const validGroup=(value:unknown)=>kind==='body'?['lower','upper','excluded'].includes(String(value)):validCoincidenceSelection(kind,value);
+  const page=typeof raw.coincidencePage==='string'&&/^\d{1,7}$/.test(raw.coincidencePage)&&Number(raw.coincidencePage)%25===0&&kind!=='body'&&typeof raw.coincidenceGroup==='string'&&validGroup(raw.coincidenceGroup)?raw.coincidencePage:undefined;
+  return {coincidence:kind,...(page?{coincidencePage:page}:{}),...(typeof raw.coincidenceGroup==='string'&&validGroup(raw.coincidenceGroup)?{coincidenceGroup:raw.coincidenceGroup}:{})};
 }
 
 const comparisonParams = (raw: Params): Pick<InsightsOrigin, 'compare' | 'weekA' | 'weekB' | 'weekSide'> =>

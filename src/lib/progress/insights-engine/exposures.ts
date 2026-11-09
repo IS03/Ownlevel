@@ -126,6 +126,11 @@ const explicit = (meal: Meal) => factsOf(meal).evidence === "explicit";
 const declared = (meal: Meal) => { const { evidence } = factsOf(meal); return evidence === "explicit" || evidence === "registration"; };
 const anyInstant = (meal: Meal) => factsOf(meal).evidence !== "unknown";
 
+/** New descriptive carbohydrate view: real touched dates, preserving the public legacy carbsPre3h scope. */
+export function descriptiveCarbsBeforeSession(meals:ReadonlyMap<string,Meal[]>,date:string,start:number|null):PreStartWindow {
+  return start===null?{value:null,state:'no_start_time'}:windowState(mealWindow(meals,date,start,start-PRIMARY_MEAL_WINDOW_HOURS*HOUR,explicit,'carbsG','overlap'));
+}
+
 /**
  * One row per logical day with a comparable outcome. Today stays out: its intake and metrics are still open. A daily metric
  * contributes one observation per day, however many exercises were trained.

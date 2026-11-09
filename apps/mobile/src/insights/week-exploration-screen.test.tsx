@@ -4,10 +4,11 @@ import {RefreshControl} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {OwnlevelThemeProvider} from '@/design-system';
 import type{MobileApiClient} from '@/api/client';
+import type {CoincidenceSelection} from '@/api/performance-insights';
 import {clearConfirmedReads} from '@/api/confirmed-read-cache';
 import {periodExploration,periodCoincidenceEvidence} from '../../../../src/lib/progress/insights-engine/week-exploration';
 import {periodDetailsFixture} from '../../../../src/lib/progress/insights-engine/period-details-fixture';
-import {descriptiveFixture,descriptiveBodyFixture,descriptiveId} from '../../../../src/lib/progress/insights-engine/descriptive-fixture.test-helper';
+import {descriptiveFixture,descriptiveBodyFixture,descriptivePreMealFixture,descriptiveId} from '../../../../src/lib/progress/insights-engine/descriptive-fixture.test-helper';
 import {createInsightsSnapshot,insightsSummary} from '../../../../src/lib/progress/insights-engine/read-model';
 import {InsightsScreen} from './insights-screen';
 import {WeekExplorationScreen} from './week-exploration-screen';
@@ -214,4 +215,30 @@ it('keeps A/B and the pinned period after a failed comparison read and an explic
   expect(view.getByTestId('week-selection-A')).toBeTruthy();expect(view.getByTestId('week-selection-B')).toBeTruthy();
   expect(mockParams).toMatchObject({asOf:'2026-11-07',weekA:'2026-08-03',weekB:'2026-08-10'});expect(mockRead).toHaveBeenCalledTimes(2);
   expect(mockRead.mock.calls.every(([o])=>String(o.path).includes('asOf=2026-11-07'))).toBe(true);
+});
+
+it('opens the fixed premeal choices locally and requests only the selected grouped evidence, with units and return identity',async()=>{
+ const source=descriptivePreMealFixture();
+ mockRead.mockImplementation(async o=>{const q=new URL(`http://fixture${o.path}`).searchParams;return {status:'ok',data:o.parse(q.get('view')==='coincidence-evidence'?periodCoincidenceEvidence(source,[],'2026-11-09','2026-11-07','r2',q.get('revision')!,{kind:q.get('kind'),group:q.get('group')} as CoincidenceSelection,Number(q.get('offset'))):periodExploration(source,[],'2026-11-09','2026-11-07','r2',2)),meta} as never;});
+ mockParams={...compareParams()};const view=render(wrap());await view.findByText('Coincidencias descriptivas de tus registros');
+ const select=async(name:string)=>{await act(async()=>{fireEvent.press(view.getByRole('button',{name}));mockParams={...mockParams,...mockSetParams.mock.calls.at(-1)![0] as Record<string,string>};view.rerender(wrap());});};
+ const calories='Abrir calorías previas y resultados por ejercicio, descripción de registros',carbs='Abrir carbohidratos previos y resultados por ejercicio, descripción de registros',last='Abrir última comida registrada y resultados, descripción de registros';
+ const choices=within(view.getByTestId('descriptive-coincidences')).getAllByRole('button').map(b=>b.props.accessibilityLabel);
+ expect(choices).toEqual(['Abrir proteína previa y resultados por ejercicio, descripción de registros',calories,carbs,last,'Abrir horarios y distribuciones de energía y fatiga post','Abrir proteína registrada semanal y cambios de mediana de peso corporal']);
+ await select(calories);expect(mockRead).toHaveBeenCalledTimes(1);expect(view.getAllByText(/Hasta 300 kcal/).length).toBeGreaterThan(0);
+ await select('Ver 6 registros del grupo hasta la mediana');expect(view.getByTestId(`coincidence-session-${descriptiveId(10)}`)).toBeTruthy();expect(mockRead).toHaveBeenCalledTimes(2);
+ fireEvent.press(view.getAllByRole('button',{name:/^Ver sesión y evidencia del/})[0]!);
+ const href=mockPush.mock.calls.at(-1)![0] as {params:Record<string,string>};expect(href.params).toMatchObject({date:'2026-08-03',session:descriptiveId(10),compare:'1',weekA:'2026-08-03',weekB:'2026-08-10',coincidence:'calories',coincidenceGroup:'lower',revision:'r2'});
+ const nutrition=nutritionDayHref('2026-08-03',{...href.params,date:undefined,session:undefined});expect(insightsReturnHref(nutrition.params)).toMatchObject({pathname:'/(tabs)/train/insights/weeks',params:{coincidence:'calories',coincidenceGroup:'lower',weekA:'2026-08-03',weekB:'2026-08-10'}});
+ await select(carbs);expect(view.getByRole('button',{name:calories}).props.accessibilityState.expanded).toBe(false);expect(view.getAllByText(/Hasta 50 g/).length).toBeGreaterThan(0);expect(mockRead).toHaveBeenCalledTimes(2);
+ await select(last);expect(view.getByRole('button',{name:carbs}).props.accessibilityState.expanded).toBe(false);expect(view.getByRole('button',{name:'Ver 0 registros del grupo Más de 3–12 h'})).toBeTruthy();expect(mockRead).toHaveBeenCalledTimes(2);
+ await select('Ver 6 registros del grupo Hasta 1 h');expect(mockRead).toHaveBeenCalledTimes(3);expect(view.getByText('Registros 1–6 de 6')).toBeTruthy();
+ expect(mockRead.mock.calls.slice(1).map(([o])=>new URL(`http://fixture${o.path}`).searchParams.get('kind'))).toEqual(['calories','lastMeal']);
+ expect(insightsReturnHref({...nutrition.params,insightsCoincidence:'lastMeal',insightsCoincidenceGroup:'lower'})).toBeNull();
+});
+it('does not invent new summaries or day coverage on an older response and never requests unsupported evidence',async()=>{
+ const payload=periodExploration(descriptivePreMealFixture(),[],'2026-11-09','2026-11-07','r2',2);delete payload.coincidenceSummary!.preMeal;delete payload.coincidenceSummary!.protein.totalDays;delete payload.coincidenceSummary!.protein.eligibleDays;delete payload.coincidenceSummary!.protein.multiSessionDays;
+ mockParams={...mockParams,coincidence:'calories'};mockRead.mockImplementation(async o=>({status:'ok',data:o.parse(payload),meta})as never);
+ const view=render(wrap());await view.findByText('Esta descripción no está disponible en esta lectura. Podés seguir recorriendo los registros existentes.');expect(mockRead).toHaveBeenCalledTimes(1);
+ mockParams={...mockParams,coincidence:'protein'};view.rerender(wrap());expect(view.getByText('Días y solapamientos no disponibles en esta lectura.')).toBeTruthy();expect(mockRead).toHaveBeenCalledTimes(1);
 });

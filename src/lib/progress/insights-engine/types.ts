@@ -117,8 +117,9 @@ export type SessionFact = {
     legacy: { energyLevel: number | null; performanceLevel: number | null; painLevel: number | null };
     carbsPre3h: PreStartWindow;
     /**
-     * #367 phase 2, optional: an older server does not send it, and a client that does not know it ignores it. Same window, rules and
-     * provenance as `carbsPre3h`; calories are the recorded ones, never rebuilt from macros.
+     * #367 phase 2, optional: an older server does not send it, and a client that does not know it ignores it. Same 3 h window and
+     * provenance as `carbsPre3h`; protein/calories place unknown meals on the Córdoba dates touched by the window, while the
+     * historical carbohydrates field keeps its session-date scope. Calories are recorded, never rebuilt from macros.
      */
     preStart?: {
       proteinG: PreStartWindow; calories: PreStartWindow;
