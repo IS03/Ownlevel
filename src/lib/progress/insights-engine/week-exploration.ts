@@ -5,10 +5,12 @@ import { describeFeelingOutcome, FEELING_OUTCOME_KINDS } from './feeling-outcome
 import { periodDetailFrame } from './period-details';
 import { describePriorFeelings, type PriorFeelingDescription } from './prior-feelings';
 import type { InsightsSource, InsightsEngineMethod } from './types';
+import { coincidenceSummary,coincidencePage,type CoincidenceSelection } from './descriptive-transport';
+import { descriptiveCoincidences } from './descriptive-coincidences';
 
 const shift = (date: string, n: number) => new Date(Date.parse(`${date}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0,10);
 /** One bounded period projection. No hypothesis search: comparator facts, ordinal descriptions and body-weekly/1 only. */
-export function periodExploration(source: InsightsSource, weights: readonly WeighIn[], today: string, asOf: string, revision: string, method: InsightsEngineMethod) {
+function explorationData(source: InsightsSource, weights: readonly WeighIn[], today: string, asOf: string, revision: string, method: InsightsEngineMethod) {
   const frame = periodDetailFrame(today,asOf,revision,method), snapshot = createInsightsSnapshot(source,{today:asOf,revision,method});
   const context = buildExposureContext(source), strict = new Map(snapshot.days.map(d=>[d.date,d])), partial = new Map(snapshot.partialDays.map(d=>[d.date,d]));
   const body = weeklyWeights(weights,frame.period,today), weightByDate = new Map(weights.map(w=>[w.date,w.value]));
@@ -33,6 +35,18 @@ export function periodExploration(source: InsightsSource, weights: readonly Weig
       weight:body.weeks.find(w=>w.start===weekStart)??null,weightChange:body.changes.find(w=>w.weekStart===weekStart)??null});
   }
   return {...frame,integrity:snapshot.integrity,view:'period-explore' as const,explorationMethodVersion:'insights-week-explore/1' as const,
-    metrics:snapshot.metrics,weeks,associations:'not_computed' as const};
+    metrics:snapshot.metrics,weeks,associations:'not_computed' as const,snapshot};
 }
+export function periodExploration(source:InsightsSource,weights:readonly WeighIn[],today:string,asOf:string,revision:string,method:InsightsEngineMethod) {
+  const {snapshot,...frame}=explorationData(source,weights,today,asOf,revision,method);
+  return {...frame,...(method===2?{coincidenceSummary:coincidenceSummary(descriptiveCoincidences(source,snapshot,frame.weeks,frame.period))}:{})};
+}
+export function periodCoincidenceEvidence(source:InsightsSource,weights:readonly WeighIn[],today:string,asOf:string,revision:string,requestedRevision:string,selection:CoincidenceSelection,offset:number) {
+  const frame=periodDetailFrame(today,asOf,revision,2);
+  if(revision!==requestedRevision)return {...frame,view:'coincidence-evidence' as const,status:'revision_changed' as const,requestedRevision,...{selection,offset,total:0,nextOffset:null,sessionRows:[]}};
+  const data=explorationData(source,weights,today,asOf,revision,2);
+  const full=descriptiveCoincidences(source,data.snapshot,data.weeks,data.period);
+  return {...frame,integrity:data.integrity,view:'coincidence-evidence' as const,status:'ready' as const,requestedRevision,...coincidencePage(full,selection,offset)};
+}
+export type CoincidenceEvidence=ReturnType<typeof periodCoincidenceEvidence>;
 export type PeriodExploration = ReturnType<typeof periodExploration>;

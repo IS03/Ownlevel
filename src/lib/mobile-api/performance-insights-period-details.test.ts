@@ -50,6 +50,13 @@ const request = (query: string) => new NextRequest(`http://localhost/api/mobile/
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2027-01-02T15:00:00Z')); clearInsightsSnapshots(); });
 afterEach(() => vi.useRealTimers());
 describe('bounded period details route', () => {
+  it('rejects a continuation beyond its group and leaves the same revision recoverable',async()=>{
+    const db=database();mocks.auth.mockResolvedValue({supabase:db.client,userId:USER});
+    const summary=await(await GET(request('view=period-explore&asOf=2026-11-07'))).json();
+    const query=`view=coincidence-evidence&asOf=2026-11-07&kind=timing&group=afternoon&revision=${summary.sourceRevision}`;
+    expect((await GET(request(query+'&offset=9999975'))).status).toBe(400);
+    const page=await GET(request(query+'&offset=0'));expect(page.status).toBe(200);expect(parsePerformanceInsights(await page.json())?.view).toBe('coincidence-evidence');
+  });
   it('publishes one revision for weeks, all calendar days and body/nutrition sources, preserving the anchor across New Year',async()=>{
     const db=database();mocks.auth.mockResolvedValue({supabase:db.client,userId:USER});
     const res=await GET(request('view=period-explore&asOf=2026-11-07')),body=await res.json();

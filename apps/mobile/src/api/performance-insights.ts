@@ -35,3 +35,9 @@ export const fetchSessionTemporal = (client: MobileApiClient, date: string, sign
   path: `${PERFORMANCE_INSIGHTS_PATH}?method=2&view=session-temporal&date=${encodeURIComponent(date)}`, signal,
   parse: raw => { const parsed = parsePerformanceInsights(raw); return parsed?.view === 'session-temporal' && parsed.date === date ? parsed : undefined; },
 });
+
+/** One explicit grouped page. Same account, period, revision and validated group as its summary. */
+export const fetchCoincidenceEvidence=(client:MobileApiClient,asOf:string,revision:string,kind:'protein'|'timing',group:string,offset:number,signal?:AbortSignal)=>client.read<import('./performance-insights').CoincidenceEvidence>({
+  path:`${PERFORMANCE_INSIGHTS_PATH}?${new URLSearchParams({method:'2',view:'coincidence-evidence',asOf,revision,kind,group,offset:String(offset)})}`,signal,
+  parse:raw=>{const p=parsePerformanceInsights(raw);return p?.view==='coincidence-evidence'&&p.asOf===asOf&&p.requestedRevision===revision&&p.selection.kind===kind&&p.selection.group===group&&p.offset===offset?p:undefined;},
+});

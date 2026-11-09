@@ -1,3 +1,4 @@
+import {descriptiveCoincidences} from '../progress/insights-engine/descriptive-coincidences';
 // Opt-in REAL PostgreSQL/PostgREST regression, provisioned and removed by scripts/testing/period-details-local.mjs.
 import { spawnSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
@@ -214,6 +215,40 @@ describe.runIf(!!db && !!base && !!task)('#421 exact period readers on disposabl
     const food=body.weeks.flatMap((w:{days:{date:string,nutrition:{calories:{recorded:number}}}[]})=>w.days).find((d:{date:string})=>d.date==='2026-09-15');
     const total=Number(sql(`select sum(final_calories) from public.meal_entries m join public.day_logs l on l.id=m.day_log_id where m.user_id='${OWNER}' and m.deleted_at is null and l.log_date='2026-09-15'`));expect(food.nutrition.calories.recorded).toBe(total);
     expect(who.traces.filter(t=>t.table==='meal_entries')).toHaveLength(2);expect(who.traces.filter(t=>t.table==='insights_source_revisions')).toHaveLength(2);
+    const bytes=(v:unknown)=>Buffer.byteLength(JSON.stringify(v));
+    expect(body.coincidenceSummary.claim).toBe('descriptive_only');expect(body.coincidences).toBeUndefined();
+    expect(who.traces).toHaveLength(14);
+    const legacy={...body};delete legacy.coincidenceSummary;
+    console.log(JSON.stringify({fixture:'stress',view:'period-explore',queries:who.traces.length,days:days.length,baseBytes:bytes(legacy),summaryBytes:bytes(body.coincidenceSummary),initialBytes:bytes(body)}));
+    const expected=json(`select json_agg(s.id order by l.log_date,s.id) from public.workout_sessions s join public.day_logs l on l.id=s.day_log_id where s.user_id='${OWNER}' and s.status='completed' and l.log_date between '${body.period.start}' and '${body.period.end}'`);
+    let offset:number|null=0;const seen:string[]=[];let evidenceBytes=0,evidenceQueries=0,pages=0;
+    while(offset!==null) {
+      const before=who.traces.length;
+      const res=await route(`coincidence-evidence&kind=timing&group=afternoon&revision=${body.sourceRevision}&offset=${offset}`),page=await res.json();
+      expect(res.status).toBe(200);expect(parsePerformanceInsights(page)).toBeDefined();expect(page.status).toBe('ready');expect(page.sourceRevision).toBe(body.sourceRevision);expect(page.total).toBe(expected.length);
+      expect(page.sessionRows.length).toBe(Math.min(25,expected.length-offset));
+      const ids=page.sessionRows.map((r:{id:string})=>r.id);expect(ids).toEqual(expected.slice(offset,offset+25));seen.push(...ids);
+      const queries=who.traces.length-before;evidenceQueries+=queries;evidenceBytes+=bytes(page);pages++;
+      if(offset===0)console.log(JSON.stringify({fixture:'stress',view:'coincidence-evidence',queries,bytes:bytes(page),rows:ids.length,total:page.total}));
+      offset=page.nextOffset;
+    }
+    expect(seen).toEqual(expected);expect(new Set(seen).size).toBe(expected.length);
+    console.log(JSON.stringify({fixture:'stress',view:'all-evidence-pages',pages,queries:evidenceQueries,bytes:evidenceBytes,rows:seen.length}));
+    for(const invalid of ['group=lower&kind=timing','kind=timing&group=afternoon&offset=1','kind=protein&group=night'])expect((await route(`coincidence-evidence&revision=${body.sourceRevision}&${invalid}`)).status).toBe(400);
+    mock.auth.mockResolvedValue(clientFor(OTHER).context(OWNER));
+    const otherBody=await(await route('period-explore')).json();expect(otherBody.coincidenceSummary.protein.total).toBe(0);
+    const foreign=await(await route(`coincidence-evidence&kind=timing&group=afternoon&revision=${body.sourceRevision}`)).json();expect(foreign.status).toBe('revision_changed');expect(foreign.sessionRows).toEqual([]);
+    const own=clientFor(OTHER);mock.auth.mockResolvedValue(own.context());
+    const ownSummary=await(await route('period-explore')).json();
+    const smallInitialQueries=own.traces.length;
+    const ownPage=await(await route(`coincidence-evidence&kind=timing&group=afternoon&revision=${ownSummary.sourceRevision}`)).json();expect(ownPage.total).toBe(3);expect(ownPage.sessionRows.every((r:{id:string})=>!expected.includes(r.id))).toBe(true);
+    const smallPageQueries=own.traces.length-smallInitialQueries;
+    const ownSource=await readInsightsSource(own.context()),oldSmall={...ownSummary};delete oldSmall.coincidenceSummary;
+    oldSmall.coincidences=descriptiveCoincidences(ownSource,createInsightsSnapshot(ownSource,{today:AS_OF,revision:ownSummary.sourceRevision,method:2}),ownSummary.weeks,ownSummary.period);
+    console.log(JSON.stringify({fixture:'small',sessions:3,initialQueries:smallInitialQueries,initialBytes:bytes(ownSummary),oldInitialBytes:bytes(oldSmall),summaryBytes:bytes(ownSummary.coincidenceSummary),evidenceQueries:smallPageQueries,evidenceBytes:bytes(ownPage),evidenceRows:ownPage.sessionRows.length}));
+    mock.auth.mockResolvedValue(who.context());
+    sql(`update public.workout_session_feelings set revision=revision+1 where session_id='${expected[0]}'`);
+    const changed=await(await route(`coincidence-evidence&kind=timing&group=afternoon&revision=${body.sourceRevision}&offset=25`)).json();expect(changed.status).toBe('revision_changed');expect(changed.sessionRows).toEqual([]);expect(parsePerformanceInsights(changed)).toBeDefined();
     const priorEligible=Number(sql(`select count(*) from public.workout_sessions s join public.day_logs l on l.id=s.day_log_id join public.workout_session_feelings f on f.session_id=s.id
       where s.user_id='${OWNER}' and s.status='completed' and l.log_date between '${body.period.start}' and '${body.period.end}'
       and f.facts->'energyPre'->>'instrumentVersion'='energy-fatigue/1' and f.facts->'energyPre'->>'declaredMoment'='pre'
@@ -223,6 +258,6 @@ describe.runIf(!!db && !!base && !!task)('#421 exact period readers on disposabl
         or (f.facts->'energyPre'->>'capturedAt')::timestamptz<=(select min(t.completed_at) from public.workout_sets t join public.workout_session_exercises x on x.id=t.workout_session_exercise_id where x.workout_session_id=s.id and t.is_completed))`));
     expect(body.weeks.reduce((n:number,w:{priorFeelings:{eligible:number}[]})=>n+w.priorFeelings[0]!.eligible,0)).toBe(priorEligible);
     expect(priorEligible).toBeGreaterThan(0);
-    console.log(JSON.stringify({view:'period-explore',queries:who.traces.length,days:days.length,bytes:Buffer.byteLength(JSON.stringify(body))}));
+
   },120_000);
 });

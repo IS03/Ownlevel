@@ -14,7 +14,8 @@ import { configurationIdentity } from "./training-exercise-configuration-contrac
 import { periodFeelingDetail, periodNutritionDetail, type PeriodFeelingSource, type PeriodMeal } from "../progress/insights-engine/period-details";
 import { instantMs } from "../progress/insights-engine/source-adapter";
 import { sessionTemporalDay } from '../progress/insights-engine/session-temporal';
-import { periodExploration } from '../progress/insights-engine/week-exploration';
+import { validCoincidenceSelection,type CoincidenceSelection } from '../progress/insights-engine/descriptive-transport';
+import { periodExploration,periodCoincidenceEvidence } from '../progress/insights-engine/week-exploration';
 
 type Context = MobileSupabaseAuthenticatedContext;
 const firstPage = (from: number) => (from === 0 ? { count: "exact" as const } : undefined);
@@ -306,13 +307,19 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EVIDENCE_KEYS = ["session", "exercise", "lane"];
 export function parseInsightsParams(params: URLSearchParams) {
   for (const key of new Set(params.keys())) {
-    if (!["view", "before", "limit", "association", "pairs", "method", "asOf", "date", ...EVIDENCE_KEYS].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
+    if (!["view", "before", "limit", "association", "pairs", "method", "asOf", "date", "kind", "group", "offset", "revision", ...EVIDENCE_KEYS].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
   }
   const before = params.get("before") ?? undefined, limit = params.get("limit"), association = params.get("association") ?? undefined, view = params.get("view") ?? "summary";
-  if (!["summary", "days", "relations", "evidence", "feelings", "period", "period-at", "period-feelings", "period-nutrition", "period-explore", "session-temporal"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
+  if (!["summary", "days", "relations", "evidence", "feelings", "period", "period-at", "period-feelings", "period-nutrition", "period-explore", "coincidence-evidence", "session-temporal"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
   const method = params.get("method");
   if (method !== null && method !== "2") throw new MobileApiValidationError("Método no válido.");
   const engineMethod = (method === "2" ? 2 : 1) as InsightsEngineMethod;
+  if(view==='coincidence-evidence') {
+    const asOf=params.get('asOf'),revision=params.get('revision'),kind=params.get('kind'),group=params.get('group'),offset=params.get('offset')??'0';
+    if(method!=='2'||!validPeriodAnchor(asOf)||!revision||!/^[a-f0-9]{32}$/.test(revision)||!validCoincidenceSelection(kind,group)||!/^\d{1,7}$/.test(offset)||Number(offset)%25!==0||[...params.keys()].some(k=>!['view','method','asOf','revision','kind','group','offset'].includes(k)))throw new MobileApiValidationError('Selección de evidencia no válida.');
+    return {view:'coincidence-evidence' as const,asOf,revision,selection:{kind,group} as CoincidenceSelection,offset:Number(offset),method:2 as const};
+  }
+  if(['kind','group','offset','revision'].some(k=>params.has(k)))throw new MobileApiValidationError('Parámetro no válido.');
   if (view === 'session-temporal') {
     const date = params.get('date');
     if (method !== '2' || !validPeriodAnchor(date) || [...params.keys()].some(k => !['view','method','date'].includes(k))) throw new MobileApiValidationError('Fecha o parámetros no válidos.');
@@ -347,13 +354,14 @@ export function parseInsightsParams(params: URLSearchParams) {
 
 export const performanceInsightsResponse = (request: Request) => progressReadResponse(request, "performance-insights", async (context, params, today) => {
   const options = parseInsightsParams(params);
-  if(options.view==='period-explore') {
+  if(options.view==='period-explore'||options.view==='coincidence-evidence') {
     const asOf=options.asOf??today;if(asOf>today)throw new MobileApiValidationError('Fecha futura.');
     for(let attempt=0;attempt<2;attempt++) {
       const revision=await readInsightsRevision(context);
       const [source,weights]=await Promise.all([readInsightsSource(context),readPeriodWeights(context,periodOf(asOf))]);
       if(await readInsightsRevision(context)!==revision)continue;
-      const model=periodExploration(source,weights,today,asOf,publicRevision(context.userId,revision),options.method);
+      const model=options.view==='period-explore'?periodExploration(source,weights,today,asOf,publicRevision(context.userId,revision),options.method):periodCoincidenceEvidence(source,weights,today,asOf,publicRevision(context.userId,revision),options.revision,options.selection,options.offset);
+      if(model.view==='coincidence-evidence'&&model.status==='ready'&&model.offset>model.total)throw new MobileApiValidationError('Continuación fuera del grupo.');
       const after=todayInCordoba();if(after!==today)throw new NutritionReportDayChangedError(after);return model;
     }
     throw Error('Exploration sources kept changing');

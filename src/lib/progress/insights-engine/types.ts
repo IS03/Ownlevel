@@ -252,7 +252,7 @@ export type InsightsPeriodFeelings = InsightsVersions & { view: "period-feelings
   period: import("./period-range").InsightsPeriod; outcomes: FeelingOutcomeSummary[] };
 export type InsightsPeriodNutrition = InsightsVersions & { view: "period-nutrition"; asOf: string; periodMethodVersion: "insights-period/1";
   period: import("./period-range").InsightsPeriod; days: ({ date: string } & NonNullable<NutritionContext>)[]; daysWithoutMeals: number; ingestionCompleteKnown: false };
-export type InsightsResponse = InsightsSummary | InsightsDaysPage | InsightsRelations | InsightsRelationDetail | InsightsExerciseEvidence | InsightsFeelingOutcomes | InsightsPeriodSummary | InsightsPinnedPeriodSummary | InsightsPeriodFeelings | InsightsPeriodNutrition | import('./session-temporal').SessionTemporalDay | import('./week-exploration').PeriodExploration;
+export type InsightsResponse = InsightsSummary | InsightsDaysPage | InsightsRelations | InsightsRelationDetail | InsightsExerciseEvidence | InsightsFeelingOutcomes | InsightsPeriodSummary | InsightsPinnedPeriodSummary | InsightsPeriodFeelings | InsightsPeriodNutrition | import('./session-temporal').SessionTemporalDay | import('./week-exploration').PeriodExploration | import('./week-exploration').CoincidenceEvidence;
 
 export type InsightsReadModel = {
   contractVersion: typeof INSIGHTS_CONTRACT;

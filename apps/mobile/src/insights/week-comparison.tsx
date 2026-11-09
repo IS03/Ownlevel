@@ -5,7 +5,7 @@ import { AppText, Button, Heading, UnavailableState, spacing } from '@/design-sy
 import { formatValue } from '@/progress/progress-format';
 import { FactRow } from './insights-screen';
 import { InsightRow } from './insight-row';
-import type { InsightsOrigin } from './navigation';
+import { insightsOriginOf,type InsightsOrigin } from './navigation';
 import { PERIOD_NUTRIENTS } from './period-nutrition-model';
 import { exactPeriodDate, exactPeriodRange } from './period-model';
 import { postsText } from './feelings-model';
@@ -26,7 +26,7 @@ export function WeekComparison({ data, currentWeek }: { data: PeriodExploration;
   const sides = [{ side: 'A' as const, week: a, index: chosen.a, other: chosen.b }, { side: 'B' as const, week: b, index: chosen.b, other: chosen.a }];
   const side: WeekSide | null = params.weekSide === 'A' || params.weekSide === 'B' ? params.weekSide : null;
   const recordsWeek = side === 'A' ? a : b;
-  const origin: InsightsOrigin = { explore: '1', compare: '1', asOf: data.asOf, week: recordsWeek.start, weekA: a.start, weekB: b.start, ...(side ? { weekSide: side } : {}), revision: data.sourceRevision };
+  const origin: InsightsOrigin = { ...insightsOriginOf(params), explore: '1', compare: '1', asOf: data.asOf, week: recordsWeek.start, weekA: a.start, weekB: b.start, ...(side ? { weekSide: side } : {}), revision: data.sourceRevision };
   return <View style={styles.content} testID="week-comparison">
     <Heading level={1}>Comparar semanas</Heading>
     <AppText numeric>{exactPeriodRange(data.period)}</AppText>

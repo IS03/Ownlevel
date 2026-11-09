@@ -22,7 +22,7 @@ export const FEELING_OUTCOME_PREFIX = "feeling_outcome:";
 
 type PostFact = { state: "not_recorded" | "unreadable" | "other_instrument" } | { state: "answered"; value: number; capturedAt: number | null; source: "mobile" | "web" | "unknown" };
 /** The post answer as stored, read for this method alone: the published session context (`SessionFeeling`) is not changed. */
-function postFact(facts: unknown, key: "energyPost" | "fatiguePost"): PostFact {
+export function postFact(facts: unknown, key: "energyPost" | "fatiguePost"): PostFact {
   // No row at all is nothing recorded; a row that is not an object cannot be read.
   if (facts === undefined) return { state: "not_recorded" };
   if (!facts || typeof facts !== "object" || Array.isArray(facts)) return { state: "unreadable" };

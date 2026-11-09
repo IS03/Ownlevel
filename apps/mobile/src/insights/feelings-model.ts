@@ -55,4 +55,4 @@ export function scopeText(summary: FeelingOutcomeSummary) {
   const span = summary.firstDate && summary.lastDate ? summary.firstDate === summary.lastDate ? `, el ${dayLabel(summary.firstDate).toLocaleLowerCase('es-AR')}` : `, del ${dayLabel(summary.firstDate).toLocaleLowerCase('es-AR')} al ${dayLabel(summary.lastDate).toLocaleLowerCase('es-AR')}` : '';
   return `${sessions(counted)} con respuesta al terminar, de ${sessions(summary.sessions.completed)} terminadas${span}.`;
 }
-export const NOT_PUBLISHED = 'Esto describe tus registros. Todavía no mostramos con qué coinciden: primero tenemos que comprobar que esa búsqueda no encuentre coincidencias por azar.';
+export const NOT_PUBLISHED = 'Esto describe tus registros. Las asociaciones estadísticas siguen sin publicarse: falta validar esa búsqueda.';

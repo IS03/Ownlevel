@@ -10,10 +10,11 @@ import { formatValue } from '@/progress/progress-format';
 import { postsText } from './feelings-model';
 import { FactRow } from './insights-screen';
 import { exactPeriodRange } from './period-model';
-import { periodSummaryHref } from './navigation';
+import { periodSummaryHref,coincidenceSelection,insightsOriginOf } from './navigation';
 import { WeekRecords } from './week-records';
 import { WeekComparison } from './week-comparison';
 import { selectedWeeks } from './week-comparison-model';
+import { Coincidences } from './coincidences';
 import { usePeriodReturn } from './use-period-return';
 
 export function WeekExplorationScreen() {
@@ -23,7 +24,8 @@ export function WeekExplorationScreen() {
   const {state,data,refresh}=useProgressResource(asOf?client:null,`performance-insights|period-explore|${asOf}`,load);usePeriodReturn(refresh);
   const requested=typeof params.week==='string'?params.week:undefined;
   const index=data?(requested?data.weeks.findIndex(w=>w.start===requested):data.weeks.length-1):-1,week=data?.weeks[index];
-  const origin={explore:'1' as const,asOf:asOf!,week:week?.start,revision:data?.sourceRevision};
+  const selection=coincidenceSelection(params);
+  const origin={...insightsOriginOf({...params,explore:'1'}),explore:'1' as const,asOf:asOf!,week:week?.start,revision:data?.sourceRevision,...selection};
   const days=week?.days??[],trained=days.filter(d=>d.training?.sessions),sessionCount=trained.reduce((n,d)=>n+d.training!.sessions,0);
   const c=(lane:'training'|'partial',key:string)=>days.reduce((n,d)=>n+Number((d[lane]?.counts as unknown as Record<string,number>|undefined)?.[key]??0),0);
   return <ScrollView contentInsetAdjustmentBehavior="automatic" style={{backgroundColor:colors.background}} contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={state.status==='ready'&&state.refreshing} onRefresh={()=>void refresh()}/>}>
@@ -31,10 +33,12 @@ export function WeekExplorationScreen() {
       {state.status!=='ready'?<InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura completa." actionLabel="Reintentar" onAction={()=>void refresh()}/>:null}
       {typeof params.revision==='string'&&params.revision!==data.sourceRevision?<AppText testID="week-revised">Los registros cambiaron desde el origen. Esta lectura completa está actualizada.</AppText>:null}
       <WeekComparison data={data} currentWeek={requested}/>
+      <Coincidences data={data.coincidenceSummary} weeks={data.weeks} origin={origin} selection={selection} onRefresh={()=>void refresh()} onSelect={value=>router.setParams({coincidence:value.coincidence,coincidenceGroup:value.coincidenceGroup,coincidencePage:value.coincidencePage})}/>
     </>:!week?<UnavailableState title="Semana fuera del período" description="Volvé a abrir desde el resumen."/>:<>
       {state.status!=='ready'?<InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura completa." actionLabel="Reintentar" onAction={()=>void refresh()}/>:null}
       <Heading level={2}>Semanas y días</Heading><AppText numeric>{exactPeriodRange(data.period)}</AppText>
       {typeof params.revision==='string'&&params.revision!==data.sourceRevision?<AppText testID="week-revised">Los registros cambiaron desde el origen. Esta lectura completa está actualizada.</AppText>:null}
+      <Coincidences data={data.coincidenceSummary} weeks={data.weeks} origin={origin} selection={selection} onRefresh={()=>void refresh()} onSelect={value=>router.setParams({coincidence:value.coincidence,coincidenceGroup:value.coincidenceGroup,coincidencePage:value.coincidencePage})}/>
       <Button label="Comparar semanas" variant="secondary" onPress={()=>{
         const selection=selectedWeeks(data,week.start);
         if(selection)router.setParams({compare:'1',weekA:data.weeks[selection.a]!.start,weekB:data.weeks[selection.b]!.start,weekSide:undefined});
