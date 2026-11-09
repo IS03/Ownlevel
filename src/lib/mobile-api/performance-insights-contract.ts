@@ -278,6 +278,17 @@ function parseExploration(raw: Json) {
   let expected=String((raw.period as Json).start),total=0;
   for(const w of raw.weeks) {
     if(!object(w)||!validPeriodAnchor(w.start)||!validPeriodAnchor(w.end)||typeof w.wholeWeek!=='boolean'||!Array.isArray(w.days)||!w.days.length||w.days.length>7||w.start!==expected||!Array.isArray(w.feelings)||w.feelings.length!==2||!feelingOutcome(w.feelings[0],'energy')||!feelingOutcome(w.feelings[1],'fatigue'))return undefined;
+    if(w.priorFeelings!==undefined) {
+      if(!Array.isArray(w.priorFeelings)||w.priorFeelings.length!==2)return undefined;
+      for(const [i,kind] of ['energy','fatigue'].entries()) {
+        const f=w.priorFeelings[i], sessions=((w.feelings[i] as Json).sessions as Json).completed;
+        if(!object(f)||f.kind!==kind||!Array.isArray(f.values)||f.values.length!==5||!f.values.every(count)
+          ||!['sessions','eligible','late','timingUnknown','notRecorded','unreadable','otherInstrument'].every(k=>count(f[k]))
+          ||f.values.reduce((n,v)=>n+Number(v),0)!==f.eligible
+          ||Number(f.eligible)+Number(f.late)+Number(f.timingUnknown)+Number(f.notRecorded)+Number(f.unreadable)+Number(f.otherInstrument)!==f.sessions
+          ||f.sessions!==sessions)return undefined;
+      }
+    }
     if(w.weight!==null&&(!object(w.weight)||!validPeriodAnchor(w.weight.start)||!validPeriodAnchor(w.weight.end)||!numberOrNull(w.weight.median)||!list(w.weight.weighIns,weighIn)))return undefined;
     if(object(w.weight)&&(w.weight.start!==w.start||w.weight.end!==w.end||!Array.isArray(w.weight.weighIns)||w.weight.weighIns.some(v=>!object(v)||String(v.date)<w.start!||String(v.date)>w.end!)||w.weight.median!==null&&((w.weight.weighIns as unknown[]).length<3||Number(w.weight.median)<=0)))return undefined;
     if(w.weightChange!==null&&(!object(w.weightChange)||!validPeriodAnchor(w.weightChange.weekStart)||!validPeriodAnchor(w.weightChange.previousStart)||!numberOrNull(w.weightChange.change)||!['computed','week_insufficient','previous_week_insufficient'].includes(String(w.weightChange.reason))))return undefined;

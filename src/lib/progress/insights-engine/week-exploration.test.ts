@@ -24,4 +24,26 @@ describe('period exploration: complete calendar and independent facts',()=>{
     expect(body.weeks.flatMap(w=>w.days)).toHaveLength(91);expect(body.weeks.every(w=>w.feelings.every(f=>f.sessions.completed===0))).toBe(true);
     expect(parsePerformanceInsights(body)).toBeDefined();
   });
+  it('describes all prior answers independently of post coverage and keeps old payloads compatible',()=>{
+    const fixture=periodDetailsFixture();
+    const original=periodExploration(fixture,[],'2027-01-02','2026-11-07','r1',2).weeks.find(w=>w.start==='2026-08-03')!;
+    expect(original.priorFeelings![0]).toMatchObject({eligible:7,sessions:7,values:[0,0,7,0,0]});
+    expect(original.feelings[0]!.capture.atFinish).toBe(1);
+    const source={...fixture,feelings:fixture.feelings.map((row,i)=>{
+      if(i>6)return row;
+      const facts={...row.facts as Record<string,unknown>},pre={...facts.energyPre as Record<string,unknown>};
+      if(i===1||i===6)pre.capturedAt=`2026-08-${String(i+3).padStart(2,'0')}T18:20:00-03:00`;
+      if(i===2)pre.capturedAt=null;
+      if(i===3)delete facts.energyPre;
+      else facts.energyPre=i===4?{...pre,value:9}:i===5?{...pre,instrumentVersion:'other/1'}:pre;
+      return {...row,facts};
+    })};
+    const body=periodExploration(source,[],'2027-01-02','2026-11-07','r1',2),week=body.weeks.find(w=>w.start==='2026-08-03')!;
+    expect(week.priorFeelings![0]).toEqual({kind:'energy',sessions:7,eligible:1,late:2,timingUnknown:1,notRecorded:1,unreadable:1,otherInstrument:1,values:[0,0,1,0,0]});
+    expect(parsePerformanceInsights(body)).toBeDefined();
+    const bad=structuredClone(body);bad.weeks.find(w=>w.start===week.start)!.priorFeelings![0]!.eligible++;
+    expect(parsePerformanceInsights(bad)).toBeUndefined();
+    const old=structuredClone(body);for(const w of old.weeks)delete w.priorFeelings;
+    expect(parsePerformanceInsights(old)).toBeDefined();
+  });
 });
