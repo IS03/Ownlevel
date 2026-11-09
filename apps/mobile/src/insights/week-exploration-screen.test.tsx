@@ -302,7 +302,7 @@ it('retains weekly selection across revision refresh and clears account-owned re
  mockRead.mockImplementation(async o=>({status:'ok',data:o.parse(periodExploration(f.source,f.weights,'2026-11-09','2026-11-07',revision,2)),meta})as never);
  const view=render(wrap());await view.findByTestId('weekly-record-2026-08-03');revision='r3';
  const refresh=view.UNSAFE_getByType(RefreshControl);await act(async()=>{refresh.props.onRefresh();});expect(mockParams).toMatchObject({weeklyNutrient:'fatG',weeklyOutcome:'training',coincidenceGroup:'lower'});
- fireEvent.press(view.getByRole('button',{name:'Abrir Nutrición del 03/08/2026 y sus registros'}));const meal=mockPush.mock.calls.at(-1)![0] as ReturnType<typeof nutritionDayHref>;expect(meal.params.insightsRevision).toBe('r3');
+ fireEvent.press(view.getByRole('button',{name:'Abrir Nutrición del 03/08/2026 y sus registros'}));const meal=mockPush.mock.calls.at(-1)![0] as ReturnType<typeof nutritionDayHref>;expect(meal.params).toMatchObject({insightsRevision:'r3'});
  const empty={...f.source,sessions:[],exercises:[],sets:[],meals:[],feelings:[]};const nextRead=jest.fn<MobileApiClient['read']>().mockImplementation(async o=>({status:'ok',data:o.parse(periodExploration(empty,[],'2026-11-09','2026-11-07','other',2)),meta})as never);
  mockClient={read:nextRead,request:jest.fn()} as unknown as MobileApiClient;await act(async()=>view.rerender(wrap()));expect(view.queryByTestId('weekly-record-2026-08-03')).toBeNull();expect(nextRead).toHaveBeenCalledTimes(1);
 });
