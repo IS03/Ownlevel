@@ -65,7 +65,8 @@
       "codex/402-training-chart-inspection": false,
       "codex/402-body-chart-inspection": false,
       "codex/402-nutrition-chart-inspection": false,
-      "codex/402-metrics-chart-originals": false
+      "codex/402-metrics-chart-originals": false,
+      "codex/402-history-session-originals": false
     }
   }
 }

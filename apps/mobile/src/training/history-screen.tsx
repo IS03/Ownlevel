@@ -155,6 +155,9 @@ function SessionsTab({ initialDate, today, refreshKey, endKey, expanded, onExpan
   const { isDark } = useOwnlevelTheme();
   const [selected, setSelected] = useState<string | null>(initialDate);
   const [month, setMonth] = useState((initialDate ?? today).slice(0, 7));
+  // The day redirect can reuse this mounted route; only a new route date replaces a local calendar choice.
+  const [routeDate, setRouteDate] = useState(initialDate);
+  if (routeDate !== initialDate) { setRouteDate(initialDate); setSelected(initialDate); setMonth((initialDate ?? today).slice(0, 7)); }
   const [collapsedHeight, setCollapsedHeight] = useState(106);
   const week = mondayOf(selected ?? today);
   const days = Array.from({ length: 7 }, (_, index) => shiftDay(week, index));
@@ -249,6 +252,11 @@ export function HistoryScreen({ now = () => new Date() }: { now?: () => Date }) 
   const [tab, setTab] = useState<Tab>(params.tab === 'exercises' ? 'exercises' : 'sessions');
   const [visited, setVisited] = useState<Record<Tab, boolean>>({ sessions: tab === 'sessions', exercises: tab === 'exercises' });
   const [refreshKey, setRefreshKey] = useState(0), [endKey, setEndKey] = useState(0), [calendarOpen, setCalendarOpen] = useState(false), [sort, setSort] = useState<Sort>('recent');
+  const [entryDate, setEntryDate] = useState(initialDate);
+  if (entryDate !== initialDate) {
+    setEntryDate(initialDate);
+    if (initialDate) { setTab('sessions'); setVisited(old => old.sessions ? old : { ...old, sessions: true }); setCalendarOpen(false); }
+  }
   const nearEnd = useRef(false);
   const change = (next: Tab) => { setTab(next); setVisited(old => ({ ...old, [next]: true })); };
   const { client } = useMobileApi();

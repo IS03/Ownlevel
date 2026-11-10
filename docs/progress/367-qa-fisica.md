@@ -271,3 +271,13 @@ Pendiente físico; sin simulador, build o instalación durante este incremento.
 - [ ] Volver conserva métrica, período, A/B, punto válido y origen de Insights. Editar/borrar → volver: valor actualizado o «Sin dato»; intervalo retirado sin fuente obsoleta. Cambiar nombre/unidad/tipo/archivo retira selección; error al revalidar conserva lectura confirmada con aviso. Logout/cambio de cuenta sin datos o selección anterior. Entradas desde Historial/Insights siguen independientes.
 - [ ] Semanas/meses: promedio, intervalo real y muestra; «Recorrer días del intervalo» no atribuye el promedio al primer día. Recorrer días sin valor, límites parciales, cambio de año, hoy en curso y aviso al salir del intervalo. No aparecen barras de referencia que el contrato no entrega.
 - [ ] Claro/oscuro, iPhone compacto/grande, nombre y unidades largos, Dynamic Type (valores apilados), objetivos táctiles, scroll horizontal, VoiceOver/orden hacia la acción, Reducir movimiento y barra inferior. Comprobar retorno nativo real, no acreditado por las pruebas JS.
+
+
+### Recorrido histórico #402 — día, sesiones y retorno
+
+Pendiente físico. Sin simulador, build o instalación en esta entrega; build iOS paralela preservada.
+
+- [ ] Historial/Calendario → fecha → sesión visible → detalle y series originales → «Volver al día»: mismo día y mes del calendario, incluso si el mes de origen es distinto por navegar días. Comprobar también desde Training ya abierto en otra fecha o en Ejercicios; la fecha nueva debe abrir Sesiones, sin mostrar el día anterior.
+- [ ] Cero, una, tres y más de tres sesiones: total real frente a vista previa, resto por «Abrir Training del día», sesión en curso separada. Fecha vacía, total desconocido, vista previa no disponible y lectura antigua no equivalen a cero. Detalle eliminado/no encontrado mantiene el retorno y no permite corregir como si estuviera terminado.
+- [ ] Corregir/guardar o eliminar sesión y volver: relectura exacta, nombres/filas/recuento actualizados; desaparición del último hecho muestra vacío confirmado. Fallo de relectura conserva aviso y datos confirmados. Fecha/cuenta/logout ignoran respuestas anteriores. Peso 0 kg marcado como inválido; ningún dominio toma un registro vecino.
+- [ ] VoiceOver (nombre, estado, fecha, detalle/series), nombres largos, Dynamic Type, claro/oscuro, targets mínimos 44 pt, Reducir movimiento y barra inferior. Verificar pila/retorno nativo y guardas de corrección con borrador pendiente; los tests JS no acreditan QA de iPhone.
