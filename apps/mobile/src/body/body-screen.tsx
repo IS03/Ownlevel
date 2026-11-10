@@ -3,6 +3,7 @@ import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { selectedRouteDate } from '@/history/navigation';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
+import { ReturnToBodyChart } from '@/progress/body-chart-navigation';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
 import type { BodyMeasurement, BodyMeasurementField, BodyWeightEntry } from '@/api/body';
@@ -136,7 +137,7 @@ export function BodyView({ state, controller, date }: { state: BodyState; contro
   const { read, editor } = state;
   if (!read.overview) {
     return <ScrollScreen testID={read.status === 'loading' ? 'body-loading' : 'body-unavailable'}>
-      <ReturnToHistoryDay />
+      <ReturnToHistoryDay /><ReturnToBodyChart />
       {read.status === 'loading' ? <><SkeletonBlock height={140} /><SkeletonBlock height={140} /></>
         : <UnavailableState title="No pudimos cargar Cuerpo" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente."
           action={<Button label="Reintentar" onPress={() => void controller.load()} />} />}
@@ -145,7 +146,7 @@ export function BodyView({ state, controller, date }: { state: BodyState; contro
   const editable = state.phase === 'idle' && !state.intent && !editor;
   return <>
     <ScrollScreen testID="body-screen" refreshControl={<RefreshControl refreshing={read.refreshing} onRefresh={() => void controller.load()} tintColor={colors.primary} />}>
-      <ReturnToHistoryDay />
+      <ReturnToHistoryDay /><ReturnToBodyChart />
       <BodyStatus state={state} controller={controller} />
       <BodyDate state={state} controller={controller} date={date} editable={editable} />
     </ScrollScreen>
@@ -210,8 +211,8 @@ function BodyDate({ state, controller, date, editable }: { state: BodyState; con
   return <View style={styles.section}>
     <Heading level={2}>{formatBodyDate(date)}</Heading>
     {day.weight.status === 'unavailable' ? <AppText muted>No pudimos cargar el peso de esta fecha.</AppText>
-      : <Row divided={false} title="Peso" value={day.weight.data ? formatKg(day.weight.data.weightKg) : undefined} detail={day.weight.data ? undefined : 'Sin registro · tocá para cargar'}
-        label={day.weight.data ? `Editar peso: ${formatKg(day.weight.data.weightKg)}` : 'Registrar peso'}
+      : <Row divided={false} title="Peso" value={day.weight.data ? formatKg(day.weight.data.weightKg) : undefined} detail={day.weight.data ? day.weight.data.weightKg <= 0 ? 'No válido como peso corporal · corregilo o borralo' : undefined : 'Sin registro · tocá para cargar'}
+        label={day.weight.data ? `Editar peso: ${formatKg(day.weight.data.weightKg)}${day.weight.data.weightKg <= 0 ? '. No válido como peso corporal' : ''}` : 'Registrar peso'}
         onPress={can ? () => { if (day.weight.status === 'ok') controller.openWeight(day.weight.data ?? undefined, date); } : undefined} />}
     {day.measurement.status === 'unavailable' ? <AppText muted>No pudimos cargar la medición de esta fecha.</AppText>
       : <Row divided title="Medidas" detail={m ? measurementValues(m).map(v => `${v.label} ${v.value}`).join(' · ') : 'Sin medición · tocá para cargar'}

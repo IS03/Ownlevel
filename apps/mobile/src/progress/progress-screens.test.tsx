@@ -1,4 +1,4 @@
-import { clearConfirmedReads } from '@/api/confirmed-read-cache';
+import { clearConfirmedReads, invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import type { MobileApiClient } from '@/api/client';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
@@ -8,12 +8,16 @@ import { OwnlevelThemeProvider } from '@/design-system';
 import { parseProgressBody, parseProgressMetrics, parseProgressOverview, type ProgressBody, type ProgressComparison, type ProgressMetrics, type ProgressOverview, type ProgressQuery } from '@/api/progress';
 import { ProgressPeriodOverviewScreen as ProgressOverviewScreen } from './overview-screen';
 import { BodyTrendsScreen } from './body-trends-screen';
+import { ReturnToBodyChart, bodyChartReturnHref, bodyObservationHref } from './body-chart-navigation';
 import { MetricsTrendsScreen } from './metrics-trends-screen';
 import { NutritionReportsRoute } from '@/nutrition/report-route';
 import { ProgressRangeProvider } from './progress-range-context';
 import type { DateRange, ProgressRangeState } from './progress-range';
 
-const mockPush = jest.fn(), mockNavigate = jest.fn();
+const mockPush = jest.fn(), mockNavigate = jest.fn(), mockBack = jest.fn(), mockReplace = jest.fn();
+let mockCanGoBack = true, mockOwner = 'owner';
+let mockActiveClient: MobileApiClient | null;
+let mockBodyApis: ReturnType<typeof import('@/body/body-fixture.test-helper')['fakeApi']>[] = [];
 let mockParams: Record<string, string> = {};
 const mockOverview = jest.fn<(c: unknown, q: ProgressQuery, compare: DateRange | null) => Promise<unknown>>();
 const mockBody = jest.fn<(c: unknown, q: ProgressQuery, compare: DateRange | null) => Promise<unknown>>();
@@ -23,22 +27,29 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, navigate: mockNavigate }), useFocusEffect: (callback: () => void | (() => void)) => { jest.requireActual<typeof import('react')>('react').useEffect(callback, [callback]); }, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, navigate: mockNavigate, back: mockBack, replace: mockReplace, canGoBack: () => mockCanGoBack }), useFocusEffect: (callback: () => void | (() => void)) => { jest.requireActual<typeof import('react')>('react').useEffect(callback, [callback]); }, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn(), success: jest.fn(), warning: jest.fn() }, triggerHaptic: jest.fn() }));
 const mockClient = { request: jest.fn(), read: jest.fn() } as unknown as MobileApiClient;
-jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
-jest.mock('@/auth', () => ({ useMobileAuth: () => ({ session: { user: { id: 'owner' } } }) }));
+jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockActiveClient }) }));
+jest.mock('@/auth', () => ({ useMobileAuth: () => ({ session: { user: { id: mockOwner } } }) }));
 // Cuerpo's records and sheets run on the real BodyController over a fake Body API (no network, no storage).
 let mockBodyWeights: { date: string; weightKg: number }[] | null = null;
 jest.mock('@/body/use-body-controller', () => {
-  const { useState, useEffect, useSyncExternalStore } = jest.requireActual<typeof import('react')>('react');
+  const { useMemo, useEffect, useSyncExternalStore } = jest.requireActual<typeof import('react')>('react');
   const { BodyController } = jest.requireActual<typeof import('@/body/body-controller')>('@/body/body-controller');
   const fx = jest.requireActual<typeof import('@/body/body-fixture.test-helper')>('@/body/body-fixture.test-helper');
-  return { useBodyController: () => {
-    const [controller] = useState(() => new BodyController(fx.fakeApi(mockBodyWeights ? fx.overview({}, mockBodyWeights) : undefined), fx.repository(fx.memoryStorage().port), () => 'body:1'));
-    useEffect(() => { void controller.initialize(); }, [controller]);
-    const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
-    return { controller, state };
+  const { BodyIntentRepository } = jest.requireActual<typeof import('@/body/body-storage')>('@/body/body-storage');
+  const empty = new BodyController(fx.fakeApi(), fx.repository(fx.memoryStorage().port)).getSnapshot();
+  const noSubscribe = () => () => undefined, emptySnapshot = () => empty;
+  return { useBodyController: (client: MobileApiClient | null, owner: string) => {
+    const controller = useMemo(() => {
+      if (!client) return null;
+      const api = fx.fakeApi(mockBodyWeights ? fx.overview({}, mockBodyWeights) : undefined); mockBodyApis.push(api);
+      return new BodyController(api, new BodyIntentRepository(fx.memoryStorage().port, owner), () => 'body:1');
+    }, [client, owner]);
+    useEffect(() => { if (controller) void controller.initialize(); return () => controller?.dispose(); }, [controller]);
+    const state = useSyncExternalStore(controller?.subscribe ?? noSubscribe, controller?.getSnapshot ?? emptySnapshot, controller?.getSnapshot ?? emptySnapshot);
+    return controller ? { controller, state } : null;
   } };
 });
 jest.mock('@/api/progress', () => ({ ...jest.requireActual<object>('@/api/progress'),
@@ -123,8 +134,9 @@ const wrap = (el: React.ReactElement, initialState?: ProgressRangeState) => rend
 
 const listeners: ((s: string) => void)[] = [];
 beforeEach(() => {
+  mockActiveClient = mockClient; mockOwner = 'owner'; mockBodyApis = []; mockCanGoBack = true;
   clearConfirmedReads(mockClient);
-  jest.clearAllMocks(); mockParams = {}; listeners.length = 0; mockBodyWeights = null;
+  jest.clearAllMocks(); mockBody.mockReset(); mockParams = {}; listeners.length = 0; mockBodyWeights = null;
   jest.spyOn(AppState, 'addEventListener').mockImplementation((_e, l) => { listeners.push(l as (s: string) => void); return { remove: jest.fn() } as never; });
   mockOverview.mockImplementation(async (_c, q) => ok(overview({}, q.period)));
   mockBody.mockImplementation(async () => ok(body()));
@@ -280,12 +292,15 @@ describe('Body Trends', () => {
     const summary = within(view.getByTestId('body-trend-summary'));
     expect(summary.getByText('80,5 kg')).toBeTruthy(); expect(summary.getByText('último registro · 1 oct')).toBeTruthy();
     expect(summary.getByText('↘ 1,5 kg')).toBeTruthy(); expect(summary.getByText('en octubre · desde 82 kg el 10 sep')).toBeTruthy();
-    // The arrow already says it went down: no extra trend line, and no technical note about dots.
-    expect(summary.queryByText(/Tendencia en bajada/)).toBeNull(); expect(summary.queryByText(/Un punto por registro/)).toBeNull();
+    // Only the canonical supported trend is named; no new inference is computed by the screen.
+    expect(summary.getByText(/Tendencia en bajada/)).toBeTruthy(); expect(summary.queryByText(/Un punto por registro/)).toBeNull();
     expect(summary.getByText(/1 medición sospechosa excluida; podés corregirla en Cuerpo\./)).toBeTruthy();
     expect(summary.queryByText(/sin cambio medible/)).toBeNull(); // only while comparing
-    fireEvent.press(within(view.getByTestId('body-trend-chart')).getByRole('button', { name: '20 sep, 81 kg · Importado · sheet' }));
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/history/day/[date]', params: { date: '2026-09-20' } });
+    fireEvent.press(within(view.getByTestId('body-trend-chart')).getByRole('button', { name: '20 sep 2026, 81 kg · Importado · sheet' }));
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(within(view.getByTestId('body-point-inspection')).getByText('Peso · 81 kg')).toBeTruthy();
+    fireEvent.press(view.getByRole('button', { name: 'Ver registro original' }));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/body', params: { date: '2026-09-20', bodyChartReturn: '1', bodyChartMetric: '' } });
     // Each measure opens on its own screen, so Back returns to the weight.
     fireEvent.press(view.getByRole('button', { name: 'Cintura. 88 cm · un solo registro' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.waist' } });
@@ -295,16 +310,177 @@ describe('Body Trends', () => {
     fireEvent.press(view.getByTestId('body-add-measurement')); await flush();
     expect(view.getByTestId('body-measurement-sheet')).toBeTruthy();
   });
-  it('a measure on its own screen: one record has no chart, says so and offers a longer period', async () => {
+  it('a measure on its own screen: one record remains inspectable without pretending it has a trend', async () => {
     mockParams = { metric: 'body.waist' };
     const view = wrap(<BodyTrendsScreen />); await flush();
     const summary = within(view.getByTestId('body-trend-summary'));
     expect(summary.getByText('88 cm')).toBeTruthy(); expect(summary.queryByText('hacen falta 2 registros')).toBeNull();
     expect(summary.getByText('Un solo registro en octubre. Con dos o más vas a ver cómo cambió.')).toBeTruthy();
-    expect(view.queryByTestId('body-trend-chart')).toBeNull(); expect(view.queryByTestId('body-trend-others')).toBeNull();
+    expect(view.getByTestId('body-trend-chart')).toBeTruthy(); expect(view.queryByTestId('body-trend-others')).toBeNull();
     fireEvent.press(view.getByTestId('body-trend-widen')); await flush();
     expect(mockBody).toHaveBeenLastCalledWith(mockClient, expect.objectContaining({ period: 'custom' }), null);
     expect(view.queryByText('Un solo registro en octubre. Con dos o más vas a ver cómo cambió.')).toBeNull();
+  });
+  it('keeps measure, A/B, source selection and context on return, and inspection adds no read', async () => {
+    mockParams = { metric: 'body.waist' };
+    const view = wrap(<><BodyTrendsScreen /><ReturnToBodyChart /></>, comparing); await flush();
+    const initial = { progress: mockBody.mock.calls.length, records: mockBodyApis[0].overview.mock.calls.length };
+    expect(initial).toEqual({ progress: 1, records: 1 });
+    fireEvent.press(view.getByTestId('body-trend-chart-2026-09-15-mark'));
+    const readout = within(view.getByTestId('body-point-inspection'));
+    expect(readout.getByText('15 sep 2026')).toBeTruthy(); expect(readout.getByText('Cintura · 88 cm')).toBeTruthy();
+    expect(mockPush).not.toHaveBeenCalled();
+    fireEvent.press(view.getByRole('button', { name: 'Ver registro original' }));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/progress/body', params: { date: '2026-09-15', bodyChartReturn: '1', bodyChartMetric: 'body.waist' } });
+    // As with useLocalSearchParams in a retained stack, the source route keeps its metric.
+    mockParams = { metric: 'body.waist', date: '2026-09-15', bodyChartReturn: '1', bodyChartMetric: 'body.waist' };
+    view.rerender(wrapped(<><BodyTrendsScreen /><ReturnToBodyChart /></>, comparing));
+    fireEvent.press(view.getByRole('button', { name: 'Volver al gráfico de Cuerpo' }));
+    expect(mockBack).toHaveBeenCalledTimes(1); expect(mockReplace).not.toHaveBeenCalled();
+    expect(view.getByTestId('body-trend-chart-2026-09-15-mark').props.accessibilityState.selected).toBe(true);
+    expect(view.getByText('Cintura · 88 cm')).toBeTruthy();
+    expect(mockBody).toHaveBeenLastCalledWith(mockClient, MONTH, { start: '2026-09-01', end: '2026-09-05' });
+    expect({ progress: mockBody.mock.calls.length, records: mockBodyApis[0].overview.mock.calls.length }).toEqual(initial);
+    fireEvent.press(view.getByTestId('body-trend-chart-2026-09-15-mark'));
+    expect(view.queryByRole('button', { name: 'Ver registro original' })).toBeNull();
+  });
+  it('updates the selected value after a confirmed invalidation, and removes navigation to deleted or moved sources', async () => {
+    const view = wrap(<BodyTrendsScreen />); await flush();
+    fireEvent.press(view.getByTestId('body-trend-chart-2026-09-20-mark'));
+    const edited = body(); edited.metrics[0].observations[1] = obs('2026-09-20', 81.25, true);
+    mockBody.mockResolvedValue(ok(edited));
+    act(() => invalidateConfirmedReads(mockClient, '/api/mobile/v1/body/weights/2026-09-20')); await flush();
+    expect(within(view.getByTestId('body-point-inspection')).getByText('Peso · 81,25 kg')).toBeTruthy();
+    expect(view.queryByText('Peso · 81 kg')).toBeNull();
+    const removed = body(); removed.metrics[0].observations.splice(1, 1);
+    mockBody.mockResolvedValue(ok(removed));
+    act(() => invalidateConfirmedReads(mockClient, '/api/mobile/v1/body/weights/2026-09-20')); await flush();
+    expect(view.getByText(/El registro seleccionado ya no está disponible/)).toBeTruthy();
+    expect(view.queryByRole('button', { name: 'Ver registro original' })).toBeNull();
+    expect(view.queryByTestId('body-trend-chart-2026-09-20-mark')).toBeNull();
+  });
+  it('retains a confirmed selection with an honest refresh error, then resets it for another period or account', async () => {
+    const view = wrap(<BodyTrendsScreen />); await flush();
+    fireEvent.press(view.getByTestId('body-trend-chart-2026-09-20-mark'));
+    mockBody.mockResolvedValueOnce(lost);
+    act(() => view.UNSAFE_getByType(RefreshControl).props.onRefresh()); await flush();
+    expect(view.getByText('No se pudo actualizar. Mostramos la última lectura confirmada.')).toBeTruthy();
+    expect(view.getByText('Peso · 81 kg')).toBeTruthy();
+    fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
+    expect(view.queryByRole('button', { name: 'Ver registro original' })).toBeNull();
+    fireEvent.press(view.getByTestId('body-trend-chart-2026-09-20-mark'));
+    mockOwner = 'different-owner'; mockActiveClient = {} as MobileApiClient;
+    const next = body(); next.metrics[0].observations = [obs('2026-10-01', 70)]; next.metrics[0].last = next.metrics[0].first = obs('2026-10-01', 70); next.metrics[0].change = null; next.metrics[0].trend = 'unavailable';
+    mockBody.mockResolvedValue(ok(next));
+    view.rerender(wrapped(<BodyTrendsScreen />)); await flush();
+    expect(view.queryByRole('button', { name: 'Ver registro original' })).toBeNull();
+    expect(view.queryByText('Peso · 81 kg')).toBeNull();
+    expect(view.queryByTestId('body-trend-chart-2026-09-20-mark')).toBeNull();
+    mockActiveClient = null;
+    view.rerender(wrapped(<BodyTrendsScreen />)); await flush();
+    expect(view.queryByTestId('body-point-inspection')).toBeNull();
+  });
+  it('shows a real zero as an invalid gap that can be inspected, without a contaminated change or trend', async () => {
+    const invalid = body(); const m = invalid.metrics[0]; m.observations = [obs('2026-10-02', 0)]; m.first = m.last = m.observations[0]; m.change = null; m.trend = 'unavailable';
+    mockBody.mockResolvedValue(ok(invalid));
+    const view = wrap(<BodyTrendsScreen />); await flush();
+    expect(view.getByTestId('body-invalid-summary')).toBeTruthy();
+    expect(view.queryByTestId('body-trend-chart-2026-10-02-mark')).toBeNull();
+    fireEvent.press(view.getByTestId('body-trend-chart-2026-10-02-gap'));
+    expect(view.getByText('Peso · 0 kg')).toBeTruthy();
+    expect(view.getByText(/Registro no válido como peso corporal/)).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Ver registro original' })).toBeTruthy();
+  });
+  it('does not show an older summary using 0 kg as a baseline even if its point list already excluded zero', async () => {
+    const old = body(); old.metrics[0].first = obs('2026-09-10', 0); old.metrics[0].change = 80.5;
+    expect(parseProgressBody(old)).toBeDefined();
+    mockBody.mockResolvedValue(ok(old));
+    const view = wrap(<BodyTrendsScreen />); await flush();
+    expect(view.getByTestId('body-invalid-summary')).toBeTruthy();
+    expect(view.queryByText('↗ 80,5 kg')).toBeNull();
+    expect(view.queryByText(/Tendencia en bajada/)).toBeNull();
+    expect(view.queryByText(/desde 0 kg/)).toBeNull();
+    fireEvent.press(view.getByTestId('body-trend-chart-2026-10-01-mark'));
+    expect(view.getByText('Peso · 80,5 kg')).toBeTruthy();
+  });
+  it('distinguishes two observations from supported trends and never fabricates reference points', async () => {
+    const data = body(); const m = data.metrics[0]; m.observations = [m.observations[0], m.observations[2]]; m.confidence = 'limited'; m.referenceCount = 4; m.referenceChange = 0;
+    mockBody.mockResolvedValue(ok(data));
+    const view = wrap(<BodyTrendsScreen />, comparing); await flush();
+    expect(view.getByText('Dos registros: muestran una diferencia, todavía con evidencia limitada.')).toBeTruthy();
+    expect(view.queryByText(/Tendencia en bajada/)).toBeNull();
+    expect(view.getByText(/4 registros en la referencia/)).toBeTruthy();
+    expect(within(view.getByTestId('body-trend-chart')).getAllByRole('button')).toHaveLength(2);
+    expect(view.getByText('1–5 sep = 0 kg')).toBeTruthy();
+  });
+  it('distinguishes empty valid observations, invalid stored records and an unavailable read', async () => {
+    mockBodyWeights = [{ date: '2026-10-02', weightKg: 0 }];
+    mockBody.mockResolvedValue(ok({ ...body(), metrics: [] }));
+    const view = wrap(<BodyTrendsScreen />); await flush();
+    expect(view.getByText(/No hay pesos ni medidas válidos/)).toBeTruthy();
+    expect(view.getByLabelText('Peso del 2 oct 2026: 0 kg. No cuenta: no es un peso')).toBeTruthy();
+    expect(view.queryByTestId('body-trend-chart')).toBeNull();
+    view.unmount(); clearConfirmedReads(mockClient);
+    mockBody.mockResolvedValue(lost);
+    const failed = wrap(<BodyTrendsScreen />); await flush();
+    expect(failed.getByText('No pudimos cargar Cuerpo')).toBeTruthy();
+    expect(failed.queryByText(/No hay pesos ni medidas válidos/)).toBeNull();
+  });
+  it('keeps dates across a year boundary and the exact custom period and A/B when opening an imported source', async () => {
+    const data = body(), m = data.metrics[0];
+    m.observations = [obs('2025-12-31', 80, true), obs('2026-01-02', 81)]; m.first = m.observations[0]; m.last = m.latest = m.observations[1]; m.change = 1; m.confidence = 'limited'; m.trend = 'increased';
+    data.period = { ...data.period, preset: 'custom', start: '2025-12-30', end: '2026-01-03', days: 5, previousStart: '2025-12-20', previousEnd: '2025-12-24' };
+    mockBody.mockResolvedValue(ok(data)); mockParams = { metric: 'body.weight' };
+    const selected: ProgressRangeState = { unit: 'custom', anchor: TODAY, custom: { start: '2025-12-30', end: '2026-01-03' }, compare: { kind: 'custom', range: { start: '2025-12-20', end: '2025-12-24' } } };
+    const view = wrap(<BodyTrendsScreen />, selected); await flush();
+    fireEvent.press(view.getByTestId('body-trend-chart-2025-12-31-mark'));
+    expect(view.getByText('Peso · 80 kg')).toBeTruthy();
+    fireEvent.press(view.getByRole('button', { name: 'Ver registro original' }));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/progress/body', params: { date: '2025-12-31', bodyChartReturn: '1', bodyChartMetric: 'body.weight' } });
+    expect(mockBody).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2025-12-30', to: '2026-01-03' }, { start: '2025-12-20', end: '2025-12-24' });
+  });
+  it('does not replace a missing selected measurement with another metric', async () => {
+    const data = body(); data.metrics = [data.metrics[0]];
+    mockParams = { metric: 'body.waist' }; mockBody.mockResolvedValue(ok(data));
+    const view = wrap(<BodyTrendsScreen />); await flush();
+    expect(view.getByText('Esta medida no está disponible en esta lectura.')).toBeTruthy();
+    expect(view.queryByTestId('body-trend-chart')).toBeNull();
+    expect(view.queryByText('Peso · 80,5 kg')).toBeNull();
+  });
+  it('does not reuse a selected date across different measures when the root default changes after a write', async () => {
+    const first = body(); first.metrics = [first.metrics[1]];
+    mockBody.mockResolvedValue(ok(first));
+    const view = wrap(<BodyTrendsScreen />); await flush();
+    fireEvent.press(view.getByTestId('body-trend-chart-2026-09-15-mark'));
+    expect(view.getByText('Cintura · 88 cm')).toBeTruthy();
+    const next = body(); next.metrics[0].observations.splice(1, 0, obs('2026-09-15', 85));
+    mockBody.mockResolvedValue(ok(next));
+    act(() => invalidateConfirmedReads(mockClient, '/api/mobile/v1/body/weights/2026-09-15')); await flush();
+    expect(view.getByTestId('body-trend-chart-2026-09-15-mark').props.accessibilityState.selected).toBe(false);
+    expect(view.queryByRole('button', { name: 'Ver registro original' })).toBeNull();
+    expect(view.queryByText('Cintura · 88 cm')).toBeNull();
+  });
+  it('preserves complete dates, origin labels and touch targets with large text', async () => {
+    const rn = jest.requireActual<typeof import('react-native')>('react-native');
+    const dimensions = jest.spyOn(rn, 'useWindowDimensions').mockReturnValue({ width: 320, height: 700, scale: 3, fontScale: 2 });
+    const view = wrap(<BodyTrendsScreen />); await flush();
+    const chart = within(view.getByTestId('body-trend-chart'));
+    for (const point of chart.getAllByRole('button')) expect(rn.StyleSheet.flatten(point.props.style).minWidth).toBeGreaterThanOrEqual(44);
+    fireEvent.press(chart.getByRole('button', { name: '20 sep 2026, 81 kg · Importado · sheet' }));
+    expect(view.getByTestId('body-trend-chart-2026-09-20-mark').props.accessibilityState.selected).toBe(true);
+    expect(view.getByText('Peso · 81 kg')).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Ver registro original' })).toBeTruthy();
+    dimensions.mockRestore();
+  });
+  it('rejects malformed return parameters and uses a fixed fallback only without a previous route', () => {
+    for (const metric of [undefined, ['/settings'], '/settings', 'body.unknown']) expect(bodyChartReturnHref({ bodyChartReturn: '1', bodyChartMetric: metric })).toBeNull();
+    expect(bodyObservationHref('2026-02-30', 'body.weight')).toBeNull();
+    expect(bodyObservationHref('2026-10-02', 'body.arm')).toMatchObject({ params: { bodyChartMetric: 'body.arm' } });
+    mockCanGoBack = false; mockParams = { bodyChartReturn: '1', bodyChartMetric: 'body.calf_left' };
+    const view = wrap(<ReturnToBodyChart />);
+    fireEvent.press(view.getByRole('button', { name: 'Volver al gráfico de Cuerpo' }));
+    expect(mockReplace).toHaveBeenCalledWith({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.calf_left' } });
+    expect(mockBack).not.toHaveBeenCalled();
   });
   it('opened from Insights (#367): the weight on the month of that day before the first read, its limit and a way back', async () => {
     mockParams = { metric: 'body.weight', from: '2026-09-01', to: '2026-09-30', insightsReturn: '1', insightsDate: '2026-09-15', insightsSession: '93670000-0000-4000-8000-000000000b02' };
@@ -321,12 +497,13 @@ describe('Body Trends', () => {
     expect(view.queryByTestId('body-from-insights')).toBeNull();
   });
   it('a stored 0 kg is named with its date, never dropped or re-computed here', async () => {
-    // A server that still counts it: it arrives as an observation, and the notice says it still enters the change.
+    // Legacy response: preserve the original zero for inspection, but do not display its contaminated aggregates.
     mockBody.mockImplementation(async () => { const data = body(); const weight = data.metrics[0]!; weight.observations = [...weight.observations, obs('2026-10-02', 0)]; return ok(data); });
     const view = wrap(<BodyTrendsScreen />); await flush();
     expect(view.getByTestId('body-trend-zero')).toBeTruthy();
-    expect(within(view.getByTestId('body-trend-zero')).getByText(/El pesaje del 2 oct está en 0 kg: no es un peso, pero todavía entra en el cambio/)).toBeTruthy();
-    expect(within(view.getByTestId('body-trend-summary')).getByText('↘ 1,5 kg')).toBeTruthy();
+    expect(within(view.getByTestId('body-trend-zero')).getByText(/El pesaje del 2 oct está en 0 kg: no es un peso corporal válido/)).toBeTruthy();
+    expect(within(view.getByTestId('body-trend-summary')).queryByText('↘ 1,5 kg')).toBeNull();
+    expect(view.getByTestId('body-invalid-summary')).toBeTruthy();
     view.unmount(); clearConfirmedReads(mockClient);
     mockBody.mockImplementation(async () => ok(body()));
     const clean = wrap(<BodyTrendsScreen />); await flush();

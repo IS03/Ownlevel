@@ -9,20 +9,21 @@ import { WeightEditorSheet } from './body-editor';
 import { createMobileApiClient } from '@/api/client';
 import { mutateBodyMeasurement, mutateBodyWeight } from '@/api/body';
 import { BodyController } from './body-controller';
-import { BodyEditors, BodyStatus, MeasurementRecords, WeightRecords, openTodayWeight, useWeightEntry } from './body-screen';
+import { BodyEditors, BodyStatus, BodyView, MeasurementRecords, WeightRecords, openTodayWeight, useWeightEntry } from './body-screen';
 import { BodyAddMenu } from './body-add-menu';
-import type { BodyState } from './body-controller';
+import type { BodyApi, BodyState } from './body-controller';
 import { ProgressHub } from './progress-hub';
 import { MID, TODAY, conflict, fakeApi, measurement, memoryStorage, ok, overview, repository } from './body-fixture.test-helper';
 
-const mockPush = jest.fn();
+const mockPush = jest.fn(), mockBack = jest.fn(), mockReplace = jest.fn();
+let mockRouteParams: Record<string, string> = {};
 let mockReduced = false;
 jest.mock('@/design-system/motion', () => ({ ...jest.requireActual<object>('@/design-system/motion'), useReduceMotion: () => mockReduced }));
-afterEach(() => { mockReduced = false; });
+afterEach(() => { mockReduced = false; mockRouteParams = {}; });
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('@react-native-async-storage/async-storage', () => ({ __esModule: true, default: {} }));
 const mockSetParams = jest.fn();
-jest.mock('expo-router', () => ({ useLocalSearchParams: () => ({}), useRouter: () => ({ push: mockPush, setParams: mockSetParams }), useFocusEffect: () => undefined }));
+jest.mock('expo-router', () => ({ useLocalSearchParams: () => mockRouteParams, useRouter: () => ({ push: mockPush, setParams: mockSetParams, back: mockBack, replace: mockReplace, canGoBack: () => true }), useFocusEffect: () => undefined }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn(), success: jest.fn(), warning: jest.fn() }, triggerHaptic: jest.fn() }));
 
 const flush = () => act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
@@ -266,5 +267,60 @@ describe('Body HTTP mapping', () => {
         thighLeftCm: null, calfRightCm: null, calfLeftCm: null, condition: null, notes: null }, idempotencyKey: 'k2' })).toMatchObject({ status: 'unavailable' });
     expect(lostFetch).toHaveBeenCalledTimes(1);
     expect(String(lostFetch.mock.calls[0][0])).toBe(`https://example.test/api/mobile/v1/body/measurements/${MID}`); expect(lostFetch.mock.calls[0][1]?.method).toBe('PUT');
+  });
+});
+
+
+describe('Body chart → exact original day', () => {
+  const date = '2020-01-01';
+  const imported = measurement({ measuredOn: date, imported: true, importSource: 'legacy-sheet', waistCm: 85, armCm: 31 });
+  const day = (weightKg: number | null = 70, present = true) => ({ date, today: TODAY,
+    weight: { status: 'ok' as const, data: weightKg === null ? null : { date, weightKg } },
+    measurement: { status: 'ok' as const, data: present ? imported : null } });
+  function Exact({ controller }: { controller: BodyController }) {
+    const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+    return <BodyView controller={controller} state={state} date={date} />;
+  }
+  it('reads an old imported original outside the first page, opens its real edit baseline and preserves return', async () => {
+    mockRouteParams = { date, bodyChartReturn: '1', bodyChartMetric: 'body.waist' };
+    const api = { ...fakeApi(), day: jest.fn<NonNullable<BodyApi['day']>>().mockResolvedValue(ok(day())) };
+    const controller = new BodyController(api, repository(memoryStorage().port));
+    const view = wrap(<Exact controller={controller} />);
+    await act(async () => { controller.setDate(date); await controller.initialize(); }); await flush();
+    expect(controller.getSnapshot().read.measurements.some(m => m.measuredOn === date)).toBe(false);
+    expect(view.getByText('1 ene 2020')).toBeTruthy();
+    expect(view.getByLabelText('Editar peso: 70 kg')).toBeTruthy();
+    expect(view.getByText('Importada')).toBeTruthy();
+    fireEvent.press(view.getByRole('button', { name: 'Editar medición' }));
+    expect(controller.getSnapshot().editor).toMatchObject({ kind: 'measurement', mode: 'edit', baseline: { id: imported.id, measuredOn: date, waistCm: 85, armCm: 31, imported: true } });
+    fireEvent.press(view.getByRole('button', { name: 'Volver al gráfico de Cuerpo' }));
+    expect(mockBack).toHaveBeenCalled();
+    expect(api.measurements).not.toHaveBeenCalled(); expect(api.weights).not.toHaveBeenCalled();
+    controller.dispose();
+  });
+  it('shows updated, invalid and deleted exact-day values without falling back to recent pages, and keeps errors recoverable', async () => {
+    mockRouteParams = { date, bodyChartReturn: '1', bodyChartMetric: '' };
+    const api = { ...fakeApi(), day: jest.fn<NonNullable<BodyApi['day']>>().mockResolvedValue(ok(day())) };
+    const controller = new BodyController(api, repository(memoryStorage().port));
+    const view = wrap(<Exact controller={controller} />);
+    await act(async () => { controller.setDate(date); await controller.initialize(); }); await flush();
+    api.day.mockResolvedValue(ok(day(72)));
+    await act(async () => { await controller.load(); });
+    expect(view.getByLabelText('Editar peso: 72 kg')).toBeTruthy();
+    expect(view.queryByLabelText('Editar peso: 70 kg')).toBeNull();
+    api.day.mockResolvedValue(ok(day(0)));
+    await act(async () => { await controller.load(); });
+    expect(view.getByLabelText('Editar peso: 0 kg. No válido como peso corporal')).toBeTruthy();
+    api.day.mockResolvedValue(ok(day(null, false)));
+    await act(async () => { await controller.load(); });
+    expect(view.getByText('Sin registro · tocá para cargar')).toBeTruthy();
+    expect(view.getByText('Sin medición · tocá para cargar')).toBeTruthy();
+    expect(view.queryByLabelText('Editar peso: 72 kg')).toBeNull();
+    api.day.mockResolvedValue({ status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } });
+    await act(async () => { await controller.load(); });
+    expect(view.getByText('No se pudo actualizar. Mostramos la última lectura confirmada.')).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Volver al gráfico de Cuerpo' })).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Reintentar' })).toBeTruthy();
+    controller.dispose();
   });
 });
