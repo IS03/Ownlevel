@@ -261,3 +261,13 @@ Pendiente físico; sin simulador, build o instalación durante esta entrega.
 - [ ] A/B con distinta duración y granularidad: alternar población, fechas/denominadores propios, sin posiciones emparejadas ni barras ficticias. Bloques de hasta 7/31 días, límites parciales y cambio de año: abrir todos sus días, luego un día y sus comidas. El bloque puede incluir hoy; el resumen lo excluye.
 - [ ] Volver al gráfico mantiene período, comparación, población/barra y bloque abierto mientras sean válidos. Editar/eliminar una comida y regresar: relectura y valor actualizado o día sin registro, nunca la cifra anterior. Tirar para actualizar revalida A y B sin borrar contenido. Error/reintento de B conserva A; logout/otra cuenta sin selección ni valores previos.
 - [ ] iPhone compacto/grande, claro/oscuro, Dynamic Type, VoiceOver (fecha, unidad, cobertura, selección y acción explícita), scroll horizontal y targets mínimos; Reduce Motion y contenido accesible por encima de la barra. Verificar navegación nativa real y ausencia de bucles; los tests JS no aprueban QA física.
+
+
+### Métricas #402 — inspección y original diario
+
+Pendiente físico; sin simulador, build o instalación durante este incremento.
+
+- [ ] Progreso → Métricas: punto cero/con valor/sin dato → inspección con año, valor/unidad y cobertura → acción explícita → fecha exacta del original. Métrica de origen destacada por UUID y anunciada por VoiceOver; nombres iguales no sustituyen identidades. Duración, decimales, métricas archivadas y primer/pocos registros.
+- [ ] Volver conserva métrica, período, A/B, punto válido y origen de Insights. Editar/borrar → volver: valor actualizado o «Sin dato»; intervalo retirado sin fuente obsoleta. Cambiar nombre/unidad/tipo/archivo retira selección; error al revalidar conserva lectura confirmada con aviso. Logout/cambio de cuenta sin datos o selección anterior. Entradas desde Historial/Insights siguen independientes.
+- [ ] Semanas/meses: promedio, intervalo real y muestra; «Recorrer días del intervalo» no atribuye el promedio al primer día. Recorrer días sin valor, límites parciales, cambio de año, hoy en curso y aviso al salir del intervalo. No aparecen barras de referencia que el contrato no entrega.
+- [ ] Claro/oscuro, iPhone compacto/grande, nombre y unidades largos, Dynamic Type (valores apilados), objetivos táctiles, scroll horizontal, VoiceOver/orden hacia la acción, Reducir movimiento y barra inferior. Comprobar retorno nativo real, no acreditado por las pruebas JS.

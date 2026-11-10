@@ -1,25 +1,27 @@
 import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchProgressMetrics, progressRequestKey, type ProgressMetrics } from '@/api/progress';
 import { AppIcon, AppText, Button, GlassSurface, InlineUnavailable, SkeletonBlock, UnavailableState, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion, type AppIconName } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
-import { MetricTrendChart } from './metric-trend-chart';
+import { MetricTrendChart, type MetricInspection, type MetricPointSelection } from './metric-trend-chart';
 import { ProgressRow } from './progress-row';
 import { ProgressScroll } from './progress-scroll';
 import { useProgressRange } from './progress-range-context';
 import { shortRange } from './progress-range';
-import { arrowDelta, formatValue } from './progress-format';
+import { arrowDelta, comparisonText, formatValue } from './progress-format';
 import { useCachedRead } from '@/api/use-cached-read';
 import { ProgressReadStatus } from './progress-read-status';
 import { ReturnToInsights } from '@/insights/return-to-insights';
 import { useProgressRouteRange } from './use-progress-route-range';
+import { isChartMetricId, metricOriginalHref } from './metrics-chart-navigation';
 
 const PCT = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 });
 
-function Detail({ data }: { data: ProgressMetrics }) {
+function Detail({ data, inspection }: { data: ProgressMetrics; inspection: MetricInspection }) {
   const { colors } = useOwnlevelTheme();
+  const router = useRouter();
   const { fontScale } = useWindowDimensions();
   const { compareText, today } = useProgressRange();
   const m = data.metric!, s = data.summary!, v = (n: number | null) => formatValue(n, m.unit, m.valueType);
@@ -44,7 +46,7 @@ function Detail({ data }: { data: ProgressMetrics }) {
       <View style={styles.summaryGroup}>
         <AppText numeric variant="title1">{s.average === null ? '—' : v(s.average)}</AppText>
         <AppText muted variant="caption">promedio por día con dato</AppText>
-        {m.currentTarget !== null ? <AppText muted numeric variant="caption">objetivo {v(m.currentTarget)}</AppText> : null}
+        {m.currentTarget !== null ? <AppText muted numeric variant="caption">objetivo actual {v(m.currentTarget)}</AppText> : null}
         {compareText ? <AppText numeric variant="caption" testID="metric-trend-comparison">{compareText} {data.previous?.average == null ? 'sin datos'
           : `${v(data.previous.average)}${c && c.status === 'comparable' && c.deltaAbsolute !== null ? ` · ${arrowDelta(c.deltaAbsolute, m.unit, m.valueType)}` : ''}`}</AppText> : null}
       </View>
@@ -54,7 +56,11 @@ function Detail({ data }: { data: ProgressMetrics }) {
         {compareText && data.previous ? <AppText numeric muted variant="caption">{compareText} {data.previous.registeredDays} de {data.previous.eligibleDays}</AppText> : null}
       </View>
     </View>
-    <MetricTrendChart data={data} />
+    {compareText && c && (c.status !== 'comparable' || c.deltaAbsolute === null) ? <AppText muted variant="caption" testID="metric-trend-comparison-reason">{comparisonText(c, m.unit, m.valueType, compareText)}</AppText> : null}
+    <AppText muted variant="caption">Nombre, unidad y objetivo corresponden a la definición actual; no se conservan sus versiones históricas.</AppText>
+    <MetricTrendChart data={data} inspection={inspection} onOpen={isChartMetricId(m.id) ? (start, end) => {
+      const href = metricOriginalHref(m.id, start, end, data.period.bucket !== 'day'); if (href) router.push(href);
+    } : undefined} />
     {/* One legend line, only with what this chart shows. */}
     <View style={styles.legend} testID="metric-trend-legend">
       {!daily ? <AppText muted variant="caption">{data.period.bucket === 'week' ? 'cada barra: promedio de la semana' : 'cada barra: promedio del mes'}</AppText> : null}
@@ -113,6 +119,13 @@ function MetricsTrends() {
   if (seenMetric !== routeMetric) { setSeenMetric(routeMetric); setMetricId(routeMetric); }
   const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressMetrics(c, query, metricId, signal, compare), [query, metricId, compare]);
   const { state, data, refresh } = useCachedRead(client, 'metrics', `${progressRequestKey(query, compare)}|${metricId ?? ''}`, load);
+  const definition = data?.metric;
+  const scope = JSON.stringify([progressRequestKey(query, compare), metricId, definition?.id, definition?.name, definition?.unit, definition?.valueType, definition?.isActive]);
+  const [saved, setSaved] = useState({ client, scope, selection: null as MetricPointSelection });
+  const sameScope = saved.client === client && saved.scope === scope;
+  const selection = sameScope ? saved.selection : null;
+  if (!sameScope) setSaved({ client, scope, selection: null });
+  const inspection: MetricInspection = { selection, onSelect: next => setSaved({ client, scope, selection: next }) };
   const [showArchived, setShowArchived] = useState(false);
   const active = data?.definitions.filter(d => d.isActive) ?? [];
   const archived = data?.definitions.filter(d => !d.isActive) ?? [];
@@ -134,7 +147,7 @@ function MetricsTrends() {
               <MetricChip key={d.id} label={d.name} quiet archived selected={d.id === data.metric?.id} onPress={() => setMetricId(d.id)} />) : null}
           </> : null}
         </ScrollView>
-        {data.metric && data.summary ? <Detail key={`${progressRequestKey(query, compare)}|${metricId}|${state.status === 'ready' && state.refreshing}`} data={data} />
+        {data.metric && data.summary ? <Detail data={data} inspection={inspection} />
           : <AppText muted>No hay métricas para analizar.</AppText>}
       </>}
   </ProgressScroll>;

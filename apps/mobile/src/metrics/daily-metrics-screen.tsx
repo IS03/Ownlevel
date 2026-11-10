@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshControl, StyleSheet, View } from 'react-native';
+import { RefreshControl, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { selectedRouteDate } from '@/history/navigation';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
+import { metricsChartOrigin, ReturnToMetricChart } from '@/progress/metrics-chart-navigation';
 import { useDomainDate } from '@/history/use-domain-date';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
 import { AppText, Button, Heading, InlineUnavailable, ScrollScreen, SkeletonBlock, Surface, spacing, useOwnlevelTheme } from '@/design-system';
 import { NutritionDateSelector } from '@/nutrition/date-selector';
 import { metricValue } from '@/nutrition/day-content';
-import { displayNutritionDate, nutritionToday, shiftNutritionDate } from '@/nutrition/day-format';
+import { displayNutritionDate, inputNutritionDate, nutritionToday, shiftNutritionDate } from '@/nutrition/day-format';
 import { useNutritionDayResource } from '@/nutrition/day-resource';
 import { DayWriteEditor } from '@/nutrition/day-write-editor';
 import { canWriteDay } from '@/nutrition/day-write-model';
@@ -28,6 +29,8 @@ function MetricsDay({ autoEdit = false, date, today, onAutoEdit, onSelect, onSer
 }) {
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
+  const { fontScale } = useWindowDimensions();
+  const origin = metricsChartOrigin(useLocalSearchParams());
   const router = useRouter();
   const { state, refresh } = useNutritionDayResource(client, date);
   const [selector, setSelector] = useState(false);
@@ -48,7 +51,8 @@ function MetricsDay({ autoEdit = false, date, today, onAutoEdit, onSelect, onSer
   return <ScrollScreen testID="daily-metrics-screen" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing}
     onRefresh={() => void refresh()} tintColor={colors.primary} />}>
     <View style={styles.header}>
-      <ReturnToHistoryDay />
+      <ReturnToHistoryDay /><ReturnToMetricChart />
+      {origin?.interval ? <AppText muted variant="caption">Recorrido del intervalo {inputNutritionDate(origin.interval.start)} – {inputNutritionDate(origin.interval.end)}. Consultá cada fecha; este día no representa el promedio.{date < origin.interval.start || date > origin.interval.end ? ' Estás fuera del intervalo del gráfico.' : ''}</AppText> : null}
       <AppText variant="footnote">{date === serverToday ? 'Hoy' : 'Métricas del día'}</AppText>
       <AppText accessibilityRole="header" variant="heading">{displayNutritionDate(date)}</AppText>
       <View style={styles.dates}>
@@ -72,10 +76,14 @@ function MetricsDay({ autoEdit = false, date, today, onAutoEdit, onSelect, onSer
           : data.activity.data.metrics.length === 0 ? <Surface><AppText muted>No hay métricas disponibles para esta fecha.</AppText></Surface>
           : <Surface style={styles.list}>
             <Heading level={2}>Métricas</Heading>
-            {data.activity.data.metrics.map(m => <View key={m.id} style={styles.metric} testID={`daily-metric-${m.id}`}>
-              <View style={styles.row}>
+            {origin && !data.activity.data.metrics.some(m => m.id === origin.metricId) ? <AppText muted>La métrica del gráfico no figura en la lectura de esta fecha. No se sustituye por otra.</AppText> : null}
+            {data.activity.data.metrics.map(m => <View key={m.id} accessible={origin?.metricId === m.id} accessibilityState={{ selected: origin?.metricId === m.id }}
+              accessibilityLabel={origin?.metricId === m.id ? `Métrica del gráfico, ${m.label}${m.isActive ? '' : ', archivada'}, ${metricValue(m, m.value)}${m.target !== null ? `. Objetivo actual: ${metricValue(m, m.target)}` : ''}` : undefined}
+              style={[styles.metric, origin?.metricId === m.id && { borderLeftWidth: 2, borderColor: colors.primary, paddingLeft: spacing.sm }]} testID={`daily-metric-${m.id}`}>
+              {origin?.metricId === m.id ? <AppText variant="caption" style={{ color: colors.primary }}>Métrica del gráfico</AppText> : null}
+              <View style={[styles.row, fontScale > 1.3 && styles.stacked]}>
                 <AppText style={styles.flex} variant="label">{m.label}{m.isActive ? '' : ' · archivada'}</AppText>
-                <AppText muted={m.value === null}>{metricValue(m, m.value)}</AppText>
+                <AppText numeric muted={m.value === null}>{metricValue(m, m.value)}</AppText>
               </View>
               {m.target !== null ? <AppText muted variant="caption">Objetivo actual: {metricValue(m, m.target)}</AppText> : null}
             </View>)}
@@ -123,5 +131,6 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   list: { gap: spacing.md },
   metric: { gap: 2 },
+  stacked: { flexDirection: 'column', alignItems: 'flex-start' },
   row: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
 });

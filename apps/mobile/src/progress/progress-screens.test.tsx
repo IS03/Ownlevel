@@ -9,6 +9,7 @@ import { parseProgressBody, parseProgressMetrics, parseProgressOverview, type Pr
 import { ProgressPeriodOverviewScreen as ProgressOverviewScreen } from './overview-screen';
 import { BodyTrendsScreen } from './body-trends-screen';
 import { ReturnToBodyChart, bodyChartReturnHref, bodyObservationHref } from './body-chart-navigation';
+import { ReturnToMetricChart } from './metrics-chart-navigation';
 import { MetricsTrendsScreen } from './metrics-trends-screen';
 import { NutritionReportsRoute } from '@/nutrition/report-route';
 import { ProgressRangeProvider } from './progress-range-context';
@@ -551,7 +552,7 @@ describe('Metrics Trends', () => {
     expect(mockMetrics).toHaveBeenLastCalledWith(mockClient, MONTH, ids.steps, null);
     const summary = within(view.getByTestId('metric-trend-summary'));
     expect(summary.getByText('0 pasos')).toBeTruthy();
-    expect(summary.getByText('promedio por día con dato')).toBeTruthy(); expect(summary.getByText('objetivo 10.000 pasos')).toBeTruthy();
+    expect(summary.getByText('promedio por día con dato')).toBeTruthy(); expect(summary.getByText('objetivo actual 10.000 pasos')).toBeTruthy();
     expect(summary.getByText('2 de 6')).toBeTruthy(); expect(summary.getByText('días con dato · pocos para un promedio')).toBeTruthy();
     expect(view.queryByTestId('metric-trend-comparison')).toBeNull();
     expect(view.getAllByTestId(/^metric-trend-chart-.*-gap$/)).toHaveLength(4);
@@ -580,7 +581,7 @@ describe('Metrics Trends', () => {
     expect(within(view.getByTestId('metric-trend-summary')).getByText('1–5 sep 0 pasos · sin cambio')).toBeTruthy();
     expect(view.getByText('1–5 sep 3 de 7')).toBeTruthy();
   });
-  it('clears inspection when refreshing or changing period, including a failed refresh with retained data', async () => {
+  it('retains confirmed inspection through a failed refresh, but clears it when changing period', async () => {
     mockParams = { metric: ids.steps };
     const view = wrap(<MetricsTrendsScreen />); await flush();
     const select = () => fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
@@ -589,14 +590,92 @@ describe('Metrics Trends', () => {
     let settle!: (result: unknown) => void;
     mockMetrics.mockImplementationOnce(() => new Promise(resolve => { settle = resolve; }));
     act(() => { view.UNSAFE_getByType(RefreshControl).props.onRefresh?.(); });
-    expect(readout()).toMatch(/^Tocá una barra,/);
+    expect(readout()).toBe('29/09/2026, 0 pasos');
     await act(async () => { settle(lost); }); await flush();
-    expect(readout()).toMatch(/^Tocá una barra,/);
-    select(); expect(readout()).toBe('29/09/2026, 0 pasos');
+    expect(readout()).toBe('29/09/2026, 0 pasos');
     fireEvent(view.getByTestId('progress-period-caption'), 'accessibilityAction', { nativeEvent: { actionName: 'decrement' } }); await flush();
     expect(readout()).toMatch(/^Tocá una barra,/);
     expect(mockPush).not.toHaveBeenCalled();
   });
+  it('opens the exact day only on the explicit action and keeps A/B and selection on native return', async () => {
+    mockParams = { metric: ids.steps };
+    const view = wrap(<><MetricsTrendsScreen /><ReturnToMetricChart /></>, comparing); await flush();
+    const calls = mockMetrics.mock.calls.length;
+    fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
+    expect(mockMetrics).toHaveBeenCalledTimes(calls); expect(mockPush).not.toHaveBeenCalled();
+    fireEvent.press(view.getByRole('button', { name: 'Abrir registro diario original' }));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/metrics', params: {
+      date: '2026-09-29', fromMetricsChart: '1', metricsChartMetric: ids.steps,
+    } });
+    mockParams = { metric: ids.steps, fromMetricsChart: '1', metricsChartMetric: ids.steps };
+    view.rerender(wrapped(<><MetricsTrendsScreen /><ReturnToMetricChart /></>, comparing)); await flush();
+    fireEvent.press(view.getByRole('button', { name: 'Volver al gráfico de la métrica' }));
+    expect(mockBack).toHaveBeenCalledTimes(1); expect(mockReplace).not.toHaveBeenCalled();
+    expect(view.getByTestId('metric-trend-readout').props.accessibilityLabel).toBe('29/09/2026, 0 pasos');
+    expect(mockMetrics).toHaveBeenCalledTimes(calls);
+    expect(mockMetrics.mock.calls.at(-1)).toEqual([mockClient, MONTH, ids.steps, { start: '2026-09-01', end: '2026-09-05' }]);
+  });
+  it('reconciles an edited/deleted point from the existing invalidation without losing a valid selection', async () => {
+    mockParams = { metric: ids.steps };
+    const view = wrap(<MetricsTrendsScreen />); await flush();
+    fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
+    const latest = metrics(ids.steps); latest.series[0] = { ...latest.series[0], value: 150, samples: 1 };
+    mockMetrics.mockResolvedValueOnce(ok(latest));
+    invalidateConfirmedReads(mockClient, '/api/mobile/v1/nutrition/days/2026-09-29/metrics'); await flush();
+    expect(view.getByTestId('metric-trend-readout').props.accessibilityLabel).toBe('29/09/2026, 150 pasos');
+    mockMetrics.mockResolvedValueOnce(ok({ ...latest, series: latest.series.map((p, i) => i === 0 ? { ...p, value: null, samples: 0 } : p) }));
+    invalidateConfirmedReads(mockClient, '/api/mobile/v1/nutrition/days/2026-09-29/metrics'); await flush();
+    expect(view.getByTestId('metric-trend-readout').props.accessibilityLabel).toBe('29/09/2026, Sin dato');
+    expect(view.getByRole('button', { name: 'Abrir registro diario original' })).toBeTruthy();
+    mockMetrics.mockResolvedValueOnce(ok({ ...latest, series: latest.series.slice(1) }));
+    invalidateConfirmedReads(mockClient, '/api/mobile/v1/nutrition/days/2026-09-29/metrics'); await flush();
+    expect(view.queryByTestId('metric-trend-original')).toBeNull();
+  });
+  it('drops selected semantics when a definition changes, and never reuses them in another account', async () => {
+    mockParams = { metric: ids.steps };
+    const view = wrap(<MetricsTrendsScreen />); await flush();
+    fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
+    const latest = metrics(ids.steps); latest.metric = { ...latest.metric!, name: 'Duración nueva', valueType: 'duration', unit: 'min' };
+    mockMetrics.mockResolvedValueOnce(ok(latest));
+    invalidateConfirmedReads(mockClient, '/api/mobile/v1/metrics/definitions'); await flush();
+    expect(view.queryByTestId('metric-trend-original')).toBeNull();
+    fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
+    expect(view.getByTestId('metric-trend-readout').props.accessibilityLabel).toContain('0 h 0 min');
+    mockActiveClient = null; mockOwner = 'anonymous';
+    view.rerender(wrapped(<MetricsTrendsScreen />)); await flush();
+    expect(view.queryByTestId('metric-trend-original')).toBeNull();
+    mockActiveClient = { request: jest.fn(), read: jest.fn() } as unknown as MobileApiClient; mockOwner = 'other';
+    view.rerender(wrapped(<MetricsTrendsScreen />)); await flush();
+    expect(view.queryByTestId('metric-trend-original')).toBeNull();
+    expect(mockMetrics.mock.calls.at(-1)![0]).toBe(mockActiveClient);
+  });
+  it('keeps archived definitions available, respects their units, and names the real A/B insufficiency', async () => {
+    mockParams = { metric: ids.custom };
+    mockMetrics.mockImplementation(async (_c, _q, id) => {
+      const data = metrics(id); data.comparison = cmp({ status: 'insufficient_data', reason: 'insufficient_current_samples', deltaAbsolute: null, deltaPercent: null, change: 'insufficient_data' });
+      return ok(data);
+    });
+    const view = wrap(<MetricsTrendsScreen />, comparing); await flush();
+    expect(view.getByRole('radio', { name: 'Mate viejo, archivada' }).props.accessibilityState.selected).toBe(true);
+    expect(view.getByTestId('metric-trend-comparison-reason')).toBeTruthy();
+    fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
+    expect(view.getByTestId('metric-trend-readout').props.accessibilityLabel).toBe('29/09/2026, 0 L');
+    fireEvent.press(view.getByRole('button', { name: 'Abrir registro diario original' }));
+    expect(mockPush.mock.calls.at(-1)![0]).toMatchObject({ params: { metricsChartMetric: ids.custom } });
+  });
+
+  it('reading budget: selecting and clearing points adds no requests to the one grouped trend read', async () => {
+    mockParams = { metric: ids.steps };
+    const view = wrap(<MetricsTrendsScreen />); await flush();
+    expect(mockMetrics).toHaveBeenCalledTimes(1);
+    fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
+    fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-30-gap'));
+    fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-30-gap'));
+    expect(mockMetrics).toHaveBeenCalledTimes(1);
+    expect(mockOverview).not.toHaveBeenCalled(); expect(mockPush).not.toHaveBeenCalled();
+    console.info('METRICS_READ_BUDGET', JSON.stringify({ surface: 'trend', initialGroupedReads: 1, additionalReadsForThreeTaps: mockMetrics.mock.calls.length - 1 }));
+  });
+
 });
 
 describe('Nutrition Reports route', () => {
