@@ -15,7 +15,8 @@ export const connectionDelta = (now: number | null, before: number | null, unit:
   const delta = difference(now, before);
   return delta === null ? 'Sin comparación' : Math.abs(delta) < 1e-9 ? '=' : arrowDelta(delta, unit);
 };
-const spokenDelta = (now: number | null, before: number | null, unit: string | null) => {
+/** The change in words («18 g más»): what VoiceOver reads instead of an arrow. */
+export const spokenDelta = (now: number | null, before: number | null, unit: string | null) => {
   const delta = difference(now, before);
   return delta === null ? 'sin comparación' : Math.abs(delta) < 1e-9 ? 'sin cambio'
     : `${formatValue(Math.abs(delta), unit)} ${delta > 0 ? 'más' : 'menos'}`;

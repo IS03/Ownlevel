@@ -837,6 +837,20 @@ La regla de apilado (`figure-layout.ts`) estima el ancho de cada cifra desde la 
 
 **Evidencia:** [capturas/manifiesto](qa/402-p1b3/evidence.json): app Dev en un simulador separado (iPhone 18 Pro Max, iOS 27.0) con Metro propio y API en memoria, sin cuenta ni producción; el simulador y Metro 8081 de la build quedaron intactos. Casos claro/oscuro, A/B, 320 pt (contenedor restringido), texto accesible grande y pocos registros. El botón «Tools» del cliente de desarrollo y el sello EJEMPLO son del arnés. No acreditan VoiceOver, Reduce Motion ni QA física; #402 sigue abierto para Relaciones, A/B y Mis vistas.
 
+### P1-B4 — Relaciones y evidencia descriptiva legibles (10/11/2026)
+
+Desde `ab4d1d5` (#465 integrado). Auditoría de `connections-section`, `connection-detail-screen`, `connections-model`, `influence-answer-screen`, `influence-model` y sus entradas desde la portada y Explorar período. Se conservan sin cambios los contratos, lectores, cachés, umbrales, clasificaciones y grupos, el B propio de «Lo que se movió junto» (período anterior equivalente, independiente del comparador general) y el A/B de «Qué influye». La sección del período ya distinguía historias disponibles, insuficientes y con error de lectura, así que no se tocó.
+
+- **Descubrimiento:** desde la portada, «Contexto y relaciones» no llevaba a «Lo que se movió junto» ni a «Qué influye»: solo se llegaba por «Períodos y A/B», sin pista en el subtítulo. Ahora el grupo incluye esas dos entradas, que solo navegan (la portada no suma lecturas), y los subtítulos dicen dónde está cada cosa.
+- **Detalle de una relación:** las dos cifras iban siempre en columnas. Con texto grande «1.142 g» se partía, la etiqueta del ejercicio principal se cortaba a 2 líneas y los nombres de la lista a 1. Ahora las cifras se apilan por ancho medido o Dynamic Type (`figure-layout.ts` de P1-B3) y las etiquetas y nombres se ven completos, con los valores debajo. Cada cifra es una parada de VoiceOver con la referencia y el cambio en palabras, y la diferencia de cada ejercicio muestra su unidad.
+- **Qué influye:** la diferencia y la calidad de la evidencia estaban en una línea gris pequeña y el aviso de «relación, no causa» aparecía al final. Ahora un bloque debajo de las barras reúne la diferencia entre grupos, la evidencia con sus días y el aviso, en una sola lectura accesible. Fijar en Mis vistas no cambia.
+
+**Verificación:** relaciones, Qué influye, portada, pantallas de Progreso e Insights: 18/18 suites (224 pruebas), con casos nuevos; `npm run validate` completo de Mobile: tipos, lint, 220/220 suites y 1.935 pruebas, `config:check`. Export iOS Hermes (9,7 MB) con caché temporal de Metro aislada.
+
+**Consumo** (Jest, lectores y parsers reales, mismo fixture, antes → después): portada 1 → 1 lectura (3.584 B), abrir «Contexto y relaciones» 0 → 0; sección de relaciones 1 → 1 (5.474 B); el detalle (otra pantalla) reutiliza esa lectura, 0 → 0; respuesta de Qué influye 1 → 1 (859 B). No es una medición en dispositivo.
+
+**Evidencia:** [capturas/manifiesto](qa/402-p1b4/evidence.json), con simulador separado, Metro propio y API en memoria; la build, su simulador y Metro 8081 quedaron intactos. No acreditan VoiceOver, Reduce Motion ni QA física. #402 sigue abierto para A/B y Mis vistas.
+
 ## Función y jerarquía
 
 **IMPLEMENTADO:** `/progress` sintetiza y navega; no duplica reportes ni muestra grandes gráficos.

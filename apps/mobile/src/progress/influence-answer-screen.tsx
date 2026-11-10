@@ -36,11 +36,7 @@ function Answer({ data }: { data: InfluenceReading }) {
           {group.average < 0 ? <AppText muted variant="caption">Valor negativo: se muestra en el número, sin barra.</AppText> : null}
         </View>;
       })}</View>
-      {/* The difference and how much to trust it, in one line under the bars (the sentence above already says both numbers). */}
-      <AppText muted numeric variant="footnote" testID="influence-evidence">
-        {r.difference === 0 ? 'Sin diferencia' : `${valueText(Math.abs(r.difference), data.measure.outcome)} ${r.difference < 0 ? 'menos' : 'más'}${r.differencePercent !== null ? ` (${Math.round(Math.abs(r.differencePercent))}\u00A0%)` : ''}`}
-        {` · evidencia ${{ low: 'poca', moderate: 'moderada', clear: 'clara' }[r.evidence]}, ${r.pairs} días con los dos datos`}
-      </AppText>
+      <Evidence data={data} />
     </View> : <View style={styles.section} testID="influence-insufficient">
       <Heading level={2}>Todavía no alcanza</Heading>
       <AppText muted numeric>Hay {r.pairs} de los 14 días con los dos datos que hacen falta, con al menos 5 en cada grupo. Lo que más falta registrar: {data.measure[r.missing].label.toLocaleLowerCase('es-AR')}.</AppText>
@@ -51,8 +47,26 @@ function Answer({ data }: { data: InfluenceReading }) {
         ? <Detail title="Ver 3 meses" detail="Con un período más largo hay más días para comparar" icon="calendar" testID="influence-longer" onPress={() => setState({ ...state, unit: '3m', anchor: today, custom: null })} /> : null}
     </View>}
     {r.status === 'ok' && compareOn && ref ? <Detail title="Comparando" icon="compare" testID="influence-comparison" detail={`Frente a ${compareText}: ${ref.status === 'ok' ? `${valueText(ref.high.average, data.measure.outcome, false)} y ${valueText(ref.low.average, data.measure.outcome)}` : 'no alcanza'}`} /> : null}
-    <AppText muted variant="footnote" testID="influence-caution">{CAUTION}</AppText>
+    {r.status === 'ok' ? null : <AppText muted variant="footnote" testID="influence-caution">{CAUTION}</AppText>}
   </>;
+}
+const EVIDENCE = { low: 'Poca evidencia', moderate: 'Evidencia moderada', clear: 'Evidencia clara' } as const;
+/**
+ * The difference between the groups, how much the days support it and, right with it, that it is an association:
+ * one block under the bars and one VoiceOver stop. Same values and classification as the reading.
+ */
+function Evidence({ data }: { data: InfluenceReading }) {
+  const { colors } = useOwnlevelTheme();
+  const r = data.current; if (r.status !== 'ok') return null;
+  const difference = r.difference === 0 ? 'Sin diferencia' : `${valueText(Math.abs(r.difference), data.measure.outcome)} ${r.difference < 0 ? 'menos' : 'más'}${r.differencePercent !== null ? ` (${Math.round(Math.abs(r.differencePercent))}\u00A0%)` : ''}`;
+  const support = `${EVIDENCE[r.evidence]} · ${r.pairs} días con los dos datos`;
+  return <View style={[styles.evidence, { borderColor: colors.border }]} testID="influence-evidence-block" accessible
+    accessibilityLabel={`Diferencia entre los grupos: ${difference}. ${support.replace(' · ', ', ')}. ${CAUTION}`}>
+    <AppText muted variant="footnote">Diferencia entre los grupos</AppText>
+    <AppText numeric variant="title2" testID="influence-evidence">{difference}</AppText>
+    <AppText numeric variant="footnote" testID="influence-support">{support}</AppText>
+    <AppText muted variant="footnote" testID="influence-caution">{CAUTION}</AppText>
+  </View>;
 }
 function Reading({ definition, questionKey }: { definition: InfluenceDefinition; questionKey?: string }) {
   const { colors } = useOwnlevelTheme();
@@ -84,4 +98,4 @@ export function InfluenceAnswerScreen() {
     return <ProgressScroll title="Tu pregunta" testID="influence-answer-screen"><AppText muted>Esta pregunta no es válida. Volvé a armarla.</AppText></ProgressScroll>;
   return <Reading definition={definition} questionKey={params.key} />;
 }
-const styles = StyleSheet.create({ section: { gap: spacing.md }, grow: { flex: 1 }, barLabel: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap' }, track: { height: 8, borderRadius: 10, overflow: 'hidden' }, pinned: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 50 } });
+const styles = StyleSheet.create({ section: { gap: spacing.md }, evidence: { gap: spacing.xs, paddingTop: spacing.md, borderTopWidth: StyleSheet.hairlineWidth }, grow: { flex: 1 }, barLabel: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap' }, track: { height: 8, borderRadius: 10, overflow: 'hidden' }, pinned: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 50 } });
