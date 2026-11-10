@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchProgressMetrics, progressRequestKey, type ProgressMetrics } from '@/api/progress';
-import { AppIcon, AppText, Button, GlassSurface, InlineUnavailable, SkeletonBlock, UnavailableState, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion, type AppIconName } from '@/design-system';
+import { AppIcon, AppText, Button, GlassSurface, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion, type AppIconName } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import { MetricTrendChart, type MetricInspection, type MetricPointSelection } from './metric-trend-chart';
 import { ProgressRow } from './progress-row';
@@ -16,13 +16,14 @@ import { ProgressReadStatus } from './progress-read-status';
 import { ReturnToInsights } from '@/insights/return-to-insights';
 import { useProgressRouteRange } from './use-progress-route-range';
 import { isChartMetricId, metricOriginalHref } from './metrics-chart-navigation';
+import { figuresFitInRow, useMeasuredWidth } from './figure-layout';
 
 const PCT = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 });
 
 function Detail({ data, inspection }: { data: ProgressMetrics; inspection: MetricInspection }) {
   const { colors } = useOwnlevelTheme();
   const router = useRouter();
-  const { fontScale } = useWindowDimensions();
+  const { width, fontScale, onLayout } = useMeasuredWidth();
   const { compareText, today } = useProgressRange();
   const m = data.metric!, s = data.summary!, v = (n: number | null) => formatValue(n, m.unit, m.valueType);
   const low = s.coverageRatio !== null && s.coverageRatio < 0.5;
@@ -41,10 +42,12 @@ function Detail({ data, inspection }: { data: ProgressMetrics; inspection: Metri
     { key: 'max', label: 'Máximo', value: v(s.maximum), when: when(s.maximum) },
     { key: 'median', label: 'Mediana', value: v(s.median), when: '' },
   ];
+  // Three columns only while every value fits whole; otherwise (or with large text) one under the other.
+  const stacked = !figuresFitInRow({ texts: stats.map(x => x.value), width, fontScale, variant: 'headline' });
   return <>
-    <View style={styles.numbers} testID="metric-trend-summary">
+    <View style={styles.numbers} testID="metric-trend-summary" onLayout={onLayout}>
       <View style={styles.summaryGroup}>
-        <AppText numeric variant="title1">{s.average === null ? '—' : v(s.average)}</AppText>
+        <AppText numeric variant="title1" accessibilityLabel={s.average === null ? 'Sin dato' : undefined}>{s.average === null ? '—' : v(s.average)}</AppText>
         <AppText muted variant="caption">promedio por día con dato</AppText>
         {m.currentTarget !== null ? <AppText muted numeric variant="caption">objetivo actual {v(m.currentTarget)}</AppText> : null}
         {compareText ? <AppText numeric variant="caption" testID="metric-trend-comparison">{compareText} {data.previous?.average == null ? 'sin datos'
@@ -71,9 +74,9 @@ function Detail({ data, inspection }: { data: ProgressMetrics; inspection: Metri
       {gaps ? <AppText muted variant="caption">hueco: sin dato</AppText> : null}
       {data.period.includesToday ? <AppText muted variant="caption">hoy cuenta cuando termina</AppText> : null}
     </View>
-    <View style={[styles.stats, fontScale > 1.3 && styles.stacked]} testID="metric-trend-stats">
+    <View style={[styles.stats, stacked && styles.stacked]} testID="metric-trend-stats">
       {stats.map((x, i) => <View key={x.key} accessible accessibilityLabel={`${x.label}, ${x.value}${x.when}`}
-        style={[styles.stat, fontScale > 1.3 && styles.stackedStat, i > 0 && [fontScale > 1.3 ? styles.statTopDivider : styles.statDivider, { borderColor: colors.border }]]}>
+        style={[styles.stat, stacked && styles.stackedStat, i > 0 && [stacked ? styles.statTopDivider : styles.statDivider, { borderColor: colors.border }]]}>
         <AppText muted variant="caption">{x.label}</AppText>
         <AppText numeric variant="headline">{x.value}</AppText>
         {x.when ? <AppText muted numeric variant="caption">{x.when.replace(/^ · /, '')}</AppText> : null}
@@ -92,13 +95,18 @@ function Detail({ data, inspection }: { data: ProgressMetrics; inspection: Metri
  * A metric to look at, as a Liquid Glass capsule (IDENTIDAD.md: glass on controls). The chosen one takes the champagne;
  * an archived one is quieter, in muted text with the archive mark, so it never reads as one you track today.
  */
-function MetricChip({ label, selected, onPress, icon, quiet = false, archived = false, testID }: {
-  label: string; selected: boolean; onPress: () => void; icon?: AppIconName; quiet?: boolean; archived?: boolean; testID?: string;
+function MetricChip({ label, selected, onPress, icon, quiet = false, archived = false, expanded, testID }: {
+  label: string; selected: boolean; onPress: () => void; icon?: AppIconName; quiet?: boolean; archived?: boolean;
+  /** Only for the control that shows or hides the archived metrics: a disclosure button, not one more metric. */
+  expanded?: boolean; testID?: string;
 }) {
   const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
   const color = selected ? colors.primary : quiet ? colors.textMuted : colors.text;
-  return <Pressable accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={archived ? `${label}, archivada` : label} testID={testID}
-    onPress={() => { triggerHaptic('stepperChange'); onPress(); }} style={({ pressed }) => pressedStyle(pressed, reduced)}>
+  const disclosure = expanded !== undefined;
+  // The capsule keeps its look; the touch area reaches the 44 pt minimum around it.
+  return <Pressable accessibilityRole={disclosure ? 'button' : 'radio'} accessibilityState={disclosure ? { expanded } : { selected }}
+    accessibilityLabel={archived ? `${label}, archivada` : label} testID={testID}
+    onPress={() => { triggerHaptic('stepperChange'); onPress(); }} style={({ pressed }) => [styles.chipTarget, pressedStyle(pressed, reduced)]}>
     <GlassSurface interactive tint={selected ? colors.brandSubtle : undefined} style={styles.chip}>
       {icon || archived ? <AppIcon name={icon ?? 'archive'} color={color} size={15} /> : null}
       <AppText variant="subheadline" style={{ color, fontWeight: selected ? '600' : '400' }}>{label}</AppText>
@@ -142,7 +150,7 @@ function MetricsTrends() {
           {archived.length ? <>
             <View style={[styles.rule, { backgroundColor: colors.border }]} />
             <MetricChip label={showArchived ? 'Archivadas' : `Archivadas (${archived.length})`} icon="archive" quiet selected={false}
-              onPress={() => setShowArchived(v => !v)} testID="metric-archived-toggle" />
+              expanded={showArchived} onPress={() => setShowArchived(v => !v)} testID="metric-archived-toggle" />
             {showArchived || archived.some(d => d.id === data.metric?.id) ? archived.filter(d => showArchived || d.id === data.metric?.id).map(d =>
               <MetricChip key={d.id} label={d.name} quiet archived selected={d.id === data.metric?.id} onPress={() => setMetricId(d.id)} />) : null}
           </> : null}
@@ -166,10 +174,11 @@ const styles = StyleSheet.create({
   stackedText: { flex: 0 },
   stackedStat: { flexBasis: 'auto', flexGrow: 0 },
   statTopDivider: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: spacing.md },
-  chipRow: { flexGrow: 0, marginHorizontal: -16 },
+  chipRow: { flexGrow: 0, marginHorizontal: -brandTokens.layout.screenPadding },
+  chipTarget: { minHeight: brandTokens.layout.minTouch, justifyContent: 'center' },
   chip: { minHeight: 36, borderRadius: 18, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 6 },
   rule: { width: StyleSheet.hairlineWidth, height: 24, marginHorizontal: 4 },
-  chips: { gap: spacing.sm, paddingVertical: 2, paddingHorizontal: 16, alignItems: 'center' },
+  chips: { gap: spacing.sm, paddingHorizontal: brandTokens.layout.screenPadding, alignItems: 'center' },
   legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.md, rowGap: spacing.xs },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   dash: { width: 14, borderTopWidth: 1, borderStyle: 'dashed', opacity: 0.6 },

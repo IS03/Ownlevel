@@ -69,7 +69,8 @@
       "codex/402-history-session-originals": false,
       "codex/402-panorama-first": false,
       "codex/402-history-editorial": false,
-      "codex/402-training-editorial": false
+      "codex/402-training-editorial": false,
+      "claude/402-p1b3-body-nutrition-metrics": false
     }
   }
 }

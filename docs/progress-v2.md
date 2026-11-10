@@ -820,6 +820,23 @@ Medida y selección quedan sobre las ramas de carga, limitadas al cliente y per�
 
 **Evidencia:** [matriz/capturas](qa/402-p1b2/evidence.json), componentes reales en app Dev ya instalada con NativeTabs y API en memoria, sin cuenta ni escrituras productivas. Entrenamiento/Ejercicio, claro/oscuro, muchos buckets, vacío, viewport 320 pt y accessibility-large con cifras extensas. 320 pt es un contenedor restringido del mismo simulador; los tests cubren ventanas 320/430 pt y ancho medido. El arnés y desplazamiento programático son temporales, retirados. Las capturas no aprueban VoiceOver, Reduce Motion ni el gesto de ida/vuelta nativo completo; el encabezado compartido sigue abreviando título/rango en anchos/tamaños extremos y no se rediseña aquí. QA física en #432. Continúan Cuerpo, Nutrición, Métricas, Relaciones, A/B y Mis vistas; #402 no se cierra.
 
+### P1-B3 — Cuerpo, Nutrición y Métricas: cifras enteras y lectura accesible (10/11/2026)
+
+Desde `fed0146` (#461 integrado). Auditoría previa de las tres pantallas y sus gráficos (`period-chart`, `nutrition-chart`, `metric-trend-chart`, `ProgressScroll`): la inspección local, el acceso a originales por fecha/UUID, el A/B, los estados vacío/parcial/no válido y la cobertura ya estaban resueltos por #455–#457 y no se tocan. Las brechas comprobadas con capturas nativas estaban en los resúmenes:
+
+- **Cuerpo:** último registro y cambio en dos columnas que sólo se apilaban con Dynamic Type; a 320 pt «111,8 kg» y «↘ 12,2 kg» se partían entre valor y unidad. Ahora se apilan según el ancho medido del resumen o el tamaño de letra. Cada cifra es una parada de VoiceOver con el cambio en palabras («bajó 1,6 kg»). La referencia A/B pasa a un bloque propio con etiqueta, valor y cantidad de registros; sin cambio de cálculo.
+- **Nutrición:** calorías y proteína siguen lado a lado mientras entran enteras; objetivo histórico promedio y A/B salen de las medias columnas a líneas de ancho completo, con unidad en cada valor de referencia y en la diferencia. Cada cifra conserva su lectura accesible completa (consumo, objetivo, referencia con diferencia con signo) y «—» se lee «sin dato». La cobertura sube a `footnote`. La diferencia sigue siendo entre promedios redondeados, como antes; días sin registro no cuentan como cero.
+- **Métricas:** las tres estadísticas pasan a filas cuando no entran enteras en tres columnas (cifras largas, 320 pt o texto grande). Las cápsulas conservan su forma de vidrio con un área táctil de 44 pt; «Archivadas» se anuncia como botón con estado desplegado, no como otra métrica. Un promedio ausente se lee «sin dato».
+- **Gráficos:** sin cambios de geometría; la lectura en reposo de Cuerpo y Nutrición pasa a una nota discreta, igual que Entrenamiento.
+
+La regla de apilado (`figure-layout.ts`) estima el ancho de cada cifra desde la escala tipográfica de marca y, ante la duda, apila: nunca reduce la letra. Sin cambios de contrato, endpoint, lectores, cachés, estadísticas ni Insights.
+
+**Verificación:** Progreso, Cuerpo e Insights 42/42 suites (397 pruebas), con casos nuevos de apilado por ancho/Dynamic Type, etiquetas accesibles, «sin dato», cápsulas de 44 pt y «Archivadas»; `npm run validate` completo de Mobile: tipos, lint, 220/220 suites y 1.933 pruebas (guardas de carpetas compartidas, entorno público y Auth incluidas) y `config:check`. Export iOS Hermes (9,7 MB) desde la rama con caché temporal de Metro aislada. Los cuatro avisos `act(...)` de Métricas ya existen en la base.
+
+**Consumo** (mismo fixture y parser, pantallas reales en Jest, antes → después): Cuerpo 4 → 4 lecturas (2 `progress/body` de 1.012 B y 2 de la ficha de Cuerpo de 681 B: la sincronización existente ficha→período del arnés), igual con A/B; Nutrición 2 → 2 (reporte 6.068 B + horarios 588 B) y 3 → 3 con A/B (segundo reporte 6.070 B); Métricas 1 → 1 (1.340 B), igual con A/B. **0 → 0** lecturas por selección de puntos, despliegues y cambios locales. No es una medición en dispositivo.
+
+**Evidencia:** [capturas/manifiesto](qa/402-p1b3/evidence.json): app Dev en un simulador separado (iPhone 18 Pro Max, iOS 27.0) con Metro propio y API en memoria, sin cuenta ni producción; el simulador y Metro 8081 de la build quedaron intactos. Casos claro/oscuro, A/B, 320 pt (contenedor restringido), texto accesible grande y pocos registros. El botón «Tools» del cliente de desarrollo y el sello EJEMPLO son del arnés. No acreditan VoiceOver, Reduce Motion ni QA física; #402 sigue abierto para Relaciones, A/B y Mis vistas.
+
 ## Función y jerarquía
 
 **IMPLEMENTADO:** `/progress` sintetiza y navega; no duplica reportes ni muestra grandes gráficos.

@@ -1,0 +1,376 @@
+{
+  "base": "fed01461ce722ed93fded7ff1096b75189baa980",
+  "device": "iPhone 18 Pro Max / iOS 27.0 simulator (separate from the build simulator), existing OWNLEVEL Dev app",
+  "source": "Real BodyTrendsScreen, NutritionTrendsScreen and MetricsTrendsScreen with ProgressScroll and NativeTabs; temporary harness (own Metro on 8084, @/api and @/auth aliased to an in-memory client) removed before commit; Metro 8081 and the build simulator untouched",
+  "cases": [
+    {
+      "name": "body-light",
+      "screen": "body",
+      "density": "normal",
+      "theme": "light"
+    },
+    {
+      "name": "body-dark-ab",
+      "screen": "body",
+      "density": "dense",
+      "theme": "dark",
+      "compare": true
+    },
+    {
+      "name": "body-compact",
+      "screen": "body",
+      "density": "long",
+      "theme": "light",
+      "width": 320,
+      "compare": true
+    },
+    {
+      "name": "body-large-text",
+      "screen": "body",
+      "density": "long",
+      "theme": "light",
+      "size": "accessibility-large",
+      "compare": true
+    },
+    {
+      "name": "body-few",
+      "screen": "body",
+      "density": "few",
+      "theme": "dark"
+    },
+    {
+      "name": "nutrition-light",
+      "screen": "nutrition",
+      "density": "normal",
+      "theme": "light"
+    },
+    {
+      "name": "nutrition-dark-ab",
+      "screen": "nutrition",
+      "density": "normal",
+      "theme": "dark",
+      "compare": true
+    },
+    {
+      "name": "nutrition-compact",
+      "screen": "nutrition",
+      "density": "long",
+      "theme": "light",
+      "width": 320,
+      "compare": true
+    },
+    {
+      "name": "nutrition-large-text",
+      "screen": "nutrition",
+      "density": "long",
+      "theme": "light",
+      "size": "accessibility-large",
+      "compare": true
+    },
+    {
+      "name": "nutrition-few",
+      "screen": "nutrition",
+      "density": "few",
+      "theme": "dark"
+    },
+    {
+      "name": "metrics-light",
+      "screen": "metrics",
+      "density": "normal",
+      "theme": "light"
+    },
+    {
+      "name": "metrics-dark-ab",
+      "screen": "metrics",
+      "density": "normal",
+      "theme": "dark",
+      "compare": true
+    },
+    {
+      "name": "metrics-compact",
+      "screen": "metrics",
+      "density": "long",
+      "theme": "light",
+      "width": 320,
+      "compare": true
+    },
+    {
+      "name": "metrics-large-text",
+      "screen": "metrics",
+      "density": "long",
+      "theme": "light",
+      "size": "accessibility-large",
+      "compare": true
+    },
+    {
+      "name": "metrics-few",
+      "screen": "metrics",
+      "density": "few",
+      "theme": "dark"
+    }
+  ],
+  "compact": "320 pt constrained container on the same simulator; Jest also covers measured widths 200/288/358/398 pt",
+  "scrolled": "metrics-compact-scrolled: manual swipe in the simulator, no product instrumentation",
+  "resize": "Published PNGs downscaled to 660x1434 with sips; no visual editing",
+  "captures": [
+    {
+      "file": "after-body-compact.png",
+      "bytes": 408868
+    },
+    {
+      "file": "after-body-few.png",
+      "bytes": 354512
+    },
+    {
+      "file": "after-body-light.png",
+      "bytes": 469158
+    },
+    {
+      "file": "after-metrics-compact-scrolled.png",
+      "bytes": 282852
+    },
+    {
+      "file": "after-metrics-dark-ab.png",
+      "bytes": 335002
+    },
+    {
+      "file": "after-nutrition-compact.png",
+      "bytes": 427841
+    },
+    {
+      "file": "after-nutrition-dark-ab.png",
+      "bytes": 406125
+    },
+    {
+      "file": "after-nutrition-large-text.png",
+      "bytes": 468065
+    },
+    {
+      "file": "before-body-compact.png",
+      "bytes": 423134
+    },
+    {
+      "file": "before-metrics-compact-scrolled.png",
+      "bytes": 343726
+    },
+    {
+      "file": "before-nutrition-compact.png",
+      "bytes": 464279
+    },
+    {
+      "file": "before-nutrition-dark-ab.png",
+      "bytes": 404363
+    }
+  ],
+  "readingBudget": {
+    "before": {
+      "body": {
+        "initial": 4,
+        "afterLocalInteractions": 0,
+        "reads": [
+          {
+            "path": "/api/mobile/v1/progress/body",
+            "bytes": 1012
+          },
+          {
+            "path": "/api/mobile/v1/body",
+            "bytes": 681
+          },
+          {
+            "path": "/api/mobile/v1/body",
+            "bytes": 681
+          },
+          {
+            "path": "/api/mobile/v1/progress/body",
+            "bytes": 1012
+          }
+        ]
+      },
+      "body-ab": {
+        "initial": 4,
+        "afterLocalInteractions": 0,
+        "reads": [
+          {
+            "path": "/api/mobile/v1/progress/body",
+            "bytes": 1012
+          },
+          {
+            "path": "/api/mobile/v1/body",
+            "bytes": 681
+          },
+          {
+            "path": "/api/mobile/v1/body",
+            "bytes": 681
+          },
+          {
+            "path": "/api/mobile/v1/progress/body",
+            "bytes": 1012
+          }
+        ]
+      },
+      "nutrition": {
+        "initial": 2,
+        "afterLocalInteractions": 0,
+        "reads": [
+          {
+            "path": "/api/mobile/v1/nutrition/reports",
+            "bytes": 6068
+          },
+          {
+            "path": "/api/mobile/v1/progress/nutrition/timing",
+            "bytes": 588
+          }
+        ]
+      },
+      "nutrition-ab": {
+        "initial": 3,
+        "afterLocalInteractions": 0,
+        "reads": [
+          {
+            "path": "/api/mobile/v1/nutrition/reports",
+            "bytes": 6068
+          },
+          {
+            "path": "/api/mobile/v1/progress/nutrition/timing",
+            "bytes": 588
+          },
+          {
+            "path": "/api/mobile/v1/nutrition/reports",
+            "bytes": 6070
+          }
+        ]
+      },
+      "metrics": {
+        "initial": 1,
+        "afterLocalInteractions": 0,
+        "reads": [
+          {
+            "path": "/api/mobile/v1/progress/metrics",
+            "bytes": 1340
+          }
+        ]
+      },
+      "metrics-ab": {
+        "initial": 1,
+        "afterLocalInteractions": 0,
+        "reads": [
+          {
+            "path": "/api/mobile/v1/progress/metrics",
+            "bytes": 1340
+          }
+        ]
+      }
+    },
+    "after": {
+      "body": {
+        "initial": 4,
+        "afterLocalInteractions": 0,
+        "reads": [
+          {
+            "path": "/api/mobile/v1/progress/body",
+            "bytes": 1012
+          },
+          {
+            "path": "/api/mobile/v1/body",
+            "bytes": 681
+          },
+          {
+            "path": "/api/mobile/v1/body",
+            "bytes": 681
+          },
+          {
+            "path": "/api/mobile/v1/progress/body",
+            "bytes": 1012
+          }
+        ]
+      },
+      "body-ab": {
+        "initial": 4,
+        "afterLocalInteractions": 0,
+        "reads": [
+          {
+            "path": "/api/mobile/v1/progress/body",
+            "bytes": 1012
+          },
+          {
+            "path": "/api/mobile/v1/body",
+            "bytes": 681
+          },
+          {
+            "path": "/api/mobile/v1/body",
+            "bytes": 681
+          },
+          {
+            "path": "/api/mobile/v1/progress/body",
+            "bytes": 1012
+          }
+        ]
+      },
+      "nutrition": {
+        "initial": 2,
+        "afterLocalInteractions": 0,
+        "reads": [
+          {
+            "path": "/api/mobile/v1/nutrition/reports",
+            "bytes": 6068
+          },
+          {
+            "path": "/api/mobile/v1/progress/nutrition/timing",
+            "bytes": 588
+          }
+        ]
+      },
+      "nutrition-ab": {
+        "initial": 3,
+        "afterLocalInteractions": 0,
+        "reads": [
+          {
+            "path": "/api/mobile/v1/nutrition/reports",
+            "bytes": 6068
+          },
+          {
+            "path": "/api/mobile/v1/progress/nutrition/timing",
+            "bytes": 588
+          },
+          {
+            "path": "/api/mobile/v1/nutrition/reports",
+            "bytes": 6070
+          }
+        ]
+      },
+      "metrics": {
+        "initial": 1,
+        "afterLocalInteractions": 0,
+        "reads": [
+          {
+            "path": "/api/mobile/v1/progress/metrics",
+            "bytes": 1340
+          }
+        ]
+      },
+      "metrics-ab": {
+        "initial": 1,
+        "afterLocalInteractions": 0,
+        "reads": [
+          {
+            "path": "/api/mobile/v1/progress/metrics",
+            "bytes": 1340
+          }
+        ]
+      }
+    },
+    "note": "Jest harness with real fetchers and parsers on client.read; Body includes the existing overview->period synchronization (2+2 reads); not a device measurement"
+  },
+  "verification": {
+    "directed": "src/progress + src/body + src/insights: 42/42 suites, 397 tests",
+    "mobileValidate": "typecheck, lint, 220/220 suites, 1933 tests, config:check",
+    "iosExport": "Hermes 9.7 MB, isolated Metro cache, no config change"
+  },
+  "limits": [
+    "No physical iPhone QA",
+    "No VoiceOver or Reduce Motion run on device",
+    "Dev client Tools button and EJEMPLO tag belong to the harness",
+    "Shared ProgressScroll header abbreviates title/range at extreme sizes (unchanged)",
+    "Four act(...) warnings in Metrics tests exist on base"
+  ]
+}

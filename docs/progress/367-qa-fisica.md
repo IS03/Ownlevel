@@ -309,3 +309,12 @@ Pendiente físico. Evidencia local y límites: `docs/progress/qa/402-p1b2/eviden
 - [ ] Evolución: recorrer muchos buckets; tocar inspecciona, no abre otra pantalla; fechas/año, valor/unidad, cero e intervalo en curso. Cambiar medida conserva el intervalo; sólo el día con sesiones ofrece original. Semana/mes, incluso de un solo día, mantiene su rango agregado.
 - [ ] Ejercicios con mejora/igual/descenso/insuficiencia y variantes incompatibles: referencia y señal, récord separado → medidas/gráfico → sesión/series → volver con contexto. Refrescar, corregir/eliminar y cambiar cuenta/período no conserva datos obsoletos.
 - [ ] VoiceOver, Reduce Motion, claro/oscuro y acceso al final bajo la barra nativa. Revisar encabezado compartido con texto extremo: puede abreviar título/rango, limitación conservada de `ProgressScroll`.
+
+### Progreso #402 P1-B3 — Cuerpo, Nutrición y Métricas
+
+Pendiente físico. Evidencia local y límites: `docs/progress/qa/402-p1b3/evidence.json`. Reutiliza los recorridos de #455–#457; no se marca como aprobado.
+
+- [ ] Cuerpo: peso y medidas con uno, dos y muchos registros; último registro y cambio enteros en iPhone compacto y grande (se apilan si no entran), referencia A/B en su bloque, 0 kg/no válidos/importados, etapas, punto → registro original → volver.
+- [ ] Nutrición: calorías/proteína con días faltantes, sumas parciales y sin dato («—»); objetivo histórico y A/B en líneas completas con unidad; barra → día y comidas originales → volver; cambio de período/cuenta y refresco fallido.
+- [ ] Métricas: cápsulas fáciles de tocar y desplazar, «Archivadas» despliega/oculta; mínimo/máximo/mediana enteros con cifras largas; cero válido frente a sin dato; barra → registro original por UUID → volver.
+- [ ] VoiceOver (una parada por cifra, cambios en palabras), texto grande, claro/oscuro, Reduce Motion y final de cada pantalla bajo la barra nativa.

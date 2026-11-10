@@ -74,8 +74,10 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate 
     <AppText muted variant="caption">Champagne: período elegido; gris: comparación. Cada serie conserva sus fechas, sin emparejar posiciones. Hueco: sin valor; línea en la base: cero registrado.</AppText>
     <View style={styles.section} testID="nutrition-chart-inspection">
       <View accessible accessibilityLiveRegion="polite" accessibilityLabel={`${selected ? range(selected.start, selected.end) : prompt}, ${value}${source ? `, ${source.title}` : ''}`}>
-        <AppText variant="headline">{selected ? range(selected.start, selected.end) : prompt}</AppText>
-        <AppText numeric>{value}</AppText>
+        {selected || !canInspect ? <>
+          <AppText variant="headline">{selected ? range(selected.start, selected.end) : prompt}</AppText>
+          <AppText numeric>{value}</AppText>
+        </> : <AppText muted variant="footnote">Tocá una barra para ver su fecha o rango, valor y cobertura sin salir del gráfico.</AppText>}
         {source && selected ? <AppText muted variant="caption">{source.title} · {range(source.report.range.start, source.report.range.end)}</AppText> : null}
       </View>
       {selection?.start && !selected ? <AppText muted>El dato seleccionado ya no está disponible en esta lectura. Elegí otra barra.</AppText> : null}
