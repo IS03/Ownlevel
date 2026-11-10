@@ -1,0 +1,276 @@
+{
+  "base": "da29cfc02c8c1c1b7e0763f4e99b8fa9cd5f0a9e",
+  "device": "iPhone 18 Pro / iOS 27.0 simulator / existing OWNLEVEL Dev",
+  "source": "Actual HistoryScreen, HistoryCalendarScreen, HistoryDayScreen, native Stack and useHistoryResource; fake API/auth with local fixtures, no account or production",
+  "compact": "320 pt constrained root viewport on the same simulator, not a second physical device",
+  "dynamicType": "accessibility-large: monthly agenda replaces grid; no scaling disabled",
+  "cases": [
+    [
+      "day-light",
+      "day",
+      "full",
+      "light",
+      null,
+      "large"
+    ],
+    [
+      "calendar-light",
+      "calendar",
+      "full",
+      "light",
+      null,
+      "large"
+    ],
+    [
+      "recent-light",
+      "recent",
+      "full",
+      "light",
+      null,
+      "large"
+    ],
+    [
+      "day-dark",
+      "day",
+      "full",
+      "dark",
+      null,
+      "large"
+    ],
+    [
+      "calendar-dark",
+      "calendar",
+      "full",
+      "dark",
+      null,
+      "large"
+    ],
+    [
+      "recent-dark",
+      "recent",
+      "full",
+      "dark",
+      null,
+      "large"
+    ],
+    [
+      "empty-320",
+      "day",
+      "empty",
+      "light",
+      320,
+      "large"
+    ],
+    [
+      "partial",
+      "day",
+      "partial",
+      "dark",
+      null,
+      "large"
+    ],
+    [
+      "calendar-large",
+      "calendar",
+      "full",
+      "light",
+      null,
+      "accessibility-large"
+    ],
+    [
+      "day-large",
+      "day",
+      "full",
+      "dark",
+      null,
+      "accessibility-large"
+    ]
+  ],
+  "lowerCapture": "Actual ScrollScreen scrolled programmatically by temporary instrumentation, removed afterwards",
+  "encoding": "Lossless PNG IDAT recompression only; identical decompressed scanline bytes",
+  "captures": [
+    {
+      "file": "before-day-light.png",
+      "originalBytes": 79047,
+      "publishedBytes": 31317,
+      "scanlinesSha256": "1ae91257c1de3f6f1734047771439ddff4dc6e698d73ce082026f05cec926d53"
+    },
+    {
+      "file": "before-day-dark.png",
+      "originalBytes": 217220,
+      "publishedBytes": 152871,
+      "scanlinesSha256": "33b7a61e813e0544cc6050bc326a7017073cd1840a95557bea53bd74066a1ade"
+    },
+    {
+      "file": "before-calendar-light.png",
+      "originalBytes": 160320,
+      "publishedBytes": 102840,
+      "scanlinesSha256": "8d81dfb5c00efc08cc3530aed92a1e82d96d782565e8f67ca0c1c04d20dc9825"
+    },
+    {
+      "file": "before-calendar-dark.png",
+      "originalBytes": 158890,
+      "publishedBytes": 101249,
+      "scanlinesSha256": "0f711973d72f8e2226a81566fe9c48e83a1b26af9b06189515c8ec99a1d2b08a"
+    },
+    {
+      "file": "before-recent-light.png",
+      "originalBytes": 397827,
+      "publishedBytes": 265411,
+      "scanlinesSha256": "12dc91d691b369e8df0573abcef242be1c70487d04f6a072cc6b8c72294a8401"
+    },
+    {
+      "file": "before-recent-dark.png",
+      "originalBytes": 202801,
+      "publishedBytes": 137440,
+      "scanlinesSha256": "13277163093123942c4d6185450491ca23d881ea1e04ff63655d90b4c0df8dda"
+    },
+    {
+      "file": "after-day-light.png",
+      "originalBytes": 238527,
+      "publishedBytes": 173959,
+      "scanlinesSha256": "ec487a2917b2c5b8bc0a3a556b24c9c2ad51918e5f2c8150e9f14e018a70b0ab"
+    },
+    {
+      "file": "after-day-dark.png",
+      "originalBytes": 235896,
+      "publishedBytes": 168795,
+      "scanlinesSha256": "ca84a5769e6952cc76e003d2db5299123ce73cb73de6f6d667c31087ac9f1d8c"
+    },
+    {
+      "file": "after-calendar-light.png",
+      "originalBytes": 172041,
+      "publishedBytes": 112565,
+      "scanlinesSha256": "18b7f99071c5ccbb0b4640074da27d53bea53e1ddfccdacb345c347f48acddc5"
+    },
+    {
+      "file": "after-calendar-dark.png",
+      "originalBytes": 213377,
+      "publishedBytes": 146448,
+      "scanlinesSha256": "f5fc72a7d34e4173d9e2a728899d4eb9f317b8f3bfed75f46dd59225f24458cd"
+    },
+    {
+      "file": "after-recent-light.png",
+      "originalBytes": 207907,
+      "publishedBytes": 147770,
+      "scanlinesSha256": "148d5ed6111107c487e1bee27f148b2b16dbb6cf14b4b7e1b3e702a1717dd0a0"
+    },
+    {
+      "file": "after-recent-dark.png",
+      "originalBytes": 206496,
+      "publishedBytes": 143326,
+      "scanlinesSha256": "df78a2bce6cc20820f88557f210d372c246d06dc4076cc97c0ae85a73ecc3a8a"
+    },
+    {
+      "file": "after-empty-320.png",
+      "originalBytes": 221891,
+      "publishedBytes": 157830,
+      "scanlinesSha256": "4a9ac840c1fdc12b03b0618e727dd7d7108416addc93e85937df24e4f7f17821"
+    },
+    {
+      "file": "after-partial.png",
+      "originalBytes": 244713,
+      "publishedBytes": 177119,
+      "scanlinesSha256": "a742cd366e42bda259cda047ee658d85a883a99fb6ca91ff68afdd6566753c92"
+    },
+    {
+      "file": "after-calendar-large.png",
+      "originalBytes": 272022,
+      "publishedBytes": 202148,
+      "scanlinesSha256": "14006b71ecfd2cac1cd0d645b4b49507d59611b9542071c001cdd7721465dd55"
+    },
+    {
+      "file": "after-day-lower.png",
+      "originalBytes": 242816,
+      "publishedBytes": 177957,
+      "scanlinesSha256": "c0768222bb10f7dd94f4f0ee7253f2080009eaa41bb628576c9903f5fde0521e"
+    }
+  ],
+  "readingBudget": {
+    "reading-base-expanded": [
+      {
+        "surface": "day",
+        "responseBytes": [
+          1015
+        ],
+        "initialGroupedReads": 1,
+        "sessionDetailReads": 0,
+        "readsAfterCalendarTap": 0
+      },
+      {
+        "surface": "calendar",
+        "responseBytes": [
+          5224
+        ],
+        "initialGroupedReads": 1,
+        "sessionDetailReads": 0,
+        "readsAfterCalendarTap": 0
+      },
+      {
+        "surface": "recent",
+        "responseBytes": [
+          5224
+        ],
+        "initialGroupedReads": 1,
+        "sessionDetailReads": 0,
+        "readsAfterCalendarTap": 0
+      },
+      {
+        "surface": "calendar-without-month",
+        "initialGroupedReads": 2,
+        "responseBytes": [
+          5224,
+          908
+        ],
+        "extraReadsOnTap": 0
+      }
+    ],
+    "final-directed": [
+      {
+        "surface": "day",
+        "responseBytes": [
+          1015
+        ],
+        "initialGroupedReads": 1,
+        "sessionDetailReads": 0,
+        "readsAfterCalendarTap": 0
+      },
+      {
+        "surface": "calendar",
+        "responseBytes": [
+          5224
+        ],
+        "initialGroupedReads": 1,
+        "sessionDetailReads": 0,
+        "readsAfterCalendarTap": 0
+      },
+      {
+        "surface": "recent",
+        "responseBytes": [
+          5224
+        ],
+        "initialGroupedReads": 1,
+        "sessionDetailReads": 0,
+        "readsAfterCalendarTap": 0
+      },
+      {
+        "surface": "calendar-without-month",
+        "initialGroupedReads": 2,
+        "responseBytes": [
+          5224,
+          908
+        ],
+        "extraReadsOnTap": 0
+      }
+    ]
+  },
+  "limits": [
+    "No physical iPhone QA",
+    "No full VoiceOver or Reduce Motion native assessment",
+    "Deep destination screens were not exercised natively; navigation and rereads covered by directed tests",
+    "Screenshots use a native Stack, not the full tab bar or active-session accessory",
+    "Fixture EJEMPLO overlay may clip at accessibility sizes; it is not product UI"
+  ],
+  "discarded": "Initial CI-mode screenshots did not update between fixture cases and were excluded; repeated with own Metro in watch mode",
+  "partialCapture": "Reopened the existing Dev app in a fresh process with the partial fixture after changing constrained width; native layout reset, no product changes."
+}

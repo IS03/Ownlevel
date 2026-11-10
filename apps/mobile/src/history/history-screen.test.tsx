@@ -4,12 +4,14 @@ import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { historyDay, historyFact, historyId, historyRange, historyToday } from '../../../../src/lib/mobile-api/history-fixture.test-helper';
+import { measurement } from '@/body/body-fixture.test-helper';
 import { nutritionFixture } from '@/nutrition/day-fixture.test-helper';
 import { HistoryScreen } from './history-screen';
 import { HistoryDayScreen } from './day-screen';
 import { HistoryCalendarScreen } from './calendar-screen';
 import { ReturnToHistoryDay } from './return-to-day';
-import { historyReturnParams } from './navigation';
+import { historyDayHref, historyReturnParams } from './navigation';
+const ReactNative = jest.requireActual<typeof import('react-native')>('react-native');
 const mockNavigate = jest.fn(), mockPush = jest.fn(), mockReplace = jest.fn(), mockRefresh = jest.fn();
 let mockParams: Record<string, string> = {}, mockData: unknown, mockStale = false;
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -18,7 +20,9 @@ jest.mock('./use-history-resource', () => ({ useHistoryResource: () => ({ data: 
 const wrapped = (element: React.ReactElement, mode: 'light' | 'dark' = 'light') => <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}><OwnlevelThemeProvider initialMode={mode}>{element}</OwnlevelThemeProvider></SafeAreaProvider>;
 const wrap = (element: React.ReactElement) => render(wrapped(element));
 const button = (name: string) => ({ name });
-beforeEach(() => { jest.clearAllMocks(); mockStale = false; mockParams = {}; mockData = historyRange(); });
+let mockDimensions = { width: 390, height: 844, scale: 3, fontScale: 1 };
+jest.spyOn(ReactNative, 'useWindowDimensions').mockImplementation(() => mockDimensions);
+beforeEach(() => { mockDimensions = { width: 390, height: 844, scale: 3, fontScale: 1 }; jest.clearAllMocks(); mockStale = false; mockParams = {}; mockData = historyRange(); });
 describe('M6 History navigation and composed surfaces', () => {
   it('recent rows include only confirmed facts; final-fact removal disappears after reread', () => {
     mockData = historyRange([historyFact('2026-10-03', { hasWeight: true }), historyFact()]);
@@ -31,7 +35,7 @@ describe('M6 History navigation and composed surfaces', () => {
   it('selects empty calendar dates up to server today and displays domain indicators', () => {
     mockParams = { month: '2026-10' }; mockData = historyRange([historyFact('2026-10-03', { completedSessionsCount: 1, metricValuesCount: 1 }), historyFact()]);
     const v = wrap(<HistoryCalendarScreen />);
-    expect(v.getByLabelText('2026-10-03. Training, Métricas')).toBeTruthy();
+    expect(v.getByLabelText('2026-10-03. Entrenamiento, Métricas')).toBeTruthy();
     fireEvent.press(v.getByLabelText('2026-10-04. Sin actividad'));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/history/day/[date]', params: { date: historyToday, historyMonth: '2026-10' } });
     fireEvent.press(v.getByLabelText('2026-10-05. Fecha futura')); expect(mockPush).toHaveBeenCalledTimes(1);
@@ -44,12 +48,12 @@ describe('M6 History navigation and composed surfaces', () => {
   });
   it('shows all domain summaries, partial coverage and exact date drilldown without false empty', () => {
     const d = historyDay('2026-10-03'); const n = nutritionFixture();
-    if (n.nutrition.status === 'ok') { const { meals: _meals, ...projection } = n.nutrition.data; d.nutrition = { status: 'ok', data: projection }; }
+    if (n.nutrition.status === 'ok' && n.nutrition.data.dayState === 'recorded') { const { meals: _meals, ...projection } = n.nutrition.data; d.nutrition = { status: 'ok', data: projection }; }
     d.body.weight = { status: 'ok', data: { date: d.date, weightKg: 77.5 } }; d.training = { status: 'unavailable' };
     mockParams = { date: d.date, historyMonth: '2026-10' }; mockData = d; const v = wrap(<HistoryDayScreen />);
     expect(v.getByText('Cobertura parcial. Los datos disponibles siguen visibles.')).toBeTruthy(); expect(v.queryByTestId('global-day-empty')).toBeNull();
     expect(v.getByText('Peso: 77,5 kg')).toBeTruthy(); expect(v.getByText(/Consumo:/)).toBeTruthy();
-    for (const [label, pathname] of [['Training','/(tabs)/train/day/[date]'], ['Nutrición','/(tabs)/nutrition'], ['Cuerpo','/(tabs)/progress/body'], ['Métricas','/(tabs)/progress/metrics']]) {
+    for (const [label, pathname] of [['Entrenamiento','/(tabs)/train/day/[date]'], ['Nutrición','/(tabs)/nutrition'], ['Cuerpo','/(tabs)/progress/body'], ['Métricas','/(tabs)/progress/metrics']]) {
       fireEvent.press(v.getByRole('button', button(`Abrir ${label} del día`)));
       expect(mockNavigate).toHaveBeenLastCalledWith({ pathname, params: { date: d.date, historyDate: d.date, historyMonth: '2026-10' } });
     }
@@ -76,14 +80,14 @@ describe('History day → original sessions (#402)', () => {
     const view = wrap(<HistoryDayScreen />);
     expect(view.getByText(`${count} ${count === 1 ? 'sesión terminada' : 'sesiones terminadas'}`)).toBeTruthy();
     expect(view.queryAllByTestId(/^history-day-session-/)).toHaveLength(Math.min(count, 3));
-    if (count > 3) expect(view.getByText('Vista previa: 3 de 5 sesiones. Consultá todas en Training del día.')).toBeTruthy();
+    if (count > 3) expect(view.getByText('Vista previa: 3 de 5 sesiones. Consultá todas en Entrenamiento del día.')).toBeTruthy();
     else expect(view.queryByText(/Vista previa:/)).toBeNull();
     if (count === 0) expect(view.getByTestId('global-day-empty')).toBeTruthy();
     else {
       fireEvent.press(view.getByTestId(`history-day-session-${historyId(Math.min(count, 3))}`));
       expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/history/[id]', params: { id: historyId(Math.min(count, 3)), historyDate: '2026-09-30', historyMonth: '2026-08' } });
     }
-    fireEvent.press(view.getByRole('button', { name: 'Abrir Training del día' }));
+    fireEvent.press(view.getByRole('button', { name: 'Abrir Entrenamiento del día' }));
     expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/(tabs)/train/day/[date]', params: { date: '2026-09-30', historyDate: '2026-09-30', historyMonth: '2026-08' } });
   });
   it('does not invent a total when discovery is partial; the visible original remains reachable without a calendar month', () => {
@@ -126,4 +130,89 @@ describe('History day → original sessions (#402)', () => {
     mockData = day; mockParams = { date: day.date }; const view = wrap(<HistoryDayScreen />);
     expect(view.getByText(weight === 0 ? 'Peso: 0 kg · No válido como peso corporal' : weight === null ? 'Peso: Sin registro' : 'Peso: 77,5 kg')).toBeTruthy();
   });
+});
+
+
+describe('P1-B1 editorial history', () => {
+  it.each(['light', 'dark'] as const)('keeps secondary nutrition facts explicitly available (%s)', mode => {
+    const day = historyDay('2026-10-03'), n = nutritionFixture(day.date);
+    if (n.nutrition.status === 'ok' && n.nutrition.data.dayState === 'recorded') { const { meals: _meals, ...data } = n.nutrition.data; day.nutrition = { status: 'ok', data }; }
+    day.discovery!.days[0].hasExplicitOverrides = true;
+    mockData = day; mockParams = { date: day.date };
+    const view = render(wrapped(<HistoryDayScreen />, mode));
+    expect(view.getByText('Consumo: 200 kcal')).toBeTruthy();
+    expect(view.getByText('Proteína: Sin dato')).toBeTruthy();
+    expect(view.queryByText(/Objetivo:/)).toBeNull();
+    const details = view.getByRole('button', { name: 'Objetivo y balance de esta fecha' });
+    expect(details.props.accessibilityState.expanded).toBe(false);
+    fireEvent.press(details);
+    expect(view.getByText('Objetivo: 1.800 kcal')).toBeTruthy();
+    expect(view.getByText('Gasto estimado: 2.200 kcal')).toBeTruthy();
+    expect(view.getByText('Ajustes explícitos de esta fecha.')).toBeTruthy();
+    expect(details.props.accessibilityState.expanded).toBe(true);
+    expect(mockRefresh).not.toHaveBeenCalled();
+  });
+  it.each([0, null])('preserves explicit nutrition zero %s versus unknown', calories => {
+    const day = historyDay(), n = nutritionFixture(day.date);
+    if (n.nutrition.status === 'ok' && n.nutrition.data.dayState === 'recorded') { const { meals: _meals, ...data } = n.nutrition.data; data.summary.calories = { knownTotal: 0, missingCount: calories === null ? 1 : 0 }; day.nutrition = { status: 'ok', data }; }
+    mockParams = { date: day.date }; mockData = day;
+    const view = wrap(<HistoryDayScreen />);
+    expect(view.getByText(calories === null ? 'Consumo: Sin dato' : 'Consumo: 0 kcal')).toBeTruthy();
+  });
+  it('keeps archived recorded metrics, missing active values and partial nutrient totals distinct', () => {
+    const day = historyDay(), n = nutritionFixture(day.date);
+    if (n.nutrition.status === 'ok' && n.nutrition.data.dayState === 'recorded') {
+      const { meals: _meals, ...data } = n.nutrition.data; data.summary.entryCount = 2; data.summary.calories.missingCount = 1;
+      day.nutrition = { status: 'ok', data };
+    }
+    if (n.activity.status === 'ok') day.metrics = { status: 'ok', data: { metrics: [{ ...n.activity.data.metrics[0], isActive: false }, { ...n.activity.data.metrics[0], id: historyId(33), value: null }] } };
+    mockData = day; mockParams = { date: day.date }; const view = wrap(<HistoryDayScreen />);
+    expect(view.getByText('Consumo: 200 kcal · parcial')).toBeTruthy();
+    expect(view.getByText('Agua · archivada: 0 L')).toBeTruthy();
+    expect(view.getByText('1 métricas activas sin valor.')).toBeTruthy();
+  });
+  it('names partial calendar coverage alongside confirmed domains, including unknown body subsource', () => {
+    mockParams = { month: '2026-10' };
+    const range = historyRange([historyFact('2026-10-03', { hasWeight: true, measurementsCount: null, metricValuesCount: null })]);
+    range.availability.measurements = 'unavailable'; range.availability.metrics = 'unavailable'; mockData = range;
+    const view = wrap(<HistoryCalendarScreen />);
+    expect(view.getByRole('button', { name: '2026-10-03. Cuerpo. Cobertura parcial' })).toBeTruthy();
+    expect(view.getByRole('button', { name: '2026-10-04. Cobertura parcial' })).toBeTruthy();
+    expect(view.queryByLabelText('2026-10-04. Sin actividad')).toBeNull();
+  });
+  it.each([320, 430])('preserves 44 pt grid targets at width %i and replaces grid with all dates for large text', width => {
+    mockDimensions = { ...mockDimensions, width }; mockParams = { month: '2026-10' }; mockData = historyRange();
+    const view = wrap(<HistoryCalendarScreen />);
+    expect(view.getByTestId('history-calendar-grid')).toBeTruthy();
+    const day = view.getByRole('button', { name: '2026-10-04. Sin actividad' });
+    expect(StyleSheet.flatten(day.props.style).minWidth).toBeGreaterThanOrEqual(44);
+    mockDimensions = { ...mockDimensions, fontScale: 2 };
+    view.rerender(wrapped(<HistoryCalendarScreen />));
+    expect(view.queryByTestId('history-calendar-grid')).toBeNull(); expect(view.getByTestId('history-calendar-agenda')).toBeTruthy();
+    expect(view.getAllByRole('button').filter(b => /^2026-10-/.test(b.props.accessibilityLabel))).toHaveLength(31);
+    expect(view.getByRole('button', { name: '2026-10-05. Fecha futura' }).props.accessibilityState.disabled).toBe(true);
+    fireEvent.press(view.getByRole('button', { name: '2026-10-02. Cobertura parcial' }));
+    expect(mockPush).toHaveBeenCalledWith(historyDayHref('2026-10-02', '2026-10'));
+  });
+  it('keeps long section actions wrapping and separate from section headings with large text', () => {
+    mockDimensions = { ...mockDimensions, width: 320, fontScale: 2 };
+    mockData = historyDay(); mockParams = { date: historyToday }; const view = wrap(<HistoryDayScreen />);
+    for (const area of ['Entrenamiento', 'Nutrición', 'Cuerpo', 'Métricas']) {
+      const link = view.getByRole('button', { name: `Abrir ${area} del día` });
+      expect(StyleSheet.flatten(link.props.style).minHeight).toBeGreaterThanOrEqual(44);
+      expect(within(link).getByText(({ Entrenamiento: 'Sesiones', Nutrición: 'Comidas', Cuerpo: 'Registros', Métricas: 'Valores' } as Record<string, string>)[area]).props.numberOfLines).toBeUndefined();
+    }
+    expect(view.getByRole('header', { name: 'Entrenamiento' })).toBeTruthy();
+  });
+});
+
+it('preserves imported and suspect body measurements, including legacy fields, on the exact historical day', () => {
+  const day = historyDay('2026-10-03');
+  day.body.measurement = { status: 'ok', data: measurement({ measuredOn: day.date, waistCm: 85, armCm: 31, imported: true, qualityStatus: 'suspect', qualityNote: 'Verificar unidad' }) };
+  mockData = day; mockParams = { date: day.date, historyMonth: '2026-09' }; const view = wrap(<HistoryDayScreen />);
+  expect(view.getByText('Cintura: 85 cm')).toBeTruthy();
+  expect(view.getByText('Importada')).toBeTruthy();
+  expect(view.getByText('Sospechosa · excluida del análisis: Verificar unidad')).toBeTruthy();
+  fireEvent.press(view.getByRole('button', { name: 'Abrir Cuerpo del día' }));
+  expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/(tabs)/progress/body', params: { date: day.date, historyDate: day.date, historyMonth: '2026-09' } });
 });
