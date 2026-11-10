@@ -327,3 +327,13 @@ Pendiente físico. Evidencia local y límites: `docs/progress/qa/402-p1b4/eviden
 - [ ] Explorar período → historias disponibles, insuficientes y con error diferenciadas → detalle: cifras enteras en iPhone compacto y grande y con texto grande, nombres de ejercicio completos, semanas y retorno a cada ejercicio.
 - [ ] Qué influye: barras, diferencia, evidencia y aviso de relación (no causa) juntos; datos insuficientes; con y sin Comparar; Fijar en Mis vistas.
 - [ ] VoiceOver (una parada por cifra y por el bloque de evidencia), claro/oscuro, Reduce Motion y final bajo la barra nativa.
+
+### Progreso #402 P1-B5 — A/B, Mis vistas y Explorar
+
+Pendiente físico. Evidencia local y límites: `docs/progress/qa/402-p1b5/evidence.json`. No se marca como aprobado.
+
+- [ ] Comparar: A y B de distinta duración (cada uno dice sus días), período anterior, año pasado, personalizado y sin comparar; calendario con texto grande, sin superposiciones; atajos y flechas fáciles de tocar.
+- [ ] Mis vistas vacía, con vistas disponibles, no disponibles (archivada o inválida) y de Qué influye: nombres y cifras completos, una por fila con cifras largas o texto grande; abrir y volver.
+- [ ] Editar Mis vistas: renombrar, sacar (confirmación), ordenar arrastrando y con VoiceOver; conflicto desde otro dispositivo; cambio de cuenta.
+- [ ] Explorar: medida, desglose y días con nombres largos; desglose con cifras extensas y A/B; fijar en Mis vistas.
+- [ ] Portada → «Lo que se movió junto» abre Explorar período con esa sección primero, sin cambiar el período; «Períodos y A/B» conserva el orden habitual.

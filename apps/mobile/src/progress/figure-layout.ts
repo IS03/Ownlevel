@@ -10,12 +10,14 @@ const ADVANCE = 0.62;
  * Never shrinks a number to make it fit: with large text or not enough width the figures stack
  * (AGENTS.md / IDENTIDAD.md: Dynamic Type is respected, values are not compressed).
  */
-export function figuresFitInRow({ texts, width, fontScale, variant, gap = brandTokens.space.lg }: {
+export function figuresFitInRow({ texts, width, fontScale, variant, gap = brandTokens.space.lg, columns = texts.length }: {
   texts: string[]; width: number; fontScale: number; variant: keyof typeof typography; gap?: number;
+  /** Columns of a grid when there are more figures than columns (Mis vistas); one per figure by default. */
+  columns?: number;
 }) {
   if (fontScale > 1.3) return false;
   if (!texts.length) return true;
-  const column = (width - gap * (texts.length - 1)) / texts.length;
+  const column = (width - gap * (columns - 1)) / columns;
   const longest = Math.max(...texts.map(text => text.length));
   return longest * ADVANCE * typography[variant].fontSize * fontScale <= column;
 }

@@ -1,4 +1,4 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Alert } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -125,5 +125,25 @@ describe('Mis vistas', () => {
     expect(mockViews).toHaveBeenCalledTimes(2);
     fireEvent(view.getByTestId(`edit-view-drag-${A}`), 'accessibilityAction', { nativeEvent: { actionName: 'increment' } }); await flush();
     expect(mockReorder).toHaveBeenLastCalledWith(mockClient, { viewIds: [B, A], expectedListVersion: 3, idempotencyKey: 'key-1' });
+  });
+  it('P1-B5: whole names and figures, one tile per row when they do not fit two, and 44 pt edit targets', async () => {
+    const rn = jest.requireActual<typeof import('react-native')>('react-native');
+    const dims = jest.spyOn(rn, 'useWindowDimensions').mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1 });
+    const long = 'Series semanales por grupo muscular en los días de fuerza';
+    const data = read('two'); data.views[0] = { ...data.views[0], name: long };
+    mockViews.mockResolvedValue(ok(data));
+    const view = wrap(<MyViews />); await flush();
+    const name = view.getByText(long); expect(name.props.numberOfLines).toBeUndefined();
+    const figure = view.getByText('230 series'); expect(figure.props.numberOfLines).toBeUndefined(); expect(figure.props.adjustsFontSizeToFit).not.toBe(true);
+    fireEvent(view.getByTestId('my-views'), 'layout', { nativeEvent: { layout: { width: 358, height: 300, x: 0, y: 0 } } });
+    expect(rn.StyleSheet.flatten(view.getByTestId(`my-view-cell-${A}`).props.style).width).toBe('47%');
+    fireEvent(view.getByTestId('my-views'), 'layout', { nativeEvent: { layout: { width: 180, height: 300, x: 0, y: 0 } } });
+    expect(rn.StyleSheet.flatten(view.getByTestId(`my-view-cell-${A}`).props.style).width).toBe('100%');
+    expect(rn.StyleSheet.flatten(view.getByTestId('my-views-edit').props.style).minHeight).toBeGreaterThanOrEqual(44);
+    view.unmount();
+    const edit = wrap(<ViewsEditScreen />); await flush();
+    expect(within(edit.getByTestId(`edit-view-rename-${A}`)).getByText(long).props.numberOfLines).toBeUndefined();
+    expect(rn.StyleSheet.flatten(edit.getByTestId(`edit-view-remove-${A}`).props.style).minHeight).toBeGreaterThanOrEqual(44);
+    dims.mockRestore();
   });
 });

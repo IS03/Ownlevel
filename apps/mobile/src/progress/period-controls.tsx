@@ -123,7 +123,8 @@ export function PeriodCaption({ onCustom }: { onCustom: () => void }) {
       accessibilityActions={[{ name: 'decrement', label: 'Período anterior' }, { name: 'increment', label: 'Período siguiente' }, { name: 'activate', label: 'Elegir período' }]}
       onAccessibilityAction={e => { const action = e.nativeEvent.actionName; if (action === 'activate') onCustom(); else go(action === 'increment' ? next : prev); }}
       onPress={onCustom} style={styles.captionText}>
-      <AppText muted numeric variant="footnote" numberOfLines={1}>{title} · {subtitle}</AppText>
+      {/* Wraps instead of cutting the dates you are reading (Dynamic Type, narrow screens). */}
+      <AppText muted numeric variant="footnote">{title} · {subtitle}</AppText>
     </Pressable>
     {!current ? <Pressable accessibilityRole="button" accessibilityLabel="Volver a hoy" hitSlop={10} testID="progress-period-today"
       onPress={() => go(currentProgressRange(state, today))}>

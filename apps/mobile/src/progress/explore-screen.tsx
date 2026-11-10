@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { parseInfluenceMeasure } from '@/api/progress-influence';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useMobileApi } from '@/api';
 import {
   exploreOptions, exploreRequestKey, fetchProgressExplore, parseExploreMeasure, progressRequestKey,
@@ -27,9 +27,13 @@ const staticLabel = (key: string) => STATIC_MEASURES.flatMap(g => g.choices).fin
 
 function Field({ label, value, accent, onPress, testID }: { label: string; value: string; accent?: boolean; onPress: () => void; testID: string }) {
   const { colors } = useOwnlevelTheme();
+  // With large text the label goes above its value (IDENTIDAD.md: stack pairs, never squeeze); a long measure name wraps.
+  const stacked = useWindowDimensions().fontScale > 1.3;
   return <ProgressRow testID={testID} label={`${label}: ${value}`} onPress={onPress}>
-    <AppText muted variant="subheadline" style={styles.fieldLabel}>{label}</AppText>
-    <AppText variant="headline" numberOfLines={1} style={[styles.fieldValue, accent ? { color: colors.primary } : null]}>{value}</AppText>
+    <View style={[styles.field, stacked && styles.fieldStacked]} testID={`${testID}-layout`}>
+      <AppText muted variant="subheadline" style={stacked ? undefined : styles.fieldLabel}>{label}</AppText>
+      <AppText variant="headline" style={[stacked ? undefined : styles.fieldValue, accent ? { color: colors.primary } : null]}>{value}</AppText>
+    </View>
   </ProgressRow>;
 }
 
@@ -51,13 +55,14 @@ function Bars({ e, groups, reference }: { e: ProgressExplore; groups: ExploreGro
     {groups.map(g => {
       const ref = reference?.find(r => r.key === g.key);
       return <View key={g.key} testID={`explore-group-${g.key}`} accessible accessibilityLabel={`${g.label}: ${g.value === null ? 'sin dato' : valueText(e, g.value, averaged)}${ref ? `. ${compareText}: ${ref.value === null ? 'sin dato' : valueText(e, ref.value, averaged)}` : ''}`}>
-        <View style={styles.barRow}>
-          <AppText variant="subheadline" numberOfLines={1} style={styles.barLabel}>{g.label}</AppText>
-          <View style={styles.track}>{g.value !== null && g.value > 0 && max > 0
-            ? <View style={{ width: `${(g.value / max) * 100}%`, height: 10, borderRadius: 5, backgroundColor: colors.primary, opacity: g.key === top ? 1 : 0.4 }} /> : null}</View>
-          <AppText numeric variant="subheadline" style={styles.barValue}>{g.value === null ? 'sin dato' : valueText(e, g.value, averaged)}</AppText>
+        {/* Name and value on their own line (both wrap, nothing cut), the bar under them across the full width. */}
+        <View style={styles.barHead}>
+          <AppText variant="subheadline" style={styles.barLabel}>{g.label}</AppText>
+          <AppText numeric variant="subheadline">{g.value === null ? 'sin dato' : valueText(e, g.value, averaged)}</AppText>
         </View>
-        {ref ? <AppText muted numeric variant="caption">{compareText} {ref.value === null ? 'sin dato' : valueText(e, ref.value, averaged)}</AppText> : null}
+        <View style={styles.track}>{g.value !== null && g.value > 0 && max > 0
+          ? <View style={{ width: `${(g.value / max) * 100}%`, height: 10, borderRadius: 5, backgroundColor: colors.primary, opacity: g.key === top ? 1 : 0.4 }} /> : null}</View>
+        {ref ? <AppText muted numeric variant="footnote">{compareText}: {ref.value === null ? 'sin dato' : valueText(e, ref.value, averaged)}</AppText> : null}
       </View>;
     })}
   </View>;
@@ -114,9 +119,9 @@ function Result({ request, onLoaded }: { request: ExploreRequest; onLoaded: (e: 
         <AppText numeric variant="largeTitle" testID="explore-value">{c.value === null ? '—' : valueText(e, c.value)}</AppText>
         {e.measure.derived ? <View style={[styles.chip, { backgroundColor: colors.brandSubtle }]}><AppText variant="caption" style={{ color: colors.primary, fontWeight: '600' }}>estimado</AppText></View> : null}
       </View>
-      <AppText muted variant="caption">{namedByValue(e, c.value) ? '' : `${e.measure.label} · `}{aggregationText(e)}{e.days ? ` · días ${DAYS_LABELS[e.days].toLocaleLowerCase('es-AR')}` : ''}</AppText>
-      <AppText muted numeric variant="caption">{coverageLine(e, c.coverage)}{c.change !== null ? ` · ${arrowDelta(c.change, e.measure.unit)} en el período` : ''}</AppText>
-      {r && compareText ? <AppText numeric variant="caption" testID="explore-reference">{compareText} {r.value === null ? 'sin dato'
+      <AppText muted variant="footnote">{namedByValue(e, c.value) ? '' : `${e.measure.label} · `}{aggregationText(e)}{e.days ? ` · días ${DAYS_LABELS[e.days].toLocaleLowerCase('es-AR')}` : ''}</AppText>
+      <AppText muted numeric variant="footnote">{coverageLine(e, c.coverage)}{c.change !== null ? ` · ${arrowDelta(c.change, e.measure.unit)} en el período` : ''}</AppText>
+      {r && compareText ? <AppText numeric variant="footnote" testID="explore-reference">{compareText} {r.value === null ? 'sin dato'
         : `${valueText(e, r.value)}${c.value !== null ? ` · ${arrowDelta(c.value - r.value, e.measure.valueType === 'duration' ? null : e.measure.unit, e.measure.valueType)}` : ''}`}</AppText> : null}
     </View>
     {e.series && !e.breakdown && c.series ? <PeriodChart testID="explore-chart" mode={dots ? 'dots' : 'bars'} points={c.series.map(b => ({
@@ -170,7 +175,7 @@ export function ExploreScreen() {
     {request ? <Result request={request} onLoaded={onLoaded} /> : null}
     {request && loaded ? pinned === exploreRequestKey(request)
       ? <View style={styles.pinned} testID="explore-pinned"><AppIcon name="check" color={colors.primary} size={17} />
-        <AppText variant="subheadline" numberOfLines={1} style={{ color: colors.primary }}>{fromView?.key === pinned ? 'Ya está en Mis vistas' : 'Fijada en Mis vistas'}</AppText></View>
+        <AppText variant="subheadline" style={{ color: colors.primary }}>{fromView?.key === pinned ? 'Ya está en Mis vistas' : 'Fijada en Mis vistas'}</AppText></View>
       : <Button label="Fijar en Mis vistas" onPress={() => setSheet('pin')} testID="explore-pin" /> : null}
     {request ? null : <View style={styles.section} testID="explore-ideas">
       <Heading level={2}>Ideas para empezar</Heading>
@@ -197,16 +202,17 @@ export function ExploreScreen() {
 const styles = StyleSheet.create({
   section: { gap: spacing.sm },
   grow: { flex: 1, gap: 2 },
+  field: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  fieldStacked: { flexDirection: 'column', alignItems: 'flex-start', gap: 2 },
   fieldLabel: { width: 112 },
   fieldValue: { flex: 1, textAlign: 'right' },
   big: { gap: 2 },
   bigLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   chip: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10 },
   bars: { gap: spacing.md, marginTop: spacing.sm },
-  barRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  barLabel: { width: 108 },
-  track: { flex: 1, height: 10 },
-  barValue: { width: 82, textAlign: 'right' },
+  barHead: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', columnGap: spacing.sm, marginBottom: spacing.xs },
+  barLabel: { flexShrink: 1 },
+  track: { height: 10 },
   multiple: { gap: 6, paddingVertical: 10 },
   multipleHead: { flexDirection: 'row', alignItems: 'center' },
   mini: { flexDirection: 'row', alignItems: 'flex-end', height: 32, gap: 3 },

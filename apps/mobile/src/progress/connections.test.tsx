@@ -21,7 +21,7 @@ import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 const mockPush = jest.fn();
-let mockParams: { key?: string } = {};
+let mockParams: Record<string, string> = {};
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useFocusEffect: () => undefined, useLocalSearchParams: () => mockParams, Stack: { Screen: () => null } }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn() }, triggerHaptic: jest.fn() }));
 jest.mock('./my-views', () => ({ MyViews: () => null }));
@@ -192,6 +192,20 @@ describe('connections client and independent resource', () => {
     expect(view.getByText('No pudimos cargar calorías y peso. Reintentá más tarde.')).toBeTruthy();
     expect(view.queryByText('TODAVÍA NO ALCANZA')).toBeNull();
     expect(view.getByTestId('connection-protein_strength')).toBeTruthy();
+  });
+});
+
+describe('P1-B5 direct entry from the portada', () => {
+  it('focus=connections shows the same section first, with the same period and the same reads', async () => {
+    const plain = await open(); const reads = mockRead.mock.calls.map(([o]) => o.path).sort(); plain.unmount();
+    clearConfirmedReads(mockClient as never); mockRead.mockClear();
+    mockParams = { focus: 'connections' };
+    const view = await open();
+    const order = view.UNSAFE_root.findAll(n => typeof n.type === 'string' && ['progress-connections', 'my-views'].includes(n.props.testID)).map(n => n.props.testID);
+    expect(order[0]).toBe('progress-connections'); expect(view.getAllByTestId('progress-connections')).toHaveLength(1);
+    expect(mockRead.mock.calls.map(([o]) => o.path).sort()).toEqual(reads);
+    expect(view.getByText(connectionsPeriodText(MONTH, TODAY))).toBeTruthy();
+    mockParams = {};
   });
 });
 

@@ -12,6 +12,7 @@ import { shortAnswer, valueText as influenceValueText } from './influence-model'
 import { MiniChart } from './mini-chart';
 import { useProgressRange } from './progress-range-context';
 import { useProgressResource } from './use-progress-resource';
+import { figuresFitInRow, useMeasuredWidth } from './figure-layout';
 
 /** Opens Explorar with a saved query, so a view can be read in full or changed. */
 export function exploreParams(d: ExploreViewDefinition): Record<string, string> {
@@ -22,9 +23,9 @@ function Tile({ view, onPress }: { view: ProgressViewsRead['views'][number]; onP
   const r = view.result;
   if (r.status === 'unavailable') return <Pressable accessibilityRole="button" accessibilityLabel={`${view.name}. No disponible`} onPress={onPress}
     testID={`my-view-${view.id}`} style={({ pressed }) => [styles.tile, pressed && { opacity: 0.6 }]}>
-    <AppText muted variant="caption" numberOfLines={1}>{view.name}</AppText>
+    <AppText muted variant="footnote">{view.name}</AppText>
     <AppText variant="headline">No disponible</AppText>
-    <AppText muted variant="caption" numberOfLines={2}>{r.reason === 'invalid_definition' ? 'Esta medida ya no existe. Podés sacarla en Editar.' : 'No pudimos cargarla.'}</AppText>
+    <AppText muted variant="footnote">{r.reason === 'invalid_definition' ? 'Esta medida ya no existe. Podés sacarla en Editar.' : 'No pudimos cargarla.'}</AppText>
   </Pressable>;
   if (r.kind === 'influence') {
     const data = r.data, c = data.current;
@@ -32,9 +33,9 @@ function Tile({ view, onPress }: { view: ProgressViewsRead['views'][number]; onP
     const summary = shortAnswer(data);
     return <Pressable accessibilityRole="button" accessibilityLabel={`${view.name}. ${difference ? `${difference}. ` : ''}${summary}`} accessibilityHint="Abre la respuesta en Qué influye" onPress={onPress}
       testID={`my-view-${view.id}`} style={({ pressed }) => [styles.tile, pressed && { opacity: 0.6 }]}>
-      <AppText muted variant="caption" numberOfLines={1}>{view.name}</AppText>
-      {difference ? <AppText numeric variant="title2" numberOfLines={1} adjustsFontSizeToFit>{difference}</AppText> : null}
-      <AppText muted numeric variant="caption" numberOfLines={2}>{summary}</AppText>
+      <AppText muted variant="footnote">{view.name}</AppText>
+      {difference ? <AppText numeric variant="title2">{difference}</AppText> : null}
+      <AppText muted numeric variant="footnote">{summary}</AppText>
     </Pressable>;
   }
   const e = r.data, c = e.current;
@@ -44,14 +45,14 @@ function Tile({ view, onPress }: { view: ProgressViewsRead['views'][number]; onP
   const topText = top ? `${top.label} · ${valueText(e, top.value, e.breakdown === 'weekday' && e.measure.aggregation === 'sum')}` : null;
   return <Pressable accessibilityRole="button" accessibilityLabel={`${view.name}: ${value}${topText ? `. El más alto, ${topText}` : ''}`} accessibilityHint="Abre la vista en Explorar" onPress={onPress}
     testID={`my-view-${view.id}`} style={({ pressed }) => [styles.tile, pressed && { opacity: 0.6 }]}>
-    <AppText muted variant="caption" numberOfLines={1}>{view.name}</AppText>
-    <AppText numeric variant="title2" numberOfLines={1} adjustsFontSizeToFit>{value}</AppText>
+    <AppText muted variant="footnote">{view.name}</AppText>
+    <AppText numeric variant="title2">{value}</AppText>
     {c.series && !e.breakdown ? <MiniChart current={c.series} reference={e.reference?.series ?? null} mode={dots ? 'level' : 'bars'} />
       : top ? <View style={styles.breakdown}>
         <BreakdownBars groups={c.groups} top={top.key} ordered={ORDERED.has(e.breakdown!)} />
-        <AppText muted variant="caption" numberOfLines={1} style={styles.grow}>{top.label}</AppText>
+        <AppText muted variant="footnote" style={styles.grow}>{top.label}</AppText>
       </View>
-      : <AppText muted variant="caption" numberOfLines={1}>{aggregationText(e)}</AppText>}
+      : <AppText muted variant="footnote">{aggregationText(e)}</AppText>}
   </Pressable>;
 }
 
@@ -73,6 +74,14 @@ function BreakdownBars({ groups, top, ordered }: { groups: { key: string; value:
   </View>;
 }
 
+/** The big figure each tile shows, as written, so the grid can tell whether two fit side by side. */
+function tileFigure(view: ProgressViewsRead['views'][number]): string {
+  const r = view.result;
+  if (r.status === 'unavailable') return ''; // a headline, not the big figure
+  if (r.kind === 'influence') { const c = r.data.current; return c.status === 'ok' ? `${influenceValueText(Math.abs(c.difference), r.data.measure.outcome)} más` : ''; }
+  return r.data.current.value === null ? '—' : valueText(r.data, r.data.current.value);
+}
+
 /** S1 · Mis vistas, on top of Progreso: saved queries in the shared period. Empty is useful and neutral. */
 export function MyViews() {
   const router = useRouter();
@@ -83,16 +92,19 @@ export function MyViews() {
   const { state, data, refresh } = useProgressResource(client, `views|${progressRequestKey(query, compare)}`, load);
   const explore = (params: Record<string, string> = {}) => { haptics.selection(); router.push({ pathname: '/(tabs)/progress/explore', params }); };
   const views = data?.views ?? [];
-  return <View style={styles.section} testID="my-views">
+  const { width, fontScale, onLayout } = useMeasuredWidth();
+  // Two per row only while every figure fits whole; with large text or long figures, one per row. Never a smaller number.
+  const single = !figuresFitInRow({ texts: views.map(tileFigure), width, fontScale, variant: 'title2', columns: 2 });
+  return <View style={styles.section} testID="my-views" onLayout={onLayout}>
     <View style={styles.header}>
       <Heading level={2}>Mis vistas</Heading>
-      {views.length ? <Pressable accessibilityRole="button" hitSlop={8} onPress={() => { haptics.selection(); router.push('/(tabs)/progress/views'); }} testID="my-views-edit">
+      {views.length ? <Pressable accessibilityRole="button" accessibilityLabel="Editar Mis vistas" onPress={() => { haptics.selection(); router.push('/(tabs)/progress/views'); }} testID="my-views-edit" style={styles.edit}>
         <AppText variant="headline" style={{ color: colors.primary }}>Editar</AppText>
       </Pressable> : null}
     </View>
     {state.status === 'loading' ? <SkeletonBlock height={84} />
       : !data ? <InlineUnavailable actionLabel="Reintentar" message="No pudimos cargar tus vistas." onAction={() => void refresh()} />
-      : views.length ? <View style={styles.grid}>{views.map(v => <View key={v.id} style={styles.cell}>
+      : views.length ? <View style={styles.grid} testID="my-views-grid">{views.map(v => <View key={v.id} style={single ? styles.single : styles.cell} testID={`my-view-cell-${v.id}`}>
         <Tile view={v} onPress={() => {
           if (isInfluenceView(v.definition)) {
             haptics.selection(); const definition = influenceDefinitionOf(v.definition);
@@ -112,6 +124,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: spacing.lg, columnGap: spacing.lg },
   cell: { width: '47%' },
+  single: { width: '100%' },
+  edit: { minHeight: 44, minWidth: 44, justifyContent: 'flex-end', alignItems: 'flex-end' },
   tile: { gap: 4, minHeight: 74 },
   breakdown: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm },
   bars: { width: BAR_W, height: BAR_H, flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
