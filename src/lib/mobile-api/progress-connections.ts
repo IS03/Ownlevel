@@ -3,7 +3,8 @@ import { buildNutritionReportDays } from "@/lib/nutrition/reports-core";
 import { buildTrainingAnalysis, type TrainingAnalysisSource } from "@/lib/phase2/training-analysis";
 import { readAllTrainingRows } from "@/lib/phase2/training-robust";
 import { todayInCordoba } from "@/lib/phase2/cordoba-date";
-import { buildTrainingFeelings, buildTrainingPerformanceComparison, trainingPerformanceStrategy } from "@/lib/progress/training-performance";
+import { configurationIdentity } from "./training-exercise-configuration-contract";
+import { buildTrainingFeelings, buildTrainingPerformanceComparison, NON_COMPARABLE_EXECUTION_REASONS, trainingPerformanceStrategy } from "@/lib/progress/training-performance";
 import { buildTrainingExercisesAnalytics } from "@/lib/progress/training-exercises";
 import type { ProgressPeriod } from "./progress-contract";
 import type { ConnectionExercise } from "./progress-connections-contract";
@@ -24,7 +25,7 @@ export function connectionTrainingEvidence(source: TrainingAnalysisSource, perio
   const exercises: ConnectionExercise[] = [];
   for (const item of performance.exercises) {
     if (trainingPerformanceStrategy(item.weightMode) !== "load_reps" || item.primarySampleSize < 1 || item.referenceSampleSize < 1
-      || ["different_weight_mode", "missing_weight_mode", "unsupported_weight_mode", "incomplete_sets"].includes(item.reason)) continue;
+      || NON_COMPARABLE_EXECUTION_REASONS.includes(item.reason)) continue;
     const selected = buildTrainingExercisesAnalytics({ source, primary: current, reference: previous,
       referenceDefinition: { type: "previous_period", period: reference, label: "Período anterior" }, selectedExerciseId: item.exerciseId }).selected;
     if (!selected) continue;
@@ -57,16 +58,25 @@ async function trainingSource(context: Context, ranges: Range[]): Promise<Traini
     .select("*,day:day_logs!inner(id,log_date)").eq("user_id", userId).eq("status", "completed")
     .or(dates, { referencedTable: "day" }).order("id").range(from, to));
   if (!sessions.length) return { sessions: [], sessionExercises: [], sets: [], dateByDayLog: new Map() };
-  const [sessionExercises, sets] = await Promise.all([
-    readAllTrainingRows<TrainingAnalysisSource["sessionExercises"][number]>("Leer ejercicios de conexiones", (from, to) => supabase.from("workout_session_exercises")
-      .select("*,session:workout_sessions!inner(day:day_logs!inner(log_date))").eq("user_id", userId).eq("session.status", "completed")
+  // The variant (#367) rides embedded on each exercise row (one-to-one): no extra request (P1-C2).
+  type Stored = { kind: string | null; label: string | null };
+  type ExerciseRow = TrainingAnalysisSource["sessionExercises"][number] & { configuration?: Stored | Stored[] | null };
+  const [exerciseRows, sets] = await Promise.all([
+    readAllTrainingRows<ExerciseRow>("Leer ejercicios de conexiones", (from, to) => supabase.from("workout_session_exercises")
+      .select("*,configuration:workout_session_exercise_configurations(kind,label),session:workout_sessions!inner(day:day_logs!inner(log_date))").eq("user_id", userId).eq("session.status", "completed")
       .or(dates, { referencedTable: "session.day" }).order("id").range(from, to)),
     readAllTrainingRows<TrainingAnalysisSource["sets"][number]>("Leer series de conexiones", (from, to) => supabase.from("workout_sets")
       .select("*,exercise:workout_session_exercises!inner(session:workout_sessions!inner(day:day_logs!inner(log_date)))")
       .eq("user_id", userId).eq("is_completed", true).eq("exercise.session.status", "completed")
       .or(dates, { referencedTable: "exercise.session.day" }).order("id").range(from, to)),
   ]);
-  return { sessions, sessionExercises, sets, dateByDayLog: new Map(sessions.map(s => [s.day_log_id, s.day.log_date])) };
+  const configurations = new Map<string, string | null>();
+  const sessionExercises = exerciseRows.map(({ configuration, ...row }) => {
+    const identity = configurationIdentity(Array.isArray(configuration) ? configuration.length === 1 ? configuration[0]! : null : configuration ?? null);
+    if (identity) configurations.set(row.id, identity);
+    return row;
+  });
+  return { sessions, sessionExercises, sets, dateByDayLog: new Map(sessions.map(s => [s.day_log_id, s.day.log_date])), configurations };
 }
 async function weightsSource(context: Context, ranges: Range[]) {
   const dates = ranges.map(r => `and(log_date.gte.${r.start},log_date.lte.${r.end})`).join(",");

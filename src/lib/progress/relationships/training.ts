@@ -19,7 +19,8 @@ function sourceThroughTarget(
   const sessionExercises = source.sessionExercises.filter((exercise) => sessionIds.has(exercise.workout_session_id));
   const exerciseIds = new Set(sessionExercises.map((exercise) => exercise.id));
   const sets = source.sets.filter((set) => exerciseIds.has(set.workout_session_exercise_id));
-  return { sessions, sessionExercises, sets, dateByDayLog: source.dateByDayLog };
+  // The variants travel with the rows: without them every comparison would read as unknown (P1-C2).
+  return { sessions, sessionExercises, sets, dateByDayLog: source.dateByDayLog, configurations: source.configurations };
 }
 
 /**

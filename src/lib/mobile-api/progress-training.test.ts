@@ -16,6 +16,7 @@ import { GET as recordsGET } from "@/app/api/mobile/v1/progress/training/records
 import { GET as exerciseGET } from "@/app/api/mobile/v1/progress/training/exercises/[id]/route";
 import { GET as overviewGET } from "@/app/api/mobile/v1/progress/route";
 import { addProgressIsoDays } from "@/lib/progress/analytics";
+import { configurationIdentity } from "./training-exercise-configuration-contract";
 import { parseProgressOverview, parseProgressTraining, parseProgressTrainingExercise, parseProgressTrainingRecords, type ProgressTraining, type ProgressTrainingExerciseDetail } from "./progress-contract";
 
 const TODAY = "2026-10-05";
@@ -23,12 +24,15 @@ const d = (offset: number) => addProgressIsoDays(TODAY, offset);
 const ex = { bench: "e1000000-0000-4000-8000-000000000001", squat: "e1000000-0000-4000-8000-000000000002", pullup: "e1000000-0000-4000-8000-000000000003",
   plank: "e1000000-0000-4000-8000-000000000004", cable: "e1000000-0000-4000-8000-000000000005", curl: "e1000000-0000-4000-8000-000000000006", fresh: "e1000000-0000-4000-8000-000000000007" };
 type SetSpec = [reps: number | null, kg: number | null];
-type ExerciseSpec = { id: string; name: string; mode: string; sets: SetSpec[] };
+type StoredConfiguration = { kind: "recorded" | "not_applicable" | null; label: string | null };
+/** implement defaults to "Barra" and the variant to «no aplica»: a known execution unless a case says otherwise (P1-C2). */
+type ExerciseSpec = { id: string; name: string; mode: string; sets: SetSpec[]; implement?: string | null; configuration?: StoredConfiguration | null };
 type SessionSpec = { date: string; minutes?: number; routine?: string | null; feelings?: { energy?: number; performance?: number; pain?: number }; exercises: ExerciseSpec[] };
 
 function source(specs: SessionSpec[]) {
   const sessions: Record<string, unknown>[] = [], sessionExercises: Record<string, unknown>[] = [], sets: Record<string, unknown>[] = [];
   const dateByDayLog = new Map<string, string>();
+  const configurations = new Map<string, string | null>(), stored = new Map<string, StoredConfiguration>();
   specs.forEach((spec, i) => {
     const dayLogId = `day-${spec.date}`; dateByDayLog.set(dayLogId, spec.date);
     const sessionId = `s1000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
@@ -40,14 +44,32 @@ function source(specs: SessionSpec[]) {
     spec.exercises.forEach((exercise, e) => {
       const id = `${sessionId}-${e}`;
       sessionExercises.push({ id, workout_session_id: sessionId, exercise_id: exercise.id, nombre_snapshot: exercise.name, grupo_muscular_snapshot: "pecho",
-        muscle_group_label_snapshot: null, weight_mode_snapshot: exercise.mode, is_completed: true, decision: "keep", decision_note: null, implement_snapshot: null });
+        muscle_group_label_snapshot: null, weight_mode_snapshot: exercise.mode, is_completed: true, decision: "keep", decision_note: null,
+        implement_snapshot: exercise.implement === undefined ? "Barra" : exercise.implement });
+      const configuration = exercise.configuration === undefined ? { kind: "not_applicable" as const, label: null } : exercise.configuration;
+      if (configuration) stored.set(id, configuration);
+      const identity = configurationIdentity(configuration);
+      if (identity) configurations.set(id, identity);
       exercise.sets.forEach(([reps, kg], k) => sets.push({ id: `${id}-${k}`, workout_session_exercise_id: id, set_number: k + 1, is_completed: true,
         actual_reps: reps, actual_weight_kg: kg, target_reps: null, target_weight_kg: null, target_rir: null }));
     });
   });
-  return { sessions, sessionExercises, sets, dateByDayLog } as never;
+  return { sessions, sessionExercises, sets, dateByDayLog, configurations, stored } as never;
 }
 const bench = (sets: SetSpec[]): ExerciseSpec => ({ id: ex.bench, name: "Press banca", mode: "Peso total", sets });
+const recorded = (label: string): StoredConfiguration => ({ kind: "recorded", label });
+/** P1-C2: one exercise done several ways, plus history from before the variant capture (no implement, no variant). */
+const variantScenario: SessionSpec[] = [
+  { date: d(-200), exercises: [{ ...bench([[15, 60]]), implement: null, configuration: null }, { id: ex.curl, name: "Curl", mode: "Por mancuerna", sets: [[12, 14]], implement: "Mancuernas", configuration: null }] },
+  { date: d(-120), exercises: [{ ...bench([[14, 60], [8, 70]]), implement: "Mancuernas" }] },
+  { date: d(-90), exercises: [{ ...bench([[13, 60]]), configuration: recorded("Agarre cerrado") }, { id: ex.squat, name: "Sentadilla", mode: "Total con barra", sets: [[5, 120]], configuration: recorded("High bar") }] },
+  { date: d(-40), exercises: [bench([[8, 60]]), { id: ex.squat, name: "Sentadilla", mode: "Total con barra", sets: [[5, 100]], configuration: recorded("Low bar") },
+    { id: ex.curl, name: "Curl", mode: "Por mancuerna", sets: [[10, 12]], implement: "Mancuernas", configuration: null },
+    { id: ex.cable, name: "Remo", mode: "Peso total", sets: [[10, 50]], implement: "Mancuernas" }] },
+  { date: d(-5), exercises: [bench([[10, 60]]), { id: ex.curl, name: "Curl", mode: "Por mancuerna", sets: [[11, 12]], implement: "Mancuernas", configuration: null },
+    { id: ex.cable, name: "Remo", mode: "Peso total", sets: [[10, 55]], implement: "Barra" }] },
+  { date: d(-3), exercises: [{ id: ex.squat, name: "Sentadilla", mode: "Total con barra", sets: [[5, 105]], configuration: recorded("LOW BAR") }] },
+];
 const request = (path: string, token = "Bearer token") => new NextRequest(`https://www.ownlevel.fit/api/mobile/v1/${path}`, { headers: { authorization: token } });
 async function read<T>(response: Response, parse: (v: unknown) => T | undefined): Promise<T> {
   expect(response.status).toBe(200);
@@ -183,13 +205,14 @@ function narrow(full: ReturnType<typeof source>) {
   const data = full as unknown as Record<"sessions" | "sessionExercises" | "sets", Record<string, unknown>[]> & { dateByDayLog: Map<string, string> };
   const pick = (rows: Record<string, unknown>[], columns: readonly string[]) => rows.map(row => Object.fromEntries(columns.map(column => [column, row[column]])));
   return { sessions: pick(data.sessions, columns(RECORD_COLUMNS.sessions)), sessionExercises: pick(data.sessionExercises, columns(RECORD_COLUMNS.exercises)),
-    sets: pick(data.sets, columns(RECORD_COLUMNS.sets)), dateByDayLog: data.dateByDayLog } as never;
+    sets: pick(data.sets, columns(RECORD_COLUMNS.sets)), dateByDayLog: data.dateByDayLog, configurations: (full as unknown as { configurations: Map<string, string | null> }).configurations } as never;
 }
 type Row = Record<string, unknown>;
-/** What `mobile_read_training_records` returns for the fixture, with the migration's own filters. */
+/** What `mobile_read_training_records_v2` returns for the fixture, with the migration's own filters. */
 function rpcRead(full: ReturnType<typeof source>, from: string) {
-  const data = full as unknown as { sessions: Row[]; sessionExercises: Row[]; sets: Row[]; dateByDayLog: Map<string, string> };
+  const data = full as unknown as { sessions: Row[]; sessionExercises: Row[]; sets: Row[]; dateByDayLog: Map<string, string>; stored: Map<string, StoredConfiguration> };
   const date = (session: Row) => data.dateByDayLog.get(String(session.day_log_id));
+  const storedOf = (id: unknown) => ({ configuration_kind: data.stored.get(String(id))?.kind ?? null, configuration_label: data.stored.get(String(id))?.label ?? null });
   const sessions = data.sessions.filter(session => session.status === "completed" && (date(session) ?? "") >= from && date(session) !== undefined);
   const sessionIds = new Set(sessions.map(session => session.id));
   const exercises = data.sessionExercises.filter(exercise => sessionIds.has(exercise.workout_session_id));
@@ -197,16 +220,20 @@ function rpcRead(full: ReturnType<typeof source>, from: string) {
   const sets = data.sets.filter(set => set.is_completed && exerciseIds.has(set.workout_session_exercise_id));
   const older = new Set(data.sessions.filter(session => session.status === "completed" && session.ended_at && date(session) !== undefined && date(session)! < from).map(session => session.id));
   const olderExercises = new Map(data.sessionExercises.filter(exercise => exercise.is_completed && older.has(exercise.workout_session_id)).map(exercise => [exercise.id, exercise]));
-  const history = new Map<string, { exercise_id: string; weight_mode_snapshot: string | null; load: number; reps: number }>();
+  const history = new Map<string, Row & { reps: number }>();
   for (const set of data.sets) {
     const exercise = olderExercises.get(set.workout_session_exercise_id), reps = set.actual_reps, load = set.actual_weight_kg;
     if (!exercise || !set.is_completed || typeof reps !== "number" || reps <= 0 || typeof load !== "number" || !Number.isFinite(load) || load <= 0) continue;
-    const key = JSON.stringify([exercise.exercise_id, exercise.weight_mode_snapshot, load]);
-    if ((history.get(key)?.reps ?? 0) < reps) history.set(key, { exercise_id: String(exercise.exercise_id), weight_mode_snapshot: exercise.weight_mode_snapshot as string | null, load, reps });
+    // v2's own filters: a known implement and a stored variant kind.
+    const configuration = storedOf(exercise.id), implement = exercise.implement_snapshot as string | null;
+    if (!implement?.trim() || configuration.configuration_kind === null) continue;
+    const key = JSON.stringify([exercise.exercise_id, exercise.weight_mode_snapshot, implement, configuration, load]);
+    if (((history.get(key)?.reps as number | undefined) ?? 0) < reps) history.set(key, { exercise_id: String(exercise.exercise_id),
+      weight_mode_snapshot: exercise.weight_mode_snapshot as string | null, implement_snapshot: implement, ...configuration, load, reps });
   }
   const pick = (rows: Row[], list: string) => rows.map(row => Object.fromEntries(columns(list).map(column => [column, row[column]])));
   return { sessions: pick(sessions, RECORD_COLUMNS.sessions).map(session => ({ ...session, day: { log_date: date(session) } })),
-    exercises: pick(exercises, RECORD_COLUMNS.exercises), sets: pick(sets, RECORD_COLUMNS.sets), history: [...history.values()] } as never;
+    exercises: pick(exercises, RECORD_COLUMNS.exercises).map(row => ({ ...row, ...storedOf(row.id) })), sets: pick(sets, RECORD_COLUMNS.sets), history: [...history.values()] } as never;
 }
 /** Full rows for /progress/training; the records read (window rows plus aggregated history) for /progress/training/records. */
 function serve(full: ReturnType<typeof source>) {
@@ -243,11 +270,29 @@ describe("GET /progress/training/records — Home's records card", () => {
       { date: d(-29), exercises: [bench([[10, 50], [5, 0], [0, 55], [null, 55]]), { id: ex.cable, name: "Remo", mode: "Lingotes (no kg)", sets: [[12, 9]] }] },
       { date: d(-3), exercises: [bench([[7, 55]]), { id: ex.cable, name: "Remo nuevo", mode: "Lingotes (no kg)", sets: [[10, 10]] }] },
     ]],
+    ["P1-C2: another implement, another variant and history before the capture never feed a record", variantScenario],
   ];
   it.each(scenarios)("same records, performance and exercises as /progress/training: %s", async (_name, specs) => {
     serve(source(specs));
     const [full, home] = [await training("progress/training?period=30"), await records()];
     expect(home).toEqual({ today: full.today, period: full.period, performance: full.summary.performance, exercises: full.exercises, personalRecords: full.personalRecords });
+  });
+  it("P1-C2: records and comparisons only between sessions done the same way, in both reads", async () => {
+    serve(source(variantScenario));
+    const [full, home] = [await training("progress/training?period=30"), await records()];
+    for (const dto of [full, home]) {
+      // Bench: 60 × 10 beats only the barbell, «no aplica» history (60 × 8); the dumbbell, close-grip and unknown sets
+      // with more reps are another way of doing it.
+      expect(dto.personalRecords.map(record => record.exerciseId).sort()).toEqual([ex.bench, ex.squat].sort());
+      expect(dto.personalRecords.find(record => record.exerciseId === ex.bench)!.description).toBe("Nuevo récord de reps: 10 con 60 kg");
+      expect(dto.exercises.find(item => item.id === ex.curl)).toMatchObject({ status: "insufficient_data", reason: "unknown_configuration", isPersonalRecord: false });
+      expect(dto.exercises.find(item => item.id === ex.cable)).toMatchObject({ status: "insufficient_data", reason: "different_implement", isPersonalRecord: false });
+    }
+    // Marks of the exercise detail: only the sessions done like the latest one (barbell, «no aplica»).
+    const bench = await read(await exercise(ex.bench), parseProgressTrainingExercise);
+    expect(bench.marks.map(mark => [mark.kind, mark.value, mark.context])).toEqual([["best_load", 60, "10 reps"]]);
+    // The latest curl has no stored variant: no session is known to be done the same way, so no marks.
+    expect((await read(await exercise(ex.curl), parseProgressTrainingExercise)).marks).toEqual([]);
   });
   it("finds the records the full read finds", async () => {
     serve(source(scenarios[1][1]));

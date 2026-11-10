@@ -24,6 +24,7 @@ import { addProgressIsoDays } from "@/lib/progress/analytics";
 import { comparisonDto, progressQueryFromParams, resolveMobileProgressPeriod } from "./progress-server";
 import { habitWeekRange, parseProgressHabitWeek, parseProgressBody, parseProgressComparison, parseProgressMetrics, parseProgressOverview, type ProgressBody, type ProgressMetrics, type ProgressOverview } from "./progress-contract";
 import type { NutritionReportDayLogFact } from "../nutrition/reports-core";
+import { withKnownExecution } from "@/lib/progress/known-execution.fixture";
 
 const TODAY = "2026-10-05";
 const d = (offset: number) => addProgressIsoDays(TODAY, offset);
@@ -337,7 +338,7 @@ function inPeriodHistory(last: number, firstMode = 'Peso total', lastMode = firs
   // An exercise with just one session must stay outside the new comparison list.
   source.sessionExercises.push({ ...source.sessionExercises[0], id: 'single', exercise_id: 'single', nombre_snapshot: 'Una sesión' });
   source.sets.push({ ...source.sets[0], id: 'single-set', workout_session_exercise_id: 'single' });
-  return source as unknown as Awaited<ReturnType<typeof loadCompletedTrainingData>>;
+  return withKnownExecution(source as never) as unknown as Awaited<ReturnType<typeof loadCompletedTrainingData>>;
 }
 describe('Progress inPeriod read EXPAND', () => {
   it.each([[60, 'improved'], [40, 'declined'], [50, 'stable']] as const)('compares first against last (%s → %s), never the peak or the previous period', async (last, status) => {
@@ -356,6 +357,36 @@ describe('Progress inPeriod read EXPAND', () => {
     expect(parseProgressTraining({ ...raw, inPeriod: { ...raw.inPeriod, improved: 99 } })).toBeUndefined();
     const o = await json(await overviewGET(request('progress?period=custom&from=2026-10-01&to=2026-10-05&spark=1&inPeriod=1')), parseProgressOverview);
     expect(o.inPeriod).toEqual({ improved: status === 'improved' ? 1 : 0, comparable: 1 }); expect(o.sparks).toBeDefined();
+  });
+  it('P1-C2: first and last session only compare when implement and variant are known and the same', async () => {
+    const { GET: trainingGET } = await import('@/app/api/mobile/v1/progress/training/route');
+    const { parseProgressTraining } = await import('./progress-contract');
+    const at = async (mutate: (source: { sessionExercises: { id: string; implement_snapshot: string | null }[]; configurations: Map<string, string | null> }) => void) => {
+      const source = inPeriodHistory(60) as never as Parameters<typeof mutate>[0];
+      mutate(source);
+      vi.mocked(loadCompletedTrainingData).mockResolvedValue(source as never);
+      const t = parseProgressTraining(await (await trainingGET(request('progress/training?period=custom&from=2026-10-01&to=2026-10-05&inPeriod=1'))).json())!;
+      return t.inPeriod!.exercises[0];
+    };
+    // exercise-0 is the newest session (2026-10-05), exercise-2 the first (2026-10-01).
+    expect(await at(s => { s.configurations.set('exercise-0', 'recorded:agarre neutro'); s.configurations.set('exercise-2', 'recorded:agarre neutro'); }))
+      .toMatchObject({ status: 'improved', reason: 'comparable' });
+    expect(await at(s => { s.configurations.set('exercise-0', 'recorded:agarre neutro'); s.configurations.set('exercise-2', 'recorded:agarre prono'); }))
+      .toMatchObject({ status: 'insufficient_data', reason: 'different_configuration', signal: null });
+    expect(await at(s => { s.configurations.delete('exercise-2'); })).toMatchObject({ status: 'insufficient_data', reason: 'unknown_configuration' });
+    expect(await at(s => { s.sessionExercises[0].implement_snapshot = 'Mancuernas'; })).toMatchObject({ status: 'insufficient_data', reason: 'different_implement' });
+    expect(await at(s => { s.sessionExercises[2].implement_snapshot = null; })).toMatchObject({ status: 'insufficient_data', reason: 'missing_implement' });
+  });
+  it('P1-C2: two blocks of the exercise in the last session with different variants make it non-comparable', async () => {
+    const { GET: trainingGET } = await import('@/app/api/mobile/v1/progress/training/route');
+    const { parseProgressTraining } = await import('./progress-contract');
+    const source = inPeriodHistory(60) as never as { sessionExercises: Record<string, unknown>[]; sets: Record<string, unknown>[]; configurations: Map<string, string | null> };
+    source.sessionExercises.push({ ...source.sessionExercises[0], id: 'exercise-0-b' });
+    source.sets.push({ ...source.sets[0], id: 'set-0-b', workout_session_exercise_id: 'exercise-0-b' });
+    source.configurations.set('exercise-0-b', 'recorded:agarre prono');
+    vi.mocked(loadCompletedTrainingData).mockResolvedValue(source as never);
+    const t = parseProgressTraining(await (await trainingGET(request('progress/training?period=custom&from=2026-10-01&to=2026-10-05&inPeriod=1'))).json())!;
+    expect(t.inPeriod!.exercises[0]).toMatchObject({ status: 'insufficient_data', reason: 'mixed_configuration' });
   });
   it('keeps old responses identical and rejects invalid/repeated inPeriod on both endpoints', async () => {
     const { GET: trainingGET } = await import('@/app/api/mobile/v1/progress/training/route');
@@ -404,7 +435,7 @@ describe('Exercise charts read EXPAND', () => {
     const source = { sessions: dates.map((date, i) => ({ id: `session-${i}`, day_log_id: date, status: 'completed', started_at: `${date}T10:00:00Z`, ended_at: `${date}T11:00:00Z`, routine_id: null, routine_name_snapshot: 'PULL', session_name: null })),
       sessionExercises: dates.map((_, i) => ({ id: `exercise-${i}`, exercise_id: eid, workout_session_id: `session-${i}`, nombre_snapshot: 'Press', grupo_muscular_snapshot: 'pecho', muscle_group_label_snapshot: null, weight_mode_snapshot: mode, is_completed: true })),
       sets: dates.map((_, i) => ({ id: `set-${i}`, workout_session_exercise_id: `exercise-${i}`, set_number: 1, is_completed: true, actual_reps: i === 1 ? 15 : i === 2 ? 7 : 10, actual_weight_kg: i === 3 ? 54 : i === 2 ? 57 : 60 })), dateByDayLog: new Map(dates.map(date => [date, date])) };
-    vi.mocked(loadCompletedTrainingData).mockResolvedValue(source as never);
+    vi.mocked(loadCompletedTrainingData).mockResolvedValue(withKnownExecution(source as never));
     return source;
   }
   it('keeps the old shape without charts and rejects invalid/repeated flags', async () => {
@@ -611,11 +642,11 @@ it('panorama uses the canonical nutrient populations: explicit zero, unknown, mi
 it('opt-in findings expose canonical nutrition populations without more source reads, while old clients keep their exact payload', async () => {
   dayLogs = Array.from({length: 59}, (_,i) => log(d(-i-1), {total_calories_consumed: i < 29 ? 2400 : 2000}));
   const seed = inPeriodHistory(60), oldDate = d(-40);
-  vi.mocked(loadCompletedTrainingData).mockResolvedValue({...seed,
+  vi.mocked(loadCompletedTrainingData).mockResolvedValue(withKnownExecution({...seed,
     sessions: [...seed.sessions, {...seed.sessions[0], id:'old', day_log_id:oldDate, started_at:`${oldDate}T10:00:00Z`, ended_at:`${oldDate}T11:00:00Z`}],
     sessionExercises: [...seed.sessionExercises, {...seed.sessionExercises[0], id:'old-exercise', workout_session_id:'old'}],
     sets: [...seed.sets, {...seed.sets[0], id:'old-set', workout_session_exercise_id:'old-exercise', actual_weight_kg:40}],
-    dateByDayLog: new Map([...seed.dateByDayLog, [oldDate,oldDate]])});
+    dateByDayLog: new Map([...seed.dateByDayLog, [oldDate,oldDate]])}));
 
   const path = 'progress?period=30&spark=1&inPeriod=1&panorama=1';
   const before = await (await overviewGET(request(path))).json();

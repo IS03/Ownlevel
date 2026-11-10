@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { TrainingAnalysisSource } from "../../phase2/training-analysis";
 import type { WorkoutSession, WorkoutSessionExercise, WorkoutSet } from "../../phase2/types";
 import { trainingPerformanceRelationshipSamples } from "./training";
+import { withKnownExecution } from "../known-execution.fixture";
 
 type ExerciseFact = { id: string; mode: string; weight: number | null; reps: number };
 type SessionFact = { id: string; date: string; exercises: ExerciseFact[] };
@@ -38,7 +39,7 @@ function source(facts: SessionFact[]): TrainingAnalysisSource {
       });
     });
   }
-  return { sessions, sessionExercises, sets, dateByDayLog: dates };
+  return withKnownExecution({ sessions, sessionExercises, sets, dateByDayLog: dates });
 }
 
 describe("Relationships V2 training performance outcome", () => {

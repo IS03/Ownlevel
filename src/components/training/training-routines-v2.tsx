@@ -59,6 +59,11 @@ function insufficientDescription(item: TrainingExercisePerformance) {
   if (item.reason === "missing_weight_mode") return "Falta definir cómo se registra la carga";
   if (item.reason === "unsupported_weight_mode") return "Este modo todavía no admite comparación directa";
   if (item.reason === "incomplete_sets") return "Faltan series completas comparables";
+  if (item.reason === "missing_implement") return "Falta el implemento en alguna de las sesiones";
+  if (item.reason === "different_implement") return "Cambió el implemento usado";
+  if (item.reason === "unknown_configuration") return "Falta la variante en alguna de las sesiones";
+  if (item.reason === "different_configuration") return "Cambió la variante del ejercicio";
+  if (item.reason === "mixed_configuration") return "Hubo más de una variante en el mismo período";
   return "La evidencia disponible no permite una conclusión";
 }
 

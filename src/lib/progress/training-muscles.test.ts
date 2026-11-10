@@ -5,6 +5,7 @@ import { trainingAnalysisExercisePath, trainingAnalysisWorkspacePath } from "../
 import { buildTrainingComparison } from "../phase2/training-comparison";
 import type { MuscleGroup, WorkoutSession, WorkoutSessionExercise, WorkoutSet } from "../phase2/types";
 import { buildTrainingMusclesAnalytics, TRAINING_CROSS_MUSCLE_METRICS } from "./training-muscles";
+import { withKnownExecution } from "./known-execution.fixture";
 
 type Observation = {
   id: string;
@@ -33,7 +34,7 @@ function source(observations: Observation[]): TrainingAnalysisSource {
     for (let index = 0; index < (item.setCount ?? 1); index += 1) sets.push({ id: `set-${item.id}-${index}`, user_id: "user", workout_session_exercise_id: sessionExerciseId, set_number: index + 1, target_reps: null, target_weight_kg: null, target_rir: null, actual_reps: item.reps, actual_weight_kg: item.weight, is_completed: true, completed_at: `${item.date}T10:30:00.000Z`, notes: null, created_at: `${item.date}T10:00:00.000Z`, updated_at: `${item.date}T10:30:00.000Z` });
     dates.push([dayId, item.date]);
   }
-  return { sessions, sessionExercises, sets, dateByDayLog: new Map(dates) };
+  return withKnownExecution({ sessions, sessionExercises, sets, dateByDayLog: new Map(dates) });
 }
 
 const observations: Observation[] = [
