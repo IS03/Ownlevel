@@ -84,7 +84,7 @@ describe('Explorar', () => {
     const view = wrap({ unit: 'month', anchor: TODAY, custom: null, compare: { kind: 'previous' } }); await flush();
     fireEvent.press(view.getByTestId('explore-idea-nutrition.protein')); await flush();
     expect(mockExplore).toHaveBeenLastCalledWith(mockClient, MONTH, { measure: 'nutrition.protein', breakdown: 'meal_moment', days: null, series: false }, { start: '2026-09-01', end: '2026-09-05' });
-    expect(view.getByTestId('explore-group-snack').props.accessibilityLabel).toBe('Merienda: 0 g. 1–5 sep: 0 g');
+    expect(view.getByTestId('explore-group-snack').props.accessibilityLabel).toBe('Merienda: 0 g, 0 de 2 días con dato. 1–5 sep: 0 g, 0 de 2 días con dato');
     expect(view.getByText('1 comida sin momento no entra en el desglose.')).toBeTruthy();
     expect(within(view.getByTestId('explore-result')).getByTestId('explore-reference').props.children.join('')).toBe('1–5 sep 60 g · ↗ 60 g');
   });
@@ -109,5 +109,24 @@ describe('Explorar', () => {
     expect(within(field).getByText('Series').props.numberOfLines).toBeUndefined();
     expect(rn.StyleSheet.flatten(view.getByTestId('explore-field-measure-layout').props.style).flexDirection).toBe('column');
     dims.mockRestore(); mockParams = {};
+  });
+  it('P1-C1: A and B say their own coverage, groups too (null and a real zero apart), and totals of different lengths are flagged', async () => {
+    mockExplore.mockImplementation(async (_c, _q, r, compare) => {
+      const e = explore(r, !!compare);
+      e.period = { ...e.period, previousStart: '2026-08-01', previousEnd: '2026-08-31' };
+      const groups = [...e.current.groups, { key: 'espalda', label: 'Espalda', value: null, coverage: { days: 0, eligible: 5 }, series: null }];
+      groups[1] = { ...groups[1]!, value: 0, coverage: { days: 1, eligible: 5 } };
+      e.current = { ...e.current, groups };
+      if (e.reference) e.reference = { ...e.reference, coverage: { days: 3, eligible: 31 }, groups: groups.map(g => ({ ...g, coverage: { ...g.coverage, eligible: 31 } })) };
+      return ok(e);
+    });
+    mockParams = { measure: 'training.sets', breakdown: 'muscle' };
+    const view = wrap({ unit: 'month', anchor: TODAY, custom: null, compare: { kind: 'custom', range: { start: '2026-08-01', end: '2026-08-31' } } }); await flush();
+    expect(view.getByTestId('explore-coverage').props.children).toEqual(['Este período: entrenaste 2 de 5 días', '']);
+    expect(view.getByTestId('explore-reference-coverage').props.children.join('')).toBe('1–31 ago: entrenaste 3 de 31 días');
+    expect(view.getByTestId('explore-length-note').props.children.join('')).toBe('Este período dura 5 días y 1–31 ago, 31: la diferencia de totales no es una comparación por día.');
+    expect(view.getByTestId('explore-group-espalda').props.accessibilityLabel).toBe('Espalda: sin dato, 0 de 5 días con dato. 1–31 ago: sin dato, 0 de 31 días con dato');
+    expect(view.getByTestId('explore-group-pecho').props.accessibilityLabel).toBe('Pecho: 0 series, 1 de 5 días con dato. 1–31 ago: 0 series, 1 de 31 días con dato');
+    mockParams = {};
   });
 });

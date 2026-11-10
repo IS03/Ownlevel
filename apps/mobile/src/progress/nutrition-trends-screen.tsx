@@ -28,6 +28,7 @@ import { inputNutritionDate } from '@/nutrition/day-format';
 import { nutritionChartDayHref } from './nutrition-chart-navigation';
 import { timingHeadline } from './meal-times-model';
 import { figuresFitInRow, useMeasuredWidth } from './figure-layout';
+import { PortadaPointNote, usePortadaPoint, type PortadaPoint } from './portada-point';
 
 function TimingEntry() {
   const { client } = useMobileApi(),
@@ -70,8 +71,10 @@ function daysText(report: NutritionReport) {
   const protein = p.denominator !== c.denominator ? ` (proteína: ${days(p.denominator)})` : '';
   return `Promedio de ${days(c.denominator)} con dato${protein}${partial}${report.days.some((d) => d.isToday) ? ', sin contar hoy' : ''}`;
 }
-type InspectionProps = { selection: NutritionInspection; onSelect: (next: NutritionInspection) => void };
-function ReportContent({ report, reference, selection, onSelect }: { report: NutritionReport; reference?: NutritionReport } & InspectionProps) {
+type InspectionProps = { selection: NutritionInspection; onSelect: (next: NutritionInspection) => void; portada?: PortadaPoint | null };
+// The portada averages the complete days of an interval; this chart shows each day: never the same datum.
+const NO_DAILY_EQUIVALENT = 'La portada promedia los días completos de ese intervalo y este gráfico muestra cada día: no hay un dato equivalente para seleccionar.';
+function ReportContent({ report, reference, selection, onSelect, portada }: { report: NutritionReport; reference?: NutritionReport } & InspectionProps) {
   const router = useRouter();
   const { compareOn, compareText } = useProgressRange();
   const openDate = (date: string) => { const href = nutritionChartDayHref(date); if (href) router.push(href); };
@@ -126,6 +129,7 @@ function ReportContent({ report, reference, selection, onSelect }: { report: Nut
         </AppText>
         {compareOn && reference ? <AppText muted numeric variant="footnote">Referencia {compareText} · {daysText(reference)}</AppText> : null}
       </View>
+      {portada ? <PortadaPointNote point={portada} matched={false} reason={NO_DAILY_EQUIVALENT} /> : null}
       <NutritionChart report={report} reference={reference} selection={selection} onSelect={onSelect} onDate={openDate} />
       <AppText muted numeric variant="caption">Detalle y horarios del período elegido · {inputNutritionDate(report.range.start)} – {inputNutritionDate(report.range.end)}</AppText>
       <TimingEntry />
@@ -136,7 +140,7 @@ function ReportContent({ report, reference, selection, onSelect }: { report: Nut
     </>
   );
 }
-function ComparedReport({ report, query, selection, onSelect, refreshRevision }: { report: NutritionReport; query: ReportQuery; refreshRevision: number } & InspectionProps) {
+function ComparedReport({ report, query, selection, onSelect, refreshRevision, portada }: { report: NutritionReport; query: ReportQuery; refreshRevision: number } & InspectionProps) {
   const { client } = useMobileApi();
   const load = useCallback(
     (c: NonNullable<typeof client>, signal: AbortSignal) => fetchNutritionReport(c, query, signal),
@@ -163,7 +167,7 @@ function ComparedReport({ report, query, selection, onSelect, refreshRevision }:
           onAction={() => void refresh()}
         />
       ) : null}
-      <ReportContent report={report} reference={data} selection={selection} onSelect={onSelect} />
+      <ReportContent report={report} reference={data} selection={selection} onSelect={onSelect} portada={portada} />
     </>
   );
 }
@@ -177,11 +181,14 @@ function NutritionReportResource() {
   );
   const { state, data, refresh } = useCachedRead(client, 'nutrition-report', reportQueryKey(query), load);
   const scope = `${reportQueryKey(query)}|${compare?.start ?? ''}|${compare?.end ?? ''}`;
-  const [saved, setSaved] = useState({ client, scope, selection: null as NutritionInspection });
+  const point = usePortadaPoint();
+  // The portada context stays until the reader chooses a bar or the account/period/comparison changes.
+  const [saved, setSaved] = useState({ client, scope, selection: null as NutritionInspection, fromPortada: true });
   const currentScope = saved.client === client && saved.scope === scope;
   const selection = currentScope ? saved.selection : null;
-  if (!currentScope) setSaved({ client, scope, selection: null });
-  const onSelect = (selection: NutritionInspection) => setSaved({ client, scope, selection });
+  if (!currentScope) setSaved({ client, scope, selection: null, fromPortada: false });
+  const onSelect = (selection: NutritionInspection) => setSaved({ client, scope, selection, fromPortada: false });
+  const portada = currentScope && saved.fromPortada ? point : null;
   const [referenceRevision, setReferenceRevision] = useState(0);
   const refreshAll = () => {
     void refresh();
@@ -215,11 +222,11 @@ function NutritionReportResource() {
             <ComparedReport
               refreshRevision={referenceRevision}
               report={data}
-              selection={selection} onSelect={onSelect}
+              selection={selection} onSelect={onSelect} portada={portada}
               query={{ period: 'custom', from: compare.start, to: compare.end }}
             />
           ) : (
-            <ReportContent report={data} selection={selection} onSelect={onSelect} />
+            <ReportContent report={data} selection={selection} onSelect={onSelect} portada={portada} />
           )}
         </>
       ) : (

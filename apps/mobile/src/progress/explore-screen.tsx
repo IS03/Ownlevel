@@ -15,7 +15,7 @@ import { PeriodChart } from './period-chart';
 import { ProgressRow } from './progress-row';
 import { ProgressScroll } from './progress-scroll';
 import { useProgressRange } from './progress-range-context';
-import { shortRange } from './progress-range';
+import { daysBetween, shortRange } from './progress-range';
 import { arrowDelta, formatValue } from './progress-format';
 import { useProgressResource } from './use-progress-resource';
 
@@ -41,6 +41,10 @@ function Field({ label, value, accent, onPress, testID }: { label: string; value
 const namedByValue = (e: ProgressExplore, v: number | null) =>
   v !== null && valueText(e, v).toLocaleLowerCase('es-AR').endsWith(e.measure.label.toLocaleLowerCase('es-AR'));
 
+/** Days with data out of the eligible days of one group: data days are never presented as the whole period. */
+const groupCoverage = (c: { days: number; eligible: number }) => `${c.days} de ${c.eligible} ${c.eligible === 1 ? 'día' : 'días'} con dato`;
+const lowerFirst = (text: string) => text.charAt(0).toLocaleLowerCase('es-AR') + text.slice(1);
+
 /** Values in the measure's own semantics; a weekday average of a sum is no longer a whole number. */
 export const valueText = (e: ProgressExplore, v: number | null, averaged = false) =>
   formatValue(v, e.measure.valueType === 'duration' ? null : e.measure.unit, averaged && e.measure.valueType === 'integer' ? 'decimal' : e.measure.valueType);
@@ -54,7 +58,9 @@ function Bars({ e, groups, reference }: { e: ProgressExplore; groups: ExploreGro
   return <View style={styles.bars} testID="explore-bars">
     {groups.map(g => {
       const ref = reference?.find(r => r.key === g.key);
-      return <View key={g.key} testID={`explore-group-${g.key}`} accessible accessibilityLabel={`${g.label}: ${g.value === null ? 'sin dato' : valueText(e, g.value, averaged)}${ref ? `. ${compareText}: ${ref.value === null ? 'sin dato' : valueText(e, ref.value, averaged)}` : ''}`}>
+      // With a comparison each side says its own coverage: equal calendar days are not equal samples.
+      const coverage = ref ? `Este período: ${groupCoverage(g.coverage)}` : null;
+      return <View key={g.key} testID={`explore-group-${g.key}`} accessible accessibilityLabel={`${g.label}: ${g.value === null ? 'sin dato' : valueText(e, g.value, averaged)}${ref ? `, ${groupCoverage(g.coverage)}. ${compareText}: ${ref.value === null ? 'sin dato' : valueText(e, ref.value, averaged)}, ${groupCoverage(ref.coverage)}` : ''}`}>
         {/* Name and value on their own line (both wrap, nothing cut), the bar under them across the full width. */}
         <View style={styles.barHead}>
           <AppText variant="subheadline" style={styles.barLabel}>{g.label}</AppText>
@@ -62,7 +68,8 @@ function Bars({ e, groups, reference }: { e: ProgressExplore; groups: ExploreGro
         </View>
         <View style={styles.track}>{g.value !== null && g.value > 0 && max > 0
           ? <View style={{ width: `${(g.value / max) * 100}%`, height: 10, borderRadius: 5, backgroundColor: colors.primary, opacity: g.key === top ? 1 : 0.4 }} /> : null}</View>
-        {ref ? <AppText muted numeric variant="footnote">{compareText}: {ref.value === null ? 'sin dato' : valueText(e, ref.value, averaged)}</AppText> : null}
+        {coverage ? <AppText muted numeric variant="footnote">{coverage}</AppText> : null}
+        {ref ? <AppText muted numeric variant="footnote">{compareText}: {ref.value === null ? 'sin dato' : valueText(e, ref.value, averaged)} · {groupCoverage(ref.coverage)}</AppText> : null}
       </View>;
     })}
   </View>;
@@ -120,9 +127,12 @@ function Result({ request, onLoaded }: { request: ExploreRequest; onLoaded: (e: 
         {e.measure.derived ? <View style={[styles.chip, { backgroundColor: colors.brandSubtle }]}><AppText variant="caption" style={{ color: colors.primary, fontWeight: '600' }}>estimado</AppText></View> : null}
       </View>
       <AppText muted variant="footnote">{namedByValue(e, c.value) ? '' : `${e.measure.label} · `}{aggregationText(e)}{e.days ? ` · días ${DAYS_LABELS[e.days].toLocaleLowerCase('es-AR')}` : ''}</AppText>
-      <AppText muted numeric variant="footnote">{coverageLine(e, c.coverage)}{c.change !== null ? ` · ${arrowDelta(c.change, e.measure.unit)} en el período` : ''}</AppText>
+      <AppText muted numeric variant="footnote" testID="explore-coverage">{r && compareText ? `Este período: ${lowerFirst(coverageLine(e, c.coverage))}` : coverageLine(e, c.coverage)}{c.change !== null ? ` · ${arrowDelta(c.change, e.measure.unit)} en el período` : ''}</AppText>
       {r && compareText ? <AppText numeric variant="footnote" testID="explore-reference">{compareText} {r.value === null ? 'sin dato'
         : `${valueText(e, r.value)}${c.value !== null ? ` · ${arrowDelta(c.value - r.value, e.measure.valueType === 'duration' ? null : e.measure.unit, e.measure.valueType)}` : ''}`}</AppText> : null}
+      {r && compareText ? <AppText muted numeric variant="footnote" testID="explore-reference-coverage">{compareText}: {lowerFirst(coverageLine(e, r.coverage))}</AppText> : null}
+      {r && compareText && e.measure.aggregation === 'sum' && e.period.days !== daysBetween(e.period.previousStart, e.period.previousEnd)
+        ? <AppText muted numeric variant="footnote" testID="explore-length-note">Este período dura {e.period.days} días y {compareText}, {daysBetween(e.period.previousStart, e.period.previousEnd)}: la diferencia de totales no es una comparación por día.</AppText> : null}
     </View>
     {e.series && !e.breakdown && c.series ? <PeriodChart testID="explore-chart" mode={dots ? 'dots' : 'bars'} points={c.series.map(b => ({
       key: b.start, label: shortRange({ start: b.start, end: b.start }, today), value: b.value, text: b.value === null ? 'sin dato' : valueText(e, b.value), soft: b.start <= today && b.end >= today && !dots,

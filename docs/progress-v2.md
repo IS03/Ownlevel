@@ -867,6 +867,38 @@ Desde `dcafb07` (#469 integrado). Se auditaron `period-controls`, `period-sheets
 
 **Evidencia:** [capturas/manifiesto](qa/402-p1b5/evidence.json), con simulador separado, Metro propio y API en memoria; la build, su simulador y Metro 8081 quedaron intactos. No acreditan VoiceOver, Reduce Motion ni QA física. #402 sigue abierto: falta la conciliación transversal de Progreso VNext y sus criterios de aceptación.
 
+### P1-C1 — Conciliación: continuidad, A/B explícito y «Notamos algo» (10/11/2026)
+
+Desde `116b2c7` (#474 integrado). Último PR correctivo de la conciliación P1-C de #402; no cambia contratos, endpoints, motores, umbrales ni Insights #367.
+
+- **Continuidad de minigráficos:** el punto inspeccionado en los minigráficos de Entrenamiento, Cuerpo y Nutrición de la portada se guarda en el estado de la pantalla, con su cuenta y su ventana, así que sigue elegido al volver. Viaja al detalle como parámetros de ruta (`portada-point.tsx`), sin estado global ni lecturas nuevas. El detalle lo **preselecciona solo si es el mismo dato**:
+  - **Entrenamiento:** mismo intervalo y las mismas series, porque el minigráfico y el detalle suman series por intervalo.
+  - **Cuerpo:** el último pesaje válido del intervalo, con el mismo valor, porque el minigráfico muestra el último pesaje.
+  - **Nutrición:** nunca, porque el minigráfico promedia los días completos y el detalle es diario.
+
+  Cuando no hay equivalente, el detalle dice de dónde viene el lector y no selecciona otro dato. Un cambio de cuenta, período o comparación, la desaparición del dato o la elección del propio lector retiran el contexto. La inspección y el acceso a originales no cambian.
+- **A/B explícito:**
+  - **Explorar:** muestra por separado la cobertura de este período y la del período de comparación (días con dato de días elegibles), también por grupo cuando hay comparación, con «sin dato» distinto de un cero real. Si se comparan sumas de ventanas de distinta duración, advierte que la diferencia de totales no es por día.
+  - **Chip de comparación compartido:** si A y B duran distinto (p. ej., 17 y 31 días), lo dice y aclara que los totales no son equivalentes, también para VoiceOver.
+  - Ningún cálculo se normaliza.
+- **«Notamos algo»:** antes, abrirlo cambiaba el período compartido a 3 meses, y Explorar período volvía a leer 3 veces al regresar. Ahora la respuesta lee su ventana de 3 meses en un período propio (`window=3m`, con su propio `ProgressRangeProvider`) y muestra lo que lee; al volver, el período queda exactamente como estaba. No cambian la definición, el método, la procedencia ni el aviso de la respuesta, ni el motor que decide cuándo aparece el insight.
+- **Truncados:** en Etapas, nombres y fechas del encabezado de la tabla envuelven en lugar de cortarse. El título del encabezado de `ProgressScroll` sigue en una línea: vive en una barra de alto fijo con animación de encogido, y cambiarlo sería un rediseño estructural, fuera de este PR.
+
+**Comparabilidad por variante: brecha documentada, sin cambios aquí.** Desde `20261105223915`, la variante (configuración) se registra por sesión y ejercicio, y el comparador estricto de Insights #367 la usa (`performance-insights-server.ts`). El comparador de Progreso (`training-performance.ts`) agrupa por `exercise_id` y solo separa el modo de carga: no carga esa variante ni usa `implement_snapshot`.
+
+- **Caso reproducible:** mismo ejercicio en «Peso total», primero 50 kg × 8 con mancuernas y después 50 kg × 10 con barra. Resultado: `improved`, «Nuevo récord de reps: 10 con 50 kg».
+- **Impacto:** el titular «X de Y mejoraron», el estado por ejercicio, los récords y los hallazgos de rendimiento pueden comparar ejecuciones distintas del mismo ejercicio.
+- **Propuesta independiente:** que el comparador de Progreso trate como no comparables las sesiones con variante registrada distinta (o con implemento distinto), reutilizando la identidad de configuración de #367 y con un motivo propio. Esto toca el contrato y el motor del servidor; no se resuelve con presentación.
+
+**Verificación:** Progreso, Insights, Historial y Cuerpo 46/46 suites (456 pruebas), con regresiones nuevas: continuidad en las tres áreas (coincide, no coincide, intervalo distinto, retorno, cambio de período y de cuenta), A/B de 17 frente a 31 días con cobertura parcial, nulos y cero real, chip de duraciones, respuesta con su ventana y período compartido intacto, y Etapas. `npm run validate` completo de Mobile: tipos, lint, 221/221 suites y 1.949 pruebas, `config:check`. Servidor (`src/lib/progress` y contratos de Progreso): 55 archivos aprobados y 2 omitidos (campañas costosas). Export iOS Hermes 9,7 MB con caché de Metro aislada.
+
+**Consumo** (Jest, lectores y parsers reales, mismo fixture, antes → después):
+- **Sin cambios:** portada 1 → 1, y elegir un punto 0 → 0. Detalles abiertos desde la portada: Entrenamiento 1, Cuerpo 4 y Nutrición 2, con el punto o sin él, porque la coincidencia es local. Explorar con A/B 1 → 1.
+- **«Notamos algo»:** al abrirlo, Explorar período pasa de 3 relecturas a 0 y el período compartido queda en `month` (antes pasaba a `3m`); la respuesta lee 1 → 1.
+- No es una medición en dispositivo.
+
+**Evidencia:** [capturas/manifiesto](qa/402-p1c1/evidence.json), con simulador separado, Metro propio y API en memoria. No acreditan VoiceOver, Reduce Motion ni QA física.
+
 ## Función y jerarquía
 
 **IMPLEMENTADO:** `/progress` sintetiza y navega; no duplica reportes ni muestra grandes gráficos.

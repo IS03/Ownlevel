@@ -8,7 +8,7 @@ import { fetchProgressInfluence, influenceDefinitionKey, validInfluenceDefinitio
 import { AppIcon, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme, type AppIconName } from '@/design-system';
 import { ProgressScroll } from './progress-scroll';
 import { ProgressRow } from './progress-row';
-import { useProgressRange } from './progress-range-context';
+import { ProgressRangeProvider, useProgressRange } from './progress-range-context';
 import { useProgressResource } from './use-progress-resource';
 import { CAUTION, LAG_LABELS, QUESTIONS, answerText, groupLabels, questionText, shortAnswer, valueText } from './influence-model';
 import { PinViewSheet } from './pin-view-sheet';
@@ -91,11 +91,22 @@ function Reading({ definition, questionKey }: { definition: InfluenceDefinition;
     </> : <UnavailableState title="No pudimos cargar la respuesta" description="Revisá la conexión e intentá nuevamente." action={<Button label="Reintentar" onPress={() => void refresh()} />} />}
   </ProgressScroll>;
 }
+/**
+ * Opened from «Notamos algo» (`window=3m`): the answer reads the window the insight was computed on, in a period of its
+ * own. The shared Progreso period is not touched, so coming back shows exactly what you were exploring. Its period
+ * controls show (and change) only this window.
+ */
+function InsightWindow({ children }: { children: React.ReactNode }) {
+  const { state, today } = useProgressRange();
+  const [initial] = useState(() => ({ ...state, unit: '3m' as const, anchor: today, custom: null }));
+  return <ProgressRangeProvider initialToday={today} initialState={initial}>{children}</ProgressRangeProvider>;
+}
 export function InfluenceAnswerScreen() {
-  const params = useLocalSearchParams<{ split?: string; cut?: string; lag?: string; outcome?: string; key?: string }>();
+  const params = useLocalSearchParams<{ split?: string; cut?: string; lag?: string; outcome?: string; key?: string; window?: string }>();
   const definition = { split: params.split, cut: params.cut, lag: Number(params.lag), outcome: params.outcome } as InfluenceDefinition;
   if (typeof definition.split !== 'string' || typeof definition.cut !== 'string' || typeof definition.outcome !== 'string' || !['0', '1', '2'].includes(params.lag ?? '') || !validInfluenceDefinition(definition))
     return <ProgressScroll title="Tu pregunta" testID="influence-answer-screen"><AppText muted>Esta pregunta no es válida. Volvé a armarla.</AppText></ProgressScroll>;
-  return <Reading definition={definition} questionKey={params.key} />;
+  const reading = <Reading definition={definition} questionKey={params.key} />;
+  return params.window === '3m' ? <InsightWindow>{reading}</InsightWindow> : reading;
 }
 const styles = StyleSheet.create({ section: { gap: spacing.md }, evidence: { gap: spacing.xs, paddingTop: spacing.md, borderTopWidth: StyleSheet.hairlineWidth }, grow: { flex: 1 }, barLabel: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap' }, track: { height: 8, borderRadius: 10, overflow: 'hidden' }, pinned: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 50 } });

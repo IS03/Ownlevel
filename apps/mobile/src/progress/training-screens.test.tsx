@@ -458,4 +458,35 @@ describe('P1-B2 accessible activity and temporal buckets', () => {
     expect(summary.getByText(/^−1 sesión \(.25%\) frente a 1–5 sep\.$/)).toBeTruthy();
     expect(summary.getByText('+8 series (+200%) frente a 1–5 sep.')).toBeTruthy();
   });
+
+  it('P1-C1: a portada point selects only the same sets bucket; another value or interval selects nothing and says so', async () => {
+    mockParams = { point: '2026-09-06~2026-09-12', pointValue: '4', pointText: '6–12 sep 2026: 4 series' };
+    const view = wrap(<TrainingTrendsScreen />); await flush();
+    expect(within(view.getByTestId('training-bucket-inspection')).getByText('4 series')).toBeTruthy();
+    expect(view.getByTestId('portada-point-note').props.accessibilityLabel).toBe('Desde la portada: 6–12 sep 2026: 4 series. Seleccionado en el gráfico.');
+    // The reader's own choice retires the portada context; the chart keeps working as before.
+    fireEvent.press(view.getByTestId('training-bucket-2026-09-13'));
+    expect(view.queryByTestId('portada-point-note')).toBeNull(); expect(within(view.getByTestId('training-bucket-inspection')).getByText('8 series')).toBeTruthy();
+    view.unmount();
+    for (const point of [{ point: '2026-09-06~2026-09-12', pointValue: '5' }, { point: '2026-09-06~2026-09-08', pointValue: '4' }]) {
+      mockParams = { ...point, pointText: 'Intervalo de la portada' };
+      const other = wrap(<TrainingTrendsScreen />); await flush();
+      expect(other.queryByTestId('training-bucket-inspection')).toBeNull();
+      expect(other.getByTestId('portada-point-note').props.accessibilityLabel).toMatch(/no seleccionamos otro en su lugar/);
+      other.unmount();
+    }
+    expect(mockTraining).toHaveBeenCalledTimes(1); // the confirmed read is reused; matching the point is local
+  });
+  it('P1-C1: the portada point is retired by a period change or another account', async () => {
+    mockParams = { point: '2026-09-06~2026-09-12', pointValue: '4', pointText: '6–12 sep 2026: 4 series' };
+    const view = wrap(<TrainingTrendsScreen />); await flush();
+    expect(view.getByTestId('training-bucket-inspection')).toBeTruthy();
+    fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
+    expect(view.queryByTestId('training-bucket-inspection')).toBeNull(); expect(view.queryByTestId('portada-point-note')).toBeNull();
+    view.unmount();
+    const again = wrap(<TrainingTrendsScreen />); await flush(); expect(again.getByTestId('training-bucket-inspection')).toBeTruthy();
+    mockCurrentClient = { request: jest.fn(), read: jest.fn() } as unknown as MobileApiClient;
+    again.rerender(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}><OwnlevelThemeProvider initialMode="light"><ProgressRangeProvider initialToday={TODAY}><TrainingTrendsScreen /></ProgressRangeProvider></OwnlevelThemeProvider></SafeAreaProvider>); await flush();
+    expect(again.queryByTestId('training-bucket-inspection')).toBeNull(); expect(again.queryByTestId('portada-point-note')).toBeNull();
+  });
 });

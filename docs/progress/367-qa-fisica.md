@@ -337,3 +337,12 @@ Pendiente físico. Evidencia local y límites: `docs/progress/qa/402-p1b5/eviden
 - [ ] Editar Mis vistas: renombrar, sacar (confirmación), ordenar arrastrando y con VoiceOver; conflicto desde otro dispositivo; cambio de cuenta.
 - [ ] Explorar: medida, desglose y días con nombres largos; desglose con cifras extensas y A/B; fijar en Mis vistas.
 - [ ] Portada → «Lo que se movió junto» abre Explorar período con esa sección primero, sin cambiar el período; «Períodos y A/B» conserva el orden habitual.
+
+### Progreso #402 P1-C1 — Continuidad, A/B explícito y «Notamos algo»
+
+Pendiente físico. Evidencia local y límites: `docs/progress/qa/402-p1c1/evidence.json`. No se marca como aprobado.
+
+- [ ] Portada: tocar un punto de Entrenamiento, Cuerpo o Nutrición → abrir el área → volver: el punto sigue elegido. Entrenamiento y Cuerpo llegan con ese mismo dato seleccionado; Nutrición dice de dónde viene sin elegir un día. Cambiar de cuenta retira los puntos.
+- [ ] Comparar con A y B de distinta duración: el chip dice ambas duraciones; Explorar muestra la cobertura de cada período y grupo, y advierte cuando compara totales.
+- [ ] «Notamos algo» → «Ver»: la respuesta muestra los últimos 3 meses; al volver, el período de Explorar período es el mismo de antes.
+- [ ] Etapas con nombres largos; VoiceOver y texto grande en las notas nuevas.

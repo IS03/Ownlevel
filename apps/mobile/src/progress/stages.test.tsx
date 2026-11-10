@@ -79,6 +79,14 @@ describe('Tus etapas', () => {
     await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ver Primer déficit' })); });
     expect(view.getByText('ETAPA')).toBeTruthy();
   });
+  it('P1-C1: stage names and dates in the table wrap instead of being cut', async () => {
+    const long = s({ id: 'cur', name: 'Déficit de primavera con entrenamiento de fuerza tres veces por semana' });
+    mockRead.mockResolvedValue({ status: 'ok', data: data([long, maint, first]), meta });
+    const view = screen();
+    await waitFor(() => expect(view.getByTestId('stages-selected')).toBeTruthy());
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ver las 3 etapas' })); });
+    for (const t of view.getAllByText(long.name)) expect(t.props.numberOfLines).toBeUndefined();
+  });
   it('with one stage there is nothing to compare yet and it offers to program the next', async () => {
     mockRead.mockResolvedValue({ status: 'ok', data: data([s({})]), meta });
     const view = screen();

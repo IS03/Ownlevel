@@ -14,7 +14,7 @@ export function InsightRow() {
   const router = useRouter();
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
-  const { state, setState, today } = useProgressRange();
+  const { today } = useProgressRange();
   const load = useCallback((c: NonNullable<typeof client>, s: AbortSignal) => fetchProgressInsight(c, s), []);
   const { data, refresh } = useProgressResource(client, `insight|${today}`, load);
   const [hidden, setHidden] = useState<string | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState(false);
@@ -23,9 +23,9 @@ export function InsightRow() {
   const { data: reading, key } = insight;
   const open = () => {
     haptics.selection();
-    // The insight was computed over the last 3 months: the answer opens on that same period.
-    setState({ ...state, unit: '3m', anchor: today, custom: null });
-    router.push({ pathname: '/(tabs)/progress/influence/answer', params: { ...reading.definition, lag: String(reading.definition.lag), key } });
+    // The insight was computed over the last 3 months: the answer reads that same window in its own period
+    // (`window`), and the period you were exploring stays as it was when you come back.
+    router.push({ pathname: '/(tabs)/progress/influence/answer', params: { ...reading.definition, lag: String(reading.definition.lag), key, window: '3m' } });
   };
   const dismiss = async () => {
     if (!client || busy) return;

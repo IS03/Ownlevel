@@ -1,0 +1,451 @@
+{
+  "base": "116b2c77432161d79f61531efbc16e6f438cb2e6",
+  "device": "iPhone 18 Pro Max / iOS 27.0 simulator (separate from the build simulator), existing OWNLEVEL Dev app",
+  "source": "Real ProgressOverviewScreen, Training/Body/Nutrition trends, ExploreScreen, ProgressPeriodOverviewScreen and InfluenceAnswerScreen; temporary harness (own Metro on 8084, @/api and @/auth aliased to an in-memory client, runtime state on 8085) removed before commit; Metro 8081 and the build simulator untouched",
+  "cases": [
+    {
+      "name": "portada-light",
+      "screen": "portada",
+      "theme": "light",
+      "density": "normal",
+      "wait": 16
+    },
+    {
+      "name": "training-from-portada",
+      "screen": "training",
+      "theme": "light",
+      "key": "point=2026-10-19~2026-10-25&pointText=19%E2%80%9325%20oct%202026%3A%2036%20series&pointValue=36",
+      "density": "normal",
+      "wait": 16
+    },
+    {
+      "name": "body-from-portada",
+      "screen": "body",
+      "theme": "dark",
+      "key": "point=2026-10-26~2026-11-01&pointText=26%20oct%20%E2%80%93%201%20nov%202026%3A%2080%2C5%20kg&pointValue=80.5",
+      "density": "normal",
+      "wait": 16
+    },
+    {
+      "name": "nutrition-from-portada",
+      "screen": "nutrition",
+      "theme": "light",
+      "key": "point=2026-10-19~2026-10-25&pointText=19%E2%80%9325%20oct%202026%3A%202.150%20kcal&pointValue=2150",
+      "density": "normal",
+      "wait": 16
+    },
+    {
+      "name": "explore-ab-compact",
+      "screen": "explore",
+      "theme": "light",
+      "width": 320,
+      "compare": "custom",
+      "today": "2026-10-17",
+      "density": "normal",
+      "wait": 16
+    },
+    {
+      "name": "period-ab-chip",
+      "screen": "period",
+      "theme": "dark",
+      "compare": "custom",
+      "today": "2026-10-17",
+      "density": "normal",
+      "wait": 16
+    },
+    {
+      "name": "answer-from-insight",
+      "screen": "answer",
+      "theme": "light",
+      "today": "2026-10-17",
+      "density": "normal",
+      "wait": 16
+    },
+    {
+      "name": "training-large-text",
+      "screen": "training",
+      "theme": "dark",
+      "size": "accessibility-large",
+      "key": "point=2026-10-19~2026-10-25&pointText=19%E2%80%9325%20oct%202026%3A%2036%20series&pointValue=36",
+      "density": "normal",
+      "wait": 16
+    },
+    {
+      "name": "period-ab-chip-compact",
+      "screen": "period",
+      "theme": "light",
+      "width": 320,
+      "compare": "custom",
+      "today": "2026-10-17",
+      "density": "normal",
+      "wait": 16
+    }
+  ],
+  "notes": [
+    "Detail captures open the route the portada pushes (window + point params); in the app the portada also applies the window to the shared period before navigating, emulated by the harness initial state",
+    "Training and body fixtures reuse the portada spark buckets/weighings so a real correspondence exists; nutrition never has one (average of complete days vs daily bars)",
+    "A/B: A = 1–17 oct (17 days), custom B = 1–31 ago (31 days)",
+    "Dev client Tools button and EJEMPLO tag belong to the harness"
+  ],
+  "resize": "Published PNGs downscaled to 660x1434 with sips; no visual editing",
+  "captures": [
+    {
+      "file": "after-answer-from-insight.png",
+      "bytes": 413183
+    },
+    {
+      "file": "after-body-from-portada.png",
+      "bytes": 354718
+    },
+    {
+      "file": "after-explore-ab-compact.png",
+      "bytes": 423053
+    },
+    {
+      "file": "after-nutrition-from-portada.png",
+      "bytes": 470993
+    },
+    {
+      "file": "after-period-ab-chip-compact.png",
+      "bytes": 371415
+    },
+    {
+      "file": "after-training-from-portada.png",
+      "bytes": 403317
+    },
+    {
+      "file": "after-training-large-text.png",
+      "bytes": 335581
+    },
+    {
+      "file": "before-body-from-portada.png",
+      "bytes": 364939
+    },
+    {
+      "file": "before-explore-ab-compact.png",
+      "bytes": 363654
+    },
+    {
+      "file": "before-nutrition-from-portada.png",
+      "bytes": 456292
+    },
+    {
+      "file": "before-period-ab-chip.png",
+      "bytes": 335822
+    },
+    {
+      "file": "before-training-from-portada.png",
+      "bytes": 395457
+    }
+  ],
+  "readingBudget": {
+    "before": {
+      "portada": {
+        "initial": 1,
+        "afterLocal": 0,
+        "reads": [
+          [
+            "/api/mobile/v1/progress?findings",
+            3584
+          ]
+        ],
+        "allParsed": true
+      },
+      "entrenamiento": {
+        "initial": 1,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/training",
+            1449
+          ]
+        ],
+        "allParsed": true
+      },
+      "cuerpo": {
+        "initial": 4,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/body",
+            2507
+          ],
+          [
+            "/api/mobile/v1/body",
+            147
+          ],
+          [
+            "/api/mobile/v1/body",
+            147
+          ],
+          [
+            "/api/mobile/v1/progress/body",
+            2507
+          ]
+        ],
+        "allParsed": true
+      },
+      "nutricion": {
+        "initial": 2,
+        "reads": [
+          [
+            "/api/mobile/v1/nutrition/reports",
+            36182
+          ],
+          [
+            "/api/mobile/v1/progress/nutrition/timing",
+            589
+          ]
+        ],
+        "allParsed": true
+      },
+      "notamos-algo": {
+        "initial": 4,
+        "readsOnPeriodScreenAfterOpen": 3,
+        "unitBefore": "month",
+        "unitAfter": "3m",
+        "push": {
+          "pathname": "/(tabs)/progress/influence/answer",
+          "params": {
+            "split": "nutrition.carbs",
+            "cut": "median",
+            "lag": "1",
+            "outcome": "training.sets",
+            "key": "carbs_sets"
+          }
+        },
+        "reads": [
+          [
+            "/api/mobile/v1/progress/views",
+            4364
+          ],
+          [
+            "/api/mobile/v1/progress/insight",
+            1199
+          ],
+          [
+            "/api/mobile/v1/progress",
+            648
+          ],
+          [
+            "/api/mobile/v1/progress/connections",
+            5474
+          ],
+          [
+            "/api/mobile/v1/progress/views",
+            7719
+          ],
+          [
+            "/api/mobile/v1/progress",
+            648
+          ],
+          [
+            "/api/mobile/v1/progress/connections",
+            11882
+          ]
+        ],
+        "allParsed": true
+      },
+      "respuesta": {
+        "initial": 1,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/influence",
+            859
+          ]
+        ],
+        "allParsed": true
+      },
+      "explorar-ab": {
+        "initial": 1,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/explore",
+            1361
+          ]
+        ],
+        "allParsed": true
+      }
+    },
+    "after": {
+      "portada": {
+        "initial": 1,
+        "afterLocal": 0,
+        "reads": [
+          [
+            "/api/mobile/v1/progress?findings",
+            3584
+          ]
+        ],
+        "allParsed": true
+      },
+      "entrenamiento": {
+        "initial": 1,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/training",
+            1449
+          ]
+        ],
+        "allParsed": true
+      },
+      "cuerpo": {
+        "initial": 4,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/body",
+            2507
+          ],
+          [
+            "/api/mobile/v1/body",
+            147
+          ],
+          [
+            "/api/mobile/v1/body",
+            147
+          ],
+          [
+            "/api/mobile/v1/progress/body",
+            2507
+          ]
+        ],
+        "allParsed": true
+      },
+      "nutricion": {
+        "initial": 2,
+        "reads": [
+          [
+            "/api/mobile/v1/nutrition/reports",
+            36182
+          ],
+          [
+            "/api/mobile/v1/progress/nutrition/timing",
+            589
+          ]
+        ],
+        "allParsed": true
+      },
+      "entrenamiento-punto": {
+        "initial": 1,
+        "note": "Desde la portada: 19–25 oct 2026: 36 series. Este gráfico no tiene ese mismo intervalo con esas series: no seleccionamos otro en su lugar.",
+        "reads": [
+          [
+            "/api/mobile/v1/progress/training",
+            1449
+          ]
+        ],
+        "allParsed": true
+      },
+      "cuerpo-punto": {
+        "initial": 4,
+        "note": "Desde la portada: 26 oct – 1 nov 2026: 80,5 kg. Seleccionado en el gráfico.",
+        "reads": [
+          [
+            "/api/mobile/v1/progress/body",
+            2507
+          ],
+          [
+            "/api/mobile/v1/body",
+            147
+          ],
+          [
+            "/api/mobile/v1/body",
+            147
+          ],
+          [
+            "/api/mobile/v1/progress/body",
+            2507
+          ]
+        ],
+        "allParsed": true
+      },
+      "nutricion-punto": {
+        "initial": 2,
+        "note": "Desde la portada: 19–25 oct 2026: 2.150 kcal. La portada promedia los días completos de ese intervalo y este gráfico muestra cada día: no hay un dato equivalente para seleccionar.",
+        "reads": [
+          [
+            "/api/mobile/v1/nutrition/reports",
+            36182
+          ],
+          [
+            "/api/mobile/v1/progress/nutrition/timing",
+            589
+          ]
+        ],
+        "allParsed": true
+      },
+      "notamos-algo": {
+        "initial": 4,
+        "readsOnPeriodScreenAfterOpen": 0,
+        "unitBefore": "month",
+        "unitAfter": "month",
+        "push": {
+          "pathname": "/(tabs)/progress/influence/answer",
+          "params": {
+            "split": "nutrition.carbs",
+            "cut": "median",
+            "lag": "1",
+            "outcome": "training.sets",
+            "key": "carbs_sets",
+            "window": "3m"
+          }
+        },
+        "reads": [
+          [
+            "/api/mobile/v1/progress/views",
+            4364
+          ],
+          [
+            "/api/mobile/v1/progress/insight",
+            1199
+          ],
+          [
+            "/api/mobile/v1/progress",
+            648
+          ],
+          [
+            "/api/mobile/v1/progress/connections",
+            5474
+          ]
+        ],
+        "allParsed": true
+      },
+      "respuesta": {
+        "initial": 1,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/influence",
+            859
+          ]
+        ],
+        "allParsed": true
+      },
+      "explorar-ab": {
+        "initial": 1,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/explore",
+            1361
+          ]
+        ],
+        "allParsed": true
+      }
+    },
+    "note": "Jest, real fetchers/parsers on client.read. Portada 1, details 1/4/2 with or without the point (matching is local), Notamos algo: period screen re-reads 3 -> 0 and shared unit month -> month (was 3m), answer 1, Explore A/B 1. Not a device measurement"
+  },
+  "verification": {
+    "directed": "src/progress + insights + history + body: 46/46 suites, 456 tests",
+    "mobileValidate": "typecheck, lint, 221/221 suites, 1949 tests, config:check",
+    "server": "vitest src/lib/progress + mobile-api/progress: 55 files passed, 2 skipped (costly campaigns), 745 tests passed, 11 skipped",
+    "iosExport": "Hermes 9.7 MB, isolated Metro cache, no config change"
+  },
+  "comparability": {
+    "status": "gap, documented, not changed here",
+    "repro": "src/lib/progress/training-performance.ts: same exercise_id and weight mode «Peso total», 50 kg x 8 with implement Mancuernas then 50 kg x 10 with Barra -> status improved, signal new_rep_record «Nuevo récord de reps: 10 con 50 kg»",
+    "cause": "Progreso groups by exercise_id and separates only weight mode; TrainingAnalysisSource does not load workout_session_exercise_configurations (variant recorded per session since 20261105223915) nor uses implement_snapshot. The #367 strict comparator (performance-insights-server) does read configuration"
+  },
+  "limits": [
+    "No physical iPhone QA",
+    "No VoiceOver or Reduce Motion run on device",
+    "ProgressScroll header title stays one line (fixed bar height and shrink animation): structural, excluded",
+    "period-selector.tsx untouched (out of scope)"
+  ]
+}
