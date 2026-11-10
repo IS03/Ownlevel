@@ -77,7 +77,8 @@ it('inspects a graph locally and opens the corresponding configured detail only 
     expect(mockPush).not.toHaveBeenCalled();
     expect(read).toHaveBeenCalledTimes(1);
     fireEvent.press(view.getByRole('button', { name: 'Ver actividad y ejercicios' }));
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/training', params: { from: '2026-10-11', to: PANORAMA_TODAY } });
+    // The inspected point travels with the window; the detail decides whether it holds the same datum.
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/training', params: expect.objectContaining({ from: '2026-10-11', to: PANORAMA_TODAY, point: '2026-10-11~2026-10-11' }) });
 });
 it('does not read while hidden, reuses a confirmed read on return, and keeps it during revalidation', async () => {
     mockFocused = false;
@@ -324,4 +325,27 @@ it('retains the secondary context disclosure on return and retires it on an acco
     mockClient={read} as unknown as MobileApiClient;view.rerender(wrap());await view.findByTestId('progress-panorama');
     expect(view.queryByRole('button',{name:'Últimos tres meses'})).toBeNull();
     expect(view.getByRole('button',{name:'Contexto y relaciones'}).props.accessibilityState.expanded).toBe(false);
+});
+
+it('P1-C1: the inspected spark point survives the trip to the detail and back, travels with the area and leaves with the account', async () => {
+    const view = render(wrap());
+    await view.findByTestId('progress-panorama');
+    const point = () => within(view.getByTestId('panorama-chart-weight')).getAllByRole('button').find(b => b.props.accessibilityState?.selected);
+    const weightButtons = within(view.getByTestId('panorama-chart-weight')).getAllByRole('button');
+    const target = weightButtons.find(b => !/sin dato/.test(b.props.accessibilityLabel))!;
+    fireEvent.press(target); const label = point()!.props.accessibilityLabel;
+    fireEvent.press(view.getByRole('button', { name: 'Ver peso y medidas' }));
+    const params = (mockPush.mock.calls.at(-1)![0] as { params: Record<string, string> }).params;
+    expect(params).toEqual(expect.objectContaining({ from: '2026-10-11', to: PANORAMA_TODAY }));
+    expect(params.point).toMatch(/^\d{4}-\d{2}-\d{2}~\d{4}-\d{2}-\d{2}$/); expect(label).toContain(params.pointText.split(':')[0]!.split(',')[0]!);
+    // Away (hidden) and back: the same point is still inspected, with no other read.
+    await act(async () => { mockFocused = false; [...mockLife].forEach(x => x.blur()); });
+    await act(async () => { mockFocused = true; [...mockLife].forEach(x => x.focus()); });
+    await view.findByTestId('progress-panorama');
+    expect(point()!.props.accessibilityLabel).toBe(label); expect(read).toHaveBeenCalledTimes(1);
+    // Another account: no inspected point and no point carried to the detail.
+    mockClient = { read } as unknown as MobileApiClient; view.rerender(wrap()); await view.findByTestId('progress-panorama');
+    expect(point()).toBeUndefined();
+    fireEvent.press(view.getByRole('button', { name: 'Ver peso y medidas' }));
+    expect((mockPush.mock.calls.at(-1)![0] as { params: Record<string, string> }).params.point).toBeUndefined();
 });

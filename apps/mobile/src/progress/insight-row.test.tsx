@@ -35,14 +35,15 @@ const wrap = () => render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 
 beforeEach(() => { clearConfirmedReads(mockClient as never); jest.clearAllMocks(); mockFetch.mockResolvedValue({ status: 'ok', data: insight, meta }); });
 
 describe('Automatic insight row', () => {
-  it('says what happened, neutrally, with how many days; "Ver" opens the answer on the last 3 months', async () => {
+  it('says what happened, neutrally, with how many days; "Ver" opens the answer on the last 3 months without touching the shared period', async () => {
     const view = wrap(); await flush();
     expect(view.getByText('Notamos algo en tus datos')).toBeTruthy();
     expect(view.getByText(/Los días que entrenaste registraste en promedio 2,6 L\. Los días sin entrenar, 1,5 L\. Pasó en 34 días de los últimos 3 meses\./)).toBeTruthy();
     fireEvent.press(view.getByTestId('progress-insight-open'));
     await flush();
-    expect(seenUnit).toHaveBeenLastCalledWith('3m');
-    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/influence/answer', params: { ...insight.insight!.data.definition, lag: '0', key: 'training_water' } });
+    // The answer reads its own 3-month window (`window`); the period being explored is never overwritten.
+    expect(seenUnit).not.toHaveBeenCalledWith('3m'); expect(seenUnit).toHaveBeenLastCalledWith('month');
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/influence/answer', params: { ...insight.insight!.data.definition, lag: '0', key: 'training_water', window: '3m' } });
   });
   it('"No me interesa" hides it only once saved; a failure says so and keeps it', async () => {
     mockDismiss.mockResolvedValueOnce({ status: 'unavailable', reason: 'network', meta });

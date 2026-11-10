@@ -26,6 +26,7 @@ import { WeeklyWeights } from './weekly-weights';
 import { formatBodyDate } from '@/body/body-model';
 import { bodyObservationHref, isBodyChartMetric } from './body-chart-navigation';
 import { figuresFitInRow, useMeasuredWidth } from './figure-layout';
+import { PortadaPointNote, sameValue, usePortadaPoint, type PortadaPoint } from './portada-point';
 
 const validBodyValue = (value: number) => Number.isFinite(value) && value > 0;
 const bodyDifference = (value: number, unit: string) => Math.abs(value) < 1e-9 ? `= ${formatValue(0, unit)}` : arrowDelta(value, unit);
@@ -43,9 +44,9 @@ function metricLine(m: ProgressBodyMetric) {
   return `${value} · ${bodyDifference(m.change, m.unit)}`;
 }
 
-function Selected({ metric, excluded, storedZeros = [], selectedDate, onSelect, routeMetric }: {
+function Selected({ metric, excluded, storedZeros = [], selectedDate, onSelect, routeMetric, portada }: {
   metric: ProgressBodyMetric; excluded: number; storedZeros?: readonly string[]; selectedDate: string | null;
-  onSelect: (date: string | null) => void; routeMetric: string | null;
+  onSelect: (date: string | null) => void; routeMetric: string | null; portada?: { point: PortadaPoint; matched: boolean } | null;
 }) {
   const router = useRouter();
   const { colors } = useOwnlevelTheme();
@@ -114,6 +115,7 @@ function Selected({ metric, excluded, storedZeros = [], selectedDate, onSelect, 
       {widen}
     </> : safeSummary && count === 2 ? <AppText muted variant="footnote">Dos registros: muestran una diferencia, todavía con evidencia limitada.</AppText> : null}
     {bands.length ? <View style={styles.chips}><Chip kind="toggle" label="Etapas" selected={showStages} onPress={() => setShowStages(v => !v)} /></View> : null}
+    {portada ? <PortadaPointNote point={portada.point} matched={portada.matched} reason="No hay en este período un pesaje con esa fecha y ese valor: no seleccionamos otro en su lugar." /> : null}
     <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={styles.chartScroll} style={styles.chart} accessibilityLabel={`Gráfico de ${metric.label.toLocaleLowerCase('es-AR')}`}>
       <PeriodChart testID="body-trend-chart" mode="dots" bands={showStages ? bands : undefined} points={metric.observations.map(o => ({
         key: o.date, label: formatBodyDate(o.date), value: valid(o.value) ? o.value : null,
@@ -153,8 +155,8 @@ function recordField(key: string): BodyMeasurementField | undefined {
 
 type Body = NonNullable<ReturnType<typeof useBodyController>>;
 /** The weight (or the measure you opened) on top, its records under it; on the main screen, every other measure one tap away. */
-function Content({ data, selected, body, selectedDate, onSelect }: { data: ProgressBody; selected: string | null; body: Body | null;
-  selectedDate: string | null; onSelect: (date: string | null) => void }) {
+function Content({ data, selected, body, selectedDate, onSelect, portada }: { data: ProgressBody; selected: string | null; body: Body | null;
+  selectedDate: string | null; onSelect: (date: string | null) => void; portada: { point: PortadaPoint; matched: boolean } | null }) {
   const router = useRouter();
   const { colors } = useOwnlevelTheme();
   const metric = selected ? data.metrics.find(m => m.key === selected) : data.metrics.find(m => m.key === 'body.weight') ?? data.metrics[0];
@@ -171,7 +173,7 @@ function Content({ data, selected, body, selectedDate, onSelect }: { data: Progr
   const editable = !!body && body.state.phase === 'idle' && !body.state.intent && !body.state.editor;
   return <>
     {selected ? null : <Heading level={2}>{metric.label}</Heading>}
-    <Selected selectedDate={selectedDate} onSelect={onSelect} routeMetric={selected} metric={metric} excluded={data.excludedSuspect} storedZeros={metric.key === 'body.weight' ? (body?.state.read.weights ?? [])
+    <Selected selectedDate={selectedDate} onSelect={onSelect} routeMetric={selected} metric={metric} portada={metric.key === 'body.weight' ? portada : null} excluded={data.excludedSuspect} storedZeros={metric.key === 'body.weight' ? (body?.state.read.weights ?? [])
       .filter(row => row.weightKg <= 0 && row.date >= data.period.start && row.date <= data.period.end).map(row => row.date) : []} />
     {/* The weeks of the weights this read already brought: no other request. Body weight, never a lifted load. */}
     {metric.key === 'body.weight' ? <WeeklyWeights observations={metric.observations} period={data.period} today={data.today} /> : null}
@@ -210,11 +212,19 @@ function BodyTrends() {
   const { state, data, refresh } = useCachedRead(client, 'body', readKey, load);
   const visibleMetric = selected ?? (data?.metrics.find(m => m.key === 'body.weight') ?? data?.metrics[0])?.key ?? 'body.weight';
   const scope = `${readKey}|${selected ?? ''}|${visibleMetric}`;
-  const [inspection, setInspection] = useState({ client, owner: session?.user.id, scope, date: null as string | null });
+  const point = usePortadaPoint();
+  // `fromPortada`: the scope this screen opened with and nothing touched yet; anything else retires the portada point.
+  const [inspection, setInspection] = useState({ client, owner: session?.user.id, scope, date: null as string | null, fromPortada: true });
   const sameScope = inspection.client === client && inspection.owner === session?.user.id && inspection.scope === scope;
-  const selectedDate = sameScope ? inspection.date : null;
-  if (!sameScope) setInspection({ client, owner: session?.user.id, scope, date: null });
-  const onSelect = (date: string | null) => setInspection({ client, owner: session?.user.id, scope, date });
+  if (!sameScope) setInspection({ client, owner: session?.user.id, scope, date: null, fromPortada: false });
+  const portadaPoint = sameScope && inspection.fromPortada && !selected ? point : null;
+  // The spark shows the last weighing of its interval: the same observation here is the last valid one in those dates,
+  // with that value. Nothing else is selected in its place.
+  const weight = data?.metrics.find(m => m.key === 'body.weight');
+  const last = portadaPoint && weight ? weight.observations.filter(o => o.value > 0 && o.date >= portadaPoint.start && o.date <= portadaPoint.end).at(-1) : undefined;
+  const match = last && sameValue(last.value, portadaPoint!.value) ? last : undefined;
+  const selectedDate = !sameScope ? null : match ? match.date : inspection.date;
+  const onSelect = (date: string | null) => setInspection({ client, owner: session?.user.id, scope, date, fromPortada: false });
   const body = useBodyController(client, session?.user.id ?? 'anonymous');
   // Links from Inicio or Ajustes open the right sheet once ("registrar=peso|medidas").
   useWeightEntry(params.registrar === 'peso', body);
@@ -240,7 +250,7 @@ function BodyTrends() {
       : !data ? <UnavailableState title="No pudimos cargar Cuerpo" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente." action={<Button label="Reintentar" onPress={() => void refresh()} />} />
       : <>
         {state.status !== 'ready' ? <InlineUnavailable actionLabel="Reintentar" message="No se pudo actualizar. Mostramos la última lectura confirmada." onAction={() => void refresh()} /> : null}
-        <Content data={data} selected={selected} body={body} selectedDate={selectedDate} onSelect={onSelect} />
+        <Content data={data} selected={selected} body={body} selectedDate={selectedDate} onSelect={onSelect} portada={portadaPoint ? { point: portadaPoint, matched: !!match } : null} />
       </>}
     <View style={styles.fabRoom} />
   </ProgressScroll>

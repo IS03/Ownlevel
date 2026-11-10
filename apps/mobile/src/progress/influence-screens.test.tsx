@@ -7,8 +7,8 @@ import type { MobileApiClient } from '@/api/client';
 import { InfluenceScreen } from './influence-screen';
 import { InfluenceAnswerScreen } from './influence-answer-screen';
 import { InfluenceBuildScreen } from './influence-build-screen';
-import { ProgressRangeProvider } from './progress-range-context';
-import type { ProgressRangeState } from './progress-range';
+import { ProgressRangeProvider, useProgressRange } from './progress-range-context';
+import { initialProgressRange, progressRequest, type ProgressRangeState } from './progress-range';
 import { QUESTIONS } from './influence-model';
 import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 
@@ -149,5 +149,18 @@ describe('Qué influye', () => {
     expect(await actual.fetchProgressInfluenceSuggested(client, query)).toBeDefined();
     expect(await actual.fetchProgressInfluenceSuggested(client, { ...query, to: '2026-10-14' })).toBeUndefined();
     expect(await actual.fetchProgressInfluenceSuggested(client, query, undefined, { start: '2026-09-01', end: '2026-09-15' })).toBeUndefined();
+  });
+  it('P1-C1: opened from «Notamos algo» (window=3m) it reads its own 3-month window and leaves the shared period as it was', async () => {
+    let shared = '';
+    function Shared() { shared = useProgressRange().state.unit; return null; }
+    mockParams = { ...definition, lag: '0', key: 'carbs_sets', window: '3m' };
+    render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
+      <OwnlevelThemeProvider initialMode="light"><ProgressRangeProvider initialToday={TODAY}><InfluenceAnswerScreen /><Shared /></ProgressRangeProvider></OwnlevelThemeProvider></SafeAreaProvider>);
+    await flush();
+    // The same query «3 meses» produces from today: the window the insight was computed on.
+    const threeMonths = progressRequest({ ...initialProgressRange(TODAY), unit: '3m', anchor: TODAY, custom: null }, TODAY).query;
+    expect(mockRead.mock.calls.at(-1)![1]).toEqual(threeMonths); expect(threeMonths).not.toEqual(progressRequest(initialProgressRange(TODAY), TODAY).query);
+    expect(shared).toBe('month'); expect(mockRead).toHaveBeenCalledTimes(1);
+    mockParams = { ...definition, lag: '0' };
   });
 });

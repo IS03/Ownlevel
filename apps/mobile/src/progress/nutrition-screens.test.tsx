@@ -314,6 +314,15 @@ describe('Progress Nutrition', () => {
       expect(value.props.numberOfLines).toBeUndefined(); expect(value.props.adjustsFontSizeToFit).not.toBe(true);
     } finally { spy.mockRestore(); }
   });
+  it('P1-C1: a portada point (average of complete days) never selects a daily bar; it says where the reader came from', async () => {
+    mockParams = { point: '2026-10-01~2026-10-02', pointValue: '2000', pointText: '1–2 oct 2026: 2.000 kcal' };
+    const view = wrap(<NutritionTrendsScreen />); await flush();
+    expect(view.getByTestId('portada-point-note').props.accessibilityLabel).toBe('Desde la portada: 1–2 oct 2026: 2.000 kcal. La portada promedia los días completos de ese intervalo y este gráfico muestra cada día: no hay un dato equivalente para seleccionar.');
+    expect(view.queryByText('Abrir día y comidas originales')).toBeNull();
+    fireEvent.press(view.getByTestId('nutrition-chart-current-2026-10-01-bar'));
+    expect(view.queryByTestId('portada-point-note')).toBeNull(); expect(view.getByText('Abrir día y comidas originales')).toBeTruthy();
+    expect(mockReport).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('Cuándo comés', () => {

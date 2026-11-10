@@ -549,6 +549,21 @@ describe('Body Trends', () => {
     expect(figures()).toBe('column'); expect(within(view.getByTestId('body-trend-summary')).getByText('↘ 12,2 kg')).toBeTruthy();
     dims.mockRestore();
   });
+  it('P1-C1: a portada point selects the same weighing (last of its interval, same value); otherwise nothing and says so', async () => {
+    mockParams = { point: '2026-09-14~2026-09-20', pointValue: '81', pointText: '14–20 sep 2026: 81 kg' };
+    const view = wrap(<BodyTrendsScreen />); await flush();
+    expect(view.getByTestId('body-trend-chart-2026-09-20-mark').props.accessibilityState).toEqual({ selected: true });
+    expect(within(view.getByTestId('body-point-inspection')).getByText('Ver registro original')).toBeTruthy();
+    expect(view.getByTestId('portada-point-note').props.accessibilityLabel).toMatch(/Seleccionado en el gráfico/);
+    fireEvent.press(view.getByTestId('body-trend-chart-2026-09-10-mark'));
+    expect(view.queryByTestId('portada-point-note')).toBeNull();
+    view.unmount();
+    mockParams = { point: '2026-09-14~2026-09-20', pointValue: '80', pointText: '14–20 sep 2026: 80 kg' };
+    const other = wrap(<BodyTrendsScreen />); await flush();
+    expect(other.getByTestId('body-trend-chart-2026-09-20-mark').props.accessibilityState).toEqual({ selected: false });
+    expect(other.queryByText('Ver registro original')).toBeNull();
+    expect(other.getByTestId('portada-point-note').props.accessibilityLabel).toMatch(/no seleccionamos otro en su lugar/);
+  });
 });
 
 describe('Metrics Trends', () => {

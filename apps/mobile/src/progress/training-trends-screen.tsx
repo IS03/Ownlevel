@@ -32,6 +32,7 @@ import { periodHeading } from './progress-range';
 import { formatValue } from './progress-format';
 import { useCachedRead } from '@/api/use-cached-read';
 import { ProgressReadStatus } from './progress-read-status';
+import { PortadaPointNote, sameValue, usePortadaPoint, type PortadaPoint } from './portada-point';
 
 type SeriesMetric = 'sets' | 'sessions' | 'minutes';
 type ChartInspection = { metric: SeriesMetric; bucket: { start: string; end: string } | null };
@@ -383,7 +384,8 @@ function Summary({ data }: { data: ProgressTraining }) {
     <AppText muted variant="footnote">El tiempo va del inicio al fin de cada sesión, con descansos.</AppText>
   </View>;
 }
-function Content({ data, inspection, onInspect }: { data: ProgressTraining; inspection: ChartInspection; onInspect: (next: ChartInspection) => void }) {
+function Content({ data, inspection, onInspect, portada }: { data: ProgressTraining; inspection: ChartInspection; onInspect: (next: ChartInspection) => void;
+  portada: { point: PortadaPoint; matched: boolean } | null }) {
   const { colors } = useOwnlevelTheme();
   const router = useRouter(),
     { compareOn } = useProgressRange();
@@ -394,6 +396,7 @@ function Content({ data, inspection, onInspect }: { data: ProgressTraining; insp
       {s.sessions > 0 ? (
         <>
           <Summary data={data} />
+          {portada ? <PortadaPointNote point={portada.point} matched={portada.matched} reason="Este gráfico no tiene ese mismo intervalo con esas series: no seleccionamos otro en su lugar." /> : null}
           <TrainingChart data={data} inspection={inspection} onInspect={onInspect} />
         </>
       ) : (
@@ -466,11 +469,17 @@ export function TrainingTrendsScreen() {
   );
   const key = progressRequestKey(query, compare);
   const { state, data, refresh } = useCachedRead(client, 'training', key, load);
-  const [saved, setSaved] = useState({ client, key, inspection: emptyInspection() });
+  const point = usePortadaPoint();
+  // `fromPortada`: still the scope this screen opened with and nothing touched yet. Any other account, period or
+  // comparison, or the reader's own choice, retires the portada point.
+  const [saved, setSaved] = useState({ client, key, inspection: emptyInspection(), fromPortada: true });
   const sameScope = saved.client === client && saved.key === key;
-  const inspection = sameScope ? saved.inspection : emptyInspection();
-  if (!sameScope) setSaved({ client, key, inspection });
-  const onInspect = (next: ChartInspection) => setSaved({ client, key, inspection: next });
+  if (!sameScope) setSaved({ client, key, inspection: emptyInspection(), fromPortada: false });
+  const portada = sameScope && saved.fromPortada ? point : null;
+  // Only the same datum: the spark counts completed sets per interval, exactly as this chart's sets bucket.
+  const match = portada && data ? data.series.find(p => p.start === portada.start && p.end === portada.end && sameValue(p.sets, portada.value)) : undefined;
+  const inspection = !sameScope ? emptyInspection() : match ? { metric: 'sets' as const, bucket: { start: match.start, end: match.end } } : saved.inspection;
+  const onInspect = (next: ChartInspection) => setSaved({ client, key, inspection: next, fromPortada: false });
   return (
     <ProgressScroll
       title="Entrenamiento"
@@ -501,7 +510,7 @@ export function TrainingTrendsScreen() {
               onAction={() => void refresh()}
             />
           ) : null}
-          <Content data={data} inspection={inspection} onInspect={onInspect} />
+          <Content data={data} inspection={inspection} onInspect={onInspect} portada={portada ? { point: portada, matched: !!match } : null} />
         </>
       )}
       <FlatRow onPress={() => router.push('/(tabs)/train/history')} label="Ver el historial de entrenamientos">

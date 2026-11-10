@@ -4,7 +4,7 @@ import Animated, { scrollTo, useAnimatedRef, useAnimatedScrollHandler, useAnimat
 import { scheduleOnUI } from 'react-native-worklets';
 import { AppIcon, AppText, GlassSurface, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
-import { PROGRESS_UNITS, currentProgressRange, isCurrentProgressRange, rangeTitle, shiftProgressRange, type ProgressRangeState, type ProgressUnit } from './progress-range';
+import { PROGRESS_UNITS, compareRange, currentProgressRange, daysBetween, isCurrentProgressRange, progressRange, rangeTitle, shiftProgressRange, type ProgressRangeState, type ProgressUnit } from './progress-range';
 import { useProgressRange } from './progress-range-context';
 
 export const STRIP = 44;
@@ -136,10 +136,15 @@ export function PeriodCaption({ onCustom }: { onCustom: () => void }) {
 /** The comparison is remembered across Progreso screens; this chip shows it and clears it from any of them. */
 export function CompareChip({ onOpen }: { onOpen: () => void }) {
   const { colors } = useOwnlevelTheme();
-  const { state, setState, compareText } = useProgressRange();
+  const { state, setState, compareText, today } = useProgressRange();
   if (!compareText) return null;
-  return <View style={styles.chipRow}>
-    <Pressable accessibilityRole="button" accessibilityLabel={`Comparando con ${compareText}. Cambiar`} onPress={onOpen}
+  // A and B may last differently (17 vs 31 days): both lengths are said, and totals are not presented as equivalent.
+  // Nothing is normalized: each screen keeps its canonical values and comparisons.
+  const a = progressRange(state, today), b = compareRange(state, today);
+  const aDays = daysBetween(a.start, a.end), bDays = b ? daysBetween(b.start, b.end) : aDays;
+  const lengths = aDays !== bDays ? `A dura ${aDays} ${aDays === 1 ? 'día' : 'días'} y B, ${bDays} ${bDays === 1 ? 'día' : 'días'}: los totales de períodos de distinta duración no son equivalentes.` : null;
+  return <View style={styles.compare}><View style={styles.chipRow}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Comparando con ${compareText}.${lengths ? ` ${lengths}` : ''} Cambiar`} onPress={onOpen}
       style={[styles.chip, { backgroundColor: colors.brandSubtle }]} testID="progress-compare-chip">
       <AppText numeric variant="footnote" style={{ color: colors.primary, fontWeight: '600' }}>vs. {compareText}</AppText>
     </Pressable>
@@ -148,6 +153,8 @@ export function CompareChip({ onOpen }: { onOpen: () => void }) {
       style={[styles.chipClose, { backgroundColor: colors.brandSubtle }]} testID="progress-compare-clear">
       <AppIcon name="close" color={colors.primary} size={13} />
     </Pressable>
+  </View>
+    {lengths ? <AppText muted numeric variant="footnote" testID="progress-compare-lengths" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">{lengths}</AppText> : null}
   </View>;
 }
 
@@ -182,6 +189,7 @@ const styles = StyleSheet.create({
   mark: { width: 16, height: 2, borderRadius: 1 },
   caption: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 32 },
   captionText: { flex: 1, minHeight: 32, justifyContent: 'center' },
+  compare: { gap: 6 },
   chipRow: { flexDirection: 'row', alignSelf: 'flex-start', gap: 2 },
   chip: { minHeight: 30, paddingHorizontal: 12, justifyContent: 'center', borderTopLeftRadius: 15, borderBottomLeftRadius: 15 },
   chipClose: { width: 32, minHeight: 30, alignItems: 'center', justifyContent: 'center', borderTopRightRadius: 15, borderBottomRightRadius: 15 },

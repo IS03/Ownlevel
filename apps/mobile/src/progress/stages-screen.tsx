@@ -53,8 +53,9 @@ function Table({ stages, highlight, sources, testID, onPick }: {
       {stages.map(s => <Pressable key={s.id} disabled={!onPick} accessibilityRole={onPick ? 'button' : undefined}
         accessibilityLabel={onPick ? `Ver ${s.name}` : undefined} onPress={() => { haptics.selection(); onPick?.(s.id); }}
         style={[styles.td, scroll && { width: COL }]}>
-        <AppText variant="headline" numberOfLines={2} style={[styles.right, s.id === highlight && { color: colors.primary }]}>{s.name}</AppText>
-        {repeated(s) ? <AppText muted numeric variant="caption" numberOfLines={1} style={styles.right}>{stageDates(s)}</AppText> : null}
+        {/* Whole names and dates: the header row grows instead of cutting them (no fixed heights in this table). */}
+        <AppText variant="headline" style={[styles.right, s.id === highlight && { color: colors.primary }]}>{s.name}</AppText>
+        {repeated(s) ? <AppText muted numeric variant="caption" style={styles.right}>{stageDates(s)}</AppText> : null}
       </Pressable>)}
     </View>
     {rows.map(r => <View key={r.key} style={[styles.tr, { borderTopColor: colors.border }, styles.rule]} testID={`${testID}-${r.key}`}>

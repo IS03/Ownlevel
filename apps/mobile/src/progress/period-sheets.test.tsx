@@ -3,6 +3,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { CompareSheet } from './period-sheets';
+import { CompareChip } from './period-controls';
 import { ProgressRangeProvider } from './progress-range-context';
 import type { ProgressRangeState } from './progress-range';
 
@@ -35,5 +36,14 @@ describe('P1-B5 Comparar', () => {
     expect(rn.StyleSheet.flatten(view.getByRole('button', { name: '15 de agosto' }).props.style).height).toBe(40 * 1.6);
     expect(rn.StyleSheet.flatten(view.getByRole('button', { name: 'Mes anterior' }).props.style).minHeight).toBeGreaterThanOrEqual(44);
     dims.mockRestore();
+  });
+  it('P1-C1: the comparison chip states both lengths when A and B differ, and nothing when they match', () => {
+    const chip = (s: ProgressRangeState) => render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 320, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
+      <OwnlevelThemeProvider initialMode="light"><ProgressRangeProvider initialToday={TODAY} initialState={s}><CompareChip onOpen={() => undefined} /></ProgressRangeProvider></OwnlevelThemeProvider></SafeAreaProvider>);
+    const different = chip(state);
+    expect(different.getByTestId('progress-compare-lengths', { includeHiddenElements: true }).props.children).toBe('A dura 17 días y B, 31 días: los totales de períodos de distinta duración no son equivalentes.');
+    expect(different.getByTestId('progress-compare-chip').props.accessibilityLabel).toBe('Comparando con 1–31 ago. A dura 17 días y B, 31 días: los totales de períodos de distinta duración no son equivalentes. Cambiar');
+    const same = chip({ ...state, compare: { kind: 'previous' } });
+    expect(same.queryByTestId('progress-compare-lengths', { includeHiddenElements: true })).toBeNull();
   });
 });
