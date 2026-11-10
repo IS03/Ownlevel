@@ -291,3 +291,12 @@ Implementación para revisión; QA física pendiente. Capturas y límites en `do
 - [ ] Primera sesión, primer pesaje, abundantes registros, cero nutricional, huecos y errores: método primera/última distinto de actividad; cobertura por nutriente y fechas reales; un registro no produce tendencia. Inspección local muestra rango/valor/unidad sin navegar; cabecera abre el detalle existente con su ventana.
 - [ ] Hallazgo → referencia/cobertura → registros → volver: selección válida, sin lecturas por desplegar. Contexto/relaciones conserva su apertura al volver; Métricas, períodos/A-B/Mis vistas/Etapas y Recorrido global accesibles. Cambiar cuenta no conserva datos ni disclosures anteriores.
 - [ ] VoiceOver, objetivos táctiles, unidades/cifras largas, Dynamic Type, Reducir movimiento y acceso al final del contenido. Las capturas del fixture no aprueban navegación nativa profunda ni QA en el iPhone.
+
+
+### Progreso #402 P1-B1 — Historial y Recorrido por fecha
+
+Pendiente físico. Capturas locales y límites: `docs/progress/qa/402-p1b1/evidence.json`. Reutilizar también los escenarios de «Recorrido histórico #402»; no se dan por aprobados.
+
+- [ ] Índice → calendario → fecha vacía/con registros/hoy: mes y fecha legibles, dominios confirmados frente a desconocidos, futuras deshabilitadas. Con texto accesible aparecen todas las fechas en lista; en pantalla compacta la grilla mantiene targets y scroll horizontal.
+- [ ] Día → sesión UUID/series, comidas, peso/medidas o métricas → volver: mismo día/mes, corrección y eliminación actualizadas. Vista previa frente al total; cero, 0 kg inválido, archivadas/importadas y lectura parcial/antigua diferenciados.
+- [ ] «Objetivo y balance de esta fecha» abre/cierra sin cambiar el día; cifras/ajustes siguen disponibles. Claro/oscuro, unidades largas, VoiceOver, texto grande, Reducir movimiento, safe area y barra inferior del shell completo. Verificar el gesto/pila real y no sólo las rutas probadas en JS.

@@ -795,6 +795,19 @@ Los hallazgos conservan inventario, método, referencia, cobertura y fuentes; un
 
 **Continuidad:** armonización de entrenamiento/comparadores, Cuerpo, Nutrición, Métricas, Relaciones y shell; continuidad del punto de portada al detalle; acceso a historia extensa y ergonomía A/B/Mis vistas/Etapas. #402 permanece abierto y la comprobación física se conserva en la checklist única #432.
 
+
+### P1-B1 — Historial y recorrido editorial por fecha (10/11/2026)
+
+Desde `da29cfc`, las tres pantallas globales de Historial mantienen `ScrollScreen`, el lector agrupado y su controlador por cuenta/fecha; **no utilizan el período de Progreso**. El índice muestra fechas completas y dominios confirmados en filas abiertas. El calendario destaca mes/año y hoy; conserva cualquier día pasado válido, vacío, con cobertura incompleta o futuro no seleccionable. Cuatro marcas de posición fija corresponden a Entrenamiento/Nutrición/Cuerpo/Métricas; contorno significa desconocido y no cero. Con Dynamic Type > 1,3 se usa una lista de todas las fechas del mes con los mismos datos, sin otra lectura. A 320 pt la grilla puede desplazarse horizontalmente para conservar sus 44 pt por fecha.
+
+El día histórico reemplaza las cuatro tarjetas por secciones separadas con fecha legible, estado y controles anterior/siguiente/hoy. Acciones compactas Sesiones/Comidas/Registros/Valores conservan las rutas y parámetros `historyDate`/`historyMonth`; sesiones visibles siguen abriendo su UUID y series originales. Total y vista previa de hasta tres no se mezclan. Objetivo, diferencia, gasto estimado, balance y ajustes explícitos de Nutrición siguen disponibles en «Objetivo y balance de esta fecha», un despliegue **local**; no se borran hechos ni se sustituyen con registros vecinos. Medidas importadas/sospechosas, métricas archivadas, cero explícito, 0 kg inválido y fuentes fallidas mantienen sus mensajes.
+
+**Verificación:** 97 pruebas en 6 suites dirigidas, incluyendo lectura/continuidad real del controlador, consumidores de Training y guarda compartida; tipos y lint aprobados. Tras corregir el estrechamiento de un fixture nullable y el mock de dimensiones, se repitió sólo la suite afectada (27/27). No se ejecutaron una suite Mobile completa ni un export iOS; el fixture compiló su bundle Dev con los componentes reales. No hay cambios de backend, contrato, lectores o motores analíticos.
+
+**Consumo medido con el mismo fixture y parser antes/después:** índice **1 → 1 GET / 5.224 → 5.224 B**; día **1 → 1 / 1.015 → 1.015 B**; calendario con mes explícito **1 → 1 / 5.224 → 5.224 B**. Sin mes, el mecanismo existente resuelve primero hoy y después el mes: **2 → 2 / 6.132 → 6.132 B**. Tocar una fecha, abrir una sesión visible o desplegar detalles no agrega peticiones en la pantalla de origen; el destino realiza sus lecturas habituales al abrirlo. Relectura al volver conserva la política existente. Son medidas de transporte de fixture, sin latencia/SQL productivos.
+
+**Evidencia y límites:** [capturas/manifiesto](qa/402-p1b1/evidence.json) con antes/después de índice, calendario y día en claro/oscuro; vacío a 320 pt, parcial y texto accesible. App Dev existente, simulador iPhone 18 Pro/iOS 27.0, Stack real y API/Auth local sin cuenta productiva. Los 320 pt son un viewport restringido del mismo simulador; los tests cubren 320/430 pt. El detalle inferior se desplazó mediante instrumentación temporal ya retirada. No acredita navegación nativa completa a los destinos, barra inferior de la app completa, VoiceOver, Reduce Motion ni QA física. Sin instalaciones o build de Diario. #402 sigue abierto para la armonización del resto de dominios, Relaciones, A/B y Mis vistas.
+
 ## Función y jerarquía
 
 **IMPLEMENTADO:** `/progress` sintetiza y navega; no duplica reportes ni muestra grandes gráficos.

@@ -67,7 +67,8 @@
       "codex/402-nutrition-chart-inspection": false,
       "codex/402-metrics-chart-originals": false,
       "codex/402-history-session-originals": false,
-      "codex/402-panorama-first": false
+      "codex/402-panorama-first": false,
+      "codex/402-history-editorial": false
     }
   }
 }
