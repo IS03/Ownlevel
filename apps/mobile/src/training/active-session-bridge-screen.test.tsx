@@ -1,7 +1,7 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { type ReactElement, useSyncExternalStore } from 'react';
-import { AccessibilityInfo, ActionSheetIOS, Alert, AppState, DeviceEventEmitter, Modal, RefreshControl, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, ActionSheetIOS, Alert, AppState, DeviceEventEmitter, KeyboardAvoidingView, Modal, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { State, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
@@ -16,6 +16,9 @@ import { ActiveSessionView } from './active-session-screen';
 import { EXERCISE_ID, NEXT_VERSION, SECOND_ID, SESSION_ID, testDetail, testExercise, testFinished } from './active-session-test-fixtures';
 import { DRAG_DELAY, LIFT_SCALE, PRESS_SCALE } from './session-native-interactions';
 import { exercisePayload } from './active-session-model';
+import { TrainingFeelingsJournal } from '@/api/training-feelings';
+import type { FeelingsInput, FeelingsPort } from '../../../../src/lib/mobile-api/training-feelings-journal';
+import type { FeelingsResponse } from '../../../../src/lib/mobile-api/training-feelings-contract';
 
 const mockReplace = jest.fn();
 const mockNavigate = jest.fn();
@@ -76,7 +79,7 @@ function afterHold<T>(run: () => T): T {
   const pressed = Date.now(), spy = jest.spyOn(Date, 'now').mockReturnValueOnce(pressed).mockReturnValue(pressed + DRAG_DELAY);
   try { return run(); } finally { spy.mockRestore(); }
 }
-function fixture(detail: SessionDetailDto = testDetail()) {
+function fixture(detail: SessionDetailDto = testDetail(), feelingsPort?: FeelingsPort) {
   const store = new Map<string, string>();
   const api: ActiveSessionApi = {
     detail: jest.fn<ActiveSessionApi['detail']>().mockImplementation(async () => ({ status: 'ok', data: detail, meta })),
@@ -94,7 +97,10 @@ function fixture(detail: SessionDetailDto = testDetail()) {
   };
   const repository = new SessionDraftRepository({ getItem: async key => store.get(key) ?? null, setItem: async (key, value) => { store.set(key, value); },
     removeItem: async key => { store.delete(key); }, getAllKeys: async () => [...store.keys()] }, 'owner', SESSION_ID);
-  const controller = new ActiveSessionController(api, repository);
+  let keys = 0;
+  const journal = feelingsPort ? new TrainingFeelingsJournal({ getItem: async key => store.get(key) ?? null, setItem: async (key, value) => { store.set(key, value); } },
+    feelingsPort, 'owner', SESSION_ID, 'mobile', () => `feelings:${++keys}`) : null;
+  const controller = journal ? new ActiveSessionController(api, repository, () => `session:${++keys}`, Date.now, journal) : new ActiveSessionController(api, repository);
   const client = {} as MobileApiClient;
   function Screen() {
     const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
@@ -806,7 +812,7 @@ describe('native finish screen (M3.4-2)', () => {
     expect(view.queryByText('Quitar')).toBeNull(); // Re-tapping a value clears it; no extra control shifts the layout.
     expect(view.getByText('320')).toBeTruthy(); expect(view.getByText('kg de volumen')).toBeTruthy();
     fireEvent.press(view.getByTestId('summary-energyLevel-4'));
-    fireEvent.press(view.getByTestId('finish-details-toggle')); // Performance, pain and note live one level below.
+    expect(view.queryByTestId('finish-details-toggle')).toBeNull(); // #473: every optional answer is already on the sheet.
     fireEvent(view.getByTestId('summary-painLevel-slider'), 'accessibilityAction', { nativeEvent: { actionName: 'increment' } });
     fireEvent.press(view.getByTestId('summary-performanceLevel-3')); fireEvent.press(view.getByTestId('summary-performanceLevel-3'));
     await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar entrenamiento' })); for (let i = 0; i < 40; i++) await Promise.resolve(); });
@@ -831,9 +837,9 @@ describe('native finish screen (M3.4-2)', () => {
     expect(controller.getSnapshot().summary.energyLevel).toBeNull();
     fireEvent.press(view.getByTestId('summary-energyLevel-4')); expect(controller.getSnapshot().summary.energyLevel).toBe(4);
     fireEvent.press(view.getByTestId('summary-energyLevel-4')); expect(controller.getSnapshot().summary.energyLevel).toBeNull();
-    expect(view.getByTestId('finish-details-toggle').props.accessibilityState).toMatchObject({ expanded: false });
-    fireEvent.press(view.getByTestId('finish-details-toggle'));
-    expect(view.getByTestId('finish-details-toggle').props.accessibilityState).toMatchObject({ expanded: true });
+    // #473: no accordion. Performance, pain and the note's row are reachable without unfolding anything.
+    expect(view.queryByText('Más detalles')).toBeNull();
+    for (const field of ['summary-performanceLevel-3', 'summary-painLevel-slider', 'finish-open-note']) expect(view.getByTestId(field)).toBeTruthy();
     fireEvent.press(view.getByRole('button', { name: 'Sin dolor' })); expect(controller.getSnapshot().summary.painLevel).toBe(0);
     fireEvent.press(view.getByRole('button', { name: 'Sin dolor' })); expect(controller.getSnapshot().summary.painLevel).toBeNull();
     fireEvent.press(view.getByTestId('finish-open-note')); fireEvent.changeText(view.getByTestId('finish-note-input'), 'Borrador');
@@ -868,7 +874,6 @@ describe('native finish screen (M3.4-2)', () => {
     const { controller, Screen } = fixture(); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
     await completeSet(view, controller);
     fireEvent.press(view.getByRole('button', { name: 'Finalizar entrenamiento' }));
-    fireEvent.press(view.getByTestId('finish-details-toggle'));
     const slider = view.getByTestId('summary-painLevel-slider');
     fireEvent(slider, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 328, height: 44 } } });
     await act(async () => { await Promise.resolve(); }); // RNGH applies handler updates in a microtask
@@ -924,3 +929,167 @@ describe('server-confirmed routine additions receipt', () => {
     expect(view.queryByText(/ROW: no se sumó/)).toBeNull();
   });
 });
+
+// #462/#473: a feelings server in memory. Counts every read and write, and the bytes each write sends.
+function feelingsServer() {
+  let server: FeelingsResponse = { contractVersion: 'training-feelings/1', sessionId: SESSION_ID, sessionStatus: 'in_progress', sessionUpdatedAt: '2026-09-30T12:00:00.000000+00:00', endedAt: null, revision: 0, values: {} };
+  const reads: number[] = [], writes: FeelingsInput[] = [];
+  let next: 'ok' | 'unavailable' | 'conflict' = 'ok';
+  const port: FeelingsPort = {
+    read: async () => { reads.push(1); return { status: 'ok', data: structuredClone(server) }; },
+    write: async input => {
+      writes.push(structuredClone(input));
+      if (next === 'unavailable') return { status: 'unavailable' };
+      if (next === 'conflict' || input.expectedRevision !== server.revision) return { status: 'conflict' };
+      const values: FeelingsResponse['values'] = { ...server.values };
+      for (const [key, change] of Object.entries(input.patch)) {
+        if (!change || change.op === 'clear') delete values[key as keyof typeof values];
+        else values[key as keyof typeof values] = { value: change.value, instrumentVersion: change.instrumentVersion, declaredMoment: change.declaredMoment, declaredAt: change.declaredAt,
+          capturedAt: change.capturedAt, source: change.source, receivedAt: change.capturedAt, temporalQuality: 'unverified_client_clock' } as never;
+      }
+      const finishing = input.operation === 'finish';
+      server = { ...server, revision: server.revision + 1, values, ...(finishing ? { sessionStatus: 'completed', endedAt: '2026-09-30T13:05:00.000000+00:00' } : {}) };
+      return finishing ? { status: 'ok', data: structuredClone(server), finished: { ...testFinished({ energyLevel: null, performanceLevel: input.metadata.performanceLevel ?? null,
+        painLevel: input.metadata.painLevel ?? null, notes: input.metadata.notes ?? null }), endedAt: server.endedAt!, sessionUpdatedAt: server.sessionUpdatedAt, routineAdditions: [] } } : { status: 'ok', data: structuredClone(server) };
+    },
+  };
+  return { port, reads, writes, bytes: () => writes.reduce((sum, input) => sum + JSON.stringify(input).length, 0), fail: () => { next = 'unavailable'; }, conflict: () => { next = 'conflict'; }, recover: () => { next = 'ok'; } };
+}
+const settle = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); };
+
+describe('feelings capture at start and finish (#462, #473)', () => {
+  beforeEach(() => { mockHeaderOptions = {}; mockReplace.mockReset(); mockSelection.mockReset(); mockTrigger.mockReset(); });
+  afterEach(() => { jest.restoreAllMocks(); });
+  it('measures reads, writes and bytes of a full pre + finish capture', async () => {
+    const remote = feelingsServer();
+    const { controller, api, Screen } = fixture(testDetail(), remote.port); await controller.refresh(); await act(settle);
+    const view = renderWithPressOpen(<Screen />); await act(settle);
+    fireEvent.press(view.getByLabelText('Responder sensaciones al empezar'));
+    await act(async () => { fireEvent.press(view.getByLabelText('Energía: Alta, 4 de 5')); await settle(); });
+    await act(async () => { fireEvent.press(view.getByLabelText('Fatiga: Poca, 2 de 5')); await settle(); });
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar sensaciones' })); await settle(); });
+    fireEvent(view.getByRole('checkbox', { name: 'Serie 1 completada' }), 'accessibilityTap');
+    await act(async () => { await controller.flush(EXERCISE_ID); });
+    fireEvent.press(view.getByRole('button', { name: 'Finalizar entrenamiento' })); await act(settle);
+    await act(async () => { fireEvent.press(view.getByLabelText('Energía: Media, 3 de 5')); await settle(); });
+    const toggle = view.queryByTestId('finish-details-toggle'); if (toggle) fireEvent.press(toggle); // Only before #473, to measure both versions alike.
+    fireEvent.press(view.getByTestId('summary-performanceLevel-3'));
+    fireEvent.press(view.getByRole('button', { name: 'Sin dolor' }));
+    fireEvent.press(view.getByTestId('finish-open-note')); fireEvent.changeText(view.getByTestId('finish-note-input'), 'Bien');
+    fireEvent.press(view.getByLabelText('Guardar nota'));
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar entrenamiento' })); await settle(); });
+    const usage = { detailGets: jest.mocked(api.detail).mock.calls.length, feelingsReads: remote.reads.length, feelingsWrites: remote.writes.length,
+      finishCalls: jest.mocked(api.finish).mock.calls.length, saves: jest.mocked(api.save).mock.calls.length + jest.mocked(api.sync).mock.calls.length, bytes: remote.bytes() };
+    console.log('USAGE', JSON.stringify(usage));
+    await waitFor(() => expect(view.getByTestId('post-workout-screen')).toBeTruthy());
+    expect(remote.writes.map(input => input.operation)).toEqual(['save', 'finish']);
+    controller.dispose();
+  });
+  const stepTicks = () => mockTrigger.mock.calls.filter(([event]) => event === 'stepperChange').length;
+  const doneTicks = () => mockTrigger.mock.calls.filter(([event]) => event === 'workoutComplete').length;
+  async function openFinish(remote = feelingsServer(), complete = true) {
+    const made = fixture(testDetail(), remote.port); await made.controller.refresh(); await act(settle);
+    const view = renderWithPressOpen(<made.Screen />); await act(settle);
+    if (complete) { fireEvent(view.getByRole('checkbox', { name: 'Serie 1 completada' }), 'accessibilityTap'); await act(async () => { await made.controller.flush(EXERCISE_ID); }); }
+    fireEvent.press(view.getByRole('button', { name: 'Finalizar entrenamiento' })); await act(settle);
+    mockTrigger.mockClear();
+    return { ...made, view, remote, sheet: within(view.getByTestId('finish-session-sheet')) };
+  }
+  it('shows the five optional answers at once and finishes with a partial answer, one tick for it and one success', async () => {
+    const { controller, view, remote, sheet } = await openFinish();
+    expect(sheet.queryByText('Más detalles')).toBeNull(); expect(sheet.queryByTestId('finish-details-toggle')).toBeNull();
+    expect(sheet.getByText('Al terminar')).toBeTruthy();
+    for (const id of ['summary-energyPost-1', 'summary-fatiguePost-1', 'summary-performanceLevel-1', 'summary-painLevel-slider', 'finish-open-note']) expect(sheet.getByTestId(id)).toBeTruthy();
+    expect(sheet.getByLabelText('Energía, al terminar, opcional')).toBeTruthy(); expect(sheet.getByLabelText('Agregar una nota, opcional')).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Guardar entrenamiento' })).toBeEnabled(); expect(view.getByRole('button', { name: 'Seguir entrenando' })).toBeEnabled();
+    await act(async () => { fireEvent.press(sheet.getByLabelText('Energía: Alta, 4 de 5')); await settle(); });
+    expect(stepTicks()).toBe(1);
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar entrenamiento' })); await settle(); });
+    const finish = remote.writes.filter(input => input.operation === 'finish');
+    expect(finish).toHaveLength(1); expect(Object.keys(finish[0].patch)).toEqual(['energyPost']); // Never the start answer, never a default.
+    expect(finish[0]).toMatchObject({ metadata: {} });
+    await waitFor(() => expect(view.getByTestId('post-workout-screen')).toBeTruthy());
+    expect(stepTicks()).toBe(1); expect(doneTicks()).toBe(1); controller.dispose(); // Saving adds no selection tick; the success stays FinishSaveAnimation's, once.
+  });
+  it('records every field, keeps pain unanswered apart from 0, stages the note and never doubles a tick', async () => {
+    const { controller, view, remote, sheet } = await openFinish();
+    const pain = () => view.getByTestId('summary-painLevel-slider');
+    expect(pain().props.accessibilityValue).toEqual({ text: 'Sin responder' }); expect(controller.getSnapshot().summary.painLevel).toBeNull();
+    await act(async () => { fireEvent.press(sheet.getByLabelText('Energía: Media, 3 de 5')); await settle(); });
+    await act(async () => { fireEvent.press(sheet.getByLabelText('Fatiga: Poca, 2 de 5')); await settle(); });
+    fireEvent.press(view.getByTestId('summary-performanceLevel-4'));
+    fireEvent.press(view.getByRole('button', { name: 'Sin dolor' }));
+    expect(controller.getSnapshot().summary.painLevel).toBe(0); expect(pain().props.accessibilityValue).toEqual({ min: 0, max: 10, now: 0 });
+    fireEvent(pain(), 'accessibilityAction', { nativeEvent: { actionName: 'decrement' } }); // Already 0: not a change, no tick.
+    expect(stepTicks()).toBe(4);
+    fireEvent.press(view.getByTestId('finish-open-note')); fireEvent.changeText(view.getByTestId('finish-note-input'), 'Borrador');
+    fireEvent.press(view.getByLabelText('Descartar edición de la nota'));
+    expect(controller.getSnapshot().summary.notes).toBe(''); expect(stepTicks()).toBe(4);
+    fireEvent.press(view.getByTestId('finish-open-note')); expect(view.getByTestId('finish-note-input').props.value).toBe('');
+    fireEvent.changeText(view.getByTestId('finish-note-input'), 'Rodilla bien'); fireEvent.press(view.getByLabelText('Guardar nota'));
+    expect(controller.getSnapshot().summary.notes).toBe('Rodilla bien'); expect(stepTicks()).toBe(5);
+    fireEvent.press(view.getByLabelText('Editar nota: Rodilla bien')); fireEvent.press(view.getByLabelText('Guardar nota')); expect(stepTicks()).toBe(5);
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar entrenamiento' })); await settle(); });
+    const finish = remote.writes.filter(input => input.operation === 'finish');
+    expect(finish).toHaveLength(1);
+    expect(finish[0]).toMatchObject({ metadata: { performanceLevel: 4, painLevel: 0, notes: 'Rodilla bien' },
+      patch: { energyPost: expect.objectContaining({ op: 'set', value: 3 }), fatiguePost: expect.objectContaining({ op: 'set', value: 2 }) } });
+    await waitFor(() => expect(view.getByTestId('post-workout-screen')).toBeTruthy());
+    expect(stepTicks()).toBe(5); expect(doneTicks()).toBe(1); controller.dispose();
+  });
+  it('keeps an uncertain finish recoverable and confirms it exactly once with the same operation', async () => {
+    const { controller, view, remote, sheet } = await openFinish();
+    await act(async () => { fireEvent.press(sheet.getByLabelText('Fatiga: Mucha, 4 de 5')); await settle(); });
+    remote.fail();
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar entrenamiento' })); await settle(); });
+    expect(view.getByText(/No pudimos confirmar si el entrenamiento se guardó/)).toBeTruthy();
+    expect(view.queryByTestId('post-workout-screen')).toBeNull(); expect(doneTicks()).toBe(0);
+    remote.recover();
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Comprobar entrenamiento' })); await settle(); });
+    const finish = remote.writes.filter(input => input.operation === 'finish');
+    expect(finish).toHaveLength(2); expect(finish[1]).toEqual(finish[0]); // The same key and body: the server applies it once.
+    await waitFor(() => expect(view.getByTestId('post-workout-screen')).toBeTruthy()); expect(doneTicks()).toBe(1); controller.dispose();
+  });
+  it('sends an unsent start answer with the finish without showing it as the finishing one', async () => {
+    const remote = feelingsServer();
+    const made = fixture(testDetail(), remote.port); await made.controller.refresh(); await act(settle);
+    const view = renderWithPressOpen(<made.Screen />); await act(settle);
+    fireEvent.press(view.getByLabelText('Responder sensaciones al empezar'));
+    await act(async () => { fireEvent.press(view.getByLabelText('Energía: Baja, 2 de 5')); await settle(); });
+    fireEvent(view.getByRole('checkbox', { name: 'Serie 1 completada' }), 'accessibilityTap'); await act(async () => { await made.controller.flush(EXERCISE_ID); });
+    fireEvent.press(view.getByRole('button', { name: 'Finalizar entrenamiento' })); await act(settle);
+    const sheet = within(view.getByTestId('finish-session-sheet'));
+    expect(sheet.getAllByRole('radio').every(radio => radio.props.accessibilityState.selected === false)).toBe(true);
+    expect(sheet.getByText('Tus respuestas de al empezar sin guardar también se guardan con el entrenamiento.')).toBeTruthy();
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar entrenamiento' })); await settle(); });
+    expect(remote.writes).toHaveLength(1); expect(Object.keys(remote.writes[0].patch)).toEqual(['energyPre']); made.controller.dispose();
+  });
+  it('without a completed set shows no questionnaire, only the explanation, the way back and the discard', async () => {
+    const { controller, view, remote } = await openFinish(feelingsServer(), false);
+    const sheet = within(view.getByTestId('finish-session-sheet'));
+    expect(sheet.getByTestId('finish-no-sets')).toBeTruthy();
+    for (const id of ['summary-energyPost-1', 'summary-performanceLevel-1', 'summary-painLevel-slider', 'finish-open-note']) expect(sheet.queryByTestId(id, { includeHiddenElements: true })).toBeNull();
+    expect(sheet.queryByText('Al terminar', { includeHiddenElements: true })).toBeNull();
+    expect(view.queryByRole('button', { name: 'Guardar entrenamiento' })).toBeNull();
+    expect(view.getByRole('button', { name: '← Volver a la sesión' })).toBeTruthy(); expect(view.getByRole('button', { name: 'Descartar entrenamiento' })).toBeTruthy();
+    expect(remote.writes).toHaveLength(0); controller.dispose();
+  });
+  it('edits the note in its own sheet: autofocus, keyboard avoidance and the finish sheet kept above the home indicator', async () => {
+    const { controller, view } = await openFinish();
+    expect(view.getByTestId('finish-session-sheet').props.edges).toMatchObject({ bottom: 'additive', top: 'off' });
+    fireEvent.press(view.getByTestId('finish-open-note'));
+    expect(view.getByTestId('finish-note-input').props.autoFocus).toBe(true);
+    expect(view.UNSAFE_getAllByType(KeyboardAvoidingView).find(node => node.props.testID === 'finish-note-keyboard')?.props.behavior).toBe('padding');
+    controller.dispose();
+  });
+  it('keeps older servers on their single energy answer, with the other fields also visible without unfolding', async () => {
+    const detail = testDetail(); detail.exercises[0].payload.sets[0].isCompleted = true;
+    const { controller, Screen } = fixture(detail); await controller.refresh(); const view = render(<Screen />);
+    fireEvent.press(view.getByRole('button', { name: 'Finalizar entrenamiento' }));
+    expect(view.queryByText('Al terminar')).toBeNull(); expect(view.queryByText('Más detalles')).toBeNull();
+    for (const id of ['summary-energyLevel-1', 'summary-performanceLevel-1', 'summary-painLevel-slider', 'finish-open-note']) expect(view.getByTestId(id)).toBeTruthy();
+    fireEvent.press(view.getByTestId('summary-energyLevel-4')); fireEvent.press(view.getByTestId('summary-energyLevel-4'));
+    expect(controller.getSnapshot().summary.energyLevel).toBeNull(); expect(stepTicks()).toBe(2); controller.dispose();
+  });
+});
+

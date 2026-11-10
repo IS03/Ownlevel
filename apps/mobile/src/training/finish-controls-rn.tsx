@@ -3,8 +3,18 @@ import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import Animated, { useAnimatedProps, useAnimatedStyle, useSharedValue, runOnJS, withSpring } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { AppText, GlassSurface, brandTokens, useOwnlevelTheme } from '@/design-system';
+import { triggerHaptic } from '@/platform/haptics';
 
 export type FinishControlProps = { value: number | null; disabled: boolean; onChange: (next: number | null) => void; label: string; field: string };
+/** Words for each step (FEELING_LABELS), read by VoiceOver as "Energía: Alta, 4 de 5"; the group can name its moment. */
+export type FinishScaleProps = FinishControlProps & { anchors?: readonly string[]; groupLabel?: string };
+/**
+ * The control owns the selection tick: one per accepted change (a tap, a second tap that clears, or a drag that settles on
+ * another number). Never while dragging, never for a drag that lands where it started. Callers must not add their own.
+ */
+function useCommit(value: number | null, onChange: (next: number | null) => void) {
+  return (next: number | null) => { if (next === value) return; triggerHaptic('stepperChange'); onChange(next); };
+}
 const AnimatedInput = Animated.createAnimatedComponent(TextInput);
 const spring = brandTokens.motion.spring;
 /**
@@ -12,8 +22,9 @@ const spring = brandTokens.motion.spring;
  * or drag the pill and it settles on the nearest one. A second tap on the selected number leaves it unanswered.
  * Without Liquid Glass (Android, older iOS, Reduce Transparency) the pill is the solid brand surface.
  */
-export function FinishScaleControl({ field, value, disabled, onChange, label }: FinishControlProps) {
+export function FinishScaleControl({ field, value, disabled, onChange, label, anchors, groupLabel }: FinishScaleProps) {
   const { colors } = useOwnlevelTheme();
+  const commit = useCommit(value, onChange);
   const [width, setWidth] = useState(0), [held, setHeld] = useState(false);
   // While the sheet is locked (saving), the draft can be cleared under it: keep showing what was answered.
   const [shown, setShown] = useState(value);
@@ -26,19 +37,21 @@ export function FinishScaleControl({ field, value, disabled, onChange, label }: 
     'worklet';
     const next = Math.round(position.get());
     position.set(withSpring(next, spring)); lift.set(withSpring(0, spring));
-    runOnJS(setHeld)(false); runOnJS(onChange)(next);
+    runOnJS(setHeld)(false); runOnJS(commit)(next);
   };
   const pan = Gesture.Pan().withTestId(`summary-${field}-drag`).enabled(!disabled && slot > 0).activeOffsetX([-6, 6]).failOffsetY([-12, 12])
     .onStart(event => { runOnJS(setHeld)(true); lift.set(withSpring(1, spring)); pick(event.x); }).onUpdate(event => pick(event.x)).onEnd(settle);
   const pill = useAnimatedStyle(() => ({ width: slot, transform: [{ translateX: (position.get() - 1) * slot }, { scale: 1 + 0.06 * lift.get() }] }));
-  return <GestureDetector gesture={pan}><View accessibilityRole="radiogroup" accessibilityLabel={label} onLayout={event => setWidth(event.nativeEvent.layout.width)}
+  return <GestureDetector gesture={pan}><View accessibilityRole="radiogroup" accessibilityLabel={groupLabel ?? label} onLayout={event => setWidth(event.nativeEvent.layout.width)}
     style={[styles.options, { backgroundColor: colors.surfaceRaised }]}>
     {width > 0 ? <Animated.View pointerEvents="none" style={[styles.pill, pill]}>
       <GlassSurface interactive visible={shown !== null || held} style={styles.pillGlass} testID={`summary-${field}-pill`} />
     </Animated.View> : null}
     {[1, 2, 3, 4, 5].map(option => <Pressable key={option} testID={`summary-${field}-${option}`} accessibilityRole="radio"
-      accessibilityLabel={`${label} ${option} de 5`} accessibilityState={{ selected: option === value, disabled }} disabled={disabled}
-      onPress={() => onChange(option === value ? null : option)} style={styles.option}>
+      accessibilityLabel={anchors ? `${label}: ${anchors[option - 1]}, ${option} de 5` : `${label} ${option} de 5`}
+      accessibilityHint={option === value ? 'Tocá de nuevo para quitar la respuesta' : undefined}
+      accessibilityState={{ selected: option === value, disabled }} disabled={disabled}
+      onPress={() => commit(option === value ? null : option)} style={styles.option}>
       <AppText numeric style={{ color: option === shown ? colors.primary : colors.text, fontWeight: option === shown ? '600' : '400' }} variant="body">{option}</AppText>
     </Pressable>)}
   </View></GestureDetector>;
@@ -46,6 +59,7 @@ export function FinishScaleControl({ field, value, disabled, onChange, label }: 
 /** The thumb glides continuously on the UI thread and settles on the nearest whole number; only that integer crosses to the draft. */
 export function FinishPainControl({ field, value, disabled, onChange, label }: FinishControlProps) {
   const { colors } = useOwnlevelTheme();
+  const commitValue = useCommit(value, onChange);
   const [width, setWidth] = useState(1);
   const current = useSharedValue(value ?? 0), answered = useSharedValue(value !== null);
   // The committed integer must not cut the settle spring short; outside changes (Sin dolor, VoiceOver) still move the thumb.
@@ -59,7 +73,7 @@ export function FinishPainControl({ field, value, disabled, onChange, label }: F
     'worklet';
     current.set(Math.max(0, Math.min(1, (x - 22) / Math.max(1, width - 44))) * 10); answered.set(true);
   };
-  const commit = () => { 'worklet'; const settled = Math.round(current.value); current.set(withSpring(settled, spring)); runOnJS(onChange)(settled); };
+  const commit = () => { 'worklet'; const settled = Math.round(current.value); current.set(withSpring(settled, spring)); runOnJS(commitValue)(settled); };
   const pan = Gesture.Pan().withTestId(`summary-${field}-pan`).enabled(!disabled).activeOffsetX([-4, 4]).failOffsetY([-12, 12])
     .onStart(event => update(event.x)).onUpdate(event => update(event.x)).onEnd(commit);
   const tap = Gesture.Tap().withTestId(`summary-${field}-tap`).enabled(!disabled).onEnd((event, success) => { if (success) { update(event.x); commit(); } });
@@ -71,7 +85,7 @@ export function FinishPainControl({ field, value, disabled, onChange, label }: F
     onLayout={event => setWidth(event.nativeEvent.layout.width)} accessible accessibilityRole="adjustable" accessibilityLabel={`${label}, de 0 a 10`}
     accessibilityValue={value === null ? { text: 'Sin responder' } : { min: 0, max: 10, now: value }} accessibilityState={{ disabled }}
     accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]} onAccessibilityAction={event => {
-      if (!disabled) onChange(value === null ? 0 : Math.max(0, Math.min(10, value + (event.nativeEvent.actionName === 'increment' ? 1 : -1))));
+      if (!disabled) commitValue(value === null ? 0 : Math.max(0, Math.min(10, value + (event.nativeEvent.actionName === 'increment' ? 1 : -1))));
     }}>
     <View style={[styles.track, { backgroundColor: colors.surfaceRaised }]}><Animated.View style={[styles.fill, { backgroundColor: colors.primary }, fill]} /></View>
     <Animated.View pointerEvents="none" style={[styles.thumb, thumb]}><GlassSurface style={styles.thumb}>

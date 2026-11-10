@@ -346,3 +346,15 @@ Pendiente físico. Evidencia local y límites: `docs/progress/qa/402-p1c1/eviden
 - [ ] Comparar con A y B de distinta duración: el chip dice ambas duraciones; Explorar muestra la cobertura de cada período y grupo, y advierte cuando compara totales.
 - [ ] «Notamos algo» → «Ver»: la respuesta muestra los últimos 3 meses; al volver, el período de Explorar período es el mismo de antes.
 - [ ] Etapas con nombres largos; VoiceOver y texto grande en las notas nuevas.
+
+### Entrenamiento #462 + #473 — Sensaciones al empezar y al terminar (incremento 1)
+
+Pendiente físico. Evidencia de simulador y límites: `docs/progress/qa/462-473/evidence.json`. No se marca como aprobado.
+
+- [ ] «Al empezar»: Responder/Editar despliega y pliega las escalas con un movimiento suave (~300 ms), sin saltos de la lista de ejercicios, también cerca del final del scroll y repetidas veces. Listo vuelve al resumen.
+- [ ] Escalas 1–5 con la cápsula Liquid Glass: tocar elige, tocar de nuevo deja sin responder, arrastrar asienta en el número más cercano. Una vibración por cambio, ninguna mientras se arrastra ni al soltar en el mismo número.
+- [ ] Borrador sin guardar queda abierto con «Guardar sensaciones»; guardado incierto y conflicto muestran su aviso y acción con el bloque plegado; salir y volver a la app con lectura fallida mantiene el resumen plegado y el aviso con «Volver a leer sensaciones».
+- [ ] Terminar: los cinco campos sin «Más detalles» (energía, fatiga, rendimiento, dolor, nota). Dolor sin responder ≠ «Sin dolor» (0). Nota: abrir, escribir, descartar, guardar; teclado y zona inferior sin tapar el contenido.
+- [ ] Guardar sin respuestas, con energía/fatiga solamente y con todo: una sola confirmación y una sola vibración de éxito. Cero series: sin cuestionario, explicación, Volver y Descartar.
+- [ ] VoiceOver («Energía: Alta, 4 de 5», seleccionado; foco que no salta al desplegar), texto grande, Reduce Motion (sólo fundido), claro y oscuro.
+

@@ -1,0 +1,26 @@
+{
+  "base": "717c20a433f61ab3aa6896f684ed4965cdd7a53e",
+  "device": "iPhone 18 Pro Max / iOS 27.0 simulator (separate from the build simulator), existing OWNLEVEL Dev app",
+  "source": "Real TrainingFeelings and FinishSessionSheet with an in-memory journal and session (no network, no Supabase); temporary harness (separate Expo Router root on its own Metro: 8096 after, 8097 before) removed before commit; Metro 8081 and the build simulator untouched",
+  "pairs": [
+    { "case": "pre-folded-light", "state": "confirmed answers, folded summary" },
+    { "case": "pre-open-light", "state": "Editar tapped: scales on the shared Liquid Glass control" },
+    { "case": "pre-draft-light", "state": "unsent start answer: stays open with Guardar and «Sin guardar»" },
+    { "case": "pre-unread-dark", "state": "failed read with nothing local: before unfolds the scales by itself (QA-OBS-001); after stays folded with the notice and reread outside" },
+    { "case": "pre-open-320", "state": "320 pt content width" },
+    { "case": "finish-light", "state": "before: «Más detalles» folded; after: all five fields in one scroll" },
+    { "case": "finish-details-light / finish-bottom-light", "state": "before: accordion opened; after: end of the same scroll (pain and note row)" },
+    { "case": "finish-dark", "state": "dark theme" },
+    { "case": "finish-large-text", "state": "accessibility-large content size" }
+  ],
+  "consumption": {
+    "method": "Jest bridge test 'measures reads, writes and bytes of a full pre + finish capture', same harness on 717c20a and on this branch",
+    "before": { "detailGets": 2, "feelingsReads": 5, "feelingsWrites": 2, "finishApiCalls": 0, "setSaves": 1, "bytesSent": 1003 },
+    "after": { "detailGets": 2, "feelingsReads": 5, "feelingsWrites": 2, "finishApiCalls": 0, "setSaves": 1, "bytesSent": 1003 }
+  },
+  "limits": [
+    "Simulator only: no physical iPhone, no VoiceOver session, no native Reduce Motion toggle observed on screen",
+    "Animation verified by tests (withTiming 300 ms / 200 ms fade, no LayoutAnimation) and by before/after frames, not frame-by-frame on device",
+    "The finish sheet title wraps («Terminar entrenamien-to») with accessibility-large text: pre-existing, unchanged here"
+  ]
+}

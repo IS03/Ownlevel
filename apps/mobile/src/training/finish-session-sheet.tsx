@@ -61,23 +61,21 @@ export function FinishSessionSheet({ controller, onClose, onDiscard, readSummary
   const blockedByOther = Boolean(state.intent && !finishIntent);
   const editable = !empty && state.summaryReady && !running && !state.intent && !state.fenced;
   const summary = pending ?? state.summary;
-  const [noteOpen, setNoteOpen] = useState(false), [details, setDetails] = useState(false), [receipt, setReceipt] = useState(false), [now, setNow] = useState(Date.now);
+  const [noteOpen, setNoteOpen] = useState(false), [receipt, setReceipt] = useState(false), [now, setNow] = useState(Date.now);
   const [origin, setOrigin] = useState<SaveOrigin>({ x: 16, y: window.height - 130, width: window.width - 32 });
   const button = useRef<View>(null), reveal = useSharedValue(0);
   const showReceipt = useCallback(() => setReceipt(true), []); // Stable: the animation must not restart its sequence on re-render.
   useEffect(() => { const clock = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(clock); }, []);
   useEffect(() => { if (running || confirmed) button.current?.measureInWindow((x, y, width) => { if (width > 0) setOrigin({ x, y, width }); }); }, [running, confirmed]);
   const sheetAnimation = useAnimatedStyle(() => ({ opacity: 1 - reveal.value, transform: [{ translateY: reduceMotion ? 0 : reveal.value * window.height }] }));
-  const change = (update: Partial<SessionSummaryDraft>) => { if (editable) { triggerHaptic('stepperChange'); controller.updateSummary(value => ({ ...value, ...update })); } };
+  // No haptic here: each control ticks once for the change it accepted (finish-controls), and the save keeps FinishSaveAnimation's.
+  const change = (update: Partial<SessionSummaryDraft>) => { if (editable) controller.updateSummary(value => ({ ...value, ...update })); };
   const close = () => { if (receipt) onViewSession(); else if (!running && !confirmed) onClose(); };
   const status = finishIntent?.phase === 'uncertain' ? 'No pudimos confirmar si el entrenamiento se guardó. Comprobalo antes de seguir: no se va a guardar dos veces.'
     : finishIntent?.phase === 'blocked' ? state.notice ?? 'La finalización necesita revisión.' : !running ? state.notice : null;
   const detail = state.detail;
   const volume = finishPreviewVolume(controller);
   const title = detail?.session.routineId ? `Terminar ${detail.session.name}` : 'Terminar entrenamiento';
-  const detailSummary = [summary.performanceLevel !== null ? `Rendimiento ${summary.performanceLevel}` : null,
-    summary.painLevel !== null ? `Dolor ${summary.painLevel}/10` : null, // 0/10 is an answer; unanswered stays out.
-    summary.notes ? 'Con nota' : null].filter(Boolean).join(' · ') || 'Rendimiento percibido, dolor y nota';
   const subtitle = detail ? `${compactWeekdayDate(detail.session.logDate)} · ${formatTimeRange(detail.session.startedAt, detail.session.startedAt).split('–')[0]}` : '';
   return <Modal visible transparent presentationStyle="overFullScreen" animationType={reduceMotion ? 'fade' : 'slide'} onRequestClose={close}>
     <GestureHandlerRootView style={[styles.root, { backgroundColor: `${brandTokens.palette.dark.bg}66` }]}>
@@ -99,29 +97,23 @@ export function FinishSessionSheet({ controller, onClose, onDiscard, readSummary
               {controller.feelings ? <TrainingFeelings journal={controller.feelings} phase="post" controller={controller} disabled={!editable} /> : null}
               {/* Older servers without feelings keep their single energy answer here, as the main question. */}
               {controller.feelings ? null : <SummaryField field="energyLevel" label="Energía" value={summary.energyLevel} editable={editable} onChange={energyLevel => change({ energyLevel })} />}
-              {/* Perceived performance, pain and the note: optional details, one level below. */}
-              <Pressable accessibilityRole="button" accessibilityLabel={`Más detalles, opcional: ${detailSummary}`} accessibilityState={{ expanded: details }}
-                onPress={() => setDetails(value => !value)} style={styles.detailsRow} testID="finish-details-toggle">
-                <View style={styles.flex}><AppText variant="subheadline">Más detalles</AppText><AppText muted numeric variant="caption">{detailSummary}</AppText></View>
-                <View style={details ? styles.flip : undefined}><AppIcon name="chevronDown" color={colors.textMuted} size={17} /></View>
+              {/* Every optional answer in one pass (#473): nothing to unfold. Performance and pain next, then the note's row. */}
+              <SummaryField field="performanceLevel" label="Rendimiento" title="Rendimiento percibido" value={summary.performanceLevel} editable={editable} onChange={performanceLevel => change({ performanceLevel })} />
+              <View style={styles.scale}>
+                {/* No "Quitar": "Sin dolor" sets 0 and a second tap returns to unanswered (null). Fixed heights: nothing below jumps. */}
+                <View style={styles.scaleHeader}><AppText variant="headline">Dolor</AppText>
+                  <GlassSurface interactive style={styles.shortcut}><Pressable accessibilityRole="button" accessibilityLabel="Sin dolor" accessibilityHint={summary.painLevel === 0 ? 'Tocá de nuevo para dejarlo sin responder' : undefined}
+                    accessibilityState={{ selected: summary.painLevel === 0, disabled: !editable }} disabled={!editable} onPress={() => { triggerHaptic('stepperChange'); change({ painLevel: summary.painLevel === 0 ? null : 0 }); }} style={styles.shortcutPress}>
+                    <AppText variant="subheadline" style={{ color: summary.painLevel === 0 ? colors.primary : colors.text, fontWeight: '600' }}>Sin dolor</AppText>
+                  </Pressable></GlassSurface></View>
+                <FinishPainControl field="painLevel" label="Dolor" value={summary.painLevel} disabled={!editable} onChange={painLevel => change({ painLevel })} />
+              </View>
+              {/* The note is edited in its own sheet (autofocus, keyboard, cancel/confirm); its row is always here, never folded away. */}
+              <Pressable accessibilityRole="button" accessibilityLabel={summary.notes ? `Editar nota: ${summary.notes}` : 'Agregar una nota, opcional'} disabled={!editable} onPress={() => setNoteOpen(true)}
+                style={[styles.note, { backgroundColor: colors.surface }]} testID="finish-open-note">
+                <AppIcon name="note" color={colors.textMuted} size={20} /><View style={styles.flex}><AppText numberOfLines={2}>{summary.notes || 'Agregar una nota'}</AppText>
+                  {!summary.notes ? <AppText muted variant="caption">Cómo te sentiste, algo para la próxima</AppText> : null}</View><AppIcon name="chevronRight" color={colors.textMuted} size={17} />
               </Pressable>
-              {details ? <View style={styles.questions}>
-                <SummaryField field="performanceLevel" label="Rendimiento" title="Rendimiento percibido" value={summary.performanceLevel} editable={editable} onChange={performanceLevel => change({ performanceLevel })} />
-                <View style={styles.scale}>
-                  {/* No "Quitar": "Sin dolor" sets 0 and a second tap returns to unanswered (null). Fixed heights: nothing below jumps. */}
-                  <View style={styles.scaleHeader}><AppText variant="headline">Dolor</AppText>
-                    <GlassSurface interactive style={styles.shortcut}><Pressable accessibilityRole="button" accessibilityLabel="Sin dolor" accessibilityHint={summary.painLevel === 0 ? 'Tocá de nuevo para dejarlo sin responder' : undefined}
-                      accessibilityState={{ selected: summary.painLevel === 0, disabled: !editable }} disabled={!editable} onPress={() => change({ painLevel: summary.painLevel === 0 ? null : 0 })} style={styles.shortcutPress}>
-                      <AppText variant="subheadline" style={{ color: summary.painLevel === 0 ? colors.primary : colors.text, fontWeight: '600' }}>Sin dolor</AppText>
-                    </Pressable></GlassSurface></View>
-                  <FinishPainControl field="painLevel" label="Dolor" value={summary.painLevel} disabled={!editable} onChange={painLevel => change({ painLevel })} />
-                </View>
-                <Pressable accessibilityRole="button" accessibilityLabel={summary.notes ? `Editar nota: ${summary.notes}` : 'Agregar una nota'} disabled={!editable} onPress={() => setNoteOpen(true)}
-                  style={[styles.note, { backgroundColor: colors.surface }]} testID="finish-open-note">
-                  <AppIcon name="note" color={colors.textMuted} size={20} /><View style={styles.flex}><AppText numberOfLines={2}>{summary.notes || 'Agregar una nota'}</AppText>
-                    {!summary.notes ? <AppText muted variant="caption">Cómo te sentiste, algo para la próxima</AppText> : null}</View><AppIcon name="chevronRight" color={colors.textMuted} size={17} />
-                </Pressable>
-              </View> : null}
             </View>}
           </ScrollView>
           <View style={styles.footer}>
@@ -139,7 +131,8 @@ export function FinishSessionSheet({ controller, onClose, onDiscard, readSummary
       {receipt && state.finished ? <Animated.View entering={FadeIn.duration(reduceMotion ? brandTokens.motion.duration.fast : brandTokens.motion.duration.base)} style={StyleSheet.absoluteFill}>
         <PostWorkoutContent finished={state.finished} feelings={controller.feelings?.getSnapshot().server?.values} detail={state.detail ?? undefined} readSummary={readSummary} readWeek={readWeek} onHome={onDone} onViewSession={onViewSession} />
       </Animated.View> : null}
-      {noteOpen ? <FinishNoteSheet value={summary.notes ?? ''} onClose={() => setNoteOpen(false)} onSave={notes => change({ notes })} /> : null}
+      {/* Confirming a changed note ticks once, as it did; confirming it unchanged is not a change. */}
+      {noteOpen ? <FinishNoteSheet value={summary.notes ?? ''} onClose={() => setNoteOpen(false)} onSave={notes => { if (editable && notes !== (summary.notes ?? '')) triggerHaptic('stepperChange'); change({ notes }); }} /> : null}
     </GestureHandlerRootView>
   </Modal>;
 }
@@ -152,6 +145,5 @@ const styles = StyleSheet.create({
   ends: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: brandTokens.space.xs }, shortcut: { borderRadius: brandTokens.radius.full }, shortcutPress: { minHeight: 44, justifyContent: 'center', paddingHorizontal: brandTokens.space.md },
   note: { flexDirection: 'row', gap: brandTokens.space.sm, alignItems: 'center', padding: brandTokens.space.md, borderRadius: brandTokens.radius.inner, minHeight: 64 },
   discard: { minHeight: 50, alignItems: 'center', justifyContent: 'center' },
-  detailsRow: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.sm, minHeight: brandTokens.layout.minTouch }, flip: { transform: [{ rotate: '180deg' }] },
   footer: { padding: brandTokens.space.md, gap: brandTokens.space.xxs },
 });
