@@ -19,6 +19,7 @@ import { CONNECTION_KEYS, parseProgressConnections, type ProgressConnections } f
 import { calculateProgressConnections, connectionRank, connectionWeeks, type ConnectionSources } from "./progress-connections-model";
 import { connectionTrainingEvidence } from "./progress-connections";
 import { weightPerWeek, weightTrendAt } from "./progress-weight-trend";
+import { withKnownExecution } from "@/lib/progress/known-execution.fixture";
 
 const TODAY = "2026-10-19";
 const aStart = "2026-10-05", bStart = "2026-09-21";
@@ -217,7 +218,7 @@ describe("weight minimum by each measured period", () => {
   });
 });
 
-type Spec = { date: string; status?: string; energy?: number; id?: string; mode?: string; sets?: [number, number][] };
+type Spec = { date: string; status?: string; energy?: number; id?: string; mode?: string; sets?: [number, number][]; implement?: string; variant?: string | null };
 function training(specs: Spec[]): TrainingAnalysisSource {
   const sessions: unknown[] = [], sessionExercises: unknown[] = [], sets: unknown[] = [], dateByDayLog = new Map<string, string>();
   specs.forEach((s, i) => {
@@ -225,11 +226,14 @@ function training(specs: Spec[]): TrainingAnalysisSource {
     sessions.push({ id, user_id: "owner", day_log_id: s.date, status: s.status ?? "completed", started_at: `${s.date}T10:00:00Z`,
       ended_at: `${s.date}T11:00:00Z`, routine_id: null, routine_name_snapshot: null, session_name: null, energy_level: s.energy ?? null });
     sessionExercises.push({ id: block, user_id: "owner", workout_session_id: id, exercise_id: s.id ?? "bench", nombre_snapshot: s.id ?? "Banca",
-      grupo_muscular_snapshot: "pecho", weight_mode_snapshot: s.mode ?? "Peso total", is_completed: true });
+      grupo_muscular_snapshot: "pecho", weight_mode_snapshot: s.mode ?? "Peso total", is_completed: true, implement_snapshot: s.implement ?? null });
     (s.sets ?? [[10, 60]]).forEach(([reps, kg], j) => sets.push({ id: `set-${i}-${j}`, user_id: "owner",
       workout_session_exercise_id: block, set_number: j + 1, is_completed: true, actual_reps: reps, actual_weight_kg: kg }));
   });
-  return { sessions, sessionExercises, sets, dateByDayLog } as TrainingAnalysisSource;
+  const source = withKnownExecution({ sessions, sessionExercises, sets, dateByDayLog } as TrainingAnalysisSource);
+  // P1-C2: a case may set the variant (null = none stored, before the capture).
+  specs.forEach((s, i) => { if (s.variant !== undefined) { if (s.variant === null) source.configurations.delete(`block-${i}`); else source.configurations.set(`block-${i}`, `recorded:${s.variant}`); } });
+  return source;
 }
 describe("shared training calculations", () => {
   it("excludes exercises only in A, unit modes, mismatched modes, and reps beyond 12; preserves comparison status and 0.5kg rounding", () => {
@@ -247,6 +251,18 @@ describe("shared training calculations", () => {
     expect(result.energy).toEqual({ current: 4.5, previous: 3, sessions: { current: 2, previous: 2 } });
     const s = sources(); s.training = result;
     expect(calculate(s).stories[0].outcome).toMatchObject({ improved: 2, comparable: 2, top: { exerciseId: "heavy", previousE1rm: 140, currentE1rm: 154 } });
+  });
+});
+
+describe("shared training calculations — implement and variant (P1-C2)", () => {
+  it("leaves out of the e1RM story exercises done with another implement, another variant or an unknown one", () => {
+    const source = training([
+      { date: bStart, sets: [[10, 50]], variant: "agarre neutro" }, { date: aStart, sets: [[10, 60]], variant: "agarre neutro" },
+      { date: bStart, id: "implement", implement: "Mancuernas" }, { date: aStart, id: "implement", implement: "Barra", sets: [[10, 90]] },
+      { date: bStart, id: "variant", variant: "agarre neutro" }, { date: aStart, id: "variant", variant: "agarre prono", sets: [[10, 90]] },
+      { date: bStart, id: "unknown", variant: null }, { date: aStart, id: "unknown", sets: [[10, 90]] },
+    ]);
+    expect(connectionTrainingEvidence(source, a, b, TODAY).exercises.map(e => e.exerciseId)).toEqual(["bench"]);
   });
 });
 
@@ -319,7 +335,8 @@ describe("GET /api/mobile/v1/progress/connections", () => {
           ? sources().weights!.map(p => ({ date: p.date, row: { id: p.date, log_date: p.date, weight_kg: p.value } }))
           : table === "workout_sessions" ? source.sessions.filter(s => s.status === "completed").map(s => {
             const date = dateOf(s.id); return { date, row: { ...s, day: { id: s.day_log_id, log_date: date } } };
-          }) : table === "workout_session_exercises" ? source.sessionExercises.map(s => ({ date: dateOf(s.workout_session_id), row: s }))
+          }) : table === "workout_session_exercises" ? source.sessionExercises.map(s => ({ date: dateOf(s.workout_session_id),
+            row: { ...s, configuration: source.configurations?.get(s.id) === "not_applicable" ? { kind: "not_applicable", label: null } : null } }))
             : source.sets.map(s => ({ date: dateOf(source.sessionExercises.find(e => e.id === s.workout_session_exercise_id)!.workout_session_id), row: s }));
         const all = entries.filter(e => windows.some(w => e.date >= w.start && e.date <= w.end)).map(e => e.row);
         const offset = Number(url.searchParams.get("offset") ?? 0), limit = Math.min(Number(url.searchParams.get("limit") ?? 1000), 2);
@@ -348,6 +365,13 @@ describe("GET /api/mobile/v1/progress/connections", () => {
     expect(queries.some(u => u.searchParams.has("day.or"))).toBe(true);
     expect(queries.some(u => u.searchParams.has("session.day.or"))).toBe(true);
     expect(queries.some(u => u.searchParams.has("exercise.session.day.or"))).toBe(true);
+  });
+  it("P1-C2: the variant comes embedded in the exercise read, without another request", async () => {
+    await read();
+    const exerciseQueries = queries.filter(url => url.pathname.endsWith("/workout_session_exercises"));
+    expect(exerciseQueries.length).toBeGreaterThan(0);
+    expect(exerciseQueries.every(url => url.searchParams.get("select")?.includes("configuration:workout_session_exercise_configurations(kind,label)"))).toBe(true);
+    expect(queries.some(url => url.pathname.endsWith("/workout_session_exercise_configurations"))).toBe(false);
   });
   it("a failed weight read leaves the three training stories available", async () => {
     weightFailure = true; const dto = await read();

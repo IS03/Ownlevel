@@ -101,6 +101,11 @@ export type TrainingAnalysisSource = {
   sessionExercises: WorkoutSessionExercise[];
   sets: WorkoutSet[];
   dateByDayLog: Map<string, string>;
+  /**
+   * Configuration (variant) identity per session exercise id, as `configurationIdentity` gives it: "not_applicable",
+   * "recorded:<label>" or null (unknown). A source without this map knows no variant: every one is unknown.
+   */
+  configurations?: ReadonlyMap<string, string | null>;
 };
 
 type CompletedSet = { weightKg: number | null; reps: number | null };

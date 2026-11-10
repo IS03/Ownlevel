@@ -1,14 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { loadCompletedTrainingData, readAllTrainingRows } from "./training-robust";
-import { trainingLoadSamples } from "../progress/training-performance";
+import { buildTrainingPerformanceComparison, trainingLoadSamples } from "../progress/training-performance";
+import { withKnownExecution } from "../progress/known-execution.fixture";
 import { addProgressIsoDays } from "../progress/analytics";
 import type { WorkoutSession, WorkoutSessionExercise, WorkoutSet } from "./types";
 
 const TODAY = "2026-10-29";
 const USER = "owner";
 type Row = Record<string, unknown> & { id: string; user_id: string };
-type Tables = Record<"workout_sessions" | "workout_session_exercises" | "workout_sets" | "day_logs", Row[]>;
+type Tables = Record<"workout_sessions" | "workout_session_exercises" | "workout_sets" | "day_logs", Row[]> & { workout_session_exercise_configurations?: Row[] };
 const id = (prefix: number, n: number) => `${String(prefix).padStart(8, "0")}-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
 /**
@@ -16,9 +17,10 @@ const id = (prefix: number, n: number) => `${String(prefix).padStart(8, "0")}-00
  * scoped, as RLS would), a stable order, a server cap per response and exact counts.
  */
 function fakeSupabase(tables: Tables, maxRows: number) {
-  const queries: { table: string; returned: number; counted: boolean }[] = [];
-  const byId = (table: keyof Tables) => new Map(tables[table].map(row => [row.id, row]));
-  const raw = { day_logs: byId("day_logs"), workout_sessions: byId("workout_sessions"), workout_session_exercises: byId("workout_session_exercises"), workout_sets: byId("workout_sets") };
+  const queries: { table: string; returned: number; counted: boolean; bytes: number }[] = [];
+  const byId = (table: keyof Tables) => new Map((tables[table] ?? []).map(row => [row.id, row]));
+  const raw = { day_logs: byId("day_logs"), workout_sessions: byId("workout_sessions"), workout_session_exercises: byId("workout_session_exercises"), workout_sets: byId("workout_sets"),
+    workout_session_exercise_configurations: byId("workout_session_exercise_configurations") };
   const days = raw.day_logs, sessions = raw.workout_sessions, exercises = raw.workout_session_exercises;
   const owned = (row: Row | undefined, owner: unknown) => row && row.user_id === owner ? row : null;
   const sessionOf = (sessionId: unknown, owner: unknown) => {
@@ -36,7 +38,7 @@ function fakeSupabase(tables: Tables, maxRows: number) {
   };
   const augmented = new Map<keyof Tables, Record<string, unknown>[]>();
   const rowsOf = (table: keyof Tables) => {
-    if (!augmented.has(table)) augmented.set(table, tables[table].map(row => ({ ...row, ...embedded(table, row) })));
+    if (!augmented.has(table)) augmented.set(table, (tables[table] ?? []).map(row => ({ ...row, ...embedded(table, row) })));
     return augmented.get(table)!;
   };
   const at = (value: unknown, path: string[]): unknown => path.reduce<unknown>((v, key) => (v && typeof v === "object" ? (v as Record<string, unknown>)[key] : undefined), value);
@@ -63,12 +65,14 @@ function fakeSupabase(tables: Tables, maxRows: number) {
               });
             const projected = rows.map(row => {
               if (columns === "id, log_date") return { id: row.id, log_date: row.log_date };
-              const base: Record<string, unknown> = { ...raw[table].get(String(row.id)) };
+              // A narrow select returns only its columns (the bytes measured below depend on it).
+              const base: Record<string, unknown> = columns.includes("*") ? { ...raw[table].get(String(row.id)) }
+                : Object.fromEntries(columns.split(",").map(c => c.trim()).filter(c => !c.includes(":")).map(c => [c, row[c] ?? null]));
               for (const alias of ["day", "session", "exercise"]) if (columns.includes(`${alias}:`)) base[alias] = row[alias] ?? null;
               return base;
             });
             const data = projected.slice(from, Math.min(to + 1, from + maxRows));
-            queries.push({ table, returned: data.length, counted });
+            queries.push({ table, returned: data.length, counted, bytes: JSON.stringify(data).length });
             return { returns: () => Promise.resolve({ data, error: null, ...(counted ? { count: rows.length } : {}) }),
               then: (resolve: (v: unknown) => unknown) => resolve({ data, error: null, ...(counted ? { count: rows.length } : {}) }) };
           },
@@ -100,15 +104,20 @@ async function legacyLoad(supabase: ReturnType<typeof fakeSupabase>["client"], u
     dateByDayLog: new Map(days.filter(d => dayLogIds.has(d.id)).map(d => [d.id, d.log_date])) };
 }
 
-type Shape = { days: number; completed: number; perSession: number; setsPerExercise: number };
+/**
+ * `configuredDays`: the session exercises of the last N days have a stored variant (#367 captures from 05/11/2026 and
+ * never backfills, so older history has none). Defaults to 5 (the capture's age at P1-C2); Infinity = every one.
+ */
+type Shape = { days: number; completed: number; perSession: number; setsPerExercise: number; configuredDays?: number };
 /**
  * Completed sessions every `days / completed` days (two on some days, to pin the
  * same-date order), plus everything a full read must skip: discarded and
  * in-progress sessions with sets, incomplete sets, uncompleted exercises,
  * nutrition-only days, a completed session without end, and another user.
  */
-function dataset({ days, completed, perSession, setsPerExercise }: Shape): Tables {
-  const t: Tables = { workout_sessions: [], workout_session_exercises: [], workout_sets: [], day_logs: [] };
+function dataset({ days, completed, perSession, setsPerExercise, configuredDays = 5 }: Shape): Tables {
+  const t = { workout_sessions: [], workout_session_exercises: [], workout_sets: [], day_logs: [], workout_session_exercise_configurations: [] } as Tables & { workout_session_exercise_configurations: Row[] };
+  const capturedFrom = configuredDays === Infinity ? "" : addProgressIsoDays(TODAY, -configuredDays);
   let n = 0;
   const dayFor = (date: string, user = USER) => {
     const found = t.day_logs.find(d => d.log_date === date && d.user_id === user);
@@ -122,8 +131,10 @@ function dataset({ days, completed, perSession, setsPerExercise }: Shape): Table
     t.workout_sessions.push(s);
     for (let e = 0; e < perSession; e += 1) {
       const ex = { id: id(3, n++), user_id: user, workout_session_id: s.id, exercise_id: id(9, e % 5), nombre_snapshot: `Ejercicio ${e % 5}`, grupo_muscular_snapshot: "pecho",
-        muscle_group_label_snapshot: null, weight_mode_snapshot: "Peso total", exercise_order: e, is_completed: e !== perSession - 1 || status !== "completed" ? true : n % 3 !== 0 };
+        muscle_group_label_snapshot: null, weight_mode_snapshot: "Peso total", implement_snapshot: e === 3 ? "Mancuernas" : "Barra", exercise_order: e, is_completed: e !== perSession - 1 || status !== "completed" ? true : n % 3 !== 0 };
       t.workout_session_exercises.push(ex);
+      if (configuredDays === Infinity || date >= capturedFrom) t.workout_session_exercise_configurations.push({ id: ex.id, session_exercise_id: ex.id, user_id: user,
+        kind: e % 2 ? "recorded" : "not_applicable", label: e % 2 ? `Agarre ${e % 3}` : null });
       for (let k = 0; k < setsPerExercise; k += 1) {
         t.workout_sets.push({ id: id(4, n++), user_id: user, workout_session_exercise_id: ex.id, set_number: k + 1, is_completed: k !== setsPerExercise - 1 || n % 4 !== 0,
           actual_reps: 6 + ((n + k) % 6), actual_weight_kg: 40 + ((n * 7) % 50) });
@@ -219,4 +230,64 @@ describe("Training loader: same data with fewer requests", () => {
     }
     expect(table["Etapas"][1].requests).toBe(1);
   });
+
+  it("P1-C2: the variants cost one owner-scoped paged read of three narrow columns, bounded by the exercises", async () => {
+    const CONFIG = "workout_session_exercise_configurations";
+    const shapes: [string, Shape][] = [
+      ["main account, capture 5 days old", { days: 80, completed: 100, perSession: 5, setsPerExercise: 3 }],
+      ["main account, every session with a variant", { days: 80, completed: 100, perSession: 5, setsPerExercise: 3, configuredDays: Infinity }],
+      ["large history (3 years), capture 5 days old", { days: 1100, completed: 700, perSession: 6, setsPerExercise: 4 }],
+      ["large history (3 years), every session with a variant", { days: 1100, completed: 700, perSession: 6, setsPerExercise: 4, configuredDays: Infinity }],
+    ];
+    const report: Record<string, unknown> = {};
+    for (const [name, shape] of shapes) {
+      const tables = dataset(shape);
+      const { data, queries } = await run(tables, 1000, c => loadCompletedTrainingData({ supabase: c, userId: USER }));
+      const config = queries.filter(q => q.table === CONFIG), others = queries.filter(q => q.table !== CONFIG);
+      const sum = (list: typeof queries, key: "returned" | "bytes") => list.reduce((total, q) => total + q[key], 0);
+      const owned = tables.workout_session_exercise_configurations!.filter(row => row.user_id === USER);
+      report[name] = {
+        before: { requests: others.length, rows: sum(others, "returned"), bytes: sum(others, "bytes") },
+        after: { requests: queries.length, rows: sum(queries, "returned"), bytes: sum(queries, "bytes") },
+        variants: { requests: config.length, rows: sum(config, "returned"), bytes: sum(config, "bytes") },
+      };
+      // One request per 1000 stored variants (an empty table still answers one page), only the owner's rows.
+      expect(config.length).toBe(Math.max(1, Math.ceil(owned.length / 1000)));
+      expect(sum(config, "returned")).toBe(owned.length);
+      expect(owned.length).toBeLessThanOrEqual(tables.workout_session_exercises.filter(row => row.user_id === USER).length);
+      // Narrow rows: never more than ~1/4 of what the rest of the read already moves.
+      expect(sum(config, "bytes")).toBeLessThan(sum(others, "bytes") / 4);
+      // Every stored variant of a loaded exercise is in the map; no other user's, no exercise outside the loaded ones.
+      const loaded = new Set(data.sessionExercises.map(row => row.id));
+      expect([...data.configurations!.keys()].every(key => loaded.has(key))).toBe(true);
+      expect(data.configurations!.size).toBe(owned.filter(row => loaded.has(String(row.session_exercise_id))).length);
+      expect([...data.configurations!.values()].every(value => value === "not_applicable" || value!.startsWith("recorded:"))).toBe(true);
+    }
+    if (process.env.MEASURE) console.log(JSON.stringify(report, null, 1));
+  });
+  it("P1-C2 impact: history before the variant capture stops being compared, it is not deleted", async () => {
+    // Main-account shape; 30-day period against the previous 30 days. "Mode only" = the rule before P1-C2 (every
+    // execution treated as the same); "strict" = this rule on the variants actually stored.
+    const period = { start: addProgressIsoDays(TODAY, -29), end: TODAY }, reference = { start: addProgressIsoDays(TODAY, -59), end: addProgressIsoDays(TODAY, -30) };
+    const report: Record<string, unknown> = {};
+    for (const configuredDays of [0, 5, 30, 60, Infinity]) {
+      const { data } = await run(dataset({ days: 80, completed: 100, perSession: 5, setsPerExercise: 3, configuredDays }), 1000,
+        c => loadCompletedTrainingData({ supabase: c, userId: USER }));
+      const strict = buildTrainingPerformanceComparison({ source: data, primaryPeriod: period, referencePeriod: reference });
+      const modeOnly = buildTrainingPerformanceComparison({ source: withKnownExecution(structuredClone({ ...data, configurations: undefined })), primaryPeriod: period, referencePeriod: reference });
+      const records = (r: typeof strict) => r.exercises.filter(e => e.isPersonalRecord).length;
+      const reasons = Object.fromEntries([...new Set(strict.exercises.map(e => e.reason))].map(reason => [reason, strict.exercises.filter(e => e.reason === reason).length]));
+      report[`capture ${configuredDays} days old`] = { modeOnly: { comparable: modeOnly.summary.comparable, records: records(modeOnly) },
+        strict: { comparable: strict.summary.comparable, records: records(strict), reasons } };
+      // Sessions, exercises and sets are the same rows either way: nothing is deleted, only not compared.
+      expect(strict.exercises.map(e => e.exerciseId).sort()).toEqual(modeOnly.exercises.map(e => e.exerciseId).sort());
+      expect(strict.summary.comparable).toBeLessThanOrEqual(modeOnly.summary.comparable);
+      if (configuredDays < 30) expect(strict.summary.comparable).toBe(0); // the reference period has no stored variant
+      // Never "several variants" because of history from before the capture: there it is "unknown".
+      expect(strict.exercises.some(e => e.reason === "mixed_configuration")).toBe(false);
+      if (configuredDays >= 60) expect(strict.summary.comparable).toBe(modeOnly.summary.comparable);
+    }
+    if (process.env.MEASURE) console.log(JSON.stringify(report, null, 1));
+  });
 });
+

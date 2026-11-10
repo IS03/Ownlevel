@@ -5,7 +5,7 @@ import { buildTrainingAnalysis, trainingExerciseStats, type TrainingAnalysis, ty
 import { TRAINING_PROGRESS_METRICS } from "@/lib/progress/analytics";
 import { buildProgressComparison, type ProgressComparisonReport, type ProgressTemporalComparisonReference } from "@/lib/progress/comparisons";
 import {
-  compareTrainingExercisePerformance, buildTrainingGeneralAnalytics, buildTrainingPerformanceComparison, buildTrainingLoadComparison, trainingLoadSamples, trainingPerformanceStrategy,
+  compareTrainingExercisePerformance, buildTrainingGeneralAnalytics, buildTrainingPerformanceComparison, buildTrainingLoadComparison, mergedContextValue, sessionExerciseContext, trainingLoadSamples, trainingPerformanceStrategy,
   type TrainingExercisePerformance, type TrainingGeneralAnalytics, type TrainingPerformanceSummary,
 } from "@/lib/progress/training-performance";
 import { buildTrainingExercisesAnalytics, type TrainingExerciseDetailAnalytics } from "@/lib/progress/training-exercises";
@@ -229,9 +229,14 @@ export function trainingInPeriodDto(ctx: TrainingContext, period: ProgressPeriod
     const bySession = grouped.get(e.exercise_id) ?? new Map<string, Snapshot>();
     const previous = bySession.get(e.workout_session_id);
     const snapshot: Snapshot = { exerciseId: e.exercise_id, name: e.nombre_snapshot, muscleKey: e.grupo_muscular_snapshot ?? "unassigned", muscleLabel: stats.get(e.exercise_id)?.muscleLabel ?? "Sin grupo", mode, normalizedMode,
-      sets: (sets.get(e.id) ?? []).map(s => ({ ...s, date: session.date })) };
-    // Repeated exercise blocks in one session form one snapshot; mixed modes stay non-comparable.
-    if (previous) { snapshot.sets = [...previous.sets, ...snapshot.sets]; if (previous.normalizedMode !== normalizedMode) snapshot.normalizedMode = "__multiple__"; }
+      ...sessionExerciseContext(ctx.source, e), sets: (sets.get(e.id) ?? []).map(s => ({ ...s, date: session.date })) };
+    // Repeated exercise blocks in one session form one snapshot; mixed modes, implements or variants stay non-comparable.
+    if (previous) {
+      snapshot.sets = [...previous.sets, ...snapshot.sets];
+      if (previous.normalizedMode !== normalizedMode) snapshot.normalizedMode = "__multiple__";
+      snapshot.implement = mergedContextValue([previous.implement, snapshot.implement]);
+      snapshot.configuration = mergedContextValue([previous.configuration, snapshot.configuration]);
+    }
     bySession.set(e.workout_session_id, snapshot); grouped.set(e.exercise_id, bySession);
   }
   const exercises: ProgressTrainingInPeriod["exercises"] = [];

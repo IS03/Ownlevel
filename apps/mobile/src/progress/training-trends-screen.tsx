@@ -51,6 +51,11 @@ export const REASON_LABELS: Record<string, string> = {
   missing_weight_mode: 'Falta el modo de carga.',
   unsupported_weight_mode: 'Este modo de carga no tiene una comparación confiable.',
   incomplete_sets: 'Faltan series comparables.',
+  missing_implement: 'Falta el implemento en alguna sesión.',
+  different_implement: 'Cambió el implemento.',
+  unknown_configuration: 'Falta la variante en alguna sesión.',
+  different_configuration: 'Cambió la variante.',
+  mixed_configuration: 'Hiciste más de una variante en el período.',
   ambiguous_evidence: 'Sin cambio claro.',
 };
 const fmt = (n: number, digits = 1) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: digits }).format(n);

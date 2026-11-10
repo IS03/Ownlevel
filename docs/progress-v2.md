@@ -899,6 +899,57 @@ Desde `116b2c7` (#474 integrado). Último PR correctivo de la conciliación P1-C
 
 **Evidencia:** [capturas/manifiesto](qa/402-p1c1/evidence.json), con simulador separado, Metro propio y API en memoria. No acreditan VoiceOver, Reduce Motion ni QA física.
 
+### P1-C2 — Comparabilidad real por variante (10/11/2026)
+
+Desde `c40c8f6` (#476 integrado). Cierra la brecha que documentó P1-C1: el comparador de rendimiento de Progreso (`training-performance.ts`) agrupaba por `exercise_id` y solo separaba el modo de carga, así que 50 kg × 8 con mancuernas → 50 kg × 10 con barra daba «Mejoró» y «Nuevo récord de reps».
+
+**Regla.** Dos períodos (o dos sesiones) del mismo ejercicio se comparan solo si coinciden, conocidos en ambos lados:
+
+1. el modo de carga (como antes);
+2. el implemento (`implement_snapshot`, sin distinguir mayúsculas ni espacios);
+3. la variante, con la misma identidad que el comparador estricto de #367 (`configurationIdentity`): «no aplica» = «no aplica», misma etiqueta registrada (sin distinguir mayúsculas) = misma variante.
+
+Lo desconocido nunca equivale a nada, tampoco a otro desconocido. Sin coincidencia, el ejercicio queda en «Sin comparación» con un motivo propio; no se borra ni se oculta: sus sesiones, series y estadísticas descriptivas siguen iguales.
+
+| Motivo nuevo | Cuándo |
+| --- | --- |
+| `missing_implement` | falta el implemento en alguna sesión de los dos períodos |
+| `different_implement` | implementos distintos, o dos implementos dentro de un período |
+| `unknown_configuration` | falta la variante en alguna sesión (incluye historial anterior a la captura) |
+| `different_configuration` | dos variantes registradas distintas, o una variante frente a «no aplica» |
+| `mixed_configuration` | dos o más variantes conocidas distintas dentro de un período o una sesión |
+
+Los motivos anteriores mandan primero (modo de carga distinto o desconocido, modo no admitido); después se evalúan implemento y variante, y por último las series incompletas.
+
+**Récords.** Un récord (`new_best_weight`, `new_rep_record`) solo se mide contra sesiones anteriores con el mismo modo, implemento y variante conocidos. El historial de otra variante, otro implemento o sin variante no lo habilita ni lo bloquea. Las «Mejores marcas» del detalle de ejercicio (Web y Mobile) se calculan sobre las sesiones hechas igual que la última; si la última no tiene implemento o variante, no se muestran marcas.
+
+**Consumidores.** Todos leen el mismo comparador, así que la regla llega a: el titular «X de Y mejoraron» (el denominador solo cuenta comparables), el estado por ejercicio, los récords personales, los hallazgos de la portada, el resumen y la lista de Entrenamiento, el recorrido primera → última sesión (`inPeriod`), el detalle de ejercicio, rutinas y músculos de Web, la relación rendimiento de Relaciones (que ahora conserva las variantes al recortar el historial) y la historia de 1RM estimado de «Lo que se movió junto» (excluye los motivos nuevos). Los motivos son texto libre en el contrato, así que los parsers estrictos no cambian; Web y Mobile tienen texto propio para cada uno.
+
+**Lecturas.**
+- `loadCompletedTrainingData` suma una lectura paginada y acotada al dueño de `workout_session_exercise_configurations` (3 columnas), en paralelo con ejercicios y series; las columnas estrechas de Inicio suman `implement_snapshot`.
+- «Lo que se movió junto» embebe la variante en su lectura de ejercicios (relación 1 a 1): ninguna consulta nueva.
+- Récords de Inicio: nueva función `mobile_read_training_records_v2` (EXPAND `20261110120000`, **no aplicada**), igual que la v1 más implemento y variante, con el historial agregado también por implemento y variante y filtrado a los que los tienen conocidos. La v1 queda intacta. Mientras la v2 no exista, el lector cae a la lectura paginada estrecha (correcta, más costosa); nunca a la v1, que daría todo como desconocido. **Orden:** aplicar la v2 antes de desplegar este código.
+
+**Historial anterior a la captura.** La variante se captura desde `20261105223915` y nunca se rellenó hacia atrás; antes de eso no hay variante. Con el fixture del tamaño de la cuenta principal (100 sesiones en 80 días, período de 30 días frente a los 30 anteriores):
+
+| Antigüedad de la captura | Comparables antes → después | Récords antes → después | Motivo |
+| --- | --- | --- | --- |
+| 0, 5 o 30 días | 5 → 0 | 5 → 0 | `unknown_configuration` |
+| 60 días o más | 5 → 5 | 5 → 5 | — |
+
+Es el impacto principal: hasta que el período de comparación también tenga variantes registradas, casi todo queda en «Sin comparación» con «Falta la variante en alguna sesión», en lugar de comparar ejecuciones que pueden ser distintas. Se recupera solo, a medida que se registran variantes; no hace falta migrar datos.
+
+**Consumo** (Supabase simulado con columnas reales, mismo fixture, antes → después):
+
+| Escenario | Requests | Filas | Bytes |
+| --- | --- | --- | --- |
+| Cuenta principal, captura de 5 días | 4 → 5 | 2.639 → 2.709 | 667.002 → 674.003 (+1,0 %) |
+| Cuenta principal, todo con variante | 4 → 5 | 2.639 → 3.314 | 667.002 → 734.503 (+10,1 %) |
+| 3 años (700 sesiones), captura de 5 días | 28 → 29 | 26.432 → 26.480 | 6.418.129 → 6.422.930 (+0,1 %) |
+| 3 años, todo con variante | 28 → 34 | 26.432 → 31.922 | 6.418.129 → 6.967.135 (+8,6 %) |
+
+La lectura nueva corre en paralelo, así que no alarga la cadena de consultas; los bytes del fixture subestiman las filas reales de ejercicios y series (tienen más columnas), así que el porcentaje real es menor. No es una medición en producción.
+
 ## Función y jerarquía
 
 **IMPLEMENTADO:** `/progress` sintetiza y navega; no duplica reportes ni muestra grandes gráficos.

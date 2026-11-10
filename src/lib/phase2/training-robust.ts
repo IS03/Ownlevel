@@ -12,6 +12,7 @@ import {
   requireAuthenticatedRequestContext,
   type AuthenticatedRequestContext,
 } from "@/lib/supabase/server";
+import { configurationIdentity } from "@/lib/mobile-api/training-exercise-configuration-contract";
 import { addProgressIsoDays, getPreviousProgressPeriod } from "../progress/analytics/periods";
 import type { ProgressTemporalComparisonReference } from "../progress/comparisons";
 import {
@@ -1032,6 +1033,8 @@ export type CompletedTrainingData = {
   sessionExercises: WorkoutSessionExercise[];
   sets: WorkoutSet[];
   dateByDayLog: Map<string, string>;
+  /** `configurationIdentity` per session exercise with a stored variant (#367). Absent = unknown, never "none". */
+  configurations?: Map<string, string | null>;
 };
 
 export type HomeTrainingSnapshot = {
@@ -1264,7 +1267,7 @@ export type CompletedTrainingScope = {
 
 export const RECORD_COLUMNS = {
   sessions: "id, day_log_id, status, started_at, ended_at, routine_id, routine_name_snapshot, session_name",
-  exercises: "id, workout_session_id, exercise_id, is_completed, nombre_snapshot, grupo_muscular_snapshot, muscle_group_label_snapshot, weight_mode_snapshot",
+  exercises: "id, workout_session_id, exercise_id, is_completed, nombre_snapshot, grupo_muscular_snapshot, muscle_group_label_snapshot, weight_mode_snapshot, implement_snapshot",
   sets: "id, workout_session_exercise_id, is_completed, actual_reps, actual_weight_kg",
 } as const;
 
@@ -1303,7 +1306,7 @@ export async function loadCompletedTrainingData(
   if (scope.sessionsOnly) return { sessions, sessionExercises: [], sets: [], dateByDayLog };
 
   const sessionIds = new Set(sessions.map((session) => session.id));
-  const [allExercises, allSets] = await Promise.all([
+  const [allExercises, allSets, configurationRows] = await Promise.all([
     readAllTrainingRows<WorkoutSessionExercise>("Leer ejercicios de progreso", (from, to) => supabase
       .from("workout_session_exercises")
       .select(scope.recordColumns ? RECORD_COLUMNS.exercises : "*", firstPageCount(from))
@@ -1319,19 +1322,49 @@ export async function loadCompletedTrainingData(
       .order("id", { ascending: true })
       .range(from, to)
       .returns<WorkoutSet[]>()),
+    readTrainingConfigurations(supabase, userId),
   ]);
   const sessionExercises = allExercises.filter((exercise) => sessionIds.has(exercise.workout_session_id));
   const exerciseIds = new Set(sessionExercises.map((exercise) => exercise.id));
   const sets = allSets.filter((set) => exerciseIds.has(set.workout_session_exercise_id));
 
-  return { sessions, sessionExercises, sets, dateByDayLog };
+  return { sessions, sessionExercises, sets, dateByDayLog, configurations: configurationMap(configurationRows, exerciseIds) };
 }
 
-/** Older history as the record rule reads it: the best reps per (exercise, weight mode as stored, load > 0). */
-export type TrainingRecordHistoryRow = { exercise_id: string; weight_mode_snapshot: string | null; load: number; reps: number };
-export type TrainingRecordsRead = {
-  sessions: (WorkoutSession & EmbeddedDay)[]; exercises: WorkoutSessionExercise[]; sets: WorkoutSet[]; history: TrainingRecordHistoryRow[];
+type ConfigurationRow = { session_exercise_id: string; kind: string | null; label: string | null };
+
+/**
+ * The variants recorded for the user's session exercises (#367), so the performance comparison can tell "the same
+ * variant" from "another one" or "unknown" (#402 §9.3). One more owner-scoped paged query: only rows that exist (the
+ * table is never backfilled, so older history has none) and three narrow columns.
+ */
+function readTrainingConfigurations(supabase: AuthenticatedRequestContext["supabase"], userId: string) {
+  return readAllTrainingRows<ConfigurationRow>("Leer variantes de progreso", (from, to) => supabase
+    .from("workout_session_exercise_configurations")
+    .select("session_exercise_id, kind, label", firstPageCount(from))
+    .eq("user_id", userId)
+    .order("session_exercise_id", { ascending: true })
+    .range(from, to)
+    .returns<ConfigurationRow[]>());
+}
+
+function configurationMap(rows: readonly ConfigurationRow[], exerciseIds: ReadonlySet<string>) {
+  return new Map(rows.flatMap((row) => exerciseIds.has(row.session_exercise_id) ? [[row.session_exercise_id, configurationIdentity(row)] as const] : []));
+}
+
+/** The variant of a row as stored (#367), next to it in the records read. Absent or null kind = unknown. */
+type StoredConfiguration = { configuration_kind?: string | null; configuration_label?: string | null };
+/**
+ * Older history as the record rule reads it: the best reps per (exercise, weight mode, implement and variant as
+ * stored, load > 0). The read only returns aggregates whose implement and variant are known: no other can feed a record.
+ */
+export type TrainingRecordHistoryRow = StoredConfiguration & {
+  exercise_id: string; weight_mode_snapshot: string | null; implement_snapshot?: string | null; load: number; reps: number;
 };
+export type TrainingRecordsRead = {
+  sessions: (WorkoutSession & EmbeddedDay)[]; exercises: (WorkoutSessionExercise & StoredConfiguration)[]; sets: WorkoutSet[]; history: TrainingRecordHistoryRow[];
+};
+const storedIdentity = (row: StoredConfiguration) => configurationIdentity({ kind: row.configuration_kind ?? null, label: row.configuration_label ?? null });
 const RECORD_HISTORY_ID = "record-history";
 
 /**
@@ -1342,7 +1375,13 @@ const RECORD_HISTORY_ID = "record-history";
 export function trainingRecordsSource(read: TrainingRecordsRead, from: string): CompletedTrainingData {
   const sessions: WorkoutSession[] = read.sessions.map(withoutDay);
   const dateByDayLog = new Map(read.sessions.flatMap((row) => row.day ? [[row.day_log_id, row.day.log_date] as const] : []));
-  const sessionExercises = [...read.exercises], sets = [...read.sets];
+  const configurations = new Map<string, string | null>();
+  const sessionExercises: WorkoutSessionExercise[] = read.exercises.map(({ configuration_kind, configuration_label, ...exercise }) => {
+    const identity = storedIdentity({ configuration_kind, configuration_label });
+    if (identity) configurations.set(exercise.id, identity);
+    return exercise;
+  });
+  const sets = [...read.sets];
   if (read.history.length) {
     const date = addProgressIsoDays(from, -1);
     dateByDayLog.set(RECORD_HISTORY_ID, date);
@@ -1351,22 +1390,27 @@ export function trainingRecordsSource(read: TrainingRecordsRead, from: string): 
     read.history.forEach((row, index) => {
       const id = `${RECORD_HISTORY_ID}-${index}`;
       sessionExercises.push({ id, workout_session_id: RECORD_HISTORY_ID, exercise_id: row.exercise_id, is_completed: true, nombre_snapshot: "",
-        grupo_muscular_snapshot: null, muscle_group_label_snapshot: null, weight_mode_snapshot: row.weight_mode_snapshot } as unknown as WorkoutSessionExercise);
+        grupo_muscular_snapshot: null, muscle_group_label_snapshot: null, weight_mode_snapshot: row.weight_mode_snapshot,
+        implement_snapshot: row.implement_snapshot ?? null } as unknown as WorkoutSessionExercise);
+      const identity = storedIdentity(row);
+      if (identity) configurations.set(id, identity);
       sets.push({ id, workout_session_exercise_id: id, is_completed: true, actual_reps: row.reps, actual_weight_kg: row.load } as unknown as WorkoutSet);
     });
   }
-  return { sessions, sessionExercises, sets, dateByDayLog };
+  return { sessions, sessionExercises, sets, dateByDayLog, configurations };
 }
 
 const isRecordsRead = (value: unknown): value is TrainingRecordsRead => !!value && typeof value === "object"
   && ["sessions", "exercises", "sets", "history"].every((key) => Array.isArray((value as Record<string, unknown>)[key]));
 
 /**
- * Home's records in one read (`mobile_read_training_records`): rows from `from` on, older history aggregated. Before
- * that EXPAND is applied, or after its reversal, the narrow paged read returns the same records.
+ * Home's records in one read (`mobile_read_training_records_v2`): rows from `from` on with their implement and variant,
+ * older history aggregated per exercise, mode, implement and variant. Before that EXPAND is applied, or after its
+ * reversal, the narrow paged read (with the variants) returns the same records. The v1 function is not a fallback:
+ * without implement and variant every comparison would read as unknown.
  */
 export async function loadTrainingRecordsData(context: AuthenticatedRequestContext, from: string): Promise<CompletedTrainingData> {
-  const { data, error } = await context.supabase.rpc("mobile_read_training_records", { p_from: from });
+  const { data, error } = await context.supabase.rpc("mobile_read_training_records_v2", { p_from: from });
   if (error?.code === "PGRST202") return loadCompletedTrainingData(context, { recordColumns: true });
   if (error) throw new Error(`Leer récords: ${error.message}`);
   if (!isRecordsRead(data)) throw new Error("Leer récords: respuesta inválida.");

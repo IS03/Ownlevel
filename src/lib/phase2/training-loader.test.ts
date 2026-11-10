@@ -12,7 +12,7 @@ const uuid = (prefix: number, n: number) => `${String(prefix).padStart(8, "0")}-
 
 /** 400 completed sessions over ~2 years, 2 exercises × 3 completed sets each (2400 sets), plus noise that must be excluded. */
 function dataset() {
-  const tables: Record<string, Row[]> = { workout_sessions: [], workout_session_exercises: [], workout_sets: [], day_logs: [] };
+  const tables: Record<string, Row[]> = { workout_sessions: [], workout_session_exercises: [], workout_sets: [], day_logs: [], workout_session_exercise_configurations: [] };
   for (let i = 0; i < 400; i += 1) {
     const date = addProgressIsoDays(TODAY, -Math.floor(i * 1.8));
     const dayId = uuid(1, i), sessionId = uuid(2, i);
@@ -87,10 +87,13 @@ describe("Training loader reads every completed set (no PostgREST truncation, no
     expect(data.sets).toHaveLength(2400);
     expect(data.sets.some(set => set.actual_weight_kg === 999 || set.actual_reps === 1)).toBe(false);
     expect(new Set(data.sets.map(set => set.id)).size).toBe(2400);
-    // Deterministic, owner-scoped paging: 3 tables (dates come with the sessions), each read until its exact count.
-    expect(new Set(fake.queries.map(q => q.table))).toEqual(new Set(["workout_sessions", "workout_session_exercises", "workout_sets"]));
+    // Deterministic, owner-scoped paging: 3 tables (dates come with the sessions) plus the stored variants (P1-C2),
+    // each read until its exact count. No variant stored (history before the capture): one empty page, nothing more.
+    expect(new Set(fake.queries.map(q => q.table))).toEqual(new Set(["workout_sessions", "workout_session_exercises", "workout_sets", "workout_session_exercise_configurations"]));
     expect(fake.queries.filter(q => q.table === "workout_sets").length).toBe(Math.ceil(2403 / cap));
-    expect(fake.queries.every(q => q.returned > 0)).toBe(true);
+    expect(fake.queries.filter(q => q.table === "workout_session_exercise_configurations").map(q => q.returned)).toEqual([0]);
+    expect(fake.queries.filter(q => q.table !== "workout_session_exercise_configurations").every(q => q.returned > 0)).toBe(true);
+    expect(data.configurations).toEqual(new Map());
   });
   it("current + previous period analytics use every set", async () => {
     const fake = fakeSupabase(dataset(), 1000);

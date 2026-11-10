@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildTrainingAnalysis, type TrainingAnalysisSource } from "../phase2/training-analysis";
 import type { WorkoutSession, WorkoutSessionExercise, WorkoutSet } from "../phase2/types";
 import { buildTrainingExerciseMarks, buildTrainingExercisesAnalytics } from "./training-exercises";
+import { withKnownExecution } from "./known-execution.fixture";
 
 type Observation = { id: string; exerciseId: string; name: string; date: string; mode: string; weight: number | null; reps: number; routineId?: string };
 
@@ -20,7 +21,7 @@ function source(items: Observation[]): TrainingAnalysisSource {
     sets.push({ id: `set-${item.id}`, user_id: "user", workout_session_exercise_id: sessionExerciseId, set_number: 1, target_reps: null, target_weight_kg: null, target_rir: null, actual_reps: item.reps, actual_weight_kg: item.weight, is_completed: true, completed_at: `${item.date}T10:30:00Z`, notes: null, created_at: `${item.date}T10:00:00Z`, updated_at: `${item.date}T10:30:00Z` });
     dates.push([dayId, item.date]);
   }
-  return { sessions, sessionExercises, sets, dateByDayLog: new Map(dates) };
+  return withKnownExecution({ sessions, sessionExercises, sets, dateByDayLog: new Map(dates) });
 }
 
 function analytics(items: Observation[], selectedExerciseId: string | null = null) {

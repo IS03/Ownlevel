@@ -14,7 +14,18 @@ export type TrainingPerformanceReason =
   | "missing_weight_mode"
   | "unsupported_weight_mode"
   | "incomplete_sets"
-  | "ambiguous_evidence";
+  | "ambiguous_evidence"
+  // P1-C2: the same exercise done another way is not the same evidence (#402 §9.3).
+  /** The implement recorded for a session is unknown on either side. */
+  | "missing_implement"
+  /** Different implements (dumbbells vs barbell), or several within one period. */
+  | "different_implement"
+  /** The variant is unknown on either side: two unknowns are never assumed equal. */
+  | "unknown_configuration"
+  /** Two different recorded variants (or a recorded one vs «no aplica»). */
+  | "different_configuration"
+  /** Two or more different known variants of the exercise within one period (or one session). */
+  | "mixed_configuration";
 
 export type TrainingPerformanceSignalKind =
   | "new_best_weight"
@@ -99,8 +110,19 @@ type ExerciseSnapshot = {
   muscleLabel: string;
   mode: string | null;
   normalizedMode: string | null;
+  /** Normalized implement snapshot; null unknown (also when any session of the period is); MULTIPLE for two known ones. */
+  implement: string | null;
+  /** `configurationIdentity`; null unknown (also when any session of the period is); MULTIPLE for two known ones. */
+  configuration: string | null;
   sets: ComparableSet[];
 };
+const MULTIPLE = "__multiple__";
+
+/** Reasons that say the two sides were not recorded or done the same way: no derived reading may compare them. */
+export const NON_COMPARABLE_EXECUTION_REASONS: readonly TrainingPerformanceReason[] = [
+  "different_weight_mode", "missing_weight_mode", "unsupported_weight_mode", "incomplete_sets",
+  "missing_implement", "different_implement", "unknown_configuration", "different_configuration", "mixed_configuration",
+];
 
 const statusOrder: Record<TrainingPerformanceStatus, number> = {
   improved: 0,
@@ -116,6 +138,25 @@ function finite(value: number | null | undefined): number | null {
 function normalize(value: string | null | undefined): string | null {
   const normalized = value?.trim().replace(/\s+/g, " ").toLocaleLowerCase("es-AR");
   return normalized || null;
+}
+
+/**
+ * The execution context of one completed session exercise: implement snapshot and variant identity (#367's
+ * `configurationIdentity`, read by the loader). Case and spacing never separate two values; unknown stays null.
+ */
+export function sessionExerciseContext(source: TrainingAnalysisSource, exercise: Pick<TrainingAnalysisSource["sessionExercises"][number], "id" | "implement_snapshot">) {
+  return { implement: normalize(exercise.implement_snapshot?.normalize("NFC")), configuration: source.configurations?.get(exercise.id) ?? null };
+}
+
+/**
+ * One value for a period: MULTIPLE when it holds two different known values; otherwise unknown (null) when any
+ * session's is unknown (history from before the capture mixed with newer sessions is not "several variants"); otherwise
+ * the shared value. Never comparable unless every session's value is known and the same.
+ */
+export function mergedContextValue(values: readonly (string | null)[]): string | null {
+  const known = new Set(values.filter((value) => value !== null && value !== MULTIPLE));
+  if (known.size > 1 || values.includes(MULTIPLE)) return MULTIPLE;
+  return values.includes(null) ? null : values[0] ?? null;
 }
 
 /** The validated comparison strategy for a (normalized, lower-case) weight mode. */
@@ -180,6 +221,7 @@ function snapshotMap(source: TrainingAnalysisSource, range: ProgressPeriodRange,
       muscleLabel: muscleGroupLabel(exercise.grupo_muscular_snapshot) ?? (exercise.muscle_group_label_snapshot?.trim() || "Sin grupo"),
       mode,
       normalizedMode: normalize(mode),
+      ...sessionExerciseContext(source, exercise),
       sets,
     };
     const current = byExercise.get(item.exerciseId) ?? [];
@@ -193,7 +235,10 @@ function mergeSnapshots(items: ExerciseSnapshot[]): ExerciseSnapshot | null {
   if (!items.length) return null;
   const latest = [...items].sort((left, right) => right.sets[0]?.date.localeCompare(left.sets[0]?.date ?? "") ?? 0)[0]!;
   const modes = new Set(items.map((item) => item.normalizedMode));
-  return { ...latest, normalizedMode: modes.size === 1 ? latest.normalizedMode : "__multiple__", sets: items.flatMap((item) => item.sets) };
+  return { ...latest, normalizedMode: modes.size === 1 ? latest.normalizedMode : MULTIPLE,
+    implement: mergedContextValue(items.map((item) => item.implement)),
+    configuration: mergedContextValue(items.map((item) => item.configuration)),
+    sets: items.flatMap((item) => item.sets) };
 }
 
 function maxBy<T>(items: readonly T[], value: (item: T) => number): T | null {
@@ -343,6 +388,8 @@ export function compareTrainingExercisePerformance(input: {
   }
   const strategy = strategyFor(primary.normalizedMode);
   if (strategy === "unsupported") return insufficient(primary, "unsupported_weight_mode", reference.sets.length);
+  const executionIssue = executionContextIssue(primary, reference);
+  if (executionIssue) return insufficient(primary, executionIssue, reference.sets.length);
   const validLoad = (set: ComparableSet) => set.load !== null && set.load > 0;
   const bodyweightSet = (set: ComparableSet) => set.load === null || set.load === 0;
   const primarySets = strategy === "load_reps" || strategy === "unit_reps"
@@ -379,6 +426,27 @@ export function compareTrainingExercisePerformance(input: {
     referenceSampleSize: referenceSets.length,
     isPersonalRecord: record !== null,
   };
+}
+
+/**
+ * Same exercise and load semantics are not enough: the implement and the variant must be known and the same on both
+ * sides. Unknown is never assumed equal to unknown (#402 §9.3, aligned with #367's strict comparator).
+ */
+function executionContextIssue(primary: ExerciseSnapshot, reference: ExerciseSnapshot): TrainingPerformanceReason | null {
+  if (primary.implement === MULTIPLE || reference.implement === MULTIPLE) return "different_implement";
+  if (!primary.implement || !reference.implement) return "missing_implement";
+  if (primary.implement !== reference.implement) return "different_implement";
+  if (primary.configuration === MULTIPLE || reference.configuration === MULTIPLE) return "mixed_configuration";
+  if (!primary.configuration || !reference.configuration) return "unknown_configuration";
+  if (primary.configuration !== reference.configuration) return "different_configuration";
+  return null;
+}
+
+/** History that may feed a personal record: the same mode, implement and known variant as the period's sessions. */
+function sameExecution(item: ExerciseSnapshot, primary: ExerciseSnapshot | null) {
+  return !!primary && item.normalizedMode === primary.normalizedMode
+    && !!item.implement && item.implement !== MULTIPLE && item.implement === primary.implement
+    && !!item.configuration && item.configuration !== MULTIPLE && item.configuration === primary.configuration;
 }
 
 function performanceSummary(exercises: TrainingExercisePerformance[]): TrainingPerformanceSummary {
@@ -428,9 +496,9 @@ export function buildTrainingPerformanceComparison(input: {
   const exerciseIds = new Set([...primary.keys(), ...reference.keys()]);
   const exercises = [...exerciseIds].flatMap((exerciseId) => {
     const primarySnapshot = mergeSnapshots(primary.get(exerciseId) ?? []);
+    // A record is only against earlier sessions done the same way: another implement or variant never counts.
     const comparableHistory = (history.get(exerciseId) ?? []).filter((item) => (
-      item.sets.some((set) => set.date < input.primaryPeriod.start) &&
-      item.normalizedMode === primarySnapshot?.normalizedMode
+      item.sets.some((set) => set.date < input.primaryPeriod.start) && sameExecution(item, primarySnapshot)
     ));
     const result = compareTrainingExercisePerformance({
       primary: primarySnapshot,

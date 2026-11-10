@@ -6,6 +6,7 @@ import type { ProgressComparisonReport, ProgressTemporalComparisonReference } fr
 import {
   buildTrainingLoadComparison,
   buildTrainingPerformanceComparison,
+  sessionExerciseContext,
   type TrainingExercisePerformance,
 } from "./training-performance";
 
@@ -76,6 +77,7 @@ function serializeExerciseSessions(
   exerciseId: string,
   range?: { start: string; end: string },
   routineId?: string | null,
+  include?: (exercise: WorkoutSessionExercise) => boolean,
 ): ExerciseReportSession[] {
   const sessionById = new Map(source.sessions.map((session) => [session.id, session]));
   const setsBySessionExercise = new Map<string, TrainingAnalysisSource["sets"]>();
@@ -87,6 +89,7 @@ function serializeExerciseSessions(
   }
   return source.sessionExercises.flatMap((exercise): ExerciseReportSession[] => {
     if (!exercise.is_completed || exercise.exercise_id !== exerciseId) return [];
+    if (include && !include(exercise)) return [];
     const session = sessionById.get(exercise.workout_session_id);
     if (!session || session.status !== "completed") return [];
     if (routineId && session.routine_id !== routineId) return [];
@@ -160,6 +163,16 @@ export function buildTrainingExerciseMarks(
     if (volumes[0]) marks.push({ kind: "best_volume", label: "Mejor volumen de sesión", value: volumes[0].value, unit: "kg", context: null, logDate: volumes[0].logDate });
   }
   return marks;
+}
+
+function sameExecutionSessions(source: TrainingAnalysisSource, exerciseId: string, latest: WorkoutSessionExercise): ExerciseReportSession[] {
+  const mode = normalizedMode(latest.weight_mode_snapshot);
+  const { implement, configuration } = sessionExerciseContext(source, latest);
+  if (!mode || !implement || !configuration) return [];
+  return serializeExerciseSessions(source, exerciseId, undefined, undefined, (exercise) => {
+    const context = sessionExerciseContext(source, exercise);
+    return normalizedMode(exercise.weight_mode_snapshot) === mode && context.implement === implement && context.configuration === configuration;
+  });
 }
 
 function latestSnapshot(source: TrainingAnalysisSource, exerciseId: string): WorkoutSessionExercise | null {
@@ -267,7 +280,9 @@ export function buildTrainingExercisesAnalytics(input: {
         scope: { exerciseId: selectedId, ...(input.routineId ? { routineId: input.routineId } : {}) },
         metricKeys: EXERCISE_LOAD_KEYS,
       }),
-      marks: buildTrainingExerciseMarks(allSessions, latestExercise?.weight_mode_snapshot ?? selectedItem.weightMode),
+      // A best mark is a record: only over sessions done the way the latest one was (mode, implement and variant known
+      // and equal, #402 §9.3). With the latest implement or variant unknown there is no such set, so no marks.
+      marks: latestExercise ? buildTrainingExerciseMarks(sameExecutionSessions(input.source, selectedId, latestExercise), latestExercise.weight_mode_snapshot) : [],
       currentSessions,
       referenceSessions,
       allSessions,
