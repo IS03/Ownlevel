@@ -483,6 +483,18 @@ Si no existe ninguna observación histórica de peso pero `profiles.current_weig
 
 **LIMITACIÓN CONOCIDA:** Progress Body usa unidades canónicas kg/cm; no hay conversión analítica implementada a lb/in.
 
+## Exploración Mobile de Cuerpo — #402 (09/11/2026)
+
+El gráfico existente usa ahora la inspección opcional de `PeriodChart`, como Métricas: un toque selecciona sin navegar y muestra fecha completa con año, valor/unidad y procedencia que entrega `BodyObservationDto`. Una observación también tiene un punto inspeccionable; dos muestran diferencia con evidencia limitada; con más registros se conserva el resultado canónico de tendencia. No hay interpolación ni otra regla analítica. El texto grande apila cifras; los puntos conservan targets de al menos 44 pt y el detalle no trunca valores o procedencia.
+
+«Ver registro original» abre la ruta existente `progress/body?date=…`, con el controlador y la lectura puntual de Cuerpo ya disponibles. No busca el dato en la primera página ni recorre el historial para encontrarlo. Peso y medidas importadas conservan la fecha histórica y la edición/CAS existentes; si la medición se mueve durante un conflicto se conserva la recuperación por identidad ya implementada. Volver hace pop en el mismo stack: conserva medida, período/A-B, selección y origen de Insights; un enlace sin stack usa un destino fijo validado. No es persistencia tras cerrar el proceso. La selección se deriva de la lectura actual: editar actualiza el valor, eliminar/mover retira la acción, otra cuenta/ventana/medida retira la selección. Una revalidación fallida conserva lectura confirmada y aviso.
+
+**Validez y compatibilidad:** 0 kg permanece como registro corregible, nunca como peso corporal válido. Ante una respuesta antigua que lo incluya en los agregados, se muestra como hueco inspeccionable y se omite su cambio/tendencia contaminados, sin recalcularlos en Mobile. Los otros valores no positivos se identifican también como no válidos. Sin observaciones válidas no se ocultan los originales paginados ni se presenta el estado como lectura fallida. A/B conserva `referenceChange` y `referenceCount`; el contrato no entrega observaciones de referencia y la pantalla lo dice: no dibuja puntos ficticios. Una diferencia calculada de cero se escribe «= 0 kg/cm», separada de una diferencia no calculable.
+
+**Costo medido con fixture y controlador reales, sin red productiva:** mismo fixture, respuestas nuevas por lectura y mismo ciclo de foco, ejecutado con el componente de `main a6cd123` y con el candidato. En ambos: apertura de la fuente = 2 lecturas de Progreso + 2 overview operacionales; tocar punto = 0 adicionales; perder/recuperar foco = 1 overview + 1 lectura de Progreso. Son revalidaciones existentes que esta entrega conserva. Antes el toque despachaba navegación; ahora no. La medición de fuente no monta el destino después del push simulado: abrir el original añade las lecturas habituales del detalle de fecha, únicamente a pedido. No se midió latencia de red ni de iPhone. Sin cambios de endpoint, lector, payload, caché o cálculo de #367.
+
+Comprobación nativa pendiente en la [checklist única](progress/367-qa-fisica.md#cuerpo-402--inspección-y-registro-original). Esta entrega no cubre Nutrición/Métricas/Insights profundos, no integra #441 y no cierra #402.
+
 # Actividad y hábitos
 
 ## Producto dinámico
