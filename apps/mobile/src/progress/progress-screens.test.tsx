@@ -2,7 +2,7 @@ import { clearConfirmedReads, invalidateConfirmedReads } from '@/api/confirmed-r
 import type { MobileApiClient } from '@/api/client';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { AppState, RefreshControl } from 'react-native';
+import { AppState, RefreshControl, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { parseProgressBody, parseProgressMetrics, parseProgressOverview, type ProgressBody, type ProgressComparison, type ProgressMetrics, type ProgressOverview, type ProgressQuery } from '@/api/progress';
@@ -71,6 +71,7 @@ jest.mock('@/api/progress-connections', () => ({ ...jest.requireActual<object>('
 
 const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
 const ok = <T,>(data: T) => ({ status: 'ok' as const, data, meta });
+const rnActual = jest.requireActual<typeof import('react-native')>('react-native');
 const lost = { status: 'unavailable' as const, reason: 'network' as const, meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' as const } };
 const TODAY = '2026-10-05';
 const period = (preset: ProgressQuery['period'] = '30', start = '2026-09-06', days = 30) => ({ preset, start, end: TODAY, days, previousStart: '2026-08-07', previousEnd: '2026-09-05', bucket: 'week' as const, includesToday: true });
@@ -412,7 +413,9 @@ describe('Body Trends', () => {
     expect(view.queryByText(/Tendencia en bajada/)).toBeNull();
     expect(view.getByText(/4 registros en la referencia/)).toBeTruthy();
     expect(within(view.getByTestId('body-trend-chart')).getAllByRole('button')).toHaveLength(2);
-    expect(view.getByText('1–5 sep = 0 kg')).toBeTruthy();
+    const reference = within(view.getByTestId('body-reference-summary'));
+    expect(reference.getByText('Comparación · 1–5 sep')).toBeTruthy(); expect(reference.getByText('= 0 kg')).toBeTruthy();
+    expect(view.getByTestId('body-reference-summary').props.accessibilityLabel).toBe('Comparación con 1–5 sep: sin cambio, 4 registros. El gráfico muestra solo el período elegido.');
   });
   it('distinguishes empty valid observations, invalid stored records and an unavailable read', async () => {
     mockBodyWeights = [{ date: '2026-10-02', weightKg: 0 }];
@@ -524,7 +527,27 @@ describe('Body Trends', () => {
   it('keeps the comparison chosen on the hub', async () => {
     const view = wrap(<BodyTrendsScreen />, comparing); await flush();
     expect(mockBody).toHaveBeenLastCalledWith(mockClient, MONTH, { start: '2026-09-01', end: '2026-09-05' });
-    expect(within(view.getByTestId('body-trend-summary')).getByText('1–5 sep sin cambio medible (1 registro)')).toBeTruthy();
+    const reference = within(view.getByTestId('body-reference-summary'));
+    expect(reference.getByText('Comparación · 1–5 sep')).toBeTruthy(); expect(reference.getByText('Sin cambio medible')).toBeTruthy();
+    expect(reference.getByText(/^1 registro en la referencia\./)).toBeTruthy();
+  });
+  it('P1-B3: figures stack by measured width, stay whole and are spoken in words', async () => {
+    const dims = jest.spyOn(rnActual, 'useWindowDimensions').mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1 });
+    const view = wrap(<BodyTrendsScreen />); await flush();
+    const figures = () => StyleSheet.flatten(view.getByTestId('body-trend-figures').props.style).flexDirection;
+    fireEvent(view.getByTestId('body-trend-summary'), 'layout', { nativeEvent: { layout: { width: 358, height: 400, x: 0, y: 0 } } });
+    expect(figures()).toBe('row');
+    const summary = within(view.getByTestId('body-trend-summary'));
+    expect(summary.getByLabelText('Último registro: 80,5 kg, 1 oct')).toBeTruthy();
+    expect(summary.getByLabelText('Cambio en octubre: bajó 1,5 kg, desde 82 kg el 10 sep')).toBeTruthy();
+    const value = summary.getByText('80,5 kg');
+    expect(value.props.numberOfLines).toBeUndefined(); expect(value.props.adjustsFontSizeToFit).not.toBe(true);
+    const long = body(); const weight = long.metrics[0];
+    weight.last = { ...weight.last!, value: 111.8 }; weight.observations = weight.observations.map(o => o.date === weight.last!.date ? { ...o, value: 111.8 } : o); weight.change = -12.2;
+    mockBody.mockResolvedValue(ok(long)); act(() => view.UNSAFE_getByType(RefreshControl).props.onRefresh()); await flush();
+    fireEvent(view.getByTestId('body-trend-summary'), 'layout', { nativeEvent: { layout: { width: 288, height: 400, x: 0, y: 0 } } });
+    expect(figures()).toBe('column'); expect(within(view.getByTestId('body-trend-summary')).getByText('↘ 12,2 kg')).toBeTruthy();
+    dims.mockRestore();
   });
 });
 
@@ -676,6 +699,21 @@ describe('Metrics Trends', () => {
     console.info('METRICS_READ_BUDGET', JSON.stringify({ surface: 'trend', initialGroupedReads: 1, additionalReadsForThreeTaps: mockMetrics.mock.calls.length - 1 }));
   });
 
+  it('P1-B3: 44 pt chip targets, an archived disclosure button and stats that stack by measured width', async () => {
+    const dims = jest.spyOn(rnActual, 'useWindowDimensions').mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1 });
+    const view = wrap(<MetricsTrendsScreen />); await flush();
+    const chip = view.getByRole('radio', { name: 'Pasos' });
+    expect(StyleSheet.flatten(chip.props.style).minHeight).toBeGreaterThanOrEqual(44);
+    const toggle = view.getByTestId('metric-archived-toggle');
+    expect(toggle.props.accessibilityRole).toBe('button'); expect(toggle.props.accessibilityState).toEqual({ expanded: false });
+    fireEvent.press(toggle); expect(view.getByTestId('metric-archived-toggle').props.accessibilityState).toEqual({ expanded: true });
+    const stats = () => StyleSheet.flatten(view.getByTestId('metric-trend-stats').props.style).flexDirection;
+    fireEvent(view.getByTestId('metric-trend-summary'), 'layout', { nativeEvent: { layout: { width: 398, height: 200, x: 0, y: 0 } } });
+    expect(stats()).toBe('row');
+    fireEvent(view.getByTestId('metric-trend-summary'), 'layout', { nativeEvent: { layout: { width: 200, height: 200, x: 0, y: 0 } } });
+    expect(stats()).toBe('column'); expect(mockMetrics).toHaveBeenCalledTimes(1);
+    dims.mockRestore();
+  });
 });
 
 describe('Nutrition Reports route', () => {

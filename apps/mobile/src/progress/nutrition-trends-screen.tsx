@@ -17,7 +17,7 @@ import {
 } from '@/design-system';
 import { ProgressScroll } from './progress-scroll';
 import { useProgressRange } from './progress-range-context';
-import { PRESET_LABELS, arrowDelta, formatValue } from './progress-format';
+import { PRESET_LABELS, arrowDelta, formatDelta, formatValue } from './progress-format';
 import { ProgressRow } from './progress-row';
 import { useProgressResource } from './use-progress-resource';
 import { useCachedRead } from '@/api/use-cached-read';
@@ -27,6 +27,7 @@ import { NutritionReportDetails } from './nutrition-report-details';
 import { inputNutritionDate } from '@/nutrition/day-format';
 import { nutritionChartDayHref } from './nutrition-chart-navigation';
 import { timingHeadline } from './meal-times-model';
+import { figuresFitInRow, useMeasuredWidth } from './figure-layout';
 
 function TimingEntry() {
   const { client } = useMobileApi(),
@@ -74,7 +75,26 @@ function ReportContent({ report, reference, selection, onSelect }: { report: Nut
   const router = useRouter();
   const { compareOn, compareText } = useProgressRange();
   const openDate = (date: string) => { const href = nutritionChartDayHref(date); if (href) router.push(href); };
-  const { fontScale } = useWindowDimensions();
+  const { width, fontScale, onLayout } = useMeasuredWidth();
+  const figures = (['calories', 'protein'] as const).map((key, i) => {
+    const stat = report.summary.metrics[key], unit = i === 0 ? 'kcal' : 'g';
+    const previous = reference?.summary.metrics[key].value;
+    const targetStat = report.summary.metrics[i === 0 ? 'targetCalories' : 'targetProtein'];
+    const value = stat.value === null ? null : formatValue(stat.value, i === 0 ? null : 'g', 'integer');
+    const target = targetStat.value === null ? null : `${formatValue(targetStat.value, unit, 'integer')} (${targetStat.denominator} ${targetStat.denominator === 1 ? 'día' : 'días'})`;
+    // The reference value keeps its unit; the difference is between the two rounded daily averages, as before.
+    const versus = compareOn && reference ? previous === null || previous === undefined ? 'sin dato'
+      : `${formatValue(previous, unit, 'integer')}${stat.value !== null ? ` (${arrowDelta(Math.round(stat.value) - Math.round(previous), unit, 'integer')})` : ''}` : null;
+    const spokenVersus = compareOn && reference ? previous === null || previous === undefined ? 'sin dato'
+      : `${formatValue(previous, unit, 'integer')}${stat.value !== null ? `, diferencia ${formatDelta(Math.round(stat.value) - Math.round(previous), unit, 'integer')}` : ''}` : null;
+    const name = i === 0 ? 'Calorías' : 'Proteína';
+    const label = `${name}: ${value === null ? 'sin dato' : `${formatValue(stat.value, unit, 'integer')} por día`}${target ? `. Objetivo histórico promedio ${target}` : ''}${spokenVersus ? `. ${compareText}: ${spokenVersus}` : ''}`;
+    return { key, value, caption: i === 0 ? 'kcal por día' : 'proteína por día', target, versus, label };
+  });
+  const stacked = !figuresFitInRow({ texts: figures.map(f => f.value ?? '—'), width, fontScale, variant: 'largeTitle' });
+  // Target and A/B read across the full width under both figures, each value with its own unit.
+  const targets = figures.filter(f => f.target).map(f => f.target).join(' · ');
+  const versus = compareOn && reference ? figures.map(f => f.versus).join(' · ') : null;
   return (
     <>
       {report.status === 'partial' ? <AppText muted>Reporte con cobertura parcial</AppText> : null}
@@ -87,38 +107,24 @@ function ReportContent({ report, reference, selection, onSelect }: { report: Nut
           {report.days.some(d => d.mealCount > 0) ? 'Hay entradas registradas sin valores nutricionales utilizables.' : 'No hay comidas ni resúmenes históricos en este período. Los días sin registro no se cuentan como cero.'}
         </AppText>
       ) : null}
-      <View style={styles.section} testID="nutrition-progress-summary">
-        <View style={[styles.primary, fontScale > 1.3 && { flexDirection: 'column' }]}>
-          {(['calories', 'protein'] as const).map((key, i) => {
-            const stat = report.summary.metrics[key],
-              previous = reference?.summary.metrics[key].value,
-              target = report.summary.metrics[i === 0 ? 'targetCalories' : 'targetProtein'].value;
-            return (
-              <View key={key} style={styles.grow}>
-                <AppText numeric variant="largeTitle">
-                  {stat.value === null ? '—' : formatValue(stat.value, i === 0 ? null : 'g', 'integer')}
-                </AppText>
-                <AppText muted variant="caption">{i === 0 ? 'kcal por día' : 'proteína por día'}</AppText>
-                {target !== null ? (
-                  <AppText muted numeric variant="caption">objetivo histórico promedio {formatValue(target, i === 0 ? 'kcal' : 'g', 'integer')} · {report.summary.metrics[i === 0 ? 'targetCalories' : 'targetProtein'].denominator} días</AppText>
-                ) : null}
-                {compareOn && reference ? (
-                  <AppText numeric variant="caption">
-                    {compareText}{' '}
-                    {previous === null || previous === undefined ? 'sin dato' : formatValue(previous, null, 'integer')}
-                    {stat.value !== null && previous !== null && previous !== undefined
-                      ? ` · ${arrowDelta(Math.round(stat.value) - Math.round(previous), null, 'integer')}`
-                      : ''}
-                  </AppText>
-                ) : null}
-              </View>
-            );
-          })}
+      <View style={styles.section} testID="nutrition-progress-summary" onLayout={onLayout}>
+        <View testID="nutrition-progress-figures" style={[styles.primary, stacked && styles.stacked]}>
+          {figures.map(f => (
+            <View key={f.key} testID={`nutrition-progress-${f.key}`} style={styles.grow} accessible accessibilityLabel={f.label}>
+              <AppText numeric variant="largeTitle">{f.value ?? '—'}</AppText>
+              <AppText muted variant="footnote">{f.caption}</AppText>
+            </View>
+          ))}
         </View>
-        <AppText muted numeric variant="caption">
+        {/* Already part of each figure's spoken label: hidden from VoiceOver so it is not read twice. */}
+        <View style={styles.context} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          {targets ? <AppText muted numeric variant="footnote">Objetivo histórico promedio: {targets}</AppText> : null}
+          {versus ? <AppText numeric variant="footnote" testID="nutrition-progress-versus">{compareText}: {versus}</AppText> : null}
+        </View>
+        <AppText muted numeric variant="footnote">
           {daysText(report)}
         </AppText>
-        {compareOn && reference ? <AppText muted numeric variant="caption">Referencia {compareText} · {daysText(reference)}</AppText> : null}
+        {compareOn && reference ? <AppText muted numeric variant="footnote">Referencia {compareText} · {daysText(reference)}</AppText> : null}
       </View>
       <NutritionChart report={report} reference={reference} selection={selection} onSelect={onSelect} onDate={openDate} />
       <AppText muted numeric variant="caption">Detalle y horarios del período elegido · {inputNutritionDate(report.range.start)} – {inputNutritionDate(report.range.end)}</AppText>
@@ -233,5 +239,7 @@ export function NutritionTrendsScreen() {
 const styles = StyleSheet.create({
   section: { gap: spacing.xs },
   primary: { flexDirection: 'row', gap: spacing.lg },
+  stacked: { flexDirection: 'column' },
+  context: { gap: spacing.xs },
   grow: { flex: 1, gap: spacing.xs },
 });

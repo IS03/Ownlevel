@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { haptics } from '@/platform/haptics';
 import { BodyAddMenu } from '@/body/body-add-menu';
 import { BodyEditors, BodyStatus, MeasurementRecords, WeightRecords, openTodayWeight, useMeasurementEntry, useWeightEntry } from '@/body/body-screen';
@@ -25,9 +25,13 @@ import { useProgressRouteRange } from './use-progress-route-range';
 import { WeeklyWeights } from './weekly-weights';
 import { formatBodyDate } from '@/body/body-model';
 import { bodyObservationHref, isBodyChartMetric } from './body-chart-navigation';
+import { figuresFitInRow, useMeasuredWidth } from './figure-layout';
 
 const validBodyValue = (value: number) => Number.isFinite(value) && value > 0;
 const bodyDifference = (value: number, unit: string) => Math.abs(value) < 1e-9 ? `= ${formatValue(0, unit)}` : arrowDelta(value, unit);
+/** The same difference in words for VoiceOver: an arrow glyph is not a sentence. */
+const spokenDifference = (value: number, unit: string) => Math.abs(value) < 1e-9 ? 'sin cambio'
+  : `${value < 0 ? 'bajó' : 'subió'} ${formatValue(Math.abs(value), unit)}`;
 const LONGER: Partial<Record<ProgressUnit, ProgressUnit>> = { week: '3m', '2w': '3m', '3w': '3m', month: '3m', '3m': '6m', '6m': 'year' };
 
 /** "82 cm · ↘ 1,5 cm" inside the period; never a change from a single record. */
@@ -46,7 +50,7 @@ function Selected({ metric, excluded, storedZeros = [], selectedDate, onSelect, 
   const router = useRouter();
   const { colors } = useOwnlevelTheme();
   const { compareText, state, setState, today } = useProgressRange();
-  const { fontScale } = useWindowDimensions();
+  const { width, fontScale, onLayout } = useMeasuredWidth();
   const day = (d: string) => shortRange({ start: d, end: d }, today);
   // With too few records, one tap to a longer period (never Personalizado: that one you chose on purpose).
   const longer = LONGER[state.unit];
@@ -79,25 +83,31 @@ function Selected({ metric, excluded, storedZeros = [], selectedDate, onSelect, 
     <AppText muted numeric variant="footnote">{metric.latest && valid(metric.latest.value) ? `El último fue ${formatValue(metric.latest.value, metric.unit)}, el ${day(metric.latest.date)}.` : 'Todavía no registraste esta medida.'}</AppText>
     {metric.latest ? widen : null}
   </View>;
-  return <View style={styles.section} testID="body-trend-summary">
-    {safeSummary && metric.last ? <View style={[styles.numbers, fontScale > 1.3 && styles.stackedNumbers]}>
-      <View style={styles.grow}>
-        <AppText numeric variant="largeTitle">{formatValue(metric.last.value, metric.unit)}</AppText>
-        <AppText muted numeric variant="caption">último registro · {day(metric.last.date)}</AppText>
+  const lastText = metric.last ? formatValue(metric.last.value, metric.unit) : '';
+  const changeText = metric.change !== null ? bodyDifference(metric.change, metric.unit) : null;
+  const since = metric.first ? `${within} · desde ${formatValue(metric.first.value, metric.unit)} el ${day(metric.first.date)}` : within;
+  // Side by side only when both figures fit whole in the measured width; otherwise one under the other.
+  const stacked = !figuresFitInRow({ texts: changeText ? [lastText, changeText] : [lastText], width, fontScale, variant: 'largeTitle' });
+  const references = `${metric.referenceCount} ${metric.referenceCount === 1 ? 'registro' : 'registros'}`;
+  return <View style={styles.section} testID="body-trend-summary" onLayout={onLayout}>
+    {safeSummary && metric.last ? <View testID="body-trend-figures" style={[styles.numbers, stacked && styles.stackedNumbers]}>
+      <View style={styles.grow} accessible accessibilityLabel={`Último registro: ${lastText}, ${day(metric.last.date)}`}>
+        <AppText numeric variant="largeTitle">{lastText}</AppText>
+        <AppText muted numeric variant="footnote">último registro · {day(metric.last.date)}</AppText>
       </View>
-      {metric.change !== null ? <>
-        <View style={[styles.divider, fontScale > 1.3 && styles.stackedDivider, { backgroundColor: colors.border }]} />
-        <View style={styles.grow}>
-          <AppText numeric variant="largeTitle">{bodyDifference(metric.change, metric.unit)}</AppText>
-          <AppText muted numeric variant="caption">{metric.first ? `${within} · desde ${formatValue(metric.first.value, metric.unit)} el ${day(metric.first.date)}` : within}</AppText>
-
+      {changeText !== null && metric.change !== null ? <>
+        <View style={[styles.divider, stacked && styles.stackedDivider, { backgroundColor: colors.border }]} />
+        <View style={styles.grow} accessible accessibilityLabel={`Cambio ${within}: ${spokenDifference(metric.change, metric.unit)}${metric.first ? `, desde ${formatValue(metric.first.value, metric.unit)} el ${day(metric.first.date)}` : ''}`}>
+          <AppText numeric variant="largeTitle">{changeText}</AppText>
+          <AppText muted numeric variant="footnote">{since}</AppText>
         </View>
       </> : null}
     </View> : <AppText muted testID="body-invalid-summary">Esta lectura incluye registros no válidos. No mostramos cambio ni tendencia; revisá el registro original.</AppText>}
-    {safeSummary && compareText ? <View style={styles.section} testID="body-reference-summary">
-      <AppText numeric variant="caption">{compareText} {metric.referenceChange === null
-        ? `sin cambio medible (${metric.referenceCount} registro${metric.referenceCount === 1 ? '' : 's'})` : bodyDifference(metric.referenceChange, metric.unit)}</AppText>
-      <AppText muted variant="caption">{metric.referenceCount} registros en la referencia. Esta lectura no entrega sus puntos; el gráfico muestra solo el período elegido.</AppText>
+    {safeSummary && compareText ? <View style={[styles.reference, { borderColor: colors.border }]} testID="body-reference-summary" accessible
+      accessibilityLabel={`Comparación con ${compareText}: ${metric.referenceChange === null ? 'sin cambio medible' : spokenDifference(metric.referenceChange, metric.unit)}, ${references}. El gráfico muestra solo el período elegido.`}>
+      <AppText muted variant="footnote">Comparación · {compareText}</AppText>
+      <AppText numeric variant="headline">{metric.referenceChange === null ? 'Sin cambio medible' : bodyDifference(metric.referenceChange, metric.unit)}</AppText>
+      <AppText muted numeric variant="footnote">{references} en la referencia. Esta lectura no entrega sus puntos; el gráfico muestra solo el período elegido.</AppText>
     </View> : null}
     {safeSummary && count === 1 ? <>
       <AppText muted variant="footnote" testID="body-trend-single">Un solo registro {within}. Con dos o más vas a ver cómo cambió.</AppText>
@@ -113,9 +123,11 @@ function Selected({ metric, excluded, storedZeros = [], selectedDate, onSelect, 
     </ScrollView>
     <View style={styles.section} testID="body-point-inspection">
       <View accessible accessibilityLiveRegion="polite" accessibilityLabel={point ? `${formatBodyDate(point.date)}, ${metric.label}, ${formatValue(point.value, metric.unit)}, ${provenance}${valid(point.value) ? '' : ', registro no válido'}` : 'Tocá un punto para consultar su fecha, valor y procedencia.'}>
-        <AppText variant="headline">{point ? formatBodyDate(point.date) : 'Tocá un punto'}</AppText>
-        <AppText numeric>{point ? `${metric.label} · ${formatValue(point.value, metric.unit)}` : 'Consultá fecha, valor y procedencia sin salir del gráfico.'}</AppText>
-        {point ? <AppText muted variant="caption">{provenance}</AppText> : null}
+        {point ? <>
+          <AppText variant="headline">{formatBodyDate(point.date)}</AppText>
+          <AppText numeric>{`${metric.label} · ${formatValue(point.value, metric.unit)}`}</AppText>
+          <AppText muted variant="caption">{provenance}</AppText>
+        </> : <AppText muted variant="footnote">Tocá un punto para ver su fecha, valor y procedencia sin salir del gráfico.</AppText>}
       </View>
       {point && !valid(point.value) ? <AppText muted variant="caption">Registro no válido como {metric.key === 'body.weight' ? 'peso corporal' : 'medida corporal'}. Podés corregirlo o borrarlo en el original.</AppText> : null}
       {selectedDate && !point ? <AppText muted variant="caption">El registro seleccionado ya no está disponible en esta lectura. Elegí otro punto.</AppText> : null}
@@ -255,6 +267,7 @@ const styles = StyleSheet.create({
   chartScroll: { flexGrow: 1 },
   stackedNumbers: { flexDirection: 'column' },
   stackedDivider: { width: '100%', height: StyleSheet.hairlineWidth },
+  reference: { gap: spacing.xs, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth },
   link: { minHeight: 44, justifyContent: 'center' },
   fabRoom: { height: 72 },
 });

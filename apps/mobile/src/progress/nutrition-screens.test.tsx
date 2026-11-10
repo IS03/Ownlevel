@@ -37,6 +37,7 @@ jest.mock('@/api/progress', () => ({
   fetchProgressNutritionTiming: (c: unknown, q: ReportQuery, _s: unknown, compare: DateRange | null = null) =>
     mockTiming(c, q, compare),
 }));
+const rn = jest.requireActual<typeof import('react-native')>('react-native');
 const ok = <T,>(data: T) => ({
   status: 'ok' as const,
   data,
@@ -188,8 +189,9 @@ describe('Progress Nutrition', () => {
     const view = wrap(<NutritionTrendsScreen />, initial);
     await flush();
     expect(mockReport).toHaveBeenCalledWith(mockClient, { period: 'custom', from: '2026-09-01', to: '2026-09-02' });
-    expect(view.getByText('1–2 sep 2.195 · ↗ 361')).toBeTruthy();
-    expect(view.getByText('1–2 sep 156 · ↗ 1')).toBeTruthy();
+    expect(view.getByTestId('nutrition-progress-versus', { includeHiddenElements: true }).props.children.join('')).toBe('1–2 sep: 2.195 kcal (↗ 361 kcal) · 156 g (↗ 1 g)');
+    expect(view.getByTestId('nutrition-progress-calories').props.accessibilityLabel).toMatch(/^Calorías: 2.556 kcal por día\. .*1–2 sep: 2.195 kcal, diferencia \+361 kcal$/);
+    expect(view.getByTestId('nutrition-progress-protein').props.accessibilityLabel).toMatch(/1–2 sep: 156 g, diferencia \+1 g$/);
     expect(view.getByText('Referencia 1–2 sep · Promedio de 1 día con dato')).toBeTruthy();
     expect(view.getByText(/sin emparejar posiciones/)).toBeTruthy();
     fireEvent.press(view.getByRole('radio', { name: 'Comparación' }));
@@ -293,6 +295,24 @@ describe('Progress Nutrition', () => {
     // The month read a moment ago is reused (same account, day and range), not requested again.
     expect(mockReport).toHaveBeenCalledTimes(calls);
     expect(view.getByTestId('progress-unit-month').props.accessibilityState.selected).toBe(true);
+  });
+  it('P1-B3: an absent average reads as «sin dato», context lines span the width and figures stack with large text', async () => {
+    const standard = jest.spyOn(rn, 'useWindowDimensions').mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1 });
+    mockReport.mockImplementation(async (_c, q) => { const r = report(q); r.summary.metrics.protein = { value: null, denominator: 0, partialDays: 0 }; return ok(r); });
+    const view = wrap(<NutritionTrendsScreen />); await flush();
+    expect(view.getByTestId('nutrition-progress-protein').props.accessibilityLabel).toMatch(/^Proteína: sin dato/);
+    expect(within(view.getByTestId('nutrition-progress-protein')).getByText('—')).toBeTruthy();
+    const figures = () => StyleSheet.flatten(view.getByTestId('nutrition-progress-figures').props.style).flexDirection;
+    fireEvent(view.getByTestId('nutrition-progress-summary'), 'layout', { nativeEvent: { layout: { width: 288, height: 300, x: 0, y: 0 } } });
+    expect(figures()).toBe('row');
+    view.unmount(); standard.mockRestore();
+    const spy = jest.spyOn(rn, 'useWindowDimensions').mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1.5 });
+    try {
+      const large = wrap(<NutritionTrendsScreen />); await flush();
+      expect(StyleSheet.flatten(large.getByTestId('nutrition-progress-figures').props.style).flexDirection).toBe('column');
+      const value = within(large.getByTestId('nutrition-progress-calories')).getByText('2.556');
+      expect(value.props.numberOfLines).toBeUndefined(); expect(value.props.adjustsFontSizeToFit).not.toBe(true);
+    } finally { spy.mockRestore(); }
   });
 });
 
