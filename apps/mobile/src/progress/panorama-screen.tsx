@@ -103,13 +103,18 @@ function ExplorationLinks({ today, contextOpen, onToggle }: { today: string; con
     return <View style={styles.explore}>
       <Heading level={2}>Seguir explorando</Heading>
       <ListRow title="Métricas personales" onPress={() => router.push('/(tabs)/progress/trends/metrics')} />
-      <ListRow title="Períodos y A/B" subtitle="Mis vistas y Etapas" accessibilityLabel="Explorar período y A/B" onPress={() => router.navigate('/(tabs)/progress/period')} />
+      <ListRow title="Períodos y A/B" subtitle="Mis vistas, Etapas y lo que se movió junto" accessibilityLabel="Explorar período y A/B" onPress={() => router.navigate('/(tabs)/progress/period')} />
       <ListRow title="Recorrido por fecha" subtitle="Entrenamiento, Cuerpo, Nutrición y Métricas" onPress={() => router.navigate('/history/calendar')} />
-      <InsightRow label="Contexto y relaciones" detail="Sesiones, semanas y últimos tres meses" spoken="Contexto y relaciones" expanded={contextOpen} onPress={onToggle} />
+      <InsightRow label="Contexto y relaciones" detail="Sesiones, semanas, relaciones y qué influye" spoken="Contexto y relaciones" expanded={contextOpen} onPress={onToggle} />
       {contextOpen ? <View testID="panorama-context-links">
         <ListRow title="Sesiones" subtitle="Contexto y comparación" accessibilityLabel="Ver contexto y comparación de sesiones" onPress={() => router.navigate({ pathname: '/(tabs)/train/insights', params: origin })} />
         <ListRow title="Últimos tres meses" onPress={() => router.navigate(periodSummaryHref(today, origin))} />
         <ListRow title="Semanas y coincidencias" subtitle="Comparación A/B de los registros" accessibilityLabel="Semanas, A/B y coincidencias descriptivas" onPress={() => router.navigate(explorationHref(today, undefined, undefined, origin))} />
+        {/* Both read only when opened: discovering them adds no request to this screen. */}
+        <ListRow title="Lo que se movió junto" subtitle="Comida y resultados frente al período anterior equivalente" testID="panorama-connections-link"
+          accessibilityLabel="Lo que se movió junto: comida y resultados frente al período anterior equivalente" onPress={() => router.navigate('/(tabs)/progress/period')} />
+        <ListRow title="Qué influye" subtitle="Preguntas que comparan tus días entre sí" testID="panorama-influence-link"
+          accessibilityLabel="Qué influye: preguntas que comparan tus días entre sí" onPress={() => router.navigate('/(tabs)/progress/influence')} />
         <AppText muted variant="caption">Se leen al abrirlos. Las coincidencias de registros no acreditan una relación ni su causa.</AppText>
       </View> : null}
     </View>;

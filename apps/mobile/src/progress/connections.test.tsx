@@ -330,6 +330,29 @@ describe('connection detail (C2, C3)', () => {
     view = await detail('kcal_weight');
     expect(view.getByText('No pudimos cargar esta historia')).toBeTruthy();
   });
+  it('P1-B4: facts stack by measured width or large text, labels and exercise names stay whole, values are spoken in words', async () => {
+    const rn = jest.requireActual<typeof import('react-native')>('react-native');
+    const dims = jest.spyOn(rn, 'useWindowDimensions').mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1 });
+    const long = 'Press banca inclinado con mancuernas en banco a 30 grados';
+    mockTransform = d => { const s = d.stories.find(x => x.key === 'carbs_strength')!;
+      if ('exercises' in s && s.outcome.kind === 'strength' && s.outcome.top) { s.exercises = s.exercises.map((e, i) => i ? e : { ...e, name: long }); s.outcome.top = { ...s.outcome.top, name: long }; }
+      return d; };
+    const view = await detail('carbs_strength');
+    const facts = () => rn.StyleSheet.flatten(view.getByTestId('connection-facts').props.style).flexDirection;
+    fireEvent(view.getByTestId('connection-facts'), 'layout', { nativeEvent: { layout: { width: 358, height: 200, x: 0, y: 0 } } });
+    expect(facts()).toBe('row');
+    fireEvent(view.getByTestId('connection-facts'), 'layout', { nativeEvent: { layout: { width: 200, height: 200, x: 0, y: 0 } } });
+    expect(facts()).toBe('column');
+    const label = within(view.getByTestId('connection-fact-1')).getByText(`${long}, 1RM estimado`);
+    expect(label.props.numberOfLines).toBeUndefined();
+    expect(view.getByTestId('connection-fact-0').props.accessibilityLabel).toBe('Carbos por día: 268 g. Septiembre: 233 g, 35 g más');
+    const row = view.getByTestId('connection-exercise-exercise-0');
+    const name = within(row).getByText(long); expect(name.props.numberOfLines).toBeUndefined();
+    expect(within(row).getByText('↗ 5 kg')).toBeTruthy();
+    expect(row.props.accessibilityLabel).toBe(`${long}. Antes 97,5 kg, ahora 102,5 kg, 5 kg más, estimado.`);
+    fireEvent.press(row); expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: 'exercise-0' } });
+    dims.mockRestore();
+  });
 });
 
 describe('display precision', () => {

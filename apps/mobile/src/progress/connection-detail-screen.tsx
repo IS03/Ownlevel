@@ -3,7 +3,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CONNECTION_KEYS, type ConnectionKey, type ConnectionStory, type ConnectionWeek } from '@/api/progress-connections';
 import { AppIcon, AppText, Button, InlineUnavailable, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
 import { haptics } from '@/platform/haptics';
-import { CONNECTION_NAMES, connectionDelta, connectionMissingText, connectionTitle, connectionsPeriodNames, connectionsPeriodText } from './connections-model';
+import { CONNECTION_NAMES, connectionDelta, connectionMissingText, connectionTitle, connectionsPeriodNames, connectionsPeriodText, spokenDelta } from './connections-model';
+import { figuresFitInRow, useMeasuredWidth } from './figure-layout';
 import { useProgressConnections } from './connections-section';
 import { formatValue } from './progress-format';
 import { shortRange } from './progress-range';
@@ -15,27 +16,40 @@ const FOOD_NAME: Record<ConnectionKey, string> = { protein_strength: 'Proteína'
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const foodText = (value: number | null, unit: 'g' | 'kcal') => unit === 'kcal' ? formatValue(value, null, 'integer') : formatValue(value, 'g', 'integer');
 
-/** The two facts side by side: what it is, the value now and, under it, the previous period's value and the change. */
+/**
+ * The two facts: what it is, the value now and, under it, the previous period's value and the change. Side by side only
+ * while both values fit whole in the measured width; otherwise (or with large text) one under the other. Labels such as
+ * an exercise name are never cut.
+ */
 function Facts({ story }: { story: ConnectionStory }) {
   const { colors } = useOwnlevelTheme();
   const { state, today } = useProgressRange();
+  const { width, fontScale, onLayout } = useMeasuredWidth();
   const { before } = connectionsPeriodNames(state, today);
   const f = story.food, o = story.outcome;
   const was = (value: number | null, text: string, delta: string) => value === null ? `${cap(before)}: sin dato` : `${cap(before)}: ${text} · ${delta}`;
+  const said = (value: number | null, text: string, delta: string) => value === null ? `${cap(before)}: sin dato` : `${cap(before)}: ${text}, ${delta}`;
   const food = { label: `${FOOD_NAME[story.key]} por día`, value: foodText(f.current, f.unit),
-    caption: was(f.previous, foodText(f.previous, f.unit), connectionDelta(f.current, f.previous, f.unit)) };
+    caption: was(f.previous, foodText(f.previous, f.unit), connectionDelta(f.current, f.previous, f.unit)),
+    spoken: said(f.previous, formatValue(f.previous, f.unit, 'integer'), spokenDelta(f.current, f.previous, f.unit)) };
   const result = o.kind === 'strength'
     ? story.key === 'protein_strength'
       ? { label: 'Ejercicios que mejoraron', value: o.improved === null || o.comparable === null ? 'Sin dato' : `${o.improved} de ${o.comparable}`, caption: `Frente a ${before}, de los que repetiste` }
       : { label: o.top ? `${o.top.name}, 1RM estimado` : '1RM estimado', value: formatValue(o.top?.currentE1rm ?? null, 'kg'),
-        caption: o.top ? was(o.top.previousE1rm, formatValue(o.top.previousE1rm, 'kg'), connectionDelta(o.top.currentE1rm, o.top.previousE1rm, 'kg')) : 'Sin dato' }
+        caption: o.top ? was(o.top.previousE1rm, formatValue(o.top.previousE1rm, 'kg'), connectionDelta(o.top.currentE1rm, o.top.previousE1rm, 'kg')) : 'Sin dato',
+        spoken: o.top ? said(o.top.previousE1rm, formatValue(o.top.previousE1rm, 'kg'), spokenDelta(o.top.currentE1rm, o.top.previousE1rm, 'kg')) : 'Sin dato' }
     : o.kind === 'energy'
       ? { label: 'Energía al terminar', value: o.current === null ? 'Sin dato' : `${formatValue(o.current, null)} de 5`,
-        caption: was(o.previous, formatValue(o.previous, null), connectionDelta(o.current, o.previous, null)) }
-      : { label: 'Peso, tendencia', value: formatValue(o.current, 'kg'), caption: was(o.previous, formatValue(o.previous, 'kg'), connectionDelta(o.current, o.previous, 'kg')) };
-  return <View style={styles.facts}>
-    {[food, result].map((x, i) => <View key={i} style={[styles.fact, i > 0 && [styles.factRight, { borderColor: colors.border }]]}>
-      <AppText muted variant="footnote" numberOfLines={2}>{x.label}</AppText>
+        caption: was(o.previous, formatValue(o.previous, null), connectionDelta(o.current, o.previous, null)),
+        spoken: said(o.previous, formatValue(o.previous, null), spokenDelta(o.current, o.previous, null)) }
+      : { label: 'Peso, tendencia', value: formatValue(o.current, 'kg'), caption: was(o.previous, formatValue(o.previous, 'kg'), connectionDelta(o.current, o.previous, 'kg')),
+        spoken: said(o.previous, formatValue(o.previous, 'kg'), spokenDelta(o.current, o.previous, 'kg')) };
+  const stacked = !figuresFitInRow({ texts: [food.value, result.value], width, fontScale, variant: 'title1' });
+  return <View style={[styles.facts, stacked && styles.stackedFacts]} testID="connection-facts" onLayout={onLayout}>
+    {[food, result].map((x: { label: string; value: string; caption: string; spoken?: string }, i) => <View key={i} accessible
+      accessibilityLabel={`${x.label}: ${x.value}. ${x.spoken ?? x.caption}`} testID={`connection-fact-${i}`}
+      style={[styles.fact, i > 0 && [stacked ? styles.factBelow : styles.factRight, { borderColor: colors.border }]]}>
+      <AppText muted variant="footnote">{x.label}</AppText>
       <AppText numeric variant="title1">{x.value}</AppText>
       <AppText muted numeric variant="footnote">{x.caption}</AppText>
     </View>)}
@@ -90,13 +104,19 @@ function Exercises({ story }: { story: Extract<ConnectionStory, { exercises: unk
   return <View style={styles.block} testID="connection-exercises">
     <AppText variant="headline">Ejercicios que repetiste en los dos períodos</AppText>
     <AppText muted variant="footnote">1RM estimado de tu mejor sesión en cada uno</AppText>
+    {/* The whole name on its own line (free text, often long), the values under it: nothing is cut at any width or text size. */}
     <View>{story.exercises.map((e, i) => <Pressable key={e.exerciseId} accessibilityRole="button" testID={`connection-exercise-${e.exerciseId}`}
-      accessibilityLabel={`${e.name}. Antes ${formatValue(e.previousE1rm, 'kg')}, ahora ${formatValue(e.currentE1rm, 'kg')}, estimado.`}
+      accessibilityLabel={`${e.name}. Antes ${formatValue(e.previousE1rm, 'kg')}, ahora ${formatValue(e.currentE1rm, 'kg')}, ${spokenDelta(e.currentE1rm, e.previousE1rm, 'kg')}, estimado.`}
+      accessibilityHint="Abre las medidas de este ejercicio"
       onPress={() => { haptics.selection(); router.push({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: e.exerciseId } }); }}
       style={({ pressed }) => [styles.row, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }, pressed && { opacity: 0.6 }]}>
-      <AppText style={styles.grow} numberOfLines={1}>{e.name}</AppText>
-      <AppText muted numeric variant="footnote">{formatValue(e.previousE1rm, null)} → {formatValue(e.currentE1rm, 'kg')}</AppText>
-      <AppText numeric variant="footnote" style={styles.delta}>{connectionDelta(e.currentE1rm, e.previousE1rm, null)}</AppText>
+      <View style={styles.exercise}>
+        <AppText>{e.name}</AppText>
+        <View style={styles.values}>
+          <AppText muted numeric variant="footnote">{formatValue(e.previousE1rm, null)} → {formatValue(e.currentE1rm, 'kg')}</AppText>
+          <AppText numeric variant="footnote">{connectionDelta(e.currentE1rm, e.previousE1rm, 'kg')}</AppText>
+        </View>
+      </View>
       <AppIcon name="chevronRight" color={colors.textMuted} size={15} />
     </Pressable>)}</View>
   </View>;
@@ -171,8 +191,10 @@ export function ConnectionDetailScreen() {
 const styles = StyleSheet.create({
   lead: { gap: spacing.xs },
   facts: { flexDirection: 'row', gap: spacing.md },
+  stackedFacts: { flexDirection: 'column' },
   fact: { flex: 1, gap: spacing.xs },
   factRight: { borderLeftWidth: StyleSheet.hairlineWidth, paddingLeft: spacing.md },
+  factBelow: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: spacing.md },
   block: { gap: spacing.sm, marginTop: spacing.md },
   chartHead: { gap: spacing.xs },
   legend: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
@@ -184,6 +206,7 @@ const styles = StyleSheet.create({
   center: { textAlign: 'center' },
   row: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
   grow: { flex: 1 },
-  delta: { minWidth: 44, textAlign: 'right' },
+  exercise: { flex: 1, gap: spacing.xs },
+  values: { flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.md },
   link: { minHeight: 44, justifyContent: 'center' },
 });

@@ -84,7 +84,11 @@ describe('Qué influye', () => {
     expect(view.getByText('sobre días que entrenaste')).toBeTruthy();
     expect(view.getByTestId('influence-bar-0').props.style.width).toBe('100%');
     expect(view.getByTestId('influence-bar-1').props.style.width).toBe(`${21 / 26 * 100}%`);
-    expect([view.getByTestId('influence-evidence').props.children].flat().join('')).toMatch(/^5 series más .*· evidencia moderada, 14 días con los dos datos$/);
+    expect(view.getByTestId('influence-evidence').props.children).toBe('5 series más (24\u00A0%)');
+    expect(view.getByTestId('influence-support').props.children).toBe('Evidencia moderada · 14 días con los dos datos');
+    // Difference, how much the days support it and the association caution are a single VoiceOver stop.
+    expect(view.getByTestId('influence-evidence-block').props.accessibilityLabel).toBe('Diferencia entre los grupos: 5 series más (24\u00A0%). Evidencia moderada, 14 días con los dos datos. Es una relación, no una causa: otras cosas pudieron cambiar esos días.');
+    expect(view.getAllByTestId('influence-caution')).toHaveLength(1);
     expect(view.queryByTestId('influence-comparison')).toBeNull();
     expect(view.getByText('Es una relación, no una causa: otras cosas pudieron cambiar esos días.')).toBeTruthy();
   });

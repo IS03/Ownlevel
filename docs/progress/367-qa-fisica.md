@@ -318,3 +318,12 @@ Pendiente físico. Evidencia local y límites: `docs/progress/qa/402-p1b3/eviden
 - [ ] Nutrición: calorías/proteína con días faltantes, sumas parciales y sin dato («—»); objetivo histórico y A/B en líneas completas con unidad; barra → día y comidas originales → volver; cambio de período/cuenta y refresco fallido.
 - [ ] Métricas: cápsulas fáciles de tocar y desplazar, «Archivadas» despliega/oculta; mínimo/máximo/mediana enteros con cifras largas; cero válido frente a sin dato; barra → registro original por UUID → volver.
 - [ ] VoiceOver (una parada por cifra, cambios en palabras), texto grande, claro/oscuro, Reduce Motion y final de cada pantalla bajo la barra nativa.
+
+### Progreso #402 P1-B4 — Relaciones y Qué influye
+
+Pendiente físico. Evidencia local y límites: `docs/progress/qa/402-p1b4/evidence.json`. No se marca como aprobado.
+
+- [ ] Portada → «Contexto y relaciones» → «Lo que se movió junto» y «Qué influye» abren su pantalla; volver conserva el grupo abierto.
+- [ ] Explorar período → historias disponibles, insuficientes y con error diferenciadas → detalle: cifras enteras en iPhone compacto y grande y con texto grande, nombres de ejercicio completos, semanas y retorno a cada ejercicio.
+- [ ] Qué influye: barras, diferencia, evidencia y aviso de relación (no causa) juntos; datos insuficientes; con y sin Comparar; Fijar en Mis vistas.
+- [ ] VoiceOver (una parada por cifra y por el bloque de evidencia), claro/oscuro, Reduce Motion y final bajo la barra nativa.

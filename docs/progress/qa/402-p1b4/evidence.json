@@ -1,0 +1,255 @@
+{
+  "base": "ab4d1d56f74c46ca11e0aa8a00954fa22e8f97ee",
+  "device": "iPhone 18 Pro Max / iOS 27.0 simulator (separate from the build simulator), existing OWNLEVEL Dev app",
+  "source": "Real ConnectionsSection, ConnectionDetailScreen, InfluenceAnswerScreen and ProgressOverviewScreen (panorama) with ProgressScroll and NativeTabs; temporary harness (own Metro on 8084, @/api and @/auth aliased to an in-memory client, runtime state on 8085) removed before commit; Metro 8081 and the build simulator untouched",
+  "cases": [
+    {
+      "name": "section-light",
+      "screen": "section",
+      "density": "normal",
+      "theme": "light",
+      "wait": 16
+    },
+    {
+      "name": "section-few-dark",
+      "screen": "section",
+      "density": "few",
+      "theme": "dark",
+      "wait": 16
+    },
+    {
+      "name": "detail-light",
+      "screen": "detail",
+      "density": "normal",
+      "theme": "light",
+      "wait": 16
+    },
+    {
+      "name": "detail-dark",
+      "screen": "detail",
+      "density": "normal",
+      "theme": "dark",
+      "wait": 16
+    },
+    {
+      "name": "detail-compact",
+      "screen": "detail",
+      "density": "long",
+      "theme": "light",
+      "width": 320,
+      "wait": 16
+    },
+    {
+      "name": "detail-large-text",
+      "screen": "detail",
+      "density": "long",
+      "theme": "light",
+      "size": "accessibility-large",
+      "wait": 16
+    },
+    {
+      "name": "detail-strength-compact",
+      "screen": "detail",
+      "density": "long",
+      "theme": "dark",
+      "width": 320,
+      "key": "carbs_strength",
+      "wait": 16
+    },
+    {
+      "name": "detail-few",
+      "screen": "detail",
+      "density": "few",
+      "theme": "light",
+      "key": "kcal_weight",
+      "wait": 16
+    },
+    {
+      "name": "influence-light",
+      "screen": "influence",
+      "density": "normal",
+      "theme": "light",
+      "wait": 16
+    },
+    {
+      "name": "influence-dark-ab",
+      "screen": "influence",
+      "density": "normal",
+      "theme": "dark",
+      "compare": true,
+      "wait": 16
+    },
+    {
+      "name": "influence-compact",
+      "screen": "influence",
+      "density": "long",
+      "theme": "light",
+      "width": 320,
+      "compare": true,
+      "wait": 16
+    },
+    {
+      "name": "influence-large-text",
+      "screen": "influence",
+      "density": "long",
+      "theme": "light",
+      "size": "accessibility-large",
+      "wait": 16
+    },
+    {
+      "name": "influence-few",
+      "screen": "influence",
+      "density": "few",
+      "theme": "dark",
+      "wait": 16
+    }
+  ],
+  "notes": [
+    "320 pt is a constrained container on the same simulator; Jest covers measured widths 200/358 pt and fontScale 1",
+    "Influence captures reuse the suggested key carbs_sets with lag 0 in the harness, so the title (lag 1 question) and subtitle differ; same in before and after, not product behaviour",
+    "panorama-context: manual scroll and tap in the simulator; no before capture of the expanded group (the change adds two rows, covered by Jest)",
+    "Dev client Tools button and EJEMPLO tag belong to the harness"
+  ],
+  "resize": "Published PNGs downscaled to 660x1434 with sips; no visual editing",
+  "captures": [
+    {
+      "file": "after-detail-compact.png",
+      "bytes": 423135
+    },
+    {
+      "file": "after-detail-dark.png",
+      "bytes": 339581
+    },
+    {
+      "file": "after-detail-large-text.png",
+      "bytes": 422639
+    },
+    {
+      "file": "after-detail-strength-compact.png",
+      "bytes": 340437
+    },
+    {
+      "file": "after-influence-compact.png",
+      "bytes": 430290
+    },
+    {
+      "file": "after-influence-dark-ab.png",
+      "bytes": 354185
+    },
+    {
+      "file": "after-influence-few.png",
+      "bytes": 310742
+    },
+    {
+      "file": "after-panorama-context.png",
+      "bytes": 389526
+    },
+    {
+      "file": "after-section-few-dark.png",
+      "bytes": 301595
+    },
+    {
+      "file": "before-detail-compact.png",
+      "bytes": 405498
+    },
+    {
+      "file": "before-detail-large-text.png",
+      "bytes": 455143
+    },
+    {
+      "file": "before-detail-strength-compact.png",
+      "bytes": 351005
+    },
+    {
+      "file": "before-influence-compact.png",
+      "bytes": 415348
+    }
+  ],
+  "readingBudget": {
+    "before": {
+      "portada": {
+        "initial": 1,
+        "afterLocal": 0,
+        "reads": [
+          [
+            "/api/mobile/v1/progress?findings",
+            3584,
+            true
+          ]
+        ]
+      },
+      "relaciones": {
+        "initial": 1,
+        "afterLocal": 0,
+        "detailScreen": 0,
+        "detailButtons": 9,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/connections",
+            5474,
+            true
+          ]
+        ]
+      },
+      "influye": {
+        "initial": 1,
+        "afterLocal": 0,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/influence",
+            859,
+            true
+          ]
+        ]
+      }
+    },
+    "after": {
+      "portada": {
+        "initial": 1,
+        "afterLocal": 0,
+        "reads": [
+          [
+            "/api/mobile/v1/progress?findings",
+            3584,
+            true
+          ]
+        ]
+      },
+      "relaciones": {
+        "initial": 1,
+        "afterLocal": 0,
+        "detailScreen": 0,
+        "detailButtons": 9,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/connections",
+            5474,
+            true
+          ]
+        ]
+      },
+      "influye": {
+        "initial": 1,
+        "afterLocal": 0,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/influence",
+            859,
+            true
+          ]
+        ]
+      }
+    },
+    "note": "Jest, real fetchers/parsers on client.read. Portada: 1 read, expanding the context group 0. Relations section 1 read; the detail is another screen and reuses it (0). Influence answer 1 read. Not a device measurement"
+  },
+  "verification": {
+    "directed": "connections, influence, panorama, progress screens and insights: 18/18 suites, 224 tests",
+    "mobileValidate": "typecheck, lint, 220/220 suites, 1935 tests, config:check",
+    "iosExport": "Hermes 9.7 MB, isolated Metro cache, no config change"
+  },
+  "limits": [
+    "No physical iPhone QA",
+    "No VoiceOver or Reduce Motion run on device",
+    "Shared ProgressScroll header abbreviates title/range at extreme sizes (unchanged)"
+  ]
+}

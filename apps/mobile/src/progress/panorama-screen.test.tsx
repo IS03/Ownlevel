@@ -304,6 +304,16 @@ it('groups secondary entries without loading their destinations, keeps their ori
     fireEvent.press(view.getByRole('button',{name:'Recorrido por fecha'}));expect(mockNavigate).toHaveBeenLastCalledWith('/history/calendar');
     fireEvent.press(view.getByRole('button',{name:'Métricas personales'}));expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/trends/metrics');
 });
+it('P1-B4: relations and Qué influye are discoverable from the context group and only navigate, without reading here', async () => {
+    const view=render(wrap());await view.findByTestId('progress-panorama');
+    expect(view.queryByTestId('panorama-connections-link')).toBeNull();
+    fireEvent.press(view.getByRole('button',{name:'Contexto y relaciones'}));
+    fireEvent.press(view.getByRole('button',{name:'Lo que se movió junto: comida y resultados frente al período anterior equivalente'}));
+    expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress/period');
+    fireEvent.press(view.getByRole('button',{name:'Qué influye: preguntas que comparan tus días entre sí'}));
+    expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress/influence');
+    expect(read).toHaveBeenCalledTimes(1);
+});
 
 it('retains the secondary context disclosure on return and retires it on an account/client change', async () => {
     const view=render(wrap());await view.findByTestId('progress-panorama');
