@@ -542,6 +542,16 @@ La consistencia describe registro, no cumplimiento. “26 de 28 días” signifi
 
 Activas se priorizan; archivadas conservan historial y siguen disponibles en análisis/detalle cuando se seleccionan. Home sólo promueve métricas activas.
 
+## Exploración Mobile de Métricas — #402 (10/11/2026)
+
+`MetricTrendChart` conserva la inspección de `PeriodChart`: un toque selecciona fecha/rango con año, valor, unidad y muestra; no navega ni lee. «Abrir registro diario original» lleva al `DailyMetricsScreen` existente en la fecha exacta. La métrica se identifica por UUID, se destaca visualmente y para VoiceOver sin abrir otro editor ni reactivar una definición archivada. Historial e Insights conservan sus accesos.
+
+La selección vive en la pantalla de origen, acotada a cuenta/cliente, métrica/definición, período y A/B. El detalle se apila en el mismo stack de Progreso; volver conserva ese contexto y el origen Insights. Las invalidaciones existentes vuelven a leer tras guardar/borrar: la inspección deriva del DTO nuevo, muestra «Sin dato» si se eliminó el valor y deja de ofrecer la fuente si desaparece el intervalo. Una relectura fallida conserva la lectura confirmada con aviso. Un cambio de unidad/tipo/nombre/estado o cuenta retira la selección anterior.
+
+Los agregados conservan promedio y número de días con dato; el contrato no entrega fechas contribuyentes ni valores diarios dentro de cada barra. «Recorrer días del intervalo» abre su primera fecha real en el calendario diario existente, con sus límites explícitos; no atribuye el promedio a esa fecha. Se recorren días a pedido, incluidos los que no tienen valor, sin consultas en bloque automáticas. Un intervalo parcial de un solo día sigue identificado como agregado. A/B mantiene los resúmenes y razones canónicas de no comparabilidad; no se fabrican barras de referencia. Nombre, unidad y objetivo son de la definición actual, sin reconstruir versiones históricas. Cero, duración, vacío y hoy en curso mantienen sus semánticas.
+
+**Costo:** mismo fixture local y caché real, antes (`f11047f`) y después: 1 lectura agrupada al abrir el gráfico, 0 adicionales al seleccionar/cambiar/quitar puntos; 1 lectura agrupada de día al abrir un original frío, 0 escrituras. Se reutilizan las lecturas confirmadas/invalidaciones existentes; no cambia lector, contrato, paginación, endpoint ni payload. No es una medición de latencia en red real. Verificación dirigida, tipos y lint; navegación/VoiceOver/escala de texto nativos pendientes en la [checklist única](progress/367-qa-fisica.md#métricas-402--inspección-y-original-diario). Sin simulador/build/instalación por la build iOS paralela. #402 permanece abierto; no incorpora #441 ni cambia #367.
+
 ## Límites semánticos
 
 Las cuatro limitaciones del catálogo dinámico descritas antes son especialmente importantes aquí: promedio único, objetivo sin dirección, denominador no recortado por lifecycle y ausencia de metadata temporal custom. No deben ocultarse mediante heurísticas por label/unidad.
