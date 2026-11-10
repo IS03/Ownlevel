@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import Animated, { Easing, FadeIn, LinearTransition, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
-import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import {
   fetchProgressTraining,
   progressRequestKey,
   type ProgressTraining,
+  type ProgressComparison,
   type ProgressTrainingExercise,
   type TrainingSignal,
 } from '@/api/progress';
@@ -15,6 +16,7 @@ import {
   AppIcon,
   AppText,
   Button,
+  ChipGroup,
   Heading,
   InlineUnavailable,
   SkeletonBlock,
@@ -27,11 +29,13 @@ import {
 import { ProgressScroll } from './progress-scroll';
 import { useComparisonText, useProgressRange } from './progress-range-context';
 import { periodHeading } from './progress-range';
-import { arrowDelta, formatValue } from './progress-format';
+import { formatValue } from './progress-format';
 import { useCachedRead } from '@/api/use-cached-read';
 import { ProgressReadStatus } from './progress-read-status';
 
 type SeriesMetric = 'sets' | 'sessions' | 'minutes';
+type ChartInspection = { metric: SeriesMetric; bucket: { start: string; end: string } | null };
+const emptyInspection = (): ChartInspection => ({ metric: 'sets', bucket: null });
 const SERIES_LABELS: Record<SeriesMetric, string> = { sets: 'Series', sessions: 'Sesiones', minutes: 'Duración' };
 export const STATUS_LABELS: Record<ProgressTrainingExercise['status'], string> = {
   improved: 'Mejoró',
@@ -54,6 +58,7 @@ const shortDate = (date: string) =>
     .format(new Date(`${date}T12:00:00Z`))
     .replace('.', '')
     .replace('sept', 'sep');
+const fullDate = (date: string) => new Intl.DateTimeFormat('es-AR', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${date}T12:00:00Z`));
 const plural = (n: number, one: string, many: string) => `${fmt(n, 0)} ${n === 1 ? one : many}`;
 function FlatRow({
   children,
@@ -103,105 +108,70 @@ function GrowingBar({ height, zero, soft, reduced, testID }: { height: number; z
   useEffect(() => { h.value = reduced ? height : withTiming(height, { duration: brandTokens.motion.duration.base, easing: Easing.out(Easing.cubic) }); }, [h, height, reduced]);
   const style = useAnimatedStyle(() => ({ height: h.value }));
   return <Animated.View testID={testID} style={[{
-    width: '100%', borderTopLeftRadius: zero ? 0 : 3, borderTopRightRadius: zero ? 0 : 3,
+    width: '60%', maxWidth: brandTokens.space.xxl, alignSelf: 'center', borderTopLeftRadius: zero ? 0 : 3, borderTopRightRadius: zero ? 0 : 3,
     backgroundColor: zero ? colors.border : colors.primary,
     // Single series in champagne (IDENTIDAD.md § Gráficos); the bucket still in course is soft.
     opacity: zero || !soft ? 1 : 0.4,
   }, style]} />;
 }
-function TrainingChart({ data }: { data: ProgressTraining }) {
-  const router = useRouter(),
-    reduced = useReduceMotion();
-  const [metric, setMetric] = useState<SeriesMetric>('sets'),
-    [width, setWidth] = useState(300);
-  const max = Math.max(1, ...data.series.map((p) => p[metric]));
+function TrainingChart({ data, inspection, onInspect }: { data: ProgressTraining; inspection: ChartInspection; onInspect: (next: ChartInspection) => void }) {
+  const router = useRouter(), reduced = useReduceMotion(), { colors } = useOwnlevelTheme();
+  const { fontScale } = useWindowDimensions();
+  const [width, setWidth] = useState(300);
+  const { metric } = inspection;
+  const max = Math.max(1, ...data.series.map(p => p[metric]));
   const bucket = { day: 'día', week: 'semana', month: 'mes' }[data.period.bucket];
-  const live = data.series.at(-1),
-    inCourse = !!live && live.start <= data.today && live.end >= data.today;
-  const n = data.series.length, step = Math.ceil(n / 5);
-  const labeled = (index: number) => n <= 6 || index === n - 1 || (index % step === 0 && n - 1 - index >= step / 2);
-  return (
-    <View style={styles.section}>
-      <Heading level={2}>Evolución</Heading>
-      {/* Native segmented control: Liquid Glass on iOS 26, the selection slides with the system animation. */}
-      <ExerciseSegmented
-        accessibilityLabel="Medida del gráfico"
-        value={metric}
-        options={(Object.keys(SERIES_LABELS) as SeriesMetric[]).map((value) => ({
-          value,
-          label: SERIES_LABELS[value],
-        }))}
-        onChange={setMetric}
-      />
-      {/* Every bucket fits the width (no sideways scroll); with many buckets only some dates are labeled. */}
-      <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)} testID="training-chart">
-          <View style={[styles.bars, { gap: data.series.length > 16 ? 2 : 6 }]}>
-            {data.series.map((p, index) => {
-              const value = p[metric],
-                current = index === data.series.length - 1 && inCourse;
-              const shown =
-                metric === 'minutes'
-                  ? formatValue(value, null, 'duration')
-                  : `${fmt(value, 0)} ${SERIES_LABELS[metric].toLocaleLowerCase('es-AR')}`;
-              const onPress =
-                p.start === p.end && p.sessions > 0
-                  ? () => router.push({ pathname: '/history/day/[date]', params: { date: p.start } })
-                  : undefined;
-              const content = (
-                <>
-                  <View style={styles.plot}>
-                    {data.series.length <= 8 ? (
-                      <Animated.View key={metric} entering={FadeIn.duration(reduced ? 0 : 200)}>
-                        <AppText numeric muted variant="caption" style={styles.center}>
-                          {metric === 'minutes' ? formatValue(value, null, 'duration') : fmt(value, 0)}
-                        </AppText>
-                      </Animated.View>
-                    ) : null}
-                    {/* Changing the measure grows or shrinks each bar to its new height instead of jumping. */}
-                    <GrowingBar
-                      testID={`training-bar-${p.start}${value === 0 ? '-zero' : ''}`}
-                      height={value === 0 ? 1 : (110 * value) / max}
-                      zero={value === 0}
-                      soft={current}
-                      reduced={reduced}
-                    />
-                  </View>
-                  <AppText muted numeric variant="caption" numberOfLines={1} style={[styles.center, styles.dateLabel, { width: Math.max(44, width / 5) }]}>
-                    {labeled(index) ? shortDate(p.start) : ''}
-                  </AppText>
-                </>
-              );
-              const label = `${shortDate(p.start)}${p.start !== p.end ? ` a ${shortDate(p.end)}` : ''}, ${shown}${current ? ', en curso' : ''}`;
-              return onPress ? (
-                <Pressable
-                  key={p.start}
-                  style={styles.barColumn}
-                  accessibilityRole="button"
-                  accessibilityLabel={label}
-                  accessibilityHint="Abre el día en Historial"
-                  onPress={onPress}
-                >
-                  {content}
-                </Pressable>
-              ) : (
-                <View key={p.start} style={styles.barColumn} accessible accessibilityLabel={label}>
-                  {content}
-                </View>
-              );
-            })}
-          </View>
-      </View>
-      <AppText muted variant="caption" key={metric}>
-        {SERIES_LABELS[metric]} por {bucket}
-        {inCourse
-          ? ` · ${data.period.bucket === 'day' ? 'hoy' : data.period.bucket === 'week' ? 'esta semana' : 'este mes'} en curso`
-          : ''}
-      </AppText>
+  const inCourse = data.series.some(p => p.start <= data.today && p.end >= data.today);
+  const shown = (value: number) => metric === 'minutes' ? formatValue(value, null, 'duration') : `${fmt(value, 0)} ${SERIES_LABELS[metric].toLocaleLowerCase('es-AR')}`;
+  const selected = data.series.find(p => p.start === inspection.bucket?.start && p.end === inspection.bucket?.end);
+  const Selector = fontScale > 1.3 ? ChipGroup : ExerciseSegmented;
+  // Same temporal buckets; only their drawing width changes. Never fill a missing interval.
+  const slot = Math.max(brandTokens.layout.minTouch, (brandTokens.layout.minTouch + brandTokens.space.lg) * Math.max(1, fontScale));
+  return <View style={styles.section}>
+    <Heading level={2}>Evolución</Heading>
+    <Selector accessibilityLabel="Medida del gráfico" value={metric}
+      options={(Object.keys(SERIES_LABELS) as SeriesMetric[]).map(value => ({ value, label: SERIES_LABELS[value] }))}
+      onChange={metric => onInspect({ ...inspection, metric })} />
+    <AppText muted variant="footnote">Actividad registrada · no mide ganancia muscular ni rendimiento.</AppText>
+    <View onLayout={event => setWidth(event.nativeEvent.layout.width)}>
+      <ScrollView horizontal showsHorizontalScrollIndicator style={styles.chartScroll}
+        contentContainerStyle={styles.chartContent} accessibilityLabel={`Actividad: ${SERIES_LABELS[metric].toLocaleLowerCase('es-AR')} por ${bucket}`}>
+        <View testID="training-chart" style={[styles.bars, { width: Math.max(width, data.series.length * slot) }]}>
+          {data.series.map(p => {
+            const value = p[metric], current = p.start <= data.today && p.end >= data.today;
+            const isSelected = selected?.start === p.start && selected?.end === p.end;
+            const range = p.start === p.end ? fullDate(p.start) : `${fullDate(p.start)} – ${fullDate(p.end)}`;
+            return <Pressable key={`${p.start}:${p.end}`} testID={`training-bucket-${p.start}`} accessibilityRole="button"
+              accessibilityLabel={`${range}, ${shown(value)}${current ? ', en curso' : ''}`}
+              accessibilityState={{ selected: isSelected }} accessibilityHint="Inspecciona el valor y su intervalo sin abrir otra pantalla."
+              onPress={() => onInspect({ metric, bucket: isSelected ? null : { start: p.start, end: p.end } })}
+              style={[styles.barColumn, { minWidth: slot }]}>
+              <View style={[styles.plot, isSelected && { backgroundColor: colors.brandSubtle }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                <GrowingBar testID={`training-bar-${p.start}${value === 0 ? '-zero' : ''}`} height={value === 0 ? 1 : 110 * value / max}
+                  zero={value === 0} soft={current} reduced={reduced} />
+              </View>
+              <AppText muted numeric variant="caption" style={styles.center}>{shortDate(p.start)}{p.start !== p.end ? `\n– ${shortDate(p.end)}` : ''}</AppText>
+            </Pressable>;
+          })}
+        </View>
+      </ScrollView>
     </View>
-  );
+    <AppText muted variant="caption">{SERIES_LABELS[metric]} por {bucket}{inCourse ? ` · ${data.period.bucket === 'day' ? 'hoy' : data.period.bucket === 'week' ? 'esta semana' : 'este mes'} en curso` : ''}</AppText>
+    <AppText muted numeric variant="caption">Mayor registro del gráfico: {shown(Math.max(0, ...data.series.map(p => p[metric])))}.</AppText>
+    {selected ? <View testID="training-bucket-inspection" style={styles.stack}>
+      <AppText numeric variant="headline">{shown(selected[metric])}</AppText>
+      <AppText numeric>{fullDate(selected.start)}{selected.start !== selected.end ? ` – ${fullDate(selected.end)}` : ''}</AppText>
+      <AppText muted variant="footnote">{plural(selected.sessions, 'sesión', 'sesiones')}{selected.start <= data.today && selected.end >= data.today ? ' · período en curso' : ''}</AppText>
+      {data.period.bucket === 'day' && selected.start === selected.end && selected.sessions > 0 ? <Button label="Ver día y sesiones originales" variant="quiet"
+        onPress={() => router.push({ pathname: '/history/day/[date]', params: { date: selected.start } })} />
+        : data.period.bucket !== 'day' || selected.start !== selected.end ? <AppText muted variant="footnote">Total del intervalo; no corresponde a un único día.</AppText> : null}
+    </View> : <AppText muted variant="footnote">{inspection.bucket ? 'El intervalo seleccionado ya no está disponible.' : `Tocá una barra para consultar su valor y fechas.${data.series.length * slot > width ? ' Deslizá para recorrer el período.' : ''}`}</AppText>}
+  </View>;
 }
 function Breakdown({ data, open }: { data: ProgressTraining; open: (id: string) => void }) {
   const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
+  const { fontScale } = useWindowDimensions();
+  const Selector = fontScale > 1.3 ? ChipGroup : ExerciseSegmented;
   const [group, setGroup] = useState<'muscle' | 'routine' | 'exercise'>('muscle'),
     [all, setAll] = useState(false);
   const items = (
@@ -217,7 +187,7 @@ function Breakdown({ data, open }: { data: ProgressTraining; open: (id: string) 
   return (
     <View style={styles.section} testID="training-breakdown">
       <Heading level={2}>Desglose</Heading>
-      <ExerciseSegmented
+      <Selector
         accessibilityLabel="Desglosar series"
         value={group}
         options={[
@@ -298,8 +268,7 @@ export function signalLine(signal: TrainingSignal | null): string | null {
   return description;
 }
 function Performance({ data, open }: { data: ProgressTraining; open: (id: string) => void }) {
-  const { colors } = useOwnlevelTheme(),
-    { compareOn, compareText, state, today } = useProgressRange();
+  const { compareOn, compareText, state, today } = useProgressRange();
   const names = new Map(data.exercises.map((e) => [e.id, e]));
   const order = { improved: 0, declined: 1, stable: 2, insufficient_data: 3 };
   const [all, setAll] = useState(false);
@@ -328,6 +297,7 @@ function Performance({ data, open }: { data: ProgressTraining; open: (id: string
           const item = names.get(e.id),
             status = STATUS_LABELS[e.status],
             signal = signalLine(e.signal);
+          const reference = `${fullDate(e.firstDate)} → ${fullDate(e.lastDate)}`;
           const comparison =
             compareOn && item
               ? `Frente a ${compareText}: ${STATUS_LABELS[item.status]}${item.status === 'stable' ? '' : ` · ${signalLine(item.signal) ?? REASON_LABELS[item.reason] ?? 'Datos insuficientes.'}`}`
@@ -337,18 +307,13 @@ function Performance({ data, open }: { data: ProgressTraining; open: (id: string
               key={e.id}
               testID={`training-exercise-${e.id}`}
               onPress={() => open(e.id)}
-              label={`${item?.name ?? 'Ejercicio'}: ${status}. ${signal ?? REASON_LABELS[e.reason] ?? 'Datos insuficientes.'}${comparison ? `. ${comparison}` : ''}`}
+              label={`${item?.name ?? 'Ejercicio'}: ${status}. ${signal ?? REASON_LABELS[e.reason] ?? 'Datos insuficientes.'}${comparison ? `. ${comparison}` : ''}. Primera y última sesión: ${reference}`}
             >
               <View style={styles.text}>
                 <AppText variant="headline">{item?.name ?? 'Ejercicio'}</AppText>
-                <AppText
-                  numeric
-                  variant="footnote"
-                  style={{ color: e.status === 'improved' ? colors.primary : colors.textMuted }}
-                >
-                  {status}
-                  {signal ? ` · ${signal}` : ''}
-                </AppText>
+                <AppText muted variant="subheadline">{status}</AppText>
+                {signal ? <AppText numeric variant="body">{signal}</AppText> : null}
+                <AppText muted numeric variant="footnote">{reference}</AppText>
                 {!signal && e.status !== 'stable' ? (
                   <AppText muted variant="caption">
                     {REASON_LABELS[e.reason] ?? 'Datos insuficientes.'}
@@ -380,39 +345,45 @@ function Performance({ data, open }: { data: ProgressTraining; open: (id: string
     </View>
   );
 }
-/** Three numbers on top (days, sets, time); sessions and the duration note go underneath, small. */
+/** Activity totals, never a performance score. Values wrap and retain the user's text size. */
 function Summary({ data }: { data: ProgressTraining }) {
-  const { colors } = useOwnlevelTheme();
-  const { compareOn, compareText } = useProgressRange(), comparison = useComparisonText();
-  const s = data.summary, c = s.comparisons.sets;
-  const versus = compareOn
-    ? c.previous === null ? comparison(c, null, 'integer') : `${compareText} ${fmt(c.previous, 0)} · ${arrowDelta(s.sets - c.previous, null, 'integer')}`
-    : null;
+  const { colors } = useOwnlevelTheme(), { width: windowWidth, fontScale } = useWindowDimensions();
+  const [width, setWidth] = useState(windowWidth - 2 * brandTokens.layout.screenPadding);
+  const comparison = useComparisonText(), s = data.summary;
+  const days = plural(s.trainingDays, 'día entrenado', 'días entrenados');
+  const sessions = plural(s.sessions, 'sesión', 'sesiones');
+  // The delta's unit agrees with its own magnitude («+1 día», «−2 series»), not with the period total.
+  const counted = (c: ProgressComparison, one: string, many: string) => comparison(c, Math.abs(c.deltaAbsolute ?? 0) === 1 ? one : many, 'integer');
+  const dayComparison = counted(s.comparisons.trainingDays, 'día', 'días');
+  const sessionComparison = counted(s.comparisons.sessions, 'sesión', 'sesiones');
   const stats = [
-    { key: 'days', value: fmt(s.trainingDays, 0), label: s.trainingDays === 1 ? 'día entrenado' : 'días entrenados' },
-    { key: 'sets', value: fmt(s.sets, 0), label: s.sets === 1 ? 'serie' : 'series', extra: versus },
-    { key: 'time', value: formatValue(s.minutes, null, 'duration'), label: 'en total' },
+    { key: 'sets', value: plural(s.sets, 'serie', 'series'), label: 'Series completadas', comparison: counted(s.comparisons.sets, 'serie', 'series') },
+    { key: 'time', value: formatValue(s.minutes, null, 'duration'), label: 'Duración total', comparison: comparison(s.comparisons.minutes, null, 'duration') },
   ];
-  return (
-    <View style={styles.section} testID="training-summary"
-      accessible accessibilityLabel={`${plural(s.trainingDays, 'día', 'días')} · ${plural(s.sessions, 'sesión', 'sesiones')} · ${plural(s.sets, 'serie', 'series')}${versus ? `, ${versus}` : ''} · ${formatValue(s.minutes, null, 'duration')}`}>
-      <View style={styles.stats}>
-        {stats.map((x, i) => (
-          <View key={x.key} style={[styles.stat, i > 0 && [styles.statDivider, { borderColor: colors.border }]]}>
-            {/* A long time shrinks to fit; the slot keeps the three labels on one line. */}
-            <View style={styles.statValue}><AppText numeric variant="title1" numberOfLines={1} adjustsFontSizeToFit>{x.value}</AppText></View>
-            <AppText muted variant="footnote">{x.label}</AppText>
-            {x.extra ? <AppText numeric variant="caption">{x.extra}</AppText> : null}
-          </View>
-        ))}
-      </View>
-      <AppText muted numeric variant="caption">
-        {plural(s.sessions, 'sesión', 'sesiones')} · el tiempo va del inicio al fin de cada sesión, con descansos
-      </AppText>
+  return <View style={styles.section} testID="training-summary" onLayout={event => setWidth(event.nativeEvent.layout.width)}>
+    <Heading level={2}>Actividad</Heading>
+    <View accessible accessibilityLabel={`${days}${dayComparison ? `. ${dayComparison}` : ''}`} style={styles.stack}>
+      <AppText numeric variant="largeTitle">{fmt(s.trainingDays, 0)}</AppText>
+      <AppText>{s.trainingDays === 1 ? 'día entrenado' : 'días entrenados'}</AppText>
+      {dayComparison ? <AppText muted numeric variant="footnote">{dayComparison}</AppText> : null}
     </View>
-  );
+    <View accessible accessibilityLabel={`${sessions}${sessionComparison ? `. ${sessionComparison}` : ''}`}>
+      <AppText numeric variant="subheadline">{sessions}</AppText>
+      {sessionComparison ? <AppText muted numeric variant="footnote">{sessionComparison}</AppText> : null}
+    </View>
+    <View testID="training-summary-totals" style={[styles.stats, (fontScale > 1.3 || width < 328) && styles.stackedStats]}>
+      {stats.map(x => <View key={x.key} testID={`training-summary-${x.key}`} accessible
+        accessibilityLabel={`${x.label}: ${x.value}${x.comparison ? `. ${x.comparison}` : ''}`}
+        style={[styles.stat, { borderColor: colors.border }]}>
+        <AppText muted variant="footnote">{x.label}</AppText>
+        <AppText numeric variant="title2">{x.value}</AppText>
+        {x.comparison ? <AppText muted numeric variant="footnote">{x.comparison}</AppText> : null}
+      </View>)}
+    </View>
+    <AppText muted variant="footnote">El tiempo va del inicio al fin de cada sesión, con descansos.</AppText>
+  </View>;
 }
-function Content({ data }: { data: ProgressTraining }) {
+function Content({ data, inspection, onInspect }: { data: ProgressTraining; inspection: ChartInspection; onInspect: (next: ChartInspection) => void }) {
   const { colors } = useOwnlevelTheme();
   const router = useRouter(),
     { compareOn } = useProgressRange();
@@ -423,7 +394,7 @@ function Content({ data }: { data: ProgressTraining }) {
       {s.sessions > 0 ? (
         <>
           <Summary data={data} />
-          <TrainingChart data={data} />
+          <TrainingChart data={data} inspection={inspection} onInspect={onInspect} />
         </>
       ) : (
         <>
@@ -493,7 +464,13 @@ export function TrainingTrendsScreen() {
     (c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressTraining(c, query, signal, compare),
     [query, compare],
   );
-  const { state, data, refresh } = useCachedRead(client, 'training', progressRequestKey(query, compare), load);
+  const key = progressRequestKey(query, compare);
+  const { state, data, refresh } = useCachedRead(client, 'training', key, load);
+  const [saved, setSaved] = useState({ client, key, inspection: emptyInspection() });
+  const sameScope = saved.client === client && saved.key === key;
+  const inspection = sameScope ? saved.inspection : emptyInspection();
+  if (!sameScope) setSaved({ client, key, inspection });
+  const onInspect = (next: ChartInspection) => setSaved({ client, key, inspection: next });
   return (
     <ProgressScroll
       title="Entrenamiento"
@@ -524,7 +501,7 @@ export function TrainingTrendsScreen() {
               onAction={() => void refresh()}
             />
           ) : null}
-          <Content data={data} />
+          <Content data={data} inspection={inspection} onInspect={onInspect} />
         </>
       )}
       <FlatRow onPress={() => router.push('/(tabs)/train/history')} label="Ver el historial de entrenamientos">
@@ -548,15 +525,15 @@ const styles = StyleSheet.create({
   },
   compact: { minHeight: 44, paddingVertical: 10 },
   text: { flex: 1, gap: 4 },
-  stats: { flexDirection: 'row', flexWrap: 'wrap', rowGap: spacing.md },
-  stat: { flexGrow: 1, flexBasis: 90, gap: 2, paddingRight: spacing.sm },
-  statValue: { minHeight: 40, justifyContent: 'flex-end' },
-  statDivider: { borderLeftWidth: StyleSheet.hairlineWidth, paddingLeft: spacing.md },
-  bars: { flexDirection: 'row', alignItems: 'flex-end' },
-  barColumn: { flex: 1, gap: 6, minHeight: 44 },
-  plot: { height: 136, justifyContent: 'flex-end', gap: 4 },
+  stats: { flexDirection: 'row', gap: spacing.lg },
+  stackedStats: { flexDirection: 'column' },
+  stat: { flex: 1, minWidth: 0, gap: spacing.xs, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth },
+  bars: { flexDirection: 'row', alignItems: 'flex-start' },
+  barColumn: { flex: 1, gap: spacing.sm, minHeight: brandTokens.layout.minTouch, paddingHorizontal: spacing.sm },
+  plot: { height: 136, justifyContent: 'flex-end' },
   center: { textAlign: 'center' },
-  dateLabel: { alignSelf: 'center' },
+  chartScroll: { flexGrow: 0 }, chartContent: { minWidth: '100%' },
+  stack: { gap: spacing.sm },
   breakdownName: { flex: 1, gap: 4 },
   horizontalTrack: { flex: 1, justifyContent: 'center', minWidth: 32 },
 });

@@ -300,3 +300,12 @@ Pendiente físico. Capturas locales y límites: `docs/progress/qa/402-p1b1/evide
 - [ ] Índice → calendario → fecha vacía/con registros/hoy: mes y fecha legibles, dominios confirmados frente a desconocidos, futuras deshabilitadas. Con texto accesible aparecen todas las fechas en lista; en pantalla compacta la grilla mantiene targets y scroll horizontal.
 - [ ] Día → sesión UUID/series, comidas, peso/medidas o métricas → volver: mismo día/mes, corrección y eliminación actualizadas. Vista previa frente al total; cero, 0 kg inválido, archivadas/importadas y lectura parcial/antigua diferenciados.
 - [ ] «Objetivo y balance de esta fecha» abre/cierra sin cambiar el día; cifras/ajustes siguen disponibles. Claro/oscuro, unidades largas, VoiceOver, texto grande, Reducir movimiento, safe area y barra inferior del shell completo. Verificar el gesto/pila real y no sólo las rutas probadas en JS.
+
+### Progreso #402 P1-B2 — Entrenamiento profundo
+
+Pendiente físico. Evidencia local y límites: `docs/progress/qa/402-p1b2/evidence.json`. Reutilizar el recorrido de Entrenamiento profundo #454; no se marca como aprobado.
+
+- [ ] Actividad con cero/una/muchas sesiones: días, sesiones, series y tiempo legibles, sin achicar; ancho compacto/grande, cifras extensas, Dynamic Type y A/B con muestras insuficientes. Actividad no equivale a rendimiento o ganancia muscular.
+- [ ] Evolución: recorrer muchos buckets; tocar inspecciona, no abre otra pantalla; fechas/año, valor/unidad, cero e intervalo en curso. Cambiar medida conserva el intervalo; sólo el día con sesiones ofrece original. Semana/mes, incluso de un solo día, mantiene su rango agregado.
+- [ ] Ejercicios con mejora/igual/descenso/insuficiencia y variantes incompatibles: referencia y señal, récord separado → medidas/gráfico → sesión/series → volver con contexto. Refrescar, corregir/eliminar y cambiar cuenta/período no conserva datos obsoletos.
+- [ ] VoiceOver, Reduce Motion, claro/oscuro y acceso al final bajo la barra nativa. Revisar encabezado compartido con texto extremo: puede abreviar título/rango, limitación conservada de `ProgressScroll`.
