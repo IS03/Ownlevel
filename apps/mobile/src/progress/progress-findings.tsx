@@ -32,12 +32,12 @@ export function ProgressFindings({ items, selected, onSelect, onOpen, sourcesUna
   items: ProgressEditorialFinding[] | undefined; selected: string | null; sourcesUnavailable?: boolean;
   onSelect: (id: string | null) => void; onOpen: (item: ProgressEditorialFinding) => void;
 }) {
+  if (!items?.length) return <AppText muted variant="footnote" testID="progress-findings">{items === undefined ? 'Los hallazgos no están disponibles en esta lectura.'
+    : sourcesUnavailable ? 'No pudimos leer todas las fuentes de hallazgos.' : 'No hay hallazgos para destacar en esta ventana.'}</AppText>;
   return <View style={styles.section} testID="progress-findings">
     <Heading level={2}>Para mirar de cerca</Heading>
-    {items?.length ? <AppText muted numeric variant="footnote">{exactPeriodRange(items[0]!.period)}</AppText> : null}
-    {items === undefined ? <AppText muted>Los hallazgos no están disponibles en esta lectura.</AppText>
-      : !items.length ? <AppText muted>{sourcesUnavailable ? 'No pudimos leer todas las fuentes de hallazgos.' : 'No hay hallazgos para destacar en esta ventana.'}</AppText>
-        : items.map(item => <View key={item.id} testID={`progress-finding-${item.id}`}>
+    <AppText muted numeric variant="footnote">{exactPeriodRange(items[0]!.period)}</AppText>
+    {items.map(item => <View key={item.id} testID={`progress-finding-${item.id}`}>
           <InsightRow label={`${item.kind === 'record' ? 'Récord' : 'Comparación'} · ${item.title}`}
             detail={`${item.description}\n${findingMethodLabel(item.method)}`} spoken={`Ver referencia de ${item.title}. ${item.description}. ${findingMethodLabel(item.method)}`}
             expanded={selected === item.id} heading onPress={() => onSelect(selected === item.id ? null : item.id)}/>

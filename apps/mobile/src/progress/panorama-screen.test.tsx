@@ -1,6 +1,7 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, it, expect, jest } from '@jest/globals';
 import { useEffect } from 'react';
+import * as Native from 'react-native';
 import { RefreshControl } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
@@ -52,9 +53,12 @@ it('opens one bounded request instead of four, with no Insights/hidden detail re
     expect(read).toHaveBeenCalledTimes(1);
     expect(read.mock.calls[0]![0].path).toContain('from=2026-10-11&to=2026-11-09');
     expect(after.queryByTestId('progress-period-caption')).toBeNull();
-    expect(after.getAllByText(/Actividad: 96 series completadas/)).toHaveLength(1);
+    expect(after.getByText('8 sesiones · 7 días entrenados · 96 series')).toBeTruthy();
+    expect(after.getByText('Actividad · series por intervalo')).toBeTruthy();
     expect(after.getByText(/07\/11\/2026 · 3 registros válidos/)).toBeTruthy();
-    expect(after.getByText(/10 días utilizados para calorías; 8 para proteína/)).toBeTruthy();
+    expect(after.getByText('10 días utilizados · 13 de 30 días con alimentación registrada')).toBeTruthy();
+    expect(after.getByText('Proteína: 127 g/día · 8 días utilizados')).toBeTruthy();
+    fireEvent.press(after.getByRole('button', {name: 'Contexto y relaciones'}));
     fireEvent.press(after.getByRole('button', { name: 'Últimos tres meses' }));
     expect(mockNavigate).toHaveBeenLastCalledWith(periodSummaryHref(PANORAMA_TODAY, { fromProgress: '1' }));
     fireEvent.press(after.getByRole('button', { name: 'Semanas, A/B y coincidencias descriptivas' }));
@@ -132,7 +136,7 @@ it('labels first record, unavailable fields and explicit nutritional zero withou
     await view.findByTestId('progress-panorama');
     expect(view.getByText('Un solo registro no permite describir una tendencia.')).toBeTruthy();
     expect(view.getByText('Sin ejercicios comparables entre dos sesiones de esta ventana.')).toBeTruthy();
-    expect(view.getByText('0 kcal por día utilizado')).toBeTruthy();
+    expect(view.getByText('0 kcal/día')).toBeTruthy();
     view.unmount();
     clearConfirmedReads(mockClient);
     delete mockData.panorama;
@@ -155,7 +159,7 @@ it('uses a single compatibility fallback on an old-server 400, but never retries
     const error = render(wrap());
     await error.findByText('No pudimos leer tu progreso');
     expect(read).toHaveBeenCalledTimes(1);
-    expect(error.queryByText('Sin sesiones registradas en estas fechas; no describe otros períodos.')).toBeNull();
+    expect(error.queryByText('Sin sesiones registradas en esta ventana.')).toBeNull();
 });
 
 it('does not turn a failed domain into an empty period, while keeping the available areas and their access', async () => {
@@ -169,9 +173,9 @@ it('does not turn a failed domain into an empty period, while keeping the availa
     const view = render(wrap()); await view.findByTestId('progress-panorama');
     expect(within(view.getByTestId('panorama-body')).getByText('No pudimos leer Cuerpo.')).toBeTruthy();
     expect(view.queryByText(/Sin pesajes válidos/)).toBeNull();
-    expect(view.getByText('Sin sesiones registradas en estas fechas; no describe otros períodos.')).toBeTruthy();
+    expect(view.getByText('Sin sesiones registradas en esta ventana.')).toBeTruthy();
     expect(view.getByRole('button', {name: 'Ver peso y medidas'})).toBeTruthy();
-    expect(view.getByText('2.190 kcal por día utilizado')).toBeTruthy();
+    expect(view.getByText('2.190 kcal/día')).toBeTruthy();
     expect(read).toHaveBeenCalledTimes(1);
 });
 
@@ -243,4 +247,71 @@ it('adds the summaries to the same one-request opening, and supports older serve
     expect(read.mock.calls[2]![0].path).not.toContain('panorama=1');
     expect(old.getByText('Los hallazgos no están disponibles en esta lectura.')).toBeTruthy();
     expect(old.queryByText('No hay hallazgos para destacar en esta ventana.')).toBeNull();
+});
+
+it.each([0, 1, 3])('keeps the same three-area reading order before %i findings and preserves the original actions', async count => {
+    mockData.findings = editorialFixture().slice(0, count);
+    const view = render(wrap()); await view.findByTestId('progress-panorama');
+    expect(view.getAllByTestId(/^(progress-panorama|progress-findings)$/).map(n => n.props.testID)).toEqual(['progress-panorama', 'progress-findings']);
+    const headings = within(view.getByTestId('progress-panorama')).getAllByRole('header').map(n => n.props.children);
+    expect(headings).toEqual(['Entrenamiento', 'Cuerpo', 'Nutrición']);
+    expect(view.queryAllByTestId(/^progress-finding-/)).toHaveLength(count);
+    if (!count) expect(view.queryByRole('header', {name: 'Para mirar de cerca'})).toBeNull();
+    expect(read).toHaveBeenCalledTimes(1);
+    fireEvent.press(view.getByRole('button', {name: 'Ver peso y medidas'}));
+    expect(mockPush).toHaveBeenCalledWith({pathname:'/(tabs)/progress/trends/body',params:{from:'2026-10-11',to:PANORAMA_TODAY}});
+});
+it('keeps a comparable zero result, unavailable comparison and activity distinct', async () => {
+    mockData.inPeriod = {improved:0,comparable:5};
+    const view = render(wrap()); await view.findByTestId('progress-panorama');
+    const training = within(view.getByTestId('panorama-training'));
+    expect(training.getByText('0 de 5')).toBeTruthy(); expect(training.getByText('Ejercicios con mejora · primera frente a última sesión')).toBeTruthy();
+    delete mockData.inPeriod;
+    invalidateConfirmedReads(mockClient,'/api/mobile/v1/training/sessions/fixture/finish'); await act(async()=>{});
+    expect(training.getByText('Comparación no disponible en esta lectura.')).toBeTruthy();
+    expect(training.queryByText(/Sin ejercicios comparables/)).toBeNull();
+});
+it.each([{width:320,fontScale:1},{width:430,fontScale:1},{width:320,fontScale:2}])('keeps accessible headers and targets at $width pt / scale $fontScale', async ({width,fontScale}) => {
+    const dimensions = jest.spyOn(Native,'useWindowDimensions').mockReturnValue({width,height:844,scale:3,fontScale});
+    try {
+        const view = render(wrap()); await view.findByTestId('progress-panorama');
+        const action=view.getByRole('button',{name:'Ver actividad y ejercicios'});
+        expect(Native.StyleSheet.flatten(action.props.style).minHeight).toBeGreaterThanOrEqual(44);
+        expect(action.props.accessibilityHint).toContain('3 de 5');
+        if(fontScale>1.3) expect(action.findAll(n=>n.props.style&&Native.StyleSheet.flatten(n.props.style)?.flexDirection==='column').length).toBeGreaterThan(0);
+        for(const text of view.getAllByRole('header')) expect(text.props.allowFontScaling).not.toBe(false);
+    } finally {dimensions.mockRestore();}
+});
+it('read budget: keeps one grouped opening and no reads for point/finding/context disclosure', async () => {
+    mockData.findings=editorialFixture();
+    const view=render(wrap());await view.findByTestId('progress-panorama');
+    const initial=read.mock.calls.length;expect(initial).toBe(1);
+    fireEvent.press(within(view.getByTestId('panorama-chart-training')).getAllByRole('button')[0]!);
+    expect(read).toHaveBeenCalledTimes(initial);
+    fireEvent.press(view.getByRole('button',{name:/Ver referencia de Press banca.*Nuevo récord/}));
+    expect(read).toHaveBeenCalledTimes(initial);
+    const context=view.queryByRole('button',{name:'Contexto y relaciones'});
+    if(context) {fireEvent.press(context);fireEvent.press(context);}
+    expect(read).toHaveBeenCalledTimes(initial);
+    console.info('P0B_READ_BUDGET',JSON.stringify({initial,afterLocalInteractions:read.mock.calls.length,path:read.mock.calls[0]![0].path,fixtureBytes:Buffer.byteLength(JSON.stringify(mockData),'utf8')}));
+});
+it('groups secondary entries without loading their destinations, keeps their origins, and uses global History', async () => {
+    const view=render(wrap());await view.findByTestId('progress-panorama');
+    expect(view.queryByRole('button',{name:'Últimos tres meses'})).toBeNull();
+    fireEvent.press(view.getByRole('button',{name:'Contexto y relaciones'}));
+    expect(view.getByRole('button',{name:'Últimos tres meses'})).toBeTruthy();expect(read).toHaveBeenCalledTimes(1);
+    fireEvent.press(view.getByRole('button',{name:'Explorar período y A/B'}));expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress/period');
+    fireEvent.press(view.getByRole('button',{name:'Recorrido por fecha'}));expect(mockNavigate).toHaveBeenLastCalledWith('/history/calendar');
+    fireEvent.press(view.getByRole('button',{name:'Métricas personales'}));expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/trends/metrics');
+});
+
+it('retains the secondary context disclosure on return and retires it on an account/client change', async () => {
+    const view=render(wrap());await view.findByTestId('progress-panorama');
+    fireEvent.press(view.getByRole('button',{name:'Contexto y relaciones'}));
+    await act(async()=>{mockFocused=false;[...mockLife].forEach(x=>x.blur());});
+    await act(async()=>{mockFocused=true;[...mockLife].forEach(x=>x.focus());});
+    expect(view.getByRole('button',{name:'Últimos tres meses'})).toBeTruthy();expect(read).toHaveBeenCalledTimes(1);
+    mockClient={read} as unknown as MobileApiClient;view.rerender(wrap());await view.findByTestId('progress-panorama');
+    expect(view.queryByRole('button',{name:'Últimos tres meses'})).toBeNull();
+    expect(view.getByRole('button',{name:'Contexto y relaciones'}).props.accessibilityState.expanded).toBe(false);
 });

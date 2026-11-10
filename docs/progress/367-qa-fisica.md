@@ -281,3 +281,13 @@ Pendiente físico. Sin simulador, build o instalación en esta entrega; build iO
 - [ ] Cero, una, tres y más de tres sesiones: total real frente a vista previa, resto por «Abrir Training del día», sesión en curso separada. Fecha vacía, total desconocido, vista previa no disponible y lectura antigua no equivalen a cero. Detalle eliminado/no encontrado mantiene el retorno y no permite corregir como si estuviera terminado.
 - [ ] Corregir/guardar o eliminar sesión y volver: relectura exacta, nombres/filas/recuento actualizados; desaparición del último hecho muestra vacío confirmado. Fallo de relectura conserva aviso y datos confirmados. Fecha/cuenta/logout ignoran respuestas anteriores. Peso 0 kg marcado como inválido; ningún dominio toma un registro vecino.
 - [ ] VoiceOver (nombre, estado, fecha, detalle/series), nombres largos, Dynamic Type, claro/oscuro, targets mínimos 44 pt, Reducir movimiento y barra inferior. Verificar pila/retorno nativo y guardas de corrección con borrador pendiente; los tests JS no acreditan QA de iPhone.
+
+
+### Progreso #402 P0-B — panorama primero y síntesis compacta
+
+Implementación para revisión; QA física pendiente. Capturas y límites en `docs/progress/qa/402-p0b/evidence.json`.
+
+- [ ] Portada con 0/1/3 hallazgos: las tres áreas preceden a los hallazgos y se reconocen pronto con letra normal; con texto accesible se apilan y siguen legibles al desplazar. Claro/oscuro, iPhone compacto/grande y sin sesión activa/retorno de sesión activa sobre la tab bar.
+- [ ] Primera sesión, primer pesaje, abundantes registros, cero nutricional, huecos y errores: método primera/última distinto de actividad; cobertura por nutriente y fechas reales; un registro no produce tendencia. Inspección local muestra rango/valor/unidad sin navegar; cabecera abre el detalle existente con su ventana.
+- [ ] Hallazgo → referencia/cobertura → registros → volver: selección válida, sin lecturas por desplegar. Contexto/relaciones conserva su apertura al volver; Métricas, períodos/A-B/Mis vistas/Etapas y Recorrido global accesibles. Cambiar cuenta no conserva datos ni disclosures anteriores.
+- [ ] VoiceOver, objetivos táctiles, unidades/cifras largas, Dynamic Type, Reducir movimiento y acceso al final del contenido. Las capturas del fixture no aprueban navegación nativa profunda ni QA en el iPhone.

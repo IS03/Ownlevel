@@ -16,13 +16,16 @@ const H = 140, DOT = 8, LABEL = 18;
  * - `dots`: a position between the lowest and highest value shown (weight, measures), where bars from 0 would hide the change.
  * Bars are full champagne and dots stress the latest record; `soft` marks a point still in progress.
  */
-export function PeriodChart({ points, mode, target, bands, testID, inspection }: {
+export function PeriodChart({ points, mode, target, bands, testID, inspection, compact = false }: {
   points: PeriodChartPoint[]; mode: 'bars' | 'dots'; target?: number | null; bands?: PeriodChartBand[]; testID: string;
+  /** Portada preview only; default detail charts keep their existing geometry. */
+  compact?: boolean;
   /** Opt-in for Métricas: inspect even empty buckets, with scrollable 44 pt targets and narrower marks. */
   inspection?: { selectedKey: string | null; onSelect: (key: string) => void };
 }) {
   const { colors } = useOwnlevelTheme();
   const [width, setWidth] = useState(300);
+  const plotHeight = compact ? brandTokens.layout.minTouch : H;
   const known = points.map(p => p.value).filter((v): v is number => v !== null);
   const high = Math.max(mode === 'bars' ? 1 : -Infinity, ...known, ...(mode === 'bars' && target ? [target] : []));
   const low = mode === 'dots' ? Math.min(...known) : inspection ? Math.min(0, ...known, target ?? 0) : 0;
@@ -38,12 +41,12 @@ export function PeriodChart({ points, mode, target, bands, testID, inspection }:
   const room = written.size ? LABEL : 0;
   // Dots sit a few points above the dates, so the lowest one never touches its label.
   const lift = mode === 'dots' ? 4 : 0;
-  const y = (v: number) => mode === 'bars' ? (H * v) / (high - low) : high === low ? (H - room) / 2 : lift + ((v - low) / (high - low)) * (H - DOT - room - lift);
+  const y = (v: number) => mode === 'bars' ? (plotHeight * v) / (high - low) : high === low ? (plotHeight - room) / 2 : lift + ((v - low) / (high - low)) * (plotHeight - DOT - room - lift);
   const baseline = mode === 'bars' ? y(-low) : 0;
-  return <View testID={testID} onLayout={e => setWidth(e.nativeEvent.layout.width)} style={[styles.chart, inspection && { flex: 1, minWidth: n * brandTokens.layout.minTouch }]}>
-    {inspection && low < 0 ? <View pointerEvents="none" style={[styles.target, { top: H - baseline, borderColor: colors.border }]} /> : null}
+  return <View testID={testID} onLayout={e => setWidth(e.nativeEvent.layout.width)} style={[styles.chart, { minHeight: plotHeight + 28 }, inspection && { flex: 1, minWidth: n * brandTokens.layout.minTouch }]}>
+    {inspection && low < 0 ? <View pointerEvents="none" style={[styles.target, { top: plotHeight - baseline, borderColor: colors.border }]} /> : null}
     {mode === 'bars' && target != null && (target !== 0 || inspection) ? <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none"
-      testID={`${testID}-target`} style={[styles.target, { top: H - baseline - y(target), borderColor: colors.text }]} /> : null}
+      testID={`${testID}-target`} style={[styles.target, { top: plotHeight - baseline - y(target), borderColor: colors.text }]} /> : null}
     {points.map((p, i) => {
       // Bars are all champagne (soft only while in progress); dots stress the latest record, as in the sketches.
       const full = mode === 'bars' ? !p.soft : i === lastKnown && !p.soft;
@@ -63,7 +66,7 @@ export function PeriodChart({ points, mode, target, bands, testID, inspection }:
         style={[{ position: 'absolute', top: 0, bottom: 0, left: -(n > 20 ? 1 : 3), right: -(n > 20 ? 1 : 3) }, { backgroundColor: band.current ? colors.primary : colors.border, opacity: band.current ? 0.14 : 0.45 }]} /> : null;
       const tag = firstOfBand ? <AppText numberOfLines={1} variant="caption" style={[styles.band, { color: band!.current ? colors.primary : colors.textMuted }]}>{band!.label}</AppText> : null;
       const selected = inspection?.selectedKey === p.key;
-      const body = <><View style={[styles.plot, selected && { borderColor: colors.primary, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.inner }]}>{backdrop}{tag}{mark}</View>
+      const body = <><View style={[styles.plot, { height: plotHeight }, selected && { borderColor: colors.primary, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.inner }]}>{backdrop}{tag}{mark}</View>
         <AppText muted numeric variant="caption" numberOfLines={inspection ? undefined : 1} style={[styles.date, { width: inspection ? Math.max(brandTokens.layout.minTouch, width / n - spacing.sm) : Math.max(44, width / 5) }]}>{labeled(i) ? p.label : ''}</AppText></>;
       return inspection
         ? <Pressable key={p.key} testID={`${testID}-${p.key}-${kind}`} accessibilityRole="button" accessibilityLabel={a11y}
