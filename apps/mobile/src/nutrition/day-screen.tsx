@@ -11,6 +11,7 @@ import { AppState, RefreshControl, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { selectedRouteDate } from '@/history/navigation';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
+import { ReturnToNutritionChart } from '@/progress/nutrition-chart-navigation';
 import { ReturnToInsights } from '@/insights/return-to-insights';
 import { useDomainDate } from '@/history/use-domain-date';
 import { ProgressReadStatus } from '@/progress/progress-read-status';
@@ -82,6 +83,7 @@ function NutritionDayView({ revision, date, today, bottomClearance, onSelect, on
   }>
     <View style={styles.header}>
       <ReturnToHistoryDay />
+      <ReturnToNutritionChart />
       <ReturnToInsights />
       <View style={styles.topBar}>
         <View style={styles.title}>

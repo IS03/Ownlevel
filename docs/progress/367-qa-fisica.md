@@ -251,3 +251,13 @@ Pendiente físico. Sin build, instalación ni observación de simulador en este 
 - [ ] «Ver registro original» → Cuerpo de esa fecha → editar/borrar → volver al gráfico: misma medida, período, A/B y selección válida; valor actualizado o fuente retirada. Fecha antigua fuera de la primera página, cambio de año, importados y campos legacy/bilaterales; no se sustituye por el último dato. Historial/paginación siguen disponibles. Comprobar origen de Insights y regreso sin bucles.
 - [ ] 0 kg y valores no positivos se identifican como no válidos; corregir/borrar desde el original. Respuesta antigua con agregado contaminado no muestra cambio/tendencia. Vacío, sospechosas excluidas y error/reintento diferenciados; revalidación sin borrar contenido confirmado, logout/otra cuenta sin datos o selección anterior.
 - [ ] A/B mantiene referencia/conteos, diferencia calculada de cero frente a no calculable; no aparecen puntos de referencia inventados. Si el registro se movió o eliminó antes de abrir el original, se muestra la verdad de esa fecha. Recuperación/CAS y Reducir movimiento mantienen el comportamiento existente.
+
+
+### Nutrición #402 — inspección y comidas originales
+
+Pendiente físico; sin simulador, build o instalación durante esta entrega.
+
+- [ ] Progreso → Nutrición: tocar una barra inspecciona sin navegar; fecha/rango completos, kcal, cobertura y estado. Sin comidas, calorías desconocidas, cero explícito, suma parcial y hoy en curso diferenciados. Objetivo de la fecha o no disponible; ningún objetivo actual aplicado a todo el pasado.
+- [ ] A/B con distinta duración y granularidad: alternar población, fechas/denominadores propios, sin posiciones emparejadas ni barras ficticias. Bloques de hasta 7/31 días, límites parciales y cambio de año: abrir todos sus días, luego un día y sus comidas. El bloque puede incluir hoy; el resumen lo excluye.
+- [ ] Volver al gráfico mantiene período, comparación, población/barra y bloque abierto mientras sean válidos. Editar/eliminar una comida y regresar: relectura y valor actualizado o día sin registro, nunca la cifra anterior. Tirar para actualizar revalida A y B sin borrar contenido. Error/reintento de B conserva A; logout/otra cuenta sin selección ni valores previos.
+- [ ] iPhone compacto/grande, claro/oscuro, Dynamic Type, VoiceOver (fecha, unidad, cobertura, selección y acción explícita), scroll horizontal y targets mínimos; Reduce Motion y contenido accesible por encima de la barra. Verificar navegación nativa real y ausencia de bucles; los tests JS no aprueban QA física.
