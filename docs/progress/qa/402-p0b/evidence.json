@@ -1,0 +1,163 @@
+{
+  "base": "e494b2b78979524dc64c98ea7695bfde37383063",
+  "device": "iPhone 18 Pro · iOS 27.0 simulator · existing OWNLEVEL Dev",
+  "source": "real ProgressOverviewScreen, ProgressScroll and NativeTabs shell with local in-memory API; no account or production",
+  "compact": "320 pt constrained fixture viewport on the same simulator; not a second installed device",
+  "dynamicType": "accessibility-large; scrolled programmatically in after-large-body",
+  "encoding": "PNG IDAT lossless recompression, same decompressed scanline bytes; no image generation or layout edits",
+  "casesRun": [
+    [
+      "3-light",
+      3,
+      "many",
+      "light",
+      null,
+      "large"
+    ],
+    [
+      "0-light",
+      0,
+      "many",
+      "light",
+      null,
+      "large"
+    ],
+    [
+      "1-dark",
+      1,
+      "many",
+      "dark",
+      null,
+      "large"
+    ],
+    [
+      "3-dark",
+      3,
+      "many",
+      "dark",
+      null,
+      "large"
+    ],
+    [
+      "first-320",
+      0,
+      "first",
+      "light",
+      320,
+      "large"
+    ],
+    [
+      "empty-320",
+      0,
+      "empty",
+      "dark",
+      320,
+      "large"
+    ],
+    [
+      "error",
+      0,
+      "error",
+      "light",
+      null,
+      "large"
+    ],
+    [
+      "3-large-text",
+      3,
+      "many",
+      "light",
+      null,
+      "accessibility-large"
+    ],
+    [
+      "0-dark",
+      0,
+      "many",
+      "dark",
+      null,
+      "large"
+    ],
+    [
+      "1-light",
+      1,
+      "many",
+      "light",
+      null,
+      "large"
+    ]
+  ],
+  "captures": [
+    {
+      "file": "before-0-light.png",
+      "originalBytes": 1452199,
+      "publishedBytes": 839817,
+      "scanlinesSha256": "fbcb9b16352077dbd84b9d3e54f6b3fe1e980eb08acb4851807912739932c850"
+    },
+    {
+      "file": "after-0-light.png",
+      "originalBytes": 1469308,
+      "publishedBytes": 836269,
+      "scanlinesSha256": "7c4704a04b3a0a5dcba23f03ca6ad77044a3209fa0c9685545562c7c01abb520"
+    },
+    {
+      "file": "before-3-light.png",
+      "originalBytes": 1507715,
+      "publishedBytes": 870278,
+      "scanlinesSha256": "e5738b0e4afa9c47402cb8ee93d071f407947456f698c35521fe30c8b7ab90c5"
+    },
+    {
+      "file": "after-3-light.png",
+      "originalBytes": 1477751,
+      "publishedBytes": 843324,
+      "scanlinesSha256": "09b1b956fbfcb4a7cfc34cc81f51a39e60ddb97988260c95dc630568f82101bb"
+    },
+    {
+      "file": "before-3-dark.png",
+      "originalBytes": 838459,
+      "publishedBytes": 561947,
+      "scanlinesSha256": "c6a2ecccb3ebd35de5c3098a61d0e45cf7189843ecd29fa78639e9c182e4176e"
+    },
+    {
+      "file": "after-3-dark.png",
+      "originalBytes": 805634,
+      "publishedBytes": 541397,
+      "scanlinesSha256": "efe5366c54ae9f7df3696db846f1af6d0ab74a4196a3a466dd826609dbcf7260"
+    },
+    {
+      "file": "after-1-light.png",
+      "originalBytes": 1477864,
+      "publishedBytes": 844085,
+      "scanlinesSha256": "1edc8c457d289002099176281659c906855a1d55a9736e7edfdbf1be3a8be059"
+    },
+    {
+      "file": "after-first-320.png",
+      "originalBytes": 1378951,
+      "publishedBytes": 823846,
+      "scanlinesSha256": "d8f63c8f26724d211b84b22f44343a299e1d9f9d1c75579d56e86fbd1ceaf414"
+    },
+    {
+      "file": "after-large-body.png",
+      "originalBytes": 1481901,
+      "publishedBytes": 847949,
+      "scanlinesSha256": "20b7897e1ad5a50a419387d2995b2a7e1b14a91006a269c4d4e54a53209f2c40"
+    },
+    {
+      "file": "after-error.png",
+      "originalBytes": 1468762,
+      "publishedBytes": 835553,
+      "scanlinesSha256": "3f17285910739ee3f5f0c33f5b79435f571260c068e47fec1cdae3076ea8d588"
+    },
+    {
+      "file": "after-lower.png",
+      "originalBytes": 1490652,
+      "publishedBytes": 861344,
+      "scanlinesSha256": "754076521e886acf9710221e9237795e1b6a0ef732e1cdeb4ba870d0c723fc80"
+    }
+  ],
+  "limitations": [
+    "no physical iPhone QA",
+    "no VoiceOver end-to-end assessment",
+    "native deep destination navigation not claimed"
+  ]
+}
