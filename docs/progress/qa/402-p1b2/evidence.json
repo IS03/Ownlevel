@@ -1,0 +1,179 @@
+{
+  "base": "012c0f93d3d81220fe8e8fc0c37d0ef4e24f2505",
+  "device": "iPhone 18 Pro / iOS 27.0 simulator / existing OWNLEVEL Dev",
+  "source": "Actual TrainingTrendsScreen, ExerciseTrendsScreen and ProgressScroll with NativeTabs; API in memory using shared training/exercise test fixtures, no production account",
+  "cases": [
+    [
+      "training-light",
+      "training",
+      "normal",
+      "light",
+      null,
+      "large",
+      false,
+      90
+    ],
+    [
+      "dense-dark",
+      "training",
+      "dense",
+      "dark",
+      null,
+      "large",
+      false,
+      230
+    ],
+    [
+      "compact",
+      "training",
+      "dense",
+      "light",
+      320,
+      "large",
+      true,
+      260
+    ],
+    [
+      "large-text",
+      "training",
+      "long",
+      "light",
+      null,
+      "accessibility-large",
+      true,
+      420
+    ],
+    [
+      "empty",
+      "training",
+      "empty",
+      "dark",
+      null,
+      "large",
+      false,
+      90
+    ],
+    [
+      "exercise",
+      "exercise",
+      "normal",
+      "light",
+      null,
+      "large",
+      true,
+      180
+    ]
+  ],
+  "compact": "320 pt constrained fixture viewport on the same simulator; tests also cover actual window sizes 320/430 and measured container width",
+  "scroll": "Programmatic scroll in temporary fixture instrumentation; removed. Header may cover content being scrolled underneath it.",
+  "encoding": "PNG IDAT recompression only; identical decompressed scanline bytes, no visual editing",
+  "captures": [
+    {
+      "file": "before-training-light.png",
+      "originalBytes": 1368873,
+      "publishedBytes": 772930,
+      "scanlinesSha256": "5c2c4f44d4937335720b16f2f86ee83c49b1ef270a3e04b5fa58ddb534c88e5b"
+    },
+    {
+      "file": "before-dense-dark.png",
+      "originalBytes": 830162,
+      "publishedBytes": 561804,
+      "scanlinesSha256": "1cfbcab92c9c7b1769c148769dfcf87eb7439968727568cbe34fb3c790d0d295"
+    },
+    {
+      "file": "before-compact.png",
+      "originalBytes": 1346409,
+      "publishedBytes": 818775,
+      "scanlinesSha256": "119016d41641d4bf6141d2d6b9213fdecb2a919a0eda1aef79ef11f7a12efdba"
+    },
+    {
+      "file": "before-large-text.png",
+      "originalBytes": 1459972,
+      "publishedBytes": 835487,
+      "scanlinesSha256": "f8586b2a67a495aaa2dcb5a205a4e2ee6a28bd3002fca7d3bd3dccf68f77b940"
+    },
+    {
+      "file": "before-empty.png",
+      "originalBytes": 661729,
+      "publishedBytes": 427377,
+      "scanlinesSha256": "912daa113d82ff06ea41a2988d66fefd80f0cceaad8fef39f7925f583b170d32"
+    },
+    {
+      "file": "before-exercise.png",
+      "originalBytes": 1430334,
+      "publishedBytes": 825127,
+      "scanlinesSha256": "6120c60052792794adf775fdfcb213fa0893c96812eaa847d754743f49735d64"
+    },
+    {
+      "file": "after-training-light.png",
+      "originalBytes": 1378743,
+      "publishedBytes": 774434,
+      "scanlinesSha256": "c4df0fd76704ae30a9e756ccd28d44ce48563a24d7675310a094a283f337f38e"
+    },
+    {
+      "file": "after-dense-dark.png",
+      "originalBytes": 835726,
+      "publishedBytes": 573668,
+      "scanlinesSha256": "8d392d6762444a79587bfe1cda6f55b8252cfc156b0deeb378b9f94ae9835157"
+    },
+    {
+      "file": "after-compact.png",
+      "originalBytes": 1360285,
+      "publishedBytes": 834148,
+      "scanlinesSha256": "9850b754686a4ebe628b6d1d943c44ebcc748c5f52d090b17b1bc7473e0ab090"
+    },
+    {
+      "file": "after-large-text.png",
+      "originalBytes": 1519895,
+      "publishedBytes": 890869,
+      "scanlinesSha256": "54d259a46c32f3e8795b1239156f57fccb0a61d6a9cefeb9bf1cbb152c89fdd6"
+    },
+    {
+      "file": "after-empty.png",
+      "originalBytes": 684310,
+      "publishedBytes": 446862,
+      "scanlinesSha256": "d4a73c89ed0cfe27749dc3b5bcd12d4937ec618eab5c58ffa818698902e80f37"
+    },
+    {
+      "file": "after-exercise.png",
+      "originalBytes": 1429537,
+      "publishedBytes": 824466,
+      "scanlinesSha256": "10b83617f52e8557771f10bdb23ae6a0bf9576150b75ec9cdebf1f875fe258a0"
+    }
+  ],
+  "readingBudget": {
+    "reading-base": [
+      {
+        "initial": 1,
+        "afterLocalInteractions": 1,
+        "path": "/api/mobile/v1/progress/training?period=custom&from=2026-09-06&to=2026-10-05&inPeriod=1",
+        "fixtureBytes": 3186
+      }
+    ],
+    "training-final": [
+      {
+        "initial": 1,
+        "afterLocalInteractions": 1,
+        "path": "/api/mobile/v1/progress/training?period=custom&from=2026-09-06&to=2026-10-05&inPeriod=1",
+        "fixtureBytes": 3186
+      }
+    ]
+  },
+  "limits": [
+    "No physical iPhone QA",
+    "No full native VoiceOver, Reduce Motion or deep destination gesture/return assessment",
+    "Shared ProgressScroll header abbreviates title/period at narrow widths and extreme text sizes; unchanged in this increment",
+    "Fixture EJEMPLO overlay can overlap at accessibility sizes; not product UI"
+  ],
+  "excluded": [
+    "Initial splash/blank/startup frames discarded; captures repeated after native presentation settled",
+    "Invalid empty fixture accidentally filled an insufficient comparison with a delta; real parser rejected it as unavailable. Fixed fixture only; invalid response screenshot excluded",
+    "Superseded fixtures with inconsistent comparison totals excluded; final A/B fixture comparisons match synthetic totals"
+  ],
+  "verification": {
+    "trainingExerciseSuite": "37/37",
+    "mobileValidate": "typecheck, lint, 219/219 suites, 1926 tests, config:check",
+    "iosExport": "Hermes bundle 9.7 MB, isolated Metro cache, no config change",
+    "postCaptureChange": "A/B delta unit agrees with its magnitude (+1 día); not visible in these captures, none regenerated"
+  }
+}
