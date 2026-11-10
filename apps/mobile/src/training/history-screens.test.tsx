@@ -297,6 +297,22 @@ describe('historical correction screen', () => {
 describe('history: one screen with calendar, day and exercises (HI1–HI3)', () => {
   const now = () => new Date(2026, 9, 2, 12);
   beforeEach(() => { mockParams.current = {}; mockMonth.mockImplementation(async (...args) => ok({ month: args[1], days: [{ date: '2026-10-01', sessions: 1, completedSets: 20, level: 3 }].filter(day => day.date.startsWith(args[1] as string)) })); });
+  it('adopts a new exact route date on an already-mounted Training history while retaining the History origin', async () => {
+    mockParams.current = { date: '2026-10-01', historyDate: '2026-10-01', historyMonth: '2026-09' };
+    mockDay.mockImplementation(async (...args) => ok({ date: args[1], sessions: [row(ID(1), String(args[1]))], summary: { sessionCount: 1, durationMilliseconds: 3600000, completedSets: 6, volumeKg: 1200 } }));
+    const view = wrap(<HistoryScreen now={now} />); await flush();
+    expect(mockDay.mock.calls.at(-1)![1]).toBe('2026-10-01');
+    mockExercises.mockResolvedValue(ok([]));
+    fireEvent.press(view.getByRole('radio', { name: 'Ejercicios' })); await flush();
+    mockParams.current = { date: '2026-09-30', historyDate: '2026-09-30', historyMonth: '2026-09' };
+    view.rerender(historyRoot(<HistoryScreen now={now} />)); await flush();
+    expect(mockDay.mock.calls.at(-1)![1]).toBe('2026-09-30');
+    expect(view.getByRole('radio', { name: 'Sesiones' }).props.accessibilityState.checked).toBe(true);
+    fireEvent.press(view.getByTestId(`history-session-${ID(1)}`));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/history/[id]', params: { id: ID(1), historyDate: '2026-09-30', historyMonth: '2026-09' } });
+    fireEvent.press(view.getByRole('button', { name: 'Volver al día' }));
+    expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/history/day/[date]', params: { date: '2026-09-30', historyMonth: '2026-09' } });
+  });
   it('starts only one sessions request when mounting an already-focused history', async () => {
     mockHistory.mockReturnValue(new Promise(() => {}));
     const view = wrap(<HistoryScreen now={now} />);
@@ -528,5 +544,37 @@ describe('detail screens read once per visit', () => {
     setFocused(false); setFocused(true); await flush();
     expect(mockExerciseHistory).toHaveBeenCalledTimes(2);
     view.unmount();
+  });
+});
+
+
+describe('History day origin through completed session and correction', () => {
+  const origin = { historyDate: '2026-09-30', historyMonth: '2026-08' };
+  it('passes the origin into the existing correction editor and keeps the original day after saving', async () => {
+    mockParams.current = { id: ID(1), ...origin };
+    const detail = completedDetail();
+    const view = wrap(<CompletedSessionScreen api={{ detail: jest.fn<CompletedSessionApi['detail']>().mockResolvedValue(ok(detail)), discard: jest.fn<CompletedSessionApi['discard']>() }} sessionId={ID(1)} onHome={jest.fn()} />); await flush();
+    fireEvent.press(view.getByRole('button', { name: 'Corregir sesión' }));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/correct/[id]', params: { id: ID(1), ...origin } });
+    view.unmount();
+    mockFetchDetail.mockResolvedValue(ok(detail)); mockCorrect.mockResolvedValue(ok({}));
+    const raf = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { callback(0); return 0; });
+    try {
+      const correction = wrap(<SessionCorrectionScreen />); await flush();
+      fireEvent.changeText(correction.getByLabelText('Peso serie 1 de PRESS'), '45,5');
+      fireEvent.press(correction.getByRole('button', { name: 'Guardar corrección' })); await flush();
+      expect(mockCorrect).toHaveBeenCalledTimes(1); expect(mockBack).toHaveBeenCalledTimes(1);
+      fireEvent.press(correction.getByRole('button', { name: 'Volver al día' }));
+      expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/history/day/[date]', params: { date: origin.historyDate, historyMonth: origin.historyMonth } });
+    } finally { raf.mockRestore(); }
+  });
+  it.each(['discarded', 'not_found', 'unavailable'] as const)('still returns to the original date from %s without correction actions', async state => {
+    mockParams.current = { id: ID(1), ...origin };
+    const detail = completedDetail(); detail.session.status = 'discarded';
+    const read = jest.fn<CompletedSessionApi['detail']>().mockResolvedValue(state === 'discarded' ? ok(detail) : state === 'not_found' ? { status: 'not_found', message: 'No disponible', meta } : lost);
+    const view = wrap(<CompletedSessionScreen api={{ detail: read, discard: jest.fn<CompletedSessionApi['discard']>() }} sessionId={ID(1)} onHome={jest.fn()} />); await flush();
+    expect(view.queryByRole('button', { name: 'Corregir sesión' })).toBeNull();
+    fireEvent.press(view.getByRole('button', { name: 'Volver al día' }));
+    expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/history/day/[date]', params: { date: origin.historyDate, historyMonth: origin.historyMonth } });
   });
 });

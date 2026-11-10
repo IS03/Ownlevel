@@ -593,6 +593,16 @@ El editor de métricas usa labels integrados en el borde, unidades visibles y el
 
 La navegación usa fecha ISO y un vocabulario cerrado de origen (`history` o `calendar + month`). No acepta return URLs arbitrarias, preserva el origen y bloquea días futuros. Hoy se marca “en curso” y muestra lo registrado hasta ese momento.
 
+## Recorrido Mobile por fecha — sesiones originales #402 (10/11/2026)
+
+El día global usa los UUID ya presentes en su vista previa para abrir `train/history/[id]`, con `historyDate` y el `historyMonth` validado. Reutiliza `ListRow`, `CompletedSessionScreen`, la corrección existente y `ReturnToHistoryDay`; no solicita detalles al renderizar filas. El retorno conserva la fecha de origen incluso después de corregir, o si la sesión ya fue descartada/no está disponible. Recuperar el foco relee esa fecha mediante `useHistoryResource`: verdad nueva tras cambios, o lectura confirmada con aviso si falló la actualización; cambios de fecha/cuenta ignoran respuestas anteriores.
+
+El recuento independiente se distingue del máximo de tres sesiones de la vista previa. Cuando hay más, se indican visibles/total y se usa «Abrir Training del día» para el resto, sin otro paginador. Un total desconocido no se convierte en cero; una contradicción entre total y filas pide actualizar/consultar el detalle. Las sesiones en curso siguen separadas y las descartadas no se incorporan a la lista canónica de terminadas.
+
+Se corrigió una inconsistencia reproducida: Training ya montado conservaba su día local al recibir otra fecha de ruta. Una fecha nueva ahora selecciona ese día/mes y la vista Sesiones; un parámetro sin cambios conserva la navegación local. Los pesajes exactos en 0 kg se identifican como no válidos, sin sustituirlos por otro registro ni ocultar el acceso a Cuerpo para corregirlos.
+
+**Costo:** mismo fixture local, parser/controlador reales con transporte simulado, antes/después (`97970c4`/candidato): 1 lectura Mobile API de día, 1 de mes y 0 lecturas de detalle de sesión al presentar la vista previa. El toque de calendario no precarga sesiones; el detalle se lee sólo al abrir su ruta existente. Sin cambios de backend, contrato, payload, SQL, caché o paginación. No se midió latencia de red real. Pruebas dirigidas de Mobile y contrato, tipos y lint; QA nativa/retorno real pendientes en la [checklist única](progress/367-qa-fisica.md#recorrido-histórico-402--día-sesiones-y-retorno). No termina #402 ni modifica #367/#441.
+
 # Relaciones V2
 
 ## Diferencia frente a Comparaciones
