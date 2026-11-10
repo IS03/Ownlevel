@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 import {
   REPORT_NUTRIENTS,
@@ -111,16 +111,17 @@ const HIGHLIGHT: Record<NutritionReport['highlights'][number]['kind'], { icon: A
 /** One flat row per day: date, calories and protein; tapping opens that day in Nutrición. */
 function DayRow({ d, onDate, divided }: { d: ReportDailyRow; onDate: (date: string) => void; divided: boolean }) {
   const { colors } = useOwnlevelTheme();
-  const partial = d.nutrients.calories.status === 'partial' || d.nutrients.protein.status === 'partial';
-  const label = d.hasNutrition
-    ? `${dayLabel(d.date)}${d.isToday ? ', en curso' : ''}: ${kcal(d.nutrients.calories.value)}, proteína ${grams(d.nutrients.protein.value)}${partial ? ', suma parcial' : ''}`
-    : `${dayLabel(d.date)}: sin registro`;
+  const partial = d.nutrients.calories.status === 'partial', proteinPartial = d.nutrients.protein.status === 'partial';
+  const { fontScale } = useWindowDimensions();
+  const label = d.mealCount > 0
+    ? `${dayLabel(d.date)} ${d.date.slice(0, 4)}${d.isToday ? ', en curso' : ''}: ${d.nutrients.calories.value === null ? 'calorías sin dato' : kcal(d.nutrients.calories.value)}, proteína ${grams(d.nutrients.protein.value)}${partial ? ', calorías parciales' : ''}${proteinPartial ? ', proteína parcial' : ''}`
+    : `${dayLabel(d.date)} ${d.date.slice(0, 4)}${d.isToday ? ", en curso" : ""}: sin registro`;
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint="Abre el día en Nutrición" onPress={() => onDate(d.date)}
-    style={({ pressed }) => [styles.dayRow, divided && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }, pressed && { opacity: 0.6 }]}>
+    style={({ pressed }) => [styles.dayRow, fontScale > 1.3 && styles.stackedDay, divided && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }, pressed && { opacity: 0.6 }]}>
     <AppText numeric variant="subheadline" style={styles.dayDate}>{dayLabel(d.date)}</AppText>
-    {d.hasNutrition ? <>
+    {d.mealCount > 0 ? <>
       <AppText numeric variant="subheadline" style={styles.dayValue}>{kcal(d.nutrients.calories.value)}{partial ? '*' : ''}</AppText>
-      <AppText muted numeric variant="subheadline" style={styles.dayValue}>{grams(d.nutrients.protein.value)}</AppText>
+      <AppText muted numeric variant="subheadline" style={styles.dayValue}>{grams(d.nutrients.protein.value)}{proteinPartial ? '*' : ''}</AppText>
     </> : <AppText muted variant="subheadline" style={styles.dayEmpty}>{d.isToday ? 'en curso' : 'sin registro'}</AppText>}
     <AppIcon name="chevronRight" color={colors.textMuted} size={15} />
   </Pressable>;
@@ -157,7 +158,6 @@ export function NutritionReportDetails({ report, onDate }: { report: NutritionRe
   const byDate = new Map(report.days.map(d => [d.date, d]));
   // Only nutrients that are missing somewhere get a word; complete coverage needs none.
   const gaps = REPORT_NUTRIENTS.filter(k => c.nutrients[k].partialDays || c.nutrients[k].unknownDays);
-  const sorted = [...report.days].sort((a, b) => b.date.localeCompare(a.date));
   return <>
     <Averages report={report} />
     <View style={styles.section} testID="nutrition-progress-days">
@@ -219,13 +219,21 @@ export function NutritionReportDetails({ report, onDate }: { report: NutritionRe
     </Disclosure> : null}
     <Disclosure testID="nutrition-progress-daily" title="Día por día" open={daily} onToggle={() => setDaily(v => !v)}
       detail={`${days(report.days.length)} · tocá uno para abrirlo`}>
-      <View style={styles.tableHead}><AppText muted variant="caption" style={styles.dayDate}>Día</AppText>
-        <AppText muted variant="caption" style={styles.dayValue}>kcal</AppText><AppText muted variant="caption" style={styles.dayValue}>proteína</AppText>
-        <View style={styles.chevronRoom} /></View>
-      {sorted.map((d, i) => <DayRow key={d.date} d={d} onDate={onDate} divided={i > 0} />)}
-      {sorted.some(d => d.nutrients.calories.status === 'partial') ? <AppText muted variant="caption">* suma parcial: solo incluye los nutrientes conocidos.</AppText> : null}
+      <NutritionReportDays rows={report.days} onDate={onDate} />
     </Disclosure>
   </>;
+}
+
+/** The existing day rows, shared by the full report and an inspected block; no new read or aggregation. */
+export function NutritionReportDays({ rows, onDate }: { rows: readonly ReportDailyRow[]; onDate: (date: string) => void }) {
+  const sorted = [...rows].sort((a, b) => b.date.localeCompare(a.date));
+  return <View testID="nutrition-report-day-rows">
+    <View style={styles.tableHead}><AppText muted variant="caption" style={styles.dayDate}>Día</AppText>
+      <AppText muted variant="caption" style={styles.dayValue}>kcal</AppText><AppText muted variant="caption" style={styles.dayValue}>proteína</AppText>
+      <View style={styles.chevronRoom} /></View>
+    {sorted.map((d, i) => <DayRow key={d.date} d={d} onDate={onDate} divided={i > 0} />)}
+    {sorted.some(d => d.nutrients.calories.status === 'partial' || d.nutrients.protein.status === 'partial') ? <AppText muted variant="caption">* suma parcial: solo incluye los nutrientes conocidos.</AppText> : null}
+  </View>;
 }
 
 const styles = StyleSheet.create({
@@ -246,6 +254,7 @@ const styles = StyleSheet.create({
   disclosure: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   tableHead: { flexDirection: 'row', alignItems: 'center', paddingBottom: spacing.xs },
   dayRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.xs },
+  stackedDay: { flexDirection: 'column', alignItems: 'flex-start', gap: spacing.xs },
   dayDate: { flex: 1.3 },
   dayValue: { flex: 1, textAlign: 'right' },
   dayEmpty: { flex: 2, textAlign: 'right' },

@@ -445,6 +445,20 @@ Las comparaciones usan los adapters Foundation y el período anterior equivalent
 
 Los días destacados son determinísticos y factuales: cercanía al objetivo, mayor balance absoluto y mayor proteína, sin duplicar el mismo día ni incluir hoy en curso.
 
+## Exploración Mobile de Nutrición — #402 (09/11/2026)
+
+El gráfico existente de calorías ahora **inspecciona sin navegar**. Muestra fecha/rango completos, valor, cobertura y estado: cero registrado, sin comidas, comidas sin calorías conocidas, suma parcial y hoy en curso. El conteo de entradas puede incluir comidas o resúmenes históricos; no se presenta como número de comidas consumidas. La acción explícita de un día abre Nutrición y sus comidas mediante la ruta existente; «Volver al gráfico de Nutrición» recupera el stack de Progreso. Período/A-B, población elegida, barra y lista del bloque permanecen en memoria durante el recorrido. Cuenta o período distintos retiran la selección; editar/borrar actualiza el dato seleccionado desde la lectura confirmada, sin conservar cifras anteriores. Una revalidación pendiente identifica la lectura confirmada como «Actualizando»; un fallo conserva el aviso y el reintento. Un día calendario vacío sigue siendo consultable, sin convertirlo en cero. No es persistencia tras cerrar el proceso.
+
+A/B conserva las medias y denominadores propios y permite alternar la serie del gráfico. Cada población tiene sus fechas reales y su granularidad; no se emparejan posiciones ni se rellenan referencias más cortas. En períodos largos se usa `evolution` con el valor, rango y denominador ya calculados. «Ver días del bloque» reutiliza las filas de «Día por día» y muestra **todos** los días del intervalo cargado, incluidos faltantes, sin otra consulta ni recorte. No se convierte ese promedio en una comida o en un día específico. La pantalla no recalcula agregados.
+
+**Diferencia canónica preservada:** el resumen excluye hoy, mientras la evolución por bloques puede incluirlo. La inspección del bloque en curso lo advierte; conserva su denominador de origen y no lo reemplaza por el del resumen. Los bloques existentes son tramos de hasta 7/31 días desde el inicio del rango; se muestran sus límites efectivos, no se inventan semanas/meses completos. Los objetivos diarios son los de cada fecha cuando el contrato los acredita. Se retira la línea global de objetivo del gráfico: era una media, no el objetivo de todos los días. El objetivo histórico promedio del resumen conserva su propio denominador.
+
+**Relectura A/B corregida:** tirar para actualizar antes revalidaba A, pero remontar B reutilizaba su caché válida sin actualizarla. Una regresión conservada demostró 3 peticiones acumuladas donde correspondían 4. Ahora se revalida B explícitamente en ese gesto, sin desmontar la lectura ni sus desplegables. Seleccionar barras, cambiar población y desplegar días no disparan HTTP. Invalidaciones de escrituras y guardas de cuenta siguen usando los mecanismos existentes.
+
+**Medición controlada antes/después** con el mismo fixture, hooks/caché reales y respuestas correctas: con A/B, apertura = 2 reportes + 1 lectura de horarios en ambos candidatos; inspección y regreso con caché válida = 0 adicionales. El refresco manual pasa de 1 reporte adicional (solo A) a 2 (A y B), manteniendo intacta la lectura de horarios. El runner no monta el destino del push simulado; abrir un día inicia su lectura operativa y precarga permitida existentes. No se midió red productiva ni latencia en iPhone. Sin cambios de API, payload, lectores, migraciones o reglas de #367.
+
+Accesibilidad: fechas/valores/denominadores en etiquetas, selección anunciada, targets de al menos 44 pt, scroll horizontal, cifras/filas apiladas con texto grande y tokens existentes. Sin nueva biblioteca gráfica. QA nativa pendiente en la [checklist única](progress/367-qa-fisica.md#nutrición-402--inspección-y-comidas-originales). #402 sigue abierto; esta entrega no completa las exploraciones de Métricas/Insights ni habilita #441.
+
 # Cuerpo
 
 ## Grain de muestras reales

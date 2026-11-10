@@ -79,6 +79,16 @@ describe('Native Nutrition day', () => {
       return { remove: () => { const index = appStateListeners.indexOf(listener); if (index >= 0) appStateListeners.splice(index, 1); } };
     });
   });
+  it('opens the exact original day from Progreso and returns through the fixed chart route without a write', async () => {
+    mockParams = { date: '2026-09-30', fromProgressNutrition: '1' };
+    mockRead.mockImplementation(async options => ok(options.path.split('/').pop()!) as never);
+    const view = render(element());
+    await waitFor(() => expect(view.getByTestId('nutrition-day-screen')).toBeTruthy());
+    await waitFor(() => expect(mockRead.mock.calls.some(([options]) => options.path === '/api/mobile/v1/nutrition/days/2026-09-30')).toBe(true));
+    fireEvent.press(view.getByRole('button', { name: 'Volver al gráfico de Nutrición' }));
+    expect(mockNavigate).toHaveBeenCalledWith('/(tabs)/progress/trends/nutrition');
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
   it('opens the period food date from Insights and returns to that exact three-month detail across New Year', async () => {
     mockToday = '2027-01-02';
     mockParams = { date: '2026-08-11', insightsReturn: '1', insightsPeriod: 'nutrition', insightsAsOf: '2026-11-07', insightsRevision: 'r1' };
