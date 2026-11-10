@@ -67,8 +67,10 @@ function ExerciseRow({ exercise, open, first, onToggle, onOpenExercise }: {
  * SF1 · a closed session seen again. Server truth only; Corregir/Eliminar live in the screen's •••.
  * The comparison with the last time arrives with the summary read and never blocks the session itself.
  */
-export function CompletedSessionView({ detail, finished, onHome, onTraining, onOpenExercise, actions, banner, readSummary, extraSummary }: {
+export function CompletedSessionView({ detail, finished, onHome, onTraining, onOpenExercise, actions, banner, readSummary, extraSummary, initialExerciseId }: {
   readSummary?: SessionSummaryLoader;
+  /** A chart opens its source exercise, including when the collapsed summary would omit it. */
+  initialExerciseId?: string;
   detail: SessionDetailDto; finished: SessionFinishedDto | null; onHome: () => void; onTraining?: () => void;
   onOpenExercise?: (exerciseId: string) => void; actions?: ReactNode; banner?: ReactNode; extraSummary?: ReactNode;
 }) {
@@ -77,7 +79,7 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
   const router = useRouter();
   const insights = detail.session.status === 'completed' ? insightsSessionHref(detail.session.id, detail.session.logDate) : null;
   const [summary, setSummary] = useState<SessionSummaryDto>();
-  const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set(detail.exercises.filter(e => e.exerciseId === initialExerciseId).map(e => e.id)));
   const [showAll, setShowAll] = useState(false);
   const sessionId = detail.session.id, version = detail.session.updatedAt;
   useEffect(() => {
@@ -93,7 +95,7 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
   const when = [compactWeekdayDate(base.logDate), base.endedAt ? formatTimeRange(base.startedAt, base.endedAt) : null].filter(Boolean).join(' · ');
   // Collapsed: the first ones in session order, plus any record (the sentence above names it, so it is never hidden).
   const many = model.exercises.length > FIRST_EXERCISES + 1;
-  const shown = many && !showAll ? model.exercises.filter((exercise, index) => index < FIRST_EXERCISES || exercise.status?.kind === 'record') : model.exercises;
+  const shown = many && !showAll ? model.exercises.filter((exercise, index) => index < FIRST_EXERCISES || exercise.status?.kind === 'record' || exercise.exerciseId === initialExerciseId) : model.exercises;
   const top = model.muscles[0]?.sets ?? 0;
   const toggle = (id: string) => setOpenIds(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const fade = FadeIn.duration(reduced ? brandTokens.motion.duration.fast : brandTokens.motion.duration.base);

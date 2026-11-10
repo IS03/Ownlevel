@@ -232,3 +232,12 @@ Pendiente físico; las capturas con fixture local en la app Dev no aprueban esto
 - [ ] Sin hallazgos, primer dato y servidor sin el campo: distinguir ausencia de observaciones e indisponibilidad. Con datos, hasta tres en orden fijo: récord, primera/última sesión y cambio alimentario elegible. Récord y cambio del mismo ejercicio conservan significados distintos; «Progreso» no se presenta como comparador de Insights ni asociación validada.
 - [ ] Desplegar una referencia/cobertura por vez; abrir sus registros con la ventana correcta, y con la referencia explícita de Nutrición sin heredar otro A/B. Volver conserva la selección. Revalidar, editar/borrar y cambiar cuenta: contenido confirmado identificado, nuevo resultado coherente o ausencia, nunca datos anteriores de otra cuenta.
 - [ ] Claro/oscuro, nombre largo, letra accesible, VoiceOver (método, botón, estado desplegado, fechas y cobertura), Reducir movimiento y barra inferior. Coincidencias por la entrada de semanas existente, sin lectura profunda al abrir portada. Capturas locales no aprueban QA física ni navegación nativa completa.
+
+
+### Gráficos de Entrenamiento #402 — inspección y fuente
+
+Pendiente físico; entrega limitada a Entrenamiento, sin build/instalación en este trabajo.
+
+- [ ] Progreso → Entrenamiento → ejercicio: tocar puntos actuales/de comparación y huecos inspecciona fecha con año, medida/unidad, referencia y cobertura; no navega. Cambiar medida mantiene la sesión seleccionada. Cero no es hueco; actividad no es rendimiento; revisar primer registro, vacío, modo incompatible y lectura fallida/reintento.
+- [ ] «Ver sesión y series originales»: se ve el ejercicio de origen desplegado, incluso fuera de los primeros de una sesión larga. Volver al gráfico conserva período, A/B, medida, punto y contexto; repetir desde ambas poblaciones y desde Entrenar sin origen Progreso. Editar/eliminar y volver retira fuentes ya ausentes; revalidación fallida conserva el aviso y la lectura confirmada. Logout/otra cuenta sin valores ni selección anterior.
+- [ ] iPhone compacto/grande, claro/oscuro, nombres largos, texto accesible (medidas envueltas y cifras apiladas), VoiceOver (fecha, unidad, selección y orden hacia la fuente), Reducir movimiento, scroll horizontal denso y controles por encima de la barra inferior. Comprobar retorno nativo real; las pruebas JS no acreditan ese recorrido en iPhone.
