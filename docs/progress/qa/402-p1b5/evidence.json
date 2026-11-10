@@ -1,0 +1,406 @@
+{
+  "base": "dcafb0719b8cbade7b3b61119804f726387bc36c",
+  "device": "iPhone 18 Pro Max / iOS 27.0 simulator (separate from the build simulator), existing OWNLEVEL Dev app",
+  "source": "Real MyViews, ViewsEditScreen, ExploreScreen, CompareSheet/RangeCalendar and ProgressPeriodOverviewScreen with ProgressScroll and NativeTabs; temporary harness (own Metro on 8084, @/api and @/auth aliased to an in-memory client, runtime state on 8085) removed before commit; Metro 8081 and the build simulator untouched",
+  "cases": [
+    {
+      "name": "views-light",
+      "screen": "views",
+      "density": "normal",
+      "theme": "light",
+      "wait": 16
+    },
+    {
+      "name": "views-long-dark",
+      "screen": "views",
+      "density": "long",
+      "theme": "dark",
+      "wait": 16
+    },
+    {
+      "name": "views-compact",
+      "screen": "views",
+      "density": "long",
+      "theme": "light",
+      "width": 320,
+      "wait": 16
+    },
+    {
+      "name": "views-large-text",
+      "screen": "views",
+      "density": "long",
+      "theme": "light",
+      "size": "accessibility-large",
+      "wait": 16
+    },
+    {
+      "name": "views-empty",
+      "screen": "views",
+      "density": "few",
+      "theme": "dark",
+      "wait": 16
+    },
+    {
+      "name": "edit-light",
+      "screen": "edit",
+      "density": "long",
+      "theme": "light",
+      "wait": 16
+    },
+    {
+      "name": "edit-large-text",
+      "screen": "edit",
+      "density": "long",
+      "theme": "light",
+      "size": "accessibility-large",
+      "wait": 16
+    },
+    {
+      "name": "explore-light",
+      "screen": "explore",
+      "density": "normal",
+      "theme": "light",
+      "wait": 16
+    },
+    {
+      "name": "explore-compact-ab",
+      "screen": "explore",
+      "density": "long",
+      "theme": "light",
+      "width": 320,
+      "compare": "custom",
+      "wait": 16
+    },
+    {
+      "name": "explore-large-text",
+      "screen": "explore",
+      "density": "long",
+      "theme": "dark",
+      "size": "accessibility-large",
+      "wait": 16
+    },
+    {
+      "name": "explore-series-ab",
+      "screen": "explore-series",
+      "density": "normal",
+      "theme": "light",
+      "compare": true,
+      "wait": 16
+    },
+    {
+      "name": "compare-ab-light",
+      "screen": "compare",
+      "density": "normal",
+      "theme": "light",
+      "compare": "custom",
+      "wait": 16
+    },
+    {
+      "name": "compare-large-text",
+      "screen": "compare",
+      "density": "normal",
+      "theme": "dark",
+      "size": "accessibility-large",
+      "compare": "custom",
+      "wait": 16
+    },
+    {
+      "name": "period-dark",
+      "screen": "period",
+      "density": "normal",
+      "theme": "dark",
+      "compare": "custom",
+      "wait": 16
+    },
+    {
+      "name": "period-focus",
+      "screen": "period",
+      "density": "normal",
+      "theme": "light",
+      "key": "focus",
+      "wait": 16
+    }
+  ],
+  "notes": [
+    "A/B of different lengths: A = 1–17 oct (17 days), custom B = 1–31 ago (31 days)",
+    "320 pt is a constrained container on the same simulator; Jest covers measured widths 180/358 pt and fontScale 1/1.6",
+    "The edit capture shows the harness Stack header «index»; the Dev client Tools button and EJEMPLO tag belong to the harness"
+  ],
+  "resize": "Published PNGs downscaled to 660x1434 with sips; no visual editing",
+  "captures": [
+    {
+      "file": "after-compare-ab-light.png",
+      "bytes": 299978
+    },
+    {
+      "file": "after-compare-large-text.png",
+      "bytes": 226304
+    },
+    {
+      "file": "after-edit-large-text.png",
+      "bytes": 286150
+    },
+    {
+      "file": "after-explore-compact-ab.png",
+      "bytes": 398287
+    },
+    {
+      "file": "after-explore-large-text.png",
+      "bytes": 307378
+    },
+    {
+      "file": "after-period-focus.png",
+      "bytes": 485764
+    },
+    {
+      "file": "after-views-compact.png",
+      "bytes": 364139
+    },
+    {
+      "file": "after-views-empty.png",
+      "bytes": 214684
+    },
+    {
+      "file": "after-views-large-text.png",
+      "bytes": 491759
+    },
+    {
+      "file": "before-compare-large-text.png",
+      "bytes": 278976
+    },
+    {
+      "file": "before-edit-large-text.png",
+      "bytes": 278887
+    },
+    {
+      "file": "before-explore-compact-ab.png",
+      "bytes": 389012
+    },
+    {
+      "file": "before-views-compact.png",
+      "bytes": 319820
+    },
+    {
+      "file": "before-views-large-text.png",
+      "bytes": 420705
+    }
+  ],
+  "readingBudget": {
+    "before": {
+      "periodo": {
+        "initial": 4,
+        "afterLocal": 0,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/views",
+            4364,
+            true
+          ],
+          [
+            "/api/mobile/v1/progress/insight",
+            0,
+            false
+          ],
+          [
+            "/api/mobile/v1/progress",
+            648,
+            true
+          ],
+          [
+            "/api/mobile/v1/progress/connections",
+            5474,
+            true
+          ]
+        ]
+      },
+      "periodo-focus": {
+        "initial": 4,
+        "afterLocal": 0,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/views",
+            4364,
+            true
+          ],
+          [
+            "/api/mobile/v1/progress/insight",
+            0,
+            false
+          ],
+          [
+            "/api/mobile/v1/progress",
+            648,
+            true
+          ],
+          [
+            "/api/mobile/v1/progress/connections",
+            5474,
+            true
+          ]
+        ]
+      },
+      "periodo-ab": {
+        "initial": 4,
+        "afterLocal": 0,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/views",
+            6650,
+            true
+          ],
+          [
+            "/api/mobile/v1/progress/insight",
+            0,
+            false
+          ],
+          [
+            "/api/mobile/v1/progress",
+            648,
+            true
+          ],
+          [
+            "/api/mobile/v1/progress/connections",
+            5474,
+            true
+          ]
+        ]
+      },
+      "edicion": {
+        "initial": 1,
+        "afterLocal": 0,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/views",
+            4364,
+            true
+          ]
+        ]
+      },
+      "explorar": {
+        "initial": 1,
+        "afterLocal": 3,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/explore",
+            880,
+            true
+          ]
+        ]
+      }
+    },
+    "after": {
+      "periodo": {
+        "initial": 4,
+        "afterLocal": 0,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/views",
+            4364,
+            true
+          ],
+          [
+            "/api/mobile/v1/progress/insight",
+            0,
+            false
+          ],
+          [
+            "/api/mobile/v1/progress",
+            648,
+            true
+          ],
+          [
+            "/api/mobile/v1/progress/connections",
+            5474,
+            true
+          ]
+        ]
+      },
+      "periodo-focus": {
+        "initial": 4,
+        "afterLocal": 0,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/views",
+            4364,
+            true
+          ],
+          [
+            "/api/mobile/v1/progress/insight",
+            0,
+            false
+          ],
+          [
+            "/api/mobile/v1/progress",
+            648,
+            true
+          ],
+          [
+            "/api/mobile/v1/progress/connections",
+            5474,
+            true
+          ]
+        ]
+      },
+      "periodo-ab": {
+        "initial": 4,
+        "afterLocal": 0,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/views",
+            6650,
+            true
+          ],
+          [
+            "/api/mobile/v1/progress/insight",
+            0,
+            false
+          ],
+          [
+            "/api/mobile/v1/progress",
+            648,
+            true
+          ],
+          [
+            "/api/mobile/v1/progress/connections",
+            5474,
+            true
+          ]
+        ]
+      },
+      "edicion": {
+        "initial": 1,
+        "afterLocal": 0,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/views",
+            4364,
+            true
+          ]
+        ]
+      },
+      "explorar": {
+        "initial": 1,
+        "afterLocal": 3,
+        "reads": [
+          [
+            "/api/mobile/v1/progress/explore",
+            880,
+            true
+          ]
+        ]
+      }
+    },
+    "note": "Jest, real fetchers/parsers on client.read. Explorar período: 4 reads (views, insight without fixture, overview, connections), identical with focus=connections; opening Comparar 0. Views edit 1. Explorar 1; opening the measure sheet reads metrics/body/training (existing, 3). Not a device measurement"
+  },
+  "verification": {
+    "directed": "src/progress + src/insights: 37/37 suites, 361 tests",
+    "mobileValidate": "typecheck, lint, 221/221 suites, 1940 tests, config:check",
+    "iosExport": "Hermes 9.7 MB, isolated Metro cache, no config change"
+  },
+  "limits": [
+    "No physical iPhone QA",
+    "No VoiceOver or Reduce Motion run on device",
+    "At accessibility sizes on 320 pt the calendar day numbers can still be wider than a cell; rows no longer overlap",
+    "period-selector.tsx has no consumers and was not changed"
+  ]
+}

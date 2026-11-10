@@ -94,4 +94,20 @@ describe('Explorar', () => {
       { ...base, id: 'c', name: 'Curl', weightMode: 'Peso total', sessions: 0 }] } as never);
     expect(choices.map(c => c.key)).toEqual(['exercise.b.best', 'exercise.a.best', 'exercise.a.e1rm']);
   });
+  it('P1-B5: breakdown names and values stay whole on their own line, and fields stack with large text', async () => {
+    const rn = jest.requireActual<typeof import('react-native')>('react-native');
+    mockExplore.mockImplementation(async (_c, _q, r, compare) => { const e = explore(r, !!compare); e.current.groups[0] = { ...e.current.groups[0], label: 'Cuádriceps e isquiotibiales', value: 8610 }; return ok(e); });
+    mockParams = { measure: 'training.sets', breakdown: 'muscle' };
+    const dims = jest.spyOn(rn, 'useWindowDimensions').mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1.6 });
+    // Another period: the resource cache must not hand back an earlier test's read of the same query.
+    const view = wrap({ unit: 'week', anchor: TODAY, custom: null, compare: { kind: 'none' } }); await flush();
+    const group = within(view.getByTestId('explore-group-piernas'));
+    expect(group.getByText('Cuádriceps e isquiotibiales').props.numberOfLines).toBeUndefined();
+    expect(group.getByText('8.610 series')).toBeTruthy();
+    expect(view.getByTestId('explore-group-piernas').props.accessibilityLabel).toBe('Cuádriceps e isquiotibiales: 8.610 series');
+    const field = view.getByTestId('explore-field-measure');
+    expect(within(field).getByText('Series').props.numberOfLines).toBeUndefined();
+    expect(rn.StyleSheet.flatten(view.getByTestId('explore-field-measure-layout').props.style).flexDirection).toBe('column');
+    dims.mockRestore(); mockParams = {};
+  });
 });

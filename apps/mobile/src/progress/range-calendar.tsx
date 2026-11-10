@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { AppIcon, AppText, useOwnlevelTheme } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import { addDays, addMonths, type DateRange } from './progress-range';
@@ -16,6 +16,9 @@ export function RangeCalendar({ month, onMonth, marks, max, onDay }: {
   month: string; onMonth: (month: string) => void; marks: CalendarMark[]; max: string; onDay: (day: string) => void;
 }) {
   const { colors } = useOwnlevelTheme();
+  // Rows grow with Dynamic Type so day numbers never overlap vertically; the numbers keep the user's size.
+  const cell = CELL * Math.max(1, useWindowDimensions().fontScale);
+  const sized = { height: cell }, round = { width: cell - 6, height: cell - 6, borderRadius: (cell - 6) / 2 };
   const first = `${month.slice(0, 7)}-01`, offset = (new Date(`${first}T12:00:00Z`).getUTCDay() + 6) % 7;
   const days = Number(addDays(addMonths(first, 1), -1).slice(8));
   const cells = Array.from({ length: Math.ceil((offset + days) / 7) * 7 }, (_, i) => i - offset + 1);
@@ -31,25 +34,25 @@ export function RangeCalendar({ month, onMonth, marks, max, onDay }: {
     <View style={styles.head}>
       <AppText variant="headline">{MONTHS[Number(first.slice(5, 7)) - 1]} {first.slice(0, 4)}</AppText>
       <View style={styles.arrows}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Mes anterior" hitSlop={8} onPress={() => { triggerHaptic('stepperChange'); onMonth(addMonths(first, -1)); }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Mes anterior" style={styles.arrow} onPress={() => { triggerHaptic('stepperChange'); onMonth(addMonths(first, -1)); }}>
           <AppIcon name="chevronLeft" color={colors.primary} size={20} /></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Mes siguiente" accessibilityState={{ disabled: !canNext }} disabled={!canNext} hitSlop={8}
+        <Pressable accessibilityRole="button" accessibilityLabel="Mes siguiente" accessibilityState={{ disabled: !canNext }} disabled={!canNext} style={styles.arrow}
           onPress={() => { triggerHaptic('stepperChange'); onMonth(nextMonth); }}>
           <AppIcon name="chevronRight" color={canNext ? colors.primary : colors.border} size={20} /></Pressable>
       </View>
     </View>
     <View style={styles.row}>{WEEKDAYS.map(d => <View key={d} style={styles.cell}><AppText muted variant="caption">{d}</AppText></View>)}</View>
     {Array.from({ length: cells.length / 7 }, (_, r) => <View key={r} style={styles.row}>{cells.slice(r * 7, r * 7 + 7).map((n, i) => {
-      if (n < 1 || n > days) return <View key={i} style={styles.cell} />;
+      if (n < 1 || n > days) return <View key={i} style={[styles.cell, sized]} />;
       const day = `${first.slice(0, 8)}${String(n).padStart(2, '0')}`, mark = toneOf(day), future = day > max;
       const band = mark ? (mark.tone === 'a' ? colors.brandSubtle : colors.surfaceRaised) : 'transparent';
       const dot = mark && (mark.start || mark.end) ? (mark.tone === 'a' ? colors.primary : colors.textMuted) : null;
       // The band rounds off where a week (or the month) breaks it, so each row reads as one piece.
       const opens = i === 0 || n === 1, closes = i === 6 || n === days, isToday = day === max;
       return <Pressable key={i} accessibilityRole="button" accessibilityLabel={`${n} de ${MONTHS[Number(first.slice(5, 7)) - 1].toLowerCase()}${isToday ? ', hoy' : ''}`}
-        accessibilityState={{ disabled: future, selected: !!mark }} disabled={future} onPress={() => { triggerHaptic('stepperChange'); onDay(day); }} style={styles.cell}>
+        accessibilityState={{ disabled: future, selected: !!mark }} disabled={future} onPress={() => { triggerHaptic('stepperChange'); onDay(day); }} style={[styles.cell, sized]}>
         <View style={[styles.band, { backgroundColor: band }, opens && styles.bandOpen, closes && styles.bandClose, mark?.start && styles.bandStart, mark?.end && styles.bandEnd]} />
-        <View style={[styles.dot, dot ? { backgroundColor: dot } : null]}>
+        <View style={[styles.dot, round, dot ? { backgroundColor: dot } : null]}>
           <AppText numeric variant="body" style={{ color: dot ? colors.onPrimary : future ? colors.border : isToday ? colors.primary : colors.text, fontWeight: dot || isToday ? '700' : '500' }}>{n}</AppText>
         </View>
       </Pressable>;
@@ -58,7 +61,8 @@ export function RangeCalendar({ month, onMonth, marks, max, onDay }: {
 }
 const styles = StyleSheet.create({
   wrap: { gap: 4 }, head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 6 },
-  arrows: { flexDirection: 'row', gap: 22 }, row: { flexDirection: 'row' },
+  arrows: { flexDirection: 'row', gap: 8 }, row: { flexDirection: 'row' },
+  arrow: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   cell: { flex: 1, height: CELL, alignItems: 'center', justifyContent: 'center' },
   // Half a point of overlap so neighbouring days never show a hairline seam.
   band: { position: 'absolute', left: -0.5, right: -0.5, top: 3, bottom: 3 },

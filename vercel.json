@@ -71,7 +71,8 @@
       "codex/402-history-editorial": false,
       "codex/402-training-editorial": false,
       "claude/402-p1b3-body-nutrition-metrics": false,
-      "claude/402-p1b4-relations": false
+      "claude/402-p1b4-relations": false,
+      "claude/402-p1b5-explore": false
     }
   }
 }

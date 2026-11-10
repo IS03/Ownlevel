@@ -1,7 +1,7 @@
 import {destinationRoute} from './progress-destination';
 import { useCallback, type ReactNode } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchProgressOverview, progressRequestKey, type MetricValueType, type ProgressDestination, type ProgressOverview } from '@/api/progress';
 import { AppIcon, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme, type AppIconName } from '@/design-system';
@@ -127,6 +127,8 @@ export function ProgressPeriodOverviewScreen() {
   const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressOverview(c, query, signal, compare), [query, compare]);
   const { state: status, data, refresh } = useCachedRead(client, 'overview', progressRequestKey(query, compare), load);
   const connections = useProgressConnections();
+  // Opened from «Lo que se movió junto» on the portada: the same section, same period and same reads, shown first.
+  const focusConnections = useLocalSearchParams<{ focus?: string }>().focus === 'connections';
   const refreshAll = () => { void Promise.all([refresh(), connections.refresh()]); };
   const refreshing = status.status === 'ready' && status.refreshing || connections.state.status === 'ready' && connections.state.refreshing;
   // Every destination shares the period in ProgressRangeProvider.
@@ -136,6 +138,7 @@ export function ProgressPeriodOverviewScreen() {
   };
   return <ProgressScroll title="Explorar período" testID="progress-overview" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} tintColor={colors.primary} />}>
     <ProgressReadStatus state={status} />
+    {focusConnections ? <ConnectionsSection resource={connections} /> : null}
     <MyViews />
     {status.status === 'loading' ? <><SkeletonBlock height={240} /><SkeletonBlock height={96} /></>
       : data ? <>
@@ -145,7 +148,7 @@ export function ProgressPeriodOverviewScreen() {
           <Areas data={data} open={open} />
         </View>
         <Highlights data={data} open={open} />
-        <ConnectionsSection resource={connections} />
+        {focusConnections ? null : <ConnectionsSection resource={connections} />}
       </> : <UnavailableState title="No pudimos cargar tu progreso" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente."
         action={<Button label="Reintentar" onPress={() => void refresh()} />} />}
     {/* Beyond this period: the 3-month insight, stages and Qué influye. */}

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, GlassSurface, SheetHandle, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
@@ -40,7 +40,8 @@ function Sheet({ title, subtitle, valid, onClose, onDone, children }: {
 }
 function Shortcut({ label, active, onPress }: { label: string; active?: boolean; onPress: () => void }) {
   const { colors } = useOwnlevelTheme();
-  return <Pressable accessibilityRole="button" accessibilityState={{ selected: !!active }} onPress={() => { triggerHaptic('stepperChange'); onPress(); }}>
+  // The capsule keeps its look; the touch area reaches the 44 pt minimum around it.
+  return <Pressable accessibilityRole="button" accessibilityState={{ selected: !!active }} onPress={() => { triggerHaptic('stepperChange'); onPress(); }} style={styles.shortcutTarget}>
     {/* The chosen one sinks into the app's own raised tone (never black); glass would wash its fill out. */}
     {active ? <View style={[styles.shortcut, { backgroundColor: colors.surfaceRaised, borderColor: colors.border }]}>
       <AppText variant="footnote" style={{ fontWeight: '700', color: colors.text }}>{label}</AppText>
@@ -111,13 +112,16 @@ export function CompareSheet({ onClose }: { onClose: () => void }) {
     triggerHaptic('stepperChange'); onClose();
   };
   const marks: CalendarMark[] = [...(draftB ? [{ range: draftB, tone: 'b' as const }] : []), ...(draftA ? [{ range: draftA, tone: 'a' as const }] : [])];
+  // A and B may last differently (17 vs 31 days): each cell says how long, never only the edited one.
+  const { fontScale } = useWindowDimensions();
+  const length = (r: DateRange | null) => r ? `${daysBetween(r.start, r.end)} ${daysBetween(r.start, r.end) === 1 ? 'día' : 'días'}` : null;
   return <Sheet title="Comparar" subtitle={editing === 'a' ? rangeSubtitle(rangeA, today, draftA) : rangeSubtitle(rangeB, today, draftB)} valid={valid} onClose={onClose} onDone={done}>
-    <View style={styles.ab}>{(['a', 'b'] as const).map(k => {
+    <View style={[styles.ab, fontScale > 1.3 && styles.abStacked]} testID="compare-ab">{(['a', 'b'] as const).map(k => {
       const r = k === 'a' ? rangeA : rangeB, on = editing === k;
-      return <Pressable key={k} accessibilityRole="button" accessibilityState={{ selected: on }} style={styles.abItem}
-        accessibilityLabel={`${k === 'a' ? 'Tu período' : 'Comparar con'}: ${r ? shortRange(r, today) : 'sin elegir'}`}
+      return <Pressable key={k} accessibilityRole="button" accessibilityState={{ selected: on }} style={fontScale > 1.3 ? undefined : styles.abItem} testID={`compare-cell-${k}`}
+        accessibilityLabel={`${k === 'a' ? 'Tu período' : 'Comparar con'}: ${r ? `${shortRange(r, today)}, ${length(r)}` : 'sin elegir'}`}
         onPress={() => { setEditing(k); if (r) setMonth(r.end); }}>
-        <ABCell label={k === 'a' ? 'A · Tu período' : 'B · Comparar con'} value={r ? shortRange(r, today) : '—'} on={on} />
+        <ABCell label={k === 'a' ? 'A · Tu período' : 'B · Comparar con'} value={r ? shortRange(r, today) : '—'} length={length(r)} on={on} />
       </Pressable>;
     })}</View>
     <View style={styles.shortcuts}>
@@ -130,11 +134,12 @@ export function CompareSheet({ onClose }: { onClose: () => void }) {
     <AppText muted variant="caption">{editing === 'a' ? 'Marcás tu período (champagne).' : 'Marcás el período para comparar (gris).'} Tocá el primer día y el último.</AppText>
   </Sheet>;
 }
-function ABCell({ label, value, on }: { label: string; value: string; on: boolean }) {
+function ABCell({ label, value, length, on }: { label: string; value: string; length: string | null; on: boolean }) {
   const { colors } = useOwnlevelTheme();
   return <View style={[styles.abCell, { backgroundColor: on ? colors.brandSubtle : 'transparent', borderColor: on ? 'transparent' : colors.border }]}>
     <AppText variant="caption" style={{ color: on ? colors.primary : colors.textMuted, fontWeight: '600' }}>{label}</AppText>
     <AppText numeric variant="headline">{value}</AppText>
+    {length ? <AppText muted numeric variant="footnote">{length}</AppText> : null}
   </View>;
 }
 const styles = StyleSheet.create({
@@ -143,6 +148,7 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 14 }, header: { flexDirection: 'row', alignItems: 'center', gap: 12 }, title: { flex: 1, alignItems: 'center', gap: 2 },
   shortcuts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   shortcutRow: { marginHorizontal: -16, flexGrow: 0 }, shortcutScroll: { paddingHorizontal: 16, gap: 8 }, shortcutGroup: { flexDirection: 'row', gap: 8 }, shortcut: { minHeight: 34, paddingHorizontal: 12, borderRadius: brandTokens.radius.full, borderWidth: StyleSheet.hairlineWidth, borderColor: 'transparent', justifyContent: 'center' },
-  ab: { flexDirection: 'row', gap: 8 }, abItem: { flex: 1 },
+  ab: { flexDirection: 'row', gap: 8 }, abStacked: { flexDirection: 'column' }, abItem: { flex: 1 },
+  shortcutTarget: { minHeight: brandTokens.layout.minTouch, justifyContent: 'center' },
   abCell: { borderRadius: brandTokens.radius.inner, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12, paddingVertical: 8, gap: 2 },
 });

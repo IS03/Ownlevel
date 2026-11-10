@@ -112,7 +112,7 @@ function ExplorationLinks({ today, contextOpen, onToggle }: { today: string; con
         <ListRow title="Semanas y coincidencias" subtitle="Comparación A/B de los registros" accessibilityLabel="Semanas, A/B y coincidencias descriptivas" onPress={() => router.navigate(explorationHref(today, undefined, undefined, origin))} />
         {/* Both read only when opened: discovering them adds no request to this screen. */}
         <ListRow title="Lo que se movió junto" subtitle="Comida y resultados frente al período anterior equivalente" testID="panorama-connections-link"
-          accessibilityLabel="Lo que se movió junto: comida y resultados frente al período anterior equivalente" onPress={() => router.navigate('/(tabs)/progress/period')} />
+          accessibilityLabel="Lo que se movió junto: comida y resultados frente al período anterior equivalente" onPress={() => router.navigate({ pathname: '/(tabs)/progress/period', params: { focus: 'connections' } })} />
         <ListRow title="Qué influye" subtitle="Preguntas que comparan tus días entre sí" testID="panorama-influence-link"
           accessibilityLabel="Qué influye: preguntas que comparan tus días entre sí" onPress={() => router.navigate('/(tabs)/progress/influence')} />
         <AppText muted variant="caption">Se leen al abrirlos. Las coincidencias de registros no acreditan una relación ni su causa.</AppText>

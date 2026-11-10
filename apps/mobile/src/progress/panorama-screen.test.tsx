@@ -309,7 +309,7 @@ it('P1-B4: relations and Qué influye are discoverable from the context group an
     expect(view.queryByTestId('panorama-connections-link')).toBeNull();
     fireEvent.press(view.getByRole('button',{name:'Contexto y relaciones'}));
     fireEvent.press(view.getByRole('button',{name:'Lo que se movió junto: comida y resultados frente al período anterior equivalente'}));
-    expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress/period');
+    expect(mockNavigate).toHaveBeenLastCalledWith({pathname:'/(tabs)/progress/period',params:{focus:'connections'}});
     fireEvent.press(view.getByRole('button',{name:'Qué influye: preguntas que comparan tus días entre sí'}));
     expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress/influence');
     expect(read).toHaveBeenCalledTimes(1);

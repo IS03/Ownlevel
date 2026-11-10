@@ -851,6 +851,22 @@ Desde `ab4d1d5` (#465 integrado). Auditoría de `connections-section`, `connecti
 
 **Evidencia:** [capturas/manifiesto](qa/402-p1b4/evidence.json), con simulador separado, Metro propio y API en memoria; la build, su simulador y Metro 8081 quedaron intactos. No acreditan VoiceOver, Reduce Motion ni QA física. #402 sigue abierto para A/B y Mis vistas.
 
+### P1-B5 — A/B, Mis vistas y Explorar legibles (10/11/2026)
+
+Desde `dcafb07` (#469 integrado). Se auditaron `period-controls`, `period-sheets`, `range-calendar`, `my-views`, `views-edit-screen`, `explore-screen`, `explore-sheets` y `overview-screen`. Se conservan sin cambios los períodos A/B independientes y sus poblaciones, los métodos, las fechas, las versiones/CAS de Mis vistas, la idempotencia y el aislamiento por cuenta, los objetivos sin retroactividad y la diferencia entre ausencia y cero. Las hojas de Explorar ya cumplían (filas de 52 pt, textos sin cortar) y no se tocaron. `period-selector.tsx` no tiene consumidores.
+
+- **Mis vistas:** la cifra de cada vista usaba `adjustsFontSizeToFit` (se achicaba para entrar) y los nombres, resúmenes y motivos se cortaban a 1–2 líneas. Ahora nada se corta ni se achica. La grilla pasa a una vista por fila cuando las cifras no entran enteras en dos columnas o con texto grande (`figure-layout.ts`, con columnas configurables). «Editar» tiene 44 pt.
+- **Editar Mis vistas:** nombres y detalles completos; la papelera tiene un área táctil de 44 pt. Orden, renombre, borrado y conflictos no cambian.
+- **Período y A/B:** la línea de fechas bajo la tira ya no se corta. En Comparar, A y B dicen cuánto dura cada uno (p. ej., 17 frente a 31 días) y se apilan con texto grande. Los atajos y las flechas de mes llegan a 44 pt. Las filas del calendario crecen con Dynamic Type: antes los números se superponían.
+- **Explorar:** con texto grande, cada campo apila etiqueta y valor, y el nombre de la medida no se corta. En los desgloses, nombre y cifra van en su propia línea sobre una barra de ancho completo (antes: etiqueta de 108 pt cortada y valor de 82 pt partido). Cobertura y referencia pasan a `footnote`.
+- **Entrada directa:** «Lo que se movió junto» en la portada abre Explorar período con `focus=connections`, que muestra esa sección primero. Mismo período, mismas lecturas y ningún componente compartido nuevo; sin el parámetro, el orden no cambia.
+
+**Verificación:** Progreso e Insights 37/37 suites (361 pruebas), con casos nuevos (Comparar con A/B de distinta duración, grilla y edición de Mis vistas, desgloses y campos de Explorar, entrada directa); `npm run validate` completo de Mobile: tipos, lint, 221/221 suites y 1.940 pruebas, `config:check`. Export iOS Hermes (9,7 MB) con caché temporal de Metro aislada.
+
+**Consumo** (Jest, lectores y parsers reales, mismo fixture, antes → después): Explorar período 4 → 4 lecturas, igual con `focus=connections` y con A/B de 31 frente a 17 días; abrir Comparar 0 → 0; edición de vistas 1 → 1; Explorar 1 → 1, y abrir la hoja de medidas 3 → 3 (métricas, Cuerpo y ejercicios: ya ocurría). No es una medición en dispositivo.
+
+**Evidencia:** [capturas/manifiesto](qa/402-p1b5/evidence.json), con simulador separado, Metro propio y API en memoria; la build, su simulador y Metro 8081 quedaron intactos. No acreditan VoiceOver, Reduce Motion ni QA física. #402 sigue abierto: falta la conciliación transversal de Progreso VNext y sus criterios de aceptación.
+
 ## Función y jerarquía
 
 **IMPLEMENTADO:** `/progress` sintetiza y navega; no duplica reportes ni muestra grandes gráficos.

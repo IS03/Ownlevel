@@ -103,13 +103,14 @@ export function ViewsEditScreen() {
           onDrop={next => reorder(next)} onCancel={() => undefined}>
           {views.map((v, index) => <NativeReorderItem key={v.id} id={v.id} gap={0}>
             <View testID={`edit-view-${v.id}`} style={[styles.row, { backgroundColor: colors.background, borderColor: colors.border, borderTopWidth: index ? StyleSheet.hairlineWidth : 0 }]}>
-              <Pressable accessibilityRole="button" accessibilityLabel={`Sacar ${v.name}`} hitSlop={8} disabled={busy} onPress={() => remove(v)} testID={`edit-view-remove-${v.id}`}>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Sacar ${v.name}`} disabled={busy} onPress={() => remove(v)} testID={`edit-view-remove-${v.id}`} style={styles.remove}>
                 {/* Muted at rest; the confirmation carries the destructive red. */}
                 <AppIcon name="trash" color={colors.textMuted} size={20} />
               </Pressable>
               <Pressable accessibilityRole="button" accessibilityLabel={`${v.name}. Cambiar el nombre`} disabled={busy} onPress={() => setRenaming(v)} style={styles.copy} testID={`edit-view-rename-${v.id}`}>
-                <AppText variant="headline" numberOfLines={1}>{v.name}</AppText>
-                {detail(v) ? <AppText muted variant="footnote" numberOfLines={1}>{detail(v)}</AppText> : null}
+                {/* Whole names and details: they wrap at any width or text size instead of being cut. */}
+                <AppText variant="headline">{v.name}</AppText>
+                {detail(v) ? <AppText muted variant="footnote">{detail(v)}</AppText> : null}
               </Pressable>
               <NativeDragHandle testID={`edit-view-drag-${v.id}`} holdDelay={120} disabled={busy} accessibilityLabel={`Ordenar ${v.name}`} accessibilityRole="adjustable"
                 accessibilityValue={{ min: 1, max: ids.length, now: index + 1 }} accessibilityHint="Mantené y arrastrá la manija, o usá las acciones para mover la vista."
@@ -133,5 +134,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 64 },
   copy: { flex: 1, gap: 2, paddingVertical: 10, minWidth: 0 },
   handle: { alignItems: 'center', justifyContent: 'center', height: 48, width: 48 },
+  remove: { alignItems: 'center', justifyContent: 'center', minHeight: 44, minWidth: 44 },
   add: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 52 },
 });
