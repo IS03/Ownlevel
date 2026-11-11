@@ -312,6 +312,8 @@ export function createMobileApiClient({
             conflictCode === 'QUICK_SOURCE_CHANGED' ||
             conflictCode === 'QUICK_SOURCE_UNAVAILABLE' ||
             conflictCode === 'QUICK_SOURCE_UNUSABLE' ||
+            conflictCode === 'QUICK_PINS_CHANGED' ||
+            conflictCode === 'QUICK_PIN_UNAVAILABLE' ||
             conflictCode === 'SAVED_NAME_EXISTS' ||
             conflictCode === 'SAVED_CHANGED' ||
             conflictCode === 'SAVED_UNAVAILABLE' ||
@@ -354,10 +356,11 @@ export function createMobileApiClient({
             conflictCode === 'SESSION_NOT_COMPLETED' ||
             conflictCode === 'SESSION_DISCARDED';
           if (knownConflict) {
-            const conflictData = conflictCode === 'ACTIVE_SESSION_EXISTS' || conflictCode === 'MEAL_CHANGED'
-              ? options.parse(responseBody)
-              : undefined;
-            result = (conflictCode === 'ACTIVE_SESSION_EXISTS' || conflictCode === 'MEAL_CHANGED') && conflictData === undefined
+            // These conflicts carry server truth the caller needs: an unparseable body is not a usable conflict.
+            const withTruth = conflictCode === 'ACTIVE_SESSION_EXISTS' || conflictCode === 'MEAL_CHANGED'
+              || conflictCode === 'QUICK_PINS_CHANGED' || conflictCode === 'QUICK_PIN_UNAVAILABLE';
+            const conflictData = withTruth ? options.parse(responseBody) : undefined;
+            result = withTruth && conflictData === undefined
               ? unavailable('invalid_response', durationMs, 409)
               : {
                   status: 'conflict',

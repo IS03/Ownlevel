@@ -78,7 +78,8 @@
       "claude/402-p1c2-variant-comparability": false,
       "claude/475-completed-session-summary": false,
       "claude/466-467-nutrition-lists": false,
-      "claude/479-quick-pins-a": false
+      "claude/479-quick-pins-a": false,
+      "claude/479-quick-pins-b": false
     }
   }
 }
