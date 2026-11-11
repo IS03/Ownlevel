@@ -10,7 +10,9 @@ import type { QuickPinsIntentRepository, StoredQuickPinsIntent } from './quick-p
  * - An unknown outcome keeps the intent: `recover()` replays exactly the same request (same key, same body).
  * - A conflict shows the server's confirmed truth and keeps what the person wanted, to apply again only on request:
  *   preferences are never merged automatically.
- * - `unavailable` pins are unknown, never «no pins»: without a confirmed snapshot nothing can be written.
+ * - `unavailable` pins are unknown, never «no pins»: without a confirmed snapshot nothing can be written. A snapshot that
+ *   could not be refreshed (the last read failed) is shown but not written against either: no write, replay or reapply
+ *   leaves the device while the pins are not readable, so no useless PUT is ever sent (a stored intent just waits).
  */
 export type QuickPinsApi = {
   write: (write: QuickPinsWrite) => Promise<MobileApiRequestResult<QuickPinsSnapshot | QuickPinsConflict>>;
@@ -123,7 +125,7 @@ export class QuickPinsController {
   async write(savedMealIds: string[]): Promise<QuickPinsWriteOutcome> {
     if (this.disposed || this.busy || this.state.intent || (this.state.phase !== 'idle' && this.state.phase !== 'conflict')) return 'refused';
     const confirmed = this.state.confirmed;
-    if (!confirmed) { this.update({ error: 'unavailable', message: MESSAGES.unavailable }); return 'refused'; }
+    if (!confirmed || this.state.availability !== 'ok') { this.update({ error: 'unavailable', message: MESSAGES.unavailable }); return 'refused'; }
     if (savedMealIds.length > QUICK_PINS_MAX) { this.update({ error: 'full', message: MESSAGES.full }); return 'refused'; }
     const intent = parseQuickPinsWrite({ savedMealIds, expectedRevision: confirmed.revision, idempotencyKey: this.newKey() });
     if (!intent) { this.update({ error: 'invalid', message: MESSAGES.invalid }); return 'refused'; }
@@ -143,7 +145,7 @@ export class QuickPinsController {
   /** Replays exactly the stored request: the server answers its stored receipt if it was applied, or applies it now. */
   async recover() {
     const stored = this.state.intent;
-    if (this.disposed || this.busy || !stored || this.state.phase !== 'uncertain') return;
+    if (this.disposed || this.busy || !stored || this.state.phase !== 'uncertain' || this.state.availability !== 'ok') return;
     this.busy = true; this.update({ phase: 'pending', error: null, message: null });
     try { await this.send(stored); } finally { this.busy = false; }
   }

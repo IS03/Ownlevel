@@ -1,0 +1,24 @@
+{
+  "base": "eb6e5a3",
+  "device": "iPhone 18 Pro Max / iOS 27.0 simulator (not the build simulator), existing OWNLEVEL Dev app, Hermes + Fabric. NOT a physical iPhone.",
+  "source": "Real QuickEditor (embedded), QuickController and QuickPinsController with in-memory APIs and storage: 200 saved meals (15 special names with accents, Ñ, digits and a very long one, plus 185 synthetic), no network, no Supabase. Temporary harness (separate Expo Router root on its own Metro: 8101) removed before commit, together with a temporary export of MobileApiContext and the router override; Metro 8081 and the other simulator untouched; simulator appearance and text size restored afterwards (dark, accessibility-large).",
+  "findings": [
+    { "id": "D1-NATIVE-1", "title": "Duplicate React keys in the letter index", "evidence": ["before-duplicate-key-error.png", "before-native-collator-order.png", "after-native-collator-order.png", "after-library-top.png"],
+      "cause": "Hermes' Intl.Collator('es', { sensitivity: 'base' }) compares 'N' and 'Ñ' as EQUAL (compare('N','Ñ') === 0 on the simulator), unlike Node's ICU: Ñ words interleaved with N words, sections «Ñ N Ñ», duplicate keys.",
+      "fix": "initial order is explicit (# A…N Ñ O…Z); the collator only orders names inside one initial; sections are grouped by initial so keys cannot repeat. Native result: # A E G M N Ñ O Z." },
+    { "id": "D1-NATIVE-2", "title": "«Ir a letra» did nothing for letters below the measured rows", "evidence": ["after-jump-G.png", "after-jump-Z.png"],
+      "cause": "scrollToLocation fails (onScrollToIndexFailed: item 85 of 215, 64 measured) and the one retry either lands ~10 rows early or, with sticky section headers, ends at y = 0.",
+      "fix": "no sticky section headers; several passes 80 ms apart (max 8) that stop when a pass found everything measured and the offset stopped moving, or when the person touches the list. Native result: the letter's header at the top (G, Z)." }
+  ],
+  "verifiedNatively": [
+    { "check": "scroll position after reviewing a meal and coming back (the library stays mounted with display: none)", "evidence": ["scroll-before-review.png", "scroll-after-review.png"], "result": "identical: same rows at the same offsets" },
+    { "check": "search field focus, keyboard and live results", "evidence": ["keyboard-search.png"], "result": "keyboard opens, layout stable, results update («28 resultados» for «n»)" },
+    { "check": "native collation of accents, digits and Ñ", "evidence": ["after-native-collator-order.png"], "result": "# (3 huevos) < acelga < Ácido < Ají < … < N < Ñ < O" }
+  ],
+  "limits": [
+    "Simulator only: no physical iPhone, no VoiceOver session, no Reduce Motion toggle observed, no real touch latency or memory",
+    "The simulator typed only the first character of «noq»; the keyboard result is still valid but longer typing was not observed",
+    "The dev client's floating Tools button overlaps the top right in every capture (harness only)",
+    "The letter index is part of the list header, so it scrolls away after a jump (sticky headers had to go); coming back to it means scrolling up"
+  ]
+}

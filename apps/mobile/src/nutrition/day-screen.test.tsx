@@ -12,8 +12,9 @@ import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 import { NutritionDayScreen } from './day-screen';
 import { NutritionConfigurationProvider } from './config-provider';
 import { nutritionFixture } from './day-fixture.test-helper';
-import { quickOptions, quickPreview, quickReceipt, quickDate } from './quick-fixture.test-helper';
+import { quickOptions, quickPreview, quickReceipt, quickDate, quickId } from './quick-fixture.test-helper';
 import { personalFood } from './food-fixture.test-helper';
+import { quickPinsStorageKey } from './quick-pins-storage';
 import type { QuickSelection } from '@/api/nutrition-quick';
 
 const mockPush = jest.fn();
@@ -154,6 +155,84 @@ describe('Native Nutrition day', () => {
     await waitFor(() => expect(view.queryByTestId('quick-meal-editor')).toBeNull());
     expect(mockRequest.mock.calls.filter(([o]) => o.path.endsWith('meal-registrations'))[0][0].body).toMatchObject({ date: mockToday, source: { kind: 'food' } });
     expect(await AsyncStorage.getItem('ownlevel.nutrition.quick.v1.owner')).toBeNull();
+  });
+  describe('#479 D1: one registration per decision, in each of the three methods', () => {
+    const okMeta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
+    const registrations = () => mockRequest.mock.calls.filter(([o]) => o.path.endsWith('meal-registrations'));
+    const pinRequests = () => [...mockRequest.mock.calls, ...mockRead.mock.calls].filter(([o]) => o.path.includes('quick-pins'));
+    const quickRequests = (path: string) => mockRead.mock.calls.filter(([o]) => o.path.endsWith(path));
+    async function openAdd(view: ReturnType<typeof render>, method: string) {
+      await view.findByText('Agregar comida', { includeHiddenElements: true });
+      fireEvent.press(view.getByText('Agregar comida', { includeHiddenElements: true })); await act(async () => { fireEvent.press(view.getByText(method)); });
+    }
+    function quickMocks() {
+      mockToday = quickDate;
+      mockRead.mockImplementation(async options => options.path.endsWith('quick-options')
+        ? { status: 'ok', data: quickOptions(), meta: okMeta } as never
+        : options.path.includes('/foods') ? { status: 'ok', data: { status: 'ok', foods: [personalFood] }, meta: okMeta } as never
+        : (() => {
+          // The re-read day carries the meal the registration created: that is what marks a row as added.
+          const day = { ...nutritionFixture(options.path.split('/').pop()!), today: quickDate };
+          if (day.nutrition.status === 'ok') day.nutrition.data.meals[0] = { ...day.nutrition.data.meals[0]!, id: quickReceipt.resourceId };
+          return ok(options.path.split('/').pop()!, day) as never;
+        })());
+      mockRequest.mockImplementation(async options => options.path.endsWith('meal-preview')
+        ? { status: 'ok', data: quickPreview(options.body as QuickSelection), meta: okMeta } as never
+        : { status: 'ok', data: quickReceipt, meta: { ...okMeta, httpStatus: 201 } } as never);
+    }
+    it('A mano: a double tap on «Agregar al día» is one request', async () => {
+      mockRead.mockImplementation(async () => ok(mockToday) as never);
+      mockRequest.mockResolvedValue({ status: 'ok', data: { status: 'saved', mealId: '41100000-0000-4000-8000-000000000002', sourceDate: mockToday, destinationDate: mockToday, updatedAt: `${mockToday}T13:00:00Z` }, meta: { ...okMeta, httpStatus: 201 } } as never);
+      const view = render(element()); await openAdd(view, 'A mano');
+      fireEvent.changeText(view.getByLabelText('Calorías'), '250');
+      await act(async () => { const save = view.getByText(/Agregar al día ·/); fireEvent.press(save); fireEvent.press(save); });
+      expect(await view.findByTestId('nutrition-meal-notice')).toBeTruthy();
+      expect(mockRequest).toHaveBeenCalledTimes(1);
+      expect(pinRequests()).toHaveLength(0);
+    });
+    it('Alimento por cantidad: a double tap on «Agregar al día» is one registration', async () => {
+      quickMocks();
+      const view = render(element()); await openAdd(view, 'Alimento por cantidad');
+      await act(async () => { fireEvent.press(view.getByLabelText('Usar CAFÉ')); });
+      await view.findByTestId('quick-preview');
+      await act(async () => { const save = view.getByText(/Agregar al día ·/); fireEvent.press(save); fireEvent.press(save); });
+      await waitFor(() => expect(view.queryByTestId('quick-meal-editor')).toBeNull());
+      expect(registrations()).toHaveLength(1); expect(pinRequests()).toHaveLength(0);
+    });
+    it('Rápido: a double tap on + from the library is one registration, with one options read and no pins request', async () => {
+      quickMocks();
+      const view = render(element()); await openAdd(view, 'Rápido');
+      const add = await view.findByLabelText('Agregar PASTA');
+      await act(async () => { fireEvent.press(add); fireEvent.press(add); });
+      await waitFor(() => expect(view.getByLabelText('PASTA agregado')).toBeTruthy());
+      expect(registrations()).toHaveLength(1);
+      expect(mockRequest.mock.calls.filter(([o]) => o.path.endsWith('meal-preview'))).toHaveLength(1);
+      expect(quickRequests('quick-options')).toHaveLength(1); expect(pinRequests()).toHaveLength(0);
+    });
+    it('Rápido: opening the library, searching and the pins controller never send a pins request on their own', async () => {
+      quickMocks();
+      const view = render(element()); await openAdd(view, 'Rápido');
+      await view.findByLabelText('Agregar PASTA');
+      fireEvent.changeText(view.getByLabelText('Buscar en tus comidas'), 'pas'); fireEvent.changeText(view.getByLabelText('Buscar en tus comidas'), '');
+      await act(async () => { appStateListeners.forEach(f => f('background')); appStateListeners.forEach(f => f('active')); });
+      expect(pinRequests()).toHaveLength(0);
+      expect(quickRequests('quick-options').length).toBeLessThanOrEqual(2);
+    });
+    it('an unconfirmed pins change belongs to its account: another account on the device does not see it, and nothing is sent', async () => {
+      quickMocks();
+      await AsyncStorage.setItem(quickPinsStorageKey('owner'), JSON.stringify({ version: 1, intent: { savedMealIds: [quickId], expectedRevision: 0, idempotencyKey: 'pins-owner-old' }, base: { revision: 0, items: [] } }));
+      const view = render(element()); await openAdd(view, 'Rápido');
+      expect(await view.findByTestId('quick-pins-uncertain')).toBeTruthy();
+      // Another account signs in on this device (a different API client, a different Rápido).
+      mockUser = 'second-user'; mockClient = screenClient(); view.rerender(element());
+      await openAdd(view, 'Rápido');
+      await view.findByLabelText('Agregar PASTA');
+      expect(view.queryByTestId('quick-pins-uncertain')).toBeNull();
+      expect(pinRequests()).toHaveLength(0);
+      // The first account's change is still there, under its own key, for when it returns.
+      expect(JSON.parse((await AsyncStorage.getItem(quickPinsStorageKey('owner')))!).intent.idempotencyKey).toBe('pins-owner-old');
+      expect(await AsyncStorage.getItem(quickPinsStorageKey('second-user'))).toBeNull();
+    });
   });
   it('activity draft survives foreground and confirms only changed canonical values', async () => {
     let latest = nutritionFixture();
