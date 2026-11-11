@@ -429,6 +429,48 @@ describe('Native Nutrition day', () => {
     expect(view.getByText('No pudimos actualizar. Mostramos la última lectura de esta fecha.')).toBeTruthy();
     expect(mockRead.mock.calls.every(([options]) => options.path.endsWith('2026-10-02'))).toBe(true);
   });
+  describe('#466: no reading line on a normal day', () => {
+    const line = /Lectura de|lectura de las|Datos confirmados|Actualizando ·/;
+    it('a normal day carries none, not even while it revalidates or right after', async () => {
+      let release!: (result: never) => void;
+      mockRead.mockResolvedValueOnce(ok('2026-10-02') as never).mockImplementationOnce((() => new Promise(resolve => { release = resolve as never; })) as never);
+      const view = render(element()); await view.findByText('Comida 2026-10-02');
+      expect(view.queryByText(line)).toBeNull();
+      act(() => { view.UNSAFE_getByType(RefreshControl).props.onRefresh(); });
+      expect(view.UNSAFE_getByType(RefreshControl).props.refreshing).toBe(true);
+      expect(view.queryByText(line)).toBeNull(); expect(view.getByText('Comida 2026-10-02')).toBeTruthy();
+      await act(async () => { release(ok('2026-10-02') as never); });
+      expect(view.queryByText(line)).toBeNull(); expect(view.queryByTestId('nutrition-stale-reading')).toBeNull();
+    });
+    it('says how old what is on screen is only when the refresh failed, next to the existing notice, and drops it with the next good reading', async () => {
+      mockRead.mockResolvedValueOnce(ok('2026-10-02') as never).mockResolvedValueOnce(failure as never).mockResolvedValueOnce(ok('2026-10-02') as never);
+      const view = render(element()); await view.findByText('Comida 2026-10-02');
+      await act(async () => { view.UNSAFE_getByType(RefreshControl).props.onRefresh(); });
+      expect(view.getByText('No pudimos actualizar. Mostramos la última lectura de esta fecha.')).toBeTruthy();
+      expect([view.getByTestId('nutrition-stale-reading').props.children].flat().join('')).toMatch(/^Datos confirmados a las \d{1,2}:\d{2}/);
+      expect(view.getByText('Reintentar')).toBeTruthy(); expect(view.getByText('Comida 2026-10-02')).toBeTruthy();
+      await act(async () => { view.UNSAFE_getByType(RefreshControl).props.onRefresh(); });
+      expect(view.queryByTestId('nutrition-stale-reading')).toBeNull(); expect(view.queryByText(/No pudimos actualizar/)).toBeNull();
+    });
+    it('with nothing confirmed to show it says the day is unavailable, without an age', async () => {
+      mockRead.mockResolvedValue(failure as never);
+      const view = render(element()); await view.findByText('No pudimos cargar este día');
+      expect(view.queryByText(line)).toBeNull(); expect(view.queryByTestId('nutrition-stale-reading')).toBeNull();
+    });
+  });
+  it('#467: the Alimento list reads at the design system list weights, with no + disc', async () => {
+    mockRead.mockImplementation(async options => options.path.includes('/foods')
+      ? { status: 'ok', data: { status: 'ok', foods: [personalFood] }, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } } as never
+      : ok(options.path.split('/').pop()!) as never);
+    const view = render(element()); await view.findByText('Agregar comida', { includeHiddenElements: true });
+    fireEvent.press(view.getByText('Agregar comida', { includeHiddenElements: true })); await act(async () => { fireEvent.press(view.getByText('Alimento por cantidad')); });
+    const flat = (node: { props: { style?: unknown } }) => StyleSheet.flatten(node.props.style as never) as Record<string, unknown>;
+    const row = within(view.getByLabelText('Usar CAFÉ'));
+    expect(flat(row.getByText('CAFÉ'))).toMatchObject({ fontSize: 17, fontWeight: '400' });
+    expect(flat(row.getByText(/^P .* · C .* · G /))).toMatchObject({ fontSize: 13, fontWeight: '400' });
+    expect(flat(row.getByText(/ kcal$/))).toMatchObject({ fontSize: 15, fontWeight: '400', textAlign: 'right' });
+    expect(view.queryByTestId('quick-add-disc')).toBeNull();
+  });
   it('refreshes on foreground and follows Cordoba midnight when viewing today', async () => {
     mockRead.mockImplementation(async options => {
       const date = options.path.split('/').pop()!;
