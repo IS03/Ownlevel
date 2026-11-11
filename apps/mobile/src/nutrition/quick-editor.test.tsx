@@ -25,7 +25,7 @@ function fixture() {
 describe('Native quick editor', () => {
   it('shows saved/suggested, explicit date, previews adjusted quantities and confirms', async () => {
     const { c, api, view } = fixture(); await act(async () => { await c.initialize(); c.open(quickDate); });
-    expect(view.getByText('Guardadas')).toBeTruthy(); expect(view.getByText('Para vos')).toBeTruthy(); expect(view.getByText('Destino · sábado, 3 de octubre de 2026')).toBeTruthy();
+    expect(view.getByText('Todas las comidas')).toBeTruthy(); expect(view.getByText('Para vos')).toBeTruthy(); expect(view.getByText('Destino · sábado, 3 de octubre de 2026')).toBeTruthy();
     await act(async () => { fireEvent.press(view.getAllByLabelText('Revisar PASTA').at(-1)!); });
     expect(view.getByLabelText('Cantidad de INGREDIENTE').props.value).toBe('100'); expect(view.getByTestId('quick-preview')).toBeTruthy();
     fireEvent.changeText(view.getByLabelText('Cantidad de INGREDIENTE'), '150,25'); expect(view.queryByTestId('quick-preview')).toBeNull();

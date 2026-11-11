@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { AppIcon, AppText, Button, Heading, LoadingState, Surface, useOwnlevelTheme, brandTokens } from '@/design-system';
+import { AppText, Button, LoadingState, Surface, useOwnlevelTheme, brandTokens } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
-import type { QuickNutrients, QuickSection } from '@/api/nutrition-quick';
+import type { QuickNutrients } from '@/api/nutrition-quick';
 import { displayNutritionDate } from './day-format';
 import type { QuickController, QuickState } from './quick-controller';
-import { MealSheet, MealSearch, mealShown as shown, mealSheetStyles as shared } from './meal-sheet';
+import { MealSheet, mealShown as shown, mealSheetStyles as shared } from './meal-sheet';
 import { MealTiming } from './meal-timing';
 import { MealProjection } from './meal-projection';
-import { quickEstimate, searchable } from './quick-model';
+import { quickEstimate } from './quick-model';
+import { QuickLibrary, type QuickPins } from './quick-library';
 import { MealDateControl } from './meal-date-control';
 import { SaveButton } from './save-button';
 /** `pending`: an instant estimate the server is still confirming (muted, with the native spinner). */
@@ -18,12 +19,12 @@ export function MealNutrients({ value, pending = false }: { value: QuickNutrient
     {pending ? <ActivityIndicator color={colors.textMuted} accessibilityLabel="Confirmando valores" /> : null}</View>
     <AppText numeric muted variant="footnote">{`P ${shown(value.proteinG)} · C ${shown(value.carbsG)} · G ${shown(value.fatG)}`}</AppText></View>;
 }
-/** `suggestions`: "Para vos" is hidden for now (Rápido shows only the saved meals); the code stays for later. */
-export function QuickEditor({ controller, state, embedded = false, onBack, onSaved, externalLocked = false, suggestions = false }: { controller: QuickController; state: QuickState; embedded?: boolean; onBack?: () => void; onSaved?: () => void; externalLocked?: boolean; suggestions?: boolean }) {
-  const showSuggestions = suggestions;
+/**
+ * `suggestions`: "Para vos" is hidden for now (Rápido shows only the saved meals); the code stays for later.
+ * `pins` (#479): the account's pinned saved meals, from the same quick-options answer; null where pins do not apply.
+ */
+export function QuickEditor({ controller, state, embedded = false, onBack, onSaved, externalLocked = false, suggestions = false, pins = null }: { controller: QuickController; state: QuickState; embedded?: boolean; onBack?: () => void; onSaved?: () => void; externalLocked?: boolean; suggestions?: boolean; pins?: QuickPins }) {
   const { colors } = useOwnlevelTheme();
-  const [search, setSearch] = useState('');
-  const [more, setMore] = useState(false);
   const draft = state.inlineKey ? null : state.draft;
   const estimate = draft ? quickEstimate(draft) : null;
   const locked = externalLocked || !!state.intent || state.phase !== 'idle' || !!state.inlineKey;
@@ -36,8 +37,6 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onSav
     const timer = setTimeout(() => void controller.requestPreview(), 250);
     return () => clearTimeout(timer);
   }, [controller, draft, locked, state.open, state.preview, state.previewLoading, state.message]);
-  const [wasOpen, setWasOpen] = useState(state.open);
-  if (wasOpen !== state.open) { setWasOpen(state.open); if (!state.open) { setSearch(''); setMore(false); } }
   if (!state.open || !state.date) return null;
   const close = () => {
     // A "+" add in flight never holds the sheet: closing lets it finish in the background.
@@ -52,43 +51,22 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onSav
     if (controller.dirty()) Alert.alert('¿Descartar ajustes?', 'Podés volver a elegir otra opción.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Descartar', style: 'destructive', onPress: action }]);
     else action();
   };
-  const section = (title: string, data?: QuickSection, titled = true) => {
-    const matches = data?.status === 'ok' ? data.items.filter(o => searchable(`${o.name} ${o.description ?? ''}`).includes(searchable(search.trim()))) : [];
-    return <View style={{ gap: 4 }}>{titled ? <View style={shared.totals}><Heading level={2}>{title}</Heading>{title === 'Guardadas' && onSaved ? <Button label="Ver todas" variant="quiet" onPress={onSaved} disabled={locked} /> : null}</View> : null}
-      {data?.status === 'unavailable' ? <AppText accessibilityRole="alert">No pudimos cargar estas opciones.</AppText> : data?.status === 'ok' ? matches.length ? matches.slice(0, title === 'Para vos' && !search.trim() && !more ? 3 : undefined).map(option => {
-        const key = `${option.source.kind}:${option.source.id}`, added = state.added?.[key], pending = state.inlineKey === key;
-        return <View key={key} style={[shared.row, { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
-          <View style={shared.text}><Pressable accessibilityRole="button" accessibilityLabel={`Revisar ${option.name}`} disabled={locked} onPress={() => controller.choose(option)} style={{ minHeight: 44, justifyContent: 'center' }}>
-            {/* #467: the same weights as the design system's list rows: a regular name, secondary detail and value. */}
-            <AppText variant="body">{option.name}</AppText>
-            {/* An added option keeps its macros; the check says it is in the day, and undoing happens from the day. */}
-            <AppText muted numeric variant="footnote">{`P ${shown(option.proteinG)} · C ${shown(option.carbsG)} · G ${shown(option.fatG)}${option.items.length ? ` · ${option.items.length} ingredientes` : ''}`}</AppText>
-          </Pressable></View>
-          <View style={{ alignItems: 'flex-end', gap: 2 }}><AppText muted numeric variant="subheadline">{shown(option.calories)} kcal</AppText>{option.useCount !== null ? <AppText muted variant="caption">{option.useCount} veces</AppText> : null}</View>
-          {/* The touch target stays 44 × 44 pt; only the disc drawn inside it is smaller. */}
-          <Pressable accessibilityRole="button" accessibilityLabel={added ? `${option.name} agregado` : `Agregar ${option.name}`} accessibilityState={{ disabled: locked || !!added, busy: pending }} disabled={locked || !!added} onPress={() => { void controller.addInline(option); }} style={styles.add} testID={`quick-add-${key}`}>
-            <View style={[styles.addDisc, { backgroundColor: added ? colors.primary : colors.brandSubtle }]} testID="quick-add-disc">
-              {pending ? <ActivityIndicator color={colors.primary} /> : <AppIcon name={added ? 'checkmark' : 'plus'} size={20} color={added ? colors.onPrimary : colors.primary} />}
-            </View>
-          </Pressable>
-        </View>;
-      }) : <AppText muted>{search.trim() ? 'No encontramos comidas con esa búsqueda.' : title === 'Guardadas' ? 'Todavía no tenés comidas guardadas.' : 'Tus comidas frecuentes van a aparecer acá.'}</AppText> : null}
-      {title === 'Para vos' && !search.trim() && matches.length > 3 ? <Button label={more ? 'Ver menos' : 'Ver más sugerencias'} variant="quiet" onPress={() => setMore(!more)} /> : null}
-    </View>;
-  };
-  return <MealSheet title={draft?.option.name ?? 'Rápido'} subtitle={draft ? draft.option.source.kind === 'food' ? `Alimento · ${shown(draft.option.items[0].quantity, 3)} ${draft.option.items[0].unit} = ${shown(draft.option.calories)} kcal` : draft.option.templateType === 'composite' ? `Guardada · ${draft.option.items.length} ingredientes` : 'Ajustar comida' : undefined}
+  // The quick-registration outcome and recovery (unchanged): under the review, or at the end of the library.
+  const tail = <>
+    {state.message && state.message !== 'Comida registrada.' ? <AppText accessibilityRole="alert" selectable>{state.message}</AppText> : null}
+    {state.phase === 'idle' && !state.preview && !state.previewLoading && state.message && state.draft ? <Button label="Reintentar vista previa" onPress={() => void controller.requestPreview()} variant="quiet" /> : null}
+    {state.phase === 'conflict' ? <Surface>{state.truth ? <><AppText variant="headline">La opción cambió</AppText><AppText>{state.truth.name}</AppText><MealNutrients value={state.truth} /><Button label="Revisar la versión actual" onPress={() => { controller.reviewTruth(); void controller.requestPreview(); }} /></> : <AppText>No hay una opción actual confirmada. Conservamos tus cantidades.</AppText>}<Button label="Actualizar fuente" disabled={state.optionsLoading} onPress={() => void controller.loadOptions()} variant="quiet" /><Button label="Elegir otra opción" onPress={() => { controller.back(); }} variant="quiet" /></Surface> : null}
+    {['uncertain', 'confirmed', 'blocked'].includes(state.phase) && !saving ? <Button label={state.intent?.receipt ? 'Actualizar datos confirmados' : 'Comprobar intento guardado'} onPress={() => void controller.recover()} /> : null}
+    {state.intent && !saving ? <Button label="Volver al día · conservar intento" disabled={running} onPress={close} variant="quiet" /> : null}
+    {!draft && !state.intent ? <AppText muted variant="caption">Destino · {displayNutritionDate(state.date)}</AppText> : null}
+  </>;
+  // The library is always mounted (hidden during a review), so its query, view, letter and scroll survive the way back.
+  const library = <QuickLibrary state={state} controller={controller} pins={pins} locked={locked} suggestions={suggestions} onSaved={onSaved} footer={draft ? null : tail} />;
+  return <MealSheet list={library} listHidden={!!draft} title={draft?.option.name ?? 'Rápido'} subtitle={draft ? draft.option.source.kind === 'food' ? `Alimento · ${shown(draft.option.items[0].quantity, 3)} ${draft.option.items[0].unit} = ${shown(draft.option.calories)} kcal` : draft.option.templateType === 'composite' ? `Guardada · ${draft.option.items.length} ingredientes` : 'Ajustar comida' : undefined}
     onClose={draft && !state.intent ? back : close} onDismiss={close} dismissable={!!state.inlineKey || (!state.intent && !controller.dirty())}
     back={!!draft && !state.intent} running={running && !state.inlineKey} embedded={embedded} testID="quick-meal-editor"
     right={<MealDateControl date={state.date} disabled={locked} onChange={date => controller.changeDate(date)} />}>
-    {!draft ? <>
-      <MealSearch label="Buscar en tus comidas" value={search} onChange={setSearch} />
-      {state.optionsLoading ? <LoadingState label="Cargando opciones rápidas" /> : null}
-      {state.optionsError ? <AppText accessibilityRole="alert">No pudimos actualizar las opciones.</AppText> : null}
-      {/* Only the saved meals for now (no title needed); the suggestions stay built, hidden unless `suggestions`. */}
-      {showSuggestions ? section('Para vos', state.options?.suggested) : null}{section('Guardadas', state.options?.saved, showSuggestions)}
-      {!showSuggestions && onSaved && state.options?.saved.status === 'ok' && state.options.saved.items.length ? <Button label="Editar guardadas" variant="quiet" onPress={onSaved} disabled={locked} /> : null}
-      {(state.optionsError || state.options?.saved.status === 'unavailable' || (showSuggestions && state.options?.suggested.status === 'unavailable')) ? <Button label="Reintentar opciones" onPress={() => void controller.loadOptions()} variant="quiet" /> : null}
-    </> : <>
+    {draft ? <>
       {draft.option.items.map(item => {
         const value = draft.quantities[item.id], numeric = Number(value?.replace(',', '.')), step = draft.option.source.kind === 'food' ? item.quantity : ['g', 'ml'].includes(item.unit.toLowerCase()) ? 10 : Math.min(item.quantity, 1);
         const change = (delta: number) => { if (!locked && Number.isFinite(numeric)) { triggerHaptic('stepperChange'); controller.change(item.id, String(Math.max(draft.option.source.kind === 'food' ? 0.001 : 0.01, Math.round((numeric + delta * step) * 1000) / 1000)).replace('.', ',')); } };
@@ -113,13 +91,8 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onSav
         <SaveButton state={saving && !state.inlineKey ? 'saving' : 'idle'} disabled={locked || !state.preview || state.previewLoading} label={`Agregar al día${state.preview ? ` · ${shown(state.preview.snapshot.calories)} kcal` : estimate && !state.message ? ` · ${shown(estimate.calories)} kcal` : ''}`} onPress={() => void controller.save()} />
         {draft.option.source.kind === 'suggestion' ? <Button disabled={locked || !state.preview || state.previewLoading} label="Guardar como habitual" onPress={() => void controller.save('saveSuggestion')} variant="quiet" /> : null}
       </View>
-    </>}
-    {state.message && state.message !== 'Comida registrada.' ? <AppText accessibilityRole="alert" selectable>{state.message}</AppText> : null}
-    {state.phase === 'idle' && !state.preview && !state.previewLoading && state.message && state.draft ? <Button label="Reintentar vista previa" onPress={() => void controller.requestPreview()} variant="quiet" /> : null}
-    {state.phase === 'conflict' ? <Surface>{state.truth ? <><AppText variant="headline">La opción cambió</AppText><AppText>{state.truth.name}</AppText><MealNutrients value={state.truth} /><Button label="Revisar la versión actual" onPress={() => { controller.reviewTruth(); void controller.requestPreview(); }} /></> : <AppText>No hay una opción actual confirmada. Conservamos tus cantidades.</AppText>}<Button label="Actualizar fuente" disabled={state.optionsLoading} onPress={() => void controller.loadOptions()} variant="quiet" /><Button label="Elegir otra opción" onPress={() => { controller.back(); }} variant="quiet" /></Surface> : null}
-    {['uncertain', 'confirmed', 'blocked'].includes(state.phase) && !saving ? <Button label={state.intent?.receipt ? 'Actualizar datos confirmados' : 'Comprobar intento guardado'} onPress={() => void controller.recover()} /> : null}
-    {state.intent && !saving ? <Button label="Volver al día · conservar intento" disabled={running} onPress={close} variant="quiet" /> : null}
-    {!draft && !state.intent ? <AppText muted variant="caption">Destino · {displayNutritionDate(state.date)}</AppText> : null}
+    </> : null}
+    {draft ? tail : null}
   </MealSheet>;
 }
-const styles = StyleSheet.create({ total: { flexDirection: 'row', alignItems: 'center', gap: 8 }, add: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' }, addDisc: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' }, stepper: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, paddingVertical: 4, flexShrink: 1 }, step: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, quantity: { fontSize: brandTokens.typeScale.body.fontSize, fontWeight: '600', textAlign: 'center', minWidth: 50, maxWidth: 180, fontVariant: ['tabular-nums'] }, foodQuantity: { justifyContent: 'center', flexWrap: 'wrap' }, chip: { minWidth: 50, minHeight: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' } });
+const styles = StyleSheet.create({ total: { flexDirection: 'row', alignItems: 'center', gap: 8 }, stepper: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, paddingVertical: 4, flexShrink: 1 }, step: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, quantity: { fontSize: brandTokens.typeScale.body.fontSize, fontWeight: '600', textAlign: 'center', minWidth: 50, maxWidth: 180, fontVariant: ['tabular-nums'] }, foodQuantity: { justifyContent: 'center', flexWrap: 'wrap' }, chip: { minWidth: 50, minHeight: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' } });

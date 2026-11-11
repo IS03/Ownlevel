@@ -1,0 +1,28 @@
+{
+  "base": "36d4916",
+  "device": "iPhone 18 Pro Max / iOS 27.0 simulator (not the build simulator), existing OWNLEVEL Dev app",
+  "source": "Real QuickEditor (embedded), QuickController and QuickPinsController with in-memory APIs and storage: 28 saved meals (long uppercase names, composite and manual), no network, no Supabase. Temporary harness (separate Expo Router root on its own Metro: 8100, top safe area added because the real sheet is a pageSheet modal) removed before commit; Metro 8081 and the other simulator untouched; simulator appearance and text size restored afterwards (dark, accessibility-large).",
+  "captures": [
+    { "file": "pins.png", "state": "5 pins, one archived: «Fijadas» in the person's order, the archived place with «Liberar lugar», «Todas las comidas · 28» right under the search" },
+    { "file": "manage.png", "state": "«Administrar»: up / down / unpin on every pinned meal, release on the archived one" },
+    { "file": "all-manage.png", "state": "«Todas las comidas» in manage mode: A–Z sections, letter index, pin toggles, back to «Fijadas»" },
+    { "file": "zero.png", "state": "0 confirmed pins: the A–Z library directly, letter index, «Elegir fijadas»" },
+    { "file": "unavailable.png", "state": "pins unavailable (production today, migration not applied): the library, no pin controls, no claim of zero pins" },
+    { "file": "conflict.png", "state": "conflict from another device: server truth in «Fijadas», «Tu cambio: …», «Aplicar mi cambio» / «Descartar»" },
+    { "file": "uncertain.png", "state": "unconfirmed change from an earlier session: the person's list shown, «Comprobar» / «Dejar de esperar»" },
+    { "file": "pins-dark.png", "state": "dark" },
+    { "file": "zero-dark.png", "state": "dark library" },
+    { "file": "pins-large.png", "state": "accessibility-large content size: names wrap, nothing cut" }
+  ],
+  "consumption": {
+    "method": "Jest (quick-library.test.tsx) with the real controllers: opening «Todas las comidas», searching, clearing and jumping to a letter with 10, 50 and 200 meals",
+    "reads": "1 quick-options GET per opening (unchanged); 0 pins reads; 0 PUT without an explicit pin action",
+    "rendered": "a bounded window of rows (initialNumToRender 30, counted with section headers/footers): at most 30 rows rendered for 50 or 200 meals"
+  },
+  "limits": [
+    "Simulator only: no physical iPhone, no VoiceOver session on device, no Reduce Motion toggle observed",
+    "No harness capture of the long-press action sheet or of a review and return (both covered by Jest)",
+    "The dev client's floating Tools button overlaps the top right in every capture (harness only)",
+    "Dark mode: the sticky letter header's solid background is faintly visible over the sheet glow"
+  ]
+}
