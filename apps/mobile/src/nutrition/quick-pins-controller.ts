@@ -82,7 +82,8 @@ export class QuickPinsController {
   }
   private accept(snapshot: QuickPinsSnapshot) {
     const current = this.state.confirmed;
-    if (current && snapshot.revision < current.revision) return;
+    // The read worked («ok»), but an older revision never replaces the newer confirmed one.
+    if (current && snapshot.revision < current.revision) { this.update({ availability: 'ok' }); return; }
     this.update({ confirmed: snapshot, availability: 'ok' });
   }
   /** Explicit reconciliation through the same quick-options GET (no new endpoint). */

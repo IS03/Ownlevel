@@ -172,6 +172,9 @@ describe('#479 B · quick pins controller', () => {
     // A failed read keeps the confirmed snapshot but says it could not be refreshed.
     s.c.adopt({ status: 'unavailable' });
     expect(s.c.getSnapshot()).toMatchObject({ availability: 'unavailable', confirmed: { revision: 2 } });
+    // A good read with an older revision: the read worked («ok»), the newer confirmed truth stays.
+    s.c.adopt(ok(snap(1, [ID(9)])));
+    expect(s.c.getSnapshot()).toMatchObject({ availability: 'ok', confirmed: { revision: 2 } });
     // An older reload answering after a newer one is ignored.
     let releaseOld!: (v: Awaited<ReturnType<QuickPinsApi['read']>>) => void;
     s.api.read.mockImplementationOnce(() => new Promise(resolve => { releaseOld = resolve; })).mockResolvedValueOnce({ status: 'ok', data: options(ok(snap(5, [ID(5)]))), meta });

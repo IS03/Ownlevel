@@ -26,6 +26,8 @@ export function useQuickPinsController(client: MobileApiClient | null, userId: s
   const options = quick?.options ?? null, failed = quick?.optionsError ?? false;
   // The same GET answer, once per new answer: no request of its own.
   useEffect(() => { if (controller && options) controller.adopt(options.pins); }, [controller, options]);
-  useEffect(() => { if (controller && failed && !options) controller.adopt({ status: 'unavailable' }); }, [controller, failed, options]);
+  // A failed GET keeps Rápido's previous options (and so the last confirmed pins, still valid for CAS) but sets optionsError:
+  // the pins were not refreshed, whether or not older options are still on screen. The next successful answer restores «ok».
+  useEffect(() => { if (controller && failed) controller.adopt({ status: 'unavailable' }); }, [controller, failed]);
   return controller && current ? current : null;
 }

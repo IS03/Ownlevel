@@ -40,6 +40,49 @@ describe('#479 B · pins hook: the quick-options answer Rápido already has, one
     expect(client.read).not.toHaveBeenCalled(); expect(client.request).not.toHaveBeenCalled();
     view.unmount();
   });
+  it('a failed GET that keeps the previous options marks the pins unavailable, keeps revision N for CAS, and the next good GET restores «ok» without going back', async () => {
+    const N = 4;
+    await AsyncStorage.setItem(quickPinsStorageKey('a'), JSON.stringify({ version: 1, intent: { savedMealIds: [ID(1), ID(2)], expectedRevision: N, idempotencyKey: 'pins-a-pending' }, base: snap(N, [ID(1)]) }));
+    const lost = { status: 'unavailable' as const, reason: 'network' as const, meta: { ...meta, httpStatus: null, outcome: 'unavailable' as const } };
+    const options = jest.fn<QuickApi['options']>()
+      .mockResolvedValueOnce({ status: 'ok', data: withPins({ status: 'ok', ...snap(N, [ID(1)]) }), meta })
+      .mockResolvedValueOnce(lost)
+      .mockResolvedValueOnce({ status: 'ok', data: withPins({ status: 'ok', ...snap(N - 1, [ID(9)]) }), meta })
+      .mockResolvedValueOnce(lost)
+      .mockResolvedValueOnce({ status: 'ok', data: withPins({ status: 'ok', ...snap(N + 1, [ID(1), ID(2)]) }), meta });
+    // The real Rápido controller: it keeps its previous options when a GET fails and sets optionsError.
+    const quick = new QuickController({ options, preview: jest.fn<QuickApi['preview']>(), confirm: jest.fn<QuickApi['confirm']>(), read: jest.fn<QuickApi['read']>() },
+      new QuickIntentRepository({ getItem: async () => null, setItem: async () => undefined, removeItem: async () => undefined }, 'a'), () => {});
+    const client = { read: jest.fn(), request: jest.fn() } as unknown as MobileApiClient;
+    const view = renderHook<ReturnType<typeof useQuickPinsController>, { quick: ReturnType<QuickController['getSnapshot']> }>(
+      ({ quick: state }) => useQuickPinsController(client, 'a', state), { initialProps: { quick: quick.getSnapshot() } });
+    const load = async () => { await act(async () => { await quick.loadOptions(); }); view.rerender({ quick: quick.getSnapshot() }); };
+    const pins = () => view.result.current!.state;
+
+    // 1. A successful GET at revision N.
+    await load();
+    await waitFor(() => expect(pins()).toMatchObject({ availability: 'ok', confirmed: { revision: N } }));
+    const confirmedOptions = quick.getSnapshot().options;
+    // 2. A failed GET: Rápido keeps the same options object and sets optionsError.
+    await load();
+    expect(quick.getSnapshot()).toMatchObject({ optionsError: true }); expect(quick.getSnapshot().options).toBe(confirmedOptions);
+    // 3. Unavailable, revision N kept for CAS, never an empty list, the pending intent untouched.
+    await waitFor(() => expect(pins().availability).toBe('unavailable'));
+    expect(pins().confirmed).toEqual(snap(N, [ID(1)]));
+    expect(pins()).toMatchObject({ phase: 'uncertain', intent: { intent: { idempotencyKey: 'pins-a-pending' } } });
+    // 4. A successful GET restores «ok»; one with an older revision does not move the confirmed truth back.
+    await load();
+    await waitFor(() => expect(pins().availability).toBe('ok'));
+    expect(pins().confirmed).toEqual(snap(N, [ID(1)]));
+    await load();
+    await waitFor(() => expect(pins().availability).toBe('unavailable'));
+    await load();
+    await waitFor(() => expect(pins()).toMatchObject({ availability: 'ok', confirmed: snap(N + 1, [ID(1), ID(2)]) }));
+    expect(pins().intent?.intent.idempotencyKey).toBe('pins-a-pending');
+    expect(JSON.parse((await AsyncStorage.getItem(quickPinsStorageKey('a')))!).intent.idempotencyKey).toBe('pins-a-pending');
+    expect(options).toHaveBeenCalledTimes(5); expect(client.read).not.toHaveBeenCalled(); expect(client.request).not.toHaveBeenCalled();
+    view.unmount(); quick.dispose(); await AsyncStorage.clear();
+  });
   it('restores an unconfirmed pins intent only for its own account', async () => {
     await AsyncStorage.setItem(quickPinsStorageKey('a'), JSON.stringify({ version: 1, intent: { savedMealIds: [ID(1)], expectedRevision: 0, idempotencyKey: 'pins-a-1' }, base: snap(0, []) }));
     const client = { read: jest.fn(), request: jest.fn() } as unknown as MobileApiClient;
