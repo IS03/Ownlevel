@@ -37,7 +37,9 @@ export function buildQuickOptions(raw: unknown) {
     const parsed = parseQuickOptions({ today, saved: { status: 'unavailable' }, suggested: { status: 'ok', items } });
     return parsed?.suggested ?? { status: 'unavailable' };
   }
-  return parseQuickOptions({ today: raw.today, saved: section(raw.saved, 'saved'), suggested: section(raw.suggested, 'suggestion') });
+  // #479: pins pass through the contract parser, which turns an absent (database not yet expanded) or invalid section into
+  // «unavailable» on its own: saved and suggested never depend on them.
+  return parseQuickOptions({ today: raw.today, saved: section(raw.saved, 'saved'), suggested: section(raw.suggested, 'suggestion'), pins: raw.pins });
 }
 export async function nutritionQuickResponse(request: Request, mode: 'options' | 'preview' | 'confirm', date?: string) {
   let status = 503; let body: unknown = { error: 'DATA_UNAVAILABLE' };
