@@ -23,7 +23,7 @@ import type { FeelingsPort } from '../../../../src/lib/mobile-api/training-feeli
 import { RecordedTrainingFeelings } from './recorded-training-feelings';
 import { useMobileAuth } from '@/auth';
 import type { ExerciseConfigurationJournal } from '@/api/training-exercise-configuration';
-import { SessionVariants, useExerciseConfigurations } from './exercise-variant';
+import { useExerciseConfigurations } from './exercise-variant';
 
 export type CompletedSessionApi = {
   feelings?: FeelingsPort['read'];
@@ -117,9 +117,10 @@ export function CompletedSessionScreen({ api, sessionId, initialDetail, finished
     {notice ? <Surface accessibilityRole="alert"><AppText style={{ color: notice.tone === 'danger' ? colors.danger : colors.text }} variant="caption">{notice.text}</AppText></Surface> : null}
     {pendingKey || discarding ? <Button label={discarding ? 'Eliminando…' : 'Reintentar eliminación'} variant="quiet" disabled={discarding} onPress={() => void runDiscard()} /> : null}
   </View> : null;
+  // #475: recorded feelings stay in the summary; variants move after the exercises, folded, through the same journal.
   return <>{menu}<CompletedSessionView initialExerciseId={sourceExerciseId} detail={detail} finished={finished} readSummary={api.summary} onHome={onHome} onTraining={onTraining} actions={actions}
-    extraSummary={<>{api.feelings ? <RecordedTrainingFeelings key={sessionId} read={api.feelings} /> : null}
-      {configurations ? <SessionVariants journal={configurations} exercises={detail.exercises} editable={completed && !discarding} /> : null}</>}
+    extraSummary={api.feelings ? <RecordedTrainingFeelings key={sessionId} read={api.feelings} /> : null}
+    variants={configurations ? { journal: configurations, editable: completed && !discarding } : undefined}
     banner={<>{returnHeader}{state.stale ? <Surface><AppText muted variant="caption">No se pudo actualizar. Mostramos la última lectura confirmada.</AppText></Surface> : null}</>}
     onOpenExercise={exerciseId => router.push(`/(tabs)/train/history/exercise/${exerciseId}${detail.session.routineId ? `?routineId=${encodeURIComponent(detail.session.routineId)}` : ''}`)} /></>;
 }

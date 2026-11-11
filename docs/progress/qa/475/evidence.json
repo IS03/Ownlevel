@@ -1,0 +1,28 @@
+{
+  "base": "141aa2ed92ea486912d577403d3408a57d99c0c8",
+  "device": "iPhone 18 Pro Max / iOS 27.0 simulator (not the build simulator), existing OWNLEVEL Dev app",
+  "source": "Real CompletedSessionScreen with an in-memory session (PULL, 12 exercises, 8 muscle groups, 1 record) and an in-memory ExerciseConfigurationJournal (no network, no Supabase); temporary harness (separate Expo Router root on its own Metro: 8098) removed before commit; Metro 8081 and the other simulator untouched; simulator appearance and text size restored afterwards (dark, accessibility-large)",
+  "captures": [
+    { "case": "after-light-top", "state": "summary first: hero, context, three main muscle groups and «+ 5 grupos más», exercises" },
+    { "case": "after-light-bottom", "state": "end of the scroll: «+ 8 ejercicios más», «Variantes de ejercicios · 2 registradas» folded, «Volver a Entrenar»" },
+    { "case": "after-muscles-all", "state": "all eight groups in the same order, «Mostrar menos»" },
+    { "case": "after-notice-unconfirmed", "state": "write without confirmation: notice above the muscles with Reintentar (same key) and Ver variantes" },
+    { "case": "after-review-variants-open", "state": "after «Ver variantes»: section open and scrolled to its header; the unconfirmed row keeps its own Reintentar" },
+    { "case": "after-notice-readfail", "state": "failed read with nothing saved: notice with «Volver a leer» only" },
+    { "case": "after-notice-conflict", "state": "conflict: notice with the saved-value message, «Volver a leer» and «Ver variantes»" },
+    { "case": "after-three-exercises", "state": "3 exercises, 2 groups: the whole summary in one screen, no muscle toggle" },
+    { "case": "after-dark-top", "state": "dark theme" },
+    { "case": "after-large-text-top", "state": "accessibility-large content size" }
+  ],
+  "consumption": {
+    "method": "Jest (history-screens #475): the journal's read runs once when the screen opens; opening the section, toggling muscles or exercises adds no read and no write; only an explicit «Volver a leer» or «Reintentar» calls the existing journal actions",
+    "reads": "unchanged: same detail and summary reads, same single variants read",
+    "writes": "none added"
+  },
+  "limits": [
+    "Simulator only: no physical iPhone, no VoiceOver session on device, no native Reduce Motion toggle observed",
+    "The dev client's floating Tools button overlaps the top right in every capture (harness only)",
+    "No glass tab bar in the harness: overlap with it is covered by ScrollScreen's automatic insets, not observed here",
+    "No before captures: the issue's own private QA screenshots show the previous state"
+  ]
+}

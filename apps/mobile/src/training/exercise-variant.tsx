@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { Keyboard, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { useEffect, useMemo, useState, useSyncExternalStore, type Ref } from 'react';
+import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppIcon, AppSheet, AppText, Button, Chip, TextField, spacing, useAppSheetDismiss, useOwnlevelTheme } from '@/design-system';
+import Animated, { FadeIn } from 'react-native-reanimated';
+import { AppIcon, AppSheet, AppText, brandTokens, Button, Chip, Surface, TextField, spacing, useAppSheetDismiss, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import type { MobileApiClient } from '@/api/client';
 import { CONFIGURATION_AFTER_NOTE, CONFIGURATION_HINT, CONFIGURATION_LABEL_MAX, CONFIGURATION_MIXED_NOTE, ExerciseConfigurationJournal, exerciseConfigurationApi, normalizeConfigurationLabel, sameConfiguration,
   type ConfigurationValue, type ConfigurationView, type PreviousConfiguration } from '@/api/training-exercise-configuration';
@@ -98,21 +99,93 @@ function VariantForm({ name, view, onSave }: { name: string; view: Configuration
   </View>;
 }
 
-/** Completed session: the same rows, to add or fix a variant afterwards. It says so, and it is never read as captured live. */
-export function SessionVariants({ journal, exercises, editable }: { journal: ExerciseConfigurationJournal; exercises: readonly { id: string; nameSnapshot: string }[]; editable: boolean }) {
-  useSyncExternalStore(journal.subscribe, journal.getSnapshot, journal.getSnapshot);
-  if (!exercises.length) return null;
-  return <View style={styles.section} testID="session-variants">
-    <AppText accessibilityRole="header" variant="headline">Variantes</AppText>
+type SessionExercises = readonly { id: string; nameSnapshot: string }[];
+
+function VariantRows({ journal, exercises, editable }: { journal: ExerciseConfigurationJournal; exercises: SessionExercises; editable: boolean }) {
+  return <>
     <AppText muted variant="footnote">{CONFIGURATION_HINT} {CONFIGURATION_AFTER_NOTE}</AppText>
     {exercises.map(exercise => <View key={exercise.id}>
       <AppText variant="subheadline">{exercise.nameSnapshot}</AppText>
       <ExerciseVariantRow journal={journal} sessionExerciseId={exercise.id} name={exercise.nameSnapshot} editable={editable} />
     </View>)}
+  </>;
+}
+
+/** Completed session: the same rows, to add or fix a variant afterwards. It says so, and it is never read as captured live. */
+export function SessionVariants({ journal, exercises, editable }: { journal: ExerciseConfigurationJournal; exercises: SessionExercises; editable: boolean }) {
+  useSyncExternalStore(journal.subscribe, journal.getSnapshot, journal.getSnapshot);
+  if (!exercises.length) return null;
+  return <View style={styles.section} testID="session-variants">
+    <AppText accessibilityRole="header" variant="headline">Variantes</AppText>
+    <VariantRows journal={journal} exercises={exercises} editable={editable} />
+  </View>;
+}
+
+type JournalSnapshot = ReturnType<ExerciseConfigurationJournal['getSnapshot']>;
+/** What a folded section must never hide (#475): a write waiting for confirmation, a failed read, a conflict or a refused write. */
+export type VariantsAttention = { message: string; retry: boolean; reread: boolean; review: boolean };
+
+/**
+ * Only the journal's own states, and only the recovery each one already has: the same replay for an unconfirmed write
+ * (same key, never a second attempt), a read for a failed one, the saved value for a conflict. Nothing while a read or write is
+ * in flight: it settles into one of these or into a confirmed value.
+ */
+export function variantsAttention(snapshot: JournalSnapshot): VariantsAttention | null {
+  if (!snapshot.ready || snapshot.busy) return null;
+  if (snapshot.pending) return { message: snapshot.error ?? 'Variante sin confirmar.', retry: true, reread: false, review: true };
+  if (snapshot.error) return { message: snapshot.error, retry: false, reread: true, review: snapshot.server !== null };
+  return null;
+}
+
+/** Outside the folded section: what needs the person's attention, with the existing action to resolve it. */
+export function SessionVariantsNotice({ journal, onReview }: { journal: ExerciseConfigurationJournal; onReview: () => void }) {
+  const { colors } = useOwnlevelTheme();
+  const snapshot = useSyncExternalStore(journal.subscribe, journal.getSnapshot, journal.getSnapshot);
+  const attention = variantsAttention(snapshot);
+  if (!attention) return null;
+  return <Surface testID="session-variants-notice" style={styles.notice}>
+    <View style={styles.noticeText}>
+      <AppIcon name="filter" color={colors.textMuted} size={17} />
+      <AppText accessibilityLiveRegion="polite" variant="footnote" style={styles.flex}>{attention.message}</AppText>
+    </View>
+    {attention.retry || attention.reread || attention.review ? <View style={styles.noticeActions}>
+      {attention.retry ? <Button disabled={snapshot.busy} label="Reintentar" onPress={() => void journal.retry()} variant="quiet" /> : null}
+      {attention.reread ? <Button disabled={snapshot.busy} label="Volver a leer" onPress={() => void journal.refresh()} variant="quiet" /> : null}
+      {attention.review ? <Button label="Ver variantes" onPress={onReview} variant="quiet" /> : null}
+    </View> : null}
+  </Surface>;
+}
+
+/**
+ * #475: variants are an optional, secondary adjustment. Folded by default with what is already recorded counted, never
+ * what is missing (an unrecorded variant is not a pending task). Opening only shows rows of the journal already read.
+ */
+export function SessionVariantsSection({ journal, exercises, editable, open, onToggle, headerRef }: {
+  journal: ExerciseConfigurationJournal; exercises: SessionExercises; editable: boolean; open: boolean; onToggle: () => void; headerRef?: Ref<View>;
+}) {
+  const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
+  const snapshot = useSyncExternalStore(journal.subscribe, journal.getSnapshot, journal.getSnapshot);
+  if (!exercises.length) return null;
+  const recorded = snapshot.server ? exercises.filter(exercise => journal.view(exercise.id).value !== null).length : 0;
+  const status = recorded ? `${recorded} ${recorded === 1 ? 'registrada' : 'registradas'}` : 'Opcional';
+  return <View style={styles.section} testID="session-variants">
+    <Pressable ref={headerRef} accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`Variantes de ejercicios. ${status}`}
+      onPress={() => { haptics.selection(); onToggle(); }} style={({ pressed }) => [styles.toggle, pressed && { opacity: 0.6 }]} testID="session-variants-toggle">
+      <View style={styles.flex}>
+        <AppText variant="headline">Variantes de ejercicios</AppText>
+        <AppText muted numeric variant="footnote" testID="session-variants-status">{status}</AppText>
+      </View>
+      <View style={open ? styles.flipped : null}><AppIcon name="chevronDown" color={colors.textMuted} size={17} /></View>
+    </Pressable>
+    {open ? <Animated.View entering={FadeIn.duration(reduced ? brandTokens.motion.duration.fast : brandTokens.motion.duration.base)} style={styles.section} testID="session-variants-rows">
+      <VariantRows journal={journal} exercises={exercises} editable={editable} />
+    </Animated.View> : null}
   </View>;
 }
 
 const styles = StyleSheet.create({
+  notice: { gap: spacing.xs }, noticeText: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm }, noticeActions: { flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.sm },
+  toggle: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 44 }, flipped: { transform: [{ rotate: '180deg' }] },
   flex: { flex: 1 }, row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 50 },
   content: { padding: spacing.lg, gap: spacing.md }, header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }, section: { gap: spacing.sm },
