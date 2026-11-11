@@ -14,7 +14,7 @@ const option = (kind: 'saved' | 'suggestion', id: string): QuickOption => ({
   source: { kind, id, version: 'a'.repeat(64) }, name: id, description: null, templateType: null, items: [],
   calories: 1, proteinG: null, carbsG: null, fatG: null, useCount: null, lastUsedDate: null,
 });
-const options: QuickOptions = { today: '2026-10-10', saved: { status: 'ok', items: [] }, suggested: { status: 'ok', items: [option('suggestion', ID)] } };
+const options: QuickOptions = { today: '2026-10-10', saved: { status: 'ok', items: [] }, suggested: { status: 'ok', items: [option('suggestion', ID)] }, pins: { status: 'ok', revision: 0, items: [] } };
 const baseState = { phase: 'idle', open: false, date: null, options: null, optionsLoading: false, optionsError: false, draft: null, previousDraft: null,
   preview: null, previewLoading: false, intent: null, truth: null, message: null, errors: {} } as QuickState;
 

@@ -9,8 +9,22 @@ export type QuickNutrients = { calories: number | null; proteinG: number | null;
 export type QuickItem = { id: string; label: string; quantity: number; unit: string };
 export type QuickOption = QuickNutrients & { source: QuickSource; name: string; description: string | null;
   templateType: 'manual' | 'composite' | null; items: QuickItem[]; useCount: number | null; lastUsedDate: string | null };
-export type QuickOptions = { today: string; saved: QuickSection; suggested: QuickSection };
+export type QuickOptions = { today: string; saved: QuickSection; suggested: QuickSection; pins: QuickPins };
 export type QuickSection = { status: 'ok'; items: QuickOption[] } | { status: 'unavailable' };
+/**
+ * #479: the person's pinned saved meals, in their order (0–6). Each id says what it is now: `active` (offered in Rápido),
+ * `archived` (kept in its place, not offered, back when restored) or `deleted` (kept until the person releases the place).
+ * Revision 0 with no items is a real «no pins yet»; `unavailable` (unread, incompatible or invalid) is never shown as zero.
+ */
+export type QuickPinState = 'active' | 'archived' | 'deleted';
+export type QuickPinItem = { id: string; state: QuickPinState };
+export type QuickPinsSnapshot = { revision: number; items: QuickPinItem[] };
+export type QuickPins = ({ status: 'ok' } & QuickPinsSnapshot) | { status: 'unavailable' };
+export const QUICK_PINS_MAX = 6;
+/** PUT /nutrition/quick-pins: the whole ordered list, against the revision the app last read. */
+export type QuickPinsWrite = { savedMealIds: string[]; expectedRevision: number; idempotencyKey: string };
+export type QuickPinsConflict = { error: 'QUICK_PINS_CHANGED' | 'QUICK_PIN_UNAVAILABLE' | 'IDEMPOTENCY_KEY_REUSED'; message: string;
+  /** Server truth at the time of the refusal, when the server could read it. */ current: QuickPinsSnapshot | null };
 export type QuickSnapshot = QuickNutrients & { calories: number; title: string | null; description: string | null;
   precision: 'catalog' | 'label' | 'estimated' | 'historical' | null; contextType: string | null; sourceNote: string | null };
 export type QuickPreview = { status: 'preview'; selection: QuickSelection; snapshot: QuickSnapshot; items: (QuickItem & QuickNutrients)[] };
@@ -89,7 +103,39 @@ export function parseQuickOptions(v: unknown): QuickOptions | undefined {
     return items.every(i => i?.source.kind === kind) ? { status: 'ok', items: items as QuickOption[] } : undefined;
   }
   const saved = section(v.saved, 'saved'), suggested = section(v.suggested, 'suggestion');
-  return saved && suggested ? { today: v.today, saved, suggested } : undefined;
+  // Pins are independent: absent (older server) or invalid is «unavailable», and never takes saved or suggested down.
+  return saved && suggested ? { today: v.today, saved, suggested, pins: parseQuickPins(v.pins) } : undefined;
+}
+const exactKeys = (v: Record<string, unknown>, keys: string[]) => Object.keys(v).length === keys.length && keys.every(k => Object.hasOwn(v, k));
+const revisionOf = (v: unknown): v is number => Number.isSafeInteger(v) && Number(v) >= 0;
+export function parseQuickPinsSnapshot(v: unknown): QuickPinsSnapshot | undefined {
+  if (!record(v) || !exactKeys(v, ['revision', 'items']) || !revisionOf(v.revision) || !Array.isArray(v.items) || v.items.length > QUICK_PINS_MAX) return undefined;
+  const items: QuickPinItem[] = [];
+  for (const raw of v.items) {
+    if (!record(raw) || !exactKeys(raw, ['id', 'state']) || !mealUuid(raw.id) || !['active', 'archived', 'deleted'].includes(String(raw.state))) return undefined;
+    items.push({ id: raw.id.toLowerCase(), state: raw.state as QuickPinState });
+  }
+  // Revision 0 is «never written»: it has no pins.
+  if (new Set(items.map(i => i.id)).size !== items.length || v.revision === 0 && items.length) return undefined;
+  return { revision: v.revision, items };
+}
+export function parseQuickPins(v: unknown): QuickPins {
+  if (!record(v) || v.status !== 'ok' || !exactKeys(v, ['status', 'revision', 'items'])) return { status: 'unavailable' };
+  const snapshot = parseQuickPinsSnapshot({ revision: v.revision, items: v.items });
+  return snapshot ? { status: 'ok', ...snapshot } : { status: 'unavailable' };
+}
+export function parseQuickPinsWrite(v: unknown): QuickPinsWrite | undefined {
+  if (!record(v) || !exactKeys(v, ['savedMealIds', 'expectedRevision', 'idempotencyKey']) || !Array.isArray(v.savedMealIds)
+    || v.savedMealIds.length > QUICK_PINS_MAX || !v.savedMealIds.every(mealUuid) || !revisionOf(v.expectedRevision)
+    || typeof v.idempotencyKey !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(v.idempotencyKey)) return undefined;
+  const savedMealIds = (v.savedMealIds as string[]).map(id => id.toLowerCase());
+  return new Set(savedMealIds).size === savedMealIds.length ? { savedMealIds, expectedRevision: v.expectedRevision, idempotencyKey: v.idempotencyKey } : undefined;
+}
+export function parseQuickPinsConflict(v: unknown): QuickPinsConflict | undefined {
+  if (!record(v) || !exactKeys(v, ['error', 'message', 'current']) || typeof v.message !== 'string'
+    || !['QUICK_PINS_CHANGED', 'QUICK_PIN_UNAVAILABLE', 'IDEMPOTENCY_KEY_REUSED'].includes(String(v.error))) return undefined;
+  const current = v.current === null ? null : parseQuickPinsSnapshot(v.current);
+  return current === undefined ? undefined : { error: v.error as QuickPinsConflict['error'], message: v.message, current };
 }
 export function parseQuickConflict(v: unknown): QuickConflict | undefined {
   return record(v) && typeof v.message === 'string' && ['QUICK_SOURCE_CHANGED','QUICK_SOURCE_UNAVAILABLE','QUICK_SOURCE_UNUSABLE',
