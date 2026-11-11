@@ -14,7 +14,6 @@ import { ReturnToHistoryDay } from '@/history/return-to-day';
 import { ReturnToNutritionChart } from '@/progress/nutrition-chart-navigation';
 import { ReturnToInsights } from '@/insights/return-to-insights';
 import { useDomainDate } from '@/history/use-domain-date';
-import { ProgressReadStatus } from '@/progress/progress-read-status';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
 import { AppText, Button, LoadingState, ScrollScreen, UnavailableState, brandTokens, spacing, usePullRefresh, useOwnlevelTheme } from '@/design-system';
@@ -98,7 +97,6 @@ function NutritionDayView({ revision, date, today, bottomClearance, onSelect, on
       </View>
     </View>
     <NutritionWeek refreshRevision={refreshRevision + revision} date={date} today={today} data={current?.data} onSelect={onSelect} />
-    <ProgressReadStatus state={state} />
     {!current ? state.status === 'loading' ? <LoadingState label="Cargando día nutricional" />
       : <UnavailableState title="No pudimos cargar este día"
         description={state.status === 'auth_required' || state.status === 'unauthorized' ? 'No pudimos confirmar tu sesión.' : 'Revisá la conexión e intentá nuevamente.'}
@@ -106,6 +104,8 @@ function NutritionDayView({ revision, date, today, bottomClearance, onSelect, on
       : <>
         {state.status !== 'ready' ? <View style={styles.header}>
           <AppText accessibilityRole="alert">No pudimos actualizar. Mostramos la última lectura de esta fecha.</AppText>
+          {/* #466: the age of what is on screen is only said when it matters, i.e. when the refresh failed. A normal day carries no reading line. */}
+          <AppText muted numeric variant="caption" testID="nutrition-stale-reading">Datos confirmados a las {new Date(current.confirmedAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</AppText>
           <Button label="Reintentar" onPress={runRefresh} variant="secondary" />
         </View> : null}
         <NutritionDayContent data={current.data} onAdd={onAdd} addChoices={addChoices} addControl={addControl} highlightedMeal={highlightedMeal} removal={removal} mealActions={state.status === 'ready' ? mealActions : undefined}

@@ -1,0 +1,22 @@
+{
+  "base": "ed7c95b",
+  "device": "iPhone 18 Pro Max / iOS 27.0 simulator (not the build simulator), existing OWNLEVEL Dev app",
+  "source": "Real QuickEditor (QuickController) and FoodAddPicker (FoodController) with in-memory data (8 saved meals, 8 foods, long uppercase names, no network, no Supabase); temporary harness (separate Expo Router root on its own Metro: 8099) removed before commit; Metro 8081 and the other simulator untouched; simulator appearance and text size restored afterwards (dark, accessibility-large). «Before» frames use main's quick-editor.tsx and food-add-picker.tsx with the same harness.",
+  "pairs": [
+    { "case": "quick (light)", "before": "before-quick.png", "after": "after-quick.png", "state": "Rápido: regular name, 13 pt macros, secondary kcal, 36 pt disc" },
+    { "case": "foods (light)", "before": "before-foods.png", "after": "after-foods.png", "state": "Alimento: regular name, 13 pt macros, 15 pt secondary serving · kcal" },
+    { "case": "quick (accessibility-large)", "before": "before-quick-large.png", "after": "after-quick-large.png", "state": "large text: names wrap, nothing is cut" }
+  ],
+  "afterOnly": ["after-quick-dark.png", "after-foods-dark.png", "after-foods-large.png"],
+  "consumption": {
+    "method": "Jest: quick-editor.test.tsx 'keeps the pending and added states, and one + costs the same single write as before' and day-screen.test.tsx '#466' cases",
+    "quickAdd": { "confirmCalls": 1, "dayRereadsAfterWrite": 1, "optionReadsAdded": 0 },
+    "dayScreen": "the reading line is removed from the render only: same resource, same timestamps, same refresh; no read or write added or removed"
+  },
+  "limits": [
+    "Simulator only: no physical iPhone, no VoiceOver session on device",
+    "The Nutrición day screen (#466) has no harness capture: its change is the removal of a line, covered by Jest (normal, revalidating, refresh failed, nothing confirmed)",
+    "The dev client's floating Tools button overlaps the top right in every capture (harness only)",
+    "At accessibility-large the saved-meal names wrap to 4–5 lines in Rápido (the name column shares the row with kcal and the +): same behavior as before, unchanged here"
+  ]
+}

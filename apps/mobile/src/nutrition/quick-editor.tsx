@@ -59,13 +59,17 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onSav
         const key = `${option.source.kind}:${option.source.id}`, added = state.added?.[key], pending = state.inlineKey === key;
         return <View key={key} style={[shared.row, { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
           <View style={shared.text}><Pressable accessibilityRole="button" accessibilityLabel={`Revisar ${option.name}`} disabled={locked} onPress={() => controller.choose(option)} style={{ minHeight: 44, justifyContent: 'center' }}>
-            <AppText variant="headline">{option.name}</AppText>
+            {/* #467: the same weights as the design system's list rows: a regular name, secondary detail and value. */}
+            <AppText variant="body">{option.name}</AppText>
             {/* An added option keeps its macros; the check says it is in the day, and undoing happens from the day. */}
-            <AppText muted numeric variant="caption">{`P ${shown(option.proteinG)} · C ${shown(option.carbsG)} · G ${shown(option.fatG)}${option.items.length ? ` · ${option.items.length} ingredientes` : ''}`}</AppText>
+            <AppText muted numeric variant="footnote">{`P ${shown(option.proteinG)} · C ${shown(option.carbsG)} · G ${shown(option.fatG)}${option.items.length ? ` · ${option.items.length} ingredientes` : ''}`}</AppText>
           </Pressable></View>
-          <View style={{ alignItems: 'flex-end', gap: 2 }}><AppText numeric variant="subheadline">{shown(option.calories)} kcal</AppText>{option.useCount !== null ? <AppText muted variant="caption">{option.useCount} veces</AppText> : null}</View>
-          <Pressable accessibilityRole="button" accessibilityLabel={added ? `${option.name} agregado` : `Agregar ${option.name}`} accessibilityState={{ disabled: locked || !!added, busy: pending }} disabled={locked || !!added} onPress={() => { void controller.addInline(option); }} style={[styles.add, { backgroundColor: added ? colors.primary : colors.brandSubtle }]}>
-            {pending ? <ActivityIndicator color={colors.primary} /> : <AppIcon name={added ? 'checkmark' : 'plus'} size={20} color={added ? colors.onPrimary : colors.primary} />}
+          <View style={{ alignItems: 'flex-end', gap: 2 }}><AppText muted numeric variant="subheadline">{shown(option.calories)} kcal</AppText>{option.useCount !== null ? <AppText muted variant="caption">{option.useCount} veces</AppText> : null}</View>
+          {/* The touch target stays 44 × 44 pt; only the disc drawn inside it is smaller. */}
+          <Pressable accessibilityRole="button" accessibilityLabel={added ? `${option.name} agregado` : `Agregar ${option.name}`} accessibilityState={{ disabled: locked || !!added, busy: pending }} disabled={locked || !!added} onPress={() => { void controller.addInline(option); }} style={styles.add} testID={`quick-add-${key}`}>
+            <View style={[styles.addDisc, { backgroundColor: added ? colors.primary : colors.brandSubtle }]} testID="quick-add-disc">
+              {pending ? <ActivityIndicator color={colors.primary} /> : <AppIcon name={added ? 'checkmark' : 'plus'} size={20} color={added ? colors.onPrimary : colors.primary} />}
+            </View>
           </Pressable>
         </View>;
       }) : <AppText muted>{search.trim() ? 'No encontramos comidas con esa búsqueda.' : title === 'Guardadas' ? 'Todavía no tenés comidas guardadas.' : 'Tus comidas frecuentes van a aparecer acá.'}</AppText> : null}
@@ -118,4 +122,4 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onSav
     {!draft && !state.intent ? <AppText muted variant="caption">Destino · {displayNutritionDate(state.date)}</AppText> : null}
   </MealSheet>;
 }
-const styles = StyleSheet.create({ total: { flexDirection: 'row', alignItems: 'center', gap: 8 }, add: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' }, stepper: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, paddingVertical: 4, flexShrink: 1 }, step: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, quantity: { fontSize: brandTokens.typeScale.body.fontSize, fontWeight: '600', textAlign: 'center', minWidth: 50, maxWidth: 180, fontVariant: ['tabular-nums'] }, foodQuantity: { justifyContent: 'center', flexWrap: 'wrap' }, chip: { minWidth: 50, minHeight: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' } });
+const styles = StyleSheet.create({ total: { flexDirection: 'row', alignItems: 'center', gap: 8 }, add: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' }, addDisc: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' }, stepper: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, paddingVertical: 4, flexShrink: 1 }, step: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, quantity: { fontSize: brandTokens.typeScale.body.fontSize, fontWeight: '600', textAlign: 'center', minWidth: 50, maxWidth: 180, fontVariant: ['tabular-nums'] }, foodQuantity: { justifyContent: 'center', flexWrap: 'wrap' }, chip: { minWidth: 50, minHeight: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' } });

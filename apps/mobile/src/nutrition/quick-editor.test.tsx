@@ -1,5 +1,6 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { describe, expect, it, jest } from '@jest/globals';
+import { StyleSheet } from 'react-native';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { QuickEditor } from './quick-editor';
 import { QuickController, type QuickApi } from './quick-controller';
@@ -40,6 +41,50 @@ describe('Native quick editor', () => {
     expect(f.view.queryByLabelText('Cantidad de INGREDIENTE')).toBeNull();
     await act(async () => { fireEvent.press(f.view.getByText('Guardar como habitual')); });
     expect(f.api.confirm).toHaveBeenCalledWith(expect.objectContaining({ operation: 'saveSuggestion' })); expect(f.api.read).not.toHaveBeenCalled();
+  });
+  describe('#467: lighter list rows and a smaller +', () => {
+    const flat = (node: { props: { style?: unknown } }) => StyleSheet.flatten(node.props.style as never) as Record<string, unknown>;
+    async function opened() { const f = fixture(); await act(async () => { await f.c.initialize(); f.c.open(quickDate); }); return f; }
+    it('reads name, macros and kcal at the design system list weights, keeping every figure', async () => {
+      const { view } = await opened();
+      const name = flat(view.getAllByText('PASTA')[0]!), macros = flat(view.getAllByText(/ · C 20 · G 0/)[0]!), kcal = flat(view.getAllByText('300 kcal')[0]!);
+      expect(name).toMatchObject({ fontSize: 17, fontWeight: '400' });
+      expect(macros).toMatchObject({ fontSize: 13, fontWeight: '400' });
+      expect(kcal).toMatchObject({ fontSize: 15, fontWeight: '400' });
+      // The name keeps the primary color; macros and kcal are secondary.
+      expect(macros.color).toBe(kcal.color); expect(name.color).not.toBe(macros.color);
+      expect(view.getByText('3 veces')).toBeTruthy(); expect(view.getAllByText(/1 ingredientes/)).toHaveLength(1);
+    });
+    it('draws a 36 pt disc inside the unchanged 44 × 44 pt touch target', async () => {
+      const { view } = await opened();
+      const add = view.getAllByLabelText('Agregar PASTA')[0]!;
+      expect(flat(add)).toMatchObject({ width: 44, height: 44 });
+      expect(flat(within(add).getByTestId('quick-add-disc'))).toMatchObject({ width: 36, height: 36, borderRadius: 18 });
+    });
+    it('keeps the pending and added states, and one + costs the same single write as before', async () => {
+      const f = await opened();
+      // The re-read day carries the meal this write created: that is what marks the row as added.
+      (f.api.read as jest.Mock<QuickApi['read']>).mockImplementation(async date => {
+        const day = nutritionFixture(date);
+        if (day.nutrition.status === 'ok') day.nutrition.data.meals[0] = { ...day.nutrition.data.meals[0]!, id: quickReceipt.resourceId };
+        return { status: 'ok', data: day, meta };
+      });
+      let release!: (value: Awaited<ReturnType<QuickApi['confirm']>>) => void;
+      (f.api.confirm as jest.Mock<QuickApi['confirm']>).mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+      const reads = (f.api.read as jest.Mock).mock.calls.length, optionReads = (f.api.options as jest.Mock).mock.calls.length;
+      await act(async () => { fireEvent.press(f.view.getAllByLabelText('Agregar PASTA')[0]!); });
+      await waitFor(() => expect(f.api.confirm).toHaveBeenCalledTimes(1));
+      // In flight: the one being added is busy, every other + is locked, nothing can send a second write.
+      const states = f.view.getAllByLabelText('Agregar PASTA').map(button => button.props.accessibilityState);
+      expect(states.some((state: { busy?: boolean }) => state.busy)).toBe(true); expect(states.every((state: { disabled?: boolean }) => state.disabled)).toBe(true);
+      await act(async () => { release({ status: 'ok', data: quickReceipt, meta }); });
+      const added = await f.view.findByLabelText('PASTA agregado');
+      expect(added.props.accessibilityState).toMatchObject({ disabled: true });
+      expect(flat(added)).toMatchObject({ width: 44, height: 44 });
+      expect(f.api.confirm).toHaveBeenCalledTimes(1);
+      expect((f.api.read as jest.Mock).mock.calls.length - reads).toBe(1);
+      expect((f.api.options as jest.Mock).mock.calls.length).toBe(optionReads);
+    });
   });
   it('foreground/options refresh preserves an open quantity draft', async () => {
     const f = fixture(); await act(async () => { await f.c.initialize(); f.c.open(quickDate); });
