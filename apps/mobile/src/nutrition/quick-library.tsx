@@ -1,4 +1,4 @@
-import { memo, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, Platform, Pressable, ScrollView, SectionList, StyleSheet, View, type AccessibilityActionEvent } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { AppIcon, AppText, Button, LoadingState, Surface, brandTokens, useOwnlevelTheme } from '@/design-system';
@@ -19,6 +19,8 @@ export type QuickPins = { controller: QuickPinsController; state: QuickPinsState
 type Item = { type: 'meal'; key: string; option: QuickOption; pinned: number } | { type: 'gone'; key: string; row: Extract<PinnedRow, { kind: 'unavailable' }> };
 type Section = { key: string; title: string; data: Item[] };
 const LETTERS_FROM = 12;
+/** «Ir a letra»: each pass measures more rows, so the next one lands closer; a few passes land on the letter. */
+const JUMP_PASSES = 8, JUMP_PASS_MS = 80;
 
 const QuickRow = memo(function QuickRow({ option, added, pending, locked, onReview, onAdd, pin }: {
   option: QuickOption; added: boolean; pending: boolean; locked: boolean; onReview: (option: QuickOption) => void; onAdd: (option: QuickOption) => void;
@@ -82,15 +84,18 @@ function PinsNotice({ pins, names }: { pins: NonNullable<QuickPins>; names: (ids
   const { colors } = useOwnlevelTheme();
   const { state, controller } = pins;
   if (state.phase === 'pending') return <View style={styles.inline} testID="quick-pins-pending"><ActivityIndicator color={colors.textMuted} /><AppText muted variant="footnote">Guardando tus fijadas…</AppText></View>;
+  // Only readable pins can be checked or written against: otherwise the change just waits on the device.
+  const readable = state.availability === 'ok';
   if (state.phase === 'uncertain') return <Surface style={styles.notice} testID="quick-pins-uncertain">
     <AppText accessibilityLiveRegion="polite" variant="footnote">{state.message}</AppText>
-    <View style={styles.actions}><Button label="Comprobar" variant="quiet" onPress={() => void controller.recover()} />
+    {readable ? null : <AppText muted variant="footnote">Tus fijadas no están disponibles ahora. El cambio sigue guardado en este dispositivo y se podrá comprobar cuando vuelvan.</AppText>}
+    <View style={styles.actions}>{readable ? <Button label="Comprobar" variant="quiet" onPress={() => void controller.recover()} /> : null}
       {state.error !== 'session' ? <Button label="Dejar de esperar" variant="quiet" onPress={() => void controller.forget()} /> : null}</View>
   </Surface>;
   if (state.phase === 'conflict') return <Surface style={styles.notice} testID="quick-pins-conflict">
     <AppText accessibilityLiveRegion="polite" variant="footnote">{state.message}</AppText>
     {state.wanted ? <AppText muted variant="footnote">Tu cambio: {state.wanted.length ? names(state.wanted) : 'ninguna fijada'}.</AppText> : null}
-    <View style={styles.actions}>{state.wanted ? <Button label="Aplicar mi cambio" variant="quiet" onPress={() => void controller.reapply()} /> : null}
+    <View style={styles.actions}>{state.wanted && readable ? <Button label="Aplicar mi cambio" variant="quiet" onPress={() => void controller.reapply()} /> : null}
       <Button label="Descartar" variant="quiet" onPress={() => controller.dismiss()} /></View>
   </Surface>;
   if (state.phase === 'blocked') return <Surface style={styles.notice} testID="quick-pins-blocked"><AppText accessibilityRole="alert" variant="footnote">{state.message}</AppText></Surface>;
@@ -99,8 +104,10 @@ function PinsNotice({ pins, names }: { pins: NonNullable<QuickPins>; names: (ids
   return null;
 }
 
-export function QuickLibrary({ state, controller, pins, locked, suggestions, onSaved, footer }: {
-  state: QuickState; controller: QuickController; pins: QuickPins; locked: boolean; suggestions: boolean; onSaved?: () => void; footer: ReactNode;
+export function QuickLibrary({ state, controller, pins, locked, suggestions, onSaved, status, footer }: {
+  state: QuickState; controller: QuickController; pins: QuickPins; locked: boolean; suggestions: boolean; onSaved?: () => void;
+  /** What the quick registration needs the person to see or decide (outcome, recovery, conflict): above the rows. */
+  status: ReactNode; footer: ReactNode;
 }) {
   // Optional, like ScrollScreen: a sheet rendered without a provider just skips the bottom inset.
   const { colors } = useOwnlevelTheme(), bottomInset = useContext(SafeAreaInsetsContext)?.bottom ?? 0;
@@ -108,7 +115,11 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
   const [view, setView] = useState<'entry' | 'all'>('entry');
   const [manage, setManage] = useState(false);
   const [more, setMore] = useState(false);
-  const list = useRef<SectionList<Item, Section>>(null), pendingJump = useRef<number | null>(null);
+  const list = useRef<SectionList<Item, Section>>(null);
+  // A letter jump in progress: the section, how many passes it took, whether the last one hit rows that were not measured yet.
+  const jumping = useRef<{ sectionIndex: number; passes: number; failed: boolean; lastY: number } | null>(null), offsetY = useRef(0), jumpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stopJump = useCallback(() => { jumping.current = null; if (jumpTimer.current) clearTimeout(jumpTimer.current); jumpTimer.current = null; }, []);
+  useEffect(() => stopJump, [stopJump]);
   const saved = state.options?.saved.status === 'ok' ? state.options.saved.items : null;
   const pinsState = pins?.state ?? null;
   // Unknown pins (unavailable without a confirmed list, still loading): the library is shown, never an empty pinned section.
@@ -161,20 +172,45 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
   }, [current, more, pinnedIds, pinsState?.confirmed, query, saved, state.options, suggestions]);
 
   const letters = !query && current === 'all' && (saved?.length ?? 0) >= LETTERS_FROM ? sections.filter(s => s.key !== 'suggested') : [];
+  // New sections (another query, a refreshed list): a jump in progress points at rows that are not there anymore.
+  useEffect(() => stopJump, [sections, stopJump]);
+  /**
+   * #479 D1, measured on the iOS simulator: one scrollToLocation does nothing when the letter is below what has been measured
+   * (200 meals: «G» is item 85, 64 measured), and with sticky section headers even the retry ends at the top. So: no sticky
+   * headers, and several passes (80 ms apart) that stop when a pass found everything measured and the offset stopped moving,
+   * or when the person touches the list.
+   */
   const jump = (key: string) => {
     const sectionIndex = sections.findIndex(s => s.key === key);
     if (sectionIndex < 0) return;
-    pendingJump.current = sectionIndex;
-    list.current?.scrollToLocation({ sectionIndex, itemIndex: 0, viewPosition: 0, animated: false });
+    stopJump();
+    jumping.current = { sectionIndex, passes: 0, failed: false, lastY: Number.NaN };
+    function pass() {
+      const job = jumping.current;
+      if (!job) return;
+      job.passes += 1; job.failed = false;
+      list.current?.scrollToLocation({ sectionIndex: job.sectionIndex, itemIndex: 0, viewPosition: 0, animated: false });
+      jumpTimer.current = setTimeout(() => {
+        const now = jumping.current;
+        if (!now) return;
+        if (now.passes >= JUMP_PASSES || (!now.failed && Math.abs(offsetY.current - now.lastY) < 1)) { stopJump(); return; }
+        now.lastY = offsetY.current; pass();
+      }, JUMP_PASS_MS);
+    }
+    pass();
   };
   const toggleManage = () => { haptics.selection(); setManage(value => !value); };
 
   const manageButton = writable ? <Button label={managing ? 'Listo' : pinnedIds.length ? 'Administrar' : 'Elegir fijadas'} variant="quiet" onPress={toggleManage} testID="quick-pins-manage" /> : null;
   const header = <View style={styles.header}>
     <MealSearch label="Buscar en tus comidas" value={search} onChange={setSearch} />
+    {status}
     {state.optionsLoading ? <LoadingState label="Cargando opciones rápidas" /> : null}
     {state.optionsError ? <AppText accessibilityRole="alert">No pudimos actualizar las opciones.</AppText> : null}
     {state.options?.saved.status === 'unavailable' ? <AppText accessibilityRole="alert">No pudimos cargar estas opciones.</AppText> : null}
+    {/* The retry sits next to the error it answers, not after the last row. */}
+    {state.optionsError || state.options?.saved.status === 'unavailable' || (suggestions && state.options?.suggested.status === 'unavailable')
+      ? <Button label="Reintentar opciones" onPress={() => void controller.loadOptions()} variant="quiet" /> : null}
     {pins ? <PinsNotice pins={pins} names={names} /> : null}
     {hasEntry && !query ? current === 'entry'
       ? <Pressable accessibilityRole="button" accessibilityLabel={`Todas las comidas, ${saved!.length}`} onPress={() => { haptics.selection(); setView('all'); }} style={[styles.nav, { backgroundColor: colors.surface }]} testID="quick-all-meals">
@@ -195,8 +231,6 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
   const listFooter = <View style={styles.footer}>
     {suggestions && !query && state.options?.suggested.status === 'ok' && state.options.suggested.items.length > 3 ? <Button label={more ? 'Ver menos' : 'Ver más sugerencias'} variant="quiet" onPress={() => setMore(!more)} /> : null}
     {onSaved && saved?.length ? <Button label="Editar guardadas" variant="quiet" onPress={onSaved} disabled={locked} /> : null}
-    {state.optionsError || state.options?.saved.status === 'unavailable' || (suggestions && state.options?.suggested.status === 'unavailable')
-      ? <Button label="Reintentar opciones" onPress={() => void controller.loadOptions()} variant="quiet" /> : null}
     {footer}
   </View>;
 
@@ -208,14 +242,14 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
     renderSectionHeader={({ section }) => section.key === 'pinned' || section.key === 'results' && !query ? null
       : <View style={[styles.section, { backgroundColor: colors.background }]}><AppText accessibilityRole="header" muted numeric variant="footnote">{section.title}</AppText></View>}
     ListHeaderComponent={header} ListEmptyComponent={empty} ListFooterComponent={listFooter}
-    stickySectionHeadersEnabled={!query} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+    stickySectionHeadersEnabled={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
     // Section headers and footers count as items: 30 is about one screen of rows, whatever the library size.
     initialNumToRender={30} maxToRenderPerBatch={12} windowSize={9}
+    onScroll={event => { offsetY.current = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={32} onScrollBeginDrag={stopJump}
     onScrollToIndexFailed={info => {
-      // Rows have their own heights (long names wrap): go near the letter, then land on it once it is measured.
+      // Rows have their own heights (long names wrap): go near the letter so those rows get measured; the next pass lands on it.
+      if (jumping.current) jumping.current.failed = true;
       list.current?.getScrollResponder()?.scrollTo({ y: info.averageItemLength * info.index, animated: false });
-      const sectionIndex = pendingJump.current;
-      setTimeout(() => { if (sectionIndex !== null) list.current?.scrollToLocation({ sectionIndex, itemIndex: 0, viewPosition: 0, animated: false }); }, 60);
     }}
     contentContainerStyle={{ paddingHorizontal: brandTokens.layout.screenPadding, paddingBottom: Math.max(bottomInset, 12) + brandTokens.layout.screenPadding }} />;
 }

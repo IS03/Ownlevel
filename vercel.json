@@ -80,7 +80,8 @@
       "claude/466-467-nutrition-lists": false,
       "claude/479-quick-pins-a": false,
       "claude/479-quick-pins-b": false,
-      "claude/479-quick-library-c": false
+      "claude/479-quick-library-c": false,
+      "claude/479-d1-regression": false
     }
   }
 }

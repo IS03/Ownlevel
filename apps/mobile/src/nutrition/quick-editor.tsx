@@ -51,17 +51,18 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onSav
     if (controller.dirty()) Alert.alert('¿Descartar ajustes?', 'Podés volver a elegir otra opción.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Descartar', style: 'destructive', onPress: action }]);
     else action();
   };
-  // The quick-registration outcome and recovery (unchanged): under the review, or at the end of the library.
-  const tail = <>
+  // The quick-registration outcome and recovery (unchanged content). Under the review; in the library, at the top of the list
+  // (not its footer): with 200 saved meals the footer is ~200 rows away, while every + is locked waiting for this very answer.
+  const status = <>
     {state.message && state.message !== 'Comida registrada.' ? <AppText accessibilityRole="alert" selectable>{state.message}</AppText> : null}
     {state.phase === 'idle' && !state.preview && !state.previewLoading && state.message && state.draft ? <Button label="Reintentar vista previa" onPress={() => void controller.requestPreview()} variant="quiet" /> : null}
     {state.phase === 'conflict' ? <Surface>{state.truth ? <><AppText variant="headline">La opción cambió</AppText><AppText>{state.truth.name}</AppText><MealNutrients value={state.truth} /><Button label="Revisar la versión actual" onPress={() => { controller.reviewTruth(); void controller.requestPreview(); }} /></> : <AppText>No hay una opción actual confirmada. Conservamos tus cantidades.</AppText>}<Button label="Actualizar fuente" disabled={state.optionsLoading} onPress={() => void controller.loadOptions()} variant="quiet" /><Button label="Elegir otra opción" onPress={() => { controller.back(); }} variant="quiet" /></Surface> : null}
     {['uncertain', 'confirmed', 'blocked'].includes(state.phase) && !saving ? <Button label={state.intent?.receipt ? 'Actualizar datos confirmados' : 'Comprobar intento guardado'} onPress={() => void controller.recover()} /> : null}
     {state.intent && !saving ? <Button label="Volver al día · conservar intento" disabled={running} onPress={close} variant="quiet" /> : null}
-    {!draft && !state.intent ? <AppText muted variant="caption">Destino · {displayNutritionDate(state.date)}</AppText> : null}
   </>;
+  const destination = !draft && !state.intent ? <AppText muted variant="caption">Destino · {displayNutritionDate(state.date)}</AppText> : null;
   // The library is always mounted (hidden during a review), so its query, view, letter and scroll survive the way back.
-  const library = <QuickLibrary state={state} controller={controller} pins={pins} locked={locked} suggestions={suggestions} onSaved={onSaved} footer={draft ? null : tail} />;
+  const library = <QuickLibrary state={state} controller={controller} pins={pins} locked={locked} suggestions={suggestions} onSaved={onSaved} status={draft ? null : status} footer={destination} />;
   return <MealSheet list={library} listHidden={!!draft} title={draft?.option.name ?? 'Rápido'} subtitle={draft ? draft.option.source.kind === 'food' ? `Alimento · ${shown(draft.option.items[0].quantity, 3)} ${draft.option.items[0].unit} = ${shown(draft.option.calories)} kcal` : draft.option.templateType === 'composite' ? `Guardada · ${draft.option.items.length} ingredientes` : 'Ajustar comida' : undefined}
     onClose={draft && !state.intent ? back : close} onDismiss={close} dismissable={!!state.inlineKey || (!state.intent && !controller.dirty())}
     back={!!draft && !state.intent} running={running && !state.inlineKey} embedded={embedded} testID="quick-meal-editor"
@@ -92,7 +93,7 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onSav
         {draft.option.source.kind === 'suggestion' ? <Button disabled={locked || !state.preview || state.previewLoading} label="Guardar como habitual" onPress={() => void controller.save('saveSuggestion')} variant="quiet" /> : null}
       </View>
     </> : null}
-    {draft ? tail : null}
+    {draft ? status : null}
   </MealSheet>;
 }
 const styles = StyleSheet.create({ total: { flexDirection: 'row', alignItems: 'center', gap: 8 }, stepper: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, paddingVertical: 4, flexShrink: 1 }, step: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, quantity: { fontSize: brandTokens.typeScale.body.fontSize, fontWeight: '600', textAlign: 'center', minWidth: 50, maxWidth: 180, fontVariant: ['tabular-nums'] }, foodQuantity: { justifyContent: 'center', flexWrap: 'wrap' }, chip: { minWidth: 50, minHeight: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' } });
