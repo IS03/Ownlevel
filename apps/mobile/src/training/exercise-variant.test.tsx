@@ -4,7 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { ExerciseConfigurationJournal } from '@/api/training-exercise-configuration';
 import type { ConfigurationInput, ConfigurationValue, ConfigurationsResponse } from '../../../../src/lib/mobile-api/training-exercise-configuration-contract';
-import { ExerciseVariantRow, SessionVariants } from './exercise-variant';
+import { ExerciseVariantRow, SessionVariants, variantsAttention } from './exercise-variant';
 
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('@react-native-async-storage/async-storage', () => ({ __esModule: true, default: { getItem: async () => null, setItem: async () => undefined, removeItem: async () => undefined } }));
@@ -72,6 +72,18 @@ describe('optional exercise variant', () => {
     await act(async () => { await journal.refresh(); });
     expect(view.getByText('Variante no disponible por ahora')).toBeTruthy();
     expect(view.queryByText('Registrar')).toBeNull();
+  });
+  it('#475: only an unconfirmed write, a failed read, a conflict or a refused write needs attention outside a folded section', () => {
+    const base = { version: 1 as const, server: null, pending: null, ready: true, busy: false, error: null };
+    const server = read(1, null), pending = { contractVersion: 'training-exercise-configuration/1' as const, sessionExerciseId: PRESS, expectedRevision: 1, value: null, idempotencyKey: 'k' };
+    expect(variantsAttention({ ...base, ready: false, error: 'x' })).toBeNull();
+    expect(variantsAttention({ ...base, server })).toBeNull();
+    // In flight: it settles into a confirmed value or into one of the states below.
+    expect(variantsAttention({ ...base, server, pending, busy: true })).toBeNull();
+    expect(variantsAttention({ ...base, server, pending })).toEqual({ message: 'Variante sin confirmar.', retry: true, reread: false, review: true });
+    expect(variantsAttention({ ...base, error: 'No pudimos leer las variantes. Podés seguir entrenando.' }))
+      .toEqual({ message: 'No pudimos leer las variantes. Podés seguir entrenando.', retry: false, reread: true, review: false });
+    expect(variantsAttention({ ...base, server, error: 'La variante cambió en otro lugar.' })).toEqual({ message: 'La variante cambió en otro lugar.', retry: false, reread: true, review: true });
   });
   it('on a completed session, says a variant was recorded afterwards, and warns when two blocks differ', async () => {
     const second = '93671000-0000-4000-8000-000000000032';

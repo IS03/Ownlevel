@@ -1,8 +1,9 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { AccessibilityInfo, findNodeHandle, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { insightsSessionHref } from '@/insights/navigation';
-import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
+import Animated, { FadeIn, LinearTransition, useAnimatedRef } from 'react-native-reanimated';
+import type { ExerciseConfigurationJournal } from '@/api/training-exercise-configuration';
 import type { SessionDetailDto, SessionFinishedDto } from '@/api/active-session';
 import type { SessionSummaryDto, SessionSummaryLoader } from '@/api/session-summary';
 import { AppIcon, AppText, brandTokens, Button, Heading, ScrollScreen, Surface, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
@@ -13,8 +14,11 @@ import { completedSessionModel } from './completed-session-model';
 import { revisitModel, type RevisitExercise } from './session-revisit-model';
 import { FeelingDots } from './feeling-dots';
 import { PostWorkoutScreen } from './post-workout-screen';
+import { SessionVariantsNotice, SessionVariantsSection } from './exercise-variant';
 
 const FIRST_EXERCISES = 4;
+/** #475: the summary opens with the three groups that took the most completed sets; the rest stay one tap away. */
+const FIRST_MUSCLES = 3;
 
 function ExerciseRow({ exercise, open, first, onToggle, onOpenExercise }: {
   exercise: RevisitExercise; open: boolean; first: boolean; onToggle: () => void; onOpenExercise?: (exerciseId: string) => void;
@@ -67,12 +71,14 @@ function ExerciseRow({ exercise, open, first, onToggle, onOpenExercise }: {
  * SF1 · a closed session seen again. Server truth only; Corregir/Eliminar live in the screen's •••.
  * The comparison with the last time arrives with the summary read and never blocks the session itself.
  */
-export function CompletedSessionView({ detail, finished, onHome, onTraining, onOpenExercise, actions, banner, readSummary, extraSummary, initialExerciseId }: {
+export function CompletedSessionView({ detail, finished, onHome, onTraining, onOpenExercise, actions, banner, readSummary, extraSummary, initialExerciseId, variants }: {
   readSummary?: SessionSummaryLoader;
   /** A chart opens its source exercise, including when the collapsed summary would omit it. */
   initialExerciseId?: string;
   detail: SessionDetailDto; finished: SessionFinishedDto | null; onHome: () => void; onTraining?: () => void;
   onOpenExercise?: (exerciseId: string) => void; actions?: ReactNode; banner?: ReactNode; extraSummary?: ReactNode;
+  /** #367 variants, read once by the screen: a folded section after the exercises, with any recovery shown above it. */
+  variants?: { journal: ExerciseConfigurationJournal; editable: boolean };
 }) {
   const { colors, isDark } = useOwnlevelTheme(), reduced = useReduceMotion(), { fontScale } = useWindowDimensions();
   const [postWorkoutOpen, setPostWorkoutOpen] = useState(Boolean(finished));
@@ -81,6 +87,19 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
   const [summary, setSummary] = useState<SessionSummaryDto>();
   const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set(detail.exercises.filter(e => e.exerciseId === initialExerciseId).map(e => e.id)));
   const [showAll, setShowAll] = useState(false);
+  const [allMuscles, setAllMuscles] = useState(false);
+  const [variantsOpen, setVariantsOpen] = useState(false);
+  const scroll = useAnimatedRef<Animated.ScrollView>();
+  const variantsY = useRef(0), variantsHeader = useRef<View>(null), reviewPending = useRef(false);
+  // A recovery notice opens the section and brings its header (and VoiceOver focus) to it; the rows are already read.
+  // Opening grows the content, so the scroll waits for the section's new layout (a shorter page would clamp it).
+  const goToVariants = () => {
+    reviewPending.current = false;
+    scroll.current?.scrollTo({ y: Math.max(0, variantsY.current - spacing.lg), animated: !reduced });
+    const node = variantsHeader.current ? findNodeHandle(variantsHeader.current) : null;
+    if (node) AccessibilityInfo.setAccessibilityFocus(node);
+  };
+  const reviewVariants = () => { if (variantsOpen) goToVariants(); else { reviewPending.current = true; setVariantsOpen(true); } };
   const sessionId = detail.session.id, version = detail.session.updatedAt;
   useEffect(() => {
     if (!readSummary) return;
@@ -97,9 +116,12 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
   const many = model.exercises.length > FIRST_EXERCISES + 1;
   const shown = many && !showAll ? model.exercises.filter((exercise, index) => index < FIRST_EXERCISES || exercise.status?.kind === 'record' || exercise.exerciseId === initialExerciseId) : model.exercises;
   const top = model.muscles[0]?.sets ?? 0;
+  // Already ordered by completed sets: folding only shortens the list, it never recounts or reorders it.
+  const extraMuscles = model.muscles.length - FIRST_MUSCLES;
+  const muscles = extraMuscles > 0 && !allMuscles ? model.muscles.slice(0, FIRST_MUSCLES) : model.muscles;
   const toggle = (id: string) => setOpenIds(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const fade = FadeIn.duration(reduced ? brandTokens.motion.duration.fast : brandTokens.motion.duration.base);
-  return <ScrollScreen testID={discarded ? 'discarded-session' : 'completed-session'}>
+  return <ScrollScreen scrollRef={scroll} testID={discarded ? 'discarded-session' : 'completed-session'}>
     {banner}
     <View style={styles.header}>
       <AppText muted numeric variant="subheadline">{when}</AppText>
@@ -125,9 +147,10 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
       <AppText muted variant="footnote">Comparación por ejercicio, sensaciones y comidas registradas.</AppText>
     </View> : null}
     {extraSummary}
+    {variants ? <SessionVariantsNotice journal={variants.journal} onReview={reviewVariants} /> : null}
     {model.muscles.length ? <View style={styles.section} testID="revisit-muscles">
       <Heading level={2}>A dónde fue el trabajo</Heading>
-      {model.muscles.map((muscle, index) => {
+      {muscles.map((muscle, index) => {
         const count = `${muscle.sets} ${muscle.sets === 1 ? 'serie' : 'series'}`;
         const bar = <View style={[styles.track, { backgroundColor: colors.surfaceRaised }]}>
           <View style={[styles.fill, { width: `${(muscle.sets / top) * 100}%`, backgroundColor: index === 0 ? colors.primary : colors.brandSubtle }]} />
@@ -140,15 +163,26 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
           <AppText muted numeric style={styles.muscleCount} variant="footnote">{count}</AppText>
         </View>;
       })}
+      {extraMuscles > 0 ? <Pressable accessibilityRole="button" accessibilityState={{ expanded: allMuscles }}
+        accessibilityLabel={allMuscles ? `Mostrar sólo los ${FIRST_MUSCLES} grupos principales` : `Ver ${extraMuscles} ${extraMuscles === 1 ? 'grupo muscular' : 'grupos musculares'} más`}
+        onPress={() => setAllMuscles(value => !value)} style={styles.more} testID="revisit-muscles-toggle">
+        <AppText muted numeric variant="headline">{allMuscles ? 'Mostrar menos' : `+ ${extraMuscles} ${extraMuscles === 1 ? 'grupo' : 'grupos'} más`}</AppText>
+      </Pressable> : null}
     </View> : null}
-    <View style={styles.section}>
+    {/* The rows animate their own moves; the section moves with them, so opening the muscle list never overlaps its heading. */}
+    <Animated.View layout={reduced ? undefined : LinearTransition.duration(brandTokens.motion.duration.base)} style={styles.section}>
       <Heading level={2}>Ejercicios</Heading>
       <View>{shown.map((exercise, index) => <ExerciseRow key={exercise.id} exercise={exercise} first={index === 0} open={openIds.has(exercise.id)}
         onToggle={() => toggle(exercise.id)} onOpenExercise={onOpenExercise} />)}</View>
       {shown.length < model.exercises.length ? <Pressable accessibilityRole="button" onPress={() => setShowAll(true)} style={styles.more} testID="revisit-show-all">
         <AppText muted variant="headline">+ {model.exercises.length - shown.length} {model.exercises.length - shown.length === 1 ? 'ejercicio' : 'ejercicios'} más</AppText>
       </Pressable> : null}
-    </View>
+    </Animated.View>
+    {variants ? <Animated.View layout={reduced ? undefined : LinearTransition.duration(brandTokens.motion.duration.base)} style={styles.variants}
+      onLayout={event => { variantsY.current = event.nativeEvent.layout.y; if (reviewPending.current) goToVariants(); }}>
+      <SessionVariantsSection journal={variants.journal} exercises={detail.exercises} editable={variants.editable}
+        open={variantsOpen} onToggle={() => setVariantsOpen(value => !value)} headerRef={variantsHeader} />
+    </Animated.View> : null}
     {actions}
     {onTraining ? <Button label="Volver a Entrenar" variant="secondary" onPress={onTraining} /> : null}
     {finished && postWorkoutOpen && !discarded ? <PostWorkoutScreen finished={finished} detail={detail} readSummary={readSummary} onHome={() => { setPostWorkoutOpen(false); (onTraining ?? onHome)(); }} onViewSession={() => setPostWorkoutOpen(false)} /> : null}
@@ -171,5 +205,5 @@ const styles = StyleSheet.create({
   set: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: spacing.md, rowGap: spacing.xs, minHeight: 36 }, setNumber: { width: 16 },
   tag: { borderRadius: brandTokens.radius.chip, paddingHorizontal: spacing.sm, paddingVertical: 2 },
   link: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: 44 },
-  more: { minHeight: 44, justifyContent: 'center' },
+  more: { minHeight: 44, justifyContent: 'center' }, variants: { marginTop: spacing.md },
 });

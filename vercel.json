@@ -75,7 +75,8 @@
       "claude/402-p1b4-relations": false,
       "claude/402-p1b5-explore": false,
       "claude/402-p1c1-continuity": false,
-      "claude/402-p1c2-variant-comparability": false
+      "claude/402-p1c2-variant-comparability": false,
+      "claude/475-completed-session-summary": false
     }
   }
 }

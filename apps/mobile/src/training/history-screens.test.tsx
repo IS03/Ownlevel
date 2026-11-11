@@ -10,6 +10,8 @@ import type { TrainingHistorySession } from '@/api/training-history';
 import { MobileApiProvider, useMobileApi as useRealMobileApi } from '@/api/provider';
 import { invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import { OwnlevelThemeProvider } from '@/design-system';
+import { ExerciseConfigurationJournal } from '@/api/training-exercise-configuration';
+import type { ConfigurationValue } from '../../../../src/lib/mobile-api/training-exercise-configuration-contract';
 import { testDetail, testFinished, testExercise } from './active-session-test-fixtures';
 import { CompletedSessionScreen, type CompletedSessionApi } from './history-session-screen';
 import { SessionCorrectionScreen } from './session-correction-screen';
@@ -235,6 +237,140 @@ describe('completed session: correct + discard (M3.4-3)', () => {
     expect(view.getByTestId('discarded-session')).toBeTruthy();
     expect(view.queryByRole('button', { name: 'Corregir sesión' })).toBeNull(); expect(view.queryByRole('button', { name: 'Eliminar sesión' })).toBeNull();
     expect(mockSetOptions).toHaveBeenLastCalledWith({ title: 'Sesión eliminada' });
+  });
+});
+
+describe('#475: completed session as a summary, variants folded', () => {
+  const XID = (n: number) => `56000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  /** `count` exercises over `groups` muscle groups; exercise n has count − n completed sets, so the groups come ordered. */
+  function sessionWith(count: number, groups = count, completed = true): SessionDetailDto {
+    const detail = completedDetail(), base = detail.exercises[0], set = base.payload.sets[0];
+    detail.exercises = Array.from({ length: count }, (_, n) => ({ ...base, id: XID(n), exerciseId: XID(100 + n), order: n + 1, nameSnapshot: `EJ ${n}`,
+      muscleGroupLabelSnapshot: `Grupo ${n % groups}`,
+      payload: { ...base.payload, sets: Array.from({ length: count - n }, (_unused, s) => ({ ...set, setNumber: s + 1, isCompleted: completed, actualWeightKg: 40, actualReps: 8 })) } }));
+    return detail;
+  }
+  type Port = ConstructorParameters<typeof ExerciseConfigurationJournal>[1];
+  function journalFor(detail: SessionDetailDto, values: Record<number, ConfigurationValue> = {}, port: Partial<Port> = {}) {
+    const server = { contractVersion: 'training-exercise-configuration/1' as const, sessionId: detail.session.id, sessionStatus: 'completed' as const,
+      items: detail.exercises.map((exercise, n) => ({ sessionExerciseId: exercise.id, exerciseId: exercise.exerciseId, revision: values[n] ? 1 : 0,
+        value: values[n] ? { ...values[n], recordedPhase: 'after_session' as const } : null, previous: null })) };
+    const read = jest.fn<Port['read']>(port.read ?? (async () => ({ status: 'ok', data: server })));
+    const write = jest.fn<Port['write']>(port.write ?? (async () => ({ status: 'unavailable' })));
+    let keys = 0;
+    const journal = new ExerciseConfigurationJournal({ getItem: async () => null, setItem: async () => undefined }, { read, write }, 'owner', detail.session.id, () => `k-${++keys}`);
+    return { journal, read, write };
+  }
+  async function open(detail: SessionDetailDto, journal?: ExerciseConfigurationJournal) {
+    const view = wrap(<CompletedSessionScreen api={{ detail: jest.fn<CompletedSessionApi['detail']>().mockResolvedValue(ok(detail)), discard: jest.fn<CompletedSessionApi['discard']>() }}
+      sessionId={detail.session.id} initialDetail={detail} onHome={jest.fn()} configurations={journal} />);
+    // The screen's hook starts this read; here the journal is handed in, so the test starts it once.
+    if (journal) await act(async () => { await journal.refresh(); });
+    await flush();
+    return view;
+  }
+  const muscleRows = (view: ReturnType<typeof wrap>) => within(view.getByTestId('revisit-muscles')).queryAllByLabelText(/^Grupo \d+: \d+ series?$/);
+
+  it.each([[0, 0], [1, 1], [3, 3], [9, 3]])('with %i muscle groups shows %i at first, in the same order, and keeps access to all', async (groups, first) => {
+    const detail = groups ? sessionWith(9, groups) : sessionWith(1, 1, false);
+    const view = await open(detail);
+    if (!groups) { expect(view.queryByTestId('revisit-muscles')).toBeNull(); return; }
+    expect(muscleRows(view).map(row => row.props.accessibilityLabel.split(':')[0])).toEqual(Array.from({ length: first }, (_, n) => `Grupo ${n}`));
+    if (groups <= 3) { expect(view.queryByTestId('revisit-muscles-toggle')).toBeNull(); return; }
+    const toggle = view.getByTestId('revisit-muscles-toggle');
+    expect(view.getByText('+ 6 grupos más')).toBeTruthy();
+    expect(toggle.props.accessibilityState.expanded).toBe(false); expect(toggle.props.accessibilityLabel).toBe('Ver 6 grupos musculares más');
+    fireEvent.press(toggle);
+    expect(muscleRows(view)).toHaveLength(9); expect(view.getByLabelText('Grupo 8: 1 serie')).toBeTruthy();
+    expect(view.getByTestId('revisit-muscles-toggle').props.accessibilityState.expanded).toBe(true); expect(view.getByText('Mostrar menos')).toBeTruthy();
+    fireEvent.press(view.getByTestId('revisit-muscles-toggle'));
+    expect(muscleRows(view)).toHaveLength(3);
+  });
+
+  it.each([[0, 0], [1, 1], [4, 4], [12, 4]])('with %i exercises lists %i at first and folds every variant without reading again', async (count, shown) => {
+    const detail = sessionWith(count, Math.min(count, 3) || 1);
+    const { journal, read, write } = journalFor(detail);
+    const view = await open(detail, journal);
+    expect(view.queryAllByTestId(/^completed-exercise-/)).toHaveLength(shown);
+    if (count > shown) expect(view.getByText(`+ ${count - shown} ejercicios más`)).toBeTruthy();
+    // Nothing unrecorded reads as a pending task while folded.
+    expect(view.queryByText(/Sin registrar/)).toBeNull(); expect(view.queryByText('Registrar')).toBeNull();
+    expect(view.queryByTestId('session-variants-notice')).toBeNull();
+    if (!count) { expect(view.queryByTestId('session-variants')).toBeNull(); return; }
+    expect(view.getByTestId('session-variants-status').props.children).toBe('Opcional');
+    const toggle = view.getByTestId('session-variants-toggle');
+    expect(toggle.props.accessibilityState.expanded).toBe(false); expect(toggle.props.accessibilityLabel).toBe('Variantes de ejercicios. Opcional');
+    fireEvent.press(toggle); await flush();
+    expect(view.getAllByText('Variante · Sin registrar')).toHaveLength(count);
+    expect(view.getByTestId('session-variants-toggle').props.accessibilityState.expanded).toBe(true);
+    expect(read).toHaveBeenCalledTimes(1); expect(write).not.toHaveBeenCalled();
+  });
+
+  it('places the summary first and the folded variants after the exercises, counting only what was recorded', async () => {
+    const detail = sessionWith(3);
+    const { journal } = journalFor(detail, { 0: { kind: 'recorded', label: 'Agarre neutro', source: 'entered', repeatedFrom: null }, 1: { kind: 'not_applicable', label: null, source: 'entered', repeatedFrom: null } });
+    const view = await open(detail, journal);
+    const tree = JSON.stringify(view.toJSON());
+    const at = (id: string) => tree.indexOf(`"testID":"${id}"`);
+    expect(at('revisit-hero')).toBeLessThan(at('revisit-muscles'));
+    expect(at('revisit-muscles')).toBeLessThan(at(`completed-exercise-${XID(0)}`));
+    expect(at(`completed-exercise-${XID(2)}`)).toBeLessThan(at('session-variants'));
+    expect(view.getByTestId('session-variants-status').props.children).toBe('2 registradas');
+    fireEvent.press(view.getByTestId('session-variants-toggle')); await flush();
+    // null, not_applicable and a value recorded after the session stay distinct.
+    expect(view.getByText('Variante · Agarre neutro · registrada después')).toBeTruthy();
+    expect(view.getByText('Variante · No aplica · registrada después')).toBeTruthy();
+    expect(view.getByText('Variante · Sin registrar')).toBeTruthy();
+  });
+
+  it('a failed read is announced outside the folded section, and only an explicit retry reads again', async () => {
+    const detail = sessionWith(3);
+    let fail = true;
+    const server = journalFor(detail).read;
+    const { journal, read } = journalFor(detail, {}, { read: async () => fail ? { status: 'unavailable' } : server() });
+    const view = await open(detail, journal);
+    const notice = view.getByTestId('session-variants-notice');
+    expect(within(notice).getByText('No pudimos leer las variantes. Podés seguir entrenando.')).toBeTruthy();
+    expect(view.queryByTestId('session-variants-rows')).toBeNull();
+    expect(within(notice).queryByText('Ver variantes')).toBeNull();
+    fail = false;
+    fireEvent.press(within(notice).getByText('Volver a leer')); await flush();
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(view.queryByTestId('session-variants-notice')).toBeNull();
+  });
+
+  it('an unconfirmed write stays visible while folded and is replayed with the same key, never a second attempt', async () => {
+    const detail = sessionWith(3);
+    const { journal, write } = journalFor(detail);
+    const view = await open(detail, journal);
+    await act(async () => { await journal.choose(XID(1), { kind: 'recorded', label: 'Banco a 30°', source: 'entered', repeatedFrom: null }); });
+    await flush();
+    const notice = view.getByTestId('session-variants-notice');
+    expect(within(notice).getByText('Variante sin confirmar. Reintentá: es la misma operación y no se duplica.')).toBeTruthy();
+    expect(view.queryByTestId('session-variants-rows')).toBeNull();
+    fireEvent.press(within(notice).getByText('Reintentar')); await flush();
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(write.mock.calls[1]![0]).toEqual(write.mock.calls[0]![0]);
+    fireEvent.press(within(view.getByTestId('session-variants-notice')).getByText('Ver variantes')); await flush();
+    expect(view.getByTestId('session-variants-rows')).toBeTruthy();
+    expect(view.getByTestId('session-variants-toggle').props.accessibilityState.expanded).toBe(true);
+  });
+
+  it('a conflict shows the saved value on request, from outside the folded section', async () => {
+    const detail = sessionWith(2);
+    const { journal } = journalFor(detail, { 0: { kind: 'recorded', label: 'Agarre prono', source: 'entered', repeatedFrom: null } }, { write: async () => ({ status: 'conflict' }) });
+    const view = await open(detail, journal);
+    await act(async () => { await journal.choose(XID(0), { kind: 'not_applicable', label: null, source: 'entered', repeatedFrom: null }); });
+    await flush();
+    const notice = view.getByTestId('session-variants-notice');
+    expect(within(notice).getByText('La variante cambió en otro lugar. Mostramos la guardada; elegila de nuevo si querés cambiarla.')).toBeTruthy();
+    fireEvent.press(within(notice).getByText('Ver variantes')); await flush();
+    expect(view.getByText('Variante · Agarre prono · registrada después')).toBeTruthy();
+  });
+
+  it('without a signed-in owner (no journal) shows no variants at all, as before', async () => {
+    const view = await open(sessionWith(3));
+    expect(view.queryByTestId('session-variants')).toBeNull(); expect(view.queryByTestId('session-variants-notice')).toBeNull();
   });
 });
 
