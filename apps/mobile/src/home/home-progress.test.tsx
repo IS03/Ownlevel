@@ -1,23 +1,29 @@
 import { fireEvent, render, within } from '@testing-library/react-native';
-import { describe, expect, it, jest } from '@jest/globals';
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { StyleSheet } from 'react-native';
 
-import { parseProgressBody, parseProgressTrainingRecords, type ProgressBody, type ProgressTrainingRecords } from '@/api/progress';
+import { parseProgressBody, parseProgressTrainingRecords, type ProgressBody, type ProgressBodyMetric, type ProgressTrainingRecords } from '@/api/progress';
 import { OwnlevelThemeProvider } from '@/design-system';
 
 import { HomeProgress } from './home-progress';
 import type { HomeResource } from './home-resource';
 import { homeProgressBody, homeProgressRecords } from './home-test-fixtures';
 
+let mockFontScale = 1;
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({ __esModule: true,
+  default: () => ({ width: 393, height: 852, scale: 3, fontScale: mockFontScale }),
+}));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
+beforeEach(() => { mockFontScale = 1; });
 
 const ready = <T,>(data: T): HomeResource<T> => ({ data, confirmedAt: 1, status: 'ready' });
 const unavailable = <T,>(data?: T): HomeResource<T> => ({ data, confirmedAt: data ? 1 : null, status: 'unavailable' });
 const loading = <T,>(): HomeResource<T> => ({ data: undefined, confirmedAt: null, status: 'loading' });
 
-function show(overrides: Partial<React.ComponentProps<typeof HomeProgress>> = {}) {
+function show(overrides: Partial<React.ComponentProps<typeof HomeProgress>> = {}, theme: 'dark' | 'light' = 'light') {
   const onOpen = jest.fn(), onRetry = jest.fn(), onAll = jest.fn();
   const props = { body: ready(homeProgressBody()), date: '2026-10-10', records: ready(homeProgressRecords()), onOpen, onRetry, onAll, ...overrides };
-  return { ...render(<OwnlevelThemeProvider initialMode="light"><HomeProgress {...props} /></OwnlevelThemeProvider>), onOpen, onRetry, onAll };
+  return { ...render(<OwnlevelThemeProvider initialMode={theme}><HomeProgress {...props} /></OwnlevelThemeProvider>), onOpen, onRetry, onAll };
 }
 
 describe('Home progress (grouped list)', () => {
@@ -91,5 +97,102 @@ describe('Home progress (grouped list)', () => {
     const view = show({ date: '2026-10-11' });
     expect(view.queryByText('78,4 kg')).toBeNull();
     expect(view.queryByText('Press banca')).toBeNull();
+  });
+});
+
+const waist = (date: string, value = 90.5): ProgressBodyMetric => {
+  const latest = { date, value, imported: false, provenanceLabel: 'Registro' };
+  return { key: 'body.waist', label: 'Cintura', unit: 'cm', latest, first: latest, last: latest, change: null, referenceChange: null, trend: 'unavailable',
+    confidence: 'unavailable', observations: [latest], referenceCount: 0, comparison: { status: 'insufficient_data', reason: 'insufficient_previous_samples' } };
+};
+function bodyWithWaist(date = '2026-10-07') {
+  const body = homeProgressBody(); body.metrics.push(waist(date)); return body;
+}
+
+describe('Home progress (contextual third note)', () => {
+  it('renders the measure under the two stable rows and opens that measure\'s detail', () => {
+    const view = show({ body: ready(bodyWithWaist()) });
+    expect(view.getAllByTestId(/^home-progress-(records|weight|measure)$/).map(row => row.props.testID)).toEqual(['home-progress-records', 'home-progress-weight', 'home-progress-measure']);
+    const measure = within(view.getByTestId('home-progress-measure'));
+    expect(measure.getByText('Cintura')).toBeTruthy();
+    expect(measure.getByText('90,5 cm')).toBeTruthy();
+    expect(measure.getByText('Último registro: 7 oct')).toBeTruthy();
+    fireEvent.press(view.getByTestId('home-progress-measure'));
+    expect(view.onOpen).toHaveBeenLastCalledWith({ kind: 'body', period: '7', metric: 'body.waist' });
+  });
+
+  it('each row opens its own detail with its own target', () => {
+    const view = show({ body: ready(bodyWithWaist()) });
+    for (const id of ['records', 'weight', 'measure']) fireEvent.press(view.getByTestId(`home-progress-${id}`));
+    expect(view.onOpen.mock.calls).toEqual([
+      [{ kind: 'exercise', period: '30', exerciseId: 'bench-id' }],
+      [{ kind: 'body', period: '7' }],
+      [{ kind: 'body', period: '7', metric: 'body.waist' }],
+    ]);
+  });
+
+  it('a weight-only user, a stale read and a loading read show no third row and no placeholder', () => {
+    expect(show().queryByTestId('home-progress-measure')).toBeNull();
+    expect(show({ body: unavailable(bodyWithWaist()) }).queryByTestId('home-progress-measure')).toBeNull();
+    expect(show({ body: loading<ProgressBody>() }).queryByTestId('home-progress-measure')).toBeNull();
+    expect(show({ body: ready(bodyWithWaist('2026-09-09')) }).queryByTestId('home-progress-measure')).toBeNull();
+  });
+
+  it('the order follows the evidence: a newer weight goes above the records, and they swap back with older data', () => {
+    const records = homeProgressRecords();
+    records.exercises = [{ id: 'bench-id', name: 'Press banca', muscleLabel: 'Pecho', weightMode: 'load_reps', status: 'stable', reason: 'comparable', signal: null,
+      isPersonalRecord: true, sessions: 2, sets: 6, lastDate: '2026-10-08' }];
+    const newer = show({ records: ready(records) });
+    expect(newer.getAllByTestId(/^home-progress-(records|weight)$/).map(row => row.props.testID)).toEqual(['home-progress-weight', 'home-progress-records']);
+    records.exercises[0].lastDate = '2026-10-10';
+    const tie = show({ records: ready(records) });
+    expect(tie.getAllByTestId(/^home-progress-(records|weight)$/).map(row => row.props.testID)).toEqual(['home-progress-records', 'home-progress-weight']);
+  });
+
+  it('never states a change for the measure and keeps the same neutral shape', () => {
+    const body = bodyWithWaist();
+    Object.assign(body.metrics[1], { trend: 'increased', confidence: 'supported', change: 4.1 });
+    const view = show({ body: ready(body) });
+    expect(view.queryByText(/4,1|subió|aument|mejor|peor/i)).toBeNull();
+  });
+
+  it('keeps the spoken label of each row in the same shape and the hint', () => {
+    const view = show({ body: ready(bodyWithWaist()) });
+    const measure = view.getByTestId('home-progress-measure');
+    expect(measure.props.accessibilityLabel).toBe('Cintura. Último registro: 7 oct. 90,5 cm');
+    expect(measure.props.accessibilityHint).toBe('Abre el detalle');
+    expect(measure.props.accessibilityRole).toBe('button');
+    expect(view.getByTestId('home-progress-weight').props.accessibilityLabel).toBe('Peso. Último registro: hoy. 78,4 kg');
+    expect(view.getByTestId('home-progress-records').props.accessibilityLabel).toBe('1 récord en 30 días. Press banca');
+  });
+
+  it('every row keeps the 44 pt minimum height', () => {
+    const view = show({ body: ready(bodyWithWaist()) });
+    for (const id of ['records', 'weight', 'measure']) {
+      const row = view.getByTestId(`home-progress-${id}`).children[0] as unknown as { props: { style: unknown } };
+      expect(StyleSheet.flatten(row.props.style as never)).toMatchObject({ minHeight: 44 });
+    }
+  });
+
+  it.each(['light', 'dark'] as const)('renders the three rows and the retry affordance in %s', theme => {
+    const view = show({ body: ready(bodyWithWaist()) }, theme);
+    expect(view.getByTestId('home-progress-measure')).toBeTruthy();
+    expect(view.getByText('Ver todo')).toBeTruthy();
+    const failed = show({ body: unavailable(homeProgressBody()) }, theme);
+    expect(within(failed.getByTestId('home-progress-weight')).getByText('Sin actualizar · Reintentar')).toBeTruthy();
+  });
+
+  it('large text keeps every note whole: nothing is truncated and the label and value stay on screen', () => {
+    mockFontScale = 2;
+    const view = show({ body: ready(bodyWithWaist()) });
+    for (const text of ['Cintura', '90,5 cm', 'Último registro: 7 oct', '78,4 kg', 'Press banca']) {
+      expect(view.getByText(text).props.numberOfLines).toBeUndefined();
+    }
+  });
+
+  it('"Ver todo" still goes to Progreso', () => {
+    const view = show({ body: ready(bodyWithWaist()) });
+    fireEvent.press(view.getByRole('button', { name: 'Ver todo' }));
+    expect(view.onAll).toHaveBeenCalledTimes(1);
   });
 });

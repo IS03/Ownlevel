@@ -395,6 +395,42 @@ describe('Home screen', () => {
     ]);
   });
 
+  it('opens the contextual measure note in the body detail of that measure', async () => {
+    const body = homeProgressBody();
+    const latest = { date: '2026-10-07', value: 90.5, imported: false, provenanceLabel: 'Registro' };
+    body.metrics.push({ key: 'body.waist', label: 'Cintura', unit: 'cm', latest, first: latest, last: latest, change: null, referenceChange: null, trend: 'unavailable',
+      confidence: 'unavailable', observations: [latest], referenceCount: 0, comparison: { status: 'insufficient_data', reason: 'insufficient_previous_samples' } });
+    mockFetchProgressBody.mockImplementation(() => ok(body));
+    const view = await renderScreen();
+    fireEvent.press(view.getByTestId('home-progress-measure'));
+    expect(mockPush.mock.calls).toEqual([[{ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.waist', period: '7' } }]]);
+  });
+
+  it('choosing the Progreso notes asks for nothing new: the same reads, once each, and no network of its own', async () => {
+    const body = homeProgressBody();
+    const latest = { date: '2026-10-07', value: 90.5, imported: false, provenanceLabel: 'Registro' };
+    body.metrics.push({ key: 'body.waist', label: 'Cintura', unit: 'cm', latest, first: latest, last: latest, change: null, referenceChange: null, trend: 'unavailable',
+      confidence: 'unavailable', observations: [latest], referenceCount: 0, comparison: { status: 'insufficient_data', reason: 'insufficient_previous_samples' } });
+    mockFetchProgressBody.mockImplementation(() => ok(body));
+    const originalFetch = globalThis.fetch;
+    const rawFetch = jest.fn<typeof fetch>(() => Promise.reject(new Error('Home must not fetch on its own')));
+    globalThis.fetch = rawFetch;
+    try {
+      const view = await renderScreen();
+      expect(view.getByTestId('home-progress-measure')).toBeTruthy();
+      // Exactly the reads Home already had: body 7 d and records 30 d, once each, and nothing for measures.
+      for (const fetcher of allFetchers()) expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(mockFetchProgressBody.mock.calls.map(call => call[1])).toEqual([{ period: '7' }]);
+      expect(mockFetchProgressRecords.mock.calls.map(call => call[1])).toEqual([{ period: '30' }]);
+      expect(mockFetchProgressWeek).not.toHaveBeenCalled();
+      // Opening every note navigates only: no read is triggered.
+      for (const id of ['records', 'weight', 'measure']) fireEvent.press(view.getByTestId(`home-progress-${id}`));
+      await settle();
+      for (const fetcher of allFetchers()) expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(rawFetch).not.toHaveBeenCalled();
+    } finally { globalThis.fetch = originalFetch; }
+  });
+
   it('passes the Google photo from the session to the avatar', async () => {
     const view = await renderScreen();
     expect(view.getByTestId('home-avatar-photo', { includeHiddenElements: true }).props.source).toEqual({ uri: 'https://lh3.googleusercontent.com/a/p' });
