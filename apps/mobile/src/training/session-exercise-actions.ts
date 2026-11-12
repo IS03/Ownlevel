@@ -3,9 +3,11 @@ import type { ActiveSessionController } from './active-session-controller';
 
 export const SESSION_UNDO_MS = 6000;
 type Controller = Pick<ActiveSessionController, 'getSnapshot' | 'getExercise' | 'getExerciseRevision' | 'subscribe' | 'subscribeExercise' | 'canEdit' | 'add' | 'remove'>;
+/** Presentation only: `pending` while a removal runs, `uncertain` when its outcome is not confirmed, `confirmed` otherwise. */
+export type SessionNoticeTone = 'pending' | 'confirmed' | 'uncertain';
 export type SessionActionState = {
   addedId: string | null; working: boolean;
-  notice: { message: string; undo: 'added' | null } | null;
+  notice: { message: string; undo: 'added' | null; tone: SessionNoticeTone } | null;
 };
 /** Removal goes straight to the durable controller; notices never substitute for persistence. */
 export class SessionExerciseActions {
@@ -40,7 +42,7 @@ export class SessionExerciseActions {
     this.pendingAdd = null;
     const row = added[0], revision = this.controller.getExerciseRevision(row.id);
     this.stopClock(); this.stopAdded();
-    this.update({ addedId: row.id, notice: { message: `${row.nameSnapshot} agregado`, undo: 'added' } });
+    this.update({ addedId: row.id, notice: { message: `${row.nameSnapshot} agregado`, undo: 'added', tone: 'confirmed' } });
     this.detachAdded = this.controller.subscribeExercise(row.id, () => {
       if (this.controller.getExerciseRevision(row.id) !== revision || ['closed', 'removed', 'stale', 'conflict'].includes(this.controller.getExercise(row.id)?.phase ?? '')) {
         this.stopAdded();
@@ -63,10 +65,11 @@ export class SessionExerciseActions {
     const exercise = this.controller.getExercise(id);
     if (!exercise) return Promise.resolve(false);
     this.stopClock(); this.stopAdded();
-    this.update({ working: true, notice: { message: `Quitando ${exercise.exercise.nameSnapshot}…`, undo: null } });
+    this.update({ working: true, notice: { message: `Quitando ${exercise.exercise.nameSnapshot}…`, undo: null, tone: 'pending' } });
     const flight = this.controller.remove(id).then(confirmed => {
       if (this.active) {
-        this.update({ notice: { message: confirmed ? `${exercise.exercise.nameSnapshot} quitado` : 'No pudimos confirmar la eliminación. Comprobá la sesión.', undo: null } });
+        this.update({ notice: confirmed ? { message: `${exercise.exercise.nameSnapshot} quitado`, undo: null, tone: 'confirmed' }
+          : { message: 'No pudimos confirmar la eliminación. Comprobá la sesión.', undo: null, tone: 'uncertain' } });
         this.deadline = setTimeout(() => this.update({ notice: null }), SESSION_UNDO_MS);
       }
       return confirmed;
@@ -79,6 +82,15 @@ export class SessionExerciseActions {
       const id = this.state.addedId;
       await this.remove(id);
     }
+  }
+  /**
+   * Hides a confirmed notice ("X agregado", "X quitado") without undoing anything: the user gives up that undo. Presentation only: it
+   * never touches `pendingAdd`, the deadline, the added-row subscription or `addedId` (a later add still confirms and every new notice
+   * restarts the clock), and a pending or uncertain notice cannot be dismissed.
+   */
+  dismissNotice() {
+    if (this.state.working || this.state.notice?.tone !== 'confirmed') return;
+    this.update({ notice: null });
   }
   settleRemoval(): Promise<boolean> {
     return this.removal ?? Promise.resolve(true);

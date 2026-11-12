@@ -42,4 +42,6 @@ export { darkColors, lightColors, radius, sizes, spacing, typography } from './t
 export * as brandTokens from './brand';
 export { atmosphere, fadeGradient, glowGradient, rgba } from './atmosphere';
 export { GlassSurface } from './glass';
+export { NoticeStack, TransientNotice } from './transient-notice';
+export type { NoticeAction, NoticePlacement, NoticeState } from './transient-notice';
 export { ScrollEdgeBlur } from './scroll-edge';

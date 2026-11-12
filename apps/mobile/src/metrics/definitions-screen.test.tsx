@@ -116,7 +116,7 @@ describe('Administrar métricas', () => {
     await act(async () => { fireEvent.press(editor.getByRole('button', { name: 'Crear métrica' })); }); await flush();
     expect(mockMutate).toHaveBeenCalledTimes(1);
     expect(mockMutate.mock.calls[0][1]).toMatchObject({ operation: 'create', fields: { name: 'Agua con gas', valueType: 'decimal', unit: 'L', target: 0.5 } });
-    expect(view.getByLabelText('Guardado')).toBeTruthy();
+    expect(view.getByLabelText('Guardado')).toBeTruthy(); expect(view.getByLabelText('Métrica creada.')).toBeTruthy();
     expect(within(view.getByTestId(`metric-definition-${defId(99)}`)).getByText('Decimal · L · Objetivo 0,5 L')).toBeTruthy();
   });
   it('reorders with one full-list move and refreshes on focus', async () => {

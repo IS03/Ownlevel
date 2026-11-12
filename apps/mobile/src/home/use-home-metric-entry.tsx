@@ -19,6 +19,7 @@ import { dayWriteInFlight, useMetricEntry } from '@/nutrition/use-metric-entry';
 import { useMetricPresentations } from '@/metrics/presentation-provider';
 import { triggerMetricHaptic } from '@/platform/haptics';
 import { NutritionToast } from '@/nutrition/nutrition-toast';
+import { NoticeStack } from '@/design-system';
 import { subscribeMetricDefinitionsChanged } from '@/metrics/presentation-resource';
 export type QuickMetricTap = {
   value: number | null;
@@ -197,53 +198,55 @@ export function useHomeMetricEntry(onSaved: () => void) {
           onClose={entry.close}
         />
       ) : null}
-      {entry.undoing && dayWriteInFlight(state) ? (
-        <MetricSavedNotice
-          notice={{ date: today, message: 'Deshaciendo…', undo: null }}
-          disabled
-          pending
-          onUndo={() => {}}
-          onClose={() => {}}
-        />
-      ) : null}
-      {entry.notice ? (
-        <MetricSavedNotice
-          notice={entry.notice}
-          disabled={!!state?.draft || state?.phase !== 'idle'}
-          onUndo={entry.undoNotice}
-          onClose={entry.dismissNotice}
-          onPrevious={entry.previousNotice}
-        />
-      ) : null}
-      {quickNotice ? (
-        <NutritionToast
-          message={quickNotice}
-          onClose={() => setQuickNotice(null)}
-        />
-      ) : null}
-      {!entry.entry &&
-      state &&
-      ['uncertain', 'confirmed', 'blocked', 'conflict'].includes(state.phase) &&
-      !dayWriteInFlight(state) &&
-      writes ? (
-        <NutritionToast
-          message={
-            state.phase === 'conflict'
-              ? 'El valor cambió. Revisá cómo quedó antes de seguir.'
-              : 'Tu cambio sigue acá. Comprobá si se guardó.'
-          }
-          action={{
-            label: state.phase === 'conflict' ? 'Revisar' : 'Comprobar',
-            accessibilityLabel: 'Comprobar cambio de métrica',
-            onPress: () => {
-              if (state.phase === 'conflict') {
-                writes.controller.close();
-                invalidate();
-              } else void writes.controller.recover();
-            },
-          }}
-        />
-      ) : null}
+      <NoticeStack placement="tab">
+        {entry.undoing && dayWriteInFlight(state) ? (
+          <MetricSavedNotice
+            notice={{ date: today, message: 'Deshaciendo…', undo: null }}
+            disabled
+            pending
+            onUndo={() => {}}
+            onClose={() => {}}
+          />
+        ) : null}
+        {entry.notice ? (
+          <MetricSavedNotice
+            notice={entry.notice}
+            disabled={!!state?.draft || state?.phase !== 'idle'}
+            onUndo={entry.undoNotice}
+            onClose={entry.dismissNotice}
+            onPrevious={entry.previousNotice}
+          />
+        ) : null}
+        {quickNotice ? (
+          <NutritionToast
+            message={quickNotice}
+            onClose={() => setQuickNotice(null)}
+          />
+        ) : null}
+        {!entry.entry &&
+        state &&
+        ['uncertain', 'confirmed', 'blocked', 'conflict'].includes(state.phase) &&
+        !dayWriteInFlight(state) &&
+        writes ? (
+          <NutritionToast
+            message={
+              state.phase === 'conflict'
+                ? 'El valor cambió. Revisá cómo quedó antes de seguir.'
+                : 'Tu cambio sigue acá. Comprobá si se guardó.'
+            }
+            action={{
+              label: state.phase === 'conflict' ? 'Revisar' : 'Comprobar',
+              accessibilityLabel: 'Comprobar cambio de métrica',
+              onPress: () => {
+                if (state.phase === 'conflict') {
+                  writes.controller.close();
+                  invalidate();
+                } else void writes.controller.recover();
+              },
+            }}
+          />
+        ) : null}
+      </NoticeStack>
     </>
   );
   const clearError = useCallback(() => setError(null), []);
