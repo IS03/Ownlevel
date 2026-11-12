@@ -41,7 +41,12 @@ const tally = (v: unknown) => object(v) && Object.values(v).every(count);
 const recorded = (v: unknown) => object(v) && finite(v.recorded) && count(v.missing);
 const nutrition = (v: unknown) => v === null || (object(v) && count(v.activeMeals) && recorded(v.calories) && recorded(v.proteinG) && recorded(v.carbsG) && recorded(v.fatG));
 const FEELING_KEY = new Set(["energyPre", "fatiguePre", "energyPost", "fatiguePost"]);
-const feeling = (v: unknown) => object(v) && count(v.value) && TIMING.has(String(v.timing)) && (v.temporalQuality === "unknown" || v.temporalQuality === "unverified_client_clock");
+/** Optional: an answer of an older server does not carry it. It explains what decided `timing`; it never changes how an older client reads the answer. */
+const TIMING_BASIS = new Set(["server_receipt", "client_clock", "client_and_receipt_late", "receipt_conflict", "receipt_unreadable", "reference_unreliable"]);
+const feeling = (v: unknown) => object(v) && count(v.value) && TIMING.has(String(v.timing)) && (v.temporalQuality === "unknown" || v.temporalQuality === "unverified_client_clock")
+  && (v.basis === undefined || TIMING_BASIS.has(String(v.basis)));
+/** Exported for its test only. */
+export { feeling as isSessionFeelingWire };
 /** Optional: an answer of an older server does not carry it. When present it is a date or null, nothing else. */
 const referenceDate = (v: unknown) => v === undefined || v === null || date(v);
 const exercise = (v: unknown) => object(v) && uuid(v.exerciseId) && typeof v.name === "string" && STATUS.has(String(v.status)) && typeof v.reason === "string"

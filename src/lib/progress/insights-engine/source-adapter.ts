@@ -1,6 +1,7 @@
 import { normalizeWeightMode, weightModeStrategy } from "../../mobile-api/weight-modes";
 import type { PerformanceSession, PerformanceUnit } from "../performance-insights/types";
-import type { FeelingKey, InsightsSource, MealTimeEvidence, SessionFeeling } from "./types";
+import { cordobaDateOf } from "../../phase2/cordoba-date";
+import type { FeelingKey, FeelingTimingBasis, InsightsSource, MealTimeEvidence, SessionFeeling } from "./types";
 
 const UNIT_BY_STRATEGY = { load_reps: "kg", unit_reps: "lingotes", bodyweight_reps: "reps", time: "seconds" } as const;
 
@@ -68,26 +69,61 @@ export function mealTimeEvidence(meal: Pick<InsightsSource["meals"][number], "co
 
 const FEELING_KEYS: readonly FeelingKey[] = ["energyPre", "fatiguePre", "energyPost", "fatiguePost"];
 
+type Receipt = { state: "absent" } | { state: "unreadable" } | { state: "valid"; at: number };
+/** `receivedAt` is the server clock at the RPC. Absent (a fact that never had one) is not the same as present but unreadable. */
+function receiptOf(value: unknown): Receipt {
+  if (value === undefined) return { state: "absent" };
+  const at = typeof value === "string" ? instantMs(value) : null;
+  return at === null ? { state: "unreadable" } : { state: "valid", at };
+}
+
+type Refs = { start: number | null; end: number | null; firstSetAt: number | null };
+/** The device-clock reading, exactly as it was before receipts existed. */
+function clientTiming(captured: number | null, { start, end, firstSetAt }: Refs): SessionFeeling["timing"] {
+  return captured === null ? "unknown"
+    : end !== null && captured > end ? "after_end" : start !== null && captured <= start ? "before_start"
+    : firstSetAt !== null && captured <= firstSetAt ? "before_first_set" : firstSetAt !== null ? "after_first_set" : "unknown";
+}
+
+/**
+ * Timing of a PRE answer. A server receipt before the reference proves the answer existed before it, whatever the device clock said.
+ * A later receipt proves nothing about when it was captured (offline use, retries), so it is never read as late on its own:
+ * it is late only when the device clock agrees, and unknown when the device claims an earlier capture.
+ */
+function preTiming(captured: number | null, receipt: Receipt, refs: Refs, referenceReliable: boolean): { timing: SessionFeeling["timing"]; basis: FeelingTimingBasis } {
+  if (!referenceReliable) return { timing: "unknown", basis: "reference_unreliable" };
+  if (receipt.state === "absent") return { timing: clientTiming(captured, refs), basis: "client_clock" };
+  if (receipt.state === "unreadable") return { timing: "unknown", basis: "receipt_unreadable" };
+  const { start, firstSetAt } = refs;
+  if (start !== null && receipt.at <= start) return { timing: "before_start", basis: "server_receipt" };
+  if (firstSetAt !== null && receipt.at <= firstSetAt) return { timing: "before_first_set", basis: "server_receipt" };
+  const client = clientTiming(captured, refs);
+  if (client === "before_start" || client === "before_first_set") return { timing: "unknown", basis: "receipt_conflict" };
+  if (client === "after_first_set" || client === "after_end") return { timing: client, basis: "client_and_receipt_late" };
+  return { timing: "unknown", basis: "client_clock" };
+}
+
 /** Validates again what the database guarantees. A malformed fact is excluded and counted, never read as absent. */
-export function parseSessionFeelings(facts: unknown, session: { startedAt: string | null; endedAt: string | null }, firstSetAt: number | null) {
+export function parseSessionFeelings(facts: unknown, session: { startedAt: string | null; endedAt: string | null; date?: string | null }, firstSetAt: number | null) {
   const values: Partial<Record<FeelingKey, SessionFeeling>> = {};
   // Which answers exist but cannot be read: shown as unreadable, never as "not recorded". The count of exclusions is unchanged.
   const unreadable: FeelingKey[] = [];
   let invalid = 0;
   if (!facts || typeof facts !== "object" || Array.isArray(facts)) return { values, invalid: 1, unreadable: [...FEELING_KEYS] };
+  const start = instantMs(session.startedAt), end = instantMs(session.endedAt);
+  // A session loaded after the fact starts at the loading time: its local day is not the logical day it was registered on.
+  const referenceReliable = typeof session.date !== "string" || start === null || cordobaDateOf(start) === session.date;
   for (const key of FEELING_KEYS) {
     const raw = (facts as Record<string, unknown>)[key];
     if (raw === undefined) continue;
-    const fact = raw as { value?: unknown; capturedAt?: unknown; declaredMoment?: unknown };
+    const fact = raw as { value?: unknown; capturedAt?: unknown; declaredMoment?: unknown; receivedAt?: unknown };
     const pre = key.endsWith("Pre");
     if (!raw || typeof raw !== "object" || typeof fact.value !== "number" || !Number.isInteger(fact.value) || fact.value < 1 || fact.value > 5
       || fact.declaredMoment !== (pre ? "pre" : "post") || (fact.capturedAt !== null && typeof fact.capturedAt !== "string")) { invalid++; unreadable.push(key); continue; }
     const captured = typeof fact.capturedAt === "string" ? instantMs(fact.capturedAt) : null;
-    const start = instantMs(session.startedAt), end = instantMs(session.endedAt);
-    const timing: SessionFeeling["timing"] = !pre ? "post_declared" : captured === null ? "unknown"
-      : end !== null && captured > end ? "after_end" : start !== null && captured <= start ? "before_start"
-      : firstSetAt !== null && captured <= firstSetAt ? "before_first_set" : firstSetAt !== null ? "after_first_set" : "unknown";
-    values[key] = { value: fact.value, timing, temporalQuality: captured === null ? "unknown" : "unverified_client_clock" };
+    const temporalQuality = captured === null ? "unknown" as const : "unverified_client_clock" as const;
+    values[key] = pre ? { value: fact.value, ...preTiming(captured, receiptOf(fact.receivedAt), { start, end, firstSetAt }, referenceReliable), temporalQuality }
+      : { value: fact.value, timing: "post_declared", temporalQuality };
   }
   return { values, invalid, unreadable };
 }
