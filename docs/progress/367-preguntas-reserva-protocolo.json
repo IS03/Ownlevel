@@ -1,0 +1,168 @@
+{
+  "protocol": {
+    "kind": "reserved",
+    "version": "preregistered-question-reserved/1",
+    "generatorVersion": "preregistered-generator/2",
+    "contrastVersion": "preregistered-contrast/1",
+    "method": {
+      "design": 120,
+      "looks": [
+        60,
+        120
+      ],
+      "variant": "era_shift",
+      "permutations": 999,
+      "alphas": {
+        "look1": 0.007,
+        "look2": 0.028
+      },
+      "blockDays": 28,
+      "horizonDays": 730,
+      "gates": {
+        "minCoverage": 0.5,
+        "selectiveGap": 0.15,
+        "selectiveMinDays": 5,
+        "minInformativeStrata": 2
+      }
+    },
+    "namespace": "OWNLEVEL-367-preregistered-RESERVE-20261111-v1",
+    "seedDerivation": {
+      "history": "hash32(`${namespace}:${scenario}:${index}`) seeds the history generator",
+      "permutation": "hash32(`${namespace}:${scenario}:${index}:120:era_shift`), mixed per look with mixSeed(seed, look) as in contrast.ts"
+    },
+    "scenarios": [
+      {
+        "id": "N1_iid",
+        "group": "null",
+        "n": 4000,
+        "criterion": "wilson_upper95_supported <= 0.05"
+      },
+      {
+        "id": "N2_persist",
+        "group": "null",
+        "n": 4000,
+        "criterion": "wilson_upper95_supported <= 0.05"
+      },
+      {
+        "id": "N3_strong_persist",
+        "group": "null",
+        "n": 4000,
+        "criterion": "wilson_upper95_supported <= 0.05"
+      },
+      {
+        "id": "N4_trends",
+        "group": "null",
+        "n": 4000,
+        "criterion": "wilson_upper95_supported <= 0.05"
+      },
+      {
+        "id": "N5_recorded_changes",
+        "group": "null",
+        "n": 4000,
+        "criterion": "wilson_upper95_supported <= 0.05"
+      },
+      {
+        "id": "N6_unrecorded_changes",
+        "group": "null",
+        "n": 4000,
+        "criterion": "wilson_upper95_supported <= 0.05"
+      },
+      {
+        "id": "N7b_missing_by_exposure",
+        "group": "null",
+        "n": 4000,
+        "criterion": "wilson_upper95_supported <= 0.05"
+      },
+      {
+        "id": "N8_retro_selection",
+        "group": "null",
+        "n": 4000,
+        "criterion": "wilson_upper95_supported <= 0.05"
+      },
+      {
+        "id": "N9_sparse",
+        "group": "null",
+        "n": 4000,
+        "criterion": "wilson_upper95_supported <= 0.05"
+      },
+      {
+        "id": "P25",
+        "group": "power",
+        "n": 1000,
+        "criterion": "wilson_lower95_supported >= 0.70 over ALL histories"
+      },
+      {
+        "id": "P10",
+        "group": "report",
+        "n": 1000,
+        "criterion": null
+      },
+      {
+        "id": "P15",
+        "group": "report",
+        "n": 1000,
+        "criterion": null
+      },
+      {
+        "id": "P20",
+        "group": "report",
+        "n": 1000,
+        "criterion": null
+      },
+      {
+        "id": "P15_sparse",
+        "group": "report",
+        "n": 1000,
+        "criterion": null
+      },
+      {
+        "id": "N7_collider_missing",
+        "group": "stress_out_of_domain",
+        "n": 1000,
+        "criterion": null
+      },
+      {
+        "id": "S1_short_trends",
+        "group": "stress_out_of_domain",
+        "n": 1000,
+        "criterion": null
+      },
+      {
+        "id": "S2_anticipatory_missing",
+        "group": "stress_out_of_domain",
+        "n": 1000,
+        "criterion": null
+      }
+    ],
+    "budgets": {
+      "maxCpuSeconds": 600,
+      "maxRssMiB": 512,
+      "chunkSize": 250,
+      "maxWorkers": 1
+    },
+    "outputDir": "docs/progress/qa/367-preguntas-reserva",
+    "decisionRule": "approved only if the campaign is complete (every scenario has exactly n verified results, no technical error, budgets respected) AND every null criterion holds AND the power criterion holds; anything else is rejected or incomplete; incomplete never approves",
+    "sourceFiles": [
+      "src/lib/progress/insights-research/preregistered-question/contrast.ts",
+      "src/lib/progress/insights-research/preregistered-question/generator.ts",
+      "src/lib/progress/insights-research/preregistered-question/scenarios.ts",
+      "src/lib/progress/insights-research/preregistered-question/reserved-protocol.ts",
+      "src/lib/progress/insights-research/preregistered-question/reserved-authorization.ts",
+      "src/lib/progress/insights-research/preregistered-question/reserved-runner.ts",
+      "src/lib/progress/insights-engine/stats.ts",
+      "scripts/insights-research/preregistered-reserved.mjs"
+    ]
+  },
+  "protocolHash": "4198f72781e82b5c1a6fe7ef86ef567e6b7b1d78f857243ec2859f3e5800c237",
+  "sourceFiles": [
+    "src/lib/progress/insights-research/preregistered-question/contrast.ts",
+    "src/lib/progress/insights-research/preregistered-question/generator.ts",
+    "src/lib/progress/insights-research/preregistered-question/scenarios.ts",
+    "src/lib/progress/insights-research/preregistered-question/reserved-protocol.ts",
+    "src/lib/progress/insights-research/preregistered-question/reserved-authorization.ts",
+    "src/lib/progress/insights-research/preregistered-question/reserved-runner.ts",
+    "src/lib/progress/insights-engine/stats.ts",
+    "scripts/insights-research/preregistered-reserved.mjs"
+  ],
+  "note": "Frozen protocol of the reserved calibration (#367). sourceHash and commit are computed live by the runner and bound by the external authorization manifest; they cannot live here because this file cannot contain its own commit. No reserved history has been generated."
+}

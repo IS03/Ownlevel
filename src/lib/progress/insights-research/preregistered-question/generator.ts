@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import { seededRandom } from "../../insights-engine/stats";
 import { prepareRows, statisticT, summarizeRows, type PairedRow } from "./contrast";
+import { isValidPermit, type ReservedPermit } from "./reserved-authorization";
+import { GENERATOR_VERSION, NULL_SCENARIOS, POSITIVE_SCENARIOS, SCENARIOS, STRESS_SCENARIOS, type Scenario } from "./scenarios";
+
+export { GENERATOR_VERSION, NULL_SCENARIOS, POSITIVE_SCENARIOS, SCENARIOS, STRESS_SCENARIOS };
+export type { Scenario };
 
 /** Offline research prototype (#367). Development seeds only; never reads personal data. */
 
@@ -11,15 +16,11 @@ export const LAST_DAY = POST_DAYS - 1;
 export const DEV_NAMESPACE = "OWNLEVEL-367-preregistered-DEV-pilot-1";
 export const N8_CANDIDATES = 12;
 
-export const NULL_SCENARIOS = ["N1_iid", "N2_persist", "N3_strong_persist", "N4_trends", "N5_recorded_changes", "N6_unrecorded_changes", "N7_collider_missing", "N7b_missing_by_exposure", "N8_retro_selection", "N9_sparse"] as const;
-export const POSITIVE_SCENARIOS = ["P10", "P15", "P20", "P25", "P15_sparse"] as const;
-export const SCENARIOS = [...NULL_SCENARIOS, ...POSITIVE_SCENARIOS] as const;
-export type Scenario = (typeof SCENARIOS)[number];
 
 const logit = (p: number) => Math.log(p / (1 - p));
 const expit = (x: number) => 1 / (1 + Math.exp(-x));
 
-interface Spec { phiX: number; phiY: number; trends?: boolean; commonEra?: boolean; unrecorded?: boolean; collider?: boolean; missingByExposure?: boolean; retro?: boolean; sparse?: boolean; beta?: number }
+interface Spec { phiX: number; phiY: number; trends?: boolean; shortTrends?: boolean; anticipatoryMissing?: boolean; commonEra?: boolean; unrecorded?: boolean; collider?: boolean; missingByExposure?: boolean; retro?: boolean; sparse?: boolean; beta?: number }
 const EFFECT = (p: number) => logit(p) - logit(0.3);
 const SPECS: Record<Scenario, Spec> = {
   N1_iid: { phiX: 0, phiY: 0 },
@@ -28,6 +29,8 @@ const SPECS: Record<Scenario, Spec> = {
   N4_trends: { phiX: 0.3, phiY: 0.3, trends: true },
   N5_recorded_changes: { phiX: 0.3, phiY: 0.3, commonEra: true },
   N6_unrecorded_changes: { phiX: 0.3, phiY: 0.3, commonEra: true, unrecorded: true },
+  S1_short_trends: { phiX: 0.3, phiY: 0.3, trends: true, shortTrends: true },
+  S2_anticipatory_missing: { phiX: 0.3, phiY: 0.3, anticipatoryMissing: true },
   N7_collider_missing: { phiX: 0.3, phiY: 0.3, collider: true },
   N7b_missing_by_exposure: { phiX: 0.3, phiY: 0.3, missingByExposure: true },
   N8_retro_selection: { phiX: 0.7, phiY: 0.6, retro: true },
@@ -99,14 +102,15 @@ function walk(rng: Rng, step: number, length: number): Float64Array {
   for (let i = 1; i < length; i++) out[i] = out[i - 1] + step * rng.normal();
   return out;
 }
-function sinus(rng: Rng, amp: number, length: number): Float64Array {
-  const period = rng.range(60, 240), phase = rng.range(0, 2 * Math.PI), out = new Float64Array(length);
+function sinus(rng: Rng, amp: number, length: number, minPeriod = 60, maxPeriod = 240): Float64Array {
+  const period = rng.range(minPeriod, maxPeriod), phase = rng.range(0, 2 * Math.PI), out = new Float64Array(length);
   for (let i = 0; i < length; i++) out[i] = amp * Math.sin((2 * Math.PI * (FIRST_DAY + i)) / period + phase);
   return out;
 }
 
-export function generateHistory(scenario: Scenario, index: number, namespace: string): GeneratedHistory {
-  if (/reserve/i.test(namespace)) throw new Error("Reserved namespaces are not allowed in the development generator");
+/** Reserved namespaces need a permit minted by `authorize` (reserved-authorization.ts) for exactly that namespace. */
+export function generateHistory(scenario: Scenario, index: number, namespace: string, permit?: ReservedPermit): GeneratedHistory {
+  if (/reserve/i.test(namespace) && !isValidPermit(permit, namespace)) throw new Error("Reserved namespaces need a valid authorization permit");
   const spec = SPECS[scenario];
   if (!spec) throw new Error(`Unknown scenario ${scenario}`);
   const rng = makeRng(hash32(`${namespace}:${scenario}:${index}`));
@@ -148,7 +152,7 @@ export function generateHistory(scenario: Scenario, index: number, namespace: st
   const latents: Float64Array[] = [], cuts: number[] = [], pHighs: number[] = [];
   for (let c = 0; c < nCand; c++) {
     const x = ar1(rng, spec.phiX, length);
-    if (spec.trends) { const s = sinus(rng, 1.0, length), w = walk(rng, 0.06, length); for (let i = 0; i < length; i++) x[i] += s[i] + w[i]; }
+    if (spec.trends) { const s = spec.shortTrends ? sinus(rng, 1.0, length, 20, 60) : sinus(rng, 1.0, length), w = walk(rng, 0.06, length); for (let i = 0; i < length; i++) x[i] += s[i] + w[i]; }
     if (spec.retro) { const w = walk(rng, 0.04, length); for (let i = 0; i < length; i++) x[i] += w[i]; }
     if (spec.commonEra) for (let d = FIRST_DAY; d <= LAST_DAY; d++) x[at(d)] += 0.8 * eraU[eraOfDay[at(d)]];
     const pHigh = rng.range(0.3, 0.6);
@@ -156,7 +160,7 @@ export function generateHistory(scenario: Scenario, index: number, namespace: st
   }
   const z = ar1(rng, spec.phiY, length);
   let trendY: Float64Array | null = null;
-  if (spec.trends) { const s = sinus(rng, 0.8, length), w = walk(rng, 0.04, length); trendY = s.map((v, i) => v + w[i]); }
+  if (spec.trends) { const s = spec.shortTrends ? sinus(rng, 0.8, length, 20, 60) : sinus(rng, 0.8, length), w = walk(rng, 0.04, length); trendY = s.map((v, i) => v + w[i]); }
   if (spec.retro) trendY = walk(rng, 0.03, length);
 
   const beta = spec.beta ?? 0;
@@ -179,7 +183,7 @@ export function generateHistory(scenario: Scenario, index: number, namespace: st
       continue;
     }
     if (d < 0) continue;
-    const missingProb = spec.missingByExposure ? (trueA === 1 ? 0.6 : 0.15) : spec.collider ? (trueA === 1 && y > 0.35 ? 0.6 : 0.15) : 1 - coverage;
+    const missingProb = spec.missingByExposure ? (trueA === 1 ? 0.6 : 0.15) : spec.collider ? (trueA === 1 && y > 0.35 ? 0.6 : 0.15) : spec.anticipatoryMissing ? (trueA === 1 && z[i] > 0.3 ? 0.6 : 0.15) : 1 - coverage;
     const seen = rng.u() >= missingProb;
     if (seen) observed++;
     if (trueA) { high++; tally.hi++; if (!seen) tally.hiMissing++; } else { tally.lo++; if (!seen) tally.loMissing++; }
