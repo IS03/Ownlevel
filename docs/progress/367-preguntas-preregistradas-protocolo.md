@@ -4,6 +4,10 @@
 No hay interfaz, migración, campaña ni lectura de datos personales. Los números de potencia son aproximaciones analíticas;
 la calibración descrita en §8 es la que los confirma o los desmiente.
 
+**Actualización 11/11/2026:** el piloto sintético de desarrollo y la propuesta de protocolo congelable están en
+[367-preguntas-piloto-resultados.md](367-preguntas-piloto-resultados.md). Ese documento reemplaza §2, §4, §5, §6 y §8
+donde difieren (N = 120, rotación por etapa, alfa total 3,5 %, regla de captura previa a la sesión, costo medido).
+
 **Decisiones de Dirección que este protocolo asume (11/11/2026):** #441 queda descartado como vía de producción
 ([resultado negativo](367-441-resultado-negativo.md)); se explora la alternativa D; riesgo provisional del **5 % por
 pregunta** (no por revisión); **una sola pregunta activa**.
