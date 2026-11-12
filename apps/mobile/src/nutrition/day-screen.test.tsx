@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Alert, Modal, AppState, type AppStateStatus, RefreshControl, ScrollView, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
+import { State } from 'react-native-gesture-handler';
+import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import type { MobileApiClient } from '@/api/client';
 import type { MobileApiReadResult } from '@/api/results';
 import type { MobileNutritionDayResponse } from '@/api/nutrition-day';
@@ -310,6 +312,20 @@ describe('Native Nutrition day', () => {
     expect(await view.findByText('Deshecho')).toBeTruthy();
     expect(view.queryByTestId('manual-meal-editor')).toBeNull(); expect(view.queryByText('Comida eliminada.')).toBeNull();
     expect((mockRequest.mock.calls[1][0].body as { operation: string }).operation).toBe('delete');
+  });
+  it('swiping the meal notice only hides it (#472): the meal stays, no delete is sent and the undo is gone', async () => {
+    mockRead.mockImplementation(async () => ok(mockToday) as never);
+    const saved = { status: 'ok', data: { status: 'saved', mealId: '41100000-0000-4000-8000-000000000002', sourceDate: mockToday, destinationDate: mockToday, updatedAt: `${mockToday}T13:00:00Z` }, meta: { durationMs: 1, httpStatus: 201, outcome: 'ok' } };
+    mockRequest.mockResolvedValueOnce(saved as never);
+    const view = render(element()); await view.findByText('Agregar comida', { includeHiddenElements: true });
+    fireEvent.press(view.getByText('Agregar comida', { includeHiddenElements: true })); fireEvent.press(view.getByText('A mano'));
+    fireEvent.changeText(view.getByLabelText('Calorías'), '250');
+    await act(async () => { fireEvent.press(view.getByText(/Agregar al día ·/)); });
+    expect(await view.findByTestId('nutrition-meal-notice')).toBeTruthy();
+    expect(view.queryByRole('button', { name: 'Cerrar aviso de comida' })).toBeNull();
+    act(() => fireGestureHandler(getByGestureTestId('transient-notice-dismiss'), [{ state: State.BEGAN, translationX: 0, translationY: 0 }, { state: State.ACTIVE, translationX: 0, translationY: 80 }, { state: State.END, translationX: 0, translationY: 80 }]));
+    expect(view.queryByTestId('nutrition-meal-notice')).toBeNull(); expect(view.queryByLabelText('Deshacer comida agregada')).toBeNull();
+    expect(mockRequest).toHaveBeenCalledTimes(1);
   });
   it('the edit form has no delete button: deleting lives in the detail trash', async () => {
     mockRead.mockImplementation(async () => ok(mockToday) as never);

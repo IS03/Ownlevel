@@ -1,4 +1,5 @@
 import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
@@ -114,6 +115,17 @@ describe('Home quick entry orchestration', () => {
     expect(view.getByLabelText('Comprobar cambio de métrica')).toBeTruthy();
     afterWrite=false;await act(async()=>{fireEvent.press(view.getByLabelText('Comprobar cambio de métrica'));});
     expect(mockRequest).toHaveBeenCalledTimes(1);expect(view.getByText('Agua: 1,75 L')).toBeTruthy();
+  });
+  it('shows the confirmed notice in the Home stack above the tab bar, and a VoiceOver dismissal hides it without a second write (#472)', async()=>{
+    let model!:ReturnType<typeof useHomeMetricEntry>;
+    function Harness(){model=useHomeMetricEntry(()=>{});return <SafeAreaProvider initialMetrics={{frame:{x:0,y:0,width:390,height:844},insets:{top:44,bottom:83,left:0,right:0}}}><OwnlevelThemeProvider initialMode="light">{model.element}</OwnlevelThemeProvider></SafeAreaProvider>;}
+    const view=render(<Harness/>);await waitFor(()=>expect(model.locked).toBe(false));
+    await act(async()=>{await model.open(id,tap());});
+    const notice=await view.findByTestId('nutrition-metric-notice');
+    expect(StyleSheet.flatten(notice.props.style).position).toBeUndefined();
+    expect(view.getByRole('button',{name:'Deshacer cambio de métrica'})).toBeTruthy();
+    fireEvent(view.getByLabelText('Agua: 1,75 L'),'accessibilityAction',{nativeEvent:{actionName:'dismiss'}});
+    expect(view.queryByTestId('nutrition-metric-notice')).toBeNull();expect(mockRequest).toHaveBeenCalledTimes(1);
   });
   it('blocks the second synchronous tap and writes the displayed snapshot exactly once', async () => {
     const onSaved = jest.fn(),

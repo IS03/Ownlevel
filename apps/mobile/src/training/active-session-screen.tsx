@@ -303,7 +303,8 @@ export function ActiveSessionView({ controller, state, client, configurations }:
     <SessionScrollHeader title={detail.session.name} clock={<SessionClock session={detail.session} progress={progress} />} compact={header.compact} controls={header.controls}
       pinned={reader || reduceMotion || keyboard || dialog || pickerOpen || creatorOpen || !!historyId || finishOpen || Object.values(cardSheets).some(Boolean) || !!state.interaction} disabled={!canFinish} top={insets.top}
       completed={progress.completedSets} total={progress.totalSets} onBack={returnToTraining} onCancel={requestCancel} onFinish={() => { Keyboard.dismiss(); afterRemoval(() => setFinishOpen(true)); }} onHeight={setHeaderHeight} />
-    {actionState.notice ? <ExerciseNotice bottomOffset={Math.max(insets.bottom, restOverlayHeight) - insets.bottom} message={actionState.notice.message} disabled={locked || actionState.working} undo={actionState.notice.undo ? () => void actions.undo() : undefined} /> : null}
+    {actionState.notice ? <ExerciseNotice bottomOffset={Math.max(insets.bottom, restOverlayHeight) - insets.bottom} message={actionState.notice.message} disabled={locked || actionState.working} undo={actionState.notice.undo ? () => void actions.undo() : undefined}
+      pending={actionState.notice.tone === 'pending'} onDismiss={actionState.notice.tone === 'confirmed' && !actionState.working ? () => actions.dismissNotice() : undefined} /> : null}
     <RestTimerPanel controller={controller} onHeightChange={setRestOverlayHeight} />
     {finishOpen && !finishTransitionDone ? <FinishSessionSheet controller={controller} onClose={() => setFinishOpen(false)} onDiscard={requestCancel}
       readSummary={closedApi.summary} readWeek={readWeek} onDone={returnToTraining} onViewSession={() => setFinishTransitionDone(true)} /> : null}

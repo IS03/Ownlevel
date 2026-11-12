@@ -280,6 +280,46 @@ describe('native active session screen', () => {
     expect(view.getByText('No pudimos confirmar la eliminación. Comprobá la sesión.')).toBeTruthy();
     expect(api.remove).toHaveBeenCalledTimes(1); controller.dispose();
   });
+  it('lets the user hide "quitado" with the VoiceOver action (#472), but never a pending or unconfirmed removal notice', async () => {
+    const { controller, api, Screen } = fixture(); await controller.refresh(); const view = render(<Screen />); await act(async () => {});
+    let proceed!: () => void; const gate = new Promise<void>(resolve => { proceed = resolve; }), remove = jest.mocked(api.remove).getMockImplementation()!;
+    jest.mocked(api.remove).mockImplementation(async (...args) => { await gate; return remove(...args); });
+    await act(async () => { fireEvent(view.getByLabelText('Expandir PRESS'), 'accessibilityAction', { nativeEvent: { actionName: 'remove' } }); });
+    expect(view.getByLabelText('Quitando PRESS…').props.accessibilityActions).toBeUndefined(); expect(view.queryByRole('button', { name: 'Deshacer' })).toBeNull();
+    await act(async () => { proceed(); });
+    const done = view.getByLabelText('PRESS quitado'); expect(done.props.accessibilityActions).toEqual([{ name: 'dismiss', label: 'Descartar aviso' }]);
+    fireEvent(done, 'accessibilityAction', { nativeEvent: { actionName: 'dismiss' } });
+    expect(view.queryByLabelText('PRESS quitado')).toBeNull(); expect(api.remove).toHaveBeenCalledTimes(1); expect(api.add).not.toHaveBeenCalled(); controller.dispose();
+  });
+  it('gives the unconfirmed removal message no dismissal, so the recovery stays in view', async () => {
+    const { controller, api, Screen } = fixture(); await controller.refresh(); const view = render(<Screen />); await act(async () => {});
+    jest.mocked(api.remove).mockResolvedValue({ status: 'unavailable', reason: 'network', meta: { ...meta, outcome: 'unavailable' } });
+    await act(async () => { fireEvent(view.getByLabelText('Expandir PRESS'), 'accessibilityAction', { nativeEvent: { actionName: 'remove' } }); });
+    const message = view.getByLabelText('No pudimos confirmar la eliminación. Comprobá la sesión.');
+    expect(message.props.accessibilityActions).toBeUndefined(); expect(message.props.onAccessibilityEscape).toBeUndefined();
+    expect(view.queryByRole('button', { name: 'Deshacer' })).toBeNull(); expect(view.getByRole('button', { name: 'Comprobar operación' })).toBeTruthy(); controller.dispose();
+  });
+  it('hides "agregado" without undoing it: the exercise stays, nothing is removed and Deshacer is gone (#472)', async () => {
+    jest.useFakeTimers();
+    const detail = testDetail(), added = testExercise('44444444-4444-4444-8444-444444444444', 3);
+    added.nameSnapshot = 'PULLOVER';
+    const { controller, api, Screen } = fixture(detail); await controller.refresh(); const view = render(<Screen />);
+    mockCatalog.mockResolvedValue({ status: 'ok', data: { catalog: { status: 'ok', data: { exercises: [{ id: added.exerciseId, name: 'PULLOVER', muscleGroup: 'espalda', implement: 'Polea', weightMode: 'Peso total', isActive: true }], routines: [] } } }, meta });
+    jest.mocked(api.add).mockImplementation(async () => {
+      jest.mocked(api.detail).mockResolvedValue({ status: 'ok', data: { ...detail, exercises: [...detail.exercises, added] }, meta });
+      return { status: 'ok', data: { status: 'added', sessionId: SESSION_ID, sessionExerciseId: added.id, exerciseId: added.exerciseId }, meta };
+    });
+    fireEvent.press(view.getByRole('button', { name: '+ Agregar' }));
+    await waitFor(() => expect(view.getByRole('button', { name: 'PULLOVER' })).toBeTruthy());
+    fireEvent.press(view.getByRole('button', { name: 'PULLOVER' }));
+    await act(async () => { await jest.advanceTimersByTimeAsync(1000); });
+    const notice = view.getByLabelText('PULLOVER agregado'); expect(view.getByRole('button', { name: 'Deshacer' })).toBeTruthy();
+    fireEvent(notice, 'accessibilityAction', { nativeEvent: { actionName: 'dismiss' } });
+    expect(view.queryByLabelText('PULLOVER agregado')).toBeNull(); expect(view.queryByRole('button', { name: 'Deshacer' })).toBeNull();
+    await act(async () => { await jest.advanceTimersByTimeAsync(7000); });
+    expect(api.remove).not.toHaveBeenCalled(); expect(api.add).toHaveBeenCalledTimes(1); expect(view.getByLabelText('Contraer PULLOVER')).toBeTruthy();
+    controller.dispose();
+  });
   it('persists dismissal of La última vez and does not show it again after a refresh or screen remount', async () => {
     const detail = testDetail(); detail.quickHistory = { status: 'ok', data: { [EXERCISE_ID]: [{ sessionId: SECOND_ID, logDate: '2026-10-05', completedAt: null, routineId: EXERCISE_ID, routineName: 'PULL', decision: 'maintain', sets: detail.exercises[0].payload.sets.map(set => ({ ...set, isCompleted: true })) }] } };
     const { controller, repository, Screen } = fixture(detail); await controller.refresh(); const view = renderWithPressOpen(<Screen />);

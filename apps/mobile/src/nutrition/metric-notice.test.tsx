@@ -6,6 +6,7 @@ import { State, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import { OwnlevelThemeProvider, brandTokens } from '@/design-system';
 import { MetricSavedNotice } from './metric-notice';
+import type { MetricNotice } from './use-metric-entry';
 
 jest.mock('expo-symbols',()=>({SymbolView:()=>null}));
 afterEach(()=>{jest.restoreAllMocks();});
@@ -37,4 +38,13 @@ it('keeps large text untruncated and disables dismissal when interaction is lock
  const {view,close}=open('dark',false,true);const message=view.getByLabelText('Agua: 0,5 L');
  expect(message.props.numberOfLines).toBeUndefined();expect(message.props.allowFontScaling).not.toBe(false);
  fireEvent(message,'accessibilityAction',{nativeEvent:{actionName:'dismiss'}});expect(close).not.toHaveBeenCalled();
+});
+it('a swipe over a confirmation with Deshacer and Anterior only dismisses: neither the undo nor the previous slot runs',()=>{
+ const close=jest.fn(),undo=jest.fn(),previous=jest.fn();
+ render(<GestureHandlerRootView><SafeAreaProvider initialMetrics={{frame:{x:0,y:0,width:320,height:700},insets:{top:44,bottom:34,left:0,right:0}}}><OwnlevelThemeProvider initialMode="light">
+  <MetricSavedNotice notice={{date:'2026-11-07',message:'Agua: 0,5 L',undo:{} as unknown as NonNullable<MetricNotice['undo']>,queuedCount:2}} disabled={false} onClose={close} onUndo={undo} onPrevious={previous}/>
+ </OwnlevelThemeProvider></SafeAreaProvider></GestureHandlerRootView>);
+ const gesture=getByGestureTestId('metric-notice-dismiss');
+ act(()=>fireGestureHandler(gesture,[{state:State.BEGAN,translationY:0,translationX:0},{state:State.ACTIVE,translationY:90,translationX:0},{state:State.END,translationY:90,translationX:0}]));
+ expect(close).toHaveBeenCalledTimes(1);expect(undo).not.toHaveBeenCalled();expect(previous).not.toHaveBeenCalled();
 });

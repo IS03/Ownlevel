@@ -1,9 +1,11 @@
 import { act, fireEvent, render, renderHook } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { StyleSheet } from 'react-native';
 import { withTiming } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { State } from 'react-native-gesture-handler';
+import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import type { MobileNutritionDayResponse, NutritionDayMetric } from '@/api/nutrition-day';
 import { AppSheet, AppText, OwnlevelThemeProvider } from '@/design-system';
 import type { NutritionStoragePort } from './intent-repository';
@@ -381,5 +383,29 @@ describe('metric entry bounds and undo guards', () => {
     const f = setup(); await f.controller.initialize(); f.controller.subscribeConfirmed(() => { throw new Error('UI observer'); });
     f.controller.open('metrics', f.data()); f.controller.changeMetric(metricId, 'value', '0,75'); await f.controller.save();
     expect(f.controller.getSnapshot().phase).toBe('idle'); expect(await f.repository.read()).toBeNull();
+  });
+});
+
+describe('#472 swipe dismissal of the metric queue', () => {
+  const swipeDown = () => act(() => fireGestureHandler(getByGestureTestId('metric-notice-dismiss'), [
+    { state: State.BEGAN, translationX: 0, translationY: 0 }, { state: State.ACTIVE, translationX: 0, translationY: 80 }, { state: State.END, translationX: 0, translationY: 80 }]));
+  it('consecutive saves keep their queue; swiping the newest only hides it and brings the previous one back with its undo, with no write', async () => {
+    const f = setup(1); await f.controller.initialize(); let entry!: ReturnType<typeof useMetricEntry>;
+    function Host() {
+      const current = useMetricEntry(f.controller, date);
+      useEffect(() => { entry = current; });
+      return current.notice ? <MetricSavedNotice notice={current.notice} disabled={false} onUndo={current.undoNotice} onClose={current.dismissNotice} onPrevious={current.previousNotice} /> : null;
+    }
+    const view = render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, bottom: 34, left: 0, right: 0 } }}><OwnlevelThemeProvider initialMode="light"><Host /></OwnlevelThemeProvider></SafeAreaProvider>);
+    await act(async () => { await entry.quick(f.data(), recordedMetric(f), 0.25); });
+    await act(async () => { await entry.quick(f.data(), recordedMetric(f, 1), 2); });
+    expect(view.getByLabelText('Otra métrica: 102')).toBeTruthy(); expect(view.getByRole('button', { name: 'Ver confirmación anterior, 1 disponibles' })).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Deshacer cambio de métrica' })).toBeTruthy(); expect(f.mutate).toHaveBeenCalledTimes(2);
+    swipeDown();
+    expect(view.queryByLabelText('Otra métrica: 102')).toBeNull(); expect(view.getByLabelText(/^Agua: /)).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Deshacer cambio de métrica' })).toBeTruthy(); expect(view.queryByRole('button', { name: /Ver confirmación anterior/ })).toBeNull();
+    expect(f.mutate).toHaveBeenCalledTimes(2); expect(recordedMetric(f, 1).value).toBe(102);
+    swipeDown(); expect(view.queryByTestId('nutrition-metric-notice')).toBeNull(); expect(f.mutate).toHaveBeenCalledTimes(2);
+    f.controller.dispose();
   });
 });

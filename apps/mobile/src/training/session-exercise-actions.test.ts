@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { SessionDetailDto } from '@/api/active-session';
 import type { ActiveSessionApi } from './active-session-controller';
 import { ActiveSessionController } from './active-session-controller';
@@ -11,6 +11,7 @@ function fixture(detail: SessionDetailDto = testDetail()) {
   const values = new Map<string, string>();
   const port: SessionStoragePort = { getItem: async key => values.get(key) ?? null, setItem: async (key, value) => { values.set(key, value); }, removeItem: async key => { values.delete(key); }, getAllKeys: async () => [...values.keys()] };
   const repository = new SessionDraftRepository(port, 'owner', SESSION_ID);
+  let adds = 0;
   const api = {
     detail: jest.fn<ActiveSessionApi['detail']>().mockImplementation(async () => ({ status: 'ok', data: detail, meta })),
     sync: jest.fn<ActiveSessionApi['sync']>(),
@@ -19,7 +20,8 @@ function fixture(detail: SessionDetailDto = testDetail()) {
       return { status: 'ok', data: { sessionExerciseId: id, updatedAt: NEXT_VERSION }, meta };
     }),
     add: jest.fn<ActiveSessionApi['add']>().mockImplementation(async input => {
-      const row = testExercise('44444444-4444-4444-8444-444444444444', 3);
+      // The first add keeps its historical id; later ones get their own so consecutive adds are distinct rows.
+      const row = testExercise(`44444444-4444-4444-8444-${(0x444444444444 + adds).toString(16)}`, 3 + adds++);
       if (input.operation === 'add_existing') row.exerciseId = input.exerciseId;
       detail = { ...detail, exercises: [...detail.exercises, row] };
       return { status: 'ok', data: { status: 'added', sessionId: SESSION_ID, sessionExerciseId: row.id, exerciseId: row.exerciseId }, meta };
@@ -70,7 +72,7 @@ it('keeps the exercise and its exact draft until persistence confirms, with no s
   await actions.undo(); expect(controller.getExercise(EXERCISE_ID)!.draft).toBe(before);
   expect(await actions.remove(EXERCISE_ID)).toBe(false);
   proceed(); expect(await removing).toBe(true);
-  expect(actions.getSnapshot().notice).toEqual({ message: 'PRESS quitado', undo: null });
+  expect(actions.getSnapshot().notice).toEqual({ message: 'PRESS quitado', undo: null, tone: 'confirmed' });
   expect(api.remove).toHaveBeenCalledTimes(1); expect(api.add).not.toHaveBeenCalled();
   actions.dispose(); controller.dispose();
 });
@@ -262,4 +264,80 @@ it('does not remove after disposal or attach a late add notice after leaving the
   for (let i = 0; i < 12; i++) await Promise.resolve();
   next.actions.dispose(); proceed(); await pendingAdd;
   expect(next.actions.getSnapshot().notice).toBeNull(); expect(next.actions.getSnapshot().addedId).toBeNull(); next.controller.dispose();
+});
+
+const ADD_A = { operation: 'add_existing' as const, exerciseId: '55555555-5555-4555-8555-555555555555', idempotencyKey: 'add-a' };
+const ADD_B = { operation: 'add_existing' as const, exerciseId: '55555555-5555-4555-8555-555555555556', idempotencyKey: 'add-b' };
+describe('notice tone and dismissal (#472: presentation only)', () => {
+  it('tags every notice: pending while removing, confirmed once removed, uncertain when unconfirmed', async () => {
+    const { api, controller, actions } = fixture(); await controller.refresh(); actions.activate();
+    let proceed!: () => void; const gate = new Promise<void>(resolve => { proceed = resolve; }), remove = api.remove.getMockImplementation()!;
+    api.remove.mockImplementationOnce(async (...args) => { await gate; return remove(...args); });
+    const removing = actions.remove(EXERCISE_ID);
+    expect(actions.getSnapshot().notice).toEqual({ message: 'Quitando PRESS…', undo: null, tone: 'pending' });
+    proceed(); await removing; expect(actions.getSnapshot().notice?.tone).toBe('confirmed');
+    api.remove.mockResolvedValueOnce({ status: 'unavailable', reason: 'network', meta: { ...meta, outcome: 'unavailable' } });
+    await actions.remove(SECOND_ID);
+    expect(actions.getSnapshot().notice).toEqual({ message: 'No pudimos confirmar la eliminación. Comprobá la sesión.', undo: null, tone: 'uncertain' });
+    actions.dispose(); controller.dispose();
+  });
+  it('hides a confirmed add without undoing it: no write, no later undo, and the next add still confirms with its own clock', async () => {
+    const { api, controller, actions } = fixture(); await controller.refresh(); actions.activate();
+    await actions.add(ADD_A, 'ROW'); const first = actions.getSnapshot().addedId!;
+    expect(actions.getSnapshot().notice).toMatchObject({ undo: 'added' });
+    actions.dismissNotice();
+    expect(actions.getSnapshot().notice).toBeNull(); expect(api.remove).not.toHaveBeenCalled();
+    await actions.undo(); expect(api.remove).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1000);
+    await actions.add(ADD_B, 'ROW'); const second = actions.getSnapshot().addedId!;
+    expect(second).not.toBe(first); expect(actions.getSnapshot().notice).toMatchObject({ message: 'ROW agregado', undo: 'added', tone: 'confirmed' });
+    // The first add's old deadline (6 s) is gone: every new notice stops the clock first.
+    await jest.advanceTimersByTimeAsync(SESSION_UNDO_MS - 500); expect(actions.getSnapshot().notice).not.toBeNull();
+    await jest.advanceTimersByTimeAsync(600); expect(actions.getSnapshot().notice).toBeNull();
+    actions.dispose(); controller.dispose();
+  });
+  it('undoes only the latest add within its window, after an earlier notice was dismissed', async () => {
+    const { api, controller, actions } = fixture(); await controller.refresh(); actions.activate();
+    await actions.add(ADD_A, 'ROW'); actions.dismissNotice();
+    await actions.add(ADD_B, 'ROW'); const second = actions.getSnapshot().addedId!;
+    await actions.undo();
+    expect(api.remove).toHaveBeenCalledTimes(1); expect(api.remove).toHaveBeenCalledWith(second, VERSION, expect.any(String));
+    actions.dispose(); controller.dispose();
+  });
+  it('does not swallow the confirmation of an add in flight when a confirmed notice is dismissed', async () => {
+    const { api, controller, actions } = fixture(); await controller.refresh(); actions.activate();
+    await actions.remove(EXERCISE_ID); expect(actions.getSnapshot().notice?.tone).toBe('confirmed');
+    let proceed!: () => void; const gate = new Promise<void>(resolve => { proceed = resolve; }), add = api.add.getMockImplementation()!;
+    api.add.mockImplementationOnce(async input => { await gate; return add(input); });
+    const adding = actions.add(ADD_A, 'ROW'); for (let i = 0; i < 12; i++) await Promise.resolve();
+    actions.dismissNotice(); expect(actions.getSnapshot().notice).toBeNull();
+    proceed(); await adding;
+    expect(actions.getSnapshot().notice).toMatchObject({ message: 'ROW agregado', undo: 'added', tone: 'confirmed' });
+    actions.dispose(); controller.dispose();
+  });
+  it('hides "quitado" and leaves the removal done', async () => {
+    const { api, controller, actions } = fixture(); await controller.refresh(); actions.activate();
+    await actions.remove(EXERCISE_ID); actions.dismissNotice();
+    expect(actions.getSnapshot().notice).toBeNull(); expect(api.remove).toHaveBeenCalledTimes(1);
+    expect(controller.getSnapshot().detail?.exercises.map(row => row.id)).toEqual([SECOND_ID]);
+    actions.dispose(); controller.dispose();
+  });
+  it('never dismisses a pending removal: the notice and the working flag stay until the controller answers', async () => {
+    const { api, controller, actions } = fixture(); await controller.refresh(); actions.activate();
+    let proceed!: () => void; const gate = new Promise<void>(resolve => { proceed = resolve; }), remove = api.remove.getMockImplementation()!;
+    api.remove.mockImplementationOnce(async (...args) => { await gate; return remove(...args); });
+    const removing = actions.remove(EXERCISE_ID); actions.dismissNotice();
+    expect(actions.getSnapshot().notice?.message).toBe('Quitando PRESS…'); expect(actions.getSnapshot().working).toBe(true);
+    proceed(); expect(await removing).toBe(true); expect(actions.getSnapshot().notice?.message).toBe('PRESS quitado');
+    actions.dispose(); controller.dispose();
+  });
+  it('never dismisses an unconfirmed removal: its notice and durable intent stay until their own timer', async () => {
+    const { api, controller, actions } = fixture(); await controller.refresh(); actions.activate();
+    api.remove.mockResolvedValue({ status: 'unavailable', reason: 'network', meta: { ...meta, outcome: 'unavailable' } });
+    await actions.remove(EXERCISE_ID); actions.dismissNotice();
+    expect(actions.getSnapshot().notice?.tone).toBe('uncertain'); expect(controller.getSnapshot().intent?.phase).toBe('uncertain');
+    await jest.advanceTimersByTimeAsync(SESSION_UNDO_MS); expect(actions.getSnapshot().notice).toBeNull();
+    expect(controller.getSnapshot().intent?.phase).toBe('uncertain'); expect(api.remove).toHaveBeenCalledTimes(1);
+    actions.dispose(); controller.dispose();
+  });
 });
