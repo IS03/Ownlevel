@@ -702,4 +702,173 @@ describe('Native Nutrition day', () => {
       expect(view.getByRole('button', { name: 'Deshacer comida agregada' }).props.accessibilityState).toMatchObject({ disabled: true });
     });
   });
+  describe('#499: a delete from the day that is not confirmed always shows its state and a way out', () => {
+    // The #472 test above restores the storage mock's setItem to an empty function (jest 29 mockRestore); these tests need real persistence.
+    beforeEach(() => { jest.spyOn(AsyncStorage, 'setItem').mockImplementation((key, value) => AsyncStorage.multiSet([[key, value]])); });
+    const idA = '41100000-0000-4000-8000-0000000000a1', idB = '41100000-0000-4000-8000-0000000000a2', storeKey = 'ownlevel.nutrition.meal.v1.owner';
+    const meta = (httpStatus = 201) => ({ durationMs: 1, httpStatus, outcome: 'ok' as const });
+    const receipt = (mealId: string, version: string, status: 'saved' | 'deleted' = 'saved') => ({ status: 'ok', data: { status, mealId, sourceDate: mockToday, destinationDate: mockToday, updatedAt: `${mockToday}T${version}Z` }, meta: meta(status === 'saved' ? 201 : 200) });
+    const conflictResult = (code: string, data?: object) => ({ status: 'conflict', code, message: code === 'MEAL_CHANGED' ? 'La comida fue editada.' : 'La comida ya no está disponible.', ...(data ? { data } : {}), meta: { ...meta(409), outcome: 'conflict' as const } });
+    const changed = () => conflictResult('MEAL_CHANGED', { error: 'MEAL_CHANGED', message: 'changed', currentDate: mockToday });
+    const dayWith = (mealId: string, title: string, calories: number) => {
+      const data = nutritionFixture(mockToday);
+      if (data.nutrition.status === 'ok' && data.nutrition.data.dayState === 'recorded') data.nutrition.data.meals = [{ ...data.nutrition.data.meals[0], id: mealId, title, calories, updatedAt: `${mockToday}T14:00:00Z` }];
+      return data;
+    };
+    const bodies = () => mockRequest.mock.calls.map(([o]) => o.body as { operation: string; mealId: string | null; expectedUpdatedAt: string | null; idempotencyKey: string });
+    const deletes = () => bodies().filter(b => b.operation === 'delete');
+    const panel = (view: ReturnType<typeof render>) => view.queryByTestId('meal-recovery-panel');
+    const undoButton = (view: ReturnType<typeof render>) => view.getByRole('button', { name: 'Deshacer comida agregada' });
+    const tapUndo = async (view: ReturnType<typeof render>) => { await act(async () => { fireEvent.press(undoButton(view)); }); };
+    const tap = async (view: ReturnType<typeof render>, name: string) => { await act(async () => { fireEvent.press(view.getByRole('button', { name })); }); };
+    async function addManual(view: ReturnType<typeof render>, title: string) {
+      await view.findByText('Agregar comida', { includeHiddenElements: true });
+      fireEvent.press(view.getByText('Agregar comida', { includeHiddenElements: true })); fireEvent.press(view.getByText('A mano'));
+      fireEvent.changeText(view.getByLabelText('Título'), title); fireEvent.changeText(view.getByLabelText('Calorías'), '250');
+      await act(async () => { fireEvent.press(view.getByText(/Agregar al día ·/)); });
+      await view.findByLabelText(`${title} · 250 kcal`);
+      await waitFor(() => expect(view.queryByTestId('manual-meal-editor')).toBeNull(), { timeout: 3000 });
+    }
+    /** PRIMERA (A) and SEGUNDA (B) confirmed: two creates sent; the next request is whatever the test queues for the delete. */
+    const twoMeals = async () => {
+      mockRead.mockImplementation(async () => ok(mockToday) as never);
+      mockRequest.mockResolvedValueOnce(receipt(idA, '13:00:00') as never).mockResolvedValueOnce(receipt(idB, '13:05:00') as never);
+      const view = render(element()); await addManual(view, 'PRIMERA'); await addManual(view, 'SEGUNDA'); return view;
+    };
+    const deleteB = (view: ReturnType<typeof render>, outcome: unknown) => { mockRequest.mockResolvedValueOnce(outcome as never); return tapUndo(view); };
+    const lockedUndo = (view: ReturnType<typeof render>, disabled: boolean) => expect(undoButton(view).props.accessibilityState).toMatchObject({ disabled });
+
+    it('(a) success shows no panel: "Deshecho" comes from the confirmed delete and the other meal stays offered', async () => {
+      const view = await twoMeals();
+      await deleteB(view, receipt(idB, '13:10:00', 'deleted'));
+      expect(await view.findByText('Deshecho')).toBeTruthy(); expect(panel(view)).toBeNull();
+      expect(mockRequest).toHaveBeenCalledTimes(3); expect(deletes()).toHaveLength(1);
+      await waitFor(() => expect(view.getByLabelText('PRIMERA · 250 kcal')).toBeTruthy(), { timeout: 3000 }); expect(view.queryByRole('button', { name: /Ver comida anterior/ })).toBeNull();
+    }, 15000);
+    it('(b)(j) uncertain: no panel while it runs; then the state and "Comprobar intento guardado" replay the same intent, once, even with a double tap', async () => {
+      const view = await twoMeals(); let finish!: (r: unknown) => void;
+      mockRequest.mockImplementationOnce(() => new Promise(resolve => { finish = resolve as (r: unknown) => void; }));
+      await tapUndo(view);
+      expect(view.getByText('Deshaciendo…')).toBeTruthy(); expect(panel(view)).toBeNull(); expect(view.queryByRole('button', { name: 'Comprobar intento guardado' })).toBeNull();
+      await act(async () => { finish(failure); });
+      expect(await view.findByText('Comprobar intento guardado')).toBeTruthy(); expect(view.getByText(/No sabemos si se guardó/)).toBeTruthy();
+      expect(view.queryByText('Deshaciendo…')).toBeNull(); expect(view.queryByText('Deshecho')).toBeNull();
+      lockedUndo(view, true); expect(view.getByRole('button', { name: 'Ver comida anterior, 1 disponibles' })).toBeTruthy();
+      expect(mockRequest).toHaveBeenCalledTimes(3);
+      mockRequest.mockImplementationOnce(() => new Promise(resolve => { finish = resolve as (r: unknown) => void; }));
+      const check = view.getByRole('button', { name: 'Comprobar intento guardado' });
+      await act(async () => { fireEvent.press(check); fireEvent.press(check); });
+      expect(mockRequest).toHaveBeenCalledTimes(4); expect(view.getByText('Comprobando…')).toBeTruthy();
+      expect(bodies()[3]).toBe(bodies()[2]); expect(bodies()[3].idempotencyKey).toBe(bodies()[2].idempotencyKey);
+      await act(async () => { finish(receipt(idB, '13:10:00', 'deleted')); });
+      expect(await view.findByText('Deshecho')).toBeTruthy(); expect(panel(view)).toBeNull();
+      expect(mockRequest).toHaveBeenCalledTimes(4); expect(deletes()).toHaveLength(2); expect(new Set(deletes().map(b => b.idempotencyKey)).size).toBe(1);
+      expect(await AsyncStorage.getItem(storeKey)).toBeNull();
+      await waitFor(() => expect(view.getByLabelText('PRIMERA · 250 kcal')).toBeTruthy(), { timeout: 3000 }); lockedUndo(view, false);
+    }, 15000);
+    it('(c) a second failure keeps the panel and the stored intent', async () => {
+      const view = await twoMeals();
+      await deleteB(view, failure); await view.findByText('Comprobar intento guardado'); const stored = await AsyncStorage.getItem(storeKey);
+      mockRequest.mockResolvedValueOnce(failure as never); await tap(view, 'Comprobar intento guardado');
+      expect(await view.findByText('Comprobar intento guardado')).toBeTruthy(); expect(panel(view)).not.toBeNull();
+      expect(mockRequest).toHaveBeenCalledTimes(4); expect(await AsyncStorage.getItem(storeKey)).toBe(stored); expect(bodies()[3]).toBe(bodies()[2]);
+    }, 15000);
+    it('(d) a confirmed delete whose re-read failed: "Actualizar días confirmados" only reads', async () => {
+      const view = await twoMeals(); mockRead.mockImplementation(async () => failure as never);
+      await deleteB(view, receipt(idB, '13:10:00', 'deleted'));
+      expect(await view.findByText('Actualizar días confirmados')).toBeTruthy(); expect(view.getByText(/No vuelvas a guardar/)).toBeTruthy();
+      expect(view.queryByText('Deshecho')).toBeNull(); expect(mockRequest).toHaveBeenCalledTimes(3);
+      mockRead.mockImplementation(async () => ok(mockToday) as never); const reads = mockRead.mock.calls.length;
+      await tap(view, 'Actualizar días confirmados');
+      expect(await view.findByText('Deshecho')).toBeTruthy(); expect(panel(view)).toBeNull();
+      expect(mockRequest).toHaveBeenCalledTimes(3); expect(mockRead.mock.calls.length).toBeGreaterThan(reads); expect(deletes()).toHaveLength(1);
+    }, 15000);
+    it('(e) blocked by a failed local write: nothing is sent, "Comprobar almacenamiento" is visible and nothing lingers once the storage works', async () => {
+      const view = await twoMeals(); jest.spyOn(AsyncStorage, 'setItem').mockRejectedValueOnce(new Error('disk'));
+      await tapUndo(view);
+      expect(await view.findByText(/No pudimos guardar el intento local/)).toBeTruthy(); expect(view.getByText('Comprobar almacenamiento')).toBeTruthy();
+      expect(view.queryByRole('button', { name: 'Cerrar' })).toBeNull(); expect(mockRequest).toHaveBeenCalledTimes(2); lockedUndo(view, true);
+      await tap(view, 'Comprobar almacenamiento');
+      await waitFor(() => expect(panel(view)).toBeNull()); lockedUndo(view, false);
+      expect(mockRequest).toHaveBeenCalledTimes(2); expect(await AsyncStorage.getItem(storeKey)).toBeNull();
+    }, 15000);
+    it('(e) blocked by an unreadable local store stays visible, then clears when the storage is readable', async () => {
+      const view = await twoMeals(); jest.spyOn(AsyncStorage, 'setItem').mockRejectedValueOnce(new Error('disk'));
+      await tapUndo(view); await view.findByText('Comprobar almacenamiento');
+      await AsyncStorage.setItem(storeKey, 'invalid-json'); await tap(view, 'Comprobar almacenamiento');
+      expect(await view.findByText(/No pudimos leer el intento local/)).toBeTruthy(); expect(view.getByText('Comprobar almacenamiento')).toBeTruthy(); lockedUndo(view, true);
+      await AsyncStorage.removeItem(storeKey); await tap(view, 'Comprobar almacenamiento');
+      await waitFor(() => expect(panel(view)).toBeNull()); lockedUndo(view, false); expect(mockRequest).toHaveBeenCalledTimes(2);
+    }, 15000);
+    it('(f) MEAL_CHANGED with the server version: says so, shows it, and Cerrar unlocks without sending or adopting anything', async () => {
+      const view = await twoMeals(); mockRead.mockImplementation(async () => ok(mockToday, dayWith(idB, 'SEGUNDA editada', 300)) as never);
+      await deleteB(view, changed());
+      expect(await view.findByText('La comida cambió. No la eliminamos.')).toBeTruthy(); expect(await view.findByText('Ahora: SEGUNDA editada · 300 kcal')).toBeTruthy();
+      expect(view.queryByText('Revisar mis cambios sobre esta versión')).toBeNull(); lockedUndo(view, true);
+      await tap(view, 'Cerrar');
+      await waitFor(() => expect(panel(view)).toBeNull()); lockedUndo(view, false);
+      expect(mockRequest).toHaveBeenCalledTimes(3); expect(deletes()).toHaveLength(1); expect(deletes()[0].expectedUpdatedAt).toBe(`${mockToday}T13:05:00Z`);
+      expect(await AsyncStorage.getItem(storeKey)).toBeNull(); expect(view.queryByText('Deshecho')).toBeNull();
+    }, 15000);
+    it('(f) MEAL_CHANGED with only the day: Actualizar is a read; Cerrar still unlocks; the meal is never deleted', async () => {
+      const view = await twoMeals(); await deleteB(view, changed());
+      expect(await view.findByText('La comida cambió. No la eliminamos.')).toBeTruthy(); expect(view.queryByText(/^Ahora:/)).toBeNull();
+      mockRead.mockImplementation(async () => ok(mockToday, dayWith(idB, 'SEGUNDA editada', 300)) as never); const reads = mockRead.mock.calls.length;
+      await tap(view, 'Actualizar'); expect(await view.findByText('Ahora: SEGUNDA editada · 300 kcal')).toBeTruthy();
+      expect(mockRead.mock.calls.length).toBeGreaterThan(reads); expect(mockRequest).toHaveBeenCalledTimes(3);
+      await tap(view, 'Cerrar'); await waitFor(() => expect(panel(view)).toBeNull()); lockedUndo(view, false);
+      expect(mockRequest).toHaveBeenCalledTimes(3); expect(deletes()).toHaveLength(1);
+    }, 15000);
+    it('(f) a conflict with no day to refresh (the meal is unavailable): the real message and only Cerrar', async () => {
+      const view = await twoMeals(); await deleteB(view, conflictResult('MEAL_UNAVAILABLE'));
+      expect(await view.findByText('La comida ya no está disponible.')).toBeTruthy(); expect(view.queryByRole('button', { name: 'Actualizar' })).toBeNull();
+      await tap(view, 'Cerrar'); await waitFor(() => expect(panel(view)).toBeNull()); lockedUndo(view, false); expect(mockRequest).toHaveBeenCalledTimes(3);
+    }, 15000);
+    it.each([
+      ['not_found', { status: 'not_found', message: 'No encontramos la comida.', meta: { ...meta(404), outcome: 'not_found' as const } }],
+      ['validation', { status: 'validation', message: 'La comida no se puede eliminar.', meta: { ...meta(422), outcome: 'validation' as const } }],
+    ])('(g) %s shows the real message with Cerrar, no phantom banner and no lasting lock', async (_name, result) => {
+      const view = await twoMeals(); await deleteB(view, result);
+      expect(await view.findByText((result as { message: string }).message)).toBeTruthy(); expect(view.getAllByText((result as { message: string }).message)).toHaveLength(1);
+      expect(view.queryByText('Revisar intento guardado')).toBeNull();
+      await tap(view, 'Cerrar'); await waitFor(() => expect(panel(view)).toBeNull()); expect(view.queryByText((result as { message: string }).message)).toBeNull(); lockedUndo(view, false);
+      expect(mockRequest).toHaveBeenCalledTimes(3); expect(deletes()).toHaveLength(1);
+    }, 15000);
+    it('(h) a stored uncertain intent comes back as the editor\'s own recovery, once, with no panel on top', async () => {
+      const first = await twoMeals(); await deleteB(first, failure); await first.findByText('Comprobar intento guardado'); first.unmount();
+      mockRead.mockImplementation(async () => ok(mockToday) as never);
+      const view = render(element()); await view.findByTestId('manual-meal-editor');
+      expect(view.getAllByText('Comprobar intento guardado')).toHaveLength(1); expect(panel(view)).toBeNull(); expect(mockRequest).toHaveBeenCalledTimes(3);
+      mockRequest.mockResolvedValueOnce(receipt(idB, '13:10:00', 'deleted') as never); await tap(view, 'Comprobar intento guardado');
+      await waitFor(() => expect(view.queryByTestId('manual-meal-editor')).toBeNull());
+      expect(mockRequest).toHaveBeenCalledTimes(4); expect(bodies()[3]).toEqual(bodies()[2]); expect(await AsyncStorage.getItem(storeKey)).toBeNull();
+    }, 20000);
+    it('(h) a stored confirmed intent offers only the re-read, with no panel on top', async () => {
+      const first = await twoMeals(); mockRead.mockImplementation(async () => failure as never);
+      await deleteB(first, receipt(idB, '13:10:00', 'deleted')); await first.findByText('Actualizar días confirmados'); first.unmount();
+      const view = render(element()); await view.findByTestId('manual-meal-editor');
+      expect(view.getAllByText('Actualizar días confirmados')).toHaveLength(1); expect(panel(view)).toBeNull();
+      mockRead.mockImplementation(async () => ok(mockToday) as never); await tap(view, 'Actualizar días confirmados');
+      await waitFor(() => expect(view.queryByTestId('manual-meal-editor')).toBeNull()); expect(mockRequest).toHaveBeenCalledTimes(3); expect(await AsyncStorage.getItem(storeKey)).toBeNull();
+    }, 20000);
+    it('(i) another account never sees the previous controller\'s panel; coming back restores the intent through the editor', async () => {
+      const view = await twoMeals(); await deleteB(view, failure); await view.findByText('Comprobar intento guardado');
+      mockUser = 'second'; view.rerender(element());
+      await waitFor(() => expect(view.queryByText('Comprobar intento guardado')).toBeNull()); expect(panel(view)).toBeNull(); expect(view.queryByText(/No sabemos si se guardó/)).toBeNull();
+      expect(mockRequest).toHaveBeenCalledTimes(3);
+      mockUser = 'owner'; view.rerender(element()); await view.findByTestId('manual-meal-editor');
+      expect(view.getAllByText('Comprobar intento guardado')).toHaveLength(1); expect(panel(view)).toBeNull(); expect(mockRequest).toHaveBeenCalledTimes(3);
+    }, 20000);
+    it('(k) the queue survives a failed undo: the other meal stays offered, Anterior and Deshacer wait while the recovery is open and work again after Cerrar', async () => {
+      const view = await twoMeals(); await deleteB(view, conflictResult('MEAL_UNAVAILABLE')); await view.findByText('La comida ya no está disponible.');
+      lockedUndo(view, true); const previous = view.getByRole('button', { name: 'Ver comida anterior, 1 disponibles' }); expect(previous.props.accessibilityState).toMatchObject({ disabled: true });
+      fireEvent.press(previous); fireEvent.press(undoButton(view)); expect(mockRequest).toHaveBeenCalledTimes(3); expect(view.getByLabelText('SEGUNDA · 250 kcal')).toBeTruthy();
+      await tap(view, 'Cerrar'); await waitFor(() => expect(panel(view)).toBeNull()); lockedUndo(view, false);
+      await tap(view, 'Ver comida anterior, 1 disponibles'); expect(view.getByLabelText('PRIMERA · 250 kcal')).toBeTruthy();
+      expect(mockRequest).toHaveBeenCalledTimes(3);
+      // Nothing was sent on its own; the user's own tap sends the first snapshot (its CAS), nothing else.
+      await deleteB(view, receipt(idA, '13:10:00', 'deleted')); expect(await view.findByText('Deshecho')).toBeTruthy();
+      expect(deletes().map(b => [b.mealId, b.expectedUpdatedAt])).toEqual([[idB, `${mockToday}T13:05:00Z`], [idA, `${mockToday}T13:00:00Z`]]); expect(mockRequest).toHaveBeenCalledTimes(4);
+    }, 15000);
+  });
 });
