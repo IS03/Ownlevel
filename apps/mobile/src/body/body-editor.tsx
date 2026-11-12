@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BODY_MEASUREMENT_LABELS } from '@/api/body';
 import { AppIcon, AppSheet, AppText, Button, GlassSurface, TextField, brandTokens, pressedStyle, spacing, useAppSheetDismiss, useOwnlevelTheme, useReduceMotion } from '@/design-system';
@@ -9,6 +9,7 @@ import { BodyDateField } from './body-date-field';
 import { MeasurementFields } from './body-measurement-form';
 import { formatBodyDate, formatCm, formatKg, measurementBadges } from './body-model';
 import type { MeasurementEditor, WeightEditor } from './body-storage';
+import { WEIGHT_REFERENCE_TEXT, weightFieldWidth, type MeasuredReference } from './weight-field-width';
 
 /** Close (✕) and save (✓) glass controls, the same as every other editor sheet in the app. */
 function SheetControl({ label, icon, disabled, accent, pending, onPress }: {
@@ -80,6 +81,29 @@ export function WeightEditorSheet({ editor, state, controller, closing = false, 
     <WeightForm editor={editor} state={state} controller={controller} closing={closing} />
   </AppSheet>;
 }
+/**
+ * The big number. Its width is a function of the font only, never of the typed text: the native field takes each keystroke
+ * before JS can resize it, so a content-sized width would leave one frame with the new text in the old width and the
+ * leading digit scrolled out of view (#468). It is sized for the widest valid weight ("999,99"), measured once from a
+ * hidden copy that never changes, and re-measured only when the font scale does (Dynamic Type). Until then (and for the
+ * frame after a scale change) a synchronous upper-bound estimate applies, so it is never narrower than its content.
+ */
+function WeightNumberField({ value, placeholder, editable, onChangeText }: { value: string; placeholder: string; editable: boolean; onChangeText: (value: string) => void }) {
+  const { colors } = useOwnlevelTheme(), { fontScale } = useWindowDimensions();
+  const [measured, setMeasured] = useState<MeasuredReference | null>(null);
+  const width = weightFieldWidth(brandTokens.typeScale.heroNumber.fontSize, fontScale, measured);
+  return <>
+    {/* Hidden and out of the row layout. Never wider than the row (a wider absolute child would grow the ScrollView's content width and let the sheet scroll sideways): one line that shrinks to the row, so at a huge font scale the measure is clamped to what the field can use anyway. */}
+    <View pointerEvents="none" aria-hidden accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.measureHost} testID="body-weight-measure-host">
+      <AppText aria-hidden accessibilityElementsHidden importantForAccessibility="no-hide-descendants" numberOfLines={1} testID="body-weight-measure"
+        onLayout={e => { const next = e.nativeEvent.layout.width; if (next > 0) setMeasured(prev => prev?.fontScale === fontScale && prev.width === next ? prev : { fontScale, width: next }); }}
+        style={[styles.number, styles.measure]}>{WEIGHT_REFERENCE_TEXT}</AppText>
+    </View>
+    <TextInput accessibilityLabel="Peso" autoFocus={Platform.OS !== 'ios'} editable={editable} keyboardType="decimal-pad" value={value}
+      placeholder={placeholder} placeholderTextColor={colors.textMuted}
+      onChangeText={onChangeText} style={[styles.number, styles.field, { color: colors.text, width }]} testID="body-weight-input" />
+  </>;
+}
 function WeightForm({ editor, state, controller, closing }: { editor: WeightEditor; state: BodyState; controller: BodyController; closing: boolean }) {
   const { colors } = useOwnlevelTheme(), insets = useSafeAreaInsets(), dismiss = useAppSheetDismiss();
   const today = state.read.overview?.today ?? '';
@@ -90,7 +114,6 @@ function WeightForm({ editor, state, controller, closing }: { editor: WeightEdit
   // The last known weight is the grey hint behind an empty field: typing starts from nothing, never from "0".
   const hint = editor.baseline ?? state.read.overview?.current?.weightKg ?? null;
   const placeholder = hint === null ? '0' : String(hint).replace('.', ',');
-  const [width, setWidth] = useState(40);
   return <KeyboardAvoidingView enabled={Platform.OS === 'android'} behavior="height">
     <View style={{ paddingBottom: Math.max(insets.bottom, 16) }} testID="body-editor">
     <ScrollView keyboardShouldPersistTaps="always" contentContainerStyle={styles.content}>
@@ -98,13 +121,8 @@ function WeightForm({ editor, state, controller, closing }: { editor: WeightEdit
         close={{ onPress: () => dismiss(), disabled: busy || !!state.intent }}
         save={{ label: 'Guardar', onPress: () => void controller.saveWeight(), disabled: !editable, pending: busy }} />
       <View style={styles.numberRow}>
-        {/* The field takes the width of what it shows (a hidden copy measures it), so "62,75" never gets clipped. */}
-        <AppText aria-hidden accessibilityElementsHidden importantForAccessibility="no-hide-descendants" onLayout={e => setWidth(e.nativeEvent.layout.width)}
-          style={[styles.number, styles.measure]}>{editor.draft.weight || placeholder}</AppText>
-        <TextInput accessibilityLabel="Peso" autoFocus={Platform.OS !== 'ios'} editable={editable} keyboardType="decimal-pad" value={editor.draft.weight}
-          placeholder={placeholder} placeholderTextColor={colors.textMuted}
-          onChangeText={v => controller.change('weight', v)} style={[styles.number, { color: colors.text, width: width + 12 }]} testID="body-weight-input" />
-        <AppText muted variant="title2">kg</AppText>
+        <WeightNumberField value={editor.draft.weight} placeholder={placeholder} editable={editable} onChangeText={v => controller.change('weight', v)} />
+        <AppText muted variant="title2" style={styles.unit}>kg</AppText>
       </View>
       {state.errors.weight ? <AppText accessibilityRole="alert" style={[styles.center, { color: colors.danger }]} variant="footnote">{state.errors.weight}</AppText> : null}
       {editing ? null : <BodyDateField value={editor.draft.date} today={today} editable={editable} onChange={v => controller.change('date', v)} error={state.errors.date} />}
@@ -176,6 +194,11 @@ const styles = StyleSheet.create({
   control: { width: 44, height: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   numberRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 8, paddingTop: 8 },
   number: { fontSize: brandTokens.typeScale.heroNumber.fontSize, fontWeight: '700', fontVariant: ['tabular-nums'], textAlign: 'center', minWidth: 32, minHeight: 64, padding: 0 },
-  measure: { position: 'absolute', opacity: 0 },
+  // Same font as the field (no letter spacing: the field has none); only its width is read.
+  measure: { letterSpacing: 0, flexShrink: 1 },
+  measureHost: { position: 'absolute', left: 0, right: 0, top: 0, flexDirection: 'row', opacity: 0 },
+  // Fixed width from the font; it may shrink (never the unit) so a huge Dynamic Type size scrolls inside the field instead of overflowing the sheet.
+  field: { flexShrink: 1, minWidth: 0 },
+  unit: { flexShrink: 0 },
   delete: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, minHeight: 44, marginTop: spacing.sm },
 });
