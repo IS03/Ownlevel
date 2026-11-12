@@ -610,4 +610,96 @@ describe('Native Nutrition day', () => {
     await waitFor(() => expect(view.getByText('No pudimos cargar este día')).toBeTruthy());
     expect(view.queryByText('Sin comidas registradas')).toBeNull();
   });
+  describe('#472: every still-valid meal Undo stays reachable', () => {
+    const idA = '41100000-0000-4000-8000-0000000000a1', idB = '41100000-0000-4000-8000-0000000000a2';
+    const meta = (httpStatus = 201) => ({ durationMs: 1, httpStatus, outcome: 'ok' as const });
+    const receipt = (mealId: string, version: string, status: 'saved' | 'deleted' = 'saved') => ({ status: 'ok', data: { status, mealId, sourceDate: mockToday, destinationDate: mockToday, updatedAt: `${mockToday}T${version}Z` }, meta: meta(status === 'saved' ? 201 : 200) });
+    const swipeAway = () => act(() => fireGestureHandler(getByGestureTestId('transient-notice-dismiss'), [{ state: State.BEGAN, translationX: 0, translationY: 0 }, { state: State.ACTIVE, translationX: 0, translationY: 80 }, { state: State.END, translationX: 0, translationY: 80 }]));
+    const bodies = () => mockRequest.mock.calls.map(([o]) => o.body as { operation: string; mealId: string | null; expectedUpdatedAt: string | null });
+    async function addManual(view: ReturnType<typeof render>, title: string) {
+      await view.findByText('Agregar comida', { includeHiddenElements: true });
+      fireEvent.press(view.getByText('Agregar comida', { includeHiddenElements: true })); fireEvent.press(view.getByText('A mano'));
+      fireEvent.changeText(view.getByLabelText('Título'), title); fireEvent.changeText(view.getByLabelText('Calorías'), '250');
+      await act(async () => { fireEvent.press(view.getByText(/Agregar al día ·/)); });
+      await view.findByLabelText(`${title} · 250 kcal`);
+      await waitFor(() => expect(view.queryByTestId('manual-meal-editor')).toBeNull(), { timeout: 3000 });
+    }
+    const twoMeals = async () => {
+      mockRead.mockImplementation(async () => ok(mockToday) as never);
+      mockRequest.mockResolvedValueOnce(receipt(idA, '13:00:00') as never).mockResolvedValueOnce(receipt(idB, '13:05:00') as never);
+      const view = render(element()); await addManual(view, 'PRIMERA'); await addManual(view, 'SEGUNDA'); return view;
+    };
+    it('a second confirmed meal keeps "Anterior · 1": the first one comes back with its own Deshacer, and that undo sends the first snapshot', async () => {
+      const view = await twoMeals();
+      expect(view.getByLabelText('SEGUNDA · 250 kcal')).toBeTruthy(); expect(view.queryByLabelText('PRIMERA · 250 kcal')).toBeNull();
+      fireEvent.press(view.getByRole('button', { name: 'Ver comida anterior, 1 disponibles' }));
+      expect(view.getByLabelText('PRIMERA · 250 kcal')).toBeTruthy(); expect(view.getByRole('button', { name: 'Deshacer comida agregada' })).toBeTruthy();
+      mockRequest.mockResolvedValueOnce(receipt(idA, '13:10:00', 'deleted') as never);
+      await act(async () => { fireEvent.press(view.getByLabelText('Deshacer comida agregada')); });
+      expect(await view.findByText('Deshecho')).toBeTruthy();
+      expect(bodies()[2]).toMatchObject({ operation: 'delete', mealId: idA, expectedUpdatedAt: `${mockToday}T13:00:00Z` });
+      // Only the first entry went: the second is still on offer.
+      await waitFor(() => expect(view.getByLabelText('SEGUNDA · 250 kcal')).toBeTruthy(), { timeout: 3000 }); expect(view.queryByRole('button', { name: /Ver comida anterior/ })).toBeNull();
+      expect(mockRequest).toHaveBeenCalledTimes(3);
+    }, 15000);
+    it('the visible Deshacer undoes the second meal, not the first', async () => {
+      const view = await twoMeals();
+      mockRequest.mockResolvedValueOnce(receipt(idB, '13:10:00', 'deleted') as never);
+      await act(async () => { fireEvent.press(view.getByLabelText('Deshacer comida agregada')); });
+      expect(await view.findByText('Deshecho')).toBeTruthy();
+      expect(bodies()[2]).toMatchObject({ operation: 'delete', mealId: idB, expectedUpdatedAt: `${mockToday}T13:05:00Z` });
+    });
+    it('swiping the visible notice away reveals the previous valid one and sends nothing', async () => {
+      const view = await twoMeals();
+      swipeAway();
+      expect(view.getByLabelText('PRIMERA · 250 kcal')).toBeTruthy(); expect(view.queryByRole('button', { name: /Ver comida anterior/ })).toBeNull();
+      expect(mockRequest).toHaveBeenCalledTimes(2);
+    });
+    it('a pending save does not hide an uncertain intent: the recovery stays reachable and the queued Deshacer waits, disabled', async () => {
+      mockRead.mockImplementation(async () => ok(mockToday) as never);
+      mockRequest.mockResolvedValueOnce(receipt(idA, '13:00:00') as never).mockResolvedValueOnce(failure as never).mockResolvedValueOnce(receipt(idB, '13:05:00') as never);
+      const view = render(element()); await addManual(view, 'PRIMERA');
+      await view.findByText('Agregar comida', { includeHiddenElements: true });
+      fireEvent.press(view.getByText('Agregar comida', { includeHiddenElements: true })); fireEvent.press(view.getByText('A mano'));
+      fireEvent.changeText(view.getByLabelText('Calorías'), '300'); fireEvent.press(view.getByText(/Agregar al día ·/));
+      await view.findByText('Comprobar intento guardado');
+      expect(view.getByRole('button', { name: 'Deshacer comida agregada' }).props.accessibilityState).toMatchObject({ disabled: true });
+      fireEvent.press(view.getByText('Volver al día · conservar intento')); await view.findByText('Revisar intento guardado');
+      expect(view.getByLabelText('PRIMERA · 250 kcal')).toBeTruthy();
+      expect(view.getByRole('button', { name: 'Deshacer comida agregada' }).props.accessibilityState).toMatchObject({ disabled: true });
+      fireEvent.press(view.getByRole('button', { name: 'Deshacer comida agregada' })); expect(mockRequest).toHaveBeenCalledTimes(2);
+      // The explicit recovery confirms the second meal: the first is still one tap behind it.
+      fireEvent.press(view.getByText('Revisar intento guardado'));
+      await act(async () => { fireEvent.press(view.getByText('Comprobar intento guardado')); });
+      await waitFor(() => expect(view.getByRole('button', { name: 'Ver comida anterior, 1 disponibles' })).toBeTruthy());
+      expect(view.getByRole('button', { name: 'Deshacer comida agregada' }).props.accessibilityState).toMatchObject({ disabled: false });
+    });
+    it('an undo that ends in a conflict sends nothing else: the controller stays in charge (its editor locks Deshacer) and the other meal stays queued', async () => {
+      const view = await twoMeals();
+      mockRequest.mockResolvedValueOnce({ status: 'conflict', code: 'MEAL_CHANGED', message: 'changed', data: { error: 'MEAL_CHANGED', message: 'changed', currentDate: mockToday }, meta: { ...meta(409), outcome: 'conflict' } } as never);
+      await act(async () => { fireEvent.press(view.getByLabelText('Deshacer comida agregada')); });
+      await waitFor(() => expect(mockRequest).toHaveBeenCalledTimes(3));
+      expect(bodies()[2]).toMatchObject({ operation: 'delete', mealId: idB });
+      expect(view.queryByText('Deshecho')).toBeNull();
+      expect(view.getByRole('button', { name: /Ver comida anterior, 1 disponibles/ })).toBeTruthy();
+      const undo = view.getByRole('button', { name: 'Deshacer comida agregada' }); expect(undo.props.accessibilityState).toMatchObject({ disabled: true });
+      fireEvent.press(undo); fireEvent.press(view.getByRole('button', { name: /Ver comida anterior, 1 disponibles/ }));
+      fireEvent.press(view.getByRole('button', { name: 'Deshacer comida agregada' }));
+      expect(mockRequest).toHaveBeenCalledTimes(3);
+    });
+    it('a blocked local intent store on a new save keeps its sheet and message on screen, locks the queued Deshacer and keeps the entry', async () => {
+      mockRead.mockImplementation(async () => ok(mockToday) as never);
+      mockRequest.mockResolvedValueOnce(receipt(idA, '13:00:00') as never);
+      const view = render(element()); await addManual(view, 'PRIMERA');
+      fireEvent.press(view.getByText('Agregar comida', { includeHiddenElements: true })); fireEvent.press(view.getByText('A mano'));
+      fireEvent.changeText(view.getByLabelText('Calorías'), '300');
+      const failing = jest.spyOn(AsyncStorage, 'setItem').mockRejectedValue(new Error('disk'));
+      await act(async () => { fireEvent.press(view.getByText(/Agregar al día ·/)); });
+      failing.mockRestore();
+      expect(await view.findByText(/No pudimos guardar el intento local/)).toBeTruthy(); expect(view.getByTestId('manual-meal-editor')).toBeTruthy();
+      expect(mockRequest).toHaveBeenCalledTimes(1);
+      expect(view.getByLabelText('PRIMERA · 250 kcal')).toBeTruthy();
+      expect(view.getByRole('button', { name: 'Deshacer comida agregada' }).props.accessibilityState).toMatchObject({ disabled: true });
+    });
+  });
 });
