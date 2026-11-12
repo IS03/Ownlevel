@@ -3,6 +3,7 @@ import { NutritionAddMenu, showNutritionAddMenu } from './add-menu';
 import { useMealNotice } from './use-meal-notice';
 import { NutritionToast, TodayPill } from './nutrition-toast';
 import { MealAddedNotice } from './meal-notice';
+import { MealRecoveryPanel } from './meal-recovery-panel';
 import {useNutritionConfiguration} from './config-provider';
 import {useSavedController} from './use-saved-controller';
 import {SavedEditor} from './saved-editor';
@@ -168,6 +169,8 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
     {meals?.state.message && !meals.state.editor ? <View style={styles.header}><AppText accessibilityRole="alert">{meals.state.message}</AppText>
       {meals.state.intent ? <Button label="Revisar intento guardado" onPress={() => meals.controller.showRecovery()} /> : null}
       {meals.state.phase === 'blocked' ? <Button label="Comprobar almacenamiento" onPress={() => void meals.controller.recover()} /> : null}</View> : null}
+    {/* A delete from the day (headless) never shows the editor: its recovery lives here instead (#499). */}
+    {meals ? <MealRecoveryPanel controller={meals.controller} state={meals.state} undoing={!!mealNotice.undoing} /> : null}
     {writes?.state.message && !writes.state.draft && !metricEntry.notice && !(metricEntry.feedbackHandled && writes.state.message === 'Cambios guardados.') ? <View style={styles.header}><AppText accessibilityRole="alert">{writes.state.message}</AppText>
       {writes.state.intent ? <Button label="Revisar intento de actividad/contexto" onPress={() => writes.controller.showRecovery()} /> : null}
       {writes.state.phase === 'blocked' ? <Button label="Comprobar almacenamiento del día" onPress={() => void writes.controller.recover()} /> : null}</View> : null}
