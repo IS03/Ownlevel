@@ -1,5 +1,5 @@
 import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ActionSheetIOS, ActivityIndicator, Alert, Platform, Pressable, ScrollView, SectionList, StyleSheet, View, type AccessibilityActionEvent } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, Platform, Pressable, ScrollView, SectionList, StyleSheet, View, useWindowDimensions, type AccessibilityActionEvent } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { AppIcon, AppText, Button, LoadingState, Surface, brandTokens, useOwnlevelTheme } from '@/design-system';
 import { haptics } from '@/platform/haptics';
@@ -21,6 +21,8 @@ type Section = { key: string; title: string; data: Item[] };
 const LETTERS_FROM = 12;
 /** «Ir a letra»: each pass measures more rows, so the next one lands closer; a few passes land on the letter. */
 const JUMP_PASSES = 8, JUMP_PASS_MS = 80;
+/** The native small spinner is 20 pt: the refresh slot is never shorter than it, nor than one footnote line at the current text size. */
+const SPINNER_SIZE = 20;
 
 const QuickRow = memo(function QuickRow({ option, added, pending, locked, onReview, onAdd, pin }: {
   option: QuickOption; added: boolean; pending: boolean; locked: boolean; onReview: (option: QuickOption) => void; onAdd: (option: QuickOption) => void;
@@ -110,7 +112,7 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
   status: ReactNode; footer: ReactNode;
 }) {
   // Optional, like ScrollScreen: a sheet rendered without a provider just skips the bottom inset.
-  const { colors } = useOwnlevelTheme(), bottomInset = useContext(SafeAreaInsetsContext)?.bottom ?? 0;
+  const { colors } = useOwnlevelTheme(), bottomInset = useContext(SafeAreaInsetsContext)?.bottom ?? 0, { fontScale } = useWindowDimensions();
   const [search, setSearch] = useState('');
   const [view, setView] = useState<'entry' | 'all'>('entry');
   const [manage, setManage] = useState(false);
@@ -133,6 +135,9 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
   if (saved && pinsKnown && !hasEntry && view === 'entry') setView('all');
   const current = hasEntry ? view : 'all';
   const query = search.trim();
+  // #303 · Only a section the server confirmed counts: with one on screen a new read is a quiet refresh, never a blank loader.
+  const confirmed = !!saved || (suggestions && state.options?.suggested.status === 'ok');
+  const retryable = state.optionsError || state.options?.saved.status === 'unavailable' || (suggestions && state.options?.suggested.status === 'unavailable');
 
   const review = useCallback((option: QuickOption) => controller.choose(option), [controller]);
   const add = useCallback((option: QuickOption) => { void controller.addInline(option); }, [controller]);
@@ -202,14 +207,22 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
   const toggleManage = () => { haptics.selection(); setManage(value => !value); };
 
   const manageButton = writable ? <Button label={managing ? 'Listo' : pinnedIds.length ? 'Administrar' : 'Elegir fijadas'} variant="quiet" onPress={toggleManage} testID="quick-pins-manage" /> : null;
+  const refreshRow = state.optionsLoading && confirmed
+    ? <View accessible accessibilityLabel="Actualizando opciones rápidas" accessibilityLiveRegion="polite" style={styles.inline} testID="quick-options-refreshing">
+      <ActivityIndicator accessibilityElementsHidden importantForAccessibility="no-hide-descendants" color={colors.textMuted} />
+      <AppText muted variant="footnote" style={styles.flex}>Actualizando…</AppText>
+    </View> : null;
+  const refreshSlot = retryable ? refreshRow : <View style={{ minHeight: Math.max(SPINNER_SIZE, Math.ceil(brandTokens.typeScale.footnote.lineHeight * fontScale)), justifyContent: 'center' }} testID="quick-options-refresh-slot">{refreshRow}</View>;
   const header = <View style={styles.header}>
     <MealSearch label="Buscar en tus comidas" value={search} onChange={setSearch} />
     {status}
-    {state.optionsLoading ? <LoadingState label="Cargando opciones rápidas" /> : null}
-    {state.optionsError ? <AppText accessibilityRole="alert">No pudimos actualizar las opciones.</AppText> : null}
+    {state.optionsLoading && !confirmed ? <LoadingState label="Cargando opciones rápidas" /> : null}
+    {/* With confirmed meals on screen the rows stay; the refresh sits in a slot of constant height so the list does not jump. */}
+    {confirmed ? refreshSlot : null}
+    {state.optionsError ? <AppText accessibilityRole="alert">{confirmed ? 'No pudimos actualizar las opciones. Estás viendo las últimas confirmadas, pueden estar desactualizadas.' : 'No pudimos actualizar las opciones.'}</AppText> : null}
     {state.options?.saved.status === 'unavailable' ? <AppText accessibilityRole="alert">No pudimos cargar estas opciones.</AppText> : null}
     {/* The retry sits next to the error it answers, not after the last row. */}
-    {state.optionsError || state.options?.saved.status === 'unavailable' || (suggestions && state.options?.suggested.status === 'unavailable')
+    {retryable
       ? <Button label="Reintentar opciones" onPress={() => void controller.loadOptions()} variant="quiet" /> : null}
     {pins ? <PinsNotice pins={pins} names={names} /> : null}
     {hasEntry && !query ? current === 'entry'

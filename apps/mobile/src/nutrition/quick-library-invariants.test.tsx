@@ -86,11 +86,13 @@ describe('#479 D1 · what the person must act on is not buried under a long libr
     const s = await setup({ meals: sixHundred, pins: ok(snap(0, [])) });
     s.quickApi.options.mockResolvedValueOnce({ status: 'unavailable', reason: 'network', meta });
     await act(async () => { await s.quick.loadOptions(); });
-    expect(s.view.getByText('No pudimos actualizar las opciones.')).toBeTruthy();
+    // #303: the 200 meals are still shown, so the alert says they are the last confirmed ones.
+    const stale = 'No pudimos actualizar las opciones. Estás viendo las últimas confirmadas, pueden estar desactualizadas.';
+    expect(s.view.getByText(stale)).toBeTruthy();
     expect(at(s.view, 'Reintentar opciones')).toBeLessThan(at(s.view, 'Revisar '));
     await act(async () => { fireEvent.press(s.view.getByText('Reintentar opciones')); });
     expect(s.quickApi.options).toHaveBeenCalledTimes(3);
-    expect(s.view.queryByText('No pudimos actualizar las opciones.')).toBeNull();
+    expect(s.view.queryByText(stale)).toBeNull();
   });
   it('the destination stays under the library, where it always was', async () => {
     const { view } = await setup({ meals: sixHundred, pins: ok(snap(0, [])) });
