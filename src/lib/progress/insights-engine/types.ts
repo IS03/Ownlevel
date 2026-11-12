@@ -55,7 +55,18 @@ export type SleepNightEvidence = "declared" | "undeclared" | "stale_declaration"
 export type FeelingKey = "energyPre" | "fatiguePre" | "energyPost" | "fatiguePost";
 /** Order of the capture against the session. The client clock is never treated as verified. */
 export type FeelingTiming = "before_start" | "before_first_set" | "after_first_set" | "after_end" | "post_declared" | "unknown";
-export type SessionFeeling = { value: number; timing: FeelingTiming; temporalQuality: "unknown" | "unverified_client_clock" };
+/**
+ * What decided `timing` for a pre answer. `temporalQuality` keeps describing the device clock only; it is never raised by a receipt.
+ *   server_receipt          the server had the answer before the reference (start, or the first completed set): proof of an early record
+ *   client_clock            a legacy fact with no receipt: the device clock decided, unverified
+ *   receipt_late            the receipt is after the last proven reference and the device does not claim an earlier capture. `unknown`:
+ *                           offline use with a clock that is ahead looks the same, so lateness is never stated
+ *   receipt_conflict        the receipt is after the last proven reference but the device claims an earlier capture. `unknown`, same reason
+ *   receipt_unreadable      the fact carries a receipt that cannot be read: `unknown`, the answer is kept
+ *   reference_unreliable    the session start is a loading time (its local day is not the session's logical day): no comparison is made
+ */
+export type FeelingTimingBasis = "server_receipt" | "client_clock" | "receipt_late" | "receipt_conflict" | "receipt_unreadable" | "reference_unreliable";
+export type SessionFeeling = { value: number; timing: FeelingTiming; temporalQuality: "unknown" | "unverified_client_clock"; basis?: FeelingTimingBasis };
 
 export type CandidateFamily = "metric" | "nutrition" | "meal_window" | "feeling" | "sleep" | "body";
 export type CandidateWindow = "same_day" | "previous_day" | "pre_3h" | "same_day_before_start" | "session" | "night_before" | "pre_start_12h" | "previous_week";
