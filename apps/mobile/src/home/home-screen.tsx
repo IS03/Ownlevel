@@ -107,7 +107,12 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
     onOpenDay: (date: string) => { haptics.selection(); router.push({ pathname: '/(tabs)/train/history', params: { date } }); },
     onOpenProgress: (target: HomeProgressTarget) => {
       haptics.selection();
-      if (target.kind === 'body') router.push({ pathname: '/(tabs)/progress/trends/body', params: target.metric ? { metric: target.metric, period: target.period } : { period: target.period } });
+      if (target.kind === 'body') {
+        // A measure link carries the explicit range that contains its record (the Body route reads `from`/`to`, never `period`); every other body link is unchanged.
+        const params = target.metric && target.from && target.to ? { metric: target.metric, from: target.from, to: target.to }
+          : target.metric ? { metric: target.metric, period: target.period } : { period: target.period };
+        router.push({ pathname: '/(tabs)/progress/trends/body', params });
+      }
       else if (target.kind === 'training') router.push({ pathname: '/(tabs)/progress/trends/training', params: { period: target.period } });
       else router.push({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: target.exerciseId, period: target.period } });
     },

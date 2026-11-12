@@ -118,7 +118,7 @@ describe('Home progress (contextual third note)', () => {
     expect(measure.getByText('90,5 cm')).toBeTruthy();
     expect(measure.getByText('Último registro: 7 oct')).toBeTruthy();
     fireEvent.press(view.getByTestId('home-progress-measure'));
-    expect(view.onOpen).toHaveBeenLastCalledWith({ kind: 'body', period: '7', metric: 'body.waist' });
+    expect(view.onOpen).toHaveBeenLastCalledWith({ kind: 'body', period: '7', metric: 'body.waist', from: '2026-09-10', to: '2026-10-10' });
   });
 
   it('each row opens its own detail with its own target', () => {
@@ -127,7 +127,7 @@ describe('Home progress (contextual third note)', () => {
     expect(view.onOpen.mock.calls).toEqual([
       [{ kind: 'exercise', period: '30', exerciseId: 'bench-id' }],
       [{ kind: 'body', period: '7' }],
-      [{ kind: 'body', period: '7', metric: 'body.waist' }],
+      [{ kind: 'body', period: '7', metric: 'body.waist', from: '2026-09-10', to: '2026-10-10' }],
     ]);
   });
 

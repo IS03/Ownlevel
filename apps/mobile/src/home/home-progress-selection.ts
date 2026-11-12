@@ -23,7 +23,12 @@ import type { HomeResource } from './home-resource';
  *  5. At most 3 rows; a row never appears twice.
  */
 
-export type HomeProgressTarget = { kind: 'body'; period: '7'; metric?: string } | { kind: 'training'; period: '7' | '30' }
+/**
+ * `period` is what the Home reads were requested with; the Body screen does NOT consume it (its shared range reads `from` and `to`
+ * only, see `useProgressRouteRange`), so a link that must show a specific day sets `from`/`to` explicitly. The measure note does:
+ * its record can be up to 30 days old, which the range Progress last had selected may not contain.
+ */
+export type HomeProgressTarget = { kind: 'body'; period: '7'; metric?: string; from?: string; to?: string } | { kind: 'training'; period: '7' | '30' }
   | { kind: 'exercise'; period: '30'; exerciseId: string };
 
 export type RowSummary = { title: string; subtitle: string; value?: string; target: HomeProgressTarget };
@@ -154,7 +159,8 @@ function measureRow(body: HomeResource<ProgressBody>, date: string): ProgressRow
   if (!best) return null;
   return {
     id: 'measure', icon: 'ruler', title: best.metric.label, value: formatValue(best.latest.value, 'cm'), subtitle: lastRecorded(best.latest.date, data.today),
-    target: { kind: 'body', period: '7', metric: best.metric.key }, state: 'ready', evidenceDate: best.latest.date,
+    // The window the eligibility rule used (date − 30 … date) always contains the record, whatever range Progress had selected.
+    target: { kind: 'body', period: '7', metric: best.metric.key, from: oldest, to: data.today }, state: 'ready', evidenceDate: best.latest.date,
   };
 }
 

@@ -185,6 +185,40 @@ describe('selectProgressRows: freshness and states', () => {
   });
 });
 
+describe('selectProgressRows: the measure link carries the range that contains its record', () => {
+  const waistAt = (date: string) => metric('body.waist', 'Cintura', date, 90.5);
+  const measureOf = (body: ProgressBody, date = DATE) => select(ready(body), ready(homeProgressRecords()), date)[2];
+
+  it.each([0, 1, 7, 8, 15, 29, 30])('a measure recorded %i days ago opens an explicit from/to that contains it', age => {
+    const row = measureOf(bodyWith(null, waistAt(day(-age))));
+    expect(row?.target).toEqual({ kind: 'body', period: '7', metric: 'body.waist', from: day(-30), to: DATE });
+    const target = row!.target as { from: string; to: string };
+    expect(target.from <= day(-age) && day(-age) <= target.to).toBe(true);
+  });
+
+  it('day 31 is out of the window: no third row, so no link at all', () => {
+    expect(measureOf(bodyWith(null, waistAt(day(-31))))).toBeUndefined();
+  });
+
+  it('the range follows Home\'s date: a new day shifts the window, and a read of the previous day yields no row', () => {
+    const next = '2026-10-20';
+    const body = { ...bodyWith(null, waistAt('2026-10-07')), today: next };
+    expect(measureOf(body, next)?.target).toEqual({ kind: 'body', period: '7', metric: 'body.waist', from: '2026-09-20', to: next });
+    // Thirteen days old on the 20th, still inside; on the 8th of the next month it would be out, never linked.
+    expect(measureOf(bodyWith(null, waistAt('2026-10-07')), next)).toBeUndefined();
+    expect(measureOf({ ...body, today: '2026-11-08' }, '2026-11-08')).toBeUndefined();
+  });
+
+  it('Peso and Récords keep their targets untouched: no from, no to, no metric', () => {
+    const rows = select(ready(bodyWith('2026-10-10', waistAt(day(-20)))), ready(recordsWithPr()));
+    const byId = Object.fromEntries(rows.map(row => [row.id, row.target]));
+    expect(byId.weight).toEqual({ kind: 'body', period: '7' });
+    expect(byId.records).toEqual({ kind: 'exercise', period: '30', exerciseId: 'bench-id' });
+    const many = recordsWithPr(); many.personalRecords.push({ exerciseId: 'x', name: 'X', description: 'd' }, { exerciseId: 'y', name: 'Y', description: 'd' });
+    expect(select(ready(bodyWith('2026-10-10')), ready(many)).find(row => row.id === 'records')?.target).toEqual({ kind: 'training', period: '30' });
+  });
+});
+
 describe('selectProgressRows: the measure row', () => {
   const waist = (date: string | null, value = 90.5) => metric('body.waist', 'Cintura', date, value);
   const third = (body: ProgressBody, records = ready(homeProgressRecords())) => select(ready(body), records)[2];
@@ -192,7 +226,7 @@ describe('selectProgressRows: the measure row', () => {
   it('shows the label, the formatted value and when it was recorded, opening that measure in the body detail', () => {
     expect(third(bodyWith('2026-10-10', waist('2026-10-07')))).toEqual({
       id: 'measure', icon: 'ruler', title: 'Cintura', value: '90,5 cm', subtitle: 'Último registro: 7 oct',
-      target: { kind: 'body', period: '7', metric: 'body.waist' }, state: 'ready', evidenceDate: '2026-10-07' });
+      target: { kind: 'body', period: '7', metric: 'body.waist', from: day(-30), to: DATE }, state: 'ready', evidenceDate: '2026-10-07' });
   });
 
   it('says "hoy" when recorded today', () => {

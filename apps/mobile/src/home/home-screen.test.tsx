@@ -403,7 +403,28 @@ describe('Home screen', () => {
     mockFetchProgressBody.mockImplementation(() => ok(body));
     const view = await renderScreen();
     fireEvent.press(view.getByTestId('home-progress-measure'));
-    expect(mockPush.mock.calls).toEqual([[{ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.waist', period: '7' } }]]);
+    // The Body route reads `from`/`to` only, never `period`: the link carries the window that contains the record.
+    expect(mockPush.mock.calls).toEqual([[{ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.waist', from: '2026-09-10', to: '2026-10-10' } }]]);
+  });
+
+  it('a measure recorded 20 days ago opens its detail with an explicit from/to (the Body route ignores period), and Peso and Récords keep theirs', async () => {
+    const body = homeProgressBody();
+    const latest = { date: '2026-09-20', value: 90.5, imported: false, provenanceLabel: 'Registro' };
+    body.metrics.push({ key: 'body.waist', label: 'Cintura', unit: 'cm', latest, first: latest, last: latest, change: null, referenceChange: null, trend: 'unavailable',
+      confidence: 'unavailable', observations: [latest], referenceCount: 0, comparison: { status: 'insufficient_data', reason: 'insufficient_previous_samples' } });
+    mockFetchProgressBody.mockImplementation(() => ok(body));
+    const view = await renderScreen();
+    fireEvent.press(view.getByTestId('home-progress-measure'));
+    fireEvent.press(view.getByTestId('home-progress-weight'));
+    fireEvent.press(view.getByTestId('home-progress-records'));
+    expect(mockPush.mock.calls).toEqual([
+      [{ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.waist', from: '2026-09-10', to: '2026-10-10' } }],
+      [{ pathname: '/(tabs)/progress/trends/body', params: { period: '7' } }],
+      [{ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: 'bench-id', period: '30' } }],
+    ]);
+    expect(mockPush.mock.calls[0]![0]).not.toHaveProperty('params.period');
+    // Navigating asks for nothing: the same reads, once each.
+    for (const fetcher of allFetchers()) expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it('choosing the Progreso notes asks for nothing new: the same reads, once each, and no network of its own', async () => {
