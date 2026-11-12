@@ -218,7 +218,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
       {quick?.state.inlineKey && !quick.state.open ? <NutritionToast testID="nutrition-quick-pending" state="pending" message="Agregando…" />
         : mealNotice.undoing ? <NutritionToast testID="nutrition-meal-pending" state="pending" message={mealNotice.undoing === 'undo' ? 'Deshaciendo…' : 'Eliminando…'} />
         : mealNotice.result ? <NutritionToast testID="nutrition-meal-result" state="done" message={mealNotice.result.message} />
-        : mealNotice.notice ? <MealAddedNotice notice={mealNotice.notice} disabled={!editable || !!meals?.state.editor} pending={false} onUndo={() => void mealNotice.undo()} onClose={mealNotice.dismiss} /> : null}
+        : mealNotice.notice ? <MealAddedNotice notice={mealNotice.notice} disabled={!editable || !!meals?.state.editor} pending={false} onUndo={() => void mealNotice.undo()} onClose={mealNotice.dismiss} queuedCount={mealNotice.queuedCount} onPrevious={mealNotice.previous} /> : null}
     </NoticeStack>
     {meals ? <MealEditor controller={meals.controller} state={meals.state} /> : null}
   </>;
