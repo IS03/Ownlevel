@@ -1,0 +1,10 @@
+{
+  "protocolVersion": "preregistered-question-reserved/1",
+  "protocolHash": "4198f72781e82b5c1a6fe7ef86ef567e6b7b1d78f857243ec2859f3e5800c237",
+  "sourceHash": "708e1b7eb046179589941f11d341dff6ab45ac2a2b974a3e0f654fdc38bf61b1",
+  "commit": "bc9a43b688e0782ac9a73446036282ce204a19bd",
+  "namespace": "OWNLEVEL-367-preregistered-RESERVE-20261111-v1",
+  "authorizedBy": "OWNLEVEL Dirección",
+  "authorizedAt": "2026-11-12T02:22:18.198Z",
+  "statement": "Authorize ONE run of this protocol at this commit"
+}

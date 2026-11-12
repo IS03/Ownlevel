@@ -1,0 +1,42 @@
+protocol preregistered-question-reserved/1
+protocolHash 4198f72781e82b5c1a6fe7ef86ef567e6b7b1d78f857243ec2859f3e5800c237
+sourceHash 708e1b7eb046179589941f11d341dff6ab45ac2a2b974a3e0f654fdc38bf61b1
+commit bc9a43b688e0782ac9a73446036282ce204a19bd
+treeClean true
+namespace OWNLEVEL-367-preregistered-RESERVE-20261111-v1
+outputDir docs/progress/qa/367-preguntas-reserva
+
+scenario                    group                 n      chunks  criterion
+N1_iid                      null                   4000      16  wilson_upper95_supported <= 0.05
+N2_persist                  null                   4000      16  wilson_upper95_supported <= 0.05
+N3_strong_persist           null                   4000      16  wilson_upper95_supported <= 0.05
+N4_trends                   null                   4000      16  wilson_upper95_supported <= 0.05
+N5_recorded_changes         null                   4000      16  wilson_upper95_supported <= 0.05
+N6_unrecorded_changes       null                   4000      16  wilson_upper95_supported <= 0.05
+N7b_missing_by_exposure     null                   4000      16  wilson_upper95_supported <= 0.05
+N8_retro_selection          null                   4000      16  wilson_upper95_supported <= 0.05
+N9_sparse                   null                   4000      16  wilson_upper95_supported <= 0.05
+P25                         power                  1000       4  wilson_lower95_supported >= 0.70 over ALL histories
+P10                         report                 1000       4  -
+P15                         report                 1000       4  -
+P20                         report                 1000       4  -
+P15_sparse                  report                 1000       4  -
+N7_collider_missing         stress_out_of_domain   1000       4  -
+S1_short_trends             stress_out_of_domain   1000       4  -
+S2_anticipatory_missing     stress_out_of_domain   1000       4  -
+
+total histories 44000, chunks 176
+budgets {"maxCpuSeconds":600,"maxRssMiB":512,"chunkSize":250,"maxWorkers":1}
+decision rule: approved only if the campaign is complete (every scenario has exactly n verified results, no technical error, budgets respected) AND every null criterion holds AND the power criterion holds; anything else is rejected or incomplete; incomplete never approves
+
+authorization template (to be signed by Direccion; nothing is written):
+{
+  "protocolVersion": "preregistered-question-reserved/1",
+  "protocolHash": "4198f72781e82b5c1a6fe7ef86ef567e6b7b1d78f857243ec2859f3e5800c237",
+  "sourceHash": "708e1b7eb046179589941f11d341dff6ab45ac2a2b974a3e0f654fdc38bf61b1",
+  "commit": "bc9a43b688e0782ac9a73446036282ce204a19bd",
+  "namespace": "OWNLEVEL-367-preregistered-RESERVE-20261111-v1",
+  "authorizedBy": "<name>",
+  "authorizedAt": "<ISO-8601 timestamp>",
+  "statement": "Authorize ONE run of this protocol at this commit"
+}
