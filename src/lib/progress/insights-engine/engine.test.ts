@@ -216,7 +216,10 @@ describe("contexto y exposiciones", () => {
     const source = (facts: unknown) => history(oscillating(6), { feelings: [{ sessionId: "s3", revision: 1, facts }] });
     expect(candidateOf(source({ energyPre: fact(4, `${d}T17:59:00Z`) }), "feeling:energyPre:session").values.get(d)).toBe(4);
     expect(candidateOf(source({ energyPre: fact(4, `${d}T18:05:00Z`) }), "feeling:energyPre:session").values.get(d)).toBe(4);
-    const late = candidateOf(source({ energyPre: fact(4, `${d}T18:30:00Z`) }), "feeling:energyPre:session");
+    // #492: a receipt after the first set does not prove a late capture (offline use, a clock ahead): unknown. Only a legacy fact with no receipt reads late.
+    const received = candidateOf(source({ energyPre: fact(4, `${d}T18:30:00Z`) }), "feeling:energyPre:session");
+    expect(received.values.has(d)).toBe(false); expect(received.exclusions.feeling_capture_unknown).toBe(1); expect(received.exclusions.feeling_after_first_set).toBeUndefined();
+    const late = candidateOf(source({ energyPre: { ...fact(4, `${d}T18:30:00Z`), receivedAt: undefined } }), "feeling:energyPre:session");
     expect(late.values.has(d)).toBe(false); expect(late.exclusions.feeling_after_first_set).toBe(1);
     expect(candidateOf(source({ energyPre: fact(4, null) }), "feeling:energyPre:session").exclusions.feeling_capture_unknown).toBe(1);
     const model = buildInsightsReadModel(source({ energyPost: fact(2, `${d}T19:01:00Z`, "post") }), { today: "2027-01-01", limit: 10, permutations: 19 });

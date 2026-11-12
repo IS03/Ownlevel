@@ -58,13 +58,14 @@ export type FeelingTiming = "before_start" | "before_first_set" | "after_first_s
 /**
  * What decided `timing` for a pre answer. `temporalQuality` keeps describing the device clock only; it is never raised by a receipt.
  *   server_receipt          the server had the answer before the reference (start, or the first completed set): proof of an early record
- *   client_clock            no usable receipt (a legacy fact has none) or no capture time: the device clock decided, unverified
- *   client_and_receipt_late the device clock and the server receipt are both after the reference: reported late, still unverified
- *   receipt_conflict        the server received it late but the device says it was early: offline use or a wrong clock, never "late"
- *   receipt_unreadable      the fact carries a receipt that cannot be read: timing is unknown, the answer is kept
+ *   client_clock            a legacy fact with no receipt: the device clock decided, unverified
+ *   receipt_late            the receipt is after the last proven reference and the device does not claim an earlier capture. `unknown`:
+ *                           offline use with a clock that is ahead looks the same, so lateness is never stated
+ *   receipt_conflict        the receipt is after the last proven reference but the device claims an earlier capture. `unknown`, same reason
+ *   receipt_unreadable      the fact carries a receipt that cannot be read: `unknown`, the answer is kept
  *   reference_unreliable    the session start is a loading time (its local day is not the session's logical day): no comparison is made
  */
-export type FeelingTimingBasis = "server_receipt" | "client_clock" | "client_and_receipt_late" | "receipt_conflict" | "receipt_unreadable" | "reference_unreliable";
+export type FeelingTimingBasis = "server_receipt" | "client_clock" | "receipt_late" | "receipt_conflict" | "receipt_unreadable" | "reference_unreliable";
 export type SessionFeeling = { value: number; timing: FeelingTiming; temporalQuality: "unknown" | "unverified_client_clock"; basis?: FeelingTimingBasis };
 
 export type CandidateFamily = "metric" | "nutrition" | "meal_window" | "feeling" | "sleep" | "body";

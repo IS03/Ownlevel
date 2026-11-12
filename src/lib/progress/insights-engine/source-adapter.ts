@@ -87,8 +87,10 @@ function clientTiming(captured: number | null, { start, end, firstSetAt }: Refs)
 
 /**
  * Timing of a PRE answer. A server receipt before the reference proves the answer existed before it, whatever the device clock said.
- * A later receipt proves nothing about when it was captured (offline use, retries), so it is never read as late on its own:
- * it is late only when the device clock agrees, and unknown when the device claims an earlier capture.
+ * A receipt after the last proven reference proves NOTHING about when the answer was captured: an answer written offline, with a
+ * device clock that is ahead, and synced later looks exactly like a late one in both marks. So it is `unknown`, never late,
+ * whether the device says early or late. Only a fact with no receipt at all (written before receipts existed) is read from the
+ * device clock, as it always was, and it says so.
  */
 function preTiming(captured: number | null, receipt: Receipt, refs: Refs, referenceReliable: boolean): { timing: SessionFeeling["timing"]; basis: FeelingTimingBasis } {
   if (!referenceReliable) return { timing: "unknown", basis: "reference_unreliable" };
@@ -97,10 +99,9 @@ function preTiming(captured: number | null, receipt: Receipt, refs: Refs, refere
   const { start, firstSetAt } = refs;
   if (start !== null && receipt.at <= start) return { timing: "before_start", basis: "server_receipt" };
   if (firstSetAt !== null && receipt.at <= firstSetAt) return { timing: "before_first_set", basis: "server_receipt" };
+  // Kept apart only to explain: the device claiming an earlier capture is the visible offline or wrong-clock case.
   const client = clientTiming(captured, refs);
-  if (client === "before_start" || client === "before_first_set") return { timing: "unknown", basis: "receipt_conflict" };
-  if (client === "after_first_set" || client === "after_end") return { timing: client, basis: "client_and_receipt_late" };
-  return { timing: "unknown", basis: "client_clock" };
+  return { timing: "unknown", basis: client === "before_start" || client === "before_first_set" ? "receipt_conflict" : "receipt_late" };
 }
 
 /** Validates again what the database guarantees. A malformed fact is excluded and counted, never read as absent. */

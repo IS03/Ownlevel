@@ -42,7 +42,7 @@ const recorded = (v: unknown) => object(v) && finite(v.recorded) && count(v.miss
 const nutrition = (v: unknown) => v === null || (object(v) && count(v.activeMeals) && recorded(v.calories) && recorded(v.proteinG) && recorded(v.carbsG) && recorded(v.fatG));
 const FEELING_KEY = new Set(["energyPre", "fatiguePre", "energyPost", "fatiguePost"]);
 /** Optional: an answer of an older server does not carry it. It explains what decided `timing`; it never changes how an older client reads the answer. */
-const TIMING_BASIS = new Set(["server_receipt", "client_clock", "client_and_receipt_late", "receipt_conflict", "receipt_unreadable", "reference_unreliable"]);
+const TIMING_BASIS = new Set(["server_receipt", "client_clock", "receipt_late", "receipt_conflict", "receipt_unreadable", "reference_unreliable"]);
 const feeling = (v: unknown) => object(v) && count(v.value) && TIMING.has(String(v.timing)) && (v.temporalQuality === "unknown" || v.temporalQuality === "unverified_client_clock")
   && (v.basis === undefined || TIMING_BASIS.has(String(v.basis)));
 /** Exported for its test only. */

@@ -32,23 +32,31 @@ describe("#492 pre answer timing with the server receipt", () => {
     expect(fact.timing).not.toMatch(/after/);
   });
   it("a late receipt with no device time says nothing about the capture", () => {
-    expect(energy(pre(null, T("21:40")))).toMatchObject({ timing: "unknown", basis: "client_clock", temporalQuality: "unknown" });
+    expect(energy(pre(null, T("21:40")))).toMatchObject({ timing: "unknown", basis: "receipt_late", temporalQuality: "unknown" });
   });
-  it("device and receipt both after the reference are reported late, and still unverified", () => {
-    expect(energy(pre(T("21:30"), T("21:31")))).toMatchObject({ timing: "after_first_set", basis: "client_and_receipt_late", temporalQuality: "unverified_client_clock" });
-    expect(energy(pre(T("22:20"), T("22:21")))).toMatchObject({ timing: "after_end", basis: "client_and_receipt_late" });
+  it("device AHEAD: real offline capture before the start, device clock reading late, synced afterwards: unknown, never late", () => {
+    // Captured at 20:50 (before the start) on a device whose clock is hours ahead: it wrote 21:30 or 22:20, and the sync arrived at 21:31 or 22:21.
+    for (const [captured, received] of [[T("21:30"), T("21:31")], [T("22:20"), T("22:21")], [T("23:50"), T("23:52")]] as const) {
+      const fact = energy(pre(captured, received));
+      expect(fact).toMatchObject({ timing: "unknown", basis: "receipt_late", temporalQuality: "unverified_client_clock" });
+      expect(["after_first_set", "after_end"]).not.toContain(fact.timing);
+    }
+  });
+  it("the same offline capture is unknown whatever the device says: early, late or missing", () => {
+    const outcomes = [T("20:50"), T("21:30"), T("22:20"), null].map(captured => energy(pre(captured, T("22:21"))).timing);
+    expect(outcomes).toEqual(["unknown", "unknown", "unknown", "unknown"]);
   });
   it("a device time between the start and the first set with a receipt after the first set is a conflict, not late", () => {
     expect(energy(pre(T("21:05"), T("21:30")))).toMatchObject({ timing: "unknown", basis: "receipt_conflict" });
   });
-  it("an edited answer carries the new receipt: a value changed after the session cannot be read as captured earlier", () => {
+  it("an edited answer carries the new receipt: a value changed after the session is neither early nor stated late", () => {
     const original = energy(pre(T("20:50"), T("20:51"), 2));
     const edited = energy(pre(T("22:30"), T("22:31"), 5));
-    expect(original).toMatchObject({ value: 2, timing: "before_start" });
-    expect(edited).toMatchObject({ value: 5, timing: "after_end", basis: "client_and_receipt_late" });
+    expect(original).toMatchObject({ value: 2, timing: "before_start", basis: "server_receipt" });
+    expect(edited).toMatchObject({ value: 5, timing: "unknown", basis: "receipt_late" });
   });
   it("without a first completed set, an answer received after the start is unknown, not late", () => {
-    expect(energy(pre(T("21:30"), T("21:31")), session, null)).toMatchObject({ timing: "unknown", basis: "client_clock" });
+    expect(energy(pre(T("21:30"), T("21:31")), session, null)).toMatchObject({ timing: "unknown", basis: "receipt_late" });
   });
   it("without a start time only the first set can prove an early receipt", () => {
     expect(energy(pre(T("20:00"), T("21:05")), { startedAt: null, endedAt: END, date: "2026-11-10" })).toMatchObject({ timing: "before_first_set", basis: "server_receipt" });
@@ -124,8 +132,17 @@ describe("#492 consumers keep reading timing only", () => {
   it("offline capture is counted as unknown time, not as late and not as eligible", () => {
     expect(countsFor(pre(T("20:50"), T("23:30")))).toMatchObject({ eligible: 0, late: 0, timingUnknown: 1 });
   });
-  it("both clocks late is counted as late", () => {
-    expect(countsFor(pre(T("21:30"), T("21:31")))).toMatchObject({ eligible: 0, late: 1, timingUnknown: 0 });
+  it("offline capture with a device clock AHEAD (reads late, received late) is counted as unknown time and NOT as late", () => {
+    for (const [captured, received] of [[T("21:30"), T("21:31")], [T("22:20"), T("22:21")]] as const) {
+      expect(countsFor(pre(captured, received))).toMatchObject({ eligible: 0, late: 0, timingUnknown: 1 });
+    }
+  });
+  it("an answer edited after the session is counted as unknown time, neither eligible nor late", () => {
+    expect(countsFor(pre(T("22:30"), T("22:31"), 5))).toMatchObject({ eligible: 0, late: 0, timingUnknown: 1 });
+  });
+  it("only a legacy fact with no receipt can still be counted late, from the device clock alone", () => {
+    expect(countsFor(pre(T("21:30")))).toMatchObject({ eligible: 0, late: 1, timingUnknown: 0 });
+    expect(energy(pre(T("21:30")))).toMatchObject({ timing: "after_first_set", basis: "client_clock" });
   });
   it("a retroactive session is counted as unknown time and the answer is not lost", () => {
     expect(countsFor(pre(T("20:50"), T("20:51")), "2026-11-08")).toMatchObject({ eligible: 0, late: 0, timingUnknown: 1 });
@@ -137,7 +154,8 @@ describe("#492 consumers keep reading timing only", () => {
     const ctx = (facts: unknown) => ({ feelings: read(facts).values, unreadableFeelings: undefined });
     expect(priorFeelingFact(ctx(pre(T("22:30"), T("20:50"))), pre(T("22:30"), T("20:50")), "energyPre")).toEqual({ state: "recorded", value: 4 });
     expect(priorFeelingFact(ctx(pre(T("20:50"), T("23:30"))), pre(T("20:50"), T("23:30")), "energyPre")).toEqual({ state: "unknown_time", value: null });
-    expect(priorFeelingFact(ctx(pre(T("22:30"), T("22:31"))), pre(T("22:30"), T("22:31")), "energyPre")).toEqual({ state: "late", value: null });
+    expect(priorFeelingFact(ctx(pre(T("22:30"), T("22:31"))), pre(T("22:30"), T("22:31")), "energyPre")).toEqual({ state: "unknown_time", value: null });
+    expect(priorFeelingFact(ctx(pre(T("22:30"))), pre(T("22:30")), "energyPre")).toEqual({ state: "late", value: null }); // legacy: no receipt, device clock only
   });
 });
 
@@ -145,8 +163,11 @@ describe("#492 the wire contract stays compatible", () => {
   const wire = (extra: Record<string, unknown>) => ({ value: 3, timing: "before_start", temporalQuality: "unverified_client_clock", ...extra });
   it("accepts an answer without basis (an older server), every known basis, and refuses anything else", () => {
     expect(isSessionFeelingWire(wire({}))).toBe(true);
-    for (const basis of ["server_receipt", "client_clock", "client_and_receipt_late", "receipt_conflict", "receipt_unreadable", "reference_unreliable"]) expect(isSessionFeelingWire(wire({ basis }))).toBe(true);
+    for (const basis of ["server_receipt", "client_clock", "receipt_late", "receipt_conflict", "receipt_unreadable", "reference_unreliable"]) expect(isSessionFeelingWire(wire({ basis }))).toBe(true);
     for (const basis of ["verified", "", null, 3]) expect(isSessionFeelingWire(wire({ basis }))).toBe(false);
+  });
+  it("refuses the basis this PR briefly had before review: it claimed a late capture", () => {
+    expect(isSessionFeelingWire(wire({ basis: "client_and_receipt_late" }))).toBe(false);
   });
   it("still refuses a temporalQuality the contract never had: a receipt does not upgrade the device clock", () => {
     expect(isSessionFeelingWire(wire({ temporalQuality: "server_verified" }))).toBe(false);
