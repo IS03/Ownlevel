@@ -1,11 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BODY_MEASUREMENT_FIELDS, BODY_MEASUREMENT_LABELS } from '@/api/body';
+import { BODY_MEASUREMENT_LABELS } from '@/api/body';
 import { AppIcon, AppSheet, AppText, Button, GlassSurface, TextField, brandTokens, pressedStyle, spacing, useAppSheetDismiss, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import type { BodyController, BodyState } from './body-controller';
 import { BodyDateField } from './body-date-field';
+import { MeasurementFields } from './body-measurement-form';
 import { formatBodyDate, formatCm, formatKg, measurementBadges } from './body-model';
 import type { MeasurementEditor, WeightEditor } from './body-storage';
 
@@ -152,12 +153,7 @@ export function MeasurementEditorSheet({ editor, state, controller }: { editor: 
     {baseline ? measurementBadges(baseline).map(badge => <AppText key={badge.text} variant="footnote" style={{ color: badge.tone === 'warning' ? colors.text : colors.textMuted }}>{badge.text}</AppText>) : null}
     {suspect ? <AppText muted variant="footnote">Al guardar la corrección, la medición se marca como verificada y vuelve a contar en el análisis.</AppText> : null}
     <BodyDateField value={editor.draft.date} today={today} editable={editable} onChange={v => controller.change('date', v)} error={state.errors.date} />
-    <View style={styles.grid}>
-      {BODY_MEASUREMENT_FIELDS.map(field => <View key={field} style={styles.cell}>
-        <TextField label={BODY_MEASUREMENT_LABELS[field]} unit="cm" value={editor.draft[field]} onChangeText={v => controller.change(field, v)} error={state.errors[field]}
-          disabled={!editable} keyboardType="decimal-pad" placeholder={baseline?.[field] != null ? String(baseline[field]).replace('.', ',') : '—'} autoCorrect={false} selectTextOnFocus numeric />
-      </View>)}
-    </View>
+    <MeasurementFields editor={editor} state={state} controller={controller} editable={editable} />
     {legacy.length ? <AppText muted variant="footnote">
       {legacy.map(f => `${BODY_MEASUREMENT_LABELS[f]} (histórico): ${formatCm(baseline![f])}`).join(' · ')} · se conserva al guardar.
     </AppText> : null}
@@ -181,7 +177,5 @@ const styles = StyleSheet.create({
   numberRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 8, paddingTop: 8 },
   number: { fontSize: brandTokens.typeScale.heroNumber.fontSize, fontWeight: '700', fontVariant: ['tabular-nums'], textAlign: 'center', minWidth: 32, minHeight: 64, padding: 0 },
   measure: { position: 'absolute', opacity: 0 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -spacing.xs },
-  cell: { width: '50%', paddingHorizontal: spacing.xs, paddingBottom: spacing.sm },
   delete: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, minHeight: 44, marginTop: spacing.sm },
 });
