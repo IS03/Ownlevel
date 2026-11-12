@@ -2,6 +2,7 @@ import { seededRandom } from "../../insights-engine/stats";
 
 /** Offline research prototype (#367). Not imported by any route. Synthetic data only. */
 
+export const CONTRAST_VERSION = "preregistered-contrast/1";
 export const BLOCK_DAYS = 28;
 export const PERMUTATIONS = 999;
 export const HORIZON_DAYS = 730;

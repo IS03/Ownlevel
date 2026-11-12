@@ -9,10 +9,10 @@ import { build } from "esbuild";
 // Offline #367 calibration pilot (development seeds only). No size/seed/scenario overrides.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const args = process.argv.slice(2);
-const smoke = args.includes("--smoke"), phase = args.includes("--phase2") ? "phase2" : "phase1";
-const [reportPath, ...rest] = args.filter(a => a !== "--smoke" && a !== "--phase2");
+const smoke = args.includes("--smoke"), phase = args.includes("--phase3") ? "phase3" : args.includes("--phase2") ? "phase2" : "phase1";
+const [reportPath, ...rest] = args.filter(a => a !== "--smoke" && a !== "--phase2" && a !== "--phase3");
 if (!reportPath || !isAbsolute(reportPath) || rest.length) {
-  console.error("Usage: node scripts/insights-research/preregistered-pilot.mjs <absoluteReportPath> [--smoke] [--phase2]");
+  console.error("Usage: node scripts/insights-research/preregistered-pilot.mjs <absoluteReportPath> [--smoke] [--phase2|--phase3]");
   process.exit(1);
 }
 const CPU_CAP_SECONDS = 900;

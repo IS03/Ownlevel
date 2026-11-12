@@ -1,11 +1,19 @@
 import { ALPHAS, DESIGNS, HORIZON_DAYS, PERMUTATIONS, VARIANTS, evaluateQuestion, type Closure, type Design, type QuestionEvaluation, type Variant } from "./contrast";
-import { DEV_NAMESPACE, NULL_SCENARIOS, POSITIVE_SCENARIOS, generateHistory, hash32, type Scenario } from "./generator";
+import { DEV_NAMESPACE, NULL_SCENARIOS, POSITIVE_SCENARIOS, STRESS_SCENARIOS, generateHistory, hash32, type Scenario } from "./generator";
 
 /** Offline research prototype (#367). Development seeds only. Pure loop: no I/O, no clock beyond process.cpuUsage. */
 
-export type Phase = "phase1" | "phase2";
+export type Phase = "phase1" | "phase2" | "phase3";
 /** Phase 1 keeps its original settings (its report now also has N7b and P25 rows). Phase 2 is fixed: design 120, era_shift. */
 export function pilotConfig(smoke: boolean, phase: Phase = "phase1") {
+  /** Phase 3 is fixed: the two out-of-domain stress scenarios only, reported as "null" (no true effect). */
+  if (phase === "phase3") return {
+    phase, namespace: "OWNLEVEL-367-preregistered-DEV-pilot-3",
+    nullScenarios: [...STRESS_SCENARIOS], positiveScenarios: [] as (typeof POSITIVE_SCENARIOS[number])[],
+    historiesPerNull: smoke ? 20 : 1000, historiesPerPositive: 0,
+    designs: [120] as Design[], variants: ["era_shift"] as Variant[], alphas: { look1: 0.007, look2: 0.028 },
+    permutations: PERMUTATIONS, horizonDays: HORIZON_DAYS, smoke,
+  };
   if (phase === "phase2") return {
     phase, namespace: "OWNLEVEL-367-preregistered-DEV-pilot-2",
     nullScenarios: [...NULL_SCENARIOS], positiveScenarios: [...POSITIVE_SCENARIOS],

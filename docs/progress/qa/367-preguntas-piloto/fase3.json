@@ -1,0 +1,119 @@
+{
+  "phase": "phase3",
+  "mode": "full",
+  "run": {
+    "cpuSeconds": 3.793581,
+    "cpuUserSeconds": 3.756588,
+    "cpuSystemSeconds": 0.036993,
+    "wallSeconds": 3.443132625,
+    "peakRssBytesSampled": 110444544,
+    "historiesProcessed": 2000,
+    "node": "v22.19.0",
+    "gitHead": "593bf54e7bd8dac901dc99d91a1fca8f97918ee3",
+    "configSha256": "0981356c5e4f760415af9d955c820e0bcd06d38ea835ece434820a136b425ede"
+  },
+  "config": {
+    "phase": "phase3",
+    "namespace": "OWNLEVEL-367-preregistered-DEV-pilot-3",
+    "nullScenarios": [
+      "S1_short_trends",
+      "S2_anticipatory_missing"
+    ],
+    "positiveScenarios": [],
+    "historiesPerNull": 1000,
+    "historiesPerPositive": 0,
+    "designs": [
+      120
+    ],
+    "variants": [
+      "era_shift"
+    ],
+    "alphas": {
+      "look1": 0.007,
+      "look2": 0.028
+    },
+    "permutations": 999,
+    "horizonDays": 730,
+    "smoke": false
+  },
+  "scenarios": [
+    {
+      "scenario": "S1_short_trends",
+      "kind": "null",
+      "histories": 1000,
+      "cpuMicros": 1956535
+    },
+    {
+      "scenario": "S2_anticipatory_missing",
+      "kind": "null",
+      "histories": 1000,
+      "cpuMicros": 1776599
+    }
+  ],
+  "aggregates": [
+    {
+      "scenario": "S1_short_trends",
+      "design": 120,
+      "variant": "era_shift",
+      "histories": 1000,
+      "supported": 36,
+      "supportedRate": 0.036,
+      "wilsonLower95": 0.02611557140738732,
+      "wilsonUpper95": 0.049435660467207834,
+      "supportedLook1": 4,
+      "supportedLook2": 32,
+      "closure": {
+        "supported": 36,
+        "no_clear_difference": 855,
+        "selective_record": 5,
+        "insufficient_data": 104
+      },
+      "reachedFinalLook": 931,
+      "finalLookDayMedian": 366,
+      "finalLookDayP90": 588,
+      "meanInformativeFractionFinal": 0.7386949516648775,
+      "meanEffectPpFinal": 0.09181267124056655,
+      "meanDFinal": 0.0014208538409414947,
+      "meanAchievedEffectPpAmongReaching": 0.09181267124056655,
+      "finalLookP": {
+        "n": 890,
+        "le001": 0.010112359550561797,
+        "le0032": 0.04269662921348315,
+        "le005": 0.06741573033707865,
+        "le010": 0.12247191011235956
+      }
+    },
+    {
+      "scenario": "S2_anticipatory_missing",
+      "design": 120,
+      "variant": "era_shift",
+      "histories": 1000,
+      "supported": 78,
+      "supportedRate": 0.078,
+      "wilsonLower95": 0.06294716759073615,
+      "wilsonUpper95": 0.09628261657107237,
+      "supportedLook1": 15,
+      "supportedLook2": 63,
+      "closure": {
+        "supported": 78,
+        "no_clear_difference": 864,
+        "selective_record": 58,
+        "insufficient_data": 0
+      },
+      "reachedFinalLook": 1000,
+      "finalLookDayMedian": 343,
+      "finalLookDayP90": 582,
+      "meanInformativeFractionFinal": 0.92789166666667,
+      "meanEffectPpFinal": -4.19284015440114,
+      "meanDFinal": -0.1698462608025486,
+      "meanAchievedEffectPpAmongReaching": -4.19284015440114,
+      "finalLookP": {
+        "n": 942,
+        "le001": 0.04883227176220807,
+        "le0032": 0.0870488322717622,
+        "le005": 0.12208067940552017,
+        "le010": 0.21019108280254778
+      }
+    }
+  ]
+}
