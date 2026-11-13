@@ -4,7 +4,7 @@ import { Alert, RefreshControl } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { MobileTrainingExercisesResponse } from '@/api/exercises';
-import { clearConfirmedReads } from '@/api/confirmed-read-cache';
+import { clearConfirmedReads, invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import { OwnlevelThemeProvider } from '@/design-system';
 
 import { ExerciseLibraryScreen } from './exercise-library-screen';
@@ -18,6 +18,16 @@ const mockUseApiResource = jest.fn();
 /** One account's client, stable across renders (the retained reading is scoped by client). */
 const mockClient = { request: jest.fn() };
 let mockRealCachedRead = false;
+/** Off by default (these screen tests do not model focus); the denial tests treat the mounted screen as on screen. */
+const mockUseFocusEffect = jest.fn<(effect: () => (() => void) | void) => void>();
+// The «Agregar a una rutina» sheet stands in for the real one (a native editor sheet): it shows the exercise it was given
+// and an action on it, which is exactly what must not survive a denial.
+jest.mock('./exercise-add-routine-sheet', () => {
+  const { Pressable, Text, View } = jest.requireActual<typeof import('react-native')>('react-native');
+  return { ExerciseAddRoutineSheet: ({ exercise }: { exercise: { name: string } }) => <View testID="add-routine-sheet">
+    <Text>{`Agregar ${exercise.name}`}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Agregar ${exercise.name} a PUSH`} />
+  </View> };
+});
 /** Mocked readings a reload has confirmed again (the harness's stand-in for a new confirmed reading). */
 const mockReconfirmed = new WeakSet<object>();
 
@@ -38,7 +48,7 @@ jest.mock('expo-router', () => {
     Badge: () => null,
     Button: ({ accessibilityLabel, onPress, disabled }: { accessibilityLabel: string; onPress: () => void; disabled: boolean }) => <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} onPress={onPress} disabled={disabled} />,
   });
-  return { useRouter: () => ({ push: mockPush }), useFocusEffect: () => undefined, Stack: { Toolbar, Screen: ({ options }: { options: { headerSearchBarOptions?: { onChangeText: (event: { nativeEvent: { text: string } }) => void } } }) => options.headerSearchBarOptions ? <TextInput accessibilityLabel="Buscar ejercicio o músculo" onChangeText={text => options.headerSearchBarOptions!.onChangeText({ nativeEvent: { text } })} /> : null } };
+  return { useRouter: () => ({ push: mockPush }), useFocusEffect: (effect: () => (() => void) | void) => mockUseFocusEffect(effect), Stack: { Toolbar, Screen: ({ options }: { options: { headerSearchBarOptions?: { onChangeText: (event: { nativeEvent: { text: string } }) => void } } }) => options.headerSearchBarOptions ? <TextInput accessibilityLabel="Buscar ejercicio o músculo" onChangeText={text => options.headerSearchBarOptions!.onChangeText({ nativeEvent: { text } })} /> : null } };
 });
 // These screen tests drive the reading's state directly; the retained reading itself (ConfirmedReadCache, #303 C3a)
 // is exercised with the real cache in exercise-library-retention.test.tsx.
@@ -219,8 +229,73 @@ describe('authorization denial on a mounted library (#303 C3a review; real retai
     jest.restoreAllMocks(); jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     [mockFetch, mockSetStatus, mockUpdate, mockCreate].forEach(fn => fn.mockReset());
     clearConfirmedReads(mockClient as never); mockRealCachedRead = true;
+    mockUseFocusEffect.mockImplementation(effect => {
+      (jest.requireActual('react') as typeof import('react')).useEffect(() => effect(), [effect]);
+    });
   });
-  afterEach(() => { mockRealCachedRead = false; clearConfirmedReads(mockClient as never); });
+  afterEach(() => { mockRealCachedRead = false; mockUseFocusEffect.mockReset(); clearConfirmedReads(mockClient as never); });
+  /** With the library on screen, a settled training write revalidates it at once: that read is answered with `answer`. */
+  const revalidateWith = async (answer: unknown) => {
+    mockFetch.mockResolvedValueOnce(answer);
+    await act(async () => { invalidateConfirmedReads(mockClient as never, '/api/mobile/v1/training/routines/order'); });
+  };
+  const DENIALS: [string, unknown][] = [
+    ['401', { status: 'unauthorized', meta: { durationMs: 1, httpStatus: 401, outcome: 'unauthorized' } }],
+    ['403', { status: 'unavailable', reason: 'server', meta: { durationMs: 1, httpStatus: 403, outcome: 'unavailable' } }],
+  ];
+  it.each(DENIALS)('editor open with a protected exercise → %s: it closes and is discarded in that render, and does not come back after recovery', async (_code, denied) => {
+    mockFetch.mockResolvedValueOnce(okRead());
+    const view = renderScreen();
+    await waitFor(() => expect(view.getByText('Press inclinado')).toBeTruthy());
+    fireEvent(view.getByRole('button', { name: 'Abrir Press inclinado' }), 'accessibilityAction', { nativeEvent: { actionName: 'edit' } });
+    expect(view.getByLabelText('Nombre del ejercicio').props.value).toBe('Press inclinado');
+    fireEvent.changeText(view.getByLabelText('Nombre del ejercicio'), 'Press borrador');
+    await revalidateWith(denied);
+    await waitFor(() => expect(view.getByText('Biblioteca no disponible')).toBeTruthy());
+    expect(view.queryByLabelText('Nombre del ejercicio')).toBeNull();
+    expect(view.queryByRole('button', { name: 'Guardar ejercicio' })).toBeNull();
+    expect(view.queryByDisplayValue('Press inclinado')).toBeNull();
+    expect(view.queryByDisplayValue('Press borrador')).toBeNull();
+    expect(view.queryByText('Press inclinado')).toBeNull();
+    mockFetch.mockResolvedValueOnce(okRead());
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Reintentar' })); });
+    await waitFor(() => expect(view.getByText('Press inclinado')).toBeTruthy()); // the list is back…
+    expect(view.queryByLabelText('Nombre del ejercicio')).toBeNull(); // …the editor is not
+    expect(view.queryByDisplayValue('Press borrador')).toBeNull();
+    expect(mockUpdate).not.toHaveBeenCalled();
+    // Opening it again starts from the authorized reading, not from the discarded draft.
+    fireEvent(view.getByRole('button', { name: 'Abrir Press inclinado' }), 'accessibilityAction', { nativeEvent: { actionName: 'edit' } });
+    expect(view.getByLabelText('Nombre del ejercicio').props.value).toBe('Press inclinado');
+    view.unmount();
+  });
+  it.each(DENIALS)('«Agregar a una rutina» open → %s: the sheet and its actions disappear and do not come back after recovery', async (_code, denied) => {
+    mockFetch.mockResolvedValueOnce(okRead());
+    const view = renderScreen();
+    await waitFor(() => expect(view.getByText('Press inclinado')).toBeTruthy());
+    fireEvent(view.getByRole('button', { name: 'Abrir Press inclinado' }), 'accessibilityAction', { nativeEvent: { actionName: 'add' } });
+    expect(view.getByTestId('add-routine-sheet')).toBeTruthy();
+    await revalidateWith(denied);
+    await waitFor(() => expect(view.getByText('Biblioteca no disponible')).toBeTruthy());
+    expect(view.queryByTestId('add-routine-sheet')).toBeNull();
+    expect(view.queryByText('Agregar Press inclinado')).toBeNull();
+    expect(view.queryByRole('button', { name: 'Agregar Press inclinado a PUSH' })).toBeNull();
+    mockFetch.mockResolvedValueOnce(okRead());
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Reintentar' })); });
+    await waitFor(() => expect(view.getByText('Press inclinado')).toBeTruthy());
+    expect(view.queryByTestId('add-routine-sheet')).toBeNull();
+    view.unmount();
+  });
+  it('a network failure with the editor and its draft open keeps them (not a denial)', async () => {
+    mockFetch.mockResolvedValueOnce(okRead());
+    const view = renderScreen();
+    await waitFor(() => expect(view.getByText('Press inclinado')).toBeTruthy());
+    fireEvent(view.getByRole('button', { name: 'Abrir Press inclinado' }), 'accessibilityAction', { nativeEvent: { actionName: 'edit' } });
+    fireEvent.changeText(view.getByLabelText('Nombre del ejercicio'), 'Press borrador');
+    await revalidateWith({ status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } });
+    await waitFor(() => expect(view.getByText('Mostramos la última lectura confirmada.')).toBeTruthy());
+    expect(view.getByLabelText('Nombre del ejercicio').props.value).toBe('Press borrador');
+    view.unmount();
+  });
   it.each([
     ['401', { status: 'unauthorized', meta: { durationMs: 1, httpStatus: 401, outcome: 'unauthorized' } }],
     ['403', { status: 'unavailable', reason: 'server', meta: { durationMs: 1, httpStatus: 403, outcome: 'unavailable' } }],

@@ -674,9 +674,16 @@ it.each([false, true])('keeps an optimistic order and sends exact IDs, server ve
 
 it.each(['conflict', 'unavailable'])('rolls back an unconfirmed order to server rows and reads again after %s', async status => {
   mockOrder.mockResolvedValue(status === 'conflict' ? { status, code: 'ROUTINE_LIST_CHANGED' } : { status, reason: 'network' });
-  const view = renderScreen(); await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); }); // verified by a read first moveDown(view);
+  const view = renderScreen();
+  expect(view.getAllByTestId('routine-name').map(node => node.props.children)).toEqual(['PUSH', 'LEGS']); // server order
+  await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); }); // verified by a read first
+  moveDown(view);
+  // The draft really changed before saving: PUSH moved below LEGS.
+  expect(view.getByLabelText('Ordenar PUSH').props.accessibilityValue.now).toBe(2);
+  expect(view.getByLabelText('Ordenar LEGS').props.accessibilityValue.now).toBe(1);
   await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar orden' })); });
   expect(mockOrder).toHaveBeenCalledTimes(1);
+  expect(mockOrder.mock.calls[0]?.[1]).toMatchObject({ routineIds: [routines[0].id, routines[1].id], expectedListVersion: 7 }); // the moved draft was sent
   await waitFor(() => expect(view.queryByTestId('routine-order-list')).toBeNull());
   expect(view.getAllByTestId('routine-name').map(node => node.props.children)).toEqual(['PUSH', 'LEGS']);
   expect(mockRefresh).toHaveBeenCalled(); expect(mockOrder).toHaveBeenCalledTimes(1);

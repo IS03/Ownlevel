@@ -51,6 +51,10 @@ export function ExerciseLibraryScreen({ createIdempotencyKey = () => globalThis.
   const { refresh } = library;
   // Focus, foreground and the 30 s reuse belong to the retained library reading (useExerciseLibrary).
   const visible = filterExercises(library.exercises, query, filters), sections = groupExercises(visible).map(group => ({ ...group, data: group.exercises }));
+  // An explicit 401/403 closes AND discards the editor and the «Agregar a una rutina» sheet in this same render: they hold
+  // a copy of a protected exercise (the editor form keeps its initial snapshot), so they unmount and never reopen when
+  // access comes back. A network failure keeps them as they were.
+  if (library.denied && (editorOpen || adding || editor.mode !== 'create')) { setEditorOpen(false); setEditor({ mode: 'create' }); setAdding(null); }
   const disabled = library.pending || Boolean(editorOpen || filtersOpen || adding);
   const openEditor = (target: ExerciseEditorTarget) => { setEditor(target); setEditorOpen(true); };
   const latest = useRef<RowActions | null>(null);
@@ -83,10 +87,10 @@ export function ExerciseLibraryScreen({ createIdempotencyKey = () => globalThis.
     renderSectionHeader={({ section }) => <View style={[styles.section, { backgroundColor: colors.background }]}><AppText variant="headline">{section.label}</AppText><AppText numeric muted variant="footnote">{section.data.length}</AppText></View>}
     renderItem={({ item, index, section }) => <ExerciseRow exercise={item} routines={library.routines} disabled={rowsDisabled} first={index === 0} last={index === section.data.length - 1} actions={actions} />} />
     <ExerciseFilterModal open={filtersOpen} filters={filters} exercises={library.exercises} query={query} onClose={() => setFiltersOpen(false)} onApply={next => { setFiltersOpen(false); applyFilters(() => next); }} />
-    <ExerciseEditorModal open={editorOpen} target={editor} pending={library.pending} createIdempotencyKey={createIdempotencyKey} onClose={() => setEditorOpen(false)} onSave={async (mutation, _ids, key) => {
+    {library.denied ? null : <ExerciseEditorModal open={editorOpen} target={editor} pending={library.pending} createIdempotencyKey={createIdempotencyKey} onClose={() => setEditorOpen(false)} onSave={async (mutation, _ids, key) => {
       const error = await library.save(editor.mode === 'edit' ? editor.exercise : undefined, mutation, key); if (!error) setEditorOpen(false); return error;
-    }} />
-    {adding ? <ExerciseAddRoutineSheet client={library.client} exercise={library.exercises.find(exercise => exercise.id === adding.id) ?? adding} onClose={() => setAdding(null)} onChanged={library.changed} onAdded={() => library.announce('Ejercicio agregado a la rutina')} /> : null}
+    }} />}
+    {adding && !library.denied ? <ExerciseAddRoutineSheet client={library.client} exercise={library.exercises.find(exercise => exercise.id === adding.id) ?? adding} onClose={() => setAdding(null)} onChanged={library.changed} onAdded={() => library.announce('Ejercicio agregado a la rutina')} /> : null}
     {library.notice ? <ExerciseNotice {...library.notice} disabled={library.pending} undo={library.notice.undo ? () => void library.status(library.notice!.undo!.exercise, library.notice!.undo!.active) : undefined} /> : null}
   </>;
 }

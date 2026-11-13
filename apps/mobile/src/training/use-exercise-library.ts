@@ -116,5 +116,6 @@ export function useExerciseLibrary() {
     writeBaseline.current = reading.status === 'ready' ? reading.current : null;
     return reload();
   }, [reload, snapshot]);
-  return { client, state, current, catalog, stale, exercises, runRefresh, routines: catalog?.routines ?? [], refresh, changed, pending, busy, notice, announce, save, status };
+  /** `denied`: an explicit 401/403. Screens must also drop any sheet or editor built from the protected catalog. */
+  return { client, state, current, catalog, stale, denied, exercises, runRefresh, routines: catalog?.routines ?? [], refresh, changed, pending, busy, notice, announce, save, status };
 }

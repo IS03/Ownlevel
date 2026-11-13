@@ -17,7 +17,10 @@ import { trainingRoutineColor } from './routine-colors';
 export function ExerciseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>(), library = useExerciseLibrary(), router = useRouter(), { colors, isDark } = useOwnlevelTheme();
   const [editing, setEditing] = useState<MobileTrainingExercise | null>(null), [adding, setAdding] = useState(false);
-  const exercise = library.exercises.find(item => item.id === id);
+  // An explicit 401/403 closes AND discards the editor and the «Agregar a una rutina» sheet in this same render (they hold
+  // a copy of the protected exercise); they never reopen when access comes back. A network failure keeps them.
+  if (library.denied && (editing || adding)) { setEditing(null); setAdding(false); }
+  const exercise = library.denied ? undefined : library.exercises.find(item => item.id === id);
   const loadLast = useCallback((signal: AbortSignal) => library.client && id ? fetchLastExercise(library.client, id, signal) : Promise.resolve(exerciseUnavailable), [library.client, id]);
   const last = useApiResource(loadLast), { refresh } = library;
   // Focus, foreground and the 30 s reuse belong to the retained library reading (useExerciseLibrary).
@@ -60,8 +63,8 @@ export function ExerciseDetailScreen() {
         {exercise.notes ? <><AppText variant="title2">Notas</AppText><Surface><AppText>{exercise.notes}</AppText></Surface></> : null}
       </>}
     </ScrollView>
-    {exercise ? <ExerciseEditorModal open={Boolean(editing)} target={{ mode: 'edit', exercise: editing ?? exercise }} createIdempotencyKey={() => ''} pending={library.pending} onClose={() => setEditing(null)} onSave={async mutation => { const error = await library.save(editing ?? exercise, mutation); if (!error) setEditing(null); return error; }} /> : null}
-    {exercise && adding ? <ExerciseAddRoutineSheet client={library.client} exercise={exercise} onClose={() => setAdding(false)} onChanged={library.changed} onAdded={() => library.announce('Ejercicio agregado a la rutina')} /> : null}
+    {exercise && !library.denied ? <ExerciseEditorModal open={Boolean(editing)} target={{ mode: 'edit', exercise: editing ?? exercise }} createIdempotencyKey={() => ''} pending={library.pending} onClose={() => setEditing(null)} onSave={async mutation => { const error = await library.save(editing ?? exercise, mutation); if (!error) setEditing(null); return error; }} /> : null}
+    {exercise && adding && !library.denied ? <ExerciseAddRoutineSheet client={library.client} exercise={exercise} onClose={() => setAdding(false)} onChanged={library.changed} onAdded={() => library.announce('Ejercicio agregado a la rutina')} /> : null}
     {library.notice ? <ExerciseNotice {...library.notice} disabled={library.pending} undo={library.notice.undo ? () => void library.status(library.notice!.undo!.exercise, library.notice!.undo!.active) : undefined} /> : null}
   </>;
 }
