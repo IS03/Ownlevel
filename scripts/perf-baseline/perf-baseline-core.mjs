@@ -26,8 +26,17 @@ const METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const READ_EVENTS = new Set(['reuse', 'network', 'join', 'settled', 'invalidate', 'evict']);
 const READ_FAMILIES = new Set(['overview', 'body', 'training', 'metrics', 'nutrition-report', 'nutrition-day', 'progress-extra']);
 const TRIGGERS = new Set(['initial', 'foreground', 'manual']);
-const OUTCOME = /^[a-z_]{1,40}$/;
-const ENV = /^[a-z]{1,20}$/;
+/** `MobileApiTelemetryOutcome` (apps/mobile/src/api/telemetry.ts + results.ts): the only outcome texts that can reach a report. */
+export const OUTCOMES = Object.freeze(['ok', 'auth_required', 'unauthorized', 'conflict', 'not_found', 'validation',
+  'aborted', 'auth', 'invalid_response', 'network', 'server', 'timeout']);
+const OUTCOME_SET = new Set(OUTCOMES);
+/** `MobileApiPlatform` and `MobileAppEnvironment` (runtime.ts, config.ts). */
+export const PLATFORMS = Object.freeze(['ios', 'android']);
+export const APP_ENVS = Object.freeze(['development', 'preview', 'production']);
+const READ_COUNTERS = Object.freeze(['reuse', 'network', 'join', 'settled', 'invalidate', 'evict']);
+/** Ten minutes: a longer client duration is not a measurement, it is a broken or forged value. */
+const MAX_DURATION_MS = 600_000;
+const MAX_RUN = 99;
 
 // ---------- Route allowlist ----------
 
@@ -131,7 +140,7 @@ export function extractEvents(rawText) {
 
 // ---------- Redaction and summary of one run ----------
 
-const finiteMs = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.round(value) : null;
+const finiteMs = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= MAX_DURATION_MS ? Math.round(value) : null;
 
 /**
  * Keeps only what the baseline needs, from an allowlist of fields and values: method, route TEMPLATE, outcome, client
@@ -141,9 +150,9 @@ const finiteMs = value => typeof value === 'number' && Number.isFinite(value) &&
 export function redactEvent(event, matchRoute) {
   const v = event.value;
   if (event.kind === 'api') {
-    if (!METHODS.has(v.method) || !OUTCOME.test(String(v.outcome))) return null;
-    return { kind: 'api', method: v.method, route: matchRoute(v.path), outcome: String(v.outcome), durationMs: finiteMs(v.durationMs),
-      platform: ENV.test(String(v.platform)) ? v.platform : null, appEnv: ENV.test(String(v.appEnv)) ? v.appEnv : null };
+    if (!METHODS.has(v.method) || !OUTCOME_SET.has(v.outcome)) return null;
+    return { kind: 'api', method: v.method, route: matchRoute(v.path), outcome: v.outcome, durationMs: finiteMs(v.durationMs),
+      platform: PLATFORMS.includes(v.platform) ? v.platform : null, appEnv: APP_ENVS.includes(v.appEnv) ? v.appEnv : null };
   }
   if (!READ_EVENTS.has(v.event) || !READ_FAMILIES.has(v.family)) return null;
   return { kind: 'read', event: v.event, family: v.family, trigger: TRIGGERS.has(v.trigger) ? v.trigger : null,
@@ -155,7 +164,7 @@ const tally = (map, key, fields) => { const row = map.get(key) ?? { ...fields };
 /** The stored artifact of one run: aggregates only, safe to keep. */
 export function summarizeRun(rawText, { scenario, run, templates }) {
   if (!SCENARIOS.includes(scenario)) throw new Error(`Escenario desconocido: ${scenario}. Válidos: ${SCENARIOS.join(', ')}`);
-  if (!Number.isInteger(run) || run < 1) throw new Error('La corrida debe ser un entero ≥ 1.');
+  if (!Number.isInteger(run) || run < 1 || run > MAX_RUN) throw new Error(`La corrida debe ser un entero entre 1 y ${MAX_RUN}.`);
   const matchRoute = createRouteMatcher(templates);
   const { events, unparsed } = extractEvents(rawText);
   const api = new Map(), reads = new Map(), platforms = new Set(), appEnvs = new Set();
@@ -178,23 +187,62 @@ export function summarizeRun(rawText, { scenario, run, templates }) {
   const sortRows = rows => [...rows].sort((a, b) => (a.route ?? a.family).localeCompare(b.route ?? b.family) || (a.method ?? '').localeCompare(b.method ?? ''));
   const finish = row => ({ ...row, ...(row.durationsMs ? { durationsMs: [...row.durationsMs].sort((a, b) => a - b) } : {}),
     ...(row.settledMs ? { settledMs: [...row.settledMs].sort((a, b) => a - b) } : {}) });
-  return {
+  return validateSummary({
     schema: SCHEMA, scenario, run,
     environment: { platforms: [...platforms].sort(), appEnvs: [...appEnvs].sort() },
     events: { api: events.filter(e => e.kind === 'api').length, read: events.filter(e => e.kind === 'read').length, unparsed, rejected },
     api: sortRows(api.values()).map(finish),
     reads: sortRows(reads.values()).map(finish),
-  };
+  }, templates);
 }
 
-/** Rejects a summary that does not have exactly the stored shape (so a raw log or a hand edit cannot enter a report). */
-export function validateSummary(summary) {
-  const ok = summary && summary.schema === SCHEMA && SCENARIOS.includes(summary.scenario) && Number.isInteger(summary.run) && summary.run >= 1
-    && Array.isArray(summary.api) && Array.isArray(summary.reads)
-    && summary.api.every(row => METHODS.has(row.method) && typeof row.route === 'string' && (row.route === UNRECOGNIZED_ROUTE || row.route.startsWith('/api/mobile/v1'))
-      && !/[0-9a-f]{8}-[0-9a-f]{4}|\d{4}-\d{2}-\d{2}/i.test(row.route) && Number.isInteger(row.calls) && row.durationsMs.every(n => Number.isInteger(n) && n >= 0))
-    && summary.reads.every(row => READ_FAMILIES.has(row.family));
-  if (!ok) throw new Error('Resumen inválido: no tiene la forma ownlevel-perf-baseline/1.');
+const isObject = value => !!value && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype;
+const exactKeys = (value, keys) => isObject(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
+const count = value => Number.isSafeInteger(value) && value >= 0;
+const durations = (value, max) => Array.isArray(value) && value.length <= max
+  && value.every((n, i) => Number.isSafeInteger(n) && n >= 0 && n <= MAX_DURATION_MS && (i === 0 || value[i - 1] <= n));
+const enumList = (value, allowed) => Array.isArray(value) && new Set(value).size === value.length && value.every(item => allowed.includes(item));
+
+/**
+ * The ONLY input `report` accepts: a summary exactly as `summarize` writes it. Every key, enum, counter and array is
+ * checked, and a route must be one of the real route templates (or `<ruta no reconocida>`): a forged route such as
+ * `/api/mobile/v1/perfil/nombre`, an email in the environment or any extra key is refused before anything is printed.
+ * The error never echoes the offending value.
+ */
+export function validateSummary(summary, templates) {
+  if (!Array.isArray(templates) || !templates.length) throw new Error('Falta la lista de plantillas de rutas para validar el resumen.');
+  const allowedRoutes = new Set([...templates, UNRECOGNIZED_ROUTE]);
+  const reject = where => { throw new Error(`Resumen inválido (${where}): no tiene la forma ownlevel-perf-baseline/1 generada por summarize.`); };
+  if (!exactKeys(summary, ['schema', 'scenario', 'run', 'environment', 'events', 'api', 'reads'])) reject('claves');
+  if (summary.schema !== SCHEMA) reject('schema');
+  if (!SCENARIOS.includes(summary.scenario)) reject('escenario');
+  if (!Number.isInteger(summary.run) || summary.run < 1 || summary.run > MAX_RUN) reject('corrida');
+  const env = summary.environment;
+  if (!exactKeys(env, ['platforms', 'appEnvs']) || !enumList(env.platforms, PLATFORMS) || !enumList(env.appEnvs, APP_ENVS)) reject('environment');
+  const ev = summary.events;
+  if (!exactKeys(ev, ['api', 'read', 'unparsed', 'rejected']) || !['api', 'read', 'unparsed', 'rejected'].every(key => count(ev[key]))) reject('events');
+  if (!Array.isArray(summary.api) || !Array.isArray(summary.reads)) reject('listas');
+  const seen = new Set();
+  let apiCalls = 0;
+  for (const row of summary.api) {
+    if (!exactKeys(row, ['method', 'route', 'calls', 'outcomes', 'durationsMs'])) reject('api.claves');
+    if (!METHODS.has(row.method) || typeof row.route !== 'string' || !allowedRoutes.has(row.route)) reject('api.ruta');
+    if (!Number.isSafeInteger(row.calls) || row.calls < 1) reject('api.llamadas');
+    if (!isObject(row.outcomes) || !Object.keys(row.outcomes).length || !Object.entries(row.outcomes).every(([key, n]) => OUTCOME_SET.has(key) && Number.isSafeInteger(n) && n >= 1)
+      || Object.values(row.outcomes).reduce((sum, n) => sum + n, 0) !== row.calls) reject('api.resultados');
+    if (!durations(row.durationsMs, row.calls)) reject('api.duraciones');
+    const key = `${row.method} ${row.route}`;
+    if (seen.has(key)) reject('api.duplicada');
+    seen.add(key); apiCalls += row.calls;
+  }
+  if (apiCalls > ev.api) reject('api.total');
+  const families = new Set();
+  for (const row of summary.reads) {
+    if (!exactKeys(row, ['family', ...READ_COUNTERS, 'settledMs'])) reject('reads.claves');
+    if (!READ_FAMILIES.has(row.family) || families.has(row.family)) reject('reads.familia');
+    if (!READ_COUNTERS.every(key => count(row[key])) || !durations(row.settledMs, row.settled)) reject('reads.contadores');
+    families.add(row.family);
+  }
   return summary;
 }
 
@@ -210,9 +258,9 @@ const cell = (sorted, p) => { const value = percentile(sorted, p); return value 
 const errorsOf = outcomes => Object.entries(outcomes).filter(([outcome]) => outcome !== 'ok').reduce((sum, [, n]) => sum + n, 0);
 
 /** Markdown report across runs. It describes; it never states a saving or a cause. */
-export function buildReport(summaries) {
+export function buildReport(summaries, templates) {
   const byScenario = new Map();
-  for (const summary of summaries.map(validateSummary)) {
+  for (const summary of summaries.map(summary => validateSummary(summary, templates))) {
     const list = byScenario.get(summary.scenario) ?? [];
     if (list.some(s => s.run === summary.run)) throw new Error(`Corrida repetida: ${summary.scenario} #${summary.run}.`);
     list.push(summary); byScenario.set(summary.scenario, list);

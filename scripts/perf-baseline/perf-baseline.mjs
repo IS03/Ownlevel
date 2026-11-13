@@ -31,5 +31,11 @@ if (command === 'summarize') {
   } catch (error) { fail(error.message); }
 } else if (command === 'report') {
   if (!args.length) fail('Uso: report <resumen.json> [...]');
-  try { process.stdout.write(buildReport(args.map(file => JSON.parse(readFileSync(file, 'utf8'))))); } catch (error) { fail(error.message); }
+  // Validate everything first and print only if every summary is valid: a rejected input produces no partial report.
+  let report;
+  try {
+    const summaries = args.map(file => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { throw new Error('Un archivo no es JSON legible.'); } });
+    report = buildReport(summaries, routeTemplatesFromTree(join(root, 'src', 'app')));
+  } catch (error) { fail(error.message); }
+  process.stdout.write(report);
 } else fail('Comandos: summarize | report. Ver docs/mobile/perf-baseline.md');

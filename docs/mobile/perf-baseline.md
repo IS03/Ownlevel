@@ -18,6 +18,10 @@ No cambia la app: procesa la telemetría que ya existe en builds de desarrollo (
 - **Solo se guardan resúmenes.** `summarize` conserva únicamente método, **plantilla** de ruta, resultado, duración del
   cliente y las decisiones de caché (familia, evento, disparador). Descarta rutas reales, ids, fechas, versiones, build,
   código HTTP, cuerpos, tokens y cualquier campo no previsto.
+- **`report` solo acepta el JSON agregado que genera `summarize`.** Valida cada clave, enum, contador y arreglo; una ruta
+  debe ser una plantilla del árbol real (o `<ruta no reconocida>`), el entorno solo admite `ios`/`android` y
+  `development`/`preview`/`production`, y cualquier clave extra rechaza el archivo. Con un solo archivo inválido no se
+  imprime nada y el error no repite el valor rechazado.
 - **Rutas por lista permitida.** Las plantillas salen del árbol real `src/app/api/mobile/v1/**/route.ts` (`[id]` →
   `:id`). Una ruta que no calza exactamente queda como `<ruta no reconocida>`; nunca se copia el valor original.
   (`safeTelemetryPath()` del cliente solo quita la query: por eso la plantilla se resuelve acá.)
@@ -25,13 +29,20 @@ No cambia la app: procesa la telemetría que ya existe en builds de desarrollo (
 
 ## Entorno
 
+No existe un staging remoto de OWNLEVEL (verificado por Dirección, 12/11/2026). La baseline usa el **stack local aislado**:
+**nunca** el proyecto Supabase de producción, ni una rama o proyecto nuevo con costo.
+
 1. Build de **desarrollo** de la app (Expo dev client) en un **simulador identificado** (modelo e iOS anotados en el
    reporte). No Release, no iPhone físico para esta baseline.
-2. `EXPO_PUBLIC_OWNLEVEL_API_URL` apuntando a un backend que **no sea producción**. Si el único backend disponible es
-   producción, crear la cuenta ficticia allí requiere autorización expresa de Dirección antes de empezar.
-3. Cuenta ficticia con datos sintéticos fijos (los mismos en todas las corridas): por ejemplo 2 rutinas, 6 sesiones en
+2. **Supabase local** del repositorio (`supabase/config.toml`, con su bootstrap; API en el puerto 55421) y la **API Next
+   en modo desarrollo** apuntando a ese Supabase local. `EXPO_PUBLIC_OWNLEVEL_API_URL` apunta a esa API local.
+   Levantar el stack y crear la cuenta requieren el visto bueno de Dirección: este documento no lo autoriza por sí solo.
+3. **Lo que mide y lo que no:** con todo local, la duración refleja la revalidación del cliente, la API de desarrollo y la
+   base local en la misma máquina. **No** es la latencia de Vercel ni de Supabase remoto: sirve para contar solicitudes
+   y comparar antes/después, no para estimar tiempos de producción.
+4. Cuenta ficticia **local** con datos sintéticos fijos (los mismos en todas las corridas): por ejemplo 2 rutinas, 6 sesiones en
    las últimas dos semanas, 20 comidas guardadas, peso en 5 días, 3 métricas diarias. Anotar el conjunto usado.
-4. Red del simulador sin limitación artificial; anotar si es Wi-Fi o cable.
+5. Anotar la máquina usada (modelo y carga), ya que cliente, API y base comparten CPU.
 
 ## Captura
 
@@ -87,8 +98,8 @@ y p50 de `settled`.
 
 ## Limitaciones
 
-- Build de desarrollo: más lenta que Release y con logs; sirve para **comparar antes/después en el mismo entorno**, no
-  como cifra de producción.
+- Build de desarrollo contra un stack local: más lenta que Release y sin la red ni la infraestructura reales; sirve para
+  **contar solicitudes y comparar antes/después en el mismo entorno**, no como cifra de producción.
 - No mide solicitudes físicas, tiempo hasta datos visibles, memoria ni costo en Supabase/Vercel.
 - Metro puede perder líneas con mucho volumen: subestima llamadas. El reporte informa ilegibles y rechazados.
 - La duración es la del cliente (fetch más lectura del cuerpo), con la red del simulador.

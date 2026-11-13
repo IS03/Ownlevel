@@ -84,7 +84,7 @@ test('a run summary holds aggregates only: no raw path, date, UUID or token anyw
   assert.equal(summary.api.find(r => r.route === UNRECOGNIZED_ROUTE).calls, 1);
   assert.equal(summary.events.rejected, 1);
   assert.deepEqual(summary.reads, [{ family: 'nutrition-day', reuse: 1, network: 0, join: 0, settled: 1, invalidate: 0, evict: 0, settledMs: [90] }]);
-  validateSummary(summary);
+  validateSummary(summary, TEMPLATES);
 });
 
 test('logical requests: two callers joined by InFlightGet are two API events, and the report never calls them physical', () => {
@@ -92,7 +92,7 @@ test('logical requests: two callers joined by InFlightGet are two API events, an
   const raw = [api('/api/mobile/v1/home'), api('/api/mobile/v1/home'), read({ event: 'join', family: 'overview', trigger: 'initial' })].join('\n');
   const summary = summarizeRun(raw, { scenario: 'cold-start', run: 1, templates: TEMPLATES });
   assert.equal(summary.api[0].calls, 2);
-  const report = buildReport([summary]);
+  const report = buildReport([summary], TEMPLATES);
   assert.match(report, /Solicitudes \*\*lógicas\*\*/);
   assert.match(report, /físicas de red: No medido/);
 });
@@ -110,10 +110,10 @@ test('nearest-rank percentiles, and nothing below the minimum sample', () => {
 test('the report shows per-run counts, spread, errors, sample sizes and flags missing runs', () => {
   const run = (n, homes) => summarizeRun(Array.from({ length: homes }, (_, i) => api('/api/mobile/v1/home', { durationMs: 100 + i })).join('\n'),
     { scenario: 'return-over-30s', run: n, templates: TEMPLATES });
-  const report = buildReport([run(1, 2), run(2, 3), run(3, 2)]);
+  const report = buildReport([run(1, 2), run(2, 3), run(3, 2)], TEMPLATES);
   assert.match(report, /\| GET \| `\/api\/mobile\/v1\/home` \| 2 \/ 3 \/ 2 \| 2–3 \| 0 \| 7 \| 101 ms \| n<20 \|/);
-  assert.match(buildReport([run(1, 1)]), /el procedimiento pide 3/);
-  assert.throws(() => buildReport([run(1, 1), run(1, 1)]), /Corrida repetida/);
+  assert.match(buildReport([run(1, 1)], TEMPLATES), /el procedimiento pide 3/);
+  assert.throws(() => buildReport([run(1, 1), run(1, 1)], TEMPLATES), /Corrida repetida/);
 });
 
 test('unknown scenarios, bad runs and hand-made summaries are refused', () => {
@@ -121,6 +121,95 @@ test('unknown scenarios, bad runs and hand-made summaries are refused', () => {
   assert.throws(() => summarizeRun('', { scenario: 'tabs', run: 0, templates: TEMPLATES }), /entero/);
   const forged = { ...summarizeRun(api('/api/mobile/v1/home'), { scenario: 'tabs', run: 1, templates: TEMPLATES }) };
   forged.api = [{ ...forged.api[0], route: `/api/mobile/v1/nutrition/days/2026-11-12` }];
-  assert.throws(() => validateSummary(forged), /Resumen inválido/);
-  assert.throws(() => validateSummary({ schema: 'other' }), /Resumen inválido/);
+  assert.throws(() => validateSummary(forged, TEMPLATES), /Resumen inválido/);
+  assert.throws(() => validateSummary({ schema: 'other' }, TEMPLATES), /Resumen inválido/);
+});
+
+// ---------- Adversarial summaries (#504 review): report must refuse them without printing anything sensitive ----------
+
+const legit = () => summarizeRun([api('/api/mobile/v1/home'), api('/api/mobile/v1/home', { durationMs: 140 }),
+  read({ event: 'settled', family: 'overview', durationMs: 90 })].join('\n'), { scenario: 'tabs', run: 1, templates: TEMPLATES });
+const clone = value => JSON.parse(JSON.stringify(value));
+const SECRETS = ['nombre.apellido@example.com', 'Bearer eyJhbGciOi.secret', 'Juan Pérez', 'usuario-privado', 'sk_live_123'];
+/** Refused, and the error message does not echo any of the injected values. */
+function refuses(mutate) {
+  const forged = clone(legit()); mutate(forged);
+  let message = '';
+  assert.throws(() => { try { buildReport([forged], TEMPLATES); } catch (error) { message = error.message; throw error; } }, /Resumen inválido|Corrida/);
+  for (const secret of SECRETS) assert.ok(!message.includes(secret), `the error echoed ${secret}`);
+}
+
+test('a legitimate summary passes and reports', () => {
+  assert.match(buildReport([legit()], TEMPLATES), /`\/api\/mobile\/v1\/home`/);
+});
+
+test('invented routes are refused even when they look like the API: names, free segments, static suffixes', () => {
+  for (const route of ['/api/mobile/v1/perfil/usuario-privado', '/api/mobile/v1/perfil/Juan Pérez', '/api/mobile/v1/home/extra',
+    '/api/mobile/v1/nutrition/days/:date/inventado', '/api/mobile/v1/nutrition/days/nombre.apellido@example.com', '/api/mobile/v1',
+    '/api/mobile/v1/home ', '/API/mobile/v1/home', 'Bearer eyJhbGciOi.secret']) {
+    refuses(s => { s.api[0].route = route; });
+  }
+});
+
+test('environment only takes the real enums: no email, token, free text or other type', () => {
+  refuses(s => { s.environment.platforms = ['nombre.apellido@example.com']; });
+  refuses(s => { s.environment.appEnvs = ['Bearer eyJhbGciOi.secret']; });
+  refuses(s => { s.environment.platforms = 'ios'; });
+  refuses(s => { s.environment.platforms = ['ios', 'ios']; });
+  refuses(s => { s.environment.user = 'Juan Pérez'; });
+  refuses(s => { delete s.environment.appEnvs; });
+});
+
+test('extra keys anywhere are refused (no hidden secrets in a field the report would not print today)', () => {
+  refuses(s => { s.token = 'sk_live_123'; });
+  refuses(s => { s.events.email = 'nombre.apellido@example.com'; });
+  refuses(s => { s.api[0].path = '/api/mobile/v1/perfil/usuario-privado'; });
+  refuses(s => { s.reads[0].user = 'Juan Pérez'; });
+  refuses(s => { s.api[0].outcomes.ok_juan = 1; });
+});
+
+test('outcomes, counters and durations must be consistent, finite and within range', () => {
+  refuses(s => { s.api[0].outcomes = { 'Juan Pérez': 2 }; });
+  refuses(s => { s.api[0].outcomes = { ok: 3 }; });
+  refuses(s => { s.api[0].calls = -1; });
+  refuses(s => { s.api[0].calls = 1.5; });
+  refuses(s => { s.api[0].durationsMs = [140, 120]; });
+  refuses(s => { s.api[0].durationsMs = [120, 140, 160]; });
+  refuses(s => { s.api[0].durationsMs = [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER]; });
+  refuses(s => { s.api[0].durationsMs = ['120', 140]; });
+  refuses(s => { s.events.unparsed = -2; });
+  refuses(s => { s.events.api = 0; });
+  refuses(s => { s.reads[0].settledMs = [90, 91]; });
+  refuses(s => { s.reads[0].family = 'usuario-privado'; });
+  refuses(s => { s.reads[0].reuse = 'many'; });
+  refuses(s => { s.api.push(clone(s.api[0])); });
+});
+
+test('missing or wrongly typed parts never crash the report: they are refused', () => {
+  refuses(s => { delete s.api; });
+  refuses(s => { s.reads = null; });
+  refuses(s => { s.api[0] = null; });
+  refuses(s => { s.environment = []; });
+  refuses(s => { s.scenario = 'Juan Pérez'; });
+  refuses(s => { s.run = 1000; });
+  refuses(s => { s.schema = 'ownlevel-perf-baseline/2'; });
+  assert.throws(() => buildReport([null], TEMPLATES), /Resumen inválido/);
+  assert.throws(() => buildReport(['texto'], TEMPLATES), /Resumen inválido/);
+});
+
+test('validation without the real route list is refused, never a silent pass', () => {
+  assert.throws(() => validateSummary(legit(), []), /plantillas/);
+  assert.throws(() => buildReport([legit()]), /plantillas/);
+});
+
+test('summarize can only emit enum outcomes, environments and platforms', () => {
+  const raw = [api('/api/mobile/v1/home', { outcome: 'Juan Pérez' }), api('/api/mobile/v1/home', { platform: 'nombre.apellido@example.com', appEnv: 'Bearer x' }),
+    api('/api/mobile/v1/home', { durationMs: 10_000_000 })].join('\n');
+  const summary = summarizeRun(raw, { scenario: 'tabs', run: 1, templates: TEMPLATES });
+  const json = JSON.stringify(summary);
+  for (const secret of ['Juan Pérez', 'nombre.apellido@example.com', 'Bearer']) assert.ok(!json.includes(secret));
+  assert.equal(summary.events.rejected, 1);
+  assert.deepEqual(summary.environment, { platforms: ['ios'], appEnvs: ['development'] });
+  assert.deepEqual(summary.api[0].durationsMs, [120]);
+  assert.equal(summary.api[0].calls, 2);
 });
