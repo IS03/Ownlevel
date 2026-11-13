@@ -38,6 +38,14 @@ const READ_COUNTERS = Object.freeze(['reuse', 'network', 'join', 'settled', 'inv
 const MAX_DURATION_MS = 600_000;
 const MAX_RUN = 99;
 
+/**
+ * The only error whose message the CLI prints. Every message is a fixed text written here: it never carries input
+ * (log lines, summary values, file names or paths). Any other error is reported by the CLI with a generic fixed text.
+ */
+export class PerfBaselineError extends Error {
+  constructor(message) { super(message); this.name = 'PerfBaselineError'; }
+}
+
 // ---------- Route allowlist ----------
 
 /**
@@ -163,8 +171,8 @@ const tally = (map, key, fields) => { const row = map.get(key) ?? { ...fields };
 
 /** The stored artifact of one run: aggregates only, safe to keep. */
 export function summarizeRun(rawText, { scenario, run, templates }) {
-  if (!SCENARIOS.includes(scenario)) throw new Error(`Escenario desconocido: ${scenario}. Válidos: ${SCENARIOS.join(', ')}`);
-  if (!Number.isInteger(run) || run < 1 || run > MAX_RUN) throw new Error(`La corrida debe ser un entero entre 1 y ${MAX_RUN}.`);
+  if (!SCENARIOS.includes(scenario)) throw new PerfBaselineError(`Escenario desconocido. Válidos: ${SCENARIOS.join(', ')}`);
+  if (!Number.isInteger(run) || run < 1 || run > MAX_RUN) throw new PerfBaselineError(`La corrida debe ser un entero entre 1 y ${MAX_RUN}.`);
   const matchRoute = createRouteMatcher(templates);
   const { events, unparsed } = extractEvents(rawText);
   const api = new Map(), reads = new Map(), platforms = new Set(), appEnvs = new Set();
@@ -210,9 +218,9 @@ const enumList = (value, allowed) => Array.isArray(value) && new Set(value).size
  * The error never echoes the offending value.
  */
 export function validateSummary(summary, templates) {
-  if (!Array.isArray(templates) || !templates.length) throw new Error('Falta la lista de plantillas de rutas para validar el resumen.');
+  if (!Array.isArray(templates) || !templates.length) throw new PerfBaselineError('Falta la lista de plantillas de rutas para validar el resumen.');
   const allowedRoutes = new Set([...templates, UNRECOGNIZED_ROUTE]);
-  const reject = where => { throw new Error(`Resumen inválido (${where}): no tiene la forma ownlevel-perf-baseline/1 generada por summarize.`); };
+  const reject = where => { throw new PerfBaselineError(`Resumen inválido (${where}): no tiene la forma ownlevel-perf-baseline/1 generada por summarize.`); };
   if (!exactKeys(summary, ['schema', 'scenario', 'run', 'environment', 'events', 'api', 'reads'])) reject('claves');
   if (summary.schema !== SCHEMA) reject('schema');
   if (!SCENARIOS.includes(summary.scenario)) reject('escenario');
@@ -262,7 +270,7 @@ export function buildReport(summaries, templates) {
   const byScenario = new Map();
   for (const summary of summaries.map(summary => validateSummary(summary, templates))) {
     const list = byScenario.get(summary.scenario) ?? [];
-    if (list.some(s => s.run === summary.run)) throw new Error(`Corrida repetida: ${summary.scenario} #${summary.run}.`);
+    if (list.some(s => s.run === summary.run)) throw new PerfBaselineError(`Corrida repetida: ${summary.scenario} #${summary.run}.`);
     list.push(summary); byScenario.set(summary.scenario, list);
   }
   const lines = ['# Baseline de lecturas · OWNLEVEL Mobile (#303)', '',

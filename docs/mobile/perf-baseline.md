@@ -85,9 +85,12 @@ node scripts/perf-baseline/perf-baseline.mjs summarize --scenario tabs --run 1 <
 # Reporte de todas las corridas:
 node scripts/perf-baseline/perf-baseline.mjs report /tmp/ownlevel-perf/*.json > /tmp/ownlevel-perf/baseline.md
 
-# Pruebas del procesador (sintéticas):
-node --test scripts/perf-baseline/perf-baseline-core.test.mjs
+# Pruebas del procesador y de la CLI (sintéticas):
+node --test scripts/perf-baseline/perf-baseline-core.test.mjs scripts/perf-baseline/perf-baseline-cli.test.mjs
 ```
+
+Ante cualquier fallo la CLI no imprime nada en stdout, sale con código distinto de cero y escribe en stderr un texto
+fijo: nunca el contenido de un archivo, su nombre, una ruta ni el mensaje crudo de un error de sistema o de `JSON.parse`.
 
 ## Qué contiene el reporte
 
