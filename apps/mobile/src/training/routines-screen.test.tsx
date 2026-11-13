@@ -16,6 +16,8 @@ const mockFetch = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockRefresh = jest.fn<() => Promise<void>>();
 const mockSetStatus = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockUseApiResource = jest.fn();
+/** Mocked readings a reload has confirmed again (the harness's stand-in for a new confirmed reading). */
+const mockReconfirmed = new WeakSet<object>();
 /** One account's client, stable across renders (the retained reading is scoped by client). */
 const mockClient = { request: jest.fn() };
 let mockCurrentClient: object = mockClient;
@@ -60,8 +62,11 @@ jest.mock('expo-router', () => {
 jest.mock('@/api/use-cached-read', () => ({
   useCachedRead: (...args: unknown[]) => {
     if (mockRealCachedRead) return (jest.requireActual('@/api/use-cached-read') as typeof import('@/api/use-cached-read')).useCachedRead(...(args as Parameters<typeof import('@/api/use-cached-read').useCachedRead>));
-    const resource = mockUseApiResource(...args) as { refresh: () => Promise<void>; state: unknown };
-    return { reload: resource.refresh, snapshot: () => resource.state, ...resource };
+    const resource = mockUseApiResource(...args) as { refresh: () => Promise<void>; state: { status: string; current?: object } };
+    // A reload that resolves confirms a NEW reading (same data, new identity), as the cache does after a read.
+    return { ...resource,
+      reload: async () => { await resource.refresh(); mockReconfirmed.add(resource.state); },
+      snapshot: () => mockReconfirmed.has(resource.state) && resource.state.status === 'ready' ? { ...resource.state, current: { ...resource.state.current } } : resource.state };
   },
 }));
 jest.mock('@/api', () => ({
@@ -458,6 +463,63 @@ describe('retained routines list (#303 C3a; real cache, simulated request counts
     view.unmount();
   });
 
+  describe('same millisecond everywhere (fixed clock: confirmedAt === visit start)', () => {
+    it('a list retained from a previous visit is read again before ordering; the new version is sent', async () => {
+      await visit(); // listVersion 7, confirmed in the same millisecond the next visit starts
+      mockFetch.mockResolvedValue(read(fixture({ listVersion: { status: 'ok', data: 8 } }))); // another device moved it
+      mockOrder.mockResolvedValue({ status: 'ok', data: { routineIds: [routines[0].id, routines[1].id], listVersion: 9 } });
+      const view = renderScreen({ createIdempotencyKey: () => 'order-key' });
+      await act(async () => { await Promise.resolve(); });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); });
+      await waitFor(() => expect(view.getByRole('button', { name: 'Guardar orden' })).toBeTruthy());
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      moveDown(view);
+      await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar orden' })); });
+      expect(mockOrder.mock.calls[0]?.[1]).toEqual({ routineIds: [routines[0].id, routines[1].id], expectedListVersion: 8, idempotencyKey: 'order-key' });
+      view.unmount();
+    });
+    it('even a list read in this visit is verified again before ordering', async () => {
+      const view = renderScreen();
+      await waitFor(() => expect(view.getByText('PUSH')).toBeTruthy());
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); });
+      await waitFor(() => expect(view.getByRole('button', { name: 'Guardar orden' })).toBeTruthy());
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      view.unmount();
+    });
+    it.each([
+      ['offline', { status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } }],
+      ['401', { status: 'unauthorized', meta: { durationMs: 1, httpStatus: 401, outcome: 'unauthorized' } }],
+    ])('the verification read fails (%s): no draft and no write with the unverified version', async (_name, failure) => {
+      await visit();
+      mockFetch.mockResolvedValue(failure);
+      const view = renderScreen();
+      await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); });
+      expect(view.queryByRole('button', { name: 'Guardar orden' })).toBeNull();
+      expect(mockOrder).not.toHaveBeenCalled();
+      view.unmount();
+    });
+  });
+
+  it.each([
+    ['401', { status: 'unauthorized', meta: { durationMs: 1, httpStatus: 401, outcome: 'unauthorized' } }],
+    ['403', { status: 'unavailable', reason: 'server', meta: { durationMs: 1, httpStatus: 403, outcome: 'unavailable' } }],
+  ])('mounted list → %s: no routine, archived count or action stays; an authorized read recovers it', async (_code, denied) => {
+    const view = renderScreen();
+    await waitFor(() => expect(view.getByText('PUSH')).toBeTruthy());
+    mockFetch.mockResolvedValueOnce(denied);
+    await act(async () => { fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh'); });
+    await waitFor(() => expect(view.getByTestId('routines-unavailable')).toBeTruthy());
+    for (const name of ['PUSH', 'LEGS', 'OLD']) expect(view.queryByText(name)).toBeNull();
+    expect(view.queryByRole('button', { name: /Abrir rutina/ })).toBeNull();
+    expect(view.queryByRole('button', { name: /Archivadas/ })).toBeNull();
+    mockFetch.mockResolvedValueOnce(read());
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Reintentar' })); });
+    await waitFor(() => expect(view.getByText('PUSH')).toBeTruthy());
+    view.unmount();
+  });
+
   it('a manual refresh within 30 s always reads', async () => {
     await visit();
     clock += 1_000;
@@ -583,7 +645,7 @@ it.each([false, true])('hides ordering for fewer than two active routines and ar
 
 it('requires a confirmed list version before entering order mode', async () => {
   mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState(fixture({ listVersion: undefined })) });
-  const view = renderScreen(); fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' }));
+  const view = renderScreen(); await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); }); // verified by a read first
   expect(view.queryByTestId('routine-order-list')).toBeNull(); expect(mockOrder).not.toHaveBeenCalled();
   expect(view.getByText('Actualizá la lista antes de ordenar las rutinas.')).toBeTruthy();
   await waitFor(() => expect(mockRefresh).toHaveBeenCalled());
@@ -593,7 +655,7 @@ it.each([false, true])('keeps an optimistic order and sends exact IDs, server ve
   let finish: ((value: unknown) => void) | undefined;
   mockOrder.mockReturnValue(new Promise(resolve => { finish = resolve; }));
   const view = renderScreen({ dark, createIdempotencyKey: () => 'order-key' });
-  fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' }));
+  await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); }); // verified by a read first
   expect(view.queryByRole('button', { name: 'Nueva rutina' })).toBeNull();
   expect(view.queryByText('Archivadas')).toBeNull();
   expect(view.queryByRole('button', { name: /Abrir rutina/ })).toBeNull();
@@ -612,7 +674,7 @@ it.each([false, true])('keeps an optimistic order and sends exact IDs, server ve
 
 it.each(['conflict', 'unavailable'])('rolls back an unconfirmed order to server rows and reads again after %s', async status => {
   mockOrder.mockResolvedValue(status === 'conflict' ? { status, code: 'ROUTINE_LIST_CHANGED' } : { status, reason: 'network' });
-  const view = renderScreen(); fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); moveDown(view);
+  const view = renderScreen(); await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); }); // verified by a read first moveDown(view);
   await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar orden' })); });
   expect(mockOrder).toHaveBeenCalledTimes(1);
   await waitFor(() => expect(view.queryByTestId('routine-order-list')).toBeNull());
@@ -622,7 +684,7 @@ it.each(['conflict', 'unavailable'])('rolls back an unconfirmed order to server 
 });
 
 it('moves with the order handle accessibility actions and saves the draft order', async () => {
-  const view = renderScreen(); fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' }));
+  const view = renderScreen(); await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); }); // verified by a read first
   expect(view.getByTestId('routine-order-list')).toBeTruthy();
   fireEvent(view.getByLabelText(`Ordenar ${routines[1].name}`), 'accessibilityAction', { nativeEvent: { actionName: 'decrement' } });
   expect(view.getByLabelText(`Ordenar ${routines[1].name}`).props.accessibilityValue).toEqual(expect.objectContaining({ now: 1 }));

@@ -31,8 +31,6 @@ type PendingMutation = 'archive' | 'create' | 'duplicate-load' | 'duplicate' | '
  * reads: the per-visit state below never lives in the retained controller.
  */
 const loadRoutines = (client: MobileApiClient, signal: AbortSignal) => fetchMobileTrainingRoutines(client, signal);
-/** Event handlers only (never during render): the instant a write settled, on the same clock as `confirmedAt`. */
-const settledNow = () => Date.now();
 type OrderDraft = { routines: MobileTrainingRoutine[]; ids: string[]; version: number };
 type Notice = { message: string; undo?: MobileTrainingRoutine; error?: boolean };
 
@@ -98,10 +96,11 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
   const [confirmedOrder, setConfirmedOrder] = useState<string[] | null>(null);
   const [pending, setPending] = useState<PendingMutation>(null);
   const pendingRef = useRef(false);
-  /** When the last write of this visit settled: only a reading confirmed after it replaces the confirmed overlays. */
-  const writeSettledAt = useRef<number | null>(null);
-  /** This visit's start: a reading confirmed before it (retained) is never the authority for a list-version write. */
-  const [visitStart] = useState(() => Date.now());
+  /**
+   * The confirmed reading shown when the last write of this visit settled (`null`: none yet). Only a DIFFERENT confirmed
+   * reading replaces the overlays: provenance by identity, never by comparing millisecond timestamps.
+   */
+  const writeBaseline = useRef<object | null | undefined>(undefined);
   const [confirmedStatus, setConfirmedStatus] = useState<Record<string, boolean>>({});
   const [notice, setNotice] = useState<Notice | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -111,9 +110,9 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
   // A confirmed mutation survives a failed refresh; only an authoritative list read after it settled clears it. A read
   // that started before the write never confirms: the write's invalidation cancels it (ConfirmedReadCache).
   useEffect(() => {
-    const since = writeSettledAt.current;
-    if (since === null || state.status !== 'ready' || state.refreshing || state.current.confirmedAt < since || state.current.data.routines.status !== 'ok') return;
-    writeSettledAt.current = null;
+    const baseline = writeBaseline.current;
+    if (baseline === undefined || state.status !== 'ready' || state.refreshing || state.current === baseline || state.current.data.routines.status !== 'ok') return;
+    writeBaseline.current = undefined;
     setConfirmedStatus({}); setConfirmedOrder(null); setConfirmedCopies([]);
   }, [state]);
   const current = state.status === 'ready' ? state.current : state.status === 'loading' ? undefined : state.previous;
@@ -145,8 +144,9 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
   const runRefresh = () => { if (!pendingRef.current && !ordering.current) void refresh(); };
 
   /** After a write settled: never joins a read that may predate it (ConfirmedReadCache.reload). */
+  const confirmedReading = () => { const reading = snapshot(); return reading.status === 'ready' ? reading.current : null; };
   const refreshAfterMutation = async () => {
-    writeSettledAt.current = settledNow();
+    writeBaseline.current = confirmedReading();
     await reload();
   };
 
@@ -224,25 +224,23 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
   };
   const openOrder = async () => {
     if (pendingRef.current || ordering.current || archivedOnly || active.length < 2) return;
-    let reading = snapshot();
-    // CAS: the list version must come from a reading of this visit. A retained one (shown at once when coming back) is
-    // read again first, so a version older than this visit is never sent as the authority for the new order.
-    if (reading.status === 'ready' && (reading.refreshing || reading.current.confirmedAt < visitStart)) {
-      pendingRef.current = true; setPending('order-load');
-      try { await refresh(); } finally { pendingRef.current = false; if (alive.current) setPending(null); }
-      if (!alive.current) return;
-      reading = snapshot();
-    }
+    // CAS: the list version sent with a new order is ALWAYS verified by a read started for it (or the read the last
+    // write's own invalidation started after it settled), never the retained or rendered reading. Provenance is the
+    // reading's identity: a DIFFERENT confirmed reading after the reload, not a millisecond comparison.
+    const before = confirmedReading();
+    pendingRef.current = true; setPending('order-load');
+    try { await reload(); } finally { pendingRef.current = false; if (alive.current) setPending(null); }
+    if (!alive.current) return;
+    const reading = snapshot();
     const version = reading.status === 'ready' ? reading.current.data.listVersion : undefined;
     const list = reading.status === 'ready' ? reading.current.data.routines : undefined;
-    if (reading.status !== 'ready' || reading.refreshing || reading.current.confirmedAt < visitStart || version?.status !== 'ok' || list?.status !== 'ok' || Object.keys(confirmedStatus).length) {
-      announce({ message: 'Actualizá la lista antes de ordenar las rutinas.', error: true }); void refresh(); return;
+    if (reading.status !== 'ready' || reading.refreshing || reading.current === before || version?.status !== 'ok' || list?.status !== 'ok') {
+      announce({ message: 'Actualizá la lista antes de ordenar las rutinas.', error: true }); return;
     }
-    // The draft starts from that same reading (the rendered list may be one render behind it).
+    // The draft is that verified server list: overlays of earlier writes are superseded by it.
     const fresh = list.data.filter(routine => routine.isActive);
-    const ordered = confirmedOrder ? [...confirmedOrder.flatMap(id => fresh.filter(routine => routine.id === id)), ...fresh.filter(routine => !confirmedOrder.includes(routine.id))] : fresh;
-    if (ordered.length < 2) return;
-    ordering.current = true; setOrderDraft({ routines: ordered, ids: ordered.map(routine => routine.id), version: version.data });
+    if (fresh.length < 2) return;
+    ordering.current = true; setOrderDraft({ routines: fresh, ids: fresh.map(routine => routine.id), version: version.data });
   };
   const saveOrder = async () => {
     if (!client || pendingRef.current || !orderDraft || dragging) return;

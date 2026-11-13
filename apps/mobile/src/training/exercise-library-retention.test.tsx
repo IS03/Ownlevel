@@ -236,6 +236,100 @@ describe('exercise library retention (#303 C3a)', () => {
     again.unmount();
   });
 
+  it.each([
+    ['401', { status: 'unauthorized', meta: { durationMs: 1, httpStatus: 401, outcome: 'unauthorized' } }],
+    ['403', { status: 'unavailable', reason: 'server', meta: { durationMs: 1, httpStatus: 403, outcome: 'unavailable' } }],
+  ])('%s while on screen: no exercise, routine or overlay of the protected catalog stays; an authorized read recovers it', async (_code, denied) => {
+    mockFetch.mockImplementation(async () => ({ status: 'ok', data: { catalog: { status: 'ok', data: { exercises: [press()], routines: [{ id: 'r1', name: 'PUSH' }] } } }, meta }));
+    const view = library();
+    await settle();
+    // An archive confirmed in this visit (an overlay of the protected catalog).
+    mockSetStatus.mockImplementation(async () => ({ status: 'ok', data: { exercise: { id: 'e1', isActive: false } }, meta }));
+    mockFetch.mockImplementation(async () => ({ status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } }));
+    await act(async () => { await view.result.current.status(view.result.current.exercises[0], false); });
+    expect(names(view)).toEqual(['Press']); // network failure: the last catalog stays, marked stale
+    expect(view.result.current.stale).toBe(true);
+    mockFetch.mockImplementationOnce(async () => denied);
+    await act(async () => { await view.result.current.refresh(); });
+    expect(view.result.current.exercises).toEqual([]);
+    expect(view.result.current.catalog).toBeNull();
+    expect(view.result.current.routines).toEqual([]);
+    expect(view.result.current.current).toBeUndefined();
+    mockFetch.mockImplementation(async () => catalog(press('2026-11-13T15:00:00.000Z', 'Press autorizado')));
+    await act(async () => { await view.result.current.refresh(); });
+    expect(names(view)).toEqual(['Press autorizado']);
+    expect(view.result.current.stale).toBe(false);
+    view.unmount();
+  });
+
+  it('CAS regression: archive confirmed, then the re-read fails: editing the identity writes nothing', async () => {
+    await visit(); // a retained reading
+    const view = library();
+    await settle();
+    mockSetStatus.mockImplementation(settledWrite('/api/mobile/v1/training/exercises/e1/status', { status: 'ok', data: { exercise: { id: 'e1', isActive: false } }, meta }));
+    mockFetch.mockImplementation(async () => ({ status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } }));
+    await act(async () => { await view.result.current.status(view.result.current.exercises[0], false); });
+    const archived = view.result.current.exercises[0]; // an overlay from a partial reply: updatedAt never confirmed
+    expect(archived.isActive).toBe(false);
+    let error: string | null = null;
+    await act(async () => { error = await view.result.current.save(archived, { name: 'Press inclinado' } as never); });
+    expect(error).toMatch(/verificar/);
+    expect(mockUpdate).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it('CAS regression: a restore overlay is not a version either: the edit waits for a verified read', async () => {
+    mockFetch.mockImplementation(async () => catalog({ ...press(), isActive: false } as MobileTrainingExercise));
+    const view = library();
+    await settle();
+    mockSetStatus.mockImplementation(settledWrite('/api/mobile/v1/training/exercises/e1/status', { status: 'ok', data: { exercise: { id: 'e1', isActive: true } }, meta }));
+    // The server bumped the version on restore; the overlay still carries the old one.
+    mockFetch.mockImplementation(async () => catalog(press('2026-11-13T15:00:01.000Z')));
+    await act(async () => { await view.result.current.status(view.result.current.exercises[0], true); });
+    const stale = { ...press(), isActive: true } as MobileTrainingExercise;
+    let error: string | null = null;
+    await act(async () => { error = await view.result.current.save(stale, { name: 'Press inclinado' } as never); });
+    expect(error).toMatch(/cambió/);
+    expect(mockUpdate).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  describe('same millisecond everywhere (fixed clock: confirmedAt === visit start)', () => {
+    beforeEach(() => { jest.mocked(Date.now).mockImplementation(() => START); });
+    it('a reading retained from a previous visit is read again before an identity write', async () => {
+      await visit();
+      const view = library();
+      await settle();
+      expect(mockFetch).toHaveBeenCalledTimes(1); // reused: confirmed in the same millisecond this visit started
+      mockUpdate.mockImplementation(settledWrite('/api/mobile/v1/training/exercises/e1', { status: 'ok', data: { exercise: press('2026-11-13T15:00:00.000Z', 'Press inclinado') }, meta }));
+      await act(async () => { await view.result.current.save(view.result.current.exercises[0], { name: 'Press inclinado' } as never); });
+      expect(mockFetch.mock.invocationCallOrder[1]).toBeLessThan(mockUpdate.mock.invocationCallOrder[0]);
+      view.unmount();
+    });
+    it('another device changed it: nothing is written', async () => {
+      await visit();
+      const view = library();
+      await settle();
+      mockFetch.mockImplementation(async () => catalog(press('2026-11-13T14:59:00.000Z', 'Press (otro dispositivo)')));
+      let error: string | null = null;
+      await act(async () => { error = await view.result.current.save(view.result.current.exercises[0], { name: 'X' } as never); });
+      expect(error).toMatch(/cambió/);
+      expect(mockUpdate).not.toHaveBeenCalled();
+      view.unmount();
+    });
+    it('the verification read fails: nothing is written', async () => {
+      await visit();
+      const view = library();
+      await settle();
+      mockFetch.mockImplementation(async () => ({ status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } }));
+      let error: string | null = null;
+      await act(async () => { error = await view.result.current.save(view.result.current.exercises[0], { name: 'X' } as never); });
+      expect(error).toMatch(/verificar/);
+      expect(mockUpdate).not.toHaveBeenCalled();
+      view.unmount();
+    });
+  });
+
   it('another account never sees this account\'s retained library', async () => {
     await visit();
     const first = mockClient;

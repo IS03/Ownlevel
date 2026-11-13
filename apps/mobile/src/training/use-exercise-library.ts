@@ -16,8 +16,6 @@ export function exerciseWriteError(result: MobileApiMutationResult<unknown>): st
  * loader only reads; this visit's overlays and notices never live in the retained controller.
  */
 const loadExercises = (client: MobileApiClient, signal: AbortSignal) => fetchMobileTrainingExercises(client, signal);
-/** Event handlers only (never during render): the instant a write settled, on the same clock as `confirmedAt`. */
-const settledNow = () => Date.now();
 const STALE_VERSION = 'El ejercicio cambió desde la última lectura. Revisá los datos y guardá de nuevo.';
 type Catalog = Extract<MobileTrainingExercisesResponse['catalog'], { status: 'ok' }>['data'];
 export function useExerciseLibrary() {
@@ -26,10 +24,11 @@ export function useExerciseLibrary() {
   const [lastCatalog, setLastCatalog] = useState<Catalog | null>(null);
   const [confirmed, setConfirmed] = useState<Record<string, MobileTrainingExercise>>({});
   const [notice, setNotice] = useState<{ message: string; undo?: { exercise: MobileTrainingExercise; active: boolean }; error?: boolean } | null>(null);
-  /** When the last write of this visit settled: only a catalog confirmed after it replaces the confirmed overlays. */
-  const writeSettledAt = useRef<number | null>(null);
-  /** This visit's start: a catalog confirmed before it (retained) is never the authority for an identity version. */
-  const [visitStart] = useState(() => Date.now());
+  /**
+   * The confirmed reading shown when the last write of this visit settled (`null`: none yet). Only a DIFFERENT confirmed
+   * reading replaces the overlays: provenance by identity, never by comparing millisecond timestamps.
+   */
+  const writeBaseline = useRef<object | null | undefined>(undefined);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(null), 4000); return () => clearTimeout(timer); }, [notice]);
   const announce = (message: string, extra: Omit<NonNullable<typeof notice>, 'message'> = {}) => {
@@ -38,36 +37,44 @@ export function useExerciseLibrary() {
   const { state, refresh, reload, snapshot } = useCachedRead(client, 'training', 'exercise-library', loadExercises);
   // A read that started before a write never confirms: the write's invalidation cancels it (ConfirmedReadCache).
   useEffect(() => {
-    const since = writeSettledAt.current;
-    if (since === null || state.status !== 'ready' || state.refreshing || state.current.confirmedAt < since || state.current.data.catalog.status !== 'ok') return;
-    writeSettledAt.current = null;
+    const baseline = writeBaseline.current;
+    if (baseline === undefined || state.status !== 'ready' || state.refreshing || state.current === baseline || state.current.data.catalog.status !== 'ok') return;
+    writeBaseline.current = undefined;
     setConfirmed({});
   }, [state]);
+  // An explicit authorization denial (401/403) drops every protected fallback: the retained reading (the cache already
+  // discards it), the last complete catalog and this visit's overlays. A network failure keeps them, marked stale.
+  const denied = state.status === 'auth_required' || state.status === 'unauthorized' || (state.status === 'unavailable' && state.result.meta.httpStatus === 403);
   // The last complete catalog stays shown when a later reading answers without it (derived during render).
   const okCatalog = state.status === 'ready' && state.current.data.catalog.status === 'ok' ? state.current.data.catalog.data : null;
-  if (okCatalog && okCatalog !== lastCatalog) setLastCatalog(okCatalog);
+  if (denied && lastCatalog) setLastCatalog(null);
+  else if (okCatalog && okCatalog !== lastCatalog) setLastCatalog(okCatalog);
+  if (denied && Object.keys(confirmed).length) setConfirmed({});
   const runRefresh = useCallback(() => { if (!busy.current) void refresh(); }, [refresh]);
-  const current = state.status === 'ready' ? state.current : state.status === 'loading' ? undefined : state.previous;
-  const catalog = current?.data.catalog.status === 'ok' ? current.data.catalog.data : lastCatalog;
+  const current = denied ? undefined : state.status === 'ready' ? state.current : state.status === 'loading' ? undefined : state.previous;
+  const catalog = denied ? null : current?.data.catalog.status === 'ok' ? current.data.catalog.data : lastCatalog;
   const stale = state.status !== 'ready' || current?.data.catalog.status !== 'ok';
   const base = catalog?.exercises ?? [];
-  const exercises = [...base.map(exercise => confirmed[exercise.id] ?? exercise), ...Object.values(confirmed).filter(exercise => !base.some(item => item.id === exercise.id))];
+  const exercises = denied ? [] : [...base.map(exercise => confirmed[exercise.id] ?? exercise), ...Object.values(confirmed).filter(exercise => !base.some(item => item.id === exercise.id))];
   const start = () => { if (!client || busy.current) return false; busy.current = true; setPending(true); return true; };
   const finish = () => { busy.current = false; if (alive.current) setPending(false); };
   /** After a write settled: never joins a read that may predate it (ConfirmedReadCache.reload). */
-  const reloadAfterWrite = async () => { writeSettledAt.current = settledNow(); await reload(); };
+  const reloadAfterWrite = async () => { markWriteSettled(); await reload(); };
+  /** The confirmed reading at this instant (identity is the provenance; `null`: none). */
+  const confirmedReading = () => { const reading = snapshot(); return reading.status === 'ready' ? reading.current : null; };
+  function markWriteSettled() { writeBaseline.current = confirmedReading(); }
   /**
-   * CAS: the identity version sent with an edit must come from a catalog of this visit. A retained catalog (shown at
-   * once when coming back) is read again first; if the exercise changed meanwhile, nothing is written.
+   * CAS: the identity version sent with an edit is ALWAYS verified by a catalog read started for this edit (or the read
+   * the write's own invalidation started after it settled): never the retained reading, never an archive/restore overlay
+   * (their replies are partial and do not confirm `updatedAt`). If that read fails, is denied or offline, or the exercise
+   * changed since it was shown, nothing is written.
    */
   const currentVersion = async (original: MobileTrainingExercise): Promise<{ version: string } | { error: string }> => {
-    if (confirmed[original.id]) return { version: original.updatedAt }; // set by a write of this visit
-    let reading = snapshot();
-    if (reading.status !== 'ready' || reading.refreshing || reading.current.confirmedAt < visitStart) {
-      await refresh();
-      reading = snapshot();
-    }
-    if (reading.status !== 'ready' || reading.current.confirmedAt < visitStart || reading.current.data.catalog.status !== 'ok') {
+    const before = confirmedReading();
+    await reload();
+    const reading = snapshot();
+    // A different confirmed reading proves a read that settled after this edit asked for it (not a millisecond clock).
+    if (reading.status !== 'ready' || reading.refreshing || reading.current === before || reading.current.data.catalog.status !== 'ok') {
       return { error: 'No pudimos verificar la versión actual del ejercicio. Revisá la conexión e intentá de nuevo.' };
     }
     const fresh = reading.current.data.catalog.data.exercises.find(exercise => exercise.id === original.id);
@@ -104,6 +111,10 @@ export function useExerciseLibrary() {
     finally { finish(); }
   };
   /** After a write made elsewhere on this screen (an exercise added to a routine): never trust a pre-write read. */
-  const changed = useCallback(() => { writeSettledAt.current = settledNow(); return reload(); }, [reload]);
+  const changed = useCallback(() => {
+    const reading = snapshot();
+    writeBaseline.current = reading.status === 'ready' ? reading.current : null;
+    return reload();
+  }, [reload, snapshot]);
   return { client, state, current, catalog, stale, exercises, runRefresh, routines: catalog?.routines ?? [], refresh, changed, pending, busy, notice, announce, save, status };
 }

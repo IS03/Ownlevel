@@ -1,9 +1,10 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Alert, RefreshControl } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { MobileTrainingExercisesResponse } from '@/api/exercises';
+import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 import { OwnlevelThemeProvider } from '@/design-system';
 
 import { ExerciseLibraryScreen } from './exercise-library-screen';
@@ -14,6 +15,11 @@ const mockRefresh = jest.fn<() => Promise<void>>();
 const mockSetStatus = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockUpdate = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockUseApiResource = jest.fn();
+/** One account's client, stable across renders (the retained reading is scoped by client). */
+const mockClient = { request: jest.fn() };
+let mockRealCachedRead = false;
+/** Mocked readings a reload has confirmed again (the harness's stand-in for a new confirmed reading). */
+const mockReconfirmed = new WeakSet<object>();
 
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 const mockPush = jest.fn();
@@ -38,8 +44,12 @@ jest.mock('expo-router', () => {
 // is exercised with the real cache in exercise-library-retention.test.tsx.
 jest.mock('@/api/use-cached-read', () => ({
   useCachedRead: (...args: unknown[]) => {
-    const resource = mockUseApiResource(...args) as { refresh: () => Promise<void>; state: unknown };
-    return { reload: resource.refresh, snapshot: () => resource.state, ...resource };
+    if (mockRealCachedRead) return (jest.requireActual('@/api/use-cached-read') as typeof import('@/api/use-cached-read')).useCachedRead(...(args as Parameters<typeof import('@/api/use-cached-read').useCachedRead>));
+    const resource = mockUseApiResource(...args) as { refresh: () => Promise<void>; state: { status: string; current?: object } };
+    // A reload that resolves confirms a NEW reading (same data, new identity), as the cache does after a read.
+    return { ...resource,
+      reload: async () => { await resource.refresh(); mockReconfirmed.add(resource.state); },
+      snapshot: () => mockReconfirmed.has(resource.state) && resource.state.status === 'ready' ? { ...resource.state, current: { ...resource.state.current } } : resource.state };
   },
 }));
 jest.mock('@/api', () => ({
@@ -48,7 +58,7 @@ jest.mock('@/api', () => ({
   setMobileTrainingExerciseStatus: (...args: unknown[]) => mockSetStatus(...args),
   updateMobileTrainingExerciseIdentity: (...args: unknown[]) => mockUpdate(...args),
   useApiResource: (...args: unknown[]) => mockUseApiResource(...args),
-  useMobileApi: () => ({ client: { request: jest.fn() } }),
+  useMobileApi: () => ({ client: mockClient }),
 }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn() } }));
 
@@ -196,8 +206,47 @@ describe('exercise library polish', () => {
     expect(mockSetStatus).toHaveBeenLastCalledWith(expect.anything(), pressId, true); expect(view.getByText('Press inclinado')).toBeTruthy();
   });
   it('keeps stale rows and pull to refresh', () => {
-    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: { status: 'unavailable', previous: { data: fixture() } } });
+    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: { status: 'unavailable', previous: { data: fixture() },
+      result: { status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } } } });
     const view = renderScreen(); expect(view.getByText('Press inclinado')).toBeTruthy(); expect(view.getByText('Mostramos la última lectura confirmada.')).toBeTruthy();
     fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh'); expect(mockRefresh).toHaveBeenCalled();
+  });
+});
+
+describe('authorization denial on a mounted library (#303 C3a review; real retained reading)', () => {
+  const okRead = (data = fixture()) => ({ status: 'ok', data, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } });
+  beforeEach(() => {
+    jest.restoreAllMocks(); jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    [mockFetch, mockSetStatus, mockUpdate, mockCreate].forEach(fn => fn.mockReset());
+    clearConfirmedReads(mockClient as never); mockRealCachedRead = true;
+  });
+  afterEach(() => { mockRealCachedRead = false; clearConfirmedReads(mockClient as never); });
+  it.each([
+    ['401', { status: 'unauthorized', meta: { durationMs: 1, httpStatus: 401, outcome: 'unauthorized' } }],
+    ['403', { status: 'unavailable', reason: 'server', meta: { durationMs: 1, httpStatus: 403, outcome: 'unavailable' } }],
+  ])('catalog OK → %s: no name, routine or action of the protected catalog; an authorized read recovers it', async (_code, denied) => {
+    mockFetch.mockResolvedValueOnce(okRead());
+    const view = renderScreen();
+    await waitFor(() => expect(view.getByText('Press inclinado')).toBeTruthy());
+    mockFetch.mockResolvedValueOnce(denied);
+    await act(async () => { fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh'); });
+    await waitFor(() => expect(view.getByText('Biblioteca no disponible')).toBeTruthy());
+    for (const name of ['Press inclinado', 'Curl']) expect(view.queryByText(name)).toBeNull();
+    expect(view.queryByRole('button', { name: /Abrir / })).toBeNull(); // no row, so no action on protected data
+    expect(view.queryByText('Mostramos la última lectura confirmada.')).toBeNull(); // not offered as stale data either
+    mockFetch.mockResolvedValueOnce(okRead());
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Reintentar' })); });
+    await waitFor(() => expect(view.getByText('Press inclinado')).toBeTruthy());
+    view.unmount();
+  });
+  it('a network failure keeps the last catalog, clearly marked as not updated', async () => {
+    mockFetch.mockResolvedValueOnce(okRead());
+    const view = renderScreen();
+    await waitFor(() => expect(view.getByText('Press inclinado')).toBeTruthy());
+    mockFetch.mockResolvedValueOnce({ status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } });
+    await act(async () => { fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh'); });
+    await waitFor(() => expect(view.getByText('Mostramos la última lectura confirmada.')).toBeTruthy());
+    expect(view.getByText('Press inclinado')).toBeTruthy();
+    view.unmount();
   });
 });
