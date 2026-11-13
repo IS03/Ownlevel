@@ -24,7 +24,7 @@ export const MIN_SAMPLE = Object.freeze({ p50: 5, p95: 20 });
 
 const METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const READ_EVENTS = new Set(['reuse', 'network', 'join', 'settled', 'invalidate', 'evict']);
-const READ_FAMILIES = new Set(['overview', 'body', 'training', 'metrics', 'nutrition-report', 'nutrition-day', 'progress-extra']);
+const READ_FAMILIES = new Set(['home', 'overview', 'body', 'training', 'metrics', 'nutrition-report', 'nutrition-day', 'progress-extra']);
 const TRIGGERS = new Set(['initial', 'foreground', 'manual']);
 /** `MobileApiTelemetryOutcome` (apps/mobile/src/api/telemetry.ts + results.ts): the only outcome texts that can reach a report. */
 export const OUTCOMES = Object.freeze(['ok', 'auth_required', 'unauthorized', 'conflict', 'not_found', 'validation',

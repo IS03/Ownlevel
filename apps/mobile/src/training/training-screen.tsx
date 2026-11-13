@@ -10,6 +10,8 @@ import { useMobileApi } from '@/api';
 import type { ResourceRefreshTrigger } from '@/api/resource';
 import { ScrollScreen, SkeletonBlock, spacing, useOwnlevelTheme } from '@/design-system';
 import { homeDay, weekDates, mondayOf } from '@/home/home-day';
+import { homeResource } from '@/home/home-resource';
+import { useSharedHomeRead } from '@/home/shared-home-read';
 import { haptics } from '@/platform/haptics';
 
 import { buildTrainingMonth } from './calendar';
@@ -42,7 +44,9 @@ export function TrainingScreen({ now = systemNow }: { now?: () => Date }) {
   // The hub stays mounted as a tab: returning to the foreground re-reads it only while it is on screen.
   const visible = useRef(false);
   const onScreen = useCallback(() => visible.current, []);
-  const home = useHubRead(cache.home, onScreen);
+  // /home is the retained reading shared with Inicio (#303 C2): one confirmed there under 30 s ago answers here.
+  const sharedHome = useSharedHomeRead(client, useCallback(() => homeDay(now()).today, [now]), onScreen);
+  const home = homeResource(sharedHome.state);
   const currentCalendar = useHubRead(cache.month(month), onScreen);
   // The previous month is only prefetched while the month is open, for its first "Mes anterior".
   const previousMonth = calendar.open ? shiftHubMonth(month, -1) : month;
@@ -72,21 +76,26 @@ export function TrainingScreen({ now = systemNow }: { now?: () => Date }) {
     const settled = { home: settledWritesFor(client, HUB_READ_DOMAINS.home), training: settledWritesFor(client, HUB_READ_DOMAINS.month) };
     const changed = { home: settled.home !== writes.current.home, training: settled.training !== writes.current.training };
     writes.current = settled;
-    const resources = new Set([cache.home, cache.month(month), cache.month(previousMonth), cache.month(shownMonth),
+    // A read already in flight can predate the settled write: never join it as the new truth.
+    // Coming back (onlyStale) reuses a fresh, valid /home reading, also one Inicio confirmed; otherwise it is read.
+    const homeRead = changed.home ? sharedHome.reload() : sharedHome.ensure(onlyStale ? 'initial' : trigger);
+    const resources = new Set([cache.month(month), cache.month(previousMonth), cache.month(shownMonth),
       cache.month(firstWeekMonth), cache.week(today)]);
     resources.forEach(resource => {
-      // A read already in flight can predate the settled write: never join it as the new truth.
-      if (resource === cache.home ? changed.home : changed.training) void resource.reload(trigger);
+      if (changed.training) void resource.reload(trigger);
       else if (!onlyStale || hubReadExpired(resource)) void resource.refresh(trigger);
     });
+    return homeRead;
   };
   const refreshRef = useRef(refresh);
   useEffect(() => { refreshRef.current = refresh; });
+  const focusHome = sharedHome.focus;
   useFocusEffect(useCallback(() => {
     visible.current = true;
+    const blurHome = focusHome();
     refreshRef.current('foreground', true);
-    return () => { visible.current = false; };
-  }, []));
+    return () => { visible.current = false; blurHome(); };
+  }, [focusHome]));
 
   const expand = () => { haptics.selection(); setCalendar({ month, open: true }); };
   const collapse = () => setCalendar(value => ({ ...value, open: false }));
@@ -103,7 +112,9 @@ export function TrainingScreen({ now = systemNow }: { now?: () => Date }) {
   const starter = useSessionStarter({ onSession: id => toSession(id, true) });
   const confirmPointerEvents = useStartConfirmPointerEvents();
   const newSession = useNewSession({ client, home, onCreateRoutine: () => router.push('/(tabs)/train/routines'), start: starter.start, today });
-  const homeState = cache.home.getSnapshot();
+  // The spinner follows the user's pull only: the shared reading also revalidates after writes (cache 'manual').
+  const [pulling, setPulling] = useState(false);
+  const pull = () => { setPulling(true); void refresh().finally(() => setPulling(false)); };
 
   const strip = knownTrainedDays([currentCalendar, firstMonth]);
   const shownRead = shownCalendar.data?.calendar;
@@ -118,7 +129,7 @@ export function TrainingScreen({ now = systemNow }: { now?: () => Date }) {
     {/* Content passes under the status bar and the calendar's glass, blurring progressively above the calendar. */}
     <ScrollScreen contentContainerStyle={{ paddingBottom: 100, paddingTop: CALENDAR_TOP_GAP + collapsedHeight + spacing.xl }} safeAreaEdges={['left', 'right']}
       scrollEdge edgeExtra={CALENDAR_TOP_GAP + 56}
-      refreshControl={<RefreshControl onRefresh={() => refresh()} refreshing={homeState.status === 'ready' && homeState.refreshing && homeState.trigger === 'manual'}
+      refreshControl={<RefreshControl onRefresh={pull} refreshing={pulling}
         tintColor={colors.primary} colors={[colors.primary]} progressBackgroundColor={colors.surface} testID="training-refresh-control" />} testID="training-screen">
       {home.status === 'loading' && currentCalendar.status === 'loading' ? <View style={{ gap: 12 }} testID="training-loading">
         <SkeletonBlock height={140} /><SkeletonBlock height={190} /><SkeletonBlock height={160} />

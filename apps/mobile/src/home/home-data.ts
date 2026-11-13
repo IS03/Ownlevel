@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useFocusEffect } from 'expo-router';
 
-import { fetchMobileHome, useApiResource } from '@/api';
+import { useApiResource } from '@/api';
 import type { MobileApiClient } from '@/api/client';
-import { settledWritesFor, type WriteDomain } from '@/api/confirmed-read-cache';
+import { READ_FAMILY_DOMAINS, settledWritesFor, type WriteDomain } from '@/api/confirmed-read-cache';
 import { fetchHistoryDay } from '@/api/history';
 import { useNutritionReportResource } from '@/nutrition/report-resource';
 import { fetchProgressHabitWeek, fetchProgressBody, fetchProgressTrainingRecords } from '@/api/progress';
@@ -11,6 +11,7 @@ import type { MobileApiReadResult } from '@/api/results';
 import { fetchTrainingHistory, type TrainingHistorySession } from '@/api/training-history';
 
 import { homeDay } from './home-day';
+import { useSharedHomeRead } from './shared-home-read';
 import { prefetchNutritionDays } from '@/nutrition/day-resource';
 import { shiftNutritionDate } from '@/nutrition/day-format';
 
@@ -65,9 +66,9 @@ export async function loadTrainingWeek(
  * writes (Progreso) move none of them.
  */
 export const HOME_READ_DOMAINS = {
-  // /home: profile, nutrition day summary (meals, day_logs incl. water/steps, targets from training day and weight),
-  // active session, week training snapshot and start routines.
-  home: ['body', 'training', 'nutrition'],
+  // /home (shared with Entrenar through the retained `home` family): profile, nutrition day summary (meals, day_logs
+  // incl. water/steps, targets from training day and weight), active session, week training snapshot, start routines.
+  home: READ_FAMILY_DOMAINS.home,
   // /history/days/:date: training, active session, nutrition day (with the configured daily metrics) and body.
   today: ['body', 'training', 'nutrition', 'metrics'],
   // Nutrition report (same domains as its retained-read family): intake, targets by training day, energy by weight.
@@ -111,8 +112,8 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
   const stopWarming = useRef<(() => void) | null>(null);
   const warmOnFocus = useRef<() => void>(() => {});
   const foreground = useCallback(() => visible.current, []);
-  const home = useApiResource(useCallback((signal: AbortSignal) =>
-    client ? fetchMobileHome(client, signal) : Promise.resolve(unavailable), [client]), { refreshOnForeground: foreground });
+  // /home is the retained reading shared with Entrenar (#303 C2): a fresh one confirmed there answers here.
+  const home = useSharedHomeRead(client, useCallback(() => homeDay(now()).today, [now]), foreground);
   const today = useApiResource(useCallback((signal: AbortSignal) =>
     client ? fetchHistoryDay(client, homeDay(now()).today, signal) : Promise.resolve(unavailable), [client, now]), { refreshOnForeground: foreground });
   const reportDay = homeDay(now());
@@ -126,9 +127,13 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
   const progressRecords = useApiResource(useCallback((signal: AbortSignal) =>
     client ? fetchProgressTrainingRecords(client, { period: '30' }, signal) : Promise.resolve(unavailable), [client]), { refreshOnForeground: foreground });
 
-  // Latest refresh/reload of each read, by name: the focus logic reaches them through a ref.
-  const actions: Record<HomeRead, { refresh: () => Promise<void>; reload: () => Promise<void> }> = {
-    home, today, calories, habits, training, progressBody, progressRecords,
+  // Latest refresh/reload of each read, by name: the focus logic reaches them through a ref. `refresh(true)` comes from
+  // the focus (interval, new day): the shared /home reading is reused if Entrenar confirmed it under 30 s ago and no
+  // write invalidated it since; pull-to-refresh always reads.
+  type Actions = { refresh: (fromFocus?: boolean) => Promise<void>; reload: () => Promise<void> };
+  const actions: Record<HomeRead, Actions> = {
+    home: { refresh: fromFocus => home.ensure(fromFocus ? 'initial' : 'manual'), reload: home.reload },
+    today, calories, habits, training, progressBody, progressRecords,
   };
   const actionsRef = useRef(actions);
   useEffect(() => { actionsRef.current = actions; });
@@ -138,20 +143,23 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
     lastFocus.current = { at: now().getTime(), day: homeDay(now()).today, writes: revisionsOf(client) };
   }, [client, now]);
   /** Pull-to-refresh, interval and new day: every read refreshes; a read a write may have moved reloads instead. */
-  const refreshNow = useCallback(() => {
+  const refreshNow = useCallback((fromFocus = false) => {
     const moved = new Set(homeReadsMovedSince(lastFocus.current?.writes, revisionsOf(client)));
     markRefreshed();
     // A pending read may predate the write; refresh() would join it and accept stale data.
-    void Promise.all(HOME_READS.map(read => moved.has(read) ? actionsRef.current[read].reload() : actionsRef.current[read].refresh()));
+    void Promise.all(HOME_READS.map(read => moved.has(read) ? actionsRef.current[read].reload() : actionsRef.current[read].refresh(fromFocus)));
   }, [client, markRefreshed]);
+  const pullRefresh = useCallback(() => refreshNow(), [refreshNow]);
+  const focusHome = home.focus;
   useFocusEffect(useCallback(() => {
     visible.current = true;
-    const blur = () => { visible.current = false; stopWarming.current?.(); };
+    const blurHome = focusHome();
+    const blur = () => { visible.current = false; blurHome(); stopWarming.current?.(); };
     const day = homeDay(now()).today;
     const last = lastFocus.current;
     // The first focus coincides with the initial reads.
     if (last === null) { markRefreshed(); warmOnFocus.current(); return blur; }
-    if (shouldRefreshOnFocus(last, now().getTime(), day)) { refreshNow(); return blur; }
+    if (shouldRefreshOnFocus(last, now().getTime(), day)) { refreshNow(true); return blur; }
     // Inside the interval, the same day: only the reads a settled write may have moved, and the interval keeps running.
     const current = revisionsOf(client), moved = homeReadsMovedSince(last.writes, current);
     if (moved.length) {
@@ -159,7 +167,7 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
       void Promise.all(moved.map(read => actionsRef.current[read].reload()));
     } else warmOnFocus.current();
     return blur;
-  }, [client, markRefreshed, now, refreshNow]));
+  }, [client, focusHome, markRefreshed, now, refreshNow]));
 
   // After a write made from Home (a daily metric): reload its blocks now. Only those count as caught up, so any other
   // read the write moved (the habit week) still reloads on the next focus.
@@ -184,5 +192,5 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
     return () => { stopWarming.current?.(); stopWarming.current = null; };
   }, [client, homeSettled, warmDay]);
 
-  return { calories, habits, home, progressBody, progressRecords, refresh: refreshNow, invalidate, today, training };
+  return { calories, habits, home, progressBody, progressRecords, refresh: pullRefresh, invalidate, today, training };
 }
