@@ -2,7 +2,7 @@ import type { MobileApiClient } from './client';
 import type { MobileApiReadResult } from './results';
 import { ApiResourceController, type ResourceRefreshTrigger } from './resource';
 
-export type ReadFamily = 'overview' | 'body' | 'training' | 'metrics' | 'nutrition-report' | 'nutrition-day' | 'progress-extra';
+export type ReadFamily = 'home' | 'overview' | 'body' | 'training' | 'metrics' | 'nutrition-report' | 'nutrition-day' | 'progress-extra';
 export type WriteDomain = 'body' | 'training' | 'metrics' | 'nutrition' | 'views' | 'insight';
 type Domain = WriteDomain;
 type Loader<T> = (signal: AbortSignal, background?: boolean) => Promise<MobileApiReadResult<T>>;
@@ -15,6 +15,9 @@ export type RetainedRead<T> = {
 export const READ_REUSE_MS = 30_000;
 export const RETAINED_READ_LIMIT = 40;
 const domains: Record<ReadFamily, readonly Domain[]> = {
+  // /api/mobile/v1/home, shared by Inicio and Entrenar: profile, nutrition day summary (targets follow training days
+  // and weight), active session, week training snapshot and start routines (#303 C1 map).
+  home: ['body', 'training', 'nutrition'],
   overview: ['body', 'training', 'metrics', 'nutrition'], body: ['body'], training: ['training'], metrics: ['metrics'],
   // Day targets follow training days and energy follows weight/physical data, not only nutrition writes. The day
   // also lists the configured daily metrics, so definition changes invalidate it.
@@ -22,6 +25,8 @@ const domains: Record<ReadFamily, readonly Domain[]> = {
   // Views, connections, insight, Explorar, meal times, stages, influence and exercise detail: any data domain moves them.
   'progress-extra': ['body', 'training', 'metrics', 'nutrition', 'views', 'insight'],
 };
+/** The write domains each retained family depends on (screens with their own reads compare these on focus). */
+export const READ_FAMILY_DOMAINS: Readonly<Record<ReadFamily, readonly Domain[]>> = domains;
 /** The day scope keeps a relative period ("today", "last 7 days") from crossing midnight in Córdoba. */
 export const scopedReadKey = (key: string, day: string) => `${day}|${key}`;
 type Measurement = { event: 'reuse' | 'network' | 'join' | 'settled' | 'invalidate' | 'evict'; family: ReadFamily; trigger?: ResourceRefreshTrigger; durationMs?: number; ageMs?: number };

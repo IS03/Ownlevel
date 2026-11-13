@@ -1,6 +1,7 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { clearConfirmedReads, invalidateConfirmedReads } from '@/api/confirmed-read-cache';
+import { clearConfirmedReads, confirmedReads, invalidateConfirmedReads } from '@/api/confirmed-read-cache';
+import { sharedHomeRead } from '@/home/shared-home-read';
 import { Alert, AppState, RefreshControl } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { MobileHomeResponse } from '@/api/home';
@@ -104,6 +105,8 @@ function renderScreen(at = now) {
 let appStateListeners: ((state: string) => void)[] = [];
 describe('Training native hub', () => {
   beforeEach(() => {
+    // The shared /home reading is retained per client (#303 C2): every test starts from an empty cache.
+    clearConfirmedReads(mockClient as never);
     mockFocus.length = 0;
     appStateListeners = [];
     jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, listener) => {
@@ -244,6 +247,54 @@ describe('Training native hub', () => {
       await act(async () => { view.UNSAFE_getByType(RefreshControl).props.onRefresh(); });
       expect(counts()).toEqual({ home: before.home + 1, month: before.month + 1, week: before.week + 1 });
       clearConfirmedReads(mockClient as never);
+    });
+  });
+  describe('the /home reading shared with Inicio (#303 C2; simulated request counts)', () => {
+    it('opening Entrenar right after Inicio confirmed /home reuses it; after 30 s the hub reads it again', async () => {
+      // Inicio confirmed today's /home a moment ago (same account, same Córdoba day).
+      await act(async () => { await confirmedReads(mockClient as never).ensure(sharedHomeRead(mockClient as never, '2026-10-07'), 'initial'); });
+      expect(mockHome).toHaveBeenCalledTimes(1);
+      const view = renderScreen(); await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar LEGS' })).toBeTruthy());
+      await act(async () => { mockFocus.at(-1)!(); });
+      expect(mockHome).toHaveBeenCalledTimes(1); // before C2 the hub read its own copy: 2
+      expect(mockTraining).toHaveBeenCalledTimes(1); expect(mockHistory).toHaveBeenCalledTimes(1); // its own reads unchanged
+      const start = Date.now();
+      jest.spyOn(Date, 'now').mockReturnValue(start + 31_000);
+      await act(async () => { mockFocus.at(-1)!(); });
+      expect(mockHome).toHaveBeenCalledTimes(2);
+      jest.mocked(Date.now).mockRestore();
+    });
+    it('a reading of another day or account is never reused', async () => {
+      await act(async () => { await confirmedReads(mockClient as never).ensure(sharedHomeRead(mockClient as never, '2026-10-06'), 'initial'); });
+      const other = {};
+      await act(async () => { await confirmedReads(other as never).ensure(sharedHomeRead(other as never, '2026-10-07'), 'initial'); });
+      expect(mockHome).toHaveBeenCalledTimes(2);
+      const view = renderScreen(); await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar LEGS' })).toBeTruthy());
+      expect(mockHome).toHaveBeenCalledTimes(3);
+      expect(mockHome.mock.calls[2][0]).toBe(mockClient);
+      clearConfirmedReads(other as never);
+    });
+    it('the pull spinner shows only for the user\'s pull, not when a write revalidates the shared reading', async () => {
+      const view = renderScreen(); await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar LEGS' })).toBeTruthy());
+      await act(async () => { mockFocus.at(-1)!(); });
+      let finish!: (value: unknown) => void;
+      mockHome.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+      invalidateConfirmedReads(mockClient as never, '/api/mobile/v1/nutrition/days/2026-10-07/meals'); // on screen: revalidates now
+      await act(async () => { mockFocus.at(-1)!(); });
+      expect(view.UNSAFE_getByType(RefreshControl).props.refreshing).toBe(false);
+      await act(async () => { finish(ok(home())); });
+      mockHome.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+      await act(async () => { view.UNSAFE_getByType(RefreshControl).props.onRefresh(); });
+      expect(view.UNSAFE_getByType(RefreshControl).props.refreshing).toBe(true);
+      await act(async () => { finish(ok(home())); });
+      expect(view.UNSAFE_getByType(RefreshControl).props.refreshing).toBe(false);
+    });
+    it('pull-to-refresh reads /home even when Inicio confirmed it a moment ago', async () => {
+      await act(async () => { await confirmedReads(mockClient as never).ensure(sharedHomeRead(mockClient as never, '2026-10-07'), 'initial'); });
+      const view = renderScreen(); await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar LEGS' })).toBeTruthy());
+      expect(mockHome).toHaveBeenCalledTimes(1);
+      await act(async () => { view.UNSAFE_getByType(RefreshControl).props.onRefresh(); });
+      expect(mockHome).toHaveBeenCalledTimes(2);
     });
   });
   it('shows skeleton then manual first three routines, without recency reads', async () => {

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 
-import { fetchMobileHome, type MobileHomeResponse } from '@/api/home';
 import type { MobileApiClient } from '@/api/client';
 import { ApiResourceController, shouldRefreshOnForeground, type ApiResourceState } from '@/api/resource';
 import type { MobileApiReadResult } from '@/api/results';
@@ -60,15 +59,15 @@ export const HUB_READ_DOMAINS = {
   week: ['training'],
 } as const satisfies Record<string, readonly WriteDomain[]>;
 
-/** Screen-scoped cache: never shared between users, and disposed when its client changes. */
+/**
+ * Screen-scoped cache of the training-only reads: never shared between users, and disposed when its client changes.
+ * `/home` is not here: it is the retained reading shared with Inicio (useSharedHomeRead, #303 C2).
+ */
 export class TrainingHubCache {
-  readonly home: ApiResourceController<MobileHomeResponse>;
   readonly months = new Map<string, ApiResourceController<MobileTrainingResponse>>();
   readonly weeks = new Map<string, ApiResourceController<HubWeek>>();
 
-  constructor(private readonly client: MobileApiClient | null) {
-    this.home = new ApiResourceController(signal => client ? fetchMobileHome(client, signal) : Promise.resolve(unavailable));
-  }
+  constructor(private readonly client: MobileApiClient | null) {}
 
   month(key: string) {
     let resource = this.months.get(key);
@@ -103,7 +102,6 @@ export class TrainingHubCache {
   }
 
   dispose() {
-    this.home.dispose();
     this.months.forEach(resource => resource.dispose());
     this.weeks.forEach(resource => resource.dispose());
   }

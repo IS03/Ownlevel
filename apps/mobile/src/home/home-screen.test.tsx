@@ -1,6 +1,6 @@
 import { act, fireEvent, render, renderHook, waitFor, within } from '@testing-library/react-native';
 import { AppState } from 'react-native';
-import { clearConfirmedReads, invalidateConfirmedReads } from '@/api/confirmed-read-cache';
+import { clearConfirmedReads, confirmedReads, invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 import type { MobileHomeResponse } from '@/api/home';
@@ -8,6 +8,7 @@ import { OwnlevelThemeProvider } from '@/design-system';
 
 import { HOME_FOCUS_REFRESH_MS, useHomeResources } from './home-data';
 import { HomeScreen } from './home-screen';
+import { sharedHomeRead } from './shared-home-read';
 import { homeProgressHabits, homeProgressBody, homeProgressRecords, homeProgressTraining } from './home-test-fixtures';
 
 // Screen navigation uses the portable control; the UIKit bridge has its own integration suite.
@@ -69,6 +70,8 @@ jest.mock('@/api', () => ({
   fetchMobileHome: (...args: unknown[]) => mockFetchHome(...args),
   useMobileApi: () => ({ client: mockApiClient }),
 }));
+// /home is read through the shared retained reading (#303 C2), which imports it from its module.
+jest.mock('@/api/home', () => ({ ...jest.requireActual<object>('@/api/home'), fetchMobileHome: (...args: unknown[]) => mockFetchHome(...args) }));
 jest.mock('@/api/history', () => ({ fetchHistoryDay: (c: unknown, d: string) => mockFetchDay(c, d) }));
 jest.mock('@/api/nutrition-report', () => ({ ...jest.requireActual<typeof import('@/api/nutrition-report')>('@/api/nutrition-report'), fetchNutritionReport: (c: unknown, q: unknown) => mockFetchReport(c, q) }));
 jest.mock('@/api/training-history', () => ({
@@ -157,6 +160,8 @@ describe('Home screen', () => {
   beforeEach(() => {
     clearConfirmedReads(mockApiClient as never);
     clock = SATURDAY_NIGHT.getTime();
+    // The retained readings (the shared /home included) age on the same clock as the screen.
+    jest.spyOn(Date, 'now').mockImplementation(() => clock);
     mockFocusEffects.length = 0;
     appStateListeners = [];
     jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, listener) => {
@@ -390,6 +395,53 @@ describe('Home screen', () => {
       await focus();
       expect(counts()).toEqual(before);
       clearConfirmedReads(otherAccount as never);
+    });
+  });
+
+  describe('the /home reading shared with Entrenar (#303 C2; simulated request counts)', () => {
+    const fromEntrenar = (day = '2026-10-10') => act(async () => {
+      await confirmedReads(mockApiClient as never).ensure(sharedHomeRead(mockApiClient as never, day), 'initial');
+    });
+    it('back from Entrenar after the interval, Inicio reuses the /home it confirmed under 30 s ago; its other reads refresh', async () => {
+      await renderScreen();
+      await focus(); // first focus = initial reads
+      clock += HOME_FOCUS_REFRESH_MS + 5_000;
+      await fromEntrenar(); // Entrenar re-read /home (its own window had expired)
+      expect(mockFetchHome).toHaveBeenCalledTimes(2);
+      clock += 5_000;
+      await focus(); // Inicio's interval elapsed: everything refreshes, but /home is 5 s old
+      expect(mockFetchHome).toHaveBeenCalledTimes(2); // before C2: 3
+      for (const fetcher of [mockFetchDay, mockFetchReport, mockFetchHabits, mockFetchHistory, mockFetchProgressBody, mockFetchProgressRecords]) {
+        expect(fetcher).toHaveBeenCalledTimes(2);
+      }
+    });
+    it('a reading Entrenar confirmed before a write of its domains is not reused', async () => {
+      await renderScreen();
+      await focus();
+      clock += HOME_FOCUS_REFRESH_MS + 5_000;
+      await fromEntrenar();
+      invalidateConfirmedReads(mockApiClient as never, '/api/mobile/v1/nutrition/days/2026-10-10/meals');
+      clock += 1_000;
+      await focus();
+      expect(mockFetchHome).toHaveBeenCalledTimes(3);
+    });
+    it('Inicio opening after Entrenar shows its /home at once, with no request of its own', async () => {
+      await fromEntrenar();
+      expect(mockFetchHome).toHaveBeenCalledTimes(1);
+      const view = await renderScreen();
+      expect(mockFetchHome).toHaveBeenCalledTimes(1); // before C2: 2
+      expect(mockFetchDay).toHaveBeenCalledTimes(1);
+      expect(view.queryByTestId('home-nutrition-loading')).toBeNull();
+    });
+    it('pull-to-refresh always reads /home again', async () => {
+      const hook = renderHook(() => useHomeResources(mockApiClient as never, now));
+      await settle();
+      await focus();
+      expect(mockFetchHome).toHaveBeenCalledTimes(1);
+      await act(async () => { hook.result.current.refresh(); });
+      await settle();
+      expect(mockFetchHome).toHaveBeenCalledTimes(2);
+      hook.unmount();
     });
   });
 

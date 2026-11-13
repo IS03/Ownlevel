@@ -13,6 +13,7 @@ const mockBase = Date.parse('2026-10-02T15:00:00Z');
 const mockOk = (data: unknown) => ({ status: 'ok', data, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } });
 function mockRead(name: string, data: unknown) { mockEvents.push({ name, at: Date.now() - mockBase }); return new Promise(resolve => setTimeout(() => resolve(mockOk(data)), 1000)); }
 jest.mock('expo-router', () => ({ useFocusEffect: (callback: () => void | (() => void)) => jest.requireActual<typeof import('react')>('react').useEffect(callback, [callback]) }));
+jest.mock('@/api/home', () => ({ fetchMobileHome: () => mockRead('home', {}) }));
 jest.mock('@/api', () => ({ useApiResource: jest.requireActual<typeof import('@/api/resource')>('@/api/resource').useApiResource, fetchMobileHome: () => mockRead('home', {}) }));
 jest.mock('@/api/history', () => ({ fetchHistoryDay: () => mockRead('history-day', {}) }));
 jest.mock('@/api/nutrition-report', () => ({ ...jest.requireActual<typeof import('@/api/nutrition-report')>('@/api/nutrition-report'), fetchNutritionReport: () => mockRead('nutrition-report', {}) }));
