@@ -190,6 +190,62 @@ describe('Training native hub', () => {
     expect(view.getByRole('button', { name: 'Iniciar ACTUALIZADA' })).toBeTruthy();
     clearConfirmedReads(mockClient as never);
   });
+  describe('selective revalidation by write domain (#303 C1; simulated request counts, not network measurements)', () => {
+    const counts = () => ({ home: mockHome.mock.calls.length, month: mockTraining.mock.calls.length, week: mockHistory.mock.calls.length });
+    async function focusedHub() {
+      const view = renderScreen(); await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar LEGS' })).toBeTruthy());
+      await act(async () => { mockFocus.at(-1)!(); });
+      return { view, before: counts() };
+    }
+    // Before C1 any settled write re-read home, the month and the week (3 reads) on the next focus.
+    it.each([
+      ['a meal', '/api/mobile/v1/nutrition/days/2026-10-07/meals', { home: 1, month: 0, week: 0 }],
+      ['a weight', '/api/mobile/v1/body/weights/2026-10-07', { home: 1, month: 0, week: 0 }],
+      ['a metric definition', '/api/mobile/v1/metrics/definitions/m1', { home: 0, month: 0, week: 0 }],
+      ['a Progreso view', '/api/mobile/v1/progress/views', { home: 0, month: 0, week: 0 }],
+      ['a finished session', '/api/mobile/v1/training/sessions/s/finish', { home: 1, month: 1, week: 1 }],
+      ['a routine edit', '/api/mobile/v1/training/routines/r1', { home: 1, month: 1, week: 1 }],
+      ['an unmapped write (profile)', '/api/mobile/v1/profile', { home: 1, month: 1, week: 1 }],
+    ])('after %s, focus re-reads only the hub reads of its domains', async (_name, path, delta) => {
+      const { before } = await focusedHub();
+      invalidateConfirmedReads(mockClient as never, path);
+      await act(async () => { mockFocus.at(-1)!(); });
+      expect(counts()).toEqual({ home: before.home + delta.home, month: before.month + delta.month, week: before.week + delta.week });
+      const after = counts();
+      await act(async () => { mockFocus.at(-1)!(); });
+      expect(counts()).toEqual(after); // caught up
+      clearConfirmedReads(mockClient as never);
+    });
+    it('a meal keeps an in-flight month read (it does not depend on it); a session finish drops it', async () => {
+      const { before } = await focusedHub();
+      let finishMonth!: (result: unknown) => void;
+      const freshDays = [{ date: '2026-10-07', colors: ['rose'] }];
+      mockTraining.mockImplementationOnce(() => new Promise(resolve => { finishMonth = resolve; }))
+        .mockImplementation(async (_client, month) => ok({ activeSession: { status: 'ok', data: null }, calendar: { status: 'ok', data: { month, days: freshDays } } }));
+      jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 31_000);
+      await act(async () => { mockFocus.at(-1)!(); }); // window expired: the month read starts and stays pending
+      jest.mocked(Date.now).mockRestore();
+      expect(mockTraining.mock.calls.length).toBe(before.month + 1);
+      const signal = mockTraining.mock.calls.at(-1)![2] as AbortSignal;
+      invalidateConfirmedReads(mockClient as never, '/api/mobile/v1/nutrition/days/2026-10-07/meals');
+      await act(async () => { mockFocus.at(-1)!(); });
+      expect(signal.aborted).toBe(false); // unrelated: the pending month read is kept, not repeated
+      expect(mockTraining.mock.calls.length).toBe(before.month + 1);
+      invalidateConfirmedReads(mockClient as never, '/api/mobile/v1/training/sessions/s/finish');
+      await act(async () => { mockFocus.at(-1)!(); });
+      expect(signal.aborted).toBe(true); // it may predate the finish: dropped and read again
+      expect(mockTraining.mock.calls.length).toBe(before.month + 2);
+      await act(async () => { finishMonth(ok({ activeSession: { status: 'ok', data: null }, calendar: { status: 'ok', data: { month: '2026-10', days: [] } } })); });
+      clearConfirmedReads(mockClient as never);
+    });
+    it('pull-to-refresh after an unrelated write still re-reads every hub read', async () => {
+      const { view, before } = await focusedHub();
+      invalidateConfirmedReads(mockClient as never, '/api/mobile/v1/progress/views');
+      await act(async () => { view.UNSAFE_getByType(RefreshControl).props.onRefresh(); });
+      expect(counts()).toEqual({ home: before.home + 1, month: before.month + 1, week: before.week + 1 });
+      clearConfirmedReads(mockClient as never);
+    });
+  });
   it('shows skeleton then manual first three routines, without recency reads', async () => {
     const view = renderScreen(); expect(view.getByTestId('training-loading')).toBeTruthy();
     await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar LEGS' })).toBeTruthy());

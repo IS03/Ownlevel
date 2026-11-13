@@ -266,6 +266,133 @@ describe('Home screen', () => {
     clearConfirmedReads(mockApiClient as never);
   });
 
+  describe('selective revalidation by write domain (#303 C1; simulated request counts, not network measurements)', () => {
+    const named = () => ({ home: mockFetchHome, today: mockFetchDay, calories: mockFetchReport, habits: mockFetchHabits,
+      training: mockFetchHistory, progressBody: mockFetchProgressBody, progressRecords: mockFetchProgressRecords });
+    const counts = () => Object.fromEntries(Object.entries(named()).map(([name, fetcher]) => [name, fetcher.mock.calls.length]));
+    /** Reads issued between two snapshots, by name. */
+    const issued = (before: Record<string, number>) => Object.entries(counts()).filter(([name, n]) => n > before[name]).map(([name]) => name).sort();
+    async function focusedHome() {
+      await renderScreen();
+      await focus(); // first focus = initial reads
+      clock += 1_000;
+      return counts();
+    }
+
+    // Before C1 any settled write re-read all 7 Home reads on the next focus inside the interval.
+    it.each([
+      ['a meal (Nutrición)', '/api/mobile/v1/nutrition/days/2026-10-10/meals', ['calories', 'habits', 'home', 'today']],
+      ['a daily metric value', '/api/mobile/v1/nutrition/days/2026-10-10/metrics', ['calories', 'habits', 'home', 'today']],
+      ['a weight (Cuerpo)', '/api/mobile/v1/body/weights/2026-10-10', ['calories', 'home', 'progressBody', 'today']],
+      ['a finished session (Entrenar)', '/api/mobile/v1/training/sessions/s/finish', ['calories', 'home', 'progressRecords', 'today', 'training']],
+      ['a metric definition (Ajustes)', '/api/mobile/v1/metrics/definitions/m1', ['habits', 'today']],
+      ['physical data (body, nutrition and metrics)', '/api/mobile/v1/profile/physical', ['calories', 'habits', 'home', 'progressBody', 'today']],
+      ['a Progreso view', '/api/mobile/v1/progress/views/order', []],
+      ['an insight dismissal', '/api/mobile/v1/progress/insight/dismiss', []],
+      ['an unmapped write (profile): uncertain, so everything', '/api/mobile/v1/profile', ['calories', 'habits', 'home', 'progressBody', 'progressRecords', 'today', 'training']],
+    ])('after %s, focus re-reads only the reads of its domains', async (_name, path, expected) => {
+      const before = await focusedHome();
+      invalidateConfirmedReads(mockApiClient as never, path);
+      await focus();
+      expect(issued(before)).toEqual(expected);
+      for (const name of expected) expect(counts()[name]).toBe(before[name] + 1); // once each, no duplicate
+      // Caught up: the next focus inside the interval reads nothing more.
+      const after = counts();
+      clock += 1_000;
+      await focus();
+      expect(counts()).toEqual(after);
+      // The interval still refreshes everything, measured from the last full refresh.
+      clock += HOME_FOCUS_REFRESH_MS;
+      await focus();
+      expect(issued(after)).toEqual(Object.keys(named()).sort());
+    });
+
+    it('a pre-write read of an affected block is dropped; an unaffected read in flight is kept, not repeated', async () => {
+      let finishBody!: (result: unknown) => void, finishHistory!: (result: unknown) => void;
+      const freshBody = homeProgressBody(), oldBody = homeProgressBody();
+      mockFetchProgressBody.mockImplementationOnce(() => new Promise(resolve => { finishBody = resolve; })).mockImplementation(() => ok(freshBody));
+      mockFetchHistory.mockImplementationOnce(() => new Promise(resolve => { finishHistory = resolve; }));
+      const hook = renderHook(() => useHomeResources(mockApiClient as never, now));
+      await settle();
+      await focus();
+      const bodySignal = mockFetchProgressBody.mock.calls[0][2] as AbortSignal;
+      const historySignal = mockFetchHistory.mock.calls[0][2] as AbortSignal;
+      invalidateConfirmedReads(mockApiClient as never, '/api/mobile/v1/body/weights/2026-10-10');
+      clock += 1_000;
+      await focus();
+      await act(async () => { finishBody({ status: 'ok', data: oldBody, meta }); finishHistory({ status: 'ok', data: { sessions: [], nextCursor: null }, meta }); });
+      await settle();
+      expect(mockFetchProgressBody).toHaveBeenCalledTimes(2);
+      expect(bodySignal.aborted).toBe(true);
+      expect(hook.result.current.progressBody.state).toMatchObject({ status: 'ready', current: { data: freshBody } });
+      expect(hook.result.current.progressBody.state.status === 'ready' && hook.result.current.progressBody.state.current.data).not.toBe(oldBody);
+      // Training history does not depend on a weight: its read was not cancelled nor issued again.
+      expect(mockFetchHistory).toHaveBeenCalledTimes(1);
+      expect(historySignal.aborted).toBe(false);
+      expect(hook.result.current.training.state.status).toBe('ready');
+      hook.unmount();
+    });
+
+    it('pull-to-refresh still refreshes every block, after an unrelated write too', async () => {
+      const hook = renderHook(() => useHomeResources(mockApiClient as never, now));
+      await settle();
+      await focus();
+      const before = counts();
+      invalidateConfirmedReads(mockApiClient as never, '/api/mobile/v1/progress/views/order');
+      clock += 1_000;
+      await act(async () => { hook.result.current.refresh(); });
+      await settle();
+      expect(issued(before)).toEqual(Object.keys(named()).sort());
+      hook.unmount();
+    });
+
+    it('a failed (offline) block recovers on the next write of its domain or on pull-to-refresh, never shown as zero', async () => {
+      mockFetchProgressBody.mockImplementationOnce(() => Promise.resolve({ status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } }));
+      const hook = renderHook(() => useHomeResources(mockApiClient as never, now));
+      await settle();
+      await focus();
+      expect(hook.result.current.progressBody.state.status).toBe('unavailable');
+      // A meal does not touch the body read: it stays in its honest error state (no retry storm, no fake data).
+      invalidateConfirmedReads(mockApiClient as never, '/api/mobile/v1/nutrition/days/2026-10-10/meals');
+      clock += 1_000;
+      await focus();
+      expect(mockFetchProgressBody).toHaveBeenCalledTimes(1);
+      expect(hook.result.current.progressBody.state.status).toBe('unavailable');
+      // A weight does: the block reads again and recovers.
+      invalidateConfirmedReads(mockApiClient as never, '/api/mobile/v1/body/weights/2026-10-10');
+      clock += 1_000;
+      await focus();
+      expect(mockFetchProgressBody).toHaveBeenCalledTimes(2);
+      expect(hook.result.current.progressBody.state.status).toBe('ready');
+      hook.unmount();
+    });
+
+    it('a write from Home (daily metric) reloads its blocks now; the habit week it also moved follows on the next focus', async () => {
+      const hook = renderHook(() => useHomeResources(mockApiClient as never, now));
+      await settle();
+      await focus();
+      const before = counts();
+      invalidateConfirmedReads(mockApiClient as never, '/api/mobile/v1/nutrition/days/2026-10-10/metrics');
+      await act(async () => { hook.result.current.invalidate(); });
+      await settle();
+      expect(issued(before)).toEqual(['calories', 'home', 'today']);
+      const afterInvalidate = counts();
+      clock += 1_000;
+      await focus();
+      expect(issued(afterInvalidate)).toEqual(['habits']);
+      hook.unmount();
+    });
+
+    it('a write of another account never revalidates this one', async () => {
+      const otherAccount = {};
+      const before = await focusedHome();
+      invalidateConfirmedReads(otherAccount as never, '/api/mobile/v1/profile');
+      await focus();
+      expect(counts()).toEqual(before);
+      clearConfirmedReads(otherAccount as never);
+    });
+  });
+
   it('a read after midnight on Sunday asks for the new week', async () => {
     clock = Date.parse('2026-10-12T02:59:00.000Z'); // Sunday 23:59
     await renderScreen();
