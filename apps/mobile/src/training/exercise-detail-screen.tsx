@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Platform, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useApiResource } from '@/api';
 import type { MobileTrainingExercise } from '@/api/exercises';
 import { AppText, InlineUnavailable, ListGroup, ListRow, SkeletonBlock, Surface, UnavailableState, radius, spacing, useOwnlevelTheme } from '@/design-system';
@@ -19,8 +19,8 @@ export function ExerciseDetailScreen() {
   const [editing, setEditing] = useState<MobileTrainingExercise | null>(null), [adding, setAdding] = useState(false);
   const exercise = library.exercises.find(item => item.id === id);
   const loadLast = useCallback((signal: AbortSignal) => library.client && id ? fetchLastExercise(library.client, id, signal) : Promise.resolve(exerciseUnavailable), [library.client, id]);
-  const last = useApiResource(loadLast), { refresh, runRefresh } = library;
-  useFocusEffect(runRefresh);
+  const last = useApiResource(loadLast), { refresh } = library;
+  // Focus, foreground and the 30 s reuse belong to the retained library reading (useExerciseLibrary).
   const lastRead = last.state.status === 'ready' ? last.state.current : last.state.status === 'loading' ? undefined : last.state.previous;
   const locked = library.pending || Boolean(editing) || adding;
   const menu = exercise ? <Stack.Toolbar placement="right"><Stack.Toolbar.Menu icon="ellipsis" accessibilityLabel="Opciones del ejercicio" separateBackground disabled={locked}>
@@ -61,7 +61,7 @@ export function ExerciseDetailScreen() {
       </>}
     </ScrollView>
     {exercise ? <ExerciseEditorModal open={Boolean(editing)} target={{ mode: 'edit', exercise: editing ?? exercise }} createIdempotencyKey={() => ''} pending={library.pending} onClose={() => setEditing(null)} onSave={async mutation => { const error = await library.save(editing ?? exercise, mutation); if (!error) setEditing(null); return error; }} /> : null}
-    {exercise && adding ? <ExerciseAddRoutineSheet client={library.client} exercise={exercise} onClose={() => setAdding(false)} onChanged={refresh} onAdded={() => library.announce('Ejercicio agregado a la rutina')} /> : null}
+    {exercise && adding ? <ExerciseAddRoutineSheet client={library.client} exercise={exercise} onClose={() => setAdding(false)} onChanged={library.changed} onAdded={() => library.announce('Ejercicio agregado a la rutina')} /> : null}
     {library.notice ? <ExerciseNotice {...library.notice} disabled={library.pending} undo={library.notice.undo ? () => void library.status(library.notice!.undo!.exercise, library.notice!.undo!.active) : undefined} /> : null}
   </>;
 }

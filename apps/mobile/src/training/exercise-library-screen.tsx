@@ -1,6 +1,6 @@
 import { memo, startTransition, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, RefreshControl, ScrollView, SectionList, StyleSheet, View } from 'react-native';
-import { Stack, useFocusEffect, useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { ReduceMotion } from 'react-native-reanimated';
 import type { MobileTrainingExercise, MobileTrainingExerciseRoutine } from '@/api/exercises';
@@ -48,8 +48,8 @@ export function ExerciseLibraryScreen({ createIdempotencyKey = () => globalThis.
   const library = useExerciseLibrary(), router = useRouter(), { colors } = useOwnlevelTheme();
   const [query, setQuery] = useState(''), [filters, setFilters] = useState<ExerciseLibraryFilters>(DEFAULT_EXERCISE_LIBRARY_FILTERS), [filtersOpen, setFiltersOpen] = useState(false);
   const [editor, setEditor] = useState<ExerciseEditorTarget>({ mode: 'create' }), [editorOpen, setEditorOpen] = useState(false), [adding, setAdding] = useState<MobileTrainingExercise | null>(null);
-  const { refresh, runRefresh } = library;
-  useFocusEffect(runRefresh);
+  const { refresh } = library;
+  // Focus, foreground and the 30 s reuse belong to the retained library reading (useExerciseLibrary).
   const visible = filterExercises(library.exercises, query, filters), sections = groupExercises(visible).map(group => ({ ...group, data: group.exercises }));
   const disabled = library.pending || Boolean(editorOpen || filtersOpen || adding);
   const openEditor = (target: ExerciseEditorTarget) => { setEditor(target); setEditorOpen(true); };
@@ -86,7 +86,7 @@ export function ExerciseLibraryScreen({ createIdempotencyKey = () => globalThis.
     <ExerciseEditorModal open={editorOpen} target={editor} pending={library.pending} createIdempotencyKey={createIdempotencyKey} onClose={() => setEditorOpen(false)} onSave={async (mutation, _ids, key) => {
       const error = await library.save(editor.mode === 'edit' ? editor.exercise : undefined, mutation, key); if (!error) setEditorOpen(false); return error;
     }} />
-    {adding ? <ExerciseAddRoutineSheet client={library.client} exercise={library.exercises.find(exercise => exercise.id === adding.id) ?? adding} onClose={() => setAdding(null)} onChanged={refresh} onAdded={() => library.announce('Ejercicio agregado a la rutina')} /> : null}
+    {adding ? <ExerciseAddRoutineSheet client={library.client} exercise={library.exercises.find(exercise => exercise.id === adding.id) ?? adding} onClose={() => setAdding(null)} onChanged={library.changed} onAdded={() => library.announce('Ejercicio agregado a la rutina')} /> : null}
     {library.notice ? <ExerciseNotice {...library.notice} disabled={library.pending} undo={library.notice.undo ? () => void library.status(library.notice!.undo!.exercise, library.notice!.undo!.active) : undefined} /> : null}
   </>;
 }

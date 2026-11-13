@@ -1,9 +1,15 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import { expect, it, jest } from '@jest/globals';
+import { beforeEach, expect, it, jest } from '@jest/globals';
+import { clearConfirmedReads } from '@/api/confirmed-read-cache';
 import { Pressable, Text, View } from 'react-native';
 import { useExerciseLibrary } from './use-exercise-library';
 const mockStatus = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockFetch = jest.fn<(...args: unknown[]) => Promise<unknown>>(), mockClient = { request: jest.fn() };
+// The library is a retained reading (#303 C3a): a mounted harness counts as on screen.
+jest.mock('expo-router', () => ({ useFocusEffect: (effect: () => (() => void) | void) => {
+  jest.requireActual<typeof import('react')>('react').useEffect(() => effect(), [effect]);
+} }));
+beforeEach(() => { clearConfirmedReads(mockClient as never); });
 jest.mock('@/api', () => ({
   useApiResource: jest.requireActual<typeof import('@/api/resource')>('@/api/resource').useApiResource,
   useMobileApi: () => ({ client: mockClient }), fetchMobileTrainingExercises: (...args: unknown[]) => mockFetch(...args),
@@ -26,7 +32,7 @@ it('retains the complete confirmed catalog when a later successful envelope cont
 it('never pairs old identity fields with a new version from a partial status reply', async () => {
   mockFetch.mockReset();
   mockFetch.mockResolvedValueOnce({ status: 'ok', data: { catalog: { status: 'ok', data: { exercises: [{ id: 'exercise', name: 'Old identity', updatedAt: 'old-version', isActive: true }], routines: [] } } } })
-    .mockResolvedValue({ status: 'unavailable', reason: 'network' });
+    .mockResolvedValue({ status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } });
   mockStatus.mockResolvedValue({ status: 'ok', data: { exercise: { id: 'exercise', isActive: false, updatedAt: 'new-version' } } });
   function Harness() {
     const library = useExerciseLibrary(), exercise = library.exercises[0];

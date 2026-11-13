@@ -34,6 +34,14 @@ jest.mock('expo-router', () => {
   });
   return { useRouter: () => ({ push: mockPush }), useFocusEffect: () => undefined, Stack: { Toolbar, Screen: ({ options }: { options: { headerSearchBarOptions?: { onChangeText: (event: { nativeEvent: { text: string } }) => void } } }) => options.headerSearchBarOptions ? <TextInput accessibilityLabel="Buscar ejercicio o músculo" onChangeText={text => options.headerSearchBarOptions!.onChangeText({ nativeEvent: { text } })} /> : null } };
 });
+// These screen tests drive the reading's state directly; the retained reading itself (ConfirmedReadCache, #303 C3a)
+// is exercised with the real cache in exercise-library-retention.test.tsx.
+jest.mock('@/api/use-cached-read', () => ({
+  useCachedRead: (...args: unknown[]) => {
+    const resource = mockUseApiResource(...args) as { refresh: () => Promise<void>; state: unknown };
+    return { reload: resource.refresh, snapshot: () => resource.state, ...resource };
+  },
+}));
 jest.mock('@/api', () => ({
   createMobileTrainingExercise: (...args: unknown[]) => mockCreate(...args),
   fetchMobileTrainingExercises: (...args: unknown[]) => mockFetch(...args),
@@ -93,7 +101,8 @@ function fixture(overrides: Partial<MobileTrainingExercisesResponse> = {}): Mobi
 function readyState(data = fixture()) {
   return {
     status: 'ready' as const,
-    current: { confirmedAt: 1, data },
+    // Confirmed during this visit (an identity version this visit may write with).
+    current: { confirmedAt: Number.MAX_SAFE_INTEGER, data },
     refreshing: false,
     trigger: 'initial' as const,
     result: {
