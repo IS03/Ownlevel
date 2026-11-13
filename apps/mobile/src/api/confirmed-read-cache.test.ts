@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, jest } from '@jest/globals';
 import type { MobileApiClient } from './client';
 import type { MobileApiReadResult } from './results';
-import { ConfirmedReadCache, confirmedReads, clearConfirmedReads, invalidateConfirmedReads, READ_REUSE_MS, RETAINED_READ_LIMIT } from './confirmed-read-cache';
+import { ConfirmedReadCache, confirmedReads, clearConfirmedReads, invalidateConfirmedReads, READ_REUSE_MS, RETAINED_READ_LIMIT, settledWrites, settledWritesFor } from './confirmed-read-cache';
 
 const ok = <T,>(data: T): MobileApiReadResult<T> => ({ status: 'ok', data, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } });
 const lost = { status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } } as const;
@@ -207,4 +207,31 @@ it.each([
   await Promise.all(entries.map(entry => cache.ensure(entry, 'initial')));
   invalidateConfirmedReads(client, path);
   expect(entries.map(entry => entry.invalidated)).toEqual(expected); clearConfirmedReads(client);
+});
+
+it('write revisions per domain: a write moves only the reads of its domains; an unmapped write moves every read', () => {
+  const client = {} as MobileApiClient, other = {} as MobileApiClient;
+  const rev = (domains: Parameters<typeof settledWritesFor>[1]) => settledWritesFor(client, domains);
+  expect(rev(['training'])).toBe(0);
+  invalidateConfirmedReads(client, '/api/mobile/v1/nutrition/days/2026-10-10/meals');
+  expect([rev(['nutrition']), rev(['metrics']), rev(['training']), rev(['body'])]).toEqual([1, 1, 0, 0]);
+  // A read that depends on two domains a single write moves counts that write once per domain: it only has to change.
+  expect(rev(['nutrition', 'metrics'])).toBeGreaterThan(0);
+  invalidateConfirmedReads(client, '/api/mobile/v1/body/weights/2026-10-10');
+  invalidateConfirmedReads(client, '/api/mobile/v1/progress/views/order');
+  invalidateConfirmedReads(client, '/api/mobile/v1/progress/insight/dismiss');
+  expect([rev(['training']), rev(['body']), rev(['views']), rev(['insight'])]).toEqual([0, 1, 1, 1]);
+  // A meal preview computes only: it is not a write and moves nothing (as before).
+  invalidateConfirmedReads(client, '/api/mobile/v1/nutrition/days/2026-10-10/meal-preview');
+  expect(rev(['nutrition'])).toBe(1);
+  // Profile and account map to no domain: an unknown effect keeps invalidating every read.
+  invalidateConfirmedReads(client, '/api/mobile/v1/profile');
+  expect([rev(['training']), rev(['body']), rev(['nutrition'])]).toEqual([1, 2, 2]);
+  // The global count is unchanged: every settled write, mapped or not (InFlightGet keys and reload() rely on it).
+  expect(settledWrites(client)).toBe(5);
+  // Another account never sees these writes, and clearing the account drops them.
+  expect(settledWritesFor(other, ['training', 'body', 'nutrition', 'metrics', 'views', 'insight'])).toBe(0);
+  clearConfirmedReads(client);
+  expect(rev(['body'])).toBe(0);
+  expect(settledWritesFor(null, ['body'])).toBe(0);
 });

@@ -7,6 +7,8 @@ import { ApiResourceController, shouldRefreshOnForeground, type ApiResourceState
 import type { MobileApiReadResult } from '@/api/results';
 import { fetchMobileTraining, type MobileTrainingResponse } from '@/api/training';
 import { fetchTrainingHistory, type TrainingHistorySession } from '@/api/training-history';
+import type { WriteDomain } from '@/api/confirmed-read-cache';
+import { HOME_READ_DOMAINS } from '@/home/home-data';
 import { homeResource } from '@/home/home-resource';
 import { addIsoDays } from '@/home/format';
 import { mondayOf } from '@/home/home-day';
@@ -47,6 +49,16 @@ export async function loadHubWeek(client: MobileApiClient, start: string, signal
   }
   return unavailable;
 }
+
+/**
+ * The write domains each hub read depends on: `/home` as on Home; the month (`/training`: training days, routines,
+ * exercises, initial plan, active session) and the weeks (training history) only on training writes.
+ */
+export const HUB_READ_DOMAINS = {
+  home: HOME_READ_DOMAINS.home,
+  month: ['training'],
+  week: ['training'],
+} as const satisfies Record<string, readonly WriteDomain[]>;
 
 /** Screen-scoped cache: never shared between users, and disposed when its client changes. */
 export class TrainingHubCache {

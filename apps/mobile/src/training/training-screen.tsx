@@ -13,8 +13,8 @@ import { homeDay, weekDates, mondayOf } from '@/home/home-day';
 import { haptics } from '@/platform/haptics';
 
 import { buildTrainingMonth } from './calendar';
-import { TrainingHubCache, hubReadExpired, shiftHubMonth, useHubRead } from './training-hub-data';
-import { settledWrites } from '@/api/confirmed-read-cache';
+import { HUB_READ_DOMAINS, TrainingHubCache, hubReadExpired, shiftHubMonth, useHubRead } from './training-hub-data';
+import { settledWritesFor } from '@/api/confirmed-read-cache';
 import { TrainingHubDashboard, knownTrainedDays } from './training-hub-dashboard';
 import { monthCells, pickerYears, weekMarks } from './training-hub-model';
 import { useStartConfirmPointerEvents } from './start-confirm-lock';
@@ -62,18 +62,21 @@ export function TrainingScreen({ now = systemNow }: { now?: () => Date }) {
   }, [now]);
   useEffect(() => () => cache.dispose(), [cache]);
 
-  const writes = useRef(settledWrites(client));
+  // Settled-write revision of each dependency set (home vs training-only reads) at the last refresh.
+  const writes = useRef({ home: settledWritesFor(client, HUB_READ_DOMAINS.home), training: settledWritesFor(client, HUB_READ_DOMAINS.month) });
   // The React Compiler memoizes this; focus reads it through a ref.
   const refresh = (trigger: ResourceRefreshTrigger = 'manual', onlyStale = false) => {
     setClock(now());
-    // Coming back to the hub re-reads only what expired or what a write (here or in another section) may have moved.
-    const settled = settledWrites(client), changed = settled !== writes.current;
+    // Coming back to the hub re-reads only what expired or what a write (here or in another section) may have moved:
+    // a meal, a weight or a metric moves /home, never the training month or week.
+    const settled = { home: settledWritesFor(client, HUB_READ_DOMAINS.home), training: settledWritesFor(client, HUB_READ_DOMAINS.month) };
+    const changed = { home: settled.home !== writes.current.home, training: settled.training !== writes.current.training };
     writes.current = settled;
     const resources = new Set([cache.home, cache.month(month), cache.month(previousMonth), cache.month(shownMonth),
       cache.month(firstWeekMonth), cache.week(today)]);
     resources.forEach(resource => {
       // A read already in flight can predate the settled write: never join it as the new truth.
-      if (changed) void resource.reload(trigger);
+      if (resource === cache.home ? changed.home : changed.training) void resource.reload(trigger);
       else if (!onlyStale || hubReadExpired(resource)) void resource.refresh(trigger);
     });
   };

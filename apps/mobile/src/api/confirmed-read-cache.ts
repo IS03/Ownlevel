@@ -3,7 +3,8 @@ import type { MobileApiReadResult } from './results';
 import { ApiResourceController, type ResourceRefreshTrigger } from './resource';
 
 export type ReadFamily = 'overview' | 'body' | 'training' | 'metrics' | 'nutrition-report' | 'nutrition-day' | 'progress-extra';
-type Domain = 'body' | 'training' | 'metrics' | 'nutrition' | 'views' | 'insight';
+export type WriteDomain = 'body' | 'training' | 'metrics' | 'nutrition' | 'views' | 'insight';
+type Domain = WriteDomain;
 type Loader<T> = (signal: AbortSignal, background?: boolean) => Promise<MobileApiReadResult<T>>;
 export type RetainedRead<T> = {
   resource: ApiResourceController<T>; family: ReadFamily; mounted: number; focused: number; invalidated: boolean;
@@ -30,6 +31,8 @@ const record = (measurement: Measurement) => { if (__DEV__) console.info('[OWNLE
 export class ConfirmedReadCache {
   private readonly entries = new Map<string, RetainedRead<unknown>>();
   private writes = 0;
+  /** Settled writes per domain; a write that maps to no domain (profile, account…) is counted under `unmapped`. */
+  private readonly domainWrites = new Map<Domain | 'unmapped', number>();
   private invalidating = false;
   private retired = false;
   private readonly foreground = new Map<RetainedRead<unknown>, Promise<void>>();
@@ -149,6 +152,7 @@ export class ConfirmedReadCache {
   }
   invalidate(changed: readonly Domain[]) {
     this.writes++;
+    for (const domain of changed.length ? new Set(changed) : ['unmapped' as const]) this.domainWrites.set(domain, (this.domainWrites.get(domain) ?? 0) + 1);
     // A write owns recovery. Do not restart a cancelled prefetch from an older navigation batch.
     this.queued = this.queued.filter(job => !domains[job.entry.family].some(domain => changed.includes(domain)));
     for (const entry of this.entries.values()) {
@@ -165,6 +169,13 @@ export class ConfirmedReadCache {
   }
   /** Settled writes through this account's client so far (any domain): screens with their own reads compare it on focus. */
   settledWrites() { return this.writes; }
+  /**
+   * Settled writes that may move a read depending on `dependsOn`: the writes of those domains plus every unmapped write
+   * (an unknown effect keeps invalidating). It only grows, so a different value means such a write settled since.
+   */
+  writeRevision(dependsOn: readonly Domain[]) {
+    return [...new Set(dependsOn), 'unmapped' as const].reduce((sum, domain) => sum + (this.domainWrites.get(domain) ?? 0), 0);
+  }
   clear() { this.retired = true; this.queued = []; this.entries.forEach(entry => entry.resource.dispose()); this.entries.clear(); }
   private trim(protectedKey?: string) {
     for (const [key, entry] of this.entries) {
@@ -183,6 +194,10 @@ export function confirmedReads(client: MobileApiClient) {
 }
 /** 0 until the first settled write of this account. */
 export function settledWrites(client: MobileApiClient | null) { return client ? scopes.get(client)?.settledWrites() ?? 0 : 0; }
+/** 0 until the first settled write that may move a read depending on `dependsOn` (see `writeRevision`). */
+export function settledWritesFor(client: MobileApiClient | null, dependsOn: readonly WriteDomain[]) {
+  return client ? scopes.get(client)?.writeRevision(dependsOn) ?? 0 : 0;
+}
 export function clearConfirmedReads(client: MobileApiClient) { scopes.get(client)?.clear(); scopes.delete(client); }
 
 /** Settled writes include ambiguous outcomes. This never retries or confirms the write. */
