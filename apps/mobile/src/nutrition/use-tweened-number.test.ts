@@ -24,4 +24,29 @@ describe('useTweenedNumber', () => {
     view.rerender({ value: 90 });
     expect(view.result.current).toBe(90);
   });
+  describe('fromEmpty (#510, rings only)', () => {
+    const hook = (initial: number | null) => renderHook(({ value }: { value: number | null }) => useTweenedNumber(value, undefined, { fromEmpty: true }), { initialProps: { value: initial } });
+    it('a first value after mount counts up from an empty ring: never the full ring first, and it ends exact', () => {
+      const view = hook(null);
+      expect(view.result.current).toBeNull(); // missing stays missing
+      view.rerender({ value: 12900 });
+      expect(view.result.current).toBe(0);
+      act(() => { jest.advanceTimersByTime(250); });
+      const mid = view.result.current!;
+      expect(mid).toBeGreaterThan(0); expect(mid).toBeLessThan(12900);
+      act(() => { jest.advanceTimersByTime(1500); });
+      expect(view.result.current).toBe(12900);
+    });
+    it('mounting with a value never animates, and a value going back to missing is missing at once', () => {
+      const view = hook(8000);
+      expect(view.result.current).toBe(8000);
+      view.rerender({ value: null });
+      expect(view.result.current).toBeNull();
+    });
+    it('without the option the first value still switches at once (the default contract)', () => {
+      const view = renderHook(({ value }: { value: number | null }) => useTweenedNumber(value), { initialProps: { value: null as number | null } });
+      view.rerender({ value: 90 });
+      expect(view.result.current).toBe(90);
+    });
+  });
 });

@@ -79,10 +79,10 @@ it.each([83, 34, 0])('a metric notice and a meal toast share one bottom in a tab
   const bottoms = ['nutrition-metric-notice', 'nutrition-meal-notice', 'pending-toast'].map(id => StyleSheet.flatten(view.getByTestId(id).props.style).bottom);
   expect(new Set(bottoms).size).toBe(1); expect(bottoms[0]).toBe(Math.max(bottom, brandTokens.layout.tabBarHeight + brandTokens.layout.tabBarInset) + spacing.sm);
 });
-it('offers "Anterior · n" only when other confirmations of the day are queued; it only rotates, never undoes or dismisses', () => {
+it('offers "Ver anteriores · n" only when other confirmations of the day are queued; it only rotates, never undoes or dismisses', () => {
   const onPrevious = jest.fn();
   const { view, onUndo, onClose } = meal({ queuedCount: 2, onPrevious });
-  expect(view.getByText('Anterior · 2')).toBeTruthy();
+  expect(view.getByText('Ver anteriores · 2')).toBeTruthy();
   fireEvent.press(view.getByRole('button', { name: 'Ver comida anterior, 2 disponibles' }));
   expect(onPrevious).toHaveBeenCalledTimes(1); expect(onUndo).not.toHaveBeenCalled(); expect(onClose).not.toHaveBeenCalled();
   swipe(brandTokens.layout.minTouch); expect(onClose).toHaveBeenCalledTimes(1); expect(onPrevious).toHaveBeenCalledTimes(1); expect(onUndo).not.toHaveBeenCalled();
@@ -91,7 +91,7 @@ it('offers "Anterior · n" only when other confirmations of the day are queued; 
     const other = meal(props); expect(other.view.queryByText(/Anterior/)).toBeNull(); other.view.unmount();
   }
 });
-it('locks "Anterior · n" with the same disabled state as Deshacer', () => {
+it('locks "Ver anteriores · n" with the same disabled state as Deshacer', () => {
   const onPrevious = jest.fn(), { view } = meal({ queuedCount: 1, onPrevious, disabled: true });
   const button = view.getByRole('button', { name: 'Ver comida anterior, 1 disponibles' });
   expect(button.props.accessibilityState).toMatchObject({ disabled: true }); fireEvent.press(button); expect(onPrevious).not.toHaveBeenCalled();

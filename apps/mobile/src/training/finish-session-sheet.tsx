@@ -17,6 +17,7 @@ import { PostWorkoutContent, type FinishWeekLoader } from './post-workout-screen
 import type { SessionSummaryLoader } from '@/api/session-summary';
 import { RoutineSheetButton } from './routine-sheet-button';
 import { TrainingFeelings } from './training-feelings';
+import { ScaleHeader, scaleStyles } from './scale-header';
 export { SummaryScale } from './summary-scale'; // Correction retains its existing presentation/semantics.
 
 export function finishPreviewVolume(controller: ActiveSessionController): number | null {
@@ -37,13 +38,13 @@ const number = (value: number) => new Intl.NumberFormat('es-AR', { maximumFracti
 function Stat({ value, label }: { value: string; label: string }) {
   return <View style={styles.stat}><AppText numeric variant="title2">{value}</AppText><AppText muted variant="caption">{label}</AppText></View>;
 }
-function SummaryField({ field, label, title = label, value, editable, onChange }: {
-  field: 'energyLevel' | 'performanceLevel'; label: string; title?: string; value: number | null; editable: boolean; onChange: (value: number | null) => void;
+function SummaryField({ field, label, value, editable, onChange }: {
+  field: 'energyLevel' | 'performanceLevel'; label: string; value: number | null; editable: boolean; onChange: (value: number | null) => void;
 }) {
-  return <View style={styles.scale}>
-    <View style={styles.scaleHeader}><AppText variant="headline">{title}</AppText></View>
+  return <View style={scaleStyles.scale}>
+    <ScaleHeader label={label} state={value === null ? null : `${value} de 5`} />
     <FinishScaleControl field={field} label={label} value={value} disabled={!editable} onChange={onChange} />
-    <View style={styles.ends}><AppText muted variant="caption">Baja</AppText><AppText muted variant="caption">Alta</AppText></View>
+    <View style={[scaleStyles.ends, styles.between]}><AppText muted variant="caption">Baja</AppText><AppText muted variant="caption">Alta</AppText></View>
   </View>;
 }
 /** F1→F3→F4 in one modal: the confirmed receipt fades in over the grown champagne circle, so the session never flashes between them. */
@@ -98,14 +99,14 @@ export function FinishSessionSheet({ controller, onClose, onDiscard, readSummary
               {/* Older servers without feelings keep their single energy answer here, as the main question. */}
               {controller.feelings ? null : <SummaryField field="energyLevel" label="Energía" value={summary.energyLevel} editable={editable} onChange={energyLevel => change({ energyLevel })} />}
               {/* Every optional answer in one pass (#473): nothing to unfold. Performance and pain next, then the note's row. */}
-              <SummaryField field="performanceLevel" label="Rendimiento" title="Rendimiento percibido" value={summary.performanceLevel} editable={editable} onChange={performanceLevel => change({ performanceLevel })} />
-              <View style={styles.scale}>
+              <SummaryField field="performanceLevel" label="Rendimiento" value={summary.performanceLevel} editable={editable} onChange={performanceLevel => change({ performanceLevel })} />
+              <View style={scaleStyles.scale}>
                 {/* No "Quitar": "Sin dolor" sets 0 and a second tap returns to unanswered (null). Fixed heights: nothing below jumps. */}
-                <View style={styles.scaleHeader}><AppText variant="headline">Dolor</AppText>
+                <ScaleHeader label="Dolor" state={summary.painLevel === null ? null : `${summary.painLevel} de 10`}>
                   <GlassSurface interactive style={styles.shortcut}><Pressable accessibilityRole="button" accessibilityLabel="Sin dolor" accessibilityHint={summary.painLevel === 0 ? 'Tocá de nuevo para dejarlo sin responder' : undefined}
-                    accessibilityState={{ selected: summary.painLevel === 0, disabled: !editable }} disabled={!editable} onPress={() => { triggerHaptic('stepperChange'); change({ painLevel: summary.painLevel === 0 ? null : 0 }); }} style={styles.shortcutPress}>
+                    accessibilityState={{ selected: summary.painLevel === 0, disabled: !editable }} disabled={!editable} hitSlop={6} onPress={() => { triggerHaptic('stepperChange'); change({ painLevel: summary.painLevel === 0 ? null : 0 }); }} style={styles.shortcutPress}>
                     <AppText variant="subheadline" style={{ color: summary.painLevel === 0 ? colors.primary : colors.text, fontWeight: '600' }}>Sin dolor</AppText>
-                  </Pressable></GlassSurface></View>
+                  </Pressable></GlassSurface></ScaleHeader>
                 <FinishPainControl field="painLevel" label="Dolor" value={summary.painLevel} disabled={!editable} onChange={painLevel => change({ painLevel })} />
               </View>
               {/* The note is edited in its own sheet (autofocus, keyboard, cancel/confirm); its row is always here, never folded away. */}
@@ -141,8 +142,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', padding: brandTokens.space.md, gap: brandTokens.space.sm }, content: { paddingHorizontal: brandTokens.space.md, paddingBottom: brandTokens.space.xl, gap: brandTokens.space.lg },
   stats: { flexDirection: 'row', gap: brandTokens.space.md }, stat: { flex: 1, gap: brandTokens.space.xxs }, divider: { width: StyleSheet.hairlineWidth }, dim: { opacity: 0.45 },
   empty: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.sm, padding: brandTokens.space.md, borderRadius: brandTokens.radius.inner },
-  questions: { gap: brandTokens.space.lg }, scale: { gap: brandTokens.space.xs }, scaleHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
-  ends: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: brandTokens.space.xs }, shortcut: { borderRadius: brandTokens.radius.full }, shortcutPress: { minHeight: 44, justifyContent: 'center', paddingHorizontal: brandTokens.space.md },
+  questions: { gap: brandTokens.space.lg }, between: { justifyContent: 'space-between' },
+  shortcut: { borderRadius: brandTokens.radius.full }, shortcutPress: { minHeight: 32, justifyContent: 'center', paddingHorizontal: brandTokens.space.md },
   note: { flexDirection: 'row', gap: brandTokens.space.sm, alignItems: 'center', padding: brandTokens.space.md, borderRadius: brandTokens.radius.inner, minHeight: 64 },
   discard: { minHeight: 50, alignItems: 'center', justifyContent: 'center' },
   footer: { padding: brandTokens.space.md, gap: brandTokens.space.xxs },

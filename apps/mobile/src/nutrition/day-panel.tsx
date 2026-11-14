@@ -25,7 +25,7 @@ function PanelCell({ title, value, target, icon, onPress, metric, actionLabel }:
     duration: brandTokens.motion.duration.fast, reduceMotion: ReduceMotion.Never,
   }));
   // A new metric value: the ring fills to it; without a target the icon gives a small bump instead.
-  const shown = useTweenedNumber(metric?.value ?? null);
+  const shown = useTweenedNumber(metric?.value ?? null, undefined, { fromEmpty: true });
   const bump = useSharedValue(1);
   const [last, setLast] = useState(metric?.value ?? null);
   if ((metric?.value ?? null) !== last) {
@@ -38,12 +38,13 @@ function PanelCell({ title, value, target, icon, onPress, metric, actionLabel }:
   const bumped = useAnimatedStyle(() => ({ transform: [{ scale: bump.value }] }));
   const content = <>
     <Animated.View style={[styles.icon, { backgroundColor: colors.surfaceRaised }, bumped]}>
-      {metric ? <View style={StyleSheet.absoluteFill}><NutritionCalorieRing size={36} reading={{ value: shown, target: metric.target, partial: false }} testID={`nutrition-metric-ring-${metric.id}`} /></View> : null}
+      {metric ? <View style={StyleSheet.absoluteFill}><NutritionCalorieRing size={36} reading={{ value: shown, target: metric.target, partial: false }} track={colors.border} quietUnknown testID={`nutrition-metric-ring-${metric.id}`} /></View> : null}
       <AppIcon name={icon} color={colors.textMuted} size={17} />
     </Animated.View>
     <View style={styles.cellText}>
       <AppText muted variant="caption">{title}</AppText>
-      <View style={styles.value}><AppText numeric variant="headline">{value === 'Sin dato' ? '—' : value}</AppText>{target ? <AppText muted numeric variant="caption">{target}</AppText> : null}</View>
+      {/* The goal always has its own line (#510): the cell is the same height with or without a reading, so the icon never moves. */}
+      <AppText numeric variant="headline">{value === 'Sin dato' ? '—' : value}</AppText>{target ? <AppText muted numeric variant="caption">{target}</AppText> : null}
     </View>
   </>;
   return onPress ? <Pressable accessibilityRole="button" accessibilityLabel={`${title}: ${value}${target ? ` ${target}` : ''}. ${actionLabel ?? 'Editar actividad'}`}
@@ -114,5 +115,4 @@ const styles = StyleSheet.create({
   cell: { flex: 1, minWidth: '42%', minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12 },
   pressHighlight: { position: 'absolute', top: -8, bottom: -8, left: -8, right: -8, borderRadius: 20 },
   icon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, cellText: { flex: 1 },
-  value: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 4 },
 });

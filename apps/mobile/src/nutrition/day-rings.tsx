@@ -9,8 +9,10 @@ export function ringLaps(fraction: number | null) {
 }
 const darker = (hex: string) => `#${[1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * 0.74).toString(16).padStart(2, '0')).join('')}`;
 
-function Ring({ color, radius, reading, stroke, testID, track }: {
+function Ring({ color, radius, reading, stroke, testID, track, quietUnknown = false }: {
   color: string; radius: number; reading: RingReading; stroke: number; testID: string; track: string;
+  /** A small ring with no reading keeps a solid track (a stable circle) instead of the dotted one, which vanishes at 36 pt. */
+  quietUnknown?: boolean;
 }) {
   const fraction = ringFraction(reading);
   const { base, excess } = ringLaps(fraction);
@@ -30,7 +32,7 @@ function Ring({ color, radius, reading, stroke, testID, track }: {
   };
   return <G rotation={-90} origin="80, 80">
     <Circle cx={80} cy={80} r={radius} fill="none" stroke={track} strokeWidth={stroke}
-      strokeDasharray={fraction === null ? '3 5' : undefined} testID={`${testID}-${fraction === null ? 'unknown' : 'track'}`} />
+      strokeDasharray={fraction === null && !quietUnknown ? '3 5' : undefined} testID={`${testID}-${fraction === null ? 'unknown' : 'track'}`} />
     {arc(base, color, `${testID}-base`)}
     {arc(excess, darker(color), `${testID}-excess`, true)}
   </G>;
@@ -47,9 +49,11 @@ export function NutritionRings({ readings, size = 148, testID = 'nutrition-rings
   </Svg>;
 }
 
-export function NutritionCalorieRing({ reading, size = 40, testID }: { reading: RingReading; size?: number; testID: string }) {
+export function NutritionCalorieRing({ reading, size = 40, testID, track, quietUnknown }: { reading: RingReading; size?: number; testID: string;
+  /** For a ring drawn over a `surfaceRaised` disc, whose own track would vanish into it. */
+  track?: string; quietUnknown?: boolean }) {
   const { colors } = useOwnlevelTheme();
   return <Svg accessibilityElementsHidden width={size} height={size} viewBox="0 0 160 160" testID={testID}>
-    <Ring color={brandTokens.palette.dark.accent} radius={69} reading={reading} stroke={10} track={colors.surfaceRaised} testID={testID} />
+    <Ring color={brandTokens.palette.dark.accent} radius={69} reading={reading} stroke={10} track={track ?? colors.surfaceRaised} testID={testID} quietUnknown={quietUnknown} />
   </Svg>;
 }

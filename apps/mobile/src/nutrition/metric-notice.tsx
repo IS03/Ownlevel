@@ -1,9 +1,10 @@
 import { TransientNotice } from '@/design-system';
 import { NutritionToast } from './nutrition-toast';
 import type { MetricNotice } from './use-metric-entry';
+import { previousNoticeLabel } from './previous-notice-label';
 
 /**
- * Thin wrapper over the shared transient notice: the queue ("Anterior · n"), the undo and the dismissal stay owned by `useMetricEntry`.
+ * Thin wrapper over the shared transient notice: the queue ("Ver anteriores · n"), the undo and the dismissal stay owned by `useMetricEntry`.
  * Recovery in progress ("Deshaciendo…") is a pending toast: no actions, not dismissible.
  */
 export function MetricSavedNotice({ notice, disabled, onUndo, onClose, onPrevious, pending = false }: {
@@ -13,5 +14,5 @@ export function MetricSavedNotice({ notice, disabled, onUndo, onClose, onPreviou
     : <TransientNotice testID="nutrition-metric-notice" placement="tab" state="done" message={notice.message} announce announceKey={notice.id}
       disabled={disabled} onDismiss={onClose} dismissLabel="Descartar confirmación" dismissTestID="metric-notice-dismiss"
       action={notice.undo ? { label: 'Deshacer', accessibilityLabel: 'Deshacer cambio de métrica', disabled, onPress: onUndo } : undefined}
-      secondaryAction={notice.queuedCount && onPrevious ? { label: `Anterior · ${notice.queuedCount}`, accessibilityLabel: `Ver confirmación anterior, ${notice.queuedCount} disponibles`, disabled, onPress: onPrevious } : undefined} />;
+      secondaryAction={notice.queuedCount && onPrevious ? { label: previousNoticeLabel(notice.queuedCount), accessibilityLabel: `Ver confirmación anterior, ${notice.queuedCount} disponibles`, disabled, onPress: onPrevious } : undefined} />;
 }
