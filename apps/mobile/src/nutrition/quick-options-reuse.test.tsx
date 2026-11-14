@@ -5,7 +5,7 @@ import { act, render, renderHook, waitFor } from '@testing-library/react-native'
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 import { clearConfirmedReads, invalidateConfirmedReads, settledWritesFor } from '@/api/confirmed-read-cache';
-import type { QuickOptions, QuickPins } from '@/api/nutrition-quick';
+import type { QuickOptions, QuickPins, QuickPinsSnapshot } from '@/api/nutrition-quick';
 import type { MobileApiReadResult } from '@/api/results';
 import { OwnlevelThemeProvider } from '@/design-system';
 
@@ -215,6 +215,20 @@ describe('QuickController · reopening reuses the options it holds (no second co
     expect(options).toHaveBeenCalledTimes(2);
   });
 
+  it('a clock set back (negative age) never counts as recent: the opening reads', async () => {
+    const q = quick();
+    await act(async () => { await q.controller.initialize(); });
+    await q.open(); q.close();
+    clock -= 60_000; // the device clock was moved back a minute
+    await q.open();
+    expect(q.options).toHaveBeenCalledTimes(2);
+    expect(q.controller.getSnapshot().optionsReused).toBe(false);
+    q.close();
+    clock += 1_000; // and from that new read on, reuse works normally again
+    await q.open();
+    expect(q.options).toHaveBeenCalledTimes(2);
+  });
+
   it('without a reuse policy (as before C3b) every opening reads', async () => {
     const q = quick(undefined, false);
     await act(async () => { await q.controller.initialize(); });
@@ -276,6 +290,74 @@ describe('QuickPinsController · a reused reading is never the authority for a p
     await act(async () => { await p.controller.pin(ID(2)); });
     expect(p.read).toHaveBeenCalledTimes(1);
     expect(p.write.mock.calls[1][0]).toMatchObject({ savedMealIds: [ID(1), ID(2)], expectedRevision: 6 });
+  });
+});
+
+describe('QuickPinsController · «Aplicar mi cambio» and every new write verify; a replay never does', () => {
+  const pinsRead = (revision: number, ids: string[]): Read => okRead({ ...quickOptions(), pins: { status: 'ok', ...snap(revision, ids) } });
+  const conflict = (current: QuickPinsSnapshot) => ({ status: 'conflict', code: 'QUICK_PINS_CHANGED', message: 'x', data: { error: 'QUICK_PINS_CHANGED', current } }) as never;
+  /** A 409 left `wanted` and phase «conflict»; then Rápido was closed and reopened reusing its options. */
+  async function conflictThenReusedOpening(read: jest.Mock<QuickPinsApi['read']>) {
+    const shared = storage();
+    const write = jest.fn<QuickPinsApi['write']>().mockResolvedValueOnce(conflict(snap(6, [ID(3)])))
+      .mockImplementation(async w => ({ status: 'ok', data: snap(w.expectedRevision + 1, w.savedMealIds), meta }));
+    let key = 0;
+    const controller = new QuickPinsController({ write, read }, new QuickPinsIntentRepository(shared.port, 'owner'), () => `pins-key-${++key}`);
+    await act(async () => { await controller.initialize(); });
+    act(() => { controller.adopt({ status: 'ok', ...snap(4, []) }); });
+    await act(async () => { await controller.pin(ID(1)); });
+    expect(controller.getSnapshot()).toMatchObject({ phase: 'conflict', wanted: [ID(1)], confirmed: snap(6, [ID(3)]) });
+    act(() => { controller.requireVerification(); }); // the reused opening
+    return { controller, write, read };
+  }
+  it('«Aplicar mi cambio» after a reused opening reads first and sends `wanted` as it is, against the CURRENT revision', async () => {
+    const c = await conflictThenReusedOpening(jest.fn<QuickPinsApi['read']>().mockResolvedValue(pinsRead(7, [ID(3), ID(4)])));
+    await act(async () => { await c.controller.reapply(); });
+    expect(c.read).toHaveBeenCalledTimes(1);
+    expect(c.read.mock.invocationCallOrder[0]).toBeLessThan(c.write.mock.invocationCallOrder[1]);
+    // The person's explicit wish, unmerged, against the revision just read (7), not the retained 6.
+    expect(c.write.mock.calls[1][0]).toMatchObject({ savedMealIds: [ID(1)], expectedRevision: 7 });
+    expect(c.controller.getSnapshot()).toMatchObject({ phase: 'idle', wanted: null, confirmed: snap(8, [ID(1)]) });
+  });
+  it.each([['offline', offline], ['401', denied401], ['403', denied403]])('«Aplicar mi cambio» whose read fails (%s): zero PUT, `wanted` and the conflict intact', async (_name, failure) => {
+    const c = await conflictThenReusedOpening(jest.fn<QuickPinsApi['read']>().mockResolvedValue(failure));
+    let outcome: string | undefined;
+    await act(async () => { outcome = await c.controller.reapply(); });
+    expect(outcome).toBe('refused');
+    expect(c.write).toHaveBeenCalledTimes(1); // only the original, refused write
+    expect(c.controller.getSnapshot()).toMatchObject({ phase: 'conflict', wanted: [ID(1)], confirmed: snap(6, [ID(3)]), intent: null, error: 'unavailable' });
+    // Once the pins can be read, the same wish applies on request.
+    c.read.mockResolvedValue(pinsRead(7, [ID(3)]));
+    await act(async () => { await c.controller.reapply(); });
+    expect(c.write.mock.calls[1][0]).toMatchObject({ savedMealIds: [ID(1)], expectedRevision: 7 });
+  });
+  it('a direct write() after a reused opening reads first as well', async () => {
+    const shared = storage();
+    const read = jest.fn<QuickPinsApi['read']>().mockResolvedValue(pinsRead(5, [ID(2)]));
+    const write = jest.fn<QuickPinsApi['write']>().mockImplementation(async w => ({ status: 'ok', data: snap(w.expectedRevision + 1, w.savedMealIds), meta }));
+    const controller = new QuickPinsController({ write, read }, new QuickPinsIntentRepository(shared.port, 'owner'), () => 'k');
+    await act(async () => { await controller.initialize(); });
+    act(() => { controller.adopt({ status: 'ok', ...snap(4, []) }); controller.requireVerification(); });
+    await act(async () => { await controller.write([ID(9)]); });
+    expect(read.mock.invocationCallOrder[0]).toBeLessThan(write.mock.invocationCallOrder[0]);
+    expect(write.mock.calls[0][0]).toMatchObject({ savedMealIds: [ID(9)], expectedRevision: 5 });
+  });
+  it('recovering an uncertain intent after a reused opening replays the SAME body and key, with no read', async () => {
+    const shared = storage();
+    const read = jest.fn<QuickPinsApi['read']>();
+    const write = jest.fn<QuickPinsApi['write']>().mockResolvedValueOnce(offline as never)
+      .mockImplementation(async w => ({ status: 'ok', data: snap(w.expectedRevision + 1, w.savedMealIds), meta }));
+    const controller = new QuickPinsController({ write, read }, new QuickPinsIntentRepository(shared.port, 'owner'), () => 'the-key');
+    await act(async () => { await controller.initialize(); });
+    act(() => { controller.adopt({ status: 'ok', ...snap(4, []) }); });
+    await act(async () => { await controller.pin(ID(1)); });
+    expect(controller.getSnapshot()).toMatchObject({ phase: 'uncertain', intent: { intent: { savedMealIds: [ID(1)], expectedRevision: 4, idempotencyKey: 'the-key' } } });
+    act(() => { controller.requireVerification(); }); // reopened reusing the options
+    await act(async () => { await controller.recover(); });
+    expect(read).not.toHaveBeenCalled();
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(write.mock.calls[1][0]).toEqual(write.mock.calls[0][0]); // exactly the same body and idempotency key
+    expect(controller.getSnapshot()).toMatchObject({ phase: 'idle', intent: null, confirmed: snap(5, [ID(1)]) });
   });
 });
 

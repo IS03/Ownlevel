@@ -31,8 +31,11 @@ export class QuickController {
     private newKey: () => string = () => `quick:${Date.now()}:${Math.random().toString(36).slice(2)}`, private reuse?: QuickOptionsReuse) {}
   private canReuseOptions() {
     const last = this.lastOptions, reuse = this.reuse;
-    return !!reuse && !!last && this.state.options === last.options && !this.state.optionsError
-      && reuse.now() - last.at < QUICK_OPTIONS_REUSE_MS && reuse.writeRevision() === last.revision && last.options.today === reuse.today();
+    if (!reuse || !last) return false;
+    // A clock set back gives a negative age: never trusted as «recent», the opening reads.
+    const age = reuse.now() - last.at;
+    return this.state.options === last.options && !this.state.optionsError && age >= 0 && age < QUICK_OPTIONS_REUSE_MS
+      && reuse.writeRevision() === last.revision && last.options.today === reuse.today();
   }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };

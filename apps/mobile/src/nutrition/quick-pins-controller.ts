@@ -123,16 +123,23 @@ export class QuickPinsController {
   }
   /** Builds the new list from the confirmed pins, read again first if they were only retained. */
   private async fromVerified(build: (current: string[] | null) => string[] | 'unchanged' | 'refused'): Promise<QuickPinsWriteOutcome> {
-    if (!this.verified) {
-      if (this.disposed || this.busy || this.state.intent || (this.state.phase !== 'idle' && this.state.phase !== 'conflict')) return 'refused';
-      this.busy = true;
-      try { await this.reload(); } finally { this.busy = false; }
-      if (this.disposed) return 'refused';
-      // Not read again (offline, denied, failed): nothing is written with the retained revision.
-      if (!this.verified || this.state.availability !== 'ok') { this.update({ error: 'unavailable', message: MESSAGES.unavailable }); return 'refused'; }
-    }
+    if (!await this.verify()) return 'refused';
     const next = build(this.state.confirmed ? ids(this.state.confirmed) : null);
     return next === 'unchanged' || next === 'refused' ? next : this.write(next);
+  }
+  /**
+   * Every NEW write passes here (pin, unpin, move, «Aplicar mi cambio» and any direct write): if the confirmed pins are a
+   * retained reading they are read again first. Not read again (offline, denied, failed): false, nothing is written and
+   * `wanted` is untouched. A stored intent's replay (`recover`) never comes here: it resends its exact body and key.
+   */
+  private async verify(): Promise<boolean> {
+    if (this.verified) return true;
+    if (this.disposed || this.busy || this.state.intent || (this.state.phase !== 'idle' && this.state.phase !== 'conflict')) return false;
+    this.busy = true;
+    try { await this.reload(); } finally { this.busy = false; }
+    if (this.disposed) return false;
+    if (!this.verified || this.state.availability !== 'ok') { this.update({ error: 'unavailable', message: MESSAGES.unavailable }); return false; }
+    return true;
   }
   /** What the person wanted before a refusal, sent again over the new truth only because they asked. */
   reapply() { return this.state.wanted ? this.write(this.state.wanted) : Promise.resolve<QuickPinsWriteOutcome>('refused'); }
@@ -141,9 +148,10 @@ export class QuickPinsController {
     this.update({ wanted: null, error: null, message: null, ...(this.state.phase === 'conflict' ? { phase: 'idle' as const } : {}) });
   }
 
-  /** The whole ordered list. One write at a time, stored with its key before it is sent. */
+  /** The whole ordered list. One write at a time, stored with its key before it is sent, against a verified revision. */
   async write(savedMealIds: string[]): Promise<QuickPinsWriteOutcome> {
     if (this.disposed || this.busy || this.state.intent || (this.state.phase !== 'idle' && this.state.phase !== 'conflict')) return 'refused';
+    if (!await this.verify()) return 'refused';
     const confirmed = this.state.confirmed;
     if (!confirmed || this.state.availability !== 'ok') { this.update({ error: 'unavailable', message: MESSAGES.unavailable }); return 'refused'; }
     if (savedMealIds.length > QUICK_PINS_MAX) { this.update({ error: 'full', message: MESSAGES.full }); return 'refused'; }
