@@ -23,7 +23,8 @@ describe('Nutrition day energy and explanation', () => {
   it('uses a shared scale, marks the target and labels expenditure as an estimate', () => {
     const view = render(wrap(<NutritionDayDetails data={fixture()} />));
     expect(view.getByText('Comiste')).toBeTruthy();
-    expect(view.getByText('Gasto estimado')).toBeTruthy();
+    // Once on the bar, once as the editable value row.
+    expect(view.getAllByText('Gasto estimado')).toHaveLength(2);
     expect(view.getByText('según tu plan')).toBeTruthy();
     expect(view.getByText('↘ 2.000 kcal')).toBeTruthy();
     expect(StyleSheet.flatten(view.getByTestId('day-intake-bar').props.style).width).toBe(`${(200 / 2200) * 100}%`);
@@ -56,7 +57,9 @@ describe('Nutrition day energy and explanation', () => {
       wrap(<NutritionDayDetails data={fixture({ expenditureKcal: null, energyBalanceKcal: null })} />),
     );
     expect(view.queryByTestId('day-expenditure-track')).toBeNull();
-    expect(view.getAllByText('—')).toHaveLength(2);
+    // Bar value, balance and the expenditure row: unknown, never zero.
+    expect(view.getAllByText('—')).toHaveLength(3);
+    expect(view.getByLabelText('Gasto estimado, sin dato, automático')).toBeTruthy();
   });
   it('configured inactive factors keep zero contributions and complete VoiceOver rows', () => {
     const data = fixture({
@@ -113,7 +116,9 @@ describe('Nutrition day energy and explanation', () => {
     );
     expect(view.getByText('De dónde sale')).toBeTruthy();
     expect(view.getByText('Fijo, todos los días')).toBeTruthy();
-    expect(view.getByText('Automático')).toBeTruthy();
+    // The target's origin lives only in its value row, not repeated in «De dónde sale».
+    expect(view.getAllByText('Automático')).toHaveLength(2);
+    expect(view.getAllByText('Objetivo')).toHaveLength(1);
     expect(view.queryByTestId('day-factors')).toBeNull();
   });
   it('does not describe a BMR-derived base as fixed every day', () => {
@@ -135,17 +140,25 @@ describe('Nutrition day energy and explanation', () => {
     expect(view.getByText('Base automática, sin extras')).toBeTruthy();
     expect(view.queryByText('Fijo, todos los días')).toBeNull();
   });
-  it('manual overrides expose separate reset actions; missing breakdown invents no source', () => {
-    const data = fixture({ targetOverrideKcal: 1900, expenditureOverrideKcal: 2300, breakdown: null }),
+  it('always shows both applied values with their real origin; a row only chooses the field, it never writes', () => {
+    // Personal target equal to the automatic one: still personal. Missing breakdown invents no source.
+    const data = fixture({ targetOverrideKcal: 1800, calorieTarget: 1800, expenditureOverrideKcal: null, breakdown: null }),
       onContext = jest.fn();
     const view = render(wrap(<NutritionDayDetails data={data} onContext={onContext} />));
-    expect(view.getAllByText('Ajustado hoy')).toHaveLength(2);
+    expect(view.getByLabelText('Objetivo, 1.800 kilocalorías, personalizado')).toBeTruthy();
+    expect(view.getByLabelText('Gasto estimado, 2.200 kilocalorías, automático')).toBeTruthy();
     expect(view.queryByText('Qué cambia hoy')).toBeNull();
     expect(view.queryByText('De dónde sale')).toBeNull();
-    fireEvent.press(view.getByLabelText('Volver al automático: objetivo'));
+    expect(view.queryByText('Volver al automático')).toBeNull();
+    fireEvent.press(view.getByTestId('day-context-target'));
     expect(onContext).toHaveBeenLastCalledWith(data, 'target');
-    fireEvent.press(view.getByLabelText('Volver al automático: gasto'));
+    fireEvent.press(view.getByTestId('day-context-expenditure'));
     expect(onContext).toHaveBeenLastCalledWith(data, 'expenditure');
+  });
+  it('without an editable context the rows stay as plain readings', () => {
+    const view = render(wrap(<NutritionDayDetails data={fixture()} />));
+    expect(view.getByLabelText('Objetivo, 1.800 kilocalorías, automático')).toBeTruthy();
+    expect(view.queryByRole('button', { name: /Objetivo/ })).toBeNull();
   });
   it('unavailable and a date without a day keep every unknown value absent', () => {
     for (const data of [
@@ -167,11 +180,12 @@ describe('Nutrition day energy and explanation', () => {
       onContext = jest.fn(),
       onClose = jest.fn();
     const view = render(wrap(<NutritionDayDetailSheet data={data} onContext={onContext} onClose={onClose} />));
-    fireEvent.press(view.getByLabelText('Ajustar hoy'));
+    expect(view.queryByText('Ajustar hoy')).toBeNull();
+    fireEvent.press(view.getByTestId('day-context-expenditure'));
     expect(onContext).not.toHaveBeenCalled();
     fireEvent(view.UNSAFE_getByType(Modal), 'dismiss');
     expect(onClose).toHaveBeenCalledTimes(1);
-    expect(onContext).toHaveBeenCalledWith(data, undefined);
+    expect(onContext).toHaveBeenCalledWith(data, 'expenditure');
     expect(view.queryByText('Editar actividad')).toBeNull();
   });
 });

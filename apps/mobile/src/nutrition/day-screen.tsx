@@ -1,4 +1,4 @@
-import type { DayContextAction } from './day-details';
+import type { DayContextAction, DayContextField } from './day-details';
 import { NutritionAddMenu, showNutritionAddMenu } from './add-menu';
 import { useMealNotice } from './use-meal-notice';
 import { NutritionToast, TodayPill } from './nutrition-toast';
@@ -144,6 +144,8 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
 
   const [today, setToday] = useState(() => nutritionToday());
   const [todayPillHeight, setTodayPillHeight] = useState<number>(brandTokens.layout.minTouch);
+  // The value row the user tapped: the context editor opens focused on it. Choosing a row never writes.
+  const [contextField, setContextField] = useState<DayContextField>('target');
   const [selected, setSelected] = useDomainDate(routeDate);
   // Today follows Cordoba midnight on focus/foreground; a chosen date stays fixed.
   const updateToday = useCallback(() => setToday(nutritionToday()), []);
@@ -204,13 +206,13 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
       } : undefined}
       onMetric={editable ? metricEntry.open : undefined}
       onActivity={editable ? data => writes.controller.open('metrics', data) : undefined}
-      onContext={editable ? (data, reset) => { writes.controller.open('context', data); if (reset && writes.controller.getSnapshot().draft?.baseline === data) { writes.controller.changeContext(reset, ''); void writes.controller.save(); } } : undefined} />
+      onContext={editable ? (data, field) => { setContextField(field); writes.controller.open('context', data); } : undefined} />
     {quick && !(foods?.state.open && foods.state.mode === 'register') ? <QuickEditor controller={quick.controller} state={quick.state} pins={pins ? { controller: pins.controller, state: pins.state } : null} externalLocked={!editable} onSaved={() => { quick.controller.close(); saved?.controller.open(); }} /> : null}
     {foods && quick ? <FoodEditor controller={foods.controller} state={foods.state} quick={quick} onChoose={food => { quick.controller.open(foods.state.date!, foodQuickOption(food)); foods.controller.registration(); }} /> : null}
     {saved?<SavedEditor controller={saved.controller} state={saved.state}/>:null}
     {writes && metricEntry.entry && writes.state.draft ? <MetricEntrySheet id={metricEntry.entry.id} controller={writes.controller} state={writes.state} onClose={metricEntry.close} /> : null}
     {/* An undo from the notice never shows the full metrics editor; only a write that really needs recovery does. */}
-    {writes && !metricEntry.entry && !(metricEntry.undoing && dayWriteInFlight(writes.state)) ? <DayWriteEditor controller={writes.controller} state={writes.state} /> : null}
+    {writes && !metricEntry.entry && !(metricEntry.undoing && dayWriteInFlight(writes.state)) ? <DayWriteEditor controller={writes.controller} state={writes.state} contextField={contextField} /> : null}
     {/* Another day shown and no notice on screen: a discreet way back to today. */}
     {showTodayControl ? <TodayPill onPress={showToday} onHeight={setTodayPillHeight} /> : null}
     {/* One local stack, so a metric notice and a meal notice never sit on top of each other. Metric first, meal nearest the bar. */}

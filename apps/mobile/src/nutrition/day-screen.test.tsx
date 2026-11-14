@@ -253,46 +253,45 @@ describe('Native Nutrition day', () => {
     await waitFor(() => expect(view.queryByTestId('nutrition-metric-sheet')).toBeNull(), { timeout: 4000 });
     expect(await view.findByText('3,5 L')).toBeTruthy(); expect(mockRequest).toHaveBeenCalledTimes(1);
   });
-  it('context shows automatic/override/effective and restores automatic explicitly', async () => {
+  it('a value row opens the editor focused on it; saving and restoring automatic are explicit', async () => {
     let latest = nutritionFixture();
     mockRead.mockImplementation(async () => ok(mockToday, latest) as never);
     mockRequest.mockImplementation(async options => {
       const body = options.body as { operation: string; date: string; changes: { target: { action: string; value?: number } } };
+      expect(Object.keys(body.changes)).toEqual(['target']);
       latest = nutritionFixture(); if (latest.nutrition.status === 'ok' && latest.nutrition.data.dayState === 'recorded') {
         latest.nutrition.data.context.targetOverrideKcal = body.changes.target.action === 'clear' ? null : body.changes.target.value!;
         latest.nutrition.data.context.calorieTarget = latest.nutrition.data.context.targetOverrideKcal ?? 1800;
       }
       return { status: 'ok', data: { status: 'saved', operation: body.operation, date: body.date }, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } } as never;
     });
-    const view = render(element()); await view.findByText('Detalle'); fireEvent.press(view.getByText('Detalle')); await view.findByText('Ajustar hoy'); fireEvent.press(view.getByText('Ajustar hoy')); expect(view.queryByTestId('nutrition-context-sheet')).toBeNull(); finishDetailDismissal(view);
-    expect(view.getByText('Guardado: 1.800 kcal')).toBeTruthy();expect(view.getByText('Automático: 1.800 kcal')).toBeTruthy();
-    fireEvent.changeText(view.getByLabelText('Objetivo de calorías (kcal)'), '1900'); await act(async () => { fireEvent.press(view.getByText('Guardar cambios')); });
+    const view = render(element()); fireEvent.press(await view.findByText('Detalle'));
+    fireEvent.press(await view.findByTestId('day-context-target')); expect(view.queryByTestId('nutrition-context-sheet')).toBeNull(); finishDetailDismissal(view);
+    expect(view.getByTestId('nutrition-context-input').props.accessibilityLabel).toBe('Objetivo de este día, en kilocalorías');
+    expect(view.getByText('Automático · según tu plan')).toBeTruthy(); expect(mockRequest).not.toHaveBeenCalled();
+    fireEvent.changeText(view.getByTestId('nutrition-context-input'), '1.900'); await act(async () => { fireEvent.press(view.getByText('Guardar')); });
     await waitFor(() => expect(view.queryByTestId('nutrition-day-write-editor')).toBeNull());
-    fireEvent.press(await view.findByText('Detalle')); fireEvent.press(await view.findByText('Ajustar hoy')); finishDetailDismissal(view); expect(view.getByText(/Guardado: 1.900 kcal/)).toBeTruthy(); expect(view.getByLabelText('Objetivo de calorías (kcal)').props.value).toBe('1900');
-    fireEvent.press(view.getByText('Usar objetivo automático')); await act(async () => { fireEvent.press(view.getByText('Guardar cambios')); });
+    expect(mockRequest.mock.calls[0][0].body).toMatchObject({ operation: 'context', changes: { target: { action: 'set', value: 1900 } } });
+    fireEvent.press(await view.findByText('Detalle')); expect(await view.findByLabelText('Objetivo, 1.900 kilocalorías, personalizado')).toBeTruthy();
+    fireEvent.press(view.getByTestId('day-context-target')); finishDetailDismissal(view);
+    expect(view.getByTestId('nutrition-context-input').props.value).toBe('1.900');
+    fireEvent.press(view.getByText('Volver al automático')); expect(mockRequest).toHaveBeenCalledTimes(1);
+    await act(async () => { fireEvent.press(view.getByText('Guardar')); });
     await waitFor(() => expect(view.queryByTestId('nutrition-day-write-editor')).toBeNull());
     expect(mockRequest.mock.calls[1][0].body).toMatchObject({ operation: 'context', changes: { target: { action: 'clear' } } });
   });
-  it('Volver al automático clears only the chosen override through the existing persisted CAS write', async () => {
-    let latest = nutritionFixture();
+  it('opening the editor on a personal value never clears it or writes', async () => {
+    const latest = nutritionFixture();
     if (latest.nutrition.status === 'ok' && latest.nutrition.data.dayState === 'recorded') {
       Object.assign(latest.nutrition.data.context, { targetOverrideKcal: 1900, calorieTarget: 1900, expenditureOverrideKcal: 2300, expenditureKcal: 2300, breakdown: null });
     }
     mockRead.mockImplementation(async () => ok(mockToday, latest) as never);
-    mockRequest.mockImplementation(async options => {
-      expect(options.body).toMatchObject({ operation: 'context', date: mockToday, expectedUpdatedAt: `${mockToday}T12:00:00.123456Z`, changes: { target: { action: 'clear' } } });
-      expect((options.body as { changes: object }).changes).toEqual({ target: { action: 'clear' } });
-      expect(await AsyncStorage.getItem('ownlevel.nutrition.day-write.v1.owner')).not.toBeNull();
-      latest = nutritionFixture();
-      if (latest.nutrition.status === 'ok' && latest.nutrition.data.dayState === 'recorded') Object.assign(latest.nutrition.data.context, { expenditureOverrideKcal: 2300, expenditureKcal: 2300 });
-      return { status: 'ok', data: { status: 'saved', operation: 'context', date: mockToday }, meta: { durationMs: 1, httpStatus: 200, outcome: 'ok' } } as never;
-    });
     const view = render(element()); fireEvent.press(await view.findByText('Detalle'));
-    await act(async () => { fireEvent.press(view.getByLabelText('Volver al automático: objetivo')); });
-    // The sheet first runs its exit; iOS then reports the Modal gone.
+    await act(async () => { fireEvent.press(await view.findByTestId('day-context-expenditure')); });
     await act(async () => { finishDetailDismissal(view); });
-    await waitFor(() => expect(view.queryByTestId('nutrition-day-write-editor')).toBeNull());
-    expect(mockRequest).toHaveBeenCalledTimes(1);
+    expect(view.getByTestId('nutrition-context-input').props.value).toBe('2.300');
+    expect(view.getByTestId('nutrition-context-save')).toBeDisabled();
+    expect(mockRequest).not.toHaveBeenCalled();
   });
   it('undo from the notice deletes without opening the editor: running, then a brief confirmation', async () => {
     mockRead.mockImplementation(async () => ok(mockToday) as never);

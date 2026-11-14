@@ -93,14 +93,12 @@ export function NutritionDayDetailSheet({ data, onClose, onContext }: {
   </AppSheet>;
 }
 function DetailBody({ data, onContext }: { data: MobileNutritionDayResponse; onContext?: DayContextAction }) {
-  const { colors } = useOwnlevelTheme();
   const dismiss = useAppSheetDismiss();
-  // "Ajustar hoy" opens the context editor once this sheet is fully gone.
-  const adjust: DayContextAction = (day, reset) => dismiss(() => onContext?.(day, reset));
+  // A value row opens the context editor focused on that number once this sheet is fully gone (no sheet over sheet).
+  const adjust: DayContextAction = (day, field) => dismiss(() => onContext?.(day, field));
   const canAdjust = onContext && canWriteDay('context', data);
   return <ScrollView contentContainerStyle={styles.detailContent}>
     <View style={styles.detailHeader}><AppText accessibilityRole="header" variant="title2" style={{ flex: 1 }}>Tu día</AppText>
-      {canAdjust ? <Pressable accessibilityRole="button" accessibilityLabel="Ajustar hoy" onPress={() => adjust(data)} style={styles.adjust}><AppText variant="subheadline" style={{ color: colors.primary }}>Ajustar hoy</AppText></Pressable> : null}
       <RoutineSheetButton label="Cerrar Detalle del día" icon="close" onPress={() => dismiss()} />
     </View>
     <NutritionDayDetails data={data} onContext={canAdjust ? adjust : undefined} />
@@ -109,7 +107,7 @@ function DetailBody({ data, onContext }: { data: MobileNutritionDayResponse; onC
 const styles = StyleSheet.create({
 
   detailSheet: { maxHeight: '90%' },
-  detailContent: { padding: 16, gap: 20 }, detailHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 }, adjust: { minHeight: 44, justifyContent: 'center' },
+  detailContent: { padding: 16, gap: 20 }, detailHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   section: { gap: 8 }, panel: { borderRadius: 20, padding: 18, gap: 12 }, row: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   metrics: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 8, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12 },
   cell: { flex: 1, minWidth: '42%', minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12 },
