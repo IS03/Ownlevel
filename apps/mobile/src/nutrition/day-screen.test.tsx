@@ -839,7 +839,8 @@ describe('Native Nutrition day', () => {
       const view = render(element()); await view.findByTestId('manual-meal-editor');
       expect(view.getAllByText('Comprobar intento guardado')).toHaveLength(1); expect(panel(view)).toBeNull(); expect(mockRequest).toHaveBeenCalledTimes(3);
       mockRequest.mockResolvedValueOnce(receipt(idB, '13:10:00', 'deleted') as never); await tap(view, 'Comprobar intento guardado');
-      await waitFor(() => expect(view.queryByTestId('manual-meal-editor')).toBeNull());
+      // The receipt settles at once; the sheet closes after its exit animation and the day's re-render (~1.7 s here, like addManual).
+      await waitFor(() => expect(view.queryByTestId('manual-meal-editor')).toBeNull(), { timeout: 3000 });
       expect(mockRequest).toHaveBeenCalledTimes(4); expect(bodies()[3]).toEqual(bodies()[2]); expect(await AsyncStorage.getItem(storeKey)).toBeNull();
     }, 20000);
     it('(h) a stored confirmed intent offers only the re-read, with no panel on top', async () => {
