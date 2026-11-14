@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import type {
   MobileNutritionDayResponse,
   NutritionDayContext,
@@ -11,7 +11,8 @@ import { number } from './day-format';
 import { nutrientReading } from './day-home-model';
 
 export type DayContextField = 'target' | 'expenditure';
-export type DayContextAction = (data: MobileNutritionDayResponse, reset?: DayContextField) => void;
+/** Opens the day's context editor focused on `field`. It never writes: saving needs the editor's own Guardar. */
+export type DayContextAction = (data: MobileNutritionDayResponse, field: DayContextField) => void;
 export function metricValue(m: NutritionDayMetric, value: number | null): string {
   if (value === null) return 'Sin dato';
   if (m.valueType === 'duration') return `${Math.floor(value / 60)} h ${value % 60} min`;
@@ -177,15 +178,49 @@ function Changes({ context }: { context: NutritionDayContext }) {
         value={energy(breakdown.baseExpenditureKcal)}
         accessibilityLabel={`Gasto de tu plan, ${fixedNote}, ${number(breakdown.baseExpenditureKcal)} kilocalorías`}
       />
-      <ExplanationRow
-        icon="nutrition"
-        title="Objetivo"
-        subtitle="Automático"
-        value={energy(breakdown.baseTargetKcal)}
-        accessibilityLabel={`Objetivo, automático, ${number(breakdown.baseTargetKcal)} kilocalorías`}
-      />
+      {/* The applied target and its origin are already in the value rows above (#517). */}
     </View>
   ) : null;
+}
+/**
+ * The values applied on this date. The origin comes from the override, never from comparing numbers: a manual
+ * value equal to the automatic one is still personal.
+ */
+function ContextRows({ data, context, onContext }: { data: MobileNutritionDayResponse; context: NutritionDayContext; onContext?: DayContextAction }) {
+  const { colors } = useOwnlevelTheme();
+  const editable = !!onContext && canWriteDay('context', data);
+  // Large text stacks the number under its name instead of squeezing both on one line.
+  const stacked = useWindowDimensions().fontScale > 1.3;
+  return (
+    <View testID="day-context-rows">
+      {(['target', 'expenditure'] as const).map((field, index) => {
+        const title = field === 'target' ? 'Objetivo' : 'Gasto estimado';
+        const value = field === 'target' ? context.calorieTarget : context.expenditureKcal;
+        const origin = (field === 'target' ? context.targetOverrideKcal : context.expenditureOverrideKcal) === null ? 'Automático' : 'Personalizado';
+        const spoken = `${title}, ${value === null ? 'sin dato' : `${number(value)} kilocalorías`}, ${origin.toLowerCase()}`;
+        const content = (
+          <>
+            <View style={styles.label}>
+              <AppText variant="body">{title}</AppText>
+              <AppText muted variant="caption">{origin}</AppText>
+              {stacked ? <AppText numeric variant="headline">{energy(value)}</AppText> : null}
+            </View>
+            {stacked ? null : <AppText numeric variant="headline" style={styles.contribution}>{energy(value)}</AppText>}
+            {editable ? <AppIcon name="chevronRight" size={17} color={colors.textMuted} /> : null}
+          </>
+        );
+        const style = [styles.contextRow, index === 0 && { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }];
+        return editable ? (
+          <Pressable key={field} accessibilityRole="button" accessibilityLabel={spoken} accessibilityHint="Abre el ajuste de este día"
+            onPress={() => onContext(data, field)} style={({ pressed }) => [...style, pressed && { opacity: 0.6 }]} testID={`day-context-${field}`}>
+            {content}
+          </Pressable>
+        ) : (
+          <View key={field} accessible accessibilityLabel={spoken} style={style} testID={`day-context-${field}`}>{content}</View>
+        );
+      })}
+    </View>
+  );
 }
 export function NutritionDayDetails({
   data,
@@ -236,34 +271,8 @@ export function NutritionDayDetails({
               La suma incluye solo calorías conocidas. Sin dato no significa cero.
             </AppText>
           ) : null}
+          <ContextRows data={data} context={n.context} onContext={onContext} />
           <Changes context={n.context} />
-          {(['target', 'expenditure'] as const).map((field) => {
-            const value = field === 'target' ? n.context.targetOverrideKcal : n.context.expenditureOverrideKcal;
-            const title = field === 'target' ? 'Objetivo' : 'Gasto estimado';
-            return value !== null ? (
-              <View key={field} style={[styles.adjustment, { borderTopColor: colors.border }]}>
-                <ExplanationRow
-                  icon="edit"
-                  title={title}
-                  subtitle="Ajustado hoy"
-                  value={energy(value)}
-                  accessibilityLabel={`${title}, ajustado hoy, ${number(value)} kilocalorías`}
-                />
-                {onContext && canWriteDay('context', data) ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Volver al automático: ${field === 'target' ? 'objetivo' : 'gasto'}`}
-                    onPress={() => onContext(data, field)}
-                    style={styles.reset}
-                  >
-                    <AppText style={{ color: colors.primary }} variant="subheadline">
-                      Volver al automático
-                    </AppText>
-                  </Pressable>
-                ) : null}
-              </View>
-            ) : null;
-          })}
         </>
       )}
     </View>
@@ -297,6 +306,5 @@ const styles = StyleSheet.create({
   icon: { width: 32, height: 32, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   label: { flex: 1, gap: 2 },
   contribution: { textAlign: 'right', flexShrink: 1 },
-  adjustment: { gap: 4, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth },
-  reset: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-end' },
+  contextRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, paddingVertical: 8 },
 });

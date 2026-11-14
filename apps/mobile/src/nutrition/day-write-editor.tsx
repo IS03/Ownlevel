@@ -5,13 +5,14 @@ import type { NutritionDayMetric } from '@/api/nutrition-day';
 import type { DayWriteController,DayWriteState } from './day-write-controller';
 import { displayNutritionDate } from './day-format';
 import { DayContextEditor } from './day-context-editor';
+import type { DayContextField } from './day-details';
 function metricDisplay(m:NutritionDayMetric){
   if(m.value===null)return 'Sin dato';
   return m.valueType==='duration'?`${Math.floor(m.value/60)} h ${m.value%60} min`:`${m.value}${m.unit?' '+m.unit:''}`;
 }
-export function DayWriteEditor({controller,state}:{controller:DayWriteController;state:DayWriteState}){
+export function DayWriteEditor({controller,state,contextField}:{controller:DayWriteController;state:DayWriteState;contextField?:DayContextField}){
   const {colors}=useOwnlevelTheme(),d=state.draft;if(!d)return null;
-  if(d.kind==='context')return <DayContextEditor controller={controller} state={state}/>;
+  if(d.kind==='context')return <DayContextEditor controller={controller} state={state} initialField={contextField}/>;
   const locked=!!state.intent||['pending','loading','blocked','confirmed'].includes(state.phase),running=state.phase==='pending';
   const close=()=>{
     if(running)return;
