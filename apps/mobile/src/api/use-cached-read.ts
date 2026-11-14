@@ -49,5 +49,7 @@ export function useCachedRead<T>(client: MobileApiClient | null, family: ReadFam
   /** After a confirmed write: never settle on a read that started before it. */
   const reload = useCallback(() => cache && entry ? cache.reload(entry) : resource.reload('manual'), [cache, entry, resource]);
   const current = state.status === 'ready' ? state.current : state.status === 'unavailable' ? state.previous : undefined;
-  return { state, data: current?.data, refresh, reload };
+  /** The reading as it is now (after an await, the rendered `state` may be one render behind). */
+  const snapshot = useCallback(() => resource.getSnapshot(), [resource]);
+  return { state, data: current?.data, refresh, reload, snapshot };
 }

@@ -37,6 +37,11 @@ export type ApiResourceState<T> =
 type ResourceLoader<T> = (signal: AbortSignal) => Promise<MobileApiReadResult<T>>;
 type ResourceListener<T> = (state: ApiResourceState<T>) => void;
 
+/** An explicit authorization denial (401, or 403 answered as unavailable): no protected data may stay on screen. */
+export function isDeniedRead(state: ApiResourceState<unknown>): boolean {
+  return state.status === 'auth_required' || state.status === 'unauthorized' || (state.status === 'unavailable' && state.result.meta.httpStatus === 403);
+}
+
 export function shouldRefreshOnForeground(
   previous: AppStateStatus,
   next: AppStateStatus,

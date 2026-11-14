@@ -1,9 +1,10 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { Alert, RefreshControl, StyleSheet } from 'react-native';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { AccessibilityInfo, Alert, RefreshControl, StyleSheet } from 'react-native';
 import * as Reanimated from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { MobileTrainingRoutinesResponse } from '@/api/routines';
+import { clearConfirmedReads, invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { RoutinesScreen } from './routines-screen';
 
@@ -15,6 +16,14 @@ const mockFetch = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockRefresh = jest.fn<() => Promise<void>>();
 const mockSetStatus = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockUseApiResource = jest.fn();
+/** Mocked readings a reload has confirmed again (the harness's stand-in for a new confirmed reading). */
+const mockReconfirmed = new WeakSet<object>();
+/** One account's client, stable across renders (the retained reading is scoped by client). */
+const mockClient = { request: jest.fn() };
+let mockCurrentClient: object = mockClient;
+let mockRealCachedRead = false;
+/** Off by default (these screen tests do not model focus); the real-cache tests treat a mounted screen as on screen. */
+const mockUseFocusEffect = jest.fn<(effect: () => (() => void) | void) => void>();
 const mockPush = jest.fn();
 const mockStart = jest.fn();
 const mockHeaderOptions = jest.fn();
@@ -45,9 +54,21 @@ jest.mock('expo-router', () => {
     Button: ({ accessibilityLabel, disabled, onPress }: { accessibilityLabel: string; disabled: boolean; onPress: () => void }) =>
       <Pressable accessibilityLabel={accessibilityLabel} accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} />,
   });
-  return { useFocusEffect: () => undefined, useRouter: () => ({ push: mockPush, back: jest.fn(), replace: jest.fn() }),
+  return { useFocusEffect: (effect: () => (() => void) | void) => mockUseFocusEffect(effect), useRouter: () => ({ push: mockPush, back: jest.fn(), replace: jest.fn() }),
     Stack: { Toolbar, Screen: ({ options }: { options: { headerRight?: () => React.ReactNode } }) => { mockHeaderOptions(options); return options.headerRight?.() ?? null; } } };
 });
+// These screen tests drive the reading's state directly; the retained reading itself (ConfirmedReadCache, #303 C3a)
+// is exercised with the real cache in routines-retention.test.tsx.
+jest.mock('@/api/use-cached-read', () => ({
+  useCachedRead: (...args: unknown[]) => {
+    if (mockRealCachedRead) return (jest.requireActual('@/api/use-cached-read') as typeof import('@/api/use-cached-read')).useCachedRead(...(args as Parameters<typeof import('@/api/use-cached-read').useCachedRead>));
+    const resource = mockUseApiResource(...args) as { refresh: () => Promise<void>; state: { status: string; current?: object } };
+    // A reload that resolves confirms a NEW reading (same data, new identity), as the cache does after a read.
+    return { ...resource,
+      reload: async () => { await resource.refresh(); mockReconfirmed.add(resource.state); },
+      snapshot: () => mockReconfirmed.has(resource.state) && resource.state.status === 'ready' ? { ...resource.state, current: { ...resource.state.current } } : resource.state };
+  },
+}));
 jest.mock('@/api', () => ({
   duplicateMobileTrainingRoutine: (...args: unknown[]) => mockDuplicate(...args),
   reorderMobileTrainingRoutines: (...args: unknown[]) => mockOrder(...args),
@@ -56,7 +77,7 @@ jest.mock('@/api', () => ({
   fetchMobileTrainingRoutines: (...args: unknown[]) => mockFetch(...args),
   setMobileTrainingRoutineStatus: (...args: unknown[]) => mockSetStatus(...args),
   useApiResource: (...args: unknown[]) => mockUseApiResource(...args),
-  useMobileApi: () => ({ client: { request: jest.fn() } }),
+  useMobileApi: () => ({ client: mockCurrentClient }),
 }));
 
 const routines = [
@@ -68,7 +89,8 @@ function fixture(overrides: Partial<MobileTrainingRoutinesResponse> = {}): Mobil
   return { routines: { status: 'ok', data: [...routines].sort((a, b) => a.order - b.order) }, listVersion: { status: 'ok', data: 7 }, initialPlan: { status: 'ok', data: { imported: true, routinesFound: 3 } }, ...overrides };
 }
 function readyState(data = fixture()) {
-  return { status: 'ready' as const, current: { confirmedAt: 1, data }, refreshing: false, trigger: 'initial' as const,
+  // Confirmed during this visit (a list version this visit may write with).
+  return { status: 'ready' as const, current: { confirmedAt: Number.MAX_SAFE_INTEGER, data }, refreshing: false, trigger: 'initial' as const,
     result: { status: 'ok' as const, data, meta: { durationMs: 12, httpStatus: 200, outcome: 'ok' as const } } };
 }
 function renderScreen(options: { archivedOnly?: boolean; createIdempotencyKey?: () => string; dark?: boolean } = {}) {
@@ -103,9 +125,10 @@ describe('routine library', () => {
   it('preserves loading, unavailable and stale states', () => {
     mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: { status: 'loading' } });
     const loading = renderScreen(); expect(loading.getByTestId('routines-loading')).toBeTruthy(); loading.unmount();
-    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: { status: 'unavailable' } });
+    const networkFailure = { status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } };
+    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: { status: 'unavailable', result: networkFailure } });
     const unavailable = renderScreen(); expect(unavailable.getByTestId('routines-unavailable')).toBeTruthy(); expect(unavailable.queryByText('No tenés rutinas activas.')).toBeNull(); unavailable.unmount();
-    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: { status: 'unavailable', previous: { data: fixture() } } });
+    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: { status: 'unavailable', previous: { data: fixture() }, result: networkFailure } });
     const stale = renderScreen(); expect(stale.getByTestId('routines-stale')).toBeTruthy(); expect(stale.getByText('PUSH')).toBeTruthy();
   });
 
@@ -298,31 +321,319 @@ describe('routine writes with real resource reads', () => {
     mockSwipeDistance = 0;
     jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     mockFetch.mockReset(); mockSetStatus.mockReset(); mockStart.mockReset();
-    const resource = jest.requireActual('@/api/resource') as typeof import('@/api/resource');
-    mockUseApiResource.mockImplementation(resource.useApiResource as never);
+    // The real retained reading (ConfirmedReadCache), as in the app.
+    clearConfirmedReads(mockClient as never); mockRealCachedRead = true; mockCurrentClient = mockClient;
+    mockUseFocusEffect.mockImplementation(effect => {
+      (jest.requireActual('react') as typeof import('react')).useEffect(() => effect(), [effect]);
+    });
   });
+  afterEach(() => { mockRealCachedRead = false; mockUseFocusEffect.mockReset(); clearConfirmedReads(mockClient as never); });
+  /** The API client invalidates retained readings when a write settles (client.ts); the mocked write does the same. */
+  const settles = (result: unknown) => async () => { invalidateConfirmedReads(mockClient as never, `/api/mobile/v1/training/routines/${routines[1].id}`); return result; };
 
   it('keeps confirmed archival and the stale warning when the post-write read fails', async () => {
     mockFetch.mockResolvedValueOnce(read()).mockResolvedValue({ status: 'unavailable', reason: 'network', meta });
-    mockSetStatus.mockResolvedValue(statusResult(false));
+    mockSetStatus.mockImplementation(settles(statusResult(false)));
     const view = renderScreen(); await waitFor(() => expect(view.getByText('PUSH')).toBeTruthy()); archive(view);
     await waitFor(() => expect(view.getByRole('button', { name: 'Deshacer archivado' })).toBeTruthy());
     expect(view.getByTestId('routines-stale')).toBeTruthy(); expect(view.queryByText('PUSH')).toBeNull(); expect(view.getByText('LEGS')).toBeTruthy();
     expect(mockSetStatus).toHaveBeenCalledTimes(1); expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  it('waits for an older coalesced read and then fetches post-mutation server truth', async () => {
+  it('drops an older pending read when the write settles and fetches post-mutation server truth; its late answer never wins', async () => {
     let finishOldRead: ((value: unknown) => void) | undefined;
     mockFetch.mockResolvedValueOnce(read()).mockReturnValueOnce(new Promise(resolve => { finishOldRead = resolve; }))
       .mockResolvedValueOnce(read(fixture({ routines: { status: 'ok', data: routines.map(routine => routine.id === routines[1].id ? { ...routine, isActive: false } : routine) } })));
-    mockSetStatus.mockResolvedValue(statusResult(false));
+    mockSetStatus.mockImplementation(settles(statusResult(false)));
     const view = renderScreen(); await waitFor(() => expect(view.getByText('PUSH')).toBeTruthy());
     fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh'); archive(view);
-    await waitFor(() => expect(mockSetStatus).toHaveBeenCalledTimes(1));
-    expect(view.queryByRole('button', { name: 'Deshacer archivado' })).toBeNull();
-    await act(async () => finishOldRead?.(read()));
+    const oldSignal = mockFetch.mock.calls[1][1] as AbortSignal;
     await waitFor(() => expect(view.getByRole('button', { name: 'Deshacer archivado' })).toBeTruthy());
+    expect(oldSignal.aborted).toBe(true); // it may predate the write
     expect(mockFetch).toHaveBeenCalledTimes(3); expect(view.queryByText('PUSH')).toBeNull(); expect(view.getByText('LEGS')).toBeTruthy();
+    await act(async () => finishOldRead?.(read())); // the pre-write answer (PUSH still active) arrives last
+    expect(view.queryByText('PUSH')).toBeNull();
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('retained routines list (#303 C3a; real cache, simulated request counts)', () => {
+  const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
+  const read = (data = fixture()) => ({ status: 'ok', data, meta });
+  let clock = Date.parse('2026-11-13T15:00:00.000Z');
+  beforeEach(() => {
+    jest.restoreAllMocks();
+    mockSwipeDistance = 0;
+    jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    [mockFetch, mockSetStatus, mockStart, mockOrder].forEach(mock => mock.mockReset());
+    mockFetch.mockResolvedValue(read());
+    clock = Date.parse('2026-11-13T15:00:00.000Z');
+    jest.spyOn(Date, 'now').mockImplementation(() => clock);
+    clearConfirmedReads(mockClient as never); mockRealCachedRead = true; mockCurrentClient = mockClient;
+    mockUseFocusEffect.mockImplementation(effect => {
+      (jest.requireActual('react') as typeof import('react')).useEffect(() => effect(), [effect]);
+    });
+  });
+  afterEach(() => { mockRealCachedRead = false; mockUseFocusEffect.mockReset(); clearConfirmedReads(mockClient as never); mockCurrentClient = mockClient; });
+  /** A complete visit: open Rutinas (or Archivadas), let its reading settle, leave. */
+  async function visit(options: { archivedOnly?: boolean } = {}) {
+    const view = renderScreen(options);
+    await waitFor(() => expect(view.getByTestId(options.archivedOnly ? 'archived-routines-screen' : 'routines-screen')).toBeTruthy());
+    view.unmount();
+  }
+
+  it('back within 30 s: the list shows at once with no request; after 30 s it shows and reads again', async () => {
+    await visit();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    clock += 20_000;
+    const again = renderScreen();
+    expect(again.getByText('PUSH')).toBeTruthy(); // no skeleton
+    await act(async () => { await Promise.resolve(); });
+    expect(mockFetch).toHaveBeenCalledTimes(1); // before C3a: 2
+    again.unmount();
+    clock += 15_000;
+    const later = renderScreen();
+    expect(later.getByText('PUSH')).toBeTruthy();
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+    later.unmount();
+  });
+
+  it('Rutinas and Archivadas share one reading', async () => {
+    await visit();
+    const archived = renderScreen({ archivedOnly: true });
+    expect(archived.getByText('OLD')).toBeTruthy();
+    await act(async () => { await Promise.resolve(); });
+    expect(mockFetch).toHaveBeenCalledTimes(1); // before C3a: 2
+    archived.unmount();
+  });
+
+  it.each([
+    ['a routine created', '/api/mobile/v1/training/routines'],
+    ['a routine edited (template)', `/api/mobile/v1/training/routines/${routines[1].id}/template`],
+    ['a routine renamed or recolored', `/api/mobile/v1/training/routines/${routines[1].id}/identity`],
+    ['a routine archived or restored', `/api/mobile/v1/training/routines/${routines[1].id}`],
+    ['a routine duplicated', `/api/mobile/v1/training/routines/${routines[1].id}/duplicate`],
+    ['the order saved', '/api/mobile/v1/training/routines/order'],
+    ['an exercise created with routines', '/api/mobile/v1/training/exercises'],
+    ['a finished session (routine targets)', '/api/mobile/v1/training/sessions/s1/finish'],
+  ])('after %s anywhere, coming back within 30 s reads again', async (_name, path) => {
+    await visit();
+    invalidateConfirmedReads(mockClient as never, path);
+    clock += 1_000;
+    const again = renderScreen();
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+    again.unmount();
+  });
+
+  it('an unrelated write (a weight) keeps the reading', async () => {
+    await visit();
+    invalidateConfirmedReads(mockClient as never, '/api/mobile/v1/body/weights/2026-11-13');
+    clock += 1_000;
+    const again = renderScreen();
+    await act(async () => { await Promise.resolve(); });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    again.unmount();
+  });
+
+  it('CAS: ordering from a retained list reads it again first and sends that list version, never the retained one', async () => {
+    await visit(); // listVersion 7
+    clock += 5_000;
+    mockFetch.mockResolvedValue(read(fixture({ listVersion: { status: 'ok', data: 8 } })));
+    mockOrder.mockResolvedValue({ status: 'ok', data: { routineIds: [routines[0].id, routines[1].id], listVersion: 9 } });
+    const view = renderScreen({ createIdempotencyKey: () => 'order-key' });
+    await act(async () => { await Promise.resolve(); });
+    expect(mockFetch).toHaveBeenCalledTimes(1); // shown from the retained reading
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); });
+    await waitFor(() => expect(view.getByRole('button', { name: 'Guardar orden' })).toBeTruthy());
+    expect(mockFetch).toHaveBeenCalledTimes(2); // read again before the draft
+    moveDown(view);
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar orden' })); });
+    expect(mockOrder.mock.calls[0]?.[1]).toEqual({ routineIds: [routines[0].id, routines[1].id], expectedListVersion: 8, idempotencyKey: 'order-key' });
+    view.unmount();
+  });
+
+  it('CAS: if that read fails, no draft opens and nothing is written', async () => {
+    await visit();
+    clock += 5_000;
+    mockFetch.mockResolvedValue({ status: 'unavailable', reason: 'network', meta });
+    const view = renderScreen();
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); });
+    await waitFor(() => expect(view.getByText('Actualizá la lista antes de ordenar las rutinas.')).toBeTruthy());
+    expect(view.queryByRole('button', { name: 'Guardar orden' })).toBeNull();
+    expect(mockOrder).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  describe('same millisecond everywhere (fixed clock: confirmedAt === visit start)', () => {
+    it('a list retained from a previous visit is read again before ordering; the new version is sent', async () => {
+      await visit(); // listVersion 7, confirmed in the same millisecond the next visit starts
+      mockFetch.mockResolvedValue(read(fixture({ listVersion: { status: 'ok', data: 8 } }))); // another device moved it
+      mockOrder.mockResolvedValue({ status: 'ok', data: { routineIds: [routines[0].id, routines[1].id], listVersion: 9 } });
+      const view = renderScreen({ createIdempotencyKey: () => 'order-key' });
+      await act(async () => { await Promise.resolve(); });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); });
+      await waitFor(() => expect(view.getByRole('button', { name: 'Guardar orden' })).toBeTruthy());
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      moveDown(view);
+      await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar orden' })); });
+      expect(mockOrder.mock.calls[0]?.[1]).toEqual({ routineIds: [routines[0].id, routines[1].id], expectedListVersion: 8, idempotencyKey: 'order-key' });
+      view.unmount();
+    });
+    it('even a list read in this visit is verified again before ordering', async () => {
+      const view = renderScreen();
+      await waitFor(() => expect(view.getByText('PUSH')).toBeTruthy());
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); });
+      await waitFor(() => expect(view.getByRole('button', { name: 'Guardar orden' })).toBeTruthy());
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      view.unmount();
+    });
+    it.each([
+      ['offline', { status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } }],
+      ['401', { status: 'unauthorized', meta: { durationMs: 1, httpStatus: 401, outcome: 'unauthorized' } }],
+    ])('the verification read fails (%s): no draft and no write with the unverified version', async (_name, failure) => {
+      await visit();
+      mockFetch.mockResolvedValue(failure);
+      const view = renderScreen();
+      await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); });
+      expect(view.queryByRole('button', { name: 'Guardar orden' })).toBeNull();
+      expect(mockOrder).not.toHaveBeenCalled();
+      view.unmount();
+    });
+  });
+
+  it.each([
+    ['401', { status: 'unauthorized', meta: { durationMs: 1, httpStatus: 401, outcome: 'unauthorized' } }],
+    ['403', { status: 'unavailable', reason: 'server', meta: { durationMs: 1, httpStatus: 403, outcome: 'unavailable' } }],
+  ])('mounted list → %s: no routine, archived count or action stays; an authorized read recovers it', async (_code, denied) => {
+    const view = renderScreen();
+    await waitFor(() => expect(view.getByText('PUSH')).toBeTruthy());
+    mockFetch.mockResolvedValueOnce(denied);
+    await act(async () => { fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh'); });
+    await waitFor(() => expect(view.getByTestId('routines-unavailable')).toBeTruthy());
+    for (const name of ['PUSH', 'LEGS', 'OLD']) expect(view.queryByText(name)).toBeNull();
+    expect(view.queryByRole('button', { name: /Abrir rutina/ })).toBeNull();
+    expect(view.queryByRole('button', { name: /Archivadas/ })).toBeNull();
+    mockFetch.mockResolvedValueOnce(read());
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Reintentar' })); });
+    await waitFor(() => expect(view.getByText('PUSH')).toBeTruthy());
+    view.unmount();
+  });
+
+  const DENIED: [string, unknown][] = [
+    ['401', { status: 'unauthorized', meta: { durationMs: 1, httpStatus: 401, outcome: 'unauthorized' } }],
+    ['403', { status: 'unavailable', reason: 'server', meta: { durationMs: 1, httpStatus: 403, outcome: 'unavailable' } }],
+  ];
+  const archivedList = () => read(fixture({ routines: { status: 'ok', data: routines.map(routine => routine.id === routines[1].id ? { ...routine, isActive: false } : routine) } }));
+  /** The API client invalidates retained readings when a write settles (client.ts); the mocked write does the same. */
+  const archiveSettles = () => mockSetStatus.mockImplementationOnce(async () => {
+    invalidateConfirmedReads(mockClient as never, `/api/mobile/v1/training/routines/${routines[1].id}`);
+    return statusResult(false);
+  });
+  it.each(DENIED)('archive notice «PUSH archivada» with «Deshacer» → %s before it expires: notice, name and action go, and do not come back after recovery', async (_code, denied) => {
+    const view = renderScreen();
+    await waitFor(() => expect(view.getByText('PUSH')).toBeTruthy());
+    archiveSettles(); mockFetch.mockResolvedValueOnce(archivedList());
+    await act(async () => { archive(view); });
+    await waitFor(() => expect(view.getByText('PUSH archivada')).toBeTruthy());
+    expect(view.getByRole('button', { name: 'Deshacer archivado' })).toBeTruthy();
+    mockFetch.mockResolvedValueOnce(denied);
+    await act(async () => { fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh'); });
+    await waitFor(() => expect(view.getByTestId('routines-unavailable')).toBeTruthy());
+    expect(view.queryByText('PUSH archivada')).toBeNull();
+    expect(view.queryByText(/PUSH/)).toBeNull();
+    expect(view.queryByRole('button', { name: 'Deshacer archivado' })).toBeNull();
+    mockFetch.mockResolvedValueOnce(archivedList());
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Reintentar' })); });
+    await waitFor(() => expect(view.getByText('LEGS')).toBeTruthy());
+    expect(view.queryByText('PUSH archivada')).toBeNull();
+    expect(view.queryByRole('button', { name: 'Deshacer archivado' })).toBeNull();
+    expect(mockSetStatus).toHaveBeenCalledTimes(1); // the undo never ran
+    view.unmount();
+  });
+  it.each(DENIED)('the read after an archive answers %s: no success notice, name or «Deshacer» is shown or spoken', async (_code, denied) => {
+    const spoken = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => undefined);
+    const view = renderScreen();
+    await waitFor(() => expect(view.getByText('PUSH')).toBeTruthy());
+    archiveSettles(); mockFetch.mockResolvedValueOnce(denied);
+    await act(async () => { archive(view); });
+    await waitFor(() => expect(view.getByTestId('routines-unavailable')).toBeTruthy());
+    expect(mockSetStatus).toHaveBeenCalledTimes(1);
+    expect(view.queryByText('PUSH archivada')).toBeNull();
+    expect(view.queryByText(/PUSH/)).toBeNull();
+    expect(view.queryByRole('button', { name: 'Deshacer archivado' })).toBeNull();
+    expect(spoken.mock.calls.some(([message]) => /PUSH/.test(String(message)))).toBe(false);
+    mockFetch.mockResolvedValueOnce(archivedList());
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Reintentar' })); });
+    await waitFor(() => expect(view.getByText('LEGS')).toBeTruthy());
+    expect(view.queryByText('PUSH archivada')).toBeNull();
+    view.unmount();
+  });
+  it('archive notice showing → network failure: the notice and «Deshacer» stay (not a denial)', async () => {
+    const view = renderScreen();
+    await waitFor(() => expect(view.getByText('PUSH')).toBeTruthy());
+    archiveSettles(); mockFetch.mockResolvedValueOnce(archivedList());
+    await act(async () => { archive(view); });
+    await waitFor(() => expect(view.getByText('PUSH archivada')).toBeTruthy());
+    mockFetch.mockResolvedValueOnce({ status: 'unavailable', reason: 'network', meta });
+    await act(async () => { fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh'); });
+    await waitFor(() => expect(view.getByTestId('routines-stale')).toBeTruthy());
+    expect(view.getByText('PUSH archivada')).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Deshacer archivado' })).toBeTruthy();
+    view.unmount();
+  });
+
+  it('a manual refresh within 30 s always reads', async () => {
+    await visit();
+    clock += 1_000;
+    const view = renderScreen();
+    await act(async () => { fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh'); });
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+    view.unmount();
+  });
+
+  it.each([
+    ['401', { status: 'unauthorized', meta: { durationMs: 1, httpStatus: 401, outcome: 'unauthorized' } }],
+    ['403', { status: 'unavailable', reason: 'server', meta: { durationMs: 1, httpStatus: 403, outcome: 'unavailable' } }],
+  ])('%s: the protected list is discarded, not shown as a fallback and never reused', async (_code, denied) => {
+    await visit();
+    mockFetch.mockResolvedValueOnce(denied);
+    clock += 1_000;
+    const view = renderScreen();
+    await act(async () => { fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh'); });
+    await waitFor(() => expect(view.getByTestId('routines-unavailable')).toBeTruthy());
+    expect(view.queryByText('PUSH')).toBeNull();
+    view.unmount();
+    const again = renderScreen();
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(3));
+    again.unmount();
+  });
+
+  it('offline keeps the last list as stale (never fresh), is not reused, and recovers', async () => {
+    await visit();
+    mockFetch.mockResolvedValueOnce({ status: 'unavailable', reason: 'network', meta });
+    clock += 1_000;
+    const view = renderScreen();
+    await act(async () => { fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh'); });
+    await waitFor(() => expect(view.getByTestId('routines-stale')).toBeTruthy());
+    expect(view.getByText('PUSH')).toBeTruthy();
+    view.unmount();
+    const again = renderScreen();
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(again.queryByTestId('routines-stale')).toBeNull());
+    again.unmount();
+  });
+
+  it('another account never sees this account\'s retained list', async () => {
+    await visit();
+    const other = { request: jest.fn() };
+    mockCurrentClient = other;
+    const view = renderScreen();
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+    expect(mockFetch.mock.calls[1][0]).toBe(other);
+    view.unmount();
+    clearConfirmedReads(other as never);
   });
 });
 
@@ -398,7 +709,7 @@ it.each([false, true])('hides ordering for fewer than two active routines and ar
 
 it('requires a confirmed list version before entering order mode', async () => {
   mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: readyState(fixture({ listVersion: undefined })) });
-  const view = renderScreen(); fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' }));
+  const view = renderScreen(); await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); }); // verified by a read first
   expect(view.queryByTestId('routine-order-list')).toBeNull(); expect(mockOrder).not.toHaveBeenCalled();
   expect(view.getByText('Actualizá la lista antes de ordenar las rutinas.')).toBeTruthy();
   await waitFor(() => expect(mockRefresh).toHaveBeenCalled());
@@ -408,7 +719,7 @@ it.each([false, true])('keeps an optimistic order and sends exact IDs, server ve
   let finish: ((value: unknown) => void) | undefined;
   mockOrder.mockReturnValue(new Promise(resolve => { finish = resolve; }));
   const view = renderScreen({ dark, createIdempotencyKey: () => 'order-key' });
-  fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' }));
+  await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); }); // verified by a read first
   expect(view.queryByRole('button', { name: 'Nueva rutina' })).toBeNull();
   expect(view.queryByText('Archivadas')).toBeNull();
   expect(view.queryByRole('button', { name: /Abrir rutina/ })).toBeNull();
@@ -427,9 +738,16 @@ it.each([false, true])('keeps an optimistic order and sends exact IDs, server ve
 
 it.each(['conflict', 'unavailable'])('rolls back an unconfirmed order to server rows and reads again after %s', async status => {
   mockOrder.mockResolvedValue(status === 'conflict' ? { status, code: 'ROUTINE_LIST_CHANGED' } : { status, reason: 'network' });
-  const view = renderScreen(); fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); moveDown(view);
+  const view = renderScreen();
+  expect(view.getAllByTestId('routine-name').map(node => node.props.children)).toEqual(['PUSH', 'LEGS']); // server order
+  await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); }); // verified by a read first
+  moveDown(view);
+  // The draft really changed before saving: PUSH moved below LEGS.
+  expect(view.getByLabelText('Ordenar PUSH').props.accessibilityValue.now).toBe(2);
+  expect(view.getByLabelText('Ordenar LEGS').props.accessibilityValue.now).toBe(1);
   await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar orden' })); });
   expect(mockOrder).toHaveBeenCalledTimes(1);
+  expect(mockOrder.mock.calls[0]?.[1]).toMatchObject({ routineIds: [routines[0].id, routines[1].id], expectedListVersion: 7 }); // the moved draft was sent
   await waitFor(() => expect(view.queryByTestId('routine-order-list')).toBeNull());
   expect(view.getAllByTestId('routine-name').map(node => node.props.children)).toEqual(['PUSH', 'LEGS']);
   expect(mockRefresh).toHaveBeenCalled(); expect(mockOrder).toHaveBeenCalledTimes(1);
@@ -437,7 +755,7 @@ it.each(['conflict', 'unavailable'])('rolls back an unconfirmed order to server 
 });
 
 it('moves with the order handle accessibility actions and saves the draft order', async () => {
-  const view = renderScreen(); fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' }));
+  const view = renderScreen(); await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Ordenar rutinas' })); }); // verified by a read first
   expect(view.getByTestId('routine-order-list')).toBeTruthy();
   fireEvent(view.getByLabelText(`Ordenar ${routines[1].name}`), 'accessibilityAction', { nativeEvent: { actionName: 'decrement' } });
   expect(view.getByLabelText(`Ordenar ${routines[1].name}`).props.accessibilityValue).toEqual(expect.objectContaining({ now: 1 }));

@@ -1,11 +1,14 @@
 import type { PropsWithChildren } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Platform, Pressable, RefreshControl, StyleSheet, View, type ScrollViewProps } from 'react-native';
-import { Stack, useFocusEffect, useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
-import { createMobileTrainingRoutine, reorderMobileTrainingRoutines, fetchRoutineDetail, fetchMobileTrainingRoutines, setMobileTrainingRoutineStatus, useApiResource, useMobileApi } from '@/api';
+import { createMobileTrainingRoutine, reorderMobileTrainingRoutines, fetchRoutineDetail, fetchMobileTrainingRoutines, setMobileTrainingRoutineStatus, useMobileApi } from '@/api';
+import type { MobileApiClient } from '@/api/client';
+import { isDeniedRead } from '@/api/resource';
+import { useCachedRead } from '@/api/use-cached-read';
 import type { MobileTrainingRoutine } from '@/api/routines';
 import type { MobileApiMutationResult } from '@/api/results';
 import {
@@ -21,11 +24,14 @@ import { DragScrollView } from './session-native-interactions';
 import { useStartConfirmPointerEvents } from './start-confirm-lock';
 import { useSessionStarter } from './use-session-starter';
 
-const UNAVAILABLE = {
-  status: 'unavailable' as const, reason: 'invalid_response' as const,
-  meta: { durationMs: 0, httpStatus: null, outcome: 'unavailable' as const },
-};
-type PendingMutation = 'archive' | 'create' | 'duplicate-load' | 'duplicate' | 'order' | 'restore' | null;
+type PendingMutation = 'archive' | 'create' | 'duplicate-load' | 'duplicate' | 'order-load' | 'order' | 'restore' | null;
+/**
+ * The routines list is a retained reading of the existing ConfirmedReadCache (#303 C3a): Rutinas and Archivadas share
+ * it, and coming back within 30 s shows it without a request. Every settled training write (create, duplicate, edit,
+ * archive, restore, reorder, exercise assignment, sessions) invalidates it through the API client. The loader only
+ * reads: the per-visit state below never lives in the retained controller.
+ */
+const loadRoutines = (client: MobileApiClient, signal: AbortSignal) => fetchMobileTrainingRoutines(client, signal);
 type OrderDraft = { routines: MobileTrainingRoutine[]; ids: string[]; version: number };
 type Notice = { message: string; undo?: MobileTrainingRoutine; error?: boolean };
 
@@ -91,28 +97,29 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
   const [confirmedOrder, setConfirmedOrder] = useState<string[] | null>(null);
   const [pending, setPending] = useState<PendingMutation>(null);
   const pendingRef = useRef(false);
-  const mutationEpoch = useRef(0);
-  const lastReadEpoch = useRef(-1);
+  /**
+   * The confirmed reading shown when the last write of this visit settled (`null`: none yet). Only a DIFFERENT confirmed
+   * reading replaces the overlays: provenance by identity, never by comparing millisecond timestamps.
+   */
+  const writeBaseline = useRef<object | null | undefined>(undefined);
   const [confirmedStatus, setConfirmedStatus] = useState<Record<string, boolean>>({});
   const [notice, setNotice] = useState<Notice | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alive = useRef(true);
 
-  const load = useCallback((signal: AbortSignal) => {
-    const epoch = mutationEpoch.current;
-    if (!client) return Promise.resolve(UNAVAILABLE);
-    return fetchMobileTrainingRoutines(client, signal).then(result => {
-      if (!signal.aborted) lastReadEpoch.current = epoch;
-      // A confirmed mutation survives a failed refresh; only a fresh authoritative list clears it.
-      if (!signal.aborted && alive.current && epoch === mutationEpoch.current && result.status === 'ok' && result.data.routines.status === 'ok') {
-        setConfirmedStatus({});
-        setConfirmedOrder(null);
-        setConfirmedCopies([]);
-      }
-      return result;
-    });
-  }, [client]);
-  const { refresh, state } = useApiResource(load);
+  const { refresh, reload, snapshot, state } = useCachedRead(client, 'training', 'routines', loadRoutines);
+  // A confirmed mutation survives a failed refresh; only an authoritative list read after it settled clears it. A read
+  // that started before the write never confirms: the write's invalidation cancels it (ConfirmedReadCache).
+  useEffect(() => {
+    const baseline = writeBaseline.current;
+    if (baseline === undefined || state.status !== 'ready' || state.refreshing || state.current === baseline || state.current.data.routines.status !== 'ok') return;
+    writeBaseline.current = undefined;
+    setConfirmedStatus({}); setConfirmedOrder(null); setConfirmedCopies([]);
+  }, [state]);
+  const denied = isDeniedRead(state);
+  // A notice still showing (a routine name and its «Deshacer») is discarded in the denied render, never shown again.
+  if (denied && notice) setNotice(null);
+  const shownNotice = denied ? null : notice;
   const current = state.status === 'ready' ? state.current : state.status === 'loading' ? undefined : state.previous;
   const resource = current?.data.routines;
   const sorted = resource?.status === 'ok' ? resource.data.map(routine => ({ ...routine, isActive: confirmedStatus[routine.id] ?? routine.isActive }))
@@ -127,36 +134,37 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
   const archived = sorted.filter(routine => !routine.isActive);
   const rows = archivedOnly ? archived : active;
 
+  // Notices name routines and carry «Deshacer»: none is shown or spoken while access is denied (e.g. the read after an
+  // archive answered 401/403 before the result was announced).
   const announce = useCallback((next: Notice) => {
-    if (!alive.current) return;
+    if (!alive.current || isDeniedRead(snapshot())) return;
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
     setNotice(next);
     void AccessibilityInfo.announceForAccessibility(next.message);
     noticeTimer.current = setTimeout(() => setNotice(null), next.error ? 6_000 : 4_000);
-  }, []);
+  }, [snapshot]);
   useEffect(() => {
     alive.current = true;
     return () => { alive.current = false; if (noticeTimer.current) clearTimeout(noticeTimer.current); };
   }, []);
-  useFocusEffect(useCallback(() => { if (!pendingRef.current && !ordering.current) void refresh(); }, [refresh]));
+  // Focus, foreground and the 30 s reuse are handled by the retained reading (useCachedRead).
   const runRefresh = () => { if (!pendingRef.current && !ordering.current) void refresh(); };
 
+  /** After a write settled: never joins a read that may predate it (ConfirmedReadCache.reload). */
+  const confirmedReading = () => { const reading = snapshot(); return reading.status === 'ready' ? reading.current : null; };
   const refreshAfterMutation = async () => {
-    await refresh();
-    // useApiResource coalesces reads. An older foreground read must finish before the new one.
-    if (lastReadEpoch.current !== mutationEpoch.current) await refresh();
+    writeBaseline.current = confirmedReading();
+    await reload();
   };
 
   const changeStatus = async (routine: MobileTrainingRoutine, isActive: boolean) => {
     if (!client || pendingRef.current || ordering.current) return;
     pendingRef.current = true;
-    mutationEpoch.current += 1;
     setPending(isActive ? 'restore' : 'archive');
     setNotice(null);
     let next: Notice;
     try {
       const result = await setMobileTrainingRoutineStatus(client, routine.id, isActive);
-      mutationEpoch.current += 1;
       if (result.status === 'ok') {
         if (alive.current) setConfirmedStatus(previous => ({ ...previous, [routine.id]: result.data.routine.isActive }));
         next = result.data.routine.isActive === isActive
@@ -176,13 +184,11 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
   const create = async (input: RoutineCreateInput): Promise<string | null> => {
     if (!client || pendingRef.current || ordering.current) return 'Esperá a que termine la acción actual.';
     pendingRef.current = true;
-    mutationEpoch.current += 1;
     setPending(duplicateSource ? 'duplicate' : 'create');
     try {
       const result = duplicateSource
         ? await duplicateRoutine(client, duplicateSource, input)
         : await createMobileTrainingRoutine(client, input);
-      mutationEpoch.current += 1;
       if (result.status !== 'ok') {
         if (result.status === 'conflict' && result.code !== 'IDEMPOTENCY_KEY_REUSED') return 'La rutina cambió. Cerrá esta hoja y abrí Duplicar otra vez para usar la versión actual.';
         if (result.status === 'conflict') return 'Ese intento ya se usó con otros datos. Cambiá el nombre o color e intentá de nuevo.';
@@ -223,22 +229,33 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
     } catch { announce({ message: 'No pudimos cargar la rutina para copiarla. Revisá la conexión e intentá de nuevo.', error: true }); }
     finally { pendingRef.current = false; if (alive.current) setPending(null); }
   };
-  const openOrder = () => {
+  const openOrder = async () => {
     if (pendingRef.current || ordering.current || archivedOnly || active.length < 2) return;
-    const version = current?.data.listVersion;
-    if (state.status !== 'ready' || version?.status !== 'ok' || Object.keys(confirmedStatus).length) {
-      announce({ message: 'Actualizá la lista antes de ordenar las rutinas.', error: true }); void refresh(); return;
+    // CAS: the list version sent with a new order is ALWAYS verified by a read started for it (or the read the last
+    // write's own invalidation started after it settled), never the retained or rendered reading. Provenance is the
+    // reading's identity: a DIFFERENT confirmed reading after the reload, not a millisecond comparison.
+    const before = confirmedReading();
+    pendingRef.current = true; setPending('order-load');
+    try { await reload(); } finally { pendingRef.current = false; if (alive.current) setPending(null); }
+    if (!alive.current) return;
+    const reading = snapshot();
+    const version = reading.status === 'ready' ? reading.current.data.listVersion : undefined;
+    const list = reading.status === 'ready' ? reading.current.data.routines : undefined;
+    if (reading.status !== 'ready' || reading.refreshing || reading.current === before || version?.status !== 'ok' || list?.status !== 'ok') {
+      announce({ message: 'Actualizá la lista antes de ordenar las rutinas.', error: true }); return;
     }
-    ordering.current = true; setOrderDraft({ routines: active, ids: active.map(routine => routine.id), version: version.data });
+    // The draft is that verified server list: overlays of earlier writes are superseded by it.
+    const fresh = list.data.filter(routine => routine.isActive);
+    if (fresh.length < 2) return;
+    ordering.current = true; setOrderDraft({ routines: fresh, ids: fresh.map(routine => routine.id), version: version.data });
   };
   const saveOrder = async () => {
     if (!client || pendingRef.current || !orderDraft || dragging) return;
-    pendingRef.current = true; mutationEpoch.current += 1; setPending('order');
+    pendingRef.current = true; setPending('order');
     let next: Notice;
     try {
       const input = { routineIds: orderDraft.ids, expectedListVersion: orderDraft.version, idempotencyKey: createIdempotencyKey() };
       const result = await reorderMobileTrainingRoutines(client, input);
-      mutationEpoch.current += 1;
       if (result.status === 'ok') {
         if (alive.current) setConfirmedOrder(result.data.routineIds);
         next = { message: 'Orden guardado' };
@@ -265,12 +282,12 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
       headerLargeStyle: { backgroundColor: 'transparent' }, headerBackButtonMenuEnabled: false,
       headerRight: Platform.OS !== 'ios' && !archivedOnly ? () => orderDraft
         ? <DoneButton disabled={Boolean(pending) || dragging || pointerEvents === 'none'} onPress={() => void saveOrder()} />
-        : <View style={styles.headerActions}>{active.length >= 2 ? <RoundButton disabled={Boolean(pending) || pointerEvents === 'none'} label="Ordenar rutinas" onPress={openOrder} /> : null}<RoundButton disabled={Boolean(pending) || pointerEvents === 'none'} label="Nueva rutina" onPress={openCreate} /></View> : undefined,
+        : <View style={styles.headerActions}>{active.length >= 2 ? <RoundButton disabled={Boolean(pending) || pointerEvents === 'none'} label="Ordenar rutinas" onPress={() => void openOrder()} /> : null}<RoundButton disabled={Boolean(pending) || pointerEvents === 'none'} label="Nueva rutina" onPress={openCreate} /></View> : undefined,
       headerLeft: Platform.OS !== 'ios' ? () => <RoundButton disabled={Boolean(pending) || pointerEvents === 'none'} label="Volver" onPress={() => router.back()} /> : undefined,
     }} />
     {Platform.OS === 'ios' && !archivedOnly ? <Stack.Toolbar placement="right">
       {orderDraft ? <Stack.Toolbar.Button accessibilityLabel="Guardar orden" disabled={Boolean(pending) || dragging || pointerEvents === 'none'} onPress={() => void saveOrder()} separateBackground tintColor={colors.primary}>Listo</Stack.Toolbar.Button> : null}
-      {!orderDraft && active.length >= 2 ? <Stack.Toolbar.Button accessibilityLabel="Ordenar rutinas" disabled={Boolean(pending) || pointerEvents === 'none'} icon="arrow.up.arrow.down" onPress={openOrder} separateBackground /> : null}
+      {!orderDraft && active.length >= 2 ? <Stack.Toolbar.Button accessibilityLabel="Ordenar rutinas" disabled={Boolean(pending) || pointerEvents === 'none'} icon="arrow.up.arrow.down" onPress={() => void openOrder()} separateBackground /> : null}
       {!orderDraft ? <Stack.Toolbar.Button accessibilityLabel="Nueva rutina" disabled={Boolean(pending) || pointerEvents === 'none'} icon="plus" onPress={openCreate} separateBackground tintColor={colors.primary} /> : null}
     </Stack.Toolbar> : null}
   </>;
@@ -280,7 +297,7 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
   </RoutinesScrollScreen> : !current ? <RoutinesScrollScreen testID="routines-unavailable">
     <UnavailableState action={<Button label="Reintentar" onPress={runRefresh} />} description="Revisá la conexión e intentá de nuevo." title={`No pudimos cargar ${title}`} />
   </RoutinesScrollScreen> : <RoutinesScrollScreen canCancelContentTouches={!orderDraft}
-    pointerEvents={pointerEvents} contentContainerStyle={{ paddingBottom: notice ? insets.bottom + 100 : spacing.xl }}
+    pointerEvents={pointerEvents} contentContainerStyle={{ paddingBottom: shownNotice ? insets.bottom + 100 : spacing.xl }}
     refreshControl={!orderDraft ? <RefreshControl colors={[colors.primary]} onRefresh={runRefresh} progressBackgroundColor={colors.surface}
       refreshing={state.status === 'ready' && state.refreshing} tintColor={colors.primary} /> : undefined} testID={archivedOnly ? 'archived-routines-screen' : 'routines-screen'}>
     {Platform.OS !== 'ios' ? <AppText accessibilityRole="header" variant="largeTitle">{title}</AppText> : null}
@@ -320,12 +337,12 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
 
   return <>
     {header}{content}
-    {notice ? <Animated.View entering={FadeIn.duration(motionDurations.fast)} exiting={FadeOut.duration(motionDurations.fast)}
+    {shownNotice ? <Animated.View entering={FadeIn.duration(motionDurations.fast)} exiting={FadeOut.duration(motionDurations.fast)}
       style={[styles.toast, { bottom: insets.bottom + spacing.lg }]}>
       <GlassSurface style={styles.toastSurface}>
-        <AppText accessibilityRole={notice.error ? 'alert' : undefined} style={styles.flex} variant="subheadline">{notice.message}</AppText>
-        {notice.undo ? <Pressable accessibilityLabel="Deshacer archivado" accessibilityRole="button" disabled={Boolean(pending)}
-          onPress={() => { if (notice.undo) void changeStatus(notice.undo, true); }} style={[styles.undo, { backgroundColor: colors.brandSubtle }]}>
+        <AppText accessibilityRole={shownNotice.error ? 'alert' : undefined} style={styles.flex} variant="subheadline">{shownNotice.message}</AppText>
+        {shownNotice.undo ? <Pressable accessibilityLabel="Deshacer archivado" accessibilityRole="button" disabled={Boolean(pending)}
+          onPress={() => { if (shownNotice.undo) void changeStatus(shownNotice.undo, true); }} style={[styles.undo, { backgroundColor: colors.brandSubtle }]}>
           <AppText style={{ color: colors.primary }} variant="headline">Deshacer</AppText>
         </Pressable> : null}
       </GlassSurface>
