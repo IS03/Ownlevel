@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore, type Ref } from 'react';
-import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { AppIcon, AppSheet, AppText, brandTokens, Button, Chip, Surface, TextField, spacing, useAppSheetDismiss, useOwnlevelTheme, useReduceMotion } from '@/design-system';
@@ -9,6 +9,7 @@ import { CONFIGURATION_AFTER_NOTE, CONFIGURATION_HINT, CONFIGURATION_LABEL_MAX, 
 import { haptics } from '@/platform/haptics';
 import { activeSessionStorage } from './active-session-native-storage';
 import { sessionIntentKey } from './active-session-controller';
+import { RoutineSheetButton } from './routine-sheet-button';
 
 /** #367: one journal per session. Optional: a failure here never blocks training. */
 export function useExerciseConfigurations(client: MobileApiClient, userId: string, sessionId: string) {
@@ -52,19 +53,35 @@ export function ExerciseVariantRow({ journal, sessionExerciseId, name, editable 
   </View>;
 }
 
+/**
+ * #463: the field and Guardar stay together, side by side, unless they would be cramped: with large text (Dynamic Type
+ * above 1.3) or when the field would be left narrower than a comfortable typing width, Guardar goes under it.
+ */
+const COMPOSER_MIN_FIELD = 200, COMPOSER_SAVE_WIDTH = 100;
+export function variantComposerStacked(width: number, fontScale: number) {
+  return fontScale > 1.3 || width - 2 * spacing.lg - spacing.sm - COMPOSER_SAVE_WIDTH * fontScale < COMPOSER_MIN_FIELD;
+}
+
 function ExerciseVariantSheet({ name, view, onSave, onClose }: { name: string; view: ConfigurationView; onSave: (value: ConfigurationValue | null) => Promise<boolean>; onClose: () => void }) {
-  const { colors } = useOwnlevelTheme();
-  return <AppSheet onClose={onClose} closeLabel="Cerrar variante" dismissKeyboardOnClose nativeKeyboard={Platform.OS === 'ios'} style={{ backgroundColor: colors.background, maxHeight: '90%' }} testID="exercise-variant-sheet">
+  const { colors } = useOwnlevelTheme(), insets = useSafeAreaInsets();
+  const ios = Platform.OS === 'ios';
+  // #463: the same keyboard geometry as the body sheets. The edge hides behind the keyboard by the home-indicator padding
+  // (no plain band above it), and the sheet is bounded to the free area so the composer is never pushed off screen.
+  return <AppSheet onClose={onClose} closeLabel="Cerrar variante" dismissKeyboardOnClose nativeKeyboard={ios} keyboardViewport={ios}
+    keyboardTopInset={insets.top + spacing.md} keyboardInset={Math.max(insets.bottom, spacing.lg) - spacing.sm}
+    style={{ backgroundColor: colors.background, maxHeight: ios ? '100%' : '90%', flexShrink: 1 }} testID="exercise-variant-sheet">
     <VariantForm name={name} view={view} onSave={onSave} />
   </AppSheet>;
 }
 
 function VariantForm({ name, view, onSave }: { name: string; view: ConfigurationView; onSave: (value: ConfigurationValue | null) => Promise<boolean> }) {
-  const { colors } = useOwnlevelTheme(), insets = useSafeAreaInsets(), dismiss = useAppSheetDismiss();
+  const { colors } = useOwnlevelTheme(), insets = useSafeAreaInsets(), dismiss = useAppSheetDismiss(), { width, fontScale } = useWindowDimensions();
   const current = view.value;
   const previous: PreviousConfiguration | null = view.item?.previous ?? null;
   const [text, setText] = useState(current?.kind === 'recorded' ? current.label : '');
   const [saving, setSaving] = useState(false), [error, setError] = useState<string | null>(null);
+  const [help, setHelp] = useState(false);
+  const stacked = variantComposerStacked(width, fontScale);
   const label = normalizeConfigurationLabel(text);
   const save = async (value: ConfigurationValue | null) => {
     if (saving) return;
@@ -77,25 +94,39 @@ function VariantForm({ name, view, onSave }: { name: string; view: Configuration
   // "Same as last time" is the person's choice, kept with where it came from: never filled in for them.
   const repeat = previous && !sameConfiguration(current, previous.value) ? previous : null;
   const typed: ConfigurationValue | null = label ? { kind: 'recorded', label, source: 'entered', repeatedFrom: null } : null;
-  return <View style={{ paddingBottom: Math.max(insets.bottom, spacing.lg) }} testID="exercise-variant-form">
-    <ScrollView keyboardShouldPersistTaps="always" contentContainerStyle={styles.content}>
+  // #463: the options scroll if space runs out; the error, the field and Guardar stay pinned on the keyboard. The bottom
+  // padding pairs with the sheet's keyboardInset: only a small gap shows above the keyboard, the home indicator without it.
+  return <View style={styles.shrink} testID="exercise-variant-form">
+    <ScrollView style={styles.shrink} keyboardShouldPersistTaps="always" contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <View style={styles.flex}><AppText accessibilityRole="header" variant="headline">Variante</AppText><AppText muted variant="footnote">{name}</AppText></View>
-        <Button disabled={saving} label="Cancelar" onPress={() => dismiss()} variant="quiet" />
+        <View style={styles.flex}>
+          <AppText accessibilityRole="header" variant="headline">Variante · {name}</AppText>
+          <AppText muted variant="footnote" testID="exercise-variant-current">Ahora: {variantText(current)}</AppText>
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Qué es una variante" accessibilityState={{ expanded: help }} hitSlop={spacing.xs}
+          onPress={() => { haptics.selection(); setHelp(open => !open); }} style={({ pressed }) => [styles.icon, pressed && { opacity: 0.6 }]} testID="exercise-variant-help">
+          <AppIcon name="info" color={help ? colors.primary : colors.textMuted} size={20} />
+        </Pressable>
+        <RoutineSheetButton label="Cerrar variante" icon="close" disabled={saving} onPress={() => dismiss()} />
       </View>
-      <AppText muted variant="footnote">{CONFIGURATION_HINT}</AppText>
-      <TextField label="¿Cómo la hiciste hoy?" placeholder="Ej.: agarre neutro, banco a 30°" value={text} onChangeText={setText} maxLength={CONFIGURATION_LABEL_MAX}
-        disabled={saving} autoCapitalize="sentences" returnKeyType="done" onSubmitEditing={() => { if (typed && !sameConfiguration(current, typed)) void save(typed); }} testID="exercise-variant-input" />
+      {help ? <AppText accessibilityLiveRegion="polite" muted variant="footnote" testID="exercise-variant-hint">{CONFIGURATION_HINT}</AppText> : null}
       <View style={styles.chips}>
         {repeat ? <Chip kind="toggle" disabled={saving} selected={false} label={`Como la última vez · ${variantText(repeat.value)}`}
           onPress={() => void save({ ...repeat.value, source: 'repeated_previous', repeatedFrom: repeat.sessionExerciseId } as ConfigurationValue)} /> : null}
         {current?.kind === 'not_applicable' ? null : <Chip kind="toggle" disabled={saving} selected={false} label="No aplica"
           onPress={() => void save({ kind: 'not_applicable', label: null, source: 'entered', repeatedFrom: null })} />}
+        {current ? <Button disabled={saving} label="Dejar sin registrar" onPress={() => void save(null)} variant="quiet" /> : null}
       </View>
-      <Button disabled={saving || !typed || sameConfiguration(current, typed) && current?.label === typed.label} loading={saving} label="Guardar" onPress={() => { if (typed) void save(typed); }} />
-      {current ? <Button disabled={saving} label="Dejar sin registrar" onPress={() => void save(null)} variant="quiet" /> : null}
-      {error ? <AppText accessibilityRole="alert" variant="footnote" style={{ color: colors.danger }}>{error}</AppText> : null}
     </ScrollView>
+    <View style={[styles.composerArea, { paddingBottom: Math.max(insets.bottom, spacing.lg) + spacing.xs }]}>
+      {error ? <AppText accessibilityRole="alert" variant="footnote" style={{ color: colors.danger }}>{error}</AppText> : null}
+      <View style={stacked ? styles.stacked : styles.composer} testID="exercise-variant-composer">
+        <TextField hideLabel label="¿Cómo la hiciste hoy?" placeholder="Ej.: agarre neutro" value={text} onChangeText={setText} maxLength={CONFIGURATION_LABEL_MAX}
+          disabled={saving} autoCapitalize="sentences" returnKeyType="done" onSubmitEditing={() => { if (typed && !sameConfiguration(current, typed)) void save(typed); }}
+          style={stacked ? undefined : styles.flex} testID="exercise-variant-input" />
+        <Button disabled={saving || !typed || sameConfiguration(current, typed) && current?.label === typed.label} loading={saving} label="Guardar" onPress={() => { if (typed) void save(typed); }} />
+      </View>
+    </View>
   </View>;
 }
 
@@ -187,6 +218,10 @@ const styles = StyleSheet.create({
   notice: { gap: spacing.xs }, noticeText: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm }, noticeActions: { flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.sm },
   toggle: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 44 }, flipped: { transform: [{ rotate: '180deg' }] },
   flex: { flex: 1 }, row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 50 },
-  content: { padding: spacing.lg, gap: spacing.md }, header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }, section: { gap: spacing.sm },
+  shrink: { flexShrink: 1 },
+  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.md, gap: spacing.md }, header: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  icon: { width: brandTokens.layout.minTouch, height: brandTokens.layout.minTouch, alignItems: 'center', justifyContent: 'center' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm }, section: { gap: spacing.sm },
+  composerArea: { paddingHorizontal: spacing.lg, gap: spacing.sm },
+  composer: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm }, stacked: { gap: spacing.sm },
 });
