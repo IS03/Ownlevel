@@ -108,50 +108,53 @@ export class QuickPinsController {
   }
 
   pin(id: string) {
-    return this.fromVerified(current => current?.includes(id.toLowerCase()) ? 'unchanged' : current ? [...current, id] : []);
+    return this.exclusive(current => current?.includes(id.toLowerCase()) ? 'unchanged' : current ? [...current, id] : []);
   }
   unpin(id: string) {
-    return this.fromVerified(current => current ? current.filter(pinned => pinned !== id.toLowerCase()) : []);
+    return this.exclusive(current => current ? current.filter(pinned => pinned !== id.toLowerCase()) : []);
   }
   move(id: string, index: number) {
-    return this.fromVerified(current => {
+    return this.exclusive(current => {
       if (!current?.includes(id.toLowerCase())) return 'refused';
       const rest = current.filter(pinned => pinned !== id.toLowerCase());
       rest.splice(Math.max(0, Math.min(index, rest.length)), 0, id.toLowerCase());
       return rest;
     });
   }
-  /** Builds the new list from the confirmed pins, read again first if they were only retained. */
-  private async fromVerified(build: (current: string[] | null) => string[] | 'unchanged' | 'refused'): Promise<QuickPinsWriteOutcome> {
-    if (!await this.verify()) return 'refused';
-    const next = build(this.state.confirmed ? ids(this.state.confirmed) : null);
-    return next === 'unchanged' || next === 'refused' ? next : this.write(next);
-  }
-  /**
-   * Every NEW write passes here (pin, unpin, move, «Aplicar mi cambio» and any direct write): if the confirmed pins are a
-   * retained reading they are read again first. Not read again (offline, denied, failed): false, nothing is written and
-   * `wanted` is untouched. A stored intent's replay (`recover`) never comes here: it resends its exact body and key.
-   */
-  private async verify(): Promise<boolean> {
-    if (this.verified) return true;
-    if (this.disposed || this.busy || this.state.intent || (this.state.phase !== 'idle' && this.state.phase !== 'conflict')) return false;
-    this.busy = true;
-    try { await this.reload(); } finally { this.busy = false; }
-    if (this.disposed) return false;
-    if (!this.verified || this.state.availability !== 'ok') { this.update({ error: 'unavailable', message: MESSAGES.unavailable }); return false; }
-    return true;
-  }
   /** What the person wanted before a refusal, sent again over the new truth only because they asked. */
-  reapply() { return this.state.wanted ? this.write(this.state.wanted) : Promise.resolve<QuickPinsWriteOutcome>('refused'); }
+  reapply() {
+    const wanted = this.state.wanted;
+    return wanted ? this.exclusive(() => wanted) : Promise.resolve<QuickPinsWriteOutcome>('refused');
+  }
   dismiss() {
     if (this.busy || this.state.intent) return;
     this.update({ wanted: null, error: null, message: null, ...(this.state.phase === 'conflict' ? { phase: 'idle' as const } : {}) });
   }
-
   /** The whole ordered list. One write at a time, stored with its key before it is sent, against a verified revision. */
-  async write(savedMealIds: string[]): Promise<QuickPinsWriteOutcome> {
+  write(savedMealIds: string[]) { return this.exclusive(() => savedMealIds); }
+
+  /**
+   * The ONLY way to a new write (pin, unpin, move, «Aplicar mi cambio», write). The lock is taken synchronously, before
+   * the first await, and held through verification, building the list, storing the intent and sending it: a second
+   * action in the same tick is refused (never queued or merged), so there is one journal entry and one PUT at most.
+   * If the confirmed pins are a retained reading they are read again first; not read again (offline, denied, failed):
+   * nothing is written and `wanted` is untouched. A stored intent's replay (`recover`) never comes here.
+   */
+  private async exclusive(build: (current: string[] | null) => string[] | 'unchanged' | 'refused'): Promise<QuickPinsWriteOutcome> {
     if (this.disposed || this.busy || this.state.intent || (this.state.phase !== 'idle' && this.state.phase !== 'conflict')) return 'refused';
-    if (!await this.verify()) return 'refused';
+    this.busy = true;
+    try {
+      if (!this.verified) {
+        await this.reload();
+        if (this.disposed) return 'refused';
+        if (!this.verified || this.state.availability !== 'ok') { this.update({ error: 'unavailable', message: MESSAGES.unavailable }); return 'refused'; }
+      }
+      const next = build(this.state.confirmed ? ids(this.state.confirmed) : null);
+      return next === 'unchanged' || next === 'refused' ? next : await this.writeLocked(next);
+    } finally { this.busy = false; }
+  }
+  /** Called with the lock held by `exclusive`. */
+  private async writeLocked(savedMealIds: string[]): Promise<QuickPinsWriteOutcome> {
     const confirmed = this.state.confirmed;
     if (!confirmed || this.state.availability !== 'ok') { this.update({ error: 'unavailable', message: MESSAGES.unavailable }); return 'refused'; }
     if (savedMealIds.length > QUICK_PINS_MAX) { this.update({ error: 'full', message: MESSAGES.full }); return 'refused'; }
@@ -159,15 +162,12 @@ export class QuickPinsController {
     if (!intent) { this.update({ error: 'invalid', message: MESSAGES.invalid }); return 'refused'; }
     if (sameIds(intent.savedMealIds, ids(confirmed))) { this.update({ phase: 'idle', wanted: null, error: null, message: null }); return 'unchanged'; }
     const stored: StoredQuickPinsIntent = { version: 1, intent, base: confirmed };
-    this.busy = true;
-    try {
-      try { await this.repository.write(stored); } catch { this.update({ error: 'storage', message: MESSAGES.storage }); return 'refused'; }
-      // Stored but not sent (the controller went away): the next session finds it unconfirmed and replays it on request.
-      if (this.disposed) return 'refused';
-      this.update({ phase: 'pending', intent: stored, wanted: null, error: null, message: null });
-      await this.send(stored);
-      return 'sent';
-    } finally { this.busy = false; }
+    try { await this.repository.write(stored); } catch { this.update({ error: 'storage', message: MESSAGES.storage }); return 'refused'; }
+    // Stored but not sent (the controller went away): the next session finds it unconfirmed and replays it on request.
+    if (this.disposed) return 'refused';
+    this.update({ phase: 'pending', intent: stored, wanted: null, error: null, message: null });
+    await this.send(stored);
+    return 'sent';
   }
 
   /** Replays exactly the stored request: the server answers its stored receipt if it was applied, or applies it now. */

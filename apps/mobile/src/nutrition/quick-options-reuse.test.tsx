@@ -361,6 +361,106 @@ describe('QuickPinsController · «Aplicar mi cambio» and every new write verif
   });
 });
 
+describe('QuickPinsController · two actions in the same tick: one journal entry and one PUT at most', () => {
+  const pinsRead = (revision: number, ids: string[]): Read => okRead({ ...quickOptions(), pins: { status: 'ok', ...snap(revision, ids) } });
+  function deferredRead() { let resolve!: (value: Read) => void; const promise = new Promise<Read>(r => { resolve = r; }); return { promise, resolve }; }
+  /** A controller whose journal writes (durable intents) are counted. */
+  async function counted(read = jest.fn<QuickPinsApi['read']>(), wanted?: string[]) {
+    const shared = storage();
+    const journal = jest.spyOn(shared.port, 'setItem');
+    const write = jest.fn<QuickPinsApi['write']>();
+    if (wanted) write.mockResolvedValueOnce({ status: 'conflict', code: 'QUICK_PINS_CHANGED', message: 'x', data: { error: 'QUICK_PINS_CHANGED', current: snap(6, [ID(3)]) } } as never);
+    write.mockImplementation(async w => ({ status: 'ok', data: snap(w.expectedRevision + 1, w.savedMealIds), meta }));
+    let key = 0;
+    const controller = new QuickPinsController({ write, read }, new QuickPinsIntentRepository(shared.port, 'owner'), () => `k-${++key}`);
+    await act(async () => { await controller.initialize(); });
+    act(() => { controller.adopt({ status: 'ok', ...snap(4, []) }); });
+    if (wanted) { await act(async () => { await controller.write(wanted); }); expect(controller.getSnapshot()).toMatchObject({ phase: 'conflict', wanted }); }
+    journal.mockClear(); write.mockClear();
+    return { controller, write, read, journal };
+  }
+  const pairs: [string, (c: QuickPinsController) => Promise<string>, (c: QuickPinsController) => Promise<string>][] = [
+    ['pin + pin', c => c.pin(ID(1)), c => c.pin(ID(2))],
+    ['pin + unpin', c => c.pin(ID(1)), c => c.unpin(ID(1))],
+    ['pin + move', c => c.pin(ID(1)), c => c.move(ID(1), 0)],
+    ['pin + write', c => c.pin(ID(1)), c => c.write([ID(5)])],
+  ];
+  it.each(pairs)('verified revision · %s fired in the same tick: the second is refused, 1 journal entry and 1 PUT', async (_name, first, second) => {
+    const c = await counted();
+    let outcomes: string[] = [];
+    await act(async () => { outcomes = await Promise.all([first(c.controller), second(c.controller)]); });
+    expect(outcomes).toEqual(['sent', 'refused']);
+    expect(c.write).toHaveBeenCalledTimes(1);
+    expect(c.journal).toHaveBeenCalledTimes(1);
+    expect(c.read).not.toHaveBeenCalled(); // verified: no read at all
+    expect(c.controller.getSnapshot()).toMatchObject({ phase: 'idle', intent: null });
+  });
+  it.each(pairs)('verification GET pending · %s in the same tick: one read, at most one PUT, the second refused', async (_name, first, second) => {
+    const pending = deferredRead();
+    const c = await counted(jest.fn<QuickPinsApi['read']>().mockReturnValueOnce(pending.promise));
+    act(() => { c.controller.requireVerification(); });
+    let a!: Promise<string>, b!: Promise<string>;
+    act(() => { a = first(c.controller); b = second(c.controller); });
+    expect(await b).toBe('refused'); // refused at once, while the read is still pending: never queued
+    expect(c.read).toHaveBeenCalledTimes(1);
+    expect(c.write).not.toHaveBeenCalled();
+    await act(async () => { pending.resolve(pinsRead(5, [])); expect(await a).toBe('sent'); });
+    expect(c.read).toHaveBeenCalledTimes(1);
+    expect(c.write).toHaveBeenCalledTimes(1);
+    expect(c.write.mock.calls[0][0]).toMatchObject({ expectedRevision: 5 });
+    expect(c.journal).toHaveBeenCalledTimes(1);
+  });
+  it.each([['verified', false], ['verification pending', true]] as [string, boolean][])('«Aplicar mi cambio» + pin in the same tick (%s): one PUT of `wanted`, no duplicated intent', async (_name, unverified) => {
+    const pending = deferredRead();
+    const c = await counted(jest.fn<QuickPinsApi['read']>().mockReturnValueOnce(pending.promise), [ID(1)]);
+    if (unverified) act(() => { c.controller.requireVerification(); });
+    let a!: Promise<string>, b!: Promise<string>;
+    act(() => { a = c.controller.reapply(); b = c.controller.pin(ID(2)); });
+    expect(await b).toBe('refused');
+    if (unverified) await act(async () => { pending.resolve(pinsRead(7, [ID(3)])); });
+    await act(async () => { expect(await a).toBe('sent'); });
+    expect(c.write).toHaveBeenCalledTimes(1);
+    expect(c.write.mock.calls[0][0]).toMatchObject({ savedMealIds: [ID(1)], expectedRevision: unverified ? 7 : 6 });
+    expect(c.journal).toHaveBeenCalledTimes(1);
+    expect(c.read).toHaveBeenCalledTimes(unverified ? 1 : 0);
+  });
+  it('pin + reapply in the same tick (pin first): the reapply is refused and `wanted` stays for later', async () => {
+    const c = await counted(jest.fn<QuickPinsApi['read']>(), [ID(1)]);
+    let outcomes: string[] = [];
+    await act(async () => { outcomes = await Promise.all([c.controller.pin(ID(2)), c.controller.reapply()]); });
+    expect(outcomes).toEqual(['sent', 'refused']);
+    expect(c.write).toHaveBeenCalledTimes(1);
+    expect(c.journal).toHaveBeenCalledTimes(1);
+  });
+  it('the lock is released on every branch: a failed verification, a storage failure and a refused build all leave it free', async () => {
+    const c = await counted(jest.fn<QuickPinsApi['read']>().mockResolvedValueOnce(offline).mockResolvedValue(pinsRead(5, [])));
+    act(() => { c.controller.requireVerification(); });
+    await act(async () => { expect(await c.controller.pin(ID(1))).toBe('refused'); }); // read failed
+    await act(async () => { expect(await c.controller.move(ID(9), 0)).toBe('refused'); }); // nothing to move (after a good read)
+    c.journal.mockImplementationOnce(async () => { throw new Error('disk'); });
+    await act(async () => { expect(await c.controller.pin(ID(1))).toBe('refused'); }); // storage failure
+    await act(async () => { expect(await c.controller.pin(ID(1))).toBe('sent'); }); // and the next action still works
+    expect(c.write).toHaveBeenCalledTimes(1);
+  });
+  it('recover() of an uncertain intent is unchanged: same body and key, no read, and it excludes a new action in the same tick', async () => {
+    const shared = storage();
+    const read = jest.fn<QuickPinsApi['read']>();
+    const write = jest.fn<QuickPinsApi['write']>().mockResolvedValueOnce(offline as never)
+      .mockImplementation(async w => ({ status: 'ok', data: snap(w.expectedRevision + 1, w.savedMealIds), meta }));
+    const controller = new QuickPinsController({ write, read }, new QuickPinsIntentRepository(shared.port, 'owner'), () => 'same-key');
+    await act(async () => { await controller.initialize(); });
+    act(() => { controller.adopt({ status: 'ok', ...snap(4, []) }); });
+    await act(async () => { await controller.pin(ID(1)); });
+    act(() => { controller.requireVerification(); });
+    let pinned!: Promise<string>;
+    await act(async () => { const recovering = controller.recover(); pinned = controller.pin(ID(2)); await recovering; });
+    expect(await pinned).toBe('refused');
+    expect(read).not.toHaveBeenCalled();
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(write.mock.calls[1][0]).toEqual(write.mock.calls[0][0]);
+  });
+});
+
 describe('useQuickPinsController · every reused opening asks for verification', () => {
   it('two reused openings in a row: a pin after each reads first', async () => {
     const client = { request: jest.fn() };
