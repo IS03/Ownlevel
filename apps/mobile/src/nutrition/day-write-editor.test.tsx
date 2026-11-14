@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Alert } from 'react-native';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { DayWriteEditor } from './day-write-editor';
+import { contextInputText,contextRawInput } from './day-context-editor';
 import { DayWriteController,type DayWriteApi } from './day-write-controller';
 import { DayWriteRepository } from './day-write-storage';
 import { nutritionFixture } from './day-fixture.test-helper';
@@ -74,6 +75,40 @@ describe('Native activity/context editor',()=>{
   fireEvent.press(view.getByText('Volver al automático'));
   expect(draft(f).target).toBe('');expect(draft(f).expenditure).toBe('2500');expect(view.getByText('Guardar')).toBeTruthy();
   expect(f.api.mutate).not.toHaveBeenCalled();
+ });
+ it('normalizes only es-AR thousands separators and the field\'s own grouping; malformed text is never another number',()=>{
+  // Digits and well-placed separators (typed, or pasted into any draft).
+  for(const [text,raw] of [['','']  ,['2100','2100'],['2.100','2100'],['12.345','12345'],['1.000.000','1000000'],[' 2.100 ','2100']] as const)expect(contextRawInput(text,'')).toBe(raw);
+  // Malformed or ambiguous: kept as written so the model rejects it.
+  for(const text of ['2.5','1..200','21.00','.100','2.','2,100','2 100','2.1000','2.100.5'])expect(contextRawInput(text,'')).toBe(text.trim());
+  // Editing the grouped text on screen: digits typed or deleted anywhere, the shown dots never change the number.
+  expect(contextRawInput('2.10','2100')).toBe('210');
+  expect(contextRawInput('2.1005','2100')).toBe('21005');
+  expect(contextRawInput('2.1500','2100')).toBe('21500');
+  expect(contextRawInput('2100','2100')).toBe('2100');
+  expect(contextRawInput('12.100','2100')).toBe('12100');
+  expect(contextRawInput('','2100')).toBe('');
+  // A paste that adds a dot, or an edit of malformed text, is not reinterpreted.
+  expect(contextRawInput('2.1002.5','2100')).toBe('2.1002.5');
+  expect(contextRawInput('2..100','2100')).toBe('2..100');
+  expect(contextRawInput('2.','2.5')).toBe('2.');
+  // Round trip of the display.
+  for(const raw of ['1','21','210','2100','21005'])expect(contextRawInput(contextInputText(raw),raw)).toBe(raw);
+ });
+ it('typing, deleting and pasting keep the raw draft; malformed paste shows the error without saving',async()=>{
+  const f=await fixture();f.controller.open('context',f.data);const view=render(<Editor f={f}/>);
+  // Typing digit by digit: the field shows the grouping, the draft stays raw.
+  for(const text of ['2','21','210','2100'])fireEvent.changeText(input(view),text);
+  expect(draft(f).target).toBe('2100');expect(input(view).props.value).toBe('2.100');
+  fireEvent.changeText(input(view),'2.10');expect(draft(f).target).toBe('210');expect(input(view).props.value).toBe('210');
+  fireEvent.changeText(input(view),'');expect(draft(f).target).toBe('');expect(view.getByText('Automático · según tu plan')).toBeTruthy();
+  fireEvent.changeText(input(view),'1.950');expect(draft(f).target).toBe('1950');expect(input(view).props.value).toBe('1.950');
+  fireEvent.changeText(input(view),'2.5');expect(draft(f).target).toBe('2.5');expect(input(view).props.value).toBe('2.5');
+  await act(async()=>{fireEvent.press(view.getByText('Guardar'));});
+  expect(view.getByText('Usá calorías enteras entre 1 y 20000.')).toBeTruthy();expect(f.api.mutate).not.toHaveBeenCalled();
+  fireEvent.changeText(input(view),'1..200');expect(draft(f).target).toBe('1..200');
+  await act(async()=>{fireEvent.press(view.getByText('Guardar'));});
+  expect(view.getByText('Usá calorías enteras entre 1 y 20000.')).toBeTruthy();expect(f.api.mutate).not.toHaveBeenCalled();
  });
  it('a manual value equal to the automatic one stays personal and opens on the chosen field',async()=>{
   const f=await fixture();

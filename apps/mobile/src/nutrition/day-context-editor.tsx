@@ -17,9 +17,24 @@ const SHORT: Record<DayContextField, string> = { target: 'Objetivo', expenditure
 export function contextInputText(raw: string) {
   return /^\d+$/u.test(raw) ? number(Number(raw)) : raw;
 }
-/** Back to the raw draft: the grouping dots never reach the model ("2.100" → "2100"). */
-export function contextRawInput(text: string) {
-  return text.replace(/[.\s]/gu, '');
+/**
+ * Back to the raw draft: the grouping dots never reach the model ("2.100" → "2100"). Dots are dropped only when
+ * they are es-AR thousands separators, or the ones the field itself showed while the user typed or deleted digits.
+ * Anything else ("2.5", "1..200", "2 100") stays as written, so the model rejects it instead of reading another number.
+ */
+export function contextRawInput(text: string, previousRaw = '') {
+  const value = text.trim();
+  if (/^\d*$/u.test(value)) return value;
+  if (/^\d{1,3}(?:\.\d{3})+$/u.test(value)) return value.replace(/\./gu, '');
+  // One edit of the grouping the field itself showed (the draft was digits): only digits added, any characters
+  // removed. A deleted digit can leave the remaining dots out of place, e.g. "2.100" → "2.10" is 210.
+  const shown = contextInputText(previousRaw);
+  let start = 0;
+  while (start < shown.length && start < value.length && shown[start] === value[start]) start += 1;
+  let end = 0;
+  while (end < shown.length - start && end < value.length - start && shown[shown.length - 1 - end] === value[value.length - 1 - end]) end += 1;
+  const inserted = value.slice(start, value.length - end);
+  return /^\d*$/u.test(previousRaw) && /^[\d.]+$/u.test(value) && /^\d*$/u.test(inserted) ? value.replace(/\./gu, '') : value;
 }
 export function contextDateLabel(date: string, today: string) {
   const format = new Intl.DateTimeFormat('es-AR', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long', ...(date.slice(0, 4) === today.slice(0, 4) ? {} : { year: 'numeric' }) });
@@ -86,7 +101,7 @@ function ContextForm({ controller, state, running, initialField }: { controller:
             <TextInput testID="nutrition-context-input" accessibilityLabel={`${TITLE[field]} de este día, en kilocalorías`}
               accessibilityHint={auto === null ? 'Vacío usa el valor automático' : `Vacío usa el automático: ${amount(auto, 'kilocalorías')}`}
               autoFocus={Platform.OS !== 'ios'} editable={editable} keyboardType="number-pad" maxLength={6}
-              value={contextInputText(d[field])} onChangeText={text => controller.changeContext(field, contextRawInput(text))}
+              value={contextInputText(d[field])} onChangeText={text => controller.changeContext(field, contextRawInput(text, d[field]))}
               style={[StyleSheet.absoluteFill, styles.number, { color: colors.text }]} />
           </View>
           <AppText muted variant="title2">kcal</AppText>
