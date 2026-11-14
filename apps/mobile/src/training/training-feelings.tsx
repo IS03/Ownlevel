@@ -5,11 +5,12 @@ import { AppText, Button, brandTokens, useOwnlevelTheme, useReduceMotion } from 
 import { FEELING_LABELS, feelingKeysFor, type FeelingKey, type FeelingsSnapshot, type TrainingFeelingsJournal } from '@/api/training-feelings';
 import type { ActiveSessionController } from './active-session-controller';
 import { FinishScaleControl } from './finish-controls';
+import { ScaleHeader, scaleStyles } from './scale-header';
 
 type Phase = 'pre' | 'post';
 const MOMENT: Record<Phase, { title: string; spoken: string; hint: string }> = {
   pre: { title: 'Al empezar', spoken: 'al empezar', hint: 'Opcional. Queda la hora en que respondés, aunque ya hayas empezado.' },
-  post: { title: 'Al terminar', spoken: 'al terminar', hint: 'Opcional. Energía y fatiga, cada una por separado. Se guardan con el entrenamiento.' },
+  post: { title: 'Al terminar', spoken: 'al terminar', hint: 'Opcional' },
 };
 const scaleOf = (key: FeelingKey) => key.startsWith('energy') ? 'energy' as const : 'fatigue' as const;
 const labelOf = (key: FeelingKey) => key.startsWith('energy') ? 'Energía' : 'Fatiga';
@@ -98,12 +99,12 @@ export function TrainingFeelings({ journal, phase, disabled = false, controller 
         {keys.map(key => {
           const label = labelOf(key), anchors = FEELING_LABELS[scaleOf(key)];
           const value = journal.value(key);
-          return <View key={key} style={styles.scale}>
-            <AppText variant="subheadline">{label}{value !== null ? ` · ${anchors[value - 1]}` : ''}</AppText>
+          return <View key={key} style={scaleStyles.scale}>
+            <ScaleHeader label={label} state={value !== null ? anchors[value - 1] : null} />
             {/* The finish sheet's control: Liquid Glass pill, drag to settle, a second tap clears, one tick per accepted change. */}
             <FinishScaleControl field={key} label={label} anchors={anchors} groupLabel={`${label}, ${moment.spoken}, opcional`} value={value}
               disabled={locked} onChange={next => void journal.change(key, next)} />
-            <View style={styles.ends}><AppText muted variant="caption" style={styles.flex}>{anchors[0]}</AppText><AppText muted variant="caption" style={[styles.flex, styles.end]}>{anchors[4]}</AppText></View>
+            <View style={scaleStyles.ends}><AppText muted variant="caption" style={styles.flex}>{anchors[0]}</AppText><AppText muted variant="caption" style={[styles.flex, styles.end]}>{anchors[4]}</AppText></View>
           </View>;
         })}
         {phase === 'pre' && draft && !state.pending && !state.blocked ? <>
@@ -129,9 +130,9 @@ export function TrainingFeelings({ journal, phase, disabled = false, controller 
   </View>;
 }
 const styles = StyleSheet.create({
-  block: { gap: brandTokens.space.xs }, panel: { gap: brandTokens.space.sm, paddingTop: brandTokens.space.xxs }, scale: { gap: brandTokens.space.xs },
+  block: { gap: brandTokens.space.xs }, panel: { gap: brandTokens.space.lg, paddingTop: brandTokens.space.xxs },
   reveal: { overflow: 'hidden' }, measure: { position: 'absolute', top: 0, left: 0, right: 0 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.sm, minHeight: brandTokens.layout.minTouch },
   link: { minHeight: brandTokens.layout.minTouch, minWidth: brandTokens.layout.minTouch, justifyContent: 'center', alignItems: 'flex-end' },
-  ends: { flexDirection: 'row', gap: brandTokens.space.xs, paddingHorizontal: brandTokens.space.xs }, flex: { flex: 1 }, end: { textAlign: 'right' },
+  flex: { flex: 1 }, end: { textAlign: 'right' },
 });
