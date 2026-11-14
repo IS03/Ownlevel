@@ -262,6 +262,28 @@ describe('exercise library retention (#303 C3a)', () => {
     view.unmount();
   });
 
+  it.each([
+    ['401', { status: 'unauthorized', meta: { durationMs: 1, httpStatus: 401, outcome: 'unauthorized' } }],
+    ['403', { status: 'unavailable', reason: 'server', meta: { durationMs: 1, httpStatus: 403, outcome: 'unavailable' } }],
+  ])('a notice with a name and «Deshacer» (library and detail share it) → %s: it is gone and does not come back after recovery', async (_code, denied) => {
+    const view = library();
+    await settle();
+    mockSetStatus.mockImplementation(settledWrite('/api/mobile/v1/training/exercises/e1/status', { status: 'ok', data: { exercise: { id: 'e1', isActive: false } }, meta }));
+    mockFetch.mockImplementation(async () => catalog({ ...press(), isActive: false } as MobileTrainingExercise));
+    await act(async () => { await view.result.current.status(view.result.current.exercises[0], false); });
+    expect(view.result.current.notice).toMatchObject({ message: 'Press archivado', undo: { exercise: { name: 'Press' } } });
+    mockFetch.mockImplementationOnce(async () => denied);
+    await act(async () => { await view.result.current.refresh(); });
+    expect(view.result.current.notice).toBeNull();
+    // Announcing while denied shows and speaks nothing.
+    act(() => { view.result.current.announce('Press restaurado', { undo: { exercise: press(), active: false } }); });
+    expect(view.result.current.notice).toBeNull();
+    await act(async () => { await view.result.current.refresh(); });
+    expect(names(view)).toEqual(['Press']);
+    expect(view.result.current.notice).toBeNull();
+    view.unmount();
+  });
+
   it('CAS regression: archive confirmed, then the re-read fails: editing the identity writes nothing', async () => {
     await visit(); // a retained reading
     const view = library();

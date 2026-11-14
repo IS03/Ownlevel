@@ -4,6 +4,7 @@ import { createMobileTrainingExercise, fetchMobileTrainingExercises, setMobileTr
 import type { MobileApiClient } from '@/api/client';
 import type { MobileTrainingExercise, MobileTrainingExerciseMutation, MobileTrainingExercisesResponse } from '@/api/exercises';
 import type { MobileApiMutationResult } from '@/api/results';
+import { isDeniedRead } from '@/api/resource';
 import { useCachedRead } from '@/api/use-cached-read';
 export const exerciseUnavailable = { status: 'unavailable' as const, reason: 'invalid_response' as const, meta: { durationMs: 0, httpStatus: null, outcome: 'unavailable' as const } };
 export function exerciseWriteError(result: MobileApiMutationResult<unknown>): string {
@@ -31,10 +32,12 @@ export function useExerciseLibrary() {
   const writeBaseline = useRef<object | null | undefined>(undefined);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(null), 4000); return () => clearTimeout(timer); }, [notice]);
-  const announce = (message: string, extra: Omit<NonNullable<typeof notice>, 'message'> = {}) => {
-    if (alive.current) { setNotice({ message, ...extra }); void AccessibilityInfo.announceForAccessibility(message); }
-  };
   const { state, refresh, reload, snapshot } = useCachedRead(client, 'training', 'exercise-library', loadExercises);
+  // Notices name exercises and carry «Deshacer»: none is shown or spoken while access is denied.
+  const announce = (message: string, extra: Omit<NonNullable<typeof notice>, 'message'> = {}) => {
+    if (!alive.current || isDeniedRead(snapshot())) return;
+    setNotice({ message, ...extra }); void AccessibilityInfo.announceForAccessibility(message);
+  };
   // A read that started before a write never confirms: the write's invalidation cancels it (ConfirmedReadCache).
   useEffect(() => {
     const baseline = writeBaseline.current;
@@ -44,12 +47,14 @@ export function useExerciseLibrary() {
   }, [state]);
   // An explicit authorization denial (401/403) drops every protected fallback: the retained reading (the cache already
   // discards it), the last complete catalog and this visit's overlays. A network failure keeps them, marked stale.
-  const denied = state.status === 'auth_required' || state.status === 'unauthorized' || (state.status === 'unavailable' && state.result.meta.httpStatus === 403);
+  const denied = isDeniedRead(state);
   // The last complete catalog stays shown when a later reading answers without it (derived during render).
   const okCatalog = state.status === 'ready' && state.current.data.catalog.status === 'ok' ? state.current.data.catalog.data : null;
   if (denied && lastCatalog) setLastCatalog(null);
   else if (okCatalog && okCatalog !== lastCatalog) setLastCatalog(okCatalog);
   if (denied && Object.keys(confirmed).length) setConfirmed({});
+  // A notice still showing (an exercise name and its «Deshacer») is discarded in the denied render, never shown again.
+  if (denied && notice) setNotice(null);
   const runRefresh = useCallback(() => { if (!busy.current) void refresh(); }, [refresh]);
   const current = denied ? undefined : state.status === 'ready' ? state.current : state.status === 'loading' ? undefined : state.previous;
   const catalog = denied ? null : current?.data.catalog.status === 'ok' ? current.data.catalog.data : lastCatalog;
@@ -117,5 +122,5 @@ export function useExerciseLibrary() {
     return reload();
   }, [reload, snapshot]);
   /** `denied`: an explicit 401/403. Screens must also drop any sheet or editor built from the protected catalog. */
-  return { client, state, current, catalog, stale, denied, exercises, runRefresh, routines: catalog?.routines ?? [], refresh, changed, pending, busy, notice, announce, save, status };
+  return { client, state, current, catalog, stale, denied, exercises, runRefresh, routines: catalog?.routines ?? [], refresh, changed, pending, busy, notice: denied ? null : notice, announce, save, status };
 }

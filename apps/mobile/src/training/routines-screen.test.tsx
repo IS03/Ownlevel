@@ -1,6 +1,6 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { Alert, RefreshControl, StyleSheet } from 'react-native';
+import { AccessibilityInfo, Alert, RefreshControl, StyleSheet } from 'react-native';
 import * as Reanimated from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { MobileTrainingRoutinesResponse } from '@/api/routines';
@@ -125,9 +125,10 @@ describe('routine library', () => {
   it('preserves loading, unavailable and stale states', () => {
     mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: { status: 'loading' } });
     const loading = renderScreen(); expect(loading.getByTestId('routines-loading')).toBeTruthy(); loading.unmount();
-    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: { status: 'unavailable' } });
+    const networkFailure = { status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } };
+    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: { status: 'unavailable', result: networkFailure } });
     const unavailable = renderScreen(); expect(unavailable.getByTestId('routines-unavailable')).toBeTruthy(); expect(unavailable.queryByText('No tenés rutinas activas.')).toBeNull(); unavailable.unmount();
-    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: { status: 'unavailable', previous: { data: fixture() } } });
+    mockUseApiResource.mockReturnValue({ refresh: mockRefresh, state: { status: 'unavailable', previous: { data: fixture() }, result: networkFailure } });
     const stale = renderScreen(); expect(stale.getByTestId('routines-stale')).toBeTruthy(); expect(stale.getByText('PUSH')).toBeTruthy();
   });
 
@@ -517,6 +518,69 @@ describe('retained routines list (#303 C3a; real cache, simulated request counts
     mockFetch.mockResolvedValueOnce(read());
     await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Reintentar' })); });
     await waitFor(() => expect(view.getByText('PUSH')).toBeTruthy());
+    view.unmount();
+  });
+
+  const DENIED: [string, unknown][] = [
+    ['401', { status: 'unauthorized', meta: { durationMs: 1, httpStatus: 401, outcome: 'unauthorized' } }],
+    ['403', { status: 'unavailable', reason: 'server', meta: { durationMs: 1, httpStatus: 403, outcome: 'unavailable' } }],
+  ];
+  const archivedList = () => read(fixture({ routines: { status: 'ok', data: routines.map(routine => routine.id === routines[1].id ? { ...routine, isActive: false } : routine) } }));
+  /** The API client invalidates retained readings when a write settles (client.ts); the mocked write does the same. */
+  const archiveSettles = () => mockSetStatus.mockImplementationOnce(async () => {
+    invalidateConfirmedReads(mockClient as never, `/api/mobile/v1/training/routines/${routines[1].id}`);
+    return statusResult(false);
+  });
+  it.each(DENIED)('archive notice «PUSH archivada» with «Deshacer» → %s before it expires: notice, name and action go, and do not come back after recovery', async (_code, denied) => {
+    const view = renderScreen();
+    await waitFor(() => expect(view.getByText('PUSH')).toBeTruthy());
+    archiveSettles(); mockFetch.mockResolvedValueOnce(archivedList());
+    await act(async () => { archive(view); });
+    await waitFor(() => expect(view.getByText('PUSH archivada')).toBeTruthy());
+    expect(view.getByRole('button', { name: 'Deshacer archivado' })).toBeTruthy();
+    mockFetch.mockResolvedValueOnce(denied);
+    await act(async () => { fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh'); });
+    await waitFor(() => expect(view.getByTestId('routines-unavailable')).toBeTruthy());
+    expect(view.queryByText('PUSH archivada')).toBeNull();
+    expect(view.queryByText(/PUSH/)).toBeNull();
+    expect(view.queryByRole('button', { name: 'Deshacer archivado' })).toBeNull();
+    mockFetch.mockResolvedValueOnce(archivedList());
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Reintentar' })); });
+    await waitFor(() => expect(view.getByText('LEGS')).toBeTruthy());
+    expect(view.queryByText('PUSH archivada')).toBeNull();
+    expect(view.queryByRole('button', { name: 'Deshacer archivado' })).toBeNull();
+    expect(mockSetStatus).toHaveBeenCalledTimes(1); // the undo never ran
+    view.unmount();
+  });
+  it.each(DENIED)('the read after an archive answers %s: no success notice, name or «Deshacer» is shown or spoken', async (_code, denied) => {
+    const spoken = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => undefined);
+    const view = renderScreen();
+    await waitFor(() => expect(view.getByText('PUSH')).toBeTruthy());
+    archiveSettles(); mockFetch.mockResolvedValueOnce(denied);
+    await act(async () => { archive(view); });
+    await waitFor(() => expect(view.getByTestId('routines-unavailable')).toBeTruthy());
+    expect(mockSetStatus).toHaveBeenCalledTimes(1);
+    expect(view.queryByText('PUSH archivada')).toBeNull();
+    expect(view.queryByText(/PUSH/)).toBeNull();
+    expect(view.queryByRole('button', { name: 'Deshacer archivado' })).toBeNull();
+    expect(spoken.mock.calls.some(([message]) => /PUSH/.test(String(message)))).toBe(false);
+    mockFetch.mockResolvedValueOnce(archivedList());
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Reintentar' })); });
+    await waitFor(() => expect(view.getByText('LEGS')).toBeTruthy());
+    expect(view.queryByText('PUSH archivada')).toBeNull();
+    view.unmount();
+  });
+  it('archive notice showing → network failure: the notice and «Deshacer» stay (not a denial)', async () => {
+    const view = renderScreen();
+    await waitFor(() => expect(view.getByText('PUSH')).toBeTruthy());
+    archiveSettles(); mockFetch.mockResolvedValueOnce(archivedList());
+    await act(async () => { archive(view); });
+    await waitFor(() => expect(view.getByText('PUSH archivada')).toBeTruthy());
+    mockFetch.mockResolvedValueOnce({ status: 'unavailable', reason: 'network', meta });
+    await act(async () => { fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh'); });
+    await waitFor(() => expect(view.getByTestId('routines-stale')).toBeTruthy());
+    expect(view.getByText('PUSH archivada')).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Deshacer archivado' })).toBeTruthy();
     view.unmount();
   });
 

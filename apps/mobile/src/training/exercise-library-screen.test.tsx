@@ -285,6 +285,46 @@ describe('authorization denial on a mounted library (#303 C3a review; real retai
     expect(view.queryByTestId('add-routine-sheet')).toBeNull();
     view.unmount();
   });
+  const archived = () => okRead(fixture({ catalog: { status: 'ok', data: { exercises: [{ ...press, isActive: false }, curl], routines } } }));
+  /** List OK → archive «Press inclinado» OK: its notice and «Deshacer» are on screen. */
+  async function archivedWithNotice() {
+    mockFetch.mockResolvedValueOnce(okRead());
+    const view = renderScreen();
+    await waitFor(() => expect(view.getByText('Press inclinado')).toBeTruthy());
+    mockSetStatus.mockImplementationOnce(async () => {
+      invalidateConfirmedReads(mockClient as never, `/api/mobile/v1/training/exercises/${pressId}`); // as the API client does
+      return { status: 'ok', data: { exercise: { id: pressId, isActive: false, updatedAt: press.updatedAt } } };
+    });
+    mockFetch.mockResolvedValueOnce(archived());
+    await act(async () => { fireEvent(view.getByRole('button', { name: 'Abrir Press inclinado' }), 'accessibilityAction', { nativeEvent: { actionName: 'status' } }); });
+    await waitFor(() => expect(view.getByText('Press inclinado archivado')).toBeTruthy());
+    expect(view.getByRole('button', { name: 'Deshacer' })).toBeTruthy();
+    return view;
+  }
+  it.each(DENIALS)('archive notice with «Deshacer» showing → %s before it expires: notice, name and action go, and do not come back after recovery', async (_code, denied) => {
+    const view = await archivedWithNotice();
+    await revalidateWith(denied);
+    await waitFor(() => expect(view.getByText('Biblioteca no disponible')).toBeTruthy());
+    expect(view.queryByText('Press inclinado archivado')).toBeNull();
+    expect(view.queryByText(/Press inclinado/)).toBeNull();
+    expect(view.queryByRole('button', { name: 'Deshacer' })).toBeNull();
+    mockFetch.mockResolvedValueOnce(archived());
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Reintentar' })); });
+    await waitFor(() => expect(view.queryByText('Biblioteca no disponible')).toBeNull()); // authorized again
+    expect(view.queryByText('Mostramos la última lectura confirmada.')).toBeNull();
+    expect(view.queryByText('Press inclinado archivado')).toBeNull();
+    expect(view.queryByRole('button', { name: 'Deshacer' })).toBeNull();
+    expect(mockSetStatus).toHaveBeenCalledTimes(1); // the undo never ran
+    view.unmount();
+  });
+  it('archive notice showing → network failure: the notice and «Deshacer» stay (not a denial)', async () => {
+    const view = await archivedWithNotice();
+    await revalidateWith({ status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } });
+    await waitFor(() => expect(view.getByText('Mostramos la última lectura confirmada.')).toBeTruthy());
+    expect(view.getByText('Press inclinado archivado')).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Deshacer' })).toBeTruthy();
+    view.unmount();
+  });
   it('a network failure with the editor and its draft open keeps them (not a denial)', async () => {
     mockFetch.mockResolvedValueOnce(okRead());
     const view = renderScreen();
@@ -306,7 +346,7 @@ describe('authorization denial on a mounted library (#303 C3a review; real retai
     mockFetch.mockResolvedValueOnce(denied);
     await act(async () => { fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh'); });
     await waitFor(() => expect(view.getByText('Biblioteca no disponible')).toBeTruthy());
-    for (const name of ['Press inclinado', 'Curl']) expect(view.queryByText(name)).toBeNull();
+    for (const name of ['Press inclinado', 'Curl bíceps']) expect(view.queryByText(name)).toBeNull();
     expect(view.queryByRole('button', { name: /Abrir / })).toBeNull(); // no row, so no action on protected data
     expect(view.queryByText('Mostramos la última lectura confirmada.')).toBeNull(); // not offered as stale data either
     mockFetch.mockResolvedValueOnce(okRead());

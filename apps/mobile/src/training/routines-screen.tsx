@@ -7,6 +7,7 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { createMobileTrainingRoutine, reorderMobileTrainingRoutines, fetchRoutineDetail, fetchMobileTrainingRoutines, setMobileTrainingRoutineStatus, useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
+import { isDeniedRead } from '@/api/resource';
 import { useCachedRead } from '@/api/use-cached-read';
 import type { MobileTrainingRoutine } from '@/api/routines';
 import type { MobileApiMutationResult } from '@/api/results';
@@ -115,6 +116,10 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
     writeBaseline.current = undefined;
     setConfirmedStatus({}); setConfirmedOrder(null); setConfirmedCopies([]);
   }, [state]);
+  const denied = isDeniedRead(state);
+  // A notice still showing (a routine name and its «Deshacer») is discarded in the denied render, never shown again.
+  if (denied && notice) setNotice(null);
+  const shownNotice = denied ? null : notice;
   const current = state.status === 'ready' ? state.current : state.status === 'loading' ? undefined : state.previous;
   const resource = current?.data.routines;
   const sorted = resource?.status === 'ok' ? resource.data.map(routine => ({ ...routine, isActive: confirmedStatus[routine.id] ?? routine.isActive }))
@@ -129,13 +134,15 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
   const archived = sorted.filter(routine => !routine.isActive);
   const rows = archivedOnly ? archived : active;
 
+  // Notices name routines and carry «Deshacer»: none is shown or spoken while access is denied (e.g. the read after an
+  // archive answered 401/403 before the result was announced).
   const announce = useCallback((next: Notice) => {
-    if (!alive.current) return;
+    if (!alive.current || isDeniedRead(snapshot())) return;
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
     setNotice(next);
     void AccessibilityInfo.announceForAccessibility(next.message);
     noticeTimer.current = setTimeout(() => setNotice(null), next.error ? 6_000 : 4_000);
-  }, []);
+  }, [snapshot]);
   useEffect(() => {
     alive.current = true;
     return () => { alive.current = false; if (noticeTimer.current) clearTimeout(noticeTimer.current); };
@@ -290,7 +297,7 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
   </RoutinesScrollScreen> : !current ? <RoutinesScrollScreen testID="routines-unavailable">
     <UnavailableState action={<Button label="Reintentar" onPress={runRefresh} />} description="Revisá la conexión e intentá de nuevo." title={`No pudimos cargar ${title}`} />
   </RoutinesScrollScreen> : <RoutinesScrollScreen canCancelContentTouches={!orderDraft}
-    pointerEvents={pointerEvents} contentContainerStyle={{ paddingBottom: notice ? insets.bottom + 100 : spacing.xl }}
+    pointerEvents={pointerEvents} contentContainerStyle={{ paddingBottom: shownNotice ? insets.bottom + 100 : spacing.xl }}
     refreshControl={!orderDraft ? <RefreshControl colors={[colors.primary]} onRefresh={runRefresh} progressBackgroundColor={colors.surface}
       refreshing={state.status === 'ready' && state.refreshing} tintColor={colors.primary} /> : undefined} testID={archivedOnly ? 'archived-routines-screen' : 'routines-screen'}>
     {Platform.OS !== 'ios' ? <AppText accessibilityRole="header" variant="largeTitle">{title}</AppText> : null}
@@ -330,12 +337,12 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
 
   return <>
     {header}{content}
-    {notice ? <Animated.View entering={FadeIn.duration(motionDurations.fast)} exiting={FadeOut.duration(motionDurations.fast)}
+    {shownNotice ? <Animated.View entering={FadeIn.duration(motionDurations.fast)} exiting={FadeOut.duration(motionDurations.fast)}
       style={[styles.toast, { bottom: insets.bottom + spacing.lg }]}>
       <GlassSurface style={styles.toastSurface}>
-        <AppText accessibilityRole={notice.error ? 'alert' : undefined} style={styles.flex} variant="subheadline">{notice.message}</AppText>
-        {notice.undo ? <Pressable accessibilityLabel="Deshacer archivado" accessibilityRole="button" disabled={Boolean(pending)}
-          onPress={() => { if (notice.undo) void changeStatus(notice.undo, true); }} style={[styles.undo, { backgroundColor: colors.brandSubtle }]}>
+        <AppText accessibilityRole={shownNotice.error ? 'alert' : undefined} style={styles.flex} variant="subheadline">{shownNotice.message}</AppText>
+        {shownNotice.undo ? <Pressable accessibilityLabel="Deshacer archivado" accessibilityRole="button" disabled={Boolean(pending)}
+          onPress={() => { if (shownNotice.undo) void changeStatus(shownNotice.undo, true); }} style={[styles.undo, { backgroundColor: colors.brandSubtle }]}>
           <AppText style={{ color: colors.primary }} variant="headline">Deshacer</AppText>
         </Pressable> : null}
       </GlassSurface>
