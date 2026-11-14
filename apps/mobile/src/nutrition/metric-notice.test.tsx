@@ -27,6 +27,10 @@ it.each(['light','dark'] as const)('has no X, supports accessible dismissal and 
  fireEvent.press(view.getByRole('button',{name:'Ver confirmación anterior, 1 disponibles'}));expect(previous).toHaveBeenCalledTimes(1);
  fireEvent(view.getByLabelText('Agua: 0,5 L'),'accessibilityAction',{nativeEvent:{actionName:'dismiss'}});expect(close).toHaveBeenCalledTimes(1);
 });
+it('names the queue action for what it does («Ver anterior»), never as a second undo',()=>{
+ const {view}=open();expect(view.getByText('Ver anterior')).toBeTruthy();expect(view.queryByText(/^Anterior/)).toBeNull();
+ expect(view.queryByRole('button',{name:'Deshacer cambio de métrica'})).toBeNull();
+});
 it('runs a downward gesture callback, ignores a short/upward motion and keeps pending non-dismissible',()=>{
  const {view,close}=open();const gesture=getByGestureTestId('metric-notice-dismiss');
  act(()=>fireGestureHandler(gesture,[{state:State.BEGAN,translationY:0,translationX:0},{state:State.ACTIVE,translationY:12,translationX:0},{state:State.END,translationY:12,translationX:0}]));expect(close).not.toHaveBeenCalled();

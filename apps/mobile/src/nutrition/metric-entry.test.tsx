@@ -1,7 +1,7 @@
 import { act, fireEvent, render, renderHook } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { useEffect, useSyncExternalStore } from 'react';
-import { StyleSheet } from 'react-native';
+import { AccessibilityInfo, StyleSheet } from 'react-native';
 import { withTiming } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { State } from 'react-native-gesture-handler';
@@ -16,7 +16,7 @@ import { nutritionFixture } from './day-fixture.test-helper';
 import { NutritionDayPanel } from './day-panel';
 import { MetricEntrySheet } from './metric-entry-sheet';
 import { MetricSavedNotice } from './metric-notice';
-import { dayWriteInFlight, useMetricEntry } from './use-metric-entry';
+import { METRIC_NOTICE_MS, METRIC_RESULT_MS, dayWriteInFlight, useMetricEntry } from './use-metric-entry';
 import { confirmedMetricUndo, metricEntryCandidate, metricRaw, quickMetricValue, sameMetricTimestamp } from './metric-entry-model';
 
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -124,6 +124,40 @@ it('keeps ten visible seconds per slot, pauses behind an editor and clears its t
     act(()=>jest.advanceTimersByTime(9999));expect(hook.result.current.notice).not.toBeNull();
     expect(jest.getTimerCount()).toBe(1);hook.unmount();expect(jest.getTimerCount()).toBe(0);f.controller.dispose();
   }finally{jest.useRealTimers();}
+});
+describe('#511 how long a confirmation stays',()=>{
+  const undone=async()=>{
+    const f=setup(1);await f.controller.initialize();const hook=renderHook(()=>useMetricEntry(f.controller,date));
+    await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f),0.25);});
+    await act(async()=>hook.result.current.undoNotice());
+    return {f,hook};
+  };
+  it('a confirmed undo («· deshecho», no action left) clears in 2,5 s, and the notice that offers Deshacer keeps its ten',async()=>{
+    jest.useFakeTimers();
+    try{
+      const f=setup(1);await f.controller.initialize();const hook=renderHook(()=>useMetricEntry(f.controller,date));
+      await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f),0.25);});
+      expect(hook.result.current.notice?.undo).not.toBeNull();
+      act(()=>jest.advanceTimersByTime(9999));expect(hook.result.current.notice?.undo).not.toBeNull();
+      act(()=>jest.advanceTimersByTime(1));expect(hook.result.current.notice).toBeNull();
+      await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f),0.25);});
+      await act(async()=>hook.result.current.undoNotice());
+      expect(hook.result.current.notice?.message).toContain('deshecho');expect(hook.result.current.notice?.undo).toBeNull();
+      act(()=>jest.advanceTimersByTime(METRIC_RESULT_MS-1));expect(hook.result.current.notice?.message).toContain('deshecho');
+      act(()=>jest.advanceTimersByTime(1));expect(hook.result.current.notice).toBeNull();
+      hook.unmount();f.controller.dispose();
+    }finally{jest.useRealTimers();}
+  });
+  it('with a screen reader on, a result keeps the full window: it may still be being read',async()=>{
+    jest.useFakeTimers();
+    jest.spyOn(AccessibilityInfo,'isScreenReaderEnabled').mockResolvedValue(true);
+    try{
+      const {f,hook}=await undone();
+      act(()=>jest.advanceTimersByTime(METRIC_RESULT_MS+500));expect(hook.result.current.notice?.message).toContain('deshecho');
+      act(()=>jest.advanceTimersByTime(METRIC_NOTICE_MS));expect(hook.result.current.notice).toBeNull();
+      hook.unmount();f.controller.dispose();
+    }finally{jest.useRealTimers();jest.restoreAllMocks();}
+  });
 });
 it('never carries confirmation slots across controller/account identity',async()=>{
   const f=setup(1),other=setup(2);await f.controller.initialize();await other.controller.initialize();

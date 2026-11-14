@@ -1,16 +1,33 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo } from 'react-native';
 import type { MobileNutritionDayResponse, NutritionDayMetric } from '@/api/nutrition-day';
 import type { DayWriteController, DayWriteState } from './day-write-controller';
 import { canEditDayMetric, confirmedMetricUndo, findDayMetric, metricRaw, quickMetricValue, type MetricUndo } from './metric-entry-model';
 import { metricValue } from './day-details';
 
 export type MetricNotice = { date: string; message: string; undo: MetricUndo | null; id?: number; queuedCount?: number };
-type QueuedNotice = MetricNotice & { id: number; metricId: string };
+/** `brief`: the confirmation of an undo («· deshecho»): a result with no action left, so it needs no Undo window. */
+type QueuedNotice = MetricNotice & { id: number; metricId: string; brief?: boolean };
+/** A visible notice that offers Undo keeps its whole window: the slot IS the undo (a hidden notice has no way back to it). */
+export const METRIC_NOTICE_MS = 10000;
+/** #511: a result with nothing to act on reads in a couple of seconds, unless a screen reader may still be reading it. */
+export const METRIC_RESULT_MS = 2500;
+function useScreenReader() {
+  const [enabled, setEnabled] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void AccessibilityInfo.isScreenReaderEnabled().then(value => { if (live) setEnabled(value); }).catch(() => undefined);
+    const subscription = AccessibilityInfo.addEventListener('screenReaderChanged', setEnabled);
+    return () => { live = false; subscription.remove(); };
+  }, []);
+  return enabled;
+}
 export const dayWriteInFlight = (state: DayWriteState | undefined) => state?.phase === 'pending' || state?.phase === 'confirmed' && state.message === null;
 export function useMetricEntry(controller: DayWriteController | undefined, date: string) {
   const [entry, setEntry] = useState<{ id: string; date: string } | null>(null);
   const [notices, setNotices] = useState<QueuedNotice[]>([]);
   const [paused, setPaused] = useState(false);
+  const screenReader = useScreenReader();
   const sequence = useRef(0);
   const notice = notices.find(n => n.date === date) ?? null;
   const [undoing, setUndoing] = useState(false);
@@ -34,7 +51,7 @@ export function useMetricEntry(controller: DayWriteController | undefined, date:
       const metric = findDayMetric(current, id);
       if (!metric) { setFeedbackHandled(false); return; }
       const snapshot = confirmedMetricUndo(intent, baseline, current);
-      const confirmed: QueuedNotice = { id: ++sequence.current, metricId: id, date: current.date, message: `${metric.label}: ${metricValue(metric, metric.value)}${wasUndo ? ' · deshecho' : ''}`, undo: wasUndo ? null : snapshot };
+      const confirmed: QueuedNotice = { id: ++sequence.current, metricId: id, date: current.date, message: `${metric.label}: ${metricValue(metric, metric.value)}${wasUndo ? ' · deshecho' : ''}`, undo: wasUndo ? null : snapshot, brief: wasUndo };
       // A later write of this metric invalidates its older CAS. Keep that fact visible,
       // explicitly retire its undo; never rebase a reversal onto a different receipt.
       setNotices(rows => [confirmed, ...rows]);
@@ -53,10 +70,10 @@ export function useMetricEntry(controller: DayWriteController | undefined, date:
   useEffect(() => {
     if (!notice || paused) return;
     // Ten visible seconds per slot. Editors and newer results pause older slots;
-    // returning restarts ten seconds, never silently shortening their undo.
-    const timer = setTimeout(() => setNotices(rows => rows.filter(row => row.id !== notice.id)), 10000);
+    // returning restarts ten seconds, never silently shortening their undo. Only a confirmed undo (nothing left to act on) is brief.
+    const timer = setTimeout(() => setNotices(rows => rows.filter(row => row.id !== notice.id)), notice.brief && !screenReader ? METRIC_RESULT_MS : METRIC_NOTICE_MS);
     return () => clearTimeout(timer);
-  }, [notice, paused]);
+  }, [notice, paused, screenReader]);
   const open = useCallback((data: MobileNutritionDayResponse, metric: NutritionDayMetric) => {
     const state = controller?.getSnapshot();
     if (!controller || !state || state.phase !== 'idle' || state.intent || state.draft || !canEditDayMetric(data, metric)) return;

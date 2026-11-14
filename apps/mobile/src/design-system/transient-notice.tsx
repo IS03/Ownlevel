@@ -61,6 +61,7 @@ export function TransientNotice({
   const { colors } = useOwnlevelTheme(), reduced = useReduceMotion(), { fontScale, width } = useWindowDimensions();
   const stacked = useContext(InStack), bottom = useNoticeBottom(placement, bottomOffset);
   const pending = state === 'pending', large = fontScale > 1.3, duration = motion.duration.fast;
+  const hasActions = !pending && !!(action || secondaryAction || close);
   const dismissible = !!onDismiss && !pending, canDismiss = dismissible && !disabled;
   const offset = useSharedValue(0);
   // The gesture callback may outlive the render that built it; it always dismisses through the owner's latest handler, and only while allowed.
@@ -81,7 +82,7 @@ export function TransientNotice({
     {/* The glass reads a fixed backing, never magnified letters from the content scrolling beneath it. */}
     <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" testID={testID ? `${testID}-backing` : undefined}
       style={[StyleSheet.absoluteFill, { backgroundColor: colors.surfaceRaised }]} />
-    <GlassSurface interactive testID={testID ? `${testID}-surface` : undefined} style={[styles.surface, large ? styles.surfaceLarge : styles.surfaceInline]}>
+    <GlassSurface interactive testID={testID ? `${testID}-surface` : undefined} style={[styles.surface, large ? styles.surfaceLarge : styles.surfaceInline, !hasActions && styles.surfacePlain]}>
       <View style={styles.lead}>
         {pending ? <ActivityIndicator color={colors.textMuted} /> : null}
         {!pending && (icon || state === 'done') ? <View testID={testID ? `${testID}-icon` : undefined}><AppIcon name={icon ?? 'checkmark'} size={17} color={colors.primary} /></View> : null}
@@ -92,7 +93,7 @@ export function TransientNotice({
           onAccessibilityAction={canDismiss ? event => { if (event.nativeEvent.actionName === 'dismiss') onDismiss!(); } : undefined}
           onAccessibilityEscape={canDismiss ? () => onDismiss!() : undefined}>{message}</AppText>
       </View>
-      {!pending && (action || secondaryAction || close) ? <View style={[styles.actions, large && styles.actionsLarge]}>
+      {hasActions ? <View style={[styles.actions, large && styles.actionsLarge]}>
         {action ? <Pressable accessibilityRole="button" accessibilityLabel={action.accessibilityLabel} accessibilityState={{ disabled: !!action.disabled }} disabled={action.disabled}
           onPress={action.onPress} style={[styles.action, action.disabled && styles.disabled]}>
           <AppText variant="subheadline" style={{ color: colors.primary, fontWeight: '600' }}>{action.label}</AppText>
@@ -120,6 +121,8 @@ const styles = StyleSheet.create({
   flow: { alignSelf: 'stretch', alignItems: 'center' },
   capsule: { minHeight: layout.minTouch, borderRadius: radius.tabBar, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   surface: { minHeight: layout.minTouch, paddingLeft: spacing.md, paddingRight: spacing.xs, paddingVertical: spacing.xs, gap: spacing.xs },
+  // Without actions nothing carries the right padding (an action brings its own), so the text gets the same margin as on the left.
+  surfacePlain: { paddingRight: spacing.md },
   surfaceInline: { flexDirection: 'row', alignItems: 'center' },
   surfaceLarge: { flexDirection: 'column', alignItems: 'stretch' },
   lead: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexShrink: 1 },

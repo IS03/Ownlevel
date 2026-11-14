@@ -27,6 +27,22 @@ const swipe = (translationY: number, translationX = 0, id = 'transient-notice-di
   { state: State.BEGAN, translationX: 0, translationY: 0 }, { state: State.ACTIVE, translationX, translationY }, { state: State.END, translationX, translationY }]));
 const bottomOf = (view: ReturnType<typeof show>, id = 'notice') => StyleSheet.flatten(view.getByTestId(id).props.style).bottom as number;
 
+describe('#511 horizontal margins', () => {
+  const surface = (view: ReturnType<typeof show>) => StyleSheet.flatten(view.getByTestId('notice-surface').props.style);
+  it('a notice with no action gets the same right margin as left, so the last word never touches the edge', () => {
+    const style = surface(show({ message: 'Agua: 2 L · deshecho' }));
+    expect(style.paddingRight).toBe(style.paddingLeft); expect(style.paddingLeft).toBe(spacing.md);
+  });
+  it('a pending notice has no actions either: symmetric margins', () => {
+    const style = surface(show({ state: 'pending', message: 'Deshaciendo…' }));
+    expect(style.paddingRight).toBe(style.paddingLeft);
+  });
+  it('with actions the right edge is carried by the action padding, as before', () => {
+    const style = surface(show({ action: { label: 'Deshacer', accessibilityLabel: 'Deshacer algo', onPress: jest.fn() } }));
+    expect(style.paddingRight).toBe(spacing.xs);
+  });
+});
+
 describe('layout and material', () => {
   it.each(['light', 'dark'] as const)('is a compact centred capsule bounded by the screen, with a hairline border and no full-width dock (%s)', mode => {
     const view = show({}, 34, mode);
