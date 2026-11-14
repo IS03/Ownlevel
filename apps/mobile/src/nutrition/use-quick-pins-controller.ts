@@ -10,7 +10,7 @@ import { QuickPinsIntentRepository } from './quick-pins-storage';
  * #479 B: one pins controller per account and client (a switch or sign-out disposes it; late answers are ignored). It reads
  * no pins of its own: it adopts `pins` from the quick-options answer Rápido's controller already holds. Mounted by increment C.
  */
-export function useQuickPinsController(client: MobileApiClient | null, userId: string, quick: Pick<QuickState, 'options' | 'optionsError'> | null) {
+export function useQuickPinsController(client: MobileApiClient | null, userId: string, quick: Pick<QuickState, 'options' | 'optionsError'> & Partial<Pick<QuickState, 'optionsReused' | 'open'>> | null) {
   const [current, setCurrent] = useState<{ client: MobileApiClient; userId: string; controller: QuickPinsController; state: QuickPinsState } | null>(null);
   useEffect(() => {
     if (!client) return;
@@ -29,5 +29,9 @@ export function useQuickPinsController(client: MobileApiClient | null, userId: s
   // A failed GET keeps Rápido's previous options (and so the last confirmed pins, still valid for CAS) but sets optionsError:
   // the pins were not refreshed, whether or not older options are still on screen. The next successful answer restores «ok».
   useEffect(() => { if (controller && failed) controller.adopt({ status: 'unavailable' }); }, [controller, failed]);
+  // #303 C3b: every opening that reused Rápido's retained options (no GET) makes the pins need a read before they authorize
+  // a write (the effect follows `open` too, so two reused openings in a row both ask for it).
+  const reused = quick?.optionsReused ?? false, open = quick?.open ?? false;
+  useEffect(() => { if (controller && reused && open) controller.requireVerification(); }, [controller, reused, open]);
   return controller && current ? current : null;
 }

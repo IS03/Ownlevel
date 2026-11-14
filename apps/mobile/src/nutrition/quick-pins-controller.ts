@@ -13,6 +13,9 @@ import type { QuickPinsIntentRepository, StoredQuickPinsIntent } from './quick-p
  * - `unavailable` pins are unknown, never «no pins»: without a confirmed snapshot nothing can be written. A snapshot that
  *   could not be refreshed (the last read failed) is shown but not written against either: no write, replay or reapply
  *   leaves the device while the pins are not readable, so no useless PUT is ever sent (a stored intent just waits).
+ * - #303 C3b: when Rápido reused its options at an opening (no GET), the confirmed pins are a retained reading: before a
+ *   pin, unpin or move the pins are read again and the new list is built from THAT truth, so a retained revision is
+ *   never the authority for a write and another device's change is never overwritten with an old list.
  */
 export type QuickPinsApi = {
   write: (write: QuickPinsWrite) => Promise<MobileApiRequestResult<QuickPinsSnapshot | QuickPinsConflict>>;
@@ -60,6 +63,8 @@ export function visibleQuickPins(state: QuickPinsState): { ids: string[]; unconf
 export class QuickPinsController {
   private state: QuickPinsState = { phase: 'loading', confirmed: null, availability: 'unknown', intent: null, wanted: null, error: null, message: null };
   private listeners = new Set<() => void>(); private disposed = false; private busy = false; private readGeneration = 0;
+  /** False while the confirmed pins come from a reused (not re-read) reading: a write first reads them again. */
+  private verified = true;
   constructor(private api: QuickPinsApi, private repository: QuickPinsIntentRepository,
     private newKey: () => string = () => `pins:${Date.now()}:${Math.random().toString(36).slice(2)}`) {}
   getSnapshot = () => this.state;
@@ -82,7 +87,11 @@ export class QuickPinsController {
     if (pins.status !== 'ok') { this.update({ availability: 'unavailable' }); return; }
     this.accept({ revision: pins.revision, items: pins.items });
   }
+  /** Rápido reused its options without a GET: the pins it holds must be read again before they authorize a write. */
+  requireVerification() { if (!this.disposed && this.state.confirmed) this.verified = false; }
   private accept(snapshot: QuickPinsSnapshot) {
+    // A server answer (GET or write receipt): what is confirmed now was read, not retained.
+    this.verified = true;
     const current = this.state.confirmed;
     // The read worked («ok»), but an older revision never replaces the newer confirmed one.
     if (current && snapshot.revision < current.revision) { this.update({ availability: 'ok' }); return; }
@@ -99,20 +108,31 @@ export class QuickPinsController {
   }
 
   pin(id: string) {
-    const current = this.state.confirmed ? ids(this.state.confirmed) : null;
-    if (current?.includes(id.toLowerCase())) return Promise.resolve<QuickPinsWriteOutcome>('unchanged');
-    return this.write(current ? [...current, id] : []);
+    return this.fromVerified(current => current?.includes(id.toLowerCase()) ? 'unchanged' : current ? [...current, id] : []);
   }
   unpin(id: string) {
-    const current = this.state.confirmed ? ids(this.state.confirmed) : null;
-    return this.write(current ? current.filter(pinned => pinned !== id.toLowerCase()) : []);
+    return this.fromVerified(current => current ? current.filter(pinned => pinned !== id.toLowerCase()) : []);
   }
   move(id: string, index: number) {
-    const current = this.state.confirmed ? ids(this.state.confirmed) : null;
-    if (!current?.includes(id.toLowerCase())) return Promise.resolve<QuickPinsWriteOutcome>('refused');
-    const rest = current.filter(pinned => pinned !== id.toLowerCase());
-    rest.splice(Math.max(0, Math.min(index, rest.length)), 0, id.toLowerCase());
-    return this.write(rest);
+    return this.fromVerified(current => {
+      if (!current?.includes(id.toLowerCase())) return 'refused';
+      const rest = current.filter(pinned => pinned !== id.toLowerCase());
+      rest.splice(Math.max(0, Math.min(index, rest.length)), 0, id.toLowerCase());
+      return rest;
+    });
+  }
+  /** Builds the new list from the confirmed pins, read again first if they were only retained. */
+  private async fromVerified(build: (current: string[] | null) => string[] | 'unchanged' | 'refused'): Promise<QuickPinsWriteOutcome> {
+    if (!this.verified) {
+      if (this.disposed || this.busy || this.state.intent || (this.state.phase !== 'idle' && this.state.phase !== 'conflict')) return 'refused';
+      this.busy = true;
+      try { await this.reload(); } finally { this.busy = false; }
+      if (this.disposed) return 'refused';
+      // Not read again (offline, denied, failed): nothing is written with the retained revision.
+      if (!this.verified || this.state.availability !== 'ok') { this.update({ error: 'unavailable', message: MESSAGES.unavailable }); return 'refused'; }
+    }
+    const next = build(this.state.confirmed ? ids(this.state.confirmed) : null);
+    return next === 'unchanged' || next === 'refused' ? next : this.write(next);
   }
   /** What the person wanted before a refusal, sent again over the new truth only because they asked. */
   reapply() { return this.state.wanted ? this.write(this.state.wanted) : Promise.resolve<QuickPinsWriteOutcome>('refused'); }

@@ -6,17 +6,34 @@ import { QuickIntentRepository, type StoredQuickIntent } from './quick-storage';
 import { quickDraft, selectionFromDraft, type QuickDraft } from './quick-model';
 export type QuickApi = { food?: (id: string) => Promise<MobileApiReadResult<FoodDetail>>; options: () => Promise<MobileApiReadResult<QuickOptions>>; preview: (s: QuickSelection) => Promise<MobileApiRequestResult<QuickPreview>>;
   confirm: (i: QuickIntent) => Promise<MobileApiRequestResult<QuickResponse>>; read: (date: string) => Promise<MobileApiReadResult<MobileNutritionDayResponse>> };
+/**
+ * #303 C3b: reopening Rápido may reuse the options this controller already holds (no second copy, no cache) instead of a
+ * new GET, only while ALL hold: the last GET was complete (saved, suggested and pins «ok»), under 30 s old, no nutrition
+ * write settled since that GET started (C1 per-domain revision, account-scoped), and the server's `today` is still the
+ * Córdoba day. Conflict truth, a saved-suggestion confirmation, foreground and «Reintentar» always read.
+ */
+export type QuickOptionsReuse = { now: () => number; writeRevision: () => number; today: () => string };
+export const QUICK_OPTIONS_REUSE_MS = 30_000;
 export type QuickState = { phase: 'loading' | 'idle' | 'pending' | 'uncertain' | 'confirmed' | 'conflict' | 'blocked';
   inlineKey?: string | null; added?: Record<string, { meal: import('@/api/nutrition-day').NutritionDayMeal; date: string }>;
   open: boolean; date: string | null; options: QuickOptions | null; optionsLoading: boolean; optionsError: boolean;
+  /** The options on screen were reused at this opening (not read for it): pins must be verified before a write. */
+  optionsReused: boolean;
   draft: QuickDraft | null; previousDraft: QuickDraft | null; preview: QuickPreview | null; previewLoading: boolean;
   intent: StoredQuickIntent | null; truth: QuickOption | null; message: string | null; errors: Record<string, string> };
 export class QuickController {
-  private state: QuickState = { phase: 'loading', open: false, date: null, options: null, optionsLoading: false, optionsError: false,
+  private state: QuickState = { phase: 'loading', open: false, date: null, options: null, optionsLoading: false, optionsError: false, optionsReused: false,
     draft: null, previousDraft: null, preview: null, previewLoading: false, intent: null, truth: null, message: null, errors: {} };
   private listeners = new Set<() => void>(); private disposed = false; private busy = false; private previewGeneration = 0; private optionsGeneration = 0;
+  /** The last complete options GET: when it was confirmed and the write revision when it STARTED. */
+  private lastOptions: { options: QuickOptions; at: number; revision: number } | null = null;
   constructor(private api: QuickApi, private repository: QuickIntentRepository, private invalidate: () => void,
-    private newKey: () => string = () => `quick:${Date.now()}:${Math.random().toString(36).slice(2)}`) {}
+    private newKey: () => string = () => `quick:${Date.now()}:${Math.random().toString(36).slice(2)}`, private reuse?: QuickOptionsReuse) {}
+  private canReuseOptions() {
+    const last = this.lastOptions, reuse = this.reuse;
+    return !!reuse && !!last && this.state.options === last.options && !this.state.optionsError
+      && reuse.now() - last.at < QUICK_OPTIONS_REUSE_MS && reuse.writeRevision() === last.revision && last.options.today === reuse.today();
+  }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private update(patch: Partial<QuickState>) { if (!this.disposed) { this.state = { ...this.state, ...patch }; this.listeners.forEach(f => f()); } }
@@ -30,8 +47,9 @@ export class QuickController {
   open(date: string, option?: QuickOption) {
     if (this.state.phase !== 'idle' || this.state.intent || this.busy) return;
     this.previewGeneration++; this.optionsGeneration++;
-    this.update({ optionsLoading: false, optionsError: false, open: true, date, draft: null, previousDraft: null, preview: null, previewLoading: false, message: null, errors: {}, truth: null, added: {}, inlineKey: null });
-    if (option) this.choose(option); else void this.loadOptions();
+    const reused = !option && this.canReuseOptions();
+    this.update({ optionsLoading: false, optionsError: false, optionsReused: reused, open: true, date, draft: null, previousDraft: null, preview: null, previewLoading: false, message: null, errors: {}, truth: null, added: {}, inlineKey: null });
+    if (option) this.choose(option); else if (!reused) void this.loadOptions();
   }
   /** An inline "+" add the user closed the sheet on: it finishes in the background (the day shows it running). */
   private backgroundInline: string | null = null;
@@ -57,15 +75,19 @@ export class QuickController {
       } catch { if (generation === this.optionsGeneration) this.update({ optionsLoading: false, optionsError: true, truth: null }); }
       return;
     }
+    // A write that settles while this GET is in flight makes it unusable for a later reopening.
+    const revision = this.reuse?.writeRevision() ?? 0;
     try { const result = await this.api.options();
       if (this.disposed || generation !== this.optionsGeneration) return;
-      if (result.status !== 'ok') { this.update({ optionsLoading: false, optionsError: true }); return; }
-      this.update({ options: result.data, optionsLoading: false, optionsError: false });
+      if (result.status !== 'ok') { this.lastOptions = null; this.update({ optionsLoading: false, optionsError: true }); return; }
+      const complete = result.data.saved.status === 'ok' && result.data.suggested.status === 'ok' && result.data.pins.status === 'ok';
+      this.lastOptions = complete && this.reuse ? { options: result.data, at: this.reuse.now(), revision } : null;
+      this.update({ options: result.data, optionsLoading: false, optionsError: false, optionsReused: false });
       if (this.state.phase === 'conflict' && this.state.draft) {
         const src = this.state.draft.option.source, section = src.kind === 'saved' ? result.data.saved : result.data.suggested;
         this.update({ truth: section.status === 'ok' ? section.items.find(o => o.source.id === src.id) ?? null : null });
       }
-    } catch { if (generation === this.optionsGeneration) this.update({ optionsLoading: false, optionsError: true }); }
+    } catch { if (generation === this.optionsGeneration) { this.lastOptions = null; this.update({ optionsLoading: false, optionsError: true }); } }
   }
   choose(option: QuickOption, preview = true) {
     if (this.state.phase !== 'idle' || this.state.intent || this.busy || !this.state.date) return;
