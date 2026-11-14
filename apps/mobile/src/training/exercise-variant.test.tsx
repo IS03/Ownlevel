@@ -4,7 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { ExerciseConfigurationJournal } from '@/api/training-exercise-configuration';
 import type { ConfigurationInput, ConfigurationValue, ConfigurationsResponse } from '../../../../src/lib/mobile-api/training-exercise-configuration-contract';
-import { ExerciseVariantRow, SessionVariants, variantsAttention } from './exercise-variant';
+import { ExerciseVariantRow, SessionVariants, variantComposerStacked, variantsAttention } from './exercise-variant';
 
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('@react-native-async-storage/async-storage', () => ({ __esModule: true, default: { getItem: async () => null, setItem: async () => undefined, removeItem: async () => undefined } }));
@@ -63,6 +63,55 @@ describe('optional exercise variant', () => {
     await waitFor(() => expect(view.getByText('Variante · Sin registrar')).toBeTruthy());
     expect(writes.map(body => body.value?.kind ?? null)).toEqual(['recorded', 'not_applicable', null]);
     expect(writes.map(body => body.expectedRevision)).toEqual([0, 1, 2]);
+  });
+  it('#463: says what is recorded now, keeps the explanation behind ⓘ, and closes without writing', async () => {
+    const { journal, view, writes } = setup(read(1, { kind: 'recorded', label: 'Agarre neutro', source: 'entered', repeatedFrom: null }));
+    await act(async () => { await journal.refresh(); });
+    fireEvent.press(view.getByText('Cambiar'));
+    expect(view.getByText('Variante · Press inclinado')).toBeTruthy();
+    expect(view.getByTestId('exercise-variant-current').props.children).toEqual(['Ahora: ', 'Agarre neutro']);
+    expect(view.queryByTestId('exercise-variant-hint')).toBeNull();
+    expect(view.getByLabelText('¿Cómo la hiciste hoy?').props.placeholder).toBe('Ej.: agarre neutro');
+    // Every existing control is still there: no "Como la última vez" when it is already the current value.
+    expect(view.getByText('No aplica')).toBeTruthy();
+    expect(view.getByText('Dejar sin registrar')).toBeTruthy();
+    expect(view.queryByText(/Como la última vez/)).toBeNull();
+    const help = view.getByLabelText('Qué es una variante');
+    fireEvent.press(help);
+    expect(view.getByTestId('exercise-variant-hint').props.children).toMatch(/hace falta una sesión anterior con la misma variante/);
+    expect(view.getByLabelText('Qué es una variante').props.accessibilityState).toEqual({ expanded: true });
+    fireEvent.press(view.getByLabelText('Qué es una variante'));
+    expect(view.queryByTestId('exercise-variant-hint')).toBeNull();
+    fireEvent.press(view.getByLabelText('Cerrar variante'));
+    expect(view.queryByTestId('exercise-variant-sheet')).toBeNull();
+    expect(writes).toHaveLength(0);
+  });
+  it('#463: an unconfirmed save stays in the sheet with its message next to Guardar, and the row keeps the same retry', async () => {
+    const writes: ConfigurationInput[] = [];
+    const journal = new ExerciseConfigurationJournal({ getItem: async () => null, setItem: async () => undefined },
+      { read: async () => ({ status: 'ok', data: read(0, null, false) }), write: async body => { writes.push(body); return { status: 'unavailable' }; } }, 'owner', SESSION, () => 'k');
+    const view = render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}>
+      <OwnlevelThemeProvider initialMode="light"><ExerciseVariantRow journal={journal} sessionExerciseId={PRESS} name="Press" editable /></OwnlevelThemeProvider></SafeAreaProvider>);
+    await act(async () => { await journal.refresh(); });
+    fireEvent.press(view.getByText('Registrar'));
+    fireEvent.changeText(view.getByTestId('exercise-variant-input'), 'Banco a 30°');
+    fireEvent(view.getByTestId('exercise-variant-input'), 'submitEditing');
+    await waitFor(() => expect(view.getByRole('alert')).toBeTruthy());
+    expect(view.getByRole('alert').props.children).toBe('No pudimos confirmar la variante. Revisala en el ejercicio; entrenar no depende de esto.');
+    expect(view.getByTestId('exercise-variant-sheet')).toBeTruthy();
+    expect(view.getByTestId('exercise-variant-input').props.value).toBe('Banco a 30°');
+    expect(writes).toHaveLength(1);
+    fireEvent.press(view.getByLabelText('Cerrar variante'));
+    expect(view.getByText('Reintentar')).toBeTruthy();
+    expect(writes).toHaveLength(1);
+  });
+  it('#463: the field and Guardar share a row unless the text is large or the screen too narrow for a comfortable field', () => {
+    expect(variantComposerStacked(390, 1)).toBe(false);
+    expect(variantComposerStacked(375, 1)).toBe(false);
+    expect(variantComposerStacked(375, 1.3)).toBe(false);
+    expect(variantComposerStacked(430, 1.35)).toBe(true);
+    expect(variantComposerStacked(320, 1)).toBe(true);
+    expect(variantComposerStacked(340, 1.2)).toBe(true);
   });
   it('shows nothing that blocks training when the read is not available', async () => {
     const journal = new ExerciseConfigurationJournal({ getItem: async () => null, setItem: async () => undefined },
