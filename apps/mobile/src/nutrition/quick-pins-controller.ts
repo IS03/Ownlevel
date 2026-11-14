@@ -13,6 +13,9 @@ import type { QuickPinsIntentRepository, StoredQuickPinsIntent } from './quick-p
  * - `unavailable` pins are unknown, never «no pins»: without a confirmed snapshot nothing can be written. A snapshot that
  *   could not be refreshed (the last read failed) is shown but not written against either: no write, replay or reapply
  *   leaves the device while the pins are not readable, so no useless PUT is ever sent (a stored intent just waits).
+ * - #303 C3b: when Rápido reused its options at an opening (no GET), the confirmed pins are a retained reading: before a
+ *   pin, unpin or move the pins are read again and the new list is built from THAT truth, so a retained revision is
+ *   never the authority for a write and another device's change is never overwritten with an old list.
  */
 export type QuickPinsApi = {
   write: (write: QuickPinsWrite) => Promise<MobileApiRequestResult<QuickPinsSnapshot | QuickPinsConflict>>;
@@ -60,6 +63,8 @@ export function visibleQuickPins(state: QuickPinsState): { ids: string[]; unconf
 export class QuickPinsController {
   private state: QuickPinsState = { phase: 'loading', confirmed: null, availability: 'unknown', intent: null, wanted: null, error: null, message: null };
   private listeners = new Set<() => void>(); private disposed = false; private busy = false; private readGeneration = 0;
+  /** False while the confirmed pins come from a reused (not re-read) reading: a write first reads them again. */
+  private verified = true;
   constructor(private api: QuickPinsApi, private repository: QuickPinsIntentRepository,
     private newKey: () => string = () => `pins:${Date.now()}:${Math.random().toString(36).slice(2)}`) {}
   getSnapshot = () => this.state;
@@ -82,7 +87,11 @@ export class QuickPinsController {
     if (pins.status !== 'ok') { this.update({ availability: 'unavailable' }); return; }
     this.accept({ revision: pins.revision, items: pins.items });
   }
+  /** Rápido reused its options without a GET: the pins it holds must be read again before they authorize a write. */
+  requireVerification() { if (!this.disposed && this.state.confirmed) this.verified = false; }
   private accept(snapshot: QuickPinsSnapshot) {
+    // A server answer (GET or write receipt): what is confirmed now was read, not retained.
+    this.verified = true;
     const current = this.state.confirmed;
     // The read worked («ok»), but an older revision never replaces the newer confirmed one.
     if (current && snapshot.revision < current.revision) { this.update({ availability: 'ok' }); return; }
@@ -99,31 +108,53 @@ export class QuickPinsController {
   }
 
   pin(id: string) {
-    const current = this.state.confirmed ? ids(this.state.confirmed) : null;
-    if (current?.includes(id.toLowerCase())) return Promise.resolve<QuickPinsWriteOutcome>('unchanged');
-    return this.write(current ? [...current, id] : []);
+    return this.exclusive(current => current?.includes(id.toLowerCase()) ? 'unchanged' : current ? [...current, id] : []);
   }
   unpin(id: string) {
-    const current = this.state.confirmed ? ids(this.state.confirmed) : null;
-    return this.write(current ? current.filter(pinned => pinned !== id.toLowerCase()) : []);
+    return this.exclusive(current => current ? current.filter(pinned => pinned !== id.toLowerCase()) : []);
   }
   move(id: string, index: number) {
-    const current = this.state.confirmed ? ids(this.state.confirmed) : null;
-    if (!current?.includes(id.toLowerCase())) return Promise.resolve<QuickPinsWriteOutcome>('refused');
-    const rest = current.filter(pinned => pinned !== id.toLowerCase());
-    rest.splice(Math.max(0, Math.min(index, rest.length)), 0, id.toLowerCase());
-    return this.write(rest);
+    return this.exclusive(current => {
+      if (!current?.includes(id.toLowerCase())) return 'refused';
+      const rest = current.filter(pinned => pinned !== id.toLowerCase());
+      rest.splice(Math.max(0, Math.min(index, rest.length)), 0, id.toLowerCase());
+      return rest;
+    });
   }
   /** What the person wanted before a refusal, sent again over the new truth only because they asked. */
-  reapply() { return this.state.wanted ? this.write(this.state.wanted) : Promise.resolve<QuickPinsWriteOutcome>('refused'); }
+  reapply() {
+    const wanted = this.state.wanted;
+    return wanted ? this.exclusive(() => wanted) : Promise.resolve<QuickPinsWriteOutcome>('refused');
+  }
   dismiss() {
     if (this.busy || this.state.intent) return;
     this.update({ wanted: null, error: null, message: null, ...(this.state.phase === 'conflict' ? { phase: 'idle' as const } : {}) });
   }
+  /** The whole ordered list. One write at a time, stored with its key before it is sent, against a verified revision. */
+  write(savedMealIds: string[]) { return this.exclusive(() => savedMealIds); }
 
-  /** The whole ordered list. One write at a time, stored with its key before it is sent. */
-  async write(savedMealIds: string[]): Promise<QuickPinsWriteOutcome> {
+  /**
+   * The ONLY way to a new write (pin, unpin, move, «Aplicar mi cambio», write). The lock is taken synchronously, before
+   * the first await, and held through verification, building the list, storing the intent and sending it: a second
+   * action in the same tick is refused (never queued or merged), so there is one journal entry and one PUT at most.
+   * If the confirmed pins are a retained reading they are read again first; not read again (offline, denied, failed):
+   * nothing is written and `wanted` is untouched. A stored intent's replay (`recover`) never comes here.
+   */
+  private async exclusive(build: (current: string[] | null) => string[] | 'unchanged' | 'refused'): Promise<QuickPinsWriteOutcome> {
     if (this.disposed || this.busy || this.state.intent || (this.state.phase !== 'idle' && this.state.phase !== 'conflict')) return 'refused';
+    this.busy = true;
+    try {
+      if (!this.verified) {
+        await this.reload();
+        if (this.disposed) return 'refused';
+        if (!this.verified || this.state.availability !== 'ok') { this.update({ error: 'unavailable', message: MESSAGES.unavailable }); return 'refused'; }
+      }
+      const next = build(this.state.confirmed ? ids(this.state.confirmed) : null);
+      return next === 'unchanged' || next === 'refused' ? next : await this.writeLocked(next);
+    } finally { this.busy = false; }
+  }
+  /** Called with the lock held by `exclusive`. */
+  private async writeLocked(savedMealIds: string[]): Promise<QuickPinsWriteOutcome> {
     const confirmed = this.state.confirmed;
     if (!confirmed || this.state.availability !== 'ok') { this.update({ error: 'unavailable', message: MESSAGES.unavailable }); return 'refused'; }
     if (savedMealIds.length > QUICK_PINS_MAX) { this.update({ error: 'full', message: MESSAGES.full }); return 'refused'; }
@@ -131,15 +162,12 @@ export class QuickPinsController {
     if (!intent) { this.update({ error: 'invalid', message: MESSAGES.invalid }); return 'refused'; }
     if (sameIds(intent.savedMealIds, ids(confirmed))) { this.update({ phase: 'idle', wanted: null, error: null, message: null }); return 'unchanged'; }
     const stored: StoredQuickPinsIntent = { version: 1, intent, base: confirmed };
-    this.busy = true;
-    try {
-      try { await this.repository.write(stored); } catch { this.update({ error: 'storage', message: MESSAGES.storage }); return 'refused'; }
-      // Stored but not sent (the controller went away): the next session finds it unconfirmed and replays it on request.
-      if (this.disposed) return 'refused';
-      this.update({ phase: 'pending', intent: stored, wanted: null, error: null, message: null });
-      await this.send(stored);
-      return 'sent';
-    } finally { this.busy = false; }
+    try { await this.repository.write(stored); } catch { this.update({ error: 'storage', message: MESSAGES.storage }); return 'refused'; }
+    // Stored but not sent (the controller went away): the next session finds it unconfirmed and replays it on request.
+    if (this.disposed) return 'refused';
+    this.update({ phase: 'pending', intent: stored, wanted: null, error: null, message: null });
+    await this.send(stored);
+    return 'sent';
   }
 
   /** Replays exactly the stored request: the server answers its stored receipt if it was applied, or applies it now. */
