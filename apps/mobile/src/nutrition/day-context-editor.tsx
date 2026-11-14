@@ -26,15 +26,19 @@ export function contextRawInput(text: string, previousRaw = '') {
   const value = text.trim();
   if (/^\d*$/u.test(value)) return value;
   if (/^\d{1,3}(?:\.\d{3})+$/u.test(value)) return value.replace(/\./gu, '');
-  // One edit of the grouping the field itself showed (the draft was digits): only digits added, any characters
-  // removed. A deleted digit can leave the remaining dots out of place, e.g. "2.100" → "2.10" is 210.
+  // A single keystroke on the grouping the field itself showed (the draft was digits): exactly one digit typed, or
+  // exactly one character deleted, nothing else changed. A deleted digit can leave the remaining dots out of place,
+  // e.g. "2.100" → "2.10" is 210. A replacement, a selection deleted or a paste over the shown text ("2.100" → "2.5")
+  // is ambiguous and stays as written.
+  if (!/^\d+$/u.test(previousRaw) || !/^[\d.]+$/u.test(value)) return value;
   const shown = contextInputText(previousRaw);
   let start = 0;
   while (start < shown.length && start < value.length && shown[start] === value[start]) start += 1;
   let end = 0;
   while (end < shown.length - start && end < value.length - start && shown[shown.length - 1 - end] === value[value.length - 1 - end]) end += 1;
-  const inserted = value.slice(start, value.length - end);
-  return /^\d*$/u.test(previousRaw) && /^[\d.]+$/u.test(value) && /^\d*$/u.test(inserted) ? value.replace(/\./gu, '') : value;
+  const removed = shown.slice(start, shown.length - end), inserted = value.slice(start, value.length - end);
+  const oneDigitTyped = removed === '' && /^\d$/u.test(inserted), oneCharDeleted = inserted === '' && removed.length === 1;
+  return oneDigitTyped || oneCharDeleted ? value.replace(/\./gu, '') : value;
 }
 export function contextDateLabel(date: string, today: string) {
   const format = new Intl.DateTimeFormat('es-AR', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long', ...(date.slice(0, 4) === today.slice(0, 4) ? {} : { year: 'numeric' }) });

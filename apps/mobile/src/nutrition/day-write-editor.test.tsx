@@ -92,6 +92,13 @@ describe('Native activity/context editor',()=>{
   expect(contextRawInput('2.1002.5','2100')).toBe('2.1002.5');
   expect(contextRawInput('2..100','2100')).toBe('2..100');
   expect(contextRawInput('2.','2.5')).toBe('2.');
+  // Replacing, pasting over or deleting a selection of a filled field is ambiguous: kept as written, whatever the draft.
+  for(const [text,previous] of [['2.5','2100'],['2.5','2500'],['3.2','3100'],['2.5','25'],['2.5','2'],['21.00','2100'],['2.10','21000'],['2.15','2100'],['2.1055','2100'],['1.2','12'],['2.5','']] as const)expect(contextRawInput(text,previous)).toBe(text);
+  // Still one keystroke on a filled field: one digit typed or one character deleted.
+  expect(contextRawInput('2.50','2500')).toBe('250');expect(contextRawInput('2.500','250')).toBe('2500');
+  expect(contextRawInput('2100','2100')).toBe('2100');expect(contextRawInput('2.00','2100')).toBe('200');
+  // Valid es-AR grouping pasted over a filled field still parses.
+  expect(contextRawInput('2.500','2100')).toBe('2500');expect(contextRawInput('12.345','3100')).toBe('12345');
   // Round trip of the display.
   for(const raw of ['1','21','210','2100','21005'])expect(contextRawInput(contextInputText(raw),raw)).toBe(raw);
  });
@@ -109,6 +116,16 @@ describe('Native activity/context editor',()=>{
   fireEvent.changeText(input(view),'1..200');expect(draft(f).target).toBe('1..200');
   await act(async()=>{fireEvent.press(view.getByText('Guardar'));});
   expect(view.getByText('Usá calorías enteras entre 1 y 20000.')).toBeTruthy();expect(f.api.mutate).not.toHaveBeenCalled();
+  // Replacing a filled grouped value (select all, then type or paste) with malformed text: invalid, never written.
+  for(const [raw,shown,text] of [['2100','2.100','2.5'],['2500','2.500','2.5'],['3100','3.100','3.2']]){
+   fireEvent.changeText(input(view),raw);expect(input(view).props.value).toBe(shown);
+   fireEvent.changeText(input(view),text);expect(draft(f).target).toBe(text);expect(input(view).props.value).toBe(text);
+   await act(async()=>{fireEvent.press(view.getByText('Guardar'));});
+   expect(view.getByText('Usá calorías enteras entre 1 y 20000.')).toBeTruthy();expect(f.api.mutate).not.toHaveBeenCalled();
+   // One deleted digit on the grouped value is still an edit of the number.
+   fireEvent.changeText(input(view),raw);fireEvent.changeText(input(view),shown.slice(0,-1));expect(draft(f).target).toBe(raw.slice(0,-1));
+  }
+  expect(f.api.mutate).not.toHaveBeenCalled();
  });
  it('a manual value equal to the automatic one stays personal and opens on the chosen field',async()=>{
   const f=await fixture();
