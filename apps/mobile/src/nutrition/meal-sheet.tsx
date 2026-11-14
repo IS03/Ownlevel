@@ -1,11 +1,29 @@
-import { useMemo, type PropsWithChildren, type ReactNode } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useMemo, useState, type PropsWithChildren, type ReactNode } from 'react';
+import { KeyboardAvoidingView, Modal, type LayoutChangeEvent, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { AppText, ScreenGlow, ScrollScreen, SearchField, SheetHandle, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { NutritionGlassButton } from './day-controls';
 export const mealShown = (n: number | null | undefined, digits = 2): string => n == null ? '—' : new Intl.NumberFormat('es-AR', { maximumFractionDigits: digits }).format(n);
 const motion = brandTokens.motion;
+/**
+ * #515: the title sits on the sheet's own centre line, whatever the width of the controls on either side. Both side zones
+ * reserve the width of the wider control (measured, so a long date or a different control never depends on a fixed size);
+ * the title takes what is left, so it can wrap but never overlap a button.
+ */
+export function SheetHeader({ title, subtitle, left, right }: { title: string; subtitle?: string; left: ReactNode; right?: ReactNode }) {
+  const [widths, setWidths] = useState({ left: 44, right: 44 });
+  const side = Math.max(widths.left, widths.right);
+  const measure = (key: 'left' | 'right') => (event: LayoutChangeEvent) => {
+    const width = Math.ceil(event.nativeEvent.layout.width);
+    setWidths(previous => previous[key] === width ? previous : { ...previous, [key]: width });
+  };
+  return <View style={styles.header} testID="sheet-header">
+    <View style={[styles.sideZone, { minWidth: side, alignItems: 'flex-start' }]} testID="sheet-header-left"><View onLayout={measure('left')}>{left}</View></View>
+    <View style={styles.title} testID="sheet-header-title"><AppText accessibilityRole="header" variant="headline" style={styles.center}>{title}</AppText>{subtitle ? <AppText muted variant="caption" style={styles.center}>{subtitle}</AppText> : null}</View>
+    <View style={[styles.sideZone, { minWidth: side, alignItems: 'flex-end' }]} testID="sheet-header-right"><View onLayout={measure('right')}>{right ?? <View style={{ width: 44 }} />}</View></View>
+  </View>;
+}
 /**
  * Full-height sheet for the loading flows. Swiping down closes it natively when nothing would be lost (`dismissable`);
  * with unsaved changes iOS resists and the close confirmation asks. A swipe from the left edge goes back (or closes).
@@ -37,11 +55,7 @@ export function MealSheet({ title, subtitle, children, onClose, onDismiss, back,
   const { colors } = useOwnlevelTheme();
   const header = <>
     <SheetHandle />
-    <View style={styles.header}>
-      <NutritionGlassButton icon={back ? 'chevronLeft' : 'close'} label={back ? 'Volver' : `Cerrar ${title}`} onPress={running ? undefined : onClose} />
-      <View style={styles.title}><AppText accessibilityRole="header" variant="headline" style={styles.center}>{title}</AppText>{subtitle ? <AppText muted variant="caption" style={styles.center}>{subtitle}</AppText> : null}</View>
-      {right ?? <View style={{ width: 44 }} />}
-    </View>
+    <SheetHeader title={title} subtitle={subtitle} left={<NutritionGlassButton icon={back ? 'chevronLeft' : 'close'} label={back ? 'Volver' : `Cerrar ${title}`} onPress={running ? undefined : onClose} />} right={right} />
   </>;
   const body = <GestureHandlerRootView style={styles.fill}><GestureDetector gesture={edge}><Animated.View style={[styles.fill, follow]}>
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.fill}>
@@ -68,4 +82,4 @@ export const mealSheetStyles = StyleSheet.create({
   input: { minHeight: 48, padding: 12, borderRadius: 12, fontSize: brandTokens.typeScale.body.fontSize }, number: { fontSize: brandTokens.typeScale.heroNumber.fontSize, lineHeight: 68, fontWeight: '700', fontVariant: ['tabular-nums'], textAlign: 'center', minWidth: 40, marginRight: 6 },
 });
 const styles = StyleSheet.create({ fill: { flex: 1 }, hidden: { display: 'none' }, fixed: { gap: 20, paddingTop: 8, paddingBottom: 12, paddingHorizontal: brandTokens.layout.screenPadding },
-  content: { flexGrow: 1, gap: 20, paddingTop: 8 }, header: { flexDirection: 'row', alignItems: 'center', gap: 8 }, title: { flex: 1, gap: 2 }, center: { textAlign: 'center' } });
+  content: { flexGrow: 1, gap: 20, paddingTop: 8 }, header: { flexDirection: 'row', alignItems: 'center', gap: 8 }, title: { flex: 1, gap: 2 }, sideZone: { flexShrink: 0 }, center: { textAlign: 'center' } });
