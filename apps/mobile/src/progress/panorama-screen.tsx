@@ -178,10 +178,11 @@ function OverviewContent({selected, onSelect, contextOpen, onContextToggle, poin
     // #519 · A tool of a period opens on the portada's window, like the areas above; «Comparar períodos» opens the A/B sheet once.
     const tool = (t: PortadaTool) => {
         if (t === 'metrics') { router.push('/(tabs)/progress/trends/metrics'); return; }
+        // The 30 days are only a proposal inside the A/B sheet: the active range and B change only on «Listo».
+        if (t === 'compare') { router.navigate({ pathname: '/(tabs)/progress/period', params: { sheet: 'compare', proposalFrom: query.from, proposalTo: query.to } }); return; }
         const next = progressStateForRange(query.from, query.to, rangeState, today);
         if (next) setState({ ...next, compare: { kind: 'none' } });
-        if (t === 'compare') router.navigate({ pathname: '/(tabs)/progress/period', params: { sheet: 'compare' } });
-        else router.push('/(tabs)/progress/trends/meal-times');
+        router.push('/(tabs)/progress/trends/meal-times');
     };
     return <ProgressScroll root periodControls={false} title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()}/>}>
    <ProgressReadStatus state={state}/>

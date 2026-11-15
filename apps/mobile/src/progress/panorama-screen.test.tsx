@@ -362,16 +362,19 @@ it('#519 · «Explorar tus datos»: four tools in sight, the rest grouped, and s
         expect(view.getByRole('button', { name })).toBeTruthy();
     expect(read).toHaveBeenCalledTimes(1);
 });
-it('#519 · «Comparar períodos» and «Cuándo comés» open on the portada window; Comparaciones and Métricas only navigate', async () => {
+it('#519 · «Comparar períodos» proposes the portada window; «Cuándo comés» opens on it; Comparaciones and Métricas only navigate', async () => {
     // The shared period, as the destinations read it.
     let range: ReturnType<typeof useProgressRange> | undefined;
     function InspectRange() { range = useProgressRange(); return null; }
     const view = render(wrap(<><ProgressOverviewScreen /><InspectRange /></>)); await view.findByTestId('progress-panorama');
+    const before = range!.state;
     fireEvent.press(view.getByRole('button', { name: /^Comparar períodos/ }));
-    expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/period', params: { sheet: 'compare' } });
-    expect([range!.query.from, range!.query.to, range!.compare]).toEqual(['2026-10-11', '2026-11-09', null]);
+    expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/period', params: { sheet: 'compare', proposalFrom: '2026-10-11', proposalTo: '2026-11-09' } });
+    // Only a proposal: nothing is applied until «Listo» in the sheet.
+    expect(range!.state).toBe(before);
     fireEvent.press(view.getByRole('button', { name: /^Cuándo comés/ }));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/trends/meal-times');
+    expect([range!.query.from, range!.query.to, range!.compare]).toEqual(['2026-10-11', '2026-11-09', null]);
     fireEvent.press(view.getByRole('button', { name: /^Comparaciones/ }));
     expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights', params: { fromProgress: '1' } });
     fireEvent.press(view.getByRole('button', { name: /^Métricas personales/ }));
@@ -393,4 +396,29 @@ it('#519 · the portada shows kcal and protein per day in whole numbers and weig
     expect(portadaValue(78.46, 'kg')).toBe('78,5 kg');
     expect(portadaValue(78, 'kg')).toBe('78 kg');
     expect(portadaValue(0, 'kcal')).toBe('0 kcal');
+});
+
+it('#519 · the A/B sheet shows the portada\'s 30 days with the active custom B: closing changes nothing, «Listo» applies both', async () => {
+    const active = { unit: 'month' as const, anchor: PANORAMA_TODAY, custom: null, compare: { kind: 'custom' as const, range: { start: '2026-08-01', end: '2026-08-20' } } };
+    let range: ReturnType<typeof useProgressRange> | undefined;
+    function InspectRange() { range = useProgressRange(); return null; }
+    const tree = () => <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 393, height: 852 }, insets: { top: 0, bottom: 0, left: 0, right: 0 } }}><OwnlevelThemeProvider initialMode="dark">
+      <ProgressRangeProvider initialToday={PANORAMA_TODAY} initialState={active}><ProgressPeriodOverviewScreen /><InspectRange /></ProgressRangeProvider></OwnlevelThemeProvider></SafeAreaProvider>;
+    mockParams = { sheet: 'compare', proposalFrom: '2026-10-11', proposalTo: PANORAMA_TODAY };
+    const cancel = render(tree()); await cancel.findByTestId('compare-ab');
+    expect(cancel.getByTestId('compare-cell-a').props.accessibilityLabel).toMatch(/30 días$/);
+    expect(cancel.getByTestId('compare-cell-b').props.accessibilityLabel).toMatch(/20 días$/);
+    const opened = range!.state;
+    expect([range!.query.from, range!.query.to, range!.compare]).toEqual(['2026-11-01', PANORAMA_TODAY, { start: '2026-08-01', end: '2026-08-20' }]);
+    fireEvent.press(cancel.getByRole('button', { name: 'Cerrar sin cambiar' }));
+    expect(cancel.queryByTestId('compare-ab')).toBeNull();
+    // Closed without changes: the range and B that were active stay, exactly.
+    expect(range!.state).toBe(opened);
+    expect([range!.query.from, range!.query.to, range!.compare]).toEqual(['2026-11-01', PANORAMA_TODAY, { start: '2026-08-01', end: '2026-08-20' }]);
+    cancel.unmount();
+    const apply = render(tree()); await apply.findByTestId('compare-ab');
+    fireEvent.press(apply.getByRole('button', { name: 'Listo' }));
+    // «Listo»: the proposed 30 days as A, the custom B kept with its own dates.
+    expect([range!.query.from, range!.query.to, range!.compare]).toEqual(['2026-10-11', PANORAMA_TODAY, { start: '2026-08-01', end: '2026-08-20' }]);
+    expect(range!.state.compare).toEqual({ kind: 'custom', range: { start: '2026-08-01', end: '2026-08-20' } });
 });

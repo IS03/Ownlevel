@@ -8,6 +8,7 @@ import { CompareHeaderButton, PeriodBar, ProgressPeriodBlock, STRIP } from './pe
 import { CompareSheet, CustomRangeSheet } from './period-sheets';
 import { rangeShortLabel } from './progress-range';
 import { useProgressRange } from './progress-range-context';
+import type { DateRange } from './progress-range';
 
 const BAR = 52;
 /** Scrolled distance over which the title shrinks into the compact bar. */
@@ -20,12 +21,14 @@ const SMALL = 21;
  * uses). Scrolling, the title never moves sideways: it shrinks in place on the left, and the period you are reading
  * fades in under it ("Este mes", "Mes anterior", "17 sep – 16 oct").
  */
-export function ProgressScroll({ title, testID, refreshControl, children, compactTitle, multilineTitle = false, root = false, periodControls = true, openSheet = null, onSheetOpened }: {
+export function ProgressScroll({ title, testID, refreshControl, children, compactTitle, multilineTitle = false, root = false, periodControls = true, openSheet = null, sheetProposal = null, onSheetOpened }: {
   title: string; testID: string; refreshControl?: React.ReactElement<RefreshControlProps>; children: ReactNode; multilineTitle?: boolean; compactTitle?: string;
   /** The tab's first screen: no back button and a large title. */
   root?: boolean; periodControls?: boolean;
   /** #519 · A sheet asked for by the route (the portada's «Comparar períodos»): opened once, then the route forgets it. */
   openSheet?: 'compare' | null; onSheetOpened?: () => void;
+  /** The period that sheet proposes as A (applied only on «Listo»). */
+  sheetProposal?: DateRange | null;
 }) {
   const router = useRouter(),reduced=useReduceMotion();
   const { colors } = useOwnlevelTheme();
@@ -35,9 +38,10 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
   const barHeight = BAR * Math.max(1, fontScale);
   const { state, today } = useProgressRange();
   const [sheet, setSheet] = useState<'custom' | 'compare' | null>(openSheet);
+  const [proposal, setProposal] = useState<DateRange | null>(openSheet ? sheetProposal : null);
   // Also when the screen was already in the stack and the portada asks again.
   const [asked, setAsked] = useState(openSheet);
-  if (asked !== openSheet) { setAsked(openSheet); if (openSheet) setSheet(openSheet); }
+  if (asked !== openSheet) { setAsked(openSheet); if (openSheet) { setSheet(openSheet); setProposal(sheetProposal); } }
   // Once per request: the route drops the parameter; a new callback identity alone never asks again.
   const sheetOpened = useRef(onSheetOpened);
   useEffect(() => { sheetOpened.current = onSheetOpened; });
@@ -47,7 +51,7 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
   // The pull ends with its read; the next silent read starts with the spinner hidden again.
   const [wasRefreshing, setWasRefreshing] = useState(refreshing);
   if (wasRefreshing !== refreshing) { setWasRefreshing(refreshing); if (!refreshing && pulled) setPulled(false); }
-  const open = { onCustom: () => setSheet('custom'), onCompare: () => setSheet('compare') };
+  const open = { onCustom: () => setSheet('custom'), onCompare: () => { setProposal(null); setSheet('compare'); } };
   const scroll = useAnimatedRef<Animated.ScrollView>();
   const offset = useScrollViewOffset(scroll);
   const header = top + barHeight;
@@ -96,7 +100,7 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
       </View>
     </View>
     {sheet === 'custom' ? <CustomRangeSheet onClose={() => setSheet(null)} /> : null}
-    {sheet === 'compare' ? <CompareSheet onClose={() => setSheet(null)} /> : null}
+    {sheet === 'compare' ? <CompareSheet proposal={proposal} onClose={() => { setSheet(null); setProposal(null); }} /> : null}
   </>;
 }
 const styles = StyleSheet.create({
