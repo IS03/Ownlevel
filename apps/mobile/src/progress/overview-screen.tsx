@@ -136,7 +136,10 @@ export function ProgressPeriodOverviewScreen() {
     const { pathname, extra } = destinationRoute(d);
     router.push({ pathname, params: extra });
   };
-  return <ProgressScroll title="Explorar período" testID="progress-overview" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} tintColor={colors.primary} />}>
+  // #519 · From the portada's «Comparar períodos»: the existing A/B sheet, open once on arrival; the parameter is then dropped.
+  const askedSheet = useLocalSearchParams<{ sheet?: string }>().sheet === 'compare' ? 'compare' as const : null;
+  const sheetOpened = useCallback(() => router.setParams({ sheet: undefined }), [router]);
+  return <ProgressScroll openSheet={askedSheet} onSheetOpened={sheetOpened} title="Explorar período" testID="progress-overview" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} tintColor={colors.primary} />}>
     <ProgressReadStatus state={status} />
     {focusConnections ? <ConnectionsSection resource={connections} /> : null}
     <MyViews />

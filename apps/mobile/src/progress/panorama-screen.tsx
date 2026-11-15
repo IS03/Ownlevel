@@ -4,7 +4,8 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { useCachedRead } from '@/api/use-cached-read';
 import { fetchProgressFindings, type ProgressEditorialFinding, type ProgressOverview, type ProgressDestination, type ProgressSpark } from '@/api/progress';
-import { AppIcon, AppText, Button, Heading, InlineUnavailable, ListRow, SkeletonBlock, UnavailableState, brandTokens, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { AppIcon, AppText, Button, Heading, InlineUnavailable, ListRow, SkeletonBlock, UnavailableState, brandTokens, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion, type AppIconName } from '@/design-system';
+import { haptics } from '@/platform/haptics';
 import { periodSummaryHref, explorationHref } from '@/insights/navigation';
 import { exactPeriodDate, exactPeriodRange } from '@/insights/period-model';
 import { addDays, progressStateForRange } from './progress-range';
@@ -19,9 +20,17 @@ import { destinationRoute } from './progress-destination';
 import { portadaPointParams, type PortadaPoint } from './portada-point';
 type SparkKind = 'training' | 'weight' | 'nutrition';
 const SPARK_UNIT: Record<SparkKind, string> = { training: 'series', weight: 'kg', nutrition: 'kcal' };
+/**
+ * #519 · A brief reading: kcal and protein per day in whole numbers, weight with one decimal at most. Presentation only:
+ * the values, their precision in the details and every calculation stay as they are.
+ */
+export function portadaValue(value: number, unit: string) {
+  if (unit === 'kg') return formatValue(Math.round(value * 10) / 10, 'kg');
+  return formatValue(value, unit, 'integer');
+}
 /** The spark's points with the readout they show; the same text travels to the detail with the inspected point. */
 const sparkPoints = (spark: ProgressSpark, unit: string) => spark.current.map(p => ({ key: p.start, start: p.start, end: p.end, label: p.start.slice(8), value: p.value,
-  text: `${exactPeriodRange(p)}: ${p.value === null ? 'sin dato' : formatValue(p.value, unit)}` }));
+  text: `${exactPeriodRange(p)}: ${p.value === null ? 'sin dato' : portadaValue(p.value, unit)}` }));
 /** The inspected point of a spark, if it is still in this read (a refresh can retire it). */
 function inspectedPoint(spark: ProgressSpark | null | undefined, kind: SparkKind, key: string | null | undefined): PortadaPoint | null {
     const p = spark && key ? sparkPoints(spark, SPARK_UNIT[kind]).find(x => x.key === key) : undefined;
@@ -89,7 +98,7 @@ export function ProgressPanorama({ data, onOpen, points = {}, onPoint = () => un
         </>}
       </View>
       <View style={[styles.area, { borderColor: colors.border }]} testID="panorama-body">
-        <AreaLink title="Cuerpo" value={data.body.status !== 'ok' ? 'No disponible' : w?.last ? formatValue(w.last.value, 'kg') : w === undefined ? 'Sin lectura' : 'Sin pesajes'}
+        <AreaLink title="Cuerpo" value={data.body.status !== 'ok' ? 'No disponible' : w?.last ? portadaValue(w.last.value, 'kg') : w === undefined ? 'Sin lectura' : 'Sin pesajes'}
           action="Ver peso y medidas" onPress={() => onOpen({ kind: 'body' }, inspectedPoint(data.sparks?.weight, 'weight', points.weight))} />
         {data.body.status !== 'ok' ? <AppText muted>No pudimos leer Cuerpo.</AppText> : w === undefined ? <AppText muted variant="caption">La fecha exacta y cobertura de peso no están disponibles en esta versión.</AppText> : w?.last ? <>
           <AppText muted numeric variant="caption">Último de la ventana · {exactPeriodDate(w.last.date)} · {w.count} {w.count === 1 ? 'registro válido' : 'registros válidos'}</AppText>
@@ -98,28 +107,47 @@ export function ProgressPanorama({ data, onOpen, points = {}, onPoint = () => un
         </> : <AppText muted variant="caption">Sin pesajes válidos en esta ventana.</AppText>}
       </View>
       <View style={[styles.area, { borderColor: colors.border }]} testID="panorama-nutrition">
-        <AreaLink title="Nutrición" value={!n ? 'No disponible' : n.averageKcal === null ? 'Sin promedio' : `${formatValue(n.averageKcal, 'kcal')}/día`}
+        <AreaLink title="Nutrición" value={!n ? 'No disponible' : n.averageKcal === null ? 'Sin promedio' : `${portadaValue(n.averageKcal, 'kcal')}/día`}
           action="Ver alimentación y objetivos" onPress={() => onOpen({ kind: 'nutrition' }, inspectedPoint(data.sparks?.nutrition, 'nutrition', points.nutrition))} />
         {!n ? <AppText muted>No pudimos leer Nutrición.</AppText> : <>
           <AppText muted numeric variant="caption">{coverage ? `${coverage.caloriesDays} días utilizados` : 'Días utilizados no disponibles'} · {n.registeredDays} de {n.days} días con alimentación registrada</AppText>
-          <AppText muted numeric variant="caption">Proteína: {n.averageProteinG === null ? 'sin promedio' : `${formatValue(n.averageProteinG, 'g')}/día`}{coverage ? ` · ${coverage.proteinDays} días utilizados` : ''}</AppText>
+          <AppText muted numeric variant="caption">Proteína: {n.averageProteinG === null ? 'sin promedio' : `${portadaValue(n.averageProteinG, 'g')}/día`}{coverage ? ` · ${coverage.proteinDays} días utilizados` : ''}</AppText>
           <Preview kind="nutrition" spark={data.sparks?.nutrition} mode="bars" selectedKey={points.nutrition ?? null} onSelect={k => onPoint('nutrition', k)} />
         </>}
       </View>
     </View>;
 }
 
-function ExplorationLinks({ today, contextOpen, onToggle }: { today: string; contextOpen: boolean; onToggle: () => void }) {
+/** #519 · A tool of the portada: icon, name, what it is for and a chevron, so it reads as something to open. Nothing is read to show it. */
+function ToolRow({ icon, title, detail, onPress, testID }: { icon: AppIconName; title: string; detail: string; onPress: () => void; testID: string }) {
+    const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
+    return <Pressable accessibilityRole="button" accessibilityLabel={`${title}: ${detail}`} testID={testID} onPress={() => { haptics.selection(); onPress(); }}
+      style={({ pressed }) => [styles.tool, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
+      <AppIcon name={icon} color={colors.primary} size={20} />
+      <View style={styles.toolText}><AppText variant="headline">{title}</AppText><AppText muted variant="footnote">{detail}</AppText></View>
+      <AppIcon name="chevronRight" color={colors.textMuted} size={15} />
+    </Pressable>;
+}
+
+export type PortadaTool = 'compare' | 'metrics' | 'meal-times';
+/**
+ * #519 · «Explorar tus datos»: the four tools people look for, in sight; the rest one tap away in «Ver todas las herramientas».
+ * Each reads only when it opens. The tools of a period (compare, meal times) open on the portada's window.
+ */
+function ExplorationLinks({ today, contextOpen, onToggle, onTool }: { today: string; contextOpen: boolean; onToggle: () => void; onTool: (tool: PortadaTool) => void }) {
     const router = useRouter();
     const origin = { fromProgress: '1' as const };
-    return <View style={styles.explore}>
-      <Heading level={2}>Seguir explorando</Heading>
-      <ListRow title="Métricas personales" onPress={() => router.push('/(tabs)/progress/trends/metrics')} />
-      <ListRow title="Períodos y A/B" subtitle="Mis vistas, Etapas y lo que se movió junto" accessibilityLabel="Explorar período y A/B" onPress={() => router.navigate('/(tabs)/progress/period')} />
-      <ListRow title="Recorrido por fecha" subtitle="Entrenamiento, Cuerpo, Nutrición y Métricas" onPress={() => router.navigate('/history/calendar')} />
-      <InsightRow label="Contexto y relaciones" detail="Sesiones, semanas, relaciones y qué influye" spoken="Contexto y relaciones" expanded={contextOpen} onPress={onToggle} />
+    return <View style={styles.explore} testID="panorama-explore">
+      <Heading level={2}>Explorar tus datos</Heading>
+      <ToolRow icon="compare" title="Comparar períodos" detail="Dos períodos, cada uno con sus fechas" testID="panorama-tool-compare" onPress={() => onTool('compare')} />
+      <ToolRow icon="activity" title="Métricas personales" detail="Sueño, pasos y lo que registrás" testID="panorama-tool-metrics" onPress={() => onTool('metrics')} />
+      <ToolRow icon="dumbbell" title="Comparaciones" detail="Cada sesión frente a la anterior" testID="panorama-tool-comparisons"
+        onPress={() => router.navigate({ pathname: '/(tabs)/train/insights', params: origin })} />
+      <ToolRow icon="clock" title="Cuándo comés" detail="Tus comidas por franja horaria" testID="panorama-tool-meal-times" onPress={() => onTool('meal-times')} />
+      <InsightRow label="Ver todas las herramientas" detail="Recorrido por fecha, últimos tres meses, semanas, lo que se movió junto y más" spoken="Ver todas las herramientas" expanded={contextOpen} onPress={onToggle} />
       {contextOpen ? <View testID="panorama-context-links">
-        <ListRow title="Comparaciones" subtitle="Cada sesión frente a la anterior" accessibilityLabel="Ver Comparaciones: cada sesión frente a la anterior" onPress={() => router.navigate({ pathname: '/(tabs)/train/insights', params: origin })} />
+        <ListRow title="Explorar período" subtitle="Mis vistas, Etapas y lo que se movió junto" accessibilityLabel="Explorar período: mis vistas, etapas y lo que se movió junto" onPress={() => router.navigate('/(tabs)/progress/period')} />
+        <ListRow title="Recorrido por fecha" subtitle="Entrenamiento, Cuerpo, Nutrición y Métricas" onPress={() => router.navigate('/history/calendar')} />
         <ListRow title="Últimos tres meses" onPress={() => router.navigate(periodSummaryHref(today, origin))} />
         <ListRow title="Semanas y coincidencias" subtitle="Comparación A/B de los registros" accessibilityLabel="Semanas, A/B y coincidencias descriptivas" onPress={() => router.navigate(explorationHref(today, undefined, undefined, origin))} />
         {/* Both read only when opened: discovering them adds no request to this screen. */}
@@ -147,10 +175,18 @@ function OverviewContent({selected, onSelect, contextOpen, onContextToggle, poin
         // The inspected spark point travels as route params; the detail selects it only if it holds the same datum.
         router.push({pathname: dest.pathname, params: {...dest.extra, from: query.from, to: query.to, ...(point ? portadaPointParams(point) : {})}});
     };
+    // #519 · A tool of a period opens on the portada's window, like the areas above; «Comparar períodos» opens the A/B sheet once.
+    const tool = (t: PortadaTool) => {
+        if (t === 'metrics') { router.push('/(tabs)/progress/trends/metrics'); return; }
+        const next = progressStateForRange(query.from, query.to, rangeState, today);
+        if (next) setState({ ...next, compare: { kind: 'none' } });
+        if (t === 'compare') router.navigate({ pathname: '/(tabs)/progress/period', params: { sheet: 'compare' } });
+        else router.push('/(tabs)/progress/trends/meal-times');
+    };
     return <ProgressScroll root periodControls={false} title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()}/>}>
    <ProgressReadStatus state={state}/>
    {data ? <>{state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Conservamos la última lectura confirmada." actionLabel="Reintentar" onAction={() => void refresh()}/> : null}<ProgressPanorama data={data} onOpen={open} points={points} onPoint={onPoint}/><ProgressFindings items={data.findings} sourcesUnavailable={data.training.status !== 'ok' || data.nutrition.status !== 'ok'} selected={selected} onSelect={onSelect} onOpen={item => open(item.destination, null, item)}/></> : state.status === 'loading' ? <SkeletonBlock height={176}/> : <UnavailableState title="No pudimos leer tu progreso" description="Tus registros siguen guardados." action={<Button label="Reintentar" onPress={() => void refresh()}/>}/>}
-   <ExplorationLinks today={today} contextOpen={contextOpen} onToggle={onContextToggle}/>
+   <ExplorationLinks today={today} contextOpen={contextOpen} onToggle={onContextToggle} onTool={tool}/>
  </ProgressScroll>;
 }
 /** Unmount this reading while the tab/route is hidden; confirmed cache restores it synchronously on return. */
@@ -182,4 +218,6 @@ const styles = StyleSheet.create({
     reserve: { opacity: 0 },
     readout: { position: 'absolute', top: 0, left: 0, right: 0 },
     explore: { gap: spacing.xs, paddingTop: spacing.md },
+  tool: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth },
+  toolText: { flex: 1, gap: 2 },
 });

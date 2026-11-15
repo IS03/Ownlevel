@@ -3,7 +3,7 @@ import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { describe, expect, it, jest } from '@jest/globals';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { OwnlevelThemeProvider } from '@/design-system';
+import { OwnlevelThemeProvider, radius } from '@/design-system';
 import type { NutritionReport } from '@/api/nutrition-report';
 import { reportFixture } from '@/nutrition/report-fixture.test-helper';
 import { bucketNutritionChartDays } from '../../../../src/lib/nutrition/report-chart-core';
@@ -40,9 +40,9 @@ describe('Nutrition chart inspection', () => {
     expect(readout.getByText('01/10/2026')).toBeTruthy(); expect(readout.getByText('100 kcal')).toBeTruthy();
     expect(readout.getByText('Objetivo registrado de esta fecha: 1.800 kcal.')).toBeTruthy();
     expect(onDate).not.toHaveBeenCalled(); expect(view.queryByTestId('nutrition-progress-target')).toBeNull();
-    fireEvent.press(view.getByRole('button', { name: 'Abrir día y comidas originales' })); expect(onDate).toHaveBeenCalledWith('2026-10-01');
+    fireEvent.press(view.getByRole('button', { name: /^Ver comidas de ese día/ })); expect(onDate).toHaveBeenCalledWith('2026-10-01');
     fireEvent.press(view.getByTestId('nutrition-chart-current-2026-10-01-bar'));
-    expect(view.queryByRole('button', { name: 'Abrir día y comidas originales' })).toBeNull();
+    expect(view.queryByRole('button', { name: /^Ver comidas de ese día/ })).toBeNull();
   });
   it('distinguishes no meals, unknown calories, explicit zero, partial sums and today without treating any as another', async () => {
     const r = daily();
@@ -71,7 +71,7 @@ describe('Nutrition chart inspection', () => {
     fireEvent.press(view.getByTestId(`nutrition-chart-current-${first.start}-bar`));
     expect(view.getByText('Promedio del bloque · 1.234 kcal por día con dato')).toBeTruthy();
     expect(view.getByText(new RegExp(`3 días usados de ${blockLength} días del bloque · 1 con suma parcial`))).toBeTruthy();
-    expect(view.queryByRole('button', { name: 'Abrir día y comidas originales' })).toBeNull();
+    expect(view.queryByRole('button', { name: /^Ver comidas de ese día/ })).toBeNull();
     fireEvent.press(view.getByRole('button', { name: 'Ver días del bloque' }));
     expect(within(view.getByTestId('nutrition-report-day-rows')).getAllByRole('button')).toHaveLength(blockLength);
     fireEvent.press(within(view.getByTestId('nutrition-report-day-rows')).getAllByRole('button')[0]);
@@ -125,7 +125,7 @@ describe('Nutrition chart inspection', () => {
     const shifted = reportFixture({ period: 'custom', from: '2026-10-02', to: '2026-10-04' });
     view.rerender(tree(shifted));
     expect(view.getByText(/El dato seleccionado ya no está disponible/)).toBeTruthy();
-    expect(view.queryByRole('button', { name: 'Abrir día y comidas originales' })).toBeNull();
+    expect(view.queryByRole('button', { name: /^Ver comidas de ese día/ })).toBeNull();
   });
   it.each(['light', 'dark'] as const)('keeps long dates, units, coverage and 44 pt targets at large text in %s mode', async mode => {
     const rn = jest.requireActual<typeof import('react-native')>('react-native');
@@ -144,5 +144,42 @@ describe('Nutrition chart inspection', () => {
     const view = render(tree(daily())); await flush();
     expect(view.queryByRole('button', { name: 'Volver al gráfico de Nutrición' })).toBeNull();
     mockParams = {};
+  });
+});
+
+describe('#519 · lectura del dato y ayuda', () => {
+  it('selects with the rounded outline of PeriodChart, keeps 44 pt per day and the horizontal scroll', async () => {
+    const view = render(tree(daily())); await flush();
+    const bar = view.getByTestId('nutrition-chart-current-2026-10-01-bar');
+    fireEvent.press(bar);
+    const style = StyleSheet.flatten(view.getByTestId('nutrition-chart-current-2026-10-01-bar').props.style);
+    expect(style).toMatchObject({ borderRadius: radius.inner, minWidth: 44 });
+    expect(view.getByLabelText(/^Calorías · Período elegido/).props.horizontal).toBe(true);
+  });
+  it('puts date, value and coverage first, keeps partial and today next to the datum, and opens the day from a row', async () => {
+    onDate.mockClear();
+    const r = daily();
+    r.days = r.days.map(d => d.date === '2026-10-04' ? { ...d, mealCount: 2, nutrients: { ...d.nutrients, calories: { value: 350, knownMeals: 1, missingMeals: 1, status: 'partial' } } } : d);
+    const view = render(tree(r)); await flush();
+    fireEvent.press(view.getByTestId('nutrition-chart-current-2026-10-04-bar'));
+    const inspection = within(view.getByTestId('nutrition-chart-inspection'));
+    expect(inspection.getByTestId('nutrition-chart-coverage').props.children).toEqual(['Suma parcial: solo calorías conocidas', '.']);
+    expect(inspection.getByTestId('nutrition-chart-today')).toBeTruthy();
+    // The general help is closed: what is true of this datum is not in there.
+    expect(view.queryByTestId('nutrition-chart-help-body')).toBeNull();
+    const open = inspection.getByRole('button', { name: /^Ver comidas de ese día/ });
+    expect(open.props.testID).toBe('nutrition-chart-open-day');
+    fireEvent.press(open); expect(onDate).toHaveBeenCalledWith('2026-10-04');
+  });
+  it('«Cómo leer el gráfico» opens and closes in place, says its state and names A/B only when comparing', async () => {
+    const view = render(tree(daily())); await flush();
+    const toggle = view.getByRole('button', { name: 'Cómo leer el gráfico' });
+    expect(toggle.props.accessibilityState).toMatchObject({ expanded: false });
+    fireEvent.press(toggle);
+    expect(view.getByRole('button', { name: 'Cómo leer el gráfico' }).props.accessibilityState).toMatchObject({ expanded: true });
+    expect(view.getByText(/Hueco: ese día no tiene valor/)).toBeTruthy();
+    expect(view.queryByText(/sin emparejar posiciones/)).toBeNull();
+    fireEvent.press(view.getByRole('button', { name: 'Cómo leer el gráfico' }));
+    expect(view.queryByTestId('nutrition-chart-help-body')).toBeNull();
   });
 });

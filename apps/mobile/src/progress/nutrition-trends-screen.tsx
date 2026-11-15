@@ -24,7 +24,6 @@ import { useCachedRead } from '@/api/use-cached-read';
 import { useProgressRouteRange } from './use-progress-route-range';
 import { NutritionChart, type NutritionInspection } from './nutrition-chart';
 import { NutritionReportDetails } from './nutrition-report-details';
-import { inputNutritionDate } from '@/nutrition/day-format';
 import { nutritionChartDayHref } from './nutrition-chart-navigation';
 import { timingHeadline } from './meal-times-model';
 import { figuresFitInRow, useMeasuredWidth } from './figure-layout';
@@ -131,7 +130,7 @@ function ReportContent({ report, reference, selection, onSelect, portada }: { re
       </View>
       {portada ? <PortadaPointNote point={portada} matched={false} reason={NO_DAILY_EQUIVALENT} /> : null}
       <NutritionChart report={report} reference={reference} selection={selection} onSelect={onSelect} onDate={openDate} />
-      <AppText muted numeric variant="caption">Detalle y horarios del período elegido · {inputNutritionDate(report.range.start)} – {inputNutritionDate(report.range.end)}</AppText>
+      {/* #519 · Right under the chart: when you eat, then the daily average. The chart already says its dates. */}
       <TimingEntry />
       <NutritionReportDetails
         report={report}

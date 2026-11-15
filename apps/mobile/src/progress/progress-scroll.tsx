@@ -1,4 +1,4 @@
-import { cloneElement, useState, type ReactNode } from 'react';
+import { cloneElement, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions, type RefreshControlProps } from 'react-native';
 import Animated, { Extrapolation, interpolate, useAnimatedRef, useAnimatedStyle, useScrollViewOffset } from 'react-native-reanimated';
 import { Stack, useRouter } from 'expo-router';
@@ -20,10 +20,12 @@ const SMALL = 21;
  * uses). Scrolling, the title never moves sideways: it shrinks in place on the left, and the period you are reading
  * fades in under it ("Este mes", "Mes anterior", "17 sep – 16 oct").
  */
-export function ProgressScroll({ title, testID, refreshControl, children, compactTitle, multilineTitle = false, root = false, periodControls = true }: {
+export function ProgressScroll({ title, testID, refreshControl, children, compactTitle, multilineTitle = false, root = false, periodControls = true, openSheet = null, onSheetOpened }: {
   title: string; testID: string; refreshControl?: React.ReactElement<RefreshControlProps>; children: ReactNode; multilineTitle?: boolean; compactTitle?: string;
   /** The tab's first screen: no back button and a large title. */
   root?: boolean; periodControls?: boolean;
+  /** #519 · A sheet asked for by the route (the portada's «Comparar períodos»): opened once, then the route forgets it. */
+  openSheet?: 'compare' | null; onSheetOpened?: () => void;
 }) {
   const router = useRouter(),reduced=useReduceMotion();
   const { colors } = useOwnlevelTheme();
@@ -32,7 +34,14 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
   // The fixed header must make room for Dynamic Type, including accessibility sizes.
   const barHeight = BAR * Math.max(1, fontScale);
   const { state, today } = useProgressRange();
-  const [sheet, setSheet] = useState<'custom' | 'compare' | null>(null);
+  const [sheet, setSheet] = useState<'custom' | 'compare' | null>(openSheet);
+  // Also when the screen was already in the stack and the portada asks again.
+  const [asked, setAsked] = useState(openSheet);
+  if (asked !== openSheet) { setAsked(openSheet); if (openSheet) setSheet(openSheet); }
+  // Once per request: the route drops the parameter; a new callback identity alone never asks again.
+  const sheetOpened = useRef(onSheetOpened);
+  useEffect(() => { sheetOpened.current = onSheetOpened; });
+  useEffect(() => { if (openSheet) sheetOpened.current?.(); }, [openSheet]);
   const [pulled, setPulled] = useState(false);
   const refreshing = !!refreshControl?.props.refreshing;
   // The pull ends with its read; the next silent read starts with the spinner hidden again.
