@@ -11,7 +11,7 @@ import { searchable } from './quick-model';
  */
 const collator = new Intl.Collator('es', { sensitivity: 'base', numeric: true });
 /** Index letters in Spanish alphabetical order; digits and symbols go first under «#». */
-const INITIALS = '#ABCDEFGHIJKLMNÑOPQRSTUVWXYZ';
+export const INITIALS = '#ABCDEFGHIJKLMNÑOPQRSTUVWXYZ';
 /** The index letter of a name: A–Z or Ñ, without accents; digits and symbols go under «#». */
 export function initialOf(name: string) {
   const first = name.trim().charAt(0).toLocaleUpperCase('es-AR');

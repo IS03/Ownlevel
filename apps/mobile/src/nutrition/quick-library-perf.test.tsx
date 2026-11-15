@@ -1,7 +1,7 @@
 import { Profiler, type ProfilerOnRenderCallback } from 'react';
-import { act, fireEvent, render } from '@testing-library/react-native';
-import { describe, expect, it, jest } from '@jest/globals';
-import { SectionList } from 'react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { Dimensions, SectionList } from 'react-native';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { QuickEditor } from './quick-editor';
 import { QuickController, type QuickApi } from './quick-controller';
@@ -16,6 +16,19 @@ import type { QuickOptions, QuickPins } from '@/api/nutrition-quick';
 jest.mock('./day-resource', () => ({ useNutritionDayResource: () => ({ state: { status: 'loading' } }) }));
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: null }) }));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
+// The app sheet's exit animation never completes in jest: its dismiss runs «beforeDismiss» like the real one, then closes.
+jest.mock('@/design-system', () => {
+  const React = jest.requireActual<typeof import('react')>('react'), { View } = jest.requireActual<typeof import('react-native')>('react-native');
+  const Close = React.createContext<(mockAfter?: () => void) => void>(() => {});
+  return { ...jest.requireActual<object>('@/design-system'),
+    AppSheet: ({ children, onClose, beforeDismiss, locked, testID }: { children: React.ReactNode; onClose: () => void; beforeDismiss?: (mockProceed: () => void) => void; locked?: boolean; testID?: string }) =>
+      <Close.Provider value={mockAfter => { if (locked) return; if (mockAfter) { onClose(); mockAfter(); } else (beforeDismiss ?? (mockProceed => mockProceed()))(onClose); }}><View testID={testID}>{children}</View></Close.Provider>,
+    useAppSheetDismiss: () => React.useContext(Close) };
+});
+const original = { window: Dimensions.get('window'), screen: Dimensions.get('screen') };
+// The RN jest environment defaults to fontScale 2: these measurements use the alphabet row of regular text.
+beforeEach(() => { Dimensions.set({ window: { ...original.window, fontScale: 1 }, screen: original.screen }); });
+afterEach(() => { Dimensions.set(original); });
 
 /**
  * #479 D1 · automated measurements of the library at 10, 50 and 200 saved meals (1.000 as a stress case).
@@ -83,27 +96,29 @@ describe('#479 D1 · rows rendered, requests and render cost of a scripted sessi
 
   it.each(SIZES)('%i meals: a bounded window of rows, and one GET for the whole session', async count => {
     const { view, quickApi, pinsApi, scroll, meals } = await session(count, writable);
+    // #516: one view. The pinned meal on top, then the library window in the same list.
     const open = names(view).length;
-    // The pinned entry shows one meal; the library is one tap away.
-    act(() => { fireEvent.press(view.getByTestId('quick-all-meals')); });
-    const library = names(view).length;
+    const library = open - 1;
     const search = view.getByLabelText('Buscar en tus comidas');
     const typed: number[] = [];
     for (const query of ['p', 'po', 'pol']) { act(() => { fireEvent.changeText(search, query); }); typed.push(names(view).length); }
     act(() => { fireEvent.changeText(search, ''); });
-    const letters = view.queryAllByTestId(/^quick-letter-/).length;
-    for (const letter of view.queryAllByTestId(/^quick-letter-/).slice(0, 5)) act(() => { fireEvent.press(letter); });
+    const enabled = () => view.queryAllByTestId(/^quick-letter-/).filter(node => !node.props.accessibilityState?.disabled);
+    const letters = enabled().length;
+    for (const letter of enabled().slice(0, 5)) act(() => { fireEvent.press(letter); });
+    // Opening «Administrar fijadas» and cancelling an unchanged draft reads and writes nothing.
     act(() => { fireEvent.press(view.getByTestId('quick-pins-manage')); });
-    act(() => { fireEvent.press(view.getByTestId('quick-pins-manage')); });
+    act(() => { fireEvent.press(within(view.getByTestId('quick-pins-editor')).getByTestId('quick-pins-cancel')); });
+    expect(view.queryByTestId('quick-pins-editor')).toBeNull();
     const matches = (q: string) => meals.filter(m => m.name.toLowerCase().includes(q)).length;
     report(`session     n=${String(count).padStart(4)}  rows@entry ${open}  rows@library ${library}  rows typing p/po/pol ${typed.join('/')} (matches ${matches('p')}/${matches('po')}/${matches('pol')})  letters ${letters}  scrollToLocation ${scroll.mock.calls.length}  GET ${quickApi.options.mock.calls.length}  pins GET ${pinsApi.read.mock.calls.length}  pins PUT ${pinsApi.write.mock.calls.length}`);
-    expect(open).toBe(1);
+    expect(names(view)[0]).toBe(meals[0]!.name);
     // Section headers count as list items: the window holds about one screen of rows, whatever the library size.
     expect(library).toBeLessThanOrEqual(Math.min(count, 30)); if (count >= 50) expect(library).toBeGreaterThanOrEqual(15);
     for (const rows of typed) expect(rows).toBeLessThanOrEqual(30);
     expect(typed.at(-1)).toBe(Math.min(matches('pol'), 30));
     expect(scroll).toHaveBeenCalledTimes(Math.min(letters, 5));
-    // Opening the library, typing, clearing, letters and manage mode read and write nothing.
+    // Typing, clearing, letters and opening the editor read and write nothing.
     expect(quickApi.options).toHaveBeenCalledTimes(1); expect(pinsApi.read).not.toHaveBeenCalled(); expect(pinsApi.write).not.toHaveBeenCalled();
     expect(quickApi.preview).not.toHaveBeenCalled(); expect(quickApi.confirm).not.toHaveBeenCalled(); expect(quickApi.read).not.toHaveBeenCalled();
     scroll.mockRestore();
@@ -113,7 +128,6 @@ describe('#479 D1 · rows rendered, requests and render cost of a scripted sessi
     const rows = new Map<number, { median: number; max: number }>();
     for (const count of SIZES) {
       const { view, commits, scroll } = await session(count, pins);
-      if (pins.status === 'ok') act(() => { fireEvent.press(view.getByTestId('quick-all-meals')); });
       const search = view.getByLabelText('Buscar en tus comidas');
       commits.length = 0;
       for (const query of ['p', 'po', 'pol', 'po', 'p', '']) act(() => { fireEvent.changeText(search, query); });

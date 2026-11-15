@@ -1,13 +1,28 @@
 import { act, fireEvent, waitFor, within } from '@testing-library/react-native';
-import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { ActionSheetIOS, Alert, SectionList } from 'react-native';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { ActionSheetIOS, Alert, Dimensions, SectionList } from 'react-native';
 import { BASE, ID, at, meta, names, ok, setup, snap, storage, synthetic } from './quick-library-fixture.test-helper';
 import { quickPinsStorageKey } from './quick-pins-storage';
+import { JUMP_MAX_PASSES, JUMP_PASS_MS } from './quick-letter-jump';
 import type { QuickPins } from '@/api/nutrition-quick';
 
 jest.mock('./day-resource', () => ({ useNutritionDayResource: () => ({ state: { status: 'loading' } }) }));
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: null }) }));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
+// The app sheet's exit animation never completes in jest: its dismiss runs «beforeDismiss» like the real one, then closes.
+jest.mock('@/design-system', () => {
+  const React = jest.requireActual<typeof import('react')>('react'), { View } = jest.requireActual<typeof import('react-native')>('react-native');
+  const Close = React.createContext<(mockAfter?: () => void) => void>(() => {});
+  return { ...jest.requireActual<object>('@/design-system'),
+    AppSheet: ({ children, onClose, beforeDismiss, locked, testID }: { children: React.ReactNode; onClose: () => void; beforeDismiss?: (mockProceed: () => void) => void; locked?: boolean; testID?: string }) =>
+      <Close.Provider value={mockAfter => { if (locked) return; if (mockAfter) { onClose(); mockAfter(); } else (beforeDismiss ?? (mockProceed => mockProceed()))(onClose); }}><View testID={testID}>{children}</View></Close.Provider>,
+    useAppSheetDismiss: () => React.useContext(Close) };
+});
+const original = { window: Dimensions.get('window'), screen: Dimensions.get('screen') };
+// The RN jest environment defaults to fontScale 2: these tests use the alphabet row of regular text.
+beforeEach(() => { Dimensions.set({ window: { ...original.window, fontScale: 1 }, screen: original.screen }); });
+afterEach(() => { Dimensions.set(original); });
+const editor = (view: Awaited<ReturnType<typeof setup>>['view']) => within(view.getByTestId('quick-pins-editor'));
 
 // #479 D1 · regression audit of increments A–C. Rápido registers once per decision; pins never reach a PUT they should not;
 // what the person must act on is never buried under a long library.
@@ -27,15 +42,17 @@ describe('#479 D1 · Rápido registers exactly once per decision', () => {
     expect(quickApi.confirm.mock.calls[0]![0].source.id).toBe(ID(5));
     expect(view.getByLabelText('Agregar Café con leche').props.accessibilityState).toMatchObject({ disabled: false });
   });
-  it('pinning, unpinning, reordering, searching and jumping never preview, register or re-read a day', async () => {
+  it('pinning, unpinning, reordering, searching and jumping never preview, register or re-read a day; the sheet writes once', async () => {
     const { view, quickApi, pinsApi } = await setup({ meals: synthetic(50), pins: ok(snap(1, [ID(3)])) });
     fireEvent.press(view.getByTestId('quick-pins-manage'));
-    fireEvent.press(view.getByTestId('quick-all-meals'));
-    await act(async () => { fireEvent.press(view.getByTestId(`quick-pin-toggle-${ID(4)}`)); });
-    await act(async () => { fireEvent.press(view.getByTestId(`quick-pin-up-${ID(4)}`)); });
-    await act(async () => { fireEvent.press(view.getByTestId(`quick-pin-toggle-${ID(3)}`)); });
+    fireEvent.press(editor(view).getByTestId(`quick-pins-choice-${ID(4)}`));
+    fireEvent(editor(view).getByTestId(`quick-pins-draft-label-${ID(4)}`), 'accessibilityAction', { nativeEvent: { actionName: 'up' } });
+    fireEvent.press(editor(view).getByTestId(`quick-pins-remove-${ID(3)}`));
+    fireEvent.changeText(editor(view).getByLabelText('Buscar para fijar'), 'ar');
+    expect(pinsApi.write).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.press(editor(view).getByTestId('quick-pins-save')); });
     fireEvent.changeText(view.getByLabelText('Buscar en tus comidas'), 'ar');
-    expect(pinsApi.write).toHaveBeenCalledTimes(3);
+    expect(pinsApi.write).toHaveBeenCalledTimes(1); expect(pinsApi.write.mock.calls[0]![0].savedMealIds).toEqual([ID(4)]);
     expect(quickApi.preview).not.toHaveBeenCalled(); expect(quickApi.confirm).not.toHaveBeenCalled(); expect(quickApi.read).not.toHaveBeenCalled();
     expect(quickApi.options).toHaveBeenCalledTimes(1);
   });
@@ -104,7 +121,7 @@ describe('#479 D1 · with pins unavailable the library stays and no road leads t
   const stale = { status: 'unavailable' } as QuickPins;
   const olderIntent = { version: 1, intent: { savedMealIds: [ID(4)], expectedRevision: 0, idempotencyKey: 'pins-old' }, base: snap(0, []) };
   /** Every pin or library control on screen (not the meal actions or the day controls), plus the long press and the VoiceOver actions of every row. */
-  const PIN_CONTROL = /^(Todas las comidas|Volver a fijadas|Ir a la letra|Administrar|Elegir fijadas|Listo|Comprobar|Aplicar mi cambio|Descartar|Liberar lugar|Subir |Bajar |Fijar |Desfijar )/;
+  const PIN_CONTROL = /^(Ir a la letra|Ir a letra|Administrar|Elegir fijadas|Guardar fijadas|Comprobar|Aplicar mi cambio|Descartar|Liberar lugar|Quitar |Subir |Bajar |Fijar |Desfijar )/;
   async function pressEverything(s: Awaited<ReturnType<typeof setup>>) {
     const sheet = jest.spyOn(ActionSheetIOS, 'showActionSheetWithOptions').mockImplementation(() => {});
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
@@ -134,8 +151,8 @@ describe('#479 D1 · with pins unavailable the library stays and no road leads t
     const s = await setup({ pins: ok(snap(3, [ID(1), ID(2)])) });
     act(() => { s.pins.adopt(stale); });
     expect(s.view.getByTestId('quick-pins-stale')).toBeTruthy(); expect(s.view.queryByTestId('quick-pins-manage')).toBeNull();
-    expect(names(s.view)).toEqual(['Tostadas con palta', 'Avena con banana']);
-    await pressEverything(s);
+    expect(names(s.view).slice(0, 2)).toEqual(['Tostadas con palta', 'Avena con banana']);
+    await pressEverything(s); expect(s.view.queryByTestId('quick-pins-editor')).toBeNull();
     for (const action of ['pin', 'unpin', 'up', 'down']) for (const row of s.view.queryAllByLabelText(/^Revisar /)) fireEvent(row, 'accessibilityAction', { nativeEvent: { actionName: action } });
     expect(s.pinsApi.write).not.toHaveBeenCalled();
     // The controller itself refuses too, whoever calls it.
@@ -166,9 +183,10 @@ describe('#479 D1 · with pins unavailable the library stays and no road leads t
   it('a conflict whose refresh then failed offers «Descartar» but not «Aplicar mi cambio»', async () => {
     const s = await setup({ pins: ok(snap(1, [ID(1)])) });
     s.pinsApi.write.mockResolvedValueOnce({ status: 'conflict', code: 'QUICK_PINS_CHANGED', message: 'm', data: { error: 'QUICK_PINS_CHANGED', message: 'm', current: snap(2, [ID(3)]) }, meta: { ...meta, httpStatus: 409, outcome: 'conflict' } });
-    fireEvent.press(s.view.getByTestId('quick-pins-manage')); fireEvent.press(s.view.getByTestId('quick-all-meals'));
-    await act(async () => { fireEvent.press(s.view.getByTestId(`quick-pin-toggle-${ID(2)}`)); });
-    expect(s.view.getByText('Aplicar mi cambio')).toBeTruthy();
+    fireEvent.press(s.view.getByTestId('quick-pins-manage'));
+    fireEvent.press(editor(s.view).getByTestId(`quick-pins-choice-${ID(2)}`));
+    await act(async () => { fireEvent.press(editor(s.view).getByTestId('quick-pins-save')); });
+    expect(s.view.getByText('Aplicar mi cambio')).toBeTruthy(); expect(editor(s.view).getByTestId('quick-pins-editor-conflict')).toBeTruthy();
     act(() => { s.pins.adopt(stale); });
     expect(s.view.queryByText('Aplicar mi cambio')).toBeNull(); expect(s.view.getByText('Descartar')).toBeTruthy();
     expect(await s.pins.reapply()).toBe('refused');
@@ -192,50 +210,56 @@ describe('#479 D1 · pin transitions from 0 to 6, with archived and deleted plac
     const manage = s.view.getByTestId('quick-pins-manage');
     expect(within(manage).getByText(count ? 'Administrar' : 'Elegir fijadas')).toBeTruthy();
     if (count) expect(s.view.getByText('Fijadas')).toBeTruthy(); else expect(s.view.queryByText('Fijadas')).toBeNull();
-    expect(names(s.view)).toHaveLength(count || 6);
-    fireEvent.press(manage); if (count) fireEvent.press(s.view.getByTestId('quick-all-meals'));
-    const toggle = (n: number) => s.view.getByTestId(`quick-pin-toggle-${ID(n)}`);
-    for (let n = 1; n <= 6; n++) expect(toggle(n).props.accessibilityState).toMatchObject({ selected: n <= count, disabled: n > count && count === 6 });
-    // The first can never go up and the last can never go down.
-    if (count > 1) { expect(s.view.getByTestId(`quick-pin-up-${ID(1)}`).props.accessibilityState?.disabled).toBe(true); expect(s.view.getByTestId(`quick-pin-down-${ID(count)}`).props.accessibilityState?.disabled).toBe(true); }
+    expect(names(s.view)).toHaveLength(count + 6); // The pins, then the whole library: one view.
+    fireEvent.press(manage);
+    const choice = (n: number) => editor(s.view).getByTestId(`quick-pins-choice-${ID(n)}`);
+    for (let n = 1; n <= 6; n++) expect(choice(n).props.accessibilityState).toMatchObject({ selected: n <= count, disabled: n > count && count === 6 });
+    // The first can never go up and the last can never go down (VoiceOver and Switch Control).
+    if (count > 1) {
+      expect(editor(s.view).getByTestId(`quick-pins-draft-label-${ID(1)}`).props.accessibilityActions.map((a: { name: string }) => a.name)).toEqual(['down', 'remove']);
+      expect(editor(s.view).getByTestId(`quick-pins-draft-label-${ID(count)}`).props.accessibilityActions.map((a: { name: string }) => a.name)).toEqual(['up', 'remove']);
+    }
     if (count < 6) {
-      await act(async () => { fireEvent.press(toggle(6)); });
+      fireEvent.press(choice(6));
+      await act(async () => { fireEvent.press(editor(s.view).getByTestId('quick-pins-save')); });
       expect(s.pinsApi.write).toHaveBeenLastCalledWith({ savedMealIds: [...ids, ID(6)], expectedRevision: count + 1, idempotencyKey: 'pins-owner-1' });
+      fireEvent.press(s.view.getByTestId('quick-pins-manage'));
     }
     if (count > 0) {
-      await act(async () => { fireEvent.press(toggle(1)); });
+      fireEvent.press(editor(s.view).getByTestId(`quick-pins-remove-${ID(1)}`));
+      await act(async () => { fireEvent.press(editor(s.view).getByTestId('quick-pins-save')); });
       expect(s.pinsApi.write.mock.calls.at(-1)![0].savedMealIds).not.toContain(ID(1));
     }
+    expect(s.pinsApi.write).toHaveBeenCalledTimes((count < 6 ? 1 : 0) + (count > 0 ? 1 : 0));
   });
   it('six places taken (two by archived and deleted meals): a seventh meal cannot be pinned, by any road', async () => {
     const meals = [...BASE, { ...BASE[0]!, source: { ...BASE[0]!.source, id: ID(7) }, name: 'Séptima' }];
     const ids = [ID(1), ID(90), ID(2), ID(91), ID(3), ID(4)];
     const s = await setup({ meals, pins: ok(snap(4, ids, { [ID(90)]: 'archived', [ID(91)]: 'deleted' })) });
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {}), sheet = jest.spyOn(ActionSheetIOS, 'showActionSheetWithOptions').mockImplementation(() => {});
-    fireEvent.press(s.view.getByTestId('quick-pins-manage')); fireEvent.press(s.view.getByTestId('quick-all-meals'));
-    expect(s.view.getByTestId(`quick-pin-toggle-${ID(7)}`).props.accessibilityState).toMatchObject({ disabled: true });
     const row = s.view.getByLabelText('Revisar Séptima');
     expect(row.props.accessibilityActions).toEqual([]);
     await act(async () => { fireEvent(row, 'longPress'); });
     expect(alert).toHaveBeenCalledWith('Séptima', 'Ya tenés 6 fijadas. Desfijá una para fijar otra.'); expect(sheet).not.toHaveBeenCalled();
-    fireEvent.press(s.view.getByTestId(`quick-pin-toggle-${ID(7)}`));
+    fireEvent.press(s.view.getByTestId('quick-pins-manage'));
+    expect(editor(s.view).getByTestId(`quick-pins-choice-${ID(7)}`).props.accessibilityState).toMatchObject({ disabled: true });
+    fireEvent.press(editor(s.view).getByTestId(`quick-pins-choice-${ID(7)}`));
+    expect(editor(s.view).queryAllByTestId(/^quick-pins-draft-label-/)).toHaveLength(6);
+    // Releasing one unavailable place (in the draft) frees it for the seventh; nothing is written until «Guardar».
+    fireEvent.press(editor(s.view).getByTestId(`quick-pins-remove-${ID(91)}`));
+    expect(editor(s.view).getByTestId(`quick-pins-choice-${ID(7)}`).props.accessibilityState).toMatchObject({ disabled: false });
     expect(s.pinsApi.write).not.toHaveBeenCalled();
-    // Releasing one unavailable place frees it for the seventh.
-    fireEvent.press(s.view.getByTestId('quick-back-to-pins'));
-    await act(async () => { fireEvent.press(within(s.view.getByTestId(`quick-pin-gone-${ID(91)}`)).getByText('Liberar lugar')); });
-    fireEvent.press(s.view.getByTestId('quick-all-meals'));
-    expect(s.view.getByTestId(`quick-pin-toggle-${ID(7)}`).props.accessibilityState).toMatchObject({ disabled: false });
     alert.mockRestore(); sheet.mockRestore();
   });
   it('an archived meal restored comes back in its place; a deleted one stays until released', async () => {
     const s = await setup({ pins: ok(snap(2, [ID(1), ID(90), ID(2)], { [ID(90)]: 'archived' })) });
-    expect(names(s.view)).toEqual(['Tostadas con palta', 'Avena con banana']); expect(s.view.getByText('Comida archivada')).toBeTruthy();
+    expect(names(s.view).slice(0, 2)).toEqual(['Tostadas con palta', 'Avena con banana']); expect(s.view.getByText('Comida archivada')).toBeTruthy();
     // The next GET after restoring: the same meal, active, between the same two.
     const restored = { ...BASE[0]!, source: { ...BASE[0]!.source, id: ID(90) }, name: 'Restaurada' };
     const options = s.quick.getSnapshot().options!;
     await act(async () => { s.quickApi.options.mockResolvedValueOnce({ status: 'ok', data: { ...options, saved: { status: 'ok', items: [...BASE, restored] }, pins: ok(snap(2, [ID(1), ID(90), ID(2)])) }, meta }); await s.quick.loadOptions(); });
     act(() => { s.pins.adopt(s.quick.getSnapshot().options!.pins); });
-    expect(names(s.view)).toEqual(['Tostadas con palta', 'Restaurada', 'Avena con banana']); expect(s.view.queryByText('Comida archivada')).toBeNull();
+    expect(names(s.view).slice(0, 3)).toEqual(['Tostadas con palta', 'Restaurada', 'Avena con banana']); expect(s.view.queryByText('Comida archivada')).toBeNull();
     expect(s.pinsApi.write).not.toHaveBeenCalled();
   });
 });
@@ -246,18 +270,19 @@ describe('#479 D1 · sign-out and account change', () => {
     const a = await setup({ pins: ok(snap(0, [])), user: 'a', shared });
     a.pinsApi.write.mockResolvedValueOnce({ status: 'unavailable', reason: 'network', meta: { ...meta, httpStatus: null, outcome: 'unavailable' } });
     fireEvent.press(a.view.getByTestId('quick-pins-manage'));
-    await act(async () => { fireEvent.press(a.view.getByTestId(`quick-pin-toggle-${ID(6)}`)); });
-    expect(a.view.getByTestId('quick-pins-uncertain')).toBeTruthy();
+    fireEvent.press(editor(a.view).getByTestId(`quick-pins-choice-${ID(6)}`));
+    await act(async () => { fireEvent.press(editor(a.view).getByTestId('quick-pins-save')); });
+    expect(a.view.getByTestId('quick-pins-uncertain')).toBeTruthy(); expect(editor(a.view).getByTestId('quick-pins-editor-uncertain')).toBeTruthy();
     a.view.unmount(); a.pins.dispose(); a.quick.dispose();
     const b = await setup({ pins: ok(snap(5, [ID(2)])), user: 'b', shared });
     expect(b.view.queryByTestId('quick-pins-uncertain')).toBeNull(); expect(b.pins.getSnapshot()).toMatchObject({ phase: 'idle', intent: null });
-    expect(names(b.view)).toEqual(['Avena con banana']);
+    expect(names(b.view)[0]).toBe('Avena con banana'); expect(names(b.view)).toHaveLength(7);
     expect(b.pinsApi.write).not.toHaveBeenCalled();
     // The first account comes back and finds its own change, still unconfirmed, under its own key.
     b.view.unmount(); b.pins.dispose(); b.quick.dispose();
     const again = await setup({ pins: ok(snap(0, [])), user: 'a', shared });
     expect(again.view.getByTestId('quick-pins-uncertain')).toBeTruthy();
-    expect(names(again.view)).toEqual(['Café con leche']);
+    expect(names(again.view)[0]).toBe('Café con leche');
   });
 });
 
@@ -283,23 +308,24 @@ describe('#479 D1 · «Ir a letra» keeps trying until the letter is measured, a
     const s = await setup({ meals: synthetic(200), pins: ok(snap(0, [])) });
     expect(list(s).props.stickySectionHeadersEnabled).toBe(false);
   });
-  it('each pass that hits rows not measured yet goes near the letter, and the next pass tries again until one lands', async () => {
+  it('a pass beyond what is measured goes near the letter, and the jump stops only when the letter\'s heading is first on screen (#525)', async () => {
     const s = await setup({ meals: synthetic(200), pins: ok(snap(0, [])) });
-    const { scrollTo, scrollToLocation } = failing(2);
+    const { scrollTo, scrollToLocation } = failing(1);
     jest.useFakeTimers();
     act(() => { fireEvent.press(letterG(s)); });
     expect(scrollToLocation).toHaveBeenCalledTimes(1); expect(scrollTo).toHaveBeenLastCalledWith({ y: 60 * 85, animated: false });
-    act(() => { jest.advanceTimersByTime(80); }); expect(scrollToLocation).toHaveBeenCalledTimes(2);
-    act(() => { jest.advanceTimersByTime(80); }); expect(scrollToLocation).toHaveBeenCalledTimes(3);
-    // The third pass found everything measured, but the offset still moved: one more to settle, then it stops by itself.
-    act(() => { list(s).props.onScroll?.({ nativeEvent: { contentOffset: { y: 4800 } } }); });
-    act(() => { jest.advanceTimersByTime(80); });
-    act(() => { list(s).props.onScroll?.({ nativeEvent: { contentOffset: { y: 4800 } } }); });
-    act(() => { jest.advanceTimersByTime(80); });
-    const settled = scrollToLocation.mock.calls.length;
-    act(() => { jest.advanceTimersByTime(1000); });
-    expect(scrollToLocation).toHaveBeenCalledTimes(settled); expect(settled).toBeLessThanOrEqual(5);
-    for (const call of scrollToLocation.mock.calls) expect(call[0]).toEqual({ sectionIndex: expect.any(Number), itemIndex: 0, viewPosition: 0, animated: false });
+    // The list reports something else on screen (the estimate landed short): it keeps going.
+    const sections = list(s).props.sections as { key: string }[];
+    act(() => { list(s).props.onViewableItemsChanged?.({ viewableItems: [{ section: sections.find(x => x.key === 'F'), index: 3, item: null, key: 'f', isViewable: true }], changed: [] }); });
+    act(() => { jest.advanceTimersByTime(JUMP_PASS_MS); });
+    expect(scrollTo.mock.calls.length + scrollToLocation.mock.calls.length).toBeGreaterThan(2);
+    // «G»'s own heading is first on screen: arrived, nothing more runs.
+    act(() => { list(s).props.onViewableItemsChanged?.({ viewableItems: [{ section: sections.find(x => x.key === 'G'), index: null, item: null, key: 'g', isViewable: true }], changed: [] }); });
+    act(() => { jest.advanceTimersByTime(JUMP_PASS_MS); });
+    const settled = scrollToLocation.mock.calls.length + scrollTo.mock.calls.length;
+    act(() => { jest.advanceTimersByTime(2000); });
+    expect(scrollToLocation.mock.calls.length + scrollTo.mock.calls.length).toBe(settled);
+    for (const call of scrollToLocation.mock.calls) expect(call[0]).toEqual({ sectionIndex: sections.findIndex(x => x.key === 'G'), itemIndex: 0, viewPosition: 0, animated: false });
     // No request of any kind comes with it.
     expect(s.quickApi.options).toHaveBeenCalledTimes(1); expect(s.pinsApi.write).not.toHaveBeenCalled(); expect(s.pinsApi.read).not.toHaveBeenCalled();
   });
@@ -309,7 +335,7 @@ describe('#479 D1 · «Ir a letra» keeps trying until the letter is measured, a
     jest.useFakeTimers();
     act(() => { fireEvent.press(letterG(s)); });
     act(() => { jest.advanceTimersByTime(10_000); });
-    expect(scrollToLocation.mock.calls.length).toBeLessThanOrEqual(8);
+    expect(scrollToLocation.mock.calls.length).toBeLessThanOrEqual(JUMP_MAX_PASSES);
   });
   it('touching the list ends the jump: the person is in charge of the scroll', async () => {
     const s = await setup({ meals: synthetic(200), pins: ok(snap(0, [])) });
@@ -330,8 +356,9 @@ describe('#479 D1 · «Ir a letra» keeps trying until the letter is measured, a
     expect(scrollToLocation).toHaveBeenCalledTimes(1);
     act(() => { fireEvent.changeText(s.view.getByLabelText('Buscar en tus comidas'), ''); });
     act(() => { fireEvent.press(letterG(s)); }); act(() => { fireEvent.press(s.view.getByTestId('quick-letter-A')); });
-    expect(scrollToLocation.mock.calls.at(-1)![0]).toMatchObject({ sectionIndex: 0 });
-    act(() => { jest.advanceTimersByTime(80); });
-    expect(scrollToLocation.mock.calls.slice(-1)[0]![0]).toMatchObject({ sectionIndex: 0 });
+    // Section 0 is the «Todas las comidas» heading; «A» is the first letter after it.
+    expect(scrollToLocation.mock.calls.at(-1)![0]).toMatchObject({ sectionIndex: 1 });
+    act(() => { jest.advanceTimersByTime(JUMP_PASS_MS); });
+    expect(scrollToLocation.mock.calls.slice(-1)[0]![0]).toMatchObject({ sectionIndex: 1 });
   });
 });
