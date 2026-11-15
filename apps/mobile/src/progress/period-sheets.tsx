@@ -135,7 +135,8 @@ export function CompareSheet({ onClose, proposal = null }: { onClose: () => void
     <View style={styles.shortcuts}>
       <Shortcut label="Período anterior" active={editing === 'b' && kind === 'previous'} onPress={() => quick('previous')} />
       <Shortcut label="Año pasado" active={editing === 'b' && kind === 'last_year'} onPress={() => quick('last_year')} />
-      <Shortcut label="Sin comparar" onPress={() => { setState({ ...state, compare: { kind: 'none' } }); onClose(); }} />
+      {/* Turns B off over the period that is active now: a proposed A is never applied by this shortcut. */}
+      <Shortcut label="Sin comparar" onPress={() => { setState({ ...active, compare: { kind: 'none' } }); onClose(); }} />
     </View>
     <RangeCalendar month={month} onMonth={setMonth} max={today} marks={marks}
       onDay={d => { if (editing === 'a') setDraftA(pick(draftA, d)); else { setKind('custom'); setDraftB(pick(draftB, d)); } }} />

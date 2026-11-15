@@ -421,4 +421,13 @@ it('#519 · the A/B sheet shows the portada\'s 30 days with the active custom B:
     // «Listo»: the proposed 30 days as A, the custom B kept with its own dates.
     expect([range!.query.from, range!.query.to, range!.compare]).toEqual(['2026-10-11', PANORAMA_TODAY, { start: '2026-08-01', end: '2026-08-20' }]);
     expect(range!.state.compare).toEqual({ kind: 'custom', range: { start: '2026-08-01', end: '2026-08-20' } });
+    apply.unmount();
+    // «Sin comparar» from the portada's proposal: B goes off over the active A (this month), never over the proposed 30 days.
+    const off = render(tree()); await off.findByTestId('compare-ab');
+    expect(off.getByTestId('compare-cell-a').props.accessibilityLabel).toMatch(/30 días$/);
+    expect([range!.query.from, range!.query.to]).toEqual(['2026-11-01', PANORAMA_TODAY]);
+    fireEvent.press(off.getByRole('button', { name: 'Sin comparar' }));
+    expect(off.queryByTestId('compare-ab')).toBeNull();
+    expect([range!.query.from, range!.query.to, range!.compare]).toEqual(['2026-11-01', PANORAMA_TODAY, null]);
+    expect(range!.state).toEqual({ ...active, compare: { kind: 'none' } });
 });
