@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
-import { appendSessionSet, compactHistoryDate, exerciseDraft, exercisePayload, historyLoadLabel, historySetLabel, moveSessionSet, parseStoredExerciseDraft, removeSessionSet, resetSessionSet, restoreRestDeadline, restRemaining, restSeconds, shouldSignalRestEnd, sameExercisePayload, setProgress } from './active-session-model';
+import type { SessionSetDto } from '@/api/active-session';
+import { appendSessionSet, compactHistoryDate, exerciseDraft, exercisePayload, historyLoadLabel, historySetLabel, moveSessionSet, quickHistoryFold, quickHistoryRows, quickHistoryTargetRir, parseStoredExerciseDraft, removeSessionSet, resetSessionSet, restoreRestDeadline, restRemaining, restSeconds, shouldSignalRestEnd, sameExercisePayload, setProgress } from './active-session-model';
 import { EXERCISE_ID, SESSION_ID, VERSION, testExercise, testPayload } from './active-session-test-fixtures';
 
 describe('native active-session product model', () => {
@@ -86,6 +87,40 @@ describe('native active-session product model', () => {
     expect(historyLoadLabel({ ...set, actualWeightKg: 17.5, actualReps: null })).toBe('17,5 kg');
     expect(historyLoadLabel({ ...set, actualWeightKg: null, actualReps: null })).toBe('Sin carga ni reps registradas');
     expect(compactHistoryDate('2026-09-28')).toBe('28 SEP 2026');
+  });
+  it('groups only consecutive identical completed sets in the quick history (#513)', () => {
+    const base: SessionSetDto = { ...testPayload().sets[0], actualWeightKg: 80, actualReps: 8, targetRir: 2, isCompleted: true, notes: null };
+    const sets = (specs: Partial<typeof base>[]) => specs.map((spec, index) => ({ ...base, setNumber: index + 1, ...spec }));
+    const pick = (rows: ReturnType<typeof quickHistoryRows>) => rows.map(row => [row.from, row.to, row.count]);
+    expect(pick(quickHistoryRows(sets([{}])))).toEqual([[1, 1, 1]]);
+    expect(pick(quickHistoryRows(sets([{}, {}, {}])))).toEqual([[1, 3, 3]]);
+    // Different actual kg, actual reps or target RIR start a new row; null is not 0.
+    expect(pick(quickHistoryRows(sets([{}, { actualWeightKg: 77.5 }, { actualReps: 7 }, { targetRir: 1 }, { targetRir: null }, { actualWeightKg: null }, { actualWeightKg: 0 }]))))
+      .toEqual([[1, 1, 1], [2, 2, 1], [3, 3, 1], [4, 4, 1], [5, 5, 1], [6, 6, 1], [7, 7, 1]]);
+    // A note keeps its set alone; blank notes are not notes.
+    const noted = quickHistoryRows(sets([{}, { notes: ' Pausa de 2 s ' }, {}, { notes: '  ' }]));
+    expect(pick(noted)).toEqual([[1, 1, 1], [2, 2, 1], [3, 4, 2]]); expect(noted[1].note).toBe('Pausa de 2 s'); expect(noted[2].note).toBeNull();
+    // Incomplete sets are hidden and their numbering gap is never bridged.
+    const gap = sets([{}, {}, { isCompleted: false }, {}, {}]);
+    expect(pick(quickHistoryRows(gap))).toEqual([[1, 2, 2], [4, 5, 2]]);
+    expect(quickHistoryRows(sets([{ isCompleted: false }]))).toEqual([]);
+    const twelve = quickHistoryRows(sets(Array.from({ length: 12 }, (_, i) => ({ actualReps: 8 - (i % 3) }))));
+    expect(twelve).toHaveLength(12); expect(twelve.reduce((total, row) => total + row.count, 0)).toBe(12);
+  });
+  it('shows the target RIR once only when every completed set shares it, and folds long sessions visually', () => {
+    const set = { ...testPayload().sets[0], isCompleted: true };
+    expect(quickHistoryTargetRir([{ ...set, targetRir: 2 }, { ...set, targetRir: 2 }, { ...set, targetRir: 0, isCompleted: false }])).toBe(2);
+    expect(quickHistoryTargetRir([{ ...set, targetRir: 0 }, { ...set, targetRir: 0 }])).toBe(0);
+    expect(quickHistoryTargetRir([{ ...set, targetRir: 2 }, { ...set, targetRir: 1 }])).toBe('mixed');
+    expect(quickHistoryTargetRir([{ ...set, targetRir: 2 }, { ...set, targetRir: null }])).toBe('mixed');
+    expect(quickHistoryTargetRir([{ ...set, targetRir: null }, { ...set, targetRir: null }])).toBeNull();
+    expect(quickHistoryTargetRir([])).toBeNull();
+    const row = (from: number, count = 1) => ({ from, to: from + count - 1, count, actualWeightKg: 80, actualReps: 8, targetRir: 2, note: null });
+    const six = [1, 2, 3, 4, 5, 6].map(n => row(n));
+    expect(quickHistoryFold(six, false)).toEqual({ shown: six, hiddenSets: 0 });
+    const seven = [row(1), row(2), row(3), row(4), row(5), row(6, 3), row(9)];
+    expect(quickHistoryFold(seven, false)).toEqual({ shown: seven.slice(0, 5), hiddenSets: 4 });
+    expect(quickHistoryFold(seven, true)).toEqual({ shown: seven, hiddenSets: 0 });
   });
   it('keeps stable logical row identities through reorder/reset/remove and out of the wire payload', () => {
     const draft = appendSessionSet(exerciseDraft(testPayload())); const ids = draft.sets.map(set => set.localId);
