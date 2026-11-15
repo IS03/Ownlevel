@@ -79,7 +79,7 @@ describe('compact capture by moment (#449)', () => {
     const { journal, writes } = journalWith(); await journal.refresh();
     const view = show(journal, 'pre');
     expect(view.getByText('Al empezar')).toBeTruthy(); expect(view.queryAllByRole('radio')).toHaveLength(0);
-    fireEvent.press(view.getByLabelText('Sensaciones al empezar, opcional'));
+    fireEvent.press(view.getByRole('button', { name: 'Sensaciones al empezar' }));
     fireEvent.press(view.getByLabelText('Energía: Alta, 4 de 5'));
     await waitFor(() => expect(view.getByText('Sin guardar')).toBeTruthy());
     expect(writes).toHaveLength(0); // Choosing never writes: one explicit confirmation per operation.
@@ -90,7 +90,7 @@ describe('compact capture by moment (#449)', () => {
     view.unmount();
     const reopened = show(journal, 'pre');
     expect(reopened.getByText('Energía alta')).toBeTruthy(); expect(reopened.queryAllByRole('radio')).toHaveLength(0);
-    fireEvent.press(reopened.getByLabelText('Sensaciones al empezar, Energía alta'));
+    fireEvent.press(reopened.getByRole('button', { name: 'Sensaciones al empezar' }));
     expect(reopened.getByLabelText('Energía: Alta, 4 de 5').props.accessibilityState.selected).toBe(true);
     fireEvent.press(reopened.getByTestId('feelings-pre-edit'));
     expect(reopened.queryAllByRole('radio')).toHaveLength(0); expect(writes).toHaveLength(1);
@@ -265,7 +265,7 @@ describe('compact start capture (#512)', () => {
     const view = show(empty.journal, 'pre');
     expect(view.queryByText('Responder')).toBeNull(); expect(view.getByText('Energía y fatiga')).toBeTruthy();
     const header = toggle(view);
-    expect(header.props.accessibilityRole).toBe('button'); expect(header.props.accessibilityLabel).toBe('Sensaciones al empezar, opcional');
+    expect(header.props.accessibilityRole).toBe('button'); expect(header.props.accessibilityLabel).toBe('Sensaciones al empezar');
     expect(header.props.accessibilityState).toMatchObject({ expanded: false, disabled: false });
     expect(header.props.accessibilityHint).toMatch(/Queda la hora en que respondés/); // Said to VoiceOver, never printed.
     fireEvent.press(header);
@@ -279,7 +279,6 @@ describe('compact start capture (#512)', () => {
     const two = journalWith({ energyPre: fact('energyPre', 4), fatiguePre: fact('fatiguePre', 2) }); await two.journal.refresh();
     const both = show(two.journal, 'pre');
     expect(both.getByText('Energía alta · Fatiga poca')).toBeTruthy();
-    expect(toggle(both).props.accessibilityLabel).toBe('Sensaciones al empezar, Energía alta, Fatiga poca');
   });
   it('a draft keeps the panel open with no fold control, and says «Sin guardar» once, next to a 44 pt «Guardar»', async () => {
     const { journal, writes } = journalWith(); await journal.refresh();
@@ -385,5 +384,71 @@ describe('compact start capture (#512)', () => {
     expect(view.getByText('Opcional')).toBeTruthy(); expect(view.queryByTestId('feelings-post-edit')).toBeNull();
     expect(view.queryByTestId('feelings-pre-save')).toBeNull(); expect(view.queryByRole('button', { name: 'Guardar sensaciones' })).toBeNull();
     expect(view.getAllByRole('radio')).toHaveLength(10);
+  });
+});
+
+// #512 review: the heading and the fold button are separate accessibility elements, never one nested in the other.
+describe('start capture heading and fold button (#512 review)', () => {
+  /** The heading must be reachable on its own: no ancestor may group it into one accessible element (or a button). */
+  const reachableHeading = (view: ReturnType<typeof show>) => {
+    const headings = view.getAllByRole('header', { name: 'Al empezar' });
+    expect(headings).toHaveLength(1); // One «Al empezar», never doubled by the button.
+    for (let node = headings[0].parent; node; node = node.parent) {
+      expect(node.props.accessible).not.toBe(true); expect(node.props.accessibilityRole).not.toBe('button');
+    }
+    return headings[0];
+  };
+  const foldButton = (view: ReturnType<typeof show>) => view.getByRole('button', { name: /sensaciones al empezar/i });
+  it('keeps «Al empezar» a heading of its own beside a separate 44 pt chevron button that folds and unfolds', async () => {
+    const { journal } = journalWith({ energyPre: fact('energyPre', 4) }); await journal.refresh();
+    const view = show(journal, 'pre');
+    const heading = reachableHeading(view);
+    expect(heading.props.accessible).not.toBe(false);
+    const button = foldButton(view);
+    expect(button.props.accessibilityLabel).toBe('Sensaciones al empezar'); expect(button.props.accessibilityState).toMatchObject({ expanded: false, disabled: false });
+    const target = StyleSheet.flatten(typeof button.props.style === 'function' ? button.props.style({ pressed: false }) : button.props.style);
+    expect(target.minHeight).toBeGreaterThanOrEqual(brandTokens.layout.minTouch); expect(target.minWidth).toBeGreaterThanOrEqual(brandTokens.layout.minTouch);
+    expect(view.queryByRole('button', { name: /Al empezar/ })).toBeNull(); // The heading is not announced as a button.
+    fireEvent.press(button);
+    expect(foldButton(view).props.accessibilityState).toMatchObject({ expanded: true }); expect(view.getAllByRole('radio')).toHaveLength(10);
+    expect(foldButton(view)).toBe(button); reachableHeading(view); // Same button keeps VoiceOver focus; the heading is still there.
+    fireEvent.press(foldButton(view));
+    expect(view.queryAllByRole('radio')).toHaveLength(0); expect(foldButton(view).props.accessibilityState).toMatchObject({ expanded: false });
+    // The title area also folds on touch, but VoiceOver never sees it as an element of its own.
+    const area = view.getByTestId('feelings-pre-title');
+    expect(area.props.accessible).toBe(false);
+    fireEvent.press(area); expect(view.getAllByRole('radio')).toHaveLength(10);
+    fireEvent.press(area); expect(view.queryAllByRole('radio')).toHaveLength(0);
+  });
+  it('a draft keeps the heading but offers no fold button or fold touch; saving confirms, then both come back', async () => {
+    const { journal, writes } = journalWith(); await journal.refresh();
+    const view = show(journal, 'pre'); fireEvent.press(foldButton(view));
+    await act(async () => { fireEvent.press(view.getByLabelText('Energía: Media, 3 de 5')); await settle(); });
+    reachableHeading(view);
+    expect(view.queryByRole('button', { name: /sensaciones al empezar/i })).toBeNull(); expect(view.queryByTestId('feelings-pre-title')).toBeNull();
+    expect(view.getByRole('button', { name: 'Guardar sensaciones' })).toBeTruthy();
+    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar sensaciones' })); await settle(); });
+    expect(writes).toHaveLength(1); expect(view.getByText('Energía media')).toBeTruthy(); expect(view.queryAllByRole('radio')).toHaveLength(0);
+    reachableHeading(view); expect(foldButton(view).props.accessibilityState).toMatchObject({ expanded: false });
+  });
+  it('a local draft that was not confirmed keeps the heading and no fold control', async () => {
+    const stored = new Map<string, string>(); let broken = false;
+    const journal = new TrainingFeelingsJournal({ getItem: async k => stored.get(k) ?? null, setItem: async (k, v) => { if (broken) throw Error('disk'); stored.set(k, v); } },
+      { read: async () => ({ status: 'ok', data: serverWith({}) }), write: async () => ({ status: 'unavailable' }) }, 'owner', sid, 'mobile', () => 'synthetic:a11y');
+    await journal.refresh();
+    const view = show(journal, 'pre'); fireEvent.press(foldButton(view));
+    broken = true; await act(async () => { fireEvent.press(view.getByLabelText('Fatiga: Poca, 2 de 5')); await settle(); });
+    expect(journal.getSnapshot().localError).toBe(true);
+    reachableHeading(view); expect(view.queryByRole('button', { name: /sensaciones al empezar/i })).toBeNull();
+  });
+  it('keeps the heading reachable while a finishing operation is pending, with the fold button disabled and nothing folding by touch', async () => {
+    const { journal, fail } = journalWith({ energyPre: fact('energyPre', 2) }); await journal.refresh();
+    await journal.change('energyPost', 4); fail(); await journal.save(); // Pending work of the other moment: start scales stay folded.
+    const view = show(journal, 'pre');
+    reachableHeading(view);
+    expect(foldButton(view).props.accessibilityState).toMatchObject({ expanded: false, disabled: true });
+    fireEvent.press(foldButton(view)); fireEvent.press(view.getByTestId('feelings-pre-title'));
+    expect(view.queryAllByRole('radio')).toHaveLength(0);
+    expect(view.getByText('Energía baja')).toBeTruthy(); expect(view.getByRole('button', { name: 'Comprobar operación pendiente' })).toBeTruthy();
   });
 });

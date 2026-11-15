@@ -1004,7 +1004,7 @@ describe('feelings capture at start and finish (#462, #473)', () => {
     const remote = feelingsServer();
     const { controller, api, Screen } = fixture(testDetail(), remote.port); await controller.refresh(); await act(settle);
     const view = renderWithPressOpen(<Screen />); await act(settle);
-    fireEvent.press(view.getByLabelText('Sensaciones al empezar, opcional'));
+    fireEvent.press(view.getByRole('button', { name: 'Sensaciones al empezar' }));
     await act(async () => { fireEvent.press(view.getByLabelText('Energía: Alta, 4 de 5')); await settle(); });
     await act(async () => { fireEvent.press(view.getByLabelText('Fatiga: Poca, 2 de 5')); await settle(); });
     await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar sensaciones' })); await settle(); });
@@ -1094,7 +1094,7 @@ describe('feelings capture at start and finish (#462, #473)', () => {
     const remote = feelingsServer();
     const made = fixture(testDetail(), remote.port); await made.controller.refresh(); await act(settle);
     const view = renderWithPressOpen(<made.Screen />); await act(settle);
-    fireEvent.press(view.getByLabelText('Sensaciones al empezar, opcional'));
+    fireEvent.press(view.getByRole('button', { name: 'Sensaciones al empezar' }));
     await act(async () => { fireEvent.press(view.getByLabelText('Energía: Baja, 2 de 5')); await settle(); });
     fireEvent(view.getByRole('checkbox', { name: 'Serie 1 completada' }), 'accessibilityTap'); await act(async () => { await made.controller.flush(EXERCISE_ID); });
     fireEvent.press(view.getByRole('button', { name: 'Finalizar entrenamiento' })); await act(settle);

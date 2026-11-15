@@ -81,26 +81,28 @@ export function TrainingFeelings({ journal, phase, disabled = false, controller 
   // #512 (A): the save row sits under the scales and says «Sin guardar» itself, so the status line below does not repeat it.
   const saveRow = phase === 'pre' && draft && !state.pending && !state.blocked;
   const outsideStatus = saveRow && status === 'Sin guardar' ? null : status;
-  const title = <View style={styles.flex}>
+  const title = <View style={styles.titleText}>
     <AppText accessibilityRole="header" variant="headline">{moment.title}</AppText>
     {phase === 'post' ? <AppText muted variant="footnote">{moment.hint}</AppText>
       : !open ? <AppText muted variant="footnote">{answered.length ? answered.join(' · ') : 'Energía y fatiga'}</AppText> : null}
   </View>;
 
   return <View style={styles.block} testID={`feelings-${phase}`}>
-    {/* #512: the whole start header folds and unfolds, with a chevron instead of «Responder». It is one element whose label
-        changes, so VoiceOver focus stays on it. It is offered only when nothing unsent keeps the scales open: folding never
-        discards, and there is no folded draft. */}
-    {phase === 'pre' && !pinned ? <Pressable accessibilityRole="button"
-      accessibilityLabel={`Sensaciones ${moment.spoken}, ${answered.length ? answered.join(', ') : 'opcional'}`}
-      accessibilityHint={open ? 'Pliega las escalas.' : `Muestra energía y fatiga. ${moment.hint}`}
-      accessibilityState={{ expanded: open, disabled: !open && locked }} disabled={!open && locked} onPress={() => setEditing(value => !value)}
-      style={({ pressed }) => [styles.titleRow, { opacity: !open && locked ? 0.45 : pressed ? 0.6 : 1 }]} testID={`feelings-${phase}-edit`}>
-      {title}
-      <View style={[styles.chevron, open && styles.chevronOpen]}>
-        <AppIcon color={colors.textMuted} name="chevronDown" size={appIconSize.inline} />
-      </View>
-    </Pressable> : <View style={styles.titleRow}>{title}</View>}
+    {/* #512: «Al empezar» stays its own heading (VoiceOver's headings rotor) and the chevron is its own 44 pt button, never nested
+        in each other. The title area also folds on touch, but is invisible to VoiceOver, so nothing is announced twice. Both are
+        offered only when nothing unsent keeps the scales open: folding never discards, and there is no folded draft. */}
+    {phase === 'pre' && !pinned ? <View style={styles.titleRow}>
+      <Pressable accessible={false} disabled={!open && locked} onPress={() => setEditing(value => !value)} style={styles.titleArea} testID={`feelings-${phase}-title`}>
+        {title}
+      </Pressable>
+      {/* One button whose state changes, so VoiceOver focus stays on it when the panel opens or folds. */}
+      <Pressable accessibilityRole="button" accessibilityLabel={`Sensaciones ${moment.spoken}`}
+        accessibilityHint={open ? 'Pliega las escalas.' : `Muestra energía y fatiga. ${moment.hint}`}
+        accessibilityState={{ expanded: open, disabled: !open && locked }} disabled={!open && locked} onPress={() => setEditing(value => !value)}
+        style={({ pressed }) => [styles.chevron, { opacity: !open && locked ? 0.45 : pressed ? 0.6 : 1 }]} testID={`feelings-${phase}-edit`}>
+        <View style={open ? styles.chevronOpen : null}><AppIcon color={colors.textMuted} name="chevronDown" size={appIconSize.inline} /></View>
+      </Pressable>
+    </View> : <View style={styles.titleRow}>{title}</View>}
     <Reveal open={open} testID={`feelings-${phase}-panel`}>
       <View style={styles.panel}>
         {!state.server && !state.readError ? <AppText accessibilityLiveRegion="polite" variant="footnote">{UNREAD}</AppText> : null}
@@ -152,6 +154,8 @@ const styles = StyleSheet.create({
   block: { gap: brandTokens.space.xs }, panel: { gap: brandTokens.space.lg, paddingTop: brandTokens.space.xxs },
   reveal: { overflow: 'hidden' }, measure: { position: 'absolute', top: 0, left: 0, right: 0 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.sm, minHeight: brandTokens.layout.minTouch },
+  // The touch area spans the row's height and centers the title, so it lines up with the 44 pt chevron open or folded.
+  titleArea: { flex: 1, alignSelf: 'stretch', justifyContent: 'center' }, titleText: { flexShrink: 1 },
   chevron: { minHeight: brandTokens.layout.minTouch, minWidth: brandTokens.layout.minTouch, justifyContent: 'center', alignItems: 'center' },
   chevronOpen: { transform: [{ rotate: '180deg' }] },
   saveRow: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.sm, minHeight: brandTokens.layout.minTouch },
