@@ -28,29 +28,33 @@ export function QuickPinsEditor({ controller, state, saved, start, onClose }: {
   controller: QuickPinsController; state: QuickPinsState; saved: readonly QuickOption[]; start: QuickPinsDraft; onClose: () => void;
 }) {
   const { colors } = useOwnlevelTheme();
-  const draft = useRef(start.ids);
+  // What the sheet shows against what it would replace: the confirmed pins it edits over (the opening base, or the newer truth
+  // adopted with «Usar las guardadas» / «Seguir con mi versión»). A change prepared from the menu is already a difference.
+  const draft = useRef({ ids: start.ids, base: start.base.ids });
   // The confirmed list is only replaced by the receipt: a draft whose changes were not sent asks before it goes.
   const beforeDismiss = (proceed: () => void) => {
-    if (same(draft.current, start.ids) || controller.getSnapshot().intent) { proceed(); return; }
+    if (same(draft.current.ids, draft.current.base) || controller.getSnapshot().intent) { proceed(); return; }
     Alert.alert('¿Descartar los cambios?', 'Tus fijadas guardadas no cambian.', [
       { text: 'Seguir editando', style: 'cancel' }, { text: 'Descartar', style: 'destructive', onPress: proceed },
     ]);
   };
   return <AppSheet onClose={onClose} closeLabel="Cerrar fijadas" locked={state.phase === 'pending'} beforeDismiss={beforeDismiss}
     style={{ backgroundColor: colors.background, maxHeight: '92%', flex: 1 }} testID="quick-pins-editor">
-    <EditorBody controller={controller} state={state} saved={saved} start={start} onDraft={ids => { draft.current = ids; }} />
+    <EditorBody controller={controller} state={state} saved={saved} start={start} onDraft={(ids, base) => { draft.current = { ids, base }; }} />
   </AppSheet>;
 }
 
 function EditorBody({ controller, state, saved, start, onDraft }: {
-  controller: QuickPinsController; state: QuickPinsState; saved: readonly QuickOption[]; start: QuickPinsDraft; onDraft: (ids: string[]) => void;
+  controller: QuickPinsController; state: QuickPinsState; saved: readonly QuickOption[]; start: QuickPinsDraft; onDraft: (ids: string[], base: string[]) => void;
 }) {
   const { colors } = useOwnlevelTheme(), dismiss = useAppSheetDismiss();
   const [ids, setIds] = useState(start.ids), [base, setBase] = useState(start.base);
   const [search, setSearch] = useState(''), [dragging, setDragging] = useState(false), [saving, setSaving] = useState(false);
   // The pins changed under the draft (found on this device before sending): nothing was sent.
   const [stale, setStale] = useState(false);
-  useEffect(() => { onDraft(ids); }, [ids, onDraft]);
+  useEffect(() => { onDraft(ids, base.ids); }, [base.ids, ids, onDraft]);
+  // A refused write whose truth could not be read again: no decision can be made over it until a read works.
+  const [reading, setReading] = useState(false);
   const unconfirmed = !!state.intent, conflict = stale || state.phase === 'conflict';
   const editable = !saving && state.phase !== 'pending' && !unconfirmed;
   const dirty = !same(ids, base.ids), full = ids.length >= QUICK_PINS_MAX;
@@ -73,6 +77,10 @@ function EditorBody({ controller, state, saved, start, onDraft }: {
   const useSaved = () => { const next = controller.draftBase(); if (!next) return; controller.dismiss(); setStale(false); setBase(next); setIds(next.ids); };
   /** Keep my draft, now explicitly over the newer truth: one more explicit «Guardar» is still needed. */
   const keepMine = () => { const next = controller.draftBase(); if (!next) return; controller.dismiss(); setStale(false); setBase(next); };
+  /** Decisions need a confirmed, readable truth (the same rule as draftBase). */
+  const decidable = !!controller.draftBase();
+  /** The same quick-options GET Rápido makes (QuickPinsController.reload): it only reads, never writes. */
+  const reread = async () => { setReading(true); try { await controller.reload(); } finally { setReading(false); } };
   const rows = pinnedRows(ids, saved, state.confirmed);
   const library = useMemo(() => search.trim() ? searchLibrary(saved, search) : sortAZ(saved), [saved, search]);
   const busy = saving || state.phase === 'pending';
@@ -91,11 +99,20 @@ function EditorBody({ controller, state, saved, start, onDraft }: {
     </View>
     {conflict ? <Surface style={styles.notice} testID="quick-pins-editor-conflict">
       <AppText accessibilityLiveRegion="polite" variant="footnote">{stale ? 'Tus fijadas cambiaron en otro dispositivo mientras editabas. No guardamos nada.' : state.message}</AppText>
-      <AppText muted variant="footnote">Guardadas: {state.confirmed?.items.length ? names(state.confirmed.items.map(item => item.id)) : 'ninguna'}.</AppText>
-      <View style={styles.actions}>
-        <Pressable accessibilityRole="button" onPress={useSaved} style={styles.action} testID="quick-pins-use-saved"><AppText variant="subheadline" style={{ color: colors.primary, fontWeight: '600' }}>Usar las guardadas</AppText></Pressable>
-        <Pressable accessibilityRole="button" onPress={keepMine} style={styles.action} testID="quick-pins-keep-mine"><AppText variant="subheadline" style={{ color: colors.primary, fontWeight: '600' }}>Seguir con mi versión</AppText></Pressable>
-      </View>
+      {decidable ? <>
+        <AppText muted variant="footnote">Guardadas: {state.confirmed?.items.length ? names(state.confirmed.items.map(item => item.id)) : 'ninguna'}.</AppText>
+        <View style={styles.actions}>
+          <Pressable accessibilityRole="button" onPress={useSaved} style={styles.action} testID="quick-pins-use-saved"><AppText variant="subheadline" style={{ color: colors.primary, fontWeight: '600' }}>Usar las guardadas</AppText></Pressable>
+          <Pressable accessibilityRole="button" onPress={keepMine} style={styles.action} testID="quick-pins-keep-mine"><AppText variant="subheadline" style={{ color: colors.primary, fontWeight: '600' }}>Seguir con mi versión</AppText></Pressable>
+        </View>
+      </> : <>
+        {/* Without a confirmed reading there is nothing true to choose against: say so, keep the draft, offer only the read. */}
+        <AppText muted variant="footnote" testID="quick-pins-editor-unreadable">No pudimos leer tus fijadas guardadas. Tu borrador sigue acá; no se guardó nada.</AppText>
+        <View style={styles.actions}>
+          <Pressable accessibilityRole="button" accessibilityState={{ disabled: reading, busy: reading }} disabled={reading} onPress={() => void reread()} style={styles.action} testID="quick-pins-reread">
+            <AppText variant="subheadline" style={{ color: reading ? colors.textMuted : colors.primary, fontWeight: '600' }}>{reading ? 'Leyendo…' : 'Volver a leer'}</AppText></Pressable>
+        </View>
+      </>}
     </Surface> : null}
     {state.phase === 'uncertain' ? <Surface style={styles.notice} testID="quick-pins-editor-uncertain">
       <AppText accessibilityLiveRegion="polite" variant="footnote">{state.message}</AppText>

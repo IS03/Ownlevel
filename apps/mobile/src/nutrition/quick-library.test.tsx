@@ -283,6 +283,72 @@ describe('#479 C / #516 · pins change only in «Administrar fijadas», as one s
     expect(names(view).slice(0, 6)).toEqual(['Café con leche', 'Tostadas con palta', 'Avena con banana', 'Ñoquis caseros', 'Pollo al horno', 'Ensalada de atún']);
   });
 
+  it('#525 · a change prepared from the menu is a difference: «Cancelar» asks, «Seguir editando» keeps it, nothing is written', async () => {
+    let answer = 'Seguir editando';
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => buttons?.find(b => b.text === answer)?.onPress?.());
+    const sheet = jest.spyOn(ActionSheetIOS, 'showActionSheetWithOptions').mockImplementation((options, pick) => pick(0));
+    const { view, pinsApi } = await setup({ pins: ok(snap(2, [ID(5)])) });
+    act(() => { fireEvent(view.getAllByLabelText('Revisar Café con leche')[0]!, 'longPress'); }); // «Fijar en Rápido…»
+    expect(draft(view)).toEqual(['Pollo al horno, 1 de 2', 'Café con leche, 2 de 2']);
+    fireEvent.press(editor(view).getByTestId('quick-pins-cancel'));
+    expect(alert).toHaveBeenCalledTimes(1); expect(draft(view)).toEqual(['Pollo al horno, 1 de 2', 'Café con leche, 2 de 2']); // Kept.
+    answer = 'Descartar'; fireEvent.press(editor(view).getByTestId('quick-pins-cancel'));
+    expect(view.queryByTestId('quick-pins-editor')).toBeNull();
+    // «Desfijar…» from VoiceOver: the same rule.
+    act(() => { fireEvent(view.getAllByLabelText('Revisar Pollo al horno')[0]!, 'accessibilityAction', { nativeEvent: { actionName: 'unpin' } }); });
+    expect(draft(view)).toEqual([]);
+    fireEvent.press(editor(view).getByTestId('quick-pins-cancel'));
+    expect(alert).toHaveBeenCalledTimes(3); expect(view.queryByTestId('quick-pins-editor')).toBeNull();
+    expect(pinsApi.write).not.toHaveBeenCalled(); expect(names(view)[0]).toBe('Pollo al horno');
+    alert.mockRestore(); sheet.mockRestore();
+  });
+
+  it('#525 · after «Usar las guardadas» the draft is clean: «Cancelar» closes without asking; a later change asks again', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const { view, pins, pinsApi } = await setup({ pins: ok(snap(3, [ID(1), ID(2)])) });
+    fireEvent.press(view.getByTestId('quick-pins-manage'));
+    fireEvent.press(editor(view).getByTestId(`quick-pins-remove-${ID(1)}`));
+    act(() => { pins.adopt(ok(snap(4, [ID(3)]))); });
+    await act(async () => { fireEvent.press(editor(view).getByTestId('quick-pins-save')); });
+    fireEvent.press(editor(view).getByTestId('quick-pins-use-saved'));
+    expect(draft(view)).toEqual(['Ñoquis caseros, 1 de 1']);
+    fireEvent.press(editor(view).getByTestId(`quick-pins-choice-${ID(4)}`));
+    fireEvent.press(editor(view).getByTestId('quick-pins-cancel'));
+    expect(alert).toHaveBeenCalledTimes(1); // Changed after adopting the truth: asks.
+    fireEvent.press(editor(view).getByTestId(`quick-pins-remove-${ID(4)}`)); // Back to exactly the saved list.
+    fireEvent.press(editor(view).getByTestId('quick-pins-cancel'));
+    expect(alert).toHaveBeenCalledTimes(1); expect(view.queryByTestId('quick-pins-editor')).toBeNull();
+    expect(pinsApi.write).not.toHaveBeenCalled();
+    alert.mockRestore();
+  });
+
+  it('#525 · a 409 without the current pins and a failed re-read: no dead decisions, an explicit read, the draft kept, no write', async () => {
+    const { view, pinsApi } = await setup({ pins: ok(snap(1, [ID(1)])) });
+    const lostRead = { status: 'unavailable' as const, reason: 'network' as const, meta: { ...meta, httpStatus: null, outcome: 'unavailable' as const } };
+    pinsApi.write.mockResolvedValueOnce({ status: 'conflict', code: 'QUICK_PINS_CHANGED', message: 'm', data: { error: 'QUICK_PINS_CHANGED', message: 'm', current: null }, meta: { ...meta, httpStatus: 409, outcome: 'conflict' } });
+    pinsApi.read.mockResolvedValueOnce(lostRead).mockResolvedValueOnce(lostRead);
+    fireEvent.press(view.getByTestId('quick-pins-manage'));
+    fireEvent.press(editor(view).getByTestId(`quick-pins-choice-${ID(2)}`));
+    await act(async () => { fireEvent.press(editor(view).getByTestId('quick-pins-save')); });
+    expect(pinsApi.read).toHaveBeenCalledTimes(1); // The controller's own re-read after the 409, which failed.
+    expect(editor(view).getByTestId('quick-pins-editor-unreadable')).toBeTruthy();
+    expect(editor(view).queryByTestId('quick-pins-use-saved')).toBeNull(); expect(editor(view).queryByTestId('quick-pins-keep-mine')).toBeNull();
+    expect(editor(view).getByTestId('quick-pins-save').props.accessibilityState).toMatchObject({ disabled: true });
+    expect(draft(view)).toEqual(['Tostadas con palta, 1 de 2', 'Avena con banana, 2 de 2']);
+    // Reading again while it still fails: still nothing to decide on, still nothing written.
+    await act(async () => { fireEvent.press(editor(view).getByTestId('quick-pins-reread')); });
+    expect(pinsApi.read).toHaveBeenCalledTimes(2); expect(editor(view).getByTestId('quick-pins-editor-unreadable')).toBeTruthy();
+    // The read works (another device had saved [3]): the decisions work, and none of them writes by itself.
+    pinsApi.read.mockResolvedValueOnce({ status: 'ok', data: { today: quickDate, saved: { status: 'ok', items: BASE }, suggested: { status: 'ok', items: [] }, pins: ok(snap(2, [ID(3)])) }, meta });
+    await act(async () => { fireEvent.press(editor(view).getByTestId('quick-pins-reread')); });
+    expect(editor(view).queryByTestId('quick-pins-editor-unreadable')).toBeNull(); expect(editor(view).getByText('Guardadas: Ñoquis caseros.')).toBeTruthy();
+    fireEvent.press(editor(view).getByTestId('quick-pins-keep-mine'));
+    expect(draft(view)).toEqual(['Tostadas con palta, 1 de 2', 'Avena con banana, 2 de 2']); expect(pinsApi.write).toHaveBeenCalledTimes(1);
+    await act(async () => { fireEvent.press(editor(view).getByTestId('quick-pins-save')); });
+    expect(pinsApi.write).toHaveBeenCalledTimes(2);
+    expect(pinsApi.write).toHaveBeenLastCalledWith({ savedMealIds: [ID(1), ID(2)], expectedRevision: 2, idempotencyKey: 'pins-2' });
+  });
+
   it('pins that changed elsewhere while the sheet was open: nothing is sent; the person chooses the saved list or theirs', async () => {
     const { view, pins, pinsApi } = await setup({ pins: ok(snap(3, [ID(1), ID(2)])) });
     fireEvent.press(view.getByTestId('quick-pins-manage'));
