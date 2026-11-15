@@ -119,7 +119,7 @@ function ExplorationLinks({ today, contextOpen, onToggle }: { today: string; con
       <ListRow title="Recorrido por fecha" subtitle="Entrenamiento, Cuerpo, Nutrición y Métricas" onPress={() => router.navigate('/history/calendar')} />
       <InsightRow label="Contexto y relaciones" detail="Sesiones, semanas, relaciones y qué influye" spoken="Contexto y relaciones" expanded={contextOpen} onPress={onToggle} />
       {contextOpen ? <View testID="panorama-context-links">
-        <ListRow title="Sesiones" subtitle="Contexto y comparación" accessibilityLabel="Ver contexto y comparación de sesiones" onPress={() => router.navigate({ pathname: '/(tabs)/train/insights', params: origin })} />
+        <ListRow title="Comparaciones" subtitle="Cada sesión frente a la anterior" accessibilityLabel="Ver Comparaciones: cada sesión frente a la anterior" onPress={() => router.navigate({ pathname: '/(tabs)/train/insights', params: origin })} />
         <ListRow title="Últimos tres meses" onPress={() => router.navigate(periodSummaryHref(today, origin))} />
         <ListRow title="Semanas y coincidencias" subtitle="Comparación A/B de los registros" accessibilityLabel="Semanas, A/B y coincidencias descriptivas" onPress={() => router.navigate(explorationHref(today, undefined, undefined, origin))} />
         {/* Both read only when opened: discovering them adds no request to this screen. */}

@@ -32,18 +32,18 @@ export function EvidenceScreen() {
   const load = useCallback((c: MobileApiClient, signal: AbortSignal) => fetchInsightsEvidence(c, { session, exercise, lane }, signal), [session, exercise, lane]);
   const { state, data, refresh } = useProgressResource(selection ? client : null, key, load);
   const back = () => { if (router.canGoBack()) router.back(); else router.replace(insightsReturnHref(params) ?? '/(tabs)/train/insights'); };
-  const backButton = <Button label="Volver a Insights" onPress={back} />;
+  const backButton = <Button label="Volver a Comparaciones" onPress={back} />;
   const refreshControl = <RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />;
   const scroll = (children: React.ReactNode) => <ScrollView testID="evidence-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={selection ? refreshControl : undefined}><ReturnToProgress/>{children}</ScrollView>;
 
-  if (!selection) return scroll(<UnavailableState title="No encontramos esta comparación" description="Volvé a Insights y elegí el ejercicio de nuevo." action={backButton} />);
+  if (!selection) return scroll(<UnavailableState title="No encontramos esta comparación" description="Volvé a Comparaciones y elegí el ejercicio de nuevo." action={backButton} />);
   if (state.status === 'loading' && !data) return scroll(<View style={styles.block} testID="evidence-loading"><SkeletonBlock height={72} /><SkeletonBlock height={132} /><SkeletonBlock height={176} /></View>);
   if (!data || data.integrity !== 'valid' || (data.partial && data.partial.integrity !== 'valid')) return scroll(<UnavailableState title="Uy, no pudimos leer tus datos" description="Tranqui: está todo guardado." action={<Button label="Reintentar" onPress={() => void refresh()} />} />);
   const match = evidenceMatch(data, selection);
   // Never another comparison in place of the one tapped: if it changed, Insights reads it again.
   if (match === 'changed' || !data.item) return scroll(<View style={styles.block} testID="evidence-changed">
     <Heading level={2}>Esta comparación cambió</Heading>
-    <AppText muted>Tus registros cambiaron desde que abriste Insights. Volvé para ver la lectura actual.</AppText>
+    <AppText muted>Tus registros cambiaron desde que abriste Comparaciones. Volvé para ver la lectura actual.</AppText>
     {backButton}
   </View>);
   const { item } = data, result = resultOf(item);
@@ -59,14 +59,10 @@ export function EvidenceScreen() {
         {statusArrow(result) ? `${statusArrow(result)} ` : ''}{statusText(lane, result)}
       </AppText>
       {against ? <AppText muted testID="evidence-against">{against}</AppText> : null}
-      {match === 'newer' ? <AppText muted variant="footnote" testID="evidence-newer">Hubo cambios en tus registros desde que abriste Insights. La comparación es la misma; estos son los datos de ahora.</AppText> : null}
+      {match === 'newer' ? <AppText muted variant="footnote" testID="evidence-newer">Hubo cambios en tus registros desde que abriste Comparaciones. La comparación es la misma; estos son los datos de ahora.</AppText> : null}
       {lane === 'partial' ? <AppText muted variant="footnote" testID="evidence-partial-limit">{PARTIAL_LIMIT}</AppText> : null}
     </View>
-    <View testID="evidence-signals">
-      <Section title="Qué se comparó" />
-      {signals.map(row => <FactRow key={row.key} arrow={row.arrow} label={row.label} value={row.value} spoken={row.spoken} />)}
-      {note ? <AppText muted variant="footnote" style={styles.note} testID="evidence-note">{note}</AppText> : null}
-    </View>
+    {/* #518 · First the sets: this session's and the reference's, each under its date. Then what was compared. */}
     <View testID="evidence-current">
       <Section title={sideTitle(item.current, 'current')} />
       {sideRows(item.current, item, 'current').map(row => <FactRow key={row.key} label={row.label} value={row.value} detail={row.detail} spoken={row.spoken} />)}
@@ -79,6 +75,11 @@ export function EvidenceScreen() {
       <Section title="Sesión de referencia" />
       <AppText muted>Sin una sesión compatible para comparar.</AppText>
     </View>}
+    <View testID="evidence-signals">
+      <Section title="Qué se comparó" />
+      {signals.map(row => <FactRow key={row.key} arrow={row.arrow} label={row.label} value={row.value} spoken={row.spoken} />)}
+      {note ? <AppText muted variant="footnote" style={styles.note} testID="evidence-note">{note}</AppText> : null}
+    </View>
     <View testID="evidence-records">
       <Section title={lane === 'strict' ? 'Récords en este contexto' : 'Lo más alto con contexto parcial'} />
       {records.length ? records.map(row => <FactRow key={row.key} label={row.label} value={row.value} spoken={row.spoken} />)

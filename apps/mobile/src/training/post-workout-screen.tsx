@@ -139,7 +139,7 @@ export function PostWorkoutContent({ finished, detail, readSummary, readWeek, on
           <Animated.View entering={enter(2)}>
             <AppText muted variant="footnote" style={styles.section}>Ejercicios</AppText>
             {/* These marks are the receipt's own rule, not Insights' comparison: they must not read as the same thing. */}
-            {exercises.some(exercise => exercise.status) ? <AppText muted variant="caption" testID="post-workout-rule">Frente a la última vez con el mismo modo de carga. Insights compara además implemento y variante, y puede leer distinto.</AppText> : null}
+            {exercises.some(exercise => exercise.status) ? <AppText muted variant="caption" testID="post-workout-rule">Frente a la última vez con el mismo modo de carga. Comparaciones mira además implemento y variante, y puede leer distinto.</AppText> : null}
           </Animated.View>
           {exercises.map((exercise, index) => {
             const status = exercise.status, record = status?.kind === 'record';
@@ -175,7 +175,7 @@ export function PostWorkoutContent({ finished, detail, readSummary, readWeek, on
         <Button label="Listo" onPress={onHome} />
         <Button label="Ver sesión" variant="quiet" onPress={onViewSession} />
         {/* Facts of this session only, read when it opens: nothing about all-time relations runs at the end of a workout. */}
-        {insights ? <Button label="Ver contexto y comparación" variant="quiet" onPress={() => {
+        {insights ? <Button label="Ver qué cambió" variant="quiet" onPress={() => {
           router.replace({ pathname: '/(tabs)/train/history/[id]', params: { id: finished.sessionId } });
           router.push(insights);
         }} /> : null}

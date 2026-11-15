@@ -21,7 +21,7 @@ describe('#367 fase 2: contexto de alimentación de la sesión', () => {
   it('says why a value is missing, and never fills it: no zero, no 12 h, no fasting', () => {
     const rows = sessionRows(base({ proteinG: { value: null, state: 'untimed_meal_in_scope' }, calories: { value: null, state: 'partial_macro' },
       lastExplicitMeal: { hours: null, state: 'no_explicit_meal_in_12h', untimedInScope: true, unverifiedInScope: false } }));
-    expect(value(rows, 'protein')?.value).toBe('Comidas sin hora');
+    expect(value(rows, 'protein')?.value).toBe('Indeterminado');
     expect(value(rows, 'calories')?.value).toBe('Alguna comida sin ese dato');
     expect(value(rows, 'last-meal')).toMatchObject({ value: 'Ninguna con hora en las 12 h previas', detail: 'Hay comidas sin hora que podrían ser posteriores' });
     const fresh = rows.filter(row => ['protein', 'calories', 'last-meal'].includes(row.key)).map(row => row.value).join(' ');

@@ -29,7 +29,7 @@ it.each(['light','dark'] as const)('reads lazily, shows coverage/provisional and
   fireEvent.press(view.getByRole('button',{name:'Ver Nutrición del 03/08/2026'}));
   const href=nutritionDayHref('2026-08-03',{temporal:'1',date:'2026-08-03',revision:'new'}); expect(mockPush).toHaveBeenLastCalledWith(href);
   expect(insightsReturnHref(href.params)).toEqual({pathname:'/(tabs)/train/insights/temporal',params:{date:'2026-08-03',revision:'new'}});
-  fireEvent.press(view.getByRole('button',{name:'Volver al día en Insights'}));expect(mockNavigate).toHaveBeenLastCalledWith({pathname:'/(tabs)/train/insights',params:{date:'2026-08-03'}});
+  fireEvent.press(view.getByRole('button',{name:'Volver al día en Comparaciones'}));expect(mockNavigate).toHaveBeenLastCalledWith({pathname:'/(tabs)/train/insights',params:{date:'2026-08-03'}});
 });
 it('distinguishes errors, empty and invalid dates and retries without another scope',async()=>{
   mockRead.mockResolvedValueOnce({status:'unavailable',reason:'network',meta:{durationMs:1,httpStatus:null,outcome:'unavailable'}});serve();
@@ -42,7 +42,7 @@ it('distinguishes errors, empty and invalid dates and retries without another sc
 it('keeps the week revision when returning through temporal context',async()=>{
   mockParams={date:'2026-08-03',revision:'old',explore:'1',asOf:'2026-11-07',week:'2026-08-03',before:'2026-08-04'};
   serve();const view=render(wrap());await view.findByText('Horarios y comidas');
-  fireEvent.press(view.getByRole('button',{name:'Volver al día en Insights'}));
+  fireEvent.press(view.getByRole('button',{name:'Volver al día en Comparaciones'}));
   expect(mockNavigate).toHaveBeenLastCalledWith({pathname:'/(tabs)/train/insights',params:mockParams});
 });
 
@@ -53,6 +53,6 @@ it('preserves the completed session and revision through Nutrition and returns t
   fireEvent.press(view.getByRole('button', { name: 'Ver Nutrición del 03/08/2026' }));
   const href = mockPush.mock.calls.at(-1)![0] as { params: Record<string, string> };
   expect(insightsReturnHref(href.params)).toEqual({ pathname: '/(tabs)/train/insights/temporal', params: { date: '2026-08-03', session, fromSession: '1', revision: 'new' } });
-  fireEvent.press(view.getByRole('button', { name: 'Volver al día en Insights' }));
+  fireEvent.press(view.getByRole('button', { name: 'Volver al día en Comparaciones' }));
   expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights', params: { date: '2026-08-03', session, fromSession: '1', revision: 'old' } });
 });

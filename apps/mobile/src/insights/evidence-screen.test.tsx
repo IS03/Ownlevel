@@ -129,7 +129,7 @@ describe('#367 evidencia de una comparación', () => {
     const changed = await open();
     expect(changed.getByTestId('evidence-changed')).toBeTruthy();
     expect(changed.queryByTestId('evidence-signals')).toBeNull();
-    fireEvent.press(changed.getByRole('button', { name: 'Volver a Insights' }));
+    fireEvent.press(changed.getByRole('button', { name: 'Volver a Comparaciones' }));
     expect(mockBack).toHaveBeenCalled();
     changed.unmount();
     clearConfirmedReads(mockClient);
@@ -151,7 +151,7 @@ describe('#367 evidencia de una comparación', () => {
     mockCanGoBack = false;
     mockParams = selection({ session: 'x' });
     const view = await open();
-    fireEvent.press(view.getByRole('button', { name: 'Volver a Insights' }));
+    fireEvent.press(view.getByRole('button', { name: 'Volver a Comparaciones' }));
     expect(mockReplace).toHaveBeenCalledWith({ pathname: '/(tabs)/train/insights', params: { date: '2029-03-03' } });
   });
 

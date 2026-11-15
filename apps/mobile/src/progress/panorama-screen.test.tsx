@@ -63,7 +63,7 @@ it('opens one bounded request instead of four, with no Insights/hidden detail re
     expect(mockNavigate).toHaveBeenLastCalledWith(periodSummaryHref(PANORAMA_TODAY, { fromProgress: '1' }));
     fireEvent.press(after.getByRole('button', { name: 'Semanas, A/B y coincidencias descriptivas' }));
     expect(mockNavigate).toHaveBeenLastCalledWith(explorationHref(PANORAMA_TODAY, undefined, undefined, { fromProgress: '1' }));
-    fireEvent.press(after.getByRole('button', { name: 'Ver contexto y comparación de sesiones' }));
+    fireEvent.press(after.getByRole('button', { name: 'Ver Comparaciones: cada sesión frente a la anterior' }));
     expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights', params: { fromProgress: '1' } });
     expect(read).toHaveBeenCalledTimes(1);
     console.info('[402 request comparison]', { before: prior, after: read.mock.calls.map(([o]) => o.path) });

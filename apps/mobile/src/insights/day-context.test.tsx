@@ -128,17 +128,25 @@ describe('#367 contexto diario: pantalla', () => {
   it('shows every session of the day once, in order, and the shared day once', async () => {
     mockRead.mockImplementation(serve(source()));
     const view = await open();
-    const hero = within(view.getByTestId('insights-hero-context'));
-    expect(hero.getByText('Sesiones de ese día')).toBeTruthy();
-    expect(hero.getByTestId('insights-day-order').props.children).toBe('2 sesiones, en el orden en que empezaron.');
-    const names = hero.getAllByRole('button', { name: /^Abrir sesión/ }).map(row => row.props.accessibilityLabel);
+    const top = within(view.getByTestId('insights-hero'));
+    expect(top.getByTestId('insights-day-order').props.children).toBe('2 sesiones, en el orden en que empezaron.');
+    const names = top.getAllByRole('button', { name: /^Abrir sesión/ }).map(row => row.props.accessibilityLabel);
     expect(names).toEqual(['Abrir sesión Empuje, 09:00–10:00', 'Abrir sesión Piernas, 17:00–18:00']);
+    // #518 · The context is folded under the result; opening it is local and reads nothing.
+    const reads = mockRead.mock.calls.length;
+    expect(view.queryByTestId('insights-day-shared')).toBeNull();
+    fireEvent.press(view.getByTestId('insights-context-toggle'));
+    expect(mockRead.mock.calls.length).toBe(reads);
+    const hero = within(view.getByTestId('insights-hero-context'));
+    // Before each session apart; the whole day once, said to be shared.
+    expect(hero.getByTestId(`insights-before-${MORNING}`)).toBeTruthy(); expect(hero.getByTestId(`insights-before-${EVENING}`)).toBeTruthy();
+    expect(hero.getByTestId('insights-day-shared-note').props.children).toEqual(['Se registra por día: es lo mismo para las ', 2, ' sesiones.']);
     expect(hero.getAllByTestId('insights-day-shared')).toHaveLength(1);
     expect(hero.getAllByText('Calorías')).toHaveLength(1);
     expect(hero.getByText('Antes: respondida después de empezar')).toBeTruthy();
     expect(hero.getByText('El momento de cada respuesta sale del reloj del teléfono.')).toBeTruthy();
     expect(hero.queryByText(/todo lo que comiste/)).toBeTruthy();
-    fireEvent.press(hero.getByRole('button', { name: /^Abrir sesión Piernas/ }));
+    fireEvent.press(top.getByRole("button", { name: /^Abrir sesión Piernas/ }));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/history/[id]', params: { id: EVENING } });
   });
   it('focuses the completed session, keeps the day accessible and returns from Nutrition with its revision', async () => {
@@ -148,6 +156,7 @@ describe('#367 contexto diario: pantalla', () => {
     const focus = within(view.getByTestId('insights-session'));
     expect(focus.getByRole('header', { name: 'Piernas' })).toBeTruthy();
     expect(focus.getByText(/2026 · 17:00–18:00/)).toBeTruthy();
+    fireEvent.press(view.getByTestId('insights-context-toggle'));
     expect(focus.getByText('baja → sin registrar')).toBeTruthy();
     expect(focus.queryByText('alta → sin registrar')).toBeNull();
     fireEvent.press(focus.getByRole('button', { name: /^Ver horarios y comidas registradas/ }));
@@ -163,6 +172,7 @@ describe('#367 contexto diario: pantalla', () => {
     const changed = source();
     mockRead.mockImplementation(options => serve(revision === 'r1' ? source() : { ...changed, feelings: [] }, revision)(options));
     const view = await open();
+    fireEvent.press(view.getByTestId('insights-context-toggle'));
     expect(within(view.getByTestId('insights-session')).getByText('Antes: respondida después de empezar')).toBeTruthy();
     revision = 'r2';
     await act(async () => { view.getByTestId('insights-screen').props.refreshControl.props.onRefresh(); }); await flush();
@@ -178,6 +188,7 @@ describe('#367 contexto diario: pantalla', () => {
     const view = await open();
     expect(mockRead.mock.calls[0]![0].path).toContain('before=2026-03-04');
     expect(view.getByRole('button', { name: 'Volver a la semana' })).toBeTruthy();
+    fireEvent.press(view.getByTestId('insights-context-toggle'));
     const focus = within(view.getByTestId('insights-hero-context'));
     fireEvent.press(focus.getByRole('button', { name: /^Ver Nutrición/ }));
     const href = mockPush.mock.calls.at(-1)![0] as ReturnType<typeof nutritionDayHref>;
@@ -194,6 +205,7 @@ describe('#367 peso del día hacia Cuerpo', () => {
     mockParams = { session: EVENING, date: D1 };
     mockRead.mockImplementation(serve(source()));
     const view = await open();
+    fireEvent.press(view.getByTestId('insights-context-toggle'));
     fireEvent.press(within(view.getByTestId('insights-session')).getByRole('button', { name: /^Peso corporal, ese día: Sin registrar\. Ver en Cuerpo$/ }));
     const href = mockPush.mock.calls.at(-1)![0] as ReturnType<typeof dayWeightHref>;
     expect(href).toEqual({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.weight', from: '2026-03-01', to: '2026-03-31', insightsReturn: '1', insightsDate: D1, insightsSession: EVENING } });
