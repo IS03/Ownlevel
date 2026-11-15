@@ -31,25 +31,33 @@ export function QuickPinsEditor({ controller, state, saved, start, onClose }: {
   // What the sheet shows against what it would replace: the confirmed pins it edits over (the opening base, or the newer truth
   // adopted with «Usar las guardadas» / «Seguir con mi versión»). A change prepared from the menu is already a difference.
   const draft = useRef({ ids: start.ids, base: start.base.ids });
+  // #525 · From the moment «Guardar» is accepted until its outcome, nothing closes the sheet (Cancelar, swipe, backdrop, the
+  // system's back): that covers storing the intent on the device, while the controller still reads «idle» and has no intent.
+  // The ref closes the gap before the re-render that locks the sheet.
+  const [saving, setSaving] = useState(false), savingNow = useRef(false);
+  const onSaving = useCallback((on: boolean) => { savingNow.current = on; setSaving(on); }, []);
+  const locked = saving || state.phase === 'pending';
   // The confirmed list is only replaced by the receipt: a draft whose changes were not sent asks before it goes.
   const beforeDismiss = (proceed: () => void) => {
+    if (savingNow.current || controller.getSnapshot().phase === 'pending') return;
     if (same(draft.current.ids, draft.current.base) || controller.getSnapshot().intent) { proceed(); return; }
     Alert.alert('¿Descartar los cambios?', 'Tus fijadas guardadas no cambian.', [
       { text: 'Seguir editando', style: 'cancel' }, { text: 'Descartar', style: 'destructive', onPress: proceed },
     ]);
   };
-  return <AppSheet onClose={onClose} closeLabel="Cerrar fijadas" locked={state.phase === 'pending'} beforeDismiss={beforeDismiss}
+  return <AppSheet onClose={onClose} closeLabel="Cerrar fijadas" locked={locked} beforeDismiss={beforeDismiss}
     style={{ backgroundColor: colors.background, maxHeight: '92%', flex: 1 }} testID="quick-pins-editor">
-    <EditorBody controller={controller} state={state} saved={saved} start={start} onDraft={(ids, base) => { draft.current = { ids, base }; }} />
+    <EditorBody controller={controller} state={state} saved={saved} start={start} saving={saving} locked={locked} onSaving={onSaving} onDraft={(ids, base) => { draft.current = { ids, base }; }} />
   </AppSheet>;
 }
 
-function EditorBody({ controller, state, saved, start, onDraft }: {
-  controller: QuickPinsController; state: QuickPinsState; saved: readonly QuickOption[]; start: QuickPinsDraft; onDraft: (ids: string[], base: string[]) => void;
+function EditorBody({ controller, state, saved, start, saving, locked, onSaving, onDraft }: {
+  controller: QuickPinsController; state: QuickPinsState; saved: readonly QuickOption[]; start: QuickPinsDraft;
+  saving: boolean; locked: boolean; onSaving: (on: boolean) => void; onDraft: (ids: string[], base: string[]) => void;
 }) {
   const { colors } = useOwnlevelTheme(), dismiss = useAppSheetDismiss();
   const [ids, setIds] = useState(start.ids), [base, setBase] = useState(start.base);
-  const [search, setSearch] = useState(''), [dragging, setDragging] = useState(false), [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState(''), [dragging, setDragging] = useState(false);
   // The pins changed under the draft (found on this device before sending): nothing was sent.
   const [stale, setStale] = useState(false);
   useEffect(() => { onDraft(ids, base.ids); }, [base.ids, ids, onDraft]);
@@ -64,21 +72,25 @@ function EditorBody({ controller, state, saved, start, onDraft }: {
   const move = (id: string, to: number) => { haptics.selection(); update(moveTo(ids, id, to)); };
   /** Done only on the server's receipt: an uncertain or refused write keeps the sheet and its recovery. */
   // With a callback the sheet leaves without «¿Descartar los cambios?»: they are the receipt now, not a draft.
+  // The receipt closes the sheet with the dismiss of the render that accepted the action: «Guardar» and «Comprobar» are only
+  // offered while the sheet is unlocked, so that one leaves even though the sheet is locked while the write runs.
   const settled = () => { const now = controller.getSnapshot(); if (now.phase === 'idle' && !now.intent && !now.error) dismiss(() => {}); };
   const save = async () => {
     if (!dirty || !editable || conflict) return;
-    setSaving(true);
+    onSaving(true);
     try {
       const outcome = await controller.write(ids, base);
       if (outcome === 'stale') setStale(true); else if (outcome !== 'refused') settled();
-    } finally { setSaving(false); }
+    } finally { onSaving(false); }
   };
   /** Start again from what is saved now (the receipt or the newer truth): the draft becomes that list. */
   const useSaved = () => { const next = controller.draftBase(); if (!next) return; controller.dismiss(); setStale(false); setBase(next); setIds(next.ids); };
   /** Keep my draft, now explicitly over the newer truth: one more explicit «Guardar» is still needed. */
   const keepMine = () => { const next = controller.draftBase(); if (!next) return; controller.dismiss(); setStale(false); setBase(next); };
-  /** Decisions need a confirmed, readable truth (the same rule as draftBase). */
-  const decidable = !!controller.draftBase();
+  /** Decisions need a confirmed, readable truth (the same rule as draftBase): never while the write or its re-read runs. */
+  const decidable = !saving && !!controller.draftBase();
+  /** After a 409 without the current pins the truth is being read: nothing to choose yet. A failed read offers «Volver a leer». */
+  const awaiting = saving || state.availability === 'unknown';
   /** The same quick-options GET Rápido makes (QuickPinsController.reload): it only reads, never writes. */
   const reread = async () => { setReading(true); try { await controller.reload(); } finally { setReading(false); } };
   const rows = pinnedRows(ids, saved, state.confirmed);
@@ -87,8 +99,8 @@ function EditorBody({ controller, state, saved, start, onDraft }: {
 
   const header = <View style={styles.top}>
     <View style={styles.bar}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Cancelar" onPress={() => dismiss()} disabled={state.phase === 'pending'}
-        style={styles.barButton} testID="quick-pins-cancel"><AppText variant="body" style={{ color: colors.text }}>Cancelar</AppText></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Cancelar" onPress={() => dismiss()} disabled={locked}
+        accessibilityState={{ disabled: locked }} style={styles.barButton} testID="quick-pins-cancel"><AppText variant="body" style={{ color: colors.text }}>Cancelar</AppText></Pressable>
       <AppText accessibilityRole="header" variant="headline" style={styles.title}>Fijadas</AppText>
       <Pressable accessibilityRole="button" accessibilityLabel="Guardar fijadas" accessibilityState={{ disabled: !dirty || !editable || conflict, busy }}
         disabled={!dirty || !editable || conflict} onPress={() => void save()} style={[styles.barButton, styles.end]} testID="quick-pins-save">
@@ -105,7 +117,7 @@ function EditorBody({ controller, state, saved, start, onDraft }: {
           <Pressable accessibilityRole="button" onPress={useSaved} style={styles.action} testID="quick-pins-use-saved"><AppText variant="subheadline" style={{ color: colors.primary, fontWeight: '600' }}>Usar las guardadas</AppText></Pressable>
           <Pressable accessibilityRole="button" onPress={keepMine} style={styles.action} testID="quick-pins-keep-mine"><AppText variant="subheadline" style={{ color: colors.primary, fontWeight: '600' }}>Seguir con mi versión</AppText></Pressable>
         </View>
-      </> : <>
+      </> : awaiting ? <AppText muted variant="footnote" testID="quick-pins-editor-reading">Leyendo tus fijadas guardadas… Tu borrador sigue acá.</AppText> : <>
         {/* Without a confirmed reading there is nothing true to choose against: say so, keep the draft, offer only the read. */}
         <AppText muted variant="footnote" testID="quick-pins-editor-unreadable">No pudimos leer tus fijadas guardadas. Tu borrador sigue acá; no se guardó nada.</AppText>
         <View style={styles.actions}>

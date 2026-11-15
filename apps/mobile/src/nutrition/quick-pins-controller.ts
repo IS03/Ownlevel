@@ -28,7 +28,8 @@ export type QuickPinsState = {
   phase: 'loading' | 'idle' | 'pending' | 'uncertain' | 'conflict' | 'blocked';
   /** The last server-confirmed pins (GET or write receipt); null until one is known. Never goes back in revision. */
   confirmed: QuickPinsSnapshot | null;
-  /** The last pins read: `unavailable` keeps an earlier confirmed snapshot (still valid for CAS) but says the read failed. */
+  /** The last pins read: `unavailable` keeps an earlier confirmed snapshot (still valid for CAS) but says the read failed.
+   *  `unknown` before the first read, and while the truth is read again after a 409 that did not carry it (#525). */
   availability: 'unknown' | 'ok' | 'unavailable';
   /** The write that is in flight or unconfirmed, as stored on the device. */
   intent: StoredQuickPinsIntent | null;
@@ -223,7 +224,11 @@ export class QuickPinsController {
       const error: QuickPinsError = result.code === 'QUICK_PINS_CHANGED' ? 'changed' : result.code === 'QUICK_PIN_UNAVAILABLE' ? 'pin_unavailable' : 'key_reused';
       if (!await this.settleRefused(stored, 'conflict', error)) return;
       const current = result.data && 'error' in result.data ? result.data.current : null;
-      if (current) this.accept(current); else await this.reload();
+      if (current) { this.accept(current); return; }
+      // #525 · refused without the truth: the confirmed pins are the ones that were refused, so nothing is decided or written
+      // against them until a read lands ('unknown' while it runs, 'unavailable' if it fails, 'ok' with the new revision).
+      this.update({ availability: 'unknown' });
+      await this.reload();
       return;
     }
     if (result?.status === 'validation') { await this.settleRefused(stored, 'idle', 'invalid'); return; }

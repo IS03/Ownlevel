@@ -18,12 +18,16 @@ jest.mock('./day-resource', () => ({ useNutritionDayResource: () => ({ state: { 
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: null }) }));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 // The app sheet's exit animation never completes in jest: its dismiss runs «beforeDismiss» like the real one, then closes.
+// `${testID}-system-close` is every close that is not a button of the sheet (swipe, backdrop, the system's back): in the real
+// AppSheet they all go through the same dismiss(), refused while `locked`.
 jest.mock('@/design-system', () => {
-  const React = jest.requireActual<typeof import('react')>('react'), { View } = jest.requireActual<typeof import('react-native')>('react-native');
+  const React = jest.requireActual<typeof import('react')>('react'), { Pressable, View } = jest.requireActual<typeof import('react-native')>('react-native');
   const Close = React.createContext<(mockAfter?: () => void) => void>(() => {});
   return { ...jest.requireActual<object>('@/design-system'),
-    AppSheet: ({ children, onClose, beforeDismiss, locked, testID }: { children: React.ReactNode; onClose: () => void; beforeDismiss?: (mockProceed: () => void) => void; locked?: boolean; testID?: string }) =>
-      <Close.Provider value={mockAfter => { if (locked) return; if (mockAfter) { onClose(); mockAfter(); } else (beforeDismiss ?? (mockProceed => mockProceed()))(onClose); }}><View testID={testID}>{children}</View></Close.Provider>,
+    AppSheet: ({ children, onClose, beforeDismiss, locked, testID }: { children: React.ReactNode; onClose: () => void; beforeDismiss?: (mockProceed: () => void) => void; locked?: boolean; testID?: string }) => {
+      const mockDismiss = (mockAfter?: () => void) => { if (locked) return; if (mockAfter) { onClose(); mockAfter(); } else (beforeDismiss ?? (mockProceed => mockProceed()))(onClose); };
+      return <Close.Provider value={mockDismiss}><View testID={testID}>{children}</View><Pressable testID={`${testID}-system-close`} onPress={() => mockDismiss()} /></Close.Provider>;
+    },
     useAppSheetDismiss: () => React.useContext(Close) };
 });
 const original = { window: Dimensions.get('window'), screen: Dimensions.get('screen') };
@@ -344,6 +348,72 @@ describe('#479 C / #516 · pins change only in «Administrar fijadas», as one s
     expect(editor(view).queryByTestId('quick-pins-editor-unreadable')).toBeNull(); expect(editor(view).getByText('Guardadas: Ñoquis caseros.')).toBeTruthy();
     fireEvent.press(editor(view).getByTestId('quick-pins-keep-mine'));
     expect(draft(view)).toEqual(['Tostadas con palta, 1 de 2', 'Avena con banana, 2 de 2']); expect(pinsApi.write).toHaveBeenCalledTimes(1);
+    await act(async () => { fireEvent.press(editor(view).getByTestId('quick-pins-save')); });
+    expect(pinsApi.write).toHaveBeenCalledTimes(2);
+    expect(pinsApi.write).toHaveBeenLastCalledWith({ savedMealIds: [ID(1), ID(2)], expectedRevision: 2, idempotencyKey: 'pins-2' });
+  });
+
+  it('#525 · from «Guardar» on, nothing closes the sheet, also while the intent is stored on the device (before the PUT)', async () => {
+    let answer = 'Descartar';
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => buttons?.find(b => b.text === answer)?.onPress?.());
+    const { view, pins, pinsApi, shared } = await setup({ pins: ok(snap(1, [ID(1)])) });
+    // The device storage answers only when the test says so (first a failure, then a success).
+    const store = shared.port.setItem;
+    let finish: (fail: boolean) => void = () => {};
+    shared.port.setItem = (k, v) => new Promise<void>((resolve, reject) => { finish = fail => { if (fail) reject(new Error('disk')); else void store(k, v).then(resolve); }; });
+    const closeEverywhere = () => {
+      fireEvent.press(editor(view).getByTestId('quick-pins-cancel'));
+      fireEvent.press(view.getByTestId('quick-pins-editor-system-close'));
+    };
+    fireEvent.press(view.getByTestId('quick-pins-manage'));
+    fireEvent.press(editor(view).getByTestId(`quick-pins-choice-${ID(2)}`));
+    // 1 · «Guardar» accepted, the intent not stored yet: the controller still reads idle, with no intent and no PUT.
+    await act(async () => { fireEvent.press(editor(view).getByTestId('quick-pins-save')); });
+    expect(pins.getSnapshot()).toMatchObject({ phase: 'idle', intent: null }); expect(pinsApi.write).not.toHaveBeenCalled();
+    expect(editor(view).getByTestId('quick-pins-cancel').props.accessibilityState).toMatchObject({ disabled: true });
+    closeEverywhere();
+    expect(view.getByTestId('quick-pins-editor')).toBeTruthy(); expect(alert).not.toHaveBeenCalled();
+    // The device could not store it: nothing was sent, the draft is kept and leaving is possible again (asking: it is a draft).
+    await act(async () => { finish(true); await new Promise(r => setTimeout(r, 0)); });
+    expect(pinsApi.write).not.toHaveBeenCalled(); expect(draft(view)).toEqual(['Tostadas con palta, 1 de 2', 'Avena con banana, 2 de 2']);
+    await waitFor(() => expect(editor(view).getByTestId('quick-pins-cancel').props.accessibilityState).toMatchObject({ disabled: false }));
+    expect(pins.getSnapshot()).toMatchObject({ phase: 'idle', intent: null, error: 'storage' });
+    answer = 'Seguir editando'; fireEvent.press(editor(view).getByTestId('quick-pins-cancel'));
+    expect(alert).toHaveBeenCalledTimes(1); expect(view.getByTestId('quick-pins-editor')).toBeTruthy();
+    // 2 · Again: locked through the storing; once stored, one PUT, and the receipt closes the sheet by itself.
+    answer = 'Descartar';
+    await act(async () => { fireEvent.press(editor(view).getByTestId('quick-pins-save')); });
+    closeEverywhere();
+    expect(view.getByTestId('quick-pins-editor')).toBeTruthy(); expect(alert).toHaveBeenCalledTimes(1); expect(pinsApi.write).not.toHaveBeenCalled();
+    await act(async () => { finish(false); await new Promise(r => setTimeout(r, 0)); });
+    await waitFor(() => expect(pinsApi.write).toHaveBeenCalledTimes(1));
+    expect(pinsApi.write).toHaveBeenCalledWith({ savedMealIds: [ID(1), ID(2)], expectedRevision: 1, idempotencyKey: 'pins-2' });
+    await waitFor(() => expect(view.queryByTestId('quick-pins-editor')).toBeNull());
+    expect(alert).toHaveBeenCalledTimes(1); expect(names(view).slice(0, 2)).toEqual(['Tostadas con palta', 'Avena con banana']);
+    alert.mockRestore();
+  });
+
+  it('#525 · a 409 without the current pins: while its re-read runs there is nothing to decide; the decisions come with the new revision', async () => {
+    const { view, pins, pinsApi } = await setup({ pins: ok(snap(1, [ID(1)])) });
+    pinsApi.write.mockResolvedValueOnce({ status: 'conflict', code: 'QUICK_PINS_CHANGED', message: 'm', data: { error: 'QUICK_PINS_CHANGED', message: 'm', current: null }, meta: { ...meta, httpStatus: 409, outcome: 'conflict' } });
+    let answer: (value: Awaited<ReturnType<QuickPinsApi['read']>>) => void = () => {};
+    pinsApi.read.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
+    fireEvent.press(view.getByTestId('quick-pins-manage'));
+    fireEvent.press(editor(view).getByTestId(`quick-pins-choice-${ID(2)}`));
+    await act(async () => { fireEvent.press(editor(view).getByTestId('quick-pins-save')); });
+    // Refused; the GET after it has not answered. The revision on hand (1) is the refused one: no decision over it.
+    expect(pinsApi.write).toHaveBeenCalledTimes(1); expect(pinsApi.read).toHaveBeenCalledTimes(1);
+    expect(pins.getSnapshot()).toMatchObject({ phase: 'conflict', availability: 'unknown' }); expect(pins.draftBase()).toBeNull();
+    expect(editor(view).getByTestId('quick-pins-editor-reading')).toBeTruthy();
+    for (const id of ['quick-pins-use-saved', 'quick-pins-keep-mine', 'quick-pins-reread']) expect(editor(view).queryByTestId(id)).toBeNull();
+    expect(editor(view).getByTestId('quick-pins-save').props.accessibilityState).toMatchObject({ disabled: true });
+    expect(draft(view)).toEqual(['Tostadas con palta, 1 de 2', 'Avena con banana, 2 de 2']);
+    // The read lands with revision 2 (another device saved [3]): now, and only now, the person decides.
+    await act(async () => { answer({ status: 'ok', data: { today: quickDate, saved: { status: 'ok', items: BASE }, suggested: { status: 'ok', items: [] }, pins: ok(snap(2, [ID(3)])) }, meta }); });
+    expect(pins.draftBase()).toEqual({ revision: 2, ids: [ID(3)] });
+    expect(editor(view).queryByTestId('quick-pins-editor-reading')).toBeNull(); expect(editor(view).getByText('Guardadas: Ñoquis caseros.')).toBeTruthy();
+    fireEvent.press(editor(view).getByTestId('quick-pins-keep-mine'));
+    expect(pinsApi.write).toHaveBeenCalledTimes(1); // «Seguir con mi versión» writes nothing by itself.
     await act(async () => { fireEvent.press(editor(view).getByTestId('quick-pins-save')); });
     expect(pinsApi.write).toHaveBeenCalledTimes(2);
     expect(pinsApi.write).toHaveBeenLastCalledWith({ savedMealIds: [ID(1), ID(2)], expectedRevision: 2, idempotencyKey: 'pins-2' });
