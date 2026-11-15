@@ -101,7 +101,7 @@ describe('#367 fase 4: resumen de los últimos tres meses', () => {
     expect(mockPush).toHaveBeenLastCalledWith(periodDetailHref('nutrition', '2026-11-06', 'r1'));
     fireEvent.press(view.getByRole('button', { name: 'Ver Cómo terminaste, en todo tu historial' }));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/train/insights/feelings');
-    fireEvent.press(view.getByRole('button', { name: 'Ver los días en Insights' }));
+    fireEvent.press(view.getByRole('button', { name: 'Ver los días en Comparaciones' }));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/train/insights');
   });
 

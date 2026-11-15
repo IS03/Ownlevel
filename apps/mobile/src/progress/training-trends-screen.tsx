@@ -33,6 +33,7 @@ import { formatValue } from './progress-format';
 import { useCachedRead } from '@/api/use-cached-read';
 import { ProgressReadStatus } from './progress-read-status';
 import { PortadaPointNote, sameValue, usePortadaPoint, type PortadaPoint } from './portada-point';
+import { comparisonsFromTrainingHref } from '@/insights/navigation';
 
 type SeriesMetric = 'sets' | 'sessions' | 'minutes';
 type ChartInspection = { metric: SeriesMetric; bucket: { start: string; end: string } | null };
@@ -518,6 +519,13 @@ export function TrainingTrendsScreen() {
           <Content data={data} inspection={inspection} onInspect={onInspect} portada={portada ? { point: portada, matched: !!match } : null} />
         </>
       )}
+      {/* #518 · The fixed door to Comparaciones. Asks for nothing here; going back returns to this screen and its period. */}
+      <FlatRow onPress={() => router.navigate(comparisonsFromTrainingHref)} label="Ver Comparaciones: cada sesión frente a la anterior" testID="training-trends-comparisons">
+        <View style={styles.text}>
+          <AppText variant="headline">Comparaciones</AppText>
+          <AppText muted variant="footnote">Cada sesión comparada con la anterior, ejercicio por ejercicio, con tus series.</AppText>
+        </View>
+      </FlatRow>
       <FlatRow onPress={() => router.push('/(tabs)/train/history')} label="Ver el historial de entrenamientos">
         <View style={styles.text}>
           <AppText variant="headline">Historial</AppText>

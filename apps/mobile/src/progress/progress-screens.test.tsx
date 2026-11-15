@@ -492,12 +492,12 @@ describe('Body Trends', () => {
     expect(mockBody.mock.calls.length).toBeGreaterThan(0);
     for (const call of mockBody.mock.calls) expect(call[1]).toEqual({ period: 'custom', from: '2026-09-01', to: '2026-09-30' });
     expect(view.getByTestId('body-from-insights').props.children).toBe('El peso de un día no dice si te pesaste antes o después de entrenar.');
-    fireEvent.press(view.getByRole('button', { name: 'Volver a Insights' }));
+    fireEvent.press(view.getByRole('button', { name: 'Volver a Comparaciones' }));
     expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/(tabs)/train/insights', params: { date: '2026-09-15', session: '93670000-0000-4000-8000-000000000b02' } });
   });
   it('without Insights there is no way back and no limit note', async () => {
     const view = wrap(<BodyTrendsScreen />); await flush();
-    expect(view.queryByRole('button', { name: 'Volver a Insights' })).toBeNull();
+    expect(view.queryByRole('button', { name: 'Volver a Comparaciones' })).toBeNull();
     expect(view.queryByTestId('body-from-insights')).toBeNull();
   });
   it('a stored 0 kg is named with its date, never dropped or re-computed here', async () => {
@@ -573,13 +573,13 @@ describe('Metrics Trends', () => {
     expect(mockMetrics.mock.calls.every(call => call[2] === ids.steps)).toBe(true);
     expect(mockMetrics.mock.calls.length).toBeGreaterThan(0);
     for (const call of mockMetrics.mock.calls) expect(JSON.stringify(call[1])).toContain('2026-09');
-    fireEvent.press(view.getByRole('button', { name: 'Volver a Insights' }));
+    fireEvent.press(view.getByRole('button', { name: 'Volver a Comparaciones' }));
     expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/(tabs)/train/insights', params: { family: 'metric', date: '2026-09-15' } });
   });
   it('shows no way back unless it came from Insights, and a new link chooses its metric on a mounted route', async () => {
     mockParams = { metric: ids.steps };
     const view = wrap(<MetricsTrendsScreen />); await flush();
-    expect(view.queryByRole('button', { name: 'Volver a Insights' })).toBeNull();
+    expect(view.queryByRole('button', { name: 'Volver a Comparaciones' })).toBeNull();
     mockParams = { metric: 'otra-metrica' };
     view.rerender(wrapped(<MetricsTrendsScreen />)); await flush();
     expect(mockMetrics.mock.calls.at(-1)![2]).toBe('otra-metrica');

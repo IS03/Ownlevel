@@ -37,7 +37,7 @@ export function PeriodScreen() {
   usePeriodReturn(refresh);
   const refreshControl = <RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />;
   const scroll = (children: React.ReactNode) => <ScrollView testID="period-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}><ReturnToProgress/>{children}</ScrollView>;
-  if (invalidAnchor) return scroll(<UnavailableState title="No pudimos identificar el período" description="Volvé a abrir el resumen desde Insights." />);
+  if (invalidAnchor) return scroll(<UnavailableState title="No pudimos identificar el período" description="Volvé a abrir el resumen desde Comparaciones." />);
   if (state.status === 'loading' && !data) return scroll(<View style={styles.block} testID="period-loading"><SkeletonBlock height={72} /><SkeletonBlock height={132} /><SkeletonBlock height={176} /></View>);
   if (!data || data.integrity !== 'valid') return scroll(<UnavailableState title="Uy, no pudimos leer tus datos" description="Tranqui: está todo guardado." action={<Button label="Reintentar" onPress={() => void refresh()} />} />);
   const heading = periodHeading(data);
@@ -70,7 +70,7 @@ export function PeriodScreen() {
       {trainingRows(data).map(row => <FactRow key={row.key} label={row.label} value={row.value} detail={row.detail} />)}
       {routineRows(data, data.today).map(row => <FactRow key={row.key} label={row.label} value={row.value} detail={row.detail} />)}
       {data.routines.order === 'alternating' ? <AppText muted variant="caption" style={styles.note}>Las rutinas se alternaron: no hay un orden de una a otra.</AppText> : null}
-      <InsightRow label="Ver los días en Insights" spoken="Ver los días en Insights" onPress={() => open(withProgressOrigin('/(tabs)/train/insights',origin))} />
+      <InsightRow label="Ver los días en Comparaciones" spoken="Ver los días en Comparaciones" onPress={() => open(withProgressOrigin('/(tabs)/train/insights',origin))} />
     </View>
     <View testID="period-feelings">
       <Section title="Sensaciones al terminar" />

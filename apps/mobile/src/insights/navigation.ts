@@ -3,7 +3,9 @@ import { validPeriodAnchor,isFoodKind,validCoincidenceSelection,type FoodKind,ty
 import { PROGRESS_MAX_DAYS, addDays, calendarRange, daysBetween } from '@/progress/progress-range';
 
 /** What Insights was showing. Every value is checked on the way back: a route parameter is never trusted as an address. */
-export type InsightsOrigin = { fromProgress?: '1'; view?: 'exercises'; family?: string; relations?: '1'; date?: string; session?: string; fromSession?: '1'; relation?: string; summary?: '1'; period?: 'feelings' | 'nutrition'; asOf?: string; revision?: string; temporal?: '1'; explore?: '1'; week?: string; before?: string; coincidence?: FoodKind|'timing'|'body'; coincidenceGroup?: string; coincidencePage?: string; coincidenceView?: 'feelings'; weeklyNutrient?: WeeklyNutrient; weeklyOutcome?: 'training'|'weight'; compare?: '1'; weekA?: string; weekB?: string; weekSide?: 'A' | 'B' };
+/** `fromProgress`: '1' from Progreso's start, 'training' from Progreso → Entrenamiento (#518), to come back to that screen. */
+export type ProgressOrigin = '1' | 'training';
+export type InsightsOrigin = { fromProgress?: ProgressOrigin; view?: 'exercises'; family?: string; relations?: '1'; date?: string; session?: string; fromSession?: '1'; relation?: string; summary?: '1'; period?: 'feelings' | 'nutrition'; asOf?: string; revision?: string; temporal?: '1'; explore?: '1'; week?: string; before?: string; coincidence?: FoodKind|'timing'|'body'; coincidenceGroup?: string; coincidencePage?: string; coincidenceView?: 'feelings'; weeklyNutrient?: WeeklyNutrient; weeklyOutcome?: 'training'|'weight'; compare?: '1'; weekA?: string; weekB?: string; weekSide?: 'A' | 'B' };
 const FAMILIES = ['metric', 'nutrition', 'meal_window', 'feeling'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RELATION = /^[a-zA-Z0-9_:-]{1,120}$/;
@@ -22,7 +24,9 @@ const comparisonParams = (raw: Params): Pick<InsightsOrigin, 'compare' | 'weekA'
     ? { compare: '1', weekA: raw.weekA, weekB: raw.weekB, ...(raw.weekSide === 'A' || raw.weekSide === 'B' ? { weekSide: raw.weekSide } : {}) } : {};
 
 export const validSession = (value: unknown): value is string => typeof value === 'string' && UUID.test(value);
-export const progressOriginParams=(raw:Params):{fromProgress?:'1'}=>raw.fromProgress==='1'?{fromProgress:'1'}:{};
+export const progressOriginParams=(raw:Params):{fromProgress?:ProgressOrigin}=>raw.fromProgress==='1'||raw.fromProgress==='training'?{fromProgress:raw.fromProgress}:{};
+/** #518 · Progreso → Entrenamiento → Comparaciones. The period stays in Progreso's range provider: nothing to pass, nothing re-filtered. */
+export const comparisonsFromTrainingHref = { pathname: '/(tabs)/train/insights' as const, params: { fromProgress: 'training' as const } };
 const clean = (raw: Params): InsightsOrigin => ({
   ...progressOriginParams(raw),
   ...coincidenceSelection(raw),

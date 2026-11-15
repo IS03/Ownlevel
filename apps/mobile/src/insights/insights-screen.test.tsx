@@ -107,15 +107,15 @@ describe('pantalla', () => {
     const view = await open(<InsightsScreen />);
     expect(view.getByTestId('insights-hero')).toBeTruthy();
     expect(view.getAllByText('1 de 1').length).toBeGreaterThan(0);
-    expect(view.getByText('ejercicios comparables con contexto parcial')).toBeTruthy();
-    expect(view.getByText(/^↓ Registro inferior$/)).toBeTruthy();
+    expect(view.getByText('ejercicios con resultado claro, con contexto parcial')).toBeTruthy();
+    expect(view.getAllByText(/^↓ Registro inferior$/).length).toBeGreaterThan(0);
     expect(view.getByTestId('insights-partial-limit')).toBeTruthy();
     expect(view.queryByText(/Mejoraron/)).toBeNull(); expect(view.queryByText(/^↓ Por debajo$/)).toBeNull();
   });
   it('shows the strict lane without the limit once the configuration is known', async () => {
     mockRead.mockImplementation(serve(history([8, 10, 9], 'none')));
     const view = await open(<InsightsScreen />);
-    expect(view.getByText(/^↓ Por debajo$/)).toBeTruthy();
+    expect(view.getAllByText(/^↓ Por debajo$/).length).toBeGreaterThan(0);
     expect(view.queryByTestId('insights-partial-limit')).toBeNull();
   });
   it('tells empty, nothing comparable, failed and contradictory apart', async () => {
@@ -153,7 +153,7 @@ describe('pantalla', () => {
     const source = history(Array.from({ length: 20 }, (_, day) => 8 + day % 3));
     mockRead.mockImplementation(serve(source));
     const view = await open(<InsightsScreen />);
-    const rows = () => view.getAllByRole('button', { name: /comparables con contexto parcial/ }).length;
+    const rows = () => view.getAllByRole('button', { name: /con resultado claro, con contexto parcial/ }).length;
     expect(rows()).toBe(14);
     fireEvent.press(view.getByText('Ver más días')); await flush();
     expect(rows()).toBe(19);
@@ -162,7 +162,7 @@ describe('pantalla', () => {
     const changed = await open(<InsightsScreen />);
     fireEvent.press(changed.getByText('Ver más días')); await flush();
     expect(changed.getByTestId('insights-changed')).toBeTruthy();
-    expect(changed.getAllByRole('button', { name: /comparables con contexto parcial/ }).length).toBe(14);
+    expect(changed.getAllByRole('button', { name: /con resultado claro, con contexto parcial/ }).length).toBe(14);
   });
   it('makes one read when it opens and pages only on a tap', async () => {
     mockRead.mockImplementation(serve(history(Array.from({ length: 20 }, (_, day) => 8 + day % 3))));
@@ -173,11 +173,12 @@ describe('pantalla', () => {
   it('opens the exact session and the exercise from the evidence, and keeps the view in the route', async () => {
     mockRead.mockImplementation(serve(history([8, 10, 9])));
     const view = await open(<InsightsScreen />);
-    fireEvent.press(view.getAllByRole('button', { name: /comparables con contexto parcial/ })[0]!);
+    fireEvent.press(view.getAllByRole('button', { name: /con resultado claro, con contexto parcial/ })[0]!);
     // The hero's day and the open day are the same: both name the session with its time.
     fireEvent.press(view.getAllByRole('button', { name: 'Abrir sesión Empuje, 15:00–16:00' })[0]!);
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/history/[id]', params: { id: 's2' } });
-    fireEvent.press(view.getByRole('button', { name: /^Press banca, registro inferior con contexto parcial/ }));
+    // #518 · The exercises of the latest day come first, before the history; each opens its evidence.
+    fireEvent.press(within(view.getByTestId('insights-hero')).getByRole('button', { name: /^Press banca, registro inferior con contexto parcial/ }));
     // The row opens the evidence of that comparison, with the reference and result shown here and the read they came from.
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/insights/evidence', params: expect.objectContaining({ session: 's2', exercise: EX, lane: 'partial', reference: 's1', result: 'lower_record', revision: 'r1', insightsReturn: '1' }) });
     // Nothing is read for it here: the detail reads when it opens.
@@ -190,7 +191,7 @@ describe('pantalla', () => {
     mockRead.mockImplementation(serve(history([8, 10, 9])));
     const view = await open(<InsightsScreen />);
     expect(view.getByText('Con contexto parcial')).toBeTruthy(); expect(view.queryByText('Comparación completa')).toBeNull();
-    fireEvent.press(view.getByRole('button', { name: /Press banca: 1 registro superior, 0 registro igual, 1 registro inferior, de 3 veces/ }));
+    fireEvent.press(view.getByRole('button', { name: /Press banca: 1 registro superior, 0 registro igual, 1 registro inferior, 1 sin resultado claro, de 3 registros de este ejercicio/ }));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id: EX } });
   });
   it('reads relations only when asked for, and shows no strict list while it has no days', async () => {
@@ -224,7 +225,7 @@ describe('entrada desde el final de una sesión', () => {
     expect(view.getByTestId('insights-session')).toBeTruthy();
     expect(view.queryByTestId('insights-hero')).toBeNull();
     const facts = within(view.getByTestId('insights-session'));
-    expect(facts.getByText('1 de 1 ejercicios comparables con contexto parcial')).toBeTruthy();
+    expect(facts.getByLabelText('1 de 1 ejercicios con resultado claro, con contexto parcial')).toBeTruthy();
     expect(facts.getAllByText(/^↑ Registro superior$/).length).toBeGreaterThan(0);
     expect(requests()).toEqual(['/api/mobile/v1/progress/performance-insights?method=2']);
     expect(view.getByTestId('insights-partial-limit')).toBeTruthy();
@@ -240,6 +241,7 @@ describe('entrada desde el final de una sesión', () => {
     expect(evidence.pathname).toBe('/(tabs)/train/insights/evidence');
     expect(evidence.params).toMatchObject({ session: SESSION, revision: 'r2', insightsFromSession: '1' });
     expect(insightsReturnHref(evidence.params)).toEqual({ pathname: '/(tabs)/train/insights', params: { session: SESSION, date: dateAt(1), fromSession: '1', revision: 'r2' } });
+    fireEvent.press(view.getByTestId('insights-context-toggle'));
     fireEvent.press(view.getByRole('button', { name: /^Ver horarios y comidas registradas del/ }));
     const temporal = mockPush.mock.calls.at(-1)![0] as { pathname: string; params: Record<string, string> };
     expect(temporal.pathname).toBe('/(tabs)/train/insights/temporal');
@@ -270,7 +272,7 @@ describe('entrada desde el final de una sesión', () => {
     expect(requests()).toEqual(['/api/mobile/v1/progress/performance-insights?method=2', `/api/mobile/v1/progress/performance-insights?method=2&view=days&before=${dateAt(2)}&limit=1`]);
     expect(view.getByTestId('insights-session')).toBeTruthy();
     expect(view.queryByRole('button', { name: 'Ver más días' })).toBeNull();
-    fireEvent.press(view.getByRole('button', { name: 'Ver todos los días en Insights' }));
+    fireEvent.press(view.getByRole('button', { name: 'Ver todas las sesiones' }));
     expect(mockSetParams).toHaveBeenLastCalledWith({ session: undefined, fromSession: undefined, view: undefined });
   });
   it('tells loading, failure and absence apart', async () => {
@@ -313,6 +315,7 @@ describe('enlace a las tendencias de una métrica', () => {
     mockParams = { family: 'metric', relations: '1', view: 'days' };
     mockRead.mockImplementation(serve(metricSource()));
     const view = await open(<InsightsScreen />);
+    fireEvent.press(view.getByTestId('insights-context-toggle'));
     fireEvent.press(view.getByRole('button', { name: /^Sueño: .*Ver tendencias$/ }));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/progress/trends/metrics', params: { metric: METRIC, from: '2026-01-01', to: '2026-01-31', insightsReturn: '1', insightsFamily: 'metric', insightsRelations: '1', insightsDate: dateAt(2) } });
   });
@@ -334,7 +337,7 @@ describe('enlace a las tendencias de una métrica', () => {
     mockParams = { date: dateAt(1) };
     mockRead.mockImplementation(serve(metricSource()));
     const view = await open(<InsightsScreen />);
-    const selected = view.getByRole('button', { name: new RegExp('comparables con contexto parcial', 'i'), expanded: true });
+    const selected = view.getByRole('button', { name: new RegExp('con resultado claro, con contexto parcial', 'i'), expanded: true });
     expect(selected).toBeTruthy();
     fireEvent.press(selected);
     expect(mockSetParams).toHaveBeenCalledWith({ date: undefined });
@@ -357,7 +360,7 @@ describe('enlace a las tendencias de una métrica', () => {
 
 describe('filtros y revisiones', () => {
   const long = () => history(Array.from({ length: 20 }, (_, day) => 8 + day % 3));
-  const rows = (view: ReturnType<typeof screen>) => view.getAllByRole('button', { name: /comparables con contexto parcial/ }).length;
+  const rows = (view: ReturnType<typeof screen>) => view.getAllByRole('button', { name: /con resultado claro, con contexto parcial/ }).length;
   it('keeps the paged days when the same read comes back, and drops them when another one does', async () => {
     let revision = 'r1';
     const source = long();

@@ -252,6 +252,8 @@ export function TrainingHubDashboard({ calendar, home, now, observedSessions, on
         active?.status !== 'ok' ? <InlineUnavailable actionLabel="Reintentar" message="No pudimos verificar si tenés una sesión en curso." onAction={onRefresh} /> : null}
       {home.status === 'unavailable' || calendar.status === 'unavailable' ? <View testID="training-stale"><InlineUnavailable message="No pudimos actualizar Entrenar. Mostramos los datos guardados cuando están disponibles." actionLabel="Reintentar" onAction={onRefresh} /></View> : null}
       <DayBlock date={today} onOpenDay={onOpenDay} onRetry={onRefresh} onSession={onSession} onStart={onStart} week={week} />
+      {/* #518 · Right under the activity, never with figures: Entrenar does not read Comparaciones; the screen reads when it opens. */}
+      <HubRow accessibilityLabel="Abrir Comparaciones: cada sesión frente a la anterior" icon="compare" onPress={() => onLibrary('insights')} testID="training-comparisons" title="Comparaciones" />
       <View>
         <HomeSectionTitle action="Ver todas" onAction={() => onLibrary('routines')} title="Rutinas" />
         {routines?.status === 'ok' ? routines.data.slice(0, 3).map((routine, index) => (
@@ -271,8 +273,6 @@ export function TrainingHubDashboard({ calendar, home, now, observedSessions, on
         <HubRow accessibilityLabel="Abrir Ejercicios" icon="book" onPress={() => onLibrary('exercises')} title="Ejercicios" />
         <Line />
         <HubRow accessibilityLabel="Abrir Historial" icon="clock" onPress={() => onLibrary('history')} title="Historial" />
-        <Line />
-        <HubRow accessibilityLabel="Abrir Insights" icon="compare" onPress={() => onLibrary('insights')} title="Insights" />
       </View>
     </View>
   );

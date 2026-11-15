@@ -84,6 +84,11 @@ describe('Training Trends', () => {
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: ex.bench } });
     fireEvent.press(view.getByTestId(`training-exercise-${ex.bench}`)); expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: ex.bench } });
     fireEvent.press(view.getByRole('button', { name: 'Ver el historial de entrenamientos' })); expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/train/history');
+    // #518 · The fixed door to Comparaciones: the same screen as Entrenar and the session, marked to come back here.
+    const reads = mockTraining.mock.calls.length;
+    fireEvent.press(view.getByRole('button', { name: 'Ver Comparaciones: cada sesión frente a la anterior' }));
+    expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights', params: { fromProgress: 'training' } });
+    expect(mockTraining.mock.calls.length).toBe(reads);
   });
   it('comparison adds the chosen reference to the summary and each performance row, without changing the in-period result', async () => {
     const view = wrap(<TrainingTrendsScreen />, comparing); await flush();

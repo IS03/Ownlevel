@@ -57,7 +57,7 @@ export function RelationDetailScreen() {
   const retry = <Button label="Reintentar" onPress={() => void refresh()} />;
   if (!data || data.integrity !== 'valid' || (data.partial && data.partial.integrity !== 'valid')) return scroll(<UnavailableState title="Uy, no pudimos leer tus datos" description="Tranqui: está todo guardado." action={retry} />);
   const { item, pairs } = data;
-  if (!item || !pairs) return scroll(<UnavailableState title="No encontramos esta relación" description="Volvé a Insights y elegila de nuevo." action={<Button label="Volver" onPress={() => router.back()} />} />);
+  if (!item || !pairs) return scroll(<UnavailableState title="No encontramos esta relación" description="Volvé a Comparaciones y elegila de nuevo." action={<Button label="Volver" onPress={() => router.back()} />} />);
   const unit = exposureUnit(item, data.metrics), name = relationName(item, data.metrics);
   const newestFirst = [...pairs].reverse();
   const some = pairs.length < data.pairsTotal;

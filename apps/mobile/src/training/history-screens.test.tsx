@@ -124,7 +124,7 @@ describe('completed session: correct + discard (M3.4-3)', () => {
     await flush();
     fireEvent.press(within(view.getByTestId('post-workout-screen')).getByRole('button', { name: 'Ver sesión' }));
     expect(view.queryByTestId('post-workout-screen')).toBeNull();
-    fireEvent.press(view.getByRole('button', { name: 'Ver contexto y comparación' }));
+    fireEvent.press(view.getByRole('button', { name: 'Ver qué cambió' }));
     const href = { pathname: '/(tabs)/train/insights', params: { session: detail.session.id, date: '2025-01-02', fromSession: '1' } };
     expect(mockPush).toHaveBeenLastCalledWith(href);
     expect(mockReplace).not.toHaveBeenCalled();
@@ -132,7 +132,7 @@ describe('completed session: correct + discard (M3.4-3)', () => {
     view.unmount();
     const reopened = wrap(<CompletedSessionScreen api={api} sessionId={detail.session.id} onHome={jest.fn()} />);
     await flush();
-    fireEvent.press(reopened.getByRole('button', { name: 'Ver contexto y comparación' }));
+    fireEvent.press(reopened.getByRole('button', { name: 'Ver qué cambió' }));
     expect(mockPush).toHaveBeenLastCalledWith(href);
   });
   it('retires the completed detail and its context link on a direct account switch through the real provider', async () => {
@@ -148,13 +148,13 @@ describe('completed session: correct + discard (M3.4-3)', () => {
     }
     const tree = () => historyRoot(<MobileApiProvider><ScopedSession /></MobileApiProvider>);
     const view = render(tree()); await flush();
-    expect(view.getByRole('button', { name: 'Ver contexto y comparación' })).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Ver qué cambió' })).toBeTruthy();
     mockOwner = 'b'; view.rerender(tree()); await flush();
-    expect(view.queryByRole('button', { name: 'Ver contexto y comparación' })).toBeNull();
+    expect(view.queryByRole('button', { name: 'Ver qué cambió' })).toBeNull();
     expect(other.detail).toHaveBeenCalledTimes(1); expect(first.detail).toHaveBeenCalledTimes(1);
     await act(async () => { finishOther({ status: 'not_found', message: 'No disponible', meta }); });
     expect(view.queryByTestId('completed-session')).toBeNull();
-    expect(view.queryByRole('button', { name: 'Ver contexto y comparación' })).toBeNull();
+    expect(view.queryByRole('button', { name: 'Ver qué cambió' })).toBeNull();
   });
   it.each(['in_progress', 'discarded', 'invalid_id', 'invalid_date', 'not_found'] as const)('does not link %s to Insights', async kind => {
     const detail = completedDetail();
@@ -164,7 +164,7 @@ describe('completed session: correct + discard (M3.4-3)', () => {
     const load = jest.fn<CompletedSessionApi['detail']>().mockResolvedValue(kind === 'not_found' ? { status: 'not_found', message: 'No disponible', meta } : ok(detail));
     const view = wrap(<CompletedSessionScreen api={{ detail: load, discard: jest.fn<CompletedSessionApi['discard']>() }} sessionId={detail.session.id} onHome={jest.fn()} />);
     await flush();
-    expect(view.queryByRole('button', { name: 'Ver contexto y comparación' })).toBeNull();
+    expect(view.queryByRole('button', { name: 'Ver qué cambió' })).toBeNull();
   });
   it('confirms, replays an unconfirmed discard with the same key, and leaves only after server confirmation', async () => {
     const discard = jest.fn<CompletedSessionApi['discard']>().mockResolvedValueOnce(lost)

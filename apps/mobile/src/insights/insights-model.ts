@@ -10,7 +10,7 @@ export const PARTIAL_LIMIT = 'Comparamos el mismo ejercicio, modo, unidad e impl
 export const EXPLAIN_DOWN = 'Puede ser programación, descarga o el día.';
 const MIN_PAIRS = 20;
 
-type Counts = { up: number; same: number; down: number; ambiguous: number; insufficient: number; comparable: number; total: number };
+export type Counts = { up: number; same: number; down: number; ambiguous: number; insufficient: number; comparable: number; total: number };
 const strictCounts = (c: DayFact['counts']): Counts => ({ up: c.improved, same: c.observedStable, down: c.declined, ambiguous: c.ambiguous, insufficient: c.insufficient, comparable: c.comparable, total: c.total });
 const partialCounts = (c: PartialDayFact['counts']): Counts => ({ up: c.higher, same: c.same, down: c.lower, ambiguous: c.ambiguous, insufficient: c.insufficient, comparable: c.comparable, total: c.total });
 
@@ -46,7 +46,32 @@ export function heroOf(days: readonly DayLanes[]): { day: DayLanes; lane: Lane; 
   }
   return null;
 }
-export const heroCaption = (lane: Lane) => lane === 'strict' ? 'ejercicios comparables, contra su última vez' : 'ejercicios comparables con contexto parcial';
+/**
+ * #518 · What the big number counts: only ↑, = and ↓ (the engine's `comparable`). Mixed and not compared are outside it and
+ * are named apart (`outsideText`), so «8 de 9» never hides what the ninth one was.
+ */
+export const heroCaption = (lane: Lane) => lane === 'strict' ? 'ejercicios con resultado claro frente a su última vez' : 'ejercicios con resultado claro, con contexto parcial';
+/** The exercises outside the clear count, each kind in its own sentence. Empty when there are none. */
+export function outsideText(counts: Pick<Counts, 'ambiguous' | 'insufficient'>): string[] {
+  const lines: string[] = [];
+  // Ambiguous is more than opposite signals (also no common load or reps): the summary does not say why; each row does.
+  if (counts.ambiguous) lines.push(`${counts.ambiguous} sin resultado claro. Cada fila dice por qué.`);
+  if (counts.insufficient) lines.push(`${counts.insufficient} sin comparar. Cada fila dice por qué.`);
+  return lines;
+}
+const FIRST_TIME = new Set(['no_compatible_reference', 'not_before_start']);
+/**
+ * #518 · A chosen session with nothing compared, in plain words: the first time (no compatible reference yet for any of its
+ * exercises) or another reason that each row names. Null when something was compared.
+ */
+export function withoutComparison(session: Pick<DayFact['sessions'][number], 'exercises' | 'counts'>, partial: { counts: { comparable: number }; exercises: readonly { reason: string }[] } | null) {
+  if (session.counts.comparable > 0 || (partial?.counts.comparable ?? 0) > 0) return null;
+  // Without a known configuration the strict method only says «missing context»; the partial one says whether a reference exists.
+  const rows: readonly { reason: string }[] = partial?.exercises.length ? partial.exercises : session.exercises;
+  const firstTime = rows.length > 0 && rows.every(row => FIRST_TIME.has(row.reason));
+  return firstTime ? 'Todavía no hay una sesión anterior compatible con estos ejercicios. La próxima vez que los hagas así, se comparan con esta.'
+    : 'Ningún ejercicio de esta sesión tiene todavía una comparación con resultado. Cada fila dice por qué.';
+}
 /** Two answers belong together only if they come from the same read of the same day. */
 export const sameRead = (a: Pick<InsightsSummary, 'sourceRevision' | 'today'>, b: Pick<InsightsSummary, 'sourceRevision' | 'today'>) => a.sourceRevision === b.sourceRevision && a.today === b.today;
 export const nextDate = (date: string) => new Date(Date.parse(`${date}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
@@ -156,8 +181,15 @@ export const summaryText = (lane: Lane, row: ExerciseSummary | PartialExerciseSu
 export const summarySpoken = (lane: Lane, row: ExerciseSummary | PartialExerciseSummary) => {
   const [up, same, down] = lane === 'strict' ? [(row as ExerciseSummary).improved, (row as ExerciseSummary).observedStable, (row as ExerciseSummary).declined] : [(row as PartialExerciseSummary).higher, (row as PartialExerciseSummary).same, (row as PartialExerciseSummary).lower];
   const words = lane === 'strict' ? ['mejoró', 'igual', 'por debajo'] : ['registro superior', 'registro igual', 'registro inferior'];
-  return `${row.name || 'Ejercicio'}: ${up} ${words[0]}, ${same} ${words[1]}, ${down} ${words[2]}, de ${row.exposures} veces`;
+  const unclear = row.exposures - up - same - down;
+  return `${row.name || 'Ejercicio'}: ${up} ${words[0]}, ${same} ${words[1]}, ${down} ${words[2]}${unclear > 0 ? `, ${unclear} sin resultado claro` : ''}, de ${exposuresText(row.exposures)}`;
 };
+/** #518 · What «28 veces» counted: the times this exercise was recorded in a completed session. */
+export const exposuresText = (exposures: number) => `${exposures} ${exposures === 1 ? 'registro' : 'registros'} de este ejercicio`;
+/** The exposures left outside ↑ = ↓ (mixed or not compared), named so the arrows never look like the whole. */
+export const unclearCount = (lane: Lane, row: ExerciseSummary | PartialExerciseSummary) => row.exposures - (lane === 'strict'
+  ? (row as ExerciseSummary).improved + (row as ExerciseSummary).observedStable + (row as ExerciseSummary).declined
+  : (row as PartialExerciseSummary).higher + (row as PartialExerciseSummary).same + (row as PartialExerciseSummary).lower);
 
 /** Why nothing compares, taken from the exclusions: empty history and missing context are different things. */
 export function nothingComparable(model: InsightsSummary) {
@@ -253,7 +285,7 @@ export function dayLabel(date: string) {
   const text = new Intl.DateTimeFormat('es-AR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`));
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
-const CARBS: Record<string, string> = { no_registered_meal: 'Sin comidas con hora', partial_macro: 'Alguna comida sin ese dato', untimed_meal_in_scope: 'Comidas sin hora', unverified_meal_time_in_scope: 'Hay comidas, pero no sabemos si esa fue la hora', no_start_time: 'Sin hora de inicio' };
+const CARBS: Record<string, string> = { no_registered_meal: 'Sin comidas con hora', partial_macro: 'Alguna comida sin ese dato', untimed_meal_in_scope: 'Indeterminado', unverified_meal_time_in_scope: 'Indeterminado', no_start_time: 'Sin hora de inicio' };
 type Session = DayFact['sessions'][number];
 export type ContextRow = { key: string; label: string; value: string; detail?: string; spoken?: string; metricId?: string; body?: true };
 const instant = (iso: string | null) => iso === null ? null : Number.isFinite(Date.parse(iso)) ? Date.parse(iso) : null;
@@ -309,6 +341,24 @@ export function sessionRows(session: Pick<Session, 'context'>): ContextRow[] {
   }
   return rows;
 }
+const FEELING_KEYS = new Set(['feelings', 'feelings-energy', 'feelings-fatigue', 'legacy-energy']);
+/** #518 · How the session was felt: before and at the end. */
+export const feelingRows = (session: Pick<Session, 'context'>) => sessionRows(session).filter(row => FEELING_KEYS.has(row.key));
+/** #518 · Only meals with a checkable time in the 3 h before this session started: per session, never the whole day. */
+export const preStartRows = (session: Pick<Session, 'context'>) => sessionRows(session).filter(row => !FEELING_KEYS.has(row.key));
+const UNDETERMINED = new Set(['untimed_meal_in_scope', 'unverified_meal_time_in_scope']);
+/**
+ * #518 · Said once, next to the rows it affects: a meal without a time (or with one we cannot confirm) may fall inside the
+ * window, so the window has no total. Never «at least», never a zero. Only from the three 3 h nutrients: the 12 h search for
+ * the last meal (`lastExplicitMeal`) is another window, and its caveat stays on its own row.
+ */
+export function preStartNote(session: Pick<Session, 'context'>) {
+  const { carbsPre3h, preStart } = session.context;
+  const states = [carbsPre3h.state, preStart?.proteinG.state, preStart?.calories.state];
+  if (states.includes('untimed_meal_in_scope')) return 'Hay comidas sin hora ese día. Pueden haber sido dentro de las 3 h, así que esa ventana queda indeterminada.';
+  if (states.some(state => state !== undefined && UNDETERMINED.has(state))) return 'Hay comidas con una hora que no sabemos si es la real, así que esa ventana queda indeterminada.';
+  return null;
+}
 /** "2 h 30 min", "45 min": minutes rounded, never a decimal of hours. */
 export function hoursText(hours: number) {
   const minutes = Math.round(hours * 60), h = Math.floor(minutes / 60), m = minutes % 60;
@@ -344,7 +394,9 @@ export function contextRows(day: DayFact, metrics: readonly Metric[]) {
     const known = metrics.find(row => row.id === metric.metricId);
     const night = metric.sleepNight === undefined ? '' : metric.sleepNight === 'declared' ? ', noche que terminó esa mañana' : ', sin noche declarada';
     // Only a metric the read names can open its trends.
-    rows.push({ key: metric.metricId, label: `${known?.name ?? 'Métrica'}${night}`, value: formatValue(metric.value, known?.unit ?? null), ...(known ? { metricId: known.id } : {}) });
+    // #518 · Hours and minutes only for a value that declares itself a duration in minutes (sleep); the stored value is unchanged.
+    const duration = known?.valueType === 'duration' && known.unit === 'min';
+    rows.push({ key: metric.metricId, label: `${known?.name ?? 'Métrica'}${night}`, value: formatValue(metric.value, duration ? null : known?.unit ?? null, duration ? 'duration' : 'decimal'), ...(known ? { metricId: known.id } : {}) });
   }
   const weight = day.context.bodyWeight;
   // Opens Cuerpo on that month: to see it in its evolution, or to load or correct it.

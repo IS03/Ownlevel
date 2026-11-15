@@ -42,7 +42,7 @@ export function SessionTemporalScreen() {
   return <ScrollView testID="session-temporal-screen" contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: colors.background }} contentContainerStyle={styles.scroll}
     refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
     <ReturnToProgress/>
-    {!date ? <UnavailableState title="No pudimos identificar el día" description="Abrí el contexto desde Insights." />
+    {!date ? <UnavailableState title="No pudimos identificar el día" description="Abrí el contexto desde Comparaciones." />
       : state.status === 'loading' && !data ? <SkeletonBlock height={176} />
       : !data ? <UnavailableState title="No pudimos leer el contexto" description="Tus registros siguen guardados." action={<Button label="Reintentar" onPress={() => void refresh()} />} />
       : <>
@@ -74,7 +74,7 @@ export function SessionTemporalScreen() {
         </View>)}
         <AppText muted>Lo registrado no prueba todo lo que comiste. La comida posterior es contexto posterior: no explica el rendimiento de una sesión ya terminada. No se buscaron asociaciones.</AppText>
       </>}
-    <Button label="Volver al día en Insights" variant="secondary" onPress={() => router.navigate(returnHref)} />
+    <Button label="Volver al día en Comparaciones" variant="secondary" onPress={() => router.navigate(returnHref)} />
   </ScrollView>;
 }
 const styles = StyleSheet.create({ scroll: { padding: brandTokens.layout.screenPadding, paddingBottom: brandTokens.layout.tabBarHeight + brandTokens.layout.tabBarInset + spacing.xl, gap: spacing.xl }, block: { gap: spacing.sm } });

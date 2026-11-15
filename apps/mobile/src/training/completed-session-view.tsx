@@ -143,8 +143,8 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
       {model.note ? <AppText style={styles.italic}>“{model.note}”</AppText> : null}
     </View> : null}
     {insights ? <View style={styles.section}>
-      <Button label="Ver contexto y comparación" variant="secondary" onPress={() => router.push(insights)} />
-      <AppText muted variant="footnote">Comparación por ejercicio, sensaciones y comidas registradas.</AppText>
+      <Button label="Ver qué cambió" variant="secondary" onPress={() => router.push(insights)} />
+      <AppText muted variant="footnote">Cada ejercicio frente a su última sesión compatible, y lo que registraste antes y ese día.</AppText>
     </View> : null}
     {extraSummary}
     {variants ? <SessionVariantsNotice journal={variants.journal} onReview={reviewVariants} /> : null}
