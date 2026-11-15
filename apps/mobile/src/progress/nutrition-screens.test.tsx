@@ -391,4 +391,43 @@ describe('#519 · del dato al día y de vuelta', () => {
       expect(view.queryByRole('button', { name: /^Ver comidas de ese día/ })).toBeNull();
     } finally { clock.mockRestore(); }
   });
+  it('switches Calorías → Proteína from B with zero reads, and keeps the nutrient, side and day through the meals and back (fresh and expired cache)', async () => {
+    let now = Date.parse('2026-10-04T15:00:00Z');
+    const clock = jest.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      const view = wrap(<><NutritionTrendsScreen /><ReturnToNutritionChart /></>, comparing); await flush();
+      const reads = () => ({ reports: mockReport.mock.calls.length, timing: mockTiming.mock.calls.length });
+      const initial = reads();
+      const nutrient = (name: string) => within(view.getByLabelText('Nutriente del gráfico')).getByRole('radio', { name });
+      expect(nutrient('Calorías').props.accessibilityState).toMatchObject({ checked: true });
+      fireEvent.press(view.getByRole('radio', { name: 'Comparación' }));
+      fireEvent.press(view.getByTestId('nutrition-chart-reference-2026-09-01-bar'));
+      fireEvent.press(nutrient('Proteína')); fireEvent.press(nutrient('Calorías')); fireEvent.press(nutrient('Proteína')); await flush();
+      // Switching the series reads nothing: both reports already carry protein.
+      expect(reads()).toEqual(initial);
+      const state = () => ({
+        protein: nutrient('Proteína').props.accessibilityState.checked,
+        side: !!view.queryByRole('radio', { name: 'Comparación', checked: true }),
+        day: view.getByTestId('nutrition-chart-reference-2026-09-01-bar').props.accessibilityState.selected,
+        title: !!view.queryByText('Proteína registrada'),
+      });
+      expect(state()).toEqual({ protein: true, side: true, day: true, title: true });
+      expect(within(view.getByTestId('nutrition-chart-inspection')).getByText('100 g')).toBeTruthy();
+      fireEvent.press(view.getByRole('button', { name: /^Ver comidas de ese día/ }));
+      expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/nutrition', params: { date: '2026-09-01', fromProgressNutrition: '1' } });
+      mockParams = { fromProgressNutrition: '1' };
+      view.rerender(tree(<><NutritionTrendsScreen /><ReturnToNutritionChart /></>, comparing)); await flush();
+      fireEvent.press(view.getByRole('button', { name: 'Volver al gráfico de Nutrición' }));
+      now += 5_000; await refocus();
+      expect(reads()).toEqual(initial); expect(state()).toEqual({ protein: true, side: true, day: true, title: true });
+      now += 31_000; await refocus();
+      expect(mockReport.mock.calls.length).toBe(initial.reports + 2);
+      expect(state()).toEqual({ protein: true, side: true, day: true, title: true });
+      console.info('[QA #519 serie]', { initial, afterSwitchAndReturn: reads() });
+      // Changing the period on this screen keeps the chosen series (the selection resets with the scope, as before).
+      fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
+      expect(nutrient('Proteína').props.accessibilityState).toMatchObject({ checked: true });
+      expect(view.getByText('Proteína registrada')).toBeTruthy();
+    } finally { clock.mockRestore(); mockParams = {}; }
+  });
 });
