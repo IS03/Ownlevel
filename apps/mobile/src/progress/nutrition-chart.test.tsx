@@ -275,4 +275,53 @@ describe('#519 · selector Calorías / Proteína', () => {
     for (const bar of within(view.getByTestId('nutrition-chart-series-reference')).getAllByRole('button')) expect(StyleSheet.flatten(bar.props.style).minWidth).toBeGreaterThanOrEqual(44);
     spy.mockRestore();
   });
+  it('protein keeps 0,4 g, a threshold under 0,1 g, a real 0 g and «Sin dato» apart, on screen and in the spoken labels', async () => {
+    const r = daily();
+    const proteinValue = (value: number | null) => value === null ? { value: null, knownMeals: 0, missingMeals: 1, status: 'unknown' as const } : { value, knownMeals: 1, missingMeals: 0, status: 'complete' as const };
+    const by: Record<string, number | null> = { '2026-10-01': 0.4, '2026-10-02': 0, '2026-10-03': null, '2026-10-04': 0.03 };
+    r.days = r.days.map(d => ({ ...d, nutrients: { ...d.nutrients, protein: proteinValue(by[d.date] ?? null) } }));
+    const view = render(tree(r)); view_ = () => view; await flush();
+    protein();
+    const bar = (date: string, kind: 'bar' | 'gap') => view.getByTestId(`nutrition-chart-current-${date}-${kind}`);
+    const readout = () => within(view.getByTestId('nutrition-chart-inspection'));
+    const spokenReadout = () => view.getByTestId('nutrition-chart-inspection').findAll(n => n.props.accessible && n.props.accessibilityLiveRegion === 'polite')[0]!.props.accessibilityLabel as string;
+    // 0,4 g: one decimal on screen and spoken, and a bar taller than the zero line.
+    expect(bar('2026-10-01', 'bar').props.accessibilityLabel).toMatch(/^01\/10\/2026, 0,4 g, 1 de 1 entradas con proteína/);
+    fireEvent.press(bar('2026-10-01', 'bar'));
+    expect(readout().getByText('0,4 g')).toBeTruthy(); expect(readout().queryByText('0 g')).toBeNull();
+    expect(spokenReadout()).toContain('0,4 g');
+    expect(barHeight(view, 'nutrition-chart-current-2026-10-01-bar')).toBeGreaterThanOrEqual(2);
+    // A registered zero stays 0 g, drawn as the base line.
+    expect(bar('2026-10-02', 'bar').props.accessibilityLabel).toMatch(/^02\/10\/2026, 0 g,/);
+    fireEvent.press(bar('2026-10-02', 'bar'));
+    expect(readout().getByText('0 g')).toBeTruthy();
+    expect(barHeight(view, 'nutrition-chart-current-2026-10-02-bar')).toBe(1);
+    // Missing protein: «Sin dato», a gap, never 0.
+    fireEvent.press(bar('2026-10-03', 'gap'));
+    expect(readout().getByText('Sin dato')).toBeTruthy(); expect(readout().queryByText('0 g')).toBeNull();
+    expect(bar('2026-10-03', 'gap').props.accessibilityLabel).toContain('Entradas registradas sin proteína conocida');
+    // Positive but below the visible precision: a threshold, never 0.
+    fireEvent.press(bar('2026-10-04', 'bar'));
+    expect(readout().getByText('< 0,1 g')).toBeTruthy();
+    expect(spokenReadout()).toContain('menos de 0,1 g');
+    expect(bar('2026-10-04', 'bar').props.accessibilityLabel).toMatch(/^04\/10\/2026, menos de 0,1 g/);
+  });
+  it('a positive block average that would round to 0 reads as «< 0,1 g», a small one keeps its decimal', async () => {
+    const r = long(), [first, second, third] = r.evolution;
+    first.metrics = { ...first.metrics, protein: { value: 0.02, denominator: 3, partialDays: 0 } };
+    second.metrics = { ...second.metrics, protein: { value: 0.4, denominator: 2, partialDays: 1 } };
+    third.metrics = { ...third.metrics, protein: { value: null, denominator: 0, partialDays: 0 } };
+    const view = render(tree(r)); view_ = () => view; await flush();
+    protein();
+    fireEvent.press(view.getByTestId(`nutrition-chart-current-${first.start}-bar`));
+    expect(view.getByText('Promedio del bloque · < 0,1 g por día con dato')).toBeTruthy();
+    expect(view.getByTestId(`nutrition-chart-current-${first.start}-bar`).props.accessibilityLabel).toContain('promedio del bloque, menos de 0,1 g');
+    expect(barHeight(view, `nutrition-chart-current-${first.start}-bar`)).toBeGreaterThanOrEqual(2);
+    fireEvent.press(view.getByTestId(`nutrition-chart-current-${second.start}-bar`));
+    expect(view.getByText('Promedio del bloque · 0,4 g por día con dato')).toBeTruthy();
+    fireEvent.press(view.getByTestId(`nutrition-chart-current-${third.start}-gap`));
+    expect(view.getByText('Sin dato')).toBeTruthy();
+    expect(view.queryByText(/Promedio del bloque · 0 g/)).toBeNull();
+  });
 });
+

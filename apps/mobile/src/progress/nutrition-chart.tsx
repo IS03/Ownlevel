@@ -19,6 +19,17 @@ const NUTRIENTS = {
     complete: 'Proteína completa entre las entradas registradas', target: (d: ReportDailyRow) => d.targetProteinG },
 } as const;
 const range = (start: string, end: string) => start === end ? date(start) : `${date(start)} – ${date(end)}`;
+const oneDecimal = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 });
+/**
+ * #519 · A value at the precision its nutrient needs. Protein keeps one decimal under 10 g so 0,4 g never reads as 0 g;
+ * a positive value below the visible precision says so («< 0,1 g»), never 0. A real zero stays «0 g»; null is never here.
+ */
+function valueText(n: NutritionChartNutrient, value: number, spoken = false) {
+  const below = (limit: string) => spoken ? `menos de ${limit}` : `< ${limit}`;
+  if (n === 'calories') return value > 0 && value < 0.5 ? below('1 kcal') : formatValue(value, 'kcal', 'integer');
+  if (value > 0 && value < 0.05) return below('0,1 g');
+  return value < 10 ? `${oneDecimal.format(value)} g` : formatValue(value, 'g', 'integer');
+}
 function points(report: NutritionReport, n: NutritionChartNutrient) {
   return report.range.days <= 31
     ? [...report.days].reverse().map(d => ({ start: d.date, end: d.date, value: d.nutrients[n].value,
@@ -42,7 +53,7 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
 }) {
   const { colors } = useOwnlevelTheme(), { compareOn, compareText } = useProgressRange();
   const { fontScale } = useWindowDimensions(), [width, setWidth] = useState(300);
-  const copy = NUTRIENTS[nutrient], fmt = (value: number) => formatValue(value, copy.unit, 'integer');
+  const copy = NUTRIENTS[nutrient], fmt = (value: number) => valueText(nutrient, value), spoken = (value: number) => valueText(nutrient, value, true);
   const series = [{ key: 'current' as const, title: 'Período elegido', report, points: points(report, nutrient) },
     ...(compareOn && reference ? [{ key: 'reference' as const, title: `Comparación · ${compareText}`, report: reference, points: points(reference, nutrient) }] : [])];
   const activeSeries = compareOn ? selection?.series ?? 'current' : 'current';
@@ -54,7 +65,8 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
   const rows = selected && source ? source.report.days.filter(d => d.date >= selected.start && d.date <= selected.end) : [];
   const canInspect = activeSeries !== 'reference' || !!reference;
   const prompt = canInspect ? 'Tocá una barra' : 'Comparación no disponible';
-  const value = selected ? selected.value === null ? 'Sin dato' : `${selected.day ? '' : 'Promedio del bloque · '}${fmt(selected.value)}${selected.day ? '' : ' por día con dato'}` : canInspect ? 'Consultá fecha o rango, valor y cobertura sin salir del gráfico.' : 'Reintentá la lectura del período de comparación.';
+  const valueWith = (show: (v: number) => string) => selected ? selected.value === null ? 'Sin dato' : `${selected.day ? '' : 'Promedio del bloque · '}${show(selected.value)}${selected.day ? '' : ' por día con dato'}` : canInspect ? 'Consultá fecha o rango, valor y cobertura sin salir del gráfico.' : 'Reintentá la lectura del período de comparación.';
+  const value = valueWith(fmt), spokenValue = valueWith(spoken);
   return <View style={styles.section} testID="nutrition-progress-chart">
     <Heading level={2}>{copy.title}</Heading>
     {/* #519 · Same bars, period, A/B side and selection: only the nutrient they show changes. */}
@@ -72,14 +84,14 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
           <View testID={`nutrition-chart-series-${s.key}`} style={[styles.chart, { width: Math.max(width, s.points.length * brandTokens.layout.minTouch * Math.max(1, fontScale)) }]}>
             {s.points.map(p => {
               const active = selection?.series === s.key && selection.start === p.start && selection.end === p.end;
-              const label = `${range(p.start, p.end)}, ${p.value === null ? p.day ? dayState(p.day, nutrient) : 'sin promedio calculable' : `${p.day ? '' : 'promedio del bloque, '}${fmt(p.value)}`}${p.partial ? ', suma parcial' : ''}${p.today ? ', hoy en curso' : ''}${p.day ? `, ${p.day.nutrients[nutrient].knownMeals} de ${p.day.mealCount} entradas con ${copy.short}` : `, ${p.denominator} días usados, ${p.partialDays} con suma parcial`}, ${s.title}`;
+              const label = `${range(p.start, p.end)}, ${p.value === null ? p.day ? dayState(p.day, nutrient) : 'sin promedio calculable' : `${p.day ? '' : 'promedio del bloque, '}${spoken(p.value)}`}${p.partial ? ', suma parcial' : ''}${p.today ? ', hoy en curso' : ''}${p.day ? `, ${p.day.nutrients[nutrient].knownMeals} de ${p.day.mealCount} entradas con ${copy.short}` : `, ${p.denominator} días usados, ${p.partialDays} con suma parcial`}, ${s.title}`;
               return <Pressable key={p.start} testID={`nutrition-chart-${s.key}-${p.start}-${p.value === null ? 'gap' : 'bar'}`}
                 accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={label}
                 accessibilityHint="Muestra el detalle. Otro toque quita la selección."
                 onPress={() => onSelect(active ? null : { series: s.key, start: p.start, end: p.end, daysOpen: false })}
                 style={[styles.slot, { minWidth: brandTokens.layout.minTouch }, active && { borderColor: colors.primary, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.inner }]}>
                 <View style={styles.bar} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-                  {p.value !== null ? <View style={{ height: p.value === 0 ? 1 : 150 * p.value / max, backgroundColor: p.value === 0 ? colors.border : s.key === 'reference' ? colors.textMuted : colors.primary, opacity: p.today || s.key === 'reference' ? 0.4 : 1 }} /> : null}
+                  {p.value !== null ? <View style={{ height: p.value === 0 ? 1 : Math.max(2, 150 * p.value / max), backgroundColor: p.value === 0 ? colors.border : s.key === 'reference' ? colors.textMuted : colors.primary, opacity: p.today || s.key === 'reference' ? 0.4 : 1 }} /> : null}
                 </View>
                 <AppText numeric muted variant="caption">{p.start.slice(8)}/{p.start.slice(5, 7)}</AppText>
               </Pressable>;
@@ -90,7 +102,7 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
     </View>)}
     {compareOn && !reference ? <AppText muted>Comparación no disponible.</AppText> : null}
     <View style={styles.section} testID="nutrition-chart-inspection">
-      <View accessible accessibilityLiveRegion="polite" accessibilityLabel={`${selected ? range(selected.start, selected.end) : prompt}, ${value}${source ? `, ${source.title}` : ''}`}>
+      <View accessible accessibilityLiveRegion="polite" accessibilityLabel={`${selected ? range(selected.start, selected.end) : prompt}, ${spokenValue}${source ? `, ${source.title}` : ''}`}>
         {selected || !canInspect ? <>
           <AppText variant="headline">{selected ? range(selected.start, selected.end) : prompt}</AppText>
           <AppText numeric>{value}</AppText>

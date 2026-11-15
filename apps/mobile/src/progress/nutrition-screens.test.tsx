@@ -424,6 +424,10 @@ describe('#519 · del dato al día y de vuelta', () => {
       expect(mockReport.mock.calls.length).toBe(initial.reports + 2);
       expect(state()).toEqual({ protein: true, side: true, day: true, title: true });
       console.info('[QA #519 serie]', { initial, afterSwitchAndReturn: reads() });
+      // Changing the period on this screen keeps the chosen series (the selection resets with the scope, as before).
+      fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
+      expect(nutrient('Proteína').props.accessibilityState).toMatchObject({ checked: true });
+      expect(view.getByText('Proteína registrada')).toBeTruthy();
     } finally { clock.mockRestore(); mockParams = {}; }
   });
 });
