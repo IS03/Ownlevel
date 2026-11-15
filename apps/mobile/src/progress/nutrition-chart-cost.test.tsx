@@ -42,10 +42,13 @@ it('measures source reads and existing cache/focus separately from the destinati
   await flush(); const initial = reads();
   fireEvent.press(view.getByTestId('nutrition-chart-current-2026-10-01-bar')); await flush(); const inspected = reads();
   expect(inspected).toEqual(initial);
+  // #519 · Changing the series is local to the chart.
+  fireEvent.press(view.getByRole('radio', { name: 'Proteína' })); await flush(); const switched = reads();
+  expect(switched).toEqual(initial);
   act(() => mockFocus.forEach(f => f.blur())); act(() => mockFocus.forEach(f => f.focus())); await flush(); const returned = reads();
   expect(returned).toEqual(initial);
   act(() => view.UNSAFE_getByType(RefreshControl).props.onRefresh()); await flush(); const manual = reads();
-  console.info('[QA nutrition source cost]', { initial, inspected, returned, manual, pointNavigationActions: mockPush.mock.calls.length });
+  console.info('[QA nutrition source cost]', { initial, inspected, switched, returned, manual, pointNavigationActions: mockPush.mock.calls.length });
   expect(manual.reports).toBeGreaterThan(initial.reports);
   view.unmount();
 });

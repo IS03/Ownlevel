@@ -8,7 +8,7 @@ import type { NutritionReport } from '@/api/nutrition-report';
 import { reportFixture } from '@/nutrition/report-fixture.test-helper';
 import { bucketNutritionChartDays } from '../../../../src/lib/nutrition/report-chart-core';
 import { ProgressRangeProvider } from './progress-range-context';
-import { NutritionChart, type NutritionInspection } from './nutrition-chart';
+import { NutritionChart, type NutritionChartNutrient, type NutritionInspection } from './nutrition-chart';
 import { ReturnToNutritionChart, nutritionChartDayHref } from './nutrition-chart-navigation';
 
 const mockNavigate = jest.fn(), onDate = jest.fn();
@@ -18,7 +18,8 @@ jest.mock('expo-router', () => ({ useRouter: () => ({ navigate: mockNavigate }),
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn() }, triggerHaptic: jest.fn() }));
 function Harness({ report, reference }: { report: NutritionReport; reference?: NutritionReport }) {
   const [selection, onSelect] = useState<NutritionInspection>(null);
-  return <><NutritionChart report={report} reference={reference} selection={selection} onSelect={onSelect} onDate={onDate} /><ReturnToNutritionChart /></>;
+  const [nutrient, onNutrient] = useState<NutritionChartNutrient>('calories');
+  return <><NutritionChart report={report} reference={reference} selection={selection} onSelect={onSelect} onDate={onDate} nutrient={nutrient} onNutrient={onNutrient} /><ReturnToNutritionChart /></>;
 }
 const tree = (report: NutritionReport, reference?: NutritionReport, mode: 'light' | 'dark' = 'light') => <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 320, height: 700 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}><OwnlevelThemeProvider initialMode={mode}><ProgressRangeProvider initialToday="2026-10-04" initialState={{ unit: 'month', anchor: '2026-10-04', custom: null, compare: reference ? { kind: 'previous' } : { kind: 'none' } }}><Harness report={report} reference={reference} /></ProgressRangeProvider></OwnlevelThemeProvider></SafeAreaProvider>;
 const daily = () => reportFixture({ period: 'custom', from: '2026-10-01', to: '2026-10-04' });
@@ -83,7 +84,7 @@ describe('Nutrition chart inspection', () => {
     r.days = r.days.map(d => d.date >= first.start && d.date <= first.end ? { ...d, hasNutrition: false, mealCount: 0, nutrients: { ...d.nutrients, calories: { value: null, knownMeals: 0, missingMeals: 0, status: 'none' } } } : d);
     const view = render(tree(r)); await flush();
     fireEvent.press(view.getByTestId(`nutrition-chart-current-${first.start}-gap`));
-    expect(view.getByText('Sin valor de calorías')).toBeTruthy();
+    expect(view.getByText('Sin dato')).toBeTruthy();
     expect(view.getByText(/0 días usados de 7 días del bloque/)).toBeTruthy();
     fireEvent.press(view.getByRole('button', { name: 'Ver días del bloque' }));
     expect(within(view.getByTestId('nutrition-report-day-rows')).getAllByRole('button')).toHaveLength(7);
@@ -181,5 +182,97 @@ describe('#519 · lectura del dato y ayuda', () => {
     expect(view.queryByText(/sin emparejar posiciones/)).toBeNull();
     fireEvent.press(view.getByRole('button', { name: 'Cómo leer el gráfico' }));
     expect(view.queryByTestId('nutrition-chart-help-body')).toBeNull();
+  });
+});
+
+describe('#519 · selector Calorías / Proteína', () => {
+  const protein = () => fireEvent.press(within(view_().getByLabelText('Nutriente del gráfico')).getByRole('radio', { name: 'Proteína' }));
+  let view_: () => ReturnType<typeof render>;
+  const barHeight = (view: ReturnType<typeof render>, id: string) => StyleSheet.flatten(view.getByTestId(id).findAll(n => n.props.style && StyleSheet.flatten(n.props.style)?.backgroundColor !== undefined && StyleSheet.flatten(n.props.style)?.height !== undefined)[0]!.props.style).height;
+  it('starts on Calorías and switches title, unit, scale, coverage and the historical target on the same selected day', async () => {
+    const r = daily();
+    r.days = r.days.map(d => d.date === '2026-10-01' ? { ...d, targetCalories: 1800, targetProteinG: null, nutrients: { ...d.nutrients, calories: { ...d.nutrients.calories, value: 2000 }, protein: { ...d.nutrients.protein, value: 50 } } }
+      : d.date === '2026-10-02' ? { ...d, targetProteinG: 140, nutrients: { ...d.nutrients, calories: { ...d.nutrients.calories, value: 1000 }, protein: { ...d.nutrients.protein, value: 150 } } } : d);
+    const view = render(tree(r)); view_ = () => view; await flush();
+    const group = within(view.getByLabelText('Nutriente del gráfico'));
+    expect(group.getByRole('radio', { name: 'Calorías' }).props.accessibilityState).toMatchObject({ checked: true });
+    expect(view.getByText('Calorías registradas')).toBeTruthy();
+    // Calories scale: 2000 is the tallest; protein scale: 150 is.
+    expect(barHeight(view, 'nutrition-chart-current-2026-10-01-bar')).toBe(150);
+    fireEvent.press(view.getByTestId('nutrition-chart-current-2026-10-01-bar'));
+    expect(view.getByText('2.000 kcal')).toBeTruthy(); expect(view.getByText('Objetivo registrado de esta fecha: 1.800 kcal.')).toBeTruthy();
+    protein();
+    expect(group.getByRole('radio', { name: 'Proteína' }).props.accessibilityState).toMatchObject({ checked: true });
+    expect(view.getByText('Proteína registrada')).toBeTruthy(); expect(view.queryByText('Calorías registradas')).toBeNull();
+    expect(view.getByLabelText(/^Proteína · Período elegido/).props.horizontal).toBe(true);
+    expect(barHeight(view, 'nutrition-chart-current-2026-10-02-bar')).toBe(150);
+    expect(barHeight(view, 'nutrition-chart-current-2026-10-01-bar')).toBe(50);
+    // Same day stays selected, now read in grams, with protein coverage and its own (absent) target.
+    expect(view.getByTestId('nutrition-chart-current-2026-10-01-bar').props.accessibilityState.selected).toBe(true);
+    const readout = within(view.getByTestId('nutrition-chart-inspection'));
+    expect(readout.getByText('01/10/2026')).toBeTruthy(); expect(readout.getByText('50 g')).toBeTruthy();
+    expect(readout.getByText('Proteína completa entre las entradas registradas.')).toBeTruthy();
+    expect(readout.getByText(/1 de 1 entradas con proteína conocida · 0 sin ese dato/)).toBeTruthy();
+    expect(readout.getByText('Sin objetivo histórico acreditado para esta fecha.')).toBeTruthy();
+    fireEvent.press(view.getByTestId('nutrition-chart-current-2026-10-02-bar'));
+    expect(readout.getByText('Objetivo registrado de esta fecha: 140 g.')).toBeTruthy();
+    expect(view.getByTestId('nutrition-chart-current-2026-10-02-bar').props.accessibilityLabel).toMatch(/^02\/10\/2026, 150 g, hoy|^02\/10\/2026, 150 g, 1 de 1 entradas con proteína/);
+  });
+  it('protein zero stays zero, a missing protein keeps the selection as «Sin dato», partial and today stay next to the datum', async () => {
+    const r = daily();
+    r.days = r.days.map(d => d.date === '2026-10-01' ? { ...d, nutrients: { ...d.nutrients, protein: { value: 0, knownMeals: 1, missingMeals: 0, status: 'complete' } } }
+      : d.date === '2026-10-02' ? { ...d, nutrients: { ...d.nutrients, calories: { value: 600, knownMeals: 1, missingMeals: 0, status: 'complete' }, protein: { value: null, knownMeals: 0, missingMeals: 1, status: 'unknown' } } }
+      : d.date === '2026-10-04' ? { ...d, mealCount: 3, nutrients: { ...d.nutrients, calories: { value: 900, knownMeals: 3, missingMeals: 0, status: 'complete' }, protein: { value: 40, knownMeals: 2, missingMeals: 1, status: 'partial' } } } : d);
+    const view = render(tree(r)); view_ = () => view; await flush();
+    // Selected on calories, where the day has a value; switching keeps the date and says the protein is missing.
+    fireEvent.press(view.getByTestId('nutrition-chart-current-2026-10-02-bar'));
+    expect(view.getByText('600 kcal')).toBeTruthy();
+    protein();
+    expect(view.getByTestId('nutrition-chart-current-2026-10-02-gap').props.accessibilityState.selected).toBe(true);
+    const readout = within(view.getByTestId('nutrition-chart-inspection'));
+    expect(readout.getByText('02/10/2026')).toBeTruthy(); expect(readout.getByText('Sin dato')).toBeTruthy();
+    expect(readout.getByText('Entradas registradas sin proteína conocida.')).toBeTruthy();
+    expect(view.queryByText(/El dato seleccionado ya no está disponible/)).toBeNull();
+    expect(readout.queryByText('0 g')).toBeNull();
+    fireEvent.press(view.getByTestId('nutrition-chart-current-2026-10-01-bar'));
+    expect(readout.getByText('0 g')).toBeTruthy();
+    expect(barHeight(view, 'nutrition-chart-current-2026-10-01-bar')).toBe(1);
+    fireEvent.press(view.getByTestId('nutrition-chart-current-2026-10-04-bar'));
+    expect(readout.getByText('40 g')).toBeTruthy();
+    expect(readout.getByText('Suma parcial: solo proteína conocida.')).toBeTruthy();
+    expect(readout.getByText(/2 de 3 entradas con proteína conocida · 1 sin ese dato/)).toBeTruthy();
+    expect(within(view.getByTestId('nutrition-chart-inspection')).getByTestId('nutrition-chart-today')).toBeTruthy();
+    expect(view.getByTestId('nutrition-chart-current-2026-10-04-bar').props.accessibilityLabel).toContain('suma parcial, hoy en curso');
+  });
+  it('uses the protein block denominator when it differs from calories, and keeps the open block', async () => {
+    const r = long(), first = r.evolution[0];
+    first.metrics = { ...first.metrics, calories: { value: 2100, denominator: 6, partialDays: 1 }, protein: { value: 130, denominator: 4, partialDays: 2 } };
+    r.days = r.days.map(d => d.date === first.start || d.date === first.end ? { ...d, nutrients: { ...d.nutrients, protein: { value: null, knownMeals: 0, missingMeals: 1, status: 'unknown' } } } : d);
+    const view = render(tree(r)); view_ = () => view; await flush();
+    fireEvent.press(view.getByTestId(`nutrition-chart-current-${first.start}-bar`));
+    expect(view.getByText('Promedio del bloque · 2.100 kcal por día con dato')).toBeTruthy();
+    expect(view.getByText(/6 días usados de 7 días del bloque · 1 con suma parcial/)).toBeTruthy();
+    fireEvent.press(view.getByRole('button', { name: 'Ver días del bloque' }));
+    protein();
+    expect(view.getByText('Promedio del bloque · 130 g por día con dato')).toBeTruthy();
+    expect(view.getByText(/4 días usados de 7 días del bloque · 2 con suma parcial/)).toBeTruthy();
+    expect(view.getByText(/2 con proteína desconocida/)).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Ocultar días del bloque' })).toBeTruthy();
+    expect(view.getByTestId(`nutrition-chart-current-${first.start}-bar`).props.accessibilityLabel).toContain('4 días usados, 2 con suma parcial');
+  });
+  it('keeps the B side and its selected day when switching, and keeps 44 pt and the scroll at large text', async () => {
+    const rn = jest.requireActual<typeof import('react-native')>('react-native');
+    const spy = jest.spyOn(rn, 'useWindowDimensions').mockReturnValue({ width: 320, height: 700, scale: 3, fontScale: 2 });
+    const r = long(), ref = reportFixture({ period: 'custom', from: '2026-07-01', to: '2026-07-02' });
+    const view = render(tree(r, ref)); view_ = () => view; await flush();
+    fireEvent.press(view.getByRole('radio', { name: 'Comparación' }));
+    fireEvent.press(view.getByTestId('nutrition-chart-reference-2026-07-01-bar'));
+    protein();
+    expect(view.getByRole('radio', { name: 'Comparación', checked: true })).toBeTruthy();
+    expect(view.getByTestId('nutrition-chart-reference-2026-07-01-bar').props.accessibilityState.selected).toBe(true);
+    expect(within(view.getByTestId('nutrition-chart-inspection')).getByText('100 g')).toBeTruthy();
+    expect(view.getByLabelText(/^Proteína · Comparación/).props.horizontal).toBe(true);
+    for (const bar of within(view.getByTestId('nutrition-chart-series-reference')).getAllByRole('button')) expect(StyleSheet.flatten(bar.props.style).minWidth).toBeGreaterThanOrEqual(44);
+    spy.mockRestore();
   });
 });
