@@ -37,7 +37,10 @@ export type QuickPinsState = {
   error: QuickPinsError | null;
   message: string | null;
 };
-export type QuickPinsWriteOutcome = 'sent' | 'unchanged' | 'refused';
+/** `stale`: a draft whose base revision is no longer the confirmed one (#516). Nothing was stored or sent. */
+export type QuickPinsWriteOutcome = 'sent' | 'unchanged' | 'refused' | 'stale';
+/** The confirmed pins a draft started from (#516): what it may replace, and nothing newer. */
+export type QuickPinsDraftBase = { revision: number; ids: string[] };
 
 const MESSAGES: Record<QuickPinsError, string> = {
   unavailable: 'No pudimos leer tus fijadas. Probá de nuevo en un rato.',
@@ -130,8 +133,20 @@ export class QuickPinsController {
     if (this.busy || this.state.intent) return;
     this.update({ wanted: null, error: null, message: null, ...(this.state.phase === 'conflict' ? { phase: 'idle' as const } : {}) });
   }
-  /** The whole ordered list. One write at a time, stored with its key before it is sent, against a verified revision. */
-  write(savedMealIds: string[]) { return this.exclusive(() => savedMealIds); }
+  /**
+   * The whole ordered list. One write at a time, stored with its key before it is sent, against a verified revision.
+   * #516: a draft passes the confirmed pins it started from. Inside the lock, after any re-read, the confirmed revision must
+   * still be that one: if another device (or this one) changed the pins meanwhile, nothing is stored or sent and the draft's
+   * owner decides. Without a base (pin/unpin/move, «Aplicar mi cambio») the behaviour is unchanged.
+   */
+  write(savedMealIds: string[], base?: QuickPinsDraftBase) {
+    return this.exclusive(() => base && this.state.confirmed?.revision !== base.revision ? 'stale' : savedMealIds);
+  }
+  /** The confirmed pins a draft can start from: only a read (not retained) snapshot, with nothing in flight or unconfirmed. */
+  draftBase(): QuickPinsDraftBase | null {
+    const { confirmed, availability, intent, phase } = this.state;
+    return confirmed && availability === 'ok' && !intent && (phase === 'idle' || phase === 'conflict') ? { revision: confirmed.revision, ids: ids(confirmed) } : null;
+  }
 
   /**
    * The ONLY way to a new write (pin, unpin, move, «Aplicar mi cambio», write). The lock is taken synchronously, before
@@ -140,7 +155,7 @@ export class QuickPinsController {
    * If the confirmed pins are a retained reading they are read again first; not read again (offline, denied, failed):
    * nothing is written and `wanted` is untouched. A stored intent's replay (`recover`) never comes here.
    */
-  private async exclusive(build: (current: string[] | null) => string[] | 'unchanged' | 'refused'): Promise<QuickPinsWriteOutcome> {
+  private async exclusive(build: (current: string[] | null) => string[] | 'unchanged' | 'refused' | 'stale'): Promise<QuickPinsWriteOutcome> {
     if (this.disposed || this.busy || this.state.intent || (this.state.phase !== 'idle' && this.state.phase !== 'conflict')) return 'refused';
     this.busy = true;
     try {
@@ -150,7 +165,7 @@ export class QuickPinsController {
         if (!this.verified || this.state.availability !== 'ok') { this.update({ error: 'unavailable', message: MESSAGES.unavailable }); return 'refused'; }
       }
       const next = build(this.state.confirmed ? ids(this.state.confirmed) : null);
-      return next === 'unchanged' || next === 'refused' ? next : await this.writeLocked(next);
+      return next === 'unchanged' || next === 'refused' || next === 'stale' ? next : await this.writeLocked(next);
     } finally { this.busy = false; }
   }
   /** Called with the lock held by `exclusive`. */

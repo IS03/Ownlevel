@@ -239,3 +239,93 @@ describe('#479 B · quick pins controller', () => {
     expect(s.api.write).not.toHaveBeenCalled();
   });
 });
+
+// #516: a draft edited in a sheet is saved as one list, only over the revision it started from.
+describe('#516 · draft saved over its own base revision', () => {
+  const six = Array.from({ length: 6 }, (_, n) => ID(n + 1));
+  it('add, move and remove before saving: one stored intent, one PUT, against the base revision', async () => {
+    const s = await ready(snap(3, [ID(1), ID(2)]));
+    const base = s.c.draftBase()!;
+    expect(base).toEqual({ revision: 3, ids: [ID(1), ID(2)] });
+    const draft = [ID(3), ID(2)]; // Added 3, moved it first, removed 1: only the sheet knew, nothing was written meanwhile.
+    expect(s.api.write).not.toHaveBeenCalled();
+    expect(await s.c.write(draft, base)).toBe('sent');
+    expect(s.api.write).toHaveBeenCalledTimes(1);
+    expect(s.api.write).toHaveBeenLastCalledWith({ savedMealIds: draft, expectedRevision: 3, idempotencyKey: 'pins-owner-1' });
+    expect(s.c.getSnapshot()).toMatchObject({ phase: 'idle', confirmed: snap(4, draft), intent: null });
+  });
+  it('reordering six pins is one write; an unchanged draft is none', async () => {
+    const s = await ready(snap(1, six));
+    expect(await s.c.write(six.slice(), s.c.draftBase()!)).toBe('unchanged');
+    expect(await s.c.write([...six].reverse(), s.c.draftBase()!)).toBe('sent');
+    expect(s.api.write).toHaveBeenCalledTimes(1);
+  });
+  it('a newer revision that arrived during the draft (GET) is never overwritten: nothing stored or sent, no wish adopted', async () => {
+    const s = await ready(snap(3, [ID(1), ID(2)]));
+    const base = s.c.draftBase()!;
+    s.c.adopt(ok(snap(4, [ID(2), ID(5)]))); // Another device saved; Rápido's GET brought it while the sheet was open.
+    expect(await s.c.write([ID(2), ID(1)], base)).toBe('stale');
+    expect(s.api.write).not.toHaveBeenCalled(); expect(s.stored()).toBeUndefined();
+    expect(s.c.getSnapshot()).toMatchObject({ phase: 'idle', confirmed: snap(4, [ID(2), ID(5)]), intent: null, wanted: null });
+  });
+  it('a retained reading is re-read inside the lock first, and a change found there stops the save before any intent', async () => {
+    const s = await ready(snap(3, [ID(1)]));
+    const base = s.c.draftBase()!;
+    s.c.requireVerification();
+    s.api.read.mockResolvedValueOnce({ status: 'ok', data: options(ok(snap(5, [ID(9)]))), meta });
+    expect(await s.c.write([ID(1), ID(2)], base)).toBe('stale');
+    expect(s.api.read).toHaveBeenCalledTimes(1); expect(s.api.write).not.toHaveBeenCalled(); expect(s.stored()).toBeUndefined();
+    // Same revision after the re-read: the save goes on against it.
+    const again = await ready(snap(3, [ID(1)]));
+    const sameBase = again.c.draftBase()!; again.c.requireVerification();
+    expect(await again.c.write([ID(1), ID(2)], sameBase)).toBe('sent');
+    expect(again.api.write).toHaveBeenLastCalledWith(expect.objectContaining({ expectedRevision: 3 }));
+  });
+  it('a change the device did not know about is refused by the server (CAS): the truth is shown and the draft is kept as the wish', async () => {
+    const s = await ready(snap(3, [ID(1)]));
+    s.api.write.mockResolvedValueOnce(conflict('QUICK_PINS_CHANGED', snap(4, [ID(7)])));
+    expect(await s.c.write([ID(2), ID(1)], s.c.draftBase()!)).toBe('sent');
+    expect(s.api.write).toHaveBeenCalledTimes(1);
+    expect(s.c.getSnapshot()).toMatchObject({ phase: 'conflict', error: 'changed', confirmed: snap(4, [ID(7)]), wanted: [ID(2), ID(1)], intent: null });
+    expect(s.stored()).toBeUndefined(); // Nothing left to replay over the new truth by itself.
+  });
+  it('offline: an unreadable truth refuses before an intent; a lost answer keeps one intent, refuses a second save and replays the same key', async () => {
+    const s = await ready(snap(3, [ID(1)]));
+    const base = s.c.draftBase()!; s.c.requireVerification();
+    s.api.read.mockResolvedValueOnce({ status: 'unavailable', reason: 'network', meta: { ...meta, httpStatus: null, outcome: 'unavailable' } });
+    expect(await s.c.write([ID(2)], base)).toBe('refused'); expect(s.api.write).not.toHaveBeenCalled(); expect(s.stored()).toBeUndefined();
+    const t = await ready(snap(3, [ID(1)]));
+    t.api.write.mockResolvedValueOnce(lost);
+    expect(await t.c.write([ID(2)], t.c.draftBase()!)).toBe('sent');
+    expect(t.c.getSnapshot()).toMatchObject({ phase: 'uncertain', intent: { intent: { savedMealIds: [ID(2)], expectedRevision: 3 } } });
+    expect(t.c.draftBase()).toBeNull(); // No new draft starts over an unconfirmed write.
+    expect(await t.c.write([ID(3)], { revision: 3, ids: [ID(1)] })).toBe('refused');
+    await t.c.recover();
+    expect(t.api.write).toHaveBeenCalledTimes(2); expect(t.api.write.mock.calls[1][0]).toEqual(t.api.write.mock.calls[0][0]);
+    expect(t.c.getSnapshot()).toMatchObject({ phase: 'idle', confirmed: snap(4, [ID(2)]) });
+  });
+  it('pending: a second save while one is in flight is refused; after an account switch nothing is written', async () => {
+    const s = await ready(snap(0, []));
+    let release!: () => void;
+    s.api.write.mockImplementationOnce(w => new Promise(done => { release = () => done(receipt(w)); }));
+    const first = s.c.write([ID(1)], s.c.draftBase()!);
+    await sent(s.api.write, 1);
+    expect(s.c.getSnapshot().phase).toBe('pending'); expect(s.c.draftBase()).toBeNull();
+    expect(await s.c.write([ID(2)], { revision: 0, ids: [] })).toBe('refused');
+    release(); expect(await first).toBe('sent');
+    const t = await ready(snap(2, [ID(1)]));
+    const base = t.c.draftBase()!; t.c.dispose();
+    expect(await t.c.write([ID(1), ID(2)], base)).toBe('refused'); expect(t.api.write).not.toHaveBeenCalled();
+  });
+  it('0, 1 and 6 pins can be drafts; an archived pin in the base can be kept or freed, and a seventh is refused', async () => {
+    const zero = await ready(snap(0, []));
+    expect(zero.c.draftBase()).toEqual({ revision: 0, ids: [] });
+    const one = await ready({ revision: 2, items: [{ id: ID(1), state: 'archived' }] });
+    expect(await one.c.write([], one.c.draftBase()!)).toBe('sent'); // Freeing an archived pin's place.
+    const full = await ready(snap(1, six));
+    expect(await full.c.write([...six, ID(7)], full.c.draftBase()!)).toBe('refused'); expect(full.c.getSnapshot().error).toBe('full');
+    expect(full.api.write).not.toHaveBeenCalled();
+    const unknown = setup(); await unknown.c.initialize();
+    expect(unknown.c.draftBase()).toBeNull(); // Pins never read: no draft over «unknown».
+  });
+});
