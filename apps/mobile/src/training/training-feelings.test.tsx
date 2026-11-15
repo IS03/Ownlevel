@@ -1,10 +1,10 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { AccessibilityInfo, LayoutAnimation, Text } from 'react-native';
+import { AccessibilityInfo, LayoutAnimation, StyleSheet, Text } from 'react-native';
 import { GestureHandlerRootView, State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import { withTiming } from 'react-native-reanimated';
-import { OwnlevelThemeProvider } from '@/design-system';
+import { brandTokens, OwnlevelThemeProvider } from '@/design-system';
 import { TrainingFeelingsJournal } from '@/api/training-feelings';
 import { TrainingFeelings } from './training-feelings';
 import type { ActiveSessionController } from './active-session-controller';
@@ -79,7 +79,7 @@ describe('compact capture by moment (#449)', () => {
     const { journal, writes } = journalWith(); await journal.refresh();
     const view = show(journal, 'pre');
     expect(view.getByText('Al empezar')).toBeTruthy(); expect(view.queryAllByRole('radio')).toHaveLength(0);
-    fireEvent.press(view.getByLabelText('Responder sensaciones al empezar'));
+    fireEvent.press(view.getByLabelText('Sensaciones al empezar, opcional'));
     fireEvent.press(view.getByLabelText('Energía: Alta, 4 de 5'));
     await waitFor(() => expect(view.getByText('Sin guardar')).toBeTruthy());
     expect(writes).toHaveLength(0); // Choosing never writes: one explicit confirmation per operation.
@@ -90,9 +90,9 @@ describe('compact capture by moment (#449)', () => {
     view.unmount();
     const reopened = show(journal, 'pre');
     expect(reopened.getByText('Energía alta')).toBeTruthy(); expect(reopened.queryAllByRole('radio')).toHaveLength(0);
-    fireEvent.press(reopened.getByLabelText('Editar sensaciones al empezar'));
+    fireEvent.press(reopened.getByLabelText('Sensaciones al empezar, Energía alta'));
     expect(reopened.getByLabelText('Energía: Alta, 4 de 5').props.accessibilityState.selected).toBe(true);
-    fireEvent.press(reopened.getByLabelText('Listo con las sensaciones al empezar'));
+    fireEvent.press(reopened.getByTestId('feelings-pre-edit'));
     expect(reopened.queryAllByRole('radio')).toHaveLength(0); expect(writes).toHaveLength(1);
   });
   it('keeps an unsent or uncertain answer open with its recovery, retrying the same operation', async () => {
@@ -103,7 +103,7 @@ describe('compact capture by moment (#449)', () => {
     fail();
     await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar sensaciones' })); });
     await waitFor(() => expect(view.getByText('Respuestas pendientes de confirmación')).toBeTruthy());
-    expect(view.getByText(/Guardado sin confirmar/)).toBeTruthy(); expect(view.queryByLabelText('Listo con las sensaciones al empezar')).toBeNull();
+    expect(view.getByText(/Guardado sin confirmar/)).toBeTruthy(); expect(view.queryByTestId('feelings-pre-edit')).toBeNull();
     recover();
     await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Comprobar operación pendiente' })); });
     await waitFor(() => expect(view.getByText('Fatiga poca')).toBeTruthy());
@@ -255,3 +255,135 @@ describe('start capture with the shared scale control (#462)', () => {
   });
 });
 
+
+// #512 (A): a discreet header with a chevron, no permanent explanation, and one compact explicit save row under the scales.
+describe('compact start capture (#512)', () => {
+  beforeEach(() => { mockTrigger.mockReset(); });
+  const saveButton = (view: ReturnType<typeof show>) => view.getByRole('button', { name: 'Guardar sensaciones' });
+  it('folds behind a chevron header: no «Responder», no timestamp paragraph, 0/1/2 confirmed answers summarised', async () => {
+    const empty = journalWith(); await empty.journal.refresh();
+    const view = show(empty.journal, 'pre');
+    expect(view.queryByText('Responder')).toBeNull(); expect(view.getByText('Energía y fatiga')).toBeTruthy();
+    const header = toggle(view);
+    expect(header.props.accessibilityRole).toBe('button'); expect(header.props.accessibilityLabel).toBe('Sensaciones al empezar, opcional');
+    expect(header.props.accessibilityState).toMatchObject({ expanded: false, disabled: false });
+    expect(header.props.accessibilityHint).toMatch(/Queda la hora en que respondés/); // Said to VoiceOver, never printed.
+    fireEvent.press(header);
+    expect(view.queryByText(/Queda la hora/)).toBeNull(); expect(view.queryByText('Energía y fatiga')).toBeNull();
+    expect(toggle(view).props.accessibilityState).toMatchObject({ expanded: true }); expect(view.getAllByRole('radio')).toHaveLength(10);
+    expect(view.queryByRole('button', { name: 'Guardar sensaciones' })).toBeNull(); // Nothing to save, nothing offered.
+    fireEvent.press(toggle(view)); expect(view.queryAllByRole('radio')).toHaveLength(0);
+    view.unmount();
+    const one = journalWith({ fatiguePre: fact('fatiguePre', 2) }); await one.journal.refresh();
+    expect(show(one.journal, 'pre').getByText('Fatiga poca')).toBeTruthy();
+    const two = journalWith({ energyPre: fact('energyPre', 4), fatiguePre: fact('fatiguePre', 2) }); await two.journal.refresh();
+    const both = show(two.journal, 'pre');
+    expect(both.getByText('Energía alta · Fatiga poca')).toBeTruthy();
+    expect(toggle(both).props.accessibilityLabel).toBe('Sensaciones al empezar, Energía alta, Fatiga poca');
+  });
+  it('a draft keeps the panel open with no fold control, and says «Sin guardar» once, next to a 44 pt «Guardar»', async () => {
+    const { journal, writes } = journalWith(); await journal.refresh();
+    const view = show(journal, 'pre'); fireEvent.press(toggle(view));
+    await act(async () => { fireEvent.press(view.getByLabelText('Energía: Alta, 4 de 5')); await settle(); });
+    expect(view.queryByTestId('feelings-pre-edit')).toBeNull(); // Folding would hide or discard the draft: not offered.
+    expect(view.getAllByText('Sin guardar')).toHaveLength(1); expect(view.getByText('Al empezar')).toBeTruthy();
+    const save = saveButton(view);
+    expect(save.props.accessibilityState).toMatchObject({ disabled: false });
+    const target = StyleSheet.flatten(save.props.style);
+    expect(target.minHeight).toBeGreaterThanOrEqual(brandTokens.layout.minTouch); expect(target.minWidth).toBeGreaterThanOrEqual(brandTokens.layout.minTouch);
+    expect(view.queryByText('Guardar sensaciones')).toBeNull(); expect(view.getByText('Guardar')).toBeTruthy(); // Compact text, full spoken name.
+    expect(writes).toHaveLength(0);
+    // Clearing the only answer is still a change to send: the draft (and its save row) stays.
+    await act(async () => { fireEvent.press(view.getByLabelText('Energía: Alta, 4 de 5')); await settle(); });
+    expect(journal.getSnapshot().patch.energyPre).toEqual({ op: 'clear' }); expect(saveButton(view)).toBeTruthy(); expect(writes).toHaveLength(0);
+  });
+  it('unmarking a confirmed answer is a draft until saved, and the receipt folds it to the remaining answer', async () => {
+    const { journal, writes } = journalWith({ energyPre: fact('energyPre', 3), fatiguePre: fact('fatiguePre', 2) }); await journal.refresh();
+    const view = show(journal, 'pre'); fireEvent.press(toggle(view));
+    await act(async () => { fireEvent.press(view.getByLabelText('Fatiga: Poca, 2 de 5')); await settle(); });
+    expect(journal.value('fatiguePre')).toBeNull(); expect(view.getAllByText('Sin guardar')).toHaveLength(1);
+    await act(async () => { fireEvent.press(saveButton(view)); await settle(); });
+    expect(writes).toHaveLength(1); expect((writes[0] as { patch: unknown }).patch).toEqual({ fatiguePre: { op: 'clear' } });
+    expect(view.getByText('Energía media')).toBeTruthy(); expect(view.queryAllByRole('radio')).toHaveLength(0);
+    expect(toggle(view).props.accessibilityState).toMatchObject({ expanded: false });
+  });
+  it('saves only on the explicit tap, once for a double tap, and folds only after the receipt', async () => {
+    const stored = new Map<string, string>(); let release: (() => void) | null = null; const writes: unknown[] = [];
+    let server = serverWith({});
+    const journal = new TrainingFeelingsJournal({ getItem: async k => stored.get(k) ?? null, setItem: async (k, v) => { stored.set(k, v); } }, {
+      read: async () => ({ status: 'ok', data: server }),
+      write: async input => { writes.push(input); await new Promise<void>(done => { release = done; });
+        server = serverWith({ energyPre: fact('energyPre', 4), fatiguePre: fact('fatiguePre', 1) }, 1); return { status: 'ok', data: server }; },
+    }, 'owner', sid, 'mobile', () => 'synthetic:slow');
+    await journal.refresh();
+    const view = show(journal, 'pre'); fireEvent.press(toggle(view));
+    await act(async () => { fireEvent.press(view.getByLabelText('Energía: Alta, 4 de 5')); await settle(); });
+    await act(async () => { fireEvent.press(view.getByLabelText('Fatiga: Ninguna, 1 de 5')); await settle(); });
+    expect(writes).toHaveLength(0); // Two answers are not an intention to save.
+    await act(async () => { fireEvent.press(saveButton(view)); fireEvent.press(view.getByTestId('feelings-pre-save')); await settle(); });
+    expect(writes).toHaveLength(1);
+    expect(view.getAllByRole('radio')).toHaveLength(10); // Still open while the write is in flight: no early fold or success.
+    expect(view.queryByText('Energía alta · Fatiga ninguna')).toBeNull();
+    await act(async () => { (release as (() => void) | null)?.(); await settle(); });
+    expect(view.getByText('Energía alta · Fatiga ninguna')).toBeTruthy(); expect(view.queryAllByRole('radio')).toHaveLength(0);
+    expect(view.queryByText('Sin guardar')).toBeNull(); expect(writes).toHaveLength(1);
+  });
+  it('an uncertain save keeps the scales open and the recovery outside the fold, without the save row', async () => {
+    const { journal, writes, fail } = journalWith(); await journal.refresh();
+    await act(async () => { await journal.change('energyPre', 2); });
+    const view = show(journal, 'pre'); fail();
+    await act(async () => { fireEvent.press(saveButton(view)); await settle(); });
+    expect(view.getByText('Respuestas pendientes de confirmación')).toBeTruthy(); expect(view.getByText(/Guardado sin confirmar/)).toBeTruthy();
+    expect(view.queryByTestId('feelings-pre-save')).toBeNull(); expect(view.queryByText('Sin guardar')).toBeNull();
+    expect(view.getByRole('button', { name: 'Comprobar operación pendiente' })).toBeTruthy();
+    expect(view.getByLabelText('Energía: Baja, 2 de 5').props.accessibilityState).toMatchObject({ selected: true, disabled: true });
+    expect(writes).toHaveLength(1);
+  });
+  it('a conflict replaces the save row with both choices; a failed read keeps the draft and its save', async () => {
+    const conflicted = journalWith({ energyPre: fact('energyPre', 1) }); await conflicted.journal.refresh();
+    await conflicted.journal.change('energyPre', 5); conflicted.elsewhere('energyPre', 2);
+    const view = show(conflicted.journal, 'pre');
+    await act(async () => { fireEvent.press(saveButton(view)); await settle(); });
+    expect(view.getByText('Necesita revisión')).toBeTruthy(); expect(view.queryByTestId('feelings-pre-save')).toBeNull();
+    expect(view.getByRole('button', { name: 'Conservar lo guardado' })).toBeTruthy(); expect(conflicted.writes).toHaveLength(0);
+    view.unmount();
+    let unreadable = false; const stored = new Map<string, string>();
+    const journal = new TrainingFeelingsJournal({ getItem: async k => stored.get(k) ?? null, setItem: async (k, v) => { stored.set(k, v); } }, {
+      read: async () => unreadable ? { status: 'unavailable' } : { status: 'ok', data: serverWith({}) }, write: async () => ({ status: 'unavailable' }),
+    }, 'owner', sid, 'mobile', () => 'synthetic:unread');
+    await journal.refresh(); await journal.change('fatiguePre', 3);
+    const draft = show(journal, 'pre');
+    unreadable = true; await act(async () => { await journal.refresh(); });
+    expect(draft.getByText(/No pudimos leer las sensaciones/)).toBeTruthy(); expect(draft.getByRole('button', { name: 'Volver a leer sensaciones' })).toBeTruthy();
+    expect(draft.getByTestId('feelings-pre-save')).toBeTruthy(); expect(draft.getAllByText('Sin guardar')).toHaveLength(1);
+  });
+  it('a local draft that was not confirmed stays open with its own status and no fold control', async () => {
+    const stored = new Map<string, string>(); let broken = false;
+    const journal = new TrainingFeelingsJournal({ getItem: async k => stored.get(k) ?? null, setItem: async (k, v) => { if (broken) throw Error('disk'); stored.set(k, v); } },
+      { read: async () => ({ status: 'ok', data: serverWith({}) }), write: async () => ({ status: 'unavailable' }) }, 'owner', sid, 'mobile', () => 'synthetic:local');
+    await journal.refresh();
+    const view = show(journal, 'pre'); fireEvent.press(toggle(view));
+    broken = true; await act(async () => { fireEvent.press(view.getByLabelText('Fatiga: Poca, 2 de 5')); await settle(); });
+    expect(journal.getSnapshot().localError).toBe(true);
+    expect(view.queryByTestId('feelings-pre-edit')).toBeNull(); expect(view.getByText('Borrador local sin confirmar')).toBeTruthy();
+    expect(view.getAllByRole('radio')).toHaveLength(10);
+  });
+  it('warns next to «Guardar» that unsent finishing answers go too, and the save sends the whole patch', async () => {
+    const { journal, writes } = journalWith(); await journal.refresh();
+    await act(async () => { await journal.change('energyPost', 3); await journal.change('energyPre', 4); });
+    const view = show(journal, 'pre');
+    expect(view.getByText('Guardar también envía tus respuestas de al terminar sin guardar.')).toBeTruthy();
+    await act(async () => { fireEvent.press(saveButton(view)); await settle(); });
+    expect(Object.keys((writes[0] as { patch: object }).patch).sort()).toEqual(['energyPost', 'energyPre']);
+    const pre = (writes[0] as { patch: Record<string, { declaredMoment?: string }> }).patch;
+    expect([pre.energyPre.declaredMoment, pre.energyPost.declaredMoment]).toEqual(['pre', 'post']); // Each answer keeps its own moment.
+  });
+  it('leaves the finishing capture as it was: always open, «Opcional», no chevron and no save row', async () => {
+    const { journal } = journalWith(); await journal.refresh();
+    await act(async () => { await journal.change('energyPost', 4); });
+    const view = show(journal, 'post');
+    expect(view.getByText('Opcional')).toBeTruthy(); expect(view.queryByTestId('feelings-post-edit')).toBeNull();
+    expect(view.queryByTestId('feelings-pre-save')).toBeNull(); expect(view.queryByRole('button', { name: 'Guardar sensaciones' })).toBeNull();
+    expect(view.getAllByRole('radio')).toHaveLength(10);
+  });
+});
