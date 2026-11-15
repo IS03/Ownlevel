@@ -111,7 +111,7 @@ export function historySetLabel(set: SessionSetDto): string {
     set.targetRir === null ? null : `RIR obj ${set.targetRir}`].filter(Boolean);
   return parts.join(' · ') || 'Sin carga ni reps registradas';
 }
-export function historyLoadLabel(set: SessionSetDto): string {
+export function historyLoadLabel(set: Pick<SessionSetDto, 'actualWeightKg' | 'actualReps'>): string {
   if (set.actualWeightKg !== null && set.actualReps !== null) return `${compactActual(set.actualWeightKg)} kg × ${set.actualReps}`;
   if (set.actualWeightKg !== null) return `${compactActual(set.actualWeightKg)} kg`;
   if (set.actualReps !== null) return `${set.actualReps} reps`;
@@ -123,6 +123,41 @@ export function compactHistoryDate(date: string): string {
   return `${day} ${months[Number(month) - 1]} ${year}`;
 }
 export function quickSessions(rows: readonly QuickSessionHistoryDto[]) { return rows.slice(0, 6); }
+/** One display row of the quick history: consecutive completed sets with the same actuals and target RIR (#513). */
+export type QuickHistoryRow = {
+  from: number; to: number; count: number;
+  actualWeightKg: number | null; actualReps: number | null; targetRir: number | null; note: string | null;
+};
+const setNote = (set: SessionSetDto) => set.notes?.trim() || null;
+/**
+ * Completed sets only, in order. Presentation grouping, never data: a set with a note, a gap in the original numbering,
+ * or any difference in actual kg, actual reps or target RIR starts a new row; null stays distinct from 0.
+ */
+export function quickHistoryRows(sets: readonly SessionSetDto[]): QuickHistoryRow[] {
+  const rows: QuickHistoryRow[] = [];
+  for (const set of sets) {
+    if (!set.isCompleted) continue;
+    const note = setNote(set), last = rows[rows.length - 1];
+    if (last && !last.note && !note && last.to + 1 === set.setNumber && last.actualWeightKg === set.actualWeightKg &&
+      last.actualReps === set.actualReps && last.targetRir === set.targetRir) {
+      last.to = set.setNumber; last.count += 1; continue;
+    }
+    rows.push({ from: set.setNumber, to: set.setNumber, count: 1, actualWeightKg: set.actualWeightKg, actualReps: set.actualReps, targetRir: set.targetRir, note });
+  }
+  return rows;
+}
+/** Target RIR shared by every completed set (shown once), null when no completed set has one, 'mixed' otherwise (shown per row). */
+export function quickHistoryTargetRir(sets: readonly SessionSetDto[]): number | null | 'mixed' {
+  const values = sets.filter(set => set.isCompleted).map(set => set.targetRir);
+  if (values.every(value => value === null)) return null;
+  return values.every(value => value === values[0]) ? values[0] : 'mixed';
+}
+/** Rows shown before «Ver N series más»: long sessions (more than six rows) start with five. */
+export const QUICK_HISTORY_FOLDED_ROWS = 5;
+export function quickHistoryFold(rows: readonly QuickHistoryRow[], expanded: boolean): { shown: readonly QuickHistoryRow[]; hiddenSets: number } {
+  if (expanded || rows.length <= 6) return { shown: rows, hiddenSets: 0 };
+  return { shown: rows.slice(0, QUICK_HISTORY_FOLDED_ROWS), hiddenSets: rows.slice(QUICK_HISTORY_FOLDED_ROWS).reduce((total, row) => total + row.count, 0) };
+}
 export function parseStoredExerciseDraft(value: unknown, sessionId: string, id: string): StoredExerciseDraft | null {
   if (!value || typeof value !== 'object') return null;
   const record = value as StoredExerciseDraft;

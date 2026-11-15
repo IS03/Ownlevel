@@ -32,7 +32,7 @@ describe('session quick history', () => {
     expect(view.getAllByTestId(/^quick-history-session-/)).toHaveLength(5); expect(view.queryByText('Última sesión')).toBeNull(); expect(use).not.toHaveBeenCalled();
     fireEvent.press(view.getByRole('checkbox', { name: 'Todas' })); expect(view.getAllByTestId(/^quick-history-session-/)).toHaveLength(6);
     const row = within(view.getByTestId(`quick-history-session-${sessions[0].sessionId}`));
-    expect(row.getAllByText('17,5 kg × 10')).toHaveLength(2); expect(row.getByText('RIR objetivo 2')).toBeTruthy();
+    expect(row.getAllByText('17,5 kg × 10')).toHaveLength(2); expect(row.getByText('RIR obj. 2')).toBeTruthy(); expect(row.getByText('RIR obj. 1')).toBeTruthy(); expect(row.getByText(' · PULL')).toBeTruthy();
     expect(row.getByText('Pediste más peso para la próxima')).toBeTruthy(); fireEvent.press(row.getByRole('button', { name: 'Usar' })); expect(use).toHaveBeenCalledWith(sessions[0]);
     expect(view.queryByText('Ver historial completo')).toBeNull();
   });
@@ -59,7 +59,38 @@ describe('session quick history', () => {
   it('preserves unknown actuals and zero without substituting targets', () => {
     const session = historical(0); session.sets[0] = { ...session.sets[0], actualWeightKg: null, actualReps: null, targetRir: null }; session.sets[1] = { ...session.sets[1], actualWeightKg: 0, actualReps: 0 };
     const view = render(wrapper(<SessionQuickHistory exercise={testExercise()} history={{ status: 'ok', data: { [EXERCISE_ID]: [session] } }} onClose={jest.fn()} onRefresh={jest.fn()} onUse={jest.fn()} />));
-    expect(view.getByText('Sin carga ni reps registradas')).toBeTruthy(); expect(view.getByText('0 kg × 0')).toBeTruthy(); expect(view.getByText('RIR objetivo —')).toBeTruthy(); expect(view.queryByText('40 kg × 8')).toBeNull();
+    expect(view.getByText('Sin carga ni reps registradas')).toBeTruthy(); expect(view.getByText('0 kg × 0')).toBeTruthy(); expect(view.queryByText(/RIR obj\. —/)).toBeNull(); expect(view.getByText('RIR obj. 1')).toBeTruthy(); expect(view.queryByText('40 kg × 8')).toBeNull();
+  });
+  it('groups identical sets, states the shared target RIR once, keeps notes and numbering gaps (#513)', () => {
+    const session = historical(0), set = { ...session.sets[0], actualWeightKg: 80, actualReps: 8, targetRir: 2 };
+    session.sets = [set, { ...set, setNumber: 2 }, { ...set, setNumber: 3, notes: 'Pausa de 2 s abajo' }, { ...set, setNumber: 4, isCompleted: false }, { ...set, setNumber: 5 }, { ...set, setNumber: 6, actualReps: 6 }];
+    const empty = historical(1); empty.sets = empty.sets.map(item => ({ ...item, isCompleted: false }));
+    const view = render(wrapper(<SessionQuickHistory exercise={testExercise()} routineId="push" routineName="PUSH" history={{ status: 'ok', data: { [EXERCISE_ID]: [session, empty] } }} onClose={jest.fn()} onRefresh={jest.fn()} onUse={jest.fn()} />));
+    const card = within(view.getByTestId(`quick-history-session-${session.sessionId}`));
+    expect(card.getByText('5 series · RIR obj. 2')).toBeTruthy(); expect(card.queryByText(/^RIR obj\. 2$/)).toBeNull();
+    expect(card.getByLabelText('Series 1 a 2: 80 kg × 8')).toBeTruthy();
+    expect(card.getByLabelText('Serie 3: 80 kg × 8. Nota: Pausa de 2 s abajo')).toBeTruthy(); expect(card.getByText('Pausa de 2 s abajo')).toBeTruthy();
+    expect(card.getByLabelText('Serie 5: 80 kg × 8')).toBeTruthy(); expect(card.getByLabelText('Serie 6: 80 kg × 6')).toBeTruthy(); expect(card.queryByTestId('quick-history-row-4')).toBeNull();
+    expect(card.queryByText(' · PUSH')).toBeNull(); // the filter already names the routine
+    expect(within(view.getByTestId(`quick-history-session-${empty.sessionId}`)).getByText('Sin series completadas')).toBeTruthy();
+    fireEvent.press(view.getByRole('checkbox', { name: 'Todas' })); expect(card.getByText(' · PUSH')).toBeTruthy();
+  });
+  it('folds sessions with more than six rows to five, expands visually and still uses the whole session', () => {
+    const session = historical(0), set = { ...session.sets[0], actualWeightKg: 80, targetRir: 2 }, use = jest.fn();
+    session.sets = Array.from({ length: 12 }, (_, i) => ({ ...set, setNumber: i + 1, actualReps: 8 - (i % 3), targetRir: i % 2 ? 1 : null }));
+    const view = render(wrapper(<SessionQuickHistory exercise={testExercise()} history={{ status: 'ok', data: { [EXERCISE_ID]: [session] } }} onClose={jest.fn()} onRefresh={jest.fn()} onUse={use} />));
+    expect(view.getByText('12 series')).toBeTruthy(); expect(view.getByLabelText('Serie 2: 80 kg × 7, RIR objetivo 1')).toBeTruthy(); expect(view.getByLabelText('Serie 1: 80 kg × 8')).toBeTruthy();
+    expect(view.getByTestId('quick-history-row-5')).toBeTruthy(); expect(view.queryByTestId('quick-history-row-6')).toBeNull();
+    const more = view.getByRole('button', { name: 'Ver 7 series más' });
+    expect(StyleSheet.flatten(more.props.style).minHeight).toBeGreaterThanOrEqual(brandTokens.layout.minTouch);
+    fireEvent.press(more); expect(view.getByTestId('quick-history-row-12')).toBeTruthy(); expect(view.queryByRole('button', { name: /series más/ })).toBeNull();
+    fireEvent.press(view.getByRole('button', { name: 'Usar' })); expect(use).toHaveBeenCalledWith(session); expect(use.mock.calls[0][0]).toHaveProperty('sets.length', 12);
+  });
+  it('keeps six or fewer rows unfolded', () => {
+    const session = historical(0), set = { ...session.sets[0], actualWeightKg: 80, actualReps: 8 };
+    session.sets = Array.from({ length: 6 }, (_, i) => ({ ...set, setNumber: i + 1, actualReps: 8 - i }));
+    const view = render(wrapper(<SessionQuickHistory exercise={testExercise()} history={{ status: 'ok', data: { [EXERCISE_ID]: [session] } }} onClose={jest.fn()} onRefresh={jest.fn()} onUse={jest.fn()} />));
+    expect(view.getByTestId('quick-history-row-6')).toBeTruthy(); expect(view.queryByRole('button', { name: /series más/ })).toBeNull();
   });
   it('distinguishes unavailable, true empty and an empty routine filter with access to Todas', () => {
     const refresh = jest.fn(), close = jest.fn();

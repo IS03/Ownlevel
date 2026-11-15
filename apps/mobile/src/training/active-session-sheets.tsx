@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { fetchMobileTrainingExercises, useApiResource } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import type { QuickSessionHistoryDto, SessionDetailDto, SessionExerciseDto } from '@/api/active-session';
 import type { MobileTrainingExercise, MobileTrainingMuscleGroup } from '@/api/exercises';
 import { AppText, Button, Chip, EmptyState, InlineUnavailable, SkeletonBlock, Surface, spacing, brandTokens, useOwnlevelTheme } from '@/design-system';
 import { pickerExercises } from './routine-editor-model';
-import { compactActual, historyLoadLabel, quickHistoryDate, quickSessions } from './active-session-model';
+import { compactActual, historyLoadLabel, quickHistoryDate, quickHistoryFold, quickHistoryRows, quickHistoryTargetRir, quickSessions, type QuickHistoryRow } from './active-session-model';
 import { RoutineExercisePickerBody } from './routine-exercise-picker-body';
 import { RoutineEditorSheet } from './routine-editor-sheet';
 import { RoutineSheetButton } from './routine-sheet-button';
@@ -70,6 +70,8 @@ export function SessionQuickHistory({ exercise, history, routineId = null, routi
   // The close button lowers the native sheet with its content; the screen unmounts it only once it is down (no white flash).
   const [open, setOpen] = useState(true);
   const close = () => setOpen(false);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const large = useWindowDimensions().fontScale > 1.3;
   return <RoutineEditorSheet open={open} pending={false} onClose={close} onDismissed={onClose}><View style={styles.root}>
     <View style={styles.header}><View style={{ flex: 1 }}><AppText accessibilityRole="header" variant="title2">Historial</AppText><AppText muted variant="footnote">{exercise.nameSnapshot}</AppText></View><RoutineSheetButton label="Cerrar Historial" icon="close" onPress={close} /></View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips} contentContainerStyle={styles.chipContent}>
@@ -78,17 +80,55 @@ export function SessionQuickHistory({ exercise, history, routineId = null, routi
     </ScrollView>
     <ScrollView contentContainerStyle={styles.historyContent}>
       {history.status === 'unavailable' ? <InlineUnavailable message="No pudimos consultar las últimas sesiones. Podés seguir entrenando." actionLabel="Reintentar" onAction={onRefresh} /> :
-        visible.length === 0 ? <><EmptyState title={filter ? `Todavía no lo hiciste en ${routines.get(filter)}` : 'Todavía sin registros'} description={filter ? 'Estas son las últimas seis sesiones disponibles.' : 'No hay sesiones finalizadas con este ejercicio.'} />{filter ? <Button label="Ver todas" onPress={() => setFilter(null)} variant="quiet" /> : null}</> : visible.map(session => <Surface key={session.sessionId} testID={`quick-history-session-${session.sessionId}`}>
-          <View style={styles.row}><AppText numeric variant="headline" style={{ flex: 1 }}>{quickHistoryDate(session.logDate)} · {session.routineName}</AppText>
-            <UseAction date={quickHistoryDate(session.logDate)} disabled={!canUse || !session.sets.some(set => set.isCompleted)} onPress={() => onUse(session)} /></View>
-          {decisionLabel[session.decision] ? <AppText muted variant="footnote">{decisionLabel[session.decision]}</AppText> : null}
-          {session.sets.filter(set => set.isCompleted).map(set => <View key={set.setNumber} style={styles.row}>
-            <AppText muted numeric variant="footnote">{set.setNumber}</AppText><AppText numeric style={{ flex: 1 }} variant="body">{historyLoadLabel(set)}</AppText>
-            <AppText numeric muted variant="footnote">RIR objetivo {compactActual(set.targetRir)}</AppText>
-          </View>)}
-        </Surface>)}
+        visible.length === 0 ? <><EmptyState title={filter ? `Todavía no lo hiciste en ${routines.get(filter)}` : 'Todavía sin registros'} description={filter ? 'Estas son las últimas seis sesiones disponibles.' : 'No hay sesiones finalizadas con este ejercicio.'} />{filter ? <Button label="Ver todas" onPress={() => setFilter(null)} variant="quiet" /> : null}</> : visible.map(session =>
+          <QuickHistoryCard key={session.sessionId} session={session} showRoutine={filter === null} expanded={expanded.has(session.sessionId)} large={large} canUse={canUse}
+            onExpand={() => setExpanded(prev => new Set(prev).add(session.sessionId))} onUse={onUse} />)}
     </ScrollView>
   </View></RoutineEditorSheet>;
+}
+/**
+ * Compact card (#513): completed sets only, consecutive identical sets in one row, target RIR once when shared.
+ * Folding long sessions is visual only: «Usar» always hands over the whole session.
+ */
+function QuickHistoryCard({ session, showRoutine, expanded, large, canUse, onExpand, onUse }: {
+  session: QuickSessionHistoryDto; showRoutine: boolean; expanded: boolean; large: boolean; canUse: boolean;
+  onExpand: () => void; onUse: (session: QuickSessionHistoryDto) => void;
+}) {
+  const { colors } = useOwnlevelTheme();
+  const date = quickHistoryDate(session.logDate);
+  const rows = quickHistoryRows(session.sets), rir = quickHistoryTargetRir(session.sets);
+  const completed = rows.reduce((total, row) => total + row.count, 0);
+  const { shown, hiddenSets } = quickHistoryFold(rows, expanded);
+  const summary = completed === 0 ? 'Sin series completadas'
+    : `${completed} ${completed === 1 ? 'serie' : 'series'}${typeof rir === 'number' ? ` · RIR obj. ${compactActual(rir)}` : ''}`;
+  return <Surface testID={`quick-history-session-${session.sessionId}`} style={styles.card}>
+    <View style={styles.cardHeader}>
+      <AppText numeric variant="headline" style={styles.flex}>{date}{showRoutine ? <AppText muted variant="headline">{` · ${session.routineName}`}</AppText> : null}</AppText>
+      <UseAction date={date} disabled={!canUse || completed === 0} onPress={() => onUse(session)} />
+    </View>
+    <AppText muted numeric variant="footnote">{summary}</AppText>
+    {decisionLabel[session.decision] ? <AppText muted variant="footnote">{decisionLabel[session.decision]}</AppText> : null}
+    {shown.length ? <View style={styles.sets}>{shown.map(row => <QuickHistorySetRow key={row.from} row={row} perRowRir={rir === 'mixed'} large={large} />)}</View> : null}
+    {hiddenSets > 0 ? <Pressable accessibilityRole="button" accessibilityLabel={`Ver ${hiddenSets} series más`} onPress={onExpand} testID="quick-history-more"
+      style={({ pressed }) => [styles.more, { opacity: pressed ? 0.6 : 1 }]}>
+      <AppText numeric variant="subheadline" style={{ color: colors.primary }}>Ver {hiddenSets} series más</AppText>
+    </Pressable> : null}
+  </Surface>;
+}
+function QuickHistorySetRow({ row, perRowRir, large }: { row: QuickHistoryRow; perRowRir: boolean; large: boolean }) {
+  const load = historyLoadLabel(row);
+  const rir = perRowRir && row.targetRir !== null ? compactActual(row.targetRir) : null;
+  const spoken = `${row.count === 1 ? `Serie ${row.from}` : `Series ${row.from} a ${row.to}`}: ${load}${rir ? `, RIR objetivo ${rir}` : ''}${row.note ? `. Nota: ${row.note}` : ''}`;
+  return <View accessible accessibilityLabel={spoken} testID={`quick-history-row-${row.from}`}>
+    <View style={styles.setRow}>
+      <AppText muted numeric variant="footnote" style={styles.setNumber}>{row.count === 1 ? row.from : `${row.from}–${row.to}`}</AppText>
+      <View style={[styles.setBody, large && styles.setBodyStacked]}>
+        <AppText numeric variant="body" style={large ? null : styles.flex}>{load}</AppText>
+        {rir ? <AppText muted numeric variant="footnote">RIR obj. {rir}</AppText> : null}
+      </View>
+    </View>
+    {row.note ? <AppText muted variant="footnote" style={styles.setNote}>{row.note}</AppText> : null}
+  </View>;
 }
 /**
  * «Usar» as a text action, like the other inline actions: a 50 pt button made every card header that tall and left empty
@@ -102,4 +142,14 @@ function UseAction({ date, disabled, onPress }: { date: string; disabled: boolea
     <AppText variant="headline" style={{ color: colors.primary }}>Usar</AppText>
   </Pressable>;
 }
-const styles = StyleSheet.create({ root: { flex: 1 }, header: { padding: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: spacing.md }, chips: { flexGrow: 0 }, chipContent: { paddingHorizontal: spacing.lg, gap: spacing.sm, paddingBottom: spacing.md }, historyContent: { padding: spacing.lg, gap: spacing.md }, row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm } });
+const styles = StyleSheet.create({ root: { flex: 1 }, header: { padding: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: spacing.md }, chips: { flexGrow: 0 }, chipContent: { paddingHorizontal: spacing.lg, gap: spacing.sm, paddingBottom: spacing.md }, historyContent: { padding: spacing.lg, gap: spacing.md }, flex: { flex: 1 },
+  // Local override of Surface (not global): the 44 pt «Usar» row already gives the top air, so less padding and no inner gap.
+  card: { paddingTop: spacing.xs, paddingBottom: spacing.md, paddingHorizontal: spacing.lg, gap: spacing.xs },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  sets: { marginTop: spacing.xs, gap: spacing.xs },
+  setRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
+  setNumber: { minWidth: 40 },
+  setBody: { flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
+  setBodyStacked: { flexDirection: 'column', alignItems: 'flex-start', gap: 0 },
+  setNote: { marginLeft: 40 + spacing.sm },
+  more: { minHeight: brandTokens.layout.minTouch, justifyContent: 'center', alignSelf: 'flex-start' } });
