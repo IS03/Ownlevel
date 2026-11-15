@@ -155,7 +155,7 @@ describe('#367 resultados sin comparables (#410)', () => {
     const view = await open(input, session(11), dateAt(1));
     const strict = within(view.getByTestId('insights-session-lane-strict')), partialLane = within(view.getByTestId('insights-session-lane-partial'));
     expect(strict.getByLabelText('0 de 2 ejercicios con resultado claro frente a su última vez')).toBeTruthy();
-    expect(strict.getByText(/^1 mezclado: subió por un lado y bajó por otro/)).toBeTruthy(); expect(strict.getByText(/^1 sin comparar\./)).toBeTruthy();
+    expect(strict.getByText('1 sin resultado claro. Cada fila dice por qué.')).toBeTruthy(); expect(strict.getByText(/^1 sin comparar\./)).toBeTruthy();
     expect(strict.getByRole('button', { name: /^Press banca, mezclado, subió por un lado y bajó por otro/ })).toBeTruthy();
     // The unknown configuration is never a strict comparison: there it is "not compared", and its reading lives in the partial lane.
     expect(strict.getByRole('button', { name: /^Remo, sin comparar, todavía no sabemos si se hizo igual/ })).toBeTruthy();
@@ -174,7 +174,7 @@ describe('#367 resultados sin comparables (#410)', () => {
     const focus = within(view.getByTestId('insights-session'));
     expect(focus.getByText('Todavía sin comparaciones')).toBeTruthy();
     expect(focus.getByLabelText('0 de 2 ejercicios con resultado claro frente a su última vez')).toBeTruthy();
-    expect(focus.getByText(/^1 mezclado: subió por un lado y bajó por otro/)).toBeTruthy(); expect(focus.getByText(/^1 sin comparar\./)).toBeTruthy();
+    expect(focus.getByText('1 sin resultado claro. Cada fila dice por qué.')).toBeTruthy(); expect(focus.getByText(/^1 sin comparar\./)).toBeTruthy();
     expect(focus.getByRole('button', { name: /^Remo, sin comparar, todavía sin una sesión anterior para comparar/ })).toBeTruthy();
     expect(focus.queryByTestId('insights-session-lane-partial')).toBeNull();
   });

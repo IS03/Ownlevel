@@ -54,7 +54,8 @@ export const heroCaption = (lane: Lane) => lane === 'strict' ? 'ejercicios con r
 /** The exercises outside the clear count, each kind in its own sentence. Empty when there are none. */
 export function outsideText(counts: Pick<Counts, 'ambiguous' | 'insufficient'>): string[] {
   const lines: string[] = [];
-  if (counts.ambiguous) lines.push(`${counts.ambiguous} ${counts.ambiguous === 1 ? 'mezclado: subió por un lado y bajó por otro' : 'mezclados: subieron por un lado y bajaron por otro'}. No cuenta${counts.ambiguous === 1 ? '' : 'n'} como resultado claro.`);
+  // Ambiguous is more than opposite signals (also no common load or reps): the summary does not say why; each row does.
+  if (counts.ambiguous) lines.push(`${counts.ambiguous} sin resultado claro. Cada fila dice por qué.`);
   if (counts.insufficient) lines.push(`${counts.insufficient} sin comparar. Cada fila dice por qué.`);
   return lines;
 }
@@ -348,13 +349,14 @@ export const preStartRows = (session: Pick<Session, 'context'>) => sessionRows(s
 const UNDETERMINED = new Set(['untimed_meal_in_scope', 'unverified_meal_time_in_scope']);
 /**
  * #518 · Said once, next to the rows it affects: a meal without a time (or with one we cannot confirm) may fall inside the
- * window, so the window has no total. Never «at least», never a zero.
+ * window, so the window has no total. Never «at least», never a zero. Only from the three 3 h nutrients: the 12 h search for
+ * the last meal (`lastExplicitMeal`) is another window, and its caveat stays on its own row.
  */
 export function preStartNote(session: Pick<Session, 'context'>) {
   const { carbsPre3h, preStart } = session.context;
   const states = [carbsPre3h.state, preStart?.proteinG.state, preStart?.calories.state];
-  if (states.includes('untimed_meal_in_scope') || preStart?.lastExplicitMeal.untimedInScope) return 'Hay comidas sin hora ese día. Pueden haber sido dentro de las 3 h, así que esa ventana queda indeterminada.';
-  if (states.some(state => state !== undefined && UNDETERMINED.has(state)) || preStart?.lastExplicitMeal.unverifiedInScope) return 'Hay comidas con una hora que no sabemos si es la real, así que esa ventana queda indeterminada.';
+  if (states.includes('untimed_meal_in_scope')) return 'Hay comidas sin hora ese día. Pueden haber sido dentro de las 3 h, así que esa ventana queda indeterminada.';
+  if (states.some(state => state !== undefined && UNDETERMINED.has(state))) return 'Hay comidas con una hora que no sabemos si es la real, así que esa ventana queda indeterminada.';
   return null;
 }
 /** "2 h 30 min", "45 min": minutes rounded, never a decimal of hours. */

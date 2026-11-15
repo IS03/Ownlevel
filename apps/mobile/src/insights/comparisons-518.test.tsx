@@ -12,7 +12,7 @@ import type { InsightsSource } from '../../../../src/lib/progress/insights-engin
 import { InsightsScreen } from './insights-screen';
 import { EvidenceScreen } from './evidence-screen';
 import { comparisonsFromTrainingHref, insightsReturnHref, insightsSessionHref } from './navigation';
-import { contextRows, preStartNote, preStartRows } from './insights-model';
+import { contextRows, outsideText, preStartNote, preStartRows } from './insights-model';
 
 /**
  * #518 · Comparaciones: the same screen from Entrenar, Progreso → Entrenamiento and a finished session, down to a reference's
@@ -216,6 +216,24 @@ describe('#518 · casos que cambian la lectura', () => {
   });
 });
 
+describe('#518 · sin resultado claro', () => {
+  it('the summary never names a cause for ambiguous results; each row says its own (opposite signals only when they are)', async () => {
+    expect(outsideText({ ambiguous: 2, insufficient: 0 })).toEqual(['2 sin resultado claro. Cada fila dice por qué.']);
+    // Pullover: no load or reps in common with its reference (ambiguous, not opposite signals).
+    const source = sourceOf([
+      { id: EARLIER, date: D0, start: '21:00', end: '22:00', name: 'Tirón', exercises: [{ id: CURL, name: 'Pullover en polea', sets: [[35, 12], [35, 12]] }] },
+      { id: PULL, date: D1, start: '21:00', end: '22:00', name: 'Tirón', exercises: [{ id: CURL, name: 'Pullover en polea', sets: [[40, 8]] }] },
+    ]);
+    mockParams = insightsSessionHref(PULL, D1)!.params;
+    mockRead.mockImplementation(serve(source));
+    const view = await open(<InsightsScreen />);
+    const focus = within(view.getByTestId('insights-session'));
+    expect(focus.getByText('1 sin resultado claro. Cada fila dice por qué.')).toBeTruthy();
+    expect(focus.getByRole('button', { name: /^Pullover en polea, mezclado, sin una carga o repeticiones en común/ })).toBeTruthy();
+    expect(focus.queryByText(/subió por un lado y bajó por otro/i)).toBeNull();
+  });
+});
+
 describe('#518 · volver con caché vigente y vencida', () => {
   it('Comparaciones re-reads on every return (it revalidates the whole read); the evidence reuses a read younger than 30 s', async () => {
     mockRead.mockImplementation(serve(week()));
@@ -254,6 +272,20 @@ describe('#518 · cero, ausente e indeterminado', () => {
     expect(preStartNote(untimed)).toBe('Hay comidas sin hora ese día. Pueden haber sido dentro de las 3 h, así que esa ventana queda indeterminada.');
     expect(preStartNote(at({ value: 0, state: 'recorded' }))).toBeNull();
     expect(preStartNote(at({ value: null, state: 'unverified_meal_time_in_scope' }))).toMatch(/no sabemos si es la real/);
+  });
+  it('the 3 h note comes only from the three 3 h nutrients; the 12 h caveat stays on the last-meal row', () => {
+    // Confirmed 3 h values, and an untimed meal found only by the 12 h search for the last meal.
+    const session = at({ value: 0, state: 'recorded' }, { proteinG: { value: 20, state: 'recorded' }, calories: { value: 250, state: 'recorded' },
+      lastExplicitMeal: { hours: 1.5, state: 'recorded', untimedInScope: true, unverifiedInScope: false } });
+    expect(preStartRows(session).map(row => row.value)).toEqual(['0 g', '20 g', '250 kcal', 'Hace 1 h 30 min']);
+    expect(preStartNote(session)).toBeNull();
+    expect(preStartRows(session).find(row => row.key === 'last-meal')?.detail).toBe('Hay comidas sin hora que podrían ser posteriores');
+    const unverified = at({ value: 0, state: 'recorded' }, { proteinG: { value: 20, state: 'recorded' }, calories: { value: 250, state: 'recorded' },
+      lastExplicitMeal: { hours: 1.5, state: 'recorded', untimedInScope: false, unverifiedInScope: true } });
+    expect(preStartNote(unverified)).toBeNull();
+    // One of the three undetermined: then, and only then, the window note.
+    expect(preStartNote(at({ value: 0, state: 'recorded' }, { proteinG: { value: null, state: 'untimed_meal_in_scope' }, calories: { value: 250, state: 'recorded' },
+      lastExplicitMeal: { hours: null, state: 'no_explicit_meal_in_12h', untimedInScope: true, unverifiedInScope: false } }))).toMatch(/esa ventana queda indeterminada/);
   });
   it('writes sleep in hours and minutes only when the metric declares a duration in minutes', () => {
     const day = (value: number) => ({ context: { metrics: [{ metricId: 'm', value }], bodyWeight: null, nutrition: null } }) as unknown as DayFact;
