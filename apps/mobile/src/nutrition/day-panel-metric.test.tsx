@@ -18,7 +18,7 @@ const steps = (value: number | null, target: number | null = 8000): MobileNutrit
   return data;
 };
 const H = { includeHiddenElements: true };
-const panel = (data: MobileNutritionDayResponse) => <OwnlevelThemeProvider initialMode="dark"><NutritionDayPanel data={data} onDetail={() => undefined} /></OwnlevelThemeProvider>;
+const panel = (data: MobileNutritionDayResponse, onMetric?: () => void) => <OwnlevelThemeProvider initialMode="dark"><NutritionDayPanel data={data} onDetail={() => undefined} onMetric={onMetric} /></OwnlevelThemeProvider>;
 beforeEach(() => { jest.useFakeTimers(); mockReduced = false; });
 afterEach(() => { jest.useRealTimers(); });
 
@@ -66,4 +66,48 @@ describe('#510 Pasos in «Tu día»', () => {
     const noGoal = render(panel(steps(5000, null)));
     expect(noGoal.queryByTestId('nutrition-metric-ring-steps-1-base', H)).toBeNull(); expect(noGoal.queryByText(/^\//)).toBeNull();
   });
+  describe('a confirmed value back to «Sin dato» (undone first reading)', () => {
+    const label = /^Pasos: Sin dato \/ 8\.000 pasos\./, edit = () => undefined;
+    it('the text and VoiceOver say «Sin dato» at the confirmation while the ring drains to empty', () => {
+      const view = render(panel(steps(12900), edit));
+      expect(view.getByTestId('nutrition-metric-ring-steps-1-excess', H)).toBeTruthy();
+      expect(view.getByLabelText(/^Pasos: 12\.900 pasos \/ 8\.000 pasos\./)).toBeTruthy();
+      view.rerender(panel(steps(null), edit));
+      // Already «Sin dato» in the text and the spoken label; the ring still holds the previous drawing for its first frame.
+      expect(view.getByText('—')).toBeTruthy(); expect(view.queryByText('12.900 pasos')).toBeNull();
+      expect(view.getByLabelText(label)).toBeTruthy();
+      expect(view.getByTestId('nutrition-metric-ring-steps-1-base', H)).toBeTruthy();
+      act(() => { jest.advanceTimersByTime(250); });
+      expect(view.getByTestId('nutrition-metric-ring-steps-1-base', H)).toBeTruthy(); // draining, not gone at once
+      expect(view.getByLabelText(label)).toBeTruthy();
+      act(() => { jest.advanceTimersByTime(2000); });
+      expect(view.queryByTestId('nutrition-metric-ring-steps-1-base', H)).toBeNull();
+      expect(view.queryByTestId('nutrition-metric-ring-steps-1-excess', H)).toBeNull();
+      // It ends as «no reading» (the solid unknown track), not as a confirmed zero.
+      expect(view.getByTestId('nutrition-metric-ring-steps-1-unknown', H)).toBeTruthy();
+      expect(view.queryByText('0 pasos')).toBeNull();
+    });
+    it('Reduce Motion: the ring is empty at once, with the same text and label', () => {
+      mockReduced = true;
+      const view = render(panel(steps(12900), edit));
+      view.rerender(panel(steps(null), edit));
+      expect(view.queryByTestId('nutrition-metric-ring-steps-1-base', H)).toBeNull();
+      expect(view.getByTestId('nutrition-metric-ring-steps-1-unknown', H)).toBeTruthy();
+      expect(view.getByText('—')).toBeTruthy(); expect(view.getByLabelText(label)).toBeTruthy();
+    });
+    it('without the edit action the value still reads «Sin dato» to VoiceOver, not the dash', () => {
+      const view = render(panel(steps(12900)));
+      view.rerender(panel(steps(null)));
+      expect(view.getByText('—').props.accessibilityLabel).toBe('Sin dato');
+    });
+    it('the cell keeps its geometry through the change', () => {
+      const view = render(panel(steps(12900)));
+      const column = () => view.getByText('/ 8.000 pasos').parent!.children.length;
+      const before = column();
+      view.rerender(panel(steps(null)));
+      act(() => { jest.advanceTimersByTime(2000); });
+      expect(column()).toBe(before);
+    });
+  });
 });
+
