@@ -6,14 +6,16 @@ import { haptics } from '@/platform/haptics';
 import type { QuickOption } from '@/api/nutrition-quick';
 import type { QuickController, QuickState } from './quick-controller';
 import { visibleQuickPins, type QuickPinsController, type QuickPinsState } from './quick-pins-controller';
-import { librarySections, pinnedRows, pinsFull, searchLibrary, type PinnedRow } from './quick-library-model';
+import { QuickPinsEditor, type QuickPinsDraft } from './quick-pins-editor';
+import { INITIALS, librarySections, pinnedRows, pinsFull, searchLibrary, type PinnedRow } from './quick-library-model';
 import { MealSearch, mealShown as shown, mealSheetStyles as shared } from './meal-sheet';
 
 /**
- * #479 C · Rápido. One SectionList owns the vertical scroll (MealSheet `list`), so 10, 50 or 200 saved meals render as a
- * window, not all at once. Searching, switching between the pinned entry and «Todas las comidas», and jumping to a letter
- * never read anything: they reorder the options Rápido already holds. Every pin change is the person's explicit decision
- * (manage mode, long press menu or VoiceOver actions), and nothing is offered for pinning while pins are not confirmed.
+ * #479 C / #516 · Rápido. One SectionList owns the vertical scroll (MealSheet `list`), so 10, 50 or 200 saved meals render as a
+ * window, not all at once: «Fijadas» on top, «Para vos», then «Todas las comidas» A–Z, in one view. Searching and jumping to
+ * a letter never read anything. Pins change only in «Administrar fijadas» (QuickPinsEditor), a local draft saved once with an
+ * explicit «Guardar»: the long press menu and the VoiceOver actions open it with the change prepared, never write by
+ * themselves, and nothing is offered for pinning while pins are not confirmed. «+» only adds to the day.
  */
 export type QuickPins = { controller: QuickPinsController; state: QuickPinsState } | null;
 type Item = { type: 'meal'; key: string; option: QuickOption; pinned: number } | { type: 'gone'; key: string; row: Extract<PinnedRow, { kind: 'unavailable' }> };
@@ -27,14 +29,14 @@ const SPINNER_SIZE = 20;
 const QuickRow = memo(function QuickRow({ option, added, pending, locked, onReview, onAdd, pin }: {
   option: QuickOption; added: boolean; pending: boolean; locked: boolean; onReview: (option: QuickOption) => void; onAdd: (option: QuickOption) => void;
   /** Present when pins can be changed now: the explicit actions on this meal. */
-  pin: null | { pinned: boolean; index: number; count: number; full: boolean; manage: boolean; onToggle: () => void; onMove: (to: number) => void; menu: () => void };
+  pin: null | { pinned: boolean; full: boolean; onToggle: () => void; menu: () => void };
 }) {
   const { colors } = useOwnlevelTheme();
-  const actions = pin ? [...(pin.pinned ? [{ name: 'unpin', label: 'Desfijar' }] : pin.full ? [] : [{ name: 'pin', label: 'Fijar' }]),
-    ...(pin.pinned && pin.index > 0 ? [{ name: 'up', label: 'Subir' }] : []), ...(pin.pinned && pin.index < pin.count - 1 ? [{ name: 'down', label: 'Bajar' }] : [])] : [];
+  // Both open «Administrar fijadas» with the change prepared: nothing is written until «Guardar».
+  const actions = pin ? pin.pinned ? [{ name: 'unpin', label: 'Desfijar' }] : pin.full ? [] : [{ name: 'pin', label: 'Fijar' }] : [];
   const onAction = (event: AccessibilityActionEvent) => {
     const name = event.nativeEvent.actionName;
-    if (name === 'pin' || name === 'unpin') pin?.onToggle(); else if (name === 'up') pin?.onMove(pin.index - 1); else if (name === 'down') pin?.onMove(pin.index + 1);
+    if (name === 'pin' || name === 'unpin') pin?.onToggle();
   };
   return <View style={[shared.row, { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
     <View style={shared.text}><Pressable accessibilityRole="button" accessibilityLabel={`Revisar ${option.name}`} accessibilityActions={actions} onAccessibilityAction={onAction}
@@ -44,27 +46,13 @@ const QuickRow = memo(function QuickRow({ option, added, pending, locked, onRevi
       {/* An added option keeps its macros; the check says it is in the day, and undoing happens from the day. */}
       <AppText muted numeric variant="footnote">{`P ${shown(option.proteinG)} · C ${shown(option.carbsG)} · G ${shown(option.fatG)}${option.items.length ? ` · ${option.items.length} ingredientes` : ''}`}</AppText>
     </Pressable></View>
-    {pin?.manage && pin.pinned && pin.count > 1 ? <>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Subir ${option.name}`} disabled={pin.index === 0} onPress={() => pin.onMove(pin.index - 1)} style={styles.control} testID={`quick-pin-up-${option.source.id}`}>
-        <View style={styles.flip}><AppIcon name="chevronDown" size={20} color={pin.index === 0 ? colors.textMuted : colors.primary} /></View>
-      </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Bajar ${option.name}`} disabled={pin.index === pin.count - 1} onPress={() => pin.onMove(pin.index + 1)} style={styles.control} testID={`quick-pin-down-${option.source.id}`}>
-        <AppIcon name="chevronDown" size={20} color={pin.index === pin.count - 1 ? colors.textMuted : colors.primary} />
-      </Pressable>
-    </> : <View style={{ alignItems: 'flex-end', gap: 2 }}><AppText muted numeric variant="subheadline">{shown(option.calories)} kcal</AppText>{option.useCount !== null ? <AppText muted variant="caption">{option.useCount} veces</AppText> : null}</View>}
-    {pin?.manage ? <Pressable accessibilityRole="button" accessibilityLabel={pin.pinned ? `Desfijar ${option.name}` : `Fijar ${option.name}`}
-      accessibilityState={{ selected: pin.pinned, disabled: !pin.pinned && pin.full }} accessibilityHint={!pin.pinned && pin.full ? 'Ya tenés 6 fijadas.' : undefined}
-      disabled={!pin.pinned && pin.full} onPress={pin.onToggle} style={styles.add} testID={`quick-pin-toggle-${option.source.id}`}>
-      <View style={[styles.addDisc, { backgroundColor: pin.pinned ? colors.primary : colors.brandSubtle, opacity: !pin.pinned && pin.full ? 0.4 : 1 }]}>
-        <AppIcon name="pin" size={20} color={pin.pinned ? colors.onPrimary : colors.primary} />
-      </View>
-    </Pressable>
-      /* The touch target stays 44 × 44 pt; only the disc drawn inside it is smaller. */
-      : <Pressable accessibilityRole="button" accessibilityLabel={added ? `${option.name} agregado` : `Agregar ${option.name}`} accessibilityState={{ disabled: locked || added, busy: pending }} disabled={locked || added} onPress={() => onAdd(option)} style={styles.add} testID={`quick-add-${option.source.kind}:${option.source.id}`}>
+    <View style={{ alignItems: 'flex-end', gap: 2 }}><AppText muted numeric variant="subheadline">{shown(option.calories)} kcal</AppText>{option.useCount !== null ? <AppText muted variant="caption">{option.useCount} veces</AppText> : null}</View>
+    {/* The touch target stays 44 × 44 pt; only the disc drawn inside it is smaller. «+» only ever adds to the day. */}
+    <Pressable accessibilityRole="button" accessibilityLabel={added ? `${option.name} agregado` : `Agregar ${option.name}`} accessibilityState={{ disabled: locked || added, busy: pending }} disabled={locked || added} onPress={() => onAdd(option)} style={styles.add} testID={`quick-add-${option.source.kind}:${option.source.id}`}>
         <View style={[styles.addDisc, { backgroundColor: added ? colors.primary : colors.brandSubtle }]} testID="quick-add-disc">
           {pending ? <ActivityIndicator color={colors.primary} /> : <AppIcon name={added ? 'checkmark' : 'plus'} size={20} color={added ? colors.onPrimary : colors.primary} />}
         </View>
-      </Pressable>}
+      </Pressable>
   </View>;
 });
 
@@ -114,8 +102,9 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
   // Optional, like ScrollScreen: a sheet rendered without a provider just skips the bottom inset.
   const { colors } = useOwnlevelTheme(), bottomInset = useContext(SafeAreaInsetsContext)?.bottom ?? 0, { fontScale } = useWindowDimensions();
   const [search, setSearch] = useState('');
-  const [view, setView] = useState<'entry' | 'all'>('entry');
-  const [manage, setManage] = useState(false);
+  // #516: the draft «Administrar fijadas» edits (null: closed). Opening it never writes.
+  const [editor, setEditor] = useState<QuickPinsDraft | null>(null);
+  const [lettersOpen, setLettersOpen] = useState(false);
   const [more, setMore] = useState(false);
   const list = useRef<SectionList<Item, Section>>(null);
   // A letter jump in progress: the section, how many passes it took, whether the last one hit rows that were not measured yet.
@@ -126,15 +115,10 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
   const pinsState = pins?.state ?? null;
   // Unknown pins (unavailable without a confirmed list, still loading): the library is shown, never an empty pinned section.
   const pinnedIds = useMemo(() => (pinsState ? visibleQuickPins(pinsState)?.ids : null) ?? [], [pinsState]);
-  const writable = !!pins && pinsState!.availability === 'ok' && !!pinsState!.confirmed && (pinsState!.phase === 'idle' || pinsState!.phase === 'conflict');
-  const managing = manage && writable;
-  const hasEntry = !!saved && pinnedIds.length > 0;
-  // Once the library is what the person sees (no pins, or pins not readable), it stays: pinning the first meal from it, or
-  // pins arriving later, never switches the screen under their finger. «Fijadas» is then one tap away.
-  const pinsKnown = !pins || !!pinsState!.confirmed || pinsState!.availability === 'unavailable' || pinsState!.phase === 'blocked';
-  if (saved && pinsKnown && !hasEntry && view === 'entry') setView('all');
-  const current = hasEntry ? view : 'all';
+  const writable = !!pins && pinsState!.availability === 'ok' && !!pinsState!.confirmed && (pinsState!.phase === 'idle' || pinsState!.phase === 'conflict') && !pinsState!.intent;
   const query = search.trim();
+  // Large text: 28 letters of 44 pt in one row stop reading as an alphabet; the same letters open on request instead.
+  const compactIndex = fontScale > 1.3;
   // #303 · Only a section the server confirmed counts: with one on screen a new read is a quiet refresh, never a blank loader.
   const confirmed = !!saved || (suggestions && state.options?.suggested.status === 'ok');
   const retryable = state.optionsError || state.options?.saved.status === 'unavailable' || (suggestions && state.options?.suggested.status === 'unavailable');
@@ -142,21 +126,27 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
   const review = useCallback((option: QuickOption) => controller.choose(option), [controller]);
   const add = useCallback((option: QuickOption) => { void controller.addInline(option); }, [controller]);
   const names = useCallback((ids: readonly string[]) => ids.map(id => saved?.find(option => option.source.id === id)?.name ?? 'una comida no disponible').join(', '), [saved]);
+  /** «Administrar fijadas» over the confirmed pins it starts from, optionally with one change already prepared. */
+  const openEditor = useCallback((change?: { pin?: string; unpin?: string }) => {
+    const base = writable && pins ? pins.controller.draftBase() : null;
+    if (!base) return;
+    haptics.selection();
+    const ids = change?.unpin ? base.ids.filter(id => id !== change.unpin) : change?.pin && !base.ids.includes(change.pin) && !pinsFull(base.ids) ? [...base.ids, change.pin] : base.ids;
+    setEditor({ base, ids });
+  }, [pins, writable]);
   const pinControls = useCallback((option: QuickOption) => {
     if (!writable || !pins) return null;
-    const index = pinnedIds.indexOf(option.source.id), pinned = index >= 0, full = pinsFull(pinnedIds);
-    const toggle = () => { haptics.selection(); void (pinned ? pins.controller.unpin(option.source.id) : pins.controller.pin(option.source.id)); };
-    const move = (to: number) => { haptics.selection(); void pins.controller.move(option.source.id, to); };
+    const pinned = pinnedIds.includes(option.source.id), full = pinsFull(pinnedIds);
+    const toggle = () => openEditor(pinned ? { unpin: option.source.id } : { pin: option.source.id });
     const menu = () => {
-      const choices = [...(pinned ? [{ label: 'Desfijar', run: toggle }] : full ? [] : [{ label: 'Fijar en Rápido', run: toggle }]),
-        ...(pinned && index > 0 ? [{ label: 'Subir', run: () => move(index - 1) }] : []), ...(pinned && index < pinnedIds.length - 1 ? [{ label: 'Bajar', run: () => move(index + 1) }] : [])];
+      const choices = pinned ? [{ label: 'Desfijar…', run: toggle }] : full ? [] : [{ label: 'Fijar en Rápido…', run: toggle }];
       if (!choices.length) { Alert.alert(option.name, 'Ya tenés 6 fijadas. Desfijá una para fijar otra.'); return; }
       if (Platform.OS === 'ios') ActionSheetIOS.showActionSheetWithOptions({ title: option.name, options: [...choices.map(c => c.label), 'Cancelar'], cancelButtonIndex: choices.length },
         selected => { choices[selected]?.run(); });
       else Alert.alert(option.name, undefined, [...choices.map(c => ({ text: c.label, onPress: c.run })), { text: 'Cancelar', style: 'cancel' as const }]);
     };
-    return { pinned, index, count: pinnedIds.length, full, manage: managing, onToggle: toggle, onMove: move, menu };
-  }, [managing, pinnedIds, pins, writable]);
+    return { pinned, full, onToggle: toggle, menu };
+  }, [openEditor, pinnedIds, pins, writable]);
 
   const sections = useMemo<Section[]>(() => {
     const meal = (option: QuickOption): Item => ({ type: 'meal', key: option.source.id, option, pinned: pinnedIds.indexOf(option.source.id) });
@@ -171,12 +161,17 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
       const found = searchLibrary(saved, query);
       return [...suggestedSection(), ...(found.length ? [{ key: 'results', title: `${found.length} ${found.length === 1 ? 'resultado' : 'resultados'}`, data: found.map(meal) }] : [])];
     }
-    if (current === 'entry') return [{ key: 'pinned', title: 'Fijadas', data: pinnedRows(pinnedIds, saved, pinsState?.confirmed ?? null)
-      .map(row => row.kind === 'meal' ? meal(row.option) : { type: 'gone' as const, key: `gone:${row.id}`, row }) }];
-    return [...suggestedSection(), ...librarySections(saved).map(section => ({ key: section.key, title: section.title, data: section.data.map(meal) }))];
-  }, [current, more, pinnedIds, pinsState?.confirmed, query, saved, state.options, suggestions]);
+    // #516: one view. «Fijadas» only when there are pins (no empty card), then «Para vos», then the whole library A–Z.
+    const pinned: Section[] = pinnedIds.length ? [{ key: 'pinned', title: 'Fijadas', data: pinnedRows(pinnedIds, saved, pinsState?.confirmed ?? null)
+      .map(row => row.kind === 'meal' ? { ...meal(row.option), key: `pinned:${row.option.source.id}` } : { type: 'gone' as const, key: `gone:${row.id}`, row }) }] : [];
+    const library = librarySections(saved);
+    return [...pinned, ...suggestedSection(), ...(library.length ? [{ key: 'library', title: 'Todas las comidas', data: [] }] : []),
+      ...library.map(section => ({ key: section.key, title: section.title, data: section.data.map(meal) }))];
+  }, [more, pinnedIds, pinsState?.confirmed, query, saved, state.options, suggestions]);
 
-  const letters = !query && current === 'all' && (saved?.length ?? 0) >= LETTERS_FROM ? sections.filter(s => s.key !== 'suggested') : [];
+  // The whole Spanish alphabet, always in the same places: an initial with no meals is shown disabled, never a jump to nothing.
+  const present = useMemo(() => new Set(sections.map(section => section.key)), [sections]);
+  const indexed = !query && (saved?.length ?? 0) >= LETTERS_FROM;
   // New sections (another query, a refreshed list): a jump in progress points at rows that are not there anymore.
   useEffect(() => stopJump, [sections, stopJump]);
   /**
@@ -204,9 +199,29 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
     }
     pass();
   };
-  const toggleManage = () => { haptics.selection(); setManage(value => !value); };
-
-  const manageButton = writable ? <Button label={managing ? 'Listo' : pinnedIds.length ? 'Administrar' : 'Elegir fijadas'} variant="quiet" onPress={toggleManage} testID="quick-pins-manage" /> : null;
+  const manageButton = writable ? <Button label={pinnedIds.length ? 'Administrar' : 'Elegir fijadas'} variant="quiet" onPress={() => openEditor()} testID="quick-pins-manage" /> : null;
+  const letterButton = (letter: string) => {
+    const has = present.has(letter), label = letter === '#' ? 'números y símbolos' : letter;
+    return <Pressable key={letter} accessibilityRole="button" accessibilityLabel={has ? `Ir a la letra ${label}` : `${label}, sin comidas`} accessibilityState={{ disabled: !has }} disabled={!has}
+      onPress={() => { setLettersOpen(false); jump(letter); }} style={styles.letter} testID={`quick-letter-${letter}`}>
+      <AppText numeric variant="subheadline" style={{ color: has ? colors.primary : colors.textMuted, opacity: has ? 1 : 0.45, fontWeight: '600' }}>{letter}</AppText>
+    </Pressable>;
+  };
+  const alphabet = INITIALS.split('');
+  const index = !indexed ? null : compactIndex
+    ? <View style={styles.compact} testID="quick-letters-compact">
+      <Pressable accessibilityRole="button" accessibilityLabel="Ir a letra" accessibilityState={{ expanded: lettersOpen }} onPress={() => setLettersOpen(value => !value)} style={styles.goto} testID="quick-letters-toggle">
+        <AppText variant="subheadline" style={{ color: colors.primary, fontWeight: '600' }}>Ir a letra</AppText>
+        <View style={lettersOpen ? styles.flip : null}><AppIcon name="chevronDown" size={17} color={colors.primary} /></View>
+      </Pressable>
+      {lettersOpen ? <View style={styles.grid}>{alphabet.map(letterButton)}</View> : null}
+    </View>
+    : <View style={styles.indexRow}>
+      <AppText muted variant="caption" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">A–Z</AppText>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.letters} accessibilityLabel="Índice alfabético" testID="quick-letters">
+        {alphabet.map(letterButton)}
+      </ScrollView>
+    </View>;
   const refreshRow = state.optionsLoading && confirmed
     ? <View accessible accessibilityLabel="Actualizando opciones rápidas" accessibilityLiveRegion="polite" style={styles.inline} testID="quick-options-refreshing">
       <ActivityIndicator accessibilityElementsHidden importantForAccessibility="no-hide-descendants" color={colors.textMuted} />
@@ -225,20 +240,6 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
     {retryable
       ? <Button label="Reintentar opciones" onPress={() => void controller.loadOptions()} variant="quiet" /> : null}
     {pins ? <PinsNotice pins={pins} names={names} /> : null}
-    {hasEntry && !query ? current === 'entry'
-      ? <Pressable accessibilityRole="button" accessibilityLabel={`Todas las comidas, ${saved!.length}`} onPress={() => { haptics.selection(); setView('all'); }} style={[styles.nav, { backgroundColor: colors.surface }]} testID="quick-all-meals">
-        <AppText variant="body" style={styles.flex}>Todas las comidas</AppText><AppText muted numeric variant="subheadline">{saved!.length}</AppText><AppIcon name="chevronRight" size={17} color={colors.textMuted} />
-      </Pressable>
-      : <Pressable accessibilityRole="button" accessibilityLabel="Volver a fijadas" onPress={() => { haptics.selection(); setView('entry'); }} style={styles.back} testID="quick-back-to-pins">
-        <AppIcon name="chevronLeft" size={17} color={colors.primary} /><AppText variant="subheadline" style={{ color: colors.primary }}>Fijadas</AppText>
-      </Pressable> : null}
-    {saved && !query && current === 'all' ? <View style={styles.titleRow}><AppText accessibilityRole="header" variant="headline" style={styles.flex}>Todas las comidas</AppText>{manageButton}</View> : null}
-    {saved && query ? <View style={styles.titleRow}><View style={styles.flex} />{manageButton}</View> : null}
-    {saved && !query && current === 'entry' ? <View style={styles.titleRow}><AppText accessibilityRole="header" variant="headline" style={styles.flex}>Fijadas</AppText>{manageButton}</View> : null}
-    {letters.length > 1 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.letters} accessibilityLabel="Ir a letra" testID="quick-letters">
-      {letters.map(section => <Pressable key={section.key} accessibilityRole="button" accessibilityLabel={`Ir a la letra ${section.title === '#' ? 'números y símbolos' : section.title}`}
-        onPress={() => jump(section.key)} style={styles.letter} testID={`quick-letter-${section.key}`}><AppText numeric variant="subheadline" style={{ color: colors.primary }}>{section.title}</AppText></Pressable>)}
-    </ScrollView> : null}
   </View>;
   const empty = saved ? <AppText muted style={styles.empty}>{query ? 'No encontramos comidas con esa búsqueda.' : 'Todavía no tenés comidas guardadas.'}</AppText> : null;
   const listFooter = <View style={styles.footer}>
@@ -247,13 +248,18 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
     {footer}
   </View>;
 
-  return <SectionList<Item, Section> ref={list} sections={sections} keyExtractor={item => item.key} testID="quick-library"
+  return <><SectionList<Item, Section> ref={list} sections={sections} keyExtractor={item => item.key} testID="quick-library"
     renderItem={({ item }) => item.type === 'gone'
-      ? <GoneRow row={item.row} onRelease={writable && pins ? () => { haptics.selection(); void pins.controller.unpin(item.row.id); } : null} />
+      ? <GoneRow row={item.row} onRelease={writable && pins ? () => openEditor({ unpin: item.row.id }) : null} />
       : <QuickRow option={item.option} added={!!state.added?.[`${item.option.source.kind}:${item.option.source.id}`]} pending={state.inlineKey === `${item.option.source.kind}:${item.option.source.id}`}
         locked={locked} onReview={review} onAdd={add} pin={item.option.source.kind === 'saved' ? pinControls(item.option) : null} />}
-    renderSectionHeader={({ section }) => section.key === 'pinned' || section.key === 'results' && !query ? null
-      : <View style={[styles.section, { backgroundColor: colors.background }]}><AppText accessibilityRole="header" muted numeric variant="footnote">{section.title}</AppText></View>}
+    renderSectionHeader={({ section }) => section.key === 'pinned'
+      ? <View style={styles.titleRow}><AppText accessibilityRole="header" variant="headline" style={styles.heading}>Fijadas</AppText>{manageButton}</View>
+      : section.key === 'library'
+        ? <View style={styles.library}><View style={styles.titleRow}><AppText accessibilityRole="header" variant="headline" style={styles.heading}>Todas las comidas</AppText>
+          <AppText muted numeric variant="subheadline">{saved?.length ?? 0}</AppText>{pinnedIds.length ? null : manageButton}</View>{index}</View>
+        : section.key === 'results' && !query ? null
+          : <View style={[styles.section, { backgroundColor: colors.background }]}><AppText accessibilityRole="header" muted numeric variant="footnote">{section.title}</AppText></View>}
     ListHeaderComponent={header} ListEmptyComponent={empty} ListFooterComponent={listFooter}
     stickySectionHeadersEnabled={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
     // Section headers and footers count as items: 30 is about one screen of rows, whatever the library size.
@@ -264,15 +270,20 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
       if (jumping.current) jumping.current.failed = true;
       list.current?.getScrollResponder()?.scrollTo({ y: info.averageItemLength * info.index, animated: false });
     }}
-    contentContainerStyle={{ paddingHorizontal: brandTokens.layout.screenPadding, paddingBottom: Math.max(bottomInset, 12) + brandTokens.layout.screenPadding }} />;
+    contentContainerStyle={{ paddingHorizontal: brandTokens.layout.screenPadding, paddingBottom: Math.max(bottomInset, 12) + brandTokens.layout.screenPadding }} />
+    {editor && pins && saved ? <QuickPinsEditor controller={pins.controller} state={pins.state} saved={saved} start={editor} onClose={() => setEditor(null)} /> : null}
+  </>;
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 }, header: { gap: 12, paddingBottom: 4 }, footer: { gap: 12, paddingTop: 24 }, empty: { paddingVertical: 12 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 }, section: { paddingTop: 12, paddingBottom: 4 },
-  nav: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 50, paddingHorizontal: 16, borderRadius: brandTokens.radius.button },
-  back: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44, alignSelf: 'flex-start' },
-  letters: { gap: 4 }, letter: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  // Large text: the heading keeps at least half the row and the action wraps below it, instead of breaking the words.
+  titleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, minHeight: 44 }, heading: { flexGrow: 1, flexShrink: 1, minWidth: '50%' },
+  section: { paddingTop: 12, paddingBottom: 4 },
+  letters: { gap: 0 }, letter: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  library: { gap: 4, paddingTop: 12 }, indexRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  compact: { gap: 4 }, goto: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44, alignSelf: 'flex-start' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap' },
   notice: { gap: 8 }, actions: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 8 }, inline: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   add: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' }, addDisc: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
   control: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' }, flip: { transform: [{ rotate: '180deg' }] },

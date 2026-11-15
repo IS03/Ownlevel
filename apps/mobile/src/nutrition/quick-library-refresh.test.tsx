@@ -1,4 +1,4 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { AccessibilityInfo, ActivityIndicator, Dimensions, SectionList, StyleSheet } from 'react-native';
 import { OwnlevelThemeProvider } from '@/design-system';
@@ -16,6 +16,15 @@ import { BASE, ID, meal, meta, names, ok, snap, storage, synthetic } from './qui
 jest.mock('./day-resource', () => ({ useNutritionDayResource: () => ({ state: { status: 'loading' } }) }));
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: null }) }));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
+// The app sheet's exit animation never completes in jest: its dismiss runs «beforeDismiss» like the real one, then closes.
+jest.mock('@/design-system', () => {
+  const React = jest.requireActual<typeof import('react')>('react'), { View } = jest.requireActual<typeof import('react-native')>('react-native');
+  const Close = React.createContext<(mockAfter?: () => void) => void>(() => {});
+  return { ...jest.requireActual<object>('@/design-system'),
+    AppSheet: ({ children, onClose, beforeDismiss, locked, testID }: { children: React.ReactNode; onClose: () => void; beforeDismiss?: (mockProceed: () => void) => void; locked?: boolean; testID?: string }) =>
+      <Close.Provider value={mockAfter => { if (locked) return; if (mockAfter) { onClose(); mockAfter(); } else (beforeDismiss ?? (mockProceed => mockProceed()))(onClose); }}><View testID={testID}>{children}</View></Close.Provider>,
+    useAppSheetDismiss: () => React.useContext(Close) };
+});
 
 // #303 · Rápido: a read that starts while confirmed meals are on screen is a quiet refresh, never a blank loader.
 // Real QuickController + QuickPinsController over in-memory APIs; the options() promise is controlled by the test.
@@ -104,14 +113,11 @@ describe('#303 · first read with nothing confirmed keeps the loader', () => {
 });
 
 describe('#303 · refreshing with confirmed meals on screen', () => {
-  it('no loader: the same rows, query, view, manage mode and list stay mounted; only «Actualizando…» appears', async () => {
+  it('no loader: the same rows, query and list stay mounted; only «Actualizando…» appears', async () => {
     const h = await harness({ pins: ok(snap(1, [ID(6)])) });
-    fireEvent.press(h.view.getByTestId('quick-all-meals'));
-    fireEvent.press(h.view.getByTestId('quick-pins-manage'));
     fireEvent.changeText(h.view.getByLabelText('Buscar en tus comidas'), 'con');
     const list = h.view.UNSAFE_getByType(SectionList);
     const before = names(h.view).map(name => h.view.getByLabelText(`Revisar ${name}`));
-    const toggle = h.view.getByTestId(`quick-pin-toggle-${ID(2)}`), manage = h.view.getByTestId('quick-pins-manage');
     expect(names(h.view)).toEqual(['Avena con banana', 'Café con leche', 'Tostadas con palta']);
     const height = slotHeight(h);
 
@@ -124,8 +130,7 @@ describe('#303 · refreshing with confirmed meals on screen', () => {
     expect(names(h.view).map(name => h.view.getByLabelText(`Revisar ${name}`))).toEqual(before);
     names(h.view).forEach((name, i) => expect(h.view.getByLabelText(`Revisar ${name}`)).toBe(before[i]));
     expect(h.view.getByLabelText('Buscar en tus comidas').props.value).toBe('con');
-    expect(h.view.getByTestId(`quick-pin-toggle-${ID(2)}`)).toBe(toggle); expect(h.view.getByTestId('quick-pins-manage')).toBe(manage);
-    expect(h.view.getByText('Listo')).toBeTruthy(); expect(h.view.getByText('3 resultados')).toBeTruthy();
+    expect(h.view.getByText('3 resultados')).toBeTruthy();
     expect(slotHeight(h)).toBe(height);
 
     await h.settle(next, h.good());
@@ -134,6 +139,16 @@ describe('#303 · refreshing with confirmed meals on screen', () => {
     expect(h.view.UNSAFE_getByType(SectionList)).toBe(list);
     names(h.view).forEach((name, i) => expect(h.view.getByLabelText(`Revisar ${name}`)).toBe(before[i]));
     expect(h.view.getByLabelText('Buscar en tus comidas').props.value).toBe('con');
+  });
+  it('#516 · a draft in «Administrar fijadas» survives a refresh untouched, and nothing is written', async () => {
+    const h = await harness({ pins: ok(snap(1, [ID(6)])) });
+    fireEvent.press(h.view.getByTestId('quick-pins-manage'));
+    const sheet = () => within(h.view.getByTestId('quick-pins-editor'));
+    fireEvent.press(sheet().getByTestId(`quick-pins-choice-${ID(2)}`));
+    const next = h.refresh();
+    await h.settle(next, h.good());
+    expect(sheet().queryAllByTestId(/^quick-pins-draft-label-/).map(node => node.props.accessibilityLabel)).toEqual(['Café con leche, 1 de 2', 'Avena con banana, 2 de 2']);
+    expect(h.pinsApi.write).not.toHaveBeenCalled(); expect(h.pinsApi.read).not.toHaveBeenCalled();
   });
   it('rows stay usable while refreshing: + still registers once', async () => {
     const h = await harness({ pins: ok(snap(0, [])) });
@@ -261,8 +276,8 @@ describe('#303 · pins are independent of the refresh', () => {
     act(() => { h.pins.adopt(stale); });
     const next = h.refresh();
     expect(h.view.getByTestId('quick-pins-stale')).toBeTruthy(); expect(refreshing(h)).toBeTruthy();
-    expect(names(h.view)).toEqual(['Tostadas con palta', 'Avena con banana']); expect(h.view.queryByTestId('quick-pins-manage')).toBeNull();
-    expect(h.view.getByLabelText('Revisar Avena con banana').props.accessibilityActions).toEqual([]);
+    expect(names(h.view).slice(0, 2)).toEqual(['Tostadas con palta', 'Avena con banana']); expect(h.view.queryByTestId('quick-pins-manage')).toBeNull();
+    for (const row of h.view.getAllByLabelText('Revisar Avena con banana')) expect(row.props.accessibilityActions).toEqual([]);
     // The pins notice sits after the refresh row but is neither replaced nor hidden by it.
     await h.settle(next, h.good({ pins: stale }));
     expect(h.view.getByTestId('quick-pins-stale')).toBeTruthy(); expect(refreshing(h)).toBeNull();
@@ -287,8 +302,9 @@ describe('#303 · pins are independent of the refresh', () => {
   it('a pins conflict stays visible, with its decisions, while the options refresh', async () => {
     const h = await harness({ pins: ok(snap(1, [ID(1)])) });
     h.pinsApi.write.mockResolvedValueOnce({ status: 'conflict', code: 'QUICK_PINS_CHANGED', message: 'm', data: { error: 'QUICK_PINS_CHANGED', message: 'm', current: snap(2, [ID(3)]) }, meta: { ...meta, httpStatus: 409, outcome: 'conflict' } });
-    fireEvent.press(h.view.getByTestId('quick-pins-manage')); fireEvent.press(h.view.getByTestId('quick-all-meals'));
-    await act(async () => { fireEvent.press(h.view.getByTestId(`quick-pin-toggle-${ID(2)}`)); });
+    fireEvent.press(h.view.getByTestId('quick-pins-manage'));
+    fireEvent.press(within(h.view.getByTestId('quick-pins-editor')).getByTestId(`quick-pins-choice-${ID(2)}`));
+    await act(async () => { fireEvent.press(within(h.view.getByTestId('quick-pins-editor')).getByTestId('quick-pins-save')); });
     expect(h.view.getByTestId('quick-pins-conflict')).toBeTruthy();
     const next = h.refresh();
     expect(h.view.getByTestId('quick-pins-conflict')).toBeTruthy(); expect(refreshing(h)).toBeTruthy(); expect(h.view.getByText('Descartar')).toBeTruthy(); expect(h.view.getByText('Aplicar mi cambio')).toBeTruthy();
