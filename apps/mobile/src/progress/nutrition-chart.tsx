@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import type { NutritionReport, ReportDailyRow } from '@/api/nutrition-report';
-import { AppText, Button, ChipGroup, Heading, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, Button, ChipGroup, Heading, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
+import { haptics } from '@/platform/haptics';
+import { ProgressRow } from './progress-row';
 import { inputNutritionDate as date } from '@/nutrition/day-format';
 import { formatValue } from './progress-format';
 import { useProgressRange } from './progress-range-context';
@@ -59,7 +61,7 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate 
                 accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={label}
                 accessibilityHint="Muestra el detalle. Otro toque quita la selección."
                 onPress={() => onSelect(active ? null : { series: s.key, start: p.start, end: p.end, daysOpen: false })}
-                style={[styles.slot, { minWidth: brandTokens.layout.minTouch }, active && { borderColor: colors.primary, borderWidth: StyleSheet.hairlineWidth }]}>
+                style={[styles.slot, { minWidth: brandTokens.layout.minTouch }, active && { borderColor: colors.primary, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.inner }]}>
                 <View style={styles.bar} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
                   {p.value !== null ? <View style={{ height: p.value === 0 ? 1 : 150 * p.value / max, backgroundColor: p.value === 0 ? colors.border : s.key === 'reference' ? colors.textMuted : colors.primary, opacity: p.today || s.key === 'reference' ? 0.4 : 1 }} /> : null}
                 </View>
@@ -71,31 +73,59 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate 
       </View>
     </View>)}
     {compareOn && !reference ? <AppText muted>Comparación no disponible.</AppText> : null}
-    <AppText muted variant="caption">Champagne: período elegido; gris: comparación. Cada serie conserva sus fechas, sin emparejar posiciones. Hueco: sin valor; línea en la base: cero registrado.</AppText>
     <View style={styles.section} testID="nutrition-chart-inspection">
       <View accessible accessibilityLiveRegion="polite" accessibilityLabel={`${selected ? range(selected.start, selected.end) : prompt}, ${value}${source ? `, ${source.title}` : ''}`}>
         {selected || !canInspect ? <>
           <AppText variant="headline">{selected ? range(selected.start, selected.end) : prompt}</AppText>
           <AppText numeric>{value}</AppText>
-        </> : <AppText muted variant="footnote">Tocá una barra para ver su fecha o rango, valor y cobertura sin salir del gráfico.</AppText>}
-        {source && selected ? <AppText muted variant="caption">{source.title} · {range(source.report.range.start, source.report.range.end)}</AppText> : null}
+        </> : <AppText muted variant="footnote">Tocá una barra para ver su fecha, valor y cobertura.</AppText>}
+        {/* Which side of A/B the datum is from, only when there are two: date, value and coverage come first. */}
+        {compareOn && source && selected ? <AppText muted variant="caption">{source.title} · {range(source.report.range.start, source.report.range.end)}</AppText> : null}
       </View>
       {selection?.start && !selected ? <AppText muted>El dato seleccionado ya no está disponible en esta lectura. Elegí otra barra.</AppText> : null}
       {selected?.day ? <>
-        <AppText muted>{dayState(selected.day)}.</AppText>
+        {/* #519 · Date, value, then coverage: what is known about this datum, next to it. */}
+        <AppText muted testID="nutrition-chart-coverage">{dayState(selected.day)}.</AppText>
+        {selected.today ? <AppText variant="footnote" testID="nutrition-chart-today">Hoy está en curso: sus valores pueden cambiar y no entran en el promedio del período.</AppText> : null}
         <AppText numeric muted variant="caption">{selected.day.nutrients.calories.knownMeals} de {selected.day.mealCount} entradas con calorías conocidas · {selected.day.nutrients.calories.missingMeals} sin ese dato{selected.day.imported ? ' · incluye registro importado' : ''}.</AppText>
         <AppText numeric muted variant="caption">{selected.day.targetCalories === null ? 'Sin objetivo histórico acreditado para esta fecha.' : `Objetivo registrado de esta fecha: ${kcal(selected.day.targetCalories)}.`}</AppText>
-        {selected.today ? <AppText muted variant="caption">Hoy está en curso: sus valores pueden cambiar y no entran en el promedio del período.</AppText> : null}
-        <Button label="Abrir día y comidas originales" variant="secondary" onPress={() => onDate(selected.start)} />
+        <ProgressRow testID="nutrition-chart-open-day" label={`Ver comidas de ese día, ${range(selected.start, selected.end)}`} onPress={() => onDate(selected.start)}>
+          <AppText variant="body" style={[styles.grow, { color: colors.primary }]}>Ver comidas de ese día</AppText>
+        </ProgressRow>
       </> : selected ? <>
-        <AppText numeric muted>{selected.denominator} días usados de {rows.length} días del bloque · {selected.partialDays} con suma parcial. Datos completos entre las entradas registradas no acreditan toda la ingesta.</AppText>
+        <AppText numeric muted testID="nutrition-chart-coverage">{selected.denominator} días usados de {rows.length} días del bloque · {selected.partialDays} con suma parcial.</AppText>
         <AppText numeric muted variant="caption">{rows.filter(d => d.mealCount === 0).length} días sin entradas registradas · {rows.filter(d => d.nutrients.calories.status === 'unknown').length} con calorías desconocidas.</AppText>
-        {selected.today ? <AppText muted variant="caption">Incluye hoy en curso: este promedio de bloque puede cambiar. El promedio del período excluye hoy.</AppText> : null}
+        {selected.today ? <AppText variant="footnote" testID="nutrition-chart-today">Incluye hoy en curso: este promedio de bloque puede cambiar. El promedio del período excluye hoy.</AppText> : null}
         <Button label={selection?.daysOpen ? 'Ocultar días del bloque' : 'Ver días del bloque'} variant="secondary"
           onPress={() => { if (selection) onSelect({ ...selection, daysOpen: !selection.daysOpen }); }} />
         {selection?.daysOpen ? <NutritionReportDays rows={rows} onDate={onDate} /> : null}
       </> : null}
     </View>
+    <ChartHelp compare={compareOn} />
+  </View>;
+}
+
+/**
+ * #519 · The general explanations, out of the way but one tap from the chart. Opening it is local: nothing is read. What is
+ * true of the selected datum (partial, today, unavailable) stays next to it, never in here.
+ */
+function ChartHelp({ compare }: { compare: boolean }) {
+  const { colors } = useOwnlevelTheme();
+  const [open, setOpen] = useState(false);
+  return <View style={styles.section} testID="nutrition-chart-help">
+    <Pressable accessibilityRole="button" accessibilityLabel="Cómo leer el gráfico" accessibilityState={{ expanded: open }} testID="nutrition-chart-help-toggle"
+      onPress={() => { haptics.selection(); setOpen(value => !value); }} style={({ pressed }) => [styles.help, pressed && { opacity: 0.6 }]}>
+      <AppIcon name="info" color={colors.textMuted} size={17} />
+      <AppText muted variant="subheadline" style={styles.grow}>Cómo leer el gráfico</AppText>
+      <AppIcon name={open ? 'chevronDown' : 'chevronRight'} color={colors.textMuted} size={15} />
+    </Pressable>
+    {open ? <View style={styles.helpBody} testID="nutrition-chart-help-body">
+      <AppText muted variant="footnote">Cada barra es un día (o el promedio de un bloque en períodos largos). Tocá una para ver su fecha, valor y cobertura; otro toque quita la selección.</AppText>
+      <AppText muted variant="footnote">Hueco: ese día no tiene valor. Línea en la base: cero registrado. No son lo mismo.</AppText>
+      <AppText muted variant="footnote">Hoy aparece más tenue: está en curso y no entra en el promedio del período.</AppText>
+      {compare ? <AppText muted variant="footnote">Champagne: período elegido; gris: comparación. Cada serie conserva sus fechas, sin emparejar posiciones.</AppText> : null}
+      <AppText muted variant="footnote">Datos completos entre las entradas registradas no acreditan toda la ingesta.</AppText>
+    </View> : null}
   </View>;
 }
 const styles = StyleSheet.create({
@@ -103,4 +133,7 @@ const styles = StyleSheet.create({
   chart: { flexDirection: 'row', alignItems: 'flex-start' },
   slot: { flex: 1, gap: spacing.xs, paddingHorizontal: spacing.xs, paddingBottom: spacing.xs },
   bar: { height: 150, justifyContent: 'flex-end' },
+  grow: { flex: 1 },
+  help: { minHeight: brandTokens.layout.minTouch, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  helpBody: { gap: spacing.xs, paddingBottom: spacing.xs },
 });

@@ -6,7 +6,7 @@ import { AppText, GlassSurface, SheetHandle, brandTokens, useOwnlevelTheme, useR
 import { triggerHaptic } from '@/platform/haptics';
 import { RoutineSheetButton } from '@/training/routine-sheet-button';
 import { RangeCalendar, type CalendarMark } from './range-calendar';
-import { PROGRESS_MAX_DAYS, addDays, addMonths, compareRange, currentProgressRange, daysBetween, isCurrentProgressRange, progressRange, shiftLabel, shiftProgressRange, shortRange, type DateRange, type ProgressRangeState } from './progress-range';
+import { PROGRESS_MAX_DAYS, addDays, addMonths, compareRange, currentProgressRange, daysBetween, isCurrentProgressRange, progressRange, progressStateForRange, shiftLabel, shiftProgressRange, shortRange, type DateRange, type ProgressRangeState } from './progress-range';
 import { useProgressRange } from './progress-range-context';
 
 type Draft = { start: string; end: string | null };
@@ -88,9 +88,17 @@ export function CustomRangeSheet({ onClose }: { onClose: () => void }) {
 }
 
 /** R4 · Comparar: one calendar for both periods. A = what you look at (champagne), B = what you compare with (grey). */
-export function CompareSheet({ onClose }: { onClose: () => void }) {
-  const { state, setState, today } = useProgressRange();
+export function CompareSheet({ onClose, proposal = null }: { onClose: () => void;
+  /**
+   * #519 · A period proposed by whoever opened the sheet (the portada's 30 days): shown as A, with B kept as it is (a custom
+   * B) or recomputed for it (previous, last year). Nothing is applied until «Listo»: closing leaves the active A and B untouched.
+   */
+  proposal?: DateRange | null;
+}) {
+  const { state: active, setState, today } = useProgressRange();
   const [editing, setEditing] = useState<'a' | 'b'>('b');
+  // The state the drafts start from: the active one, or the active one moved to the proposed period.
+  const [state] = useState<ProgressRangeState>(() => (proposal && progressStateForRange(proposal.start, proposal.end, active, today)) || active);
   const a = progressRange(state, today), b = compareRange(state, today);
   const [draftA, setDraftA] = useState<Draft | null>(a);
   const [draftB, setDraftB] = useState<Draft | null>(b ?? compareRange({ ...state, compare: { kind: 'previous' } }, today));
@@ -127,7 +135,8 @@ export function CompareSheet({ onClose }: { onClose: () => void }) {
     <View style={styles.shortcuts}>
       <Shortcut label="Período anterior" active={editing === 'b' && kind === 'previous'} onPress={() => quick('previous')} />
       <Shortcut label="Año pasado" active={editing === 'b' && kind === 'last_year'} onPress={() => quick('last_year')} />
-      <Shortcut label="Sin comparar" onPress={() => { setState({ ...state, compare: { kind: 'none' } }); onClose(); }} />
+      {/* Turns B off over the period that is active now: a proposed A is never applied by this shortcut. */}
+      <Shortcut label="Sin comparar" onPress={() => { setState({ ...active, compare: { kind: 'none' } }); onClose(); }} />
     </View>
     <RangeCalendar month={month} onMonth={setMonth} max={today} marks={marks}
       onDay={d => { if (editing === 'a') setDraftA(pick(draftA, d)); else { setKind('custom'); setDraftB(pick(draftB, d)); } }} />

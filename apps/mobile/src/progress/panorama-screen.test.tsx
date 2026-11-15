@@ -9,7 +9,7 @@ import type { MobileApiClient } from '@/api/client';
 import { clearConfirmedReads, invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import { ExerciseTrendsScreen } from './exercise-trends-screen';
 import { useProgressRange, ProgressRangeProvider } from './progress-range-context';
-import { ProgressOverviewScreen } from './panorama-screen';
+import { ProgressOverviewScreen, portadaValue } from './panorama-screen';
 import { ProgressPeriodOverviewScreen } from './overview-screen';
 import { panoramaFixture, editorialFixture, PANORAMA_TODAY } from './panorama-fixture.test-helper';
 import { fetchProgressPanorama } from '@/api/progress';
@@ -22,8 +22,8 @@ let mockParams: Record<string, string> = {}, mockFocused = true;
 const mockLife = new Set<{
     focus: () => void;
     blur: () => void;
-}>(), mockPush = jest.fn(), mockNavigate = jest.fn(), mockBack = jest.fn();
-jest.mock('expo-router', () => ({ Stack: { Screen: () => null }, useLocalSearchParams: () => mockParams, useRouter: () => ({ push: mockPush, navigate: mockNavigate, back: mockBack }), useFocusEffect: (cb: () => void | (() => void)) => { jest.requireActual<{
+}>(), mockPush = jest.fn(), mockNavigate = jest.fn(), mockBack = jest.fn(), mockSetParams = jest.fn();
+jest.mock('expo-router', () => ({ Stack: { Screen: () => null }, useLocalSearchParams: () => mockParams, useRouter: () => ({ push: mockPush, navigate: mockNavigate, back: mockBack, setParams: mockSetParams }), useFocusEffect: (cb: () => void | (() => void)) => { jest.requireActual<{
         useEffect: typeof useEffect;
     }>('react').useEffect(() => { let release: void | (() => void); const life = { focus: () => { release = cb(); }, blur: () => { release?.(); release = undefined; } }; mockLife.add(life); if (mockFocused)
         life.focus(); return () => { life.blur(); mockLife.delete(life); }; }, [cb]); } }));
@@ -58,12 +58,12 @@ it('opens one bounded request instead of four, with no Insights/hidden detail re
     expect(after.getByText(/07\/11\/2026 · 3 registros válidos/)).toBeTruthy();
     expect(after.getByText('10 días utilizados · 13 de 30 días con alimentación registrada')).toBeTruthy();
     expect(after.getByText('Proteína: 127 g/día · 8 días utilizados')).toBeTruthy();
-    fireEvent.press(after.getByRole('button', {name: 'Contexto y relaciones'}));
+    fireEvent.press(after.getByRole('button', {name:'Ver todas las herramientas'}));
     fireEvent.press(after.getByRole('button', { name: 'Últimos tres meses' }));
     expect(mockNavigate).toHaveBeenLastCalledWith(periodSummaryHref(PANORAMA_TODAY, { fromProgress: '1' }));
     fireEvent.press(after.getByRole('button', { name: 'Semanas, A/B y coincidencias descriptivas' }));
     expect(mockNavigate).toHaveBeenLastCalledWith(explorationHref(PANORAMA_TODAY, undefined, undefined, { fromProgress: '1' }));
-    fireEvent.press(after.getByRole('button', { name: 'Ver Comparaciones: cada sesión frente a la anterior' }));
+    fireEvent.press(after.getByRole('button', { name: 'Comparaciones: Cada sesión frente a la anterior' }));
     expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights', params: { fromProgress: '1' } });
     expect(read).toHaveBeenCalledTimes(1);
     console.info('[402 request comparison]', { before: prior, after: read.mock.calls.map(([o]) => o.path) });
@@ -291,7 +291,7 @@ it('read budget: keeps one grouped opening and no reads for point/finding/contex
     expect(read).toHaveBeenCalledTimes(initial);
     fireEvent.press(view.getByRole('button',{name:/Ver referencia de Press banca.*Nuevo récord/}));
     expect(read).toHaveBeenCalledTimes(initial);
-    const context=view.queryByRole('button',{name:'Contexto y relaciones'});
+    const context=view.queryByRole('button',{name:'Ver todas las herramientas'});
     if(context) {fireEvent.press(context);fireEvent.press(context);}
     expect(read).toHaveBeenCalledTimes(initial);
     console.info('P0B_READ_BUDGET',JSON.stringify({initial,afterLocalInteractions:read.mock.calls.length,path:read.mock.calls[0]![0].path,fixtureBytes:Buffer.byteLength(JSON.stringify(mockData),'utf8')}));
@@ -299,16 +299,16 @@ it('read budget: keeps one grouped opening and no reads for point/finding/contex
 it('groups secondary entries without loading their destinations, keeps their origins, and uses global History', async () => {
     const view=render(wrap());await view.findByTestId('progress-panorama');
     expect(view.queryByRole('button',{name:'Últimos tres meses'})).toBeNull();
-    fireEvent.press(view.getByRole('button',{name:'Contexto y relaciones'}));
+    fireEvent.press(view.getByRole('button',{name:'Ver todas las herramientas'}));
     expect(view.getByRole('button',{name:'Últimos tres meses'})).toBeTruthy();expect(read).toHaveBeenCalledTimes(1);
-    fireEvent.press(view.getByRole('button',{name:'Explorar período y A/B'}));expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress/period');
+    fireEvent.press(view.getByRole('button',{name:'Explorar período: mis vistas, etapas y lo que se movió junto'}));expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress/period');
     fireEvent.press(view.getByRole('button',{name:'Recorrido por fecha'}));expect(mockNavigate).toHaveBeenLastCalledWith('/history/calendar');
-    fireEvent.press(view.getByRole('button',{name:'Métricas personales'}));expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/trends/metrics');
+    fireEvent.press(view.getByRole('button',{name:'Métricas personales: Sueño, pasos y lo que registrás'}));expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/trends/metrics');
 });
 it('P1-B4: relations and Qué influye are discoverable from the context group and only navigate, without reading here', async () => {
     const view=render(wrap());await view.findByTestId('progress-panorama');
     expect(view.queryByTestId('panorama-connections-link')).toBeNull();
-    fireEvent.press(view.getByRole('button',{name:'Contexto y relaciones'}));
+    fireEvent.press(view.getByRole('button',{name:'Ver todas las herramientas'}));
     fireEvent.press(view.getByRole('button',{name:'Lo que se movió junto: comida y resultados frente al período anterior equivalente'}));
     expect(mockNavigate).toHaveBeenLastCalledWith({pathname:'/(tabs)/progress/period',params:{focus:'connections'}});
     fireEvent.press(view.getByRole('button',{name:'Qué influye: preguntas que comparan tus días entre sí'}));
@@ -318,13 +318,13 @@ it('P1-B4: relations and Qué influye are discoverable from the context group an
 
 it('retains the secondary context disclosure on return and retires it on an account/client change', async () => {
     const view=render(wrap());await view.findByTestId('progress-panorama');
-    fireEvent.press(view.getByRole('button',{name:'Contexto y relaciones'}));
+    fireEvent.press(view.getByRole('button',{name:'Ver todas las herramientas'}));
     await act(async()=>{mockFocused=false;[...mockLife].forEach(x=>x.blur());});
     await act(async()=>{mockFocused=true;[...mockLife].forEach(x=>x.focus());});
     expect(view.getByRole('button',{name:'Últimos tres meses'})).toBeTruthy();expect(read).toHaveBeenCalledTimes(1);
     mockClient={read} as unknown as MobileApiClient;view.rerender(wrap());await view.findByTestId('progress-panorama');
     expect(view.queryByRole('button',{name:'Últimos tres meses'})).toBeNull();
-    expect(view.getByRole('button',{name:'Contexto y relaciones'}).props.accessibilityState.expanded).toBe(false);
+    expect(view.getByRole('button',{name:'Ver todas las herramientas'}).props.accessibilityState.expanded).toBe(false);
 });
 
 it('P1-C1: the inspected spark point survives the trip to the detail and back, travels with the area and leaves with the account', async () => {
@@ -348,4 +348,86 @@ it('P1-C1: the inspected spark point survives the trip to the detail and back, t
     expect(point()).toBeUndefined();
     fireEvent.press(view.getByRole('button', { name: 'Ver peso y medidas' }));
     expect((mockPush.mock.calls.at(-1)![0] as { params: Record<string, string> }).params.point).toBeUndefined();
+});
+
+it('#519 · «Explorar tus datos»: four tools in sight, the rest grouped, and showing or opening the group reads nothing', async () => {
+    const view = render(wrap()); await view.findByTestId('progress-panorama');
+    const tools = within(view.getByTestId('panorama-explore'));
+    expect(tools.getByRole('header', { name: 'Explorar tus datos' })).toBeTruthy();
+    for (const name of ['Comparar períodos: Dos períodos, cada uno con sus fechas', 'Métricas personales: Sueño, pasos y lo que registrás', 'Comparaciones: Cada sesión frente a la anterior', 'Cuándo comés: Tus comidas por franja horaria'])
+        expect(tools.getByRole('button', { name })).toBeTruthy();
+    expect(view.queryByRole('button', { name: 'Últimos tres meses' })).toBeNull();
+    fireEvent.press(view.getByRole('button', { name: 'Ver todas las herramientas' }));
+    for (const name of ['Explorar período: mis vistas, etapas y lo que se movió junto', 'Recorrido por fecha', 'Últimos tres meses', 'Semanas, A/B y coincidencias descriptivas', 'Qué influye: preguntas que comparan tus días entre sí'])
+        expect(view.getByRole('button', { name })).toBeTruthy();
+    expect(read).toHaveBeenCalledTimes(1);
+});
+it('#519 · «Comparar períodos» proposes the portada window; «Cuándo comés» opens on it; Comparaciones and Métricas only navigate', async () => {
+    // The shared period, as the destinations read it.
+    let range: ReturnType<typeof useProgressRange> | undefined;
+    function InspectRange() { range = useProgressRange(); return null; }
+    const view = render(wrap(<><ProgressOverviewScreen /><InspectRange /></>)); await view.findByTestId('progress-panorama');
+    const before = range!.state;
+    fireEvent.press(view.getByRole('button', { name: /^Comparar períodos/ }));
+    expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/period', params: { sheet: 'compare', proposalFrom: '2026-10-11', proposalTo: '2026-11-09' } });
+    // Only a proposal: nothing is applied until «Listo» in the sheet.
+    expect(range!.state).toBe(before);
+    fireEvent.press(view.getByRole('button', { name: /^Cuándo comés/ }));
+    expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/trends/meal-times');
+    expect([range!.query.from, range!.query.to, range!.compare]).toEqual(['2026-10-11', '2026-11-09', null]);
+    fireEvent.press(view.getByRole('button', { name: /^Comparaciones/ }));
+    expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights', params: { fromProgress: '1' } });
+    fireEvent.press(view.getByRole('button', { name: /^Métricas personales/ }));
+    expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/trends/metrics');
+    expect(read).toHaveBeenCalledTimes(1);
+});
+it('#519 · Explorar período opens the existing A/B sheet once when the portada asks, then forgets the request', async () => {
+    mockParams = { sheet: 'compare' };
+    const view = render(wrap(<ProgressPeriodOverviewScreen />)); await view.findByTestId('progress-areas');
+    expect(view.getByTestId('compare-ab')).toBeTruthy();
+    expect(mockSetParams).toHaveBeenCalledTimes(1); expect(mockSetParams).toHaveBeenCalledWith({ sheet: undefined });
+    view.unmount(); mockSetParams.mockClear(); mockParams = {};
+    const plain = render(wrap(<ProgressPeriodOverviewScreen />)); await plain.findByTestId('progress-areas');
+    expect(plain.queryByTestId('compare-ab')).toBeNull(); expect(mockSetParams).not.toHaveBeenCalled();
+});
+it('#519 · the portada shows kcal and protein per day in whole numbers and weight with one decimal at most', () => {
+    expect(portadaValue(3004.17, 'kcal')).toBe('3.004 kcal');
+    expect(portadaValue(166.19, 'g')).toBe('166 g');
+    expect(portadaValue(78.46, 'kg')).toBe('78,5 kg');
+    expect(portadaValue(78, 'kg')).toBe('78 kg');
+    expect(portadaValue(0, 'kcal')).toBe('0 kcal');
+});
+
+it('#519 · the A/B sheet shows the portada\'s 30 days with the active custom B: closing changes nothing, «Listo» applies both', async () => {
+    const active = { unit: 'month' as const, anchor: PANORAMA_TODAY, custom: null, compare: { kind: 'custom' as const, range: { start: '2026-08-01', end: '2026-08-20' } } };
+    let range: ReturnType<typeof useProgressRange> | undefined;
+    function InspectRange() { range = useProgressRange(); return null; }
+    const tree = () => <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 393, height: 852 }, insets: { top: 0, bottom: 0, left: 0, right: 0 } }}><OwnlevelThemeProvider initialMode="dark">
+      <ProgressRangeProvider initialToday={PANORAMA_TODAY} initialState={active}><ProgressPeriodOverviewScreen /><InspectRange /></ProgressRangeProvider></OwnlevelThemeProvider></SafeAreaProvider>;
+    mockParams = { sheet: 'compare', proposalFrom: '2026-10-11', proposalTo: PANORAMA_TODAY };
+    const cancel = render(tree()); await cancel.findByTestId('compare-ab');
+    expect(cancel.getByTestId('compare-cell-a').props.accessibilityLabel).toMatch(/30 días$/);
+    expect(cancel.getByTestId('compare-cell-b').props.accessibilityLabel).toMatch(/20 días$/);
+    const opened = range!.state;
+    expect([range!.query.from, range!.query.to, range!.compare]).toEqual(['2026-11-01', PANORAMA_TODAY, { start: '2026-08-01', end: '2026-08-20' }]);
+    fireEvent.press(cancel.getByRole('button', { name: 'Cerrar sin cambiar' }));
+    expect(cancel.queryByTestId('compare-ab')).toBeNull();
+    // Closed without changes: the range and B that were active stay, exactly.
+    expect(range!.state).toBe(opened);
+    expect([range!.query.from, range!.query.to, range!.compare]).toEqual(['2026-11-01', PANORAMA_TODAY, { start: '2026-08-01', end: '2026-08-20' }]);
+    cancel.unmount();
+    const apply = render(tree()); await apply.findByTestId('compare-ab');
+    fireEvent.press(apply.getByRole('button', { name: 'Listo' }));
+    // «Listo»: the proposed 30 days as A, the custom B kept with its own dates.
+    expect([range!.query.from, range!.query.to, range!.compare]).toEqual(['2026-10-11', PANORAMA_TODAY, { start: '2026-08-01', end: '2026-08-20' }]);
+    expect(range!.state.compare).toEqual({ kind: 'custom', range: { start: '2026-08-01', end: '2026-08-20' } });
+    apply.unmount();
+    // «Sin comparar» from the portada's proposal: B goes off over the active A (this month), never over the proposed 30 days.
+    const off = render(tree()); await off.findByTestId('compare-ab');
+    expect(off.getByTestId('compare-cell-a').props.accessibilityLabel).toMatch(/30 días$/);
+    expect([range!.query.from, range!.query.to]).toEqual(['2026-11-01', PANORAMA_TODAY]);
+    fireEvent.press(off.getByRole('button', { name: 'Sin comparar' }));
+    expect(off.queryByTestId('compare-ab')).toBeNull();
+    expect([range!.query.from, range!.query.to, range!.compare]).toEqual(['2026-11-01', PANORAMA_TODAY, null]);
+    expect(range!.state).toEqual({ ...active, compare: { kind: 'none' } });
 });

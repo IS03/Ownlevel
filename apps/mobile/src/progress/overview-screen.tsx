@@ -1,5 +1,6 @@
 import {destinationRoute} from './progress-destination';
-import { useCallback, type ReactNode } from 'react';
+import { useCallback, useMemo, type ReactNode } from 'react';
+import { isNutritionDate } from '@/api/nutrition-day';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
@@ -136,7 +137,14 @@ export function ProgressPeriodOverviewScreen() {
     const { pathname, extra } = destinationRoute(d);
     router.push({ pathname, params: extra });
   };
-  return <ProgressScroll title="Explorar período" testID="progress-overview" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} tintColor={colors.primary} />}>
+  // #519 · From the portada's «Comparar períodos»: the existing A/B sheet, open once on arrival; the parameter is then dropped.
+  // The portada proposes its window as A: shown in the sheet, applied only on «Listo»; closing keeps the active A and B.
+  const sheetParams = useLocalSearchParams<{ sheet?: string; proposalFrom?: string; proposalTo?: string }>();
+  const askedSheet = sheetParams.sheet === 'compare' ? 'compare' as const : null;
+  const { proposalFrom, proposalTo } = sheetParams;
+  const proposal = useMemo(() => isNutritionDate(proposalFrom) && isNutritionDate(proposalTo) && proposalFrom <= proposalTo && proposalTo <= today ? { start: proposalFrom, end: proposalTo } : null, [proposalFrom, proposalTo, today]);
+  const sheetOpened = useCallback(() => router.setParams({ sheet: undefined, proposalFrom: undefined, proposalTo: undefined }), [router]);
+  return <ProgressScroll openSheet={askedSheet} sheetProposal={proposal} onSheetOpened={sheetOpened} title="Explorar período" testID="progress-overview" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} tintColor={colors.primary} />}>
     <ProgressReadStatus state={status} />
     {focusConnections ? <ConnectionsSection resource={connections} /> : null}
     <MyViews />

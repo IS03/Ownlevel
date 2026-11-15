@@ -18,12 +18,14 @@ const TODAY = '2026-10-04',
   mockPush = jest.fn(), mockNavigate = jest.fn();
 let mockActiveClient: object | null = mockClient;
 let mockParams: Record<string, string> = {};
+const mockFocus = new Set<() => void | (() => void)>();
 const mockReport = jest.fn<(client: unknown, q: ReportQuery) => Promise<unknown>>();
 const mockTiming = jest.fn<(client: unknown, q: ReportQuery, compare: DateRange | null) => Promise<unknown>>();
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush, navigate: mockNavigate }),
-  useFocusEffect: (callback: () => void | (() => void)) => jest.requireActual<typeof import('react')>('react').useEffect(callback, [callback]),
+  // Runs on mount, as before; the registry lets a test bring the screen back into view (#519).
+  useFocusEffect: (callback: () => void | (() => void)) => jest.requireActual<typeof import('react')>('react').useEffect(() => { mockFocus.add(callback); const release = callback(); return () => { mockFocus.delete(callback); release?.(); }; }, [callback]),
   useLocalSearchParams: () => mockParams,
   Stack: { Screen: () => null },
 }));
@@ -164,13 +166,15 @@ describe('Progress Nutrition', () => {
     expect(within(view.getByTestId('nutrition-progress-summary')).getAllByText(/^Promedio de \d+ días? con dato/)).toHaveLength(1);
     expect(view.queryByText(/gris =|Frente a/)).toBeNull();
     // The legend only names what the chart shows (here: a gap), once.
-    expect(view.getByText(/Hueco: sin valor; línea en la base: cero registrado/)).toBeTruthy();
+    // #519 · The general explanations live in «Cómo leer el gráfico»: opening it is local.
+    fireEvent.press(view.getByRole('button', { name: 'Cómo leer el gráfico' }));
+    expect(view.getByText(/Hueco: ese día no tiene valor\. Línea en la base: cero registrado/)).toBeTruthy();
     expect(view.getByTestId('nutrition-chart-current-2026-10-02-gap')).toBeTruthy();
     expect(within(view.getByTestId('nutrition-progress-detail')).getByText('Carbos')).toBeTruthy();
     fireEvent.press(view.getByTestId('nutrition-chart-current-2026-10-01-bar'));
     expect(mockPush).not.toHaveBeenCalled();
     expect(within(view.getByTestId('nutrition-chart-inspection')).getByText('100 kcal')).toBeTruthy();
-    fireEvent.press(view.getByRole('button', { name: 'Abrir día y comidas originales' }));
+    fireEvent.press(view.getByRole('button', { name: /^Ver comidas de ese día/ }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/nutrition', params: { date: '2026-10-01', fromProgressNutrition: '1' } });
     fireEvent.press(view.getByTestId('nutrition-timing-entry'));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/trends/meal-times');
@@ -193,6 +197,7 @@ describe('Progress Nutrition', () => {
     expect(view.getByTestId('nutrition-progress-calories').props.accessibilityLabel).toMatch(/^Calorías: 2.556 kcal por día\. .*1–2 sep: 2.195 kcal, diferencia \+361 kcal$/);
     expect(view.getByTestId('nutrition-progress-protein').props.accessibilityLabel).toMatch(/1–2 sep: 156 g, diferencia \+1 g$/);
     expect(view.getByText('Referencia 1–2 sep · Promedio de 1 día con dato')).toBeTruthy();
+    fireEvent.press(view.getByRole('button', { name: 'Cómo leer el gráfico' }));
     expect(view.getByText(/sin emparejar posiciones/)).toBeTruthy();
     fireEvent.press(view.getByRole('radio', { name: 'Comparación' }));
     expect(view.queryByTestId('nutrition-chart-reference-2-gap')).toBeNull();
@@ -207,7 +212,7 @@ describe('Progress Nutrition', () => {
     expect(view.getByTestId('nutrition-progress-summary')).toBeTruthy();
     fireEvent.press(view.getByRole('radio', { name: 'Comparación' }));
     expect(view.queryByTestId('nutrition-chart-series-reference')).toBeNull();
-    expect(view.queryByRole('button', { name: 'Abrir día y comidas originales' })).toBeNull();
+    expect(view.queryByRole('button', { name: /^Ver comidas de ese día/ })).toBeNull();
     mockReport.mockImplementation(async (_c, q) => ok(report(q)));
     fireEvent.press(view.getByRole('button', { name: 'Reintentar comparación' })); await flush();
     expect(view.getByTestId('nutrition-chart-reference-2026-09-01-bar')).toBeTruthy();
@@ -227,7 +232,7 @@ describe('Progress Nutrition', () => {
     fireEvent.press(view.getByRole('radio', { name: 'Comparación' }));
     fireEvent.press(view.getByTestId('nutrition-chart-reference-2026-09-01-bar'));
     expect(mockPush).not.toHaveBeenCalled();
-    fireEvent.press(view.getByRole('button', { name: 'Abrir día y comidas originales' }));
+    fireEvent.press(view.getByRole('button', { name: /^Ver comidas de ese día/ }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/nutrition', params: { date: '2026-09-01', fromProgressNutrition: '1' } });
     mockParams = { fromProgressNutrition: '1' };
     view.rerender(tree(<><NutritionTrendsScreen /><ReturnToNutritionChart /></>, comparing)); await flush();
@@ -238,7 +243,7 @@ describe('Progress Nutrition', () => {
     expect({ reports: mockReport.mock.calls.length, timing: mockTiming.mock.calls.length }).toEqual(initial);
     console.info('[QA nutrition chart source reads]', { initial, afterInspectionAndReturn: { reports: mockReport.mock.calls.length, timing: mockTiming.mock.calls.length } });
     fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
-    expect(view.queryByRole('button', { name: 'Abrir día y comidas originales' })).toBeNull();
+    expect(view.queryByRole('button', { name: /^Ver comidas de ese día/ })).toBeNull();
   });
   it('manual refresh rereads both report scopes and retains the selected reference', async () => {
     const view = wrap(<NutritionTrendsScreen />, comparing); await flush();
@@ -270,7 +275,7 @@ describe('Progress Nutrition', () => {
     expect(view.getByText('Sin registros nutricionales; no equivale a cero.')).toBeTruthy();
     mockActiveClient = {}; mockReport.mockImplementation(async (_c, q) => ok(report(q)));
     view.rerender(tree(<NutritionTrendsScreen />)); await flush();
-    expect(view.queryByRole('button', { name: 'Abrir día y comidas originales' })).toBeNull();
+    expect(view.queryByRole('button', { name: /^Ver comidas de ese día/ })).toBeNull();
     expect(view.getByTestId('nutrition-chart-current-2026-10-01-bar').props.accessibilityState.selected).toBe(false);
     mockActiveClient = null; view.rerender(tree(<NutritionTrendsScreen />)); await flush();
     expect(view.queryByTestId('nutrition-chart-inspection')).toBeNull();
@@ -318,9 +323,9 @@ describe('Progress Nutrition', () => {
     mockParams = { point: '2026-10-01~2026-10-02', pointValue: '2000', pointText: '1–2 oct 2026: 2.000 kcal' };
     const view = wrap(<NutritionTrendsScreen />); await flush();
     expect(view.getByTestId('portada-point-note').props.accessibilityLabel).toBe('Desde la portada: 1–2 oct 2026: 2.000 kcal. La portada promedia los días completos de ese intervalo y este gráfico muestra cada día: no hay un dato equivalente para seleccionar.');
-    expect(view.queryByText('Abrir día y comidas originales')).toBeNull();
+    expect(view.queryByText('Ver comidas de ese día')).toBeNull();
     fireEvent.press(view.getByTestId('nutrition-chart-current-2026-10-01-bar'));
-    expect(view.queryByTestId('portada-point-note')).toBeNull(); expect(view.getByText('Abrir día y comidas originales')).toBeTruthy();
+    expect(view.queryByTestId('portada-point-note')).toBeNull(); expect(view.getByText('Ver comidas de ese día')).toBeTruthy();
     expect(mockReport).toHaveBeenCalledTimes(1);
   });
 });
@@ -351,5 +356,39 @@ describe('Cuándo comés', () => {
     await flush();
     expect(failed.getByText('No pudimos cargar cuándo comés')).toBeTruthy();
     expect(failed.queryByText(/Todavía hay pocas/)).toBeNull();
+  });
+});
+
+describe('#519 · del dato al día y de vuelta', () => {
+  const refocus = async () => { await act(async () => { for (const callback of [...mockFocus]) callback(); }); await flush(); };
+  it('comes back to the same period, A/B side and selection with a fresh and an expired cache; a datum that left says so', async () => {
+    let now = Date.parse('2026-10-04T15:00:00Z');
+    const clock = jest.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      const view = wrap(<><NutritionTrendsScreen /><ReturnToNutritionChart /></>, comparing); await flush();
+      const initial = { reports: mockReport.mock.calls.length, timing: mockTiming.mock.calls.length };
+      fireEvent.press(view.getByRole('radio', { name: 'Comparación' }));
+      fireEvent.press(view.getByTestId('nutrition-chart-reference-2026-09-01-bar'));
+      fireEvent.press(view.getByRole('button', { name: 'Cómo leer el gráfico' }));
+      fireEvent.press(view.getByRole('button', { name: /^Ver comidas de ese día/ }));
+      expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/nutrition', params: { date: '2026-09-01', fromProgressNutrition: '1' } });
+      // Selecting, opening the help and leaving for the day read nothing here.
+      expect({ reports: mockReport.mock.calls.length, timing: mockTiming.mock.calls.length }).toEqual(initial);
+      const selected = () => view.getByTestId('nutrition-chart-reference-2026-09-01-bar').props.accessibilityState.selected;
+      // Back within the reuse window: nothing read, same side and day.
+      now += 5_000; await refocus();
+      expect(mockReport.mock.calls.length).toBe(initial.reports);
+      expect(view.getByRole('radio', { name: 'Comparación', checked: true })).toBeTruthy(); expect(selected()).toBe(true);
+      // Back after it expired: both reports are read again; the period, side and day stay.
+      now += 31_000; await refocus();
+      expect(mockReport.mock.calls.length).toBe(initial.reports + 2);
+      expect(mockReport).toHaveBeenLastCalledWith(mockClient, expect.objectContaining({ period: 'custom' }));
+      expect(view.getByRole('radio', { name: 'Comparación', checked: true })).toBeTruthy(); expect(selected()).toBe(true);
+      // The reference no longer has that day: the screen says so instead of selecting another.
+      mockReport.mockImplementation(async (_c, q) => { const r = report(q); if (q.from?.startsWith('2026-09')) r.days = r.days.filter(d => d.date !== '2026-09-01'); return ok(r); });
+      now += 31_000; await refocus();
+      expect(view.getByText('El dato seleccionado ya no está disponible en esta lectura. Elegí otra barra.')).toBeTruthy();
+      expect(view.queryByRole('button', { name: /^Ver comidas de ese día/ })).toBeNull();
+    } finally { clock.mockRestore(); }
   });
 });
