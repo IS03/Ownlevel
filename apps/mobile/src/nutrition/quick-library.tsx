@@ -1,5 +1,5 @@
 import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ActionSheetIOS, ActivityIndicator, Alert, Platform, Pressable, ScrollView, SectionList, StyleSheet, View, useWindowDimensions, type AccessibilityActionEvent } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, Platform, Pressable, ScrollView, SectionList, StyleSheet, View, useWindowDimensions, type AccessibilityActionEvent, type ViewToken } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { AppIcon, AppText, Button, LoadingState, Surface, brandTokens, useOwnlevelTheme } from '@/design-system';
 import { haptics } from '@/platform/haptics';
@@ -7,6 +7,7 @@ import type { QuickOption } from '@/api/nutrition-quick';
 import type { QuickController, QuickState } from './quick-controller';
 import { visibleQuickPins, type QuickPinsController, type QuickPinsState } from './quick-pins-controller';
 import { QuickPinsEditor, type QuickPinsDraft } from './quick-pins-editor';
+import { LetterJump, sectionStarts } from './quick-letter-jump';
 import { INITIALS, librarySections, pinnedRows, pinsFull, searchLibrary, type PinnedRow } from './quick-library-model';
 import { MealSearch, mealShown as shown, mealSheetStyles as shared } from './meal-sheet';
 
@@ -21,8 +22,8 @@ export type QuickPins = { controller: QuickPinsController; state: QuickPinsState
 type Item = { type: 'meal'; key: string; option: QuickOption; pinned: number } | { type: 'gone'; key: string; row: Extract<PinnedRow, { kind: 'unavailable' }> };
 type Section = { key: string; title: string; data: Item[] };
 const LETTERS_FROM = 12;
-/** «Ir a letra»: each pass measures more rows, so the next one lands closer; a few passes land on the letter. */
-const JUMP_PASSES = 8, JUMP_PASS_MS = 80;
+/** A row counts as on screen when at least half of it is (a zero-height section footer never does). */
+const VIEWABILITY = { itemVisiblePercentThreshold: 50 };
 /** The native small spinner is 20 pt: the refresh slot is never shorter than it, nor than one footnote line at the current text size. */
 const SPINNER_SIZE = 20;
 
@@ -108,9 +109,22 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
   const [more, setMore] = useState(false);
   const list = useRef<SectionList<Item, Section>>(null);
   // A letter jump in progress: the section, how many passes it took, whether the last one hit rows that were not measured yet.
-  const jumping = useRef<{ sectionIndex: number; passes: number; failed: boolean; lastY: number } | null>(null), offsetY = useRef(0), jumpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const stopJump = useCallback(() => { jumping.current = null; if (jumpTimer.current) clearTimeout(jumpTimer.current); jumpTimer.current = null; }, []);
+  // #525 · «Ir a letra» checks where it landed (quick-letter-jump.ts). What the list reports: the offset, its size, and which
+  // flat indexes (headers and rows) are on screen at least half.
+  const offsetY = useRef(0), viewport = useRef(0), content = useRef(0), shown = useRef<{ first: number | null; last: number | null }>({ first: null, last: null });
+  const layout = useRef<{ starts: number[]; index: Map<string, number> }>({ starts: [], index: new Map() });
+  const jumper = useRef<LetterJump | null>(null);
+  const stopJump = useCallback(() => { jumper.current?.stop(); }, []);
   useEffect(() => stopJump, [stopJump]);
+  // Stable for the list's whole life (the list does not accept a new callback); it reads the current sections from a ref.
+  const onViewable = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    const { starts, index } = layout.current;
+    const flat = viewableItems.flatMap(token => {
+      const section = index.get((token.section as { key?: string } | undefined)?.key ?? '');
+      return section === undefined ? [] : [starts[section]! + (token.index === null || token.index === undefined ? 0 : token.index + 1)];
+    });
+    shown.current = flat.length ? { first: Math.min(...flat), last: Math.max(...flat) } : { first: null, last: null };
+  }, []);
   const saved = state.options?.saved.status === 'ok' ? state.options.saved.items : null;
   const pinsState = pins?.state ?? null;
   // Unknown pins (unavailable without a confirmed list, still loading): the library is shown, never an empty pinned section.
@@ -173,31 +187,22 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
   const present = useMemo(() => new Set(sections.map(section => section.key)), [sections]);
   const indexed = !query && (saved?.length ?? 0) >= LETTERS_FROM;
   // New sections (another query, a refreshed list): a jump in progress points at rows that are not there anymore.
-  useEffect(() => stopJump, [sections, stopJump]);
-  /**
-   * #479 D1, measured on the iOS simulator: one scrollToLocation does nothing when the letter is below what has been measured
-   * (200 meals: «G» is item 85, 64 measured), and with sticky section headers even the retry ends at the top. So: no sticky
-   * headers, and several passes (80 ms apart) that stop when a pass found everything measured and the offset stopped moving,
-   * or when the person touches the list.
-   */
+  useEffect(() => {
+    layout.current = { starts: sectionStarts(sections.map(section => section.data.length)), index: new Map(sections.map((section, i) => [section.key, i])) };
+    return stopJump;
+  }, [sections, stopJump]);
+  /** Jump to a letter's section: on the first tap it lands there, checked against what is on screen (see quick-letter-jump.ts). */
   const jump = (key: string) => {
     const sectionIndex = sections.findIndex(s => s.key === key);
     if (sectionIndex < 0) return;
-    stopJump();
-    jumping.current = { sectionIndex, passes: 0, failed: false, lastY: Number.NaN };
-    function pass() {
-      const job = jumping.current;
-      if (!job) return;
-      job.passes += 1; job.failed = false;
-      list.current?.scrollToLocation({ sectionIndex: job.sectionIndex, itemIndex: 0, viewPosition: 0, animated: false });
-      jumpTimer.current = setTimeout(() => {
-        const now = jumping.current;
-        if (!now) return;
-        if (now.passes >= JUMP_PASSES || (!now.failed && Math.abs(offsetY.current - now.lastY) < 1)) { stopJump(); return; }
-        now.lastY = offsetY.current; pass();
-      }, JUMP_PASS_MS);
-    }
-    pass();
+    jumper.current ??= new LetterJump({
+      toSection: index => list.current?.scrollToLocation({ sectionIndex: index, itemIndex: 0, viewPosition: 0, animated: false }),
+      toOffset: y => list.current?.getScrollResponder()?.scrollTo({ y, animated: false }),
+      view: () => ({ ...shown.current, offset: offsetY.current, viewport: viewport.current, atEnd: offsetY.current >= content.current - viewport.current - 2 }),
+      schedule: (run, ms) => setTimeout(run, ms), cancel: handle => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    });
+    const start = sectionStarts(sections.map(section => section.data.length))[sectionIndex]!;
+    jumper.current.start(sectionIndex, start, start + sections[sectionIndex]!.data.length + 2);
   };
   const manageButton = writable ? <Button label={pinnedIds.length ? 'Administrar' : 'Elegir fijadas'} variant="quiet" onPress={() => openEditor()} testID="quick-pins-manage" /> : null;
   const letterButton = (letter: string) => {
@@ -265,9 +270,10 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
     // Section headers and footers count as items: 30 is about one screen of rows, whatever the library size.
     initialNumToRender={30} maxToRenderPerBatch={12} windowSize={9}
     onScroll={event => { offsetY.current = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={32} onScrollBeginDrag={stopJump}
+    onLayout={event => { viewport.current = event.nativeEvent.layout.height; }} onContentSizeChange={(_width, height) => { content.current = height; }}
+    viewabilityConfig={VIEWABILITY} onViewableItemsChanged={onViewable}
     onScrollToIndexFailed={info => {
-      // Rows have their own heights (long names wrap): go near the letter so those rows get measured; the next pass lands on it.
-      if (jumping.current) jumping.current.failed = true;
+      // Below what was measured: go near it so those rows get measured; the jump then corrects from what is on screen.
       list.current?.getScrollResponder()?.scrollTo({ y: info.averageItemLength * info.index, animated: false });
     }}
     contentContainerStyle={{ paddingHorizontal: brandTokens.layout.screenPadding, paddingBottom: Math.max(bottomInset, 12) + brandTokens.layout.screenPadding }} />

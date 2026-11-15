@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals
 import { ActionSheetIOS, Alert, Dimensions, SectionList } from 'react-native';
 import { BASE, ID, at, meta, names, ok, setup, snap, storage, synthetic } from './quick-library-fixture.test-helper';
 import { quickPinsStorageKey } from './quick-pins-storage';
+import { JUMP_MAX_PASSES, JUMP_PASS_MS } from './quick-letter-jump';
 import type { QuickPins } from '@/api/nutrition-quick';
 
 jest.mock('./day-resource', () => ({ useNutritionDayResource: () => ({ state: { status: 'loading' } }) }));
@@ -307,23 +308,24 @@ describe('#479 D1 · «Ir a letra» keeps trying until the letter is measured, a
     const s = await setup({ meals: synthetic(200), pins: ok(snap(0, [])) });
     expect(list(s).props.stickySectionHeadersEnabled).toBe(false);
   });
-  it('each pass that hits rows not measured yet goes near the letter, and the next pass tries again until one lands', async () => {
+  it('a pass beyond what is measured goes near the letter, and the jump stops only when the letter\'s heading is first on screen (#525)', async () => {
     const s = await setup({ meals: synthetic(200), pins: ok(snap(0, [])) });
-    const { scrollTo, scrollToLocation } = failing(2);
+    const { scrollTo, scrollToLocation } = failing(1);
     jest.useFakeTimers();
     act(() => { fireEvent.press(letterG(s)); });
     expect(scrollToLocation).toHaveBeenCalledTimes(1); expect(scrollTo).toHaveBeenLastCalledWith({ y: 60 * 85, animated: false });
-    act(() => { jest.advanceTimersByTime(80); }); expect(scrollToLocation).toHaveBeenCalledTimes(2);
-    act(() => { jest.advanceTimersByTime(80); }); expect(scrollToLocation).toHaveBeenCalledTimes(3);
-    // The third pass found everything measured, but the offset still moved: one more to settle, then it stops by itself.
-    act(() => { list(s).props.onScroll?.({ nativeEvent: { contentOffset: { y: 4800 } } }); });
-    act(() => { jest.advanceTimersByTime(80); });
-    act(() => { list(s).props.onScroll?.({ nativeEvent: { contentOffset: { y: 4800 } } }); });
-    act(() => { jest.advanceTimersByTime(80); });
-    const settled = scrollToLocation.mock.calls.length;
-    act(() => { jest.advanceTimersByTime(1000); });
-    expect(scrollToLocation).toHaveBeenCalledTimes(settled); expect(settled).toBeLessThanOrEqual(5);
-    for (const call of scrollToLocation.mock.calls) expect(call[0]).toEqual({ sectionIndex: expect.any(Number), itemIndex: 0, viewPosition: 0, animated: false });
+    // The list reports something else on screen (the estimate landed short): it keeps going.
+    const sections = list(s).props.sections as { key: string }[];
+    act(() => { list(s).props.onViewableItemsChanged?.({ viewableItems: [{ section: sections.find(x => x.key === 'F'), index: 3, item: null, key: 'f', isViewable: true }], changed: [] }); });
+    act(() => { jest.advanceTimersByTime(JUMP_PASS_MS); });
+    expect(scrollTo.mock.calls.length + scrollToLocation.mock.calls.length).toBeGreaterThan(2);
+    // «G»'s own heading is first on screen: arrived, nothing more runs.
+    act(() => { list(s).props.onViewableItemsChanged?.({ viewableItems: [{ section: sections.find(x => x.key === 'G'), index: null, item: null, key: 'g', isViewable: true }], changed: [] }); });
+    act(() => { jest.advanceTimersByTime(JUMP_PASS_MS); });
+    const settled = scrollToLocation.mock.calls.length + scrollTo.mock.calls.length;
+    act(() => { jest.advanceTimersByTime(2000); });
+    expect(scrollToLocation.mock.calls.length + scrollTo.mock.calls.length).toBe(settled);
+    for (const call of scrollToLocation.mock.calls) expect(call[0]).toEqual({ sectionIndex: sections.findIndex(x => x.key === 'G'), itemIndex: 0, viewPosition: 0, animated: false });
     // No request of any kind comes with it.
     expect(s.quickApi.options).toHaveBeenCalledTimes(1); expect(s.pinsApi.write).not.toHaveBeenCalled(); expect(s.pinsApi.read).not.toHaveBeenCalled();
   });
@@ -333,7 +335,7 @@ describe('#479 D1 · «Ir a letra» keeps trying until the letter is measured, a
     jest.useFakeTimers();
     act(() => { fireEvent.press(letterG(s)); });
     act(() => { jest.advanceTimersByTime(10_000); });
-    expect(scrollToLocation.mock.calls.length).toBeLessThanOrEqual(8);
+    expect(scrollToLocation.mock.calls.length).toBeLessThanOrEqual(JUMP_MAX_PASSES);
   });
   it('touching the list ends the jump: the person is in charge of the scroll', async () => {
     const s = await setup({ meals: synthetic(200), pins: ok(snap(0, [])) });
@@ -356,7 +358,7 @@ describe('#479 D1 · «Ir a letra» keeps trying until the letter is measured, a
     act(() => { fireEvent.press(letterG(s)); }); act(() => { fireEvent.press(s.view.getByTestId('quick-letter-A')); });
     // Section 0 is the «Todas las comidas» heading; «A» is the first letter after it.
     expect(scrollToLocation.mock.calls.at(-1)![0]).toMatchObject({ sectionIndex: 1 });
-    act(() => { jest.advanceTimersByTime(80); });
+    act(() => { jest.advanceTimersByTime(JUMP_PASS_MS); });
     expect(scrollToLocation.mock.calls.slice(-1)[0]![0]).toMatchObject({ sectionIndex: 1 });
   });
 });
