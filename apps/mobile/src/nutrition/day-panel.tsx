@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { RoutineSheetButton } from '@/training/routine-sheet-button';
@@ -11,7 +11,7 @@ import { NutritionSectionHeading } from './day-controls';
 import { NutritionDayDetails, metricValue, type DayContextAction } from './day-details';
 import { canWriteDay } from './day-write-model';
 import { canEditDayMetric } from './metric-entry-model';
-import { NutritionCalorieRing } from './day-rings';
+import { NutritionCalorieRing, ringDrawnTurns } from './day-rings';
 import { useTweenedNumber } from './use-tweened-number';
 import {useMetricPresentations} from '@/metrics/presentation-provider';
 
@@ -24,8 +24,12 @@ function PanelCell({ title, value, target, icon, onPress, metric, actionLabel }:
   const pressFeedback = (pressed: boolean) => highlight.set(withTiming(pressed ? 0.3 : 0, {
     duration: brandTokens.motion.duration.fast, reduceMotion: ReduceMotion.Never,
   }));
-  // A new metric value: the ring fills to it; without a target the icon gives a small bump instead.
-  const shown = useTweenedNumber(metric?.value ?? null, undefined, { fromEmpty: true });
+  // A new metric value: the ring fills to it; without a target the icon gives a small bump instead. Back to «Sin dato» (an undone
+  // first reading) the ring drains to empty; the text and VoiceOver read `value`, already «Sin dato» at the confirmation (#510).
+  const goal = metric?.target ?? null;
+  // Past the goal the ring draws base + current lap: draining starts from that drawing, never from the raw count (18.000 / 8.000).
+  const drawn = useCallback((value: number) => goal !== null && goal > 0 ? goal * ringDrawnTurns(value / goal) : value, [goal]);
+  const shown = useTweenedNumber(metric?.value ?? null, undefined, { fromEmpty: true, toEmpty: true, drawn });
   const bump = useSharedValue(1);
   const [last, setLast] = useState(metric?.value ?? null);
   if ((metric?.value ?? null) !== last) {
@@ -44,7 +48,7 @@ function PanelCell({ title, value, target, icon, onPress, metric, actionLabel }:
     <View style={styles.cellText}>
       <AppText muted variant="caption">{title}</AppText>
       {/* The goal always has its own line (#510): the cell is the same height with or without a reading, so the icon never moves. */}
-      <AppText numeric variant="headline">{value === 'Sin dato' ? '—' : value}</AppText>{target ? <AppText muted numeric variant="caption">{target}</AppText> : null}
+      <AppText numeric variant="headline" accessibilityLabel={value === 'Sin dato' ? 'Sin dato' : undefined}>{value === 'Sin dato' ? '—' : value}</AppText>{target ? <AppText muted numeric variant="caption">{target}</AppText> : null}
     </View>
   </>;
   return onPress ? <Pressable accessibilityRole="button" accessibilityLabel={`${title}: ${value}${target ? ` ${target}` : ''}. ${actionLabel ?? 'Editar actividad'}`}
