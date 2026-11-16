@@ -7,6 +7,11 @@ export function ringLaps(fraction: number | null) {
   if (fraction === null || fraction <= 0) return { base: 0, excess: 0 };
   return { base: Math.min(fraction, 1), excess: fraction > 1 ? ((fraction - 1) % 1 || 1) : 0 };
 }
+/** What a ring actually draws, in turns: base plus the current lap (2,25 turns draws 1,25). Never more than two turns. */
+export function ringDrawnTurns(fraction: number | null) {
+  const { base, excess } = ringLaps(fraction);
+  return base + excess;
+}
 const darker = (hex: string) => `#${[1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * 0.74).toString(16).padStart(2, '0')).join('')}`;
 
 function Ring({ color, radius, reading, stroke, testID, track, quietUnknown = false }: {

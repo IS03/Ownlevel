@@ -62,6 +62,18 @@ describe('useTweenedNumber', () => {
       act(() => { jest.advanceTimersByTime(1500); });
       expect(view.result.current).toBeNull();
     });
+    it('with `drawn`, draining starts from the value that draws the same (a lap past the goal never grows back)', () => {
+      const turns = (v: number) => { const f = v / 8000; return f <= 1 ? f : 1 + ((f - 1) % 1 || 1); };
+      const drawn = (v: number) => 8000 * turns(v);
+      const view = renderHook(({ value }: { value: number | null }) => useTweenedNumber(value, undefined, { fromEmpty: true, toEmpty: true, drawn }), { initialProps: { value: 18000 as number | null } });
+      view.rerender({ value: null });
+      expect(view.result.current).toBe(18000); // the frame before draining: the confirmed drawing
+      const seen: number[] = [];
+      for (let i = 0; i < 60; i++) { act(() => { jest.advanceTimersByTime(16); }); if (view.result.current !== null) seen.push(turns(view.result.current)); }
+      expect(seen[0]).toBeLessThanOrEqual(1.25);
+      for (let i = 1; i < seen.length; i++) expect(seen[i]).toBeLessThanOrEqual(seen[i - 1]);
+      expect(view.result.current).toBeNull();
+    });
     it('Reduce Motion: back to missing is missing at once', () => {
       mockReduced = true;
       const view = hook(12900);

@@ -14,15 +14,20 @@ const round = (n: number, places: number) => Math.round(n * 10 ** places) / 10 *
  * only the drawing's starting point for that value; it is never returned for a missing reading, and the mount itself never animates.
  * `toEmpty` (a ring, never a text): a confirmed value going back to missing (an undone first reading) drains to an empty ring, then
  * returns null. The numbers in between are only the drawing on its way out; whatever reads the value (text, VoiceOver) already has null.
+ * `drawn` (with `toEmpty`): the value that draws the same as the one on screen. Draining starts there, so a ring past its goal
+ * (18.000 / 8.000 draws 1,25 turns) only shrinks, instead of a lap growing back when the count crosses a whole turn.
  */
-export function useTweenedNumber(target: number | null, duration = DURATION, { fromEmpty = false, toEmpty = false }: { fromEmpty?: boolean; toEmpty?: boolean } = {}): number | null {
+export function useTweenedNumber(target: number | null, duration = DURATION, { fromEmpty = false, toEmpty = false, drawn }: {
+  fromEmpty?: boolean; toEmpty?: boolean; drawn?: (value: number) => number;
+} = {}): number | null {
   const reduced = useReduceMotion();
   const [shown, setShown] = useState<{ to: number | null; value: number | null }>({ to: target, value: target });
   const onScreen = useRef<number | null>(target);
   useEffect(() => {
-    const from = onScreen.current === null && fromEmpty && target !== null ? 0 : onScreen.current;
-    // Draining to missing: the drawing runs to 0, the hook ends on null (missing ≠ zero).
-    const draining = toEmpty && target === null && from !== null && from !== 0;
+    const start = onScreen.current === null && fromEmpty && target !== null ? 0 : onScreen.current;
+    // Draining to missing: the drawing runs to 0 from what it shows, the hook ends on null (missing ≠ zero).
+    const draining = toEmpty && target === null && start !== null && start !== 0;
+    const from = draining && drawn && start !== null ? drawn(start) : start;
     const to = draining ? 0 : target;
     if (reduced || from === null || to === null || from === to) {
       onScreen.current = target;
@@ -38,7 +43,7 @@ export function useTweenedNumber(target: number | null, duration = DURATION, { f
       if (t < 1) frame = requestAnimationFrame(step);
     });
     return () => cancelAnimationFrame(frame);
-  }, [duration, fromEmpty, reduced, target, toEmpty]);
+  }, [drawn, duration, fromEmpty, reduced, target, toEmpty]);
   // Until the first frame of a new count, keep what was on screen; a switch to/from missing shows the target.
   if (shown.to === target) return shown.value;
   if (fromEmpty && !reduced && target !== null && shown.value === null) return 0; // the frame before the count starts: never the full ring

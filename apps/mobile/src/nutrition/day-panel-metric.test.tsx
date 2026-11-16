@@ -100,6 +100,32 @@ describe('#510 Pasos in «Tu día»', () => {
       view.rerender(panel(steps(null)));
       expect(view.getByText('—').props.accessibilityLabel).toBe('Sin dato');
     });
+    it('past two turns (18.000 / 8.000) the drawn portion only shrinks, frame by frame, and the excess lap never grows back', () => {
+      const circumference = 2 * Math.PI * 69;
+      // The share of a turn an arc draws, read from its real SVG dash (a Circle, or the first segment of a G).
+      const share = (view: ReturnType<typeof render>, part: 'base' | 'excess') => {
+        const node = view.queryByTestId(`nutrition-metric-ring-steps-1-${part}`, H);
+        if (!node) return 0;
+        const dashed = node.props.strokeDasharray ? node : node.findAll(n => typeof n.props.strokeDasharray === 'string')[0]!;
+        return parseFloat(String(dashed.props.strokeDasharray).split(' ')[0]) / circumference;
+      };
+      const view = render(panel(steps(18000), edit));
+      const confirmed = { base: share(view, 'base'), excess: share(view, 'excess') };
+      expect(confirmed.base).toBeCloseTo(1, 5); expect(confirmed.excess).toBeCloseTo(0.25, 5); // confirmed drawing unchanged
+      view.rerender(panel(steps(null), edit));
+      expect(view.getByText('—')).toBeTruthy(); expect(view.getByLabelText(label)).toBeTruthy();
+      const frames: { base: number; excess: number }[] = [{ base: share(view, 'base'), excess: share(view, 'excess') }];
+      for (let i = 0; i < 60; i++) { act(() => { jest.advanceTimersByTime(16); }); frames.push({ base: share(view, 'base'), excess: share(view, 'excess') }); }
+      expect(frames[0]).toEqual(confirmed); // the first frame still shows the confirmed drawing
+      for (let i = 1; i < frames.length; i++) {
+        expect(frames[i].excess).toBeLessThanOrEqual(frames[i - 1].excess + 1e-9);
+        expect(frames[i].base + frames[i].excess).toBeLessThanOrEqual(frames[i - 1].base + frames[i - 1].excess + 1e-9);
+      }
+      expect(Math.max(...frames.map(f => f.excess))).toBeLessThanOrEqual(0.25 + 1e-9);
+      expect(frames.some(f => f.base > 0 && f.base < 1)).toBe(true); // it drains smoothly, not at once
+      expect(frames.at(-1)).toEqual({ base: 0, excess: 0 });
+      expect(view.getByTestId('nutrition-metric-ring-steps-1-unknown', H)).toBeTruthy();
+    });
     it('the cell keeps its geometry through the change', () => {
       const view = render(panel(steps(12900)));
       const column = () => view.getByText('/ 8.000 pasos').parent!.children.length;
