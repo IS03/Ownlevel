@@ -6,6 +6,9 @@ import type { QuickController } from './quick-controller';
 import type { StoredMealIntent } from './meal-storage';
 import { MEAL_NOTICE_MS, useMealNotice } from './use-meal-notice';
 
+/** Points inside the window, as fractions of it (the timeline does not depend on its exact length). */
+const at = (fraction: number) => Math.round(MEAL_NOTICE_MS * fraction);
+
 const DAY = '2026-10-02', OTHER = '2026-10-03';
 type Gate = { release: (outcome?: 'deleted' | 'stays') => void };
 /** Minimal stand-in for the controllers: the hook only subscribes, reads the snapshot and calls undo / removeAdded. */
@@ -109,31 +112,31 @@ describe('meal notice queue (#472)', () => {
   });
 
   describe('windows', () => {
-    it('is exactly 10 s from its own confirmation: 9 999 ms valid, 10 000 ms gone', () => {
+    it('is exactly its window from its own confirmation: 1 ms before valid, at the window gone', () => {
       const { meals, now } = setup(); confirmWithTime(() => meals.create('A'));
       act(() => { jest.advanceTimersByTime(MEAL_NOTICE_MS - 1); }); expect(now().notice?.meal.id).toBe('A');
       act(() => { jest.advanceTimersByTime(1); }); expect(now().notice).toBeNull();
     });
     it('a newer arrival does not restart the visible one, and the older one is not prolonged when it comes back', () => {
       const { meals, now } = setup(); confirmWithTime(() => meals.create('A'));
-      act(() => { jest.advanceTimersByTime(6000); }); confirmWithTime(() => meals.create('B'));
-      act(() => { jest.advanceTimersByTime(3999); });
-      // A has 1 ms left, B has 6 001 ms.
+      act(() => { jest.advanceTimersByTime(at(0.6)); }); confirmWithTime(() => meals.create('B'));
+      act(() => { jest.advanceTimersByTime(MEAL_NOTICE_MS - at(0.6) - 1); });
+      // A has 1 ms left, B has at(0.6) + 1 ms.
       act(() => now().previous()); expect(now().notice?.meal.id).toBe('A');
       act(() => { jest.advanceTimersByTime(1); }); expect(now().notice?.meal.id).toBe('B'); expect(now().queuedCount).toBe(0);
-      act(() => { jest.advanceTimersByTime(5999); }); expect(now().notice?.meal.id).toBe('B');
+      act(() => { jest.advanceTimersByTime(at(0.6) - 1); }); expect(now().notice?.meal.id).toBe('B');
       act(() => { jest.advanceTimersByTime(1); }); expect(now().notice).toBeNull();
     });
     it('when the visible one expires, the next one shows with ITS remaining time, not a fresh window', () => {
       const { meals, now } = setup(); confirmWithTime(() => meals.create('A'));
-      act(() => { jest.advanceTimersByTime(7000); }); confirmWithTime(() => meals.create('B'));
-      act(() => { jest.advanceTimersByTime(3000); }); expect(now().notice?.meal.id).toBe('B'); expect(now().queuedCount).toBe(0);
-      act(() => { jest.advanceTimersByTime(6999); }); expect(now().notice?.meal.id).toBe('B');
+      act(() => { jest.advanceTimersByTime(at(0.7)); }); confirmWithTime(() => meals.create('B'));
+      act(() => { jest.advanceTimersByTime(MEAL_NOTICE_MS - at(0.7)); }); expect(now().notice?.meal.id).toBe('B'); expect(now().queuedCount).toBe(0);
+      act(() => { jest.advanceTimersByTime(at(0.7) - 1); }); expect(now().notice?.meal.id).toBe('B');
       act(() => { jest.advanceTimersByTime(1); }); expect(now().notice).toBeNull();
     });
-    it('an undo in flight pauses its window; if it returns without removing the entry, a full 10 s starts again', async () => {
+    it('an undo in flight pauses its window; if it returns without removing the entry, a full window starts again', async () => {
       const { meals, now } = setup(); meals.hold = true; meals.outcome = 'stays';
-      confirmWithTime(() => meals.create('A')); act(() => { jest.advanceTimersByTime(6000); });
+      confirmWithTime(() => meals.create('A')); act(() => { jest.advanceTimersByTime(at(0.6)); });
       let pending!: Promise<void>; act(() => { pending = now().undo(); });
       expect(now().undoing).toBe('undo');
       act(() => { jest.advanceTimersByTime(60000); }); expect(now().notice?.meal.id).toBe('A');
@@ -179,10 +182,10 @@ describe('meal notice queue (#472)', () => {
     });
     it('the same confirmation twice is neither a second entry nor a longer window', () => {
       const { meals, quick, now } = setup();
-      confirmWithTime(() => meals.create('A', { updatedAt: 'vA' })); act(() => { jest.advanceTimersByTime(6000); });
+      confirmWithTime(() => meals.create('A', { updatedAt: 'vA' })); act(() => { jest.advanceTimersByTime(at(0.6)); });
       confirmWithTime(() => meals.create('A', { updatedAt: 'vA' })); confirmWithTime(() => quick.confirm('A', DAY, 'vA'));
       expect(now().notice?.meal.id).toBe('A'); expect(now().queuedCount).toBe(0);
-      act(() => { jest.advanceTimersByTime(4000); }); expect(now().notice).toBeNull();
+      act(() => { jest.advanceTimersByTime(MEAL_NOTICE_MS - at(0.6)); }); expect(now().notice).toBeNull();
     });
     it('a newer version of a queued meal replaces its entry (new CAS, new window) without duplicating it', async () => {
       const { meals, now, sent } = setup();

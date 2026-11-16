@@ -43,5 +43,6 @@ export * as brandTokens from './brand';
 export { atmosphere, fadeGradient, glowGradient, rgba } from './atmosphere';
 export { GlassSurface } from './glass';
 export { NoticeStack, TransientNotice } from './transient-notice';
+export { NoticeHost, NoticeOutlet } from './notice-host';
 export type { NoticeAction, NoticePlacement, NoticeState } from './transient-notice';
 export { ScrollEdgeBlur } from './scroll-edge';

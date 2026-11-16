@@ -44,8 +44,9 @@ export function NoticeStack({ children, placement = 'screen', bottomOffset = 0, 
  * glass never magnifies the scrolling content beneath it; the brand surface elsewhere. It slides, never fades, so the glass keeps
  * rendering; with Reduce Motion it does not move at all.
  *
- * `onDismiss` is the ONLY thing that makes it dismissible (swipe down, VoiceOver "Descartar" action and escape). A pending notice
- * is never dismissible and never shows actions. Dismissing calls `onDismiss` and nothing else, never an action.
+ * `onDismiss` is the ONLY thing that makes it dismissible (a short swipe or flick down, a tap on its text, the VoiceOver "Descartar"
+ * action and escape). A pending notice is never dismissible and never shows actions. Dismissing calls `onDismiss` and nothing else,
+ * never an action: the action keeps its own button.
  */
 export function TransientNotice({
   message, state = 'info', icon, action, secondaryAction, close, onDismiss, dismissLabel = 'Descartar aviso', dismissTestID = 'transient-notice-dismiss', disabled = false,
@@ -71,19 +72,23 @@ export function TransientNotice({
   useEffect(() => { offset.set(0); }, [announceKey, message, offset]);
   useEffect(() => { if (announce) AccessibilityInfo.announceForAccessibility(message); }, [announce, announceKey, message]);
   const drag = useAnimatedStyle(() => ({ transform: [{ translateY: reduced ? 0 : offset.get() }] }));
-  const pan = Gesture.Pan().withTestId(dismissTestID).enabled(canDismiss).activeOffsetY(spacing.md).failOffsetX([-spacing.md, spacing.md]).failOffsetY(-spacing.sm)
+  // QA: the capsule sits just above the tab bar, so a long, perfectly vertical drag was hard to make. Half a touch target down,
+  // or a quick flick, is enough; a mostly horizontal move still belongs to whatever is underneath.
+  const pan = Gesture.Pan().withTestId(dismissTestID).enabled(canDismiss).activeOffsetY(spacing.sm).failOffsetX([-spacing.xl, spacing.xl]).failOffsetY(-spacing.sm)
     .onUpdate(event => { offset.set(Math.max(0, event.translationY)); })
     // eslint-disable-next-line react-hooks/refs -- `fire` reads the latest handler only when the gesture ends, never during render
     .onEnd(event => {
-      if (event.translationY >= layout.minTouch && Math.abs(event.translationX) <= spacing.md) runOnJS(fire)();
+      const down = event.translationY >= layout.minTouch / 2 || (event.velocityY > 600 && event.translationY > spacing.xs);
+      if (down && Math.abs(event.translationX) <= spacing.xl) runOnJS(fire)();
       else offset.set(reduced ? 0 : withTiming(0, { duration }));
     }).onFinalize((_event, success) => { if (!success) offset.set(0); });
   const capsule = <Animated.View testID={testID ? `${testID}-capsule` : undefined} style={[styles.capsule, { borderColor: colors.border, maxWidth: Math.min(NOTICE_MAX_WIDTH, width - 2 * layout.tabBarInset) }, drag]}>
     {/* The glass reads a fixed backing, never magnified letters from the content scrolling beneath it. */}
     <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" testID={testID ? `${testID}-backing` : undefined}
       style={[StyleSheet.absoluteFill, { backgroundColor: colors.surfaceRaised }]} />
-    <GlassSurface interactive testID={testID ? `${testID}-surface` : undefined} style={[styles.surface, large ? styles.surfaceLarge : styles.surfaceInline, !hasActions && styles.surfacePlain]}>
-      <View style={styles.lead}>
+    {/* Interactive glass would take the touch for its own press effect; a dismissible notice leaves the touch to the swipe and the tap. */}
+    <GlassSurface interactive={!dismissible} testID={testID ? `${testID}-surface` : undefined} style={[styles.surface, large ? styles.surfaceLarge : styles.surfaceInline, !hasActions && styles.surfacePlain]}>
+      <Pressable accessible={false} disabled={!canDismiss} onPress={fire} style={styles.lead} testID={testID ? `${testID}-body` : undefined}>
         {pending ? <ActivityIndicator color={colors.textMuted} /> : null}
         {!pending && (icon || state === 'done') ? <View testID={testID ? `${testID}-icon` : undefined}><AppIcon name={icon ?? 'checkmark'} size={17} color={colors.primary} /></View> : null}
         <AppText numeric variant="subheadline" numberOfLines={large ? undefined : 2} style={styles.message} accessibilityLiveRegion="polite" accessibilityLabel={message}
@@ -92,7 +97,7 @@ export function TransientNotice({
           accessibilityActions={canDismiss ? [{ name: 'dismiss', label: dismissLabel }] : undefined}
           onAccessibilityAction={canDismiss ? event => { if (event.nativeEvent.actionName === 'dismiss') onDismiss!(); } : undefined}
           onAccessibilityEscape={canDismiss ? () => onDismiss!() : undefined}>{message}</AppText>
-      </View>
+      </Pressable>
       {hasActions ? <View style={[styles.actions, large && styles.actionsLarge]}>
         {action ? <Pressable accessibilityRole="button" accessibilityLabel={action.accessibilityLabel} accessibilityState={{ disabled: !!action.disabled }} disabled={action.disabled}
           onPress={action.onPress} style={[styles.action, action.disabled && styles.disabled]}>

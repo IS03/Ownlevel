@@ -306,7 +306,18 @@ describe('compact start capture (#512)', () => {
     expect(view.getByText('Energía media')).toBeTruthy(); expect(view.queryAllByRole('radio')).toHaveLength(0);
     expect(toggle(view).props.accessibilityState).toMatchObject({ expanded: false });
   });
-  it('saves only on the explicit tap, once for a double tap, and folds only after the receipt', async () => {
+  it('keeps the summary line in place open or folded, so opening and folding never move the title', async () => {
+    const { journal } = journalWith(); await journal.refresh();
+    const view = show(journal, 'pre');
+    const summary = () => view.getByTestId('feelings-pre-summary', { includeHiddenElements: true });
+    expect(summary().props.children).toBe('Energía y fatiga'); expect(StyleSheet.flatten(summary().props.style)?.opacity).not.toBe(0);
+    fireEvent.press(toggle(view));
+    expect(summary().props.children).toBe('Energía y fatiga'); // still laid out: same height
+    expect(StyleSheet.flatten(summary().props.style)?.opacity).toBe(0); expect(summary().props.accessibilityElementsHidden).toBe(true);
+    fireEvent.press(toggle(view));
+    expect(StyleSheet.flatten(summary().props.style)?.opacity).not.toBe(0);
+  });
+  it('saves only on the explicit tap, once for a double tap, folds at once and finishes the save in the background', async () => {
     const stored = new Map<string, string>(); let release: (() => void) | null = null; const writes: unknown[] = [];
     let server = serverWith({});
     const journal = new TrainingFeelingsJournal({ getItem: async k => stored.get(k) ?? null, setItem: async (k, v) => { stored.set(k, v); } }, {
@@ -321,8 +332,12 @@ describe('compact start capture (#512)', () => {
     expect(writes).toHaveLength(0); // Two answers are not an intention to save.
     await act(async () => { fireEvent.press(saveButton(view)); fireEvent.press(view.getByTestId('feelings-pre-save')); await settle(); });
     expect(writes).toHaveLength(1);
-    expect(view.getAllByRole('radio')).toHaveLength(10); // Still open while the write is in flight: no early fold or success.
-    expect(view.queryByText('Energía alta · Fatiga ninguna')).toBeNull();
+    // QA: the button spins and the scales fold right away; the in-flight save is not a recovery, so nothing pending is shown.
+    expect(view.getByTestId('feelings-pre-saving', { includeHiddenElements: true })).toBeTruthy();
+    expect(view.queryAllByRole('radio')).toHaveLength(0);
+    expect(view.getByText('Energía alta · Fatiga ninguna')).toBeTruthy();
+    expect(view.queryByText('Comprobando sensaciones…')).toBeNull();
+    expect(view.queryByRole('button', { name: 'Comprobar operación pendiente' })).toBeNull();
     await act(async () => { (release as (() => void) | null)?.(); await settle(); });
     expect(view.getByText('Energía alta · Fatiga ninguna')).toBeTruthy(); expect(view.queryAllByRole('radio')).toHaveLength(0);
     expect(view.queryByText('Sin guardar')).toBeNull(); expect(writes).toHaveLength(1);

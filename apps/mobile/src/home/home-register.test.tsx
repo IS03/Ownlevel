@@ -90,6 +90,13 @@ describe('Home metric controls', () => {
     expect(StyleSheet.flatten(view.getByTestId('home-register-metric-m0').props.style).transform).toBeUndefined();
   });
 
+  it('the progress ring lives inside the interactive glass, so it moves with it instead of staying behind', async () => {
+    const view = await metrics();
+    const glass = view.getByTestId('home-register-metric-m0-glass');
+    expect(glass.props.isInteractive).toBe(true);
+    expect(within(glass).getByTestId('home-register-metric-m0-ring-layer', { includeHiddenElements: true })).toBeTruthy();
+    expect(within(glass).getByTestId('home-register-ring-m0', { includeHiddenElements: true })).toBeTruthy();
+  });
   it('Reduce Motion disables native expansion while retaining the metric action', async () => {
     mockReduced = true;
     jest.spyOn(AccessibilityInfo, 'isReduceTransparencyEnabled').mockResolvedValue(false);

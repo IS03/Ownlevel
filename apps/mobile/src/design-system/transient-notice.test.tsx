@@ -109,16 +109,36 @@ describe('placement', () => {
 });
 
 describe('dismissal', () => {
-  it('a long downward swipe calls onDismiss and nothing else, never an action', () => {
+  it('half a touch target down calls onDismiss and nothing else, never an action', () => {
     const onDismiss = jest.fn(), onPress = jest.fn(), onSecondary = jest.fn(), onClose = jest.fn();
     show({ onDismiss, action: { label: 'Deshacer', accessibilityLabel: 'Deshacer algo', onPress }, secondaryAction: { label: 'Anterior · 1', accessibilityLabel: 'Anterior', onPress: onSecondary }, close: { label: 'Cerrar', onPress: onClose } });
-    swipe(layout.minTouch - 1); expect(onDismiss).not.toHaveBeenCalled();
-    swipe(layout.minTouch); expect(onDismiss).toHaveBeenCalledTimes(1);
+    swipe(layout.minTouch / 2 - 1); expect(onDismiss).not.toHaveBeenCalled();
+    swipe(layout.minTouch / 2); expect(onDismiss).toHaveBeenCalledTimes(1);
     expect(onPress).not.toHaveBeenCalled(); expect(onSecondary).not.toHaveBeenCalled(); expect(onClose).not.toHaveBeenCalled();
   });
-  it('short, upward and horizontal motions do not dismiss', () => {
+  it('a quick flick down dismisses even when short', () => {
+    const onDismiss = jest.fn(); show({ onDismiss });
+    act(() => fireGestureHandler(getByGestureTestId('transient-notice-dismiss'), [
+      { state: State.BEGAN, translationX: 0, translationY: 0, velocityY: 0 }, { state: State.ACTIVE, translationX: 0, translationY: 10, velocityY: 900 },
+      { state: State.END, translationX: 0, translationY: 10, velocityY: 900 }]));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+  it('short, upward and mostly sideways motions do not dismiss', () => {
     const onDismiss = jest.fn(); show({ onDismiss });
     swipe(12); swipe(-80); swipe(80, 40); swipe(0, 90);
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+  it('a tap on the text dismisses; the action keeps its own button and the glass leaves the touch to the swipe', () => {
+    const onDismiss = jest.fn(), onPress = jest.fn();
+    const view = show({ onDismiss, action: { label: 'Deshacer', accessibilityLabel: 'Deshacer algo', onPress } });
+    expect(view.getByTestId('notice-surface').props.isInteractive ?? view.getByTestId('notice-surface').props.interactive).toBeFalsy();
+    fireEvent.press(view.getByTestId('notice-body')); expect(onDismiss).toHaveBeenCalledTimes(1); expect(onPress).not.toHaveBeenCalled();
+    fireEvent.press(view.getByRole('button', { name: 'Deshacer algo' })); expect(onPress).toHaveBeenCalledTimes(1); expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+  it('without onDismiss, or while disabled, a tap on the text does nothing', () => {
+    const onDismiss = jest.fn();
+    const plain = show({}); fireEvent.press(plain.getByTestId('notice-body')); plain.unmount();
+    const locked = show({ onDismiss, disabled: true }); fireEvent.press(locked.getByTestId('notice-body'));
     expect(onDismiss).not.toHaveBeenCalled();
   });
   it('without onDismiss there is no gesture, no VoiceOver action and no escape', () => {

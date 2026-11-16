@@ -8,11 +8,13 @@ import { metricValue } from './day-details';
 export type MetricNotice = { date: string; message: string; undo: MetricUndo | null; id?: number; queuedCount?: number };
 /** `brief`: the confirmation of an undo («· deshecho»): a result with no action left, so it needs no Undo window. */
 type QueuedNotice = MetricNotice & { id: number; metricId: string; brief?: boolean };
-/** A visible notice that offers Undo keeps its whole window: the slot IS the undo (a hidden notice has no way back to it). */
-export const METRIC_NOTICE_MS = 10000;
+/** A visible notice that offers Undo keeps its whole window: the slot IS the undo (a hidden notice has no way back to it).
+ * Six seconds on screen (QA: ten felt long); a screen reader keeps ten, to hear it and still reach Deshacer. */
+export const METRIC_NOTICE_MS = 6000;
+export const NOTICE_SCREEN_READER_MS = 10000;
 /** #511: a result with nothing to act on reads in a couple of seconds, unless a screen reader may still be reading it. */
 export const METRIC_RESULT_MS = 2500;
-function useScreenReader() {
+export function useScreenReader() {
   const [enabled, setEnabled] = useState(false);
   useEffect(() => {
     let live = true;
@@ -69,9 +71,10 @@ export function useMetricEntry(controller: DayWriteController | undefined, date:
   }, [controller]);
   useEffect(() => {
     if (!notice || paused) return;
-    // Ten visible seconds per slot. Editors and newer results pause older slots;
-    // returning restarts ten seconds, never silently shortening their undo. Only a confirmed undo (nothing left to act on) is brief.
-    const timer = setTimeout(() => setNotices(rows => rows.filter(row => row.id !== notice.id)), notice.brief && !screenReader ? METRIC_RESULT_MS : METRIC_NOTICE_MS);
+    // A full window per visible slot. Editors and newer results pause older slots;
+    // returning restarts the window, never silently shortening their undo. Only a confirmed undo (nothing left to act on) is brief.
+    const timer = setTimeout(() => setNotices(rows => rows.filter(row => row.id !== notice.id)),
+      screenReader ? NOTICE_SCREEN_READER_MS : notice.brief ? METRIC_RESULT_MS : METRIC_NOTICE_MS);
     return () => clearTimeout(timer);
   }, [notice, paused, screenReader]);
   const open = useCallback((data: MobileNutritionDayResponse, metric: NutritionDayMetric) => {

@@ -1,7 +1,7 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { Platform, StyleSheet, View } from 'react-native';
 
-import { useOwnlevelTheme } from '@/design-system';
+import { NoticeHost, useOwnlevelTheme } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import { SessionRestAccessory, SessionReturnDock } from '@/training/session-return-dock';
 import { supportsNativeSessionNavigation, useSessionNavigation } from '@/training/use-session-navigation';
@@ -11,7 +11,8 @@ export default function TabsLayout() {
   const sessionNavigation = useSessionNavigation();
 
   return (
-    <View style={styles.root}><NativeTabs
+    // Notices raised in a tab (Inicio, Nutrición) stay visible over the others until they end or are dismissed.
+    <View style={styles.root}><NoticeHost><NativeTabs
       backgroundColor={colors.surface}
       backBehavior="history"
       blurEffect={isDark ? 'systemMaterialDark' : 'systemMaterialLight'}
@@ -65,7 +66,7 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Icon sf={{ default: 'dumbbell', selected: 'dumbbell.fill' }} md="fitness_center" />
       </NativeTabs.Trigger>
       {supportsNativeSessionNavigation ? <NativeTabs.BottomAccessory><SessionRestAccessory navigation={sessionNavigation} /></NativeTabs.BottomAccessory> : null}
-    </NativeTabs>{supportsNativeSessionNavigation ? null : <SessionReturnDock navigation={sessionNavigation} />}</View>
+    </NativeTabs>{supportsNativeSessionNavigation ? null : <SessionReturnDock navigation={sessionNavigation} />}</NoticeHost></View>
   );
 }
 const styles = StyleSheet.create({ root: { flex: 1 } });

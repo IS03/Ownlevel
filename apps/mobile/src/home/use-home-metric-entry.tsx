@@ -15,11 +15,11 @@ import {
 } from '@/nutrition/metric-entry-model';
 import { MetricSavedNotice } from '@/nutrition/metric-notice';
 import { useDayWriteController } from '@/nutrition/use-day-write-controller';
-import { dayWriteInFlight, useMetricEntry } from '@/nutrition/use-metric-entry';
+import { METRIC_NOTICE_MS, NOTICE_SCREEN_READER_MS, dayWriteInFlight, useMetricEntry, useScreenReader } from '@/nutrition/use-metric-entry';
 import { useMetricPresentations } from '@/metrics/presentation-provider';
 import { triggerMetricHaptic } from '@/platform/haptics';
 import { NutritionToast } from '@/nutrition/nutrition-toast';
-import { NoticeStack } from '@/design-system';
+import { NoticeOutlet } from '@/design-system';
 import { subscribeMetricDefinitionsChanged } from '@/metrics/presentation-resource';
 export type QuickMetricTap = {
   value: number | null;
@@ -100,12 +100,13 @@ export function useHomeMetricEntry(onSaved: () => void) {
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [quickNotice, setQuickNotice] = useState<string | null>(null);
+  const screenReader = useScreenReader();
   useEffect(() => {
     if (quickNotice) {
-      const t = setTimeout(() => setQuickNotice(null), 10000);
+      const t = setTimeout(() => setQuickNotice(null), screenReader ? NOTICE_SCREEN_READER_MS : METRIC_NOTICE_MS);
       return () => clearTimeout(t);
     }
-  }, [quickNotice]);
+  }, [quickNotice, screenReader]);
   const busyRef = useRef(false);
   const open = useCallback(
     async (metricId: string, quick?: QuickMetricTap) => {
@@ -198,7 +199,7 @@ export function useHomeMetricEntry(onSaved: () => void) {
           onClose={entry.close}
         />
       ) : null}
-      <NoticeStack placement="tab">
+      <NoticeOutlet placement="tab">
         {entry.undoing && dayWriteInFlight(state) ? (
           <MetricSavedNotice
             notice={{ date: today, message: 'Deshaciendo…', undo: null }}
@@ -246,7 +247,7 @@ export function useHomeMetricEntry(onSaved: () => void) {
             }}
           />
         ) : null}
-      </NoticeStack>
+      </NoticeOutlet>
     </>
   );
   const clearError = useCallback(() => setError(null), []);

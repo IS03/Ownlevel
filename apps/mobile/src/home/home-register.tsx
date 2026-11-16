@@ -56,9 +56,12 @@ function RegisterCircle({ detail, done, glass, icon, label, onPress, testID, wid
       testID={testID}
     >
       <View style={styles.circleWrap}>
-        {glass ? <GlassView colorScheme={isDark ? 'dark' : 'light'} glassEffectStyle="regular" isInteractive={!reduceMotion} style={styles.circle} testID={`${testID}-glass`}>{image}</GlassView>
-          : <View style={[styles.circle, { backgroundColor: colors.surface }]}>{image}</View>}
-        {ring?<View pointerEvents="none" style={StyleSheet.absoluteFill}>{ring}</View>:null}
+        {/* QA: the progress ring lives inside the glass, so the interactive glass carries it when it stretches on touch instead of
+            leaving an empty or filled circle behind. */}
+        {glass ? <GlassView colorScheme={isDark ? 'dark' : 'light'} glassEffectStyle="regular" isInteractive={!reduceMotion} style={styles.circle} testID={`${testID}-glass`}>
+          {ring ? <View pointerEvents="none" style={StyleSheet.absoluteFill} testID={`${testID}-ring-layer`}>{ring}</View> : null}{image}</GlassView>
+          : <View style={[styles.circle, { backgroundColor: colors.surface }]}>
+            {ring ? <View pointerEvents="none" style={StyleSheet.absoluteFill} testID={`${testID}-ring-layer`}>{ring}</View> : null}{image}</View>}
         {done ? (
           <View style={[styles.badge, { backgroundColor: colors.background }]}>
             <AppIcon color={colors.primary} name="check" size={17} />

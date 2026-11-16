@@ -17,7 +17,7 @@ import { ReturnToInsights } from '@/insights/return-to-insights';
 import { useDomainDate } from '@/history/use-domain-date';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
-import { AppText, Button, LoadingState, NoticeStack, ScrollScreen, UnavailableState, brandTokens, spacing, usePullRefresh, useOwnlevelTheme } from '@/design-system';
+import { AppText, Button, LoadingState, NoticeOutlet, ScrollScreen, UnavailableState, brandTokens, spacing, usePullRefresh, useOwnlevelTheme } from '@/design-system';
 import { nutritionToday, shiftNutritionDate } from './day-format';
 import { NutritionMonthSheet, prefetchCalendarMonth } from './day-calendar';
 import { headerDate } from '@/home/home-day';
@@ -216,7 +216,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
     {/* Another day shown and no notice on screen: a discreet way back to today. */}
     {showTodayControl ? <TodayPill onPress={showToday} onHeight={setTodayPillHeight} /> : null}
     {/* One local stack, so a metric notice and a meal notice never sit on top of each other. Metric first, meal nearest the bar. */}
-    <NoticeStack placement="tab">
+    <NoticeOutlet placement="tab">
       {metricEntry.undoing && writes && dayWriteInFlight(writes.state) ? <MetricSavedNotice notice={{ date, message: 'Deshaciendo…', undo: null }} disabled pending onUndo={() => {}} onClose={() => {}} /> : null}
       {metricEntry.notice ? <MetricSavedNotice notice={metricEntry.notice} disabled={!editable || !!writes?.state.draft} onUndo={metricEntry.undoNotice} onClose={metricEntry.dismissNotice} onPrevious={metricEntry.previousNotice} /> : null}
       {/* One meal-side notice at a time: an add closed mid-way, a delete/undo running, its brief confirmation, or "Guardado · Deshacer". */}
@@ -224,7 +224,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
         : mealNotice.undoing ? <NutritionToast testID="nutrition-meal-pending" state="pending" message={mealNotice.undoing === 'undo' ? 'Deshaciendo…' : 'Eliminando…'} />
         : mealNotice.result ? <NutritionToast testID="nutrition-meal-result" state="done" message={mealNotice.result.message} />
         : mealNotice.notice ? <MealAddedNotice notice={mealNotice.notice} disabled={!editable || !!meals?.state.editor} pending={false} onUndo={() => void mealNotice.undo()} onClose={mealNotice.dismiss} queuedCount={mealNotice.queuedCount} onPrevious={mealNotice.previous} /> : null}
-    </NoticeStack>
+    </NoticeOutlet>
     {meals ? <MealEditor controller={meals.controller} state={meals.state} /> : null}
   </>;
 }

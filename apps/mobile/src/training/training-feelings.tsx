@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { AppIcon, AppText, Button, appIconSize, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { FEELING_LABELS, feelingKeysFor, type FeelingKey, type FeelingsSnapshot, type TrainingFeelingsJournal } from '@/api/training-feelings';
@@ -66,6 +66,10 @@ export function TrainingFeelings({ journal, phase, disabled = false, controller 
   const state = useSyncExternalStore(journal.subscribe, journal.getSnapshot, journal.getSnapshot);
   const { colors } = useOwnlevelTheme();
   const [editing, setEditing] = useState(false);
+  // QA: «Guardar» carries its own spinner, the scales fold at once and the save finishes in the background. While that ordinary
+  // save is in flight, its pending operation is not a recovery: no «Comprobando…» line and no «Comprobar operación pendiente».
+  // If it does not confirm, `sending` ends and the panel reopens with the usual status and action.
+  const [sending, setSending] = useState(false);
   const keys = feelingKeysFor(phase), moment = MOMENT[phase];
   const locked = disabled || !state.ready || state.busy || !!state.pending || state.blocked;
   const draft = inPhase(phase, Object.keys(state.patch));
@@ -73,18 +77,20 @@ export function TrainingFeelings({ journal, phase, disabled = false, controller 
   // Only the pre capture folds: it stays above the exercises for the whole session. Its scales stay open while they hold
   // something unsent (a draft, or a local draft that was not confirmed). Pending writes, conflicts and failed reads keep their
   // notice and action visible below, folded or not, without unfolding the scales on their own (nor for the other moment's work).
-  const pinned = phase === 'post' || draft || state.localError;
+  const pinned = phase === 'post' || (draft && !sending) || state.localError;
   const open = pinned || editing;
-  const status = phaseStatus(state, phase);
+  const status = sending ? null : phaseStatus(state, phase);
   const readNotice = state.readError ? state.error ?? UNREAD : null;
   const answered = keys.flatMap(key => { const value = journal.value(key); return value === null ? [] : [`${labelOf(key)} ${FEELING_LABELS[scaleOf(key)][value - 1].toLowerCase()}`]; });
   // #512 (A): the save row sits under the scales and says «Sin guardar» itself, so the status line below does not repeat it.
-  const saveRow = phase === 'pre' && draft && !state.pending && !state.blocked;
+  const saveRow = phase === 'pre' && draft && (sending || (!state.pending && !state.blocked));
   const outsideStatus = saveRow && status === 'Sin guardar' ? null : status;
   const title = <View style={styles.titleText}>
     <AppText accessibilityRole="header" variant="headline">{moment.title}</AppText>
+    {/* QA: the summary line keeps its place open or folded (only its opacity changes), so opening never moves the title. */}
     {phase === 'post' ? <AppText muted variant="footnote">{moment.hint}</AppText>
-      : !open ? <AppText muted variant="footnote">{answered.length ? answered.join(' · ') : 'Energía y fatiga'}</AppText> : null}
+      : <AppText muted variant="footnote" numberOfLines={1} style={open ? styles.hidden : null} accessibilityElementsHidden={open}
+        importantForAccessibility={open ? 'no-hide-descendants' : 'auto'} testID="feelings-pre-summary">{answered.length ? answered.join(' · ') : 'Energía y fatiga'}</AppText>}
   </View>;
 
   return <View style={styles.block} testID={`feelings-${phase}`}>
@@ -121,13 +127,18 @@ export function TrainingFeelings({ journal, phase, disabled = false, controller 
           {/* journal.save() sends the whole patch: say so where the save is, while finishing answers are also unsent. */}
           {otherDraft ? <AppText muted variant="footnote">Guardar también envía tus respuestas de al terminar sin guardar.</AppText> : null}
           <View style={styles.saveRow}>
-            <AppText muted accessibilityLiveRegion="polite" variant="footnote" style={styles.flex}>Sin guardar</AppText>
+            <AppText muted accessibilityLiveRegion="polite" variant="footnote" style={styles.flex}>{sending ? 'Guardando…' : 'Sin guardar'}</AppText>
             {/* Explicit and compact: the only way this moment writes. It folds only once save() returns the server's receipt. */}
-            <Pressable accessibilityRole="button" accessibilityLabel="Guardar sensaciones" accessibilityState={{ disabled: locked }} disabled={locked}
-              onPress={() => void journal.save().then(saved => { if (saved) setEditing(false); })} testID="feelings-pre-save"
-              style={({ pressed }) => [styles.saveTarget, { opacity: locked ? 0.45 : pressed ? 0.7 : 1 }]}>
+            <Pressable accessibilityRole="button" accessibilityLabel={sending ? 'Guardando sensaciones' : 'Guardar sensaciones'}
+              accessibilityState={{ disabled: locked || sending, busy: sending }} disabled={locked || sending}
+              onPress={() => {
+                setSending(true); setEditing(false);
+                void journal.save().then(saved => { if (saved) setEditing(false); }).finally(() => setSending(false));
+              }} testID="feelings-pre-save"
+              style={({ pressed }) => [styles.saveTarget, { opacity: locked && !sending ? 0.45 : pressed ? 0.7 : 1 }]}>
               <View style={[styles.saveCapsule, { backgroundColor: colors.primary }]}>
-                <AppText variant="subheadline" style={{ color: colors.onPrimary, fontWeight: '600' }}>Guardar</AppText>
+                {sending ? <ActivityIndicator color={colors.onPrimary} testID="feelings-pre-saving" />
+                  : <AppText variant="subheadline" style={{ color: colors.onPrimary, fontWeight: '600' }}>Guardar</AppText>}
               </View>
             </Pressable>
           </View>
@@ -145,7 +156,7 @@ export function TrainingFeelings({ journal, phase, disabled = false, controller 
       <AppText variant="footnote">Guardado: {Object.entries(state.server?.values ?? {}).map(([key, fact]) => `${labelOf(key as FeelingKey)} ${key.endsWith('Pre') ? MOMENT.pre.spoken : MOMENT.post.spoken}: ${fact?.value}`).join(' · ') || 'Sin respuestas confirmadas'}</AppText>
       <Button label="Conservar lo guardado" variant="secondary" disabled={state.busy} onPress={() => void controller.resolveFeelings('server')} />
       <Button label="Revisar mis respuestas para reenviar" variant="quiet" disabled={state.busy} onPress={() => void controller.resolveFeelings('mine')} />
-    </View> : state.pending ? <Button label="Comprobar operación pendiente" variant="secondary" disabled={state.busy || disabled}
+    </View> : state.pending && !sending ? <Button label="Comprobar operación pendiente" variant="secondary" disabled={state.busy || disabled}
       onPress={() => void (state.pending?.operation === 'finish' ? controller.getSnapshot().intent ? controller.retryIntent() : controller.finish() : journal.retry())} /> : null}
     {state.readError && !state.pending ? <Button label="Volver a leer sensaciones" variant="quiet" disabled={state.busy} onPress={() => void journal.refresh()} /> : null}
   </View>;
@@ -161,5 +172,5 @@ const styles = StyleSheet.create({
   saveRow: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.sm, minHeight: brandTokens.layout.minTouch },
   saveTarget: { minHeight: brandTokens.layout.minTouch, minWidth: brandTokens.layout.minTouch, justifyContent: 'center', alignItems: 'flex-end' },
   saveCapsule: { minHeight: 34, paddingHorizontal: brandTokens.space.md, borderRadius: brandTokens.radius.full, justifyContent: 'center' },
-  flex: { flex: 1 }, end: { textAlign: 'right' },
+  flex: { flex: 1 }, end: { textAlign: 'right' }, hidden: { opacity: 0 },
 });

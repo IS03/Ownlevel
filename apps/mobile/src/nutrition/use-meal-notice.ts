@@ -3,12 +3,13 @@ import type { NutritionDayMeal } from '@/api/nutrition-day';
 import type { MealController } from './meal-controller';
 import type { QuickController } from './quick-controller';
 import { mealShown } from './meal-sheet';
+import { NOTICE_SCREEN_READER_MS, useScreenReader } from './use-metric-entry';
 export type MealNotice = { date: string; meal: NutritionDayMeal; message: string; id?: number };
 /** A brief confirmation once a delete, an undo or an edit is confirmed by the server. */
 export type MealResult = { message: string };
 const RESULT_MS = 1600;
-/** Each confirmation keeps its own Undo window, counted from the moment it was confirmed. */
-export const MEAL_NOTICE_MS = 10000;
+/** Each confirmation keeps its own Undo window, counted from the moment it was confirmed: six seconds, ten with a screen reader. */
+export const MEAL_NOTICE_MS = 6000;
 /**
  * One still-reversible confirmation. `meal` is the snapshot of what was confirmed: its `updatedAt` is the CAS token the undo
  * sends, so an entry can only ever undo its own meal. `paused` is only true while an undo of that very meal is in flight.
@@ -25,6 +26,9 @@ export function useMealNotice(meals: MealController | undefined, quick: QuickCon
   const [entries, setEntries] = useState<Entry[]>([]);
   const queue = useRef<Entry[]>([]);
   const sequence = useRef(0);
+  const screenReader = useScreenReader();
+  const windowMs = useRef(MEAL_NOTICE_MS);
+  useEffect(() => { windowMs.current = screenReader ? NOTICE_SCREEN_READER_MS : MEAL_NOTICE_MS; }, [screenReader]);
   const commit = useCallback((next: Entry[]) => { if (next === queue.current) return; queue.current = next; setEntries(next); }, []);
   const [undoing, setUndoing] = useState<'undo' | 'delete' | null>(null);
   const [result, setResult] = useState<MealResult | null>(null);
@@ -62,7 +66,7 @@ export function useMealNotice(meals: MealController | undefined, quick: QuickCon
       setResult(null);
       // A newer version of a queued meal carries a new CAS: it replaces the old entry, with a window of its own.
       commit([{ id: ++sequence.current, date: destination, meal, message: `${meal.title || meal.description || 'Comida'} · ${mealShown(meal.calories)} kcal`,
-        expiresAt: now + MEAL_NOTICE_MS, paused: false, owner: meals }, ...without(rows, row => row === same)]);
+        expiresAt: now + windowMs.current, paused: false, owner: meals }, ...without(rows, row => row === same)]);
     };
     const unsubscribeQuick = quick?.subscribeConfirmed(show);
     const unsubscribeMeal = meals?.subscribeConfirmed(stored => {
@@ -104,7 +108,7 @@ export function useMealNotice(meals: MealController | undefined, quick: QuickCon
     try { await controller.undo(target, to); }
     finally {
       setUndoing(null); setRemoving(null);
-      if (paused && queue.current.some(row => row.id === paused.id && row.paused)) commit(queue.current.map(row => row.id === paused.id ? { ...row, paused: false, expiresAt: Date.now() + MEAL_NOTICE_MS } : row));
+      if (paused && queue.current.some(row => row.id === paused.id && row.paused)) commit(queue.current.map(row => row.id === paused.id ? { ...row, paused: false, expiresAt: Date.now() + windowMs.current } : row));
     }
   };
   /** Hides the entry on screen only; it never sends anything. */

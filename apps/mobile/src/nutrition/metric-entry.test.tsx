@@ -16,7 +16,7 @@ import { nutritionFixture } from './day-fixture.test-helper';
 import { NutritionDayPanel } from './day-panel';
 import { MetricEntrySheet } from './metric-entry-sheet';
 import { MetricSavedNotice } from './metric-notice';
-import { METRIC_NOTICE_MS, METRIC_RESULT_MS, dayWriteInFlight, useMetricEntry } from './use-metric-entry';
+import { METRIC_NOTICE_MS, METRIC_RESULT_MS, NOTICE_SCREEN_READER_MS, dayWriteInFlight, useMetricEntry } from './use-metric-entry';
 import { confirmedMetricUndo, metricEntryCandidate, metricRaw, quickMetricValue, sameMetricTimestamp } from './metric-entry-model';
 
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -110,18 +110,18 @@ it('explicitly retires an older same-metric CAS without silently losing the conf
   act(()=>hook.result.current.dismissNotice());await act(async()=>hook.result.current.undoNotice());
   expect(recordedMetric(f).value).toBe(1.25);expect(f.mutate).toHaveBeenCalledTimes(3);hook.unmount();f.controller.dispose();
 });
-it('keeps ten visible seconds per slot, pauses behind an editor and clears its timer on unmount',async()=>{
+it('keeps a full visible window per slot, pauses behind an editor and clears its timer on unmount',async()=>{
   jest.useFakeTimers();
   try{
     const f=setup(1);await f.controller.initialize();const hook=renderHook(()=>useMetricEntry(f.controller,date));
     await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f),0.25);});
-    act(()=>jest.advanceTimersByTime(9000));
+    act(()=>jest.advanceTimersByTime(METRIC_NOTICE_MS-1000));
     act(()=>hook.result.current.open(f.data(),recordedMetric(f)));expect(hook.result.current.notice).toBeNull();
     act(()=>jest.advanceTimersByTime(20000));act(()=>hook.result.current.close());expect(hook.result.current.notice?.undo).not.toBeNull();
     await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f,1),2);});
-    act(()=>jest.advanceTimersByTime(9999));expect(hook.result.current.notice?.message).toBe('Otra métrica: 102');
+    act(()=>jest.advanceTimersByTime(METRIC_NOTICE_MS-1));expect(hook.result.current.notice?.message).toBe('Otra métrica: 102');
     act(()=>jest.advanceTimersByTime(1));expect(hook.result.current.notice?.message).toBe('Agua: 1,25 L');expect(hook.result.current.notice?.undo).not.toBeNull();
-    act(()=>jest.advanceTimersByTime(9999));expect(hook.result.current.notice).not.toBeNull();
+    act(()=>jest.advanceTimersByTime(METRIC_NOTICE_MS-1));expect(hook.result.current.notice).not.toBeNull();
     expect(jest.getTimerCount()).toBe(1);hook.unmount();expect(jest.getTimerCount()).toBe(0);f.controller.dispose();
   }finally{jest.useRealTimers();}
 });
@@ -154,7 +154,7 @@ describe('#511 how long a confirmation stays',()=>{
     try{
       const {f,hook}=await undone();
       act(()=>jest.advanceTimersByTime(METRIC_RESULT_MS+500));expect(hook.result.current.notice?.message).toContain('deshecho');
-      act(()=>jest.advanceTimersByTime(METRIC_NOTICE_MS));expect(hook.result.current.notice).toBeNull();
+      act(()=>jest.advanceTimersByTime(NOTICE_SCREEN_READER_MS));expect(hook.result.current.notice).toBeNull();
       hook.unmount();f.controller.dispose();
     }finally{jest.useRealTimers();jest.restoreAllMocks();}
   });
