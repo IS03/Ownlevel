@@ -111,7 +111,7 @@ describe('#531 · Etapas en el gráfico de Nutrición', () => {
     fireEvent.press(chip(view));
     expect(view.queryByTestId(`nutrition-chart-current-stage-${blocks[0].start}`, H)).toBeNull(); // no segmented bands inside blocks
     expect(within(view.getByTestId('nutrition-chart-series-current')).getAllByRole('button')).toHaveLength(blocks.length);
-    const detail = (start: string) => { fireEvent.press(view.getByTestId(`nutrition-chart-current-${start}-bar`)); return view.getByTestId('nutrition-chart-stage').props.children as string; };
+    const detail = (start: string) => { fireEvent.press(view.getByTestId(`nutrition-chart-current-${start}-bar`)); return view.getByTestId('nutrition-chart-stage', H).props.children as string; };
     expect(detail(blocks[0].start)).toBe('Etapas del bloque: Volumen · 3 días; Definición · 2 días; sin etapa informada · 2 días.');
     expect(detail(blocks[1].start)).toBe('Etapas del bloque: Volumen · 7 días.');
     expect(detail(blocks[2].start)).toBe('Sin etapa informada en los 7 días del bloque.');
@@ -122,7 +122,7 @@ describe('#531 · Etapas en el gráfico de Nutrición', () => {
     fireEvent.press(view.getByTestId(`nutrition-chart-current-${blocks[0].start}-bar`));
     fireEvent.press(view.getByRole('radio', { name: 'Proteína' }));
     expect(view.getByText(/5 días usados de 7 días del bloque/)).toBeTruthy();
-    expect(view.getByTestId('nutrition-chart-stage').props.children).toBe('Etapas del bloque: Volumen · 3 días; Definición · 2 días; sin etapa informada · 2 días.');
+    expect(view.getByTestId('nutrition-chart-stage', H).props.children).toBe('Etapas del bloque: Volumen · 3 días; Definición · 2 días; sin etapa informada · 2 días.');
     expect(chip(view).props.accessibilityState).toMatchObject({ checked: true });
   });
   it('granularity per side: A daily with B in blocks, and A in blocks with B daily; the state survives side and nutrient', async () => {
@@ -134,7 +134,7 @@ describe('#531 · Etapas en el gráfico de Nutrición', () => {
     expect(chip(a).props.accessibilityState).toMatchObject({ checked: true });
     expect(a.queryByTestId('nutrition-chart-reference-stage-names', H)).toBeNull();
     fireEvent.press(a.getByTestId(`nutrition-chart-reference-${blocks[1].start}-bar`));
-    expect(a.getByTestId('nutrition-chart-stage').props.children).toBe('Etapas del bloque: Volumen · 7 días.');
+    expect(a.getByTestId('nutrition-chart-stage', H).props.children).toBe('Etapas del bloque: Volumen · 7 días.');
     fireEvent.press(a.getByRole('radio', { name: 'Proteína' }));
     fireEvent.press(a.getByRole('radio', { name: 'Período elegido' }));
     expect(a.getByTestId('nutrition-chart-current-stage-2026-09-25', H)).toBeTruthy();
@@ -170,3 +170,59 @@ describe('#531 · Etapas en el gráfico de Nutrición', () => {
     spy.mockRestore();
   });
 });
+
+describe('#531 · el desglose del bloque es accesible', () => {
+  // The inspection region: one accessible element (live region on Android) whose label is what the reader says on selection.
+  const region = (view: ReturnType<typeof render>) => view.getByTestId('nutrition-chart-inspection').findAll(n => n.props.accessible && n.props.accessibilityLiveRegion === 'polite')[0]!.props.accessibilityLabel as string;
+  const MIXED = 'Etapas del bloque: Volumen, 3 días; Definición, 2 días; sin etapa informada, 2 días';
+  it('mixed block: the bar and the inspection region say the whole breakdown; the visible line is not read twice', async () => {
+    const { r, blocks } = long();
+    const view = render(tree(r)); await flush();
+    const bar = () => view.getByTestId(`nutrition-chart-current-${blocks[0].start}-bar`);
+    expect(bar().props.accessibilityLabel).not.toMatch(/etapa/i); // off: nothing about stages
+    fireEvent.press(bar());
+    expect(region(view)).not.toMatch(/etapa/i);
+    fireEvent.press(chip(view));
+    expect(bar().props.accessibilityState.selected).toBe(true); // the selection survives the chip
+    expect(bar().props.accessibilityLabel).toContain(`días usados, 0 con suma parcial, ${MIXED}, Período elegido`);
+    expect(region(view)).toBe(`${blocks[0].start.split('-').reverse().join('/')} – ${blocks[0].end.split('-').reverse().join('/')}, Promedio del bloque · 2.000 kcal por día con dato, Período elegido, ${MIXED}`);
+    // The same text stays on screen, hidden from the reader because the region already says it.
+    const line = view.getByTestId('nutrition-chart-stage', H);
+    expect(line.props.children).toBe('Etapas del bloque: Volumen · 3 días; Definición · 2 días; sin etapa informada · 2 días.');
+    expect(line.props.accessibilityElementsHidden).toBe(true); expect(line.props.importantForAccessibility).toBe('no');
+    expect(view.queryByTestId('nutrition-chart-stage')).toBeNull();
+    // Protein keeps the breakdown and its own denominator; the bar keeps 44 pt.
+    fireEvent.press(view.getByRole('radio', { name: 'Proteína' }));
+    expect(bar().props.accessibilityLabel).toContain(`5 días usados, 0 con suma parcial, ${MIXED}`);
+    expect(region(view)).toContain(MIXED);
+    expect(StyleSheet.flatten(bar().props.style).minWidth).toBeGreaterThanOrEqual(44);
+    // Off again: no stage information anywhere, same selection.
+    fireEvent.press(chip(view));
+    expect(bar().props.accessibilityState.selected).toBe(true);
+    expect(bar().props.accessibilityLabel).not.toMatch(/etapa/i); expect(region(view)).not.toMatch(/etapa/i);
+    expect(view.queryByTestId('nutrition-chart-stage', H)).toBeNull();
+  });
+  it('a block without any label says so in the bar and the region', async () => {
+    const { r, blocks } = long();
+    const view = render(tree(r)); await flush();
+    fireEvent.press(chip(view));
+    fireEvent.press(view.getByTestId(`nutrition-chart-current-${blocks[2].start}-bar`));
+    expect(view.getByTestId(`nutrition-chart-current-${blocks[2].start}-bar`).props.accessibilityLabel).toContain('Sin etapa informada en los 7 días del bloque, Período elegido');
+    expect(region(view)).toMatch(/, Sin etapa informada en los 7 días del bloque$/);
+  });
+  it('B in blocks: its bars and the region speak the breakdown of B, from B\'s own report', async () => {
+    const { r: reference, blocks } = long('2026-06-01', '2026-08-04');
+    const view = render(tree(daily(), reference)); await flush();
+    fireEvent.press(chip(view));
+    fireEvent.press(view.getByRole('radio', { name: 'Comparación' }));
+    const bar = view.getByTestId(`nutrition-chart-reference-${blocks[1].start}-bar`);
+    expect(bar.props.accessibilityLabel).toMatch(/Etapas del bloque: Volumen, 7 días, Comparación · /);
+    fireEvent.press(bar);
+    expect(region(view)).toMatch(/, Comparación · .+, Etapas del bloque: Volumen, 7 días$/);
+    // A (daily) still says each day's stage, not a block breakdown.
+    fireEvent.press(view.getByRole('radio', { name: 'Período elegido' }));
+    expect(view.getByTestId('nutrition-chart-current-2026-09-25-bar').props.accessibilityLabel).toContain('Etapa: Volumen');
+    expect(view.getByTestId('nutrition-chart-current-2026-09-25-bar').props.accessibilityLabel).not.toContain('Etapas del bloque');
+  });
+});
+

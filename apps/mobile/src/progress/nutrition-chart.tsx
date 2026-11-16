@@ -71,9 +71,11 @@ function blockStages(report: NutritionReport, start: string, end: string) {
   }
   return { labels: [...counts.entries()], none, total };
 }
-function blockStagesText(s: ReturnType<typeof blockStages>) {
-  if (!s.labels.length) return `Sin etapa informada en los ${daysText(s.total)} del bloque.`;
-  return `Etapas del bloque: ${[...s.labels.map(([label, n]) => `${label} · ${daysText(n)}`), ...(s.none ? [`sin etapa informada · ${daysText(s.none)}`] : [])].join('; ')}.`;
+/** The block's breakdown, on screen («Volumen · 3 días») or spoken («Volumen, 3 días»: no middle dot for the screen reader). */
+function blockStagesText(s: ReturnType<typeof blockStages>, spoken = false) {
+  if (!s.labels.length) return `Sin etapa informada en los ${daysText(s.total)} del bloque${spoken ? '' : '.'}`;
+  const sep = spoken ? ', ' : ' · ';
+  return `Etapas del bloque: ${[...s.labels.map(([label, n]) => `${label}${sep}${daysText(n)}`), ...(s.none ? [`sin etapa informada${sep}${daysText(s.none)}`] : [])].join('; ')}${spoken ? '' : '.'}`;
 }
 function dayState(d: ReportDailyRow, n: NutritionChartNutrient) {
   const status = d.nutrients[n].status, copy = NUTRIENTS[n];
@@ -143,7 +145,9 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
             {s.points.map((p, i) => {
               const active = selection?.series === s.key && selection.start === p.start && selection.end === p.end;
               const run = runs?.[i] ?? null;
-              const stageText = daily && p.day ? `, ${run ? `Etapa: ${run.label}` : 'Sin etapa informada'}` : '';
+              // With «Etapas» on, a day says its stage and a block its whole breakdown (#531); off, nothing about stages.
+              const stageText = daily && p.day ? `, ${run ? `Etapa: ${run.label}` : 'Sin etapa informada'}`
+                : showStages && !p.day ? `, ${blockStagesText(blockStages(s.report, p.start, p.end), true)}` : '';
               const label = `${range(p.start, p.end)}, ${p.value === null ? p.day ? dayState(p.day, nutrient) : 'sin promedio calculable' : `${p.day ? '' : 'promedio del bloque, '}${spoken(p.value)}`}${p.partial ? ', suma parcial' : ''}${p.today ? ', hoy en curso' : ''}${p.day ? `, ${p.day.nutrients[nutrient].knownMeals} de ${p.day.mealCount} entradas con ${copy.short}` : `, ${p.denominator} días usados, ${p.partialDays} con suma parcial`}${stageText}, ${s.title}`;
               return <Pressable key={p.start} testID={`nutrition-chart-${s.key}-${p.start}-${p.value === null ? 'gap' : 'bar'}`}
                 accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={label}
@@ -167,7 +171,7 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
     })}
     {compareOn && !reference ? <AppText muted>Comparación no disponible.</AppText> : null}
     <View style={styles.section} testID="nutrition-chart-inspection">
-      <View accessible accessibilityLiveRegion="polite" accessibilityLabel={`${selected ? range(selected.start, selected.end) : prompt}, ${spokenValue}${source ? `, ${source.title}` : ''}`}>
+      <View accessible accessibilityLiveRegion="polite" accessibilityLabel={`${selected ? range(selected.start, selected.end) : prompt}, ${spokenValue}${source ? `, ${source.title}` : ''}${selectedBlockStages ? `, ${blockStagesText(selectedBlockStages, true)}` : ''}`}>
         {selected || !canInspect ? <>
           <AppText variant="headline">{selected ? range(selected.start, selected.end) : prompt}</AppText>
           <AppText numeric>{value}</AppText>
@@ -188,7 +192,8 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
         </ProgressRow>
       </> : selected ? <>
         <AppText numeric muted testID="nutrition-chart-coverage">{selected.denominator} días usados de {rows.length} días del bloque · {selected.partialDays} con suma parcial.</AppText>
-        {selectedBlockStages ? <AppText numeric muted variant="footnote" testID="nutrition-chart-stage">{blockStagesText(selectedBlockStages)}</AppText> : null}
+        {/* Already spoken by the inspection region above (and the block's bar): hidden from the reader so it is not read twice. */}
+        {selectedBlockStages ? <AppText numeric muted variant="footnote" testID="nutrition-chart-stage" accessibilityElementsHidden importantForAccessibility="no">{blockStagesText(selectedBlockStages)}</AppText> : null}
         <AppText numeric muted variant="caption">{rows.filter(d => d.mealCount === 0).length} días sin entradas registradas · {rows.filter(d => d.nutrients[nutrient].status === 'unknown').length} {copy.unknown}.</AppText>
         {selected.today ? <AppText variant="footnote" testID="nutrition-chart-today">Incluye hoy en curso: este promedio de bloque puede cambiar. El promedio del período excluye hoy.</AppText> : null}
         <Button label={selection?.daysOpen ? 'Ocultar días del bloque' : 'Ver días del bloque'} variant="secondary"
