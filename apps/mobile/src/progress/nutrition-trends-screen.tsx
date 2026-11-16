@@ -71,10 +71,10 @@ function daysText(report: NutritionReport) {
   return `Promedio de ${days(c.denominator)} con dato${protein}${partial}${report.days.some((d) => d.isToday) ? ', sin contar hoy' : ''}`;
 }
 type InspectionProps = { selection: NutritionInspection; onSelect: (next: NutritionInspection) => void; portada?: PortadaPoint | null;
-  nutrient: NutritionChartNutrient; onNutrient: (next: NutritionChartNutrient) => void };
+  nutrient: NutritionChartNutrient; onNutrient: (next: NutritionChartNutrient) => void; stages: boolean; onStages: (next: boolean) => void };
 // The portada averages the complete days of an interval; this chart shows each day: never the same datum.
 const NO_DAILY_EQUIVALENT = 'La portada promedia los días completos de ese intervalo y este gráfico muestra cada día: no hay un dato equivalente para seleccionar.';
-function ReportContent({ report, reference, selection, onSelect, portada, nutrient, onNutrient }: { report: NutritionReport; reference?: NutritionReport } & InspectionProps) {
+function ReportContent({ report, reference, selection, onSelect, portada, nutrient, onNutrient, stages, onStages }: { report: NutritionReport; reference?: NutritionReport } & InspectionProps) {
   const router = useRouter();
   const { compareOn, compareText } = useProgressRange();
   const openDate = (date: string) => { const href = nutritionChartDayHref(date); if (href) router.push(href); };
@@ -130,7 +130,7 @@ function ReportContent({ report, reference, selection, onSelect, portada, nutrie
         {compareOn && reference ? <AppText muted numeric variant="footnote">Referencia {compareText} · {daysText(reference)}</AppText> : null}
       </View>
       {portada ? <PortadaPointNote point={portada} matched={false} reason={NO_DAILY_EQUIVALENT} /> : null}
-      <NutritionChart report={report} reference={reference} selection={selection} onSelect={onSelect} onDate={openDate} nutrient={nutrient} onNutrient={onNutrient} />
+      <NutritionChart report={report} reference={reference} selection={selection} onSelect={onSelect} onDate={openDate} nutrient={nutrient} onNutrient={onNutrient} stages={stages} onStages={onStages} />
       {/* #519 · Right under the chart: when you eat, then the daily average. The chart already says its dates. */}
       <TimingEntry />
       <NutritionReportDetails
@@ -140,7 +140,7 @@ function ReportContent({ report, reference, selection, onSelect, portada, nutrie
     </>
   );
 }
-function ComparedReport({ report, query, selection, onSelect, refreshRevision, portada, nutrient, onNutrient }: { report: NutritionReport; query: ReportQuery; refreshRevision: number } & InspectionProps) {
+function ComparedReport({ report, query, selection, onSelect, refreshRevision, portada, nutrient, onNutrient, stages, onStages }: { report: NutritionReport; query: ReportQuery; refreshRevision: number } & InspectionProps) {
   const { client } = useMobileApi();
   const load = useCallback(
     (c: NonNullable<typeof client>, signal: AbortSignal) => fetchNutritionReport(c, query, signal),
@@ -167,7 +167,7 @@ function ComparedReport({ report, query, selection, onSelect, refreshRevision, p
           onAction={() => void refresh()}
         />
       ) : null}
-      <ReportContent report={report} reference={data} selection={selection} onSelect={onSelect} portada={portada} nutrient={nutrient} onNutrient={onNutrient} />
+      <ReportContent report={report} reference={data} selection={selection} onSelect={onSelect} portada={portada} nutrient={nutrient} onNutrient={onNutrient} stages={stages} onStages={onStages} />
     </>
   );
 }
@@ -191,6 +191,8 @@ function NutritionReportResource() {
   const portada = currentScope && saved.fromPortada ? point : null;
   // #519 · Calories first. The nutrient outlives period, A/B and refreshes on this screen, and the trip to a day's meals.
   const [nutrient, setNutrient] = useState<NutritionChartNutrient>('calories');
+  // #531 · «Etapas» starts off and, like the nutrient, outlives side, period and refreshes on this screen.
+  const [stages, setStages] = useState(false);
   const [referenceRevision, setReferenceRevision] = useState(0);
   const refreshAll = () => {
     void refresh();
@@ -224,11 +226,11 @@ function NutritionReportResource() {
             <ComparedReport
               refreshRevision={referenceRevision}
               report={data}
-              selection={selection} onSelect={onSelect} portada={portada} nutrient={nutrient} onNutrient={setNutrient}
+              selection={selection} onSelect={onSelect} portada={portada} nutrient={nutrient} onNutrient={setNutrient} stages={stages} onStages={setStages}
               query={{ period: 'custom', from: compare.start, to: compare.end }}
             />
           ) : (
-            <ReportContent report={data} selection={selection} onSelect={onSelect} portada={portada} nutrient={nutrient} onNutrient={setNutrient} />
+            <ReportContent report={data} selection={selection} onSelect={onSelect} portada={portada} nutrient={nutrient} onNutrient={setNutrient} stages={stages} onStages={setStages} />
           )}
         </>
       ) : (

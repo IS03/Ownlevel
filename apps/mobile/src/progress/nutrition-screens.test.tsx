@@ -431,3 +431,44 @@ describe('#519 · del dato al día y de vuelta', () => {
     } finally { clock.mockRestore(); mockParams = {}; }
   });
 });
+
+describe('#531 · Etapas en la pantalla', () => {
+  const H = { includeHiddenElements: true };
+  const reads = () => ({ reports: mockReport.mock.calls.length, timing: mockTiming.mock.calls.length });
+  const chip = (view: ReturnType<typeof wrap>) => view.getByRole('checkbox', { name: 'Etapas' });
+  it('the chip, the nutrient, the side and inspecting read nothing once A and B are loaded', async () => {
+    const view = wrap(<NutritionTrendsScreen />, comparing); await flush();
+    const initial = reads();
+    expect(chip(view).props.accessibilityState).toMatchObject({ checked: false });
+    fireEvent.press(view.getByTestId('nutrition-chart-current-2026-10-01-bar'));
+    fireEvent.press(chip(view));
+    expect(view.getByTestId('nutrition-chart-current-stage-2026-10-01', H)).toBeTruthy();
+    fireEvent.press(within(view.getByLabelText('Nutriente del gráfico')).getByRole('radio', { name: 'Proteína' }));
+    fireEvent.press(view.getByRole('radio', { name: 'Comparación' }));
+    fireEvent.press(view.getByTestId('nutrition-chart-reference-2026-09-01-bar'));
+    expect(view.getByTestId('nutrition-chart-stage').props.children).toBe('Etapa: Etapa.');
+    fireEvent.press(chip(view)); fireEvent.press(chip(view));
+    await flush();
+    expect(reads()).toEqual(initial);
+    console.info('[QA #531 costo]', { initial, afterChipNutrientSideAndInspection: reads() });
+  });
+  it('A keeps its bands, chip and selection while B loads, and when B fails', async () => {
+    let settle: (value: unknown) => void = () => undefined;
+    mockReport.mockImplementation((_c, q) => q.from?.startsWith('2026-09') ? new Promise(resolve => { settle = resolve; }) : Promise.resolve(ok(report(q))));
+    const view = wrap(<NutritionTrendsScreen />, comparing); await flush();
+    expect(view.getByText('Cargando el período de comparación…')).toBeTruthy();
+    fireEvent.press(view.getByTestId('nutrition-chart-current-2026-10-02-gap'));
+    fireEvent.press(chip(view));
+    const context = () => ({
+      checked: chip(view).props.accessibilityState.checked,
+      band: !!view.queryByTestId('nutrition-chart-current-stage-2026-10-03', H),
+      selected: view.getByTestId('nutrition-chart-current-2026-10-02-gap').props.accessibilityState.selected,
+      stage: view.getByTestId('nutrition-chart-stage').props.children,
+    });
+    expect(context()).toEqual({ checked: true, band: true, selected: true, stage: 'Etapa: Etapa.' });
+    await act(async () => { settle(failure); }); await flush();
+    expect(view.getByText('No pudimos cargar el período de comparación')).toBeTruthy();
+    expect(context()).toEqual({ checked: true, band: true, selected: true, stage: 'Etapa: Etapa.' });
+  });
+});
+
