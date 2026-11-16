@@ -23,7 +23,8 @@ const UNREAD = 'Sin lectura confirmada de sensaciones. Tus respuestas locales se
  * A plain answer briefly marks the journal busy: that is not a check, so it never flashes a line under the scales.
  */
 function phaseStatus(state: FeelingsSnapshot, phase: Phase): string | null {
-  if (state.busy && (state.pending || state.readError || state.blocked)) return 'Comprobando sensaciones…';
+  // A re-read after a failed one (returning to the app) is quiet: it usually settles at once, so the old failure is not replayed.
+  if (state.busy && (state.pending || state.blocked)) return 'Comprobando sensaciones…';
   if (state.localError) return 'Borrador local sin confirmar';
   if (state.blocked) return 'Necesita revisión';
   if (state.pending) {
@@ -80,7 +81,9 @@ export function TrainingFeelings({ journal, phase, disabled = false, controller 
   const pinned = phase === 'post' || (draft && !sending) || state.localError;
   const open = pinned || editing;
   const status = sending ? null : phaseStatus(state, phase);
-  const readNotice = state.readError ? state.error ?? UNREAD : null;
+  // While a read is in flight its previous failure stays hidden; it comes back only if this read fails too.
+  const unread = state.readError && !state.busy;
+  const readNotice = unread ? state.error ?? UNREAD : null;
   const answered = keys.flatMap(key => { const value = journal.value(key); return value === null ? [] : [`${labelOf(key)} ${FEELING_LABELS[scaleOf(key)][value - 1].toLowerCase()}`]; });
   // #512 (A): the save row sits under the scales and says «Sin guardar» itself, so the status line below does not repeat it.
   const saveRow = phase === 'pre' && draft && (sending || (!state.pending && !state.blocked));
@@ -111,7 +114,7 @@ export function TrainingFeelings({ journal, phase, disabled = false, controller 
     </View> : <View style={styles.titleRow}>{title}</View>}
     <Reveal open={open} testID={`feelings-${phase}-panel`}>
       <View style={styles.panel}>
-        {!state.server && !state.readError ? <AppText accessibilityLiveRegion="polite" variant="footnote">{UNREAD}</AppText> : null}
+        {!state.server && !state.readError && !state.busy ? <AppText accessibilityLiveRegion="polite" variant="footnote">{UNREAD}</AppText> : null}
         {keys.map(key => {
           const label = labelOf(key), anchors = FEELING_LABELS[scaleOf(key)];
           const value = journal.value(key);
@@ -158,7 +161,7 @@ export function TrainingFeelings({ journal, phase, disabled = false, controller 
       <Button label="Revisar mis respuestas para reenviar" variant="quiet" disabled={state.busy} onPress={() => void controller.resolveFeelings('mine')} />
     </View> : state.pending && !sending ? <Button label="Comprobar operación pendiente" variant="secondary" disabled={state.busy || disabled}
       onPress={() => void (state.pending?.operation === 'finish' ? controller.getSnapshot().intent ? controller.retryIntent() : controller.finish() : journal.retry())} /> : null}
-    {state.readError && !state.pending ? <Button label="Volver a leer sensaciones" variant="quiet" disabled={state.busy} onPress={() => void journal.refresh()} /> : null}
+    {unread && !state.pending ? <Button label="Volver a leer sensaciones" variant="quiet" onPress={() => void journal.refresh()} /> : null}
   </View>;
 }
 const styles = StyleSheet.create({

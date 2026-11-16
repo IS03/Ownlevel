@@ -203,6 +203,40 @@ describe('start capture with the shared scale control (#462)', () => {
     fail = false; await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Volver a leer sensaciones' })); await settle(); });
     expect(view.queryByText(/No pudimos leer las sensaciones/)).toBeNull(); expect(view.queryByRole('button', { name: 'Volver a leer sensaciones' })).toBeNull();
   });
+  it('re-reads quietly on return after a failed read: no check line, notice or disabled reread while it is in flight (QA)', async () => {
+    let next: 'ok' | 'fail' | 'hold' = 'ok'; let release: (() => void) | null = null;
+    const ok = { status: 'ok' as const, data: serverWith({ energyPre: fact('energyPre', 4) }) };
+    const stored = new Map<string, string>();
+    const journal = new TrainingFeelingsJournal({ getItem: async k => stored.get(k) ?? null, setItem: async (k, v) => { stored.set(k, v); } }, {
+      read: async () => {
+        if (next === 'ok') return ok;
+        if (next === 'fail') return { status: 'unavailable' };
+        await new Promise<void>(resolve => { release = resolve; }); return next === 'hold' ? ok : { status: 'unavailable' };
+      },
+      write: async () => ({ status: 'unavailable' }),
+    }, 'owner', sid, 'mobile', () => 'synthetic:quiet');
+    await journal.refresh();
+    const view = show(journal, 'pre');
+    next = 'fail'; await act(async () => { await journal.refresh(); }); // The read failed while the app was away.
+    expect(view.getByText(/No pudimos leer las sensaciones/)).toBeTruthy();
+    const quiet = () => {
+      expect(view.queryByText('Comprobando sensaciones…')).toBeNull();
+      expect(view.queryByText(/No pudimos leer las sensaciones|Sin lectura confirmada de sensaciones/)).toBeNull();
+      expect(view.queryByRole('button', { name: 'Volver a leer sensaciones' })).toBeNull();
+    };
+    // Back in the app: the re-read is in flight and the old failure is not replayed.
+    next = 'hold'; let read!: Promise<unknown>; await act(async () => { read = journal.refresh(); await settle(); });
+    quiet(); expect(view.getByText('Energía alta')).toBeTruthy();
+    await act(async () => { release!(); await read; await settle(); });
+    quiet(); expect(view.getByText('Energía alta')).toBeTruthy();
+    // A re-read that fails too brings the notice and an enabled reread back.
+    next = 'fail'; await act(async () => { await journal.refresh(); });
+    next = 'hold'; await act(async () => { read = journal.refresh(); await settle(); });
+    quiet();
+    next = 'fail' as typeof next; await act(async () => { release!(); await read; await settle(); });
+    expect(view.getByText(/No pudimos leer las sensaciones/)).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Volver a leer sensaciones' })).toBeEnabled();
+  });
   it('keeps an unsent start answer open after the app returns, and a failed read never hides it', async () => {
     let unreadable = false;
     const stored = new Map<string, string>();
