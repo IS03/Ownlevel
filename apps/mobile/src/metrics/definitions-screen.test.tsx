@@ -66,7 +66,7 @@ describe('Administrar métricas', () => {
     fireEvent.press(view.getByRole('button', { name: 'Editar Pasos' }));
     const editor = within(view.getByTestId('metric-definition-editor'));
     expect(editor.getByLabelText('Nombre').props.editable).toBe(false);
-    expect(editor.getByLabelText('Unidad').props.editable).toBe(false);
+    expect(editor.getByLabelText('Unidad (opcional)').props.editable).toBe(false);
     expect(editor.getByRole('radio', { name: 'Decimal' })).toBeDisabled();
     expect(editor.getByLabelText('Objetivo (opcional)').props.editable).toBe(true);
     expect(editor.queryByRole('button', { name: 'Eliminar métrica' })).toBeNull();
@@ -75,6 +75,9 @@ describe('Administrar métricas', () => {
     fireEvent.press(editor.getByLabelText('Archivar métrica'));
     expect(alert.mock.calls.at(-1)?.[2]?.map(b=>b.text)).toContain('Archivar');
     expect(alert.mock.calls.at(-1)?.[2]?.map(b=>b.text)).not.toContain('Eliminar métrica');
+    // Pasos opens the picker on its own group (Actividad); Libro is under Hábitos.
+    expect(editor.getByRole('radio', { name: 'Actividad' }).props.accessibilityState.checked).toBe(true);
+    fireEvent.press(editor.getByRole('radio', { name: 'Hábitos' }));
     expect(editor.getByLabelText('Ícono: Libro')).toBeEnabled();
     // No "use default" button: only a chosen icon is marked, and tapping it again goes back to the default.
     expect(editor.queryByText('Usar ícono predeterminado')).toBeNull();
@@ -90,7 +93,7 @@ describe('Administrar métricas', () => {
     fireEvent.press(view.getByRole('button', { name: 'Editar Correr' }));
     let editor = within(view.getByTestId('metric-definition-editor'));
     expect(editor.getByLabelText('Nombre').props.editable).toBe(true);
-    expect(editor.getByLabelText('Unidad').props.editable).toBe(false);
+    expect(editor.getByLabelText('Unidad (opcional)').props.editable).toBe(false);
     expect(editor.getByText(/el tipo y la unidad quedan como estaban/)).toBeTruthy();
     expect(editor.queryByRole('button', { name: 'Eliminar métrica' })).toBeNull();
     fireEvent.press(editor.getByRole('button', { name: 'Cerrar' }));
@@ -109,7 +112,7 @@ describe('Administrar métricas', () => {
     const editor = within(view.getByTestId('metric-definition-editor'));
     fireEvent.changeText(editor.getByLabelText('Nombre'), 'Agua con gas');
     fireEvent.press(editor.getByRole('radio', { name: 'Decimal' }));
-    fireEvent.changeText(editor.getByLabelText('Unidad'), 'L');
+    fireEvent.changeText(editor.getByLabelText('Unidad (opcional)'), 'L');
     fireEvent.changeText(editor.getByLabelText('Objetivo (opcional)'), '0,5');
     const created = [...fixtureDefinitions().slice(0, 5), definition({ id: defId(99), name: 'Agua con gas', unit: 'L', valueType: 'decimal', target: 0.5, sortOrder: 5 }), fixtureDefinitions()[5]];
     mockRead.mockResolvedValue({ status: 'ok', data: { definitions: created }, meta });

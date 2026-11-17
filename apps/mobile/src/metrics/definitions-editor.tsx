@@ -3,7 +3,6 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   View,
 } from 'react-native';
@@ -14,16 +13,17 @@ import {
   Button,
   Heading,
   TextField,
-  pressedStyle,
+  sizes,
+  spacing,
   useAppSheetDismiss,
   useOwnlevelTheme,
-  useReduceMotion,
 } from '@/design-system';
 import { SettingsSegmented } from '@/settings/native-segmented';
 import { EditorialSpread, useEditorialLayout } from '@/settings/editorial';
 import { SaveButton } from '@/nutrition/save-button';
 import { NutritionGlassButton } from '@/nutrition/day-controls';
-import { homeMetricIcon, metricIcons } from '@/home/home-metric-icons';
+import { homeMetricIcon } from '@/home/home-metric-icons';
+import { MetricIconPicker } from './metric-icon-picker';
 import type {
   DefinitionsController,
   DefinitionsState,
@@ -69,8 +69,7 @@ export function DefinitionEditorSheet(props: Props) {
 function EditorBody({ editor, state, controller }: Props) {
   const { largeText } = useEditorialLayout();
   const dismiss = useAppSheetDismiss(),
-    { colors } = useOwnlevelTheme(),
-    reduced = useReduceMotion();
+    { colors } = useOwnlevelTheme();
   const b = editor.baseline,
     d = editor.draft,
     done = !!state.notice && !state.editor;
@@ -83,6 +82,8 @@ function EditorBody({ editor, state, controller }: Props) {
     d.valueType,
   );
   const icon = homeMetricIcon(b?.systemKey ?? null, d.icon);
+  // The icon a metric shows when none is chosen (its system icon, else the generic one).
+  const fallbackIcon = homeMetricIcon(b?.systemKey ?? null, null);
   useEffect(() => {
     if (done) {
       const t = setTimeout(() => dismiss(), 300);
@@ -163,25 +164,26 @@ function EditorBody({ editor, state, controller }: Props) {
     >
       <ScrollView
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ padding: 16, paddingBottom: 32, gap: 24 }}
+        contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.xl }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        {/* The title is centred on the sheet: the side slots are the same width, with or without the archive action. */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
           <NutritionGlassButton
             label="Cerrar"
             icon="close"
             onPress={busy || state.intent ? undefined : close}
           />
-          <Heading level={2} style={{ flex: 1 }}>{b ? 'Editar métrica' : 'Nueva métrica'}</Heading>
+          <Heading level={2} style={{ flex: 1, textAlign: 'center' }}>{b ? 'Editar métrica' : 'Nueva métrica'}</Heading>
           {archiveAction ? (
             <NutritionGlassButton
               label={archiveAction.label}
               icon={archiveAction.label === 'Eliminar métrica' ? 'trash' : 'archive'}
               onPress={editable ? archiveAction.run : undefined}
             />
-          ) : null}
+          ) : <View style={{ width: sizes.touchTarget }} />}
         </View>
         <View
-          style={{ alignItems: 'center', gap: 8 }}
+          style={{ alignItems: 'center', gap: spacing.sm }}
           accessibilityLabel="Vista previa en Inicio"
         >
           <View
@@ -209,50 +211,16 @@ function EditorBody({ editor, state, controller }: Props) {
           </AppText>
         </View>
         {field('name', 'Nombre', false, !!b && !b.actions.editName)}
-        <View style={{ gap: 12 }}>
+        <View style={{ gap: spacing.md }}>
           <AppText variant="headline">Ícono</AppText>
-          <View
-            accessibilityRole="radiogroup"
-            accessibilityLabel="Ícono de la métrica"
-            style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
-          >
-            {metricIcons.map((i) => (
-              <Pressable
-                key={i.key}
-                accessibilityRole="radio"
-                accessibilityLabel={'Ícono: ' + i.label}
-                accessibilityState={{
-                  checked: d.icon === i.key,
-                  disabled: !editable,
-                }}
-                disabled={!editable}
-                // Only a chosen icon is marked; tapping it again goes back to the default one.
-                onPress={() => controller.change('icon', d.icon === i.key ? null : i.key)}
-                style={({ pressed }) => [
-                  {
-                    width: 44,
-                    height: 44,
-                    borderRadius: 12,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor:
-                      d.icon === i.key
-                        ? colors.brandSubtle
-                        : colors.surfaceRaised,
-                  },
-                  pressedStyle(pressed, reduced),
-                ]}
-              >
-                <AppIcon
-                  name={i.key}
-                  size={20}
-                  color={d.icon === i.key ? colors.primary : colors.textMuted}
-                />
-              </Pressable>
-            ))}
-          </View>
+          <MetricIconPicker
+            value={d.icon}
+            fallback={fallbackIcon}
+            disabled={!editable}
+            onChange={(next) => controller.change('icon', next)}
+          />
         </View>
-        <View style={{ gap: 12 }}>
+        <View style={{ gap: spacing.md }}>
           <AppText variant="headline">Se registra como</AppText>
           <SettingsSegmented
             accessibilityLabel="Se registra como"
@@ -273,13 +241,13 @@ function EditorBody({ editor, state, controller }: Props) {
                 : 'Ya tiene registros: el tipo y la unidad quedan como estaban para conservarlos.'}
             </AppText>
           ) : null}
+          {d.valueType === 'duration' ? (
+            <AppText muted>Unidad · horas y minutos</AppText>
+          ) : (
+            field('unit', 'Unidad (opcional)', false, !!b && !b.actions.editMeaning)
+          )}
         </View>
-        {d.valueType === 'duration' ? (
-          <AppText muted>Unidad · horas y minutos</AppText>
-        ) : (
-          field('unit', 'Unidad', false, !!b && !b.actions.editMeaning)
-        )}
-        <View style={{ gap: 12 }}>
+        <View style={{ gap: spacing.md }}>
           <AppText variant="headline">Objetivo diario</AppText>
           {d.valueType === 'duration' ? (
             <EditorialSpread style={{ alignItems: 'stretch' }}>
@@ -297,7 +265,7 @@ function EditorBody({ editor, state, controller }: Props) {
             Es una referencia. No cambia tus registros anteriores.
           </AppText>
         </View>
-        <View style={{ gap: 12 }}>
+        <View style={{ gap: spacing.md }}>
           <AppText variant="headline">Carga rápida</AppText>
           {d.valueType === 'duration' ? (
             <EditorialSpread style={{ alignItems: 'stretch' }}>
@@ -311,7 +279,7 @@ function EditorBody({ editor, state, controller }: Props) {
           ) : (
             field(
               'quickValue',
-              d.unit ? 'Porción (' + d.unit + ')' : 'Porción',
+              d.unit ? 'Porción en ' + d.unit + ' (opcional)' : 'Porción (opcional)',
               true,
             )
           )}

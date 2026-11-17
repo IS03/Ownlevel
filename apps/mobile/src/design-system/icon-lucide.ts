@@ -1,4 +1,5 @@
-import { Ruler, Bike, Heart, Pill, Apple, Brain, Bed, Timer, Smile, Leaf, CigaretteOff, ArrowLeftRight, Briefcase, Bookmark, Pin, Info, MessageCircle, Pencil, Repeat, Sparkles,
+import { Banknote, Dog, Flower2, GraduationCap, HeartPulse, ListChecks, Mountain, Music, PenLine, PersonStanding, Smartphone, Stethoscope, Syringe, Thermometer, Waves, Wine,
+  Ruler, Bike, Heart, Pill, Apple, Brain, Bed, Timer, Smile, Leaf, CigaretteOff, ArrowLeftRight, Briefcase, Bookmark, Pin, Info, MessageCircle, Pencil, Repeat, Sparkles,
   ArrowUpDown, GripHorizontal, Archive, BookOpen, Calendar, ChartLine, Check, ChevronDown,
   ChevronLeft, ChevronRight, CircleCheck, ClipboardList, Clock, Hourglass, Coffee, Droplet, Dumbbell, Ellipsis, Flame,
   Footprints, Search, ListFilter, Sunrise, Sun, Sunset, Moon, NotebookPen, Play, Plus, Minus, RotateCw, Settings, Trash2, TriangleAlert, Trophy, User, Utensils, Weight, X, Zap, type LucideIcon,
@@ -9,6 +10,9 @@ import type { AppIconName } from './icon-names';
 // Android/Web icon set per IDENTIDAD.md (Lucide, stroke 2). Imported only by icons.android.tsx.
 export const lucideIcons: Record<AppIconName, LucideIcon> = {
   bike: Bike, heart: Heart, pill: Pill, apple: Apple, brain: Brain, bed: Bed, timer: Timer, smile: Smile, leaf: Leaf, 'no-smoking': CigaretteOff,
+  run: PersonStanding, swim: Waves, yoga: Flower2, mountain: Mountain, 'heart-pulse': HeartPulse, syringe: Syringe, thermometer: Thermometer,
+  stethoscope: Stethoscope, 'fork-knife': Utensils, wine: Wine, pen: PenLine, music: Music, phone: Smartphone, study: GraduationCap, dog: Dog,
+  checklist: ListChecks, money: Banknote,
   reorder: ArrowUpDown,
   dragHandle: GripHorizontal,
   archive: Archive,

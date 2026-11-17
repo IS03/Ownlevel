@@ -5,6 +5,9 @@ import type { SFSymbol } from 'expo-symbols';
 // icons.tsx / icons.android.tsx (IDENTIDAD.md § Íconos).
 export type AppIconName =
   | 'bike' | 'heart' | 'pill' | 'apple' | 'brain' | 'bed' | 'timer' | 'smile' | 'leaf' | 'no-smoking'
+  // Metric icons added in #535 (activity, health and everyday habits).
+  | 'run' | 'swim' | 'yoga' | 'mountain' | 'heart-pulse' | 'syringe' | 'thermometer' | 'stethoscope' | 'fork-knife' | 'wine'
+  | 'pen' | 'music' | 'phone' | 'study' | 'dog' | 'checklist' | 'money'
   | 'reorder'
   | 'dragHandle'
   | 'archive'
@@ -70,6 +73,9 @@ export const appIconSize = { tabBar: 24, row: 20, inline: 17 } as const;
 
 export const sfSymbolNames: Record<AppIconName, SFSymbol> = {
   bike: 'bicycle', heart: 'heart', pill: 'pills', apple: 'carrot', brain: 'brain', bed: 'bed.double', timer: 'timer', smile: 'face.smiling', leaf: 'leaf', 'no-smoking': 'nosign',
+  run: 'figure.run', swim: 'figure.pool.swim', yoga: 'figure.mind.and.body', mountain: 'mountain.2', 'heart-pulse': 'waveform.path.ecg',
+  syringe: 'syringe', thermometer: 'thermometer.medium', stethoscope: 'stethoscope', 'fork-knife': 'fork.knife', wine: 'wineglass',
+  pen: 'pencil.line', music: 'music.note', phone: 'iphone', study: 'graduationcap', dog: 'dog', checklist: 'checklist', money: 'banknote',
   reorder: 'arrow.up.arrow.down',
   dragHandle: 'line.3.horizontal',
   archive: 'archivebox',
