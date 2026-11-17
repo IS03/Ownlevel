@@ -66,6 +66,9 @@ describe("cambio de la sesión y recientes (#533)", () => {
     const summary = insightsSummary(snapshot());
     const press = summary.facts.exercises.find(row => row.exerciseId === PRESS)!;
     expect(press.recent!.basis).toBe("reps_at_load");
+    // #533: the routines it was trained in, once, in the strict list only.
+    expect(press.routineIds).toEqual([ROUTINE, OTHER_ROUTINE].sort());
+    expect(summary.partial.exercises.every(row => !("routineIds" in row))).toBe(true);
     expect(press.recent!.items.map(row => row.date)).toEqual(["2026-10-05", "2026-10-09", "2026-10-13", "2026-10-17", "2026-10-21", "2026-10-29", "2026-11-01", "2026-11-06"]);
     // 2026-11-08 went back to 20 kg after 25 kg: nothing anchors it, so it is ambiguous and not a result.
     const rows = Array.from({ length: 14 }, (_, i) => ({ date: `2026-10-${String(i + 1).padStart(2, "0")}`, sessionId: `s${i}`, change: { state: "measured" as const, pct: i, basis: "reps_at_load" as const, signals: 1, load: null } }));

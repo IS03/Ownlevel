@@ -61,7 +61,8 @@ const CHANGE_STATE = new Set(["measured", "not_comparable", "ambiguous", "no_amo
 const CHANGE_BASIS = new Set(["reps_at_load", "bodyweight_reps", "time"]);
 const directions = (v: unknown) => object(v) && count(v.up) && count(v.same) && count(v.down);
 const loadSignals = (v: unknown) => v === null || (directions(v) && ((v as Json).unit === "kg" || (v as Json).unit === "lingote"));
-const change = (v: unknown) => v === undefined || (object(v) && CHANGE_STATE.has(String(v.state)) && (v.state === "measured") === finite(v.pct) && (v.state === "measured" || v.pct === null)
+const shown = (v: unknown) => v === undefined || v === null || (object(v) && numberOrNull(v.anchor) && finite(v.from) && finite(v.to));
+const change = (v: unknown) => v === undefined || (object(v) && shown(v.shown) && CHANGE_STATE.has(String(v.state)) && (v.state === "measured") === finite(v.pct) && (v.state === "measured" || v.pct === null)
   && (v.basis === null || CHANGE_BASIS.has(String(v.basis))) && count(v.signals) && loadSignals(v.load));
 const sessionChange = (v: unknown) => v === undefined || (object(v) && (v.state === "measured" || v.state === "no_eligible") && (v.state === "measured") === finite(v.pct) && (v.state === "measured" || v.pct === null)
   && count(v.eligible) && count(v.total) && Number(v.eligible) <= Number(v.total) && directions(v.directions) && directions(v.load));
@@ -87,7 +88,8 @@ const day = (v: unknown) => object(v) && date(v.date) && counts(v.counts) && cou
   && typeof v.openDay === "boolean" && list(v.sessions, session) && object(v.context) && nutrition(v.context.nutrition)
   && list(v.context.metrics, m => object(m) && typeof m.metricId === "string" && finite(m.value))
   && (v.context.previousDay === undefined || (object(v.context.previousDay) && date(v.context.previousDay.date) && nutrition(v.context.previousDay.nutrition)));
-const summary = (v: unknown) => object(v) && recent(v.recent) && uuid(v.exerciseId) && typeof v.name === "string" && ["exposures", "improved", "observedStable", "declined", "ambiguous", "insufficient"].every(k => count(v[k]))
+const routineIds = (v: unknown) => v === undefined || list(v, id => typeof id === "string");
+const summary = (v: unknown) => object(v) && recent(v.recent) && routineIds(v.routineIds) && uuid(v.exerciseId) && typeof v.name === "string" && ["exposures", "improved", "observedStable", "declined", "ambiguous", "insufficient"].every(k => count(v[k]))
   && (v.lastDate === null || date(v.lastDate)) && STATUS.has(String(v.lastStatus)) && typeof v.lastReason === "string";
 const group = (v: unknown) => object(v) && count(v.days) && finite(v.min) && finite(v.max) && finite(v.meanOutcome);
 const definition = (v: unknown) => object(v) && typeof v.id === "string" && FAMILY.has(String(v.family)) && WINDOW.has(String(v.window)) && BASIS.has(String(v.temporalBasis)) && typeof v.subject === "string";
@@ -106,7 +108,7 @@ const partialExercise = (v: unknown) => object(v) && change(v.change) && uuid(v.
   && stringOrNull(v.referenceSessionId) && numberOrNull(v.referenceAgeDays) && referenceDate(v.referenceDate) && typeof v.highestInPartialContext === "boolean";
 const partialDay = (v: unknown) => object(v) && date(v.date) && partialCounts(v.counts) && count(v.evaluableSessions) && numberOrNull(v.lowerProportion) && numberOrNull(v.equalSessionSensitivity) && typeof v.openDay === "boolean"
   && list(v.sessions, s => object(s) && typeof s.sessionId === "string" && partialCounts(s.counts) && list(s.exercises, partialExercise) && sessionChange(s.change));
-const partialSummary = (v: unknown) => object(v) && recent(v.recent) && uuid(v.exerciseId) && typeof v.name === "string" && ["exposures", "higher", "same", "lower", "ambiguous", "insufficient"].every(k => count(v[k]))
+const partialSummary = (v: unknown) => object(v) && recent(v.recent) && routineIds(v.routineIds) && uuid(v.exerciseId) && typeof v.name === "string" && ["exposures", "higher", "same", "lower", "ambiguous", "insufficient"].every(k => count(v[k]))
   && (v.lastDate === null || date(v.lastDate)) && READING.has(String(v.lastReading)) && typeof v.lastReason === "string";
 const association = (v: unknown) => associationBody(v, STATE);
 const partialAssociation = (v: unknown) => associationBody(v, PARTIAL_STATE) && (v as Json).contextCompleteness === PARTIAL_CONTEXT && String((v as Json).id).startsWith(PARTIAL_ASSOCIATION_PREFIX);

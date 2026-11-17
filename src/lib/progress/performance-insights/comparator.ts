@@ -138,6 +138,12 @@ const percent = (ratio: number) => Math.round(ratio * 1_000_000) / 10_000;
  * The measured change of one exposure (#533). Reads only the direct evidence that classified it; a status without a reference or
  * with opposite signals has no percentage. See PerformanceChange.
  */
+/** The signal a row shows: the heaviest anchor (or, for load signals, the heaviest current load), ties by the first in order. */
+function shownOf(signals: readonly DirectEvidence[], by: "anchor" | "current"): PerformanceChange["shown"] {
+  let best: DirectEvidence | null = null;
+  for (const signal of signals) if (!best || (by === "anchor" ? (signal.anchor ?? 0) > (best.anchor ?? 0) : signal.current > best.current)) best = signal;
+  return best ? { anchor: best.anchor, from: best.reference, to: best.current } : null;
+}
 export function changeOf(current: ExerciseExposure, status: PerformanceStatus, evidence: readonly DirectEvidence[]): PerformanceChange {
   const strategy = current.context ? weightModeStrategy(normalizeWeightMode(current.context.weightMode)) : null;
   if (status === "insufficient_comparison") return { state: "not_comparable", pct: null, basis: null, signals: 0, load: null };
@@ -146,11 +152,14 @@ export function changeOf(current: ExerciseExposure, status: PerformanceStatus, e
   if (load) for (const signal of evidence) if (signal.kind === "load_at_reps") load[signal.delta > 0 ? "up" : signal.delta < 0 ? "down" : "same"]++;
   if (status === "ambiguous_evidence") return { state: "ambiguous", pct: null, basis: null, signals: 0, load };
   const amount = evidence.filter(signal => AMOUNT_KINDS.has(signal.kind));
-  if (!amount.length) return { state: "no_amount_signal", pct: null, basis: null, signals: 0, load };
+  if (!amount.length) {
+    const loads = evidence.filter(signal => signal.kind === "load_at_reps" && signal.delta !== 0);
+    return { state: "no_amount_signal", pct: null, basis: null, signals: 0, load, shown: load ? shownOf(loads, "current") : null };
+  }
   const basis = amount[0]!.kind as ChangeBasis;
   const based = amount.filter(signal => signal.reference > 0);
-  if (!based.length) return { state: "no_positive_reference", pct: null, basis, signals: 0, load };
-  return { state: "measured", pct: percent(based.reduce((sum, signal) => sum + signal.delta / signal.reference, 0) / based.length), basis, signals: based.length, load };
+  if (!based.length) return { state: "no_positive_reference", pct: null, basis, signals: 0, load, shown: null };
+  return { state: "measured", pct: percent(based.reduce((sum, signal) => sum + signal.delta / signal.reference, 0) / based.length), basis, signals: based.length, load, shown: shownOf(based, "anchor") };
 }
 
 type ExposureComparison = {

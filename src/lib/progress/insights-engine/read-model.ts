@@ -82,18 +82,22 @@ function exerciseSummaries(sessions: readonly FactSession<ExerciseFact>[], names
     row.name = names.get(`${session.sessionId}:${exercise.exerciseId}`) ?? row.name;
     summaries.set(exercise.exerciseId, row);
   }
-  return withRecent(summaries, sessions);
+  return withRecent(summaries, sessions, true);
 }
 
 /** #533: each exercise's recent measured results, in the order of the sessions (logical date, then session id). */
-function withRecent<T extends { exerciseId: string; lastDate: string | null }>(summaries: Map<string, T>, sessions: readonly FactSession<ExerciseFact | PartialExerciseFact>[]): T[] {
+function withRecent<T extends { exerciseId: string; lastDate: string | null }>(summaries: Map<string, T>, sessions: readonly FactSession<ExerciseFact | PartialExerciseFact>[], withRoutines = false): T[] {
   const rows = new Map<string, { date: string | null; sessionId: string; change?: ExerciseFact["change"] }[]>();
+  const routines = new Map<string, Set<string>>();
   for (const session of sessions) for (const exercise of session.exercises) {
     const list = rows.get(exercise.exerciseId);
     const row = { date: session.date, sessionId: session.sessionId, change: exercise.change };
     if (list) list.push(row); else rows.set(exercise.exerciseId, [row]);
+    if (session.routineId) { const ids = routines.get(exercise.exerciseId) ?? new Set<string>(); ids.add(session.routineId.toLowerCase()); routines.set(exercise.exerciseId, ids); }
   }
-  return [...summaries.values()].map(row => ({ ...row, recent: recentChanges(rows.get(row.exerciseId) ?? []) }))
+  // #533: the routines it was trained in, so Ejercicios can be cut by routine without another read.
+  // The strict list names every exercise, so the routines go there once and the partial list does not repeat them.
+  return [...summaries.values()].map(row => ({ ...row, recent: recentChanges(rows.get(row.exerciseId) ?? []), ...(withRoutines ? { routineIds: [...(routines.get(row.exerciseId) ?? [])].sort() } : {}) }))
     .sort((a, b) => (b.lastDate ?? "").localeCompare(a.lastDate ?? "") || a.exerciseId.localeCompare(b.exerciseId));
 }
 

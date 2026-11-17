@@ -174,6 +174,8 @@ export type ExerciseSummary = {
   lastDate: string | null; lastStatus: PerformanceStatus; lastReason: string;
   /** #533, optional: up to ten measured results, oldest first. */
   recent?: RecentChanges;
+  /** #533, optional: every routine this exercise was trained in, by id. */
+  routineIds?: string[];
 };
 
 export type PartialExerciseFact = {

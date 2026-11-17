@@ -103,6 +103,13 @@ export type PerformanceChange = {
   /** Amount signals with a positive reference that entered `pct`. */
   signals: number;
   load: LoadSignals | null;
+  /**
+   * One signal a row can show, as recorded: the heaviest anchor of the ones behind `pct` (or, with only load signals, the
+   * heaviest load). Its kind is `basis` when measured and `load_at_reps` when only the load moved. `reps_at_load`: anchor is the
+   * load and from → to the best reps; `load_at_reps`: anchor is the reps and from → to the load; bodyweight and time: no anchor.
+   * The percentage still comes from every signal.
+   */
+  shown?: { anchor: number | null; from: number; to: number } | null;
 };
 export type ExercisePerformance = {
   methodVersion: typeof INSIGHTS_PERFORMANCE_METHOD;
