@@ -11,7 +11,6 @@ import { displayNutritionDate } from './day-format';
 import { NutritionGlassButton } from './day-controls';
 import { LibraryEditorMenu } from './library-editor-menu';
 import {
-  LibrarySaveButton,
   LibraryField,
   LibraryFilter,
   LibraryNutrients,
@@ -134,9 +133,7 @@ export function FoodEditor({
       running={pending}
       onClose={browse ? close : back}
       right={
-        !browse ? (
-          <View style={styles.row}>
-            {state.editing ? (
+        !browse && state.editing ? (
               <LibraryEditorMenu
                 disabled={locked}
                 actions={[
@@ -148,13 +145,6 @@ export function FoodEditor({
                   { label: 'Eliminar alimento', symbol: 'trash', destructive: true, onPress: () => action('delete') },
                 ]}
               />
-            ) : null}
-            <LibrarySaveButton
-              label="Guardar alimento"
-              disabled={saveDisabled}
-              onPress={() => void controller.save()}
-            />
-          </View>
         ) : undefined
       }
       // Only when it holds something: an empty footer still kept its padding below the list (#306).
@@ -242,7 +232,7 @@ export function FoodEditor({
           {error}
         </AppText>
       ))}
-      {state.message && state.message !== 'Catálogo actualizado.' ? (
+      {state.message ? (
         <AppText accessibilityRole="alert">{state.message}</AppText>
       ) : null}
       {state.phase === 'conflict' ? (

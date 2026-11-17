@@ -17,7 +17,6 @@ import { scaleSavedNutrients } from '../../../../src/lib/mobile-api/saved-meal-m
 import { NutritionGlassButton } from './day-controls';
 import { LibraryEditorMenu } from './library-editor-menu';
 import {
-  LibrarySaveButton,
   LibraryField,
   LibraryFilter,
   LibraryNutrients,
@@ -155,9 +154,7 @@ export function SavedEditor({ controller, state }: { controller: SavedController
       running={pending}
       onClose={browse ? close : back}
       right={
-        !browse && !picker ? (
-          <View style={shared.row}>
-            {state.editing ? (
+        !browse && !picker && state.editing ? (
               <LibraryEditorMenu
                 disabled={locked}
                 actions={[
@@ -174,9 +171,6 @@ export function SavedEditor({ controller, state }: { controller: SavedController
                   },
                 ]}
               />
-            ) : null}
-            <LibrarySaveButton label="Guardar comida" disabled={saveDisabled} onPress={() => void controller.save()} />
-          </View>
         ) : undefined
       }
       // Only when it holds something: an empty footer still kept its padding below the list (#306).
@@ -413,7 +407,7 @@ export function SavedEditor({ controller, state }: { controller: SavedController
           {error}
         </AppText>
       ))}
-      {state.message && state.message !== 'Catálogo actualizado.' ? (
+      {state.message ? (
         <AppText accessibilityRole="alert">{state.message}</AppText>
       ) : null}
       {state.phase === 'conflict' ? (

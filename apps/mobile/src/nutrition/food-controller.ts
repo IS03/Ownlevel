@@ -61,5 +61,5 @@ export class FoodController {
   private async confirmed(stored:StoredFoodIntent){const receipt=stored.receipt!;const detail=await this.api.detail(receipt.id);if(this.disposed)return;
     if(detail.status!=='ok'){this.update({phase:'confirmed',message:'Operación confirmada. Falta actualizar el catálogo; no vuelvas a enviarla.'});return;}
     await this.load();if(this.disposed)return;if(this.state.listError){this.update({phase:'confirmed',message:'Operación confirmada. Falta actualizar la lista.'});return;}
-    await this.repository.clear(stored.intent.idempotencyKey);this.update({phase:'idle',intent:null,mode:'browse',draft:null,editing:null,truth:null,errors:{},message:receipt.operation==='delete'?'Alimento eliminado. El histórico no cambia.':detail.data.food?'Catálogo actualizado.':'Operación confirmada. El alimento ya no está en el catálogo.'});}
+    await this.repository.clear(stored.intent.idempotencyKey);this.update({phase:'idle',intent:null,mode:'browse',draft:null,editing:null,truth:null,errors:{},message:receipt.operation==='delete'?'Alimento eliminado. El histórico no cambia.':detail.data.food?null:'Operación confirmada. El alimento ya no está en el catálogo.'});}
 }

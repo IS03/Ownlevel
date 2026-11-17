@@ -44,6 +44,12 @@ describe('Library sheet (Alimentos, Comidas guardadas) — #306', () => {
     expect(highlighted.backgroundColor).not.toBe(before.backgroundColor);
     view.rerender(row(false)); expect(style()).toEqual(before);
   });
+  it('keeps the title in the top bar, once, between equal side columns so it centers on the sheet', () => {
+    const view = sheet();
+    expect(view.getAllByRole('header', { name: 'Comidas guardadas' })).toHaveLength(1);
+    const flat = (id: string) => StyleSheet.flatten(view.getByTestId(id).props.style);
+    for (const id of ['library-header-start', 'library-header-end']) expect(flat(id)).toMatchObject({ flexGrow: 1, flexBasis: 0 });
+  });
   it('opened from a tab, reserves only the home indicator: the tab bar is behind the modal', () => {
     expect(paddingBottom(sheet({ footer: <Text>Guardar</Text> }))).toBe(34);
   });
