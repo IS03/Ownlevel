@@ -18,6 +18,7 @@ Se calcula en `comparator.ts` (`changeOf`) a partir de la **misma evidencia dire
 - Cantidad a igual condición: `reps_at_load` (mejor serie de reps con cada peso que aparece en las dos sesiones), `bodyweight_reps` o `time`. La base es la mejor serie por peso, no la suma: una serie de más no cambia el %.
 - Ejemplo: con 20 kg, 12 → 13 reps da `8.3333`. Una caída a 0 reps es un −100 % observado. Si no hubo cambio, el resultado es `measured` con `pct: 0`, que no es lo mismo que «sin dato».
 - Carga: `load_at_reps` (más o menos peso para las mismas reps) se cuenta aparte en `load: { unit, up, same, down }`. Nunca entra en `pct`. `unit` es `kg`, o `lingote` para el modo «Lingotes (no kg)», que no se muestra como peso. `load` es `null` en peso corporal y en tiempo.
+- `shown` (pulido, PR 3): una señal que la fila puede mostrar tal como se registró. Es la del ancla más pesada entre las que entran en `pct` (por ejemplo `{ anchor: 20, from: 12, to: 13 }` = «20 kg · 12 → 13 reps») o, si solo se movió la carga, la de mayor peso actual (`anchor` = reps, `from → to` = peso). En peso corporal y tiempo, `anchor` es `null`. El % sigue saliendo de todas las señales.
 - `change` no se publica en los ejercicios `not_comparable`, porque su `status` y su `reason` ya lo dicen. Así el resumen se mantiene dentro del presupuesto.
 
 ## 2. Cambio por sesión (`SessionFact.change`, `PartialSessionFact.change`)
@@ -31,6 +32,8 @@ Cada carril lleva el suyo (`performance-change.ts`, `sessionChange`):
 ## 3. Resultados recientes (`ExerciseSummary.recent`, `PartialExerciseSummary.recent`)
 
 Hasta 10 resultados `measured` del ejercicio, todos con la base (`basis`) del último. Una base distinta es otra medida y no se mezcla. El orden es el de las sesiones publicadas (fecha lógica y, después, id de sesión), de más viejo a más nuevo, y cada ítem lleva su fecha.
+
+`ExerciseSummary.routineIds` (pulido, PR 3): las rutinas en las que se entrenó el ejercicio, por id, una sola vez en la lista estricta, que nombra a todos los ejercicios. Permite filtrar Ejercicios por rutina sin otra lectura. Resumen de 1 año: 115,5 → 123,7 KiB (sin configuración capturada) y 94,7 KiB (con configuración).
 
 ## 4. Día lógico anterior (`DayFact.context.previousDay`)
 

@@ -22,7 +22,7 @@ describe("cambio medido por ejercicio (#533)", () => {
   it("12 → 13 reps at the same load is +8.3333 %, from the best set at that load and not from the sum of reps", () => {
     const row = change([[20, 12], [20, 12], [20, 11]], [[20, 12], [20, 13], [20, 12]]);
     expect(row.status).toBe("improved");
-    expect(row.change).toEqual({ state: "measured", pct: 8.3333, basis: "reps_at_load", signals: 1, load: { unit: "kg", up: 0, same: 1, down: 0 } });
+    expect(row.change).toEqual({ state: "measured", pct: 8.3333, basis: "reps_at_load", signals: 1, load: { unit: "kg", up: 0, same: 1, down: 0 }, shown: { anchor: 20, from: 12, to: 13 } });
     // An extra set at the same reps changes nothing: the base is the best set per load.
     expect(change([[20, 12], [20, 12]], [[20, 12], [20, 13], [20, 13], [20, 13]]).change!.pct).toBe(8.3333);
   });
@@ -32,7 +32,7 @@ describe("cambio medido por ejercicio (#533)", () => {
   it("more load at the same reps is a load signal, with no percentage", () => {
     const row = change([[50, 10]], [[55, 10]]);
     expect(row.status).toBe("improved");
-    expect(row.change).toEqual({ state: "no_amount_signal", pct: null, basis: null, signals: 0, load: { unit: "kg", up: 1, same: 0, down: 0 } });
+    expect(row.change).toEqual({ state: "no_amount_signal", pct: null, basis: null, signals: 0, load: { unit: "kg", up: 1, same: 0, down: 0 }, shown: { anchor: 10, from: 50, to: 55 } });
   });
   it("opposite signals stay ambiguous, without a percentage", () => {
     const row = change([[20, 10], [25, 8]], [[20, 12], [25, 6]]);
@@ -58,9 +58,13 @@ describe("cambio medido por ejercicio (#533)", () => {
     expect(change([[20, 10]], [[20, 0]]).change).toMatchObject({ state: "measured", pct: -100 });
   });
   it("bodyweight reps and time have no load signals; plates are a load but never kilograms", () => {
-    expect(change([[null, 10]], [[null, 11]], bodyweight).change).toEqual({ state: "measured", pct: 10, basis: "bodyweight_reps", signals: 1, load: null });
-    expect(change([[null, 60]], [[null, 45]], seconds).change).toEqual({ state: "measured", pct: -25, basis: "time", signals: 1, load: null });
+    expect(change([[null, 10]], [[null, 11]], bodyweight).change).toEqual({ state: "measured", pct: 10, basis: "bodyweight_reps", signals: 1, load: null, shown: { anchor: null, from: 10, to: 11 } });
+    expect(change([[null, 60]], [[null, 45]], seconds).change).toEqual({ state: "measured", pct: -25, basis: "time", signals: 1, load: null, shown: { anchor: null, from: 60, to: 45 } });
     expect(change([[3, 10]], [[4, 10]], plates).change!.load).toEqual({ unit: "lingote", up: 1, same: 0, down: 0 });
+  });
+  it("shows the heaviest load behind the percentage, while the percentage comes from every load", () => {
+    const row = change([[20, 12], [25, 8]], [[20, 13], [25, 10]]);
+    expect(row.change).toMatchObject({ state: "measured", pct: 16.6667, signals: 2, shown: { anchor: 25, from: 8, to: 10 } });
   });
   it("the partial lane measures the same way, under its own reading", () => {
     const unknown = { ...kg, configuration: null };
