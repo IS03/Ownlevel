@@ -98,7 +98,7 @@ export function sideRows(side: EvidenceSide, item: ExerciseEvidence, which: 'cur
     const block = blocks.length < 2 ? '' : ordered ? `Bloque ${blocks.indexOf(set.blockId) + 1} · ` : 'Bloque sin orden · ';
     const label = `${block}${set.setNumber === null ? 'Serie sin número' : `Serie ${set.setNumber}`}`;
     const note = !set.completed ? 'Sin completar, no se cuenta' : excluded.has(set.id) ? 'No se cuenta' : used.has(set.id) ? 'En la comparación' : undefined;
-    return { key: set.id, label, value: setText(set, unit), detail: note, spoken: `${label}: ${setText(set, unit)}${note ? `. ${note}` : ''}` };
+    return { key: set.id, label, value: setText(set, unit), detail: note, spoken: `${label}: ${setText(set, unit)}${note ? `. ${note}` : ''}`, load: set.load, amount: set.completed && !excluded.has(set.id) ? set.amount : null, used: used.has(set.id) };
   });
 }
 export const sideTitle = (side: EvidenceSide, which: 'current' | 'reference') => `${which === 'current' ? 'Esta sesión' : 'Sesión de referencia'}${side.date ? ` · ${dayLabel(side.date)}` : ''}`;
