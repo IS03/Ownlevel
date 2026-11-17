@@ -382,3 +382,56 @@ describe("#367 GET resumen de los últimos tres meses", () => {
     for (const query of ["?view=period&before=2026-01-01", "?view=period&limit=3", "?view=period&association=x"]) expect((await GET(request(query))).status).toBe(400);
   });
 });
+
+/** #533 · Relación: one routine, computed when asked for, from the same cached snapshot of method 2. */
+describe("GET performance-insights · view=routine-relation", () => {
+  const ROUTINE = "53300000-0000-4000-8000-000000000900";
+  const withRoutine = (days: number) => { const tables = tablesFor(days); return { ...tables, workout_sessions: tables.workout_sessions.map(row => ({ ...row, routine_id: ROUTINE, routine_name_snapshot: "PULL" })) }; };
+  const query = `?view=routine-relation&method=2&routine=${ROUTINE}`;
+  it("answers in its own contract, reads nothing of its own and reuses the snapshot of method 2", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-02-10T15:00:00Z"));
+    const fake = fakeSupabase(withRoutine(40));
+    mocks.auth.mockResolvedValue({ userId: USER, supabase: fake.client });
+    const cold = await GET(request(query));
+    expect(cold.status).toBe(200);
+    const coldCalls = fake.calls.length, body = await cold.json();
+    const parsed = parsePerformanceInsights(body);
+    expect(parsed?.view).toBe("routine-relation");
+    expect(body.routine).toEqual({ id: ROUTINE, name: "PULL" });
+    expect(body.sessions.length).toBeGreaterThan(0);
+    expect(body.sessions.every((row: { date: string }) => row.date >= body.window.start && row.date <= "2026-02-10")).toBe(true);
+    // Cold: the counter, the grouped streams and the counter again. Warm: the counter only, for this view and for the summary.
+    expect(coldCalls).toBe(6 + 1 + 2);
+    const warm = await GET(request(query));
+    expect(fake.calls.length - coldCalls).toBe(1);
+    expect((await warm.json()).sourceRevision).toBe(body.sourceRevision);
+    const before = fake.calls.length;
+    expect((await GET(request("?method=2&limit=5"))).status).toBe(200);
+    expect(fake.calls.length - before).toBe(1);
+    // Every user table is read by the token's user.
+    for (const call of fake.calls.filter(row => row.table !== "insights_source_revisions" && !row.head)) expect(call.filters.some(([kind, , value]) => kind === "eq" && value === USER), call.table).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(body))).toBeLessThan(40_000);
+  });
+  it("never serves one account's routine to another", async () => {
+    mocks.auth.mockResolvedValue({ userId: USER, supabase: fakeSupabase(withRoutine(10)).client });
+    const mine = await (await GET(request(query))).json();
+    const other = fakeSupabase(tablesFor(3));
+    mocks.auth.mockResolvedValue({ userId: "93670000-0000-4000-8000-0000000000b2", supabase: other.client });
+    const response = await GET(request(query));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.sessions).toEqual([]);
+    expect(body.sourceRevision).not.toBe(mine.sourceRevision);
+    expect(other.calls.length).toBe(6 + 1 + 2);
+  });
+  it("validates its parameters: method 2, one routine id and nothing else", async () => {
+    mocks.auth.mockResolvedValue({ userId: USER, supabase: fakeSupabase(withRoutine(3)).client });
+    for (const bad of ["?view=routine-relation", `?view=routine-relation&routine=${ROUTINE}`, "?view=routine-relation&method=2", "?view=routine-relation&method=2&routine=r",
+      `${query}&limit=5`, `${query}&asOf=2026-01-01`, `?view=days&routine=${ROUTINE}`, `${query}&routine=${ROUTINE}`]) expect((await GET(request(bad))).status, bad).toBe(400);
+  });
+  it("requires a token", async () => {
+    const { MobileApiUnauthorizedError } = await import("./auth");
+    mocks.auth.mockRejectedValue(new MobileApiUnauthorizedError());
+    expect((await GET(request(query))).status).toBe(401);
+  });
+});

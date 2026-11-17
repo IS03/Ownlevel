@@ -11,7 +11,11 @@ import type { SessionTemporalDay } from '../progress/insights-engine/session-tem
 export type { PeriodExploration } from '../progress/insights-engine/week-exploration';
 import type { PeriodExploration } from '../progress/insights-engine/week-exploration';
 export type { InsightsPinnedPeriodSummary, InsightsPeriodFeelings, InsightsPeriodNutrition } from "../progress/insights-engine/types";
-import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary, type InsightsPinnedPeriodSummary, type InsightsPeriodFeelings, type InsightsPeriodNutrition } from "../progress/insights-engine/types";
+import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary, type InsightsPinnedPeriodSummary, type InsightsPeriodFeelings, type InsightsPeriodNutrition, type InsightsRoutineRelationView } from "../progress/insights-engine/types";
+export type { InsightsRoutineRelationView } from "../progress/insights-engine/types";
+export type { InsightsRoutineRelation, RelationFactor, RelationFactorKey, RelationGroup, RelationSession } from "../progress/insights-engine/routine-relation";
+export type { RecentChanges, SessionChange } from "../progress/insights-engine/performance-change";
+export type { PerformanceChange } from "../progress/performance-insights/types";
 
 export type { AssociationResult, AssociationState, CandidateDefinition, DayFact, EvidenceSet, EvidenceSide, ExerciseEvidence, FeelingOutcomeKind, FeelingOutcomeSummary, InsightsFeelingOutcomes, InsightsPeriodSummary, ExerciseFact, InsightsExerciseEvidence, ExerciseSummary, InsightsDaysPage, InsightsReadModel, InsightsRelationDetail, InsightsRelations, InsightsResponse, InsightsSummary, PartialAssociationState, PartialRelationSummary, RelationSummary, NutritionContext, PartialAssociationResult, PartialDayFact, PartialExerciseFact, PartialExerciseSummary, PartialLane, SessionFact, SessionFeeling } from "../progress/insights-engine/types";
 export const PERFORMANCE_INSIGHTS_PATH = "/api/mobile/v1/progress/performance-insights";
@@ -49,7 +53,21 @@ const feeling = (v: unknown) => object(v) && count(v.value) && TIMING.has(String
 export { feeling as isSessionFeelingWire };
 /** Optional: an answer of an older server does not carry it. When present it is a date or null, nothing else. */
 const referenceDate = (v: unknown) => v === undefined || v === null || date(v);
-const exercise = (v: unknown) => object(v) && uuid(v.exerciseId) && typeof v.name === "string" && STATUS.has(String(v.status)) && typeof v.reason === "string"
+/**
+ * #533 · optional everywhere: an older server never sends them, and an installed client that does not know them ignores them. When
+ * present they must hold their own rules: a percentage only when measured, and load signals only for a load unit.
+ */
+const CHANGE_STATE = new Set(["measured", "not_comparable", "ambiguous", "no_amount_signal", "no_positive_reference"]);
+const CHANGE_BASIS = new Set(["reps_at_load", "bodyweight_reps", "time"]);
+const directions = (v: unknown) => object(v) && count(v.up) && count(v.same) && count(v.down);
+const loadSignals = (v: unknown) => v === null || (directions(v) && ((v as Json).unit === "kg" || (v as Json).unit === "lingote"));
+const change = (v: unknown) => v === undefined || (object(v) && CHANGE_STATE.has(String(v.state)) && (v.state === "measured") === finite(v.pct) && (v.state === "measured" || v.pct === null)
+  && (v.basis === null || CHANGE_BASIS.has(String(v.basis))) && count(v.signals) && loadSignals(v.load));
+const sessionChange = (v: unknown) => v === undefined || (object(v) && (v.state === "measured" || v.state === "no_eligible") && (v.state === "measured") === finite(v.pct) && (v.state === "measured" || v.pct === null)
+  && count(v.eligible) && count(v.total) && Number(v.eligible) <= Number(v.total) && directions(v.directions) && directions(v.load));
+const recent = (v: unknown) => v === undefined || (object(v) && (v.basis === null || CHANGE_BASIS.has(String(v.basis))) && list(v.items, row => object(row) && (row.date === null || date(row.date)) && finite(row.pct))
+  && (v.items as unknown[]).length <= 10);
+const exercise = (v: unknown) => object(v) && change(v.change) && uuid(v.exerciseId) && typeof v.name === "string" && STATUS.has(String(v.status)) && typeof v.reason === "string"
   && stringOrNull(v.referenceSessionId) && numberOrNull(v.referenceAgeDays) && referenceDate(v.referenceDate) && typeof v.newHigh === "boolean";
 /** A value is only there when its state says it was recorded; every other state has none. */
 const preWindow = (v: unknown) => object(v) && numberOrNull(v.value) && CARBS.has(String(v.state)) && (v.state === "recorded") === (v.value !== null) && (v.value === null || (v.value as number) >= 0);
@@ -64,11 +82,12 @@ const session = (v: unknown) => object(v) && typeof v.sessionId === "string" && 
   // Optional and added later: a client that does not know it ignores it, and one that does never reads it as "not recorded".
   && (v.context.unreadableFeelings === undefined || list(v.context.unreadableFeelings, key => FEELING_KEY.has(String(key))))
   && object(v.context.legacy) && numberOrNull(v.context.legacy.energyLevel) && numberOrNull(v.context.legacy.performanceLevel) && numberOrNull(v.context.legacy.painLevel)
-  && preWindow(v.context.carbsPre3h) && (v.context.preStart === undefined || preStart(v.context.preStart));
+  && preWindow(v.context.carbsPre3h) && (v.context.preStart === undefined || preStart(v.context.preStart)) && sessionChange(v.change);
 const day = (v: unknown) => object(v) && date(v.date) && counts(v.counts) && count(v.evaluableSessions) && numberOrNull(v.declineProportion) && numberOrNull(v.equalSessionSensitivity)
   && typeof v.openDay === "boolean" && list(v.sessions, session) && object(v.context) && nutrition(v.context.nutrition)
-  && list(v.context.metrics, m => object(m) && typeof m.metricId === "string" && finite(m.value));
-const summary = (v: unknown) => object(v) && uuid(v.exerciseId) && typeof v.name === "string" && ["exposures", "improved", "observedStable", "declined", "ambiguous", "insufficient"].every(k => count(v[k]))
+  && list(v.context.metrics, m => object(m) && typeof m.metricId === "string" && finite(m.value))
+  && (v.context.previousDay === undefined || (object(v.context.previousDay) && date(v.context.previousDay.date) && nutrition(v.context.previousDay.nutrition)));
+const summary = (v: unknown) => object(v) && recent(v.recent) && uuid(v.exerciseId) && typeof v.name === "string" && ["exposures", "improved", "observedStable", "declined", "ambiguous", "insufficient"].every(k => count(v[k]))
   && (v.lastDate === null || date(v.lastDate)) && STATUS.has(String(v.lastStatus)) && typeof v.lastReason === "string";
 const group = (v: unknown) => object(v) && count(v.days) && finite(v.min) && finite(v.max) && finite(v.meanOutcome);
 const definition = (v: unknown) => object(v) && typeof v.id === "string" && FAMILY.has(String(v.family)) && WINDOW.has(String(v.window)) && BASIS.has(String(v.temporalBasis)) && typeof v.subject === "string";
@@ -83,11 +102,11 @@ const associationBody = (v: unknown, states: Set<string>) => object(v) && relati
   && object(v.sensitivities) && Object.values(v.sensitivities).every(s => object(s) && count(s.pairs) && numberOrNull(s.rho));
 const READING = new Set(["higher_record", "same_record", "lower_record", "ambiguous_evidence", "insufficient_comparison"]);
 const partialCounts = (v: unknown) => object(v) && ["higher", "same", "lower", "ambiguous", "insufficient", "total", "comparable"].every(k => count(v[k])) && numberOrNull(v.coverage);
-const partialExercise = (v: unknown) => object(v) && uuid(v.exerciseId) && typeof v.name === "string" && READING.has(String(v.reading)) && typeof v.reason === "string"
+const partialExercise = (v: unknown) => object(v) && change(v.change) && uuid(v.exerciseId) && typeof v.name === "string" && READING.has(String(v.reading)) && typeof v.reason === "string"
   && stringOrNull(v.referenceSessionId) && numberOrNull(v.referenceAgeDays) && referenceDate(v.referenceDate) && typeof v.highestInPartialContext === "boolean";
 const partialDay = (v: unknown) => object(v) && date(v.date) && partialCounts(v.counts) && count(v.evaluableSessions) && numberOrNull(v.lowerProportion) && numberOrNull(v.equalSessionSensitivity) && typeof v.openDay === "boolean"
-  && list(v.sessions, s => object(s) && typeof s.sessionId === "string" && partialCounts(s.counts) && list(s.exercises, partialExercise));
-const partialSummary = (v: unknown) => object(v) && uuid(v.exerciseId) && typeof v.name === "string" && ["exposures", "higher", "same", "lower", "ambiguous", "insufficient"].every(k => count(v[k]))
+  && list(v.sessions, s => object(s) && typeof s.sessionId === "string" && partialCounts(s.counts) && list(s.exercises, partialExercise) && sessionChange(s.change));
+const partialSummary = (v: unknown) => object(v) && recent(v.recent) && uuid(v.exerciseId) && typeof v.name === "string" && ["exposures", "higher", "same", "lower", "ambiguous", "insufficient"].every(k => count(v[k]))
   && (v.lastDate === null || date(v.lastDate)) && READING.has(String(v.lastReading)) && typeof v.lastReason === "string";
 const association = (v: unknown) => associationBody(v, STATE);
 const partialAssociation = (v: unknown) => associationBody(v, PARTIAL_STATE) && (v as Json).contextCompleteness === PARTIAL_CONTEXT && String((v as Json).id).startsWith(PARTIAL_ASSOCIATION_PREFIX);
@@ -274,6 +293,7 @@ function parsePeriod(raw: Json) {
 export function parsePerformanceInsights(raw: unknown): InsightsResponse | undefined {
   if (!object(raw) || !versions(raw) || typeof raw.sourceRevision !== "string") return undefined;
   if (raw.view === 'session-temporal') return parseTemporal(raw);
+  if (raw.view === 'routine-relation') return parseRoutineRelation(raw);
   if(raw.view==='coincidence-evidence')return parseCoincidencePage(raw);
   if (raw.view === 'period-explore') return parseExploration(raw);
   if (raw.view === "period-feelings") return parsePeriodFeelings(raw);
@@ -462,4 +482,27 @@ function parseCoincidencePage(raw:Json) {
   if(!raw.sessionRows.every(r=>coincidenceRow(r,inside)))return undefined;
   if(new Set(raw.sessionRows.map(r=>(r as Json).id)).size!==raw.sessionRows.length)return undefined;
   return raw as unknown as import('../progress/insights-engine/week-exploration').CoincidenceEvidence;
+}
+
+const RELATION_GROUP = ["up", "same", "down", "mixed", "load_only", "not_compared"] as const;
+const groupStat = (v: unknown) => object(v) && count(v.valid) && numberOrNull(v.median) && (Number(v.valid) >= 3 || v.median === null);
+/**
+ * #533 · Relación. Every session is in one group, the counts add up to the sessions, every session has one value per factor, and a
+ * median never stands on fewer than three values: a short group shows no number rather than a guess.
+ */
+function parseRoutineRelation(raw: Json): InsightsRoutineRelationView | undefined {
+  const { window, routine, routines, counts: groups, sessions, factors } = raw;
+  if (raw.method !== 'insights-routine-relation/1' || raw.minimumPerGroup !== 3 || !object(window) || !date(window.start) || !date(window.end) || !count(window.days) || (window.start as string) > (window.end as string)) return undefined;
+  if (!object(routine) || !uuid(routine.id) || !stringOrNull(routine.name) || !list(routines, r => object(r) && uuid(r.id) && stringOrNull(r.name) && count(r.sessions))) return undefined;
+  if (!list(factors, f => object(f) && typeof f.key === 'string' && stringOrNull(f.unit) && (f.metricId === null || uuid(f.metricId)) && count(f.valid) && tally(f.missing)
+    && object(f.groups) && groupStat(f.groups.up) && groupStat(f.groups.same) && groupStat(f.groups.down))) return undefined;
+  const width = (factors as unknown[]).length;
+  if (!list(sessions, r => object(r) && typeof r.sessionId === 'string' && date(r.date) && (r.date as string) >= (window.start as string) && (r.date as string) <= (window.end as string)
+    && stringOrNull(r.startedAt) && stringOrNull(r.name) && RELATION_GROUP.includes(r.group as never) && numberOrNull(r.pct) && count(r.eligible) && count(r.total)
+    && object(r.lanes) && count(r.lanes.strict) && count(r.lanes.partial) && Number(r.lanes.strict) + Number(r.lanes.partial) === r.eligible
+    && directions(r.directions) && directions(r.load) && (r.pct === null) === (r.eligible === 0) && list(r.values, numberOrNull) && (r.values as unknown[]).length === width)) return undefined;
+  if (!object(groups) || !RELATION_GROUP.every(k => count(groups[k])) || RELATION_GROUP.reduce((sum, k) => sum + Number(groups[k]), 0) !== (sessions as unknown[]).length) return undefined;
+  if (!(factors as Json[]).every((f, index) => f.valid === (sessions as Json[]).filter(r => (r.values as unknown[])[index] !== null).length
+    && Number(f.valid) + Object.values(f.missing as Json).reduce<number>((a, b) => a + Number(b), 0) === (sessions as unknown[]).length)) return undefined;
+  return raw as unknown as InsightsRoutineRelationView;
 }

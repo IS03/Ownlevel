@@ -82,10 +82,34 @@ export type RecordFact = {
   previousMaximum: number;
   isNewHigh: boolean;
 };
+/**
+ * How far the direct evidence moved, beside the classification and never instead of it (#533). Rules in
+ * docs/progress/533-cambio-medido.md:
+ * - Only amount signals at an equal condition enter `pct`: `reps_at_load` (best reps at the same load), `bodyweight_reps` or
+ *   `time`. Each signal is `delta / reference`; a reference of zero is not a base. `pct` is the mean, in percent.
+ * - Load signals (`load_at_reps`, more load for the same reps) are counted apart in `load` and never enter `pct`. `load` is null
+ *   when the unit is not a load (bodyweight reps, time); its `unit` says whether it is kilograms or plates ("lingotes").
+ * - `measured` with `pct` 0 is an observed zero change. Every other state has no `pct`: `not_comparable` (no compatible
+ *   reference or an excluded exposure, the reason is the exercise's), `ambiguous` (opposite signals, the status says so),
+ *   `no_amount_signal` (only load moved) and `no_positive_reference`.
+ */
+export type ChangeBasis = "reps_at_load" | "bodyweight_reps" | "time";
+export type PerformanceChangeState = "measured" | "not_comparable" | "ambiguous" | "no_amount_signal" | "no_positive_reference";
+export type LoadSignals = { unit: "kg" | "lingote"; up: number; same: number; down: number };
+export type PerformanceChange = {
+  state: PerformanceChangeState;
+  pct: number | null;
+  basis: ChangeBasis | null;
+  /** Amount signals with a positive reference that entered `pct`. */
+  signals: number;
+  load: LoadSignals | null;
+};
 export type ExercisePerformance = {
   methodVersion: typeof INSIGHTS_PERFORMANCE_METHOD;
   exerciseId: string;
   status: PerformanceStatus;
+  /** #533. Always set by the comparator; optional only for rows built elsewhere. */
+  change?: PerformanceChange;
   reason: ExclusionReason | "direct_evidence" | "crossed_signals" | "unanchored_evidence";
   current: ExerciseExposure;
   reference: {
@@ -135,7 +159,7 @@ export type DailyPerformance = {
  * evidence behind the status and the volumes. Reasons, reference (without its exposure), records and exclusions are kept.
  * Asked for with `output: "compact"`; every other consumer keeps the full output.
  */
-export type CompactExercisePerformance = Pick<ExercisePerformance, "methodVersion" | "exerciseId" | "status" | "reason" | "exclusions"> & {
+export type CompactExercisePerformance = Pick<ExercisePerformance, "methodVersion" | "exerciseId" | "status" | "reason" | "exclusions" | "change"> & {
   reference: Omit<NonNullable<ExercisePerformance["reference"]>, "exposure"> | null;
   /** `records.facts` of the full output. */
   records: RecordFact[];
