@@ -508,6 +508,30 @@ describe('Native Nutrition day', () => {
     fireEvent.press(view.getByText('Guardar cambios'));
     await waitFor(() => expect(mockRequest).toHaveBeenCalledTimes(1));
   });
+  it('edits a meal whose time comes from the database with microseconds (saved-meal loads)', async () => {
+    const day = nutritionFixture('2026-10-02');
+    if (day.nutrition.status !== 'ok' || day.nutrition.data.dayState !== 'recorded') throw new Error('fixture');
+    const data = day.nutrition.data;
+    // Postgres timestamptz as PostgREST returns it: six fractional digits.
+    const meal = { ...data.meals[0], mealLabel: 'dinner' as const, timeKnown: true, timeSource: 'registration' as const, sourceType: 'manual' as const,
+      consumedAt: '2026-10-02T23:09:12.345678+00:00' };
+    mockRead.mockResolvedValue(ok('2026-10-02', { ...day, nutrition: { status: 'ok', data: { ...data, meals: [meal] } } }) as never);
+    const view = render(element());
+    await view.findByText('Comida 2026-10-02');
+    fireEvent.press(view.getByText('Comida 2026-10-02'));
+    fireEvent.press(await view.findByText('Editar')); finishMealDismissal(view);
+    await view.findByTestId('manual-meal-editor');
+    const save = () => view.getByRole('button', { name: 'Guardar cambios' });
+    expect(save()).toBeDisabled();
+    fireEvent.changeText(view.getByLabelText('Título'), 'Otro título');
+    expect(save()).toBeEnabled();
+    mockRequest.mockImplementation(async options => {
+      expect((options.body as { fields: object }).fields).toMatchObject({ mealLabel: 'dinner', consumedAt: '2026-10-02T23:09:12.345Z' });
+      return { status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } } as never;
+    });
+    fireEvent.press(save());
+    await waitFor(() => expect(mockRequest).toHaveBeenCalledTimes(1));
+  });
   it('keeps a meal without a time as Sin hora (#308)', async () => {
     const day = nutritionFixture('2026-10-02'), data = day.nutrition.status === 'ok' && day.nutrition.data.dayState === 'recorded' ? day.nutrition.data : undefined;
     const unknown = { ...data!.meals[0], timeKnown: false, timeSource: 'unknown' as const, sourceType: 'chatgpt' as const };

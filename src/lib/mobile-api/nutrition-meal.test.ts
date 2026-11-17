@@ -60,6 +60,11 @@ describe('Manual meal authenticated HTTP adapter',()=>{
 });
 
 describe('M9 additive meal timing', () => {
+  it('accepts the database time with microseconds and normalizes it; more digits stay invalid', () => {
+    const base = { date: '2026-10-02', title: null, description: null, calories: 84, proteinG: null, carbsG: null, fatG: null, mealLabel: 'snack' };
+    expect(parseManualMealFields({ ...base, consumedAt: '2026-10-02T23:09:12.345678+00:00' })).toMatchObject({ consumedAt: '2026-10-02T23:09:12.345Z', mealLabel: 'snack' });
+    expect(parseManualMealFields({ ...base, consumedAt: '2026-10-02T23:09:12.3456789+00:00' })).toBeUndefined();
+  });
   it('keeps legacy fields byte-for-byte and normalizes explicit local time', () => {
     expect(parseManualMealFields(fields)).toEqual({ ...fields, title: 'MY MEAL', description: null });
     expect(parseManualMealFields({ ...fields, mealLabel: 'lunch', consumedAt: '2026-10-03T13:40:00-03:00', saveToLibrary: true })).toMatchObject({ mealLabel: 'lunch', consumedAt: '2026-10-03T16:40:00.000Z', saveToLibrary: true, proteinG: null, fatG: 0 });
