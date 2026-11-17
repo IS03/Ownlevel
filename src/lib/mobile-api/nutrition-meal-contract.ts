@@ -6,7 +6,7 @@ export type MealTiming = { mealLabel?: 'breakfast' | 'lunch' | 'snack' | 'dinner
 /** Absent fields keep the original v1 payload and ledger hash intact. */
 export function parseMealTiming(v: Record<string, unknown>, date: string): MealTiming | undefined {
   if ('mealLabel' in v && ![null, 'breakfast', 'lunch', 'snack', 'dinner', 'extra'].includes(v.mealLabel as string | null)) return undefined;
-  if ('consumedAt' in v && (typeof v.consumedAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(v.consumedAt) || !isNutritionDate(v.consumedAt.slice(0,10)) || !Number.isFinite(Date.parse(v.consumedAt)) || new Date(Date.parse(v.consumedAt) - 3 * 3600000).toISOString().slice(0,10) !== date)) return undefined;
+  if ('consumedAt' in v && (typeof v.consumedAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(v.consumedAt) || !isNutritionDate(v.consumedAt.slice(0,10)) || !Number.isFinite(Date.parse(v.consumedAt)) || new Date(Date.parse(v.consumedAt) - 3 * 3600000).toISOString().slice(0,10) !== date)) return undefined;
   if ('consumedAtSource' in v && (v.consumedAtSource !== 'user_declared' || !('consumedAt' in v))) return undefined;
   return { ...('mealLabel' in v ? { mealLabel: v.mealLabel as MealTiming['mealLabel'] } : {}), ...('consumedAt' in v ? { consumedAt: new Date(v.consumedAt as string).toISOString() } : {}), ...('consumedAtSource' in v ? { consumedAtSource: 'user_declared' as const } : {}) };
 }
