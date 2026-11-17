@@ -41,7 +41,7 @@ export function HomeCarousel({ minimumHeight = 176, pages }: { minimumHeight?: n
       const next = event.nativeEvent.layout.width;
       if (next > 0 && next !== width) setWidth(next);
     }} testID="home-week-carousel">
-      <Animated.ScrollView contentContainerStyle={styles.pages} decelerationRate="fast" directionalLockEnabled horizontal nestedScrollEnabled
+      <Animated.ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.pages} decelerationRate="fast" directionalLockEnabled horizontal nestedScrollEnabled
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: offset } } }], { useNativeDriver: true })} scrollEventThrottle={16}
         onMomentumScrollEnd={event => {
           const next = Math.max(0, Math.min(pages.length - 1, Math.round(event.nativeEvent.contentOffset.x / pageWidth)));

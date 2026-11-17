@@ -32,7 +32,7 @@ export function ExerciseAddRoutineSheet({ client, exercise, onClose, onChanged, 
   };
   return <RoutineEditorSheet open dirty={false} pending={pending} onClose={() => { if (!busy.current) onClose(); }} onDismissed={() => undefined}><View style={{ flex: 1 }}>
     <View style={styles.header}><RoutineSheetButton label="Cerrar rutinas" icon="close" disabled={pending} onPress={onClose} /><AppText variant="headline">Agregar a una rutina</AppText></View>
-    <ScrollView contentContainerStyle={styles.content}>
+    <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content}>
       {!current && state.status === 'loading' ? <SkeletonBlock height={200} /> : routines?.status !== 'ok' ? <InlineUnavailable message="No pudimos cargar las rutinas." actionLabel="Reintentar" onAction={() => void refresh()} /> : <>
         {state.status !== 'ready' ? <InlineUnavailable message="Mostramos la última lectura confirmada. Actualizá antes de agregar." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
         <ListGroup>{routines.data.filter(routine => routine.isActive).map(routine => <ListRow key={routine.id} title={routine.name} value={exercise.routineIds.includes(routine.id) ? 'Ya está' : undefined}

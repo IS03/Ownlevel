@@ -51,7 +51,7 @@ export function RoutineTargetsSheet({ item, draft, dirty, pending, errors, onCha
         </GlassSurface>
         <RoutineSheetButton label={pending ? 'Guardando…' : 'Guardar objetivos'} icon="checkmark" accent pending={pending} disabled={pending || !dirty} onPress={onSave} />
       </View>
-      <ScrollView ref={scroll} automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" contentContainerStyle={styles.content}>
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} ref={scroll} automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" contentContainerStyle={styles.content}>
         <View style={styles.identity}><AppText accessibilityRole="header" variant="title2">{item.exercise.name}</AppText>
           {exerciseIdentity(item.exercise) ? <AppText muted variant="subheadline">{exerciseIdentity(item.exercise)}</AppText> : null}</View>
         <View style={styles.table}>

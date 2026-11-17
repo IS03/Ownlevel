@@ -168,7 +168,7 @@ export function PlanWeek({
         importantForAccessibility={same ? "no-hide-descendants" : "auto"}
         testID="stage-week"
       >
-        <ScrollView
+        <ScrollView showsVerticalScrollIndicator={false}
           horizontal
           contentContainerStyle={{ flexGrow: 1, gap: 4 }}
           showsHorizontalScrollIndicator={false}
@@ -338,7 +338,7 @@ function DaySheetBody({
             onPress={valid && days.length ? () => dismiss(() => onApply(days, kcal, protein)) : undefined}
           />
       </View>
-      <ScrollView
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
         ref={scroll}
         testID="stage-day-scroll"
         onLayout={revealFocused}

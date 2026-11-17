@@ -133,7 +133,7 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
       <AppText variant="headline">{s.title} · {s.report.range.days <= 31 ? 'por día' : 'promedio por bloque'}</AppText>
       <AppText muted numeric variant="caption">{range(s.report.range.start, s.report.range.end)}</AppText>
       <View onLayout={e => setWidth(e.nativeEvent.layout.width)}>
-        <ScrollView horizontal showsHorizontalScrollIndicator accessibilityLabel={`${copy.label} · ${s.title}`}>
+        <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} accessibilityLabel={`${copy.label} · ${s.title}`}>
           <View style={{ width: chartWidth }}>
           {/* Names above the bars, once per run and as wide as it: the scale and the bars keep their place. */}
           {runs ? <View testID={`nutrition-chart-${s.key}-stage-names`} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"

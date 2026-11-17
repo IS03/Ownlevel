@@ -144,7 +144,7 @@ function MetricsTrends() {
       : !data ? <UnavailableState title="No pudimos cargar tus métricas" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente." action={<Button label="Reintentar" onPress={() => void refresh()} />} />
       : <>
         {state.status !== 'ready' ? <InlineUnavailable actionLabel="Reintentar" message="No se pudo actualizar. Mostramos la última lectura confirmada." onAction={() => void refresh()} /> : null}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow} contentContainerStyle={styles.chips} accessibilityLabel="Métrica">
+        <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow} contentContainerStyle={styles.chips} accessibilityLabel="Métrica">
           {active.map(d => <MetricChip key={d.id} label={d.name} selected={d.id === data.metric?.id} onPress={() => setMetricId(d.id)} />)}
           {/* Archived metrics live after a divider, quieter and with their own mark; collapsed until you ask for them. */}
           {archived.length ? <>

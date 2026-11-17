@@ -141,7 +141,7 @@ function TrainingChart({ data, inspection, onInspect }: { data: ProgressTraining
       onChange={metric => onInspect({ ...inspection, metric })} />
     <AppText muted variant="footnote">Actividad registrada · no mide ganancia muscular ni rendimiento.</AppText>
     <View onLayout={event => setWidth(event.nativeEvent.layout.width)}>
-      <ScrollView horizontal showsHorizontalScrollIndicator style={styles.chartScroll}
+      <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} style={styles.chartScroll}
         contentContainerStyle={styles.chartContent} accessibilityLabel={`Actividad: ${SERIES_LABELS[metric].toLocaleLowerCase('es-AR')} por ${bucket}`}>
         <View testID="training-chart" style={[styles.bars, { width: Math.max(width, data.series.length * slot) }]}>
           {data.series.map(p => {

@@ -165,7 +165,7 @@ function ExerciseChart({ data, measure, selected, onSelect }: { data: ProgressTr
       </AppText>
       {!values.length ? <AppText muted>Sin valores válidos para {measure.label.toLocaleLowerCase('es-AR')} en los períodos elegidos.</AppText> : null}
       <View onLayout={e => setWidth(e.nativeEvent.layout.width)}>
-        <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ minWidth: '100%' }} accessibilityLabel={`Evolución de ${measure.label.toLocaleLowerCase('es-AR')}`}>
+        <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ minWidth: '100%' }} accessibilityLabel={`Evolución de ${measure.label.toLocaleLowerCase('es-AR')}`}>
           <View testID="exercise-trend-chart" style={[styles.plot, { width: Math.max(width, slots.length * 56 * Math.max(1, fontScale)), minHeight: 144 + 32 * Math.max(1, fontScale) }]} >
             {slots.map((slot, index) => {
               const p = slot.point;

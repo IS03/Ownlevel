@@ -17,7 +17,7 @@ function Wheel({ field, ...props }: RoutineRestPickerProps & { field: 'restMin' 
     <AppText muted variant="caption">{field === 'restMin' ? 'MÍNIMO' : 'MÁXIMO'}</AppText>
     <View style={styles.window}>
       <View pointerEvents="none" style={[styles.selection, { backgroundColor: colors.surfaceRaised }]} />
-      <ScrollView ref={ref} scrollEnabled={!props.disabled} snapToInterval={HEIGHT} decelerationRate="fast" showsVerticalScrollIndicator={false}
+      <ScrollView showsHorizontalScrollIndicator={false} ref={ref} scrollEnabled={!props.disabled} snapToInterval={HEIGHT} decelerationRate="fast" showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingVertical: HEIGHT }} accessibilityRole="adjustable" accessibilityLabel={field === 'restMin' ? 'Descanso mínimo' : 'Descanso máximo'}
         accessibilityValue={{ text: selected === null ? 'Sin descanso' : formatRest(selected) }} accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
         onAccessibilityAction={event => { if (props.disabled) return; const index = Math.max(0, Math.min(values.length - 1, selectedIndex + (event.nativeEvent.actionName === 'increment' ? 1 : -1))); props.onChange(changeRest(props.draft, field, values[index]!)); }}

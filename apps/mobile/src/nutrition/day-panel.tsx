@@ -101,7 +101,7 @@ function DetailBody({ data, onContext }: { data: MobileNutritionDayResponse; onC
   // A value row opens the context editor focused on that number once this sheet is fully gone (no sheet over sheet).
   const adjust: DayContextAction = (day, field) => dismiss(() => onContext?.(day, field));
   const canAdjust = onContext && canWriteDay('context', data);
-  return <ScrollView contentContainerStyle={styles.detailContent}>
+  return <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.detailContent}>
     <View style={styles.detailHeader}><AppText accessibilityRole="header" variant="title2" style={{ flex: 1 }}>Tu día</AppText>
       <RoutineSheetButton label="Cerrar Detalle del día" icon="close" onPress={() => dismiss()} />
     </View>

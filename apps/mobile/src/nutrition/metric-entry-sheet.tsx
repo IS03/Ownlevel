@@ -91,7 +91,7 @@ function MetricForm({ id, controller, state, input }: { id: string; controller: 
   return <KeyboardAvoidingView enabled={Platform.OS === 'android'} behavior="height">
       <View style={{paddingBottom:restInset}} testID="nutrition-metric-sheet">
         {/* "always": a tap on the native Sumar/Reemplazar control must not drop the keyboard. */}
-        <ScrollView keyboardShouldPersistTaps="always" contentContainerStyle={styles.content}>
+        <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={styles.content}>
           <View style={styles.header}>
             <SheetControl label={`Cerrar ${metric.label} sin guardar`} icon="close" disabled={running} onPress={onClose} />
             <View style={styles.title}><AppText accessibilityRole="header" variant="headline" style={styles.center}>{metric.label}</AppText>

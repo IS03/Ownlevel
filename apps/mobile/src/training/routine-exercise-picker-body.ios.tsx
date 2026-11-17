@@ -93,7 +93,7 @@ export function RoutineExercisePickerBody(props: RoutineExercisePickerBodyProps)
         adds an empty header gap above it (#376) and `inset` cannot round the group, so the card is built explicitly.
         The rows stay in a LazyVStack so a long library only instantiates what is on screen.
       */}
-      <ScrollView modifiers={[scrollDismissesKeyboard('immediately')]}>
+      <ScrollView showsIndicators={false} modifiers={[scrollDismissesKeyboard('immediately')]}>
         <VStack spacing={space.sm} modifiers={[padding({ horizontal: layout.screenPadding, bottom: space.lg })]}>
           {create}
           {empty ? emptyText ? <VStack modifiers={[cardShape(colors.surface)]}><EmptyRow>{emptyText}</EmptyRow></VStack> : null

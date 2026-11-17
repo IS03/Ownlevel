@@ -34,7 +34,7 @@ export function PeriodNutritionScreen() {
       {typeof params.revision === 'string' && params.revision !== ready.sourceRevision ? <AppText muted testID="period-nutrition-revised">Los registros cambiaron desde el resumen. Esta lectura completa está actualizada.</AppText> : null}
       {!ready.days.length ? <AppText testID="period-nutrition-empty">Sin alimentación registrada en estas fechas.</AppText> : null}
     </View>;
-  return <FlatList testID="period-nutrition-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll}
+  return <FlatList showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="period-nutrition-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll}
     data={asOf && ready ? ready.days : []} keyExtractor={d => d.date} ListHeaderComponent={<View><ReturnToProgress/>{header}</View>} ListFooterComponent={ready ? returnButton : null}
     ItemSeparatorComponent={() => <View style={styles.separator} />}
     refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}

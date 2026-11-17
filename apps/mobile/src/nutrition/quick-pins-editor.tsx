@@ -147,7 +147,7 @@ function EditorBody({ controller, state, saved, start, saving, locked, onSaving,
     {full ? <AppText muted variant="footnote">Ya tenés {QUICK_PINS_MAX}. Quitá una para sumar otra.</AppText> : null}
   </View>;
 
-  return <FlatList data={library} keyExtractor={option => option.source.id} scrollEnabled={!dragging} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+  return <FlatList showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} data={library} keyExtractor={option => option.source.id} scrollEnabled={!dragging} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
     ListHeaderComponent={header} initialNumToRender={20} windowSize={7} testID="quick-pins-library"
     ListEmptyComponent={<AppText muted style={styles.empty}>No encontramos comidas con esa búsqueda.</AppText>}
     renderItem={({ item }) => <ChoiceRow option={item} pinned={ids.includes(item.source.id)} disabled={!editable || (full && !ids.includes(item.source.id))} onToggle={toggle} />}

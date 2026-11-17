@@ -35,7 +35,7 @@ function WeekDays({ date, dates, today, data, rows, unavailable, loading, onSele
   date: string; dates: string[]; today: string; data?: MobileNutritionDayResponse; rows?: ReportDailyRow[]; unavailable?: boolean; loading?: boolean;
 } & { onSelect: (date: string) => void }) {
   const { colors } = useOwnlevelTheme();
-  return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll}><View style={styles.week} testID="nutrition-week">
+  return <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll}><View style={styles.week} testID="nutrition-week">
     {dates.map(day => {
       const row = rows?.find(d => d.date === day);
       const selected = day === date;

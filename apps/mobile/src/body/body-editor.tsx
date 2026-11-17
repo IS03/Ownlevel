@@ -116,7 +116,7 @@ function WeightForm({ editor, state, controller, closing }: { editor: WeightEdit
   const placeholder = hint === null ? '0' : String(hint).replace('.', ',');
   return <KeyboardAvoidingView enabled={Platform.OS === 'android'} behavior="height">
     <View style={{ paddingBottom: Math.max(insets.bottom, 16) }} testID="body-editor">
-    <ScrollView keyboardShouldPersistTaps="always" contentContainerStyle={styles.content}>
+    <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={styles.content}>
       <Header title={editing ? 'Editar peso' : 'Registrar peso'} subtitle={editing ? `${formatBodyDate(editor.draft.date.split('/').reverse().join('-'))} · guardado ${formatKg(editor.baseline)}` : 'Si la fecha ya tiene peso, se reemplaza'}
         close={{ onPress: () => dismiss(), disabled: busy || !!state.intent }}
         save={{ label: 'Guardar', onPress: () => void controller.saveWeight(), disabled: !editable, pending: busy }} />
@@ -151,7 +151,7 @@ function LongSheetBody({ header, children }: { header: (close: () => void) => Re
   const dismiss = useAppSheetDismiss(), insets = useSafeAreaInsets();
   return <KeyboardAvoidingView enabled={Platform.OS === 'android'} behavior="height" style={styles.shrink}>
     <View style={styles.pageHeader}>{header(() => dismiss())}</View>
-    <ScrollView style={styles.shrink} contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) + spacing.md }]}
+    <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} style={styles.shrink} contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) + spacing.md }]}
       keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" testID="body-editor">{children}</ScrollView>
   </KeyboardAvoidingView>;
 }

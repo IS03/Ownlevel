@@ -67,7 +67,7 @@ function Table({ stages, highlight, sources, testID, onPick }: {
       })}
     </View>)}
   </View>;
-  return <View testID={testID}>{scroll ? <ScrollView horizontal showsHorizontalScrollIndicator={false}>{body}</ScrollView> : body}</View>;
+  return <View testID={testID}>{scroll ? <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false}>{body}</ScrollView> : body}</View>;
 }
 
 function Content({ data }: { data: ProgressStages }) {

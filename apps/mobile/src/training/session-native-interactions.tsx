@@ -286,7 +286,7 @@ export function DragScrollView({ children, onScroll, onContentSizeChange, scroll
   const animatedProps = useAnimatedProps(() => ({ scrollEnabled: enabled.value && owner.value === null }));
   const value = useMemo(() => ({ ref, y, contentHeight, gesture, owner }), [ref, y, contentHeight, gesture, owner]);
   return <SessionDragScrollContext.Provider value={value}><GestureDetector gesture={gesture}>
-    <Animated.ScrollView {...props} ref={ref} animatedProps={animatedProps} onScroll={handler} scrollEventThrottle={16}
+    <Animated.ScrollView {...props} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} ref={ref} animatedProps={animatedProps} onScroll={handler} scrollEventThrottle={16}
       onContentSizeChange={(width, height) => { contentHeight.set(height); onContentSizeChange?.(width, height); }}>{children}</Animated.ScrollView>
   </GestureDetector></SessionDragScrollContext.Provider>;
 }

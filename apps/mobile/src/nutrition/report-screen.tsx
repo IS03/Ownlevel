@@ -121,7 +121,7 @@ export function NutritionReportsContent({onClose,onDate,initialQuery}:{onClose?:
     {state.status==='loading'?<LoadingState label="Cargando reporte nutricional"/>:state.status!=='ready'?<UnavailableState title="No pudimos cargar el reporte" description={report?'Mostramos la última lectura de este período. Revisá la conexión.':'Revisá tu conexión o sesión e intentá nuevamente.'} action={<Button label="Reintentar reporte" onPress={runRefresh}/>}/>:null}
     {report?<NutritionReportSummary report={report} onDate={selectDate}/>:null}
   </View>;
-  return <FlatList testID="nutrition-report-screen" data={report?.days??[]} keyExtractor={d=>d.date} ListHeaderComponent={header}
+  return <FlatList showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="nutrition-report-screen" data={report?.days??[]} keyExtractor={d=>d.date} ListHeaderComponent={header}
     renderItem={({item})=><NutritionReportDayRow day={item} onDate={selectDate}/>} initialNumToRender={7} windowSize={5}
     keyboardShouldPersistTaps="handled" contentContainerStyle={styles.list} style={{backgroundColor:colors.background}}
     refreshControl={<RefreshControl onRefresh={runRefresh} refreshing={state.status==='ready'&&state.refreshing} tintColor={colors.primary}/>}/>;

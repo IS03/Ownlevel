@@ -8,7 +8,7 @@ export function TrainingContextMenu({ children, disabled, name, actions, openOnT
   return <>{cloneElement(children, { onLongPress: () => { if (!disabled) setOpen(true); }, ...(openOnTap ? { onPress: () => { if (!disabled) setOpen(true); } } : {}) })}
     <Modal animationType="fade" onRequestClose={() => setOpen(false)} transparent visible={open && !disabled}><View style={styles.modal}>
       <Pressable accessibilityLabel="Cerrar acciones" accessibilityRole="button" onPress={() => setOpen(false)} style={[StyleSheet.absoluteFill, styles.backdrop]} />
-      <SheetSurface style={styles.sheet} testID="routine-menu"><SafeAreaView edges={['bottom']}><ScrollView contentContainerStyle={styles.content}>
+      <SheetSurface style={styles.sheet} testID="routine-menu"><SafeAreaView edges={['bottom']}><ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content}>
         <SheetHandle /><AppText accessibilityRole="header" variant="headline">{name}</AppText><ListGroup>{actions.map(action => <ListRow key={action.label} chevron={false} title={action.label}
           onPress={() => { setOpen(false); if (!disabled) action.onPress(); }} />)}</ListGroup><ListRow chevron={false} title="Cancelar" onPress={() => setOpen(false)} />
       </ScrollView></SafeAreaView></SheetSurface>

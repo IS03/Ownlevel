@@ -25,7 +25,7 @@ export function ExploreSheet({ title, onClose, children }: { title: string; onCl
           <AppText accessibilityRole="header" variant="headline" style={styles.title}>{title}</AppText>
           <View style={styles.spacer} />
         </View>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>{children}</ScrollView>
+        <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>{children}</ScrollView>
       </Animated.View>
     </View>
   </Modal>;

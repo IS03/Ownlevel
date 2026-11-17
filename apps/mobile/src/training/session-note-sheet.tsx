@@ -45,7 +45,7 @@ export function SessionNoteSheet({ name, value, editable, onSave, onClose }: {
       </Pressable>
     </View>
     <KeyboardAvoidingView testID="note-keyboard-body" style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.body}>
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.body}>
         <AppText muted variant="caption">{name}</AppText>
         <TextInput ref={input} accessibilityLabel={`Nota de ${name}`} editable={editable && !saving} multiline value={text} onChangeText={setText}
           onContentSizeChange={event => setInputHeight(Math.max(144, Math.min(220, event.nativeEvent.contentSize.height)))}

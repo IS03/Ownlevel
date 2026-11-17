@@ -103,7 +103,7 @@ export function NewSessionSheet({ onClose, onCreateRoutine, onDismissed, onFree,
         <Group modifiers={[presentationDetents([shared, 'large'], { onSelectionChange: onDetent, selection: selected }), presentationDragIndicator('visible')]}>
           <NavigationStack onPathChange={path => onPage(path.includes('routines') ? 'routines' : 'start')} path={page === 'routines' ? ['routines'] : []}>
             <Toolbar>
-              <ScrollView modifiers={[navigationTitle(COPY.title), navigationBarTitleDisplayMode('inline'), containerBackground('clear', 'navigation')]}>
+              <ScrollView showsIndicators={false} modifiers={[navigationTitle(COPY.title), navigationBarTitleDisplayMode('inline'), containerBackground('clear', 'navigation')]}>
                 <VStack alignment="leading" modifiers={[padding({ bottom: 24, horizontal: 20, top: 4 }), onGeometryChange(onContent)]} spacing={12}>
                   {recommendation.status === 'ok' ? (
                     <Recommended doneToday={recommendation.doneToday} onPress={() => onPickRoutine(recommendation.routine.id)} palette={palette}
@@ -118,7 +118,7 @@ export function NewSessionSheet({ onClose, onCreateRoutine, onDismissed, onFree,
             </Toolbar>
             <NavigationDestination value="routines">
               <Toolbar>
-                <ScrollView modifiers={[navigationTitle(COPY.chooseTitle), navigationBarTitleDisplayMode('inline'), containerBackground('clear', 'navigation')]}>
+                <ScrollView showsIndicators={false} modifiers={[navigationTitle(COPY.chooseTitle), navigationBarTitleDisplayMode('inline'), containerBackground('clear', 'navigation')]}>
                   <VStack alignment="leading" modifiers={[padding({ bottom: 24, horizontal: 20, top: 4 })]} spacing={10}>
                     <Text modifiers={[font({ size: 15 }), foregroundStyle(palette.muted)]}>{COPY.routinesSubtitle}</Text>
                     {routines.status === 'unavailable' ? <Text modifiers={[font({ size: 15 }), foregroundStyle(palette.muted)]}>{COPY.routinesUnavailable}</Text> : null}

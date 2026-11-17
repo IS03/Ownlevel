@@ -25,7 +25,7 @@ function Sheet({ title, subtitle, valid, onClose, onDone, children }: {
       <Animated.View entering={reduced ? FadeIn.duration(200) : SlideInDown.duration(300)} accessibilityViewIsModal
         style={[styles.sheet, { backgroundColor: colors.background, paddingBottom: Math.max(insets.bottom, 16) }]}>
         <SheetHandle />
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content}>
           <View style={styles.header}>
             <RoutineSheetButton label="Cerrar sin cambiar" icon="close" onPress={onClose} />
             <View style={styles.title}><AppText accessibilityRole="header" variant="headline">{title}</AppText>
@@ -74,7 +74,7 @@ export function CustomRangeSheet({ onClose }: { onClose: () => void }) {
   const move = (to: ProgressRangeState) => { setState(to); onClose(); };
   return <Sheet title="Elegir período" subtitle={rangeSubtitle(range, today, draft)} valid={valid} onClose={onClose} onDone={() => { if (range && valid) apply(range); }}>
     {/* One row of shortcuts that scrolls sideways, like the period bar: stepping the unit first, then the quick ranges. */}
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.shortcutRow} contentContainerStyle={styles.shortcutScroll}>
+    <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} style={styles.shortcutRow} contentContainerStyle={styles.shortcutScroll}>
       <View style={styles.shortcutGroup} testID="progress-period-shift">
         {prev ? <Shortcut label={shiftLabel(state.unit, -1)} onPress={() => move(prev)} /> : null}
         {next ? <Shortcut label={shiftLabel(state.unit, 1)} onPress={() => move(next)} /> : null}

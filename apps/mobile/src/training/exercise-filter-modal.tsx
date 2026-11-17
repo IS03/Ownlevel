@@ -24,7 +24,7 @@ function ExerciseFilterForm({ filters, exercises, query, onApply, onClose, style
       <Pressable accessibilityRole="button" accessibilityLabel="Limpiar" onPress={() => setDraft({ ...cloneFilters(DEFAULT_EXERCISE_LIBRARY_FILTERS), muscleGroups: [...draft.muscleGroups] })}
         style={({ pressed }) => [styles.clear, pressedStyle(pressed, reduceMotion)]}><AppText variant="subheadline">Limpiar</AppText></Pressable></GlassSurface></View>
       <AppText variant="headline" style={{ flex: 1, textAlign: 'center' }}>Filtros</AppText><View style={[styles.side, { alignItems: 'flex-end' }]}><RoutineSheetButton label="Cerrar filtros" icon="close" onPress={onClose} /></View></View>
-    <ScrollView style={{ maxHeight: height * 0.52 }} contentContainerStyle={styles.content}>
+    <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} style={{ maxHeight: height * 0.52 }} contentContainerStyle={styles.content}>
       <AppText variant="headline">Mostrar</AppText><ExerciseSegmented accessibilityLabel="Estado" value={draft.status} options={[{ value: 'active', label: 'Activos' }, { value: 'archived', label: 'Archivados' }, { value: 'all', label: 'Todos' }]} onChange={status => setDraft(previous => ({ ...previous, status }))} />
       <AppText variant="headline" style={styles.label}>En rutinas</AppText><ExerciseSegmented accessibilityLabel="Uso en rutinas" value={draft.usage} options={[{ value: 'any', label: 'Todos' }, { value: 'assigned', label: 'En alguna' }, { value: 'unassigned', label: 'En ninguna' }]} onChange={usage => setDraft(previous => ({ ...previous, usage, routineIds: [] }))} />
       <AppText variant="headline" style={styles.label}>Implemento</AppText>

@@ -39,7 +39,7 @@ export function SessionTemporalScreen() {
     {ref.omitted ? <AppText muted>Se muestran {ref.rows.length} de {ref.total}; consultá todos en Nutrición.</AppText> : null}
     {ref.dates.map(day => <InsightRow key={day} label={`Ver Nutrición del ${exactPeriodDate(day)}`} spoken={`Ver Nutrición del ${exactPeriodDate(day)}`} onPress={() => openDay(day)} />)}
   </View>;
-  return <ScrollView testID="session-temporal-screen" contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: colors.background }} contentContainerStyle={styles.scroll}
+  return <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="session-temporal-screen" contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: colors.background }} contentContainerStyle={styles.scroll}
     refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
     <ReturnToProgress/>
     {!date ? <UnavailableState title="No pudimos identificar el día" description="Abrí el contexto desde Comparaciones." />

@@ -48,7 +48,7 @@ export function SegmentedControl<T extends string>({ options, value, onChange, l
 /** Screen scroll for large-title history screens: the ScrollView is the root so the native title collapses into the bar. */
 export function HistoryScroll({ children, testID, ...props }: ScrollViewProps & { children: React.ReactNode; testID: string }) {
   const { colors } = useOwnlevelTheme();
-  return <ScrollView {...props} testID={testID} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled"
+  return <ScrollView {...props} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID={testID} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled"
     style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll}>{children}</ScrollView>;
 }
 

@@ -84,7 +84,7 @@ export function PeriodBar({ onCustom }: { onCustom: () => void }) {
       <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, opacity: 0.92 }]} />
       <GlassSurface style={StyleSheet.absoluteFill} testID="progress-period-bar" />
     </Animated.View>
-    <Animated.ScrollView ref={scroll} horizontal bounces={false} decelerationRate="fast" showsHorizontalScrollIndicator={false}
+    <Animated.ScrollView showsVerticalScrollIndicator={false} ref={scroll} horizontal bounces={false} decelerationRate="fast" showsHorizontalScrollIndicator={false}
       scrollEventThrottle={16} onScroll={onScroll} onLayout={e => { view.current = e.nativeEvent.layout.width; place(); }}
       accessibilityRole="tablist" accessibilityLabel="Período">
       {Array.from({ length: COPIES }, (_, k) => <View key={k} style={styles.copy} accessibilityElementsHidden={k !== MIDDLE}

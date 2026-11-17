@@ -46,7 +46,7 @@ function ExerciseEditorForm({ createIdempotencyKey, onClose, onSave, pending, ta
       <AppText variant="headline" style={styles.title}>{original ? 'Editar ejercicio' : 'Nuevo ejercicio'}</AppText>
       <RoutineSheetButton label={pending ? 'Guardando…' : original ? 'Guardar ejercicio' : 'Crear ejercicio'} icon="checkmark" accent pending={pending} disabled={pending || !values.name.trim() || Boolean(original && !dirty)} onPress={() => void save()} />
     </View>
-    <ScrollView automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled" style={{ maxHeight: height * 0.62 }} contentContainerStyle={styles.content}>
+    <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled" style={{ maxHeight: height * 0.62 }} contentContainerStyle={styles.content}>
       <TextField label="Nombre del ejercicio" hideLabel placeholder="Nombre del ejercicio" autoFocus={!original} value={values.name} disabled={pending} maxLength={120} onChangeText={value => change('name', value)} />
       <ListGroup bordered={false} compact><ExerciseChoiceMenu title="Grupo muscular" value={values.muscleGroup ?? ''} disabled={pending} onChange={value => change('muscleGroup', value as MobileTrainingMuscleGroup || null)}
         options={[{ value: '', label: 'Sin grupo' }, ...MUSCLE_GROUP_OPTIONS]} />

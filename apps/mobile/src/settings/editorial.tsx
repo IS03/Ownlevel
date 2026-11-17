@@ -63,7 +63,7 @@ export function EditorialScreen({ children,scrollEnabled=true,adjustKeyboardInse
           },
         ]}
       />
-      <ScrollView
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
         scrollEnabled={scrollEnabled}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
