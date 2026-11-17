@@ -1,6 +1,6 @@
 import { normalizeWeightMode, weightModeStrategy } from "../../mobile-api/weight-modes";
 import { sameContext, volumeFact } from "./exposure";
-import { INSIGHTS_PERFORMANCE_METHOD, type CompactExercisePerformance, type ComparisonOutput, type DirectEvidence, type ExerciseExposure, type ExercisePerformance, type HistoryCoverage, type PerformanceSet, type RecordFact } from "./types";
+import { INSIGHTS_PERFORMANCE_METHOD, type ChangeBasis, type CompactExercisePerformance, type ComparisonOutput, type DirectEvidence, type ExerciseExposure, type ExercisePerformance, type HistoryCoverage, type LoadSignals, type PerformanceChange, type PerformanceSet, type PerformanceStatus, type RecordFact } from "./types";
 
 function maxima(sets: PerformanceSet[], anchor: "load" | "amount", value: "load" | "amount") {
   const result = new Map<number, { value: number; ids: string[] }>();
@@ -131,6 +131,28 @@ function classify(current: ExerciseExposure, reference: ExercisePerformance["ref
   return { status: up ? "improved" : down ? "declined" : "observed_stable", reason: "direct_evidence", evidence };
 }
 
+const AMOUNT_KINDS = new Set<DirectEvidence["kind"]>(["reps_at_load", "bodyweight_reps", "time"]);
+/** Percent with four decimals: 12 → 13 reps is 8.3333. Formatting belongs to the client. */
+const percent = (ratio: number) => Math.round(ratio * 1_000_000) / 10_000;
+/**
+ * The measured change of one exposure (#533). Reads only the direct evidence that classified it; a status without a reference or
+ * with opposite signals has no percentage. See PerformanceChange.
+ */
+export function changeOf(current: ExerciseExposure, status: PerformanceStatus, evidence: readonly DirectEvidence[]): PerformanceChange {
+  const strategy = current.context ? weightModeStrategy(normalizeWeightMode(current.context.weightMode)) : null;
+  if (status === "insufficient_comparison") return { state: "not_comparable", pct: null, basis: null, signals: 0, load: null };
+  // Only a load unit has load signals: kilograms, or plates for the "lingotes" mode, which is never shown as weight.
+  const load: LoadSignals | null = strategy === "load_reps" ? { unit: "kg", up: 0, same: 0, down: 0 } : strategy === "unit_reps" ? { unit: "lingote", up: 0, same: 0, down: 0 } : null;
+  if (load) for (const signal of evidence) if (signal.kind === "load_at_reps") load[signal.delta > 0 ? "up" : signal.delta < 0 ? "down" : "same"]++;
+  if (status === "ambiguous_evidence") return { state: "ambiguous", pct: null, basis: null, signals: 0, load };
+  const amount = evidence.filter(signal => AMOUNT_KINDS.has(signal.kind));
+  if (!amount.length) return { state: "no_amount_signal", pct: null, basis: null, signals: 0, load };
+  const basis = amount[0]!.kind as ChangeBasis;
+  const based = amount.filter(signal => signal.reference > 0);
+  if (!based.length) return { state: "no_positive_reference", pct: null, basis, signals: 0, load };
+  return { state: "measured", pct: percent(based.reduce((sum, signal) => sum + signal.delta / signal.reference, 0) / based.length), basis, signals: based.length, load };
+}
+
 type ExposureComparison = {
   current: ExerciseExposure;
   reference: ExercisePerformance["reference"];
@@ -149,10 +171,12 @@ export function compareExposure(input: ExposureComparison, output: ComparisonOut
   const { current, reference } = input;
   const facts = input.historyCoverage === "unavailable" ? [] : input.records ?? recordFacts(current, input.history);
   const { status, reason, evidence } = classify(current, reference, input.missingReason);
-  if (output === "compact") return { methodVersion: INSIGHTS_PERFORMANCE_METHOD, exerciseId: current.exerciseId, status, reason,
+  // Taken from the evidence before the compact output drops it: the same signals that decided the status.
+  const change = changeOf(current, status, evidence);
+  if (output === "compact") return { methodVersion: INSIGHTS_PERFORMANCE_METHOD, exerciseId: current.exerciseId, status, reason, change,
     reference: reference ? { sessionId: reference.sessionId, endedAt: reference.endedAt, ageMs: reference.ageMs } : null, records: facts, exclusions: input.exclusions };
   return {
-    methodVersion: INSIGHTS_PERFORMANCE_METHOD, exerciseId: current.exerciseId, status, reason,
+    methodVersion: INSIGHTS_PERFORMANCE_METHOD, exerciseId: current.exerciseId, status, reason, change,
     current, reference, evidence,
     records: { scope: "provided_compatible_history", historyCoverage: input.historyCoverage, facts },
     volume: { current: volumeFact(current), reference: reference ? volumeFact(reference.exposure) : null },

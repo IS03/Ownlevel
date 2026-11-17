@@ -5,7 +5,8 @@ import { messyHistory } from "./messy-history.fixture";
 import type { ExercisePerformance, PerformanceSession } from "./types";
 
 /** What the compact output promises: the full output with the exposures, evidence and volumes taken away, and nothing else. */
-const projectExercise = ({ methodVersion, exerciseId, status, reason, reference, records, exclusions }: ExercisePerformance) => ({ methodVersion, exerciseId, status, reason,
+// #533: the measured change is part of both outputs, taken from the same evidence before the compact one drops it.
+const projectExercise = ({ methodVersion, exerciseId, status, reason, change, reference, records, exclusions }: ExercisePerformance) => ({ methodVersion, exerciseId, status, reason, change,
   reference: reference ? { sessionId: reference.sessionId, endedAt: reference.endedAt, ageMs: reference.ageMs } : null, records: records.facts, exclusions });
 const projectPartialExercise = ({ reading, contextCompleteness, ...exercise }: ExercisePerformance & { reading: string; contextCompleteness: string }) => {
   const projected: Partial<ReturnType<typeof projectExercise>> = projectExercise({ ...exercise, status: "insufficient_comparison" });
@@ -43,9 +44,10 @@ describe("salida compacta del comparador (#367)", () => {
   it("the default is still the full output, for every current consumer", () => {
     const input = { sessions: messyHistory(3), historyCoverage: "complete" as const, exclusionDetail: "summary" as const };
     const exercise = buildPerformanceInsightsV1(input).sessions.flatMap(session => session.exercises)[0]!;
-    expect(fields(exercise)).toEqual(["current", "evidence", "exclusions", "exerciseId", "methodVersion", "reason", "records", "reference", "status", "volume"]);
+    // #533 adds `change` to both outputs, the only new field.
+    expect(fields(exercise)).toEqual(["change", "current", "evidence", "exclusions", "exerciseId", "methodVersion", "reason", "records", "reference", "status", "volume"]);
     const compact = buildPerformanceInsightsV1({ ...input, output: "compact" }).sessions.flatMap(session => session.exercises).find(row => row.reference)!;
-    expect(fields(compact)).toEqual(["exclusions", "exerciseId", "methodVersion", "reason", "records", "reference", "status"]);
+    expect(fields(compact)).toEqual(["change", "exclusions", "exerciseId", "methodVersion", "reason", "records", "reference", "status"]);
     expect(fields(compact.reference!)).toEqual(["ageMs", "endedAt", "sessionId"]);
   });
   it("the histories reach every case the projection must hold: readings, ties, records, unknown configuration and every mode", () => {

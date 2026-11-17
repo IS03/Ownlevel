@@ -30,12 +30,12 @@ describe("hechos reducidos de los comparadores", () => {
         sessionId: session.sessionId, counts: session.counts,
         exercises: session.exercises.map(exercise => ({ exerciseId: exercise.exerciseId, name: names.get(`${session.sessionId}:${exercise.exerciseId}`) ?? "",
           status: exercise.status, reason: exercise.reason, referenceSessionId: exercise.reference?.sessionId ?? null,
-          referenceAgeDays: exercise.reference ? Math.floor(exercise.reference.ageMs / DAY_MS) : null, referenceDate: exercise.reference ? dates.get(exercise.reference.sessionId) ?? null : null, newHigh: exercise.records.facts.some(fact => fact.isNewHigh) })) })));
+          referenceAgeDays: exercise.reference ? Math.floor(exercise.reference.ageMs / DAY_MS) : null, referenceDate: exercise.reference ? dates.get(exercise.reference.sessionId) ?? null : null, newHigh: exercise.records.facts.some(fact => fact.isNewHigh), ...(exercise.change && exercise.change.state !== "not_comparable" ? { change: exercise.change } : {}) })) })));
       const fullPartial = partialByDate.get(day.date)!;
-      expect(snapshot.partialDays[index]!.sessions).toEqual(fullPartial.sessions.map(session => ({ sessionId: session.sessionId, counts: session.counts,
+      expect(snapshot.partialDays[index]!.sessions.map(session => ({ sessionId: session.sessionId, counts: session.counts, exercises: session.exercises }))).toEqual(fullPartial.sessions.map(session => ({ sessionId: session.sessionId, counts: session.counts,
         exercises: session.exercises.map(exercise => ({ exerciseId: exercise.exerciseId, name: names.get(`${session.sessionId}:${exercise.exerciseId}`) ?? "", reading: exercise.reading,
           reason: exercise.reason, referenceSessionId: exercise.reference?.sessionId ?? null, referenceAgeDays: exercise.reference ? Math.floor(exercise.reference.ageMs / DAY_MS) : null, referenceDate: exercise.reference ? dates.get(exercise.reference.sessionId) ?? null : null,
-          highestInPartialContext: exercise.records.facts.some(fact => fact.isNewHigh) })) })));
+          highestInPartialContext: exercise.records.facts.some(fact => fact.isNewHigh), ...(exercise.change && exercise.change.state !== "not_comparable" ? { change: exercise.change } : {}) })) })));
     }
     expect(snapshot.history.sessions).toBe(strict.sessions.length);
     expect(snapshot.integrity).toBe(strict.integrity);

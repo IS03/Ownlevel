@@ -1,5 +1,6 @@
 import type { INSIGHTS_PERFORMANCE_PARTIAL_METHOD, PARTIAL_CONTEXT, PartialCounts, PartialReading } from "../performance-insights/partial";
-import type { DirectEvidence, ExclusionReason, PerformanceCounts, PerformanceStatus, PerformanceUnit, RecordFact } from "../performance-insights/types";
+import type { DirectEvidence, ExclusionReason, PerformanceChange, PerformanceCounts, PerformanceStatus, PerformanceUnit, RecordFact } from "../performance-insights/types";
+import type { RecentChanges, SessionChange } from "./performance-change";
 
 /** Versioned, opt-in method. Facts, context and associations stay in separate lanes of the read model. */
 export const INSIGHTS_ENGINE_METHOD = "insights-engine/1" as const;
@@ -35,7 +36,9 @@ export type InsightsSource = {
   sets: readonly { id: string; sessionExerciseId: string; actualReps: number | null; actualLoad: number | null; isCompleted: boolean; completedAt: string | null; setNumber?: number | null }[];
   feelings: readonly { sessionId: string; revision: number; facts: unknown }[];
   /** systemKey identifies the account's sleep metric; a name or a unit never does. */
-  metricDefinitions: readonly { id: string; name: string; unit: string | null; valueType: string; archived: boolean; systemKey?: string | null }[];
+  metricDefinitions: readonly { id: string; name: string; unit: string | null; valueType: string; archived: boolean; systemKey?: string | null;
+    /** `sort_order`, the order the user gave them. Absent: unknown. */
+    order?: number | null }[];
   /** sleepNight: whether the value carries a valid declaration of which night it means. Absent: undeclared. */
   metricValues: readonly { metricId: string; date: string; value: unknown; sleepNight?: SleepNightEvidence }[];
   meals: readonly {
@@ -115,11 +118,15 @@ export type ExerciseFact = {
   /** Logical date of the compatible reference session, when there is one. Added later: an older answer may not carry it. */
   referenceDate?: string | null;
   newHigh: boolean;
+  /** #533, optional: an older server does not send it. */
+  change?: PerformanceChange;
 };
 export type PreStartWindow = { value: number | null; state: "recorded" | "no_registered_meal" | "partial_macro" | "untimed_meal_in_scope" | "unverified_meal_time_in_scope" | "no_start_time" };
 export type SessionFact = {
   sessionId: string; name: string | null; routineId: string | null; routineName: string | null; startedAt: string | null; endedAt: string | null;
   counts: PerformanceCounts; exercises: ExerciseFact[];
+  /** #533, optional: the measured change of this lane's exercises. */
+  change?: SessionChange;
   /** Context recorded around the training. Post feelings stay here and are never an exposure. */
   context: {
     feelings: Partial<Record<FeelingKey, SessionFeeling>>;
@@ -155,11 +162,18 @@ export type DayFact = {
   sessions: SessionFact[];
   context: { metrics: { metricId: string; value: number; sleepNight?: SleepNightEvidence }[]; nutrition: NutritionContext;
     /** Method 2: the day's weight from the body domain, with why it is missing. Its time is unknown: context, not an antecedent. */
-    bodyWeight?: { value: number | null; state: "recorded" | "not_recorded" | "invalid" } };
+    bodyWeight?: { value: number | null; state: "recorded" | "not_recorded" | "invalid" };
+    /**
+     * #533, optional: what was recorded on the previous logical day, by calendar (it crosses months and years). `nutrition` is
+     * null when that day has no meals; a total with `missing` > 0 is partial, and a recorded 0 with nothing missing is a zero.
+     */
+    previousDay?: { date: string; nutrition: NutritionContext } };
 };
 export type ExerciseSummary = {
   exerciseId: string; name: string; exposures: number; improved: number; observedStable: number; declined: number; ambiguous: number; insufficient: number;
   lastDate: string | null; lastStatus: PerformanceStatus; lastReason: string;
+  /** #533, optional: up to ten measured results, oldest first. */
+  recent?: RecentChanges;
 };
 
 export type PartialExerciseFact = {
@@ -169,13 +183,17 @@ export type PartialExerciseFact = {
   referenceDate?: string | null;
   /** Highest value in this partial history. It is not a record of the strict method and never a claim about capacity. */
   highestInPartialContext: boolean;
+  /** #533, optional. Same rules as the strict lane's. */
+  change?: PerformanceChange;
 };
-export type PartialSessionFact = { sessionId: string; counts: PartialCounts; exercises: PartialExerciseFact[] };
+export type PartialSessionFact = { sessionId: string; counts: PartialCounts; exercises: PartialExerciseFact[]; change?: SessionChange };
 /** Same dates and pagination as `facts.days`, with its own counts. Context stays in the strict day and belongs to neither method. */
 export type PartialDayFact = { date: string; counts: PartialCounts; evaluableSessions: number; lowerProportion: number | null; equalSessionSensitivity: number | null; openDay: boolean; sessions: PartialSessionFact[] };
 export type PartialExerciseSummary = {
   exerciseId: string; name: string; exposures: number; higher: number; same: number; lower: number; ambiguous: number; insufficient: number;
   lastDate: string | null; lastReading: PartialReading; lastReason: string;
+  /** #533, optional: up to ten measured results, oldest first. */
+  recent?: RecentChanges;
 };
 /** The strongest thing the partial method can say: the two coincided. It cannot separate that from an unrecorded change of variant. */
 export type PartialAssociationState = "insufficient_data" | "no_clear_signal" | "coincidence_context_unknown";
@@ -204,6 +222,8 @@ export type PartialRelationSummary = Pick<PartialAssociationResult, "id" | "defi
 export type InsightsSummary = InsightsVersions & Pick<InsightsReadModel, "history" | "metrics" | "exclusions" | "limits"> & { view: "summary"; facts: InsightsReadModel["facts"];
   relations: Record<"strict" | "partial", { candidatesEvaluated: number; outcomeDays: number }>;
   partial: Omit<PartialLane, "associations"> };
+/** #533 · Relación of one routine: see routine-relation.ts. */
+export type InsightsRoutineRelationView = InsightsVersions & import("./routine-relation").InsightsRoutineRelation;
 export type InsightsDaysPage = InsightsVersions & { view: "days"; facts: Pick<InsightsReadModel["facts"], "days" | "page">; partial: PartialLabels & { days: PartialDayFact[] } };
 export type InsightsRelations = InsightsVersions & { view: "relations"; metrics: InsightsReadModel["metrics"];
   strict: Omit<InsightsReadModel["associations"], "items" | "detail"> & { outcomeDays: number; items: RelationSummary[] };
@@ -264,7 +284,7 @@ export type InsightsPeriodFeelings = InsightsVersions & { view: "period-feelings
   period: import("./period-range").InsightsPeriod; outcomes: FeelingOutcomeSummary[] };
 export type InsightsPeriodNutrition = InsightsVersions & { view: "period-nutrition"; asOf: string; periodMethodVersion: "insights-period/1";
   period: import("./period-range").InsightsPeriod; days: ({ date: string } & NonNullable<NutritionContext>)[]; daysWithoutMeals: number; ingestionCompleteKnown: false };
-export type InsightsResponse = InsightsSummary | InsightsDaysPage | InsightsRelations | InsightsRelationDetail | InsightsExerciseEvidence | InsightsFeelingOutcomes | InsightsPeriodSummary | InsightsPinnedPeriodSummary | InsightsPeriodFeelings | InsightsPeriodNutrition | import('./session-temporal').SessionTemporalDay | import('./week-exploration').PeriodExploration | import('./week-exploration').CoincidenceEvidence;
+export type InsightsResponse = InsightsSummary | InsightsDaysPage | InsightsRelations | InsightsRelationDetail | InsightsExerciseEvidence | InsightsFeelingOutcomes | InsightsPeriodSummary | InsightsPinnedPeriodSummary | InsightsPeriodFeelings | InsightsPeriodNutrition | import('./session-temporal').SessionTemporalDay | import('./week-exploration').PeriodExploration | import('./week-exploration').CoincidenceEvidence | InsightsRoutineRelationView;
 
 export type InsightsReadModel = {
   contractVersion: typeof INSIGHTS_CONTRACT;

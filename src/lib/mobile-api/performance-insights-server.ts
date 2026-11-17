@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { todayInCordoba } from "@/lib/phase2/cordoba-date";
 import { readAllTrainingRows } from "@/lib/phase2/training-robust";
-import { createInsightsSnapshot, insightsDaysPage, insightsExerciseEvidence, insightsFeelingOutcomes, insightsPeriodSummary, periodOf, insightsRelation, insightsRelations, insightsSummary, INSIGHTS_MAX_DAYS, type EvidenceLane, type InsightsSnapshot, type InsightsSource } from "@/lib/progress/insights-engine";
+import { createInsightsSnapshot, insightsDaysPage, insightsExerciseEvidence, insightsFeelingOutcomes, insightsPeriodSummary, periodOf, insightsRelation, insightsRelations, insightsRoutineRelation, insightsSummary, INSIGHTS_MAX_DAYS, type EvidenceLane, type InsightsSnapshot, type InsightsSource } from "@/lib/progress/insights-engine";
 import type { InsightsEngineMethod } from "@/lib/progress/insights-engine/types";
 import { MobileApiValidationError } from "./auth";
 import { NutritionReportDayChangedError } from "./nutrition-report-server";
@@ -45,7 +45,7 @@ type EmbeddedSetRow = Omit<SetRow, "workout_session_exercise_id">;
 /** uuid order is byte order, which is the order of their canonical text: the same order as `order("id")` in the database. */
 const byId = (a: { id: string }, b: { id: string }) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 const SET_COLUMNS = "id,actual_reps,actual_weight_kg,is_completed,completed_at";
-type MetricRow = { id: string; name: string; unit: string | null; value_type: string; is_active: boolean; archived_at: string | null; system_key?: string | null };
+type MetricRow = { id: string; name: string; unit: string | null; value_type: string; is_active: boolean; archived_at: string | null; system_key?: string | null; sort_order?: number | null };
 type NightRow = { convention: string; declared_updated_at: string; declared_value: number | string; declared_date: string };
 type ValueRow = { id: string; metric_id: string; metric_date: string; value: unknown; updated_at?: string; night?: NightRow | NightRow[] | null };
 const SLEEP_NIGHT = "sleep_night_ending_on_date/1";
@@ -86,7 +86,7 @@ export async function readInsightsSource(context: Context): Promise<InsightsSour
       .eq("session.user_id", userId).eq("session.status", "completed").order("session_id").range(from, from + 999)),
     // Archived metrics stay: every numeric metric takes part by UUID, with no list by name, unit or system key.
     readAllTrainingRows<MetricRow>("Leer métricas de Insights", from => supabase.from("user_metrics")
-      .select("id,name,unit,value_type,is_active,archived_at,system_key", firstPage(from)).eq("user_id", userId).order("id").range(from, from + 999)),
+      .select("id,name,unit,value_type,is_active,archived_at,system_key,sort_order", firstPage(from)).eq("user_id", userId).order("id").range(from, from + 999)),
     readAllTrainingRows<ValueRow>("Leer valores de Insights", from => supabase.from("daily_metric_values")
       .select("id,metric_id,metric_date,value,updated_at,night:daily_metric_value_conventions(convention,declared_updated_at,declared_value,declared_date)", firstPage(from)).eq("user_id", userId).order("id").range(from, from + 999)),
     readAllTrainingRows<MealRow>("Leer comidas de Insights", from => supabase.from("meal_entries")
@@ -113,7 +113,7 @@ export async function readInsightsSource(context: Context): Promise<InsightsSour
       configuration: configurationIdentity(oneConfiguration(row.configuration)) })),
     sets: sets.map(row => ({ id: row.id, sessionExerciseId: row.workout_session_exercise_id, actualReps: strictNumber(row.actual_reps), actualLoad: strictNumber(row.actual_weight_kg), isCompleted: row.is_completed, completedAt: row.completed_at })),
     feelings: feelings.map(row => ({ sessionId: row.session_id, revision: row.revision, facts: row.facts })),
-    metricDefinitions: definitions.map(row => ({ id: row.id, name: row.name, unit: row.unit, valueType: row.value_type, archived: !row.is_active || row.archived_at !== null, systemKey: row.system_key ?? null })),
+    metricDefinitions: definitions.map(row => ({ id: row.id, name: row.name, unit: row.unit, valueType: row.value_type, archived: !row.is_active || row.archived_at !== null, systemKey: row.system_key ?? null, order: row.sort_order ?? null })),
     metricValues: values.map(row => ({ metricId: row.metric_id, date: row.metric_date, value: row.value, sleepNight: sleepNightOf(row) })),
     meals: meals.map(row => ({ id: row.id, date: row.day_logs.log_date, consumedAt: row.consumed_at, consumedAtSource: row.consumed_at_source, rawInput: row.raw_input, entryKind: row.entry_kind, sourceType: row.source_type, importRunId: row.import_run_id,
       calories: strictNumber(row.final_calories), proteinG: strictNumber(row.final_protein_g), carbsG: strictNumber(row.final_carbs_g), fatG: strictNumber(row.final_fat_g) })),
@@ -307,10 +307,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EVIDENCE_KEYS = ["session", "exercise", "lane"];
 export function parseInsightsParams(params: URLSearchParams) {
   for (const key of new Set(params.keys())) {
-    if (!["view", "before", "limit", "association", "pairs", "method", "asOf", "date", "kind", "group", "offset", "revision", ...EVIDENCE_KEYS].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
+    if (!["view", "before", "limit", "association", "pairs", "method", "asOf", "date", "kind", "group", "offset", "revision", "routine", ...EVIDENCE_KEYS].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
   }
   const before = params.get("before") ?? undefined, limit = params.get("limit"), association = params.get("association") ?? undefined, view = params.get("view") ?? "summary";
-  if (!["summary", "days", "relations", "evidence", "feelings", "period", "period-at", "period-feelings", "period-nutrition", "period-explore", "coincidence-evidence", "session-temporal"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
+  if (!["summary", "days", "relations", "evidence", "feelings", "period", "period-at", "period-feelings", "period-nutrition", "period-explore", "coincidence-evidence", "session-temporal", "routine-relation"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
   const method = params.get("method");
   if (method !== null && method !== "2") throw new MobileApiValidationError("Método no válido.");
   const engineMethod = (method === "2" ? 2 : 1) as InsightsEngineMethod;
@@ -320,6 +320,12 @@ export function parseInsightsParams(params: URLSearchParams) {
     return {view:'coincidence-evidence' as const,asOf,revision,selection:{kind,group} as CoincidenceSelection,offset:Number(offset),method:2 as const};
   }
   if(['kind','group','offset','revision'].some(k=>params.has(k)))throw new MobileApiValidationError('Parámetro no válido.');
+  // #533 · Relación: one routine, method 2 (declared sleep and pre-session context), nothing else beside it.
+  if (view === 'routine-relation' || params.has('routine')) {
+    const routine = params.get('routine');
+    if (view !== 'routine-relation' || method !== '2' || !routine || !UUID.test(routine) || [...params.keys()].some(k => !['view', 'method', 'routine'].includes(k))) throw new MobileApiValidationError('Rutina o parámetros no válidos.');
+    return { view: 'routine-relation' as const, routine: routine.toLowerCase(), method: 2 as const };
+  }
   if (view === 'session-temporal') {
     const date = params.get('date');
     if (method !== '2' || !validPeriodAnchor(date) || [...params.keys()].some(k => !['view','method','date'].includes(k))) throw new MobileApiValidationError('Fecha o parámetros no válidos.');
@@ -393,6 +399,13 @@ export const performanceInsightsResponse = (request: Request) => progressReadRes
     const after = todayInCordoba();
     if (after !== today) throw new NutritionReportDayChangedError(after);
     return evidence;
+  }
+  if (options.view === "routine-relation") {
+    // From the cached snapshot of method 2: computed when the screen opens, never by summary.
+    const model = insightsRoutineRelation(await readInsightsSnapshot(context, today, 2), options.routine);
+    const after = todayInCordoba();
+    if (after !== today) throw new NutritionReportDayChangedError(after);
+    return model;
   }
   if (options.view === "period") {
     const model = await readConsistentPeriod(context, today, options.method);

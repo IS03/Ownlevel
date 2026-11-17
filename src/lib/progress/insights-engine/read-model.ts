@@ -2,12 +2,15 @@ import { buildPerformanceInsightsPartialV1, buildPerformanceInsightsV1 } from ".
 import type { PartialCounts, PartialExerciseOf, PartialSessionOf } from "../performance-insights/partial";
 import type { CompactExercisePerformance, PerformanceCounts, PerformanceSession, SessionPerformanceOf } from "../performance-insights/types";
 import { evaluateAssociations, type AssociationEvaluation } from "./associations";
-import { buildExposureContext, buildExposureTable, partialOutcomeDays, strictOutcomeDays, weightOfDay, type ExposureTable } from "./exposures";
+import { buildExposureContext, buildExposureTable, partialOutcomeDays, previousDate, strictOutcomeDays, weightOfDay, type ExposureTable } from "./exposures";
 import { describeFeelingOutcome, FEELING_OUTCOME_KINDS } from "./feeling-outcomes";
+import { recentChanges, sessionChange } from "./performance-change";
+import { priorFeelingFact } from "./prior-feelings";
+import { routineRelation } from "./routine-relation";
 import { periodFacts, periodSummary } from "./period";
 import type { WeighIn } from "../body-evolution/weekly";
 import { mealTimeEvidence, toPerformanceSessions } from "./source-adapter";
-import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, type InsightsEngineMethod, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type SleepNightEvidence, INSIGHTS_RISK_BUDGET_CANDIDATE, PARTIAL_ASSOCIATION_PREFIX, type AssociationResult, type Candidate, type DayFact, type ExerciseFact, type ExerciseSummary, type InsightsDaysPage, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsSource, type InsightsSummary, type MealTimeEvidence, type PartialAssociationResult, type PartialDayFact, type PartialExerciseFact, type PartialExerciseSummary, type PartialLane, type PartialRelationSummary, type RelationSummary, type SessionFact } from "./types";
+import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, type InsightsEngineMethod, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type SleepNightEvidence, INSIGHTS_RISK_BUDGET_CANDIDATE, PARTIAL_ASSOCIATION_PREFIX, type AssociationResult, type Candidate, type DayFact, type ExerciseFact, type ExerciseSummary, type InsightsDaysPage, type InsightsReadModel, type InsightsRelationDetail, type InsightsRoutineRelationView, type InsightsRelations, type InsightsSource, type InsightsSummary, type MealTimeEvidence, type PartialAssociationResult, type PartialDayFact, type PartialExerciseFact, type PartialExerciseSummary, type PartialLane, type PartialRelationSummary, type RelationSummary, type SessionFact } from "./types";
 
 export const INSIGHTS_DEFAULT_DAYS = 14;
 export const INSIGHTS_MAX_DAYS = 120;
@@ -19,6 +22,11 @@ const DAY_MS = 86_400_000;
  * per-exercise exposures stay inside it and become garbage as soon as these are taken (see factsOfStrict, factsOfPartial).
  */
 type FactSession<E> = { sessionId: string; date: string | null; routineId: string | null; counts: E extends ExerciseFact ? PerformanceCounts : PartialCounts; exercises: E[] };
+/**
+ * #533: published only where it says something the status does not. An exercise without a comparison (`not_comparable`) already
+ * says why in its status and reason, so it carries no change: that keeps the summary within its budget.
+ */
+const publishedChange = (exercise: Pick<CompactExercisePerformance, "change">) => exercise.change && exercise.change.state !== "not_comparable" ? { change: exercise.change } : {};
 const nameOf = (names: ReadonlyMap<string, string>, sessionId: string, exerciseId: string) => names.get(`${sessionId}:${exerciseId}`);
 
 /**
@@ -34,7 +42,7 @@ function factsOfStrict(sessions: readonly PerformanceSession[], names: ReadonlyM
       exercises: session.exercises.map((exercise): ExerciseFact => ({ exerciseId: exercise.exerciseId, name: nameOf(names, session.sessionId, exercise.exerciseId) ?? "",
         status: exercise.status, reason: exercise.reason, referenceSessionId: exercise.reference?.sessionId ?? null,
         referenceAgeDays: exercise.reference ? Math.floor(exercise.reference.ageMs / DAY_MS) : null, referenceDate: exercise.reference ? dates.get(exercise.reference.sessionId) ?? null : null,
-        newHigh: exercise.records.some(fact => fact.isNewHigh) })) });
+        newHigh: exercise.records.some(fact => fact.isNewHigh), ...publishedChange(exercise) })) });
     return row;
   };
   return { methodVersion: performance.methodVersion, integrity: performance.integrity, exclusionReasons: performance.exclusions.map(row => row.reason),
@@ -74,7 +82,19 @@ function exerciseSummaries(sessions: readonly FactSession<ExerciseFact>[], names
     row.name = names.get(`${session.sessionId}:${exercise.exerciseId}`) ?? row.name;
     summaries.set(exercise.exerciseId, row);
   }
-  return [...summaries.values()].sort((a, b) => (b.lastDate ?? "").localeCompare(a.lastDate ?? "") || a.exerciseId.localeCompare(b.exerciseId));
+  return withRecent(summaries, sessions);
+}
+
+/** #533: each exercise's recent measured results, in the order of the sessions (logical date, then session id). */
+function withRecent<T extends { exerciseId: string; lastDate: string | null }>(summaries: Map<string, T>, sessions: readonly FactSession<ExerciseFact | PartialExerciseFact>[]): T[] {
+  const rows = new Map<string, { date: string | null; sessionId: string; change?: ExerciseFact["change"] }[]>();
+  for (const session of sessions) for (const exercise of session.exercises) {
+    const list = rows.get(exercise.exerciseId);
+    const row = { date: session.date, sessionId: session.sessionId, change: exercise.change };
+    if (list) list.push(row); else rows.set(exercise.exerciseId, [row]);
+  }
+  return [...summaries.values()].map(row => ({ ...row, recent: recentChanges(rows.get(row.exerciseId) ?? []) }))
+    .sort((a, b) => (b.lastDate ?? "").localeCompare(a.lastDate ?? "") || a.exerciseId.localeCompare(b.exerciseId));
 }
 
 function partialSummaries(sessions: readonly FactSession<PartialExerciseFact>[], names: ReadonlyMap<string, string>): PartialExerciseSummary[] {
@@ -91,13 +111,13 @@ function partialSummaries(sessions: readonly FactSession<PartialExerciseFact>[],
     row.lastDate = session.date; row.lastReading = exercise.reading; row.lastReason = exercise.reason; row.name = name ?? row.name;
     summaries.set(exercise.exerciseId, row);
   }
-  return [...summaries.values()].sort((a, b) => (b.lastDate ?? "").localeCompare(a.lastDate ?? "") || a.exerciseId.localeCompare(b.exerciseId));
+  return withRecent(summaries, sessions);
 }
 
 const partialFact = (exercise: PartialExerciseOf<CompactExercisePerformance>, name: string, dates: ReadonlyMap<string, string | null>): PartialExerciseFact => ({ exerciseId: exercise.exerciseId, name, reading: exercise.reading, reason: exercise.reason,
   referenceSessionId: exercise.reference?.sessionId ?? null, referenceAgeDays: exercise.reference ? Math.floor(exercise.reference.ageMs / DAY_MS) : null,
   referenceDate: exercise.reference ? dates.get(exercise.reference.sessionId) ?? null : null,
-  highestInPartialContext: exercise.records.some(fact => fact.isNewHigh) });
+  highestInPartialContext: exercise.records.some(fact => fact.isNewHigh), ...publishedChange(exercise) });
 
 const publish = (item: AssociationEvaluation): AssociationResult => { const published: Omit<AssociationEvaluation, "strictGate"> & { strictGate?: boolean } = { ...item }; delete published.strictGate; return published; };
 /**
@@ -180,11 +200,12 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
     equalSessionSensitivity: day.equalSessionWeightSensitivity, openDay: day.date >= options.today,
     context: { metrics: method === 2 ? (table.metricsByDate.get(day.date) ?? []).map(row => sleepIds.has(row.metricId) ? { ...row, sleepNight: context.sleepEvidence.get(row.metricId)?.get(day.date) ?? "undeclared" } : row)
       : table.metricsByDate.get(day.date) ?? [], nutrition: table.nutritionByDate.get(day.date) ?? null,
-      ...(method === 2 ? { bodyWeight: weightOfDay(context.weightByDate.get(day.date)) } : {}) },
+      ...(method === 2 ? { bodyWeight: weightOfDay(context.weightByDate.get(day.date)) } : {}),
+      previousDay: { date: previousDate(day.date), nutrition: context.nutritionByDate.get(previousDate(day.date)) ?? null } },
     sessions: day.sessions.map((session): SessionFact => {
       const row = sessionById.get(session.sessionId);
       return { sessionId: session.sessionId, name: row?.name ?? null, routineId: session.routineId, routineName: row?.routineName ?? null,
-        startedAt: row?.startedAt ?? null, endedAt: row?.endedAt ?? null, counts: session.counts, exercises: session.exercises,
+        startedAt: row?.startedAt ?? null, endedAt: row?.endedAt ?? null, counts: session.counts, exercises: session.exercises, change: sessionChange(session.exercises),
         context: { feelings: table.feelingsBySession.get(session.sessionId) ?? {},
           ...(context.unreadableFeelingsBySession.has(session.sessionId) ? { unreadableFeelings: context.unreadableFeelingsBySession.get(session.sessionId)! } : {}),
           legacy: { energyLevel: row?.legacyEnergyLevel ?? null, performanceLevel: row?.performanceLevel ?? null, painLevel: row?.painLevel ?? null },
@@ -211,7 +232,7 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
   const partialDays: PartialDayFact[] = days.map(({ date }) => {
     const day = partialByDate.get(date)!;
     return { date, counts: day.counts, evaluableSessions: day.evaluableSessions, lowerProportion: day.candidateLowerProportion, equalSessionSensitivity: day.equalSessionWeightSensitivity, openDay: date >= options.today,
-      sessions: day.sessions.map(session => ({ sessionId: session.sessionId, counts: session.counts, exercises: session.exercises })) };
+      sessions: day.sessions.map(session => ({ sessionId: session.sessionId, counts: session.counts, exercises: session.exercises, change: sessionChange(session.exercises) })) };
   });
   const dayExclusions: Record<string, number> = {};
   for (const key of ["day_still_open", "no_comparable_outcome"]) if (partialTable.sourceExclusions[key]) dayExclusions[key] = partialTable.sourceExclusions[key]!;
@@ -220,6 +241,10 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
   // `prepareFeelingAssociations` builds them only when asked for explicitly.
   const feelingOutcomes = FEELING_OUTCOME_KINDS.map(kind => describeFeelingOutcome(source, kind, context, options.today));
 
+  // #533: energy before the session as Comparaciones reads it, resolved here because the raw answers do not stay in the snapshot.
+  const rawFeelings = new Map(source.feelings.map(row => [row.sessionId, row.facts]));
+  const priorEnergy = new Map(days.flatMap(day => day.sessions.map(session => [session.sessionId, priorFeelingFact(session.context, rawFeelings.get(session.sessionId), "energyPre")] as const)));
+
   const mealEvidence: Record<MealTimeEvidence, number> = { explicit: 0, registration: 0, unverified: 0, unknown: 0 };
   for (const meal of source.meals) if (meal.entryKind === "meal") mealEvidence[mealTimeEvidence(meal)]++;
   return {
@@ -227,6 +252,11 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
     history: { coverage: "complete" as const, firstDate: dates[0] ?? null, lastDate: dates.at(-1) ?? null, sessions: performance.sessions.length, trainingDays: dates.length, outcomeDays: table.rows.length },
     totals, exercises: exerciseSummaries(performance.sessions, names),
     metrics: source.metricDefinitions.map(metric => ({ id: metric.id, name: metric.name, unit: metric.unit, valueType: metric.valueType, archived: metric.archived })),
+    /** #533: what Relación needs beside the published days. Never published as such. */
+    relationContext: { priorEnergy,
+      // Metrics of the day before each training day, kept for Relación only: publishing them in every day would cost the summary.
+      previousDayMetrics: new Map(performance.days.map(day => [day.date, context.metricsByDate.get(previousDate(day.date)) ?? []])),
+      metricOrder: source.metricDefinitions.map(metric => ({ id: metric.id, order: metric.order ?? null, systemKey: metric.systemKey ?? null })) },
     exclusions: { performance: performanceExclusions, source: sourceExclusions },
     limits: { configurationSnapshots: { known: source.exercises.filter(row => row.configuration?.trim()).length, total: source.exercises.length }, mealTimeEvidence: mealEvidence, unitBasis: "historical_weight_mode" as const, ingestionCompleteKnown: false as const, clockVerified: false as const,
       ...(method === 2 ? methodTwoLimits(source) : {}) },
@@ -282,6 +312,11 @@ export function insightsSummary(snapshot: InsightsSnapshot, options: { before?: 
     metrics: snapshot.metrics, exclusions: snapshot.exclusions, limits: snapshot.limits,
     relations: { strict: { candidatesEvaluated: snapshot.strict.candidates.length, outcomeDays: snapshot.history.outcomeDays }, partial: { candidatesEvaluated: snapshot.partial.lane.candidates.length, outcomeDays: snapshot.partial.outcomeDays } },
     partial: { ...partialLabels(snapshot), partition: snapshot.partial.partition, outcomeDays: snapshot.partial.outcomeDays, totals: snapshot.partial.totals, exercises: snapshot.partial.exercises, days: page.partialDays, exclusions: snapshot.partial.exclusions } };
+}
+
+/** #533 · Relación of one routine, asked for when it opens: from this snapshot's published facts, with no read of its own. */
+export function insightsRoutineRelation(snapshot: InsightsSnapshot, routineId: string): InsightsRoutineRelationView {
+  return { ...versions(snapshot), ...routineRelation(snapshot, routineId.toLowerCase()) };
 }
 
 /** More days of the same revision. Totals and exercises are already on the client. */
