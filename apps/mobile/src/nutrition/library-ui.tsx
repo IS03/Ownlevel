@@ -15,12 +15,10 @@ import Animated, { FadeIn, SlideInDown, useAnimatedStyle, type SharedValue } fro
 import {
   AppIcon,
   AppText,
-  GlassSurface,
   ScreenGlow,
   SearchField,
   SheetHandle,
   brandTokens,
-  pressedStyle,
   useOwnlevelTheme,
   useReduceMotion,
 } from '@/design-system';
@@ -108,66 +106,31 @@ function LibrarySheetBody({
           testID={`${testID}-keyboard`}
           style={styles.fill}
         >
+          {/* Equal side columns keep the title centered on the sheet, not between unequal buttons. */}
           <View style={styles.header}>
-            <NutritionGlassButton
-              icon="close"
-              label={browse ? `Cerrar ${title}` : 'Cerrar edición'}
-              onPress={running ? undefined : onClose}
-            />
-            <View style={styles.title}>
-              {!browse ? (
-                <AppText accessibilityRole="header" variant="headline" style={{ textAlign: 'center' }}>
-                  {title}
-                </AppText>
-              ) : null}
+            <View style={styles.side} testID={`${testID}-header-start`}>
+              <NutritionGlassButton
+                icon="close"
+                label={browse ? `Cerrar ${title}` : 'Cerrar edición'}
+                onPress={running ? undefined : onClose}
+              />
             </View>
-            {right ?? <View style={{ width: 44 }} />}
+            <AppText accessibilityRole="header" variant="headline" style={styles.title}>
+              {title}
+            </AppText>
+            <View style={[styles.side, styles.sideEnd]} testID={`${testID}-header-end`}>{right}</View>
           </View>
           <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
             testID={testID}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={[styles.content, scrollsUnder && { paddingBottom: 16 + bottomInset }]}
           >
-            {browse ? (
-              <AppText accessibilityRole="header" variant="largeTitle">
-                {title}
-              </AppText>
-            ) : null}
             {children}
           </ScrollView>
           {footer ? <View style={styles.footer} testID={`${testID}-footer`}>{footer}</View> : null}
         </KeyboardAvoidingView>
       </Animated.View>
     </View>
-  );
-}
-export function LibrarySaveButton({
-  disabled,
-  onPress,
-  label,
-}: {
-  disabled: boolean;
-  onPress: () => void;
-  label: string;
-}) {
-  const { colors } = useOwnlevelTheme(),
-    reduced = useReduceMotion();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [{ opacity: disabled ? 0.45 : 1 }, pressedStyle(pressed, reduced)]}
-    >
-      <GlassSurface
-        interactive
-        style={{ width: 44, height: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center' }}
-      >
-        <AppIcon name="checkmark" size={20} color={colors.primary} />
-      </GlassSurface>
-    </Pressable>
   );
 }
 export function LibrarySearch({
@@ -464,7 +427,9 @@ const styles = StyleSheet.create({
   scrim: { backgroundColor: 'rgba(0,0,0,0.2)' },
   sheet: { height: '94%', borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
   header: { paddingHorizontal: 16, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title: { flex: 1, textAlign: 'center' },
+  side: { flexGrow: 1, flexBasis: 0, minWidth: 44, flexDirection: 'row', alignItems: 'center' },
+  sideEnd: { justifyContent: 'flex-end' },
+  title: { flexShrink: 1, textAlign: 'center' },
   content: { padding: 16, gap: 20, flexGrow: 1 },
   footer: { paddingHorizontal: 16, paddingTop: 12, gap: 8 },
   row: {

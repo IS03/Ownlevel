@@ -76,5 +76,5 @@ export class SavedController {
   private async confirmed(stored:StoredSavedIntent){this.update({phase:'reconciling',message:null});const receipt=stored.receipt!;const detail=await this.api.detail(receipt.id).catch(()=>null);if(this.disposed)return;
     if(!detail||detail.status!=='ok'){this.update({phase:'confirmed',message:'Operación confirmada. Falta actualizar el catálogo de guardadas; no vuelvas a enviarla.'});return;}
     await this.load();if(this.disposed)return;if(this.state.listError){this.update({phase:'confirmed',message:'Operación confirmada. Falta actualizar la lista.'});return;}
-    await this.repository.clear(stored.intent.idempotencyKey);this.onConfirmed();this.update({phase:'idle',intent:null,mode:'browse',draft:null,editing:null,truth:null,errors:{},message:receipt.operation==='delete'?'Comida guardada eliminada. El histórico no cambia.':detail.data.meal?'Catálogo actualizado.':'Operación confirmada. La comida guardada ya no está en el catálogo de guardadas.'});}
+    await this.repository.clear(stored.intent.idempotencyKey);this.onConfirmed();this.update({phase:'idle',intent:null,mode:'browse',draft:null,editing:null,truth:null,errors:{},message:receipt.operation==='delete'?'Comida guardada eliminada. El histórico no cambia.':detail.data.meal?null:'Operación confirmada. La comida guardada ya no está en el catálogo de guardadas.'});}
 }
