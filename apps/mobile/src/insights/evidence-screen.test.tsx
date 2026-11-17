@@ -49,7 +49,9 @@ const serve = (source: InsightsSource, revision = REVISION) => async (options: R
 };
 const selection = (over: Partial<Record<string, string>> = {}) => ({ session: id(2, 1), exercise: EX, lane: 'strict', reference: id(2, 0), result: 'improved', revision: REVISION, insightsReturn: '1', insightsDate: '2029-03-03', ...over });
 const screen = (ui: React.ReactElement) => render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}><OwnlevelThemeProvider initialMode="light">{ui}</OwnlevelThemeProvider></SafeAreaProvider>);
-const open = async () => { const view = screen(<EvidenceScreen />); await act(async () => { for (let i = 0; i < 3; i++) await new Promise(resolve => setTimeout(resolve, 0)); }); return view; };
+// #533: the full detail is folded under the side-by-side table; these tests read it, so they unfold it first when it is there.
+const open = async () => { const view = screen(<EvidenceScreen />); await act(async () => { for (let i = 0; i < 3; i++) await new Promise(resolve => setTimeout(resolve, 0)); });
+  const toggle = view.queryByTestId('evidence-detail-toggle'); if (toggle) fireEvent.press(toggle); return view; };
 
 beforeEach(() => { mockParams = {}; mockCanGoBack = true; mockPush.mockClear(); mockBack.mockClear(); mockReplace.mockClear(); mockRead.mockReset(); clearConfirmedReads(mockClient); });
 

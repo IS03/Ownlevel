@@ -1,11 +1,11 @@
 import { ReturnToProgress } from './return-to-progress';
-import { useCallback } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchInsightsEvidence } from '@/api/performance-insights';
-import { AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { contextRows, evidenceMatch, evidenceNote, evidenceSelectionOf, recordRows, resultOf, sideRows, sideTitle, signalRow } from './evidence-model';
 import { FactRow } from './insights-screen';
@@ -33,6 +33,9 @@ export function EvidenceScreen() {
   const key = `performance-insights|evidence|${session}|${exercise}|${lane}`;
   const load = useCallback((c: MobileApiClient, signal: AbortSignal) => fetchInsightsEvidence(c, { session, exercise, lane }, signal), [session, exercise, lane]);
   const { state, data, refresh } = useProgressResource(selection ? client : null, key, load);
+  const reduced = useReduceMotion();
+  // #533 · The side-by-side table is the reading; every set, signal, record and context stays one tap away, never removed.
+  const [detail, setDetail] = useState(false);
   const back = () => { if (router.canGoBack()) router.back(); else router.replace(insightsReturnHref(params) ?? '/(tabs)/train/insights'); };
   const backButton = <Button label="Volver a Comparaciones" onPress={back} />;
   const refreshControl = <RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />;
@@ -83,6 +86,15 @@ export function EvidenceScreen() {
         <AppText numeric muted style={styles.colDelta}>{pair.delta}</AppText>
       </View>)}
     </View> : null}
+    <Pressable accessibilityRole="button" accessibilityState={{ expanded: detail }} accessibilityLabel="Detalle de la comparación: todas las series, señales, récords y contexto" testID="evidence-detail-toggle"
+      onPress={() => setDetail(current => !current)} style={({ pressed }) => [styles.toggle, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
+      <View style={styles.flex}>
+        <AppText variant="headline">Detalle de la comparación</AppText>
+        <AppText muted variant="footnote">Todas las series, qué se comparó, récords y contexto</AppText>
+      </View>
+      <AppIcon color={colors.textMuted} name={detail ? 'chevronDown' : 'chevronRight'} size={15} />
+    </Pressable>
+    {detail ? <>
     {/* #518 · First the sets: this session's and the reference's, each under its date. Then what was compared. */}
     <View testID="evidence-current">
       <Section title={sideTitle(item.current, 'current')} />
@@ -111,6 +123,7 @@ export function EvidenceScreen() {
       <Section title="Contexto registrado" />
       {contextRows(item).map(row => <FactRow key={row.key} label={row.label} value={row.value} />)}
     </View>
+    </> : null}
     <View>
       <InsightRow label="Abrir esta sesión" spoken="Abrir esta sesión" onPress={() => router.push({ pathname: '/(tabs)/train/history/[id]', params: { id: item.current.sessionId } })} />
       <InsightRow label="Ver historial de este ejercicio" spoken={`Ver historial de ${item.name || 'este ejercicio'}`} onPress={() => router.push({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id: data.exerciseId } })} />
@@ -123,6 +136,8 @@ const styles = StyleSheet.create({
   block: { gap: spacing.sm },
   section: { paddingTop: spacing.sm, paddingBottom: spacing.xs },
   note: { paddingTop: spacing.xs },
+  flex: { flex: 1, flexShrink: 1 },
+  toggle: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth },
   table: { borderRadius: brandTokens.radius.card, paddingHorizontal: spacing.lg },
   tableRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth },
   colNumber: { width: 44 },

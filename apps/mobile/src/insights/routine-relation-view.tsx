@@ -41,9 +41,9 @@ function scaleOf(model: InsightsRoutineRelationView, index: number) {
  * #533 · Relación: one routine at a time. How each session went (its measured change) and how the person arrived at the ones
  * that went up and down. Medians from three sessions per group, factors in a fixed order, and never a cause.
  */
-export function RoutineRelationView({ client, days, metrics, router, origin, onStatistics }: { client: MobileApiClient | null; days: readonly DayLanes[]; metrics: InsightsSummary['metrics']; router: ReturnType<typeof useRouter>; origin: InsightsOrigin; onStatistics: () => void }) {
+export function RoutineRelationView({ client, days, metrics, router, origin, onStatistics, initialRoutine = null }: { client: MobileApiClient | null; days: readonly DayLanes[]; metrics: InsightsSummary['metrics']; router: ReturnType<typeof useRouter>; origin: InsightsOrigin; onStatistics: () => void; initialRoutine?: string | null }) {
   const [chosen, setChosen] = useState<string | null>(null);
-  const routine = chosen ?? latestRoutine(days);
+  const routine = chosen ?? initialRoutine?.toLowerCase() ?? latestRoutine(days);
   const { state, data, refresh } = useRoutineRelation(client, routine);
   if (!routine) return <View style={styles.block} testID="relation-no-routine">
     <AppText variant="headline">Todavía sin rutinas</AppText>
@@ -65,12 +65,17 @@ export function RoutineRelationView({ client, days, metrics, router, origin, onS
       <View style={styles.counts}><AppText numeric>{bars.line}</AppText>{bars.others ? <AppText muted numeric variant="footnote">{bars.others}</AppText> : null}</View>
     </> : <AppText muted>Todavía no hay sesiones de esta rutina en estos días.</AppText>}
     {short && data.sessions.length ? <View style={styles.block} testID="relation-short">
+      {/* The real screen with sample marks greyed and labeled, never numbers that look like the person's (IDENTIDAD.md § Estados vacíos). */}
       <ExampleFrame>
-        <AppText muted variant="title2">Cómo llegaste</AppText>
-        <AppText muted numeric>Carbos 3 h antes · 60 g · 25 g</AppText>
+        <View style={styles.exampleHeader}><AppText muted variant="headline" style={styles.flex}>Cómo llegaste</AppText><AppText muted variant="caption">● Subió   ○ Bajó</AppText></View>
+        {EXAMPLE_ROWS.map(label => <View key={label} style={styles.exampleRow}>
+          <AppText muted style={styles.flex}>{label}</AppText>
+          <AppText muted numeric>— · —</AppText>
+        </View>)}
       </ExampleFrame>
-      <AppText variant="headline" numeric>{missing === 1 ? 'Falta 1 sesión' : `Faltan ${missing} sesiones`}</AppText>
-      <AppText muted>Con 3 que suban y 3 que bajen, esta comparación pasa a ser tuya. Mientras tanto, abajo ves lo que ya hay.</AppText>
+      <AppText variant="title1" numeric>{missing === 1 ? '1 sesión más' : `${missing} sesiones más`}</AppText>
+      <AppText muted numeric>Con 3 que suban y 3 que bajen, esta tabla pasa a ser tuya. Hoy: {data.counts.up} {data.counts.up === 1 ? 'subió' : 'subieron'} y {data.counts.down} {data.counts.down === 1 ? 'bajó' : 'bajaron'}.</AppText>
+      <AppText muted variant="footnote">Abajo, lo que ya hay.</AppText>
     </View> : null}
     {data.sessions.length ? <FactorTable model={data} metrics={metrics} onOpen={factor => { haptics.selection(); router.push({ pathname: '/(tabs)/train/insights/factor', params: { ...origin, routine, factor: factor.key, label: factorLabel(factor, metrics) } }); }} /> : null}
     <AppText muted variant="caption">Son tus registros: muestran qué coincidió, no qué te hizo subir o bajar. El orden de las filas es siempre el mismo.</AppText>
@@ -101,10 +106,13 @@ function FactorTable({ model, metrics, onOpen }: { model: InsightsRoutineRelatio
   </View>;
 }
 
+const EXAMPLE_ROWS = ['Carbos 3 h antes', 'Última comida', 'Proteína ayer'];
 const styles = StyleSheet.create({
   block: { gap: spacing.sm },
   flex: { flex: 1, flexShrink: 1 },
   counts: { gap: 2 },
+  exampleHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  exampleRow: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingTop: spacing.md, paddingBottom: spacing.xs, flexWrap: 'wrap' },
   row: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth },
 });
