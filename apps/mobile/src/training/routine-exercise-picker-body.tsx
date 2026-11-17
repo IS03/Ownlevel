@@ -50,11 +50,11 @@ export function RoutineExercisePickerBody(props: RoutineExercisePickerBodyProps)
   const emptyText = empty ? !props.canCreate ? 'Actualizá la biblioteca para continuar.' : props.session || !name ? 'No hay ejercicios disponibles' : null : null;
   return <View style={styles.root}>
     <TextField label="Buscar ejercicio" hideLabel search disabled={props.disabled} placeholder="Buscar ejercicio" value={props.query} onChangeText={props.onQuery} />
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips}><View style={{ flexDirection: 'row', gap: spacing.sm }}>
+    <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} style={styles.chips}><View style={{ flexDirection: 'row', gap: spacing.sm }}>
       {[{ value: null, label: 'Todos' }, ...MUSCLE_GROUP_OPTIONS].map(option => <Chip key={option.value ?? 'all'} label={option.label} selected={props.group === option.value} onPress={() => props.onGroup(option.value)} disabled={props.disabled} />)}
     </View></ScrollView>
     {/* Results: solid grouped cards (card radius, no glass) over the sheet background; hairlines sit inside the card padding, so they start at the text. */}
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.results}>
+    <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.results}>
       {create ? <ListGroup bordered={false}>{create}</ListGroup> : null}
       {empty ? emptyText ? <ListGroup bordered={false}><View style={styles.row}><AppText muted style={styles.text}>{emptyText}</AppText></View></ListGroup> : null
         : <ListGroup bordered={false}>{props.rows.map(exercise => <ExerciseRow key={exercise.id} exercise={exercise} props={props} />)}</ListGroup>}

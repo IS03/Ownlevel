@@ -20,7 +20,7 @@ export function PeriodFeelingsScreen() {
   const load = useCallback((c: MobileApiClient, signal: AbortSignal) => fetchInsightsPeriodFeelings(c, asOf!, signal), [asOf]);
   const { state, data, refresh } = useProgressResource(asOf ? client : null, `performance-insights|period-feelings|${asOf}`, load);
   usePeriodReturn(refresh);
-  const scroll = (children: React.ReactNode) => <ScrollView testID="period-feelings-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll}
+  const scroll = (children: React.ReactNode) => <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="period-feelings-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll}
     refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}><ReturnToProgress/>{children}</ScrollView>;
   if (!asOf) return scroll(<UnavailableState title="No pudimos identificar el período" description="Abrí el detalle desde el resumen de tres meses." action={<Button label="Volver al resumen" onPress={() => router.navigate(periodSummaryHref(undefined,insightsOriginOf(params)))} />} />);
   if (state.status === 'loading' && !data) return scroll(<SkeletonBlock height={176} />);

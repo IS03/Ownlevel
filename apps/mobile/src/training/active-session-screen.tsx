@@ -270,7 +270,7 @@ export function ActiveSessionView({ controller, state, client, configurations }:
   const historyExercise = detail.exercises.find(exercise => exercise.id === historyId);
   return <KeyboardAvoidingView style={[styles.screen, { backgroundColor: colors.background }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
     <SafeAreaView edges={['left', 'right']} style={styles.screen} testID="active-session-ready"><SessionDragScrollContext.Provider value={dragScroll}>
-    <GestureDetector gesture={scrollGesture}><Animated.ScrollView ref={scrollRef} animatedProps={scrollProps} directionalLockEnabled removeClippedSubviews={false} onScroll={onScroll} scrollEventThrottle={16} onContentSizeChange={(_width, height) => { contentHeight.set(height); }}
+    <GestureDetector gesture={scrollGesture}><Animated.ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} ref={scrollRef} animatedProps={scrollProps} directionalLockEnabled removeClippedSubviews={false} onScroll={onScroll} scrollEventThrottle={16} onContentSizeChange={(_width, height) => { contentHeight.set(height); }}
       contentContainerStyle={[styles.content, { paddingTop: headerHeight + spacing.lg, paddingBottom: spacing.xl + Math.max(insets.bottom, restOverlayHeight) }]} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled" contentInsetAdjustmentBehavior="never"
       refreshControl={<RefreshControl refreshing={pullRefreshing} onRefresh={() => { setPullRefreshing(true); void controller.refresh().finally(() => setPullRefreshing(false)); }} tintColor={colors.primary} />}>
       <View style={styles.sessionHeader}>

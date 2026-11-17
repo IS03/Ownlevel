@@ -61,7 +61,7 @@ export function HistoryCalendarScreen() {
             disabled={cell!.date > data.today} onPress={() => router.push(historyDayHref(cell!.date, month!))} />
         </View>)}
       </View> : <>
-        <ScrollView horizontal style={{ flexGrow: 0 }} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.month} testID="history-calendar-grid">
+        <ScrollView showsVerticalScrollIndicator={false} horizontal style={{ flexGrow: 0 }} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.month} testID="history-calendar-grid">
           <View style={styles.grid}>
             <View style={styles.row}>{['L','M','X','J','V','S','D'].map((d, i) => <AppText key={i} muted variant="caption" style={styles.weekday}>{d}</AppText>)}</View>
             {weeks.map((week, i) => <View key={i} style={styles.row}>{week.map((cell, j) => {

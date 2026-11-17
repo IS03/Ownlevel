@@ -77,7 +77,7 @@ function DetailBody({ meal, calories, protein, entries, actions }: {
   // The sheet leaves first; the next flow (editor, repeat, save) opens once it is gone.
   const run = (action?: () => void) => action ? () => dismiss(action) : undefined;
   const edit = run(actions.onEdit), repeat = run(actions.onRepeat), save = run(actions.onSave);
-  return <ScrollView scrollEnabled={content > frame + 1} onLayout={e => setFrame(e.nativeEvent.layout.height)} onContentSizeChange={(_w, h) => setContent(h)} contentContainerStyle={styles.content}>
+  return <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} scrollEnabled={content > frame + 1} onLayout={e => setFrame(e.nativeEvent.layout.height)} onContentSizeChange={(_w, h) => setContent(h)} contentContainerStyle={styles.content}>
     <View style={styles.header}>
       <RoutineSheetButton label="Cerrar" icon="close" onPress={() => dismiss()} />
       {actions.onDelete ? <RoutineSheetButton label="Eliminar comida" icon="trash" onPress={remove} /> : null}

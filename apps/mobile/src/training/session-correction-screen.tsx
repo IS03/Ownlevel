@@ -83,7 +83,7 @@ function CorrectionForm({ client, detail, onReload }: { client: MobileApiClient;
       style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text, opacity: editable ? 1 : 0.6 }]} />;
   // The actions live inside the scroll content: iOS insets it for the native tab
   // bar and the keyboard, so a fixed footer would end up hidden behind them.
-  return <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
+  return <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
     contentInsetAdjustmentBehavior="automatic" automaticallyAdjustKeyboardInsets testID="session-correction">
       <View style={styles.header}>
         <AppText variant="label" style={styles.title}>{detail.session.name}</AppText>

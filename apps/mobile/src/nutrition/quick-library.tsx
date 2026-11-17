@@ -223,7 +223,7 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
     </View>
     : <View style={styles.indexRow}>
       <AppText muted variant="caption" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">A–Z</AppText>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.letters} accessibilityLabel="Índice alfabético" testID="quick-letters">
+      <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.letters} accessibilityLabel="Índice alfabético" testID="quick-letters">
         {alphabet.map(letterButton)}
       </ScrollView>
     </View>;
@@ -253,7 +253,7 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
     {footer}
   </View>;
 
-  return <><SectionList<Item, Section> ref={list} sections={sections} keyExtractor={item => item.key} testID="quick-library"
+  return <><SectionList<Item, Section> showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} ref={list} sections={sections} keyExtractor={item => item.key} testID="quick-library"
     renderItem={({ item }) => item.type === 'gone'
       ? <GoneRow row={item.row} onRelease={writable && pins ? () => openEditor({ unpin: item.row.id }) : null} />
       : <QuickRow option={item.option} added={!!state.added?.[`${item.option.source.kind}:${item.option.source.id}`]} pending={state.inlineKey === `${item.option.source.kind}:${item.option.source.id}`}

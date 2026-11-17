@@ -29,7 +29,7 @@ export function WeekExplorationScreen() {
   const origin={...insightsOriginOf({...params,explore:'1'}),explore:'1' as const,asOf:asOf!,week:week?.start,revision:data?.sourceRevision,...selection};
   const days=week?.days??[],trained=days.filter(d=>d.training?.sessions),sessionCount=trained.reduce((n,d)=>n+d.training!.sessions,0);
   const c=(lane:'training'|'partial',key:string)=>days.reduce((n,d)=>n+Number((d[lane]?.counts as unknown as Record<string,number>|undefined)?.[key]??0),0);
-  return <ScrollView contentInsetAdjustmentBehavior="automatic" style={{backgroundColor:colors.background}} contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={state.status==='ready'&&state.refreshing} onRefresh={()=>void refresh()}/>}>
+  return <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentInsetAdjustmentBehavior="automatic" style={{backgroundColor:colors.background}} contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={state.status==='ready'&&state.refreshing} onRefresh={()=>void refresh()}/>}>
     <ReturnToProgress/>
     {!asOf?<UnavailableState title="Período no válido" description="Abrí las semanas desde el resumen."/>:state.status==='loading'&&!data?<SkeletonBlock height={176}/>:!data||data.integrity!=='valid'?<UnavailableState title="No pudimos leer las semanas" description="Tus registros siguen guardados." action={<Button label="Reintentar" onPress={()=>void refresh()}/>}/>:params.compare==='1'?<>
       {state.status!=='ready'?<InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura completa." actionLabel="Reintentar" onAction={()=>void refresh()}/>:null}

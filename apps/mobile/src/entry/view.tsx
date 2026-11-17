@@ -78,7 +78,7 @@ export function EntryView({ mode, motion, notice, onGoogle, onSoon, onRetry }: E
       <StatusBar style="light" />
       <EntryGradient graphite />
       <EntryBars width={width} height={height} motion={motion} resting={!busy} />
-      <ScrollView bounces={false} contentContainerStyle={[styles.content, { minHeight: height, paddingTop: insets.top + top, paddingBottom: insets.bottom + Math.min(176, height * 0.21) }]}
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} bounces={false} contentContainerStyle={[styles.content, { minHeight: height, paddingTop: insets.top + top, paddingBottom: insets.bottom + Math.min(176, height * 0.21) }]}
         accessibilityLabel={boot ? 'Comprobando tu sesión' : undefined} accessibilityState={{ busy: boot }}>
         <Animated.View style={[styles.composition, contentFade]}>
         <View style={styles.logo}><EntryLogo width={logoWidth} reduced={motion.reduced} /></View>

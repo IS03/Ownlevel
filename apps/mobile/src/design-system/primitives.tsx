@@ -168,7 +168,7 @@ export function ScrollScreen({
       <ScrollBottomBoundary enabled={protectBottom}>
       <Animated.ScrollView
         ref={scrollRef}
-        {...scrollViewProps}
+        {...scrollViewProps} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
         onScroll={event => {
           // Only crossing the threshold re-renders; the glass animates its own appearance.
           if (scrollEdge) { const next = event.nativeEvent.contentOffset.y + (topInset === 'manual' ? 0 : top) > 4; if (next !== scrolled) setScrolled(next); }

@@ -36,7 +36,7 @@ export function ExerciseDetailScreen() {
       <RoutineSheetButton label="Opciones del ejercicio" icon="more" disabled={locked} onPress={() => undefined} />
     </TrainingContextMenu> : undefined }} />
     {Platform.OS === 'ios' ? menu : null}
-    <ScrollView contentInsetAdjustmentBehavior="automatic" testID="exercise-detail" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.content}
+    <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentInsetAdjustmentBehavior="automatic" testID="exercise-detail" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={library.state.status === 'ready' && library.state.refreshing} tintColor={colors.primary} onRefresh={() => { if (!locked) { void refresh(); void last.refresh(); } }} />}>
       {!exercise ? !library.current && library.state.status === 'loading' ? <SkeletonBlock height={200} /> : !library.catalog ? <InlineUnavailable message="No pudimos cargar el ejercicio." actionLabel="Reintentar" onAction={() => void refresh()} /> : <UnavailableState title="No encontramos el ejercicio" description="Ya no está disponible en tu biblioteca." /> : <>
         {Platform.OS !== 'ios' || exercise.name.length > 24 ? <AppText variant={Platform.OS === 'ios' ? 'title2' : 'largeTitle'} testID="exercise-full-name">{exercise.name}</AppText> : null}

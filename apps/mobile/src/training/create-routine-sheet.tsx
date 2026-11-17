@@ -59,7 +59,7 @@ export function CreateRoutineSheet({ createIdempotencyKey, onClose, onSubmit, op
             </Pressable>
           </GlassSurface>
         </View>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.form} style={styles.scroll}>
+        <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.form} style={styles.scroll}>
           <View style={styles.group}>
             <AppText muted variant="caption">Así se va a ver</AppText>
             <View style={[styles.preview, { backgroundColor: colors.surface }]} testID="new-routine-preview">

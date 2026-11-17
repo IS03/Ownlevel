@@ -76,11 +76,11 @@ export function SessionQuickHistory({ exercise, history, routineId = null, routi
   const numberWidth = Math.ceil(40 * Math.min(Math.max(fontScale, 1), 2));
   return <RoutineEditorSheet open={open} pending={false} onClose={close} onDismissed={onClose}><View style={styles.root}>
     <View style={styles.header}><View style={{ flex: 1 }}><AppText accessibilityRole="header" variant="title2">Historial</AppText><AppText muted variant="footnote">{exercise.nameSnapshot}</AppText></View><RoutineSheetButton label="Cerrar Historial" icon="close" onPress={close} /></View>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips} contentContainerStyle={styles.chipContent}>
+    <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} style={styles.chips} contentContainerStyle={styles.chipContent}>
       <Chip kind="toggle" label="Todas" selected={filter === null} onPress={() => setFilter(null)} />
       {[...routines].map(([id, name]) => <Chip kind="toggle" key={id} label={name} selected={filter === id} onPress={() => setFilter(id)} />)}
     </ScrollView>
-    <ScrollView contentContainerStyle={styles.historyContent}>
+    <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.historyContent}>
       {history.status === 'unavailable' ? <InlineUnavailable message="No pudimos consultar las últimas sesiones. Podés seguir entrenando." actionLabel="Reintentar" onAction={onRefresh} /> :
         visible.length === 0 ? <><EmptyState title={filter ? `Todavía no lo hiciste en ${routines.get(filter)}` : 'Todavía sin registros'} description={filter ? 'Estas son las últimas seis sesiones disponibles.' : 'No hay sesiones finalizadas con este ejercicio.'} />{filter ? <Button label="Ver todas" onPress={() => setFilter(null)} variant="quiet" /> : null}</> : visible.map(session =>
           <QuickHistoryCard key={session.sessionId} session={session} showRoutine={filter === null} expanded={expanded.has(session.sessionId)} large={large} numberWidth={numberWidth} canUse={canUse}

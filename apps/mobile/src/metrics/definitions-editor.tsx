@@ -162,7 +162,7 @@ function EditorBody({ editor, state, controller }: Props) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={{ flexShrink: 1 }}
     >
-      <ScrollView
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.xl }}
       >

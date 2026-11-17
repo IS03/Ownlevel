@@ -77,7 +77,7 @@ function ExerciseHistoryContent({ exerciseId, routineId, options, overallBest, n
   const { state, reload } = useFocusedRead(load);
   const screen = <Stack.Screen options={{ title: name, headerLargeTitleEnabled: Platform.OS === 'ios', headerLargeTitleStyle: { color: colors.text },
     headerStyle: { backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.background }, headerLargeStyle: { backgroundColor: 'transparent' } }} />;
-  const filters = options.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters} style={styles.filterScroll} accessibilityLabel="Filtrar historial por rutina">
+  const filters = options.length ? <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters} style={styles.filterScroll} accessibilityLabel="Filtrar historial por rutina">
     <GroupChip label="Todas" selected={routineId === null} onPress={() => onRoutineChange(null)} />
     {options.map(option => <GroupChip key={option.id} label={option.name} selected={routineId === option.id} onPress={() => onRoutineChange(option.id)} />)}
   </ScrollView> : null;

@@ -49,7 +49,7 @@ export function MetricTrendChart({ data, inspection, onOpen }: { data: ProgressM
         <AppText numeric variant="subheadline">{detail}</AppText>
       </View>
     </View>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll} accessibilityLabel="Gráfico de métricas">
+    <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll} accessibilityLabel="Gráfico de métricas">
       <PeriodChart testID="metric-trend-chart" mode="bars" target={m.currentTarget} points={points}
         inspection={{ selectedKey: selected?.key ?? null, onSelect: select }} />
     </ScrollView>

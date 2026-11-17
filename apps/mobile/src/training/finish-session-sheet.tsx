@@ -84,7 +84,7 @@ export function FinishSessionSheet({ controller, onClose, onDiscard, readSummary
         <SafeAreaView edges={['bottom']} style={styles.safe} testID="finish-session-sheet">
           <View style={styles.header}><View style={styles.flex}><AppText accessibilityRole="header" variant="title1">{title}</AppText><AppText muted numeric variant="footnote">{subtitle}</AppText></View>
             <RoutineSheetButton label="Cerrar resumen" icon="close" onPress={close} disabled={running || confirmed} /></View>
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <View style={[styles.stats, window.fontScale > 1.5 && { flexDirection: 'column' }, empty && styles.dim]}>
               <Stat value={durationLabel(detail ? Math.max(0, now - Date.parse(detail.session.startedAt)) : 0)} label="duración" />
               <View style={[styles.divider, { backgroundColor: colors.border }]} /><Stat value={`${progress.completedSets} / ${progress.totalSets}`} label="series" />

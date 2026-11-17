@@ -97,7 +97,7 @@ function VariantForm({ name, view, onSave }: { name: string; view: Configuration
   // #463: the options scroll if space runs out; the error, the field and Guardar stay pinned on the keyboard. The bottom
   // padding pairs with the sheet's keyboardInset: only a small gap shows above the keyboard, the home indicator without it.
   return <View style={styles.shrink} testID="exercise-variant-form">
-    <ScrollView style={styles.shrink} keyboardShouldPersistTaps="always" contentContainerStyle={styles.content}>
+    <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} style={styles.shrink} keyboardShouldPersistTaps="always" contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <View style={styles.flex}>
           <AppText accessibilityRole="header" variant="headline">Variante · {name}</AppText>

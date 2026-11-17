@@ -129,7 +129,7 @@ export function PostWorkoutContent({ finished, detail, readSummary, readWeek, on
   // The device's own safe area, measured natively: the inherited insets include the tab bar, which this full screen covers.
   return <SafeAreaView edges={['top', 'bottom']} style={[styles.screen, { backgroundColor: colors.background }]} testID="post-workout-screen">
     {revealed ? <>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content}>
         <Animated.View entering={enter(0)} style={styles.header}>
           <AppText accessibilityRole="header" variant="largeTitle">{model.title}</AppText>
           <AppText muted numeric variant="subheadline" testID="post-workout-line">{model.line}</AppText>

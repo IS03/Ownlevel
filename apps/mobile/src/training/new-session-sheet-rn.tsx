@@ -109,7 +109,7 @@ export function NewSessionSheetRN({ onDismissed, open, ...props }: NewSessionShe
     <Host colorScheme={isDark ? 'dark' : 'light'} style={styles.host}>
       <BottomSheet containerColor={colors.background} contentPadding={0} isPresented={open} onDismiss={props.onClose} showDragIndicator snapPoints={['half', 'full']} testID="new-session-sheet">
         <RNHostView>
-          <ScrollView contentContainerStyle={styles.scroll} style={{ backgroundColor: colors.background }}>
+          <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll} style={{ backgroundColor: colors.background }}>
             <NewSessionSheetContent {...props} />
           </ScrollView>
         </RNHostView>

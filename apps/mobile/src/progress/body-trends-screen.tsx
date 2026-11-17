@@ -116,7 +116,7 @@ function Selected({ metric, excluded, storedZeros = [], selectedDate, onSelect, 
     </> : safeSummary && count === 2 ? <AppText muted variant="footnote">Dos registros: muestran una diferencia, todavía con evidencia limitada.</AppText> : null}
     {bands.length ? <View style={styles.chips}><Chip kind="toggle" label="Etapas" selected={showStages} onPress={() => setShowStages(v => !v)} /></View> : null}
     {portada ? <PortadaPointNote point={portada.point} matched={portada.matched} reason="No hay en este período un pesaje con esa fecha y ese valor: no seleccionamos otro en su lugar." /> : null}
-    <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={styles.chartScroll} style={styles.chart} accessibilityLabel={`Gráfico de ${metric.label.toLocaleLowerCase('es-AR')}`}>
+    <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chartScroll} style={styles.chart} accessibilityLabel={`Gráfico de ${metric.label.toLocaleLowerCase('es-AR')}`}>
       <PeriodChart testID="body-trend-chart" mode="dots" bands={showStages ? bands : undefined} points={metric.observations.map(o => ({
         key: o.date, label: formatBodyDate(o.date), value: valid(o.value) ? o.value : null,
         valueText: valid(o.value) && fontScale <= 1.3 ? plain(o.value) : undefined,

@@ -123,7 +123,7 @@ function LibrarySheetBody({
             </View>
             {right ?? <View style={{ width: 44 }} />}
           </View>
-          <ScrollView
+          <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
             testID={testID}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={[styles.content, scrollsUnder && { paddingBottom: 16 + bottomInset }]}

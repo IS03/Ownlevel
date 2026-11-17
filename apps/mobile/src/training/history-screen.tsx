@@ -229,7 +229,7 @@ function ExercisesTab({ refreshKey, sort, onOpen }: { refreshKey: number; sort: 
     {state.stale ? <StaleNotice onRetry={() => void reload()} /> : null}
     {state.data.length === 0 ? <EmptyState title="Todavía no hay ejercicios registrados" description="Aparecen acá cuando completás series en una sesión finalizada." /> : <>
       <TextField label="Buscar ejercicio" hideLabel search placeholder="Buscar ejercicio" value={query} onChangeText={setQuery} />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} style={styles.chipScroll}>
+      <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} style={styles.chipScroll}>
         <GroupChip label="Todos" selected={group === null} onPress={() => setGroup(null)} />
         {MUSCLE_GROUP_OPTIONS.map(option => <GroupChip key={option.value} label={option.label} selected={group === option.value} onPress={() => setGroup(current => current === option.value ? null : option.value)} />)}
       </ScrollView>

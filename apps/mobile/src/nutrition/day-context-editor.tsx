@@ -93,7 +93,7 @@ function ContextForm({ controller, state, running, initialField }: { controller:
       </View>
       <NutritionGlassButton icon="close" label="Cerrar el ajuste del día" onPress={running ? undefined : () => dismiss()} />
     </View>
-    <ScrollView testID="nutrition-day-write-editor" style={styles.shrink} contentContainerStyle={styles.content} keyboardShouldPersistTaps="always">
+    <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="nutrition-day-write-editor" style={styles.shrink} contentContainerStyle={styles.content} keyboardShouldPersistTaps="always">
       <AppText accessibilityRole="header" muted variant="footnote">{contextDateLabel(d.baseline.date, d.baseline.today)} · solo este día</AppText>
       {c ? <>
         <View style={styles.numberRow}>

@@ -53,7 +53,7 @@ function Preview({ kind, spark, mode, selectedKey, onSelect }: {
     // The selected range can wrap with Dynamic Type: reserve its intrinsic height, without moving the plot.
     const reserve = [meaning, ...points.map(p => p.text)].reduce((a, b) => b.length > a.length ? b : a, '');
     return <View style={styles.preview}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false}>
         <PeriodChart compact testID={`panorama-chart-${kind}`} points={points} mode={mode}
           inspection={{ selectedKey: selected?.key ?? null, onSelect: key => onSelect(selected?.key === key ? null : key) }} />
       </ScrollView>

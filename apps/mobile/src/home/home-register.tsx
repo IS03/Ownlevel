@@ -115,8 +115,8 @@ export function HomeRegister({ date, onRegister, today,metricDefinitions=[],metr
   return (
     <HomeSection testID="home-register" title="Métricas">
       <View onLayout={event => { const next = event.nativeEvent.layout.width - gutter.paddingRight; if (next > 0) setWidth(next); }} style={[styles.row, { marginRight: -gutter.paddingRight }]} testID="home-register-row">
-        <ScrollView accessibilityHint="Deslizá para ver más métricas" contentContainerStyle={[styles.scrollContent, { paddingRight: gutter.paddingRight }]} decelerationRate="fast"
-          directionalLockEnabled horizontal nestedScrollEnabled removeClippedSubviews={false} showsHorizontalScrollIndicator={metrics.length > 3}
+        <ScrollView showsVerticalScrollIndicator={false} accessibilityHint="Deslizá para ver más métricas" contentContainerStyle={[styles.scrollContent, { paddingRight: gutter.paddingRight }]} decelerationRate="fast"
+          directionalLockEnabled horizontal nestedScrollEnabled removeClippedSubviews={false} showsHorizontalScrollIndicator={false}
           style={styles.scroll} testID="home-register-scroll">
         {loading
           ? <><RegisterCircle detail={null} done={false} glass={false} icon="activity" label=" " onPress={() => undefined} width={itemWidth} /><RegisterCircle detail={null} done={false} glass={false} icon="activity" label=" " onPress={() => undefined} width={itemWidth} /></>

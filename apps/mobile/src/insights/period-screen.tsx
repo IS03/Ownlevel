@@ -36,7 +36,7 @@ export function PeriodScreen() {
   const { state, data, refresh } = useProgressResource(invalidAnchor ? null : client, `performance-insights|period-at|${routeAnchor ?? 'current'}`, load);
   usePeriodReturn(refresh);
   const refreshControl = <RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />;
-  const scroll = (children: React.ReactNode) => <ScrollView testID="period-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}><ReturnToProgress/>{children}</ScrollView>;
+  const scroll = (children: React.ReactNode) => <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="period-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}><ReturnToProgress/>{children}</ScrollView>;
   if (invalidAnchor) return scroll(<UnavailableState title="No pudimos identificar el período" description="Volvé a abrir el resumen desde Comparaciones." />);
   if (state.status === 'loading' && !data) return scroll(<View style={styles.block} testID="period-loading"><SkeletonBlock height={72} /><SkeletonBlock height={132} /><SkeletonBlock height={176} /></View>);
   if (!data || data.integrity !== 'valid') return scroll(<UnavailableState title="Uy, no pudimos leer tus datos" description="Tranqui: está todo guardado." action={<Button label="Reintentar" onPress={() => void refresh()} />} />);
