@@ -116,11 +116,11 @@ describe('#367 hechos de una sesión: pantalla abierta desde el post-entreno', (
     const focus = within(view.getByTestId('insights-session'));
     const strict = within(view.getByTestId('insights-session-lane-strict')), partial = within(view.getByTestId('insights-session-lane-partial'));
     expect(strict.getByText('Comparación completa')).toBeTruthy();
-    expect(strict.getByRole('button', { name: /^Press banca, mejoró, el mismo día, frente a la sesión del martes,? 3 de marzo\. Ver evidencia y series$/ })).toBeTruthy();
+    expect(strict.getByRole('button', { name: /^Press banca, mejoró, el mismo día, frente a la sesión del martes,? 3 de marzo, subió [\d,]+ por ciento\. Ver evidencia y series$/ })).toBeTruthy();
     // The partial method brings its own count and limit; it is never added to the strict one.
     expect(partial.getByText('Con contexto parcial')).toBeTruthy();
     expect(partial.getByLabelText('1 de 1 ejercicios con resultado claro, con contexto parcial')).toBeTruthy();
-    expect(partial.getByRole('button', { name: /^Remo, registro inferior con contexto parcial, el mismo día, frente a la sesión del martes,? 3 de marzo\. Ver evidencia y series$/ })).toBeTruthy();
+    expect(partial.getByRole('button', { name: /^Remo, registro inferior con contexto parcial, el mismo día, frente a la sesión del martes,? 3 de marzo, bajó [\d,]+ por ciento\. Ver evidencia y series$/ })).toBeTruthy();
     expect(partial.getByText(/No sabemos si cambiaste agarre/)).toBeTruthy();
     // The strict method counts every exercise: one of unknown configuration is in its denominator, not compared, and says why.
     expect(strict.getByRole('button', { name: /^Remo, sin comparar, todavía no sabemos si se hizo igual/ })).toBeTruthy();
@@ -130,7 +130,10 @@ describe('#367 hechos de una sesión: pantalla abierta desde el post-entreno', (
     expect(focus.getByText('baja → alta')).toBeTruthy();
     expect(focus.getByText('moderada → sin registrar')).toBeTruthy();
     expect(focus.getByText('Antes: respondida después de empezar')).toBeTruthy();
-    expect(focus.queryByText(/de 5/)).toBeNull(); expect(focus.queryByText(/%/)).toBeNull();
+    // #533: the session's measured change is a percentage of repetitions; feelings stay words everywhere, also in «Cómo llegaste».
+    expect(focus.queryByText(/de 5/)).toBeNull();
+    expect(within(view.getByTestId('insights-context-open')).queryByText(/%/)).toBeNull();
+    expect(within(view.getByTestId('comparisons-arrival')).queryByText(/%/)).toBeNull();
     expect(focus.queryByText(/porque|causa|recomend/i)).toBeNull();
   });
 });

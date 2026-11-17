@@ -1,5 +1,5 @@
 import type { MobileApiClient } from './client';
-import { parsePerformanceInsights, PERFORMANCE_INSIGHTS_PATH, type InsightsPinnedPeriodSummary, type InsightsPeriodFeelings, type InsightsPeriodNutrition, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary } from '../../../../src/lib/mobile-api/performance-insights-contract';
+import { parsePerformanceInsights, PERFORMANCE_INSIGHTS_PATH, type InsightsPinnedPeriodSummary, type InsightsPeriodFeelings, type InsightsPeriodNutrition, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsRoutineRelationView, type InsightsSummary } from '../../../../src/lib/mobile-api/performance-insights-contract';
 
 export * from '../../../../src/lib/mobile-api/performance-insights-contract';
 
@@ -43,3 +43,5 @@ export const fetchCoincidenceEvidence=(client:MobileApiClient,asOf:string,revisi
 });
 
 export { weeklyNutritionGroups,WEEKLY_NUTRIENTS,type WeeklyNutrient } from '../../../../src/lib/progress/insights-engine/descriptive-weeks';
+/** #533 · Relación of one routine. Asked for when that view opens, never with the summary. */
+export const fetchRoutineRelation = (client: MobileApiClient, routine: string, signal?: AbortSignal) => read<InsightsRoutineRelationView>(client, 'routine-relation', { view: 'routine-relation', routine }, signal);
