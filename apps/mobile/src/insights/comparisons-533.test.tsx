@@ -8,9 +8,9 @@ import type { MobileApiReadResult } from '@/api/results';
 import type { DayFact, PerformanceChange, RelationFactor, SessionFact } from '@/api/performance-insights';
 import { createInsightsSnapshot, insightsRoutineRelation, insightsSummary } from '../../../../src/lib/progress/insights-engine/read-model';
 import type { InsightsSource } from '../../../../src/lib/progress/insights-engine/types';
-import { InsightsScreen } from './insights-screen';
 import { FactorScreen } from './factor-screen';
-import { arrivalFacts, exerciseChangeValue, factorSentence, factorValue, formatPct, joinedChange, sessionHero } from './comparison-change';
+import { arrivalFacts, exerciseChangeValue, factorSentence, factorValue, formatPct, joinedChange, sessionHero, shownText } from './comparison-change';
+import { InsightsScreen, exerciseList } from './insights-screen';
 
 /** #533 · Comparaciones with the measured change and Relación. Fictitious data only, built by the real engine. */
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
@@ -92,6 +92,23 @@ describe('#533 · cifras de Comparaciones', () => {
   });
 });
 
+describe('#533 · pulido', () => {
+  it('shows a change as it was recorded, in its own unit', () => {
+    const base = { pct: 8.3333, signals: 1 };
+    expect(shownText({ ...base, state: 'measured', basis: 'reps_at_load', load: { unit: 'kg', up: 0, same: 0, down: 0 }, shown: { anchor: 20, from: 12, to: 13 } })).toBe('20 kg · 12 → 13 reps');
+    expect(shownText({ ...base, state: 'measured', basis: 'reps_at_load', load: { unit: 'lingote', up: 0, same: 0, down: 0 }, shown: { anchor: 4, from: 10, to: 11 } })).toBe('4 lingotes · 10 → 11 reps');
+    expect(shownText({ ...base, state: 'measured', basis: 'time', load: null, shown: { anchor: null, from: 60, to: 45 } })).toBe('60 → 45 s');
+    expect(shownText({ state: 'no_amount_signal', pct: null, basis: null, signals: 0, load: { unit: 'kg', up: 1, same: 0, down: 0 }, shown: { anchor: 10, from: 50, to: 55 } })).toBe('50 → 55 kg · 10 reps');
+    expect(shownText({ state: 'ambiguous', pct: null, basis: null, signals: 0, load: null })).toBeNull();
+  });
+  it('lists each exercise once, filters by routine and orders without another read', () => {
+    const summary = insightsSummary(snapshot());
+    expect(exerciseList(summary, 'all', 'recent').map(entry => [entry.row.name, entry.lane])).toEqual([['Remo', 'partial']]);
+    expect(exerciseList(summary, ROUTINE, 'name')).toHaveLength(1);
+    expect(exerciseList(summary, id(999), 'recent')).toEqual([]);
+  });
+});
+
 describe('#533 · pantallas', () => {
   it('Días leads with the measured change and lists each exercise with its percentage', async () => {
     const view = screen(<InsightsScreen />);
@@ -102,6 +119,14 @@ describe('#533 · pantallas', () => {
     // The strip of recent sessions opens one of them.
     fireEvent.press(within(view.getByTestId('comparisons-session-strip')).getAllByRole('button')[1]!);
     expect(mockSetParams).toHaveBeenCalledWith(expect.objectContaining({ session: id(7) }));
+  });
+  it('Días shows each exercise as recorded and links to its routine in Relación', async () => {
+    const view = screen(<InsightsScreen />);
+    await view.findByTestId('comparisons-change-hero');
+    expect(view.getByText('20 kg · 11 → 13 reps')).toBeTruthy();
+    expect(view.getByTestId('insights-counts-partial')).toBeTruthy();
+    fireEvent.press(view.getByRole('button', { name: 'Ver PULL en Relación' }));
+    expect(mockSetParams).toHaveBeenCalledWith(expect.objectContaining({ view: 'relation', routine: ROUTINE, session: undefined }));
   });
   it('Relación asks for the newest routine once, shows its groups and opens a factor', async () => {
     mockParams = { view: 'relation' };

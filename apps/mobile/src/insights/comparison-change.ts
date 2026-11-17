@@ -27,6 +27,24 @@ export function exerciseChangeValue(change: PerformanceChange | undefined): { va
   return null;
 }
 
+const amount = (value: number) => decimal.format(value);
+/**
+ * #533 · What a row shows as recorded, from the server's `shown`: «20 kg · 12 → 13 reps», «10 → 11 reps», «60 → 45 s», or for a
+ * load change «50 → 55 kg · 10 reps». Plates keep their own unit. Null when there is nothing to show as recorded.
+ */
+export function shownText(change: PerformanceChange | undefined): string | null {
+  const shown = change?.shown;
+  if (!change || !shown) return null;
+  const load = change.load?.unit === 'lingote' ? 'lingotes' : 'kg';
+  if (change.state === 'measured') {
+    if (change.basis === 'time') return `${amount(shown.from)} → ${amount(shown.to)} s`;
+    if (change.basis === 'bodyweight_reps' || shown.anchor === null) return `${amount(shown.from)} → ${amount(shown.to)} reps`;
+    return `${amount(shown.anchor)} ${load} · ${amount(shown.from)} → ${amount(shown.to)} reps`;
+  }
+  if (change.state === 'no_amount_signal' && shown.anchor !== null) return `${amount(shown.from)} → ${amount(shown.to)} ${load} · ${amount(shown.anchor)} reps`;
+  return null;
+}
+
 /** The session's hero: the mean of its exercises measured at an equal condition, with how many entered. */
 export function sessionHero(change: SessionChange | undefined): { value: string; caption: string; spoken: string } | null {
   if (!change || change.state !== 'measured' || change.pct === null) return null;

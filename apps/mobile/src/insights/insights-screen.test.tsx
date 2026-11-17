@@ -108,14 +108,15 @@ describe('pantalla', () => {
     expect(view.getByTestId('insights-hero')).toBeTruthy();
     expect(view.getAllByText('1 de 1').length).toBeGreaterThan(0);
     expect(view.getByText('ejercicios con resultado claro, con contexto parcial')).toBeTruthy();
-    expect(view.getAllByText(/^↓ Registro inferior$/).length).toBeGreaterThan(0);
+    // #533: the counts are one row, each word under its number.
+    expect(view.getAllByText('Registro inferior').length).toBeGreaterThan(0);
     expect(view.getByTestId('insights-partial-limit')).toBeTruthy();
     expect(view.queryByText(/Mejoraron/)).toBeNull(); expect(view.queryByText(/^↓ Por debajo$/)).toBeNull();
   });
   it('shows the strict lane without the limit once the configuration is known', async () => {
     mockRead.mockImplementation(serve(history([8, 10, 9], 'none')));
     const view = await open(<InsightsScreen />);
-    expect(view.getAllByText(/^↓ Por debajo$/).length).toBeGreaterThan(0);
+    expect(view.getAllByText('Por debajo').length).toBeGreaterThan(0);
     expect(view.queryByTestId('insights-partial-limit')).toBeNull();
   });
   it('tells empty, nothing comparable, failed and contradictory apart', async () => {
@@ -190,7 +191,8 @@ describe('pantalla', () => {
     mockParams = { view: 'exercises' };
     mockRead.mockImplementation(serve(history([8, 10, 9])));
     const view = await open(<InsightsScreen />);
-    expect(view.getByText('Con contexto parcial')).toBeTruthy(); expect(view.queryByText('Comparación completa')).toBeNull();
+    // #533: one list; the partial method is named once at the top and on each row it compared.
+    expect(view.getByTestId('comparisons-method')).toBeTruthy(); expect(view.queryByText('Comparación completa')).toBeNull();
     fireEvent.press(view.getByRole('button', { name: /Press banca: 1 registro superior, 0 registro igual, 1 registro inferior, 1 sin resultado claro, de 3 registros de este ejercicio/ }));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id: EX } });
   });
@@ -226,7 +228,7 @@ describe('entrada desde el final de una sesión', () => {
     expect(view.queryByTestId('insights-hero')).toBeNull();
     const facts = within(view.getByTestId('insights-session'));
     expect(facts.getByLabelText('1 de 1 ejercicios con resultado claro, con contexto parcial')).toBeTruthy();
-    expect(facts.getAllByText(/^↑ Registro superior$/).length).toBeGreaterThan(0);
+    expect(facts.getAllByText('Registro superior').length).toBeGreaterThan(0);
     expect(requests()).toEqual(['/api/mobile/v1/progress/performance-insights?method=2']);
     expect(view.getByTestId('insights-partial-limit')).toBeTruthy();
     expect(view.queryByText(/Exploratorio|Coincidieron/)).toBeNull();

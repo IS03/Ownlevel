@@ -126,7 +126,9 @@ describe('#518 · tres puertas, una pantalla', () => {
     mockParams = evidence.params;
     const detail = await open(<EvidenceScreen />);
     expect(reads()).toEqual(['summary', `&view=evidence&session=${PULL}&exercise=${ROW}&lane=partial`]);
-    // The sets first, each side under its date; then what was compared.
+    // #533: the side-by-side table first; the full sets, each side under its date, one tap away and still in this order.
+    expect(detail.getByTestId('evidence-side-by-side')).toBeTruthy();
+    fireEvent.press(detail.getByTestId('evidence-detail-toggle'));
     expect(within(detail.getByTestId('evidence-current')).getByText('Esta sesión · Lunes, 9 de marzo')).toBeTruthy();
     expect(within(detail.getByTestId('evidence-reference')).getByText('Sesión de referencia · Lunes, 2 de marzo')).toBeTruthy();
     const order = detail.UNSAFE_root.findAll(node => ['evidence-current', 'evidence-reference', 'evidence-signals'].includes(node.props.testID), { deep: true }).map(node => node.props.testID);

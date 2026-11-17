@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
@@ -33,7 +33,9 @@ export function FactorScreen() {
   const key = typeof params.factor === 'string' ? params.factor : null;
   const { state, data, refresh } = useRoutineRelation(client, routine);
   const [selected, setSelected] = useState<number | undefined>(undefined);
-  const scroll = (children: React.ReactNode) => <ScrollView showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} testID="factor-screen">{children}</ScrollView>;
+  // #533 · A tapped point marks its session in the list and brings it into view.
+  const scrollRef = useRef<ScrollView>(null), listTop = useRef(0), rowTops = useRef(new Map<string, number>());
+  const scroll = (children: React.ReactNode) => <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} testID="factor-screen">{children}</ScrollView>;
   if (!routine || !key) return scroll(<UnavailableState title="No encontramos este dato" description="Abrilo desde Comparaciones › Relación." />);
   if (state.status === 'loading' && !data) return scroll(<View style={styles.block}><SkeletonBlock height={56} /><SkeletonBlock height={180} /><SkeletonBlock height={160} /></View>);
   if (!data) return scroll(<InlineUnavailable message="No pudimos traer este dato." actionLabel="Reintentar" onAction={() => void refresh()} />);
@@ -43,7 +45,14 @@ export function FactorScreen() {
   // A metric's name comes from the screen that opened this one; the routine's read does not carry names.
   const label = factor.metricId && typeof params.label === 'string' && params.label ? params.label : factorLabel(factor, []), sentence = factorSentence(factor, label);
   const rows = data.sessions.map(session => ({ session, value: session.values[index] ?? null })).filter(row => row.value !== null);
-  const points = rows.filter(row => row.session.pct !== null).map(row => ({ x: row.value!, y: row.session.pct!, group: row.session.group === 'up' || row.session.group === 'same' || row.session.group === 'down' ? row.session.group : 'other' as const }));
+  const plotted = rows.filter(row => row.session.pct !== null);
+  const points = plotted.map(row => ({ x: row.value!, y: row.session.pct!, group: row.session.group === 'up' || row.session.group === 'same' || row.session.group === 'down' ? row.session.group : 'other' as const }));
+  const selectedId = selected === undefined ? null : plotted[selected]?.session.sessionId ?? null;
+  const select = (index: number) => {
+    haptics.selection(); setSelected(index);
+    const top = rowTops.current.get(plotted[index]!.session.sessionId);
+    if (top !== undefined) scrollRef.current?.scrollTo({ y: Math.max(0, listTop.current + top - 120), animated: true });
+  };
   const missing = Object.entries(factor.missing).filter(([, count]) => count > 0).map(([reason, count]) => `${count} ${MISSING[reason] ?? 'sin dato'}`);
   const median = (stat: typeof factor.groups.up) => stat.median === null ? (stat.valid ? `faltan datos (${stat.valid})` : 'sin datos') : factorValue(factor, stat.median);
   return scroll(<>
@@ -53,7 +62,7 @@ export function FactorScreen() {
       <Heading level={1}>{label}</Heading>
       {sentence ? <AppText testID="factor-sentence">{sentence}</AppText> : <AppText muted testID="factor-no-sentence">Hacen falta 3 sesiones que suban y 3 que bajen con este dato para comparar sus medianas.</AppText>}
     </View>
-    {points.length ? <FactorScatter points={points} selected={selected} onSelect={value => { haptics.selection(); setSelected(value); }}
+    {points.length ? <FactorScatter points={points} selected={selected} onSelect={select}
       label={`${points.length} sesiones: ${label} contra el cambio de cada sesión. ${sentence ?? ''}`} /> : null}
     <View style={styles.block}>
       <View accessible style={styles.medians}>
@@ -63,12 +72,14 @@ export function FactorScreen() {
       </View>
       <AppText muted variant="footnote" numeric>{factor.valid} de {data.sessions.length} sesiones con dato{missing.length ? `. Faltan: ${missing.join(', ')}.` : '.'}</AppText>
     </View>
-    <View>
+    <View onLayout={event => { listTop.current = event.nativeEvent.layout.y; }}>
       <AppText muted variant="footnote" accessibilityRole="header" style={styles.section}>Sesiones</AppText>
-      {[...rows].reverse().map(({ session, value }) => <InsightRow key={session.sessionId} label={dayLabel(session.date)} detail={factorValue(factor, value!)}
+      {[...rows].reverse().map(({ session, value }) => <View key={session.sessionId} testID={`factor-session-${session.sessionId}`} accessibilityState={{ selected: session.sessionId === selectedId }}
+        onLayout={event => { rowTops.current.set(session.sessionId, event.nativeEvent.layout.y); }}
+        style={session.sessionId === selectedId ? [styles.selected, { backgroundColor: colors.brandSubtle }] : undefined}><InsightRow label={dayLabel(session.date)} detail={factorValue(factor, value!)}
         value={session.pct === null ? GROUP_LABEL[session.group] : `${GROUP_LABEL[session.group]} · ${formatPct(session.pct)}`}
         spoken={`${dayLabel(session.date)}: ${label} ${factorValue(factor, value!)}, ${GROUP_LABEL[session.group]}${session.pct === null ? '' : ` ${formatPct(session.pct)}`}. Ver la sesión`}
-        onPress={() => router.push({ pathname: '/(tabs)/train/insights', params: { ...progressOriginParams(params), session: session.sessionId, date: session.date } })} />)}
+        onPress={() => router.push({ pathname: '/(tabs)/train/insights', params: { ...progressOriginParams(params), session: session.sessionId, date: session.date } })} /></View>)}
     </View>
     <AppText muted variant="caption">Son tus registros: muestran qué coincidió, no qué te hizo subir o bajar.</AppText>
   </>);
@@ -79,4 +90,5 @@ const styles = StyleSheet.create({
   block: { gap: spacing.sm },
   medians: { gap: 2 },
   section: { paddingBottom: spacing.xs },
+  selected: { borderRadius: brandTokens.radius.inner, paddingHorizontal: spacing.sm, marginHorizontal: -spacing.sm },
 });
