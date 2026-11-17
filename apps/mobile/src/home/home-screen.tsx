@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { prefetchSessionSummary } from '@/api/session-summary';
 import { useMobileAuth } from '@/auth';
+import { markFirstData } from '@/entry/first-data';
 import { useHomeMetricEntry } from './use-home-metric-entry';
 import {
   AppText,
@@ -75,6 +76,9 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
   useEffect(() => { if (metricError) { Alert.alert('Métricas', metricError); clearMetricError(); } }, [metricError, clearMetricError]);
 
   const home = homeResource(resources.home.state);
+  // Inicio's priority reads (summary and today) settled once: the native splash may go (#536).
+  const firstSettled = resources.home.state.status !== 'loading' && resources.today.state.status !== 'loading';
+  useEffect(() => { if (firstSettled) markFirstData(); }, [firstSettled]);
   const day = homeDay(now());
 
   const navigate = useCallback((target: HomeNavigationTarget) => {

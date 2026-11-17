@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { MobileHomeResponse } from '@/api/home';
 import { OwnlevelThemeProvider } from '@/design-system';
 
+import { onFirstData, resetFirstData } from '@/entry/first-data';
 import { HOME_FOCUS_REFRESH_MS, useHomeResources } from './home-data';
 import { HomeScreen } from './home-screen';
 import { sharedHomeRead } from './shared-home-read';
@@ -194,6 +195,28 @@ describe('Home screen', () => {
     // Blocks with their own reads render while Home is still loading.
     expect(view.getByTestId('home-register')).toBeTruthy();
     expect(view.getByTestId('home-nutrition-loading')).toBeTruthy();
+  });
+
+  it('releases the launch splash once the summary and today settled, without any read of its own (#536)', async () => {
+    resetFirstData();
+    let answerHome: (value: unknown) => void = () => {};
+    mockFetchHome.mockImplementation(() => new Promise(resolve => { answerHome = resolve; }));
+    const released = jest.fn(); const stop = onFirstData(released);
+    await renderScreen();
+    expect(released).not.toHaveBeenCalled(); // Today answered; the summary is still on its way.
+    await act(async () => { answerHome({ status: 'ok', data: homeData(), meta }); await Promise.resolve(); });
+    await settle();
+    expect(released).toHaveBeenCalledTimes(1);
+    for (const fetcher of allFetchers()) expect(fetcher).toHaveBeenCalledTimes(1);
+    stop();
+  });
+  it('an unavailable summary also releases it: the screen shows its own state', async () => {
+    resetFirstData();
+    mockFetchHome.mockImplementation(() => Promise.resolve({ status: 'unavailable', reason: 'network', meta }));
+    const released = jest.fn(); const stop = onFirstData(released);
+    await renderScreen();
+    expect(released).toHaveBeenCalledTimes(1);
+    stop();
   });
 
   it('returning to the foreground re-reads Home only while it is the visible tab', async () => {

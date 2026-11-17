@@ -60,8 +60,8 @@ function RootNavigator() {
     });
   }, [colors.background]);
 
-  // Hold the native splash through restoration, then fade straight into the resolved route.
-  useNativeSplash(state.status);
+  // Hold the native splash through restoration and, with a session, a brief bounded moment for Inicio's first data (#536).
+  useNativeSplash(state.status, Boolean(session));
 
   return (
     <NavigationThemeProvider value={navigationTheme}>
