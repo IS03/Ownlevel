@@ -11,7 +11,7 @@ import type { HomeResource } from '@/home/home-resource';
 import { HomeSectionTitle } from '@/home/home-ui';
 
 import type { HubWeek } from './training-hub-data';
-import { dayBlock, routineLastDone, type HubDayMark } from './training-hub-model';
+import { comparisonEntry, dayBlock, routineLastDone, type ComparisonEntry, type HubDayMark } from './training-hub-model';
 import { trainingRoutineColor } from './routine-colors';
 import { StartConfirm } from './start-confirm';
 
@@ -200,6 +200,49 @@ function DayBlock({ date, onOpenDay, onSession, onStart, onRetry, week }: {
   );
 }
 
+/** Where each question opens: Días on a session, or Relación (for a routine when known). */
+export type CompareTarget = { session?: string; view?: 'relation'; routine?: string };
+/**
+ * V2 · Comparaciones as two questions, each saying exactly what it opens. Built from the sessions the landing already has:
+ * no Comparaciones read and no figures here.
+ */
+function ComparisonsEntry({ entry, onCompare }: { entry: ComparisonEntry; onCompare: (target: CompareTarget) => void }) {
+  const { colors, isDark } = useOwnlevelTheme();
+  const session = entry.kind === 'session' ? entry : null;
+  const how = session ? `Tu ${session.routineName} ${session.when} frente al ${session.previous}` : 'Cada sesión frente a la anterior de la misma rutina';
+  const what = `Comidas, horarios, sueño y métricas antes de tus mejores ${session?.routineId ? session.routineName : 'sesiones'}`;
+  const dot = session?.routineColor ? trainingRoutineColor(session.routineColor, isDark) : colors.primary;
+  return (
+    <View testID="training-comparisons">
+      <View style={styles.compareHead}>
+        <View accessibilityElementsHidden style={[styles.routineDot, { backgroundColor: dot }]} />
+        <AppText accessibilityRole="header" muted style={styles.compareLabel} variant="footnote">{session && !session.today ? 'Comparaciones · tu última sesión' : 'Comparaciones'}</AppText>
+      </View>
+      <Line />
+      <CompareRow description={how} icon="compare" onPress={() => onCompare(session ? { session: session.sessionId } : {})} testID="training-compare-how" title="¿Cómo te fue?" />
+      <Line />
+      <CompareRow description={what} icon="activity" onPress={() => onCompare(session?.routineId ? { view: 'relation', routine: session.routineId } : { view: 'relation' })}
+        testID="training-compare-what" title="¿Qué te acompañó?" />
+      <Line />
+    </View>
+  );
+}
+
+function CompareRow({ description, icon, onPress, testID, title }: { description: string; icon: AppIconName; onPress: () => void; testID: string; title: string }) {
+  const { colors } = useOwnlevelTheme();
+  return (
+    <Pressable accessibilityLabel={`${title} ${description}`} accessibilityRole="button" onPress={onPress}
+      style={({ pressed }) => [styles.compareRow, { opacity: pressed ? 0.55 : 1 }]} testID={testID}>
+      <View style={[styles.compareLead, { backgroundColor: colors.brandSubtle }]}><AppIcon color={colors.primary} name={icon} size={20} /></View>
+      <View style={styles.flex}>
+        <AppText style={{ color: colors.primary, fontWeight: '600' }} variant="headline">{title}</AppText>
+        <AppText muted variant="subheadline">{description}</AppText>
+      </View>
+      <AppIcon color={colors.textMuted} name="chevronRight" size={15} />
+    </Pressable>
+  );
+}
+
 function RoutineRow({ onOpen, onPlay, routine, sessions, today }: {
   onOpen: (id: string) => void; onPlay: (id: string) => void; routine: MobileHomeWorkoutStartRoutine; sessions: TrainingHistorySession[]; today: string;
 }) {
@@ -233,11 +276,11 @@ function RoutineRow({ onOpen, onPlay, routine, sessions, today }: {
   );
 }
 
-export function TrainingHubDashboard({ calendar, home, now, observedSessions, onLibrary, onOpenDay, onPlay, onContinue,
+export function TrainingHubDashboard({ calendar, home, now, observedSessions, onCompare, onLibrary, onOpenDay, onPlay, onContinue,
   onRefresh, onRoutine, onSession, onStart, today, week }: {
   calendar: HomeResource<MobileTrainingResponse>; home: HomeResource<MobileHomeResponse>;
   now: number; observedSessions: TrainingHistorySession[]; today: string; week: HomeResource<HubWeek>;
-  onContinue: (id: string) => void; onLibrary: (target: 'routines' | 'exercises' | 'history' | 'insights') => void;
+  onContinue: (id: string) => void; onLibrary: (target: 'routines' | 'exercises' | 'history' | 'insights') => void; onCompare: (target: CompareTarget) => void;
   onOpenDay: (date: string) => void; onPlay: (id: string) => void; onRefresh: () => void; onRoutine: (id: string) => void; onSession: (id: string) => void;
   onStart: () => void;
 }) {
@@ -253,7 +296,7 @@ export function TrainingHubDashboard({ calendar, home, now, observedSessions, on
       {home.status === 'unavailable' || calendar.status === 'unavailable' ? <View testID="training-stale"><InlineUnavailable message="No pudimos actualizar Entrenar. Mostramos los datos guardados cuando están disponibles." actionLabel="Reintentar" onAction={onRefresh} /></View> : null}
       <DayBlock date={today} onOpenDay={onOpenDay} onRetry={onRefresh} onSession={onSession} onStart={onStart} week={week} />
       {/* #518 · Right under the activity, never with figures: Entrenar does not read Comparaciones; the screen reads when it opens. */}
-      <HubRow accessibilityLabel="Abrir Comparaciones: cada sesión frente a la anterior" icon="compare" onPress={() => onLibrary('insights')} testID="training-comparisons" title="Comparaciones" />
+      <ComparisonsEntry entry={comparisonEntry(observedSessions, today)} onCompare={onCompare} />
       <View>
         <HomeSectionTitle action="Ver todas" onAction={() => onLibrary('routines')} title="Rutinas" />
         {routines?.status === 'ok' ? routines.data.slice(0, 3).map((routine, index) => (
@@ -279,6 +322,10 @@ export function TrainingHubDashboard({ calendar, home, now, observedSessions, on
 }
 
 const styles = StyleSheet.create({
+  compareHead: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 8 },
+  compareLabel: { fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase' },
+  compareRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64, paddingVertical: 12 },
+  compareLead: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   alsoToday: { paddingBottom: spacing.xs, paddingTop: spacing.md },
   block: { gap: spacing.xl },
   blockDone: { gap: spacing.lg },

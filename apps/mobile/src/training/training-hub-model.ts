@@ -98,3 +98,29 @@ export function pickerYears(today: string, back = 5): number[] {
   const year = Number(today.slice(0, 4));
   return Array.from({ length: back + 2 }, (_, index) => year - back + index);
 }
+
+/**
+ * The double entry to Comparaciones (V2): «¿Cómo te fue?» opens Días on the last known session, «¿Qué te acompañó?» opens
+ * Relación for its routine. Built only from the sessions the landing already observed (no Comparaciones read here):
+ * an earlier session outside that window is «la anterior» without a date, and no known session gives the general entry.
+ */
+export type ComparisonEntry =
+  | { kind: 'general' }
+  | { kind: 'session'; sessionId: string; routineId: string | null; routineName: string; routineColor: TrainingHistorySession['routineColor'];
+    today: boolean; when: string; previous: string };
+const WEEKDAYS_LOWER = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const weekdayOf = (date: string) => WEEKDAYS_LOWER[new Date(`${date}T12:00:00Z`).getUTCDay()]!;
+export function comparisonEntry(sessions: readonly TrainingHistorySession[], today: string): ComparisonEntry {
+  const latestFirst = [...sessions].filter(s => s.logDate <= today)
+    .sort((a, b) => b.logDate.localeCompare(a.logDate) || b.startedAt.localeCompare(a.startedAt));
+  const last = latestFirst[0];
+  if (!last) return { kind: 'general' };
+  const days = daysBetween(last.logDate, today);
+  const when = days === 0 ? 'de hoy' : days === 1 ? 'de ayer' : `del ${weekdayOf(last.logDate)} ${Number(last.logDate.slice(8))}`;
+  // The earlier session of the same routine the comparison uses; a free session (no routine) has none to name.
+  const before = last.routineId ? latestFirst.find(s => s.id !== last.id && s.routineId === last.routineId
+    && (s.logDate < last.logDate || s.startedAt < last.startedAt)) : undefined;
+  const previous = !before ? 'anterior' : before.logDate === last.logDate ? 'de más temprano' : `del ${weekdayOf(before.logDate)} ${Number(before.logDate.slice(8))}`;
+  return { kind: 'session', sessionId: last.id, routineId: last.routineId, routineName: last.routineName, routineColor: last.routineColor,
+    today: days === 0, when, previous };
+}

@@ -134,7 +134,7 @@ export function TrainingScreen({ now = systemNow }: { now?: () => Date }) {
       {home.status === 'loading' && currentCalendar.status === 'loading' ? <View style={{ gap: 12 }} testID="training-loading">
         <SkeletonBlock height={140} /><SkeletonBlock height={190} /><SkeletonBlock height={160} />
       </View> : <TrainingHubDashboard calendar={currentCalendar} home={home} now={clock.getTime()} observedSessions={cache.observedSessions(today)}
-        onContinue={id => toSession(id)} onLibrary={onLibrary} onOpenDay={openDay} onPlay={id => starter.start({ routineId: id })} onRefresh={refresh}
+        onContinue={id => toSession(id)} onLibrary={onLibrary} onCompare={params => router.push({ pathname: '/(tabs)/train/insights', params })} onOpenDay={openDay} onPlay={id => starter.start({ routineId: id })} onRefresh={refresh}
         onRoutine={id => router.push(`/(tabs)/train/routines/${id}`)} onSession={id => router.push(`/(tabs)/train/history/${id}`)}
         onStart={newSession.open} today={today} week={week} />}
     </ScrollScreen>
