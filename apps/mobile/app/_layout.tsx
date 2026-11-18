@@ -14,6 +14,7 @@ import { brandTokens, createThemePreferenceStorage, OwnlevelThemeProvider, useOw
 import { NutritionStagesProvider } from '@/stages/stages-provider';
 import { MetricPresentationProvider } from '@/metrics/presentation-provider';
 import { NutritionConfigurationProvider } from '@/nutrition/config-provider';
+import { MealMomentBandsProvider } from '@/nutrition/moment-bands-provider';
 import { initHapticsPreference } from '@/platform/haptics';
 import { createHapticsPreferenceStorage } from '@/platform/haptics-preference';
 import { useStackScreenOptions } from '@/navigation/use-stack-screen-options';
@@ -67,6 +68,7 @@ function RootNavigator() {
     <NavigationThemeProvider value={navigationTheme}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <NutritionConfigurationProvider>
+      <MealMomentBandsProvider>
       <NutritionStagesProvider>
       <MetricPresentationProvider>
       <SessionPresenceProvider>
@@ -85,6 +87,7 @@ function RootNavigator() {
       </SessionPresenceProvider>
       </MetricPresentationProvider>
       </NutritionStagesProvider>
+      </MealMomentBandsProvider>
       </NutritionConfigurationProvider>
     </NavigationThemeProvider>
   );

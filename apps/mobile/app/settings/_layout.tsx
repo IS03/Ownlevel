@@ -12,6 +12,7 @@ export default function SettingsLayout() {
     <Stack screenOptions={useStackScreenOptions()}>
       <Stack.Screen name="index" options={{ ...editorial, title: 'Ajustes', headerLeft: () => <SettingsBack /> }} />
       <Stack.Screen name="metrics" options={{ ...editorial, title: 'Métricas' }} />
+      <Stack.Screen name="meal-moments" options={{ ...editorial, title: 'Horarios de comidas' }} />
       <Stack.Screen name="diagnostics" options={{ ...editorial, title: 'Diagnóstico' }} />
       <Stack.Screen name="account" options={{ ...editorial, title: 'Cuenta' }} />
       <Stack.Screen name="delete-account" options={{ ...editorial, title: 'Eliminar cuenta' }} />

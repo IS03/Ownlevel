@@ -19,6 +19,7 @@ describe('Settings stack', () => {
     expect(mockScreens).toEqual([
       { name: 'index', title: 'Ajustes' },
       { name: 'metrics', title: 'Métricas' },
+      { name: 'meal-moments', title: 'Horarios de comidas' },
       { name: 'diagnostics', title: 'Diagnóstico' },
       { name: 'account', title: 'Cuenta' },
       { name: 'delete-account', title: 'Eliminar cuenta' },
