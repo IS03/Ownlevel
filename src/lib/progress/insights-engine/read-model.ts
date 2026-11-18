@@ -8,10 +8,11 @@ import { describeFeelingOutcome, FEELING_OUTCOME_KINDS } from "./feeling-outcome
 import { lastShown, recentChanges, recentTimes, sessionChange } from "./performance-change";
 import { priorFeelingFact } from "./prior-feelings";
 import { routineRelation } from "./routine-relation";
+import { ownPerformance, ownSessions } from "./own-performance";
 import { periodFacts, periodSummary } from "./period";
 import type { WeighIn } from "../body-evolution/weekly";
 import { mealTimeEvidence, toPerformanceSessions } from "./source-adapter";
-import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, type InsightsEngineMethod, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type SleepNightEvidence, INSIGHTS_RISK_BUDGET_CANDIDATE, PARTIAL_ASSOCIATION_PREFIX, type AssociationResult, type Candidate, type DayFact, type ExerciseFact, type ExerciseSummary, type InsightsDaysPage, type InsightsReadModel, type InsightsRelationDetail, type InsightsRoutineRelationView, type InsightsRelations, type InsightsSource, type InsightsSummary, type MealTimeEvidence, type PartialAssociationResult, type PartialDayFact, type PartialExerciseFact, type PartialExerciseSummary, type PartialLane, type PartialRelationSummary, type RelationSummary, type SessionFact } from "./types";
+import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, type InsightsEngineMethod, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type SleepNightEvidence, INSIGHTS_RISK_BUDGET_CANDIDATE, PARTIAL_ASSOCIATION_PREFIX, type AssociationResult, type Candidate, type DayFact, type ExerciseFact, type ExerciseSummary, type InsightsDaysPage, type InsightsReadModel, type InsightsRelationDetail, type InsightsRoutineRelationView, type InsightsOwnView, type InsightsRelations, type InsightsSource, type InsightsSummary, type MealTimeEvidence, type PartialAssociationResult, type PartialDayFact, type PartialExerciseFact, type PartialExerciseSummary, type PartialLane, type PartialRelationSummary, type RelationSummary, type SessionFact } from "./types";
 
 export const INSIGHTS_DEFAULT_DAYS = 14;
 export const INSIGHTS_MAX_DAYS = 120;
@@ -265,7 +266,10 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
     relationContext: { priorEnergy,
       // Metrics of the day before each training day, kept for Relación only: publishing them in every day would cost the summary.
       previousDayMetrics: new Map(performance.days.map(day => [day.date, context.metricsByDate.get(previousDate(day.date)) ?? []])),
-      metricOrder: source.metricDefinitions.map(metric => ({ id: metric.id, order: metric.order ?? null, systemKey: metric.systemKey ?? null })) },
+      metricOrder: source.metricDefinitions.map(metric => ({ id: metric.id, order: metric.order ?? null, systemKey: metric.systemKey ?? null })),
+      /** «Rendimiento frente a lo tuyo»: every completed session against its own history, and the daily facts its week factors read. */
+      own: ownSessions(source),
+      ownDaily: { nutrition: context.nutritionByDate, metrics: context.metricsByDate, sleepEvidence: context.sleepEvidence, targets } },
     exclusions: { performance: performanceExclusions, source: sourceExclusions },
     limits: { configurationSnapshots: { known: source.exercises.filter(row => row.configuration?.trim()).length, total: source.exercises.length }, mealTimeEvidence: mealEvidence, unitBasis: "historical_weight_mode" as const, ingestionCompleteKnown: false as const, clockVerified: false as const,
       ...(method === 2 ? methodTwoLimits(source) : {}) },
@@ -326,6 +330,10 @@ export function insightsSummary(snapshot: InsightsSnapshot, options: { before?: 
 /** #533 · Relación of one routine, asked for when it opens: from this snapshot's published facts, with no read of its own. */
 export function insightsRoutineRelation(snapshot: InsightsSnapshot, routineId: string): InsightsRoutineRelationView {
   return { ...versions(snapshot), ...routineRelation(snapshot, routineId.toLowerCase()) };
+}
+/** «Rendimiento frente a lo tuyo» and its tramos (`view=own`), all routines or one. */
+export function insightsOwnPerformance(snapshot: InsightsSnapshot, routineId: string | null): InsightsOwnView {
+  return { ...versions(snapshot), ...ownPerformance(snapshot, routineId?.toLowerCase() ?? null) };
 }
 
 /** More days of the same revision. Totals and exercises are already on the client. */
