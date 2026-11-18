@@ -1,6 +1,6 @@
 import type { DayContextAction } from './day-details';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Animated, { FadeOut, Keyframe, LinearTransition, useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming, type SharedValue } from 'react-native-reanimated';
 import type { MobileNutritionDayResponse, NutritionDayMetric } from '@/api/nutrition-day';
@@ -23,7 +23,16 @@ export function rowGrams(value: number | null) {
 }
 
 /** Group by the effective moment; provenance stays on the original DTO. */
-export function mealGroups(meals: NutritionDayMeal[]) {
+/** When a meal is shown at a time: a known time, or the registration instant (approximate). Otherwise null. */
+const shownInstant = (meal: NutritionDayMeal) => meal.timeKnown || (meal.timeSource === 'registration') ? Date.parse(meal.consumedAt) : NaN;
+/** By time, earliest first; meals without a time keep their order after the timed ones. */
+export function byTime(meals: NutritionDayMeal[]) {
+  return meals.map((meal, index) => ({ meal, index, at: shownInstant(meal) }))
+    .sort((a, b) => (Number.isFinite(a.at) ? Number.isFinite(b.at) ? a.at - b.at : -1 : Number.isFinite(b.at) ? 1 : 0) || a.index - b.index)
+    .map(entry => entry.meal);
+}
+export function mealGroups(unsorted: NutritionDayMeal[]) {
+  const meals = byTime(unsorted);
   if (!meals.some(meal => meal.mealLabel || meal.automaticMealLabel)) return [{ key: 'all', label: null as string | null, meals }];
   const groups = Object.entries(mealLabels).map(([key, label]) => (
     { key, label, meals: meals.filter(meal => (meal.mealLabel ?? meal.automaticMealLabel) === key) }
@@ -70,12 +79,15 @@ function RowFlash({ active }: { active: boolean }) {
  * Flat row (E5). Tap opens the detail (D1/D2); long-press shows the native menu and swipe left deletes (D4).
  * The full description lives in the detail.
  */
-function MealRow({ meal, divider, highlighted, removing, removed, actions, onOpen, onShaken }: {
-  meal: NutritionDayMeal; divider: boolean; highlighted?: boolean; removing?: boolean; removed?: boolean; actions: MealActions; onOpen: (meal: NutritionDayMeal) => void;
+function MealRow({ meal, target, divider, highlighted, removing, removed, actions, onOpen, onShaken }: {
+  /** The day's calorie target: the thin line under the row is this meal's share of it. Null: no line. */
+  meal: NutritionDayMeal; target: number | null; divider: boolean; highlighted?: boolean; removing?: boolean; removed?: boolean; actions: MealActions; onOpen: (meal: NutritionDayMeal) => void;
   /** The shake is over: the list hides the row now (trust), while the delete finishes in the background. */
   onShaken: (id: string) => void;
 }) {
-  const { colors } = useOwnlevelTheme(), reduceMotion = useReduceMotion();
+  const { colors } = useOwnlevelTheme(), reduceMotion = useReduceMotion(), { fontScale } = useWindowDimensions();
+  // Large text: no time column (it would squeeze the name); the time goes back into the detail line.
+  const column = fontScale <= 1.3;
   // Deleting: a short shake and the row breaks away at once; the server finishes in the background (the notice shows
   // it running) and a failed delete brings the row back.
   const shake = useSharedValue(0);
@@ -92,11 +104,14 @@ function MealRow({ meal, divider, highlighted, removing, removed, actions, onOpe
   const menu = mealMenu(meal, actions);
   // Display the effective clock without changing its stored provenance (#308).
   const approximate = !meal.timeKnown && meal.timeSource === 'registration';
-  const clock = meal.timeKnown || approximate ? time.format(new Date(meal.consumedAt)) : 'Sin hora';
+  const timed = meal.timeKnown || approximate;
+  const clock = timed ? time.format(new Date(meal.consumedAt)) : 'Sin hora';
   const estimated = meal.precision === 'estimated' ? ' · estimado' : '';
   // The row stays light (one-line title, rounded macros); the detail keeps every exact value.
-  const meta = `${clock} · P ${rowGrams(meal.proteinG)} · C ${rowGrams(meal.carbsG)} · G ${rowGrams(meal.fatG)}${estimated}`;
-  const spoken = `${meal.timeKnown || approximate ? clock : 'Hora sin dato'} · Proteína ${amount(meal.proteinG, 'g')} · Carbohidratos ${amount(meal.carbsG, 'g')} · Grasas ${amount(meal.fatG, 'g')}${estimated}`;
+  const meta = `${column ? '' : `${clock} · `}P ${rowGrams(meal.proteinG)} · C ${rowGrams(meal.carbsG)} · G ${rowGrams(meal.fatG)}${estimated}`;
+  // Share of the day's target: shown only with a known target and known calories, capped at the full width.
+  const share = target && target > 0 && meal.calories !== null ? Math.min(1, Math.max(0, meal.calories / target)) : null;
+  const spoken = `${timed ? clock : 'Hora sin dato'} · Proteína ${amount(meal.proteinG, 'g')} · Carbohidratos ${amount(meal.carbsG, 'g')} · Grasas ${amount(meal.fatG, 'g')}${estimated}`;
   // The swipe hands its own methods to the action, so no ref is read while rendering.
   const confirmDelete = (swipe?: SwipeableMethods) => { if (reduceMotion) swipe?.reset(); else swipe?.close(); Alert.alert('¿Eliminar esta comida?', 'Deja de contar en el día y desaparece de la lista.', [
     { text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: () => menu.remove?.(meal) }]); };
@@ -112,12 +127,15 @@ function MealRow({ meal, divider, highlighted, removing, removed, actions, onOpe
     onPress={() => onOpen(meal)} style={({ pressed }) => [styles.meal, { width: width > 0 ? width : undefined }, pressed && { opacity: 0.6 }]}>
     <RowFlash active={!!highlighted} />
     {divider ? <View style={[styles.divider, { backgroundColor: colors.border }]} /> : null}
+    {column ? <AppText muted numeric variant="footnote" style={styles.clock} testID="nutrition-meal-time">{timed ? clock : '—'}</AppText> : null}
     <View style={styles.mealText}>
-      <AppText numberOfLines={1} variant="headline">{mealTitle(meal)}</AppText>
+      {/* A long name wraps to a second line instead of being cut; the detail keeps the whole description. */}
+      <AppText numberOfLines={2} variant="headline">{mealTitle(meal)}</AppText>
       <AppText muted numeric numberOfLines={1} variant="caption">{meta}</AppText>
+      {share !== null ? <View style={styles.share} testID="nutrition-meal-share"><View style={[styles.shareFill, { width: `${share * 100}%`, backgroundColor: colors.primary }]} /></View> : null}
     </View>
-    <AppText numeric variant="subheadline">{amount(meal.calories, 'kcal')}</AppText>
-    <AppIcon name="chevronRight" color={colors.textMuted} size={15} />
+    {/* The unit is in the section total; the spoken label keeps it. */}
+    <AppText numeric variant="subheadline" style={styles.kcal}>{meal.calories === null ? '—' : number(meal.calories)}</AppText>
   </Pressable>;
   return <Animated.View onLayout={event => setWidth(event.nativeEvent.layout.width)} pointerEvents={removing ? 'none' : 'auto'}
     layout={reduceMotion ? undefined : LinearTransition.duration(brandTokens.motion.duration.base)}
@@ -154,7 +172,7 @@ export function NutritionDayContent({ data, onAdd, addChoices, addControl, highl
       </View>
       {recorded.meals.length === 0 ? <AppText muted>Sin comidas registradas</AppText> : mealGroups(recorded.meals.filter(m => !(m.id === gone && (m.id === removal?.removing || m.id === removal?.removed)))).map(group => <View key={group.key} style={styles.group}>
         {group.label ? <AppText muted variant="footnote" style={styles.groupLabel}>{group.label}</AppText> : null}
-        {group.meals.map((meal, index) => <MealRow key={meal.id} meal={meal} divider={index > 0} highlighted={meal.id === highlightedMeal} removing={meal.id === removal?.removing} removed={meal.id === removal?.removed} actions={mealActions} onOpen={m => setOpenMeal(m.id)} onShaken={hide} />)}
+        {group.meals.map((meal, index) => <MealRow key={meal.id} meal={meal} target={recorded.context.calorieTarget} divider={index > 0} highlighted={meal.id === highlightedMeal} removing={meal.id === removal?.removing} removed={meal.id === removal?.removed} actions={mealActions} onOpen={m => setOpenMeal(m.id)} onShaken={hide} />)}
       </View>)}
     </View> : null}
     {(meal => meal && recorded ? <MealDetailSheet meal={meal} calories={recorded.summary.calories} protein={recorded.summary.proteinG} entries={recorded.summary.entryCount}
@@ -164,11 +182,14 @@ export function NutritionDayContent({ data, onAdd, addChoices, addControl, highl
   </>;
 }
 const styles = StyleSheet.create({
+  clock: { width: 44, paddingTop: 2 }, kcal: { alignSelf: 'flex-start', paddingTop: 1 },
+  // Quiet on purpose: a thin line, no track, half-strength accent. Read at a glance, never the main thing on the row.
+  share: { height: 2, marginTop: 4, borderRadius: 1, overflow: 'hidden' }, shareFill: { height: 2, borderRadius: 1, opacity: 0.5 },
   section: { gap: 12 }, heading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
   group: { gap: 0 }, groupLabel: { fontWeight: '600', paddingTop: 4 },
   // The row bleeds 12 pt past the gutter so its flash has room; the content keeps the gutter's alignment.
   bleed: { marginHorizontal: -12 },
-  meal: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 12 }, mealText: { flex: 1, gap: 4 },
+  meal: { minHeight: 64, flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 12, paddingHorizontal: 12 }, mealText: { flex: 1, gap: 4 },
   swipeAction: { width: 96, height: '100%', alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 14, marginLeft: 8 },
   divider: { position: 'absolute', top: 0, left: 12, right: 12, height: StyleSheet.hairlineWidth },
   flash: { position: 'absolute', top: 2, bottom: 2, left: 0, right: 0, borderRadius: 12 },

@@ -96,6 +96,8 @@ describe('#479 C · Rápido entry, library and search', () => {
     expect(names(view)).toEqual(['Avena con banana', 'Café con leche', 'Ensalada de atún', 'Ñoquis caseros', 'Pollo al horno', 'Tostadas con palta']);
     expect(view.getByText('Ñ')).toBeTruthy();
     expect(within(view.getByTestId('quick-pins-manage')).getByText('Elegir fijadas')).toBeTruthy();
+    // A1: one line that says what pins are for, never an empty «Fijadas» section.
+    expect(view.getByText('Fijá hasta 6 para tenerlas a mano.')).toBeTruthy(); expect(view.queryByTestId('quick-pin-tiles')).toBeNull();
   });
 
   it('with pins unavailable (backend not ready): the library, never «0 pins», no pin controls and no PUT', async () => {
@@ -118,7 +120,11 @@ describe('#479 C · Rápido entry, library and search', () => {
     expect(names(view).slice(0, 6)).toEqual(['Pollo al horno', long.name, 'Tostadas con palta', 'Avena con banana', 'Ensalada de atún', 'Café con leche']);
     expect(names(view).slice(6)).toEqual(['Avena con banana', 'Café con leche', 'Ensalada de atún', long.name, 'Ñoquis caseros', 'Pollo al horno', 'Tostadas con palta']);
     // Long names are never cut; no second screen to reach the library, and no way «back» to lose.
-    expect(view.getAllByText(long.name)[0].props.numberOfLines).toBeUndefined();
+    // A1: the pinned card clamps the name to two lines (its label keeps it whole); the library row never cuts it.
+    expect(view.getAllByText(long.name)[0].props.numberOfLines).toBe(2);
+    expect(view.getAllByLabelText(`Revisar ${long.name}`)).toHaveLength(2);
+    expect(view.getAllByText(long.name).at(-1)!.props.numberOfLines).toBeUndefined();
+    expect(view.getByTestId('quick-pin-tiles')).toBeTruthy();
     expect(view.queryByTestId('quick-all-meals')).toBeNull(); expect(view.queryByTestId('quick-back-to-pins')).toBeNull();
   });
 
@@ -154,10 +160,12 @@ describe('#479 C · Rápido entry, library and search', () => {
 
   it('the + adds immediately from pins, library or search, with the #481 row and the same single write', async () => {
     const { view, quickApi } = await setup({ pins: ok(snap(1, [ID(5)])) });
-    const add = view.getAllByLabelText('Agregar Pollo al horno')[0]!;
+    // The pinned card (A1) and the library row both add; the card keeps the 44 pt target with a smaller disc.
+    const [card, add] = view.getAllByLabelText('Agregar Pollo al horno') as [ReturnType<typeof view.getByTestId>, ReturnType<typeof view.getByTestId>];
+    expect(StyleSheet.flatten(card.props.style)).toMatchObject({ width: 44, height: 44 });
     expect(StyleSheet.flatten(add.props.style)).toMatchObject({ width: 44, height: 44 });
     expect(StyleSheet.flatten(within(add).getByTestId('quick-add-disc').props.style)).toMatchObject({ width: 36, height: 36, borderRadius: 18 });
-    expect(StyleSheet.flatten(view.getAllByText('Pollo al horno')[0]!.props.style)).toMatchObject({ fontSize: 17, fontWeight: '400' });
+    expect(StyleSheet.flatten(view.getAllByText('Pollo al horno').at(-1)!.props.style)).toMatchObject({ fontSize: 17, fontWeight: '400' });
     await act(async () => { fireEvent.press(add); });
     await waitFor(() => expect(quickApi.confirm).toHaveBeenCalledTimes(1));
     expect(quickApi.options).toHaveBeenCalledTimes(1); expect(quickApi.preview).toHaveBeenCalledTimes(1);
