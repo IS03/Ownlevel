@@ -70,12 +70,13 @@ describe('Horarios de comidas', () => {
     await waitFor(() => expect(value(view, 'lunchFrom')).toBe('12:00'));
     const save = view.getByTestId('moment-bands-save');
     expect(save.props.accessibilityState).toMatchObject({ disabled: true });
-    fireEvent.press(view.getByLabelText('Almuerzo desde, media hora después'));
+    fireEvent.press(view.getByLabelText('Desayuno hasta, media hora después'));
     expect(value(view, 'lunchFrom')).toBe('12:30');
-    // Breakfast cannot start before midnight; dinner cannot end after 24.
-    for (let i = 0; i < 20; i++) fireEvent.press(view.getByLabelText('Desayuno desde, media hora antes'));
+    // The start of the day is a quiet line until «Cambiar»; breakfast cannot start before midnight.
+    fireEvent.press(view.getByText('Cambiar'));
+    for (let i = 0; i < 20; i++) fireEvent.press(view.getByLabelText('Arranque del día, media hora antes'));
     expect(value(view, 'breakfastFrom')).toBe('00:00');
-    expect(view.getByLabelText('Desayuno desde, media hora antes').props.accessibilityState).toMatchObject({ disabled: true });
+    expect(view.getByLabelText('Arranque del día, media hora antes').props.accessibilityState).toMatchObject({ disabled: true });
     const next = { ...mine, breakfastFrom: 0, lunchFrom: 750 };
     mockRequest.mockResolvedValueOnce({ status: 'ok', data: { revision: 4, bands: next }, meta } as never);
     await act(async () => { fireEvent.press(view.getByTestId('moment-bands-save')); });
@@ -90,7 +91,7 @@ describe('Horarios de comidas', () => {
     mockRead.mockResolvedValueOnce(read(3, mine) as never);
     const view = render(element());
     await waitFor(() => expect(value(view, 'snackFrom')).toBe('16:00'));
-    fireEvent.press(view.getByLabelText('Merienda desde, media hora después'));
+    fireEvent.press(view.getByLabelText('Almuerzo hasta, media hora después'));
     mockRequest.mockResolvedValueOnce(unknown as never);
     await act(async () => { fireEvent.press(view.getByTestId('moment-bands-save')); });
     expect(view.getByText('No sabemos si se guardó. Probá de nuevo: no se guarda dos veces.')).toBeTruthy();
@@ -108,7 +109,7 @@ describe('Horarios de comidas', () => {
     mockRead.mockResolvedValueOnce({ status: 'ok', data: { status: 'unavailable' }, meta } as never);
     const view = render(element());
     await view.findByText('No pudimos leer tus horarios. Mientras tanto usamos los de siempre.');
-    expect(view.getByLabelText('Almuerzo desde, media hora después').props.accessibilityState).toMatchObject({ disabled: true });
+    expect(view.getByLabelText('Desayuno hasta, media hora después').props.accessibilityState).toMatchObject({ disabled: true });
     expect(currentMealMomentBands()).toEqual(DEFAULT_MEAL_MOMENT_BANDS);
     mockRead.mockResolvedValueOnce(read(1, mine) as never);
     await act(async () => { fireEvent.press(view.getByText('Reintentar')); });
