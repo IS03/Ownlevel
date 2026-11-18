@@ -84,7 +84,10 @@ const session = (v: unknown) => object(v) && typeof v.sessionId === "string" && 
   // Optional and added later: a client that does not know it ignores it, and one that does never reads it as "not recorded".
   && (v.context.unreadableFeelings === undefined || list(v.context.unreadableFeelings, key => FEELING_KEY.has(String(key))))
   && object(v.context.legacy) && numberOrNull(v.context.legacy.energyLevel) && numberOrNull(v.context.legacy.performanceLevel) && numberOrNull(v.context.legacy.painLevel)
-  && preWindow(v.context.carbsPre3h) && (v.context.preStart === undefined || preStart(v.context.preStart)) && sessionChange(v.change);
+  && preWindow(v.context.carbsPre3h) && (v.context.preStart === undefined || preStart(v.context.preStart)) && sessionChange(v.change)
+  && (v.own === undefined || sessionOwn(v.own));
+/** «Lo tuyo» of one session: a median only with two exercises with their own value. */
+const sessionOwn = (v: unknown) => object(v) && numberOrNull(v.pct) && count(v.compared) && count(v.total) && Number(v.compared) <= Number(v.total) && (v.pct === null) === (Number(v.compared) < 2);
 const day = (v: unknown) => object(v) && date(v.date) && counts(v.counts) && count(v.evaluableSessions) && numberOrNull(v.declineProportion) && numberOrNull(v.equalSessionSensitivity)
   && typeof v.openDay === "boolean" && list(v.sessions, session) && object(v.context) && nutrition(v.context.nutrition)
   && list(v.context.metrics, m => object(m) && typeof m.metricId === "string" && finite(m.value))

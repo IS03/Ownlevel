@@ -132,6 +132,8 @@ export type SessionFact = {
   counts: PerformanceCounts; exercises: ExerciseFact[];
   /** #533, optional: the measured change of this lane's exercises. */
   change?: SessionChange;
+  /** Optional: «rendimiento frente a lo tuyo» of the whole session (both lanes' exercises). Absent: an older server. */
+  own?: import("./own-performance").SessionOwn;
   /** Context recorded around the training. Post feelings stay here and are never an exposure. */
   context: {
     feelings: Partial<Record<FeelingKey, SessionFeeling>>;
