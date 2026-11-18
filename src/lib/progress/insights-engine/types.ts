@@ -1,6 +1,6 @@
 import type { INSIGHTS_PERFORMANCE_PARTIAL_METHOD, PARTIAL_CONTEXT, PartialCounts, PartialReading } from "../performance-insights/partial";
 import type { DirectEvidence, ExclusionReason, PerformanceChange, PerformanceCounts, PerformanceStatus, PerformanceUnit, RecordFact } from "../performance-insights/types";
-import type { RecentChanges, SessionChange } from "./performance-change";
+import type { LastShown, RecentChanges, RecentTimes, SessionChange } from "./performance-change";
 
 /** Versioned, opt-in method. Facts, context and associations stay in separate lanes of the read model. */
 export const INSIGHTS_ENGINE_METHOD = "insights-engine/1" as const;
@@ -182,6 +182,8 @@ export type ExerciseSummary = {
   lastDate: string | null; lastStatus: PerformanceStatus; lastReason: string;
   /** #533, optional: up to ten measured results, oldest first. */
   recent?: RecentChanges;
+  /** Optional: the last ten times, oldest first, one letter each (see `timeLetter`), and what the last one showed. */
+  times?: RecentTimes; lastShown?: LastShown;
   /** #533, optional: every routine this exercise was trained in, by id. */
   routineIds?: string[];
 };
@@ -204,6 +206,8 @@ export type PartialExerciseSummary = {
   lastDate: string | null; lastReading: PartialReading; lastReason: string;
   /** #533, optional: up to ten measured results, oldest first. */
   recent?: RecentChanges;
+  /** Optional. Same rules as the strict lane's. */
+  times?: RecentTimes; lastShown?: LastShown;
 };
 /** The strongest thing the partial method can say: the two coincided. It cannot separate that from an unrecorded change of variant. */
 export type PartialAssociationState = "insufficient_data" | "no_clear_signal" | "coincidence_context_unknown";

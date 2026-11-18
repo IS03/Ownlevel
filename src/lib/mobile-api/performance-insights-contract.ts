@@ -14,7 +14,7 @@ export type { InsightsPinnedPeriodSummary, InsightsPeriodFeelings, InsightsPerio
 import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary, type InsightsPinnedPeriodSummary, type InsightsPeriodFeelings, type InsightsPeriodNutrition, type InsightsRoutineRelationView } from "../progress/insights-engine/types";
 export type { InsightsRoutineRelationView } from "../progress/insights-engine/types";
 export type { InsightsRoutineRelation, RelationFactor, RelationFactorKey, RelationGroup, RelationSession } from "../progress/insights-engine/routine-relation";
-export type { RecentChanges, SessionChange } from "../progress/insights-engine/performance-change";
+export type { LastShown, RecentChanges, RecentTimes, SessionChange } from "../progress/insights-engine/performance-change";
 export type { PerformanceChange } from "../progress/performance-insights/types";
 
 export type { AssociationResult, AssociationState, CandidateDefinition, DayFact, EvidenceSet, EvidenceSide, ExerciseEvidence, FeelingOutcomeKind, FeelingOutcomeSummary, InsightsFeelingOutcomes, InsightsPeriodSummary, ExerciseFact, InsightsExerciseEvidence, ExerciseSummary, InsightsDaysPage, InsightsReadModel, InsightsRelationDetail, InsightsRelations, InsightsResponse, InsightsSummary, PartialAssociationState, PartialRelationSummary, RelationSummary, NutritionContext, PartialAssociationResult, PartialDayFact, PartialExerciseFact, PartialExerciseSummary, PartialLane, SessionFact, SessionFeeling } from "../progress/insights-engine/types";
@@ -91,8 +91,10 @@ const day = (v: unknown) => object(v) && date(v.date) && counts(v.counts) && cou
   && dayTarget(v.context.target);
 function dayTarget(v: unknown) { return v === undefined || (object(v) && targetValue(v.calories) && targetValue(v.proteinG)); }
 function targetValue(v: unknown) { return v === null || (finite(v) && (v as number) >= 0); }
+const times = (v: unknown) => v === undefined || (typeof v === "string" && /^[usdUSDn]{0,10}$/.test(v));
+const lastShownOk = (v: unknown) => v === undefined || v === null || (object(v) && numberOrNull(v.anchor) && finite(v.from) && finite(v.to) && (v.plates === undefined || v.plates === true));
 const routineIds = (v: unknown) => v === undefined || list(v, id => typeof id === "string");
-const summary = (v: unknown) => object(v) && recent(v.recent) && routineIds(v.routineIds) && uuid(v.exerciseId) && typeof v.name === "string" && ["exposures", "improved", "observedStable", "declined", "ambiguous", "insufficient"].every(k => count(v[k]))
+const summary = (v: unknown) => object(v) && recent(v.recent) && times(v.times) && lastShownOk(v.lastShown) && routineIds(v.routineIds) && uuid(v.exerciseId) && typeof v.name === "string" && ["exposures", "improved", "observedStable", "declined", "ambiguous", "insufficient"].every(k => count(v[k]))
   && (v.lastDate === null || date(v.lastDate)) && STATUS.has(String(v.lastStatus)) && typeof v.lastReason === "string";
 const group = (v: unknown) => object(v) && count(v.days) && finite(v.min) && finite(v.max) && finite(v.meanOutcome);
 const definition = (v: unknown) => object(v) && typeof v.id === "string" && FAMILY.has(String(v.family)) && WINDOW.has(String(v.window)) && BASIS.has(String(v.temporalBasis)) && typeof v.subject === "string";
@@ -111,7 +113,7 @@ const partialExercise = (v: unknown) => object(v) && change(v.change) && uuid(v.
   && stringOrNull(v.referenceSessionId) && numberOrNull(v.referenceAgeDays) && referenceDate(v.referenceDate) && typeof v.highestInPartialContext === "boolean";
 const partialDay = (v: unknown) => object(v) && date(v.date) && partialCounts(v.counts) && count(v.evaluableSessions) && numberOrNull(v.lowerProportion) && numberOrNull(v.equalSessionSensitivity) && typeof v.openDay === "boolean"
   && list(v.sessions, s => object(s) && typeof s.sessionId === "string" && partialCounts(s.counts) && list(s.exercises, partialExercise) && sessionChange(s.change));
-const partialSummary = (v: unknown) => object(v) && recent(v.recent) && routineIds(v.routineIds) && uuid(v.exerciseId) && typeof v.name === "string" && ["exposures", "higher", "same", "lower", "ambiguous", "insufficient"].every(k => count(v[k]))
+const partialSummary = (v: unknown) => object(v) && recent(v.recent) && times(v.times) && lastShownOk(v.lastShown) && routineIds(v.routineIds) && uuid(v.exerciseId) && typeof v.name === "string" && ["exposures", "higher", "same", "lower", "ambiguous", "insufficient"].every(k => count(v[k]))
   && (v.lastDate === null || date(v.lastDate)) && READING.has(String(v.lastReading)) && typeof v.lastReason === "string";
 const association = (v: unknown) => associationBody(v, STATE);
 const partialAssociation = (v: unknown) => associationBody(v, PARTIAL_STATE) && (v as Json).contextCompleteness === PARTIAL_CONTEXT && String((v as Json).id).startsWith(PARTIAL_ASSOCIATION_PREFIX);

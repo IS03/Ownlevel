@@ -89,6 +89,15 @@ describe("M3.4-3 exercise history reads", () => {
     await expect(readMobileTrainingExerciseHistory(exerciseId, new URLSearchParams("historyByRoutine=1"), context, performance)).rejects.toThrow("unavailable");
     await expect(readMobileTrainingExerciseHistory(exerciseId, new URLSearchParams("routineId=bad"), context, performance)).rejects.toBeInstanceOf(MobileApiValidationError);
   });
+  it("adds each completed set in set order only when asked (sets=1), with a missing value kept null", async () => {
+    mocks.catalog.mockResolvedValue([]);
+    mocks.exerciseHistory.mockResolvedValue([item("s2", "2026-10-02", "2026-10-02T12:00:00Z", [[20, 12, true, null], [20, null, true, null], [22.5, 9, false, null], [20, 11, true, null]])]);
+    const plain = await readMobileTrainingExerciseHistory(exerciseId, new URLSearchParams(), context, performance);
+    expect(plain.latest).not.toHaveProperty("sets");
+    const withSets = await readMobileTrainingExerciseHistory(exerciseId, new URLSearchParams("sets=1"), context, performance);
+    expect(withSets.latest?.sets).toEqual([{ weightKg: 20, reps: 12 }, { weightKg: 20, reps: null }, { weightKg: 20, reps: 11 }]);
+    expect(withSets.sessions[0]?.sets).toHaveLength(3);
+  });
   it("rejects unknown/foreign exercises and invalid limits", async () => {
     mocks.catalog.mockResolvedValue([]); mocks.exerciseHistory.mockResolvedValue([]);
     await expect(readMobileTrainingExerciseHistory(exerciseId, new URLSearchParams(), context, performance)).rejects.toBeInstanceOf(MobileApiNotFoundError);

@@ -55,3 +55,26 @@ export function recentChanges(rows: readonly { date: string | null; sessionId: s
   const items = measured.filter(row => row.change!.basis === basis).slice(-RECENT_CHANGES).map(row => ({ date: row.date, pct: row.change!.pct! }));
   return { basis, items };
 }
+
+/**
+ * Ejercicios más claros: how each time ended against the one before, the measured ones and the rest alike, one letter each so a
+ * long history stays small. `u`/`s`/`d`: the measured percentage went up, stayed, went down. `U`/`S`/`D`: no amount signal, the load
+ * moved in one direction (or stayed). `n`: nothing could be compared (the first time, ambiguous or insufficient). The gaps stay as
+ * `n`, never dropped or filled. A lowercase last letter means the last time is `recent.items`' last item.
+ */
+export type RecentTimes = string;
+export function timeLetter(change: PerformanceChange | undefined): string {
+  if (change?.state === "measured" && change.pct !== null) return change.pct > 0 ? "u" : change.pct < 0 ? "d" : "s";
+  const load = change?.state === "no_amount_signal" ? loadDirection(change) : null;
+  return load === "up" ? "U" : load === "down" ? "D" : load === "same" ? "S" : "n";
+}
+/** The last ten times, oldest first. */
+export const recentTimes = (rows: readonly { change?: PerformanceChange }[]): RecentTimes =>
+  rows.slice(-RECENT_CHANGES).map(row => timeLetter(row.change)).join("");
+/** What the last time showed as recorded (the server's `shown`), with plates named: null when it showed nothing. */
+export type LastShown = { anchor: number | null; from: number; to: number; plates?: true } | null;
+export function lastShown(change: PerformanceChange | undefined): LastShown {
+  const shown = change?.shown;
+  if (!shown || (change.state !== "measured" && change.state !== "no_amount_signal")) return null;
+  return { anchor: shown.anchor, from: shown.from, to: shown.to, ...(change.load?.unit === "lingote" ? { plates: true as const } : {}) };
+}

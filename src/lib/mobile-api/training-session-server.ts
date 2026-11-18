@@ -23,7 +23,7 @@ import {
   parseSessionCorrection, parseSessionCorrectedResponse, sessionCorrectionDomainPayload,
   parseSessionDiscard, parseSessionDiscardedResponse,
   parseMobileTrainingDate, parseTrainingHistoryCursor, parseTrainingHistoryLimit, encodeTrainingHistoryCursor, parseExerciseHistoryLimit,
-  type TrainingExerciseHistoryResponse, type TrainingExerciseHistorySessionDto, type TrainingHistoryExercisesResponse,
+  type TrainingExerciseHistoryResponse, type TrainingExerciseHistorySessionDto, type TrainingHistoryMarkDto, type TrainingHistoryExercisesResponse,
   type SessionExerciseSyncDto, type SessionStructuralDto, type TrainingDayResponse, type TrainingHistoryResponse,
   type TrainingHistorySessionDto, type TrainingHistoryMonthResponse, parseMobileTrainingMonth,
   type TrainingWeekdaySessionsResponse, parseMobileTrainingWeeks,
@@ -306,9 +306,15 @@ function exerciseReportSessions(items: RobustExerciseHistoryItem[]): ExerciseRep
     })),
   }));
 }
-function exerciseHistorySessionDto(session: TrainingHistoryExerciseSession, routineIds?: Map<string, string | null>): TrainingExerciseHistorySessionDto {
+function exerciseHistorySessionDto(session: TrainingHistoryExerciseSession, routineIds?: Map<string, string | null>, sets?: Map<string, TrainingHistoryMarkDto[]>): TrainingExerciseHistorySessionDto {
   return { ...(routineIds ? { routineId: routineIds.get(session.sessionId) ?? null } : {}), sessionId: session.sessionId, logDate: session.logDate, routineName: session.routineName, mark: session.mark,
-    completedSets: session.completedSets, rirValues: session.rirValues };
+    completedSets: session.completedSets, rirValues: session.rirValues, ...(sets ? { sets: sets.get(session.sessionId) ?? [] } : {}) };
+}
+const finiteOrNull = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
+/** Each session's completed sets in set order, as recorded: a missing weight or reps stays null. */
+function completedSetsBySession(items: readonly RobustExerciseHistoryItem[]) {
+  return new Map(items.map(item => [item.session.id, item.exercise.sets.filter(set => set.is_completed).sort((a, b) => a.set_number - b.set_number)
+    .map(set => ({ weightKg: finiteOrNull(set.actual_weight_kg), reps: finiteOrNull(set.actual_reps) }))]));
 }
 /** One exercise's completed snapshot history with the Web latest/best marks. */
 export async function readMobileTrainingExerciseHistory(id: unknown, searchParams: URLSearchParams,
@@ -330,6 +336,7 @@ export async function readMobileTrainingExerciseHistory(id: unknown, searchParam
   const filtered = routineId === null ? items : items.filter(item => item.session.routine_id === routineId);
   const detail = buildTrainingHistoryExerciseDetail(exerciseReportSessions(filtered));
   const routineIds = expanded ? new Map(items.map(item => [item.session.id, item.session.routine_id])) : undefined;
+  const sets = searchParams.get("sets") === "1" ? completedSetsBySession(filtered) : undefined;
   const routines = new Map<string, { id: string; name: string }>();
   for (const item of items) if (item.session.routine_id && !routines.has(item.session.routine_id)) routines.set(item.session.routine_id,
     { id: item.session.routine_id, name: item.session.routine_name_snapshot ?? item.session.session_name ?? "Rutina" });
@@ -342,9 +349,9 @@ export async function readMobileTrainingExerciseHistory(id: unknown, searchParam
       weightMode: latestSnapshot?.weight_mode_snapshot ?? exercise?.weight_mode ?? null,
     },
     ...(expanded ? { routines: [...routines.values()].sort((a,b) => a.name.localeCompare(b.name, "es-AR")) } : {}),
-    latest: detail.latest ? exerciseHistorySessionDto(detail.latest, routineIds) : null,
-    best: detail.best ? exerciseHistorySessionDto(detail.best, routineIds) : null,
-    sessions: detail.sessions.slice(0, limit).map(session => exerciseHistorySessionDto(session, routineIds)),
+    latest: detail.latest ? exerciseHistorySessionDto(detail.latest, routineIds, sets) : null,
+    best: detail.best ? exerciseHistorySessionDto(detail.best, routineIds, sets) : null,
+    sessions: detail.sessions.slice(0, limit).map(session => exerciseHistorySessionDto(session, routineIds, sets)),
     hasMore: detail.sessions.length > limit,
   };
 }

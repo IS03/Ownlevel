@@ -5,7 +5,7 @@ import { evaluateAssociations, type AssociationEvaluation } from "./associations
 import { isSleepMetric } from "./sleep-metric";
 import { buildExposureContext, buildExposureTable, partialOutcomeDays, previousDate, strictOutcomeDays, weightOfDay, type ExposureTable } from "./exposures";
 import { describeFeelingOutcome, FEELING_OUTCOME_KINDS } from "./feeling-outcomes";
-import { recentChanges, sessionChange } from "./performance-change";
+import { lastShown, recentChanges, recentTimes, sessionChange } from "./performance-change";
 import { priorFeelingFact } from "./prior-feelings";
 import { routineRelation } from "./routine-relation";
 import { periodFacts, periodSummary } from "./period";
@@ -98,7 +98,8 @@ function withRecent<T extends { exerciseId: string; lastDate: string | null }>(s
   }
   // #533: the routines it was trained in, so Ejercicios can be cut by routine without another read.
   // The strict list names every exercise, so the routines go there once and the partial list does not repeat them.
-  return [...summaries.values()].map(row => ({ ...row, recent: recentChanges(rows.get(row.exerciseId) ?? []), ...(withRoutines ? { routineIds: [...(routines.get(row.exerciseId) ?? [])].sort() } : {}) }))
+  return [...summaries.values()].map(row => { const own = rows.get(row.exerciseId) ?? []; return { ...row, recent: recentChanges(own), times: recentTimes(own),
+    lastShown: lastShown(own.at(-1)?.change), ...(withRoutines ? { routineIds: [...(routines.get(row.exerciseId) ?? [])].sort() } : {}) }; })
     .sort((a, b) => (b.lastDate ?? "").localeCompare(a.lastDate ?? "") || a.exerciseId.localeCompare(b.exerciseId));
 }
 
