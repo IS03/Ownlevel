@@ -200,13 +200,16 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
   const sourceExclusions = { ...table.sourceExclusions };
   if (orphanRows) sourceExclusions.orphan_rows = orphanRows;
   const ordered = [...performance.days].sort((a, b) => b.date.localeCompare(a.date));
+  // Each day's own target, as recorded that day. Only when the reader sends targets: an older source publishes nothing.
+  const targets = source.dayTargets ? new Map(source.dayTargets.map(row => [row.date, { calories: row.calories, proteinG: row.proteinG }])) : null;
+  const targetOf = (date: string) => targets ? { target: targets.get(date) ?? { calories: null, proteinG: null } } : {};
   const days: DayFact[] = ordered.map(day => ({
     date: day.date, counts: day.counts, evaluableSessions: day.evaluableSessions, declineProportion: day.candidateDeclineProportion,
     equalSessionSensitivity: day.equalSessionWeightSensitivity, openDay: day.date >= options.today,
     context: { metrics: method === 2 ? (table.metricsByDate.get(day.date) ?? []).map(row => sleepIds.has(row.metricId) ? { ...row, sleepNight: context.sleepEvidence.get(row.metricId)?.get(day.date) ?? "undeclared" } : row)
       : table.metricsByDate.get(day.date) ?? [], nutrition: table.nutritionByDate.get(day.date) ?? null,
       ...(method === 2 ? { bodyWeight: weightOfDay(context.weightByDate.get(day.date)) } : {}),
-      previousDay: { date: previousDate(day.date), nutrition: context.nutritionByDate.get(previousDate(day.date)) ?? null } },
+      previousDay: { date: previousDate(day.date), nutrition: context.nutritionByDate.get(previousDate(day.date)) ?? null, ...targetOf(previousDate(day.date)) }, ...targetOf(day.date) },
     sessions: day.sessions.map((session): SessionFact => {
       const row = sessionById.get(session.sessionId);
       return { sessionId: session.sessionId, name: row?.name ?? null, routineId: session.routineId, routineName: row?.routineName ?? null,

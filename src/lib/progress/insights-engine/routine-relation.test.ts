@@ -144,3 +144,19 @@ describe("Relación de una rutina (#533)", () => {
     expect(parsePerformanceInsights(broken)).toBeUndefined();
   });
 });
+
+describe("objetivo de cada día (18/11)", () => {
+  it("publishes each day's own target and the day before's, and nothing when the reader sends none", () => {
+    const base = source();
+    const days = createInsightsSnapshot(base, { today: "2026-11-17", method: 2, revision: "t0" }).days;
+    expect(days.every(day => day.context.target === undefined && day.context.previousDay?.target === undefined)).toBe(true);
+    const withTargets = { ...base, dayTargets: [{ date: "2026-10-04", calories: 2300, proteinG: 150 }, { date: "2026-10-05", calories: 2600, proteinG: null }] };
+    const day = createInsightsSnapshot(withTargets, { today: "2026-11-17", method: 2, revision: "t1" }).days.find(row => row.date === "2026-10-05")!;
+    expect(day.context.target).toEqual({ calories: 2600, proteinG: null });
+    expect(day.context.previousDay).toMatchObject({ date: "2026-10-04", target: { calories: 2300, proteinG: 150 } });
+    // A day without a row has no recorded target: null, never today's or a zero.
+    const other = createInsightsSnapshot(withTargets, { today: "2026-11-17", method: 2, revision: "t1" }).days.find(row => row.date === "2026-10-09")!;
+    expect(other.context.target).toEqual({ calories: null, proteinG: null });
+    expect(parsePerformanceInsights(JSON.parse(JSON.stringify(insightsSummary(createInsightsSnapshot(withTargets, { today: "2026-11-17", method: 2, revision: "t1" }), { limit: 30 }))))).toBeTruthy();
+  });
+});

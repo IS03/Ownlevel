@@ -28,7 +28,11 @@ it('crosses midnight using real Córdoba dates, preserves legacy carbs scope, ex
  const old=unknown.snapshot.days.flatMap(d=>d.sessions).find(r=>r.sessionId===session.id)!;
  expect(old.context.carbsPre3h).toEqual({value:0,state:'recorded'});expect(old.context.preStart!.lastExplicitMeal).toMatchObject({hours:2,untimedInScope:true});
 });
-it.each(['registration_now','default_clock',null])('never substitutes %s provenance for an explicit consumption time',source=>{
+it('takes the loading time of a meal loaded «now» as its time (product decision 18/11)',()=>{
+ const s=descriptivePreMealFixture();s.meals[1]!.consumedAtSource='registration_now';s.meals[1]!.rawInput=null;
+ const row=run(s).full.sessionRows.find(r=>r.id===s.sessions[1]!.id)!;expect(row.preMeal.calories.value).not.toBeNull();expect(row.preMeal.lastMeal.value).not.toBeNull();
+});
+it.each(['default_clock',null])('never substitutes %s provenance for an explicit consumption time',source=>{
  const s=descriptivePreMealFixture();s.meals[1]!.consumedAtSource=source;s.meals[1]!.rawInput=source===null?'{}':null;
  const row=run(s).full.sessionRows.find(r=>r.id===s.sessions[1]!.id)!;expect(row.preMeal.calories.value).toBeNull();expect(row.preMeal.carbs.value).toBeNull();expect(row.preMeal.lastMeal.value).toBeNull();
 });

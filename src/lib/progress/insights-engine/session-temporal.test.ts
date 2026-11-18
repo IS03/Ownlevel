@@ -17,7 +17,7 @@ export function temporalFixture(): InsightsSource {
     meal(2,'2026-12-31','2026-12-31T23:30:00-03:00','user_declared',{ calories: 0,proteinG: 0,carbsG: 0,fatG: 0 }),
     meal(3,'2027-01-01','2027-01-01T00:45:00-03:00','user_declared',{ calories: 100,proteinG: null,carbsG: 20,fatG: null }),
     meal(4,'2027-01-01','2027-01-01T02:30:00-03:00'), // exact upper boundary: outside first window
-    meal(5,'2027-01-01',null), meal(6,'2026-12-31','2026-12-31T23:40:00-03:00','registration_now'),
+    meal(5,'2027-01-01',null), meal(6,'2026-12-31','2026-12-31T23:40:00-03:00','default_clock'), // a clock, not a statement (a loading time is the meal's time since 18/11)
     meal(7,'2026-12-31','2026-12-31T23:50:00-03:00','default_clock'),
   ] };
 }

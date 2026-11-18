@@ -52,18 +52,21 @@ export function toPerformanceSessions(source: InsightsSource): { sessions: Perfo
  * tell them apart: Web stamps its own clock. Only a positive marker proves a time: the recorded source, or the sheet import's flag
  * on a row an import run wrote, older than that column. A token can write raw_input on its own rows, so anywhere else the flag is
  * just text. Nothing is backfilled or inferred, so a time sent without a statement stays unverified.
+ *
+ * Product decision (18/11/2026): a meal loaded «now» (ChatGPT or any client that stamps the loading time) was eaten when it was
+ * loaded. That time is the meal's time, the same as a declared one: a person who loads when they eat must not lose the meal from
+ * «3 h antes» or «última comida». A time the clock filled in without that statement (`default_clock`) stays unknown.
  */
 export function mealTimeEvidence(meal: Pick<InsightsSource["meals"][number], "consumedAt" | "consumedAtSource" | "rawInput" | "entryKind" | "sourceType" | "importRunId">): MealTimeEvidence {
   if (meal.entryKind !== "meal" || instantMs(meal.consumedAt) === null) return "unknown";
-  if (meal.consumedAtSource === "user_declared" || meal.consumedAtSource === "imported") return "explicit";
-  if (meal.consumedAtSource === "registration_now") return "registration";
+  if (meal.consumedAtSource === "user_declared" || meal.consumedAtSource === "imported" || meal.consumedAtSource === "registration_now") return "explicit";
   if (meal.consumedAtSource === "default_clock") return "unknown";
   if (typeof meal.rawInput !== "string") return "unverified";
   let facts: unknown;
   try { facts = JSON.parse(meal.rawInput); } catch { return "unverified"; }
   if (!facts || typeof facts !== "object" || Array.isArray(facts)) return "unverified";
   const { originalTimeKnown, timeSource } = facts as { originalTimeKnown?: unknown; timeSource?: unknown };
-  if (originalTimeKnown === false) return timeSource === "registration" ? "registration" : "unknown";
+  if (originalTimeKnown === false) return timeSource === "registration" ? "explicit" : "unknown";
   return originalTimeKnown === true && timeSource === undefined && meal.sourceType === "sheet_import" && !!meal.importRunId ? "explicit" : "unverified";
 }
 

@@ -61,16 +61,16 @@ describe('bounded period details route', () => {
     const db=database();mocks.auth.mockResolvedValue({supabase:db.client,userId:USER});
     const res=await GET(request('view=period-explore&asOf=2026-11-07')),body=await res.json();
     expect(res.status).toBe(200);expect(parsePerformanceInsights(body)?.view).toBe('period-explore');expect(body.weeks.flatMap((w:{days:unknown[]})=>w.days)).toHaveLength(92);
-    expect(db.calls).toHaveLength(10);console.log('period-explore route fixture bytes:',Buffer.byteLength(JSON.stringify(body)));
+    expect(db.calls).toHaveLength(11);console.log('period-explore route fixture bytes:',Buffer.byteLength(JSON.stringify(body)));
     mocks.auth.mockResolvedValue({supabase:db.client,userId:USER.replace(/1$/,'2')});const other=await(await GET(request('view=period-explore&asOf=2026-11-07'))).json();expect(other.weeks.every((w:{days:{training:unknown,nutrition:unknown}[]})=>w.days.every(d=>d.training===null&&d.nutrition===null))).toBe(true);
     const moving=database(n=>n);mocks.auth.mockResolvedValue({supabase:moving.client,userId:USER});expect((await GET(request('view=period-explore&asOf=2026-11-07'))).status).toBe(503);
-    const once=database(n=>n===1?1:2);mocks.auth.mockResolvedValue({supabase:once.client,userId:USER});expect((await GET(request('view=period-explore&asOf=2026-11-07'))).status).toBe(200);expect(once.calls).toHaveLength(20);
+    const once=database(n=>n===1?1:2);mocks.auth.mockResolvedValue({supabase:once.client,userId:USER});expect((await GET(request('view=period-explore&asOf=2026-11-07'))).status).toBe(200);expect(once.calls).toHaveLength(22);
   });
   it('reads temporal context through the canonical grouped source under one revision; old views and parameters stay separate', async () => {
     const db=database(); mocks.auth.mockResolvedValue({supabase:db.client,userId:USER});
     const response=await GET(request('view=session-temporal&date=2026-08-03')), body=await response.json();
     expect(response.status).toBe(200); expect(parsePerformanceInsights(body)?.view).toBe('session-temporal'); expect(body.sessions).toHaveLength(1);
-    expect(db.calls).toHaveLength(9); console.log('session-temporal fixture bytes:', Buffer.byteLength(JSON.stringify(body)));
+    expect(db.calls).toHaveLength(10); console.log('session-temporal fixture bytes:', Buffer.byteLength(JSON.stringify(body)));
     mocks.auth.mockResolvedValue({supabase:db.client,userId:USER.replace(/1$/,'2')});
     expect((await (await GET(request('view=session-temporal&date=2026-08-03'))).json()).sessions).toEqual([]);
     for(const q of ['view=session-temporal&date=2026-02-30','view=session-temporal&date=2028-01-01','view=session-temporal&date=2026-08-03&asOf=2026-11-07','view=summary&date=2026-08-03']) expect((await GET(request(q))).status).toBe(400);

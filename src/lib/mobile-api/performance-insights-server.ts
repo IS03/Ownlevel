@@ -62,6 +62,7 @@ export function sleepNightOf(row: Pick<ValueRow, "metric_date" | "value" | "upda
 type MealRow = { id: string; consumed_at: string | null; consumed_at_source: string | null; raw_input: unknown; entry_kind: string | null; source_type: string | null; import_run_id: string | null;
   final_calories: unknown; final_protein_g: unknown; final_carbs_g: unknown; final_fat_g: unknown; day_logs: { log_date: string } };
 type FeelingRow = { session_id: string; revision: number; facts: unknown };
+type TargetRow = { log_date: string; nutrition_target_kcal_snapshot: unknown; protein_target_g_snapshot: unknown };
 
 /**
  * Six grouped streams, whole history, one stable order each. Pages grow with rows, never with exercises or candidates.
@@ -74,7 +75,7 @@ type FeelingRow = { session_id: string; revision: number; facts: unknown };
  */
 export async function readInsightsSource(context: Context): Promise<InsightsSource> {
   const { supabase, userId } = context;
-  const [sessions, exercises, feelings, definitions, values, meals, setTotal] = await Promise.all([
+  const [sessions, exercises, feelings, definitions, values, meals, setTotal, targets] = await Promise.all([
     readAllTrainingRows<SessionRow>("Leer sesiones de Insights", from => supabase.from("workout_sessions")
       .select("id,routine_id,routine_name_snapshot,session_name,status,started_at,ended_at,energy_level,performance_level,pain_level,day:day_logs!inner(log_date,weight_kg)", firstPage(from))
       .eq("user_id", userId).eq("status", "completed").order("id").range(from, from + 999).returns<SessionRow[]>()),
@@ -94,6 +95,9 @@ export async function readInsightsSource(context: Context): Promise<InsightsSour
       .eq("user_id", userId).is("deleted_at", null).order("id").range(from, from + 999).returns<MealRow[]>()),
     // How many sets the embedded lists must add up to: the same rows the stream they replace counted on its first page.
     countSets(context),
+    // Each day's target as it was that day (the day log's snapshot): «llegaste o te pasaste» is measured against that, never today's.
+    readAllTrainingRows<TargetRow>("Leer objetivos diarios de Insights", from => supabase.from("day_logs")
+      .select("log_date,nutrition_target_kcal_snapshot,protein_target_g_snapshot", firstPage(from)).eq("user_id", userId).order("log_date").range(from, from + 999).returns<TargetRow[]>()),
   ]);
   // Without joins on every page: rows of an in-progress or discarded session are dropped here, against the completed sessions just read.
   const completed = new Set(sessions.map(row => row.id));
@@ -117,6 +121,7 @@ export async function readInsightsSource(context: Context): Promise<InsightsSour
     metricValues: values.map(row => ({ metricId: row.metric_id, date: row.metric_date, value: row.value, sleepNight: sleepNightOf(row) })),
     meals: meals.map(row => ({ id: row.id, date: row.day_logs.log_date, consumedAt: row.consumed_at, consumedAtSource: row.consumed_at_source, rawInput: row.raw_input, entryKind: row.entry_kind, sourceType: row.source_type, importRunId: row.import_run_id,
       calories: strictNumber(row.final_calories), proteinG: strictNumber(row.final_protein_g), carbsG: strictNumber(row.final_carbs_g), fatG: strictNumber(row.final_fat_g) })),
+    dayTargets: targets.map(row => ({ date: row.log_date, calories: strictNumber(row.nutrition_target_kcal_snapshot), proteinG: strictNumber(row.protein_target_g_snapshot) })),
   };
 }
 

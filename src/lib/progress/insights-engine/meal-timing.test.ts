@@ -52,8 +52,8 @@ describe("#367 fase 2: alimentación antes del inicio", () => {
     expect(facts.proteinG).toEqual({ value: null, state: "untimed_meal_in_scope" });
     expect(facts.calories).toEqual({ value: null, state: "untimed_meal_in_scope" });
     expect(facts.lastExplicitMeal).toEqual({ hours: 0.75, state: "recorded", untimedInScope: true, unverifiedInScope: false });
-    // An approximate registration time the day before is not an explicit one either.
-    expect(pre(history([{ date: "2029-03-02", start: "2029-03-02T01:00:00-03:00", meals: [{ at: "2029-03-02T00:15:00-03:00" }, { at: "2029-03-01T20:00:00-03:00", date: "2029-03-01", time: "registration" }] }])).proteinG.state).toBe("untimed_meal_in_scope");
+    // A loading time the day before is the meal's time: outside the window, it does not block it.
+    expect(pre(history([{ date: "2029-03-02", start: "2029-03-02T01:00:00-03:00", meals: [{ at: "2029-03-02T00:15:00-03:00" }, { at: "2029-03-01T20:00:00-03:00", date: "2029-03-01", time: "registration" }] }])).proteinG.state).toBe("recorded");
     // The carbohydrates keep their published rule, for compatibility.
     expect(context(source).table.carbsPre3hBySession.get(id(2, 0))).toEqual({ value: 60, state: "recorded" });
     // The experimental candidates use the same eligibility: that day is out of them.
@@ -87,10 +87,10 @@ describe("#367 fase 2: alimentación antes del inicio", () => {
     expect(facts.proteinG).toEqual({ value: 30, state: "recorded" });
   });
 
-  it("does not take a registration time for an explicit one, nor place a meal it cannot", () => {
-    const approximate = pre(history([{ date: "2029-03-02", start: "2029-03-02T10:00:00.000Z", meals: [{ at: "2029-03-02T09:00:00.000Z", time: "registration" }] }]));
-    expect(approximate.proteinG.state).toBe("untimed_meal_in_scope");
-    expect(approximate.lastExplicitMeal).toMatchObject({ hours: null, state: "no_explicit_meal_in_12h", untimedInScope: true });
+  it("takes a loading time as the meal's time, and never places a meal it cannot", () => {
+    const loaded = pre(history([{ date: "2029-03-02", start: "2029-03-02T10:00:00.000Z", meals: [{ at: "2029-03-02T09:00:00.000Z", time: "registration" }] }]));
+    expect(loaded.proteinG.state).toBe("recorded");
+    expect(loaded.lastExplicitMeal).toMatchObject({ hours: 1, state: "recorded", untimedInScope: false });
     const unverified = pre(history([{ date: "2029-03-02", start: "2029-03-02T10:00:00.000Z", meals: [{ at: "2029-03-02T06:00:00.000Z" }, { at: "2029-03-02T09:00:00.000Z", time: "unverified" }] }]));
     expect(unverified.calories.state).toBe("unverified_meal_time_in_scope");
     // The explicit meal is still the last one recorded with an explicit time; the one it cannot place is said, not ignored.
