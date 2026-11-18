@@ -33,7 +33,7 @@ export async function loadSessionPresentation(api: SessionPresentationSources, s
   const rejection = [summary, feelings].find(denied);
   if (rejection) {
     const status = rejection.status === 'auth_required' ? 'auth_required' : 'unauthorized';
-    const meta = 'meta' in rejection ? rejection.meta as MobileApiResultMeta
+    const meta: MobileApiResultMeta = 'meta' in rejection ? rejection.meta as MobileApiResultMeta
       : { durationMs: 0, httpStatus: null, outcome: status };
     return { status, meta };
   }
