@@ -652,6 +652,23 @@ describe('exercise history routine scope', () => {
   });
 });
 
+describe('Ejercicios más claros · un ejercicio', () => {
+  it('shows the last time as the big number, the reps over weights and each session\'s sets', async () => {
+    mockParams.current = { id: ID(3) };
+    const sets = (reps: number[]) => reps.map(value => ({ weightKg: 20, reps: value }));
+    const session = (id: number, date: string, weight: number, reps: number, setReps: number[]) => ({ routineId: ID(1), sessionId: ID(id), logDate: date, routineName: 'PULL', mark: { weightKg: weight, reps }, completedSets: setReps.length, rirValues: [], sets: weight === 20 ? sets(setReps) : setReps.map(value => ({ weightKg: weight, reps: value })) });
+    const latest = session(5, '2026-11-17', 20, 12, [12, 12, 12]);
+    mockExerciseHistory.mockResolvedValue(ok({ exercise: { id: ID(3), name: 'REMO', muscleGroup: null, muscleLabel: null, implement: null, weightMode: 'Por brazo' },
+      latest, best: latest, hasMore: false, routines: [{ id: ID(1), name: 'PULL' }],
+      sessions: [latest, session(4, '2026-11-14', 20, 11, [11, 10]), session(2, '2026-11-10', 17.5, 12, [12])] }));
+    const view = wrap(<ExerciseHistoryScreen />); await flush();
+    expect(within(view.getByTestId('exercise-history-marks')).getByText('20 kg × 12')).toBeTruthy();
+    expect(within(view.getByTestId('exercise-history-marks')).getByText('Récord')).toBeTruthy();
+    expect(view.getByLabelText('Reps de tu mejor serie en cada sesión, sobre su peso. 17,5 kg: 12. 20 kg: 11, 12.')).toBeTruthy();
+    expect(view.getByLabelText(/^Martes, 17 de noviembre, PULL\. Mejor serie 20 kg × 12\. Series: 12, 12, 12, todas con 20 kg$/)).toBeTruthy();
+  });
+});
+
 describe('detail screens read once per visit', () => {
   it('a completed session: one detail read when it opens, one more when returning from correction', async () => {
     mockParams.current = { id: ID(1) };

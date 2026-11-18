@@ -66,7 +66,7 @@ describe('M3.4-3 history read contracts', () => {
     expect(await fetchTrainingExerciseHistory(api, exerciseId, 40)).toMatchObject({ status: 'unavailable' });
     expect(fetch.mock.calls.map(([url]) => String(url).replace('https://example.test', ''))).toEqual([
       '/api/mobile/v1/training/history?limit=20&cursor=cur_1', '/api/mobile/v1/training/days/2026-10-01',
-      '/api/mobile/v1/training/history/exercises', `/api/mobile/v1/training/history/exercises/${exerciseId}?limit=40&historyByRoutine=1`]);
+      '/api/mobile/v1/training/history/exercises', `/api/mobile/v1/training/history/exercises/${exerciseId}?limit=40&historyByRoutine=1&sets=1`]);
   });
 });
 
@@ -120,7 +120,7 @@ describe('routine-scoped exercise history', () => {
     expect(parseTrainingExerciseHistory({ ...expanded, sessions: [{ ...entry, routineId: 'bad' }] }, exerciseId)).toBeUndefined();
     const fetch = jest.fn<typeof globalThis.fetch>().mockResolvedValue(response(200, expanded));
     await fetchTrainingExerciseHistory(client(fetch), exerciseId, 20, undefined, otherId);
-    expect(String(fetch.mock.calls[0][0])).toContain(`historyByRoutine=1&routineId=${otherId}`);
+    expect(String(fetch.mock.calls[0][0])).toContain(`historyByRoutine=1&sets=1&routineId=${otherId}`);
   });
 });
 

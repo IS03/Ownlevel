@@ -1,19 +1,19 @@
 import { useCallback, useState } from 'react';
-import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchTrainingExerciseHistory, type TrainingExerciseHistorySession, type TrainingHistoryMark } from '@/api/training-history';
-import { AppIcon, AppText, Button, EmptyState, Surface, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, Button, EmptyState, pressedStyle, radius, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { exerciseSetLabel } from './exercise-detail-model';
 import { GroupChip } from './group-chip';
-import { HistoryScroll, ListCard, ReadStateScreen, StaleNotice } from './history-components';
-import { bestSetBars, dayHeading, plural, sameMark, shortDate, weightModeUnit } from './history-model';
+import { HistoryScroll, ReadStateScreen, StaleNotice } from './history-components';
+import { dayHeading, plural, repsOverWeights, sameMark, setChips, shortDate, weightModeUnit } from './history-model';
 import { useFocusedRead } from './use-read';
 
-const CHART_HEIGHT = 96;
 const number = (value: number) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(value);
 
-/** HI4: one exercise's full history — routine chips, latest/best card, small best-set chart and sessions. */
+/** HI4 · Ejercicios más claros: one exercise's history — routine chips, the last time as the big number, reps over weights and sessions. */
 export function ExerciseHistoryScreen() {
   const params = useLocalSearchParams<{ id: string; routineId?: string }>();
   const exerciseId = typeof params.id === 'string' ? params.id : '';
@@ -31,33 +31,80 @@ function ExerciseHistoryScope({ exerciseId, initialRoutineId }: { exerciseId: st
     onRead={(routines, best, exerciseName) => { setOptions(routines); setName(exerciseName); if (routineId === null) setOverallBest(best); }} onRoutineChange={setRoutineId} />;
 }
 
-function Mark({ title, item, label, record }: { title: string; item: TrainingExerciseHistorySession; label: string; record: boolean }) {
+/** «Última vez» as the screen's one big number, with «Récord» beside it when it is. */
+function LastTime({ item, label, record }: { item: TrainingExerciseHistorySession; label: string; record: boolean }) {
   const { colors } = useOwnlevelTheme();
-  return <View style={styles.mark}>
-    <View style={styles.markTitle}><AppText muted variant="footnote" numberOfLines={1}>{title}</AppText>
-      {record ? <View style={[styles.record, { backgroundColor: colors.brandSubtle }]}><AppText variant="caption" style={{ color: colors.primary, fontWeight: '600' }}>Récord</AppText></View> : null}</View>
-    <AppText numeric variant="title2">{label}</AppText>
-    <AppText muted numeric variant="footnote">{shortDate(item.logDate)}</AppText>
+  return <View style={styles.last} testID="exercise-history-marks">
+    <AppText muted variant="caption" style={styles.kicker}>Última vez · {dayHeading(item.logDate).replace(',', '').split(' de ')[0]}</AppText>
+    <View style={styles.lastRow}>
+      <AppText numeric variant="heroNumber" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={styles.flexShrink}>{label}</AppText>
+      {record ? <View style={[styles.record, { backgroundColor: colors.brandSubtle }]}><AppText variant="caption" style={{ color: colors.primary, fontWeight: '600' }}>Récord</AppText></View> : null}
+    </View>
   </View>;
 }
 
-/** Small on purpose (the full analysis goes to Progreso): bars from 0, missing = gap, latest in the accent. */
-function BestSetChart({ sessions, unit }: { sessions: TrainingExerciseHistorySession[]; unit: string }) {
-  const { colors, isDark } = useOwnlevelTheme();
-  const bars = bestSetBars(sessions);
-  const values = bars.map(bar => bar.value).filter((value): value is number => value !== null);
-  if (bars.length < 2 || !values.length) return null;
-  const max = Math.max(...values, 0) || 1, light = brandTokens.intensity[isDark ? 'dark' : 'light'][2];
-  return <Surface style={styles.chart} accessible accessibilityLabel={`Mejor serie por sesión en ${unit}: ${bars.map(bar => `${shortDate(bar.date)} ${bar.value === null ? 'sin dato' : number(bar.value)}`).join(', ')}`}>
-    <AppText muted variant="footnote">Mejor serie por sesión · {unit}</AppText>
-    <View style={styles.bars}>{bars.map((bar, index) => <View key={bar.sessionId} style={styles.barSlot}>
-      {bar.value === null ? <AppText muted variant="caption">—</AppText> : <>
-        <AppText muted numeric variant="caption">{number(bar.value)}</AppText>
-        <View style={[styles.bar, { height: Math.max(2, bar.value / max * CHART_HEIGHT), backgroundColor: index === bars.length - 1 ? colors.primary : light }]} />
-      </>}
-    </View>)}</View>
-    <View style={styles.axis}><AppText muted numeric variant="caption">{shortDate(bars[0]!.date)}</AppText><AppText muted numeric variant="caption">{shortDate(bars.at(-1)!.date)}</AppText></View>
-  </Surface>;
+const CHART_H = 150, TOP = 18, BOTTOM = 34, DOT = 3.5;
+/**
+ * The reps of each session's best set, over a band per weight: a slope inside a band is reps at the same weight, a new band is a
+ * weight change. Small on purpose (the full analysis goes to Progreso). The latest point is in the accent; a gap is a missing value.
+ */
+function RepsChart({ sessions, unit }: { sessions: TrainingExerciseHistorySession[]; unit: string }) {
+  const { colors } = useOwnlevelTheme();
+  const [width, setWidth] = useState(0);
+  const { points, bands } = repsOverWeights(sessions);
+  const reps = points.map(point => point.reps).filter((value): value is number => value !== null);
+  if (points.length < 2 || reps.length < 2) return null;
+  const min = Math.min(...reps) - 1, max = Math.max(...reps) + 1, slot = width / points.length;
+  const x = (index: number) => slot * index + slot / 2, y = (value: number) => TOP + (1 - (value - min) / (max - min)) * (CHART_H - TOP - BOTTOM);
+  const weightText = (weight: number | null) => weight === null ? 'sin peso' : `${number(weight)} ${unit}`;
+  const spoken = `Reps de tu mejor serie en cada sesión, sobre su peso. ${bands.map(band => `${weightText(band.weight)}: ${points.slice(band.start, band.end + 1).map(point => point.reps === null ? 'sin dato' : number(point.reps)).join(', ')}`).join('. ')}.`;
+  return <View style={styles.chart} accessible accessibilityRole="image" accessibilityLabel={spoken} testID="exercise-history-reps">
+    <AppText muted variant="footnote">Reps de tu mejor serie</AppText>
+    <View style={{ height: CHART_H }} onLayout={event => setWidth(event.nativeEvent.layout.width)}>
+      {width ? <Svg width={width} height={CHART_H}>
+        {bands.map((band, index) => {
+          const last = index === bands.length - 1, left = slot * band.start + 1, w = slot * (band.end - band.start + 1) - 2;
+          return <G key={band.start}>
+            <Rect x={left} y={0} width={w} height={CHART_H - BOTTOM + 14} rx={8} fill={last ? colors.primary : colors.textMuted} fillOpacity={last ? 0.14 : 0.08} />
+            {w >= 44 ? <SvgText x={left + 6} y={CHART_H - BOTTOM + 8} fontSize={11} fill={last ? colors.primary : colors.textMuted} fontWeight={last ? '600' : '400'}>{weightText(band.weight)}</SvgText> : null}
+            {points.slice(band.start, band.end + 1).map((point, offset) => {
+              const index = band.start + offset, next = points[index + 1];
+              return point.reps !== null && next && index < band.end && next.reps !== null
+                ? <Line key={`l${index}`} x1={x(index)} y1={y(point.reps)} x2={x(index + 1)} y2={y(next.reps)} stroke={colors.primary} strokeOpacity={0.55} strokeWidth={2} /> : null;
+            })}
+          </G>;
+        })}
+        {points.map((point, index) => point.reps === null ? null : <Circle key={point.sessionId} cx={x(index)} cy={y(point.reps)} r={index === points.length - 1 ? DOT + 1.5 : DOT}
+          fill={colors.primary} fillOpacity={index === points.length - 1 ? 1 : 0.55} />)}
+        {points.map((point, index) => point.reps !== null && (index === points.length - 1 || bands.some(band => band.start === index))
+          ? <SvgText key={`t${point.sessionId}`} x={x(index)} y={y(point.reps) - 8} fontSize={11} textAnchor="middle" fill={colors.text}>{number(point.reps)}</SvgText> : null)}
+      </Svg> : null}
+    </View>
+    <View style={styles.axis}><AppText muted numeric variant="caption">{shortDate(points[0]!.date)}</AppText><AppText muted numeric variant="caption">{shortDate(points.at(-1)!.date)}</AppText></View>
+  </View>;
+}
+
+/** One session: date and routine, the reps of each set (the mark's set highlighted) and the weight when all sets share it. */
+function SessionLine({ session, label, unit, first, onPress }: { session: TrainingExerciseHistorySession; label: string; unit: string | null; first: boolean; onPress: () => void }) {
+  const { colors } = useOwnlevelTheme();
+  const reduced = useReduceMotion();
+  const { fontScale } = useWindowDimensions();
+  const chips = setChips(session.sets, session.mark);
+  const weight = chips?.oneWeight && chips.chips[0]?.weight !== null && chips.chips[0]?.weight !== undefined && unit ? `${number(chips.chips[0].weight)} ${unit}` : null;
+  const spokenSets = chips ? `Series: ${chips.chips.map(chip => chip.reps === null ? 'sin reps' : number(chip.reps)).join(', ')}${weight ? `, todas con ${weight}` : ''}` : plural(session.completedSets, 'serie');
+  return <Pressable accessibilityRole="button" accessibilityLabel={`${dayHeading(session.logDate)}, ${session.routineName}. Mejor serie ${label}. ${spokenSets}`}
+    testID={`exercise-history-session-${session.sessionId}`} onPress={onPress}
+    style={({ pressed }) => [styles.session, !first && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
+    <View style={styles.flex}>
+      <AppText muted numberOfLines={1} variant="footnote">{dayHeading(session.logDate).replace(',', '').split(' de ')[0]} · {session.routineName}</AppText>
+      {chips && fontScale <= 1.3 ? <View style={styles.chips}>{chips.chips.map((chip, index) => <View key={index}
+        style={[styles.chip, { backgroundColor: chip.best ? colors.brandSubtle : colors.surfaceRaised }]}>
+        <AppText numeric variant="caption" style={chip.best ? { color: colors.primary, fontWeight: '700' } : undefined}>{chip.reps === null ? '—' : number(chip.reps)}</AppText>
+      </View>)}</View> : <AppText numeric variant="headline">{label} · {plural(session.completedSets, 'serie')}</AppText>}
+    </View>
+    {chips && fontScale <= 1.3 ? <AppText numeric variant="headline">{weight ?? label}</AppText> : null}
+    <AppIcon color={colors.textMuted} name="chevronRight" size={15} />
+  </Pressable>;
 }
 
 function ExerciseHistoryContent({ exerciseId, routineId, options, overallBest, name, onRead, onRoutineChange }: {
@@ -93,25 +140,14 @@ function ExerciseHistoryContent({ exerciseId, routineId, options, overallBest, n
     <AppText muted variant="subheadline">{identity}</AppText>
     {filters}
     {state.stale ? <StaleNotice onRetry={() => void reload()} /> : null}
-    {latest ? <Surface style={styles.marks} testID="exercise-history-marks">
-      <Mark title="Última vez" item={latest} label={markText(latest.mark)} record={single && record} />
-      {best && !single ? <Mark title={routineId ? `Mejor en ${selectedName}` : 'Mejor marca'} item={best} label={markText(best.mark)} record={record} /> : null}
-    </Surface> : null}
-    {unit ? <BestSetChart sessions={sessions} unit={unit} /> : null}
-    <AppText variant="title2" style={styles.section}>Sesiones</AppText>
+    {latest ? <LastTime item={latest} label={markText(latest.mark)} record={single && record} /> : null}
+    {best && latest && !single ? <AppText muted numeric variant="footnote" testID="exercise-history-best">{routineId ? `Mejor en ${selectedName}` : 'Mejor marca'}: {markText(best.mark)} · {shortDate(best.logDate)}{record ? ' · Récord' : ''}</AppText> : null}
+    {unit ? <RepsChart sessions={sessions} unit={unit} /> : null}
+    <AppText muted variant="caption" style={[styles.kicker, styles.section]} accessibilityRole="header">Sesiones</AppText>
     {sessions.length === 0 ? <EmptyState title={routineId ? `Todavía no lo hiciste en ${selectedName}` : 'Todavía no lo hiciste'} description="Las sesiones terminadas aparecen acá."
       action={routineId ? <Button label="Ver todas" variant="secondary" onPress={() => onRoutineChange(null)} /> : undefined} />
-      : <ListCard>{sessions.map((session, index) => <Pressable key={session.sessionId} accessibilityRole="button"
-        accessibilityLabel={`${dayHeading(session.logDate)}, ${session.routineName}. ${markText(session.mark)}. ${plural(session.completedSets, 'serie')}`}
-        testID={`exercise-history-session-${session.sessionId}`} onPress={() => router.push(`/(tabs)/train/history/${session.sessionId}`)}
-        style={({ pressed }) => [styles.row, pressed ? { backgroundColor: colors.surfaceRaised } : null]}>
-        {index > 0 ? <View style={[styles.divider, { backgroundColor: colors.border }]} /> : null}
-        <View style={styles.flex}>
-          <AppText muted numberOfLines={1} variant="footnote">{dayHeading(session.logDate).replace(',', '')} · {session.routineName}</AppText>
-          <AppText numeric numberOfLines={1} variant="headline">{markText(session.mark)} · {plural(session.completedSets, 'serie')}</AppText>
-        </View>
-        <AppIcon color={colors.textMuted} name="chevronRight" size={15} />
-      </Pressable>)}</ListCard>}
+      : <View>{sessions.map((session, index) => <SessionLine key={session.sessionId} session={session} label={markText(session.mark)} unit={unit} first={index === 0}
+        onPress={() => router.push(`/(tabs)/train/history/${session.sessionId}`)} />)}</View>}
     {hasMore && limit < 100 ? <Button label={state.refreshing ? 'Cargando…' : 'Ver más'} variant="secondary" disabled={state.refreshing}
       onPress={() => setLimit(current => Math.min(current + 20, 100))} /> : null}
   </HistoryScroll></>;
@@ -120,17 +156,16 @@ const styles = StyleSheet.create({
   // flexGrow 0: a horizontal ScrollView grows by default and stretched the chips while loading.
   filterScroll: { flexGrow: 0, marginHorizontal: -spacing.lg, overflow: 'visible' },
   filters: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.xs },
-  flex: { flex: 1, gap: 2 },
-  marks: { flexDirection: 'row', gap: spacing.md },
-  mark: { flex: 1, gap: 2 },
-  markTitle: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: 22 },
-  record: { borderRadius: radius.chip, paddingHorizontal: spacing.sm, paddingVertical: 1 },
-  chart: { gap: spacing.sm },
-  bars: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, height: CHART_HEIGHT + 22 },
-  barSlot: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: 4 },
-  bar: { width: '100%', borderTopLeftRadius: 4, borderTopRightRadius: 4 },
+  flex: { flex: 1, gap: 4 },
+  flexShrink: { flexShrink: 1 },
+  kicker: { letterSpacing: 0.6, textTransform: 'uppercase' },
+  last: { gap: 2 },
+  lastRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  record: { borderRadius: radius.chip, paddingHorizontal: spacing.sm, paddingVertical: 2 },
+  chart: { gap: spacing.xs },
   axis: { flexDirection: 'row', justifyContent: 'space-between' },
-  section: { paddingTop: spacing.sm },
-  row: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  divider: { position: 'absolute', top: 0, left: spacing.md, right: 0, height: StyleSheet.hairlineWidth },
+  section: { paddingTop: spacing.md },
+  session: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+  chip: { minWidth: 28, alignItems: 'center', borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2 },
 });
