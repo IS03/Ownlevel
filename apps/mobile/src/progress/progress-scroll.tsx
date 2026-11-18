@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon, AppText, GlassSurface, ScrollScreen, useOwnlevelTheme,useReduceMotion } from '@/design-system';
 import { CompareHeaderButton, PeriodBar, ProgressPeriodBlock, STRIP } from './period-controls';
 import { CompareSheet, CustomRangeSheet } from './period-sheets';
-import { rangeShortLabel } from './progress-range';
+import { daysBetween, progressRange, rangeShortLabel, shortRange } from './progress-range';
 import { useProgressRange } from './progress-range-context';
 import type { DateRange } from './progress-range';
 
@@ -21,10 +21,10 @@ const SMALL = 21;
  * uses). Scrolling, the title never moves sideways: it shrinks in place on the left, and the period you are reading
  * fades in under it ("Este mes", "Mes anterior", "17 sep – 16 oct").
  */
-export function ProgressScroll({ title, testID, refreshControl, children, compactTitle, multilineTitle = false, root = false, periodControls = true, openSheet = null, sheetProposal = null, onSheetOpened }: {
+export function ProgressScroll({ title, testID, refreshControl, children, compactTitle, multilineTitle = false, root = false, periodControls = true, compactPeriod = false, openSheet = null, sheetProposal = null, onSheetOpened }: {
   title: string; testID: string; refreshControl?: React.ReactElement<RefreshControlProps>; children: ReactNode; multilineTitle?: boolean; compactTitle?: string;
   /** The tab's first screen: no back button and a large title. */
-  root?: boolean; periodControls?: boolean;
+  root?: boolean; periodControls?: boolean; compactPeriod?: boolean;
   /** #519 · A sheet asked for by the route (the portada's «Comparar períodos»): opened once, then the route forgets it. */
   openSheet?: 'compare' | null; onSheetOpened?: () => void;
   /** The period that sheet proposes as A (applied only on «Listo»). */
@@ -34,8 +34,9 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
   const { colors } = useOwnlevelTheme();
   const { top } = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
+  const compactLarge = compactPeriod && fontScale > 1.3;
   // The fixed header must make room for Dynamic Type, including accessibility sizes.
-  const barHeight = BAR * Math.max(1, fontScale);
+  const barHeight = BAR * Math.max(1, fontScale) * (compactPeriod && fontScale > 1.3 ? 1.5 : 1);
   const { state, today } = useProgressRange();
   const [sheet, setSheet] = useState<'custom' | 'compare' | null>(openSheet);
   const [proposal, setProposal] = useState<DateRange | null>(openSheet ? sheetProposal : null);
@@ -75,9 +76,15 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
       }) : undefined}
       contentContainerStyle={{ paddingTop: header }}>
       {/* The strip opens the page and scrolls away with it; only the title bar stays. */}
-      {periodControls?<View style={styles.stripSlot}><PeriodBar onCustom={open.onCustom} /></View>:null}
+      {periodControls && !compactPeriod?<View style={styles.stripSlot}><PeriodBar onCustom={open.onCustom} /></View>:null}
       {multilineTitle ? <AppText accessibilityRole="header" variant="title1">{title}</AppText> : null}
-      {periodControls?<ProgressPeriodBlock {...open} />:null}
+      {periodControls ? compactPeriod ? <View style={styles.compactPeriod}>
+        <AppText numeric muted variant="footnote" style={{ flex: 1 }}>{shortRange(progressRange(state, today), today)}</AppText>
+        {compactLarge ? <Pressable testID="training-period-picker" accessibilityRole="button" accessibilityLabel="Elegir período de entrenamiento" onPress={open.onCustom}>
+          <GlassSurface interactive style={styles.periodButton}><AppText numeric variant="subheadline">{daysBetween(progressRange(state, today).start, progressRange(state, today).end)} días</AppText><AppIcon name="chevronDown" color={colors.textMuted} size={17} /></GlassSurface>
+        </Pressable> : null}
+        <CompareHeaderButton onPress={open.onCompare} />
+      </View> : <ProgressPeriodBlock {...open} /> : null}
       {children}
       {/* The floating tab bar sits over the end of the page: the last row always scrolls clear of it. */}
       <View style={styles.tabRoom} />
@@ -89,17 +96,19 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
         </Pressable>}
         <View pointerEvents="none" style={[styles.titleSlot, { height: barHeight }]}>
           <Animated.View style={[styles.title, titleStyle]}>
-            <AppText accessibilityRole="header" numberOfLines={1} variant={root ? 'largeTitle' : 'title2'}>{multilineTitle ? barTitle : title}</AppText>
+            <AppText accessibilityRole="header" numberOfLines={compactPeriod && fontScale > 1.3 ? undefined : 1} variant={root ? 'largeTitle' : 'title2'}>{multilineTitle ? barTitle : title}</AppText>
           </Animated.View>
-          {periodControls?<Animated.View accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
+          {periodControls && !compactLarge?<Animated.View accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
             style={[styles.rangeUnder, { top: barHeight / 2 + 6 * fontScale }, rangeStyle]} testID="progress-compact-range">
             <AppText muted numberOfLines={1} numeric variant="caption">{rangeShortLabel(state, today)}</AppText>
           </Animated.View>:null}
         </View>
-        {periodControls?<CompareHeaderButton onPress={() => setSheet('compare')} />:null}
+        {periodControls ? compactPeriod ? compactLarge ? null : <Pressable testID="training-period-picker" accessibilityRole="button" accessibilityLabel="Elegir período de entrenamiento" onPress={open.onCustom}>
+          <GlassSurface interactive style={styles.periodButton}><AppText numeric variant="subheadline">{daysBetween(progressRange(state, today).start, progressRange(state, today).end)} días</AppText><AppIcon name="chevronDown" color={colors.textMuted} size={17} /></GlassSurface>
+        </Pressable> : <CompareHeaderButton onPress={() => setSheet('compare')} /> : null}
       </View>
     </View>
-    {sheet === 'custom' ? <CustomRangeSheet onClose={() => setSheet(null)} /> : null}
+    {sheet === 'custom' ? <CustomRangeSheet shortPreset={compactPeriod} onClose={() => setSheet(null)} /> : null}
     {sheet === 'compare' ? <CompareSheet proposal={proposal} onClose={() => { setSheet(null); setProposal(null); }} /> : null}
   </>;
 }
@@ -113,4 +122,6 @@ const styles = StyleSheet.create({
   backButton: { width: 40, height: 40, borderRadius: 20, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   // Edge to edge inside the padded page.
   stripSlot: { height: STRIP, marginHorizontal: -16 },
+  compactPeriod: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 },
+  periodButton: { minHeight: 44, paddingHorizontal: 12, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 8 },
 });
