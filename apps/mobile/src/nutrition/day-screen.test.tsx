@@ -1,7 +1,7 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { StrictMode } from 'react';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { Alert, Modal, AppState, type AppStateStatus, RefreshControl, ScrollView, StyleSheet } from 'react-native';
+import { Alert, Dimensions, Modal, AppState, type AppStateStatus, RefreshControl, ScrollView, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { State } from 'react-native-gesture-handler';
@@ -531,6 +531,33 @@ describe('Native Nutrition day', () => {
     });
     fireEvent.press(save());
     await waitFor(() => expect(mockRequest).toHaveBeenCalledTimes(1));
+  });
+  it('lists each moment by time, with the time in its own column and a quiet line for the share of the target (L3)', async () => {
+    const original = { window: Dimensions.get('window'), screen: Dimensions.get('screen') };
+    Dimensions.set({ window: { ...original.window, fontScale: 1 }, screen: original.screen });
+    try {
+      const day = nutritionFixture('2026-10-02');
+      if (day.nutrition.status !== 'ok' || day.nutrition.data.dayState !== 'recorded') throw new Error('fixture');
+      const data = day.nutrition.data, base = data.meals[0];
+      const at = (hhmm: string) => `2026-10-02T${String(Number(hhmm.slice(0, 2)) + 3).padStart(2, '0')}:${hhmm.slice(3)}:00Z`;
+      const meals = [
+        { ...base, id: `${base.id.slice(0, -1)}1`, title: 'TERCERA', calories: 900, consumedAt: at('13:01'), mealLabel: 'lunch' as const },
+        { ...base, id: `${base.id.slice(0, -1)}2`, title: 'SEGUNDA', calories: 450, consumedAt: at('12:56'), mealLabel: 'lunch' as const },
+        { ...base, id: `${base.id.slice(0, -1)}3`, title: 'PRIMERA', calories: null, consumedAt: at('11:11'), mealLabel: 'lunch' as const },
+      ];
+      mockRead.mockResolvedValue(ok('2026-10-02', { ...day, nutrition: { status: 'ok', data: { ...data, meals } } }) as never);
+      const view = render(element()); await view.findByText('TERCERA');
+      const order = view.getAllByText(/^(PRIMERA|SEGUNDA|TERCERA)$/).map(node => node.props.children);
+      expect(order).toEqual(['PRIMERA', 'SEGUNDA', 'TERCERA']);
+      expect(view.getAllByTestId('nutrition-meal-time').map(node => node.props.children)).toEqual(['11:11', '12:56', '13:01']);
+      // The time is not repeated in the detail line, and no row repeats «kcal» (the section total carries the unit).
+      expect(view.queryByText(/^\d{2}:\d{2} · P /)).toBeNull();
+      expect(view.getByText('450')).toBeTruthy(); expect(view.getByText('—')).toBeTruthy();
+      // 450 of 1800 kcal is a quarter; 900 is half; a meal without calories draws no line.
+      const widths = view.getAllByTestId('nutrition-meal-share').map(node => StyleSheet.flatten(node.props.children.props.style).width);
+      expect(widths).toEqual(['25%', '50%']);
+      expect(view.getByLabelText(/^SEGUNDA, 450 kcal\. 12:56/)).toBeTruthy();
+    } finally { Dimensions.set(original); }
   });
   it('keeps a meal without a time as Sin hora (#308)', async () => {
     const day = nutritionFixture('2026-10-02'), data = day.nutrition.status === 'ok' && day.nutrition.data.dayState === 'recorded' ? day.nutrition.data : undefined;
