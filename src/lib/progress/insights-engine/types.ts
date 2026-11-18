@@ -41,6 +41,11 @@ export type InsightsSource = {
     order?: number | null }[];
   /** sleepNight: whether the value carries a valid declaration of which night it means. Absent: undeclared. */
   metricValues: readonly { metricId: string; date: string; value: unknown; sleepNight?: SleepNightEvidence }[];
+  /**
+   * Optional: each day's nutrition target as it was that day (the day log's snapshot), never today's target applied backwards.
+   * Absent: an older reader; a day without a row or a null value has no recorded target.
+   */
+  dayTargets?: readonly { date: string; calories: number | null; proteinG: number | null }[];
   meals: readonly {
     id: string; date: string; consumedAt: string | null; rawInput: unknown; entryKind: string | null; sourceType: string | null;
     /** Who set the time, recorded when it was written. Null: nobody can tell, including every row older than the column. */
@@ -167,8 +172,11 @@ export type DayFact = {
      * #533, optional: what was recorded on the previous logical day, by calendar (it crosses months and years). `nutrition` is
      * null when that day has no meals; a total with `missing` > 0 is partial, and a recorded 0 with nothing missing is a zero.
      */
-    previousDay?: { date: string; nutrition: NutritionContext } };
+    previousDay?: { date: string; nutrition: NutritionContext; target?: DayTarget };
+    /** Optional: that day's target as recorded that day. Null values: no target recorded. Absent: an older server. */
+    target?: DayTarget };
 };
+export type DayTarget = { calories: number | null; proteinG: number | null };
 export type ExerciseSummary = {
   exerciseId: string; name: string; exposures: number; improved: number; observedStable: number; declined: number; ambiguous: number; insufficient: number;
   lastDate: string | null; lastStatus: PerformanceStatus; lastReason: string;

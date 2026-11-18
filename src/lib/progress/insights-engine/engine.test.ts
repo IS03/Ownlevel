@@ -131,7 +131,8 @@ describe("contexto y exposiciones", () => {
     }
     // The legacy helper and its consumers keep their reading.
     expect(nutritionMealTimeSource(null, "meal")).toBe("explicit");
-    expect(mealTimeEvidence({ ...base, rawInput: REGISTRATION })).toBe("registration");
+    // A loading time is the meal's time (product decision 18/11/2026).
+    expect(mealTimeEvidence({ ...base, rawInput: REGISTRATION })).toBe("explicit");
     expect(mealTimeEvidence({ ...base, rawInput: '{"originalTimeKnown":false}' })).toBe("unknown");
     expect(mealTimeEvidence({ ...base, entryKind: "legacy_daily_summary" })).toBe("unknown");
     expect(mealTimeEvidence({ ...base, consumedAt: "2026-01-02 16:00" })).toBe("unknown");
@@ -141,14 +142,14 @@ describe("contexto y exposiciones", () => {
     const row = (consumedAtSource: string | null, rawInput: unknown = null, origin: { sourceType: string; importRunId: string | null } = fromImport) => mealTimeEvidence({ consumedAt: "2026-01-02T16:00:00.000Z", consumedAtSource, rawInput, entryKind: "meal", ...origin });
     expect(row("user_declared")).toBe("explicit");
     expect(row("imported")).toBe("explicit");
-    expect(row("registration_now")).toBe("registration");
+    expect(row("registration_now")).toBe("explicit");
     expect(row("default_clock")).toBe("unknown");
     // A clock stays a clock, whatever an old marker says; an older row falls back to its marker.
     expect(row("default_clock", PROVEN)).toBe("unknown");
     expect(row(null)).toBe("unverified");
     expect(row(null, PROVEN)).toBe("explicit");
     expect(row(null, PROVEN, { sourceType: "manual", importRunId: null })).toBe("unverified");
-    expect(row(null, REGISTRATION)).toBe("registration");
+    expect(row(null, REGISTRATION)).toBe("explicit");
     expect(mealTimeEvidence({ consumedAt: "not a time", consumedAtSource: "user_declared", rawInput: null, entryKind: "meal", ...fromImport })).toBe("unknown");
     expect(mealTimeEvidence({ consumedAt: "2026-01-02T16:00:00.000Z", consumedAtSource: "user_declared", rawInput: null, entryKind: "legacy_daily_summary", ...fromImport })).toBe("unknown");
   });
@@ -184,7 +185,7 @@ describe("contexto y exposiciones", () => {
       ["recorded zero", [meal({ id: "m", date: d, carbsG: 0 })], 0],
       ["no provenance", [meal({ id: "m", date: d, rawInput: null })], undefined, "unverified_meal_time_in_scope"],
       ["invalid metadata", [meal({ id: "m", date: d, rawInput: "not json" })], undefined, "unverified_meal_time_in_scope"],
-      ["registration time", [meal({ id: "m", date: d, rawInput: REGISTRATION })], undefined, "untimed_meal_in_scope"],
+      ["registration time (the meal's time)", [meal({ id: "m", date: d, rawInput: REGISTRATION })], 60],
       ["legacy summary", [meal({ id: "m", date: d, entryKind: "legacy_daily_summary" })], undefined, "untimed_meal_in_scope"],
     ];
     for (const [name, meals, expected, reason] of cases) {
@@ -201,7 +202,8 @@ describe("contexto y exposiciones", () => {
     const candidate = candidateOf(history(oscillating(6), { meals: [meal({ id: "x", date: d, consumedAt: `${d}T14:30:00.000Z`, carbsG: 30 })] }), "meal_window:carbsG:pre_3h");
     expect(candidate.values.has(d)).toBe(false); expect(candidate.sensitivities!.window_4h!.get(d)).toBe(30); expect(candidate.sensitivities!.window_2h!.has(d)).toBe(false);
     const approximate = candidateOf(history(oscillating(6), { meals: [meal({ id: "x", date: d, rawInput: REGISTRATION, carbsG: 30 })] }), "meal_window:carbsG:pre_3h");
-    expect(approximate.values.has(d)).toBe(false); expect(approximate.sensitivities!.with_registration_time!.get(d)).toBe(30);
+    // A loading time is the meal's time now: it enters the primary value.
+    expect(approximate.values.get(d)).toBe(30);
     const unproven = candidateOf(history(oscillating(6), { meals: [meal({ id: "x", date: d, rawInput: null, carbsG: 30 })] }), "meal_window:carbsG:pre_3h");
     expect(unproven.values.has(d)).toBe(false); expect(unproven.sensitivities!.with_registration_time!.has(d)).toBe(false); expect(unproven.sensitivities!.with_unverified_time!.get(d)).toBe(30);
     expect(unproven.exclusions.unverified_meal_time_in_scope).toBeGreaterThan(0);

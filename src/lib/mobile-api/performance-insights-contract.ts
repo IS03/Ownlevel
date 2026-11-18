@@ -87,7 +87,10 @@ const session = (v: unknown) => object(v) && typeof v.sessionId === "string" && 
 const day = (v: unknown) => object(v) && date(v.date) && counts(v.counts) && count(v.evaluableSessions) && numberOrNull(v.declineProportion) && numberOrNull(v.equalSessionSensitivity)
   && typeof v.openDay === "boolean" && list(v.sessions, session) && object(v.context) && nutrition(v.context.nutrition)
   && list(v.context.metrics, m => object(m) && typeof m.metricId === "string" && finite(m.value))
-  && (v.context.previousDay === undefined || (object(v.context.previousDay) && date(v.context.previousDay.date) && nutrition(v.context.previousDay.nutrition)));
+  && (v.context.previousDay === undefined || (object(v.context.previousDay) && date(v.context.previousDay.date) && nutrition(v.context.previousDay.nutrition) && dayTarget(v.context.previousDay.target)))
+  && dayTarget(v.context.target);
+function dayTarget(v: unknown) { return v === undefined || (object(v) && targetValue(v.calories) && targetValue(v.proteinG)); }
+function targetValue(v: unknown) { return v === null || (finite(v) && (v as number) >= 0); }
 const routineIds = (v: unknown) => v === undefined || list(v, id => typeof id === "string");
 const summary = (v: unknown) => object(v) && recent(v.recent) && routineIds(v.routineIds) && uuid(v.exerciseId) && typeof v.name === "string" && ["exposures", "improved", "observedStable", "declined", "ambiguous", "insufficient"].every(k => count(v[k]))
   && (v.lastDate === null || date(v.lastDate)) && STATUS.has(String(v.lastStatus)) && typeof v.lastReason === "string";

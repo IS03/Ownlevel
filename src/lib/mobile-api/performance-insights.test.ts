@@ -82,8 +82,8 @@ describe("GET performance-insights", () => {
     expect(body.view).toBe("summary"); expect(body.relations.strict.candidatesEvaluated).toBe(2 + 8 + 2 + 2);
     expect(body).not.toHaveProperty("associations");
     expect(response.headers.get("Cache-Control")).toBe("no-store");
-    // 6 streams of one page each, the count of sets, and the counter before and after. Nothing per session, exercise or candidate.
-    expect(calls).toHaveLength(6 + 1 + 2);
+    // 7 streams of one page each (the day targets since 18/11), the count of sets, and the counter before and after. Nothing per session, exercise or candidate.
+    expect(calls).toHaveLength(7 + 1 + 2);
     // Sets ride inside the exercises' pages, filtered by owner and ordered: no stream of their own.
     const exercises = calls.find(row => row.table === "workout_session_exercises")!;
     expect(exercises.selected).toContain("sets:workout_sets(id,actual_reps,actual_weight_kg,is_completed,completed_at)");
@@ -112,8 +112,8 @@ describe("GET performance-insights", () => {
     expect(relations.strict).toMatchObject({ items: [], candidatesEvaluated: 14, outcomeDays: 0 });
   });
   describe("total query cost, retries included", () => {
-    // Each stream of tablesFor(5) takes one page: P = 6, plus the count of sets, and the counter before and after: 1 + 6 + 1 + 1.
-    const attempt = 2 + 6 + 1;
+    // Each stream of tablesFor(5) takes one page: P = 7, plus the count of sets, and the counter before and after: 1 + 7 + 1 + 1.
+    const attempt = 2 + 7 + 1;
     const midnightAfter = (client: { from: (table: string) => unknown }, after: number) => {
       let started = 0;
       return { from(table: string) {
@@ -141,8 +141,8 @@ describe("GET performance-insights", () => {
     const small = fakeSupabase(tablesFor(1500));
     mocks.auth.mockResolvedValue({ userId: USER, supabase: small.client });
     expect((await GET(request("?limit=5"))).status).toBe(200);
-    // Each of the three 1500-row streams takes 2 pages (sets ride with their exercises); the other three take one.
-    expect(small.calls.filter(call => call.range)).toHaveLength(3 * 2 + 3);
+    // Each of the three 1500-row streams takes 2 pages (sets ride with their exercises); the other four take one.
+    expect(small.calls.filter(call => call.range)).toHaveLength(3 * 2 + 4);
   }, 60_000);
   it("retries once when a source changes during the read and then refuses to publish", async () => {
     const once = fakeSupabase(tablesFor(5), call => call <= 1 ? 1 : 2);
@@ -192,14 +192,14 @@ describe("GET performance-insights", () => {
       const fake = fakeSupabase(tablesFor(40));
       mocks.auth.mockResolvedValue({ userId: USER, supabase: fake.client });
       const first = await parsed("?limit=5");
-      expect(fake.calls).toHaveLength(6 + 1 + 2);
+      expect(fake.calls).toHaveLength(7 + 1 + 2);
       for (const query of ["?view=days&before=" + first.facts.page.nextBefore + "&limit=5", "?view=relations", `?association=${encodeURIComponent(`partial:metric:${METRIC}:same_day`)}`, "?limit=5"]) {
         const before = fake.calls.length;
         const body = await parsed(query);
         expect(fake.calls.length - before, query).toBe(1);
         expect(body.sourceRevision).toBe(first.sourceRevision);
       }
-      expect(pagesOf(fake.calls)).toBe(6);
+      expect(pagesOf(fake.calls)).toBe(7);
     }, 60_000);
     it("reads everything again as soon as the counter moves, and says so", async () => {
       let revision = 1;
@@ -209,7 +209,7 @@ describe("GET performance-insights", () => {
       revision = 2;
       const before = fake.calls.length;
       const page = await parsed("?view=days");
-      expect(fake.calls.length - before).toBe(6 + 1 + 2);
+      expect(fake.calls.length - before).toBe(7 + 1 + 2);
       expect(page.sourceRevision).not.toBe(first.sourceRevision);
     });
     it("reads as 0 an account with no counter yet, and is unavailable if it cannot be read", async () => {
@@ -230,7 +230,7 @@ describe("GET performance-insights", () => {
       const body = await parsed("");
       expect(body.history.sessions).toBe(2);
       expect(body.sourceRevision).not.toBe(first.sourceRevision);
-      expect(pagesOf(other.calls)).toBe(6);
+      expect(pagesOf(other.calls)).toBe(7);
     });
     it("does not reuse a snapshot across the Córdoba day", async () => {
       vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-06-01T12:00:00Z") });
@@ -240,7 +240,7 @@ describe("GET performance-insights", () => {
       vi.setSystemTime(new Date("2026-06-02T12:00:00Z"));
       const before = fake.calls.length;
       expect((await parsed("")).today).toBe("2026-06-02");
-      expect(fake.calls.length - before).toBe(6 + 1 + 2);
+      expect(fake.calls.length - before).toBe(7 + 1 + 2);
     });
     it("still refuses when the token fails, before reusing anything", async () => {
       const { MobileApiUnauthorizedError } = await import("./auth");
@@ -271,7 +271,7 @@ describe("#367: the configuration recorded per session", () => {
   };
   it("reads it with the exercises, in the same page: no extra stream", async () => {
     const { calls } = await read(withConfigurations(() => null));
-    expect(calls).toHaveLength(6 + 1 + 2);
+    expect(calls).toHaveLength(7 + 1 + 2);
     expect(calls.find(call => call.table === "workout_session_exercises")!.selected).toContain("configuration:workout_session_exercise_configurations(kind,label)");
   });
   it("compares a known configuration with itself only, ignoring case, and leaves the partial lane", async () => {
@@ -401,7 +401,7 @@ describe("GET performance-insights · view=routine-relation", () => {
     expect(body.sessions.length).toBeGreaterThan(0);
     expect(body.sessions.every((row: { date: string }) => row.date >= body.window.start && row.date <= "2026-02-10")).toBe(true);
     // Cold: the counter, the grouped streams and the counter again. Warm: the counter only, for this view and for the summary.
-    expect(coldCalls).toBe(6 + 1 + 2);
+    expect(coldCalls).toBe(7 + 1 + 2);
     const warm = await GET(request(query));
     expect(fake.calls.length - coldCalls).toBe(1);
     expect((await warm.json()).sourceRevision).toBe(body.sourceRevision);
@@ -422,7 +422,7 @@ describe("GET performance-insights · view=routine-relation", () => {
     const body = await response.json();
     expect(body.sessions).toEqual([]);
     expect(body.sourceRevision).not.toBe(mine.sourceRevision);
-    expect(other.calls.length).toBe(6 + 1 + 2);
+    expect(other.calls.length).toBe(7 + 1 + 2);
   });
   it("validates its parameters: method 2, one routine id and nothing else", async () => {
     mocks.auth.mockResolvedValue({ userId: USER, supabase: fakeSupabase(withRoutine(3)).client });

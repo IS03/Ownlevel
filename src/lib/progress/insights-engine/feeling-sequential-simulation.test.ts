@@ -46,7 +46,7 @@ describe("#367 sequential source simulator (development seeds only, no reserved 
     expect(build([makeMeal(previous, at(-3), 20), makeMeal(previous, at(-3.01), 999), makeMeal(day, at(0), 888)]).values.get(day)).toBe(20);
     expect(build([makeMeal(previous, at(-1), 0)]).values.get(day)).toBe(0);
     expect(build([makeMeal(previous, at(-1), null)]).values.has(day)).toBe(false);
-    expect(build([makeMeal(previous, at(-1), 20, "registration_now")]).values.has(day)).toBe(false);
+    expect(build([makeMeal(previous, at(-1), 20, "registration_now")]).values.get(day)).toBe(20);
     // A missing unrelated nutrient does not make known carbohydrates missing.
     expect(build([{ ...makeMeal(previous, at(-1), 25), proteinG: null }]).values.get(day)).toBe(25);
     // Preserve, and do not silently fix, the published session-date scope for uncertain carbohydrate meals.
