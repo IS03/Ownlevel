@@ -78,10 +78,11 @@ export function FactorScreen() {
         </View>)}
       </View>
       <AppText muted variant="footnote" numeric>Mediana de cada grupo · {factor.valid} de {total} sesiones con dato</AppText>
+      {factor.target?.median != null ? <AppText muted variant="footnote" numeric testID="factor-target">Tu objetivo esos días: {factorValue(factor, factor.target.median)} (mediana de {factor.target.valid} {factor.target.valid === 1 ? 'sesión' : 'sesiones'})</AppText> : null}
       {points.length ? <FactorScatter points={points} selected={selectedPoint >= 0 ? selectedPoint : undefined} onSelect={select} axis={`${label.toLowerCase()}`}
-        formatX={value => factorValue(factor, value)} medians={{ up: factor.groups.up.median, down: factor.groups.down.median }}
+        formatX={value => factorValue(factor, value)} medians={{ up: factor.groups.up.median, down: factor.groups.down.median }} target={factor.target?.median ?? null}
         label={`${points.length} sesiones: ${label} contra el cambio de cada sesión. ${sentence ?? ''}`} /> : null}
-      {points.length ? <AppText muted variant="caption" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">● subió · ○ bajó · gris claro: igual · borde dorado: mixta · rayas: medianas</AppText> : null}
+      {points.length ? <AppText muted variant="caption" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">{`● subió · ○ bajó · gris claro: igual · borde dorado: mixta · rayas: medianas${factor.target?.median != null ? ' · punteada: objetivo' : ''}`}</AppText> : null}
     </View> : <View style={styles.block} testID="factor-not-ready">
       <AppText accessibilityLabel={`${factor.valid} de ${total} sesiones con este dato`}><AppText variant="heroNumber" numeric>{factor.valid}</AppText><AppText variant="title2" muted numeric> de {total}</AppText></AppText>
       <AppText muted variant="footnote">sesiones con este dato</AppText>

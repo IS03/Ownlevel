@@ -180,7 +180,7 @@ export const summaryText = (lane: Lane, row: ExerciseSummary | PartialExerciseSu
 };
 export const summarySpoken = (lane: Lane, row: ExerciseSummary | PartialExerciseSummary) => {
   const [up, same, down] = lane === 'strict' ? [(row as ExerciseSummary).improved, (row as ExerciseSummary).observedStable, (row as ExerciseSummary).declined] : [(row as PartialExerciseSummary).higher, (row as PartialExerciseSummary).same, (row as PartialExerciseSummary).lower];
-  const words = lane === 'strict' ? ['mejoró', 'igual', 'por debajo'] : ['registro superior', 'registro igual', 'registro inferior'];
+  const words = lane === 'strict' ? ['subió', 'igual', 'bajó'] : ['registro superior', 'registro igual', 'registro inferior'];
   const unclear = row.exposures - up - same - down;
   return `${row.name || 'Ejercicio'}: ${up} ${words[0]}, ${same} ${words[1]}, ${down} ${words[2]}${unclear > 0 ? `, ${unclear} sin resultado claro` : ''}, de ${exposuresText(row.exposures)}`;
 };

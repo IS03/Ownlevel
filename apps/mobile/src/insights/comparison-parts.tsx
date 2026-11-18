@@ -74,7 +74,7 @@ export function SessionChart({ sessions, selected, onSelect, onEarlier, loadingE
     })}
   </ScrollView>;
 }
-const shortDay = (date: string) => `${Number(date.slice(8, 10))}/${Number(date.slice(5, 7))}`;
+const shortDay = shortDate;
 
 /**
  * «Cómo llegaste»: numbers straight on the background, each with its small label. A missing fact is a grey «—» (VoiceOver says
@@ -100,9 +100,9 @@ export function Kicker({ children }: { children: string }) {
   return <AppText muted variant="caption" accessibilityRole="header" style={styles.kicker}>{children}</AppText>;
 }
 
-/** The three directions in words, one line: «1 mejoró · 9 igual · 1 bajó». No «registro superior», no lane names. */
+/** The three directions in words, one line: «1 subió · 9 igual · 1 bajó». No «registro superior», no lane names. */
 export function ChangeTally({ up, same, down, testID }: { up: number; same: number; down: number; testID?: string }) {
-  const parts = [[up, up === 1 ? 'mejoró' : 'mejoraron'], [same, 'igual'], [down, down === 1 ? 'bajó' : 'bajaron']] as const;
+  const parts = [[up, up === 1 ? 'subió' : 'subieron'], [same, 'igual'], [down, down === 1 ? 'bajó' : 'bajaron']] as const;
   return <View style={styles.tally} accessible accessibilityLabel={parts.map(([n, word]) => `${n} ${word}`).join(', ')} testID={testID}>
     {parts.map(([n, word]) => <View key={word} style={styles.tallyCell}>
       <AppText variant="title2" numeric>{String(n)}</AppText>
@@ -263,13 +263,14 @@ export function ChangeBars({ bars, selected, label, onSelect, first, last }: { b
  * One factor on one scale: every session with a value as a faint tick, the medians of the sessions that went up (filled) and down
  * (hollow), and the chosen session's value as an accent mark. A median with fewer than three values is absent.
  */
-export function FactorStrip({ values, up, down, pick }: { values: readonly number[]; up: number | null; down: number | null; pick: number | null }) {
+export function FactorStrip({ values, up, down, pick, target = null }: { values: readonly number[]; up: number | null; down: number | null; pick: number | null; target?: number | null }) {
   const { colors } = useOwnlevelTheme();
-  const all = [...values, ...(pick === null ? [] : [pick])], min = Math.min(...all), max = Math.max(...all);
+  const all = [...values, ...(pick === null ? [] : [pick]), ...(target === null ? [] : [target])], min = Math.min(...all), max = Math.max(...all);
   const width = 104, span = max - min || 1, x = (value: number) => 6 + ((value - min) / span) * (width - 12);
   return <Svg width={width} height={22} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
     <Line x1={4} y1={11} x2={width - 4} y2={11} stroke={colors.border} strokeWidth={2} strokeLinecap="round" />
     {values.map((value, index) => <Line key={index} x1={x(value)} y1={7} x2={x(value)} y2={15} stroke={colors.textMuted} strokeOpacity={0.35} strokeWidth={1} />)}
+    {target !== null ? <Line x1={x(target)} y1={1} x2={x(target)} y2={21} stroke={colors.text} strokeOpacity={0.55} strokeWidth={1} strokeDasharray="2 2" /> : null}
     {pick !== null ? <Line x1={x(pick)} y1={2} x2={x(pick)} y2={20} stroke={colors.primary} strokeWidth={2} strokeLinecap="round" /> : null}
     {down !== null ? <Circle cx={x(down)} cy={11} r={4} fill={colors.background} stroke={colors.textMuted} strokeWidth={1.5} /> : null}
     {up !== null ? <Circle cx={x(up)} cy={11} r={4.2} fill={colors.textMuted} /> : null}
@@ -277,18 +278,30 @@ export function FactorStrip({ values, up, down, pick }: { values: readonly numbe
 }
 
 type ScatterPoint = { x: number; y: number; group: 'up' | 'same' | 'down' | 'other' };
+/** The across range of the scatter: every value, unless one lies beyond three interquartile ranges (with eight values or more). */
+export function scatterDomain(values: readonly number[]) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const all = { min: sorted[0] ?? 0, max: sorted.at(-1) ?? 1 };
+  if (sorted.length < 8) return all;
+  const q = (p: number) => sorted[Math.round(p * (sorted.length - 1))]!, iqr = q(0.75) - q(0.25);
+  if (iqr <= 0) return all;
+  const inside = sorted.filter(value => value >= q(0.25) - 3 * iqr && value <= q(0.75) + 3 * iqr);
+  return { min: inside[0]!, max: inside.at(-1)! };
+}
 /**
  * One point per session: the factor's value across, the session's change up, with both axes labelled and the zero line marked
  * «igual». The medians of the sessions that went up and down are dashed verticals; the selected point is ringed in the accent.
  */
-export function FactorScatter({ points, selected, label, onSelect, medians, formatX, axis }: { points: readonly ScatterPoint[]; selected?: number; label: string; onSelect?: (index: number) => void;
-  medians?: { up: number | null; down: number | null }; formatX: (value: number) => string; axis: string }) {
+export function FactorScatter({ points, selected, label, onSelect, medians, formatX, axis, target = null }: { points: readonly ScatterPoint[]; selected?: number; label: string; onSelect?: (index: number) => void;
+  medians?: { up: number | null; down: number | null }; formatX: (value: number) => string; axis: string; target?: number | null }) {
   const { colors } = useOwnlevelTheme();
   const [width, setWidth] = useState(0);
-  const height = 190, left = 38, right = 10, top = 8, bottom = 150;
+  const height = 190, left = 38, right = 10, top = 14, bottom = 150;
   const xs = points.map(point => point.x), ys = points.map(point => Math.abs(point.y));
-  const minX = Math.min(...xs), maxX = Math.max(...xs), spanX = maxX - minX || 1, maxY = Math.max(1, Math.ceil(Math.max(...ys)));
-  const px = (value: number) => left + ((value - minX) / spanX) * (width - left - right), py = (value: number) => (top + bottom) / 2 - (value / maxY) * ((bottom - top) / 2);
+  // A far value (beyond three interquartile ranges) sits at the edge with its own number, so it does not squeeze the rest.
+  const { min: minX, max: maxX } = scatterDomain([...xs, ...(target === null ? [] : [target])]);
+  const spanX = maxX - minX || 1, maxY = Math.max(1, Math.ceil(Math.max(...ys)));
+  const px = (value: number) => left + ((Math.min(maxX, Math.max(minX, value)) - minX) / spanX) * (width - left - right), py = (value: number) => (top + bottom) / 2 - (value / maxY) * ((bottom - top) / 2);
   const ticks = [maxY, 0, -maxY], mids = [minX, (minX + maxX) / 2, maxX];
   return <View accessible accessibilityRole="image" accessibilityLabel={label} onLayout={event => setWidth(event.nativeEvent.layout.width)} style={{ height }} testID="comparisons-factor-scatter">
     {width && points.length ? <Svg width={width} height={height}>
@@ -298,6 +311,12 @@ export function FactorScatter({ points, selected, label, onSelect, medians, form
       </G>)}
       {medians ? ([medians.up, medians.down] as const).map((median, index) => median === null ? null
         : <Line key={index} x1={px(median)} y1={top} x2={px(median)} y2={bottom} stroke={colors.textMuted} strokeOpacity={0.6} strokeDasharray="3 3" />) : null}
+      {target !== null ? <G>
+        <Line x1={px(target)} y1={top} x2={px(target)} y2={bottom} stroke={colors.text} strokeOpacity={0.5} strokeDasharray="2 3" />
+        <SvgText x={px(target)} y={top - 4} fontSize={10} fill={colors.textMuted} textAnchor="middle">objetivo</SvgText>
+      </G> : null}
+      {points.filter(point => point.x > maxX || point.x < minX).map((point, index) => <SvgText key={`far-${index}`} x={px(point.x) + (point.x > maxX ? -8 : 8)} y={py(point.y) - 8}
+        fontSize={10} fill={colors.textMuted} textAnchor={point.x > maxX ? 'end' : 'start'}>{`${point.x > maxX ? '' : '‹ '}${formatX(point.x)}${point.x > maxX ? ' ›' : ''}`}</SvgText>)}
       {points.map((point, index) => <Circle key={index} cx={px(point.x)} cy={py(point.y)} r={5} onPress={onSelect ? () => onSelect(index) : undefined}
         fill={point.group === 'down' || point.group === 'other' ? colors.background : point.group === 'up' ? colors.textMuted : colors.border}
         stroke={point.group === 'down' ? colors.textMuted : point.group === 'other' ? colors.primary : 'none'} strokeOpacity={point.group === 'other' ? 0.6 : 1} strokeWidth={1.5} />)}
@@ -315,13 +334,13 @@ const styles = StyleSheet.create({
   barHits: { flexDirection: 'row' },
   barHit: { flex: 1 },
   barDates: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
-  chartRow: { flexDirection: 'row', alignItems: 'flex-start', gap: BAR_GAP, paddingVertical: spacing.xs },
+  chartRow: { flexDirection: 'row', alignItems: 'flex-start', gap: BAR_GAP, paddingVertical: spacing.xs, paddingRight: spacing.md },
   barSlot: { width: BAR_W + 22, alignItems: 'center', gap: 4 },
   barArea: { width: BAR_W, height: CHART_H - 20 },
   zero: { position: 'absolute', left: -BAR_GAP, right: -BAR_GAP - 16, top: CHART_MID, height: 1 },
   bar: { position: 'absolute', left: 0, width: BAR_W, borderRadius: 4 },
   none: { borderWidth: 1, borderStyle: 'dashed', backgroundColor: 'transparent' },
-  dateTag: { borderRadius: 8, paddingHorizontal: 2, width: BAR_W + 26, alignItems: 'center' },
+  dateTag: { borderRadius: 8, paddingHorizontal: 2, width: BAR_W + 40, alignItems: 'center' },
   earlier: { height: CHART_H - 20, justifyContent: 'center', alignItems: 'center', gap: 2, paddingRight: spacing.xs },
   pill: { minWidth: 76, minHeight: 44, borderRadius: brandTokens.radius.inner, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: 2 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: spacing.md },

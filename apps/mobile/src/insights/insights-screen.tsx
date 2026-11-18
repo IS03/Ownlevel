@@ -162,7 +162,7 @@ const shortRange = (from: string, to: string) => from === to ? shortDay(to) : `$
 function RelationLink({ session, router }: { session: SessionFact; router: ReturnType<typeof useRouter> }) {
   if (!session.routineId) return null;
   const name = session.routineName ?? sessionName(session);
-  return <IconRow icon="progress" accent label={`Cómo llegaste a ${name}`} detail="Qué tenían las sesiones que subieron" spoken={`Ver cómo llegaste a ${name}`}
+  return <IconRow icon="progress" accent label={`Otras sesiones de ${name}`} detail="Cómo llegaste a las que subieron y a las que bajaron" spoken={`Ver otras sesiones de ${name} en Cómo llegaste`}
     onPress={() => router.setParams({ view: 'relation', routine: session.routineId!, session: undefined, date: undefined, fromSession: undefined })} />;
 }
 
@@ -272,7 +272,7 @@ function SessionComparison({ session, day, partial, model, router, origin, expla
   const tally = lanes.reduce((sum, { counts }) => ({ up: sum.up + counts.up, same: sum.same + counts.same, down: sum.down + counts.down }), { up: 0, same: 0, down: 0 });
   const rowOrigin = { ...origin, date: day.date, revision: model.sourceRevision };
   const links = [
-    ...(session.routineId ? [{ label: `Cómo llegaste a ${session.routineName ?? name}`, spoken: `Ver cómo llegaste a ${session.routineName ?? name}`, onPress: () => { setOpen(false); haptics.selection(); router.setParams({ view: 'relation', routine: session.routineId!, session: undefined, date: undefined, fromSession: undefined }); } }] : []),
+    ...(session.routineId ? [{ label: `Otras sesiones de ${session.routineName ?? name}`, spoken: `Ver otras sesiones de ${session.routineName ?? name} en Cómo llegaste`, onPress: () => { setOpen(false); haptics.selection(); router.setParams({ view: 'relation', routine: session.routineId!, session: undefined, date: undefined, fromSession: undefined }); } }] : []),
     { label: 'Ver horarios y comidas', spoken: `Ver horarios y comidas del ${dayLabel(day.date)}`, onPress: () => { setOpen(false); router.push({ pathname: '/(tabs)/train/insights/temporal', params: { ...origin, date: day.date, session: session.sessionId, revision: model.sourceRevision } }); } },
   ];
   return <View style={styles.block} testID="comparisons-session">
