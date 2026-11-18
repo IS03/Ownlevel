@@ -205,7 +205,9 @@ export function loadStep(item: Pick<ExerciseEvidence, 'evidence'>, unit: string 
  * that day, never today's). A partial total or a missing target is said, never a zero; the difference is an exact number with
  * an arrow, never a judgment or a colour.
  */
-export type FoodFact = { key: 'pre3h' | 'yesterday' | 'day'; label: string; value: string | null; caption: string | null; spoken: string };
+export type FoodFact = { key: 'pre3h' | 'yesterday' | 'day'; label: string; value: string | null; caption: string | null; spoken: string;
+  /** The total against its own target, 0–1.2 (the bar stops a little past the mark). Absent without both values. */
+  share?: number };
 function versus(total: number | null, target: number | null | undefined) {
   if (total === null) return { caption: null, spoken: 'sin registrar' };
   if (target === undefined) return { caption: null, spoken: `${kcal(total)} kilocalorías` };
@@ -215,6 +217,7 @@ function versus(total: number | null, target: number | null | undefined) {
   const text = diff > 0 ? `↑ ${kcal(diff)} sobre ${kcal(target)}` : `↓ ${kcal(-diff)} bajo ${kcal(target)}`;
   return { caption: text, spoken: `${kcal(total)} kilocalorías, ${kcal(Math.abs(diff))} ${diff > 0 ? 'por encima' : 'por debajo'} del objetivo de ${kcal(target)}` };
 }
+const share = (total: number | null, target: number | null | undefined) => total !== null && target ? { share: Math.min(1.2, Math.max(0, total / target)) } : {};
 export function foodFacts(session: SessionFact, day: DayFact): FoodFact[] {
   const pre = session.context.preStart?.calories, carbs = session.context.carbsPre3h;
   const preValue = pre && pre.state === 'recorded' && pre.value !== null ? pre.value : null;
@@ -223,7 +226,7 @@ export function foodFacts(session: SessionFact, day: DayFact): FoodFact[] {
   const y = versus(yesterday, day.context.previousDay?.target?.calories), t = versus(today, day.context.target?.calories);
   return [
     { key: 'pre3h', label: '3 h antes', value: preValue === null ? null : `${kcal(preValue)} kcal`, caption: carbsText, spoken: `3 horas antes: ${preValue === null ? 'sin registrar' : `${kcal(preValue)} kilocalorías`}${carbsText ? `, ${carbsText}` : ''}` },
-    { key: 'yesterday', label: 'Ayer', value: yesterday === null ? null : `${kcal(yesterday)} kcal`, caption: y.caption, spoken: `Ayer: ${y.spoken}` },
-    { key: 'day', label: 'Ese día', value: today === null ? null : `${kcal(today)} kcal`, caption: t.caption, spoken: `Ese día: ${t.spoken}` },
+    { key: 'yesterday', label: 'Ayer', value: yesterday === null ? null : `${kcal(yesterday)} kcal`, caption: y.caption, spoken: `Ayer: ${y.spoken}`, ...share(yesterday, day.context.previousDay?.target?.calories) },
+    { key: 'day', label: 'Ese día', value: today === null ? null : `${kcal(today)} kcal`, caption: t.caption, spoken: `Ese día: ${t.spoken}`, ...share(today, day.context.target?.calories) },
   ];
 }

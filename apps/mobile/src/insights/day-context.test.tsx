@@ -155,12 +155,13 @@ describe('#367 contexto diario: pantalla', () => {
     const view = await open();
     const focus = within(view.getByTestId('insights-session'));
     expect(focus.getByRole('header', { name: 'Piernas' })).toBeTruthy();
-    expect(focus.getByText(/2026 · 17:00–18:00/)).toBeTruthy();
+    expect(focus.getByRole('button', { name: /2026, 17:00–18:00$/ })).toBeTruthy();
     fireEvent.press(view.getByTestId('insights-context-toggle'));
     expect(focus.getByText('baja → sin registrar')).toBeTruthy();
     expect(focus.queryByText('alta → sin registrar')).toBeNull();
     fireEvent.press(focus.getByRole('button', { name: /^Ver horarios y comidas registradas/ }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights/temporal', params: { session: EVENING, date: D1, fromSession: '1', revision: 'r1' } });
+    fireEvent.press(view.getByTestId('insights-context-toggle'));
     fireEvent.press(focus.getByRole('button', { name: /^Ver Nutrición/ }));
     const href = mockPush.mock.calls.at(-1)![0] as ReturnType<typeof nutritionDayHref>;
     expect(href).toEqual({ pathname: '/(tabs)/nutrition', params: { date: D1, insightsReturn: '1', insightsDate: D1, insightsSession: EVENING, insightsFromSession: '1', insightsRevision: 'r1' } });
@@ -193,6 +194,8 @@ describe('#367 contexto diario: pantalla', () => {
     fireEvent.press(focus.getByRole('button', { name: /^Ver Nutrición/ }));
     const href = mockPush.mock.calls.at(-1)![0] as ReturnType<typeof nutritionDayHref>;
     expect(insightsReturnHref(href.params)).toMatchObject({ pathname: '/(tabs)/train/insights', params: { date: D1, before: '2026-03-04', explore: '1', asOf: '2026-04-01', week: D0 } });
+    // Leaving closes the sheet; it opens again from its row.
+    fireEvent.press(view.getByTestId('insights-context-toggle'));
     fireEvent.press(focus.getByRole('button', { name: /Ver horarios y comidas/ }));
     expect(mockPush.mock.calls.at(-1)![0]).toMatchObject({ pathname: '/(tabs)/train/insights/temporal', params: { date: D1, before: '2026-03-04', explore: '1', asOf: '2026-04-01', week: D0, revision: 'r1' } });
     fireEvent.press(view.getByRole('button', { name: 'Volver a la semana' }));

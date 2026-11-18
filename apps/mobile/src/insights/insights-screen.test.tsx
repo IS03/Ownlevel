@@ -107,7 +107,7 @@ describe('pantalla', () => {
     const view = await open(<InsightsScreen />);
     expect(view.getByTestId('insights-hero')).toBeTruthy();
     // Comparaciones más claras: the number on top, the directions in words, each method's denominator in its own line.
-    expect(view.getByLabelText('1 de 1 ejercicios con resultado claro, con contexto parcial')).toBeTruthy();
+    expect(view.getByLabelText(/^1 de 1 ejercicios con resultado claro, con contexto parcial/)).toBeTruthy();
     expect(view.getByLabelText('0 mejoraron, 0 igual, 1 bajó')).toBeTruthy();
     expect(view.getByTestId('insights-partial-limit')).toBeTruthy();
     expect(view.queryByText(/Mejoraron/)).toBeNull(); expect(view.queryByText(/^↓ Por debajo$/)).toBeNull();
@@ -143,7 +143,7 @@ describe('pantalla', () => {
     mockRead.mockImplementationOnce(serve(source)).mockResolvedValueOnce(lost);
     const view = await open(<InsightsScreen />);
     const before = view.getAllByRole('button').length;
-    fireEvent.press(view.getByText("Ver más días")); await flush();
+    fireEvent.press(view.getByTestId('comparisons-earlier')); await flush();
     expect(view.getByText('No pudimos traer más días.')).toBeTruthy();
     expect(view.getAllByRole('button').length).toBeGreaterThanOrEqual(before);
     expect(mockRead).toHaveBeenCalledTimes(2);
@@ -153,16 +153,17 @@ describe('pantalla', () => {
     const source = history(Array.from({ length: 20 }, (_, day) => 8 + day % 3));
     mockRead.mockImplementation(serve(source));
     const view = await open(<InsightsScreen />);
-    const rows = () => view.getAllByRole('button', { name: /con resultado claro, con contexto parcial/ }).length;
+    // Días más claros · One bar per session read: paging adds bars, never a list below.
+    const rows = () => view.getAllByTestId(/^comparisons-strip-/).length;
     expect(rows()).toBe(14);
-    fireEvent.press(view.getByText('Ver más días')); await flush();
-    expect(rows()).toBe(19);
+    fireEvent.press(view.getByTestId('comparisons-earlier')); await flush();
+    expect(rows()).toBe(20);
     view.unmount(); clearConfirmedReads(mockClient); mockRead.mockReset();
     mockRead.mockImplementationOnce(serve(source, 'r1')).mockImplementation(serve(source, 'r2'));
     const changed = await open(<InsightsScreen />);
-    fireEvent.press(changed.getByText('Ver más días')); await flush();
+    fireEvent.press(changed.getByTestId('comparisons-earlier')); await flush();
     expect(changed.getByTestId('insights-changed')).toBeTruthy();
-    expect(changed.getAllByRole('button', { name: /con resultado claro, con contexto parcial/ }).length).toBe(14);
+    expect(changed.getAllByTestId(/^comparisons-strip-/).length).toBe(14);
   });
   it('makes one read when it opens and pages only on a tap', async () => {
     mockRead.mockImplementation(serve(history(Array.from({ length: 20 }, (_, day) => 8 + day % 3))));
@@ -173,9 +174,8 @@ describe('pantalla', () => {
   it('opens the exact session and the exercise from the evidence, and keeps the view in the route', async () => {
     mockRead.mockImplementation(serve(history([8, 10, 9])));
     const view = await open(<InsightsScreen />);
-    fireEvent.press(view.getAllByRole('button', { name: /con resultado claro, con contexto parcial/ })[0]!);
-    // The hero's day and the open day are the same: both name the session with its time.
-    fireEvent.press(view.getAllByRole('button', { name: 'Abrir sesión Empuje, 15:00–16:00' })[0]!);
+    // The session's name opens it.
+    fireEvent.press(view.getAllByRole('button', { name: /^Abrir sesión Empuje, .* 15:00–16:00$/ })[0]!);
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/history/[id]', params: { id: 's2' } });
     // #518 · The exercises of the latest day come first, before the history; each opens its evidence.
     fireEvent.press(within(view.getByTestId('insights-hero')).getByRole('button', { name: /^Press banca, registro inferior con contexto parcial/ }));
@@ -198,9 +198,9 @@ describe('pantalla', () => {
   it('reads relations only when asked for, and shows no strict list while it has no days', async () => {
     mockRead.mockImplementation(serve(withMetric(history(oscillating))));
     const closed = await open(<InsightsScreen />);
-    expect(closed.getByText('Para mirar con calma')).toBeTruthy();
+    expect(closed.getByText('Relaciones estadísticas')).toBeTruthy();
     expect(mockRead).toHaveBeenCalledTimes(1);
-    fireEvent.press(closed.getByRole('button', { name: /^Para mirar con calma/ }));
+    fireEvent.press(closed.getByRole('button', { name: /^Relaciones estadísticas/ }));
     expect(mockSetParams).toHaveBeenCalledWith({ relations: '1' });
     closed.unmount();
     mockParams = { relations: '1' };
@@ -226,7 +226,7 @@ describe('entrada desde el final de una sesión', () => {
     expect(view.getByTestId('insights-session')).toBeTruthy();
     expect(view.queryByTestId('insights-hero')).toBeNull();
     const facts = within(view.getByTestId('insights-session'));
-    expect(facts.getByLabelText('1 de 1 ejercicios con resultado claro, con contexto parcial')).toBeTruthy();
+    expect(facts.getByLabelText(/^1 de 1 ejercicios con resultado claro, con contexto parcial/)).toBeTruthy();
     expect(facts.getByLabelText(/^1 mejoró/)).toBeTruthy();
     expect(requests()).toEqual(['/api/mobile/v1/progress/performance-insights?method=2']);
     expect(view.getByTestId('insights-partial-limit')).toBeTruthy();
@@ -272,9 +272,8 @@ describe('entrada desde el final de una sesión', () => {
     const view = await open(<InsightsScreen />);
     expect(requests()).toEqual(['/api/mobile/v1/progress/performance-insights?method=2', `/api/mobile/v1/progress/performance-insights?method=2&view=days&before=${dateAt(2)}&limit=1`]);
     expect(view.getByTestId('insights-session')).toBeTruthy();
-    expect(view.queryByRole('button', { name: 'Ver más días' })).toBeNull();
-    fireEvent.press(view.getByRole('button', { name: 'Ver todas las sesiones' }));
-    expect(mockSetParams).toHaveBeenLastCalledWith({ session: undefined, fromSession: undefined, view: undefined });
+    // Its day is shown apart: it never joins the chart of the first page.
+    expect(view.queryByTestId(`comparisons-strip-${SESSION}`)).toBeNull();
   });
   it('tells loading, failure and absence apart', async () => {
     mockParams = { session: SESSION, date: dateAt(1) };
@@ -338,10 +337,10 @@ describe('enlace a las tendencias de una métrica', () => {
     mockParams = { date: dateAt(1) };
     mockRead.mockImplementation(serve(metricSource()));
     const view = await open(<InsightsScreen />);
-    const selected = view.getByRole('button', { name: new RegExp('con resultado claro, con contexto parcial', 'i'), expanded: true });
-    expect(selected).toBeTruthy();
-    fireEvent.press(selected);
-    expect(mockSetParams).toHaveBeenCalledWith({ date: undefined });
+    // Días más claros · The route's day leads the reading and its bar is the chosen one.
+    expect(view.getByTestId('insights-hero')).toBeTruthy();
+    const chosen = within(view.getByTestId('comparisons-session-strip')).getAllByRole('button', { selected: true });
+    expect(chosen).toHaveLength(1);
   });
   it('opens trends from a metric relation, and no link from another family', async () => {
     const id = `partial:metric:${METRIC}:same_day`;
@@ -361,16 +360,16 @@ describe('enlace a las tendencias de una métrica', () => {
 
 describe('filtros y revisiones', () => {
   const long = () => history(Array.from({ length: 20 }, (_, day) => 8 + day % 3));
-  const rows = (view: ReturnType<typeof screen>) => view.getAllByRole('button', { name: /con resultado claro, con contexto parcial/ }).length;
+  const rows = (view: ReturnType<typeof screen>) => view.getAllByTestId(/^comparisons-strip-/).length;
   it('keeps the paged days when the same read comes back, and drops them when another one does', async () => {
     let revision = 'r1';
     const source = long();
     mockRead.mockImplementation(options => serve(source, revision)(options));
     const view = await open(<InsightsScreen />);
-    fireEvent.press(view.getByText('Ver más días')); await flush();
-    expect(rows(view)).toBe(19);
+    fireEvent.press(view.getByTestId('comparisons-earlier')); await flush();
+    expect(rows(view)).toBe(20);
     await act(async () => { view.getByTestId('insights-screen').props.refreshControl.props.onRefresh(); }); await flush();
-    expect(rows(view)).toBe(19);
+    expect(rows(view)).toBe(20);
     expect(view.queryByTestId('insights-changed')).toBeNull();
     revision = 'r2';
     await act(async () => { view.getByTestId('insights-screen').props.refreshControl.props.onRefresh(); }); await flush();
