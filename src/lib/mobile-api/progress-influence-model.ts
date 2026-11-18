@@ -44,3 +44,32 @@ export function calculateInfluence(range: { start: string; end: string }, today:
   return { ...base, status: "ok", low: { ...base.low, average: a }, high: { ...base.high, average: b },
     difference, differencePercent: a === 0 ? null : difference / a * 100, evidence: evidence(lowValues, highValues) };
 }
+
+/**
+ * «Fuerza frente a lo tuyo» per day: the mean of that day's sessions with their own value (view=own's rule: two exercises against
+ * their previous five times). A day without such a session has no value, never a zero.
+ */
+export function strengthByDate(own: readonly { date: string; pct: number | null }[], range: { start: string; end: string }): Map<string, number> {
+  const byDate = new Map<string, number[]>();
+  for (const session of own) if (session.pct !== null && session.date >= range.start && session.date <= range.end) {
+    const values = byDate.get(session.date); if (values) values.push(session.pct); else byDate.set(session.date, [session.pct]);
+  }
+  return new Map([...byDate].map(([date, values]) => [date, average(values)]));
+}
+
+const medianOf = (values: number[]) => { const sorted = [...values].sort((a, b) => a - b), mid = sorted.length >> 1; return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2; };
+/**
+ * «Cambio de peso en 7 días» for day D: the median weight of D+1…D+7 minus the median of D−6…D, with two weigh-ins on each side.
+ * Only when the seven days after are closed (before today): an open week is not a change yet. Fewer weigh-ins: no value.
+ */
+export function weightChangeByDate(weights: readonly { date: string; weight: number }[], range: { start: string; end: string }, today: string): Map<string, number> {
+  const byDate = new Map(weights.filter(row => Number.isFinite(row.weight) && row.weight > 0).map(row => [row.date, row.weight]));
+  const values = new Map<string, number>();
+  for (const date of influenceDates(range)) {
+    if (addProgressIsoDays(date, 7) >= today) continue;
+    const before = influenceDates({ start: addProgressIsoDays(date, -6), end: date }).flatMap(d => byDate.has(d) ? [byDate.get(d)!] : []);
+    const after = influenceDates({ start: addProgressIsoDays(date, 1), end: addProgressIsoDays(date, 7) }).flatMap(d => byDate.has(d) ? [byDate.get(d)!] : []);
+    if (before.length >= 2 && after.length >= 2) values.set(date, Math.round((medianOf(after) - medianOf(before)) * 100) / 100);
+  }
+  return values;
+}

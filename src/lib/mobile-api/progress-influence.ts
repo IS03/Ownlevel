@@ -5,6 +5,7 @@ import { buildNutritionReportDays, NUTRITION_REPORT_MAX_DAYS } from "@/lib/nutri
 import { todayInCordoba } from "@/lib/phase2/cordoba-date";
 import { buildSessionRecords } from "@/lib/phase2/training-analysis";
 import { loadCompletedTrainingData } from "@/lib/phase2/training-robust";
+import { listAllWeightHistory } from "@/lib/phase1/day-log";
 import { addProgressIsoDays } from "@/lib/progress/analytics";
 import { MobileApiValidationError } from "./auth";
 import { NutritionReportDayChangedError, readMobileNutritionFacts } from "./nutrition-report-server";
@@ -14,7 +15,8 @@ import {
   parseInfluenceMeasure, type InfluenceDefinition, type InfluenceMeasureInfo, type InfluenceReading,
   type InfluenceSuggestedKey, type ProgressInfluence, type ProgressInfluenceSuggested,
 } from "./progress-influence-contract";
-import { calculateInfluence, influenceDates } from "./progress-influence-model";
+import { calculateInfluence, influenceDates, strengthByDate, weightChangeByDate } from "./progress-influence-model";
+import { readInsightsSnapshot } from "./performance-insights-server";
 import { webAuth } from "./progress-sources";
 import type { MobileSupabaseAuthenticatedContext } from "./supabase";
 
@@ -51,8 +53,9 @@ export function influenceReadRanges(ranges: Range[], lag: number, today: string)
 
 async function readSources(context: Context, ds: InfluenceDefinition[], defs: MetricDefinition[], ranges: Range[], today: string) {
   const measures = new Set(ds.flatMap(d => [d.split, d.outcome]));
+  const parse = (key: string) => parseInfluenceMeasure(key, "split") ?? parseInfluenceMeasure(key, "outcome")!;
   for (const key of measures) {
-    const m = parseInfluenceMeasure(key, "split")!;
+    const m = parse(key);
     if (m.kind === "metric" && !defs.some(d => d.id === m.metricId)) throw new MobileApiValidationError("Métrica no válida.");
   }
   const windows = influenceReadRanges(ranges, Math.max(0, ...ds.map(d => d.lag)), today);
@@ -61,19 +64,28 @@ async function readSources(context: Context, ds: InfluenceDefinition[], defs: Me
   const needNutrition = [...measures].some(k => k.startsWith("nutrition.") || k === "day.work");
   const needMetrics = [...measures].some(k => k.startsWith("metric."));
   const auth = webAuth(context);
-  const [training, days, metricRows] = await Promise.all([
+  const [training, days, metricRows, snapshot, weights] = await Promise.all([
     needTraining ? loadCompletedTrainingData(auth) : null,
     needNutrition ? Promise.all(windows.map(async range => buildNutritionReportDays({ range, today, ...await readMobileNutritionFacts(context, range, today) }))).then(ds => ds.flat()) : [],
     needMetrics ? readAllDailyMetricValues(auth.supabase, auth.userId, span.start, span.end) : [],
+    // The same cached snapshot as Comparaciones: «lo tuyo» is computed once per revision, never here.
+    measures.has("strength.own") ? readInsightsSnapshot(context, today, 2) : null,
+    measures.has("body.weight_change") ? listAllWeightHistory(auth) : [],
   ]);
   const records = training ? buildSessionRecords(training, span) : [];
   const trainingDays = new Set(records.map(r => r.logDate));
   const maps = new Map<string, Map<string, number | boolean>>();
   const metadata = new Map<string, InfluenceMeasureInfo>();
   for (const key of measures) {
-    const m = parseInfluenceMeasure(key, "split")!;
+    const m = parse(key);
     let values = new Map<string, number | boolean>();
-    if (m.kind === "nutrition") {
+    if (m.kind === "strength") {
+      metadata.set(key, { key, label: "Fuerza frente a lo tuyo", unit: "%", valueType: "decimal" });
+      values = strengthByDate(snapshot!.relationContext.own, span);
+    } else if (m.kind === "weight") {
+      metadata.set(key, { key, label: "Cambio de peso en 7 días", unit: "kg", valueType: "decimal" });
+      values = weightChangeByDate(weights.map(row => ({ date: row.log_date, weight: Number(row.weight_kg) })), span, today);
+    } else if (m.kind === "nutrition") {
       const meta = NUTRITION[key];
       metadata.set(key, { key, label: meta.label, unit: meta.unit, valueType: meta.valueType });
       values = new Map(days.filter(d => d.hasNutrition && d.isComplete && meta.day(d) !== null).map(d => [d.date, meta.day(d)!]));

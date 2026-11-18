@@ -4,8 +4,13 @@ import { parseProgressPeriod, type MetricValueType, type ProgressPeriod } from "
 import { EXPLORE_NUTRITION, EXPLORE_TRAINING, parseExploreMeasure, type ExploreMeasure } from "./progress-explore-contract";
 
 export const INFLUENCE_SPLITS = [...EXPLORE_NUTRITION, ...EXPLORE_TRAINING, "metric.<uuid>", "day.training", "day.work"] as const;
-export const INFLUENCE_OUTCOMES = [...EXPLORE_NUTRITION, ...EXPLORE_TRAINING, "metric.<uuid>"] as const;
-export type InfluenceMeasure = Exclude<ExploreMeasure, { kind: "body" | "exercise" }> | { kind: "day"; key: "day.training" | "day.work" };
+export const INFLUENCE_OUTCOMES = [...EXPLORE_NUTRITION, ...EXPLORE_TRAINING, "metric.<uuid>", "strength.own", "body.weight_change"] as const;
+/**
+ * Outcomes only: «Fuerza frente a lo tuyo» (the mean of that day's sessions against their own previous times, view=own's rule) and
+ * «Cambio de peso en 7 días» (median weight of the next seven days minus the median of the last seven, two weigh-ins each side).
+ */
+export type InfluenceOutcomeOnly = { kind: "strength"; key: "strength.own" } | { kind: "weight"; key: "body.weight_change" };
+export type InfluenceMeasure = Exclude<ExploreMeasure, { kind: "body" | "exercise" }> | { kind: "day"; key: "day.training" | "day.work" } | InfluenceOutcomeOnly;
 export type InfluenceDefinition = { split: string; cut: string; lag: 0 | 1 | 2; outcome: string };
 export type InfluenceMeasureInfo = { key: string; label: string; unit: string | null; valueType: MetricValueType | "boolean" };
 export type InfluenceEvidence = "low" | "moderate" | "clear";
@@ -28,6 +33,8 @@ export type ProgressInfluenceSuggested = { today: string; period: ProgressPeriod
 
 export function parseInfluenceMeasure(key: string, role: "split" | "outcome"): InfluenceMeasure | undefined {
   if (role === "split" && (key === "day.training" || key === "day.work")) return { kind: "day", key };
+  if (role === "outcome" && key === "strength.own") return { kind: "strength", key };
+  if (role === "outcome" && key === "body.weight_change") return { kind: "weight", key };
   const measure = parseExploreMeasure(key);
   return measure && measure.kind !== "body" && measure.kind !== "exercise" ? measure : undefined;
 }
