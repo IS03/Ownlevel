@@ -294,7 +294,7 @@ function Performance({ data, open }: { data: ProgressTraining; open: (id: string
       <Heading level={2}>Ejercicios</Heading>
       {data.inPeriod ? (
         <AppText muted variant="footnote">
-          {plural(data.inPeriod.improved, 'mejoró', 'mejoraron')} {when}, de su primera a su última sesión.
+          {plural(data.inPeriod.improved, 'subió', 'subieron')} {when}, de su primera a su última sesión.
         </AppText>
       ) : (
         <AppText muted>No pudimos consultar la comparación dentro del período.</AppText>

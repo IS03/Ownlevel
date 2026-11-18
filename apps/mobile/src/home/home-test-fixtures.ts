@@ -15,7 +15,7 @@ export function homeProgressTraining(preset: '7' | '30' = '7'): ProgressTraining
     today: '2026-10-10', period: period(preset),
     summary: { sessions: 3, trainingDays: 3, sets: 54, minutes: 150, sessionsPerWeek: preset === '7' ? null : 0.7,
       comparisons: { sessions: comparison, trainingDays: comparison, sets: comparison, minutes: comparison, setsPerSession: comparison },
-      performance: { improved: 1, stable: 0, declined: 0, comparable: 1, insufficient: 0, headline: '1 ejercicio mejoró' } },
+      performance: { improved: 1, stable: 0, declined: 0, comparable: 1, insufficient: 0, headline: '1 ejercicio subió' } },
     series: [{ start: period(preset).start, end: period(preset).end, sessions: 3, sets: 54, minutes: 150 }],
     exercises: [], personalRecords: [{ exerciseId: 'bench-id', name: 'Press banca', description: 'Nuevo mejor peso: 80 kg × 5' }],
     feelings: [], muscles: [], routines: [],

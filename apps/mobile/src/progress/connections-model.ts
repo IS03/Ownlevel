@@ -34,7 +34,7 @@ export function connectionTitle(story: ConnectionStory): string {
   const food = foodTitle(story), o = story.outcome;
   if (!food) return CONNECTION_NAMES[story.key];
   if (story.key === 'protein_strength' && o.kind === 'strength') return o.improved === null ? CONNECTION_NAMES[story.key]
-    : `${food} y ${o.improved === 0 ? 'ningún ejercicio mejoró' : o.improved === 1 ? '1 ejercicio que mejoró' : `${o.improved} ejercicios que mejoraron`}`;
+    : `${food} y ${o.improved === 0 ? 'ningún ejercicio subió' : o.improved === 1 ? '1 ejercicio que subió' : `${o.improved} ejercicios que subieron`}`;
   if (o.kind === 'strength') {
     if (!o.top) return CONNECTION_NAMES[story.key];
     const delta = o.top.currentE1rm - o.top.previousE1rm;
@@ -54,7 +54,7 @@ export function connectionAccessibilityLabel(story: ConnectionStory): string {
   const food = `${formatValue(f.current, spokenUnit(f.unit))}${f.key === 'nutrition.kcal' ? '' : ` de ${foodName(story.key)}`} por día, ${spokenDelta(f.current, f.previous, spokenUnit(f.unit))}`;
   const result = o.kind === 'strength'
     ? story.key === 'protein_strength' ? o.improved === null || o.comparable === null ? 'Sin dato de fuerza'
-      : `${formatValue(o.improved, null, 'integer')} de ${formatValue(o.comparable, null, 'integer')} ejercicios mejoraron`
+      : `${formatValue(o.improved, null, 'integer')} de ${formatValue(o.comparable, null, 'integer')} ejercicios subieron`
       : o.top ? `${o.top.name}, ${formatValue(o.top.currentE1rm, 'kilogramos')}, 1RM estimado, ${spokenDelta(o.top.currentE1rm, o.top.previousE1rm, 'kilogramos')}` : 'Sin dato de fuerza'
     : o.kind === 'energy' ? `${formatValue(o.current, null)} de 5 de energía al finalizar, ${spokenDelta(o.current, o.previous, null)}`
       : `${formatValue(o.current, 'kilogramos')} de tendencia de peso, ${spokenDelta(o.current, o.previous, 'kilogramos')}`;
@@ -111,7 +111,7 @@ export function connectionFacts(story: ConnectionStory, before: string): { food:
   const outcome = o.kind === 'strength'
     ? story.key === 'protein_strength'
       ? o.improved === null || o.comparable === null ? 'Fuerza: sin dato'
-        : `${o.improved} de ${o.comparable} ejercicios mejoraron frente a ${before}`
+        : `${o.improved} de ${o.comparable} ejercicios subieron frente a ${before}`
       : o.top ? `${o.top.name}: ${beforeAfter(o.top.previousE1rm, o.top.currentE1rm, 'kg')} (1RM estimado)` : '1RM estimado: sin dato'
     : o.kind === 'energy' ? `Energía al terminar: ${beforeAfter(o.previous, o.current, 'de 5')}`
     : `Peso, tendencia: ${beforeAfter(o.previous, o.current, 'kg')}`;

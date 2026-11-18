@@ -82,7 +82,7 @@ export function trainingSummary() {
   return { sessions: 12, trainingDays: 11, sets: 180, minutes: 840, sessionsPerWeek: 2.8,
     comparisons: { sessions: c, trainingDays: cmp({ current: 11, previous: 9, deltaAbsolute: 2, deltaPercent: 22.2 }), sets: cmp({ current: 180, previous: 150, deltaAbsolute: 30, deltaPercent: 20 }),
       minutes: cmp({ current: 840, previous: 600, deltaAbsolute: 240, deltaPercent: 40 }), setsPerSession: cmp({ change: 'stable' }) },
-    performance: { improved: 4, stable: 3, declined: 1, comparable: 8, insufficient: 2, headline: '4 de 8 ejercicios mejoraron' } };
+    performance: { improved: 4, stable: 3, declined: 1, comparable: 8, insufficient: 2, headline: '4 de 8 ejercicios subieron' } };
 }
 function overview(over: Partial<ProgressOverview> = {}, preset: ProgressQuery['period'] = '30'): ProgressOverview {
   return { today: TODAY, period: period(preset), training: { status: 'ok', data: trainingSummary() },
@@ -201,9 +201,9 @@ describe('Progress Overview', () => {
     const view = wrap(<ProgressOverviewScreen />); await flush();
     const highlights = within(view.getByTestId('progress-highlights'));
     expect(highlights.getByText('Aductores')).toBeTruthy(); expect(highlights.queryByText('Pasos')).toBeNull();
-    expect(highlights.queryByText('4 de 8 ejercicios mejoraron')).toBeNull();
-    expect(highlights.getByText('3 ejercicios mejoraron en octubre')).toBeTruthy();
-    fireEvent.press(highlights.getByRole('button', { name: '3 ejercicios mejoraron en octubre. De su primera a su última sesión del período' }));
+    expect(highlights.queryByText('4 de 8 ejercicios subieron')).toBeNull();
+    expect(highlights.getByText('3 ejercicios subieron en octubre')).toBeTruthy();
+    fireEvent.press(highlights.getByRole('button', { name: '3 ejercicios subieron en octubre. De su primera a su última sesión del período' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/training', params: {} });
     fireEvent.press(highlights.getByRole('button', { name: 'Aductores. Nuevo mejor peso: 29 kg × 20' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: 'e1' } });
@@ -220,7 +220,7 @@ describe('Progress Overview', () => {
     expect(view.getByTestId('progress-spark-training-reference-2026-09-01-mark', { includeHiddenElements: true })).toBeTruthy();
     const highlights = within(view.getByTestId('progress-highlights'));
     expect(highlights.getByText('Subió frente al período anterior.')).toBeTruthy();
-    expect(highlights.getByText('4 de 8 ejercicios mejoraron')).toBeTruthy(); expect(highlights.getByText('Frente a 1–5 sep')).toBeTruthy();
+    expect(highlights.getByText('4 de 8 ejercicios subieron')).toBeTruthy(); expect(highlights.getByText('Frente a 1–5 sep')).toBeTruthy();
     fireEvent.press(view.getByTestId('progress-compare-clear')); await flush();
     expect(mockOverview).toHaveBeenLastCalledWith(mockClient, MONTH, null);
     expect(view.queryByText(/1–5 sep/)).toBeNull();

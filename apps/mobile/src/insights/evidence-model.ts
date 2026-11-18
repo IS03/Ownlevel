@@ -51,7 +51,7 @@ export function signalRow(signal: ExerciseEvidence['evidence'][number], unit: Un
 /** Why there is no signal, or why the signals do not add up to a result. */
 export function evidenceNote(item: ExerciseEvidence, lane: Lane) {
   if (item.reason === 'crossed_signals') return 'Subió por un lado y bajó por otro, así que queda mezclado.';
-  if (item.reason === 'unanchored_evidence') return `${item.evidence.length ? 'Algunas series no tienen' : 'No hay'} una carga ni unas repeticiones en común con la referencia. Más carga con menos repeticiones, o al revés, no alcanza para decir que mejoró.`;
+  if (item.reason === 'unanchored_evidence') return `${item.evidence.length ? 'Algunas series no tienen' : 'No hay'} una carga ni unas repeticiones en común con la referencia. Más carga con menos repeticiones, o al revés, no alcanza para decir que subió.`;
   if (!item.reference) return reasonText(lane, item.reason);
   return item.evidence.length ? null : reasonText(lane, item.reason);
 }

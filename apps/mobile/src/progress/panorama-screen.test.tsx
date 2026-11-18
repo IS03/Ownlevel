@@ -269,7 +269,7 @@ it('keeps a comparable zero result, unavailable comparison and activity distinct
     mockData.inPeriod = {improved:0,comparable:5};
     const view = render(wrap()); await view.findByTestId('progress-panorama');
     const training = within(view.getByTestId('panorama-training'));
-    expect(training.getByText('0 de 5 ejercicios con mejora · primera frente a última sesión')).toBeTruthy();
+    expect(training.getByText('0 de 5 ejercicios subieron · primera frente a última sesión')).toBeTruthy();
     delete mockData.inPeriod;
     invalidateConfirmedReads(mockClient,'/api/mobile/v1/training/sessions/fixture/finish'); await act(async()=>{});
     expect(training.getByText('Comparación no disponible en esta lectura.')).toBeTruthy();

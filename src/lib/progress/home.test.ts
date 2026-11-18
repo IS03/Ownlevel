@@ -49,7 +49,7 @@ function comparison(input: Array<{
 function training(): TrainingGeneralAnalytics {
   return {
     performance: {
-      summary: { improved: 7, stable: 2, declined: 1, comparable: 10, insufficient: 2, headline: "7 de 10 ejercicios mejoraron", context: null },
+      summary: { improved: 7, stable: 2, declined: 1, comparable: 10, insufficient: 2, headline: "7 de 10 ejercicios subieron", context: null },
       exercises: [],
       findings: [{
         exerciseId: "press",
@@ -107,7 +107,7 @@ describe("Progress Home V2 composition", () => {
 
   it("prioritizes canonical training performance and concrete findings without repeating the summary", () => {
     const model = buildProgressHomeModel({ ...baseInput(), training: training() });
-    expect(model.evolution[0]).toMatchObject({ id: "training.performance", value: "7 de 10 ejercicios mejoraron" });
+    expect(model.evolution[0]).toMatchObject({ id: "training.performance", value: "7 de 10 ejercicios subieron" });
     expect(model.changes[0]).toMatchObject({ label: "Press inclinado", description: "+2,5 kg manteniendo 10 reps" });
     expect(model.changes.some((item) => item.description === model.evolution[0]?.value)).toBe(false);
   });

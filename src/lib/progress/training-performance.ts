@@ -473,7 +473,7 @@ function performanceSummary(exercises: TrainingExercisePerformance[]): TrainingP
     declined,
     comparable,
     insufficient,
-    headline: comparable ? `${improved} de ${comparable} ejercicios mejoraron` : "No hay suficiente historial comparable",
+    headline: comparable ? `${improved} de ${comparable} ejercicios subieron` : "No hay suficiente historial comparable",
     context,
   };
 }
