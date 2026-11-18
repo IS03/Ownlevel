@@ -114,8 +114,8 @@ describe('#518 · tres puertas, una pantalla', () => {
     expect(view.queryByTestId('insights-context-open')).toBeNull();
     fireEvent.press(view.getByTestId('insights-context-toggle'));
     expect(view.getByTestId('insights-context-open')).toBeTruthy(); expect(reads()).toEqual(['summary']);
-    // History, the strip under it, then the rest; relations only on request.
-    expect(view.getByText('Historial')).toBeTruthy();
+    // Días más claros · The chart of sessions replaces the history list; relations only on request.
+    expect(view.getByTestId('comparisons-session-strip')).toBeTruthy();
     expect(reads().some(path => path.includes('view=relations'))).toBe(false);
     // An exercise opens its evidence, with the read it came from.
     fireEvent.press(top.getByRole('button', { name: /^Remo con barra, registro superior con contexto parcial/ }));
@@ -145,8 +145,8 @@ describe('#518 · tres puertas, una pantalla', () => {
     expect(reads()).toEqual(['summary']);
     const focusView = within(view.getByTestId('insights-session'));
     expect(focusView.getByRole('header', { name: 'Tirón' })).toBeTruthy();
-    expect(focusView.getByText('Lunes, 9 de marzo de 2026 · 18:00–19:10')).toBeTruthy();
-    expect(focusView.getByLabelText('2 de 2 ejercicios con resultado claro, con contexto parcial')).toBeTruthy();
+    expect(focusView.getByRole('button', { name: 'Abrir sesión Tirón, Lunes, 9 de marzo de 2026, 18:00–19:10' })).toBeTruthy();
+    expect(focusView.getByLabelText(/^2 de 2 ejercicios con resultado claro, con contexto parcial/)).toBeTruthy();
     // Two sessions that day: each its own result; the other one is a tap away, on top of this one.
     fireEvent.press(within(view.getByTestId('insights-day-others')).getByRole('button', { name: /^Ver la otra sesión de ese día: Movilidad/ }));
     expect(lastPush()).toEqual({ pathname: '/(tabs)/train/insights', params: { session: MOBILITY, date: D1 } });

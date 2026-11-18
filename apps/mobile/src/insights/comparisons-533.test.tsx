@@ -117,7 +117,7 @@ describe('#533 · pantallas', () => {
     expect(view.getByTestId('comparisons-timeline')).toBeTruthy();
     expect(view.getByRole('button', { name: /^Remo, .*subió [\d,]+ por ciento\. Ver evidencia y series$/ })).toBeTruthy();
     // The strip of recent sessions opens one of them.
-    fireEvent.press(within(view.getByTestId('comparisons-session-strip')).getAllByRole('button')[1]!);
+    fireEvent.press(within(view.getByTestId('comparisons-session-strip')).getByTestId(`comparisons-strip-${id(7)}`));
     expect(mockSetParams).toHaveBeenCalledWith(expect.objectContaining({ session: id(7) }));
   });
   it('Días shows each exercise as recorded and links to its routine in Relación', async () => {

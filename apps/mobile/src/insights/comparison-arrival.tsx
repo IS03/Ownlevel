@@ -72,6 +72,11 @@ export function FoodBlock({ session, day }: { session: SessionFact; day: DayFact
       {foodFacts(session, day).map(fact => <View key={fact.key} style={styles.total} accessible accessibilityLabel={fact.spoken} testID={`food-${fact.key}`}>
         <AppText muted variant="caption">{fact.label}</AppText>
         <AppText variant="headline" numeric style={!fact.value && { color: colors.textMuted }}>{fact.value ?? '—'}</AppText>
+        {fact.share !== undefined ? <View style={[styles.meter, { backgroundColor: colors.border }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" testID={`food-${fact.key}-meter`}>
+          <View style={[styles.meterFill, { width: `${(Math.min(1, fact.share) / 1.2) * 100}%`, backgroundColor: colors.primary, opacity: 0.45 }]} />
+          {fact.share > 1 ? <View style={[styles.meterFill, { left: `${100 / 1.2}%`, width: `${((fact.share - 1) / 1.2) * 100}%`, backgroundColor: colors.primary }]} /> : null}
+          <View style={[styles.meterMark, { left: `${100 / 1.2}%`, backgroundColor: colors.text }]} />
+        </View> : null}
         {fact.caption ? <AppText muted variant="caption" numeric>{fact.caption}</AppText> : null}
       </View>)}
     </View>
@@ -92,5 +97,8 @@ const styles = StyleSheet.create({
   rule: { height: StyleSheet.hairlineWidth },
   totals: { flexDirection: 'row', gap: spacing.md },
   stacked: { flexDirection: 'column' },
+  meter: { height: 4, borderRadius: 2, marginTop: 4, marginBottom: 2 },
+  meterFill: { position: 'absolute', top: 0, bottom: 0, left: 0, borderRadius: 2 },
+  meterMark: { position: 'absolute', top: -3, width: 2, height: 10, marginLeft: -1, borderRadius: 1 },
   total: { flex: 1, gap: 1 },
 });

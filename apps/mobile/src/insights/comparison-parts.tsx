@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
-import { AppSheet, AppText, Heading, brandTokens, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { AppIcon, AppSheet, AppText, Heading, brandTokens, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import { formatPct, type ArrivalFact } from './comparison-change';
 import { LANE_TITLE, PARTIAL_LIMIT, type Lane } from './insights-model';
@@ -29,6 +29,52 @@ export function SessionStrip({ sessions, selected, onSelect }: { sessions: reado
     </Pressable>; })}
   </ScrollView>;
 }
+
+/**
+ * Días más claros · One bar per session, oldest on the left: up when the session went up, down when it went down, a dashed slot
+ * when it has no measured change (never a zero bar). Tapping a bar chooses that session. Earlier sessions are read on a tap of
+ * «Anteriores», never on scroll (each page is a whole read on the server).
+ */
+const BAR_W = 18, BAR_GAP = 6, CHART_H = 112, CHART_MID = 52;
+export function SessionChart({ sessions, selected, onSelect, onEarlier, loadingEarlier = false }: {
+  sessions: readonly StripSession[]; selected: string | null; onSelect: (session: StripSession) => void; onEarlier?: () => void; loadingEarlier?: boolean;
+}) {
+  const { colors } = useOwnlevelTheme();
+  const reduced = useReduceMotion();
+  const ref = useRef<ScrollView>(null);
+  const ordered = [...sessions].reverse();
+  const max = Math.max(3, ...ordered.map(row => Math.abs(row.pct ?? 0)));
+  const scale = (CHART_MID - 6) / max;
+  if (!ordered.length) return null;
+  return <ScrollView ref={ref} horizontal showsHorizontalScrollIndicator={false} onContentSizeChange={() => ref.current?.scrollToEnd({ animated: false })}
+    contentContainerStyle={styles.chartRow} testID="comparisons-session-strip">
+    {onEarlier ? <Pressable accessibilityRole="button" accessibilityLabel="Ver sesiones anteriores" disabled={loadingEarlier} onPress={() => { haptics.selection(); onEarlier(); }} testID="comparisons-earlier"
+      style={({ pressed }) => [styles.earlier, pressedStyle(pressed, reduced)]}>
+      <AppIcon name="chevronLeft" size={15} color={colors.textMuted} />
+      <AppText muted variant="caption">{loadingEarlier ? 'Cargando' : 'Anteriores'}</AppText>
+    </Pressable> : null}
+    {ordered.map((session, index) => {
+      const on = session.sessionId === selected, pct = session.pct;
+      const height = pct === null || pct === 0 ? 0 : Math.max(4, Math.abs(pct) * scale);
+      const label = on || index === 0 || index === ordered.length - 1 || (ordered.length - 1 - index) % 4 === 0;
+      return <Pressable key={session.sessionId} accessibilityRole="button" accessibilityState={{ selected: on }}
+        accessibilityLabel={`${session.routine}, ${shortDate(session.date)}: ${pct === null ? 'sin cambio medido' : formatPct(pct)}`}
+        onPress={() => { haptics.selection(); onSelect(session); }} testID={`comparisons-strip-${session.sessionId}`}
+        style={({ pressed }) => [styles.barSlot, pressedStyle(pressed, reduced)]}>
+        <View style={styles.barArea}>
+          <View style={[styles.zero, { backgroundColor: colors.border }]} />
+          {pct === null ? <View style={[styles.bar, styles.none, { top: CHART_MID - 8, height: 16, borderColor: colors.textMuted }]} />
+            : pct === 0 ? <View style={[styles.bar, { top: CHART_MID - 1.5, height: 3, backgroundColor: colors.textMuted }]} />
+            : <View style={[styles.bar, { top: pct > 0 ? CHART_MID - height : CHART_MID, height, backgroundColor: colors.primary, opacity: on ? 1 : 0.4 }]} />}
+        </View>
+        <View style={[styles.dateTag, on && { backgroundColor: colors.brandSubtle }]}>
+          <AppText variant="caption" numeric numberOfLines={1} style={{ color: on ? colors.primary : colors.textMuted, fontWeight: on ? '700' : '400' }}>{label ? shortDay(session.date) : ' '}</AppText>
+        </View>
+      </Pressable>;
+    })}
+  </ScrollView>;
+}
+const shortDay = (date: string) => `${Number(date.slice(8, 10))}/${Number(date.slice(5, 7))}`;
 
 /**
  * «Cómo llegaste»: numbers straight on the background, each with its small label. A missing fact is a grey «—» (VoiceOver says
@@ -140,16 +186,16 @@ export function ArrivalTimeline({ start, meals, uncertain, sleep, big = false, o
  * paragraphs. Nothing is hidden: it is one tap away and read by VoiceOver from the line itself.
  */
 const STRICT_TEXT = 'Comparamos cada ejercicio con su vez anterior en la misma variante: mismo modo, unidad, implemento y configuración. Tomamos la mejor serie con cada peso que aparece en las dos sesiones. Si subiste de peso con las mismas repeticiones, lo mostramos como «↑ Peso» y no entra en el porcentaje.';
-export function MethodLine({ lanes, testID = 'comparisons-method' }: { lanes: readonly Lane[]; testID?: string }) {
+export function MethodLine({ lanes, testID = 'comparisons-method', lead, leadLabel, leadTestID }: { lanes: readonly Lane[]; testID?: string; lead?: string; leadLabel?: string; leadTestID?: string }) {
   const { colors } = useOwnlevelTheme();
   const reduced = useReduceMotion();
   const [open, setOpen] = useState(false);
   const partial = lanes.includes('partial');
   const line = partial ? 'Contexto parcial. No sabemos si cambiaste agarre o banco.' : 'Misma variante y mejor serie con cada peso.';
   return <>
-    <Pressable accessibilityRole="button" accessibilityLabel={`${line} Cómo comparamos`} onPress={() => { haptics.selection(); setOpen(true); }} testID={testID}
+    <Pressable accessibilityRole="button" accessibilityLabel={`${lead ? `${leadLabel ?? lead}. ` : ''}${line} Cómo comparamos`} onPress={() => { haptics.selection(); setOpen(true); }} testID={testID}
       style={({ pressed }) => [styles.method, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
-      <AppText muted variant="footnote" style={styles.flex}>{line}</AppText>
+      <AppText muted variant="footnote" numeric style={styles.flex} testID={leadTestID}>{lead ?? line}</AppText>
       <AppText variant="footnote" style={{ color: colors.primary }}>Cómo comparamos</AppText>
     </Pressable>
     {open ? <AppSheet onClose={() => setOpen(false)} closeLabel="Cerrar" testID="comparisons-method-sheet" style={{ backgroundColor: colors.background }}>
@@ -232,6 +278,14 @@ const styles = StyleSheet.create({
   block: { gap: spacing.sm },
   flex: { flex: 1, flexShrink: 1 },
   strip: { gap: spacing.sm, paddingVertical: spacing.xs },
+  chartRow: { flexDirection: 'row', alignItems: 'flex-start', gap: BAR_GAP, paddingVertical: spacing.xs },
+  barSlot: { width: BAR_W + 22, alignItems: 'center', gap: 4 },
+  barArea: { width: BAR_W, height: CHART_H - 20 },
+  zero: { position: 'absolute', left: -BAR_GAP, right: -BAR_GAP - 16, top: CHART_MID, height: 1 },
+  bar: { position: 'absolute', left: 0, width: BAR_W, borderRadius: 4 },
+  none: { borderWidth: 1, borderStyle: 'dashed', backgroundColor: 'transparent' },
+  dateTag: { borderRadius: 8, paddingHorizontal: 2, width: BAR_W + 26, alignItems: 'center' },
+  earlier: { height: CHART_H - 20, justifyContent: 'center', alignItems: 'center', gap: 2, paddingRight: spacing.xs },
   pill: { minWidth: 76, minHeight: 44, borderRadius: brandTokens.radius.inner, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: 2 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: spacing.md },
   cell: { gap: 1, paddingRight: spacing.sm },
