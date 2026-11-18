@@ -54,6 +54,14 @@ export function definitionSummary(d: MetricDefinition): string {
   const kind = d.valueType === 'duration' ? 'Duración (h y min)' : `${VALUE_TYPE_LABELS[d.valueType]}${d.unit ? ` · ${d.unit}` : ''}`;
   return `${kind} · ${d.target === null ? 'Sin objetivo' : `Objetivo ${formatDefinitionAmount(d, d.target)}`}${d.quickValue == null ? '' : ` · toque: + ${quickAmount(d, d.quickValue)}`}`;
 }
+/** «7 h», «7 h 30 min»: a duration without a trailing «0 min». */
+function shortDuration(minutes: number) { const h = Math.floor(minutes / 60), m = minutes % 60; return h && m ? `${h} h ${m} min` : h ? `${h} h` : `${m} min`; }
+/** One line for the metrics list: what you aim for and what a tap adds. The kind and origin live in the editor. */
+export function definitionLine(d: Pick<MetricDefinition, 'valueType' | 'unit' | 'target' | 'quickValue'>): string {
+  const amount = (value: number) => d.valueType === 'duration' ? shortDuration(value) : formatDefinitionAmount(d, value);
+  const target = d.target === null ? 'Sin objetivo' : `Objetivo ${amount(d.target)}`;
+  return d.quickValue == null ? target : `${target} · + ${d.valueType === 'duration' ? shortDuration(d.quickValue) : quickAmount(d, d.quickValue)} por toque`;
+}
 export function quickAmount(d: Pick<MetricDefinition,'valueType'|'unit'>, value:number): string {
   return d.unit==='L' && value<1 ? `${number.format(Math.round(value*1e7)/1e4)} ml` : formatDefinitionAmount(d,value);
 }

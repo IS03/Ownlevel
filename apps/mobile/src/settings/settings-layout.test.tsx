@@ -6,9 +6,10 @@ import SettingsLayout from '../../app/settings/_layout';
 
 const mockScreens: { name: string; title?: string }[] = [];
 const mockTransparentHeaders: string[] = [];
+const mockLargeTitles: string[] = [];
 jest.mock('expo-router', () => {
   function Stack({ children }: { children: ReactNode }) { return children; }
-  function Screen({ name, options }: { name: string; options?: { title?: string; headerTransparent?: boolean } }) { mockScreens.push({ name, title: options?.title }); if (options?.headerTransparent) mockTransparentHeaders.push(name); return null; }
+  function Screen({ name, options }: { name: string; options?: { title?: string; headerTransparent?: boolean; headerLargeTitleEnabled?: boolean } }) { mockScreens.push({ name, title: options?.title }); if (options?.headerTransparent) mockTransparentHeaders.push(name); if (options?.headerLargeTitleEnabled) mockLargeTitles.push(name); return null; }
   Stack.Screen = Screen;
   return { Stack };
 });
@@ -31,6 +32,8 @@ describe('Settings stack', () => {
       { name: 'stage-plan', title: 'Plan nutricional' },
       { name: 'stage-sequence', title: 'Programar etapas' },
     ]);
-    expect(mockTransparentHeaders).toEqual(expect.arrayContaining(['metrics', 'diagnostics']));
+    expect(mockTransparentHeaders).toEqual(expect.arrayContaining(['index', 'diagnostics']));
+    // iOS: one title per screen, the native large title (big, then small in the bar while scrolling); the screen draws none.
+    expect(mockLargeTitles).toEqual(['metrics', 'meal-moments', 'account', 'delete-account', 'app', 'energy', 'physical', 'stages', 'stage-plan', 'stage-sequence']);
   });
 });

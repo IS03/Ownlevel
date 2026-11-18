@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { AppIcon, AppText, Button, Heading, brandTokens, pressedStyle, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { AppIcon, AppText, Button, brandTokens, pressedStyle, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import { DEFAULT_MEAL_MOMENT_BANDS, MEAL_MOMENT_BAND_KEYS, type MealMomentBands } from '@/api/nutrition-moment-bands';
 import { useMealMomentBands } from '@/nutrition/moment-bands-provider';
 import { SaveButton } from '@/nutrition/save-button';
-import { EditorialScreen } from './editorial';
+import { EditorialScreen, ScreenTitle } from './editorial';
 
 /** Steps of half an hour: on the server's 15-minute grid, and few taps to move a band. */
 const STEP = 30;
@@ -57,7 +57,7 @@ export function MealMomentsScreen() {
   const stacked = fontScale > 1.3;
   const save = async () => { if (await context.save(draft) === 'saved') setJustSaved(true); };
   return <EditorialScreen>
-    <Heading>Horarios de comidas</Heading>
+    <ScreenTitle>Horarios de comidas</ScreenTitle>
     <AppText muted>Cuando cargás una comida, la app sugiere el momento según la hora. Las que ya cargaste no cambian.</AppText>
     <DayBands bands={draft} />
     {state.availability === 'loading' ? <ActivityIndicator color={colors.textMuted} accessibilityLabel="Cargando tus horarios" /> : null}

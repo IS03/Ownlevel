@@ -29,10 +29,11 @@ describe('metric icon catalog (#535)', () => {
     for (const group of metricIconGroups) expect(metricIcons.filter(icon => icon.group === group.value).length).toBeGreaterThanOrEqual(8);
     expect(metricIconGroup('unknown-icon')).toBe('activity');
   });
-  it('lays the grid edge to edge with cells no smaller than the touch target', () => {
+  it('lays the grid edge to edge with round cells of about 40 pt (eight to a row on a phone)', () => {
+    expect(iconGrid(370).columns).toBe(8); // iPhone 18 Pro: 402 pt minus the 16 pt margins
     for (const width of [311, 343, 358, 398, 688]) {
       const { columns, cell } = iconGrid(width);
-      expect(cell).toBeGreaterThanOrEqual(48);
+      expect(cell).toBeGreaterThanOrEqual(38);
       expect(columns * cell + 8 * (columns - 1)).toBeLessThanOrEqual(width);
       expect(width - (columns * cell + 8 * (columns - 1))).toBeLessThan(columns);
     }
@@ -47,22 +48,22 @@ function Harness({ initial, fallback = 'activity' as const }: { initial: string 
 }
 
 describe('MetricIconPicker (#535)', () => {
-  it('opens on the group of the chosen icon, marks only it, and keeps it while browsing other groups', () => {
+  it('shows every group at once, so the chosen icon is always in sight; only it is marked', () => {
     const view = render(<Harness initial="wine" />);
-    expect(view.getByRole('radio', { name: 'Hábitos' }).props.accessibilityState.checked).toBe(true);
+    for (const group of metricIconGroups) expect(view.getByText(group.label)).toBeTruthy();
+    expect(view.queryByRole('radio', { name: 'Hábitos' })).toBeNull(); // no tabs any more
     expect(view.getByRole('radio', { name: 'Ícono: Alcohol' }).props.accessibilityState.checked).toBe(true);
-    expect(view.getAllByRole('radio').filter(r => /^Ícono: /u.test(r.props.accessibilityLabel) && r.props.accessibilityState.checked)).toHaveLength(1);
-    fireEvent.press(view.getByRole('radio', { name: 'Salud' }));
-    expect(view.queryByRole('radio', { name: 'Ícono: Alcohol' })).toBeNull();
+    expect(view.getAllByRole('radio').filter(r => r.props.accessibilityState.checked)).toHaveLength(1);
     fireEvent.press(view.getByRole('radio', { name: 'Ícono: Temperatura' }));
     expect(view.getByRole('radio', { name: 'Ícono: Temperatura' }).props.accessibilityState.checked).toBe(true);
-    fireEvent.press(view.getByRole('radio', { name: 'Hábitos' }));
     expect(view.getByRole('radio', { name: 'Ícono: Alcohol' }).props.accessibilityState.checked).toBe(false);
+    // Each round cell keeps a 44 pt touch area.
+    const slop = view.getByRole('radio', { name: 'Ícono: Alcohol' }).props.hitSlop as number;
+    expect(38 + 2 * slop).toBeGreaterThanOrEqual(44);
   });
-  it('with nothing chosen opens on the default icon\'s group with nothing marked; a second tap goes back to the default', () => {
+  it('with nothing chosen nothing is marked; a second tap on a chosen icon goes back to the default', () => {
     const view = render(<Harness initial={null} fallback="footprints" />);
-    expect(view.getByRole('radio', { name: 'Actividad' }).props.accessibilityState.checked).toBe(true);
-    expect(view.getByRole('radio', { name: 'Ícono: Pasos' }).props.accessibilityState.checked).toBe(false);
+    expect(view.getAllByRole('radio').filter(r => r.props.accessibilityState.checked)).toHaveLength(0);
     fireEvent.press(view.getByRole('radio', { name: 'Ícono: Natación' }));
     expect(view.getByRole('radio', { name: 'Ícono: Natación' }).props.accessibilityState.checked).toBe(true);
     fireEvent.press(view.getByRole('radio', { name: 'Ícono: Natación' }));

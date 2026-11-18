@@ -22,6 +22,7 @@ import {
   EditorialScreen,
   EditorialSkeleton,
   formatNumber,
+  ScreenTitle,
 } from './editorial';
 import { activities, estimatedEnergy, sexes, shortDate } from './settings-model';
 
@@ -230,7 +231,7 @@ export function ConfigurationScreen({ operation }: { operation: Operation }) {
   return (
     <View style={{ flex: 1 }}>
       <EditorialScreen>
-        <Heading>{operation === 'energy' ? 'Energía' : 'Datos físicos'}</Heading>
+        <ScreenTitle>{operation === 'energy' ? 'Energía' : 'Datos físicos'}</ScreenTitle>
         {otherIntent ? (
           <>
             <AppText>Primero terminá de confirmar el cambio que tenés pendiente.</AppText>

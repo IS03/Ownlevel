@@ -51,13 +51,18 @@ describe('Administrar métricas', () => {
     const view = wrap(); await flush();
     const active = within(view.getByTestId('metric-definitions-active'));
     expect(active.getAllByText(/^(Pasos|Agua|Sueño|Lectura|Correr)$/).map(n => n.props.children)).toEqual(['Pasos', 'Agua', 'Sueño', 'Lectura', 'Correr']);
-    expect(within(view.getByTestId(`metric-definition-${defId(1)}`)).getByText('Sistema · Con historial')).toBeTruthy();
-    expect(within(view.getByTestId(`metric-definition-${defId(1)}`)).getByText('Número entero · pasos · Objetivo 10.000 pasos')).toBeTruthy();
-    expect(within(view.getByTestId(`metric-definition-${defId(3)}`)).getByText('Duración (h y min) · Objetivo 8 h 0 min')).toBeTruthy();
-    expect(within(view.getByTestId(`metric-definition-${defId(11)}`)).getByText('Decimal · km · Sin objetivo')).toBeTruthy();
-    fireEvent.press(view.getByText('Archivadas · 1'));
+    // One plain line per metric: what you aim for (and what a tap adds). The kind and origin live in the editor.
+    expect(within(view.getByTestId(`metric-definition-${defId(1)}`)).getByText('Objetivo 10.000 pasos')).toBeTruthy();
+    expect(within(view.getByTestId(`metric-definition-${defId(3)}`)).getByText('Objetivo 8 h')).toBeTruthy();
+    expect(within(view.getByTestId(`metric-definition-${defId(11)}`)).getByText('Sin objetivo')).toBeTruthy();
+    expect(view.queryByText(/Sistema|Con historial|Número entero/)).toBeNull();
+    // Archivadas is a row of the list (icon, count, chevron), closed until asked.
+    const toggle = view.getByRole('button', { name: 'Archivadas, 1' });
+    expect(toggle.props.accessibilityState).toMatchObject({ expanded: false }); expect(view.queryByTestId('metric-definitions-archived')).toBeNull();
+    fireEvent.press(toggle);
+    expect(view.getByRole('button', { name: 'Archivadas, 1' }).props.accessibilityState).toMatchObject({ expanded: true });
     const archived = within(view.getByTestId('metric-definitions-archived'));
-    expect(archived.getByText('Mate')).toBeTruthy(); expect(archived.getByText('Sistema · Archivada · Con historial')).toBeTruthy();
+    expect(archived.getByText('Mate')).toBeTruthy();
     expect(view.getByLabelText('Editar Pasos').props.accessibilityActions).not.toContainEqual({name:'moveUp',label:'Mover arriba'});
     expect(view.getByLabelText('Editar Correr').props.accessibilityActions).not.toContainEqual({name:'moveDown',label:'Mover abajo'});
   });
@@ -66,18 +71,18 @@ describe('Administrar métricas', () => {
     fireEvent.press(view.getByRole('button', { name: 'Editar Pasos' }));
     const editor = within(view.getByTestId('metric-definition-editor'));
     expect(editor.getByLabelText('Nombre').props.editable).toBe(false);
-    expect(editor.getByLabelText('Unidad (opcional)').props.editable).toBe(false);
-    expect(editor.getByRole('radio', { name: 'Decimal' })).toBeDisabled();
-    expect(editor.getByLabelText('Objetivo (opcional)').props.editable).toBe(true);
+    // The fixed type is said as information, not as a dimmed control.
+    expect(editor.getByTestId('metric-definition-fixed-type')).toBeTruthy();
+    expect(editor.queryByLabelText('Unidad (opcional)')).toBeNull(); expect(editor.queryByRole('radio', { name: 'Decimal' })).toBeNull();
+    expect(editor.getByLabelText('Objetivo diario').props.editable).toBe(true);
+    expect(editor.getByTestId('metric-definition-preview')).toBeTruthy();
     expect(editor.queryByRole('button', { name: 'Eliminar métrica' })).toBeNull();
     const alert=jest.spyOn(Alert,'alert');
     expect(editor.queryByLabelText('Más opciones de métrica')).toBeNull();
     fireEvent.press(editor.getByLabelText('Archivar métrica'));
     expect(alert.mock.calls.at(-1)?.[2]?.map(b=>b.text)).toContain('Archivar');
     expect(alert.mock.calls.at(-1)?.[2]?.map(b=>b.text)).not.toContain('Eliminar métrica');
-    // Pasos opens the picker on its own group (Actividad); Libro is under Hábitos.
-    expect(editor.getByRole('radio', { name: 'Actividad' }).props.accessibilityState.checked).toBe(true);
-    fireEvent.press(editor.getByRole('radio', { name: 'Hábitos' }));
+    // Every icon group is in sight at once (no tabs): Libro, under Hábitos, can be chosen right away.
     expect(editor.getByLabelText('Ícono: Libro')).toBeEnabled();
     // No "use default" button: only a chosen icon is marked, and tapping it again goes back to the default.
     expect(editor.queryByText('Usar ícono predeterminado')).toBeNull();
@@ -93,8 +98,8 @@ describe('Administrar métricas', () => {
     fireEvent.press(view.getByRole('button', { name: 'Editar Correr' }));
     let editor = within(view.getByTestId('metric-definition-editor'));
     expect(editor.getByLabelText('Nombre').props.editable).toBe(true);
-    expect(editor.getByLabelText('Unidad (opcional)').props.editable).toBe(false);
-    expect(editor.getByText(/el tipo y la unidad quedan como estaban/)).toBeTruthy();
+    expect(editor.queryByLabelText('Unidad (opcional)')).toBeNull();
+    expect(editor.getByText('Fijo porque ya tiene registros, para conservarlos.')).toBeTruthy();
     expect(editor.queryByRole('button', { name: 'Eliminar métrica' })).toBeNull();
     fireEvent.press(editor.getByRole('button', { name: 'Cerrar' }));
     fireEvent.press(view.getByRole('button', { name: 'Editar Lectura' }));
@@ -113,14 +118,14 @@ describe('Administrar métricas', () => {
     fireEvent.changeText(editor.getByLabelText('Nombre'), 'Agua con gas');
     fireEvent.press(editor.getByRole('radio', { name: 'Decimal' }));
     fireEvent.changeText(editor.getByLabelText('Unidad (opcional)'), 'L');
-    fireEvent.changeText(editor.getByLabelText('Objetivo (opcional)'), '0,5');
+    fireEvent.changeText(editor.getByLabelText('Objetivo diario'), '0,5');
     const created = [...fixtureDefinitions().slice(0, 5), definition({ id: defId(99), name: 'Agua con gas', unit: 'L', valueType: 'decimal', target: 0.5, sortOrder: 5 }), fixtureDefinitions()[5]];
     mockRead.mockResolvedValue({ status: 'ok', data: { definitions: created }, meta });
     await act(async () => { fireEvent.press(editor.getByRole('button', { name: 'Crear métrica' })); }); await flush();
     expect(mockMutate).toHaveBeenCalledTimes(1);
     expect(mockMutate.mock.calls[0][1]).toMatchObject({ operation: 'create', fields: { name: 'Agua con gas', valueType: 'decimal', unit: 'L', target: 0.5 } });
     expect(view.getByLabelText('Guardado')).toBeTruthy(); expect(view.getByLabelText('Métrica creada.')).toBeTruthy();
-    expect(within(view.getByTestId(`metric-definition-${defId(99)}`)).getByText('Decimal · L · Objetivo 0,5 L')).toBeTruthy();
+    expect(within(view.getByTestId(`metric-definition-${defId(99)}`)).getByText('Objetivo 0,5 L')).toBeTruthy();
   });
   it('reorders with one full-list move and refreshes on focus', async () => {
     const view = wrap(); await flush();

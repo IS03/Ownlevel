@@ -6,7 +6,6 @@ import {
   AppIcon,
   AppText,
   Button,
-  Heading,
   TextField,
   brandTokens,
   pressedStyle,
@@ -14,6 +13,7 @@ import {
   useReduceMotion,
 } from "@/design-system";
 import {
+  ScreenTitle,
   CountingNumber,
   EditorialRow,
   EditorialScreen,
@@ -93,7 +93,7 @@ export function StageSequenceScreen() {
     <View style={{ flex: 1 }}>
       <EditorialScreen>
         <View style={{ gap: 4 }}>
-          <Heading>Programar etapas</Heading>
+          <ScreenTitle>Programar etapas</ScreenTitle>
           {/* Its own line under the title, always present: months, weeks and the end date never push the title. */}
           <AppText muted numeric testID="sequence-totals">
             {totals && end ? (

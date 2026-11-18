@@ -5,6 +5,7 @@ import Animated, { FadeIn, FadeInDown, FadeOut, LinearTransition, useAnimatedSty
 import {
   AppIcon,
   AppText,
+  Heading,
   atmosphere,
   glowGradient,
   SkeletonBlock,
@@ -46,12 +47,34 @@ export function CountingNumber({
     </AppText>
   );
 }
+/**
+ * The screen's own title. On iOS the native large title says it (big at the top, then small in the bar while scrolling;
+ * settings/_layout), so nothing is drawn here: drawing it again was the duplicated title. Android has no large title: the
+ * bar stays empty and the title is drawn here.
+ */
+export function ScreenTitle({ children }: { children: ReactNode }) {
+  return Platform.OS === 'ios' ? null : <Heading>{children}</Heading>;
+}
 export function EditorialScreen({ children,scrollEnabled=true,adjustKeyboardInsets=true }: PropsWithChildren<{scrollEnabled?:boolean;adjustKeyboardInsets?:boolean}>) {
   const { isDark, colors } = useOwnlevelTheme();
+  const scroll = (glow: boolean) => (
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
+        scrollEnabled={scrollEnabled}
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets={adjustKeyboardInsets}
+        keyboardDismissMode="interactive"
+        // iOS: the scroll view is the screen's first view, so the native large title collapses with it; the glow is its background.
+        style={glow ? { flex: 1, backgroundColor: colors.background, experimental_backgroundImage: glowGradient(atmosphere[isDark ? 'dark' : 'light'].glow) } : undefined}
+        contentContainerStyle={{ padding: 16, gap: 24, paddingBottom: 40 }}
+      >
+        {children}
+      </ScrollView>
+  );
+  if (Platform.OS === 'ios') return scroll(true);
   return (
     <SafeAreaView
-      // UIKit protects the final row with its scroll inset; the viewport reaches the home indicator.
-      edges={Platform.OS === 'ios' ? ['left', 'right'] : ['left', 'right', 'bottom']}
+      edges={['left', 'right', 'bottom']}
       style={{ flex: 1, backgroundColor: colors.background }}
     >
       <View
@@ -63,16 +86,7 @@ export function EditorialScreen({ children,scrollEnabled=true,adjustKeyboardInse
           },
         ]}
       />
-      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
-        scrollEnabled={scrollEnabled}
-        contentInsetAdjustmentBehavior="automatic"
-        keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets={adjustKeyboardInsets}
-        keyboardDismissMode="interactive"
-        contentContainerStyle={{ padding: 16, gap: 24, paddingBottom: 40 }}
-      >
-        {children}
-      </ScrollView>
+      {scroll(false)}
     </SafeAreaView>
   );
 }

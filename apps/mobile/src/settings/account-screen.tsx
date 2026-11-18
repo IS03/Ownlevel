@@ -20,7 +20,7 @@ import { NutritionGlassButton } from '@/nutrition/day-controls';
 import { SaveButton } from '@/nutrition/save-button';
 import { NutritionToast } from '@/nutrition/nutrition-toast';
 import { AccountAvatar } from './account-avatar';
-import { EditorialRow, EditorialScreen } from './editorial';
+import { EditorialRow, EditorialScreen, ScreenTitle } from './editorial';
 import { useDisplayNameController } from './use-display-name-controller';
 
 export function AccountScreen() {
@@ -80,7 +80,7 @@ export function AccountScreen() {
   return (
     <View style={{ flex: 1 }}>
       <EditorialScreen>
-        <Heading>Cuenta</Heading>
+        <ScreenTitle>Cuenta</ScreenTitle>
         <View style={{ alignItems: 'center' }}>
           <AccountAvatar name={identity?.displayName ?? null} />
         </View>

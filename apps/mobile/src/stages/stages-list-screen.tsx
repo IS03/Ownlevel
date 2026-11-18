@@ -10,7 +10,7 @@ import {
   useReduceMotion,
 } from "@/design-system";
 import { NutritionGlassButton } from "@/nutrition/day-controls";
-import { CountingNumber, EditorialScreen, EditorialSpread, Reveal } from "@/settings/editorial";
+import { ScreenTitle, CountingNumber, EditorialScreen, EditorialSpread, Reveal } from "@/settings/editorial";
 import {
   previousDate,
   shortDate,
@@ -80,8 +80,12 @@ export function StagesListScreen() {
   return (
     <View style={{ flex: 1 }}>
       <EditorialScreen>
+        <ScreenTitle>Etapas</ScreenTitle>
+        {/* The large title lives in the bar (iOS): the add button sits with the description instead of beside a second title. */}
         <EditorialSpread>
-          <Heading style={{ flexShrink: 1 }}>Etapas</Heading>
+          <AppText muted style={{ flexShrink: 1 }}>
+            Cada etapa con su objetivo. Las pasadas quedan como estaban.
+          </AppText>
           <NutritionGlassButton
             icon="plus"
             label="Agregar etapa"
@@ -90,9 +94,6 @@ export function StagesListScreen() {
             }
           />
         </EditorialSpread>
-        <AppText muted>
-          Cada etapa con su objetivo. Las pasadas quedan como estaban.
-        </AppText>
         {!list ||
         (state?.loading &&
           !list.current &&
