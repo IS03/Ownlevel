@@ -518,6 +518,8 @@ export type TrainingExerciseHistorySessionDto = {
   mark: TrainingHistoryMarkDto | null;
   completedSets: number;
   rirValues: number[];
+  /** Opt-in (`sets=1`): each completed set as recorded, in set order. Older strict parsers never receive it. */
+  sets?: TrainingHistoryMarkDto[];
 };
 export type TrainingExerciseHistoryResponse = {
   routines?: Array<{ id: string; name: string }>;
