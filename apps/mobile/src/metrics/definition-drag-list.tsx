@@ -19,7 +19,7 @@ import {
 import { homeMetricIcon } from '@/home/home-metric-icons';
 import { triggerMetricHaptic } from '@/platform/haptics';
 import type { MetricDefinition } from '@/api/metric-definitions';
-import { definitionSummary } from './definitions-model';
+import { definitionLine } from './definitions-model';
 export function dragOrder(ids: string[], id: string, index: number) {
   const next = ids.filter((x) => x !== id);
   next.splice(Math.max(0, Math.min(next.length, index)), 0, id);
@@ -257,8 +257,8 @@ function DragRow({
           onPress={onOpen}
           style={({ pressed }) => [
             {
-              minHeight: 80,
-              paddingVertical: 20,
+              minHeight: 72,
+              paddingVertical: 14,
               borderBottomWidth: StyleSheet.hairlineWidth,
               borderColor: colors.border,
               flexDirection: 'row',
@@ -269,21 +269,13 @@ function DragRow({
           ]}
           testID={'metric-definition-' + d.id}
         >
-          <AppIcon
-            name={homeMetricIcon(d.systemKey, d.icon)}
-            color={colors.textMuted}
-            size={20}
-          />
-          <View style={{ flex: 1, gap: 4 }}>
-            <AppText variant="headline">{d.name}</AppText>
-            <AppText muted numeric variant="footnote">
-              {definitionSummary(d)}
-            </AppText>
-            <AppText muted variant="caption">
-              {d.systemKey ? 'Sistema' : 'Propia'}
-              {!d.isActive ? ' · Archivada' : ''}
-              {d.hasHistory ? ' · Con historial' : ''}
-            </AppText>
+          {/* The same round icon as Inicio and Tu día. */}
+          <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface }}>
+            <AppIcon name={homeMetricIcon(d.systemKey, d.icon)} color={d.isActive ? colors.primary : colors.textMuted} size={20} />
+          </View>
+          <View style={{ flex: 1, gap: 2 }}>
+            <AppText variant="headline" style={!d.isActive ? { color: colors.textMuted } : undefined}>{d.name}</AppText>
+            <AppText muted numeric variant="footnote">{definitionLine(d)}</AppText>
           </View>
           <AppIcon
             name={d.isActive ? 'dragHandle' : 'chevronRight'}

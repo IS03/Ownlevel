@@ -37,7 +37,7 @@ export function registerMetrics(day: HistoryDay | undefined): NutritionDayMetric
 }
 
 /** One shortcut: a 48 pt circle, its name and today's state; a check badge when it is logged today. */
-function RegisterCircle({ detail, done, glass, icon, label, onPress, testID, width, onLongPress, pending=false, disabled=false, ring, quick=false }: {
+export function RegisterCircle({ detail, done, glass, icon, label, onPress, testID, width, onLongPress, pending=false, disabled=false, ring, quick=false }: {
   detail: string | null; done: boolean; glass: boolean; icon: AppIconName; label: string; onPress: () => void; testID?: string; width: number;
   onLongPress?:()=>void;pending?:boolean;disabled?:boolean;ring?:React.ReactNode;quick?:boolean;
 }) {
@@ -91,7 +91,8 @@ function MetricCircle({metric,definition,confirmed,date,onRegister,pending,disab
   onPress={()=>onRegister({kind:'metric',metricId:metric.id,...(quick?{quick:{portion:definition!.quickValue!,value:metric.value,updatedAt:metric.updatedAt,definitionUpdatedAt:metric.definitionUpdatedAt,date}}:{})})}
   onLongPress={()=>onRegister({kind:'metric',metricId:metric.id})}/>;
 }
-export function HomeRegister({ date, onRegister, today,metricDefinitions=[],metricBusyId,metricsLocked=false }: { date: string; onRegister: (target: HomeRegisterTarget) => void; today: HomeResource<HistoryDay> }&MetricPresentationProps) {
+/** Whether the register circles are Liquid Glass here (iOS 26 with transparency allowed): Inicio and the editor's preview agree. */
+export function useRegisterGlass() {
   const supported = Platform.OS === 'ios' && isGlassEffectAPIAvailable() && isLiquidGlassAvailable();
   const [reduceTransparency, setReduceTransparency] = useState(true);
   useEffect(() => {
@@ -101,7 +102,10 @@ export function HomeRegister({ date, onRegister, today,metricDefinitions=[],metr
     const subscription = AccessibilityInfo.addEventListener('reduceTransparencyChanged', value => { if (alive) setReduceTransparency(value); });
     return () => { alive = false; subscription.remove(); };
   }, [supported]);
-  const glass = supported && !reduceTransparency;
+  return supported && !reduceTransparency;
+}
+export function HomeRegister({ date, onRegister, today,metricDefinitions=[],metricBusyId,metricsLocked=false }: { date: string; onRegister: (target: HomeRegisterTarget) => void; today: HomeResource<HistoryDay> }&MetricPresentationProps) {
+  const glass = useRegisterGlass();
   const window = useWindowDimensions();
   const gutter = useHomeGutter();
   const [width, setWidth] = useState(Math.max(1, window.width - gutter.paddingLeft - gutter.paddingRight));

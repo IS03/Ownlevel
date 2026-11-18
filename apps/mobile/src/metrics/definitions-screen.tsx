@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
-import { AppText, Button, Heading, SkeletonBlock } from '@/design-system';
-import { EditorialScreen, Reveal } from '@/settings/editorial';
+import { AppIcon, AppText, Button, SkeletonBlock, brandTokens, pressedStyle, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { NutritionGlassButton } from '@/nutrition/day-controls';
+import { EditorialExpansion, EditorialMove, EditorialScreen, Reveal, ScreenTitle } from '@/settings/editorial';
 import { NutritionToast } from '@/nutrition/nutrition-toast';
 import type {
   DefinitionsController,
@@ -37,7 +39,7 @@ export function DefinitionsView({
   return (
     <View style={{ flex: 1 }}>
       <EditorialScreen scrollEnabled={!dragging}>
-        <Heading>Métricas</Heading>
+        <ScreenTitle>Métricas</ScreenTitle>
         <AppText muted>
           Lo que querés registrar cada día. Aparecen en Inicio y en Nutrición,
           en este orden.
@@ -101,29 +103,40 @@ export function DefinitionsView({
                 ) : null}
               </View>
             </Reveal>
-            <Button
-              label="Crear métrica"
+            {activeDefinitions(read.definitions).length > 1 ? (
+              <AppText muted variant="footnote" style={{ marginTop: -12 }}>
+                Mantené apretada una métrica y arrastrala para cambiar el orden.
+              </AppText>
+            ) : null}
+            {/* The same wide glass action as «Agregar comida» and «Nueva comida». */}
+            <NutritionGlassButton
+              wide
               icon="plus"
-              disabled={!editable}
-              onPress={() => controller.openCreate()}
+              label="Crear métrica"
+              onPress={editable ? () => controller.openCreate() : undefined}
             />
-            <Button
-              label={
-                'Archivadas · ' + archivedDefinitions(read.definitions).length
-              }
-              variant="quiet"
-              onPress={() => setArchivedOpen(!archivedOpen)}
-            />
-            {archivedOpen ? (
-              <View testID="metric-definitions-archived">
-                <DefinitionDragList
-                  definitions={archivedDefinitions(read.definitions)}
-                  disabled={!editable}
-                  onOpen={(d) => controller.openEdit(d)}
-                  onDrop={() => {}}
-                  onMove={() => {}}
+            {archivedDefinitions(read.definitions).length ? (
+              <EditorialMove>
+                <ArchivedRow
+                  count={archivedDefinitions(read.definitions).length}
+                  open={archivedOpen}
+                  onPress={() => setArchivedOpen(!archivedOpen)}
                 />
-              </View>
+                {archivedOpen ? (
+                  <EditorialExpansion testID="metric-definitions-archived">
+                    <AppText muted variant="footnote">
+                      No aparecen en Inicio ni en Nutrición. Tocá una para restaurarla.
+                    </AppText>
+                    <DefinitionDragList
+                      definitions={archivedDefinitions(read.definitions)}
+                      disabled={!editable}
+                      onOpen={(d) => controller.openEdit(d)}
+                      onDrop={() => {}}
+                      onMove={() => {}}
+                    />
+                  </EditorialExpansion>
+                ) : null}
+              </EditorialMove>
             ) : null}
           </>
         )}
@@ -152,6 +165,30 @@ export function DefinitionsView({
     </View>
   );
 }
+/** «Archivadas» as a row of the list, not a loose button: icon, count, and a chevron that turns as it opens. */
+function ArchivedRow({ count, open, onPress }: { count: number; open: boolean; onPress: () => void }) {
+  const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
+  const angle = useSharedValue(open ? 90 : 0);
+  useEffect(() => { angle.set(reduced ? (open ? 90 : 0) : withTiming(open ? 90 : 0, { duration: brandTokens.motion.duration.fast })); }, [angle, open, reduced]);
+  const turn = useAnimatedStyle(() => ({ transform: [{ rotate: `${angle.value}deg` }] }));
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Archivadas, ${count}`}
+      accessibilityState={{ expanded: open }}
+      onPress={onPress}
+      testID="metric-definitions-archived-toggle"
+      style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: open ? 0 : StyleSheet.hairlineWidth, borderColor: colors.border }, pressedStyle(pressed, reduced)]}
+    >
+      <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface }}>
+        <AppIcon name="archive" size={20} color={colors.textMuted} />
+      </View>
+      <AppText variant="body" style={{ flex: 1 }}>Archivadas</AppText>
+      <AppText muted numeric variant="subheadline">{count}</AppText>
+      <Animated.View style={turn}><AppIcon name="chevronRight" size={15} color={colors.textMuted} /></Animated.View>
+    </Pressable>
+  );
+}
 export function MetricDefinitionsScreen() {
   const { session } = useMobileAuth(),
     userId = session?.user.id ?? 'anonymous';
@@ -164,7 +201,7 @@ function UserDefinitions({ userId }: { userId: string }) {
     <DefinitionsView {...shared} />
   ) : (
     <EditorialScreen>
-      <Heading>Métricas</Heading>
+      <ScreenTitle>Métricas</ScreenTitle>
       <SkeletonBlock height={24} />
       <SkeletonBlock height={16} />
     </EditorialScreen>

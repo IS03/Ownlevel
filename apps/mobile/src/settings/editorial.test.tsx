@@ -26,10 +26,12 @@ describe('Editorial QA', () => {
     expect(style.minHeight).toBeGreaterThanOrEqual(34 * fontScale + 24);
     expect(view.getByLabelText('Nombre de la secuencia').props.maxFontSizeMultiplier).toBeUndefined();
   });
-  it('lets the screen follow and dismiss the keyboard, with its own safe area', () => {
+  it('lets the screen follow and dismiss the keyboard; on iOS the scroll view is the screen itself (native large title)', () => {
     const view = wrap(<EditorialScreen><RN.Text>Cuenta</RN.Text></EditorialScreen>);
     expect(view.UNSAFE_getByType(RN.ScrollView).props).toMatchObject({ automaticallyAdjustKeyboardInsets: true, keyboardDismissMode: 'interactive', contentInsetAdjustmentBehavior: 'automatic' });
-    expect(view.UNSAFE_getByType(SafeAreaView).props.edges).toEqual(['left', 'right']);
+    // The large title only collapses when the scroll view is the screen's first view: no wrapper, the glow is its background.
+    expect(view.UNSAFE_queryByType(SafeAreaView)).toBeNull();
+    expect(RN.StyleSheet.flatten(view.UNSAFE_getByType(RN.ScrollView).props.style)).toMatchObject({ flex: 1 });
     expect(RN.StyleSheet.flatten(view.UNSAFE_getByType(RN.ScrollView).props.contentContainerStyle).paddingBottom).toBe(40);
   });
   it('keeps Android safe area outside the scroll without changing keyboard behavior', () => {

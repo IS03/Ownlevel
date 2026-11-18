@@ -1,8 +1,8 @@
 import { Switch, View } from 'react-native';
-import { AppText, Heading, useOwnlevelTheme, type ThemeMode } from '@/design-system';
+import { AppText, useOwnlevelTheme, type ThemeMode } from '@/design-system';
 import { useHapticsPreference } from '@/platform/haptics';
 import { SettingsSegmented } from './native-segmented';
-import { EditorialScreen } from './editorial';
+import { EditorialScreen, ScreenTitle } from './editorial';
 const themes: { value: ThemeMode; label: string }[] = [
   { value: 'system', label: 'Sistema' },
   { value: 'light', label: 'Claro' },
@@ -13,7 +13,7 @@ export function AppSettingsScreen() {
   const haptics = useHapticsPreference();
   return (
     <EditorialScreen>
-      <Heading>App</Heading>
+      <ScreenTitle>App</ScreenTitle>
       <AppText muted>En este dispositivo</AppText>
       {/* Title and its control together: a row with a separator left an empty band above the selector. */}
       <View style={{ gap: 12 }}>

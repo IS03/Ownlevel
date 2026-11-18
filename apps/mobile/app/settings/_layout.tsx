@@ -1,4 +1,4 @@
-import { Pressable } from 'react-native';
+import { Platform, Pressable } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { AppIcon, brandTokens, useOwnlevelTheme } from '@/design-system';
 import { useStackScreenOptions } from '@/navigation/use-stack-screen-options';
@@ -8,21 +8,28 @@ const editorial = {
   headerStyle: { backgroundColor: 'transparent' },
 };
 export default function SettingsLayout() {
+  const { colors } = useOwnlevelTheme();
+  // Each settings screen: on iOS the native large title (big at the top, small in the bar while scrolling; the screen draws
+  // no title of its own, see ScreenTitle). Android has no large title: the bar stays empty and the screen draws the title.
+  const titled = Platform.OS === 'ios'
+    ? { headerLargeTitleEnabled: true, headerLargeTitleStyle: { color: colors.text }, headerStyle: { backgroundColor: 'transparent' },
+      headerLargeStyle: { backgroundColor: 'transparent' }, headerBackButtonMenuEnabled: false }
+    : { ...editorial, headerTitle: '' };
   return (
     <Stack screenOptions={useStackScreenOptions()}>
       <Stack.Screen name="index" options={{ ...editorial, title: 'Ajustes', headerLeft: () => <SettingsBack /> }} />
-      <Stack.Screen name="metrics" options={{ ...editorial, title: 'Métricas' }} />
-      <Stack.Screen name="meal-moments" options={{ ...editorial, title: 'Horarios de comidas' }} />
+      <Stack.Screen name="metrics" options={{ ...titled, title: 'Métricas' }} />
+      <Stack.Screen name="meal-moments" options={{ ...titled, title: 'Horarios de comidas' }} />
       <Stack.Screen name="diagnostics" options={{ ...editorial, title: 'Diagnóstico' }} />
-      <Stack.Screen name="account" options={{ ...editorial, title: 'Cuenta' }} />
-      <Stack.Screen name="delete-account" options={{ ...editorial, title: 'Eliminar cuenta' }} />
-      <Stack.Screen name="app" options={{ ...editorial, title: 'App' }} />
-      <Stack.Screen name="energy" options={{ ...editorial, title: 'Energía' }} />
-      <Stack.Screen name="physical" options={{ ...editorial, title: 'Datos físicos' }} />
-      <Stack.Screen name="stages" options={{ ...editorial, title: 'Etapas' }} />
+      <Stack.Screen name="account" options={{ ...titled, title: 'Cuenta' }} />
+      <Stack.Screen name="delete-account" options={{ ...titled, title: 'Eliminar cuenta' }} />
+      <Stack.Screen name="app" options={{ ...titled, title: 'App' }} />
+      <Stack.Screen name="energy" options={{ ...titled, title: 'Energía' }} />
+      <Stack.Screen name="physical" options={{ ...titled, title: 'Datos físicos' }} />
+      <Stack.Screen name="stages" options={{ ...titled, title: 'Etapas' }} />
       <Stack.Screen name="stage-action" options={{ ...editorial, title: 'Tu plan' }} />
-      <Stack.Screen name="stage-plan" options={{ ...editorial, title: 'Plan nutricional' }} />
-      <Stack.Screen name="stage-sequence" options={{ ...editorial, title: 'Programar etapas' }} />
+      <Stack.Screen name="stage-plan" options={{ ...titled, title: 'Plan nutricional' }} />
+      <Stack.Screen name="stage-sequence" options={{ ...titled, title: 'Programar etapas' }} />
     </Stack>
   );
 }

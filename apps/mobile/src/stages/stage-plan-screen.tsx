@@ -11,7 +11,7 @@ import {
   useOwnlevelTheme,
   useReduceMotion,
 } from "@/design-system";
-import { EditorialRow, EditorialScreen, EditorialSpread, formatNumber } from "@/settings/editorial";
+import { ScreenTitle, EditorialRow, EditorialScreen, EditorialSpread, formatNumber } from "@/settings/editorial";
 import { shortDate } from "@/settings/settings-model";
 import {
   stageFields,
@@ -137,7 +137,7 @@ function StagePlanBody({
   return (
     <View style={{ flex: 1 }}>
       <EditorialScreen adjustKeyboardInsets={!daySheetOpen}>
-        <Heading>{future ? future.name : "Plan nutricional"}</Heading>
+        {future ? <Heading>{future.name}</Heading> : <ScreenTitle>Plan nutricional</ScreenTitle>}
         {/* "Rige desde hoy…" and the type/suggestion hints move to the one-time onboarding (bocetos/PENDIENTES.md). */}
         {localOnly || future ? (
           <AppText muted>

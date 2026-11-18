@@ -1,28 +1,33 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
+  StyleSheet,
+  TextInput,
   View,
 } from 'react-native';
 import {
-  AppIcon,
   AppSheet,
   AppText,
   Button,
   Heading,
   TextField,
+  brandTokens,
   sizes,
   spacing,
   useAppSheetDismiss,
   useOwnlevelTheme,
 } from '@/design-system';
 import { SettingsSegmented } from '@/settings/native-segmented';
-import { EditorialSpread, useEditorialLayout } from '@/settings/editorial';
+import { EditorialExpansion, EditorialMove } from '@/settings/editorial';
 import { SaveButton } from '@/nutrition/save-button';
 import { NutritionGlassButton } from '@/nutrition/day-controls';
 import { homeMetricIcon } from '@/home/home-metric-icons';
+import { RegisterCircle, useRegisterGlass } from '@/home/home-register';
+import { MetricDuration } from '@/nutrition/metric-duration';
 import { MetricIconPicker } from './metric-icon-picker';
 import type {
   DefinitionsController,
@@ -67,7 +72,6 @@ export function DefinitionEditorSheet(props: Props) {
   );
 }
 function EditorBody({ editor, state, controller }: Props) {
-  const { largeText } = useEditorialLayout();
   const dismiss = useAppSheetDismiss(),
     { colors } = useOwnlevelTheme();
   const b = editor.baseline,
@@ -82,6 +86,12 @@ function EditorBody({ editor, state, controller }: Props) {
     d.valueType,
   );
   const icon = homeMetricIcon(b?.systemKey ?? null, d.icon);
+  const glass = useRegisterGlass();
+  const hasQuick = quick != null && quick > 0;
+  const quickText = hasQuick ? quickAmount({ valueType: d.valueType, unit: d.unit || null }, quick!) : '';
+  const fixedMeaning = !!b && !b.actions.editMeaning;
+  // The duration value whose wheel is open under its row (one at a time).
+  const [openValue, setOpenValue] = useState<'target' | 'quick' | null>(null);
   // The icon a metric shows when none is chosen (its system icon, else the generic one).
   const fallbackIcon = homeMetricIcon(b?.systemKey ?? null, null);
   useEffect(() => {
@@ -139,6 +149,7 @@ function EditorBody({ editor, state, controller }: Props) {
     label: string,
     numeric = false,
     disabled = false,
+    placeholder?: string,
   ) => (
     <TextField
       label={label}
@@ -154,7 +165,7 @@ function EditorBody({ editor, state, controller }: Props) {
       }
       onChangeText={(v) => controller.change(key, v)}
       error={state.errors[key]}
-      placeholder="—"
+      placeholder={placeholder}
     />
   );
   return (
@@ -182,35 +193,15 @@ function EditorBody({ editor, state, controller }: Props) {
             />
           ) : <View style={{ width: sizes.touchTarget }} />}
         </View>
-        <View
-          style={{ alignItems: 'center', gap: spacing.sm }}
-          accessibilityLabel="Vista previa en Inicio"
-        >
-          <View
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: 24,
-              borderWidth: 1,
-              borderColor: colors.border,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <AppIcon name={icon} size={20} color={colors.textMuted} />
+        {/* The real Inicio circle (same component), updated while you fill the form. */}
+        <View style={{ alignItems: 'center', gap: spacing.xs }} accessible accessibilityLabel={`Vista previa en Inicio: ${d.name || 'Tu métrica'}${hasQuick ? `, un toque suma ${quickText}` : ''}`}
+          testID="metric-definition-preview">
+          <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none">
+            <RegisterCircle detail="Cargar" done={false} glass={glass} icon={icon} label={d.name || 'Tu métrica'} onPress={() => undefined} quick={hasQuick} width={120} />
           </View>
-          <AppText variant="headline">{d.name || 'Tu métrica'}</AppText>
-          <AppText muted numeric>
-            {quick != null && quick > 0
-              ? '+ ' +
-                quickAmount(
-                  { valueType: d.valueType, unit: d.unit || null },
-                  quick,
-                )
-              : 'Cargar'}
-          </AppText>
+          <AppText muted variant="caption">{hasQuick ? `Así se ve en Inicio · un toque suma ${quickText}` : 'Así se ve en Inicio'}</AppText>
         </View>
-        {field('name', 'Nombre', false, !!b && !b.actions.editName)}
+        {field('name', 'Nombre', false, !!b && !b.actions.editName, 'Por ejemplo, Agua')}
         <View style={{ gap: spacing.md }}>
           <AppText variant="headline">Ícono</AppText>
           <MetricIconPicker
@@ -222,76 +213,44 @@ function EditorBody({ editor, state, controller }: Props) {
         </View>
         <View style={{ gap: spacing.md }}>
           <AppText variant="headline">Se registra como</AppText>
-          <SettingsSegmented
-            accessibilityLabel="Se registra como"
-            value={d.valueType}
-            disabled={!editable || (!!b && !b.actions.editMeaning)}
-            options={Object.entries(VALUE_TYPE_LABELS).map(
-              ([value, label]) => ({
-                value: value as typeof d.valueType,
-                label,
-              }),
-            )}
-            onChange={(v) => controller.change('valueType', v)}
-          />
-          {b && !b.actions.editMeaning ? (
-            <AppText muted variant="footnote">
-              {b.systemKey
-                ? 'El nombre, tipo y unidad de esta métrica son fijos. Podés elegir su ícono, objetivo y carga rápida.'
-                : 'Ya tiene registros: el tipo y la unidad quedan como estaban para conservarlos.'}
-            </AppText>
-          ) : null}
-          {d.valueType === 'duration' ? (
-            <AppText muted>Unidad · horas y minutos</AppText>
+          {fixedMeaning ? (
+            // Fixed: said as information, not as a dimmed control that looks broken.
+            <View style={[styles.fixed, { backgroundColor: colors.surfaceRaised }]} testID="metric-definition-fixed-type">
+              <AppText variant="headline">{d.valueType === 'duration' ? 'Duración · horas y minutos' : `${VALUE_TYPE_LABELS[d.valueType]}${d.unit ? ` · ${d.unit}` : ''}`}</AppText>
+              <AppText muted variant="footnote">
+                {b?.systemKey ? 'Fijo en las métricas del sistema. Podés elegir su ícono, objetivo y carga rápida.' : 'Fijo porque ya tiene registros, para conservarlos.'}
+              </AppText>
+            </View>
           ) : (
-            field('unit', 'Unidad (opcional)', false, !!b && !b.actions.editMeaning)
+            <>
+              <SettingsSegmented
+                accessibilityLabel="Se registra como"
+                value={d.valueType}
+                disabled={!editable}
+                options={Object.entries(VALUE_TYPE_LABELS).map(([value, label]) => ({ value: value as typeof d.valueType, label }))}
+                onChange={(v) => controller.change('valueType', v)}
+              />
+              {d.valueType === 'duration'
+                ? <AppText muted variant="footnote">Se carga en horas y minutos.</AppText>
+                : field('unit', 'Unidad (opcional)', false, false, 'Por ejemplo, vasos, ml o pasos')}
+            </>
           )}
         </View>
         <View style={{ gap: spacing.md }}>
-          <AppText variant="headline">Objetivo diario</AppText>
-          {d.valueType === 'duration' ? (
-            <EditorialSpread style={{ alignItems: 'stretch' }}>
-              <View style={largeText ? { width: '100%' } : { flex: 1 }}>
-                {field('hours', 'Objetivo horas', true)}
-              </View>
-              <View style={largeText ? { width: '100%' } : { flex: 1 }}>
-                {field('minutes', 'Objetivo minutos', true)}
-              </View>
-            </EditorialSpread>
-          ) : (
-            field('target', 'Objetivo (opcional)', true)
-          )}
-          <AppText muted variant="footnote">
-            Es una referencia. No cambia tus registros anteriores.
-          </AppText>
-        </View>
-        <View style={{ gap: spacing.md }}>
-          <AppText variant="headline">Carga rápida</AppText>
-          {d.valueType === 'duration' ? (
-            <EditorialSpread style={{ alignItems: 'stretch' }}>
-              <View style={largeText ? { width: '100%' } : { flex: 1 }}>
-                {field('quickHours', 'Porción horas', true)}
-              </View>
-              <View style={largeText ? { width: '100%' } : { flex: 1 }}>
-                {field('quickMinutes', 'Porción minutos', true)}
-              </View>
-            </EditorialSpread>
-          ) : (
-            field(
-              'quickValue',
-              d.unit ? 'Porción en ' + d.unit + ' (opcional)' : 'Porción (opcional)',
-              true,
-            )
-          )}
-          <AppText muted variant="footnote">
-            Un toque en Inicio suma esto. Mantené apretado para cargar otro
-            valor. Dejalo vacío para abrir siempre la carga completa.
-          </AppText>
-          {state.errors.quickValue ? (
-            <AppText accessibilityLiveRegion="polite">
-              {state.errors.quickValue}
-            </AppText>
-          ) : null}
+          <AppText variant="headline">Valores</AppText>
+          <View style={[styles.values, { backgroundColor: colors.surface }]}>
+            <ValueRow title="Objetivo diario" hint="Una referencia: no cambia lo que ya cargaste." empty="Sin objetivo" duration={d.valueType === 'duration'}
+              unit={d.unit} text={d.target} hours={d.hours} minutes={d.minutes} decimal={d.valueType === 'decimal'} disabled={!editable}
+              open={openValue === 'target'} onToggle={() => setOpenValue(openValue === 'target' ? null : 'target')}
+              onText={(v) => controller.change('target', v)} onDuration={(v) => { controller.change('hours', v.hours); controller.change('minutes', v.minutes); }}
+              error={state.errors.target ?? state.errors.hours ?? state.errors.minutes} testID="metric-definition-target" />
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <ValueRow title="Carga rápida" hint="Un toque en Inicio suma esto. Mantené apretado para otro valor." empty="Sin carga rápida" duration={d.valueType === 'duration'}
+              unit={d.unit} text={d.quickValue} hours={d.quickHours} minutes={d.quickMinutes} decimal={d.valueType === 'decimal'} disabled={!editable}
+              open={openValue === 'quick'} onToggle={() => setOpenValue(openValue === 'quick' ? null : 'quick')}
+              onText={(v) => controller.change('quickValue', v)} onDuration={(v) => { controller.change('quickHours', v.hours); controller.change('quickMinutes', v.minutes); }}
+              error={state.errors.quickValue ?? state.errors.quickHours ?? state.errors.quickMinutes} testID="metric-definition-quick" />
+          </View>
         </View>
         {state.errors.form ? (
           <AppText accessibilityLiveRegion="polite">
@@ -326,3 +285,63 @@ function EditorBody({ editor, state, controller }: Props) {
     </KeyboardAvoidingView>
   );
 }
+
+const durationText = (hours: string, minutes: string) => {
+  const h = Number(hours || 0), m = Number(minutes || 0);
+  return !hours && !minutes ? null : h && m ? `${h} h ${m} min` : h ? `${h} h` : `${m} min`;
+};
+/**
+ * One value of the metric (daily target or quick entry) as a row: what it is on the left, its value on the right. A number
+ * is typed in place (with its unit); a duration opens the hours and minutes wheel under the row. Empty reads «Sin …», never «—».
+ */
+function ValueRow({ title, hint, empty, duration, decimal, unit, text, hours, minutes, disabled, open, onToggle, onText, onDuration, error, testID }: {
+  title: string; hint: string; empty: string; duration: boolean; decimal: boolean; unit: string; text: string; hours: string; minutes: string;
+  disabled: boolean; open: boolean; onToggle: () => void; onText: (value: string) => void; onDuration: (value: { hours: string; minutes: string }) => void;
+  error?: string; testID: string;
+}) {
+  const { colors } = useOwnlevelTheme();
+  const shownDuration = durationText(hours, minutes);
+  return (
+    <EditorialMove>
+      <View style={styles.valueRow} testID={testID}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <AppText variant="headline">{title}</AppText>
+          <AppText muted variant="footnote">{hint}</AppText>
+        </View>
+        {duration ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`${title}: ${shownDuration ?? empty}`} accessibilityState={{ expanded: open, disabled }}
+            disabled={disabled} onPress={onToggle} style={[styles.pill, { backgroundColor: colors.surfaceRaised }]} testID={`${testID}-value`}>
+            <AppText numeric variant="subheadline" style={shownDuration ? { fontWeight: '600' } : { color: colors.textMuted }}>{shownDuration ?? empty}</AppText>
+          </Pressable>
+        ) : (
+          <View style={[styles.pill, { backgroundColor: colors.surfaceRaised }]}>
+            <TextInput accessibilityLabel={title} value={text} editable={!disabled} onChangeText={onText} placeholder={empty} placeholderTextColor={colors.textMuted}
+              keyboardType={decimal ? 'decimal-pad' : 'number-pad'} style={[styles.pillInput, { color: colors.text }]} testID={`${testID}-input`} />
+            {text && unit ? <AppText muted variant="subheadline">{unit}</AppText> : null}
+          </View>
+        )}
+      </View>
+      {error ? <AppText accessibilityLiveRegion="polite" variant="footnote" style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.sm }}>{error}</AppText> : null}
+      {duration && open ? (
+        <EditorialExpansion testID={`${testID}-wheel`}>
+          <View style={{ paddingHorizontal: spacing.md, gap: spacing.md }}>
+            <MetricDuration value={{ value: '', hours: hours || '0', minutes: minutes || '0' }} disabled={disabled}
+              onChange={(next) => onDuration({ hours: next.hours, minutes: next.minutes })} />
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm }}>
+              {shownDuration ? <Button label="Quitar" variant="quiet" onPress={() => { onDuration({ hours: '', minutes: '' }); onToggle(); }} /> : null}
+              <Button label="Listo" variant="quiet" onPress={onToggle} />
+            </View>
+          </View>
+        </EditorialExpansion>
+      ) : null}
+    </EditorialMove>
+  );
+}
+const styles = StyleSheet.create({
+  fixed: { borderRadius: 12, paddingHorizontal: spacing.md, paddingVertical: spacing.md, gap: 4 },
+  values: { borderRadius: 14, overflow: 'hidden' },
+  valueRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 64, paddingHorizontal: spacing.md, paddingVertical: spacing.md, flexWrap: 'wrap' },
+  divider: { height: StyleSheet.hairlineWidth, marginHorizontal: spacing.md },
+  pill: { minHeight: 44, minWidth: 120, maxWidth: 200, borderRadius: 10, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6 },
+  pillInput: { flexShrink: 1, minWidth: 60, textAlign: 'right', fontSize: brandTokens.typeScale.subheadline.fontSize, fontWeight: '600', fontVariant: ['tabular-nums'], paddingVertical: 8 },
+});

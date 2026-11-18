@@ -6,8 +6,8 @@ import Animated, { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated
 import { useMobileApi } from '@/api';
 import { deleteAccount } from '@/api/account';
 import { useMobileAuth } from '@/auth';
-import { AppIcon, AppText, Button, Heading, TextField, brandTokens, useOwnlevelTheme, type AppIconName } from '@/design-system';
-import { EditorialScreen } from './editorial';
+import { AppIcon, AppText, Button, TextField, brandTokens, useOwnlevelTheme, type AppIconName } from '@/design-system';
+import { EditorialScreen, ScreenTitle } from './editorial';
 
 const WHAT: { icon: AppIconName; text: string }[] = [
   { icon: 'dumbbell', text: 'Entrenamientos, rutinas y récords' },
@@ -55,7 +55,7 @@ export function DeleteAccountScreen() {
 
   return (
     <EditorialScreen>
-      <Heading>Eliminar cuenta</Heading>
+      <ScreenTitle>Eliminar cuenta</ScreenTitle>
       <AppText variant="headline">
         Se borra tu cuenta de OWNLEVEL y todo lo que registraste, en esta app y en la Web.
       </AppText>
