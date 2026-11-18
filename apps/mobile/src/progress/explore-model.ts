@@ -24,6 +24,12 @@ export const STATIC_MEASURES: ExploreGroupOfChoices[] = [
   ] },
 ];
 
+/** Outcomes Qué influye computes itself: never in Explorar, never to split days. */
+export const OUTCOME_ONLY: ExploreChoice[] = [
+  { key: 'strength.own', label: 'Fuerza frente a lo tuyo', detail: '% · promedio de las sesiones del día frente a lo tuyo', unit: '%', valueType: 'decimal' },
+  { key: 'body.weight_change', label: 'Cambio de peso en 7 días', detail: 'kg · la semana siguiente frente a la anterior', unit: 'kg', valueType: 'decimal' },
+];
+
 export function metricChoices(data: ProgressMetrics): ExploreChoice[] {
   return data.definitions.map(d => ({ key: `metric.${d.id}`, label: `${d.name}${d.isActive ? '' : ' · archivada'}`, detail: `${d.unit ?? 'sin unidad'} · promedio por día con dato`, unit: d.unit, valueType: d.valueType }));
 }
