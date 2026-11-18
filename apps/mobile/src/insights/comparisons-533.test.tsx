@@ -32,8 +32,9 @@ const id = (n: number) => `53300000-0000-4000-8533-${String(n).padStart(12, '0')
 const ROUTINE = id(900), PRESS = id(800);
 const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
 /** A routine with eight sessions of one exercise at 20 kg: reps 10, 11, 12, 12, 11, 12, 11, 13. */
+let mockReps = [10, 11, 12, 12, 11, 12, 11, 13];
 function source(): InsightsSource {
-  const reps = [10, 11, 12, 12, 11, 12, 11, 13];
+  const reps = mockReps;
   const sessions: InsightsSource['sessions'][number][] = [], exercises: InsightsSource['exercises'][number][] = [], sets: InsightsSource['sets'][number][] = [], meals: InsightsSource['meals'][number][] = [];
   reps.forEach((value, index) => {
     const date = `2026-10-${String(1 + index * 4).padStart(2, '0')}`, sessionId = id(index + 1), block = id(index + 100);
@@ -53,7 +54,7 @@ function answer(options: ReadOptions): Promise<MobileApiReadResult<unknown>> {
 }
 const screen = (node: React.ReactElement) => render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}><OwnlevelThemeProvider>{node}</OwnlevelThemeProvider></SafeAreaProvider>);
 
-beforeEach(() => { mockRead.mockReset(); mockRead.mockImplementation(answer); mockPush.mockReset(); mockSetParams.mockReset(); mockParams = {}; clearConfirmedReads(mockClient); });
+beforeEach(() => { mockReps = [10, 11, 12, 12, 11, 12, 11, 13]; mockRead.mockReset(); mockRead.mockImplementation(answer); mockPush.mockReset(); mockSetParams.mockReset(); mockParams = {}; clearConfirmedReads(mockClient); });
 
 describe('#533 · cifras de Comparaciones', () => {
   const measured = (pct: number): PerformanceChange => ({ state: 'measured', pct, basis: 'reps_at_load', signals: 1, load: { unit: 'kg', up: 0, same: 1, down: 0 } });
@@ -120,12 +121,12 @@ describe('#533 · pantallas', () => {
     fireEvent.press(within(view.getByTestId('comparisons-session-strip')).getByTestId(`comparisons-strip-${id(7)}`));
     expect(mockSetParams).toHaveBeenCalledWith(expect.objectContaining({ session: id(7) }));
   });
-  it('Días shows each exercise as recorded and links to its routine in Relación', async () => {
+  it('Sesiones shows each exercise as recorded and links to how you arrived at its routine', async () => {
     const view = screen(<InsightsScreen />);
     await view.findByTestId('comparisons-change-hero');
     expect(view.getByText('20 kg · 11 → 13 reps')).toBeTruthy();
     expect(view.getByTestId('insights-counts-partial')).toBeTruthy();
-    fireEvent.press(view.getByRole('button', { name: 'Ver PULL en Relación' }));
+    fireEvent.press(view.getByRole('button', { name: 'Ver cómo llegaste a PULL' }));
     expect(mockSetParams).toHaveBeenCalledWith(expect.objectContaining({ view: 'relation', routine: ROUTINE, session: undefined }));
   });
   it('Relación asks for the newest routine once, shows its groups and opens a factor', async () => {
@@ -136,17 +137,47 @@ describe('#533 · pantallas', () => {
     expect(reads).toEqual([expect.stringContaining(`routine=${ROUTINE}`)]);
     expect(view.getByLabelText(/^8 sesiones de PULL: 4 subieron, 1 iguales, 2 bajaron, 1 sin comparar\.$/)).toBeTruthy();
     expect(view.getByTestId('relation-short')).toBeTruthy();
-    fireEvent.press(view.getByTestId('relation-factor-carbs_pre_3h'));
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/insights/factor', params: expect.objectContaining({ routine: ROUTINE, factor: 'carbs_pre_3h' }) });
-    fireEvent.press(view.getByRole('button', { name: 'Ver relaciones estadísticas' }));
+    expect(view.getByTestId('relation-summary-line').props.children).toBe('8 sesiones · 1 oct al 29 oct · reps al mismo peso');
+    // The newest session is chosen first; a tapped bar becomes the chosen one and opens its session.
+    expect(view.getByTestId('relation-pick').props.accessibilityLabel).toMatch(/^Jueves, 29 de octubre: /);
+    fireEvent.press(view.getByTestId('comparisons-bar-0'));
+    expect(view.getByTestId('relation-pick').props.accessibilityLabel).toMatch(/^Jueves, 1 de octubre: /);
+    fireEvent.press(view.getByTestId('relation-pick'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/insights', params: expect.objectContaining({ session: id(1), date: '2026-10-01' }) });
+    // Without three in each group no factor is a comparison yet: they wait together, and each opens its detail with the chosen session.
+    expect(view.queryByTestId('relation-factors')).toBeNull();
+    fireEvent.press(view.getByRole('button', { name: /^\d+ datos todavía sin datos para comparar: Carbos 3 h antes/ }));
+    fireEvent.press(within(view.getByTestId('relation-missing-sheet')).getByRole('button', { name: /^Carbos 3 h antes: 8 de 8 sesiones con dato/ }));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/insights/factor', params: expect.objectContaining({ routine: ROUTINE, factor: 'carbs_pre_3h', pick: id(1) }) });
+    fireEvent.press(view.getByTestId('relation-method-link'));
+    expect(view.getByTestId('relation-method-sheet')).toBeTruthy();
+    fireEvent.press(view.getByRole('button', { name: 'Ver todas las relaciones' }));
     expect(mockSetParams).toHaveBeenCalledWith({ view: 'days', relations: '1' });
   });
   it('a factor lists every session with its value, and stays quiet without three in each group', async () => {
     mockParams = { routine: ROUTINE, factor: 'carbs_pre_3h' };
     const view = screen(<FactorScreen />);
     expect(await view.findByText('Carbos 3 h antes')).toBeTruthy();
-    expect(view.getByTestId('factor-no-sentence')).toBeTruthy();
-    expect(view.getByText(/^8 de 8 sesiones con dato/)).toBeTruthy();
+    expect(view.getByTestId('factor-not-ready')).toBeTruthy();
+    expect(view.getByLabelText('8 de 8 sesiones con este dato')).toBeTruthy();
+    expect(view.getByText('Para comparar hacen falta 3 que suban y 3 que bajen. Con dato hay 4 que subieron y 2 que bajaron.')).toBeTruthy();
+    expect(view.queryByTestId('factor-why')).toBeNull();
     expect(view.getAllByRole('button', { name: /Ver la sesión$/ })).toHaveLength(8);
+  });
+  it('with three in each group a factor is a row with both medians, and its detail shows them with every session', async () => {
+    mockReps = [10, 11, 10, 11, 10, 11, 10, 11];
+    mockParams = { view: 'relation' };
+    const view = screen(<InsightsScreen />);
+    const row = await view.findByTestId('relation-factor-carbs_pre_3h');
+    expect(row.props.accessibilityLabel).toMatch(/^Carbos 3 h antes, esa vez \d+ g\. Mediana en las que subieron \d+ g y en las que bajaron \d+ g\. 8 de 8 sesiones con dato/);
+    fireEvent.press(row);
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/insights/factor', params: expect.objectContaining({ factor: 'carbs_pre_3h', pick: id(8) }) });
+    view.unmount();
+    mockParams = { routine: ROUTINE, factor: 'carbs_pre_3h', pick: id(8) };
+    const detail = screen(<FactorScreen />);
+    expect(await detail.findByTestId('factor-medians')).toBeTruthy();
+    expect(detail.getByText('Mediana de cada grupo · 8 de 8 sesiones con dato')).toBeTruthy();
+    expect(detail.getByTestId(`factor-session-${id(8)}`).props.accessibilityState).toEqual({ selected: true });
+    expect(detail.queryByTestId('factor-not-ready')).toBeNull();
   });
 });
