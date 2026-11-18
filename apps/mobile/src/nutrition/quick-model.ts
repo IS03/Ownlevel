@@ -1,10 +1,10 @@
-import { suggestedMealLabel } from './meal-timing-model';
+import { loadTime, suggestedMealLabel } from './meal-timing-model';
 import { parseQuickOption, parseQuickSelection, type QuickNutrients, type QuickOption, type QuickSelection } from '@/api/nutrition-quick';
 import { isNutritionDate } from '@/api/nutrition-day';
 export type QuickDraft = Pick<QuickSelection, 'mealLabel' | 'consumedAt' | 'consumedAtSource'> & { date: string; option: QuickOption; quantities: Record<string, string> };
 export function quickDraft(date: string, option: QuickOption): QuickDraft {
-  const moment = suggestedMealLabel(date);
-  return { ...(moment ? { mealLabel: moment } : {}), date, option, quantities: Object.fromEntries(option.items.map(i => [i.id, String(i.quantity).replace('.', ',')])) };
+  const moment = suggestedMealLabel(date), at = loadTime(date);
+  return { ...(moment ? { mealLabel: moment } : {}), ...(at ? { consumedAt: at, consumedAtSource: 'user_declared' as const } : {}), date, option, quantities: Object.fromEntries(option.items.map(i => [i.id, String(i.quantity).replace('.', ',')])) };
 }
 export function selectionFromDraft(draft: QuickDraft): { selection?: QuickSelection; errors: Record<string, string> } {
   const errors: Record<string, string> = {};

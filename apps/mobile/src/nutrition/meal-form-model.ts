@@ -1,4 +1,4 @@
-import { suggestedMealLabel } from './meal-timing-model';
+import { loadTime, suggestedMealLabel } from './meal-timing-model';
 import type { NutritionDayMeal } from '../../../../src/lib/mobile-api/nutrition-day-contract';
 import { parseManualMealFields, type ManualMealFields } from '@/api/nutrition-meal';
 import { inputNutritionDate, parseInputNutritionDate } from './day-format';
@@ -7,7 +7,7 @@ export function mealDraft(date: string, meal?: NutritionDayMeal | null): MealDra
   const number = (n: number | null | undefined) => n == null ? '' : String(n).replace('.', ',');
   // An edit shows the meal's own moment and time (only a known time); a new meal starts on today's likely moment.
   const timing: Pick<MealDraft, 'mealLabel' | 'consumedAt'> = meal ? { mealLabel: meal.mealLabel, ...(meal.timeKnown ? { consumedAt: meal.consumedAt } : {}) }
-    : (moment => moment ? { mealLabel: moment } : {})(suggestedMealLabel(date));
+    : (moment => ({ ...(moment ? { mealLabel: moment } : {}), ...(loadTime(date) ? { consumedAt: loadTime(date), consumedAtSource: 'user_declared' as const } : {}) }))(suggestedMealLabel(date));
   return { ...timing, date: inputNutritionDate(date), title: meal?.title ?? '', description: meal?.description ?? '', calories: number(meal?.calories),
     proteinG: number(meal?.proteinG), carbsG: number(meal?.carbsG), fatG: number(meal?.fatG) };
 }
@@ -18,7 +18,8 @@ export function mealDraft(date: string, meal?: NutritionDayMeal | null): MealDra
 export function repeatMealDraft(date: string, meal: NutritionDayMeal): MealDraft {
   const values = mealDraft(date, meal), moment = suggestedMealLabel(date);
   const { mealLabel: _label, consumedAt: _time, consumedAtSource: _source, ...rest } = values;
-  return { ...(moment ? { mealLabel: moment } : {}), ...rest, calories: meal.calories == null ? '' : String(Math.round(meal.calories)) };
+  const at = loadTime(date);
+  return { ...(moment ? { mealLabel: moment } : {}), ...(at ? { consumedAt: at, consumedAtSource: 'user_declared' as const } : {}), ...rest, calories: meal.calories == null ? '' : String(Math.round(meal.calories)) };
 }
 export function validateMealDraft(draft: MealDraft): { fields?: ManualMealFields; errors: Partial<Record<keyof MealDraft, string>> } {
   const errors: Partial<Record<keyof MealDraft, string>> = {};

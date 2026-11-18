@@ -1,5 +1,6 @@
 import { sessionChange, type LoadDirections } from "./performance-change";
 import type { InsightsSnapshot } from "./read-model";
+import { relationSleepMetric } from "./sleep-metric";
 import type { DayFact, NutritionContext, SessionFact } from "./types";
 
 /**
@@ -59,7 +60,9 @@ function nutrient(nutrition: NutritionContext | undefined, key: "calories" | "pr
 function factorRules(snapshot: InsightsSnapshot): FactorRule[] {
   const definitions = new Map(snapshot.metrics.map(metric => [metric.id, metric]));
   const order = snapshot.relationContext.metricOrder;
-  const sleep = order.find(row => row.systemKey === "sleep" && !definitions.get(row.id)?.archived);
+  const named = (row: { id: string; systemKey: string | null }) => { const d = definitions.get(row.id); return d ? { ...d, systemKey: row.systemKey } : null; };
+  const sleepDefinition = relationSleepMetric(order.map(named).filter((d): d is NonNullable<ReturnType<typeof named>> => !!d));
+  const sleep = sleepDefinition ? order.find(row => row.id === sleepDefinition.id) : undefined;
   const rules: FactorRule[] = [
     { key: "carbs_pre_3h", unit: "g", metricId: null, read: session => session.context.carbsPre3h.state === "recorded" ? { value: session.context.carbsPre3h.value } : { value: null, missing: session.context.carbsPre3h.state } },
     { key: "last_meal_hours", unit: "h", metricId: null, read: session => {
@@ -80,7 +83,7 @@ function factorRules(snapshot: InsightsSnapshot): FactorRule[] {
   } });
   rules.push({ key: "energy_pre", unit: "1-5", metricId: null, read: (_, __, energy) => energy?.state === "recorded" ? { value: energy.value } : { value: null, missing: energy?.state ?? "not_recorded" } });
   // The user's own metrics, in their order (then by id), the previous day: what was recorded before the training day started.
-  const metrics = order.filter(row => row.systemKey !== "sleep" && definitions.has(row.id) && !definitions.get(row.id)!.archived)
+  const metrics = order.filter(row => row.systemKey !== "sleep" && row.id !== sleep?.id && definitions.has(row.id) && !definitions.get(row.id)!.archived)
     .sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.id.localeCompare(b.id));
   for (const metric of metrics) rules.push({ key: `metric_previous_day:${metric.id}`, unit: definitions.get(metric.id)?.unit ?? null, metricId: metric.id, read: (_, day) => {
     const previous = snapshot.relationContext.previousDayMetrics.get(day.date);
