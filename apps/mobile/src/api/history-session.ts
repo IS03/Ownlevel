@@ -3,7 +3,7 @@ import { fetchSessionDetail, type SessionDetailDto } from './active-session';
 import { confirmedReads, READ_REUSE_MS, settledWritesFor } from './confirmed-read-cache';
 import { fetchSessionSummary, type SessionSummaryLoader } from './session-summary';
 import { trainingFeelingsApi } from './training-feelings';
-import type { MobileApiRequestResult } from './results';
+import type { MobileApiRequestResult, MobileApiResultMeta } from './results';
 import type { FeelingsPort } from '../../../../src/lib/mobile-api/training-feelings-journal';
 
 export type SessionPresentation = {
@@ -30,7 +30,13 @@ export async function loadSessionPresentation(api: SessionPresentationSources, s
   ]);
   if (detail.status !== 'ok') return detail.status === 'conflict' ? { ...detail, data: undefined } : detail;
   // An authorization failure on any part must retire the whole protected presentation.
-  if (denied(summary) || denied(feelings)) return { status: 'unauthorized', meta: { durationMs: 0, httpStatus: 403, outcome: 'unauthorized' } };
+  const rejection = [summary, feelings].find(denied);
+  if (rejection) {
+    const status = rejection.status === 'auth_required' ? 'auth_required' : 'unauthorized';
+    const meta = 'meta' in rejection ? rejection.meta as MobileApiResultMeta
+      : { durationMs: 0, httpStatus: null, outcome: status };
+    return { status, meta };
+  }
   return { ...detail, data: { detail: detail.data, summary, feelings } };
 }
 function entryFor(client: MobileApiClient, id: string) {

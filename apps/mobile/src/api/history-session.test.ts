@@ -52,6 +52,7 @@ it('retries incomplete optional reads instead of treating unavailable as empty',
   expect(detailRead).toHaveBeenCalledTimes(2); expect(mockFeelings).toHaveBeenCalledTimes(2);
 });
 it('preserves not-found and never falls back to cached protected data on denial', async () => {
+  expect(await loadSessionPresentation({ detail: async () => ok(detail), feelings: async () => ({ status: 'auth_required' }) })).toMatchObject({ status: 'auth_required' });
   const a = client(); await readHistorySession(a, id);
   summaryRead.mockResolvedValueOnce({ status: 'unauthorized', meta: { ...meta, httpStatus: 403, outcome: 'unauthorized' } });
   expect(await readHistorySession(a, id)).toMatchObject({ status: 'unauthorized' }); expect(peekHistorySession(a, id)).toBeUndefined();
