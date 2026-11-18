@@ -158,7 +158,44 @@ export function sideBySide(current: readonly { key: string; label: string; value
   return Array.from({ length: Math.max(current.length, reference.length) }, (_, index) => {
     const now = current[index], before = reference[index];
     const delta = now && before && now.load === before.load && now.amount !== null && before.amount !== null ? now.amount - before.amount : null;
-    return { key: now?.key ?? `reference-${index}`, number: index + 1, before: before?.value ?? '—', now: now?.value ?? '—', used: !!now?.used,
+    return { key: now?.key ?? `reference-${index}`, number: index + 1, before: before?.value ?? '—', now: now?.value ?? '—', used: !!now?.used, change: delta,
+      beforeAmount: before?.amount ?? null, nowAmount: now?.amount ?? null,
       delta: delta === null ? '' : delta === 0 ? '=' : `${delta > 0 ? '+' : '−'}${Math.abs(delta)}` };
   });
+}
+
+/**
+ * «Comparaciones más claras» · One sentence that says why the exercise reads as it does, from the signals behind it. A set that went
+ * up while the best set stayed equal is said, so it never contradicts the «=». A load step says it is not a percentage.
+ */
+const ORDINAL_DONE = new Set(['improved', 'higher_record']), ORDINAL_DOWN = new Set(['declined', 'lower_record']), ORDINAL_SAME = new Set(['observed_stable', 'same_record']);
+export function evidenceSentence(item: Pick<ExerciseEvidence, 'evidence'>, result: string, pairs: readonly { number: number; change: number | null }[], unit: string | null | undefined): string | null {
+  const load = unit === 'lingotes' ? 'lingotes' : 'kg';
+  const reps = item.evidence.filter(signal => signal.kind === 'reps_at_load');
+  const loads = item.evidence.filter(signal => signal.kind === 'load_at_reps');
+  const more = pairs.filter(pair => pair.change !== null && pair.change > 0);
+  const extra = ORDINAL_SAME.has(result) && more.length ? ` En la serie ${more[0]!.number} hiciste ${more[0]!.change === 1 ? 'una más' : `${more[0]!.change} más`}.` : '';
+  if (reps.length) {
+    const best = reps.reduce((top, signal) => ((signal.anchor ?? 0) > (top.anchor ?? 0) ? signal : top));
+    const where = reps.length === 1 ? `Todo a ${amount(best.anchor ?? 0)} ${load}.` : `Con ${amount(best.anchor ?? 0)} ${load},`;
+    const said = ORDINAL_SAME.has(result) ? `tu mejor serie fue igual (${amount(best.current)} reps), así que da =.`
+      : ORDINAL_DONE.has(result) ? `tu mejor serie pasó de ${amount(best.reference)} a ${amount(best.current)} reps.`
+      : ORDINAL_DOWN.has(result) ? `tu mejor serie pasó de ${amount(best.reference)} a ${amount(best.current)} reps.` : null;
+    if (!said) return null;
+    return `${where} ${reps.length === 1 ? capitalize(said) : said}${extra}`;
+  }
+  const time = item.evidence.find(signal => signal.kind === 'time'), body = item.evidence.find(signal => signal.kind === 'bodyweight_reps');
+  if (time) return `Tu mejor tiempo pasó de ${amount(time.reference)} a ${amount(time.current)} s.${extra}`;
+  if (body) return `Tu mejor serie pasó de ${amount(body.reference)} a ${amount(body.current)} reps.${extra}`;
+  if (loads.length && loads.every(signal => signal.delta > 0)) return 'Con más peso y las mismas reps. No se compara en %, porque el peso cambió.';
+  if (loads.length && loads.every(signal => signal.delta < 0)) return 'Con menos peso y las mismas reps. No se compara en %, porque el peso cambió.';
+  return null;
+}
+/** The load step of an exercise whose only signal is the load: «27,5 → 30 kg». Null otherwise. */
+export function loadStep(item: Pick<ExerciseEvidence, 'evidence'>, unit: string | null | undefined): { up: boolean; text: string } | null {
+  if (item.evidence.some(signal => signal.kind !== 'load_at_reps')) return null;
+  const loads = item.evidence.filter(signal => signal.kind === 'load_at_reps');
+  if (!loads.length || !(loads.every(signal => signal.delta > 0) || loads.every(signal => signal.delta < 0))) return null;
+  const top = loads.reduce((best, signal) => (signal.current > best.current ? signal : best));
+  return { up: top.delta > 0, text: `${amount(top.reference)} → ${amount(top.current)} ${unit === 'lingotes' ? 'lingotes' : 'kg'}` };
 }
