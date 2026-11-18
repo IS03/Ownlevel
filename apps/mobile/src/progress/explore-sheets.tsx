@@ -8,7 +8,7 @@ import { parseInfluenceMeasure } from '@/api/progress-influence';
 import { AppIcon, AppText, SheetHandle, TextField, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import { RoutineSheetButton } from '@/training/routine-sheet-button';
-import { STATIC_MEASURES, bodyChoices, exerciseChoices, metricChoices, type ExploreChoice } from './explore-model';
+import { STATIC_MEASURES, bodyChoices, exerciseChoices, metricChoices, type ExploreChoice, OUTCOME_ONLY } from './explore-model';
 import { useProgressRange } from './progress-range-context';
 import { useProgressResource } from './use-progress-resource';
 
@@ -84,6 +84,7 @@ export function MeasureSheet({ selected, onPick, onClose, influenceRole }: { sel
     <TextField search hideLabel label="Buscar medida" placeholder="Buscar medida" value={search} onChangeText={setSearch} />
     {STATIC_MEASURES.map(g => { const shown = g.choices.filter(match); return shown.length ? <Group key={g.title} title={g.title} choices={shown} selected={selected} onPick={pick} /> : null; })}
     <DynamicGroup title="Métricas" read={metrics} choices={metrics.data ? metricChoices(metrics.data) : []} empty="Todavía no tenés métricas." selected={selected} pick={pick} match={match} />
+    {influenceRole === 'outcome' ? <Group title="Fuerza y peso" choices={OUTCOME_ONLY.filter(match)} selected={selected} onPick={pick} /> : null}
     {influenceRole === 'split' ? <Group title="Días" choices={[
       { key: 'day.training', label: 'Día de entrenamiento', detail: 'Con una sesión completada' },
       { key: 'day.work', label: 'Día laboral', detail: 'Según el registro del día' },

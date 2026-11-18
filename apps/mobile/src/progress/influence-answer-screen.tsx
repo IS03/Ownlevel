@@ -58,7 +58,7 @@ const EVIDENCE = { low: 'Poca evidencia', moderate: 'Evidencia moderada', clear:
 function Evidence({ data }: { data: InfluenceReading }) {
   const { colors } = useOwnlevelTheme();
   const r = data.current; if (r.status !== 'ok') return null;
-  const difference = r.difference === 0 ? 'Sin diferencia' : `${valueText(Math.abs(r.difference), data.measure.outcome)} ${r.difference < 0 ? 'menos' : 'más'}${r.differencePercent !== null ? ` (${Math.round(Math.abs(r.differencePercent))}\u00A0%)` : ''}`;
+  const difference = r.difference === 0 ? 'Sin diferencia' : `${valueText(Math.abs(r.difference), { ...data.measure.outcome, key: 'difference' })} ${r.difference < 0 ? 'menos' : 'más'}${r.differencePercent !== null && !['strength.own', 'body.weight_change'].includes(data.measure.outcome.key) ? ` (${Math.round(Math.abs(r.differencePercent))}\u00A0%)` : ''}`;
   const support = `${EVIDENCE[r.evidence]} · ${r.pairs} días con los dos datos`;
   return <View style={[styles.evidence, { borderColor: colors.border }]} testID="influence-evidence-block" accessible
     accessibilityLabel={`Diferencia entre los grupos: ${difference}. ${support.replace(' · ', ', ')}. ${CAUTION}`}>

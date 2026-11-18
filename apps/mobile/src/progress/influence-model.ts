@@ -1,6 +1,6 @@
 import type { AppIconName } from '@/design-system';
 import type { InfluenceDefinition, InfluenceMeasureInfo, InfluenceReading, InfluenceSuggestedKey } from '@/api/progress-influence';
-import { STATIC_MEASURES, type ExploreChoice } from './explore-model';
+import { OUTCOME_ONLY, STATIC_MEASURES, type ExploreChoice } from './explore-model';
 import { formatValue } from './progress-format';
 
 export const QUESTIONS: Record<InfluenceSuggestedKey, { title: string; icon: AppIconName }> = {
@@ -20,10 +20,13 @@ export function measureInfo(choice: ExploreChoice): InfluenceMeasureInfo {
 }
 export function choiceFor(key: string | undefined): ExploreChoice | null {
   if (!key) return null;
-  return STATIC_MEASURES.flatMap(g => g.choices).find(c => c.key === key)
+  return [...STATIC_MEASURES.flatMap(g => g.choices), ...OUTCOME_ONLY].find(c => c.key === key)
     ?? (key === 'day.training' ? { key, label: 'Día de entrenamiento', detail: '' } : key === 'day.work' ? { key, label: 'Día laboral', detail: '' } : { key, label: 'Métrica', detail: '' });
 }
+/** A change (strength against «lo tuyo», weight over a week) always shows its sign: +1,2 % · −0,3 kg. */
+const SIGNED = new Set(['strength.own', 'body.weight_change']);
 export function valueText(value: number, m: InfluenceMeasureInfo, unit = true): string {
+  if (SIGNED.has(m.key)) { const rounded = Math.round(value * 10) / 10; return `${rounded > 0 ? '+' : rounded < 0 ? '−' : ''}${formatValue(Math.abs(rounded), unit ? m.unit : null, 'decimal')}`; }
   if (m.valueType === 'duration' && !Number.isInteger(value)) return `${Math.floor(value / 60)} h ${formatValue(value % 60, 'min')}`;
   const formatted = formatValue(value, unit ? m.unit : null, m.valueType === 'boolean' ? 'integer' : m.valueType);
   return m.valueType === 'duration' ? formatted.replace(/ h 0 min$/, ' h').replace(/^0 h /, '') : formatted;
@@ -47,7 +50,7 @@ export function shortAnswer(read: InfluenceReading): string {
 export function questionText(d: InfluenceDefinition, split: InfluenceMeasureInfo, outcome: InfluenceMeasureInfo): string {
   const actions: Record<string, string> = { 'nutrition.kcal': 'comer más calorías', 'nutrition.protein': 'comer más proteína', 'nutrition.carbs': 'comer más carbohidratos', 'nutrition.fat': 'comer más grasas',
     'training.sets': 'hacer más series', 'training.sessions': 'hacer más sesiones', 'training.minutes': 'entrenar más tiempo' };
-  const results: Record<string, string> = { 'training.sets': 'hacés más series', 'training.sessions': 'hacés más sesiones', 'training.minutes': 'entrenás más tiempo',
+  const results: Record<string, string> = { 'strength.own': 'rendís más frente a lo tuyo', 'body.weight_change': 'cambia tu peso en la semana siguiente', 'training.sets': 'hacés más series', 'training.sessions': 'hacés más sesiones', 'training.minutes': 'entrenás más tiempo',
     'nutrition.kcal': 'comés más calorías', 'nutrition.protein': 'comés más proteína', 'nutrition.carbs': 'comés más carbohidratos', 'nutrition.fat': 'comés más grasas' };
   const threshold = d.cut.startsWith('gte:') ? valueText(Number(d.cut.slice(4)), split) : '';
   const amountAction = d.split.startsWith('nutrition.') ? `comer ${threshold} o más de ${split.label.toLocaleLowerCase('es-AR')}`
@@ -61,7 +64,8 @@ export function questionText(d: InfluenceDefinition, split: InfluenceMeasureInfo
 export function answerText(read: InfluenceReading): string {
   const r = read.current; if (r.status !== 'ok') return '';
   const high = valueText(r.high.average, read.measure.outcome), low = valueText(r.low.average, read.measure.outcome);
-  const action = read.definition.outcome.startsWith('nutrition.') ? 'comiste' : read.definition.outcome.startsWith('training.') ? 'hiciste' : 'registraste';
+  const action = read.definition.outcome === 'strength.own' ? 'rendiste frente a lo tuyo' : read.definition.outcome === 'body.weight_change' ? 'tu peso cambió en la semana siguiente'
+    : read.definition.outcome.startsWith('nutrition.') ? 'comiste' : read.definition.outcome.startsWith('training.') ? 'hiciste' : 'registraste';
   const later = read.definition.lag === 1 ? ' al día siguiente' : read.definition.lag === 2 ? ' dos días después' : '';
   if (read.definition.split === 'day.training') return `${read.definition.lag ? `Después de un día con entrenamiento,${later}` : 'Los días que entrenaste'} ${action} en promedio ${high}. ${read.definition.lag ? 'Después de días sin entrenar' : 'Los días sin entrenar'}, ${low}.`;
   if (read.definition.split === 'day.work') return `${read.definition.lag ? `Después de un día laboral,${later}` : 'Los días laborales'} ${action} en promedio ${high}. ${read.definition.lag ? 'Después de días no laborales' : 'Los días no laborales'}, ${low}.`;

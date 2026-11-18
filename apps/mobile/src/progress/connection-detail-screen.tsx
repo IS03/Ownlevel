@@ -151,9 +151,10 @@ export function ConnectionDetailScreen() {
   const { state: status, data, refresh } = useProgressConnections();
   const story = key ? data?.stories.find(s => s.key === key) ?? null : null;
   const title = key ? CONNECTION_NAMES[key] : 'Lo que se movió junto';
-  // Qué influye cannot read strength, energy or weight yet; for strength the closest honest question is next-day sets.
+  // Qué influye reads strength against «lo tuyo» and the weight change of the next week; energy is not an outcome there yet.
   const influence = story && (story.key === 'protein_strength' || story.key === 'carbs_strength')
-    ? { split: story.food.key, cut: 'median', lag: '1', outcome: 'training.sets' } : null;
+    ? { params: { split: story.food.key, cut: 'median', lag: '1', outcome: 'strength.own' }, label: 'fuerza al día siguiente', spoken: 'rendiste más frente a lo tuyo al día siguiente' }
+    : story?.key === 'kcal_weight' ? { params: { split: story.food.key, cut: 'median', lag: '0', outcome: 'body.weight_change' }, label: 'peso en la semana siguiente', spoken: 'cambió más tu peso en la semana siguiente' } : null;
   return <ProgressScroll title={title} testID="connection-detail-screen"
     refreshControl={<RefreshControl refreshing={status.status === 'ready' && status.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
     {!key ? <UnavailableState title="No encontramos esta historia" description="Volvé a Progreso y elegila de nuevo." />
@@ -179,9 +180,9 @@ export function ConnectionDetailScreen() {
         <View style={styles.block}>
           <AppText muted variant="footnote">Pasaron al mismo tiempo: no quiere decir que una cosa cause la otra.</AppText>
           {influence ? <Pressable accessibilityRole="button" testID="connection-influence" style={styles.link}
-            accessibilityLabel={`Mirar en Qué influye si los días con más ${FOOD_NAME[story.key].toLocaleLowerCase('es-AR')} hiciste más series al día siguiente`}
-            onPress={() => { haptics.selection(); router.push({ pathname: '/(tabs)/progress/influence/answer', params: influence }); }}>
-            <AppText variant="headline" style={{ color: colors.primary }}>Mirar en Qué influye: series al día siguiente →</AppText>
+            accessibilityLabel={`Mirar en Qué influye si los días con más ${FOOD_NAME[story.key].toLocaleLowerCase('es-AR')} ${influence.spoken}`}
+            onPress={() => { haptics.selection(); router.push({ pathname: '/(tabs)/progress/influence/answer', params: influence.params }); }}>
+            <AppText variant="headline" style={{ color: colors.primary }}>Mirar en Qué influye: {influence.label} →</AppText>
           </Pressable> : null}
         </View>
       </>}

@@ -313,16 +313,17 @@ describe('connection detail (C2, C3)', () => {
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: 'exercise-0' } });
     fireEvent.press(view.getByTestId('connection-influence'));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/influence/answer',
-      params: { split: 'nutrition.protein', cut: 'median', lag: '1', outcome: 'training.sets' } });
+      params: { split: 'nutrition.protein', cut: 'median', lag: '1', outcome: 'strength.own' } });
     // Same B as the section: always the previous equivalent period.
     expect(connectionCalls().at(-1)!.path).toContain('compareFrom=2026-09-01&compareTo=2026-09-17');
   });
-  it('calories and weight: weekly trend, a week without weigh-ins is a gap, and no Qué influye link', async () => {
+  it('calories and weight: weekly trend, a week without weigh-ins is a gap, and Qué influye asks about the next week\'s weight', async () => {
     mockTransform = d => { const s = d.stories.find(x => x.key === 'kcal_weight')!; if (s.key === 'kcal_weight') s.weightWeeks[0] = { ...s.weightWeeks[0], trend: null }; return d; };
     const view = await detail('kcal_weight');
     const weeks = within(view.getByTestId('connection-weight-weeks'));
     expect(weeks.getByText('Sin pesaje')).toBeTruthy(); expect(weeks.queryByText('0 kg')).toBeNull();
-    expect(view.queryByTestId('connection-influence')).toBeNull();
+    fireEvent.press(view.getByTestId('connection-influence'));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/influence/answer', params: { split: 'nutrition.kcal', cut: 'median', lag: '0', outcome: 'body.weight_change' } });
   });
   it('a week without meals is a gap, not a zero bar', async () => {
     mockTransform = d => { d.stories.forEach(s => { s.weeks[0] = { ...s.weeks[0], food: null, days: 0 }; }); return d; };
