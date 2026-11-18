@@ -21,7 +21,7 @@ import { usePeriodReturn } from './use-period-return';
 import { withProgressOrigin,progressOriginParams,dayWeightHref, explorationHref, insightsEvidenceHref, insightsOriginOf, metricTrendHref, nutritionDayHref, validSession, type InsightsOrigin } from './navigation';
 
 type View_ = 'days' | 'exercises' | 'relation';
-const VIEWS = [{ value: 'days', label: 'Días' }, { value: 'exercises', label: 'Ejercicios' }, { value: 'relation', label: 'Relación' }] as const;
+const VIEWS = [{ value: 'days', label: 'Sesiones' }, { value: 'exercises', label: 'Ejercicios' }, { value: 'relation', label: 'Cómo llegaste' }] as const;
 const loadRelations = (client: MobileApiClient, signal: AbortSignal) => fetchInsightsRelations(client, signal);
 
 /** Label and value on one line; with large text they stack and wrap instead of squeezing (IDENTIDAD.md § Dynamic Type). */
@@ -158,11 +158,11 @@ function Exercises({ model, router, routine, routines, onRoutine, order, onOrder
 const shortDay = (date: string) => new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`)).replace('.', '');
 const shortRange = (from: string, to: string) => from === to ? shortDay(to) : `${shortDay(from)} al ${shortDay(to)}`;
 
-/** #533 · From one session to how its routine's sessions arrived: Relación, focused on that routine. */
+/** #533 · From one session to how its routine's sessions arrived: Cómo llegaste, focused on that routine. */
 function RelationLink({ session, router }: { session: SessionFact; router: ReturnType<typeof useRouter> }) {
   if (!session.routineId) return null;
   const name = session.routineName ?? sessionName(session);
-  return <IconRow icon="progress" accent label={`Ver ${name} en Relación`} detail="Qué tenían las sesiones que subieron" spoken={`Ver ${name} en Relación`}
+  return <IconRow icon="progress" accent label={`Cómo llegaste a ${name}`} detail="Qué tenían las sesiones que subieron" spoken={`Ver cómo llegaste a ${name}`}
     onPress={() => router.setParams({ view: 'relation', routine: session.routineId!, session: undefined, date: undefined, fromSession: undefined })} />;
 }
 
@@ -272,7 +272,7 @@ function SessionComparison({ session, day, partial, model, router, origin, expla
   const tally = lanes.reduce((sum, { counts }) => ({ up: sum.up + counts.up, same: sum.same + counts.same, down: sum.down + counts.down }), { up: 0, same: 0, down: 0 });
   const rowOrigin = { ...origin, date: day.date, revision: model.sourceRevision };
   const links = [
-    ...(session.routineId ? [{ label: `Ver ${session.routineName ?? name} en Relación`, spoken: `Ver ${session.routineName ?? name} en Relación`, onPress: () => { setOpen(false); haptics.selection(); router.setParams({ view: 'relation', routine: session.routineId!, session: undefined, date: undefined, fromSession: undefined }); } }] : []),
+    ...(session.routineId ? [{ label: `Cómo llegaste a ${session.routineName ?? name}`, spoken: `Ver cómo llegaste a ${session.routineName ?? name}`, onPress: () => { setOpen(false); haptics.selection(); router.setParams({ view: 'relation', routine: session.routineId!, session: undefined, date: undefined, fromSession: undefined }); } }] : []),
     { label: 'Ver horarios y comidas', spoken: `Ver horarios y comidas del ${dayLabel(day.date)}`, onPress: () => { setOpen(false); router.push({ pathname: '/(tabs)/train/insights/temporal', params: { ...origin, date: day.date, session: session.sessionId, revision: model.sourceRevision } }); } },
   ];
   return <View style={styles.block} testID="comparisons-session">
@@ -520,8 +520,9 @@ export function InsightsScreen() {
     {state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
     {origin.fromSession && origin.revision && origin.revision !== data.sourceRevision ? <AppText muted testID="insights-session-revised">Los registros cambiaron desde el origen. Esta lectura completa está actualizada.</AppText>
       : changedWhileOpen ? <AppText muted accessibilityLiveRegion="polite" testID="insights-revised-now">Tus registros cambiaron mientras mirabas. Esta lectura está actualizada.</AppText> : null}
-    {chrome ? <ExerciseSegmented accessibilityLabel="Ver por días o por ejercicios" value={view} options={VIEWS} onChange={setView} /> : null}
+    {chrome ? <ExerciseSegmented accessibilityLabel="Ver por sesiones, ejercicios o cómo llegaste" value={view} options={VIEWS} onChange={setView} /> : null}
     {view === 'relation' ? <RoutineRelationView client={client} days={days} metrics={data.metrics} router={router} origin={origin} initialRoutine={routine === 'all' ? null : routine}
+      evaluated={data.relations.partial.outcomeDays ? data.relations.partial.candidatesEvaluated : data.relations.strict.candidatesEvaluated}
       onStatistics={() => router.setParams({ view: 'days', relations: '1' })} />
     : view === 'exercises' ? <Exercises model={data} router={router} routine={routine} routines={routineOptions} onRoutine={setRoutine}
       order={ORDERS.find(option => option.value === params.order)?.value ?? 'recent'} onOrder={value => { haptics.selection(); router.setParams({ order: value === 'recent' ? undefined : value }); }} /> : <>

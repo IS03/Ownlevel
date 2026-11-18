@@ -13,7 +13,7 @@ import { LANE_TITLE, PARTIAL_LIMIT, type Lane } from './insights-model';
 
 /** One session in the strip: its date, routine and measured change, or «—» when it has none. */
 export type StripSession = { sessionId: string; date: string; label: string; routine: string; pct: number | null };
-const shortDate = (date: string) => new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`)).replace('.', '');
+export const shortDate = (date: string) => new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`)).replace('.', '');
 export function SessionStrip({ sessions, selected, onSelect }: { sessions: readonly StripSession[]; selected: string | null; onSelect: (session: StripSession) => void }) {
   const { colors } = useOwnlevelTheme();
   const reduced = useReduceMotion();
@@ -223,53 +223,87 @@ export function Sparkline({ points, width = 72, height = 26 }: { points: readonl
   </Svg>;
 }
 
-/** One bar per session, up or down from zero. A session without a measured change is a dashed slot, never a zero bar. */
-export function ChangeBars({ values, selected, label }: { values: readonly (number | null)[]; selected?: number; label: string }) {
+/** One bar of the routine's strip: the session's change (null: not measured), hollow when mixed, and its words. */
+export type ChangeBar = { value: number | null; hollow?: boolean; spoken: string };
+/**
+ * One bar per session, up or down from zero. A session without a measured change is a dashed slot, never a zero bar; a mixed one
+ * is hollow, so the bars agree with the counts. With `onSelect` each bar is a button and the chosen one is in the full accent.
+ */
+export function ChangeBars({ bars, selected, label, onSelect, first, last }: { bars: readonly ChangeBar[]; selected?: number; label: string; onSelect?: (index: number) => void; first?: string; last?: string }) {
   const { colors } = useOwnlevelTheme();
   const [width, setWidth] = useState(0);
-  const height = 96, mid = height / 2, max = Math.max(1, ...values.map(value => Math.abs(value ?? 0)));
-  const slot = values.length ? width / values.length : 0, bar = Math.max(4, Math.min(18, slot - 6));
-  return <View accessible accessibilityRole="image" accessibilityLabel={label} onLayout={event => setWidth(event.nativeEvent.layout.width)} testID="comparisons-change-bars" style={{ height }}>
-    {width ? <Svg width={width} height={height}>
-      <Line x1={0} y1={mid} x2={width} y2={mid} stroke={colors.border} strokeWidth={1} />
-      {values.map((value, index) => {
-        const x = index * slot + (slot - bar) / 2, on = index === selected;
-        if (value === null) return <Rect key={index} x={x} y={mid - 8} width={bar} height={16} rx={3} fill="none" stroke={colors.textMuted} strokeDasharray="3 3" />;
-        if (value === 0) return <Rect key={index} x={x} y={mid - 1.5} width={bar} height={3} rx={1.5} fill={colors.textMuted} />;
-        const h = Math.max(3, (Math.abs(value) / max) * (mid - 4));
-        return <Rect key={index} x={x} y={value > 0 ? mid - h : mid} width={bar} height={h} rx={3} fill={colors.primary} fillOpacity={on ? 1 : 0.45} />;
-      })}
-    </Svg> : null}
+  const height = 96, mid = height / 2, max = Math.max(1, ...bars.map(bar => Math.abs(bar.value ?? 0)));
+  const slot = bars.length ? width / bars.length : 0, size = Math.max(4, Math.min(18, slot - 6));
+  return <View testID="comparisons-change-bars">
+    <View accessible={!onSelect} accessibilityRole={onSelect ? undefined : 'image'} accessibilityLabel={onSelect ? undefined : label} onLayout={event => setWidth(event.nativeEvent.layout.width)} style={{ height }}>
+      {width ? <Svg width={width} height={height} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        <Line x1={0} y1={mid} x2={width} y2={mid} stroke={colors.border} strokeWidth={1} />
+        {bars.map((bar, index) => {
+          const x = index * slot + (slot - size) / 2, on = index === selected, value = bar.value;
+          if (value === null) return <Rect key={index} x={x} y={mid - 8} width={size} height={16} rx={3} fill="none" stroke={on ? colors.primary : colors.textMuted} strokeDasharray="3 3" />;
+          if (value === 0) return <Rect key={index} x={x} y={mid - 1.5} width={size} height={3} rx={1.5} fill={on ? colors.primary : colors.textMuted} />;
+          const h = Math.max(3, (Math.abs(value) / max) * (mid - 4));
+          return bar.hollow ? <Rect key={index} x={x + 0.75} y={(value > 0 ? mid - h : mid) + 0.75} width={size - 1.5} height={Math.max(1.5, h - 1.5)} rx={3} fill="none" stroke={colors.primary} strokeOpacity={on ? 1 : 0.55} strokeWidth={1.5} />
+            : <Rect key={index} x={x} y={value > 0 ? mid - h : mid} width={size} height={h} rx={3} fill={colors.primary} fillOpacity={on ? 1 : 0.45} />;
+        })}
+      </Svg> : null}
+      {onSelect ? <View style={[StyleSheet.absoluteFill, styles.barHits]}>
+        {bars.map((bar, index) => <Pressable key={index} accessibilityRole="button" accessibilityState={{ selected: index === selected }} accessibilityLabel={bar.spoken} testID={`comparisons-bar-${index}`}
+          onPress={() => { haptics.selection(); onSelect(index); }} style={styles.barHit} />)}
+      </View> : null}
+    </View>
+    {first && last ? <View style={styles.barDates} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <AppText muted variant="caption" numeric>{first}</AppText>
+      <AppText muted variant="caption" numeric>{last}</AppText>
+    </View> : null}
   </View>;
 }
 
-/** Two medians on one scale: the sessions that went up (filled) and down (hollow). A side with fewer than three values is absent. */
-export function MedianPair({ up, down, min, max }: { up: number | null; down: number | null; min: number; max: number }) {
+/**
+ * One factor on one scale: every session with a value as a faint tick, the medians of the sessions that went up (filled) and down
+ * (hollow), and the chosen session's value as an accent mark. A median with fewer than three values is absent.
+ */
+export function FactorStrip({ values, up, down, pick }: { values: readonly number[]; up: number | null; down: number | null; pick: number | null }) {
   const { colors } = useOwnlevelTheme();
-  const width = 84, span = max - min || 1, x = (value: number) => 6 + ((value - min) / span) * (width - 12);
-  return <Svg width={width} height={16} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-    <Line x1={4} y1={8} x2={width - 4} y2={8} stroke={colors.border} strokeWidth={2} strokeLinecap="round" />
-    {up !== null && down !== null ? <Line x1={x(Math.min(up, down))} y1={8} x2={x(Math.max(up, down))} y2={8} stroke={colors.primary} strokeOpacity={0.4} strokeWidth={2} /> : null}
-    {down !== null ? <Circle cx={x(down)} cy={8} r={4} fill={colors.background} stroke={colors.textMuted} strokeWidth={2} /> : null}
-    {up !== null ? <Circle cx={x(up)} cy={8} r={5} fill={colors.primary} /> : null}
+  const all = [...values, ...(pick === null ? [] : [pick])], min = Math.min(...all), max = Math.max(...all);
+  const width = 104, span = max - min || 1, x = (value: number) => 6 + ((value - min) / span) * (width - 12);
+  return <Svg width={width} height={22} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+    <Line x1={4} y1={11} x2={width - 4} y2={11} stroke={colors.border} strokeWidth={2} strokeLinecap="round" />
+    {values.map((value, index) => <Line key={index} x1={x(value)} y1={7} x2={x(value)} y2={15} stroke={colors.textMuted} strokeOpacity={0.35} strokeWidth={1} />)}
+    {pick !== null ? <Line x1={x(pick)} y1={2} x2={x(pick)} y2={20} stroke={colors.primary} strokeWidth={2} strokeLinecap="round" /> : null}
+    {down !== null ? <Circle cx={x(down)} cy={11} r={4} fill={colors.background} stroke={colors.textMuted} strokeWidth={1.5} /> : null}
+    {up !== null ? <Circle cx={x(up)} cy={11} r={4.2} fill={colors.textMuted} /> : null}
   </Svg>;
 }
 
-/** One point per session: the factor's value across, the session's change up. The selected point is ringed. */
-export function FactorScatter({ points, selected, label, onSelect }: { points: readonly { x: number; y: number; group: 'up' | 'same' | 'down' | 'other' }[]; selected?: number; label: string; onSelect?: (index: number) => void }) {
+type ScatterPoint = { x: number; y: number; group: 'up' | 'same' | 'down' | 'other' };
+/**
+ * One point per session: the factor's value across, the session's change up, with both axes labelled and the zero line marked
+ * «igual». The medians of the sessions that went up and down are dashed verticals; the selected point is ringed in the accent.
+ */
+export function FactorScatter({ points, selected, label, onSelect, medians, formatX, axis }: { points: readonly ScatterPoint[]; selected?: number; label: string; onSelect?: (index: number) => void;
+  medians?: { up: number | null; down: number | null }; formatX: (value: number) => string; axis: string }) {
   const { colors } = useOwnlevelTheme();
   const [width, setWidth] = useState(0);
-  const height = 180, pad = 12;
+  const height = 190, left = 38, right = 10, top = 8, bottom = 150;
   const xs = points.map(point => point.x), ys = points.map(point => Math.abs(point.y));
-  const minX = Math.min(...xs), maxX = Math.max(...xs), spanX = maxX - minX || 1, maxY = Math.max(1, ...ys);
-  const px = (value: number) => pad + ((value - minX) / spanX) * (width - pad * 2), py = (value: number) => height / 2 - (value / maxY) * (height / 2 - pad);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), spanX = maxX - minX || 1, maxY = Math.max(1, Math.ceil(Math.max(...ys)));
+  const px = (value: number) => left + ((value - minX) / spanX) * (width - left - right), py = (value: number) => (top + bottom) / 2 - (value / maxY) * ((bottom - top) / 2);
+  const ticks = [maxY, 0, -maxY], mids = [minX, (minX + maxX) / 2, maxX];
   return <View accessible accessibilityRole="image" accessibilityLabel={label} onLayout={event => setWidth(event.nativeEvent.layout.width)} style={{ height }} testID="comparisons-factor-scatter">
     {width && points.length ? <Svg width={width} height={height}>
-      <Line x1={0} y1={height / 2} x2={width} y2={height / 2} stroke={colors.border} strokeWidth={1} />
+      {ticks.map(tick => <G key={tick}>
+        <Line x1={left} y1={py(tick)} x2={width - right} y2={py(tick)} stroke={colors.border} strokeWidth={1} strokeDasharray={tick === 0 ? undefined : '2 3'} />
+        <SvgText x={left - 4} y={py(tick) + 3} fontSize={10} fill={colors.textMuted} textAnchor="end">{tick === 0 ? 'igual' : formatPct(tick)}</SvgText>
+      </G>)}
+      {medians ? ([medians.up, medians.down] as const).map((median, index) => median === null ? null
+        : <Line key={index} x1={px(median)} y1={top} x2={px(median)} y2={bottom} stroke={colors.textMuted} strokeOpacity={0.6} strokeDasharray="3 3" />) : null}
       {points.map((point, index) => <Circle key={index} cx={px(point.x)} cy={py(point.y)} r={5} onPress={onSelect ? () => onSelect(index) : undefined}
-        fill={point.group === 'down' ? colors.background : point.group === 'up' ? colors.primary : colors.textMuted}
-        stroke={point.group === 'down' ? colors.textMuted : 'none'} strokeWidth={2} />)}
-      {selected !== undefined && points[selected] ? <Circle cx={px(points[selected]!.x)} cy={py(points[selected]!.y)} r={9} fill="none" stroke={colors.text} strokeWidth={1.5} /> : null}
+        fill={point.group === 'down' || point.group === 'other' ? colors.background : point.group === 'up' ? colors.textMuted : colors.border}
+        stroke={point.group === 'down' ? colors.textMuted : point.group === 'other' ? colors.primary : 'none'} strokeOpacity={point.group === 'other' ? 0.6 : 1} strokeWidth={1.5} />)}
+      {selected !== undefined && points[selected] ? <Circle cx={px(points[selected]!.x)} cy={py(points[selected]!.y)} r={9} fill="none" stroke={colors.primary} strokeWidth={2} /> : null}
+      {mids.map((value, index) => <SvgText key={index} x={px(value)} y={bottom + 14} fontSize={10} fill={colors.textMuted} textAnchor={index === 0 ? 'start' : index === 2 ? 'end' : 'middle'}>{formatX(value)}</SvgText>)}
+      <SvgText x={width - right} y={bottom + 30} fontSize={10} fill={colors.textMuted} textAnchor="end">{`${axis} →`}</SvgText>
     </Svg> : null}
   </View>;
 }
@@ -278,6 +312,9 @@ const styles = StyleSheet.create({
   block: { gap: spacing.sm },
   flex: { flex: 1, flexShrink: 1 },
   strip: { gap: spacing.sm, paddingVertical: spacing.xs },
+  barHits: { flexDirection: 'row' },
+  barHit: { flex: 1 },
+  barDates: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
   chartRow: { flexDirection: 'row', alignItems: 'flex-start', gap: BAR_GAP, paddingVertical: spacing.xs },
   barSlot: { width: BAR_W + 22, alignItems: 'center', gap: 4 },
   barArea: { width: BAR_W, height: CHART_H - 20 },
