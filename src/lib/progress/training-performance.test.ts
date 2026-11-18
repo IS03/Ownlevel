@@ -146,7 +146,7 @@ describe("Training V2 comparable performance", () => {
       { id: "press-now", exerciseId: "press", date: "2026-09-03", sets: [{ weight: 20, reps: 10 }] },
       { id: "new", exerciseId: "new", name: "Ejercicio nuevo", date: "2026-09-04" },
     ]);
-    expect(result.summary).toMatchObject({ improved: 1, comparable: 1, insufficient: 1, headline: "1 de 1 ejercicios mejoraron" });
+    expect(result.summary).toMatchObject({ improved: 1, comparable: 1, insufficient: 1, headline: "1 de 1 ejercicios subieron" });
   });
 
   it("uses mode-specific semantics for bodyweight, lingotes and seconds", () => {
@@ -350,7 +350,7 @@ describe("Training V2 comparable performance — implement and variant (P1-C2)",
       { id: "c-before", exerciseId: "c", date: "2026-08-28", configuration: null, sets: [{ weight: 20, reps: 8 }] },
       { id: "c-now", exerciseId: "c", date: "2026-09-03", configuration: null, sets: [{ weight: 30, reps: 8 }] },
     ]);
-    expect(result.summary).toMatchObject({ improved: 1, comparable: 1, insufficient: 2, headline: "1 de 1 ejercicios mejoraron" });
+    expect(result.summary).toMatchObject({ improved: 1, comparable: 1, insufficient: 2, headline: "1 de 1 ejercicios subieron" });
     // Only the comparable one may be a record; the barbell set and the unknown one never are.
     expect(result.exercises.filter((item) => item.isPersonalRecord).map((item) => item.exerciseId)).toEqual(["a"]);
   });

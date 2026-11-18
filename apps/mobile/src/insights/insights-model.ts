@@ -148,7 +148,7 @@ export function reasonDetail(lane: Lane, reason: string) {
     ? 'Falta parte del contexto: modo, unidad, implemento o variante. No podemos suponer que se hizo igual.'
     : 'El método parcial también necesita modo, unidad e implemento registrados.';
   if (reason === 'no_compatible_reference') return 'No encontramos una sesión anterior compatible con este registro.';
-  if (reason === 'crossed_signals') return 'Las señales van en direcciones distintas; no se resume como mejora ni descenso.';
+  if (reason === 'crossed_signals') return 'Las señales van en direcciones distintas; no se resume como suba ni baja.';
   if (reason === 'no_completed_sets') return 'No hay series terminadas que este método pueda usar.';
   return null;
 }

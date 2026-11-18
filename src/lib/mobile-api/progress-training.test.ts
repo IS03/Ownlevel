@@ -152,7 +152,7 @@ describe("GET /progress/training — exercise performance by real weight mode", 
     expect(byId.get(ex.cable)).toMatchObject({ status: "insufficient_data", reason: "unsupported_weight_mode", signal: null });
     expect(byId.get(ex.curl)).toMatchObject({ status: "stable" });
     expect(byId.get(ex.fresh)).toMatchObject({ status: "insufficient_data", reason: "new_exercise" });
-    expect(t.summary.performance).toMatchObject({ improved: 2, declined: 1, stable: 2, comparable: 5, insufficient: 2, headline: "2 de 5 ejercicios mejoraron" });
+    expect(t.summary.performance).toMatchObject({ improved: 2, declined: 1, stable: 2, comparable: 5, insufficient: 2, headline: "2 de 5 ejercicios subieron" });
     expect(t.personalRecords).toEqual(expect.arrayContaining([
       { exerciseId: ex.squat, name: "Sentadilla", description: expect.stringContaining("105") },
       { exerciseId: ex.bench, name: "Press banca", description: expect.stringContaining("10") }]));
@@ -186,7 +186,7 @@ describe("GET /progress/training — exercise performance by real weight mode", 
   it("overview: training summary and deterministic training findings that open the exercise", async () => {
     const response = await overviewGET(request("progress"));
     const o = parseProgressOverview(await response.json())!;
-    expect(o.training.status === "ok" && o.training.data.performance.headline).toBe("2 de 5 ejercicios mejoraron");
+    expect(o.training.status === "ok" && o.training.data.performance.headline).toBe("2 de 5 ejercicios subieron");
     expect(o.evolution[0]).toMatchObject({ id: "training.performance", destination: { kind: "training" } });
     const trainingFindings = o.changes.filter(c => c.domain === "training");
     expect(trainingFindings.length).toBeGreaterThan(0); expect(trainingFindings.length).toBeLessThanOrEqual(2);

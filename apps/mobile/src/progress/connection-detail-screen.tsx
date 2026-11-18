@@ -34,7 +34,7 @@ function Facts({ story }: { story: ConnectionStory }) {
     spoken: said(f.previous, formatValue(f.previous, f.unit, 'integer'), spokenDelta(f.current, f.previous, f.unit)) };
   const result = o.kind === 'strength'
     ? story.key === 'protein_strength'
-      ? { label: 'Ejercicios que mejoraron', value: o.improved === null || o.comparable === null ? 'Sin dato' : `${o.improved} de ${o.comparable}`, caption: `Frente a ${before}, de los que repetiste` }
+      ? { label: 'Ejercicios que subieron', value: o.improved === null || o.comparable === null ? 'Sin dato' : `${o.improved} de ${o.comparable}`, caption: `Frente a ${before}, de los que repetiste` }
       : { label: o.top ? `${o.top.name}, 1RM estimado` : '1RM estimado', value: formatValue(o.top?.currentE1rm ?? null, 'kg'),
         caption: o.top ? was(o.top.previousE1rm, formatValue(o.top.previousE1rm, 'kg'), connectionDelta(o.top.currentE1rm, o.top.previousE1rm, 'kg')) : 'Sin dato',
         spoken: o.top ? said(o.top.previousE1rm, formatValue(o.top.previousE1rm, 'kg'), spokenDelta(o.top.currentE1rm, o.top.previousE1rm, 'kg')) : 'Sin dato' }

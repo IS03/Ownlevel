@@ -66,7 +66,7 @@ export function PanoramaAtlas({ data, daily, onOpen }: { data: ProgressOverview;
   const max = Math.max(1, ...(cells ?? []).map(d => d?.count ?? 0));
   const ink = brandTokens.palette.dark, intensity = brandTokens.intensity.dark;
   const comparisonText = !t ? '' : !t.sessions ? 'Sin sesiones registradas en esta ventana.'
-    : data.inPeriod?.comparable ? `${data.inPeriod.improved} de ${data.inPeriod.comparable} ejercicios con mejora · primera frente a última sesión`
+    : data.inPeriod?.comparable ? `${data.inPeriod.improved} de ${data.inPeriod.comparable} ejercicios subieron · primera frente a última sesión`
     : data.inPeriod == null ? 'Comparación no disponible en esta lectura.' : 'Sin ejercicios comparables entre dos sesiones de esta ventana.';
   const calendarText = cells ? `${t!.trainingDays} días con sesiones finalizadas. ${cells.filter(d => d && d.count > 0).map(d => `${exactPeriodDate(d!.date)}: ${d!.count}`).join('. ')}. Los demás días de la ventana no tienen sesiones finalizadas registradas.` : 'Calendario diario no disponible en esta lectura.';
   const trainingHint = [t ? `${t.sessions} sesiones finalizadas, ${t.trainingDays} días entrenados, ${t.sets} series.` : 'Entrenamiento no disponible.', comparisonText, calendarText,

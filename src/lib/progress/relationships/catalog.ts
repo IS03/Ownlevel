@@ -67,7 +67,7 @@ export function buildRelationshipVariableCatalog(input: {
     metricKey: TRAINING_PERFORMANCE_RELATIONSHIP_KEY,
     domain: "training",
     label: "Rendimiento comparable",
-    unit: "% con mejora",
+    unit: "% que subió",
     metric: null,
     roles: ["outcome"],
     valueKind: "training_performance",

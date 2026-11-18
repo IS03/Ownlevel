@@ -70,7 +70,7 @@ describe('Training Trends', () => {
     expect(view.getByLabelText('2 días entrenados')).toBeTruthy(); expect(view.getByLabelText('Series completadas: 12 series')).toBeTruthy(); expect(view.getByLabelText('Duración total: 2 h 30 min')).toBeTruthy();
     expect(view.getByText('El tiempo va del inicio al fin de cada sesión, con descansos.')).toBeTruthy();
     expect(view.getByText('Series por semana · esta semana en curso')).toBeTruthy();
-    expect(view.getByText('1 mejoró en octubre, de su primera a su última sesión.')).toBeTruthy();
+    expect(view.getByText('1 subió en octubre, de su primera a su última sesión.')).toBeTruthy();
     expect(within(view.getByTestId(`training-exercise-${ex.bench}`)).getByText('75 → 80 kg, a 5 reps')).toBeTruthy();
     expect(within(view.getByTestId(`training-exercise-${ex.cable}`)).getByText('Este modo de carga no tiene una comparación confiable.')).toBeTruthy();
     expect(view.queryByText(/Frente a/)).toBeNull(); expect(view.queryByText(/Sólo en el período de comparación/)).toBeNull();
@@ -94,7 +94,7 @@ describe('Training Trends', () => {
     const view = wrap(<TrainingTrendsScreen />, comparing); await flush();
     expect(mockTraining).toHaveBeenLastCalledWith(mockClient, MONTH, { start: '2026-09-01', end: '2026-09-05' });
     expect(view.getByTestId('training-summary-sets').props.accessibilityLabel).toMatch(/12 series.*8 series.*1–5 sep/);
-    expect(view.getByText('1 mejoró en octubre, de su primera a su última sesión.')).toBeTruthy(); expect(view.getByText('Frente a 1–5 sep: Mejoró · Nuevo mejor peso: 80 kg × 5')).toBeTruthy();
+    expect(view.getByText('1 subió en octubre, de su primera a su última sesión.')).toBeTruthy(); expect(view.getByText('Frente a 1–5 sep: Mejoró · Nuevo mejor peso: 80 kg × 5')).toBeTruthy();
     expect(view.getByText('Sólo en el período de comparación: Curl')).toBeTruthy();
   });
   it('expands all breakdown rows, groups single sessions and keeps zero day marks and dense chart values accessible', async () => {

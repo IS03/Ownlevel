@@ -86,7 +86,7 @@ describe('#367 evidencia de una comparación', () => {
       const view = await open();
       expect(view.getByTestId('evidence-result')).toHaveTextContent(/Mezclado/);
       expect(view.getByTestId('evidence-note')).toHaveTextContent(lead);
-      expect(view.getByTestId('evidence-note')).toHaveTextContent(/Más carga con menos repeticiones, o al revés, no alcanza para decir que mejoró/);
+      expect(view.getByTestId('evidence-note')).toHaveTextContent(/Más carga con menos repeticiones, o al revés, no alcanza para decir que subió/);
       expect(view.queryByText(/Mejoró/)).toBeNull();
       // The higher load is still listed, as a record apart from the result.
       if (lead.source.startsWith('^Algunas')) expect(within(view.getByTestId('evidence-records')).getByText('90 → 95 kg')).toBeTruthy();

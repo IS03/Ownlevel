@@ -24,7 +24,7 @@ export function TrainingSummaryCard({ summary, compact }: { summary: ProgressTra
     {compact ? null : <Line label="Duración de sesiones" value={formatValue(summary.minutes, null, 'duration')} comparison={c.minutes} unit={null} duration />}
     {summary.sessionsPerWeek !== null && summary.sessions > 0 ? <AppText muted variant="caption">Frecuencia media: {new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(summary.sessionsPerWeek)} sesiones por semana</AppText> : null}
     <AppText muted variant="caption">{p.comparable
-      ? `Ejercicios: ${count(p.improved, 'mejoró', 'mejoraron')} · ${count(p.stable, 'estable', 'estables')} · ${count(p.declined, 'bajó', 'bajaron')}${p.insufficient ? ` · ${p.insufficient} sin comparación` : ''}`
+      ? `Ejercicios: ${count(p.improved, 'subió', 'subieron')} · ${count(p.stable, 'igual', 'igual')} · ${count(p.declined, 'bajó', 'bajaron')}${p.insufficient ? ` · ${p.insufficient} sin comparación` : ''}`
       : `Ejercicios: sin historial comparable${p.insufficient ? ` (${p.insufficient} sin comparación)` : ''}.`}</AppText>
   </View>;
 }

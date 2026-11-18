@@ -217,9 +217,9 @@ describe('connections editorial stories', () => {
       'connection-kcal_weight', 'connection-protein_strength', 'connection-carbs_energy', 'connection-carbs_strength',
     ]);
     const protein = view.getByTestId('connection-protein_strength');
-    expect(protein.props.accessibilityLabel).toBe('Proteína y fuerza. 142 gramos de proteína por día, 18 gramos más. 4 de 6 ejercicios mejoraron.');
+    expect(protein.props.accessibilityLabel).toBe('Proteína y fuerza. 142 gramos de proteína por día, 18 gramos más. 4 de 6 ejercicios subieron.');
     expect(within(protein).getByText('Proteína: 124 → 142 g por día')).toBeTruthy();
-    expect(within(protein).getByText('4 de 6 ejercicios mejoraron frente a septiembre')).toBeTruthy();
+    expect(within(protein).getByText('4 de 6 ejercicios subieron frente a septiembre')).toBeTruthy();
     expect(protein.props.accessibilityRole).toBe('button');
     expect(view.getByText('Octubre frente a septiembre, a la misma altura del mes.')).toBeTruthy();
     // The disclaimer lives in each story's detail, not in the section.
@@ -275,10 +275,10 @@ describe('connections editorial stories', () => {
 describe('story titles and period copy', () => {
   it('uses more/less/same food with a strict 3% threshold and neutral outcome signs', () => {
     const dto = fixture(), protein = dto.stories[0], carbs = dto.stories[1], energy = dto.stories[2], weight = dto.stories[3];
-    expect(connectionTitle(protein)).toBe('Más proteína y 4 ejercicios que mejoraron');
+    expect(connectionTitle(protein)).toBe('Más proteína y 4 ejercicios que subieron');
     protein.food.current = 120; if (protein.outcome.kind === 'strength') protein.outcome.improved = 0;
-    expect(connectionTitle(protein)).toBe('Menos proteína y ningún ejercicio mejoró');
-    protein.food.current = 125; expect(connectionTitle(protein)).toBe('Misma proteína y ningún ejercicio mejoró');
+    expect(connectionTitle(protein)).toBe('Menos proteína y ningún ejercicio subió');
+    protein.food.current = 125; expect(connectionTitle(protein)).toBe('Misma proteína y ningún ejercicio subió');
     expect(connectionTitle(carbs)).toBe('Más carbos y más peso en Sentadilla');
     if (carbs.outcome.kind === 'strength' && carbs.outcome.top) carbs.outcome.top.currentE1rm = 95;
     expect(connectionTitle(carbs)).toBe('Más carbos y menos peso en Sentadilla');
