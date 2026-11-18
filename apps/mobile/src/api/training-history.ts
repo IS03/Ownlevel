@@ -36,6 +36,8 @@ export type TrainingHistoryExercise = {
 export type TrainingExerciseHistorySession = {
   routineId?: string | null;
   sessionId: string; logDate: string; routineName: string; mark: TrainingHistoryMark | null; completedSets: number; rirValues: number[];
+  /** Each completed set in set order (asked with `sets=1`). Absent: an older server. */
+  sets?: TrainingHistoryMark[];
 };
 export type TrainingExerciseHistory = {
   routines?: { id: string; name: string }[];
@@ -132,12 +134,15 @@ export function parseTrainingHistoryExercises(value: unknown): TrainingHistoryEx
   return result;
 }
 function parseExerciseSession(value: unknown): TrainingExerciseHistorySession | undefined {
-  if (!g.record(value, ['sessionId', 'logDate', 'routineName', 'mark', 'completedSets', 'rirValues', 'routineId']) || Object.keys(value).length !== (value.routineId === undefined ? 6 : 7) ||
+  if (!g.record(value, ['sessionId', 'logDate', 'routineName', 'mark', 'completedSets', 'rirValues', 'routineId', 'sets']) ||
+    Object.keys(value).length !== 6 + (value.routineId === undefined ? 0 : 1) + (value.sets === undefined ? 0 : 1) ||
     (value.routineId !== undefined && value.routineId !== null && !g.id(value.routineId)) ||
     !g.id(value.sessionId) || !g.date(value.logDate) || typeof value.routineName !== 'string' || !g.counter(value.completedSets) ||
     !Array.isArray(value.rirValues) || !value.rirValues.every(rir => typeof rir === 'number' && Number.isFinite(rir))) return undefined;
   const mark = parseMark(value.mark);
-  return mark === undefined ? undefined : { ...(value as TrainingExerciseHistorySession), mark };
+  const sets = value.sets === undefined ? undefined : Array.isArray(value.sets) ? value.sets.map(parseMark) : [undefined];
+  if (mark === undefined || sets?.some(set => !set)) return undefined;
+  return { ...(value as TrainingExerciseHistorySession), mark, ...(sets ? { sets: sets as TrainingHistoryMark[] } : {}) };
 }
 export function parseTrainingExerciseHistory(value: unknown, exerciseId?: string): TrainingExerciseHistory | undefined {
   if (!g.record(value, ['exercise', 'latest', 'best', 'sessions', 'hasMore', 'routines']) || Object.keys(value).length !== (value.routines === undefined ? 5 : 6) ||
@@ -210,7 +215,7 @@ export function fetchTrainingHistoryExercises(client: MobileApiClient, signal?: 
 }
 export function fetchTrainingExerciseHistory(client: MobileApiClient, exerciseId: string, limit: number,
   signal?: AbortSignal, routineId?: string | null): Promise<MobileApiReadResult<TrainingExerciseHistory>> {
-  return client.read({ path: `${BASE}/history/exercises/${encodeURIComponent(exerciseId)}?limit=${limit}&historyByRoutine=1${routineId ? `&routineId=${encodeURIComponent(routineId)}` : ''}`, signal,
+  return client.read({ path: `${BASE}/history/exercises/${encodeURIComponent(exerciseId)}?limit=${limit}&historyByRoutine=1&sets=1${routineId ? `&routineId=${encodeURIComponent(routineId)}` : ''}`, signal,
     parse: value => {
       const parsed = parseTrainingExerciseHistory(value, exerciseId);
       return routineId && parsed?.routines === undefined ? undefined : parsed;

@@ -10,11 +10,12 @@ import type { AppIconName } from '@/design-system/icon-names';
 import { haptics } from '@/platform/haptics';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
-import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, NUTRITION_SCOPE, contextRows, exposuresText, feelingRows, outsideText, preStartNote, preStartRows, unclearCount, withoutComparison, type Counts, dayLabel, dayLanes, daySessions, referenceText, sessionLanes, feelingClockNote, nutritionRows, sessionName, sessionTime, exerciseSentence, focusOf, heroCaption, heroOf, joinDays, nextDate, nothingComparable, readingRows, reasonDetail, reasonText, relationGroups, relationName, relationState, sameRead, statusArrow, statusText, summarySpoken, summaryText, type ContextRow, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
+import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, NUTRITION_SCOPE, contextRows, feelingRows, outsideText, preStartNote, preStartRows, withoutComparison, type Counts, dayLabel, dayLanes, daySessions, referenceText, sessionLanes, feelingClockNote, nutritionRows, sessionName, sessionTime, exerciseSentence, focusOf, heroCaption, heroOf, joinDays, nextDate, nothingComparable, readingRows, reasonDetail, reasonText, relationGroups, relationName, relationState, sameRead, statusArrow, statusText, type ContextRow, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
 import { InsightRow } from './insight-row';
-import { arrivalFacts, exerciseChangeValue, formatPct, joinedChange, recentPoints, sessionHero, shownText } from './comparison-change';
+import { arrivalFacts, exerciseChangeValue, joinedChange, sessionHero, shownText } from './comparison-change';
 import { ArrivalLinks, ArrivalSheetContent, FoodBlock, rowChangeOf, timelineLabel } from './comparison-arrival';
-import { ArrivalGrid, ArrivalTimeline, ChangeTally, DivergingRow, Kicker, MethodLine, SessionChart, Sparkline, type StripSession } from './comparison-parts';
+import { ExerciseEntry, GroupTitle, Legend, OrderMenu, SingleGroup, groupsOf, type ListEntry } from './exercise-list';
+import { ArrivalGrid, ArrivalTimeline, ChangeTally, DivergingRow, Kicker, MethodLine, SessionChart, type StripSession } from './comparison-parts';
 import { RoutineRelationView } from './routine-relation-view';
 import { usePeriodReturn } from './use-period-return';
 import { withProgressOrigin,progressOriginParams,dayWeightHref, explorationHref, insightsEvidenceHref, insightsOriginOf, metricTrendHref, nutritionDayHref, validSession, type InsightsOrigin } from './navigation';
@@ -110,7 +111,6 @@ function routinesOf(days: readonly DayLanes[]) {
   for (const day of days) for (const session of day.strict.sessions) if (session.routineId && !seen.has(session.routineId)) seen.set(session.routineId, session.routineName ?? sessionName(session));
   return [{ value: 'all', label: 'Todas' }, ...[...seen].map(([value, label]) => ({ value, label }))];
 }
-const longDate = (date: string) => new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`));
 type ExerciseOrder = 'recent' | 'name' | 'records';
 const ORDERS = [{ value: 'recent', label: 'Recientes' }, { value: 'name', label: 'Nombre' }, { value: 'records', label: 'Más registros' }] as const;
 /**
@@ -131,38 +131,32 @@ function Exercises({ model, router, routine, routines, onRoutine, order, onOrder
   const { firstDate, lastDate } = model.history;
   if (!model.facts.totals.comparable && !model.partial.totals.total) return <AppText muted>{nothingComparable(model)}</AppText>;
   const rows = exerciseList(model, routine, order);
+  const groups = groupsOf(rows);
+  const open = (id: string) => router.push({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id } });
+  const entries = (list: readonly ListEntry[]) => list.map(entry => <ExerciseEntry key={entry.row.exerciseId} {...entry} onPress={() => open(entry.row.exerciseId)} />);
+  const compared = rows.length - groups.single.length;
   return <>
     {routines.length > 2 ? <ChipGroup accessibilityLabel="Filtrar por rutina" value={routine} options={routines} onChange={onRoutine} /> : null}
-    {/* #518 · What each count is over: the completed sessions read, with their dates when the read says them. */}
-    <AppText muted variant="footnote" numeric testID="insights-exercises-period">{rows.length} {rows.length === 1 ? 'ejercicio' : 'ejercicios'}{firstDate && lastDate ? ` · del ${longDate(firstDate)} al ${longDate(lastDate)}` : ''}. Cada fila, frente a su vez anterior.</AppText>
-    <ChipGroup accessibilityLabel="Ordenar ejercicios" value={order} options={ORDERS} onChange={onOrder} />
-    {rows.some(entry => entry.lane === 'partial') ? <MethodLine lanes={['partial']} /> : null}
-    <View style={styles.block} testID="insights-exercises">
-      {rows.map(({ lane, row }) => <ExerciseLine key={row.exerciseId} lane={lane} row={row} onPress={() => router.push({ pathname: '/(tabs)/train/history/exercise/[id]', params: { id: row.exerciseId } })} />)}
+    <View style={styles.listHead}>
+      {/* #518 · What each count is over: the completed sessions read, with their dates when the read says them. */}
+      <AppText muted variant="footnote" numeric style={styles.flex} testID="insights-exercises-period">{rows.length} {rows.length === 1 ? 'ejercicio' : 'ejercicios'}{firstDate && lastDate ? ` · ${shortRange(firstDate, lastDate)}` : ''}</AppText>
+      <OrderMenu value={order} options={ORDERS} onChange={onOrder} />
+    </View>
+    {compared ? <Legend /> : null}
+    <View testID="insights-exercises">
+      {order === 'recent' ? <>
+        {groups.changed.length ? <><GroupTitle>Cambiaron la última vez</GroupTitle>{entries(groups.changed)}</> : null}
+        {groups.same.length ? <><GroupTitle>Igual que la vez anterior</GroupTitle>{entries(groups.same)}</> : null}
+        {groups.none.length ? <><GroupTitle>Sin comparar la última vez</GroupTitle>{entries(groups.none)}</> : null}
+      </> : entries(rows.filter(entry => entry.row.exposures > 1))}
+      <SingleGroup entries={groups.single} onOpen={open} />
       {!rows.length ? <AppText muted>Esta rutina todavía no tiene ejercicios comparados.</AppText> : null}
     </View>
+    {rows.length ? <MethodLine lanes={rows.some(entry => entry.lane === 'partial') ? ['partial'] : ['strict']} /> : null}
   </>;
 }
-
-/** #533 · One exercise: its counts in one line, a small line of its recent changes and the last one, aligned on the right. */
-function ExerciseLine({ lane, row, onPress }: { lane: Lane; row: InsightsSummary['facts']['exercises'][number] | InsightsSummary['partial']['exercises'][number]; onPress: () => void }) {
-  const { colors } = useOwnlevelTheme();
-  const { fontScale } = useWindowDimensions();
-  const reduced = useReduceMotion();
-  const unclear = unclearCount(lane, row), points = recentPoints(row.recent), last = row.recent?.items.at(-1);
-  const value = last ? formatPct(last.pct) : '—';
-  return <Pressable accessibilityRole="button" onPress={onPress} testID={`comparisons-exercise-${row.exerciseId}`}
-    accessibilityLabel={`${summarySpoken(lane, row)}${last ? `. Último cambio medido: ${value}` : ''}`}
-    style={({ pressed }) => [styles.row, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
-    <View style={styles.flex}>
-      <AppText>{row.name || 'Ejercicio'}</AppText>
-      <AppText muted numeric variant="footnote">{exposuresText(row.exposures)} · {summaryText(lane, row)}{unclear > 0 ? ` · ${unclear} sin resultado claro` : ''}{lane === 'partial' ? ' · contexto parcial' : ''}</AppText>
-    </View>
-    {fontScale > 1.3 ? null : <Sparkline points={points} />}
-    <AppText numeric variant="subheadline" muted={!last} style={styles.exerciseValue}>{value}</AppText>
-    <AppIcon color={colors.textMuted} name="chevronRight" size={15} />
-  </Pressable>;
-}
+const shortDay = (date: string) => new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`)).replace('.', '');
+const shortRange = (from: string, to: string) => from === to ? shortDay(to) : `${shortDay(from)} al ${shortDay(to)}`;
 
 /** #533 · From one session to how its routine's sessions arrived: Relación, focused on that routine. */
 function RelationLink({ session, router }: { session: SessionFact; router: ReturnType<typeof useRouter> }) {
@@ -580,6 +574,7 @@ const styles = StyleSheet.create({
   sheet: { gap: spacing.lg, padding: brandTokens.layout.screenPadding, paddingBottom: spacing.xxl },
   scroll: { alignSelf: 'center', flexGrow: 1, gap: spacing.xl, maxWidth: 720, padding: brandTokens.layout.screenPadding, paddingBottom: 120, width: '100%' },
   block: { gap: spacing.sm },
+  listHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   detail: { gap: spacing.md, paddingBottom: spacing.md },
   flex: { flex: 1, flexShrink: 1 },
   section: { paddingTop: spacing.sm, paddingBottom: spacing.xs },

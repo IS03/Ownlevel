@@ -146,3 +146,27 @@ export function bestSetBars(sessions: readonly { sessionId: string; logDate: str
 }
 export const sameMark = (left: TrainingHistoryMark | null, right: TrainingHistoryMark | null) =>
   left !== null && right !== null && left.weightKg === right.weightKg && left.reps === right.reps;
+
+/**
+ * Ejercicios más claros · the reps of each session's best set over its weight, oldest → newest, up to `limit`. A run of sessions at
+ * one weight is a band, so reps that went up at the same weight read as a slope and a weight change as a new band. A session
+ * without reps is a gap, never a 0; one without a weight starts its own band with a null weight.
+ */
+export type RepsPoint = { sessionId: string; date: string; weight: number | null; reps: number | null };
+export type WeightBand = { weight: number | null; start: number; end: number };
+export function repsOverWeights(sessions: readonly { sessionId: string; logDate: string; mark: TrainingHistoryMark | null }[], limit = 12) {
+  const points: RepsPoint[] = sessions.slice(0, limit).map(session => ({ sessionId: session.sessionId, date: session.logDate, weight: session.mark?.weightKg ?? null, reps: session.mark?.reps ?? null })).reverse();
+  const bands: WeightBand[] = [];
+  points.forEach((point, index) => {
+    const last = bands.at(-1);
+    if (last && last.weight === point.weight) last.end = index; else bands.push({ weight: point.weight, start: index, end: index });
+  });
+  return { points, bands };
+}
+/** The reps of each completed set, with the set that is the session's mark highlighted (the first one that matches it). */
+export function setChips(sets: readonly TrainingHistoryMark[] | undefined, mark: TrainingHistoryMark | null) {
+  if (!sets?.length) return null;
+  const best = mark ? sets.findIndex(set => set.weightKg === mark.weightKg && set.reps === mark.reps) : -1;
+  const weights = new Set(sets.map(set => set.weightKg));
+  return { chips: sets.map((set, index) => ({ reps: set.reps, weight: set.weightKg, best: index === best })), oneWeight: weights.size === 1 };
+}
