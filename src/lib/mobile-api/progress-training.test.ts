@@ -89,6 +89,42 @@ beforeEach(() => {
 });
 
 describe("GET /progress/training — summary", () => {
+  it('story is opt-in and projects routine snapshots with no additional source read', async () => {
+    vi.mocked(loadCompletedTrainingData).mockResolvedValue(source([
+      { date: d(-40), routine: 'old', exercises: [bench([[8, 55]])] },
+      { date: d(-8), routine: 'push', minutes: 40, exercises: [bench([[8, 60]]), bench([[8, 60]])] },
+      { date: d(-2), routine: 'push', minutes: 60, exercises: [bench([[8, 65]])] },
+      // Same exercise in a different routine: never contaminates PUSH's first/last comparison.
+      { date: d(-1), routine: 'pull', minutes: 30, exercises: [bench([[8, 10]])] },
+    ]));
+    expect((await training()).story).toBeUndefined();
+    vi.mocked(loadCompletedTrainingData).mockClear();
+    const t = await training('progress/training?period=30&inPeriod=1&story=1');
+    expect(loadCompletedTrainingData).toHaveBeenCalledTimes(1);
+    expect(t.story?.routines.find(r => r.id === 'push')).toMatchObject({ sessions: 2, averageMinutes: 50, averageExercises: 1, lastDate: d(-2), improved: 1, declined: 0, insufficient: 0 });
+    expect(t.story?.routines.find(r => r.id === 'pull')).toMatchObject({ sessions: 1, improved: 0, insufficient: 1 });
+    expect(t.story?.routines.find(r => r.id === 'old')).toMatchObject({ sessions: 0, previousSessions: 1, averageMinutes: null, averageExercises: null, lastDate: null });
+    expect(t.story?.muscles[0]).toMatchObject({ key: 'pecho', sets: 4, previousSets: 1, sessions: 3 });
+    expect(t.story?.routines.find(r => r.id === 'push')?.exerciseIds).toEqual([ex.bench]);
+  });
+  it('story retains unknown configurations, uses the chosen reference and validates optional data', async () => {
+    vi.mocked(loadCompletedTrainingData).mockResolvedValue(source([
+      { date: d(-60), routine: 'reference', exercises: [bench([[8, 55]])] },
+      { date: d(-8), exercises: [{ ...bench([[8, 60]]), configuration: null }] },
+      { date: d(-2), exercises: [bench([[8, 65]])] },
+    ]));
+    const t = await training(`progress/training?period=30&inPeriod=1&story=1&compareFrom=${d(-65)}&compareTo=${d(-60)}`);
+    expect(t.story?.routines.find(r => r.id === '__free__')).toMatchObject({ improved: 0, insufficient: 1 });
+    expect(t.story?.routines.find(r => r.id === 'reference')?.previousSessions).toBe(1);
+    expect(parseProgressTraining({ ...t, story: { ...t.story, routines: [{ ...t.story!.routines[0], averageMinutes: -1 }] } })).toBeUndefined();
+    expect(parseProgressTraining({ ...t, story: { ...t.story, routines: [] } })).toBeUndefined();
+    expect((await training('progress/training?story=1')).story).toBeDefined();
+    expect((await trainingGET(request('progress/training?story=0'))).status).toBe(400);
+  });
+  it('empty story distinguishes no sessions from unavailable averages', async () => {
+    const t = await training('progress/training?story=1');
+    expect(t.story).toEqual({ routines: [], muscles: [] });
+  });
   it("no training: real zeros, no feelings, no exercises, comparison without a percent", async () => {
     const t: ProgressTraining = await training();
     expect(t.summary).toMatchObject({ sessions: 0, trainingDays: 0, sets: 0, minutes: 0, sessionsPerWeek: 0 });

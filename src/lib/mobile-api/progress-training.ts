@@ -1,7 +1,7 @@
 import "server-only";
 import { loadCompletedTrainingData, loadTrainingRecordsData } from "@/lib/phase2/training-robust";
 import { listRoutines } from "@/lib/phase2/training";
-import { buildTrainingAnalysis, trainingExerciseStats, type TrainingAnalysis, type TrainingAnalysisSource } from "@/lib/phase2/training-analysis";
+import { buildSessionRecords, buildTrainingAnalysis, trainingExerciseStats, type TrainingAnalysis, type TrainingAnalysisSource } from "@/lib/phase2/training-analysis";
 import { TRAINING_PROGRESS_METRICS } from "@/lib/progress/analytics";
 import { buildProgressComparison, type ProgressComparisonReport, type ProgressTemporalComparisonReference } from "@/lib/progress/comparisons";
 import {
@@ -103,6 +103,62 @@ export function trainingDto(ctx: TrainingContext, today: string, period: Progres
     muscles: ctx.current.muscles.filter(m => m.summary.hasData).map(m => ({ key: m.key, label: m.label, sets: m.summary.sets, sessions: m.summary.sessions, exercises: m.summary.exerciseCount })),
     routines: ctx.current.routines.filter(r => r.summary.hasData).map(r => ({ id: r.id, name: r.name, sessions: r.summary.sessions, sets: r.summary.sets, minutes: r.summary.minutes })),
   };
+}
+
+/** No new reads: group historical snapshots by routine, retaining the canonical first/last comparator. */
+export function trainingStoryDto(ctx: TrainingContext, period: ProgressPeriod): NonNullable<ProgressTraining['story']> {
+  const records = buildSessionRecords(ctx.source, period);
+  const sessionsByRoutine = new Map<string, TrainingAnalysisSource['sessions']>();
+  const routineBySession = new Map<string, string>();
+  for (const session of ctx.source.sessions) {
+    const date = ctx.source.dateByDayLog.get(session.day_log_id);
+    if (session.status !== 'completed' || !date || date < period.start || date > period.end) continue;
+    const key = session.routine_id ?? '__free__';
+    const list = sessionsByRoutine.get(key) ?? [];
+    list.push(session); sessionsByRoutine.set(key, list); routineBySession.set(session.id, key);
+  }
+  const exercisesByRoutine = new Map<string, TrainingAnalysisSource['sessionExercises']>();
+  const routineByBlock = new Map<string, string>();
+  for (const block of ctx.source.sessionExercises) {
+    const key = routineBySession.get(block.workout_session_id);
+    if (!key) continue;
+    const list = exercisesByRoutine.get(key) ?? [];
+    list.push(block); exercisesByRoutine.set(key, list); routineByBlock.set(block.id, key);
+  }
+  const setsByRoutine = new Map<string, TrainingAnalysisSource['sets']>();
+  for (const set of ctx.source.sets) {
+    const key = routineByBlock.get(set.workout_session_exercise_id);
+    if (!key) continue;
+    const list = setsByRoutine.get(key) ?? [];
+    list.push(set); setsByRoutine.set(key, list);
+  }
+  const previous = new Map(ctx.reference.routines.map(r => [r.id, r]));
+  const current = new Map(ctx.current.routines.filter(r => r.summary.hasData).map(r => [r.id, r]));
+  const currentRecords = new Map<string, typeof records>();
+  for (const record of records) {
+    const key = record.routineId ?? '__free__', list = currentRecords.get(key) ?? [];
+    list.push(record); currentRecords.set(key, list);
+  }
+  const routines = [...new Set([...current.keys(), ...ctx.reference.routines.filter(r => r.summary.hasData).map(r => r.id)])].map(id => {
+    const now = current.get(id), before = previous.get(id), scoped = currentRecords.get(id) ?? [];
+    const performance = trainingInPeriodDto({ ...ctx, source: { ...ctx.source, sessions: sessionsByRoutine.get(id) ?? [],
+      sessionExercises: exercisesByRoutine.get(id) ?? [], sets: setsByRoutine.get(id) ?? [] } }, period);
+    const compared = new Set(performance.exercises.map(e => e.id));
+    return { id, name: now?.name ?? before!.name, sessions: now?.summary.sessions ?? 0, previousSessions: before?.summary.sessions ?? 0,
+      sets: now?.summary.sets ?? 0, minutes: now?.summary.minutes ?? 0,
+      averageMinutes: scoped.length ? (now?.summary.minutes ?? 0) / scoped.length : null,
+      averageExercises: scoped.length ? scoped.reduce((sum, s) => sum + new Set(s.exercises.filter(e => e.sets.length > 0).map(e => e.id)).size, 0) / scoped.length : null,
+      lastDate: scoped.length ? scoped[scoped.length - 1].logDate : null,
+      exerciseIds: now?.exerciseIds ?? [], improved: performance.improved, stable: performance.stable, declined: performance.declined,
+      insufficient: performance.insufficient + (now?.exerciseIds.filter(id => !compared.has(id)).length ?? 0) };
+  });
+  const previousMuscles = new Map(ctx.reference.muscles.map(m => [m.key, m]));
+  const currentMuscles = new Map(ctx.current.muscles.filter(m => m.summary.hasData).map(m => [m.key, m]));
+  return { routines, muscles: [...new Set([...currentMuscles.keys(), ...ctx.reference.muscles.filter(m => m.summary.hasData).map(m => m.key)])].map(key => {
+    const now = currentMuscles.get(key), before = previousMuscles.get(key);
+    return { key, label: now?.label ?? before!.label, sets: now?.summary.sets ?? 0, previousSets: before?.summary.sets ?? 0,
+      sessions: now?.summary.sessions ?? 0, exerciseIds: now?.exerciseIds ?? [] };
+  }) };
 }
 
 /**
