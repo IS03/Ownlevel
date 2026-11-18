@@ -172,7 +172,8 @@ export function buildExposureContext(source: InsightsSource) {
   const convention = conventionSleepIds(source.metricDefinitions);
   for (const row of source.metricValues) {
     const byDate = sleepEvidence.get(row.metricId) ?? new Map<string, SleepNightEvidence>();
-    byDate.set(row.date, row.sleepNight ?? (convention.has(row.metricId) ? "declared" : "undeclared")); sleepEvidence.set(row.metricId, byDate);
+    // The reader marks every value without a declaration as "undeclared"; for these that is the convention, not a gap.
+    byDate.set(row.date, convention.has(row.metricId) ? "declared" : row.sleepNight ?? "undeclared"); sleepEvidence.set(row.metricId, byDate);
   }
   return { exclusions, nutritionByDate, series, metricsByDate, mealsByDate, sessionById, feelingsBySession, unreadableFeelingsBySession, weightByDate, sleepEvidence };
 }
