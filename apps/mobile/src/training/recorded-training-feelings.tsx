@@ -32,11 +32,11 @@ export function feelingLines(facts: Facts, session?: SessionTimes) {
 }
 
 /** Read-only facts stay separate from the historical metadata receipt. */
-export function RecordedTrainingFeelings({ values, read, session }: { values?: Facts; read?: FeelingsPort['read']; session?: SessionTimes }) {
+export function RecordedTrainingFeelings({ values, read, session, result, onRetry }: { values?: Facts; read?: FeelingsPort['read']; session?: SessionTimes; result?: Awaited<ReturnType<FeelingsPort['read']>>; onRetry?: () => void }) {
   const [state, setState] = useState<{ read: typeof read; values?: Facts; error: boolean }>({ read, values, error: false });
   const [attempt, retry] = useState(0);
   useEffect(() => {
-    if (!read) return;
+    if (result !== undefined || !read) return;
     let active = true;
     void Promise.resolve().then(read).then(result => {
       if (!active) return;
@@ -44,8 +44,9 @@ export function RecordedTrainingFeelings({ values, read, session }: { values?: F
       else setState(previous => ({ read, values: previous.read === read ? previous.values : undefined, error: true }));
     }).catch(() => { if (active) setState(previous => ({ read, values: previous.read === read ? previous.values : undefined, error: true })); });
     return () => { active = false; };
-  }, [read, attempt]);
-  const facts = values ?? (state.read === read ? state.values : undefined), error = state.read === read && state.error;
+  }, [read, attempt, result]);
+  const facts = result !== undefined ? result.status === 'ok' && 'data' in result ? result.data.values : undefined : values ?? (state.read === read ? state.values : undefined);
+  const error = result !== undefined ? result.status !== 'ok' && result.status !== 'loading' : state.read === read && state.error;
   const answered = facts ? Object.values(facts).some(Boolean) : false;
   return <View style={{ gap: brandTokens.space.xs }} testID="recorded-training-feelings">
     <AppText variant="headline">Sensaciones pre y post</AppText>
@@ -55,6 +56,6 @@ export function RecordedTrainingFeelings({ values, read, session }: { values?: F
     </View>) : null}
     {!facts ? <AppText muted variant="footnote">{error ? 'No pudimos leer las sensaciones.' : 'Comprobando sensaciones…'}</AppText> : null}
     {facts && !answered ? <AppText muted variant="footnote">Sin respuestas registradas.</AppText> : null}
-    {error ? <><AppText muted variant="footnote">{facts ? 'No pudimos actualizar. Mostramos la última lectura confirmada.' : 'La lectura no está confirmada.'}</AppText><Button label="Reintentar lectura" variant="quiet" onPress={() => retry(value => value + 1)} /></> : null}
+    {error ? <><AppText muted variant="footnote">{facts ? 'No pudimos actualizar. Mostramos la última lectura confirmada.' : 'La lectura no está confirmada.'}</AppText><Button label="Reintentar lectura" variant="quiet" onPress={onRetry ?? (() => retry(value => value + 1))} /></> : null}
   </View>;
 }

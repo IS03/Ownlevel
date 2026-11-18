@@ -22,6 +22,7 @@ export function useRead<T>(loader: Loader<T>, initial?: T, { loadOnMount = true 
     return loader(abort.signal).then(result => {
       if (abort.signal.aborted) return;
       if (result.status === 'ok') setState({ status: 'ready', data: result.data, refreshing: false, stale: false });
+      else if (result.status === 'auth_required' || result.status === 'unauthorized' || result.meta.httpStatus === 403) setState({ status: 'unavailable' });
       else if (result.status === 'not_found') setState({ status: 'not_found' });
       else setState(current => current.status === 'ready' ? { ...current, refreshing: false, stale: true } : { status: 'unavailable' });
     });

@@ -3,7 +3,7 @@ import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } fro
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { settledWrites } from '@/api/confirmed-read-cache';
-import { prefetchSessionSummary } from '@/api/session-summary';
+import { readHistorySession } from '@/api/history-session';
 import type { MobileApiClient } from '@/api/client';
 import { fetchTrainingDay, fetchTrainingHistory, fetchTrainingHistoryExercises, fetchTrainingHistoryMonth, type TrainingHistoryExercise, type TrainingHistorySession } from '@/api/training-history';
 import { AppIcon, AppText, Button, EmptyState, SkeletonBlock, Surface, TextField, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
@@ -73,7 +73,7 @@ function Stat({ value, label }: { value: string; label: string }) {
 }
 
 /** HI2: one chosen day — its totals and sessions, with "Ver todo" back to the full list. */
-function DaySessions({ client, date, today, onAll, onOpen }: { client: MobileApiClient | null; date: string; today: string; onAll: () => void; onOpen: (id: string) => void }) {
+function DaySessions({ client, date, today, onAll, onOpen }: { client: MobileApiClient | null; date: string; today: string; onAll: () => void; onOpen: (id: string) => void; }) {
   const { colors } = useOwnlevelTheme();
   const load = useCallback((signal: AbortSignal) => client ? fetchTrainingDay(client, date, signal) : Promise.resolve(UNAVAILABLE), [client, date]);
   const { state, reload } = useFocusedRead(load);
@@ -94,14 +94,14 @@ function DaySessions({ client, date, today, onAll, onOpen }: { client: MobileApi
         <Stat value={String(summary.completedSets)} label="series" />
         {volume ? <Stat value={volume} label="volumen" /> : null}
       </View>
-      <ListCard>{sessions.map((session, index) => <SessionRow key={session.id} session={session} divided={index > 0} onPress={() => onOpen(session.id)} />)}</ListCard>
+      <View>{sessions.map((session, index) => <SessionRow key={session.id} session={session} divided={index > 0} onPress={() => onOpen(session.id)} />)}</View>
     </>}
   </View>;
 }
 
 type More = { base: unknown; sessions: TrainingHistorySession[]; cursor: string | null; loading: boolean; failed: boolean };
 /** HI1: every finished session, grouped by day with the day's totals. */
-function AllSessions({ client, today, refreshKey, endKey, onOpen }: { client: MobileApiClient | null; today: string; refreshKey: number; endKey: number; onOpen: (id: string) => void }) {
+function AllSessions({ client, today, refreshKey, endKey, onOpen }: { client: MobileApiClient | null; today: string; refreshKey: number; endKey: number; onOpen: (id: string) => void; }) {
   const { colors } = useOwnlevelTheme();
   const load = useCallback((signal: AbortSignal) => client ? fetchTrainingHistory(client, null, signal) : Promise.resolve(UNAVAILABLE), [client]);
   const { state, reload } = useFocusedRead(load);
@@ -128,7 +128,7 @@ function AllSessions({ client, today, refreshKey, endKey, onOpen }: { client: Mo
       : groupSessionsByDate(sessions).map(group => <View key={group.date} style={styles.group}>
         <View style={styles.dayHeader}><AppText variant="title2">{historyDayLabel(group.date, today)}</AppText>
           <AppText muted numeric variant="footnote">{dayTotalsLabel(group.sessions)}</AppText></View>
-        <ListCard>{group.sessions.map((session, index) => <SessionRow key={session.id} session={session} divided={index > 0} onPress={() => onOpen(session.id)} />)}</ListCard>
+        <View>{group.sessions.map((session, index) => <SessionRow key={session.id} session={session} divided={index > 0} onPress={() => onOpen(session.id)} />)}</View>
       </View>)}
     {extra?.failed ? <><AppText style={{ color: colors.danger }} variant="caption">No pudimos cargar más sesiones.</AppText><Button label="Reintentar" variant="secondary" onPress={() => void loadMore()} /></>
       : extra?.loading ? <AppText muted variant="caption" style={styles.loadingMore}>Cargando más sesiones…</AppText> : null}
@@ -260,8 +260,8 @@ export function HistoryScreen({ now = () => new Date() }: { now?: () => Date }) 
   const nearEnd = useRef(false);
   const change = (next: Tab) => { setTab(next); setVisited(old => ({ ...old, [next]: true })); };
   const { client } = useMobileApi();
-  // The comparison read starts on the tap, while the screen slides in.
-  const openSession = (id: string) => { if (client) void prefetchSessionSummary(client, id); router.push(origin ? { pathname: '/(tabs)/train/history/[id]', params: { id, ...origin } } : `/(tabs)/train/history/${id}`); };
+  // Prepare the chosen session during navigation; the screen joins the same reads.
+  const openSession = (id: string) => { if (client) void readHistorySession(client, id); router.push(origin ? { pathname: '/(tabs)/train/history/[id]', params: { id, ...origin } } : `/(tabs)/train/history/${id}`); };
   return <>
     <Stack.Screen options={{ title: 'Historial', headerLargeTitleEnabled: Platform.OS === 'ios', headerLargeTitleStyle: { color: colors.text },
       headerStyle: { backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.background }, headerLargeStyle: { backgroundColor: 'transparent' } }} />
