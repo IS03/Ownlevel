@@ -9,7 +9,7 @@ import type { MobileApiResultMeta } from '@/api/results';
 import type { TrainingHistorySession } from '@/api/training-history';
 import { MobileApiProvider, useMobileApi as useRealMobileApi } from '@/api/provider';
 import { invalidateConfirmedReads } from '@/api/confirmed-read-cache';
-import { OwnlevelThemeProvider } from '@/design-system';
+import { OwnlevelThemeProvider, ScrollScreen } from '@/design-system';
 import { ExerciseConfigurationJournal } from '@/api/training-exercise-configuration';
 import type { ConfigurationValue } from '../../../../src/lib/mobile-api/training-exercise-configuration-contract';
 import { testDetail, testFinished, testExercise } from './active-session-test-fixtures';
@@ -199,7 +199,7 @@ describe('completed session: correct + discard (M3.4-3)', () => {
     await flush();
     expect(alert).toHaveBeenCalled(); expect(mockBack).toHaveBeenCalledTimes(1);
   });
-  it('SF1: the comparison arrives after the session and opens set by set with "antes"', async () => {
+  it('SF1: the coordinated comparison opens set by set with "antes"', async () => {
     const detail = completedDetail(), press = detail.exercises[0];
     const summary = jest.fn<NonNullable<CompletedSessionApi['summary']>>().mockResolvedValue(ok({ sessionId: detail.session.id, volumeKg: 320, highlights: [],
       exercises: [{ sessionExerciseId: press.id, exerciseId: press.exerciseId, status: 'improved' as const, change: { kind: 'reps' as const, amount: 1 },
@@ -236,7 +236,7 @@ describe('completed session: correct + discard (M3.4-3)', () => {
     await flush();
     expect(view.getByTestId('discarded-session')).toBeTruthy();
     expect(view.queryByRole('button', { name: 'Corregir sesión' })).toBeNull(); expect(view.queryByRole('button', { name: 'Eliminar sesión' })).toBeNull();
-    expect(mockSetOptions).toHaveBeenLastCalledWith({ title: 'Sesión eliminada' });
+    expect(mockSetOptions).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Sesión eliminada' }));
   });
 });
 
@@ -712,5 +712,50 @@ describe('History day origin through completed session and correction', () => {
     expect(view.queryByRole('button', { name: 'Corregir sesión' })).toBeNull();
     fireEvent.press(view.getByRole('button', { name: 'Volver al día' }));
     expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/history/day/[date]', params: { date: origin.historyDate, historyMonth: origin.historyMonth } });
+  });
+});
+
+describe('history session presentation polish', () => {
+  it('keeps the cold skeleton until detail, comparisons and feelings have all settled', async () => {
+    const detail = completedDetail();
+    let resolveSummary!: (value: Awaited<ReturnType<NonNullable<CompletedSessionApi['summary']>>>) => void;
+    let resolveFeelings!: (value: Awaited<ReturnType<NonNullable<CompletedSessionApi['feelings']>>>) => void;
+    const summary = jest.fn<NonNullable<CompletedSessionApi['summary']>>().mockImplementation(() => new Promise(resolve => { resolveSummary = resolve; }));
+    const feelings = jest.fn<NonNullable<CompletedSessionApi['feelings']>>().mockImplementation(() => new Promise(resolve => { resolveFeelings = resolve; }));
+    const view = wrap(<CompletedSessionScreen api={{ detail: async () => ok(detail), summary, feelings, discard: jest.fn<CompletedSessionApi['discard']>() }} sessionId={detail.session.id} onHome={jest.fn()} />);
+    await flush();
+    expect(summary).toHaveBeenCalledTimes(1); expect(feelings).toHaveBeenCalledTimes(1);
+    expect(view.queryByTestId('completed-session')).toBeNull();
+    expect(mockSetOptions).toHaveBeenLastCalledWith(expect.objectContaining({ title: '' }));
+    await act(async () => { resolveSummary(ok({ sessionId: detail.session.id, volumeKg: 320, highlights: [], exercises: [] })); });
+    expect(view.queryByTestId('completed-session')).toBeNull();
+    await act(async () => { resolveFeelings({ status: 'unavailable' }); }); await flush();
+    expect(view.getByTestId('completed-session')).toBeTruthy();
+    expect(view.getByText('No pudimos leer las sensaciones.')).toBeTruthy();
+    expect(view.queryByText('Comprobando sensaciones…')).toBeNull();
+    expect(summary).toHaveBeenCalledTimes(1); expect(feelings).toHaveBeenCalledTimes(1);
+  });
+  it('moves the historical name and muted dd/mm date into the header after the heading scrolls away', async () => {
+    const detail = completedDetail(); detail.session.name = 'PULL'; detail.session.logDate = '2026-11-17';
+    const view = wrap(<CompletedSessionScreen api={{ detail: async () => ok(detail), discard: jest.fn<CompletedSessionApi['discard']>() }} sessionId={detail.session.id} onHome={jest.fn()} />);
+    await flush();
+    const title = () => (mockSetOptions.mock.calls.at(-1)?.[0] as { headerTitle: () => ReactElement | null }).headerTitle();
+    expect(title()).toBeNull();
+    fireEvent(view.getByTestId('completed-session-heading'), 'layout', { nativeEvent: { layout: { x: 0, y: 16, width: 360, height: 90 } } });
+    fireEvent.scroll(view.UNSAFE_getByType(ScrollScreen), { nativeEvent: { contentOffset: { y: 150 } } });
+    const compactHeader = title();
+    expect(compactHeader).not.toBeNull();
+    fireEvent.scroll(view.UNSAFE_getByType(ScrollScreen), { nativeEvent: { contentOffset: { y: 0 } } });
+    expect(title()).toBeNull();
+    const header = wrap(compactHeader!);
+    expect(header.getByText('PULL')).toBeTruthy(); expect(header.getByText('17/11')).toBeTruthy(); header.unmount();
+  });
+  it('retires prior protected data when a refresh is denied', async () => {
+    const detail = jest.fn<CompletedSessionApi['detail']>().mockResolvedValueOnce(ok(completedDetail()))
+      .mockResolvedValue({ status: 'unauthorized', meta: { ...meta, httpStatus: 403, outcome: 'unauthorized' } });
+    const view = wrap(<CompletedSessionScreen api={{ detail, discard: jest.fn<CompletedSessionApi['discard']>() }} sessionId={ID(1)} onHome={jest.fn()} />);
+    await flush(); expect(view.getByTestId('completed-session')).toBeTruthy();
+    setFocused(false); setFocused(true); await flush();
+    expect(view.queryByTestId('completed-session')).toBeNull(); expect(view.getByTestId('history-session-unavailable')).toBeTruthy();
   });
 });

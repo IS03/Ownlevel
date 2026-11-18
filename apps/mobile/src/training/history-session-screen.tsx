@@ -1,5 +1,5 @@
-import { useCallback, useLayoutEffect, useState } from 'react';
-import { Alert, Platform, StyleSheet, View } from 'react-native';
+import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
+import { Alert, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { historyReturnParams } from '@/history/navigation';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
@@ -9,9 +9,10 @@ import type { MobileApiClient } from '@/api/client';
 import { fetchSessionDetail, type SessionDetailDto, type SessionFinishedDto } from '@/api/active-session';
 import { discardSession, type SessionDiscardedDto } from '@/api/training-history';
 import type { MobileApiRequestResult } from '@/api/results';
-import { AppText, Button, ScrollScreen, Surface, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppText, Button, ScrollScreen, Surface, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
 import { compactHistoryDate } from './active-session-model';
-import { prefetchSessionSummary, readSessionSummary, type SessionSummaryLoader } from '@/api/session-summary';
+import { readSessionSummary, type SessionSummaryLoader } from '@/api/session-summary';
+import { loadSessionPresentation, peekHistorySession, readHistorySession, type SessionPresentation } from '@/api/history-session';
 import { completedSessionModel } from './completed-session-model';
 import { CompletedSessionView } from './completed-session-view';
 import { ReadStateScreen } from './history-components';
@@ -26,13 +27,14 @@ import type { ExerciseConfigurationJournal } from '@/api/training-exercise-confi
 import { useExerciseConfigurations } from './exercise-variant';
 
 export type CompletedSessionApi = {
+  presentation?: () => Promise<MobileApiRequestResult<SessionPresentation>>;
   feelings?: FeelingsPort['read'];
   summary?: SessionSummaryLoader;
   detail: (signal?: AbortSignal) => Promise<MobileApiRequestResult<SessionDetailDto>>;
   discard: (idempotencyKey: string) => Promise<MobileApiRequestResult<SessionDiscardedDto>>;
 };
 export function completedSessionApi(client: MobileApiClient, sessionId: string): CompletedSessionApi {
-  return { feelings: trainingFeelingsApi(client, sessionId).read, summary: () => readSessionSummary(client, sessionId), detail: signal => fetchSessionDetail(client, sessionId, signal), discard: key => discardSession(client, sessionId, key) };
+  return { presentation: () => readHistorySession(client, sessionId), feelings: trainingFeelingsApi(client, sessionId).read, summary: () => readSessionSummary(client, sessionId), detail: signal => fetchSessionDetail(client, sessionId, signal), discard: key => discardSession(client, sessionId, key) };
 }
 const newKey = () => typeof globalThis.crypto?.randomUUID === 'function' ? globalThis.crypto.randomUUID()
   : `discard-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -41,8 +43,8 @@ const newKey = () => typeof globalThis.crypto?.randomUUID === 'function' ? globa
  * A closed session from server truth, with the Web historical actions:
  * correct (completed only) and discard (confirmed, idempotent, never a hard delete).
  */
-export function CompletedSessionScreen({ api, sessionId, initialDetail, finished = null, onHome, onTraining, configurations }: {
-  api: CompletedSessionApi; sessionId: string; initialDetail?: SessionDetailDto; finished?: SessionFinishedDto | null;
+export function CompletedSessionScreen({ api, sessionId, initialDetail, initialPresentation, finished = null, onHome, onTraining, configurations }: {
+  api: CompletedSessionApi; sessionId: string; initialDetail?: SessionDetailDto; initialPresentation?: SessionPresentation; finished?: SessionFinishedDto | null;
   onHome: () => void; onTraining?: () => void;
   /** #367: optional variant answers, editable while the session is completed. */
   configurations?: ExerciseConfigurationJournal;
@@ -53,22 +55,27 @@ export function CompletedSessionScreen({ api, sessionId, initialDetail, finished
   const sourceExerciseId = exerciseChartReturnHref(params)?.params.id;
   const navigation = useNavigation();
   const { colors } = useOwnlevelTheme();
-  const load = useCallback((signal: AbortSignal) => api.detail(signal), [api]);
-  // Navigation owns every read: the first focus loads (or refreshes the detail handed over by finish), and each
-  // return re-reads so a correction made on the next screen shows confirmed server truth. No extra load on mount.
-  const { state, reload } = useRead(load, initialDetail, { loadOnMount: false });
+  const { width, fontScale } = useWindowDimensions();
+  const load = useCallback((signal: AbortSignal) => api.presentation ? api.presentation() : loadSessionPresentation(api, signal), [api]);
+  // One coordinated presentation per focus; production reuses the bounded confirmed cache, invalidated by training writes.
+  const { state, reload } = useRead(load, initialPresentation ?? (initialDetail ? { detail: initialDetail } : undefined), { loadOnMount: false });
   useFocusEffect(useCallback(() => { void reload(); }, [reload]));
   const [discarding, setDiscarding] = useState(false);
   const [notice, setNotice] = useState<{ text: string; tone: 'danger' | 'warning' } | null>(null);
   // An unconfirmed discard is retried with the same key (exact replay, no second effect).
   const [pendingKey, setPendingKey] = useState<string | null>(null);
-  const status = state.status === 'ready' ? state.data.session.status : null;
+  const [compactTitle, setCompactTitle] = useState(false);
+  const headerSession = state.status === 'ready' ? state.data.detail.session : undefined;
   useLayoutEffect(() => {
-    if (status && status !== 'in_progress') navigation.setOptions({ title: status === 'discarded' ? 'Sesión eliminada' : '' });
-  }, [navigation, status]);
+    navigation.setOptions({ title: headerSession?.status === 'discarded' ? 'Sesión eliminada' : '', headerLargeTitleEnabled: false,
+      headerTitle: () => headerSession?.status === 'discarded' ? <AppText variant="headline">Sesión eliminada</AppText> : compactTitle && headerSession ? <View accessible accessibilityLabel={`${headerSession.name}, ${headerSession.logDate.slice(8)}/${headerSession.logDate.slice(5, 7)}`} style={[styles.headerTitle, { maxWidth: width - 2 * (brandTokens.layout.minTouch + brandTokens.layout.screenPadding) }]}>
+        <AppText variant="headline" numberOfLines={fontScale > 1.3 ? undefined : 1}>{headerSession.name}</AppText>
+        <AppText muted numeric variant="caption">{headerSession.logDate.slice(8)}/{headerSession.logDate.slice(5, 7)}</AppText>
+      </View> : null });
+  }, [navigation, compactTitle, headerSession, width, fontScale]);
   const returnHeader = <><ReturnToHistoryDay /><ReturnToExerciseChart /></>;
   if (state.status !== 'ready') return <ReadStateScreen header={returnHeader} state={state} onRetry={() => void reload()} testID="history-session" notFoundTitle="Sesión no disponible" />;
-  const detail = state.data;
+  const presentation = state.data, detail = presentation.detail;
   if (detail.session.status === 'in_progress') {
     return <ScrollScreen testID="history-session-in-progress">{returnHeader}<UnavailableState title="La sesión está en curso" description="Abrila para seguir entrenando o finalizarla."
       action={<Button label="Abrir sesión" onPress={() => router.replace(`/(tabs)/train/session/${sessionId}`)} />} /></ScrollScreen>;
@@ -118,8 +125,11 @@ export function CompletedSessionScreen({ api, sessionId, initialDetail, finished
     {pendingKey || discarding ? <Button label={discarding ? 'Eliminando…' : 'Reintentar eliminación'} variant="quiet" disabled={discarding} onPress={() => void runDiscard()} /> : null}
   </View> : null;
   // #475: recorded feelings stay in the summary; variants move after the exercises, folded, through the same journal.
-  return <>{menu}<CompletedSessionView initialExerciseId={sourceExerciseId} detail={detail} finished={finished} readSummary={api.summary} onHome={onHome} onTraining={onTraining} actions={actions}
-    extraSummary={api.feelings ? <RecordedTrainingFeelings key={sessionId} read={api.feelings} /> : null}
+  return <>{menu}<CompletedSessionView onTitleVisibilityChange={setCompactTitle} initialExerciseId={sourceExerciseId} detail={detail} finished={finished} readSummary={api.summary} summaryRead={presentation.summary ?? null} onHome={onHome} onTraining={onTraining} actions={actions}
+    extraSummary={<>
+      {presentation.summary && presentation.summary.status !== 'ok' ? <Surface><AppText muted variant="footnote">La comparación con la última sesión no está disponible.</AppText><Button label="Reintentar comparación" variant="quiet" onPress={() => void reload()} /></Surface> : null}
+      {api.feelings ? <RecordedTrainingFeelings key={sessionId} result={presentation.feelings ?? { status: 'loading' }} read={api.feelings} session={detail.session} onRetry={() => void reload()} /> : null}
+    </>}
     variants={configurations ? { journal: configurations, editable: completed && !discarding } : undefined}
     banner={<>{returnHeader}{state.stale ? <Surface><AppText muted variant="caption">No se pudo actualizar. Mostramos la última lectura confirmada.</AppText></Surface> : null}</>}
     onOpenExercise={exerciseId => router.push(`/(tabs)/train/history/exercise/${exerciseId}${detail.session.routineId ? `?routineId=${encodeURIComponent(detail.session.routineId)}` : ''}`)} /></>;
@@ -129,20 +139,22 @@ export function CompletedSessionScreen({ api, sessionId, initialDetail, finished
 export function HistorySessionRoute() {
   const params = useLocalSearchParams<{ id: string }>();
   const { client } = useMobileApi();
+  const { session } = useMobileAuth();
   const router = useRouter();
   const id = typeof params.id === 'string' ? params.id : '';
   if (!client || !id) return <ReadStateScreen state={{ status: 'unavailable' }} onRetry={() => router.back()} testID="history-session" />;
-  return <HistorySessionContent client={client} sessionId={id} onHome={() => router.replace('/(tabs)/home')} />;
+  return <HistorySessionContent key={`${session?.user.id ?? 'signed-out'}:${id}`} client={client} sessionId={id} onHome={() => router.replace('/(tabs)/home')} />;
 }
 function HistorySessionContent({ client, sessionId, onHome }: { client: MobileApiClient; sessionId: string; onHome: () => void }) {
   // The comparison starts with the detail read, not after it.
-  const [api] = useState(() => { void prefetchSessionSummary(client, sessionId); return completedSessionApi(client, sessionId); });
+  const api = useMemo(() => completedSessionApi(client, sessionId), [client, sessionId]);
+  const initialPresentation = peekHistorySession(client, sessionId);
   const { session } = useMobileAuth();
-  return session ? <HistorySessionWithVariants client={client} userId={session.user.id} api={api} sessionId={sessionId} onHome={onHome} />
-    : <CompletedSessionScreen api={api} sessionId={sessionId} onHome={onHome} />;
+  return session ? <HistorySessionWithVariants client={client} userId={session.user.id} api={api} sessionId={sessionId} onHome={onHome} initialPresentation={initialPresentation} />
+    : <CompletedSessionScreen api={api} sessionId={sessionId} onHome={onHome} initialPresentation={initialPresentation} />;
 }
-function HistorySessionWithVariants({ client, userId, api, sessionId, onHome }: { client: MobileApiClient; userId: string; api: CompletedSessionApi; sessionId: string; onHome: () => void }) {
+function HistorySessionWithVariants({ client, userId, api, sessionId, onHome, initialPresentation }: { client: MobileApiClient; userId: string; api: CompletedSessionApi; sessionId: string; onHome: () => void; initialPresentation?: SessionPresentation }) {
   const configurations = useExerciseConfigurations(client, userId, sessionId);
-  return <CompletedSessionScreen api={api} sessionId={sessionId} onHome={onHome} configurations={configurations} />;
+  return <CompletedSessionScreen api={api} sessionId={sessionId} onHome={onHome} initialPresentation={initialPresentation} configurations={configurations} />;
 }
-const styles = StyleSheet.create({ actions: { gap: spacing.sm } });
+const styles = StyleSheet.create({ headerTitle: { alignItems: 'center' }, actions: { gap: spacing.sm } });

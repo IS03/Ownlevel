@@ -17,7 +17,7 @@ export default function TrainLayout() {
       <Stack.Screen name="exercises/[id]" options={{ title: 'Ejercicio' }} />
       <Stack.Screen name="session/[id]" options={{ title: 'Entrenar' }} />
       <Stack.Screen name="history/index" options={{ title: 'Historial' }} />
-      <Stack.Screen name="history/[id]" options={{ title: 'Sesión' }} />
+      <Stack.Screen name="history/[id]" options={{ title: '', headerLargeTitleEnabled: false }} />
       <Stack.Screen name="history/exercise/[id]" options={{ title: 'Ejercicio' }} />
       <Stack.Screen name="insights/index" options={{ title: 'Comparaciones' }} />
       <Stack.Screen name="insights/[relation]" options={{ title: 'Relación' }} />

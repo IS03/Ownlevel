@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AccessibilityInfo, findNodeHandle, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { HeaderHeightContext } from 'expo-router/build/react-navigation/elements/Header/HeaderHeightContext';
 import { useRouter } from 'expo-router';
 import { insightsSessionHref } from '@/insights/navigation';
 import Animated, { FadeIn, LinearTransition, useAnimatedRef } from 'react-native-reanimated';
@@ -69,10 +70,12 @@ function ExerciseRow({ exercise, open, first, onToggle, onOpenExercise }: {
 
 /**
  * SF1 · a closed session seen again. Server truth only; Corregir/Eliminar live in the screen's •••.
- * The comparison with the last time arrives with the summary read and never blocks the session itself.
+ * History coordinates the detail and optional reads before mounting; finish can hand over its confirmed detail immediately.
  */
-export function CompletedSessionView({ detail, finished, onHome, onTraining, onOpenExercise, actions, banner, readSummary, extraSummary, initialExerciseId, variants }: {
+export function CompletedSessionView({ detail, finished, onHome, onTraining, onOpenExercise, actions, banner, readSummary, summaryRead, onTitleVisibilityChange, extraSummary, initialExerciseId, variants }: {
   readSummary?: SessionSummaryLoader;
+  summaryRead?: Awaited<ReturnType<SessionSummaryLoader>> | null;
+  onTitleVisibilityChange?: (compact: boolean) => void;
   /** A chart opens its source exercise, including when the collapsed summary would omit it. */
   initialExerciseId?: string;
   detail: SessionDetailDto; finished: SessionFinishedDto | null; onHome: () => void; onTraining?: () => void;
@@ -84,7 +87,9 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
   const [postWorkoutOpen, setPostWorkoutOpen] = useState(Boolean(finished));
   const router = useRouter();
   const insights = detail.session.status === 'completed' ? insightsSessionHref(detail.session.id, detail.session.logDate) : null;
-  const [summary, setSummary] = useState<SessionSummaryDto>();
+  const headerHeight = useContext(HeaderHeightContext) ?? 0;
+  const titleBottom = useRef(Infinity), compactTitle = useRef(false);
+  const [localSummary, setSummary] = useState<SessionSummaryDto>();
   const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set(detail.exercises.filter(e => e.exerciseId === initialExerciseId).map(e => e.id)));
   const [showAll, setShowAll] = useState(false);
   const [allMuscles, setAllMuscles] = useState(false);
@@ -102,13 +107,14 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
   const reviewVariants = () => { if (variantsOpen) goToVariants(); else { reviewPending.current = true; setVariantsOpen(true); } };
   const sessionId = detail.session.id, version = detail.session.updatedAt;
   useEffect(() => {
-    if (!readSummary) return;
+    if (summaryRead !== undefined || !readSummary) return;
     const abort = new AbortController();
     void Promise.resolve().then(() => readSummary(abort.signal)).then(result => {
       if (!abort.signal.aborted && result.status === 'ok' && result.data.sessionId === sessionId) setSummary(result.data);
     }).catch(() => undefined);
     return () => abort.abort();
-  }, [readSummary, sessionId, version]);
+  }, [readSummary, summaryRead, sessionId, version]);
+  const summary = summaryRead === undefined ? localSummary : summaryRead?.status === 'ok' ? summaryRead.data : undefined;
   const base = completedSessionModel(detail), model = revisitModel(detail, summary);
   const discarded = base.status === 'discarded';
   const when = [compactWeekdayDate(base.logDate), base.endedAt ? formatTimeRange(base.startedAt, base.endedAt) : null].filter(Boolean).join(' · ');
@@ -121,9 +127,12 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
   const muscles = extraMuscles > 0 && !allMuscles ? model.muscles.slice(0, FIRST_MUSCLES) : model.muscles;
   const toggle = (id: string) => setOpenIds(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const fade = FadeIn.duration(reduced ? brandTokens.motion.duration.fast : brandTokens.motion.duration.base);
-  return <ScrollScreen scrollRef={scroll} testID={discarded ? 'discarded-session' : 'completed-session'}>
+  return <ScrollScreen scrollRef={scroll} scrollEdge scrollEventThrottle={16} onScroll={event => {
+    const compact = event.nativeEvent.contentOffset.y + headerHeight >= titleBottom.current;
+    if (compact !== compactTitle.current) { compactTitle.current = compact; onTitleVisibilityChange?.(compact); }
+  }} testID={discarded ? 'discarded-session' : 'completed-session'}>
     {banner}
-    <View style={styles.header}>
+    <View style={styles.header} onLayout={event => { titleBottom.current = event.nativeEvent.layout.y + event.nativeEvent.layout.height; }} testID="completed-session-heading">
       <AppText muted numeric variant="subheadline">{when}</AppText>
       <View style={styles.title}>
         {base.color ? <View style={[styles.strip, { backgroundColor: trainingRoutineColor(base.color, isDark) }]} /> : null}
