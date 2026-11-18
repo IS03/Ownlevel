@@ -13,7 +13,7 @@ import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, NUTRITION_SCOPE, contextRows, exposuresText, feelingRows, outsideText, preStartNote, preStartRows, unclearCount, withoutComparison, type Counts, dayLabel, dayLanes, daySessions, referenceText, sessionLanes, feelingClockNote, nutritionRows, sessionName, sessionRows, sessionTime, exerciseSentence, focusOf, heroCaption, heroOf, joinDays, nextDate, nothingComparable, readingRows, reasonDetail, reasonText, relationGroups, relationName, relationState, sameRead, statusArrow, statusText, summarySpoken, summaryText, type ContextRow, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
 import { InsightRow } from './insight-row';
 import { arrivalFacts, exerciseChangeValue, formatPct, joinedChange, recentPoints, sessionHero, shownText } from './comparison-change';
-import { ArrivalLinks, ArrivalSheetContent, rowChangeOf, timelineLabel } from './comparison-arrival';
+import { ArrivalLinks, ArrivalSheetContent, FoodBlock, rowChangeOf, timelineLabel } from './comparison-arrival';
 import { ArrivalGrid, ArrivalTimeline, ChangeTally, DivergingRow, Kicker, MethodLine, SessionStrip, Sparkline, type StripSession } from './comparison-parts';
 import { RoutineRelationView } from './routine-relation-view';
 import { usePeriodReturn } from './use-period-return';
@@ -325,6 +325,7 @@ function SessionComparison({ session, day, partial, model, router, origin, expla
       {Number.isFinite(start) ? <ArrivalTimeline start={start} meals={meals} uncertain={uncertain} sleep={sleep} onPress={() => setOpen(true)} label={timelineLabel(meals.length, uncertain, sleep, meals.length ? lastText : null)} />
         : <ArrivalGrid title={false} facts={facts} />}
     </View>
+    <FoodBlock session={session} day={day.strict} />
     {open ? <AppSheet onClose={() => setOpen(false)} closeLabel="Cerrar" testID="comparisons-arrival-detail" style={{ backgroundColor: colors.background }}>
       <ScrollView contentContainerStyle={styles.sheet}>
         <Heading level={2}>Cómo llegaste</Heading>

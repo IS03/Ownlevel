@@ -1,8 +1,8 @@
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import type { DayFact, InsightsSummary, PerformanceChange, SessionFact, SessionTemporalDay } from '@/api/performance-insights';
 import { AppText, spacing, useOwnlevelTheme } from '@/design-system';
 import { feelingTransition, type FeelingSide } from '@/training/feeling-transition';
-import { arrivalFacts } from './comparison-change';
+import { arrivalFacts, foodFacts } from './comparison-change';
 import { ArrivalGrid, ArrivalTimeline, Kicker, type RowChange, type TimelineMeal } from './comparison-parts';
 import { InsightRow } from './insight-row';
 import { statusArrow, statusText, type Lane } from './insights-model';
@@ -35,11 +35,6 @@ export function arrivalTimelineOf(temporal: TemporalSession | undefined) {
   return { meals, uncertain };
 }
 
-const integer = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 });
-function dayTotal(nutrition: DayFact['context']['nutrition'], key: 'calories' | 'proteinG' | 'carbsG') {
-  if (!nutrition || nutrition[key].missing) return null;
-  return integer.format(Math.round(nutrition[key].recorded));
-}
 const side = (feeling: SessionFact['context']['feelings'][keyof SessionFact['context']['feelings']]): FeelingSide => feeling ? { value: feeling.value } : 'missing';
 
 /** The detail behind the line: the same line larger, the six facts, how the session ended and the whole day's food. */
@@ -53,8 +48,6 @@ export function ArrivalSheetContent({ session, day, metrics, name, start, tempor
   const feelings = session.context.feelings;
   const after = (['energy', 'fatigue'] as const).filter(kind => feelings[`${kind}Pre`] || feelings[`${kind}Post`])
     .map(kind => feelingTransition(kind, side(feelings[`${kind}Pre`]), side(feelings[`${kind}Post`])));
-  const nutrition = day.context.nutrition;
-  const totals = [['kcal', dayTotal(nutrition, 'calories')], ['proteína', dayTotal(nutrition, 'proteinG')], ['carbos', dayTotal(nutrition, 'carbsG')]] as const;
   return <View style={styles.sheet} testID="comparisons-arrival-sheet">
     <Kicker>{`Antes de ${name}${start !== null ? ` · ${new Intl.DateTimeFormat('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Argentina/Cordoba' }).format(new Date(start))}` : ''}`}</Kicker>
     {start !== null ? <ArrivalTimeline big start={start} meals={meals} uncertain={uncertain} sleep={sleep} label={timelineLabel(meals.length, uncertain, sleep)} /> : null}
@@ -64,19 +57,27 @@ export function ArrivalSheetContent({ session, day, metrics, name, start, tempor
       <Kicker>Al terminar</Kicker>
       {after.map(row => <AppText key={row.label} accessibilityLabel={row.spoken}>{row.label} <AppText variant="headline">{row.value}</AppText></AppText>)}
     </View> : null}
-    <View style={styles.block}>
-      <View style={[styles.rule, { backgroundColor: colors.border }]} />
-      <Kicker>Todo el día</Kicker>
-      <View style={styles.totals}>
-        {totals.map(([label, value]) => <View key={label} style={styles.total} accessible accessibilityLabel={`${label} del día: ${value ?? 'sin registrar'}${value && label !== 'kcal' ? ' gramos' : ''}`}>
-          <AppText variant="headline" numeric style={!value && { color: colors.textMuted }}>{value === null ? '—' : label === 'kcal' ? value : `${value} g`}</AppText>
-          <AppText muted variant="caption">{label}</AppText>
-        </View>)}
-      </View>
-    </View>
+    <View style={[styles.rule, { backgroundColor: colors.border }]} />
+    <FoodBlock session={session} day={day} />
     {children}
   </View>;
 }
+/** «Comida»: 3 h antes, ayer and that day, each with its own day's target. Missing is «—», never 0. */
+export function FoodBlock({ session, day }: { session: SessionFact; day: DayFact }) {
+  const { colors } = useOwnlevelTheme();
+  const { fontScale } = useWindowDimensions();
+  return <View style={styles.block} testID="comparisons-food">
+    <Kicker>Comida</Kicker>
+    <View style={[styles.totals, fontScale > 1.3 && styles.stacked]}>
+      {foodFacts(session, day).map(fact => <View key={fact.key} style={styles.total} accessible accessibilityLabel={fact.spoken} testID={`food-${fact.key}`}>
+        <AppText muted variant="caption">{fact.label}</AppText>
+        <AppText variant="headline" numeric style={!fact.value && { color: colors.textMuted }}>{fact.value ?? '—'}</AppText>
+        {fact.caption ? <AppText muted variant="caption" numeric>{fact.caption}</AppText> : null}
+      </View>)}
+    </View>
+  </View>;
+}
+
 export function timelineLabel(meals: number, uncertain: number | 'some', sleep: string | null, last?: string | null) {
   const food = last !== undefined ? (last ? `última comida con hora ${last} antes` : 'sin comidas con hora') : meals === 1 ? 'una comida con hora' : `${meals} comidas con hora`;
   return `Las 12 horas antes de entrenar: ${sleep ? `dormiste ${sleep}` : 'sueño sin registrar'}, ${food}${uncertain === 'some' ? ', y hay comidas sin hora comprobada' : uncertain ? ` y ${uncertain} sin hora comprobada` : ''}`;
@@ -89,6 +90,7 @@ const styles = StyleSheet.create({
   sheet: { gap: spacing.lg },
   block: { gap: spacing.sm },
   rule: { height: StyleSheet.hairlineWidth },
-  totals: { flexDirection: 'row' },
+  totals: { flexDirection: 'row', gap: spacing.md },
+  stacked: { flexDirection: 'column' },
   total: { flex: 1, gap: 1 },
 });

@@ -199,3 +199,31 @@ export function loadStep(item: Pick<ExerciseEvidence, 'evidence'>, unit: string 
   const top = loads.reduce((best, signal) => (signal.current > best.current ? signal : best));
   return { up: top.delta > 0, text: `${amount(top.reference)} → ${amount(top.current)} ${unit === 'lingotes' ? 'lingotes' : 'kg'}` };
 }
+
+/**
+ * «Comida»: what was eaten in the 3 h before, the day before and that day, each against its own day's target (the snapshot of
+ * that day, never today's). A partial total or a missing target is said, never a zero; the difference is an exact number with
+ * an arrow, never a judgment or a colour.
+ */
+export type FoodFact = { key: 'pre3h' | 'yesterday' | 'day'; label: string; value: string | null; caption: string | null; spoken: string };
+function versus(total: number | null, target: number | null | undefined) {
+  if (total === null) return { caption: null, spoken: 'sin registrar' };
+  if (target === undefined) return { caption: null, spoken: `${kcal(total)} kilocalorías` };
+  if (target === null) return { caption: 'sin objetivo', spoken: `${kcal(total)} kilocalorías, sin objetivo ese día` };
+  const diff = Math.round(total - target);
+  if (diff === 0) return { caption: `justo el objetivo (${kcal(target)})`, spoken: `${kcal(total)} kilocalorías, justo el objetivo` };
+  const text = diff > 0 ? `↑ ${kcal(diff)} sobre ${kcal(target)}` : `↓ ${kcal(-diff)} bajo ${kcal(target)}`;
+  return { caption: text, spoken: `${kcal(total)} kilocalorías, ${kcal(Math.abs(diff))} ${diff > 0 ? 'por encima' : 'por debajo'} del objetivo de ${kcal(target)}` };
+}
+export function foodFacts(session: SessionFact, day: DayFact): FoodFact[] {
+  const pre = session.context.preStart?.calories, carbs = session.context.carbsPre3h;
+  const preValue = pre && pre.state === 'recorded' && pre.value !== null ? pre.value : null;
+  const carbsText = carbs.state === 'recorded' && carbs.value !== null ? `${grams(carbs.value)} carbos` : null;
+  const yesterday = dayTotal(day.context.previousDay?.nutrition, 'calories'), today = dayTotal(day.context.nutrition, 'calories');
+  const y = versus(yesterday, day.context.previousDay?.target?.calories), t = versus(today, day.context.target?.calories);
+  return [
+    { key: 'pre3h', label: '3 h antes', value: preValue === null ? null : `${kcal(preValue)} kcal`, caption: carbsText, spoken: `3 horas antes: ${preValue === null ? 'sin registrar' : `${kcal(preValue)} kilocalorías`}${carbsText ? `, ${carbsText}` : ''}` },
+    { key: 'yesterday', label: 'Ayer', value: yesterday === null ? null : `${kcal(yesterday)} kcal`, caption: y.caption, spoken: `Ayer: ${y.spoken}` },
+    { key: 'day', label: 'Ese día', value: today === null ? null : `${kcal(today)} kcal`, caption: t.caption, spoken: `Ese día: ${t.spoken}` },
+  ];
+}
