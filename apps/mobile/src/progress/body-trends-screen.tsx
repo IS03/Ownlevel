@@ -154,6 +154,17 @@ function recordField(key: string): BodyMeasurementField | undefined {
 }
 
 type Body = NonNullable<ReturnType<typeof useBodyController>>;
+function MeasuresList({ data }: { data: ProgressBody }) {
+  const router = useRouter();
+  const measures = data.metrics.filter(m => m.key !== 'body.weight');
+  return <View style={styles.section} testID="body-measures-entry">
+    {measures.length ? measures.map(m => <ProgressRow key={m.key} label={`${m.label}. ${metricLine(m)}`}
+      onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { metric: m.key } })}>
+      <View style={styles.grow}><AppText variant="headline">{m.label}</AppText><AppText muted numeric variant="footnote">{metricLine(m)}</AppText></View>
+    </ProgressRow>) : <AppText muted>No hay medidas registradas en este período.</AppText>}
+    {data.excludedSuspect > 0 ? <AppText muted variant="footnote">{data.excludedSuspect} mediciones sospechosas excluidas; podés revisar los originales en Cuerpo.</AppText> : null}
+  </View>;
+}
 /** The weight (or the measure you opened) on top, its records under it; on the main screen, every other measure one tap away. */
 function Content({ data, selected, body, selectedDate, onSelect, portada }: { data: ProgressBody; selected: string | null; body: Body | null;
   selectedDate: string | null; onSelect: (date: string | null) => void; portada: { point: PortadaPoint; matched: boolean } | null }) {
@@ -205,8 +216,9 @@ function BodyTrends() {
   const { session } = useMobileAuth();
   const { colors } = useOwnlevelTheme();
   const { query, compare } = useProgressRange();
-  const params = useLocalSearchParams<{ metric?: string; registrar?: string; insightsReturn?: string }>();
+  const params = useLocalSearchParams<{ metric?: string; registrar?: string; insightsReturn?: string; section?: string }>();
   const selected = typeof params.metric === 'string' && params.metric ? params.metric : null;
+  const measuresOnly = params.section === 'measures' && !selected;
   const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressBody(c, query, signal, compare), [query, compare]);
   const readKey = progressRequestKey(query, compare);
   const { state, data, refresh } = useCachedRead(client, 'body', readKey, load);
@@ -236,7 +248,7 @@ function BodyTrends() {
     if (overview && seen.current && overview !== seen.current) void refresh();
     seen.current = overview;
   }, [overview, refresh]);
-  const title = selected ? data?.metrics.find(m => m.key === selected)?.label ?? 'Cuerpo' : 'Cuerpo';
+  const title = measuresOnly ? 'Medidas' : selected ? data?.metrics.find(m => m.key === selected)?.label ?? 'Cuerpo' : 'Cuerpo';
   const editable = !!body?.state.read.overview && body.state.phase === 'idle' && !body.state.intent && !body.state.editor;
   return <><ProgressScroll title={title} testID="body-trends-screen" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing}
     onRefresh={() => { void refresh(); void body?.controller.load(); }} tintColor={colors.primary} />}>
@@ -250,7 +262,7 @@ function BodyTrends() {
       : !data ? <UnavailableState title="No pudimos cargar Cuerpo" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente." action={<Button label="Reintentar" onPress={() => void refresh()} />} />
       : <>
         {state.status !== 'ready' ? <InlineUnavailable actionLabel="Reintentar" message="No se pudo actualizar. Mostramos la última lectura confirmada." onAction={() => void refresh()} /> : null}
-        <Content data={data} selected={selected} body={body} selectedDate={selectedDate} onSelect={onSelect} portada={portadaPoint ? { point: portadaPoint, matched: !!match } : null} />
+        {measuresOnly ? <MeasuresList data={data} /> : <Content data={data} selected={selected} body={body} selectedDate={selectedDate} onSelect={onSelect} portada={portadaPoint ? { point: portadaPoint, matched: !!match } : null} />}
       </>}
     <View style={styles.fabRoom} />
   </ProgressScroll>

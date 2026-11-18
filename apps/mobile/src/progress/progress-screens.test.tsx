@@ -115,6 +115,16 @@ function body(): ProgressBody {
       trend: 'unavailable', confidence: 'unavailable', observations: [obs('2026-09-15', 88)], referenceCount: 0, comparison: { status: 'insufficient_data', reason: 'insufficient_current_samples' } },
   ] };
 }
+it('opens the measures entry directly, without the weight summary, and reaches the selected existing metric', async () => {
+  mockParams = { section: 'measures' };
+  mockBody.mockResolvedValue(ok(body()));
+  const view = wrap(<BodyTrendsScreen />); await flush();
+  const measures = within(view.getByTestId('body-measures-entry'));
+  expect(measures.getByText('Cintura')).toBeTruthy();
+  expect(view.queryByTestId('body-trend-chart')).toBeNull();
+  fireEvent.press(measures.getByRole('button', { name: /^Cintura/ }));
+  expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.waist' } });
+});
 const defs = [
   { id: ids.steps, systemKey: 'steps', name: 'Pasos', unit: 'pasos', valueType: 'integer' as const, isActive: true, currentTarget: 10000 },
   { id: ids.sleep, systemKey: 'sleep', name: 'Sueño', unit: 'min', valueType: 'duration' as const, isActive: true, currentTarget: 480 },
