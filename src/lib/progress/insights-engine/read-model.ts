@@ -2,6 +2,7 @@ import { buildPerformanceInsightsPartialV1, buildPerformanceInsightsV1 } from ".
 import type { PartialCounts, PartialExerciseOf, PartialSessionOf } from "../performance-insights/partial";
 import type { CompactExercisePerformance, PerformanceCounts, PerformanceSession, SessionPerformanceOf } from "../performance-insights/types";
 import { evaluateAssociations, type AssociationEvaluation } from "./associations";
+import { isSleepMetric } from "./sleep-metric";
 import { buildExposureContext, buildExposureTable, partialOutcomeDays, previousDate, strictOutcomeDays, weightOfDay, type ExposureTable } from "./exposures";
 import { describeFeelingOutcome, FEELING_OUTCOME_KINDS } from "./feeling-outcomes";
 import { recentChanges, sessionChange } from "./performance-change";
@@ -173,7 +174,7 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
     return { performance: strictFacts, partial: factsOfPartial(adapted.sessions, names, sessionDates), orphanRows: adapted.orphanRows };
   })();
   const context = buildExposureContext(source);
-  const sleepIds = new Set(source.metricDefinitions.filter(metric => metric.systemKey === "sleep").map(metric => metric.id));
+  const sleepIds = new Set(source.metricDefinitions.filter(isSleepMetric).map(metric => metric.id));
   const table = buildExposureTable(source, strictOutcomeDays(performance.days), options.today, context, true, method);
   const partialTable = buildExposureTable(source, partialOutcomeDays(partial.days), options.today, context, false, method);
   // Its own family: the correction covers exactly the candidates tested against this outcome.
@@ -286,7 +287,7 @@ const strictPromotion = { status: "not_enabled", reason: "risk_budget_not_approv
 const partialPromotion = { status: "not_enabled", reason: "partial_context" } as const;
 /** Method 2 also says how many sleep values have a declared night, and how many training days have a usable weight. */
 function methodTwoLimits(source: InsightsSource) {
-  const sleepIds = new Set(source.metricDefinitions.filter(metric => metric.systemKey === "sleep").map(metric => metric.id));
+  const sleepIds = new Set(source.metricDefinitions.filter(isSleepMetric).map(metric => metric.id));
   const sleepNights: Record<SleepNightEvidence, number> = { declared: 0, undeclared: 0, stale_declaration: 0 };
   for (const row of source.metricValues) if (sleepIds.has(row.metricId)) sleepNights[row.sleepNight ?? "undeclared"]++;
   const bodyWeight = { recorded: 0, not_recorded: 0, invalid: 0 };

@@ -2,6 +2,7 @@ import type { PartialDay } from "../performance-insights/partial";
 import type { DailyPerformance } from "../performance-insights/types";
 import { cordobaDateOf } from "../../phase2/cordoba-date";
 import { instantMs, mealTimeEvidence, parseSessionFeelings } from "./source-adapter";
+import { conventionSleepIds, isSleepMetric } from "./sleep-metric";
 import type { Candidate, CandidateDefinition, FeelingKey, InsightsEngineMethod, InsightsSource, MealTimeEvidence, NutritionContext, ObservationRow, PreStartWindow, SessionFact, SessionFeeling, SleepNightEvidence } from "./types";
 
 const HOUR = 3_600_000;
@@ -167,9 +168,11 @@ export function buildExposureContext(source: InsightsSource) {
   const weightByDate = new Map<string, number | null>();
   for (const session of source.sessions) if (session.date && session.dayWeightKg !== undefined && !weightByDate.has(session.date)) weightByDate.set(session.date, session.dayWeightKg);
   const sleepEvidence = new Map<string, Map<string, SleepNightEvidence>>();
+  // A sleep metric of the person's own has no declaration: its night is the loading convention (sleep-metric.ts).
+  const convention = conventionSleepIds(source.metricDefinitions);
   for (const row of source.metricValues) {
     const byDate = sleepEvidence.get(row.metricId) ?? new Map<string, SleepNightEvidence>();
-    byDate.set(row.date, row.sleepNight ?? "undeclared"); sleepEvidence.set(row.metricId, byDate);
+    byDate.set(row.date, row.sleepNight ?? (convention.has(row.metricId) ? "declared" : "undeclared")); sleepEvidence.set(row.metricId, byDate);
   }
   return { exclusions, nutritionByDate, series, metricsByDate, mealsByDate, sessionById, feelingsBySession, unreadableFeelingsBySession, weightByDate, sleepEvidence };
 }
@@ -216,7 +219,7 @@ export function buildExposureTable(source: InsightsSource, days: readonly Outcom
   const definition = (value: CandidateDefinition) => value;
   for (const metric of [...source.metricDefinitions].sort((a, b) => a.id.localeCompare(b.id))) {
     const values = series.get(metric.id) ?? new Map<string, number>();
-    if (method === 2 && metric.systemKey === "sleep") { candidates.push(...sleepCandidates(metric.id, values, sleepEvidence.get(metric.id), rows)); continue; }
+    if (method === 2 && isSleepMetric(metric)) { candidates.push(...sleepCandidates(metric.id, values, sleepEvidence.get(metric.id), rows)); continue; }
     for (const window of ["same_day", "previous_day"] as const) {
       const paired = new Map<string, number>(), exclusions: Record<string, number> = {};
       for (const row of rows) {

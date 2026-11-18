@@ -114,6 +114,21 @@ describe("Relación de una rutina (#533)", () => {
     expect(sleep.missing).toMatchObject({ night_undeclared: 1 });
     expect(sleep.valid).toBe(1);
   });
+  it("a sleep metric of the person's own (system one archived) is the night before, by the loading convention", () => {
+    const own = "53300000-0000-4000-8000-0000000000ee";
+    const base = source();
+    const custom = { ...base,
+      metricDefinitions: [{ ...base.metricDefinitions[0]!, archived: true }, base.metricDefinitions[1]!, { id: own, name: "Sueño", unit: null, valueType: "duration", archived: false, systemKey: null, order: 3 }],
+      metricValues: [...base.metricValues, { metricId: own, date: "2026-10-05", value: 490 }, { metricId: own, date: "2026-10-09", value: 455 }] };
+    const snap = createInsightsSnapshot(custom, { today: "2026-11-17", method: 2, revision: "r2" });
+    const day = snap.days.find(row => row.date === "2026-10-05")!;
+    expect(day.context.metrics.find(row => row.metricId === own)).toMatchObject({ value: 490, sleepNight: "declared" });
+    const model = insightsRoutineRelation(snap, ROUTINE);
+    const sleep = model.factors.find(row => row.key === "sleep_night_before")!;
+    expect(sleep.metricId).toBe(own); expect(sleep.valid).toBe(2);
+    // Read once, as sleep: it is not repeated among the previous-day metrics.
+    expect(model.factors.filter(row => row.metricId === own)).toHaveLength(1);
+  });
   it("answers an unknown routine with no sessions, never with another routine's", () => {
     const model = insightsRoutineRelation(snapshot(), id(999));
     expect(model.sessions).toEqual([]);

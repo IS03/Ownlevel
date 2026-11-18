@@ -15,6 +15,15 @@ export function suggestedMealLabel(date: string, now = new Date(), bands: MealMo
   // The person's own bands (Ajustes › Horarios de comidas); the fixed ones until they are read or when never set.
   return date === local.toISOString().slice(0, 10) ? mealMomentAtMinute(local.getUTCHours() * 60 + local.getUTCMinutes(), bands) : undefined;
 }
+/**
+ * The load time of a new meal of today, as a real time (Córdoba clock): you load when you eat, and change it if not. Past
+ * days get none (the person picks it). Sent as declared (user_declared): the person's rule is «I load when I eat». Before this, loads without a chosen time were stored as approximate and left out of
+ * everything that needs a time (Comparaciones, «Cuándo comés»).
+ */
+export function loadTime(date: string, now = new Date()): string | undefined {
+  const local = new Date(now.getTime() - 3 * 3600000);
+  return date === local.toISOString().slice(0, 10) ? `${date}T${local.toISOString().slice(11, 16)}:00-03:00` : undefined;
+}
 /** The moment band an Argentina clock time falls in; late night has none. A suggestion, never a declared type. */
 export function mealLabelAt(instant: Date): Timing['mealLabel'] | undefined {
   const hour = new Date(instant.getTime() - 3 * 3600000).getUTCHours();
