@@ -119,7 +119,8 @@ describe("Relación de una rutina (#533)", () => {
     const base = source();
     const custom = { ...base,
       metricDefinitions: [{ ...base.metricDefinitions[0]!, archived: true }, base.metricDefinitions[1]!, { id: own, name: "Sueño", unit: null, valueType: "duration", archived: false, systemKey: null, order: 3 }],
-      metricValues: [...base.metricValues, { metricId: own, date: "2026-10-05", value: 490 }, { metricId: own, date: "2026-10-09", value: 455 }] };
+      metricValues: [...base.metricValues, // As the server reads them: every value without a declaration comes marked "undeclared".
+      { metricId: own, date: "2026-10-05", value: 490, sleepNight: "undeclared" as const }, { metricId: own, date: "2026-10-09", value: 455, sleepNight: "undeclared" as const }] };
     const snap = createInsightsSnapshot(custom, { today: "2026-11-17", method: 2, revision: "r2" });
     const day = snap.days.find(row => row.date === "2026-10-05")!;
     expect(day.context.metrics.find(row => row.metricId === own)).toMatchObject({ value: 490, sleepNight: "declared" });
