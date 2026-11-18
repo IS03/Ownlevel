@@ -160,3 +160,26 @@ describe("objetivo de cada día (18/11)", () => {
     expect(parsePerformanceInsights(JSON.parse(JSON.stringify(insightsSummary(createInsightsSnapshot(withTargets, { today: "2026-11-17", method: 2, revision: "t1" }), { limit: 30 }))))).toBeTruthy();
   });
 });
+
+describe("objetivo junto a cada dato de Cómo llegaste (18/11)", () => {
+  it("puts the same day's target next to kcal and protein, as a median of the targets found, and nothing on other factors", () => {
+    const withTargets = { ...source(), dayTargets: [
+      { date: "2026-10-04", calories: 2300, proteinG: 150 }, { date: "2026-10-05", calories: 2600, proteinG: 160 },
+      { date: "2026-10-08", calories: 2400, proteinG: null }, { date: "2026-10-09", calories: 2500, proteinG: 170 }] };
+    const model = JSON.parse(JSON.stringify(insightsRoutineRelation(createInsightsSnapshot(withTargets, { today: "2026-11-17", method: 2, revision: "t2" }), ROUTINE)));
+    const factor = (key: string) => model.factors.find((row: { key: string }) => row.key === key);
+    expect(factor("calories_day").target).toEqual({ valid: 2, median: 2550 });          // 10-05 and 10-09
+    expect(factor("calories_previous_day").target).toEqual({ valid: 2, median: 2350 }); // 10-04 and 10-08
+    expect(factor("protein_previous_day").target).toEqual({ valid: 1, median: 150 });   // 10-08 has no protein target: missing, not zero
+    expect(factor("carbs_pre_3h").target).toBeUndefined();
+    expect(parsePerformanceInsights(model)).toBeTruthy();
+    const broken = structuredClone(model);
+    broken.factors.find((row: { key: string }) => row.key === "calories_day").target = { valid: 0, median: 2300 };
+    expect(parsePerformanceInsights(broken)).toBeUndefined();
+  });
+  it("without targets from the reader the factor says none were found", () => {
+    const model = insightsRoutineRelation(snapshot(), ROUTINE);
+    expect(model.factors.find(row => row.key === "calories_day")!.target).toEqual({ valid: 0, median: null });
+    expect(parsePerformanceInsights(JSON.parse(JSON.stringify(model)))).toBeTruthy();
+  });
+});
