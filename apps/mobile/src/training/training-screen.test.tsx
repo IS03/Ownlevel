@@ -337,12 +337,15 @@ describe('Training native hub', () => {
     }
     fireEvent.press(view.getByRole('button', { name: 'PUSH, 8 ejercicios, hoy' })); expect(mockPush).toHaveBeenCalledWith(`/(tabs)/train/routines/${routineId}`);
     // #518 · Comparaciones: under today's activity, out of Biblioteca, with no figures; the same screen as Progreso and the session.
+    // V2: two questions. No Comparaciones figures (no %, no arrows): only the routine and the dates the landing already has.
     const comparisons = view.getByTestId('training-comparisons');
-    expect(comparisons.props.accessibilityLabel).toBe('Abrir Comparaciones: cada sesión frente a la anterior');
-    expect(within(comparisons).queryByText(/\d/)).toBeNull(); expect(view.queryByText('Insights')).toBeNull();
+    expect(within(comparisons).getByText('¿Cómo te fue?')).toBeTruthy(); expect(within(comparisons).getByText('¿Qué te acompañó?')).toBeTruthy();
+    expect(within(comparisons).getByText(/^Tu PUSH de hoy frente al /)).toBeTruthy();
+    expect(within(comparisons).queryByText(/%|↑|↓/)).toBeNull(); expect(view.queryByText('Insights')).toBeNull();
     const order = view.UNSAFE_root.findAll(node => node.props.testID === 'training-comparisons' || node.props.children === 'Biblioteca', { deep: true }).map(node => node.props.testID ?? 'Biblioteca');
     expect(order.indexOf('training-comparisons')).toBeLessThan(order.indexOf('Biblioteca'));
-    fireEvent.press(comparisons); expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/train/insights');
+    fireEvent.press(view.getByTestId('training-compare-how')); expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights', params: { session: 'today' } });
+    fireEvent.press(view.getByTestId('training-compare-what')); expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights', params: { view: 'relation', routine: routineId } });
     expect(mockStart).not.toHaveBeenCalled();
     // "Entrenar otra vez" opens the new session sheet; a free session starts once it is gone.
     fireEvent.press(view.getByRole('button', { name: 'Entrenar otra vez' }));
