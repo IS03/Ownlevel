@@ -97,6 +97,7 @@ function Routines({ data, open }: { data: ProgressTraining; open: (id: string) =
       {expanded === r.id ? <View style={[styles.detail, { backgroundColor: colors.surfaceRaised }]} testID={`training-routine-detail-${r.id}`}>
         <View style={styles.stats}><Stat value={fmt(r.sessions)} label="sesiones" /><Stat value={fmt(r.sets)} label="series" /><Stat value={`${fmt(r.averageMinutes!)} min`} label="duración media" />{r.averageExercises !== null ? <Stat value={fmt(r.averageExercises)} label="ejercicios por sesión" /> : null}</View>
         {data.story ? <><AppText>{r.improved + r.stable + r.declined > 0 ? `${r.improved} de ${r.improved + r.stable + r.declined} ejercicios comparables subieron.` : 'Sin ejercicios comparables dentro de esta rutina.'}</AppText><AppText muted variant="footnote">Primera y última sesión dentro de esta rutina. {r.insufficient} sin comparación suficiente.</AppText></> : null}
+        {r.exerciseIds.length ? <AppText muted variant="caption">Al abrir un ejercicio, ves sus registros de todas las rutinas.</AppText> : null}
         {r.exerciseIds.map(id => <Button key={id} label={names.get(id) ?? 'Ver ejercicio'} variant="quiet" onPress={() => open(id)} />)}
         {r.lastDate ? <Button label="Ver último día y sesiones" variant="quiet" onPress={() => router.push({ pathname: '/history/day/[date]', params: { date: r.lastDate! } })} /> : null}
       </View> : null}
