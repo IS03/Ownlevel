@@ -9,6 +9,7 @@ import type { DayFact, PerformanceChange, RelationFactor, SessionFact } from '@/
 import { createInsightsSnapshot, insightsRoutineRelation, insightsSummary } from '../../../../src/lib/progress/insights-engine/read-model';
 import type { InsightsSource } from '../../../../src/lib/progress/insights-engine/types';
 import { FactorScreen } from './factor-screen';
+import { scatterDomain } from './comparison-parts';
 import { arrivalFacts, exerciseChangeValue, factorSentence, factorValue, formatPct, joinedChange, sessionHero, shownText } from './comparison-change';
 import { InsightsScreen, exerciseList } from './insights-screen';
 
@@ -32,7 +33,7 @@ const id = (n: number) => `53300000-0000-4000-8533-${String(n).padStart(12, '0')
 const ROUTINE = id(900), PRESS = id(800);
 const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
 /** A routine with eight sessions of one exercise at 20 kg: reps 10, 11, 12, 12, 11, 12, 11, 13. */
-let mockReps = [10, 11, 12, 12, 11, 12, 11, 13];
+let mockReps = [10, 11, 12, 12, 11, 12, 11, 13], mockTargets = false;
 function source(): InsightsSource {
   const reps = mockReps;
   const sessions: InsightsSource['sessions'][number][] = [], exercises: InsightsSource['exercises'][number][] = [], sets: InsightsSource['sets'][number][] = [], meals: InsightsSource['meals'][number][] = [];
@@ -43,7 +44,8 @@ function source(): InsightsSource {
     sets.push({ id: id(index + 200), sessionExerciseId: block, actualReps: value, actualLoad: 20, isCompleted: true, completedAt: `${date}T21:10:00.000Z` });
     meals.push({ id: `m${index}`, date, consumedAt: `${date}T20:00:00.000Z`, rawInput: null, entryKind: 'meal', sourceType: 'manual', consumedAtSource: 'user_declared', importRunId: null, calories: 500, proteinG: 30, carbsG: 20 + index * 10, fatG: 10 });
   });
-  return { sessions, exercises, sets, meals, feelings: [], metricDefinitions: [], metricValues: [] };
+  return { sessions, exercises, sets, meals, feelings: [], metricDefinitions: [], metricValues: [],
+    ...(mockTargets ? { dayTargets: sessions.map(session => ({ date: session.date!, calories: 2300, proteinG: 150 })) } : {}) };
 }
 const snapshot = () => createInsightsSnapshot(source(), { today: '2026-11-17', method: 2, revision: 'r1' });
 function answer(options: ReadOptions): Promise<MobileApiReadResult<unknown>> {
@@ -54,7 +56,7 @@ function answer(options: ReadOptions): Promise<MobileApiReadResult<unknown>> {
 }
 const screen = (node: React.ReactElement) => render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}><OwnlevelThemeProvider>{node}</OwnlevelThemeProvider></SafeAreaProvider>);
 
-beforeEach(() => { mockReps = [10, 11, 12, 12, 11, 12, 11, 13]; mockRead.mockReset(); mockRead.mockImplementation(answer); mockPush.mockReset(); mockSetParams.mockReset(); mockParams = {}; clearConfirmedReads(mockClient); });
+beforeEach(() => { mockReps = [10, 11, 12, 12, 11, 12, 11, 13]; mockTargets = false; mockRead.mockReset(); mockRead.mockImplementation(answer); mockPush.mockReset(); mockSetParams.mockReset(); mockParams = {}; clearConfirmedReads(mockClient); });
 
 describe('#533 · cifras de Comparaciones', () => {
   const measured = (pct: number): PerformanceChange => ({ state: 'measured', pct, basis: 'reps_at_load', signals: 1, load: { unit: 'kg', up: 0, same: 1, down: 0 } });
@@ -126,7 +128,7 @@ describe('#533 · pantallas', () => {
     await view.findByTestId('comparisons-change-hero');
     expect(view.getByText('20 kg · 11 → 13 reps')).toBeTruthy();
     expect(view.getByTestId('insights-counts-partial')).toBeTruthy();
-    fireEvent.press(view.getByRole('button', { name: 'Ver cómo llegaste a PULL' }));
+    fireEvent.press(view.getByRole('button', { name: 'Ver otras sesiones de PULL en Cómo llegaste' }));
     expect(mockSetParams).toHaveBeenCalledWith(expect.objectContaining({ view: 'relation', routine: ROUTINE, session: undefined }));
   });
   it('Relación asks for the newest routine once, shows its groups and opens a factor', async () => {
@@ -179,5 +181,22 @@ describe('#533 · pantallas', () => {
     expect(detail.getByText('Mediana de cada grupo · 8 de 8 sesiones con dato')).toBeTruthy();
     expect(detail.getByTestId(`factor-session-${id(8)}`).props.accessibilityState).toEqual({ selected: true });
     expect(detail.queryByTestId('factor-not-ready')).toBeNull();
+  });
+  it('shows the same day\'s target next to kcal, in the row and in its detail, and only when there is one', async () => {
+    mockReps = [10, 11, 10, 11, 10, 11, 10, 11]; mockTargets = true;
+    mockParams = { view: 'relation' };
+    const view = screen(<InsightsScreen />);
+    const row = await view.findByTestId('relation-factor-calories_day');
+    expect(row.props.accessibilityLabel).toContain('Objetivo de esos días 2.300.');
+    expect(view.getByTestId('relation-factor-carbs_pre_3h').props.accessibilityLabel).not.toContain('Objetivo');
+    view.unmount();
+    mockParams = { routine: ROUTINE, factor: 'calories_day' };
+    const detail = screen(<FactorScreen />);
+    expect((await detail.findByTestId('factor-target')).props.children.join('')).toBe('Tu objetivo esos días: 2.300 (mediana de 8 sesiones)');
+  });
+  it('keeps a far value from squeezing the scatter: it sits at the edge with its own number', () => {
+    expect(scatterDomain([2000, 2100, 2200, 2300, 2400, 2500, 2600, 7877])).toEqual({ min: 2000, max: 2600 });
+    expect(scatterDomain([2000, 2100, 2200, 2300, 2400, 2500, 2600, 2900])).toEqual({ min: 2000, max: 2900 });
+    expect(scatterDomain([1, 9, 50])).toEqual({ min: 1, max: 50 });
   });
 });

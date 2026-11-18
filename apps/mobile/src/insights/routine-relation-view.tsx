@@ -145,22 +145,23 @@ function FactorTable({ model, metrics, pick, onOpen }: { model: InsightsRoutineR
   const reduced = useReduceMotion();
   const rows = model.factors.map((factor, index) => ({ factor, index })).filter(row => comparable(row.factor));
   if (!rows.length) return null;
+  const targets = rows.some(row => row.factor.target?.median != null);
   return <View testID="relation-factors">
     <View style={styles.header}>
-      <AppText variant="headline" accessibilityRole="header" style={styles.flex}>Cómo llegaste</AppText>
-      <AppText muted variant="caption">● subieron   ○ bajaron   <AppText variant="caption" style={{ color: colors.primary }}>│ esa vez</AppText></AppText>
+      <AppText variant="headline" accessibilityRole="header">Cómo llegaste</AppText>
+      <AppText muted variant="caption">● subieron   ○ bajaron   <AppText variant="caption" style={{ color: colors.primary }}>│ esa vez</AppText>{targets ? '   ┆ objetivo' : ''}</AppText>
     </View>
     {rows.map(({ factor, index }) => {
       const label = factorLabel(factor, metrics), up = factor.groups.up.median!, down = factor.groups.down.median!;
-      const own = model.sessions[pick]?.values[index] ?? null;
+      const own = model.sessions[pick]?.values[index] ?? null, target = factor.target?.median ?? null;
       return <Pressable key={factor.key} accessibilityRole="button" testID={`relation-factor-${factor.key}`}
-        accessibilityLabel={`${label}${own !== null ? `, esa vez ${factorValue(factor, own)}` : ''}. Mediana en las que subieron ${factorValue(factor, up)} y en las que bajaron ${factorValue(factor, down)}. ${factor.valid} de ${model.sessions.length} sesiones con dato. Ver detalle`}
+        accessibilityLabel={`${label}${own !== null ? `, esa vez ${factorValue(factor, own)}` : ''}. Mediana en las que subieron ${factorValue(factor, up)} y en las que bajaron ${factorValue(factor, down)}.${target !== null ? ` Objetivo de esos días ${factorValue(factor, target)}.` : ''} ${factor.valid} de ${model.sessions.length} sesiones con dato. Ver detalle`}
         onPress={() => onOpen(factor)} style={({ pressed }) => [styles.row, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
         <View style={styles.flex}>
           <AppText>{label}{own !== null ? <AppText numeric style={{ color: colors.primary, fontWeight: '700' }}>  {factorValue(factor, own)}</AppText> : null}</AppText>
           <AppText muted numeric variant="footnote"><AppText numeric variant="footnote">● {factorValue(factor, up)}</AppText> · ○ {factorValue(factor, down)}</AppText>
         </View>
-        {fontScale > 1.3 ? null : <FactorStrip values={valuesOf(model, index)} up={up} down={down} pick={own} />}
+        {fontScale > 1.3 ? null : <FactorStrip values={valuesOf(model, index)} up={up} down={down} pick={own} target={target} />}
         <AppIcon color={colors.textMuted} name="chevronRight" size={15} />
       </Pressable>; })}
   </View>;
@@ -176,7 +177,7 @@ const styles = StyleSheet.create({
   pickRight: { alignItems: 'flex-end', gap: 1 },
   exampleHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   exampleRow: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingTop: spacing.md, paddingBottom: spacing.xs, flexWrap: 'wrap' },
+  header: { gap: 2, paddingTop: spacing.md, paddingBottom: spacing.xs },
   row: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth },
   method: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingTop: spacing.md },
   sheet: { gap: spacing.md, padding: brandTokens.layout.screenPadding, paddingBottom: spacing.xxl },

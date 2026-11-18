@@ -108,14 +108,14 @@ describe('pantalla', () => {
     expect(view.getByTestId('insights-hero')).toBeTruthy();
     // Comparaciones más claras: the number on top, the directions in words, each method's denominator in its own line.
     expect(view.getByLabelText(/^1 de 1 ejercicios con resultado claro, con contexto parcial/)).toBeTruthy();
-    expect(view.getByLabelText('0 mejoraron, 0 igual, 1 bajó')).toBeTruthy();
+    expect(view.getByLabelText('0 subieron, 0 igual, 1 bajó')).toBeTruthy();
     expect(view.getByTestId('insights-partial-limit')).toBeTruthy();
     expect(view.queryByText(/Mejoraron/)).toBeNull(); expect(view.queryByText(/^↓ Por debajo$/)).toBeNull();
   });
   it('shows the strict lane without the limit once the configuration is known', async () => {
     mockRead.mockImplementation(serve(history([8, 10, 9], 'none')));
     const view = await open(<InsightsScreen />);
-    expect(view.getByLabelText('0 mejoraron, 0 igual, 1 bajó')).toBeTruthy();
+    expect(view.getByLabelText('0 subieron, 0 igual, 1 bajó')).toBeTruthy();
     expect(view.queryByTestId('insights-partial-limit')).toBeNull();
   });
   it('tells empty, nothing comparable, failed and contradictory apart', async () => {
@@ -227,7 +227,7 @@ describe('entrada desde el final de una sesión', () => {
     expect(view.queryByTestId('insights-hero')).toBeNull();
     const facts = within(view.getByTestId('insights-session'));
     expect(facts.getByLabelText(/^1 de 1 ejercicios con resultado claro, con contexto parcial/)).toBeTruthy();
-    expect(facts.getByLabelText(/^1 mejoró/)).toBeTruthy();
+    expect(facts.getByLabelText(/^1 subió/)).toBeTruthy();
     expect(requests()).toEqual(['/api/mobile/v1/progress/performance-insights?method=2']);
     expect(view.getByTestId('insights-partial-limit')).toBeTruthy();
     expect(view.queryByText(/Exploratorio|Coincidieron/)).toBeNull();
