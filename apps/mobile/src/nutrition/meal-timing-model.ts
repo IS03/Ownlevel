@@ -1,5 +1,7 @@
 import type { MealTiming as Timing } from '../../../../src/lib/mobile-api/nutrition-meal-contract';
 import type { NutritionDayMeal } from '../../../../src/lib/mobile-api/nutrition-day-contract';
+import { mealMomentAtMinute, type MealMomentBands } from '../../../../src/lib/mobile-api/nutrition-moment-bands-contract';
+import { currentMealMomentBands } from './moment-bands-store';
 export const mealMoments = { breakfast: 'Desayuno', lunch: 'Almuerzo', snack: 'Merienda', dinner: 'Cena', extra: 'Extra' };
 export function automaticMealMoment(label: keyof typeof mealMoments) {
   return mealMoments[label];
@@ -8,9 +10,10 @@ export function automaticMealMoment(label: keyof typeof mealMoments) {
  * Today's moment from the Argentina clock (the nutrition day's zone), so a new meal starts on the
  * likely moment. Past days and late night get no guess: the user picks, or it stays without one.
  */
-export function suggestedMealLabel(date: string, now = new Date()): Timing['mealLabel'] | undefined {
-  const today = new Date(now.getTime() - 3 * 3600000).toISOString().slice(0, 10);
-  return date === today ? mealLabelAt(now) : undefined;
+export function suggestedMealLabel(date: string, now = new Date(), bands: MealMomentBands = currentMealMomentBands()): Timing['mealLabel'] | undefined {
+  const local = new Date(now.getTime() - 3 * 3600000);
+  // The person's own bands (Ajustes › Horarios de comidas); the fixed ones until they are read or when never set.
+  return date === local.toISOString().slice(0, 10) ? mealMomentAtMinute(local.getUTCHours() * 60 + local.getUTCMinutes(), bands) : undefined;
 }
 /** The moment band an Argentina clock time falls in; late night has none. A suggestion, never a declared type. */
 export function mealLabelAt(instant: Date): Timing['mealLabel'] | undefined {

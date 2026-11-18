@@ -54,6 +54,7 @@ export type MobileApiMutationResult<T> =
         | 'QUICK_SOURCE_UNAVAILABLE'
         | 'QUICK_SOURCE_UNUSABLE'
         | 'QUICK_PINS_CHANGED'
+        | 'MEAL_MOMENT_BANDS_CHANGED'
         | 'QUICK_PIN_UNAVAILABLE'
         | 'SAVED_NAME_EXISTS'
         | 'SAVED_CHANGED'

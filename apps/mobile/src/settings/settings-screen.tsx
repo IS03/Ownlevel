@@ -7,6 +7,8 @@ import { ActivityIndicator, Pressable, View } from 'react-native';
 import { useMobileAuth } from '@/auth';
 import { AppText, Heading, SkeletonBlock, useOwnlevelTheme } from '@/design-system';
 import { useHapticsPreference } from '@/platform/haptics';
+import { useMealMomentBands } from '@/nutrition/moment-bands-provider';
+import { clockOf } from './meal-moments-screen';
 import { AccountAvatar } from './account-avatar';
 import { CountingNumber, EditorialRow, EditorialScreen, Reveal } from './editorial';
 import { stageNames } from './settings-model';
@@ -23,6 +25,7 @@ export function SettingsScreen() {
   const { colors, mode } = useOwnlevelTheme();
   const haptics = useHapticsPreference();
   const overview = useSettingsOverview();
+  const moments = useMealMomentBands();
   const { configuration, stages, identity, metrics, loading } = overview;
   const config = configuration?.state.config;
   const name = identity?.displayName ?? null;
@@ -147,6 +150,13 @@ export function SettingsScreen() {
               'No disponibles ahora'
             )}
           </EditorialRow>,
+          ...(moments ? [<EditorialRow
+            key="meal-moments"
+            large
+            title="Horarios de comidas"
+            onPress={() => router.push('/settings/meal-moments')}
+          >{moments.state.availability === 'unavailable' ? 'No disponibles ahora'
+            : [moments.bands.breakfastFrom, moments.bands.lunchFrom, moments.bands.snackFrom, moments.bands.dinnerFrom].map(clockOf).join(' · ')}</EditorialRow>] : []),
           <EditorialRow
             key="app"
             large
