@@ -28,6 +28,11 @@ export type RelationFactor = {
   /** Sessions of the routine with a valid value, and why the others have none. */
   valid: number; missing: Record<string, number>;
   groups: { up: GroupStat; same: GroupStat; down: GroupStat };
+  /**
+   * Optional: the nutrition target of the same day as the factor's value (that day's, as recorded that day), over the routine's
+   * sessions with one. Only on kcal and protein factors. Median of every target found (not by group); null without any.
+   */
+  target?: { valid: number; median: number | null };
 };
 export type RelationSession = {
   sessionId: string; date: string; startedAt: string | null; name: string | null; group: RelationGroup;
@@ -101,6 +106,18 @@ function groupOf(change: ReturnType<typeof sessionChange>): RelationGroup {
   return direction;
 }
 
+/** The target that sits next to a factor: the same day's, never today's applied backwards. */
+const TARGET: Partial<Record<RelationFactorKey, (day: DayFact) => number | null | undefined>> = {
+  calories_day: day => day.context.target?.calories,
+  calories_previous_day: day => day.context.previousDay?.target?.calories,
+  protein_previous_day: day => day.context.previousDay?.target?.proteinG,
+};
+function plainMedian(values: number[]): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b), middle = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
+}
+
 function median(values: number[]): number | null {
   if (values.length < ROUTINE_RELATION_MIN_PER_GROUP) return null;
   const sorted = [...values].sort((a, b) => a - b), middle = sorted.length >> 1;
@@ -147,8 +164,11 @@ export function routineRelation(snapshot: InsightsSnapshot, routineId: string): 
       } else if (row.group === "up" || row.group === "same" || row.group === "down") byGroup[row.group].push(value);
     }
     const stat = (values: number[]): GroupStat => ({ valid: values.length, median: median(values) });
+    const goal = TARGET[rule.key];
+    const targets = goal ? sessions.map(row => goal(dayOf.get(row.date)!)).filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0) : [];
     return { key: rule.key, unit: rule.unit, metricId: rule.metricId, valid: sessions.filter(row => row.values[index] !== null).length, missing,
-      groups: { up: stat(byGroup.up), same: stat(byGroup.same), down: stat(byGroup.down) } };
+      groups: { up: stat(byGroup.up), same: stat(byGroup.same), down: stat(byGroup.down) },
+      ...(goal ? { target: { valid: targets.length, median: plainMedian(targets) } } : {}) };
   });
   const list = [...routines.values()].sort((a, b) => b.last.localeCompare(a.last) || a.id.localeCompare(b.id)).map(({ id, name, sessions }) => ({ id, name, sessions }));
   return { view: "routine-relation", method: ROUTINE_RELATION_METHOD, window: { start, end, days: ROUTINE_RELATION_DAYS }, minimumPerGroup: ROUTINE_RELATION_MIN_PER_GROUP,

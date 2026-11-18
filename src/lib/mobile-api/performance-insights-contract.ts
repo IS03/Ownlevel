@@ -502,7 +502,10 @@ function parseRoutineRelation(raw: Json): InsightsRoutineRelationView | undefine
   if (raw.method !== 'insights-routine-relation/1' || raw.minimumPerGroup !== 3 || !object(window) || !date(window.start) || !date(window.end) || !count(window.days) || (window.start as string) > (window.end as string)) return undefined;
   if (!object(routine) || !uuid(routine.id) || !stringOrNull(routine.name) || !list(routines, r => object(r) && uuid(r.id) && stringOrNull(r.name) && count(r.sessions))) return undefined;
   if (!list(factors, f => object(f) && typeof f.key === 'string' && stringOrNull(f.unit) && (f.metricId === null || uuid(f.metricId)) && count(f.valid) && tally(f.missing)
-    && object(f.groups) && groupStat(f.groups.up) && groupStat(f.groups.same) && groupStat(f.groups.down))) return undefined;
+    && object(f.groups) && groupStat(f.groups.up) && groupStat(f.groups.same) && groupStat(f.groups.down)
+    // Optional target: absent from an older server; a median only with at least one target found.
+    && (f.target === undefined || (object(f.target) && count(f.target.valid) && Number(f.target.valid) <= (sessions as unknown[]).length
+      && numberOrNull(f.target.median) && (f.target.median === null) === (f.target.valid === 0))))) return undefined;
   const width = (factors as unknown[]).length;
   if (!list(sessions, r => object(r) && typeof r.sessionId === 'string' && date(r.date) && (r.date as string) >= (window.start as string) && (r.date as string) <= (window.end as string)
     && stringOrNull(r.startedAt) && stringOrNull(r.name) && RELATION_GROUP.includes(r.group as never) && numberOrNull(r.pct) && count(r.eligible) && count(r.total)
