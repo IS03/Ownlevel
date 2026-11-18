@@ -8,7 +8,7 @@ import { describeFeelingOutcome, FEELING_OUTCOME_KINDS } from "./feeling-outcome
 import { lastShown, recentChanges, recentTimes, sessionChange } from "./performance-change";
 import { priorFeelingFact } from "./prior-feelings";
 import { routineRelation } from "./routine-relation";
-import { ownPerformance, ownSessions } from "./own-performance";
+import { ownOfSession, ownPerformance, ownSessions } from "./own-performance";
 import { periodFacts, periodSummary } from "./period";
 import type { WeighIn } from "../body-evolution/weekly";
 import { mealTimeEvidence, toPerformanceSessions } from "./source-adapter";
@@ -205,6 +205,8 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
   // Each day's own target, as recorded that day. Only when the reader sends targets: an older source publishes nothing.
   const targets = source.dayTargets ? new Map(source.dayTargets.map(row => [row.date, { calories: row.calories, proteinG: row.proteinG }])) : null;
   const targetOf = (date: string) => targets ? { target: targets.get(date) ?? { calories: null, proteinG: null } } : {};
+  // «Rendimiento frente a lo tuyo», once for the whole history: each session against its own previous times.
+  const own = ownSessions(source), ownById = new Map(own.map(row => [row.sessionId, row]));
   const days: DayFact[] = ordered.map(day => ({
     date: day.date, counts: day.counts, evaluableSessions: day.evaluableSessions, declineProportion: day.candidateDeclineProportion,
     equalSessionSensitivity: day.equalSessionWeightSensitivity, openDay: day.date >= options.today,
@@ -216,6 +218,7 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
       const row = sessionById.get(session.sessionId);
       return { sessionId: session.sessionId, name: row?.name ?? null, routineId: session.routineId, routineName: row?.routineName ?? null,
         startedAt: row?.startedAt ?? null, endedAt: row?.endedAt ?? null, counts: session.counts, exercises: session.exercises, change: sessionChange(session.exercises),
+        ...(ownById.has(session.sessionId) ? { own: ownOfSession(ownById.get(session.sessionId)!) } : {}),
         context: { feelings: table.feelingsBySession.get(session.sessionId) ?? {},
           ...(context.unreadableFeelingsBySession.has(session.sessionId) ? { unreadableFeelings: context.unreadableFeelingsBySession.get(session.sessionId)! } : {}),
           legacy: { energyLevel: row?.legacyEnergyLevel ?? null, performanceLevel: row?.performanceLevel ?? null, painLevel: row?.painLevel ?? null },
@@ -268,7 +271,7 @@ export function createInsightsSnapshot(source: InsightsSource, options: { today:
       previousDayMetrics: new Map(performance.days.map(day => [day.date, context.metricsByDate.get(previousDate(day.date)) ?? []])),
       metricOrder: source.metricDefinitions.map(metric => ({ id: metric.id, order: metric.order ?? null, systemKey: metric.systemKey ?? null })),
       /** «Rendimiento frente a lo tuyo»: every completed session against its own history, and the daily facts its week factors read. */
-      own: ownSessions(source),
+      own,
       ownDaily: { nutrition: context.nutritionByDate, metrics: context.metricsByDate, sleepEvidence: context.sleepEvidence, targets } },
     exclusions: { performance: performanceExclusions, source: sourceExclusions },
     limits: { configurationSnapshots: { known: source.exercises.filter(row => row.configuration?.trim()).length, total: source.exercises.length }, mealTimeEvidence: mealEvidence, unitBasis: "historical_weight_mode" as const, ingestionCompleteKnown: false as const, clockVerified: false as const,

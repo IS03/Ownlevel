@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { parsePerformanceInsights } from "../../mobile-api/performance-insights-contract";
 import { parseInsightsParams } from "../../mobile-api/performance-insights-server";
-import { createInsightsSnapshot, insightsOwnPerformance } from "./read-model";
+import { createInsightsSnapshot, insightsOwnPerformance, insightsSummary } from "./read-model";
 import { ownSessions } from "./own-performance";
 import type { InsightsSource } from "./types";
 
@@ -127,5 +127,19 @@ describe("tramos de Cómo llegaste", () => {
     expect(() => parseInsightsParams(new URLSearchParams("view=own"))).toThrow();
     expect(() => parseInsightsParams(new URLSearchParams("view=own&method=2&routine=x"))).toThrow();
     expect(() => parseInsightsParams(new URLSearchParams("view=own&method=2&limit=3"))).toThrow();
+  });
+});
+
+describe("lo tuyo en el resumen", () => {
+  it("each session of the summary carries its value and how many exercises entered, never the exercises themselves", () => {
+    const snapshot = createInsightsSnapshot(source(sleepy()), { today: "2026-11-17", method: 2, revision: "r1" });
+    const summary = JSON.parse(JSON.stringify(insightsSummary(snapshot)));
+    const session = summary.facts.days[0].sessions[0];
+    const own = insightsOwnPerformance(snapshot, null).sessions.find(row => row.sessionId === session.sessionId)!;
+    expect(session.own).toEqual({ pct: own.pct, compared: own.compared, total: own.total });
+    expect(parsePerformanceInsights(summary)).toBeTruthy();
+    const broken = structuredClone(summary);
+    broken.facts.days[0].sessions[0].own = { pct: 2, compared: 1, total: 2 };
+    expect(parsePerformanceInsights(broken)).toBeUndefined();
   });
 });

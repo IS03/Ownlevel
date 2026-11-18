@@ -47,10 +47,11 @@ function median(values: readonly number[]): number | null {
 /** Every completed session in order, each exercise against its own previous five times. Uses the whole history for «lo tuyo». */
 export function ownSessions(source: InsightsSource): OwnSession[] {
   const exercisesBySession = new Map<string, InsightsSource["exercises"][number][]>();
-  for (const row of source.exercises) exercisesBySession.set(row.sessionId, [...(exercisesBySession.get(row.sessionId) ?? []), row]);
+  for (const row of source.exercises) { const rows = exercisesBySession.get(row.sessionId); if (rows) rows.push(row); else exercisesBySession.set(row.sessionId, [row]); }
   const setsByExercise = new Map<string, InsightsSource["sets"][number][]>();
-  for (const set of source.sets) if (set.isCompleted && typeof set.actualReps === "number" && set.actualReps > 0)
-    setsByExercise.set(set.sessionExerciseId, [...(setsByExercise.get(set.sessionExerciseId) ?? []), set]);
+  for (const set of source.sets) if (set.isCompleted && typeof set.actualReps === "number" && set.actualReps > 0) {
+    const rows = setsByExercise.get(set.sessionExerciseId); if (rows) rows.push(set); else setsByExercise.set(set.sessionExerciseId, [set]);
+  }
   const sessions = source.sessions.filter(row => row.status === "completed" && row.date)
     .sort((a, b) => a.date!.localeCompare(b.date!) || (a.startedAt ?? "").localeCompare(b.startedAt ?? "") || a.id.localeCompare(b.id));
   const history = new Map<string, { value: number; set: OwnSet }[]>();
@@ -76,13 +77,20 @@ export function ownSessions(source: InsightsSource): OwnSession[] {
         base = middle.set; pct = round1((value / middle.value - 1) * 100);
       }
       exercises.push({ exerciseId: row.exerciseId.toLowerCase(), name: row.name, kind, today, base, bases: previous.length, pct });
-      history.set(key, [...(history.get(key) ?? []), { value, set: today }]);
+      const past = history.get(key); if (past) past.push({ value, set: today }); else history.set(key, [{ value, set: today }]);
     }
     const pcts = exercises.map(row => row.pct).filter((pct): pct is number => pct !== null);
     return { sessionId: session.id, date: session.date!, startedAt: session.startedAt, routineId: session.routineId?.toLowerCase() ?? null, routineName: session.routineName,
       pct: pcts.length >= OWN_MIN_EXERCISES ? round1(median(pcts)!) : null, compared: pcts.length, total: exercises.length, exercises, sets };
   });
 }
+
+/**
+ * What a session of the summary carries: its value and how many exercises entered. The exercises themselves stay in `view=own`:
+ * the summary keeps its response budget.
+ */
+export type SessionOwn = Pick<OwnSession, "pct" | "compared" | "total">;
+export const ownOfSession = (own: OwnSession): SessionOwn => ({ pct: own.pct, compared: own.compared, total: own.total });
 
 /** What the week factors read, for every date: kept beside the snapshot, never published as such. */
 export type OwnDaily = {
