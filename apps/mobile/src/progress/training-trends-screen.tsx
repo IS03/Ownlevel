@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import Animated, { Easing, FadeIn, LinearTransition, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -8,9 +8,6 @@ import {
   fetchProgressTraining,
   progressRequestKey,
   type ProgressTraining,
-  type ProgressComparison,
-  type ProgressTrainingExercise,
-  type TrainingSignal,
 } from '@/api/progress';
 import {
   AppIcon,
@@ -27,8 +24,8 @@ import {
   useReduceMotion,
 } from '@/design-system';
 import { ProgressScroll } from './progress-scroll';
-import { useComparisonText, useProgressRange } from './progress-range-context';
-import { periodHeading } from './progress-range';
+import { TrainingStory, TrainingDisclosure } from './training-story';
+import { useProgressRange } from './progress-range-context';
 import { formatValue } from './progress-format';
 import { useCachedRead } from '@/api/use-cached-read';
 import { ProgressReadStatus } from './progress-read-status';
@@ -39,26 +36,7 @@ type SeriesMetric = 'sets' | 'sessions' | 'minutes';
 type ChartInspection = { metric: SeriesMetric; bucket: { start: string; end: string } | null };
 const emptyInspection = (): ChartInspection => ({ metric: 'sets', bucket: null });
 const SERIES_LABELS: Record<SeriesMetric, string> = { sets: 'Series', sessions: 'Sesiones', minutes: 'Duración' };
-export const STATUS_LABELS: Record<ProgressTrainingExercise['status'], string> = {
-  improved: 'Mejoró',
-  stable: 'Estable',
-  declined: 'Bajó',
-  insufficient_data: 'Sin comparación',
-};
-export const REASON_LABELS: Record<string, string> = {
-  new_exercise: 'No se hizo en el período de comparación.',
-  not_trained_in_primary: 'No se hizo en este período.',
-  different_weight_mode: 'Cambió el modo de carga.',
-  missing_weight_mode: 'Falta el modo de carga.',
-  unsupported_weight_mode: 'Este modo de carga no tiene una comparación confiable.',
-  incomplete_sets: 'Faltan series comparables.',
-  missing_implement: 'Falta el implemento en alguna sesión.',
-  different_implement: 'Cambió el implemento.',
-  unknown_configuration: 'Falta la variante en alguna sesión.',
-  different_configuration: 'Cambió la variante.',
-  mixed_configuration: 'Hiciste más de una variante en el período.',
-  ambiguous_evidence: 'Sin cambio claro.',
-};
+export { STATUS_LABELS, REASON_LABELS, signalLine } from './training-presenters';
 const fmt = (n: number, digits = 1) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: digits }).format(n);
 const shortDate = (date: string) =>
   new Intl.DateTimeFormat('es-AR', { timeZone: 'UTC', day: 'numeric', month: 'short' })
@@ -175,294 +153,10 @@ function TrainingChart({ data, inspection, onInspect }: { data: ProgressTraining
     </View> : <AppText muted variant="footnote">{inspection.bucket ? 'El intervalo seleccionado ya no está disponible.' : `Tocá una barra para consultar su valor y fechas.${data.series.length * slot > width ? ' Deslizá para recorrer el período.' : ''}`}</AppText>}
   </View>;
 }
-function Breakdown({ data, open }: { data: ProgressTraining; open: (id: string) => void }) {
-  const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
-  const { fontScale } = useWindowDimensions();
-  const Selector = fontScale > 1.3 ? ChipGroup : ExerciseSegmented;
-  const [group, setGroup] = useState<'muscle' | 'routine' | 'exercise'>('muscle'),
-    [all, setAll] = useState(false);
-  const items = (
-    group === 'muscle'
-      ? data.muscles.map((m) => ({ id: m.key, name: m.label, sets: m.sets, sessions: null }))
-      : group === 'routine'
-        ? data.routines.map((r) => ({ ...r }))
-        : data.exercises.filter((e) => e.sessions > 0)
-  )
-    .slice()
-    .sort((a, b) => b.sets - a.sets || a.name.localeCompare(b.name, 'es-AR'));
-  const max = Math.max(1, ...items.map((i) => i.sets));
-  return (
-    <View style={styles.section} testID="training-breakdown">
-      <Heading level={2}>Desglose</Heading>
-      <Selector
-        accessibilityLabel="Desglosar series"
-        value={group}
-        options={[
-          { value: 'muscle', label: 'Músculo' },
-          { value: 'routine', label: 'Rutina' },
-          { value: 'exercise', label: 'Ejercicio' },
-        ]}
-        onChange={(v) => {
-          setGroup(v);
-          setAll(false);
-        }}
-      />
-      {/* Switching músculo / rutina / ejercicio fades the new list in instead of swapping it at once. */}
-      <Animated.View key={group} entering={FadeIn.duration(reduced ? 0 : 200)} layout={reduced ? undefined : LinearTransition.duration(brandTokens.motion.duration.base)}>
-        {(all || items.length <= 7 ? items : items.slice(0, 6)).map((item) => (
-          <FlatRow
-            compact
-            key={item.id}
-            testID={`training-breakdown-${item.id}`}
-            label={`${item.name}, ${item.sets} series${item.sessions !== null ? `, ${plural(item.sessions, 'sesión', 'sesiones')}` : ''}`}
-            onPress={group === 'exercise' ? () => open(item.id) : undefined}
-          >
-            <View style={styles.breakdownName}>
-              <AppText variant="subheadline">{item.name}</AppText>
-              {item.sessions !== null ? (
-                <AppText muted numeric variant="caption">
-                  {plural(item.sessions, 'sesión', 'sesiones')}
-                </AppText>
-              ) : null}
-            </View>
-            <View style={styles.horizontalTrack}>
-              <View
-                testID={`training-breakdown-bar-${item.id}`}
-                style={{
-                  height: item.sets === 0 ? 1 : 8, borderRadius: item.sets === 0 ? 0 : 4,
-                  width: item.sets === 0 ? '100%' : `${(item.sets / max) * 100}%`,
-                  backgroundColor: item.sets === 0 ? colors.border : colors.primary,
-                  opacity: item.sets === max ? 1 : 0.38,
-                }}
-              />
-            </View>
-            <AppText numeric variant="footnote">
-              {plural(item.sets, 'serie', 'series')}
-            </AppText>
-          </FlatRow>
-        ))}
-      </Animated.View>
-      {!items.length ? <AppText muted>Sin datos para este desglose.</AppText> : null}
-      {items.length > 7 ? (
-        <Button
-          label={all ? 'Ver menos' : `Ver todos (${items.length})`}
-          variant="quiet"
-          onPress={() => setAll(!all)}
-        />
-      ) : null}
-    </View>
-  );
-}
-/**
- * Before → after with its unit, in one phrase: "9 → 10 reps con 60 kg", "9 → 10 lingotes, a 20 reps".
- * A stable exercise says nothing more than "Estable"; an unknown kind keeps the server's own sentence.
- */
-export function signalLine(signal: TrainingSignal | null): string | null {
-  if (!signal || signal.kind === 'stable') return null;
-  const { referenceValue: before, currentValue: now, description } = signal;
-  if (before === null || now === null) return description;
-  const pair = `${fmt(before, 2)} → ${fmt(now, 2)}`;
-  if (signal.kind.includes('reps_same_load') || signal.kind.endsWith('reps_bodyweight')) {
-    const at = description.indexOf(' con ');
-    return at >= 0 ? `${pair} reps${description.slice(at)}` : description;
-  }
-  if (signal.kind.includes('load_same_reps')) {
-    const [delta, reps] = description.split(' manteniendo ');
-    const unit = delta?.split(' ').slice(1).join(' ');
-    return unit && reps ? `${pair} ${unit}, a ${reps}` : description;
-  }
-  if (signal.kind.endsWith('_time')) return `${pair} s en el mejor registro`;
-  return description;
-}
-function Performance({ data, open }: { data: ProgressTraining; open: (id: string) => void }) {
-  const { compareOn, compareText, state, today } = useProgressRange();
-  const names = new Map(data.exercises.map((e) => [e.id, e]));
-  const order = { improved: 0, declined: 1, stable: 2, insufficient_data: 3 };
-  const [all, setAll] = useState(false);
-  const rows = data.inPeriod?.exercises
-    .slice()
-    .sort(
-      (a, b) =>
-        order[a.status] - order[b.status] ||
-        (names.get(a.id)?.name ?? '').localeCompare(names.get(b.id)?.name ?? '', 'es-AR'),
-    );
-  const single = data.exercises.filter((e) => e.sessions === 1),
-    previousOnly = compareOn ? data.exercises.filter((e) => e.sessions === 0) : [];
-  const when = state.unit === 'month' ? periodHeading(state, today).replace(/^Tu /, 'en ') : 'en el período';
-  return (
-    <View style={styles.section} testID="training-performance">
-      <Heading level={2}>Ejercicios</Heading>
-      {data.inPeriod ? (
-        <AppText muted variant="footnote">
-          {plural(data.inPeriod.improved, 'subió', 'subieron')} {when}, de su primera a su última sesión.
-        </AppText>
-      ) : (
-        <AppText muted>No pudimos consultar la comparación dentro del período.</AppText>
-      )}
-      <View>
-        {(all ? rows : rows?.slice(0, 6))?.map((e) => {
-          const item = names.get(e.id),
-            status = STATUS_LABELS[e.status],
-            signal = signalLine(e.signal);
-          const reference = `${fullDate(e.firstDate)} → ${fullDate(e.lastDate)}`;
-          const comparison =
-            compareOn && item
-              ? `Frente a ${compareText}: ${STATUS_LABELS[item.status]}${item.status === 'stable' ? '' : ` · ${signalLine(item.signal) ?? REASON_LABELS[item.reason] ?? 'Datos insuficientes.'}`}`
-              : null;
-          return (
-            <FlatRow
-              key={e.id}
-              testID={`training-exercise-${e.id}`}
-              onPress={() => open(e.id)}
-              label={`${item?.name ?? 'Ejercicio'}: ${status}. ${signal ?? REASON_LABELS[e.reason] ?? 'Datos insuficientes.'}${comparison ? `. ${comparison}` : ''}. Primera y última sesión: ${reference}`}
-            >
-              <View style={styles.text}>
-                <AppText variant="headline">{item?.name ?? 'Ejercicio'}</AppText>
-                <AppText muted variant="subheadline">{status}</AppText>
-                {signal ? <AppText numeric variant="body">{signal}</AppText> : null}
-                <AppText muted numeric variant="footnote">{reference}</AppText>
-                {!signal && e.status !== 'stable' ? (
-                  <AppText muted variant="caption">
-                    {REASON_LABELS[e.reason] ?? 'Datos insuficientes.'}
-                  </AppText>
-                ) : null}
-                {comparison ? (
-                  <AppText muted numeric variant="caption">
-                    {comparison}
-                  </AppText>
-                ) : null}
-              </View>
-            </FlatRow>
-          );
-        })}
-      </View>
-      {rows && rows.length > 6 ? (
-        <Button label={all ? 'Ver menos' : `Ver todos (${rows.length})`} variant="quiet" onPress={() => setAll(!all)} />
-      ) : null}
-      {single.length ? (
-        <AppText muted variant="caption">
-          Con una sola sesión: {single.map((e) => e.name).join(', ')}
-        </AppText>
-      ) : null}
-      {previousOnly.length ? (
-        <AppText muted variant="caption">
-          Sólo en el período de comparación: {previousOnly.map((e) => e.name).join(', ')}
-        </AppText>
-      ) : null}
-    </View>
-  );
-}
-/** Activity totals, never a performance score. Values wrap and retain the user's text size. */
-function Summary({ data }: { data: ProgressTraining }) {
-  const { colors } = useOwnlevelTheme(), { width: windowWidth, fontScale } = useWindowDimensions();
-  const [width, setWidth] = useState(windowWidth - 2 * brandTokens.layout.screenPadding);
-  const comparison = useComparisonText(), s = data.summary;
-  const days = plural(s.trainingDays, 'día entrenado', 'días entrenados');
-  const sessions = plural(s.sessions, 'sesión', 'sesiones');
-  // The delta's unit agrees with its own magnitude («+1 día», «−2 series»), not with the period total.
-  const counted = (c: ProgressComparison, one: string, many: string) => comparison(c, Math.abs(c.deltaAbsolute ?? 0) === 1 ? one : many, 'integer');
-  const dayComparison = counted(s.comparisons.trainingDays, 'día', 'días');
-  const sessionComparison = counted(s.comparisons.sessions, 'sesión', 'sesiones');
-  const stats = [
-    { key: 'sets', value: plural(s.sets, 'serie', 'series'), label: 'Series completadas', comparison: counted(s.comparisons.sets, 'serie', 'series') },
-    { key: 'time', value: formatValue(s.minutes, null, 'duration'), label: 'Duración total', comparison: comparison(s.comparisons.minutes, null, 'duration') },
-  ];
-  return <View style={styles.section} testID="training-summary" onLayout={event => setWidth(event.nativeEvent.layout.width)}>
-    <Heading level={2}>Actividad</Heading>
-    <View accessible accessibilityLabel={`${days}${dayComparison ? `. ${dayComparison}` : ''}`} style={styles.stack}>
-      <AppText numeric variant="largeTitle">{fmt(s.trainingDays, 0)}</AppText>
-      <AppText>{s.trainingDays === 1 ? 'día entrenado' : 'días entrenados'}</AppText>
-      {dayComparison ? <AppText muted numeric variant="footnote">{dayComparison}</AppText> : null}
-    </View>
-    <View accessible accessibilityLabel={`${sessions}${sessionComparison ? `. ${sessionComparison}` : ''}`}>
-      <AppText numeric variant="subheadline">{sessions}</AppText>
-      {sessionComparison ? <AppText muted numeric variant="footnote">{sessionComparison}</AppText> : null}
-    </View>
-    <View testID="training-summary-totals" style={[styles.stats, (fontScale > 1.3 || width < 328) && styles.stackedStats]}>
-      {stats.map(x => <View key={x.key} testID={`training-summary-${x.key}`} accessible
-        accessibilityLabel={`${x.label}: ${x.value}${x.comparison ? `. ${x.comparison}` : ''}`}
-        style={[styles.stat, { borderColor: colors.border }]}>
-        <AppText muted variant="footnote">{x.label}</AppText>
-        <AppText numeric variant="title2">{x.value}</AppText>
-        {x.comparison ? <AppText muted numeric variant="footnote">{x.comparison}</AppText> : null}
-      </View>)}
-    </View>
-    <AppText muted variant="footnote">El tiempo va del inicio al fin de cada sesión, con descansos.</AppText>
-  </View>;
-}
 function Content({ data, inspection, onInspect, portada }: { data: ProgressTraining; inspection: ChartInspection; onInspect: (next: ChartInspection) => void;
   portada: { point: PortadaPoint; matched: boolean } | null }) {
-  const { colors } = useOwnlevelTheme();
-  const router = useRouter(),
-    { compareOn } = useProgressRange();
-  const open = (id: string) => router.push({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id } });
-  const s = data.summary;
-  return (
-    <>
-      {s.sessions > 0 ? (
-        <>
-          <Summary data={data} />
-          {portada ? <PortadaPointNote point={portada.point} matched={portada.matched} reason="Este gráfico no tiene ese mismo intervalo con esas series: no seleccionamos otro en su lugar." /> : null}
-          <TrainingChart data={data} inspection={inspection} onInspect={onInspect} />
-        </>
-      ) : (
-        <>
-          <AppText muted>Sin entrenamientos en este período.</AppText>
-          {compareOn && data.exercises.some((e) => e.sessions === 0) ? (
-            <AppText muted variant="caption">
-              Sólo en el período de comparación:{' '}
-              {data.exercises
-                .filter((e) => e.sessions === 0)
-                .map((e) => e.name)
-                .join(', ')}
-            </AppText>
-          ) : null}
-        </>
-      )}
-      <View style={styles.section} testID="training-prs">
-        <Heading level={2}>Récords</Heading>
-        <View>
-          {data.personalRecords.map((pr) => (
-            <FlatRow key={pr.exerciseId} onPress={() => open(pr.exerciseId)} label={`${pr.name}: ${pr.description}`}>
-              <AppIcon name="trophy" color={colors.primary} size={20} />
-              <View style={styles.text}>
-                <AppText variant="headline">{pr.name}</AppText>
-                <AppText muted numeric variant="footnote">
-                  {pr.description}
-                </AppText>
-              </View>
-            </FlatRow>
-          ))}
-        </View>
-        {!data.personalRecords.length ? <AppText muted>Sin récords nuevos en este período.</AppText> : null}
-      </View>
-      {s.sessions > 0 ? (
-        <>
-          <Performance data={data} open={open} />
-          <Breakdown key={`${data.period.start}:${data.period.end}`} data={data} open={open} />
-        </>
-      ) : null}
-      <View style={styles.section} testID="training-feelings">
-        <Heading level={2}>Cómo te sentiste</Heading>
-        <View>
-          {data.feelings.map((f) => (
-            <FlatRow key={f.key} compact label={`${f.label}: ${fmt(f.average)} de ${f.scaleMaximum}. ${f.registered} de ${f.eligible} sesiones con registro`}>
-              <View style={styles.text}>
-                <AppText>{f.label}</AppText>
-                <AppText muted numeric variant="caption">
-                  {f.registered} de {f.eligible} sesiones{f.ratio < 0.5 ? ' · pocas con registro' : ''}
-                </AppText>
-              </View>
-              <AppText numeric variant="headline">
-                {fmt(f.average)} de {f.scaleMaximum}
-              </AppText>
-            </FlatRow>
-          ))}
-        </View>
-        {!data.feelings.length ? <AppText muted>Sin sensaciones registradas en este período.</AppText> : null}
-      </View>
-    </>
-  );
+  const chart = portada ? <><PortadaPointNote point={portada.point} matched={portada.matched} reason="Este gráfico no tiene ese mismo intervalo con esas series: no seleccionamos otro en su lugar." /><TrainingChart data={data} inspection={inspection} onInspect={onInspect} /></> : null;
+  return <TrainingStory data={data} chart={portada ? chart : <TrainingDisclosure title="Actividad en el tiempo" initialOpen={inspection.bucket !== null}><TrainingChart data={data} inspection={inspection} onInspect={onInspect} /></TrainingDisclosure>} />;
 }
 export function TrainingTrendsScreen() {
   const router = useRouter(),
@@ -478,17 +172,18 @@ export function TrainingTrendsScreen() {
   const point = usePortadaPoint();
   // `fromPortada`: still the scope this screen opened with and nothing touched yet. Any other account, period or
   // comparison, or the reader's own choice, retires the portada point.
-  const [saved, setSaved] = useState({ client, key, inspection: emptyInspection(), fromPortada: true });
+  const [saved, setSaved] = useState({ client, key, inspection: emptyInspection(), fromPortada: true, version: 0 });
   const sameScope = saved.client === client && saved.key === key;
-  if (!sameScope) setSaved({ client, key, inspection: emptyInspection(), fromPortada: false });
+  if (!sameScope) setSaved({ client, key, inspection: emptyInspection(), fromPortada: false, version: saved.version + 1 });
   const portada = sameScope && saved.fromPortada ? point : null;
   // Only the same datum: the spark counts completed sets per interval, exactly as this chart's sets bucket.
   const match = portada && data ? data.series.find(p => p.start === portada.start && p.end === portada.end && sameValue(p.sets, portada.value)) : undefined;
   const inspection = !sameScope ? emptyInspection() : match ? { metric: 'sets' as const, bucket: { start: match.start, end: match.end } } : saved.inspection;
-  const onInspect = (next: ChartInspection) => setSaved({ client, key, inspection: next, fromPortada: false });
+  const onInspect = (next: ChartInspection) => setSaved({ client, key, inspection: next, fromPortada: false, version: saved.version });
   return (
     <ProgressScroll
       title="Entrenamiento"
+      compactPeriod
       testID="training-trends-screen"
       refreshControl={
         <RefreshControl
@@ -516,7 +211,7 @@ export function TrainingTrendsScreen() {
               onAction={() => void refresh()}
             />
           ) : null}
-          <Content data={data} inspection={inspection} onInspect={onInspect} portada={portada ? { point: portada, matched: !!match } : null} />
+          <Content key={`${key}:${saved.version}`} data={data} inspection={inspection} onInspect={onInspect} portada={portada ? { point: portada, matched: !!match } : null} />
         </>
       )}
       {/* #518 · The fixed door to Comparaciones. Asks for nothing here; going back returns to this screen and its period. */}
@@ -547,15 +242,10 @@ const styles = StyleSheet.create({
   },
   compact: { minHeight: 44, paddingVertical: 10 },
   text: { flex: 1, gap: 4 },
-  stats: { flexDirection: 'row', gap: spacing.lg },
-  stackedStats: { flexDirection: 'column' },
-  stat: { flex: 1, minWidth: 0, gap: spacing.xs, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth },
   bars: { flexDirection: 'row', alignItems: 'flex-start' },
   barColumn: { flex: 1, gap: spacing.sm, minHeight: brandTokens.layout.minTouch, paddingHorizontal: spacing.sm },
   plot: { height: 136, justifyContent: 'flex-end' },
   center: { textAlign: 'center' },
   chartScroll: { flexGrow: 0 }, chartContent: { minWidth: '100%' },
   stack: { gap: spacing.sm },
-  breakdownName: { flex: 1, gap: 4 },
-  horizontalTrack: { flex: 1, justifyContent: 'center', minWidth: 32 },
 });

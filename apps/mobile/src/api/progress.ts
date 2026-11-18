@@ -37,7 +37,7 @@ export const fetchProgressMetrics = (client: MobileApiClient, query: ProgressQue
     return data;
   } });
 export const fetchProgressTraining = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
-  client.read({ path: `${BASE}/training?${qs(query, compare)}&inPeriod=1`, signal, parse: (raw: unknown) => {
+  client.read({ path: `${BASE}/training?${qs(query, compare)}&inPeriod=1&story=1`, signal, parse: (raw: unknown) => {
     const data = parseProgressTraining(raw); return data && samePeriod(data.period, query, compare) ? data : undefined;
   } });
 /** Home's records card: the records, exercise performance and comparable count of `/training`, without the rest. */
