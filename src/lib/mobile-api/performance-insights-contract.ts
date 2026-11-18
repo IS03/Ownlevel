@@ -11,8 +11,9 @@ import type { SessionTemporalDay } from '../progress/insights-engine/session-tem
 export type { PeriodExploration } from '../progress/insights-engine/week-exploration';
 import type { PeriodExploration } from '../progress/insights-engine/week-exploration';
 export type { InsightsPinnedPeriodSummary, InsightsPeriodFeelings, InsightsPeriodNutrition } from "../progress/insights-engine/types";
-import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary, type InsightsPinnedPeriodSummary, type InsightsPeriodFeelings, type InsightsPeriodNutrition, type InsightsRoutineRelationView } from "../progress/insights-engine/types";
-export type { InsightsRoutineRelationView } from "../progress/insights-engine/types";
+import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary, type InsightsPinnedPeriodSummary, type InsightsPeriodFeelings, type InsightsPeriodNutrition, type InsightsRoutineRelationView, type InsightsOwnView } from "../progress/insights-engine/types";
+export type { InsightsRoutineRelationView, InsightsOwnView } from "../progress/insights-engine/types";
+export type { OwnSession, OwnExercise, OwnFactor, OwnBin, OwnSet } from "../progress/insights-engine/own-performance";
 export type { InsightsRoutineRelation, RelationFactor, RelationFactorKey, RelationGroup, RelationSession } from "../progress/insights-engine/routine-relation";
 export type { LastShown, RecentChanges, RecentTimes, SessionChange } from "../progress/insights-engine/performance-change";
 export type { PerformanceChange } from "../progress/performance-insights/types";
@@ -301,6 +302,7 @@ export function parsePerformanceInsights(raw: unknown): InsightsResponse | undef
   if (!object(raw) || !versions(raw) || typeof raw.sourceRevision !== "string") return undefined;
   if (raw.view === 'session-temporal') return parseTemporal(raw);
   if (raw.view === 'routine-relation') return parseRoutineRelation(raw);
+  if (raw.view === 'own') return parseOwn(raw);
   if(raw.view==='coincidence-evidence')return parseCoincidencePage(raw);
   if (raw.view === 'period-explore') return parseExploration(raw);
   if (raw.view === "period-feelings") return parsePeriodFeelings(raw);
@@ -497,6 +499,35 @@ const groupStat = (v: unknown) => object(v) && count(v.valid) && numberOrNull(v.
  * #533 · Relación. Every session is in one group, the counts add up to the sessions, every session has one value per factor, and a
  * median never stands on fewer than three values: a short group shows no number rather than a guess.
  */
+/** «Rendimiento frente a lo tuyo». A median only from its rules: «lo tuyo» with three previous times, a tramo's mean with six. */
+const ownSet = (v: unknown) => object(v) && numberOrNull(v.load) && (v.load === null || Number(v.load) > 0) && count(v.reps) && Number(v.reps) > 0;
+function parseOwn(raw: Json): InsightsOwnView | undefined {
+  const { window, rules, routines, weeks, sessions, factors } = raw;
+  if (raw.method !== 'insights-own/1' || !object(window) || !date(window.start) || !date(window.end) || !count(window.days) || (window.start as string) > (window.end as string)) return undefined;
+  if (!object(rules) || !['baseSize', 'minBase', 'minExercises', 'minPerBin', 'minRoutine'].every(k => count(rules[k]) && Number(rules[k]) > 0)) return undefined;
+  if (!(raw.routine === null || uuid(raw.routine))) return undefined;
+  if (!list(routines, r => object(r) && uuid(r.id) && stringOrNull(r.name) && count(r.sessions) && count(r.measured) && Number(r.measured) <= Number(r.sessions)
+    && numberOrNull(r.mean) && (r.mean === null || Number(r.measured) >= Number(rules.minRoutine)))) return undefined;
+  if (!list(weeks, w => object(w) && date(w.start) && count(w.sessions) && count(w.measured) && Number(w.measured) <= Number(w.sessions) && numberOrNull(w.mean) && (w.mean === null) === (w.measured === 0))) return undefined;
+  if (!list(sessions, r => object(r) && typeof r.sessionId === 'string' && date(r.date) && (r.date as string) >= (window.start as string) && (r.date as string) <= (window.end as string)
+    && stringOrNull(r.startedAt) && (r.routineId === null || uuid(r.routineId)) && stringOrNull(r.routineName) && numberOrNull(r.pct) && count(r.compared) && count(r.total) && count(r.sets)
+    && Number(r.compared) <= Number(r.total) && (r.pct === null) === (Number(r.compared) < Number(rules.minExercises))
+    && list(r.exercises, e => object(e) && typeof e.exerciseId === 'string' && typeof e.name === 'string' && (e.kind === 'load' || e.kind === 'reps') && ownSet(e.today)
+      && (e.base === null || ownSet(e.base)) && count(e.bases) && numberOrNull(e.pct) && (e.pct === null) === (e.base === null) && (e.base === null) === (Number(e.bases) < Number(rules.minBase)))
+    && (r.exercises as unknown[]).length === r.total && (r.exercises as Json[]).filter(e => e.pct !== null).length === r.compared)) return undefined;
+  const width = (sessions as unknown[]).length;
+  const factor = (f: unknown) => object(f) && typeof f.key === 'string' && stringOrNull(f.unit) && (f.metricId === null || uuid(f.metricId)) && (f.kind === 'numeric' || f.kind === 'category')
+    && count(f.valid) && tally(f.missing) && list(f.values, numberOrNull) && (f.values as unknown[]).length === width
+    && (f.values as unknown[]).filter((v, i) => v !== null && (sessions as Json[])[i]!.pct !== null).length === f.valid
+    && (f.values as unknown[]).every((v, i) => v === null || (sessions as Json[])[i]!.pct !== null)
+    && list(f.bins, b => object(b) && numberOrNull(b.from) && numberOrNull(b.to) && stringOrNull(b.label) && count(b.n) && numberOrNull(b.mean) && (b.mean === null) === (Number(b.n) < Number(rules.minPerBin)))
+    && (f.bins as Json[]).reduce((sum, b) => sum + Number(b.n), 0) === f.valid
+    && numberOrNull(f.difference) && typeof f.clear === 'boolean' && (!f.clear || f.difference !== null)
+    && list(f.byRoutine, r => object(r) && uuid(r.routineId) && stringOrNull(r.name) && ['up', 'down', 'flat', 'few'].includes(String(r.direction)));
+  if (!object(factors) || !list(factors.day, factor) || !list(factors.week, factor)) return undefined;
+  return raw as unknown as InsightsOwnView;
+}
+
 function parseRoutineRelation(raw: Json): InsightsRoutineRelationView | undefined {
   const { window, routine, routines, counts: groups, sessions, factors } = raw;
   if (raw.method !== 'insights-routine-relation/1' || raw.minimumPerGroup !== 3 || !object(window) || !date(window.start) || !date(window.end) || !count(window.days) || (window.start as string) > (window.end as string)) return undefined;

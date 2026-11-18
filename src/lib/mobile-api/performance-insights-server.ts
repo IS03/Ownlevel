@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { todayInCordoba } from "@/lib/phase2/cordoba-date";
 import { readAllTrainingRows } from "@/lib/phase2/training-robust";
-import { createInsightsSnapshot, insightsDaysPage, insightsExerciseEvidence, insightsFeelingOutcomes, insightsPeriodSummary, periodOf, insightsRelation, insightsRelations, insightsRoutineRelation, insightsSummary, INSIGHTS_MAX_DAYS, type EvidenceLane, type InsightsSnapshot, type InsightsSource } from "@/lib/progress/insights-engine";
+import { createInsightsSnapshot, insightsDaysPage, insightsExerciseEvidence, insightsFeelingOutcomes, insightsPeriodSummary, periodOf, insightsRelation, insightsRelations, insightsRoutineRelation, insightsOwnPerformance, insightsSummary, INSIGHTS_MAX_DAYS, type EvidenceLane, type InsightsSnapshot, type InsightsSource } from "@/lib/progress/insights-engine";
 import type { InsightsEngineMethod } from "@/lib/progress/insights-engine/types";
 import { MobileApiValidationError } from "./auth";
 import { NutritionReportDayChangedError } from "./nutrition-report-server";
@@ -315,7 +315,7 @@ export function parseInsightsParams(params: URLSearchParams) {
     if (!["view", "before", "limit", "association", "pairs", "method", "asOf", "date", "kind", "group", "offset", "revision", "routine", ...EVIDENCE_KEYS].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
   }
   const before = params.get("before") ?? undefined, limit = params.get("limit"), association = params.get("association") ?? undefined, view = params.get("view") ?? "summary";
-  if (!["summary", "days", "relations", "evidence", "feelings", "period", "period-at", "period-feelings", "period-nutrition", "period-explore", "coincidence-evidence", "session-temporal", "routine-relation"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
+  if (!["summary", "days", "relations", "evidence", "feelings", "period", "period-at", "period-feelings", "period-nutrition", "period-explore", "coincidence-evidence", "session-temporal", "routine-relation", "own"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
   const method = params.get("method");
   if (method !== null && method !== "2") throw new MobileApiValidationError("Método no válido.");
   const engineMethod = (method === "2" ? 2 : 1) as InsightsEngineMethod;
@@ -325,6 +325,12 @@ export function parseInsightsParams(params: URLSearchParams) {
     return {view:'coincidence-evidence' as const,asOf,revision,selection:{kind,group} as CoincidenceSelection,offset:Number(offset),method:2 as const};
   }
   if(['kind','group','offset','revision'].some(k=>params.has(k)))throw new MobileApiValidationError('Parámetro no válido.');
+  // «Rendimiento frente a lo tuyo»: all routines or one, method 2, nothing else beside it.
+  if (view === 'own') {
+    const routine = params.get('routine');
+    if (method !== '2' || (routine !== null && !UUID.test(routine)) || [...params.keys()].some(k => !['view', 'method', 'routine'].includes(k))) throw new MobileApiValidationError('Rutina o parámetros no válidos.');
+    return { view: 'own' as const, routine: routine?.toLowerCase() ?? null, method: 2 as const };
+  }
   // #533 · Relación: one routine, method 2 (declared sleep and pre-session context), nothing else beside it.
   if (view === 'routine-relation' || params.has('routine')) {
     const routine = params.get('routine');
@@ -404,6 +410,13 @@ export const performanceInsightsResponse = (request: Request) => progressReadRes
     const after = todayInCordoba();
     if (after !== today) throw new NutritionReportDayChangedError(after);
     return evidence;
+  }
+  if (options.view === "own") {
+    // From the cached snapshot of method 2, like Relación: computed when the screen opens.
+    const model = insightsOwnPerformance(await readInsightsSnapshot(context, today, 2), options.routine);
+    const after = todayInCordoba();
+    if (after !== today) throw new NutritionReportDayChangedError(after);
+    return model;
   }
   if (options.view === "routine-relation") {
     // From the cached snapshot of method 2: computed when the screen opens, never by summary.

@@ -238,6 +238,7 @@ export type InsightsSummary = InsightsVersions & Pick<InsightsReadModel, "histor
   partial: Omit<PartialLane, "associations"> };
 /** #533 · Relación of one routine: see routine-relation.ts. */
 export type InsightsRoutineRelationView = InsightsVersions & import("./routine-relation").InsightsRoutineRelation;
+export type InsightsOwnView = InsightsVersions & import("./own-performance").InsightsOwnPerformance;
 export type InsightsDaysPage = InsightsVersions & { view: "days"; facts: Pick<InsightsReadModel["facts"], "days" | "page">; partial: PartialLabels & { days: PartialDayFact[] } };
 export type InsightsRelations = InsightsVersions & { view: "relations"; metrics: InsightsReadModel["metrics"];
   strict: Omit<InsightsReadModel["associations"], "items" | "detail"> & { outcomeDays: number; items: RelationSummary[] };
@@ -298,7 +299,7 @@ export type InsightsPeriodFeelings = InsightsVersions & { view: "period-feelings
   period: import("./period-range").InsightsPeriod; outcomes: FeelingOutcomeSummary[] };
 export type InsightsPeriodNutrition = InsightsVersions & { view: "period-nutrition"; asOf: string; periodMethodVersion: "insights-period/1";
   period: import("./period-range").InsightsPeriod; days: ({ date: string } & NonNullable<NutritionContext>)[]; daysWithoutMeals: number; ingestionCompleteKnown: false };
-export type InsightsResponse = InsightsSummary | InsightsDaysPage | InsightsRelations | InsightsRelationDetail | InsightsExerciseEvidence | InsightsFeelingOutcomes | InsightsPeriodSummary | InsightsPinnedPeriodSummary | InsightsPeriodFeelings | InsightsPeriodNutrition | import('./session-temporal').SessionTemporalDay | import('./week-exploration').PeriodExploration | import('./week-exploration').CoincidenceEvidence | InsightsRoutineRelationView;
+export type InsightsResponse = InsightsSummary | InsightsDaysPage | InsightsRelations | InsightsRelationDetail | InsightsExerciseEvidence | InsightsFeelingOutcomes | InsightsPeriodSummary | InsightsPinnedPeriodSummary | InsightsPeriodFeelings | InsightsPeriodNutrition | import('./session-temporal').SessionTemporalDay | import('./week-exploration').PeriodExploration | import('./week-exploration').CoincidenceEvidence | InsightsRoutineRelationView | InsightsOwnView;
 
 export type InsightsReadModel = {
   contractVersion: typeof INSIGHTS_CONTRACT;

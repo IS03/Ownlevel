@@ -62,7 +62,7 @@ function nutrient(nutrition: NutritionContext | undefined, key: "calories" | "pr
   return nutrition[key].missing ? { value: null, missing: "partial_sum" } : { value: nutrition[key].recorded };
 }
 
-function factorRules(snapshot: InsightsSnapshot): FactorRule[] {
+export function factorRules(snapshot: InsightsSnapshot): FactorRule[] {
   const definitions = new Map(snapshot.metrics.map(metric => [metric.id, metric]));
   const order = snapshot.relationContext.metricOrder;
   const named = (row: { id: string; systemKey: string | null }) => { const d = definitions.get(row.id); return d ? { ...d, systemKey: row.systemKey } : null; };
