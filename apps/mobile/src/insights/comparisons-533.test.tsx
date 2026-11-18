@@ -114,7 +114,7 @@ describe('#533 · pantallas', () => {
     const view = screen(<InsightsScreen />);
     const hero = await view.findByTestId('comparisons-change-hero');
     expect(within(hero).getByText('+18 %')).toBeTruthy();
-    expect(view.getByTestId('comparisons-arrival')).toBeTruthy();
+    expect(view.getByTestId('comparisons-timeline')).toBeTruthy();
     expect(view.getByRole('button', { name: /^Remo, .*subió [\d,]+ por ciento\. Ver evidencia y series$/ })).toBeTruthy();
     // The strip of recent sessions opens one of them.
     fireEvent.press(within(view.getByTestId('comparisons-session-strip')).getAllByRole('button')[1]!);

@@ -64,7 +64,7 @@ describe('#367 evidencia de una comparación', () => {
     const query = new URL(`http://x${mockRead.mock.calls[0]![0].path}`).searchParams;
     expect(Object.fromEntries(query)).toEqual({ method: '2', view: 'evidence', session: id(2, 1), exercise: EX, lane: 'strict' });
     expect(view.getByTestId('evidence-result')).toHaveTextContent(/↑ Mejoró/);
-    expect(view.getByTestId('evidence-against')).toHaveTextContent(/Frente al (jueves|viernes|miércoles)/);
+    expect(view.getByTestId('evidence-result').props.accessibilityLabel).toMatch(/Frente al (jueves|viernes|miércoles)/);
     const signals = within(view.getByTestId('evidence-signals'));
     expect(signals.getByText(/Con 80 kg$/)).toBeTruthy();
     expect(signals.getByText('8 → 10 reps')).toBeTruthy();
@@ -119,7 +119,9 @@ describe('#367 evidencia de una comparación', () => {
     mockParams = selection({ lane: 'partial', result: 'higher_record' });
     mockRead.mockImplementation(serve(history([[[8, 80]], [[9, 80]]], 'Peso total', null)));
     const view = await open();
-    expect(view.getByTestId('evidence-result')).toHaveTextContent(/Registro superior/);
+    // The result in plain words; the method is named by its limit line.
+    expect(view.getByTestId('evidence-result')).toHaveTextContent(/↑ Mejoró/);
+    expect(view.getByTestId('evidence-result').props.accessibilityLabel).toMatch(/con contexto parcial/);
     expect(view.getByTestId('evidence-partial-limit')).toBeTruthy();
     expect(view.getByText('Lo más alto con contexto parcial')).toBeTruthy();
     expect(view.getByText('Configuración')).toBeTruthy(); expect(view.getByText('Sin registrar')).toBeTruthy();

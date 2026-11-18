@@ -133,7 +133,9 @@ describe('#367 hechos de una sesión: pantalla abierta desde el post-entreno', (
     // #533: the session's measured change is a percentage of repetitions; feelings stay words everywhere, also in «Cómo llegaste».
     expect(focus.queryByText(/de 5/)).toBeNull();
     expect(within(view.getByTestId('insights-context-open')).queryByText(/%/)).toBeNull();
-    expect(within(view.getByTestId('comparisons-arrival')).queryByText(/%/)).toBeNull();
+    // «Cómo llegaste» opens from its line; its detail has no percentage either.
+    fireEvent.press(view.getByTestId('comparisons-timeline'));
+    expect(within(await view.findByTestId('comparisons-arrival-sheet')).queryByText(/%/)).toBeNull();
     expect(focus.queryByText(/porque|causa|recomend/i)).toBeNull();
   });
 });

@@ -21,7 +21,7 @@ export default function TrainLayout() {
       <Stack.Screen name="history/exercise/[id]" options={{ title: 'Ejercicio' }} />
       <Stack.Screen name="insights/index" options={{ title: 'Comparaciones' }} />
       <Stack.Screen name="insights/[relation]" options={{ title: 'Relación' }} />
-      <Stack.Screen name="insights/evidence" options={{ title: 'Evidencia' }} />
+      <Stack.Screen name="insights/evidence" options={{ title: 'Ejercicio' }} />
       <Stack.Screen name="insights/feelings" options={{ title: 'Cómo terminaste' }} />
       <Stack.Screen name="insights/period" options={{ title: 'Últimos 3 meses' }} />
       <Stack.Screen name="insights/period-feelings" options={{ title: 'Sensaciones del período' }} />

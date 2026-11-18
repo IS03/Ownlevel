@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import Svg, { Circle, Line, Rect } from 'react-native-svg';
+import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
 import { AppSheet, AppText, Heading, brandTokens, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import { formatPct, type ArrivalFact } from './comparison-change';
@@ -30,21 +30,109 @@ export function SessionStrip({ sessions, selected, onSelect }: { sessions: reado
   </ScrollView>;
 }
 
-/** «Cómo llegaste»: a short grid. A missing fact reads «Sin registrar», never 0. With large text it becomes one column. */
-export function ArrivalGrid({ facts }: { facts: readonly ArrivalFact[] }) {
+/**
+ * «Cómo llegaste»: numbers straight on the background, each with its small label. A missing fact is a grey «—» (VoiceOver says
+ * «sin registrar»), never 0. With large text it becomes one column.
+ */
+export function ArrivalGrid({ facts, title = true }: { facts: readonly ArrivalFact[]; title?: boolean }) {
   const { colors } = useOwnlevelTheme();
   const { fontScale, width } = useWindowDimensions();
   const columns = fontScale > 1.3 ? 1 : width < 360 ? 2 : 3;
   return <View style={styles.block} testID="comparisons-arrival">
-    <AppText variant="headline" accessibilityRole="header">Cómo llegaste</AppText>
+    {title ? <Kicker>Cómo llegaste</Kicker> : null}
     <View style={styles.grid}>
-      {facts.map(fact => <View key={fact.key} accessible accessibilityLabel={fact.spoken} testID={`arrival-${fact.key}`}
-        style={[styles.cell, { backgroundColor: colors.surface, width: `${100 / columns - (columns > 1 ? 2 : 0)}%` }]}>
+      {facts.map(fact => <View key={fact.key} accessible accessibilityLabel={fact.spoken} testID={`arrival-${fact.key}`} style={[styles.cell, { width: `${100 / columns}%` }]}>
+        <AppText variant="headline" numeric style={!fact.value && { color: colors.textMuted }}>{fact.value ?? '—'}</AppText>
         <AppText muted variant="caption">{fact.label}</AppText>
-        <AppText variant={fact.value ? 'headline' : 'footnote'} numeric muted={!fact.value}>{fact.value ?? 'Sin registrar'}</AppText>
       </View>)}
     </View>
   </View>;
+}
+
+/** A small uppercase label over a block, as in the sketch: it names the block without a card around it. */
+export function Kicker({ children }: { children: string }) {
+  return <AppText muted variant="caption" accessibilityRole="header" style={styles.kicker}>{children}</AppText>;
+}
+
+/** The three directions in words, one line: «1 mejoró · 9 igual · 1 bajó». No «registro superior», no lane names. */
+export function ChangeTally({ up, same, down, testID }: { up: number; same: number; down: number; testID?: string }) {
+  const parts = [[up, up === 1 ? 'mejoró' : 'mejoraron'], [same, 'igual'], [down, down === 1 ? 'bajó' : 'bajaron']] as const;
+  return <View style={styles.tally} accessible accessibilityLabel={parts.map(([n, word]) => `${n} ${word}`).join(', ')} testID={testID}>
+    {parts.map(([n, word]) => <View key={word} style={styles.tallyCell}>
+      <AppText variant="title2" numeric>{String(n)}</AppText>
+      <AppText muted variant="footnote">{word}</AppText>
+    </View>)}
+  </View>;
+}
+
+/** What an exercise row draws on its right: a bar that grows right (up) or left (down) from the middle, a load step, or «igual». */
+export type RowChange = { kind: 'pct'; pct: number } | { kind: 'load'; up: boolean } | { kind: 'same' } | { kind: 'none'; text: string };
+const BAR_MAX = 25;
+function DivergingMark({ change }: { change: RowChange }) {
+  const { colors } = useOwnlevelTheme();
+  const width = 96, mid = width / 2;
+  if (change.kind === 'none') return <View style={[styles.mark, { width }]}><AppText muted variant="caption" numberOfLines={2} style={styles.markText}>{change.text}</AppText></View>;
+  return <Svg width={width} height={22} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+    <Line x1={mid} y1={0} x2={mid} y2={22} stroke={colors.border} strokeWidth={1} />
+    {change.kind === 'same' || (change.kind === 'pct' && change.pct === 0) ? <Circle cx={mid} cy={11} r={4} fill="none" stroke={colors.textMuted} strokeWidth={1.5} /> : null}
+    {change.kind === 'load' ? <SvgText x={change.up ? mid + 6 : mid - 6} y={15} fontSize={11} fontWeight="600" fill={colors.primary} textAnchor={change.up ? 'start' : 'end'}>{change.up ? '↑ peso' : '↓ peso'}</SvgText> : null}
+    {change.kind === 'pct' && change.pct !== 0 ? (() => {
+      const length = Math.max(4, (Math.min(BAR_MAX, Math.abs(change.pct)) / BAR_MAX) * (mid - 4)), up = change.pct > 0;
+      const label = `${up ? '+' : '−'}${Math.round(Math.abs(change.pct)) || '<1'}`;
+      return <>
+        <Rect x={up ? mid : mid - length} y={8} width={length} height={6} rx={3} fill={colors.primary} fillOpacity={up ? 1 : 0.45} />
+        <SvgText x={up ? width : 0} y={7} fontSize={11} fontWeight="600" fill={up ? colors.text : colors.textMuted} textAnchor={up ? 'end' : 'start'}>{label}</SvgText>
+      </>;
+    })() : null}
+  </Svg>;
+}
+/** One exercise of the session: its name and what was recorded, and the change drawn on the right. The whole row opens its sets. */
+export function DivergingRow({ name, detail, change, spoken, onPress }: { name: string; detail?: string | null; change: RowChange; spoken: string; onPress: () => void }) {
+  const reduced = useReduceMotion();
+  const { fontScale } = useWindowDimensions();
+  return <Pressable accessibilityRole="button" accessibilityLabel={spoken} onPress={onPress}
+    style={({ pressed }) => [styles.exRow, fontScale > 1.3 && styles.exRowStacked, pressedStyle(pressed, reduced)]}>
+    <View style={styles.flex}>
+      <AppText variant="subheadline" style={styles.exName} numberOfLines={fontScale > 1.3 ? undefined : 1}>{name}</AppText>
+      {detail ? <AppText muted variant="caption" numeric>{detail}</AppText> : null}
+    </View>
+    <DivergingMark change={change} />
+  </Pressable>;
+}
+
+/** A meal placed on the timeline: only with a time that can be checked. Its size is how much was eaten, when that is known. */
+export type TimelineMeal = { at: number; calories: number | null };
+const clock = (ms: number) => new Intl.DateTimeFormat('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Argentina/Cordoba' }).format(new Date(ms));
+const ago = (hours: number) => { const whole = Math.floor(hours), minutes = Math.round((hours - whole) * 60); return minutes === 60 ? `−${whole + 1} h` : minutes ? `−${whole} h ${String(minutes).padStart(2, '0')}` : `−${whole} h`; };
+/**
+ * From twelve hours before the session to its start, in one line: the meals with a checked time (bigger dot, more kcal) and the
+ * session at the end. Sleep has no clock in the records, so it is named at the start of the line, never placed at an hour.
+ * Meals without a checked time are counted, never drawn somewhere.
+ */
+export function ArrivalTimeline({ start, meals, uncertain, sleep, big = false, onPress, label }: { start: number; meals: readonly TimelineMeal[]; uncertain: number | 'some'; sleep: string | null; big?: boolean; onPress?: () => void; label: string }) {
+  const { colors } = useOwnlevelTheme();
+  const reduced = useReduceMotion();
+  const [width, setWidth] = useState(0);
+  const span = 12 * 3_600_000, from = start - span, height = big ? 96 : 76, axis = height / 2 + 4, gym = 18;
+  const x = (at: number) => ((at - from) / span) * (width - gym - 4);
+  const known = meals.filter(meal => meal.at >= from && meal.at <= start);
+  const last = known.reduce<TimelineMeal | null>((latest, meal) => (!latest || meal.at > latest.at ? meal : latest), null);
+  const radius = (kcal: number | null) => kcal === null ? 4 : Math.max(4, Math.min(9, Math.sqrt(kcal) / 3));
+  const body = <View onLayout={event => setWidth(event.nativeEvent.layout.width)} style={{ height }}>
+    {width ? <Svg width={width} height={height}>
+      <SvgText x={0} y={12} fontSize={10} fill={colors.textMuted}>{sleep ? `Noche · ${sleep}` : 'Noche · sin registrar'}</SvgText>
+      {big ? [0, 4, 8].map(h => <SvgText key={h} x={x(from + h * 3_600_000)} y={height - 4} fontSize={10} fill={colors.textMuted} textAnchor={h ? 'middle' : 'start'}>{clock(from + h * 3_600_000)}</SvgText>) : null}
+      <Line x1={0} y1={axis} x2={width - gym} y2={axis} stroke={colors.border} strokeWidth={1} />
+      {known.map((meal, index) => <Circle key={index} cx={x(meal.at)} cy={axis} r={radius(meal.calories)} fill={colors.primary} fillOpacity={meal === last ? 1 : 0.6} />)}
+      {last ? <SvgText x={Math.min(x(last.at), width - gym - 30)} y={axis + 22} fontSize={10} fill={colors.textMuted} textAnchor="middle">{ago((start - last.at) / 3_600_000)}</SvgText> : null}
+      <Rect x={width - gym} y={axis - 16} width={gym} height={32} rx={6} fill={colors.text} />
+      <SvgText x={width} y={12} fontSize={10} fill={colors.textMuted} textAnchor="end">{clock(start)}</SvgText>
+      {uncertain ? <SvgText x={0} y={axis + 22} fontSize={10} fill={colors.textMuted}>{uncertain === 'some' ? 'Hay comidas sin hora' : `${uncertain} ${uncertain === 1 ? 'comida' : 'comidas'} sin hora`}</SvgText> : null}
+    </Svg> : null}
+  </View>;
+  if (!onPress) return <View accessible accessibilityRole="image" accessibilityLabel={label} testID="comparisons-timeline">{body}</View>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={`${label}. Ver cómo llegaste`} onPress={() => { haptics.selection(); onPress(); }} testID="comparisons-timeline"
+    style={({ pressed }) => pressedStyle(pressed, reduced)}>{body}</Pressable>;
 }
 
 /**
@@ -145,8 +233,44 @@ const styles = StyleSheet.create({
   flex: { flex: 1, flexShrink: 1 },
   strip: { gap: spacing.sm, paddingVertical: spacing.xs },
   pill: { minWidth: 76, minHeight: 44, borderRadius: brandTokens.radius.inner, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: 2 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, justifyContent: 'space-between' },
-  cell: { minHeight: 56, borderRadius: brandTokens.radius.inner, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: 2 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: spacing.md },
+  cell: { gap: 1, paddingRight: spacing.sm },
+  kicker: { letterSpacing: 0.8, fontWeight: '600', textTransform: 'uppercase' },
+  tally: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', columnGap: spacing.lg, rowGap: spacing.xs },
+  tallyCell: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.xs },
+  exRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: 6 },
+  exRowStacked: { flexDirection: 'column', alignItems: 'flex-start' },
+  exName: { fontWeight: '600' },
+  mark: { justifyContent: 'center' },
+  markText: { textAlign: 'right' },
   method: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth },
   sheet: { gap: spacing.md, padding: brandTokens.layout.screenPadding, paddingBottom: spacing.xxl },
 });
+
+/**
+ * The sets of the two sessions as slopes: the previous time on the left, this time on the right, one line per set in its order.
+ * The line tilts by the change of reps at the same load; the set the comparison rests on is thicker and in the accent.
+ */
+export function SetSlopes({ pairs, before, now, label }: { pairs: readonly { key: string; number: number; before: string; now: string; used: boolean; change: number | null }[]; before: string; now: string; label: string }) {
+  const { colors } = useOwnlevelTheme();
+  const [width, setWidth] = useState(0);
+  const row = 40, top = 26, height = top + pairs.length * row, left = 72, right = Math.max(left + 40, width - 88);
+  const tilt = (change: number | null) => change === null ? 0 : Math.max(-14, Math.min(14, -change * 7));
+  return <View accessible accessibilityRole="image" accessibilityLabel={label} onLayout={event => setWidth(event.nativeEvent.layout.width)} style={{ height }} testID="evidence-slopes">
+    {width ? <Svg width={width} height={height}>
+      <SvgText x={left} y={12} fontSize={11} fill={colors.textMuted} textAnchor="middle">{before}</SvgText>
+      <SvgText x={right} y={12} fontSize={11} fill={colors.textMuted} textAnchor="middle">{now}</SvgText>
+      <Line x1={left} y1={top - 4} x2={left} y2={height} stroke={colors.border} />
+      <Line x1={right} y1={top - 4} x2={right} y2={height} stroke={colors.border} />
+      {pairs.map((pair, index) => {
+        const y = top + index * row + row / 2, end = y + tilt(pair.change);
+        return <G key={pair.key}>
+          <Line x1={left} y1={y} x2={right} y2={end} stroke={colors.primary} strokeOpacity={pair.used ? 1 : 0.45} strokeWidth={pair.used ? 3 : 2} strokeLinecap="round" />
+          <SvgText x={left - 8} y={y + 4} fontSize={12} fill={colors.text} textAnchor="end">{pair.before}</SvgText>
+          <SvgText x={right + 8} y={end + 4} fontSize={12} fill={colors.text}>{pair.change ? `${pair.now} · ${pair.change > 0 ? '+' : '−'}${Math.abs(pair.change)}` : pair.now}</SvgText>
+          <SvgText x={(left + right) / 2} y={Math.min(y, end) - 6} fontSize={10} fill={colors.textMuted} textAnchor="middle">{`serie ${pair.number}${pair.used ? ' · cuenta' : ''}`}</SvgText>
+        </G>;
+      })}
+    </Svg> : null}
+  </View>;
+}

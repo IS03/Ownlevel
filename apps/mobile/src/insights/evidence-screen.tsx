@@ -10,11 +10,13 @@ import { useProgressResource } from '@/progress/use-progress-resource';
 import { contextRows, evidenceMatch, evidenceNote, evidenceSelectionOf, recordRows, resultOf, sideRows, sideTitle, signalRow } from './evidence-model';
 import { FactRow } from './insights-screen';
 import { InsightRow } from './insight-row';
-import { LANE_TITLE, referenceText, statusArrow, statusText } from './insights-model';
-import { evidenceChange, formatPct, sideBySide } from './comparison-change';
-import { MethodLine } from './comparison-parts';
+import { referenceText, statusArrow, statusText } from './insights-model';
+import { evidenceChange, evidenceSentence, formatPct, loadStep, sideBySide } from './comparison-change';
+import { Kicker, MethodLine, SetSlopes } from './comparison-parts';
 import { insightsReturnHref } from './navigation';
 
+/** The result in plain words, the same for both methods: the method's name lives in «Cómo comparamos». */
+const PLAIN: Record<string, string> = { improved: 'Mejoró', higher_record: 'Mejoró', observed_stable: 'Igual', same_record: 'Igual', declined: 'Bajó', lower_record: 'Bajó' };
 const Section = ({ title }: { title: string }) => <AppText muted variant="footnote" style={styles.section} accessibilityRole="header">{title}</AppText>;
 
 /**
@@ -59,33 +61,29 @@ export function EvidenceScreen() {
   const pct = evidenceChange(item, result);
   const currentRows = sideRows(item.current, item, 'current'), referenceRows = item.reference ? sideRows(item.reference, item, 'reference') : [];
   const pairs = item.reference ? sideBySide(currentRows, referenceRows) : [];
+  // One load on both sides: the slopes show reps only (the sentence names the load). The set that counts is the best one used.
+  const loadsShown = new Set([...currentRows, ...referenceRows].map(row => row.load));
+  const oneLoad = loadsShown.size === 1 && !loadsShown.has(null);
+  const best = Math.max(-Infinity, ...pairs.filter(pair => pair.used && pair.nowAmount !== null).map(pair => pair.nowAmount!));
+  const bestIndex = pairs.findIndex(pair => pair.used && pair.nowAmount === best);
+  const slopes = pairs.map((pair, index) => ({ ...pair, used: index === bestIndex,
+    before: oneLoad && pair.beforeAmount !== null ? String(pair.beforeAmount) : pair.before, now: oneLoad && pair.nowAmount !== null ? String(pair.nowAmount) : pair.now }));
+  const sentence = evidenceSentence(item, result, pairs, item.context?.unit), step = loadStep(item, item.context?.unit);
   return scroll(<>
     {state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
     <View style={styles.block}>
+      {item.current.date ? <Kicker>{`${dayShort(item.current.date)}${item.reference?.date ? ` frente al ${dayShort(item.reference.date)}` : ''}`}</Kicker> : null}
       <Heading level={2}>{item.name || 'Ejercicio'}</Heading>
-      <AppText muted variant="footnote" testID="evidence-lane">{LANE_TITLE[lane]}</AppText>
-      <AppText variant="headline" testID="evidence-result" accessibilityLabel={`${statusText(lane, result)}${lane === 'partial' && statusArrow(result) ? ', con contexto parcial' : ''}${against ? `. ${against}` : ''}`}>
-        {statusArrow(result) ? `${statusArrow(result)} ` : ''}{statusText(lane, result)}
+      <AppText variant="headline" numeric testID="evidence-result" accessibilityLabel={`${statusText(lane, result)}${lane === 'partial' && statusArrow(result) ? ', con contexto parcial' : ''}${against ? `. ${against}` : ''}${pct !== null ? `. Cambio medido: ${formatPct(pct)}, repeticiones al mismo peso` : ''}`}>
+        {statusArrow(result) ? `${statusArrow(result)} ` : ''}{PLAIN[result] ?? statusText(lane, result)}{pct !== null ? <AppText variant="headline" numeric testID="evidence-change">{` · ${formatPct(pct)}`}</AppText> : null}
       </AppText>
-      {against ? <AppText muted testID="evidence-against">{against}</AppText> : null}
       {match === 'newer' ? <AppText muted variant="footnote" testID="evidence-newer">Hubo cambios en tus registros desde que abriste Comparaciones. La comparación es la misma; estos son los datos de ahora.</AppText> : null}
-      {pct !== null ? <AppText numeric variant="heroNumber" testID="evidence-change" accessibilityLabel={`Cambio medido: ${formatPct(pct)}, repeticiones al mismo peso`}>{formatPct(pct)}</AppText> : null}
+      {step ? <View style={[styles.pill, { backgroundColor: colors.brandSubtle }]} testID="evidence-load-step"><AppText variant="footnote" numeric style={{ color: colors.primary, fontWeight: '600' }}>{`${step.up ? '↑ Subiste' : '↓ Bajaste'} peso · ${step.text}`}</AppText></View> : null}
       {lane === 'partial' ? <MethodLine lanes={['partial']} testID="evidence-partial-limit" /> : null}
     </View>
-    {pairs.length ? <View style={[styles.table, { backgroundColor: colors.surface }]} testID="evidence-side-by-side">
-      <View style={[styles.tableRow, { borderColor: colors.border }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        <AppText muted variant="caption" style={styles.colNumber}>Serie</AppText>
-        <AppText muted variant="caption" numeric style={styles.col}>{item.reference?.date ? dayShort(item.reference.date) : 'Antes'}</AppText>
-        <AppText muted variant="caption" numeric style={styles.col}>{item.current.date ? dayShort(item.current.date) : 'Ahora'}</AppText>
-        <View style={styles.colDelta} />
-      </View>
-      {pairs.map(pair => <View key={pair.key} accessible accessibilityLabel={`Serie ${pair.number}: antes ${pair.before}, ahora ${pair.now}${pair.delta ? `, ${pair.delta === '=' ? 'igual' : pair.delta}` : ''}`} style={[styles.tableRow, { borderColor: colors.border }]}>
-        <AppText numeric style={[styles.colNumber, pair.used && { color: colors.primary }]}>{pair.number}</AppText>
-        <AppText numeric style={styles.col}>{pair.before}</AppText>
-        <AppText numeric style={[styles.col, pair.used && { color: colors.primary }]}>{pair.now}</AppText>
-        <AppText numeric muted style={styles.colDelta}>{pair.delta}</AppText>
-      </View>)}
-    </View> : null}
+    {pairs.length ? <SetSlopes pairs={slopes} before={item.reference?.date ? dayShort(item.reference.date) : 'Antes'} now={item.current.date ? dayShort(item.current.date) : 'Ahora'}
+      label={slopes.map(pair => `Serie ${pair.number}: antes ${pair.before}, ahora ${pair.now}${pair.delta ? `, ${pair.delta === '=' ? 'igual' : pair.delta}` : ''}${pair.used ? ', es la que cuenta' : ''}`).join('. ')} /> : null}
+    {sentence ? <AppText testID="evidence-sentence">{sentence}</AppText> : null}
     <Pressable accessibilityRole="button" accessibilityState={{ expanded: detail }} accessibilityLabel="Detalle de la comparación: todas las series, señales, récords y contexto" testID="evidence-detail-toggle"
       onPress={() => setDetail(current => !current)} style={({ pressed }) => [styles.toggle, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
       <View style={styles.flex}>
@@ -138,10 +136,6 @@ const styles = StyleSheet.create({
   note: { paddingTop: spacing.xs },
   flex: { flex: 1, flexShrink: 1 },
   toggle: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth },
-  table: { borderRadius: brandTokens.radius.card, paddingHorizontal: spacing.lg },
-  tableRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth },
-  colNumber: { width: 44 },
-  col: { flex: 1 },
-  colDelta: { width: 40, textAlign: 'right' },
+  pill: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
 });
 const dayShort = (date: string) => new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`)).replace('.', '');
