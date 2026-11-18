@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import type { ExerciseEvidence, PerformanceChange } from '@/api/performance-insights';
-import { evidenceSentence, loadStep } from './comparison-change';
+import { evidenceSentence, foodFacts, loadStep } from './comparison-change';
 import { arrivalTimelineOf, rowChangeOf, timelineLabel } from './comparison-arrival';
 
 /** Comparaciones más claras: the words and marks the screens draw. Fictitious values only. */
@@ -49,5 +49,27 @@ describe('línea de «Cómo llegaste»', () => {
     expect(timeline.uncertain).toBe(2);
     expect(arrivalTimelineOf(undefined)).toEqual({ meals: [], uncertain: 0 });
     expect(timelineLabel(0, 'some', null, null)).toBe('Las 12 horas antes de entrenar: sueño sin registrar, sin comidas con hora, y hay comidas sin hora comprobada');
+  });
+});
+
+describe('«Comida» frente al objetivo de cada día', () => {
+  const nutrition = (calories: number, missing = 0) => ({ activeMeals: 3, calories: { recorded: calories, missing }, proteinG: { recorded: 100, missing: 0 }, carbsG: { recorded: 200, missing: 0 }, fatG: { recorded: 50, missing: 0 } });
+  const session = (pre: number | null) => ({ context: { carbsPre3h: { value: pre === null ? null : 31, state: pre === null ? 'untimed_meal_in_scope' : 'recorded' },
+    preStart: { calories: { value: pre, state: pre === null ? 'untimed_meal_in_scope' : 'recorded' }, proteinG: { value: null, state: 'no_registered_meal_in_window' }, lastExplicitMeal: { hours: null, state: 'no_explicit_meal_in_12h', untimedInScope: false, unverifiedInScope: false } } } }) as never;
+  const day = (context: object) => ({ context: { metrics: [], nutrition: nutrition(2289), ...context } }) as never;
+  it('says each total against that day\'s own target, with an arrow and exact numbers', () => {
+    const facts = foodFacts(session(420), day({ target: { calories: 2300, proteinG: 150 }, previousDay: { date: '2026-11-16', nutrition: nutrition(1474), target: { calories: 2300, proteinG: 150 } } }));
+    expect(facts.map(fact => [fact.label, fact.value, fact.caption])).toEqual([
+      ['3 h antes', '420 kcal', '31 g carbos'], ['Ayer', '1.474 kcal', '↓ 826 bajo 2.300'], ['Ese día', '2.289 kcal', '↓ 11 bajo 2.300'],
+    ]);
+    expect(facts[1]!.spoken).toBe('Ayer: 1.474 kilocalorías, 826 por debajo del objetivo de 2.300');
+  });
+  it('a partial total or no meals is missing, never 0; a day without target says so; an older server shows no comparison', () => {
+    const facts = foodFacts(session(null), day({ nutrition: nutrition(1800, 1), target: { calories: null, proteinG: null }, previousDay: { date: '2026-11-16', nutrition: null, target: { calories: 2300, proteinG: null } } }));
+    expect(facts.map(fact => fact.value)).toEqual([null, null, null]);
+    expect(foodFacts(session(0), day({ target: { calories: null, proteinG: null } }))[2]!.caption).toBe('sin objetivo');
+    expect(foodFacts(session(0), day({}))[2]!.caption).toBeNull();
+    expect(foodFacts(session(0), day({ target: { calories: 2000, proteinG: null } }))[2]!.caption).toBe('↑ 289 sobre 2.000');
+    expect(foodFacts(session(0), day({}))[0]!.value).toBe('0 kcal');
   });
 });
