@@ -1,15 +1,16 @@
-import { useCallback, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { useCachedRead } from '@/api/use-cached-read';
 import { fetchProgressFindings, type ProgressEditorialFinding, type ProgressOverview, type ProgressDestination, type ProgressSpark } from '@/api/progress';
-import { AppIcon, AppText, Button, Heading, InlineUnavailable, ListRow, SkeletonBlock, UnavailableState, brandTokens, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion, type AppIconName } from '@/design-system';
-import { haptics } from '@/platform/haptics';
-import { periodSummaryHref, explorationHref } from '@/insights/navigation';
-import { exactPeriodDate, exactPeriodRange } from '@/insights/period-model';
+import { AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, spacing } from '@/design-system';
+import { exactPeriodRange } from '@/insights/period-model';
 import { addDays, progressStateForRange } from './progress-range';
-import { InsightRow } from '@/insights/insight-row';
+import { fetchHistoryRange } from '@/api/history';
+import { fetchNutritionReport, reportQueryKey } from '@/api/nutrition-report';
+import { PanoramaAtlas, type AtlasDaily } from './panorama-atlas';
+import { PanoramaTools, type PortadaTool } from './panorama-tools';
 import { ProgressFindings } from './progress-findings';
 import { useProgressRange } from './progress-range-context';
 import { ProgressScroll } from './progress-scroll';
@@ -66,106 +67,43 @@ function Preview({ kind, spark, mode, selectedKey, onSelect }: {
     </View>;
 }
 
-function AreaLink({ title, value, action, onPress }: { title: string; value: string; action: string; onPress: () => void }) {
-    const { colors } = useOwnlevelTheme(), reduced = useReduceMotion(), { fontScale } = useWindowDimensions();
-    return <Pressable accessibilityRole="button" accessibilityLabel={action} accessibilityHint={`${title}: ${value}. Abre el detalle de esta ventana.`}
-      onPress={onPress} style={({ pressed }) => [styles.areaLink, pressedStyle(pressed, reduced)]}>
-      <View style={[styles.areaHeader, fontScale > 1.3 && styles.stacked]}>
-        <Heading level={2} style={styles.areaTitle}>{title}</Heading>
-        <AppText numeric variant="title2" style={[styles.primary, fontScale > 1.3 && styles.stackedPrimary]}>{value}</AppText>
-      </View>
-      <AppIcon name="chevronRight" color={colors.textMuted} size={17} />
-    </Pressable>;
-}
-
-/** Compact editorial projection of the same confirmed DTO. Full methods/targets remain in the existing details. */
 type SparkPoints = Partial<Record<SparkKind, string | null>>;
-export function ProgressPanorama({ data, onOpen, points = {}, onPoint = () => undefined }: { data: ProgressOverview; onOpen: (d: ProgressDestination, point?: PortadaPoint | null) => void;
-  points?: SparkPoints; onPoint?: (kind: SparkKind, key: string | null) => void }) {
-    const { colors } = useOwnlevelTheme();
-    const t = data.training.status === 'ok' ? data.training.data : null, n = data.nutrition.status === 'ok' ? data.nutrition.data : null;
-    const w = data.panorama?.weight, coverage = data.panorama?.nutrition;
-    const comparable = t && t.sessions > 0 && data.inPeriod && data.inPeriod.comparable > 0 ? data.inPeriod : null;
-    return <View style={styles.areas} testID="progress-panorama">
-      <AppText muted numeric variant="caption">Últimos {data.period.days} días · {exactPeriodRange(data.period)}{data.period.includesToday ? ' · hoy en curso' : ''}</AppText>
-      <View style={[styles.area, { borderColor: colors.border }]} testID="panorama-training">
-        <AreaLink title="Entrenamiento" value={!t ? 'No disponible' : comparable ? `${comparable.improved} de ${comparable.comparable}` : `${t.sessions} ${t.sessions === 1 ? 'sesión' : 'sesiones'}`}
-          action="Ver actividad y ejercicios" onPress={() => onOpen({ kind: 'training' }, inspectedPoint(data.sparks?.training, 'training', points.training))} />
-        {!t ? <AppText muted>No pudimos leer Entrenamiento.</AppText> : <>
-          <AppText muted numeric variant="caption">{comparable ? 'Ejercicios con mejora · primera frente a última sesión' : !t.sessions ? 'Sin sesiones registradas en esta ventana.' : data.inPeriod == null ? 'Comparación no disponible en esta lectura.' : 'Sin ejercicios comparables entre dos sesiones de esta ventana.'}</AppText>
-          {t.sessions ? <AppText muted numeric variant="caption">{t.sessions} {t.sessions === 1 ? 'sesión' : 'sesiones'} · {t.trainingDays} {t.trainingDays === 1 ? 'día entrenado' : 'días entrenados'} · {t.sets} {t.sets === 1 ? 'serie' : 'series'}</AppText> : null}
-          <Preview kind="training" spark={data.sparks?.training} mode="bars" selectedKey={points.training ?? null} onSelect={k => onPoint('training', k)} />
-        </>}
-      </View>
-      <View style={[styles.area, { borderColor: colors.border }]} testID="panorama-body">
-        <AreaLink title="Cuerpo" value={data.body.status !== 'ok' ? 'No disponible' : w?.last ? portadaValue(w.last.value, 'kg') : w === undefined ? 'Sin lectura' : 'Sin pesajes'}
-          action="Ver peso y medidas" onPress={() => onOpen({ kind: 'body' }, inspectedPoint(data.sparks?.weight, 'weight', points.weight))} />
-        {data.body.status !== 'ok' ? <AppText muted>No pudimos leer Cuerpo.</AppText> : w === undefined ? <AppText muted variant="caption">La fecha exacta y cobertura de peso no están disponibles en esta versión.</AppText> : w?.last ? <>
-          <AppText muted numeric variant="caption">Último de la ventana · {exactPeriodDate(w.last.date)} · {w.count} {w.count === 1 ? 'registro válido' : 'registros válidos'}</AppText>
-          {w.count === 1 ? <AppText muted variant="caption">Un solo registro no permite describir una tendencia.</AppText> : null}
-          <Preview kind="weight" spark={data.sparks?.weight} mode="dots" selectedKey={points.weight ?? null} onSelect={k => onPoint('weight', k)} />
-        </> : <AppText muted variant="caption">Sin pesajes válidos en esta ventana.</AppText>}
-      </View>
-      <View style={[styles.area, { borderColor: colors.border }]} testID="panorama-nutrition">
-        <AreaLink title="Nutrición" value={!n ? 'No disponible' : n.averageKcal === null ? 'Sin promedio' : `${portadaValue(n.averageKcal, 'kcal')}/día`}
-          action="Ver alimentación y objetivos" onPress={() => onOpen({ kind: 'nutrition' }, inspectedPoint(data.sparks?.nutrition, 'nutrition', points.nutrition))} />
-        {!n ? <AppText muted>No pudimos leer Nutrición.</AppText> : <>
-          <AppText muted numeric variant="caption">{coverage ? `${coverage.caloriesDays} días utilizados` : 'Días utilizados no disponibles'} · {n.registeredDays} de {n.days} días con alimentación registrada</AppText>
-          <AppText muted numeric variant="caption">Proteína: {n.averageProteinG === null ? 'sin promedio' : `${portadaValue(n.averageProteinG, 'g')}/día`}{coverage ? ` · ${coverage.proteinDays} días utilizados` : ''}</AppText>
-          <Preview kind="nutrition" spark={data.sparks?.nutrition} mode="bars" selectedKey={points.nutrition ?? null} onSelect={k => onPoint('nutrition', k)} />
-        </>}
-      </View>
-    </View>;
-}
-
-/** #519 · A tool of the portada: icon, name, what it is for and a chevron, so it reads as something to open. Nothing is read to show it. */
-function ToolRow({ icon, title, detail, onPress, testID }: { icon: AppIconName; title: string; detail: string; onPress: () => void; testID: string }) {
-    const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
-    return <Pressable accessibilityRole="button" accessibilityLabel={`${title}: ${detail}`} testID={testID} onPress={() => { haptics.selection(); onPress(); }}
-      style={({ pressed }) => [styles.tool, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
-      <AppIcon name={icon} color={colors.primary} size={20} />
-      <View style={styles.toolText}><AppText variant="headline">{title}</AppText><AppText muted variant="footnote">{detail}</AppText></View>
-      <AppIcon name="chevronRight" color={colors.textMuted} size={15} />
-    </Pressable>;
-}
-
-export type PortadaTool = 'compare' | 'metrics' | 'meal-times';
-/**
- * #519 · «Explorar tus datos»: the four tools people look for, in sight; the rest one tap away in «Ver todas las herramientas».
- * Each reads only when it opens. The tools of a period (compare, meal times) open on the portada's window.
- */
-function ExplorationLinks({ today, contextOpen, onToggle, onTool }: { today: string; contextOpen: boolean; onToggle: () => void; onTool: (tool: PortadaTool) => void }) {
-    const router = useRouter();
-    const origin = { fromProgress: '1' as const };
-    return <View style={styles.explore} testID="panorama-explore">
-      <Heading level={2}>Explorar tus datos</Heading>
-      <ToolRow icon="compare" title="Comparar períodos" detail="Dos períodos, cada uno con sus fechas" testID="panorama-tool-compare" onPress={() => onTool('compare')} />
-      <ToolRow icon="activity" title="Métricas personales" detail="Sueño, pasos y lo que registrás" testID="panorama-tool-metrics" onPress={() => onTool('metrics')} />
-      <ToolRow icon="dumbbell" title="Comparaciones" detail="Cada sesión frente a la anterior" testID="panorama-tool-comparisons"
-        onPress={() => router.navigate({ pathname: '/(tabs)/train/insights', params: origin })} />
-      <ToolRow icon="clock" title="Cuándo comés" detail="Tus comidas por franja horaria" testID="panorama-tool-meal-times" onPress={() => onTool('meal-times')} />
-      <InsightRow label="Ver todas las herramientas" detail="Recorrido por fecha, últimos tres meses, semanas, lo que se movió junto y más" spoken="Ver todas las herramientas" expanded={contextOpen} onPress={onToggle} />
-      {contextOpen ? <View testID="panorama-context-links">
-        <ListRow title="Explorar período" subtitle="Mis vistas, Etapas y lo que se movió junto" accessibilityLabel="Explorar período: mis vistas, etapas y lo que se movió junto" onPress={() => router.navigate('/(tabs)/progress/period')} />
-        <ListRow title="Recorrido por fecha" subtitle="Entrenamiento, Cuerpo, Nutrición y Métricas" onPress={() => router.navigate('/history/calendar')} />
-        <ListRow title="Últimos tres meses" onPress={() => router.navigate(periodSummaryHref(today, origin))} />
-        <ListRow title="Semanas y coincidencias" subtitle="Comparación A/B de los registros" accessibilityLabel="Semanas, A/B y coincidencias descriptivas" onPress={() => router.navigate(explorationHref(today, undefined, undefined, origin))} />
-        {/* Both read only when opened: discovering them adds no request to this screen. */}
-        <ListRow title="Lo que se movió junto" subtitle="Comida y resultados frente al período anterior equivalente" testID="panorama-connections-link"
-          accessibilityLabel="Lo que se movió junto: comida y resultados frente al período anterior equivalente" onPress={() => router.navigate({ pathname: '/(tabs)/progress/period', params: { focus: 'connections' } })} />
-        <ListRow title="Qué influye" subtitle="Preguntas que comparan tus días entre sí" testID="panorama-influence-link"
-          accessibilityLabel="Qué influye: preguntas que comparan tus días entre sí" onPress={() => router.navigate('/(tabs)/progress/influence')} />
-        <AppText muted variant="caption">Se leen al abrirlos. Las coincidencias de registros no acreditan una relación ni su causa.</AppText>
-      </View> : null}
-    </View>;
+export function ProgressPanorama({ data, onOpen, points = {}, onPoint = () => undefined, daily, expanded = false, onToggle = () => undefined }: {
+  data: ProgressOverview; onOpen: (d: ProgressDestination, point?: PortadaPoint | null) => void;
+  points?: SparkPoints; onPoint?: (kind: SparkKind, key: string | null) => void; daily?: AtlasDaily; expanded?: boolean; onToggle?: () => void;
+}) {
+  const openArea = (d: ProgressDestination) => {
+    const kind = d.kind === 'body' ? 'weight' : d.kind === 'nutrition' ? 'nutrition' : 'training';
+    onOpen(d, inspectedPoint(data.sparks?.[kind], kind, points[kind]));
+  };
+  return <>
+    <PanoramaAtlas data={data} daily={daily} onOpen={openArea} />
+    <Button variant="quiet" label={expanded ? 'Ocultar puntos del resumen' : 'Ver puntos del resumen'} onPress={onToggle} />
+    {expanded ? <View style={styles.preview} testID="panorama-points">
+      {(['training', 'weight', 'nutrition'] as const).map(kind => <View key={kind}>
+        <Heading level={2}>{kind === 'training' ? 'Entrenamiento' : kind === 'weight' ? 'Cuerpo' : 'Nutrición'}</Heading>
+        <Preview kind={kind} spark={data.sparks?.[kind]} mode={kind === 'weight' ? 'dots' : 'bars'} selectedKey={points[kind] ?? null} onSelect={key => onPoint(kind, key)} />
+      </View>)}
+    </View> : null}
+  </>;
 }
 
 function OverviewContent({selected, onSelect, contextOpen, onContextToggle, points, onPoint}: {selected: string | null; onSelect: (id: string | null) => void; contextOpen: boolean; onContextToggle: () => void;
   points: SparkPoints; onPoint: (kind: SparkKind, key: string | null) => void}) {
     const { client } = useMobileApi(), router = useRouter(), { today, state: rangeState, setState } = useProgressRange();
-    const from = addDays(today, -29), query = { period: 'custom' as const, from, to: today };
+    const from = addDays(today, -29);
+    const query = useMemo(() => ({ period: 'custom' as const, from, to: today }), [from, today]);
     const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressFindings(c, { period: 'custom', from, to: today }, signal), [from, today]);
     const { state, data, refresh } = useCachedRead(client, 'overview', `panorama|${from}|${today}`, load);
+    const historyLoad = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchHistoryRange(c, { from: query.from, to: query.to }, signal), [query]);
+    const reportLoad = useCallback((c: NonNullable<typeof client>, signal: AbortSignal, background?: boolean) => fetchNutritionReport(c, query, signal, background), [query]);
+    const history = useCachedRead(data ? client : null, 'overview', `panorama-calendar|${from}|${today}`, historyLoad);
+    const report = useCachedRead(data ? client : null, 'nutrition-report', reportQueryKey(query), reportLoad);
+    const refreshAll = () => Promise.all([refresh(), history.refresh(), report.refresh()]);
+    const daily: AtlasDaily = { history: history.data, report: report.data,
+      historyStale: history.state.status === 'unavailable' && !!history.data, reportStale: report.state.status === 'unavailable' && !!report.data,
+      loading: history.state.status === 'loading' || report.state.status === 'loading' };
+
     const open = (d: ProgressDestination, point?: PortadaPoint | null, finding?: ProgressEditorialFinding) => {
         // Training/exercise details also use the shared range; set it before mounting their reader.
         const next = progressStateForRange(query.from, query.to, rangeState, today);
@@ -177,6 +115,11 @@ function OverviewContent({selected, onSelect, contextOpen, onContextToggle, poin
     };
     // #519 · A tool of a period opens on the portada's window, like the areas above; «Comparar períodos» opens the A/B sheet once.
     const tool = (t: PortadaTool) => {
+        if (t === 'weight' || t === 'measures') {
+          const next = progressStateForRange(query.from, query.to, rangeState, today);
+          if (next) setState({ ...next, compare: { kind: 'none' } });
+          router.push({ pathname: '/(tabs)/progress/trends/body', params: { from, to: today, ...(t === 'weight' ? { metric: 'body.weight' } : { section: 'measures' }) } }); return;
+        }
         if (t === 'metrics') { router.push('/(tabs)/progress/trends/metrics'); return; }
         // The 30 days are only a proposal inside the A/B sheet: the active range and B change only on «Listo».
         if (t === 'compare') { router.navigate({ pathname: '/(tabs)/progress/period', params: { sheet: 'compare', proposalFrom: query.from, proposalTo: query.to } }); return; }
@@ -184,10 +127,10 @@ function OverviewContent({selected, onSelect, contextOpen, onContextToggle, poin
         if (next) setState({ ...next, compare: { kind: 'none' } });
         router.push('/(tabs)/progress/trends/meal-times');
     };
-    return <ProgressScroll root periodControls={false} title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()}/>}>
+    return <ProgressScroll root periodControls={false} title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={(state.status === 'ready' && state.refreshing) || (history.state.status === 'ready' && history.state.refreshing) || (report.state.status === 'ready' && report.state.refreshing)} onRefresh={() => void refreshAll()}/>}>
    <ProgressReadStatus state={state}/>
-   {data ? <>{state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Conservamos la última lectura confirmada." actionLabel="Reintentar" onAction={() => void refresh()}/> : null}<ProgressPanorama data={data} onOpen={open} points={points} onPoint={onPoint}/><ProgressFindings items={data.findings} sourcesUnavailable={data.training.status !== 'ok' || data.nutrition.status !== 'ok'} selected={selected} onSelect={onSelect} onOpen={item => open(item.destination, null, item)}/></> : state.status === 'loading' ? <SkeletonBlock height={176}/> : <UnavailableState title="No pudimos leer tu progreso" description="Tus registros siguen guardados." action={<Button label="Reintentar" onPress={() => void refresh()}/>}/>}
-   <ExplorationLinks today={today} contextOpen={contextOpen} onToggle={onContextToggle} onTool={tool}/>
+   {data ? <>{state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Conservamos la última lectura confirmada." actionLabel="Reintentar" onAction={() => void refreshAll()}/> : null}<ProgressPanorama data={data} daily={daily} onOpen={open} points={points} onPoint={onPoint} expanded={contextOpen} onToggle={onContextToggle}/><ProgressFindings items={data.findings} sourcesUnavailable={data.training.status !== 'ok' || data.nutrition.status !== 'ok'} selected={selected} onSelect={onSelect} onOpen={item => open(item.destination, null, item)}/></> : state.status === 'loading' ? <SkeletonBlock height={176}/> : <UnavailableState title="No pudimos leer tu progreso" description="Tus registros siguen guardados." action={<Button label="Reintentar" onPress={() => void refresh()}/>}/>}
+   <PanoramaTools today={today} onTool={tool}/>
  </ProgressScroll>;
 }
 /** Unmount this reading while the tab/route is hidden; confirmed cache restores it synchronously on return. */
@@ -207,18 +150,7 @@ export function ProgressOverviewScreen() {
       onPoint={(kind, key) => setSelection(s => ({...s, points: {...s.points, [kind]: key}}))}/> : null;
 }
 const styles = StyleSheet.create({
-    areas: { gap: spacing.md },
-    area: { gap: spacing.xs, paddingBottom: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth },
-    areaLink: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: brandTokens.layout.minTouch },
-    areaHeader: { flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
-    areaTitle: { flex: 1 },
-    primary: { flexShrink: 1, textAlign: 'right' },
-    stacked: { flexDirection: 'column', alignItems: 'flex-start' },
-    stackedPrimary: { textAlign: 'left' },
     preview: { gap: spacing.xs },
     reserve: { opacity: 0 },
     readout: { position: 'absolute', top: 0, left: 0, right: 0 },
-    explore: { gap: spacing.xs, paddingTop: spacing.md },
-  tool: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth },
-  toolText: { flex: 1, gap: 2 },
 });
