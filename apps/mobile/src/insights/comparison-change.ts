@@ -115,19 +115,20 @@ const FACTOR_LABEL: Record<string, string> = {
   carbs_pre_3h: 'Carbos 3 h antes', last_meal_hours: 'Última comida', calories_day: 'Kcal del día', protein_previous_day: 'Proteína ayer',
   calories_previous_day: 'Kcal ayer', sleep_night_before: 'Sueño de la noche', energy_pre: 'Energía al empezar',
 };
-export function factorLabel(factor: Pick<RelationFactor, 'key' | 'metricId'>, metrics: readonly { id: string; name: string }[]) {
+export function factorLabel(factor: { key: string; metricId: string | null }, metrics: readonly { id: string; name: string }[]) {
   if (FACTOR_LABEL[factor.key]) return FACTOR_LABEL[factor.key]!;
   const name = metrics.find(metric => metric.id === factor.metricId)?.name;
   return name ? `${name} ayer` : 'Métrica ayer';
 }
 /** A factor's value in its own unit: grams, kcal, hours, the 1–5 scale or the metric's unit. */
-export function factorValue(factor: Pick<RelationFactor, 'key' | 'unit'>, value: number): string {
+export function factorValue(factor: { key: string; unit: string | null }, value: number): string {
   if (factor.key === 'last_meal_hours') return hoursText(value);
   // A median of ordinal answers: a word, or the two words it falls between. Never a number on that scale.
   if (factor.key === 'energy_pre') return Number.isInteger(value) ? feelingWord('energy', { value }) : `entre ${feelingWord('energy', { value: Math.floor(value) })} y ${feelingWord('energy', { value: Math.ceil(value) })}`;
   if (factor.unit === 'g') return grams(value);
   if (factor.unit === 'kcal') return kcal(value);
-  if (factor.key === 'sleep_night_before') return sleepText(value, factor.unit);
+  if (factor.key === 'sleep_night_before' || factor.key === 'sleep_week') return sleepText(value, factor.unit);
+  if (factor.unit === '%') return `${integer.format(Math.round(value))} %`;
   return `${decimal.format(value)}${factor.unit ? ` ${factor.unit}` : ''}`;
 }
 /** One line under a factor: the two medians, or what is missing for one. */
