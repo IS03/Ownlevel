@@ -72,7 +72,7 @@ export function CustomRangeSheet({ onClose, shortPreset = false }: { onClose: ()
   // Step the unit you are on (the previous week, month, 3 months…) without a stepper on screen.
   const prev = shiftProgressRange(state, -1, today), next = shiftProgressRange(state, 1, today);
   const move = (to: ProgressRangeState) => { setState(to); onClose(); };
-  return <Sheet title="Elegir período" subtitle={rangeSubtitle(range, today, draft)} valid={valid} onClose={onClose} onDone={() => { if (range && valid) apply(range); }}>
+  return <Sheet title="Elegir período" subtitle={rangeSubtitle(range, today, draft)} valid={valid} onClose={onClose} onDone={() => { if (range && valid) { if(range.start === current.start && range.end === current.end) onClose(); else apply(range); } }}>
     {/* One row of shortcuts that scrolls sideways, like the period bar: stepping the unit first, then the quick ranges. */}
     <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} style={styles.shortcutRow} contentContainerStyle={styles.shortcutScroll}>
       <View style={styles.shortcutGroup} testID="progress-period-shift">
