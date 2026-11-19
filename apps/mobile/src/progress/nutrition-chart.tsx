@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import type { NutritionReport, ReportDailyRow } from '@/api/nutrition-report';
-import { AppIcon, AppText, Button, Chip, ChipGroup, Heading, SegmentedControl, brandTokens, radius, spacing, typography, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, Button, Chip, ChipGroup, Heading, pressedStyle, useReduceMotion, brandTokens, radius, spacing, typography, useOwnlevelTheme } from '@/design-system';
+import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
+import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { haptics } from '@/platform/haptics';
 import { ProgressRow } from './progress-row';
 import { inputNutritionDate as date } from '@/nutrition/day-format';
@@ -79,7 +81,7 @@ function blockStagesText(s: ReturnType<typeof blockStages>, spoken = false) {
 }
 function dayState(d: ReportDailyRow, n: NutritionChartNutrient) {
   const status = d.nutrients[n].status, copy = NUTRIENTS[n];
-  return d.mealCount === 0 ? 'Sin registros nutricionales; no equivale a cero'
+  return d.mealCount === 0 ? d.hasNutrition ? 'Registro nutricional sin desglose de comidas' : 'Sin registros nutricionales; no equivale a cero'
     : status === 'unknown' ? `Entradas registradas sin ${copy.known}`
     : status === 'partial' ? `Suma parcial: solo ${copy.known}` : copy.complete;
 }
@@ -92,8 +94,10 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
   /** #531 · The «Etapas» toggle; local, it reads nothing. */
   stages?: boolean; onStages?: (next: boolean) => void;
 }) {
-  const { colors } = useOwnlevelTheme(), { compareOn, compareText } = useProgressRange();
+  const { colors } = useOwnlevelTheme(), reduced = useReduceMotion(), { compareOn, compareText } = useProgressRange();
   const { fontScale } = useWindowDimensions(), [width, setWidth] = useState(300);
+  const [details, setDetails] = useState(false);
+  const Selector = fontScale > 1.3 ? ChipGroup : ExerciseSegmented;
   const copy = NUTRIENTS[nutrient], fmt = (value: number) => valueText(nutrient, value), spoken = (value: number) => valueText(nutrient, value, true);
   const series = [{ key: 'current' as const, title: 'Período elegido', report, points: points(report, nutrient) },
     ...(compareOn && reference ? [{ key: 'reference' as const, title: `Comparación · ${compareText}`, report: reference, points: points(reference, nutrient) }] : [])];
@@ -116,7 +120,7 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
   return <View style={styles.section} testID="nutrition-progress-chart">
     <Heading level={2}>{copy.title}</Heading>
     {/* #519 · Same bars, period, A/B side and selection: only the nutrient they show changes. */}
-    <SegmentedControl accessibilityLabel="Nutriente del gráfico" value={nutrient} options={[
+    <Selector accessibilityLabel="Nutriente del gráfico" value={nutrient} options={[
       { value: 'calories', label: NUTRIENTS.calories.label }, { value: 'protein', label: NUTRIENTS.protein.label },
     ]} onChange={next => { if (next !== nutrient) { haptics.selection(); onNutrient(next); } }} />
     {compareOn ? <ChipGroup accessibilityLabel="Período del gráfico" value={activeSeries} options={[
@@ -152,13 +156,13 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
               return <Pressable key={p.start} testID={`nutrition-chart-${s.key}-${p.start}-${p.value === null ? 'gap' : 'bar'}`}
                 accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={label}
                 accessibilityHint="Muestra el detalle. Otro toque quita la selección."
-                onPress={() => onSelect(active ? null : { series: s.key, start: p.start, end: p.end, daysOpen: false })}
-                style={[styles.slot, { minWidth: brandTokens.layout.minTouch }, active && { borderColor: colors.primary, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.inner }]}>
+                onPress={() => { haptics.selection(); setDetails(false); onSelect(active ? null : { series: s.key, start: p.start, end: p.end, daysOpen: false }); }}
+                style={({ pressed }) => [styles.slot, { minWidth: brandTokens.layout.minTouch }, active && { backgroundColor: colors.brandSubtle, borderRadius: radius.inner }, pressedStyle(pressed, reduced)]}>
                 <View style={styles.bar} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
                   {/* A neutral band behind the bar, joined across the run's slots and cut at its ends; the bar, zero line and gap stay on top. */}
                   {run ? <View pointerEvents="none" testID={`nutrition-chart-${s.key}-stage-${p.start}`}
                     style={[styles.stageBand, { backgroundColor: colors.border, left: run.first ? 1 : -spacing.xs, right: run.last ? 1 : -spacing.xs }]} /> : null}
-                  {p.value !== null ? <View style={{ height: p.value === 0 ? 1 : Math.max(2, 150 * p.value / max), backgroundColor: p.value === 0 ? colors.border : s.key === 'reference' ? colors.textMuted : colors.primary, opacity: p.today || s.key === 'reference' ? 0.4 : 1 }} /> : null}
+                  {p.value !== null ? <Animated.View layout={reduced ? undefined : LinearTransition.duration(brandTokens.motion.duration.base)} style={{ borderTopLeftRadius: radius.inner, borderTopRightRadius: radius.inner, height: p.value === 0 ? 1 : Math.max(2, 150 * p.value / max), backgroundColor: p.value === 0 ? colors.border : s.key === 'reference' ? colors.textMuted : colors.primary, opacity: p.today || s.key === 'reference' ? 0.4 : 1 }} /> : <AppText muted variant="caption">—</AppText>}
                 </View>
                 <AppText numeric muted variant="caption">{p.start.slice(8)}/{p.start.slice(5, 7)}</AppText>
               </Pressable>;
@@ -170,11 +174,13 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
     </View>;
     })}
     {compareOn && !reference ? <AppText muted>Comparación no disponible.</AppText> : null}
-    <View style={styles.section} testID="nutrition-chart-inspection">
+    <Animated.View entering={FadeIn.duration(brandTokens.motion.duration.fast)}
+      layout={reduced ? undefined : LinearTransition.duration(brandTokens.motion.duration.base)}
+      style={[styles.section, selected && { padding: brandTokens.layout.cardPadding, borderRadius: radius.card, backgroundColor: colors.surfaceRaised }]} testID="nutrition-chart-inspection">
       <View accessible accessibilityLiveRegion="polite" accessibilityLabel={`${selected ? range(selected.start, selected.end) : prompt}, ${spokenValue}${source ? `, ${source.title}` : ''}${selectedBlockStages ? `, ${blockStagesText(selectedBlockStages, true)}` : ''}`}>
         {selected || !canInspect ? <>
           <AppText variant="headline">{selected ? range(selected.start, selected.end) : prompt}</AppText>
-          <AppText numeric>{value}</AppText>
+<AppText numeric variant="title1">{value}</AppText>
         </> : <AppText muted variant="footnote">Tocá una barra para ver su fecha, valor y cobertura.</AppText>}
         {/* Which side of A/B the datum is from, only when there are two: date, value and coverage come first. */}
         {compareOn && source && selected ? <AppText muted variant="caption">{source.title} · {range(source.report.range.start, source.report.range.end)}</AppText> : null}
@@ -182,11 +188,13 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
       {selection?.start && !selected ? <AppText muted>El dato seleccionado ya no está disponible en esta lectura. Elegí otra barra.</AppText> : null}
       {selected?.day ? <>
         {/* #519 · Date, value, then coverage: what is known about this datum, next to it. */}
-        <AppText muted testID="nutrition-chart-coverage">{dayState(selected.day, nutrient)}.</AppText>
+        {selected.day.nutrients[nutrient].status !== 'complete' || details ? <AppText muted variant="footnote" testID="nutrition-chart-coverage">{dayState(selected.day, nutrient)}.</AppText> : null}
         {showStages ? <AppText muted variant="footnote" testID="nutrition-chart-stage">{selectedStage ? `Etapa: ${selectedStage}.` : 'Sin etapa informada.'}</AppText> : null}
         {selected.today ? <AppText variant="footnote" testID="nutrition-chart-today">Hoy está en curso: sus valores pueden cambiar y no entran en el promedio del período.</AppText> : null}
-        <AppText numeric muted variant="caption">{selected.day.nutrients[nutrient].knownMeals} de {selected.day.mealCount} entradas con {copy.known} · {selected.day.nutrients[nutrient].missingMeals} sin ese dato{selected.day.imported ? ' · incluye registro importado' : ''}.</AppText>
+        {selected.day.mealCount === 0 && selected.day.hasNutrition ? <AppText muted variant="caption">Sin entradas de comidas para contar{selected.day.imported ? ' · registro importado' : ''}.</AppText> :
+          <AppText numeric muted variant="caption">{selected.day.nutrients[nutrient].knownMeals} de {selected.day.mealCount} entradas con {copy.known} · {selected.day.nutrients[nutrient].missingMeals} sin ese dato{selected.day.imported ? ' · incluye registro importado' : ''}.</AppText>}
         <AppText numeric muted variant="caption">{target === null ? 'Sin objetivo histórico acreditado para esta fecha.' : `Objetivo registrado de esta fecha: ${fmt(target)}.`}</AppText>
+        {selected.day.nutrients[nutrient].status === 'complete' ? <Button label={details ? 'Ocultar cobertura' : 'Ver cobertura'} variant="quiet" onPress={() => { haptics.selection(); setDetails(v => !v); }} /> : null}
         <ProgressRow testID="nutrition-chart-open-day" label={`Ver comidas de ese día, ${range(selected.start, selected.end)}`} onPress={() => onDate(selected.start)}>
           <AppText variant="body" style={[styles.grow, { color: colors.primary }]}>Ver comidas de ese día</AppText>
         </ProgressRow>
@@ -200,7 +208,7 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
           onPress={() => { if (selection) onSelect({ ...selection, daysOpen: !selection.daysOpen }); }} />
         {selection?.daysOpen ? <NutritionReportDays rows={rows} onDate={onDate} /> : null}
       </> : null}
-    </View>
+    </Animated.View>
     <ChartHelp compare={compareOn} stages={hasStages} />
   </View>;
 }

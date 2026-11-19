@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshControl, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchNutritionReport, reportQueryKey, type NutritionReport, type ReportQuery } from '@/api/nutrition-report';
 import { fetchProgressNutritionTiming, progressRequestKey } from '@/api/progress';
@@ -23,7 +23,8 @@ import { useProgressResource } from './use-progress-resource';
 import { useCachedRead } from '@/api/use-cached-read';
 import { useProgressRouteRange } from './use-progress-route-range';
 import { NutritionChart, type NutritionChartNutrient, type NutritionInspection } from './nutrition-chart';
-import { NutritionReportDetails } from './nutrition-report-details';
+import { NutritionTopics, NutritionTopicContent } from './nutrition-panorama';
+import { NUTRITION_SECTIONS, nutritionSection } from './nutrition-sections';
 import { nutritionChartDayHref } from './nutrition-chart-navigation';
 import { timingHeadline } from './meal-times-model';
 import { figuresFitInRow, useMeasuredWidth } from './figure-layout';
@@ -71,14 +72,20 @@ function daysText(report: NutritionReport) {
   return `Promedio de ${days(c.denominator)} con dato${protein}${partial}${report.days.some((d) => d.isToday) ? ', sin contar hoy' : ''}`;
 }
 type InspectionProps = { selection: NutritionInspection; onSelect: (next: NutritionInspection) => void; portada?: PortadaPoint | null;
-  nutrient: NutritionChartNutrient; onNutrient: (next: NutritionChartNutrient) => void; stages: boolean; onStages: (next: boolean) => void };
+  onCompare: () => void; nutrient: NutritionChartNutrient; onNutrient: (next: NutritionChartNutrient) => void; stages: boolean; onStages: (next: boolean) => void };
 // The portada averages the complete days of an interval; this chart shows each day: never the same datum.
 const NO_DAILY_EQUIVALENT = 'La portada promedia los días completos de ese intervalo y este gráfico muestra cada día: no hay un dato equivalente para seleccionar.';
-function ReportContent({ report, reference, selection, onSelect, portada, nutrient, onNutrient, stages, onStages }: { report: NutritionReport; reference?: NutritionReport } & InspectionProps) {
+function ReportContent({ report, reference, selection, onSelect, portada, nutrient, onNutrient, stages, onStages, onCompare }: { report: NutritionReport; reference?: NutritionReport } & InspectionProps) {
   const router = useRouter();
   const { compareOn, compareText } = useProgressRange();
-  const openDate = (date: string) => { const href = nutritionChartDayHref(date); if (href) router.push(href); };
+  const section = nutritionSection(useLocalSearchParams().section);
+  const openDate = (date: string) => { const href = nutritionChartDayHref(date, section); if (href) router.push(href); };
   const { width, fontScale, onLayout } = useMeasuredWidth();
+  if (section) return <>
+    {report.range.notice ? <AppText accessibilityRole="alert">{report.range.notice}</AppText> : null}
+    {compareOn ? <AppText muted variant="caption">Período elegido</AppText> : null}
+    <NutritionTopicContent key={`${reportQueryKey(report.range.requested)}|${section}`} section={section} report={report} onDate={openDate} />
+  </>;
   const figures = (['calories', 'protein'] as const).map((key, i) => {
     const stat = report.summary.metrics[key], unit = i === 0 ? 'kcal' : 'g';
     const previous = reference?.summary.metrics[key].value;
@@ -94,7 +101,7 @@ function ReportContent({ report, reference, selection, onSelect, portada, nutrie
     const label = `${name}: ${value === null ? 'sin dato' : `${formatValue(stat.value, unit, 'integer')} por día`}${target ? `. Objetivo histórico promedio ${target}` : ''}${spokenVersus ? `. ${compareText}: ${spokenVersus}` : ''}`;
     return { key, value, caption: i === 0 ? 'kcal por día' : 'proteína por día', target, versus, label };
   });
-  const stacked = !figuresFitInRow({ texts: figures.map(f => f.value ?? '—'), width, fontScale, variant: 'largeTitle' });
+  const stacked = !figuresFitInRow({ texts: figures.map(f => f.value ?? '—'), width, fontScale, variant: 'heroNumber' });
   // Target and A/B read across the full width under both figures, each value with its own unit.
   const targets = figures.filter(f => f.target).map(f => f.target).join(' · ');
   const versus = compareOn && reference ? figures.map(f => f.versus).join(' · ') : null;
@@ -114,14 +121,14 @@ function ReportContent({ report, reference, selection, onSelect, portada, nutrie
         <View testID="nutrition-progress-figures" style={[styles.primary, stacked && styles.stacked]}>
           {figures.map(f => (
             <View key={f.key} testID={`nutrition-progress-${f.key}`} style={styles.grow} accessible accessibilityLabel={f.label}>
-              <AppText numeric variant="largeTitle">{f.value ?? '—'}</AppText>
+              <AppText numeric variant={f.key === 'calories' ? 'heroNumber' : 'title2'}>{f.value ?? '—'}</AppText>
               <AppText muted variant="footnote">{f.caption}</AppText>
             </View>
           ))}
         </View>
         {/* Already part of each figure's spoken label: hidden from VoiceOver so it is not read twice. */}
         <View style={styles.context} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-          {targets ? <AppText muted numeric variant="footnote">Objetivo histórico promedio: {targets}</AppText> : null}
+          {compareOn && targets ? <AppText muted numeric variant="footnote">Objetivo histórico promedio: {targets}</AppText> : null}
           {versus ? <AppText numeric variant="footnote" testID="nutrition-progress-versus">{compareText}: {versus}</AppText> : null}
         </View>
         <AppText muted numeric variant="footnote">
@@ -131,16 +138,11 @@ function ReportContent({ report, reference, selection, onSelect, portada, nutrie
       </View>
       {portada ? <PortadaPointNote point={portada} matched={false} reason={NO_DAILY_EQUIVALENT} /> : null}
       <NutritionChart report={report} reference={reference} selection={selection} onSelect={onSelect} onDate={openDate} nutrient={nutrient} onNutrient={onNutrient} stages={stages} onStages={onStages} />
-      {/* #519 · Right under the chart: when you eat, then the daily average. The chart already says its dates. */}
-      <TimingEntry />
-      <NutritionReportDetails
-        report={report}
-        onDate={openDate}
-      />
+      <NutritionTopics report={report} timing={<TimingEntry />} onCompare={onCompare} />
     </>
   );
 }
-function ComparedReport({ report, query, selection, onSelect, refreshRevision, portada, nutrient, onNutrient, stages, onStages }: { report: NutritionReport; query: ReportQuery; refreshRevision: number } & InspectionProps) {
+function ComparedReport({ report, query, selection, onSelect, refreshRevision, portada, nutrient, onNutrient, stages, onStages, onCompare }: { report: NutritionReport; query: ReportQuery; refreshRevision: number } & InspectionProps) {
   const { client } = useMobileApi();
   const load = useCallback(
     (c: NonNullable<typeof client>, signal: AbortSignal) => fetchNutritionReport(c, query, signal),
@@ -167,7 +169,7 @@ function ComparedReport({ report, query, selection, onSelect, refreshRevision, p
           onAction={() => void refresh()}
         />
       ) : null}
-      <ReportContent report={report} reference={data} selection={selection} onSelect={onSelect} portada={portada} nutrient={nutrient} onNutrient={onNutrient} stages={stages} onStages={onStages} />
+      <ReportContent onCompare={onCompare} report={report} reference={data} selection={selection} onSelect={onSelect} portada={portada} nutrient={nutrient} onNutrient={onNutrient} stages={stages} onStages={onStages} />
     </>
   );
 }
@@ -175,6 +177,8 @@ function NutritionReportResource() {
   const { client } = useMobileApi(),
     { colors } = useOwnlevelTheme();
   const { query, compare } = useProgressRange();
+  const section = nutritionSection(useLocalSearchParams().section);
+  const [openCompare, setOpenCompare] = useState(false);
   const load = useCallback(
     (c: NonNullable<typeof client>, signal: AbortSignal) => fetchNutritionReport(c, query, signal),
     [query],
@@ -200,7 +204,8 @@ function NutritionReportResource() {
   };
   return (
     <ProgressScroll
-      title="Nutrición"
+      title={section ? NUTRITION_SECTIONS[section] : 'Nutrición'} compactPeriod periodPickerTestID="nutrition-period-picker"
+      openSheet={openCompare ? 'compare' : null} onSheetOpened={() => setOpenCompare(false)}
       testID="nutrition-trends-screen"
       refreshControl={
         <RefreshControl
@@ -222,15 +227,15 @@ function NutritionReportResource() {
               onAction={() => void refresh()}
             />
           ) : null}
-          {compare ? (
+          {compare && !section ? (
             <ComparedReport
-              refreshRevision={referenceRevision}
+              onCompare={() => setOpenCompare(true)} refreshRevision={referenceRevision}
               report={data}
               selection={selection} onSelect={onSelect} portada={portada} nutrient={nutrient} onNutrient={setNutrient} stages={stages} onStages={setStages}
               query={{ period: 'custom', from: compare.start, to: compare.end }}
             />
           ) : (
-            <ReportContent report={data} selection={selection} onSelect={onSelect} portada={portada} nutrient={nutrient} onNutrient={setNutrient} stages={stages} onStages={setStages} />
+            <ReportContent onCompare={() => setOpenCompare(true)} report={data} selection={selection} onSelect={onSelect} portada={portada} nutrient={nutrient} onNutrient={setNutrient} stages={stages} onStages={setStages} />
           )}
         </>
       ) : (

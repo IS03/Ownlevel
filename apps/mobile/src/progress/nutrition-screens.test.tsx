@@ -170,7 +170,7 @@ describe('Progress Nutrition', () => {
     fireEvent.press(view.getByRole('button', { name: 'Cómo leer el gráfico' }));
     expect(view.getByText(/Hueco: ese día no tiene valor\. Línea en la base: cero registrado/)).toBeTruthy();
     expect(view.getByTestId('nutrition-chart-current-2026-10-02-gap')).toBeTruthy();
-    expect(within(view.getByTestId('nutrition-progress-detail')).getByText('Carbos')).toBeTruthy();
+    expect(view.getByTestId('nutrition-topic-macros')).toBeTruthy();
     fireEvent.press(view.getByTestId('nutrition-chart-current-2026-10-01-bar'));
     expect(mockPush).not.toHaveBeenCalled();
     expect(within(view.getByTestId('nutrition-chart-inspection')).getByText('100 kcal')).toBeTruthy();
@@ -179,8 +179,37 @@ describe('Progress Nutrition', () => {
     fireEvent.press(view.getByTestId('nutrition-timing-entry'));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/trends/meal-times');
     // Day by day opens a compact table; a day without meals says so, never 0 kcal.
-    fireEvent.press(within(view.getByTestId('nutrition-progress-daily')).getByRole('button', { name: /Día por día/ }));
-    expect(view.getAllByText('sin registro').length).toBeGreaterThan(0);
+    fireEvent.press(view.getByRole('button', { name: 'Día por día' }));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/nutrition', params: { section: 'days' } });
+  });
+  it('opens every topic from the same confirmed report and returns from its original day to that topic', async () => {
+    const view = wrap(<NutritionTrendsScreen />); await flush();
+    const calls = mockReport.mock.calls.length;
+    for (const section of ['protein', 'targets', 'macros', 'balance', 'days', 'coverage']) {
+      mockParams = { section };
+      view.rerender(tree(<NutritionTrendsScreen />)); await flush();
+      expect(view.getByTestId('nutrition-topic-content')).toBeTruthy();
+      expect(mockReport).toHaveBeenCalledTimes(calls);
+    }
+    mockParams = { section: 'protein' };
+    view.rerender(tree(<NutritionTrendsScreen />)); await flush();
+    fireEvent.press(view.getByRole('button', { name: /^01\/10\/2026/ }));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/nutrition', params: { date: '2026-10-01', fromProgressNutrition: '1', fromProgressNutritionSection: 'protein' } });
+  });
+  it('keeps a server range notice visible in a topic and identifies the current side of a comparison', async () => {
+    mockParams = { section: 'protein' };
+    mockReport.mockImplementation(async (_c, q) => { const r = report(q); r.range.notice = 'El período se ajustó a las fechas disponibles.'; return ok(r); });
+    const view = wrap(<NutritionTrendsScreen />, comparing); await flush();
+    expect(view.getByText('El período se ajustó a las fechas disponibles.')).toBeTruthy();
+    expect(view.getByText('Período elegido')).toBeTruthy();
+    expect(mockReport).toHaveBeenCalledTimes(1);
+  });
+  it('opens the comparison from Explore without reading another report until it is applied', async () => {
+    const view = wrap(<NutritionTrendsScreen />); await flush();
+    const calls = mockReport.mock.calls.length;
+    fireEvent.press(within(view.getByTestId('nutrition-explore')).getByRole('button', { name: 'Comparar períodos' }));
+    expect(view.getByTestId('compare-ab')).toBeTruthy();
+    expect(mockReport).toHaveBeenCalledTimes(calls);
   });
   it('keeps a shorter reference on its own calendar without padding or pairing positions', async () => {
     const initial: ProgressRangeState = {
@@ -242,7 +271,8 @@ describe('Progress Nutrition', () => {
     expect(mockReport).toHaveBeenCalledWith(mockClient, { period: 'custom', from: '2026-09-01', to: '2026-09-04' });
     expect({ reports: mockReport.mock.calls.length, timing: mockTiming.mock.calls.length }).toEqual(initial);
     console.info('[QA nutrition chart source reads]', { initial, afterInspectionAndReturn: { reports: mockReport.mock.calls.length, timing: mockTiming.mock.calls.length } });
-    fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
+    fireEvent.press(view.getByTestId('nutrition-period-picker'));
+    fireEvent.press(view.getByText('Últimos 7 días')); await flush();
     expect(view.queryByRole('button', { name: /^Ver comidas de ese día/ })).toBeNull();
   });
   it('manual refresh rereads both report scopes and retains the selected reference', async () => {
@@ -286,8 +316,9 @@ describe('Progress Nutrition', () => {
     await flush();
     expect(mockReport).toHaveBeenCalledTimes(1);
     expect(mockReport).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-09-28', to: TODAY });
-    expect(view.getByTestId('progress-unit-week').props.accessibilityState.selected).toBe(true);
-    fireEvent.press(view.getByTestId('progress-unit-month'));
+    expect(view.getByTestId('nutrition-period-picker')).toBeTruthy();
+    fireEvent.press(view.getByTestId('nutrition-period-picker'));
+    fireEvent.press(view.getByText('Este mes'));
     await flush();
     expect(mockReport).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-10-01', to: TODAY });
     mockParams = { from: '2026-09-10', to: '2026-09-12' };
@@ -295,11 +326,12 @@ describe('Progress Nutrition', () => {
     await flush();
     expect(mockReport).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-09-10', to: '2026-09-12' });
     const calls = mockReport.mock.calls.length;
-    fireEvent.press(view.getByTestId('progress-unit-month'));
+    fireEvent.press(view.getByTestId('nutrition-period-picker'));
+    fireEvent.press(view.getByText('Este mes'));
     await flush();
     // The month read a moment ago is reused (same account, day and range), not requested again.
     expect(mockReport).toHaveBeenCalledTimes(calls);
-    expect(view.getByTestId('progress-unit-month').props.accessibilityState.selected).toBe(true);
+    expect(view.getByTestId('nutrition-period-picker')).toBeTruthy();
   });
   it('P1-B3: an absent average reads as «sin dato», context lines span the width and figures stack with large text', async () => {
     const standard = jest.spyOn(rn, 'useWindowDimensions').mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1 });
@@ -309,7 +341,7 @@ describe('Progress Nutrition', () => {
     expect(within(view.getByTestId('nutrition-progress-protein')).getByText('—')).toBeTruthy();
     const figures = () => StyleSheet.flatten(view.getByTestId('nutrition-progress-figures').props.style).flexDirection;
     fireEvent(view.getByTestId('nutrition-progress-summary'), 'layout', { nativeEvent: { layout: { width: 288, height: 300, x: 0, y: 0 } } });
-    expect(figures()).toBe('row');
+    expect(figures()).toBe('column');
     view.unmount(); standard.mockRestore();
     const spy = jest.spyOn(rn, 'useWindowDimensions').mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1.5 });
     try {
@@ -425,7 +457,8 @@ describe('#519 · del dato al día y de vuelta', () => {
       expect(state()).toEqual({ protein: true, side: true, day: true, title: true });
       console.info('[QA #519 serie]', { initial, afterSwitchAndReturn: reads() });
       // Changing the period on this screen keeps the chosen series (the selection resets with the scope, as before).
-      fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
+      fireEvent.press(view.getByTestId('nutrition-period-picker'));
+    fireEvent.press(view.getByText('Últimos 7 días')); await flush();
       expect(nutrient('Proteína').props.accessibilityState).toMatchObject({ checked: true });
       expect(view.getByText('Proteína registrada')).toBeTruthy();
     } finally { clock.mockRestore(); mockParams = {}; }

@@ -211,6 +211,7 @@ describe('#519 · selector Calorías / Proteína', () => {
     expect(view.getByTestId('nutrition-chart-current-2026-10-01-bar').props.accessibilityState.selected).toBe(true);
     const readout = within(view.getByTestId('nutrition-chart-inspection'));
     expect(readout.getByText('01/10/2026')).toBeTruthy(); expect(readout.getByText('50 g')).toBeTruthy();
+    fireEvent.press(view.getByRole('button', { name: 'Ver cobertura' }));
     expect(readout.getByText('Proteína completa entre las entradas registradas.')).toBeTruthy();
     expect(readout.getByText(/1 de 1 entradas con proteína conocida · 0 sin ese dato/)).toBeTruthy();
     expect(readout.getByText('Sin objetivo histórico acreditado para esta fecha.')).toBeTruthy();

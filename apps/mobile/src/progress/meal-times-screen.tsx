@@ -1,11 +1,12 @@
-import { useCallback } from 'react';
-import { RefreshControl, StyleSheet, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { RefreshControl, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useMobileApi } from '@/api';
 import { fetchProgressNutritionTiming, progressRequestKey, type ProgressNutritionTiming } from '@/api/progress';
 import {
   AppIcon,
   AppText,
   Button,
+  ChipGroup,
   Heading,
   InlineUnavailable,
   SkeletonBlock,
@@ -13,6 +14,9 @@ import {
   spacing,
   useOwnlevelTheme,
 } from '@/design-system';
+import { useRouter } from 'expo-router';
+import { ExerciseSegmented } from '@/training/exercise-segmented';
+import { haptics } from '@/platform/haptics';
 import { ProgressScroll } from './progress-scroll';
 import { useProgressRange } from './progress-range-context';
 import { ProgressRow } from './progress-row';
@@ -22,6 +26,10 @@ import { TIMING_META, shareText, timingHeadline } from './meal-times-model';
 function TimingContent({ data }: { data: ProgressNutritionTiming }) {
   const { colors } = useOwnlevelTheme(),
     { compareOn, compareText } = useProgressRange();
+  const [nutrient, setNutrient] = useState<'calories' | 'protein'>('calories');
+  const { fontScale } = useWindowDimensions();
+  const Selector = fontScale > 1.3 ? ChipGroup : ExerciseSegmented;
+  const router = useRouter();
   const t = data.current,
     headline = timingHeadline(t);
   return (
@@ -40,14 +48,10 @@ function TimingContent({ data }: { data: ProgressNutritionTiming }) {
         </View>
       </View>
       {t.mealsWithTime >= 10 ? (
-        <View testID="timing-bands">
+        <View testID="timing-bands" style={styles.bands}>
           <Heading level={2}>Franjas del día</Heading>
-          <View style={styles.legend} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-            <View style={[styles.swatch, { backgroundColor: colors.primary }]} />
-            <AppText muted variant="caption">calorías</AppText>
-            <View style={[styles.swatch, { backgroundColor: colors.text, opacity: 0.7 }]} />
-            <AppText muted variant="caption">proteína</AppText>
-          </View>
+          <Selector accessibilityLabel="Nutriente por horario" value={nutrient} options={[{ value: 'calories', label: 'Calorías' }, { value: 'protein', label: 'Proteína' }]}
+            onChange={next => { haptics.selection(); setNutrient(next); }} />
           {t.bands.map((band, index) => {
             const meta = TIMING_META[band.key],
               ref = compareOn ? data.reference?.bands[index] : null;
@@ -63,11 +67,8 @@ function TimingContent({ data }: { data: ProgressNutritionTiming }) {
                     {meta.name} · {meta.hours} h
                   </AppText>
                   {/* Each share sits next to its own bar, so the pair never needs decoding. */}
-                  {[
-                    { value: band.kcalShare, color: colors.primary, opacity: 1 },
-                    { value: band.proteinShare, color: colors.text, opacity: 0.7 },
-                  ].map((bar, i) => (
-                    <View key={i} style={styles.barRow} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                  {[{ value: nutrient === 'protein' ? band.proteinShare : band.kcalShare, color: colors.primary, opacity: 1 }].map((bar, i) => (
+                    <View key={i} style={[styles.barRow, fontScale > 1.3 && { flexDirection: 'column', alignItems: 'stretch' }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
                       <View style={[styles.track, { backgroundColor: colors.border }]}>
                         {bar.value !== null ? (
                           <View
@@ -80,7 +81,7 @@ function TimingContent({ data }: { data: ProgressNutritionTiming }) {
                           />
                         ) : null}
                       </View>
-                      <AppText numeric muted variant="caption" style={styles.share}>
+                      <AppText numeric muted variant="caption" style={[styles.share, fontScale > 1.3 && { width: undefined, textAlign: 'left' }]}>
                         {shareText(bar.value)}
                       </AppText>
                     </View>
@@ -101,6 +102,7 @@ function TimingContent({ data }: { data: ProgressNutritionTiming }) {
           ) : null}
         </View>
       ) : null}
+      <Button label="Ver días del período" variant="quiet" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/nutrition', params: { section: 'days' } })} />
       <AppText numeric muted variant="caption">
         {t.mealsWithTime} de {t.meals} comidas con hora · hora de Córdoba
       </AppText>
@@ -118,7 +120,7 @@ export function MealTimesScreen() {
   const { state, data, refresh } = useProgressResource(client, `timing|${progressRequestKey(query, compare)}`, load);
   return (
     <ProgressScroll
-      title="Cuándo comés"
+      title="Cuándo comés" compactPeriod periodPickerTestID="meal-times-period-picker"
       testID="meal-times-screen"
       refreshControl={
         <RefreshControl
@@ -152,6 +154,7 @@ export function MealTimesScreen() {
   );
 }
 const styles = StyleSheet.create({
+  bands: { gap: spacing.md },
   flex: { flex: 1 },
   grow: { flex: 1, gap: spacing.sm },
   headline: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
