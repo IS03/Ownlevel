@@ -5,16 +5,16 @@ import type { MobileApiClient } from '@/api/client';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { fetchCoincidenceEvidence,isFoodKind,type FoodKind,type CoincidenceSelection,type CoincidenceEvidence,type PeriodExploration } from '@/api/performance-insights';
 import { StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { AppText, Heading, Button, SkeletonBlock, spacing } from '@/design-system';
 import { FEELING_LABELS } from '@/api/training-feelings';
 import { formatValue } from '@/progress/progress-format';
 import { FactRow } from './insights-screen';
 import { InsightRow } from './insight-row';
 import { postsText } from './feelings-model';
-import { type InsightsOrigin } from './navigation';
+import { progressOriginParams, type InsightsOrigin } from './navigation';
 import { exactPeriodDate } from './period-model';
 import { nextDate } from './insights-model';
+import { useInsightsRouter } from './insights-router';
 
 type Model=NonNullable<PeriodExploration['coincidenceSummary']>;
 type Selection=Pick<InsightsOrigin,'coincidence'|'coincidenceGroup'|'coincidencePage'|'coincidenceView'|'weeklyNutrient'|'weeklyOutcome'>;
@@ -42,7 +42,7 @@ function GroupFeelings({value}:{value:Model['protein']['groups'][number]['feelin
 
 /** Summaries and weekly evidence reuse the period reading. Session evidence is a single explicit grouped page. */
 export function Coincidences({data,weeks,origin,selection,onSelect,onRefresh}:{data:Model|undefined;weeks:PeriodExploration['weeks'];origin:InsightsOrigin;selection:Selection;onSelect:(value:Selection)=>void;onRefresh:()=>void}) {
-  const router=useRouter();
+  const router=useInsightsRouter();
   const choose=(kind:NonNullable<Selection['coincidence']>)=>onSelect(selection.coincidence===kind?{}:{coincidence:kind});
   const group=(key:string)=>onSelect({...selection,coincidencePage:undefined,coincidenceGroup:selection.coincidenceGroup===key?undefined:key});
   const selected=selection.coincidence,showFeelings=selection.coincidenceView==='feelings';
@@ -71,6 +71,8 @@ export function Coincidences({data,weeks,origin,selection,onSelect,onRefresh}:{d
   return <View style={styles.section} testID="descriptive-coincidences">
     <Heading level={2}>Coincidencias descriptivas de tus registros</Heading>
     <AppText muted>No acreditan una relación ni su causa. Los grupos pueden tener distinta cobertura y rutinas.</AppText>
+    {/* Performance against «lo tuyo» has its own home with a better method; here only the door to it. */}
+    <InsightRow label="¿Con qué rendís más?" detail="Comida, sueño y métricas frente a lo tuyo, en Cómo llegaste" spoken="¿Con qué rendís más? Ver Cómo llegaste" onPress={()=>router.push({pathname:'/(tabs)/train/insights',params:{...progressOriginParams(origin),view:'relation'}})}/>
     {!data?<AppText>Las coincidencias por sesión todavía no están disponibles. Podés seguir recorriendo semanas y días.</AppText>:<>
       {FOOD_ORDER.map(kind=>{const f=food(kind),title=FOOD_TITLE[kind],unit=kind==='calories'?'kcal':'g';return <Fragment key={kind}>
         <InsightRow label={title} detail={f?`${f.eligible} de ${f.total} sesiones con dato${f.eligibleDays===undefined?'':` · ${f.eligibleDays} de ${f.totalDays} días`} · ${kind==='lastMeal'?'Franjas fijas hasta 1 h / más de 1–3 h / más de 3–12 h':cut(f.cut,unit)}`:'No disponible en esta lectura'} spoken={`Abrir ${title[0]!.toLowerCase()+title.slice(1)}, descripción de registros`} expanded={selected===kind} onPress={()=>choose(kind)}/>

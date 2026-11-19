@@ -1,7 +1,7 @@
 import { ReturnToProgress } from './return-to-progress';
 import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchInsightsEvidence } from '@/api/performance-insights';
@@ -14,6 +14,7 @@ import { referenceText, statusArrow, statusText } from './insights-model';
 import { evidenceChange, evidenceSentence, formatPct, loadStep, sideBySide } from './comparison-change';
 import { Kicker, MethodLine, SetSlopes } from './comparison-parts';
 import { insightsReturnHref } from './navigation';
+import { useInsightsRouter } from './insights-router';
 
 /** The result in plain words, the same for both methods: the method's name lives in «Cómo comparamos». */
 const PLAIN: Record<string, string> = { improved: 'Mejoró', higher_record: 'Mejoró', observed_stable: 'Igual', same_record: 'Igual', declined: 'Bajó', lower_record: 'Bajó' };
@@ -26,7 +27,7 @@ const Section = ({ title }: { title: string }) => <AppText muted variant="footno
 export function EvidenceScreen() {
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
-  const router = useRouter();
+  const router = useInsightsRouter();
   const params = useLocalSearchParams();
   const selection = evidenceSelectionOf(params);
   // Read as plain strings: nothing is asked for unless the whole selection above is valid, and then they are the same values.

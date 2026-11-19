@@ -30,6 +30,7 @@ export function OwnTramosView({ client, metrics, router, origin, onStatistics, e
   const total = routines.reduce((sum, row) => sum + row.sessions, 0);
   const { ready, waiting } = factorsOf(data, horizon);
   const count = measured(data);
+  const clear = ready.filter(factor => phrase(factor, metrics)?.clear), unclear = ready.filter(factor => !phrase(factor, metrics)?.clear);
   const open = (factor: OwnFactor) => { haptics.selection(); setSheet(null);
     router.push({ pathname: '/(tabs)/train/insights/tramo', params: { ...origin, factor: factor.key, horizon, ...(routine ? { routine } : {}), label: ownLabel(factor, metrics) } }); };
   return <View style={styles.block} testID="own-tramos">
@@ -42,7 +43,13 @@ export function OwnTramosView({ client, metrics, router, origin, onStatistics, e
     <SegmentedControl accessibilityLabel="Qué mirar: ese día o la semana anterior" value={horizon} options={HORIZONS} onChange={value => { haptics.selection(); setHorizon(value); }} />
     <AppText muted variant="footnote" numeric testID="own-tramos-line">{count} {count === 1 ? 'sesión' : 'sesiones'} con rendimiento frente a lo tuyo · {horizon === 'day' ? 'lo de ese día' : 'los 7 días anteriores'}</AppText>
     {count === 0 ? <AppText muted>Todavía no hay sesiones con «lo tuyo» armado: hace falta repetir cada ejercicio 3 veces. Cuando las haya, los tramos aparecen acá.</AppText> : null}
-    {ready.length ? <View testID="own-tramos-ready">{ready.map(factor => <FactorRow key={factor.key} factor={factor} metrics={metrics} onPress={() => open(factor)} />)}</View> : null}
+    {ready.length ? <View testID="own-tramos-ready">
+      {clear.map(factor => <FactorRow key={factor.key} factor={factor} metrics={metrics} onPress={() => open(factor)} />)}
+      {/* The rest keep their fixed order under one line, instead of the same «Sin diferencia clara» on every row. */}
+      {unclear.length ? <AppText muted variant="footnote" style={clear.length ? styles.kicker : undefined} testID="own-tramos-unclear">
+        {clear.length ? 'Sin diferencia clara' : 'Por ahora ningún dato se separa de lo tuyo: tus sesiones rinden parecido en todos los tramos.'}</AppText> : null}
+      {unclear.map(factor => <FactorRow key={factor.key} factor={factor} metrics={metrics} quiet onPress={() => open(factor)} />)}
+    </View> : null}
     {waiting.length && count ? <InsightRow label={`Todavía sin datos para comparar · ${waiting.length}`} detail={waiting.map(factor => ownLabel(factor, metrics)).join(', ')}
       spoken={`${waiting.length} datos todavía sin datos para comparar: ${waiting.map(factor => ownLabel(factor, metrics)).join(', ')}. Ver por qué`} onPress={() => { haptics.selection(); setSheet('missing'); }} /> : null}
     <View style={styles.method}>
@@ -68,7 +75,7 @@ export function OwnTramosView({ client, metrics, router, origin, onStatistics, e
   </View>;
 }
 
-function FactorRow({ factor, metrics, onPress }: { factor: OwnFactor; metrics: InsightsSummary['metrics']; onPress: () => void }) {
+function FactorRow({ factor, metrics, onPress, quiet = false }: { factor: OwnFactor; metrics: InsightsSummary['metrics']; onPress: () => void; quiet?: boolean }) {
   const { colors } = useOwnlevelTheme();
   const { fontScale } = useWindowDimensions();
   const reduced = useReduceMotion();
@@ -78,7 +85,7 @@ function FactorRow({ factor, metrics, onPress }: { factor: OwnFactor; metrics: I
     onPress={onPress} style={({ pressed }) => [styles.row, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
     <View style={styles.flex}>
       <AppText>{label}</AppText>
-      {said ? <AppText muted={!said.clear} variant="footnote" style={said.clear ? { fontWeight: '600' } : undefined}>{said.text}</AppText> : null}
+      {said && !quiet ? <AppText muted={!said.clear} variant="footnote" style={said.clear ? { fontWeight: '600' } : undefined}>{said.text}</AppText> : null}
     </View>
     {fontScale > 1.3 ? null : <TramoBars factor={factor} />}
     <AppIcon color={colors.textMuted} name="chevronRight" size={15} />
@@ -90,6 +97,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1, flexShrink: 1 },
   chips: { gap: spacing.sm, paddingVertical: 2 },
   row: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth },
+  kicker: { paddingTop: spacing.lg, paddingBottom: spacing.xs, fontWeight: '600' },
   method: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingTop: spacing.md },
   sheet: { gap: spacing.md, padding: brandTokens.layout.screenPadding, paddingBottom: spacing.xxl },
 });

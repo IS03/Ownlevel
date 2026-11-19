@@ -587,12 +587,12 @@ describe('Native Nutrition day', () => {
       await act(async () => { release(ok('2026-10-02') as never); });
       expect(view.queryByText(line)).toBeNull(); expect(view.queryByTestId('nutrition-stale-reading')).toBeNull();
     });
-    it('says how old what is on screen is only when the refresh failed, next to the existing notice, and drops it with the next good reading', async () => {
+    it('says only that the refresh failed, never a reading time, and drops the notice with the next good reading', async () => {
       mockRead.mockResolvedValueOnce(ok('2026-10-02') as never).mockResolvedValueOnce(failure as never).mockResolvedValueOnce(ok('2026-10-02') as never);
       const view = render(element()); await view.findByText('Comida 2026-10-02');
       await act(async () => { view.UNSAFE_getByType(RefreshControl).props.onRefresh(); });
       expect(view.getByText('No pudimos actualizar. Mostramos la última lectura de esta fecha.')).toBeTruthy();
-      expect([view.getByTestId('nutrition-stale-reading').props.children].flat().join('')).toMatch(/^Datos confirmados a las \d{1,2}:\d{2}/);
+      expect(view.queryByTestId('nutrition-stale-reading')).toBeNull(); expect(view.queryByText(line)).toBeNull();
       expect(view.getByText('Reintentar')).toBeTruthy(); expect(view.getByText('Comida 2026-10-02')).toBeTruthy();
       await act(async () => { view.UNSAFE_getByType(RefreshControl).props.onRefresh(); });
       expect(view.queryByTestId('nutrition-stale-reading')).toBeNull(); expect(view.queryByText(/No pudimos actualizar/)).toBeNull();

@@ -10,7 +10,6 @@ import { haptics } from '@/platform/haptics';
 import { CompareSheet } from './period-sheets';
 import { ComparisonChart } from './comparison-chart';
 import { ProgressScroll } from './progress-scroll';
-import { ProgressReadStatus } from './progress-read-status';
 import { ProgressRow } from './progress-row';
 import { useProgressRange } from './progress-range-context';
 import { daysBetween, progressRange, shortRange } from './progress-range';
@@ -152,7 +151,6 @@ function ComparisonReading({ view, onView }: { view: ViewState; onView: (next: V
           {daysBetween(current.start, current.end) !== daysBetween(compare.start, compare.end) ? <AppText muted variant="footnote">Distinta duración: los totales no son equivalentes. Los promedios conservan sus días utilizados.</AppText> : null}
           {current.start <= compare.end && compare.start <= current.end ? <AppText muted variant="footnote">Los períodos se superponen.</AppText> : null}
           <ChipGroup accessibilityLabel="Tema de la comparación" options={[...TOPICS]} value={view.topic} onChange={next => { haptics.selection(); onView({ ...view, topic: next }); }} />
-          <ProgressReadStatus state={state} />
           {data ? <>{state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Conservamos la última lectura confirmada de estos períodos." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}<PeriodComparisonContent data={data} view={view} onView={onView} onOpen={open} /></>
             : state.status === 'loading' ? <SkeletonBlock height={240} /> : <UnavailableState title="No pudimos leer la comparación" description="Tus registros siguen guardados." action={<Button label="Reintentar" onPress={() => void refresh()} />} />}
           <Button variant="quiet" label="Quitar comparación" onPress={() => { haptics.selection(); setState({ ...rangeState, compare: { kind: 'none' } }); }} />

@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View, useWindowDimensions, type RefreshControlPr
 import Animated, { Extrapolation, interpolate, useAnimatedRef, useAnimatedStyle, useScrollViewOffset } from 'react-native-reanimated';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppIcon, AppText, GlassSurface, ScrollScreen, useOwnlevelTheme,useReduceMotion } from '@/design-system';
+import { AppIcon, AppText, GlassSurface, ScrollScreen, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { CompareHeaderButton, CompareChip, PeriodCaption, PeriodBar, ProgressPeriodBlock, STRIP } from './period-controls';
 import { CompareSheet, CustomRangeSheet } from './period-sheets';
 import { daysBetween, isCurrentProgressRange, progressRange, rangeShortLabel, shortRange } from './progress-range';
@@ -89,7 +89,7 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
       contentContainerStyle={{ paddingTop: header }}>
       {/* The strip opens the page and scrolls away with it; only the title bar stays. */}
       {periodControls && !compactPeriod?<View style={styles.stripSlot}><PeriodBar onCustom={open.onCustom} /></View>:null}
-      {multilineTitle ? <AppText accessibilityRole="header" variant="title1">{title}</AppText> : null}
+      {multilineTitle ? <AppText accessibilityRole="header" variant="title1" style={styles.multilineTitle}>{title}</AppText> : null}
       {periodControls ? compactPeriod ? <View style={styles.compactPeriod}>
         <View style={[{ flex: 1 }, compactLarge && { flexBasis: '100%' }]}><PeriodCaption compact onCustom={open.onCustom} /></View>
         {compactLarge ? <Pressable testID={periodPickerTestID} accessibilityRole="button" accessibilityLabel={`Elegir período de ${title.toLocaleLowerCase('es-AR')}`} onPress={open.onCustom}>
@@ -126,6 +126,8 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
   </>;
 }
 const styles = StyleSheet.create({
+  // A long question under the bar keeps its own air instead of touching it.
+  multilineTitle: { paddingTop: spacing.md },
   tabRoom: { height: 72 },
   header: { position: 'absolute', top: 0, left: 0, right: 0 },
   bar: { height: BAR, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16 },

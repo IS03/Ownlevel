@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { AppIcon, AppText, Heading, brandTokens, pressedStyle, radius, spacing, useOwnlevelTheme, useReduceMotion, type AppIconName } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import { periodSummaryHref } from '@/insights/navigation';
+import { insideProgress } from '@/insights/insights-router';
 
 export type PortadaTool = 'compare' | 'metrics' | 'meal-times' | 'weight' | 'measures';
 type Tool = { id: string; title: string; detail: string; icon: AppIconName; press: () => void; spoken?: string; primary?: boolean };
@@ -20,9 +21,9 @@ export function PanoramaTools({ today, onTool }: { today: string; onTool: (tool:
     { title: 'Comparar y descubrir', detail: 'Períodos, sesiones y lo que coincide con tus días.', items: [
       { id: 'compare', title: 'Comparar períodos', detail: 'Dos períodos, tus fechas', icon: 'compare', primary: true, press: () => onTool('compare') },
       { id: 'influence', title: 'Qué influye', detail: 'Preguntas sobre tus días', icon: 'search', press: () => router.navigate('/(tabs)/progress/influence') },
-      { id: 'comparisons', title: 'Comparaciones', detail: 'Cada sesión con lo tuyo y con la anterior', icon: 'dumbbell', press: () => router.navigate({ pathname: '/(tabs)/train/insights', params: origin }) },
+      { id: 'comparisons', title: 'Comparaciones', detail: 'Cada sesión con lo tuyo y con la anterior', icon: 'dumbbell', press: () => router.navigate(insideProgress({ pathname: '/(tabs)/train/insights', params: origin }, true)) },
       { id: 'stages', title: 'Tus etapas', detail: 'Tus planes, uno al lado del otro', icon: 'bookmark', press: () => router.navigate('/(tabs)/progress/stages') },
-      { id: 'quarter', title: 'Últimos tres meses', detail: 'Tres meses enteros, semana por semana', icon: 'clockOutline', press: () => router.navigate(periodSummaryHref(today, origin)), spoken: 'Últimos tres meses: tres meses enteros, semana por semana' },
+      { id: 'quarter', title: 'Últimos tres meses', detail: 'Tres meses enteros, semana por semana', icon: 'clockOutline', press: () => router.navigate(insideProgress(periodSummaryHref(today, origin), true)), spoken: 'Últimos tres meses: tres meses enteros, semana por semana' },
     ] },
     { title: 'Registros', detail: 'Lo que anotás en tu día a día.', circles: true, items: [
       { id: 'metrics', title: 'Métricas personales', detail: 'Sueño, pasos y lo que registrás', icon: 'heart-pulse', press: () => onTool('metrics') },

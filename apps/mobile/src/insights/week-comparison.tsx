@@ -1,5 +1,5 @@
 import { View, StyleSheet } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import type { PeriodExploration } from '@/api/performance-insights';
 import { AppText, Button, Heading, UnavailableState, spacing } from '@/design-system';
 import { formatValue } from '@/progress/progress-format';
@@ -12,6 +12,7 @@ import { postsText } from './feelings-model';
 import { LANE_TITLE, PARTIAL_LIMIT } from './insights-model';
 import { WeekRecords } from './week-records';
 import { nextWeekIndex, nutrientCoverage, postValues, selectedWeeks, weekComparisonSummary, weeklyNutrient, weeklyResults, weeklyTraining, weightComparison, type ExplorationWeek, type WeekSide } from './week-comparison-model';
+import { useInsightsRouter } from './insights-router';
 
 function WeekFact({ side, week, value, detail }: { side: WeekSide; week: ExplorationWeek; value: string; detail?: string }) {
   return <FactRow label={`Semana ${side}`} value={value} detail={`${exactPeriodRange(week)}${detail ? `. ${detail}` : ''}`} />;
@@ -19,7 +20,7 @@ function WeekFact({ side, week, value, detail }: { side: WeekSide; week: Explora
 
 /** One presentation over the exploration already loaded by its parent. Selection and records are route-local. */
 export function WeekComparison({ data, currentWeek }: { data: PeriodExploration; currentWeek?: string }) {
-  const params = useLocalSearchParams(), router = useRouter();
+  const params = useLocalSearchParams(), router = useInsightsRouter();
   const chosen = selectedWeeks(data, currentWeek, typeof params.weekA === 'string' ? params.weekA : params.weekA === undefined ? undefined : '', typeof params.weekB === 'string' ? params.weekB : params.weekB === undefined ? undefined : '');
   if (!chosen) return <UnavailableState title="Semanas fuera del período" description="Elegí de nuevo las dos semanas del período abierto." action={<Button label="Restablecer selección" onPress={() => router.setParams({ weekA: undefined, weekB: undefined, week: data.weeks.at(-1)!.start, weekSide: undefined })} />} />;
   const a = data.weeks[chosen.a]!, b = data.weeks[chosen.b]!, weight = weightComparison(a, b);

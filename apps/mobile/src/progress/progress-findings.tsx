@@ -3,6 +3,7 @@ import type { ProgressEditorialFinding } from '@/api/progress';
 import { AppText, Button, Heading, spacing } from '@/design-system';
 import { InsightRow } from '@/insights/insight-row';
 import { exactPeriodDate, exactPeriodRange } from '@/insights/period-model';
+import { shortRange } from './progress-range';
 
 export const findingMethodLabel = (method: ProgressEditorialFinding['method']) => ({
   'progress-record': 'Progreso · récord registrado',
@@ -20,7 +21,7 @@ function Reference({ item }: {item: ProgressEditorialFinding}) {
       <AppText muted numeric>Referencia: sesión del {exactPeriodDate(item.reference.end)} → sesión del {exactPeriodDate(item.observedDate!)}.</AppText>
       <AppText muted numeric>{c.current} sesiones con series utilizables; se comparan la primera y la última, por modo de carga.</AppText>
     </> : <>
-      <AppText muted numeric>Referencia: {exactPeriodRange({start: item.reference.start!, end: item.reference.end})}.</AppText>
+      <AppText muted numeric>Referencia: {shortRange({start: item.reference.start!, end: item.reference.end}, item.reference.end)}.</AppText>
       <AppText muted numeric>Actual: {c.current} de {c.eligibleCurrent} días. Referencia: {c.reference} de {c.eligibleReference} días.</AppText>
       <AppText muted>Días cerrados con dato completo del nutriente entre las comidas registradas. Las coberturas pueden diferir; esto no confirma toda la ingesta.</AppText>
     </>}
@@ -36,7 +37,7 @@ export function ProgressFindings({ items, selected, onSelect, onOpen, sourcesUna
     : sourcesUnavailable ? 'No pudimos leer todas las fuentes de hallazgos.' : 'No hay hallazgos para destacar en esta ventana.'}</AppText>;
   return <View style={styles.section} testID="progress-findings">
     <Heading level={2}>Para mirar de cerca</Heading>
-    <AppText muted numeric variant="footnote">{exactPeriodRange(items[0]!.period)}</AppText>
+    <AppText muted numeric variant="footnote" accessibilityLabel={exactPeriodRange(items[0]!.period)}>{shortRange(items[0]!.period, items[0]!.period.end)}</AppText>
     {items.map(item => <View key={item.id} testID={`progress-finding-${item.id}`}>
           <InsightRow label={`${item.kind === 'record' ? 'Récord' : 'Comparación'} · ${item.title}`}
             detail={`${item.description}\n${findingMethodLabel(item.method)}`} spoken={`Ver referencia de ${item.title}. ${item.description}. ${findingMethodLabel(item.method)}`}

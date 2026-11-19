@@ -19,8 +19,11 @@ export function periodHeading(data: Summary) {
   return { range: shortRange({ start: data.period.start, end: data.period.end }, data.today), months: `${a!.charAt(0).toLocaleUpperCase('es-AR')}${a!.slice(1)}, ${b} y ${c}. El mes en curso no entra.` };
 }
 
+// The counts stay short on the right; how many could be compared goes under the name, so neither squeezes the other.
 const lane = (counts: { comparable: number; total: number }, up: number, same: number, down: number) =>
-  counts.total ? `${counts.comparable} de ${counts.total} comparables: ↑ ${up}  = ${same}  ↓ ${down}` : 'Sin ejercicios en este método';
+  counts.total ? `↑ ${up} · = ${same} · ↓ ${down}` : '—';
+const laneDetail = (counts: { comparable: number; total: number; ambiguous: number; insufficient: number }) => !counts.total ? 'Sin ejercicios en este método'
+  : `${counts.comparable} de ${counts.total} comparables${counts.ambiguous ? ` · ${counts.ambiguous} mezclados` : ''}${counts.insufficient ? ` · ${counts.insufficient} sin comparar` : ''}`;
 
 /** Whether there is anything at all to describe: an empty period is said as such, never as zeros on every line. */
 export function periodEmpty(data: Summary) {
@@ -34,14 +37,15 @@ export function periodSentences(data: Summary): string[] {
   sentences.push(training.sessions
     ? `Entrenaste ${plural(training.sessions, 'vez', 'veces')} en ${plural(training.trainingDays, 'día', 'días')}${training.multipleSessionDays ? `; ${plural(training.multipleSessionDays, 'día tuvo', 'días tuvieron')} más de una sesión` : ''}.`
     : 'No hay entrenamientos terminados en estos tres meses.');
-  if (training.strict.comparable) sentences.push(`Comparación completa: ${training.strict.comparable} de ${training.strict.total} ejercicios comparables.`);
-  if (training.partial.comparable) sentences.push(`Con contexto parcial: ${training.partial.comparable} de ${training.partial.total}, contados aparte.`);
+  // How many exercises compared, by method, lives in the Entrenamiento rows below: the text does not say it twice.
   // Each feeling on its own, with its own coverage: an answer given later is not a missing one, and neither is a count of the other.
-  for (const summary of data.feelings) sentences.push(feelingSentence(summary));
+  // A feeling nobody answered says so once, in its own section; the summary only speaks of what was answered.
+  for (const summary of data.feelings) if (summary.capture.atFinish + summary.capture.late > 0) sentences.push(feelingSentence(summary));
   sentences.push(`Registraste comidas en ${nutrition.daysWithMeals} de ${data.period.days} días. Es lo registrado, no necesariamente todo lo que comiste.`);
   const withMedian = weight.weeks.filter(week => week.median !== null).length, changes = weight.changes.filter(change => change.change !== null).length;
   sentences.push(weight.weighIns
-    ? `${plural(weight.weighIns, 'pesaje', 'pesajes')}; ${withMedian} de ${plural(weight.weeks.length, 'semana entera tiene', 'semanas enteras tienen')} mediana, y hay ${plural(changes, 'cambio', 'cambios')} entre semanas seguidas.`
+    ? withMedian ? `${plural(weight.weighIns, 'pesaje', 'pesajes')}; ${withMedian} de ${plural(weight.weeks.length, 'semana entera tiene', 'semanas enteras tienen')} mediana, y hay ${plural(changes, 'cambio', 'cambios')} entre semanas seguidas.`
+      : `${plural(weight.weighIns, 'pesaje', 'pesajes')} en estos tres meses.`
     : 'Sin pesajes en estos tres meses.');
   if (routines.order === 'sequence') sentences.push(`Rutinas, una después de otra: ${routines.items.map(row => row.name ?? 'Sin rutina').join(', ')}.`);
   if (routines.order === 'alternating') sentences.push(`Alternaste ${routines.items.length} rutinas: ${routines.items.map(row => row.name ?? 'Sin rutina').join(', ')}.`);
@@ -61,13 +65,13 @@ export function feelingSentence(summary: Summary['feelings'][number]) {
   const tail = rest.length ? `; ${rest.length > 1 ? `${rest.slice(0, -1).join(', ')} y ${rest.at(-1)}` : rest[0]}` : '';
   return `${name}: respondida en ${capture.atFinish} de ${plural(sessions.completed, 'sesión', 'sesiones')}${tail}.`;
 }
-export const FACTS_ONLY = 'Son hechos de tus registros. Este resumen no busca relaciones; las que ya existen están en «Para mirar con calma», sobre todo tu historial.';
+export const FACTS_ONLY = 'Son hechos de tus registros, sin buscar relaciones. Lo que coincide con rendir más está en Comparaciones › Cómo llegaste.';
 
 export function trainingRows(data: Summary) {
   const { strict, partial } = data.training;
   return [
-    { key: 'strict', label: 'Comparación completa', value: lane(strict, strict.improved, strict.observedStable, strict.declined), detail: strict.ambiguous || strict.insufficient ? `${strict.ambiguous} mezclados, ${strict.insufficient} sin comparar` : undefined },
-    { key: 'partial', label: 'Con contexto parcial', value: lane(partial, partial.higher, partial.same, partial.lower), detail: partial.ambiguous || partial.insufficient ? `${partial.ambiguous} mezclados, ${partial.insufficient} sin comparar` : undefined },
+    { key: 'strict', label: 'Comparación completa', value: lane(strict, strict.improved, strict.observedStable, strict.declined), detail: laneDetail(strict) },
+    { key: 'partial', label: 'Con contexto parcial', value: lane(partial, partial.higher, partial.same, partial.lower), detail: laneDetail(partial) },
   ];
 }
 

@@ -1,7 +1,7 @@
 import { ReturnToProgress } from './return-to-progress';
 import { useCallback, useState } from 'react';
 import { LayoutChangeEvent, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchInsightsRelation, type InsightsRelationDetail } from '@/api/performance-insights';
@@ -12,6 +12,7 @@ import { FactRow } from './insights-screen';
 import { InsightRow } from './insight-row';
 import { bodyWeightHref, metricTrendHref, progressOriginParams } from './navigation';
 import { exposureMeaning, LANE_TITLE, PARTIAL_LIMIT, coverageText, dayLabel, exclusionRows, exposureUnit, groupRows, relationName, relationSentence, relationState, sameRead, shareText, type Lane } from './insights-model';
+import { useInsightsRouter } from './insights-router';
 
 type Pair = NonNullable<InsightsRelationDetail['pairs']>[number];
 const PLOT = 180, DOT = 8, LIST_STEP = 60;
@@ -32,7 +33,7 @@ function Plot({ pairs, summary }: { pairs: readonly Pair[]; summary: string }) {
 export function RelationDetailScreen() {
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
-  const router = useRouter();
+  const router = useInsightsRouter();
   const params = useLocalSearchParams();
   const relation = typeof params.relation === 'string' ? params.relation : '';
   const lane: Lane = relation.startsWith('partial:') ? 'partial' : 'strict';

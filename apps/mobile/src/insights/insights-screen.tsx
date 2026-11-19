@@ -21,6 +21,7 @@ import { ownSessionOf, useOwnPerformance } from './own-parts';
 import { exerciseLine, ownSpoken } from './own-model';
 import { usePeriodReturn } from './use-period-return';
 import { withProgressOrigin,progressOriginParams,dayWeightHref, explorationHref, insightsEvidenceHref, insightsOriginOf, metricTrendHref, nutritionDayHref, validSession, type InsightsOrigin } from './navigation';
+import { useInsightsRouter } from './insights-router';
 
 type View_ = 'days' | 'exercises' | 'relation';
 const VIEWS = [{ value: 'days', label: 'Sesiones' }, { value: 'exercises', label: 'Ejercicios' }, { value: 'relation', label: 'Cómo llegaste' }] as const;
@@ -457,7 +458,7 @@ function Relations({ client, family, onFamily, router, facts, onStale }: { clien
 export function InsightsScreen() {
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
-  const router = useRouter();
+  const router = useInsightsRouter();
   const params = useLocalSearchParams();
   const view: View_ = (params.view === 'exercises' || params.view === 'relation') && !validSession(params.session) ? params.view : 'days';
   const family = (FAMILY_OPTIONS.find(option => option.value === params.family)?.value ?? 'all') as FamilyFilter;

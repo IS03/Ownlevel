@@ -166,13 +166,13 @@ describe('Progress fixtures follow the shared contract', () => {
 });
 
 describe('Progress Overview', () => {
-  it('reopens the confirmed overview without another main request or a fresh synchronization timestamp', async () => {
+  it('reopens the confirmed overview without another main request and never shows a reading time', async () => {
     const first = wrap(<ProgressOverviewScreen />); await flush();
-    const timestamp = first.getByText(/^Lectura de las /).props.children;
+    expect(first.queryByText(/ectura de las/)).toBeNull();
     expect(mockOverview).toHaveBeenCalledTimes(1); first.unmount();
     const second = wrap(<ProgressOverviewScreen />);
     expect(second.getByText('Tu octubre')).toBeTruthy();
-    expect(second.getByText(/^Lectura de las /).props.children).toEqual(timestamp);
+    expect(second.queryByText(/ectura de las/)).toBeNull();
     expect(mockOverview).toHaveBeenCalledTimes(1); await flush(); second.unmount();
   });
   const row = (view: ReturnType<typeof wrap>, id: string) => view.getByTestId(`progress-area-${id}`).props.accessibilityLabel as string;

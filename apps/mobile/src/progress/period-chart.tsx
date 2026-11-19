@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import Svg, { Line } from 'react-native-svg';
 import { AppText, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
 
 export type PeriodChartPoint = { key: string; label: string; value: number | null; text: string; onPress?: () => void; hint?: string; soft?: boolean;
@@ -20,7 +21,7 @@ export function PeriodChart({ points, mode, target, bands, testID, inspection, c
   points: PeriodChartPoint[]; mode: 'bars' | 'dots'; target?: number | null; bands?: PeriodChartBand[]; testID: string;
   /** Portada preview only; default detail charts keep their existing geometry. */
   compact?: boolean;
-  /** Opt-in for Métricas: inspect even empty buckets, with scrollable 44 pt targets and narrower marks. */
+  /** Opt-in for Métricas: inspect even empty buckets. The whole period fits the width (never a sideways scroll). */
   inspection?: { selectedKey: string | null; onSelect: (key: string) => void };
 }) {
   const { colors } = useOwnlevelTheme();
@@ -31,7 +32,8 @@ export function PeriodChart({ points, mode, target, bands, testID, inspection, c
   const low = mode === 'dots' ? Math.min(...known) : inspection ? Math.min(0, ...known, target ?? 0) : 0;
   const lastKnown = points.map(p => p.value !== null).lastIndexOf(true);
   const n = points.length, step = Math.ceil(n / 5);
-  const labeled = (i: number) => n <= 6 || i === n - 1 || (i % step === 0 && n - 1 - i >= step / 2);
+  // A date every step, and the last one; a step date too close to the last one is skipped so the two never touch.
+  const labeled = (i: number) => n <= 6 || i === n - 1 || (i % step === 0 && n - 1 - i >= Math.max(step, 3));
   const bandOf = (key: string) => bands?.find(b => key >= b.start && (b.end === null || key < b.end)) ?? null;
   // Dots can carry their value on top: a few always, many only at the ends and at the lowest and highest.
   const idx = points.flatMap((p, i) => p.value === null ? [] : [i]);
@@ -43,10 +45,13 @@ export function PeriodChart({ points, mode, target, bands, testID, inspection, c
   const lift = mode === 'dots' ? 4 : 0;
   const y = (v: number) => mode === 'bars' ? (plotHeight * v) / (high - low) : high === low ? (plotHeight - room) / 2 : lift + ((v - low) / (high - low)) * (plotHeight - DOT - room - lift);
   const baseline = mode === 'bars' ? y(-low) : 0;
-  return <View testID={testID} onLayout={e => setWidth(e.nativeEvent.layout.width)} style={[styles.chart, { minHeight: plotHeight + 28 }, inspection && { flex: 1, minWidth: n * brandTokens.layout.minTouch }]}>
+  return <View testID={testID} onLayout={e => setWidth(e.nativeEvent.layout.width)} style={[styles.chart, { minHeight: plotHeight + 28 }, inspection && { flex: 1 }]}>
     {inspection && low < 0 ? <View pointerEvents="none" style={[styles.target, { top: plotHeight - baseline, borderColor: colors.border }]} /> : null}
+    {/* A dashed border on one side draws solid on iOS: the target is a real dashed line. */}
     {mode === 'bars' && target != null && (target !== 0 || inspection) ? <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none"
-      testID={`${testID}-target`} style={[styles.target, { top: plotHeight - baseline - y(target), borderColor: colors.text }]} /> : null}
+      testID={`${testID}-target`} style={[styles.targetLine, { top: plotHeight - baseline - y(target) - 1 }]}>
+      <Svg width="100%" height={2}><Line x1={0} y1={1} x2={width} y2={1} stroke={colors.text} strokeWidth={1} strokeDasharray="4 3" /></Svg>
+    </View> : null}
     {points.map((p, i) => {
       // Bars are all champagne (soft only while in progress); dots stress the latest record, as in the sketches.
       const full = mode === 'bars' ? !p.soft : i === lastKnown && !p.soft;
@@ -67,11 +72,11 @@ export function PeriodChart({ points, mode, target, bands, testID, inspection, c
       const tag = firstOfBand ? <AppText numberOfLines={1} variant="caption" style={[styles.band, { color: band!.current ? colors.primary : colors.textMuted }]}>{band!.label}</AppText> : null;
       const selected = inspection?.selectedKey === p.key;
       const body = <><View style={[styles.plot, { height: plotHeight }, selected && { borderColor: colors.primary, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.inner }]}>{backdrop}{tag}{mark}</View>
-        <AppText muted numeric variant="caption" numberOfLines={inspection ? undefined : 1} style={[styles.date, { width: inspection ? Math.max(brandTokens.layout.minTouch, width / n - spacing.sm) : Math.max(44, width / 5) }]}>{labeled(i) ? p.label : ''}</AppText></>;
+        <AppText muted numeric variant="caption" numberOfLines={1} style={[styles.date, { width: Math.max(44, width / 5) }]}>{labeled(i) ? p.label : ''}</AppText></>;
       return inspection
         ? <Pressable key={p.key} testID={`${testID}-${p.key}-${kind}`} accessibilityRole="button" accessibilityLabel={a11y}
           accessibilityState={{ selected }} accessibilityHint="Tocá para ver el detalle. Tocá otra vez para quitar la selección."
-          onPress={() => inspection.onSelect(p.key)} style={[styles.slot, { minWidth: brandTokens.layout.minTouch, paddingHorizontal: spacing.xs }]}>{body}</Pressable>
+          onPress={() => inspection.onSelect(p.key)} style={[styles.slot, { paddingHorizontal: n > 20 ? 1 : 3 }]}>{body}</Pressable>
         : p.onPress && p.value !== null
         ? <Pressable key={p.key} testID={`${testID}-${p.key}-${kind}`} accessibilityRole="button" accessibilityLabel={a11y} accessibilityHint={p.hint} onPress={p.onPress} style={[styles.slot, { paddingHorizontal: n > 20 ? 1 : 3 }]}>{body}</Pressable>
         : <View key={p.key} testID={`${testID}-${p.key}-${kind}`} accessible accessibilityLabel={a11y} style={[styles.slot, { paddingHorizontal: n > 20 ? 1 : 3 }]}>{body}</View>;
@@ -87,4 +92,5 @@ const styles = StyleSheet.create({
   date: { alignSelf: 'center', textAlign: 'center' },
   band: { position: 'absolute', top: 2, left: 2, width: 120, zIndex: 1 },
   target: { position: 'absolute', left: 0, right: 0, borderTopWidth: 1, borderStyle: 'dashed', opacity: 0.6, zIndex: 1 },
+  targetLine: { position: 'absolute', left: 0, right: 0, height: 2, opacity: 0.6, zIndex: 1 },
 });

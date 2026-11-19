@@ -72,6 +72,12 @@ describe('Qué influye', () => {
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/progress/influence/answer', params: { ...definition, lag: '0', key: 'carbs_sets' } });
     fireEvent.press(view.getByTestId('influence-build')); expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/influence/build');
   });
+  it('sends performance against «lo tuyo» to Cómo llegaste instead of calculating it again', async () => {
+    const view = wrap(InfluenceScreen); await flush();
+    fireEvent.press(view.getByTestId('influence-performance'));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/insights', params: { fromProgress: '1', view: 'relation' } });
+    expect(view.queryByText(/cambia|cambian/)).toBeNull();
+  });
   it('a read error is unavailable, not the empty state', async () => {
     mockSuggested.mockResolvedValue({ status: 'unavailable', reason: 'network', meta: { ...meta, outcome: 'unavailable' } });
     const view = wrap(InfluenceScreen); await flush();

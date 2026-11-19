@@ -12,7 +12,6 @@ import { useProgressRange } from './progress-range-context';
 import { shortRange } from './progress-range';
 import { arrowDelta, comparisonText, formatValue } from './progress-format';
 import { useCachedRead } from '@/api/use-cached-read';
-import { ProgressReadStatus } from './progress-read-status';
 import { ReturnToInsights } from '@/insights/return-to-insights';
 import { useProgressRouteRange } from './use-progress-route-range';
 import { isChartMetricId, metricOriginalHref } from './metrics-chart-navigation';
@@ -139,7 +138,6 @@ function MetricsTrends() {
   const archived = data?.definitions.filter(d => !d.isActive) ?? [];
   return <ProgressScroll title="Métricas" testID="metrics-trends-screen" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
     <ReturnToInsights />
-    <ProgressReadStatus state={state} />
     {state.status === 'loading' ? <SkeletonBlock height={200} />
       : !data ? <UnavailableState title="No pudimos cargar tus métricas" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente." action={<Button label="Reintentar" onPress={() => void refresh()} />} />
       : <>
