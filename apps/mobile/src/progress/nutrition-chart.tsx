@@ -10,6 +10,7 @@ import { ProgressRow } from './progress-row';
 import { inputNutritionDate as date } from '@/nutrition/day-format';
 import { nutritionValue } from './nutrition-values';
 import { useProgressRange } from './progress-range-context';
+import { shortRange } from './progress-range';
 import { NutritionReportDays } from './nutrition-report-details';
 
 export type NutritionInspection = { series: 'current' | 'reference'; start: string | null; end: string | null; daysOpen: boolean } | null;
@@ -122,7 +123,7 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
       const bands = runs?.flatMap((r,i) => r?.first ? [{start:s.points[i].start,end:s.points[i+r.length-1].end,label:r.label}] : []) ?? [];
       return <View key={s.key} style={styles.section} testID={`nutrition-chart-series-${s.key}`}>
         <AppText variant="headline">{s.title} · {s.report.range.days <= 31 ? 'por día' : 'promedio por bloque'}</AppText>
-        <AppText muted numeric variant="caption">{range(s.report.range.start,s.report.range.end)}</AppText>
+        <AppText muted numeric variant="caption" accessibilityLabel={range(s.report.range.start,s.report.range.end)}>{shortRange(s.report.range,s.report.range.end)}</AppText>
         <FittedChart testID={`nutrition-chart-${s.key}`} label={`${copy.label} · ${s.title}`} unit={copy.unit} range={s.report.range} mode="bars" bounds={{low:min,high:max}} color={s.key==='reference'?colors.textMuted:colors.primary}
           bands={bands} selectedKey={selection?.series===s.key?selection.start:null} onSelect={key=>{
             const p=s.points.find(p=>p.start===key); if(!p)return;

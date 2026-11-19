@@ -8,6 +8,7 @@ import { AppIcon, AppText, brandTokens, pressedStyle, radius, spacing, useOwnlev
 import { haptics } from '@/platform/haptics';
 import { exactPeriodDate, exactPeriodRange } from '@/insights/period-model';
 import { formatValue } from './progress-format';
+import { shortRange } from './progress-range';
 import { panoramaCalendar, panoramaCalories, panoramaWeightGeometry } from './panorama-model';
 
 export type AtlasDaily = { history?: HistoryRange; report?: NutritionReport; historyStale?: boolean; reportStale?: boolean; loading?: boolean };
@@ -46,7 +47,6 @@ function CalorieStrip({ days }: { days: NonNullable<ReturnType<typeof panoramaCa
     <Svg width="100%" height={64}>
       {ordered.map((d,i)=><Rect key={i} x={i*step} y={Math.min(y(d.value),y(0))} width={Math.max(1,step-1)} height={d.value===0?1:Math.max(1,Math.abs(y(d.value)-y(0)))} fill={colors.primary} opacity={d.partial?0.4:1} />)}
     </Svg>
-    <AppText muted variant="caption">Calorías de cada día con dato</AppText>
   </View>;
 }
 
@@ -59,7 +59,7 @@ export function PanoramaAtlas({ data, daily, onOpen }: { data: ProgressOverview;
   const max = Math.max(1, ...(cells ?? []).map(d => d?.count ?? 0));
   const ink = brandTokens.palette.dark, intensity = brandTokens.intensity.dark;
   const comparisonText = !t ? '' : !t.sessions ? 'Sin sesiones registradas en esta ventana.'
-    : data.inPeriod?.comparable ? `${data.inPeriod.improved} de ${data.inPeriod.comparable} ejercicios ${data.inPeriod.method === 'partial' ? 'con registro superior · contexto parcial' : data.inPeriod.method === 'own' ? 'por encima de lo tuyo' : data.inPeriod.method === 'strict' ? 'subieron frente a su última vez' : 'subieron · primera frente a última sesión'}`
+    : data.inPeriod?.comparable ? `${data.inPeriod.improved} de ${data.inPeriod.comparable} ejercicios ${data.inPeriod.method === 'partial' ? 'con registro superior a su vez anterior' : data.inPeriod.method === 'own' ? 'por encima de lo tuyo' : data.inPeriod.method === 'strict' ? 'subieron frente a su última vez' : 'subieron · primera frente a última sesión'}`
     : data.inPeriod?.comparedExposures ? `${data.inPeriod.comparedExposures} comparaciones en esta ventana. Revisá el contexto de la última vez.` : data.inPeriod == null ? 'Comparación no disponible en esta lectura.' : 'Sin ejercicios comparables entre dos sesiones de esta ventana.';
   const calendarText = cells ? `${t!.trainingDays} días con sesiones finalizadas. ${cells.filter(d => d && d.count > 0).map(d => `${exactPeriodDate(d!.date)}: ${d!.count}`).join('. ')}. Los demás días de la ventana no tienen sesiones finalizadas registradas.` : 'Calendario diario no disponible en esta lectura.';
   const trainingHint = [t ? `${t.sessions} sesiones finalizadas, ${t.trainingDays} días entrenados, ${t.sets} series.` : 'Entrenamiento no disponible.', comparisonText, calendarText,
@@ -76,8 +76,8 @@ export function PanoramaAtlas({ data, daily, onOpen }: { data: ProgressOverview;
   ].join(' ') : 'Nutrición no disponible.';
 
   return <View testID="progress-panorama" style={styles.summary}>
-    <AppText muted numeric variant="footnote">Resumen de los últimos {data.period.days} días</AppText>
-    <AppText muted numeric variant="caption">{exactPeriodRange(data.period)}{data.period.includesToday ? ' · hoy en curso' : ''}</AppText>
+    <AppText muted numeric variant="footnote" accessibilityLabel={`Últimos ${data.period.days} días, ${exactPeriodRange(data.period)}${data.period.includesToday ? ', hoy en curso' : ''}`}>
+      Últimos {data.period.days} días · {shortRange(data.period, data.period.end)}{data.period.includesToday ? ' · hoy en curso' : ''}</AppText>
     <View testID="panorama-training" style={[styles.hero, { backgroundColor: ink.surface }]}>
       <Area dark title="Entrenamiento" label="Ver actividad y ejercicios" hint={trainingHint} onPress={() => onOpen({ kind: 'training' })}>
         <View style={[styles.heroBody, stacked && styles.stacked]}>
@@ -91,7 +91,7 @@ export function PanoramaAtlas({ data, daily, onOpen }: { data: ProgressOverview;
             </> : <View style={styles.calendarPlaceholder}><AppText variant="caption" style={{ color: ink.textMuted }}>{daily?.loading ? 'Leyendo los días…' : 'Calendario diario no disponible.'}</AppText></View>}
           </View>
         </View>
-        <AppText numeric variant="footnote" style={{ color: ink.text }}>{t ? `${t.sessions} ${t.sessions === 1 ? 'sesión' : 'sesiones'} · ${t.trainingDays} ${t.trainingDays === 1 ? 'día entrenado' : 'días entrenados'} · ${t.sets} ${t.sets === 1 ? 'serie' : 'series'}` : 'No pudimos leer Entrenamiento.'}</AppText>
+        <AppText numeric variant="footnote" style={{ color: ink.text }}>{t ? `${t.trainingDays} ${t.trainingDays === 1 ? 'día entrenado' : 'días entrenados'} · ${t.sets} ${t.sets === 1 ? 'serie' : 'series'}` : 'No pudimos leer Entrenamiento.'}</AppText>
         <AppText variant="caption" style={{ color: ink.textMuted }}>{comparisonText}</AppText>
         {daily?.historyStale ? <AppText variant="caption" style={{ color: ink.textMuted }}>Calendario: última lectura confirmada; no pudimos actualizar.</AppText> : null}
       </Area>
@@ -100,10 +100,10 @@ export function PanoramaAtlas({ data, daily, onOpen }: { data: ProgressOverview;
       <View testID="panorama-body" style={styles.half}>
         <Area title="Cuerpo" label="Ver peso y medidas" hint={weightHint} onPress={() => onOpen({ kind: 'body' })}>
           <AppText numeric variant="title1">{data.body.status !== 'ok' ? '—' : w?.last ? value(w.last.value, 'kg') : w === undefined ? 'Sin lectura' : 'Sin pesajes'}</AppText>
-          <AppText muted variant="caption">Último del período</AppText>
+          <AppText muted variant="caption">último pesaje</AppText>
           {data.body.status !== 'ok' ? <AppText muted variant="footnote">No pudimos leer Cuerpo.</AppText> : w === undefined ? <AppText muted variant="caption">La fecha exacta y cobertura de peso no están disponibles en esta versión.</AppText> : w?.last ? <>
             <WeightLine data={data} />
-            <AppText muted numeric variant="caption">{exactPeriodDate(w.last.date)} · {w.count} {w.count === 1 ? 'registro válido' : 'registros válidos'}</AppText>
+            <AppText muted numeric variant="caption">{shortRange({ start: w.last.date, end: w.last.date }, data.period.end)} · {w.count} {w.count === 1 ? 'pesaje' : 'pesajes'}</AppText>
             {w.count === 1 ? <AppText muted variant="caption">Un solo registro no permite describir una tendencia.</AppText> : null}
           </> : <AppText muted variant="caption">Sin pesajes válidos en esta ventana.</AppText>}
         </Area>
@@ -113,11 +113,11 @@ export function PanoramaAtlas({ data, daily, onOpen }: { data: ProgressOverview;
         <Area title="Nutrición" label="Ver alimentación y objetivos" hint={nutritionHint} onPress={() => onOpen({ kind: 'nutrition' })}>
           <AppText numeric variant="title1">{!n ? '—' : n.averageKcal === null ? 'Sin promedio' : formatValue(n.averageKcal, null, 'integer')}</AppText>
           {!n ? <AppText muted variant="footnote">No pudimos leer Nutrición.</AppText> : <>
-            <AppText muted variant="caption">kcal/día · promedio registrado</AppText>
+            <AppText muted variant="caption">kcal por día · promedio</AppText>
             {days?.length ? <CalorieStrip days={days} /> : <View style={styles.plot}><AppText muted variant="caption">{daily?.loading ? 'Leyendo los días…' : days ? 'Sin días con calorías conocidas.' : 'Distribución diaria no disponible.'}</AppText></View>}
-            <AppText muted numeric variant="caption">{coverage ? `${coverage.caloriesDays} días utilizados` : 'Días utilizados no disponibles'} · {n.registeredDays} de {n.days} días con alimentación registrada</AppText>
-            <AppText muted numeric variant="caption">Proteína: {n.averageProteinG === null ? 'sin promedio' : `${value(n.averageProteinG, 'g')}/día`}{coverage ? ` · ${coverage.proteinDays} días utilizados` : ''}</AppText>
-            {days?.length ? <AppText muted variant="caption">Una barra por día con dato.{days.some(d => d.partial) ? ' Barras suaves: sumas parciales.' : ''}</AppText> : null}
+            <AppText numeric variant="footnote">Proteína {n.averageProteinG === null ? 'sin promedio' : `${value(n.averageProteinG, 'g')}/día`}</AppText>
+            <AppText muted numeric variant="caption">{coverage ? `Promedio de ${coverage.caloriesDays} ${coverage.caloriesDays === 1 ? 'día' : 'días'}${coverage.proteinDays !== coverage.caloriesDays ? ` (proteína: ${coverage.proteinDays})` : ''}` : `${n.registeredDays} de ${n.days} días con comidas`}</AppText>
+            {days?.some(d => d.partial) ? <AppText muted variant="caption">Barras suaves: días con suma parcial.</AppText> : null}
             {daily?.reportStale ? <AppText muted variant="caption">Distribución: última lectura confirmada; no pudimos actualizar.</AppText> : null}
           </>}
         </Area>

@@ -39,7 +39,7 @@ export function coverageText(c: ProgressCoverage): string | null {
 export const lowCoverage = (c: ProgressCoverage) => c.ratio !== null && c.ratio < 0.5;
 export function trendText(trend: BodyTrend, confidence: BodyConfidence): string {
   if (trend === 'unavailable') return 'Datos insuficientes para una tendencia (hacen falta al menos 2 registros).';
-  const base = { increased: 'Tendencia en subida', decreased: 'Tendencia en bajada', stable: 'Sin cambios', variable: 'Variable: los registros no van en una sola dirección' }[trend];
+  const base = { increased: 'Tendencia en subida', decreased: 'Tendencia en bajada', stable: 'Sin cambios', variable: 'Sube y baja, sin una dirección clara' }[trend];
   return confidence === 'limited' ? `${base} · sólo 2 registros, confianza limitada.` : `${base}.`;
 }
 export function periodText(q: { start: string; end: string; preset: ProgressPreset }): string {

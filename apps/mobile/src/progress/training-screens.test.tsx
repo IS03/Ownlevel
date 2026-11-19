@@ -148,7 +148,7 @@ describe('Training Trends', () => {
   it('opens records and feelings, inspects activity and preserves original navigation without new reads', async () => {
     const view = wrap(<TrainingTrendsScreen />); await flush();
     expect(view.getByText('Tus rutinas')).toBeTruthy(); expect(view.getByText('Dónde progresaste')).toBeTruthy();
-    expect(view.getByText('2 días entrenados · frecuencia normalizada a 7 días')).toBeTruthy();
+    expect(view.getByText('2 días entrenados')).toBeTruthy();
     expect(within(view.getByTestId(`training-exercise-${ex.bench}`)).getByText('75 → 80 kg, a 5 reps')).toBeTruthy();
     fireEvent.press(view.getByTestId('training-performance-insufficient_data'));
     expect(within(view.getByTestId(`training-exercise-${ex.cable}`)).getByText('Este modo de carga no tiene una comparación confiable.')).toBeTruthy();
