@@ -83,7 +83,7 @@ function tileFigure(view: ProgressViewsRead['views'][number]): string {
 }
 
 /** S1 · Mis vistas, on top of Progreso: saved queries in the shared period. Empty is useful and neutral. */
-export function MyViews() {
+export function MyViews({ standalone = false }: { standalone?: boolean }) {
   const router = useRouter();
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
@@ -96,8 +96,8 @@ export function MyViews() {
   // Two per row only while every figure fits whole; with large text or long figures, one per row. Never a smaller number.
   const single = !figuresFitInRow({ texts: views.map(tileFigure), width, fontScale, variant: 'title2', columns: 2 });
   return <View style={styles.section} testID="my-views" onLayout={onLayout}>
-    <View style={styles.header}>
-      <Heading level={2}>Mis vistas</Heading>
+    <View style={[styles.header, standalone && {justifyContent: 'flex-end'}]}>
+      {!standalone ? <Heading level={2}>Mis vistas</Heading> : null}
       {views.length ? <Pressable accessibilityRole="button" accessibilityLabel="Editar Mis vistas" onPress={() => { haptics.selection(); router.push('/(tabs)/progress/views'); }} testID="my-views-edit" style={styles.edit}>
         <AppText variant="headline" style={{ color: colors.primary }}>Editar</AppText>
       </Pressable> : null}

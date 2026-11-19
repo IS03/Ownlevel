@@ -15,7 +15,7 @@ export function PanoramaTools({ today, onTool }: { today: string; onTool: (tool:
     { title: 'Recorrer', detail: 'Elegí cómo mirar tus registros.', items: [
       { id: 'period', title: 'Explorar', detail: 'Períodos, comparaciones y tus vistas', icon: 'routines', press: () => router.navigate('/(tabs)/progress/period') },
       { id: 'calendar', title: 'Calendario', detail: 'Tus registros por fecha', icon: 'calendar', press: () => router.navigate('/history/calendar') },
-      { id: 'views', title: 'Mis vistas', detail: 'Lo que elegiste seguir', icon: 'pin', press: () => router.navigate('/(tabs)/progress/views') },
+      { id: 'views', title: 'Mis vistas', detail: 'Lo que elegiste seguir', icon: 'pin', press: () => router.navigate('/(tabs)/progress/saved-views') },
     ] },
     { title: 'Comparar y descubrir', detail: 'Sesiones, semanas y cambios entre períodos.', items: [
       { id: 'compare', title: 'Comparar períodos', detail: 'Dos períodos, tus fechas', icon: 'compare', primary: true, press: () => onTool('compare') },
