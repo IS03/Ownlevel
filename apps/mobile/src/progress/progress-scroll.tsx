@@ -40,7 +40,7 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
   const compactLarge = compactPeriod && (fontScale > 1.15 || width < 375);
   // The fixed header must make room for Dynamic Type, including accessibility sizes.
   const barHeight = BAR * Math.max(1, fontScale) * (compactPeriod && fontScale > 1.3 ? 1.5 : 1);
-  const { state, today } = useProgressRange();
+  const { state, today, compareOn } = useProgressRange();
   const periodDays = daysBetween(progressRange(state, today).start, progressRange(state, today).end);
   const periodLabel = `${periodDays} ${periodDays === 1 ? 'día' : 'días'}`;
   const [sheet, setSheet] = useState<'custom' | 'compare' | null>(openSheet);
@@ -93,7 +93,7 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
           <GlassSurface interactive style={styles.periodButton}><AppText numeric variant="subheadline">{periodLabel}</AppText><AppIcon name="chevronDown" color={colors.textMuted} size={17} /></GlassSurface>
         </Pressable> : null}
         {comparisonControls ? <CompareHeaderButton onPress={open.onCompare} /> : null}
-        {comparisonControls ? <View style={{flexBasis: '100%'}}><CompareChip onOpen={open.onCompare} /></View> : null}
+        {comparisonControls && compareOn ? <View style={{flexBasis: '100%'}}><CompareChip onOpen={open.onCompare} /></View> : null}
       </View> : <ProgressPeriodBlock {...open} /> : null}
       {children}
       {/* The floating tab bar sits over the end of the page: the last row always scrolls clear of it. */}

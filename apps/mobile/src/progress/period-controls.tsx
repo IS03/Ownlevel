@@ -191,8 +191,8 @@ const styles = StyleSheet.create({
   captionText: { flex: 1, minHeight: 44, justifyContent: 'center' },
   compare: { gap: 6 },
   chipRow: { flexDirection: 'row', alignSelf: 'flex-start', gap: 2 },
-  chip: { minHeight: 30, paddingHorizontal: 12, justifyContent: 'center', borderTopLeftRadius: 15, borderBottomLeftRadius: 15 },
-  chipClose: { width: 32, minHeight: 30, alignItems: 'center', justifyContent: 'center', borderTopRightRadius: 15, borderBottomRightRadius: 15 },
+  chip: { minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', borderTopLeftRadius: 15, borderBottomLeftRadius: 15 },
+  chipClose: { width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderTopRightRadius: 15, borderBottomRightRadius: 15 },
   block: { gap: 6 },
   headerButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, height: 40, borderRadius: brandTokens.radius.full, overflow: 'hidden' },
 });
