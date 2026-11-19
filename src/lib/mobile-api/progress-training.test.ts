@@ -425,3 +425,16 @@ it('a 19-session history with unknown modes yields up, same and down through the
   const next = await training('progress/training?period=30&inPeriod=2');
   expect(next.inPeriod).toMatchObject({method:'own',improved:1,stable:1,declined:1,insufficient:0});
 });
+
+it('v2 does not count an unperformed exercise as trained when the period narrows', async () => {
+  serve(source([
+    { date: d(-15), routine: 'push', exercises: [bench([[8, 50]]), { id: ex.curl, name: 'Curl', mode: 'Peso total', sets: [[8, 10]], configuration: null }] },
+    { date: d(-3), routine: 'push', exercises: [bench([[10, 50]]), { id: ex.curl, name: 'Curl', mode: 'Peso total', sets: [], configuration: null }] },
+  ]));
+  const narrow = await training(`progress/training?period=custom&from=${d(-5)}&to=${TODAY}&inPeriod=2&story=2`);
+  expect(narrow.story?.routines[0]).toMatchObject({exerciseIds:[ex.bench], improved:0, stable:0, declined:0, insufficient:1});
+  expect(narrow.inPeriod?.exercises.map(e => e.id)).toEqual([ex.bench]);
+  expect(narrow.inPeriod?.improved).toBe(1); // Global history still retains the preceding compatible exposure.
+  const wide = await training('progress/training?period=30&inPeriod=2&story=2');
+  expect(wide.story?.routines[0].exerciseIds).toHaveLength(2);
+});
