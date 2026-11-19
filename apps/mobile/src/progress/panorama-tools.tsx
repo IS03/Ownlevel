@@ -21,8 +21,8 @@ export function PanoramaTools({ today, onTool }: { today: string; onTool: (tool:
       { id: 'stages', title: 'Tus etapas', detail: 'Tus planes, uno al lado del otro', icon: 'bookmark', press: () => router.navigate('/(tabs)/progress/stages') },
     ] },
     { title: 'Comparar y descubrir', detail: 'Sesiones, semanas y cambios entre períodos.', items: [
-      { id: 'comparisons', title: 'Comparaciones', detail: 'Cada sesión frente a la anterior', icon: 'dumbbell', press: () => router.navigate({ pathname: '/(tabs)/train/insights', params: origin }) },
-      { id: 'weeks', title: 'Semanas y coincidencias', detail: 'Comparación A/B de los registros', icon: 'calendar', spoken: 'Semanas, A/B y coincidencias descriptivas', press: () => router.navigate(explorationHref(today, undefined, undefined, origin)) },
+      { id: 'comparisons', title: 'Comparaciones', detail: 'Cada sesión con lo tuyo y con la anterior', icon: 'dumbbell', press: () => router.navigate({ pathname: '/(tabs)/train/insights', params: origin }) },
+      { id: 'weeks', title: 'Semanas y coincidencias', detail: 'Tus registros semana a semana', icon: 'calendar', spoken: 'Semanas y coincidencias: tus registros semana a semana', press: () => router.navigate(explorationHref(today, undefined, undefined, origin)) },
       { id: 'connections', title: 'Lo que se movió junto', detail: 'Cambios entre períodos', icon: 'progress', press: () => router.navigate({ pathname: '/(tabs)/progress/period', params: { focus: 'connections' } }) },
     ] },
     { title: 'Registros', detail: 'Lo que anotás en tu día a día.', circles: true, items: [

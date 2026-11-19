@@ -159,7 +159,7 @@ describe('Training Trends', () => {
     expect(view.getByText('Sesiones por semana · esta semana en curso')).toBeTruthy();
     const reads = mockTraining.mock.calls.length;
     fireEvent.press(view.getByRole('button', { name: 'Ver el historial de entrenamientos' })); expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/train/history');
-    fireEvent.press(view.getByRole('button', { name: 'Ver Comparaciones: cada sesión frente a la anterior' }));
+    fireEvent.press(view.getByRole('button', { name: 'Ver Comparaciones: cada sesión con lo tuyo y con la anterior' }));
     expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights', params: { fromProgress: 'training' } });
     expect(mockTraining.mock.calls.length).toBe(reads);
   });

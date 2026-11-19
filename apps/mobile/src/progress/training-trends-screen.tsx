@@ -215,10 +215,10 @@ export function TrainingTrendsScreen() {
         </>
       )}
       {/* #518 · The fixed door to Comparaciones. Asks for nothing here; going back returns to this screen and its period. */}
-      <FlatRow onPress={() => router.navigate(comparisonsFromTrainingHref)} label="Ver Comparaciones: cada sesión frente a la anterior" testID="training-trends-comparisons">
+      <FlatRow onPress={() => router.navigate(comparisonsFromTrainingHref)} label="Ver Comparaciones: cada sesión con lo tuyo y con la anterior" testID="training-trends-comparisons">
         <View style={styles.text}>
           <AppText variant="headline">Comparaciones</AppText>
-          <AppText muted variant="footnote">Cada sesión comparada con la anterior, ejercicio por ejercicio, con tus series.</AppText>
+          <AppText muted variant="footnote">Cada sesión con lo tuyo y con la anterior, ejercicio por ejercicio.</AppText>
         </View>
       </FlatRow>
       <FlatRow onPress={() => router.push('/(tabs)/train/history')} label="Ver el historial de entrenamientos">

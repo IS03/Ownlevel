@@ -63,9 +63,9 @@ it('opens three bounded sources, with no Insights or hidden destination read, an
     expect(after.getByText('Proteína: 127 g/día · 8 días utilizados')).toBeTruthy();
     fireEvent.press(after.getByRole('button', { name: 'Últimos tres meses' }));
     expect(mockNavigate).toHaveBeenLastCalledWith(periodSummaryHref(PANORAMA_TODAY, { fromProgress: '1' }));
-    fireEvent.press(after.getByRole('button', { name: 'Semanas, A/B y coincidencias descriptivas' }));
+    fireEvent.press(after.getByRole('button', { name: 'Semanas y coincidencias: tus registros semana a semana' }));
     expect(mockNavigate).toHaveBeenLastCalledWith(explorationHref(PANORAMA_TODAY, undefined, undefined, { fromProgress: '1' }));
-    fireEvent.press(after.getByRole('button', { name: 'Comparaciones: Cada sesión frente a la anterior' }));
+    fireEvent.press(after.getByRole('button', { name: 'Comparaciones: Cada sesión con lo tuyo y con la anterior' }));
     expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights', params: { fromProgress: '1' } });
     expect(read).toHaveBeenCalledTimes(3);
     console.info('[402 request comparison]', { before: prior, after: read.mock.calls.map(([o]) => o.path) });
