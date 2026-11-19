@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
+import Animated, { FadeIn, SlideInDown, LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, GlassSurface, SheetHandle, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { AppSheet, AppText, Button, GlassSurface, SheetHandle, useAppSheetDismiss, spacing, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import { RoutineSheetButton } from '@/training/routine-sheet-button';
 import { RangeCalendar, type CalendarMark } from './range-calendar';
@@ -38,10 +38,10 @@ function Sheet({ title, subtitle, valid, onClose, onDone, children }: {
     </View>
   </Modal>;
 }
-function Shortcut({ label, active, onPress }: { label: string; active?: boolean; onPress: () => void }) {
+function Shortcut({ label, active, onPress, disabled = false }: { label: string; active?: boolean; onPress: () => void; disabled?: boolean }) {
   const { colors } = useOwnlevelTheme();
   // The capsule keeps its look; the touch area reaches the 44 pt minimum around it.
-  return <Pressable accessibilityRole="button" accessibilityState={{ selected: !!active }} onPress={() => { triggerHaptic('stepperChange'); onPress(); }} style={styles.shortcutTarget}>
+  return <Pressable accessibilityRole="button" accessibilityState={{ selected: !!active, disabled }} disabled={disabled} onPress={() => { triggerHaptic('stepperChange'); onPress(); }} style={styles.shortcutTarget}>
     {/* The chosen one sinks into the app's own raised tone (never black); glass would wash its fill out. */}
     {active ? <View style={[styles.shortcut, { backgroundColor: colors.surfaceRaised, borderColor: colors.border }]}>
       <AppText variant="footnote" style={{ fontWeight: '700', color: colors.text }}>{label}</AppText>
@@ -87,61 +87,91 @@ export function CustomRangeSheet({ onClose, shortPreset = false }: { onClose: ()
   </Sheet>;
 }
 
-/** R4 · Comparar: one calendar for both periods. A = what you look at (champagne), B = what you compare with (grey). */
-export function CompareSheet({ onClose, proposal = null }: { onClose: () => void;
-  /**
-   * #519 · A period proposed by whoever opened the sheet (the portada's 30 days): shown as A, with B kept as it is (a custom
-   * B) or recomputed for it (previous, last year). Nothing is applied until «Listo»: closing leaves the active A and B untouched.
-   */
-  proposal?: DateRange | null;
+/** Compact A/B editor. Drafts never escape before the sheet has finished leaving. */
+export function CompareSheet({ onClose, proposal = null, onApplied }: {
+  onClose: () => void; proposal?: DateRange | null; onApplied?: () => void;
 }) {
+  const { colors } = useOwnlevelTheme();
+  return <AppSheet testID="progress-compare-sheet" closeLabel="Cancelar comparación" onClose={onClose}
+    style={{ maxHeight: '92%', backgroundColor: colors.background }}>
+    <CompareEditor proposal={proposal} onApplied={onApplied} />
+  </AppSheet>;
+}
+
+function CompareEditor({ proposal, onApplied }: { proposal: DateRange | null; onApplied?: () => void }) {
   const { state: active, setState, today } = useProgressRange();
-  const [editing, setEditing] = useState<'a' | 'b'>('b');
-  // The state the drafts start from: the active one, or the active one moved to the proposed period.
-  const [state] = useState<ProgressRangeState>(() => (proposal && progressStateForRange(proposal.start, proposal.end, active, today)) || active);
-  const a = progressRange(state, today), b = compareRange(state, today);
-  const [draftA, setDraftA] = useState<Draft | null>(a);
-  const [draftB, setDraftB] = useState<Draft | null>(b ?? compareRange({ ...state, compare: { kind: 'previous' } }, today));
-  const [kind, setKind] = useState(state.compare.kind === 'none' ? 'previous' : state.compare.kind);
-  const [month, setMonth] = useState((b ?? a).end);
+  const dismiss = useAppSheetDismiss(), reduced = useReduceMotion(), insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
+  const [state] = useState(() => (proposal && progressStateForRange(proposal.start, proposal.end, active, today)) || active);
+  const a = progressRange(state, today);
+  const [draftA, setDraftA] = useState<Draft>(a);
+  const [draftB, setDraftB] = useState<Draft>(() => compareRange(state, today) ?? compareRange({ ...state, compare: { kind: 'previous' } }, today)!);
+  const [kind, setKind] = useState<'previous' | 'last_year' | 'custom'>(state.compare.kind === 'none' ? 'previous' : state.compare.kind);
+  const [editing, setEditing] = useState<'a' | 'b' | null>(null);
+  const [month, setMonth] = useState(draftB.end ?? draftB.start);
   const rangeA = complete(draftA), rangeB = complete(draftB);
-  const fits = (r: DateRange | null) => !!r && daysBetween(r.start, r.end) <= PROGRESS_MAX_DAYS;
+  const fits = (r: DateRange | null) => !!r && r.start <= r.end && r.end <= today && daysBetween(r.start, r.end) <= PROGRESS_MAX_DAYS;
   const valid = fits(rangeA) && fits(rangeB);
+  const baseFor = (r: DateRange): ProgressRangeState => r.start === a.start && r.end === a.end ? state
+    : { ...state, unit: 'custom', custom: r, anchor: r.end };
   const quick = (k: 'previous' | 'last_year') => {
-    const next = compareRange({ ...state, compare: { kind: k } }, today)!;
-    setKind(k); setDraftB(next); setEditing('b'); setMonth(next.end);
+    if (!rangeA) return;
+    const next = compareRange({ ...baseFor(rangeA), compare: { kind: k } }, today)!;
+    setKind(k); setDraftB(next); setMonth(next.end); setEditing(null);
+  };
+  const day = (d: string) => {
+    if (editing === 'a') {
+      const next = pick(draftA, d); setDraftA(next);
+      const r = complete(next);
+      if (r && kind !== 'custom') setDraftB(compareRange({ ...baseFor(r), compare: { kind } }, today)!);
+    } else { setKind('custom'); setDraftB(pick(draftB, d)); }
   };
   const done = () => {
     if (!rangeA || !rangeB || !valid) return;
-    const aChanged = rangeA.start !== a.start || rangeA.end !== a.end;
-    const base = aChanged ? { ...state, unit: 'custom' as const, custom: rangeA, anchor: rangeA.end } : state;
-    const bChanged = kind === 'custom' || compareRange({ ...base, compare: { kind } }, today)?.start !== rangeB.start;
-    setState({ ...base, compare: bChanged ? { kind: 'custom', range: rangeB } : { kind } });
-    triggerHaptic('stepperChange'); onClose();
+    const base = baseFor(rangeA);
+    const expected = kind === 'custom' ? null : compareRange({ ...base, compare: { kind } }, today);
+    const next: ProgressRangeState = { ...base, compare: expected?.start === rangeB.start && expected?.end === rangeB.end && kind !== 'custom'
+      ? { kind } : { kind: 'custom', range: rangeB } };
+    triggerHaptic('stepperChange');
+    dismiss(() => { setState(next); onApplied?.(); });
   };
-  const marks: CalendarMark[] = [...(draftB ? [{ range: draftB, tone: 'b' as const }] : []), ...(draftA ? [{ range: draftA, tone: 'a' as const }] : [])];
-  // A and B may last differently (17 vs 31 days): each cell says how long, never only the edited one.
-  const { fontScale } = useWindowDimensions();
   const length = (r: DateRange | null) => r ? `${daysBetween(r.start, r.end)} ${daysBetween(r.start, r.end) === 1 ? 'día' : 'días'}` : null;
-  return <Sheet title="Comparar" subtitle={editing === 'a' ? rangeSubtitle(rangeA, today, draftA) : rangeSubtitle(rangeB, today, draftB)} valid={valid} onClose={onClose} onDone={done}>
-    <View style={[styles.ab, fontScale > 1.3 && styles.abStacked]} testID="compare-ab">{(['a', 'b'] as const).map(k => {
-      const r = k === 'a' ? rangeA : rangeB, on = editing === k;
-      return <Pressable key={k} accessibilityRole="button" accessibilityState={{ selected: on }} style={fontScale > 1.3 ? undefined : styles.abItem} testID={`compare-cell-${k}`}
-        accessibilityLabel={`${k === 'a' ? 'Tu período' : 'Comparar con'}: ${r ? `${shortRange(r, today)}, ${length(r)}` : 'sin elegir'}`}
-        onPress={() => { setEditing(k); if (r) setMonth(r.end); }}>
-        <ABCell label={k === 'a' ? 'A · Tu período' : 'B · Comparar con'} value={r ? shortRange(r, today) : '—'} length={length(r)} on={on} />
-      </Pressable>;
-    })}</View>
-    <View style={styles.shortcuts}>
-      <Shortcut label="Período anterior" active={editing === 'b' && kind === 'previous'} onPress={() => quick('previous')} />
-      <Shortcut label="Año pasado" active={editing === 'b' && kind === 'last_year'} onPress={() => quick('last_year')} />
-      {/* Turns B off over the period that is active now: a proposed A is never applied by this shortcut. */}
-      <Shortcut label="Sin comparar" onPress={() => { setState({ ...active, compare: { kind: 'none' } }); onClose(); }} />
+  const selectedDraft = editing === 'a' ? draftA : draftB;
+  const marks: CalendarMark[] = editing ? [{ range: selectedDraft, tone: editing }] : [];
+  return <>
+    <View style={[styles.header, { paddingHorizontal: spacing.md, paddingVertical: spacing.sm }]}>
+      <View style={styles.title}><AppText accessibilityRole="header" variant="headline">Comparar períodos</AppText></View>
+      <RoutineSheetButton label="Cerrar sin cambiar" icon="close" onPress={() => dismiss()} />
     </View>
-    <RangeCalendar month={month} onMonth={setMonth} max={today} marks={marks}
-      onDay={d => { if (editing === 'a') setDraftA(pick(draftA, d)); else { setKind('custom'); setDraftB(pick(draftB, d)); } }} />
-    <AppText muted variant="caption">{editing === 'a' ? 'Marcás tu período (champagne).' : 'Marcás el período para comparar (gris).'} Tocá el primer día y el último.</AppText>
-  </Sheet>;
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <View style={[styles.ab, fontScale > 1.3 && styles.abStacked]} testID="compare-ab">{(['a', 'b'] as const).map(k => {
+        const r = k === 'a' ? rangeA : rangeB, on = editing === k;
+        return <Pressable key={k} accessibilityRole="button" accessibilityState={{ expanded: on }} style={fontScale > 1.3 ? undefined : styles.abItem} testID={`compare-cell-${k}`}
+          accessibilityLabel={`${k === 'a' ? 'Período elegido' : 'Referencia'}: ${r ? `${shortRange(r, today)}, ${length(r)}` : 'elegí el último día'}`}
+          onPress={() => { triggerHaptic('stepperChange'); setEditing(on ? null : k); setMonth((k === 'a' ? draftA : draftB).end ?? (k === 'a' ? draftA : draftB).start); }}>
+          <ABCell label={k === 'a' ? 'Período elegido' : 'Referencia'} value={r ? shortRange(r, today) : 'Elegí el último día'} length={length(r)} on={on} />
+        </Pressable>;
+      })}</View>
+      <View style={styles.shortcuts}>
+        <Shortcut label="Período anterior" active={kind === 'previous'} disabled={!rangeA} onPress={() => quick('previous')} />
+        <Shortcut label="Año pasado" active={kind === 'last_year'} disabled={!rangeA} onPress={() => quick('last_year')} />
+        <Shortcut label="Personalizado" active={kind === 'custom'} onPress={() => { setKind('custom'); setEditing('b'); setMonth(draftB.end ?? draftB.start); }} />
+      </View>
+      {editing ? <Animated.View entering={FadeIn.duration(brandTokens.motion.duration.fast)} layout={reduced ? undefined : LinearTransition.duration(brandTokens.motion.duration.fast)} style={{ gap: spacing.sm }}>
+        <View style={styles.header}><AppText variant="headline" style={{ flex: 1 }}>{editing === 'a' ? 'Período elegido' : 'Referencia'}</AppText>
+          <RoutineSheetButton label="Ocultar calendario" icon="close" onPress={() => setEditing(null)} /></View>
+        <RangeCalendar month={month} onMonth={setMonth} max={today} marks={marks} onDay={day} />
+        <AppText muted variant="footnote" accessibilityLiveRegion="polite">{selectedDraft.end ? 'Tocá el primer día y el último.' : 'Ahora elegí el último día.'}</AppText>
+      </Animated.View> : null}
+      {rangeA && rangeB && daysBetween(rangeA.start, rangeA.end) !== daysBetween(rangeB.start, rangeB.end) ? <AppText muted variant="footnote">Distinta duración: los totales no son equivalentes.</AppText> : null}
+      {rangeA && rangeB && rangeA.start <= rangeB.end && rangeB.start <= rangeA.end ? <AppText muted variant="footnote">Los períodos se superponen.</AppText> : null}
+      {!valid && rangeA && rangeB ? <AppText muted variant="footnote">Elegí hasta {PROGRESS_MAX_DAYS} días por período, sin fechas futuras.</AppText> : null}
+    </ScrollView>
+    <View style={{ padding: spacing.md, paddingBottom: Math.max(insets.bottom, spacing.md), gap: spacing.xs }}>
+      <Button testID="compare-apply" label="Ver comparación" disabled={!valid} onPress={done} />
+      {active.compare.kind !== 'none' ? <Button variant="quiet" label="Sin comparar" onPress={() => dismiss(() => setState({ ...active, compare: { kind: 'none' } }))} /> : null}
+    </View>
+  </>;
 }
 function ABCell({ label, value, length, on }: { label: string; value: string; length: string | null; on: boolean }) {
   const { colors } = useOwnlevelTheme();

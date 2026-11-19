@@ -2,7 +2,7 @@ import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, it, expect, jest } from '@jest/globals';
 import { useEffect } from 'react';
 import * as Native from 'react-native';
-import { RefreshControl } from 'react-native';
+import { Modal, RefreshControl } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import type { MobileApiClient } from '@/api/client';
@@ -372,7 +372,12 @@ it('#519 · «Comparar períodos» proposes the portada window; «Cuándo comés
     const view = render(wrap(<><ProgressOverviewScreen /><InspectRange /></>)); await view.findByTestId('progress-panorama');
     const before = range!.state;
     fireEvent.press(view.getByRole('button', { name: /^Comparar períodos/ }));
-    expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/period', params: { sheet: 'compare', proposalFrom: '2026-10-11', proposalTo: '2026-11-09' } });
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(view.getByTestId('compare-ab')).toBeTruthy();
+    expect(view.queryByTestId('progress-range-calendar')).toBeNull();
+    expect(read).toHaveBeenCalledTimes(3);
+    fireEvent.press(view.getByRole('button', {name: 'Cerrar sin cambiar'}));
+    fireEvent(view.UNSAFE_getByType(Modal), 'dismiss');
     // Only a proposal: nothing is applied until «Listo» in the sheet.
     expect(range!.state).toBe(before);
     fireEvent.press(view.getByRole('button', { name: /^Cuándo comés/ }));
@@ -414,13 +419,15 @@ it('#519 · the A/B sheet shows the portada\'s 30 days with the active custom B:
     const opened = range!.state;
     expect([range!.query.from, range!.query.to, range!.compare]).toEqual(['2026-11-01', PANORAMA_TODAY, { start: '2026-08-01', end: '2026-08-20' }]);
     fireEvent.press(cancel.getByRole('button', { name: 'Cerrar sin cambiar' }));
+    fireEvent(cancel.UNSAFE_getByType(Modal), 'dismiss');
     expect(cancel.queryByTestId('compare-ab')).toBeNull();
     // Closed without changes: the range and B that were active stay, exactly.
     expect(range!.state).toBe(opened);
     expect([range!.query.from, range!.query.to, range!.compare]).toEqual(['2026-11-01', PANORAMA_TODAY, { start: '2026-08-01', end: '2026-08-20' }]);
     cancel.unmount();
     const apply = render(tree()); await apply.findByTestId('compare-ab');
-    fireEvent.press(apply.getByRole('button', { name: 'Listo' }));
+    fireEvent.press(apply.getByRole('button', { name: 'Ver comparación' }));
+    fireEvent(apply.UNSAFE_getByType(Modal), 'dismiss');
     // «Listo»: the proposed 30 days as A, the custom B kept with its own dates.
     expect([range!.query.from, range!.query.to, range!.compare]).toEqual(['2026-10-11', PANORAMA_TODAY, { start: '2026-08-01', end: '2026-08-20' }]);
     expect(range!.state.compare).toEqual({ kind: 'custom', range: { start: '2026-08-01', end: '2026-08-20' } });
@@ -430,7 +437,23 @@ it('#519 · the A/B sheet shows the portada\'s 30 days with the active custom B:
     expect(off.getByTestId('compare-cell-a').props.accessibilityLabel).toMatch(/30 días$/);
     expect([range!.query.from, range!.query.to]).toEqual(['2026-11-01', PANORAMA_TODAY]);
     fireEvent.press(off.getByRole('button', { name: 'Sin comparar' }));
+    fireEvent(off.UNSAFE_getByType(Modal), 'dismiss');
     expect(off.queryByTestId('compare-ab')).toBeNull();
     expect([range!.query.from, range!.query.to, range!.compare]).toEqual(['2026-11-01', PANORAMA_TODAY, null]);
     expect(range!.state).toEqual({ ...active, compare: { kind: 'none' } });
+});
+
+it('opens the focused comparison only after confirming the direct home sheet, with no hidden destination reads', async () => {
+    let range: ReturnType<typeof useProgressRange> | undefined;
+    function Inspect() {const value = useProgressRange(); useEffect(() => {range = value;}, [value]); return null;}
+    const view = render(wrap(<><ProgressOverviewScreen /><Inspect /></>)); await view.findByTestId('progress-panorama');
+    fireEvent.press(view.getByRole('button', {name: /^Comparar períodos/}));
+    expect(mockPush).not.toHaveBeenCalled(); expect(read).toHaveBeenCalledTimes(3);
+    fireEvent.press(view.getByTestId('compare-apply'));
+    expect(mockPush).not.toHaveBeenCalled(); expect(range!.compare).toBeNull();
+    fireEvent(view.UNSAFE_getByType(Modal), 'dismiss');
+    expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/compare');
+    expect(range!.compare).toEqual({start: '2026-09-11', end: '2026-10-10'});
+    expect([range!.query.from, range!.query.to]).toEqual(['2026-10-11', PANORAMA_TODAY]);
+    expect(read).toHaveBeenCalledTimes(3);
 });
