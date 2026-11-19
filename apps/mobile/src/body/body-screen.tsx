@@ -107,7 +107,7 @@ export function BodyStatus({ state, controller }: { state: BodyState; controller
   </>;
 }
 /** The open weight or measurement sheet, if any. */
-export function BodyEditors({ state, controller }: { state: BodyState; controller: BodyController }) {
+export function BodyEditors({ state, controller, initialField }: { state: BodyState; controller: BodyController; initialField?: BodyMeasurementField }) {
   const editor = state.editor;
   const weight = editor?.kind === 'weight' ? editor : null;
   const confirmed = !editor && state.phase === 'idle' && !state.intent && !!state.notice;
@@ -124,7 +124,7 @@ export function BodyEditors({ state, controller }: { state: BodyState; controlle
       if (controller.getSnapshot().editor === shownWeight) controller.close();
       setPresented({ controller, editor: null });
     }} /> : null}
-    {editor?.kind === 'measurement' ? <MeasurementEditorSheet editor={editor} state={state} controller={controller} /> : null}
+    {editor?.kind === 'measurement' ? <MeasurementEditorSheet editor={editor} state={state} controller={controller} initialField={initialField} /> : null}
   </>;
 }
 /** Today's weight opens in edit mode, so a second entry for the same day is never created. */

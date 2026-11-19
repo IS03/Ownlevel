@@ -21,10 +21,10 @@ const SMALL = 21;
  * uses). Scrolling, the title never moves sideways: it shrinks in place on the left, and the period you are reading
  * fades in under it ("Este mes", "Mes anterior", "17 sep – 16 oct").
  */
-export function ProgressScroll({ title, testID, refreshControl, children, compactTitle, multilineTitle = false, root = false, periodControls = true, compactPeriod = false, openSheet = null, sheetProposal = null, onSheetOpened }: {
+export function ProgressScroll({ title, testID, refreshControl, children, compactTitle, multilineTitle = false, root = false, periodControls = true, compactPeriod = false, periodPickerTestID = 'training-period-picker', openSheet = null, sheetProposal = null, onSheetOpened }: {
   title: string; testID: string; refreshControl?: React.ReactElement<RefreshControlProps>; children: ReactNode; multilineTitle?: boolean; compactTitle?: string;
   /** The tab's first screen: no back button and a large title. */
-  root?: boolean; periodControls?: boolean; compactPeriod?: boolean;
+  root?: boolean; periodControls?: boolean; compactPeriod?: boolean; periodPickerTestID?: string;
   /** #519 · A sheet asked for by the route (the portada's «Comparar períodos»): opened once, then the route forgets it. */
   openSheet?: 'compare' | null; onSheetOpened?: () => void;
   /** The period that sheet proposes as A (applied only on «Listo»). */
@@ -83,7 +83,7 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
       {multilineTitle ? <AppText accessibilityRole="header" variant="title1">{title}</AppText> : null}
       {periodControls ? compactPeriod ? <View style={styles.compactPeriod}>
         <AppText numeric muted variant="footnote" style={[{ flex: 1 }, compactLarge && { flexBasis: '100%' }]}>{shortRange(progressRange(state, today), today)}</AppText>
-        {compactLarge ? <Pressable testID="training-period-picker" accessibilityRole="button" accessibilityLabel="Elegir período de entrenamiento" onPress={open.onCustom}>
+        {compactLarge ? <Pressable testID={periodPickerTestID} accessibilityRole="button" accessibilityLabel={`Elegir período de ${title.toLocaleLowerCase('es-AR')}`} onPress={open.onCustom}>
           <GlassSurface interactive style={styles.periodButton}><AppText numeric variant="subheadline">{periodLabel}</AppText><AppIcon name="chevronDown" color={colors.textMuted} size={17} /></GlassSurface>
         </Pressable> : null}
         <CompareHeaderButton onPress={open.onCompare} />
@@ -106,7 +106,7 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
             <AppText muted numberOfLines={1} numeric variant="caption">{rangeShortLabel(state, today)}</AppText>
           </Animated.View>:null}
         </View>
-        {periodControls ? compactPeriod ? compactLarge ? null : <Pressable testID="training-period-picker" accessibilityRole="button" accessibilityLabel="Elegir período de entrenamiento" onPress={open.onCustom}>
+        {periodControls ? compactPeriod ? compactLarge ? null : <Pressable testID={periodPickerTestID} accessibilityRole="button" accessibilityLabel={`Elegir período de ${title.toLocaleLowerCase('es-AR')}`} onPress={open.onCustom}>
           <GlassSurface interactive style={styles.periodButton}><AppText numeric variant="subheadline">{periodLabel}</AppText><AppIcon name="chevronDown" color={colors.textMuted} size={17} /></GlassSurface>
         </Pressable> : <CompareHeaderButton onPress={() => setSheet('compare')} /> : null}
       </View>

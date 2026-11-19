@@ -42,17 +42,24 @@ async function mount(history: BodyMeasurement[], open: (controller: BodyControll
   return { view, controller, api };
 }
 const region = (view: ReturnType<typeof render>, name: string) => view.getByRole('button', { name: new RegExp(`^${name},`) });
+async function save(view: ReturnType<typeof render>) {
+  act(() => fireEvent.press(view.getByRole('button', { name: 'Revisar medidas' })));
+  await flush();
+  const commit = view.queryByRole('button', { name: 'Guardar' });
+  if (commit) act(() => fireEvent.press(commit));
+  await flush();
+}
 const draftOf = (controller: BodyController) => controller.getSnapshot().editor!.draft as MeasurementDraft;
 const created = (fields: Partial<Record<BodyMeasurementField, number>>): BodyMeasurementReceipt =>
   ({ status: 'confirmed', operation: 'create', measurementId: MID, measurement: measurement({ ...noValues, ...fields } as Partial<BodyMeasurement>) });
 
 describe('first measurement (empty history)', () => {
-  it('shows the three regions with Tronco open, no habits and no references', async () => {
+  it('shows the four zones with Tronco open, no habits and no references', async () => {
     const { view } = await mount([]);
     expect(view.queryByText('Tus medidas habituales')).toBeNull();
     expect(region(view, 'Tronco').props.accessibilityState.expanded).toBe(true);
     expect(region(view, 'Brazos').props.accessibilityState.expanded).toBe(false);
-    expect(region(view, 'Piernas').props.accessibilityState.expanded).toBe(false);
+    expect(region(view, 'Muslos').props.accessibilityState.expanded).toBe(false);
     for (const label of ['Cintura', 'Abdomen', 'Pecho', 'Cadera']) expect(view.getByLabelText(label)).toBeTruthy();
     expect(view.queryByLabelText('Brazo derecho')).toBeNull();
     expect(view.queryByText(/Anterior:/)).toBeNull();
@@ -64,11 +71,11 @@ describe('first measurement (empty history)', () => {
     expect(region(view, 'Tronco').props.accessibilityLabel).toBe('Tronco, 4 medidas, ninguna con valor');
     fireEvent.changeText(view.getByLabelText('Cintura'), '81,5');
     expect(region(view, 'Tronco').props.accessibilityLabel).toBe('Tronco, 4 medidas, 1 con valor');
-    expect(view.getByText('1 de 4')).toBeTruthy();
+    expect(view.getByText('1 valor cargado')).toBeTruthy();
     fireEvent.press(region(view, 'Tronco'));
     expect(view.queryByLabelText('Cintura')).toBeNull();
     expect(draftOf(controller).waistCm).toBe('81,5');
-    expect(view.getByText('1 de 4')).toBeTruthy();
+    expect(view.getByText('1 valor cargado')).toBeTruthy();
     fireEvent.press(region(view, 'Tronco'));
     expect(view.getByLabelText('Cintura').props.value).toBe('81,5');
   });
@@ -76,25 +83,38 @@ describe('first measurement (empty history)', () => {
 
 describe('quick load with habits', () => {
   const history = [row('2026-10-03', { waistCm: 80, abdomenCm: 90 }), row('2026-10-02', { waistCm: 81, abdomenCm: 91 }), row('2026-10-01', { waistCm: 82, abdomenCm: 92, chestCm: 100 })];
-  it('shows the habitual fields first, collapses the regions and never repeats a field', async () => {
+  it('keeps every field once in its zone and shows previous values without pre-filling', async () => {
     const { view } = await mount(history);
-    expect(view.getByText('Tus medidas habituales')).toBeTruthy();
-    expect(view.getAllByLabelText('Cintura')).toHaveLength(1); expect(view.getAllByLabelText('Abdomen')).toHaveLength(1);
-    for (const name of ['Tronco', 'Brazos', 'Piernas']) expect(region(view, name).props.accessibilityState.expanded).toBe(false);
-    expect(region(view, 'Tronco').props.accessibilityLabel).toBe('Tronco, 2 medidas, ninguna con valor'); // pecho + cadera only
-    fireEvent.press(region(view, 'Tronco'));
+    expect(view.queryByText('Tus medidas habituales')).toBeNull();
     expect(view.getAllByLabelText('Cintura')).toHaveLength(1);
-    expect(view.getByLabelText('Pecho')).toBeTruthy(); expect(view.getByLabelText('Cadera')).toBeTruthy();
+    expect(view.getAllByLabelText('Abdomen')).toHaveLength(1);
+    expect(view.getByLabelText('Cintura').props.value).toBe('');
+    expect(region(view, 'Tronco').props.accessibilityState.expanded).toBe(true);
+    expect(region(view, 'Pantorrillas').props.accessibilityState.expanded).toBe(false);
   });
   it('saves exactly the two typed habitual fields through the existing path, everything else null', async () => {
     const { view, api } = await mount(history);
     api.measurement.mockResolvedValue(ok(created({ waistCm: 81, abdomenCm: 91 })));
     fireEvent.changeText(view.getByLabelText('Cintura'), '81'); fireEvent.changeText(view.getByLabelText('Abdomen'), '91');
-    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar' })); });
+    await save(view);
     await flush();
     expect(api.measurement).toHaveBeenCalledTimes(1);
     expect(api.measurement).toHaveBeenCalledWith({ operation: 'create', measurementId: null, expectedUpdatedAt: null, idempotencyKey: 'body:1',
       fields: { ...noValues, measuredOn: TODAY, waistCm: 81, abdomenCm: 91, condition: null, notes: null } });
+  });
+});
+
+describe('measurement review', () => {
+  it('does not write before confirmation and preserves the draft when returning to edit', async () => {
+    const { view, api } = await mount([]);
+    fireEvent.changeText(view.getByLabelText('Cintura'), '81,5');
+    fireEvent.press(view.getByRole('button', { name: 'Revisar medidas' }));
+    expect(view.getByTestId('body-measurement-review')).toBeTruthy();
+    expect(view.getByText('81,5 cm')).toBeTruthy();
+    expect(api.measurement).not.toHaveBeenCalled();
+    fireEvent.press(view.getByRole('button', { name: 'Volver a editar' }));
+    expect(view.getByLabelText('Cintura').props.value).toBe('81,5');
+    expect(api.measurement).not.toHaveBeenCalled();
   });
 });
 
@@ -105,7 +125,7 @@ describe('historical edit', () => {
     const { view } = await mount([baseline, older], c => c.openMeasurement(baseline));
     expect(region(view, 'Tronco').props.accessibilityState.expanded).toBe(true);
     expect(region(view, 'Brazos').props.accessibilityState.expanded).toBe(true);
-    expect(region(view, 'Piernas').props.accessibilityState.expanded).toBe(false);
+    expect(region(view, 'Muslos').props.accessibilityState.expanded).toBe(false);
     expect(view.getByLabelText('Cintura').props.value).toBe('80');
     expect(view.getByLabelText('Brazo derecho').props.value).toBe('31');
     expect(view.getByLabelText('Brazo izquierdo').props.value).toBe('');
@@ -131,8 +151,8 @@ describe('legacy record without sides', () => {
     const only = { ...legacy, waistCm: null };
     const { view, controller } = await mount([only], c => c.openMeasurement(only));
     expect(view.getByText(/Brazo \(histórico\): 33 cm · Muslo \(histórico\): 50 cm · se conserva al guardar/)).toBeTruthy();
-    for (const name of ['Tronco', 'Brazos', 'Piernas']) expect(region(view, name).props.accessibilityState.expanded).toBe(false);
-    fireEvent.press(region(view, 'Brazos')); fireEvent.press(region(view, 'Piernas'));
+    for (const name of ['Tronco', 'Brazos', 'Muslos']) expect(region(view, name).props.accessibilityState.expanded).toBe(false);
+    fireEvent.press(region(view, 'Brazos')); fireEvent.press(region(view, 'Muslos'));
     for (const label of ['Brazo derecho', 'Brazo izquierdo', 'Muslo derecho', 'Muslo izquierdo']) expect(view.getByLabelText(label).props.value).toBe('');
     expect(view.queryByText(/Anterior:/)).toBeNull();
     expect(draftOf(controller)).toMatchObject({ armRightCm: '', armLeftCm: '', thighRightCm: '', thighLeftCm: '' });
@@ -146,17 +166,15 @@ describe('bilateral independence', () => {
     fireEvent.press(region(view, 'Brazos'));
     fireEvent.changeText(view.getByLabelText('Brazo derecho'), '31,5');
     expect(view.getByLabelText('Brazo izquierdo').props.value).toBe('');
-    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar' })); });
+    await save(view);
     await flush();
     expect(api.measurement.mock.calls[0][0].fields).toEqual({ ...noValues, measuredOn: TODAY, armRightCm: 31.5, condition: null, notes: null });
   });
-  it('a habitual side and its opposite side stay separate fields (right habitual, left under Brazos)', async () => {
+  it('both sides stay together with their own references and independent draft values', async () => {
     const history = ['2026-10-03', '2026-10-02', '2026-10-01'].map(d => row(d, { armRightCm: 31 }));
     const { view, controller } = await mount(history);
-    expect(view.getAllByLabelText('Brazo derecho')).toHaveLength(1);
-    expect(view.queryByLabelText('Brazo izquierdo')).toBeNull();
     fireEvent.press(region(view, 'Brazos'));
-    expect(region(view, 'Brazos').props.accessibilityLabel).toBe('Brazos, 1 medida, ninguna con valor');
+    expect(view.getAllByLabelText('Brazo derecho')).toHaveLength(1);
     expect(view.getByLabelText('Brazo izquierdo').props.value).toBe('');
     fireEvent.changeText(view.getByLabelText('Brazo izquierdo'), '30');
     expect(draftOf(controller)).toMatchObject({ armRightCm: '', armLeftCm: '30' });
@@ -197,7 +215,7 @@ describe('close, errors and write states', () => {
     fireEvent.changeText(view.getByLabelText('Brazo derecho'), 'abc');
     fireEvent.press(region(view, 'Brazos'));
     expect(view.queryByLabelText('Brazo derecho')).toBeNull();
-    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar' })); });
+    await save(view);
     expect(region(view, 'Brazos').props.accessibilityState.expanded).toBe(true);
     expect(view.getByText('Brazo derecho no es un número válido.')).toBeTruthy();
     expect(view.getByLabelText('Brazo derecho').props.value).toBe('abc');
@@ -207,11 +225,11 @@ describe('close, errors and write states', () => {
     const { view, api, controller } = await mount([]);
     api.measurement.mockResolvedValue(lost);
     fireEvent.changeText(view.getByLabelText('Cintura'), '81');
-    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar' })); });
+    await save(view);
     await flush();
     expect(view.getByText(/El resultado es incierto/)).toBeTruthy();
     expect(view.getByRole('button', { name: 'Comprobar' })).toBeTruthy();
-    expect(view.getByLabelText('Cintura').props.editable).toBe(false);
+    expect(view.getByRole('button', { name: 'Volver a editar' }).props.accessibilityState.disabled).toBe(true);
     expect(draftOf(controller).waistCm).toBe('81');
   });
   it('a conflict keeps the draft, shows the message and offers the explicit review', async () => {
@@ -219,11 +237,11 @@ describe('close, errors and write states', () => {
     const { view, api } = await mount([baseline], c => c.openMeasurement(baseline));
     api.measurement.mockResolvedValue(conflict('MEASUREMENT_CHANGED', 'La medición cambió desde que la abriste.'));
     fireEvent.changeText(view.getByLabelText('Cintura'), '79');
-    await act(async () => { fireEvent.press(view.getByRole('button', { name: 'Guardar' })); });
+    await save(view);
     await flush();
     expect(view.getByText('La medición cambió desde que la abriste.')).toBeTruthy();
     expect(view.getByRole('button', { name: 'Revisar valores actuales' })).toBeTruthy();
-    expect(view.getByLabelText('Cintura').props.value).toBe('79');
+    expect(view.getByText('79 cm')).toBeTruthy();
   });
 });
 
@@ -265,7 +283,7 @@ describe('accessibility', () => {
   it('works with Reduce Motion on', async () => {
     mockReduced = true;
     const { view } = await mount([]);
-    fireEvent.press(region(view, 'Piernas'));
+    fireEvent.press(region(view, 'Muslos'));
     fireEvent.press(view.getByRole('button', { name: 'Cómo medir muslo' }));
     expect(view.getByLabelText('Muslo derecho')).toBeTruthy(); expect(view.getByText(/justo debajo del pliegue del glúteo/)).toBeTruthy();
   });

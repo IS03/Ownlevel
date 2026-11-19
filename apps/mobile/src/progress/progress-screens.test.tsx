@@ -2,7 +2,7 @@ import { clearConfirmedReads, invalidateConfirmedReads } from '@/api/confirmed-r
 import type { MobileApiClient } from '@/api/client';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { AppState, RefreshControl, StyleSheet } from 'react-native';
+import { AppState, Modal, RefreshControl, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { parseProgressBody, parseProgressMetrics, parseProgressOverview, type ProgressBody, type ProgressComparison, type ProgressMetrics, type ProgressOverview, type ProgressQuery } from '@/api/progress';
@@ -119,10 +119,13 @@ it('opens the measures entry directly, without the weight summary, and reaches t
   mockParams = { section: 'measures' };
   mockBody.mockResolvedValue(ok(body()));
   const view = wrap(<BodyTrendsScreen />); await flush();
-  const measures = within(view.getByTestId('body-measures-entry'));
+  const measures = within(view.getByTestId('body-zones'));
   expect(measures.getByText('Cintura')).toBeTruthy();
   expect(view.queryByTestId('body-trend-chart')).toBeNull();
-  fireEvent.press(measures.getByRole('button', { name: /^Cintura/ }));
+  fireEvent.press(measures.getByTestId('body-zone-Tronco'));
+  fireEvent.press(view.getByRole('button', { name: /^Cintura, 88 cm,/ }));
+  await flush();
+  fireEvent(view.UNSAFE_getAllByType(Modal).find(m => m.props.testID === 'body-zone-sheet-modal')!, 'dismiss');
   expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.waist' } });
 });
 const defs = [
@@ -314,13 +317,25 @@ describe('Body Trends', () => {
     fireEvent.press(view.getByRole('button', { name: 'Ver registro original' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/body', params: { date: '2026-09-20', bodyChartReturn: '1', bodyChartMetric: '' } });
     // Each measure opens on its own screen, so Back returns to the weight.
-    fireEvent.press(view.getByRole('button', { name: 'Cintura. 88 cm · un solo registro' }));
+    fireEvent.press(view.getByTestId('body-zone-Tronco'));
+    fireEvent.press(view.getByRole('button', { name: /^Cintura, 88 cm,/ }));
+    await flush();
+    fireEvent(view.UNSAFE_getAllByType(Modal).find(m => m.props.testID === 'body-zone-sheet-modal')!, 'dismiss');
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.waist' } });
     // The records to correct sit right under the weight, and one floating "+" loads a new one here.
-    expect(within(view.getByTestId('body-trend-records')).getByLabelText('Peso del 4 oct 2026: 80,5 kg')).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Tu cuaderno · peso y medidas por fecha' })).toBeTruthy();
     fireEvent.press(view.getByTestId('body-add-menu'));
     fireEvent.press(view.getByTestId('body-add-measurement')); await flush();
     expect(view.getByTestId('body-measurement-sheet')).toBeTruthy();
+  });
+  it('starts capture in the selected measure zone without borrowing earlier values', async () => {
+    mockParams = { metric: 'body.thigh_right' };
+    const view = wrap(<BodyTrendsScreen />); await flush();
+    fireEvent.press(view.getByRole('button', { name: 'Registrar medidas' }));
+    expect(view.getByTestId('body-region-thighs').props.accessibilityState.expanded).toBe(true);
+    expect(view.getByLabelText('Muslo derecho').props.value).toBe('');
+    expect(view.getByLabelText('Muslo izquierdo').props.value).toBe('');
+    expect(view.queryByLabelText('Cintura')).toBeNull();
   });
   it('a measure on its own screen: one record remains inspectable without pretending it has a trend', async () => {
     mockParams = { metric: 'body.waist' };
@@ -378,7 +393,8 @@ describe('Body Trends', () => {
     act(() => view.UNSAFE_getByType(RefreshControl).props.onRefresh()); await flush();
     expect(view.getByText('No se pudo actualizar. Mostramos la última lectura confirmada.')).toBeTruthy();
     expect(view.getByText('Peso · 81 kg')).toBeTruthy();
-    fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
+    fireEvent.press(view.getByTestId('body-period-picker'));
+    fireEvent.press(view.getByText('Últimos 7 días')); await flush();
     expect(view.queryByRole('button', { name: 'Ver registro original' })).toBeNull();
     fireEvent.press(view.getByTestId('body-trend-chart-2026-09-20-mark'));
     mockOwner = 'different-owner'; mockActiveClient = {} as MobileApiClient;
@@ -525,6 +541,7 @@ describe('Body Trends', () => {
   });
   it('a server that leaves 0 kg out: the record of the period says it does not count, and never measures a change (#367)', async () => {
     mockBodyWeights = [{ date: '2026-10-04', weightKg: 80.5 }, { date: '2026-10-02', weightKg: 0 }, { date: '2026-10-01', weightKg: 81 }];
+    mockParams = { metric: 'body.weight' };
     const view = wrap(<BodyTrendsScreen />); await flush();
     expect(within(view.getByTestId('body-trend-zero')).getByText(/El pesaje del 2 oct está en 0 kg: no es un peso, así que no cuenta en el gráfico ni en el cambio/)).toBeTruthy();
     const records = within(view.getByTestId('body-trend-records'));

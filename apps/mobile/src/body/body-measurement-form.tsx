@@ -2,17 +2,16 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import type { BodyMeasurementField } from '@/api/body';
 import { BODY_MEASUREMENT_LABELS } from '@/api/body';
-import { AppIcon, AppText, Separator, TextField, appIconSize, radius, sizes, spacing, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, TextField, appIconSize, brandTokens, radius, sizes, spacing, useOwnlevelTheme } from '@/design-system';
 import type { BodyController, BodyState } from './body-controller';
 import { GUIDE_COMMON, MEASURE_GUIDES } from './body-measure-guides';
 import {
-  buildMeasurementLayout, habitualPlan, referenceText, regionPlan,
-  type MeasureReference, type PlannedMeasure, type RegionKey,
+  buildMeasurementLayout, referenceText, MEASURES,
+  type MeasureReference, type PlannedMeasure,
 } from './body-measure-layout';
 import type { MeasurementEditor } from './body-storage';
 
-// Guided body-measurement fields (#470): the ten fields grouped by measure and body region, with an optional list of
-// the user's habitual measures, the last value per field as a reference, and a text-only "Cómo medir" guide.
+// Ten independent fields grouped by body zone, with dated previous values and optional measuring guides.
 // Presentation only: every value lives in the controller draft (collapsing or moving a field never loses it) and
 // nothing is ever pre-filled from a reference.
 //
@@ -77,9 +76,9 @@ function RegionSection({ label, measures, open, filled, onToggle, ctx, testID }:
 }) {
   const { colors } = useOwnlevelTheme();
   const total = measures.reduce((sum, m) => sum + m.fields.length, 0);
-  const count = `${filled} de ${total}`;
+  const count = filled ? countLabel(filled, 'valor cargado', 'valores cargados') : 'Sin completar';
   const spoken = `${label}, ${countLabel(total, 'medida', 'medidas')}, ${filled === 0 ? 'ninguna con valor' : `${filled} con valor`}`;
-  return <View>
+  return <View style={[styles.zone, { backgroundColor: colors.surface, borderColor: colors.border }]}>
     <Pressable accessibilityRole="button" accessibilityLabel={spoken} accessibilityState={{ expanded: open }} onPress={onToggle} testID={testID}
       style={({ pressed }) => [styles.region, pressed && { backgroundColor: colors.surfaceRaised }]}>
       <View style={styles.regionText}>
@@ -89,52 +88,49 @@ function RegionSection({ label, measures, open, filled, onToggle, ctx, testID }:
       {ctx.largeText ? null : <AppText muted numeric variant="footnote">{count}</AppText>}
       <View style={open && styles.flipped}><AppIcon name="chevronDown" color={colors.textMuted} size={appIconSize.row} /></View>
     </Pressable>
-    {open ? <View style={styles.regionBody}>{measures.map(m => <MeasureGroup key={m.measure.key} planned={m} ctx={ctx} />)}</View> : null}
+    {open ? <View style={[styles.regionBody, measures.length > 1 && !ctx.largeText && styles.grid]}>{measures.map(m => <View key={m.measure.key} style={measures.length > 1 && !ctx.largeText ? styles.gridCell : undefined}><MeasureGroup planned={m} ctx={ctx} /></View>)}</View> : null}
   </View>;
 }
 
-export function MeasurementFields({ editor, state, controller, editable }: { editor: MeasurementEditor; state: BodyState; controller: BodyController; editable: boolean }) {
-  const { fontScale } = useWindowDimensions();
+export function MeasurementFields({ editor, state, controller, editable, initialField }: { editor: MeasurementEditor; state: BodyState; controller: BodyController; editable: boolean; initialField?: BodyMeasurementField }) {
+  const { fontScale, width } = useWindowDimensions();
   const { draft, baseline, mode } = editor;
   const { measurements, measurementsCursor, overview } = state.read;
   const editedId = baseline?.id ?? null, today = overview?.today;
   // Pure derivation from what the controller already loaded; recomputed when the draft date changes, with no network.
   const layout = useMemo(() => buildMeasurementLayout({ history: measurements, hasMore: measurementsCursor !== null, selectedDate: draft.date, editedId, mode, today }),
     [measurements, measurementsCursor, draft.date, editedId, mode, today]);
-  const plan = useMemo(() => regionPlan(layout.habitual), [layout.habitual]);
-  const habitual = useMemo(() => habitualPlan(layout.habitual), [layout.habitual]);
-
+  const plan = [
+    { key: 'trunk', label: 'Tronco', keys: ['waist', 'abdomen', 'chest', 'hip'] },
+    { key: 'arms', label: 'Brazos', keys: ['arm'] },
+    { key: 'thighs', label: 'Muslos', keys: ['thigh'] },
+    { key: 'calves', label: 'Pantorrillas', keys: ['calf'] },
+  ].map(zone => ({ ...zone, measures: MEASURES.filter(m => zone.keys.includes(m.key)).map(measure => ({ measure, fields: [...measure.fields] })) }));
   const hasValue = (field: BodyMeasurementField) => draft[field].trim() !== '';
-  // Edit opens every region that already holds a value; this is read once so clearing a field never collapses it under the finger.
-  const [initiallyFilled] = useState(() => new Set(regionPlan([]).filter(r => r.measures.some(m => m.fields.some(hasValue))).map(r => r.region.key)));
-  const [toggled, setToggled] = useState<Partial<Record<RegionKey, boolean>>>({});
-  const defaultOpen = (key: RegionKey) => mode === 'edit' ? initiallyFilled.has(key) : layout.habitual.length === 0 && key === 'trunk';
+  const [initiallyFilled] = useState(() => new Set(plan.filter(r => r.measures.some(m => m.fields.some(hasValue))).map(r => r.key)));
+  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  const entryZone = plan.find(zone => zone.measures.some(m => (initialField !== undefined && m.fields.includes(initialField))))?.key ?? 'trunk';
+  const defaultOpen = (key: string) => mode === 'edit' ? initiallyFilled.has(key) : key === entryZone;
 
-  const ctx: FieldsContext = { draft, baseline, errors: state.errors, references: layout.references, editable, largeText: fontScale > LARGE_TEXT,
+  const ctx: FieldsContext = { draft, baseline, errors: state.errors, references: layout.references, editable, largeText: fontScale > LARGE_TEXT || width < 375,
     onChange: (field, value) => controller.change(field, value) };
   return <View style={styles.root} testID="body-measure-fields">
-    {habitual.length ? <View style={styles.habitual} testID="body-habitual">
-      <AppText accessibilityRole="header" variant="headline">Tus medidas habituales</AppText>
-      <AppText muted variant="footnote">Las que repetiste en tus últimas cargas.</AppText>
-      {habitual.map(m => <MeasureGroup key={m.measure.key} planned={m} ctx={ctx} />)}
-    </View> : null}
-    {plan.map(({ region, measures }, index) => {
+    <AppText muted variant="footnote">Abrí una zona y completá solo lo que mediste. Los valores anteriores son una referencia.</AppText>
+    {plan.map(({ key, label, measures }) => {
       const fields = measures.flatMap(m => m.fields);
       const filled = fields.filter(hasValue).length;
-      // A validation error always shows its field, whatever the toggle says; a value in a closed region shows in its count.
-      const open = fields.some(f => state.errors[f]) || (toggled[region.key] ?? (defaultOpen(region.key) || filled > 0));
-      return <View key={region.key}>
-        {index > 0 || habitual.length ? <Separator /> : null}
-        <RegionSection label={region.label} measures={measures} open={open} filled={filled} ctx={ctx} testID={`body-region-${region.key}`}
-          onToggle={() => setToggled(prev => ({ ...prev, [region.key]: !open }))} />
-      </View>;
+      const open = fields.some(f => state.errors[f]) || (toggled[key] ?? defaultOpen(key));
+      return <RegionSection key={key} label={label} measures={measures} open={open} filled={filled} ctx={ctx} testID={`body-region-${key}`}
+        onToggle={() => setToggled(prev => ({ ...prev, [key]: !open }))} />;
     })}
   </View>;
 }
 
 const styles = StyleSheet.create({
   root: { gap: spacing.md },
-  habitual: { gap: spacing.md },
+  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  gridCell: { width: '47%', flexGrow: 1 },
+  zone: { borderRadius: radius.card, borderWidth: StyleSheet.hairlineWidth, padding: brandTokens.layout.cardPadding },
   group: { gap: spacing.xs },
   pair: { flexDirection: 'row', gap: spacing.md },
   stacked: { flexDirection: 'column' },
