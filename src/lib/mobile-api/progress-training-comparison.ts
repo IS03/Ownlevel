@@ -1,4 +1,4 @@
-import type { TrainingAnalysisSource } from '../phase2/training-analysis';
+import { trainingExerciseStats, type TrainingAnalysisSource } from '../phase2/training-analysis';
 import { buildPerformanceInsightsV1, buildPerformanceInsightsPartialV1 } from '../progress/performance-insights';
 import { ownSessions } from '../progress/insights-engine/own-performance';
 import { toPerformanceSessions } from '../progress/insights-engine/source-adapter';
@@ -77,7 +77,10 @@ export function trainingComparisonDto(source: TrainingAnalysisSource, period: Pr
       }
     }
   }
-  const exercises = [...latest.values()];
+  // Match the canonical trained-exercise roster, including the routine-scoped projection.
+  // An exercise block with no completed sets is not a trained exercise in this window.
+  const trained = new Set(trainingExerciseStats(source, period).map(exercise => exercise.id));
+  const exercises = [...latest.values()].filter(exercise => trained.has(exercise.id));
   const count = (status: string) => exercises.filter(e => e.status === status).length;
   return {method, comparedExposures, improved: count('improved'), stable: count('stable'), declined: count('declined'), insufficient: count('insufficient_data'), exercises};
 }
