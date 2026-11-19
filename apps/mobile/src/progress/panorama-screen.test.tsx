@@ -307,7 +307,7 @@ it('shows every thematic destination without loading it, and distinguishes recen
     expect(within(view.getByTestId('panorama-explore')).getAllByRole('button')).toHaveLength(14);
     fireEvent.press(view.getByTestId('panorama-tool-period'));expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress/period');
     fireEvent.press(view.getByTestId('panorama-tool-calendar'));expect(mockNavigate).toHaveBeenLastCalledWith('/history/calendar');
-    fireEvent.press(view.getByTestId('panorama-tool-views'));expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress/views');
+    fireEvent.press(view.getByTestId('panorama-tool-views'));expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress/saved-views');
     fireEvent.press(view.getByTestId('panorama-tool-stages'));expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress/stages');
     expect(read).toHaveBeenCalledTimes(3);
 });
