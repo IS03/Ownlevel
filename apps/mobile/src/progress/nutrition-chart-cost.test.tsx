@@ -1,3 +1,4 @@
+import { pressFittedMark } from './fitted-chart.test-helper';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { expect, it, jest } from '@jest/globals';
 import { RefreshControl } from 'react-native';
@@ -40,7 +41,7 @@ it('measures source reads and existing cache/focus separately from the destinati
   clearConfirmedReads(mockClient);
   const view = render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}><OwnlevelThemeProvider initialMode="light"><ProgressRangeProvider initialToday="2026-10-04" initialState={{ unit: 'month', anchor: '2026-10-04', custom: null, compare: { kind: 'previous' } }}><NutritionTrendsScreen /></ProgressRangeProvider></OwnlevelThemeProvider></SafeAreaProvider>);
   await flush(); const initial = reads();
-  fireEvent.press(view.getByTestId('nutrition-chart-current-2026-10-01-bar')); await flush(); const inspected = reads();
+  pressFittedMark(view.getByTestId('nutrition-chart-current-2026-10-01-bar')); await flush(); const inspected = reads();
   expect(inspected).toEqual(initial);
   // #519 · Changing the series is local to the chart.
   fireEvent.press(view.getByRole('radio', { name: 'Proteína' })); await flush(); const switched = reads();

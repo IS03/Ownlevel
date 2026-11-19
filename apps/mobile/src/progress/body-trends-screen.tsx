@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { haptics } from '@/platform/haptics';
 import { BodyAddMenu } from '@/body/body-add-menu';
 import { BodyEditors, BodyStatus, MeasurementRecords, WeightRecords, openTodayWeight, useMeasurementEntry, useWeightEntry } from '@/body/body-screen';
@@ -13,11 +13,11 @@ import { AppText, Button, Chip, ChipGroup, Heading, InlineUnavailable, SkeletonB
 import { useNutritionStages } from '@/stages/stages-provider';
 import { chartBands } from './stages-model';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
-import { PeriodChart } from './period-chart';
+import { FittedChart } from './fitted-chart';
 import { BODY_CHOICES, BodyJournal, BodyMetricPicker, BodyRecordComparison, BodyZones } from './body-atlas';
 import { ProgressScroll } from './progress-scroll';
 import { useProgressRange } from './progress-range-context';
-import { PROGRESS_UNITS, periodHeading, shortRange, type ProgressUnit } from './progress-range';
+import { PROGRESS_UNITS, addDays, progressRange, periodHeading, shortRange, type ProgressUnit } from './progress-range';
 import { arrowDelta, formatValue, trendText } from './progress-format';
 import { useCachedRead } from '@/api/use-cached-read';
 import { ProgressReadStatus } from './progress-read-status';
@@ -45,6 +45,7 @@ function Selected({ metric, excluded, storedZeros = [], selectedDate, onSelect, 
   const { colors } = useOwnlevelTheme();
   const { compareText, state, setState, today } = useProgressRange();
   const { width, fontScale, onLayout } = useMeasuredWidth();
+  const chartRange = progressRange(state,today);
   const day = (d: string) => shortRange({ start: d, end: d }, today);
   // With too few records, one tap to a longer period (never Personalizado: that one you chose on purpose).
   const longer = LONGER[state.unit];
@@ -69,7 +70,6 @@ function Selected({ metric, excluded, storedZeros = [], selectedDate, onSelect, 
   // A server that already leaves it out does not send it: the records of the period say it is there and does not count.
   const counted = metric.key === 'body.weight' ? metric.observations.filter(o => o.value === 0).map(o => o.date) : [];
   const left = counted.length ? [] : storedZeros;
-  const plain = (v: number) => formatValue(v, null);
   // The trend line only when it adds to the arrow: records that zig-zag, or only two of them.
   const trendNote = safeSummary && count >= 3 ? trendText(metric.trend, metric.confidence) : null;
   if (!metric.last && !metric.observations.length) return <View style={styles.section} testID="body-trend-summary">
@@ -109,13 +109,12 @@ function Selected({ metric, excluded, storedZeros = [], selectedDate, onSelect, 
     </> : safeSummary && count === 2 ? <AppText muted variant="footnote">Dos registros: muestran una diferencia, todavía con evidencia limitada.</AppText> : null}
     {bands.length ? <View style={styles.chips}><Chip kind="toggle" label="Etapas" selected={showStages} onPress={() => setShowStages(v => !v)} /></View> : null}
     {portada ? <PortadaPointNote point={portada.point} matched={portada.matched} reason="No hay en este período un pesaje con esa fecha y ese valor: no seleccionamos otro en su lugar." /> : null}
-    <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chartScroll} style={styles.chart} accessibilityLabel={`Gráfico de ${metric.label.toLocaleLowerCase('es-AR')}`}>
-      <PeriodChart testID="body-trend-chart" mode="dots" bands={showStages ? bands : undefined} points={metric.observations.map(o => ({
-        key: o.date, label: formatBodyDate(o.date), value: valid(o.value) ? o.value : null,
-        valueText: valid(o.value) && fontScale <= 1.3 ? plain(o.value) : undefined,
-        text: `${formatValue(o.value, metric.unit)}${valid(o.value) ? '' : ' · registro no válido'}${o.provenanceLabel ? ` · ${o.provenanceLabel}` : ''}`,
-      }))} inspection={{ selectedKey: point?.date ?? null, onSelect: date => onSelect(date === selectedDate ? null : date) }} />
-    </ScrollView>
+    <FittedChart testID="body-trend-chart" unit={metric.unit} mode="dots" connect range={chartRange}
+      bands={showStages ? bands.map(b=>({start:b.start<chartRange.start?chartRange.start:b.start,end:b.end&&b.end<=chartRange.end?addDays(b.end,-1):chartRange.end,label:b.label})).filter(b=>b.start<=b.end) : []}
+      selectedKey={point?.date ?? null} onSelect={date=>onSelect(date===selectedDate?null:date)} points={[...metric.observations].sort((a,b)=>a.date.localeCompare(b.date)).map(o=>({
+        key:o.date,start:o.date,end:o.date,value:valid(o.value)?o.value:null,kind:valid(o.value)?'mark':'gap',
+        text:`${formatBodyDate(o.date)}, ${formatValue(o.value,metric.unit)}${o.provenanceLabel?` · ${o.provenanceLabel}`:''}`,
+      }))} />
     <View style={styles.section} testID="body-point-inspection">
       <View accessible accessibilityLiveRegion="polite" accessibilityLabel={point ? `${formatBodyDate(point.date)}, ${metric.label}, ${formatValue(point.value, metric.unit)}, ${provenance}${valid(point.value) ? '' : ', registro no válido'}` : 'Tocá un punto para consultar su fecha, valor y procedencia.'}>
         {point ? <>

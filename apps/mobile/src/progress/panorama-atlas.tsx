@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
-import Svg, { Circle, Line, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Line, Rect } from 'react-native-svg';
 import type { HistoryRange } from '@/api/history';
 import type { NutritionReport } from '@/api/nutrition-report';
 import type { ProgressDestination, ProgressOverview } from '@/api/progress';
@@ -35,25 +35,18 @@ function WeightLine({ data }: { data: ProgressOverview }) {
   </View>;
 }
 
-function CalorieCloud({ days }: { days: NonNullable<ReturnType<typeof panoramaCalories>> }) {
+function CalorieStrip({ days }: { days: NonNullable<ReturnType<typeof panoramaCalories>> }) {
   const { colors } = useOwnlevelTheme();
   const [width, setWidth] = useState(160);
-  const values = days.map(d => d.value), low = Math.min(...values), high = Math.max(...values);
-  // Stack exact repetitions. Nearby distinct values may overlap; the accessible detail remains in the report.
-  const groups = new Map<string, { value: number; partial: boolean; count: number }>();
-  for (const d of days) { const key = `${d.value}|${d.partial}`; const old = groups.get(key); groups.set(key, { ...d, count: (old?.count ?? 0) + 1 }); }
-  return <View onLayout={e => setWidth(Math.max(32, e.nativeEvent.layout.width))} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+  const high = Math.max(0,...days.map(d=>d.value)), low = Math.min(0,...days.map(d=>d.value));
+  const y = (v: number) => 64*(high-v)/Math.max(1,high-low);
+  const ordered = [...days].sort((a,b)=>a.date.localeCompare(b.date));
+  const step = width / Math.max(1,days.length);
+  return <View onLayout={e=>setWidth(Math.max(32,e.nativeEvent.layout.width))} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
     <Svg width="100%" height={64}>
-      {[...groups.values()].sort((a, b) => a.value - b.value).map((d, i) => {
-        const x = high === low ? width / 2 : 8 + (d.value - low) / (high - low) * (width - 16), y = d.partial ? 44 : 20 + (i % 3) * 6;
-        return <Circle key={`${d.value}|${d.partial}`} cx={x} cy={y} r={d.count > 1 ? 4 : 3} fill={d.partial ? 'none' : colors.primary} stroke={colors.primary} strokeWidth={1} />;
-      })}
-      {[...groups.values()].filter(d => d.count > 1).map(d => {
-        const x = high === low ? width / 2 : 8 + (d.value - low) / (high - low) * (width - 16);
-        return <SvgText key={`${d.value}|${d.partial}`} x={x} y={d.partial ? 60 : 12} textAnchor="middle" fontSize={brandTokens.typeScale.caption.fontSize} fill={colors.textMuted}>{d.count}</SvgText>;
-      })}
+      {ordered.map((d,i)=><Rect key={i} x={i*step} y={Math.min(y(d.value),y(0))} width={Math.max(1,step-1)} height={d.value===0?1:Math.max(1,Math.abs(y(d.value)-y(0)))} fill={colors.primary} opacity={d.partial?0.4:1} />)}
     </Svg>
-    <View style={styles.heading}><AppText muted numeric variant="caption">{value(low, 'kcal')}</AppText><AppText muted numeric variant="caption">{high === low ? '' : value(high, 'kcal')}</AppText></View>
+    <AppText muted variant="caption">Calorías de cada día con dato</AppText>
   </View>;
 }
 
@@ -78,7 +71,7 @@ export function PanoramaAtlas({ data, daily, onOpen }: { data: ProgressOverview;
     `${n.averageKcal === null ? 'Sin promedio' : `${value(n.averageKcal, 'kcal')} por día utilizado`}.`,
     `Proteína: ${n.averageProteinG === null ? 'sin promedio' : `${value(n.averageProteinG, 'g')} por día`}; ${coverage?.proteinDays ?? 'sin dato de'} días utilizados.`,
     `${coverage?.caloriesDays ?? 'Sin dato de'} días utilizados para calorías. ${n.registeredDays} de ${n.days} días con alimentación registrada.`,
-    days ? `${days.length} días en la distribución, ${days.filter(d => d.partial).length} parciales. Los puntos huecos son registros parciales; un número junto al punto indica días repetidos.` : 'Distribución diaria no disponible.',
+    days ? `${days.length} días en la distribución, ${days.filter(d => d.partial).length} parciales. Las barras suaves son sumas parciales; los días sin dato quedan fuera de esta tira.` : 'Distribución diaria no disponible.',
     daily?.reportStale ? 'Distribución sin actualizar; última lectura confirmada.' : '', 'No confirma toda la ingesta.',
   ].join(' ') : 'Nutrición no disponible.';
 
@@ -121,10 +114,10 @@ export function PanoramaAtlas({ data, daily, onOpen }: { data: ProgressOverview;
           <AppText numeric variant="title1">{!n ? '—' : n.averageKcal === null ? 'Sin promedio' : formatValue(n.averageKcal, null, 'integer')}</AppText>
           {!n ? <AppText muted variant="footnote">No pudimos leer Nutrición.</AppText> : <>
             <AppText muted variant="caption">kcal/día · promedio registrado</AppText>
-            {days?.length ? <CalorieCloud days={days} /> : <View style={styles.plot}><AppText muted variant="caption">{daily?.loading ? 'Leyendo los días…' : days ? 'Sin días con calorías conocidas.' : 'Distribución diaria no disponible.'}</AppText></View>}
+            {days?.length ? <CalorieStrip days={days} /> : <View style={styles.plot}><AppText muted variant="caption">{daily?.loading ? 'Leyendo los días…' : days ? 'Sin días con calorías conocidas.' : 'Distribución diaria no disponible.'}</AppText></View>}
             <AppText muted numeric variant="caption">{coverage ? `${coverage.caloriesDays} días utilizados` : 'Días utilizados no disponibles'} · {n.registeredDays} de {n.days} días con alimentación registrada</AppText>
             <AppText muted numeric variant="caption">Proteína: {n.averageProteinG === null ? 'sin promedio' : `${value(n.averageProteinG, 'g')}/día`}{coverage ? ` · ${coverage.proteinDays} días utilizados` : ''}</AppText>
-            {days?.length ? <AppText muted variant="caption">Cada punto: un día. Un número indica días con el mismo valor.{days.some(d => d.partial) ? ' Punto hueco: registro parcial.' : ''}</AppText> : null}
+            {days?.length ? <AppText muted variant="caption">Una barra por día con dato.{days.some(d => d.partial) ? ' Barras suaves: sumas parciales.' : ''}</AppText> : null}
             {daily?.reportStale ? <AppText muted variant="caption">Distribución: última lectura confirmada; no pudimos actualizar.</AppText> : null}
           </>}
         </Area>

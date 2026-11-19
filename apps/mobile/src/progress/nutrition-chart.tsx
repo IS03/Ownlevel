@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import type { NutritionReport, ReportDailyRow } from '@/api/nutrition-report';
-import { AppIcon, AppText, Button, Chip, ChipGroup, Heading, pressedStyle, useReduceMotion, brandTokens, radius, spacing, typography, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, Button, Chip, ChipGroup, Heading, useReduceMotion, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { haptics } from '@/platform/haptics';
+import { FittedChart } from './fitted-chart';
 import { ProgressRow } from './progress-row';
 import { inputNutritionDate as date } from '@/nutrition/day-format';
 import { nutritionValue } from './nutrition-values';
@@ -26,9 +27,9 @@ const valueText = (nutrient: NutritionChartNutrient, value: number, spoken = fal
 function points(report: NutritionReport, n: NutritionChartNutrient) {
   return report.range.days <= 31
     ? [...report.days].reverse().map(d => ({ start: d.date, end: d.date, value: d.nutrients[n].value,
-      partial: d.nutrients[n].status === 'partial', today: d.isToday, day: d, denominator: d.nutrients[n].value === null ? 0 : 1, partialDays: d.nutrients[n].status === 'partial' ? 1 : 0 }))
+      target: NUTRIENTS[n].target(d), partial: d.nutrients[n].status === 'partial', today: d.isToday, day: d, denominator: d.nutrients[n].value === null ? 0 : 1, partialDays: d.nutrients[n].status === 'partial' ? 1 : 0 }))
     : report.evolution.map(b => ({ start: b.start, end: b.end, value: b.metrics[n].value,
-      partial: b.metrics[n].partialDays > 0, today: b.includesToday, day: undefined as ReportDailyRow | undefined,
+      target: b.metrics[n === 'calories' ? 'targetCalories' : 'targetProtein'].value, partial: b.metrics[n].partialDays > 0, today: b.includesToday, day: undefined as ReportDailyRow | undefined,
       denominator: b.metrics[n].denominator, partialDays: b.metrics[n].partialDays }));
 }
 /**
@@ -86,7 +87,7 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
   stages?: boolean; onStages?: (next: boolean) => void;
 }) {
   const { colors } = useOwnlevelTheme(), reduced = useReduceMotion(), { compareOn, compareText } = useProgressRange();
-  const { fontScale } = useWindowDimensions(), [width, setWidth] = useState(300);
+  const { fontScale } = useWindowDimensions();
   const [details, setDetails] = useState(false);
   const Selector = fontScale > 1.3 ? ChipGroup : ExerciseSegmented;
   const copy = NUTRIENTS[nutrient], fmt = (value: number) => valueText(nutrient, value), spoken = (value: number) => valueText(nutrient, value, true);
@@ -96,7 +97,8 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
   // The chip exists when a loaded report of A or of the active B has a label; off at first, it keeps its state across nutrient and side.
   const hasStages = series.some(s => s.report.days.some(d => stageOf(d) !== null));
   const showStages = stages && hasStages;
-  const max = Math.max(1, ...series.flatMap(s => s.points.map(p => p.value ?? 0)));
+  const max = Math.max(1, ...series.flatMap(s => s.points.flatMap(p => [p.value ?? 0,p.target ?? 0])));
+  const min = Math.min(0,...series.flatMap(s=>s.points.flatMap(p=>[p.value??0,p.target??0])));
   const source = series.find(s => s.key === selection?.series);
   const selected = source?.points.find(p => p.start === selection?.start && p.end === selection?.end);
   // The historical target of the chosen nutrient, as recorded that date; absent stays absent.
@@ -114,55 +116,21 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
     <Selector accessibilityLabel="Nutriente del gráfico" value={nutrient} options={[
       { value: 'calories', label: NUTRIENTS.calories.label }, { value: 'protein', label: NUTRIENTS.protein.label },
     ]} onChange={next => { if (next !== nutrient) { haptics.selection(); onNutrient(next); } }} />
-    {compareOn ? <ChipGroup accessibilityLabel="Período del gráfico" value={activeSeries} options={[
-      { value: 'current', label: 'Período elegido' }, { value: 'reference', label: 'Comparación' },
-    ]} onChange={series => onSelect({ series: series as 'current' | 'reference', start: null, end: null, daysOpen: false })} /> : null}
     {hasStages && onStages ? <View style={styles.chips}><Chip kind="toggle" label="Etapas" selected={stages} onPress={() => { haptics.selection(); onStages(!stages); }} /></View> : null}
-    {series.filter(s => s.key === activeSeries).map(s => {
-      // Granularity per side: daily runs only for a report of up to 31 days; blocks keep one bar each.
-      const daily = showStages && s.report.range.days <= 31 ? stageRuns(s.points) : null;
-      const runs = daily?.some(Boolean) ? daily : null; // a side with no label draws no band and no name row
-      const chartWidth = Math.max(width, s.points.length * brandTokens.layout.minTouch * Math.max(1, fontScale));
-      const slot = chartWidth / Math.max(1, s.points.length);
-      return <View key={s.key} style={styles.section}>
-      <AppText variant="headline">{s.title} · {s.report.range.days <= 31 ? 'por día' : 'promedio por bloque'}</AppText>
-      <AppText muted numeric variant="caption">{range(s.report.range.start, s.report.range.end)}</AppText>
-      <View onLayout={e => setWidth(e.nativeEvent.layout.width)}>
-        <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} accessibilityLabel={`${copy.label} · ${s.title}`}>
-          <View style={{ width: chartWidth }}>
-          {/* Names above the bars, once per run and as wide as it: the scale and the bars keep their place. */}
-          {runs ? <View testID={`nutrition-chart-${s.key}-stage-names`} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
-            style={{ height: typography.caption.lineHeight * Math.max(1, fontScale) + 2 }}>
-            {runs.map((r, i) => r?.first ? <AppText key={s.points[i].start} testID={`nutrition-chart-${s.key}-stage-name-${s.points[i].start}`} muted numberOfLines={1} variant="caption"
-              style={[styles.stageName, { left: i * slot + spacing.xs, width: r.length * slot - spacing.sm }]}>{r.label}</AppText> : null)}
-          </View> : null}
-          <View testID={`nutrition-chart-series-${s.key}`} style={[styles.chart, { width: chartWidth }]}>
-            {s.points.map((p, i) => {
-              const active = selection?.series === s.key && selection.start === p.start && selection.end === p.end;
-              const run = runs?.[i] ?? null;
-              // With «Etapas» on, a day says its stage and a block its whole breakdown (#531); off, nothing about stages.
-              const stageText = daily && p.day ? `, ${run ? `Etapa: ${run.label}` : 'Sin etapa informada'}`
-                : showStages && !p.day ? `, ${blockStagesText(blockStages(s.report, p.start, p.end), true)}` : '';
-              const label = `${range(p.start, p.end)}, ${p.value === null ? p.day ? dayState(p.day, nutrient) : 'sin promedio calculable' : `${p.day ? '' : 'promedio del bloque, '}${spoken(p.value)}`}${p.partial ? ', suma parcial' : ''}${p.today ? ', hoy en curso' : ''}${p.day ? `, ${p.day.nutrients[nutrient].knownMeals} de ${p.day.mealCount} entradas con ${copy.short}` : `, ${p.denominator} días usados, ${p.partialDays} con suma parcial`}${stageText}, ${s.title}`;
-              return <Pressable key={p.start} testID={`nutrition-chart-${s.key}-${p.start}-${p.value === null ? 'gap' : 'bar'}`}
-                accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={label}
-                accessibilityHint="Muestra el detalle. Otro toque quita la selección."
-                onPress={() => { haptics.selection(); setDetails(false); onSelect(active ? null : { series: s.key, start: p.start, end: p.end, daysOpen: false }); }}
-                style={({ pressed }) => [styles.slot, { minWidth: brandTokens.layout.minTouch }, active && { backgroundColor: colors.brandSubtle, borderRadius: radius.inner }, pressedStyle(pressed, reduced)]}>
-                <View style={styles.bar} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-                  {/* A neutral band behind the bar, joined across the run's slots and cut at its ends; the bar, zero line and gap stay on top. */}
-                  {run ? <View pointerEvents="none" testID={`nutrition-chart-${s.key}-stage-${p.start}`}
-                    style={[styles.stageBand, { backgroundColor: colors.border, left: run.first ? 1 : -spacing.xs, right: run.last ? 1 : -spacing.xs }]} /> : null}
-                  {p.value !== null ? <Animated.View layout={reduced ? undefined : LinearTransition.duration(brandTokens.motion.duration.base)} style={{ borderTopLeftRadius: radius.inner, borderTopRightRadius: radius.inner, height: p.value === 0 ? 1 : Math.max(2, 150 * p.value / max), backgroundColor: p.value === 0 ? colors.border : s.key === 'reference' ? colors.textMuted : colors.primary, opacity: p.today || s.key === 'reference' ? 0.4 : 1 }} /> : <AppText muted variant="caption">—</AppText>}
-                </View>
-                <AppText numeric muted variant="caption">{p.start.slice(8)}/{p.start.slice(5, 7)}</AppText>
-              </Pressable>;
-            })}
-          </View>
-          </View>
-        </ScrollView>
-      </View>
-    </View>;
+    {series.map(s => {
+      const runs = showStages && s.report.range.days <= 31 ? stageRuns(s.points) : null;
+      const bands = runs?.flatMap((r,i) => r?.first ? [{start:s.points[i].start,end:s.points[i+r.length-1].end,label:r.label}] : []) ?? [];
+      return <View key={s.key} style={styles.section} testID={`nutrition-chart-series-${s.key}`}>
+        <AppText variant="headline">{s.title} · {s.report.range.days <= 31 ? 'por día' : 'promedio por bloque'}</AppText>
+        <AppText muted numeric variant="caption">{range(s.report.range.start,s.report.range.end)}</AppText>
+        <FittedChart testID={`nutrition-chart-${s.key}`} label={`${copy.label} · ${s.title}`} unit={copy.unit} range={s.report.range} mode="bars" bounds={{low:min,high:max}} color={s.key==='reference'?colors.textMuted:colors.primary}
+          bands={bands} selectedKey={selection?.series===s.key?selection.start:null} onSelect={key=>{
+            const p=s.points.find(p=>p.start===key); if(!p)return;
+            setDetails(false); onSelect(selection?.series===s.key&&selection.start===p.start?null:{series:s.key,start:p.start,end:p.end,daysOpen:false});
+          }} points={s.points.map(p=>({key:p.start,start:p.start,end:p.end,value:p.value,target:p.target,partial:p.partial,soft:p.today,kind:p.value===null?'gap':'bar',
+            text:`${range(p.start,p.end)}, ${p.value===null?p.day?dayState(p.day,nutrient):'sin promedio calculable':`${p.day?'':'promedio del bloque, '}${spoken(p.value)}`}${p.partial?', suma parcial':''}${p.today?', hoy en curso':''}${p.day?`, ${p.day.nutrients[nutrient].knownMeals} de ${p.day.mealCount} entradas con ${copy.short}`:`, ${p.denominator} días usados, ${p.partialDays} con suma parcial`}${showStages?p.day?`, ${stageOf(p.day)?`Etapa: ${stageOf(p.day)}`:'Sin etapa informada'}`:`, ${blockStagesText(blockStages(s.report,p.start,p.end),true)}`:''}, ${s.title}`
+          }))} />
+      </View>;
     })}
     {compareOn && !reference ? <AppText muted>Comparación no disponible.</AppText> : null}
     <Animated.View entering={FadeIn.duration(brandTokens.motion.duration.fast)}
