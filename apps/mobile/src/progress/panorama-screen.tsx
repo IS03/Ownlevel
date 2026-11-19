@@ -96,7 +96,7 @@ function OverviewContent({selected, onSelect, contextOpen, onContextToggle, poin
     const from = addDays(today, -29);
     const query = useMemo(() => ({ period: 'custom' as const, from, to: today }), [from, today]);
     const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressFindings(c, { period: 'custom', from, to: today }, signal), [from, today]);
-    const { state, data, refresh } = useCachedRead(client, 'overview', `panorama|${from}|${today}`, load);
+    const { state, data, refresh } = useCachedRead(client, 'overview', `panorama-v2|${from}|${today}`, load);
     const historyLoad = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchHistoryRange(c, { from: query.from, to: query.to }, signal), [query]);
     const reportLoad = useCallback((c: NonNullable<typeof client>, signal: AbortSignal, background?: boolean) => fetchNutritionReport(c, query, signal, background), [query]);
     const history = useCachedRead(data ? client : null, 'overview', `panorama-calendar|${from}|${today}`, historyLoad);
