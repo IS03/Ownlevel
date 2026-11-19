@@ -7,6 +7,7 @@ import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { useComparisonText, useProgressRange } from './progress-range-context';
 import { daysBetween, shortRange } from './progress-range';
 import { formatValue } from './progress-format';
+import { ProgressRow } from './progress-row';
 import { REASON_LABELS, signalLine } from './training-presenters';
 
 const fmt = (value: number) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(value);
@@ -27,8 +28,8 @@ export function trainingPerformanceRows(data: ProgressTraining): PerformanceRow[
   });
 }
 
-function SectionTitle({ children, index, description }: { children: string; index: string; description: string }) {
-  return <View style={styles.stack}><View style={styles.between}><Heading level={2} style={styles.flex}>{children}</Heading><AppText muted numeric variant="caption">{index}</AppText></View><AppText muted variant="subheadline">{description}</AppText></View>;
+function SectionTitle({ children, description }: { children: string; description: string }) {
+  return <View style={styles.stack}><View style={styles.between}><Heading level={2} style={styles.flex}>{children}</Heading></View><AppText muted variant="subheadline">{description}</AppText></View>;
 }
 function Disclosure({ title, children, initialOpen = false, testID }: { title: string; children: ReactNode; initialOpen?: boolean; testID?: string }) {
   const [open, setOpen] = useState(initialOpen), { colors } = useOwnlevelTheme();
@@ -91,7 +92,7 @@ function Routines({ data, open }: { data: ProgressTraining; open: (id: string) =
   const current = routines.filter(r => r.sessions > 0).sort((a, b) => (b[sortKey] ?? -1) - (a[sortKey] ?? -1) || a.name.localeCompare(b.name, 'es-AR'));
   const max = Math.max(1, ...current.map(r => r[sortKey] ?? 0));
   const names = new Map(data.exercises.map(e => [e.id, e.name]));
-  return <View style={styles.section} testID="training-routines"><SectionTitle index="01" description="Qué repetís y cuánto te lleva.">Tus rutinas</SectionTitle>
+  return <View style={styles.section} testID="training-routines"><SectionTitle description="Qué repetís y cuánto te lleva.">Tus rutinas</SectionTitle>
     <Selector accessibilityLabel="Ordenar rutinas" value={sortKey} onChange={setSort} options={[{ value: 'sessions', label: 'Más veces' }, ...(data.story ? [{ value: 'averageMinutes' as const, label: 'Más tiempo' }, { value: 'averageExercises' as const, label: 'Más ejercicios' }] : [])]} />
     {current.map(r => <View key={r.id} style={[styles.routine, { borderColor: colors.border }]}>
       <Pressable testID={`training-routine-${r.id}`} accessibilityRole="button" accessibilityState={{ expanded: expanded === r.id }} onPress={() => expand(expanded === r.id ? null : r.id)} style={[styles.between, fontScale > 1.3 && styles.vertical]}>
@@ -109,7 +110,7 @@ function Routines({ data, open }: { data: ProgressTraining; open: (id: string) =
     </View>)}
     {!current.length ? <AppText muted>Sin rutinas registradas en este período.</AppText> : null}
     {compareOn ? routines.filter(r => r.sessions === 0 && r.previousSessions > 0).map(r => <View key={r.id} style={[styles.detail, { borderColor: colors.border, borderWidth: StyleSheet.hairlineWidth }]}>
-      <AppText variant="headline">{r.name}</AppText><AppText muted>Sin sesiones en este período. En la referencia: {plural(r.previousSessions, 'sesión', 'sesiones')}.</AppText><AppText muted variant="footnote">Puede ser un cambio de programa; no se cuenta como una falta.</AppText><Button label="Revisar historial" variant="quiet" onPress={() => router.push('/(tabs)/train/history')} />
+      <AppText variant="headline">{r.name}</AppText><AppText muted>Sin sesiones en este período. En la referencia: {plural(r.previousSessions, 'sesión', 'sesiones')}.</AppText><AppText muted variant="footnote">Puede ser un cambio de programa; no se cuenta como una falta.</AppText><ProgressRow label="Revisar historial" onPress={() => router.push('/(tabs)/train/history')}><AppText style={styles.flex}>Revisar historial</AppText></ProgressRow>
     </View>) : null}
   </View>;
 }
@@ -122,7 +123,7 @@ function Performance({ data, open }: { data: ProgressTraining; open: (id: string
   const selected = chosen ?? initial;
   const filtered = rows?.filter(e => e.status === selected) ?? [];
   const previousOnly = compareOn ? data.exercises.filter(e => e.sessions === 0) : [];
-  return <View style={styles.section} testID="training-performance"><SectionTitle index="02" description={data.inPeriod?.method === 'own' ? 'Última sesión frente a lo tuyo: tus registros recientes de cada ejercicio.' : data.inPeriod?.method === 'partial' ? 'Última sesión compatible, con contexto parcial. Describe tus registros.' : data.inPeriod?.method === 'strict' ? 'Última vez frente a la anterior compatible, ejercicio por ejercicio.' : 'Primera y última sesión del período, ejercicio por ejercicio.'}>Dónde progresaste</SectionTitle>
+  return <View style={styles.section} testID="training-performance"><SectionTitle description={data.inPeriod?.method === 'own' ? 'Última sesión frente a lo tuyo: tus registros recientes de cada ejercicio.' : data.inPeriod?.method === 'partial' ? 'Última sesión compatible, con contexto parcial. Describe tus registros.' : data.inPeriod?.method === 'strict' ? 'Última vez frente a la anterior compatible, ejercicio por ejercicio.' : 'Primera y última sesión del período, ejercicio por ejercicio.'}>Dónde progresaste</SectionTitle>
     {rows ? <><View style={styles.performanceCounts}>{([['improved', data.inPeriod?.method === 'partial' ? 'Registro superior' : 'Subieron'], ['stable', 'Iguales'], ['declined', data.inPeriod?.method === 'partial' ? 'Registro inferior' : 'Bajaron'], ['insufficient_data', 'Sin comparar']] as const).map(([status, label]) => <Pressable key={status} testID={`training-performance-${status}`} accessibilityRole="button"
       accessibilityLabel={`${label}: ${rows.filter(e => e.status === status).length} ejercicios`} accessibilityState={{ selected: selected === status }} onPress={() => { choose(status); setAll(false); }}
       style={[styles.count, fontScale > 1.3 && styles.largeCount, { backgroundColor: colors.surfaceRaised, borderColor: selected === status ? colors.primary : 'transparent' }]}>
@@ -150,7 +151,7 @@ function Muscles({ data, open }: { data: ProgressTraining; open: (id: string) =>
   const [selected, select] = useState<string | null>(null);
   const items = (data.story?.muscles ?? data.muscles.map(m => ({ ...m, previousSets: 0, exerciseIds: [] }))).filter(m => compareOn || m.sessions > 0).slice().sort((a, b) => b.sets - a.sets || a.label.localeCompare(b.label));
   const max = Math.max(1, ...items.flatMap(m => [m.sets, compareOn ? m.previousSets : 0]));
-  return <View style={styles.section} testID="training-breakdown"><SectionTitle index="03" description="Series y frecuencia por grupo muscular.">Qué trabajaste</SectionTitle>
+  return <View style={styles.section} testID="training-breakdown"><SectionTitle description="Series y frecuencia por grupo muscular.">Qué trabajaste</SectionTitle>
     {compareOn && data.story ? <AppText muted variant="caption">Barra: actual · línea fina: referencia</AppText> : null}
     {items.map(m => <View key={m.key}><Pressable accessibilityRole="button" accessibilityState={{ expanded: selected === m.key }} accessibilityLabel={`${m.label}: ${plural(m.sets, 'serie', 'series')}, ${plural(m.sessions, 'sesión', 'sesiones')}${compareOn && data.story ? `; antes ${m.previousSets} series` : ''}`}
       onPress={() => select(selected === m.key ? null : m.key)} style={[styles.muscle, fontScale > 1.3 && styles.vertical]}>
@@ -178,10 +179,10 @@ export function TrainingStory({ data, chart }: { data: ProgressTraining; chart: 
     {!data.summary.sessions ? <AppText muted>Sin entrenamientos en este período.</AppText> : null}
     {!data.story ? <AppText muted variant="footnote">El detalle ampliado por rutina no está disponible en esta lectura. Podés consultar las sesiones y los ejercicios.</AppText> : null}
     <Routines data={data} open={open} /><Performance data={data} open={open} /><Muscles data={data} open={open} />
-    <View style={styles.section}><SectionTitle index="04" description="Pistas de tus registros, sin suponer tus objetivos.">Para revisar</SectionTitle>
-      {durationFinding ? <View style={[styles.review, { borderColor: colors.border }]}><AppIcon name="clock" color={colors.textMuted} size={20} /><View style={styles.flex}><AppText variant="headline">{longest.length === 1 ? `${longest[0].name}: mayor duración media disponible` : `${longest.map(r => r.name).join(' y ')} comparten la mayor duración media`}</AppText><AppText muted numeric>{fmt(maxMinutes)} min por sesión. Solo se comparan rutinas con horarios completos. El tiempo incluye descansos; no mide intensidad.</AppText>{longest.map(r => <Button key={r.id} label={longest.length === 1 ? 'Ver último día' : `Ver último día de ${r.name}`} variant="quiet" onPress={() => r.lastDate && router.push({ pathname: '/history/day/[date]', params: { date: r.lastDate } })} />)}</View></View> : null}
-      {absent.length ? <View style={[styles.review, { borderColor: colors.border }]}><AppIcon name="calendar" color={colors.textMuted} size={20} /><View style={styles.flex}><AppText variant="headline">Rutinas sin sesiones en este período</AppText><AppText muted>{absent.map(r => r.name).join(', ')}. Sí aparecen en la referencia. Esto no confirma que las hayas dejado de hacer.</AppText><Button label="Ver últimas sesiones" variant="quiet" onPress={() => router.push('/(tabs)/train/history')} /></View></View> : null}
-      {unassessed.length ? <View style={[styles.review, { borderColor: colors.border }]}><AppIcon name="info" color={colors.textMuted} size={20} /><View style={styles.flex}><AppText variant="headline">Hay progreso que no se puede evaluar</AppText><AppText muted>{plural(unassessed.length, 'ejercicio sin comparación suficiente', 'ejercicios sin comparación suficiente')}. Revisá esos registros antes de sacar conclusiones.</AppText>{unassessed.slice(0, 2).map(e => <Button key={e.id} label={`Revisar ${e.name}`} variant="quiet" onPress={() => open(e.id)} />)}</View></View> : null}
+    <View style={styles.section}><SectionTitle description="Pistas de tus registros, sin suponer tus objetivos.">Para revisar</SectionTitle>
+      {durationFinding ? <View style={[styles.review, { borderColor: colors.border }]}><AppIcon name="clock" color={colors.textMuted} size={20} /><View style={styles.flex}><AppText variant="headline">{longest.length === 1 ? `${longest[0].name} es tu rutina más larga` : `${longest.map(r => r.name).join(' y ')} son tus rutinas más largas`}</AppText><AppText muted numeric>{fmt(maxMinutes)} min por sesión. Solo se comparan rutinas con horarios completos. El tiempo incluye descansos; no mide intensidad.</AppText>{longest.map(r => <ProgressRow key={r.id} label={`Ver último día de ${r.name}`} onPress={() => r.lastDate && router.push({ pathname: '/history/day/[date]', params: { date: r.lastDate } })}><AppText style={styles.flex}>Ver último día de {r.name}</AppText></ProgressRow>)}</View></View> : null}
+      {absent.length ? <View style={[styles.review, { borderColor: colors.border }]}><AppIcon name="calendar" color={colors.textMuted} size={20} /><View style={styles.flex}><AppText variant="headline">Rutinas sin sesiones en este período</AppText><AppText muted>{absent.map(r => r.name).join(', ')}. Sí aparecen en la referencia. Esto no confirma que las hayas dejado de hacer.</AppText><ProgressRow label="Ver últimas sesiones" onPress={() => router.push('/(tabs)/train/history')}><AppText style={styles.flex}>Ver últimas sesiones</AppText></ProgressRow></View></View> : null}
+      {unassessed.length ? <View style={[styles.review, { borderColor: colors.border }]}><AppIcon name="info" color={colors.textMuted} size={20} /><View style={styles.flex}><AppText variant="headline">Hay progreso que no se puede evaluar</AppText><AppText muted>{plural(unassessed.length, 'ejercicio sin comparación suficiente', 'ejercicios sin comparación suficiente')}. Revisá esos registros antes de sacar conclusiones.</AppText>{unassessed.slice(0, 2).map(e => <ProgressRow key={e.id} label={`Revisar ${e.name}`} onPress={() => open(e.id)}><AppText style={styles.flex}>Revisar {e.name}</AppText></ProgressRow>)}</View></View> : null}
       {!unassessed.length && !absent.length && !durationFinding ? <AppText muted>Podés seguir explorando las rutinas y ejercicios de arriba para revisar tus registros.</AppText> : null}
     </View>
     <Disclosure title="Cómo te sentiste" testID="training-feelings">{data.feelings.map(f => <View key={f.key} style={styles.stack}><AppText>{f.label}</AppText><AppText numeric variant="title2">{fmt(f.average)} de {f.scaleMaximum}</AppText><AppText muted numeric variant="caption">{f.registered} de {f.eligible} sesiones{f.ratio < 0.5 ? ' · pocas con registro' : ''}</AppText></View>)}{!data.feelings.length ? <AppText muted>Sin sensaciones registradas en este período.</AppText> : null}</Disclosure>

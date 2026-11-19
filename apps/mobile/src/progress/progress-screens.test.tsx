@@ -332,7 +332,8 @@ describe('Body Trends', () => {
   it('starts capture in the selected measure zone without borrowing earlier values', async () => {
     mockParams = { metric: 'body.thigh_right' };
     const view = wrap(<BodyTrendsScreen />); await flush();
-    fireEvent.press(view.getByRole('button', { name: 'Registrar medidas' }));
+    fireEvent.press(view.getByTestId('body-add-menu'));
+    fireEvent.press(view.getByTestId('body-add-measurement'));
     expect(view.getByTestId('body-region-thighs').props.accessibilityState.expanded).toBe(true);
     expect(view.getByLabelText('Muslo derecho').props.value).toBe('');
     expect(view.getByLabelText('Muslo izquierdo').props.value).toBe('');

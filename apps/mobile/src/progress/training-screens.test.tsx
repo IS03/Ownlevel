@@ -76,7 +76,7 @@ describe('Training Trends', () => {
   it('never declares a unique longest routine when durations tie, or leaves the review empty', async () => {
     mockTraining.mockResolvedValue(ok(routineFixture([60, 60, 40])));
     const view = wrap(<TrainingTrendsScreen />); await flush();
-    expect(view.getByText('Rutina 0 y Rutina 1 comparten la mayor duración media')).toBeTruthy();
+    expect(view.getByText('Rutina 0 y Rutina 1 son tus rutinas más largas')).toBeTruthy();
     expect(view.queryByText('Rutina 0 es la que más dura')).toBeNull();
     view.unmount(); clearConfirmedReads(mockClient);
     mockTraining.mockResolvedValue(ok(routineFixture([60, 60, 60])));

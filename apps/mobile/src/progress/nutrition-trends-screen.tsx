@@ -17,7 +17,7 @@ import {
 } from '@/design-system';
 import { ProgressScroll } from './progress-scroll';
 import { useProgressRange } from './progress-range-context';
-import { PRESET_LABELS, arrowDelta, formatDelta, formatValue } from './progress-format';
+import { PRESET_LABELS, formatDelta, formatValue } from './progress-format';
 import { ProgressRow } from './progress-row';
 import { useProgressResource } from './use-progress-resource';
 import { useCachedRead } from '@/api/use-cached-read';
@@ -93,21 +93,17 @@ function ReportContent({ report, reference, selection, onSelect, portada, nutrie
     const value = stat.value === null ? null : formatValue(stat.value, i === 0 ? null : 'g', 'integer');
     const target = targetStat.value === null ? null : `${formatValue(targetStat.value, unit, 'integer')} (${targetStat.denominator} ${targetStat.denominator === 1 ? 'día' : 'días'})`;
     // The reference value keeps its unit; the difference is between the two rounded daily averages, as before.
-    const versus = compareOn && reference ? previous === null || previous === undefined ? 'sin dato'
-      : `${formatValue(previous, unit, 'integer')}${stat.value !== null ? ` (${arrowDelta(Math.round(stat.value) - Math.round(previous), unit, 'integer')})` : ''}` : null;
     const spokenVersus = compareOn && reference ? previous === null || previous === undefined ? 'sin dato'
       : `${formatValue(previous, unit, 'integer')}${stat.value !== null ? `, diferencia ${formatDelta(Math.round(stat.value) - Math.round(previous), unit, 'integer')}` : ''}` : null;
     const name = i === 0 ? 'Calorías' : 'Proteína';
     const label = `${name}: ${value === null ? 'sin dato' : `${formatValue(stat.value, unit, 'integer')} por día`}${target ? `. Objetivo histórico promedio ${target}` : ''}${spokenVersus ? `. ${compareText}: ${spokenVersus}` : ''}`;
-    return { key, value, caption: i === 0 ? 'kcal por día' : 'proteína por día', target, versus, label };
+    return { key, value, caption: i === 0 ? 'kcal por día' : 'proteína por día', label };
   });
   const stacked = !figuresFitInRow({ texts: figures.map(f => f.value ?? '—'), width, fontScale, variant: 'heroNumber' });
-  // Target and A/B read across the full width under both figures, each value with its own unit.
-  const targets = figures.filter(f => f.target).map(f => f.target).join(' · ');
-  const versus = compareOn && reference ? figures.map(f => f.versus).join(' · ') : null;
+  const missingDays = report.coverage.missingDays;
   return (
     <>
-      {report.status === 'partial' ? <AppText muted>Reporte con cobertura parcial</AppText> : null}
+      {missingDays > 0 ? <AppText muted>{missingDays === 1 ? 'Falta 1 día con comidas' : `Faltan ${missingDays} días con comidas`}</AppText> : null}
       {report.range.preset !== report.range.requested.period ? (
         <AppText>Mostrando {PRESET_LABELS[report.range.preset]}.</AppText>
       ) : null}
@@ -126,15 +122,18 @@ function ReportContent({ report, reference, selection, onSelect, portada, nutrie
             </View>
           ))}
         </View>
-        {/* Already part of each figure's spoken label: hidden from VoiceOver so it is not read twice. */}
-        <View style={styles.context} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-          {compareOn && targets ? <AppText muted numeric variant="footnote">Objetivo histórico promedio: {targets}</AppText> : null}
-          {versus ? <AppText numeric variant="footnote" testID="nutrition-progress-versus">{compareText}: {versus}</AppText> : null}
-        </View>
-        <AppText muted numeric variant="footnote">
-          {daysText(report)}
-        </AppText>
-        {compareOn && reference ? <AppText muted numeric variant="footnote">Referencia {compareText} · {daysText(reference)}</AppText> : null}
+        {compareOn && reference ? <View testID="nutrition-comparison-table">
+          {[{name:'Este período', data:report}, {name:compareText ? `Anterior · ${compareText}` : 'Anterior', data:reference}].map(row => <View key={row.name} accessible
+            accessibilityLabel={`${row.name}. ${daysText(row.data)}. Calorías: ${formatValue(row.data.summary.metrics.calories.value, 'kcal', 'integer')}. Proteína: ${formatValue(row.data.summary.metrics.protein.value, 'g', 'integer')}.`}
+            style={{paddingVertical:spacing.sm, gap:spacing.xs}}>
+            <View style={[styles.primary, stacked && styles.stacked]}>
+              <AppText variant="footnote" style={styles.grow}>{row.name}</AppText>
+              <AppText numeric variant="footnote">{formatValue(row.data.summary.metrics.calories.value, 'kcal', 'integer')} · {formatValue(row.data.summary.metrics.protein.value, 'g', 'integer')}</AppText>
+            </View>
+            <AppText muted variant="caption">{daysText(row.data)}</AppText>
+          </View>)}
+        </View> : <AppText muted numeric variant="footnote">{daysText(report)}</AppText>}
+
       </View>
       {portada ? <PortadaPointNote point={portada} matched={false} reason={NO_DAILY_EQUIVALENT} /> : null}
       <NutritionChart report={report} reference={reference} selection={selection} onSelect={onSelect} onDate={openDate} nutrient={nutrient} onNutrient={onNutrient} stages={stages} onStages={onStages} />
