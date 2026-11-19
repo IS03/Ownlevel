@@ -406,7 +406,7 @@ describe('P1-B2 accessible activity and temporal buckets', () => {
     mockTraining.mockImplementation((client, query, compare) => jest.requireActual<typeof import('@/api/progress')>('@/api/progress').fetchProgressTraining(client as MobileApiClient, query, undefined, compare));
     const view = wrap(<TrainingTrendsScreen />, { unit: 'custom', anchor: TODAY, custom: { start: payload.period.start, end: TODAY }, compare: { kind: 'none' } });
     await flush(); openChart(view); expect(read).toHaveBeenCalledTimes(1); expect(view.getByTestId('training-summary')).toBeTruthy();
-    expect(read.mock.calls[0][0].path).toBe('/api/mobile/v1/progress/training?period=custom&from=2026-09-06&to=2026-10-05&inPeriod=1&story=2');
+    expect(read.mock.calls[0][0].path).toBe('/api/mobile/v1/progress/training?period=custom&from=2026-09-06&to=2026-10-05&inPeriod=2&story=2');
     fireEvent.press(view.getByTestId('training-bucket-2026-09-06')); expect(view.getByTestId('training-bucket-inspection')).toBeTruthy();
     fireEvent.press(view.getByRole('radio', { name: 'Duración' }));
     fireEvent.press(view.getByTestId('training-routine-__free__'));

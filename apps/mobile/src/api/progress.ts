@@ -1,3 +1,4 @@
+import type { MobileApiReadResult } from './results';
 import type { MobileApiClient } from './client';
 import { parseProgressExplore, type ExploreBreakdown, type ExploreDays } from '../../../../src/lib/mobile-api/progress-explore-contract';
 import {
@@ -19,11 +20,15 @@ const samePeriod = (period: ProgressPeriod, query: ProgressQuery, compare: Progr
   period.preset === query.period && (query.period !== 'custom' || period.start === query.from)
   && (!compare || (period.previousStart === compare.start && period.previousEnd === compare.end));
 export { qs as progressQueryParams, samePeriod as progressResponseMatches };
+/** Rollback compatibility is read-only and only follows a validation rejection, never an auth/network failure. */
+async function performanceVersion<T>(read: (version: 1 | 2) => Promise<MobileApiReadResult<T>>, signal?: AbortSignal) {
+  const result = await read(2);
+  return result.status === 'unavailable' && result.meta.httpStatus === 400 && !signal?.aborted ? read(1) : result;
+}
 export const fetchProgressOverview = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
-  // spark=1: the overview also carries the rows' mini charts (server EXPAND).
-  client.read({ path: `${BASE}?${qs(query, compare)}&spark=1&inPeriod=1`, signal, parse: (raw: unknown) => {
+  performanceVersion(version => client.read({ path: `${BASE}?${qs(query, compare)}&spark=1&inPeriod=${version}`, signal, parse: (raw: unknown) => {
     const data = parseProgressOverview(raw); return data && samePeriod(data.period, query, compare) ? data : undefined;
-  } });
+  } }), signal);
 export const fetchProgressBody = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
   client.read({ path: `${BASE}/body?${qs(query, compare)}`, signal, parse: (raw: unknown) => {
     const data = parseProgressBody(raw); return data && samePeriod(data.period, query, compare) ? data : undefined;
@@ -37,9 +42,9 @@ export const fetchProgressMetrics = (client: MobileApiClient, query: ProgressQue
     return data;
   } });
 export const fetchProgressTraining = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
-  client.read({ path: `${BASE}/training?${qs(query, compare)}&inPeriod=1&story=2`, signal, parse: (raw: unknown) => {
+  performanceVersion(version => client.read({ path: `${BASE}/training?${qs(query, compare)}&inPeriod=${version}&story=2`, signal, parse: (raw: unknown) => {
     const data = parseProgressTraining(raw); return data && samePeriod(data.period, query, compare) ? data : undefined;
-  } });
+  } }), signal);
 /** Home's records card: the records, exercise performance and comparable count of `/training`, without the rest. */
 export const fetchProgressTrainingRecords = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal) =>
   client.read({ path: `${BASE}/training/records?${qs(query)}`, signal, parse: (raw: unknown) => {
@@ -78,14 +83,14 @@ export const fetchProgressExplore = (client: MobileApiClient, query: ProgressQue
 
 /** Same bounded overview read; opt-in exact dates and nutrient denominators, no extra sources. */
 export const fetchProgressPanorama=async(client:MobileApiClient,query:ProgressQuery,signal?:AbortSignal)=>{
- const result=await client.read({path:`${BASE}?${qs(query)}&spark=1&inPeriod=1&panorama=1`,signal,parse:(raw:unknown)=>{const data=parseProgressOverview(raw);return data&&samePeriod(data.period,query)?data:undefined;}});
+ const result=await client.read({path:`${BASE}?${qs(query)}&spark=1&inPeriod=2&panorama=1`,signal,parse:(raw:unknown)=>{const data=parseProgressOverview(raw);return data&&samePeriod(data.period,query)?data:undefined;}});
  // Older servers reject the opt-in parameter. One read-only compatibility fallback; never on auth/network errors.
  return result.status==='unavailable'&&result.meta.httpStatus===400&&!signal?.aborted?fetchProgressOverview(client,query,signal):result;
 };
 
 /** Editorial metadata shares the overview request. A server without it still supplies the complete panorama. */
 export const fetchProgressFindings = async (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal) => {
-  const result = await client.read({path: `${BASE}?${qs(query)}&spark=1&inPeriod=1&panorama=1&findings=1`, signal, parse: (raw: unknown) => {
+  const result = await client.read({path: `${BASE}?${qs(query)}&spark=1&inPeriod=2&panorama=1&findings=1`, signal, parse: (raw: unknown) => {
     const data = parseProgressOverview(raw); return data && samePeriod(data.period, query) ? data : undefined;
   }});
   return result.status === 'unavailable' && result.meta.httpStatus === 400 && !signal?.aborted ? fetchProgressPanorama(client, query, signal) : result;
