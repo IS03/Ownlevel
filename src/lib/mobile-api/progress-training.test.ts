@@ -125,6 +125,21 @@ describe("GET /progress/training — summary", () => {
     const t = await training('progress/training?story=1');
     expect(t.story).toEqual({ routines: [], muscles: [] });
   });
+  it.each([null, 'invalid-date', '2026-10-01T09:00:00Z'])('story v2 leaves an unknown/invalid duration unavailable (%s) without changing v1', async endedAt => {
+    const data = source([{ date: '2026-10-01', minutes: 60, exercises: [bench([[8, 60]])] }]) as unknown as Awaited<ReturnType<typeof loadCompletedTrainingData>>;
+    data.sessions[0].ended_at = endedAt;
+    vi.mocked(loadCompletedTrainingData).mockResolvedValue(data);
+    const current = await training('progress/training?story=2');
+    expect(current.story?.routines[0]).toMatchObject({ sessions: 1, averageMinutes: null, averageExercises: 1 });
+    const legacy = await training('progress/training?story=1');
+    expect(legacy.story?.routines[0].averageMinutes).toBe(0);
+  });
+  it('a recorded sub-minute duration remains a real zero, and story v2 still reads the source once', async () => {
+    vi.mocked(loadCompletedTrainingData).mockResolvedValue(source([{ date: d(-1), minutes: 0.1, exercises: [bench([[8, 60]])] }]));
+    const t = await training('progress/training?story=2');
+    expect(t.story?.routines[0].averageMinutes).toBe(0);
+    expect(loadCompletedTrainingData).toHaveBeenCalledTimes(1);
+  });
   it("no training: real zeros, no feelings, no exercises, comparison without a percent", async () => {
     const t: ProgressTraining = await training();
     expect(t.summary).toMatchObject({ sessions: 0, trainingDays: 0, sets: 0, minutes: 0, sessionsPerWeek: 0 });

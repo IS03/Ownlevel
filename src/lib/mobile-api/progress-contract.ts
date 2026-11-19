@@ -112,7 +112,7 @@ export type ProgressTrainingInPeriod = {
   exercises: { id: string; status: TrainingPerformanceStatus; reason: string; sessions: number; firstDate: string; lastDate: string; signal: TrainingSignal | null }[];
 };
 export type ProgressTraining = {
-  /** Opt-in projection of the already loaded historical snapshots (`story=1`). */
+  /** Opt-in snapshot projection. `story=2` preserves missing durations as null; v1 keeps its installed contract. */
   story?: ProgressTrainingStory;
   inPeriod?: ProgressTrainingInPeriod;
   today: string; period: ProgressPeriod; summary: ProgressTrainingSummary;
@@ -430,7 +430,7 @@ function parseTrainingStory(v: unknown, period: ProgressPeriod): ProgressTrainin
     && count(r.improved) && count(r.stable) && count(r.declined) && count(r.insufficient)
     && r.improved + r.stable + r.declined + r.insufficient === r.exerciseIds.length
     && (r.sessions === 0 ? r.lastDate === null && r.averageMinutes === null && r.averageExercises === null
-      : isNutritionDate(r.lastDate) && r.lastDate >= period.start && r.lastDate <= period.end && r.averageMinutes !== null && r.averageExercises !== null)
+      : isNutritionDate(r.lastDate) && r.lastDate >= period.start && r.lastDate <= period.end && r.averageExercises !== null)
     ? r as ProgressTrainingStory['routines'][number] : undefined);
   const muscles = list(v.muscles, m => record(m) && keys(m, ['key', 'label', 'sets', 'previousSets', 'sessions', 'exerciseIds'])
     && str(m.key) && str(m.label) && count(m.sets) && count(m.previousSets) && count(m.sessions) && ids(m.exerciseIds)

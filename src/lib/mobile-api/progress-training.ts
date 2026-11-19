@@ -106,7 +106,7 @@ export function trainingDto(ctx: TrainingContext, today: string, period: Progres
 }
 
 /** No new reads: group historical snapshots by routine, retaining the canonical first/last comparator. */
-export function trainingStoryDto(ctx: TrainingContext, period: ProgressPeriod): NonNullable<ProgressTraining['story']> {
+export function trainingStoryDto(ctx: TrainingContext, period: ProgressPeriod, reliableDurations = false): NonNullable<ProgressTraining['story']> {
   const records = buildSessionRecords(ctx.source, period);
   const sessionsByRoutine = new Map<string, TrainingAnalysisSource['sessions']>();
   const routineBySession = new Map<string, string>();
@@ -144,9 +144,14 @@ export function trainingStoryDto(ctx: TrainingContext, period: ProgressPeriod): 
     const performance = trainingInPeriodDto({ ...ctx, source: { ...ctx.source, sessions: sessionsByRoutine.get(id) ?? [],
       sessionExercises: exercisesByRoutine.get(id) ?? [], sets: setsByRoutine.get(id) ?? [] } }, period);
     const compared = new Set(performance.exercises.map(e => e.id));
+    const timesKnown = (sessionsByRoutine.get(id) ?? []).every(session => {
+      if (!session.started_at || !session.ended_at) return false;
+      const elapsed = Date.parse(session.ended_at) - Date.parse(session.started_at);
+      return Number.isFinite(elapsed) && elapsed >= 0;
+    });
     return { id, name: now?.name ?? before!.name, sessions: now?.summary.sessions ?? 0, previousSessions: before?.summary.sessions ?? 0,
       sets: now?.summary.sets ?? 0, minutes: now?.summary.minutes ?? 0,
-      averageMinutes: scoped.length ? (now?.summary.minutes ?? 0) / scoped.length : null,
+      averageMinutes: scoped.length && (!reliableDurations || timesKnown) ? (now?.summary.minutes ?? 0) / scoped.length : null,
       averageExercises: scoped.length ? scoped.reduce((sum, s) => sum + new Set(s.exercises.filter(e => e.sets.length > 0).map(e => e.id)).size, 0) / scoped.length : null,
       lastDate: scoped.length ? scoped[scoped.length - 1].logDate : null,
       exerciseIds: now?.exerciseIds ?? [], improved: performance.improved, stable: performance.stable, declined: performance.declined,
