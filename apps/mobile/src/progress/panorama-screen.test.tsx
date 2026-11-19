@@ -15,7 +15,7 @@ import { panoramaFixture, editorialFixture, PANORAMA_TODAY } from './panorama-fi
 import { atlasHistory, atlasReport } from './panorama-daily.test-helper';
 import { fetchProgressPanorama } from '@/api/progress';
 import { ReturnToProgress } from '@/insights/return-to-progress';
-import { bodyWeightHref, insightsReturnHref, insightsOriginOf, nutritionDayHref, explorationHref, periodSummaryHref, periodDetailHref } from '@/insights/navigation';
+import { bodyWeightHref, insightsReturnHref, insightsOriginOf, nutritionDayHref, periodSummaryHref, periodDetailHref } from '@/insights/navigation';
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('@/platform/haptics', () => ({ haptics: { selection: jest.fn() }, triggerHaptic: jest.fn() }));
@@ -56,15 +56,13 @@ it('opens three bounded sources, with no Insights or hidden destination read, an
     expect(read).toHaveBeenCalledTimes(3);
     expect(read.mock.calls[0]![0].path).toContain('from=2026-10-11&to=2026-11-09');
     expect(after.queryByTestId('progress-period-caption')).toBeNull();
-    expect(after.getByText('8 sesiones · 7 días entrenados · 96 series')).toBeTruthy();
+    expect(after.getByText('7 días entrenados · 96 series')).toBeTruthy();
     expect(after.getAllByTestId(/^panorama-day-/)).toHaveLength(30);
-    expect(after.getByText(/07\/11\/2026 · 3 registros válidos/)).toBeTruthy();
-    expect(after.getByText('10 días utilizados · 13 de 30 días con alimentación registrada')).toBeTruthy();
-    expect(after.getByText('Proteína: 127 g/día · 8 días utilizados')).toBeTruthy();
-    fireEvent.press(after.getByRole('button', { name: 'Últimos tres meses' }));
+    expect(after.getByText(/7 nov · 3 pesajes/)).toBeTruthy();
+    expect(after.getByText('Promedio de 10 días (proteína: 8)')).toBeTruthy();
+    expect(after.getByText('Proteína 127 g/día')).toBeTruthy();
+    fireEvent.press(after.getByRole('button', { name: 'Últimos tres meses: tres meses enteros, semana por semana' }));
     expect(mockNavigate).toHaveBeenLastCalledWith(periodSummaryHref(PANORAMA_TODAY, { fromProgress: '1' }));
-    fireEvent.press(after.getByRole('button', { name: 'Semanas y coincidencias: tus registros semana a semana' }));
-    expect(mockNavigate).toHaveBeenLastCalledWith(explorationHref(PANORAMA_TODAY, undefined, undefined, { fromProgress: '1' }));
     fireEvent.press(after.getByRole('button', { name: 'Comparaciones: Cada sesión con lo tuyo y con la anterior' }));
     expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights', params: { fromProgress: '1' } });
     expect(read).toHaveBeenCalledTimes(3);
@@ -304,17 +302,16 @@ it('read budget: keeps one grouped opening and no reads for point/finding/contex
 });
 it('shows every thematic destination without loading it, and distinguishes recent History from the calendar', async () => {
     const view=render(wrap());await view.findByTestId('progress-panorama');
-    expect(within(view.getByTestId('panorama-explore')).getAllByRole('button')).toHaveLength(14);
+    expect(within(view.getByTestId('panorama-explore')).getAllByRole('button')).toHaveLength(12);
     fireEvent.press(view.getByTestId('panorama-tool-period'));expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress/period');
     fireEvent.press(view.getByTestId('panorama-tool-calendar'));expect(mockNavigate).toHaveBeenLastCalledWith('/history/calendar');
     fireEvent.press(view.getByTestId('panorama-tool-views'));expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress/saved-views');
     fireEvent.press(view.getByTestId('panorama-tool-stages'));expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress/stages');
     expect(read).toHaveBeenCalledTimes(3);
 });
-it('keeps connections and descriptive questions available without another read', async () => {
+it('keeps descriptive questions available without another read; connections live inside Explorar período', async () => {
     const view=render(wrap());await view.findByTestId('progress-panorama');
-    fireEvent.press(view.getByTestId('panorama-tool-connections'));
-    expect(mockNavigate).toHaveBeenLastCalledWith({pathname:'/(tabs)/progress/period',params:{focus:'connections'}});
+    expect(view.queryByTestId('panorama-tool-connections')).toBeNull();
     fireEvent.press(view.getByTestId('panorama-tool-influence'));
     expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress/influence');
     expect(read).toHaveBeenCalledTimes(3);

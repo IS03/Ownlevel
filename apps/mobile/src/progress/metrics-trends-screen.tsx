@@ -60,7 +60,7 @@ function Detail({ data, inspection }: { data: ProgressMetrics; inspection: Metri
       </View>
     </View>
     {compareText && c && (c.status !== 'comparable' || c.deltaAbsolute === null) ? <AppText muted variant="caption" testID="metric-trend-comparison-reason">{comparisonText(c, m.unit, m.valueType, compareText)}</AppText> : null}
-    <AppText muted variant="caption">Nombre, unidad y objetivo corresponden a la definición actual; no se conservan sus versiones históricas.</AppText>
+    <AppText muted variant="caption">Con el nombre, la unidad y el objetivo que tiene hoy.</AppText>
     <MetricTrendChart data={data} inspection={inspection} onOpen={isChartMetricId(m.id) ? (start, end) => {
       const href = metricOriginalHref(m.id, start, end, data.period.bucket !== 'day'); if (href) router.push(href);
     } : undefined} />
@@ -72,7 +72,7 @@ function Detail({ data, inspection }: { data: ProgressMetrics; inspection: Metri
         <AppText muted numeric variant="caption">objetivo actual {v(m.currentTarget)}</AppText>
       </View> : null}
       {gaps ? <AppText muted variant="caption">hueco: sin dato</AppText> : null}
-      {data.period.includesToday ? <AppText muted variant="caption">hoy cuenta cuando termina</AppText> : null}
+      {data.period.includesToday ? <AppText muted variant="caption">hoy entra cuando termine el día</AppText> : null}
     </View>
     <View style={[styles.stats, stacked && styles.stacked]} testID="metric-trend-stats">
       {stats.map((x, i) => <View key={x.key} accessible accessibilityLabel={`${x.label}, ${x.value}${x.when}`}

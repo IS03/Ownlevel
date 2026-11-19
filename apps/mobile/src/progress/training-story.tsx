@@ -76,7 +76,7 @@ function Activity({ data }: { data: ProgressTraining }) {
       <Stat value={incompleteDuration ? '—' : formatValue(s.minutes, null, 'duration')} label={incompleteDuration ? 'duración incompleta' : 'con descansos'} />
     </View>
     {incompleteDuration ? <AppText muted variant="footnote">No hay una duración válida para alguna sesión. No se cuenta como cero minutos.</AppText> : null}
-    <AppText muted numeric variant="caption">{plural(s.trainingDays, 'día entrenado', 'días entrenados')}{rate !== null ? ' · frecuencia normalizada a 7 días' : ''}</AppText>
+    <AppText muted numeric variant="caption">{plural(s.trainingDays, 'día entrenado', 'días entrenados')}</AppText>
     {compareOn && s.comparisons.sets.status !== 'comparable' ? <AppText muted variant="footnote">{comparisonText(s.comparisons.sets, 'series', 'integer')}</AppText> : null}
     {compareOn ? <AppText muted numeric variant="caption">Referencia: {shortRange({ start: data.period.previousStart, end: data.period.previousEnd }, data.today)} · {plural(previousDays, 'día', 'días')}</AppText> : null}
   </View>;
@@ -123,7 +123,7 @@ function Performance({ data, open }: { data: ProgressTraining; open: (id: string
   const selected = chosen ?? initial;
   const filtered = rows?.filter(e => e.status === selected) ?? [];
   const previousOnly = compareOn ? data.exercises.filter(e => e.sessions === 0) : [];
-  return <View style={styles.section} testID="training-performance"><SectionTitle description={data.inPeriod?.method === 'own' ? 'Última sesión frente a lo tuyo: tus registros recientes de cada ejercicio.' : data.inPeriod?.method === 'partial' ? 'Última sesión compatible, con contexto parcial. Describe tus registros.' : data.inPeriod?.method === 'strict' ? 'Última vez frente a la anterior compatible, ejercicio por ejercicio.' : 'Primera y última sesión del período, ejercicio por ejercicio.'}>Dónde progresaste</SectionTitle>
+  return <View style={styles.section} testID="training-performance"><SectionTitle description={data.inPeriod?.method === 'own' ? 'Última sesión frente a lo tuyo: tus registros recientes de cada ejercicio.' : data.inPeriod?.method === 'partial' ? 'Cada ejercicio: su última vez frente a la anterior parecida.' : data.inPeriod?.method === 'strict' ? 'Última vez frente a la anterior compatible, ejercicio por ejercicio.' : 'Primera y última sesión del período, ejercicio por ejercicio.'}>Dónde progresaste</SectionTitle>
     {rows ? <><View style={styles.performanceCounts}>{([['improved', data.inPeriod?.method === 'partial' ? 'Registro superior' : 'Subieron'], ['stable', 'Iguales'], ['declined', data.inPeriod?.method === 'partial' ? 'Registro inferior' : 'Bajaron'], ['insufficient_data', 'Sin comparar']] as const).map(([status, label]) => <Pressable key={status} testID={`training-performance-${status}`} accessibilityRole="button"
       accessibilityLabel={`${label}: ${rows.filter(e => e.status === status).length} ejercicios`} accessibilityState={{ selected: selected === status }} onPress={() => { choose(status); setAll(false); }}
       style={[styles.count, fontScale > 1.3 && styles.largeCount, { backgroundColor: colors.surfaceRaised, borderColor: selected === status ? colors.primary : 'transparent' }]}>

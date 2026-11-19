@@ -121,7 +121,7 @@ function Selected({ metric, excluded, storedZeros = [], selectedDate, onSelect, 
           <AppText variant="headline">{formatBodyDate(point.date)}</AppText>
           <AppText numeric>{`${metric.label} · ${formatValue(point.value, metric.unit)}`}</AppText>
           <AppText muted variant="caption">{provenance}</AppText>
-        </> : <AppText muted variant="footnote">Tocá un punto para ver su fecha, valor y procedencia sin salir del gráfico.</AppText>}
+        </> : <AppText muted variant="footnote">Tocá un punto para ver su fecha y de dónde viene.</AppText>}
       </View>
       {point && !valid(point.value) ? <AppText muted variant="caption">Registro no válido como {metric.key === 'body.weight' ? 'peso corporal' : 'medida corporal'}. Podés corregirlo o borrarlo en el original.</AppText> : null}
       {selectedDate && !point ? <AppText muted variant="caption">El registro seleccionado ya no está disponible en esta lectura. Elegí otro punto.</AppText> : null}

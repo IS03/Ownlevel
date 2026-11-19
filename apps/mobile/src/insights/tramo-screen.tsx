@@ -60,17 +60,24 @@ export function TramoScreen() {
       </View> : null}
     </View> : <View style={styles.block} testID="tramo-waiting">
       <AppText accessibilityLabel={`${factor.valid} de ${total} sesiones con este dato`}><AppText variant="heroNumber" numeric>{factor.valid}</AppText><AppText variant="title2" muted numeric> de {total}</AppText></AppText>
-      <AppText muted variant="footnote">sesiones con este dato · hacen falta {data.rules.minPerBin} por tramo</AppText>
-      <AppText>Todavía no sabemos. {factor.bins.length < 2 ? 'Los valores son casi todos iguales: no hay tramos para comparar.' : `Tramos hoy: ${factor.bins.map(bin => `${binLabel(factor, bin)} ${bin.n}`).join(' · ')}.`}</AppText>
+      <AppText muted variant="footnote">sesiones con este dato</AppText>
+      <AppText>Todavía no sabemos. {factor.bins.length < 2 ? 'Los valores son casi todos iguales: no hay tramos para comparar.' : `Hace falta llegar a ${data.rules.minPerBin} sesiones en cada tramo.`}</AppText>
+      {factor.bins.length >= 2 ? <View testID="tramo-bins">
+        <AppText muted variant="footnote" accessibilityRole="header" style={styles.kicker}>Sesiones por tramo</AppText>
+        {factor.bins.map((bin, index) => <View key={index} style={[styles.tableRow, { borderColor: colors.border }]} accessible accessibilityLabel={`${binLabel(factor, bin)}: ${bin.n} de ${data.rules.minPerBin}`}>
+          <AppText style={styles.flex}>{binLabel(factor, bin)}</AppText>
+          <AppText variant="headline" numeric muted={bin.n < data.rules.minPerBin}>{bin.n}<AppText muted variant="footnote" numeric>{` de ${data.rules.minPerBin}`}</AppText></AppText>
+        </View>)}
+      </View> : null}
       {missing.length ? <View testID="tramo-why" style={styles.why}>
         <AppText muted variant="footnote" accessibilityRole="header" style={styles.kicker}>Por qué faltan {lacking}</AppText>
         {missing.map(([reason, n]) => <View key={reason} style={[styles.tableRow, { borderColor: colors.border }]} accessible accessibilityLabel={`${MISSING_TEXT[reason] ?? 'Sin dato'}: ${n}`}>
           <AppText style={styles.flex}>{MISSING_TEXT[reason] ?? 'Sin dato'}</AppText><AppText variant="headline" numeric>{n}</AppText>
         </View>)}
       </View> : null}
-      <ExampleFrame>
+      {factor.bins.length < 2 ? <ExampleFrame>
         <View style={styles.example}>{['poco', 'medio', 'mucho'].map(name => <View key={name} style={styles.exampleCell}><AppText muted variant="title2">—</AppText><AppText muted variant="caption">{name}</AppText></View>)}</View>
-      </ExampleFrame>
+      </ExampleFrame> : null}
     </View>}
     <View style={styles.method}>
       <AppText muted variant="footnote" style={styles.flex}>Muestra qué coincidió, no por qué.</AppText>

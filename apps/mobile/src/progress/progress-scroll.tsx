@@ -6,9 +6,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon, AppText, GlassSurface, ScrollScreen, useOwnlevelTheme,useReduceMotion } from '@/design-system';
 import { CompareHeaderButton, CompareChip, PeriodCaption, PeriodBar, ProgressPeriodBlock, STRIP } from './period-controls';
 import { CompareSheet, CustomRangeSheet } from './period-sheets';
-import { daysBetween, progressRange, rangeShortLabel } from './progress-range';
+import { daysBetween, isCurrentProgressRange, progressRange, rangeShortLabel, shortRange } from './progress-range';
 import { useProgressRange } from './progress-range-context';
 import type { DateRange } from './progress-range';
+const BUTTON_NAMES = { week: 'Esta semana', '2w': '2 semanas', '3w': '3 semanas', month: 'Este mes', '3m': '3 meses', '6m': '6 meses', year: 'Este año' } as const;
 
 const BAR = 52;
 /** Scrolled distance over which the title shrinks into the compact bar. */
@@ -42,7 +43,9 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
   const barHeight = BAR * Math.max(1, fontScale) * (compactPeriod && fontScale > 1.3 ? 1.5 : 1);
   const { state, today, compareOn } = useProgressRange();
   const periodDays = daysBetween(progressRange(state, today).start, progressRange(state, today).end);
-  const periodLabel = `${periodDays} ${periodDays === 1 ? 'día' : 'días'}`;
+  // The button names the period the way the menu offers it ("Este mes", "Mes anterior"); a custom range says how many days.
+  const periodLabel = state.unit === 'custom' ? `${periodDays} ${periodDays === 1 ? 'día' : 'días'}`
+    : isCurrentProgressRange(state, today) ? BUTTON_NAMES[state.unit] : rangeShortLabel(state, today);
   const [sheet, setSheet] = useState<'custom' | 'compare' | null>(openSheet);
   const [proposal, setProposal] = useState<DateRange | null>(openSheet ? sheetProposal : null);
   // Also when the screen was already in the stack and the portada asks again.
@@ -110,7 +113,7 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
           </Animated.View>
           {periodControls && !compactLarge?<Animated.View accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
             style={[styles.rangeUnder, { top: barHeight / 2 + 6 * fontScale }, rangeStyle]} testID="progress-compact-range">
-            <AppText muted numberOfLines={1} numeric variant="caption">{rangeShortLabel(state, today)}</AppText>
+            <AppText muted numberOfLines={1} numeric variant="caption">{shortRange(progressRange(state, today), today)}</AppText>
           </Animated.View>:null}
         </View>
         {periodControls ? compactPeriod ? compactLarge ? null : <Pressable testID={periodPickerTestID} accessibilityRole="button" accessibilityLabel={`Elegir período de ${title.toLocaleLowerCase('es-AR')}`} onPress={open.onCustom}>
