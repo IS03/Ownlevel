@@ -394,3 +394,34 @@ describe('overview editorial findings — canonical sources, opt-in and fixed id
     console.log(JSON.stringify({fixture: 'record-and-context', beforeBytes: Buffer.byteLength(JSON.stringify(before)), afterBytes: Buffer.byteLength(JSON.stringify(after)), trainingSourceReadsBefore: 1, trainingSourceReadsAfter: 1}));
   });
 });
+
+describe('QA progression opt-in v2 reuses Comparaciones', () => {
+  it.each([[10, 'improved'], [8, 'stable'], [6, 'declined']] as const)('compares missing variants through the partial lane (%s reps)', async (reps, status) => {
+    serve(source([{date:d(-5), exercises:[{id:ex.bench,name:'Press',mode:'Peso total',sets:[[8,50]],configuration:null}]},
+      {date:d(-1),exercises:[{id:ex.bench,name:'Press',mode:'Peso total',sets:[[reps,50]],configuration:null}]}]));
+    const legacy = await training('progress/training?period=30&inPeriod=1');
+    expect(legacy.inPeriod?.exercises[0].status).toBe('insufficient_data');
+    vi.mocked(loadCompletedTrainingData).mockClear();
+    const next = await training('progress/training?period=30&inPeriod=2&story=2');
+    expect(next.inPeriod).toMatchObject({method:'partial', exercises:[{id:ex.bench,status}]});
+    expect(loadCompletedTrainingData).toHaveBeenCalledTimes(1);
+    const home = await read(await overviewGET(new NextRequest(`https://ownlevel.test/api/mobile/v1/progress?period=30&inPeriod=2`, {headers:{Authorization:'Bearer valid'}})), parseProgressOverview);
+    expect(home.inPeriod).toMatchObject({method:'partial',comparable:1,improved:status==='improved'?1:0});
+  });
+  it('unknown weight modes reuse own baselines, never a fabricated mode', async () => {
+    serve(source([0,1,2,3].map(i => ({date:d(-12+i*3),exercises:[{id:ex.bench,name:'Press',mode:'',sets:[[8,i===3?60:50]],configuration:null}]}))));
+    const next = await training('progress/training?period=30&inPeriod=2');
+    expect(next.inPeriod).toMatchObject({method:'own',improved:1, exercises:[{reason:'own_baseline', signal:{kind:'own_baseline'}}]});
+  });
+  it('keeps the strict lane when available and rejects unknown versions', async () => {
+    serve(source([{date:d(-4),exercises:[{id:ex.bench,name:'Press',mode:'Peso total',sets:[[8,50]]}]}, {date:d(-1),exercises:[{id:ex.bench,name:'Press',mode:'Peso total',sets:[[10,50]]}]}]));
+    const next = await training('progress/training?period=30&inPeriod=2');
+    expect(next.inPeriod).toMatchObject({method:'strict',improved:1});
+    expect((await trainingGET(new NextRequest('https://ownlevel.test/api/mobile/v1/progress/training?inPeriod=3',{headers:{Authorization:'Bearer valid'}}))).status).toBe(400);
+  });
+});
+it('a 19-session history with unknown modes yields up, same and down through the existing own method', async () => {
+  serve(source(Array.from({length:19},(_,i) => ({date:d(-28+i), exercises:[ex.bench,ex.squat,ex.curl].map((id,j) => ({id,name:'Ejercicio',mode:'',configuration:null,sets:[[8,i===18?[60,50,40][j]:50]] as SetSpec[]}))}))));
+  const next = await training('progress/training?period=30&inPeriod=2');
+  expect(next.inPeriod).toMatchObject({method:'own',improved:1,stable:1,declined:1,insufficient:0});
+});

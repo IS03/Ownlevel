@@ -392,7 +392,7 @@ describe('Progress inPeriod read EXPAND', () => {
     const { GET: trainingGET } = await import('@/app/api/mobile/v1/progress/training/route');
     for (const [get, path] of [[overviewGET, 'progress'], [trainingGET, 'progress/training']] as const) {
       const plain = await get(request(path)); expect(plain.status).toBe(200); expect(await plain.json()).not.toHaveProperty('inPeriod');
-      expect((await get(request(`${path}?inPeriod=2`))).status).toBe(400);
+      expect((await get(request(`${path}?inPeriod=3`))).status).toBe(400);
       expect((await get(request(`${path}?inPeriod=1&inPeriod=1`))).status).toBe(400);
     }
   });

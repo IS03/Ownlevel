@@ -90,7 +90,7 @@ export type ProgressOverview = {
   panorama?: ProgressPanorama;
   /** Only with findings=1. Missing field means an older server, not zero findings. */
   findings?: ProgressEditorialFinding[];
-  inPeriod?: { improved: number; comparable: number } | null;
+  inPeriod?: { improved: number; comparable: number; method?: 'strict' | 'partial' | 'own'; comparedExposures?: number } | null;
 };
 /** One bucket of a mini chart. null = no data in the bucket (a gap, never 0). */
 export type ProgressSparkPoint = { start: string; end: string; value: number | null };
@@ -108,6 +108,9 @@ export type ProgressTrainingExercise = {
 };
 export type ProgressTrainingFeeling = { key: "energy" | "performance" | "pain"; label: string; average: number; scaleMaximum: 5 | 10; registered: number; eligible: number; ratio: number };
 export type ProgressTrainingInPeriod = {
+  /** v2: latest exposure vs compatible history, not first/last in this window. Absent = legacy first/last. */
+  method?: 'strict' | 'partial' | 'own';
+  comparedExposures?: number;
   improved: number; stable: number; declined: number; insufficient: number;
   exercises: { id: string; status: TrainingPerformanceStatus; reason: string; sessions: number; firstDate: string; lastDate: string; signal: TrainingSignal | null }[];
 };
@@ -342,7 +345,7 @@ function parseEditorialFinding(v: unknown, period: ProgressPeriod): ProgressEdit
 export function parseProgressOverview(v: unknown): ProgressOverview | undefined {
   if (!record(v) || !keys(v, [...OVERVIEW_KEYS, ...("sparks" in v ? ["sparks"] : []), ...("inPeriod" in v ? ["inPeriod"] : []), ...("panorama" in v ? ["panorama"] : []), ...("findings" in v ? ["findings"] : [])]) || !isNutritionDate(v.today)) return;
   const inPeriod = v.inPeriod;
-  if ("inPeriod" in v && inPeriod !== null && (!record(inPeriod) || !keys(inPeriod, ["improved", "comparable"]) || !count(inPeriod.improved) || !count(inPeriod.comparable) || inPeriod.improved > inPeriod.comparable)) return;
+  if ("inPeriod" in v && inPeriod !== null && (!record(inPeriod) || !keys(inPeriod, ["improved", "comparable", ...("method" in inPeriod ? ["method", "comparedExposures"] : [])]) || ("method" in inPeriod && !["strict", "partial", "own"].includes(String(inPeriod.method))) || ("method" in inPeriod && !count(inPeriod.comparedExposures)) || !count(inPeriod.improved) || !count(inPeriod.comparable) || inPeriod.improved > inPeriod.comparable)) return;
   const sparks = "sparks" in v ? parseSparks(v.sparks) : null;
   if (sparks === undefined) return;
   const period = parseProgressPeriod(v.period);
@@ -408,9 +411,9 @@ function parseTrainingExercise(v: unknown): ProgressTrainingExercise | undefined
   return { ...(v as ProgressTrainingExercise), signal };
 }
 function parseTrainingInPeriod(v: unknown, period: ProgressPeriod, trained: ProgressTrainingExercise[]): ProgressTrainingInPeriod | undefined {
-  if (!record(v) || !keys(v, ["improved", "stable", "declined", "insufficient", "exercises"]) || ![v.improved, v.stable, v.declined, v.insufficient].every(count)) return;
+  if (!record(v) || !keys(v, ["improved", "stable", "declined", "insufficient", "exercises", ...("method" in v ? ["method", "comparedExposures"] : [])]) || ("method" in v && !["strict", "partial", "own"].includes(String(v.method))) || ("method" in v && !count(v.comparedExposures)) || ![v.improved, v.stable, v.declined, v.insufficient].every(count)) return;
   const exercises = list(v.exercises, e => {
-    if (!record(e) || !keys(e, ["id", "status", "reason", "sessions", "firstDate", "lastDate", "signal"]) || !str(e.id) || !PERFORMANCE_STATUSES.includes(String(e.status)) || !str(e.reason) || !count(e.sessions) || e.sessions < 2 || !isNutritionDate(e.firstDate) || !isNutritionDate(e.lastDate) || e.firstDate > e.lastDate || e.firstDate < period.start || e.lastDate > period.end) return;
+    if (!record(e) || !keys(e, ["id", "status", "reason", "sessions", "firstDate", "lastDate", "signal"]) || !str(e.id) || !PERFORMANCE_STATUSES.includes(String(e.status)) || !str(e.reason) || !count(e.sessions) || e.sessions < ("method" in v ? 1 : 2) || !isNutritionDate(e.firstDate) || !isNutritionDate(e.lastDate) || e.firstDate > e.lastDate || (!("method" in v) && e.firstDate < period.start) || e.lastDate < period.start || e.lastDate > period.end) return;
     const signal = parseSignal(e.signal);
     if (signal === undefined || (e.status === "insufficient_data" && signal !== null) || !trained.some(t => t.id === e.id)) return;
     return { ...e, signal } as ProgressTrainingInPeriod["exercises"][number];
@@ -418,7 +421,7 @@ function parseTrainingInPeriod(v: unknown, period: ProgressPeriod, trained: Prog
   if (!exercises || new Set(exercises.map(e => e.id)).size !== exercises.length) return;
   if ((v.improved as number) + (v.stable as number) + (v.declined as number) + (v.insufficient as number) !== exercises.length) return;
   for (const [countKey, status] of [["improved", "improved"], ["stable", "stable"], ["declined", "declined"], ["insufficient", "insufficient_data"]]) if (v[countKey] !== exercises.filter(e => e.status === status).length) return;
-  return { improved: v.improved as number, stable: v.stable as number, declined: v.declined as number, insufficient: v.insufficient as number, exercises };
+  return { improved: v.improved as number, stable: v.stable as number, declined: v.declined as number, insufficient: v.insufficient as number, exercises, ...("method" in v ? {method: v.method as NonNullable<ProgressTrainingInPeriod["method"]>, comparedExposures: v.comparedExposures as number} : {}) };
 }
 function parseTrainingStory(v: unknown, period: ProgressPeriod): ProgressTrainingStory | undefined {
   if (!record(v) || !keys(v, ['routines', 'muscles'])) return;

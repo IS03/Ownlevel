@@ -1,4 +1,5 @@
 import "server-only";
+import { trainingComparisonDto } from "./progress-training-comparison";
 import { loadCompletedTrainingData, loadTrainingRecordsData } from "@/lib/phase2/training-robust";
 import { listRoutines } from "@/lib/phase2/training";
 import { buildSessionRecords, buildTrainingAnalysis, trainingExerciseStats, type TrainingAnalysis, type TrainingAnalysisSource } from "@/lib/phase2/training-analysis";
@@ -106,7 +107,7 @@ export function trainingDto(ctx: TrainingContext, today: string, period: Progres
 }
 
 /** No new reads: group historical snapshots by routine, retaining the canonical first/last comparator. */
-export function trainingStoryDto(ctx: TrainingContext, period: ProgressPeriod, reliableDurations = false): NonNullable<ProgressTraining['story']> {
+export function trainingStoryDto(ctx: TrainingContext, period: ProgressPeriod, reliableDurations = false, comparisonV2 = false): NonNullable<ProgressTraining['story']> {
   const records = buildSessionRecords(ctx.source, period);
   const sessionsByRoutine = new Map<string, TrainingAnalysisSource['sessions']>();
   const routineBySession = new Map<string, string>();
@@ -141,8 +142,9 @@ export function trainingStoryDto(ctx: TrainingContext, period: ProgressPeriod, r
   }
   const routines = [...new Set([...current.keys(), ...ctx.reference.routines.filter(r => r.summary.hasData).map(r => r.id)])].map(id => {
     const now = current.get(id), before = previous.get(id), scoped = currentRecords.get(id) ?? [];
-    const performance = trainingInPeriodDto({ ...ctx, source: { ...ctx.source, sessions: sessionsByRoutine.get(id) ?? [],
-      sessionExercises: exercisesByRoutine.get(id) ?? [], sets: setsByRoutine.get(id) ?? [] } }, period);
+    const scopedContext = { ...ctx, source: { ...ctx.source, sessions: sessionsByRoutine.get(id) ?? [],
+      sessionExercises: exercisesByRoutine.get(id) ?? [], sets: setsByRoutine.get(id) ?? [] } };
+    const performance = comparisonV2 ? trainingComparisonDto(scopedContext.source, period) : trainingInPeriodDto(scopedContext, period);
     const compared = new Set(performance.exercises.map(e => e.id));
     const timesKnown = (sessionsByRoutine.get(id) ?? []).every(session => {
       if (!session.started_at || !session.ended_at) return false;
