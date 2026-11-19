@@ -77,7 +77,7 @@ function Activity({ data }: { data: ProgressTraining }) {
     {incompleteDuration ? <AppText muted variant="footnote">No hay una duración válida para alguna sesión. No se cuenta como cero minutos.</AppText> : null}
     <AppText muted numeric variant="caption">{plural(s.trainingDays, 'día entrenado', 'días entrenados')}{rate !== null ? ' · frecuencia normalizada a 7 días' : ''}</AppText>
     {compareOn && s.comparisons.sets.status !== 'comparable' ? <AppText muted variant="footnote">{comparisonText(s.comparisons.sets, 'series', 'integer')}</AppText> : null}
-    {compareOn ? <AppText muted numeric variant="caption">Referencia: {shortRange({ start: data.period.previousStart, end: data.period.previousEnd }, data.today)} · {previousDays} días</AppText> : null}
+    {compareOn ? <AppText muted numeric variant="caption">Referencia: {shortRange({ start: data.period.previousStart, end: data.period.previousEnd }, data.today)} · {plural(previousDays, 'día', 'días')}</AppText> : null}
   </View>;
 }
 
