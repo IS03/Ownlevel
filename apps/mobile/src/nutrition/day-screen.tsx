@@ -106,8 +106,6 @@ function NutritionDayView({ revision, date, today, bottomClearance, onSelect, on
       : <>
         {state.status !== 'ready' ? <View style={styles.header}>
           <AppText accessibilityRole="alert">No pudimos actualizar. Mostramos la última lectura de esta fecha.</AppText>
-          {/* #466: the age of what is on screen is only said when it matters, i.e. when the refresh failed. A normal day carries no reading line. */}
-          <AppText muted numeric variant="caption" testID="nutrition-stale-reading">Datos confirmados a las {new Date(current.confirmedAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</AppText>
           <Button label="Reintentar" onPress={runRefresh} variant="secondary" />
         </View> : null}
         <NutritionDayContent data={current.data} onAdd={onAdd} addChoices={addChoices} addControl={addControl} highlightedMeal={highlightedMeal} removal={removal} mealActions={state.status === 'ready' ? mealActions : undefined}

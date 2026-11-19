@@ -114,10 +114,13 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
   return <View style={styles.section} testID="nutrition-progress-chart">
     <Heading level={2}>{copy.title}</Heading>
     {/* #519 · Same bars, period, A/B side and selection: only the nutrient they show changes. */}
-    <Selector accessibilityLabel="Nutriente del gráfico" value={nutrient} options={[
-      { value: 'calories', label: NUTRIENTS.calories.label }, { value: 'protein', label: NUTRIENTS.protein.label },
-    ]} onChange={next => { if (next !== nutrient) { haptics.selection(); onNutrient(next); } }} />
-    {hasStages && onStages ? <View style={styles.chips}><Chip kind="toggle" label="Etapas" selected={stages} onPress={() => { haptics.selection(); onStages(!stages); }} /></View> : null}
+    {/* The nutrient and the stages toggle share one row: both only change how these same bars read. */}
+    <View style={styles.controls}>
+      <View style={styles.selector}><Selector accessibilityLabel="Nutriente del gráfico" value={nutrient} options={[
+        { value: 'calories', label: NUTRIENTS.calories.label }, { value: 'protein', label: NUTRIENTS.protein.label },
+      ]} onChange={next => { if (next !== nutrient) { haptics.selection(); onNutrient(next); } }} /></View>
+      {hasStages && onStages ? <Chip kind="toggle" label="Etapas" selected={stages} onPress={() => { haptics.selection(); onStages(!stages); }} /> : null}
+    </View>
     {series.map(s => {
       const runs = showStages && s.report.range.days <= 31 ? stageRuns(s.points) : null;
       const bands = runs?.flatMap((r,i) => r?.first ? [{start:s.points[i].start,end:s.points[i+r.length-1].end,label:r.label}] : []) ?? [];
@@ -203,7 +206,7 @@ const styles = StyleSheet.create({
   slot: { flex: 1, gap: spacing.xs, paddingHorizontal: spacing.xs, paddingBottom: spacing.xs },
   bar: { height: 150, justifyContent: 'flex-end' },
   grow: { flex: 1 },
-  chips: { flexDirection: 'row' },
+  controls: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' }, selector: { flexGrow: 1, flexBasis: 200 },
   stageBand: { position: 'absolute', top: 0, bottom: 0, opacity: 0.45, borderRadius: 2 },
   stageName: { position: 'absolute', top: 1 },
   help: { minHeight: brandTokens.layout.minTouch, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },

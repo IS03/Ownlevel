@@ -1,7 +1,7 @@
 import { ReturnToProgress } from './return-to-progress';
 import { useCallback } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchSessionTemporal, validPeriodAnchor, type SessionTemporalDay } from '@/api/performance-insights';
@@ -15,13 +15,14 @@ import { exactPeriodDate } from './period-model';
 import { hoursText, sessionRows } from './insights-model';
 import { formatValue } from '@/progress/progress-format';
 import { usePeriodReturn } from './use-period-return';
+import { useInsightsRouter } from './insights-router';
 
 const NUTRIENTS = [['calories','Calorías','kcal'],['proteinG','Proteínas','g'],['carbsG','Carbohidratos','g'],['fatG','Grasas','g']] as const;
 type Session = SessionTemporalDay['sessions'][number];
 const clock = (at: string | null) => at ? `${new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Cordoba', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(at))} · ${formatClockTime(at)}` : 'Sin hora registrada';
 
 export function SessionTemporalScreen() {
-  const { client } = useMobileApi(), router = useRouter(), params = useLocalSearchParams(), { colors } = useOwnlevelTheme();
+  const { client } = useMobileApi(), router = useInsightsRouter(), params = useLocalSearchParams(), { colors } = useOwnlevelTheme();
   const date = validPeriodAnchor(params.date) ? params.date : null;
   const load = useCallback((c: MobileApiClient, signal: AbortSignal) => fetchSessionTemporal(c, date!, signal), [date]);
   const { state, data, refresh } = useProgressResource(date ? client : null, `performance-insights|session-temporal|${date}`, load);
@@ -48,7 +49,7 @@ export function SessionTemporalScreen() {
       : <>
         {state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura completa." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
         <Heading level={2}>Horarios y comidas</Heading><AppText numeric>{exactPeriodDate(date)}</AppText>
-        <AppText muted>Horas de Córdoba. Lectura del {clock(data.calculatedAt)}.</AppText>
+        <AppText muted>Horas de Córdoba.</AppText>
         {typeof params.revision === 'string' && params.revision !== data.sourceRevision ? <AppText testID="temporal-revised">Los registros cambiaron desde el día de origen. Esta lectura está actualizada.</AppText> : null}
         {!data.sessions.length ? <AppText>Sin sesiones finalizadas ese día.</AppText> : null}
         {data.sessions.map(s => <View key={s.sessionId} testID={`temporal-${s.sessionId}`} style={styles.block}>

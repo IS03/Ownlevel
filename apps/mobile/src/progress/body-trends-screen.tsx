@@ -20,7 +20,6 @@ import { useProgressRange } from './progress-range-context';
 import { PROGRESS_UNITS, addDays, progressRange, periodHeading, shortRange, type ProgressUnit } from './progress-range';
 import { arrowDelta, formatValue, trendText } from './progress-format';
 import { useCachedRead } from '@/api/use-cached-read';
-import { ProgressReadStatus } from './progress-read-status';
 import { ReturnToInsights } from '@/insights/return-to-insights';
 import { useProgressRouteRange } from './use-progress-route-range';
 import { WeeklyWeights } from './weekly-weights';
@@ -189,7 +188,8 @@ function Content({ data, selected, body, selectedDate, onSelect, portada }: { da
 
     </View> : null}
     {!selected ? <>
-      <Button label="Explorar peso y medidas" variant="secondary" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.weight' } })} />
+      {/* Opens the weight on its own: every weighing and its weeks. The measures are the zones right below. */}
+      <Button label="Ver tus pesajes y semanas" variant="secondary" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.weight' } })} />
       <BodyZones data={data} onRegister={body ? () => body.controller.openMeasurement() : undefined} disabled={!editable} />
       <BodyRecordComparison metrics={data.metrics} />
       <Button label="Tu cuaderno · peso y medidas por fecha" variant="secondary" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { section: 'journal' } })} />
@@ -245,7 +245,6 @@ function BodyTrends() {
     {/* Insights reads the weight of a day: it says nothing about when you weighed in, before or after training. */}
     {params.insightsReturn === '1' ? <AppText muted variant="footnote" testID="body-from-insights">El peso de un día no dice si te pesaste antes o después de entrenar.</AppText> : null}
     {selected && isBodyChartMetric(selected) ? <BodyMetricPicker selected={selected} /> : null}
-    <ProgressReadStatus state={state} />
     {body ? <BodyStatus state={body.state} controller={body.controller} /> : null}
     {state.status === 'loading' ? <SkeletonBlock height={200} />
       : !data ? <UnavailableState title="No pudimos cargar Cuerpo" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente." action={<Button label="Reintentar" onPress={() => void refresh()} />} />

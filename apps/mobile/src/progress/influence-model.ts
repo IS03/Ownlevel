@@ -4,10 +4,10 @@ import { OUTCOME_ONLY, STATIC_MEASURES, type ExploreChoice } from './explore-mod
 import { formatValue } from './progress-format';
 
 export const QUESTIONS: Record<InfluenceSuggestedKey, { title: string; icon: AppIconName }> = {
-  sleep_sets: { title: '¿Dormir más cambia tus series del día siguiente?', icon: 'moon' },
-  carbs_sets: { title: '¿Los carbohidratos del día anterior cambian tus series?', icon: 'nutrition' },
+  sleep_sets: { title: '¿Hacés más series después de dormir más?', icon: 'moon' },
+  carbs_sets: { title: '¿Hacés más series el día después de comer más carbos?', icon: 'nutrition' },
   training_kcal: { title: '¿Comés distinto los días que entrenás?', icon: 'dumbbell' },
-  steps_sleep: { title: '¿Caminar más cambia lo que dormís?', icon: 'footprints' },
+  steps_sleep: { title: '¿Dormís distinto los días que caminás más?', icon: 'footprints' },
   training_water: { title: '¿Tomás más agua los días que entrenás?', icon: 'water' },
 };
 export const CAUTION = 'Es una relación, no una causa: otras cosas pudieron cambiar esos días.';

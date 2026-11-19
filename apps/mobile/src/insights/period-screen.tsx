@@ -1,7 +1,7 @@
 import { ReturnToProgress } from './return-to-progress';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useCallback, useRef } from 'react';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchInsightsPinnedPeriod, validPeriodAnchor } from '@/api/performance-insights';
@@ -14,6 +14,7 @@ import { InsightRow } from './insight-row';
 import { bodyWeightHref, periodDetailHref, explorationHref, insightsOriginOf,progressOriginParams,withProgressOrigin } from './navigation';
 import { usePeriodReturn } from './use-period-return';
 import { FACTS_ONLY, exactPeriodDate, feelingRows, nutritionRows, periodEmpty, periodHeading, periodSentences, routineRows, trainingRows } from './period-model';
+import { useInsightsRouter } from './insights-router';
 
 const Section = ({ title }: { title: string }) => <AppText muted variant="footnote" style={styles.section} accessibilityRole="header">{title}</AppText>;
 
@@ -21,7 +22,7 @@ const Section = ({ title }: { title: string }) => <AppText muted variant="footno
 export function PeriodScreen() {
   const { client } = useMobileApi();
   const { colors } = useOwnlevelTheme();
-  const router = useRouter();
+  const router = useInsightsRouter();
   const params = useLocalSearchParams();
   const origin=insightsOriginOf(params);
   const routeAnchor = validPeriodAnchor(params.asOf) ? params.asOf : undefined;

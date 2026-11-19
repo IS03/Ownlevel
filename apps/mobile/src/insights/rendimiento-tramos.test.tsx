@@ -84,6 +84,8 @@ describe('pantallas', () => {
     const view = screen(<InsightsScreen />);
     const sleep = await view.findByTestId('own-factor-sleep_night_before');
     expect(within(sleep).getByText('Más sueño, más rendimiento')).toBeTruthy();
+    // The clear one leads; the rest share one «Sin diferencia clara» line instead of repeating it on every row.
+    expect(view.queryAllByText('Sin diferencia clara').length).toBeLessThanOrEqual(1);
     expect(view.getByRole('button', { name: /^\d+ datos todavía sin datos para comparar: .*Carbos 3 h antes/ })).toBeTruthy();
     fireEvent.press(sleep);
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/train/insights/tramo', params: expect.objectContaining({ factor: 'sleep_night_before', horizon: 'day' }) });

@@ -62,14 +62,21 @@ function Activity({ data }: { data: ProgressTraining }) {
     <AppText muted variant="caption">ACTIVIDAD REGISTRADA</AppText><Heading level={2}>{headline}</Heading>
     <View style={[styles.between, fontScale > 1.3 && styles.vertical]}><View><AppText numeric variant="heroNumber">{fmt(rate ?? s.sessions)}</AppText><AppText muted>{rate === null ? 'sesiones en el período' : 'sesiones por semana'}</AppText></View>
       {previousRate !== null ? <AppText numeric muted variant="subheadline">Antes, {fmt(previousRate)} por semana</AppText> : null}</View>
-    {blocks ? <><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.weeks} accessibilityLabel={`Sesiones por ${bucket}`}>
-      {data.series.map(b => <Pressable key={b.start} testID={`training-week-${b.start}`} accessibilityRole="button" accessibilityState={{ selected: selected === b.start }}
+    {blocks ? <>{(() => {
+      // Up to 7 intervals each column carries its date; more than that, the whole period fits the width (no sideways scroll)
+      // and only the ends are dated. A tap still shows each interval's dates below.
+      const fit = data.series.length > 7;
+      const columns = data.series.map(b => <Pressable key={b.start} testID={`training-week-${b.start}`} accessibilityRole="button" accessibilityState={{ selected: selected === b.start }}
         accessibilityLabel={`${date(b.start)} – ${date(b.end)}, ${plural(b.sessions, 'sesión', 'sesiones')}${b.end >= data.today ? ', en curso' : ''}`}
-        onPress={() => select(selected === b.start ? null : b.start)} style={[styles.week, { borderColor: selected === b.start ? colors.primary : 'transparent' }]}>
-        <View style={styles.blocks} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">{Array.from({ length: max }, (_, i) => <View key={i} style={[styles.block, { backgroundColor: i < b.sessions ? colors.primary : colors.border, opacity: i < b.sessions && b.end >= data.today ? 0.4 : 1 }]} />)}</View>
-        <AppText muted numeric variant="caption">{date(b.start)}</AppText>
-      </Pressable>)}
-    </ScrollView><AppText muted numeric variant="footnote" accessibilityLiveRegion="polite">{inspected ? `${date(inspected.start)} – ${date(inspected.end)} · ${plural(inspected.sessions, 'sesión', 'sesiones')}${inspected.end >= data.today ? ' · intervalo en curso' : ''}` : `Cada bloque es una sesión. Tocá un intervalo para ver sus fechas.`}</AppText></> : null}
+        onPress={() => select(selected === b.start ? null : b.start)} style={[styles.week, fit && styles.fitWeek, { borderColor: selected === b.start ? colors.primary : 'transparent' }]}>
+        <View style={[styles.blocks, fit && styles.fitBlocks]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">{Array.from({ length: max }, (_, i) => <View key={i} style={[styles.block, fit && styles.fitBlock, { backgroundColor: i < b.sessions ? colors.primary : colors.border, opacity: i < b.sessions && b.end >= data.today ? 0.4 : 1 }]} />)}</View>
+        {fit ? null : <AppText muted numeric variant="caption">{date(b.start)}</AppText>}
+      </Pressable>);
+      return fit ? <View accessibilityLabel={`Sesiones por ${bucket}`}>
+        <View style={styles.fitRow}>{columns}</View>
+        <View style={styles.fitEnds}><AppText muted numeric variant="caption">{date(data.series[0]!.start)}</AppText><AppText muted numeric variant="caption">{date(data.series.at(-1)!.start)}</AppText></View>
+      </View> : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.weeks} accessibilityLabel={`Sesiones por ${bucket}`}>{columns}</ScrollView>;
+    })()}<AppText muted numeric variant="footnote" accessibilityLiveRegion="polite">{inspected ? `${date(inspected.start)} – ${date(inspected.end)} · ${plural(inspected.sessions, 'sesión', 'sesiones')}${inspected.end >= data.today ? ' · intervalo en curso' : ''}` : `Cada bloque es una sesión. Tocá una columna para ver sus fechas.`}</AppText></> : null}
     <View style={[styles.stats, { borderColor: colors.border }]}>
       <Stat value={fmt(s.sessions)} label="sesiones" previous={compareOn ? c.previous === null ? null : fmt(c.previous) : null} />
       <Stat value={fmt(s.sets)} label="series" previous={compareOn && s.comparisons.sets.previous !== null ? fmt(s.comparisons.sets.previous) : null} />
@@ -197,6 +204,8 @@ const styles = StyleSheet.create({
   stat: { flexGrow: 1, flexBasis: 88, gap: spacing.xs }, weeks: { gap: spacing.xs, flexGrow: 1, paddingVertical: spacing.xs },
   week: { flex: 1, minWidth: brandTokens.layout.minTouch, gap: spacing.xs, padding: spacing.xs, borderWidth: 1, borderRadius: radius.inner },
   blocks: { flexDirection: 'column-reverse', gap: spacing.xs }, block: { height: spacing.md, borderRadius: spacing.xs },
+  fitRow: { flexDirection: 'row', paddingVertical: spacing.xs }, fitWeek: { minWidth: 0, padding: 1, borderRadius: brandTokens.space.xxs },
+  fitBlocks: { gap: 2 }, fitBlock: { borderRadius: 2 }, fitEnds: { flexDirection: 'row', justifyContent: 'space-between' },
   routine: { paddingVertical: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, gap: spacing.sm },
   rail: { height: 6, borderRadius: radius.full }, fill: { height: 6, borderRadius: radius.full },
   detail: { padding: spacing.md, borderRadius: radius.inner, gap: spacing.sm },

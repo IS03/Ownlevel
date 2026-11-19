@@ -1,7 +1,7 @@
 import { ReturnToProgress } from './return-to-progress';
 import { useCallback } from 'react';
 import { ScrollView,StyleSheet,View,RefreshControl } from 'react-native';
-import { useLocalSearchParams,useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchPeriodExploration,validPeriodAnchor } from '@/api/performance-insights';
@@ -17,9 +17,10 @@ import { WeekComparison } from './week-comparison';
 import { selectedWeeks } from './week-comparison-model';
 import { Coincidences } from './coincidences';
 import { usePeriodReturn } from './use-period-return';
+import { useInsightsRouter } from './insights-router';
 
 export function WeekExplorationScreen() {
-  const {client}=useMobileApi(),params=useLocalSearchParams(),router=useRouter(),{colors}=useOwnlevelTheme();
+  const {client}=useMobileApi(),params=useLocalSearchParams(),router=useInsightsRouter(),{colors}=useOwnlevelTheme();
   const asOf=validPeriodAnchor(params.asOf)?params.asOf:null;
   const load=useCallback((c:MobileApiClient,signal:AbortSignal)=>fetchPeriodExploration(c,asOf!,signal),[asOf]);
   const {state,data,refresh}=useProgressResource(asOf?client:null,`performance-insights|period-explore|${asOf}`,load);usePeriodReturn(refresh);

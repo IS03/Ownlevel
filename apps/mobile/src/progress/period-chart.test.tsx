@@ -13,7 +13,8 @@ describe('optional compact PeriodChart',()=>{
   const heights=view.getByTestId('chart-a-mark').findAll(n=>n.props.style&&StyleSheet.flatten(n.props.style)?.height===plotHeight/2);
   expect(heights.length).toBeGreaterThan(0);
   expect(view.getByTestId('chart-c-zero')).toBeTruthy();expect(view.getByTestId('chart-d-gap')).toBeTruthy();
-  for(const b of view.getAllByRole('button')) expect(StyleSheet.flatten(b.props.style).minWidth).toBeGreaterThanOrEqual(44);
+  // Every column fits the width (flex, no minimum): the period never scrolls sideways.
+  for(const b of view.getAllByRole('button')) expect(StyleSheet.flatten(b.props.style).flex).toBe(1);
   fireEvent.press(view.getByTestId('chart-d-gap'));expect(onSelect).toHaveBeenCalledWith('d');
  });
 });

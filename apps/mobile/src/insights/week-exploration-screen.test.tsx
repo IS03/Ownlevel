@@ -224,7 +224,7 @@ it('opens the fixed premeal choices locally and requests only the selected group
  const select=async(name:string)=>{await act(async()=>{fireEvent.press(view.getByRole('button',{name}));mockParams={...mockParams,...mockSetParams.mock.calls.at(-1)![0] as Record<string,string>};view.rerender(wrap());});};
  const calories='Abrir calorías previas y entrenamiento, descripción de registros',carbs='Abrir carbohidratos previos y entrenamiento, descripción de registros',last='Abrir última comida registrada y entrenamiento, descripción de registros';
  const choices=within(view.getByTestId('descriptive-coincidences')).getAllByRole('button').map(b=>b.props.accessibilityLabel);
- expect(choices).toEqual(['Abrir proteína previa y entrenamiento, descripción de registros',calories,carbs,last,'Abrir horarios y distribuciones de energía y fatiga post','Abrir alimentación semanal, entrenamiento y peso corporal']);
+ expect(choices).toEqual(['¿Con qué rendís más? Ver Cómo llegaste','Abrir proteína previa y entrenamiento, descripción de registros',calories,carbs,last,'Abrir horarios y distribuciones de energía y fatiga post','Abrir alimentación semanal, entrenamiento y peso corporal']);
  await select(calories);expect(mockRead).toHaveBeenCalledTimes(1);expect(view.getAllByText(/Hasta 300 kcal/).length).toBeGreaterThan(0);
  await select('Ver 6 registros del grupo hasta la mediana');expect(view.getByTestId(`coincidence-session-${descriptiveId(10)}`)).toBeTruthy();expect(mockRead).toHaveBeenCalledTimes(2);
  fireEvent.press(view.getAllByRole('button',{name:/^Ver sesión y evidencia del/})[0]!);

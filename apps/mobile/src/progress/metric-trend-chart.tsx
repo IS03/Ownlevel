@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import type { ProgressMetrics } from '@/api/progress';
 import { AppText, Button, spacing } from '@/design-system';
 import { PeriodChart } from './period-chart';
@@ -35,10 +35,10 @@ export function MetricTrendChart({ data, inspection, onOpen }: { data: ProgressM
   const title = selected?.range ?? 'Tocá una barra';
   const detail = selected?.detail ?? 'Tocá una barra para ver fecha y valor.';
   return <View style={styles.root}>
-    <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll} accessibilityLabel="Gráfico de métricas">
+    <View accessibilityLabel="Gráfico de métricas">
       <PeriodChart testID="metric-trend-chart" mode="bars" target={m.currentTarget} points={points}
         inspection={{ selectedKey: selected?.key ?? null, onSelect: select }} />
-    </ScrollView>
+    </View>
     <View testID="metric-trend-readout" accessible accessibilityLabel={`${title}, ${detail}`} accessibilityLiveRegion="polite">
       {selected ? <AppText numeric variant="headline">{title} · {detail}</AppText> : <AppText muted variant="footnote">{detail}</AppText>}
     </View>
@@ -53,5 +53,4 @@ export function MetricTrendChart({ data, inspection, onOpen }: { data: ProgressM
 
 const styles = StyleSheet.create({
   root: { gap: spacing.sm },
-  scroll: { flexGrow: 1 },
 });

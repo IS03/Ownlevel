@@ -28,9 +28,9 @@ import { TrainingStory, TrainingDisclosure, hasTrainingBlocks } from './training
 import { useProgressRange } from './progress-range-context';
 import { formatValue } from './progress-format';
 import { useCachedRead } from '@/api/use-cached-read';
-import { ProgressReadStatus } from './progress-read-status';
 import { PortadaPointNote, sameValue, usePortadaPoint, type PortadaPoint } from './portada-point';
 import { comparisonsFromTrainingHref } from '@/insights/navigation';
+import { insideProgress } from '@/insights/insights-router';
 
 type SeriesMetric = 'sets' | 'sessions' | 'minutes';
 type ChartInspection = { metric: SeriesMetric; bucket: { start: string; end: string } | null };
@@ -194,7 +194,6 @@ export function TrainingTrendsScreen() {
         />
       }
     >
-      <ProgressReadStatus state={state} />
       {state.status === 'loading' ? (
         <SkeletonBlock height={200} />
       ) : !data ? (
@@ -216,7 +215,7 @@ export function TrainingTrendsScreen() {
         </>
       )}
       {/* #518 · The fixed door to Comparaciones. Asks for nothing here; going back returns to this screen and its period. */}
-      <FlatRow onPress={() => router.navigate(comparisonsFromTrainingHref)} label="Ver Comparaciones: cada sesión con lo tuyo y con la anterior" testID="training-trends-comparisons">
+      <FlatRow onPress={() => router.navigate(insideProgress(comparisonsFromTrainingHref, true))} label="Ver Comparaciones: cada sesión con lo tuyo y con la anterior" testID="training-trends-comparisons">
         <View style={styles.text}>
           <AppText variant="headline">Comparaciones</AppText>
           <AppText muted variant="footnote">Cada sesión con lo tuyo y con la anterior, ejercicio por ejercicio.</AppText>

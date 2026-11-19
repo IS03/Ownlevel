@@ -69,12 +69,13 @@ describe('metric bar inspection (#377)', () => {
     expect(view.getByTestId('metric-trend-readout').props.accessibilityLabel).toBe('28/10/2026, 7 h 30 min');
   });
 
-  it('keeps 44 pt targets in long series and preserves null/zero/negative values with a zero target', async () => {
+  it('fits a long series in the width (no sideways scroll) and preserves null/zero/negative values with a zero target', async () => {
     const data = fixture(); data.metric!.currentTarget = 0;
     data.series = Array.from({ length: 30 }, (_, i) => ({ start: `2026-10-${String(i + 1).padStart(2, '0')}`, end: `2026-10-${String(i + 1).padStart(2, '0')}`, value: i === 0 ? -5 : i === 1 ? 0 : null, samples: i < 2 ? 1 : 0 }));
     const view = render(screen(data)); await act(async () => {});
-    expect(StyleSheet.flatten(view.getByTestId('metric-trend-chart').props.style).minWidth).toBeGreaterThanOrEqual(30 * 44);
-    for (const button of view.getAllByRole('button')) expect(StyleSheet.flatten(button.props.style).minWidth).toBeGreaterThanOrEqual(44);
+    // The whole month in the width: no minimum width that would push it into a sideways scroll; each column is a full-height target.
+    expect(StyleSheet.flatten(view.getByTestId('metric-trend-chart').props.style).minWidth).toBeUndefined();
+    expect(view.getAllByRole('button').filter(button => /^metric-trend-chart-/.test(button.props.testID ?? ''))).toHaveLength(30);
     expect(view.getByTestId('metric-trend-chart-target', { includeHiddenElements: true })).toBeTruthy();
     expect(view.getAllByTestId(/-gap$/)).toHaveLength(28);
     fireEvent.press(view.getByTestId('metric-trend-chart-2026-10-01-mark'));

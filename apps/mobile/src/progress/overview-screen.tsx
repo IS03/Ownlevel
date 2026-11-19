@@ -16,7 +16,6 @@ import { useProgressRange } from './progress-range-context';
 import { periodHeading } from './progress-range';
 import { arrowDelta, formatValue } from './progress-format';
 import { useCachedRead } from '@/api/use-cached-read';
-import { ProgressReadStatus } from './progress-read-status';
 import { useNutritionStages } from '@/stages/stages-provider';
 import { stagesRowDetail } from './stages-model';
 import { ConnectionsSection, useProgressConnections } from './connections-section';
@@ -145,7 +144,6 @@ export function ProgressPeriodOverviewScreen() {
   const proposal = useMemo(() => isNutritionDate(proposalFrom) && isNutritionDate(proposalTo) && proposalFrom <= proposalTo && proposalTo <= today ? { start: proposalFrom, end: proposalTo } : null, [proposalFrom, proposalTo, today]);
   const sheetOpened = useCallback(() => router.setParams({ sheet: undefined, proposalFrom: undefined, proposalTo: undefined }), [router]);
   return <ProgressScroll openSheet={askedSheet} sheetProposal={proposal} onSheetOpened={sheetOpened} title="Explorar período" testID="progress-overview" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} tintColor={colors.primary} />}>
-    <ProgressReadStatus state={status} />
     {focusConnections ? <ConnectionsSection resource={connections} /> : null}
     <MyViews />
     {status.status === 'loading' ? <><SkeletonBlock height={240} /><SkeletonBlock height={96} /></>

@@ -160,7 +160,7 @@ describe('Training Trends', () => {
     const reads = mockTraining.mock.calls.length;
     fireEvent.press(view.getByRole('button', { name: 'Ver el historial de entrenamientos' })); expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/train/history');
     fireEvent.press(view.getByRole('button', { name: 'Ver Comparaciones: cada sesión con lo tuyo y con la anterior' }));
-    expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights', params: { fromProgress: 'training' } });
+    expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/insights', params: { fromProgress: 'training' } });
     expect(mockTraining.mock.calls.length).toBe(reads);
   });
   it('keeps the chosen A/B reference separate from first/last results', async () => {

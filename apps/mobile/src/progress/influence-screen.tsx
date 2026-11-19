@@ -10,6 +10,7 @@ import { ProgressRow } from './progress-row';
 import { useProgressRange } from './progress-range-context';
 import { useProgressResource } from './use-progress-resource';
 import { QUESTIONS, shortAnswer } from './influence-model';
+import { insideProgress } from '@/insights/insights-router';
 
 export function InfluenceScreen() {
   const router = useRouter(), { colors } = useOwnlevelTheme(), { client } = useMobileApi(), { query } = useProgressRange();
@@ -18,6 +19,12 @@ export function InfluenceScreen() {
   return <ProgressScroll comparisonControls={false} title="Qué influye" testID="influence-screen">
     <View style={{ gap: spacing.xs }}><Heading level={2}>Preguntas para tus datos</Heading>
       <AppText muted>Comparan días tuyos entre sí. Muestran relaciones, no causas.</AppText></View>
+    {/* Performance against «lo tuyo» has one home: Comparaciones › Cómo llegaste. Here it is only a door, never a second calculation. */}
+    <ProgressRow testID="influence-performance" label="¿Con qué rendís más? Comida, sueño y métricas frente a lo tuyo, en Comparaciones"
+      onPress={() => router.push(insideProgress({ pathname: '/(tabs)/train/insights', params: { fromProgress: '1', view: 'relation' } }, true))}>
+      <AppIcon name="dumbbell" color={colors.primary} size={20} />
+      <View style={{ flex: 1, gap: spacing.xs }}><AppText variant="headline">¿Con qué rendís más?</AppText><AppText muted variant="footnote">Comida, sueño y métricas frente a lo tuyo, en Comparaciones</AppText></View>
+    </ProgressRow>
     {state.status === 'loading' ? <SkeletonBlock height={240} /> : data ? <View>
       {state.status !== 'ready' ? <InlineUnavailable message="No se pudo actualizar. Mostramos la última lectura confirmada." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
       {data.questions.length ? data.questions.map(q => <ProgressRow key={q.key} testID={`influence-question-${q.key}`} label={`${QUESTIONS[q.key].title}. ${shortAnswer(q)}`}

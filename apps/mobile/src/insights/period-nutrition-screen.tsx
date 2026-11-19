@@ -1,7 +1,7 @@
 import { ReturnToProgress } from './return-to-progress';
 import { useCallback } from 'react';
 import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchInsightsPeriodNutrition, validPeriodAnchor } from '@/api/performance-insights';
@@ -13,9 +13,10 @@ import { nutritionDayHref, periodSummaryHref,progressOriginParams,insightsOrigin
 import { exactPeriodRange } from './period-model';
 import { periodDayRows } from './period-nutrition-model';
 import { usePeriodReturn } from './use-period-return';
+import { useInsightsRouter } from './insights-router';
 
 export function PeriodNutritionScreen() {
-  const { client } = useMobileApi(), { colors } = useOwnlevelTheme(), router = useRouter(), params = useLocalSearchParams();
+  const { client } = useMobileApi(), { colors } = useOwnlevelTheme(), router = useInsightsRouter(), params = useLocalSearchParams();
   const asOf = validPeriodAnchor(params.asOf) ? params.asOf : null;
   const load = useCallback((c: MobileApiClient, signal: AbortSignal) => fetchInsightsPeriodNutrition(c, asOf!, signal), [asOf]);
   const { state, data, refresh } = useProgressResource(asOf ? client : null, `performance-insights|period-nutrition|${asOf}`, load);

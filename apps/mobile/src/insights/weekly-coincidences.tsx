@@ -1,5 +1,4 @@
 import { View,StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
 import { AppText,spacing } from '@/design-system';
 import { weeklyNutritionGroups,WEEKLY_NUTRIENTS,type WeeklyNutrient,type PeriodExploration } from '@/api/performance-insights';
 import { formatValue } from '@/progress/progress-format';
@@ -8,6 +7,7 @@ import { FactRow } from './insights-screen';
 import { bodyWeightHref,nutritionDayHref,type InsightsOrigin } from './navigation';
 import { exactPeriodDate,exactPeriodRange } from './period-model';
 import { nextDate } from './insights-model';
+import { useInsightsRouter } from './insights-router';
 const LABEL:Record<WeeklyNutrient,string>={calories:'Calorías',proteinG:'Proteínas',carbsG:'Carbohidratos',fatG:'Grasas'};
 type Selection=Pick<InsightsOrigin,'coincidence'|'coincidenceGroup'|'coincidencePage'|'coincidenceView'|'weeklyNutrient'|'weeklyOutcome'>;
 function TrainingResults({value:g}:{value:ReturnType<typeof weeklyNutritionGroups>['groups'][number]['weeks'][number]['training']}) {
@@ -18,7 +18,7 @@ function TrainingResults({value:g}:{value:ReturnType<typeof weeklyNutritionGroup
 }
 /** Reuses transported days: selectors and group evidence never request another period. */
 export function WeeklyCoincidences({weeks,origin,selection,onSelect}:{weeks:PeriodExploration['weeks'];origin:InsightsOrigin;selection:Selection;onSelect:(v:Selection)=>void}) {
-  const router=useRouter(),nutrient=selection.weeklyNutrient??'proteinG',outcome=selection.weeklyOutcome??'weight';
+  const router=useInsightsRouter(),nutrient=selection.weeklyNutrient??'proteinG',outcome=selection.weeklyOutcome??'weight';
   const model=weeklyNutritionGroups(weeks,nutrient),unit=nutrient==='calories'?'kcal':'g',amount=(v:number|null)=>v===null?'no calculable':formatValue(v,unit);
   const chooseGroup=(key:string)=>onSelect({...selection,coincidenceGroup:selection.coincidenceGroup===key?undefined:key});
   const coverage=(w:{completeDays:number;partialDays:number;unknownDays:number;noMealDays:number})=>`${w.completeDays} días utilizables; ${w.partialDays} parciales; ${w.unknownDays} sin dato del nutriente; ${w.noMealDays} sin comidas`;

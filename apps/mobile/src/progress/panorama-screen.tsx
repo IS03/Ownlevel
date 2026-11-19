@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { RefreshControl, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { useCachedRead } from '@/api/use-cached-read';
@@ -15,7 +15,6 @@ import { ProgressFindings } from './progress-findings';
 import { useProgressRange } from './progress-range-context';
 import { CompareSheet } from './period-sheets';
 import { ProgressScroll } from './progress-scroll';
-import { ProgressReadStatus } from './progress-read-status';
 import { PeriodChart } from './period-chart';
 import { formatValue } from './progress-format';
 import { destinationRoute } from './progress-destination';
@@ -55,10 +54,8 @@ function Preview({ kind, spark, mode, selectedKey, onSelect }: {
     // The selected range can wrap with Dynamic Type: reserve its intrinsic height, without moving the plot.
     const reserve = [meaning, ...points.map(p => p.text)].reduce((a, b) => b.length > a.length ? b : a, '');
     return <View style={styles.preview}>
-      <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false}>
-        <PeriodChart compact testID={`panorama-chart-${kind}`} points={points} mode={mode}
-          inspection={{ selectedKey: selected?.key ?? null, onSelect: key => onSelect(selected?.key === key ? null : key) }} />
-      </ScrollView>
+      <PeriodChart compact testID={`panorama-chart-${kind}`} points={points} mode={mode}
+        inspection={{ selectedKey: selected?.key ?? null, onSelect: key => onSelect(selected?.key === key ? null : key) }} />
       <View>
         <AppText numeric variant="caption" style={styles.reserve} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">{reserve}</AppText>
         <View style={styles.readout} accessible accessibilityLabel={selected?.text ?? meaning} accessibilityLiveRegion="polite">
@@ -130,7 +127,6 @@ function OverviewContent({selected, onSelect, contextOpen, onContextToggle, poin
         router.push('/(tabs)/progress/trends/meal-times');
     };
     return <><ProgressScroll root periodControls={false} title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={(state.status === 'ready' && state.refreshing) || (history.state.status === 'ready' && history.state.refreshing) || (report.state.status === 'ready' && report.state.refreshing)} onRefresh={() => void refreshAll()}/>}>
-   <ProgressReadStatus state={state}/>
    {data ? <>{state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Conservamos la última lectura confirmada." actionLabel="Reintentar" onAction={() => void refreshAll()}/> : null}<ProgressPanorama data={data} daily={daily} onOpen={open} points={points} onPoint={onPoint} expanded={contextOpen} onToggle={onContextToggle}/><ProgressFindings items={data.findings} sourcesUnavailable={data.training.status !== 'ok' || data.nutrition.status !== 'ok'} selected={selected} onSelect={onSelect} onOpen={item => open(item.destination, null, item)}/></> : state.status === 'loading' ? <SkeletonBlock height={176}/> : <UnavailableState title="No pudimos leer tu progreso" description="Tus registros siguen guardados." action={<Button label="Reintentar" onPress={() => void refresh()}/>}/>}
    <PanoramaTools today={today} onTool={tool}/>
  </ProgressScroll>

@@ -1,5 +1,4 @@
 import { StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
 import type { PeriodExploration } from '@/api/performance-insights';
 import { AppText, spacing } from '@/design-system';
 import { formatValue } from '@/progress/progress-format';
@@ -10,10 +9,11 @@ import { exactPeriodDate } from './period-model';
 import { bodyWeightHref, metricTrendHref, nutritionDayHref, type InsightsOrigin } from './navigation';
 import { nextDate } from './insights-model';
 import type { ExplorationWeek } from './week-comparison-model';
+import { useInsightsRouter } from './insights-router';
 
 /** The existing exploration records, shared by the one-week view and the A/B selection. No readers. */
 export function WeekRecords({ week, metrics, origin }: { week: ExplorationWeek; metrics: PeriodExploration['metrics']; origin: InsightsOrigin }) {
-  const router = useRouter();
+  const router = useInsightsRouter();
   return <>{week.days.map(d => <View key={d.date} testID={`week-day-${d.date}`} style={styles.day}>
     <AppText variant="headline" numeric>{exactPeriodDate(d.date)}</AppText>
     <AppText numeric>{d.training?.sessions ?? 0} sesiones finalizadas</AppText>

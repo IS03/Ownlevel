@@ -31,7 +31,7 @@ it('keeps a single result, long names and its method accessible instead of trunc
     const one = {...editorialFixture()[0]!, title: 'Press banca con nombre histórico muy largo y referencia conservada'};
     const view = render(wrap([one], one.id));
     expect(view.getByRole('button', {name: new RegExp(`Ver referencia de ${one.title}.*Progreso`)}).props.accessibilityState.expanded).toBe(true);
-    expect(view.getByText('11/10/2026 – 09/11/2026')).toBeTruthy();
+    expect(view.getByText('11 oct – 9 nov')).toBeTruthy();
     expect(view.getByRole('button', {name: `Ver registros de ${one.title}`})).toBeTruthy();
 });
 

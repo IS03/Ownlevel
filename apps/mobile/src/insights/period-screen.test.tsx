@@ -67,7 +67,7 @@ describe('#367 fase 4: resumen de los últimos tres meses', () => {
     expect(view.getByText('Agosto, septiembre y octubre. El mes en curso no entra.')).toBeTruthy();
     const written = within(view.getByTestId('period-written'));
     expect(written.getByText('Entrenaste 3 veces en 3 días.')).toBeTruthy();
-    expect(written.getByText('Comparación completa: 2 de 3 ejercicios comparables.')).toBeTruthy();
+    expect(written.queryByText(/Comparación completa|contexto parcial/)).toBeNull();
     expect(written.getByText('Registraste comidas en 2 de 92 días. Es lo registrado, no necesariamente todo lo que comiste.')).toBeTruthy();
     expect(written.getByText('Rutinas, una después de otra: A, B.')).toBeTruthy();
     expect(view.queryByText(/explica|porque|por eso|causa|relación entre/i)).toBeNull();
