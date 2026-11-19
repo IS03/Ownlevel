@@ -80,7 +80,7 @@ export function CustomRangeSheet({ onClose, shortPreset = false }: { onClose: ()
         {next ? <Shortcut label={shiftLabel(state.unit, 1)} onPress={() => move(next)} /> : null}
         {!isCurrentProgressRange(state, today) ? <Shortcut label="Volver a hoy" onPress={() => move(currentProgressRange(state, today))} /> : null}
       </View>
-      {(shortPreset ? [{ label: 'Últimos 7 días', range: { start: addDays(today, -6), end: today } }, ...quickRanges(today)] : quickRanges(today)).map(q => <Shortcut key={q.label} label={q.label} onPress={() => apply(q.range)}
+      {(shortPreset ? [{ label: 'Últimos 7 días', range: { start: addDays(today, -6), end: today } }, { label: 'Este mes', range: { start: `${today.slice(0, 7)}-01`, end: today } }, ...quickRanges(today)] : quickRanges(today)).map(q => <Shortcut key={q.label} label={q.label} onPress={() => apply(q.range)}
         active={state.unit === 'custom' && current.start === q.range.start && current.end === q.range.end} />)}
     </ScrollView>
     <RangeCalendar month={month} onMonth={setMonth} max={today} onDay={d => setDraft(pick(draft, d))} marks={draft ? [{ range: draft, tone: 'a' }] : []} />

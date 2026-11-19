@@ -70,7 +70,7 @@ function MacroSplit({ protein, carbs, fat, proteinTarget }: { protein: number | 
 }
 
 /** Eaten, target, expenditure and the two differences, side by side with the scale they share. */
-function Averages({ report }: { report: NutritionReport }) {
+export function Averages({ report, includeMacros = true }: { report: NutritionReport; includeMacros?: boolean }) {
   const s = report.summary.metrics;
   const base = s.calories.denominator;
   const eaten = s.calories.value, target = s.targetCalories.value, spent = s.expenditure.value;
@@ -91,7 +91,7 @@ function Averages({ report }: { report: NutritionReport }) {
         <Fact label="Gasto estimado" value={kcal(spent) + own('expenditure')} detail={`balance ${signed(s.balance.value, 'kcal')}`} />
       </View>
     </View> : <AppText muted>Sin días terminados con calorías en este período.</AppText>}
-    <MacroSplit protein={s.protein.value} carbs={s.carbs.value} fat={s.fat.value} proteinTarget={s.targetProtein.value} />
+    {includeMacros ? <MacroSplit protein={s.protein.value} carbs={s.carbs.value} fat={s.fat.value} proteinTarget={s.targetProtein.value} /> : null}
   </View>;
 }
 function Fact({ label, value, detail }: { label: string; value: string; detail: string }) {
@@ -113,13 +113,13 @@ function DayRow({ d, onDate, divided }: { d: ReportDailyRow; onDate: (date: stri
   const { colors } = useOwnlevelTheme();
   const partial = d.nutrients.calories.status === 'partial', proteinPartial = d.nutrients.protein.status === 'partial';
   const { fontScale } = useWindowDimensions();
-  const label = d.mealCount > 0
-    ? `${dayLabel(d.date)} ${d.date.slice(0, 4)}${d.isToday ? ', en curso' : ''}: ${d.nutrients.calories.value === null ? 'calorías sin dato' : kcal(d.nutrients.calories.value)}, proteína ${grams(d.nutrients.protein.value)}${partial ? ', calorías parciales' : ''}${proteinPartial ? ', proteína parcial' : ''}`
+  const label = d.mealCount > 0 || d.hasNutrition
+    ? `${dayLabel(d.date)} ${d.date.slice(0, 4)}${d.isToday ? ', en curso' : ''}: ${d.nutrients.calories.value === null ? 'calorías sin dato' : kcal(d.nutrients.calories.value)}, proteína ${grams(d.nutrients.protein.value)}${partial ? ', calorías parciales' : ''}${proteinPartial ? ', proteína parcial' : ''}${d.imported ? ', registro importado' : ''}`
     : `${dayLabel(d.date)} ${d.date.slice(0, 4)}${d.isToday ? ", en curso" : ""}: sin registro`;
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint="Abre el día en Nutrición" onPress={() => onDate(d.date)}
     style={({ pressed }) => [styles.dayRow, fontScale > 1.3 && styles.stackedDay, divided && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }, pressed && { opacity: 0.6 }]}>
     <AppText numeric variant="subheadline" style={styles.dayDate}>{dayLabel(d.date)}</AppText>
-    {d.mealCount > 0 ? <>
+    {d.mealCount > 0 || d.hasNutrition ? <>
       <AppText numeric variant="subheadline" style={styles.dayValue}>{kcal(d.nutrients.calories.value)}{partial ? '*' : ''}</AppText>
       <AppText muted numeric variant="subheadline" style={styles.dayValue}>{grams(d.nutrients.protein.value)}{proteinPartial ? '*' : ''}</AppText>
     </> : <AppText muted variant="subheadline" style={styles.dayEmpty}>{d.isToday ? 'en curso' : 'sin registro'}</AppText>}
