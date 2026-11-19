@@ -33,11 +33,14 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
   const router = useRouter(),reduced=useReduceMotion();
   const { colors } = useOwnlevelTheme();
   const { top } = useSafeAreaInsets();
-  const { fontScale } = useWindowDimensions();
-  const compactLarge = compactPeriod && fontScale > 1.3;
+  const { fontScale, width } = useWindowDimensions();
+  // Keep the full title at narrow widths too, before accessibility text sizes are reached.
+  const compactLarge = compactPeriod && (fontScale > 1.15 || width < 375);
   // The fixed header must make room for Dynamic Type, including accessibility sizes.
   const barHeight = BAR * Math.max(1, fontScale) * (compactPeriod && fontScale > 1.3 ? 1.5 : 1);
   const { state, today } = useProgressRange();
+  const periodDays = daysBetween(progressRange(state, today).start, progressRange(state, today).end);
+  const periodLabel = `${periodDays} ${periodDays === 1 ? 'día' : 'días'}`;
   const [sheet, setSheet] = useState<'custom' | 'compare' | null>(openSheet);
   const [proposal, setProposal] = useState<DateRange | null>(openSheet ? sheetProposal : null);
   // Also when the screen was already in the stack and the portada asks again.
@@ -79,9 +82,9 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
       {periodControls && !compactPeriod?<View style={styles.stripSlot}><PeriodBar onCustom={open.onCustom} /></View>:null}
       {multilineTitle ? <AppText accessibilityRole="header" variant="title1">{title}</AppText> : null}
       {periodControls ? compactPeriod ? <View style={styles.compactPeriod}>
-        <AppText numeric muted variant="footnote" style={{ flex: 1 }}>{shortRange(progressRange(state, today), today)}</AppText>
+        <AppText numeric muted variant="footnote" style={[{ flex: 1 }, compactLarge && { flexBasis: '100%' }]}>{shortRange(progressRange(state, today), today)}</AppText>
         {compactLarge ? <Pressable testID="training-period-picker" accessibilityRole="button" accessibilityLabel="Elegir período de entrenamiento" onPress={open.onCustom}>
-          <GlassSurface interactive style={styles.periodButton}><AppText numeric variant="subheadline">{daysBetween(progressRange(state, today).start, progressRange(state, today).end)} días</AppText><AppIcon name="chevronDown" color={colors.textMuted} size={17} /></GlassSurface>
+          <GlassSurface interactive style={styles.periodButton}><AppText numeric variant="subheadline">{periodLabel}</AppText><AppIcon name="chevronDown" color={colors.textMuted} size={17} /></GlassSurface>
         </Pressable> : null}
         <CompareHeaderButton onPress={open.onCompare} />
       </View> : <ProgressPeriodBlock {...open} /> : null}
@@ -104,7 +107,7 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
           </Animated.View>:null}
         </View>
         {periodControls ? compactPeriod ? compactLarge ? null : <Pressable testID="training-period-picker" accessibilityRole="button" accessibilityLabel="Elegir período de entrenamiento" onPress={open.onCustom}>
-          <GlassSurface interactive style={styles.periodButton}><AppText numeric variant="subheadline">{daysBetween(progressRange(state, today).start, progressRange(state, today).end)} días</AppText><AppIcon name="chevronDown" color={colors.textMuted} size={17} /></GlassSurface>
+          <GlassSurface interactive style={styles.periodButton}><AppText numeric variant="subheadline">{periodLabel}</AppText><AppIcon name="chevronDown" color={colors.textMuted} size={17} /></GlassSurface>
         </Pressable> : <CompareHeaderButton onPress={() => setSheet('compare')} /> : null}
       </View>
     </View>

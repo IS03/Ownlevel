@@ -24,7 +24,7 @@ import {
   useReduceMotion,
 } from '@/design-system';
 import { ProgressScroll } from './progress-scroll';
-import { TrainingStory, TrainingDisclosure } from './training-story';
+import { TrainingStory, TrainingDisclosure, hasTrainingBlocks } from './training-story';
 import { useProgressRange } from './progress-range-context';
 import { formatValue } from './progress-format';
 import { useCachedRead } from '@/api/use-cached-read';
@@ -156,7 +156,7 @@ function TrainingChart({ data, inspection, onInspect }: { data: ProgressTraining
 function Content({ data, inspection, onInspect, portada }: { data: ProgressTraining; inspection: ChartInspection; onInspect: (next: ChartInspection) => void;
   portada: { point: PortadaPoint; matched: boolean } | null }) {
   const chart = portada ? <><PortadaPointNote point={portada.point} matched={portada.matched} reason="Este gráfico no tiene ese mismo intervalo con esas series: no seleccionamos otro en su lugar." /><TrainingChart data={data} inspection={inspection} onInspect={onInspect} /></> : null;
-  return <TrainingStory data={data} chart={portada ? chart : <TrainingDisclosure title="Actividad en el tiempo" initialOpen={inspection.bucket !== null}><TrainingChart data={data} inspection={inspection} onInspect={onInspect} /></TrainingDisclosure>} />;
+  return <TrainingStory data={data} chart={portada ? chart : <TrainingDisclosure title="Actividad en el tiempo" initialOpen={inspection.bucket !== null || !hasTrainingBlocks(data)}><TrainingChart data={data} inspection={inspection} onInspect={onInspect} /></TrainingDisclosure>} />;
 }
 export function TrainingTrendsScreen() {
   const router = useRouter(),
