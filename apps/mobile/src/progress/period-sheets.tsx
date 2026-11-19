@@ -6,7 +6,7 @@ import { AppSheet, AppText, Button, GlassSurface, SheetHandle, useAppSheetDismis
 import { triggerHaptic } from '@/platform/haptics';
 import { RoutineSheetButton } from '@/training/routine-sheet-button';
 import { RangeCalendar, type CalendarMark } from './range-calendar';
-import { PROGRESS_MAX_DAYS, addDays, addMonths, compareRange, currentProgressRange, daysBetween, isCurrentProgressRange, progressRange, progressStateForRange, shiftLabel, shiftProgressRange, shortRange, type DateRange, type ProgressRangeState } from './progress-range';
+import { PROGRESS_MAX_DAYS, PROGRESS_UNITS, addDays, addMonths, compareRange, currentProgressRange, daysBetween, isCurrentProgressRange, progressRange, progressStateForRange, shiftLabel, shiftProgressRange, shortRange, type DateRange, type ProgressRangeState } from './progress-range';
 import { useProgressRange } from './progress-range-context';
 
 type Draft = { start: string; end: string | null };
@@ -38,10 +38,10 @@ function Sheet({ title, subtitle, valid, onClose, onDone, children }: {
     </View>
   </Modal>;
 }
-function Shortcut({ label, active, onPress, disabled = false }: { label: string; active?: boolean; onPress: () => void; disabled?: boolean }) {
+function Shortcut({ label, active, onPress, disabled = false, testID }: { label: string; active?: boolean; onPress: () => void; disabled?: boolean; testID?: string }) {
   const { colors } = useOwnlevelTheme();
   // The capsule keeps its look; the touch area reaches the 44 pt minimum around it.
-  return <Pressable accessibilityRole="button" accessibilityState={{ selected: !!active, disabled }} disabled={disabled} onPress={() => { triggerHaptic('stepperChange'); onPress(); }} style={styles.shortcutTarget}>
+  return <Pressable testID={testID} accessibilityRole="button" accessibilityState={{ selected: !!active, disabled }} disabled={disabled} onPress={() => { triggerHaptic('stepperChange'); onPress(); }} style={styles.shortcutTarget}>
     {/* The chosen one sinks into the app's own raised tone (never black); glass would wash its fill out. */}
     {active ? <View style={[styles.shortcut, { backgroundColor: colors.surfaceRaised, borderColor: colors.border }]}>
       <AppText variant="footnote" style={{ fontWeight: '700', color: colors.text }}>{label}</AppText>
@@ -65,14 +65,14 @@ const quickRanges = (today: string): { label: string; range: DateRange }[] => [
 export function CustomRangeSheet({ onClose, shortPreset = false }: { onClose: () => void; shortPreset?: boolean }) {
   const { state, setState, today } = useProgressRange();
   const current = progressRange(state, today);
-  const [draft, setDraft] = useState<Draft | null>(state.unit === 'custom' ? current : null);
+  const [draft, setDraft] = useState<Draft | null>(current);
   const [month, setMonth] = useState(current.end);
   const range = complete(draft), valid = !!range && daysBetween(range.start, range.end) <= PROGRESS_MAX_DAYS;
   const apply = (r: DateRange) => { setState({ ...state, unit: 'custom', custom: r, anchor: r.end }); onClose(); };
   // Step the unit you are on (the previous week, month, 3 months…) without a stepper on screen.
   const prev = shiftProgressRange(state, -1, today), next = shiftProgressRange(state, 1, today);
   const move = (to: ProgressRangeState) => { setState(to); onClose(); };
-  return <Sheet title="Elegir período" subtitle={rangeSubtitle(range, today, draft)} valid={valid} onClose={onClose} onDone={() => { if (range && valid) apply(range); }}>
+  return <Sheet title="Elegir período" subtitle={rangeSubtitle(range, today, draft)} valid={valid} onClose={onClose} onDone={() => { if (range && valid) { if(range.start === current.start && range.end === current.end) onClose(); else apply(range); } }}>
     {/* One row of shortcuts that scrolls sideways, like the period bar: stepping the unit first, then the quick ranges. */}
     <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} style={styles.shortcutRow} contentContainerStyle={styles.shortcutScroll}>
       <View style={styles.shortcutGroup} testID="progress-period-shift">
@@ -81,7 +81,12 @@ export function CustomRangeSheet({ onClose, shortPreset = false }: { onClose: ()
         {!isCurrentProgressRange(state, today) ? <Shortcut label="Volver a hoy" onPress={() => move(currentProgressRange(state, today))} /> : null}
       </View>
       {(shortPreset ? [{ label: 'Últimos 7 días', range: { start: addDays(today, -6), end: today } }, { label: 'Este mes', range: { start: `${today.slice(0, 7)}-01`, end: today } }, ...quickRanges(today)] : quickRanges(today)).map(q => <Shortcut key={q.label} label={q.label} onPress={() => apply(q.range)}
-        active={state.unit === 'custom' && current.start === q.range.start && current.end === q.range.end} />)}
+        active={current.start === q.range.start && current.end === q.range.end} />)}
+    </ScrollView>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.shortcutScroll} accessibilityLabel="Períodos de calendario">
+      {PROGRESS_UNITS.filter(o => o.value !== 'custom').map(o => <View key={o.value}>
+        <Shortcut testID={`progress-unit-${o.value}`} label={o.label} active={state.unit === o.value} onPress={() => { setState({...state, unit:o.value, anchor:today, custom:null}); onClose(); }} />
+      </View>)}
     </ScrollView>
     <RangeCalendar month={month} onMonth={setMonth} max={today} onDay={d => setDraft(pick(draft, d))} marks={draft ? [{ range: draft, tone: 'a' }] : []} />
   </Sheet>;

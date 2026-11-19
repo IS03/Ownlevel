@@ -319,7 +319,7 @@ describe('Exercise analytics', () => {
     const view = wrap(<ExerciseTrendsScreen />); await flush();
     fireEvent.press(view.getByRole('radio', { name: 'Volumen' }));
     fireEvent.press(view.getByTestId('exercise-point-current-s-2'));
-    fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
+    fireEvent.press(view.getByTestId('progress-period-caption')); fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
     expect(view.queryByRole('button', { name: 'Ver sesión y series originales' })).toBeNull();
     expect(view.getByRole('radio', { name: '1RM estimado' }).props.accessibilityState.checked).toBe(true);
     expect(mockExercise).toHaveBeenCalledTimes(2);
@@ -378,7 +378,7 @@ describe('Exercise analytics', () => {
     expect(view.getByText('—')).toBeTruthy(); expect(view.getByText('Una sola sesión: todavía no hay tendencia.')).toBeTruthy();
     expect(view.getByTestId('exercise-gap-current-s-2')).toBeTruthy();
     data.sessions = []; data.charts!.measures.forEach(m => { m.points = []; });
-    mockExercise.mockResolvedValue(ok({ ...data })); fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
+    mockExercise.mockResolvedValue(ok({ ...data })); fireEvent.press(view.getByTestId('progress-period-caption')); fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
     expect(view.getByText('Sin sesiones de este ejercicio en este período.')).toBeTruthy();
   });
   it('an unsupported weight mode has no chart and no fabricated comparison', async () => {

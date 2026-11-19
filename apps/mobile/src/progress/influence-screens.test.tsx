@@ -92,7 +92,7 @@ describe('Qué influye', () => {
     expect(view.queryByTestId('influence-comparison')).toBeNull();
     expect(view.getByText('Es una relación, no una causa: otras cosas pudieron cambiar esos días.')).toBeTruthy();
   });
-  it('yes/no uses training language and the reference is present only with Comparar', async () => {
+  it('yes/no uses training language and ignores the shared reference without misleading controls', async () => {
     const data = reading(); data.definition = { split: 'day.training', cut: 'yes', lag: 0, outcome: 'nutrition.kcal' };
     data.measure = { split: { key: 'day.training', label: 'Día de entrenamiento', unit: null, valueType: 'boolean' }, outcome: { key: 'nutrition.kcal', label: 'Calorías', unit: 'kcal', valueType: 'integer' } };
     if (data.current.status === 'ok') { data.current = { ...data.current, cut: null, high: { ...data.current.high, average: 2690 }, low: { ...data.current.low, average: 2410 }, difference: 280, differencePercent: 280 / 2410 * 100 }; }
@@ -101,7 +101,10 @@ describe('Qué influye', () => {
     const view = wrap(InfluenceAnswerScreen, { unit: 'month', anchor: TODAY, custom: null, compare: { kind: 'previous' } }); await flush();
     expect(view.getByText('Los días que entrenaste comiste en promedio 2.690 kcal. Los días sin entrenar, 2.410 kcal.')).toBeTruthy();
     expect(view.getByText('Con entrenamiento')).toBeTruthy(); expect(view.getByText('Sin entrenamiento')).toBeTruthy();
-    expect(view.getByText('Frente a 1–15 sep: no alcanza')).toBeTruthy();
+    expect(view.queryByTestId('influence-comparison')).toBeNull();
+    expect(view.queryByTestId('progress-compare-button')).toBeNull();
+    expect(view.queryByTestId('progress-compare-chip')).toBeNull();
+    expect(mockRead.mock.calls.at(-1)).toHaveLength(4);
     expect(view.queryByText('sobre días que entrenaste')).toBeNull();
   });
   it('insufficient hides all averages and answer bars, and widening the period changes the shared query', async () => {

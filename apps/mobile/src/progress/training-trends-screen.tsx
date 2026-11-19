@@ -183,6 +183,7 @@ export function TrainingTrendsScreen() {
   return (
     <ProgressScroll
       title="Entrenamiento"
+      periodPickerTestID="training-period-picker"
       compactPeriod
       testID="training-trends-screen"
       refreshControl={

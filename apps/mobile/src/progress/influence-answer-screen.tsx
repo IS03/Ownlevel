@@ -20,8 +20,8 @@ function Detail({ title, detail, icon, onPress, testID }: { title: string; detai
   </ProgressRow>;
 }
 function Answer({ data }: { data: InfluenceReading }) {
-  const { colors } = useOwnlevelTheme(), { state, setState, today, compareOn, compareText } = useProgressRange();
-  const r = data.current, ref = data.reference;
+  const { colors } = useOwnlevelTheme(), { state, setState, today } = useProgressRange();
+  const r = data.current;
   const labels = groupLabels(data);
   return <>
     {r.status === 'ok' ? <View style={styles.section}>
@@ -46,7 +46,6 @@ function Answer({ data }: { data: InfluenceReading }) {
       {state.unit !== '3m' && state.unit !== '6m' && state.unit !== 'year'
         ? <Detail title="Ver 3 meses" detail="Con un período más largo hay más días para comparar" icon="calendar" testID="influence-longer" onPress={() => setState({ ...state, unit: '3m', anchor: today, custom: null })} /> : null}
     </View>}
-    {r.status === 'ok' && compareOn && ref ? <Detail title="Comparando" icon="compare" testID="influence-comparison" detail={`Frente a ${compareText}: ${ref.status === 'ok' ? `${valueText(ref.high.average, data.measure.outcome, false)} y ${valueText(ref.low.average, data.measure.outcome)}` : 'no alcanza'}`} /> : null}
     {r.status === 'ok' ? null : <AppText muted variant="footnote" testID="influence-caution">{CAUTION}</AppText>}
   </>;
 }
@@ -72,12 +71,12 @@ function Reading({ definition, questionKey }: { definition: InfluenceDefinition;
   const { colors } = useOwnlevelTheme();
   const [pinOpen, setPinOpen] = useState(false), [pinned, setPinned] = useState<string | null>(null);
   const definitionKey = influenceDefinitionKey(definition);
-  const { client } = useMobileApi(), { query, compare } = useProgressRange();
-  const { state, data, refresh } = useProgressResource(client, `influence|${progressRequestKey(query, compare)}|${influenceDefinitionKey(definition)}`,
-    useCallback((c, s) => fetchProgressInfluence(c, query, definition, s, compare), [query, compare, definition]));
+  const { client } = useMobileApi(), { query } = useProgressRange();
+  const { state, data, refresh } = useProgressResource(client, `influence|${progressRequestKey(query)}|${influenceDefinitionKey(definition)}`,
+    useCallback((c, s) => fetchProgressInfluence(c, query, definition, s), [query, definition]));
   const title = questionKey && Object.hasOwn(QUESTIONS, questionKey) ? QUESTIONS[questionKey as InfluenceSuggestedKey].title
     : data ? questionText(definition, data.measure.split, data.measure.outcome) : 'Tu pregunta';
-  return <ProgressScroll title={title} multilineTitle compactTitle="Qué influye" testID="influence-answer-screen">
+  return <ProgressScroll comparisonControls={false} title={title} multilineTitle compactTitle="Qué influye" testID="influence-answer-screen">
     {state.status === 'loading' ? <SkeletonBlock height={240} /> : data ? <>
       {state.status !== 'ready' ? <InlineUnavailable message="No se pudo actualizar. Mostramos la última lectura confirmada." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
       <AppText muted>{definition.split === 'day.training' ? 'Días con y sin entrenamiento' : definition.split === 'day.work' ? 'Días laborales y no laborales'
@@ -105,7 +104,7 @@ export function InfluenceAnswerScreen() {
   const params = useLocalSearchParams<{ split?: string; cut?: string; lag?: string; outcome?: string; key?: string; window?: string }>();
   const definition = { split: params.split, cut: params.cut, lag: Number(params.lag), outcome: params.outcome } as InfluenceDefinition;
   if (typeof definition.split !== 'string' || typeof definition.cut !== 'string' || typeof definition.outcome !== 'string' || !['0', '1', '2'].includes(params.lag ?? '') || !validInfluenceDefinition(definition))
-    return <ProgressScroll title="Tu pregunta" testID="influence-answer-screen"><AppText muted>Esta pregunta no es válida. Volvé a armarla.</AppText></ProgressScroll>;
+    return <ProgressScroll comparisonControls={false} title="Tu pregunta" testID="influence-answer-screen"><AppText muted>Esta pregunta no es válida. Volvé a armarla.</AppText></ProgressScroll>;
   const reading = <Reading definition={definition} questionKey={params.key} />;
   return params.window === '3m' ? <InsightWindow>{reading}</InsightWindow> : reading;
 }

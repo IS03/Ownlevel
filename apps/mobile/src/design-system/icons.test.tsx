@@ -16,7 +16,7 @@ const names = Object.keys(sfSymbolNames) as AppIconName[];
 
 describe('AppIcon foundation', () => {
   it('every semantic name has an SF Symbol (iOS) and a Lucide icon (Android): no fallback needed', () => {
-    expect(names).toHaveLength(79); // 17 metric icons added in #535.
+    expect(names).toHaveLength(80); // 17 metric icons added in #535.
     expect(sfSymbolNames.hourglass).toBe('hourglass');
     expect(sfSymbolNames.minus).toBe('minus');
     expect(sfSymbolNames.archive).toBe('archivebox');

@@ -40,7 +40,7 @@ export function InfluenceBuildScreen() {
   const definition: InfluenceDefinition = { split: split?.key ?? '', cut, lag, outcome: outcome?.key ?? '' };
   const valid = validInfluenceDefinition(definition), splitInfo = split ? measureInfo(split) : null, outcomeInfo = outcome ? measureInfo(outcome) : null;
   const cutLabel = cut === 'yes' ? 'Sí / no' : cut === 'median' ? 'Arriba / abajo de tu mediana' : splitInfo ? `${valueText(influenceCutValue(cut)!, splitInfo)} o más` : 'Un corte propio';
-  return <ProgressScroll title="Tu pregunta" testID="influence-build-screen">
+  return <ProgressScroll comparisonControls={false} title="Tu pregunta" testID="influence-build-screen">
     <View>
       <Field title="Separar por" value={split?.label ?? 'Elegí una medida'} testID="influence-split" onPress={() => setSheet('split')} />
       {/* How to split only means something once there is something to split. */}

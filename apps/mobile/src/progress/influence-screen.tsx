@@ -12,10 +12,10 @@ import { useProgressResource } from './use-progress-resource';
 import { QUESTIONS, shortAnswer } from './influence-model';
 
 export function InfluenceScreen() {
-  const router = useRouter(), { colors } = useOwnlevelTheme(), { client } = useMobileApi(), { query, compare } = useProgressRange();
-  const { state, data, refresh } = useProgressResource(client, `influence-suggested|${progressRequestKey(query, compare)}`,
-    useCallback((c, s) => fetchProgressInfluenceSuggested(c, query, s, compare), [query, compare]));
-  return <ProgressScroll title="Qué influye" testID="influence-screen">
+  const router = useRouter(), { colors } = useOwnlevelTheme(), { client } = useMobileApi(), { query } = useProgressRange();
+  const { state, data, refresh } = useProgressResource(client, `influence-suggested|${progressRequestKey(query)}`,
+    useCallback((c, s) => fetchProgressInfluenceSuggested(c, query, s), [query]));
+  return <ProgressScroll comparisonControls={false} title="Qué influye" testID="influence-screen">
     <View style={{ gap: spacing.xs }}><Heading level={2}>Preguntas para tus datos</Heading>
       <AppText muted>Comparan días tuyos entre sí. Muestran relaciones, no causas.</AppText></View>
     {state.status === 'loading' ? <SkeletonBlock height={240} /> : data ? <View>

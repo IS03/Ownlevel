@@ -4,7 +4,7 @@ import Animated, { scrollTo, useAnimatedRef, useAnimatedScrollHandler, useAnimat
 import { scheduleOnUI } from 'react-native-worklets';
 import { AppIcon, AppText, GlassSurface, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
-import { PROGRESS_UNITS, compareRange, currentProgressRange, daysBetween, isCurrentProgressRange, progressRange, rangeTitle, shiftProgressRange, type ProgressRangeState, type ProgressUnit } from './progress-range';
+import { PROGRESS_UNITS, compareRange, currentProgressRange, daysBetween, isCurrentProgressRange, progressRange, rangeTitle, shiftProgressRange, shortRange, type ProgressRangeState, type ProgressUnit } from './progress-range';
 import { useProgressRange } from './progress-range-context';
 
 export const STRIP = 44;
@@ -111,7 +111,7 @@ export function PeriodBar({ onCustom }: { onCustom: () => void }) {
  * The dates you are reading, in one line under the strip ("Semana del 12–18 oct · hasta hoy · en curso"), with
  * "Volver a hoy" when you moved away. VoiceOver can still step periods from here (no visible arrows any more).
  */
-export function PeriodCaption({ onCustom }: { onCustom: () => void }) {
+export function PeriodCaption({ onCustom, compact = false }: { onCustom: () => void; compact?: boolean }) {
   const { colors } = useOwnlevelTheme();
   const { state, setState, today } = useProgressRange();
   const { title, subtitle } = rangeTitle(state, today);
@@ -124,7 +124,7 @@ export function PeriodCaption({ onCustom }: { onCustom: () => void }) {
       onAccessibilityAction={e => { const action = e.nativeEvent.actionName; if (action === 'activate') onCustom(); else go(action === 'increment' ? next : prev); }}
       onPress={onCustom} style={styles.captionText}>
       {/* Wraps instead of cutting the dates you are reading (Dynamic Type, narrow screens). */}
-      <AppText muted numeric variant="footnote">{title} · {subtitle}</AppText>
+      <AppText muted numeric variant="footnote">{compact ? shortRange(progressRange(state, today), today) : `${title} · ${subtitle}`}</AppText>
     </Pressable>
     {!current ? <Pressable accessibilityRole="button" accessibilityLabel="Volver a hoy" hitSlop={10} testID="progress-period-today"
       onPress={() => go(currentProgressRange(state, today))}>
@@ -187,12 +187,12 @@ const styles = StyleSheet.create({
   option: { minWidth: 44, paddingHorizontal: 16, justifyContent: 'center' },
   optionInner: { alignItems: 'center', gap: 4, paddingTop: 6 },
   mark: { width: 16, height: 2, borderRadius: 1 },
-  caption: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 32 },
-  captionText: { flex: 1, minHeight: 32, justifyContent: 'center' },
+  caption: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44 },
+  captionText: { flex: 1, minHeight: 44, justifyContent: 'center' },
   compare: { gap: 6 },
   chipRow: { flexDirection: 'row', alignSelf: 'flex-start', gap: 2 },
-  chip: { minHeight: 30, paddingHorizontal: 12, justifyContent: 'center', borderTopLeftRadius: 15, borderBottomLeftRadius: 15 },
-  chipClose: { width: 32, minHeight: 30, alignItems: 'center', justifyContent: 'center', borderTopRightRadius: 15, borderBottomRightRadius: 15 },
+  chip: { minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', borderTopLeftRadius: 15, borderBottomLeftRadius: 15 },
+  chipClose: { width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderTopRightRadius: 15, borderBottomRightRadius: 15 },
   block: { gap: 6 },
   headerButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, height: 40, borderRadius: brandTokens.radius.full, overflow: 'hidden' },
 });

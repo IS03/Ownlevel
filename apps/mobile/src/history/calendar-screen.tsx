@@ -44,6 +44,7 @@ export function HistoryCalendarScreen() {
     <AppText muted variant="caption">RECORRIDO POR FECHA</AppText>
     <Heading level={1}>{month ? formatTrainingMonth(month) : 'Calendario'}</Heading>
     <AppText muted>Elegí un día para abrir sus registros.</AppText>
+    <Button label="Ver historial" variant="quiet" onPress={() => router.push('/history')} />
     {month ? <View style={historyStyles.controls}>
       <Button label="" icon="chevronLeft" accessibilityLabel="Mes anterior" onPress={() => setMonth(addMonths(month, -1))} variant="secondary" />
       <Button label="Hoy" accessibilityLabel="Abrir hoy" disabled={!today} onPress={() => today && router.push(historyDayHref(today, month))} variant="quiet" />
