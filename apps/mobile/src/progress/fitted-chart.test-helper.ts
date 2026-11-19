@@ -7,5 +7,16 @@ export function pressFittedMark(mark: ReactTestInstance) {
   while (plot && !String(plot.props.testID ?? '').endsWith('-plot')) plot = plot.parent;
   if (!plot) throw new Error('Mark has no fitted plot');
   const style = StyleSheet.flatten(mark.props.style);
+  const marks = plot.findAll(n => typeof n.type === 'string' && n.props.accessibilityState?.selected !== undefined && n.props.testID);
+  // Some legacy fixtures include observations outside their declared window. They overlap
+  // at the boundary; VoiceOver still exposes each observation independently.
+  const overlapping = marks.filter(n => StyleSheet.flatten(n.props.style)?.left === style.left);
+  if (overlapping.length > 1) {
+    const target = marks.findIndex(n => n.props.testID === mark.props.testID);
+    const current = marks.findIndex(n => n.props.accessibilityState.selected);
+    const delta = target - current;
+    for (let i = 0; i < Math.abs(delta); i++) fireEvent(plot, 'accessibilityAction', {nativeEvent:{actionName:delta > 0?'increment':'decrement'}});
+    return;
+  }
   fireEvent.press(plot, {nativeEvent:{locationX:style.left + style.width / 2}});
 }
