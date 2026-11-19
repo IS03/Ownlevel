@@ -6,13 +6,11 @@ import type { NutritionReport, ReportDailyRow } from '@/api/nutrition-report';
 import { AppIcon, AppText, Button, ChipGroup, Heading, atmosphere, brandTokens, glowGradient, pressedStyle, radius, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
-import { formatValue, formatDelta } from './progress-format';
+import { nutritionValue as value, nutritionDifference as signed } from './nutrition-values';
 import { NUTRITION_SECTIONS, type NutritionSection } from './nutrition-sections';
 import { Averages, NutritionReportDays } from './nutrition-report-details';
 import { ProgressRow } from './progress-row';
 
-const value = (n: number | null, unit: string) => n === null ? '—' : formatValue(n, unit, 'integer');
-const signed = (n: number | null) => n === null ? '—' : formatDelta(Math.round(n), 'kcal', 'integer');
 const count = (n: number) => `${n} ${n === 1 ? 'día' : 'días'}`;
 export function NutritionTopics({ report, timing, onCompare }: { report: NutritionReport; timing: ReactNode; onCompare: () => void }) {
   const router = useRouter(), { colors, isDark } = useOwnlevelTheme(), reduced = useReduceMotion();
@@ -58,14 +56,17 @@ export function NutritionTopicContent({ section, report, onDate }: { section: Nu
   const { fontScale, width } = useWindowDimensions(), reduced = useReduceMotion();
   const s = report.summary, c = report.coverage;
   const nutrient = section === 'protein' ? 'protein' : section === 'macros' ? macro : 'calories';
-  const filtered = report.days.filter(day => filter === 'all' || filter === 'data' && day.nutrients[nutrient].value !== null
-    || filter === 'partial' && day.nutrients[nutrient].status === 'partial' || filter === 'missing' && day.nutrients[nutrient].value === null);
+  const comparableValue = (day: ReportDailyRow) => section === 'balance' ? day.energyBalanceKcal : section === 'targets' ? day.targetDeviationKcal : day.nutrients[nutrient].value;
+  const filterLabel = section === 'balance' ? 'balance estimado' : section === 'targets' ? 'diferencia con el objetivo'
+    : { protein: 'proteína', carbs: 'carbohidratos', fat: 'grasas', calories: 'calorías' }[nutrient];
+  const filtered = report.days.filter(day => filter === 'all' || filter === 'data' && comparableValue(day) !== null
+    || filter === 'partial' && day.nutrients[nutrient].status === 'partial' || filter === 'missing' && comparableValue(day) === null);
   const sorted = [...filtered].sort((a, b) => b.date.localeCompare(a.date));
   const Selector = fontScale > 1.3 ? ChipGroup : ExerciseSegmented;
-  const rowFact = (day: ReportDailyRow) => section === 'macros' ? `${day.nutrients[nutrient].status === 'partial' ? 'Suma parcial' : day.nutrients[nutrient].status === 'unknown' ? 'Nutriente sin informar' : day.mealCount === 0 ? 'Sin registro' : `${day.nutrients[nutrient].knownMeals} de ${day.mealCount} comidas con dato`}` : section === 'protein'
+  const rowFact = (day: ReportDailyRow) => section === 'macros' ? `${day.nutrients[nutrient].status === 'partial' ? 'Suma parcial' : day.nutrients[nutrient].status === 'unknown' ? 'Nutriente sin informar' : day.mealCount === 0 ? day.hasNutrition ? 'Registro nutricional sin desglose de comidas' : 'Sin registro' : `${day.nutrients[nutrient].knownMeals} de ${day.mealCount} comidas con dato`}` : section === 'protein'
     ? `Objetivo: ${value(day.targetProteinG, 'g')}${day.nutrients.protein.status === 'partial' ? ' · suma parcial' : ''}`
-    : section === 'targets' ? `Objetivo: ${value(day.targetCalories, 'kcal')} · diferencia ${signed(day.targetDeviationKcal)}`
-    : `Registradas: ${value(day.nutrients.calories.value, 'kcal')} · gasto estimado: ${value(day.expenditureKcal, 'kcal')}`;
+    : section === 'targets' ? `Objetivo: ${value(day.targetCalories, 'kcal')} · diferencia ${signed(day.targetDeviationKcal)}${day.nutrients.calories.status === 'partial' ? ' · calorías parciales' : ''}`
+    : `Registradas: ${value(day.nutrients.calories.value, 'kcal')} · gasto estimado: ${value(day.expenditureKcal, 'kcal')}${day.nutrients.calories.status === 'partial' ? ' · calorías parciales' : ''}`;
   const stacked = fontScale > 1.3 || width < 375;
   const rowValue = (day: ReportDailyRow) => section === 'protein' || section === 'macros' ? value(day.nutrients[nutrient].value, 'g')
     : section === 'targets' ? value(day.nutrients.calories.value, 'kcal') : signed(day.energyBalanceKcal);
@@ -106,7 +107,7 @@ export function NutritionTopicContent({ section, report, onDate }: { section: Nu
         onChange={next => { haptics.selection(); setMacro(next); setLimit(20); }} /> : null}
       <Selector accessibilityLabel="Filtrar días nutricionales" value={filter} options={[{ value: 'all', label: 'Todos' }, { value: 'data', label: 'Con dato' }, { value: 'partial', label: 'Parciales' }, { value: 'missing', label: 'Sin dato' }]}
         onChange={next => { haptics.selection(); setFilter(next); setLimit(20); }} />
-      <AppText muted numeric variant="caption">{count(sorted.length)}{filter !== 'all' ? ` · ${{ protein: 'proteína', carbs: 'carbohidratos', fat: 'grasas', calories: 'calorías' }[nutrient]}` : ''}</AppText>
+      <AppText muted numeric variant="caption">{count(sorted.length)}{filter !== 'all' ? ` · ${filterLabel}` : ''}</AppText>
       <Animated.View key={filter} entering={FadeIn.duration(reduced ? brandTokens.motion.duration.fast : brandTokens.motion.duration.base)} layout={reduced ? undefined : LinearTransition.duration(brandTokens.motion.duration.base)}>
         {sorted.length ? section === 'days' ? <NutritionReportDays rows={sorted.slice(0, limit)} onDate={onDate} />
           : sorted.slice(0, limit).map(day => <ProgressRow key={day.date} label={`${day.date.split('-').reverse().join('/')}. ${rowValue(day) === '—' ? 'sin dato' : rowValue(day)}. ${rowFact(day)}${day.isToday ? ' · hoy en curso' : ''}`} onPress={() => onDate(day.date)}>

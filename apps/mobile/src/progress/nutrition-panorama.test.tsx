@@ -66,6 +66,35 @@ describe('Nutrition panorama and destinations', () => {
     expect(list.getByRole('button', { name: /100 kcal.*registro importado/ })).toBeTruthy();
     expect(list.queryByText('sin registro')).toBeNull();
   });
+  it.each(['balance', 'targets'] as const)('filters %s by its actual comparable value, not by calories alone', section => {
+    const report = reportFixture({ period: 'custom', from: '2026-10-01', to: '2026-10-02' });
+    report.days = report.days.map((d, i) => ({ ...d, energyBalanceKcal: i === 0 ? null : 0, targetDeviationKcal: i === 0 ? null : 0 }));
+    const view = wrap(<NutritionTopicContent section={section} report={report} onDate={jest.fn()} />);
+    fireEvent.press(view.getByRole('radio', { name: 'Con dato' }));
+    expect(view.queryByRole('button', { name: /^02\/10\/2026/ })).toBeNull();
+    expect(view.getByRole('button', { name: /^01\/10\/2026/ })).toBeTruthy();
+    fireEvent.press(view.getByRole('radio', { name: 'Sin dato' }));
+    expect(view.getByRole('button', { name: /^02\/10\/2026/ })).toBeTruthy();
+    expect(view.queryByRole('button', { name: /^01\/10\/2026/ })).toBeNull();
+  });
+  it.each(['balance', 'targets'] as const)('marks partial calorie inputs next to %s instead of presenting them as complete', section => {
+    const report = reportFixture();
+    report.days = report.days.map(d => ({ ...d, nutrients: { ...d.nutrients, calories: { value: 40, status: 'partial', knownMeals: 1, missingMeals: 1 } } }));
+    const view = wrap(<NutritionTopicContent section={section} report={report} onDate={jest.fn()} />);
+    expect(view.getAllByRole('button', { name: /calorías parciales/ }).length).toBeGreaterThan(0);
+  });
+  it('does not round a positive daily macro below one gram into a recorded zero', () => {
+    const report = reportFixture();
+    report.days = report.days.map(d => ({ ...d, nutrients: { ...d.nutrients, protein: { ...d.nutrients.protein, value: 0.4 } } }));
+    const view = wrap(<NutritionTopicContent section="macros" report={report} onDate={jest.fn()} />);
+    expect(view.getAllByText('0,4 g').length).toBeGreaterThan(0);
+  });
+  it('does not describe an imported macro with a valid value as an absent record', () => {
+    const report = reportFixture(); report.days = report.days.map(d => ({ ...d, mealCount: 0, hasNutrition: true, imported: true }));
+    const view = wrap(<NutritionTopicContent section="macros" report={report} onDate={jest.fn()} />);
+    expect(view.queryAllByText('Sin registro')).toHaveLength(0);
+    expect(view.getAllByText('Registro nutricional sin desglose de comidas').length).toBeGreaterThan(0);
+  });
   it('returns to the originating section and rejects arbitrary sections in incoming links', () => {
     expect(nutritionChartDayHref('2026-10-01', 'protein')?.params).toEqual({ date: '2026-10-01', fromProgressNutrition: '1', fromProgressNutritionSection: 'protein' });
     mockParams = { fromProgressNutrition: '1', fromProgressNutritionSection: 'protein' };

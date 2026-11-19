@@ -8,13 +8,14 @@ import {
 } from '@/api/nutrition-report';
 import { AppIcon, AppText, Heading, brandTokens, spacing, useOwnlevelTheme, useReduceMotion, type AppIconName } from '@/design-system';
 import { haptics } from '@/platform/haptics';
+import { nutritionValue, nutritionDifference } from './nutrition-values';
 import { formatDelta, formatValue } from './progress-format';
 import { ProgressRow } from './progress-row';
 
 const NAMES = { calories: 'Calorías', protein: 'Proteína', carbs: 'Carbohidratos', fat: 'Grasas' } as const;
-const kcal = (v: number | null) => (v === null ? '—' : formatValue(v, 'kcal', 'integer'));
-const grams = (v: number | null) => (v === null ? '—' : formatValue(v, 'g', 'integer'));
-const signed = (v: number | null, unit: string) => (v === null ? '—' : formatDelta(Math.round(v), unit, 'integer'));
+const kcal = (v: number | null) => nutritionValue(v, 'kcal');
+const grams = (v: number | null) => nutritionValue(v, 'g');
+const signed = (v: number | null) => nutritionDifference(v);
 const days = (n: number) => `${n} ${n === 1 ? 'día' : 'días'}`;
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const WEEKDAYS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
@@ -87,8 +88,8 @@ export function Averages({ report, includeMacros = true }: { report: NutritionRe
       </View>
       <TargetBar value={eaten} target={target} testID="nutrition-kcal-bar" />
       <View style={styles.facts}>
-        <Fact label="Objetivo" value={kcal(target) + own('targetCalories')} detail={`diferencia ${signed(s.targetDeviation.value, 'kcal')}`} />
-        <Fact label="Gasto estimado" value={kcal(spent) + own('expenditure')} detail={`balance ${signed(s.balance.value, 'kcal')}`} />
+        <Fact label="Objetivo" value={kcal(target) + own('targetCalories')} detail={`diferencia ${signed(s.targetDeviation.value)}`} />
+        <Fact label="Gasto estimado" value={kcal(spent) + own('expenditure')} detail={`balance ${signed(s.balance.value)}`} />
       </View>
     </View> : <AppText muted>Sin días terminados con calorías en este período.</AppText>}
     {includeMacros ? <MacroSplit protein={s.protein.value} carbs={s.carbs.value} fat={s.fat.value} proteinTarget={s.targetProtein.value} /> : null}
@@ -104,7 +105,7 @@ function Fact({ label, value, detail }: { label: string; value: string; detail: 
 
 const HIGHLIGHT: Record<NutritionReport['highlights'][number]['kind'], { icon: AppIconName; value: (d: ReportDailyRow) => string }> = {
   closest_target: { icon: 'checkmark', value: d => `${d.nutrients.calories.value === null ? '—' : formatValue(d.nutrients.calories.value, null, 'integer')} de ${kcal(d.targetCalories)}` },
-  largest_balance: { icon: 'flame', value: d => `balance ${signed(d.energyBalanceKcal, 'kcal')}` },
+  largest_balance: { icon: 'flame', value: d => `balance ${signed(d.energyBalanceKcal)}` },
   highest_protein: { icon: 'nutrition', value: d => grams(d.nutrients.protein.value) },
 };
 
@@ -180,10 +181,10 @@ export function NutritionReportDetails({ report, onDate }: { report: NutritionRe
         <View style={styles.grow}><AppText>Respecto del objetivo</AppText>
           <AppText muted numeric variant="caption">{s.belowTargetDays} por debajo · {s.exactTargetDays} iguales · {s.aboveTargetDays} por encima</AppText></View>
       </ProgressRow>
-      <ProgressRow label={`Balance acumulado: ${signed(s.accumulatedBalance.value, 'kcal')}`}>
+      <ProgressRow label={`Balance acumulado: ${signed(s.accumulatedBalance.value)}`}>
         <View style={styles.grow}><AppText>Balance acumulado</AppText>
           <AppText muted numeric variant="caption">{s.deficitDays} con déficit · {s.neutralDays} neutros · {s.surplusDays} con superávit</AppText></View>
-        <AppText numeric variant="headline">{signed(s.accumulatedBalance.value, 'kcal')}</AppText>
+        <AppText numeric variant="headline">{signed(s.accumulatedBalance.value)}</AppText>
       </ProgressRow>
       {s.goalStages.length ? <ProgressRow label={`Etapa: ${s.goalStages.join(', ')}`}>
         <AppText style={styles.grow}>{s.goalStages.length === 1 ? 'Etapa' : 'Etapas'}</AppText>
@@ -209,7 +210,7 @@ export function NutritionReportDetails({ report, onDate }: { report: NutritionRe
         <AppText muted variant="caption" style={styles.dayValue}>kcal</AppText><AppText muted variant="caption" style={styles.dayValue}>proteína</AppText>
         <AppText muted variant="caption" style={styles.dayValue}>balance</AppText></View>
       {report.evolution.map((b, i) => <View key={b.start} accessible style={[styles.dayRow, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}
-        accessibilityLabel={`${dayLabel(b.start, false)} al ${dayLabel(b.end, false)}${b.includesToday ? ', en curso' : ''}: ${kcal(b.metrics.calories.value)}, proteína ${grams(b.metrics.protein.value)}, balance ${signed(b.metrics.balance.value, 'kcal')}`}>
+        accessibilityLabel={`${dayLabel(b.start, false)} al ${dayLabel(b.end, false)}${b.includesToday ? ', en curso' : ''}: ${kcal(b.metrics.calories.value)}, proteína ${grams(b.metrics.protein.value)}, balance ${signed(b.metrics.balance.value)}`}>
         <AppText numeric variant="subheadline" style={styles.dayDate}>{dayLabel(b.start, false)}{b.includesToday ? ' ·' : ''}</AppText>
         <AppText numeric variant="subheadline" style={styles.dayValue}>{b.metrics.calories.value === null ? '—' : formatValue(b.metrics.calories.value, null, 'integer')}</AppText>
         <AppText numeric variant="subheadline" style={styles.dayValue}>{grams(b.metrics.protein.value)}</AppText>
