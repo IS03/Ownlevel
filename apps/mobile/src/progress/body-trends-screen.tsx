@@ -92,7 +92,7 @@ function Selected({ metric, excluded, storedZeros = [], selectedDate, onSelect, 
       {changeText !== null && metric.change !== null ? <>
         <View style={[styles.divider, stacked && styles.stackedDivider, { backgroundColor: colors.border }]} />
         <View style={styles.grow} accessible accessibilityLabel={`Cambio ${within}: ${spokenDifference(metric.change, metric.unit)}${metric.first ? `, desde ${formatValue(metric.first.value, metric.unit)} el ${day(metric.first.date)}` : ''}`}>
-          <AppText numeric variant="largeTitle">{changeText}</AppText>
+          <AppText numeric variant="title2">{changeText}</AppText>
           <AppText muted numeric variant="footnote">{since}</AppText>
         </View>
       </> : null}
@@ -159,7 +159,6 @@ function Content({ data, selected, body, selectedDate, onSelect, portada }: { da
   if (!metric) return <View style={styles.section}>
     <AppText muted>{selected ? 'Esta medida no está disponible en esta lectura.' : 'No hay pesos ni medidas válidos registrados con fecha en esta lectura.'}</AppText>
     {data.excludedSuspect > 0 ? <AppText muted>{data.excludedSuspect} mediciones sospechosas excluidas; los originales siguen en Cuerpo.</AppText> : null}
-    {body ? <Button label={selected === 'body.weight' || !selected ? 'Registrar peso' : 'Registrar medidas'} disabled={!editable} onPress={() => selected === 'body.weight' || !selected ? openTodayWeight(body.state, body.controller) : body.controller.openMeasurement()} /> : null}
     {!selected ? <>
       <BodyZones data={data} onRegister={body ? () => body.controller.openMeasurement() : undefined} disabled={!editable} />
       <BodyRecordComparison metrics={data.metrics} />
@@ -178,7 +177,6 @@ function Content({ data, selected, body, selectedDate, onSelect, portada }: { da
     <View style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}><Selected selectedDate={selectedDate} onSelect={onSelect} routeMetric={selected} metric={metric} portada={metric.key === 'body.weight' ? portada : null} excluded={data.excludedSuspect} storedZeros={metric.key === 'body.weight' ? (body?.state.read.weights ?? [])
       .filter(row => row.weightKg <= 0 && row.date >= data.period.start && row.date <= data.period.end).map(row => row.date) : []} /></View>
     {selected ? <>
-      {body ? <Button label={metric.key === 'body.weight' ? 'Registrar peso' : 'Registrar medidas'} variant="secondary" disabled={!editable} onPress={() => metric.key === 'body.weight' ? openTodayWeight(body.state, body.controller) : body.controller.openMeasurement()} /> : null}
       <BodyRecordComparison key={metric.key} metrics={[metric]} />
     </> : null}
     {selected && metric.key === 'body.weight' ? <Selector accessibilityLabel="Leer registros de peso" value={reading} options={[{ label: 'Pesajes', value: 'records' }, { label: 'Semanas', value: 'weeks' }]} onChange={setReading} /> : null}
@@ -191,7 +189,6 @@ function Content({ data, selected, body, selectedDate, onSelect, portada }: { da
 
     </View> : null}
     {!selected ? <>
-    {!selected && body ? <Button label="Registrar peso" variant="secondary" disabled={!editable} onPress={() => openTodayWeight(body.state, body.controller)} /> : null}
       <Button label="Explorar peso y medidas" variant="secondary" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.weight' } })} />
       <BodyZones data={data} onRegister={body ? () => body.controller.openMeasurement() : undefined} disabled={!editable} />
       <BodyRecordComparison metrics={data.metrics} />
