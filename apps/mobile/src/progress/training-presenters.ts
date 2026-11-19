@@ -6,6 +6,7 @@ export const STATUS_LABELS: Record<ProgressTrainingExercise['status'], string> =
   insufficient_data: 'Sin comparación',
 };
 export const REASON_LABELS: Record<string, string> = {
+  insufficient_sessions: 'No hay dos sesiones con datos suficientes para comparar.',
   new_exercise: 'No se hizo en el período de comparación.',
   not_trained_in_primary: 'No se hizo en este período.',
   different_weight_mode: 'Cambió el modo de carga.',

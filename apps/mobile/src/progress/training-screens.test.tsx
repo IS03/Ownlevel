@@ -66,6 +66,81 @@ describe('signalLine', () => {
 });
 
 describe('Training Trends', () => {
+  const routineFixture = (durations: (number | null)[]) => {
+    const t = training();
+    t.exercises = [{ ...t.exercises[0], status: 'stable' as const, signal: null, isPersonalRecord: false }];
+    t.inPeriod = { improved: 0, stable: 1, declined: 0, insufficient: 0, exercises: [{ ...t.inPeriod!.exercises[0], status: 'stable', signal: null }] };
+    t.story = { routines: durations.map((averageMinutes, i) => ({ id: `r${i}`, name: `Rutina ${i}`, sessions: 1, previousSessions: 1, sets: 4, minutes: averageMinutes ?? 0, averageMinutes, averageExercises: 1, lastDate: TODAY, exerciseIds: [ex.bench], improved: 0, stable: 1, declined: 0, insufficient: 0 })), muscles: [] };
+    return t;
+  };
+  it('never declares a unique longest routine when durations tie, or leaves the review empty', async () => {
+    mockTraining.mockResolvedValue(ok(routineFixture([60, 60, 40])));
+    const view = wrap(<TrainingTrendsScreen />); await flush();
+    expect(view.getByText('Rutina 0 y Rutina 1 comparten la mayor duración media')).toBeTruthy();
+    expect(view.queryByText('Rutina 0 es la que más dura')).toBeNull();
+    view.unmount(); clearConfirmedReads(mockClient);
+    mockTraining.mockResolvedValue(ok(routineFixture([60, 60, 60])));
+    const same = wrap(<TrainingTrendsScreen />); await flush();
+    expect(same.getByText('Podés seguir explorando las rutinas y ejercicios de arriba para revisar tus registros.')).toBeTruthy();
+  });
+  it('keeps missing duration distinct from zero and out of duration highlights', async () => {
+    const t = routineFixture([null, 40, 30]);
+    expect(parseProgressTraining(t)).toBeDefined();
+    mockTraining.mockResolvedValue(ok(t));
+    const view = wrap(<TrainingTrendsScreen />); await flush();
+    expect(view.getByText('duración incompleta')).toBeTruthy();
+    fireEvent.press(view.getByRole('radio', { name: 'Más tiempo' }));
+    fireEvent.press(view.getByTestId('training-routine-r0'));
+    expect(within(view.getByTestId('training-routine-detail-r0')).getByText('Sin dato')).toBeTruthy();
+    expect(view.queryByText('Rutina 0 es la que más dura')).toBeNull();
+  });
+  it('shows a graph for daily and dense windows, and gives one complete VoiceOver label per statistic', async () => {
+    const t = training(); t.series[0].sessions = 8; t.period.bucket = 'week';
+    mockTraining.mockResolvedValue(ok(t));
+    const view = wrap(<TrainingTrendsScreen />); await flush();
+    expect(view.getByTestId('training-chart')).toBeTruthy();
+    expect(view.getByLabelText('series: 12')).toBeTruthy();
+    view.unmount(); clearConfirmedReads(mockClient);
+    t.period.bucket = 'day'; t.series[0].sessions = 1;
+    mockTraining.mockResolvedValue(ok({ ...t }));
+    const daily = wrap(<TrainingTrendsScreen />); await flush();
+    expect(daily.getByLabelText('Sesiones por día')).toBeTruthy();
+  });
+  it('explicitly identifies an unavailable expanded routine detail without inventing its metrics', async () => {
+    const view = wrap(<TrainingTrendsScreen />); await flush();
+    expect(view.getByText('El detalle ampliado por rutina no está disponible en esta lectura. Podés consultar las sesiones y los ejercicios.')).toBeTruthy();
+    expect(view.queryByRole('radio', { name: 'Más ejercicios' })).toBeNull();
+    expect(view.queryByRole('radio', { name: 'Más tiempo' })).toBeNull();
+  });
+  it('retires unavailable routine sorting after a refresh without turning absent averages into zero', async () => {
+    mockTraining.mockResolvedValue(ok(routineFixture([60, 40, 30])));
+    const view = wrap(<TrainingTrendsScreen />); await flush();
+    fireEvent.press(view.getByRole('radio', { name: 'Más tiempo' }));
+    mockTraining.mockResolvedValue(ok(training()));
+    act(() => view.UNSAFE_getByType(RefreshControl).props.onRefresh()); await flush();
+    expect(view.queryByRole('radio', { name: 'Más tiempo' })).toBeNull();
+    expect(within(view.getByTestId('training-routine-__free__')).getByText('3 veces')).toBeTruthy();
+    fireEvent.press(view.getByTestId('training-routine-__free__'));
+    expect(within(view.getByTestId('training-routine-detail-__free__')).getByText('Sin dato')).toBeTruthy();
+  });
+  it('preserves reference-only exercise navigation and does not invent why a first/last result is absent', async () => {
+    const t = training(); t.inPeriod!.exercises = []; t.inPeriod!.improved = 0; t.inPeriod!.insufficient = 0;
+    mockTraining.mockResolvedValue(ok(t));
+    const view = wrap(<TrainingTrendsScreen />, comparing); await flush();
+    expect(view.getAllByText('No hay dos sesiones con datos suficientes para comparar.').length).toBeGreaterThan(0);
+    fireEvent.press(view.getByText('Sólo en la referencia (1)'));
+    fireEvent.press(view.getByRole('button', { name: 'Curl' }));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/exercise/[id]', params: { id: ex.old } });
+    expect(mockTraining).toHaveBeenCalledTimes(1);
+  });
+  it('labels years in historical first/last evidence and the reference', async () => {
+    const t = training(); t.period.start = '2025-12-20'; t.period.days = Math.round((Date.parse(TODAY) - Date.parse(t.period.start)) / 86_400_000) + 1; t.period.previousStart = '2025-09-01'; t.period.previousEnd = '2025-09-05';
+    t.inPeriod!.exercises[0].firstDate = '2025-12-20';
+    mockTraining.mockResolvedValue(ok(t));
+    const view = wrap(<TrainingTrendsScreen />, comparing); await flush();
+    expect(view.getByText('Referencia: 1–5 sep 2025 · 5 días')).toBeTruthy();
+    expect(view.getByText('20 dic 2025 → 4 oct')).toBeTruthy();
+  });
   it('fixtures follow the contract', () => {
     expect(parseProgressTraining(training())).toBeDefined(); expect(parseProgressTraining(training('30', true))).toBeDefined();
     expect(parseProgressTrainingExercise(exercise(ex.bench))).toBeDefined(); expect(parseProgressTrainingExercise(exercise(ex.cable))).toBeDefined();
@@ -331,7 +406,7 @@ describe('P1-B2 accessible activity and temporal buckets', () => {
     mockTraining.mockImplementation((client, query, compare) => jest.requireActual<typeof import('@/api/progress')>('@/api/progress').fetchProgressTraining(client as MobileApiClient, query, undefined, compare));
     const view = wrap(<TrainingTrendsScreen />, { unit: 'custom', anchor: TODAY, custom: { start: payload.period.start, end: TODAY }, compare: { kind: 'none' } });
     await flush(); openChart(view); expect(read).toHaveBeenCalledTimes(1); expect(view.getByTestId('training-summary')).toBeTruthy();
-    expect(read.mock.calls[0][0].path).toBe('/api/mobile/v1/progress/training?period=custom&from=2026-09-06&to=2026-10-05&inPeriod=1&story=1');
+    expect(read.mock.calls[0][0].path).toBe('/api/mobile/v1/progress/training?period=custom&from=2026-09-06&to=2026-10-05&inPeriod=1&story=2');
     fireEvent.press(view.getByTestId('training-bucket-2026-09-06')); expect(view.getByTestId('training-bucket-inspection')).toBeTruthy();
     fireEvent.press(view.getByRole('radio', { name: 'Duración' }));
     fireEvent.press(view.getByTestId('training-routine-__free__'));
@@ -357,7 +432,7 @@ describe('P1-B2 accessible activity and temporal buckets', () => {
     mockTraining.mockResolvedValue(ok(t)); const view = wrap(<TrainingTrendsScreen />); await flush();
     expect(view.getByTestId('training-performance-insufficient_data').props.accessibilityState).toMatchObject({ selected: true });
     expect(view.getByText('Una sola sesión; todavía sin comparación.')).toBeTruthy();
-    expect(view.queryByText('Sin cambio comparable.')).toBeNull();
+    expect(view.queryByText('Se mantuvo.')).toBeNull();
   });
   it.each([1, 2])('keeps many daily buckets scrollable with 44pt targets and full dates at scale %i', async fontScale => {
     const spy = jest.spyOn(rn, 'useWindowDimensions').mockReturnValue({ width: 320, height: 844, scale: 3, fontScale });
@@ -431,7 +506,7 @@ describe('P1-B2 accessible activity and temporal buckets', () => {
       t.inPeriod!.exercises.push({ ...t.inPeriod!.exercises[0], id, status, signal: status === 'stable' ? null : { kind: 'fewer_reps_same_load', description: '−1 reps con 60 kg', currentValue: 9, referenceValue: 10, contextValue: 60 } });
     }
     mockTraining.mockResolvedValue(ok(t)); const view = wrap(<TrainingTrendsScreen />, comparing); await flush();
-    fireEvent.press(view.getByTestId('training-performance-stable')); expect(view.getByText('Sin cambio comparable.')).toBeTruthy();
+    fireEvent.press(view.getByTestId('training-performance-stable')); expect(view.getByText('Se mantuvo.')).toBeTruthy();
     fireEvent.press(view.getByTestId('training-performance-declined')); expect(view.getByText('10 → 9 reps con 60 kg')).toBeTruthy();
     fireEvent.press(view.getByTestId('training-performance-insufficient_data')); expect(view.getAllByText('Este modo de carga no tiene una comparación confiable.').length).toBeGreaterThan(0);
     expect(mockTraining).toHaveBeenCalledTimes(1);
