@@ -21,14 +21,16 @@ const SMALL = 21;
  * uses). Scrolling, the title never moves sideways: it shrinks in place on the left, and the period you are reading
  * fades in under it ("Este mes", "Mes anterior", "17 sep – 16 oct").
  */
-export function ProgressScroll({ title, testID, refreshControl, children, compactTitle, multilineTitle = false, root = false, periodControls = true, compactPeriod = false, periodPickerTestID = 'training-period-picker', openSheet = null, sheetProposal = null, onSheetOpened }: {
+export function ProgressScroll({ title, testID, refreshControl, children, compactTitle, multilineTitle = false, root = false, periodControls = true, compactPeriod = false, periodPickerTestID = 'training-period-picker', openSheet = null, sheetProposal = null, onSheetOpened, initialScrollPosition, onScrollPosition }: {
   title: string; testID: string; refreshControl?: React.ReactElement<RefreshControlProps>; children: ReactNode; multilineTitle?: boolean; compactTitle?: string;
   /** The tab's first screen: no back button and a large title. */
   root?: boolean; periodControls?: boolean; compactPeriod?: boolean; periodPickerTestID?: string;
   /** #519 · A sheet asked for by the route (the portada's «Comparar períodos»): opened once, then the route forgets it. */
   openSheet?: 'compare' | null; onSheetOpened?: () => void;
-  /** The period that sheet proposes as A (applied only on «Listo»). */
+  /** The period that sheet proposes as A (applied only on confirmation). */
   sheetProposal?: DateRange | null;
+  /** Restore the reading position when this focused reader remounts after a detail. */
+  initialScrollPosition?: number; onScrollPosition?: (position: number) => void;
 }) {
   const router = useRouter(),reduced=useReduceMotion();
   const { colors } = useOwnlevelTheme();
@@ -56,6 +58,7 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
   const [wasRefreshing, setWasRefreshing] = useState(refreshing);
   if (wasRefreshing !== refreshing) { setWasRefreshing(refreshing); if (!refreshing && pulled) setPulled(false); }
   const open = { onCustom: () => setSheet('custom'), onCompare: () => { setProposal(null); setSheet('compare'); } };
+  const [initialOffset] = useState(initialScrollPosition ?? 0);
   const scroll = useAnimatedRef<Animated.ScrollView>();
   const offset = useScrollViewOffset(scroll);
   const header = top + barHeight;
@@ -77,6 +80,9 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
         refreshing: pulled && refreshControl.props.refreshing,
         onRefresh: () => { setPulled(true); refreshControl.props.onRefresh?.(); },
       }) : undefined}
+      contentOffset={initialScrollPosition === undefined ? undefined : { x: 0, y: initialOffset }}
+      onScrollEndDrag={onScrollPosition ? event => onScrollPosition(event.nativeEvent.contentOffset.y) : undefined}
+      onMomentumScrollEnd={onScrollPosition ? event => onScrollPosition(event.nativeEvent.contentOffset.y) : undefined}
       contentContainerStyle={{ paddingTop: header }}>
       {/* The strip opens the page and scrolls away with it; only the title bar stays. */}
       {periodControls && !compactPeriod?<View style={styles.stripSlot}><PeriodBar onCustom={open.onCustom} /></View>:null}
@@ -108,7 +114,7 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
         </View>
         {periodControls ? compactPeriod ? compactLarge ? null : <Pressable testID={periodPickerTestID} accessibilityRole="button" accessibilityLabel={`Elegir período de ${title.toLocaleLowerCase('es-AR')}`} onPress={open.onCustom}>
           <GlassSurface interactive style={styles.periodButton}><AppText numeric variant="subheadline">{periodLabel}</AppText><AppIcon name="chevronDown" color={colors.textMuted} size={17} /></GlassSurface>
-        </Pressable> : <CompareHeaderButton onPress={() => setSheet('compare')} /> : null}
+        </Pressable> : <CompareHeaderButton onPress={open.onCompare} /> : null}
       </View>
     </View>
     {sheet === 'custom' ? <CustomRangeSheet shortPreset={compactPeriod} onClose={() => setSheet(null)} /> : null}

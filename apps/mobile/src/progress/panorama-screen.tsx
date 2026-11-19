@@ -13,6 +13,7 @@ import { PanoramaAtlas, type AtlasDaily } from './panorama-atlas';
 import { PanoramaTools, type PortadaTool } from './panorama-tools';
 import { ProgressFindings } from './progress-findings';
 import { useProgressRange } from './progress-range-context';
+import { CompareSheet } from './period-sheets';
 import { ProgressScroll } from './progress-scroll';
 import { ProgressReadStatus } from './progress-read-status';
 import { PeriodChart } from './period-chart';
@@ -91,6 +92,7 @@ export function ProgressPanorama({ data, onOpen, points = {}, onPoint = () => un
 function OverviewContent({selected, onSelect, contextOpen, onContextToggle, points, onPoint}: {selected: string | null; onSelect: (id: string | null) => void; contextOpen: boolean; onContextToggle: () => void;
   points: SparkPoints; onPoint: (kind: SparkKind, key: string | null) => void}) {
     const { client } = useMobileApi(), router = useRouter(), { today, state: rangeState, setState } = useProgressRange();
+    const [comparing, setComparing] = useState(false);
     const from = addDays(today, -29);
     const query = useMemo(() => ({ period: 'custom' as const, from, to: today }), [from, today]);
     const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressFindings(c, { period: 'custom', from, to: today }, signal), [from, today]);
@@ -113,7 +115,7 @@ function OverviewContent({selected, onSelect, contextOpen, onContextToggle, poin
         // The inspected spark point travels as route params; the detail selects it only if it holds the same datum.
         router.push({pathname: dest.pathname, params: {...dest.extra, from: query.from, to: query.to, ...(point ? portadaPointParams(point) : {})}});
     };
-    // #519 · A tool of a period opens on the portada's window, like the areas above; «Comparar períodos» opens the A/B sheet once.
+    // A tool opens on the portada window; comparison stays above the source until confirmation.
     const tool = (t: PortadaTool) => {
         if (t === 'weight' || t === 'measures') {
           const next = progressStateForRange(query.from, query.to, rangeState, today);
@@ -121,17 +123,18 @@ function OverviewContent({selected, onSelect, contextOpen, onContextToggle, poin
           router.push({ pathname: '/(tabs)/progress/trends/body', params: { from, to: today, ...(t === 'weight' ? { metric: 'body.weight' } : { section: 'measures' }) } }); return;
         }
         if (t === 'metrics') { router.push('/(tabs)/progress/trends/metrics'); return; }
-        // The 30 days are only a proposal inside the A/B sheet: the active range and B change only on «Listo».
-        if (t === 'compare') { router.navigate({ pathname: '/(tabs)/progress/period', params: { sheet: 'compare', proposalFrom: query.from, proposalTo: query.to } }); return; }
+        // The 30 days remain a draft until «Ver comparación» confirms A and B together.
+        if (t === 'compare') { setComparing(true); return; }
         const next = progressStateForRange(query.from, query.to, rangeState, today);
         if (next) setState({ ...next, compare: { kind: 'none' } });
         router.push('/(tabs)/progress/trends/meal-times');
     };
-    return <ProgressScroll root periodControls={false} title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={(state.status === 'ready' && state.refreshing) || (history.state.status === 'ready' && history.state.refreshing) || (report.state.status === 'ready' && report.state.refreshing)} onRefresh={() => void refreshAll()}/>}>
+    return <><ProgressScroll root periodControls={false} title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={(state.status === 'ready' && state.refreshing) || (history.state.status === 'ready' && history.state.refreshing) || (report.state.status === 'ready' && report.state.refreshing)} onRefresh={() => void refreshAll()}/>}>
    <ProgressReadStatus state={state}/>
    {data ? <>{state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Conservamos la última lectura confirmada." actionLabel="Reintentar" onAction={() => void refreshAll()}/> : null}<ProgressPanorama data={data} daily={daily} onOpen={open} points={points} onPoint={onPoint} expanded={contextOpen} onToggle={onContextToggle}/><ProgressFindings items={data.findings} sourcesUnavailable={data.training.status !== 'ok' || data.nutrition.status !== 'ok'} selected={selected} onSelect={onSelect} onOpen={item => open(item.destination, null, item)}/></> : state.status === 'loading' ? <SkeletonBlock height={176}/> : <UnavailableState title="No pudimos leer tu progreso" description="Tus registros siguen guardados." action={<Button label="Reintentar" onPress={() => void refresh()}/>}/>}
    <PanoramaTools today={today} onTool={tool}/>
- </ProgressScroll>;
+ </ProgressScroll>
+ {comparing ? <CompareSheet proposal={{start: from, end: today}} onClose={() => setComparing(false)} onApplied={() => router.push('/(tabs)/progress/compare')} /> : null}</>;
 }
 /** Unmount this reading while the tab/route is hidden; confirmed cache restores it synchronously on return. */
 export function ProgressOverviewScreen() {
