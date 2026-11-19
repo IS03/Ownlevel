@@ -1,13 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BODY_MEASUREMENT_LABELS } from '@/api/body';
+import { BODY_MEASUREMENT_FIELDS, BODY_MEASUREMENT_LABELS, type BodyMeasurementField } from '@/api/body';
 import { AppIcon, AppSheet, AppText, Button, GlassSurface, TextField, brandTokens, pressedStyle, spacing, useAppSheetDismiss, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import type { BodyController, BodyState } from './body-controller';
 import { BodyDateField } from './body-date-field';
 import { MeasurementFields } from './body-measurement-form';
-import { formatBodyDate, formatCm, formatKg, measurementBadges } from './body-model';
+import { formatBodyDate, formatCm, formatKg, measurementBadges, validateMeasurementDraft } from './body-model';
 import type { MeasurementEditor, WeightEditor } from './body-storage';
 import { WEIGHT_REFERENCE_TEXT, weightFieldWidth, type MeasuredReference } from './weight-field-width';
 
@@ -156,7 +156,7 @@ function LongSheetBody({ header, children }: { header: (close: () => void) => Re
   </KeyboardAvoidingView>;
 }
 
-export function MeasurementEditorSheet({ editor, state, controller }: { editor: MeasurementEditor; state: BodyState; controller: BodyController }) {
+export function MeasurementEditorSheet({ editor, state, controller, initialField }: { editor: MeasurementEditor; state: BodyState; controller: BodyController; initialField?: BodyMeasurementField }) {
   const { colors } = useOwnlevelTheme();
   const editable = state.phase === 'idle' && !state.intent;
   const busy = state.phase === 'pending' || state.phase === 'reconciling';
@@ -164,27 +164,56 @@ export function MeasurementEditorSheet({ editor, state, controller }: { editor: 
   const suspect = baseline?.qualityStatus === 'suspect';
   const legacy = baseline ? (['armCm', 'thighCm'] as const).filter(f => baseline[f] !== null) : [];
   const today = state.read.overview?.today ?? '';
-  const saveLabel = suspect ? 'Guardar y verificar' : 'Guardar';
-  return <LongSheet state={state} controller={controller} testID="body-measurement-sheet" header={close => <Header title={baseline ? 'Editar medición' : 'Registrar medidas'}
-    subtitle="Completá solo lo que mediste" close={{ onPress: close, disabled: busy || !!state.intent }}
-    save={{ label: saveLabel, onPress: () => void controller.saveMeasurement(), disabled: !editable || (!!baseline && !suspect && !controller.dirty()), pending: busy }} />}>
+  const [reviewDraft, setReviewDraft] = useState<MeasurementEditor['draft'] | null>(null);
+  const [validation, setValidation] = useState<{ draft: MeasurementEditor['draft']; errors: Record<string, string> } | null>(null);
+  const [details, setDetails] = useState(!!editor.draft.condition || !!editor.draft.notes);
+  const reviewing = reviewDraft === editor.draft && Object.keys(state.errors).length === 0;
+  const errors = { ...state.errors, ...(validation?.draft === editor.draft ? validation.errors : {}) };
+  const parsed = validateMeasurementDraft(editor.draft, today, legacy.length > 0);
+  const review = () => {
+    if ('errors' in parsed) { setValidation({ draft: editor.draft, errors: parsed.errors }); return; }
+    Keyboard.dismiss();
+    setReviewDraft(editor.draft);
+  };
+  const saveLabel = reviewing ? suspect ? 'Guardar y verificar' : 'Guardar' : 'Revisar medidas';
+  return <LongSheet state={state} controller={controller} testID="body-measurement-sheet" header={close => <Header title={reviewing ? 'Revisar medición' : baseline ? 'Editar medición' : 'Registrar medidas'}
+    subtitle={reviewing ? 'Se guardará un solo registro' : 'Completá solo lo que mediste'} close={{ onPress: close, disabled: busy || !!state.intent }}
+    save={{ label: saveLabel, onPress: reviewing ? () => void controller.saveMeasurement() : review, disabled: !editable || (!!baseline && !suspect && !controller.dirty()), pending: busy }} />}>
     {baseline ? measurementBadges(baseline).map(badge => <AppText key={badge.text} variant="footnote" style={{ color: badge.tone === 'warning' ? colors.text : colors.textMuted }}>{badge.text}</AppText>) : null}
     {suspect ? <AppText muted variant="footnote">Al guardar la corrección, la medición se marca como verificada y vuelve a contar en el análisis.</AppText> : null}
-    <BodyDateField value={editor.draft.date} today={today} editable={editable} onChange={v => controller.change('date', v)} error={state.errors.date} />
-    <MeasurementFields editor={editor} state={state} controller={controller} editable={editable} />
+    {reviewing && 'fields' in parsed ? <View style={styles.review} testID="body-measurement-review">
+      <AppText numeric variant="headline">{formatBodyDate(parsed.fields.measuredOn)}</AppText>
+      {BODY_MEASUREMENT_FIELDS.filter(field => parsed.fields[field] !== null || baseline?.[field] != null).map(field => <View key={field} style={styles.reviewRow}>
+        <AppText>{BODY_MEASUREMENT_LABELS[field]}</AppText>
+        <AppText numeric variant="headline">{parsed.fields[field] === null ? 'Se quitará este valor' : formatCm(parsed.fields[field])}</AppText>
+      </View>)}
+      {parsed.fields.condition ? <AppText muted>Condición: {parsed.fields.condition}</AppText> : null}
+      {parsed.fields.notes ? <AppText muted>Notas: {parsed.fields.notes}</AppText> : null}
+      <AppText muted variant="footnote">Las medidas que dejaste vacías no se completan con valores anteriores.</AppText>
+      <Button label="Volver a editar" variant="secondary" disabled={!editable} onPress={() => setReviewDraft(null)} />
+    </View> : <>
+      <BodyDateField value={editor.draft.date} today={today} editable={editable} onChange={v => controller.change('date', v)} error={errors.date} />
+      <MeasurementFields initialField={initialField} editor={editor} state={{ ...state, errors }} controller={controller} editable={editable} />
+      <Button label={details ? 'Ocultar condición y notas' : 'Agregar condición o notas'} variant="quiet" onPress={() => setDetails(v => !v)} />
+      {details || errors.condition || errors.notes ? <>
+        <TextField label="Condición" value={editor.draft.condition} onChangeText={v => controller.change('condition', v)} error={errors.condition}
+          disabled={!editable} placeholder="Ej.: en ayunas" autoCorrect={false} />
+        <TextField label="Notas" value={editor.draft.notes} onChangeText={v => controller.change('notes', v)} error={errors.notes}
+          disabled={!editable} placeholder="Opcional" multiline autoCorrect={false} />
+      </> : null}
+      {validation?.draft === editor.draft && errors.form ? <AppText accessibilityRole="alert" variant="footnote">{errors.form}</AppText> : null}
+    </>}
     {legacy.length ? <AppText muted variant="footnote">
       {legacy.map(f => `${BODY_MEASUREMENT_LABELS[f]} (histórico): ${formatCm(baseline![f])}`).join(' · ')} · se conserva al guardar.
     </AppText> : null}
-    <TextField label="Condición" value={editor.draft.condition} onChangeText={v => controller.change('condition', v)} error={state.errors.condition}
-      disabled={!editable} placeholder="Ej.: en ayunas" autoCorrect={false} />
-    <TextField label="Notas" value={editor.draft.notes} onChangeText={v => controller.change('notes', v)} error={state.errors.notes}
-      disabled={!editable} placeholder="Opcional" multiline autoCorrect={false} />
     <Status state={state} controller={controller} />
     {baseline && state.phase === 'idle' ? <DeleteLink label="Eliminar medición" confirm="¿Eliminar esta medición?" onPress={() => void controller.deleteMeasurement()} /> : null}
   </LongSheet>;
 }
 
 const styles = StyleSheet.create({
+  review: { gap: spacing.lg },
+  reviewRow: { gap: spacing.xs },
   shrink: { flexShrink: 1 },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xl },
   pageHeader: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xs },

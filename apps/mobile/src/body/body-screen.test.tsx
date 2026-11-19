@@ -235,7 +235,7 @@ describe('Body records and sheets', () => {
     const { view } = await mount(fakeApi(overview({ measurements: { items: [suspect], nextBefore: null } })));
     fireEvent.press(view.getByLabelText('Medición del 1 oct 2026'));
     expect(view.getByText(/se marca como verificada/)).toBeTruthy(); expect(view.getByText(/Brazo \(histórico\): 33 cm/)).toBeTruthy();
-    expect(view.getByRole('button', { name: 'Guardar y verificar' })).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Revisar medidas' })).toBeTruthy();
   });
 });
 
