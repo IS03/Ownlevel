@@ -19,7 +19,7 @@ function Area({ label, title, hint, onPress, children, dark = false }: { label: 
     onPress={() => { haptics.selection(); onPress(); }} style={({ pressed }) => [styles.area, pressedStyle(pressed, reduced)]}>
     <View style={styles.heading}><AppText accessibilityRole="header" variant="headline" style={dark && { color: brandTokens.palette.dark.text }}>{title}</AppText>
       <AppIcon name="chevronRight" size={17} color={dark ? brandTokens.palette.dark.textMuted : colors.textMuted} /></View>
-    {children}
+    <View pointerEvents="none">{children}</View>
   </Pressable>;
 }
 

@@ -28,6 +28,7 @@ export const lucideIcons: Record<AppIconName, LucideIcon> = {
   chevronDown: ChevronDown,
   chevronLeft: ChevronLeft,
   chevronRight: ChevronRight,
+  clockOutline: Clock,
   clock: Clock,
   hourglass: Hourglass,
   close: X,

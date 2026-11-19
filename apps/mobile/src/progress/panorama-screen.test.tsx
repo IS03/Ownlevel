@@ -307,7 +307,7 @@ it('shows every thematic destination without loading it, and distinguishes recen
     expect(within(view.getByTestId('panorama-explore')).getAllByRole('button')).toHaveLength(14);
     fireEvent.press(view.getByTestId('panorama-tool-period'));expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress/period');
     fireEvent.press(view.getByTestId('panorama-tool-calendar'));expect(mockNavigate).toHaveBeenLastCalledWith('/history/calendar');
-    fireEvent.press(view.getByTestId('panorama-tool-history'));expect(mockNavigate).toHaveBeenLastCalledWith('/history');
+    fireEvent.press(view.getByTestId('panorama-tool-views'));expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress/views');
     fireEvent.press(view.getByTestId('panorama-tool-stages'));expect(mockNavigate).toHaveBeenLastCalledWith('/(tabs)/progress/stages');
     expect(read).toHaveBeenCalledTimes(3);
 });
@@ -383,7 +383,7 @@ it('#519 · «Comparar períodos» proposes the portada window; «Cuándo comés
     fireEvent.press(view.getByRole('button', { name: /^Cuándo comés/ }));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/trends/meal-times');
     expect([range!.query.from, range!.query.to, range!.compare]).toEqual(['2026-10-11', '2026-11-09', null]);
-    fireEvent.press(view.getByRole('button', { name: /^Comparaciones/ }));
+    fireEvent.press(view.getByRole('button', { name: /^Comparaciones: / }));
     expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/insights', params: { fromProgress: '1' } });
     fireEvent.press(view.getByRole('button', { name: /^Métricas personales/ }));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/trends/metrics');

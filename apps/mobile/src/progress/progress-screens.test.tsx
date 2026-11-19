@@ -234,12 +234,12 @@ describe('Progress Overview', () => {
     let release!: (v: unknown) => void;
     mockOverview.mockImplementationOnce(() => new Promise(r => { release = r; }));
     const view = wrap(<ProgressOverviewScreen />); await flush();
-    fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
+    fireEvent.press(view.getByTestId('progress-period-caption')); fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
     expect(mockOverview).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-10-05', to: TODAY }, null);
     expect(view.getByText('Tu semana')).toBeTruthy();
     await act(async () => { release(ok(overview({ changes: [{ id: 'stale', domain: 'training', label: 'Viejo', description: 'x', destination: { kind: 'training' } }] }))); }); await flush();
     expect(view.queryByText('Viejo')).toBeNull();
-    fireEvent.press(view.getByTestId('progress-unit-month')); await flush();
+    fireEvent.press(view.getByTestId('progress-period-caption')); fireEvent.press(view.getByTestId('progress-unit-month')); await flush();
     fireEvent(view.getByTestId('progress-period-caption'), 'accessibilityAction', { nativeEvent: { actionName: 'decrement' } }); await flush();
     expect(mockOverview).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-09-01', to: '2026-09-30' }, null);
     expect(view.getByTestId('progress-period-caption').props.accessibilityLabel).toBe('Septiembre 2026, 30 días');
@@ -247,25 +247,25 @@ describe('Progress Overview', () => {
     // Away from today, one tap brings the same unit back to the current period.
     fireEvent.press(view.getByTestId('progress-period-today')); await flush();
     expect(view.getByText('Tu octubre')).toBeTruthy(); expect(view.queryByTestId('progress-period-today')).toBeNull();
-    fireEvent.press(view.getByTestId('progress-unit-year')); await flush();
+    fireEvent.press(view.getByTestId('progress-period-caption')); fireEvent.press(view.getByTestId('progress-unit-year')); await flush();
     expect(mockOverview).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-01-01', to: TODAY }, null);
     expect(view.getByText('Tu 2026')).toBeTruthy();
   });
   it('Personalizado steps the unit you are on: previous and next month, then back to today', async () => {
     const view = wrap(<ProgressOverviewScreen />); await flush();
-    fireEvent.press(view.getByTestId('progress-unit-custom'));
+    fireEvent.press(view.getByTestId('progress-period-caption'));
     expect(view.queryByText('Mes siguiente')).toBeNull();
     fireEvent.press(view.getByText('Mes anterior')); await flush();
     expect(mockOverview).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-09-01', to: '2026-09-30' }, null);
-    expect(view.getByTestId('progress-unit-month').props.accessibilityState.selected).toBe(true);
-    fireEvent.press(view.getByTestId('progress-unit-custom'));
+    expect(view.getByTestId('progress-period-caption').props.accessibilityLabel).toBe('Septiembre 2026, 30 días');
+    fireEvent.press(view.getByTestId('progress-period-caption'));
     fireEvent.press(view.getByText('Mes siguiente')); await flush();
     expect(view.getByText('Tu octubre')).toBeTruthy();
     expect(mockOverview).toHaveBeenCalledTimes(2); // October was already confirmed before visiting September.
   });
   it('Personalizado opens the calendar: first day, last day, Listo', async () => {
     const view = wrap(<ProgressOverviewScreen />); await flush();
-    fireEvent.press(view.getByTestId('progress-unit-custom'));
+    fireEvent.press(view.getByTestId('progress-period-caption'));
     fireEvent.press(view.getByRole('button', { name: '1 de octubre' }));
     expect(view.getByRole('button', { name: 'Listo' }).props.accessibilityState.disabled).toBe(true);
     fireEvent.press(view.getByRole('button', { name: '3 de octubre' }));

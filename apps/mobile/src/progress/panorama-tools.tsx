@@ -13,35 +13,35 @@ export function PanoramaTools({ today, onTool }: { today: string; onTool: (tool:
   const large = fontScale > 1.3 || width < 360;
   const groups: { title: string; detail: string; circles?: boolean; items: Tool[] }[] = [
     { title: 'Recorrer', detail: 'Elegí cómo mirar tus registros.', items: [
-      { id: 'period', title: 'Explorar período', detail: 'Tus vistas en las fechas que elijas', icon: 'routines', press: () => router.navigate('/(tabs)/progress/period') },
-      { id: 'calendar', title: 'Recorrido por fecha', detail: 'Calendario de tus registros', icon: 'calendar', press: () => router.navigate('/history/calendar') },
-      { id: 'quarter', title: 'Últimos tres meses', detail: 'Una mirada más amplia', icon: 'clock', press: () => router.navigate(periodSummaryHref(today, origin)), spoken: 'Últimos tres meses' },
-      { id: 'history', title: 'Historial', detail: 'Días recientes en una lista', icon: 'note', press: () => router.navigate('/history') },
-      { id: 'compare', title: 'Comparar períodos', detail: 'Dos períodos, tus fechas', icon: 'compare', primary: true, press: () => onTool('compare') },
-      { id: 'stages', title: 'Tus etapas', detail: 'Tus planes, uno al lado del otro', icon: 'bookmark', press: () => router.navigate('/(tabs)/progress/stages') },
+      { id: 'period', title: 'Explorar', detail: 'Períodos, comparaciones y tus vistas', icon: 'routines', press: () => router.navigate('/(tabs)/progress/period') },
+      { id: 'calendar', title: 'Calendario', detail: 'Tus registros por fecha', icon: 'calendar', press: () => router.navigate('/history/calendar') },
+      { id: 'views', title: 'Mis vistas', detail: 'Lo que elegiste seguir', icon: 'pin', press: () => router.navigate('/(tabs)/progress/views') },
     ] },
     { title: 'Comparar y descubrir', detail: 'Sesiones, semanas y cambios entre períodos.', items: [
+      { id: 'compare', title: 'Comparar períodos', detail: 'Dos períodos, tus fechas', icon: 'compare', primary: true, press: () => onTool('compare') },
+      { id: 'quarter', title: 'Últimos tres meses', detail: 'Una mirada más amplia', icon: 'clockOutline', press: () => router.navigate(periodSummaryHref(today, origin)), spoken: 'Últimos tres meses' },
+      { id: 'influence', title: 'Qué influye', detail: 'Comparaciones descriptivas entre tus días', icon: 'search', press: () => router.navigate('/(tabs)/progress/influence') },
       { id: 'comparisons', title: 'Comparaciones', detail: 'Cada sesión con lo tuyo y con la anterior', icon: 'dumbbell', press: () => router.navigate({ pathname: '/(tabs)/train/insights', params: origin }) },
       { id: 'weeks', title: 'Semanas y coincidencias', detail: 'Tus registros semana a semana', icon: 'calendar', spoken: 'Semanas y coincidencias: tus registros semana a semana', press: () => router.navigate(explorationHref(today, undefined, undefined, origin)) },
       { id: 'connections', title: 'Lo que se movió junto', detail: 'Cambios entre períodos', icon: 'progress', press: () => router.navigate({ pathname: '/(tabs)/progress/period', params: { focus: 'connections' } }) },
     ] },
     { title: 'Registros', detail: 'Lo que anotás en tu día a día.', circles: true, items: [
-      { id: 'metrics', title: 'Métricas personales', detail: 'Sueño, pasos y lo que registrás', icon: 'activity', press: () => onTool('metrics') },
-      { id: 'meal-times', title: 'Cuándo comés', detail: 'Tus comidas por franja horaria', icon: 'clock', press: () => onTool('meal-times') },
-      { id: 'influence', title: 'Qué influye', detail: 'Comparaciones descriptivas entre tus días', icon: 'search', press: () => router.navigate('/(tabs)/progress/influence') },
+      { id: 'metrics', title: 'Métricas personales', detail: 'Sueño, pasos y lo que registrás', icon: 'heart-pulse', press: () => onTool('metrics') },
+      { id: 'meal-times', title: 'Cuándo comés', detail: 'Tus comidas por franja horaria', icon: 'clockOutline', press: () => onTool('meal-times') },
     ] },
     { title: 'Cuerpo', detail: 'Tus pesajes y medidas, con sus fechas.', items: [
+      { id: 'stages', title: 'Tus etapas', detail: 'Tus planes, uno al lado del otro', icon: 'bookmark', press: () => router.navigate('/(tabs)/progress/stages') },
       { id: 'weight', title: 'Peso', detail: 'Pesajes y evolución', icon: 'scale', press: () => onTool('weight') },
       { id: 'measures', title: 'Medidas', detail: 'Cintura, brazos y más', icon: 'ruler', press: () => onTool('measures') },
     ] },
   ];
   return <View style={styles.explore} testID="panorama-explore">
-    <View style={styles.heading}><Heading level={2}>Explorar</Heading><AppText muted variant="footnote">Por temas</AppText></View>
+    <View style={styles.heading}><Heading level={1}>Explorar</Heading><AppText muted variant="footnote">Por temas</AppText></View>
     {groups.map((group, index) => <View key={group.title} style={[styles.group, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border, paddingTop: spacing.xl }]}>
       <View style={styles.caption}><Heading level={2}>{group.title}</Heading><AppText muted variant="footnote">{group.detail}</AppText></View>
       <View style={styles.grid}>{group.items.map((item, i) => {
         const wide = !group.circles && group.items.length % 2 === 1 && i === group.items.length - 1;
-        return <View key={item.id} style={{ width: large || wide ? '100%' : group.circles ? `${100 / 3}%` : '50%', padding: spacing.xs }}>
+        return <View key={item.id} style={{ width: large || wide ? '100%' : group.circles ? `${100 / group.items.length}%` : '50%', padding: spacing.xs }}>
           <Pressable accessibilityRole="button" accessibilityLabel={item.spoken ?? `${item.title}: ${item.detail}`} testID={`panorama-tool-${item.id}`}
             onPress={() => { haptics.selection(); item.press(); }} style={({ pressed }) => [styles.tool,
               group.circles ? styles.circleTool : [styles.tile, { backgroundColor: item.primary ? colors.brandSubtle : colors.surfaceRaised }],

@@ -166,7 +166,7 @@ describe('connections client and independent resource', () => {
     const view = await open();
     expect(view.getByTestId('connections-loading')).toBeTruthy();
     expect(view.queryByText('TODAVÍA NO ALCANZA')).toBeNull();
-    fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
+    fireEvent.press(view.getByTestId('progress-period-caption')); fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
     expect(connectionCalls()).toHaveLength(2);
     expect(connectionCalls()[1].path).toContain('from=2026-10-12&to=2026-10-17&compareFrom=2026-10-05&compareTo=2026-10-10');
     await act(async () => mockReleases[0]()); await flush();
