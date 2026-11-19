@@ -7,7 +7,7 @@ import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { haptics } from '@/platform/haptics';
 import { ProgressRow } from './progress-row';
 import { inputNutritionDate as date } from '@/nutrition/day-format';
-import { formatValue } from './progress-format';
+import { nutritionValue } from './nutrition-values';
 import { useProgressRange } from './progress-range-context';
 import { NutritionReportDays } from './nutrition-report-details';
 
@@ -21,17 +21,8 @@ const NUTRIENTS = {
     complete: 'Proteína completa entre las entradas registradas', target: (d: ReportDailyRow) => d.targetProteinG },
 } as const;
 const range = (start: string, end: string) => start === end ? date(start) : `${date(start)} – ${date(end)}`;
-const oneDecimal = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 });
-/**
- * #519 · A value at the precision its nutrient needs. Protein keeps one decimal under 10 g so 0,4 g never reads as 0 g;
- * a positive value below the visible precision says so («< 0,1 g»), never 0. A real zero stays «0 g»; null is never here.
- */
-function valueText(n: NutritionChartNutrient, value: number, spoken = false) {
-  const below = (limit: string) => spoken ? `menos de ${limit}` : `< ${limit}`;
-  if (n === 'calories') return value > 0 && value < 0.5 ? below('1 kcal') : formatValue(value, 'kcal', 'integer');
-  if (value > 0 && value < 0.05) return below('0,1 g');
-  return value < 10 ? `${oneDecimal.format(value)} g` : formatValue(value, 'g', 'integer');
-}
+const valueText = (nutrient: NutritionChartNutrient, value: number, spoken = false) => nutritionValue(value, nutrient === 'calories' ? 'kcal' : 'g', spoken);
+
 function points(report: NutritionReport, n: NutritionChartNutrient) {
   return report.range.days <= 31
     ? [...report.days].reverse().map(d => ({ start: d.date, end: d.date, value: d.nutrients[n].value,
