@@ -1,4 +1,5 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { pressFittedMark } from './fitted-chart.test-helper';
+import { act, render } from '@testing-library/react-native';
 import { expect, it, jest } from '@jest/globals';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OwnlevelThemeProvider } from '@/design-system';
@@ -44,7 +45,7 @@ it('measures the real Body controller and cache: local point interaction and exi
   clearConfirmedReads(client);
   const view = render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } }}><OwnlevelThemeProvider initialMode="light"><ProgressRangeProvider initialToday="2026-10-05"><BodyTrendsScreen /></ProgressRangeProvider></OwnlevelThemeProvider></SafeAreaProvider>);
   await flush(); const initial = counts();
-  fireEvent.press(view.getByTestId('body-trend-chart-2026-10-02-mark'));
+  pressFittedMark(view.getByTestId('body-trend-chart-2026-10-02-mark'));
   await flush(); const inspected = counts();
   expect(inspected).toEqual(initial);
   act(() => mockFocus.forEach(f => f.blur()));

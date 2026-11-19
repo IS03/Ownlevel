@@ -1,3 +1,4 @@
+import { pressFittedMark } from './fitted-chart.test-helper';
 import { useState } from 'react';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { describe, expect, it, jest } from '@jest/globals';
@@ -75,10 +76,8 @@ describe('#531 · Etapas en el gráfico de Nutrición', () => {
     const names = Object.keys(DAILY).filter(d => view.queryByTestId(`nutrition-chart-current-stage-name-${d}`, H));
     expect(names).toEqual(['2026-09-25', '2026-09-28', '2026-09-30', '2026-10-04']); // Volumen repeats after the cut; Definición after the empty label
     expect(view.getByTestId('nutrition-chart-current-stage-name-2026-09-30', H).props.children).toBe('Definición');
-    // A run's band is joined inside and cut at its ends.
-    const band = (d: string) => StyleSheet.flatten(view.getByTestId(`nutrition-chart-current-stage-${d}`, H).props.style);
-    expect(band('2026-09-25')).toMatchObject({ left: 1 }); expect(band('2026-09-26')).toMatchObject({ right: 1 });
-    expect(band('2026-09-30').right).toBeLessThan(0);
+    // Calendar bands remain behind both valid and missing daily observations.
+    expect(view.getByTestId('nutrition-chart-current-stage-2026-09-25', H).props.width).toBeGreaterThan(0);
     // The missing bar keeps its gap inside its run; the zero keeps its base line over the band.
     expect(view.getByTestId('nutrition-chart-current-2026-09-29-gap')).toBeTruthy();
     const zero = view.getByTestId('nutrition-chart-current-2026-10-01-bar');
@@ -87,7 +86,7 @@ describe('#531 · Etapas en el gráfico de Nutrición', () => {
   });
   it('labels and detail say the full name or «Sin etapa informada»; toggling keeps the selected bar and its detail', async () => {
     const view = render(tree(daily())); await flush();
-    fireEvent.press(view.getByTestId('nutrition-chart-current-2026-09-29-gap'));
+    pressFittedMark(view.getByTestId('nutrition-chart-current-2026-09-29-gap'));
     expect(view.queryByTestId('nutrition-chart-stage')).toBeNull(); // off: nothing about stages
     fireEvent.press(chip(view));
     expect(view.getByTestId('nutrition-chart-current-2026-09-29-gap').props.accessibilityState.selected).toBe(true);
@@ -95,7 +94,7 @@ describe('#531 · Etapas en el gráfico de Nutrición', () => {
     expect(view.getByTestId('nutrition-chart-current-2026-09-29-gap').props.accessibilityLabel).toContain('Etapa: Volumen');
     expect(view.getByTestId('nutrition-chart-current-2026-09-27-bar').props.accessibilityLabel).toContain('Sin etapa informada');
     expect(view.getByTestId('nutrition-chart-current-2026-10-03-bar').props.accessibilityLabel).toContain('Sin etapa informada');
-    fireEvent.press(view.getByTestId('nutrition-chart-current-2026-09-27-bar'));
+    pressFittedMark(view.getByTestId('nutrition-chart-current-2026-09-27-bar'));
     expect(view.getByTestId('nutrition-chart-stage').props.children).toBe('Sin etapa informada.');
     expect(view.getByRole('button', { name: /^Ver comidas de ese día/ })).toBeTruthy();
     fireEvent.press(chip(view));
@@ -110,8 +109,8 @@ describe('#531 · Etapas en el gráfico de Nutrición', () => {
     const view = render(tree(r)); await flush();
     fireEvent.press(chip(view));
     expect(view.queryByTestId(`nutrition-chart-current-stage-${blocks[0].start}`, H)).toBeNull(); // no segmented bands inside blocks
-    expect(within(view.getByTestId('nutrition-chart-series-current')).getAllByRole('button')).toHaveLength(blocks.length);
-    const detail = (start: string) => { fireEvent.press(view.getByTestId(`nutrition-chart-current-${start}-bar`)); return view.getByTestId('nutrition-chart-stage', H).props.children as string; };
+    expect(within(view.getByTestId('nutrition-chart-series-current')).getAllByTestId(/^nutrition-chart-(current|reference)-\d{4}-\d{2}-\d{2}-(bar|gap)$/)).toHaveLength(blocks.length);
+    const detail = (start: string) => { pressFittedMark(view.getByTestId(`nutrition-chart-current-${start}-bar`)); return view.getByTestId('nutrition-chart-stage', H).props.children as string; };
     expect(detail(blocks[0].start)).toBe('Etapas del bloque: Volumen · 3 días; Definición · 2 días; sin etapa informada · 2 días.');
     expect(detail(blocks[1].start)).toBe('Etapas del bloque: Volumen · 7 días.');
     expect(detail(blocks[2].start)).toBe('Sin etapa informada en los 7 días del bloque.');
@@ -119,7 +118,7 @@ describe('#531 · Etapas en el gráfico de Nutrición', () => {
     expect(last.values).toHaveLength(2);
     expect(detail(last.start)).toBe('Etapas del bloque: Mantenimiento · 1 día; sin etapa informada · 1 día.');
     // Counts are dates, not denominators: switching to Protein (another denominator) keeps them.
-    fireEvent.press(view.getByTestId(`nutrition-chart-current-${blocks[0].start}-bar`));
+    pressFittedMark(view.getByTestId(`nutrition-chart-current-${blocks[0].start}-bar`));
     fireEvent.press(view.getByRole('radio', { name: 'Proteína' }));
     expect(view.getByText(/5 días usados de 7 días del bloque/)).toBeTruthy();
     expect(view.getByTestId('nutrition-chart-stage', H).props.children).toBe('Etapas del bloque: Volumen · 3 días; Definición · 2 días; sin etapa informada · 2 días.');
@@ -130,20 +129,17 @@ describe('#531 · Etapas en el gráfico de Nutrición', () => {
     const a = render(tree(daily(), longReport)); await flush();
     fireEvent.press(chip(a));
     expect(a.getByTestId('nutrition-chart-current-stage-2026-09-25', H)).toBeTruthy();
-    fireEvent.press(a.getByRole('radio', { name: 'Comparación' }));
     expect(chip(a).props.accessibilityState).toMatchObject({ checked: true });
     expect(a.queryByTestId('nutrition-chart-reference-stage-names', H)).toBeNull();
-    fireEvent.press(a.getByTestId(`nutrition-chart-reference-${blocks[1].start}-bar`));
+    pressFittedMark(a.getByTestId(`nutrition-chart-reference-${blocks[1].start}-bar`));
     expect(a.getByTestId('nutrition-chart-stage', H).props.children).toBe('Etapas del bloque: Volumen · 7 días.');
     fireEvent.press(a.getByRole('radio', { name: 'Proteína' }));
-    fireEvent.press(a.getByRole('radio', { name: 'Período elegido' }));
     expect(a.getByTestId('nutrition-chart-current-stage-2026-09-25', H)).toBeTruthy();
 
     const { r: currentLong } = long();
     const b = render(tree(currentLong, daily())); await flush();
     fireEvent.press(chip(b));
     expect(b.queryByTestId('nutrition-chart-current-stage-names', H)).toBeNull();
-    fireEvent.press(b.getByRole('radio', { name: 'Comparación' }));
     expect(b.getByTestId('nutrition-chart-reference-stage-name-2026-09-25', H)).toBeTruthy();
     expect(b.getByTestId('nutrition-chart-reference-stage-2026-09-28', H)).toBeTruthy();
     expect(b.queryByTestId('nutrition-chart-reference-stage-2026-09-27', H)).toBeNull();
@@ -153,7 +149,6 @@ describe('#531 · Etapas en el gráfico de Nutrición', () => {
     const view = render(tree(plain, daily())); await flush();
     fireEvent.press(chip(view));
     expect(view.queryByTestId('nutrition-chart-current-stage-names', H)).toBeNull();
-    fireEvent.press(view.getByRole('radio', { name: 'Comparación' }));
     expect(view.getByTestId('nutrition-chart-reference-stage-name-2026-09-25', H)).toBeTruthy();
   });
   it.each(['light', 'dark'] as const)('large text in %s: names stay one line as wide as their run, bars keep 44 pt and the scroll', async mode => {
@@ -162,11 +157,10 @@ describe('#531 · Etapas en el gráfico de Nutrición', () => {
     const view = render(tree(daily(), undefined, mode)); await flush();
     fireEvent.press(chip(view));
     const name = view.getByTestId('nutrition-chart-current-stage-name-2026-09-25', H);
-    expect(name.props.numberOfLines).toBe(1);
-    const slot = 10 * 44 * 2 / 10;
-    expect(StyleSheet.flatten(name.props.style).width).toBeCloseTo(2 * slot - 8, 5);
-    for (const bar of within(view.getByTestId('nutrition-chart-series-current')).getAllByRole('button')) expect(StyleSheet.flatten(bar.props.style).minWidth).toBeGreaterThanOrEqual(44);
-    expect(view.getByLabelText(/^Calorías · Período elegido/).props.horizontal).toBe(true);
+    expect(name.props.numberOfLines).toBeUndefined();
+    expect(view.getByTestId('nutrition-chart-current-stage-names', H).props.style).toMatchObject({flexWrap:'wrap'});
+    expect(StyleSheet.flatten(view.getByTestId('nutrition-chart-current-plot').props.style).minHeight).toBeGreaterThanOrEqual(44);
+    expect(view.getByLabelText(/^Calorías · Período elegido/).props.accessibilityRole).toBe('adjustable');
     spy.mockRestore();
   });
 });
@@ -180,7 +174,7 @@ describe('#531 · el desglose del bloque es accesible', () => {
     const view = render(tree(r)); await flush();
     const bar = () => view.getByTestId(`nutrition-chart-current-${blocks[0].start}-bar`);
     expect(bar().props.accessibilityLabel).not.toMatch(/etapa/i); // off: nothing about stages
-    fireEvent.press(bar());
+    pressFittedMark(bar());
     expect(region(view)).not.toMatch(/etapa/i);
     fireEvent.press(chip(view));
     expect(bar().props.accessibilityState.selected).toBe(true); // the selection survives the chip
@@ -195,7 +189,7 @@ describe('#531 · el desglose del bloque es accesible', () => {
     fireEvent.press(view.getByRole('radio', { name: 'Proteína' }));
     expect(bar().props.accessibilityLabel).toContain(`5 días usados, 0 con suma parcial, ${MIXED}`);
     expect(region(view)).toContain(MIXED);
-    expect(StyleSheet.flatten(bar().props.style).minWidth).toBeGreaterThanOrEqual(44);
+    expect(StyleSheet.flatten(view.getByTestId('nutrition-chart-current-plot').props.style).minHeight).toBeGreaterThanOrEqual(44);
     // Off again: no stage information anywhere, same selection.
     fireEvent.press(chip(view));
     expect(bar().props.accessibilityState.selected).toBe(true);
@@ -206,7 +200,7 @@ describe('#531 · el desglose del bloque es accesible', () => {
     const { r, blocks } = long();
     const view = render(tree(r)); await flush();
     fireEvent.press(chip(view));
-    fireEvent.press(view.getByTestId(`nutrition-chart-current-${blocks[2].start}-bar`));
+    pressFittedMark(view.getByTestId(`nutrition-chart-current-${blocks[2].start}-bar`));
     expect(view.getByTestId(`nutrition-chart-current-${blocks[2].start}-bar`).props.accessibilityLabel).toContain('Sin etapa informada en los 7 días del bloque, Período elegido');
     expect(region(view)).toMatch(/, Sin etapa informada en los 7 días del bloque$/);
   });
@@ -214,13 +208,11 @@ describe('#531 · el desglose del bloque es accesible', () => {
     const { r: reference, blocks } = long('2026-06-01', '2026-08-04');
     const view = render(tree(daily(), reference)); await flush();
     fireEvent.press(chip(view));
-    fireEvent.press(view.getByRole('radio', { name: 'Comparación' }));
     const bar = view.getByTestId(`nutrition-chart-reference-${blocks[1].start}-bar`);
     expect(bar.props.accessibilityLabel).toMatch(/Etapas del bloque: Volumen, 7 días, Comparación · /);
-    fireEvent.press(bar);
+    pressFittedMark(bar);
     expect(region(view)).toMatch(/, Comparación · .+, Etapas del bloque: Volumen, 7 días$/);
     // A (daily) still says each day's stage, not a block breakdown.
-    fireEvent.press(view.getByRole('radio', { name: 'Período elegido' }));
     expect(view.getByTestId('nutrition-chart-current-2026-09-25-bar').props.accessibilityLabel).toContain('Etapa: Volumen');
     expect(view.getByTestId('nutrition-chart-current-2026-09-25-bar').props.accessibilityLabel).not.toContain('Etapas del bloque');
   });

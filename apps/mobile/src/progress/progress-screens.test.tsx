@@ -1,3 +1,4 @@
+import { pressFittedMark } from './fitted-chart.test-helper';
 import { clearConfirmedReads, invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import type { MobileApiClient } from '@/api/client';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
@@ -311,7 +312,7 @@ describe('Body Trends', () => {
     expect(summary.getByText(/Tendencia en bajada/)).toBeTruthy(); expect(summary.queryByText(/Un punto por registro/)).toBeNull();
     expect(summary.getByText(/1 medición sospechosa excluida; podés corregirla en Cuerpo\./)).toBeTruthy();
     expect(summary.queryByText(/sin cambio medible/)).toBeNull(); // only while comparing
-    fireEvent.press(within(view.getByTestId('body-trend-chart')).getByRole('button', { name: '20 sep 2026, 81 kg · Importado · sheet' }));
+    pressFittedMark(view.getByTestId('body-trend-chart-2026-09-20-mark'));
     expect(mockPush).not.toHaveBeenCalled();
     expect(within(view.getByTestId('body-point-inspection')).getByText('Peso · 81 kg')).toBeTruthy();
     fireEvent.press(view.getByRole('button', { name: 'Ver registro original' }));
@@ -353,7 +354,7 @@ describe('Body Trends', () => {
     const view = wrap(<><BodyTrendsScreen /><ReturnToBodyChart /></>, comparing); await flush();
     const initial = { progress: mockBody.mock.calls.length, records: mockBodyApis[0].overview.mock.calls.length };
     expect(initial).toEqual({ progress: 1, records: 1 });
-    fireEvent.press(view.getByTestId('body-trend-chart-2026-09-15-mark'));
+    pressFittedMark(view.getByTestId('body-trend-chart-2026-09-15-mark'));
     const readout = within(view.getByTestId('body-point-inspection'));
     expect(readout.getByText('15 sep 2026')).toBeTruthy(); expect(readout.getByText('Cintura · 88 cm')).toBeTruthy();
     expect(mockPush).not.toHaveBeenCalled();
@@ -368,12 +369,12 @@ describe('Body Trends', () => {
     expect(view.getByText('Cintura · 88 cm')).toBeTruthy();
     expect(mockBody).toHaveBeenLastCalledWith(mockClient, MONTH, { start: '2026-09-01', end: '2026-09-05' });
     expect({ progress: mockBody.mock.calls.length, records: mockBodyApis[0].overview.mock.calls.length }).toEqual(initial);
-    fireEvent.press(view.getByTestId('body-trend-chart-2026-09-15-mark'));
+    pressFittedMark(view.getByTestId('body-trend-chart-2026-09-15-mark'));
     expect(view.queryByRole('button', { name: 'Ver registro original' })).toBeNull();
   });
   it('updates the selected value after a confirmed invalidation, and removes navigation to deleted or moved sources', async () => {
     const view = wrap(<BodyTrendsScreen />); await flush();
-    fireEvent.press(view.getByTestId('body-trend-chart-2026-09-20-mark'));
+    pressFittedMark(view.getByTestId('body-trend-chart-2026-09-20-mark'));
     const edited = body(); edited.metrics[0].observations[1] = obs('2026-09-20', 81.25, true);
     mockBody.mockResolvedValue(ok(edited));
     act(() => invalidateConfirmedReads(mockClient, '/api/mobile/v1/body/weights/2026-09-20')); await flush();
@@ -388,7 +389,7 @@ describe('Body Trends', () => {
   });
   it('retains a confirmed selection with an honest refresh error, then resets it for another period or account', async () => {
     const view = wrap(<BodyTrendsScreen />); await flush();
-    fireEvent.press(view.getByTestId('body-trend-chart-2026-09-20-mark'));
+    pressFittedMark(view.getByTestId('body-trend-chart-2026-09-20-mark'));
     mockBody.mockResolvedValueOnce(lost);
     act(() => view.UNSAFE_getByType(RefreshControl).props.onRefresh()); await flush();
     expect(view.getByText('No se pudo actualizar. Mostramos la última lectura confirmada.')).toBeTruthy();
@@ -396,7 +397,7 @@ describe('Body Trends', () => {
     fireEvent.press(view.getByTestId('body-period-picker'));
     fireEvent.press(view.getByText('Últimos 7 días')); await flush();
     expect(view.queryByRole('button', { name: 'Ver registro original' })).toBeNull();
-    fireEvent.press(view.getByTestId('body-trend-chart-2026-09-20-mark'));
+    pressFittedMark(view.getByTestId('body-trend-chart-2026-09-20-mark'));
     mockOwner = 'different-owner'; mockActiveClient = {} as MobileApiClient;
     const next = body(); next.metrics[0].observations = [obs('2026-10-01', 70)]; next.metrics[0].last = next.metrics[0].first = obs('2026-10-01', 70); next.metrics[0].change = null; next.metrics[0].trend = 'unavailable';
     mockBody.mockResolvedValue(ok(next));
@@ -414,7 +415,7 @@ describe('Body Trends', () => {
     const view = wrap(<BodyTrendsScreen />); await flush();
     expect(view.getByTestId('body-invalid-summary')).toBeTruthy();
     expect(view.queryByTestId('body-trend-chart-2026-10-02-mark')).toBeNull();
-    fireEvent.press(view.getByTestId('body-trend-chart-2026-10-02-gap'));
+    pressFittedMark(view.getByTestId('body-trend-chart-2026-10-02-gap'));
     expect(view.getByText('Peso · 0 kg')).toBeTruthy();
     expect(view.getByText(/Registro no válido como peso corporal/)).toBeTruthy();
     expect(view.getByRole('button', { name: 'Ver registro original' })).toBeTruthy();
@@ -428,7 +429,7 @@ describe('Body Trends', () => {
     expect(view.queryByText('↗ 80,5 kg')).toBeNull();
     expect(view.queryByText(/Tendencia en bajada/)).toBeNull();
     expect(view.queryByText(/desde 0 kg/)).toBeNull();
-    fireEvent.press(view.getByTestId('body-trend-chart-2026-10-01-mark'));
+    pressFittedMark(view.getByTestId('body-trend-chart-2026-10-01-mark'));
     expect(view.getByText('Peso · 80,5 kg')).toBeTruthy();
   });
   it('distinguishes two observations from supported trends and never fabricates reference points', async () => {
@@ -438,7 +439,7 @@ describe('Body Trends', () => {
     expect(view.getByText('Dos registros: muestran una diferencia, todavía con evidencia limitada.')).toBeTruthy();
     expect(view.queryByText(/Tendencia en bajada/)).toBeNull();
     expect(view.getByText(/4 registros en la referencia/)).toBeTruthy();
-    expect(within(view.getByTestId('body-trend-chart')).getAllByRole('button')).toHaveLength(2);
+    expect(view.getAllByTestId(/^body-trend-chart-\d{4}-\d{2}-\d{2}-mark$/)).toHaveLength(2);
     const reference = within(view.getByTestId('body-reference-summary'));
     expect(reference.getByText('Comparación · 1–5 sep')).toBeTruthy(); expect(reference.getByText('= 0 kg')).toBeTruthy();
     expect(view.getByTestId('body-reference-summary').props.accessibilityLabel).toBe('Comparación con 1–5 sep: sin cambio, 4 registros. El gráfico muestra solo el período elegido.');
@@ -463,7 +464,7 @@ describe('Body Trends', () => {
     mockBody.mockResolvedValue(ok(data)); mockParams = { metric: 'body.weight' };
     const selected: ProgressRangeState = { unit: 'custom', anchor: TODAY, custom: { start: '2025-12-30', end: '2026-01-03' }, compare: { kind: 'custom', range: { start: '2025-12-20', end: '2025-12-24' } } };
     const view = wrap(<BodyTrendsScreen />, selected); await flush();
-    fireEvent.press(view.getByTestId('body-trend-chart-2025-12-31-mark'));
+    pressFittedMark(view.getByTestId('body-trend-chart-2025-12-31-mark'));
     expect(view.getByText('Peso · 80 kg')).toBeTruthy();
     fireEvent.press(view.getByRole('button', { name: 'Ver registro original' }));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/progress/body', params: { date: '2025-12-31', bodyChartReturn: '1', bodyChartMetric: 'body.weight' } });
@@ -481,7 +482,7 @@ describe('Body Trends', () => {
     const first = body(); first.metrics = [first.metrics[1]];
     mockBody.mockResolvedValue(ok(first));
     const view = wrap(<BodyTrendsScreen />); await flush();
-    fireEvent.press(view.getByTestId('body-trend-chart-2026-09-15-mark'));
+    pressFittedMark(view.getByTestId('body-trend-chart-2026-09-15-mark'));
     expect(view.getByText('Cintura · 88 cm')).toBeTruthy();
     const next = body(); next.metrics[0].observations.splice(1, 0, obs('2026-09-15', 85));
     mockBody.mockResolvedValue(ok(next));
@@ -495,8 +496,8 @@ describe('Body Trends', () => {
     const dimensions = jest.spyOn(rn, 'useWindowDimensions').mockReturnValue({ width: 320, height: 700, scale: 3, fontScale: 2 });
     const view = wrap(<BodyTrendsScreen />); await flush();
     const chart = within(view.getByTestId('body-trend-chart'));
-    for (const point of chart.getAllByRole('button')) expect(rn.StyleSheet.flatten(point.props.style).minWidth).toBeGreaterThanOrEqual(44);
-    fireEvent.press(chart.getByRole('button', { name: '20 sep 2026, 81 kg · Importado · sheet' }));
+    expect(rn.StyleSheet.flatten(chart.getByTestId('body-trend-chart-plot').props.style).minHeight).toBeGreaterThanOrEqual(44);
+    pressFittedMark(view.getByTestId('body-trend-chart-2026-09-20-mark'));
     expect(view.getByTestId('body-trend-chart-2026-09-20-mark').props.accessibilityState.selected).toBe(true);
     expect(view.getByText('Peso · 81 kg')).toBeTruthy();
     expect(view.getByRole('button', { name: 'Ver registro original' })).toBeTruthy();
@@ -582,7 +583,7 @@ describe('Body Trends', () => {
     expect(view.getByTestId('body-trend-chart-2026-09-20-mark').props.accessibilityState).toEqual({ selected: true });
     expect(within(view.getByTestId('body-point-inspection')).getByText('Ver registro original')).toBeTruthy();
     expect(view.getByTestId('portada-point-note').props.accessibilityLabel).toMatch(/Seleccionado en el gráfico/);
-    fireEvent.press(view.getByTestId('body-trend-chart-2026-09-10-mark'));
+    pressFittedMark(view.getByTestId('body-trend-chart-2026-09-10-mark'));
     expect(view.queryByTestId('portada-point-note')).toBeNull();
     view.unmount();
     mockParams = { point: '2026-09-14~2026-09-20', pointValue: '80', pointText: '14–20 sep 2026: 80 kg' };
