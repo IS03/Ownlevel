@@ -4,13 +4,15 @@ Pregunta: ¿a partir de qué ejercicio de una rutina baja tu rendimiento? La res
 
 ## Datos
 - **Orden:** el `exercise_order` de cada sesión tal como quedó, incluido lo que se movió durante la sesión (`mobile_reorder_workout_exercises`). Las posiciones van de 1 a n y los huecos se cierran.
-- **Progreso:** el cambio medido de #533 (`change.pct`, reps a igual peso frente a la vez anterior, en los dos carriles). Solo entran las bases de repeticiones. Las subidas de peso quedan aparte.
+- **Progreso (método /2):** cuántas veces subiste frente a la vez anterior. Cuenta como subida tener más reps con el mismo peso (#533) o más peso, siempre que nada baje. Si hay señales en las dos direcciones o no hubo comparación, esa vez no cuenta.
+  - No se usa la mediana del %: la mayoría de las comparaciones salen «igual» y la mediana daría 0 en todas las posiciones.
+  - Por posición se publican `compared`, `up`, `same`, `down`, `rate` (la proporción de subidas) y `level` (esa proporción frente a las posiciones 1–2).
 - **Objetivo:** las series completadas que tienen `target_reps` > 0 y reps registradas. Una serie llega si `actual_reps ≥ target_reps`. Sin objetivo no cuenta, nunca es 0 %.
 - **Ventana:** los últimos 90 días lógicos y solo sesiones completadas de la rutina.
 - **Lectura:** el snapshot del método 2 en caché, más una lectura propia de los bloques de esa rutina (por usuario, rutina, estado y fecha), bajo el mismo contador de revisión. Si la revisión cambia entre las dos lecturas, se reintenta una vez; si vuelve a cambiar, la vista queda no disponible.
 
 ## Cortes
-- **Base:** las posiciones 1–2 juntas. En progreso es la mediana de sus cambios; en objetivo, la proporción de series que llegaron. Necesita 5 cambios de 3 sesiones, o 9 series con objetivo de 3 sesiones. Con menos, el estado es `insufficient`. Si la base de progreso es menor a 0,5 % por sesión, el estado es `no_baseline`: no hay desde dónde medir una baja.
+- **Base:** las posiciones 1–2 juntas. En progreso es la proporción de veces que subiste; en objetivo, la proporción de series que llegaron. Necesita 5 cambios de 3 sesiones, o 9 series con objetivo de 3 sesiones. Con menos, el estado es `insufficient`. Si en las posiciones 1–2 subís en menos del 10 % de las veces, el estado es `no_baseline`: no hay desde dónde medir una baja.
 - **Pérdida:** en progreso es relativa (`1 − valor/base`); en objetivo se mide en puntos (`base − tasa`). Cada posición necesita los mismos mínimos que la base.
 - **Primer corte:** la primera posición ≥ 3 donde la pérdida llega al 10 %, siempre que ninguna posición posterior vuelva a quedar por debajo de ese 10 %.
 - **Segundo corte:** la primera posición posterior en la que todas las que siguen son al menos 15 puntos peores que todas las que quedan entre los dos cortes.
