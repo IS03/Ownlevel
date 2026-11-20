@@ -234,7 +234,7 @@ describe('routine library', () => {
     expect(row).not.toBeNull();
     const style = StyleSheet.flatten(row!.props.style({ pressed: true }));
     expect(style.opacity ?? 1).toBe(1);
-    expect(style.backgroundColor).toBe(dark ? '#27272A' : '#EAE7DF');
+    expect(style.backgroundColor).toBe(dark ? '#27272A' : '#DFD8C8');
   });
 
   it('requires confirmation before passing a swipe action to the shared starter', async () => {

@@ -208,7 +208,7 @@ describe('Nutrition', () => {
     expect(view.getByLabelText('Calorías consumidas: 1.840 de 2.600 kcal, 760 restantes')).toBeTruthy();
     expect(view.queryByTestId('home-calories-left')).toBeNull();
     expect(view.getByText('128 / 160 g')).toBeTruthy();
-    expect(StyleSheet.flatten(view.getByTestId('home-calorie-bar').props.style)).toMatchObject({ height: 8, backgroundColor: '#EAE7DF' });
+    expect(StyleSheet.flatten(view.getByTestId('home-calorie-bar').props.style)).toMatchObject({ height: 8, backgroundColor: '#DFD8C8' });
     expect(StyleSheet.flatten(view.getByTestId('home-calorie-bar-fill').props.style)).toMatchObject({ backgroundColor: '#705F36' });
     expect(StyleSheet.flatten(view.getByTestId('home-protein-bar').props.style)).toMatchObject({ height: 5 });
     expect(view.queryByTestId('home-calorie-ring')).toBeNull();
@@ -339,7 +339,7 @@ describe('Esta semana', () => {
     for (const date of ['2026-10-05', '2026-10-06', '2026-10-08']) expect(view.getByTestId(`home-week-marker-${date}-fill`)).toBeTruthy();
     for (const date of ['2026-10-07', '2026-10-09', TODAY, '2026-10-11']) {
       expect(view.queryByTestId(`home-week-marker-${date}-fill`)).toBeNull();
-      expect(StyleSheet.flatten(view.getByTestId(`home-week-marker-${date}`).props.style)).toMatchObject({ backgroundColor: '#EAE7DF', height: 8, borderRadius: 999 });
+      expect(StyleSheet.flatten(view.getByTestId(`home-week-marker-${date}`).props.style)).toMatchObject({ backgroundColor: '#DFD8C8', height: 8, borderRadius: 999 });
     }
     const today = view.getByTestId('home-week-today');
     expect(today.props.children).toBe('S');
@@ -462,8 +462,8 @@ describe('Screen states', () => {
     expect(band.borderRadius ?? 0).toBe(0);
     expect(band.borderWidth ?? 0).toBe(0);
     for (const id of ['home-band-fade-top', 'home-band-solid', 'home-band-fade-bottom']) expect(view.queryByTestId(id)).toBeNull();
-    expect(StyleSheet.flatten(view.getByTestId('home-calorie-split').props.style)).toMatchObject({ borderTopColor: '#E0DCD0', paddingTop: 16 });
-    expect(StyleSheet.flatten(view.getByText('Calorías consumidas').props.style)).toMatchObject({ color: '#62626A' });
+    expect(StyleSheet.flatten(view.getByTestId('home-calorie-split').props.style)).toMatchObject({ borderTopColor: '#D8D0BF', paddingTop: 16 });
+    expect(StyleSheet.flatten(view.getByText('Calorías consumidas').props.style)).toMatchObject({ color: '#5A5A62' });
   });
 
   it('dark: no band; brand tracks and secondary grey', () => {
