@@ -8,16 +8,19 @@ export const bodyValid = (value: number) => Number.isFinite(value) && value > 0;
 export const observationDates = (metrics: readonly ProgressBodyMetric[]) =>
   [...new Set(metrics.flatMap(m => m.observations.filter(o => bodyValid(o.value)).map(o => o.date)))].sort();
 
-/** Prefer the latest pair that shares an actual circumference, then actual weight dates. */
+/**
+ * The whole chosen period: the first and last dates of the circumference recorded over the widest span (ties: the most recent),
+ * else the first and last valid weighings. Consecutive weighings only show day-to-day noise; the person can still pick any pair.
+ */
 export function defaultBodyPair(metrics: readonly ProgressBodyMetric[]) {
-  const candidates = metrics.filter(m => m.key !== 'body.weight').flatMap(m => {
-    const dates = observationDates([m]);
-    return dates.length > 1 ? [{ a: dates.at(-2)!, b: dates.at(-1)! }] : [];
-  }).sort((x, y) => y.b.localeCompare(x.b) || y.a.localeCompare(x.a));
-  if (candidates[0]) return candidates[0];
-  const weights = observationDates(metrics.filter(m => m.key === 'body.weight'));
-  return weights.length > 1 ? { a: weights.at(-2)!, b: weights.at(-1)! } : null;
+  const span = (dates: string[]) => dates.length > 1 ? { a: dates[0], b: dates.at(-1)!, days: daysBetween(dates[0], dates.at(-1)!) } : null;
+  const best = metrics.filter(m => m.key !== 'body.weight').map(m => span(observationDates([m]))).filter(p => p !== null)
+    .sort((x, y) => y.days - x.days || y.b.localeCompare(x.b))[0] ?? span(observationDates(metrics.filter(m => m.key === 'body.weight')));
+  return best ? { a: best.a, b: best.b } : null;
 }
+/** Whether any circumference has two dates in the period: without it the comparison can only show weight. */
+export const measuresComparable = (metrics: readonly ProgressBodyMetric[]) =>
+  metrics.some(m => m.key !== 'body.weight' && observationDates([m]).length > 1);
 export function bodyInterval(a: string, b: string) {
   if (!a || !b || a >= b) return null;
   const elapsed = daysBetween(a, b) - 1;

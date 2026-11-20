@@ -7,7 +7,7 @@ import { AppIcon, AppSheet, AppText, Button, Heading, brandTokens, radius, sizes
 import { formatBodyDate } from '@/body/body-model';
 import { bodyObservationHref } from './body-chart-navigation';
 import { arrowDelta, formatValue } from './progress-format';
-import { bodyInterval, defaultBodyPair, equivalentPerWeek } from './body-context-model';
+import { bodyInterval, defaultBodyPair, equivalentPerWeek, measuresComparable } from './body-context-model';
 import { BodyIntervalContext, WeeklyWeightReference } from './body-context';
 
 export const BODY_CHOICES = [
@@ -142,7 +142,7 @@ export function BodyRecordComparison({ metrics, today }: { metrics: ProgressBody
   const comparable = rows.filter(row => row.change !== null);
   const missing = rows.filter(row => row.change === null);
   return <View style={styles.section} testID="body-record-comparison">
-    <Heading level={2}>Qué cambió en tu cuerpo</Heading>
+    <Heading level={2}>{metrics.length === 1 ? 'Comparar dos fechas' : 'Qué cambió en tu cuerpo'}</Heading>
     <AppText muted variant="footnote">Dos registros, lado a lado. Solo dentro del período elegido.</AppText>
     <Button label={expanded ? 'Cerrar comparación de registros' : 'Comparar registros'} variant="secondary" disabled={dates.length < 2} onPress={() => setOpen(v => !v)} />
     {dates.length < 2 ? <AppText muted variant="footnote">Necesitás registros en dos fechas distintas para comparar.</AppText> : null}
@@ -152,24 +152,29 @@ export function BodyRecordComparison({ metrics, today }: { metrics: ProgressBody
         <View style={styles.grow}><DateChoice dates={dates.filter(d => d > a)} label="Hasta" value={b} onChange={date => setPair({ a, b: date })} /></View>
       </View>
       <AppText muted numeric variant="caption">{comparable.length} {comparable.length === 1 ? 'medida con dato' : 'medidas con dato'} en ambas fechas.</AppText>
-      {interval ? <AppText muted numeric variant="footnote">{interval.elapsed} {interval.elapsed === 1 ? 'día' : 'días'} entre registros{interval.short ? ' · Intervalo corto: diferencia entre registros, no una tendencia' : ''}.</AppText> : null}
-      {comparable.map(row => <View key={row.metric.key} style={styles.comparisonRow}>
-        <AppText variant="headline">{row.metric.label}</AppText>
-        <AppText numeric>{formatValue(row.first!.value, row.metric.unit)} → {formatValue(row.last!.value, row.metric.unit)}</AppText>
-        <AppText numeric muted variant="footnote">{difference(row.change!, row.metric.unit)} entre esos registros</AppText>
-        {row.metric.key !== 'body.weight' ? <AppText muted variant="caption">La diferencia puede incluir variación al medirte; no confirma un cambio de músculo o grasa.</AppText> : null}
-        {interval && equivalentPerWeek(row.change!, interval.elapsed) !== null ? <AppText muted numeric variant="caption">{difference(equivalentPerWeek(row.change!, interval.elapsed)!, row.metric.unit)} · equivalente por semana entre estos registros</AppText> : null}
-      </View>)}
+      {interval ? <AppText muted numeric variant="footnote">{interval.elapsed} {interval.elapsed === 1 ? 'día' : 'días'} entre registros{interval.short ? '. Es poco tiempo: muestra la diferencia entre dos días, no una tendencia' : ''}.</AppText> : null}
+      {comparable.some(row => row.metric.key !== 'body.weight') ? <AppText muted variant="caption">Una medida puede variar algunos milímetros según cómo te medís, y no separa músculo de grasa.</AppText> : null}
+      {comparable.map(row => {
+        const weekly = row.metric.key === 'body.weight' && interval && Math.abs(row.change!) >= 1e-9 ? equivalentPerWeek(row.change!, interval.elapsed) : null;
+        return <View key={row.metric.key} style={styles.comparisonRow} accessible accessibilityLabel={`${row.metric.label}: ${formatValue(row.first!.value, row.metric.unit)} a ${formatValue(row.last!.value, row.metric.unit)}, ${difference(row.change!, row.metric.unit)}`}>
+          <View style={styles.comparisonHead}>
+            <AppText variant="headline">{row.metric.label}</AppText>
+            <AppText numeric variant="headline">{difference(row.change!, row.metric.unit)}</AppText>
+          </View>
+          <AppText numeric muted variant="footnote">{formatValue(row.first!.value, row.metric.unit)} → {formatValue(row.last!.value, row.metric.unit)}{weekly !== null ? ` · ≈ ${difference(weekly, row.metric.unit)} por semana` : ''}</AppText>
+        </View>;
+      })}
+      {!measuresComparable(metrics) && metrics.some(m => m.key !== 'body.weight' && m.observations.length) ? <AppText muted variant="footnote">Tus medidas tienen una sola fecha en este período. Para compararlas, elegí un período más largo.</AppText> : null}
       {missing.length ? <Button label={`${missingOpen ? 'Ocultar' : 'Ver'} medidas sin dato para comparar (${missing.length})`} variant="quiet" onPress={() => setMissingOpen(v => !v)} /> : null}
       {missingOpen ? missing.map(row => <View key={row.metric.key} style={styles.comparisonRow}>
         <AppText variant="headline">{row.metric.label}</AppText>
         <AppText numeric muted variant="footnote">{row.first ? formatValue(row.first.value, row.metric.unit) : 'Sin registro'} → {row.last ? formatValue(row.last.value, row.metric.unit) : 'Sin registro'}</AppText>
       </View>) : null}
+      <AppText muted variant="caption">Cada valor es el de esa fecha: no completamos huecos con registros anteriores.</AppText>
       {today && interval ? <>
-        <WeeklyWeightReference key={`${a}|${b}`} a={a} b={b} today={today} />
+        {metrics.some(m => m.key === 'body.weight') ? <WeeklyWeightReference key={`${a}|${b}`} a={a} b={b} today={today} /> : null}
         <BodyIntervalContext key={`context|${a}|${b}`} range={interval.context} />
       </> : null}
-      <AppText muted variant="caption">Cada valor pertenece a esa fecha. No completamos huecos con registros anteriores. Un cambio no explica por sí solo su causa ni la composición corporal.</AppText>
     </> : null}
   </View>;
 }
@@ -206,4 +211,5 @@ const styles = StyleSheet.create({
   pickerRow: { minHeight: sizes.touchTarget, paddingVertical: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   datePair: { flexDirection: 'row', gap: spacing.md }, stacked: { flexDirection: 'column' }, grow: { flex: 1 },
   comparisonRow: { gap: spacing.xs, paddingVertical: spacing.sm },
+  comparisonHead: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', columnGap: spacing.md },
 });

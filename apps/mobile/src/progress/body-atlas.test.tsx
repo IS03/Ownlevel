@@ -42,6 +42,22 @@ describe('Body atlas data truth', () => {
     expect(view.getByText('Sin registro → Sin registro')).toBeTruthy();
     expect(view.queryByText('80 cm')).toBeNull();
   });
+  it('says once that measures vary, keeps the weekly pace to weight and points to a longer period for single-date measures', () => {
+    const view = wrap(<BodyRecordComparison metrics={data.metrics} />);
+    fireEvent.press(view.getByRole('button', { name: 'Comparar registros' }));
+    expect(view.getByText('Tus medidas tienen una sola fecha en este período. Para compararlas, elegí un período más largo.')).toBeTruthy();
+    expect(view.getByText('72 kg → 71,8 kg')).toBeTruthy();
+    expect(view.queryByText(/por semana/)).toBeNull();
+    view.unmount();
+    const chest = metric('body.chest', 'Pecho', [obs('2026-10-01', 95), obs('2026-10-29', 96)]);
+    const hip = metric('body.hip', 'Cadera', [obs('2026-10-01', 90), obs('2026-10-29', 90)]);
+    const long = wrap(<BodyRecordComparison metrics={[metric('body.weight', 'Peso', [obs('2026-10-01', 70), obs('2026-10-29', 72)]), chest, hip]} />);
+    fireEvent.press(long.getByRole('button', { name: 'Comparar registros' }));
+    expect(long.getAllByText(/variar algunos milímetros/)).toHaveLength(1);
+    expect(long.getByText('70 kg → 72 kg · ≈ ↗ 0,5 kg por semana')).toBeTruthy();
+    expect(long.getByText('90 cm → 90 cm')).toBeTruthy();
+    expect(long.getByText('28 días entre registros.')).toBeTruthy();
+  });
   it('offers all eleven dimensions, including dimensions never recorded', () => {
     const view = wrap(<BodyMetricPicker selected="body.weight" />);
     fireEvent.press(view.getByRole('button', { name: 'Explorar · Peso' }));

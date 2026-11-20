@@ -38,3 +38,19 @@ Plan: [cuerpo-contexto-y-relaciones-plan.md](cuerpo-contexto-y-relaciones-plan.m
 - Navegación de Nutrición/Métricas: retorno a la medida corporal retenida.
 
 La señal científica sigue siendo descriptiva: coincidencias, diferencias y cobertura; no causalidad, composición corporal o reparto de kilos entre zonas.
+
+## Revisión de Claude (19/11/2026)
+
+Revisado en el Simulador con «Este mes» y «Últimos 90 días». Corregido en el PR siguiente:
+
+- **Fechas por defecto.** Con pesajes diarios, comparaba los dos últimos (un día de diferencia). Ahora toma la primera y la última fecha del período: la de la medida con más tiempo entre registros o, si no hay, la del peso.
+- **Si una medida tiene una sola fecha**, la pantalla avisa que hay que elegir un período más largo.
+- **Advertencias.** La de «variación al medirte» se repetía en cada fila y el ritmo semanal aparecía en cada medida, incluso con 0 cm. Ahora la advertencia va una sola vez y el ritmo semanal solo con peso, en la misma línea.
+- **Filas** con la diferencia a la derecha y los valores debajo. El encabezado duplicado «Mirar una medida en detalle» se quitó, y con una sola medida el título es «Comparar dos fechas».
+- **Alimentación entre fechas.** El selector ofrecía cuatro nutrientes que mostraban lo mismo; ahora es una opción. Los promedios se redondean como en Nutrición (2.805 kcal, 161 g). Los días solo aparecen si difieren de la cobertura y el objetivo se lee en una línea.
+- **Entrenamiento.**
+  - Plurales corregidos («1 sesión», «1 serie»).
+  - Una sola aclaración: un grupo por ejercicio y el pecho incluye la espalda.
+  - Se quitó «Ver sesiones en el historial», que saltaba a Entrenar sin filtrar fechas.
+- **Selector de métricas:** «Tu métrica · unidad» en vez de la unidad sola.
+- **`progress-screens.test.tsx`** seguía esperando el texto anterior al cambio de #589 y fallaba en `main`.
