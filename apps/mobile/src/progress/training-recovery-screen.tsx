@@ -6,7 +6,7 @@ import { useMobileApi } from '@/api';
 import { useCachedRead } from '@/api/use-cached-read';
 import { fetchTrainingRecovery, RECOVERY_BINS, recoveryReadKey, type ProgressTrainingRecovery, type RecoveryGroup, type RecoveryRow, type RecoverySelection } from '@/api/training-recovery';
 import { progressQueryParams, type ProgressQuery } from '@/api/progress';
-import { AppSheet, AppText, Button, GlassSurface, Heading, InlineUnavailable, LinkRow, ListRow, SkeletonBlock, brandTokens, radius, spacing } from '@/design-system';
+import { AppSheet, AppText, GlassSurface, Heading, InlineUnavailable, LinkRow, ListRow, SkeletonBlock, brandTokens, radius, spacing } from '@/design-system';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { haptics } from '@/platform/haptics';
 import { ProgressScroll } from './progress-scroll';
@@ -40,7 +40,7 @@ function RecoveryReader({ query }: { query: ProgressQuery }) {
   const shell = (children: React.ReactNode) => <ProgressScroll title="Entre sesiones" testID="training-recovery-screen" comparisonControls={false}
     refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} />}>{children}</ProgressScroll>;
   if (!data) return shell(<>{state.status === 'loading' ? <><SkeletonBlock height={64} /><SkeletonBlock height={180} /></> : <InlineUnavailable message="No pudimos traer los intervalos entre sesiones." actionLabel="Reintentar" onAction={() => void refresh()} />}
-    {selection.routine !== null ? <Button label="Quitar filtro de rutina" variant="quiet" onPress={() => change({ routine: null, bin: null })} /> : null}</>);
+    {selection.routine !== null ? <LinkRow kind="back" label="Ver todas las rutinas" onPress={() => change({ routine: null, bin: null })} /> : null}</>);
   const group = selection.bin === null ? data.total : data.groups[selection.bin]!;
   const open = (id: string) => { haptics.selection(); router.push({ pathname: '/(tabs)/progress/training-session/[id]', params: { id } }); };
   return shell(<>
@@ -57,7 +57,7 @@ function RecoveryReader({ query }: { query: ProgressQuery }) {
     <TrainingTimingColumns testID="recovery-chart" prefix="recovery-bin" label="Intervalos entre el final anterior y el inicio siguiente" caption="Horas transcurridas · no certifican recuperación física"
       maximum={metric === 'improvements' ? 100 : 5} selected={selection.bin} onSelect={bin => change({ bin })}
       items={data.groups.map((g, i) => ({ label: ['<24 h', '24–48 h', '48–72 h', '3–7 d', '7 d +'][i]!, value: metricValue(g, metric), spoken: `${RECOVERY_BINS[i]!.label}. ${metricSay(g, metric)}. ${g.sessions} sesiones.` }))} />
-    {selection.bin !== null ? <Button label="Ver todos los intervalos" variant="quiet" onPress={() => change({ bin: null })} /> : null}
+    {selection.bin !== null ? <LinkRow kind="back" label="Ver todos los intervalos" onPress={() => change({ bin: null })} /> : null}
     <View style={styles.block}>
       <Heading level={2}>Cómo llegaste y cómo te fue</Heading>
       <View style={[styles.summary, fontScale > 1.3 && styles.stacked]}>
@@ -70,7 +70,7 @@ function RecoveryReader({ query }: { query: ProgressQuery }) {
       </View>
       <AppText numeric variant="headline">{metricSay(group, 'improvements')}</AppText>
       <AppText muted numeric variant="footnote">{group.performance.stable} sin cambio observado · {group.performance.declined} bajaron · {group.performance.ambiguous} con señales mixtas · {group.performance.insufficient} sin comparación suficiente.</AppText>
-      <AppText muted variant="footnote">Cada ejercicio se compara con su sesión anterior compatible. Esto describe coincidencias; no demuestra el efecto del intervalo.</AppText>
+      <AppText muted variant="footnote">Cada ejercicio, frente a su vez anterior. Describe coincidencias; no demuestra el efecto del intervalo.</AppText>
     </View>
     <View style={styles.block}><Heading level={2}>Las sesiones detrás</Heading>
       {!current ? <><AppText muted variant="footnote">{state.status === 'unavailable' ? 'No pudimos traer esta selección.' : 'Actualizando sesiones…'}</AppText><SkeletonBlock height={64} /></> : <>
@@ -82,8 +82,8 @@ function RecoveryReader({ query }: { query: ProgressQuery }) {
           {selection.scope === 'routine' && row.gap.state === 'paired' ? <AppText muted numeric variant="footnote">{row.gap.intervening === null ? 'No podemos ubicar todos los entrenamientos intermedios.' : `${row.gap.intervening} ${row.gap.intervening === 1 ? 'entrenamiento registrado' : 'entrenamientos registrados'} en el medio.`}</AppText> : null}
           {row.gap.previous ? <LinkRow label={`Anterior: ${row.gap.previous.name}`} value={row.gap.previous.date.split('-').reverse().join('/')} onPress={() => open(row.gap.previous!.id)} testID={`recovery-previous-${row.id}`} /> : null}
         </View>)}
-        <View style={styles.summary}>{selection.offset > 0 ? <Button label="Anteriores" variant="quiet" onPress={() => change({ offset: Math.max(0, selection.offset - 30) })} /> : null}
-          {data.page.nextOffset !== null ? <Button label="Siguientes" variant="quiet" onPress={() => change({ offset: data.page.nextOffset! })} /> : null}</View>
+        {selection.offset > 0 ? <LinkRow kind="back" label="Sesiones anteriores" onPress={() => change({ offset: Math.max(0, selection.offset - 30) })} /> : null}
+        {data.page.nextOffset !== null ? <LinkRow label="Más sesiones" onPress={() => change({ offset: data.page.nextOffset! })} /> : null}
       </>}
     </View>
     <AppText muted variant="footnote">{data.coverage.currentTimeExcluded + Object.values(data.coverage.excluded).reduce((a, b) => a + b, 0)} sesiones sin intervalo calculable. Los huecos no se convierten en cero ni en días de descanso.</AppText>
@@ -97,6 +97,7 @@ function RecoveryReader({ query }: { query: ProgressQuery }) {
         <AppText>En Misma rutina mostramos otros entrenamientos intermedios. El intervalo no equivale a descanso completo ni confirma qué actividad hiciste fuera de la app.</AppText>
         <AppText>El período y el filtro eligen qué sesiones mirar. Su antecedente puede estar antes del período o ser de otra rutina en General. La referencia de rendimiento sigue siendo la anterior compatible de cada ejercicio.</AppText>
         <AppText muted numeric>{data.coverage.currentTimeExcluded} con inicio actual no utilizable · {data.coverage.excluded.no_previous} sin anterior registrada · {data.coverage.excluded.no_routine} sin rutina identificada · {data.coverage.excluded.invalid_previous} con horario anterior incompleto · {data.coverage.excluded.uncertain_order} con orden incierto · {data.coverage.excluded.overlap} con superposición.</AppText>
+        <AppText>Mejoras compara cada ejercicio con su vez anterior. Si no registraste la variante (agarre, banco), se compara igual, como en Comparaciones: un cambio no registrado puede mover el resultado.</AppText>
         <AppText>Energía y fatiga usan solo respuestas previas elegibles. Cada una conserva su cantidad y distribución. Una respuesta posterior o tardía no reemplaza lo que registraste al llegar.</AppText>
         <AppText muted>Las franjas organizan tus datos, no son recomendaciones de recuperación. Carga anterior, sueño, comidas, rutina y paso del tiempo también pueden coincidir con los resultados. Pocos registros no definen un patrón.</AppText>
       </>}

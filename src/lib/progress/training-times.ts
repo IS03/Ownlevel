@@ -1,5 +1,5 @@
 import { cordobaDateOf } from '../phase2/cordoba-date';
-import { buildPerformanceInsightsV1 } from './performance-insights';
+import { buildPerformanceInsightsPartialV1, buildPerformanceInsightsV1 } from './performance-insights';
 import { contextIssue, contextKey } from './performance-insights/exposure';
 import { instantMs, parseSessionFeelings, toPerformanceSessions } from './insights-engine/source-adapter';
 import { priorFeelingFact } from './insights-engine/prior-feelings';
@@ -36,6 +36,12 @@ export function prepareTrainingTimes(source: InsightsSource, options: { today: s
   const performance = buildPerformanceInsightsV1({ sessions: adapted.sessions, historyCoverage: 'complete', exclusionDetail: 'summary', output: 'compact' });
   if (adapted.orphanRows || performance.integrity !== 'valid') throw new Error('Invalid training timing source');
   const results = new Map(performance.sessions.map(s => [s.sessionId, s]));
+  // Most recorded exercises have no historical variant, so the strict comparator cannot compare them. The partial one, the same
+  // Comparaciones shows, compares them with their previous time keeping the variant unknown on both sides. It only fills an
+  // exercise the strict one left insufficient: one exposure is never counted twice.
+  const partial = buildPerformanceInsightsPartialV1({ sessions: adapted.sessions, historyCoverage: 'complete', exclusionDetail: 'summary', output: 'compact' });
+  if (partial.integrity !== 'valid') throw new Error('Invalid training timing source');
+  const partialResults = new Map(partial.sessions.map(s => [s.sessionId, new Map(s.exercises.map(e => [e.exerciseId.toLowerCase(), e.reading]))]));
   const blocksBySession = new Map(adapted.sessions.map(s => [s.id, s.exercises]));
   const facts = new Map(source.feelings.map(f => [f.sessionId, f.facts]));
   const setsByBlock = new Map<string, typeof source.sets[number][]>();
@@ -76,9 +82,12 @@ export function prepareTrainingTimes(source: InsightsSource, options: { today: s
     const energy = priorFeelingFact({ feelings: parsed.values, unreadableFeelings: parsed.unreadable }, facts.get(s.id), 'energyPre');
     const fatigue = priorFeelingFact({ feelings: parsed.values, unreadableFeelings: parsed.unreadable }, facts.get(s.id), 'fatiguePre');
     const counts = emptyCounts(), selectedId = selection.execution ? executions.get(selection.execution)!.exerciseId : null;
+    const partialOf = partialResults.get(s.id);
     for (const exercise of results.get(s.id)?.exercises ?? []) {
       if (selectedId && exercise.exerciseId !== selectedId) continue;
-      const key = ({ improved: 'improved', observed_stable: 'stable', declined: 'declined', ambiguous_evidence: 'ambiguous', insufficient_comparison: 'insufficient' } as const)[exercise.status];
+      const strict = ({ improved: 'improved', observed_stable: 'stable', declined: 'declined', ambiguous_evidence: 'ambiguous', insufficient_comparison: 'insufficient' } as const)[exercise.status];
+      const reading = strict === 'insufficient' ? partialOf?.get(exercise.exerciseId.toLowerCase()) : undefined;
+      const key = reading ? ({ higher_record: 'improved', same_record: 'stable', lower_record: 'declined', ambiguous_evidence: 'ambiguous', insufficient_comparison: 'insufficient' } as const)[reading] : strict;
       counts[key]++;
     }
     const candidates = selection.execution ? selected.filter(b => b.completed && !contextIssue(b.context)).flatMap(b => b.sets).filter(set => set.completed && set.amount !== null && Number.isSafeInteger(set.amount) && set.amount > 0 && set.load !== null && Number.isFinite(set.load) && set.load >= 0 && (executions.get(selection.execution!)!.unit !== 'lingotes' || Number.isSafeInteger(set.load))) : [];
