@@ -1,5 +1,5 @@
 import type { MobileApiClient } from './client';
-import { parsePerformanceInsights, PERFORMANCE_INSIGHTS_PATH, type InsightsPinnedPeriodSummary, type InsightsPeriodFeelings, type InsightsPeriodNutrition, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsOwnView, type InsightsSummary } from '../../../../src/lib/mobile-api/performance-insights-contract';
+import { parsePerformanceInsights, PERFORMANCE_INSIGHTS_PATH, type InsightsPinnedPeriodSummary, type InsightsPeriodFeelings, type InsightsPeriodNutrition, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsOwnView, type InsightsRoutineOrderView, type InsightsSummary } from '../../../../src/lib/mobile-api/performance-insights-contract';
 
 export * from '../../../../src/lib/mobile-api/performance-insights-contract';
 
@@ -13,7 +13,7 @@ function read<T extends InsightsResponse>(client: MobileApiClient, view: T['view
     if (query.asOf && (!parsed || !('asOf' in parsed) || parsed.asOf !== query.asOf)) return undefined;
     return parsed?.view === view ? parsed as T : undefined; } });
 }
-/** One request when Insights opens: no prefetch, polling or per-exercise reads. Relations and more days are asked for separately. */
+/** One request when Insights opens: no polling or per-exercise reads. Relations and more days are asked for separately; «Orden» is warmed once the screen has stayed open (routine-order-view). */
 export const fetchInsightsSummary = (client: MobileApiClient, signal?: AbortSignal) => read<InsightsSummary>(client, 'summary', {}, signal);
 export const fetchInsightsDays = (client: MobileApiClient, before: string, signal?: AbortSignal, limit?: number) => read<InsightsDaysPage>(client, 'days', { view: 'days', before, limit: limit ? String(limit) : undefined }, signal);
 export const fetchInsightsRelations = (client: MobileApiClient, signal?: AbortSignal) => read<InsightsRelations>(client, 'relations', { view: 'relations' }, signal);
@@ -45,3 +45,8 @@ export const fetchCoincidenceEvidence=(client:MobileApiClient,asOf:string,revisi
 export { weeklyNutritionGroups,WEEKLY_NUTRIENTS,type WeeklyNutrient } from '../../../../src/lib/progress/insights-engine/descriptive-weeks';
 /** «Rendimiento frente a lo tuyo» and its tramos: all routines or one. Asked for when a screen needs it, never with the summary. */
 export const fetchOwnPerformance = (client: MobileApiClient, routine: string | null, signal?: AbortSignal) => read<InsightsOwnView>(client, 'own', { view: 'own', routine: routine ?? undefined }, signal);
+/** Orden de la rutina: one routine, its positions, cuts and exercises. Asked for when «Orden» or the routine editor needs it. */
+export const fetchRoutineOrder = (client: MobileApiClient, routine: string, signal?: AbortSignal) => client.read<InsightsRoutineOrderView>({
+  path: `${PERFORMANCE_INSIGHTS_PATH}?${new URLSearchParams({ method: '2', view: 'routine-order', routine })}`, signal,
+  parse: raw => { const parsed = parsePerformanceInsights(raw); return parsed?.view === 'routine-order' && parsed.routine.id === routine.toLowerCase() ? parsed : undefined; },
+});

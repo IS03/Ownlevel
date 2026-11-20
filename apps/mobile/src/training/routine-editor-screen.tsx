@@ -4,6 +4,7 @@ import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-rout
 import { usePreventRemove } from 'expo-router/build/react-navigation/core/usePreventRemove';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import { RoutineOrderHint } from '@/insights/routine-order-view';
 import { fetchRoutineDetail, replaceRoutineTemplate, setMobileTrainingRoutineStatus, updateRoutineIdentity, useApiResource, useMobileApi } from '@/api';
 import type { RoutineDetail, RoutineTemplatePayload } from '@/api/routine-editor';
 import type { MobileApiMutationResult } from '@/api/results';
@@ -226,6 +227,7 @@ export function RoutineEditorScreen({ createIdempotencyKey = defaultKey }: { cre
     {!detail.items.length ? <EmptyState title="Todavía no tiene ejercicios" description="Agregá el primero para empezar a armar esta rutina." action={<Button label="Agregar ejercicio" onPress={() => openForm('picker')} />} />
       : <RoutineExerciseList key={`${detail.routine.templateVersion}-${detail.items.map(item => item.routineExerciseId).join('|')}-${listEpoch}`} items={detail.items} disabled={rowDisabled} onOpen={openExercise}
         onRemove={itemId => { if (!busy.current && !blockedRead.current && !dragRef.current) setRemoveId(itemId); }} onCommit={commitOrder} onDragging={value => { dragRef.current = value; setDragging(value); }} />}
+    {detail.items.length > 2 ? <RoutineOrderHint client={client} routineId={detail.routine.id} onOpen={() => router.push({ pathname: '/(tabs)/train/insights', params: { view: 'order', routine: detail.routine.id } })} /> : null}
   </DragScrollView>;
   return <>
     {header}{content}
