@@ -7,6 +7,9 @@ import type { InsightsSource } from './insights-engine/types';
 import { TRAINING_TIMES_CONTRACT, TRAINING_TIMES_PAGE_SIZE, TRAINING_TIMES_ZONE, type ProgressTrainingTimes, type TrainingTimeCounts, type TrainingTimeExecution, type TrainingTimeGroup, type TrainingTimeSelection, type TrainingTimeSession } from '../mobile-api/progress-training-times-contract';
 import type { ProgressPeriod } from '../mobile-api/progress-contract';
 import { trainingStartTime } from './training-start-time';
+import type { PriorFeelingFact } from './insights-engine/prior-feelings';
+
+export type PreparedTrainingTime = TrainingTimeSession & { fatigue: PriorFeelingFact };
 
 const emptyCounts = (): TrainingTimeCounts => ({ improved: 0, stable: 0, declined: 0, ambiguous: 0, insufficient: 0 });
 export const trainingTimeMedian = (values: readonly number[]) => {
@@ -27,8 +30,8 @@ export function trainingTimeGroup(rows: readonly TrainingTimeSession[], fromMinu
 }
 
 /** Descriptions by saved session start. Never a causal model or a search for a winning hour. */
-export function buildTrainingTimes(source: InsightsSource, options: { today: string; period: ProgressPeriod; revision: string; selection: TrainingTimeSelection }): ProgressTrainingTimes {
-  const { today, period, revision, selection } = options;
+export function prepareTrainingTimes(source: InsightsSource, options: { today: string; period: ProgressPeriod; selection: TrainingTimeSelection }) {
+  const { today, period, selection } = options;
   const adapted = toPerformanceSessions(source);
   const performance = buildPerformanceInsightsV1({ sessions: adapted.sessions, historyCoverage: 'complete', exclusionDetail: 'summary', output: 'compact' });
   if (adapted.orphanRows || performance.integrity !== 'valid') throw new Error('Invalid training timing source');
@@ -59,7 +62,7 @@ export function buildTrainingTimes(source: InsightsSource, options: { today: str
   }
   if (selection.execution !== null && !executions.has(selection.execution)) throw new Error('Unknown timing execution');
   const coverage = { sessions: 0, timed: 0, missingStart: 0, invalidStart: 0, differentDay: 0, futureStart: 0 };
-  const rows: TrainingTimeSession[] = [];
+  const rows: PreparedTrainingTime[] = [];
   for (const s of inRoutine) {
     const blocks = blocksBySession.get(s.id) ?? [];
     const selected = selection.execution ? blocks.filter(b => keyOf(b.exerciseId, b.context) === selection.execution) : blocks;
@@ -71,6 +74,7 @@ export function buildTrainingTimes(source: InsightsSource, options: { today: str
     coverage.timed++;
     const parsed = parseSessionFeelings(facts.get(s.id) ?? {}, s, firstBySession.get(s.id) ?? null);
     const energy = priorFeelingFact({ feelings: parsed.values, unreadableFeelings: parsed.unreadable }, facts.get(s.id), 'energyPre');
+    const fatigue = priorFeelingFact({ feelings: parsed.values, unreadableFeelings: parsed.unreadable }, facts.get(s.id), 'fatiguePre');
     const counts = emptyCounts(), selectedId = selection.execution ? executions.get(selection.execution)!.exerciseId : null;
     for (const exercise of results.get(s.id)?.exercises ?? []) {
       if (selectedId && exercise.exerciseId !== selectedId) continue;
@@ -81,14 +85,23 @@ export function buildTrainingTimes(source: InsightsSource, options: { today: str
     const best = candidates.sort((a, b) => b.load! - a.load! || b.amount! - a.amount!)[0];
     rows.push({ id: s.id, date: s.date!, name: s.routineName ?? s.name ?? 'Sesión libre', routineId: s.routineId?.toLowerCase() ?? null,
       startedAt: s.startedAt!, minute, minutes: end !== null && end > start && cordobaDateOf(end) <= today ? (end - start) / 60_000 : null,
-      energy, performance: counts, load: best ? { value: best.load!, reps: best.amount! } : null });
+      energy, fatigue, performance: counts, load: best ? { value: best.load!, reps: best.amount! } : null });
   }
   rows.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt) || a.id.localeCompare(b.id));
+  return { routines: [...routines.values()].sort((a, b) => b.sessions - a.sessions || a.id.localeCompare(b.id)),
+    executions: [...executions.values()].sort((a, b) => a.name.localeCompare(b.name, 'es-AR') || a.key.localeCompare(b.key)), coverage, rows };
+}
+
+export function buildTrainingTimes(source: InsightsSource, options: { today: string; period: ProgressPeriod; revision: string; selection: TrainingTimeSelection }): ProgressTrainingTimes {
+  const { today, period, revision, selection } = options;
+  const prepared = prepareTrainingTimes(source, options);
+  // The installed /1 response retains its original row keys; fatigue belongs to the new recovery capability.
+  const rows: TrainingTimeSession[] = prepared.rows.map(row => ({ id: row.id, date: row.date, name: row.name, routineId: row.routineId,
+    startedAt: row.startedAt, minute: row.minute, minutes: row.minutes, energy: row.energy, performance: row.performance, load: row.load }));
   const pageRows = selection.bin === null ? rows : rows.filter(r => Math.floor(r.minute / 120) === selection.bin);
   const page = pageRows.slice(selection.offset, selection.offset + TRAINING_TIMES_PAGE_SIZE), next = selection.offset + page.length;
   return { contractVersion: TRAINING_TIMES_CONTRACT, timezone: TRAINING_TIMES_ZONE, timeBasis: 'stored_start', today, period, revision, selection,
-    routines: [...routines.values()].sort((a, b) => b.sessions - a.sessions || a.id.localeCompare(b.id)),
-    executions: [...executions.values()].sort((a, b) => a.name.localeCompare(b.name, 'es-AR') || a.key.localeCompare(b.key)), coverage,
+    routines: prepared.routines, executions: prepared.executions, coverage: prepared.coverage,
     total: trainingTimeGroup(rows), bins: Array.from({ length: 12 }, (_, i) => trainingTimeGroup(rows, i * 120, (i + 1) * 120)),
     bands: Array.from({ length: 4 }, (_, i) => trainingTimeGroup(rows, i * 360, (i + 1) * 360)),
     page: { total: pageRows.length, nextOffset: next < pageRows.length ? next : null, rows: page } };

@@ -19,20 +19,29 @@ function TimeBar({ value, maximum, selected }: { value: number | null; maximum: 
 
 /** Two-hour descriptions, never a curve interpolating between independent sessions. Every column remains a native 44 pt target. */
 export function TrainingTimesChart({ bins, metric, selected, unit, onSelect }: { bins: TrainingTimeGroup[]; metric: TrainingTimeMetric; selected: number | null; unit?: string; onSelect: (bin: number | null) => void }) {
+  return <TrainingTimingColumns testID="training-times-chart" prefix="training-time-bin" label="Horarios de inicio, de 00 a 24 horas" caption="Hora de inicio · cada columna abarca 2 h"
+    selected={selected} onSelect={onSelect} maximum={metric === 'energy' ? 5 : metric === 'improvements' ? 100 : undefined}
+    items={bins.map(bin => ({ label: timeAt(bin.fromMinute).slice(0, 2), value: timeMetricValue(bin, metric),
+      spoken: `${timeRange(bin)}. ${timeMetricText(bin, metric, unit)}. ${timeMetricCount(bin, metric)} registros utilizados.` }))} />;
+}
+
+export function TrainingTimingColumns({ items, selected, onSelect, maximum: fixedMaximum, testID, prefix, label, caption }: {
+  items: { label: string; value: number | null; spoken: string }[]; selected: number | null; onSelect: (index: number | null) => void;
+  maximum?: number; testID: string; prefix: string; label: string; caption: string;
+}) {
   const reduced = useReduceMotion(), { colors } = useOwnlevelTheme();
-  const values = bins.map(b => timeMetricValue(b, metric));
-  const maximum = metric === 'energy' ? 5 : metric === 'improvements' ? 100 : Math.max(1, ...values.flatMap(value => value === null ? [] : [value]));
-  return <View style={styles.block} testID="training-times-chart">
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.columns} accessibilityLabel="Horarios de inicio, de 00 a 24 horas">
-      {bins.map((bin, index) => <Pressable key={bin.fromMinute} accessibilityRole="button" testID={`training-time-bin-${index}`}
-        accessibilityState={{ selected: selected === index }} accessibilityLabel={`${timeRange(bin)}. ${timeMetricText(bin, metric, unit)}. ${timeMetricCount(bin, metric)} registros utilizados. Ver sesiones.`}
+  const maximum = fixedMaximum ?? Math.max(1, ...items.flatMap(item => item.value === null ? [] : [item.value]));
+  return <View style={styles.block} testID={testID}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.columns} accessibilityLabel={label}>
+      {items.map((item, index) => <Pressable key={index} accessibilityRole="button" testID={`${prefix}-${index}`}
+        accessibilityState={{ selected: selected === index }} accessibilityLabel={`${item.spoken} Ver sesiones.`}
         onPress={() => { haptics.selection(); onSelect(selected === index ? null : index); }}
         style={({ pressed }) => [styles.column, { backgroundColor: selected === index ? colors.brandSubtle : 'transparent' }, pressedStyle(pressed, reduced)]}>
-        <TimeBar value={values[index]!} maximum={maximum} selected={selected === index} />
-        <AppText numeric muted={selected !== index} variant="caption">{timeAt(bin.fromMinute).slice(0, 2)}</AppText>
+        <TimeBar value={item.value} maximum={maximum} selected={selected === index} />
+        <AppText numeric muted={selected !== index} variant="caption">{item.label}</AppText>
       </Pressable>)}
     </ScrollView>
-    <AppText muted variant="footnote">Hora de inicio · cada columna abarca 2 h</AppText>
+    <AppText muted variant="footnote">{caption}</AppText>
   </View>;
 }
 const styles = StyleSheet.create({

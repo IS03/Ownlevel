@@ -12,6 +12,7 @@ import type { MobileSupabaseAuthenticatedContext } from './supabase';
 import { InsightsSnapshotCache } from './performance-insights-cache';
 import { todayInCordoba } from '../phase2/cordoba-date';
 import { NutritionReportDayChangedError } from './nutrition-report-server';
+import type { ProgressPeriod } from './progress-contract';
 
 const sources = new InsightsSnapshotCache<InsightsSource>({ maxEntries: 3, ttlMs: 5 * 60_000 });
 export const clearTrainingTimesSources = () => sources.clear();
@@ -56,10 +57,7 @@ export async function readTrainingTimesSource(context: MobileSupabaseAuthenticat
   };
 }
 
-export const progressTrainingTimesResponse = (request: Request) => progressReadResponse(request, 'training.times', async (context, params, today) => {
-  const query = progressQueryFromParams(params, ['routine', 'execution', 'bin', 'offset']);
-  if (query.compare) throw new MobileApiValidationError('Horarios usa un solo período.');
-  const { period } = resolveMobileProgressPeriod(query, today), selection = selectionFromParams(params);
+export async function readConsistentTrainingTimesSource(context: MobileSupabaseAuthenticatedContext, period: ProgressPeriod, today: string) {
   // A concurrent finish, correction or discard invalidates the entire read. No partial snapshot is published.
   for (let attempt = 0; attempt < 2; attempt++) {
     const before = await readInsightsRevision(context), key = `${context.userId}|${period.start}|${period.end}`;
@@ -72,11 +70,19 @@ export const progressTrainingTimesResponse = (request: Request) => progressReadR
     const after = todayInCordoba();
     if (after !== today) throw new NutritionReportDayChangedError(after);
     const revision = createHash('sha256').update(`${context.userId}|${before}`).digest('hex').slice(0, 32);
-    try { return buildTrainingTimes(source, { today, period, revision, selection }); }
-    catch (error) {
-      if (error instanceof Error && ['Unknown timing routine', 'Unknown timing execution'].includes(error.message)) throw new MobileApiValidationError('El filtro ya no tiene registros en este período. Elegí otro.');
-      throw error;
-    }
+    return { source, revision };
   }
   throw new Error('Training times sources kept changing');
+}
+
+export const progressTrainingTimesResponse = (request: Request) => progressReadResponse(request, 'training.times', async (context, params, today) => {
+  const query = progressQueryFromParams(params, ['routine', 'execution', 'bin', 'offset']);
+  if (query.compare) throw new MobileApiValidationError('Horarios usa un solo período.');
+  const { period } = resolveMobileProgressPeriod(query, today), selection = selectionFromParams(params);
+  const { source, revision } = await readConsistentTrainingTimesSource(context, period, today);
+  try { return buildTrainingTimes(source, { today, period, revision, selection }); }
+  catch (error) {
+    if (error instanceof Error && ['Unknown timing routine', 'Unknown timing execution'].includes(error.message)) throw new MobileApiValidationError('El filtro ya no tiene registros en este período. Elegí otro.');
+    throw error;
+  }
 }, parseProgressTrainingTimes);

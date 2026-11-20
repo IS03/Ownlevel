@@ -194,6 +194,7 @@ export function TrainingStory({ data, chart }: { data: ProgressTraining; chart: 
         <View style={styles.between}><AppText muted variant="caption">00 h</AppText><AppText muted numeric variant="caption">{data.times.timed} sesiones · inicio guardado</AppText><AppText muted variant="caption">24 h</AppText></View>
       </View> : null}
       <ProgressRow label="Explorar tus horarios" onPress={() => router.push('/(tabs)/progress/trends/training-times')}><AppText style={styles.flex}>Sesiones, duración, energía y ejercicios</AppText></ProgressRow>
+      <ProgressRow label="Explorar el tiempo entre sesiones" onPress={() => router.push('/(tabs)/progress/trends/training-recovery')}><View style={styles.flex}><AppText variant="headline">Entre sesiones</AppText><AppText muted variant="footnote">Intervalo, energía, fatiga y mejoras. General o misma rutina.</AppText></View></ProgressRow>
     </View>
     <Performance data={data} open={open} /><Muscles data={data} open={open} />
     <View style={styles.section}><SectionTitle description="Pistas de tus registros, sin suponer tus objetivos.">Para revisar</SectionTitle>

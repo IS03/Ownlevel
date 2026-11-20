@@ -9,6 +9,8 @@ import { loadCompletedTrainingData, readAllTrainingRows } from '../phase2/traini
 import { clearTrainingTimesSources, progressTrainingTimesResponse } from './progress-training-times-server';
 import { descriptiveFixture } from '../progress/insights-engine/descriptive-fixture.test-helper';
 import { parseProgressTrainingTimes } from './progress-training-times-contract';
+import { progressTrainingRecoveryResponse } from './progress-training-recovery-server';
+import { parseProgressTrainingRecovery } from './progress-training-recovery-contract';
 
 const query: Record<string, ReturnType<typeof vi.fn>> = {};
 for (const method of ['select', 'eq', 'gte', 'lte', 'order', 'range']) query[method] = vi.fn();
@@ -38,6 +40,21 @@ beforeEach(() => {
 });
 
 describe('training times resource', () => {
+  it('recovery is an independent opt-in contract and shares the same revision-checked source without rereading training', async () => {
+    await progressTrainingTimesResponse(request()); vi.mocked(readInsightsRevision).mockClear();
+    const response = await progressTrainingRecoveryResponse(request('&scope=routine&bin=0'));
+    expect(response.status).toBe(200);
+    const body = await response.json(); expect(parseProgressTrainingRecovery(body)).toBeDefined(); expect(body.selection.scope).toBe('routine');
+    expect(loadCompletedTrainingData).toHaveBeenCalledTimes(1); expect(readAllTrainingRows).toHaveBeenCalledTimes(1); expect(readInsightsRevision).toHaveBeenCalledTimes(1);
+  });
+  it.each(['&scope=wrong', '&bin=5', '&userId=other', '&scope=all&scope=routine', '&offset=-1'])('recovery rejects invalid filters %s before sources', async extra => {
+    expect((await progressTrainingRecoveryResponse(request(extra))).status).toBe(400); expect(loadCompletedTrainingData).not.toHaveBeenCalled();
+  });
+  it('recovery requires a bearer token and returns source failures as unavailable', async () => {
+    expect((await progressTrainingRecoveryResponse(request('', ''))).status).toBe(401);
+    query.range!.mockResolvedValue({ data: null, error: { message: 'offline' } });
+    expect((await progressTrainingRecoveryResponse(request())).status).toBe(503);
+  });
   it('authenticates first and validates the new shared contract', async () => {
     const response = await progressTrainingTimesResponse(request()); expect(response.status).toBe(200);
     expect(parseProgressTrainingTimes(await response.json())).toBeDefined();

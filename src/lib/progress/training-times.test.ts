@@ -18,6 +18,7 @@ describe('training start and descriptive times', () => {
     expect(result.bins[11]!.sessions).toBe(1); expect(result.bands[3]!.sessions).toBe(1);
     expect(result.coverage.sessions).toBe(12); expect(result.coverage.timed).toBe(12);
     expect(parseProgressTrainingTimes(result)).toBeDefined();
+    expect(result.page.rows.some(row => 'fatigue' in row)).toBe(false);
   });
   it('keeps absent, invalid, future and backdated starts out, with separate counts', () => {
     const s = descriptiveFixture();
