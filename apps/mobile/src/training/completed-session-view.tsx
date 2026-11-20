@@ -7,7 +7,7 @@ import Animated, { FadeIn, LinearTransition, useAnimatedRef } from 'react-native
 import type { ExerciseConfigurationJournal } from '@/api/training-exercise-configuration';
 import type { SessionDetailDto, SessionFinishedDto } from '@/api/active-session';
 import type { SessionSummaryDto, SessionSummaryLoader } from '@/api/session-summary';
-import { AppIcon, AppText, brandTokens, Button, Heading, ScrollScreen, Surface, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { LinkRow, AppIcon, AppText, brandTokens, Heading, ScrollScreen, Surface, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { formatTimeRange } from '@/home/format';
 import { compactWeekdayDate } from './history-model';
 import { trainingRoutineColor } from './routine-colors';
@@ -152,7 +152,7 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
       {model.note ? <AppText style={styles.italic}>“{model.note}”</AppText> : null}
     </View> : null}
     {insights ? <View style={styles.section}>
-      <Button label="Ver qué cambió" variant="secondary" onPress={() => router.push(insights)} />
+      <LinkRow label="Ver qué cambió" onPress={() => router.push(insights)} />
       <AppText muted variant="footnote">Cada ejercicio frente a su última sesión compatible, y lo que registraste antes y ese día.</AppText>
     </View> : null}
     {extraSummary}
@@ -193,7 +193,7 @@ export function CompletedSessionView({ detail, finished, onHome, onTraining, onO
         open={variantsOpen} onToggle={() => setVariantsOpen(value => !value)} headerRef={variantsHeader} />
     </Animated.View> : null}
     {actions}
-    {onTraining ? <Button label="Volver a Entrenar" variant="secondary" onPress={onTraining} /> : null}
+    {onTraining ? <LinkRow kind="back" label="Volver a Entrenar" onPress={onTraining} /> : null}
     {finished && postWorkoutOpen && !discarded ? <PostWorkoutScreen finished={finished} detail={detail} readSummary={readSummary} onHome={() => { setPostWorkoutOpen(false); (onTraining ?? onHome)(); }} onViewSession={() => setPostWorkoutOpen(false)} /> : null}
   </ScrollScreen>;
 }

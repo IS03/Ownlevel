@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { RefreshControl, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useMobileApi } from '@/api';
 import { fetchProgressNutritionTiming, progressRequestKey, type ProgressNutritionTiming } from '@/api/progress';
-import {
+import { LinkRow,
   AppIcon,
   AppText,
   Button,
@@ -102,7 +102,7 @@ function TimingContent({ data }: { data: ProgressNutritionTiming }) {
           ) : null}
         </View>
       ) : null}
-      <Button label="Ver días del período" variant="quiet" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/nutrition', params: { section: 'days' } })} />
+      <LinkRow label="Ver días del período" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/nutrition', params: { section: 'days' } })} />
       <AppText numeric muted variant="caption">
         {t.mealsWithTime} de {t.meals} comidas con hora · hora de Córdoba
       </AppText>

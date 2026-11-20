@@ -5,7 +5,7 @@ import type { MobileApiClient } from '@/api/client';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { fetchCoincidenceEvidence,isFoodKind,type FoodKind,type CoincidenceSelection,type CoincidenceEvidence,type PeriodExploration } from '@/api/performance-insights';
 import { StyleSheet, View } from 'react-native';
-import { AppText, Heading, Button, SkeletonBlock, spacing } from '@/design-system';
+import { LinkRow, AppText, Heading, Button, SkeletonBlock, spacing } from '@/design-system';
 import { FEELING_LABELS } from '@/api/training-feelings';
 import { formatValue } from '@/progress/progress-format';
 import { FactRow } from './insights-screen';
@@ -139,7 +139,7 @@ function SessionEvidence({origin,kind,group,total,offset,renderRows,onPage,onRef
     {state.status!=='ready'?<View><AppText>No pudimos actualizar esta página. Mostramos su lectura anterior.</AppText><Button label="Reintentar evidencia" onPress={()=>void refresh()}/></View>:null}
     <AppText numeric>{data.total===0?'Sin registros en este grupo.':`Registros ${offset+1}–${offset+data.sessionRows.length} de ${data.total}`}</AppText>
     {renderRows(data.sessionRows)}
-    {offset>0?<Button label="Página anterior de evidencia" variant="secondary" onPress={()=>onPage(Math.max(0,offset-25))}/>:null}
-    {data.nextOffset!==null?<Button label="Ver siguientes registros" variant="secondary" onPress={()=>onPage(data.nextOffset!)}/>:null}
+    {offset>0?<LinkRow kind="back" label="Página anterior de evidencia" onPress={()=>onPage(Math.max(0,offset-25))}/>:null}
+    {data.nextOffset!==null?<LinkRow label="Ver siguientes registros" onPress={()=>onPage(data.nextOffset!)}/>:null}
   </View>;
 }

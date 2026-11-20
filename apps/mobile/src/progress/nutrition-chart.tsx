@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import type { NutritionReport, ReportDailyRow } from '@/api/nutrition-report';
-import { AppIcon, AppText, Button, Chip, ChipGroup, Heading, useReduceMotion, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppIcon, AppText, Chip, ChipGroup, Heading, useReduceMotion, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { haptics } from '@/platform/haptics';
@@ -157,7 +157,7 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
         {selected.day.mealCount === 0 && selected.day.hasNutrition ? <AppText muted variant="caption">Sin entradas de comidas para contar{selected.day.imported ? ' · registro importado' : ''}.</AppText> :
           <AppText numeric muted variant="caption">{selected.day.nutrients[nutrient].knownMeals} de {selected.day.mealCount} entradas con {copy.known} · {selected.day.nutrients[nutrient].missingMeals} sin ese dato{selected.day.imported ? ' · incluye registro importado' : ''}.</AppText>}
         <AppText numeric muted variant="caption">{target === null ? 'Sin objetivo histórico acreditado para esta fecha.' : `Objetivo registrado de esta fecha: ${fmt(target)}.`}</AppText>
-        {selected.day.nutrients[nutrient].status === 'complete' ? <Button label={details ? 'Ocultar cobertura' : 'Ver cobertura'} variant="quiet" onPress={() => { haptics.selection(); setDetails(v => !v); }} /> : null}
+        {selected.day.nutrients[nutrient].status === 'complete' ? <LinkRow kind="disclosure" expanded={details} label={details ? 'Ocultar cobertura' : 'Ver cobertura'} onPress={() => { haptics.selection(); setDetails(v => !v); }} /> : null}
         <ProgressRow testID="nutrition-chart-open-day" label={`Ver comidas de ese día, ${range(selected.start, selected.end)}`} onPress={() => onDate(selected.start)}>
           <AppText variant="body" style={[styles.grow, { color: colors.primary }]}>Ver comidas de ese día</AppText>
         </ProgressRow>
@@ -167,7 +167,7 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
         {selectedBlockStages ? <AppText numeric muted variant="footnote" testID="nutrition-chart-stage" accessibilityElementsHidden importantForAccessibility="no">{blockStagesText(selectedBlockStages)}</AppText> : null}
         <AppText numeric muted variant="caption">{rows.filter(d => d.mealCount === 0).length} días sin entradas registradas · {rows.filter(d => d.nutrients[nutrient].status === 'unknown').length} {copy.unknown}.</AppText>
         {selected.today ? <AppText variant="footnote" testID="nutrition-chart-today">Incluye hoy en curso: este promedio de bloque puede cambiar. El promedio del período excluye hoy.</AppText> : null}
-        <Button label={selection?.daysOpen ? 'Ocultar días del bloque' : 'Ver días del bloque'} variant="secondary"
+        <LinkRow kind="disclosure" expanded={selection?.daysOpen} label={selection?.daysOpen ? 'Ocultar días del bloque' : 'Ver días del bloque'}
           onPress={() => { if (selection) onSelect({ ...selection, daysOpen: !selection.daysOpen }); }} />
         {selection?.daysOpen ? <NutritionReportDays rows={rows} onDate={onDate} /> : null}
       </> : null}

@@ -3,7 +3,7 @@ import { RefreshControl, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { fetchHistoryRange, historyHasActivity } from '@/api/history';
 import type { MobileApiClient } from '@/api/client';
-import { AppText, Button, EmptyState, Heading, InlineUnavailable, ListRow, ScrollScreen, Separator, SkeletonBlock, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppText, EmptyState, Heading, InlineUnavailable, ListRow, ScrollScreen, Separator, SkeletonBlock, useOwnlevelTheme } from '@/design-system';
 import { formatBodyDate } from '@/body/body-model';
 import { useHistoryResource } from './use-history-resource';
 import { historyDayHref } from './navigation';
@@ -25,8 +25,8 @@ export function HistoryScreen() {
       <AppText muted variant="footnote">Últimos 30 días{data ? ` · ${formatBodyDate(data.effectiveRange.from)} — ${formatBodyDate(data.effectiveRange.to)}` : ''}</AppText>
     </View>
     <View style={historyStyles.controls}>
-      <Button icon="calendar" label="Calendario" onPress={() => router.push('/history/calendar')} variant="secondary" />
-      {data ? <Button label="Abrir hoy" onPress={() => router.push(historyDayHref(data.today))} variant="quiet" /> : null}
+      <LinkRow label="Calendario" onPress={() => router.push('/history/calendar')} />
+      {data ? <LinkRow label="Abrir hoy" onPress={() => router.push(historyDayHref(data.today))} /> : null}
     </View>
     {!data ? state.status === 'loading' ? <SkeletonBlock height={180} /> : <InlineUnavailable message="No pudimos cargar el historial." actionLabel="Reintentar" onAction={() => void refresh()} /> : <>
       {stale ? <InlineUnavailable message="Mostramos la última lectura confirmada. No se pudo actualizar." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}

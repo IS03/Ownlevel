@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 import type { ProgressEditorialFinding } from '@/api/progress';
-import { AppText, Button, Heading, spacing } from '@/design-system';
+import { LinkRow, AppText, Heading, spacing } from '@/design-system';
 import { InsightRow } from '@/insights/insight-row';
 import { exactPeriodDate, exactPeriodRange } from '@/insights/period-model';
 import { shortRange } from './progress-range';
@@ -44,7 +44,7 @@ export function ProgressFindings({ items, selected, onSelect, onOpen, sourcesUna
             expanded={selected === item.id} heading onPress={() => onSelect(selected === item.id ? null : item.id)}/>
           {selected === item.id ? <>
             <Reference item={item}/>
-            <Button variant="quiet" label={`Ver registros de ${item.title}`} onPress={() => onOpen(item)}/>
+            <LinkRow label={`Ver registros de ${item.title}`} onPress={() => onOpen(item)}/>
           </> : null}
         </View>)}
   </View>;

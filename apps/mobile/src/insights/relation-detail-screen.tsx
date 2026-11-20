@@ -5,7 +5,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchInsightsRelation, type InsightsRelationDetail } from '@/api/performance-insights';
-import { AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
 import { formatValue } from '@/progress/progress-format';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { FactRow } from './insights-screen';
@@ -100,8 +100,8 @@ export function RelationDetailScreen() {
           spoken={`${dayLabel(pair.date)}: ${formatValue(pair.exposure, unit)}, ${shareText(lane, pair.outcome)}. ${single ? 'Abrir sesión' : 'Abrir día'}`}
           onPress={() => single ? router.push({ pathname: '/(tabs)/train/history/[id]', params: { id: only } }) : router.push({ pathname: '/(tabs)/train/day/[date]', params: { date: pair.date } })} />;
       })}
-      {newestFirst.length > listed ? <Button label="Mostrar más días" variant="secondary" onPress={() => setListed(current => current + LIST_STEP)} />
-        : some ? <Button label={everyPhase === 'loading' ? 'Cargando…' : `Ver los ${data.pairsTotal} días`} variant="secondary" disabled={everyPhase === 'loading'} onPress={() => void loadEvery()} /> : null}
+      {newestFirst.length > listed ? <LinkRow kind="disclosure" label="Mostrar más días" onPress={() => setListed(current => current + LIST_STEP)} />
+        : some ? <LinkRow kind="disclosure" label={everyPhase === 'loading' ? 'Cargando…' : `Ver los ${data.pairsTotal} días`} disabled={everyPhase === 'loading'} onPress={() => void loadEvery()} /> : null}
       {everyPhase === 'failed' ? <InlineUnavailable message="No pudimos traer todos los días." actionLabel="Reintentar" onAction={() => void loadEvery()} /> : null}
     </View> : null}
   </>);

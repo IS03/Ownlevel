@@ -5,7 +5,7 @@ import { ActivityIndicator, StyleSheet } from 'react-native';
 
 import { palette } from './brand';
 import { TextField } from './form';
-import { ListGroup, ListRow } from './list';
+import { LinkRow, ListGroup, ListRow } from './list';
 import { pressedStyle } from './motion';
 import { Button, EmptyState, InlineNotice, Surface, UnavailableState, type ButtonVariant } from './primitives';
 import { ChipGroup, SegmentedControl } from './selection';
@@ -109,6 +109,23 @@ describe('Rows, surfaces and sheets', () => {
     expect(onPress).toHaveBeenCalledTimes(1);
     expect(view.getByRole('button', { name: 'Bloqueada' }).props.accessibilityState).toEqual({ disabled: true });
     expect(view.getByText('1.0').props.style).toEqual(expect.arrayContaining([{ fontVariant: ['tabular-nums'] }]));
+  });
+
+  it('link rows navigate, open or pick without a banner: no fill, no border, min touch 44', () => {
+    const onPress = jest.fn();
+    const view = inTheme(<>
+      <LinkRow label="Ver tus pesajes" onPress={onPress} />
+      <LinkRow kind="disclosure" expanded label="Comparar dos registros" onPress={onPress} />
+      <LinkRow label="Medida" value="Cintura" onPress={onPress} />
+    </>);
+    const row = view.getByRole('button', { name: 'Ver tus pesajes' });
+    const style = flat(row.props.style);
+    expect(style.minHeight).toBe(44);
+    expect(style.backgroundColor).toBeUndefined();
+    expect(style.borderWidth).toBeUndefined();
+    expect(view.getByRole('button', { name: 'Comparar dos registros' }).props.accessibilityState).toEqual({ disabled: false, expanded: true });
+    fireEvent.press(view.getByRole('button', { name: 'Medida, Cintura' }));
+    expect(onPress).toHaveBeenCalledTimes(1);
   });
 
   it('cards use radius 20 and padding 18', () => {

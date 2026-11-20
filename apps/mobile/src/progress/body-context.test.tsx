@@ -77,9 +77,9 @@ describe('Cuerpo interval and timeline context', () => {
   });
   it('groups training in one honest summary: plurals, one group per exercise, no jump to Entrenar', () => {
     const view = wrap(<BodyIntervalContext range={range} />);
-    fireEvent.press(view.getByRole('button', { name: 'Contexto · Alimentación' }));
+    fireEvent.press(view.getByRole('button', { name: 'Mirar, Alimentación' }));
     fireEvent.press(view.getByRole('button', { name: /Entrenamiento/ }));
-    expect(view.getByRole('button', { name: 'Contexto · Entrenamiento' })).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Mirar, Entrenamiento' })).toBeTruthy();
     expect(mockRead.mock.calls.some(([key]) => String(key).startsWith('body-context-training|2026-10-01|2026-10-03'))).toBe(true);
     expect(view.getByText(/1 sesión · 1 serie/)).toBeTruthy();
     expect(view.getByText('1 serie')).toBeTruthy();
@@ -89,7 +89,7 @@ describe('Cuerpo interval and timeline context', () => {
   it('does not read ineligible weekly references, nor replace exact weights by default', () => {
     const view = wrap(<WeeklyWeightReference a="2026-11-16" b="2026-11-18" today="2026-11-19" />);
     expect(mockRead).not.toHaveBeenCalled();
-    fireEvent.press(view.getByRole('checkbox', { name: 'Peso semanal de referencia' }));
+    fireEvent.press(view.getByRole('button', { name: 'Peso semanal de referencia' }));
     expect(view.getByText(/dos semanas distintas, completas y cerradas/)).toBeTruthy();
     expect(mockRead).not.toHaveBeenCalled();
   });

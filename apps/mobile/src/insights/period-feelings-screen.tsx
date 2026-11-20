@@ -5,7 +5,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchInsightsPeriodFeelings, validPeriodAnchor } from '@/api/performance-insights';
-import { AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { FeelingOutcomeSections } from './feeling-outcome-sections';
 import { FactRow } from './insights-screen';
@@ -35,7 +35,7 @@ export function PeriodFeelingsScreen() {
     <FeelingOutcomeSections outcomes={data.outcomes} prefix="period-detail" />
     <AppText muted variant="footnote">Descripción de las respuestas registradas en estas fechas.</AppText>
     <InsightRow label="Cómo terminaste · todo el historial" spoken="Cómo terminaste, en todo tu historial" onPress={() => router.push(withProgressOrigin('/(tabs)/train/insights/feelings',params))} />
-    <Button label="Volver al resumen" variant="secondary" onPress={() => router.navigate(periodSummaryHref(asOf,insightsOriginOf(params)))} />
+    <LinkRow kind="back" label="Volver al resumen" onPress={() => router.navigate(periodSummaryHref(asOf,insightsOriginOf(params)))} />
   </>);
 }
 const styles = StyleSheet.create({ scroll: { alignSelf: 'center', flexGrow: 1, gap: spacing.xl, maxWidth: 720, padding: brandTokens.layout.screenPadding, paddingBottom: 120, width: '100%' }, block: { gap: spacing.sm } });

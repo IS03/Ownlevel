@@ -7,7 +7,7 @@ import {
   exploreOptions, exploreRequestKey, fetchProgressExplore, parseExploreMeasure, progressRequestKey,
   type ExploreBreakdown, type ExploreBucket, type ExploreDays, type ExploreGroup, type ExploreRequest, type ProgressExplore,
 } from '@/api/progress';
-import { AppIcon, AppText, Button, Heading, InlineUnavailable, SegmentedControl, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppIcon, AppText, Button, Heading, InlineUnavailable, SegmentedControl, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
 import { BREAKDOWN_LABELS, DAYS_LABELS, IDEAS, STATIC_MEASURES, aggregationText, coverageLine, type ExploreChoice } from './explore-model';
 import { MeasureSheet, OptionSheet } from './explore-sheets';
 import { PinViewSheet } from './pin-view-sheet';
@@ -100,7 +100,7 @@ function SmallMultiples({ e, groups }: { e: ProgressExplore; groups: ExploreGrou
       <AppText muted numeric variant="caption">{shortRange({ start: first.start, end: first.start }, today)}</AppText>
       <AppText muted numeric variant="caption">{shortRange({ start: last.start, end: last.start }, today)}</AppText>
     </View> : null}
-    {groups.length > 4 ? <Button label={all ? 'Ver menos' : `Ver todos (${groups.length})`} variant="quiet" onPress={() => setAll(!all)} /> : null}
+    {groups.length > 4 ? <LinkRow kind="disclosure" expanded={all} label={all ? 'Ver menos' : `Ver todos (${groups.length})`} onPress={() => setAll(!all)} /> : null}
     <AppText muted variant="caption">
       Misma escala en todas las filas{shown.some(g => (g.series ?? []).some(b => b.value === null && !(b.start <= today && b.end >= today))) ? ' · hueco: sin dato' : ''}
       {shown.some(g => (g.series ?? []).some(b => b.start <= today && b.end >= today && b.value !== null)) ? ' · la barra clara sigue en curso' : ''}.

@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BODY_MEASUREMENT_FIELDS, BODY_MEASUREMENT_LABELS, type BodyMeasurementField } from '@/api/body';
-import { AppIcon, AppSheet, AppText, Button, GlassSurface, TextField, brandTokens, pressedStyle, spacing, useAppSheetDismiss, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { LinkRow, AppIcon, AppSheet, AppText, Button, GlassSurface, TextField, brandTokens, pressedStyle, spacing, useAppSheetDismiss, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import type { BodyController, BodyState } from './body-controller';
 import { BodyDateField } from './body-date-field';
@@ -194,7 +194,7 @@ export function MeasurementEditorSheet({ editor, state, controller, initialField
     </View> : <>
       <BodyDateField value={editor.draft.date} today={today} editable={editable} onChange={v => controller.change('date', v)} error={errors.date} />
       <MeasurementFields initialField={initialField} editor={editor} state={{ ...state, errors }} controller={controller} editable={editable} />
-      <Button label={details ? 'Ocultar condición y notas' : 'Agregar condición o notas'} variant="quiet" onPress={() => setDetails(v => !v)} />
+      <LinkRow kind="disclosure" expanded={details} label={details ? 'Ocultar condición y notas' : 'Agregar condición o notas'} onPress={() => setDetails(v => !v)} />
       {details || errors.condition || errors.notes ? <>
         <TextField label="Condición" value={editor.draft.condition} onChangeText={v => controller.change('condition', v)} error={errors.condition}
           disabled={!editable} placeholder="Ej.: en ayunas" autoCorrect={false} />

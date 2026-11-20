@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore, type Ref } from 're
 import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import { AppIcon, AppSheet, AppText, brandTokens, Button, Chip, Surface, TextField, spacing, useAppSheetDismiss, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { LinkRow, AppIcon, AppSheet, AppText, brandTokens, Button, Chip, Surface, TextField, spacing, useAppSheetDismiss, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import type { MobileApiClient } from '@/api/client';
 import { CONFIGURATION_AFTER_NOTE, CONFIGURATION_HINT, CONFIGURATION_LABEL_MAX, CONFIGURATION_MIXED_NOTE, ExerciseConfigurationJournal, exerciseConfigurationApi, normalizeConfigurationLabel, sameConfiguration,
   type ConfigurationValue, type ConfigurationView, type PreviousConfiguration } from '@/api/training-exercise-configuration';
@@ -182,7 +182,7 @@ export function SessionVariantsNotice({ journal, onReview }: { journal: Exercise
     {attention.retry || attention.reread || attention.review ? <View style={styles.noticeActions}>
       {attention.retry ? <Button disabled={snapshot.busy} label="Reintentar" onPress={() => void journal.retry()} variant="quiet" /> : null}
       {attention.reread ? <Button disabled={snapshot.busy} label="Volver a leer" onPress={() => void journal.refresh()} variant="quiet" /> : null}
-      {attention.review ? <Button label="Ver variantes" onPress={onReview} variant="quiet" /> : null}
+      {attention.review ? <LinkRow label="Ver variantes" onPress={onReview} /> : null}
     </View> : null}
   </Surface>;
 }

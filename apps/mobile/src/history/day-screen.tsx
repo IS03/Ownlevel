@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { MobileApiClient } from '@/api/client';
 import { fetchHistoryDay, historyHasActivity, shiftHistoryDate } from '@/api/history';
 import { isNutritionDate } from '@/api/nutrition-day';
-import { AppText, Button, Heading, InlineUnavailable, ListRow, ScrollScreen, SkeletonBlock, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppText, Button, Heading, InlineUnavailable, ListRow, ScrollScreen, SkeletonBlock, useOwnlevelTheme } from '@/design-system';
 import { amount, displayNutritionDate, nutrientAmount, signedAmount } from '@/nutrition/day-format';
 import { metricValue } from '@/nutrition/day-content';
 import { formatKg, measurementBadges, measurementValues } from '@/body/body-model';
@@ -63,7 +63,7 @@ function Day({ date, month }: { date: string; month?: string }) {
           testID={`history-day-session-${s.id}`}
           onPress={() => router.push({ pathname: '/(tabs)/train/history/[id]', params: { id: s.id, ...origin } })} />)}
         {data.activeSession.status === 'unavailable' ? <AppText>No pudimos confirmar si hay una sesión en curso.</AppText> : active ? <AppText>{active.name} · en curso</AppText> : null}
-        {active ? <Button label="Abrir sesión en curso" variant="quiet" onPress={() => router.navigate({ pathname: '/(tabs)/train/session/[id]', params: { id: active.id, ...origin } })} /> : null}
+        {active ? <LinkRow label="Abrir sesión en curso" onPress={() => router.navigate({ pathname: '/(tabs)/train/session/[id]', params: { id: active.id, ...origin } })} /> : null}
       </HistorySection>
       <HistorySection title="Nutrición" actionText="Comidas" actionLabel="Abrir Nutrición del día" onPress={() => router.navigate({ pathname: '/(tabs)/nutrition', params: { date, ...origin } })}>
         {data.nutrition.status === 'unavailable' ? unavailable : !nutrition ? <AppText>Sin registro nutricional.</AppText> : <>

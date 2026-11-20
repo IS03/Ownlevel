@@ -3,6 +3,7 @@ import Swipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 import { useRouter } from "expo-router";
 import {
   AppText,
+  LinkRow,
   Button,
   Heading,
   pressedStyle,
@@ -254,11 +255,10 @@ export function StagesListScreen() {
         )}
         {shared ? <StagesStatus {...shared} /> : null}
         {state?.intent || state?.draft ? (
-          <Button
+          <LinkRow
             label={
               state.intent ? "Ver cambio pendiente" : "Retomar lo que armaste"
             }
-            variant="secondary"
             onPress={() =>
               router.push(
                 state.draft?.mode === "sequence"

@@ -3,7 +3,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, useWindowDimensions, View 
 import { useRouter } from 'expo-router';
 import { BODY_MEASUREMENT_FIELDS, BODY_MEASUREMENT_LABELS } from '@/api/body';
 import type { ProgressBody, ProgressBodyMetric } from '@/api/progress';
-import { AppIcon, AppSheet, AppText, Button, Heading, brandTokens, radius, sizes, spacing, useOwnlevelTheme, useAppSheetDismiss } from '@/design-system';
+import { LinkRow, AppIcon, AppSheet, AppText, Button, Heading, brandTokens, radius, sizes, spacing, useOwnlevelTheme, useAppSheetDismiss } from '@/design-system';
 import { formatBodyDate } from '@/body/body-model';
 import { bodyObservationHref } from './body-chart-navigation';
 import { arrowDelta, formatValue } from './progress-format';
@@ -39,7 +39,7 @@ export function BodyMetricPicker({ selected }: { selected: string }) {
   const { colors } = useOwnlevelTheme();
   const label = BODY_CHOICES.find(m => m.key === selected)?.label ?? 'Medida';
   return <>
-    <Button label={`Explorar · ${label}`} variant="secondary" onPress={() => setOpen(true)} />
+    <LinkRow label="Medida" value={label} onPress={() => setOpen(true)} />
     {open ? <AppSheet onClose={() => setOpen(false)} closeLabel="Cerrar selector de medida" style={{ backgroundColor: colors.background, maxHeight: '85%' }}>
       <ScrollView contentContainerStyle={styles.sheet} showsVerticalScrollIndicator={false}>
         <Heading level={2}>Qué querés mirar</Heading>
@@ -113,9 +113,8 @@ function SheetChoice({ label, selected, onChoose }: { label: string; selected?: 
 function DateChoice({ dates, label, value, onChange }: { dates: string[]; label: string; value: string; onChange: (date: string) => void }) {
   const [open, setOpen] = useState(false);
   const { colors } = useOwnlevelTheme();
-  return <View style={styles.section}>
-    <AppText muted variant="footnote">{label}</AppText>
-    <Button label={value ? formatBodyDate(value) : 'Sin registros'} variant="secondary" onPress={() => setOpen(true)} disabled={!dates.length} />
+  return <View>
+    <LinkRow label={label} value={value ? formatBodyDate(value) : 'Sin registros'} numeric onPress={() => setOpen(true)} disabled={!dates.length} />
     {open ? <AppSheet onClose={() => setOpen(false)} closeLabel={`Cerrar ${label.toLowerCase()}`} style={{ backgroundColor: colors.background, maxHeight: '85%' }}>
       <FlatList data={[...dates].reverse()} keyExtractor={date => date} contentContainerStyle={styles.sheet} showsVerticalScrollIndicator={false}
         ListHeaderComponent={<Heading level={2}>{label}</Heading>}
@@ -131,7 +130,6 @@ export function BodyRecordComparison({ metrics, today }: { metrics: ProgressBody
   const [open, setOpen] = useState(false);
   const [pair, setPair] = useState<{ a: string; b: string } | null>(null);
   const [missingOpen, setMissingOpen] = useState(false);
-  const { fontScale, width } = useWindowDimensions();
   const chosen = pair && pair.a < pair.b && dates.includes(pair.a) && dates.includes(pair.b) ? pair : null;
   const initial = defaultBodyPair(metrics);
   const a = chosen?.a ?? initial?.a ?? dates[0] ?? '';
@@ -144,12 +142,12 @@ export function BodyRecordComparison({ metrics, today }: { metrics: ProgressBody
   return <View style={styles.section} testID="body-record-comparison">
     <Heading level={2}>{metrics.length === 1 ? 'Comparar dos fechas' : 'Qué cambió en tu cuerpo'}</Heading>
     <AppText muted variant="footnote">Dos registros, lado a lado. Solo dentro del período elegido.</AppText>
-    <Button label={expanded ? 'Cerrar comparación de registros' : 'Comparar registros'} variant="secondary" disabled={dates.length < 2} onPress={() => setOpen(v => !v)} />
+    {dates.length > 1 ? <LinkRow kind="disclosure" expanded={expanded} label="Comparar dos registros" onPress={() => setOpen(v => !v)} /> : null}
     {dates.length < 2 ? <AppText muted variant="footnote">Necesitás registros en dos fechas distintas para comparar.</AppText> : null}
     {expanded ? <>
-      <View style={[styles.datePair, (fontScale > 1.3 || width < 375) && styles.stacked]}>
-        <View style={styles.grow}><DateChoice dates={dates.filter(d => d < b)} label="Desde" value={a} onChange={date => setPair({ a: date, b })} /></View>
-        <View style={styles.grow}><DateChoice dates={dates.filter(d => d > a)} label="Hasta" value={b} onChange={date => setPair({ a, b: date })} /></View>
+      <View>
+        <DateChoice dates={dates.filter(d => d < b)} label="Desde" value={a} onChange={date => setPair({ a: date, b })} />
+        <DateChoice dates={dates.filter(d => d > a)} label="Hasta" value={b} onChange={date => setPair({ a, b: date })} />
       </View>
       <AppText muted numeric variant="caption">{comparable.length} {comparable.length === 1 ? 'medida con dato' : 'medidas con dato'} en ambas fechas.</AppText>
       {interval ? <AppText muted numeric variant="footnote">{interval.elapsed} {interval.elapsed === 1 ? 'día' : 'días'} entre registros{interval.short ? '. Es poco tiempo: muestra la diferencia entre dos días, no una tendencia' : ''}.</AppText> : null}
@@ -165,7 +163,7 @@ export function BodyRecordComparison({ metrics, today }: { metrics: ProgressBody
         </View>;
       })}
       {!measuresComparable(metrics) && metrics.some(m => m.key !== 'body.weight' && m.observations.length) ? <AppText muted variant="footnote">Tus medidas tienen una sola fecha en este período. Para compararlas, elegí un período más largo.</AppText> : null}
-      {missing.length ? <Button label={`${missingOpen ? 'Ocultar' : 'Ver'} medidas sin dato para comparar (${missing.length})`} variant="quiet" onPress={() => setMissingOpen(v => !v)} /> : null}
+      {missing.length ? <LinkRow kind="disclosure" expanded={missingOpen} label={`${missingOpen ? 'Ocultar' : 'Ver'} medidas sin dato para comparar (${missing.length})`} onPress={() => setMissingOpen(v => !v)} /> : null}
       {missingOpen ? missing.map(row => <View key={row.metric.key} style={styles.comparisonRow}>
         <AppText variant="headline">{row.metric.label}</AppText>
         <AppText numeric muted variant="footnote">{row.first ? formatValue(row.first.value, row.metric.unit) : 'Sin registro'} → {row.last ? formatValue(row.last.value, row.metric.unit) : 'Sin registro'}</AppText>
@@ -193,11 +191,11 @@ export function BodyJournal({ data }: { data: ProgressBody }) {
         const point = metric.observations.find(o => o.date === date && Number.isFinite(o.value) && o.value > 0);
         return point ? [<AppText key={metric.key} numeric variant="footnote">{metric.label} · {formatValue(point.value, metric.unit)}</AppText>] : [];
       })}
-      <Button label={`Ver original del ${formatBodyDate(date)}`} variant="quiet" onPress={() => { const href = bodyObservationHref(date, null); if (href) router.push(href); }} />
+      <LinkRow label={`Ver original del ${formatBodyDate(date)}`} onPress={() => { const href = bodyObservationHref(date, null); if (href) router.push(href); }} />
     </View>)}
-    {dates.length > limit ? <Button label="Ver más días del período" variant="secondary" onPress={() => setLimit(n => n + 20)} /> : null}
+    {dates.length > limit ? <LinkRow kind="disclosure" label="Ver más días del período" onPress={() => setLimit(n => n + 20)} /> : null}
     {data.excludedSuspect > 0 ? <AppText muted variant="footnote">{data.excludedSuspect} {data.excludedSuspect === 1 ? 'medición sospechosa no cuenta' : 'mediciones sospechosas no cuentan'} en este cuaderno. Siguen disponibles en los registros originales.</AppText> : null}
-    <Button label="Ver historial y registros originales" variant="secondary" onPress={() => router.push('/(tabs)/progress/body')} />
+    <LinkRow label="Ver historial y registros originales" onPress={() => router.push('/(tabs)/progress/body')} />
   </View>;
 }
 const styles = StyleSheet.create({

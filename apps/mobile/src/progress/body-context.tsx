@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchNutritionReport } from '@/api/nutrition-report';
 import { fetchProgressBody, fetchProgressExplore, fetchProgressMetrics, fetchProgressTraining, type ProgressBodyMetric } from '@/api/progress';
-import { AppText, Button, Chip, Heading, InlineUnavailable, SkeletonBlock, spacing } from '@/design-system';
+import { LinkRow, AppText, Heading, InlineUnavailable, SkeletonBlock, spacing } from '@/design-system';
 import { fetchNutritionStages } from '@/api/nutrition-stages';
 import { bodyWeekRange, bodyWeekReference, intervalStages } from './body-context-model';
 import { OptionSheet } from './explore-sheets';
@@ -91,7 +91,7 @@ function NutritionContext({ range, choice, chart }: { range: DateRange; choice: 
           <AppText numeric>{point?.value !== null && point?.value !== undefined ? amount(point.value, nutrient.unit) : 'Sin dato de este nutriente en esta fecha'}</AppText>
           {selected?.isToday ? <AppText muted variant="caption">Hoy en curso; no entra en el promedio.</AppText> : null}
           {point ? <AppText muted numeric variant="caption">{point.knownMeals} comidas con dato · {point.missingMeals} sin ese dato.</AppText> : null}
-          {selected?.hasNutrition ? <Button variant="quiet" label="Ver comidas de esa fecha" onPress={() => { const href = nutritionChartDayHref(selected.date); if (href) router.push({ ...href, params: { ...href.params, ...bodyOrigin(chart) } }); }} /> : null}
+          {selected?.hasNutrition ? <LinkRow label="Ver comidas de esa fecha" onPress={() => { const href = nutritionChartDayHref(selected.date); if (href) router.push({ ...href, params: { ...href.params, ...bodyOrigin(chart) } }); }} /> : null}
         </View> : null}
       </> : null}
     </> : null}
@@ -136,7 +136,7 @@ function ExploreContext({ range, choice, chart }: { range: DateRange; choice: st
           <AppText numeric>{bucket ? value(bucket.value) : 'Sin dato en esta fecha'}</AppText>
           {bucket && bucket.start <= data.today && bucket.end >= data.today ? <AppText muted variant="caption">Intervalo en curso.</AppText> : null}
           {bucket && bucket.start !== bucket.end ? <AppText muted variant="caption">Dato del intervalo completo, no de un único día.</AppText> : null}
-          {bucket && choice.startsWith('metric.') ? <Button label="Ver registros de la métrica" variant="quiet" onPress={() => { const href = metricOriginalHref(choice.slice(7), bucket.start, bucket.end); if (href) router.push({ ...href, params: { ...href.params, ...bodyOrigin(chart) } }); }} /> : null}
+          {bucket && choice.startsWith('metric.') ? <LinkRow label="Ver registros de la métrica" onPress={() => { const href = metricOriginalHref(choice.slice(7), bucket.start, bucket.end); if (href) router.push({ ...href, params: { ...href.params, ...bodyOrigin(chart) } }); }} /> : null}
         </View> : null}
       </> : null}
     </> : null}
@@ -150,7 +150,7 @@ export function BodyIntervalContext({ range }: { range: DateRange | null }) {
     {!range ? <AppText muted>No hay días intermedios para resumir contexto.</AppText> : <>
       <AppText muted numeric variant="footnote">{datesText(range)} · {daysBetween(range.start, range.end)} días.</AppText>
       <AppText muted variant="caption">Excluimos los días de ambas mediciones porque no conocemos su hora.</AppText>
-      <Button variant="secondary" label={`Contexto · ${choice.startsWith('training.') ? 'Entrenamiento' : choice.startsWith('nutrition.') ? 'Alimentación' : 'Métrica personal'}`} onPress={() => setPicker(true)} />
+      <LinkRow label="Mirar" value={choice.startsWith('training.') ? 'Entrenamiento' : choice.startsWith('nutrition.') ? 'Alimentación' : 'Tu métrica'} onPress={() => setPicker(true)} />
       {choice.startsWith('nutrition.') ? <NutritionContext range={range} choice={choice} /> : choice.startsWith('training.') ? <TrainingContext range={range} /> : <ExploreContext range={range} choice={choice} />}
       <ContextStages range={range} />
       <AppText muted variant="caption">Estos registros acompañan el cambio observado; no explican su causa.</AppText>
@@ -163,10 +163,10 @@ export function BodyTimelineContext({ range, metric, selectedDate, onSelect }: {
   const chart = { selectedDate, onSelect: (date: string) => onSelect(date), bodyMetric: metric.key };
   const point = metric.observations.find(o => o.date === selectedDate);
   return <View style={styles.section} testID="body-timeline-context">
-    <Button label={open ? 'Ocultar lo que registraste' : 'Ver junto a comida, métricas o entrenamiento'} variant="secondary" onPress={() => setOpen(v => !v)} />
+    <LinkRow kind="disclosure" expanded={open} label="Ver junto a comida, métricas o entrenamiento" onPress={() => setOpen(v => !v)} />
     {open ? <>
       <Heading level={2}>En las mismas fechas</Heading>
-      <Button variant="secondary" label={`Contexto · ${CHOICES.find(c => c.key === choice)?.label ?? 'Métrica personal'}`} onPress={() => setPicker(true)} />
+      <LinkRow label="Mirar" value={CHOICES.find(c => c.key === choice)?.label ?? 'Tu métrica'} onPress={() => setPicker(true)} />
       {selectedDate ? <AppText muted numeric variant="footnote">{metric.label} · {formatBodyDate(selectedDate)}: {point ? formatValue(point.value, metric.unit) : 'sin registro corporal en esta fecha'}</AppText> : null}
       {choice.startsWith('nutrition.') ? <NutritionContext range={range} choice={choice} chart={chart} /> : <ExploreContext range={range} choice={choice} chart={chart} />}
       <AppText muted variant="caption">Mismo período, escalas distintas. Mirarlos juntos no demuestra una relación causal.</AppText>
@@ -201,7 +201,7 @@ export function WeeklyWeightReference({ a, b, today }: { a: string; b: string; t
   const first = bodyWeekRange(a), last = bodyWeekRange(b);
   const eligible = first.start !== last.start && last.end < today && first.end < today;
   return <View style={styles.section}>
-    <Chip kind="toggle" label="Peso semanal de referencia" selected={open} onPress={() => setOpen(v => !v)} />
+    <LinkRow kind="disclosure" expanded={open} label="Peso semanal de referencia" onPress={() => setOpen(v => !v)} />
     {open ? eligible ? <WeeklyReferenceRead a={a} b={b} today={today} /> : <AppText muted variant="footnote">La referencia necesita dos semanas distintas, completas y cerradas. La semana en curso no cuenta.</AppText> : null}
   </View>;
 }

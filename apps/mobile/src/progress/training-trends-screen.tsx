@@ -9,7 +9,7 @@ import {
   progressRequestKey,
   type ProgressTraining,
 } from '@/api/progress';
-import {
+import { LinkRow,
   AppIcon,
   AppText,
   Button,
@@ -147,7 +147,7 @@ function TrainingChart({ data, inspection, onInspect }: { data: ProgressTraining
       <AppText numeric variant="headline">{shown(selected[metric])}</AppText>
       <AppText numeric>{fullDate(selected.start)}{selected.start !== selected.end ? ` – ${fullDate(selected.end)}` : ''}</AppText>
       <AppText muted variant="footnote">{plural(selected.sessions, 'sesión', 'sesiones')}{selected.start <= data.today && selected.end >= data.today ? ' · período en curso' : ''}</AppText>
-      {data.period.bucket === 'day' && selected.start === selected.end && selected.sessions > 0 ? <Button label="Ver día y sesiones originales" variant="quiet"
+      {data.period.bucket === 'day' && selected.start === selected.end && selected.sessions > 0 ? <LinkRow label="Ver día y sesiones originales"
         onPress={() => router.push({ pathname: '/history/day/[date]', params: { date: selected.start } })} />
         : data.period.bucket !== 'day' || selected.start !== selected.end ? <AppText muted variant="footnote">Total del intervalo; no corresponde a un único día.</AppText> : null}
     </View> : <AppText muted variant="footnote">{inspection.bucket ? 'El intervalo seleccionado ya no está disponible.' : `Tocá una barra para consultar su valor y fechas.${data.series.length * slot > width ? ' Deslizá para recorrer el período.' : ''}`}</AppText>}

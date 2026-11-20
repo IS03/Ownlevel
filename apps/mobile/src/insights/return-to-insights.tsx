@@ -1,5 +1,5 @@
 import { useLocalSearchParams } from 'expo-router';
-import { Button } from '@/design-system';
+import { LinkRow } from '@/design-system';
 import { insightsReturnHref, progressOriginParams } from './navigation';
 import { insideProgress, useInsightsRouter } from './insights-router';
 
@@ -10,5 +10,5 @@ export function ReturnToInsights() {
   const label = href?.pathname === '/(tabs)/train/insights/period-nutrition' ? 'Volver a las comidas del período' : 'Volver a Comparaciones';
   // Opened from Progreso, Comparaciones lives in Progreso's stack: going back returns there, not to Entrenar.
   const fromProgress = !!progressOriginParams(params).fromProgress;
-  return href ? <Button label={label} variant="secondary" onPress={() => router.navigate(insideProgress(href, fromProgress))} /> : null;
+  return href ? <LinkRow kind="back" label={label} onPress={() => router.navigate(insideProgress(href, fromProgress))} /> : null;
 }

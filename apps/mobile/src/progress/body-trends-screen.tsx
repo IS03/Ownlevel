@@ -9,7 +9,7 @@ import { BODY_MEASUREMENT_FIELDS, type BodyMeasurementField } from '@/api/body';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchProgressBody, progressRequestKey, type ProgressBody, type ProgressBodyMetric } from '@/api/progress';
-import { AppText, Button, Chip, ChipGroup, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppText, Button, Chip, ChipGroup, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
 import { useNutritionStages } from '@/stages/stages-provider';
 import { chartBands } from './stages-model';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
@@ -125,7 +125,7 @@ function Selected({ metric, excluded, storedZeros = [], selectedDate, onSelect, 
       </View>
       {point && !valid(point.value) ? <AppText muted variant="caption">Registro no válido como {metric.key === 'body.weight' ? 'peso corporal' : 'medida corporal'}. Podés corregirlo o borrarlo en el original.</AppText> : null}
       {selectedDate && !point ? <AppText muted variant="caption">No hay un registro corporal en esa fecha. Elegí un punto del gráfico para ver el original.</AppText> : null}
-      {original ? <Button label="Ver registro original" variant="secondary" onPress={() => router.push(original)} /> : null}
+      {original ? <LinkRow label="Ver registro original" onPress={() => router.push(original)} /> : null}
       <AppText muted numeric variant="caption">{count} {count === 1 ? 'registro válido' : 'registros válidos'} en el período{invalid.length ? ` · ${invalid.length} no válido${invalid.length === 1 ? '' : 's'}` : ''}.</AppText>
     </View>
     {counted.length ? <AppText muted numeric variant="caption" testID="body-trend-zero">
@@ -162,8 +162,8 @@ function Content({ data, selected, body, selectedDate, onSelect, portada }: { da
     {!selected ? <>
       <BodyRecordComparison metrics={data.metrics} today={data.today} />
       <BodyZones data={data} onRegister={body ? () => body.controller.openMeasurement() : undefined} disabled={!editable} />
-      <Button label="Explorar peso y medidas" variant="secondary" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.weight' } })} />
-      <Button label="Tu cuaderno · peso y medidas por fecha" variant="secondary" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { section: 'journal' } })} />
+      <LinkRow label="Explorar peso y medidas" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.weight' } })} />
+      <LinkRow label="Tu cuaderno · peso y medidas por fecha" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { section: 'journal' } })} />
     </> : null}
     {body?.state.read.overview ? <>
       <WeightRecords state={body.state} controller={body.controller} editable={body.state.phase === 'idle' && !body.state.intent && !body.state.editor} />
@@ -191,10 +191,10 @@ function Content({ data, selected, body, selectedDate, onSelect, portada }: { da
     </View> : null}
     {!selected ? <>
       {/* Opens the weight on its own: every weighing and its weeks. The measures are the zones right below. */}
-      <Button label="Ver tus pesajes y semanas" variant="secondary" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.weight' } })} />
+      <LinkRow label="Ver tus pesajes y semanas" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.weight' } })} />
       <BodyRecordComparison metrics={data.metrics} today={data.today} />
       <BodyZones data={data} onRegister={body ? () => body.controller.openMeasurement() : undefined} disabled={!editable} />
-      <Button label="Tu cuaderno · peso y medidas por fecha" variant="secondary" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { section: 'journal' } })} />
+      <LinkRow label="Tu cuaderno · peso y medidas por fecha" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { section: 'journal' } })} />
     </> : null}
 
   </>;

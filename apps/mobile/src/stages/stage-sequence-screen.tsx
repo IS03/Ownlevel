@@ -6,6 +6,7 @@ import {
   AppIcon,
   AppText,
   Button,
+  LinkRow,
   TextField,
   brandTokens,
   pressedStyle,
@@ -157,9 +158,8 @@ export function StageSequenceScreen() {
                 <AppText muted>
                   Para sugerirte calorías necesitamos tus datos físicos.
                 </AppText>
-                <Button
+                <LinkRow
                   label="Ir a Datos físicos"
-                  variant="quiet"
                   onPress={() => router.push("/settings/physical")}
                 />
               </View>

@@ -1,5 +1,5 @@
 import {Alert,KeyboardAvoidingView,Modal,Platform,StyleSheet} from 'react-native';
-import {AppText,Button,ChipGroup,Heading,LoadingState,ScrollScreen,Surface,TextField} from '@/design-system';
+import { LinkRow,AppText,Button,ChipGroup,Heading,LoadingState,ScrollScreen,Surface,TextField} from '@/design-system';
 import {useRouter} from 'expo-router';
 import {activities,sexes} from '@/settings/settings-model';
 import type {ConfigOperation,NutritionConfig} from '@/api/nutrition-config';
@@ -56,7 +56,7 @@ export function ConfigurationEditor({controller,state}:{controller:Configuration
    <AppText muted>Automático usa tu gasto en reposo y tu actividad. La opción propia usa el número que ponés. Completá tus datos físicos para calcularlo.</AppText>
    {config?.energy.status==='ok'?<Surface><AppText>{`En reposo: ${shown(config.energy.data.bmrKcal)}`}</AppText><AppText>{`Gasto calculado: ${shown(config.energy.data.automaticBaseKcal)}`}</AppText><AppText>{`Tu gasto por día: ${shown(config.energy.data.usedBaseKcal)}`}</AppText></Surface>:null}
    {draft.baseExpenditureMode==='custom'?field('customBaseExpenditureKcal','Gasto base personalizado (kcal)'):null}{field('trainingExpenditureDeltaKcal','Extra de gasto por entrenamiento (kcal)')}
-   <Button label="Editar datos físicos" disabled={locked} variant="secondary" onPress={()=>leave(()=>controller.begin('physical'))}/>
+   <LinkRow label="Editar datos físicos" disabled={locked} onPress={()=>leave(()=>controller.begin('physical'))}/>
   </>:null}
   {op==='physical'?<PhysicalProfileFields draft={draft} change={(k,v)=>controller.change(k,v)} locked={locked} errors={state.errors} hasHistory={config?.physical.status==='ok'&&config.physical.data.hasWeightHistory}/>:null}
   {state.errors.form?<AppText accessibilityRole="alert">{state.errors.form}</AppText>:null}

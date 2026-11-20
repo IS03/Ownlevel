@@ -7,7 +7,7 @@ import { metricsChartOrigin, ReturnToMetricChart } from '@/progress/metrics-char
 import { useDomainDate } from '@/history/use-domain-date';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
-import { AppText, Button, Heading, InlineUnavailable, ScrollScreen, SkeletonBlock, Surface, spacing, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppText, Button, Heading, InlineUnavailable, ScrollScreen, SkeletonBlock, Surface, spacing, useOwnlevelTheme } from '@/design-system';
 import { NutritionDateSelector } from '@/nutrition/date-selector';
 import { metricValue } from '@/nutrition/day-content';
 import { displayNutritionDate, inputNutritionDate, nutritionToday, shiftNutritionDate } from '@/nutrition/day-format';
@@ -92,7 +92,7 @@ function MetricsDay({ autoEdit = false, date, today, onAutoEdit, onSelect, onSer
           </Surface>}
       </>}
     {/* M5.3: the reusable definitions surface. This day re-reads on focus, so changes show on return. */}
-    <Button label="Administrar métricas" onPress={() => router.push('/settings/metrics')} variant="secondary" />
+    <LinkRow label="Administrar métricas" onPress={() => router.push('/settings/metrics')} />
     {selector ? <NutritionDateSelector date={date} onClose={() => setSelector(false)} onSelect={value => onSelect(value === serverToday ? null : value)} /> : null}
   </ScrollScreen>;
 }
