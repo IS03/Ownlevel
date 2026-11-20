@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
-import { RefreshControl, StyleSheet, View } from 'react-native';
+import { RefreshControl, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { useCachedRead } from '@/api/use-cached-read';
 import { fetchProgressFindings, type ProgressEditorialFinding, type ProgressOverview, type ProgressDestination, type ProgressSpark } from '@/api/progress';
-import { LinkRow, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, spacing } from '@/design-system';
+import { LinkRow, AppText, Button, ChipGroup, SegmentedControl, InlineUnavailable, SkeletonBlock, UnavailableState, spacing } from '@/design-system';
 import { exactPeriodRange } from '@/insights/period-model';
 import { addDays, progressStateForRange } from './progress-range';
 import { fetchHistoryRange } from '@/api/history';
@@ -16,6 +16,7 @@ import { useProgressRange } from './progress-range-context';
 import { CompareSheet } from './period-sheets';
 import { ProgressScroll } from './progress-scroll';
 import { PeriodChart } from './period-chart';
+import { haptics } from '@/platform/haptics';
 import { formatValue } from './progress-format';
 import { destinationRoute } from './progress-destination';
 import { portadaPointParams, type PortadaPoint } from './portada-point';
@@ -38,38 +39,44 @@ function inspectedPoint(spark: ProgressSpark | null | undefined, kind: SparkKind
     return p ? { start: p.start, end: p.end, value: p.value, text: p.text } : null;
 }
 
-/** The inspected point lives in the screen (not here): it survives the trip to the detail and back. */
-function Preview({ kind, spark, mode, selectedKey, onSelect }: {
-    kind: SparkKind;
-    spark: ProgressSpark | null | undefined;
-    mode: 'bars' | 'dots';
-    selectedKey: string | null;
-    onSelect: (key: string | null) => void;
+/** Inspect a single chart at a time; its exact bucket and the domain detail share the same selection. */
+function Preview({ kind, spark, mode, selectedKey, onSelect, value, onOpen }: {
+  kind: SparkKind; spark: ProgressSpark | null | undefined; mode: 'bars' | 'dots';
+  selectedKey: string | null; onSelect: (key: string | null) => void; value: number | null; onOpen: () => void;
 }) {
-    if (!spark || !spark.current.some(p => p.value !== null))
-        return null;
-    const points = sparkPoints(spark, SPARK_UNIT[kind]);
-    const selected = points.find(p => p.key === selectedKey);
-    const meaning = kind === 'training' ? 'Actividad · series por intervalo' : kind === 'weight' ? 'Peso · último por intervalo' : 'Calorías · promedio por día utilizado';
-    // The selected range can wrap with Dynamic Type: reserve its intrinsic height, without moving the plot.
-    const reserve = [meaning, ...points.map(p => p.text)].reduce((a, b) => b.length > a.length ? b : a, '');
-    return <View style={styles.preview}>
-      <PeriodChart compact testID={`panorama-chart-${kind}`} points={points} mode={mode}
-        inspection={{ selectedKey: selected?.key ?? null, onSelect: key => onSelect(selected?.key === key ? null : key) }} />
-      <View>
-        <AppText numeric variant="caption" style={styles.reserve} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">{reserve}</AppText>
-        <View style={styles.readout} accessible accessibilityLabel={selected?.text ?? meaning} accessibilityLiveRegion="polite">
-          <AppText muted numeric variant="caption">{selected?.text ?? meaning}</AppText>
-        </View>
-      </View>
-    </View>;
+  const points = spark ? sparkPoints(spark, SPARK_UNIT[kind]) : [];
+  const selected = points.find(p => p.key === selectedKey);
+  const caption = selected ? kind === 'training' ? 'Series del intervalo' : kind === 'weight' ? 'Último pesaje del intervalo' : 'Promedio por día utilizado'
+    : kind === 'training' ? 'Series de estos 30 días' : kind === 'weight' ? 'Último pesaje del período' : 'Promedio por día utilizado';
+  const shown = selected ? selected.value : value;
+  return <View style={styles.preview} testID={`panorama-preview-${kind}`}>
+    <View accessibilityLiveRegion="polite">
+      <AppText muted variant="footnote">{caption}</AppText>
+      <AppText numeric variant="title1">{shown === null ? 'Sin dato' : portadaValue(shown, SPARK_UNIT[kind])}</AppText>
+      {selected ? <AppText muted numeric variant="footnote">{exactPeriodRange(selected)}</AppText> : null}
+    </View>
+    {points.some(p => p.value !== null) ? <>
+      <PeriodChart testID={`panorama-chart-${kind}`} points={points} mode={mode}
+        inspection={{ selectedKey: selected?.key ?? null, onSelect: key => { haptics.selection(); onSelect(selected?.key === key ? null : key); } }} />
+      <AppText muted variant="caption">{kind === 'training' ? 'Series registradas por intervalo.' : kind === 'weight' ? 'Último pesaje de cada intervalo; los huecos no son ceros.' : 'Promedios del nutriente registrado; no confirman toda la ingesta.'} Tocá un punto para consultar sus fechas.</AppText>
+    </> : <AppText muted variant="footnote">No hay puntos disponibles en esta lectura.</AppText>}
+    <LinkRow label={kind === 'training' ? 'Abrir entrenamiento' : kind === 'weight' ? 'Abrir peso y medidas' : 'Abrir nutrición'} onPress={onOpen} />
+  </View>;
 }
 
 type SparkPoints = Partial<Record<SparkKind, string | null>>;
-export function ProgressPanorama({ data, onOpen, points = {}, onPoint = () => undefined, daily, expanded = false, onToggle = () => undefined }: {
+export function ProgressPanorama({ data, onOpen, points = {}, onPoint = () => undefined, previewKind, onPreviewKind, daily, expanded = false, onToggle = () => undefined }: {
   data: ProgressOverview; onOpen: (d: ProgressDestination, point?: PortadaPoint | null) => void;
-  points?: SparkPoints; onPoint?: (kind: SparkKind, key: string | null) => void; daily?: AtlasDaily; expanded?: boolean; onToggle?: () => void;
+  points?: SparkPoints; onPoint?: (kind: SparkKind, key: string | null) => void; previewKind?: SparkKind; onPreviewKind?: (kind: SparkKind) => void; daily?: AtlasDaily; expanded?: boolean; onToggle?: () => void;
 }) {
+  const [localKind, setLocalKind] = useState<SparkKind>('training');
+  const kind = previewKind ?? localKind;
+  const { fontScale } = useWindowDimensions();
+  const Selector = fontScale > 1.3 ? ChipGroup : SegmentedControl;
+  const summaryValue = kind === 'training' ? data.training.status === 'ok' ? data.training.data.sets : null
+    : kind === 'weight' ? data.sparks?.weight?.last && data.sparks.weight.last > 0 ? data.sparks.weight.last : null
+    : data.nutrition.status === 'ok' ? data.nutrition.data.averageKcal : null;
+  const destination: ProgressDestination = kind === 'training' ? { kind: 'training' } : kind === 'weight' ? { kind: 'body' } : { kind: 'nutrition' };
   const openArea = (d: ProgressDestination) => {
     const kind = d.kind === 'body' ? 'weight' : d.kind === 'nutrition' ? 'nutrition' : 'training';
     onOpen(d, inspectedPoint(data.sparks?.[kind], kind, points[kind]));
@@ -77,17 +84,17 @@ export function ProgressPanorama({ data, onOpen, points = {}, onPoint = () => un
   return <>
     <PanoramaAtlas data={data} daily={daily} onOpen={openArea} />
     <LinkRow kind="disclosure" expanded={expanded} label={expanded ? 'Ocultar puntos del resumen' : 'Ver puntos del resumen'} onPress={onToggle} />
-    {expanded ? <View style={styles.preview} testID="panorama-points">
-      {(['training', 'weight', 'nutrition'] as const).map(kind => <View key={kind}>
-        <Heading level={2}>{kind === 'training' ? 'Entrenamiento' : kind === 'weight' ? 'Cuerpo' : 'Nutrición'}</Heading>
-        <Preview kind={kind} spark={data.sparks?.[kind]} mode={kind === 'weight' ? 'dots' : 'bars'} selectedKey={points[kind] ?? null} onSelect={key => onPoint(kind, key)} />
-      </View>)}
+    {expanded ? <View style={styles.expanded} testID="panorama-points">
+      <Selector accessibilityLabel="Qué mirar en el resumen" value={kind} options={[{ value: 'training', label: 'Entrenar' }, { value: 'weight', label: 'Peso' }, { value: 'nutrition', label: 'Nutrición' }]}
+        onChange={next => { haptics.selection(); (onPreviewKind ?? setLocalKind)(next); }} />
+      <Preview kind={kind} spark={data.sparks?.[kind]} mode={kind === 'weight' ? 'dots' : 'bars'} value={summaryValue}
+        selectedKey={points[kind] ?? null} onSelect={key => onPoint(kind, key)} onOpen={() => openArea(destination)} />
     </View> : null}
   </>;
 }
 
-function OverviewContent({selected, onSelect, contextOpen, onContextToggle, points, onPoint}: {selected: string | null; onSelect: (id: string | null) => void; contextOpen: boolean; onContextToggle: () => void;
-  points: SparkPoints; onPoint: (kind: SparkKind, key: string | null) => void}) {
+function OverviewContent({selected, onSelect, contextOpen, onContextToggle, points, onPoint, previewKind, onPreviewKind}: {selected: string | null; onSelect: (id: string | null) => void; contextOpen: boolean; onContextToggle: () => void;
+  previewKind: SparkKind; onPreviewKind: (kind: SparkKind) => void; points: SparkPoints; onPoint: (kind: SparkKind, key: string | null) => void}) {
     const { client } = useMobileApi(), router = useRouter(), { today, state: rangeState, setState } = useProgressRange();
     const [comparing, setComparing] = useState(false);
     const from = addDays(today, -29);
@@ -127,7 +134,7 @@ function OverviewContent({selected, onSelect, contextOpen, onContextToggle, poin
         router.push('/(tabs)/progress/trends/meal-times');
     };
     return <><ProgressScroll root periodControls={false} title="Progreso" testID="progress-overview" refreshControl={<RefreshControl refreshing={(state.status === 'ready' && state.refreshing) || (history.state.status === 'ready' && history.state.refreshing) || (report.state.status === 'ready' && report.state.refreshing)} onRefresh={() => void refreshAll()}/>}>
-   {data ? <>{state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Conservamos la última lectura confirmada." actionLabel="Reintentar" onAction={() => void refreshAll()}/> : null}<ProgressPanorama data={data} daily={daily} onOpen={open} points={points} onPoint={onPoint} expanded={contextOpen} onToggle={onContextToggle}/><ProgressFindings items={data.findings} sourcesUnavailable={data.training.status !== 'ok' || data.nutrition.status !== 'ok'} selected={selected} onSelect={onSelect} onOpen={item => open(item.destination, null, item)}/></> : state.status === 'loading' ? <SkeletonBlock height={176}/> : <UnavailableState title="No pudimos leer tu progreso" description="Tus registros siguen guardados." action={<Button label="Reintentar" onPress={() => void refresh()}/>}/>}
+   {data ? <>{state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Conservamos la última lectura confirmada." actionLabel="Reintentar" onAction={() => void refreshAll()}/> : null}<ProgressPanorama data={data} daily={daily} onOpen={open} points={points} onPoint={onPoint} previewKind={previewKind} onPreviewKind={onPreviewKind} expanded={contextOpen} onToggle={onContextToggle}/><ProgressFindings items={data.findings} sourcesUnavailable={data.training.status !== 'ok' || data.nutrition.status !== 'ok'} selected={selected} onSelect={onSelect} onOpen={item => open(item.destination, null, item)}/></> : state.status === 'loading' ? <SkeletonBlock height={176}/> : <UnavailableState title="No pudimos leer tu progreso" description="Tus registros siguen guardados." action={<Button label="Reintentar" onPress={() => void refresh()}/>}/>}
    <PanoramaTools today={today} onTool={tool}/>
  </ProgressScroll>
  {comparing ? <CompareSheet proposal={{start: from, end: today}} onClose={() => setComparing(false)} onApplied={() => router.push('/(tabs)/progress/compare')} /> : null}</>;
@@ -138,18 +145,18 @@ export function ProgressOverviewScreen() {
     const [visible, setVisible] = useState(false);
     // Only local state survives the trip (open finding, context, inspected spark points). Readings stay in the
     // existing account-scoped cache. A new account or a new window (another day) retires all of it.
-    const [selection, setSelection] = useState<{client: typeof client; window: string; id: string | null; contextOpen: boolean; points: SparkPoints}>({client, window: today, id: null, contextOpen: false, points: {}});
+    const [selection, setSelection] = useState<{client: typeof client; window: string; id: string | null; contextOpen: boolean; previewKind: SparkKind; points: SparkPoints}>({client, window: today, id: null, contextOpen: false, previewKind: 'training', points: {}});
     const current = selection.client === client && selection.window === today;
-    if (!current) setSelection({client, window: today, id: null, contextOpen: false, points: {}});
+    if (!current) setSelection({client, window: today, id: null, contextOpen: false, previewKind: 'training', points: {}});
     useFocusEffect(useCallback(() => {setVisible(true); return () => setVisible(false);}, []));
     return visible ? <OverviewContent selected={current ? selection.id : null}
+      previewKind={current ? selection.previewKind : 'training'} onPreviewKind={previewKind => setSelection(s => ({ ...s, previewKind }))}
       contextOpen={current && selection.contextOpen} points={current ? selection.points : {}}
       onSelect={id => setSelection(s => ({...s, id}))}
       onContextToggle={() => setSelection(s => ({...s, contextOpen: !s.contextOpen}))}
       onPoint={(kind, key) => setSelection(s => ({...s, points: {...s.points, [kind]: key}}))}/> : null;
 }
 const styles = StyleSheet.create({
-    preview: { gap: spacing.xs },
-    reserve: { opacity: 0 },
-    readout: { position: 'absolute', top: 0, left: 0, right: 0 },
+  preview: { gap: spacing.md },
+  expanded: { gap: spacing.lg, paddingVertical: spacing.md },
 });
