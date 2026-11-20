@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import { Alert, Modal, View } from 'react-native';
-import { AppText, Button, LoadingState, useReduceMotion } from '@/design-system';
+import { AppText, Button, LinkRow, LoadingState, useReduceMotion } from '@/design-system';
 import type { PersonalFood } from '@/api/nutrition-food';
-import { foodLabels, validateFoodDraft, type FoodDraft } from './food-model';
+import { foodLabels, scaleFoodDraftTo, tooPrecise, validateFoodDraft, type FoodDraft } from './food-model';
+import { UnitMenu } from './unit-menu';
 import type { FoodController, FoodState } from './food-controller';
 import type { QuickController, QuickState } from './quick-controller';
 import { QuickEditor } from './quick-editor';
@@ -59,6 +60,7 @@ export function FoodEditor({
     const dirty = state.mode === 'register' ? quick.controller.dirty() : controller.dirty();
     const exit = () => {
       if (state.mode === 'register') quick.controller.close();
+      controller.discard();
       controller.close();
     };
     if (dirty && !state.intent && !quick.state.intent)
@@ -76,7 +78,7 @@ export function FoodEditor({
     if (controller.dirty())
       Alert.alert('¿Descartar cambios?', 'Estos cambios del alimento no están guardados.', [
         { text: 'Cancelar', style: 'cancel' },
-        { text: 'Descartar', style: 'destructive', onPress: () => controller.back() },
+        { text: 'Descartar', style: 'destructive', onPress: () => { controller.discard(); controller.back(); } },
       ]);
     else controller.back();
   };
@@ -100,8 +102,24 @@ export function FoodEditor({
   };
   const browse = state.mode === 'browse',
     draft = state.draft;
-  const valid = !!draft && !!validateFoodDraft(draft).fields,
+  const check = draft ? validateFoodDraft(draft) : null;
+  const valid = !!check?.fields,
     saveDisabled = locked || !valid || !controller.dirty();
+  // Shown while typing, not only after a save attempt: a disabled Guardar never stays unexplained.
+  // Only about what was typed: an empty form never opens with a complaint. Missing fields are said when saving.
+  const live = draft && !valid ? Object.entries(check?.errors ?? {}).filter(([key]) => !!draft[key as keyof FoodDraft]?.trim()) : [];
+  const unit = draft?.servingUnit.trim() || 'unidad';
+  // 100 g or 100 ml is how labels read; «100 unidades» is not, so other units only get the precision note.
+  const precise = !!draft && tooPrecise(draft), scaled = draft && precise && (unit === 'g' || unit === 'ml') ? scaleFoodDraftTo(draft) : null;
+  // Swiping the sheet away keeps an unsaved draft for next time instead of asking after the sheet is already gone.
+  // Reads the controllers at the moment of the swipe, not this render: the same sheet goes from the list to an editor and a
+  // gesture may still hold an earlier version of this function.
+  const swipeClose = () => {
+    const now = controller.getSnapshot();
+    if (now.phase === 'pending' || now.phase === 'loading' || quick.controller.getSnapshot().phase === 'pending') return;
+    if (now.mode === 'register') { quick.controller.close(); controller.close(); return; }
+    if (now.mode === 'browse') controller.close(); else controller.shelve();
+  };
   const input = (key: keyof FoodDraft, label = foodLabels[key], big = false) => (
     <LibraryField
       label={label}
@@ -132,6 +150,7 @@ export function FoodEditor({
       testID="food-editor"
       running={pending}
       onClose={browse ? close : back}
+      onSwipeClose={swipeClose}
       right={
         !browse && state.editing ? (
               <LibraryEditorMenu
@@ -212,17 +231,34 @@ export function FoodEditor({
       ) : draft ? (
         <>
           {input('name')}
-          <AppText muted variant="caption">
-            Valores por porción base. Vacío significa sin dato; 0 es un valor explícito.
-          </AppText>
-          <LibraryNutrients fields={(key, label, big) => input(key, label, big)} />
+          {/* The portion first: every value below is for that amount. */}
           <View style={styles.section}>
             <AppText variant="headline">Porción base</AppText>
             <View style={styles.row}>
               <View style={{ flex: 1 }}>{input('servingQuantity')}</View>
-              <View style={{ flex: 1 }}>{input('servingUnit')}</View>
+              <View style={{ flex: 1 }}>
+                <UnitMenu value={draft.servingUnit} disabled={locked} onChange={(v) => controller.change('servingUnit', v)} />
+              </View>
             </View>
           </View>
+          <LibraryNutrients fields={(key, label, big) => input(key, label, big)} />
+          <AppText muted numeric variant="footnote" style={{ textAlign: 'center' }} testID="food-per-portion">
+            {`Valores por ${draft.servingQuantity.trim() || '—'} ${unit}`}
+          </AppText>
+          {live.length ? (
+            <View testID="food-live-errors">
+              {precise ? (
+                <AppText variant="footnote">Hasta 2 decimales por valor.{scaled ? ` Con ${draft.servingQuantity.trim()} ${unit} quedan muy chicos: cargalos por 100 ${unit}.` : ''}</AppText>
+              ) : (
+                live.map(([key, error]) => (
+                  <AppText key={key} variant="footnote">{`${foodLabels[key as keyof FoodDraft]}: ${error}`}</AppText>
+                ))
+              )}
+              {scaled ? (
+                <LinkRow label={`Pasar a 100 ${unit}`} value={`${scaled.calories || '—'} kcal`} numeric onPress={() => (Object.keys(scaled) as (keyof FoodDraft)[]).forEach((key) => { if (scaled[key] !== draft[key]) controller.change(key, scaled[key]); })} testID="food-scale-100" />
+              ) : null}
+            </View>
+          ) : null}
           {input('description')}
           {input('sourceNote')}
         </>
@@ -267,9 +303,9 @@ export function FoodEditor({
   );
   // Keep one native modal throughout the day picker → create → picker flow.
   return state.date || state.mode === 'register' ? (
-    <Modal animationType={reduced ? 'fade' : 'slide'} presentationStyle="pageSheet" visible onRequestClose={close}
+    <Modal animationType={reduced ? 'fade' : 'slide'} presentationStyle="pageSheet" visible onRequestClose={swipeClose}
       allowSwipeDismissal={!pending && quick.state.phase !== 'pending' && !state.intent && !quick.state.intent
-        && !(state.mode === 'register' ? quick.controller.dirty() : controller.dirty())}>
+        && !(state.mode === 'register' && quick.controller.dirty())}>
       {state.mode === 'register' ? (
         <QuickEditor
           embedded

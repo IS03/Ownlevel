@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PropsWithChildren, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type PropsWithChildren, type ReactNode } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
-import Animated, { FadeIn, SlideInDown, useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
+import Animated, { FadeIn, SlideInDown, runOnJS, useAnimatedStyle, useSharedValue, withSpring, type SharedValue } from 'react-native-reanimated';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import {
   AppIcon,
   AppText,
@@ -38,6 +39,8 @@ type LibrarySheetProps = PropsWithChildren<{
   testID: string;
   running?: boolean;
   embedded?: boolean;
+  /** Swiping the sheet down. Defaults to onClose; an editor can keep its draft instead of asking. */
+  onSwipeClose?: () => void;
 }>;
 export function LibrarySheet(props: LibrarySheetProps) {
   return props.embedded ? (
@@ -45,10 +48,13 @@ export function LibrarySheet(props: LibrarySheetProps) {
   ) : (
     <Modal visible transparent animationType="fade" onRequestClose={props.onClose} statusBarTranslucent>
       {/* #306: the modal covers the tab bar, so its insets are the window's, not the tab screen's (home
-          indicator + tab bar). Without its own provider the sheet reserved the tab bar below the list. */}
-      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-        <LibrarySheetBody {...props} />
-      </SafeAreaProvider>
+          indicator + tab bar). Without its own provider the sheet reserved the tab bar below the list.
+          A modal is its own native root: the swipe needs its own gesture root. */}
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+          <LibrarySheetBody {...props} />
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -62,6 +68,7 @@ function LibrarySheetBody({
   testID,
   running,
   embedded = false,
+  onSwipeClose,
 }: LibrarySheetProps) {
   const { colors } = useOwnlevelTheme(),
     reduced = useReduceMotion(),
@@ -74,6 +81,18 @@ function LibrarySheetBody({
   // sheet embedded in another one, keeps the inset on the sheet.
   const bottomInset = Math.max(insets.bottom, 16),
     scrollsUnder = !embedded && !footer;
+  // Swipe down from the grabber or the header, like every other sheet: past a quarter of a screen or a quick flick it
+  // closes; otherwise it springs back. The native page sheet (embedded) already has the system gesture.
+  const drag = useSharedValue(0);
+  const swipe = onSwipeClose ?? onClose;
+  const pan = useMemo(() => Gesture.Pan().enabled(!embedded && !running).activeOffsetY(8).failOffsetX([-24, 24])
+    .onUpdate((event) => { drag.set(Math.max(0, event.translationY)); })
+    .onEnd((event) => {
+      const close = event.translationY > 180 || event.velocityY > 900;
+      drag.set(withSpring(0, { damping: 20, stiffness: 220 }));
+      if (close) runOnJS(swipe)();
+    }), [embedded, running, drag, swipe]);
+  const dragged = useAnimatedStyle(() => ({ transform: [{ translateY: drag.value }] }));
   return (
     <View style={styles.modal}>
       <Pressable
@@ -96,10 +115,13 @@ function LibrarySheetBody({
           styles.sheet,
           embedded && { height: '100%' },
           { backgroundColor: colors.background, paddingBottom: scrollsUnder ? 0 : bottomInset },
+          dragged,
         ]}
       >
         <ScreenGlow />
-        <SheetHandle />
+        <GestureDetector gesture={pan}>
+          <View style={styles.grabArea} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><SheetHandle /></View>
+        </GestureDetector>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={embedded ? 0 : keyboardOffset}
@@ -107,6 +129,7 @@ function LibrarySheetBody({
           style={styles.fill}
         >
           {/* Equal side columns keep the title centered on the sheet, not between unequal buttons. */}
+          <GestureDetector gesture={pan}>
           <View style={styles.header}>
             <View style={styles.side} testID={`${testID}-header-start`}>
               <NutritionGlassButton
@@ -120,6 +143,7 @@ function LibrarySheetBody({
             </AppText>
             <View style={[styles.side, styles.sideEnd]} testID={`${testID}-header-end`}>{right}</View>
           </View>
+          </GestureDetector>
           <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
             testID={testID}
             keyboardShouldPersistTaps="handled"
@@ -426,6 +450,7 @@ const styles = StyleSheet.create({
   modal: { flex: 1, justifyContent: 'flex-end' },
   scrim: { backgroundColor: 'rgba(0,0,0,0.2)' },
   sheet: { height: '94%', borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
+  grabArea: { paddingTop: 10, paddingBottom: 4 },
   header: { paddingHorizontal: 16, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
   side: { flexGrow: 1, flexBasis: 0, minWidth: 44, flexDirection: 'row', alignItems: 'center' },
   sideEnd: { justifyContent: 'flex-end' },

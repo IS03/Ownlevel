@@ -22,7 +22,8 @@ export function SheetSurface({ children, style, ...props }: PropsWithChildren<Vi
 
 export function SheetHandle() {
   const { colors } = useOwnlevelTheme();
-  return <View accessibilityElementsHidden style={[styles.handle, { backgroundColor: colors.border }]} />;
+  // The system grabber's look: a quiet text tone, not the border color, which almost vanished on the sand background.
+  return <View accessibilityElementsHidden style={[styles.handle, { backgroundColor: colors.textMuted }]} />;
 }
 
 type SheetHeaderProps = {
@@ -73,7 +74,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     padding: layout.cardPadding,
   },
-  handle: { alignSelf: 'center', borderRadius: radius.full, height: 5, width: 36 },
+  handle: { alignSelf: 'center', borderRadius: radius.full, height: 5, width: 36, opacity: 0.35 },
   header: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
   inset: { padding: layout.screenPadding },
   close: { alignItems: 'center', borderRadius: radius.full, height: 36, justifyContent: 'center', margin: (layout.minTouch - 36) / 2, width: 36 },
