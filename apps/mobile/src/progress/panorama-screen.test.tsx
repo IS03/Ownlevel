@@ -211,7 +211,8 @@ it('opens the canonical nutrition reference instead of an inherited A/B and neve
     const view = render(wrap(<><ProgressOverviewScreen/><InspectRange/></>)); await view.findByTestId('progress-panorama');
     await act(async () => range!.setState({...range!.state, compare: {kind: 'last_year'}}));
     fireEvent.press(view.getByRole('button', {name: /Ver referencia de Calorías registradas/}));
-    expect(view.getByText('Actual: 10 de 29 días. Referencia: 15 de 30 días.')).toBeTruthy();
+    expect(view.getByText('10 de 29 días utilizados')).toBeTruthy();
+    expect(view.getByText('15 de 30 días utilizados')).toBeTruthy();
     expect(read).toHaveBeenCalledTimes(3);
     fireEvent.press(view.getByRole('button', {name: 'Ver registros de Calorías registradas'}));
     expect(range!.compare).toEqual({start: '2026-09-11', end: '2026-10-10'});
@@ -330,6 +331,7 @@ it('P1-C1: the inspected spark point survives the trip to the detail and back, t
     const view = render(wrap());
     await view.findByTestId('progress-panorama');
     fireEvent.press(view.getByRole('button', {name: 'Ver puntos del resumen'}));
+    fireEvent.press(view.getByLabelText('Peso'));
     const point = () => within(view.getByTestId('panorama-chart-weight')).getAllByRole('button').find(b => b.props.accessibilityState?.selected);
     const weightButtons = within(view.getByTestId('panorama-chart-weight')).getAllByRole('button');
     const target = weightButtons.find(b => !/sin dato/.test(b.props.accessibilityLabel))!;
@@ -453,4 +455,19 @@ it('opens the focused comparison only after confirming the direct home sheet, wi
     expect(range!.compare).toEqual({start: '2026-09-11', end: '2026-10-10'});
     expect([range!.query.from, range!.query.to]).toEqual(['2026-10-11', PANORAMA_TODAY]);
     expect(read).toHaveBeenCalledTimes(3);
+});
+
+it('shows a single expanded chart, switches domains locally and opens the selected bucket explicitly', async () => {
+    const view = render(wrap()); await view.findByTestId('progress-panorama');
+    fireEvent.press(view.getByRole('button', { name: 'Ver puntos del resumen' }));
+    expect(view.getByTestId('panorama-chart-training')).toBeTruthy();
+    expect(view.queryByTestId('panorama-chart-weight')).toBeNull();
+    fireEvent.press(view.getByLabelText('Nutrición'));
+    expect(view.queryByTestId('panorama-chart-training')).toBeNull();
+    const graph = within(view.getByTestId('panorama-chart-nutrition'));
+    fireEvent.press(graph.getAllByRole('button')[0]!);
+    expect(within(view.getByTestId('panorama-preview-nutrition')).getByText('Promedio por día utilizado')).toBeTruthy();
+    expect(mockPush).not.toHaveBeenCalled(); expect(read).toHaveBeenCalledTimes(3);
+    fireEvent.press(view.getByRole('button', { name: 'Abrir nutrición' }));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/nutrition', params: expect.objectContaining({ point: expect.any(String), from: '2026-10-11', to: PANORAMA_TODAY }) });
 });
