@@ -115,6 +115,8 @@ export type ProgressTrainingInPeriod = {
   exercises: { id: string; status: TrainingPerformanceStatus; reason: string; sessions: number; firstDate: string; lastDate: string; signal: TrainingSignal | null }[];
 };
 export type ProgressTraining = {
+  /** Opt-in `times=1`: the existing source's saved starts, without another read. */
+  times?: { bins: number[]; timed: number; excluded: number };
   /** Opt-in snapshot projection. `story=2` preserves missing durations as null; v1 keeps its installed contract. */
   story?: ProgressTrainingStory;
   inPeriod?: ProgressTrainingInPeriod;
@@ -442,7 +444,7 @@ function parseTrainingStory(v: unknown, period: ProgressPeriod): ProgressTrainin
   return { routines, muscles };
 }
 export function parseProgressTraining(v: unknown): ProgressTraining | undefined {
-  if (!record(v) || !keys(v, ["today", "period", "summary", "series", "exercises", "personalRecords", "feelings", "muscles", "routines", ...("inPeriod" in v ? ["inPeriod"] : []), ...('story' in v ? ['story'] : [])]) || !isNutritionDate(v.today)) return;
+  if (!record(v) || !keys(v, ["today", "period", "summary", "series", "exercises", "personalRecords", "feelings", "muscles", "routines", ...("inPeriod" in v ? ["inPeriod"] : []), ...('story' in v ? ['story'] : []), ...('times' in v ? ['times'] : [])]) || !isNutritionDate(v.today)) return;
   const period = parseProgressPeriod(v.period), summary = parseTrainingSummary(v.summary);
   const series = list(v.series, p => record(p) && keys(p, ["start", "end", "sessions", "sets", "minutes"]) && isNutritionDate(p.start) && isNutritionDate(p.end)
     && count(p.sessions) && count(p.sets) && count(p.minutes) ? p as ProgressTraining["series"][number] : undefined);
@@ -461,7 +463,10 @@ export function parseProgressTraining(v: unknown): ProgressTraining | undefined 
   if ("inPeriod" in v && !inPeriod) return;
   const story = 'story' in v ? parseTrainingStory(v.story, period) : undefined;
   if ('story' in v && (!story || story.routines.reduce((sum, r) => sum + r.sessions, 0) !== summary.sessions)) return;
-  return { today: v.today, period, summary, series, exercises, personalRecords, feelings, muscles, routines, ...(inPeriod ? { inPeriod } : {}), ...(story ? { story } : {}) };
+  const times = v.times;
+  if ('times' in v && (!record(times) || !keys(times, ['bins', 'timed', 'excluded']) || !Array.isArray(times.bins) || times.bins.length !== 12 || !times.bins.every(count)
+    || !count(times.timed) || !count(times.excluded) || times.bins.reduce((a, b) => a + b, 0) !== times.timed || times.timed + times.excluded !== summary.sessions)) return;
+  return { today: v.today, period, summary, series, exercises, personalRecords, feelings, muscles, routines, ...(inPeriod ? { inPeriod } : {}), ...(story ? { story } : {}), ...('times' in v ? { times: times as ProgressTraining['times'] } : {}) };
 }
 export function parseProgressTrainingRecords(v: unknown): ProgressTrainingRecords | undefined {
   if (!record(v) || !keys(v, ["today", "period", "performance", "exercises", "personalRecords"]) || !isNutritionDate(v.today) || !validPerformance(v.performance)) return;
