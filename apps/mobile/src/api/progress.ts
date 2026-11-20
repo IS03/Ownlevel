@@ -41,10 +41,14 @@ export const fetchProgressMetrics = (client: MobileApiClient, query: ProgressQue
     if (metricId && data.metric && data.metric.id !== metricId && data.definitions.some(d => d.id === metricId)) return undefined;
     return data;
   } });
-export const fetchProgressTraining = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
-  performanceVersion(version => client.read({ path: `${BASE}/training?${qs(query, compare)}&inPeriod=${version}&story=2`, signal, parse: (raw: unknown) => {
+export const fetchProgressTraining = async (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null) => {
+  const read = (version: 1 | 2, times: boolean) => client.read({ path: `${BASE}/training?${qs(query, compare)}&inPeriod=${version}&story=2${times ? '&times=1' : ''}`, signal, parse: (raw: unknown) => {
     const data = parseProgressTraining(raw); return data && samePeriod(data.period, query, compare) ? data : undefined;
-  } }), signal);
+  } });
+  const result = await read(2, true);
+  // Server-first rollout: only a parameter rejection falls back, never a failed network/auth read.
+  return result.status === 'unavailable' && result.meta.httpStatus === 400 && !signal?.aborted ? performanceVersion(version => read(version, false), signal) : result;
+};
 /** Home's records card: the records, exercise performance and comparable count of `/training`, without the rest. */
 export const fetchProgressTrainingRecords = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal) =>
   client.read({ path: `${BASE}/training/records?${qs(query)}`, signal, parse: (raw: unknown) => {

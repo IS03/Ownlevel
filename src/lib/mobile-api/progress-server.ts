@@ -35,6 +35,7 @@ import { exploreOptions, parseExploreMeasure, parseProgressExplore, type Explore
 import { readProgressConnections } from "./progress-connections";
 import { parseProgressConnections, type ProgressConnections } from "./progress-connections-contract";
 import { registeredNutritionDays } from "./progress-nutrition-days";
+import { trainingTimesPreview } from '../progress/training-start-time';
 
 type Context = MobileSupabaseAuthenticatedContext;
 
@@ -282,10 +283,11 @@ export async function buildMobileProgressMetrics(context: Context, query: Mobile
   };
 }
 
-export async function buildMobileProgressTraining(context: Context, query: MobileProgressQuery, today: string, withInPeriod = false, withStory = false, reliableDurations = false, comparisonV2 = false) {
+export async function buildMobileProgressTraining(context: Context, query: MobileProgressQuery, today: string, withInPeriod = false, withStory = false, reliableDurations = false, comparisonV2 = false, withTimes = false) {
   const { period } = resolveMobileProgressPeriod(query, today);
   const ctx = await loadTrainingContext(webAuth(context), period, today);
-  return { ...trainingDto(ctx, today, period, comparisonDto), ...(withInPeriod ? { inPeriod: comparisonV2 ? trainingComparisonDto(ctx.source, period) : trainingInPeriodDto(ctx, period) } : {}), ...(withStory ? { story: trainingStoryDto(ctx, period, reliableDurations, comparisonV2) } : {}) };
+  return { ...trainingDto(ctx, today, period, comparisonDto), ...(withInPeriod ? { inPeriod: comparisonV2 ? trainingComparisonDto(ctx.source, period) : trainingInPeriodDto(ctx, period) } : {}), ...(withStory ? { story: trainingStoryDto(ctx, period, reliableDurations, comparisonV2) } : {}),
+    ...(withTimes ? { times: trainingTimesPreview(ctx.source.sessions.filter(s => s.status === 'completed').map(s => ({ date: ctx.source.dateByDayLog.get(s.day_log_id) ?? null, startedAt: s.started_at })).filter(s => s.date && s.date >= period.start && s.date <= period.end), today) } : {}) };
 }
 export async function buildMobileProgressTrainingExercise(context: Context, query: MobileProgressQuery, today: string, exerciseId: string, withCharts = false) {
   const { period } = resolveMobileProgressPeriod(query, today);
@@ -365,10 +367,11 @@ export const progressMetricsResponse = (request: Request) => progressReadRespons
 }, parseProgressMetrics);
 export const progressTrainingResponse = (request: Request) => progressReadResponse(request, "training",
   (context, params, today) => {
-    const query = progressQueryFromParams(params, ["inPeriod", "story"]), inPeriod = params.get("inPeriod"), story = params.get('story');
+    const query = progressQueryFromParams(params, ["inPeriod", "story", "times"]), inPeriod = params.get("inPeriod"), story = params.get('story'), times = params.get('times');
     if (inPeriod !== null && inPeriod !== "1" && inPeriod !== "2") throw new MobileApiValidationError("Parámetro no válido.");
     if (story !== null && story !== '1' && story !== '2') throw new MobileApiValidationError('Parámetro no válido.');
-    return buildMobileProgressTraining(context, query, today, inPeriod !== null, story !== null, story === '2', inPeriod === '2');
+    if (times !== null && times !== '1') throw new MobileApiValidationError('Parámetro no válido.');
+    return buildMobileProgressTraining(context, query, today, inPeriod !== null, story !== null, story === '2', inPeriod === '2', times === '1');
   }, parseProgressTraining);
 /** Home's records card: a fraction of `/progress/training` (same values), which stays as is for installed builds. */
 export const progressTrainingRecordsResponse = (request: Request) => progressReadResponse(request, "training.records",

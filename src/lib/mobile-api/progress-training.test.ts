@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 vi.mock("server-only", () => ({}));
-vi.mock("../phase2/cordoba-date", () => ({ todayInCordoba: () => "2026-10-05" }));
-vi.mock("@/lib/phase2/cordoba-date", () => ({ todayInCordoba: () => "2026-10-05" }));
+vi.mock("../phase2/cordoba-date", async importOriginal => ({ ...await importOriginal<object>(), todayInCordoba: () => "2026-10-05" }));
+vi.mock("@/lib/phase2/cordoba-date", async importOriginal => ({ ...await importOriginal<object>(), todayInCordoba: () => "2026-10-05" }));
 vi.mock("./supabase", () => ({ authenticateMobileAccessToken: vi.fn() }));
 vi.mock("@/lib/phase1/profile", () => ({ getMyProfile: vi.fn(async () => null) }));
 vi.mock("@/lib/phase1/day-log", () => ({ listAllWeightHistory: vi.fn(async () => []) }));
@@ -89,6 +89,15 @@ beforeEach(() => {
 });
 
 describe("GET /progress/training — summary", () => {
+  it('saved-time preview is opt-in, uses the existing source and preserves the installed response', async () => {
+    vi.mocked(loadCompletedTrainingData).mockResolvedValue(source([{ date: d(-1), exercises: [bench([[8, 60]])] }]));
+    expect((await training()).times).toBeUndefined();
+    vi.mocked(loadCompletedTrainingData).mockClear();
+    const result = await training('progress/training?times=1');
+    expect(result.times?.timed).toBe(1); expect(result.times?.bins.reduce((a, b) => a + b, 0)).toBe(1);
+    expect(loadCompletedTrainingData).toHaveBeenCalledTimes(1);
+    expect((await trainingGET(request('progress/training?times=0'))).status).toBe(400);
+  });
   it('story is opt-in and projects routine snapshots with no additional source read', async () => {
     vi.mocked(loadCompletedTrainingData).mockResolvedValue(source([
       { date: d(-40), routine: 'old', exercises: [bench([[8, 55]])] },

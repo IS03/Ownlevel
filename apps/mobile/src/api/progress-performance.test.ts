@@ -10,7 +10,8 @@ it.each([fetchProgressTraining, fetchProgressOverview])('asks for the expanded c
 it.each([fetchProgressTraining, fetchProgressOverview])('only a validation rejection falls back to the legacy read', async load => {
   const read = jest.fn<MobileApiClient['read']>().mockResolvedValueOnce({status:'unavailable',reason:'network',meta:{...meta,httpStatus:400,outcome:'unavailable'}} as never).mockResolvedValueOnce({status:'ok',data:{},meta} as never);
   await load({read} as unknown as MobileApiClient,{period:'30'});
-  expect(read).toHaveBeenCalledTimes(2); expect(read.mock.calls[1][0].path).toContain('inPeriod=1');
+  expect(read).toHaveBeenCalledTimes(2); expect(read.mock.calls[1][0].path).toContain(load === fetchProgressTraining ? 'inPeriod=2' : 'inPeriod=1');
+  if (load === fetchProgressTraining) expect(read.mock.calls[1][0].path).not.toContain('times=1');
   read.mockReset().mockResolvedValue({status:'unavailable',reason:'network',meta:{...meta,httpStatus:null,outcome:'unavailable'}} as never);
   await load({read} as unknown as MobileApiClient,{period:'30'}); expect(read).toHaveBeenCalledTimes(1);
 });

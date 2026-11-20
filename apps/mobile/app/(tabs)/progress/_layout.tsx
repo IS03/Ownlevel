@@ -18,6 +18,8 @@ export default function ProgressLayout() {
       <Stack.Screen name="trends/nutrition" options={{ headerShown: false, title: 'Nutrición' }} />
       <Stack.Screen name="trends/meal-times" options={{ headerShown: false, title: 'Cuándo comés' }} />
       <Stack.Screen name="trends/training" options={{ headerShown: false, title: 'Entrenamiento' }} />
+      <Stack.Screen name="trends/training-times" options={{ headerShown: false, title: 'Tus horarios' }} />
+      <Stack.Screen name="training-session/[id]" options={{ title: '', headerBackTitle: 'Tus horarios', headerLargeTitleEnabled: false }} />
       <Stack.Screen name="trends/exercise/[id]" options={{ headerShown: false, title: 'Ejercicio' }} />
       <Stack.Screen name="explore" options={{ headerShown: false, title: 'Explorar' }} />
       <Stack.Screen name="views" options={{ headerShown: false, title: 'Mis vistas' }} />

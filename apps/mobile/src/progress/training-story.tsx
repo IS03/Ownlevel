@@ -185,7 +185,17 @@ export function TrainingStory({ data, chart }: { data: ProgressTraining; chart: 
     {chart}
     {!data.summary.sessions ? <AppText muted>Sin entrenamientos en este período.</AppText> : null}
     {!data.story ? <AppText muted variant="footnote">El detalle ampliado por rutina no está disponible en esta lectura. Podés consultar las sesiones y los ejercicios.</AppText> : null}
-    <Routines data={data} open={open} /><Performance data={data} open={open} /><Muscles data={data} open={open} />
+    <Routines data={data} open={open} />
+    <View style={styles.section} testID="training-times-entry"><SectionTitle description="Cuándo entrenás, cuánto dura y cómo llegás.">Tus horarios</SectionTitle>
+      {data.times ? <View style={styles.stack} accessible accessibilityLabel={`${data.times.timed} sesiones con inicio utilizable. Distribución por hora: ${data.times.bins.map((n, i) => `${i * 2} a ${(i + 1) * 2} horas, ${n}`).join('; ')}. ${data.times.excluded} sesiones excluidas.`}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: spacing.xs, height: 48 }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          {data.times.bins.map((n, i) => <View key={i} style={{ flex: 1, height: n ? 48 * n / Math.max(1, ...data.times!.bins) : 1, backgroundColor: n ? colors.primary : colors.border }} />)}
+        </View>
+        <View style={styles.between}><AppText muted variant="caption">00 h</AppText><AppText muted numeric variant="caption">{data.times.timed} sesiones · inicio guardado</AppText><AppText muted variant="caption">24 h</AppText></View>
+      </View> : null}
+      <ProgressRow label="Explorar tus horarios" onPress={() => router.push('/(tabs)/progress/trends/training-times')}><AppText style={styles.flex}>Sesiones, duración, energía y ejercicios</AppText></ProgressRow>
+    </View>
+    <Performance data={data} open={open} /><Muscles data={data} open={open} />
     <View style={styles.section}><SectionTitle description="Pistas de tus registros, sin suponer tus objetivos.">Para revisar</SectionTitle>
       {durationFinding ? <View style={[styles.review, { borderColor: colors.border }]}><AppIcon name="clock" color={colors.textMuted} size={20} /><View style={styles.flex}><AppText variant="headline">{longest.length === 1 ? `${longest[0].name} es tu rutina más larga` : `${longest.map(r => r.name).join(' y ')} son tus rutinas más largas`}</AppText><AppText muted numeric>{fmt(maxMinutes)} min por sesión. Solo se comparan rutinas con horarios completos. El tiempo incluye descansos; no mide intensidad.</AppText>{longest.map(r => <ProgressRow key={r.id} label={`Ver último día de ${r.name}`} onPress={() => r.lastDate && router.push({ pathname: '/history/day/[date]', params: { date: r.lastDate } })}><AppText style={styles.flex}>Ver último día de {r.name}</AppText></ProgressRow>)}</View></View> : null}
       {absent.length ? <View style={[styles.review, { borderColor: colors.border }]}><AppIcon name="calendar" color={colors.textMuted} size={20} /><View style={styles.flex}><AppText variant="headline">Rutinas sin sesiones en este período</AppText><AppText muted>{absent.map(r => r.name).join(', ')}. Sí aparecen en la referencia. Esto no confirma que las hayas dejado de hacer.</AppText><ProgressRow label="Ver últimas sesiones" onPress={() => router.push('/(tabs)/train/history')}><AppText style={styles.flex}>Ver últimas sesiones</AppText></ProgressRow></View></View> : null}
