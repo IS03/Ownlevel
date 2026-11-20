@@ -10,6 +10,7 @@ import { LinkRow, AppIcon, AppSheet, AppText, Button, ChipGroup, ExampleFrame, H
 import type { AppIconName } from '@/design-system/icon-names';
 import { haptics } from '@/platform/haptics';
 import { useProgressResource } from '@/progress/use-progress-resource';
+import { RoutineOrderPrefetch, RoutineOrderView } from './routine-order-view';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { EXPLAIN_DOWN, FAMILY_OPTIONS, LANE_TITLE, NUTRITION_SCOPE, contextRows, feelingRows, outsideText, preStartNote, preStartRows, withoutComparison, type Counts, dayLabel, dayLanes, daySessions, referenceText, sessionLanes, feelingClockNote, nutritionRows, sessionName, sessionTime, exerciseSentence, focusOf, heroCaption, heroOf, joinDays, nextDate, nothingComparable, readingRows, reasonDetail, reasonText, relationGroups, relationName, relationState, sameRead, statusArrow, statusText, type ContextRow, type DayLanes, type FamilyFilter, type Lane } from './insights-model';
 import { InsightRow } from './insight-row';
@@ -24,8 +25,8 @@ import { usePeriodReturn } from './use-period-return';
 import { withProgressOrigin,progressOriginParams,dayWeightHref, explorationHref, insightsEvidenceHref, insightsOriginOf, metricTrendHref, nutritionDayHref, validSession, type InsightsOrigin } from './navigation';
 import { useInsightsRouter } from './insights-router';
 
-type View_ = 'days' | 'exercises' | 'relation';
-const VIEWS = [{ value: 'days', label: 'Sesiones' }, { value: 'exercises', label: 'Ejercicios' }, { value: 'relation', label: 'Cómo llegaste' }] as const;
+type View_ = 'days' | 'exercises' | 'relation' | 'order';
+const VIEWS = [{ value: 'days', label: 'Sesiones' }, { value: 'exercises', label: 'Ejercicios' }, { value: 'relation', label: 'Llegada' }, { value: 'order', label: 'Orden' }] as const;
 const loadRelations = (client: MobileApiClient, signal: AbortSignal) => fetchInsightsRelations(client, signal);
 
 /** Label and value on one line; with large text they stack and wrap instead of squeezing (IDENTIDAD.md § Dynamic Type). */
@@ -461,7 +462,7 @@ export function InsightsScreen() {
   const { colors } = useOwnlevelTheme();
   const router = useInsightsRouter();
   const params = useLocalSearchParams();
-  const view: View_ = (params.view === 'exercises' || params.view === 'relation') && !validSession(params.session) ? params.view : 'days';
+  const view: View_ = (params.view === 'exercises' || params.view === 'relation' || params.view === 'order') && !validSession(params.session) ? params.view : 'days';
   const family = (FAMILY_OPTIONS.find(option => option.value === params.family)?.value ?? 'all') as FamilyFilter;
   const relationsOpen = params.relations === '1';
   const origin = insightsOriginOf(params);
@@ -549,6 +550,7 @@ export function InsightsScreen() {
     sessionId: session.sessionId, date: day.date, label: sessionName(session), routine: session.routineName ?? sessionName(session),
     pct: joinedChange(session.change, day.partial?.sessions.find(row => row.sessionId === session.sessionId)?.change)?.pct ?? null })));
   const setRoutine = (value: string) => { haptics.selection(); router.setParams({ routine: value === 'all' ? undefined : value }); };
+  const orderRoutine = routine !== 'all' ? routine : routineOptions.find(option => option.value !== 'all')?.value ?? null;
   // A day chosen by the route (coming back from another screen) leads; otherwise the latest with a clear result.
   const chosenDay = !focusId && focusDate ? shownDays.filter(day => day.date === focusDate) : [];
   const hero = focusId ? null : heroOf(chosenDay) ?? heroOf(shownDays);
@@ -561,8 +563,11 @@ export function InsightsScreen() {
     {state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
     {origin.fromSession && origin.revision && origin.revision !== data.sourceRevision ? <AppText muted testID="insights-session-revised">Los registros cambiaron desde el origen. Esta lectura completa está actualizada.</AppText>
       : changedWhileOpen ? <AppText muted accessibilityLiveRegion="polite" testID="insights-revised-now">Tus registros cambiaron mientras mirabas. Esta lectura está actualizada.</AppText> : null}
-    {chrome ? <ExerciseSegmented accessibilityLabel="Ver por sesiones, ejercicios o cómo llegaste" value={view} options={VIEWS} onChange={setView} /> : null}
-    {view === 'relation' ? <OwnTramosView client={client} metrics={data.metrics} router={router} origin={origin} initialRoutine={routine === 'all' ? null : routine}
+    {chrome ? <ExerciseSegmented accessibilityLabel="Ver por sesiones, ejercicios, cómo llegaste u orden" value={view} options={VIEWS} onChange={setView} /> : null}
+    {/* Precarga: the order of the routine in focus (or the latest one) is read while another view is open, so «Orden» opens ready. */}
+    {view !== 'order' ? <RoutineOrderPrefetch client={client} routine={orderRoutine} /> : null}
+    {view === 'order' ? <RoutineOrderView client={client} initialRoutine={orderRoutine} routines={routineOptions.filter(option => option.value !== 'all')} />
+    : view === 'relation' ? <OwnTramosView client={client} metrics={data.metrics} router={router} origin={origin} initialRoutine={routine === 'all' ? null : routine}
       evaluated={data.relations.partial.outcomeDays ? data.relations.partial.candidatesEvaluated : data.relations.strict.candidatesEvaluated}
       onStatistics={() => router.setParams({ view: 'days', relations: '1' })} />
     : view === 'exercises' ? <Exercises model={data} router={router} routine={routine} routines={routineOptions} onRoutine={setRoutine}
