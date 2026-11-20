@@ -50,7 +50,8 @@ Cambiar el período limpia los filtros que podrían haber dejado de existir.
   de la primera serie según las reglas existentes. Tardía, incierta, ilegible o
   de otro instrumento no se convierte en energía previa. La energía legacy o
   posterior no reemplaza una respuesta previa.
-- Mejoras utiliza `buildPerformanceInsightsV1` estricto, con su referencia
+- Mejoras utiliza `buildPerformanceInsightsV1` estricto y el comparador parcial para los ejercicios sin variante histórica (ver
+  [Entre sesiones](entrenamiento-entre-sesiones.md)), con su referencia
   anterior compatible y todo el historial disponible. La referencia puede estar
   fuera del período seleccionado o corresponder a otra rutina. No usa el cálculo
   alternativo `own` ni su fórmula de fuerza estimada.

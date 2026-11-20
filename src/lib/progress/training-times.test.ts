@@ -38,9 +38,19 @@ describe('training start and descriptive times', () => {
     const r = read(s);
     expect(r.total.sessions).toBe(12); expect(r.total.duration.n).toBe(11);
     expect(r.total.energy.n).toBe(10); // a missing end does not erase a valid pre-session answer
-    expect(r.total.performance.insufficient).toBe(12);
-    expect(r.total.performance.improved).toBe(0); expect(r.executions).toHaveLength(0);
+    // Without a recorded variant the partial comparator still compares each exercise with its previous time (as Comparaciones
+    // does): only the first exposure, with no reference yet, stays insufficient. Loads still require a known execution.
+    const p = r.total.performance;
+    expect(p.insufficient).toBe(1); expect(p.improved + p.stable + p.declined + p.ambiguous).toBe(11); expect(r.executions).toHaveLength(0);
     expect(r.bands[3]!.sessions).toBe(0); // empty bands do not hide the populated bands
+  });
+  it('counts every exercise exposure once across both comparators', () => {
+    const s = descriptiveFixture();
+    const known = read(s).total.performance;
+    s.exercises.forEach(e => { e.configuration = null; });
+    const unknown = read(s).total.performance;
+    const total = (p: typeof known) => p.improved + p.stable + p.declined + p.ambiguous + p.insufficient;
+    expect(total(unknown)).toBe(total(known));
   });
   it('uses the strict comparator and references before the selected period', () => {
     const s = descriptiveFixture(), r = read(s);

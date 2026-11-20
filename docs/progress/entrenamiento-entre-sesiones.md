@@ -68,7 +68,10 @@ procedencia histórica de [Tus horarios](entrenamiento-horarios.md).
   reemplazan por respuestas posteriores, tardías o legacy.
 - Se muestran mediana y distribución de los cinco niveles. No se inventan ceros
   ni se igualan los denominadores de energía y fatiga.
-- Rendimiento reutiliza `buildPerformanceInsightsV1` estricto. El denominador es
+- Rendimiento reutiliza `buildPerformanceInsightsV1` estricto y, para los ejercicios sin variante histórica, el comparador parcial
+  (`buildPerformanceInsightsPartialV1`), igual que Comparaciones. El parcial solo completa un ejercicio que el estricto dejó
+  insuficiente: cada exposición cuenta una vez. Corrección del 20/11: con datos reales, solo 3 de 125 bloques del mes tenían
+  variante, y el estricto solo dejaba Mejoras vacía. El denominador es
   mejoró + estable + bajó; mixtos e insuficientes se muestran aparte. Sin comparación
   suficiente no se escribe «cero mejoras» como si se hubiera evaluado el resultado.
 - Se cuentan comparaciones de ejercicios en sesiones, no ejercicios únicos ni
