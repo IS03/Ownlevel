@@ -1,7 +1,7 @@
 import { describe,expect,it,jest } from '@jest/globals';
 import { FoodController,type FoodApi } from './food-controller';
 import { FoodIntentRepository } from './food-storage';
-import { foodDraft,validateFoodDraft } from './food-model';
+import { foodDraft,foodUnitOptions,scaleFoodDraftTo,tooPrecise,validateFoodDraft } from './food-model';
 import { personalFood,foodId,foodReceipt } from './food-fixture.test-helper';
 const meta={durationMs:1,httpStatus:200,outcome:'ok' as const};
 const failure={status:'unavailable' as const,reason:'network' as const,meta:{...meta,httpStatus:null,outcome:'unavailable' as const}};
@@ -82,5 +82,33 @@ describe('Personal Food controller and durable catalog intents',()=>{
   const f=fixture();await f.open();f.controller.begin(personalFood);(f.api.write as jest.Mock<FoodApi['write']>).mockResolvedValueOnce({status:'conflict',code:'FOOD_UNAVAILABLE',message:'gone',meta:{...meta,outcome:'conflict'}});
   await f.controller.save();f.controller.close();expect(f.controller.getSnapshot().phase).toBe('idle');
   f.controller.open(null);f.controller.begin(personalFood);(f.api.write as jest.Mock<FoodApi['write']>).mockResolvedValueOnce(failure);await f.controller.save();f.controller.close();f.controller.open(null);expect(f.controller.getSnapshot().phase).toBe('uncertain');expect(f.controller.getSnapshot().open).toBe(false);
+ });
+
+ it('per-gram values below two decimals move exactly to 100 g, and only when that helps',()=>{
+  const draft={...foodDraft(),name:'Frutillas',servingQuantity:'1',servingUnit:'g',calories:'0,32',proteinG:'0,007',carbsG:'0,77',fatG:'0,003'};
+  expect(tooPrecise(draft)).toBe(true);expect(validateFoodDraft(draft).fields).toBeUndefined();
+  const scaled=scaleFoodDraftTo(draft)!;
+  expect(scaled).toMatchObject({servingQuantity:'100',calories:'32',proteinG:'0,7',carbsG:'77',fatG:'0,3'});
+  expect(validateFoodDraft(scaled).fields).toMatchObject({servingQuantity:100,calories:32,proteinG:0.7,carbsG:77,fatG:0.3});
+  // Empty stays empty (no data), never 0; a portion of 100 or more is left alone.
+  expect(scaleFoodDraftTo({...draft,fatG:''})!.fatG).toBe('');
+  expect(scaleFoodDraftTo({...draft,servingQuantity:'100'})).toBeNull();
+  expect(tooPrecise({...draft,proteinG:'0,7',fatG:'0,3'})).toBe(false);
+ });
+ it('offers the common units and keeps a saved custom one',()=>{
+  expect(foodUnitOptions('g').slice(0,4)).toEqual(['g','kg','ml','l']);
+  expect(foodUnitOptions('sobre')).toContain('sobre');expect(foodUnitOptions('g')).not.toContain('sobre');
+ });
+ it('a draft swiped away comes back for the same food, and a deliberate discard drops it',async()=>{
+  const f=fixture();await f.open();
+  f.controller.begin();f.controller.change('name','Frutillas');f.controller.shelve();
+  expect(f.controller.getSnapshot().open).toBe(false);
+  f.controller.open(null);await settle();f.controller.begin();
+  expect(f.controller.getSnapshot().draft?.name).toBe('Frutillas');
+  // Another food never receives it.
+  f.controller.back();f.controller.begin(personalFood);expect(f.controller.getSnapshot().draft?.name).toBe(personalFood.name);
+  f.controller.back();f.controller.begin();f.controller.change('name','Otra');f.controller.shelve();
+  f.controller.open(null);await settle();f.controller.discard();f.controller.begin();
+  expect(f.controller.getSnapshot().draft?.name).toBe('');
  });
 });

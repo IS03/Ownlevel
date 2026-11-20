@@ -25,3 +25,32 @@ export function parseFoodDraft(v:unknown):FoodDraft|undefined {
   const d=v as Record<string,unknown>,keys=Object.keys(foodLabels);
   return Object.keys(d).length===keys.length&&keys.every(k=>typeof d[k]==='string')?d as FoodDraft:undefined;
 }
+
+/** Units offered by the unit menu. A food saved with any other unit keeps it as one more option. */
+export const FOOD_UNITS = ['g', 'kg', 'ml', 'l', 'unidad', 'porción', 'taza', 'cucharada', 'cucharadita', 'rebanada'] as const;
+export const foodUnitOptions = (current: string): string[] => {
+  const unit = current.trim();
+  return unit && !(FOOD_UNITS as readonly string[]).includes(unit) ? [...FOOD_UNITS, unit] : [...FOOD_UNITS];
+};
+const NUTRIENT_KEYS = ['calories', 'proteinG', 'carbsG', 'fatG'] as const;
+const draftNumber = (text: string) => { const t = text.trim(); return /^\d+(?:[,.]\d+)?$/.test(t) ? Number(t.replace(',', '.')) : null; };
+const draftText = (value: number) => String(Math.round(value * 100) / 100).replace('.', ',');
+/**
+ * Values per gram are often below 0.01 and the catalog keeps two decimals. Moving the base portion to 100 (g, ml…) scales
+ * every typed value exactly by the same factor: «1 g · 0,007 g de proteína» becomes «100 g · 0,7 g». Null when it does not apply:
+ * no valid portion, a portion already of 100 or more, or a value that is not a number.
+ */
+export function scaleFoodDraftTo(draft: FoodDraft, quantity = 100): FoodDraft | null {
+  const base = draftNumber(draft.servingQuantity);
+  if (base === null || base <= 0 || base >= quantity) return null;
+  const factor = quantity / base, next: FoodDraft = { ...draft, servingQuantity: String(quantity) };
+  for (const key of NUTRIENT_KEYS) {
+    if (!draft[key].trim()) continue;
+    const value = draftNumber(draft[key]);
+    if (value === null) return null;
+    next[key] = draftText(value * factor);
+  }
+  return next;
+}
+/** Whether the only problem with the nutrients is precision: more than two decimals in a number that is otherwise valid. */
+export const tooPrecise = (draft: FoodDraft) => NUTRIENT_KEYS.some(key => /^\d+[,.]\d{3,}$/.test(draft[key].trim()));

@@ -241,6 +241,25 @@ describe('Food library presentation safeguards', () => {
     expect(f.view.queryByLabelText('Cantidad base')).toBeNull();
     expect(f.view.queryByText('Deshacer')).toBeNull();
   });
+  it('explains a disabled Guardar while typing and moves per-gram values to 100 g in one tap', async () => {
+    const f = fixture();
+    await f.open();
+    fireEvent.press(f.view.getByLabelText(/^Editar CAFÉ,/));
+    fireEvent.changeText(f.view.getByLabelText('Proteína (g)'), '0,007');
+    expect(f.view.getByText('Guardar')).toBeDisabled();
+    expect(f.view.getByText(/Hasta 2 decimales por valor/)).toBeTruthy();
+    // «100 unidades» is not how labels read: with that unit there is only the note.
+    expect(f.view.queryByTestId('food-scale-100')).toBeNull();
+    act(() => { f.view.UNSAFE_getAllByProps({ label: 'g' })[0]!.props.onPress(); });
+    expect(f.view.getByText('Valores por 0,125 g')).toBeTruthy();
+    fireEvent.press(f.view.getByTestId('food-scale-100'));
+    expect(f.view.getByLabelText('Cantidad base').props.value).toBe('100');
+    expect(f.view.getByLabelText('Proteína (g)').props.value).toBe('5,6');
+    expect(f.view.getByLabelText('Calorías').props.value).toBe('18000');
+    expect(f.view.getByLabelText('Grasas (g)').props.value).toBe('0');
+    expect(f.view.queryByTestId('food-live-errors')).toBeNull();
+    expect(f.view.getByText('Guardar')).not.toBeDisabled();
+  });
   it('archives and restores through the row actions using the existing CAS operation', async () => {
     const f = fixture();
     await f.open();

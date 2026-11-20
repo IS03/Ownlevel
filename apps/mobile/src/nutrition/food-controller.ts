@@ -9,6 +9,8 @@ export type FoodState={phase:'loading'|'idle'|'pending'|'uncertain'|'confirmed'|
 export class FoodController {
   private state:FoodState={phase:'loading',open:false,mode:'browse',date:null,search:'',filter:'active',foods:null,listLoading:false,listError:false,
     draft:null,editing:null,truth:null,intent:null,message:null,errors:{}};
+  /** A draft swiped away unsaved: back the next time the same food (or a new one) is opened in this session. */
+  private shelved:{mode:'create'|'edit';foodId:string|null;draft:FoodDraft}|null=null;
   private disposed=false;private busy=false;private generation=0;private truthGeneration=0;private listeners=new Set<()=>void>();
   constructor(private api:FoodApi,private repository:FoodIntentRepository,private key:()=>string=()=>`food:${Date.now()}:${Math.random().toString(36).slice(2)}`){}
   getSnapshot=()=>this.state;
@@ -27,7 +29,14 @@ export class FoodController {
     try{const result=await this.api.list(filter,search);if(this.disposed||generation!==this.generation)return;
       this.update(result.status==='ok'?{foods:result.data.foods,listLoading:false,listError:false}:{listLoading:false,listError:true});}
     catch{if(generation===this.generation)this.update({listLoading:false,listError:true});}}
-  begin(food?:PersonalFood){if(this.state.phase!=='idle'||this.busy||this.state.intent)return;this.truthGeneration++;this.update({mode:food?'edit':'create',editing:food??null,draft:foodDraft(food),errors:{},truth:null,message:null});}
+  begin(food?:PersonalFood){if(this.state.phase!=='idle'||this.busy||this.state.intent)return;this.truthGeneration++;
+    const mode=food?'edit':'create',kept=this.shelved&&this.shelved.mode===mode&&this.shelved.foodId===(food?.id??null)?this.shelved.draft:null;this.shelved=null;
+    this.update({mode,editing:food??null,draft:kept??foodDraft(food),errors:{},truth:null,message:null});}
+  /** Swipe down: closes without asking and keeps an unsaved draft for the next time instead of losing it. */
+  shelve(){if(this.busy||this.state.intent)return;const{mode,draft,editing}=this.state;
+    if((mode==='create'||mode==='edit')&&draft&&this.dirty())this.shelved={mode,foodId:editing?.id??null,draft};this.close();}
+  /** Discarding on purpose (the confirmation) drops any kept draft too. */
+  discard(){this.shelved=null;}
   registration(){if(this.state.phase==='idle'&&!this.state.intent)this.update({mode:'register'});}
   back(){if(this.busy||this.state.intent||this.state.phase==='blocked')return;this.truthGeneration++;this.update({phase:'idle',mode:'browse',draft:null,editing:null,truth:null,message:null,errors:{}});}
   dirty(){return !!this.state.draft&&JSON.stringify(this.state.draft)!==JSON.stringify(foodDraft(this.state.editing));}
