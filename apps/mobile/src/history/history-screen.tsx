@@ -1,9 +1,10 @@
+import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { useCallback } from 'react';
 import { RefreshControl, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { fetchHistoryRange, historyHasActivity } from '@/api/history';
 import type { MobileApiClient } from '@/api/client';
-import { LinkRow, AppText, EmptyState, Heading, InlineUnavailable, ListRow, ScrollScreen, Separator, SkeletonBlock, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppText, EmptyState, InlineUnavailable, ListRow, ScrollScreen, Separator, SkeletonBlock, useOwnlevelTheme } from '@/design-system';
 import { formatBodyDate } from '@/body/body-model';
 import { useHistoryResource } from './use-history-resource';
 import { historyDayHref } from './navigation';
@@ -16,11 +17,11 @@ export function HistoryScreen() {
   const { data, state, stale, refresh } = useHistoryResource('recent', read);
   const days = data?.days.filter(d => historyHasActivity(d) === true).reverse() ?? [];
   const partial = data && Object.values(data.availability).some(s => s === 'unavailable');
-  return <ScrollScreen testID="global-history" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing}
+  return <ScrollHeaderScreen title="Historial"><ScrollScreen testID="global-history" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing}
     onRefresh={() => void refresh()} tintColor={colors.primary} />}>
     <View style={historyStyles.caption}>
       <AppText muted variant="caption">RECORRIDO POR FECHA</AppText>
-      <Heading level={1}>Historial</Heading>
+
       <AppText muted>Los registros de cada día, juntos.</AppText>
       <AppText muted variant="footnote">Últimos 30 días{data ? ` · ${formatBodyDate(data.effectiveRange.from)} — ${formatBodyDate(data.effectiveRange.to)}` : ''}</AppText>
     </View>
@@ -42,5 +43,5 @@ export function HistoryScreen() {
             onPress={() => router.push(historyDayHref(d.date))} />
         </View>)}</View>}
     </>}
-  </ScrollScreen>;
+  </ScrollScreen></ScrollHeaderScreen>;
 }

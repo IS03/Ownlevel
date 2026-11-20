@@ -19,17 +19,17 @@ export default function TrainLayout() {
       <Stack.Screen name="history/index" options={{ title: 'Historial' }} />
       <Stack.Screen name="history/[id]" options={{ title: '', headerLargeTitleEnabled: false }} />
       <Stack.Screen name="history/exercise/[id]" options={{ title: 'Ejercicio' }} />
-      <Stack.Screen name="insights/index" options={{ title: 'Comparaciones' }} />
-      <Stack.Screen name="insights/[relation]" options={{ title: 'Relación' }} />
-      <Stack.Screen name="insights/evidence" options={{ title: 'Ejercicio' }} />
-      <Stack.Screen name="insights/feelings" options={{ title: 'Cómo terminaste' }} />
-      <Stack.Screen name="insights/period" options={{ title: 'Últimos 3 meses' }} />
-      <Stack.Screen name="insights/period-feelings" options={{ title: 'Sensaciones del período' }} />
-      <Stack.Screen name="insights/period-nutrition" options={{ title: 'Comidas del período' }} />
-      <Stack.Screen name="insights/temporal" options={{ title: 'Horarios y comidas' }} />
-      <Stack.Screen name="insights/tramo" options={{ title: 'Cómo llegaste' }} />
-      <Stack.Screen name="insights/own" options={{ title: 'Tu rendimiento' }} />
-      <Stack.Screen name="insights/weeks" options={{ title: 'Semanas y días' }} />
+      <Stack.Screen name="insights/index" options={{ headerShown: false, title: 'Comparaciones' }} />
+      <Stack.Screen name="insights/[relation]" options={{ headerShown: false, title: 'Relación' }} />
+      <Stack.Screen name="insights/evidence" options={{ headerShown: false, title: 'Ejercicio' }} />
+      <Stack.Screen name="insights/feelings" options={{ headerShown: false, title: 'Cómo terminaste' }} />
+      <Stack.Screen name="insights/period" options={{ headerShown: false, title: 'Últimos 3 meses' }} />
+      <Stack.Screen name="insights/period-feelings" options={{ headerShown: false, title: 'Sensaciones del período' }} />
+      <Stack.Screen name="insights/period-nutrition" options={{ headerShown: false, title: 'Comidas del período' }} />
+      <Stack.Screen name="insights/temporal" options={{ headerShown: false, title: 'Horarios y comidas' }} />
+      <Stack.Screen name="insights/tramo" options={{ headerShown: false, title: 'Cómo llegaste' }} />
+      <Stack.Screen name="insights/own" options={{ headerShown: false, title: 'Tu rendimiento' }} />
+      <Stack.Screen name="insights/weeks" options={{ headerShown: false, title: 'Semanas y días' }} />
       <Stack.Screen name="calendar" options={{ title: 'Calendario' }} />
       <Stack.Screen name="day/[date]" options={{ title: 'Día' }} />
       <Stack.Screen name="correct/[id]" options={{ title: 'Corregir sesión' }} />

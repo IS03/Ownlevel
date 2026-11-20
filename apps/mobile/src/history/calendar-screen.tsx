@@ -1,3 +1,4 @@
+import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -39,10 +40,10 @@ export function HistoryCalendarScreen() {
     const incomplete = !fact || Object.values(fact).some(value => value === null);
     return date > (today ?? '') ? 'Fecha futura' : `${labels.join(', ') || (incomplete ? 'Cobertura parcial' : 'Sin actividad')}${labels.length && incomplete ? '. Cobertura parcial' : ''}`;
   };
-  return <ScrollScreen testID="global-calendar" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing}
+  return <ScrollHeaderScreen title="Calendario"><ScrollScreen testID="global-calendar" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing}
     onRefresh={() => void refresh()} tintColor={colors.primary} />}>
     <AppText muted variant="caption">RECORRIDO POR FECHA</AppText>
-    <Heading level={1}>{month ? formatTrainingMonth(month) : 'Calendario'}</Heading>
+    {month ? <Heading level={1}>{formatTrainingMonth(month)}</Heading> : null}
     <AppText muted>Elegí un día para abrir sus registros.</AppText>
     <LinkRow label="Ver historial" onPress={() => router.push('/history')} />
     {month ? <View style={historyStyles.controls}>
@@ -86,7 +87,7 @@ export function HistoryCalendarScreen() {
         <AppText muted variant="caption">Marca llena: hay registros · contorno: lectura no disponible. Sin marcas: sin registros confirmados. Las fechas futuras no se pueden abrir.</AppText>
       </>}
     </>}
-  </ScrollScreen>;
+  </ScrollScreen></ScrollHeaderScreen>;
 }
 const styles = StyleSheet.create({
   month: { flexGrow: 1 }, grid: { flex: 1, minWidth: brandTokens.layout.minTouch * 7, gap: spacing.sm },

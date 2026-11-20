@@ -1,3 +1,4 @@
+import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -136,20 +137,20 @@ export function BodyView({ state, controller, date }: { state: BodyState; contro
   const { colors } = useOwnlevelTheme();
   const { read, editor } = state;
   if (!read.overview) {
-    return <ScrollScreen testID={read.status === 'loading' ? 'body-loading' : 'body-unavailable'}>
+    return <ScrollHeaderScreen title="Cuerpo"><ScrollScreen testID={read.status === 'loading' ? 'body-loading' : 'body-unavailable'}>
       <ReturnToHistoryDay /><ReturnToBodyChart />
       {read.status === 'loading' ? <><SkeletonBlock height={140} /><SkeletonBlock height={140} /></>
         : <UnavailableState title="No pudimos cargar Cuerpo" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente."
           action={<Button label="Reintentar" onPress={() => void controller.load()} />} />}
-    </ScrollScreen>;
+    </ScrollScreen></ScrollHeaderScreen>;
   }
   const editable = state.phase === 'idle' && !state.intent && !editor;
   return <>
-    <ScrollScreen testID="body-screen" refreshControl={<RefreshControl refreshing={read.refreshing} onRefresh={() => void controller.load()} tintColor={colors.primary} />}>
+    <ScrollHeaderScreen title="Cuerpo"><ScrollScreen testID="body-screen" refreshControl={<RefreshControl refreshing={read.refreshing} onRefresh={() => void controller.load()} tintColor={colors.primary} />}>
       <ReturnToHistoryDay /><ReturnToBodyChart />
       <BodyStatus state={state} controller={controller} />
       <BodyDate state={state} controller={controller} date={date} editable={editable} />
-    </ScrollScreen>
+    </ScrollScreen></ScrollHeaderScreen>
     <BodyEditors state={state} controller={controller} />
   </>;
 }
@@ -169,7 +170,7 @@ function BodyUserScreen({ userId }: { userId: string }) {
     const registrar = params.registrar === 'peso' || params.registrar === 'medidas' ? params.registrar : undefined;
     return <Redirect href={{ pathname: '/(tabs)/progress/trends/body', params: registrar ? { registrar } : {} }} />;
   }
-  if (!body) return <ScrollScreen testID="body-loading"><SkeletonBlock height={140} /></ScrollScreen>;
+  if (!body) return <ScrollHeaderScreen title="Cuerpo"><ScrollScreen testID="body-loading"><SkeletonBlock height={140} /></ScrollScreen></ScrollHeaderScreen>;
   return <BodyView state={body.state} controller={body.controller} date={date} />;
 }
 /**

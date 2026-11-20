@@ -1,3 +1,4 @@
+import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { useCallback } from 'react';
 import { RefreshControl, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -16,7 +17,7 @@ import { HistoryDetails, HistoryLink, HistorySection, historyStyles } from './hi
 export function HistoryDayScreen() {
   const params = useLocalSearchParams(), date = typeof params.date === 'string' ? params.date : '';
   return isNutritionDate(date) ? <Day key={date} date={date} month={typeof params.historyMonth === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(params.historyMonth) ? params.historyMonth : undefined} />
-    : <ScrollScreen><AppText>Fecha inválida.</AppText></ScrollScreen>;
+    : <ScrollHeaderScreen title="Registros del día"><ScrollScreen><AppText>Fecha inválida.</AppText></ScrollScreen></ScrollHeaderScreen>;
 }
 function Day({ date, month }: { date: string; month?: string }) {
   const router = useRouter(), { colors } = useOwnlevelTheme();
@@ -36,7 +37,7 @@ function Day({ date, month }: { date: string; month?: string }) {
     || (data?.body.measurement.status === 'ok' && !!data.body.measurement.data)
     || (data?.metrics.status === 'ok' && data.metrics.data.metrics.some(m => m.value !== null));
   const unavailable = <InlineUnavailable message="No pudimos leer esta sección." actionLabel="Reintentar" onAction={() => void refresh()} />;
-  return <ScrollScreen testID="global-history-day" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
+  return <ScrollHeaderScreen title="Registros del día"><ScrollScreen testID="global-history-day" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
     <AppText muted variant="caption">REGISTROS DEL DÍA</AppText>
     <AppText muted variant="footnote">{displayNutritionDate(date).split(',')[0]}</AppText>
     <Heading level={1} accessibilityLabel={displayNutritionDate(date)}>{formatTrainingDate(date)}</Heading>
@@ -93,5 +94,5 @@ function Day({ date, month }: { date: string; month?: string }) {
         </>}
       </HistorySection>
     </>}
-  </ScrollScreen>;
+  </ScrollScreen></ScrollHeaderScreen>;
 }

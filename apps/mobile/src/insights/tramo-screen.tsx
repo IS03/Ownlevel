@@ -1,3 +1,4 @@
+import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
@@ -25,7 +26,7 @@ export function TramoScreen() {
   const key = typeof params.factor === 'string' ? params.factor : null;
   const { state, data, refresh } = useOwnPerformance(client, routine, !!key);
   const [method, setMethod] = useState(false);
-  const scroll = (children: React.ReactNode) => <ScrollView showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} testID="tramo-screen">{children}</ScrollView>;
+  const scroll = (children: React.ReactNode) => <ScrollHeaderScreen title="Cómo llegaste"><ScrollView showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} testID="tramo-screen">{children}</ScrollView></ScrollHeaderScreen>;
   if (!key) return scroll(<UnavailableState title="No encontramos este dato" description="Abrilo desde Comparaciones › Cómo llegaste." />);
   if (state.status === 'loading' && !data) return scroll(<View style={styles.block}><SkeletonBlock height={56} /><SkeletonBlock height={210} /><SkeletonBlock height={120} /></View>);
   if (!data) return scroll(<InlineUnavailable message="No pudimos traer este dato." actionLabel="Reintentar" onAction={() => void refresh()} />);

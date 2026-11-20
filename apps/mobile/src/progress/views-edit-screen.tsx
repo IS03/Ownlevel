@@ -1,3 +1,4 @@
+import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { useCallback, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -94,7 +95,7 @@ export function ViewsEditScreen() {
     if (busy || index < 0 || target < 0 || target >= next.length) return;
     next.splice(index, 1); next.splice(target, 0, id); void reorder(next);
   };
-  return <ScrollScreen testID="views-edit-screen">
+  return <ScrollHeaderScreen title="Mis vistas"><ScrollScreen testID="views-edit-screen">
     {notice ? <InlineNotice tone="neutral" message={notice} /> : null}
     {state.status === 'loading' ? <SkeletonBlock height={160} />
       : !data ? <InlineUnavailable actionLabel="Reintentar" message="No pudimos cargar tus vistas." onAction={() => void refresh()} />
@@ -128,7 +129,7 @@ export function ViewsEditScreen() {
         <AppText muted variant="caption">{views.length} de {PROGRESS_VIEWS_MAX} vistas · tocá una para cambiarle el nombre, o mantené las rayas para ordenarlas.</AppText>
       </>}
     {renaming ? <RenameSheet view={renaming} onDone={m => void done(m)} onClose={() => setRenaming(null)} /> : null}
-  </ScrollScreen>;
+  </ScrollScreen></ScrollHeaderScreen>;
 }
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 64 },
