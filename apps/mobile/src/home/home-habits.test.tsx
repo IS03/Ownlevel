@@ -37,7 +37,7 @@ describe('Home weekly habits', () => {
     expect(view.getByText('2,1 L')).toBeTruthy();
     expect(view.getByText('8.420')).toBeTruthy();
     expect(view.getByText('7 h 10 min')).toBeTruthy();
-    expect(StyleSheet.flatten(view.getByTestId('home-habit-m1-direction').props.style).color).toBe(theme === 'dark' ? '#9F9FA9' : '#62626A');
+    expect(StyleSheet.flatten(view.getByTestId('home-habit-m1-direction').props.style).color).toBe(theme === 'dark' ? '#9F9FA9' : '#5A5A62');
     fireEvent.press(view.getByTestId('home-habit-steps'));
     expect(view.onOpen).toHaveBeenCalledWith('steps');
     expect(view.getByText('y 3 más')).toBeTruthy();

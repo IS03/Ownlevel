@@ -27,17 +27,19 @@ Base grafito y un solo acento champagne. Las tablas completas están en `tema/to
 | Rol | Oscuro | Claro |
 |---|---|---|
 | Fondo | #09090B | #F3F1EC |
-| Tarjeta | #18181B | #FFFFFF |
-| Elevado (inputs, chips) | #27272A | #EAE7DF |
-| Borde | blanco al 8 % | #E0DCD0 |
+| Tarjeta | #18181B | #E9E3D6 |
+| Elevado (inputs, chips) | #27272A | #DFD8C8 |
+| Borde | blanco al 8 % | #D8D0BF |
 | Texto | #F4F4F5 | #18181B |
-| Texto secundario | #9F9FA9 | #62626A |
+| Texto secundario | #9F9FA9 | #5A5A62 |
 | Acento | #C9B68A | #705F36 (texto e íconos) |
 | Fondo de acento | champagne al 16 % | champagne al 32 % |
 | Hero | degradado #DCCBA3 → #A8935F, texto #1A1710 | igual |
 | Error (solo del sistema) | #E5736B | #B4392F |
 
 Contraste (16/10): en claro, el acento de texto pasó de #7D6A3C a #705F36 y el texto secundario de #6A6A72 a #62626A, para llegar a AA (4,5:1) también sobre los campos y el fondo champagne suave. El logo conserva #7D6A3C.
+
+Sin tarjetas blancas (19/11): en claro, las tarjetas pasaron de blanco a arena sólido #E9E3D6. El elevado pasó a #DFD8C8, el borde a #D8D0BF y el texto secundario a #5A5A62, para seguir en AA (4,5:1) sobre tarjeta, elevado y fondo. Ninguna superficie de contenido es blanca. Solo quedan blancos el botón de Apple y el vidrio de los controles.
 
 **Reglas:**
 - **Un solo acento.** El champagne es para lo importante: botón principal, serie activa y récord.
