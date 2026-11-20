@@ -121,7 +121,7 @@ export function ProgressScroll({ title, testID, refreshControl, children, compac
         </Pressable> : <CompareHeaderButton onPress={open.onCompare} /> : null}
       </View>
     </View>
-    {sheet === 'custom' ? <CustomRangeSheet shortPreset={compactPeriod} onClose={() => setSheet(null)} /> : null}
+    {sheet === 'custom' ? <CustomRangeSheet onClose={() => setSheet(null)} /> : null}
     {comparisonControls && sheet === 'compare' ? <CompareSheet proposal={proposal} onClose={() => { setSheet(null); setProposal(null); }} /> : null}
   </>;
 }

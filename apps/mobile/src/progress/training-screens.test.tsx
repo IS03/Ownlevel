@@ -40,7 +40,7 @@ const listeners: ((s: string) => void)[] = [];
 const openChart = (view: ReturnType<typeof render>) => { if (!view.queryByTestId('training-chart')) fireEvent.press(view.getByText('Actividad en el tiempo')); };
 const changeTrainingPeriod = async (view: ReturnType<typeof render>) => {
   fireEvent.press(view.getByTestId('training-period-picker'));
-  fireEvent.press(view.getByText('Últimos 7 días')); await flush();
+  fireEvent.press(view.getByTestId('progress-unit-2w')); await flush();
 };
 
 beforeEach(() => {
@@ -196,7 +196,7 @@ describe('Training Trends', () => {
     const view = wrap(<TrainingTrendsScreen />); await flush();
     mockTraining.mockImplementation(async (_c, q) => ok(training(q.period, true)));
     await changeTrainingPeriod(view);
-    expect(mockTraining).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-09-29', to: TODAY }, null);
+    expect(mockTraining).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-09-28', to: TODAY }, null);
     expect(view.queryByText(/frente a/)).toBeNull(); expect(view.queryByText(/Sólo en el período anterior/)).toBeNull();
     await act(async () => { release(ok(training('30'))); }); await flush();
     expect(view.queryByText('Press banca · PR')).toBeNull();

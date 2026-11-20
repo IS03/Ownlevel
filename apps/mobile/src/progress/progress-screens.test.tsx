@@ -396,7 +396,7 @@ describe('Body Trends', () => {
     expect(view.getByText('No se pudo actualizar. Mostramos la última lectura confirmada.')).toBeTruthy();
     expect(view.getByText('Peso · 81 kg')).toBeTruthy();
     fireEvent.press(view.getByTestId('body-period-picker'));
-    fireEvent.press(view.getByText('Últimos 7 días')); await flush();
+    fireEvent.press(view.getByTestId('progress-unit-2w')); await flush();
     expect(view.queryByRole('button', { name: 'Ver registro original' })).toBeNull();
     pressFittedMark(view.getByTestId('body-trend-chart-2026-09-20-mark'));
     mockOwner = 'different-owner'; mockActiveClient = {} as MobileApiClient;
