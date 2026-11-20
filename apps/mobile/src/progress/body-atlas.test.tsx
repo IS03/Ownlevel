@@ -4,6 +4,7 @@ import { Dimensions, StyleSheet } from 'react-native';
 import { OwnlevelThemeProvider } from '@/design-system';
 import type { ProgressBody, ProgressBodyMetric } from '@/api/progress';
 import { BODY_CHOICES, BodyJournal, BodyMetricPicker, BodyRecordComparison, BodyZones, bodyDatePair, bodyDates } from './body-atlas';
+jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 const mockPush = jest.fn(), mockSetParams = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, setParams: mockSetParams }) }));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
