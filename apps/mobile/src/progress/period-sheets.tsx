@@ -6,7 +6,7 @@ import { AppSheet, AppText, Button, GlassSurface, SheetHandle, useAppSheetDismis
 import { triggerHaptic } from '@/platform/haptics';
 import { RoutineSheetButton } from '@/training/routine-sheet-button';
 import { RangeCalendar, type CalendarMark } from './range-calendar';
-import { PROGRESS_MAX_DAYS, PROGRESS_UNITS, addDays, addMonths, compareRange, currentProgressRange, daysBetween, isCurrentProgressRange, progressRange, progressStateForRange, shiftLabel, shiftProgressRange, shortRange, type DateRange, type ProgressRangeState } from './progress-range';
+import { PROGRESS_MAX_DAYS, PROGRESS_UNITS, compareRange, currentProgressRange, daysBetween, isCurrentProgressRange, progressRange, progressStateForRange, shiftLabel, shiftProgressRange, shortRange, type DateRange, type ProgressRangeState } from './progress-range';
 import { useProgressRange } from './progress-range-context';
 
 type Draft = { start: string; end: string | null };
@@ -55,14 +55,8 @@ const rangeSubtitle = (r: DateRange | null, today: string, partial: Draft | null
   return partial ? 'Elegí el último día' : 'Elegí el primer día';
 };
 
-const quickRanges = (today: string): { label: string; range: DateRange }[] => [
-  { label: 'Últimos 30 días', range: { start: addDays(today, -29), end: today } },
-  { label: 'Últimos 90 días', range: { start: addDays(today, -89), end: today } },
-  { label: 'Último año', range: { start: addDays(addMonths(today, -12), 1), end: today } },
-];
-
 /** R3 · Personalizado: one calendar, a painted range, quick shortcuts. */
-export function CustomRangeSheet({ onClose, shortPreset = false }: { onClose: () => void; shortPreset?: boolean }) {
+export function CustomRangeSheet({ onClose }: { onClose: () => void }) {
   const { state, setState, today } = useProgressRange();
   const current = progressRange(state, today);
   const [draft, setDraft] = useState<Draft | null>(current);
@@ -73,20 +67,16 @@ export function CustomRangeSheet({ onClose, shortPreset = false }: { onClose: ()
   const prev = shiftProgressRange(state, -1, today), next = shiftProgressRange(state, 1, today);
   const move = (to: ProgressRangeState) => { setState(to); onClose(); };
   return <Sheet title="Elegir período" subtitle={rangeSubtitle(range, today, draft)} valid={valid} onClose={onClose} onDone={() => { if (range && valid) { if(range.start === current.start && range.end === current.end) onClose(); else apply(range); } }}>
-    {/* One row of shortcuts that scrolls sideways, like the period bar: stepping the unit first, then the quick ranges. */}
-    <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} style={styles.shortcutRow} contentContainerStyle={styles.shortcutScroll}>
+    {/* ONE row that scrolls sideways: step the unit you are on, then the calendar periods the period button names. Any other span is
+        picked on the calendar below; there is no second row of "last N days" repeating the same lengths. */}
+    <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} style={styles.shortcutRow} contentContainerStyle={styles.shortcutScroll} accessibilityLabel="Períodos">
       <View style={styles.shortcutGroup} testID="progress-period-shift">
         {prev ? <Shortcut label={shiftLabel(state.unit, -1)} onPress={() => move(prev)} /> : null}
         {next ? <Shortcut label={shiftLabel(state.unit, 1)} onPress={() => move(next)} /> : null}
         {!isCurrentProgressRange(state, today) ? <Shortcut label="Volver a hoy" onPress={() => move(currentProgressRange(state, today))} /> : null}
       </View>
-      {(shortPreset ? [{ label: 'Últimos 7 días', range: { start: addDays(today, -6), end: today } }, { label: 'Este mes', range: { start: `${today.slice(0, 7)}-01`, end: today } }, ...quickRanges(today)] : quickRanges(today)).map(q => <Shortcut key={q.label} label={q.label} onPress={() => apply(q.range)}
-        active={current.start === q.range.start && current.end === q.range.end} />)}
-    </ScrollView>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.shortcutScroll} accessibilityLabel="Períodos de calendario">
-      {PROGRESS_UNITS.filter(o => o.value !== 'custom').map(o => <View key={o.value}>
-        <Shortcut testID={`progress-unit-${o.value}`} label={o.label} active={state.unit === o.value} onPress={() => { setState({...state, unit:o.value, anchor:today, custom:null}); onClose(); }} />
-      </View>)}
+      {PROGRESS_UNITS.filter(o => o.value !== 'custom').map(o => <Shortcut key={o.value} testID={`progress-unit-${o.value}`} label={o.label} active={state.unit === o.value}
+        onPress={() => { setState({ ...state, unit: o.value, anchor: today, custom: null }); onClose(); }} />)}
     </ScrollView>
     <RangeCalendar month={month} onMonth={setMonth} max={today} onDay={d => setDraft(pick(draft, d))} marks={draft ? [{ range: draft, tone: 'a' }] : []} />
   </Sheet>;

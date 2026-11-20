@@ -283,7 +283,7 @@ describe('Progress Nutrition', () => {
     expect({ reports: mockReport.mock.calls.length, timing: mockTiming.mock.calls.length }).toEqual(initial);
     console.info('[QA nutrition chart source reads]', { initial, afterInspectionAndReturn: { reports: mockReport.mock.calls.length, timing: mockTiming.mock.calls.length } });
     fireEvent.press(view.getByTestId('nutrition-period-picker'));
-    fireEvent.press(view.getByText('Últimos 7 días')); await flush();
+    fireEvent.press(view.getByTestId('progress-unit-2w')); await flush();
     expect(view.queryByRole('button', { name: /^Ver comidas de ese día/ })).toBeNull();
   });
   it('manual refresh rereads both report scopes and retains the selected reference', async () => {
@@ -329,7 +329,7 @@ describe('Progress Nutrition', () => {
     expect(mockReport).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-09-28', to: TODAY });
     expect(view.getByTestId('nutrition-period-picker')).toBeTruthy();
     fireEvent.press(view.getByTestId('nutrition-period-picker'));
-    fireEvent.press(view.getByText('Este mes'));
+    fireEvent.press(view.getByTestId('progress-unit-month'));
     await flush();
     expect(mockReport).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-10-01', to: TODAY });
     mockParams = { from: '2026-09-10', to: '2026-09-12' };
@@ -338,7 +338,7 @@ describe('Progress Nutrition', () => {
     expect(mockReport).toHaveBeenLastCalledWith(mockClient, { period: 'custom', from: '2026-09-10', to: '2026-09-12' });
     const calls = mockReport.mock.calls.length;
     fireEvent.press(view.getByTestId('nutrition-period-picker'));
-    fireEvent.press(view.getByText('Este mes'));
+    fireEvent.press(view.getByTestId('progress-unit-month'));
     await flush();
     // The month read a moment ago is reused (same account, day and range), not requested again.
     expect(mockReport).toHaveBeenCalledTimes(calls);
@@ -469,7 +469,7 @@ describe('#519 · del dato al día y de vuelta', () => {
       console.info('[QA #519 serie]', { initial, afterSwitchAndReturn: reads() });
       // Changing the period on this screen keeps the chosen series (the selection resets with the scope, as before).
       fireEvent.press(view.getByTestId('nutrition-period-picker'));
-    fireEvent.press(view.getByText('Últimos 7 días')); await flush();
+    fireEvent.press(view.getByTestId('progress-unit-2w')); await flush();
       expect(nutrient('Proteína').props.accessibilityState).toMatchObject({ checked: true });
       expect(view.getByText('Proteína registrada')).toBeTruthy();
     } finally { clock.mockRestore(); mockParams = {}; }
