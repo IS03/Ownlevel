@@ -8,6 +8,7 @@ import { describeFeelingOutcome, FEELING_OUTCOME_KINDS } from "./feeling-outcome
 import { lastShown, recentChanges, recentTimes, sessionChange } from "./performance-change";
 import { priorFeelingFact } from "./prior-feelings";
 import { routineRelation } from "./routine-relation";
+import { routineOrder } from "./routine-order";
 import { ownOfSession, ownPerformance, ownSessions } from "./own-performance";
 import { periodFacts, periodSummary } from "./period";
 import type { WeighIn } from "../body-evolution/weekly";
@@ -333,6 +334,10 @@ export function insightsSummary(snapshot: InsightsSnapshot, options: { before?: 
 /** #533 · Relación of one routine, asked for when it opens: from this snapshot's published facts, with no read of its own. */
 export function insightsRoutineRelation(snapshot: InsightsSnapshot, routineId: string): InsightsRoutineRelationView {
   return { ...versions(snapshot), ...routineRelation(snapshot, routineId.toLowerCase()) };
+}
+/** Orden de la rutina (`view=routine-order`): the cached facts plus the routine's blocks in the order they were done. */
+export function insightsRoutineOrder(snapshot: InsightsSnapshot, blocks: readonly import("./routine-order").OrderBlock[], routineId: string): import("./types").InsightsRoutineOrderView {
+  return { ...versions(snapshot), ...routineOrder(snapshot, blocks, routineId.toLowerCase()) };
 }
 /** «Rendimiento frente a lo tuyo» and its tramos (`view=own`), all routines or one. */
 export function insightsOwnPerformance(snapshot: InsightsSnapshot, routineId: string | null): InsightsOwnView {

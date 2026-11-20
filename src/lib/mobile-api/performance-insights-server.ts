@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { todayInCordoba } from "@/lib/phase2/cordoba-date";
 import { readAllTrainingRows } from "@/lib/phase2/training-robust";
-import { createInsightsSnapshot, insightsDaysPage, insightsExerciseEvidence, insightsFeelingOutcomes, insightsPeriodSummary, periodOf, insightsRelation, insightsRelations, insightsRoutineRelation, insightsOwnPerformance, insightsSummary, INSIGHTS_MAX_DAYS, type EvidenceLane, type InsightsSnapshot, type InsightsSource } from "@/lib/progress/insights-engine";
+import { createInsightsSnapshot, insightsDaysPage, insightsExerciseEvidence, insightsFeelingOutcomes, insightsPeriodSummary, periodOf, insightsRelation, insightsRelations, insightsRoutineRelation, insightsRoutineOrder, insightsOwnPerformance, insightsSummary, INSIGHTS_MAX_DAYS, type EvidenceLane, type InsightsSnapshot, type InsightsSource } from "@/lib/progress/insights-engine";
 import type { InsightsEngineMethod } from "@/lib/progress/insights-engine/types";
 import { MobileApiValidationError } from "./auth";
 import { NutritionReportDayChangedError } from "./nutrition-report-server";
@@ -16,6 +16,7 @@ import { instantMs } from "../progress/insights-engine/source-adapter";
 import { sessionTemporalDay } from '../progress/insights-engine/session-temporal';
 import { validCoincidenceSelection,type CoincidenceSelection } from '../progress/insights-engine/descriptive-transport';
 import { periodExploration,periodCoincidenceEvidence } from '../progress/insights-engine/week-exploration';
+import { ROUTINE_ORDER_DAYS, type OrderBlock } from '../progress/insights-engine/routine-order';
 
 type Context = MobileSupabaseAuthenticatedContext;
 const firstPage = (from: number) => (from === 0 ? { count: "exact" as const } : undefined);
@@ -185,6 +186,25 @@ export async function readExerciseSource(context: Context, exerciseId: string): 
   };
 }
 
+const shiftDate = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+type OrderSetRow = { target_reps: number | null; actual_reps: number | null; actual_weight_kg: number | string | null; is_completed: boolean };
+type OrderRow = { id: string; workout_session_id: string; exercise_id: string; exercise_order: number; nombre_snapshot: string; sets: OrderSetRow[]; set_count: { count: number }[] };
+/**
+ * Orden de la rutina: the blocks of the routine's completed sessions since `from`, each with its `exercise_order` as it stayed
+ * (moves during the session included) and its sets with their target reps. Pages grow with this routine only. A block whose
+ * embedded sets PostgREST cut short makes the read unavailable: never a partial order.
+ */
+export async function readRoutineOrderBlocks(context: Context, routineId: string, from: string): Promise<OrderBlock[]> {
+  const { supabase, userId } = context;
+  const rows = await readAllTrainingRows<OrderRow>("Leer orden de la rutina", page => supabase.from("workout_session_exercises")
+    .select("id,workout_session_id,exercise_id,exercise_order,nombre_snapshot,sets:workout_sets(target_reps,actual_reps,actual_weight_kg,is_completed),set_count:workout_sets(count),session:workout_sessions!inner(routine_id,status,day:day_logs!inner(log_date))", firstPage(page))
+    .eq("user_id", userId).eq("session.routine_id", routineId).eq("session.status", "completed").gte("session.day.log_date", from)
+    .eq("sets.user_id", userId).eq("set_count.user_id", userId).order("id").range(page, page + 999).returns<OrderRow[]>());
+  if (rows.some(row => row.sets.length !== (row.set_count[0]?.count ?? 0))) throw new Error("Leer series del orden de la rutina");
+  return rows.map(row => ({ sessionId: row.workout_session_id, exerciseId: row.exercise_id, name: row.nombre_snapshot, order: row.exercise_order,
+    sets: row.sets.map(set => ({ targetReps: strictNumber(set.target_reps), actualReps: strictNumber(set.actual_reps), actualLoad: strictNumber(set.actual_weight_kg), isCompleted: set.is_completed })) }));
+}
+
 /**
  * The counter the database moves in the same transaction as any change to these sources. Seeing the same value twice means no
  * such transaction committed in between. No row yet means nothing changed since it exists: 0, never an error. Needs the EXPAND.
@@ -315,7 +335,7 @@ export function parseInsightsParams(params: URLSearchParams) {
     if (!["view", "before", "limit", "association", "pairs", "method", "asOf", "date", "kind", "group", "offset", "revision", "routine", ...EVIDENCE_KEYS].includes(key) || params.getAll(key).length > 1) throw new MobileApiValidationError("Parámetro no válido.");
   }
   const before = params.get("before") ?? undefined, limit = params.get("limit"), association = params.get("association") ?? undefined, view = params.get("view") ?? "summary";
-  if (!["summary", "days", "relations", "evidence", "feelings", "period", "period-at", "period-feelings", "period-nutrition", "period-explore", "coincidence-evidence", "session-temporal", "routine-relation", "own"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
+  if (!["summary", "days", "relations", "evidence", "feelings", "period", "period-at", "period-feelings", "period-nutrition", "period-explore", "coincidence-evidence", "session-temporal", "routine-relation", "routine-order", "own"].includes(view)) throw new MobileApiValidationError("Vista no válida.");
   const method = params.get("method");
   if (method !== null && method !== "2") throw new MobileApiValidationError("Método no válido.");
   const engineMethod = (method === "2" ? 2 : 1) as InsightsEngineMethod;
@@ -330,6 +350,12 @@ export function parseInsightsParams(params: URLSearchParams) {
     const routine = params.get('routine');
     if (method !== '2' || (routine !== null && !UUID.test(routine)) || [...params.keys()].some(k => !['view', 'method', 'routine'].includes(k))) throw new MobileApiValidationError('Rutina o parámetros no válidos.');
     return { view: 'own' as const, routine: routine?.toLowerCase() ?? null, method: 2 as const };
+  }
+  // Orden de la rutina: one routine, method 2, nothing else beside it.
+  if (view === 'routine-order') {
+    const routine = params.get('routine');
+    if (method !== '2' || !routine || !UUID.test(routine) || [...params.keys()].some(k => !['view', 'method', 'routine'].includes(k))) throw new MobileApiValidationError('Rutina o parámetros no válidos.');
+    return { view: 'routine-order' as const, routine: routine.toLowerCase(), method: 2 as const };
   }
   // #533 · Relación: one routine, method 2 (declared sleep and pre-session context), nothing else beside it.
   if (view === 'routine-relation' || params.has('routine')) {
@@ -417,6 +443,21 @@ export const performanceInsightsResponse = (request: Request) => progressReadRes
     const after = todayInCordoba();
     if (after !== today) throw new NutritionReportDayChangedError(after);
     return model;
+  }
+  if (options.view === "routine-order") {
+    // The cached facts of method 2 plus this routine's blocks in the order they were done, under the same counter: computed when
+    // the screen opens, never by summary. One retry if the sources moved between both reads.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const revision = await readInsightsRevision(context);
+      const snapshot = await readInsightsSnapshot(context, today, 2);
+      const blocks = await readRoutineOrderBlocks(context, options.routine, shiftDate(today, -(ROUTINE_ORDER_DAYS - 1)));
+      if (await readInsightsRevision(context) !== revision) continue;
+      const model = insightsRoutineOrder(snapshot, blocks, options.routine);
+      const after = todayInCordoba();
+      if (after !== today) throw new NutritionReportDayChangedError(after);
+      return model;
+    }
+    throw new Error("Order sources kept changing");
   }
   if (options.view === "routine-relation") {
     // From the cached snapshot of method 2: computed when the screen opens, never by summary.

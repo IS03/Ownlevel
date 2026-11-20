@@ -43,7 +43,8 @@ function fakeSupabase(tables: Record<string, Record<string, unknown>[]>, revisio
           // max-rows (embeddedCap here).
           const own = (id: unknown) => (tables.workout_sets ?? []).filter(set => set.workout_session_exercise_id === id);
           const embedded = table === "workout_session_exercises" && call.selected.includes("sets:workout_sets(")
-            ? page.map(row => ({ ...row, sets: own(row.id).slice(0, embeddedCap).map(set => Object.fromEntries(Object.entries(set).filter(([key]) => key !== "workout_session_exercise_id"))) })) : page;
+            ? page.map(row => ({ ...row, sets: own(row.id).slice(0, embeddedCap).map(set => Object.fromEntries(Object.entries(set).filter(([key]) => key !== "workout_session_exercise_id"))),
+              ...(call.selected.includes("set_count:workout_sets(count)") ? { set_count: [{ count: own(row.id).length }] } : {}) })) : page;
           resolve({ data: embedded, error: null, count: call.range![0] === 0 ? rows.length : null });
         }
       },
@@ -384,6 +385,40 @@ describe("#367 GET resumen de los últimos tres meses", () => {
 });
 
 /** #533 · Relación: one routine, computed when asked for, from the same cached snapshot of method 2. */
+describe("GET performance-insights · view=routine-order", () => {
+  const ROUTINE = "60000000-0000-4000-8000-000000000900";
+  const withRoutine = (days: number) => { const tables = tablesFor(days); return { ...tables,
+    workout_sessions: tables.workout_sessions.map(row => ({ ...row, routine_id: ROUTINE, routine_name_snapshot: "PULL" })),
+    workout_session_exercises: tables.workout_session_exercises.map(row => ({ ...row, exercise_order: 1 })) }; };
+  const query = `?view=routine-order&method=2&routine=${ROUTINE}`;
+  it("answers in its own contract and reads this routine's blocks by the token's user, its id, completed sessions and the window", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-02-10T15:00:00Z"));
+    const fake = fakeSupabase(withRoutine(20));
+    mocks.auth.mockResolvedValue({ userId: USER, supabase: fake.client });
+    const response = await GET(request(query));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(parsePerformanceInsights(body)?.view).toBe("routine-order");
+    expect(body.routine).toEqual({ id: ROUTINE, name: "PULL" });
+    expect(body.positions.length).toBe(1);
+    const blocks = fake.calls.find(call => call.table === "workout_session_exercises" && call.selected.includes("exercise_order"))!;
+    expect(blocks.selected).toContain("target_reps");
+    expect(blocks.filters).toEqual(expect.arrayContaining([["eq", "user_id", USER], ["eq", "session.routine_id", ROUTINE], ["eq", "session.status", "completed"], ["gte", "session.day.log_date", "2025-11-13"]]));
+    for (const call of fake.calls.filter(row => row.table !== "insights_source_revisions" && !row.head)) expect(call.filters.some(([kind, , value]) => kind === "eq" && value === USER), call.table).toBe(true);
+    vi.useRealTimers();
+  });
+  it("never publishes a read whose sources moved between both reads twice", async () => {
+    let n = 0;
+    mocks.auth.mockResolvedValue({ userId: USER, supabase: fakeSupabase(withRoutine(5), () => ++n).client });
+    expect((await GET(request(query))).status).toBe(503);
+  });
+  it("validates its parameters: method 2, one routine id and nothing else", async () => {
+    mocks.auth.mockResolvedValue({ userId: USER, supabase: fakeSupabase(withRoutine(3)).client });
+    for (const bad of ["?view=routine-order", `?view=routine-order&routine=${ROUTINE}`, "?view=routine-order&method=2", "?view=routine-order&method=2&routine=r",
+      `${query}&limit=5`, `${query}&asOf=2026-01-01`, `${query}&routine=${ROUTINE}`]) expect((await GET(request(bad))).status, bad).toBe(400);
+  });
+});
+
 describe("GET performance-insights · view=routine-relation", () => {
   const ROUTINE = "53300000-0000-4000-8000-000000000900";
   const withRoutine = (days: number) => { const tables = tablesFor(days); return { ...tables, workout_sessions: tables.workout_sessions.map(row => ({ ...row, routine_id: ROUTINE, routine_name_snapshot: "PULL" })) }; };

@@ -11,8 +11,9 @@ import type { SessionTemporalDay } from '../progress/insights-engine/session-tem
 export type { PeriodExploration } from '../progress/insights-engine/week-exploration';
 import type { PeriodExploration } from '../progress/insights-engine/week-exploration';
 export type { InsightsPinnedPeriodSummary, InsightsPeriodFeelings, InsightsPeriodNutrition } from "../progress/insights-engine/types";
-import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary, type InsightsPinnedPeriodSummary, type InsightsPeriodFeelings, type InsightsPeriodNutrition, type InsightsRoutineRelationView, type InsightsOwnView } from "../progress/insights-engine/types";
-export type { InsightsRoutineRelationView, InsightsOwnView } from "../progress/insights-engine/types";
+import { INSIGHTS_CONTRACT, INSIGHTS_ENGINE_METHOD, INSIGHTS_ENGINE_METHOD_V2, INSIGHTS_ENGINE_PARTIAL_METHOD, INSIGHTS_ENGINE_PARTIAL_METHOD_V2, PARTIAL_ASSOCIATION_PREFIX, type InsightsDaysPage, type InsightsExerciseEvidence, type InsightsFeelingOutcomes, type InsightsPeriodSummary, type InsightsReadModel, type InsightsRelationDetail, type InsightsRelations, type InsightsResponse, type InsightsSummary, type InsightsPinnedPeriodSummary, type InsightsPeriodFeelings, type InsightsPeriodNutrition, type InsightsRoutineRelationView, type InsightsOwnView, type InsightsRoutineOrderView } from "../progress/insights-engine/types";
+export type { InsightsRoutineRelationView, InsightsOwnView, InsightsRoutineOrderView } from "../progress/insights-engine/types";
+export type { InsightsRoutineOrder, OrderCut, OrderExercise, OrderExerciseSession, OrderLensStatus, OrderPosition } from "../progress/insights-engine/routine-order";
 export type { OwnSession, OwnExercise, OwnFactor, OwnBin, OwnSet } from "../progress/insights-engine/own-performance";
 export type { InsightsRoutineRelation, RelationFactor, RelationFactorKey, RelationGroup, RelationSession } from "../progress/insights-engine/routine-relation";
 export type { LastShown, RecentChanges, RecentTimes, SessionChange } from "../progress/insights-engine/performance-change";
@@ -305,6 +306,7 @@ export function parsePerformanceInsights(raw: unknown): InsightsResponse | undef
   if (!object(raw) || !versions(raw) || typeof raw.sourceRevision !== "string") return undefined;
   if (raw.view === 'session-temporal') return parseTemporal(raw);
   if (raw.view === 'routine-relation') return parseRoutineRelation(raw);
+  if (raw.view === 'routine-order') return parseRoutineOrder(raw);
   if (raw.view === 'own') return parseOwn(raw);
   if(raw.view==='coincidence-evidence')return parseCoincidencePage(raw);
   if (raw.view === 'period-explore') return parseExploration(raw);
@@ -549,4 +551,34 @@ function parseRoutineRelation(raw: Json): InsightsRoutineRelationView | undefine
   if (!(factors as Json[]).every((f, index) => f.valid === (sessions as Json[]).filter(r => (r.values as unknown[])[index] !== null).length
     && Number(f.valid) + Object.values(f.missing as Json).reduce<number>((a, b) => a + Number(b), 0) === (sessions as unknown[]).length)) return undefined;
   return raw as unknown as InsightsRoutineRelationView;
+}
+
+const ORDER_STATUS = ['ready', 'no_cut', 'insufficient', 'no_baseline'];
+/** Orden de la rutina: positions 1..n in order, every count consistent, cuts inside the routine and only when ready. */
+function parseRoutineOrder(raw: Json): InsightsRoutineOrderView | undefined {
+  const { window, rules, routine, routines, positions, lenses, exercises } = raw;
+  if (raw.method !== 'insights-routine-order/1' || !object(window) || !date(window.start) || !date(window.end) || !count(window.days) || (window.start as string) > (window.end as string)) return undefined;
+  if (!object(rules) || !['minChanges', 'minSessions', 'minTargetSets', 'minBaselinePct', 'firstLoss', 'secondGap'].every(key => finite(rules[key]))) return undefined;
+  if (!object(routine) || !uuid(routine.id) || !stringOrNull(routine.name) || !list(routines, r => object(r) && uuid(r.id) && stringOrNull(r.name) && count(r.sessions)) || !count(raw.sessions)) return undefined;
+  const total = raw.sessions as number;
+  if (!list(positions, p => object(p) && count(p.position) && count(p.sessions) && Number(p.sessions) <= total
+    && list(p.exercises, e => object(e) && uuid(e.exerciseId) && typeof e.name === 'string' && count(e.sessions))
+    && object(p.progress) && count(p.progress.changes) && count(p.progress.sessions) && numberOrNull(p.progress.median) && numberOrNull(p.progress.level)
+    && (p.progress.median === null) === (p.progress.changes === 0)
+    && object(p.target) && count(p.target.sets) && count(p.target.sessions) && count(p.target.reached) && Number(p.target.reached) <= Number(p.target.sets)
+    && numberOrNull(p.target.rate) && (p.target.rate === null) === (p.target.sets === 0))) return undefined;
+  const max = (positions as Json[]).length;
+  if (!(positions as Json[]).every((p, index) => p.position === index + 1)) return undefined;
+  const lens = (l: unknown) => object(l) && ORDER_STATUS.includes(String(l.status)) && numberOrNull(l.baseline)
+    && list(l.cuts, c => object(c) && count(c.position) && Number(c.position) >= 3 && Number(c.position) <= max && finite(c.loss))
+    && (l.status === 'ready') === ((l.cuts as unknown[]).length > 0) && (l.cuts as unknown[]).length <= 2
+    && (l.cuts as Json[]).every((c, i, all) => i === 0 || Number(c.position) > Number(all[i - 1]!.position));
+  if (!object(lenses) || !lens(lenses.progress) || !lens(lenses.target)) return undefined;
+  if (!list(exercises, e => object(e) && uuid(e.exerciseId) && typeof e.name === 'string' && count(e.usualPosition) && Number(e.usualPosition) >= 1 && Number(e.usualPosition) <= max
+    && list(e.sessions, s => object(s) && typeof s.sessionId === 'string' && date(s.date) && (s.date as string) >= (window.start as string) && (s.date as string) <= (window.end as string)
+      && count(s.position) && Number(s.position) >= 1 && Number(s.position) <= max && typeof s.moved === 'boolean' && numberOrNull(s.pct)
+      && (s.best === null || (object(s.best) && finite(s.best.load) && count(s.best.reps))))
+    && (e.compare === null || (object(e.compare) && finite(e.compare.load) && finite(e.compare.pct)
+      && list(e.compare.groups, g => object(g) && count(g.position) && count(g.sessions) && finite(g.reps)) && (e.compare.groups as unknown[]).length >= 2)))) return undefined;
+  return raw as unknown as InsightsRoutineOrderView;
 }
