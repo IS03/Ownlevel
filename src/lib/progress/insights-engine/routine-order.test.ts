@@ -14,15 +14,15 @@ type Session = { date: string; routine?: string; specs: Spec[] };
 const DATES = ["2026-10-01", "2026-10-05", "2026-10-09", "2026-10-13", "2026-10-17", "2026-10-21", "2026-10-25", "2026-10-29"];
 
 /**
- * A and B (positions 1–2) add one rep at 20 kg every time (~+7.7 % median). C (3°) adds one rep from 20 (~+4.3 %), D (4°) never
- * changes. Targets: A, B and D reach theirs, C never does.
+ * A and B (positions 1–2) add one rep at 20 kg every time: always up. C (3°) adds one rep every other session: up about half the
+ * times. D (4°) never changes: always equal. Targets: A, B and D reach theirs, C never does.
  */
 function plan(options: { swapAt?: number; flatStart?: boolean; sessions?: number } = {}): Session[] {
   return DATES.slice(0, options.sessions ?? DATES.length).map((date, i) => {
     const specs: Spec[] = [
       { exerciseId: A, load: 20, reps: options.flatStart ? 10 : 10 + i, target: 10 },
       { exerciseId: B, load: 20, reps: options.flatStart ? 10 : 10 + i, target: 10 },
-      { exerciseId: C, load: 20, reps: 20 + i, target: 40 },
+      { exerciseId: C, load: 20, reps: 20 + Math.floor(i / 2), target: 40 },
       { exerciseId: D, load: 10, reps: 10, target: 10 },
     ];
     if (options.swapAt === i) [specs[1], specs[2]] = [specs[2]!, specs[1]!];
@@ -52,18 +52,19 @@ function build(sessions: Session[]) {
 const model = (sessions = plan()) => { const { snapshot, blocks } = build(sessions); return routineOrder(snapshot, blocks, ROUTINE); };
 
 describe("orden de la rutina", () => {
-  it("names two cuts in progress when they hold in both halves: from the 3rd it drops, from the 4th it drops much more", () => {
+  it("names two cuts in how often you go up when they hold in both halves: from the 3rd it drops, from the 4th much more", () => {
     const order = model();
     expect(order.sessions).toBe(8);
     expect(order.positions.map(p => p.exercises[0]!.name)).toEqual(["Jalón", "Remo", "Face pull", "Curl"]);
     expect(order.lenses.progress.status).toBe("ready");
     expect(order.lenses.progress.cuts.map(cut => cut.position)).toEqual([3, 4]);
     const [first, second] = order.lenses.progress.cuts;
-    expect(first!.loss).toBeGreaterThan(0.3); expect(first!.loss).toBeLessThan(0.6);
+    expect(first!.loss).toBeGreaterThan(0.4); expect(first!.loss).toBeLessThan(0.6);
     expect(second!.loss).toBe(1);
-    // Level is relative to positions 1–2: D never progresses, so its level is 0, a real zero.
-    expect(order.positions[3]!.progress).toMatchObject({ changes: 7, sessions: 7, median: 0, level: 0 });
-    expect(order.positions[0]!.progress.level).toBeCloseTo(1, 1);
+    expect(order.positions[2]!.progress).toMatchObject({ compared: 7, up: 3, same: 4, down: 0 });
+    // Level is relative to positions 1–2: D never goes up, so its level is 0, a real zero, with every comparison equal.
+    expect(order.positions[3]!.progress).toMatchObject({ compared: 7, up: 0, same: 7, down: 0, sessions: 7, rate: 0, level: 0 });
+    expect(order.positions[0]!.progress).toMatchObject({ rate: 1, level: 1 });
   });
 
   it("a drop that comes back up is not a cut: C never reaches its target but D always does", () => {
@@ -78,7 +79,8 @@ describe("orden de la rutina", () => {
     const face = order.exercises.find(row => row.exerciseId === C.toLowerCase())!;
     expect(face.usualPosition).toBe(3);
     expect(face.sessions.filter(row => row.moved).map(row => [row.date, row.position])).toEqual([["2026-10-21", 2]]);
-    expect(face.compare).toMatchObject({ load: 20, groups: [{ position: 2, sessions: 1, reps: 25 }, { position: 3, sessions: 7 }] });
+    expect(face.compare).toMatchObject({ load: 20, groups: [{ position: 2, sessions: 1, reps: 22 }, { position: 3, sessions: 7 }] });
+    expect(face.sessions.map(row => row.direction)).toEqual([null, "same", "up", "same", "up", "same", "up", "same"]);
     expect(order.positions[1]!.exercises.map(row => row.name)).toEqual(["Remo", "Face pull"]);
   });
 
@@ -86,6 +88,16 @@ describe("orden de la rutina", () => {
     const order = model(plan({ sessions: 2 }));
     expect(order.lenses.progress).toMatchObject({ status: "insufficient", cuts: [] });
     expect(order.lenses.target).toMatchObject({ status: "insufficient", cuts: [] });
+  });
+
+  it("a load increase counts as going up; signals both ways have no direction", async () => {
+    const { directionOf } = await import("./routine-order");
+    const load = (up: number, same: number, down: number) => ({ unit: "kg" as const, up, same, down });
+    expect(directionOf({ state: "no_amount_signal", pct: null, basis: null, signals: 0, load: load(1, 0, 0) })).toBe("up");
+    expect(directionOf({ state: "measured", pct: 5, basis: "reps_at_load", signals: 1, load: load(0, 0, 1) })).toBeNull();
+    expect(directionOf({ state: "measured", pct: 0, basis: "reps_at_load", signals: 1, load: null })).toBe("same");
+    expect(directionOf({ state: "not_comparable", pct: null, basis: null, signals: 0, load: null })).toBeNull();
+    expect(directionOf(undefined)).toBeNull();
   });
 
   it("without progress at the start there is nothing to drop from", () => {

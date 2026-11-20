@@ -1,23 +1,25 @@
 import { eligibleForSession } from "./performance-change";
+import type { PerformanceChange } from "../performance-insights/types";
 import type { InsightsSnapshot } from "./read-model";
 
 /**
  * Orden de la rutina: from which exercise of one routine performance drops, described. Each session counts in the order it was
  * actually done (`exercise_order` as it stayed, including what was moved during the session). Two lenses:
- * - progress: the measured change of each exercise against its previous time (reps at an equal load, #533), by position;
+ * - progress: how often each exercise went up against its previous time (more reps at an equal load, #533, or more load), by
+ *   position. A share of times, not a median of %: most comparisons are «equal», and a median would read 0 everywhere;
  * - target: the share of completed sets that reached their target reps, by position.
  * A cut is named only when it is large, has enough data and shows up in both halves of the window. Descriptive: it says where the
  * drop coincides, never that the order causes it. Rules in docs/progress/orden-rutina.md.
  */
-export const ROUTINE_ORDER_METHOD = "insights-routine-order/1" as const;
+export const ROUTINE_ORDER_METHOD = "insights-routine-order/2" as const;
 export const ROUTINE_ORDER_DAYS = 90;
 export const ROUTINE_ORDER_RULES = {
   /** Measured changes a position needs, from at least `minSessions` sessions. */
   minChanges: 5, minSessions: 3,
   /** Completed sets with a target a position needs, from at least `minSessions` sessions. */
   minTargetSets: 9,
-  /** Baseline progress (median of positions 1–2) below this % per session leaves nothing to drop from. */
-  minBaselinePct: 0.5,
+  /** Baseline progress (share of times up at positions 1–2) below this leaves nothing to drop from. */
+  minBaselineRate: 0.1,
   /** First cut: at least this loss (relative for progress, in points for target), and never back above it. */
   firstLoss: 0.1,
   /** Second cut: everything after it at least this much worse than everything between both cuts. */
@@ -42,10 +44,12 @@ export type OrderPosition = {
   /** Exercises done in this position, most frequent first. */
   exercises: { exerciseId: string; name: string; sessions: number }[];
   sessions: number;
-  progress: { changes: number; sessions: number; median: number | null; level: number | null };
+  /** Comparisons with a direction, how many went up, equal or down, and the share up. `level`: that share against positions 1–2. */
+  progress: { compared: number; up: number; same: number; down: number; sessions: number; rate: number | null; level: number | null };
   target: { sets: number; sessions: number; reached: number; rate: number | null };
 };
-export type OrderExerciseSession = { sessionId: string; date: string; position: number; moved: boolean; pct: number | null; best: { load: number; reps: number } | null };
+export type OrderDirection = "up" | "same" | "down";
+export type OrderExerciseSession = { sessionId: string; date: string; position: number; moved: boolean; direction: OrderDirection | null; pct: number | null; best: { load: number; reps: number } | null };
 export type OrderExercise = {
   exerciseId: string; name: string; usualPosition: number;
   sessions: OrderExerciseSession[];
@@ -71,16 +75,29 @@ function median(values: readonly number[]): number | null {
   return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
 }
 
-/** One exercise in one session: where it went, its measured change and its target sets. */
-type Row = { sessionId: string; date: string; position: number; exerciseId: string; name: string; pct: number | null; targetSets: number; reached: number; block: OrderBlock };
+/**
+ * Up: more reps at an equal load or more load, with nothing pointing down. Down: fewer reps or less load, with nothing pointing
+ * up. Equal: compared, without a change. Signals both ways, or nothing compared, have no direction and never count.
+ */
+export function directionOf(change: PerformanceChange | undefined): OrderDirection | null {
+  if (!change) return null;
+  const pct = eligibleForSession(change) ? change.pct : null, up = (pct !== null && pct > 0) || !!change.load?.up, down = (pct !== null && pct < 0) || !!change.load?.down;
+  if (up && down) return null;
+  if (up) return "up";
+  if (down) return "down";
+  return pct !== null || (change.load?.same ?? 0) > 0 ? "same" : null;
+}
+/** One exercise in one session: where it went, its direction and measured change, and its target sets. */
+type Row = { sessionId: string; date: string; position: number; exerciseId: string; name: string; dir: OrderDirection | null; pct: number | null; targetSets: number; reached: number; block: OrderBlock };
 
-/** Pooled reading of a set of rows for one lens: enough data or null, and the value (median % or rate). */
+/** Pooled reading of a set of rows for one lens: enough data or null, and the value (share of times up, or of sets reached). */
 function pooled(rows: readonly Row[], lens: Lens): { value: number; enough: boolean } | null {
   const sessions = new Set<string>();
   if (lens === "progress") {
-    const values = rows.filter(row => row.pct !== null).map(row => { sessions.add(row.sessionId); return row.pct!; });
-    if (!values.length) return null;
-    return { value: median(values)!, enough: values.length >= ROUTINE_ORDER_RULES.minChanges && sessions.size >= ROUTINE_ORDER_RULES.minSessions };
+    const compared = rows.filter(row => row.dir !== null);
+    if (!compared.length) return null;
+    for (const row of compared) sessions.add(row.sessionId);
+    return { value: compared.filter(row => row.dir === "up").length / compared.length, enough: compared.length >= ROUTINE_ORDER_RULES.minChanges && sessions.size >= ROUTINE_ORDER_RULES.minSessions };
   }
   let sets = 0, reached = 0;
   for (const row of rows) if (row.targetSets) { sets += row.targetSets; reached += row.reached; sessions.add(row.sessionId); }
@@ -95,7 +112,7 @@ function cutsOf(rows: readonly Row[], lens: Lens, maxPosition: number): { status
   const at = (from: number, to = maxPosition) => rows.filter(row => row.position >= from && row.position <= to);
   const base = pooled(at(1, 2), lens);
   if (!base || !base.enough) return { status: "insufficient", baseline: base ? round(base.value) : null, cuts: [] };
-  if (lens === "progress" && base.value < ROUTINE_ORDER_RULES.minBaselinePct) return { status: "no_baseline", baseline: round(base.value), cuts: [] };
+  if (lens === "progress" && base.value < ROUTINE_ORDER_RULES.minBaselineRate) return { status: "no_baseline", baseline: round(base.value), cuts: [] };
   const losses = new Map<number, number>();
   for (let position = 3; position <= maxPosition; position++) {
     const reading = pooled(at(position, position), lens);
@@ -151,14 +168,16 @@ export function routineOrder(snapshot: InsightsSnapshot, blocks: readonly OrderB
       if (known) known.sessions++; else routines.set(key, { id: key, name: session.routineName, sessions: 1, last: day.date });
       if (key !== routineId) continue;
       sessions++;
-      const changes = new Map<string, number>();
-      for (const fact of [...session.exercises, ...(partial.get(session.sessionId)?.exercises ?? [])]) if (eligibleForSession(fact.change)) changes.set(fact.exerciseId.toLowerCase(), fact.change.pct);
+      // The lanes partition the exercises: each one has its change in one of them at most.
+      const changes = new Map<string, PerformanceChange>();
+      for (const fact of [...session.exercises, ...(partial.get(session.sessionId)?.exercises ?? [])]) if (fact.change) changes.set(fact.exerciseId.toLowerCase(), fact.change);
       // The order it was done: positions 1..n by `exercise_order`, gaps closed.
       const ordered = [...(bySession.get(session.sessionId) ?? [])].sort((a, b) => a.order - b.order || a.exerciseId.localeCompare(b.exerciseId));
       ordered.forEach((block, index) => {
         const target = block.sets.filter(set => set.isCompleted && set.targetReps !== null && set.targetReps > 0 && set.actualReps !== null);
+        const change = changes.get(block.exerciseId.toLowerCase());
         rows.push({ sessionId: session.sessionId, date: day.date, position: index + 1, exerciseId: block.exerciseId.toLowerCase(), name: block.name,
-          pct: changes.get(block.exerciseId.toLowerCase()) ?? null, targetSets: target.length, reached: target.filter(set => set.actualReps! >= set.targetReps!).length, block });
+          dir: directionOf(change), pct: eligibleForSession(change) ? change.pct : null, targetSets: target.length, reached: target.filter(set => set.actualReps! >= set.targetReps!).length, block });
       });
     }
   }
@@ -169,12 +188,14 @@ export function routineOrder(snapshot: InsightsSnapshot, blocks: readonly OrderB
     const here = rows.filter(row => row.position === position);
     const names = new Map<string, { exerciseId: string; name: string; sessions: number }>();
     for (const row of here) { const known = names.get(row.exerciseId); if (known) known.sessions++; else names.set(row.exerciseId, { exerciseId: row.exerciseId, name: row.name, sessions: 1 }); }
-    const measured = here.filter(row => row.pct !== null), med = median(measured.map(row => row.pct!));
+    const compared = here.filter(row => row.dir !== null), up = compared.filter(row => row.dir === "up").length;
+    const rate = compared.length ? up / compared.length : null;
     const targeted = here.filter(row => row.targetSets), sets = targeted.reduce((sum, row) => sum + row.targetSets, 0), reached = targeted.reduce((sum, row) => sum + row.reached, 0);
     positions.push({ position, sessions: new Set(here.map(row => row.sessionId)).size,
       exercises: [...names.values()].sort((a, b) => b.sessions - a.sessions || a.name.localeCompare(b.name)),
-      progress: { changes: measured.length, sessions: new Set(measured.map(row => row.sessionId)).size, median: med === null ? null : round(med),
-        level: med !== null && progressBase && progressBase.value >= ROUTINE_ORDER_RULES.minBaselinePct ? round(med / progressBase.value) : null },
+      progress: { compared: compared.length, up, same: compared.filter(row => row.dir === "same").length, down: compared.filter(row => row.dir === "down").length,
+        sessions: new Set(compared.map(row => row.sessionId)).size, rate: rate === null ? null : round(rate),
+        level: rate !== null && progressBase && progressBase.value >= ROUTINE_ORDER_RULES.minBaselineRate ? round(rate / progressBase.value) : null },
       target: { sets, sessions: new Set(targeted.map(row => row.sessionId)).size, reached, rate: sets ? round(reached / sets) : null } });
   }
   // Each exercise: its sessions in date order, its usual place, and how it went at its most used load where it changed place.
@@ -199,7 +220,7 @@ export function routineOrder(snapshot: InsightsSnapshot, blocks: readonly OrderB
     exercises.push({ exerciseId, name: mine.at(-1)!.name, usualPosition: usual, compare,
       sessions: mine.map((row, index) => {
         const map = best[index]!, top = heaviest[index];
-        return { sessionId: row.sessionId, date: row.date, position: row.position, moved: row.position !== usual, pct: row.pct === null ? null : round(row.pct),
+        return { sessionId: row.sessionId, date: row.date, position: row.position, moved: row.position !== usual, direction: row.dir, pct: row.pct === null ? null : round(row.pct),
           best: top === null || top === undefined ? null : { load: top, reps: map.get(top)! } };
       }) });
   }
