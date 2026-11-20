@@ -93,11 +93,13 @@ function TimingReader({ query }: { query: ProgressQuery }) {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheet} keyboardShouldPersistTaps="handled">
         <Heading level={2}>{sheet === 'metric' ? 'Qué querés mirar' : sheet === 'routine' ? 'Elegir rutina' : sheet === 'execution' ? 'Ejercicio y forma de hacerlo' : 'Cómo se lee'}</Heading>
         {sheet === 'metric' ? TIME_METRICS.map(option => <ListRow key={option.value} title={option.label} subtitle={option.description}
+          accessibilityLabel={`${option.label}${metric === option.value ? ', elegido' : ''}. ${option.description}`}
           value={metric === option.value ? 'Elegido' : undefined} onPress={() => chooseMetric(option.value)} testID={`training-time-choose-${option.value}`} />) : null}
         {sheet === 'routine' ? <><ListRow title="Todas las rutinas" onPress={() => { setFilter({ routine: null, execution: null, bin: null }); setSheet(null); }} />
-          {data.routines.map(r => <ListRow key={r.id} title={r.name} subtitle={`${r.sessions} sesiones`} onPress={() => { setFilter({ routine: r.id, execution: null, bin: null }); setSheet(null); }} testID={`training-time-routine-${r.id}`} />)}</> : null}
+          {data.routines.map(r => <ListRow key={r.id} title={r.name} subtitle={`${r.sessions} sesiones`} accessibilityLabel={`${r.name}, ${r.sessions} sesiones${selection.routine === r.id ? ', elegida' : ''}`} onPress={() => { setFilter({ routine: r.id, execution: null, bin: null }); setSheet(null); }} testID={`training-time-routine-${r.id}`} />)}</> : null}
         {sheet === 'execution' ? <>
           {data.executions.length ? data.executions.map(e => <ListRow key={e.key} title={e.name} subtitle={executionLabel(e)} value={selection.execution === e.key ? 'Elegido' : undefined}
+            accessibilityLabel={`${e.name}, ${executionLabel(e)}${selection.execution === e.key ? ', elegido' : ''}`}
             onPress={() => { setFilter({ execution: e.key, bin: null }); setSheet(null); }} testID={`training-time-exercise-${e.exerciseId}`} />) : <AppText muted>No hay cargas con implemento, variante y modo de peso conocidos en este período. Los modos de asistencia o sin carga compatible no se comparan como kilos.</AppText>}
         </> : null}
         {sheet === 'method' ? <>
@@ -133,7 +135,9 @@ function SessionRow({ row, metric, unit, onPress }: { row: TrainingTimeSession; 
     : metric === 'improvements' ? `${row.performance.improved} mejoraron · ${row.performance.improved + row.performance.stable + row.performance.declined} comparables`
     : metric === 'load' ? row.load === null ? 'Sin carga utilizable' : `${timeNumber(row.load.value)} ${unit} × ${row.load.reps} reps` : `${timeNumber(row.minutes ?? 0)} min`;
   return <View style={[styles.session, { borderColor: colors.border }, fontScale > 1.3 && styles.stacked]}>
-    <ListRow title={row.name} subtitle={`${row.date.split('-').reverse().join('/')} · ${timeAt(row.minute)}`} onPress={onPress} testID={`training-time-session-${row.id}`} />
+    <ListRow title={row.name} subtitle={`${row.date.split('-').reverse().join('/')} · ${timeAt(row.minute)}`}
+      accessibilityLabel={`${row.name}, ${row.date.split('-').reverse().join('/')}, inicio ${timeAt(row.minute)}. ${metric === 'sessions' && row.minutes === null ? 'Sin duración válida' : value}. Abrir registro.`}
+      onPress={onPress} testID={`training-time-session-${row.id}`} />
     <AppText muted numeric variant="footnote">{metric === 'sessions' && row.minutes === null ? 'Sin duración válida' : value}</AppText>
   </View>;
 }
