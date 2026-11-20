@@ -7,6 +7,8 @@ import { AppIcon, AppSheet, AppText, Button, Heading, brandTokens, radius, sizes
 import { formatBodyDate } from '@/body/body-model';
 import { bodyObservationHref } from './body-chart-navigation';
 import { arrowDelta, formatValue } from './progress-format';
+import { bodyInterval, defaultBodyPair, equivalentPerWeek } from './body-context-model';
+import { BodyIntervalContext, WeeklyWeightReference } from './body-context';
 
 export const BODY_CHOICES = [
   { key: 'body.weight', label: 'Peso' },
@@ -28,7 +30,8 @@ export function bodyDatePair(metric: ProgressBodyMetric, a: string, b: string) {
   const first = find(a), last = find(b);
   return { first, last, change: first && last && a !== b ? last.value - first.value : null };
 }
-const difference = (value: number, unit: string) => Math.abs(value) < 1e-9 ? `= ${formatValue(0, unit)}` : arrowDelta(value, unit);
+const difference = (value: number, unit: string) => Math.abs(value) < 1e-9 ? `= ${formatValue(0, unit)}`
+  : Math.abs(value) < 0.005 ? `${value < 0 ? '↘' : '↗'} menos de 0,01 ${unit}` : arrowDelta(value, unit);
 
 export function BodyMetricPicker({ selected }: { selected: string }) {
   const [open, setOpen] = useState(false);
@@ -123,22 +126,23 @@ function DateChoice({ dates, label, value, onChange }: { dates: string[]; label:
 }
 
 /** Comparison reads the same confirmed period, with no request or fabricated cross-date snapshot. */
-export function BodyRecordComparison({ metrics }: { metrics: ProgressBodyMetric[] }) {
+export function BodyRecordComparison({ metrics, today }: { metrics: ProgressBodyMetric[]; today?: string }) {
   const dates = bodyDates(metrics);
   const [open, setOpen] = useState(false);
   const [pair, setPair] = useState<{ a: string; b: string } | null>(null);
   const [missingOpen, setMissingOpen] = useState(false);
-  const { colors } = useOwnlevelTheme();
   const { fontScale, width } = useWindowDimensions();
   const chosen = pair && pair.a < pair.b && dates.includes(pair.a) && dates.includes(pair.b) ? pair : null;
-  const a = chosen?.a ?? dates[0] ?? '';
-  const b = chosen?.b ?? dates.at(-1) ?? '';
+  const initial = defaultBodyPair(metrics);
+  const a = chosen?.a ?? initial?.a ?? dates[0] ?? '';
+  const b = chosen?.b ?? initial?.b ?? dates.at(-1) ?? '';
+  const interval = bodyInterval(a, b);
   const expanded = open && dates.length > 1;
   const rows = metrics.map(metric => ({ metric, ...bodyDatePair(metric, a, b) }));
   const comparable = rows.filter(row => row.change !== null);
   const missing = rows.filter(row => row.change === null);
-  return <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]} testID="body-record-comparison">
-    <Heading level={2}>Qué cambió</Heading>
+  return <View style={styles.section} testID="body-record-comparison">
+    <Heading level={2}>Qué cambió en tu cuerpo</Heading>
     <AppText muted variant="footnote">Dos registros, lado a lado. Solo dentro del período elegido.</AppText>
     <Button label={expanded ? 'Cerrar comparación de registros' : 'Comparar registros'} variant="secondary" disabled={dates.length < 2} onPress={() => setOpen(v => !v)} />
     {dates.length < 2 ? <AppText muted variant="footnote">Necesitás registros en dos fechas distintas para comparar.</AppText> : null}
@@ -148,16 +152,23 @@ export function BodyRecordComparison({ metrics }: { metrics: ProgressBodyMetric[
         <View style={styles.grow}><DateChoice dates={dates.filter(d => d > a)} label="Hasta" value={b} onChange={date => setPair({ a, b: date })} /></View>
       </View>
       <AppText muted numeric variant="caption">{comparable.length} {comparable.length === 1 ? 'medida con dato' : 'medidas con dato'} en ambas fechas.</AppText>
+      {interval ? <AppText muted numeric variant="footnote">{interval.elapsed} {interval.elapsed === 1 ? 'día' : 'días'} entre registros{interval.short ? ' · Intervalo corto: diferencia entre registros, no una tendencia' : ''}.</AppText> : null}
       {comparable.map(row => <View key={row.metric.key} style={styles.comparisonRow}>
         <AppText variant="headline">{row.metric.label}</AppText>
         <AppText numeric>{formatValue(row.first!.value, row.metric.unit)} → {formatValue(row.last!.value, row.metric.unit)}</AppText>
         <AppText numeric muted variant="footnote">{difference(row.change!, row.metric.unit)} entre esos registros</AppText>
+        {row.metric.key !== 'body.weight' ? <AppText muted variant="caption">La diferencia puede incluir variación al medirte; no confirma un cambio de músculo o grasa.</AppText> : null}
+        {interval && equivalentPerWeek(row.change!, interval.elapsed) !== null ? <AppText muted numeric variant="caption">{difference(equivalentPerWeek(row.change!, interval.elapsed)!, row.metric.unit)} · equivalente por semana entre estos registros</AppText> : null}
       </View>)}
       {missing.length ? <Button label={`${missingOpen ? 'Ocultar' : 'Ver'} medidas sin dato para comparar (${missing.length})`} variant="quiet" onPress={() => setMissingOpen(v => !v)} /> : null}
       {missingOpen ? missing.map(row => <View key={row.metric.key} style={styles.comparisonRow}>
         <AppText variant="headline">{row.metric.label}</AppText>
         <AppText numeric muted variant="footnote">{row.first ? formatValue(row.first.value, row.metric.unit) : 'Sin registro'} → {row.last ? formatValue(row.last.value, row.metric.unit) : 'Sin registro'}</AppText>
       </View>) : null}
+      {today && interval ? <>
+        <WeeklyWeightReference key={`${a}|${b}`} a={a} b={b} today={today} />
+        <BodyIntervalContext key={`context|${a}|${b}`} range={interval.context} />
+      </> : null}
       <AppText muted variant="caption">Cada valor pertenece a esa fecha. No completamos huecos con registros anteriores. Un cambio no explica por sí solo su causa ni la composición corporal.</AppText>
     </> : null}
   </View>;

@@ -23,6 +23,7 @@ import { useCachedRead } from '@/api/use-cached-read';
 import { ReturnToInsights } from '@/insights/return-to-insights';
 import { useProgressRouteRange } from './use-progress-route-range';
 import { WeeklyWeights } from './weekly-weights';
+import { BodyTimelineContext } from './body-context';
 import { formatBodyDate } from '@/body/body-model';
 import { bodyObservationHref, isBodyChartMetric } from './body-chart-navigation';
 import { figuresFitInRow, useMeasuredWidth } from './figure-layout';
@@ -123,7 +124,7 @@ function Selected({ metric, excluded, storedZeros = [], selectedDate, onSelect, 
         </> : <AppText muted variant="footnote">Tocá un punto para ver su fecha y de dónde viene.</AppText>}
       </View>
       {point && !valid(point.value) ? <AppText muted variant="caption">Registro no válido como {metric.key === 'body.weight' ? 'peso corporal' : 'medida corporal'}. Podés corregirlo o borrarlo en el original.</AppText> : null}
-      {selectedDate && !point ? <AppText muted variant="caption">El registro seleccionado ya no está disponible en esta lectura. Elegí otro punto.</AppText> : null}
+      {selectedDate && !point ? <AppText muted variant="caption">No hay un registro corporal en esa fecha. Elegí un punto del gráfico para ver el original.</AppText> : null}
       {original ? <Button label="Ver registro original" variant="secondary" onPress={() => router.push(original)} /> : null}
       <AppText muted numeric variant="caption">{count} {count === 1 ? 'registro válido' : 'registros válidos'} en el período{invalid.length ? ` · ${invalid.length} no válido${invalid.length === 1 ? '' : 's'}` : ''}.</AppText>
     </View>
@@ -159,8 +160,9 @@ function Content({ data, selected, body, selectedDate, onSelect, portada }: { da
     <AppText muted>{selected ? 'Esta medida no está disponible en esta lectura.' : 'No hay pesos ni medidas válidos registrados con fecha en esta lectura.'}</AppText>
     {data.excludedSuspect > 0 ? <AppText muted>{data.excludedSuspect} mediciones sospechosas excluidas; los originales siguen en Cuerpo.</AppText> : null}
     {!selected ? <>
+      <BodyRecordComparison metrics={data.metrics} today={data.today} />
+      <Heading level={2}>Mirar una medida en detalle</Heading>
       <BodyZones data={data} onRegister={body ? () => body.controller.openMeasurement() : undefined} disabled={!editable} />
-      <BodyRecordComparison metrics={data.metrics} />
       <Button label="Explorar peso y medidas" variant="secondary" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.weight' } })} />
       <Button label="Tu cuaderno · peso y medidas por fecha" variant="secondary" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { section: 'journal' } })} />
     </> : null}
@@ -175,8 +177,9 @@ function Content({ data, selected, body, selectedDate, onSelect, portada }: { da
     {selected ? null : <Heading level={2}>{metric.label}</Heading>}
     <View style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}><Selected selectedDate={selectedDate} onSelect={onSelect} routeMetric={selected} metric={metric} portada={metric.key === 'body.weight' ? portada : null} excluded={data.excludedSuspect} storedZeros={metric.key === 'body.weight' ? (body?.state.read.weights ?? [])
       .filter(row => row.weightKg <= 0 && row.date >= data.period.start && row.date <= data.period.end).map(row => row.date) : []} /></View>
+    {selected && (metric.key !== 'body.weight' || reading === 'records') ? <BodyTimelineContext range={data.period} metric={metric} selectedDate={selectedDate} onSelect={onSelect} /> : null}
     {selected ? <>
-      <BodyRecordComparison key={metric.key} metrics={[metric]} />
+      <BodyRecordComparison key={metric.key} metrics={[metric]} today={data.today} />
     </> : null}
     {selected && metric.key === 'body.weight' ? <Selector accessibilityLabel="Leer registros de peso" value={reading} options={[{ label: 'Pesajes', value: 'records' }, { label: 'Semanas', value: 'weeks' }]} onChange={setReading} /> : null}
     {/* The weeks of the weights this read already brought: no other request. Body weight, never a lifted load. */}
@@ -190,8 +193,9 @@ function Content({ data, selected, body, selectedDate, onSelect, portada }: { da
     {!selected ? <>
       {/* Opens the weight on its own: every weighing and its weeks. The measures are the zones right below. */}
       <Button label="Ver tus pesajes y semanas" variant="secondary" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.weight' } })} />
+      <BodyRecordComparison metrics={data.metrics} today={data.today} />
+      <Heading level={2}>Mirar una medida en detalle</Heading>
       <BodyZones data={data} onRegister={body ? () => body.controller.openMeasurement() : undefined} disabled={!editable} />
-      <BodyRecordComparison metrics={data.metrics} />
       <Button label="Tu cuaderno · peso y medidas por fecha" variant="secondary" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { section: 'journal' } })} />
     </> : null}
 
