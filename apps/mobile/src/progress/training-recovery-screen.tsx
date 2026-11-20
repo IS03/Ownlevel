@@ -21,6 +21,8 @@ const initial = (): RecoverySelection => ({ scope: 'all', routine: null, bin: nu
 const comparable = (group: RecoveryGroup) => group.performance.improved + group.performance.stable + group.performance.declined;
 const metricValue = (group: RecoveryGroup, metric: Metric) => metric === 'improvements' ? comparable(group) ? 100 * group.performance.improved / comparable(group) : null : group[metric].median;
 const metricSay = (group: RecoveryGroup, metric: Metric) => metric === 'improvements' ? comparable(group) ? `${group.performance.improved} de ${comparable(group)} comparaciones mejoraron` : 'Sin comparaciones suficientes' : group[metric].median === null ? 'Sin respuestas previas utilizables' : `${timeNumber(group[metric].median!)} de 5, mediana de ${group[metric].n} respuestas previas`;
+/** Shares of improvements are small: the bars go up to the highest band, so the differences between bands can be seen. */
+const improvementScale = (groups: readonly RecoveryGroup[]) => Math.max(1, ...groups.map(g => metricValue(g, 'improvements') ?? 0));
 const gapLabel = (row: RecoveryRow) => row.gap.hours === null ? ({ no_previous: 'Sin sesión anterior registrada', no_routine: 'Sin una rutina identificada', uncertain_order: 'Orden de las sesiones incierto', invalid_previous: 'Horario anterior incompleto o incierto', overlap: 'Los horarios se superponen', paired: '' })[row.gap.state]
   : row.gap.hours === 0 ? 'Sin separación entre sesiones' : row.gap.hours < 1 ? 'Menos de 1 h entre sesiones' : `${timeNumber(row.gap.hours)} h entre sesiones`;
 
@@ -55,7 +57,7 @@ function RecoveryReader({ query }: { query: ProgressQuery }) {
       <AppText muted numeric variant="footnote">{group.sessions} sesiones en esta selección</AppText>
     </View>
     <TrainingTimingColumns testID="recovery-chart" prefix="recovery-bin" label="Intervalos entre el final anterior y el inicio siguiente" caption="Horas transcurridas · no certifican recuperación física"
-      maximum={metric === 'improvements' ? 100 : 5} selected={selection.bin} onSelect={bin => change({ bin })}
+      maximum={metric === 'improvements' ? improvementScale(data.groups) : 5} selected={selection.bin} onSelect={bin => change({ bin })}
       items={data.groups.map((g, i) => ({ label: ['<24 h', '24–48 h', '48–72 h', '3–7 d', '7 d +'][i]!, value: metricValue(g, metric), spoken: `${RECOVERY_BINS[i]!.label}. ${metricSay(g, metric)}. ${g.sessions} sesiones.` }))} />
     {selection.bin !== null ? <LinkRow kind="back" label="Ver todos los intervalos" onPress={() => change({ bin: null })} /> : null}
     <View style={styles.block}>
