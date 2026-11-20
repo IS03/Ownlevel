@@ -178,6 +178,22 @@ describe('native active session screen', () => {
     expect(view.queryByLabelText('Peso serie 1 de PRESS')).toBeNull(); expect(mockSelection).not.toHaveBeenCalled();
     controller.dispose();
   });
+  it('tells a finished exercise from a pending one, draws inputs on the background and the RIR target without a box', async () => {
+    const { controller, Screen } = fixture(); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
+    await waitFor(() => expect(view.getByLabelText('Peso serie 1 de PRESS')).toBeTruthy());
+    expect(view.getByTestId(`exercise-progress-${EXERCISE_ID}`)).toBeTruthy();
+    expect(view.queryByTestId(`exercise-progress-done-${EXERCISE_ID}`)).toBeNull();
+    expect(StyleSheet.flatten(view.getByTestId(`exercise-progress-${EXERCISE_ID}`).props.style).backgroundColor).toBeUndefined();
+    const input = StyleSheet.flatten(view.getByLabelText('Peso serie 1 de PRESS').props.style);
+    expect(input.backgroundColor).toBeUndefined(); expect(input.borderWidth).toBe(1);
+    expect(StyleSheet.flatten(view.getByLabelText('RIR objetivo serie 1: 2').props.style).backgroundColor).toBeUndefined();
+    expect(view.getByTestId('set-check-open')).toBeTruthy();
+    fireEvent(view.getByRole('checkbox', { name: 'Serie 1 completada' }), 'accessibilityTap');
+    await act(async () => { await controller.flush(EXERCISE_ID); });
+    expect(view.getByTestId('set-check-done')).toBeTruthy();
+    expect(view.getByTestId(`exercise-progress-done-${EXERCISE_ID}`)).toBeTruthy();
+    controller.dispose();
+  });
   it('renders actuals, targets/RIR and immediate completion; the finish CTA only opens the summary', async () => {
     const { controller, api, Screen } = fixture(); await controller.refresh(); const view = renderWithPressOpen(<Screen />);
     await waitFor(() => expect(view.getByLabelText('Peso serie 1 de PRESS')).toBeTruthy());
