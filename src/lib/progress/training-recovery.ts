@@ -14,7 +14,7 @@ export function trainingGap(source: InsightsSource, current: Session, scope: Rec
   if (now.state !== 'timed' || !current.date) return unknown('uncertain_order');
   const all = source.sessions.filter(s => s.status === 'completed' && s.id !== current.id);
   const candidates = all.filter(s => scope !== 'routine' || s.routineId?.toLowerCase() === current.routineId?.toLowerCase())
-    .filter(s => !s.date || s.date < current.date! || s.date === current.date && (instantMs(s.startedAt) === null || instantMs(s.startedAt)! <= now.start));
+    .filter(s => !s.date || s.date < current.date! || s.date === current.date && (trainingStartTime(s, today).state !== 'timed' || instantMs(s.startedAt)! <= now.start));
   if (!candidates.length) return unknown('no_previous');
   if (candidates.some(s => !s.date)) return unknown('uncertain_order');
   if (candidates.some(s => instantMs(s.startedAt) === now.start)) return unknown('uncertain_order');

@@ -45,6 +45,8 @@ describe('hours between registered sessions', () => {
     expect(read(s).page.rows[0]!.gap.state).toBe('invalid_previous'); expect(read(s).page.rows[0]!.gap.hours).toBeNull();
     s.sessions[1]!.startedAt = '2026-08-04T08:00:00-03:00';
     expect(read(s).page.rows[0]!.gap.state).toBe('invalid_previous');
+    const sameDay = recoveryFixture([plan('01'), { ...plan('02'), start: '2026-08-03T08:00:00-03:00' }, plan('02', recoveryId(700), '10:00', '11:00')]);
+    expect(read(sameDay).page.rows[0]!.gap.state).toBe('invalid_previous'); // a later loading timestamp does not order a backdated workout
   });
   it('rejects overlapping sessions and same-start ambiguity', () => {
     const overlap = recoveryFixture([{ ...plan('01'), end: '2026-08-02T10:00:00-03:00' }, plan('02')]);
