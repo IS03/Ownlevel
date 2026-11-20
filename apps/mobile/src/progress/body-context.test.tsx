@@ -9,12 +9,13 @@ import { pressFittedMark } from './fitted-chart.test-helper';
 const mockPush = jest.fn(), mockRead = jest.fn();
 const mockClient = {};
 let mockUnavailable = false;
+const mockTraining = { summary: { sessions: 1, sets: 1, minutes: 50 }, muscles: [{ key: 'back', label: 'Espalda', sets: 1 }] };
 let mockReport = reportFixture({ period: 'custom', from: '2026-10-01', to: '2026-10-03' });
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: mockClient }) }));
 jest.mock('@/stages/stages-provider', () => ({ useNutritionStages: () => null }));
 jest.mock('./use-progress-resource', () => ({ useProgressResource: (_c: unknown, key: string, load: unknown) => {
   mockRead(key, load);
-  const data = mockUnavailable ? undefined : key.includes('nutrition') ? mockReport : key.includes('choices') ? { definitions: [] } : undefined;
+  const data = mockUnavailable ? undefined : key.includes('nutrition') ? mockReport : key.includes('training') ? mockTraining : key.includes('choices') ? { definitions: [] } : undefined;
   return { data, state: { status: mockUnavailable ? 'unavailable' : 'ready' }, refresh: jest.fn() };
 } }));
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useLocalSearchParams: () => ({}) }));
@@ -37,9 +38,9 @@ describe('Cuerpo interval and timeline context', () => {
     mockReport.summary.metrics.protein = { value: 0, denominator: 1, partialDays: 0 };
     const view = wrap(<BodyIntervalContext range={range} />);
     expect(view.getByText('2.400 kcal')).toBeTruthy(); expect(view.getByText('0 g')).toBeTruthy();
-    expect(view.getByText(/2 de 2 días cerrados · 1 con suma parcial/)).toBeTruthy();
-    expect(view.getAllByText(/1 de 2 días cerrados\./).length).toBeGreaterThan(0);
-    expect(view.getByText(/no confirman toda la ingesta/)).toBeTruthy();
+    expect(view.getByText('2 de 2 días · 1 parcial')).toBeTruthy();
+    expect(view.getAllByText('1 de 2 días').length).toBeGreaterThan(0);
+    expect(view.getByText(/puede no ser todo lo que comiste/)).toBeTruthy();
     expect(mockRead.mock.calls[0][0]).toBe('body-context-nutrition|2026-10-01|2026-10-03');
   });
   it('preserves unavailable instead of claiming empty meals or zero intake', () => {
@@ -51,7 +52,7 @@ describe('Cuerpo interval and timeline context', () => {
   it('aligns selection without borrowing a body record and returns food inspection to Cuerpo', async () => {
     const selected = jest.fn();
     const view = wrap(<BodyTimelineContext range={range} metric={metric} selectedDate="2026-10-02" onSelect={selected} />);
-    fireEvent.press(view.getByRole('button', { name: 'Mirar junto a comida, métricas o entrenamiento' }));
+    fireEvent.press(view.getByRole('button', { name: 'Ver junto a comida, métricas o entrenamiento' }));
     expect(view.getByText(/sin registro corporal en esta fecha/)).toBeTruthy();
     const count = mockRead.mock.calls.length;
     pressFittedMark(view.getByTestId('body-context-chart-2026-10-01-bar'));
@@ -64,15 +65,26 @@ describe('Cuerpo interval and timeline context', () => {
   it('keeps missing nutrient values as gaps in the timeline', () => {
     mockReport.days = mockReport.days.map(d => d.date === '2026-10-02' ? { ...d, nutrients: { ...d.nutrients, calories: { value: null, knownMeals: 0, missingMeals: 1, status: 'unknown' } } } : d);
     const view = wrap(<BodyTimelineContext range={range} metric={metric} selectedDate="2026-10-02" onSelect={jest.fn()} />);
-    fireEvent.press(view.getByRole('button', { name: 'Mirar junto a comida, métricas o entrenamiento' }));
+    fireEvent.press(view.getByRole('button', { name: 'Ver junto a comida, métricas o entrenamiento' }));
     expect(view.getByTestId('body-context-chart-2026-10-02-gap')).toBeTruthy();
     expect(view.getByText('Sin dato de este nutriente en esta fecha')).toBeTruthy();
   });
   it('labels today as in progress instead of implying a closed day', () => {
     mockReport.days = mockReport.days.map(d => ({ ...d, isToday: d.date === '2026-10-03' }));
     const view = wrap(<BodyTimelineContext range={range} metric={metric} selectedDate="2026-10-03" onSelect={jest.fn()} />);
-    fireEvent.press(view.getByRole('button', { name: 'Mirar junto a comida, métricas o entrenamiento' }));
+    fireEvent.press(view.getByRole('button', { name: 'Ver junto a comida, métricas o entrenamiento' }));
     expect(view.getByText('Hoy en curso; no entra en el promedio.')).toBeTruthy();
+  });
+  it('groups training in one honest summary: plurals, one group per exercise, no jump to Entrenar', () => {
+    const view = wrap(<BodyIntervalContext range={range} />);
+    fireEvent.press(view.getByRole('button', { name: 'Contexto · Alimentación' }));
+    fireEvent.press(view.getByRole('button', { name: /Entrenamiento/ }));
+    expect(view.getByRole('button', { name: 'Contexto · Entrenamiento' })).toBeTruthy();
+    expect(mockRead.mock.calls.some(([key]) => String(key).startsWith('body-context-training|2026-10-01|2026-10-03'))).toBe(true);
+    expect(view.getByText(/1 sesión · 1 serie/)).toBeTruthy();
+    expect(view.getByText('1 serie')).toBeTruthy();
+    expect(view.getByText(/Cada ejercicio suma a un solo grupo/)).toBeTruthy();
+    expect(view.queryByRole('button', { name: 'Ver sesiones en el historial' })).toBeNull();
   });
   it('does not read ineligible weekly references, nor replace exact weights by default', () => {
     const view = wrap(<WeeklyWeightReference a="2026-11-16" b="2026-11-18" today="2026-11-19" />);

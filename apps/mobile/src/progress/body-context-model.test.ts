@@ -1,18 +1,20 @@
 import { describe, expect, it } from '@jest/globals';
 import type { ProgressBodyMetric } from '@/api/progress';
 import type { NutritionStages } from '@/api/nutrition-stages';
-import { bodyInterval, bodyWeekRange, bodyWeekReference, defaultBodyPair, equivalentPerWeek, intervalStages } from './body-context-model';
+import { bodyInterval, bodyWeekRange, bodyWeekReference, defaultBodyPair, equivalentPerWeek, intervalStages, measuresComparable } from './body-context-model';
 const metric = (key: string, rows: [string, number][]) => ({ key, observations: rows.map(([date, value]) => ({ date, value })) }) as ProgressBodyMetric;
 describe('body context: observed changes, not inferred tissue or causes', () => {
-  it('prefers shared circumference dates over recent weights and never pairs different body fields', () => {
+  it('prefers the widest circumference span over recent weights and never pairs different body fields', () => {
     expect(defaultBodyPair([metric('body.weight', [['2026-11-17', 70], ['2026-11-18', 71]]),
-      metric('body.waist', [['2026-10-20', 80], ['2026-11-08', 81]]), metric('body.arm_right', [['2026-11-10', 30]])]))
-      .toEqual({ a: '2026-10-20', b: '2026-11-08' });
+      metric('body.waist', [['2026-09-20', 80], ['2026-10-20', 80], ['2026-11-08', 81]]), metric('body.chest', [['2026-10-20', 95], ['2026-11-08', 96]]),
+      metric('body.arm_right', [['2026-11-10', 30]])]))
+      .toEqual({ a: '2026-09-20', b: '2026-11-08' });
     expect(defaultBodyPair([metric('body.arm', [['2026-10-20', 30]]), metric('body.arm_right', [['2026-11-08', 31]])])).toBeNull();
   });
-  it('falls back to the latest two valid weights, never profile weight or invalid records', () => {
-    expect(defaultBodyPair([metric('body.weight', [['2026-11-01', 70], ['2026-11-04', 71], ['2026-11-06', 0], ['2026-11-08', NaN]])]))
+  it('falls back to the first and last valid weights of the period, never invalid records', () => {
+    expect(defaultBodyPair([metric('body.weight', [['2026-11-01', 70], ['2026-11-03', 70.4], ['2026-11-04', 71], ['2026-11-06', 0], ['2026-11-08', NaN]])]))
       .toEqual({ a: '2026-11-01', b: '2026-11-04' });
+    expect(measuresComparable([metric('body.weight', [['2026-11-01', 70], ['2026-11-04', 71]]), metric('body.waist', [['2026-11-08', 81]])])).toBe(false);
     expect(defaultBodyPair([])).toBeNull();
   });
   it('excludes both endpoints, handles leap days and consecutive records without fabricating context', () => {

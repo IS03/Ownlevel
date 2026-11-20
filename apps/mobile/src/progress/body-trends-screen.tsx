@@ -161,7 +161,6 @@ function Content({ data, selected, body, selectedDate, onSelect, portada }: { da
     {data.excludedSuspect > 0 ? <AppText muted>{data.excludedSuspect} mediciones sospechosas excluidas; los originales siguen en Cuerpo.</AppText> : null}
     {!selected ? <>
       <BodyRecordComparison metrics={data.metrics} today={data.today} />
-      <Heading level={2}>Mirar una medida en detalle</Heading>
       <BodyZones data={data} onRegister={body ? () => body.controller.openMeasurement() : undefined} disabled={!editable} />
       <Button label="Explorar peso y medidas" variant="secondary" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.weight' } })} />
       <Button label="Tu cuaderno · peso y medidas por fecha" variant="secondary" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { section: 'journal' } })} />
@@ -194,7 +193,6 @@ function Content({ data, selected, body, selectedDate, onSelect, portada }: { da
       {/* Opens the weight on its own: every weighing and its weeks. The measures are the zones right below. */}
       <Button label="Ver tus pesajes y semanas" variant="secondary" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { metric: 'body.weight' } })} />
       <BodyRecordComparison metrics={data.metrics} today={data.today} />
-      <Heading level={2}>Mirar una medida en detalle</Heading>
       <BodyZones data={data} onRegister={body ? () => body.controller.openMeasurement() : undefined} disabled={!editable} />
       <Button label="Tu cuaderno · peso y medidas por fecha" variant="secondary" onPress={() => router.push({ pathname: '/(tabs)/progress/trends/body', params: { section: 'journal' } })} />
     </> : null}

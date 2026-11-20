@@ -384,7 +384,7 @@ describe('Body Trends', () => {
     const removed = body(); removed.metrics[0].observations.splice(1, 1);
     mockBody.mockResolvedValue(ok(removed));
     act(() => invalidateConfirmedReads(mockClient, '/api/mobile/v1/body/weights/2026-09-20')); await flush();
-    expect(view.getByText(/El registro seleccionado ya no está disponible/)).toBeTruthy();
+    expect(view.getByText(/No hay un registro corporal en esa fecha/)).toBeTruthy();
     expect(view.queryByRole('button', { name: 'Ver registro original' })).toBeNull();
     expect(view.queryByTestId('body-trend-chart-2026-09-20-mark')).toBeNull();
   });
