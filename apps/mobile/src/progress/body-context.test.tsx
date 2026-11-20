@@ -68,6 +68,12 @@ describe('Cuerpo interval and timeline context', () => {
     expect(view.getByTestId('body-context-chart-2026-10-02-gap')).toBeTruthy();
     expect(view.getByText('Sin dato de este nutriente en esta fecha')).toBeTruthy();
   });
+  it('labels today as in progress instead of implying a closed day', () => {
+    mockReport.days = mockReport.days.map(d => ({ ...d, isToday: d.date === '2026-10-03' }));
+    const view = wrap(<BodyTimelineContext range={range} metric={metric} selectedDate="2026-10-03" onSelect={jest.fn()} />);
+    fireEvent.press(view.getByRole('button', { name: 'Mirar junto a comida, métricas o entrenamiento' }));
+    expect(view.getByText('Hoy en curso; no entra en el promedio.')).toBeTruthy();
+  });
   it('does not read ineligible weekly references, nor replace exact weights by default', () => {
     const view = wrap(<WeeklyWeightReference a="2026-11-16" b="2026-11-18" today="2026-11-19" />);
     expect(mockRead).not.toHaveBeenCalled();

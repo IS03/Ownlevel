@@ -24,7 +24,7 @@ Plan: [cuerpo-contexto-y-relaciones-plan.md](cuerpo-contexto-y-relaciones-plan.m
 ## Verificación
 
 - `npm run validate`: tipos, lint, 275 suites / 2.879 pruebas y configuración, aprobado durante el desarrollo.
-- Tras el último pulido: tipos/lint y seis suites enfocadas (26 pruebas), incluyendo retorno de comidas/métricas, fechas, coberturas, huecos, medianas, etapas y coste de inspección del gráfico.
+- Tras el último pulido: tipos/lint y seis suites enfocadas (27 pruebas), incluyendo retorno de comidas/métricas, fechas, coberturas, huecos, medianas, etapas y coste de inspección del gráfico.
 - Bundle iOS de desarrollo cargado desde este checkout en Metro 8091. Sin build, instalación ni modificación de OWNLEVEL Diario.
 - En simulador, mediante Computer Use: apertura de Cuerpo, comparación de registros consecutivos sin contexto inventado, cambio del intervalo con cobertura nutricional parcial, etapa histórica y desglose de entrenamiento con sus reglas.
 - La automatización perdió acceso a la ventana durante el tramo final. No se acredita recorrido nativo completo de medianas semanales, los nuevos retornos, claro/oscuro, Dynamic Type ni Reduce Motion. Estos recorridos tienen cobertura automatizada parcial y conservan pendiente la comprobación visual nativa. No se acredita QA física.

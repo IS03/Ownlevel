@@ -81,9 +81,10 @@ function NutritionContext({ range, choice, chart }: { range: DateRange; choice: 
       {chart ? <>
         <FittedChart testID="body-context-chart" label={`${nutrient.label} registradas`} range={range} mode="bars" unit={nutrient.unit} selectedKey={chart.selectedDate} onSelect={chart.onSelect}
           points={data.days.slice().reverse().map(d => ({ key: d.date, start: d.date, end: d.date, value: d.nutrients[nutrient.field].value,
-            partial: d.nutrients[nutrient.field].status === 'partial', text: `${formatBodyDate(d.date)}, ${nutrient.label}, ${formatValue(d.nutrients[nutrient.field].value, nutrient.unit)}${d.nutrients[nutrient.field].status === 'partial' ? ', suma parcial entre comidas registradas' : ''}` }))} />
+            soft: d.isToday, partial: d.nutrients[nutrient.field].status === 'partial', text: `${formatBodyDate(d.date)}, ${nutrient.label}, ${formatValue(d.nutrients[nutrient.field].value, nutrient.unit)}${d.isToday ? ', hoy en curso' : ''}${d.nutrients[nutrient.field].status === 'partial' ? ', suma parcial entre comidas registradas' : ''}` }))} />
         {chart.selectedDate ? <View accessibilityLiveRegion="polite"><AppText numeric variant="headline">{formatBodyDate(chart.selectedDate)}</AppText>
           <AppText numeric>{point?.value !== null && point?.value !== undefined ? formatValue(point.value, nutrient.unit) : 'Sin dato de este nutriente en esta fecha'}</AppText>
+          {selected?.isToday ? <AppText muted variant="caption">Hoy en curso; no entra en el promedio.</AppText> : null}
           {point ? <AppText muted numeric variant="caption">{point.knownMeals} comidas con dato · {point.missingMeals} sin ese dato.</AppText> : null}
           {selected?.hasNutrition ? <Button variant="quiet" label="Ver comidas de esa fecha" onPress={() => { const href = nutritionChartDayHref(selected.date); if (href) router.push({ ...href, params: { ...href.params, ...bodyOrigin(chart) } }); }} /> : null}
         </View> : null}
@@ -125,10 +126,11 @@ function ExploreContext({ range, choice, chart }: { range: DateRange; choice: st
       <AppText variant="headline">{data.measure.label}</AppText><AppText numeric variant="title2">{value(current.value)}</AppText>
       <AppText muted numeric variant="caption">{data.measure.aggregation === 'sum' ? 'Total registrado' : 'Promedio por día con dato'} · {current.coverage.days} de {current.coverage.eligible} días con dato.</AppText>
       {chart && current.series ? <>
-        <FittedChart testID="body-context-chart" label={data.measure.label} points={current.series.map(b => ({ key: b.start, start: b.start, end: b.end, value: b.value, text: `${datesText(b)}, ${value(b.value)}` }))}
+        <FittedChart testID="body-context-chart" label={data.measure.label} points={current.series.map(b => ({ key: b.start, start: b.start, end: b.end, value: b.value, soft: b.start <= data.today && b.end >= data.today, text: `${datesText(b)}, ${value(b.value)}${b.start <= data.today && b.end >= data.today ? ', intervalo en curso' : ''}` }))}
           range={range} unit={data.measure.unit ?? undefined} mode="bars" selectedKey={bucket?.start ?? null} onSelect={chart.onSelect} />
         {chart.selectedDate ? <View accessibilityLiveRegion="polite"><AppText muted numeric>{bucket ? datesText(bucket) : formatBodyDate(chart.selectedDate)}</AppText>
           <AppText numeric>{bucket ? value(bucket.value) : 'Sin dato en esta fecha'}</AppText>
+          {bucket && bucket.start <= data.today && bucket.end >= data.today ? <AppText muted variant="caption">Intervalo en curso.</AppText> : null}
           {bucket && bucket.start !== bucket.end ? <AppText muted variant="caption">Dato del intervalo completo, no de un único día.</AppText> : null}
           {bucket && choice.startsWith('metric.') ? <Button label="Ver registros de la métrica" variant="quiet" onPress={() => { const href = metricOriginalHref(choice.slice(7), bucket.start, bucket.end); if (href) router.push({ ...href, params: { ...href.params, ...bodyOrigin(chart) } }); }} /> : null}
         </View> : null}
