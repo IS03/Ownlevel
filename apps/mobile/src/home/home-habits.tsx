@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 
 import type { ProgressHabitWeek, ProgressMetricHabit } from '@/api/progress';
-import { AppIcon, AppText, Button, InlineUnavailable, SkeletonBlock, brandTokens, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppIcon, AppText, InlineUnavailable, SkeletonBlock, brandTokens, useOwnlevelTheme } from '@/design-system';
 import { formatValue } from '@/progress/progress-format';
 
 import { homeMetricIcon } from './home-metric-icons';
@@ -30,7 +30,7 @@ export function HomeHabits({ habits, onOpen, onMetrics, today, weekStart }: {
   if (data.items.length === 0) return <View style={styles.empty} testID="home-habits-empty">
     <AppText variant="headline">Tus hábitos, semana a semana</AppText>
     <AppText muted variant="subheadline">Activá una métrica para ver acá tus promedios.</AppText>
-    <Button label="Ir a Métricas" onPress={onMetrics} variant="quiet" />
+    <LinkRow label="Ir a Métricas" onPress={onMetrics} />
     {stale ? <Stale /> : null}
   </View>;
   const visibleLimit = stale && data.items.length > limit ? Math.min(2, limit) : limit;

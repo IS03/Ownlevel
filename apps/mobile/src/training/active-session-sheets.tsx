@@ -4,7 +4,7 @@ import { fetchMobileTrainingExercises, useApiResource } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import type { QuickSessionHistoryDto, SessionDetailDto, SessionExerciseDto } from '@/api/active-session';
 import type { MobileTrainingExercise, MobileTrainingMuscleGroup } from '@/api/exercises';
-import { AppText, Button, Chip, EmptyState, InlineUnavailable, SkeletonBlock, Surface, spacing, brandTokens, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppText, Chip, EmptyState, InlineUnavailable, SkeletonBlock, Surface, spacing, brandTokens, useOwnlevelTheme } from '@/design-system';
 import { pickerExercises } from './routine-editor-model';
 import { compactActual, historyLoadLabel, quickHistoryDate, quickHistoryFold, quickHistoryRows, quickHistoryTargetRir, quickSessions, type QuickHistoryRow } from './active-session-model';
 import { RoutineExercisePickerBody } from './routine-exercise-picker-body';
@@ -82,7 +82,7 @@ export function SessionQuickHistory({ exercise, history, routineId = null, routi
     </ScrollView>
     <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.historyContent}>
       {history.status === 'unavailable' ? <InlineUnavailable message="No pudimos consultar las últimas sesiones. Podés seguir entrenando." actionLabel="Reintentar" onAction={onRefresh} /> :
-        visible.length === 0 ? <><EmptyState title={filter ? `Todavía no lo hiciste en ${routines.get(filter)}` : 'Todavía sin registros'} description={filter ? 'Estas son las últimas seis sesiones disponibles.' : 'No hay sesiones finalizadas con este ejercicio.'} />{filter ? <Button label="Ver todas" onPress={() => setFilter(null)} variant="quiet" /> : null}</> : visible.map(session =>
+        visible.length === 0 ? <><EmptyState title={filter ? `Todavía no lo hiciste en ${routines.get(filter)}` : 'Todavía sin registros'} description={filter ? 'Estas son las últimas seis sesiones disponibles.' : 'No hay sesiones finalizadas con este ejercicio.'} />{filter ? <LinkRow label="Ver todas" onPress={() => setFilter(null)} /> : null}</> : visible.map(session =>
           <QuickHistoryCard key={session.sessionId} session={session} showRoutine={filter === null} expanded={expanded.has(session.sessionId)} large={large} numberWidth={numberWidth} canUse={canUse}
             onExpand={() => setExpanded(prev => new Set(prev).add(session.sessionId))} onUse={onUse} />)}
     </ScrollView>

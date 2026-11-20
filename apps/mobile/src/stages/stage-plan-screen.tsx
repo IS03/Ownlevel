@@ -4,6 +4,7 @@ import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanim
 import { useRouter } from "expo-router";
 import {
   AppText,
+  LinkRow,
   Button,
   Heading,
   TextField,
@@ -190,9 +191,8 @@ function StagePlanBody({
                 <AppText muted variant="footnote">
                   Para sugerirte calorías necesitamos tus datos físicos.
                 </AppText>
-                <Button
+                <LinkRow
                   label="Ir a Datos físicos"
-                  variant="quiet"
                   onPress={() => router.push("/settings/physical")}
                 />
               </View>

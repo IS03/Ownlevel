@@ -7,7 +7,7 @@ import { ReturnToBodyChart } from '@/progress/body-chart-navigation';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
 import type { BodyMeasurement, BodyMeasurementField, BodyWeightEntry } from '@/api/body';
-import { AppIcon, AppText, Button, Heading, InlineUnavailable, ScrollScreen, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppIcon, AppText, Button, Heading, InlineUnavailable, ScrollScreen, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
 import type { BodyController, BodyState } from './body-controller';
 import type { WeightEditor } from './body-storage';
 import { MeasurementEditorSheet, WeightEditorSheet } from './body-editor';
@@ -55,7 +55,7 @@ export function WeightRecords({ state, controller, editable, limit }: { state: B
           onPress={editable ? () => controller.openWeight(entry) : undefined} />;
       })}
     </View> : <AppText muted>Todavía no registraste peso.</AppText>}
-    {limit && weights.length > limit ? null : read.weightsCursor ? <Button label={read.loadingMore === 'weights' ? 'Cargando…' : 'Ver más pesajes'} variant="quiet"
+    {limit && weights.length > limit ? null : read.weightsCursor ? <LinkRow kind="disclosure" label={read.loadingMore === 'weights' ? 'Cargando…' : 'Ver más pesajes'}
       disabled={read.loadingMore !== null} onPress={() => void controller.loadMore('weights')} /> : null}
   </View>;
 }
@@ -82,7 +82,7 @@ export function MeasurementRecords({ state, controller, editable, field }: { sta
           value={field ? formatCm(value) : undefined} label={`Medición del ${formatBodyDate(m.measuredOn)}`} onPress={editable ? () => controller.openMeasurement(m) : undefined} />;
       })}
     </View> : <AppText muted>Todavía no registraste medidas.</AppText>}
-    {read.measurementsCursor ? <Button label={read.loadingMore === 'measurements' ? 'Cargando…' : 'Ver más mediciones'} variant="quiet"
+    {read.measurementsCursor ? <LinkRow kind="disclosure" label={read.loadingMore === 'measurements' ? 'Cargando…' : 'Ver más mediciones'}
       disabled={read.loadingMore !== null} onPress={() => void controller.loadMore('measurements')} /> : null}
   </View>;
 }

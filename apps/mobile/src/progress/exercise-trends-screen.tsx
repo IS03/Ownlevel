@@ -11,7 +11,7 @@ import {
   type ProgressExerciseCharts,
   type ProgressExercisePoint,
 } from '@/api/progress';
-import {
+import { LinkRow,
   AppIcon,
   AppText,
   Button,
@@ -237,7 +237,7 @@ function ExerciseChart({ data, measure, selected, onSelect }: { data: ProgressTr
           {!selectedSlot.point ? <AppText muted variant="caption">La sesión existe, pero no tiene un valor utilizable para esta medida. No equivale a cero; podés revisar las series originales.</AppText> : null}
           {selectedSlot.point?.best && measure.derived ? <AppText numeric muted variant="caption">Serie de origen: {formatValue(selectedSlot.point.best.weightKg, 'kg')} × {formatValue(selectedSlot.point.best.reps, 'reps')}.</AppText> : null}
           {!selectedSlot.reference ? <AppText numeric muted variant="caption">{comparisonPoint ? `Referencia de lectura: ${fullDate(comparisonPoint.date)} · ${pointText(measure, comparisonPoint)}. ${compareOn ? 'Última sesión de referencia con una mejor serie registrada.' : 'Primera sesión con dato de esta medida en el período.'}` : 'Sin valor utilizable en la sesión de referencia.'} Esta referencia describe los valores del gráfico; no es una nueva clasificación de rendimiento.</AppText> : <AppText muted variant="caption">Registro del período de comparación, separado del período elegido.</AppText>}
-          <Button label="Ver sesión y series originales" variant="secondary" onPress={() => router.push(exerciseSessionHref(data.exercise.id, selectedSlot.sessionId))} />
+          <LinkRow label="Ver sesión y series originales" onPress={() => router.push(exerciseSessionHref(data.exercise.id, selectedSlot.sessionId))} />
         </> : null}
         <AppText muted variant="caption">{interpretation}</AppText>
         <AppText muted variant="caption">{measure.points.length} de {data.sessions.length} sesiones del período elegido con dato para esta medida{compareOn ? `. Comparación: ${reference?.length ?? 0} sesiones con dato` : ''}.</AppText>

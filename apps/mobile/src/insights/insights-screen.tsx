@@ -5,7 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchInsightsDays, fetchInsightsRelations, fetchInsightsSummaryBefore, fetchSessionTemporal, type DayFact, type InsightsSummary, type PartialDayFact, type PartialRelationSummary, type RelationSummary, type SessionFact } from '@/api/performance-insights';
-import { AppIcon, AppSheet, AppText, Button, ChipGroup, ExampleFrame, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { LinkRow, AppIcon, AppSheet, AppText, Button, ChipGroup, ExampleFrame, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import type { AppIconName } from '@/design-system/icon-names';
 import { haptics } from '@/platform/haptics';
 import { useProgressResource } from '@/progress/use-progress-resource';
@@ -524,7 +524,7 @@ export function InsightsScreen() {
   const setFamily = (value: FamilyFilter) => { haptics.selection(); router.setParams({ family: value }); };
   const toggleRelations = () => { haptics.selection(); router.setParams({ relations: relationsOpen ? '0' : '1' }); };
   const refreshControl = <RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />;
-  const returnToSession = origin.fromSession && focusId ? <Button label="Volver a la sesión" variant="quiet" onPress={() => {
+  const returnToSession = origin.fromSession && focusId ? <LinkRow kind="back" label="Volver a la sesión" onPress={() => {
     if (router.canGoBack()) router.back();
     else router.replace({ pathname: '/(tabs)/train/history/[id]', params: { id: focusId } });
   }} /> : null;
@@ -555,7 +555,7 @@ export function InsightsScreen() {
   const chrome = !focusId || !origin.fromSession;
   const selectedSession = focusId ?? (hero?.day.strict.sessions.length === 1 ? hero.day.strict.sessions[0]!.sessionId : null);
   return scroll(<>
-    {origin.explore&&origin.asOf&&origin.week?<Button label={origin.compare ? 'Volver a comparar semanas' : 'Volver a la semana'} variant="secondary" onPress={()=>router.navigate(explorationHref(origin.asOf!,origin.week,origin.revision,origin))}/>:null}
+    {origin.explore&&origin.asOf&&origin.week?<LinkRow kind="back" label={origin.compare ? 'Volver a comparar semanas' : 'Volver a la semana'} onPress={()=>router.navigate(explorationHref(origin.asOf!,origin.week,origin.revision,origin))}/>:null}
     {origin.explore&&origin.revision&&origin.revision!==data.sourceRevision?<AppText>Los registros cambiaron desde la semana. Esta lectura completa está actualizada.</AppText>:null}
     {state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
     {origin.fromSession && origin.revision && origin.revision !== data.sourceRevision ? <AppText muted testID="insights-session-revised">Los registros cambiaron desde el origen. Esta lectura completa está actualizada.</AppText>

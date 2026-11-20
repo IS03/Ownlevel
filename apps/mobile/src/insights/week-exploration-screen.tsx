@@ -6,7 +6,7 @@ import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchPeriodExploration,validPeriodAnchor } from '@/api/performance-insights';
 import { useProgressResource } from '@/progress/use-progress-resource';
-import { AppText,Heading,Button,InlineUnavailable,UnavailableState,SkeletonBlock,brandTokens,spacing,useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppText,Heading,Button,InlineUnavailable,UnavailableState,SkeletonBlock,brandTokens,spacing,useOwnlevelTheme } from '@/design-system';
 import { formatValue } from '@/progress/progress-format';
 import { postsText } from './feelings-model';
 import { FactRow } from './insights-screen';
@@ -42,7 +42,7 @@ export function WeekExplorationScreen() {
       <Heading level={2}>Semanas y días</Heading><AppText numeric>{exactPeriodRange(data.period)}</AppText>
       {typeof params.revision==='string'&&params.revision!==data.sourceRevision?<AppText testID="week-revised">Los registros cambiaron desde el origen. Esta lectura completa está actualizada.</AppText>:null}
       <Coincidences data={data.coincidenceSummary} weeks={data.weeks} origin={origin} selection={selection} onRefresh={()=>void refresh()} onSelect={value=>router.setParams({coincidence:value.coincidence,coincidenceGroup:value.coincidenceGroup,coincidencePage:value.coincidencePage,coincidenceView:value.coincidenceView,weeklyNutrient:value.weeklyNutrient,weeklyOutcome:value.weeklyOutcome})}/>
-      <Button label="Comparar semanas" variant="secondary" onPress={()=>{
+      <LinkRow label="Comparar semanas" onPress={()=>{
         const selection=selectedWeeks(data,week.start);
         if(selection)router.setParams({compare:'1',weekA:data.weeks[selection.a]!.start,weekB:data.weeks[selection.b]!.start,weekSide:undefined});
       }}/>
@@ -58,7 +58,7 @@ export function WeekExplorationScreen() {
       <WeekRecords week={week} metrics={data.metrics} origin={origin}/>
       <AppText muted>Hechos para explorar, no asociaciones validadas. No se combinan cargas de ejercicios ni escalas ordinales en un puntaje.</AppText>
     </>}
-    <Button label="Volver al resumen" variant="secondary" onPress={()=>router.navigate(periodSummaryHref(asOf??undefined,insightsOriginOf(params)))}/>
+    <LinkRow kind="back" label="Volver al resumen" onPress={()=>router.navigate(periodSummaryHref(asOf??undefined,insightsOriginOf(params)))}/>
   </ScrollView>;
 }
 const styles=StyleSheet.create({scroll:{padding:brandTokens.layout.screenPadding,paddingBottom:brandTokens.layout.tabBarHeight+spacing.xxl,gap:spacing.lg},controls:{gap:spacing.xs}});

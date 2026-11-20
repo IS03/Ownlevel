@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { ProgressMetrics } from '@/api/progress';
-import { AppText, Button, spacing } from '@/design-system';
+import { LinkRow, AppText, spacing } from '@/design-system';
 import { PeriodChart } from './period-chart';
 import { formatValue } from './progress-format';
 import { shortRange } from './progress-range';
@@ -46,7 +46,7 @@ export function MetricTrendChart({ data, inspection, onOpen }: { data: ProgressM
       <AppText numeric muted variant="caption">{selected.samples} {selected.samples === 1 ? 'día con dato' : 'días con dato'} en esta barra.</AppText>
       {selected.key <= data.today && selected.end >= data.today ? <AppText muted variant="caption">Hoy sigue en curso; no es un día terminado. Consultá su registro diario para ver lo disponible.</AppText> : null}
       {bucket !== 'day' ? <AppText muted variant="caption">Este promedio no es un registro diario. El agregado no identifica qué fechas aportaron; podés recorrer los días del intervalo.</AppText> : null}
-      {onOpen ? <Button label={bucket === 'day' ? 'Abrir registro diario original' : 'Recorrer días del intervalo'} variant="secondary" onPress={() => onOpen(selected.key, selected.end)} /> : null}
+      {onOpen ? <LinkRow label={bucket === 'day' ? 'Abrir registro diario original' : 'Recorrer días del intervalo'} onPress={() => onOpen(selected.key, selected.end)} /> : null}
     </View> : null}
   </View>;
 }

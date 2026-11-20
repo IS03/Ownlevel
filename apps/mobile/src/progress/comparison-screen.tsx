@@ -5,7 +5,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchProgressOverview, progressRequestKey, type MetricValueType, type ProgressComparison, type ProgressDestination, type ProgressOverview } from '@/api/progress';
 import { useCachedRead } from '@/api/use-cached-read';
-import { AppIcon, AppText, Button, ChipGroup, GlassSurface, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, atmosphere, brandTokens, glowGradient, pressedStyle, radius, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { LinkRow, AppIcon, AppText, Button, ChipGroup, GlassSurface, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, atmosphere, brandTokens, glowGradient, pressedStyle, radius, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import { CompareSheet } from './period-sheets';
 import { ComparisonChart } from './comparison-chart';
@@ -97,7 +97,7 @@ export function PeriodComparisonContent({ data, view, onView, onOpen }: { data: 
       {data.body.status === 'ok' ? <>
         <Pair label="Último peso registrado en cada período" current={w?.last} previous={w?.referenceLast} unit="kg" detail="Son registros de fechas distintas, no promedios ni una tendencia." />
         {w ? <ComparisonChart key={`weight:${current.start}:${current.end}:${compare.start}:${compare.end}`} spark={w} current={current} reference={compare} mode="dots" unit="kg" {...point('weight')} testID="comparison-weight-chart" /> : null}
-        <Button variant="quiet" label="Ver peso y medidas" onPress={() => onOpen({ kind: 'body' })} />
+        <LinkRow label="Ver peso y medidas" onPress={() => onOpen({ kind: 'body' })} />
       </> : <AppText muted>No pudimos leer Cuerpo.</AppText>}
     </View> : null}
     {show('nutrition') ? <View style={styles.area} testID="comparison-nutrition">
@@ -107,14 +107,14 @@ export function PeriodComparisonContent({ data, view, onView, onOpen }: { data: 
         {data.sparks?.nutrition ? <ComparisonChart key={`nutrition:${current.start}:${current.end}:${compare.start}:${compare.end}`} spark={data.sparks.nutrition} current={current} reference={compare} mode="bars" unit="kcal" {...point('nutrition')} testID="comparison-nutrition-chart" /> : null}
         <Pair label="Proteína registrada · promedio diario" current={n.averageProteinG} comparison={n.protein} unit="g" />
         <AppText muted numeric variant="footnote">Período elegido: {n.registeredDays} de {n.days} días con alimentación registrada. Los promedios excluyen hoy y pueden usar distintos días.</AppText>
-        <Button variant="quiet" label="Ver nutrición y cobertura" onPress={() => onOpen({ kind: 'nutrition' })} />
+        <LinkRow label="Ver nutrición y cobertura" onPress={() => onOpen({ kind: 'nutrition' })} />
       </> : <AppText muted>No pudimos leer Nutrición.</AppText>}
     </View> : null}
     {show('metrics') ? <View style={styles.area} testID="comparison-metrics">
       <Heading level={2}>Métricas personales</Heading>
       {metrics === null ? <AppText muted>No pudimos leer tus métricas.</AppText> : !metrics.length ? <AppText muted>Sin métricas con datos en el período elegido.</AppText> : metrics.filter(m => m.comparison.status === 'comparable').map(m => <View key={m.id}>
         <Pair label={m.name} comparison={m.comparison} unit={m.unit} type={m.valueType} detail={`Período elegido: ${coverageText(m.coverage)}. Cada período usa sus propios días con dato.`} />
-        <Button variant="quiet" label={`Ver ${m.name.toLocaleLowerCase('es-AR')}`} onPress={() => onOpen({ kind: 'metrics', metricId: m.id })} />
+        <LinkRow label={`Ver ${m.name.toLocaleLowerCase('es-AR')}`} onPress={() => onOpen({ kind: 'metrics', metricId: m.id })} />
       </View>)}
     </View> : null}
     {missing.length ? <View style={[styles.area, { borderColor: colors.border }]}>
@@ -123,7 +123,7 @@ export function PeriodComparisonContent({ data, view, onView, onOpen }: { data: 
         <AppText variant="headline" style={styles.grow}>Para completar la comparación</AppText><AppText numeric muted variant="footnote">{missing.length}</AppText><AppIcon name={more ? 'close' : 'chevronDown'} color={colors.textMuted} />
       </Pressable>
       {more ? <View style={styles.content}>{missing.map(item => <AppText key={item} muted variant="footnote">{item}</AppText>)}
-        {(show('metrics') ? metrics ?? [] : []).filter(m => m.comparison.status !== 'comparable').map(m => <Button key={m.id} variant="quiet" label={`Ver ${m.name.toLocaleLowerCase('es-AR')}`} onPress={() => onOpen({ kind: 'metrics', metricId: m.id })} />)}
+        {(show('metrics') ? metrics ?? [] : []).filter(m => m.comparison.status !== 'comparable').map(m => <LinkRow key={m.id} label={`Ver ${m.name.toLocaleLowerCase('es-AR')}`} onPress={() => onOpen({ kind: 'metrics', metricId: m.id })} />)}
       </View> : null}
     </View> : null}
   </Animated.View>;

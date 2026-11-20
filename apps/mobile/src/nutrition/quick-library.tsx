@@ -1,7 +1,7 @@
 import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, Platform, Pressable, ScrollView, SectionList, StyleSheet, View, useWindowDimensions, type AccessibilityActionEvent, type ViewToken } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
-import { AppIcon, AppText, Button, LoadingState, Surface, brandTokens, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppIcon, AppText, Button, LoadingState, Surface, brandTokens, useOwnlevelTheme } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import type { QuickOption } from '@/api/nutrition-quick';
 import type { QuickController, QuickState } from './quick-controller';
@@ -267,7 +267,7 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
     const start = sectionStarts(sections.map(section => section.data.length))[sectionIndex]!;
     jumper.current.start(sectionIndex, start, start + sections[sectionIndex]!.data.length + 2);
   };
-  const manageButton = writable ? <Button label={pinnedIds.length ? 'Administrar' : 'Elegir fijadas'} variant="quiet" onPress={() => openEditor()} testID="quick-pins-manage" /> : null;
+  const manageButton = writable ? <LinkRow label={pinnedIds.length ? 'Administrar' : 'Elegir fijadas'} onPress={() => openEditor()} testID="quick-pins-manage" /> : null;
   const letterButton = (letter: string, side = false) => {
     const has = present.has(letter), label = letter === '#' ? 'números y símbolos' : letter;
     return <Pressable key={letter} accessibilityRole="button" accessibilityLabel={has ? `Ir a la letra ${label}` : `${label}, sin comidas`} accessibilityState={{ disabled: !has }} disabled={!has}
@@ -307,8 +307,8 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
   </View>;
   const empty = saved ? <AppText muted style={styles.empty}>{query ? 'No encontramos comidas con esa búsqueda.' : 'Todavía no tenés comidas guardadas.'}</AppText> : null;
   const listFooter = <View style={styles.footer}>
-    {suggestions && !query && state.options?.suggested.status === 'ok' && state.options.suggested.items.length > 3 ? <Button label={more ? 'Ver menos' : 'Ver más sugerencias'} variant="quiet" onPress={() => setMore(!more)} /> : null}
-    {onSaved && saved?.length ? <Button label="Editar guardadas" variant="quiet" onPress={onSaved} disabled={locked} /> : null}
+    {suggestions && !query && state.options?.suggested.status === 'ok' && state.options.suggested.items.length > 3 ? <LinkRow kind="disclosure" expanded={more} label={more ? 'Ver menos' : 'Ver más sugerencias'} onPress={() => setMore(!more)} /> : null}
+    {onSaved && saved?.length ? <LinkRow label="Editar guardadas" onPress={onSaved} disabled={locked} /> : null}
     {footer}
   </View>;
 

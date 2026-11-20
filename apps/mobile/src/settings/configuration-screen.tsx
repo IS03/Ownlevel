@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, TextInput, View } from 'react-native';
 import { useNavigation, useRouter, useIsFocused, useFocusEffect } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
-import { AppText, Button, Heading, TextField, brandTokens, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppText, Button, Heading, TextField, brandTokens, useOwnlevelTheme } from '@/design-system';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
 import { BodyEditors, BodyStatus } from '@/body/body-screen';
@@ -281,9 +281,8 @@ export function ConfigurationScreen({ operation }: { operation: Operation }) {
               ) : (
                 <>
                   <AppText>Para calcularlo necesitamos tu altura, peso y nacimiento.</AppText>
-                  <Button
+                  <LinkRow
                     label="Completar datos físicos"
-                    variant="quiet"
                     onPress={() => navigate('/settings/physical')}
                   />
                 </>

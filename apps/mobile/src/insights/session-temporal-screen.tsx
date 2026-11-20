@@ -5,7 +5,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchSessionTemporal, validPeriodAnchor, type SessionTemporalDay } from '@/api/performance-insights';
-import { AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { formatClockTime } from '@/home/format';
 import { FactRow } from './insights-screen';
@@ -75,7 +75,7 @@ export function SessionTemporalScreen() {
         </View>)}
         <AppText muted>Lo registrado no prueba todo lo que comiste. La comida posterior es contexto posterior: no explica el rendimiento de una sesión ya terminada. No se buscaron asociaciones.</AppText>
       </>}
-    <Button label="Volver al día en Comparaciones" variant="secondary" onPress={() => router.navigate(returnHref)} />
+    <LinkRow kind="back" label="Volver al día en Comparaciones" onPress={() => router.navigate(returnHref)} />
   </ScrollView>;
 }
 const styles = StyleSheet.create({ scroll: { padding: brandTokens.layout.screenPadding, paddingBottom: brandTokens.layout.tabBarHeight + brandTokens.layout.tabBarInset + spacing.xl, gap: spacing.xl }, block: { gap: spacing.sm } });

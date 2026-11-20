@@ -4,7 +4,7 @@ import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchTrainingExerciseHistory, type TrainingExerciseHistorySession, type TrainingHistoryMark } from '@/api/training-history';
-import { AppIcon, AppText, Button, EmptyState, pressedStyle, radius, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { LinkRow, AppIcon, AppText, EmptyState, pressedStyle, radius, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { exerciseSetLabel } from './exercise-detail-model';
 import { GroupChip } from './group-chip';
 import { HistoryScroll, ReadStateScreen, StaleNotice } from './history-components';
@@ -145,10 +145,10 @@ function ExerciseHistoryContent({ exerciseId, routineId, options, overallBest, n
     {unit ? <RepsChart sessions={sessions} unit={unit} /> : null}
     <AppText muted variant="caption" style={[styles.kicker, styles.section]} accessibilityRole="header">Sesiones</AppText>
     {sessions.length === 0 ? <EmptyState title={routineId ? `Todavía no lo hiciste en ${selectedName}` : 'Todavía no lo hiciste'} description="Las sesiones terminadas aparecen acá."
-      action={routineId ? <Button label="Ver todas" variant="secondary" onPress={() => onRoutineChange(null)} /> : undefined} />
+      action={routineId ? <LinkRow label="Ver todas" onPress={() => onRoutineChange(null)} /> : undefined} />
       : <View>{sessions.map((session, index) => <SessionLine key={session.sessionId} session={session} label={markText(session.mark)} unit={unit} first={index === 0}
         onPress={() => router.push(`/(tabs)/train/history/${session.sessionId}`)} />)}</View>}
-    {hasMore && limit < 100 ? <Button label={state.refreshing ? 'Cargando…' : 'Ver más'} variant="secondary" disabled={state.refreshing}
+    {hasMore && limit < 100 ? <LinkRow kind="disclosure" label={state.refreshing ? 'Cargando…' : 'Ver más'} disabled={state.refreshing}
       onPress={() => setLimit(current => Math.min(current + 20, 100))} /> : null}
   </HistoryScroll></>;
 }

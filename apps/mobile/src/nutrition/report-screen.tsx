@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { FlatList, Modal, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AppText, Button, Heading, LoadingState, Surface, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppText, Button, Heading, LoadingState, Surface, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
 import { useMobileApi } from '@/api';
 import { REPORT_PRESETS, type NutritionReport, type ReportDailyRow, type ReportMetric, type ReportQuery, type ReportStatistic } from '@/api/nutrition-report';
 import { useNutritionReportResource } from './report-resource';
@@ -64,7 +64,7 @@ export function NutritionReportSummary({report,onDate}:{report:NutritionReport;o
     </Surface>
     <Evolution report={report}/>
     <Surface style={styles.section}><Heading level={2}>Días destacados</Heading>
-      {report.highlights.length===0?<AppText muted>No hay días finalizados comparables.</AppText>:report.highlights.map(h=><Button key={h.kind} label={`${h.title} · ${displayNutritionDate(h.date)}`} variant="secondary" onPress={()=>onDate(h.date)}/>)}
+      {report.highlights.length===0?<AppText muted>No hay días finalizados comparables.</AppText>:report.highlights.map(h=><LinkRow key={h.kind} label={`${h.title} · ${displayNutritionDate(h.date)}`} onPress={()=>onDate(h.date)}/>)}
     </Surface>
     <Heading level={2}>Detalle diario</Heading>
     <AppText muted>Tocá un día para abrir su Nutrition.</AppText>
@@ -73,7 +73,7 @@ export function NutritionReportSummary({report,onDate}:{report:NutritionReport;o
 export function NutritionReportDayRow({day,onDate}:{day:ReportDailyRow;onDate:(date:string)=>void}) {
   const nutrient=(k:'calories'|'protein'|'carbs'|'fat')=>`${amount(day.nutrients[k].value,k==='calories'?'kcal':'g')}${day.nutrients[k].status==='partial'?' (parcial)':''}`;
   return <Surface style={styles.section}>
-    <Button label={`${displayNutritionDate(day.date)}${day.isToday?' · en curso':''}`} variant="quiet" onPress={()=>onDate(day.date)}/>
+    <LinkRow label={`${displayNutritionDate(day.date)}${day.isToday?' · en curso':''}`} onPress={()=>onDate(day.date)}/>
     {!day.hasNutrition?<AppText muted>Sin registro nutricional</AppText>:<>
       {day.imported?<AppText muted>Resumen histórico importado</AppText>:null}
       <AppText>Consumo: {nutrient('calories')}</AppText>
@@ -101,7 +101,7 @@ export function NutritionReportsContent({onClose,onDate,initialQuery}:{onClose?:
   const selectDate=(date:string)=>{onDate(date);onClose?.();};
   const header=<View style={styles.section}>
     <Heading>Reporte nutricional</Heading>
-    {onClose?<Button label="Cerrar reporte" variant="quiet" onPress={onClose}/>:null}
+    {onClose?<LinkRow kind="back" label="Cerrar reporte" onPress={onClose}/>:null}
     <AppText>Período: {labels[query.period]}</AppText>
     <View style={styles.wrap}>{REPORT_PRESETS.map(p=><Button key={p} label={labels[p]} variant={query.period===p?'primary':'secondary'} onPress={()=>{
       setError(null);setCustom(p==='custom');if(p!=='custom')setQuery({period:p});

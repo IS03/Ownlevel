@@ -87,6 +87,8 @@ Permanent rules (summary; IDENTIDAD.md wins on detail):
   Ups/downs use an arrow, not a color.
 - Semantic colors only for real system state: `error` = system failures (sync, payment)
   and destructive actions. Never to judge the user.
+- No banner buttons: navigating, opening a section or picking a value is a row (`LinkRow`: label, optional value, chevron),
+  never a full-width grey secondary button. Buttons are only for real actions (save, cancel, add, retry).
 - Glass only on controls: tab bar, floating buttons, top bar on scroll, controls over
   photos/charts, floating timer. Never on cards, rows, lists, inputs or the hero.
 - Relevant numbers always with tabular figures (`fontVariant: ['tabular-nums']` /

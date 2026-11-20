@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import type { NutritionReport, ReportDailyRow } from '@/api/nutrition-report';
-import { AppIcon, AppText, Button, ChipGroup, Heading, atmosphere, brandTokens, glowGradient, pressedStyle, radius, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { LinkRow, AppIcon, AppText, ChipGroup, Heading, atmosphere, brandTokens, glowGradient, pressedStyle, radius, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { nutritionValue as value, nutritionDifference as signed } from './nutrition-values';
@@ -115,7 +115,7 @@ export function NutritionTopicContent({ section, report, onDate }: { section: Nu
             {stacked ? null : <AppText numeric variant="headline">{rowValue(day)}</AppText>}
           </ProgressRow>) : <AppText muted>No hay días con este filtro.</AppText>}
       </Animated.View>
-      {sorted.length > limit ? <Button label="Ver más días" variant="quiet" onPress={() => setLimit(n => n + 20)} /> : null}
+      {sorted.length > limit ? <LinkRow kind="disclosure" label="Ver más días" onPress={() => setLimit(n => n + 20)} /> : null}
     </View>
   </View>;
 }

@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { ProgressTraining, ProgressTrainingInPeriod, TrainingPerformanceStatus } from '@/api/progress';
-import { AppIcon, AppText, Button, ChipGroup, Heading, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppIcon, AppText, ChipGroup, Heading, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { useComparisonText, useProgressRange } from './progress-range-context';
 import { daysBetween, shortRange } from './progress-range';
@@ -111,8 +111,8 @@ function Routines({ data, open }: { data: ProgressTraining; open: (id: string) =
         <View style={styles.stats}><Stat value={fmt(r.sessions)} label="sesiones" /><Stat value={fmt(r.sets)} label="series" /><Stat value={r.averageMinutes === null ? 'Sin dato' : `${fmt(r.averageMinutes)} min`} label="duración media" />{r.averageExercises !== null ? <Stat value={fmt(r.averageExercises)} label="ejercicios por sesión" /> : null}</View>
         {data.story ? <><AppText>{r.improved + r.stable + r.declined > 0 ? `${r.improved} de ${r.improved + r.stable + r.declined} ejercicios comparables subieron.` : 'Sin ejercicios comparables dentro de esta rutina.'}</AppText><AppText muted variant="footnote">{data.inPeriod?.method ? 'Última sesión frente a su referencia dentro de esta rutina.' : 'Primera y última sesión dentro de esta rutina.'} {r.insufficient} sin comparación suficiente.</AppText></> : null}
         {r.exerciseIds.length ? <AppText muted variant="caption">Al abrir un ejercicio, ves sus registros de todas las rutinas.</AppText> : null}
-        {r.exerciseIds.map(id => <Button key={id} label={names.get(id) ?? 'Ver ejercicio'} variant="quiet" onPress={() => open(id)} />)}
-        {r.lastDate ? <Button label="Ver último día y sesiones" variant="quiet" onPress={() => router.push({ pathname: '/history/day/[date]', params: { date: r.lastDate! } })} /> : null}
+        {r.exerciseIds.map(id => <LinkRow key={id} label={names.get(id) ?? 'Ver ejercicio'} onPress={() => open(id)} />)}
+        {r.lastDate ? <LinkRow label="Ver último día y sesiones" onPress={() => router.push({ pathname: '/history/day/[date]', params: { date: r.lastDate! } })} /> : null}
       </View> : null}
     </View>)}
     {!current.length ? <AppText muted>Sin rutinas registradas en este período.</AppText> : null}
@@ -146,10 +146,10 @@ function Performance({ data, open }: { data: ProgressTraining; open: (id: string
         </Pressable>;
       })}
       {!filtered.length ? <AppText muted>Sin ejercicios en este grupo.</AppText> : null}
-      {filtered.length > 3 ? <Button label={all ? 'Mostrar menos' : `Ver los ${filtered.length} ejercicios`} variant="quiet" onPress={() => setAll(!all)} /> : null}
+      {filtered.length > 3 ? <LinkRow kind="disclosure" expanded={all} label={all ? 'Mostrar menos' : `Ver los ${filtered.length} ejercicios`} onPress={() => setAll(!all)} /> : null}
     </> : <AppText muted>No pudimos consultar la comparación dentro del período.</AppText>}
-    {previousOnly.length ? <Disclosure title={`Sólo en la referencia (${previousOnly.length})`}><AppText muted variant="footnote">Estos ejercicios no aparecen en tus sesiones del período actual.</AppText>{previousOnly.map(e => <Button key={e.id} label={e.name} variant="quiet" onPress={() => open(e.id)} />)}</Disclosure> : null}
-    <Disclosure title="Récords" testID="training-prs">{data.personalRecords.length ? data.personalRecords.map(pr => <Button key={pr.exerciseId} label={`${pr.name} · ${pr.description}`} variant="quiet" onPress={() => open(pr.exerciseId)} />) : <AppText muted>Sin récords nuevos en este período.</AppText>}</Disclosure>
+    {previousOnly.length ? <Disclosure title={`Sólo en la referencia (${previousOnly.length})`}><AppText muted variant="footnote">Estos ejercicios no aparecen en tus sesiones del período actual.</AppText>{previousOnly.map(e => <LinkRow key={e.id} label={e.name} onPress={() => open(e.id)} />)}</Disclosure> : null}
+    <Disclosure title="Récords" testID="training-prs">{data.personalRecords.length ? data.personalRecords.map(pr => <LinkRow key={pr.exerciseId} label={`${pr.name} · ${pr.description}`} onPress={() => open(pr.exerciseId)} />) : <AppText muted>Sin récords nuevos en este período.</AppText>}</Disclosure>
   </View>;
 }
 
@@ -164,7 +164,7 @@ function Muscles({ data, open }: { data: ProgressTraining; open: (id: string) =>
       onPress={() => select(selected === m.key ? null : m.key)} style={[styles.muscle, fontScale > 1.3 && styles.vertical]}>
       <AppText style={styles.flex}>{m.label}</AppText><View style={styles.muscleBars} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><View style={[styles.fill, { width: `${m.sets / max * 100}%`, backgroundColor: colors.primary }]} />{compareOn && data.story ? <View style={[styles.previousBar, { width: `${m.previousSets / max * 100}%`, backgroundColor: colors.textMuted }]} /> : null}</View>
       <View><AppText numeric variant="subheadline">{plural(m.sets, 'serie', 'series')}</AppText>{compareOn && data.story ? <AppText muted numeric variant="caption">{m.previousSets} antes</AppText> : null}</View>
-    </Pressable>{selected === m.key ? <View style={[styles.detail, { backgroundColor: colors.surfaceRaised }]}><AppText numeric>{plural(m.sessions, 'sesión', 'sesiones')} con este grupo.</AppText><AppText muted variant="footnote">Menos series no equivale a trabajo insuficiente.</AppText>{m.exerciseIds.map(id => <Button key={id} label={data.exercises.find(e => e.id === id)?.name ?? 'Ver ejercicio'} variant="quiet" onPress={() => open(id)} />)}</View> : null}</View>)}
+    </Pressable>{selected === m.key ? <View style={[styles.detail, { backgroundColor: colors.surfaceRaised }]}><AppText numeric>{plural(m.sessions, 'sesión', 'sesiones')} con este grupo.</AppText><AppText muted variant="footnote">Menos series no equivale a trabajo insuficiente.</AppText>{m.exerciseIds.map(id => <LinkRow key={id} label={data.exercises.find(e => e.id === id)?.name ?? 'Ver ejercicio'} onPress={() => open(id)} />)}</View> : null}</View>)}
     {!items.length ? <AppText muted>Sin grupos musculares registrados en este período.</AppText> : null}
     <AppText muted variant="caption">Repeticiones y cargas, al abrir cada ejercicio. No se suman como si fueran equivalentes entre movimientos.</AppText>
   </View>;

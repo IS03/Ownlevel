@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Button } from '@/design-system';
+import { LinkRow } from '@/design-system';
 import { progressOriginParams } from './navigation';
 import { useInProgressStack } from './insights-router';
 /**
@@ -13,6 +13,6 @@ export function ReturnToProgress() {
   const inProgress = useInProgressStack();
   if (!origin || inProgress) return null;
   return origin === 'training'
-    ? <Button label="Volver a Entrenamiento" variant="secondary" onPress={() => router.navigate('/(tabs)/progress/trends/training')} />
-    : <Button label="Volver a Progreso" variant="secondary" onPress={() => router.navigate('/(tabs)/progress')} />;
+    ? <LinkRow kind="back" label="Volver a Entrenamiento" onPress={() => router.navigate('/(tabs)/progress/trends/training')} />
+    : <LinkRow kind="back" label="Volver a Progreso" onPress={() => router.navigate('/(tabs)/progress')} />;
 }

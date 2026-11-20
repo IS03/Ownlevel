@@ -3,7 +3,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions,
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { MobileApiClient } from '@/api/client';
 import { fetchHistoryRange, type HistoryFact } from '@/api/history';
-import { AppText, brandTokens, Button, Heading, InlineUnavailable, ListRow, radius, ScrollScreen, Separator, SkeletonBlock, spacing, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppText, brandTokens, Button, Heading, InlineUnavailable, ListRow, radius, ScrollScreen, Separator, SkeletonBlock, spacing, useOwnlevelTheme } from '@/design-system';
 import { displayNutritionDate } from '@/nutrition/day-format';
 import { buildTrainingMonth, formatTrainingMonth } from '@/training/calendar';
 import { addMonths } from '@/training/history-model';
@@ -44,7 +44,7 @@ export function HistoryCalendarScreen() {
     <AppText muted variant="caption">RECORRIDO POR FECHA</AppText>
     <Heading level={1}>{month ? formatTrainingMonth(month) : 'Calendario'}</Heading>
     <AppText muted>Elegí un día para abrir sus registros.</AppText>
-    <Button label="Ver historial" variant="quiet" onPress={() => router.push('/history')} />
+    <LinkRow label="Ver historial" onPress={() => router.push('/history')} />
     {month ? <View style={historyStyles.controls}>
       <Button label="" icon="chevronLeft" accessibilityLabel="Mes anterior" onPress={() => setMonth(addMonths(month, -1))} variant="secondary" />
       <Button label="Hoy" accessibilityLabel="Abrir hoy" disabled={!today} onPress={() => today && router.push(historyDayHref(today, month))} variant="quiet" />

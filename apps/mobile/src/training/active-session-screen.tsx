@@ -10,7 +10,7 @@ import { prefetchSessionSummary, readSessionSummary } from '@/api/session-summar
 import { prefetchFinishWeek } from './finish-week';
 import type { QuickSessionHistoryDto, SessionDetailDto } from '@/api/active-session';
 import type { RestDeadline } from './active-session-model';
-import { AppIcon, AppText, Button, Heading, InlineUnavailable, ProgressBar, ScrollScreen, SkeletonBlock, Surface, UnavailableState, GlassSurface, sizes, spacing, useOwnlevelTheme, useReduceMotion, brandTokens } from '@/design-system';
+import { LinkRow, AppIcon, AppText, Button, Heading, InlineUnavailable, ProgressBar, ScrollScreen, SkeletonBlock, Surface, UnavailableState, GlassSurface, sizes, spacing, useOwnlevelTheme, useReduceMotion, brandTokens } from '@/design-system';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
 import { haptics, triggerHaptic } from '@/platform/haptics';
 import { ActiveSessionController, sessionIntentKey } from './active-session-controller';
@@ -255,7 +255,7 @@ export function ActiveSessionView({ controller, state, client, configurations }:
       <UnavailableState title={state.status === 'not_found' ? 'Sesión no disponible' : 'No pudimos cargar la sesión'}
         description={state.notice ?? 'Reintentá para comprobar su estado. Los borradores locales se conservan.'}
         action={<Button label="Reintentar" onPress={() => void controller.refresh()} />} />
-      {intentPanel}<Button label="Volver a Entrenar" onPress={returnToTraining} variant="secondary" />
+      {intentPanel}<LinkRow kind="back" label="Volver a Entrenar" onPress={returnToTraining} />
     </>}
   </ScrollScreen>;
   // A closed session uses its own read-only view. While an intent is unresolved

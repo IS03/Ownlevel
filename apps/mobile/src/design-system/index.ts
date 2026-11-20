@@ -27,7 +27,7 @@ export { TextField } from './form';
 export { SearchField } from './search-field';
 export { Chip, ChipGroup, SegmentedControl } from './selection';
 export type { SelectionOption } from './selection';
-export { ListGroup, ListRow } from './list';
+export { LinkRow, ListGroup, ListRow } from './list';
 export { SheetHandle, SheetHeader, SheetSurface } from './sheet';
 export { AppSheet, useAppSheetDismiss, type AppSheetDismiss } from './app-sheet';
 export { motionDurations, pressedStyle, pressScale, useReduceMotion } from './motion';

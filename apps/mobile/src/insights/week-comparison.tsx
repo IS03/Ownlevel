@@ -1,7 +1,7 @@
 import { View, StyleSheet } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import type { PeriodExploration } from '@/api/performance-insights';
-import { AppText, Button, Heading, UnavailableState, spacing } from '@/design-system';
+import { LinkRow, AppText, Button, Heading, UnavailableState, spacing } from '@/design-system';
 import { formatValue } from '@/progress/progress-format';
 import { FactRow } from './insights-screen';
 import { InsightRow } from './insight-row';
@@ -90,7 +90,7 @@ export function WeekComparison({ data, currentWeek }: { data: PeriodExploration;
     <AppText muted>Sesiones con sus horarios y referencias; comidas previas/posteriores en sus ventanas existentes, con incertidumbre horaria. Las comidas posteriores no son antecedentes del entrenamiento.</AppText>
     {sides.map(({ side, week }) => <InsightRow key={side} label={`Ver días y registros de ${side}`} spoken={`Ver días y registros de ${side}`} expanded={params.weekSide === side} onPress={() => router.setParams({ weekSide: params.weekSide === side ? undefined : side, week: week.start })} />)}
     {side ? <View testID={`week-records-${side}`}><Heading level={2}>Registros de {side}: {exactPeriodRange(recordsWeek)}</Heading><WeekRecords week={recordsWeek} metrics={data.metrics} origin={origin} /></View> : null}
-    <Button label="Volver a una semana" variant="quiet" onPress={() => router.setParams({ compare: undefined, week: b.start, weekA: undefined, weekB: undefined, weekSide: undefined })} />
+    <LinkRow kind="back" label="Volver a una semana" onPress={() => router.setParams({ compare: undefined, week: b.start, weekA: undefined, weekB: undefined, weekSide: undefined })} />
   </View>;
 }
 const styles = StyleSheet.create({ content: { gap: spacing.sm }, controls: { gap: spacing.xs, paddingVertical: spacing.sm } });

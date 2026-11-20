@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useMobileApi } from '@/api';
 import { fetchProgressStages, type ProgressStages, type ProgressStageSummary } from '@/api/progress-stages';
-import {
+import { LinkRow,
   AppText, Button, ChipGroup, EmptyState, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme, useReduceMotion,
 } from '@/design-system';
 import { haptics } from '@/platform/haptics';
@@ -112,7 +112,7 @@ function Content({ data }: { data: ProgressStages }) {
           <AppText muted variant="footnote">Tocá una etapa para verla arriba.</AppText>
           <Table testID="stages-all-table" stages={data.stages} highlight={a.id} sources={data.sources} onPick={pick} />
         </Animated.View>
-        : <Button label={`Ver las ${data.stages.length} etapas`} variant="quiet" onPress={() => { haptics.selection(); setAll(true); }} />}
+        : <LinkRow label={`Ver las ${data.stages.length} etapas`} onPress={() => { haptics.selection(); setAll(true); }} />}
       </Reveal> : null}
     </>}
     {notes.length ? <AppText muted variant="footnote" testID="stages-notes">{notes.join(' ')}</AppText> : null}

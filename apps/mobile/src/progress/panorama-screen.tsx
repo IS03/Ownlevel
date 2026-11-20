@@ -4,7 +4,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { useCachedRead } from '@/api/use-cached-read';
 import { fetchProgressFindings, type ProgressEditorialFinding, type ProgressOverview, type ProgressDestination, type ProgressSpark } from '@/api/progress';
-import { AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, spacing } from '@/design-system';
+import { LinkRow, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, spacing } from '@/design-system';
 import { exactPeriodRange } from '@/insights/period-model';
 import { addDays, progressStateForRange } from './progress-range';
 import { fetchHistoryRange } from '@/api/history';
@@ -76,7 +76,7 @@ export function ProgressPanorama({ data, onOpen, points = {}, onPoint = () => un
   };
   return <>
     <PanoramaAtlas data={data} daily={daily} onOpen={openArea} />
-    <Button variant="quiet" label={expanded ? 'Ocultar puntos del resumen' : 'Ver puntos del resumen'} onPress={onToggle} />
+    <LinkRow kind="disclosure" expanded={expanded} label={expanded ? 'Ocultar puntos del resumen' : 'Ver puntos del resumen'} onPress={onToggle} />
     {expanded ? <View style={styles.preview} testID="panorama-points">
       {(['training', 'weight', 'nutrition'] as const).map(kind => <View key={kind}>
         <Heading level={2}>{kind === 'training' ? 'Entrenamiento' : kind === 'weight' ? 'Cuerpo' : 'Nutrición'}</Heading>

@@ -5,7 +5,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchInsightsPeriodNutrition, validPeriodAnchor } from '@/api/performance-insights';
-import { AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { FactRow } from './insights-screen';
 import { InsightRow } from './insight-row';
@@ -21,7 +21,7 @@ export function PeriodNutritionScreen() {
   const load = useCallback((c: MobileApiClient, signal: AbortSignal) => fetchInsightsPeriodNutrition(c, asOf!, signal), [asOf]);
   const { state, data, refresh } = useProgressResource(asOf ? client : null, `performance-insights|period-nutrition|${asOf}`, load);
   usePeriodReturn(refresh);
-  const returnButton = <Button label="Volver al resumen" variant="secondary" onPress={() => router.navigate(periodSummaryHref(asOf ?? undefined,insightsOriginOf(params)))} />;
+  const returnButton = <LinkRow kind="back" label="Volver al resumen" onPress={() => router.navigate(periodSummaryHref(asOf ?? undefined,insightsOriginOf(params)))} />;
   const ready = data?.integrity === 'valid' ? data : undefined;
   const header = !asOf ? <UnavailableState title="No pudimos identificar el período" description="Abrí el detalle desde el resumen de tres meses." action={returnButton} />
     : state.status === 'loading' && !data ? <SkeletonBlock height={176} />

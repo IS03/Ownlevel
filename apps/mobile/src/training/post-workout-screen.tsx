@@ -6,7 +6,7 @@ import Animated, { FadeIn, FadeInDown, useAnimatedProps, useAnimatedStyle, useSh
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { SessionDetailDto, SessionFinishedDto } from '@/api/active-session';
 import type { SessionSummaryDto, SessionSummaryLoader } from '@/api/session-summary';
-import { AppIcon, AppText, brandTokens, Button, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { LinkRow, AppIcon, AppText, brandTokens, Button, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import { FeelingDots } from './feeling-dots';
 import { RecordedTrainingFeelings } from './recorded-training-feelings';
@@ -173,9 +173,9 @@ export function PostWorkoutContent({ finished, detail, readSummary, readWeek, on
       </ScrollView>
       <Animated.View entering={enter(1)} style={styles.footer}>
         <Button label="Listo" onPress={onHome} />
-        <Button label="Ver sesión" variant="quiet" onPress={onViewSession} />
+        <LinkRow label="Ver sesión" onPress={onViewSession} />
         {/* Facts of this session only, read when it opens: nothing about all-time relations runs at the end of a workout. */}
-        {insights ? <Button label="Ver qué cambió" variant="quiet" onPress={() => {
+        {insights ? <LinkRow label="Ver qué cambió" onPress={() => {
           router.replace({ pathname: '/(tabs)/train/history/[id]', params: { id: finished.sessionId } });
           router.push(insights);
         }} /> : null}

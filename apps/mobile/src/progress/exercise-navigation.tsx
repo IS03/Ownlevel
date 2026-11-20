@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Button } from '@/design-system';
+import { LinkRow } from '@/design-system';
 
 /** A closed route, not a caller-supplied redirect. Range/A-B and inspection stay in the mounted Progreso stack. */
 export function exerciseChartReturnHref(params: Record<string, unknown>) {
@@ -15,5 +15,5 @@ export const exerciseSessionHref = (exerciseId: string, sessionId: string) => ({
 export function ReturnToExerciseChart() {
   const router = useRouter(), href = exerciseChartReturnHref(useLocalSearchParams());
   // navigate reuses the existing screen instead of pushing another chart on every round trip.
-  return href ? <Button label="Volver al gráfico del ejercicio" variant="secondary" onPress={() => router.navigate(href)} /> : null;
+  return href ? <LinkRow kind="back" label="Volver al gráfico del ejercicio" onPress={() => router.navigate(href)} /> : null;
 }
