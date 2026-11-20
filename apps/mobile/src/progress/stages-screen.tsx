@@ -1,3 +1,4 @@
+import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -5,10 +6,10 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useMobileApi } from '@/api';
 import { fetchProgressStages, type ProgressStages, type ProgressStageSummary } from '@/api/progress-stages';
 import { LinkRow,
-  AppText, Button, ChipGroup, EmptyState, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme, useReduceMotion,
+  ScrollScreen, AppText, Button, ChipGroup, EmptyState, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme, useReduceMotion,
 } from '@/design-system';
 import { haptics } from '@/platform/haptics';
-import { EditorialScreen, Reveal } from '@/settings/editorial';
+import { Reveal } from '@/settings/editorial';
 import { StageProgressBar, StageStripe } from '@/stages/stages-ui';
 import { arrowDelta, formatValue } from './progress-format';
 import { defaultCompare, kindLabel, stageDates, stageLabel, stageLength, stageNotes, stageProgress, stageRows } from './stages-model';
@@ -125,8 +126,7 @@ export function ProgressStagesScreen() {
   const { client } = useMobileApi();
   const load = useCallback((c: NonNullable<typeof client>, signal: AbortSignal) => fetchProgressStages(c, signal), []);
   const { state, data, refresh } = useProgressResource(client, 'stages', load);
-  return <EditorialScreen>
-    <Heading>Tus etapas</Heading>
+  return <ScrollHeaderScreen title="Tus etapas"><ScrollScreen contentContainerStyle={{ gap: spacing.xl }}>
     <AppText muted>Lo que pasó de verdad en cada una, por día o por semana.</AppText>
     {state.status === 'loading' ? <View style={styles.section} testID="stages-loading"><SkeletonBlock height={120} /><SkeletonBlock height={180} /></View>
       : !data ? <UnavailableState title="No pudimos cargar tus etapas" description="Tus datos siguen seguros. Revisá la conexión e intentá nuevamente."
@@ -137,7 +137,7 @@ export function ProgressStagesScreen() {
           description="Cuando armes tu plan por etapas, acá vas a ver cómo te fue en cada una."
           action={<Button label="Armar mi plan" variant="secondary" onPress={() => router.push('/settings/stages')} />} />}
       </>}
-  </EditorialScreen>;
+  </ScrollScreen></ScrollHeaderScreen>;
 }
 
 const styles = StyleSheet.create({

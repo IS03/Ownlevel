@@ -1,3 +1,4 @@
+import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { ReturnToProgress } from './return-to-progress';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useCallback, useRef } from 'react';
@@ -37,7 +38,7 @@ export function PeriodScreen() {
   const { state, data, refresh } = useProgressResource(invalidAnchor ? null : client, `performance-insights|period-at|${routeAnchor ?? 'current'}`, load);
   usePeriodReturn(refresh);
   const refreshControl = <RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />;
-  const scroll = (children: React.ReactNode) => <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="period-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}><ReturnToProgress/>{children}</ScrollView>;
+  const scroll = (children: React.ReactNode) => <ScrollHeaderScreen title="Últimos 3 meses"><ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="period-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}><ReturnToProgress/>{children}</ScrollView></ScrollHeaderScreen>;
   if (invalidAnchor) return scroll(<UnavailableState title="No pudimos identificar el período" description="Volvé a abrir el resumen desde Comparaciones." />);
   if (state.status === 'loading' && !data) return scroll(<View style={styles.block} testID="period-loading"><SkeletonBlock height={72} /><SkeletonBlock height={132} /><SkeletonBlock height={176} /></View>);
   if (!data || data.integrity !== 'valid') return scroll(<UnavailableState title="Uy, no pudimos leer tus datos" description="Tranqui: está todo guardado." action={<Button label="Reintentar" onPress={() => void refresh()} />} />);
@@ -56,7 +57,7 @@ export function PeriodScreen() {
   return scroll(<>
     {state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
     <View style={styles.block}>
-      <Heading level={2}>Últimos 3 meses</Heading>
+
       <AppText numeric testID="period-range">{heading.range}</AppText>
       <AppText muted variant="footnote">{heading.months}</AppText>
       <InsightRow label="Recorrer semanas y días" spoken="Recorrer semanas y días de estos mismos tres meses" onPress={()=>open(explorationHref(data.asOf,undefined,data.sourceRevision,origin))}/>

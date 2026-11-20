@@ -1,3 +1,4 @@
+import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { ReturnToProgress } from './return-to-progress';
 import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
@@ -42,7 +43,7 @@ export function EvidenceScreen() {
   const back = () => { if (router.canGoBack()) router.back(); else router.replace(insightsReturnHref(params) ?? '/(tabs)/train/insights'); };
   const backButton = <Button label="Volver a Comparaciones" onPress={back} />;
   const refreshControl = <RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />;
-  const scroll = (children: React.ReactNode) => <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="evidence-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={selection ? refreshControl : undefined}><ReturnToProgress/>{children}</ScrollView>;
+  const scroll = (children: React.ReactNode) => <ScrollHeaderScreen title="Ejercicio"><ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="evidence-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={selection ? refreshControl : undefined}><ReturnToProgress/>{children}</ScrollView></ScrollHeaderScreen>;
 
   if (!selection) return scroll(<UnavailableState title="No encontramos esta comparación" description="Volvé a Comparaciones y elegí el ejercicio de nuevo." action={backButton} />);
   if (state.status === 'loading' && !data) return scroll(<View style={styles.block} testID="evidence-loading"><SkeletonBlock height={72} /><SkeletonBlock height={132} /><SkeletonBlock height={176} /></View>);

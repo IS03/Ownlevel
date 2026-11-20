@@ -1,3 +1,4 @@
+import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { useCallback, useEffect, useState } from 'react';
 import { RefreshControl, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -48,7 +49,7 @@ function MetricsDay({ autoEdit = false, date, today, onAutoEdit, onSelect, onSer
     onAutoEdit?.();
     writes.controller.open('metrics', data);
   }, [canAutoEdit, data, onAutoEdit, writes]);
-  return <ScrollScreen testID="daily-metrics-screen" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing}
+  return <ScrollHeaderScreen title="Métricas diarias"><ScrollScreen testID="daily-metrics-screen" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing}
     onRefresh={() => void refresh()} tintColor={colors.primary} />}>
     <View style={styles.header}>
       <ReturnToHistoryDay /><ReturnToMetricChart />
@@ -94,7 +95,7 @@ function MetricsDay({ autoEdit = false, date, today, onAutoEdit, onSelect, onSer
     {/* M5.3: the reusable definitions surface. This day re-reads on focus, so changes show on return. */}
     <LinkRow label="Administrar métricas" onPress={() => router.push('/settings/metrics')} />
     {selector ? <NutritionDateSelector date={date} onClose={() => setSelector(false)} onSelect={value => onSelect(value === serverToday ? null : value)} /> : null}
-  </ScrollScreen>;
+  </ScrollScreen></ScrollHeaderScreen>;
 }
 
 export function DailyMetricsScreen() {

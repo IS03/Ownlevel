@@ -1,3 +1,4 @@
+import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { ReturnToProgress } from './return-to-progress';
 import { useCallback, useState } from 'react';
 import { LayoutChangeEvent, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
@@ -53,7 +54,7 @@ export function RelationDetailScreen() {
     if (recent && !sameRead(result.data, recent)) void refresh();
   };
   const refreshControl = <RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />;
-  const scroll = (children: React.ReactNode) => <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="relation-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}><ReturnToProgress/>{children}</ScrollView>;
+  const scroll = (children: React.ReactNode) => <ScrollHeaderScreen title="Relación"><ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="relation-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}><ReturnToProgress/>{children}</ScrollView></ScrollHeaderScreen>;
   if (state.status === 'loading' && !data) return scroll(<View style={styles.block} testID="relation-loading"><SkeletonBlock height={72} /><SkeletonBlock height={PLOT} /><SkeletonBlock height={120} /></View>);
   const retry = <Button label="Reintentar" onPress={() => void refresh()} />;
   if (!data || data.integrity !== 'valid' || (data.partial && data.partial.integrity !== 'valid')) return scroll(<UnavailableState title="Uy, no pudimos leer tus datos" description="Tranqui: está todo guardado." action={retry} />);

@@ -1,3 +1,4 @@
+import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useMobileApi } from '@/api';
@@ -16,7 +17,7 @@ export function OwnScreen() {
   const { colors } = useOwnlevelTheme();
   const { state, data, refresh } = useOwnPerformance(client, null);
   const [method, setMethod] = useState(false);
-  const scroll = (children: React.ReactNode) => <ScrollView showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} testID="own-screen">{children}</ScrollView>;
+  const scroll = (children: React.ReactNode) => <ScrollHeaderScreen title="Tu rendimiento"><ScrollView showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} testID="own-screen">{children}</ScrollView></ScrollHeaderScreen>;
   if (state.status === 'loading' && !data) return scroll(<View style={styles.block}><SkeletonBlock height={64} /><SkeletonBlock height={140} /><SkeletonBlock height={160} /></View>);
   if (!data) return scroll(<InlineUnavailable message="No pudimos traer tu rendimiento." actionLabel="Reintentar" onAction={() => void refresh()} />);
   const recent = data.weeks.slice(-4).flatMap(week => week.mean === null ? [] : Array(week.measured).fill(week.mean) as number[]);

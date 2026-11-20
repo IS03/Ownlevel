@@ -1,3 +1,4 @@
+import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { ReturnToProgress } from './return-to-progress';
 import { useCallback } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
@@ -40,7 +41,7 @@ export function SessionTemporalScreen() {
     {ref.omitted ? <AppText muted>Se muestran {ref.rows.length} de {ref.total}; consultá todos en Nutrición.</AppText> : null}
     {ref.dates.map(day => <InsightRow key={day} label={`Ver Nutrición del ${exactPeriodDate(day)}`} spoken={`Ver Nutrición del ${exactPeriodDate(day)}`} onPress={() => openDay(day)} />)}
   </View>;
-  return <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="session-temporal-screen" contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: colors.background }} contentContainerStyle={styles.scroll}
+  return <ScrollHeaderScreen title="Horarios y comidas"><ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="session-temporal-screen" contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: colors.background }} contentContainerStyle={styles.scroll}
     refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
     <ReturnToProgress/>
     {!date ? <UnavailableState title="No pudimos identificar el día" description="Abrí el contexto desde Comparaciones." />
@@ -48,7 +49,7 @@ export function SessionTemporalScreen() {
       : !data ? <UnavailableState title="No pudimos leer el contexto" description="Tus registros siguen guardados." action={<Button label="Reintentar" onPress={() => void refresh()} />} />
       : <>
         {state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura completa." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
-        <Heading level={2}>Horarios y comidas</Heading><AppText numeric>{exactPeriodDate(date)}</AppText>
+        <AppText numeric>{exactPeriodDate(date)}</AppText>
         <AppText muted>Horas de Córdoba.</AppText>
         {typeof params.revision === 'string' && params.revision !== data.sourceRevision ? <AppText testID="temporal-revised">Los registros cambiaron desde el día de origen. Esta lectura está actualizada.</AppText> : null}
         {!data.sessions.length ? <AppText>Sin sesiones finalizadas ese día.</AppText> : null}
@@ -76,6 +77,6 @@ export function SessionTemporalScreen() {
         <AppText muted>Lo registrado no prueba todo lo que comiste. La comida posterior es contexto posterior: no explica el rendimiento de una sesión ya terminada. No se buscaron asociaciones.</AppText>
       </>}
     <LinkRow kind="back" label="Volver al día en Comparaciones" onPress={() => router.navigate(returnHref)} />
-  </ScrollView>;
+  </ScrollView></ScrollHeaderScreen>;
 }
 const styles = StyleSheet.create({ scroll: { padding: brandTokens.layout.screenPadding, paddingBottom: brandTokens.layout.tabBarHeight + brandTokens.layout.tabBarInset + spacing.xl, gap: spacing.xl }, block: { gap: spacing.sm } });
