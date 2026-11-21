@@ -164,7 +164,7 @@ describe('#479 C · Rápido entry, library and search', () => {
     const [card, add] = view.getAllByLabelText('Agregar Pollo al horno') as [ReturnType<typeof view.getByTestId>, ReturnType<typeof view.getByTestId>];
     expect(StyleSheet.flatten(card.props.style)).toMatchObject({ width: 44, height: 44 });
     expect(StyleSheet.flatten(add.props.style)).toMatchObject({ width: 44, height: 44 });
-    expect(StyleSheet.flatten(within(add).getByTestId('quick-add-disc').props.style)).toMatchObject({ width: 36, height: 36, borderRadius: 18 });
+    expect(StyleSheet.flatten(within(add).getByTestId('quick-add-disc').props.style)).toMatchObject({ width: 32, height: 32, borderRadius: 16 });
     expect(StyleSheet.flatten(view.getAllByText('Pollo al horno').at(-1)!.props.style)).toMatchObject({ fontSize: 17, fontWeight: '400' });
     await act(async () => { fireEvent.press(add); });
     await waitFor(() => expect(quickApi.confirm).toHaveBeenCalledTimes(1));
