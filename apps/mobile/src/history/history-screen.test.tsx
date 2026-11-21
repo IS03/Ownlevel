@@ -171,6 +171,16 @@ describe('P1-B1 editorial history', () => {
     expect(view.getByText('Agua · archivada: 0 L')).toBeTruthy();
     expect(view.getByText('1 métricas activas sin valor.')).toBeTruthy();
   });
+  it('sums the month per area in the colours of its dots, and an area that could not be read is «—», never 0', () => {
+    mockParams = { month: '2026-10' };
+    const range = historyRange([historyFact('2026-10-03', { completedSessionsCount: 1, metricValuesCount: null }), historyFact('2026-10-04', { completedSessionsCount: 2, metricValuesCount: null })]);
+    range.availability.metrics = 'unavailable'; mockData = range;
+    const view = wrap(<HistoryCalendarScreen />);
+    expect(view.getByLabelText('Entrenamiento: 2 días')).toBeTruthy();
+    expect(view.getByLabelText('Métricas: no disponible')).toBeTruthy();
+    expect(view.queryByText(/Marcas de izquierda a derecha/)).toBeNull();
+    expect(view.getByText('Octubre de 2026')).toBeTruthy();
+  });
   it('names partial calendar coverage alongside confirmed domains, including unknown body subsource', () => {
     mockParams = { month: '2026-10' };
     const range = historyRange([historyFact('2026-10-03', { hasWeight: true, measurementsCount: null, metricValuesCount: null })]);
