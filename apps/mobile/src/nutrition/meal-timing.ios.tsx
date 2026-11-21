@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Modal, Pressable, View } from 'react-native';
 import { Button as NativeButton, DatePicker, HStack, Host, Image, Menu, Text } from '@expo/ui/swift-ui';
 import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
-import { accessibilityLabel, datePickerStyle, disabled as nativeDisabled, font, foregroundStyle, glassEffect, padding, tint } from '@expo/ui/swift-ui/modifiers';
+import { accessibilityLabel, datePickerStyle, disabled as nativeDisabled, font, foregroundStyle, frame, glassEffect, padding, tint } from '@expo/ui/swift-ui/modifiers';
 import { AppText, Button, GlassSurface, SheetHandle, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { mealMoments, mealTimingPresentation, type MealTimingProps } from './meal-timing-model';
 export function MealTiming({ date, value, reference, disabled, onChange }: MealTimingProps) {
@@ -20,8 +20,9 @@ export function MealTiming({ date, value, reference, disabled, onChange }: MealT
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
       <AppText muted>Momento</AppText>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <Host matchContents colorScheme={isDark ? 'dark' : 'light'}>
-          <Menu label={<HStack spacing={6} modifiers={[padding({ all: 12 }), glassEffect({ glass: { variant: 'regular' }, shape: 'capsule' })]}>
+        {/* A fixed 44 pt row: the SwiftUI host measured taller than its capsule and sat above the time beside it. */}
+        <Host matchContents={{ horizontal: true }} colorScheme={isDark ? 'dark' : 'light'} style={{ height: 44 }}>
+          <Menu label={<HStack spacing={6} modifiers={[padding({ horizontal: 14 }), frame({ height: 44 }), glassEffect({ glass: { variant: 'regular' }, shape: 'capsule' })]}>
             <Text modifiers={[font({ textStyle: 'subheadline', weight: 'semibold' }), foregroundStyle(colors.text)]}>{presentation.moment}</Text>
             <Image systemName="chevron.up.chevron.down" size={11} color={colors.textMuted} />
           </HStack>} modifiers={[accessibilityLabel('Elegir momento'), nativeDisabled(disabled)]}>
