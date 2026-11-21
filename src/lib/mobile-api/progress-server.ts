@@ -322,16 +322,16 @@ export async function progressReadResponse<T>(request: Request, label: string, b
 }
 
 /** Additive Home read. Existing period presets and overview filtering remain unchanged. */
-export async function buildMobileProgressHabitWeek(context: Context, today: string): Promise<ProgressHabitWeek> {
+export async function buildMobileProgressHabitWeek(context: Context, today: string, includeToday = false): Promise<ProgressHabitWeek> {
   const range = habitWeekRange(today);
   const report = await getDailyMetricsReport({ period: "custom", from: range.weekStart, to: today,
-    previousRange: { start: range.previousWeekStart, end: range.previousWeekEnd } }, today, webAuth(context));
+    previousRange: { start: range.previousWeekStart, end: range.previousWeekEnd }, includeInProgressDay: includeToday }, today, webAuth(context));
   // A read straddling Córdoba midnight is retried by the shared GET handler.
   const after = todayInCordoba();
   if (after !== today) throw new NutritionReportDayChangedError(after);
   const active = report.definitions.filter(definition => definition.is_active && definition.archived_at === null);
   const results = new Map(report.defaultComparison?.results.map(result => [result.metric.key, result]));
-  return { today, ...range, items: active.map(definition => {
+  return { today, ...range, ...(includeToday ? { includesToday: true as const } : {}), items: active.map(definition => {
     const result = results.get(`activity.daily.${definition.id}`);
     if (!result) throw new Error("Incomplete habit week");
     const coverage = result.primary.coverage;
@@ -343,8 +343,10 @@ export async function buildMobileProgressHabitWeek(context: Context, today: stri
 }
 
 export const progressHabitWeekResponse = (request: Request) => progressReadResponse(request, "habits.week", (context, params, today) => {
-  if ([...params].length) throw new MobileApiValidationError("Parámetro no válido.");
-  return buildMobileProgressHabitWeek(context, today);
+  // `includeToday=1` (opt-in, newer apps): Monday to today, today included with what it already has. Without it, unchanged.
+  const entries = [...params];
+  if (entries.length > 1 || entries.length === 1 && (entries[0]![0] !== "includeToday" || entries[0]![1] !== "1")) throw new MobileApiValidationError("Parámetro no válido.");
+  return buildMobileProgressHabitWeek(context, today, entries.length === 1);
 }, parseProgressHabitWeek);
 
 export const progressOverviewResponse = (request: Request) => progressReadResponse(request, "overview", (context, params, today) => {

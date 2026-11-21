@@ -320,6 +320,26 @@ describe("GET /progress/habits (additive calendar-week read)", () => {
     expect(habitWeekRange("2026-10-12")).toMatchObject({ weekStart: "2026-10-12", previousWeekStart: "2026-10-05", completedDays: 0 });
   });
 
+  it("with includeToday=1 runs Monday to today: today counts with what it has, out of the days so far", async () => {
+    clock.today = "2026-10-14";
+    metricDefinitions = definitions();
+    values = [
+      { metric_id: ids.water, metric_date: "2026-10-12", value: 2 }, { metric_id: ids.water, metric_date: "2026-10-14", value: 4 },
+      { metric_id: ids.water, metric_date: "2026-10-15", value: 999 }, // future is still excluded
+    ];
+    const data = await json(await habitsGET(request("progress/habits?includeToday=1")), parseProgressHabitWeek);
+    expect(data).toMatchObject({ weekStart: "2026-10-12", completedDays: 2, includesToday: true });
+    const water = data.items.find(item => item.id === ids.water)!;
+    expect(water).toMatchObject({ average: 3, coverage: { registered: 2, eligible: 3 } });
+    // The default read keeps its exact shape for installed apps.
+    const plain = await json(await habitsGET(request("progress/habits")), parseProgressHabitWeek);
+    expect("includesToday" in plain).toBe(false);
+    expect(plain.items.find(item => item.id === ids.water)).toMatchObject({ average: 2, coverage: { registered: 1, eligible: 2 } });
+    // A day-so-far count above what the flag allows is not a valid answer.
+    expect(parseProgressHabitWeek({ ...data, includesToday: undefined })).toBeUndefined();
+    expect((await habitsGET(request("progress/habits?includeToday=yes"))).status).toBe(400);
+  });
+
   it("requires bearer identity and rejects arbitrary identity or range parameters", async () => {
     expect((await habitsGET(request("progress/habits", ""))).status).toBe(401);
     expect(authenticateMobileAccessToken).not.toHaveBeenCalled();

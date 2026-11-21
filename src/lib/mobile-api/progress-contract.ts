@@ -46,9 +46,14 @@ export type ProgressMetricHabit = {
   id: string; name: string; unit: string | null; valueType: MetricValueType;
   average: number | null; coverage: ProgressCoverage; comparison: ProgressComparison;
 };
-/** Calendar week for Home; averages exclude today while it is in progress. */
+/**
+ * Calendar week for Home. By default averages exclude today while it is in progress; with `includesToday` (asked with
+ * `includeToday=1`) they run Monday to today, today included with what it already has, so each day counts out of
+ * `completedDays + 1`.
+ */
 export type ProgressHabitWeek = {
   today: string; weekStart: string; weekEnd: string; previousWeekStart: string; previousWeekEnd: string; completedDays: number;
+  includesToday?: true;
   items: (ProgressMetricHabit & { systemKey: string | null })[];
 };
 
@@ -279,20 +284,21 @@ function parseHabit(v: unknown): ProgressMetricHabit | undefined {
   return coverage && comparison ? { ...(v as ProgressMetricHabit), coverage, comparison } : undefined;
 }
 export function parseProgressHabitWeek(v: unknown): ProgressHabitWeek | undefined {
-  if (!record(v) || !keys(v, ["today", "weekStart", "weekEnd", "previousWeekStart", "previousWeekEnd", "completedDays", "items"])
+  const withToday = record(v) && v.includesToday === true;
+  if (!record(v) || !keys(v, ["today", "weekStart", "weekEnd", "previousWeekStart", "previousWeekEnd", "completedDays", "items", ...(withToday ? ["includesToday"] : [])])
     || !isNutritionDate(v.today)) return;
-  const range = habitWeekRange(v.today);
+  const range = habitWeekRange(v.today), eligible = range.completedDays + (withToday ? 1 : 0);
   if (Object.entries(range).some(([key, value]) => v[key] !== value)) return;
   const items = list(v.items, raw => {
     if (!record(raw) || !strOrNull(raw.systemKey)) return;
     const { systemKey, ...rest } = raw;
     const item = parseHabit(rest);
-    if (!item || item.coverage.eligible !== range.completedDays || item.coverage.registered > range.completedDays
+    if (!item || item.coverage.eligible !== eligible || item.coverage.registered > eligible
       || (item.average === null) !== (item.coverage.registered === 0) || item.comparison.current !== item.average) return;
     return { ...item, systemKey: systemKey as string | null };
   });
   if (!items || new Set(items.map(item => item.id)).size !== items.length) return;
-  return { today: v.today, ...range, items };
+  return { today: v.today, ...range, ...(withToday ? { includesToday: true as const } : {}), items };
 }
 
 const OVERVIEW_KEYS = ["today", "period", "evolution", "changes", "nutrition", "metrics", "body", "training"];
