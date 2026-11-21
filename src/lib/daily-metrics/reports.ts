@@ -78,6 +78,8 @@ export async function getDailyMetricsReport(
     /** Internal explicit calendar reference; omitted by existing Web/Mobile callers. */
     previousRange?: { start: string; end: string };
     progressComparison?: ProgressComparisonQuery | null;
+    /** Home's «Esta semana» (opt-in): today counts like any other day, with whatever it already has. */
+    includeInProgressDay?: boolean;
   },
   today: string,
   auth?: AuthenticatedRequestContext,
@@ -121,7 +123,7 @@ export async function getDailyMetricsReport(
   if (!metric) return { range, definitions, metric: null, days: [], summary: null, comparison: null, defaultComparison: null, progressComparison: null, progressMetrics: [], comparisonError: null };
 
   const days = buildMetricReportDays({ range, today, metricId: metric.id, values });
-  const excludeInProgressDay = range.end === today;
+  const excludeInProgressDay = range.end === today && !input.includeInProgressDay;
   const summary = aggregateMetricReport(days, metric.target_value, { excludeInProgressDay });
   const progressMetrics = definitions.map(adaptDailyMetricDefinition);
   const scopedProgressMetrics = progressMetrics.filter((definition) => (
