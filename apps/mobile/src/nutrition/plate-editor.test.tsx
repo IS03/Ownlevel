@@ -4,6 +4,7 @@ import { OwnlevelThemeProvider } from '@/design-system';
 import type { PersonalFood } from '@/api/nutrition-food';
 import type { QuickSelection } from '@/api/nutrition-quick';
 import { personalFood } from './food-fixture.test-helper';
+import { quickOption, quickOptions } from './quick-fixture.test-helper';
 import { nutritionFixture } from './day-fixture.test-helper';
 import { PlateEditor } from './plate-editor';
 import { PlateController, type PlateApi } from './plate-controller';
@@ -18,10 +19,12 @@ const food = (n: number, patch: Partial<PersonalFood>): PersonalFood => ({ ...pe
 const bread = food(1, { name: 'PAN LACTAL', servingQuantity: 1, servingUnit: 'rebanada', calories: 65.5, proteinG: 2.2, carbsG: 12, fatG: 0.8 });
 const cheese = food(2, { name: 'QUESO CREMA', servingQuantity: 100, servingUnit: 'g', calories: 220, proteinG: 6, carbsG: 4, fatG: 20 });
 const empty = food(3, { name: 'SIN DATOS', calories: null });
+const yogurt = { ...quickOption(), source: { kind: 'saved' as const, id: '42100000-0000-4000-8000-0000000000d1', version: 'd'.repeat(64) }, name: 'YOGUR CON GRANOLA', calories: 180 };
 function fixture() {
   const map = new Map<string, string>();
   const api: PlateApi = {
     foods: jest.fn<PlateApi['foods']>().mockResolvedValue({ status: 'ok', data: { foods: [bread, cheese, empty] }, meta } as never),
+    saved: jest.fn<PlateApi['saved']>().mockResolvedValue({ status: 'ok', data: { ...quickOptions(), saved: { status: 'ok', items: [yogurt] } }, meta }),
     preview: jest.fn<PlateApi['preview']>().mockImplementation(async (s: QuickSelection) => ({ status: 'ok', meta, data: { status: 'preview', selection: s,
       snapshot: { title: 'MERIENDA', description: null, calories: 197, proteinG: 6.2, carbsG: 25.2, fatG: 7.6, precision: null, contextType: 'food_plate', sourceNote: null },
       items: s.quantities!.map(q => ({ id: q.itemId, label: 'X', quantity: q.quantity, unit: 'g', calories: 10, proteinG: 1, carbsG: 1, fatG: 1 })) } })),
@@ -36,27 +39,31 @@ function fixture() {
 }
 
 describe('Plato', () => {
-  it('fills the plate from the foods, floats its total, and registers one meal from the review', async () => {
+  it('fills the plate from foods and saved meals, − / + in place, floats its total, and registers one meal', async () => {
     const { c, api, view } = fixture();
     await act(async () => { await c.initialize(); c.open(DATE); });
     // A food without calories cannot go in (unknown is not zero).
     expect(view.getByLabelText('Agregar SIN DATOS al plato').props.accessibilityState).toMatchObject({ disabled: true });
     expect(view.queryByTestId('plate-bar')).toBeNull();
     fireEvent.press(view.getByLabelText('Agregar PAN LACTAL al plato'));
-    fireEvent.press(view.getByLabelText('Sumar otra porción de PAN LACTAL'));
+    // Once in the plate its «+» becomes its amount: the next tap adds a slice, never a hidden extra on a tick.
+    expect(view.queryByLabelText('Agregar PAN LACTAL al plato')).toBeNull();
+    fireEvent.press(view.getByLabelText('Sumar PAN LACTAL'));
+    expect(view.getByText('rebanadas')).toBeTruthy();
     fireEvent.press(view.getByLabelText('Agregar QUESO CREMA al plato'));
-    expect(view.getByTestId('plate-bar')).toBeTruthy();
-    // 2 slices × 65,5 + 100 g × 220/100 = 351 kcal, instantly.
-    expect(view.getByLabelText('Ver el plato: 2 alimentos, 351 kcal')).toBeTruthy();
+    fireEvent.press(view.getByText('Comidas guardadas'));
+    fireEvent.press(view.getByLabelText('Agregar YOGUR CON GRANOLA al plato'));
+    // 2 × 65,5 + 100 g × 220/100 + 1 × 180 = 531 kcal, instantly.
+    expect(view.getByLabelText('Ver el plato: 3 ingredientes, 531 kcal')).toBeTruthy();
     await act(async () => { fireEvent.press(view.getByTestId('plate-bar')); });
-    // Named after the moment it is loaded in; the person can rename it.
     fireEvent.changeText(view.getByTestId('plate-title'), 'Merienda');
     fireEvent.changeText(view.getByLabelText('Cantidad de QUESO CREMA'), '30');
     await waitFor(() => expect(view.getByTestId('plate-total')).toBeTruthy());
     await act(async () => { fireEvent.press(view.getByText(/Registrar plato · 197 kcal/)); });
     await waitFor(() => expect(view.queryByTestId('plate-editor')).toBeNull());
     expect(api.confirm).toHaveBeenCalledWith(expect.objectContaining({ operation: 'register', source: { kind: 'plate', title: 'Merienda', saveToLibrary: false },
-      quantities: [{ itemId: bread.id, quantity: 2, version: bread.version }, { itemId: cheese.id, quantity: 30, version: cheese.version }] }));
+      quantities: [{ itemId: bread.id, quantity: 2, version: bread.version }, { itemId: cheese.id, quantity: 30, version: cheese.version },
+        { itemId: yogurt.source.id, quantity: 1, version: yogurt.source.version, kind: 'saved' }] }));
   });
   it('searches the foods without accents or case and closes keeping the plate', async () => {
     const { c, view } = fixture();

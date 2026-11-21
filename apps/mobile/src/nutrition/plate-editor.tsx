@@ -1,11 +1,11 @@
 import { useEffect, useMemo } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, LinearTransition, SlideInDown, SlideOutDown } from 'react-native-reanimated';
-import { AppIcon, AppText, Button, GlassSurface, LinkRow, LoadingState, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import Animated, { FadeIn, FadeInDown, FadeOut, FadeOutDown, LinearTransition } from 'react-native-reanimated';
+import { AppIcon, AppText, Button, GlassSurface, LinkRow, LoadingState, SegmentedControl, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { haptics, triggerHaptic } from '@/platform/haptics';
-import type { PersonalFood } from '@/api/nutrition-food';
 import type { PlateController, PlateState } from './plate-controller';
-import { itemEstimate, plateable, plateEstimate, PLATE_MAX, parsePlateQuantity, plateStep, type PlateItem } from './plate-model';
+import { itemEstimate, parsePlateQuantity, plateable, plateEstimate, plateStep, PLATE_MAX, sourceId, sourceName, sourceUnit, unitLabel,
+  type PlateItem, type PlateSource } from './plate-model';
 import { MealSearch, MealSheet, mealShown as shown, mealSheetStyles as shared } from './meal-sheet';
 import { MealNutrients } from './quick-editor';
 import { MealProjection } from './meal-projection';
@@ -14,36 +14,62 @@ import { MealDateControl } from './meal-date-control';
 import { SaveButton } from './save-button';
 import { searchable } from './quick-model';
 
-const count = (n: number) => `${n} ${n === 1 ? 'alimento' : 'alimentos'}`;
+const count = (n: number) => `${n} ${n === 1 ? 'ingrediente' : 'ingredientes'}`;
+const TABS = [{ value: 'foods' as const, label: 'Alimentos' }, { value: 'saved' as const, label: 'Comidas guardadas' }];
 
-/** One of the person's foods in the picker: «+» puts a portion in the plate; once there, it shows how much and adds another. */
-function FoodPickRow({ food, item, locked, onAdd }: { food: PersonalFood; item: PlateItem | undefined; locked: boolean; onAdd: (food: PersonalFood) => void }) {
+/**
+ * How much of one item is in the plate, as a soft champagne pill: − / + by its step (grams by 10, the rest by one); at the
+ * first step the − becomes a bin and takes it out. In the review the amount can also be typed.
+ */
+function Amount({ item, locked, controller, editable = false }: { item: PlateItem; locked: boolean; controller: PlateController; editable?: boolean }) {
   const { colors } = useOwnlevelTheme();
-  const usable = plateable(food), inPlate = !!item;
-  return <View style={[shared.row, styles.pickRow, { borderColor: colors.border }]} testID={`plate-food-${food.id}`}>
-    <View style={shared.text}>
-      <AppText variant="body">{food.name}</AppText>
-      <AppText muted numeric variant="footnote">{usable ? `${shown(food.servingQuantity, 3)} ${food.servingUnit} · ${shown(food.calories)} kcal` : 'Sin calorías cargadas'}</AppText>
+  const id = sourceId(item.source), name = sourceName(item.source), unit = sourceUnit(item.source);
+  const quantity = parsePlateQuantity(item.quantity), leaves = !(quantity > plateStep(unit));
+  const step = (delta: number) => { triggerHaptic('stepperChange'); controller.step(id, delta); };
+  return <View style={[styles.amount, { backgroundColor: colors.brandSubtle }]} testID={`plate-amount-${id}`}>
+    <Pressable accessibilityRole="button" accessibilityLabel={leaves ? `Sacar ${name} del plato` : `Restar ${name}`} disabled={locked} onPress={() => step(-1)} style={styles.step}>
+      <AppIcon name={leaves ? 'trash' : 'minus'} size={17} color={colors.primary} />
+    </Pressable>
+    <View style={styles.amountText}>
+      {editable ? <TextInput accessibilityLabel={`Cantidad de ${name}`} editable={!locked} keyboardType="decimal-pad" selectTextOnFocus value={item.quantity}
+        onChangeText={value => controller.change(id, value)} style={[styles.quantity, { color: colors.text }]} testID={`plate-quantity-${id}`} />
+        : <AppText numeric variant="subheadline" style={{ fontWeight: '600' }}>{item.quantity}</AppText>}
+      <AppText muted numeric variant="caption">{unitLabel(unit, quantity)}</AppText>
     </View>
-    {inPlate ? <AppText numeric variant="subheadline" style={{ color: colors.primary }}>{`${item.quantity} ${food.servingUnit}`}</AppText> : null}
-    <Pressable accessibilityRole="button" accessibilityLabel={inPlate ? `Sumar otra porción de ${food.name}` : `Agregar ${food.name} al plato`} accessibilityState={{ disabled: locked || !usable }}
-      disabled={locked || !usable} onPress={() => onAdd(food)} style={styles.touch} testID={`plate-add-${food.id}`}>
-      <View style={[styles.disc, inPlate ? { backgroundColor: colors.primary } : { borderWidth: 1.5, borderColor: colors.border }, !usable && styles.faded]}>
-        <AppIcon name={inPlate ? 'checkmark' : 'plus'} size={17} color={inPlate ? colors.onPrimary : colors.primary} />
-      </View>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Sumar ${name}`} disabled={locked} onPress={() => step(1)} style={styles.step}>
+      <AppIcon name="plus" size={17} color={colors.primary} />
     </Pressable>
   </View>;
 }
 
-/** The plate under construction, floating over the foods: how many and how much; a tap opens it to review and register. */
+/** One food or saved meal in the picker: «+» puts it in the plate; once there, its amount takes the place of the «+». */
+function PickRow({ source, item, locked, onAdd, controller }: { source: PlateSource; item: PlateItem | undefined; locked: boolean; onAdd: (s: PlateSource) => void; controller: PlateController }) {
+  const { colors } = useOwnlevelTheme();
+  const usable = plateable(source), id = sourceId(source), name = sourceName(source);
+  const detail = source.kind === 'food' ? `${shown(source.food.servingQuantity, 3)} ${source.food.servingUnit} · ${shown(source.food.calories)} kcal`
+    : `1 porción · ${shown(source.meal.calories)} kcal${source.meal.items.length ? ` · ${source.meal.items.length} ingredientes` : ''}`;
+  return <View style={[shared.row, styles.pickRow, { borderColor: colors.border }]} testID={`plate-pick-${id}`}>
+    <View style={shared.text}>
+      <AppText variant="body">{name}</AppText>
+      <AppText muted numeric variant="footnote">{usable ? detail : 'Sin calorías cargadas'}</AppText>
+    </View>
+    {item ? <Animated.View entering={FadeIn.duration(200)}><Amount item={item} locked={locked} controller={controller} /></Animated.View>
+      : <Pressable accessibilityRole="button" accessibilityLabel={`Agregar ${name} al plato`} accessibilityState={{ disabled: locked || !usable }}
+        disabled={locked || !usable} onPress={() => onAdd(source)} style={styles.step} testID={`plate-add-${id}`}>
+        <View style={[styles.disc, { borderColor: colors.border }, !usable && styles.faded]}><AppIcon name="plus" size={17} color={colors.primary} /></View>
+      </Pressable>}
+  </View>;
+}
+
+/** The plate under construction, floating over the lists: how many things and how much; a tap opens it to review. */
 function PlateBar({ state, onOpen }: { state: PlateState; onOpen: () => void }) {
   const { colors } = useOwnlevelTheme(), reduced = useReduceMotion();
   const draft = state.draft!, estimate = plateEstimate(draft);
-  return <Animated.View entering={reduced ? FadeIn.duration(200) : SlideInDown.springify().damping(20)} exiting={reduced ? FadeOut.duration(200) : SlideOutDown.duration(200)} style={styles.barWrap}>
+  return <Animated.View entering={reduced ? FadeIn.duration(200) : FadeInDown.duration(280)} exiting={reduced ? FadeOut.duration(200) : FadeOutDown.duration(200)} style={styles.barWrap}>
     <GlassSurface style={styles.bar} interactive>
       <Pressable accessibilityRole="button" accessibilityLabel={`Ver el plato: ${count(draft.items.length)}${estimate?.calories != null ? `, ${shown(estimate.calories)} kcal` : ''}`} onPress={onOpen} style={styles.barPress} testID="plate-bar">
         <View style={shared.text}>
-          <AppText variant="headline">Plato</AppText>
+          <AppText variant="headline">Ver plato</AppText>
           <AppText muted numeric variant="footnote">{count(draft.items.length)}</AppText>
         </View>
         <AppText numeric variant="headline">{estimate?.calories != null ? `${shown(estimate.calories)} kcal` : '—'}</AppText>
@@ -53,38 +79,11 @@ function PlateBar({ state, onOpen }: { state: PlateState; onOpen: () => void }) 
   </Animated.View>;
 }
 
-/** A food in the plate: its quantity with − / + (grams by 10, units by one), what it adds, and a way out. */
-function PlateItemRow({ item, kcal, error, locked, controller }: { item: PlateItem; kcal: number | null | undefined; error?: string; locked: boolean; controller: PlateController }) {
-  const { colors } = useOwnlevelTheme();
-  const quantity = parsePlateQuantity(item.quantity), step = plateStep(item.food.servingUnit), food = item.food;
-  return <Animated.View layout={LinearTransition.duration(200)} entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={[styles.item, { borderColor: colors.border }]} testID={`plate-item-${food.id}`}>
-    <View style={styles.itemHead}>
-      <View style={shared.text}><AppText variant="body">{food.name}</AppText><AppText muted numeric variant="footnote">{`${shown(kcal)} kcal`}</AppText></View>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Sacar ${food.name} del plato`} disabled={locked} onPress={() => { haptics.selection(); controller.remove(food.id); }} style={styles.touch}>
-        <AppIcon name="close" size={17} color={colors.textMuted} />
-      </Pressable>
-    </View>
-    <View style={[styles.stepper, { backgroundColor: colors.surface }]}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Restar ${food.name}`} disabled={locked || !(quantity > step)} onPress={() => { triggerHaptic('stepperChange'); controller.step(food.id, -1); }} style={styles.touch}>
-        <AppIcon name="minus" size={17} color={locked || !(quantity > step) ? colors.border : colors.text} />
-      </Pressable>
-      <View style={styles.amount}>
-        <TextInput accessibilityLabel={`Cantidad de ${food.name}`} editable={!locked} keyboardType="decimal-pad" selectTextOnFocus value={item.quantity}
-          onChangeText={value => controller.change(food.id, value)} style={[styles.quantity, { color: colors.text }]} testID={`plate-quantity-${food.id}`} />
-        <AppText muted variant="caption">{food.servingUnit}</AppText>
-      </View>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Sumar ${food.name}`} disabled={locked} onPress={() => { triggerHaptic('stepperChange'); controller.step(food.id, 1); }} style={styles.touch}>
-        <AppIcon name="plus" size={17} color={locked ? colors.border : colors.text} />
-      </Pressable>
-    </View>
-    {error ? <AppText accessibilityRole="alert" variant="footnote">{error}</AppText> : null}
-  </Animated.View>;
-}
-
 /**
- * «Plato»: a meal built from the person's own foods by quantity (a merienda of bread, cream cheese and coffee), registered as
- * ONE meal with its total. The foods come first (search, «+»); the plate floats at the bottom until it is opened to review
- * the quantities, the name, the moment and «Guardar en mis comidas». Closing keeps the plate for next time.
+ * «Plato»: a meal built from the person's own foods (by quantity) and saved meals (by portions) — a merienda of bread,
+ * cream cheese and a yogurt they already saved — registered as ONE meal with its total. The lists come first (search,
+ * «+», then − / + in place); the plate floats at the bottom until it is opened to review the amounts, the name, the
+ * moment and «Guardar en mis comidas». Closing keeps the plate for next time.
  */
 export function PlateEditor({ controller, state, externalLocked = false }: { controller: PlateController; state: PlateState; externalLocked?: boolean }) {
   const { colors } = useOwnlevelTheme();
@@ -101,15 +100,21 @@ export function PlateEditor({ controller, state, externalLocked = false }: { con
     return () => clearTimeout(timer);
   }, [controller, review, locked, state.open, state.preview, state.previewLoading, state.message, draft]);
   const query = searchable(state.search.trim());
-  const foods = useMemo(() => (state.foods ?? []).filter(food => !query || searchable(food.name).includes(query)), [state.foods, query]);
-  const inPlate = useMemo(() => new Map((draft?.items ?? []).map(item => [item.food.id, item])), [draft]);
+  const sources = useMemo<PlateSource[]>(() => state.tab === 'foods'
+    ? (state.foods ?? []).map(food => ({ kind: 'food' as const, food }))
+    : (state.saved ?? []).map(meal => ({ kind: 'saved' as const, meal })), [state.tab, state.foods, state.saved]);
+  const shownSources = useMemo(() => sources.filter(s => !query || searchable(sourceName(s)).includes(query)), [sources, query]);
+  const inPlate = useMemo(() => new Map((draft?.items ?? []).map(item => [sourceId(item.source), item])), [draft]);
   if (!state.open || !state.date || !draft) return null;
-  const add = (food: PersonalFood) => {
-    if (draft.items.length >= PLATE_MAX && !inPlate.has(food.id)) { Alert.alert('Plato completo', `Un plato admite hasta ${PLATE_MAX} alimentos.`); return; }
-    haptics.selection(); controller.add(food);
+  const add = (source: PlateSource) => {
+    if (draft.items.length >= PLATE_MAX) { Alert.alert('Plato completo', `Un plato admite hasta ${PLATE_MAX} ingredientes.`); return; }
+    haptics.selection(); controller.add(source);
   };
-  const empty = () => Alert.alert('¿Vaciar el plato?', 'Se sacan todos los alimentos. No se registró nada.', [
+  const empty = () => Alert.alert('¿Vaciar el plato?', 'Se saca todo. No se registró nada.', [
     { text: 'Cancelar', style: 'cancel' }, { text: 'Vaciar', style: 'destructive', onPress: () => controller.clear() }]);
+  const foodsTab = state.tab === 'foods';
+  const loading = foodsTab ? state.foodsLoading && !state.foods : state.savedLoading && !state.saved;
+  const failed = foodsTab ? state.foodsError : state.savedError, have = foodsTab ? state.foods : state.saved;
 
   const status = <>
     {state.message ? <AppText accessibilityRole="alert" selectable>{state.message}</AppText> : null}
@@ -118,25 +123,27 @@ export function PlateEditor({ controller, state, externalLocked = false }: { con
   </>;
 
   const picker = <View style={styles.fill}>
-    <FlatList data={foods} keyExtractor={food => food.id} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" testID="plate-picker"
+    <FlatList data={shownSources} keyExtractor={s => `${s.kind}:${sourceId(s)}`} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" testID="plate-picker"
       initialNumToRender={20} windowSize={9}
       contentContainerStyle={[styles.list, draft.items.length ? styles.listUnderBar : null]}
       ListHeaderComponent={<View style={styles.pickHeader}>
-        <MealSearch label="Buscar en tus alimentos" value={state.search} onChange={value => controller.query(value)} />
+        {/* Sand on sand: the native segmented control would draw its selection in white. */}
+        <SegmentedControl accessibilityLabel="Qué sumar al plato" value={state.tab} options={TABS} onChange={tab => { haptics.selection(); controller.showTab(tab); }} />
+        <MealSearch label={foodsTab ? 'Buscar en tus alimentos' : 'Buscar en tus comidas'} value={state.search} onChange={value => controller.query(value)} />
         {status}
-        {state.foodsLoading && !state.foods ? <LoadingState label="Cargando tus alimentos" /> : null}
-        {state.foodsError ? <View style={styles.inline}><AppText accessibilityRole="alert" style={styles.fill}>{state.foods ? 'No pudimos actualizar tus alimentos. Mostramos los últimos.' : 'No pudimos cargar tus alimentos.'}</AppText>
-          <Button label="Reintentar" variant="quiet" onPress={() => void controller.loadFoods()} /></View> : null}
+        {loading ? <LoadingState label={foodsTab ? 'Cargando tus alimentos' : 'Cargando tus comidas'} /> : null}
+        {failed ? <View style={styles.inline}><AppText accessibilityRole="alert" style={styles.fill}>{have ? 'No pudimos actualizar esta lista. Mostramos la última.' : 'No pudimos cargar esta lista.'}</AppText>
+          <Button label="Reintentar" variant="quiet" onPress={() => void (foodsTab ? controller.loadFoods() : controller.loadSaved())} /></View> : null}
       </View>}
-      ListEmptyComponent={state.foods ? <AppText muted style={styles.emptyText}>{query ? 'No encontramos alimentos con esa búsqueda.' : 'Todavía no tenés alimentos. Crealos en Alimentos por cantidad.'}</AppText> : null}
-      renderItem={({ item: food }) => <FoodPickRow food={food} item={inPlate.get(food.id)} locked={locked} onAdd={add} />} />
+      ListEmptyComponent={have ? <AppText muted style={styles.emptyText}>{query ? 'No encontramos nada con esa búsqueda.' : foodsTab ? 'Todavía no tenés alimentos. Crealos en Alimento por cantidad.' : 'Todavía no tenés comidas guardadas.'}</AppText> : null}
+      renderItem={({ item: source }) => <PickRow source={source} item={inPlate.get(sourceId(source))} locked={locked} onAdd={add} controller={controller} />} />
     {draft.items.length && !review ? <PlateBar state={state} onOpen={() => { haptics.selection(); controller.showReview(); }} /> : null}
   </View>;
 
   const confirmed = state.preview?.snapshot;
-  const kcalOf = (id: string, item: PlateItem) => state.preview?.items.find(row => row.id === id)?.calories ?? itemEstimate(item)?.calories;
+  const kcalOf = (item: PlateItem) => state.preview?.items.find(row => row.id === sourceId(item.source))?.calories ?? itemEstimate(item)?.calories;
   return <MealSheet list={picker} listHidden={review} title={draft.title.trim() && review ? draft.title.trim() : 'Plato'}
-    subtitle={review ? count(draft.items.length) : draft.items.length ? undefined : 'Elegí tus alimentos'}
+    subtitle={review ? count(draft.items.length) : draft.items.length ? undefined : 'Elegí qué va en el plato'}
     onClose={review && !state.intent ? () => controller.showPicker() : () => controller.close()} onDismiss={() => controller.close()} back={review && !state.intent}
     dismissable={!running} running={running} testID="plate-editor"
     right={<MealDateControl date={state.date} disabled={locked} onChange={date => controller.changeDate(date)} />}>
@@ -149,8 +156,16 @@ export function PlateEditor({ controller, state, externalLocked = false }: { con
         : estimate ? <View style={styles.totals} testID="plate-estimate"><MealNutrients value={estimate} pending /><MealProjection date={state.date} nutrients={estimate} pending /></View>
         : state.previewLoading ? <ActivityIndicator color={colors.textMuted} /> : null}
       <View>
-        {draft.items.map(item => <PlateItemRow key={item.food.id} item={item} kcal={kcalOf(item.food.id, item)} error={state.errors[item.food.id]} locked={locked} controller={controller} />)}
-        <LinkRow label="Agregar otro alimento" onPress={() => controller.showPicker()} disabled={locked || draft.items.length >= PLATE_MAX} testID="plate-add-more" />
+        {draft.items.map(item => <Animated.View key={sourceId(item.source)} layout={LinearTransition.duration(200)} entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)}
+          style={[styles.item, { borderColor: colors.border }]} testID={`plate-item-${sourceId(item.source)}`}>
+          <View style={shared.text}>
+            <AppText variant="body">{sourceName(item.source)}</AppText>
+            <AppText muted numeric variant="footnote">{`${shown(kcalOf(item))} kcal${item.source.kind === 'saved' ? ' · comida guardada' : ''}`}</AppText>
+            {state.errors[sourceId(item.source)] ? <AppText accessibilityRole="alert" variant="footnote">{state.errors[sourceId(item.source)]}</AppText> : null}
+          </View>
+          <Amount item={item} locked={locked} controller={controller} editable />
+        </Animated.View>)}
+        <LinkRow label="Sumar algo más" onPress={() => controller.showPicker()} disabled={locked || draft.items.length >= PLATE_MAX} testID="plate-add-more" />
       </View>
       <View style={shared.row}>
         <View style={shared.text}><AppText>Guardar en mis comidas</AppText><AppText muted variant="caption">Queda en Rápido para repetirlo con un toque</AppText></View>
@@ -175,16 +190,15 @@ const styles = StyleSheet.create({
   pickRow: { borderBottomWidth: StyleSheet.hairlineWidth },
   emptyText: { paddingVertical: 12 },
   inline: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  touch: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  disc: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  step: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  disc: { width: 32, height: 32, borderRadius: 16, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   faded: { opacity: 0.35 },
+  amount: { flexDirection: 'row', alignItems: 'center', borderRadius: brandTokens.radius.button },
+  amountText: { alignItems: 'center', minWidth: 48, maxWidth: 100 },
+  quantity: { ...brandTokens.typeScale.subheadline, fontWeight: '600', textAlign: 'center', minWidth: 44, padding: 0, fontVariant: ['tabular-nums'] },
   barWrap: { position: 'absolute', left: brandTokens.layout.screenPadding, right: brandTokens.layout.screenPadding, bottom: 24 },
   bar: { borderRadius: brandTokens.radius.tabBar, overflow: 'hidden' },
   barPress: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingHorizontal: 18 },
   totals: { gap: 20 },
-  item: { gap: 8, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
-  itemHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  stepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: brandTokens.radius.button, paddingVertical: 2, alignSelf: 'stretch' },
-  amount: { alignItems: 'center', flexShrink: 1 },
-  quantity: { ...brandTokens.typeScale.headline, textAlign: 'center', minWidth: 60, maxWidth: 180, padding: 0, fontVariant: ['tabular-nums'] },
+  item: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
 });

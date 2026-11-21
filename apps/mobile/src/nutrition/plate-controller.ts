@@ -1,12 +1,14 @@
 import type { MobileApiReadResult, MobileApiRequestResult } from '@/api/results';
 import type { FoodsResponse, PersonalFood } from '@/api/nutrition-food';
-import { sameQuickSelection, type QuickIntent, type QuickPreview, type QuickResponse, type QuickSelection } from '@/api/nutrition-quick';
+import { sameQuickSelection, type QuickIntent, type QuickOption, type QuickOptions, type QuickPreview, type QuickResponse, type QuickSelection } from '@/api/nutrition-quick';
 import type { MobileNutritionDayResponse, NutritionDayMeal } from '@/api/nutrition-day';
-import { plateDraft, plateable, selectionFromPlate, stepped, withFood, PLATE_TITLE_MAX, type PlateDraft } from './plate-model';
+import { plateDraft, plateable, selectionFromPlate, sourceId, sourceName, stepped, withSource, PLATE_TITLE_MAX, type PlateDraft, type PlateSource } from './plate-model';
 import type { PlateIntentRepository, StoredPlateIntent } from './plate-storage';
 
 export type PlateApi = {
   foods: () => Promise<MobileApiReadResult<FoodsResponse>>;
+  /** The saved meals, from Rápido's own read. */
+  saved: () => Promise<MobileApiReadResult<QuickOptions>>;
   preview: (s: QuickSelection) => Promise<MobileApiRequestResult<QuickPreview>>;
   confirm: (i: QuickIntent) => Promise<MobileApiRequestResult<QuickResponse>>;
   read: (date: string) => Promise<MobileApiReadResult<MobileNutritionDayResponse>>;
@@ -14,25 +16,28 @@ export type PlateApi = {
 export type PlateState = {
   phase: 'loading' | 'idle' | 'pending' | 'uncertain' | 'confirmed' | 'blocked';
   open: boolean;
-  /** `pick`: the foods, to fill the plate; `review`: the plate itself, its total and «Registrar». */
+  /** `pick`: the foods and saved meals, to fill the plate; `review`: the plate itself, its total and «Registrar». */
   view: 'pick' | 'review';
+  /** Which list the picker shows. */
+  tab: 'foods' | 'saved';
   date: string | null; draft: PlateDraft | null; search: string;
   foods: PersonalFood[] | null; foodsLoading: boolean; foodsError: boolean;
+  saved: QuickOption[] | null; savedLoading: boolean; savedError: boolean;
   preview: QuickPreview | null; previewLoading: boolean;
   intent: StoredPlateIntent | null; message: string | null; errors: Record<string, string>;
 };
 const SAVED_NAME = 'Ya tenés una comida guardada con ese nombre. Cambialo o desactivá Guardar en mis comidas.';
 
 /**
- * «Plato»: builds one meal from several personal foods by quantity and registers it through the quick source `plate`
+ * «Plato»: builds one meal from several personal foods by quantity (and saved meals by portions) and registers it through the quick source `plate`
  * (same preview, idempotency ledger and atomic confirm as Rápido). Closing the sheet keeps the plate as it is (no
  * confirmation needed, nothing is lost); only «Vaciar» or a registration empties it. A write is stored before it is sent
  * and an unknown outcome is only ever re-sent as the same intent, on request.
  */
 export class PlateController {
-  private state: PlateState = { phase: 'loading', open: false, view: 'pick', date: null, draft: null, search: '', foods: null, foodsLoading: false,
-    foodsError: false, preview: null, previewLoading: false, intent: null, message: null, errors: {} };
-  private listeners = new Set<() => void>(); private disposed = false; private busy = false; private previewGeneration = 0; private foodsGeneration = 0;
+  private state: PlateState = { phase: 'loading', open: false, view: 'pick', tab: 'foods', date: null, draft: null, search: '', foods: null, foodsLoading: false,
+    foodsError: false, saved: null, savedLoading: false, savedError: false, preview: null, previewLoading: false, intent: null, message: null, errors: {} };
+  private listeners = new Set<() => void>(); private disposed = false; private busy = false; private previewGeneration = 0; private foodsGeneration = 0; private savedGeneration = 0;
   private confirmedListeners = new Set<(meal: NutritionDayMeal, date: string) => void>();
   constructor(private api: PlateApi, private repository: PlateIntentRepository, private invalidate: () => void,
     private newKey: () => string = () => `plate:${Date.now()}:${Math.random().toString(36).slice(2)}`) {}
@@ -40,7 +45,7 @@ export class PlateController {
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   subscribeConfirmed = (f: (meal: NutritionDayMeal, date: string) => void) => { this.confirmedListeners.add(f); return () => { this.confirmedListeners.delete(f); }; };
   private update(patch: Partial<PlateState>) { if (!this.disposed) { this.state = { ...this.state, ...patch }; this.listeners.forEach(f => f()); } }
-  dispose() { this.disposed = true; this.previewGeneration++; this.foodsGeneration++; this.listeners.clear(); this.confirmedListeners.clear(); }
+  dispose() { this.disposed = true; this.previewGeneration++; this.foodsGeneration++; this.savedGeneration++; this.listeners.clear(); this.confirmedListeners.clear(); }
   private get editable() { return this.state.phase === 'idle' && !this.state.intent && !this.busy; }
 
   async initialize() {
@@ -56,7 +61,7 @@ export class PlateController {
     this.previewGeneration++;
     const kept = this.state.draft, draft = kept ? this.moved(kept, date) : plateDraft(date);
     this.update({ open: true, date, draft, view: draft.items.length ? 'review' : 'pick', search: '', preview: null, previewLoading: false, message: null, errors: {} });
-    void this.loadFoods();
+    void this.loadFoods(); void this.loadSaved();
   }
   /** Closing never loses the plate: it is here the next time «Plato» opens. */
   close() { if (this.busy) return; this.previewGeneration++; this.update({ open: false, previewLoading: false }); }
@@ -66,6 +71,7 @@ export class PlateController {
   showPicker() { if (this.state.open && !this.state.intent) this.update({ view: 'pick' }); }
   showReview() { if (this.state.open && this.state.draft?.items.length) this.update({ view: 'review' }); }
   query(search: string) { this.update({ search: search.slice(0, 200) }); }
+  showTab(tab: PlateState['tab']) { if (tab !== this.state.tab) this.update({ tab }); }
 
   async loadFoods() {
     if (this.disposed) return;
@@ -78,23 +84,40 @@ export class PlateController {
       this.update({ foods: result.data.foods.filter(food => food.isActive), foodsLoading: false, foodsError: false });
     } catch { if (generation === this.foodsGeneration) this.update({ foodsLoading: false, foodsError: true }); }
   }
+  async loadSaved() {
+    if (this.disposed) return;
+    const generation = ++this.savedGeneration;
+    this.update({ savedLoading: true, savedError: false });
+    try {
+      const result = await this.api.saved();
+      if (this.disposed || generation !== this.savedGeneration) return;
+      if (result.status !== 'ok' || result.data.saved.status !== 'ok') { this.update({ savedLoading: false, savedError: true }); return; }
+      this.update({ saved: result.data.saved.items, savedLoading: false, savedError: false });
+    } catch { if (generation === this.savedGeneration) this.update({ savedLoading: false, savedError: true }); }
+  }
 
   private edit(next: PlateDraft, patch: Partial<PlateState> = {}) {
     this.previewGeneration++;
     this.update({ draft: next, preview: null, previewLoading: false, errors: {}, message: null, ...patch });
   }
-  add(food: PersonalFood) { const d = this.state.draft; if (d && this.editable && plateable(food)) this.edit(withFood(d, food)); }
-  remove(foodId: string) {
+  add(source: PlateSource) { const d = this.state.draft; if (d && this.editable && plateable(source)) this.edit(withSource(d, source)); }
+  remove(id: string) {
     const d = this.state.draft;
     if (!d || !this.editable) return;
-    const items = d.items.filter(item => item.food.id !== foodId);
+    const items = d.items.filter(item => sourceId(item.source) !== id);
     this.edit({ ...d, items }, items.length ? {} : { view: 'pick' });
   }
-  change(foodId: string, value: string) {
+  change(id: string, value: string) {
     const d = this.state.draft;
-    if (d && this.editable && d.items.some(item => item.food.id === foodId)) this.edit({ ...d, items: d.items.map(item => item.food.id === foodId ? { ...item, quantity: value } : item) });
+    if (d && this.editable && d.items.some(item => sourceId(item.source) === id)) this.edit({ ...d, items: d.items.map(item => sourceId(item.source) === id ? { ...item, quantity: value } : item) });
   }
-  step(foodId: string, delta: number) { const d = this.state.draft; if (d && this.editable) this.edit(stepped(d, foodId, delta)); }
+  /** One step; below the first, the item leaves the plate (and an empty plate goes back to the lists). */
+  step(id: string, delta: number) {
+    const d = this.state.draft;
+    if (!d || !this.editable) return;
+    const next = stepped(d, id, delta);
+    this.edit(next, next.items.length ? {} : { view: 'pick' });
+  }
   rename(title: string) { const d = this.state.draft; if (d && this.editable) this.edit({ ...d, title: title.slice(0, PLATE_TITLE_MAX + 20) }); }
   saveToLibrary(value: boolean) { const d = this.state.draft; if (d && this.editable) this.edit({ ...d, saveToLibrary: value }); }
   timing(mealLabel: PlateDraft['mealLabel'], consumedAt?: string, declared = false) {
@@ -124,20 +147,28 @@ export class PlateController {
     } catch { if (generation === this.previewGeneration) this.update({ previewLoading: false, message: 'No pudimos calcular el total. Tu plato sigue intacto.' }); }
   }
   /**
-   * A food changed or is gone since it was added: read the foods again and bring the plate up to them. A changed food keeps
-   * the quantity (its new values recompute the total on the next preview); a food no longer usable leaves, and says so.
+   * An item changed or is gone since it was added: read the lists again and bring the plate up to them. A changed item keeps
+   * its quantity (its new values recompute the total on the next preview); one no longer usable leaves, and says so.
    */
   private async reconcile(code: string, message: string) {
     if (code === 'SAVED_NAME_EXISTS') { this.update({ message: SAVED_NAME, errors: { title: 'Ese nombre ya está en tus comidas.' } }); return; }
-    await this.loadFoods();
-    const d = this.state.draft, foods = this.state.foods;
-    if (!d || !foods || this.state.foodsError) { this.update({ message: 'Un alimento cambió y no pudimos leerlo de nuevo. Tu plato sigue intacto.' }); return; }
-    const current = new Map(foods.map(food => [food.id, food]));
-    const gone = d.items.filter(item => { const food = current.get(item.food.id); return !food || !plateable(food); });
-    const items = d.items.filter(item => !gone.includes(item)).map(item => ({ ...item, food: current.get(item.food.id)! }));
+    const d0 = this.state.draft;
+    const needsFoods = !!d0?.items.some(item => item.source.kind === 'food'), needsSaved = !!d0?.items.some(item => item.source.kind === 'saved');
+    await Promise.all([needsFoods ? this.loadFoods() : null, needsSaved ? this.loadSaved() : null]);
+    const d = this.state.draft, foods = this.state.foods, saved = this.state.saved;
+    if (!d || needsFoods && (!foods || this.state.foodsError) || needsSaved && (!saved || this.state.savedError)) {
+      this.update({ message: 'Algo del plato cambió y no pudimos leerlo de nuevo. Tu plato sigue intacto.' }); return;
+    }
+    const currentFoods = new Map((foods ?? []).map(food => [food.id, food])), currentSaved = new Map((saved ?? []).map(meal => [meal.source.id, meal]));
+    const current = (s: PlateSource): PlateSource | undefined => {
+      if (s.kind === 'food') { const food = currentFoods.get(s.food.id); return food ? { kind: 'food', food } : undefined; }
+      const meal = currentSaved.get(s.meal.source.id); return meal ? { kind: 'saved', meal } : undefined;
+    };
+    const gone = d.items.filter(item => { const now = current(item.source); return !now || !plateable(now); });
+    const items = d.items.filter(item => !gone.includes(item)).map(item => ({ ...item, source: current(item.source)! }));
     this.edit({ ...d, items }, { view: items.length ? this.state.view : 'pick' });
-    this.update({ message: gone.length ? `${gone.map(item => item.food.name).join(', ')} ya no ${gone.length === 1 ? 'está disponible' : 'están disponibles'}: lo sacamos del plato.`
-      : code === 'QUICK_SOURCE_CHANGED' ? 'Un alimento cambió. Actualizamos el plato con sus valores actuales; revisá el total.'
+    this.update({ message: gone.length ? `${gone.map(item => sourceName(item.source)).join(', ')} ya no ${gone.length === 1 ? 'está disponible' : 'están disponibles'}: lo sacamos del plato.`
+      : code === 'QUICK_SOURCE_CHANGED' ? 'Algo del plato cambió. Lo actualizamos con sus valores actuales; revisá el total.'
       : code === 'QUICK_SOURCE_UNUSABLE' ? 'Así el plato suma 0 kcal y no se puede registrar. Sumá algo con calorías.' : message });
   }
 
@@ -193,7 +224,7 @@ export class PlateController {
     // The version created by THIS write: «Deshacer» must conflict if someone edited it since.
     if (registered) registered = { ...registered, updatedAt: receipt.updatedAt };
     await this.repository.clear(stored.intent.idempotencyKey);
-    this.update({ phase: 'idle', intent: null, open: false, draft: null, view: 'pick', preview: null, message: null, errors: {}, search: '' });
+    this.update({ phase: 'idle', intent: null, open: false, draft: null, view: 'pick', tab: 'foods', preview: null, message: null, errors: {}, search: '' });
     if (registered) this.confirmedListeners.forEach(f => f(registered!, receipt.date));
   }
 }
