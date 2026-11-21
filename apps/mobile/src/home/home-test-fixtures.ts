@@ -39,6 +39,7 @@ export function homeProgressBody(): ProgressBody {
 }
 
 export function homeProgressHabits(): ProgressHabitWeek {
-  return { today: '2026-10-10', ...habitWeekRange('2026-10-10'), items: [{ id: 'm1', systemKey: 'water', name: 'Agua', unit: 'L', valueType: 'decimal',
-    average: 2.1, coverage: { registered: 5, eligible: 5, ratio: 1 }, comparison: { ...comparison, current: 2.1 } }] };
+  // Saturday: Monday to today is 6 days, today included (`includeToday=1`).
+  return { today: '2026-10-10', ...habitWeekRange('2026-10-10'), includesToday: true, items: [{ id: 'm1', systemKey: 'water', name: 'Agua', unit: 'L', valueType: 'decimal',
+    average: 2.1, coverage: { registered: 5, eligible: 6, ratio: 5 / 6 }, comparison: { ...comparison, current: 2.1 } }] };
 }
