@@ -8,6 +8,7 @@ import type { QuickController, QuickState } from './quick-controller';
 import { visibleQuickPins, type QuickPinsController, type QuickPinsState } from './quick-pins-controller';
 import { QuickPinsEditor, type QuickPinsDraft } from './quick-pins-editor';
 import { LetterJump, sectionStarts } from './quick-letter-jump';
+import { SIDE_INDEX_WIDTH, SideIndex } from './quick-side-index';
 import { INITIALS, librarySections, pinnedRows, pinsFull, searchLibrary, type PinnedRow } from './quick-library-model';
 import { MealSearch, mealShown as shown, mealSheetStyles as shared } from './meal-sheet';
 
@@ -24,8 +25,6 @@ type Item = { type: 'meal'; key: string; option: QuickOption; pinned: number } |
   | { type: 'pins'; key: string; rows: Exclude<Item, { type: 'pins' }>[] };
 type Section = { key: string; title: string; data: Item[] };
 const LETTERS_FROM = 12;
-/** Room the side index takes at the right of the rows. */
-const SIDE_INDEX_WIDTH = 20;
 /** A row counts as on screen when at least half of it is (a zero-height section footer never does). */
 const VIEWABILITY = { itemVisiblePercentThreshold: 50 };
 /** The native small spinner is 20 pt: the refresh slot is never shorter than it, nor than one footnote line at the current text size. */
@@ -54,8 +53,9 @@ const QuickRow = memo(function QuickRow({ option, added, pending, locked, onRevi
     <View style={{ alignItems: 'flex-end', gap: 2 }}><AppText muted numeric variant="subheadline">{shown(option.calories)} kcal</AppText>{option.useCount !== null ? <AppText muted variant="caption">{option.useCount} veces</AppText> : null}</View>
     {/* The touch target stays 44 × 44 pt; only the disc drawn inside it is smaller. «+» only ever adds to the day. */}
     <Pressable accessibilityRole="button" accessibilityLabel={added ? `${option.name} agregado` : `Agregar ${option.name}`} accessibilityState={{ disabled: locked || added, busy: pending }} disabled={locked || added} onPress={() => onAdd(option)} style={styles.add} testID={`quick-add-${option.source.kind}:${option.source.id}`}>
-        <View style={[styles.addDisc, { backgroundColor: added ? colors.primary : colors.brandSubtle }]} testID="quick-add-disc">
-          {pending ? <ActivityIndicator color={colors.primary} /> : <AppIcon name={added ? 'checkmark' : 'plus'} size={20} color={added ? colors.onPrimary : colors.primary} />}
+        {/* At rest a thin ring (19 of them in a column read as one quiet rhythm); filled only once added. */}
+        <View style={[styles.addDisc, added ? { backgroundColor: colors.primary } : { borderWidth: 1.5, borderColor: colors.border }]} testID="quick-add-disc">
+          {pending ? <ActivityIndicator color={colors.primary} /> : <AppIcon name={added ? 'checkmark' : 'plus'} size={17} color={added ? colors.onPrimary : colors.primary} />}
         </View>
       </Pressable>
   </View>;
@@ -90,7 +90,7 @@ const PinTile = memo(function PinTile({ option, added, pending, locked, onReview
     <View style={styles.tileFoot}>
       <AppText muted numeric variant="caption">{shown(option.calories)} kcal</AppText>
       <Pressable accessibilityRole="button" accessibilityLabel={added ? `${option.name} agregado` : `Agregar ${option.name}`} accessibilityState={{ disabled: locked || added, busy: pending }} disabled={locked || added} onPress={() => onAdd(option)} style={styles.add} testID={`quick-add-${option.source.kind}:${option.source.id}`}>
-        <View style={[styles.tileDisc, { backgroundColor: added ? colors.primary : colors.brandSubtle }]}>
+        <View style={[styles.tileDisc, { backgroundColor: added ? colors.primary : colors.background }]}>
           {pending ? <ActivityIndicator color={colors.primary} /> : <AppIcon name={added ? 'checkmark' : 'plus'} size={17} color={added ? colors.onPrimary : colors.primary} />}
         </View>
       </Pressable>
@@ -108,28 +108,6 @@ function GoneTile({ row, onRelease }: { row: Extract<PinnedRow, { kind: 'unavail
     {onRelease ? <Button label="Liberar lugar" variant="quiet" onPress={onRelease} /> : null}
   </View>;
 }
-/**
- * A1 · The A–Z index at the right edge, like Contacts: tap a letter or slide along the column. Each letter stays its own
- * button (VoiceOver, tests); a touch anywhere on the column is read by its height, so sliding lands on every letter it crosses.
- * Letters without meals are shown dimmed and never jump.
- */
-function SideIndex({ letters, present, render, onJump }: { letters: string[]; present: Set<string>; render: (letter: string) => ReactNode; onJump: (letter: string) => void }) {
-  const column = useRef<View>(null), frame = useRef({ top: 0, height: 0 }), last = useRef<string | null>(null);
-  const at = (pageY: number) => {
-    const { top, height } = frame.current;
-    if (height <= 0) return;
-    const letter = letters[Math.max(0, Math.min(letters.length - 1, Math.floor((pageY - top) / (height / letters.length))))]!;
-    if (letter === last.current || !present.has(letter)) return;
-    last.current = letter; haptics.selection(); onJump(letter);
-  };
-  return <View ref={column} style={styles.side} accessibilityLabel="Índice alfabético" testID="quick-letters" hitSlop={{ left: 12, right: 4 }}
-    onLayout={() => column.current?.measureInWindow((_x, y, _w, h) => { frame.current = { top: y, height: h }; })}
-    onStartShouldSetResponderCapture={() => true} onMoveShouldSetResponderCapture={() => true} onResponderTerminationRequest={() => false}
-    onResponderGrant={event => { last.current = null; at(event.nativeEvent.pageY); }} onResponderMove={event => at(event.nativeEvent.pageY)}>
-    {letters.map(render)}
-  </View>;
-}
-
 /** Pins that need the person: unconfirmed, refused against newer truth, unreadable, or not refreshed. Never «no pins». */
 function PinsNotice({ pins, names }: { pins: NonNullable<QuickPins>; names: (ids: readonly string[]) => string }) {
   const { colors } = useOwnlevelTheme();
@@ -268,11 +246,13 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
     jumper.current.start(sectionIndex, start, start + sections[sectionIndex]!.data.length + 2);
   };
   const manageButton = writable ? <LinkRow label={pinnedIds.length ? 'Administrar' : 'Elegir fijadas'} onPress={() => openEditor()} testID="quick-pins-manage" /> : null;
-  const letterButton = (letter: string, side = false) => {
+  const letterButton = (letter: string, side = false, active = false) => {
     const has = present.has(letter), label = letter === '#' ? 'números y símbolos' : letter;
+    // The side column is quiet (muted letters, the empty ones faint); only the letter under the finger takes the accent.
+    const tint = !has ? { color: colors.textMuted, opacity: side ? 0.3 : 0.45 } : side && !active ? { color: colors.textMuted } : { color: colors.primary };
     return <Pressable key={letter} accessibilityRole="button" accessibilityLabel={has ? `Ir a la letra ${label}` : `${label}, sin comidas`} accessibilityState={{ disabled: !has }} disabled={!has}
       onPress={() => { setLettersOpen(false); jump(letter); }} style={side ? styles.sideLetter : styles.letter} testID={`quick-letter-${letter}`}>
-      <AppText numeric variant={side ? 'caption' : 'subheadline'} style={{ color: has ? colors.primary : colors.textMuted, opacity: has ? 1 : 0.45, fontWeight: '600' }}>{letter}</AppText>
+      <AppText numeric variant={side ? 'caption' : 'subheadline'} style={[tint, { fontWeight: '600' }]}>{letter}</AppText>
     </Pressable>;
   };
   const alphabet = INITIALS.split('');
@@ -333,7 +313,7 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
           {!pinnedIds.length && cards && manageButton ? <View style={styles.titleRow}><AppText muted variant="footnote" style={styles.heading}>Fijá hasta 6 para tenerlas a mano.</AppText>{manageButton}</View> : null}
           {index}</View>
         : section.key === 'results' && !query ? null
-          : <View style={[styles.section, { backgroundColor: colors.background }]}><AppText accessibilityRole="header" muted numeric variant="footnote">{section.title}</AppText></View>}
+          : <View style={styles.section}><AppText accessibilityRole="header" muted numeric variant="footnote">{section.title}</AppText></View>}
     ListHeaderComponent={header} ListEmptyComponent={empty} ListFooterComponent={listFooter}
     stickySectionHeadersEnabled={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
     // Section headers and footers count as items: 30 is about one screen of rows, whatever the library size.
@@ -346,7 +326,7 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
       list.current?.getScrollResponder()?.scrollTo({ y: info.averageItemLength * info.index, animated: false });
     }}
     contentContainerStyle={{ paddingLeft: brandTokens.layout.screenPadding, paddingRight: brandTokens.layout.screenPadding + (side ? SIDE_INDEX_WIDTH : 0), paddingBottom: Math.max(bottomInset, 12) + brandTokens.layout.screenPadding }} />
-    {side ? <SideIndex letters={alphabet} present={present} render={letter => letterButton(letter, true)} onJump={jump} /> : null}</View>
+    {side ? <SideIndex letters={alphabet} present={present} render={(letter, active) => letterButton(letter, true, active)} onJump={jump} /> : null}</View>
     {editor && pins && saved ? <QuickPinsEditor controller={pins.controller} state={pins.state} saved={saved} start={editor} onClose={() => setEditor(null)} /> : null}
   </>;
 }
@@ -365,8 +345,7 @@ const styles = StyleSheet.create({
   tile: { width: 140, borderRadius: brandTokens.radius.inner, paddingTop: 10, paddingLeft: 12, paddingRight: 2, gap: 2, justifyContent: 'space-between' },
   tileText: { minHeight: 36, paddingRight: 10 }, tileFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   tileDisc: { width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
-  side: { position: 'absolute', right: 2, top: 8, bottom: 8, width: SIDE_INDEX_WIDTH, justifyContent: 'center' },
   sideLetter: { flexShrink: 1, flexGrow: 0, minHeight: 12, maxHeight: 22, flexBasis: 18, alignItems: 'center', justifyContent: 'center' },
-  add: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' }, addDisc: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+  add: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' }, addDisc: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   control: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' }, flip: { transform: [{ rotate: '180deg' }] },
 });

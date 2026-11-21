@@ -55,11 +55,11 @@ describe('Native quick editor', () => {
       expect(macros.color).toBe(kcal.color); expect(name.color).not.toBe(macros.color);
       expect(view.getByText('3 veces')).toBeTruthy(); expect(view.getAllByText(/1 ingredientes/)).toHaveLength(1);
     });
-    it('draws a 36 pt disc inside the unchanged 44 × 44 pt touch target', async () => {
+    it('draws a quiet 32 pt disc inside the unchanged 44 × 44 pt touch target', async () => {
       const { view } = await opened();
       const add = view.getAllByLabelText('Agregar PASTA')[0]!;
       expect(flat(add)).toMatchObject({ width: 44, height: 44 });
-      expect(flat(within(add).getByTestId('quick-add-disc'))).toMatchObject({ width: 36, height: 36, borderRadius: 18 });
+      expect(flat(within(add).getByTestId('quick-add-disc'))).toMatchObject({ width: 32, height: 32, borderRadius: 16 });
     });
     it('keeps the pending and added states, and one + costs the same single write as before', async () => {
       const f = await opened();
