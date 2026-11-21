@@ -7,7 +7,8 @@ export type QuickSource = { kind: 'suggestion' | 'saved' | 'food'; id: string; v
  * food), in the order the plate was built. `saveToLibrary` also creates a composite saved meal in the same write.
  */
 export type QuickPlateSource = { kind: 'plate'; title: string | null; saveToLibrary: boolean };
-export type QuickQuantity = { itemId: string; quantity: number; version?: string };
+/** In a plate: `version` is the item's CAS; `kind: 'saved'` marks a saved meal by portions (a food has no kind). */
+export type QuickQuantity = { itemId: string; quantity: number; version?: string; kind?: 'saved' };
 export type QuickSelection = MealTiming & { date: string; source: QuickSource | QuickPlateSource; quantities: QuickQuantity[] | null };
 export const QUICK_PLATE_MAX = 50;
 /** Same as the database: trimmed, inner spaces collapsed, blank is no title. */
@@ -57,9 +58,10 @@ function parsePlateSelection(v: Record<string, unknown>, date: string, timing: M
   if (!Array.isArray(v.quantities) || v.quantities.length < 1 || v.quantities.length > QUICK_PLATE_MAX) return undefined;
   const quantities: QuickQuantity[] = [];
   for (const q of v.quantities) {
-    if (!record(q) || Object.keys(q).length !== 3 || !mealUuid(q.itemId) || typeof q.version !== 'string' || !/^[a-f0-9]{64}$/.test(q.version)
+    const saved = record(q) && 'kind' in q;
+    if (!record(q) || Object.keys(q).length !== (saved ? 4 : 3) || saved && q.kind !== 'saved' || !mealUuid(q.itemId) || typeof q.version !== 'string' || !/^[a-f0-9]{64}$/.test(q.version)
       || !nonnegative(q.quantity) || q.quantity <= 0 || q.quantity > 1_000_000 || Number(q.quantity.toFixed(2)) !== q.quantity) return undefined;
-    quantities.push({ itemId: q.itemId.toLowerCase(), quantity: q.quantity, version: q.version });
+    quantities.push({ itemId: q.itemId.toLowerCase(), quantity: q.quantity, version: q.version, ...(saved ? { kind: 'saved' as const } : {}) });
   }
   // The order is the plate's (and its description's): never sorted.
   if (new Set(quantities.map(q => q.itemId)).size !== quantities.length) return undefined;
