@@ -11,7 +11,7 @@ import type { HomeAddMenuProps } from './home-add-menu.types';
  * Nutrition's "+ Comida": a native UIMenu (SwiftUI Menu through @expo/ui). The visible label is drawn by React Native:
  * a SwiftUI host inside a scroll view trails the page, so the native menu sits over the glass with an empty label that only takes the tap.
  */
-export function HomeAddMenu({ onFood, onManual, onQuick }: HomeAddMenuProps) {
+export function HomeAddMenu({ onFood, onManual, onPlate, onQuick }: HomeAddMenuProps) {
   const { colors, isDark } = useOwnlevelTheme();
   return (
     <View>
@@ -28,6 +28,7 @@ export function HomeAddMenu({ onFood, onManual, onQuick }: HomeAddMenuProps) {
           <Button label="A mano" onPress={onManual} systemImage="square.and.pencil" />
           <Button label="Rápido" onPress={onQuick} systemImage="bolt" />
           <Button label="Alimento por cantidad" onPress={onFood} systemImage="scalemass" />
+          <Button label="Plato" onPress={onPlate} systemImage="fork.knife" />
         </Menu>
       </Host>
     </View>

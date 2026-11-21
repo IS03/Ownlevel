@@ -1,0 +1,72 @@
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { describe, expect, it, jest } from '@jest/globals';
+import { OwnlevelThemeProvider } from '@/design-system';
+import type { PersonalFood } from '@/api/nutrition-food';
+import type { QuickSelection } from '@/api/nutrition-quick';
+import { personalFood } from './food-fixture.test-helper';
+import { nutritionFixture } from './day-fixture.test-helper';
+import { PlateEditor } from './plate-editor';
+import { PlateController, type PlateApi } from './plate-controller';
+import { PlateIntentRepository } from './plate-storage';
+jest.mock('./day-resource', () => ({ useNutritionDayResource: () => ({ state: { status: 'loading' } }) }));
+jest.mock('@/api', () => ({ useMobileApi: () => ({ client: null }) }));
+jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
+
+/** Synthetic foods only. */
+const DATE = '2026-11-20', meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
+const food = (n: number, patch: Partial<PersonalFood>): PersonalFood => ({ ...personalFood, id: `42200000-0000-4000-8000-00000000020${n}`, version: String(n).repeat(64), ...patch });
+const bread = food(1, { name: 'PAN LACTAL', servingQuantity: 1, servingUnit: 'rebanada', calories: 65.5, proteinG: 2.2, carbsG: 12, fatG: 0.8 });
+const cheese = food(2, { name: 'QUESO CREMA', servingQuantity: 100, servingUnit: 'g', calories: 220, proteinG: 6, carbsG: 4, fatG: 20 });
+const empty = food(3, { name: 'SIN DATOS', calories: null });
+function fixture() {
+  const map = new Map<string, string>();
+  const api: PlateApi = {
+    foods: jest.fn<PlateApi['foods']>().mockResolvedValue({ status: 'ok', data: { foods: [bread, cheese, empty] }, meta } as never),
+    preview: jest.fn<PlateApi['preview']>().mockImplementation(async (s: QuickSelection) => ({ status: 'ok', meta, data: { status: 'preview', selection: s,
+      snapshot: { title: 'MERIENDA', description: null, calories: 197, proteinG: 6.2, carbsG: 25.2, fatG: 7.6, precision: null, contextType: 'food_plate', sourceNote: null },
+      items: s.quantities!.map(q => ({ id: q.itemId, label: 'X', quantity: q.quantity, unit: 'g', calories: 10, proteinG: 1, carbsG: 1, fatG: 1 })) } })),
+    confirm: jest.fn<PlateApi['confirm']>().mockResolvedValue({ status: 'ok', data: { status: 'registered', operation: 'register', date: DATE, resourceId: '41100000-0000-4000-8000-000000000002', updatedAt: '2026-11-20T18:00:00.123456Z' }, meta }),
+    read: jest.fn<PlateApi['read']>().mockImplementation(async d => ({ status: 'ok', data: nutritionFixture(d), meta })),
+  };
+  const c = new PlateController(api, new PlateIntentRepository({ getItem: async k => map.get(k) ?? null, setItem: async (k, v) => { map.set(k, v); }, removeItem: async k => { map.delete(k); } }, 'owner'), () => {});
+  const ui = () => <OwnlevelThemeProvider initialMode="light"><PlateEditor controller={c} state={c.getSnapshot()} /></OwnlevelThemeProvider>;
+  const view = render(ui());
+  c.subscribe(() => view.rerender(ui()));
+  return { c, api, view };
+}
+
+describe('Plato', () => {
+  it('fills the plate from the foods, floats its total, and registers one meal from the review', async () => {
+    const { c, api, view } = fixture();
+    await act(async () => { await c.initialize(); c.open(DATE); });
+    // A food without calories cannot go in (unknown is not zero).
+    expect(view.getByLabelText('Agregar SIN DATOS al plato').props.accessibilityState).toMatchObject({ disabled: true });
+    expect(view.queryByTestId('plate-bar')).toBeNull();
+    fireEvent.press(view.getByLabelText('Agregar PAN LACTAL al plato'));
+    fireEvent.press(view.getByLabelText('Sumar otra porción de PAN LACTAL'));
+    fireEvent.press(view.getByLabelText('Agregar QUESO CREMA al plato'));
+    expect(view.getByTestId('plate-bar')).toBeTruthy();
+    // 2 slices × 65,5 + 100 g × 220/100 = 351 kcal, instantly.
+    expect(view.getByLabelText('Ver el plato: 2 alimentos, 351 kcal')).toBeTruthy();
+    await act(async () => { fireEvent.press(view.getByTestId('plate-bar')); });
+    // Named after the moment it is loaded in; the person can rename it.
+    fireEvent.changeText(view.getByTestId('plate-title'), 'Merienda');
+    fireEvent.changeText(view.getByLabelText('Cantidad de QUESO CREMA'), '30');
+    await waitFor(() => expect(view.getByTestId('plate-total')).toBeTruthy());
+    await act(async () => { fireEvent.press(view.getByText(/Registrar plato · 197 kcal/)); });
+    await waitFor(() => expect(view.queryByTestId('plate-editor')).toBeNull());
+    expect(api.confirm).toHaveBeenCalledWith(expect.objectContaining({ operation: 'register', source: { kind: 'plate', title: 'Merienda', saveToLibrary: false },
+      quantities: [{ itemId: bread.id, quantity: 2, version: bread.version }, { itemId: cheese.id, quantity: 30, version: cheese.version }] }));
+  });
+  it('searches the foods without accents or case and closes keeping the plate', async () => {
+    const { c, view } = fixture();
+    await act(async () => { await c.initialize(); c.open(DATE); });
+    fireEvent.changeText(view.getByLabelText('Buscar en tus alimentos'), 'queso');
+    expect(view.queryByTestId(`plate-food-${bread.id}`)).toBeNull();
+    fireEvent.press(view.getByLabelText('Agregar QUESO CREMA al plato'));
+    act(() => { c.close(); });
+    expect(view.queryByTestId('plate-editor')).toBeNull();
+    await act(async () => { c.open(DATE); });
+    expect(view.getByLabelText('Cantidad de QUESO CREMA').props.value).toBe('100');
+  });
+});

@@ -39,7 +39,7 @@ describe('#479 D1 · Rápido registers exactly once per decision', () => {
     await act(async () => { fireEvent.press(view.getByLabelText('Agregar Pollo al horno')); fireEvent.press(view.getByLabelText('Agregar Café con leche')); });
     await waitFor(() => expect(view.getByLabelText('Pollo al horno agregado')).toBeTruthy());
     expect(quickApi.confirm).toHaveBeenCalledTimes(1);
-    expect(quickApi.confirm.mock.calls[0]![0].source.id).toBe(ID(5));
+    expect(quickApi.confirm.mock.calls[0]![0].source).toMatchObject({ id: ID(5) });
     expect(view.getByLabelText('Agregar Café con leche').props.accessibilityState).toMatchObject({ disabled: false });
   });
   it('pinning, unpinning, reordering, searching and jumping never preview, register or re-read a day; the sheet writes once', async () => {

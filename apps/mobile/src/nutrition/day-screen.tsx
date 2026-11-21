@@ -42,6 +42,8 @@ import { FoodEditor } from './food-editor';
 import { foodQuickOption } from '@/api/nutrition-food';
 import { QuickEditor } from './quick-editor';
 import { useNutritionHomeEntry, type AddEntry } from './home-entry';
+import { usePlateController } from './use-plate-controller';
+import { PlateEditor } from './plate-editor';
 
 function NutritionDayView({ revision, date, today, bottomClearance, onSelect, onServerToday, onAdd, addChoices, addControl, highlightedMeal, removal, onManageFoods, onManageSaved, onConfigure, mealActions, onActivity, onContext, onMetric }: {
   /** Bumped after a confirmed write: the day re-reads in place, so its numbers can move to the new values. */
@@ -136,6 +138,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
   // #479: pinned saved meals of this account, from the same quick-options answer (no request of their own).
   const pins = useQuickPinsController(client, userId, quick?.state ?? null);
   const foods = useFoodController(client, userId);
+  const plate = usePlateController(client, userId, invalidate);
   const quickController=quick?.controller;
   const invalidateQuick=useCallback(()=>{if(quickController)void quickController.loadOptions();},[quickController]);
   const saved=useSavedController(client,userId,invalidateQuick);
@@ -154,15 +157,17 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
   }, [updateToday]);
   const date = selected ?? today;
   const metricEntry = useMetricEntry(writes?.controller, date);
-  const mealNotice = useMealNotice(meals?.controller, quick?.controller, date);
+  const mealNotice = useMealNotice(meals?.controller, quick?.controller, date, plate?.controller);
   const editable = meals?.state.phase === 'idle' && !meals.state.intent && writes?.state.phase === 'idle' && !writes.state.intent
-    && quick?.state.phase === 'idle' && !quick.state.intent && foods?.state.phase === 'idle' && !foods.state.intent && saved?.state.phase==='idle' && !saved.state.intent && config?.state.phase==='idle' && !config.state.intent;
+    && quick?.state.phase === 'idle' && !quick.state.intent && foods?.state.phase === 'idle' && !foods.state.intent && saved?.state.phase==='idle' && !saved.state.intent && config?.state.phase==='idle' && !config.state.intent
+    && plate?.state.phase === 'idle' && !plate.state.intent;
   const showToday = useCallback(() => { updateToday(); setSelected(null); }, [setSelected, updateToday]);
   const openAdd = useCallback((entry: AddEntry) => {
     if (entry === 'manual') meals?.controller.open(today);
     else if (entry === 'food') foods?.controller.open(today);
-    else showNutritionAddMenu({ onManual: () => meals?.controller.open(today), onQuick: () => quick?.controller.open(today), onFood: () => foods?.controller.open(today) });
-  }, [foods, meals, quick, today]);
+    else if (entry === 'plate') plate?.controller.open(today);
+    else showNutritionAddMenu({ onManual: () => meals?.controller.open(today), onQuick: () => quick?.controller.open(today), onFood: () => foods?.controller.open(today), onPlate: () => plate?.controller.open(today) });
+  }, [foods, meals, plate, quick, today]);
   useNutritionHomeEntry({ add: params.add, editable: !!editable, onAdd: openAdd, onShowToday: showToday, quick, quickParam: params.quick, today });
   // Status and recovery messages live in the scrolling content (under "Agregar comida"), never loose over the tab bar.
   const statusBanners = <>
@@ -180,6 +185,9 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
     {foods?.state.message && !foods.state.open ? <View style={styles.header}><AppText accessibilityRole="alert">{foods.state.message}</AppText>
       {foods.state.intent ? <Button label="Revisar intento de catálogo" onPress={() => foods.controller.showRecovery()} /> : null}
       {foods.state.phase === 'blocked' ? <Button label="Comprobar almacenamiento de alimentos" onPress={() => void foods.controller.recover()} /> : null}</View> : null}
+    {plate?.state.message && !plate.state.open ? <View style={styles.header}><AppText accessibilityRole="alert">{plate.state.message}</AppText>
+      {plate.state.intent ? <Button label="Revisar el plato guardado" onPress={() => plate.controller.showRecovery()} /> : null}
+      {plate.state.phase === 'blocked' ? <Button label="Comprobar almacenamiento del plato" onPress={() => void plate.controller.recover()} /> : null}</View> : null}
     {saved?.state.message&&!saved.state.open?<View style={styles.header}><AppText accessibilityRole="alert">{saved.state.message}</AppText>{saved.state.intent?<Button label="Revisar intento de guardadas" onPress={()=>saved.controller.showRecovery()}/>:null}{saved.state.phase==='blocked'?<Button label="Comprobar almacenamiento de guardadas" onPress={()=>void saved.controller.recover()}/>:null}</View>:null}
     {config?.state.message && !config.state.open ? <View style={styles.header}><AppText accessibilityRole="alert">{config.state.message}</AppText>{config.state.intent ? <Button label="Comprobar cambio guardado" onPress={()=>config.controller.showRecovery()} /> : null}{config.state.phase==='blocked'?<Button label="Comprobar cambio" onPress={()=>void config.controller.recover()}/>:null}</View>:null}
   </>;
@@ -188,7 +196,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
     <NutritionDayView key={`${userId}:${date}`} revision={revision} date={date} today={today}
       bottomClearance={showTodayControl ? todayPillHeight + spacing.sm : 0}
       onSelect={setSelected} onServerToday={setToday}
-      addControl={<NutritionAddMenu onManual={editable ? () => meals.controller.open(date) : undefined} onQuick={editable ? () => quick.controller.open(date) : undefined} onFood={editable ? () => foods.controller.open(date) : undefined} />}
+      addControl={<NutritionAddMenu onManual={editable ? () => meals.controller.open(date) : undefined} onQuick={editable ? () => quick.controller.open(date) : undefined} onFood={editable ? () => foods.controller.open(date) : undefined} onPlate={editable ? () => plate.controller.open(date) : undefined} />}
       addChoices={statusBanners}
       highlightedMeal={mealNotice.notice?.meal.id} removal={{ removing: mealNotice.removing, removed: mealNotice.removed }}
       onConfigure={()=>router.push('/settings/stages')}
@@ -207,6 +215,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
       onContext={editable ? (data, field) => { setContextField(field); writes.controller.open('context', data); } : undefined} />
     {quick && !(foods?.state.open && foods.state.mode === 'register') ? <QuickEditor controller={quick.controller} state={quick.state} pins={pins ? { controller: pins.controller, state: pins.state } : null} externalLocked={!editable} onSaved={() => { quick.controller.close(); saved?.controller.open(); }} /> : null}
     {foods && quick ? <FoodEditor controller={foods.controller} state={foods.state} quick={quick} onChoose={food => { quick.controller.open(foods.state.date!, foodQuickOption(food)); foods.controller.registration(); }} /> : null}
+    {plate ? <PlateEditor controller={plate.controller} state={plate.state} externalLocked={!editable && plate.state.phase === 'idle' && !plate.state.intent} /> : null}
     {saved?<SavedEditor controller={saved.controller} state={saved.state}/>:null}
     {writes && metricEntry.entry && writes.state.draft ? <MetricEntrySheet id={metricEntry.entry.id} controller={writes.controller} state={writes.state} onClose={metricEntry.close} /> : null}
     {/* An undo from the notice never shows the full metrics editor; only a write that really needs recovery does. */}

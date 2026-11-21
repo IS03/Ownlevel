@@ -13,7 +13,7 @@ import { HomeBar, HomeSectionTitle, useHomeGutter } from './home-ui';
 import { NutritionSwitchText } from './home-nutrition-switch';
 
 /** Existing Nutrition flows reachable from the "+ Comida" menu. */
-export type HomeMealEntry = 'manual' | 'food' | 'quick';
+export type HomeMealEntry = 'manual' | 'food' | 'quick' | 'plate';
 
 type DayNutrient = 'carbsG' | 'fatG';
 
@@ -88,7 +88,7 @@ export function HomeNutrition({
   return (
     <View style={[styles.band, gutter]} testID={!nutrition ? 'home-nutrition-loading' : 'home-nutrition'}>
       <HomeSectionTitle title="Nutrición">
-        <HomeAddMenu onFood={() => onMealEntry('food')} onManual={() => onMealEntry('manual')} onQuick={() => onMealEntry('quick')} />
+        <HomeAddMenu onFood={() => onMealEntry('food')} onManual={() => onMealEntry('manual')} onPlate={() => onMealEntry('plate')} onQuick={() => onMealEntry('quick')} />
       </HomeSectionTitle>
       <View style={styles.body}>
         {!nutrition ? (

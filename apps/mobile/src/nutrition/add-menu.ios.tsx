@@ -9,7 +9,7 @@ export { showNutritionAddMenu } from './add-menu-actions';
  * The glass and its label are React Native (they scroll with the page); the native menu sits over them, next to the
  * glass rather than inside it, with an empty label of its own (only the touch area): a SwiftUI host inside a scroll trails the page.
  */
-export function NutritionAddMenu({ onManual, onQuick, onFood }: NutritionAddMenuProps) {
+export function NutritionAddMenu({ onManual, onQuick, onFood, onPlate }: NutritionAddMenuProps) {
   const { isDark } = useOwnlevelTheme();
   return <View style={styles.wrap}>
     <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none" style={!onManual && styles.disabled}>
@@ -21,6 +21,7 @@ export function NutritionAddMenu({ onManual, onQuick, onFood }: NutritionAddMenu
         <Button label="A mano" systemImage="square.and.pencil" onPress={onManual} />
         <Button label="Rápido" systemImage="bolt" onPress={onQuick} />
         <Button label="Alimento por cantidad" systemImage="scalemass" onPress={onFood} />
+        <Button label="Plato" systemImage="fork.knife" onPress={onPlate} />
       </Menu>
     </Host>
   </View>;

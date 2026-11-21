@@ -156,7 +156,7 @@ describe('#303 · refreshing with confirmed meals on screen', () => {
     expect(h.view.getByLabelText('Agregar Pollo al horno').props.accessibilityState).toMatchObject({ disabled: false });
     await act(async () => { fireEvent.press(h.view.getByLabelText('Agregar Pollo al horno')); });
     await waitFor(() => expect(h.quickApi.confirm).toHaveBeenCalledTimes(1));
-    expect(h.quickApi.confirm.mock.calls[0]![0].source.id).toBe(ID(5));
+    expect(h.quickApi.confirm.mock.calls[0]![0].source).toMatchObject({ id: ID(5) });
     await h.settle(next, h.good());
   });
   it('a refresh that brings changes updates the rows; the indicator is gone', async () => {
