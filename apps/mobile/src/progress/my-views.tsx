@@ -1,3 +1,4 @@
+import { ChartBar } from './chart-marks';
 import { useCallback } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -68,8 +69,7 @@ function BreakdownBars({ groups, top, ordered }: { groups: { key: string; value:
   const width = Math.max(2, (BAR_W - 2 * (shown.length - 1)) / shown.length);
   return <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.bars}>
     {shown.map(g => <View key={g.key} style={{ width, height: BAR_H, justifyContent: 'flex-end' }}>
-      {g.value !== null && g.value > 0 ? <View style={{ height: Math.max(2, (g.value / high) * BAR_H), borderTopLeftRadius: 1.5, borderTopRightRadius: 1.5,
-        backgroundColor: colors.primary, opacity: g.key === top ? 1 : 0.35 }} /> : null}
+      {g.value !== null && g.value > 0 ? <ChartBar compact height={Math.max(2, (g.value / high) * BAR_H)} color={colors.primary} style={{ opacity: g.key === top ? 1 : 0.35 }} /> : null}
     </View>)}
   </View>;
 }

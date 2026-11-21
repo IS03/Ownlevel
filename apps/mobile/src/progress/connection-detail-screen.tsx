@@ -1,3 +1,4 @@
+import { ChartBar } from './chart-marks';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CONNECTION_KEYS, type ConnectionKey, type ConnectionStory, type ConnectionWeek } from '@/api/progress-connections';
@@ -71,8 +72,7 @@ function WeeklyFood({ story }: { story: ConnectionStory }) {
   const bar = (w: ConnectionWeek | undefined, tone: 'now' | 'before') => !w || w.food === null
     ? <View style={styles.barSlot} />
     : <View style={[styles.barSlot, { justifyContent: 'flex-end' }]}>
-      <View style={{ height: Math.max(2, (BARS * w.food) / high), borderTopLeftRadius: 3, borderTopRightRadius: 3,
-        backgroundColor: tone === 'now' ? colors.primary : colors.textMuted, opacity: tone === 'now' ? 1 : 0.35 }} />
+      <ChartBar height={w.food === 0 ? 1 : Math.max(2, (BARS * w.food) / high)} zero={w.food === 0} color={tone === 'now' ? colors.primary : colors.textMuted} style={{ opacity: tone === 'now' ? 1 : 0.35 }} />
     </View>;
   return <View style={styles.block} testID="connection-weekly-food">
     <View style={styles.chartHead}>

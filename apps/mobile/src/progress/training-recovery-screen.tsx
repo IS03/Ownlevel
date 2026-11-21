@@ -11,6 +11,7 @@ import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { haptics } from '@/platform/haptics';
 import { ProgressScroll } from './progress-scroll';
 import { useProgressRange } from './progress-range-context';
+import { ChartReadout, type ChartReading } from './chart-reading';
 import { TrainingTimingColumns } from './training-times-chart';
 import { timeNumber } from './training-times-model';
 
@@ -20,6 +21,8 @@ type Metric = typeof METRICS[number]['value'];
 const initial = (): RecoverySelection => ({ scope: 'all', routine: null, bin: null, offset: 0 });
 const comparable = (group: RecoveryGroup) => group.performance.improved + group.performance.stable + group.performance.declined;
 const metricValue = (group: RecoveryGroup, metric: Metric) => metric === 'improvements' ? comparable(group) ? 100 * group.performance.improved / comparable(group) : null : group[metric].median;
+const metricFigure = (g: RecoveryGroup, metric: Metric) => metric === 'improvements' ? comparable(g) ? `${g.performance.improved} de ${comparable(g)}` : '—' : g[metric].median === null ? '—' : `${timeNumber(g[metric].median!)} de 5`;
+const metricDetail = (g: RecoveryGroup, metric: Metric) => metric === 'improvements' ? `${comparable(g)} comparaciones válidas · ${g.sessions} sesiones` : `Mediana · ${g[metric].n} respuestas previas · ${g.sessions} sesiones`;
 const metricSay = (group: RecoveryGroup, metric: Metric) => metric === 'improvements' ? comparable(group) ? `${group.performance.improved} de ${comparable(group)} comparaciones mejoraron` : 'Sin comparaciones suficientes' : group[metric].median === null ? 'Sin respuestas previas utilizables' : `${timeNumber(group[metric].median!)} de 5, mediana de ${group[metric].n} respuestas previas`;
 /** Shares of improvements are small: the bars go up to the highest band, so the differences between bands can be seen. */
 const improvementScale = (groups: readonly RecoveryGroup[]) => Math.max(1, ...groups.map(g => metricValue(g, 'improvements') ?? 0));
@@ -52,14 +55,13 @@ function RecoveryReader({ query }: { query: ProgressQuery }) {
     <GlassSurface style={styles.controls}><LinkRow label="Rutina" value={data.routines.find(r => r.id === selection.routine)?.name ?? 'Todas'} onPress={() => { haptics.selection(); setSheet('routine'); }} testID="recovery-routine" /></GlassSurface>
     <AppText muted numeric variant="footnote">{data.coverage.paired} de {data.coverage.sessions} sesiones con intervalo utilizable</AppText>
     <ExerciseSegmented accessibilityLabel="Qué comparar con el intervalo" options={METRICS} value={metric} onChange={next => { haptics.selection(); setMetric(next); }} />
-    <View style={styles.block} testID="recovery-reading"><Heading level={2}>{selection.bin === null ? 'Todos los intervalos' : RECOVERY_BINS[selection.bin]!.label}</Heading>
-      <AppText numeric variant="headline">{metricSay(group, metric)}</AppText>
-      <AppText muted numeric variant="footnote">{group.sessions} sesiones en esta selección</AppText>
-    </View>
+    <ChartReadout testID="recovery-reading" reading={{ title: selection.bin === null ? 'Todos los intervalos' : RECOVERY_BINS[selection.bin]!.label,
+      value: metricFigure(group, metric), detail: metricDetail(group, metric) }}
+      candidates={data.groups.map((g, i): ChartReading => ({ title: RECOVERY_BINS[i]!.label, value: metricFigure(g, metric), detail: metricDetail(g, metric) }))}
+      onClear={selection.bin !== null ? () => change({ bin: null }) : undefined} />
     <TrainingTimingColumns testID="recovery-chart" prefix="recovery-bin" label="Intervalos entre el final anterior y el inicio siguiente" caption="Horas transcurridas · no certifican recuperación física"
       maximum={metric === 'improvements' ? improvementScale(data.groups) : 5} selected={selection.bin} onSelect={bin => change({ bin })}
       items={data.groups.map((g, i) => ({ label: ['<24 h', '24–48 h', '48–72 h', '3–7 d', '7 d +'][i]!, value: metricValue(g, metric), spoken: `${RECOVERY_BINS[i]!.label}. ${metricSay(g, metric)}. ${g.sessions} sesiones.` }))} />
-    {selection.bin !== null ? <LinkRow kind="back" label="Ver todos los intervalos" onPress={() => change({ bin: null })} /> : null}
     <View style={styles.block}>
       <Heading level={2}>Cómo llegaste y cómo te fue</Heading>
       <View style={[styles.summary, fontScale > 1.3 && styles.stacked]}>

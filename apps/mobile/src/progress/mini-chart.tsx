@@ -1,3 +1,4 @@
+import { ChartBar } from './chart-marks';
 import { StyleSheet, View } from 'react-native';
 import type { ProgressSparkPoint } from '@/api/progress';
 import { useOwnlevelTheme } from '@/design-system';
@@ -43,7 +44,7 @@ export function MiniChart({ current, reference, mode, testID }: { current: Progr
         const opacity = m.tone === 'current' ? 1 : 0.4;
         return <View key={m.key} testID={testID ? `${testID}-${m.key}-${m.kind}` : undefined} style={{ width, height: H, justifyContent: 'flex-end' }}>
           {m.kind === 'zero' ? <View style={{ height: 1, backgroundColor: color, opacity: opacity * 0.5 }} />
-            : m.kind === 'mark' && mode === 'bars' ? <View style={{ height: Math.max(2, m.height * H), backgroundColor: color, opacity, borderTopLeftRadius: 1.5, borderTopRightRadius: 1.5 }} />
+            : m.kind === 'mark' && mode === 'bars' ? <ChartBar compact height={Math.max(2, m.height * H)} color={color} style={{ opacity }} />
             : m.kind === 'mark' ? <View style={{ width: dot, height: dot, borderRadius: dot / 2, alignSelf: 'center', marginBottom: m.height * (H - dot), backgroundColor: color, opacity }} />
             : null}
         </View>;

@@ -1,3 +1,6 @@
+import { ChartBar, ChartSelectionRule } from './chart-marks';
+import { ChartReadout, ChartExplanation, ChartOpenAction, type ChartReading } from './chart-reading';
+import { haptics } from '@/platform/haptics';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -11,7 +14,7 @@ import {
   type ProgressExerciseCharts,
   type ProgressExercisePoint,
 } from '@/api/progress';
-import { LinkRow,
+import {
   AppIcon,
   AppText,
   Button,
@@ -164,6 +167,12 @@ function ExerciseChart({ data, measure, selected, onSelect }: { data: ProgressTr
         {compareOn ? ` · ${compareText} en gris` : ''}
       </AppText>
       {!values.length ? <AppText muted>Sin valores válidos para {measure.label.toLocaleLowerCase('es-AR')} en los períodos elegidos.</AppText> : null}
+      <ChartReadout testID="exercise-point-inspection" reading={{ title: selectedSlot ? fullDate(selectedSlot.date) : 'Período elegido',
+        value: selectedSlot ? selectedSlot.point ? pointText(measure, selectedSlot.point) : 'Sin dato' : 'Tocá un punto', placeholder: !selectedSlot,
+        detail: `${measure.label}${selectedSlot && !selectedSlot.point ? ' · No equivale a cero' : ''}${selectedSlot?.reference ? ' · Período de comparación' : ''}` }}
+        candidates={slots.map((slot): ChartReading => ({ title: fullDate(slot.date), value: slot.point ? pointText(measure, slot.point) : 'Sin dato', detail: `${measure.label}${!slot.point ? ' · No equivale a cero' : ''}${slot.reference ? ' · Período de comparación' : ''}` }))}
+        accessibilityLabel={selectedSlot ? `${fullDate(selectedSlot.date)}, ${measure.label}, ${selectedSlot.point ? pointText(measure, selectedSlot.point) : 'Sin dato'}, ${frame}` : 'Tocá un punto para consultar fecha, valor y referencia sin salir del gráfico.'}
+        onClear={selectedSlot ? () => onSelect(null) : undefined} />
       <View onLayout={e => setWidth(e.nativeEvent.layout.width)}>
         <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ minWidth: '100%' }} accessibilityLabel={`Evolución de ${measure.label.toLocaleLowerCase('es-AR')}`}>
           <View testID="exercise-trend-chart" style={[styles.plot, { width: Math.max(width, slots.length * 56 * Math.max(1, fontScale)), minHeight: 144 + 32 * Math.max(1, fontScale) }]} >
@@ -178,6 +187,7 @@ function ExerciseChart({ data, measure, selected, onSelect }: { data: ProgressTr
               const mark = (
                 <>
                   <View style={styles.column} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                    <ChartSelectionRule selected={isSelected} />
                     {p ? (
                       level ? (
                         <>
@@ -192,8 +202,8 @@ function ExerciseChart({ data, measure, selected, onSelect }: { data: ProgressTr
                             style={{ width: 8, height: 8, borderRadius: radius.full, backgroundColor: color, opacity }} />
                         </>
                       ) : (
-                        <Moving to={height * 144} reduced={reduced} prop="height"
-                          style={{ width: '60%', maxWidth: 32, backgroundColor: color, opacity, borderTopLeftRadius: 2, borderTopRightRadius: 2 }} />
+                        <ChartBar height={p.value === 0 ? 1 : Math.max(2, height * 144)} zero={p.value === 0} color={color}
+                          style={{ width: '60%', maxWidth: 32, opacity }} />
                       )
                     ) : null}
                   </View>
@@ -212,12 +222,12 @@ function ExerciseChart({ data, measure, selected, onSelect }: { data: ProgressTr
                 <Pressable
                   key={key}
                   testID={`exercise-${p ? 'point' : 'gap'}-${key}`}
-                  style={[styles.chartSlot, { minHeight: 144 + 32 * Math.max(1, fontScale) }, isSelected && { backgroundColor: colors.surfaceRaised, borderRadius: radius.inner }]}
+                  style={[styles.chartSlot, { minHeight: 144 + 32 * Math.max(1, fontScale) }]}
                   accessibilityRole="button"
                   accessibilityState={{ selected: isSelected }}
                   accessibilityLabel={`${fullDate(slot.date)}, ${measure.label}, ${p ? pointText(measure, p) : 'sin dato'}${slot.reference ? `, período de comparación ${compareText}` : ', período elegido'}`}
                   accessibilityHint="Muestra fecha, valor y referencia. Después podés abrir la sesión original."
-                  onPress={() => onSelect(isSelected ? null : { sessionId: slot.sessionId, reference: slot.reference })}
+                  onPress={() => { haptics.selection(); onSelect(isSelected ? null : { sessionId: slot.sessionId, reference: slot.reference }); }}
                 >
                   {mark}
                 </Pressable>
@@ -226,22 +236,17 @@ function ExerciseChart({ data, measure, selected, onSelect }: { data: ProgressTr
           </View>
         </ScrollView>
       </View>
-      <View testID="exercise-point-inspection" style={styles.inspection}>
-        <View accessible accessibilityLiveRegion="polite" accessibilityLabel={selectedSlot ? `${fullDate(selectedSlot.date)}, ${measure.label}, ${selectedSlot.point ? pointText(measure, selectedSlot.point) : 'Sin dato'}, ${frame}` : 'Tocá un punto para consultar fecha, valor y referencia sin salir del gráfico.'}>
-          <AppText variant="headline">{selectedSlot ? fullDate(selectedSlot.date) : 'Tocá un punto'}</AppText>
-          <AppText numeric>{selectedSlot ? `${measure.label} · ${selectedSlot.point ? pointText(measure, selectedSlot.point) : 'Sin dato'}` : 'Consultá fecha, valor y referencia sin salir del gráfico.'}</AppText>
-          {selectedSlot ? <AppText muted variant="caption">{frame}</AppText> : null}
-        </View>
-        {selected && !selectedSlot ? <AppText muted variant="caption">La sesión seleccionada ya no está en esta lectura. Elegí otro punto.</AppText> : null}
+      {selected && !selectedSlot ? <AppText muted variant="caption">La sesión seleccionada ya no está en esta lectura. Elegí otro punto.</AppText> : null}
+      <ChartExplanation label="Referencia y contexto">
         {selectedSlot ? <>
           {!selectedSlot.point ? <AppText muted variant="caption">La sesión existe, pero no tiene un valor utilizable para esta medida. No equivale a cero; podés revisar las series originales.</AppText> : null}
           {selectedSlot.point?.best && measure.derived ? <AppText numeric muted variant="caption">Serie de origen: {formatValue(selectedSlot.point.best.weightKg, 'kg')} × {formatValue(selectedSlot.point.best.reps, 'reps')}.</AppText> : null}
           {!selectedSlot.reference ? <AppText numeric muted variant="caption">{comparisonPoint ? `Referencia de lectura: ${fullDate(comparisonPoint.date)} · ${pointText(measure, comparisonPoint)}. ${compareOn ? 'Última sesión de referencia con una mejor serie registrada.' : 'Primera sesión con dato de esta medida en el período.'}` : 'Sin valor utilizable en la sesión de referencia.'} Esta referencia describe los valores del gráfico; no es una nueva clasificación de rendimiento.</AppText> : <AppText muted variant="caption">Registro del período de comparación, separado del período elegido.</AppText>}
-          <LinkRow label="Ver sesión y series originales" onPress={() => router.push(exerciseSessionHref(data.exercise.id, selectedSlot.sessionId))} />
         </> : null}
         <AppText muted variant="caption">{interpretation}</AppText>
         <AppText muted variant="caption">{measure.points.length} de {data.sessions.length} sesiones del período elegido con dato para esta medida{compareOn ? `. Comparación: ${reference?.length ?? 0} sesiones con dato` : ''}.</AppText>
-      </View>
+      </ChartExplanation>
+      <ChartOpenAction label="Ver sesión y series originales" onPress={selectedSlot ? () => router.push(exerciseSessionHref(data.exercise.id, selectedSlot.sessionId)) : undefined} />
       {measure.points.length === 1 ? (
         <AppText muted variant="caption">
           Una sola sesión: todavía no hay tendencia.

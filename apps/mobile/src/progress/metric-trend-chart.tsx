@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { ProgressMetrics } from '@/api/progress';
-import { LinkRow, AppText, spacing } from '@/design-system';
-import { PeriodChart } from './period-chart';
+import { AppText, spacing } from '@/design-system';
+import { ChartReadout, ChartOpenAction, ChartExplanation, type ChartReading } from './chart-reading';
+import { FittedChart } from './fitted-chart';
 import { formatValue } from './progress-format';
 import { shortRange } from './progress-range';
 
@@ -34,20 +35,28 @@ export function MetricTrendChart({ data, inspection, onOpen }: { data: ProgressM
   };
   const title = selected?.range ?? 'Tocá una barra';
   const detail = selected?.detail ?? 'Tocá una barra para ver fecha y valor.';
+  const reading = (point: typeof points[number]): ChartReading => ({
+    title: shortRange({ start: point.key, end: point.end }, data.today),
+    value: point.value === null ? 'Sin dato' : formatValue(point.value, m.unit, m.valueType),
+    detail: `${bucket === 'day' ? 'Registro diario' : bucket === 'week' ? 'Promedio semanal' : 'Promedio mensual'} · ${point.samples} ${point.samples === 1 ? 'día con dato' : 'días con dato'}${point.key <= data.today && point.end >= data.today ? ' · Hoy sigue en curso' : ''}`,
+  });
+  const overview: ChartReading = { title: 'Período completo', value: data.summary?.average == null ? '—' : formatValue(data.summary.average, m.unit, m.valueType), detail: data.summary ? `Promedio diario · ${data.summary.registeredDays} días con dato` : 'Tocá una barra para ver fecha y valor.' };
   return <View style={styles.root}>
+    <ChartReadout testID="metric-trend-readout" reading={selected ? reading(selected) : overview}
+      candidates={[overview, ...points.map(reading)]} accessibilityLabel={selected ? `${title}, ${detail}` : `${title}, ${overview.title}, ${overview.value}, ${overview.detail}`}
+      onClear={selected ? () => select(selected.key) : undefined} />
     <View accessibilityLabel="Gráfico de métricas">
-      <PeriodChart testID="metric-trend-chart" mode="bars" target={m.currentTarget} points={points}
-        inspection={{ selectedKey: selected?.key ?? null, onSelect: select }} />
+      <FittedChart testID="metric-trend-chart" label="Gráfico de métricas" mode="bars" currentTarget={m.currentTarget} valueType={m.valueType} unit={m.unit ?? undefined}
+        range={data.period} points={points.map(p => ({ ...p, start: p.key, kind: p.value === null ? 'gap' : p.value === 0 ? 'zero' : 'mark' }))}
+        selectedKey={selected?.key ?? null} onSelect={select} />
     </View>
-    <View testID="metric-trend-readout" accessible accessibilityLabel={`${title}, ${detail}`} accessibilityLiveRegion="polite">
-      {selected ? <AppText numeric variant="headline">{title} · {detail}</AppText> : <AppText muted variant="footnote">{detail}</AppText>}
-    </View>
-    {selected ? <View style={styles.root} testID="metric-trend-original">
-      <AppText numeric muted variant="caption">{selected.samples} {selected.samples === 1 ? 'día con dato' : 'días con dato'} en esta barra.</AppText>
-      {selected.key <= data.today && selected.end >= data.today ? <AppText muted variant="caption">Hoy sigue en curso; no es un día terminado. Consultá su registro diario para ver lo disponible.</AppText> : null}
-      {bucket !== 'day' ? <AppText muted variant="caption">Este promedio no es un registro diario. El agregado no identifica qué fechas aportaron; podés recorrer los días del intervalo.</AppText> : null}
-      {onOpen ? <LinkRow label={bucket === 'day' ? 'Abrir registro diario original' : 'Recorrer días del intervalo'} onPress={() => onOpen(selected.key, selected.end)} /> : null}
-    </View> : null}
+    {m.currentTarget !== null ? <AppText muted variant="caption">Línea punteada · objetivo actual {formatValue(m.currentTarget, m.unit, m.valueType)}</AppText> : null}
+    {onOpen ? <ChartOpenAction label={bucket === 'day' ? 'Abrir registro diario original' : 'Recorrer días del intervalo'}
+      onPress={selected ? () => onOpen(selected.key, selected.end) : undefined} /> : null}
+    <ChartExplanation>
+      <AppText muted variant="footnote">Un día sin registro no cuenta como cero. El objetivo de la línea es el actual, no el histórico.</AppText>
+      {bucket !== 'day' ? <AppText muted variant="footnote">Este promedio no es un registro diario. El agregado no identifica qué fechas aportaron; podés recorrer los días del intervalo.</AppText> : null}
+    </ChartExplanation>
   </View>;
 }
 

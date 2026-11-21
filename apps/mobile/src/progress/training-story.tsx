@@ -1,3 +1,4 @@
+import { ChartBar } from './chart-marks';
 import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -189,7 +190,7 @@ export function TrainingStory({ data, chart }: { data: ProgressTraining; chart: 
     <View style={styles.section} testID="training-times-entry"><SectionTitle description="Cuándo entrenás, cuánto dura y cómo llegás.">Tus horarios</SectionTitle>
       {data.times ? <View style={styles.stack} accessible accessibilityLabel={`${data.times.timed} sesiones con inicio utilizable. Distribución por hora: ${data.times.bins.map((n, i) => `${i * 2} a ${(i + 1) * 2} horas, ${n}`).join('; ')}. ${data.times.excluded} sesiones excluidas.`}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: spacing.xs, height: 48 }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-          {data.times.bins.map((n, i) => <View key={i} style={{ flex: 1, height: n ? 48 * n / Math.max(1, ...data.times!.bins) : 1, backgroundColor: n ? colors.primary : colors.border }} />)}
+          {data.times.bins.map((n, i) => <View key={i} style={{ flex: 1, height: 48, justifyContent: 'flex-end' }}><ChartBar compact height={n ? 48 * n / Math.max(1, ...data.times!.bins) : 1} zero={n === 0} /></View>)}
         </View>
         <View style={styles.between}><AppText muted variant="caption">00 h</AppText><AppText muted numeric variant="caption">{data.times.timed} sesiones · inicio guardado</AppText><AppText muted variant="caption">24 h</AppText></View>
       </View> : null}

@@ -1,3 +1,4 @@
+import { ChartBar, ChartSelectionRule } from '@/progress/chart-marks';
 import { useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
@@ -62,10 +63,11 @@ export function SessionChart({ sessions, selected, onSelect, onEarlier, loadingE
         onPress={() => { haptics.selection(); onSelect(session); }} testID={`comparisons-strip-${session.sessionId}`}
         style={({ pressed }) => [styles.barSlot, pressedStyle(pressed, reduced)]}>
         <View style={styles.barArea}>
+          <ChartSelectionRule selected={on} />
           <View style={[styles.zero, { backgroundColor: colors.border }]} />
           {pct === null ? <View style={[styles.bar, styles.none, { top: CHART_MID - 8, height: 16, borderColor: colors.textMuted }]} />
             : pct === 0 ? <View style={[styles.bar, { top: CHART_MID - 1.5, height: 3, backgroundColor: colors.textMuted }]} />
-            : <View style={[styles.bar, { top: pct > 0 ? CHART_MID - height : CHART_MID, height, backgroundColor: colors.primary, opacity: on ? 1 : 0.4 }]} />}
+            : <ChartBar height={height} negative={pct < 0} style={[styles.bar, { top: pct > 0 ? CHART_MID - height : CHART_MID, opacity: on ? 1 : 0.4 }]} />}
         </View>
         <View style={[styles.dateTag, on && { backgroundColor: colors.brandSubtle }]}>
           <AppText variant="caption" numeric numberOfLines={1} style={{ color: on ? colors.primary : colors.textMuted, fontWeight: on ? '700' : '400' }}>{label ? shortDay(session.date) : ' '}</AppText>

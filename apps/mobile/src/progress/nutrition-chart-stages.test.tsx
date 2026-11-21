@@ -1,6 +1,6 @@
 import { pressFittedMark } from './fitted-chart.test-helper';
 import { useState } from 'react';
-import { act, fireEvent, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render as renderNative, within } from '@testing-library/react-native';
 import { describe, expect, it, jest } from '@jest/globals';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -29,6 +29,11 @@ const tree = (report: NutritionReport, reference?: NutritionReport, mode: 'light
   <OwnlevelThemeProvider initialMode={mode}><ProgressRangeProvider initialToday="2026-10-04" initialState={{ unit: 'month', anchor: '2026-10-04', custom: null, compare: reference ? { kind: 'previous' } : { kind: 'none' } }}>
     <Harness report={report} reference={reference} />
   </ProgressRangeProvider></OwnlevelThemeProvider></SafeAreaProvider>;
+const render = (...args: Parameters<typeof renderNative>) => {
+  const view = renderNative(...args);
+  fireEvent.press(view.getByRole('button', { name: 'Detalle del dato' }));
+  return view;
+};
 const flush = () => act(async () => {});
 const withStages = (r: NutritionReport, stage: (date: string) => string | null) => { r.days = r.days.map(d => ({ ...d, goalStage: stage(d.date) })); return r; };
 const nutrients = (d: ReportDailyRow, calories: number | null) => ({ ...d.nutrients, calories: calories === null ? { value: null, knownMeals: 0, missingMeals: 1, status: 'unknown' as const } : { value: calories, knownMeals: 1, missingMeals: 0, status: 'complete' as const } });

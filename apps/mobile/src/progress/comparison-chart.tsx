@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import type { ProgressSpark, ProgressSparkPoint } from '@/api/progress';
 import { AppText, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
+import { ChartBar, ChartSelectionRule } from './chart-marks';
+import { ChartReadout, type ChartReading } from './chart-reading';
 import { haptics } from '@/platform/haptics';
 import { type DateRange, daysBetween, shortRange } from './progress-range';
 import { nutritionValue } from './nutrition-values';
@@ -35,7 +37,13 @@ export function ComparisonChart({ spark, current, reference, mode, unit, testID,
   const value = (p: ProgressSparkPoint) => p.value === null ? 'Sin dato' : unit === 'kcal' ? nutritionValue(p.value, 'kcal') : formatValue(p.value, unit, unit === 'series' ? 'integer' : 'decimal');
   if (!count) return null;
   const plotHeight = brandTokens.layout.minTouch * 2;
+  const read = (p: ProgressSparkPoint, lane: typeof lanes[number]): ChartReading => ({ title: `${lane.label} · ${shortRange(p, current.end)}`, value: value(p),
+    detail: mode === 'dots' ? 'Último registro del intervalo' : unit === 'series' ? 'Total del intervalo' : 'Promedio por día utilizado del intervalo' });
+  const overview: ChartReading = { title: 'Comparación de períodos', value: 'Tocá una barra', detail: 'Consultá su intervalo y valor.', placeholder: true };
+
   return <View testID={testID} style={styles.chart} onLayout={e => setWidth(e.nativeEvent.layout.width)}>
+    <ChartReadout testID={`${testID}-readout`} reading={selected ? read(selected, selected.lane) : overview}
+      candidates={[overview, ...lanes.flatMap(l => l.points.map(p => read(p, l)))]} onClear={selected ? () => onSelect(null) : undefined} />
     {Number.isFinite(low) && Number.isFinite(high) ? <AppText muted numeric variant="caption">Escala compartida · {formatValue(low, unit)} a {formatValue(high, unit)}</AppText> : null}
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ width: plotWidth }}>
       <View style={{ width: plotWidth, gap: spacing.md }}>
@@ -50,9 +58,11 @@ export function ComparisonChart({ spark, current, reference, mode, unit, testID,
               return <Pressable key={key} testID={`${testID}-${lane.key}-${p.start}-${p.value === null ? 'missing' : p.value === 0 ? 'zero' : 'mark'}`}
                 accessibilityRole="button" accessibilityLabel={`${lane.label}, ${shortRange(p, current.end)}: ${value(p)}`} accessibilityState={{ selected: key === selection }}
                 onPress={() => { haptics.selection(); onSelect(key === selection ? null : key); }}
-                style={[styles.target, { left, height: plotHeight }, key === selection && { backgroundColor: colors.surfaceRaised }]}>
+                style={[styles.target, { left, height: plotHeight }]}>
+                <ChartSelectionRule selected={key === selection} />
                 {p.value === null ? null : mode === 'dots' ? <View style={[styles.dot, { bottom: spacing.xs + y * (plotHeight - spacing.lg), backgroundColor: lane.color }]} />
-                  : <View style={[styles.bar, { height: p.value === 0 ? StyleSheet.hairlineWidth : Math.max(StyleSheet.hairlineWidth, y * (plotHeight - spacing.xs)), backgroundColor: lane.color }]} />}
+                  : <ChartBar height={p.value === 0 ? 1 : Math.max(1, Math.abs(position(p.value) - position(0)) * (plotHeight - spacing.xs))} zero={p.value === 0} negative={p.value < 0} color={lane.color}
+                    style={{ position: 'absolute', bottom: Math.min(position(0), position(p.value)) * (plotHeight - spacing.xs), width: spacing.xl }} />}
               </Pressable>;
             })}
             {!lane.points.some(p => p.value !== null) ? <AppText muted variant="footnote">{lane.key === 'reference' && spark.reference === null ? 'Serie de referencia no disponible' : 'Sin datos en este período'}</AppText> : null}
@@ -60,11 +70,7 @@ export function ComparisonChart({ spark, current, reference, mode, unit, testID,
         </View>)}
       </View>
     </ScrollView>
-    {selected ? <View style={styles.readout} accessibilityLiveRegion="polite" accessible accessibilityLabel={`${selected.lane.label}, ${shortRange(selected, current.end)}: ${value(selected)}`}>
-      <AppText muted variant="caption">{selected.lane.label} · {shortRange(selected, current.end)}</AppText>
-      <AppText numeric variant="headline">{value(selected)}</AppText>
-      <AppText muted variant="caption">{mode === 'dots' ? 'Último registro del intervalo' : unit === 'series' ? 'Total del intervalo' : 'Promedio por día utilizado del intervalo'}</AppText>
-    </View> : <AppText muted variant="caption">Tocá un punto para ver su intervalo y valor. Los huecos son datos faltantes.</AppText>}
+
   </View>;
 }
 const styles = StyleSheet.create({
