@@ -10,6 +10,7 @@ import { AppSheet, AppText, Button, GlassSurface, Heading, InlineUnavailable, Li
 import { haptics } from '@/platform/haptics';
 import { ProgressScroll } from './progress-scroll';
 import { useProgressRange } from './progress-range-context';
+import { ChartReadout, type ChartReading } from './chart-reading';
 import { TrainingTimesChart } from './training-times-chart';
 import { comparableTimes, TIME_METRICS, timeAt, timeMetricCount, timeMetricLabel, timeMetricText, timeNumber, timeRange } from './training-times-model';
 
@@ -61,13 +62,12 @@ function TimingReader({ query }: { query: ProgressQuery }) {
     </View> : null}
     {metric === 'load' && !execution ? <View style={styles.block}><Heading level={2}>Una carga, en su contexto</Heading><AppText muted>Elegí un ejercicio y su forma de hacerlo. Los kilos de ejercicios distintos no se mezclan.</AppText>
       <Button label="Elegir ejercicio" variant="secondary" onPress={() => setSheet('execution')} /></View> : <>
-      <View style={styles.block} testID="training-time-reading">
-        <AppText muted variant="subheadline">{selection.bin === null ? 'Todo el día' : timeRange(group)}</AppText>
-        <AppText variant="title1" numeric>{timeMetricText(group, metric, unit)}</AppText>
-        <AppText muted variant="footnote" numeric>{timeMetricCount(group, metric)} {metric === 'improvements' ? 'comparaciones válidas' : 'sesiones con este dato'} · {group.sessions} sesiones en la selección</AppText>
-      </View>
+      <ChartReadout testID="training-time-reading" reading={{ title: selection.bin === null ? 'Todo el día' : timeRange(group), value: timeMetricText(group, metric, unit),
+        detail: `${timeMetricCount(group, metric)} ${metric === 'improvements' ? 'comparaciones válidas' : 'sesiones con este dato'} · ${group.sessions} sesiones en la selección` }}
+        candidates={[data.total, ...data.bins].map((g): ChartReading => ({ title: timeRange(g), value: timeMetricText(g, metric, unit),
+          detail: `${timeMetricCount(g, metric)} ${metric === 'improvements' ? 'comparaciones válidas' : 'sesiones con este dato'} · ${g.sessions} sesiones en la selección` }))}
+        onClear={selection.bin !== null ? () => setFilter({ bin: null }) : undefined} />
       <TrainingTimesChart bins={data.bins} metric={metric} selected={selection.bin} unit={unit} onSelect={bin => setFilter({ bin })} />
-      {selection.bin !== null ? <Button label="Ver todos los horarios" variant="quiet" onPress={() => setFilter({ bin: null })} /> : null}
       <MetricDetail data={data} metric={metric} selected={selection.bin} />
       <View style={styles.block}><Heading level={2}>Por franja</Heading>
         {data.bands.map((band, i) => <View key={band.fromMinute} style={[styles.band, fontScale > 1.3 && styles.stacked]} accessible accessibilityLabel={`${BAND_LABELS[i]}, ${timeRange(band)}. ${timeMetricText(band, metric, unit)}. ${timeMetricCount(band, metric)} registros utilizados.`}>

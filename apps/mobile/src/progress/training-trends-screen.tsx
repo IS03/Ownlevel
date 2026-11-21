@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { useCallback, useState, type ReactNode } from 'react';
+import { ChartBar, ChartSelectionRule } from './chart-marks';
+import { ChartReadout, ChartOpenAction, type ChartReading } from './chart-reading';
+import { haptics } from '@/platform/haptics';
+import { shortRange } from './progress-range';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -9,7 +12,7 @@ import {
   progressRequestKey,
   type ProgressTraining,
 } from '@/api/progress';
-import { LinkRow,
+import {
   AppIcon,
   AppText,
   Button,
@@ -21,7 +24,6 @@ import { LinkRow,
   brandTokens,
   spacing,
   useOwnlevelTheme,
-  useReduceMotion,
 } from '@/design-system';
 import { ProgressScroll } from './progress-scroll';
 import { TrainingStory, TrainingDisclosure, hasTrainingBlocks } from './training-story';
@@ -86,21 +88,8 @@ function FlatRow({
     </View>
   );
 }
-/** A bar that animates to its height (300 ms, IDENTIDAD.md § Movimiento); with Reduce Motion it just changes. */
-function GrowingBar({ height, zero, soft, reduced, testID }: { height: number; zero: boolean; soft: boolean; reduced: boolean; testID: string }) {
-  const { colors } = useOwnlevelTheme();
-  const h = useSharedValue(height);
-  useEffect(() => { h.value = reduced ? height : withTiming(height, { duration: brandTokens.motion.duration.base, easing: Easing.out(Easing.cubic) }); }, [h, height, reduced]);
-  const style = useAnimatedStyle(() => ({ height: h.value }));
-  return <Animated.View testID={testID} style={[{
-    width: '60%', maxWidth: brandTokens.space.xxl, alignSelf: 'center', borderTopLeftRadius: zero ? 0 : 3, borderTopRightRadius: zero ? 0 : 3,
-    backgroundColor: zero ? colors.border : colors.primary,
-    // Single series in champagne (IDENTIDAD.md § Gráficos); the bucket still in course is soft.
-    opacity: zero || !soft ? 1 : 0.4,
-  }, style]} />;
-}
 function TrainingChart({ data, inspection, onInspect }: { data: ProgressTraining; inspection: ChartInspection; onInspect: (next: ChartInspection) => void }) {
-  const router = useRouter(), reduced = useReduceMotion(), { colors } = useOwnlevelTheme();
+  const router = useRouter();
   const { fontScale } = useWindowDimensions();
   const [width, setWidth] = useState(300);
   const { metric } = inspection;
@@ -112,12 +101,20 @@ function TrainingChart({ data, inspection, onInspect }: { data: ProgressTraining
   const Selector = fontScale > 1.3 ? ChipGroup : ExerciseSegmented;
   // Same temporal buckets; only their drawing width changes. Never fill a missing interval.
   const slot = Math.max(brandTokens.layout.minTouch, (brandTokens.layout.minTouch + brandTokens.space.lg) * Math.max(1, fontScale));
+  const read = (p: ProgressTraining['series'][number]): ChartReading => ({
+    title: p.start === p.end ? fullDate(p.start) : shortRange(p, data.today), value: shown(p[metric]),
+    detail: `${plural(p.sessions, 'sesión', 'sesiones')} · Total del intervalo${p.start <= data.today && p.end >= data.today ? ' · En curso' : ''}`,
+  });
+  const overview: ChartReading = { title: 'Período completo', value: shown(data.summary[metric]), detail: inspection.bucket ? 'El intervalo seleccionado ya no está disponible.' : `${SERIES_LABELS[metric]} por ${bucket} · Tocá una barra para consultar` };
+
   return <View style={styles.section}>
     <Heading level={2}>Evolución</Heading>
     <Selector accessibilityLabel="Medida del gráfico" value={metric}
       options={(Object.keys(SERIES_LABELS) as SeriesMetric[]).map(value => ({ value, label: SERIES_LABELS[value] }))}
       onChange={metric => onInspect({ ...inspection, metric })} />
     <AppText muted variant="footnote">Actividad registrada · no mide ganancia muscular ni rendimiento.</AppText>
+    <ChartReadout testID={selected ? "training-bucket-inspection" : "training-bucket-overview"} reading={selected ? read(selected) : overview}
+      candidates={[overview, ...data.series.map(read)]} accessibilityLabel={selected ? `${fullDate(selected.start)} – ${fullDate(selected.end)}, ${shown(selected[metric])}, ${read(selected).detail}` : undefined} onClear={selected ? () => onInspect({ metric, bucket: null }) : undefined} />
     <View onLayout={event => setWidth(event.nativeEvent.layout.width)}>
       <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} style={styles.chartScroll}
         contentContainerStyle={styles.chartContent} accessibilityLabel={`Actividad: ${SERIES_LABELS[metric].toLocaleLowerCase('es-AR')} por ${bucket}`}>
@@ -129,11 +126,12 @@ function TrainingChart({ data, inspection, onInspect }: { data: ProgressTraining
             return <Pressable key={`${p.start}:${p.end}`} testID={`training-bucket-${p.start}`} accessibilityRole="button"
               accessibilityLabel={`${range}, ${shown(value)}${current ? ', en curso' : ''}`}
               accessibilityState={{ selected: isSelected }} accessibilityHint="Inspecciona el valor y su intervalo sin abrir otra pantalla."
-              onPress={() => onInspect({ metric, bucket: isSelected ? null : { start: p.start, end: p.end } })}
+              onPress={() => { haptics.selection(); onInspect({ metric, bucket: isSelected ? null : { start: p.start, end: p.end } }); }}
               style={[styles.barColumn, { minWidth: slot }]}>
-              <View style={[styles.plot, isSelected && { backgroundColor: colors.brandSubtle }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-                <GrowingBar testID={`training-bar-${p.start}${value === 0 ? '-zero' : ''}`} height={value === 0 ? 1 : 110 * value / max}
-                  zero={value === 0} soft={current} reduced={reduced} />
+              <View style={styles.plot} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                <ChartSelectionRule selected={isSelected} />
+                <ChartBar testID={`training-bar-${p.start}${value === 0 ? '-zero' : ''}`} height={value === 0 ? 1 : 110 * value / max}
+                  zero={value === 0} soft={current} style={{ width: '60%', maxWidth: brandTokens.space.xxl, alignSelf: 'center' }} />
               </View>
               <AppText muted numeric variant="caption" style={styles.center}>{shortDate(p.start)}{p.start !== p.end ? `\n– ${shortDate(p.end)}` : ''}</AppText>
             </Pressable>;
@@ -142,15 +140,9 @@ function TrainingChart({ data, inspection, onInspect }: { data: ProgressTraining
       </ScrollView>
     </View>
     <AppText muted variant="caption">{SERIES_LABELS[metric]} por {bucket}{inCourse ? ` · ${data.period.bucket === 'day' ? 'hoy' : data.period.bucket === 'week' ? 'esta semana' : 'este mes'} en curso` : ''}</AppText>
-    <AppText muted numeric variant="caption">Mayor registro del gráfico: {shown(Math.max(0, ...data.series.map(p => p[metric])))}.</AppText>
-    {selected ? <View testID="training-bucket-inspection" style={styles.stack}>
-      <AppText numeric variant="headline">{shown(selected[metric])}</AppText>
-      <AppText numeric>{fullDate(selected.start)}{selected.start !== selected.end ? ` – ${fullDate(selected.end)}` : ''}</AppText>
-      <AppText muted variant="footnote">{plural(selected.sessions, 'sesión', 'sesiones')}{selected.start <= data.today && selected.end >= data.today ? ' · período en curso' : ''}</AppText>
-      {data.period.bucket === 'day' && selected.start === selected.end && selected.sessions > 0 ? <LinkRow label="Ver día y sesiones originales"
-        onPress={() => router.push({ pathname: '/history/day/[date]', params: { date: selected.start } })} />
-        : data.period.bucket !== 'day' || selected.start !== selected.end ? <AppText muted variant="footnote">Total del intervalo; no corresponde a un único día.</AppText> : null}
-    </View> : <AppText muted variant="footnote">{inspection.bucket ? 'El intervalo seleccionado ya no está disponible.' : `Tocá una barra para consultar su valor y fechas.${data.series.length * slot > width ? ' Deslizá para recorrer el período.' : ''}`}</AppText>}
+    {data.period.bucket === 'day' ? <ChartOpenAction label="Ver día y sesiones originales" onPress={selected && selected.start === selected.end && selected.sessions > 0 ?
+      () => router.push({ pathname: '/history/day/[date]', params: { date: selected.start } }) : undefined} /> : null}
+
   </View>;
 }
 function Content({ data, inspection, onInspect, portada }: { data: ProgressTraining; inspection: ChartInspection; onInspect: (next: ChartInspection) => void;

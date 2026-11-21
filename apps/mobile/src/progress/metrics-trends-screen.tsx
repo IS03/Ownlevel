@@ -46,9 +46,8 @@ function Detail({ data, inspection }: { data: ProgressMetrics; inspection: Metri
   return <>
     <View style={styles.numbers} testID="metric-trend-summary" onLayout={onLayout}>
       <View style={styles.summaryGroup}>
-        <AppText numeric variant="title1" accessibilityLabel={s.average === null ? 'Sin dato' : undefined}>{s.average === null ? '—' : v(s.average)}</AppText>
-        <AppText muted variant="caption">promedio por día con dato</AppText>
-        {m.currentTarget !== null ? <AppText muted numeric variant="caption">objetivo actual {v(m.currentTarget)}</AppText> : null}
+        <AppText numeric variant="subheadline" accessibilityLabel={s.average === null ? 'Sin dato' : undefined}>{s.average === null ? '—' : v(s.average)}</AppText>
+        <AppText muted variant="caption">promedio del período por día con dato</AppText>
         {compareText ? <AppText numeric variant="caption" testID="metric-trend-comparison">{compareText} {data.previous?.average == null ? 'sin datos'
           : `${v(data.previous.average)}${c && c.status === 'comparable' && c.deltaAbsolute !== null ? ` · ${arrowDelta(c.deltaAbsolute, m.unit, m.valueType)}` : ''}`}</AppText> : null}
       </View>
@@ -59,7 +58,6 @@ function Detail({ data, inspection }: { data: ProgressMetrics; inspection: Metri
       </View>
     </View>
     {compareText && c && (c.status !== 'comparable' || c.deltaAbsolute === null) ? <AppText muted variant="caption" testID="metric-trend-comparison-reason">{comparisonText(c, m.unit, m.valueType, compareText)}</AppText> : null}
-    <AppText muted variant="caption">Con el nombre, la unidad y el objetivo que tiene hoy.</AppText>
     <MetricTrendChart data={data} inspection={inspection} onOpen={isChartMetricId(m.id) ? (start, end) => {
       const href = metricOriginalHref(m.id, start, end, data.period.bucket !== 'day'); if (href) router.push(href);
     } : undefined} />

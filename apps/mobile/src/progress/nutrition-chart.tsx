@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import type { NutritionReport, ReportDailyRow } from '@/api/nutrition-report';
-import { LinkRow, AppIcon, AppText, Chip, ChipGroup, Heading, useReduceMotion, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
-import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
+import { AppIcon, AppText, Chip, ChipGroup, Heading, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
+import { ChartReadout, ChartOpenAction, ChartExplanation, type ChartReading } from './chart-reading';
 import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { haptics } from '@/platform/haptics';
 import { FittedChart } from './fitted-chart';
-import { ProgressRow } from './progress-row';
 import { inputNutritionDate as date } from '@/nutrition/day-format';
 import { nutritionValue } from './nutrition-values';
 import { useProgressRange } from './progress-range-context';
@@ -87,9 +86,8 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
   /** #531 · The «Etapas» toggle; local, it reads nothing. */
   stages?: boolean; onStages?: (next: boolean) => void;
 }) {
-  const { colors } = useOwnlevelTheme(), reduced = useReduceMotion(), { compareOn, compareText } = useProgressRange();
+  const { colors } = useOwnlevelTheme(), { compareOn, compareText } = useProgressRange();
   const { fontScale } = useWindowDimensions();
-  const [details, setDetails] = useState(false);
   const Selector = fontScale > 1.3 ? ChipGroup : ExerciseSegmented;
   const copy = NUTRIENTS[nutrient], fmt = (value: number) => valueText(nutrient, value), spoken = (value: number) => valueText(nutrient, value, true);
   const series = [{ key: 'current' as const, title: 'Período elegido', report, points: points(report, nutrient) },
@@ -110,7 +108,24 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
   const selectedStage = showStages && selected?.day ? stageOf(selected.day) : null;
   const selectedBlockStages = showStages && selected && !selected.day && source ? blockStages(source.report, selected.start, selected.end) : null;
   const valueWith = (show: (v: number) => string) => selected ? selected.value === null ? 'Sin dato' : `${selected.day ? '' : 'Promedio del bloque · '}${show(selected.value)}${selected.day ? '' : ' por día con dato'}` : canInspect ? 'Consultá fecha o rango, valor y cobertura sin salir del gráfico.' : 'Reintentá la lectura del período de comparación.';
-  const value = valueWith(fmt), spokenValue = valueWith(spoken);
+  const spokenValue = valueWith(spoken);
+  const toReading = (p: ReturnType<typeof points>[number], side: string, sourceReport = report): ChartReading => ({
+    title: range(p.start, p.end),
+    value: p.value === null ? 'Sin dato' : fmt(p.value),
+    detail: `${compareOn ? `${side} · ` : ''}${p.day ? p.partial ? `Suma parcial · ${p.day.nutrients[nutrient].knownMeals} de ${p.day.mealCount} entradas con dato` : p.value === null ? dayState(p.day, nutrient) : 'Entre las entradas registradas' : `Promedio diario · ${p.denominator} días usados · ${p.partialDays} con suma parcial`}${p.today ? ' · Hoy en curso' : ''}`,
+    note: !showStages ? undefined : p.day ? stageOf(p.day) ? `Etapa: ${stageOf(p.day)}.` : 'Sin etapa informada.' : blockStagesText(blockStages(sourceReport, p.start, p.end)),
+  });
+  const overall = report.summary.metrics[nutrient];
+  const overview: ChartReading = { title: 'Período completo', value: overall.value === null ? 'Sin dato' : fmt(overall.value), detail: `Promedio diario · ${overall.denominator} días usados${report.days.some(d => d.isToday) ? ' · Sin contar hoy' : ''}` };
+  const fallback = canInspect ? overview : { title: prompt, value: 'Sin lectura', detail: 'Reintentá la lectura del período de comparación.' };
+  const readout = <View testID="nutrition-chart-inspection">
+    <ChartReadout testID="nutrition-chart-readout" reading={selected && source ? toReading(selected, source.title, source.report) : fallback}
+      candidates={[overview, ...series.flatMap(s => s.points.map(p => toReading(p, s.title, s.report)))]}
+      accessibilityLabel={selected ? `${range(selected.start, selected.end)}, ${spokenValue}${source ? `, ${source.title}` : ''}${selectedBlockStages ? `, ${blockStagesText(selectedBlockStages, true)}` : showStages && selected.day ? `, ${selectedStage ?? 'Sin etapa informada'}` : ''}` : `${fallback.title}, ${fallback.value}, ${fallback.detail}`}
+
+      noteTestID="nutrition-chart-stage" noteHidden={!selected?.day}
+      onClear={selection?.start ? () => onSelect(null) : undefined} />
+  </View>;
   return <View style={styles.section} testID="nutrition-progress-chart">
     <Heading level={2}>{copy.title}</Heading>
     {/* #519 · Same bars, period, A/B side and selection: only the nutrient they show changes. */}
@@ -121,6 +136,7 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
       ]} onChange={next => { if (next !== nutrient) { haptics.selection(); onNutrient(next); } }} /></View>
       {hasStages && onStages ? <Chip kind="toggle" label="Etapas" selected={stages} onPress={() => { haptics.selection(); onStages(!stages); }} /> : null}
     </View>
+    {readout}
     {series.map(s => {
       const runs = showStages && s.report.range.days <= 31 ? stageRuns(s.points) : null;
       const bands = runs?.flatMap((r,i) => r?.first ? [{start:s.points[i].start,end:s.points[i+r.length-1].end,label:r.label}] : []) ?? [];
@@ -130,48 +146,31 @@ export function NutritionChart({ report, reference, selection, onSelect, onDate,
         <FittedChart testID={`nutrition-chart-${s.key}`} label={`${copy.label} · ${s.title}`} unit={copy.unit} range={s.report.range} mode="bars" bounds={{low:min,high:max}} color={s.key==='reference'?colors.textMuted:colors.primary}
           bands={bands} selectedKey={selection?.series===s.key?selection.start:null} onSelect={key=>{
             const p=s.points.find(p=>p.start===key); if(!p)return;
-            setDetails(false); onSelect(selection?.series===s.key&&selection.start===p.start?null:{series:s.key,start:p.start,end:p.end,daysOpen:false});
+            onSelect(selection?.series===s.key&&selection.start===p.start?null:{series:s.key,start:p.start,end:p.end,daysOpen:false});
           }} points={s.points.map(p=>({key:p.start,start:p.start,end:p.end,value:p.value,target:p.target,partial:p.partial,soft:p.today,kind:p.value===null?'gap':'bar',
             text:`${range(p.start,p.end)}, ${p.value===null?p.day?dayState(p.day,nutrient):'sin promedio calculable':`${p.day?'':'promedio del bloque, '}${spoken(p.value)}`}${p.partial?', suma parcial':''}${p.today?', hoy en curso':''}${p.day?`, ${p.day.nutrients[nutrient].knownMeals} de ${p.day.mealCount} entradas con ${copy.short}`:`, ${p.denominator} días usados, ${p.partialDays} con suma parcial`}${showStages?p.day?`, ${stageOf(p.day)?`Etapa: ${stageOf(p.day)}`:'Sin etapa informada'}`:`, ${blockStagesText(blockStages(s.report,p.start,p.end),true)}`:''}, ${s.title}`
           }))} />
       </View>;
     })}
     {compareOn && !reference ? <AppText muted>Comparación no disponible.</AppText> : null}
-    <Animated.View entering={FadeIn.duration(brandTokens.motion.duration.fast)}
-      layout={reduced ? undefined : LinearTransition.duration(brandTokens.motion.duration.base)}
-      style={[styles.section, selected && { padding: brandTokens.layout.cardPadding, borderRadius: radius.card, backgroundColor: colors.surfaceRaised }]} testID="nutrition-chart-inspection">
-      <View accessible accessibilityLiveRegion="polite" accessibilityLabel={`${selected ? range(selected.start, selected.end) : prompt}, ${spokenValue}${source ? `, ${source.title}` : ''}${selectedBlockStages ? `, ${blockStagesText(selectedBlockStages, true)}` : ''}`}>
-        {selected || !canInspect ? <>
-          <AppText variant="headline">{selected ? range(selected.start, selected.end) : prompt}</AppText>
-<AppText numeric variant="title1">{value}</AppText>
-        </> : <AppText muted variant="footnote">Tocá una barra para ver su fecha, valor y cobertura.</AppText>}
-        {/* Which side of A/B the datum is from, only when there are two: date, value and coverage come first. */}
-        {compareOn && source && selected ? <AppText muted variant="caption">{source.title} · {range(source.report.range.start, source.report.range.end)}</AppText> : null}
-      </View>
-      {selection?.start && !selected ? <AppText muted>El dato seleccionado ya no está disponible en esta lectura. Elegí otra barra.</AppText> : null}
+    {selection?.start && !selected ? <AppText muted>El dato seleccionado ya no está disponible en esta lectura. Elegí otra barra.</AppText> : null}
+    {selected?.day ? <>
+      <ChartOpenAction testID="nutrition-chart-open-day" label="Ver comidas de ese día" accessibilityLabel={`Ver comidas de ese día, ${range(selected.start, selected.end)}`} onPress={() => onDate(selected.start)} />
+    </> : <ChartOpenAction label={selection?.daysOpen ? 'Ocultar días del bloque' : 'Ver días del bloque'} onPress={selected && selection ? () => onSelect({ ...selection, daysOpen: !selection.daysOpen }) : undefined} />}
+    {selected && selection?.daysOpen ? <NutritionReportDays rows={rows} onDate={onDate} /> : null}
+    <ChartExplanation label="Detalle del dato">
       {selected?.day ? <>
-        {/* #519 · Date, value, then coverage: what is known about this datum, next to it. */}
-        {selected.day.nutrients[nutrient].status !== 'complete' || details ? <AppText muted variant="footnote" testID="nutrition-chart-coverage">{dayState(selected.day, nutrient)}.</AppText> : null}
-        {showStages ? <AppText muted variant="footnote" testID="nutrition-chart-stage">{selectedStage ? `Etapa: ${selectedStage}.` : 'Sin etapa informada.'}</AppText> : null}
+        <AppText muted variant="footnote" testID="nutrition-chart-coverage">{dayState(selected.day, nutrient)}.</AppText>
         {selected.today ? <AppText variant="footnote" testID="nutrition-chart-today">Hoy está en curso: sus valores pueden cambiar y no entran en el promedio del período.</AppText> : null}
         {selected.day.mealCount === 0 && selected.day.hasNutrition ? <AppText muted variant="caption">Sin entradas de comidas para contar{selected.day.imported ? ' · registro importado' : ''}.</AppText> :
           <AppText numeric muted variant="caption">{selected.day.nutrients[nutrient].knownMeals} de {selected.day.mealCount} entradas con {copy.known} · {selected.day.nutrients[nutrient].missingMeals} sin ese dato{selected.day.imported ? ' · incluye registro importado' : ''}.</AppText>}
         <AppText numeric muted variant="caption">{target === null ? 'Sin objetivo histórico acreditado para esta fecha.' : `Objetivo registrado de esta fecha: ${fmt(target)}.`}</AppText>
-        {selected.day.nutrients[nutrient].status === 'complete' ? <LinkRow kind="disclosure" expanded={details} label={details ? 'Ocultar cobertura' : 'Ver cobertura'} onPress={() => { haptics.selection(); setDetails(v => !v); }} /> : null}
-        <ProgressRow testID="nutrition-chart-open-day" label={`Ver comidas de ese día, ${range(selected.start, selected.end)}`} onPress={() => onDate(selected.start)}>
-          <AppText variant="body" style={[styles.grow, { color: colors.primary }]}>Ver comidas de ese día</AppText>
-        </ProgressRow>
       </> : selected ? <>
         <AppText numeric muted testID="nutrition-chart-coverage">{selected.denominator} días usados de {rows.length} días del bloque · {selected.partialDays} con suma parcial.</AppText>
-        {/* Already spoken by the inspection region above (and the block's bar): hidden from the reader so it is not read twice. */}
-        {selectedBlockStages ? <AppText numeric muted variant="footnote" testID="nutrition-chart-stage" accessibilityElementsHidden importantForAccessibility="no">{blockStagesText(selectedBlockStages)}</AppText> : null}
         <AppText numeric muted variant="caption">{rows.filter(d => d.mealCount === 0).length} días sin entradas registradas · {rows.filter(d => d.nutrients[nutrient].status === 'unknown').length} {copy.unknown}.</AppText>
         {selected.today ? <AppText variant="footnote" testID="nutrition-chart-today">Incluye hoy en curso: este promedio de bloque puede cambiar. El promedio del período excluye hoy.</AppText> : null}
-        <LinkRow kind="disclosure" expanded={selection?.daysOpen} label={selection?.daysOpen ? 'Ocultar días del bloque' : 'Ver días del bloque'}
-          onPress={() => { if (selection) onSelect({ ...selection, daysOpen: !selection.daysOpen }); }} />
-        {selection?.daysOpen ? <NutritionReportDays rows={rows} onDate={onDate} /> : null}
-      </> : null}
-    </Animated.View>
+      </> : <AppText muted variant="footnote">Elegí una barra para consultar sus entradas y su objetivo histórico.</AppText>}
+    </ChartExplanation>
     <ChartHelp compare={compareOn} stages={hasStages} />
   </View>;
 }

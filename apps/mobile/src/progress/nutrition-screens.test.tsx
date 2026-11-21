@@ -309,11 +309,11 @@ describe('Progress Nutrition', () => {
     mockReport.mockImplementation(async (_c, q) => { const r = report(q); r.days = r.days.map(d => d.date === '2026-10-01' ? { ...d, mealCount: 0, hasNutrition: false, nutrients: { ...d.nutrients, calories: { value: null, knownMeals: 0, missingMeals: 0, status: 'none' } } } : d); return ok(r); });
     act(() => invalidateConfirmedReads(mockClient as never, '/api/mobile/v1/nutrition/days/2026-10-01/meals/fake')); await flush();
     expect(view.queryByText('250 kcal')).toBeNull();
-    expect(view.getByText('Sin registros nutricionales; no equivale a cero.')).toBeTruthy();
+    expect(view.getByText(/Sin registros nutricionales; no equivale a cero/)).toBeTruthy();
     mockReport.mockResolvedValueOnce(failure);
     act(() => view.UNSAFE_getByType(RefreshControl).props.onRefresh()); await flush();
     expect(view.getByText('No se pudo actualizar. Mostramos la última lectura confirmada de este período.')).toBeTruthy();
-    expect(view.getByText('Sin registros nutricionales; no equivale a cero.')).toBeTruthy();
+    expect(view.getByText(/Sin registros nutricionales; no equivale a cero/)).toBeTruthy();
     mockActiveClient = {}; mockReport.mockImplementation(async (_c, q) => ok(report(q)));
     view.rerender(tree(<NutritionTrendsScreen />)); await flush();
     expect(view.queryByRole('button', { name: /^Ver comidas de ese día/ })).toBeNull();

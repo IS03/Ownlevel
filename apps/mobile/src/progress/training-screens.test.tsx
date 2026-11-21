@@ -222,7 +222,7 @@ describe('Exercise analytics', () => {
     expect(view.getByTestId('exercise-gap-current-s-gap')).toBeTruthy(); expect(view.queryByTestId('exercise-point-current-s-gap')).toBeNull();
     fireEvent.press(within(view.getByTestId('exercise-trend-chart')).getByRole('button', { name: '4 de octubre de 2026, 1RM estimado, 80 kg, período elegido' }));
     expect(mockPush).not.toHaveBeenCalled();
-    expect(within(view.getByTestId('exercise-point-inspection')).getByText('1RM estimado · 80 kg')).toBeTruthy();
+    expect(within(view.getByTestId('exercise-point-inspection')).getByText('80 kg')).toBeTruthy();
     expect(mockExercise).toHaveBeenCalledTimes(1);
     fireEvent.press(view.getByRole('button', { name: 'Ver sesión y series originales' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/history/[id]', params: { id: 's-2', fromProgressExercise: ex.bench } });
@@ -242,12 +242,13 @@ describe('Exercise analytics', () => {
     const view = wrap(<ExerciseTrendsScreen />); await flush();
     fireEvent.press(view.getByTestId('exercise-gap-current-s-gap'));
     let readout = within(view.getByTestId('exercise-point-inspection'));
-    expect(readout.getByText('1RM estimado · Sin dato')).toBeTruthy();
+    expect(readout.getByText('Sin dato')).toBeTruthy();
     expect(readout.getByText(/No equivale a cero/)).toBeTruthy();
     fireEvent.press(view.getByRole('radio', { name: 'Volumen' }));
     readout = within(view.getByTestId('exercise-point-inspection'));
-    expect(readout.getByText('Volumen · 0 kg × reps')).toBeTruthy();
-    expect(readout.getByText(/Actividad registrada; no mide fuerza/)).toBeTruthy();
+    expect(readout.getByText('0 kg × reps')).toBeTruthy();
+    fireEvent.press(view.getByRole('button', { name: 'Referencia y contexto' }));
+    expect(view.getByText(/Actividad registrada; no mide fuerza/)).toBeTruthy();
     expect(mockPush).not.toHaveBeenCalled(); expect(mockExercise).toHaveBeenCalledTimes(1);
     fireEvent.press(view.getByTestId('exercise-point-current-s-gap'));
     expect(view.queryByRole('button', { name: 'Ver sesión y series originales' })).toBeNull();
@@ -260,7 +261,7 @@ describe('Exercise analytics', () => {
     const view = wrap(<><ExerciseTrendsScreen /><ReturnToExerciseChart /></>, comparing); await flush();
     fireEvent.press(view.getByRole('radio', { name: 'Mejor serie' }));
     fireEvent.press(view.getByTestId('exercise-point-reference-ref-last'));
-    expect(within(view.getByTestId('exercise-point-inspection')).getByText('Mejor serie · 74 kg × 10 reps')).toBeTruthy();
+    expect(within(view.getByTestId('exercise-point-inspection')).getByText('74 kg × 10 reps')).toBeTruthy();
     fireEvent.press(view.getByRole('button', { name: 'Ver sesión y series originales' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/train/history/[id]', params: { id: 'ref-last', fromProgressExercise: ex.bench } });
     mockParams = { id: ex.bench, fromProgressExercise: ex.bench };
@@ -271,7 +272,7 @@ describe('Exercise analytics', () => {
     expect(view.getByTestId('exercise-point-reference-ref-last').props.accessibilityState.selected).toBe(true);
     expect(mockExercise).toHaveBeenCalledTimes(1);
     expect(mockExercise).toHaveBeenLastCalledWith(mockClient, MONTH, ex.bench, { start: '2026-09-01', end: '2026-09-05' });
-    expect(within(view.getByTestId('exercise-point-inspection')).getByText(/Período de comparación · 1 de septiembre de 2026 – 5 de septiembre de 2026/)).toBeTruthy();
+    expect(view.getByTestId('exercise-point-inspection').props.accessibilityLabel).toContain('Período de comparación · 1 de septiembre de 2026 – 5 de septiembre de 2026');
   });
   it('accepts only the closed, validated exercise return route', () => {
     for (const fromProgressExercise of [undefined, ['bad'], '/settings', 'https://example.test', 'not-an-id']) expect(exerciseChartReturnHref({ fromProgressExercise })).toBeNull();
@@ -284,10 +285,10 @@ describe('Exercise analytics', () => {
     let finish: (result: unknown) => void = () => undefined;
     mockExercise.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     act(() => view.UNSAFE_getByType(RefreshControl).props.onRefresh()); await flush();
-    expect(within(view.getByTestId('exercise-point-inspection')).getByText('1RM estimado · 80 kg')).toBeTruthy();
+    expect(within(view.getByTestId('exercise-point-inspection')).getByText('80 kg')).toBeTruthy();
     await act(async () => finish({ status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } })); await flush();
     expect(view.getByText('No se pudo actualizar. Mostramos la última lectura confirmada.')).toBeTruthy();
-    expect(within(view.getByTestId('exercise-point-inspection')).getByText('1RM estimado · 80 kg')).toBeTruthy();
+    expect(within(view.getByTestId('exercise-point-inspection')).getByText('80 kg')).toBeTruthy();
     const updated = exercise(ex.bench);
     updated.sessions = updated.sessions.filter(s => s.sessionId !== 's-2');
     updated.charts!.measures.forEach(m => { m.points = m.points.filter(p => p.sessionId !== 's-2'); });
@@ -375,7 +376,7 @@ describe('Exercise analytics', () => {
     mockParams = { id: ex.bench }; const data = exercise(ex.bench);
     data.charts!.measures[0].points = data.charts!.measures[0].points.slice(0, 1);
     mockExercise.mockResolvedValue(ok(data)); const view = wrap(<ExerciseTrendsScreen />); await flush();
-    expect(view.getByText('—')).toBeTruthy(); expect(view.getByText('Una sola sesión: todavía no hay tendencia.')).toBeTruthy();
+    expect(view.getAllByText('—').length).toBeGreaterThan(0); expect(view.getByText('Una sola sesión: todavía no hay tendencia.')).toBeTruthy();
     expect(view.getByTestId('exercise-gap-current-s-2')).toBeTruthy();
     data.sessions = []; data.charts!.measures.forEach(m => { m.points = []; });
     mockExercise.mockResolvedValue(ok({ ...data })); fireEvent.press(view.getByTestId('progress-period-caption')); fireEvent.press(view.getByTestId('progress-unit-week')); await flush();
@@ -458,11 +459,11 @@ describe('P1-B2 accessible activity and temporal buckets', () => {
     mockTraining.mockResolvedValue(ok(t)); const view = wrap(<TrainingTrendsScreen />); await flush(); openChart(view);
     fireEvent.press(view.getByTestId('training-bucket-2025-12-29'));
     const readout = within(view.getByTestId('training-bucket-inspection'));
-    expect(readout.getByText('29 de diciembre de 2025 – 4 de enero de 2026')).toBeTruthy(); expect(readout.getByText('24 series')).toBeTruthy();
-    expect(readout.getByText('Total del intervalo; no corresponde a un único día.')).toBeTruthy();
+    expect(view.getByTestId('training-bucket-inspection').props.accessibilityLabel).toContain('29 de diciembre de 2025 – 4 de enero de 2026'); expect(readout.getByText('24 series')).toBeTruthy();
+    expect(readout.getByText(/Total del intervalo/)).toBeTruthy();
     expect(view.queryByRole('button', { name: 'Ver día y sesiones originales' })).toBeNull();
     fireEvent.press(view.getByTestId(`training-bucket-${TODAY}`));
-    expect(within(view.getByTestId('training-bucket-inspection')).getByText('1 sesión · período en curso')).toBeTruthy();
+    expect(within(view.getByTestId('training-bucket-inspection')).getByText('1 sesión · Total del intervalo · En curso')).toBeTruthy();
     expect(view.queryByRole('button', { name: 'Ver día y sesiones originales' })).toBeNull();
     expect(mockPush).not.toHaveBeenCalled(); expect(mockTraining).toHaveBeenCalledTimes(1);
   });

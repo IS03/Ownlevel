@@ -619,12 +619,12 @@ describe('Metrics Trends', () => {
     expect(mockMetrics).toHaveBeenLastCalledWith(mockClient, MONTH, ids.steps, null);
     const summary = within(view.getByTestId('metric-trend-summary'));
     expect(summary.getByText('0 pasos')).toBeTruthy();
-    expect(summary.getByText('promedio por día con dato')).toBeTruthy(); expect(summary.getByText('objetivo actual 10.000 pasos')).toBeTruthy();
+    expect(summary.getByText('promedio del período por día con dato')).toBeTruthy(); expect(view.getByText('Línea punteada · objetivo actual 10.000 pasos')).toBeTruthy();
     expect(summary.getByText('2 de 6')).toBeTruthy(); expect(summary.getByText('días con dato · pocos para un promedio')).toBeTruthy();
     expect(view.queryByTestId('metric-trend-comparison')).toBeNull();
     expect(view.getAllByTestId(/^metric-trend-chart-.*-gap$/)).toHaveLength(4);
     expect(view.getAllByTestId(/^metric-trend-chart-.*-zero$/)).toHaveLength(2);
-    fireEvent.press(view.getByRole('button', { name: '29 sep, 29/09/2026, 0 pasos' }));
+    pressFittedMark(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
     expect(view.getByTestId('metric-trend-readout').props.accessibilityLabel).toBe('29/09/2026, 0 pasos');
     expect(mockPush).not.toHaveBeenCalled();
     // The legend says the target is the current one, and names the gaps the chart has.
@@ -651,7 +651,7 @@ describe('Metrics Trends', () => {
   it('retains confirmed inspection through a failed refresh, but clears it when changing period', async () => {
     mockParams = { metric: ids.steps };
     const view = wrap(<MetricsTrendsScreen />); await flush();
-    const select = () => fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
+    const select = () => pressFittedMark(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
     const readout = () => view.getByTestId('metric-trend-readout').props.accessibilityLabel;
     select(); expect(readout()).toBe('29/09/2026, 0 pasos');
     let settle!: (result: unknown) => void;
@@ -668,7 +668,7 @@ describe('Metrics Trends', () => {
     mockParams = { metric: ids.steps };
     const view = wrap(<><MetricsTrendsScreen /><ReturnToMetricChart /></>, comparing); await flush();
     const calls = mockMetrics.mock.calls.length;
-    fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
+    pressFittedMark(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
     expect(mockMetrics).toHaveBeenCalledTimes(calls); expect(mockPush).not.toHaveBeenCalled();
     fireEvent.press(view.getByRole('button', { name: 'Abrir registro diario original' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/metrics', params: {
@@ -685,7 +685,7 @@ describe('Metrics Trends', () => {
   it('reconciles an edited/deleted point from the existing invalidation without losing a valid selection', async () => {
     mockParams = { metric: ids.steps };
     const view = wrap(<MetricsTrendsScreen />); await flush();
-    fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
+    pressFittedMark(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
     const latest = metrics(ids.steps); latest.series[0] = { ...latest.series[0], value: 150, samples: 1 };
     mockMetrics.mockResolvedValueOnce(ok(latest));
     invalidateConfirmedReads(mockClient, '/api/mobile/v1/nutrition/days/2026-09-29/metrics'); await flush();
@@ -701,12 +701,12 @@ describe('Metrics Trends', () => {
   it('drops selected semantics when a definition changes, and never reuses them in another account', async () => {
     mockParams = { metric: ids.steps };
     const view = wrap(<MetricsTrendsScreen />); await flush();
-    fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
+    pressFittedMark(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
     const latest = metrics(ids.steps); latest.metric = { ...latest.metric!, name: 'Duración nueva', valueType: 'duration', unit: 'min' };
     mockMetrics.mockResolvedValueOnce(ok(latest));
     invalidateConfirmedReads(mockClient, '/api/mobile/v1/metrics/definitions'); await flush();
     expect(view.queryByTestId('metric-trend-original')).toBeNull();
-    fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
+    pressFittedMark(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
     expect(view.getByTestId('metric-trend-readout').props.accessibilityLabel).toContain('0 h 0 min');
     mockActiveClient = null; mockOwner = 'anonymous';
     view.rerender(wrapped(<MetricsTrendsScreen />)); await flush();
@@ -725,7 +725,7 @@ describe('Metrics Trends', () => {
     const view = wrap(<MetricsTrendsScreen />, comparing); await flush();
     expect(view.getByRole('radio', { name: 'Mate viejo, archivada' }).props.accessibilityState.selected).toBe(true);
     expect(view.getByTestId('metric-trend-comparison-reason')).toBeTruthy();
-    fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
+    pressFittedMark(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
     expect(view.getByTestId('metric-trend-readout').props.accessibilityLabel).toBe('29/09/2026, 0 L');
     fireEvent.press(view.getByRole('button', { name: 'Abrir registro diario original' }));
     expect(mockPush.mock.calls.at(-1)![0]).toMatchObject({ params: { metricsChartMetric: ids.custom } });
@@ -735,9 +735,9 @@ describe('Metrics Trends', () => {
     mockParams = { metric: ids.steps };
     const view = wrap(<MetricsTrendsScreen />); await flush();
     expect(mockMetrics).toHaveBeenCalledTimes(1);
-    fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
-    fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-30-gap'));
-    fireEvent.press(view.getByTestId('metric-trend-chart-2026-09-30-gap'));
+    pressFittedMark(view.getByTestId('metric-trend-chart-2026-09-29-zero'));
+    pressFittedMark(view.getByTestId('metric-trend-chart-2026-09-30-gap'));
+    pressFittedMark(view.getByTestId('metric-trend-chart-2026-09-30-gap'));
     expect(mockMetrics).toHaveBeenCalledTimes(1);
     expect(mockOverview).not.toHaveBeenCalled(); expect(mockPush).not.toHaveBeenCalled();
     console.info('METRICS_READ_BUDGET', JSON.stringify({ surface: 'trend', initialGroupedReads: 1, additionalReadsForThreeTaps: mockMetrics.mock.calls.length - 1 }));

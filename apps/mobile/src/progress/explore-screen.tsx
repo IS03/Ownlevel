@@ -1,3 +1,4 @@
+import { ChartBar } from './chart-marks';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { parseInfluenceMeasure } from '@/api/progress-influence';
@@ -91,8 +92,7 @@ function SmallMultiples({ e, groups }: { e: ProgressExplore; groups: ExploreGrou
       </View>
       <View style={styles.mini} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         {(g.series ?? []).map((b: ExploreBucket) => <View key={b.start} style={styles.miniSlot}>
-          {b.value === null ? null : <View style={{ height: b.value === 0 ? 1 : Math.max(2, (32 * b.value) / max), borderTopLeftRadius: 2, borderTopRightRadius: 2,
-            backgroundColor: b.value === 0 ? colors.border : colors.primary, opacity: b.value === 0 ? 1 : b.start <= today && b.end >= today ? 0.4 : 1 }} />}
+          {b.value === null ? null : <ChartBar compact height={b.value === 0 ? 1 : Math.max(2, (32 * b.value) / max)} zero={b.value === 0} soft={b.start <= today && b.end >= today && b.value !== 0} />}
         </View>)}
       </View>
     </View>)}

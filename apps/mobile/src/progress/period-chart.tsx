@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Line } from 'react-native-svg';
-import { AppText, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
+import { ChartBar, ChartSelectionRule } from './chart-marks';
+import { haptics } from '@/platform/haptics';
+import { AppText, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
 
 export type PeriodChartPoint = { key: string; label: string; value: number | null; text: string; onPress?: () => void; hint?: string; soft?: boolean;
   /** `dots` only: the value written over the dot ("62,7"); shown for every point when there are few, otherwise first, last, lowest and highest. */
@@ -62,8 +64,9 @@ export function PeriodChart({ points, mode, target, bands, testID, inspection, c
           {written.has(i) && p.valueText ? <AppText numeric variant="caption" numberOfLines={1} accessibilityElementsHidden importantForAccessibility="no"
             style={[styles.value, { bottom: y(p.value) + DOT + 2, color: full ? colors.text : colors.textMuted }]}>{p.valueText}</AppText> : null}
         </>
-        : <View style={[{ height: p.value === 0 ? 1 : Math.max(2, inspection ? Math.abs(y(p.value)) : y(p.value)), backgroundColor: p.value === 0 ? colors.border : color, opacity: p.value === 0 ? 1 : opacity,
-          borderTopLeftRadius: p.value === 0 ? 0 : 3, borderTopRightRadius: p.value === 0 ? 0 : 3 }, inspection && { position: 'absolute', bottom: baseline + Math.min(0, y(p.value)), width: spacing.lg, maxWidth: '100%', alignSelf: 'center' }]} />;
+        : <ChartBar height={p.value === 0 ? 1 : Math.max(2, inspection ? Math.abs(y(p.value)) : y(p.value))}
+          zero={p.value === 0} negative={p.value < 0} soft={!!p.soft} color={color}
+          style={inspection ? { position: 'absolute', bottom: baseline + Math.min(0, y(p.value)), width: Math.min(spacing.xxl, width / Math.max(1, n) * 0.58), maxWidth: '100%', alignSelf: 'center' } : undefined} />;
       const kind = p.value === null ? 'gap' : p.value === 0 && mode === 'bars' ? 'zero' : 'mark';
       const a11y = `${p.label}, ${p.text}`;
       const band = bandOf(p.key), firstOfBand = !!band && (i === 0 || bandOf(points[i - 1].key)?.id !== band.id);
@@ -71,12 +74,12 @@ export function PeriodChart({ points, mode, target, bands, testID, inspection, c
         style={[{ position: 'absolute', top: 0, bottom: 0, left: -(n > 20 ? 1 : 3), right: -(n > 20 ? 1 : 3) }, { backgroundColor: band.current ? colors.primary : colors.border, opacity: band.current ? 0.14 : 0.45 }]} /> : null;
       const tag = firstOfBand ? <AppText numberOfLines={1} variant="caption" style={[styles.band, { color: band!.current ? colors.primary : colors.textMuted }]}>{band!.label}</AppText> : null;
       const selected = inspection?.selectedKey === p.key;
-      const body = <><View style={[styles.plot, { height: plotHeight }, selected && { borderColor: colors.primary, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.inner }]}>{backdrop}{tag}{mark}</View>
+      const body = <><View style={[styles.plot, { height: plotHeight }]}>{backdrop}{tag}<ChartSelectionRule selected={selected} />{mark}</View>
         <AppText muted numeric variant="caption" numberOfLines={1} style={[styles.date, { width: Math.max(44, width / 5) }]}>{labeled(i) ? p.label : ''}</AppText></>;
       return inspection
         ? <Pressable key={p.key} testID={`${testID}-${p.key}-${kind}`} accessibilityRole="button" accessibilityLabel={a11y}
           accessibilityState={{ selected }} accessibilityHint="Tocá para ver el detalle. Tocá otra vez para quitar la selección."
-          onPress={() => inspection.onSelect(p.key)} style={[styles.slot, { paddingHorizontal: n > 20 ? 1 : 3 }]}>{body}</Pressable>
+          onPress={() => { haptics.selection(); inspection.onSelect(p.key); }} style={[styles.slot, { paddingHorizontal: n > 20 ? 1 : 3 }]}>{body}</Pressable>
         : p.onPress && p.value !== null
         ? <Pressable key={p.key} testID={`${testID}-${p.key}-${kind}`} accessibilityRole="button" accessibilityLabel={a11y} accessibilityHint={p.hint} onPress={p.onPress} style={[styles.slot, { paddingHorizontal: n > 20 ? 1 : 3 }]}>{body}</Pressable>
         : <View key={p.key} testID={`${testID}-${p.key}-${kind}`} accessible accessibilityLabel={a11y} style={[styles.slot, { paddingHorizontal: n > 20 ? 1 : 3 }]}>{body}</View>;
