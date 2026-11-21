@@ -2,8 +2,16 @@ import { isNutritionDate } from './nutrition-day-contract';
 import { mealUuid, mealVersion, parseMealTiming, type MealTiming } from './nutrition-meal-contract';
 
 export type QuickSource = { kind: 'suggestion' | 'saved' | 'food'; id: string; version: string };
-export type QuickQuantity = { itemId: string; quantity: number };
-export type QuickSelection = MealTiming & { date: string; source: QuickSource; quantities: QuickQuantity[] | null };
+/**
+ * «Plato»: several personal foods by quantity registered as one meal. Each quantity carries its food's version (CAS per
+ * food), in the order the plate was built. `saveToLibrary` also creates a composite saved meal in the same write.
+ */
+export type QuickPlateSource = { kind: 'plate'; title: string | null; saveToLibrary: boolean };
+export type QuickQuantity = { itemId: string; quantity: number; version?: string };
+export type QuickSelection = MealTiming & { date: string; source: QuickSource | QuickPlateSource; quantities: QuickQuantity[] | null };
+export const QUICK_PLATE_MAX = 50;
+/** Same as the database: trimmed, inner spaces collapsed, blank is no title. */
+export const plateTitle = (v: string | null) => { const t = v === null ? '' : v.trim().replace(/\s+/g, ' '); return t ? t : null; };
 export type QuickIntent = QuickSelection & { operation: 'register' | 'saveSuggestion'; idempotencyKey: string };
 export type QuickNutrients = { calories: number | null; proteinG: number | null; carbsG: number | null; fatG: number | null };
 export type QuickItem = { id: string; label: string; quantity: number; unit: string };
@@ -41,10 +49,27 @@ export function parseQuickSource(v: unknown): QuickSource | undefined {
     && typeof v.version === 'string' && /^[a-f0-9]{64}$/.test(v.version)
     ? { kind: v.kind, id: v.id.toLowerCase(), version: v.version } : undefined;
 }
+function parsePlateSelection(v: Record<string, unknown>, date: string, timing: MealTiming): QuickSelection | undefined {
+  const s = v.source;
+  if (!record(s) || Object.keys(s).length !== 3 || s.kind !== 'plate' || !nullableText(s.title) || typeof s.saveToLibrary !== 'boolean') return undefined;
+  const title = plateTitle(s.title);
+  if (title !== null && title.length > 120 || s.saveToLibrary && title === null) return undefined;
+  if (!Array.isArray(v.quantities) || v.quantities.length < 1 || v.quantities.length > QUICK_PLATE_MAX) return undefined;
+  const quantities: QuickQuantity[] = [];
+  for (const q of v.quantities) {
+    if (!record(q) || Object.keys(q).length !== 3 || !mealUuid(q.itemId) || typeof q.version !== 'string' || !/^[a-f0-9]{64}$/.test(q.version)
+      || !nonnegative(q.quantity) || q.quantity <= 0 || q.quantity > 1_000_000 || Number(q.quantity.toFixed(2)) !== q.quantity) return undefined;
+    quantities.push({ itemId: q.itemId.toLowerCase(), quantity: q.quantity, version: q.version });
+  }
+  // The order is the plate's (and its description's): never sorted.
+  if (new Set(quantities.map(q => q.itemId)).size !== quantities.length) return undefined;
+  return { date, source: { kind: 'plate', title, saveToLibrary: s.saveToLibrary }, quantities, ...timing };
+}
 export function parseQuickSelection(v: unknown): QuickSelection | undefined {
   if (!record(v) || Object.keys(v).some(k => !['date','source','quantities','mealLabel','consumedAt','consumedAtSource'].includes(k)) || !isNutritionDate(v.date)) return undefined;
   const timing = parseMealTiming(v, v.date);
   if (!timing) return undefined;
+  if (record(v.source) && v.source.kind === 'plate') return parsePlateSelection(v, v.date, timing);
   const source = parseQuickSource(v.source);
   if (!source || !(v.quantities === null || Array.isArray(v.quantities))) return undefined;
   let quantities: QuickQuantity[] | null = null;
@@ -149,7 +174,11 @@ export function parseQuickPreview(v: unknown): QuickPreview | undefined {
     || ![s.description,s.contextType,s.sourceNote].every(nullableText) || ![null,'catalog','label','estimated','historical'].includes(s.precision as string | null)) return undefined;
   const items: (QuickItem & QuickNutrients)[] = [];
   for (const raw of v.items) { const i = parseItem(raw), nn = record(raw) ? parseNutrients(raw) : undefined; if (!i || !nn) return undefined; items.push({...i,...nn}); }
-  if (selection.source.kind === 'food' && (items.length !== 1 || items[0].id !== selection.source.id || items[0].quantity !== selection.quantities![0].quantity)) return undefined;
+  const source = selection.source;
+  if (source.kind === 'food' && (items.length !== 1 || items[0].id !== source.id || items[0].quantity !== selection.quantities![0].quantity)) return undefined;
+  // A plate previews each of its foods, in its order, at the quantity asked.
+  if (source.kind === 'plate' && (items.length !== selection.quantities!.length
+    || items.some((item, i) => item.id !== selection.quantities![i]!.itemId || item.quantity !== selection.quantities![i]!.quantity))) return undefined;
   if (items.length > 50 || new Set(items.map(i => i.id)).size !== items.length || selection.source.kind === 'suggestion' && items.length) return undefined;
   return { status: 'preview', selection, snapshot: { ...n, calories: n.calories as number, title: s.title,
     description: s.description as string | null, contextType: s.contextType as string | null, sourceNote: s.sourceNote as string | null, precision: s.precision as QuickSnapshot['precision'] }, items };
