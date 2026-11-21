@@ -3,4 +3,6 @@ export type HomeAddMenuProps = {
   onFood: () => void;
   onManual: () => void;
   onQuick: () => void;
+  /** «Plato»: several foods by quantity as one meal. */
+  onPlate: () => void;
 };

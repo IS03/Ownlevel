@@ -8,7 +8,7 @@ import type { HomeAddMenuProps } from './home-add-menu.types';
 import { HomeActionSurface, HomeLink } from './home-ui';
 
 /** Nutrition's "+ Comida" outside iOS: the M9.2 sheet with the same entries as the native menu. */
-export function HomeAddMenu({ onFood, onManual, onQuick }: HomeAddMenuProps) {
+export function HomeAddMenu({ onFood, onManual, onPlate, onQuick }: HomeAddMenuProps) {
   const [open, setOpen] = useState(false);
   const run = (action: () => void) => () => { setOpen(false); action(); };
   return (
@@ -25,6 +25,7 @@ export function HomeAddMenu({ onFood, onManual, onQuick }: HomeAddMenuProps) {
               <ListRow onPress={run(onManual)} title="A mano" />
               <ListRow onPress={run(onQuick)} title="Rápido" />
               <ListRow onPress={run(onFood)} title="Alimento por cantidad" />
+              <ListRow onPress={run(onPlate)} title="Plato" />
             </ListGroup>
           </SafeAreaView>
         </SheetSurface>

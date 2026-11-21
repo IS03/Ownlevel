@@ -20,7 +20,9 @@ const prune = (rows: Entry[], now: number) => { const live = rows.filter(row => 
 const front = (rows: Entry[], date: string) => rows.find(row => row.date === date);
 const without = (rows: Entry[], drop: (row: Entry) => boolean) => { const kept = rows.filter(row => !drop(row)); return kept.length === rows.length ? rows : kept; };
 
-export function useMealNotice(meals: MealController | undefined, quick: QuickController | undefined, date: string) {
+/** Another source of registered meals (Plato): same notice and «Deshacer» as Rápido. */
+export type MealConfirmedSource = { subscribeConfirmed: (f: (meal: NutritionDayMeal, date: string) => void) => () => void };
+export function useMealNotice(meals: MealController | undefined, quick: QuickController | undefined, date: string, plate?: MealConfirmedSource) {
   // Newest first. The queue lives in a ref (handlers and timers always read the current one, never a render closure) and
   // is mirrored in state only so the screen re-renders; every change goes through `commit`.
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -69,6 +71,7 @@ export function useMealNotice(meals: MealController | undefined, quick: QuickCon
         expiresAt: now + windowMs.current, paused: false, owner: meals }, ...without(rows, row => row === same)]);
     };
     const unsubscribeQuick = quick?.subscribeConfirmed(show);
+    const unsubscribePlate = plate?.subscribeConfirmed(show);
     const unsubscribeMeal = meals?.subscribeConfirmed(stored => {
       const receipt = stored.receipt!, fields = stored.intent.fields;
       // An edit or a delete retires only the entry of that very meal: another meal's CAS is untouched.
@@ -83,8 +86,8 @@ export function useMealNotice(meals: MealController | undefined, quick: QuickCon
       if (stored.intent.operation === 'edit') { retire(); setResult({ message: 'Cambios guardados' }); return; }
       if (stored.intent.operation === 'create' && fields) show({ id: receipt.mealId, updatedAt: receipt.updatedAt, title: fields.title, description: fields.description, calories: fields.calories, proteinG: fields.proteinG, carbsG: fields.carbsG, fatG: fields.fatG, mealLabel: fields.mealLabel ?? null, consumedAt: fields.consumedAt ?? receipt.updatedAt, timeKnown: !!fields.consumedAt, sourceType: 'manual', entryKind: 'meal', precision: null }, receipt.destinationDate);
     });
-    return () => { unsubscribeQuick?.(); unsubscribeMeal?.(); };
-  }, [meals, quick, commit]);
+    return () => { unsubscribeQuick?.(); unsubscribePlate?.(); unsubscribeMeal?.(); };
+  }, [meals, quick, plate, commit]);
   /**
    * Deletes the meal without opening the editor: from the notice's "Deshacer" (no arguments: the entry on screen, with its
    * own snapshot) or from the day's delete actions (swipe, long-press menu, detail). The notice shows it running, then confirmed.

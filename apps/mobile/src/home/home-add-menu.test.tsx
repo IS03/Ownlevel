@@ -27,8 +27,8 @@ jest.mock('expo-glass-effect', () => {
 });
 
 describe('Home "+ Comida" native menu (iOS)', () => {
-  it('has the same entries as Nutrición (a mano, rápido, alimento por cantidad), each calling its flow', () => {
-    const handlers = { onFood: jest.fn(), onManual: jest.fn(), onQuick: jest.fn() };
+  it('has the same entries as Nutrición (a mano, rápido, alimento por cantidad, plato), each calling its flow', () => {
+    const handlers = { onFood: jest.fn(), onManual: jest.fn(), onPlate: jest.fn(), onQuick: jest.fn() };
     const view = render(<OwnlevelThemeProvider initialMode="light"><HomeAddMenu {...handlers} /></OwnlevelThemeProvider>);
     // The visible label is React Native (hidden from VoiceOver); the native menu carries the accessible name.
     expect(view.getByText('+ Comida', { includeHiddenElements: true })).toBeTruthy();
@@ -36,8 +36,10 @@ describe('Home "+ Comida" native menu (iOS)', () => {
     fireEvent.press(view.getByText('A mano'));
     fireEvent.press(view.getByText('Rápido'));
     fireEvent.press(view.getByText('Alimento por cantidad'));
+    fireEvent.press(view.getByText('Plato'));
     expect(handlers.onManual).toHaveBeenCalledTimes(1);
     expect(handlers.onQuick).toHaveBeenCalledTimes(1);
     expect(handlers.onFood).toHaveBeenCalledTimes(1);
+    expect(handlers.onPlate).toHaveBeenCalledTimes(1);
   });
 });
