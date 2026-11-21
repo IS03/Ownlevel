@@ -109,6 +109,11 @@ describe('«Plato» EXPAND', () => {
     expect(parseQuickSelection({ ...plate, source: { kind: 'plate', title: 'x'.repeat(121), saveToLibrary: false } })).toBeUndefined();
     expect(parseQuickIntent({ ...plate, operation: 'saveSuggestion', idempotencyKey: 'plate:2' })).toBeUndefined();
   });
+  it('takes a saved meal by portions alongside foods, and nothing but «saved» as its kind', () => {
+    const withSaved = { ...plate, quantities: [...plate.quantities, { kind: 'saved', itemId: '42100000-0000-4000-8000-0000000000d1', quantity: 0.5, version }] };
+    expect(parseQuickSelection(withSaved)!.quantities![2]).toEqual({ itemId: '42100000-0000-4000-8000-0000000000d1', quantity: 0.5, version, kind: 'saved' });
+    expect(parseQuickSelection({ ...withSaved, quantities: [{ ...withSaved.quantities[2], kind: 'meal' }] })).toBeUndefined();
+  });
   it('previews each food in the plate order and refuses a preview that reorders or rescales them', async () => {
     const items = [{ id: cheese, label: 'QUESO CREMA', quantity: 30, unit: 'g', calories: 66, proteinG: 1.8, carbsG: 1.2, fatG: 6 },
       { id: bread, label: 'PAN LACTAL', quantity: 2, unit: 'rebanada', calories: 131, proteinG: null, carbsG: 24, fatG: 1.6 }];
