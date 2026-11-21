@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 
 import type { ProgressHabitWeek, ProgressMetricHabit } from '@/api/progress';
 import { LinkRow, AppIcon, AppText, InlineUnavailable, SkeletonBlock, brandTokens, useOwnlevelTheme } from '@/design-system';
@@ -20,6 +21,9 @@ export function HomeHabits({ habits, onOpen, onMetrics, today, weekStart }: {
   const { colors } = useOwnlevelTheme();
   const definitions=useMetricPresentations();
   const { fontScale, width } = useWindowDimensions();
+  // One row's real height (it grows with the text size), so the window shows exactly `limit` rows and a hint of the next.
+  const [rowHeight, setRowHeight] = useState<number>(brandTokens.layout.minTouch + 4);
+  const scroll = useRef<ScrollView>(null);
   const data = habits.data?.weekStart === weekStart && habits.data.today === today ? habits.data : undefined;
   // Leave room for complete names/values and the remainder action at accessibility sizes.
   const limit = fontScale > 2 ? 1 : fontScale > 1.3 || width < 375 ? 2 : 3;
@@ -34,15 +38,21 @@ export function HomeHabits({ habits, onOpen, onMetrics, today, weekStart }: {
     {stale ? <Stale /> : null}
   </View>;
   const visibleLimit = stale && data.items.length > limit ? Math.min(2, limit) : limit;
-  const shown = data.items.slice(0, visibleLimit), remaining = data.items.length - shown.length;
+  const overflow = data.items.length > visibleLimit;
+  // The block keeps its size: more metrics than fit scroll inside it, with half of the next row showing that there is more.
+  const windowHeight = overflow && rowHeight ? rowHeight * (visibleLimit + 0.5) : undefined;
   return <View testID="home-week-habits">
-    {shown.map((item, index) => {
+    <ScrollingRows scroll={scroll} height={windowHeight} overflow={overflow}>
+    {data.items.map((item, index) => {
       const value = item.average === null ? '—' : formatValue(item.average, item.unit, item.valueType);
-      const coverage = `Promedio · ${item.coverage.registered} de 7 días`;
+      // Monday to today: each metric counts the days it has, out of the days the week has had so far.
+      const days = item.coverage.eligible ?? data.completedDays + (data.includesToday ? 1 : 0);
+      const coverage = `Promedio · ${item.coverage.registered} de ${days} ${days === 1 ? 'día' : 'días'}`;
       const arrow = habitDirection(item);
       const direction = arrow === '↗' ? '. Subió frente a la semana anterior' : arrow === '↘' ? '. Bajó frente a la semana anterior' : '';
       return <Pressable accessibilityRole="button" accessibilityLabel={`${item.name}: ${value}. ${coverage}${direction}`}
         accessibilityHint="Abre esta métrica en Progreso" key={item.id} onPress={() => onOpen(item.id)}
+        onLayout={index === 0 ? event => { const h = Math.ceil(event.nativeEvent.layout.height); if (h !== rowHeight) setRowHeight(h); } : undefined}
         style={({ pressed }) => [styles.row, index > 0 && { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth }, pressed && { opacity: 0.55 }]}
         testID={`home-habit-${item.id}`}>
         <AppIcon color={colors.textMuted} name={homeMetricIcon(item.systemKey,definitions.find(d=>d.id===item.id)?.icon)} size={20} />
@@ -56,11 +66,16 @@ export function HomeHabits({ habits, onOpen, onMetrics, today, weekStart }: {
         </View>
       </Pressable>;
     })}
-    {remaining > 0 ? <Pressable accessibilityRole="button" accessibilityLabel={`Ver ${remaining} métricas más`} onPress={onMetrics} style={styles.more} testID="home-habits-more">
-      <AppText muted numeric variant="footnote">y {remaining} más</AppText>
-    </Pressable> : null}
+    </ScrollingRows>
     {stale ? <Stale /> : null}
   </View>;
+}
+
+/** The rows, in a window of fixed height when there are more than fit; it flashes its scroll bar once so the more is seen. */
+function ScrollingRows({ children, height, overflow, scroll }: { children: React.ReactNode; height: number | undefined; overflow: boolean; scroll: React.RefObject<ScrollView | null> }) {
+  useEffect(() => { if (overflow && height) { const timer = setTimeout(() => scroll.current?.flashScrollIndicators(), 600); return () => clearTimeout(timer); } }, [overflow, height, scroll]);
+  if (!overflow) return <>{children}</>;
+  return <ScrollView ref={scroll} nestedScrollEnabled showsVerticalScrollIndicator style={height ? { height, flexGrow: 0 } : null} testID="home-habits-scroll">{children}</ScrollView>;
 }
 
 function Stale() {
@@ -74,5 +89,4 @@ const styles = StyleSheet.create({
   name: { flex: 1, minWidth: 0 },
   value: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.xxs, flexShrink: 1, maxWidth: '50%' },
   number: { flexShrink: 1, fontWeight: '600', textAlign: 'right' },
-  more: { minHeight: brandTokens.layout.minTouch, justifyContent: 'center' },
 });

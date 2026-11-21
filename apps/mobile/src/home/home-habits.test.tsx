@@ -34,15 +34,17 @@ describe('Home weekly habits', () => {
   it.each(['light', 'dark'] as const)('shows three ordered rows, faithful formats and a neutral arrow in %s', theme => {
     const view = habits(ready({ ...base, items }), theme);
     expect(view.getAllByTestId(/^home-habit-(m1|steps|sleep)$/).map(row => row.props.testID)).toEqual(['home-habit-m1', 'home-habit-steps', 'home-habit-sleep']);
-    expect(view.getByText('2,1 L')).toBeTruthy();
+    // The extra rows (scrolled to) repeat the fixture's value.
+    expect(view.getAllByText('2,1 L').length).toBeGreaterThan(0);
     expect(view.getByText('8.420')).toBeTruthy();
     expect(view.getByText('7 h 10 min')).toBeTruthy();
     expect(StyleSheet.flatten(view.getByTestId('home-habit-m1-direction').props.style).color).toBe(theme === 'dark' ? '#9F9FA9' : '#5A5A62');
     fireEvent.press(view.getByTestId('home-habit-steps'));
     expect(view.onOpen).toHaveBeenCalledWith('steps');
-    expect(view.getByText('y 3 más')).toBeTruthy();
-    fireEvent.press(view.getByTestId('home-habits-more'));
-    expect(view.onMetrics).toHaveBeenCalledTimes(1);
+    // More metrics than fit scroll inside the same block: every row is there, none behind a «y N más».
+    expect(view.getByTestId('home-habits-scroll')).toBeTruthy();
+    expect(view.getAllByTestId(/^home-habit-(?!.*-direction$)/)).toHaveLength(items.length);
+    expect(view.queryByText(/más$/)).toBeNull();
   });
 
   it('missing values have no arrow and remain distinct from a registered zero', () => {
@@ -51,9 +53,10 @@ describe('Home weekly habits', () => {
     const view = habits(ready({ ...base, items: [missing, zero] }));
     expect(view.getByText('—')).toBeTruthy();
     expect(view.getByText('0')).toBeTruthy();
-    expect(view.getByText('Promedio · 0 de 7 días')).toBeTruthy();
+    // Out of the days the week has had (Monday to today), never a fixed 7.
+    expect(view.getByText('Promedio · 0 de 5 días')).toBeTruthy();
     expect(view.queryAllByTestId(/-direction$/)).toHaveLength(0);
-    expect(view.queryByTestId('home-habits-more')).toBeNull();
+    expect(view.queryByTestId('home-habits-scroll')).toBeNull();
   });
 
   it('only comparable increases/decreases show an arrow; stable and insufficient comparisons do not', () => {
@@ -80,16 +83,16 @@ describe('Home weekly habits', () => {
     expect(unavailable.getByText('No pudimos cargar Hábitos de esta semana.')).toBeTruthy(); unavailable.unmount();
     const stale = habits({ status: 'unavailable', data: { ...base, items }, confirmedAt: 1 });
     expect(stale.getByText('Sin actualizar · Última lectura disponible')).toBeTruthy();
-    expect(stale.getByText('y 4 más')).toBeTruthy(); stale.unmount();
+    expect(stale.getByTestId('home-habits-scroll')).toBeTruthy(); stale.unmount();
     const wrong = habits(ready({ ...base, ...habitWeekRange('2026-09-28'), today: '2026-09-28' }));
     expect(wrong.getByText('No pudimos cargar Hábitos de esta semana.')).toBeTruthy();
     expect(wrong.queryByTestId('home-habits-empty')).toBeNull();
   });
 
-  it('large type reduces rows while keeping the exact remaining count and access', () => {
+  it('large type shows fewer rows at once and scrolls to the rest, all of them reachable', () => {
     mockFontScale = 2;
     const view = habits();
-    expect(view.queryByTestId('home-habit-sleep')).toBeNull();
-    expect(view.getByText('y 4 más')).toBeTruthy();
+    expect(view.getByTestId('home-habits-scroll')).toBeTruthy();
+    expect(view.getByTestId('home-habit-sleep')).toBeTruthy();
   });
 });

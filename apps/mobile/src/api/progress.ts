@@ -60,11 +60,14 @@ export const fetchProgressTrainingExercise = (client: MobileApiClient, query: Pr
     return data && samePeriod(data.period, query, compare) && data.exercise.id === exerciseId.toLowerCase() ? data : undefined;
   } });
 
-/** A response from a different calendar week never replaces Home's requested week. */
+/**
+ * A response from a different calendar week never replaces Home's requested week. Monday to today, today included with
+ * what it already has (`includeToday=1`): an answer without it is not this read.
+ */
 export const fetchProgressHabitWeek = (client: MobileApiClient, weekStart: string, signal?: AbortSignal) =>
-  client.read({ path: `${BASE}/habits`, signal, parse: (raw: unknown) => {
+  client.read({ path: `${BASE}/habits?includeToday=1`, signal, parse: (raw: unknown) => {
     const data = parseProgressHabitWeek(raw);
-    return data?.weekStart === weekStart ? data : undefined;
+    return data?.weekStart === weekStart && data.includesToday ? data : undefined;
   } });
 
 export const fetchProgressNutritionTiming = (client: MobileApiClient, query: ProgressQuery, signal?: AbortSignal, compare: ProgressCompareRange = null) =>
