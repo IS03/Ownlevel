@@ -76,7 +76,8 @@ describe('Plato · controller', () => {
     const f = fixture(); await f.controller.initialize();
     const announced = jest.fn(); f.controller.subscribeConfirmed(announced);
     f.controller.open(DATE); await settle();
-    f.controller.add(bread); f.controller.add(cheese); f.controller.saveToLibrary(true);
+    // Named on purpose: after 23 h there is no suggested moment, and saving needs a name.
+    f.controller.add(bread); f.controller.add(cheese); f.controller.rename('Merienda'); f.controller.saveToLibrary(true);
     await f.controller.requestPreview();
     expect(f.controller.getSnapshot().preview).toBeTruthy();
     await f.controller.save(); await settle();
@@ -113,7 +114,7 @@ describe('Plato · controller', () => {
   });
   it('a repeated name keeps everything and points at the name', async () => {
     const f = fixture(); await f.controller.initialize();
-    f.controller.open(DATE); await settle(); f.controller.add(bread); f.controller.saveToLibrary(true);
+    f.controller.open(DATE); await settle(); f.controller.add(bread); f.controller.rename('Merienda'); f.controller.saveToLibrary(true);
     await f.controller.requestPreview();
     (f.api.confirm as jest.Mock).mockResolvedValueOnce({ status: 'conflict', code: 'SAVED_NAME_EXISTS', message: 'x', meta } as never);
     await f.controller.save(); await settle();
