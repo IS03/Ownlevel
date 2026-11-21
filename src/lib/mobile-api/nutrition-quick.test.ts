@@ -91,3 +91,34 @@ describe('M9 quick timing EXPAND', () => {
     expect(response.status).toBe(503);
   });
 });
+describe('«Plato» EXPAND', () => {
+  const bread = '42100000-0000-4000-8000-0000000000b1', cheese = '42100000-0000-4000-8000-0000000000c1';
+  const plate = { date, source: { kind: 'plate', title: '  Merienda   de hoy ', saveToLibrary: false },
+    quantities: [{ itemId: cheese, quantity: 30, version }, { itemId: bread, quantity: 2, version: 'b'.repeat(64) }] };
+  const normalized = { ...plate, source: { kind: 'plate', title: 'Merienda de hoy', saveToLibrary: false } };
+  it('keeps the plate order, each food version and normalizes the title like the database', () => {
+    expect(parseQuickSelection(plate)).toEqual(normalized);
+    expect(parseQuickIntent({ ...plate, operation: 'register', idempotencyKey: 'plate:1' })).toEqual({ ...normalized, operation: 'register', idempotencyKey: 'plate:1' });
+    expect(parseQuickSelection({ ...plate, source: { ...plate.source, title: '   ' } })!.source).toEqual({ kind: 'plate', title: null, saveToLibrary: false });
+  });
+  it('refuses what the database refuses: 3 decimals, duplicates, no version, saving without a name, more than 50 foods', () => {
+    for (const quantities of [[{ itemId: bread, quantity: 0.125, version }], [plate.quantities[0], plate.quantities[0]], [{ itemId: bread, quantity: 1 }], [],
+      Array.from({ length: 51 }, (_, n) => ({ itemId: `42100000-0000-4000-8000-${String(n).padStart(12, '0')}`, quantity: 1, version }))])
+      expect(parseQuickSelection({ ...plate, quantities })).toBeUndefined();
+    expect(parseQuickSelection({ ...plate, source: { kind: 'plate', title: null, saveToLibrary: true } })).toBeUndefined();
+    expect(parseQuickSelection({ ...plate, source: { kind: 'plate', title: 'x'.repeat(121), saveToLibrary: false } })).toBeUndefined();
+    expect(parseQuickIntent({ ...plate, operation: 'saveSuggestion', idempotencyKey: 'plate:2' })).toBeUndefined();
+  });
+  it('previews each food in the plate order and refuses a preview that reorders or rescales them', async () => {
+    const items = [{ id: cheese, label: 'QUESO CREMA', quantity: 30, unit: 'g', calories: 66, proteinG: 1.8, carbsG: 1.2, fatG: 6 },
+      { id: bread, label: 'PAN LACTAL', quantity: 2, unit: 'rebanada', calories: 131, proteinG: null, carbsG: 24, fatG: 1.6 }];
+    const body = { status: 'preview', selection: normalized, snapshot: { ...snapshot, title: 'MERIENDA DE HOY', calories: 197, contextType: 'food_plate' }, items };
+    expect(parseQuickPreview(body)).toBeDefined();
+    expect(parseQuickPreview({ ...body, items: [...items].reverse() })).toBeUndefined();
+    expect(parseQuickPreview({ ...body, items: [items[0], { ...items[1], quantity: 3 }] })).toBeUndefined();
+    rpc.mockResolvedValueOnce({ data: [{ response_status: 200, response_body: body }], error: null });
+    const response = await preview(request(plate), params);
+    expect(response.status).toBe(200);
+    expect(rpc).toHaveBeenCalledWith('mobile_preview_quick_meal', { p_selection: normalized });
+  });
+});
