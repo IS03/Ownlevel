@@ -4,6 +4,7 @@ import { layout, typeScale } from './brand';
 import { AppIcon, appIconSize } from './icons';
 import { radius, spacing } from './tokens';
 import { useOwnlevelTheme } from './theme';
+import { useFieldSurface } from './field-surface';
 
 /**
  * Search field with the system look: filled (never glass: IDENTIDAD.md keeps glass for controls), magnifier at
@@ -11,7 +12,8 @@ import { useOwnlevelTheme } from './theme';
  */
 export function SearchField({ value, onChange, label, testID }: { value: string; onChange: (value: string) => void; label: string; testID?: string }) {
   const { colors } = useOwnlevelTheme();
-  return <View style={[styles.field, { backgroundColor: colors.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.fieldBorder }]}>
+  const fieldSurface = useFieldSurface();
+  return <View style={[styles.field, fieldSurface]}>
     <AppIcon name="search" color={colors.textMuted} size={appIconSize.inline} />
     <TextInput accessibilityLabel={label} placeholder={label} placeholderTextColor={colors.textMuted} value={value} onChangeText={onChange}
       autoCorrect={false} autoCapitalize="none" returnKeyType="search" clearButtonMode="while-editing" enablesReturnKeyAutomatically

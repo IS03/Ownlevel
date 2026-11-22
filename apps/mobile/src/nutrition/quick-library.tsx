@@ -1,7 +1,7 @@
 import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, SectionList, StyleSheet, View, useWindowDimensions, type AccessibilityActionEvent, type ViewToken } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
-import { LinkRow, AppIcon, AppText, Button, LoadingState, Surface, brandTokens, useOwnlevelTheme } from '@/design-system';
+import { LinkRow, AppIcon, AppText, Button, LoadingState, Surface, brandTokens, useOwnlevelTheme, useFieldSurface } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import type { QuickOption } from '@/api/nutrition-quick';
 import type { QuickController, QuickState } from './quick-controller';
@@ -95,7 +95,8 @@ function GoneRow({ row, onRelease }: { row: Extract<PinnedRow, { kind: 'unavaila
  */
 const PinTile = memo(function PinTile({ option, added, pending, locked, onReview, onAdd, pin, menu }: RowProps) {
   const { colors } = useOwnlevelTheme();
-  return <View style={[styles.tile, { backgroundColor: colors.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.fieldBorder }]} testID={`quick-pin-tile-${option.source.id}`}>
+  const fieldSurface = useFieldSurface('tile');
+  return <View style={[styles.tile, fieldSurface]} testID={`quick-pin-tile-${option.source.id}`}>
     <MenuArea option={option} locked={locked} onReview={onReview} onAdd={onAdd} pin={pin} menu={menu} label={`Revisar ${option.name}`} style={styles.tileText}>
       <AppText numberOfLines={2} variant="footnote" style={{ fontWeight: '600' }}>{option.name}</AppText>
     </MenuArea>
@@ -111,9 +112,9 @@ const PinTile = memo(function PinTile({ option, added, pending, locked, onReview
 });
 /** A pinned place whose meal is not offered now, as a card: never added, released only on request. */
 function GoneTile({ row, onRelease }: { row: Extract<PinnedRow, { kind: 'unavailable' }>; onRelease: (() => void) | null }) {
-  const { colors } = useOwnlevelTheme();
+  const fieldSurface = useFieldSurface('tile');
   const what = row.state === 'archived' ? 'Comida archivada' : row.state === 'deleted' ? 'Comida eliminada' : 'Comida no disponible';
-  return <View style={[styles.tile, { backgroundColor: colors.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.fieldBorder }]} testID={`quick-pin-gone-${row.id}`}>
+  return <View style={[styles.tile, fieldSurface]} testID={`quick-pin-gone-${row.id}`}>
     <View style={styles.tileText} accessible accessibilityLabel={`${what}. Ocupa un lugar de tus fijadas y no se puede agregar.`}>
       <AppText muted numberOfLines={2} variant="footnote">{what}</AppText>
     </View>

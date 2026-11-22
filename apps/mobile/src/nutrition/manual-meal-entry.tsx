@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
-import { AppIcon, AppText, Button, Surface, useOwnlevelTheme } from '@/design-system';
+import { AppIcon, AppText, Button, Surface, useOwnlevelTheme, useFieldSurface } from '@/design-system';
 import type { MealController, MealEditorState } from './meal-controller';
 import { validateMealDraft } from './meal-form-model';
 import { MealSheet, mealShown, mealSheetStyles as shared } from './meal-sheet';
@@ -11,6 +11,7 @@ import { inputNutritionDate, parseInputNutritionDate } from './day-format';
 /** `done`: the save is confirmed; the sheet shows its check for a moment before it leaves. */
 export function ManualMealEntry({ controller, state, done = false }: { controller: MealController; state: MealEditorState; done?: boolean }) {
   const { colors } = useOwnlevelTheme();
+  const fieldSurface = useFieldSurface();
   const [note, setNote] = useState(false);
   // The whole calories band and each macro box focus their field: no need to hit the digits themselves.
   const fields = useRef<Partial<Record<'calories' | 'proteinG' | 'carbsG' | 'fatG', TextInput | null>>>({});
@@ -37,7 +38,7 @@ export function ManualMealEntry({ controller, state, done = false }: { controlle
   const input = (key: 'title' | 'description' | 'calories' | 'proteinG' | 'carbsG' | 'fatG', label: string, big = false) => <TextInput accessibilityLabel={label}
     ref={key === 'title' || key === 'description' ? undefined : (node: TextInput | null) => { fields.current[key] = node; }} placeholder={key === 'title' ? '¿Qué comiste? (opcional)' : key === 'description' ? 'Detalle (opcional)' : big ? '0' : '—'} placeholderTextColor={colors.textMuted}
     value={draft[key]} editable={!locked} keyboardType={['title', 'description'].includes(key) ? 'default' : key === 'calories' ? 'number-pad' : 'decimal-pad'} selectTextOnFocus={!['title', 'description'].includes(key)}
-    onChangeText={value => controller.change(key, value)} style={[big ? shared.number : shared.input, { color: colors.text }, !big && { backgroundColor: colors.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.fieldBorder },
+    onChangeText={value => controller.change(key, value)} style={[big ? shared.number : shared.input, { color: colors.text }, !big && fieldSurface,
       ['proteinG', 'carbsG', 'fatG'].includes(key) && styles.macroInput]} />;
   return <MealSheet title={editing ? 'Editar comida' : 'Cargar a mano'} subtitle={new Intl.DateTimeFormat('es-AR', { timeZone: 'UTC', weekday: 'long', day: 'numeric' }).format(new Date(`${date}T12:00:00Z`))} onClose={close} dismissable={!state.intent && !controller.dirty()} running={saving || done} testID="manual-meal-editor" right={<MealDateControl date={date} disabled={locked} onChange={next => { controller.change('date', inputNutritionDate(next)); if (draft.consumedAt) controller.timing(draft.mealLabel ?? null, `${next}T${new Date(Date.parse(draft.consumedAt) - 10800000).toISOString().slice(11,16)}:00-03:00`); }} />}>
     <View style={styles.titleRow}>

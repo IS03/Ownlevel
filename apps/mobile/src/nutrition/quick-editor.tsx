@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { AppText, Button, LoadingState, Surface, useOwnlevelTheme, brandTokens } from '@/design-system';
+import { AppText, Button, LoadingState, Surface, useOwnlevelTheme, brandTokens, useFieldSurface } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
 import type { QuickNutrients, QuickOption } from '@/api/nutrition-quick';
 import { displayNutritionDate } from './day-format';
@@ -25,6 +25,7 @@ export function MealNutrients({ value, pending = false }: { value: QuickNutrient
  */
 export function QuickEditor({ controller, state, embedded = false, onBack, onSaved, onEdit, externalLocked = false, suggestions = false, pins = null }: { controller: QuickController; state: QuickState; embedded?: boolean; onBack?: () => void; onSaved?: () => void; onEdit?: (option: QuickOption) => void; externalLocked?: boolean; suggestions?: boolean; pins?: QuickPins }) {
   const { colors } = useOwnlevelTheme();
+  const fieldSurface = useFieldSurface();
   const draft = state.inlineKey ? null : state.draft;
   const estimate = draft ? quickEstimate(draft) : null;
   const locked = externalLocked || !!state.intent || state.phase !== 'idle' || !!state.inlineKey;
@@ -88,7 +89,7 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onSav
       {multipliable(draft.option) ? <View style={styles.portions} testID="quick-portions">
         <View style={shared.text}><AppText variant="headline">Porciones</AppText>
           {draft.times ? <AppText muted variant="caption">{`Se registra como ${timesTitle(draft.option.name, draft.times)}`}</AppText> : null}</View>
-        <View style={[styles.stepper, { backgroundColor: colors.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.fieldBorder }]}>
+        <View style={[styles.stepper, fieldSurface]}>
           <Pressable accessibilityRole="button" accessibilityLabel="Una porción menos" disabled={locked || !draft.times} onPress={() => { triggerHaptic('stepperChange'); controller.portions((draft.times ?? 1) - 1); }} style={styles.step}><AppText muted={!draft.times}>−</AppText></Pressable>
           <AppText numeric variant="headline" style={styles.count} accessibilityLabel={`${draft.times ?? 1} ${draft.times ? 'porciones' : 'porción'}`}>{String(draft.times ?? 1)}</AppText>
           <Pressable accessibilityRole="button" accessibilityLabel="Una porción más" disabled={locked || (draft.times ?? 1) >= QUICK_TIMES_MAX} onPress={() => { triggerHaptic('stepperChange'); controller.portions((draft.times ?? 1) + 1); }} style={styles.step}><AppText>+</AppText></Pressable>
