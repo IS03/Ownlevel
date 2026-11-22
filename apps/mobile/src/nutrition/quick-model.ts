@@ -9,6 +9,8 @@ export type QuickDraft = Pick<QuickSelection, 'mealLabel' | 'consumedAt' | 'cons
 export const QUICK_TIMES_MAX = 20;
 const validTimes = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 2 && (n as number) <= QUICK_TIMES_MAX;
 /** «PASTA ×2»: the saved meal's name, kept within the plate title's 120 characters. */
+/** A simple saved meal can be added in portions (×N); a composite one is adjusted by its ingredients instead. */
+export const multipliable = (option: QuickOption) => option.source.kind === 'saved' && option.templateType !== 'composite';
 export const timesTitle = (name: string, times: number) => `${name.trim().slice(0, 112)} ×${times}`;
 export function quickDraft(date: string, option: QuickOption, times?: number): QuickDraft {
   const moment = suggestedMealLabel(date), at = loadTime(date);
@@ -58,7 +60,7 @@ export function quickEstimate(draft: QuickDraft): QuickNutrients | null {
     const item = draft.option.items[0], quantity = item ? amount(item.id) : NaN;
     return item && item.quantity > 0 && Number.isFinite(quantity) && quantity > 0 ? scale(quantity / item.quantity) : null;
   }
-  return draft.option.items.every(i => amount(i.id) === i.quantity) ? scale(1) : null;
+  return draft.option.items.every(i => amount(i.id) === i.quantity) ? scale(draft.times ?? 1) : null;
 }
 const times = (value: number | null, factor: number, places = 2) => value === null ? null : Math.round(value * factor * 10 ** places) / 10 ** places;
 /** Search form of a text: no accents, no case (café = cafe = CAFÉ), like the server's catalog search. */

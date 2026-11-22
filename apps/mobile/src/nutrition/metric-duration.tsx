@@ -8,7 +8,7 @@ export function MetricDuration({ value, disabled, onChange }: MetricDurationProp
   return <View style={styles.row}>{(['hours', 'minutes'] as const).map(field => <View key={field} style={styles.column}>
     <AppText muted variant="footnote">{field === 'hours' ? 'Horas' : 'Minutos'}</AppText>
     <TextInput accessibilityLabel={field === 'hours' ? 'Horas' : 'Minutos'} editable={!disabled} keyboardType="number-pad" value={value[field]}
-      onChangeText={next => onChange({ ...value, [field]: next })} style={[styles.input, { color: colors.text, backgroundColor: colors.surfaceRaised }]} />
+      onChangeText={next => onChange({ ...value, [field]: next })} style={[styles.input, { color: colors.text }, { backgroundColor: colors.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.fieldBorder }]} />
   </View>)}</View>;
 }
 const styles = StyleSheet.create({ row: { flexDirection: 'row', gap: 16 }, column: { flex: 1, gap: 8 }, input: { minHeight: 48, borderRadius: 12, textAlign: 'center', fontSize: brandTokens.typeScale.title1.fontSize, fontVariant: ['tabular-nums'] } });

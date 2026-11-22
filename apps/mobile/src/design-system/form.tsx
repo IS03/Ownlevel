@@ -56,8 +56,8 @@ export function TextField({
           multiline && styles.multiline,
           numeric && styles.numeric,
           {
-            backgroundColor: colors.surfaceRaised,
-            borderColor: error ? colors.danger : colors.border,
+            backgroundColor: colors.field,
+            borderColor: error ? colors.danger : colors.fieldBorder,
             color: colors.text,
           },
           disabled && styles.disabled,

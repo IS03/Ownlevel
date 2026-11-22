@@ -273,7 +273,7 @@ export function Button({
   const reduceMotion = useReduceMotion();
   const blocked = disabled || loading;
   const tone = {
-    primary: { background: colors.primary, border: colors.primary, text: colors.onPrimary },
+    primary: { background: colors.action, border: colors.action, text: colors.onAction },
     secondary: { background: colors.surfaceRaised, border: colors.border, text: colors.text },
     quiet: { background: 'transparent', border: 'transparent', text: colors.text },
     destructive: { background: colors.dangerSoft, border: 'transparent', text: colors.danger },

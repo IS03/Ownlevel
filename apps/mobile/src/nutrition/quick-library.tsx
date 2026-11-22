@@ -95,14 +95,14 @@ function GoneRow({ row, onRelease }: { row: Extract<PinnedRow, { kind: 'unavaila
  */
 const PinTile = memo(function PinTile({ option, added, pending, locked, onReview, onAdd, pin, menu }: RowProps) {
   const { colors } = useOwnlevelTheme();
-  return <View style={[styles.tile, { backgroundColor: colors.surface }]} testID={`quick-pin-tile-${option.source.id}`}>
+  return <View style={[styles.tile, { backgroundColor: colors.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.fieldBorder }]} testID={`quick-pin-tile-${option.source.id}`}>
     <MenuArea option={option} locked={locked} onReview={onReview} onAdd={onAdd} pin={pin} menu={menu} label={`Revisar ${option.name}`} style={styles.tileText}>
       <AppText numberOfLines={2} variant="footnote" style={{ fontWeight: '600' }}>{option.name}</AppText>
     </MenuArea>
     <View style={styles.tileFoot}>
       <AppText muted numeric variant="caption">{shown(option.calories)} kcal</AppText>
       <Pressable accessibilityRole="button" accessibilityLabel={added ? `${option.name} agregado` : `Agregar ${option.name}`} accessibilityState={{ disabled: locked || added, busy: pending }} disabled={locked || added} onPress={() => onAdd(option)} style={styles.add} testID={`quick-add-${option.source.kind}:${option.source.id}`}>
-        <View style={[styles.tileDisc, { backgroundColor: added ? colors.brandSubtle : colors.background }]}>
+        <View style={[styles.tileDisc, { backgroundColor: colors.brandSubtle }]}>
           {pending ? <ActivityIndicator color={colors.primary} /> : <AppIcon name={added ? 'checkmark' : 'plus'} size={17} color={colors.primary} />}
         </View>
       </Pressable>
@@ -113,7 +113,7 @@ const PinTile = memo(function PinTile({ option, added, pending, locked, onReview
 function GoneTile({ row, onRelease }: { row: Extract<PinnedRow, { kind: 'unavailable' }>; onRelease: (() => void) | null }) {
   const { colors } = useOwnlevelTheme();
   const what = row.state === 'archived' ? 'Comida archivada' : row.state === 'deleted' ? 'Comida eliminada' : 'Comida no disponible';
-  return <View style={[styles.tile, { backgroundColor: colors.surface }]} testID={`quick-pin-gone-${row.id}`}>
+  return <View style={[styles.tile, { backgroundColor: colors.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.fieldBorder }]} testID={`quick-pin-gone-${row.id}`}>
     <View style={styles.tileText} accessible accessibilityLabel={`${what}. Ocupa un lugar de tus fijadas y no se puede agregar.`}>
       <AppText muted numberOfLines={2} variant="footnote">{what}</AppText>
     </View>

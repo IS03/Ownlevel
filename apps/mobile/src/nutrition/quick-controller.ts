@@ -3,7 +3,7 @@ import type { MobileApiReadResult, MobileApiRequestResult } from '@/api/results'
 import { sameQuickSelection, type QuickOptions, type QuickOption, type QuickPreview, type QuickResponse, type QuickIntent, type QuickSelection } from '@/api/nutrition-quick';
 import type { MobileNutritionDayResponse } from '@/api/nutrition-day';
 import { QuickIntentRepository, type StoredQuickIntent } from './quick-storage';
-import { quickDraft, selectionFromDraft, type QuickDraft } from './quick-model';
+import { multipliable, QUICK_TIMES_MAX, quickDraft, selectionFromDraft, type QuickDraft } from './quick-model';
 export type QuickApi = { food?: (id: string) => Promise<MobileApiReadResult<FoodDetail>>; options: () => Promise<MobileApiReadResult<QuickOptions>>; preview: (s: QuickSelection) => Promise<MobileApiRequestResult<QuickPreview>>;
   confirm: (i: QuickIntent) => Promise<MobileApiRequestResult<QuickResponse>>; read: (date: string) => Promise<MobileApiReadResult<MobileNutritionDayResponse>> };
 /**
@@ -63,7 +63,7 @@ export class QuickController {
     this.update({ open: false, previewLoading: false,
       ...(this.state.phase === 'conflict' && !this.state.intent ? { phase: 'idle', draft: null, previousDraft: null, preview: null, truth: null, message: null } : {}) });
   }
-  dirty() { const d = this.state.draft; return !!d && d.option.items.some(i => d.quantities[i.id] !== String(i.quantity).replace('.', ',')); }
+  dirty() { const d = this.state.draft; return !!d && (d.times !== undefined || d.option.items.some(i => d.quantities[i.id] !== String(i.quantity).replace('.', ','))); }
   showRecovery() { if (this.state.intent && !this.busy) this.update({ open: true, date: this.state.intent.intent.date, draft: this.state.intent.draft }); }
   async loadOptions() {
     if (this.disposed) return;
@@ -129,6 +129,15 @@ export class QuickController {
     const d = this.state.draft;
     if (!d || !d.option.items.some(i => i.id === itemId) || this.state.intent || this.state.phase !== 'idle' || this.busy) return;
     this.previewGeneration++; this.update({ draft: { ...d, quantities: { ...d.quantities, [itemId]: value } }, preview: null, previewLoading: false, errors: {}, message: null });
+  }
+  /** Portions of a simple saved meal under review: 1 is the meal itself; 2–20 register it as «NOMBRE ×N». */
+  portions(n: number) {
+    const d = this.state.draft;
+    if (!d || !multipliable(d.option) || this.state.intent || this.state.phase !== 'idle' || this.busy || this.state.inlineKey) return;
+    const next = Math.max(1, Math.min(QUICK_TIMES_MAX, Math.round(n)));
+    if (next === (d.times ?? 1)) return;
+    const { times: _previous, ...rest } = d;
+    this.previewGeneration++; this.update({ draft: next > 1 ? { ...rest, times: next } : rest, preview: null, previewLoading: false, errors: {}, message: null });
   }
   async requestPreview() {
     if (this.disposed || this.state.phase !== 'idle' || !this.state.draft || this.busy || this.state.intent) return;
