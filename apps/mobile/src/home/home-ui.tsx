@@ -77,8 +77,8 @@ export function HomeActionSurface({ children, style, testID, tint }: PropsWithCh
 }
 
 /**
- * Full-width action, always Liquid Glass: `solid` = the one primary action (glass tinted with the dark champagne,
- * light text: "Arrancar rutina", "Volver a la sesión"); `soft` = the soft champagne glass. Without Liquid Glass (older
+ * Full-width action, always Liquid Glass: `solid` = the one primary action (glass tinted with the champagne action color,
+ * dark text, like every primary button: "Arrancar rutina", "Volver a la sesión"); `soft` = the soft champagne glass. Without Liquid Glass (older
  * iOS, Reduce Transparency) the tint becomes a plain fill, so the solid one looks exactly as before.
  */
 export function HomeButton({ accessibilityHint, label, onPress, testID, tone }: {
@@ -87,7 +87,7 @@ export function HomeButton({ accessibilityHint, label, onPress, testID, tone }: 
   const { colors } = useOwnlevelTheme();
   const reduceMotion = useReduceMotion();
   const palette = tone === 'solid'
-    ? { background: colors.primary, text: colors.onPrimary }
+    ? { background: colors.action, text: colors.onAction }
     : { background: colors.brandSubtle, text: colors.primary };
   return (
     <Pressable accessibilityHint={accessibilityHint} accessibilityLabel={label} accessibilityRole="button" onPress={onPress}
