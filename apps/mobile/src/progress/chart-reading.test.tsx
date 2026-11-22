@@ -13,9 +13,9 @@ const readings: ChartReading[] = [
   { title: 'Período completo', value: '2,07 L', detail: 'Promedio diario · 29 días con dato' },
   { title: '5–11 nov', value: '1,93 L', detail: 'Promedio semanal · 7 días con dato' },
 ];
-it('reserves the largest real reading, keeps measuring copies hidden and clears explicitly', async () => {
+it.each(['row', 'inline'] as const)('reserves the largest real reading, keeps measuring copies hidden and clears explicitly (%s)', async clearPresentation => {
   const clear = jest.fn();
-  const tree = (selected: boolean) => <OwnlevelThemeProvider><ChartReadout reading={readings[selected ? 1 : 0]} candidates={readings} testID="readout" onClear={selected ? clear : undefined} /></OwnlevelThemeProvider>;
+  const tree = (selected: boolean) => <OwnlevelThemeProvider><ChartReadout reading={readings[selected ? 1 : 0]} candidates={readings} testID="readout" clearPresentation={clearPresentation} onClear={selected ? clear : undefined} /></OwnlevelThemeProvider>;
   const view = render(tree(false)); await act(async () => {});
   const measurements = view.UNSAFE_getAllByType(View).filter(node => node.props.onLayout && StyleSheet.flatten(node.props.style)?.position === 'absolute');
   measurements.forEach((node, i) => fireEvent(node, 'layout', { nativeEvent: { layout: { height: 100 + i * 20 } } }));

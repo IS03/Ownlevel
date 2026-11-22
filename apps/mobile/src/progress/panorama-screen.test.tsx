@@ -1,3 +1,4 @@
+import { pressFittedMark } from './fitted-chart.test-helper';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { beforeEach, it, expect, jest } from '@jest/globals';
 import { useEffect } from 'react';
@@ -58,8 +59,10 @@ it('opens three bounded sources, with no Insights or hidden destination read, an
     expect(after.queryByTestId('progress-period-caption')).toBeNull();
     expect(after.getByText('7 días entrenados · 96 series')).toBeTruthy();
     expect(after.getAllByTestId(/^panorama-day-/)).toHaveLength(30);
-    expect(after.getByText(/7 nov · 3 pesajes/)).toBeTruthy();
-    expect(after.getByText('Promedio de 10 días (proteína: 8)')).toBeTruthy();
+    expect(after.queryByText(/7 nov · 3 pesajes/)).toBeNull();
+    expect(after.getByRole('button', { name: 'Ver peso y medidas' }).props.accessibilityHint).toContain('3 registros válidos');
+    expect(after.queryByText('Promedio de 10 días (proteína: 8)')).toBeNull();
+    expect(after.getByRole('button', { name: 'Ver alimentación y objetivos' }).props.accessibilityHint).toContain('10 días utilizados para calorías');
     expect(after.getByText('Proteína 127 g/día')).toBeTruthy();
     fireEvent.press(after.getByRole('button', { name: 'Últimos tres meses: tres meses enteros, semana por semana' }));
     expect(mockNavigate).toHaveBeenLastCalledWith({ ...periodSummaryHref(PANORAMA_TODAY, { fromProgress: '1' }), pathname: '/(tabs)/progress/insights/period' });
@@ -73,8 +76,7 @@ it('inspects a graph locally and opens the corresponding configured detail only 
     await view.findByTestId('progress-panorama');
     fireEvent.press(view.getByRole('button', {name: 'Ver puntos del resumen'}));
     const chart = within(view.getByTestId('panorama-chart-training'));
-    const buttons = chart.getAllByRole('button');
-    fireEvent.press(buttons[0]!);
+    pressFittedMark(chart.getByTestId('panorama-chart-training-2026-10-11-zero'));
     expect(mockPush).not.toHaveBeenCalled();
     expect(read).toHaveBeenCalledTimes(3);
     fireEvent.press(view.getByRole('button', { name: 'Ver actividad y ejercicios' }));
@@ -136,8 +138,8 @@ it('labels first record, unavailable fields and explicit nutritional zero withou
         mockData.nutrition.data.averageKcal = 0;
     const view = render(wrap());
     await view.findByTestId('progress-panorama');
-    expect(view.getByText('Un solo registro no permite describir una tendencia.')).toBeTruthy();
-    expect(view.getByText('Sin ejercicios comparables entre dos sesiones de esta ventana.')).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Ver peso y medidas' }).props.accessibilityHint).toContain('1 registro válido');
+    expect(view.queryByText('Sin ejercicios comparables entre dos sesiones de esta ventana.')).toBeNull();
     expect(view.getByText('0')).toBeTruthy();
     view.unmount();
     clearConfirmedReads(mockClient);
@@ -175,7 +177,7 @@ it('does not turn a failed domain into an empty period, while keeping the availa
     const view = render(wrap()); await view.findByTestId('progress-panorama');
     expect(within(view.getByTestId('panorama-body')).getByText('No pudimos leer Cuerpo.')).toBeTruthy();
     expect(view.queryByText(/Sin pesajes válidos/)).toBeNull();
-    expect(view.getByText('Sin sesiones registradas en esta ventana.')).toBeTruthy();
+    expect(within(view.getByTestId('panorama-training')).getByText('0')).toBeTruthy();
     expect(view.getByRole('button', {name: 'Ver peso y medidas'})).toBeTruthy();
     expect(view.getByText('2.190')).toBeTruthy();
     expect(read).toHaveBeenCalledTimes(3);
@@ -268,10 +270,12 @@ it('keeps a comparable zero result, unavailable comparison and activity distinct
     mockData.inPeriod = {improved:0,comparable:5};
     const view = render(wrap()); await view.findByTestId('progress-panorama');
     const training = within(view.getByTestId('panorama-training'));
-    expect(training.getByText('0 de 5 ejercicios subieron · primera frente a última sesión')).toBeTruthy();
+    expect(training.queryByText('0 de 5 ejercicios subieron · primera frente a última sesión')).toBeNull();
+    expect(training.getByText('7 días entrenados · 96 series')).toBeTruthy();
     delete mockData.inPeriod;
     invalidateConfirmedReads(mockClient,'/api/mobile/v1/training/sessions/fixture/finish'); await act(async()=>{});
-    expect(training.getByText('Comparación no disponible en esta lectura.')).toBeTruthy();
+    expect(training.queryByText('Comparación no disponible en esta lectura.')).toBeNull();
+    expect(training.getByText('7 días entrenados · 96 series')).toBeTruthy();
     expect(training.queryByText(/Sin ejercicios comparables/)).toBeNull();
 });
 it.each([{width:320,fontScale:1},{width:430,fontScale:1},{width:320,fontScale:2}])('keeps accessible headers and targets at $width pt / scale $fontScale', async ({width,fontScale}) => {
@@ -280,7 +284,7 @@ it.each([{width:320,fontScale:1},{width:430,fontScale:1},{width:320,fontScale:2}
         const view = render(wrap()); await view.findByTestId('progress-panorama');
         const action=view.getByRole('button',{name:'Ver actividad y ejercicios'});
         expect(Native.StyleSheet.flatten(action.props.style).minHeight).toBeGreaterThanOrEqual(44);
-        expect(action.props.accessibilityHint).toContain('3 de 5');
+        expect(action.props.accessibilityHint).toContain('8 sesiones finalizadas');
         expect(view.getByRole('button', {name:'Ver peso y medidas'}).props.accessibilityHint).toContain('3 registros válidos');
         expect(view.getByRole('button', {name:'Ver alimentación y objetivos'}).props.accessibilityHint).toContain('8 días utilizados');
         if(fontScale>1.3) expect(action.findAll(n=>n.props.style&&Native.StyleSheet.flatten(n.props.style)?.flexDirection==='column').length).toBeGreaterThan(0);
@@ -292,13 +296,17 @@ it('read budget: keeps one grouped opening and no reads for point/finding/contex
     const view=render(wrap());await view.findByTestId('progress-panorama');
     const initial=read.mock.calls.length;expect(initial).toBe(3);
     fireEvent.press(view.getByRole('button',{name:'Ver puntos del resumen'}));
-    fireEvent.press(within(view.getByTestId('panorama-chart-training')).getAllByRole('button')[0]!);
+    pressFittedMark(view.getByTestId('panorama-chart-training-2026-10-11-zero'));
     expect(read).toHaveBeenCalledTimes(initial);
     fireEvent.press(view.getByRole('button',{name:/Ver referencia de Press banca.*Nuevo récord/}));
     expect(read).toHaveBeenCalledTimes(initial);
     const context=view.queryByRole('button',{name:'Ver todas las herramientas'});
     if(context) {fireEvent.press(context);fireEvent.press(context);}
     expect(read).toHaveBeenCalledTimes(initial);
+    const explain = jest.spyOn(Native.Alert, 'alert').mockImplementation(() => {});
+    fireEvent.press(view.getByTestId(`finding-info-${mockData.findings![0]!.id}`));
+    expect(explain).toHaveBeenCalledTimes(1); expect(read).toHaveBeenCalledTimes(initial);
+    explain.mockRestore();
     console.info('P0B_READ_BUDGET',JSON.stringify({initial,afterLocalInteractions:read.mock.calls.length,path:read.mock.calls[0]![0].path,fixtureBytes:Buffer.byteLength(JSON.stringify(mockData),'utf8')}));
 });
 it('shows every thematic destination without loading it, and distinguishes recent History from the calendar', async () => {
@@ -332,10 +340,10 @@ it('P1-C1: the inspected spark point survives the trip to the detail and back, t
     await view.findByTestId('progress-panorama');
     fireEvent.press(view.getByRole('button', {name: 'Ver puntos del resumen'}));
     fireEvent.press(view.getByLabelText('Peso'));
-    const point = () => within(view.getByTestId('panorama-chart-weight')).getAllByRole('button').find(b => b.props.accessibilityState?.selected);
-    const weightButtons = within(view.getByTestId('panorama-chart-weight')).getAllByRole('button');
+    const point = () => within(view.getByTestId('panorama-chart-weight')).getAllByTestId(/^panorama-chart-weight-.*-(mark|gap|zero)$/).find(b => b.props.accessibilityState?.selected);
+    const weightButtons = within(view.getByTestId('panorama-chart-weight')).getAllByTestId(/^panorama-chart-weight-.*-mark$/);
     const target = weightButtons.find(b => !/sin dato/.test(b.props.accessibilityLabel))!;
-    fireEvent.press(target); const label = point()!.props.accessibilityLabel;
+    pressFittedMark(target); const label = point()!.props.accessibilityLabel;
     fireEvent.press(view.getByRole('button', { name: 'Ver peso y medidas' }));
     const params = (mockPush.mock.calls.at(-1)![0] as { params: Record<string, string> }).params;
     expect(params).toEqual(expect.objectContaining({ from: '2026-10-11', to: PANORAMA_TODAY }));
@@ -465,9 +473,10 @@ it('shows a single expanded chart, switches domains locally and opens the select
     fireEvent.press(view.getByLabelText('Nutrición'));
     expect(view.queryByTestId('panorama-chart-training')).toBeNull();
     const graph = within(view.getByTestId('panorama-chart-nutrition'));
-    fireEvent.press(graph.getAllByRole('button')[0]!);
+    pressFittedMark(graph.getByTestId('panorama-chart-nutrition-2026-10-11-gap'));
     expect(within(view.getByTestId('panorama-preview-nutrition')).getByText('Promedio por día utilizado')).toBeTruthy();
     expect(mockPush).not.toHaveBeenCalled(); expect(read).toHaveBeenCalledTimes(3);
-    fireEvent.press(view.getByRole('button', { name: 'Abrir nutrición' }));
+    expect(view.queryByRole('button', { name: 'Abrir nutrición' })).toBeNull();
+    fireEvent.press(view.getByRole('button', { name: 'Ver alimentación y objetivos' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/trends/nutrition', params: expect.objectContaining({ point: expect.any(String), from: '2026-10-11', to: PANORAMA_TODAY }) });
 });
