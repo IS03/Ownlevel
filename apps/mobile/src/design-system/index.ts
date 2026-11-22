@@ -40,7 +40,8 @@ export { createThemePreferenceStorage, isThemeMode, THEME_PREFERENCE_KEY } from 
 export type { ThemePreferenceStorage } from './theme-preference';
 export { darkColors, lightColors, radius, sizes, spacing, typography } from './tokens';
 export * as brandTokens from './brand';
-export { atmosphere, fadeGradient, glowGradient, rgba } from './atmosphere';
+export { atmosphere, fadeGradient, fieldGradient, glowGradient, rgba } from './atmosphere';
+export { useFieldSurface } from './field-surface';
 export { GlassSurface } from './glass';
 export { NoticeStack, TransientNotice } from './transient-notice';
 export { NoticeHost, NoticeOutlet } from './notice-host';

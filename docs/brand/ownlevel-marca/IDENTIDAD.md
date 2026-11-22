@@ -45,6 +45,8 @@ Sin tarjetas blancas (19/11): en claro, las tarjetas pasaron de blanco a arena s
 
 Campos y acción (22/11): en claro, los campos (inputs, buscador y los accesos de Rápido) pasan a casi blanco cálido #FAF8F4 con borde #E3DDD0 sobre el fondo: se leen como campos, sin bloques de arena oscura. Las tarjetas de contenido siguen en arena. El botón principal deja el relleno #705F36 (que queda para texto e íconos) y pasa a champagne #C9B68A con texto #1A1710, igual que en oscuro.
 
+Nunca un blanco plano: una superficie clara lleva luz. Los campos reciben luz desde arriba a la izquierda y se asientan cálidos abajo a la derecha (#FFFEFA → #FAF8F4 → #F1EBDF). Los accesos de Rápido suman un brillo champagne tenue en la esquina. #FAF8F4 queda como color de base por si el degradé no se dibuja. Ningún panel claro es un rectángulo blanco sólido.
+
 **Reglas:**
 - **Un solo acento.** El champagne es para lo importante: botón principal, serie activa y récord.
 - **En modo claro,** el champagne #C9B68A no se usa para texto, porque no se lee.

@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, FadeOut, FadeOutDown, LinearTransition } from 'react-native-reanimated';
-import { AppIcon, AppText, Button, GlassSurface, LinkRow, LoadingState, SegmentedControl, brandTokens, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { AppIcon, AppText, Button, GlassSurface, LinkRow, LoadingState, SegmentedControl, brandTokens, useOwnlevelTheme, useReduceMotion, useFieldSurface } from '@/design-system';
 import { haptics, triggerHaptic } from '@/platform/haptics';
 import type { PlateController, PlateState } from './plate-controller';
 import { itemEstimate, parsePlateQuantity, plateable, plateEstimate, plateStep, PLATE_MAX, sourceId, sourceName, sourceUnit, unitLabel,
@@ -87,6 +87,7 @@ function PlateBar({ state, onOpen }: { state: PlateState; onOpen: () => void }) 
  */
 export function PlateEditor({ controller, state, externalLocked = false }: { controller: PlateController; state: PlateState; externalLocked?: boolean }) {
   const { colors } = useOwnlevelTheme();
+  const fieldSurface = useFieldSurface();
   const draft = state.draft;
   const locked = externalLocked || !!state.intent || state.phase !== 'idle';
   const running = state.phase === 'pending' || state.phase === 'loading';
@@ -149,7 +150,7 @@ export function PlateEditor({ controller, state, externalLocked = false }: { con
     right={<MealDateControl date={state.date} disabled={locked} onChange={date => controller.changeDate(date)} />}>
     {review ? <>
       <TextInput accessibilityLabel="Nombre del plato" placeholder="Plato" placeholderTextColor={colors.textMuted} editable={!locked} value={draft.title} maxLength={140}
-        onChangeText={value => controller.rename(value)} style={[shared.input, { backgroundColor: colors.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.fieldBorder, color: colors.text }]} testID="plate-title" />
+        onChangeText={value => controller.rename(value)} style={[shared.input, { ...fieldSurface, color: colors.text }]} testID="plate-title" />
       {state.errors.title ? <AppText accessibilityRole="alert" variant="footnote">{state.errors.title}</AppText> : null}
       {/* The same block stays put: the instant estimate first, then the server's confirmed total. */}
       {confirmed ? <View style={styles.totals} testID="plate-total"><MealNutrients value={confirmed} /><MealProjection date={state.date} nutrients={confirmed} /></View>

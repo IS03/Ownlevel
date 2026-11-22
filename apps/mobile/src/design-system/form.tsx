@@ -4,6 +4,7 @@ import { layout } from './brand';
 import { AppText } from './primitives';
 import { radius, spacing, typography } from './tokens';
 import { useOwnlevelTheme } from './theme';
+import { useFieldSurface } from './field-surface';
 
 type TextFieldProps = Omit<TextInputProps, 'editable' | 'style'> & {
   /** Visible label; also the input's accessibility label unless one is given. */
@@ -33,6 +34,7 @@ export function TextField({
   search = false, style, unit, ...props
 }: TextFieldProps) {
   const { colors } = useOwnlevelTheme();
+  const fieldSurface = useFieldSurface();
   return (
     <View style={[styles.field, style]}>
       {hideLabel ? null : (
@@ -56,7 +58,7 @@ export function TextField({
           multiline && styles.multiline,
           numeric && styles.numeric,
           {
-            backgroundColor: colors.field,
+            ...fieldSurface,
             borderColor: error ? colors.danger : colors.fieldBorder,
             color: colors.text,
           },

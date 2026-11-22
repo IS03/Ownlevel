@@ -23,6 +23,7 @@ import {
   useOwnlevelTheme,
   useReduceMotion,
   SegmentedControl,
+  useFieldSurface,
 } from '@/design-system';
 import { TrainingContextMenu } from '@/training/routine-context-menu';
 import type { TrainingMenuAction } from '@/training/routine-context-menu.types';
@@ -344,6 +345,7 @@ export function LibraryField({
   placeholder?: string;
 }) {
   const { colors } = useOwnlevelTheme();
+  const fieldSurface = useFieldSurface();
   return (
     <TextInput
       accessibilityLabel={label}
@@ -358,7 +360,7 @@ export function LibraryField({
       style={[
         big ? styles.number : styles.input,
         { color: colors.text },
-        !big && { backgroundColor: colors.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.fieldBorder },
+        !big && fieldSurface,
       ]}
     />
   );
