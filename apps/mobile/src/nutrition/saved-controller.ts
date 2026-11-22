@@ -1,4 +1,5 @@
 import type { FoodOperation, PersonalFood, FoodsResponse } from '@/api/nutrition-food';
+import { filterCatalog } from './catalog-filter';
 import {draftFoodId,savedDraft,validateSavedDraft,type SavedDraft} from './saved-model';
 import type {MobileApiReadResult,MobileApiRequestResult} from '@/api/results';
 import type {SavedDetail,SavedList,PersonalSavedMeal,SavedIntent,SavedReceipt} from '@/api/nutrition-saved';
@@ -11,7 +12,9 @@ export type SavedState={phase:'loading'|'idle'|'pending'|'reconciling'|'uncertai
 export class SavedController {
  private state:SavedState={phase:'loading',open:false,mode:'browse',search:'',filter:'active',meals:null,listLoading:false,listError:false,
  draft:null,editing:null,truth:null,pickerFoods:null,pickerLoading:false,pickerError:false,intent:null,message:null,errors:{}};
- private disposed=false;private busy=false;private generation=0;private truthGeneration=0;private pickerGeneration=0;private listeners=new Set<()=>void>();
+ /** The whole catalog as last read (filter «all», no search): searched locally. */
+  private catalog:PersonalSavedMeal[]|null=null;
+  private disposed=false;private busy=false;private generation=0;private truthGeneration=0;private pickerGeneration=0;private listeners=new Set<()=>void>();
  constructor(private api:SavedApi,private repository:SavedIntentRepository,private onConfirmed:()=>void=()=>{},private key:()=>string=()=>`saved:${Date.now()}:${Math.random().toString(36).slice(2)}`){}
  getSnapshot=()=>this.state;
  subscribe=(f:()=>void)=>{this.listeners.add(f);return()=>{this.listeners.delete(f);};};
@@ -20,13 +23,14 @@ export class SavedController {
  async initialize(){try{const intent=await this.repository.read();this.update(intent?{phase:intent.receipt?'confirmed':'uncertain',intent,draft:intent.draft,editing:intent.editing,
  mode:intent.intent.operation==='create'?'create':'edit',message:'Hay un intento de guardadas pendiente. Comprobalo antes de otra operación.'}:{phase:'idle'});}
  catch{this.update({phase:'blocked',message:'No pudimos leer el intento de guardadas. Comprobá el almacenamiento.'});}}
- open(){if(this.state.phase!=='idle'||this.busy||this.state.intent)return;this.truthGeneration++;this.update({open:true,mode:'browse',search:'',filter:'active',draft:null,editing:null,truth:null,message:null,meals:null});void this.load();}
+ open(){if(this.state.phase!=='idle'||this.busy||this.state.intent)return;this.truthGeneration++;this.update({open:true,mode:'browse',search:'',filter:'active',draft:null,editing:null,truth:null,message:null,meals:this.catalog?filterCatalog(this.catalog,'active',''):null});void this.load();}
  close(){if(this.busy)return;this.truthGeneration++;this.update({open:false,...(this.state.phase==='conflict'&&!this.state.intent?{phase:'idle',draft:null,editing:null,truth:null,message:null}:{})});}
  showRecovery(){if(this.state.intent&&!this.busy)this.update({open:true,mode:this.state.intent.intent.operation==='create'?'create':'edit'});}
- query(search:string,filter=this.state.filter){if(this.busy||this.state.intent)return;this.update({search:search.slice(0,200),filter,meals:null});void this.load();}
+ query(search:string,filter=this.state.filter){if(this.busy||this.state.intent)return;const next=search.slice(0,200);this.update({search:next,filter,meals:this.catalog?filterCatalog(this.catalog,filter,next):null});if(!this.catalog&&!this.state.listLoading)void this.load();}
  setFilter(filter:Filter){this.query(this.state.search,filter);}
- async load(){const generation=++this.generation,{search,filter}=this.state;this.update({listLoading:true,listError:false});try{const result=await this.api.list(filter,search);if(this.disposed||generation!==this.generation)return;
- this.update(result.status==='ok'?{meals:result.data.meals,listLoading:false,listError:false}:{listLoading:false,listError:true});}catch{if(generation===this.generation)this.update({listLoading:false,listError:true});}}
+ async load(){const generation=++this.generation;this.update({listLoading:true,listError:false});try{const result=await this.api.list('all','');if(this.disposed||generation!==this.generation)return;
+ if(result.status==='ok')this.catalog=result.data.meals;
+      this.update(result.status==='ok'?{meals:filterCatalog(result.data.meals,this.state.filter,this.state.search),listLoading:false,listError:false}:{listLoading:false,listError:true});}catch{if(generation===this.generation)this.update({listLoading:false,listError:true});}}
  begin(saved?:PersonalSavedMeal,type:SavedDraft['templateType']='manual'){if(this.state.phase!=='idle'||this.busy||this.state.intent)return;this.truthGeneration++;this.update({mode:saved?'edit':'create',editing:saved??null,draft:savedDraft(saved,type),errors:{},truth:null,message:null});}
  /** Straight to one saved meal's editor (Rápido's long-press «Editar»): the list is read and that meal opened in it. */
  async openEdit(id:string){if(this.state.phase!=='idle'||this.busy||this.state.intent)return;this.open();await this.load();const meal=this.state.meals?.find(m=>m.id===id.toLowerCase());if(meal&&this.state.open)this.begin(meal);}

@@ -113,7 +113,10 @@ describe('Native Food surfaces', () => {
       fireEvent.changeText(f.view.getByLabelText('Buscar alimento'), 'cafe');
       fireEvent.press(f.view.getByText('Archivadas'));
     });
-    expect(f.api.list).toHaveBeenLastCalledWith('archived', 'cafe');
+    // One read of the whole catalog; the search and the filter run on it. CAFÉ is active: not among the archived.
+    expect(f.api.list).toHaveBeenLastCalledWith('all', '');
+    expect(f.view.queryByLabelText(/^Editar CAFÉ,/)).toBeNull();
+    await act(async () => { fireEvent.press(f.view.getByText('Activas')); });
     fireEvent.press(f.view.getByLabelText(/^Editar CAFÉ,/));
     expect(f.view.getByLabelText('Cantidad base').props.value).toBe('0,125');
     expect(f.view.getByLabelText('Proteína (g)').props.value).toBe('');
@@ -268,15 +271,16 @@ describe('Food library presentation safeguards', () => {
       nativeEvent: { actionName: 'Archivar' },
     });
     expect(f.api.write).not.toHaveBeenCalled();
-    await act(async () => alert.mock.calls.at(-1)![2]![1].onPress!());
-    expect(f.api.write).toHaveBeenLastCalledWith(
-      expect.objectContaining({ operation: 'archive', expectedVersion: personalFood.version, fields: null }),
-    );
+    // The catalog re-read after the confirmed archive brings it back archived.
     (f.api.list as jest.Mock<FoodApi['list']>).mockResolvedValue({
       status: 'ok',
       data: { status: 'ok', foods: [{ ...personalFood, isActive: false }] },
       meta,
     });
+    await act(async () => alert.mock.calls.at(-1)![2]![1].onPress!());
+    expect(f.api.write).toHaveBeenLastCalledWith(
+      expect.objectContaining({ operation: 'archive', expectedVersion: personalFood.version, fields: null }),
+    );
     await act(async () => f.c.setFilter('archived'));
     fireEvent(f.view.getByLabelText(/^Editar CAFÉ,/), 'accessibilityAction', {
       nativeEvent: { actionName: 'Restaurar' },

@@ -10,6 +10,7 @@ import { shouldRefreshOnForeground } from '@/api/resource';
 import { nutritionToday } from './day-format';
 import { QuickController, type QuickState } from './quick-controller';
 import { QuickIntentRepository } from './quick-storage';
+import { QuickOptionsSnapshot } from './quick-options-storage';
 export function useQuickController(client: MobileApiClient | null, userId: string, invalidate: () => void) {
   const [current, setCurrent] = useState<{ client: MobileApiClient; userId: string; controller: QuickController; state: QuickState } | null>(null);
   useEffect(() => {
@@ -17,7 +18,8 @@ export function useQuickController(client: MobileApiClient | null, userId: strin
     const lifetime = new AbortController();
     const controller = new QuickController({ food: id => fetchFood(client, id, lifetime.signal), options: () => fetchQuickOptions(client, lifetime.signal), preview: s => previewQuickMeal(client, s, lifetime.signal),
       confirm: i => confirmQuickMeal(client, i, lifetime.signal), read: d => fetchMobileNutritionDay(client, d, lifetime.signal) }, new QuickIntentRepository(AsyncStorage, userId), invalidate,
-      undefined, { now: () => Date.now(), writeRevision: () => settledWritesFor(client, ['nutrition']), today: () => nutritionToday() });
+      undefined, { now: () => Date.now(), writeRevision: () => settledWritesFor(client, ['nutrition']), today: () => nutritionToday() },
+      new QuickOptionsSnapshot(AsyncStorage, userId));
     const unsubscribe = controller.subscribe(() => setCurrent({ client, userId, controller, state: controller.getSnapshot() }));
     void controller.initialize();
     let previous = AppState.currentState;

@@ -3,6 +3,7 @@ import type { MobileApiReadResult, MobileApiRequestResult } from '@/api/results'
 import { sameQuickSelection, type QuickOptions, type QuickOption, type QuickPreview, type QuickResponse, type QuickIntent, type QuickSelection } from '@/api/nutrition-quick';
 import type { MobileNutritionDayResponse } from '@/api/nutrition-day';
 import { QuickIntentRepository, type StoredQuickIntent } from './quick-storage';
+import type { QuickOptionsSnapshot } from './quick-options-storage';
 import { multipliable, QUICK_TIMES_MAX, quickDraft, selectionFromDraft, type QuickDraft } from './quick-model';
 export type QuickApi = { food?: (id: string) => Promise<MobileApiReadResult<FoodDetail>>; options: () => Promise<MobileApiReadResult<QuickOptions>>; preview: (s: QuickSelection) => Promise<MobileApiRequestResult<QuickPreview>>;
   confirm: (i: QuickIntent) => Promise<MobileApiRequestResult<QuickResponse>>; read: (date: string) => Promise<MobileApiReadResult<MobileNutritionDayResponse>> };
@@ -28,7 +29,10 @@ export class QuickController {
   /** The last complete options GET: when it was confirmed and the write revision when it STARTED. */
   private lastOptions: { options: QuickOptions; at: number; revision: number } | null = null;
   constructor(private api: QuickApi, private repository: QuickIntentRepository, private invalidate: () => void,
-    private newKey: () => string = () => `quick:${Date.now()}:${Math.random().toString(36).slice(2)}`, private reuse?: QuickOptionsReuse) {}
+    private newKey: () => string = () => `quick:${Date.now()}:${Math.random().toString(36).slice(2)}`, private reuse?: QuickOptionsReuse,
+    private snapshot?: Pick<QuickOptionsSnapshot, 'read' | 'write'>) {}
+  /** The options on screen came from this device's copy and no read has confirmed them yet. */
+  private fromDevice = false;
   private canReuseOptions() {
     const last = this.lastOptions, reuse = this.reuse;
     if (!reuse || !last) return false;
@@ -46,12 +50,15 @@ export class QuickController {
       this.update(stored ? { phase: stored.receipt ? 'confirmed' : 'uncertain', intent: stored, draft: stored.draft, date: stored.intent.date,
         message: stored.receipt ? 'El intento está confirmado. Falta actualizar los datos.' : 'Hay un intento rápido sin resultado confirmado. Comprobalo antes de guardar otra comida.' } : { phase: 'idle' });
     } catch { this.update({ phase: 'blocked', message: 'No pudimos leer el intento local. Comprobá el almacenamiento.' }); }
+    // The last confirmed list, for an instant first opening; a read that already answered always wins.
+    const kept = await this.snapshot?.read().catch(() => null);
+    if (kept && !this.state.options && !this.disposed) { this.fromDevice = true; this.update({ options: kept, ...(this.state.open ? { optionsReused: true } : {}) }); }
   }
   open(date: string, option?: QuickOption) {
     if (this.state.phase !== 'idle' || this.state.intent || this.busy) return;
     this.previewGeneration++; this.optionsGeneration++;
     const reused = !option && this.canReuseOptions();
-    this.update({ optionsLoading: false, optionsError: false, optionsReused: reused, open: true, date, draft: null, previousDraft: null, preview: null, previewLoading: false, message: null, errors: {}, truth: null, added: {}, inlineKey: null });
+    this.update({ optionsLoading: false, optionsError: false, optionsReused: reused || this.fromDevice, open: true, date, draft: null, previousDraft: null, preview: null, previewLoading: false, message: null, errors: {}, truth: null, added: {}, inlineKey: null });
     if (option) this.choose(option); else if (!reused) void this.loadOptions();
   }
   /** An inline "+" add the user closed the sheet on: it finishes in the background (the day shows it running). */
@@ -85,6 +92,8 @@ export class QuickController {
       if (result.status !== 'ok') { this.lastOptions = null; this.update({ optionsLoading: false, optionsError: true }); return; }
       const complete = result.data.saved.status === 'ok' && result.data.suggested.status === 'ok' && result.data.pins.status === 'ok';
       this.lastOptions = complete && this.reuse ? { options: result.data, at: this.reuse.now(), revision } : null;
+      this.fromDevice = false;
+      if (complete) void this.snapshot?.write(result.data);
       this.update({ options: result.data, optionsLoading: false, optionsError: false, optionsReused: false });
       if (this.state.phase === 'conflict' && this.state.draft) {
         const src = this.state.draft.option.source, section = src.kind === 'saved' ? result.data.saved : result.data.suggested;
