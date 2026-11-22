@@ -8,13 +8,15 @@ import { fetchFoods } from '@/api/nutrition-food';
 import { shouldRefreshOnForeground } from '@/api/resource';
 import { PlateController, type PlateState } from './plate-controller';
 import { PlateIntentRepository } from './plate-storage';
+import { PlateFoodsSnapshot, QuickOptionsSnapshot } from './quick-options-storage';
 export function usePlateController(client: MobileApiClient | null, userId: string, invalidate: () => void) {
   const [current, setCurrent] = useState<{ client: MobileApiClient; userId: string; controller: PlateController; state: PlateState } | null>(null);
   useEffect(() => {
     if (!client) return;
     const lifetime = new AbortController();
     const controller = new PlateController({ foods: () => fetchFoods(client, 'active', '', lifetime.signal), saved: () => fetchQuickOptions(client, lifetime.signal), preview: s => previewQuickMeal(client, s, lifetime.signal),
-      confirm: i => confirmQuickMeal(client, i, lifetime.signal), read: d => fetchMobileNutritionDay(client, d, lifetime.signal) }, new PlateIntentRepository(AsyncStorage, userId), invalidate);
+      confirm: i => confirmQuickMeal(client, i, lifetime.signal), read: d => fetchMobileNutritionDay(client, d, lifetime.signal) }, new PlateIntentRepository(AsyncStorage, userId), invalidate,
+      undefined, { foods: new PlateFoodsSnapshot(AsyncStorage, userId), saved: new QuickOptionsSnapshot(AsyncStorage, userId) });
     const unsubscribe = controller.subscribe(() => setCurrent({ client, userId, controller, state: controller.getSnapshot() }));
     void controller.initialize();
     let previous = AppState.currentState;

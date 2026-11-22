@@ -33,14 +33,15 @@ describe('Home champagne glass actions', () => {
     await act(async () => {});
     expect(view.getByTestId('new-session-glass').props.tintColor).toBeUndefined();
   });
-  it('the primary session action ("Arrancar rutina", "Volver a la sesión") is glass tinted with the dark champagne', () => {
+  it('the primary session action ("Arrancar rutina", "Volver a la sesión") is glass tinted with the champagne action color (never the dark text accent)', () => {
     const view = render(<OwnlevelThemeProvider initialMode="light"><HomeButton label="Arrancar rutina" testID="start" tone="solid" onPress={() => {}} /></OwnlevelThemeProvider>);
-    expect(view.getByTestId('start-glass').props.tintColor).toBe('#705F36');
+    expect(view.getByTestId('start-glass').props.tintColor).toBe('#C9B68A');
+    expect(view.getByText('Arrancar rutina').props.style).toEqual(expect.arrayContaining([expect.objectContaining({ color: '#1A1710' })]));
     expect(StyleSheet.flatten(view.getByTestId('start-glass').props.style).minHeight).toBe(50);
   });
-  it('without Liquid Glass the primary action keeps its plain dark champagne fill', () => {
+  it('without Liquid Glass the primary action keeps its plain champagne fill', () => {
     mockGlass = false;
     const view = render(<OwnlevelThemeProvider initialMode="light"><HomeButton label="Arrancar rutina" testID="start" tone="solid" onPress={() => {}} /></OwnlevelThemeProvider>);
-    expect(StyleSheet.flatten(view.getByTestId('start-glass').props.style).backgroundColor).toBe('#705F36');
+    expect(StyleSheet.flatten(view.getByTestId('start-glass').props.style).backgroundColor).toBe('#C9B68A');
   });
 });

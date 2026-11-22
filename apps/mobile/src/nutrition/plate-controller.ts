@@ -4,6 +4,7 @@ import { sameQuickSelection, type QuickIntent, type QuickOption, type QuickOptio
 import type { MobileNutritionDayResponse, NutritionDayMeal } from '@/api/nutrition-day';
 import { plateDraft, plateable, selectionFromPlate, sourceId, sourceName, stepped, withSource, PLATE_TITLE_MAX, type PlateDraft, type PlateSource } from './plate-model';
 import type { PlateIntentRepository, StoredPlateIntent } from './plate-storage';
+import type { DeviceCopy } from './device-copy';
 
 export type PlateApi = {
   foods: () => Promise<MobileApiReadResult<FoodsResponse>>;
@@ -40,7 +41,9 @@ export class PlateController {
   private listeners = new Set<() => void>(); private disposed = false; private busy = false; private previewGeneration = 0; private foodsGeneration = 0; private savedGeneration = 0;
   private confirmedListeners = new Set<(meal: NutritionDayMeal, date: string) => void>();
   constructor(private api: PlateApi, private repository: PlateIntentRepository, private invalidate: () => void,
-    private newKey: () => string = () => `plate:${Date.now()}:${Math.random().toString(36).slice(2)}`) {}
+    private newKey: () => string = () => `plate:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+    /** This device's last confirmed lists: shown at the first opening while the plate reads them again. */
+    private copies: { foods?: Pick<DeviceCopy<PersonalFood[]>, 'read' | 'write'>; saved?: Pick<DeviceCopy<QuickOptions>, 'read' | 'write'> } = {}) {}
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   subscribeConfirmed = (f: (meal: NutritionDayMeal, date: string) => void) => { this.confirmedListeners.add(f); return () => { this.confirmedListeners.delete(f); }; };
@@ -54,6 +57,11 @@ export class PlateController {
       this.update(stored ? { phase: stored.receipt ? 'confirmed' : 'uncertain', intent: stored, draft: stored.draft, date: stored.intent.date, view: 'review',
         message: stored.receipt ? 'El plato está registrado. Falta actualizar el día.' : 'Hay un plato sin resultado confirmado. Comprobalo antes de registrar otro.' } : { phase: 'idle' });
     } catch { this.update({ phase: 'blocked', message: 'No pudimos leer el plato guardado. Comprobá el almacenamiento.' }); }
+    // The last confirmed lists, for an instant first opening; a read that already answered always wins.
+    const [foods, options] = await Promise.all([this.copies.foods?.read().catch(() => null), this.copies.saved?.read().catch(() => null)]);
+    if (this.disposed) return;
+    const saved = options?.saved.status === 'ok' ? options.saved.items : null;
+    this.update({ ...(foods && !this.state.foods ? { foods: foods.filter(food => food.isActive) } : {}), ...(saved && !this.state.saved ? { saved } : {}) });
   }
   /** Opens on the plate kept from before (moved to `date`), or a new one; with foods already in it, on its review. */
   open(date: string) {
@@ -82,6 +90,7 @@ export class PlateController {
       if (this.disposed || generation !== this.foodsGeneration) return;
       if (result.status !== 'ok') { this.update({ foodsLoading: false, foodsError: true }); return; }
       this.update({ foods: result.data.foods.filter(food => food.isActive), foodsLoading: false, foodsError: false });
+      void this.copies.foods?.write(result.data.foods);
     } catch { if (generation === this.foodsGeneration) this.update({ foodsLoading: false, foodsError: true }); }
   }
   async loadSaved() {
@@ -93,6 +102,7 @@ export class PlateController {
       if (this.disposed || generation !== this.savedGeneration) return;
       if (result.status !== 'ok' || result.data.saved.status !== 'ok') { this.update({ savedLoading: false, savedError: true }); return; }
       this.update({ saved: result.data.saved.items, savedLoading: false, savedError: false });
+      if (result.data.suggested.status === 'ok' && result.data.pins.status === 'ok') void this.copies.saved?.write(result.data);
     } catch { if (generation === this.savedGeneration) this.update({ savedLoading: false, savedError: true }); }
   }
 

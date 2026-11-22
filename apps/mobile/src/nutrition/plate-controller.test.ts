@@ -68,6 +68,33 @@ describe('Plato · model', () => {
   });
 });
 
+describe('Plato · opens on the lists kept on this device', () => {
+  it('shows the last foods (active only) and saved meals at once, reads them anyway and keeps each complete answer', async () => {
+    const map = new Map<string, string>();
+    const storage = { getItem: async (k: string) => map.get(k) ?? null, setItem: async (k: string, v: string) => { map.set(k, v); }, removeItem: async (k: string) => { map.delete(k); } };
+    const archived = { ...cheese, isActive: false };
+    const foods = { read: jest.fn(async () => [bread, archived]), write: jest.fn(async () => undefined) };
+    const saved = { read: jest.fn(async () => ({ ...quickOptions(), saved: { status: 'ok' as const, items: [yogurt] } })), write: jest.fn(async () => undefined) };
+    let finish!: () => void;
+    const api: PlateApi = {
+      foods: jest.fn<PlateApi['foods']>().mockImplementation(() => new Promise(r => { finish = () => r({ status: 'ok', data: { foods: [bread, coffee] }, meta } as never); })),
+      saved: jest.fn<PlateApi['saved']>().mockResolvedValue({ status: 'ok', data: { ...quickOptions(), saved: { status: 'ok', items: [yogurt] } }, meta }),
+      preview: jest.fn<PlateApi['preview']>(), confirm: jest.fn<PlateApi['confirm']>(), read: jest.fn<PlateApi['read']>(),
+    };
+    const controller = new PlateController(api, new PlateIntentRepository(storage, 'owner'), () => undefined, undefined, { foods, saved });
+    await controller.initialize();
+    expect(controller.getSnapshot().foods).toEqual([bread]);
+    expect(controller.getSnapshot().saved).toEqual([yogurt]);
+    controller.open(DATE); await settle();
+    expect(api.foods).toHaveBeenCalledTimes(1); expect(api.saved).toHaveBeenCalledTimes(1);
+    expect(controller.getSnapshot()).toMatchObject({ foodsLoading: true });
+    expect(saved.write).toHaveBeenCalledTimes(1);
+    finish(); await settle();
+    expect(controller.getSnapshot().foods).toEqual([bread, coffee]);
+    expect(foods.write).toHaveBeenCalledWith([bread, coffee]);
+  });
+});
+
 describe('Plato · controller', () => {
   it('closing keeps the plate; reopening brings it back on its review; it reads foods and saved meals', async () => {
     const f = fixture(); await f.controller.initialize();
