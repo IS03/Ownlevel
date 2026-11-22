@@ -1,13 +1,30 @@
 import { loadTime, suggestedMealLabel } from './meal-timing-model';
 import { parseQuickOption, parseQuickSelection, type QuickNutrients, type QuickOption, type QuickSelection } from '@/api/nutrition-quick';
 import { isNutritionDate } from '@/api/nutrition-day';
-export type QuickDraft = Pick<QuickSelection, 'mealLabel' | 'consumedAt' | 'consumedAtSource'> & { date: string; option: QuickOption; quantities: Record<string, string> };
-export function quickDraft(date: string, option: QuickOption): QuickDraft {
+/**
+ * `times` (2–20, saved meals only): «Agregar varias veces». The same saved meal multiplied, registered through the plate
+ * source as one meal named «NOMBRE ×N», its nutrients the saved meal's own times N (server-side, #610).
+ */
+export type QuickDraft = Pick<QuickSelection, 'mealLabel' | 'consumedAt' | 'consumedAtSource'> & { date: string; option: QuickOption; quantities: Record<string, string>; times?: number };
+export const QUICK_TIMES_MAX = 20;
+const validTimes = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 2 && (n as number) <= QUICK_TIMES_MAX;
+/** «PASTA ×2»: the saved meal's name, kept within the plate title's 120 characters. */
+export const timesTitle = (name: string, times: number) => `${name.trim().slice(0, 112)} ×${times}`;
+export function quickDraft(date: string, option: QuickOption, times?: number): QuickDraft {
   const moment = suggestedMealLabel(date), at = loadTime(date);
-  return { ...(moment ? { mealLabel: moment } : {}), ...(at ? { consumedAt: at, consumedAtSource: 'user_declared' as const } : {}), date, option, quantities: Object.fromEntries(option.items.map(i => [i.id, String(i.quantity).replace('.', ',')])) };
+  return { ...(moment ? { mealLabel: moment } : {}), ...(at ? { consumedAt: at, consumedAtSource: 'user_declared' as const } : {}), date, option, quantities: Object.fromEntries(option.items.map(i => [i.id, String(i.quantity).replace('.', ',')])),
+    ...(validTimes(times) && option.source.kind === 'saved' ? { times } : {}) };
 }
 export function selectionFromDraft(draft: QuickDraft): { selection?: QuickSelection; errors: Record<string, string> } {
   const errors: Record<string, string> = {};
+  if (draft.times !== undefined) {
+    const source = draft.option.source;
+    if (!validTimes(draft.times) || source.kind !== 'saved') return { errors: { times: 'Elegí entre 2 y 20 veces.' } };
+    const selection = parseQuickSelection({ date: draft.date, source: { kind: 'plate', title: timesTitle(draft.option.name, draft.times), saveToLibrary: false },
+      quantities: [{ kind: 'saved', itemId: source.id, quantity: draft.times, version: source.version }],
+      ...('mealLabel' in draft ? { mealLabel: draft.mealLabel } : {}), ...('consumedAt' in draft ? { consumedAt: draft.consumedAt } : {}), ...('consumedAtSource' in draft ? { consumedAtSource: draft.consumedAtSource } : {}) });
+    return { ...(selection ? { selection } : {}), errors };
+  }
   const quantities = draft.option.templateType === 'composite' || draft.option.source.kind === 'food' ? draft.option.items.map(i => {
     const text = draft.quantities[i.id]?.trim() ?? '';
     const quantity = new RegExp(`^\\d+(?:[,.]\\d{1,${draft.option.source.kind === 'food' ? 3 : 2}})?$`).test(text) ? Number(text.replace(',', '.')) : 0;
@@ -24,7 +41,8 @@ export function parseQuickDraft(v: unknown): QuickDraft | undefined {
   if (!isNutritionDate(d.date) || !option || !d.quantities || typeof d.quantities !== 'object' || Array.isArray(d.quantities)) return undefined;
   const quantities = d.quantities as Record<string, unknown>;
   if (Object.keys(quantities).length !== option.items.length || option.items.some(i => typeof quantities[i.id] !== 'string')) return undefined;
-  const draft = { date: d.date, option, quantities: quantities as Record<string, string>, ...('mealLabel' in d ? { mealLabel: d.mealLabel as QuickDraft['mealLabel'] } : {}), ...('consumedAt' in d ? { consumedAt: d.consumedAt as string } : {}), ...('consumedAtSource' in d ? { consumedAtSource: d.consumedAtSource as QuickDraft['consumedAtSource'] } : {}) };
+  if ('times' in d && !validTimes(d.times)) return undefined;
+  const draft = { date: d.date, option, quantities: quantities as Record<string, string>, ...('times' in d ? { times: d.times as number } : {}), ...('mealLabel' in d ? { mealLabel: d.mealLabel as QuickDraft['mealLabel'] } : {}), ...('consumedAt' in d ? { consumedAt: d.consumedAt as string } : {}), ...('consumedAtSource' in d ? { consumedAtSource: d.consumedAtSource as QuickDraft['consumedAtSource'] } : {}) };
   return selectionFromDraft(draft).selection ? draft : undefined;
 }
 /**

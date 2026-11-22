@@ -22,6 +22,24 @@ function fixture() {
   const open = async (option = quickOption()) => { await controller.initialize(); controller.open(quickDate); controller.choose(option); await settle(); };
   return { controller, repository, storage, api, invalidate, map, open };
 }
+describe('«Agregar varias veces» (long-press menu)', () => {
+  it('a saved meal ×N is one plate meal «NOMBRE ×N» with the saved meal by portions; never for other sources or out of 2–20', () => {
+    const saved = quickOption(true);
+    const d = quickDraft(quickDate, saved, 3);
+    expect(selectionFromDraft(d).selection).toMatchObject({ source: { kind: 'plate', title: 'PASTA ×3', saveToLibrary: false },
+      quantities: [{ kind: 'saved', itemId: saved.source.id, quantity: 3, version: saved.source.version }] });
+    expect(quickDraft(quickDate, quickOption(false, true), 3).times).toBeUndefined();
+    expect(quickDraft(quickDate, saved, 1).times).toBeUndefined();
+    expect(quickDraft(quickDate, saved, 21).times).toBeUndefined();
+  });
+  it('sends it through the same inline add: preview, stored intent and confirm, and settles with nothing pending', async () => {
+    const f = fixture(); await f.controller.initialize(); f.controller.open(quickDate); await settle();
+    await f.controller.addInline(quickOption(true), 2); await settle();
+    expect(f.api.confirm).toHaveBeenCalledWith(expect.objectContaining({ operation: 'register', source: { kind: 'plate', title: 'PASTA ×2', saveToLibrary: false } }));
+    expect(f.controller.getSnapshot()).toMatchObject({ phase: 'idle', intent: null, inlineKey: null, draft: null });
+  });
+});
+
 describe('Reliable quick registration', () => {
   it('quantities accept comma/point, reject absent and zero without inventing nutrients', () => {
     const d = quickDraft(quickDate, quickOption(true)); d.quantities[quickId] = '150,25';

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { AppText, Button, LoadingState, Surface, useOwnlevelTheme, brandTokens } from '@/design-system';
 import { triggerHaptic } from '@/platform/haptics';
-import type { QuickNutrients } from '@/api/nutrition-quick';
+import type { QuickNutrients, QuickOption } from '@/api/nutrition-quick';
 import { displayNutritionDate } from './day-format';
 import type { QuickController, QuickState } from './quick-controller';
 import { MealSheet, mealShown as shown, mealSheetStyles as shared } from './meal-sheet';
@@ -23,7 +23,7 @@ export function MealNutrients({ value, pending = false }: { value: QuickNutrient
  * `suggestions`: "Para vos" is hidden for now (Rápido shows only the saved meals); the code stays for later.
  * `pins` (#479): the account's pinned saved meals, from the same quick-options answer; null where pins do not apply.
  */
-export function QuickEditor({ controller, state, embedded = false, onBack, onSaved, externalLocked = false, suggestions = false, pins = null }: { controller: QuickController; state: QuickState; embedded?: boolean; onBack?: () => void; onSaved?: () => void; externalLocked?: boolean; suggestions?: boolean; pins?: QuickPins }) {
+export function QuickEditor({ controller, state, embedded = false, onBack, onSaved, onEdit, externalLocked = false, suggestions = false, pins = null }: { controller: QuickController; state: QuickState; embedded?: boolean; onBack?: () => void; onSaved?: () => void; onEdit?: (option: QuickOption) => void; externalLocked?: boolean; suggestions?: boolean; pins?: QuickPins }) {
   const { colors } = useOwnlevelTheme();
   const draft = state.inlineKey ? null : state.draft;
   const estimate = draft ? quickEstimate(draft) : null;
@@ -62,7 +62,7 @@ export function QuickEditor({ controller, state, embedded = false, onBack, onSav
   </>;
   const destination = !draft && !state.intent ? <AppText muted variant="caption">Destino · {displayNutritionDate(state.date)}</AppText> : null;
   // The library is always mounted (hidden during a review), so its query, view, letter and scroll survive the way back.
-  const library = <QuickLibrary state={state} controller={controller} pins={pins} locked={locked} suggestions={suggestions} onSaved={onSaved} status={draft ? null : status} footer={destination} />;
+  const library = <QuickLibrary state={state} controller={controller} pins={pins} locked={locked} suggestions={suggestions} onSaved={onSaved} onEdit={onEdit} status={draft ? null : status} footer={destination} />;
   return <MealSheet list={library} listHidden={!!draft} title={draft?.option.name ?? 'Rápido'} subtitle={draft ? draft.option.source.kind === 'food' ? `Alimento · ${shown(draft.option.items[0].quantity, 3)} ${draft.option.items[0].unit} = ${shown(draft.option.calories)} kcal` : draft.option.templateType === 'composite' ? `Guardada · ${draft.option.items.length} ingredientes` : 'Ajustar comida' : undefined}
     onClose={draft && !state.intent ? back : close} onDismiss={close} dismissable={!!state.inlineKey || (!state.intent && !controller.dirty())}
     back={!!draft && !state.intent} running={running && !state.inlineKey} embedded={embedded} testID="quick-meal-editor"
