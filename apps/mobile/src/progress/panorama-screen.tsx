@@ -1,12 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
-import { RefreshControl, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { useCachedRead } from '@/api/use-cached-read';
 import { fetchProgressFindings, type ProgressEditorialFinding, type ProgressOverview, type ProgressDestination, type ProgressSpark } from '@/api/progress';
-import { LinkRow, AppText, Button, ChipGroup, SegmentedControl, InlineUnavailable, SkeletonBlock, UnavailableState, spacing } from '@/design-system';
+import { AppIcon, AppText, Button, GlassSurface, brandTokens, radius, useOwnlevelTheme, ChipGroup, SegmentedControl, InlineUnavailable, SkeletonBlock, UnavailableState, spacing } from '@/design-system';
 import { exactPeriodRange } from '@/insights/period-model';
-import { addDays, progressStateForRange } from './progress-range';
+import { addDays, progressStateForRange, shortRange, type DateRange } from './progress-range';
 import { fetchHistoryRange } from '@/api/history';
 import { fetchNutritionReport, reportQueryKey } from '@/api/nutrition-report';
 import { PanoramaAtlas, type AtlasDaily } from './panorama-atlas';
@@ -15,7 +15,8 @@ import { ProgressFindings } from './progress-findings';
 import { useProgressRange } from './progress-range-context';
 import { CompareSheet } from './period-sheets';
 import { ProgressScroll } from './progress-scroll';
-import { PeriodChart } from './period-chart';
+import { FittedChart } from './fitted-chart';
+import { ChartReadout, type ChartReading } from './chart-reading';
 import { haptics } from '@/platform/haptics';
 import { formatValue } from './progress-format';
 import { destinationRoute } from './progress-destination';
@@ -40,27 +41,26 @@ function inspectedPoint(spark: ProgressSpark | null | undefined, kind: SparkKind
 }
 
 /** Inspect a single chart at a time; its exact bucket and the domain detail share the same selection. */
-function Preview({ kind, spark, mode, selectedKey, onSelect, value, onOpen }: {
-  kind: SparkKind; spark: ProgressSpark | null | undefined; mode: 'bars' | 'dots';
-  selectedKey: string | null; onSelect: (key: string | null) => void; value: number | null; onOpen: () => void;
+function Preview({ kind, spark, mode, selectedKey, onSelect, value, range }: {
+  kind: SparkKind; spark: ProgressSpark | null | undefined; mode: 'bars' | 'dots'; range: DateRange;
+  selectedKey: string | null; onSelect: (key: string | null) => void; value: number | null;
 }) {
   const points = spark ? sparkPoints(spark, SPARK_UNIT[kind]) : [];
   const selected = points.find(p => p.key === selectedKey);
-  const caption = selected ? kind === 'training' ? 'Series del intervalo' : kind === 'weight' ? 'Último pesaje del intervalo' : 'Promedio por día utilizado'
-    : kind === 'training' ? 'Series de estos 30 días' : kind === 'weight' ? 'Último pesaje del período' : 'Promedio por día utilizado';
-  const shown = selected ? selected.value : value;
+  const detail = kind === 'training' ? 'Series registradas' : kind === 'weight' ? 'Peso registrado · último por intervalo' : 'Promedio por día utilizado';
+  const reading = (point?: typeof points[number]): ChartReading => ({
+    title: point ? shortRange(point, range.end) : 'Período completo',
+    value: (point ? point.value : value) === null ? 'Sin dato' : portadaValue((point ? point.value : value)!, SPARK_UNIT[kind]), detail,
+  });
   return <View style={styles.preview} testID={`panorama-preview-${kind}`}>
-    <View accessibilityLiveRegion="polite">
-      <AppText muted variant="footnote">{caption}</AppText>
-      <AppText numeric variant="title1">{shown === null ? 'Sin dato' : portadaValue(shown, SPARK_UNIT[kind])}</AppText>
-      {selected ? <AppText muted numeric variant="footnote">{exactPeriodRange(selected)}</AppText> : null}
-    </View>
-    {points.some(p => p.value !== null) ? <>
-      <PeriodChart testID={`panorama-chart-${kind}`} points={points} mode={mode}
-        inspection={{ selectedKey: selected?.key ?? null, onSelect: key => { haptics.selection(); onSelect(selected?.key === key ? null : key); } }} />
-      <AppText muted variant="caption">{kind === 'training' ? 'Series registradas por intervalo.' : kind === 'weight' ? 'Último pesaje de cada intervalo; los huecos no son ceros.' : 'Promedios del nutriente registrado; no confirman toda la ingesta.'} Tocá un punto para consultar sus fechas.</AppText>
-    </> : <AppText muted variant="footnote">No hay puntos disponibles en esta lectura.</AppText>}
-    <LinkRow label={kind === 'training' ? 'Abrir entrenamiento' : kind === 'weight' ? 'Abrir peso y medidas' : 'Abrir nutrición'} onPress={onOpen} />
+    <ChartReadout reading={reading(selected)} candidates={[reading(), ...points.map(p => reading(p))]} testID={`panorama-reading-${kind}`}
+      accessibilityLabel={selected ? selected.text : `${reading().value}, ${detail}, período completo`}
+      clearPresentation="inline" onClear={selected ? () => onSelect(null) : undefined} />
+    {points.some(p => p.value !== null) ? <FittedChart testID={`panorama-chart-${kind}`} label={`Resumen de ${kind === 'training' ? 'Entrenamiento' : kind === 'weight' ? 'Peso' : 'Nutrición'}`}
+      range={range} showScale={false} maxBarWidth={brandTokens.space.xxxl} unit={SPARK_UNIT[kind]} mode={mode}
+      points={points.map(p => ({ ...p, kind: p.value === null ? 'gap' : p.value === 0 ? 'zero' : 'mark' }))}
+      selectedKey={selected?.key ?? null} onSelect={key => onSelect(selected?.key === key ? null : key)} />
+      : <AppText muted variant="footnote">No hay puntos disponibles en esta lectura.</AppText>}
   </View>;
 }
 
@@ -71,24 +71,29 @@ export function ProgressPanorama({ data, onOpen, points = {}, onPoint = () => un
 }) {
   const [localKind, setLocalKind] = useState<SparkKind>('training');
   const kind = previewKind ?? localKind;
-  const { fontScale } = useWindowDimensions();
+  const { fontScale } = useWindowDimensions(), { colors } = useOwnlevelTheme();
   const Selector = fontScale > 1.3 ? ChipGroup : SegmentedControl;
   const summaryValue = kind === 'training' ? data.training.status === 'ok' ? data.training.data.sets : null
     : kind === 'weight' ? data.sparks?.weight?.last && data.sparks.weight.last > 0 ? data.sparks.weight.last : null
     : data.nutrition.status === 'ok' ? data.nutrition.data.averageKcal : null;
-  const destination: ProgressDestination = kind === 'training' ? { kind: 'training' } : kind === 'weight' ? { kind: 'body' } : { kind: 'nutrition' };
   const openArea = (d: ProgressDestination) => {
     const kind = d.kind === 'body' ? 'weight' : d.kind === 'nutrition' ? 'nutrition' : 'training';
     onOpen(d, inspectedPoint(data.sparks?.[kind], kind, points[kind]));
   };
   return <>
     <PanoramaAtlas data={data} daily={daily} onOpen={openArea} />
-    <LinkRow kind="disclosure" expanded={expanded} label={expanded ? 'Ocultar puntos del resumen' : 'Ver puntos del resumen'} onPress={onToggle} />
+    <GlassSurface style={styles.pointsControl}>
+      <Pressable testID="panorama-points-toggle" accessibilityRole="button" accessibilityState={{ expanded }} accessibilityLabel={expanded ? 'Ocultar puntos del resumen' : 'Ver puntos del resumen'}
+        onPress={() => { haptics.selection(); onToggle(); }} style={styles.pointsButton}>
+        <AppIcon name="activity" size={20} color={colors.primary} /><AppText variant="headline" style={styles.grow}>Puntos del resumen</AppText>
+        <View style={{ transform: [{ rotate: expanded ? '180deg' : '0deg' }] }}><AppIcon name="chevronDown" size={17} color={colors.textMuted} /></View>
+      </Pressable>
+    </GlassSurface>
     {expanded ? <View style={styles.expanded} testID="panorama-points">
       <Selector accessibilityLabel="Qué mirar en el resumen" value={kind} options={[{ value: 'training', label: 'Entrenar' }, { value: 'weight', label: 'Peso' }, { value: 'nutrition', label: 'Nutrición' }]}
         onChange={next => { haptics.selection(); (onPreviewKind ?? setLocalKind)(next); }} />
-      <Preview kind={kind} spark={data.sparks?.[kind]} mode={kind === 'weight' ? 'dots' : 'bars'} value={summaryValue}
-        selectedKey={points[kind] ?? null} onSelect={key => onPoint(kind, key)} onOpen={() => openArea(destination)} />
+      <Preview kind={kind} spark={data.sparks?.[kind]} mode={kind === 'weight' ? 'dots' : 'bars'} value={summaryValue} range={data.period}
+        selectedKey={points[kind] ?? null} onSelect={key => onPoint(kind, key)} />
     </View> : null}
   </>;
 }
@@ -157,6 +162,8 @@ export function ProgressOverviewScreen() {
       onPoint={(kind, key) => setSelection(s => ({...s, points: {...s.points, [kind]: key}}))}/> : null;
 }
 const styles = StyleSheet.create({
+  pointsControl: { borderRadius: radius.button, overflow: 'hidden', marginVertical: spacing.sm },
+  pointsButton: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, minHeight: brandTokens.layout.buttonHeight }, grow: { flex: 1 },
   preview: { gap: spacing.md },
   expanded: { gap: spacing.lg, paddingVertical: spacing.md },
 });

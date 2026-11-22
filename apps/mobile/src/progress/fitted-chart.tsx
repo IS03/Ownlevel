@@ -10,18 +10,19 @@ import { daysBetween, shortRange, type DateRange } from './progress-range';
 
 export type FittedPoint = DateRange & {key: string; value: number | null; text: string; target?: number | null; partial?: boolean; soft?: boolean; kind?: string};
 /** One full-period plot. Touch chooses the closest real date; VoiceOver steps through the same observations. */
-export function FittedChart({ points, range, mode, selectedKey, onSelect, testID, label, unit, color, bounds, connect = false, bands = [], currentTarget, valueType }: {
+export function FittedChart({ points, range, mode, selectedKey, onSelect, testID, label, unit, color, bounds, connect = false, bands = [], currentTarget, valueType, showScale = true, maxBarWidth = spacing.xl }: {
   points: FittedPoint[]; range: DateRange; mode: 'bars' | 'dots'; selectedKey: string | null; onSelect: (key: string) => void;
-  currentTarget?: number | null; valueType?: 'integer' | 'decimal' | 'duration';
+  showScale?: boolean; maxBarWidth?: number; currentTarget?: number | null; valueType?: 'integer' | 'decimal' | 'duration';
   testID: string; label?: string; unit?: string; color?: string; bounds?: {low: number; high: number}; connect?: boolean; bands?: (DateRange & {label: string})[];
 }) {
   const { colors } = useOwnlevelTheme(), {fontScale} = useWindowDimensions();
   const [width, setWidth] = useState(300), height = 150, pad = spacing.md;
   const ink = color ?? colors.primary;
+  const padX = Math.max(pad, maxBarWidth / 2);
   const values = [...(currentTarget == null ? [] : [currentTarget]), ...points.flatMap(p => [p.value,p.target].filter((v): v is number => v !== null && v !== undefined))];
   const low = bounds?.low ?? (mode === 'bars' ? Math.min(0,...values) : Math.min(...values));
   const high = bounds?.high ?? Math.max(mode === 'bars' ? 1 : -Infinity,...values);
-  const x = (start: string, end = start) => range.start===range.end?width/2:pad + Math.max(0,Math.min(1,(daysBetween(range.start,start)-1 + (daysBetween(start,end)-1)/2) / (daysBetween(range.start,range.end)-1))) * (width-2*pad);
+  const x = (start: string, end = start) => range.start===range.end?width/2:padX + Math.max(0,Math.min(1,(daysBetween(range.start,start)-1 + (daysBetween(start,end)-1)/2) / (daysBetween(range.start,range.end)-1))) * (width-2*padX);
   const y = (v: number) => high === low ? height/2 : pad + (high-v)/(high-low)*(height-2*pad);
   const selected = points.findIndex(p => p.key === selectedKey), inspected = points[selected];
   const dragging = useRef(false), dragged = useRef(false), lastPicked = useRef<string | null>(selectedKey);
@@ -36,10 +37,10 @@ export function FittedChart({ points, range, mode, selectedKey, onSelect, testID
   const step = (delta: number) => { const next = selected < 0 ? delta > 0 ? 0 : points.length-1 : Math.max(0,Math.min(points.length-1,selected+delta)); if(next!==selected) pick(next); };
   const dated = (d: string) => shortRange({start:d,end:d},range.end);
   const ticks = fontScale > 1.3 ? [range.start,range.end] : [range.start, new Date((Date.parse(range.start)+Date.parse(range.end))/2).toISOString().slice(0,10),range.end];
-  const barWidth = Math.max(1, Math.min(spacing.xl, (width-pad*2)/Math.max(1,points.length)*0.65));
+  const barWidth = Math.max(1, Math.min(maxBarWidth, (width-padX*2)/Math.max(1,points.length)*0.65));
   const number = (v: number) => unit==='kcal'||unit==='g'?nutritionValue(v,unit):formatValue(v,unit??null,valueType);
   return <View testID={testID} style={styles.wrap} onLayout={event => setWidth(event.nativeEvent.layout.width)}>
-    {values.length>0&&Number.isFinite(low)&&Number.isFinite(high)?<AppText numeric muted variant="caption">Escala · {number(low)} – {number(high)}</AppText>:null}
+    {showScale&&values.length>0&&Number.isFinite(low)&&Number.isFinite(high)?<AppText numeric muted variant="caption">Escala · {number(low)} – {number(high)}</AppText>:null}
     <Pressable testID={`${testID}-plot`} accessibilityRole="adjustable" accessibilityLabel={`${label ? `${label}. ` : ''}${inspected?.text ?? 'Gráfico del período completo. Deslizá hacia arriba o abajo para recorrer los datos.'}`}
       accessibilityActions={[{name:'increment',label:'Dato siguiente'},{name:'decrement',label:'Dato anterior'}]}
       onAccessibilityAction={event => step(event.nativeEvent.actionName === 'decrement' ? -1 : 1)}

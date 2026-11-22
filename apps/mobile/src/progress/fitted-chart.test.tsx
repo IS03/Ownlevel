@@ -28,3 +28,13 @@ it('draws each historical target even in isolation and never bridges a missing t
   expect(view.getByTestId('targets-target-point-2026-11-01',{includeHiddenElements:true})).toBeTruthy(); expect(view.getByTestId('targets-target-point-2026-11-03',{includeHiddenElements:true})).toBeTruthy();
   expect(view.queryByTestId('targets-target-2026-11-03',{includeHiddenElements:true})).toBeNull();
 });
+
+it('keeps wider summary bars fully inside both ends of the plot', () => {
+  const points = [point('2026-11-01', 1), point('2026-11-02', 2), point('2026-11-03', 3)];
+  const view = render(<OwnlevelThemeProvider><FittedChart points={points} range={{start:'2026-11-01',end:'2026-11-03'}} mode="bars" maxBarWidth={40} selectedKey={null} onSelect={jest.fn()} testID="wide" /></OwnlevelThemeProvider>);
+  for (const date of ['2026-11-01','2026-11-03']) {
+    const mark = StyleSheet.flatten(view.getByTestId(`wide-${date}-bar`).props.style);
+    expect(mark.left).toBeGreaterThanOrEqual(0);
+    expect(Number(mark.left) + Number(mark.width)).toBeLessThanOrEqual(300);
+  }
+});

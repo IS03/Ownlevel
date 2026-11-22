@@ -7,9 +7,10 @@ import { haptics } from '@/platform/haptics';
 export type ChartReading = { title: string; value: string; detail: string; note?: string; placeholder?: boolean };
 
 /** Intrinsic, measured reserve: selecting any real observation cannot move the plot, even with Dynamic Type. */
-export function ChartReadout({ reading, candidates, testID, accessibilityLabel, onClear, noteTestID, noteHidden = false }: {
-  reading: ChartReading; candidates: ChartReading[]; testID: string; accessibilityLabel?: string; onClear?: () => void; noteTestID?: string; noteHidden?: boolean;
+export function ChartReadout({ reading, candidates, testID, accessibilityLabel, onClear, noteTestID, noteHidden = false, clearPresentation = 'row' }: {
+  reading: ChartReading; candidates: ChartReading[]; testID: string; accessibilityLabel?: string; onClear?: () => void; noteTestID?: string; noteHidden?: boolean; clearPresentation?: 'row' | 'inline';
 }) {
+  const { colors } = useOwnlevelTheme();
   const { fontScale } = useWindowDimensions();
   const [width, setWidth] = useState(0);
   const sizeKey = `${width}:${fontScale}`;
@@ -22,9 +23,9 @@ export function ChartReadout({ reading, candidates, testID, accessibilityLabel, 
     <AppText numeric muted variant="footnote">{item.detail}</AppText>
     {item.note ? <AppText numeric muted variant="footnote" testID={measurement ? undefined : noteTestID} accessibilityElementsHidden={noteHidden} importantForAccessibility={noteHidden ? 'no' : 'auto'}>{item.note}</AppText> : null}
   </View>;
-  return <View style={styles.block} onLayout={e => setWidth(e.nativeEvent.layout.width)}>
+  return <View style={[styles.block, clearPresentation === 'inline' && styles.inlineReading]} onLayout={e => setWidth(e.nativeEvent.layout.width)}>
     <View testID={`${testID}-reserve`} style={{ minHeight: height }}>
-      <View key={sizeKey} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.measurements}>
+      <View key={sizeKey} pointerEvents="none" aria-hidden accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.measurements}>
         {[reading, ...candidates].map((item, i) => <View key={i} style={styles.measure} onLayout={e => {
           const next = Math.ceil(e.nativeEvent.layout.height); setMeasured(old => old.key !== sizeKey || old.height >= next ? old : { key: sizeKey, height: next });
         }}>{fields(item, true)}</View>)}
@@ -34,9 +35,9 @@ export function ChartReadout({ reading, candidates, testID, accessibilityLabel, 
       </View>
     </View>
     <Pressable accessibilityRole="button" accessibilityLabel="Quitar selección del gráfico" disabled={!onClear}
-      accessibilityElementsHidden={!onClear} importantForAccessibility={onClear ? 'auto' : 'no-hide-descendants'}
-      onPress={() => { haptics.selection(); onClear?.(); }} style={[styles.clear, !onClear && styles.hidden]}>
-      <AppText muted variant="subheadline">Ver período completo</AppText>
+      aria-hidden={!onClear} accessibilityElementsHidden={!onClear} importantForAccessibility={onClear ? 'auto' : 'no-hide-descendants'}
+      onPress={() => { haptics.selection(); onClear?.(); }} style={[styles.clear, clearPresentation === 'inline' && styles.inlineClear, !onClear && styles.hidden]}>
+      {clearPresentation === 'inline' ? <AppIcon name="close" size={17} color={colors.textMuted} /> : <AppText muted variant="subheadline">Ver período completo</AppText>}
     </Pressable>
   </View>;
 }
@@ -68,6 +69,7 @@ export function ChartExplanation({ children, label = 'Cómo se calcula' }: { chi
 const styles = StyleSheet.create({
   block: { gap: spacing.xs }, fields: { gap: spacing.xs },
   measurements: { ...StyleSheet.absoluteFill, opacity: 0 }, measure: { position: 'absolute', left: 0, right: 0 },
+  inlineReading: { paddingRight: brandTokens.layout.minTouch + spacing.xs }, inlineClear: { position: 'absolute', top: 0, right: 0, width: brandTokens.layout.minTouch, alignItems: 'center' },
   clear: { minHeight: brandTokens.layout.minTouch, alignSelf: 'flex-start', justifyContent: 'center' }, hidden: { opacity: 0 },
   action: { minHeight: brandTokens.layout.minTouch, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }, grow: { flex: 1 },
 });
