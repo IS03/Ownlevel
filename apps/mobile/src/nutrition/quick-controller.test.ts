@@ -40,6 +40,28 @@ describe('«Agregar varias veces» (long-press menu)', () => {
   });
 });
 
+describe('Rápido opens on the last confirmed list kept on this device', () => {
+  it('shows it at once as reused (pins verified before a write), reads anyway, and keeps only complete answers', async () => {
+    const kept = quickOptions(); const written: unknown[] = [];
+    const snapshot = { read: jest.fn(async () => kept), write: jest.fn(async (o: unknown) => { written.push(o); }) };
+    const map = new Map<string, string>();
+    const storage = { getItem: async (k: string) => map.get(k) ?? null, setItem: async (k: string, v: string) => { map.set(k, v); }, removeItem: async (k: string) => { map.delete(k); } };
+    let finish!: (v: Awaited<ReturnType<QuickApi['options']>>) => void;
+    const api: QuickApi = { options: jest.fn<QuickApi['options']>().mockImplementation(() => new Promise(r => { finish = r; })),
+      preview: jest.fn<QuickApi['preview']>(), confirm: jest.fn<QuickApi['confirm']>(), read: jest.fn<QuickApi['read']>() };
+    const controller = new QuickController(api, new QuickIntentRepository(storage, 'owner'), () => undefined, undefined, undefined, snapshot);
+    await controller.initialize(); controller.open(quickDate);
+    expect(controller.getSnapshot()).toMatchObject({ options: kept, optionsReused: true, optionsLoading: true });
+    expect(api.options).toHaveBeenCalledTimes(1);
+    finish({ status: 'ok', data: quickOptions(), meta }); await settle();
+    expect(controller.getSnapshot()).toMatchObject({ optionsReused: false, optionsLoading: false });
+    expect(written).toHaveLength(1);
+    // A failed read keeps the device copy on screen, said to be possibly out of date (never an empty list).
+    controller.close(); (api.options as jest.Mock<QuickApi['options']>).mockResolvedValueOnce(failure); controller.open(quickDate); await settle();
+    expect(controller.getSnapshot()).toMatchObject({ optionsError: true }); expect(controller.getSnapshot().options).not.toBeNull();
+  });
+});
+
 describe('Porciones (review of a simple saved meal)', () => {
   it('moves between 1 and 20; 2 or more register «NOMBRE ×N», 1 is the meal itself; the estimate follows; a composite meal has none', async () => {
     const f = fixture(); await f.open(quickOption());

@@ -193,7 +193,7 @@ export function FoodEditor({
             label="Nuevo alimento"
             onPress={locked ? undefined : () => controller.begin()}
           />
-          {state.listLoading ? <LoadingState label="Cargando alimentos" /> : null}
+          {state.listLoading && !state.foods ? <LoadingState label="Cargando alimentos" /> : null}
           {state.listError ? (
             <View style={styles.section}>
               <AppText accessibilityRole="alert">

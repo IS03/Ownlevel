@@ -1,4 +1,5 @@
 import type { MobileApiReadResult,MobileApiRequestResult } from '@/api/results';
+import { filterCatalog } from './catalog-filter';
 import type { FoodDetail,FoodsResponse,FoodFilter,PersonalFood,FoodIntent,FoodReceipt,FoodOperation } from '@/api/nutrition-food';
 import { foodDraft,validateFoodDraft,type FoodDraft } from './food-model';
 import { FoodIntentRepository,type StoredFoodIntent } from './food-storage';
@@ -11,6 +12,8 @@ export class FoodController {
     draft:null,editing:null,truth:null,intent:null,message:null,errors:{}};
   /** A draft swiped away unsaved: back the next time the same food (or a new one) is opened in this session. */
   private shelved:{mode:'create'|'edit';foodId:string|null;draft:FoodDraft}|null=null;
+  /** The whole catalog as last read (filter «all», no search): searched locally. */
+  private catalog:PersonalFood[]|null=null;
   private disposed=false;private busy=false;private generation=0;private truthGeneration=0;private listeners=new Set<()=>void>();
   constructor(private api:FoodApi,private repository:FoodIntentRepository,private key:()=>string=()=>`food:${Date.now()}:${Math.random().toString(36).slice(2)}`){}
   getSnapshot=()=>this.state;
@@ -20,14 +23,15 @@ export class FoodController {
   async initialize(){try{const intent=await this.repository.read();this.update(intent?{phase:intent.receipt?'confirmed':'uncertain',intent,draft:intent.draft,editing:intent.editing,
     mode:intent.intent.operation==='create'?'create':'edit',message:'Hay un intento de catálogo guardado. Comprobalo antes de otra operación.'}:{phase:'idle'});}
     catch{this.update({phase:'blocked',message:'No pudimos leer el intento del catálogo. Comprobá el almacenamiento.'});}}
-  open(date:string|null){if(this.state.phase!=='idle'||this.busy||this.state.intent)return;this.truthGeneration++;this.update({open:true,mode:'browse',date,search:'',filter:'active',draft:null,editing:null,truth:null,message:null,foods:null});void this.load();}
+  open(date:string|null){if(this.state.phase!=='idle'||this.busy||this.state.intent)return;this.truthGeneration++;this.update({open:true,mode:'browse',date,search:'',filter:'active',draft:null,editing:null,truth:null,message:null,foods:this.catalog?filterCatalog(this.catalog,'active',''):null});void this.load();}
   close(){if(this.busy)return;this.truthGeneration++;this.update({open:false,...(this.state.phase==='conflict'&&!this.state.intent?{phase:'idle',draft:null,editing:null,truth:null,message:null}: {})});}
   showRecovery(){if(this.state.intent&&!this.busy)this.update({open:true,mode:this.state.intent.intent.operation==='create'?'create':'edit'});}
-  query(search:string,filter=this.state.filter){if(this.busy||this.state.intent)return;this.update({search:search.slice(0,200),filter,foods:null});void this.load();}
+  query(search:string,filter=this.state.filter){if(this.busy||this.state.intent)return;const next=search.slice(0,200);this.update({search:next,filter,foods:this.catalog?filterCatalog(this.catalog,filter,next):null});if(!this.catalog&&!this.state.listLoading)void this.load();}
   setFilter(filter:FoodFilter){this.query(this.state.search,filter);}
-  async load(){const generation=++this.generation,{search,filter}=this.state;this.update({listLoading:true,listError:false});
-    try{const result=await this.api.list(filter,search);if(this.disposed||generation!==this.generation)return;
-      this.update(result.status==='ok'?{foods:result.data.foods,listLoading:false,listError:false}:{listLoading:false,listError:true});}
+  async load(){const generation=++this.generation;this.update({listLoading:true,listError:false});
+    try{const result=await this.api.list('all','');if(this.disposed||generation!==this.generation)return;
+      if(result.status==='ok')this.catalog=result.data.foods;
+      this.update(result.status==='ok'?{foods:filterCatalog(result.data.foods,this.state.filter,this.state.search),listLoading:false,listError:false}:{listLoading:false,listError:true});}
     catch{if(generation===this.generation)this.update({listLoading:false,listError:true});}}
   begin(food?:PersonalFood){if(this.state.phase!=='idle'||this.busy||this.state.intent)return;this.truthGeneration++;
     const mode=food?'edit':'create',kept=this.shelved&&this.shelved.mode===mode&&this.shelved.foodId===(food?.id??null)?this.shelved.draft:null;this.shelved=null;

@@ -1,3 +1,4 @@
+import type { PersonalFood } from '@/api/nutrition-food';
 import { describe,expect,it,jest } from '@jest/globals';
 import { FoodController,type FoodApi } from './food-controller';
 import { FoodIntentRepository } from './food-storage';
@@ -22,12 +23,19 @@ describe('Personal Food controller and durable catalog intents',()=>{
   expect(validateFoodDraft({...draft,proteinG:'0'}).fields?.proteinG).toBe(0);
   for(const patch of [{servingQuantity:'1,2345'},{calories:'1,234'},{fatG:'-1'},{name:''},{servingUnit:''},{calories:'',proteinG:'',carbsG:'',fatG:''}])expect(validateFoodDraft({...draft,...patch}).fields).toBeUndefined();
  });
- it('search and filter reject stale responses and never report unavailable as empty',async()=>{
-  const f=fixture();await f.open();let resolve!:(v:Awaited<ReturnType<FoodApi['list']>>)=>void;
+ it('reads the catalog once and searches it locally (no request per letter); a stale answer never replaces a newer one; unavailable is never empty',async()=>{
+  const tea:PersonalFood={...personalFood,id:'42200000-0000-4000-8000-000000000009',name:'TÉ VERDE',isActive:false,version:'b'.repeat(64)};
+  const f=fixture();(f.api.list as jest.Mock<FoodApi['list']>).mockResolvedValue({status:'ok',data:{status:'ok',foods:[personalFood,tea]},meta});await f.open();
+  expect(f.api.list).toHaveBeenCalledTimes(1);expect(f.api.list).toHaveBeenCalledWith('all','');expect(f.controller.getSnapshot().foods).toEqual([personalFood]);
+  f.controller.query('te','archived');expect(f.controller.getSnapshot().foods).toEqual([tea]);
+  f.controller.query('cafe','all');expect(f.controller.getSnapshot().foods).toEqual([personalFood]);
+  f.controller.query('','all');expect(f.controller.getSnapshot().foods).toEqual([personalFood,tea]);
+  expect(f.api.list).toHaveBeenCalledTimes(1);
+  let resolve!:(v:Awaited<ReturnType<FoodApi['list']>>)=>void;
   (f.api.list as jest.Mock<FoodApi['list']>).mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));
-  f.controller.query('cafe');f.controller.query('none','archived');await settle();
-  resolve({status:'ok',data:{status:'ok',foods:[]},meta});await settle();expect(f.controller.getSnapshot().foods).toEqual([personalFood]);expect(f.controller.getSnapshot().filter).toBe('archived');
-  (f.api.list as jest.Mock<FoodApi['list']>).mockResolvedValueOnce(failure);await f.controller.load();expect(f.controller.getSnapshot().listError).toBe(true);expect(f.controller.getSnapshot().foods).toEqual([personalFood]);
+  const stale=f.controller.load();await f.controller.load();resolve({status:'ok',data:{status:'ok',foods:[]},meta});await stale;await settle();
+  expect(f.controller.getSnapshot().foods).toEqual([personalFood,tea]);
+  (f.api.list as jest.Mock<FoodApi['list']>).mockResolvedValueOnce(failure);await f.controller.load();expect(f.controller.getSnapshot().listError).toBe(true);expect(f.controller.getSnapshot().foods).toEqual([personalFood,tea]);
  });
  it('create persists before send, gates double taps, and rereads detail/catalog before clearing',async()=>{
   const f=fixture();await f.open();f.controller.begin();for(const [k,v] of Object.entries(foodDraft(personalFood)))f.controller.change(k as keyof ReturnType<typeof foodDraft>,v);

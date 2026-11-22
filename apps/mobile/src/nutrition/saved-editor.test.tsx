@@ -95,7 +95,7 @@ describe('Native Saved Meal management', () => {
     await act(async () => {
       fireEvent.press(f.view.getByText('Archivadas'));
     });
-    expect(f.api.list).toHaveBeenLastCalledWith('archived', '');
+    expect(f.api.list).toHaveBeenLastCalledWith('all', '');
     chooseCreate(f.view, 1);
     fireEvent.changeText(f.view.getByLabelText('Nombre'), 'Manual');
     fireEvent.changeText(f.view.getByLabelText('Proteína (g)'), '0');
@@ -275,15 +275,16 @@ describe('Saved library presentation safeguards', () => {
     });
     expect(f.api.write).not.toHaveBeenCalled();
     expect(alert.mock.calls.at(-1)?.[0]).toBe('¿Archivar comida guardada?');
-    await act(async () => alert.mock.calls.at(-1)![2]![1].onPress!());
-    expect(f.api.write).toHaveBeenLastCalledWith(
-      expect.objectContaining({ operation: 'archive', expectedVersion: personalSaved.version, fields: null }),
-    );
+    // The catalog re-read after the confirmed archive brings it back archived.
     (f.api.list as jest.Mock<SavedApi['list']>).mockResolvedValue({
       status: 'ok',
       data: { status: 'ok', meals: [{ ...personalSaved, isActive: false }] },
       meta,
     });
+    await act(async () => alert.mock.calls.at(-1)![2]![1].onPress!());
+    expect(f.api.write).toHaveBeenLastCalledWith(
+      expect.objectContaining({ operation: 'archive', expectedVersion: personalSaved.version, fields: null }),
+    );
     await act(async () => f.c.setFilter('archived'));
     fireEvent(f.view.getByLabelText(/^Editar CAFÉ,/), 'accessibilityAction', {
       nativeEvent: { actionName: 'Restaurar' },

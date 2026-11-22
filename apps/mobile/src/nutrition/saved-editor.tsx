@@ -235,7 +235,7 @@ export function SavedEditor({ controller, state }: { controller: SavedController
           <LibrarySearch label="Buscar guardada" value={state.search} onChange={(v) => controller.query(v)} />
           <LibraryFilter filter={state.filter} onChange={(f) => controller.setFilter(f)} />
           <NutritionGlassButton wide icon="plus" label="Nueva comida" onPress={locked ? undefined : create} />
-          {state.listLoading ? <LoadingState label="Cargando guardadas" /> : null}
+          {state.listLoading && !state.meals ? <LoadingState label="Cargando guardadas" /> : null}
           {state.listError ? (
             <View style={shared.section}>
               <AppText accessibilityRole="alert">

@@ -10,10 +10,10 @@ export function FoodAddPicker({ controller, state, onChoose, onClose }: { contro
   return <MealSheet embedded title="Alimento" onClose={onClose} testID="food-add-picker" right={<MealDateControl date={state.date!} disabled={locked} onChange={date => controller.changeDate(date)} />}>
     <MealSearch label="Buscar alimento" value={state.search} onChange={search => controller.query(search)} />
     <Heading level={2}>Tus alimentos</Heading>
-    {state.listLoading ? <LoadingState label="Cargando alimentos" /> : null}
+    {state.listLoading && !state.foods ? <LoadingState label="Cargando alimentos" /> : null}
     {state.listError ? <><AppText accessibilityRole="alert">No pudimos actualizar tus alimentos.</AppText><Button label="Reintentar catálogo" onPress={() => void controller.load()} /></> : null}
     {!state.listLoading && !state.listError && state.foods?.length === 0 ? <AppText muted>{state.search.trim() ? 'No encontramos alimentos con esa búsqueda.' : 'Todavía no tenés alimentos. Podés crear uno.'}</AppText> : null}
-    <View>{state.foods?.map(food => <Pressable key={food.id} accessibilityRole="button" accessibilityLabel={`Usar ${food.name}`} disabled={locked || state.listLoading || state.listError || !food.isActive || food.calories === null || food.calories <= 0} onPress={() => onChoose(food)} style={[shared.row, { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
+    <View>{state.foods?.map(food => <Pressable key={food.id} accessibilityRole="button" accessibilityLabel={`Usar ${food.name}`} disabled={locked || (state.listLoading && !state.foods) || state.listError || !food.isActive || food.calories === null || food.calories <= 0} onPress={() => onChoose(food)} style={[shared.row, { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
       <View style={shared.text}><AppText variant="body">{food.name}</AppText><AppText muted numeric variant="footnote">{`P ${mealShown(food.proteinG)} · C ${mealShown(food.carbsG)} · G ${mealShown(food.fatG)}${food.precisionLevel === 'estimated' ? ' · estimado' : ''}`}</AppText>{food.calories === null || food.calories <= 0 ? <AppText muted variant="caption">Completá calorías para poder agregarlo.</AppText> : null}</View>
       <AppText muted numeric variant="subheadline" style={{ maxWidth: '38%', textAlign: 'right' }}>{mealShown(food.servingQuantity, 3)} {food.servingUnit} · {mealShown(food.calories)} kcal</AppText><AppIcon name="chevronRight" color={colors.textMuted} size={17} />
     </Pressable>)}</View>
