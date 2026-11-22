@@ -1,6 +1,8 @@
 import { Pressable, StyleSheet, View } from 'react-native';
+import Animated, { LinearTransition } from 'react-native-reanimated';
 
-import { layout } from './brand';
+import { layout, motion, palette } from './brand';
+import { GlassSurface } from './glass';
 import { pressedStyle, useReduceMotion } from './motion';
 import { AppText } from './primitives';
 import { radius, spacing } from './tokens';
@@ -68,26 +70,46 @@ export function ChipGroup<T extends string>({ accessibilityLabel, disabled, onCh
 }
 
 /** Single choice among 2–4 short options in one line (e.g. Sistema / Claro / Oscuro). */
+/** The track is glass too, tinted with the raised sand (light) or raised grey (dark) at 55 %, so it still reads as a track. */
+const trackTint = (hex: string) => `rgba(${[1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(',')},0.55)`;
+/**
+ * The selection is a Liquid Glass thumb (glass is for controls only) that slides to the chosen option with the brand
+ * spring; with Reduce Motion it moves at once. Without Liquid Glass (older iOS, Reduce Transparency, Android) the thumb is
+ * the brand surface, as before. The thumb sits by percentage, so the first frame already shows the selection (no measuring).
+ */
 export function SegmentedControl<T extends string>({ accessibilityLabel, disabled = false, onChange, options, value }: GroupProps<T>) {
-  const { colors } = useOwnlevelTheme();
+  const { colors, isDark } = useOwnlevelTheme();
+  const reduced = useReduceMotion();
+  const index = options.findIndex(option => option.value === value);
+  const share = 100 / Math.max(1, options.length);
   return (
-    <View accessibilityLabel={accessibilityLabel} accessibilityRole="radiogroup" style={[styles.segmented, { backgroundColor: colors.surfaceRaised }]}>
-      {options.map(option => {
-        const selected = option.value === value;
-        return (
-          <Pressable
-            key={option.value}
-            accessibilityLabel={option.label}
-            accessibilityRole="radio"
-            accessibilityState={{ checked: selected, disabled }}
-            disabled={disabled}
-            onPress={() => onChange(option.value)}
-            style={[styles.segment, selected && { backgroundColor: colors.surface, borderColor: colors.border }, disabled && styles.disabled]}
-          >
-            <AppText muted={!selected} style={selected ? styles.selectedText : null} variant="subheadline">{option.label}</AppText>
-          </Pressable>
-        );
-      })}
+    <View accessibilityLabel={accessibilityLabel} accessibilityRole="radiogroup" style={disabled && styles.disabled}>
+    <GlassSurface style={styles.segmented} tint={trackTint(palette[isDark ? 'dark' : 'light'].elevated)}>
+      <View style={styles.segmentRow}>
+        {index >= 0 ? (
+          <Animated.View layout={reduced ? undefined : LinearTransition.springify().damping(motion.spring.damping).stiffness(motion.spring.stiffness).mass(motion.spring.mass)}
+            pointerEvents="none" style={[styles.thumb, { left: `${index * share}%`, width: `${share}%` }]} testID="segmented-thumb">
+            <GlassSurface style={[styles.thumbGlass, { borderColor: colors.fieldBorder }]} />
+          </Animated.View>
+        ) : null}
+        {options.map(option => {
+          const selected = option.value === value;
+          return (
+            <Pressable
+              key={option.value}
+              accessibilityLabel={option.label}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: selected, disabled }}
+              disabled={disabled}
+              onPress={() => { if (!selected) onChange(option.value); }}
+              style={styles.segment}
+            >
+              <AppText muted={!selected} style={selected ? styles.selectedText : null} variant="subheadline">{option.label}</AppText>
+            </Pressable>
+          );
+        })}
+      </View>
+    </GlassSurface>
     </View>
   );
 }
@@ -102,12 +124,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   group: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  segmented: { borderRadius: radius.inner, flexDirection: 'row', gap: spacing.xs, padding: spacing.xs },
+  segmented: { borderRadius: radius.pill, padding: spacing.xs },
+  segmentRow: { flexDirection: 'row' },
+  thumb: { position: 'absolute', top: 0, bottom: 0 },
+  thumbGlass: { flex: 1, borderRadius: radius.pill, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   segment: {
     alignItems: 'center',
-    borderColor: 'transparent',
-    borderRadius: radius.chip,
-    borderWidth: 1,
+    borderRadius: radius.pill,
     flex: 1,
     justifyContent: 'center',
     minHeight: layout.minTouch - spacing.sm,
