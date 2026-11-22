@@ -196,20 +196,14 @@ describe('#479 C / #516 · pins change only in «Administrar fijadas», as one s
     expect(view.getAllByLabelText('Agregar Café con leche')).toHaveLength(1);
   });
 
-  it('long press and VoiceOver actions open the sheet with the change prepared; neither writes by itself', async () => {
-    const sheet = jest.spyOn(ActionSheetIOS, 'showActionSheetWithOptions').mockImplementation((options, pick) => pick(options.options.indexOf('Fijar en Rápido…')));
-    const alert = jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => buttons?.find(b => b.text === 'Fijar en Rápido…')?.onPress?.());
+  it('the long-press menu and VoiceOver pin and unpin at once, through the same verified write as «Administrar»', async () => {
     const { view, pinsApi } = await setup({ pins: ok(snap(0, [])) });
-    act(() => { fireEvent(view.getByLabelText('Revisar Café con leche'), 'longPress'); });
-    expect(draft(view)).toEqual(['Café con leche, 1 de 1']); expect(pinsApi.write).not.toHaveBeenCalled();
-    await act(async () => { fireEvent.press(editor(view).getByTestId('quick-pins-save')); });
-    expect(pinsApi.write).toHaveBeenLastCalledWith({ savedMealIds: [ID(6)], expectedRevision: 0, idempotencyKey: 'pins-1' });
-    const row = view.getAllByLabelText('Revisar Avena con banana')[0]!;
+    const row = view.getAllByLabelText('Revisar Café con leche')[0]!;
     expect(row.props.accessibilityActions).toEqual([{ name: 'pin', label: 'Fijar' }]);
-    act(() => { fireEvent(row, 'accessibilityAction', { nativeEvent: { actionName: 'pin' } }); });
-    expect(draft(view)).toEqual(['Café con leche, 1 de 2', 'Avena con banana, 2 de 2']); expect(pinsApi.write).toHaveBeenCalledTimes(1);
-    expect(view.getAllByLabelText('Revisar Café con leche')[0]!.props.accessibilityActions).toEqual([{ name: 'unpin', label: 'Desfijar' }]);
-    sheet.mockRestore(); alert.mockRestore();
+    expect(row.props.accessibilityHint).toBe('Mantené apretado para más opciones');
+    await act(async () => { fireEvent(row, 'accessibilityAction', { nativeEvent: { actionName: 'pin' } }); });
+    expect(pinsApi.write).toHaveBeenLastCalledWith(expect.objectContaining({ savedMealIds: [ID(6)], expectedRevision: 0 }));
+    expect(view.queryByTestId('quick-pins-editor')).toBeNull();
   });
 
   it('«Cancelar» drops only the draft: zero writes, asking first when it changed', async () => {
@@ -293,26 +287,6 @@ describe('#479 C / #516 · pins change only in «Administrar fijadas», as one s
     expect(pinsApi.write).toHaveBeenCalledTimes(1);
     expect(pinsApi.write).toHaveBeenLastCalledWith({ savedMealIds: [ID(6), ID(1), ID(2), ID(3), ID(5), ID(4)], expectedRevision: 7, idempotencyKey: 'pins-1' });
     expect(names(view).slice(0, 6)).toEqual(['Café con leche', 'Tostadas con palta', 'Avena con banana', 'Ñoquis caseros', 'Pollo al horno', 'Ensalada de atún']);
-  });
-
-  it('#525 · a change prepared from the menu is a difference: «Cancelar» asks, «Seguir editando» keeps it, nothing is written', async () => {
-    let answer = 'Seguir editando';
-    const alert = jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => buttons?.find(b => b.text === answer)?.onPress?.());
-    const sheet = jest.spyOn(ActionSheetIOS, 'showActionSheetWithOptions').mockImplementation((options, pick) => pick(0));
-    const { view, pinsApi } = await setup({ pins: ok(snap(2, [ID(5)])) });
-    act(() => { fireEvent(view.getAllByLabelText('Revisar Café con leche')[0]!, 'longPress'); }); // «Fijar en Rápido…»
-    expect(draft(view)).toEqual(['Pollo al horno, 1 de 2', 'Café con leche, 2 de 2']);
-    fireEvent.press(editor(view).getByTestId('quick-pins-cancel'));
-    expect(alert).toHaveBeenCalledTimes(1); expect(draft(view)).toEqual(['Pollo al horno, 1 de 2', 'Café con leche, 2 de 2']); // Kept.
-    answer = 'Descartar'; fireEvent.press(editor(view).getByTestId('quick-pins-cancel'));
-    expect(view.queryByTestId('quick-pins-editor')).toBeNull();
-    // «Desfijar…» from VoiceOver: the same rule.
-    act(() => { fireEvent(view.getAllByLabelText('Revisar Pollo al horno')[0]!, 'accessibilityAction', { nativeEvent: { actionName: 'unpin' } }); });
-    expect(draft(view)).toEqual([]);
-    fireEvent.press(editor(view).getByTestId('quick-pins-cancel'));
-    expect(alert).toHaveBeenCalledTimes(3); expect(view.queryByTestId('quick-pins-editor')).toBeNull();
-    expect(pinsApi.write).not.toHaveBeenCalled(); expect(names(view)[0]).toBe('Pollo al horno');
-    alert.mockRestore(); sheet.mockRestore();
   });
 
   it('#525 · after «Usar las guardadas» the draft is clean: «Cancelar» closes without asking; a later change asks again', async () => {

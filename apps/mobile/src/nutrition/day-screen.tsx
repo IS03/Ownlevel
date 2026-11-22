@@ -213,7 +213,8 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
       onMetric={editable ? metricEntry.open : undefined}
       onActivity={editable ? data => writes.controller.open('metrics', data) : undefined}
       onContext={editable ? (data, field) => { setContextField(field); writes.controller.open('context', data); } : undefined} />
-    {quick && !(foods?.state.open && foods.state.mode === 'register') ? <QuickEditor controller={quick.controller} state={quick.state} pins={pins ? { controller: pins.controller, state: pins.state } : null} externalLocked={!editable} onSaved={() => { quick.controller.close(); saved?.controller.open(); }} /> : null}
+    {quick && !(foods?.state.open && foods.state.mode === 'register') ? <QuickEditor controller={quick.controller} state={quick.state} pins={pins ? { controller: pins.controller, state: pins.state } : null} externalLocked={!editable} onSaved={() => { quick.controller.close(); saved?.controller.open(); }}
+      onEdit={option => { quick.controller.close(); void saved?.controller.openEdit(option.source.id); }} /> : null}
     {foods && quick ? <FoodEditor controller={foods.controller} state={foods.state} quick={quick} onChoose={food => { quick.controller.open(foods.state.date!, foodQuickOption(food)); foods.controller.registration(); }} /> : null}
     {plate ? <PlateEditor controller={plate.controller} state={plate.state} externalLocked={!editable && plate.state.phase === 'idle' && !plate.state.intent} /> : null}
     {saved?<SavedEditor controller={saved.controller} state={saved.state}/>:null}

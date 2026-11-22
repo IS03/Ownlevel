@@ -28,6 +28,8 @@ export class SavedController {
  async load(){const generation=++this.generation,{search,filter}=this.state;this.update({listLoading:true,listError:false});try{const result=await this.api.list(filter,search);if(this.disposed||generation!==this.generation)return;
  this.update(result.status==='ok'?{meals:result.data.meals,listLoading:false,listError:false}:{listLoading:false,listError:true});}catch{if(generation===this.generation)this.update({listLoading:false,listError:true});}}
  begin(saved?:PersonalSavedMeal,type:SavedDraft['templateType']='manual'){if(this.state.phase!=='idle'||this.busy||this.state.intent)return;this.truthGeneration++;this.update({mode:saved?'edit':'create',editing:saved??null,draft:savedDraft(saved,type),errors:{},truth:null,message:null});}
+ /** Straight to one saved meal's editor (Rápido's long-press «Editar»): the list is read and that meal opened in it. */
+ async openEdit(id:string){if(this.state.phase!=='idle'||this.busy||this.state.intent)return;this.open();await this.load();const meal=this.state.meals?.find(m=>m.id===id.toLowerCase());if(meal&&this.state.open)this.begin(meal);}
  /** "Guardar como comida" from a day meal: the normal create form, prefilled; the user confirms the name. */
  prefill(values:Pick<SavedDraft,'name'|'description'|'calories'|'proteinG'|'carbsG'|'fatG'>){if(this.state.phase!=='idle'||this.busy||this.state.intent)return;this.truthGeneration++;this.update({open:true,mode:'create',editing:null,draft:{...savedDraft(null,'manual'),...values},errors:{},truth:null,message:null});}
  back(){if(this.busy||this.state.intent||this.state.phase==='blocked')return;this.truthGeneration++;this.update({phase:'idle',mode:'browse',draft:null,editing:null,truth:null,message:null,errors:{}});}

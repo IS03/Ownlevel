@@ -236,11 +236,10 @@ describe('#479 D1 · pin transitions from 0 to 6, with archived and deleted plac
     const meals = [...BASE, { ...BASE[0]!, source: { ...BASE[0]!.source, id: ID(7) }, name: 'Séptima' }];
     const ids = [ID(1), ID(90), ID(2), ID(91), ID(3), ID(4)];
     const s = await setup({ meals, pins: ok(snap(4, ids, { [ID(90)]: 'archived', [ID(91)]: 'deleted' })) });
-    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {}), sheet = jest.spyOn(ActionSheetIOS, 'showActionSheetWithOptions').mockImplementation(() => {});
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     const row = s.view.getByLabelText('Revisar Séptima');
+    // Full: VoiceOver offers no «Fijar», and the menu's «Fijadas completas» explains instead of writing.
     expect(row.props.accessibilityActions).toEqual([]);
-    await act(async () => { fireEvent(row, 'longPress'); });
-    expect(alert).toHaveBeenCalledWith('Séptima', 'Ya tenés 6 fijadas. Desfijá una para fijar otra.'); expect(sheet).not.toHaveBeenCalled();
     fireEvent.press(s.view.getByTestId('quick-pins-manage'));
     expect(editor(s.view).getByTestId(`quick-pins-choice-${ID(7)}`).props.accessibilityState).toMatchObject({ disabled: true });
     fireEvent.press(editor(s.view).getByTestId(`quick-pins-choice-${ID(7)}`));
@@ -249,7 +248,7 @@ describe('#479 D1 · pin transitions from 0 to 6, with archived and deleted plac
     fireEvent.press(editor(s.view).getByTestId(`quick-pins-remove-${ID(91)}`));
     expect(editor(s.view).getByTestId(`quick-pins-choice-${ID(7)}`).props.accessibilityState).toMatchObject({ disabled: false });
     expect(s.pinsApi.write).not.toHaveBeenCalled();
-    alert.mockRestore(); sheet.mockRestore();
+    alert.mockRestore();
   });
   it('an archived meal restored comes back in its place; a deleted one stays until released', async () => {
     const s = await setup({ pins: ok(snap(2, [ID(1), ID(90), ID(2)], { [ID(90)]: 'archived' })) });

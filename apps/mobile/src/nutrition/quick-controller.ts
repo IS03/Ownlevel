@@ -92,15 +92,16 @@ export class QuickController {
       }
     } catch { if (generation === this.optionsGeneration) { this.lastOptions = null; this.update({ optionsLoading: false, optionsError: true }); } }
   }
-  choose(option: QuickOption, preview = true) {
+  choose(option: QuickOption, preview = true, times?: number) {
     if (this.state.phase !== 'idle' || this.state.intent || this.busy || !this.state.date) return;
-    this.previewGeneration++; this.optionsGeneration++; this.update({ optionsLoading: false, draft: quickDraft(this.state.date, option), previousDraft: null, preview: null, message: null, errors: {}, truth: null });
+    this.previewGeneration++; this.optionsGeneration++; this.update({ optionsLoading: false, draft: quickDraft(this.state.date, option, times), previousDraft: null, preview: null, message: null, errors: {}, truth: null });
     if (preview) void this.requestPreview();
   }
-  async addInline(option: QuickOption) {
+  /** «+» adds once; `times` (a saved meal, 2–20) adds it multiplied as one meal «NOMBRE ×N». Same preview, intent and notice. */
+  async addInline(option: QuickOption, times?: number) {
     if (this.busy || this.state.phase !== 'idle' || this.state.intent || !this.state.open || this.state.draft) return;
     const key = `${option.source.kind}:${option.source.id}`;
-    this.update({ inlineKey: key }); this.choose(option, false);
+    this.update({ inlineKey: key }); this.choose(option, false, times);
     await this.requestPreview();
     try {
       if (this.state.preview && this.state.inlineKey === key && this.state.phase === 'idle') await this.save();

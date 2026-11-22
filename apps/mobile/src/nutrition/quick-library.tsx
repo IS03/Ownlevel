@@ -1,5 +1,5 @@
 import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ActionSheetIOS, ActivityIndicator, Alert, Platform, Pressable, ScrollView, SectionList, StyleSheet, View, useWindowDimensions, type AccessibilityActionEvent, type ViewToken } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, SectionList, StyleSheet, View, useWindowDimensions, type AccessibilityActionEvent, type ViewToken } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { LinkRow, AppIcon, AppText, Button, LoadingState, Surface, brandTokens, useOwnlevelTheme } from '@/design-system';
 import { haptics } from '@/platform/haptics';
@@ -11,13 +11,14 @@ import { LetterJump, sectionStarts } from './quick-letter-jump';
 import { SIDE_INDEX_WIDTH, SideIndex } from './quick-side-index';
 import { INITIALS, librarySections, pinnedRows, pinsFull, searchLibrary, type PinnedRow } from './quick-library-model';
 import { MealSearch, mealShown as shown, mealSheetStyles as shared } from './meal-sheet';
+import { QUICK_MENU_TIMES, QuickRowMenu } from './quick-row-menu';
 
 /**
  * #479 C / #516 · Rápido. One SectionList owns the vertical scroll (MealSheet `list`), so 10, 50 or 200 saved meals render as a
  * window, not all at once: «Fijadas» on top, «Para vos», then «Todas las comidas» A–Z, in one view. Searching and jumping to
- * a letter never read anything. Pins change only in «Administrar fijadas» (QuickPinsEditor), a local draft saved once with an
- * explicit «Guardar»: the long press menu and the VoiceOver actions open it with the change prepared, never write by
- * themselves, and nothing is offered for pinning while pins are not confirmed. «+» only adds to the day.
+ * a letter never read anything. Holding a meal opens the native menu: Agregar, Agregar varias veces (×N, one meal),
+ * Fijar arriba / Desfijar (written at once, the person's explicit choice) and Editar. Ordering and several changes at once
+ * stay in «Administrar fijadas». Nothing is offered for pinning while pins are not confirmed. «+» only adds to the day.
  */
 export type QuickPins = { controller: QuickPinsController; state: QuickPinsState } | null;
 type Item = { type: 'meal'; key: string; option: QuickOption; pinned: number } | { type: 'gone'; key: string; row: Extract<PinnedRow, { kind: 'unavailable' }> }
@@ -30,32 +31,46 @@ const VIEWABILITY = { itemVisiblePercentThreshold: 50 };
 /** The native small spinner is 20 pt: the refresh slot is never shorter than it, nor than one footnote line at the current text size. */
 const SPINNER_SIZE = 20;
 
-const QuickRow = memo(function QuickRow({ option, added, pending, locked, onReview, onAdd, pin }: {
+/** What a long press offers on a meal: multiples (saved meals only), pin or unpin, edit. Null where it does not apply. */
+type RowMenu = { onTimes: ((option: QuickOption, times: number) => void) | null; onEdit: ((option: QuickOption) => void) | null };
+type RowProps = {
   option: QuickOption; added: boolean; pending: boolean; locked: boolean; onReview: (option: QuickOption) => void; onAdd: (option: QuickOption) => void;
-  /** Present when pins can be changed now: the explicit actions on this meal. */
-  pin: null | { pinned: boolean; full: boolean; onToggle: () => void; menu: () => void };
-}) {
-  const { colors } = useOwnlevelTheme();
-  // Both open «Administrar fijadas» with the change prepared: nothing is written until «Guardar».
+  /** Present when pins can be changed now: pin or unpin this meal right away. */
+  pin: null | { pinned: boolean; full: boolean; onToggle: () => void };
+  menu: RowMenu;
+};
+/** The part of a row or card that opens the review and, held, the native menu. Measured: the menu needs its width. */
+function MenuArea({ option, locked, onReview, onAdd, pin, menu, children, style, label }: Omit<RowProps, 'added' | 'pending'> & { children: ReactNode; style?: object; label: string }) {
+  const [width, setWidth] = useState(0);
   const actions = pin ? pin.pinned ? [{ name: 'unpin', label: 'Desfijar' }] : pin.full ? [] : [{ name: 'pin', label: 'Fijar' }] : [];
-  const onAction = (event: AccessibilityActionEvent) => {
-    const name = event.nativeEvent.actionName;
-    if (name === 'pin' || name === 'unpin') pin?.onToggle();
-  };
+  const saved = option.source.kind === 'saved';
+  return <View style={styles.menuArea} onLayout={event => { const w = Math.floor(event.nativeEvent.layout.width); if (w !== width) setWidth(w); }}>
+    <QuickRowMenu disabled={locked} width={width} name={option.name} onOpen={() => onReview(option)} onAdd={() => onAdd(option)}
+      times={QUICK_MENU_TIMES} onTimes={saved && menu.onTimes ? n => menu.onTimes!(option, n) : null} pin={pin} onEdit={saved && menu.onEdit ? () => menu.onEdit!(option) : null}>
+      <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint="Mantené apretado para más opciones" accessibilityActions={actions}
+        onAccessibilityAction={(event: AccessibilityActionEvent) => { const name = event.nativeEvent.actionName; if (name === 'pin' || name === 'unpin') pin?.onToggle(); }}
+        disabled={locked} onPress={() => onReview(option)} style={style}>{children}</Pressable>
+    </QuickRowMenu>
+  </View>;
+}
+
+const QuickRow = memo(function QuickRow({ option, added, pending, locked, onReview, onAdd, pin, menu }: RowProps) {
+  const { colors } = useOwnlevelTheme();
   return <View style={[shared.row, { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
-    <View style={shared.text}><Pressable accessibilityRole="button" accessibilityLabel={`Revisar ${option.name}`} accessibilityActions={actions} onAccessibilityAction={onAction}
-      disabled={locked} onPress={() => onReview(option)} onLongPress={pin ? pin.menu : undefined} style={{ minHeight: 44, justifyContent: 'center' }}>
+    <MenuArea option={option} locked={locked} onReview={onReview} onAdd={onAdd} pin={pin} menu={menu} label={`Revisar ${option.name}`} style={styles.rowMain}>
       {/* #467/#481 hierarchy, unchanged: a regular name, secondary detail and value. */}
-      <AppText variant="body">{option.name}</AppText>
-      {/* An added option keeps its macros; the check says it is in the day, and undoing happens from the day. */}
-      <AppText muted numeric variant="footnote">{`P ${shown(option.proteinG)} · C ${shown(option.carbsG)} · G ${shown(option.fatG)}${option.items.length ? ` · ${option.items.length} ingredientes` : ''}`}</AppText>
-    </Pressable></View>
-    <View style={{ alignItems: 'flex-end', gap: 2 }}><AppText muted numeric variant="subheadline">{shown(option.calories)} kcal</AppText>{option.useCount !== null ? <AppText muted variant="caption">{option.useCount} veces</AppText> : null}</View>
+      <View style={shared.text}>
+        <AppText variant="body">{option.name}</AppText>
+        {/* An added option keeps its macros; the check says it is in the day, and undoing happens from the day. */}
+        <AppText muted numeric variant="footnote">{`P ${shown(option.proteinG)} · C ${shown(option.carbsG)} · G ${shown(option.fatG)}${option.items.length ? ` · ${option.items.length} ingredientes` : ''}`}</AppText>
+      </View>
+      <View style={{ alignItems: 'flex-end', gap: 2 }}><AppText muted numeric variant="subheadline">{shown(option.calories)} kcal</AppText>{option.useCount !== null ? <AppText muted variant="caption">{option.useCount} veces</AppText> : null}</View>
+    </MenuArea>
     {/* The touch target stays 44 × 44 pt; only the disc drawn inside it is smaller. «+» only ever adds to the day. */}
     <Pressable accessibilityRole="button" accessibilityLabel={added ? `${option.name} agregado` : `Agregar ${option.name}`} accessibilityState={{ disabled: locked || added, busy: pending }} disabled={locked || added} onPress={() => onAdd(option)} style={styles.add} testID={`quick-add-${option.source.kind}:${option.source.id}`}>
-        {/* At rest a thin ring (19 of them in a column read as one quiet rhythm); filled only once added. */}
-        <View style={[styles.addDisc, added ? { backgroundColor: colors.primary } : { borderWidth: 1.5, borderColor: colors.border }]} testID="quick-add-disc">
-          {pending ? <ActivityIndicator color={colors.primary} /> : <AppIcon name={added ? 'checkmark' : 'plus'} size={17} color={added ? colors.onPrimary : colors.primary} />}
+        {/* At rest a thin ring (19 of them in a column read as one quiet rhythm); a soft champagne check once added. */}
+        <View style={[styles.addDisc, added ? { backgroundColor: colors.brandSubtle } : { borderWidth: 1.5, borderColor: colors.border }]} testID="quick-add-disc">
+          {pending ? <ActivityIndicator color={colors.primary} /> : <AppIcon name={added ? 'checkmark' : 'plus'} size={17} color={colors.primary} />}
         </View>
       </Pressable>
   </View>;
@@ -78,20 +93,17 @@ function GoneRow({ row, onRelease }: { row: Extract<PinnedRow, { kind: 'unavaila
  * A1 · A pinned meal as a card: tap reviews, «+» adds to the day, long press opens the pin menu. Same labels and actions
  * as the row, so VoiceOver and the add flow do not change; only the name is clamped to two lines (the label keeps it whole).
  */
-const PinTile = memo(function PinTile({ option, added, pending, locked, onReview, onAdd, pin }: Parameters<typeof QuickRow>[0]) {
+const PinTile = memo(function PinTile({ option, added, pending, locked, onReview, onAdd, pin, menu }: RowProps) {
   const { colors } = useOwnlevelTheme();
-  const actions = pin ? pin.pinned ? [{ name: 'unpin', label: 'Desfijar' }] : [] : [];
   return <View style={[styles.tile, { backgroundColor: colors.surface }]} testID={`quick-pin-tile-${option.source.id}`}>
-    <Pressable accessibilityRole="button" accessibilityLabel={`Revisar ${option.name}`} accessibilityActions={actions}
-      onAccessibilityAction={event => { if (event.nativeEvent.actionName === 'unpin') pin?.onToggle(); }}
-      disabled={locked} onPress={() => onReview(option)} onLongPress={pin ? pin.menu : undefined} style={styles.tileText}>
+    <MenuArea option={option} locked={locked} onReview={onReview} onAdd={onAdd} pin={pin} menu={menu} label={`Revisar ${option.name}`} style={styles.tileText}>
       <AppText numberOfLines={2} variant="footnote" style={{ fontWeight: '600' }}>{option.name}</AppText>
-    </Pressable>
+    </MenuArea>
     <View style={styles.tileFoot}>
       <AppText muted numeric variant="caption">{shown(option.calories)} kcal</AppText>
       <Pressable accessibilityRole="button" accessibilityLabel={added ? `${option.name} agregado` : `Agregar ${option.name}`} accessibilityState={{ disabled: locked || added, busy: pending }} disabled={locked || added} onPress={() => onAdd(option)} style={styles.add} testID={`quick-add-${option.source.kind}:${option.source.id}`}>
-        <View style={[styles.tileDisc, { backgroundColor: added ? colors.primary : colors.background }]}>
-          {pending ? <ActivityIndicator color={colors.primary} /> : <AppIcon name={added ? 'checkmark' : 'plus'} size={17} color={added ? colors.onPrimary : colors.primary} />}
+        <View style={[styles.tileDisc, { backgroundColor: added ? colors.brandSubtle : colors.background }]}>
+          {pending ? <ActivityIndicator color={colors.primary} /> : <AppIcon name={added ? 'checkmark' : 'plus'} size={17} color={colors.primary} />}
         </View>
       </Pressable>
     </View>
@@ -133,8 +145,10 @@ function PinsNotice({ pins, names }: { pins: NonNullable<QuickPins>; names: (ids
   return null;
 }
 
-export function QuickLibrary({ state, controller, pins, locked, suggestions, onSaved, status, footer }: {
+export function QuickLibrary({ state, controller, pins, locked, suggestions, onSaved, onEdit, status, footer }: {
   state: QuickState; controller: QuickController; pins: QuickPins; locked: boolean; suggestions: boolean; onSaved?: () => void;
+  /** «Editar» from a saved meal's long-press menu: its editor, outside Rápido. */
+  onEdit?: (option: QuickOption) => void;
   /** What the quick registration needs the person to see or decide (outcome, recovery, conflict): above the rows. */
   status: ReactNode; footer: ReactNode;
 }) {
@@ -179,6 +193,10 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
 
   const review = useCallback((option: QuickOption) => controller.choose(option), [controller]);
   const add = useCallback((option: QuickOption) => { void controller.addInline(option); }, [controller]);
+  const rowMenu = useMemo<RowMenu>(() => ({
+    onTimes: (option, times) => { haptics.selection(); void controller.addInline(option, times); },
+    onEdit: onEdit ?? null,
+  }), [controller, onEdit]);
   const names = useCallback((ids: readonly string[]) => ids.map(id => saved?.find(option => option.source.id === id)?.name ?? 'una comida no disponible').join(', '), [saved]);
   /** «Administrar fijadas» over the confirmed pins it starts from, optionally with one change already prepared. */
   const openEditor = useCallback((change?: { pin?: string; unpin?: string }) => {
@@ -191,16 +209,15 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
   const pinControls = useCallback((option: QuickOption) => {
     if (!writable || !pins) return null;
     const pinned = pinnedIds.includes(option.source.id), full = pinsFull(pinnedIds);
-    const toggle = () => openEditor(pinned ? { unpin: option.source.id } : { pin: option.source.id });
-    const menu = () => {
-      const choices = pinned ? [{ label: 'Desfijar…', run: toggle }] : full ? [] : [{ label: 'Fijar en Rápido…', run: toggle }];
-      if (!choices.length) { Alert.alert(option.name, 'Ya tenés 6 fijadas. Desfijá una para fijar otra.'); return; }
-      if (Platform.OS === 'ios') ActionSheetIOS.showActionSheetWithOptions({ title: option.name, options: [...choices.map(c => c.label), 'Cancelar'], cancelButtonIndex: choices.length },
-        selected => { choices[selected]?.run(); });
-      else Alert.alert(option.name, undefined, [...choices.map(c => ({ text: c.label, onPress: c.run })), { text: 'Cancelar', style: 'cancel' as const }]);
+    // Pinning from the menu is the person's explicit choice: it writes at once, through the same verified, one-at-a-time write
+    // as «Administrar» (a refusal over newer pins shows its conflict above the list). Order and bulk changes stay there.
+    const toggle = () => {
+      if (!pinned && full) { Alert.alert('Fijadas completas', 'Ya tenés 6 fijadas. Desfijá una para fijar otra.'); return; }
+      haptics.selection();
+      void (pinned ? pins.controller.unpin(option.source.id) : pins.controller.pin(option.source.id));
     };
-    return { pinned, full, onToggle: toggle, menu };
-  }, [openEditor, pinnedIds, pins, writable]);
+    return { pinned, full, onToggle: toggle };
+  }, [pinnedIds, pins, writable]);
 
   const sections = useMemo<Section[]>(() => {
     const meal = (option: QuickOption): Extract<Item, { type: 'meal' }> => ({ type: 'meal', key: option.source.id, option, pinned: pinnedIds.indexOf(option.source.id) });
@@ -298,12 +315,12 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
         {item.rows.map(row => row.type === 'gone'
           ? <GoneTile key={row.key} row={row.row} onRelease={writable && pins ? () => openEditor({ unpin: row.row.id }) : null} />
           : <PinTile key={row.key} option={row.option} added={!!state.added?.[`${row.option.source.kind}:${row.option.source.id}`]} pending={state.inlineKey === `${row.option.source.kind}:${row.option.source.id}`}
-            locked={locked} onReview={review} onAdd={add} pin={pinControls(row.option)} />)}
+            locked={locked} onReview={review} onAdd={add} pin={pinControls(row.option)} menu={rowMenu} />)}
       </ScrollView>
       : item.type === 'gone'
       ? <GoneRow row={item.row} onRelease={writable && pins ? () => openEditor({ unpin: item.row.id }) : null} />
       : <QuickRow option={item.option} added={!!state.added?.[`${item.option.source.kind}:${item.option.source.id}`]} pending={state.inlineKey === `${item.option.source.kind}:${item.option.source.id}`}
-        locked={locked} onReview={review} onAdd={add} pin={item.option.source.kind === 'saved' ? pinControls(item.option) : null} />}
+        locked={locked} onReview={review} onAdd={add} pin={item.option.source.kind === 'saved' ? pinControls(item.option) : null} menu={rowMenu} />}
     renderSectionHeader={({ section }) => section.key === 'pinned'
       ? <View style={styles.titleRow}><AppText accessibilityRole="header" variant="headline" style={styles.heading}>Fijadas</AppText>{manageButton}</View>
       : section.key === 'library'
@@ -343,7 +360,8 @@ const styles = StyleSheet.create({
   notice: { gap: 8 }, actions: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 8 }, inline: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   tiles: { gap: 8, paddingVertical: 4 },
   tile: { width: 140, borderRadius: brandTokens.radius.inner, paddingTop: 10, paddingLeft: 12, paddingRight: 2, gap: 2, justifyContent: 'space-between' },
-  tileText: { minHeight: 36, paddingRight: 10 }, tileFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  tileText: { minHeight: 36, paddingRight: 10 },
+  menuArea: { flex: 1, minWidth: 0 }, rowMain: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44 }, tileFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   tileDisc: { width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
   sideLetter: { flexShrink: 1, flexGrow: 0, minHeight: 12, maxHeight: 22, flexBasis: 18, alignItems: 'center', justifyContent: 'center' },
   add: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' }, addDisc: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
