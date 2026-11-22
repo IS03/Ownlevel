@@ -22,10 +22,10 @@ import {
   brandTokens,
   useOwnlevelTheme,
   useReduceMotion,
+  SegmentedControl,
 } from '@/design-system';
 import { TrainingContextMenu } from '@/training/routine-context-menu';
 import type { TrainingMenuAction } from '@/training/routine-context-menu.types';
-import { ExerciseSegmented } from '@/training/exercise-segmented';
 import { NutritionGlassButton } from './day-controls';
 import { mealShown } from './meal-sheet';
 export const libraryMacros = (n: { proteinG: number | null; carbsG: number | null; fatG: number | null }) =>
@@ -175,8 +175,10 @@ export function LibraryFilter({
   filter: 'active' | 'archived' | 'all';
   onChange: (v: 'active' | 'archived') => void;
 }) {
+  // The brand control, not the native one: its SwiftUI host measures itself after mounting, so the list jumped
+  // up and down when coming back from a meal, and its selection pill is white.
   return (
-    <ExerciseSegmented
+    <SegmentedControl
       accessibilityLabel="Estado de la biblioteca"
       value={filter === 'archived' ? 'archived' : 'active'}
       options={[
@@ -356,7 +358,7 @@ export function LibraryField({
       style={[
         big ? styles.number : styles.input,
         { color: colors.text },
-        !big && { backgroundColor: colors.surfaceRaised },
+        !big && { backgroundColor: colors.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.fieldBorder },
       ]}
     />
   );

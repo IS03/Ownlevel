@@ -11,7 +11,7 @@ import { useOwnlevelTheme } from './theme';
  */
 export function SearchField({ value, onChange, label, testID }: { value: string; onChange: (value: string) => void; label: string; testID?: string }) {
   const { colors } = useOwnlevelTheme();
-  return <View style={[styles.field, { backgroundColor: colors.surfaceRaised }]}>
+  return <View style={[styles.field, { backgroundColor: colors.field, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.fieldBorder }]}>
     <AppIcon name="search" color={colors.textMuted} size={appIconSize.inline} />
     <TextInput accessibilityLabel={label} placeholder={label} placeholderTextColor={colors.textMuted} value={value} onChangeText={onChange}
       autoCorrect={false} autoCapitalize="none" returnKeyType="search" clearButtonMode="while-editing" enablesReturnKeyAutomatically

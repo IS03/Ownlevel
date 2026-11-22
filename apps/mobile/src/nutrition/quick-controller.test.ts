@@ -3,7 +3,7 @@ import { foodQuickOption } from '@/api/nutrition-food';
 import { personalFood } from './food-fixture.test-helper';
 import { QuickController, type QuickApi } from './quick-controller';
 import { QuickIntentRepository } from './quick-storage';
-import { quickDraft, selectionFromDraft } from './quick-model';
+import { quickDraft, quickEstimate, selectionFromDraft } from './quick-model';
 import { quickDate, quickId, quickOption, quickOptions, quickPreview, quickReceipt } from './quick-fixture.test-helper';
 import { nutritionFixture } from './day-fixture.test-helper';
 const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
@@ -37,6 +37,22 @@ describe('«Agregar varias veces» (long-press menu)', () => {
     await f.controller.addInline(quickOption(true), 2); await settle();
     expect(f.api.confirm).toHaveBeenCalledWith(expect.objectContaining({ operation: 'register', source: { kind: 'plate', title: 'PASTA ×2', saveToLibrary: false } }));
     expect(f.controller.getSnapshot()).toMatchObject({ phase: 'idle', intent: null, inlineKey: null, draft: null });
+  });
+});
+
+describe('Porciones (review of a simple saved meal)', () => {
+  it('moves between 1 and 20; 2 or more register «NOMBRE ×N», 1 is the meal itself; the estimate follows; a composite meal has none', async () => {
+    const f = fixture(); await f.open(quickOption());
+    expect(f.controller.dirty()).toBe(false);
+    f.controller.portions(3);
+    const d = f.controller.getSnapshot().draft!;
+    expect(d.times).toBe(3); expect(f.controller.getSnapshot().preview).toBeNull(); expect(f.controller.dirty()).toBe(true);
+    expect(quickEstimate(d)).toMatchObject({ calories: 900, proteinG: null, carbsG: 60 });
+    expect(selectionFromDraft(d).selection).toMatchObject({ source: { kind: 'plate', title: 'PASTA ×3' } });
+    f.controller.portions(40); expect(f.controller.getSnapshot().draft!.times).toBe(20);
+    f.controller.portions(1); expect(f.controller.getSnapshot().draft!.times).toBeUndefined(); expect(f.controller.dirty()).toBe(false);
+    const g = fixture(); await g.open(quickOption(true));
+    g.controller.portions(2); expect(g.controller.getSnapshot().draft!.times).toBeUndefined();
   });
 });
 

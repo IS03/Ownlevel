@@ -40,6 +40,11 @@ export const palette = {
     onHero: '#1A1710',
     error: '#E5736B',
     errorSoft: 'rgba(229,115,107,0.14)',
+    // Campos (inputs, buscador, accesos de Rápido) y relleno de la acción principal (22/11).
+    field: '#27272A',
+    fieldBorder: 'rgba(255,255,255,0.06)',
+    action: '#C9B68A',
+    onAction: '#1A1710',
   },
   light: {
     bg: '#F3F1EC',
@@ -56,6 +61,12 @@ export const palette = {
     onHero: '#1A1710',
     error: '#B4392F',
     errorSoft: 'rgba(180,57,47,0.10)',
+    // Campos casi blancos y cálidos sobre el fondo, con borde fino; la acción principal en champagne con texto oscuro
+    // (#705F36 queda para texto e íconos). 22/11.
+    field: '#FAF8F4',
+    fieldBorder: '#E3DDD0',
+    action: '#C9B68A',
+    onAction: '#1A1710',
   },
 } as const satisfies Record<ColorScheme, Record<string, string>>;
 

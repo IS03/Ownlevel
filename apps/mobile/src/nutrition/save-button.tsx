@@ -29,8 +29,8 @@ export function SaveButton({ label, state, disabled, onPress, testID }: {
   </View>;
   return <View style={styles.row} onLayout={event => { if (!width) setWidth(event.nativeEvent.layout.width); }}>
     <Animated.View accessible accessibilityRole="button" accessibilityLabel={state === 'saving' ? 'Guardando' : 'Guardado'}
-      accessibilityState={{ disabled: true, busy: state === 'saving' }} style={[styles.pill, { backgroundColor: colors.primary }, pill]} testID={testID}>
-      {state === 'saving' ? <ActivityIndicator color={colors.onPrimary} /> : <AppIcon name="checkmark" color={colors.onPrimary} size={24} />}
+      accessibilityState={{ disabled: true, busy: state === 'saving' }} style={[styles.pill, { backgroundColor: colors.action }, pill]} testID={testID}>
+      {state === 'saving' ? <ActivityIndicator color={colors.onAction} /> : <AppIcon name="checkmark" color={colors.onAction} size={24} />}
     </Animated.View>
   </View>;
 }

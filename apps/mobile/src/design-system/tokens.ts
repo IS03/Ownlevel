@@ -20,6 +20,12 @@ type ColorRoles = {
   onBrand: string;
   danger: string;
   dangerSoft: string;
+  /** Text fields, search and Rápido's quick tiles: near-white and warm on the app background (light), raised (dark). */
+  field: string;
+  fieldBorder: string;
+  /** The primary action's fill and its text: champagne with dark text in both modes (never the dark text accent as a fill). */
+  action: string;
+  onAction: string;
 };
 
 function colorRoles(scheme: (typeof palette)['dark'] | (typeof palette)['light']): ColorRoles {
@@ -40,6 +46,10 @@ function colorRoles(scheme: (typeof palette)['dark'] | (typeof palette)['light']
     // System failures and destructive actions only, never to judge the user's data.
     danger: scheme.error,
     dangerSoft: scheme.errorSoft,
+    field: scheme.field,
+    fieldBorder: scheme.fieldBorder,
+    action: scheme.action,
+    onAction: scheme.onAction,
   };
 }
 

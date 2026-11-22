@@ -19,7 +19,7 @@ const flat = (style: unknown) => StyleSheet.flatten(typeof style === 'function' 
 
 describe('Button', () => {
   it.each([
-    ['primary', palette.light.accent],
+    ['primary', palette.light.action],
     ['secondary', palette.light.elevated],
     ['quiet', 'transparent'],
     ['destructive', palette.light.errorSoft],
@@ -58,7 +58,7 @@ describe('TextField', () => {
     const input = view.getByLabelText('Peso (kg)');
     expect(input.props.editable).toBe(false);
     expect(flat(input.props.style)).toMatchObject({
-      backgroundColor: palette.light.elevated, borderColor: palette.light.error, borderRadius: 12, minHeight: 48, fontVariant: ['tabular-nums'],
+      backgroundColor: palette.light.field, borderColor: palette.light.error, borderRadius: 12, minHeight: 48, fontVariant: ['tabular-nums'],
     });
     expect(view.getByRole('alert').props.children).toBe('Revisá el valor.');
   });
