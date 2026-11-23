@@ -38,7 +38,7 @@ export function ManualMealEntry({ controller, state, done = false }: { controlle
   const input = (key: 'title' | 'description' | 'calories' | 'proteinG' | 'carbsG' | 'fatG', label: string, big = false) => <TextInput accessibilityLabel={label}
     ref={key === 'title' || key === 'description' ? undefined : (node: TextInput | null) => { fields.current[key] = node; }} placeholder={key === 'title' ? '¿Qué comiste? (opcional)' : key === 'description' ? 'Detalle (opcional)' : big ? '0' : '—'} placeholderTextColor={colors.textMuted}
     value={draft[key]} editable={!locked} keyboardType={['title', 'description'].includes(key) ? 'default' : key === 'calories' ? 'number-pad' : 'decimal-pad'} selectTextOnFocus={!['title', 'description'].includes(key)}
-    onChangeText={value => controller.change(key, value)} style={[big ? shared.number : shared.input, { color: colors.text }, !big && fieldSurface,
+    onChangeText={value => controller.change(key, value)} style={[big ? shared.number : shared.input, { color: colors.text }, !big && !['proteinG', 'carbsG', 'fatG'].includes(key) && fieldSurface,
       ['proteinG', 'carbsG', 'fatG'].includes(key) && styles.macroInput]} />;
   return <MealSheet title={editing ? 'Editar comida' : 'Cargar a mano'} subtitle={new Intl.DateTimeFormat('es-AR', { timeZone: 'UTC', weekday: 'long', day: 'numeric' }).format(new Date(`${date}T12:00:00Z`))} onClose={close} dismissable={!state.intent && !controller.dirty()} running={saving || done} testID="manual-meal-editor" right={<MealDateControl date={date} disabled={locked} onChange={next => { controller.change('date', inputNutritionDate(next)); if (draft.consumedAt) controller.timing(draft.mealLabel ?? null, `${next}T${new Date(Date.parse(draft.consumedAt) - 10800000).toISOString().slice(11,16)}:00-03:00`); }} />}>
     <View style={styles.titleRow}>
@@ -54,7 +54,7 @@ export function ManualMealEntry({ controller, state, done = false }: { controlle
     <Pressable accessible={false} onPress={() => focus('calories')} style={styles.caloriesBand}>
       <View style={styles.calories}>{input('calories', 'Calorías', true)}<AppText muted variant="title2">kcal</AppText></View><AppText muted variant="caption">Calorías · obligatorio</AppText>
     </Pressable>
-    <View style={styles.macros}>{(['proteinG', 'carbsG', 'fatG'] as const).map((key, i) => <Pressable accessible={false} key={key} onPress={() => focus(key)} style={[styles.macro, { backgroundColor: colors.surface }]}>
+    <View style={styles.macros}>{(['proteinG', 'carbsG', 'fatG'] as const).map((key, i) => <Pressable accessible={false} key={key} onPress={() => focus(key)} style={[styles.macro, fieldSurface]}>
       <AppText muted variant="caption">{['Proteína', 'Carbos', 'Grasas'][i]}</AppText>{input(key, ['Proteína (g)', 'Carbohidratos (g)', 'Grasas (g)'][i])}</Pressable>)}</View>
     <MealTiming date={date} value={draft} reference={editor.timingReference} disabled={locked} onChange={(label, time, declared) => controller.timing(label, time, declared)} />
     {editing ? null : <View style={shared.row}><View style={shared.text}><AppText>Guardar en mis comidas</AppText><AppText muted variant="caption">Para cargarla con un toque la próxima</AppText></View><Switch accessibilityLabel="Guardar en mis comidas" disabled={locked} value={draft.saveToLibrary ?? false} onValueChange={value => controller.saveToLibrary(value)} trackColor={{ true: colors.primary, false: colors.border }} /></View>}
