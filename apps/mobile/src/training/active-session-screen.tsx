@@ -9,10 +9,9 @@ import type { MobileApiClient } from '@/api/client';
 import { prefetchSessionSummary, readSessionSummary } from '@/api/session-summary';
 import { prefetchFinishWeek } from './finish-week';
 import type { QuickSessionHistoryDto, SessionDetailDto } from '@/api/active-session';
-import type { RestDeadline } from './active-session-model';
-import { LinkRow, AppIcon, AppText, Button, Heading, InlineUnavailable, ProgressBar, ScrollScreen, SkeletonBlock, Surface, UnavailableState, GlassSurface, sizes, spacing, useOwnlevelTheme, useReduceMotion, brandTokens } from '@/design-system';
+import { LinkRow, AppIcon, AppText, Button, Heading, InlineUnavailable, ProgressBar, ScrollScreen, SkeletonBlock, Surface, UnavailableState, sizes, spacing, useOwnlevelTheme, useReduceMotion, brandTokens } from '@/design-system';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
-import { haptics, triggerHaptic } from '@/platform/haptics';
+import { triggerHaptic } from '@/platform/haptics';
 import { ActiveSessionController, sessionIntentKey } from './active-session-controller';
 import { ActiveExerciseCard } from './active-session-exercise-card';
 import { SessionVerification, isLocalSessionRead } from './session-verification';
@@ -21,8 +20,7 @@ import { SessionScrollHeader, advanceSessionHeader, INITIAL_SESSION_HEADER } fro
 import { SessionLastHistory } from './session-last-history';
 import { ExerciseNotice } from './exercise-notice';
 import { draftUsingHistory, durationLabel, quickSessions } from './active-session-model';
-import { useSessionPresenceStore } from './session-presence-provider';
-import { restCountdownLabel, useRestCountdown } from './use-rest-countdown';
+import { SessionRestClock } from './session-rest-clock';
 import { SessionExercisePicker, SessionQuickHistory } from './active-session-sheets';
 import { ExerciseEditorModal } from './exercise-editor-modal';
 import { useActiveSession } from './use-active-session';
@@ -58,30 +56,7 @@ function SessionProgressHeader({ controller, color, active }: { controller: Acti
     <ProgressBar accessibilityLabel="Progreso del entrenamiento" color={color} maximumValue={Math.max(progress.totalSets, 1)} value={progress.completedSets} />
   </View>;
 }
-function RestTimerPanel({ controller, onHeightChange }: { controller: ActiveSessionController; onHeightChange: (height: number) => void }) {
-  const timer = useSyncExternalStore(controller.subscribeTimer, controller.getTimer, controller.getTimer);
-  // Floating over the scroll view keeps its viewport stable when rest starts.
-  return <View pointerEvents="box-none" style={styles.timerOverlay} onLayout={event => onHeightChange(event.nativeEvent.layout.height)}>
-    {timer ? <RestTimerView key={timer.exerciseId} controller={controller} timer={timer} /> : null}
-  </View>;
-}
-function RestTimerView({ controller, timer }: { controller: ActiveSessionController; timer: RestDeadline }) {
-  const presence = useSessionPresenceStore();
-  const { colors } = useOwnlevelTheme();
-  // The app-wide observer owns the haptic across navigation; standalone screens keep the same feedback.
-  const seconds = useRestCountdown(timer, !presence);
-  const label = restCountdownLabel(seconds);
-  if (seconds === 0) return null;
-  return <SafeAreaView edges={['bottom']} style={styles.timerSafe} accessibilityLabel="Temporizador de descanso">
-    <GlassSurface interactive style={[styles.timer, { borderColor: colors.border }]}>
-      <AppIcon name="clock" color={colors.primary} size={22} />
-      <View style={styles.flex}><AppText muted numberOfLines={1} variant="caption">Descanso · {timer.exerciseName}</AppText><AppText numeric style={[styles.timerValue, { color: colors.primary }]} variant="heading">{label}</AppText></View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Restar 15 segundos" onPress={() => { haptics.selection(); controller.adjustRest(-15); }} style={styles.timerButton}><AppText variant="heading">−</AppText></Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="Sumar 15 segundos" onPress={() => { haptics.selection(); controller.adjustRest(15); }} style={styles.timerButton}><AppText variant="heading">+</AppText></Pressable>
-      <Button label="Saltar" onPress={() => { haptics.selection(); controller.skipRest(); }} variant="quiet" />
-    </GlassSurface>
-  </SafeAreaView>;
-}
+
 export function ActiveSessionScreen({ client, userId, sessionId }: { client: MobileApiClient; userId: string; sessionId: string }) {
   const { controller, state } = useActiveSession(client, userId, sessionId);
   const configurations = useExerciseConfigurations(client, userId, sessionId);
@@ -305,7 +280,7 @@ export function ActiveSessionView({ controller, state, client, configurations }:
       completed={progress.completedSets} total={progress.totalSets} onBack={returnToTraining} onCancel={requestCancel} onFinish={() => { Keyboard.dismiss(); afterRemoval(() => setFinishOpen(true)); }} onHeight={setHeaderHeight} />
     {actionState.notice ? <ExerciseNotice bottomOffset={Math.max(insets.bottom, restOverlayHeight) - insets.bottom} message={actionState.notice.message} disabled={locked || actionState.working} undo={actionState.notice.undo ? () => void actions.undo() : undefined}
       pending={actionState.notice.tone === 'pending'} onDismiss={actionState.notice.tone === 'confirmed' && !actionState.working ? () => actions.dismissNotice() : undefined} /> : null}
-    <RestTimerPanel controller={controller} onHeightChange={setRestOverlayHeight} />
+    <SessionRestClock controller={controller} exerciseId={expanded ?? detail.exercises[0]?.id} hidden={keyboard || !active || locked || finishOpen} onHeightChange={setRestOverlayHeight} />
     {finishOpen && !finishTransitionDone ? <FinishSessionSheet controller={controller} onClose={() => setFinishOpen(false)} onDiscard={requestCancel}
       readSummary={closedApi.summary} readWeek={readWeek} onDone={returnToTraining} onViewSession={() => setFinishTransitionDone(true)} /> : null}
     <SessionExercisePicker visible={pickerOpen} client={client} existingIds={existingIds} onClose={() => setPickerOpen(false)} onDismiss={creatorDismissed} onCreate={openCreator}
@@ -322,7 +297,4 @@ export function ActiveSessionView({ controller, state, client, configurations }:
 const styles = StyleSheet.create({
   screen: { flex: 1 }, flex: { flex: 1 }, content: { alignSelf: 'center', flexGrow: 1, maxWidth: sizes.contentMaxWidth, width: '100%', padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xl }, row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   sessionHeader: { gap: spacing.sm, paddingVertical: spacing.sm }, sessionTitle: { fontSize: brandTokens.typeScale.largeTitle.fontSize }, clock: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs }, progress: { gap: spacing.sm, marginTop: spacing.sm },
-  timerOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0 },
-  timerSafe: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }, timer: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, overflow: 'hidden', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  timerButton: { width: sizes.touchTarget, minHeight: sizes.touchTarget, alignItems: 'center', justifyContent: 'center' }, timerValue: { fontVariant: ['tabular-nums'] },
 });

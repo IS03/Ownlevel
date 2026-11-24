@@ -396,6 +396,25 @@ describe('native active-session controller', () => {
     const server = testDetail(); server.exercises = [server.exercises[1]]; api.detail.mockResolvedValue(ok(server));
     expect(await controller.retryIntent()).toBe(true); expect(controller.getTimer()).toBeNull(); expect(await repository.readDraft(EXERCISE_ID)).toBeNull();
   });
+  it('starts automatic rest once, cancels it when undoing the set and skips the last set', async () => {
+    const { controller, repository } = setup();
+    await controller.refresh();
+    controller.change(EXERCISE_ID, appendSessionSet);
+    const [first, last] = controller.getExercise(EXERCISE_ID)!.draft.sets;
+    controller.toggleSetCompleted(EXERCISE_ID, first!.localId);
+    expect(controller.getTimer()).toBeNull();
+    controller.toggleSetCompleted(EXERCISE_ID, first!.localId);
+    controller.setAutomaticRest(true);
+    controller.toggleSetCompleted(EXERCISE_ID, first!.localId);
+    expect(controller.getTimer()).toMatchObject({ endAt: 130000, sourceSet: { localId: first!.localId, position: 0 } });
+    controller.toggleSetCompleted(EXERCISE_ID, first!.localId);
+    expect(controller.getTimer()).toBeNull();
+    controller.toggleSetCompleted(EXERCISE_ID, first!.localId);
+    controller.toggleSetCompleted(EXERCISE_ID, last!.localId);
+    expect(controller.getTimer()).toBeNull();
+    expect(await repository.readAutomaticRest()).toBe(true);
+    controller.dispose();
+  });
   it('restores the timestamp timer after remount and cleans it on remote removal', async () => {
     const { controller, api, repository } = setup(); await controller.refresh(); controller.startRest(EXERCISE_ID); await settle();
     const restored = new ActiveSessionController(api, repository, undefined, () => 40000); await restored.refresh();

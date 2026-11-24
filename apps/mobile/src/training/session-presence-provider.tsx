@@ -10,6 +10,7 @@ import { useMobileAuth } from '@/auth';
 import { homeDay } from '@/home/home-day';
 import { activeSessionStorage } from './active-session-native-storage';
 import { SessionPresenceStore } from './session-presence-store';
+import { syncRestAlert } from './session-rest-alert';
 import { useRestCountdown } from './use-rest-countdown';
 import type { RestDeadline } from './active-session-model';
 
@@ -27,7 +28,10 @@ function PresenceLifetime({ store, children }: PropsWithChildren<{ store: Sessio
   const pathname = usePathname();
   useEffect(() => {
     store.activate();
-    return () => store.dispose();
+    const sync = () => syncRestAlert(store.getSnapshot().timer?.endAt ?? null);
+    const unsubscribe = store.subscribe(sync);
+    sync();
+    return () => { unsubscribe(); store.dispose(); syncRestAlert(null); };
   }, [store]);
   useEffect(() => {
     let previous = AppState.currentState;
