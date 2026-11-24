@@ -10,6 +10,8 @@ export type RoutineSet = {
   targetWeightKg: number | null;
   targetRir: number | null;
   notes: string | null;
+  /** #537 · Present when the server knows it (`setKinds=1`); absent keeps the stored kind, it is never sent as work. */
+  setKind?: 'work' | 'warmup';
 };
 
 export type RoutineTargets = {
@@ -84,7 +86,8 @@ function parseSets(value: unknown): RoutineSet[] | undefined {
       !number(raw.targetReps, 1000, true) || !number(raw.targetWeightKg, 9999.99) ||
       (typeof raw.targetWeightKg === 'number' &&
         Math.abs(raw.targetWeightKg * 100 - Math.round(raw.targetWeightKg * 100)) > 1e-8) ||
-      !number(raw.targetRir, 10, true) || !nullableText(raw.notes)) return undefined;
+      !number(raw.targetRir, 10, true) || !nullableText(raw.notes) ||
+      ('setKind' in raw && raw.setKind !== 'work' && raw.setKind !== 'warmup')) return undefined;
     sets.push(raw as RoutineSet);
   }
   return sets;
@@ -154,7 +157,7 @@ export async function fetchRoutineDetail(
   signal?: AbortSignal,
 ): Promise<MobileApiReadResult<RoutineDetailLoad>> {
   // GET uses request so a real 404 survives; read() intentionally collapses it.
-  const result = await client.request({ method: 'GET', path: path(id), parse: parseRoutineDetail, signal });
+  const result = await client.request({ method: 'GET', path: `${path(id)}?setKinds=1`, parse: parseRoutineDetail, signal });
   if (result.status === 'ok') return { status: 'ok', data: { kind: 'detail', detail: result.data }, meta: result.meta };
   if (result.status === 'not_found') return { status: 'ok', data: { kind: 'not_found' }, meta: result.meta };
   if (result.status === 'auth_required' || result.status === 'unauthorized' || result.status === 'unavailable') return result;
@@ -174,5 +177,5 @@ export function replaceRoutineTemplate(
   id: string,
   payload: RoutineTemplatePayload,
 ): Promise<MobileApiMutationResult<RoutineDetail>> {
-  return client.request({ method: 'PUT', path: `${path(id)}/template`, body: payload, parse: parseRoutineDetail });
+  return client.request({ method: 'PUT', path: `${path(id)}/template?setKinds=1`, body: payload, parse: parseRoutineDetail });
 }

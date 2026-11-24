@@ -38,7 +38,8 @@ export function exercisePayload(draft: SessionExerciseDraft): SessionExercisePay
     const actualReps = numeric(set.actualReps, `Reps de serie ${index + 1}`, 1000, true);
     if (set.isCompleted && actualReps === null) throw new Error(`Completá las reps de la serie ${index + 1}.`);
     return { setNumber: index + 1, targetReps: set.targetReps, targetWeightKg: set.targetWeightKg, targetRir: set.targetRir,
-      isCompleted: set.isCompleted, notes: set.notes, actualReps, actualWeightKg: numeric(set.actualWeightKg, `Peso de serie ${index + 1}`, 9999.99, false) };
+      isCompleted: set.isCompleted, notes: set.notes, actualReps, actualWeightKg: numeric(set.actualWeightKg, `Peso de serie ${index + 1}`, 9999.99, false),
+      ...(set.setKind ? { setKind: set.setKind } : {}) };
   });
   if (draft.decision === 'custom' && !draft.decisionNote.trim()) throw new Error('El recordatorio anterior necesita una nota.');
   return canonicalSessionExercisePayload({ ...draft, sets, isCompleted: sets.some(set => set.isCompleted) });
@@ -50,7 +51,21 @@ export function draftIncomplete(draft: SessionExerciseDraft): boolean {
 export function sameExercisePayload(a: SessionExercisePayloadDto, b: SessionExercisePayloadDto): boolean {
   const ordered = (p: SessionExercisePayloadDto) => [p.isCompleted, p.decision, p.decision === 'custom' ? p.decisionNote.trim() : '', p.applyToRoutine, p.notes,
     p.sets.map(s => [s.setNumber, s.targetReps, s.targetWeightKg, s.targetRir, s.actualReps, s.actualWeightKg, s.isCompleted, s.notes || null])];
-  return JSON.stringify(ordered(a)) === JSON.stringify(ordered(b));
+  // #537: an absent kind means «the stored one» (an older journal or server), so only two known kinds can differ.
+  const kinds = a.sets.every((set, index) => !set.setKind || !b.sets[index]?.setKind || set.setKind === b.sets[index]!.setKind);
+  return kinds && JSON.stringify(ordered(a)) === JSON.stringify(ordered(b));
+}
+/** #537 · The server knows set kinds for this exercise (it sent them): only then a kind is shown, changed or sent. */
+export const knowsSetKinds = (draft: Pick<SessionExerciseDraft, 'sets'>) => draft.sets.some(set => set.setKind !== undefined);
+export function toggleSetKind(draft: SessionExerciseDraft, index: number): SessionExerciseDraft {
+  if (index < 0 || index >= draft.sets.length || !knowsSetKinds(draft)) return draft;
+  return { ...draft, sets: draft.sets.map((set, position) => position === index ? { ...set, setKind: set.setKind === 'warmup' ? 'work' : 'warmup' } : set) };
+}
+/** «Serie 2 de 3» counts working sets only; a warm-up reads «Calentamiento». */
+export function setOrdinal(sets: readonly Pick<SessionSetDto, 'setKind'>[], index: number): { warmup: boolean; number: number; total: number } {
+  const work = sets.filter(set => set.setKind !== 'warmup').length;
+  if (sets[index]?.setKind === 'warmup') return { warmup: true, number: 0, total: work };
+  return { warmup: false, number: sets.slice(0, index + 1).filter(set => set.setKind !== 'warmup').length, total: work };
 }
 export function draftIsDirty(draft: SessionExerciseDraft, server: SessionExercisePayloadDto): boolean {
   try { return !sameExercisePayload(exercisePayload(draft), server); } catch { return true; }
@@ -60,7 +75,9 @@ export function appendSessionSet(draft: SessionExerciseDraft): SessionExerciseDr
   const last = draft.sets.at(-1);
   return { ...draft, sets: [...draft.sets, { localId: rowId(), setNumber: draft.sets.length + 1,
     targetReps: last?.targetReps ?? null, targetWeightKg: last?.targetWeightKg ?? null, targetRir: last?.targetRir ?? null,
-    actualReps: last?.actualReps ?? '', actualWeightKg: last?.actualWeightKg ?? '', isCompleted: false, notes: null }] };
+    actualReps: last?.actualReps ?? '', actualWeightKg: last?.actualWeightKg ?? '', isCompleted: false, notes: null,
+    // A new set is a working set; the kind is named only when the server knows kinds.
+    ...(knowsSetKinds(draft) ? { setKind: 'work' as const } : {}) }] };
 }
 export function removeSessionSet(draft: SessionExerciseDraft, index: number): SessionExerciseDraft {
   if (draft.sets.length <= 1 || index < 0 || index >= draft.sets.length) return draft;
@@ -176,6 +193,7 @@ export function parseStoredExerciseDraft(value: unknown, sessionId: string, id: 
     !!parseSessionExercisePayload({ isCompleted: set.isCompleted, decision: 'maintain', decisionNote: '', applyToRoutine: false, notes: '',
       sets: [{ setNumber: 1, targetReps: set.targetReps, targetWeightKg: set.targetWeightKg, targetRir: set.targetRir,
         isCompleted: set.isCompleted, notes: set.notes, actualReps: null, actualWeightKg: null }] }) && set.setNumber === index + 1)) return null;
+  if (!draft.sets.every(set => set.setKind === undefined || set.setKind === 'work' || set.setKind === 'warmup')) return null;
   // Older journals had no row identity. Adopt one locally without changing the API payload.
   const sets = draft.sets.map(set => ({ ...set, localId: typeof set.localId === 'string' && set.localId ? set.localId : rowId() }));
   if (new Set(sets.map(set => set.localId)).size !== sets.length) return null;
@@ -212,6 +230,8 @@ export function draftUsingHistory(draft: SessionExerciseDraft, history: QuickSes
   const copied = exerciseDraft({ ...draft, isCompleted: false, sets: completed.map((set, index) => ({
     setNumber: index + 1, targetReps: draft.sets[index]?.targetReps ?? null, targetWeightKg: draft.sets[index]?.targetWeightKg ?? null,
     targetRir: set.targetRir, actualReps: set.actualReps, actualWeightKg: set.actualWeightKg, isCompleted: false, notes: null,
+    // Copied sets keep their kind (a warm-up stays one) when the server knows kinds.
+    ...(knowsSetKinds(draft) ? { setKind: set.setKind ?? 'work' } : {}),
   })) });
   return { ...draft, sets: copied.sets };
 }

@@ -5,7 +5,7 @@ import { detailFixture } from '@/api/routine-editor.fixture';
 
 import {
   appendExercises, changeRest, restWheelValues, validateTargetsDraft, addSet, draftFromTargets, isTargetsDirty, pickerExercises, removeSet,
-  reorderTemplate, targetsFromCatalog, targetsFromDraft, templatePayload, toggleAdjustment,
+  reorderTemplate, routineKnowsSetKinds, targetsFromCatalog, targetsFromDraft, templatePayload, toggleAdjustment, toggleRoutineSetKind,
 } from './routine-editor-model';
 
 const exercise: MobileTrainingExercise = {
@@ -107,5 +107,25 @@ describe('routine editor rest wheels and multiple selection', () => {
     expect(validateTargetsDraft(invalid)).toMatchObject({ 'sets.0.targetWeightKg': expect.any(String), 'sets.0.targetReps': expect.any(String), notes: expect.any(String) });
     expect(validateTargetsDraft({ ...draft, notes: 'x'.repeat(1000) })).toEqual({});
     expect(invalid.sets[0]!.targetWeightKg).toBe('1.999');
+  });
+});
+
+describe('#537 · calentamiento en el editor de rutina', () => {
+  const targets = detailFixture.items[0]!.targets;
+  const kinded = { ...targets, sets: targets.sets.map((set, index) => ({ ...set, setKind: index === 0 ? 'warmup' as const : 'work' as const })) };
+  it('round-trips each kind; marking changes only that set; a new set is a working set', () => {
+    const draft = draftFromTargets(kinded);
+    expect(targetsFromDraft(draft).sets.map(set => set.setKind)).toEqual(kinded.sets.map(set => set.setKind));
+    expect(isTargetsDirty(draft, kinded)).toBe(false);
+    const toggled = toggleRoutineSetKind(draft, 0);
+    expect(toggled.sets[0]!.setKind).toBe('work');
+    expect(isTargetsDirty(toggled, kinded)).toBe(true);
+    expect(addSet(draft).sets.at(-1)!.setKind).toBe('work');
+  });
+  it('an older server without kinds: nothing is shown, changed or sent', () => {
+    const draft = draftFromTargets(targets);
+    expect(routineKnowsSetKinds(draft)).toBe(false);
+    expect(toggleRoutineSetKind(draft, 0)).toBe(draft);
+    expect(targetsFromDraft(addSet(draft)).sets.every(set => !('setKind' in set))).toBe(true);
   });
 });

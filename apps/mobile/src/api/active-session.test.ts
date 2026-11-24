@@ -217,9 +217,26 @@ describe('routine additions adoption', () => {
     const fetch = jest.fn<typeof globalThis.fetch>().mockResolvedValue(response(200, detail));
     await fetchSessionDetail(client(fetch), sessionId); await fetchSessionExerciseSync(client(fetch), sessionId, relationId);
     await saveSessionExercise(client(fetch), sessionId, relationId, { expectedUpdatedAt: timestamp, payload });
-    // #537: only the detail asks for load patterns; read-back and save keep their contract.
+    // #537: only the detail asks for load patterns; detail and read-back ask for set kinds; the save answers no sets.
     const urls = fetch.mock.calls.map(([url]) => String(url));
-    expect(urls[0]!.endsWith('?routineAdditions=1&loadPatterns=1')).toBe(true);
-    expect(urls.slice(1).every(url => url.endsWith('?routineAdditions=1'))).toBe(true);
+    expect(urls[0]!.endsWith('?routineAdditions=1&loadPatterns=1&setKinds=1')).toBe(true);
+    expect(urls[1]!.endsWith('?routineAdditions=1&setKinds=1')).toBe(true);
+    expect(urls[2]!.endsWith('?routineAdditions=1')).toBe(true);
+  });
+});
+
+describe('#537 · tipo de serie en el contrato', () => {
+  const withKind = (setKind: unknown) => ({ ...payload, sets: payload.sets.map(set => ({ ...set, setKind })) });
+  it('accepts a known kind, keeps a set without one (older server) and rejects anything else', () => {
+    expect(parseSessionExercisePayload(withKind('warmup'))?.sets[0]?.setKind).toBe('warmup');
+    expect(parseSessionExercisePayload(withKind('work'))?.sets[0]?.setKind).toBe('work');
+    expect(parseSessionExercisePayload(payload)?.sets.every(set => !('setKind' in set))).toBe(true);
+    for (const invalid of ['cooldown', null, 1]) expect(parseSessionExercisePayload(withKind(invalid))).toBeUndefined();
+  });
+  it('the save sends each set kind exactly as the draft has it', async () => {
+    const fetch = jest.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(JSON.stringify({ sessionExerciseId: exerciseId, updatedAt: timestamp }), { status: 200 }));
+    await saveSessionExercise(client(fetch), sessionId, exerciseId, { expectedUpdatedAt: timestamp, payload: withKind('warmup') as SessionExercisePayloadDto });
+    const body = JSON.parse(String(fetch.mock.calls[0]![1]!.body)) as { payload: SessionExercisePayloadDto };
+    expect(body.payload.sets.map(set => set.setKind)).toEqual(payload.sets.map(() => 'warmup'));
   });
 });

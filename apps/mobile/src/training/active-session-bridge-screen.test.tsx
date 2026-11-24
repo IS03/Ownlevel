@@ -1212,3 +1212,43 @@ describe('#537 · esquema repetido en la sesión activa', () => {
   });
 });
 
+
+/** #537 · Synthetic sets only: one warm-up before two working sets. */
+function kindDetail(kinds = true) {
+  const detail = testDetail();
+  const sets = [20, 60, 60].map((kg, index) => ({ setNumber: index + 1, targetReps: 10, targetWeightKg: kg, targetRir: null, actualReps: null, actualWeightKg: null,
+    isCompleted: false, notes: null, ...(kinds ? { setKind: index === 0 ? 'warmup' as const : 'work' as const } : {}) }));
+  detail.exercises[0] = { ...detail.exercises[0]!, payload: { ...detail.exercises[0]!.payload, sets } };
+  return detail;
+}
+const ordinals = (view: ReturnType<typeof render>) => view.getAllByTestId(/^set-ordinal-/).map(node => String(node.props.children));
+describe('#537 · calentamiento en la sesión activa', () => {
+  beforeEach(() => { mockHeaderOptions = {}; mockSelection.mockReset(); mockTrigger.mockReset(); });
+  afterEach(() => { jest.restoreAllMocks(); });
+  it('a warm-up shows «C» and «Serie x de y» counts working sets only', async () => {
+    const { controller, Screen } = fixture(kindDetail()); await controller.refresh();
+    const view = renderWithPressOpen(<Screen />); await act(async () => {});
+    expect(ordinals(view).slice(0, 3)).toEqual(['C', '1', '2']);
+    expect(view.getByText('Calentamiento')).toBeTruthy();
+    expect(view.getByRole('checkbox', { name: 'Calentamiento completada' })).toBeTruthy();
+    fireEvent(view.getByRole('checkbox', { name: 'Calentamiento completada' }), 'accessibilityTap'); await act(async () => {});
+    expect(view.getByText('Serie 1 de 2')).toBeTruthy();
+  });
+  it('marking from the row changes only that set\'s kind; values and order stay', async () => {
+    const { controller, Screen } = fixture(kindDetail()); await controller.refresh();
+    const view = renderWithPressOpen(<Screen />); await act(async () => {});
+    const before = controller.getExercise(EXERCISE_ID)!.draft.sets.map(({ setKind: _kind, ...set }) => set);
+    fireEvent(view.getByRole('button', { name: 'Mover calentamiento' }), 'accessibilityAction', { nativeEvent: { actionName: 'kind' } }); await act(async () => {});
+    const sets = controller.getExercise(EXERCISE_ID)!.draft.sets;
+    expect(sets.map(set => set.setKind)).toEqual(['work', 'work', 'work']);
+    expect(sets.map(({ setKind: _kind, ...set }) => set)).toEqual(before);
+    expect(ordinals(view).slice(0, 3)).toEqual(['1', '2', '3']);
+  });
+  it('an older server without kinds shows numbers and offers no kind action', async () => {
+    const { controller, Screen } = fixture(kindDetail(false)); await controller.refresh();
+    const view = renderWithPressOpen(<Screen />); await act(async () => {});
+    expect(ordinals(view).slice(0, 3)).toEqual(['1', '2', '3']);
+    const actions = view.getByRole('button', { name: 'Mover serie 1' }).props.accessibilityActions as { name: string }[];
+    expect(actions.map(action => action.name)).not.toContain('kind');
+  });
+});

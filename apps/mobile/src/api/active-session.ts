@@ -16,7 +16,13 @@ export type SessionSetDto = {
   actualWeightKg: number | null;
   isCompleted: boolean;
   notes: string | null;
+  /**
+   * #537 · Working set or warm-up. Present when the server knows it (`setKinds=1`). Absent means «keep the stored one»:
+   * a set without it is never sent as a working set, so a warm-up is never overwritten by a client or server that lacks it.
+   */
+  setKind?: SetKind;
 };
+export type SetKind = 'work' | 'warmup';
 export type SessionExercisePayloadDto = {
   isCompleted: boolean;
   decision: 'maintain' | 'increase_weight' | 'increase_reps' | 'custom';
@@ -129,7 +135,8 @@ function parseSets(value: unknown): SessionSetDto[] | undefined {
   if (!Array.isArray(value) || value.length < 1 || value.length > 50) return undefined;
   const result: SessionSetDto[] = [];
   for (const [index, set] of value.entries()) {
-    if (!record(set, ['setNumber', 'targetReps', 'targetWeightKg', 'targetRir', 'actualReps', 'actualWeightKg', 'isCompleted', 'notes']) ||
+    if (!record(set, ['setNumber', 'targetReps', 'targetWeightKg', 'targetRir', 'actualReps', 'actualWeightKg', 'isCompleted', 'notes', 'setKind']) ||
+      ('setKind' in set && set.setKind !== 'work' && set.setKind !== 'warmup') ||
       set.setNumber !== index + 1 || !number(set.targetReps, 1000, true) || !number(set.targetWeightKg, 9999.99) ||
       !number(set.targetRir, 10, true) || !number(set.actualReps, 1000, true) || !number(set.actualWeightKg, 9999.99) ||
       typeof set.isCompleted !== 'boolean' || !text(set.notes)) return undefined;
@@ -240,13 +247,13 @@ function path(sessionId: string, exerciseId?: string): `/${string}` {
 }
 export function fetchSessionDetail(client: MobileApiClient, sessionId: string, signal?: AbortSignal): Promise<MobileApiRequestResult<SessionDetailDto>> {
   // request(GET) preserves a true 404, unlike the generic read() surface.
-  return client.request({ method: 'GET', path: `${path(sessionId)}?routineAdditions=1&loadPatterns=1`, signal, parse: (value) => {
+  return client.request({ method: 'GET', path: `${path(sessionId)}?routineAdditions=1&loadPatterns=1&setKinds=1`, signal, parse: (value) => {
     const result = parseSessionDetail(value);
     return result?.session.id === sessionId ? result : undefined;
   } });
 }
 export function fetchSessionExerciseSync(client: MobileApiClient, sessionId: string, sessionExerciseId: string, signal?: AbortSignal): Promise<MobileApiRequestResult<SessionExerciseSyncDto>> {
-  return client.request({ method: 'GET', path: `${path(sessionId, sessionExerciseId)}?routineAdditions=1`, signal, parse: parseSessionExerciseSync });
+  return client.request({ method: 'GET', path: `${path(sessionId, sessionExerciseId)}?routineAdditions=1&setKinds=1`, signal, parse: parseSessionExerciseSync });
 }
 export function saveSessionExercise(client: MobileApiClient, sessionId: string, sessionExerciseId: string,
   body: { expectedUpdatedAt: string; payload: SessionExercisePayloadDto }): Promise<MobileApiMutationResult<{ sessionExerciseId: string; updatedAt: string }>> {

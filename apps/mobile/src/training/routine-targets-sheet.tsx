@@ -4,7 +4,8 @@ import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Animated, { FadeIn, FadeInUp, FadeOut, LinearTransition, ReduceMotion, interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import type { RoutineDetail } from '@/api/routine-editor';
 import { AppIcon, AppText, GlassSurface, TextField, brandTokens, motionDurations, pressedStyle, radius, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
-import { addSet, exerciseIdentity, removeSet, toggleAdjustment, type TargetsDraft } from './routine-editor-model';
+import { setOrdinal } from './active-session-model';
+import { addSet, exerciseIdentity, removeSet, routineKnowsSetKinds, toggleAdjustment, toggleRoutineSetKind, type TargetsDraft } from './routine-editor-model';
 import { RoutineEditorSheet } from './routine-editor-sheet';
 import { RoutineRestPicker } from './routine-rest-picker';
 import { RoutineSheetButton } from './routine-sheet-button';
@@ -38,6 +39,9 @@ export function RoutineTargetsSheet({ item, draft, dirty, pending, errors, onCha
     if (pending || draft.sets.length <= 1) return;
     setSetKeys(keys => keys.filter((_, position) => position !== index)); onChange(removeSet(draft, index));
   };
+  // #537: a warm-up is marked from the row's swipe, next to «Quitar»; only when the server knows kinds.
+  const kinds = routineKnowsSetKinds(draft);
+  const toggleKind = (index: number) => { if (!pending && kinds) onChange(toggleRoutineSetKind(draft, index)); };
   const updateSet = (index: number, field: 'targetWeightKg' | 'targetReps' | 'targetRir', value: string) =>
     onChange({ ...draft, sets: draft.sets.map((set, position) => position === index ? { ...set, [field]: value } : set) });
   return <RoutineEditorSheet open={open} onDismissed={onDismissed} pending={pending} dirty={dirty} onClose={onClose}>
@@ -59,22 +63,30 @@ export function RoutineTargetsSheet({ item, draft, dirty, pending, errors, onCha
             <AppText muted style={styles.number} variant="caption">#</AppText>
             {['KG', 'REPS', 'RIR'].map(label => <AppText key={label} muted style={styles.cell} variant="caption">{label}</AppText>)}
           </View>
-          {draft.sets.map((set, index) => <Animated.View key={setKeys[index]} style={styles.setGap}
+          {draft.sets.map((set, index) => { const ordinal = setOrdinal(draft.sets, index), label = ordinal.warmup ? 'Calentamiento' : `Serie ${ordinal.number}`;
+            return <Animated.View key={setKeys[index]} style={styles.setGap}
             entering={addedSet === setKeys[index] ? (reduceMotion ? FadeIn.duration(motionDurations.fast) : FadeInUp.duration(motionDurations.base)) : undefined}
             exiting={FadeOut.duration(motionDurations.fast)} layout={reduceMotion ? undefined : LinearTransition.duration(motionDurations.base)}>
-            <Swipeable enabled={!pending && draft.sets.length > 1} overshootRight={false}
+            <Swipeable enabled={!pending && (draft.sets.length > 1 || kinds)} overshootRight={false}
             animationOptions={{ ...brandTokens.motion.spring, reduceMotion: ReduceMotion.System }} childrenContainerStyle={{ backgroundColor: colors.background }}
-            renderRightActions={() => <Pressable accessibilityLabel={`Quitar serie ${index + 1}`} accessibilityRole="button" disabled={pending || draft.sets.length <= 1}
-              onPress={() => remove(index)} style={({ pressed }) => [styles.remove, { backgroundColor: colors.danger }, pressedStyle(pressed, reduceMotion)]}>
-              <AppIcon name="trash" color={colors.onPrimary} size={17} /><AppText variant="footnote" style={{ color: colors.onPrimary }}>Quitar</AppText></Pressable>}>
+            renderRightActions={() => <View style={styles.actions}>
+              {kinds ? <Pressable accessibilityLabel={ordinal.warmup ? `Marcar ${label.toLocaleLowerCase('es-AR')} como serie de trabajo` : `Marcar ${label.toLocaleLowerCase('es-AR')} como calentamiento`}
+                accessibilityRole="button" disabled={pending} onPress={() => toggleKind(index)}
+                style={({ pressed }) => [styles.remove, { backgroundColor: colors.brandSubtle }, pressedStyle(pressed, reduceMotion)]}>
+                <AppText variant="footnote" style={{ color: colors.primary }}>{ordinal.warmup ? 'Serie de trabajo' : 'Calentamiento'}</AppText></Pressable> : null}
+              <Pressable accessibilityLabel={`Quitar ${label.toLocaleLowerCase('es-AR')}`} accessibilityRole="button" disabled={pending || draft.sets.length <= 1}
+                onPress={() => remove(index)} style={({ pressed }) => [styles.remove, { backgroundColor: colors.danger, opacity: draft.sets.length <= 1 ? 0.4 : 1 }, pressedStyle(pressed, reduceMotion)]}>
+                <AppIcon name="trash" color={colors.onPrimary} size={17} /><AppText variant="footnote" style={{ color: colors.onPrimary }}>Quitar</AppText></Pressable>
+            </View>}>
             <View style={styles.setRow} testID={`routine-set-${index + 1}`}>
-              <AppText muted numeric style={styles.number} variant="footnote">{index + 1}</AppText>
-              {(['targetWeightKg', 'targetReps', 'targetRir'] as const).map(field => <TextField key={field} label={`Serie ${index + 1}, ${field === 'targetWeightKg' ? 'peso' : field === 'targetReps' ? 'reps' : 'RIR'}`}
+              {/* A warm-up shows «C» in grey; the working sets keep 1, 2, 3. */}
+              <AppText muted numeric style={styles.number} variant="footnote" accessibilityLabel={label}>{ordinal.warmup ? 'C' : ordinal.number}</AppText>
+              {(['targetWeightKg', 'targetReps', 'targetRir'] as const).map(field => <TextField key={field} label={`${label}, ${field === 'targetWeightKg' ? 'peso' : field === 'targetReps' ? 'reps' : 'RIR'}`}
                 hideLabel numeric disabled={pending} keyboardType={field === 'targetWeightKg' ? 'decimal-pad' : 'number-pad'} selectTextOnFocus placeholder="—"
                 value={set[field]} onChangeText={value => updateSet(index, field, value)} error={errors[`sets.${index}.${field}`]}
                 style={styles.cell} inputStyle={styles.input} />)}
             </View>
-          </Swipeable></Animated.View>)}
+          </Swipeable></Animated.View>; })}
           <Animated.View layout={reduceMotion ? undefined : LinearTransition.duration(motionDurations.base)}>
             <SessionGlassButton label="+ Agregar serie" accessibilityLabel="Agregar serie" disabled={pending || draft.sets.length >= 50} onPress={append} />
           </Animated.View>
@@ -142,6 +154,7 @@ const styles = StyleSheet.create({
   content: { gap: spacing.xl, paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl }, identity: { gap: spacing.xs }, table: { gap: spacing.xs },
   setGap: { paddingVertical: spacing.xs }, setRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs }, number: { width: brandTokens.space.lg, textAlign: 'center', paddingTop: spacing.sm },
   cell: { flex: 1, minWidth: 0, textAlign: 'center' }, input: { ...brandTokens.typeScale.title2, textAlign: 'center', paddingHorizontal: spacing.xs, borderWidth: 0 },
+  actions: { flexDirection: 'row', alignItems: 'center' },
   remove: { alignSelf: 'center', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: spacing.xs, paddingHorizontal: spacing.md, marginLeft: spacing.sm, minHeight: brandTokens.layout.inputHeight, borderRadius: radius.button },
   rest: { borderRadius: radius.card, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
   restRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: brandTokens.layout.minTouch, paddingVertical: spacing.sm },
