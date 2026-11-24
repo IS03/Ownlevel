@@ -1015,6 +1015,28 @@ export async function listRecentRobustExerciseHistoryByExercise(input: {
   return result;
 }
 
+/**
+ * #537 · What the load pattern of an active session needs: the completed executions of its exercises in the same routine
+ * since `fromDate` (newest first), and the recorded variant of those executions and of the session's own exercises.
+ * The variant read is one narrow owner-scoped query over just those ids; a missing row is an unknown variant, never "none".
+ */
+export async function listLoadPatternHistory(input: {
+  exerciseIds: readonly string[]; routineId: string; fromDate: string; sessionExerciseIds: readonly string[];
+}, context: AuthenticatedRequestContext): Promise<{ items: RobustExerciseHistoryItem[]; configurations: Map<string, string | null> }> {
+  const items = input.exerciseIds.length
+    ? await queryRobustExerciseHistory({ exerciseIds: input.exerciseIds, routineId: input.routineId, fromDate: input.fromDate }, context) : [];
+  const ids = [...new Set([...input.sessionExerciseIds, ...items.map(item => item.exercise.id)])];
+  const configurations = new Map<string, string | null>();
+  for (let index = 0; index < ids.length; index += 150) {
+    const { data, error } = await context.supabase.from("workout_session_exercise_configurations")
+      .select("session_exercise_id, kind, label").eq("user_id", context.userId).in("session_exercise_id", ids.slice(index, index + 150))
+      .returns<ConfigurationRow[]>();
+    if (error) throw new Error(`Leer variantes del ejercicio: ${error.message}`);
+    for (const row of data ?? []) configurations.set(row.session_exercise_id, configurationIdentity(row));
+  }
+  return { items, configurations };
+}
+
 export async function listRobustExerciseHistoryRoutineOptions(exerciseId: string) {
   const items = await listRobustExerciseHistory({ exerciseId, limit: 100 });
   const routines = new Map<string, { id: string; nombre: string }>();

@@ -2,6 +2,7 @@ import type { WorkoutExercisePayload, WorkoutSessionDetail, WorkoutSessionExerci
 import { validateCompletedSessionCorrection, validateSessionMetadata, validateWorkoutExercisePayload } from "../phase2/training-validation";
 import { MobileApiValidationError } from "./auth";
 import type { MobileReadResult, MobileRoutineColorKey, MobileTrainingMuscleGroup } from "./contracts";
+import type { SessionLoadPatterns } from "./training-load-pattern-contract";
 import { parseMobileIdempotencyKey, parseMobileTrainingExerciseMutation, parseMobileTrainingId } from "./training";
 
 export type SessionSetDto = {
@@ -75,6 +76,8 @@ export type SessionDetailDto = {
   };
   exercises: SessionExerciseDto[];
   quickHistory: MobileReadResult<Record<string, QuickSessionHistoryDto[]>>;
+  /** #537 · Only with `loadPatterns=1`: older clients validate exact keys and never receive it. */
+  loadPatterns?: SessionLoadPatterns;
 };
 export type SessionExerciseSyncDto =
   | { status: "active"; updatedAt: string; payload: SessionExercisePayloadDto }
@@ -225,7 +228,8 @@ export function sessionExerciseDto(exercise: WorkoutSessionExerciseDetail, routi
     }),
   };
 }
-export function sessionDetailDto(detail: WorkoutSessionDetail, quickHistory: SessionDetailDto["quickHistory"], routineAdditions = false): SessionDetailDto {
+export function sessionDetailDto(detail: WorkoutSessionDetail, quickHistory: SessionDetailDto["quickHistory"], routineAdditions = false,
+  loadPatterns?: SessionLoadPatterns): SessionDetailDto {
   const s = detail.session;
   return {
     session: {
@@ -240,6 +244,7 @@ export function sessionDetailDto(detail: WorkoutSessionDetail, quickHistory: Ses
       },
     },
     exercises: detail.exercises.map(exercise => sessionExerciseDto(exercise, routineAdditions)), quickHistory,
+    ...(loadPatterns ? { loadPatterns } : {}),
   };
 }
 

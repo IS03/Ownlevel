@@ -5,9 +5,9 @@ import type { MobileSupabaseAuthenticatedContext } from "./supabase";
 import { handleMobileAuthenticatedResourceRequest, handleMobileMutationRequest, MobileApiUnauthorizedError } from "./auth";
 import { parseSessionSave, parseSessionAdd, parseSessionRemove, parseSessionCancel, sessionDetailDto } from "./training-session";
 
-const mocks = vi.hoisted(() => ({ detail: vi.fn(), history: vi.fn() }));
+const mocks = vi.hoisted(() => ({ detail: vi.fn(), history: vi.fn(), patterns: vi.fn() }));
 vi.mock("server-only", () => ({}));
-vi.mock("../phase2/training-robust", () => ({ getWorkoutSessionDetail: mocks.detail, listRecentRobustExerciseHistoryByExercise: mocks.history }));
+vi.mock("../phase2/training-robust", () => ({ getWorkoutSessionDetail: mocks.detail, listRecentRobustExerciseHistoryByExercise: mocks.history, listLoadPatternHistory: mocks.patterns }));
 import { readMobileSession, readMobileSessionExercise, saveMobileSessionExercise, addMobileSessionExercise, removeMobileSessionExercise, cancelMobileSession } from "./training-session-server";
 
 const sessionId = "33300000-0000-4000-8000-000000000001";
@@ -98,6 +98,23 @@ describe("M3.3B active session codecs", () => {
 });
 describe("M3.3B Bearer server adapters", () => {
   beforeEach(() => { vi.clearAllMocks(); mocks.detail.mockResolvedValue(detail); mocks.history.mockResolvedValue({ [exerciseId]: [] }); });
+  it("#537: load patterns only with the opt-in; no routine means nothing to compare; a failed read is unavailable", async () => {
+    const plain = await readMobileSession(sessionId, context(), performance);
+    expect("loadPatterns" in plain).toBe(false);
+    expect(mocks.patterns).not.toHaveBeenCalled();
+    expect((await readMobileSession(sessionId, context(), performance, false, true)).loadPatterns).toEqual({ status: "ok", data: { [relationId]: null } });
+    expect(mocks.patterns).not.toHaveBeenCalled();
+    const routineId = "33300000-0000-4000-8000-000000000009";
+    mocks.detail.mockResolvedValue({ ...detail, session: { ...detail.session, routine_id: routineId } });
+    mocks.patterns.mockRejectedValueOnce(new Error("offline"));
+    const failed = await readMobileSession(sessionId, context(), performance, false, true);
+    expect(failed.loadPatterns).toEqual({ status: "unavailable" });
+    expect(failed.quickHistory).toEqual({ status: "ok", data: { [exerciseId]: [] } });
+    mocks.patterns.mockResolvedValueOnce({ items: [], configurations: new Map() });
+    expect((await readMobileSession(sessionId, context(), performance, false, true)).loadPatterns).toEqual({ status: "ok", data: { [relationId]: null } });
+    expect(mocks.patterns).toHaveBeenLastCalledWith({ exerciseIds: [exerciseId], routineId, fromDate: "2026-08-04", sessionExerciseIds: [relationId] },
+      expect.objectContaining({ userId: "owner" }));
+  });
   it("keeps auxiliary history failure independent and snapshots intact", async () => {
     mocks.history.mockRejectedValue(new Error("offline"));
     const ctx = context();
