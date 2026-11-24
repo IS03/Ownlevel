@@ -11,7 +11,8 @@ export function OPTIONS(request: NextRequest) {
 }
 export async function GET(request: NextRequest, { params }: Context) {
   const { sessionId } = await params;
-  return sessionReadResponse(request, route, (context, performance) => readMobileSession(sessionId, context, performance, request.nextUrl.searchParams.get("routineAdditions") === "1"));
+  return sessionReadResponse(request, route, (context, performance) => readMobileSession(sessionId, context, performance,
+    request.nextUrl.searchParams.get("routineAdditions") === "1", request.nextUrl.searchParams.get("loadPatterns") === "1"));
 }
 export async function DELETE(request: NextRequest, { params }: Context) {
   const { sessionId } = await params;

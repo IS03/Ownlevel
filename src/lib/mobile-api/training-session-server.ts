@@ -1,9 +1,11 @@
 import "server-only";
 import {
   getTrainingHistoryDirectory, getWorkoutSessionDetail, listCompletedSessionHistory, listRecentRobustExerciseHistoryByExercise,
-  listRobustExerciseHistory, listCompleteRobustExerciseHistory, listCompletedSetsByDay, listCompletedSessionsOnDays,
+  listRobustExerciseHistory, listCompleteRobustExerciseHistory, listCompletedSetsByDay, listCompletedSessionsOnDays, listLoadPatternHistory,
   type RobustExerciseHistoryItem,
 } from "../phase2/training-robust";
+import { detectLoadPattern, RECENT_DAYS } from "../training/load-pattern";
+import type { SessionLoadPatterns } from "./training-load-pattern-contract";
 import { listExercises } from "../phase2/training";
 import { buildTrainingHistoryExerciseDetail, sortTrainingHistoryExercises, type TrainingHistoryExerciseSession } from "../phase2/training-history";
 import type { ExerciseReportSession } from "../phase2/exercise-insights";
@@ -57,7 +59,7 @@ function mutationError(error: { code?: string; message?: string }): never {
   }
   throw new Error("Active session database operation unavailable", { cause: error });
 }
-export async function readMobileSession(id: unknown, context: MobileSupabaseAuthenticatedContext, performance: RequestPerformanceContext, routineAdditions = false) {
+export async function readMobileSession(id: unknown, context: MobileSupabaseAuthenticatedContext, performance: RequestPerformanceContext, routineAdditions = false, loadPatterns = false) {
   const sessionId = parseMobileTrainingId(id, "La sesión");
   const detail = await getWorkoutSessionDetail(sessionId, auth(context, performance));
   if (!detail) throw new MobileApiNotFoundError();
@@ -74,7 +76,39 @@ export async function readMobileSession(id: unknown, context: MobileSupabaseAuth
       decision: item.exercise.decision, sets: sessionExerciseDto(item.exercise).payload.sets,
     }))]));
   }) : { status: "ok" as const, data: {} };
-  return sessionDetailDto(detail, history, routineAdditions);
+  // #537: only clients that ask for it (`loadPatterns=1`) get the key; installed parsers validate exact keys.
+  const patterns = loadPatterns ? await readLoadPatterns(detail, context, performance) : undefined;
+  return sessionDetailDto(detail, history, routineAdditions, patterns);
+}
+
+const daysBefore = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
+/**
+ * #537 · The load pattern of each exercise of an active session, from its previous executions in the same routine.
+ * Its own resilient read: a failure is `unavailable`, never «no pattern». A session that is not in progress or has
+ * no routine has nothing to compare (every exercise null).
+ */
+async function readLoadPatterns(detail: NonNullable<Awaited<ReturnType<typeof getWorkoutSessionDetail>>>, context: MobileSupabaseAuthenticatedContext,
+  performance: RequestPerformanceContext): Promise<SessionLoadPatterns> {
+  const none = (): SessionLoadPatterns => ({ status: "ok", data: Object.fromEntries(detail.exercises.map(exercise => [exercise.id, null])) });
+  const routineId = detail.session.routine_id;
+  if (detail.session.status !== "in_progress" || !routineId) return none();
+  return resilientRead({
+    route: "/api/mobile/v1/training/sessions/[sessionId]", operation: "mobile.training.session.load-patterns", layer: "database", ...performance,
+  }, async () => {
+    const read = await listLoadPatternHistory({ exerciseIds: detail.exercises.map(exercise => exercise.exercise_id), routineId,
+      fromDate: daysBefore(detail.logDate, RECENT_DAYS), sessionExerciseIds: detail.exercises.map(exercise => exercise.id) }, auth(context, performance));
+    const byExercise = new Map<string, typeof read.items>();
+    for (const item of read.items) byExercise.set(item.exercise.exercise_id, [...(byExercise.get(item.exercise.exercise_id) ?? []), item]);
+    return Object.fromEntries(detail.exercises.map(exercise => [exercise.id, detectLoadPattern({
+      exerciseId: exercise.exercise_id, routineId, weightMode: exercise.weight_mode_snapshot, implement: exercise.implement_snapshot,
+      configuration: read.configurations.get(exercise.id) ?? null, logDate: detail.logDate, nextAdjustment: exercise.next_adjustment_snapshot,
+    }, (byExercise.get(exercise.exercise_id) ?? []).map(item => ({
+      exerciseId: item.exercise.exercise_id, routineId: item.session.routine_id, weightMode: item.exercise.weight_mode_snapshot,
+      implement: item.exercise.implement_snapshot, configuration: read.configurations.get(item.exercise.id) ?? null,
+      sessionId: item.session.id, logDate: item.logDate, routineName: item.session.routine_name_snapshot ?? item.session.session_name ?? "Rutina",
+      sets: sessionExerciseDto(item.exercise).payload.sets,
+    })))]));
+  });
 }
 export async function readMobileSessionExercise(id: unknown, exerciseId: unknown, context: MobileSupabaseAuthenticatedContext, routineAdditions = false): Promise<SessionExerciseSyncDto> {
   const sessionId = parseMobileTrainingId(id, "La sesión");
