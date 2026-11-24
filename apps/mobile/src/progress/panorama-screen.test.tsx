@@ -66,7 +66,7 @@ it('opens three bounded sources, with no Insights or hidden destination read, an
     expect(after.getByText('Proteína 127 g/día')).toBeTruthy();
     fireEvent.press(after.getByRole('button', { name: 'Últimos tres meses: tres meses enteros, semana por semana' }));
     expect(mockNavigate).toHaveBeenLastCalledWith({ ...periodSummaryHref(PANORAMA_TODAY, { fromProgress: '1' }), pathname: '/(tabs)/progress/insights/period' });
-    fireEvent.press(after.getByRole('button', { name: 'Comparaciones: Cada sesión con lo tuyo y con la anterior' }));
+    fireEvent.press(after.getByRole('button', { name: 'Comparar entrenamientos: Cada sesión con lo tuyo y con la anterior' }));
     expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/insights', params: { fromProgress: '1' } });
     expect(read).toHaveBeenCalledTimes(3);
     console.info('[402 request comparison]', { before: prior, after: read.mock.calls.map(([o]) => o.path) });
@@ -390,7 +390,7 @@ it('#519 · «Comparar períodos» proposes the portada window; «Cuándo comés
     fireEvent.press(view.getByRole('button', { name: /^Cuándo comés/ }));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/trends/meal-times');
     expect([range!.query.from, range!.query.to, range!.compare]).toEqual(['2026-10-11', '2026-11-09', null]);
-    fireEvent.press(view.getByRole('button', { name: /^Comparaciones: / }));
+    fireEvent.press(view.getByRole('button', { name: /^Comparar entrenamientos: / }));
     expect(mockNavigate).toHaveBeenLastCalledWith({ pathname: '/(tabs)/progress/insights', params: { fromProgress: '1' } });
     fireEvent.press(view.getByRole('button', { name: /^Métricas personales/ }));
     expect(mockPush).toHaveBeenLastCalledWith('/(tabs)/progress/trends/metrics');

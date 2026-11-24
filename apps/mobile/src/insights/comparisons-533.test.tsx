@@ -31,7 +31,7 @@ const id = (n: number) => `53300000-0000-4000-8533-${String(n).padStart(12, '0')
 const ROUTINE = id(900), PRESS = id(800);
 const meta = { durationMs: 1, httpStatus: 200, outcome: 'ok' as const };
 /** A routine with eight sessions of one exercise at 20 kg: reps 10, 11, 12, 12, 11, 12, 11, 13. */
-let mockReps = [10, 11, 12, 12, 11, 12, 11, 13], mockTargets = false;
+let mockReps = [10, 11, 12, 12, 11, 12, 11, 13], mockTargets = false, mockMixed = false;
 function source(): InsightsSource {
   const reps = mockReps;
   const sessions: InsightsSource['sessions'][number][] = [], exercises: InsightsSource['exercises'][number][] = [], sets: InsightsSource['sets'][number][] = [], meals: InsightsSource['meals'][number][] = [];
@@ -42,6 +42,14 @@ function source(): InsightsSource {
     sets.push({ id: id(index + 200), sessionExerciseId: block, actualReps: value, actualLoad: 20, isCompleted: true, completedAt: `${date}T21:10:00.000Z` });
     meals.push({ id: `m${index}`, date, consumedAt: `${date}T20:00:00.000Z`, rawInput: null, entryKind: 'meal', sourceType: 'manual', consumedAtSource: 'user_declared', importRunId: null, calories: 500, proteinG: 30, carbsG: 20 + index * 10, fatG: 10 });
   });
+  if (mockMixed) {
+    for (const [index, date] of ['2026-10-25', '2026-10-29'].entries()) {
+      const sessionId = id(500 + index), block = id(600 + index);
+      sessions.push({ ...sessions[index]!, id: sessionId, date, routineId: id(901), routineName: 'PUSH', startedAt: `${date}T18:00:00.000Z`, endedAt: `${date}T19:00:00.000Z` });
+      exercises.push({ ...exercises[index]!, id: block, sessionId, exerciseId: id(801), name: 'Press' });
+      sets.push({ ...sets[index]!, id: id(700 + index), sessionExerciseId: block, actualReps: 5 + index, completedAt: `${date}T18:10:00.000Z` });
+    }
+  }
   return { sessions, exercises, sets, meals, feelings: [], metricDefinitions: [], metricValues: [],
     ...(mockTargets ? { dayTargets: sessions.map(session => ({ date: session.date!, calories: 2300, proteinG: 150 })) } : {}) };
 }
@@ -54,7 +62,7 @@ function answer(options: ReadOptions): Promise<MobileApiReadResult<unknown>> {
 }
 const screen = (node: React.ReactElement) => render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}><OwnlevelThemeProvider>{node}</OwnlevelThemeProvider></SafeAreaProvider>);
 
-beforeEach(() => { mockReps = [10, 11, 12, 12, 11, 12, 11, 13]; mockTargets = false; mockRead.mockReset(); mockRead.mockImplementation(answer); mockPush.mockReset(); mockSetParams.mockReset(); mockParams = {}; clearConfirmedReads(mockClient); });
+beforeEach(() => { mockMixed = false; mockReps = [10, 11, 12, 12, 11, 12, 11, 13]; mockTargets = false; mockRead.mockReset(); mockRead.mockImplementation(answer); mockPush.mockReset(); mockSetParams.mockReset(); mockParams = {}; clearConfirmedReads(mockClient); });
 
 describe('#533 · cifras de Comparaciones', () => {
   const measured = (pct: number): PerformanceChange => ({ state: 'measured', pct, basis: 'reps_at_load', signals: 1, load: { unit: 'kg', up: 0, same: 1, down: 0 } });
@@ -128,5 +136,27 @@ describe('#533 · pantallas', () => {
     expect(view.getByTestId('insights-counts-partial')).toBeTruthy();
     fireEvent.press(view.getByRole('button', { name: 'Ver otras sesiones de PULL en Cómo llegaste' }));
     expect(mockSetParams).toHaveBeenCalledWith(expect.objectContaining({ view: 'relation', routine: ROUTINE, session: undefined }));
+  });
+});
+
+// Mixed-day regression: one routine in the chart must mean that same routine in the reading.
+describe('routine selection consistency', () => {
+  it('keeps daily context but excludes the other routine from the selected-session reading', async () => {
+    mockMixed = true; mockParams = { routine: ROUTINE };
+    const view = screen(<InsightsScreen />);
+    const reading = await view.findByTestId('insights-session');
+    expect(within(reading).getByRole('header', { name: 'PULL' })).toBeTruthy();
+    expect(within(reading).queryByRole('header', { name: 'PUSH' })).toBeNull();
+    expect(within(reading).queryByTestId('insights-day-others')).toBeNull();
+    fireEvent.press(view.getByRole('radio', { name: 'PUSH' }));
+    expect(mockSetParams).toHaveBeenCalledWith({ routine: id(901), session: undefined, date: undefined });
+  });
+  it('does not retain a selected session from a different routine', async () => {
+    mockMixed = true; mockParams = { routine: ROUTINE, session: id(501), date: '2026-10-29' };
+    const view = screen(<InsightsScreen />);
+    const reading = await view.findByTestId('insights-session');
+    expect(within(reading).getByRole('header', { name: 'PULL' })).toBeTruthy();
+    expect(within(reading).queryByRole('header', { name: 'PUSH' })).toBeNull();
+    expect(view.getByTestId('comparisons-history-scope')).toBeTruthy();
   });
 });

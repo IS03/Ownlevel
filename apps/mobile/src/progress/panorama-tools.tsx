@@ -22,7 +22,7 @@ export function PanoramaTools({ today, onTool }: { today: string; onTool: (tool:
     { title: 'Comparar y descubrir', detail: 'Períodos, sesiones y lo que coincide con tus días.', items: [
       { id: 'compare', title: 'Comparar períodos', detail: 'Dos períodos, tus fechas', icon: 'compare', primary: true, press: () => onTool('compare') },
       { id: 'influence', title: 'Qué influye', detail: 'Preguntas sobre tus días', icon: 'search', press: () => router.navigate('/(tabs)/progress/influence') },
-      { id: 'comparisons', title: 'Comparaciones', detail: 'Cada sesión con lo tuyo y con la anterior', icon: 'dumbbell', press: () => router.navigate(insideProgress({ pathname: '/(tabs)/train/insights', params: origin }, true)) },
+      { id: 'comparisons', title: 'Comparar entrenamientos', detail: 'Cada sesión con lo tuyo y con la anterior', icon: 'dumbbell', press: () => router.navigate(insideProgress({ pathname: '/(tabs)/train/insights', params: origin }, true)) },
       { id: 'stages', title: 'Tus etapas', detail: 'Tus planes, uno al lado del otro', icon: 'bookmark', press: () => router.navigate('/(tabs)/progress/stages') },
       { id: 'quarter', title: 'Últimos tres meses', detail: 'Tres meses enteros, semana por semana', icon: 'clockOutline', press: () => router.navigate(insideProgress(periodSummaryHref(today, origin), true)), spoken: 'Últimos tres meses: tres meses enteros, semana por semana' },
     ] },
