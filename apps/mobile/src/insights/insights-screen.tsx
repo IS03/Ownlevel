@@ -1,3 +1,4 @@
+import { shortRange as periodDateRange } from '@/progress/progress-range';
 import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { ReturnToProgress } from './return-to-progress';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -371,13 +372,13 @@ function SessionTitle({ session, day, partial, router }: { session: SessionFact;
 }
 
 /** #518 · The chosen session: what and when, its result per method, its exercises to open, then the folded context. */
-function SessionReading({ focus, model, router, origin, actions, onOther }: { focus: NonNullable<ReturnType<typeof focusOf>>; model: InsightsSummary; router: ReturnType<typeof useRouter>; origin: InsightsOrigin; actions: DayActions; onOther: (sessionId: string) => void }) {
-  const others = daySessions(focus.day.strict).sessions.filter(row => row.sessionId !== focus.session.sessionId);
+function SessionReading({ focus, model, router, origin, actions, onOther, routine = 'all' }: { routine?: string; focus: NonNullable<ReturnType<typeof focusOf>>; model: InsightsSummary; router: ReturnType<typeof useRouter>; origin: InsightsOrigin; actions: DayActions; onOther: (sessionId: string) => void }) {
+  const others = daySessions(focus.day.strict).sessions.filter(row => row.sessionId !== focus.session.sessionId && (routine === 'all' || row.routineId === routine));
   const none = withoutComparison(focus.session, focus.partial);
   return <View style={styles.block} testID="insights-session">
     <SessionTitle session={focus.session} day={focus.day} partial={focus.partial ?? undefined} router={router} />
     {others.length ? <View testID="insights-day-others">
-      <AppText muted variant="footnote" numeric>{others.length + 1} sesiones ese día. Cada una tiene su resultado; lo registrado todo el día es el mismo.</AppText>
+      <AppText muted variant="footnote" numeric>{others.length + 1} sesiones{routine === 'all' ? '' : ' de esta rutina'} ese día. Cada una tiene su resultado; lo registrado todo el día es el mismo.</AppText>
       {others.map(other => <InsightRow key={other.sessionId} label={`Ver ${sessionName(other)}`} detail={sessionTime(other)} spoken={`Ver la otra sesión de ese día: ${sessionName(other)}, ${sessionTime(other)}`} onPress={() => onOther(other.sessionId)} />)}
     </View> : null}
     {none ? <View style={styles.block} testID="insights-session-none"><Heading level={2}>Todavía sin comparaciones</Heading><AppText muted>{none}</AppText></View> : null}
@@ -530,7 +531,7 @@ export function InsightsScreen() {
     if (router.canGoBack()) router.back();
     else router.replace({ pathname: '/(tabs)/train/history/[id]', params: { id: focusId } });
   }} /> : null;
-  const scroll = (children: React.ReactNode) => <ScrollHeaderScreen title="Comparaciones"><ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="insights-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}><ReturnToProgress/>{children}{returnToSession}</ScrollView></ScrollHeaderScreen>;
+  const scroll = (children: React.ReactNode) => <ScrollHeaderScreen title="Comparar entrenamientos"><ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="insights-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}><ReturnToProgress/>{children}{returnToSession}</ScrollView></ScrollHeaderScreen>;
 
   if (state.status === 'loading' && !data) return scroll(<View testID="insights-loading" style={styles.block}><SkeletonBlock height={44} /><SkeletonBlock height={120} /><SkeletonBlock height={176} /><SkeletonBlock height={220} /></View>);
   const failed = <UnavailableState title="Uy, no pudimos leer tus datos" description="Tranqui: está todo guardado." action={<Button label="Reintentar" onPress={() => void refresh()} />} />;
@@ -549,20 +550,23 @@ export function InsightsScreen() {
   const strip: StripSession[] = shownDays.flatMap(day => day.strict.sessions.filter(session => routine === 'all' || session.routineId === routine).map(session => ({
     sessionId: session.sessionId, date: day.date, label: sessionName(session), routine: session.routineName ?? sessionName(session),
     pct: joinedChange(session.change, day.partial?.sessions.find(row => row.sessionId === session.sessionId)?.change)?.pct ?? null })));
-  const setRoutine = (value: string) => { haptics.selection(); router.setParams({ routine: value === 'all' ? undefined : value }); };
+  const setRoutine = (value: string) => { haptics.selection(); router.setParams({ routine: value === 'all' ? undefined : value, session: undefined, date: undefined }); };
   const orderRoutine = routine !== 'all' ? routine : routineOptions.find(option => option.value !== 'all')?.value ?? null;
   // A day chosen by the route (coming back from another screen) leads; otherwise the latest with a clear result.
   const chosenDay = !focusId && focusDate ? shownDays.filter(day => day.date === focusDate) : [];
   const hero = focusId ? null : heroOf(chosenDay) ?? heroOf(shownDays);
   // Días más claros · The chart stays on top while choosing sessions; a session opened from its own finish keeps its quiet screen.
   const chrome = !focusId || !origin.fromSession;
-  const selectedSession = focusId ?? (hero?.day.strict.sessions.length === 1 ? hero.day.strict.sessions[0]!.sessionId : null);
+  // Routine selection narrows sessions, never the shared daily nutrition/metric facts.
+  const readingFocus = routine === 'all' ? focus : focus?.session.routineId === routine ? focus : strip[0] ? focusOf(days, strip[0].sessionId) : null;
+  const selectedSession = routine === 'all' ? focusId ?? (hero?.day.strict.sessions.length === 1 ? hero.day.strict.sessions[0]!.sessionId : null) : readingFocus?.session.sessionId ?? null;
   return scroll(<>
     {origin.explore&&origin.asOf&&origin.week?<LinkRow kind="back" label={origin.compare ? 'Volver a comparar semanas' : 'Volver a la semana'} onPress={()=>router.navigate(explorationHref(origin.asOf!,origin.week,origin.revision,origin))}/>:null}
     {origin.explore&&origin.revision&&origin.revision!==data.sourceRevision?<AppText>Los registros cambiaron desde la semana. Esta lectura completa está actualizada.</AppText>:null}
     {state.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
     {origin.fromSession && origin.revision && origin.revision !== data.sourceRevision ? <AppText muted testID="insights-session-revised">Los registros cambiaron desde el origen. Esta lectura completa está actualizada.</AppText>
       : changedWhileOpen ? <AppText muted accessibilityLiveRegion="polite" testID="insights-revised-now">Tus registros cambiaron mientras mirabas. Esta lectura está actualizada.</AppText> : null}
+    {chrome && strip.length ? <AppText muted variant="footnote" testID="comparisons-history-scope">Sesiones del gráfico · {periodDateRange({ start: strip.at(-1)!.date, end: strip[0]!.date }, data.today)}</AppText> : null}
     {chrome ? <ExerciseSegmented accessibilityLabel="Ver por sesiones, ejercicios, cómo llegaste u orden" value={view} options={VIEWS} onChange={setView} /> : null}
     {/* Precarga: the order of the routine in focus (or the latest one) is read while another view is open, so «Orden» opens ready. */}
     {view !== 'order' ? <RoutineOrderPrefetch client={client} routine={orderRoutine} /> : null}
@@ -580,7 +584,7 @@ export function InsightsScreen() {
         {morePhase === 'failed' ? <InlineUnavailable message="No pudimos traer más días." actionLabel="Reintentar" onAction={() => void loadMore()} /> : null}
         {pagesDropped ? <AppText muted variant="footnote" accessibilityLiveRegion="polite" testID="insights-changed">Tus datos cambiaron, así que actualizamos la lista.</AppText> : null}
       </> : null}
-      {focus ? <SessionReading focus={focus} model={data} router={router} origin={origin} actions={actions} onOther={openOther} />
+      {readingFocus ? <SessionReading routine={routine} focus={readingFocus} model={data} router={router} origin={origin} actions={actions} onOther={openOther} />
         : focusLoading ? <View testID="insights-session-loading" style={styles.block}><SkeletonBlock height={120} /><SkeletonBlock height={176} /></View>
         : focusFailed ? <InlineUnavailable message="No pudimos traer los hechos de esta sesión." actionLabel="Reintentar" onAction={() => setFocusAttempt(current => current + 1)} />
         : focusId ? <View style={styles.block} testID="insights-session-absent">
