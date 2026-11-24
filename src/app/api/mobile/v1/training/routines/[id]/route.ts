@@ -47,7 +47,7 @@ export async function GET(request: NextRequest, route: RoutineRouteContext) {
       read: (context) =>
         measurePerformance(
           { ...performanceBase, operation: "mobile.training.routine.detail", layer: "database" },
-          () => readMobileTrainingRoutineDetail(id, context),
+          () => readMobileTrainingRoutineDetail(id, context, request.nextUrl.searchParams.get("setKinds") === "1"),
         ),
     },
   );

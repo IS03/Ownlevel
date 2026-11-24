@@ -357,6 +357,7 @@ export async function reorderMobileTrainingRoutines(
 export async function readMobileTrainingRoutineDetail(
   id: unknown,
   context: MobileSupabaseAuthenticatedContext,
+  setKinds = false,
 ): Promise<MobileTrainingRoutineDetailResponse> {
   const routineId = parseMobileTrainingId(id, "La rutina");
   const { data, error } = await context.supabase.rpc(
@@ -364,7 +365,46 @@ export async function readMobileTrainingRoutineDetail(
     { p_routine_id: routineId },
   );
   if (error) throwTrainingMutationError(error);
-  return parseDatabaseResponse(parseMobileTrainingRoutineDetailResponse, data);
+  const detail = parseDatabaseResponse(parseMobileTrainingRoutineDetailResponse, data);
+  return setKinds ? withRoutineSetKinds(detail, context) : detail;
+}
+
+/**
+ * #537 · Each routine set's kind, only for clients that ask for it (`setKinds=1`). The detail function keeps its output
+ * (installed parsers validate exact keys), so the kinds are read apart, together with the template version: a kind of
+ * another version is never returned (it would be saved back over the right one). `known` are the kinds the client just
+ * sent; when every set has one there is nothing to read.
+ */
+export async function withRoutineSetKinds(
+  detail: MobileTrainingRoutineDetailResponse,
+  context: MobileSupabaseAuthenticatedContext,
+  known?: ReadonlyMap<string, "work" | "warmup">,
+): Promise<MobileTrainingRoutineDetailResponse> {
+  const keyOf = (routineExerciseId: string, setNumber: number) => `${routineExerciseId.toLowerCase()}:${setNumber}`;
+  const kinds = new Map<string, unknown>(known);
+  const missing = detail.items.some(item => item.targets.sets.some(set => !kinds.has(keyOf(item.routineExerciseId, set.setNumber))));
+  if (missing) {
+    const { data, error } = await context.supabase.from("routines")
+      .select("template_version, routine_exercises(id, routine_exercise_sets(set_number, set_kind))")
+      .eq("id", detail.routine.id).eq("user_id", context.userId).maybeSingle();
+    if (error) throw new Error("Routine set kinds unavailable", { cause: error });
+    const row = data as { template_version: unknown; routine_exercises: { id: string; routine_exercise_sets: { set_number: number; set_kind: unknown }[] | null }[] | null } | null;
+    if (!row || Number(row.template_version) !== detail.routine.templateVersion) throw new Error("Routine set kinds changed during the read");
+    for (const relation of row.routine_exercises ?? []) {
+      for (const set of relation.routine_exercise_sets ?? []) {
+        const key = keyOf(relation.id, set.set_number);
+        if (!kinds.has(key)) kinds.set(key, set.set_kind);
+      }
+    }
+  }
+  return {
+    ...detail,
+    items: detail.items.map(item => ({ ...item, targets: { ...item.targets, sets: item.targets.sets.map(set => {
+      const setKind = kinds.get(keyOf(item.routineExerciseId, set.setNumber));
+      if (setKind !== "work" && setKind !== "warmup") throw new Error("Routine set kind unavailable");
+      return { ...set, setKind };
+    }) } })),
+  };
 }
 
 export async function updateMobileTrainingRoutineIdentity(
@@ -393,6 +433,7 @@ export async function replaceMobileTrainingRoutineTemplate(
   id: unknown,
   payload: unknown,
   context: MobileSupabaseAuthenticatedContext,
+  setKinds = false,
 ): Promise<MobileTrainingRoutineDetailResponse> {
   const routineId = parseMobileTrainingId(id, "La rutina");
   const input = parseMobileTrainingRoutineTemplate(payload);
@@ -405,7 +446,16 @@ export async function replaceMobileTrainingRoutineTemplate(
     },
   );
   if (error) throwTrainingMutationError(error);
-  return parseDatabaseResponse(parseMobileTrainingRoutineDetailResponse, data);
+  const detail = parseDatabaseResponse(parseMobileTrainingRoutineDetailResponse, data);
+  if (!setKinds) return detail;
+  // The routine was just written with the kinds that were sent: they answer without another read.
+  const sent = new Map<string, "work" | "warmup">();
+  for (const item of input.items) {
+    const relation = item.routineExerciseId ?? detail.items.find(row => row.exercise.id.toLowerCase() === item.exerciseId.toLowerCase())?.routineExerciseId;
+    if (!relation) continue;
+    for (const set of item.targets.sets) if (set.setKind) sent.set(`${relation.toLowerCase()}:${set.setNumber}`, set.setKind);
+  }
+  return withRoutineSetKinds(detail, context, sent);
 }
 
 export async function startMobileTrainingSession(

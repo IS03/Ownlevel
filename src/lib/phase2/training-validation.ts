@@ -93,6 +93,10 @@ export function validateWorkoutSets(sets: EditableWorkoutSet[]) {
     if (set.is_completed && set.actual_reps === null) {
       throw new Error(`Completá las repeticiones de la serie ${number}.`);
     }
+    // #537: absent keeps the stored kind (installed apps never send it).
+    if (set.set_kind !== undefined && set.set_kind !== "work" && set.set_kind !== "warmup") {
+      throw new Error(`El tipo de la serie ${number} no es válido.`);
+    }
   });
 }
 

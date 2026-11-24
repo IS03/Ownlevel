@@ -31,9 +31,9 @@ describe("M3.3B final Route Handlers", () => {
     const response = await detailGET(request("GET"), resource);
     expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toBe("no-store");
     expect(mocks.readAuth).toHaveBeenCalledWith("valid");
-    expect(mocks.detail).toHaveBeenCalledWith(sessionId, bearerContext, expect.any(Object), false, false);
+    expect(mocks.detail).toHaveBeenCalledWith(sessionId, bearerContext, expect.any(Object), false, false, false);
     expect((await syncGET(request("GET"), resource)).status).toBe(200);
-    expect(mocks.sync).toHaveBeenCalledWith(sessionId, sessionExerciseId, bearerContext, false);
+    expect(mocks.sync).toHaveBeenCalledWith(sessionId, sessionExerciseId, bearerContext, false, false);
     expect(mocks.writeAuth).not.toHaveBeenCalled();
   });
   it("wires PUT/POST/DELETE with authenticated no-retry mutation context", async () => {
@@ -50,11 +50,15 @@ describe("M3.3B final Route Handlers", () => {
   });
   it("adopts additions only when explicitly requested, without changing structural operations", async () => {
     const make = (method: string) => new NextRequest("https://example.test/api/mobile/v1/training/sessions/session?routineAdditions=1", { method, headers: { authorization: "Bearer valid", "content-type": "application/json" }, ...(method === "PUT" ? { body: JSON.stringify({}) } : {}) });
-    await detailGET(make("GET"), resource); expect(mocks.detail).toHaveBeenLastCalledWith(sessionId, bearerContext, expect.any(Object), true, false);
+    await detailGET(make("GET"), resource); expect(mocks.detail).toHaveBeenLastCalledWith(sessionId, bearerContext, expect.any(Object), true, false, false);
     // #537: load patterns only when asked for too.
     await detailGET(new NextRequest("https://example.test/api/mobile/v1/training/sessions/session?routineAdditions=1&loadPatterns=1", { method: "GET", headers: { authorization: "Bearer valid" } }), resource);
-    expect(mocks.detail).toHaveBeenLastCalledWith(sessionId, bearerContext, expect.any(Object), true, true);
-    await syncGET(make("GET"), resource); expect(mocks.sync).toHaveBeenLastCalledWith(sessionId, sessionExerciseId, bearerContext, true);
+    expect(mocks.detail).toHaveBeenLastCalledWith(sessionId, bearerContext, expect.any(Object), true, true, false);
+    await syncGET(make("GET"), resource); expect(mocks.sync).toHaveBeenLastCalledWith(sessionId, sessionExerciseId, bearerContext, true, false);
+    // #537: set kinds only when asked for, on the detail and on the exercise sync.
+    const kinds = (method: string) => new NextRequest("https://example.test/api/mobile/v1/training/sessions/session?routineAdditions=1&loadPatterns=1&setKinds=1", { method, headers: { authorization: "Bearer valid" } });
+    await detailGET(kinds("GET"), resource); expect(mocks.detail).toHaveBeenLastCalledWith(sessionId, bearerContext, expect.any(Object), true, true, true);
+    await syncGET(kinds("GET"), resource); expect(mocks.sync).toHaveBeenLastCalledWith(sessionId, sessionExerciseId, bearerContext, true, true);
     await PUT(make("PUT"), resource); expect(mocks.save).toHaveBeenLastCalledWith(sessionId, sessionExerciseId, {}, bearerContext, true);
   });
   it("preserves 404/503 rather than returning an empty session", async () => {

@@ -218,6 +218,8 @@ export type MobileTrainingRoutineSetDto = {
   targetWeightKg: number | null;
   targetRir: number | null;
   notes: string | null;
+  /** #537 · Sent by clients that know it; returned only with `setKinds=1` (installed parsers validate exact keys). */
+  setKind?: "work" | "warmup";
 };
 
 export type MobileTrainingRoutineTargetsDto = {

@@ -64,6 +64,9 @@ export type RoutineExercise = {
   updated_at: string;
 };
 
+/** #537 · Working set or warm-up. Rows written before the column, or by a writer that does not name it, are `work`. */
+export type SetKind = "work" | "warmup";
+
 export type RoutineExerciseSet = {
   id: string;
   user_id: string;
@@ -73,6 +76,8 @@ export type RoutineExerciseSet = {
   target_weight_kg: number | null;
   target_rir: number | null;
   notes: string | null;
+  /** Optional: reads that list their columns may not ask for it. */
+  set_kind?: SetKind;
   created_at: string;
   updated_at: string;
 };
@@ -149,6 +154,8 @@ export type WorkoutSet = {
   is_completed: boolean;
   completed_at: string | null;
   notes: string | null;
+  /** Optional: reads that list their columns may not ask for it. */
+  set_kind?: SetKind;
   created_at: string;
   updated_at: string;
 };
@@ -168,6 +175,7 @@ export type EditableWorkoutSet = Pick<
   | "actual_weight_kg"
   | "is_completed"
   | "notes"
+  | "set_kind"
 >;
 
 export type RoutineExerciseTemplate = RoutineExercise & {
