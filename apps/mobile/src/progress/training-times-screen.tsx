@@ -1,3 +1,4 @@
+import { ComparisonContextNote } from './comparison-context-note';
 import { useCallback, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -68,6 +69,7 @@ function TimingReader({ query }: { query: ProgressQuery }) {
           detail: `${timeMetricCount(g, metric)} ${metric === 'improvements' ? 'comparaciones válidas' : 'sesiones con este dato'} · ${g.sessions} sesiones en la selección` }))}
         onClear={selection.bin !== null ? () => setFilter({ bin: null }) : undefined} />
       <TrainingTimesChart bins={data.bins} metric={metric} selected={selection.bin} unit={unit} onSelect={bin => setFilter({ bin })} />
+      {metric === 'improvements' ? <ComparisonContextNote context={group.comparisonContext} compared={comparableTimes(group)} testID="training-time-comparison-context" /> : null}
       <MetricDetail data={data} metric={metric} selected={selection.bin} />
       <View style={styles.block}><Heading level={2}>Por franja</Heading>
         {data.bands.map((band, i) => <View key={band.fromMinute} style={[styles.band, fontScale > 1.3 && styles.stacked]} accessible accessibilityLabel={`${BAND_LABELS[i]}, ${timeRange(band)}. ${timeMetricText(band, metric, unit)}. ${timeMetricCount(band, metric)} registros utilizados.`}>

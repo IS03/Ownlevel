@@ -193,11 +193,14 @@ export function MethodLine({ lanes, testID = 'comparisons-method', lead, leadLab
   const reduced = useReduceMotion();
   const [open, setOpen] = useState(false);
   const partial = lanes.includes('partial');
-  const line = partial ? 'Contexto parcial. No sabemos si cambiaste agarre o banco.' : 'Misma variante y mejor serie con cada peso.';
+  const line = partial ? lanes.includes('strict') ? 'Contexto completo y parcial' : 'Contexto parcial · variante sin registrar' : 'Contexto completo · misma variante';
   return <>
-    <Pressable accessibilityRole="button" accessibilityLabel={`${lead ? `${leadLabel ?? lead}. ` : ''}${line} Cómo comparamos`} onPress={() => { haptics.selection(); setOpen(true); }} testID={testID}
+    <Pressable accessibilityRole="button" accessibilityLabel={`${lead ? `${leadLabel ?? lead}. ` : ''}${line}. ${partial ? 'No sabemos si cambiaste agarre o banco. ' : ''}Cómo comparamos`} onPress={() => { haptics.selection(); setOpen(true); }} testID={testID}
       style={({ pressed }) => [styles.method, { borderColor: colors.border }, pressedStyle(pressed, reduced)]}>
-      <AppText muted variant="footnote" numeric style={styles.flex} testID={leadTestID}>{lead ?? line}</AppText>
+      <View style={styles.flex}>
+        {lead ? <AppText muted variant="footnote" numeric testID={leadTestID}>{lead}</AppText> : null}
+        <AppText muted variant="caption" testID={`${testID}-context`}>{line}</AppText>
+      </View>
       <AppText variant="footnote" style={{ color: colors.primary }}>Cómo comparamos</AppText>
     </Pressable>
     {open ? <AppSheet onClose={() => setOpen(false)} closeLabel="Cerrar" testID="comparisons-method-sheet" style={{ backgroundColor: colors.background }}>

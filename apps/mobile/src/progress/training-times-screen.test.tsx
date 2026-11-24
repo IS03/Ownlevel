@@ -78,3 +78,18 @@ it('keeps source failures distinct from no workouts and allows retry', async () 
   expect(v.queryByText('0 sesiones')).toBeNull();
   fireEvent.press(v.getByText('Reintentar')); await flush(); expect(mockRead).toHaveBeenCalledTimes(2);
 });
+
+it('shows the selected context and changes presentation without another read', async () => {
+  mockRead.mockImplementation(async (_q, selection) => {
+    const data = timesFixture(selection);
+    for (const group of [data.total, ...data.bins, ...data.bands]) group.comparisonContext = { complete: 0, partial: group.performance.improved };
+    return { status: 'ok', data, meta: { httpStatus: 200, durationMs: 1, outcome: 'ok' } };
+  });
+  const view = show(); await flush();
+  fireEvent.press(view.getByTestId('training-time-metric')); fireEvent.press(view.getByTestId('training-time-choose-improvements')); await flush();
+  expect(view.getByText('0 con contexto completo · 12 parciales')).toBeTruthy();
+  expect(mockRead).toHaveBeenCalledTimes(1);
+  fireEvent.press(view.getByTestId('training-time-bin-4')); await flush();
+  expect(view.getByText('0 con contexto completo · 6 parciales')).toBeTruthy();
+  expect(mockRead).toHaveBeenCalledTimes(2);
+});
