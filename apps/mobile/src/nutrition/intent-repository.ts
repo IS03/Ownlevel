@@ -1,3 +1,4 @@
+import { writeAccountRecord } from '@/platform/account-local-data';
 // Shared durable-intent storage. No offline queue or automatic transmission.
 export type NutritionStoragePort = { getItem: (key: string) => Promise<string | null>; setItem: (key: string, value: string) => Promise<void>; removeItem: (key: string) => Promise<void> };
 const queues = new WeakMap<NutritionStoragePort, Map<string, Promise<unknown>>>();
@@ -19,7 +20,7 @@ export class NutritionIntentRepository<T extends { intent: { idempotencyKey: str
   write(record: T) { return this.serialize(async () => {
     const previous = await this.port.getItem(this.key);
     if (previous && this.parse(JSON.parse(previous)).intent.idempotencyKey !== record.intent.idempotencyKey) throw new Error('Another pending nutrition intent');
-    await this.port.setItem(this.key, JSON.stringify(record));
+    await writeAccountRecord(this.port, this.key, JSON.stringify(record));
   }); }
   clear(idempotencyKey: string) { return this.serialize(async () => {
     const previous = await this.port.getItem(this.key);

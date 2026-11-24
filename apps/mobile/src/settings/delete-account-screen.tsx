@@ -1,3 +1,5 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { clearAccountLocalData } from '@/platform/account-local-data';
 import { useRef, useState } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -17,18 +19,19 @@ const WHAT: { icon: AppIconName; text: string }[] = [
 ];
 export const DELETED_NOTICE = 'Tu cuenta y todo lo que registraste se eliminaron.';
 const EXPIRED_NOTICE = 'Tu sesión venció. Entrá de nuevo para eliminar tu cuenta.';
+const UNCONFIRMED_NOTICE = 'Tu sesión venció y no pudimos confirmar la eliminación. Entrá de nuevo para comprobarlo.';
 type Phase = 'idle' | 'deleting' | 'uncertain';
 
 /** AJ7: honest, no guilt. Typing ELIMINAR enables the only red action. Deletion is idempotent server-side. */
 export function DeleteAccountScreen() {
   const { client } = useMobileApi();
-  const { signOut } = useMobileAuth();
+  const { signOut, session } = useMobileAuth();
   const router = useRouter();
   const { colors } = useOwnlevelTheme();
   const [text, setText] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');
   const [message, setMessage] = useState<string | null>(null);
-  // After one uncertain attempt, a rejected token means the account is already gone.
+  // A rejected token can also mean expiry: it is never proof that deletion succeeded.
   const attempted = useRef(false);
   const confirmed = text.trim().toLocaleUpperCase('es-AR') === 'ELIMINAR';
   const deleting = phase === 'deleting';
@@ -38,12 +41,17 @@ export function DeleteAccountScreen() {
     if (deleting || !confirmed || !client) return;
     setPhase('deleting');
     setMessage(null);
+    const owner = session?.user.id;
+    const finishDeletion = async () => {
+      if (owner) await clearAccountLocalData(AsyncStorage, owner);
+      await signOut(DELETED_NOTICE);
+    };
     const result = await deleteAccount(client);
     const wasAttempted = attempted.current;
     attempted.current = true;
-    if (result.status === 'ok') return void signOut(DELETED_NOTICE);
+    if (result.status === 'ok') return void await finishDeletion();
     if (result.status === 'unauthorized' || result.status === 'auth_required')
-      return void signOut(wasAttempted ? DELETED_NOTICE : EXPIRED_NOTICE);
+      return void await signOut(wasAttempted ? UNCONFIRMED_NOTICE : EXPIRED_NOTICE);
     if (result.status === 'validation') {
       attempted.current = wasAttempted;
       setPhase('idle');
