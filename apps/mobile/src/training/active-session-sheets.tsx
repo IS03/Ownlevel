@@ -92,9 +92,10 @@ export function SessionQuickHistory({ exercise, history, routineId = null, routi
  * Compact card (#513): completed sets only, consecutive identical sets in one row, target RIR once when shared.
  * Folding long sessions is visual only: «Usar» always hands over the whole session.
  */
-function QuickHistoryCard({ session, showRoutine, expanded, large, numberWidth, canUse, onExpand, onUse }: {
+export function QuickHistoryCard({ session, showRoutine, expanded, large, numberWidth, canUse, onExpand, onUse }: {
   session: QuickSessionHistoryDto; showRoutine: boolean; expanded: boolean; large: boolean; numberWidth: number; canUse: boolean;
-  onExpand: () => void; onUse: (session: QuickSessionHistoryDto) => void;
+  /** Without it the card only shows the session (#537 evidence): nothing is copied from there. */
+  onExpand: () => void; onUse?: (session: QuickSessionHistoryDto) => void;
 }) {
   const { colors } = useOwnlevelTheme();
   const date = quickHistoryDate(session.logDate);
@@ -110,7 +111,7 @@ function QuickHistoryCard({ session, showRoutine, expanded, large, numberWidth, 
         <AppText numeric variant="headline">{date}{showRoutine ? <AppText muted variant="headline">{` · ${session.routineName}`}</AppText> : null}</AppText>
         <AppText muted numeric variant="footnote">{summary}</AppText>
       </View>
-      <UseAction date={date} disabled={!canUse || completed === 0} onPress={() => onUse(session)} />
+      {onUse ? <UseAction date={date} disabled={!canUse || completed === 0} onPress={() => onUse(session)} /> : null}
     </View>
     {decisionLabel[session.decision] ? <AppText muted variant="footnote">{decisionLabel[session.decision]}</AppText> : null}
     {shown.length ? <View style={styles.sets}>{shown.map(row => <QuickHistorySetRow key={row.from} row={row} perRowRir={rir === 'mixed'} large={large} numberWidth={numberWidth} />)}</View> : null}

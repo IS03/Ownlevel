@@ -4,6 +4,8 @@ import type { MobileApiMutationResult, MobileApiRequestResult } from './results'
 import type { MobileTrainingExerciseMutation, MobileTrainingMuscleGroup } from './exercises';
 import type { MobileRoutineColorKey } from './home';
 import { MOBILE_TRAINING_SESSIONS_API_PATH } from './training-sessions';
+import { parseSessionLoadPatterns, type SessionLoadPatterns } from '../../../../src/lib/mobile-api/training-load-pattern-contract';
+export type { LoadPattern, LoadPatternSchemeSet, LoadPatternSession, LoadPatternSignal, SessionLoadPatterns } from '../../../../src/lib/mobile-api/training-load-pattern-contract';
 
 export type SessionSetDto = {
   setNumber: number;
@@ -76,6 +78,8 @@ export type SessionDetailDto = {
   };
   exercises: SessionExerciseDto[];
   quickHistory: { status: 'unavailable' } | { status: 'ok'; data: Record<string, QuickSessionHistoryDto[]> };
+  /** #537 · Optional read: absent (older server) or malformed is `unavailable`, which shows nothing. */
+  loadPatterns: SessionLoadPatterns;
 };
 export type SessionExerciseSyncDto =
   | { status: 'active'; updatedAt: string; payload: SessionExercisePayloadDto }
@@ -192,7 +196,7 @@ function history(value: unknown): SessionDetailDto['quickHistory'] | undefined {
   return { status: 'ok', data: result };
 }
 export function parseSessionDetail(value: unknown): SessionDetailDto | undefined {
-  if (!record(value, ['session', 'exercises', 'quickHistory']) || !record(value.session, ['id', 'routineId', 'routineNameSnapshot', 'name',
+  if (!record(value, ['session', 'exercises', 'quickHistory', 'loadPatterns']) || !record(value.session, ['id', 'routineId', 'routineNameSnapshot', 'name',
     'status', 'logDate', 'startedAt', 'endedAt', 'updatedAt', 'routineColor', 'metadata']) || !Array.isArray(value.exercises)) return undefined;
   const s = value.session;
   if (!id(s.id) || (s.routineId !== null && !id(s.routineId)) || !text(s.routineNameSnapshot) || typeof s.name !== 'string' || !s.name.trim() ||
@@ -211,7 +215,8 @@ export function parseSessionDetail(value: unknown): SessionDetailDto | undefined
   }
   // This auxiliary resource must not invalidate the operational detail.
   const quickHistory = history(value.quickHistory) ?? { status: 'unavailable' as const };
-  return { session: { ...s, routineColor: parseRoutineColor(s.routineColor)! } as SessionDetailDto['session'], exercises, quickHistory };
+  const loadPatterns = parseSessionLoadPatterns(value.loadPatterns);
+  return { session: { ...s, routineColor: parseRoutineColor(s.routineColor)! } as SessionDetailDto['session'], exercises, quickHistory, loadPatterns };
 }
 export function parseSessionExerciseSync(value: unknown): SessionExerciseSyncDto | undefined {
   if (!record(value, ['status', 'updatedAt', 'payload', 'sessionStatus'])) return undefined;
@@ -235,7 +240,7 @@ function path(sessionId: string, exerciseId?: string): `/${string}` {
 }
 export function fetchSessionDetail(client: MobileApiClient, sessionId: string, signal?: AbortSignal): Promise<MobileApiRequestResult<SessionDetailDto>> {
   // request(GET) preserves a true 404, unlike the generic read() surface.
-  return client.request({ method: 'GET', path: `${path(sessionId)}?routineAdditions=1`, signal, parse: (value) => {
+  return client.request({ method: 'GET', path: `${path(sessionId)}?routineAdditions=1&loadPatterns=1`, signal, parse: (value) => {
     const result = parseSessionDetail(value);
     return result?.session.id === sessionId ? result : undefined;
   } });

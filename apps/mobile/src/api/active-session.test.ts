@@ -29,6 +29,7 @@ const detail: SessionDetailDto = {
     restMinSecondsSnapshot: 90, restMaxSecondsSnapshot: 120, nextAdjustmentSnapshot: 'increase_reps',
     nextAdjustmentNoteSnapshot: null, updatedAt: timestamp, payload }],
   quickHistory: { status: 'ok', data: { [exerciseId]: [] } },
+  loadPatterns: { status: 'ok', data: { [relationId]: null } },
 };
 function response(status: number, body: unknown): Response {
   return { status, ok: status >= 200 && status < 300, text: async () => JSON.stringify(body) } as Response;
@@ -61,6 +62,11 @@ describe('M3.3B native session contracts (no UI)', () => {
   it('separates empty/unavailable history and tolerates a broken auxiliary resource', () => {
     expect(parseSessionDetail(detail)?.quickHistory).toEqual({ status: 'ok', data: { [exerciseId]: [] } });
     expect(parseSessionDetail({ ...detail, quickHistory: { status: 'unavailable' } })?.quickHistory).toEqual({ status: 'unavailable' });
+    // #537: an older server sends no loadPatterns, a malformed one is unavailable; neither blocks the session.
+    const { loadPatterns: _omit, ...older } = detail;
+    expect(parseSessionDetail(older)?.loadPatterns).toEqual({ status: 'unavailable' });
+    expect(parseSessionDetail({ ...detail, loadPatterns: { status: 'ok', data: { [relationId]: { signal: 'repeated' } } } })?.loadPatterns).toEqual({ status: 'unavailable' });
+    expect(parseSessionDetail(detail)?.loadPatterns).toEqual({ status: 'ok', data: { [relationId]: null } });
     expect(parseSessionDetail({ ...detail, quickHistory: { status: 'ok', data: { [exerciseId]: [{}] } } })?.quickHistory).toEqual({ status: 'unavailable' });
     expect(parseSessionDetail({ ...detail, quickHistory: { status: 'ok', data: { [exerciseId]: Array(7).fill({}) } } })?.quickHistory).toEqual({ status: 'unavailable' });
   });
@@ -211,6 +217,9 @@ describe('routine additions adoption', () => {
     const fetch = jest.fn<typeof globalThis.fetch>().mockResolvedValue(response(200, detail));
     await fetchSessionDetail(client(fetch), sessionId); await fetchSessionExerciseSync(client(fetch), sessionId, relationId);
     await saveSessionExercise(client(fetch), sessionId, relationId, { expectedUpdatedAt: timestamp, payload });
-    expect(fetch.mock.calls.every(([url]) => String(url).endsWith('?routineAdditions=1'))).toBe(true);
+    // #537: only the detail asks for load patterns; read-back and save keep their contract.
+    const urls = fetch.mock.calls.map(([url]) => String(url));
+    expect(urls[0]!.endsWith('?routineAdditions=1&loadPatterns=1')).toBe(true);
+    expect(urls.slice(1).every(url => url.endsWith('?routineAdditions=1'))).toBe(true);
   });
 });

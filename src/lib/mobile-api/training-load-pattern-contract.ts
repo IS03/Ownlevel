@@ -1,4 +1,3 @@
-import type { SessionSetDto } from "./training-session";
 
 /**
  * #537 · Portable wire contract (shared with Expo): a load pattern the active session can show next to an exercise.
@@ -10,6 +9,11 @@ import type { SessionSetDto } from "./training-session";
  * `key` identifies the pattern (signal, exercise, routine and scheme) so the user can silence that one and not another.
  */
 export type LoadPatternSignal = "repeated" | "surplus";
+/** Same shape as the session set DTO; declared here so the contract stays free of server modules (Expo imports it). */
+export type SessionSetDto = {
+  setNumber: number; targetReps: number | null; targetWeightKg: number | null; targetRir: number | null;
+  actualReps: number | null; actualWeightKg: number | null; isCompleted: boolean; notes: string | null;
+};
 export type LoadPatternSchemeSet = { reps: number; weightKg: number };
 export type LoadPatternSession = { sessionId: string; logDate: string; routineName: string; sets: SessionSetDto[] };
 export type LoadPattern = {

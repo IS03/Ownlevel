@@ -18,7 +18,7 @@ export function testDetail(): SessionDetailDto {
   return { session: { id: SESSION_ID, routineId: null, routineNameSnapshot: null, name: 'Sesión libre', status: 'in_progress', logDate: '2026-09-30',
     startedAt: VERSION, endedAt: null, updatedAt: VERSION, routineColor: null,
     metadata: { energyLevel: null, performanceLevel: null, painLevel: null, painNote: null, treadmillMinutes: null, treadmillDistanceKm: null, treadmillSpeedKmh: null, treadmillInclinePercent: null, notes: null } },
-    exercises: [testExercise(), testExercise(SECOND_ID, 2)], quickHistory: { status: 'ok', data: { [EXERCISE_ID]: [], [SECOND_ID]: [] } } };
+    exercises: [testExercise(), testExercise(SECOND_ID, 2)], quickHistory: { status: 'ok', data: { [EXERCISE_ID]: [], [SECOND_ID]: [] } }, loadPatterns: { status: 'unavailable' } };
 }
 export const FINISHED_VERSION = '2026-09-30T13:05:00.654321+00:00';
 export function testFinished(metadata: SessionFinishMetadata = { energyLevel: null, performanceLevel: null, painLevel: null, notes: null }): SessionFinishedDto {
