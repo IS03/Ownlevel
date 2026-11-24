@@ -54,3 +54,17 @@ it('keeps an unavailable source distinct from no interval and offers retry', asy
   expect(v.queryByText('0 de 0 sesiones con intervalo utilizable')).toBeNull();
   fireEvent.press(v.getByText('Reintentar')); await flush(); expect(mockRead).toHaveBeenCalledTimes(2);
 });
+
+it('keeps absent context unknown and uses the current bin breakdown when supplied', async () => {
+  const view = show(); await flush();
+  expect(view.getByText('Contexto sin desglose en esta lectura')).toBeTruthy();
+  mockRead.mockImplementation(async (_q, selection) => {
+    const data = recoveryFixture(selection);
+    for (const group of [data.total, ...data.groups]) group.comparisonContext = { complete: 0, partial: group.performance.improved + group.performance.stable + group.performance.declined };
+    return ok(data);
+  });
+  fireEvent.press(view.getByTestId('recovery-bin-0')); await flush();
+  const data = recoveryFixture({ scope: 'all', routine: null, bin: 0, offset: 0 }), group = data.groups[0]!;
+  expect(view.getByText(`0 con contexto completo · ${group.performance.improved + group.performance.stable + group.performance.declined} parciales`)).toBeTruthy();
+  expect(mockRead).toHaveBeenCalledTimes(2);
+});

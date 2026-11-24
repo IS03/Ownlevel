@@ -158,7 +158,7 @@ function Exercises({ model, router, routine, routines, onRoutine, order, onOrder
       <SingleGroup entries={groups.single} onOpen={open} />
       {!rows.length ? <AppText muted>Esta rutina todavía no tiene ejercicios comparados.</AppText> : null}
     </View>
-    {rows.length ? <MethodLine lanes={rows.some(entry => entry.lane === 'partial') ? ['partial'] : ['strict']} /> : null}
+    {rows.length ? <MethodLine lanes={[...new Set(rows.map(entry => entry.lane))]} /> : null}
   </>;
 }
 const shortDay = (date: string) => new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`)).replace('.', '');

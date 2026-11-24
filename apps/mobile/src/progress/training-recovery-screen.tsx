@@ -1,3 +1,4 @@
+import { ComparisonContextNote } from './comparison-context-note';
 import { useCallback, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -73,6 +74,7 @@ function RecoveryReader({ query }: { query: ProgressQuery }) {
         </View>)}
       </View>
       <AppText numeric variant="headline">{metricSay(group, 'improvements')}</AppText>
+      <ComparisonContextNote context={group.comparisonContext} compared={comparable(group)} testID="recovery-comparison-context" />
       <AppText muted numeric variant="footnote">{group.performance.stable} sin cambio observado · {group.performance.declined} bajaron · {group.performance.ambiguous} con señales mixtas · {group.performance.insufficient} sin comparación suficiente.</AppText>
       <AppText muted variant="footnote">Cada ejercicio, frente a su vez anterior. Describe coincidencias; no demuestra el efecto del intervalo.</AppText>
     </View>
