@@ -84,3 +84,17 @@ describe('hours between registered sessions', () => {
     expect(parseProgressTrainingRecovery({ ...first, coverage: { ...first.coverage, paired: 0 } })).toBeUndefined();
   });
 });
+
+
+it('preserves comparison provenance across recovery groups, pages and legacy reads', () => {
+  const source = recoveryFixture([plan('01'), plan('02'), plan('03'), plan('04'), plan('05')]);
+  source.exercises.forEach(exercise => { exercise.configuration = null; });
+  const result = read(source), context = result.total.comparisonContext!;
+  expect(context.complete).toBe(0); expect(context.partial).toBeGreaterThan(0);
+  expect(result.groups.reduce((sum, group) => sum + group.comparisonContext!.partial, 0)).toBe(context.partial);
+  expect(parseProgressTrainingRecovery(result)).toBeDefined();
+  const legacy = JSON.parse(JSON.stringify(result, (key, value) => key === 'comparisonContext' ? undefined : value));
+  expect(parseProgressTrainingRecovery(legacy)).toBeDefined();
+  result.total.comparisonContext!.complete++;
+  expect(parseProgressTrainingRecovery(result)).toBeUndefined();
+});

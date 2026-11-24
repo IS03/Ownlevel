@@ -1,4 +1,4 @@
-import { prepareTrainingTimes, trainingTimeMedian } from './training-times';
+import { prepareTrainingTimes, trainingTimeMedian, summarizeComparisonContext } from './training-times';
 import { instantMs } from './insights-engine/source-adapter';
 import { trainingStartTime } from './training-start-time';
 import type { InsightsSource } from './insights-engine/types';
@@ -50,14 +50,14 @@ function summarize(rows: RecoveryRow[]): RecoveryGroup {
   };
   const performance = { improved: 0, stable: 0, declined: 0, ambiguous: 0, insufficient: 0 };
   for (const row of rows) for (const key of Object.keys(performance) as (keyof typeof performance)[]) performance[key] += row.performance[key];
-  return { sessions: rows.length, energy: feelings('energy'), fatigue: feelings('fatigue'), performance };
+  return { comparisonContext: summarizeComparisonContext(rows), sessions: rows.length, energy: feelings('energy'), fatigue: feelings('fatigue'), performance };
 }
 export function buildTrainingRecovery(source: InsightsSource, options: { today: string; period: ProgressPeriod; revision: string; selection: RecoverySelection }): ProgressTrainingRecovery {
   const { today, period, revision, selection } = options;
   const prepared = prepareTrainingTimes(source, { today, period, selection: { routine: selection.routine, execution: null, bin: null, offset: 0 } });
   const sessions = new Map(source.sessions.map(s => [s.id, s]));
   const rows: RecoveryRow[] = prepared.rows.map(r => ({ id: r.id, date: r.date, name: r.name, routineId: r.routineId, startedAt: r.startedAt,
-    energy: r.energy, fatigue: r.fatigue, performance: r.performance, gap: trainingGap(source, sessions.get(r.id)!, selection.scope, today) }));
+    energy: r.energy, fatigue: r.fatigue, comparisonContext: r.comparisonContext, performance: r.performance, gap: trainingGap(source, sessions.get(r.id)!, selection.scope, today) }));
   const paired = rows.filter(r => r.gap.state === 'paired');
   const excluded = { no_previous: 0, no_routine: 0, uncertain_order: 0, invalid_previous: 0, overlap: 0 };
   for (const row of rows) if (row.gap.state !== 'paired') excluded[row.gap.state]++;

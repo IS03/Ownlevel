@@ -1,6 +1,6 @@
 import { isNutritionDate } from './nutrition-day-contract';
 import { parseProgressPeriod, type ProgressPeriod } from './progress-contract';
-import type { TrainingTimeCounts } from './progress-training-times-contract';
+import { validComparisonContext, validComparisonContextTotals, type ComparisonContext, type TrainingTimeCounts } from './progress-training-times-contract';
 
 export const RECOVERY_BINS = [
   { fromHours: 0, toHours: 24, label: 'Menos de 24 h' },
@@ -11,9 +11,10 @@ export const RECOVERY_BINS = [
 ] as const;
 export type RecoverySelection = { scope: 'all' | 'routine'; routine: string | null; bin: number | null; offset: number };
 export type RecoveryFeeling = { n: number; median: number | null; distribution: number[] };
-export type RecoveryGroup = { sessions: number; energy: RecoveryFeeling; fatigue: RecoveryFeeling; performance: TrainingTimeCounts };
+export type RecoveryGroup = { comparisonContext?: ComparisonContext; sessions: number; energy: RecoveryFeeling; fatigue: RecoveryFeeling; performance: TrainingTimeCounts };
 export type RecoveryGapState = 'paired' | 'no_previous' | 'no_routine' | 'uncertain_order' | 'invalid_previous' | 'overlap';
 export type RecoveryRow = {
+  comparisonContext?: ComparisonContext;
   id: string; date: string; name: string; routineId: string | null; startedAt: string;
   energy: { value: number | null; state: string }; fatigue: { value: number | null; state: string }; performance: TrainingTimeCounts;
   gap: { state: RecoveryGapState; hours: number | null; intervening: number | null; previous: { id: string; date: string; name: string; endedAt: string } | null };
@@ -32,7 +33,7 @@ const counts = (v: unknown): v is TrainingTimeCounts => object(v) && ['improved'
 const feeling = (v: unknown, max: number): v is RecoveryFeeling => object(v) && count(v.n) && v.n <= max
   && (v.n === 0 ? v.median === null : finite(v.median) && v.median >= 1 && v.median <= 5)
   && Array.isArray(v.distribution) && v.distribution.length === 5 && v.distribution.every(count) && v.distribution.reduce((a, b) => a + b, 0) === v.n;
-const group = (v: unknown): v is RecoveryGroup => object(v) && count(v.sessions) && feeling(v.energy, v.sessions) && feeling(v.fatigue, v.sessions) && counts(v.performance);
+const group = (v: unknown): v is RecoveryGroup => object(v) && count(v.sessions) && feeling(v.energy, v.sessions) && feeling(v.fatigue, v.sessions) && counts(v.performance) && validComparisonContext(v.comparisonContext, v.performance);
 const fact = (v: unknown) => object(v) && ['recorded', 'late', 'unknown_time', 'not_recorded', 'unreadable', 'other_instrument'].includes(String(v.state))
   && (v.state === 'recorded' ? count(v.value) && v.value >= 1 && v.value <= 5 : v.value === null);
 export const recoveryBin = (hours: number) => RECOVERY_BINS.findIndex(bin => hours >= bin.fromHours && (bin.toHours === null || hours < bin.toHours));
@@ -48,6 +49,7 @@ export function parseProgressTrainingRecovery(v: unknown): ProgressTrainingRecov
     || v.groups.reduce((sum, g) => sum + g.sessions, 0) !== v.total.sessions) return;
   const total = v.total;
   const groups = v.groups;
+  if (!validComparisonContextTotals((total as RecoveryGroup).comparisonContext, groups as RecoveryGroup[])) return;
   if (['energy', 'fatigue'].some(k => groups.reduce((sum, g) => sum + g[k as 'energy' | 'fatigue'].n, 0) !== total[k as 'energy' | 'fatigue'].n)) return;
   if (Object.keys(total.performance).some(k => groups.reduce((sum, g) => sum + g.performance[k as keyof TrainingTimeCounts], 0) !== total.performance[k as keyof TrainingTimeCounts])) return;
   if (!Array.isArray(v.routines) || !v.routines.every(r => object(r) && text(r.id) && text(r.name) && count(r.sessions))
@@ -57,7 +59,7 @@ export function parseProgressTrainingRecovery(v: unknown): ProgressTrainingRecov
   const rows = v.page.rows;
   if (v.page.total !== (selection.bin === null ? v.coverage.sessions - v.coverage.currentTimeExcluded : groups[selection.bin]!.sessions)) return;
   if (!rows.every(r => object(r) && text(r.id) && isNutritionDate(r.date) && r.date >= period.start && r.date <= period.end && text(r.name)
-    && (r.routineId === null || text(r.routineId)) && text(r.startedAt) && Number.isFinite(Date.parse(r.startedAt)) && counts(r.performance) && fact(r.energy) && fact(r.fatigue)
+    && (r.routineId === null || text(r.routineId)) && text(r.startedAt) && Number.isFinite(Date.parse(r.startedAt)) && counts(r.performance) && validComparisonContext(r.comparisonContext, r.performance) && fact(r.energy) && fact(r.fatigue)
     && object(r.gap) && ['paired', ...reasons].includes(String(r.gap.state))
     && (r.gap.state === 'paired' ? finite(r.gap.hours) && r.gap.hours >= 0 && object(r.gap.previous) && text(r.gap.previous.id) && isNutritionDate(r.gap.previous.date)
       && text(r.gap.previous.name) && text(r.gap.previous.endedAt) && Number.isFinite(Date.parse(r.gap.previous.endedAt))
