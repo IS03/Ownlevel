@@ -22,6 +22,9 @@ import { ExerciseNotice } from './exercise-notice';
 import { draftUsingHistory, durationLabel, quickSessions } from './active-session-model';
 import { SessionRestClock } from './session-rest-clock';
 import { SessionExercisePicker, SessionQuickHistory } from './active-session-sheets';
+import { LoadPatternSheet, type LoadPatternChoice } from './load-pattern-sheet';
+import { useLoadPatternSilence } from './load-pattern-silence';
+import { activeSessionStorage } from './active-session-native-storage';
 import { ExerciseEditorModal } from './exercise-editor-modal';
 import { useActiveSession } from './use-active-session';
 import { NativeReorderItem, NativeReorderList, SessionDragScrollContext, closeSwipeOnScroll } from './session-native-interactions';
@@ -60,11 +63,13 @@ function SessionProgressHeader({ controller, color, active }: { controller: Acti
 export function ActiveSessionScreen({ client, userId, sessionId }: { client: MobileApiClient; userId: string; sessionId: string }) {
   const { controller, state } = useActiveSession(client, userId, sessionId);
   const configurations = useExerciseConfigurations(client, userId, sessionId);
-  return <ActiveSessionView controller={controller} state={state} client={client} configurations={configurations} />;
+  return <ActiveSessionView controller={controller} state={state} client={client} configurations={configurations} userId={userId} />;
 }
-export function ActiveSessionView({ controller, state, client, configurations }: { controller: ActiveSessionController; state: ReturnType<ActiveSessionController['getSnapshot']>; client: MobileApiClient;
+export function ActiveSessionView({ controller, state, client, configurations, userId = '' }: { controller: ActiveSessionController; state: ReturnType<ActiveSessionController['getSnapshot']>; client: MobileApiClient;
   /** #367: optional. Without it the session works exactly as before. */
-  configurations?: ExerciseConfigurationJournal }) {
+  configurations?: ExerciseConfigurationJournal;
+  /** #537: the account whose silenced load patterns apply. Without it nothing is stored (silencing lasts this screen only). */
+  userId?: string }) {
   const { colors } = useOwnlevelTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -101,6 +106,10 @@ export function ActiveSessionView({ controller, state, client, configurations }:
   const [creatorOpen, setCreatorOpen] = useState(false);
   const creatorAfterDismiss = useRef(false);
   const [historyId, setHistoryId] = useState<string | null>(null);
+  // #537: the open evidence sheet, patterns hidden for this session («Más adelante») and the silenced ones on this device.
+  const [patternId, setPatternId] = useState<string | null>(null);
+  const [laterPatterns, setLaterPatterns] = useState<ReadonlySet<string>>(() => new Set());
+  const patternSilence = useLoadPatternSilence(activeSessionStorage, userId);
   const [revealed, setRevealed] = useState<{ id: string; n: number } | null>(null);
   const [finishOpen, setFinishOpen] = useState(false);
   const [finishTransitionDone, setFinishTransitionDone] = useState(false);
@@ -205,6 +214,7 @@ export function ActiveSessionView({ controller, state, client, configurations }:
     expandedRef.current = expandedRef.current === id ? null : id; setExpanded(expandedRef.current);
   }, [controller]);
   const showHistory = useCallback((id: string) => setHistoryId(id), []);
+  const showPattern = useCallback((id: string) => setPatternId(id), []);
   const remove = useCallback((id: string, name: string) => {
     const exercise = controller.getExercise(id);
     if (!exercise || !controller.canEdit(id)) return;
@@ -243,6 +253,21 @@ export function ActiveSessionView({ controller, state, client, configurations }:
   const active = detail.session.status === 'in_progress';
   const accent = colors.primary;
   const historyExercise = detail.exercises.find(exercise => exercise.id === historyId);
+  // A failed read (`unavailable`) shows nothing: it is never read as «no pattern».
+  const visiblePattern = (sessionExerciseId: string) => {
+    const pattern = detail.loadPatterns.status === 'ok' ? detail.loadPatterns.data[sessionExerciseId] ?? null : null;
+    return pattern && !patternSilence.silenced.has(pattern.key) && !laterPatterns.has(pattern.key) ? pattern : null;
+  };
+  const patternExercise = detail.exercises.find(exercise => exercise.id === patternId);
+  const openPattern = patternExercise ? visiblePattern(patternExercise.id) : null;
+  const choosePattern = (sessionExerciseId: string, key: string, choice: LoadPatternChoice) => {
+    if (choice === 'keep') patternSilence.silence(key);
+    else if (choice === 'later') setLaterPatterns(current => new Set(current).add(key));
+    // «Para la próxima» is the existing «Próxima vez» decision, through the same autosave. Today's sets are never touched.
+    else if ((choice === 'increase_reps' || choice === 'increase_weight') && !locked && controller.canEdit(sessionExerciseId)) {
+      controller.change(sessionExerciseId, current => ({ ...current, decision: choice, decisionNote: '' }), true);
+    }
+  };
   return <KeyboardAvoidingView style={[styles.screen, { backgroundColor: colors.background }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
     <SafeAreaView edges={['left', 'right']} style={styles.screen} testID="active-session-ready"><SessionDragScrollContext.Provider value={dragScroll}>
     <GestureDetector gesture={scrollGesture}><Animated.ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} ref={scrollRef} animatedProps={scrollProps} directionalLockEnabled removeClippedSubviews={false} onScroll={onScroll} scrollEventThrottle={16} onContentSizeChange={(_width, height) => { contentHeight.set(height); }}
@@ -268,6 +293,7 @@ export function ActiveSessionView({ controller, state, client, configurations }:
         {detail.exercises.map(exercise => <NativeReorderItem key={exercise.id} id={exercise.id} gap={0}>
           <ActiveExerciseCard reveal={revealed?.id === exercise.id ? revealed.n : 0} addToRoutineName={detail.session.routineId ? detail.session.routineNameSnapshot ?? detail.session.name : null} controller={controller} id={exercise.id} expanded={expanded === exercise.id} locked={locked} refreshing={state.refreshing} sessionStorageError={state.storageError} reorderDisabled={structuralLocked} onToggle={toggle} onHistory={showHistory} onRemove={remove} onSheetChange={cardSheet}
             onReveal={top => { if (reveal.current === exercise.id) { reveal.current = null; scrollRef.current?.scrollTo({ y: Math.max(0, scrollY.get() + top - headerHeight - spacing.md), animated: !reduceMotion }); } }}
+            loadPattern={visiblePattern(exercise.id)} onLoadPattern={showPattern}
             variant={configurations ? <ExerciseVariantRow journal={configurations} sessionExerciseId={exercise.id} name={exercise.nameSnapshot} editable={active && !locked} /> : null}
             historyCard={exercise.routineExerciseId === null && dismissed !== null && !dismissed.includes(exercise.exerciseId) && detail.quickHistory.status === 'ok' && quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).some(item => item.sets.some(set => set.isCompleted)) ?
               <SessionLastHistory history={quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).find(item => item.sets.some(set => set.isCompleted))!} disabled={locked} onUse={() => { if (detail.quickHistory.status === 'ok') applyHistory(exercise.id, quickSessions(detail.quickHistory.data[exercise.exerciseId] ?? []).find(item => item.sets.some(set => set.isCompleted))!, exercise.exerciseId); }} onDismiss={() => dismissHistory(exercise.exerciseId)} /> : null} />
@@ -276,7 +302,7 @@ export function ActiveSessionView({ controller, state, client, configurations }:
         <Surface><AppText muted>Esta sesión no tiene ejercicios.</AppText><AppText muted variant="caption">Agregá uno desde tu biblioteca para empezar a registrar series.</AppText></Surface>}
     </Animated.ScrollView></GestureDetector></SessionDragScrollContext.Provider></SafeAreaView>
     <SessionScrollHeader title={detail.session.name} clock={<SessionClock session={detail.session} progress={progress} />} compact={header.compact} controls={header.controls}
-      pinned={reader || reduceMotion || keyboard || dialog || pickerOpen || creatorOpen || !!historyId || finishOpen || Object.values(cardSheets).some(Boolean) || !!state.interaction} disabled={!canFinish} top={insets.top}
+      pinned={reader || reduceMotion || keyboard || dialog || pickerOpen || creatorOpen || !!historyId || !!patternId || finishOpen || Object.values(cardSheets).some(Boolean) || !!state.interaction} disabled={!canFinish} top={insets.top}
       completed={progress.completedSets} total={progress.totalSets} onBack={returnToTraining} onCancel={requestCancel} onFinish={() => { Keyboard.dismiss(); afterRemoval(() => setFinishOpen(true)); }} onHeight={setHeaderHeight} />
     {actionState.notice ? <ExerciseNotice bottomOffset={Math.max(insets.bottom, restOverlayHeight) - insets.bottom} message={actionState.notice.message} disabled={locked || actionState.working} undo={actionState.notice.undo ? () => void actions.undo() : undefined}
       pending={actionState.notice.tone === 'pending'} onDismiss={actionState.notice.tone === 'confirmed' && !actionState.working ? () => actions.dismissNotice() : undefined} /> : null}
@@ -291,6 +317,8 @@ export function ActiveSessionView({ controller, state, client, configurations }:
         if (confirmed || controller.getSnapshot().intent) { setCreatorOpen(false); return null; }
         return controller.getSnapshot().notice ?? 'No pudimos agregar el ejercicio.';
       }} /> : null}
+    {patternExercise && openPattern ? <LoadPatternSheet exercise={patternExercise} pattern={openPattern} canDecide={!locked && controller.canEdit(patternExercise.id)}
+      onChoose={choice => choosePattern(patternExercise.id, openPattern.key, choice)} onClose={() => setPatternId(null)} /> : null}
     {historyExercise ? <SessionQuickHistory exercise={historyExercise} canUse={!locked && controller.canEdit(historyExercise.id)} history={detail.quickHistory} routineId={detail.session.routineId} routineName={detail.session.routineNameSnapshot ?? detail.session.name} onUse={session => applyHistory(historyExercise.id, session)} onClose={() => setHistoryId(null)} onRefresh={() => void controller.refresh()} /> : null}
   </KeyboardAvoidingView>;
 }

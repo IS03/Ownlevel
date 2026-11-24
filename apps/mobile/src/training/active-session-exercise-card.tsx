@@ -11,6 +11,8 @@ import type { ActiveSessionController, ExercisePhase } from './active-session-co
 import { appendSessionSet, compactActual, draftIncomplete, nextReminder, removeSessionSet, resetSessionSet, setProgress, type SessionExerciseDraft } from './active-session-model';
 import { SessionRestDuration } from './session-rest-duration';
 import { restSeconds } from './active-session-model';
+import { LoadPatternRow } from './load-pattern-row';
+import type { LoadPattern } from '@/api/active-session';
 import { formatRest, muscleGroupLabel } from './exercise-library-model';
 import { SessionNoteSheet } from './active-session-sheets';
 import { NativeDragHandle, NativeReorderItem, NativeReorderList, NativeSwipeActions } from './session-native-interactions';
@@ -37,12 +39,14 @@ function SeriesColumns({ ordinal, kg, reps, rir, completed, header = false }: {
     <View style={styles.completedColumn}>{completed}</View>
   </View>;
 }
-export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller, id, expanded, locked, refreshing = false, sessionStorageError = false, reorderDisabled = false, addToRoutineName, onToggle, onHistory, onRemove, historyCard, variant, onSheetChange, onReveal, reveal = 0 }: {
+export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller, id, expanded, locked, refreshing = false, sessionStorageError = false, reorderDisabled = false, addToRoutineName, onToggle, onHistory, onRemove, historyCard, variant, onSheetChange, onReveal, reveal = 0, loadPattern = null, onLoadPattern }: {
   /** Bumped after "Usar": the set rows remount and cascade in with the copied values. */
   reveal?: number;
   controller: ActiveSessionController; id: string; expanded: boolean; locked: boolean; refreshing?: boolean; sessionStorageError?: boolean; reorderDisabled?: boolean; addToRoutineName?: string | null; historyCard?: ReactNode;
   /** #367: the optional variant row of this session exercise. */
   variant?: ReactNode; onSheetChange?: (id: string, open: boolean) => void; onReveal?: (top: number) => void;
+  /** #537: a confirmed load pattern of the previous executions (already filtered for silenced or «Más adelante»). */
+  loadPattern?: LoadPattern | null; onLoadPattern?: (id: string) => void;
   onToggle: (id: string) => void; onHistory: (id: string) => void; onRemove: (id: string, name: string) => void;
 }) {
   const subscribe = useCallback((listener: () => void) => controller.subscribeExercise(id, listener), [controller, id]);
@@ -141,6 +145,8 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
         </Pressable></View>
       {variant}
       {historyCard}
+      {loadPattern && onLoadPattern && contextual && draft.decision === 'maintain' ? <LoadPatternRow pattern={loadPattern} disabled={locked}
+        onPress={() => { Keyboard.dismiss(); onLoadPattern(id); }} /> : null}
       <SeriesColumns header ordinal={<AppText muted style={styles.columnTitle} variant="footnote">#</AppText>}
         kg={<AppText muted style={styles.columnTitle} variant="footnote">KG</AppText>} reps={<AppText muted style={styles.columnTitle} variant="footnote">REPS</AppText>}
         rir={<AppText muted style={styles.columnTitle} variant="footnote">RIR</AppText>} completed={<AppText muted style={styles.columnTitle} variant="footnote">✓</AppText>} />

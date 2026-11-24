@@ -1155,3 +1155,60 @@ describe('feelings capture at start and finish (#462, #473)', () => {
   });
 });
 
+/** #537 · Synthetic pattern only: PRESS repeated 3 × 10 · 60 kg in four previous sessions of its routine. */
+function patternDetail(status: 'ok' | 'unavailable' = 'ok') {
+  const detail = testDetail();
+  const sets = [1, 2, 3].map(setNumber => ({ setNumber, targetReps: 10, targetWeightKg: 60, targetRir: 2, actualReps: 10, actualWeightKg: 60, isCompleted: true, notes: null }));
+  const sessions = ['2026-09-26', '2026-09-22', '2026-09-18', '2026-09-14'].map((logDate, index) => ({ sessionId: `55555555-5555-4555-8555-00000000000${index}`, logDate, routineName: 'PUSH', sets }));
+  detail.loadPatterns = status === 'unavailable' ? { status } : { status, data: {
+    [EXERCISE_ID]: { key: `repeated|ex|routine|10x60,10x60,10x60`, signal: 'repeated', scheme: [1, 2, 3].map(() => ({ reps: 10, weightKg: 60 })), count: 4, sessions },
+    [SECOND_ID]: null } };
+  return detail;
+}
+function lowerSheet(view: ReturnType<typeof render>, closeLabel: string) {
+  const lowered = view.UNSAFE_root.findAll(node => typeof node.props.onDismiss === 'function' && node.props.isPresented === false
+    && node.findAll(child => child.props.accessibilityLabel === closeLabel).length > 0)[0];
+  act(() => { lowered!.props.onDismiss(); });
+}
+describe('#537 · esquema repetido en la sesión activa', () => {
+  beforeEach(() => { mockHeaderOptions = {}; mockSelection.mockReset(); mockTrigger.mockReset(); });
+  afterEach(() => { jest.restoreAllMocks(); });
+  it('shows the row inside the expanded exercise; marking a set never moves it; unavailable shows nothing', async () => {
+    const { controller, Screen } = fixture(patternDetail()); await controller.refresh();
+    const view = renderWithPressOpen(<Screen />); await act(async () => {});
+    expect(view.getByRole('button', { name: 'Repetiste este esquema 4 veces. 3 × 10 · 60 kg' })).toBeTruthy();
+    fireEvent(view.getByRole('checkbox', { name: 'Serie 1 completada' }), 'accessibilityTap'); await act(async () => {});
+    expect(view.getByTestId('load-pattern-repeated')).toBeTruthy();
+    const empty = fixture(patternDetail('unavailable')); await empty.controller.refresh();
+    const other = renderWithPressOpen(<empty.Screen />); await act(async () => {});
+    expect(other.queryByTestId('load-pattern-repeated')).toBeNull();
+  });
+  it('the sheet shows the evidence; «Más peso» sets the existing «Próxima vez» decision and leaves today\'s sets as they were', async () => {
+    const { controller, Screen } = fixture(patternDetail()); await controller.refresh();
+    const view = renderWithPressOpen(<Screen />); await act(async () => {});
+    const before = JSON.stringify(controller.getExercise(EXERCISE_ID)!.draft.sets);
+    fireEvent.press(view.getByTestId('load-pattern-repeated'));
+    expect(view.getByText('Tu esquema reciente')).toBeTruthy();
+    expect(view.getByText('Lo registraste en estas 4 sesiones.')).toBeTruthy();
+    for (const id of [0, 1, 2, 3]) expect(view.getByTestId(`quick-history-session-55555555-5555-4555-8555-00000000000${id}`)).toBeTruthy();
+    expect(view.queryByRole('button', { name: /^Usar/ })).toBeNull();
+    fireEvent.press(view.getByRole('button', { name: 'Más peso' }));
+    lowerSheet(view, 'Cerrar esquema reciente'); await act(async () => {});
+    expect(controller.getExercise(EXERCISE_ID)!.draft.decision).toBe('increase_weight');
+    expect(JSON.stringify(controller.getExercise(EXERCISE_ID)!.draft.sets)).toBe(before);
+    // With a decision already set, the hint does not insist.
+    expect(view.queryByTestId('load-pattern-repeated')).toBeNull();
+  });
+  it('«Más adelante» hides it for this session; «Revisar series de hoy» only closes the sheet', async () => {
+    const { controller, Screen } = fixture(patternDetail()); await controller.refresh();
+    const view = renderWithPressOpen(<Screen />); await act(async () => {});
+    fireEvent.press(view.getByTestId('load-pattern-repeated'));
+    fireEvent.press(view.getByRole('button', { name: 'Revisar series de hoy' })); lowerSheet(view, 'Cerrar esquema reciente');
+    expect(view.getByTestId('load-pattern-repeated')).toBeTruthy();
+    expect(controller.getExercise(EXERCISE_ID)!.draft.decision).toBe('maintain');
+    fireEvent.press(view.getByTestId('load-pattern-repeated'));
+    fireEvent.press(view.getByRole('button', { name: 'Más adelante' })); lowerSheet(view, 'Cerrar esquema reciente');
+    expect(view.queryByTestId('load-pattern-repeated')).toBeNull();
+  });
+});
+
