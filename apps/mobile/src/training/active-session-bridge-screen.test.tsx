@@ -362,17 +362,21 @@ describe('native active session screen', () => {
     await waitFor(() => expect(view.getByRole('button', { name: 'Iniciar descanso' })).toBeTruthy());
     const inlineRest = view.getByTestId(`exercise-rest-${EXERCISE_ID}`);
     fireEvent.press(view.getByRole('button', { name: 'Iniciar descanso' }));
-    expect(view.getByText('Descanso · PRESS')).toBeTruthy(); expect(controller.getTimer()).not.toBeNull();
-    const floatingTimer = view.getByLabelText('Temporizador de descanso');
-    expect(view.getByTestId(`exercise-rest-${EXERCISE_ID}`)).toBe(inlineRest);
-    expect(view.getByRole('button', { name: 'Saltar descanso' })).toBeTruthy();
+    await view.findByLabelText('Sumar 15 segundos');
+    const floating = () => view.getByRole('button', { name: /Abrir reloj de descanso/ });
+    expect(floating()).toBeTruthy();
     const end = controller.getTimer()!.endAt;
-    fireEvent.press(view.getByLabelText('Sumar 15 segundos')); expect(controller.getTimer()!.endAt).toBe(end + 15000);
-    expect(view.getByLabelText('Temporizador de descanso')).toBe(floatingTimer);
-    fireEvent.press(view.getByRole('button', { name: 'Saltar' })); expect(controller.getTimer()).toBeNull();
+    fireEvent.press(view.getByLabelText('Sumar 15 segundos'));
+    expect(controller.getTimer()!.endAt).toBe(end + 15000);
+    fireEvent.press(floating());
+    fireEvent.press(view.getByLabelText('Minimizar reloj'));
+    expect(controller.getTimer()!.endAt).toBe(end + 15000);
+    fireEvent.press(floating());
+    fireEvent.press(view.getByRole('button', { name: 'Saltar este descanso' }));
+    expect(controller.getTimer()).toBeNull();
     expect(view.getByTestId(`exercise-rest-${EXERCISE_ID}`)).toBe(inlineRest);
     fireEvent.press(view.getByRole('button', { name: 'Iniciar descanso' }));
-    fireEvent.press(view.getByRole('button', { name: 'Saltar descanso' })); expect(controller.getTimer()).toBeNull();
+    fireEvent.press(within(inlineRest).getByRole('button', { name: 'Saltar descanso' })); expect(controller.getTimer()).toBeNull();
     controller.dispose();
   });
   it('signals the rest deadline once and keeps the timer mounted when adjusting seconds', async () => {
@@ -382,11 +386,13 @@ describe('native active session screen', () => {
     try {
       await controller.refresh(); const view = renderWithPressOpen(<Screen />);
       fireEvent.press(view.getByRole('button', { name: 'Iniciar descanso' }));
+      act(() => { jest.advanceTimersByTime(0); });
+      fireEvent.press(view.getByRole('button', { name: /Abrir reloj de descanso/ }));
       fireEvent.press(view.getByLabelText('Restar 15 segundos'));
-      expect(mockSelection).toHaveBeenCalledTimes(2);
+      expect(mockSelection).toHaveBeenCalledTimes(3);
       expect(mockTrigger).not.toHaveBeenCalled();
       act(() => { jest.advanceTimersByTime(105_000); });
-      expect(view.queryByLabelText('Temporizador de descanso')).toBeNull();
+      expect(view.getByText('Descanso terminado')).toBeTruthy();
       expect(mockTrigger.mock.calls).toEqual([['restEnd']]);
       act(() => { jest.advanceTimersByTime(5000); });
       expect(mockTrigger.mock.calls).toEqual([['restEnd']]);

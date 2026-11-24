@@ -88,6 +88,7 @@ export class ActiveSessionController {
   private readonly timerListeners = new Set<() => void>();
   private readonly recoveryFlights = new Map<string, Promise<void>>();
   private rest: RestDeadline | null = null;
+  private automaticRest = false;
   private initialized = false;
   private intentHydrated = false;
   private disposed = false;
@@ -195,7 +196,15 @@ export class ActiveSessionController {
   change(id: string, updater: (draft: SessionExerciseDraft) => SessionExerciseDraft, immediate = false) {
     const entry = this.entries.get(id); if (!entry || !this.canEdit(id)) return;
     entry.revision++; entry.writeId = this.generateKey();
-    this.publish(entry, { draft: updater(entry.snapshot.draft) });
+    const draft = updater(entry.snapshot.draft);
+    this.publish(entry, { draft });
+    const rest = this.rest;
+    if (rest?.exerciseId === id && rest.sourceSet) {
+      const { localId } = rest.sourceSet;
+      const position = draft.sets.findIndex(set => set.localId === localId && set.isCompleted);
+      if (position < 0) this.skipRest();
+      else if (position !== rest.sourceSet.position) this.setRest({ ...rest, sourceSet: { localId, position } });
+    }
     void this.persist(entry);
     if (recoveryPhases.has(entry.snapshot.phase)) return;
     try { exercisePayload(entry.snapshot.draft); }
@@ -405,22 +414,56 @@ export class ActiveSessionController {
       entry.paused = true; this.publish(entry, { phase: 'removed', error: 'El ejercicio fue quitado de la sesión. Su borrador se conserva.' });
     }
     if (!this.initialized) {
-      try { this.setRest(restoreRestDeadline(await this.repository.readTimer(), ids, this.now()), false); this.initialized = true; }
+      try {
+        const [storedTimer, automaticRest] = await Promise.all([this.repository.readTimer(), this.repository.readAutomaticRest()]);
+        this.automaticRest = automaticRest;
+        const restored = restoreRestDeadline(storedTimer, ids, this.now());
+        this.setRest(restored, false);
+        this.initialized = true;
+      }
       catch { this.update({ storageError: true }); }
     }
     if (this.rest && (!ids.has(this.rest.exerciseId) || detail.session.status !== 'in_progress')) this.setRest(null);
+    const rest = this.rest;
+    if (rest?.sourceSet) {
+      const sets = this.entries.get(rest.exerciseId)?.snapshot.draft.sets ?? [];
+      const source = sets.find(set => set.localId === rest.sourceSet?.localId) ?? sets[rest.sourceSet.position];
+      // Confirmed server rows get new local IDs after remount. Use the saved position to recover the source.
+      if (!source?.isCompleted) this.skipRest();
+      else if (source.localId !== rest.sourceSet.localId) this.setRest({ ...rest, sourceSet: { ...rest.sourceSet, localId: source.localId } });
+    }
     this.writesPaused = false; this.update({ refreshing: false }); this.summarize();
     if (!this.snapshot.fenced && !this.snapshot.intent) for (const [id, entry] of this.entries) {
       if (ids.has(id) && this.canWrite(entry) && entry.snapshot.dirty) void this.flush(id);
     }
   }
-  startRest(id: string, duration?: number) {
+  getAutomaticRest = () => this.automaticRest;
+  setAutomaticRest(enabled: boolean) {
+    this.automaticRest = enabled;
+    this.timerListeners.forEach(listener => listener());
+    void this.repository.writeAutomaticRest(enabled).catch(() => this.update({ storageError: true }));
+  }
+  toggleSetCompleted(id: string, setId: string) {
+    const entry = this.entries.get(id);
+    if (!entry || !this.canEdit(id)) return false;
+    const position = entry.snapshot.draft.sets.findIndex(row => row.localId === setId);
+    const set = entry.snapshot.draft.sets[position];
+    if (!set) return false;
+    const completed = !set.isCompleted;
+    this.change(id, draft => ({ ...draft, sets: draft.sets.map(row => row.localId === setId ? { ...row, isCompleted: completed } : row) }), true);
+    if (completed && this.automaticRest) {
+      if (entry.snapshot.draft.sets.some(row => !row.isCompleted)) this.startRest(id, undefined, { localId: setId, position });
+      else if (this.rest?.exerciseId === id && this.rest.sourceSet) this.skipRest();
+    }
+    return completed;
+  }
+  startRest(id: string, duration?: number, sourceSet?: RestDeadline['sourceSet']) {
     const entry = this.entries.get(id); if (!entry || !this.canEdit(id)) return;
     const seconds = duration ?? restSeconds(entry.snapshot.exercise);
     if (seconds === null || !Number.isInteger(seconds) || seconds <= 0 || seconds > 3600) return;
-    this.setRest({ exerciseId: id, exerciseName: entry.snapshot.exercise.nameSnapshot, endAt: this.now() + seconds * 1000 });
+    this.setRest({ exerciseId: id, exerciseName: entry.snapshot.exercise.nameSnapshot, endAt: this.now() + seconds * 1000, ...(sourceSet ? { sourceSet } : {}) });
   }
-  adjustRest(seconds: number) { if (this.rest && !this.snapshot.fenced && !this.snapshot.intent) this.setRest({ ...this.rest, endAt: Math.max(this.now(), this.rest.endAt + seconds * 1000) }); }
+  adjustRest(seconds: number) { if (this.rest && !this.snapshot.fenced && !this.snapshot.intent) this.setRest({ ...this.rest, endAt: Math.max(this.now(), Math.max(this.now(), this.rest.endAt) + seconds * 1000) }); }
   skipRest() { this.setRest(null); }
   private setRest(timer: RestDeadline | null, persist = true) {
     this.rest = timer; if (!this.disposed) this.timerListeners.forEach(listener => listener());

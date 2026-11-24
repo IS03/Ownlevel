@@ -213,9 +213,8 @@ function ActiveSetRow({ controller, id, name, set, index, count, editable, enter
   const tapCompleted = useCallback(() => {
     setTapped(true);
     // Brand event only when a set gets completed; un-completing is silent.
-    if (!set.isCompleted) triggerHaptic('setComplete');
-    controller.change(id, current => ({ ...current, sets: current.sets.map(row => row.localId === set.localId ? { ...row, isCompleted: !row.isCompleted } : row) }), true);
-  }, [controller, id, set.localId, set.isCompleted]);
+    if (controller.toggleSetCompleted(id, set.localId)) triggerHaptic('setComplete');
+  }, [controller, id, set.localId]);
   const mutate = (operation: (draft: SessionExerciseDraft, position: number) => SessionExerciseDraft) => controller.change(id, current => operation(current, current.sets.findIndex(row => row.localId === set.localId)), true);
   const reset = () => mutate(resetSessionSet);
   const remove = () => {

@@ -71,6 +71,8 @@ export class SessionDraftRepository {
       await writeAccountRecord(this.port, key, JSON.stringify([...new Set([...ids, exerciseId])]));
     });
   }
+  readAutomaticRest() { return this.read(`${this.prefix}ui.automatic-rest`).then(value => value === true); }
+  writeAutomaticRest(enabled: boolean) { return this.write(`${this.prefix}ui.automatic-rest`, enabled); }
   readTimer() { return this.read(`${this.prefix}timer`); }
   writeTimer(timer: RestDeadline | null) {
     const key = `${this.prefix}timer`;

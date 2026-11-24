@@ -1,7 +1,7 @@
 PODS:
   - EXApplication (57.0.3):
     - ExpoModulesCore
-  - EXConstants (57.0.19):
+  - EXConstants (57.0.25):
     - ExpoModulesCore
   - EXJSONUtils (57.0.2)
   - EXManifests (57.0.2):
@@ -182,6 +182,8 @@ PODS:
     - Yoga
   - ExpoAsset (57.0.18):
     - ExpoModulesCore
+  - ExpoBlur (57.0.3):
+    - ExpoModulesCore
   - ExpoDomWebView (57.0.1):
     - ExpoModulesCore
   - ExpoFileSystem (57.0.7):
@@ -233,6 +235,8 @@ PODS:
     - ExpoModulesJSI
     - ExpoModulesWorklets
     - RNWorklets
+  - ExpoNotifications (57.0.26):
+    - ExpoModulesCore
   - ExpoRouter (57.0.22):
     - ExpoModulesCore
     - RNScreens
@@ -256,6 +260,8 @@ PODS:
   - hermes-engine (250829098.0.17):
     - hermes-engine/Pre-built (= 250829098.0.17)
   - hermes-engine/Pre-built (250829098.0.17)
+  - OwnlevelFinishControls (1.0.0):
+    - ExpoModulesCore
   - OwnlevelKeyboardSheet (1.0.0):
     - ExpoModulesCore
   - OwnlevelPageControl (1.0.0):
@@ -2490,6 +2496,7 @@ DEPENDENCIES:
   - expo-dev-menu (from `../node_modules/expo-dev-menu`)
   - expo-dev-menu-interface (from `../node_modules/expo-dev-menu-interface/ios`)
   - ExpoAsset (from `../node_modules/expo-asset/ios`)
+  - ExpoBlur (from `../node_modules/expo-blur/ios`)
   - "ExpoDomWebView (from `../node_modules/@expo/dom-webview/ios`)"
   - ExpoFileSystem (from `../node_modules/expo-file-system/ios/ExpoFileSystem.podspec`)
   - ExpoFont (from `../node_modules/expo-font/ios/ExpoFont.podspec`)
@@ -2502,6 +2509,7 @@ DEPENDENCIES:
   - ExpoModulesJSI (from `../node_modules/expo-modules-jsi/apple`)
   - ExpoModulesWorklets (from `../node_modules/expo-modules-core/ExpoModulesWorklets.podspec`)
   - ExpoModulesWorkletsAdapter (from `../node_modules/expo-modules-core`)
+  - ExpoNotifications (from `../node_modules/expo-notifications/ios`)
   - ExpoRouter (from `../node_modules/expo-router/ios`)
   - ExpoSecureStore (from `../node_modules/expo-secure-store/ios`)
   - ExpoSplashScreen (from `../node_modules/expo-splash-screen/ios`)
@@ -2512,6 +2520,7 @@ DEPENDENCIES:
   - EXUpdatesInterface (from `../node_modules/expo-updates-interface/ios`)
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
+  - OwnlevelFinishControls (from `../modules/ownlevel-finish-controls/ios`)
   - OwnlevelKeyboardSheet (from `../modules/ownlevel-keyboard-sheet/ios`)
   - OwnlevelPageControl (from `../modules/ownlevel-page-control/ios`)
   - RCTDeprecation (from `../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation`)
@@ -2618,6 +2627,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-dev-menu-interface/ios"
   ExpoAsset:
     :path: "../node_modules/expo-asset/ios"
+  ExpoBlur:
+    :path: "../node_modules/expo-blur/ios"
   ExpoDomWebView:
     :path: "../node_modules/@expo/dom-webview/ios"
   ExpoFileSystem:
@@ -2642,6 +2653,8 @@ EXTERNAL SOURCES:
     :podspec: "../node_modules/expo-modules-core/ExpoModulesWorklets.podspec"
   ExpoModulesWorkletsAdapter:
     :path: "../node_modules/expo-modules-core"
+  ExpoNotifications:
+    :path: "../node_modules/expo-notifications/ios"
   ExpoRouter:
     :path: "../node_modules/expo-router/ios"
   ExpoSecureStore:
@@ -2663,6 +2676,8 @@ EXTERNAL SOURCES:
   hermes-engine:
     :podspec: "../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec"
     :tag: hermes-v250829098.0.17
+  OwnlevelFinishControls:
+    :path: "../modules/ownlevel-finish-controls/ios"
   OwnlevelKeyboardSheet:
     :path: "../modules/ownlevel-keyboard-sheet/ios"
   OwnlevelPageControl:
@@ -2832,7 +2847,7 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   EXApplication: a727f05eb8592f0bc764f6ab8d51eacc158652ec
-  EXConstants: 2dc4473aff5574eccaccb9f3eefe6d95247e5d38
+  EXConstants: e59c28e02833575201660b07e9d5b1efd49bfc0f
   EXJSONUtils: a49e3ef80dff762108e5690c7b2f360675dcf7f6
   EXManifests: 4c53b2602e03ccf44d0b4ff9c5d655b2c5acba3f
   Expo: c04c9bde6ce9344f6da189e3d594c34884bba88b
@@ -2841,6 +2856,7 @@ SPEC CHECKSUMS:
   expo-dev-menu: 272e23ced973a0e401c2b9a679595ea6c7c05d78
   expo-dev-menu-interface: 7a59e803916fbfd1b96c75ff91ea8dddac7e722f
   ExpoAsset: a917b756b2e4fe12cef1ac3bca5fd849ddb2b919
+  ExpoBlur: 975b78b65b3c8f475c44bd8f8b53948146b1ff9b
   ExpoDomWebView: beaec034e51bd028428b98bb1f2633ab79c6d095
   ExpoFileSystem: 28778f942725170102f7c6cf4dee05a526ddacd0
   ExpoFont: f8198a952ba2ff53c9b393b5269ea435f232cfc3
@@ -2849,10 +2865,11 @@ SPEC CHECKSUMS:
   ExpoKeepAwake: 72af0b3be3615e59bc819d26061ff4e06b155ee0
   ExpoLinking: 15c8ddb0eb4a778950712ea4a6feedf021778852
   ExpoLogBox: 80957303325cd4439137765c90a87d7f22aaf2ff
-  ExpoModulesCore: 6415e7f38a90e64431b09b66bb403edc767d5ca5
+  ExpoModulesCore: 956dfbd9da06c4a410d4da36588b34e8aebcd731
   ExpoModulesJSI: 9df8e7c9719f59e8c001ec33611774137fc1484a
   ExpoModulesWorklets: 986cf72c18400743869b4642d243115f831e404d
   ExpoModulesWorkletsAdapter: 45b4ea99adb80abaa012b45e9a9543b4763275c9
+  ExpoNotifications: 8106b5866ca36164db9f2b9ffb4930312f1ae014
   ExpoRouter: 3a8e63a51be53961b03f331c33108629090cf667
   ExpoSecureStore: ff1fd5e073957417ba8f9dec0bebcbd55a60e747
   ExpoSplashScreen: e771da4f26d550ea4fd067d8fb942657e47bb846
@@ -2863,6 +2880,7 @@ SPEC CHECKSUMS:
   EXUpdatesInterface: 4c96533f11c8cefe879bd506564cc2d537f56804
   FBLazyVector: 2138c6c2ab66c31bf5754dc18097fbc498a49c7f
   hermes-engine: 63c5db7d529c36335fada6582fd293ae2a105d77
+  OwnlevelFinishControls: 8b337dd82f758173061639e385e4d8f5bbcb68a1
   OwnlevelKeyboardSheet: b39ee3cc306075fe07e60e87485ab49f3c1c9a43
   OwnlevelPageControl: b244f9237c8f4861cb4b18c327bc91d89f55c50c
   RCTDeprecation: 96f68ebf33f8762466b01d57d6e873c4f30efb07
