@@ -7,7 +7,9 @@ export const TRAINING_TIMES_PAGE_SIZE = 30;
 export type TrainingTimeMetric = 'sessions' | 'duration' | 'energy' | 'improvements' | 'load';
 export type TrainingTimeSelection = { routine: string | null; execution: string | null; bin: number | null; offset: number };
 export type TrainingTimeCounts = { improved: number; stable: number; declined: number; ambiguous: number; insufficient: number };
+export type ComparisonContext = { complete: number; partial: number };
 export type TrainingTimeGroup = {
+  comparisonContext?: ComparisonContext;
   fromMinute: number; toMinute: number; sessions: number;
   duration: { n: number; median: number | null };
   energy: { n: number; distribution: number[]; median: number | null };
@@ -16,6 +18,7 @@ export type TrainingTimeGroup = {
 };
 export type TrainingTimeExecution = { key: string; exerciseId: string; name: string; implement: string; configuration: string; mode: string; unit: 'kg' | 'lingotes' };
 export type TrainingTimeSession = {
+  comparisonContext?: ComparisonContext;
   id: string; date: string; name: string; routineId: string | null; startedAt: string; minute: number; minutes: number | null;
   energy: { value: number | null; state: string }; performance: TrainingTimeCounts;
   load: { value: number; reps: number } | null;
@@ -36,11 +39,20 @@ const count = (v: unknown): v is number => finite(v) && Number.isSafeInteger(v) 
 const nullable = (v: unknown): v is number | null => v === null || finite(v);
 const text = (v: unknown): v is string => typeof v === 'string';
 const counts = (v: unknown): v is TrainingTimeCounts => record(v) && ['improved', 'stable', 'declined', 'ambiguous', 'insufficient'].every(k => count(v[k]));
+/** Optional EXPAND: absent means the server did not provide a breakdown, never zero. */
+export function validComparisonContext(v: unknown, performance: TrainingTimeCounts) {
+  return v === undefined || record(v) && count(v.complete) && count(v.partial)
+    && v.complete + v.partial === performance.improved + performance.stable + performance.declined;
+}
+export function validComparisonContextTotals(total: ComparisonContext | undefined, groups: readonly { comparisonContext?: ComparisonContext }[]) {
+  if (!total || groups.some(group => group.comparisonContext === undefined)) return true;
+  return (['complete', 'partial'] as const).every(key => groups.reduce((sum, group) => sum + group.comparisonContext![key], 0) === total[key]);
+}
 const measure = (v: unknown, limit: number) => record(v) && count(v.n) && v.n <= limit && nullable(v.median)
   && ((v.n === 0) === (v.median === null)) && (v.median === null || v.median >= 0);
 export function validTrainingTimeGroup(v: unknown): v is TrainingTimeGroup {
   if (!record(v) || !count(v.fromMinute) || !count(v.toMinute) || v.fromMinute >= v.toMinute || v.toMinute > 1440 || !count(v.sessions)
-    || !measure(v.duration, v.sessions) || !measure(v.load, v.sessions) || !measure(v.energy, v.sessions) || !record(v.energy) || !counts(v.performance)) return false;
+    || !measure(v.duration, v.sessions) || !measure(v.load, v.sessions) || !measure(v.energy, v.sessions) || !record(v.energy) || !counts(v.performance) || !validComparisonContext(v.comparisonContext, v.performance)) return false;
   return Array.isArray(v.energy.distribution) && v.energy.distribution.length === 5 && v.energy.distribution.every(count)
     && v.energy.distribution.reduce((a, b) => a + b, 0) === v.energy.n
     && (v.energy.median === null || (finite(v.energy.median) && v.energy.median >= 1 && v.energy.median <= 5));
@@ -57,7 +69,7 @@ export function parseProgressTrainingTimes(v: unknown): ProgressTrainingTimes | 
   for (const [key, length, step] of [['bins', 12, 120], ['bands', 4, 360]] as const) {
     const rows = v[key];
     if (!Array.isArray(rows) || rows.length !== length || !rows.every((g, i) => validTrainingTimeGroup(g) && g.fromMinute === i * step && g.toMinute === (i + 1) * step)
-      || rows.reduce((sum, g) => sum + g.sessions, 0) !== c.timed) return;
+      || rows.reduce((sum, g) => sum + g.sessions, 0) !== c.timed || !validComparisonContextTotals(total.comparisonContext, rows)) return;
     if (['duration', 'energy', 'load'].some(measure => rows.reduce((sum, g) => sum + g[measure].n, 0) !== total[measure as 'duration' | 'energy' | 'load'].n)
       || Object.keys(total.performance).some(key => rows.reduce((sum, g) => sum + g.performance[key], 0) !== total.performance[key as keyof TrainingTimeCounts])) return;
   }
@@ -74,7 +86,7 @@ export function parseProgressTrainingTimes(v: unknown): ProgressTrainingTimes | 
   const period = parseProgressPeriod(v.period)!;
   if (!rows.every(r => record(r) && text(r.id) && isNutritionDate(r.date) && text(r.name) && (r.routineId === null || text(r.routineId))
     && text(r.startedAt) && Number.isFinite(Date.parse(r.startedAt)) && finite(r.minute) && r.minute >= 0 && r.minute < 1440
-    && nullable(r.minutes) && (r.minutes === null || r.minutes > 0) && counts(r.performance) && record(r.energy) && ['recorded', 'late', 'unknown_time', 'not_recorded', 'unreadable', 'other_instrument'].includes(String(r.energy.state))
+    && nullable(r.minutes) && (r.minutes === null || r.minutes > 0) && counts(r.performance) && validComparisonContext(r.comparisonContext, r.performance) && record(r.energy) && ['recorded', 'late', 'unknown_time', 'not_recorded', 'unreadable', 'other_instrument'].includes(String(r.energy.state))
     && ((r.energy.state === 'recorded') === (r.energy.value !== null))
     && (r.energy.value === null || (count(r.energy.value) && r.energy.value >= 1 && r.energy.value <= 5))
     && (r.load === null || (record(r.load) && finite(r.load.value) && r.load.value >= 0 && count(r.load.reps) && r.load.reps > 0)))) return;

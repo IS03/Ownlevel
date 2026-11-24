@@ -4,7 +4,7 @@ import { contextIssue, contextKey } from './performance-insights/exposure';
 import { instantMs, parseSessionFeelings, toPerformanceSessions } from './insights-engine/source-adapter';
 import { priorFeelingFact } from './insights-engine/prior-feelings';
 import type { InsightsSource } from './insights-engine/types';
-import { TRAINING_TIMES_CONTRACT, TRAINING_TIMES_PAGE_SIZE, TRAINING_TIMES_ZONE, type ProgressTrainingTimes, type TrainingTimeCounts, type TrainingTimeExecution, type TrainingTimeGroup, type TrainingTimeSelection, type TrainingTimeSession } from '../mobile-api/progress-training-times-contract';
+import { TRAINING_TIMES_CONTRACT, TRAINING_TIMES_PAGE_SIZE, TRAINING_TIMES_ZONE, type ComparisonContext, type ProgressTrainingTimes, type TrainingTimeCounts, type TrainingTimeExecution, type TrainingTimeGroup, type TrainingTimeSelection, type TrainingTimeSession } from '../mobile-api/progress-training-times-contract';
 import type { ProgressPeriod } from '../mobile-api/progress-contract';
 import { trainingStartTime } from './training-start-time';
 import type { PriorFeelingFact } from './insights-engine/prior-feelings';
@@ -17,6 +17,11 @@ export const trainingTimeMedian = (values: readonly number[]) => {
   const sorted = [...values].sort((a, b) => a - b), mid = sorted.length >> 1;
   return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 };
+/** Only counts already supplied by the comparators; never infers provenance from the outcome. */
+export function summarizeComparisonContext(rows: readonly { comparisonContext?: ComparisonContext }[]): ComparisonContext | undefined {
+  if (rows.some(row => row.comparisonContext === undefined)) return undefined;
+  return rows.reduce((sum, row) => ({ complete: sum.complete + row.comparisonContext!.complete, partial: sum.partial + row.comparisonContext!.partial }), { complete: 0, partial: 0 });
+}
 export function trainingTimeGroup(rows: readonly TrainingTimeSession[], fromMinute = 0, toMinute = 1440): TrainingTimeGroup {
   const chosen = rows.filter(row => row.minute >= fromMinute && row.minute < toMinute);
   const durations = chosen.flatMap(r => r.minutes === null ? [] : [r.minutes]);
@@ -24,7 +29,7 @@ export function trainingTimeGroup(rows: readonly TrainingTimeSession[], fromMinu
   const loads = chosen.flatMap(r => r.load === null ? [] : [r.load.value]);
   const performance = emptyCounts();
   for (const row of chosen) for (const key of Object.keys(performance) as (keyof TrainingTimeCounts)[]) performance[key] += row.performance[key];
-  return { fromMinute, toMinute, sessions: chosen.length, duration: { n: durations.length, median: trainingTimeMedian(durations) },
+  return { comparisonContext: summarizeComparisonContext(chosen), fromMinute, toMinute, sessions: chosen.length, duration: { n: durations.length, median: trainingTimeMedian(durations) },
     energy: { n: energy.length, distribution: [1, 2, 3, 4, 5].map(value => energy.filter(e => e === value).length), median: trainingTimeMedian(energy) },
     performance, load: { n: loads.length, median: trainingTimeMedian(loads) } };
 }
@@ -82,6 +87,7 @@ export function prepareTrainingTimes(source: InsightsSource, options: { today: s
     const energy = priorFeelingFact({ feelings: parsed.values, unreadableFeelings: parsed.unreadable }, facts.get(s.id), 'energyPre');
     const fatigue = priorFeelingFact({ feelings: parsed.values, unreadableFeelings: parsed.unreadable }, facts.get(s.id), 'fatiguePre');
     const counts = emptyCounts(), selectedId = selection.execution ? executions.get(selection.execution)!.exerciseId : null;
+    const comparisonContext = { complete: 0, partial: 0 };
     const partialOf = partialResults.get(s.id);
     for (const exercise of results.get(s.id)?.exercises ?? []) {
       if (selectedId && exercise.exerciseId !== selectedId) continue;
@@ -89,12 +95,13 @@ export function prepareTrainingTimes(source: InsightsSource, options: { today: s
       const reading = strict === 'insufficient' ? partialOf?.get(exercise.exerciseId.toLowerCase()) : undefined;
       const key = reading ? ({ higher_record: 'improved', same_record: 'stable', lower_record: 'declined', ambiguous_evidence: 'ambiguous', insufficient_comparison: 'insufficient' } as const)[reading] : strict;
       counts[key]++;
+      if (key === 'improved' || key === 'stable' || key === 'declined') comparisonContext[reading ? 'partial' : 'complete']++;
     }
     const candidates = selection.execution ? selected.filter(b => b.completed && !contextIssue(b.context)).flatMap(b => b.sets).filter(set => set.completed && set.amount !== null && Number.isSafeInteger(set.amount) && set.amount > 0 && set.load !== null && Number.isFinite(set.load) && set.load >= 0 && (executions.get(selection.execution!)!.unit !== 'lingotes' || Number.isSafeInteger(set.load))) : [];
     const best = candidates.sort((a, b) => b.load! - a.load! || b.amount! - a.amount!)[0];
     rows.push({ id: s.id, date: s.date!, name: s.routineName ?? s.name ?? 'Sesión libre', routineId: s.routineId?.toLowerCase() ?? null,
       startedAt: s.startedAt!, minute, minutes: end !== null && end > start && cordobaDateOf(end) <= today ? (end - start) / 60_000 : null,
-      energy, fatigue, performance: counts, load: best ? { value: best.load!, reps: best.amount! } : null });
+      energy, fatigue, comparisonContext, performance: counts, load: best ? { value: best.load!, reps: best.amount! } : null });
   }
   rows.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt) || a.id.localeCompare(b.id));
   return { routines: [...routines.values()].sort((a, b) => b.sessions - a.sessions || a.id.localeCompare(b.id)),
@@ -106,7 +113,7 @@ export function buildTrainingTimes(source: InsightsSource, options: { today: str
   const prepared = prepareTrainingTimes(source, options);
   // The installed /1 response retains its original row keys; fatigue belongs to the new recovery capability.
   const rows: TrainingTimeSession[] = prepared.rows.map(row => ({ id: row.id, date: row.date, name: row.name, routineId: row.routineId,
-    startedAt: row.startedAt, minute: row.minute, minutes: row.minutes, energy: row.energy, performance: row.performance, load: row.load }));
+    startedAt: row.startedAt, minute: row.minute, minutes: row.minutes, energy: row.energy, comparisonContext: row.comparisonContext, performance: row.performance, load: row.load }));
   const pageRows = selection.bin === null ? rows : rows.filter(r => Math.floor(r.minute / 120) === selection.bin);
   const page = pageRows.slice(selection.offset, selection.offset + TRAINING_TIMES_PAGE_SIZE), next = selection.offset + page.length;
   return { contractVersion: TRAINING_TIMES_CONTRACT, timezone: TRAINING_TIMES_ZONE, timeBasis: 'stored_start', today, period, revision, selection,

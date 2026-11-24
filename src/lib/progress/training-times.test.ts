@@ -107,3 +107,30 @@ describe('training start and descriptive times', () => {
     expect(preview.bins).toEqual(r.bins.map(b => b.sessions)); expect(preview.timed).toBe(r.coverage.timed);
   });
 });
+
+
+describe('comparison context EXPAND', () => {
+  it('keeps complete and partial clear results separate without counting excluded exercises', () => {
+    const source = descriptiveFixture();
+    source.exercises.forEach((exercise, index) => { if (index % 2) exercise.configuration = null; });
+    const result = read(source), context = result.total.comparisonContext!;
+    expect(context.complete).toBeGreaterThan(0); expect(context.partial).toBeGreaterThan(0);
+    expect(context.complete + context.partial).toBe(result.total.performance.improved + result.total.performance.stable + result.total.performance.declined);
+    expect(result.page.rows.reduce((sum, row) => sum + row.comparisonContext!.partial, 0)).toBe(context.partial);
+    expect(parseProgressTrainingTimes(result)).toBeDefined();
+    const legacy = JSON.parse(JSON.stringify(result, (key, value) => key === 'comparisonContext' ? undefined : value));
+    expect(parseProgressTrainingTimes(legacy)).toBeDefined();
+    result.total.comparisonContext!.partial++;
+    expect(parseProgressTrainingTimes(result)).toBeUndefined();
+  });
+  it('does not infer complete or partial from an unchanged result or missing provenance', () => {
+    const result = read(), total = result.total;
+    expect(total.comparisonContext!.partial).toBe(0);
+    const corrupt = structuredClone(result);
+    corrupt.page.rows[0]!.comparisonContext = { complete: -1, partial: 0 };
+    expect(parseProgressTrainingTimes(corrupt)).toBeUndefined();
+    const split = structuredClone(result), bin = split.bins.find(group => group.comparisonContext!.complete > 0)!;
+    bin.comparisonContext!.complete--; bin.comparisonContext!.partial++;
+    expect(parseProgressTrainingTimes(split)).toBeUndefined();
+  });
+});
