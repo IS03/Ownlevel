@@ -8,7 +8,7 @@ import type { NextSessionDecision } from './session-next-options.types';
 import { SessionGlassButton } from './session-glass-button';
 import { haptics, triggerHaptic } from '@/platform/haptics';
 import type { ActiveSessionController, ExercisePhase } from './active-session-controller';
-import { appendSessionSet, compactActual, nextReminder, removeSessionSet, resetSessionSet, setProgress, type SessionExerciseDraft } from './active-session-model';
+import { appendSessionSet, compactActual, draftIncomplete, nextReminder, removeSessionSet, resetSessionSet, setProgress, type SessionExerciseDraft } from './active-session-model';
 import { SessionRestDuration } from './session-rest-duration';
 import { restSeconds } from './active-session-model';
 import { formatRest, muscleGroupLabel } from './exercise-library-model';
@@ -71,6 +71,9 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
   const editable = !locked && controller.canEdit(id);
   const contextual = !locked && state.storageReady && state.phase !== 'closed' && state.phase !== 'removed';
   const canDiscard = state.dirty || state.stale;
+  // A value cleared while typing (an empty rep in a ticked set) is not an error yet: it is only said once the exercise is
+  // folded, and finishing names it. A rejection from the server is always shown.
+  const editingIncomplete = expanded && state.phase === 'validation' && draftIncomplete(draft);
   const completion = setProgress(draft);
   const reminder = nextReminder(exercise);
   const identity = [exercise.muscleGroupLabelSnapshot || muscleGroupLabel(exercise.muscleGroupSnapshot), exercise.implementSnapshot, exercise.weightModeSnapshot].filter(Boolean).join(' · ');
@@ -120,7 +123,7 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
       {/* Saving shows as «Sincronizando» in the session header: the counter and chevron never move. Failures stay below. */}
       <Animated.View style={chevron}><AppIcon name="chevronRight" color={colors.textMuted} size={15} /></Animated.View>
     </NativeDragHandle></NativeSwipeActions>
-    {!(sessionStorageError && !state.storageReady) && (state.error || statusLabels[state.phase]) ? <View style={styles.recovery}>
+    {!(sessionStorageError && !state.storageReady) && (state.error || statusLabels[state.phase]) && !editingIncomplete ? <View style={styles.recovery}>
       <AppText accessibilityLiveRegion="polite" style={{ color: phaseIsFailure(state.phase) || !statusLabels[state.phase] ? colors.danger : colors.text }} variant="caption">{statusLabels[state.phase] ?? state.error}</AppText>
       {state.error && statusLabels[state.phase] ? <AppText accessibilityRole="alert" style={{ color: colors.danger }} variant="caption">{state.error}</AppText> : null}
       {['conflict', 'stale', 'retryable', 'unconfirmed'].includes(state.phase) ? <>
