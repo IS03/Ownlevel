@@ -1,3 +1,4 @@
+import { writeAccountRecord } from '@/platform/account-local-data';
 import { parseSessionExerciseOrder, parseSessionFinishMetadata, type SessionAddInput, type SessionExerciseOrderInput, type SessionFinishMetadata } from '@/api/active-session';
 import { parseStoredExerciseDraft, parseStoredSummary, type RestDeadline, type SessionSummaryDraft, type StoredExerciseDraft } from './active-session-model';
 import { parseJournalFinishInput, type JournalFinishInput } from '../../../../src/lib/mobile-api/training-feelings-journal';
@@ -37,7 +38,7 @@ export class SessionDraftRepository {
       try { return JSON.parse(raw); } catch { throw new Error('Unreadable local session record'); }
     });
   }
-  private write(key: string, value: unknown) { return this.serialize(key, () => this.port.setItem(key, JSON.stringify(value))); }
+  private write(key: string, value: unknown) { return this.serialize(key, () => writeAccountRecord(this.port, key, JSON.stringify(value))); }
   readDraft(id: string): Promise<StoredExerciseDraft | null> {
     return this.read(`${this.prefix}exercise.${id}`).then(value => {
       if (value === null) return null;
@@ -67,7 +68,7 @@ export class SessionDraftRepository {
       const raw = await this.port.getItem(key);
       const value: unknown = raw ? JSON.parse(raw) : [];
       const ids = Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [];
-      await this.port.setItem(key, JSON.stringify([...new Set([...ids, exerciseId])]));
+      await writeAccountRecord(this.port, key, JSON.stringify([...new Set([...ids, exerciseId])]));
     });
   }
   readTimer() { return this.read(`${this.prefix}timer`); }

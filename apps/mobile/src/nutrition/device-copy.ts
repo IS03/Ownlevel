@@ -1,3 +1,4 @@
+import { writeAccountRecord } from '@/platform/account-local-data';
 import type { NutritionStoragePort } from './intent-repository';
 
 /**
@@ -17,6 +18,6 @@ export class DeviceCopy<T> {
     } catch { return null; }
   }
   async write(value: T) {
-    try { await this.port.setItem(this.key, JSON.stringify({ version: 1, value })); } catch { /* a cache only */ }
+    try { await writeAccountRecord(this.port, this.key, JSON.stringify({ version: 1, value })); } catch { /* a cache only */ }
   }
 }

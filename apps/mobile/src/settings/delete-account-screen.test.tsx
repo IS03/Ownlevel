@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
@@ -6,11 +7,13 @@ import type { MobileApiRequestResult } from '@/api/results';
 import { OwnlevelThemeProvider } from '@/design-system';
 import { DELETED_NOTICE, DeleteAccountScreen } from './delete-account-screen';
 
+jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
+
 const mockRequest = jest.fn<MobileApiClient['request']>();
 const mockSignOut = jest.fn(async (_notice?: string) => undefined);
 const mockBack = jest.fn();
 jest.mock('@/api', () => ({ useMobileApi: () => ({ client: { read: jest.fn(), request: mockRequest } }) }));
-jest.mock('@/auth', () => ({ useMobileAuth: () => ({ signOut: mockSignOut }) }));
+jest.mock('@/auth', () => ({ useMobileAuth: () => ({ signOut: mockSignOut, session: { user: { id: 'delete-test-account' } } }) }));
 jest.mock('expo-router', () => ({ useRouter: () => ({ back: mockBack }) }));
 jest.mock('expo-router/react-navigation', () => ({ usePreventRemove: () => {} }));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -27,7 +30,7 @@ const screen = () => render(
 const button = (view: ReturnType<typeof screen>, name: RegExp) => view.getByRole('button', { name });
 const press = async (view: ReturnType<typeof screen>, name: RegExp) => { await act(async () => { fireEvent.press(button(view, name)); }); };
 
-beforeEach(() => { jest.clearAllMocks(); });
+beforeEach(() => { jest.clearAllMocks(); (AsyncStorage.getAllKeys as jest.Mock).mockResolvedValue([] as never); });
 
 describe('Eliminar cuenta (AJ7)', () => {
   it('says what is deleted and only enables the action after typing ELIMINAR', async () => {
@@ -49,19 +52,22 @@ describe('Eliminar cuenta (AJ7)', () => {
     expect(mockRequest).toHaveBeenCalledWith(expect.objectContaining({
       method: 'DELETE', path: '/api/mobile/v1/account', body: { confirmation: 'ELIMINAR' },
     }));
+    expect(AsyncStorage.getAllKeys).toHaveBeenCalledTimes(1);
     expect(mockSignOut).toHaveBeenCalledWith(DELETED_NOTICE);
   });
 
-  it('an uncertain result offers a safe retry; a rejected token after that means it is gone', async () => {
+  it('an expired token after an uncertain attempt never confirms deletion or erases local recovery', async () => {
     mockRequest.mockResolvedValueOnce(unavailable).mockResolvedValueOnce(unauthorized);
     const view = screen();
     fireEvent.changeText(view.getByLabelText('Para confirmar, escribí ELIMINAR'), 'ELIMINAR');
     await press(view, /Eliminar mi cuenta/);
     expect(view.getByText(/No pudimos confirmar si se eliminó/)).toBeTruthy();
     expect(mockSignOut).not.toHaveBeenCalled();
+    expect(AsyncStorage.getAllKeys).not.toHaveBeenCalled();
     await press(view, /Probar de nuevo/);
     expect(mockRequest).toHaveBeenCalledTimes(2);
-    expect(mockSignOut).toHaveBeenCalledWith(DELETED_NOTICE);
+    expect(AsyncStorage.getAllKeys).not.toHaveBeenCalled();
+    expect(mockSignOut).toHaveBeenCalledWith(expect.stringContaining('no pudimos confirmar la eliminación'));
   });
 
   it('a rejected token on the first try is an expired session, not a deletion', async () => {
@@ -70,6 +76,7 @@ describe('Eliminar cuenta (AJ7)', () => {
     fireEvent.changeText(view.getByLabelText('Para confirmar, escribí ELIMINAR'), 'ELIMINAR');
     await press(view, /Eliminar mi cuenta/);
     expect(mockSignOut).toHaveBeenCalledWith(expect.stringContaining('Tu sesión venció'));
+    expect(AsyncStorage.getAllKeys).not.toHaveBeenCalled();
   });
 
   it('"Mejor no" goes back without deleting', async () => {
