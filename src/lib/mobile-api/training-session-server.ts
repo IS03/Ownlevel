@@ -59,7 +59,8 @@ function mutationError(error: { code?: string; message?: string }): never {
   }
   throw new Error("Active session database operation unavailable", { cause: error });
 }
-export async function readMobileSession(id: unknown, context: MobileSupabaseAuthenticatedContext, performance: RequestPerformanceContext, routineAdditions = false, loadPatterns = false) {
+export async function readMobileSession(id: unknown, context: MobileSupabaseAuthenticatedContext, performance: RequestPerformanceContext, routineAdditions = false, loadPatterns = false,
+  setKinds = false) {
   const sessionId = parseMobileTrainingId(id, "La sesión");
   const detail = await getWorkoutSessionDetail(sessionId, auth(context, performance));
   if (!detail) throw new MobileApiNotFoundError();
@@ -73,12 +74,13 @@ export async function readMobileSession(id: unknown, context: MobileSupabaseAuth
     return Object.fromEntries(Object.entries(rows).map(([id, items]) => [id, items.map((item) => ({
       sessionId: item.session.id, logDate: item.logDate, completedAt: item.session.ended_at,
       routineId: item.session.routine_id, routineName: item.session.routine_name_snapshot ?? item.session.session_name ?? "Sesión libre",
-      decision: item.exercise.decision, sets: sessionExerciseDto(item.exercise).payload.sets,
+      decision: item.exercise.decision, sets: sessionExerciseDto(item.exercise, false, setKinds).payload.sets,
     }))]));
   }) : { status: "ok" as const, data: {} };
   // #537: only clients that ask for it (`loadPatterns=1`) get the key; installed parsers validate exact keys.
   const patterns = loadPatterns ? await readLoadPatterns(detail, context, performance) : undefined;
-  return sessionDetailDto(detail, history, routineAdditions, patterns);
+  // #537: `setKinds=1` adds each set's kind (warm-up or working set); the sets were read with it, in the same query.
+  return sessionDetailDto(detail, history, routineAdditions, patterns, setKinds);
 }
 
 const daysBefore = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
@@ -106,17 +108,19 @@ async function readLoadPatterns(detail: NonNullable<Awaited<ReturnType<typeof ge
       exerciseId: item.exercise.exercise_id, routineId: item.session.routine_id, weightMode: item.exercise.weight_mode_snapshot,
       implement: item.exercise.implement_snapshot, configuration: read.configurations.get(item.exercise.id) ?? null,
       sessionId: item.session.id, logDate: item.logDate, routineName: item.session.routine_name_snapshot ?? item.session.session_name ?? "Rutina",
-      sets: sessionExerciseDto(item.exercise).payload.sets,
+      // With their kind: warm-ups never count in a pattern (#537).
+      sets: sessionExerciseDto(item.exercise, false, true).payload.sets,
     })))]));
   });
 }
-export async function readMobileSessionExercise(id: unknown, exerciseId: unknown, context: MobileSupabaseAuthenticatedContext, routineAdditions = false): Promise<SessionExerciseSyncDto> {
+export async function readMobileSessionExercise(id: unknown, exerciseId: unknown, context: MobileSupabaseAuthenticatedContext, routineAdditions = false,
+  setKinds = false): Promise<SessionExerciseSyncDto> {
   const sessionId = parseMobileTrainingId(id, "La sesión");
   const sessionExerciseId = parseMobileTrainingId(exerciseId, "El ejercicio de sesión");
   // A single nested resource read observes status + exercise payload + CAS token
   // together. It never interprets a failed query as removed or closed.
   const { data, error } = await context.supabase.from("workout_sessions")
-    .select(`status, exercises:workout_session_exercises(id, routine_exercise_id, decision, decision_note, apply_to_routine, ${routineAdditions ? "add_to_routine_on_finish," : ""} notes, updated_at, sets:workout_sets(set_number, target_reps, target_weight_kg, target_rir, actual_reps, actual_weight_kg, is_completed, notes))`)
+    .select(`status, exercises:workout_session_exercises(id, routine_exercise_id, decision, decision_note, apply_to_routine, ${routineAdditions ? "add_to_routine_on_finish," : ""} notes, updated_at, sets:workout_sets(set_number, target_reps, target_weight_kg, target_rir, actual_reps, actual_weight_kg, is_completed, notes${setKinds ? ", set_kind" : ""}))`)
     .eq("id", sessionId).eq("user_id", context.userId)
     .eq("exercises.id", sessionExerciseId).maybeSingle();
   if (error) throw new Error("Session read-back unavailable", { cause: error });
@@ -131,7 +135,7 @@ export async function readMobileSessionExercise(id: unknown, exerciseId: unknown
       is_completed: exercise.sets.some((set) => set.is_completed), decision: exercise.decision,
       decision_note: exercise.decision_note ?? "", apply_to_routine: exercise.routine_exercise_id ? exercise.apply_to_routine : routineAdditions && "add_to_routine_on_finish" in exercise && exercise.add_to_routine_on_finish === true,
       notes: exercise.notes ?? "", sets: [...exercise.sets].sort((a, b) => a.set_number - b.set_number),
-    }),
+    }, setKinds),
   };
 }
 export async function saveMobileSessionExercise(id: unknown, exerciseId: unknown, value: unknown, context: MobileSupabaseAuthenticatedContext, routineAdditions = false) {

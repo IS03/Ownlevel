@@ -29,9 +29,13 @@ function sameContext(a: LoadPatternContext, b: LoadPatternContext) {
     && implementOf(a.implement) === implementOf(b.implement) && configurationOf(a.configuration) === configurationOf(b.configuration);
 }
 
-/** The completed sets in order, as reps × kg. Null when there are none or one of them lacks a value. */
+/** Completed working sets in order. Warm-ups (#537) are never part of a scheme, its evidence or the surplus. */
+const workDone = (sets: readonly SessionSetDto[]) =>
+  sets.filter(set => set.isCompleted && set.setKind !== "warmup").sort((a, b) => a.setNumber - b.setNumber);
+
+/** The completed working sets in order, as reps × kg. Null when there are none or one of them lacks a value. */
 export function schemeOf(sets: readonly SessionSetDto[]): LoadPatternSchemeSet[] | null {
-  const done = sets.filter(set => set.isCompleted).sort((a, b) => a.setNumber - b.setNumber);
+  const done = workDone(sets);
   if (!done.length) return null;
   const scheme: LoadPatternSchemeSet[] = [];
   for (const set of done) {
@@ -44,7 +48,7 @@ export const sameScheme = (a: readonly LoadPatternSchemeSet[], b: readonly LoadP
   a.length === b.length && a.every((set, index) => set.reps === b[index]!.reps && set.weightKg === b[index]!.weightKg);
 
 function lastSetSurplus(sets: readonly SessionSetDto[]): { weightKg: number } | null {
-  const done = sets.filter(set => set.isCompleted).sort((a, b) => a.setNumber - b.setNumber);
+  const done = workDone(sets);
   const last = done.at(-1);
   if (!last || last.actualReps === null || last.targetReps === null || last.actualWeightKg === null) return null;
   return last.actualReps >= last.targetReps + SURPLUS_REPS ? { weightKg: last.actualWeightKg } : null;
@@ -72,7 +76,9 @@ export function detectLoadPattern(current: LoadPatternCurrent, history: readonly
     run.push({ execution, scheme });
   }
   const evidence = (rows: typeof run) => rows.map(({ execution }) => ({ sessionId: execution.sessionId, logDate: execution.logDate,
-    routineName: execution.routineName, sets: execution.sets.filter(set => set.isCompleted).sort((a, b) => a.setNumber - b.setNumber) }));
+    // The kind stays out of the evidence: every set shown is a working set, and its contract has no such key.
+    routineName: execution.routineName, sets: workDone(execution.sets).map(({ setNumber, targetReps, targetWeightKg, targetRir, actualReps, actualWeightKg, isCompleted, notes }) =>
+      ({ setNumber, targetReps, targetWeightKg, targetRir, actualReps, actualWeightKg, isCompleted, notes })) }));
 
   const [latest, previous] = run;
   if (latest && previous) {

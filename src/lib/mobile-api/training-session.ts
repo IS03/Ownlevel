@@ -1,4 +1,4 @@
-import type { WorkoutExercisePayload, WorkoutSessionDetail, WorkoutSessionExerciseDetail } from "../phase2/types";
+import type { SetKind, WorkoutExercisePayload, WorkoutSessionDetail, WorkoutSessionExerciseDetail } from "../phase2/types";
 import { validateCompletedSessionCorrection, validateSessionMetadata, validateWorkoutExercisePayload } from "../phase2/training-validation";
 import { MobileApiValidationError } from "./auth";
 import type { MobileReadResult, MobileRoutineColorKey, MobileTrainingMuscleGroup } from "./contracts";
@@ -14,6 +14,8 @@ export type SessionSetDto = {
   actualWeightKg: number | null;
   isCompleted: boolean;
   notes: string | null;
+  /** #537 · Only with `setKinds=1`: installed parsers validate exact keys and never receive it. */
+  setKind?: SetKind;
 };
 export type SessionExercisePayloadDto = {
   isCompleted: boolean;
@@ -119,6 +121,10 @@ function number(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) throw new MobileApiValidationError("El número no es válido.");
   return value;
 }
+export function setKind(value: unknown): SetKind {
+  if (value !== "work" && value !== "warmup") throw new MobileApiValidationError("El tipo de serie no es válido.");
+  return value;
+}
 export function parseSessionVersion(value: unknown): string {
   // Validate, but NEVER reserialize through Date: PostgreSQL microseconds are CAS.
   const match = typeof value === "string"
@@ -144,13 +150,15 @@ export function parseSessionSave(value: unknown): { expectedUpdatedAt: string; p
     apply_to_routine: boolean(raw.applyToRoutine),
     notes: text(raw.notes),
     sets: raw.sets.map((value) => {
-      const set = object(value, ["setNumber", "targetReps", "targetWeightKg", "targetRir", "actualReps", "actualWeightKg", "isCompleted", "notes"]);
+      const set = object(value, ["setNumber", "targetReps", "targetWeightKg", "targetRir", "actualReps", "actualWeightKg", "isCompleted", "notes", "setKind"]);
       return {
         set_number: number(set.setNumber) as number,
         target_reps: number(set.targetReps), target_weight_kg: number(set.targetWeightKg),
         target_rir: number(set.targetRir), actual_reps: number(set.actualReps),
         actual_weight_kg: number(set.actualWeightKg), is_completed: boolean(set.isCompleted),
         notes: set.notes === null ? null : text(set.notes),
+        // #537: absent (installed apps) keeps the stored kind; the database decides, never a default here.
+        ...("setKind" in set ? { set_kind: setKind(set.setKind) } : {}),
       };
     }),
   };
@@ -200,7 +208,7 @@ export function parseSessionExerciseOrderResponse(value: unknown): SessionExerci
     sessionUpdatedAt: parseSessionVersion(input.sessionUpdatedAt), orderedSessionExerciseIds: orderedSessionIds(input.orderedSessionExerciseIds) };
 }
 
-export function sessionPayloadDto(payload: WorkoutExercisePayload): SessionExercisePayloadDto {
+export function sessionPayloadDto(payload: WorkoutExercisePayload, setKinds = false): SessionExercisePayloadDto {
   return {
     isCompleted: payload.sets.some((set) => set.is_completed), decision: payload.decision,
     decisionNote: payload.decision === "custom" ? payload.decision_note.trim() : "",
@@ -209,10 +217,11 @@ export function sessionPayloadDto(payload: WorkoutExercisePayload): SessionExerc
       setNumber: set.set_number, targetReps: set.target_reps, targetWeightKg: set.target_weight_kg,
       targetRir: set.target_rir, actualReps: set.actual_reps, actualWeightKg: set.actual_weight_kg,
       isCompleted: set.is_completed, notes: set.notes === "" ? null : set.notes,
+      ...(setKinds ? { setKind: set.set_kind ?? "work" } : {}),
     })),
   };
 }
-export function sessionExerciseDto(exercise: WorkoutSessionExerciseDetail, routineAdditions = false): SessionExerciseDto {
+export function sessionExerciseDto(exercise: WorkoutSessionExerciseDetail, routineAdditions = false, setKinds = false): SessionExerciseDto {
   return {
     id: exercise.id, exerciseId: exercise.exercise_id, routineExerciseId: exercise.routine_exercise_id,
     order: exercise.exercise_order, nameSnapshot: exercise.nombre_snapshot,
@@ -225,11 +234,11 @@ export function sessionExerciseDto(exercise: WorkoutSessionExerciseDetail, routi
       is_completed: exercise.sets.some((set) => set.is_completed), decision: exercise.decision,
       decision_note: exercise.decision_note ?? "", apply_to_routine: exercise.routine_exercise_id ? exercise.apply_to_routine : routineAdditions && exercise.add_to_routine_on_finish === true,
       notes: exercise.notes ?? "", sets: exercise.sets,
-    }),
+    }, setKinds),
   };
 }
 export function sessionDetailDto(detail: WorkoutSessionDetail, quickHistory: SessionDetailDto["quickHistory"], routineAdditions = false,
-  loadPatterns?: SessionLoadPatterns): SessionDetailDto {
+  loadPatterns?: SessionLoadPatterns, setKinds = false): SessionDetailDto {
   const s = detail.session;
   return {
     session: {
@@ -243,7 +252,7 @@ export function sessionDetailDto(detail: WorkoutSessionDetail, quickHistory: Ses
         treadmillSpeedKmh: s.treadmill_speed_kmh, treadmillInclinePercent: s.treadmill_incline_percent, notes: s.notes,
       },
     },
-    exercises: detail.exercises.map(exercise => sessionExerciseDto(exercise, routineAdditions)), quickHistory,
+    exercises: detail.exercises.map(exercise => sessionExerciseDto(exercise, routineAdditions, setKinds)), quickHistory,
     ...(loadPatterns ? { loadPatterns } : {}),
   };
 }

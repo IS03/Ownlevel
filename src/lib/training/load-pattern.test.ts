@@ -87,6 +87,27 @@ describe("#537 · reps de sobra («2 por 2»)", () => {
   });
 });
 
+describe("#537 · calentamientos", () => {
+  const warm = (reps: number, kg: number) => ({ ...set(0, reps, kg, null), setKind: "warmup" as const });
+  const withWarmup = (warmKg: number) => [warm(12, warmKg), ...three()].map((s, i) => ({ ...s, setNumber: i + 1 }));
+  it("warm-ups are never part of the scheme: changing them does not break the run", () => {
+    const pattern = detectLoadPattern(today, [run(4, withWarmup(20)), run(8, withWarmup(30)), run(12, three()), run(16, withWarmup(25))]);
+    expect(pattern).toMatchObject({ signal: "repeated", count: 4, scheme: [{ reps: 10, weightKg: 60 }, { reps: 10, weightKg: 60 }, { reps: 10, weightKg: 60 }] });
+    expect(pattern!.key).toBe(`repeated|${EXERCISE}|${ROUTINE}|10x60,10x60,10x60`);
+  });
+  it("the evidence shows only working sets and carries no kind key (its contract has none)", () => {
+    const pattern = detectLoadPattern(today, [run(4, withWarmup(20)), run(8, withWarmup(20)), run(12, withWarmup(20)), run(16, withWarmup(20))])!;
+    expect(pattern.sessions[0]!.sets).toHaveLength(3);
+    expect(JSON.stringify(pattern)).not.toContain("setKind");
+    expect(parseLoadPattern(JSON.parse(JSON.stringify(pattern)))).toEqual(pattern);
+  });
+  it("a last warm-up never counts as the surplus set, and only warm-ups is an execution without a scheme", () => {
+    const lastWarm = [set(1, 10, 60), set(2, 10, 60), { ...set(3, 15, 60), setKind: "warmup" as const }];
+    expect(detectLoadPattern(today, [run(4, lastWarm), run(8, lastWarm)])).toBeNull();
+    expect(detectLoadPattern(today, [run(4, [warm(12, 20)]), ...four().slice(1)])).toBeNull();
+  });
+});
+
 describe("#537 · contrato", () => {
   it("a malformed answer is unavailable, never «no pattern»; null per exercise is a valid «nothing to show»", () => {
     expect(parseSessionLoadPatterns({ status: "unavailable" })).toEqual({ status: "unavailable" });

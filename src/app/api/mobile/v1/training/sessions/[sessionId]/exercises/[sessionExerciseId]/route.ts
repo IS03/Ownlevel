@@ -11,7 +11,8 @@ export function OPTIONS(request: NextRequest) {
 }
 export async function GET(request: NextRequest, { params }: Context) {
   const { sessionId, sessionExerciseId } = await params;
-  return sessionReadResponse(request, route, (context) => readMobileSessionExercise(sessionId, sessionExerciseId, context, request.nextUrl.searchParams.get("routineAdditions") === "1"));
+  return sessionReadResponse(request, route, (context) => readMobileSessionExercise(sessionId, sessionExerciseId, context,
+    request.nextUrl.searchParams.get("routineAdditions") === "1", request.nextUrl.searchParams.get("setKinds") === "1"));
 }
 export async function PUT(request: NextRequest, { params }: Context) {
   const { sessionId, sessionExerciseId } = await params;

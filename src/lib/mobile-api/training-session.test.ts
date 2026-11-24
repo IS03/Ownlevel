@@ -315,3 +315,54 @@ describe("active-session blank append migration", () => {
     expect(migration).not.toMatch(/create table|add column|security definer|p_user_id|service_role/);
   });
 });
+
+describe("#537 set kind (warm-up / working set)", () => {
+  beforeEach(() => { vi.clearAllMocks(); mocks.detail.mockResolvedValue(detail); mocks.history.mockResolvedValue({ [exerciseId]: [] }); });
+  const kinded = (setKind: unknown) => ({ ...payload, sets: [{ ...payload.sets[0], setKind }] });
+  it("accepts an optional kind, rejects an unknown one, and leaves it out when absent so the stored kind stays", () => {
+    expect(parseSessionSave({ expectedUpdatedAt: timestamp, payload: kinded("warmup") }).payload.sets[0]).toMatchObject({ set_kind: "warmup" });
+    expect(parseSessionSave({ expectedUpdatedAt: timestamp, payload: kinded("work") }).payload.sets[0]).toMatchObject({ set_kind: "work" });
+    expect("set_kind" in domainPayload.sets[0]).toBe(false);
+    for (const invalid of ["cooldown", null, 1]) expect(() => parseSessionSave({ expectedUpdatedAt: timestamp, payload: kinded(invalid) })).toThrow();
+  });
+  it("projects the kind only with the opt-in; a row without it reads as a working set", async () => {
+    const warm = { ...detail, exercises: [{ ...detail.exercises[0], sets: [{ ...domainPayload.sets[0], set_kind: "warmup" as const }] }] } as WorkoutSessionDetail;
+    expect("setKind" in sessionDetailDto(warm, { status: "unavailable" }).exercises[0].payload.sets[0]).toBe(false);
+    expect(sessionDetailDto(warm, { status: "unavailable" }, false, undefined, true).exercises[0].payload.sets[0].setKind).toBe("warmup");
+    expect(sessionDetailDto(detail, { status: "unavailable" }, false, undefined, true).exercises[0].payload.sets[0].setKind).toBe("work");
+    mocks.detail.mockResolvedValue(warm);
+    const history = { session: { id: sessionId, ended_at: timestamp, routine_id: null, routine_name_snapshot: "R", session_name: null }, logDate: "2026-09-20", exercise: warm.exercises[0] };
+    mocks.history.mockResolvedValue({ [exerciseId]: [history] });
+    const plain = await readMobileSession(sessionId, context(), performance);
+    expect(JSON.stringify(plain)).not.toContain("setKind");
+    const adopted = await readMobileSession(sessionId, context(), performance, false, false, true);
+    expect(adopted.exercises[0].payload.sets[0].setKind).toBe("warmup");
+    expect(adopted.quickHistory).toMatchObject({ status: "ok", data: { [exerciseId]: [{ sets: [{ setKind: "warmup" }] }] } });
+  });
+  it("the exercise sync reads the column only when asked and answers with it", async () => {
+    const builder = { select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn() };
+    builder.select.mockReturnValue(builder); builder.eq.mockReturnValue(builder);
+    const from = vi.fn().mockReturnValue(builder);
+    builder.maybeSingle.mockResolvedValue({ data: { status: "in_progress", exercises: [{ ...detail.exercises[0], sets: [{ ...domainPayload.sets[0], set_kind: "warmup" }] }] }, error: null });
+    const adopted = await readMobileSessionExercise(sessionId, relationId, context(undefined, from), false, true);
+    expect(builder.select).toHaveBeenLastCalledWith(expect.stringContaining("set_kind"));
+    expect(adopted).toMatchObject({ status: "active", payload: { sets: [{ setKind: "warmup" }] } });
+    const plain = await readMobileSessionExercise(sessionId, relationId, context(undefined, from));
+    expect(builder.select).toHaveBeenLastCalledWith(expect.not.stringContaining("set_kind"));
+    expect(JSON.stringify(plain)).not.toContain("setKind");
+  });
+  it("sends the kind to the CAS writer exactly as received", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: timestamp, error: null });
+    await saveMobileSessionExercise(sessionId, relationId, { expectedUpdatedAt: timestamp, payload: kinded("warmup") }, context(rpc));
+    expect(rpc.mock.calls[0][1].p_payload.sets[0]).toMatchObject({ set_kind: "warmup" });
+  });
+  it("the migration keeps kinds for writers that do not send them and copies them routine ↔ session", () => {
+    const sql = readFileSync("supabase/migrations/20261124200000_training_set_kind_expand.sql", "utf8");
+    expect(sql).toContain("check (set_kind in ('work', 'warmup'))");
+    expect(sql).toContain("coalesce(item.set_kind, v_set_kinds ->> item.set_number::text, 'work')");
+    expect(sql).toContain("coalesce(v_set_kinds ->> item.set_number::text, 'work')");
+    for (const fn of ["start_workout_session", "mobile_start_workout_from_template", "finish_workout_session", "duplicate_training_routine", "mobile_replace_training_routine_template", "save_routine_exercise"]) {
+      expect(sql).toContain(fn);
+    }
+  });
+});

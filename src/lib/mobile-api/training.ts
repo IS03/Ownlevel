@@ -425,13 +425,19 @@ export function parseMobileTrainingRoutineTemplate(
         "targetWeightKg",
         "targetRir",
         "notes",
+        "setKind",
       ]);
+      if ("setKind" in set && set.setKind !== "work" && set.setKind !== "warmup") {
+        throw new MobileApiValidationError("El tipo de serie no es válido.");
+      }
       return {
         setNumber: requiredInteger(set.setNumber, "El número de serie", 1),
         targetReps: nullableNumber(set.targetReps, "Las repeticiones"),
         targetWeightKg: nullableNumber(set.targetWeightKg, "El peso"),
         targetRir: nullableNumber(set.targetRir, "El RIR"),
         notes: nullableText(set.notes, "Las notas de la serie"),
+        // #537: absent (installed apps) keeps the stored kind of that set.
+        ...("setKind" in set ? { setKind: set.setKind as "work" | "warmup" } : {}),
       };
     });
     const targets = {

@@ -33,6 +33,7 @@ export async function PUT(request: NextRequest, route: RouteContext) {
           id,
           await readMobileJson(request),
           context,
+          request.nextUrl.searchParams.get("setKinds") === "1",
         ),
       ),
     },
