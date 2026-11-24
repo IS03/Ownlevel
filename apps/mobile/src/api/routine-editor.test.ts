@@ -27,7 +27,7 @@ describe('Mobile routine editor API', () => {
     } as never);
     const client = { request } as unknown as MobileApiClient;
     expect(await fetchRoutineDetail(client, ID)).toMatchObject({ status: 'ok', data: { kind: 'not_found' } });
-    expect(request).toHaveBeenCalledWith(expect.objectContaining({ method: 'GET', path: `/api/mobile/v1/training/routines/${ID}` }));
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ method: 'GET', path: `/api/mobile/v1/training/routines/${ID}?setKinds=1` }));
   });
 
   it('uses one canonical PATCH and one full-template PUT', async () => {
@@ -45,7 +45,7 @@ describe('Mobile routine editor API', () => {
       body: { name: 'PUSH B', color: 'rose', expectedUpdatedAt: detailFixture.routine.updatedAt },
     }));
     expect(request).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      method: 'PUT', path: `/api/mobile/v1/training/routines/${ID}/template`,
+      method: 'PUT', path: `/api/mobile/v1/training/routines/${ID}/template?setKinds=1`,
       body: expect.objectContaining({ expectedTemplateVersion: 3 }),
     }));
     expect(request).toHaveBeenCalledTimes(2);
@@ -55,4 +55,14 @@ describe('Mobile routine editor API', () => {
 it.each(['sand', 'stone', 'slate', 'graphite', 'future-color'])('keeps the full template and original unknown color %s for safe editing', color => {
   const parsed = parseRoutineDetail({ ...detailFixture, routine: { ...detailFixture.routine, color } });
   expect(parsed).toEqual({ ...detailFixture, routine: { ...detailFixture.routine, color: color === 'future-color' ? null : color, ...(color === 'future-color' ? { unrecognizedColor: color } : {}) } });
+});
+
+describe('#537 · tipo de serie en la rutina', () => {
+  it('accepts a known kind on each set and rejects an unknown one; absent stays absent', () => {
+    const withKind = (setKind: unknown) => ({ ...detailFixture, items: detailFixture.items.map(item => ({ ...item,
+      targets: { ...item.targets, sets: item.targets.sets.map(set => ({ ...set, setKind })) } })) });
+    expect(parseRoutineDetail(withKind('warmup'))?.items[0]?.targets.sets[0]?.setKind).toBe('warmup');
+    expect(parseRoutineDetail(withKind('cooldown'))).toBeUndefined();
+    expect(parseRoutineDetail(detailFixture)?.items[0]?.targets.sets.every(set => !('setKind' in set))).toBe(true);
+  });
 });

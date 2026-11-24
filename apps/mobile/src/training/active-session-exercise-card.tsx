@@ -8,7 +8,7 @@ import type { NextSessionDecision } from './session-next-options.types';
 import { SessionGlassButton } from './session-glass-button';
 import { haptics, triggerHaptic } from '@/platform/haptics';
 import type { ActiveSessionController, ExercisePhase } from './active-session-controller';
-import { appendSessionSet, compactActual, draftIncomplete, nextReminder, removeSessionSet, resetSessionSet, setProgress, type SessionExerciseDraft } from './active-session-model';
+import { appendSessionSet, compactActual, draftIncomplete, knowsSetKinds, nextReminder, removeSessionSet, resetSessionSet, setOrdinal, setProgress, toggleSetKind, type SessionExerciseDraft } from './active-session-model';
 import { SessionRestDuration } from './session-rest-duration';
 import { restSeconds } from './active-session-model';
 import { LoadPatternRow } from './load-pattern-row';
@@ -137,7 +137,7 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
     </View> : null}
     {expanded ? <Animated.View entering={FadeIn.duration(reducedMotion ? 200 : 220)} style={styles.body}>
       <View style={styles.row}><AppText muted style={styles.flex} variant="caption">
-        {pendingSet ? `Serie ${draft.sets.findIndex(set => set.localId === pendingSet) + 1} de ${draft.sets.length}` : 'Series completadas'}
+        {pendingSet ? pendingLabel(draft.sets, draft.sets.findIndex(set => set.localId === pendingSet)) : 'Series completadas'}
       </AppText>
         <Pressable accessibilityRole="button" accessibilityLabel={`Historial de ${exercise.nameSnapshot}`} disabled={locked}
           onPress={() => { Keyboard.dismiss(); onHistory(id); }} style={[styles.historyTrigger, { opacity: locked ? 0.45 : 1 }]}>
@@ -153,7 +153,8 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
       <NativeReorderList ids={draft.sets.map(set => set.localId)} onLift={() => { const accepted = controller.beginSetDrag(id); if (accepted) Keyboard.dismiss(); return accepted; }}
         onDrop={ids => controller.dropSets(id, ids)} onCancel={() => controller.cancelDrag()}>
         {draft.sets.map((set, index) => <NativeReorderItem key={set.localId} id={set.localId}>
-          <ActiveSetRow key={reveal} controller={controller} id={id} name={exercise.nameSnapshot} set={set} index={index} count={draft.sets.length} editable={editable} entering={addedSet === set.localId ? 0 : Math.min(index, 8) * 55} reducedMotion={reducedMotion} onDialogChange={setDialogOpen} />
+          <ActiveSetRow key={reveal} controller={controller} id={id} name={exercise.nameSnapshot} set={set} index={index} count={draft.sets.length} editable={editable} entering={addedSet === set.localId ? 0 : Math.min(index, 8) * 55} reducedMotion={reducedMotion} onDialogChange={setDialogOpen}
+            ordinal={setOrdinal(draft.sets, index)} kinds={knowsSetKinds(draft)} />
         </NativeReorderItem>)}
       </NativeReorderList>
       {state.phase !== 'closed' && state.phase !== 'removed' ? <Animated.View layout={reducedMotion ? undefined : LinearTransition.duration(300)} style={styles.row}>
@@ -210,8 +211,14 @@ function SetCheck({ checked, animate, reducedMotion }: { checked: boolean; anima
     ? <Animated.View key="done" testID="set-check-done" entering={entering}><AppIcon name="check" color={colors.textMuted} size={26} /></Animated.View>
     : <Animated.View key="open" testID="set-check-open" entering={entering} style={[styles.unchecked, { borderColor: colors.textMuted }]} />;
 }
-function ActiveSetRow({ controller, id, name, set, index, count, editable, entering, reducedMotion, onDialogChange }: {
+/** «Serie 2 de 3» counts working sets only (#537); a pending warm-up reads «Calentamiento». */
+function pendingLabel(sets: SessionExerciseDraft['sets'], index: number) {
+  const ordinal = setOrdinal(sets, index);
+  return ordinal.warmup ? 'Calentamiento' : `Serie ${ordinal.number} de ${ordinal.total}`;
+}
+function ActiveSetRow({ controller, id, name, set, index, count, editable, entering, reducedMotion, onDialogChange, ordinal, kinds }: {
   controller: ActiveSessionController; id: string; name: string; set: SessionExerciseDraft['sets'][number]; index: number; count: number; editable: boolean; /** Entering delay in ms: rows cascade in one under the other. */ entering: number; reducedMotion: boolean; onDialogChange: (open: boolean) => void;
+  /** Working sets are numbered among themselves; a warm-up shows «C». */ ordinal: ReturnType<typeof setOrdinal>; /** The server knows set kinds (#537). */ kinds: boolean;
 }) {
   const { colors } = useOwnlevelTheme();
   // Only a tap here animates the tick; a row that arrives completed (reload, other device) shows it still.
@@ -223,6 +230,10 @@ function ActiveSetRow({ controller, id, name, set, index, count, editable, enter
   }, [controller, id, set.localId]);
   const mutate = (operation: (draft: SessionExerciseDraft, position: number) => SessionExerciseDraft) => controller.change(id, current => operation(current, current.sets.findIndex(row => row.localId === set.localId)), true);
   const reset = () => mutate(resetSessionSet);
+  // #537: marking a warm-up only changes the kind; the values stay as they are.
+  const toggleKind = () => { if (kinds) { mutate(toggleSetKind); haptics.selection(); } };
+  const label = ordinal.warmup ? 'Calentamiento' : `Serie ${ordinal.number}`;
+  const kindLabel = ordinal.warmup ? 'Serie de trabajo' : 'Calentamiento';
   const remove = () => {
     if (count <= 1) return;
     onDialogChange(true);
@@ -235,30 +246,33 @@ function ActiveSetRow({ controller, id, name, set, index, count, editable, enter
     if (from < 0 || to < 0 || to >= ids.length || !controller.beginSetDrag(id)) return;
     ids.splice(from, 1); ids.splice(to, 0, set.localId); void controller.dropSets(id, ids).then(confirmed => { if (confirmed) haptics.selection(); });
   };
-  const actions = [{ name: 'moveUp', label: 'Mover arriba' }, { name: 'moveDown', label: 'Mover abajo' }, { name: 'reset', label: 'Resetear serie' },
+  const actions = [{ name: 'moveUp', label: 'Mover arriba' }, { name: 'moveDown', label: 'Mover abajo' },
+    ...(kinds ? [{ name: 'kind', label: ordinal.warmup ? 'Marcar como serie de trabajo' : 'Marcar como calentamiento' }] : []), { name: 'reset', label: 'Resetear serie' },
     ...(count > 1 ? [{ name: 'delete', label: 'Eliminar serie' }] : [])];
   const accessibilityAction: View['props']['onAccessibilityAction'] = event => {
     const action = event.nativeEvent.actionName;
-    if (action === 'moveUp') move(-1); else if (action === 'moveDown') move(1); else if (action === 'reset') reset(); else if (action === 'delete') remove();
+    if (action === 'moveUp') move(-1); else if (action === 'moveDown') move(1); else if (action === 'kind') toggleKind(); else if (action === 'reset') reset(); else if (action === 'delete') remove();
   };
   const updateActual = (key: 'actualReps' | 'actualWeightKg', value: string) => controller.change(id, current => ({ ...current,
     sets: current.sets.map(row => row.localId === set.localId ? { ...row, [key]: value } : row) }));
   // The gap between rows lives outside the swipe area, so the swiped row and its buttons line up.
-  return <View style={styles.setGap}><NativeSwipeActions backgroundColor={colors.background} label={`Serie ${index + 1}`} disabled={!editable} actions={[{ label: 'Resetear', onPress: reset }, { label: 'Eliminar', destructive: true, disabled: count <= 1, onPress: remove }]}>
+  return <View style={styles.setGap}><NativeSwipeActions backgroundColor={colors.background} label={label} disabled={!editable} actions={[
+    ...(kinds ? [{ label: kindLabel, onPress: toggleKind }] : []), { label: 'Resetear', onPress: reset }, { label: 'Eliminar', destructive: true, disabled: count <= 1, onPress: remove }]}>
     <Animated.View testID={`session-set-${set.localId}`} entering={reducedMotion ? FadeIn.duration(200) : FadeInUp.delay(entering).duration(260)}
       style={[styles.setBlock, { backgroundColor: colors.background }]}>
-      <SeriesColumns ordinal={<NativeDragHandle testID={`set-handle-${set.localId}`} disabled={!editable} accessibilityRole="button" accessibilityLabel={`Mover serie ${index + 1}`}
-        accessibilityHint="Mantené presionado para arrastrar. Deslizá a la izquierda para resetear o eliminar." accessibilityActions={actions} onAccessibilityAction={accessibilityAction} style={styles.controlTrack}>
-        <AppText numeric muted variant="caption">{index + 1}</AppText></NativeDragHandle>}
-        kg={<TextInput accessibilityLabel={`Peso serie ${index + 1} de ${name}`} editable={editable} keyboardType="decimal-pad" selectTextOnFocus
+      <SeriesColumns ordinal={<NativeDragHandle testID={`set-handle-${set.localId}`} disabled={!editable} accessibilityRole="button" accessibilityLabel={`Mover ${label.toLocaleLowerCase('es-AR')}`}
+        accessibilityHint={`Mantené presionado para arrastrar. Deslizá a la izquierda para ${kinds ? 'marcar calentamiento, ' : ''}resetear o eliminar.`} accessibilityActions={actions} onAccessibilityAction={accessibilityAction} style={styles.controlTrack}>
+        {/* A warm-up shows «C» in grey, never a number: the working sets keep 1, 2, 3. */}
+        <AppText testID={`set-ordinal-${set.localId}`} numeric muted variant="caption">{ordinal.warmup ? 'C' : ordinal.number}</AppText></NativeDragHandle>}
+        kg={<TextInput accessibilityLabel={`Peso ${label.toLocaleLowerCase('es-AR')} de ${name}`} editable={editable} keyboardType="decimal-pad" selectTextOnFocus
           placeholder="—" placeholderTextColor={colors.textMuted} value={set.actualWeightKg} onChangeText={value => updateActual('actualWeightKg', value)}
           onEndEditing={() => void controller.flush(id)} style={[styles.numberInput, { borderColor: colors.border, color: colors.text }]} />}
-        reps={<TextInput accessibilityLabel={`Reps serie ${index + 1} de ${name}`} editable={editable} keyboardType="number-pad" selectTextOnFocus
+        reps={<TextInput accessibilityLabel={`Reps ${label.toLocaleLowerCase('es-AR')} de ${name}`} editable={editable} keyboardType="number-pad" selectTextOnFocus
           placeholder="—" placeholderTextColor={colors.textMuted} value={set.actualReps} onChangeText={value => updateActual('actualReps', value)}
           onEndEditing={() => void controller.flush(id)} style={[styles.numberInput, { borderColor: colors.border, color: colors.text }]} />}
-        rir={<NativeDragHandle testID={`set-rir-${set.localId}`} disabled={!editable} accessibilityRole="button" accessibilityLabel={`RIR objetivo serie ${index + 1}: ${compactActual(set.targetRir)}`}
+        rir={<NativeDragHandle testID={`set-rir-${set.localId}`} disabled={!editable} accessibilityRole="button" accessibilityLabel={`RIR objetivo ${label.toLocaleLowerCase('es-AR')}: ${compactActual(set.targetRir)}`}
           accessibilityActions={actions} onAccessibilityAction={accessibilityAction} style={[styles.controlTrack, styles.rirField]}><AppText muted numeric variant="label">{compactActual(set.targetRir)}</AppText></NativeDragHandle>}
-        completed={<NativeDragHandle testID={`set-check-${set.localId}`} accessibilityRole="checkbox" accessibilityLabel={`Serie ${index + 1} completada`} accessibilityState={{ checked: set.isCompleted, disabled: !editable }} disabled={!editable}
+        completed={<NativeDragHandle testID={`set-check-${set.localId}`} accessibilityRole="checkbox" accessibilityLabel={`${label} completada`} accessibilityState={{ checked: set.isCompleted, disabled: !editable }} disabled={!editable}
           accessibilityActions={actions} onAccessibilityAction={accessibilityAction}
           onTap={tapCompleted} style={styles.controlTrack}>
           <SetCheck checked={set.isCompleted} animate={tapped} reducedMotion={reducedMotion} /></NativeDragHandle>} />

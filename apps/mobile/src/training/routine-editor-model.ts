@@ -8,6 +8,8 @@ export type SetDraft = {
   targetWeightKg: string;
   targetRir: string;
   notes: string | null;
+  /** #537 · Only when the server sent it; see RoutineSet. */
+  setKind?: 'work' | 'warmup';
 };
 
 export type TargetsDraft = {
@@ -31,8 +33,16 @@ export function draftFromTargets(targets: RoutineTargets): TargetsDraft {
       targetWeightKg: set.targetWeightKg === null ? '' : String(set.targetWeightKg).replace('.', ','),
       targetRir: set.targetRir === null ? '' : String(set.targetRir),
       notes: set.notes,
+      ...(set.setKind ? { setKind: set.setKind } : {}),
     })),
   };
+}
+
+/** #537 · The server knows set kinds for this routine exercise: only then a kind is shown, changed or sent. */
+export const routineKnowsSetKinds = (draft: Pick<TargetsDraft, 'sets'>) => draft.sets.some(set => set.setKind !== undefined);
+export function toggleRoutineSetKind(draft: TargetsDraft, index: number): TargetsDraft {
+  if (index < 0 || index >= draft.sets.length || !routineKnowsSetKinds(draft)) return draft;
+  return { ...draft, sets: draft.sets.map((set, position) => position === index ? { ...set, setKind: set.setKind === 'warmup' ? 'work' : 'warmup' } : set) };
 }
 
 export function isTargetsDirty(draft: TargetsDraft, confirmed: RoutineTargets): boolean {
@@ -74,6 +84,7 @@ export function targetsFromDraft(draft: TargetsDraft): RoutineTargets {
     targetWeightKg: parseNumber(set.targetWeightKg, 'Peso', 9999.99, false),
     targetRir: parseNumber(set.targetRir, 'RIR', 10, true),
     notes: set.notes,
+    ...(set.setKind ? { setKind: set.setKind } : {}),
   }));
   if (draft.notes.length > 1000) throw new Error('Las observaciones no pueden superar 1000 caracteres.');
   return {
@@ -96,6 +107,7 @@ export function addSet(draft: TargetsDraft): TargetsDraft {
       targetWeightKg: last?.targetWeightKg ?? '',
       targetRir: last?.targetRir ?? '',
       notes: null,
+      ...(routineKnowsSetKinds(draft) ? { setKind: 'work' as const } : {}),
     }],
   };
 }

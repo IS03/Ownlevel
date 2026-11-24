@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import type { SessionSetDto } from '@/api/active-session';
-import { appendSessionSet, compactHistoryDate, exerciseDraft, exercisePayload, historyLoadLabel, historySetLabel, moveSessionSet, quickHistoryFold, quickHistoryRows, quickHistoryTargetRir, parseStoredExerciseDraft, removeSessionSet, resetSessionSet, restoreRestDeadline, restRemaining, restSeconds, shouldSignalRestEnd, sameExercisePayload, setProgress } from './active-session-model';
+import { appendSessionSet, draftUsingHistory, knowsSetKinds, setOrdinal, toggleSetKind, compactHistoryDate, exerciseDraft, exercisePayload, historyLoadLabel, historySetLabel, moveSessionSet, quickHistoryFold, quickHistoryRows, quickHistoryTargetRir, parseStoredExerciseDraft, removeSessionSet, resetSessionSet, restoreRestDeadline, restRemaining, restSeconds, shouldSignalRestEnd, sameExercisePayload, setProgress } from './active-session-model';
 import { EXERCISE_ID, SESSION_ID, VERSION, testExercise, testPayload } from './active-session-test-fixtures';
 
 describe('native active-session product model', () => {
@@ -144,5 +144,46 @@ describe('rest-end haptic', () => {
     expect(shouldSignalRestEnd(0, 0, timer, 100_400)).toBe(false); // no repeat
     expect(shouldSignalRestEnd(5, 4, timer, 96_000)).toBe(false); // still counting
     expect(shouldSignalRestEnd(40, 0, timer, 160_000)).toBe(false); // back from background long after
+  });
+});
+
+describe('#537 · tipo de serie', () => {
+  const kinded = () => ({ ...testPayload(), sets: [
+    { setNumber: 1, targetReps: 10, targetWeightKg: 20, targetRir: null, actualReps: 10, actualWeightKg: 20, isCompleted: true, notes: null, setKind: 'warmup' as const },
+    { setNumber: 2, targetReps: 8, targetWeightKg: 60, targetRir: 2, actualReps: null, actualWeightKg: null, isCompleted: false, notes: null, setKind: 'work' as const }], isCompleted: true });
+  it('the payload carries each known kind; a draft without kinds (older server) sends none', () => {
+    expect(exercisePayload(exerciseDraft(kinded())).sets.map(set => set.setKind)).toEqual(['warmup', 'work']);
+    expect(exercisePayload(exerciseDraft(testPayload())).sets.every(set => !('setKind' in set))).toBe(true);
+  });
+  it('toggling changes only that set; new and copied sets are working sets only when the server knows kinds', () => {
+    const draft = exerciseDraft(kinded());
+    const toggled = toggleSetKind(draft, 1);
+    expect(toggled.sets.map(set => set.setKind)).toEqual(['warmup', 'warmup']);
+    expect(toggled.sets.map(({ setKind: _kind, ...set }) => set)).toEqual(draft.sets.map(({ setKind: _kind, ...set }) => set));
+    expect(appendSessionSet(draft).sets.at(-1)!.setKind).toBe('work');
+    const plain = exerciseDraft(testPayload());
+    expect(knowsSetKinds(plain)).toBe(false);
+    expect(toggleSetKind(plain, 0)).toBe(plain);
+    expect('setKind' in appendSessionSet(plain).sets.at(-1)!).toBe(false);
+    const history = { sessionId: SESSION_ID, logDate: '2026-09-20', completedAt: null, routineId: null, routineName: 'PUSH', decision: 'maintain' as const, sets: kinded().sets };
+    expect(draftUsingHistory(draft, history).sets.map(set => set.setKind)).toEqual(['warmup']);
+  });
+  it('«Serie x de y» numbers working sets among themselves', () => {
+    const sets = [{ setKind: 'warmup' as const }, { setKind: 'work' as const }, {}, { setKind: 'warmup' as const }];
+    expect(setOrdinal(sets, 0)).toEqual({ warmup: true, number: 0, total: 2 });
+    expect(setOrdinal(sets, 1)).toEqual({ warmup: false, number: 1, total: 2 });
+    expect(setOrdinal(sets, 2)).toEqual({ warmup: false, number: 2, total: 2 });
+  });
+  it('read-back equality: two known kinds must match; an absent one (older journal) means «the stored one»', () => {
+    const payload = kinded();
+    expect(sameExercisePayload(payload, payload)).toBe(true);
+    expect(sameExercisePayload(payload, { ...payload, sets: payload.sets.map(set => ({ ...set, setKind: 'work' as const })) })).toBe(false);
+    expect(sameExercisePayload({ ...payload, sets: payload.sets.map(({ setKind: _kind, ...set }) => set) }, payload)).toBe(true);
+  });
+  it('a stored draft with an unknown kind is not restored', () => {
+    const draft = exerciseDraft(kinded());
+    const stored = { version: 1, sessionId: SESSION_ID, sessionExerciseId: EXERCISE_ID, serverUpdatedAt: VERSION, basePayload: kinded(), draft, writeId: 'w' };
+    expect(parseStoredExerciseDraft(stored, SESSION_ID, EXERCISE_ID)).not.toBeNull();
+    expect(parseStoredExerciseDraft({ ...stored, draft: { ...draft, sets: draft.sets.map(set => ({ ...set, setKind: 'cooldown' })) } }, SESSION_ID, EXERCISE_ID)).toBeNull();
   });
 });
