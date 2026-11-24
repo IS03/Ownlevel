@@ -4,9 +4,9 @@ import { syncRestAlert } from './session-rest-alert';
 
 jest.mock('expo-notifications', () => ({
   SchedulableTriggerInputTypes: { DATE: 'date' },
-  getPermissionsAsync: jest.fn().mockResolvedValue({ granted: true }),
-  scheduleNotificationAsync: jest.fn().mockResolvedValue('ownlevel.training.rest-end'),
-  cancelScheduledNotificationAsync: jest.fn().mockResolvedValue(undefined),
+  getPermissionsAsync: jest.fn(async () => ({ granted: true })),
+  scheduleNotificationAsync: jest.fn(async () => 'ownlevel.training.rest-end'),
+  cancelScheduledNotificationAsync: jest.fn(async () => undefined),
 }));
 
 it('replaces the pending alert after adjusting the time and cancels it when skipping', async () => {
