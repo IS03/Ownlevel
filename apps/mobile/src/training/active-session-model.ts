@@ -43,6 +43,10 @@ export function exercisePayload(draft: SessionExerciseDraft): SessionExercisePay
   if (draft.decision === 'custom' && !draft.decisionNote.trim()) throw new Error('El recordatorio anterior necesita una nota.');
   return canonicalSessionExercisePayload({ ...draft, sets, isCompleted: sets.some(set => set.isCompleted) });
 }
+/** The draft cannot be sent as it is (a value half typed or missing): the user is still on it. */
+export function draftIncomplete(draft: SessionExerciseDraft): boolean {
+  try { exercisePayload(draft); return false; } catch { return true; }
+}
 export function sameExercisePayload(a: SessionExercisePayloadDto, b: SessionExercisePayloadDto): boolean {
   const ordered = (p: SessionExercisePayloadDto) => [p.isCompleted, p.decision, p.decision === 'custom' ? p.decisionNote.trim() : '', p.applyToRoutine, p.notes,
     p.sets.map(s => [s.setNumber, s.targetReps, s.targetWeightKg, s.targetRir, s.actualReps, s.actualWeightKg, s.isCompleted, s.notes || null])];

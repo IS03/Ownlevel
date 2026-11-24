@@ -595,6 +595,8 @@ describe('native finish (M3.4-2)', () => {
     controller.change(EXERCISE_ID, draft => ({ ...draft, sets: draft.sets.map(set => ({ ...set, actualReps: '' })) }));
     expect(controller.getExercise(EXERCISE_ID)?.phase).toBe('validation');
     expect(await controller.finish()).toBe(false); expect(api.finish).not.toHaveBeenCalled();
+    // Finishing says which exercise and what is missing, instead of a generic «cambios sin confirmar».
+    expect(controller.getSnapshot().notice).toMatch(/^Antes de finalizar, revisá .+: completá las reps de la serie 1\.$/);
     expect(controller.canEdit(EXERCISE_ID)).toBe(true);
   });
   it('converges a double tap into one finish intent and one request', async () => {

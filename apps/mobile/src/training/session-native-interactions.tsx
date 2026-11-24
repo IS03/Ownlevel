@@ -191,6 +191,15 @@ export function closeSwipeOnScroll(y: number) {
   if (Math.abs(y - anchor) > 12) { swipeScrollAnchor.set(null); runOnJS(closeOpenSwipeActions)(); }
 }
 /** Swipe gestures attach to the non-editable handles/header, never to numeric inputs. */
+/**
+ * Where a swipe rests when the finger lifts. It follows the direction of the gesture, not only where the row ended up:
+ * an open row closes after a short move or flick to the right, and a closed one opens after 42 pt or a firm flick left.
+ */
+export function swipeSettlesOpen(start: number, x: number, velocityX: number): boolean {
+  'worklet';
+  if (start < 0) return !(x > start + 24 || velocityX > 250);
+  return x < -42 || (velocityX < -500 && x < -8);
+}
 export function NativeSwipeActions({ actions, disabled, children, label, backgroundColor }: { actions: SwipeAction[]; disabled: boolean; children: ReactNode; label: string; backgroundColor?: string }) {
   const { colors } = useOwnlevelTheme();
   const x = useSharedValue(0), width = actions.length * 76;
@@ -208,6 +217,14 @@ export function NativeSwipeActions({ actions, disabled, children, label, backgro
   useLayoutEffect(() => { actionWidth.set(width); }, [actionWidth, width]);
   useEffect(() => { if (disabled) x.set(withSpring(0, spring, finished => { if (finished) runOnJS(setOpen)(false); })); }, [disabled, x]);
   useEffect(() => { if (x.value < -width) x.set(withSpring(-width, spring)); }, [width, x]);
+  const closeStart = useSharedValue(0);
+  const closer = useMemo(() => Gesture.Race(
+    Gesture.Pan().activeOffsetX([-8, 8]).failOffsetY([-12, 12])
+      .onStart(() => { closeStart.set(x.value); })
+      .onUpdate(event => { x.set(Math.max(-actionWidth.value, Math.min(0, closeStart.value + event.translationX))); })
+      .onEnd(event => { const stay = swipeSettlesOpen(closeStart.value, x.value, event.velocityX); x.set(withSpring(stay ? -actionWidth.value : 0, spring)); runOnJS(settled)(stay); }),
+    Gesture.Tap().maxDistance(10).onEnd((_event, success) => { if (success) { x.set(withSpring(0, spring)); runOnJS(settled)(false); } }),
+  ), [actionWidth, closeStart, settled, x]);
   return <SwipeContext.Provider value={value}><View style={styles.swipe}>
     <View style={styles.actions} accessibilityElementsHidden={!open || disabled} importantForAccessibility={open && !disabled ? 'auto' : 'no-hide-descendants'}>
       {actions.map(action => <Pressable key={action.label} testID={`swipe-${label}-${action.label}`} accessibilityRole="button"
@@ -217,7 +234,12 @@ export function NativeSwipeActions({ actions, disabled, children, label, backgro
         <AppText variant="caption" style={{ color: action.destructive ? colors.surface : colors.primary, textAlign: 'center' }}>{action.label}</AppText>
       </Pressable>)}
     </View>
-    <Animated.View style={[{ backgroundColor: backgroundColor ?? colors.surface }, style]}>{children}</Animated.View>
+    <Animated.View style={[{ backgroundColor: backgroundColor ?? colors.surface }, style]}>
+      {children}
+      {/* Open, the whole row answers: its handle may have slid out of view. A short move right or a tap closes it. */}
+      {open && !disabled ? <GestureDetector gesture={closer}><Animated.View style={StyleSheet.absoluteFill} testID={`swipe-close-${label}`}
+        accessible accessibilityRole="button" accessibilityLabel={`Cerrar acciones · ${label}`} onAccessibilityTap={close} /></GestureDetector> : null}
+    </Animated.View>
   </View></SwipeContext.Provider>;
 }
 export function NativeDragHandle({ disabled, onTap, holdDelay = DRAG_DELAY, children, testID, ...props }: ViewProps & { disabled: boolean; onTap?: () => void; holdDelay?: number }) {
@@ -252,13 +274,18 @@ export function NativeDragHandle({ disabled, onTap, holdDelay = DRAG_DELAY, chil
         release();
       });
     const tap = Gesture.Tap().withTestId(`tap-${testID}`).enabled(!disabled).maxDuration(Math.max(1, holdDelay - 1)).maxDistance(10)
-      .onBegin(press).onEnd((_event, success) => { if (success && onTap) runOnJS(onTap)(); }).onFinalize(release);
+      .onBegin(press).onEnd((_event, success) => {
+        if (!success) return;
+        // An open row closes on a tap first, like iOS lists; the tap does not also open or collapse it.
+        if (swipe && swipe.x.value < 0) { swipe.x.set(withSpring(0, spring)); runOnJS(swipe.settled)(false); return; }
+        if (onTap) runOnJS(onTap)();
+      }).onFinalize(release);
     const horizontal = Gesture.Pan().withTestId(`swipe-${testID}`).enabled(Boolean(swipe && !swipe.disabled))
       .activeOffsetX([-14, 14]).failOffsetY([-10, 10]).onStart(() => { if (swipe) swipeStart.set(swipe.x.value); release(); })
       .onUpdate(event => { if (swipe) swipe.x.set(Math.max(-swipe.width.value, Math.min(0, swipeStart.value + event.translationX))); })
-      .onEnd(() => {
+      .onEnd(event => {
         if (!swipe) return;
-        const open = swipe.x.value < -42; swipe.x.set(withSpring(open ? -swipe.width.value : 0, spring)); runOnJS(swipe.settled)(open);
+        const open = swipeSettlesOpen(swipeStart.value, swipe.x.value, event.velocityX); swipe.x.set(withSpring(open ? -swipe.width.value : 0, spring)); runOnJS(swipe.settled)(open);
       }).onFinalize((_event, success) => { if (swipe && !success) swipe.x.set(withSpring(0, spring)); release(); });
     // Native scrolling and the child recognizers may observe the same touch,
     // without cancelling each other. Only a held pan disables native scrolling;

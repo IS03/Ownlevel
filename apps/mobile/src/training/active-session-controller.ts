@@ -597,6 +597,11 @@ export class ActiveSessionController {
       return unconfirmed ? [entry.snapshot.exercise.nameSnapshot] : [];
     });
   }
+  /** Exercises left with a value half typed, each with what is missing, so it can be fixed without hunting for it. */
+  private finishIncomplete(): string[] {
+    return [...this.entries.values()].flatMap(entry => entry.snapshot.phase === 'validation' && entry.snapshot.error
+      ? [`${entry.snapshot.exercise.nameSnapshot}: ${entry.snapshot.error.replace(/^./, c => c.toLowerCase())}`] : []);
+  }
   private async prepareFinish(): Promise<boolean> {
     await this.refreshFlight;
     const detail = this.snapshot.detail;
@@ -625,7 +630,9 @@ export class ActiveSessionController {
     } catch { blockers = ['la sesión']; }
     if (blockers.length) {
       // Never finish over a local draft the server has not confirmed.
-      this.update({ finishing: false, notice: `No finalizamos todavía: ${blockers.join(', ')} tiene cambios sin confirmar. Revisalos y reintentá.` });
+      const incomplete = this.finishIncomplete();
+      this.update({ finishing: false, notice: incomplete.length ? `Antes de finalizar, revisá ${incomplete.join(' ')}`
+        : `No finalizamos todavía: ${blockers.join(', ')} tiene cambios sin confirmar. Revisalos y reintentá.` });
       this.resumeSaves(); return false;
     }
     if (this.progress.completedSets === 0) { this.update({ finishing: false, notice: 'Marcá al menos una serie antes de finalizar.' }); return false; }
