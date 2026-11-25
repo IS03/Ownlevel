@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { AccessibilityInfo, Alert, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { SessionDetailDto, SessionSetDto } from '@/api/active-session';
 import type { SessionSummaryDto, SessionSummaryLoader } from '@/api/session-summary';
@@ -41,7 +42,9 @@ function summary(records = true): SessionSummaryDto {
 describe('SF2/SF3 · just finished', () => {
   it('a record leads, improvements follow, the line carries the server volume', () => {
     const model = postWorkoutModel(finished(), summary(), detail());
-    expect(model.title).toBe('PUSH guardado');
+    // #636: the page shows the clean name; the saved confirmation is for VoiceOver.
+    expect(model.title).toBe('PUSH'); expect(model.announcement).toBe('PUSH guardado');
+    expect(postWorkoutModel({ ...finished(), routineId: null })).toMatchObject({ title: 'Entrenamiento', announcement: 'Entrenamiento guardado' });
     expect(model.line).toBe('Mié 30 sept · 1 h 04 min · 24 series · 9.887 kg');
     expect(model.hero).toEqual({ kind: 'record', title: '¡Récord hoy!', name: 'PRESS INCLINADO', mark: '20 kg × 7', before: 'Antes: 17,5 kg × 8.', more: null,
       count: { from: 17.5, to: 20, unit: 'kg', reps: 7 } });
@@ -73,17 +76,17 @@ describe('the receipt screen', () => {
   it('shows the saved session at once and adds the record block when the summary confirms it', async () => {
     let resolve!: (value: Awaited<ReturnType<SessionSummaryLoader>>) => void;
     const view = wrap({ readSummary: () => new Promise(done => { resolve = done; }) });
-    expect(view.getByText('PUSH guardado')).toBeTruthy(); expect(view.queryByTestId('post-workout-hero-record')).toBeNull();
+    expect(view.getByText('PUSH')).toBeTruthy(); expect(view.queryByTestId('post-workout-hero-record')).toBeNull();
     expect(view.getByLabelText('Dolor: 0 de 10')).toBeTruthy(); expect(view.queryByLabelText(/Rendimiento/)).toBeNull();
     await act(async () => {});
     await act(async () => { resolve({ status: 'ok', data: summary(), meta }); });
-    expect(view.getByTestId('post-workout-hero-record')).toBeTruthy(); expect(view.getByLabelText('20 kg × 7')).toBeTruthy();
+    expect(view.getByTestId('post-workout-hero-record')).toBeTruthy(); expect(view.queryByLabelText('20 kg × 7') ?? view.getByText('20 kg × 7')).toBeTruthy();
     expect(view.getByTestId(`post-workout-exercise-${SECOND_ID}`)).toBeTruthy(); expect(view.queryByTestId('post-workout-row-improvement')).toBeNull();
   });
   it.each(['unavailable', 'throw'] as const)('keeps the receipt useful when the summary is %s, with no false block or zero volume', async state => {
     const view = wrap({ readSummary: async () => { if (state === 'throw') throw new Error('offline'); return { status: 'unavailable', reason: 'network', meta: { durationMs: 1, httpStatus: null, outcome: 'unavailable' } }; } });
     await act(async () => {});
-    expect(view.getByText('PUSH guardado')).toBeTruthy(); expect(view.queryByTestId(/post-workout-hero/)).toBeNull();
+    expect(view.getByText('PUSH')).toBeTruthy(); expect(view.queryByTestId(/post-workout-hero/)).toBeNull();
     expect(view.getByTestId('post-workout-line').props.children).toBe('Mié 30 sept · 1 h 04 min · 24 series');
   });
   it('plays the week first (the seven days at once), then the page comes up without it; a tap skips it', async () => {
@@ -91,14 +94,14 @@ describe('the receipt screen', () => {
       .map((date, index) => ({ date, today: index === 2, sessionsBefore: index < 2 ? 1 : 0 })) };
     jest.useFakeTimers();
     const view = wrap({ readWeek: async () => week });
-    expect(view.getByTestId('finish-week-intro')).toBeTruthy(); expect(view.queryByText('PUSH guardado')).toBeNull();
+    expect(view.getByTestId('finish-week-intro')).toBeTruthy(); expect(view.queryByText('PUSH')).toBeNull();
     await act(async () => {});
     act(() => { jest.advanceTimersByTime(400); });
     expect(view.getByTestId('finish-week-count').props.children).toBe('3 entrenos esta semana');
     act(() => { jest.advanceTimersByTime(300); });
     expect(view.getByTestId('finish-week-count').props.children).toBe('4 entrenos esta semana');
     fireEvent.press(view.getByRole('button', { name: '4 entrenos esta semana' }));
-    expect(view.getByText('PUSH guardado')).toBeTruthy();
+    expect(view.getByText('PUSH')).toBeTruthy();
     act(() => { jest.advanceTimersByTime(400); });
     expect(view.queryByTestId('finish-week-intro')).toBeNull();
   });
@@ -106,18 +109,22 @@ describe('the receipt screen', () => {
     jest.useFakeTimers();
     const view = wrap({ readWeek: async () => null });
     await act(async () => {});
-    expect(view.getByText('PUSH guardado')).toBeTruthy(); expect(view.queryByTestId('finish-week-count')).toBeNull();
+    expect(view.getByText('PUSH')).toBeTruthy(); expect(view.queryByTestId('finish-week-count')).toBeNull();
     const slow = wrap({ readWeek: () => new Promise<null>(() => undefined) });
-    expect(slow.queryByText('PUSH guardado')).toBeNull();
+    expect(slow.queryByText('PUSH')).toBeNull();
     act(() => { jest.advanceTimersByTime(1300); });
-    expect(slow.getByText('PUSH guardado')).toBeTruthy();
+    expect(slow.getByText('PUSH')).toBeTruthy();
   });
-  it('says the marks follow the receipt\'s own rule, not Insights\' comparison, only when there are marks (#367)', async () => {
+  it('keeps the rule of the marks one tap away, beside «Ejercicios», only when there are marks (#367, #636)', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     const view = wrap({ readSummary: async () => ({ status: 'ok', data: summary(), meta }) });
     await act(async () => {});
-    expect(view.getByTestId('post-workout-rule').props.children).toBe('Frente a la última vez con el mismo modo de carga. Comparaciones mira además implemento y variante, y puede leer distinto.');
+    expect(view.queryByText(/mismo modo de carga/)).toBeNull();
+    fireEvent.press(view.getByRole('button', { name: 'Cómo se comparan los ejercicios' }));
+    expect(alert).toHaveBeenCalledWith('Cómo se comparan', expect.stringContaining('mismo modo de carga'), [{ text: 'Listo', style: 'cancel' }]);
     const without = wrap();
     expect(without.queryByTestId('post-workout-rule')).toBeNull();
+    alert.mockRestore();
   });
   it('shows the recorded feelings as ordinal answers before → after, and when a "before" answer came late (#367)', () => {
     const receipt = finished();
@@ -134,6 +141,28 @@ describe('the receipt screen', () => {
     expect(block).toBeTruthy(); expect(view.queryByText(/%|promedio/)).toBeNull();
     const empty = wrap({ feelings: {} });
     expect(empty.getByText('Sin respuestas registradas.')).toBeTruthy();
+  });
+  it('#636: «Listo» sits in a fixed bar below the status bar; the other actions are rows inside the scroll; VoiceOver hears the confirmation', () => {
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility');
+    const home = jest.fn(), session = jest.fn();
+    const view = wrap({ onHome: home, onViewSession: session });
+    expect(announce).toHaveBeenCalledWith('PUSH guardado'); expect(view.queryByText(/guardado/)).toBeNull();
+    // The scroll starts below the bar, which starts below the device's inset: nothing can sit under the Dynamic Island.
+    expect(StyleSheet.flatten(view.getByTestId('post-workout-screen').props.style).paddingTop).toBe(47);
+    expect(view.getByTestId('post-workout-bar')).toBeTruthy();
+    fireEvent.press(view.getByRole('button', { name: 'Listo' })); expect(home).toHaveBeenCalledTimes(1);
+    const scroll = view.getByTestId('post-workout-scroll');
+    expect(scroll.props.contentInsetAdjustmentBehavior).toBe('never');
+    fireEvent.press(view.getByRole('button', { name: 'Ver sesión' })); expect(session).toHaveBeenCalledTimes(1);
+    expect(view.getByTestId('post-workout-links')).toBeTruthy();
+    announce.mockRestore();
+  });
+  it('#636: the record reads on the theme band, the trophy and mark in the accent and «Antes» secondary', async () => {
+    const view = wrap({ readSummary: async () => ({ status: 'ok', data: summary(), meta }) });
+    await act(async () => {});
+    const hero = StyleSheet.flatten(view.getByTestId('post-workout-hero-record').props.style);
+    expect(hero.experimental_backgroundImage).toContain('radial-gradient'); expect(hero.shadowOpacity).toBeUndefined();
+    expect(view.getByText('Antes: 17,5 kg × 8.')).toBeTruthy();
   });
   it('opens the facts of this session in Insights, reading nothing on the way', () => {
     mockRouter.replace.mockClear(); mockRouter.push.mockClear();

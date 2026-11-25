@@ -881,7 +881,7 @@ describe('native finish screen (M3.4-2)', () => {
     expect(api.finish).toHaveBeenCalledTimes(1);
     expect(api.finish).toHaveBeenCalledWith({ metadata: { energyLevel: 4, performanceLevel: null, painLevel: 0, notes: null }, idempotencyKey: expect.any(String) });
     expect(mockTrigger.mock.calls.filter(([event]) => event === 'workoutComplete')).toHaveLength(1);
-    expect(view.getByTestId('post-workout-screen')).toBeTruthy(); expect(view.getByText('Entrenamiento guardado')).toBeTruthy();
+    expect(view.getByTestId('post-workout-screen')).toBeTruthy(); expect(view.getByText('Entrenamiento')).toBeTruthy(); expect(view.queryByText('Entrenamiento guardado')).toBeNull();
     const sheet = within(view.getByTestId('post-workout-screen'));
     expect(sheet.getByTestId('post-workout-line').props.children).toMatch(/1 serie\b/);
     expect(sheet.getByLabelText('Energía: 4 de 5')).toBeTruthy(); expect(sheet.getByLabelText('Dolor: 0 de 10')).toBeTruthy();
