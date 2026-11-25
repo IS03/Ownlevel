@@ -25,6 +25,7 @@ describe('Settings stack', () => {
       { name: 'account', title: 'Cuenta' },
       { name: 'delete-account', title: 'Eliminar cuenta' },
       { name: 'app', title: 'App' },
+      { name: 'notices', title: 'Avisos' },
       { name: 'energy', title: 'Energía' },
       { name: 'physical', title: 'Datos físicos' },
       { name: 'stages', title: 'Etapas' },
@@ -34,6 +35,6 @@ describe('Settings stack', () => {
     ]);
     expect(mockTransparentHeaders).toEqual(expect.arrayContaining(['index', 'diagnostics']));
     // iOS: one title per screen, the native large title (big, then small in the bar while scrolling); the screen draws none.
-    expect(mockLargeTitles).toEqual(['metrics', 'meal-moments', 'account', 'delete-account', 'app', 'energy', 'physical', 'stages', 'stage-plan', 'stage-sequence']);
+    expect(mockLargeTitles).toEqual(['metrics', 'meal-moments', 'account', 'delete-account', 'app', 'notices', 'energy', 'physical', 'stages', 'stage-plan', 'stage-sequence']);
   });
 });

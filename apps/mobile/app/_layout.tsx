@@ -19,6 +19,7 @@ import { initHapticsPreference } from '@/platform/haptics';
 import { createHapticsPreferenceStorage } from '@/platform/haptics-preference';
 import { useStackScreenOptions } from '@/navigation/use-stack-screen-options';
 import { SessionPresenceProvider } from '@/training/session-presence-provider';
+import { NoticesLifetime } from '@/notices/notices-lifetime';
 import { EntryTransitionProvider } from '@/entry/transition';
 import { useNativeSplash } from '@/entry/use-native-splash';
 
@@ -72,6 +73,7 @@ function RootNavigator() {
       <NutritionStagesProvider>
       <MetricPresentationProvider>
       <SessionPresenceProvider>
+      <NoticesLifetime>
       <Stack screenOptions={screenOptions}>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Protected guard={!session}>
@@ -84,6 +86,7 @@ function RootNavigator() {
           <Stack.Screen name="history" options={{ headerShown: false }} />
         </Stack.Protected>
       </Stack>
+      </NoticesLifetime>
       </SessionPresenceProvider>
       </MetricPresentationProvider>
       </NutritionStagesProvider>

@@ -24,6 +24,7 @@ export default function SettingsLayout() {
       <Stack.Screen name="account" options={{ ...titled, title: 'Cuenta' }} />
       <Stack.Screen name="delete-account" options={{ ...titled, title: 'Eliminar cuenta' }} />
       <Stack.Screen name="app" options={{ ...titled, title: 'App' }} />
+      <Stack.Screen name="notices" options={{ ...titled, title: 'Avisos' }} />
       <Stack.Screen name="energy" options={{ ...titled, title: 'Energía' }} />
       <Stack.Screen name="physical" options={{ ...titled, title: 'Datos físicos' }} />
       <Stack.Screen name="stages" options={{ ...titled, title: 'Etapas' }} />

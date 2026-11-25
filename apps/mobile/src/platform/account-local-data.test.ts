@@ -44,7 +44,7 @@ it('covers the account-key inventory; new prefixes require a cleanup decision', 
     'ownlevel.active.v1.', 'ownlevel.body.intent.v1.', 'ownlevel.metrics.definitions.intent.v1.',
     'ownlevel.nutrition.config.v1.', 'ownlevel.nutrition.day-write.v1.', 'ownlevel.nutrition.food.v1.', 'ownlevel.nutrition.meal.v1.',
     'ownlevel.nutrition.plate-foods.v1.', 'ownlevel.nutrition.plate.v1.', 'ownlevel.nutrition.quick-options.v1.',
-    'ownlevel.nutrition.quick-pins.v1.', 'ownlevel.nutrition.quick.v1.', 'ownlevel.nutrition.saved.v1.', 'ownlevel.nutrition.stages.v2.', 'ownlevel.nutrition.unfinished.v1.', 'ownlevel.profile.display-name.v1.',
+    'ownlevel.nutrition.quick-pins.v1.', 'ownlevel.nutrition.quick.v1.', 'ownlevel.nutrition.saved.v1.', 'ownlevel.nutrition.stages.v2.', 'ownlevel.nutrition.unfinished.v1.', 'ownlevel.notices.v1.', 'ownlevel.profile.display-name.v1.',
     // #537: silenced load patterns, removed with the account like the rest.
     'ownlevel.training.load-pattern-silence.v1.',
   ].sort());

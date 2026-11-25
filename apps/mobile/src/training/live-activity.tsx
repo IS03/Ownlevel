@@ -45,13 +45,13 @@ function workoutLayout(props: LiveActivityProps, environment: LiveActivityEnviro
   // «Siguiente: SENTADILLA» and «Serie 3 de 4 · 100 kg × 8»; when every set is done, says so instead.
   function upcoming() {
     if (timing && watch) return <VStack alignment="leading" spacing={4}>
-      <Text modifiers={[font({ textStyle: 'subheadline', weight: 'semibold' }), foregroundStyle(text), lineLimit(1)]}>{watch.exerciseName}</Text>
+      <Text modifiers={[font({ textStyle: 'subheadline', weight: 'semibold' }), foregroundStyle(text), lineLimit(1)]}>{watch.exerciseName || 'Serie por tiempo'}</Text>
       {targetLabel ? <Text modifiers={[font({ textStyle: 'footnote' }), monospacedDigit(), foregroundStyle(muted), lineLimit(1)]}>{`Objetivo ${targetLabel}`}</Text> : null}
     </VStack>;
     if (allDone) return <Text modifiers={[font({ textStyle: 'subheadline' }), foregroundStyle(text), lineLimit(1)]}>Todas las series hechas</Text>;
     if (!next) return null;
     return <VStack alignment="leading" spacing={4}>
-      <Text modifiers={[font({ textStyle: 'subheadline', weight: 'semibold' }), foregroundStyle(text), lineLimit(1)]}>{`Siguiente: ${next.exerciseName}`}</Text>
+      <Text modifiers={[font({ textStyle: 'subheadline', weight: 'semibold' }), foregroundStyle(text), lineLimit(1)]}>{next.exerciseName ? `Siguiente: ${next.exerciseName}` : 'Siguiente serie'}</Text>
       {nextLine ? <Text modifiers={[font({ textStyle: 'footnote' }), monospacedDigit(), foregroundStyle(muted), lineLimit(1)]}>{nextLine}</Text> : null}
     </VStack>;
   }

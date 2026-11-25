@@ -14,6 +14,7 @@ import { syncRestAlert, syncSetTargetAlert } from './session-rest-alert';
 import { liveActivityState, type RestAnchor } from './live-activity-model';
 import { syncLiveActivity } from './live-activity-sync';
 import { listenLiveActivityActions } from './live-activity-actions';
+import { noticePreferences } from '@/notices/notice-preferences';
 import { useRestCountdown } from './use-rest-countdown';
 import type { RestDeadline } from './active-session-model';
 
@@ -27,29 +28,32 @@ function RestDeadlineSignal({ timer }: { timer: RestDeadline }) {
   useRestCountdown(timer, true);
   return null;
 }
-function PresenceLifetime({ store, children }: PropsWithChildren<{ store: SessionPresenceStore }>) {
+function PresenceLifetime({ store, owner, children }: PropsWithChildren<{ store: SessionPresenceStore; owner: string }>) {
   const pathname = usePathname();
   useEffect(() => {
     store.activate();
     let anchor: RestAnchor = null;
+    const preferences = noticePreferences(owner);
     const sync = (force = false) => {
-      const presence = store.getSnapshot();
+      const presence = store.getSnapshot(), { workoutActivity, lockDetail } = preferences.getSnapshot().preferences;
       syncRestAlert(presence.timer?.endAt ?? null);
       const watch = presence.stopwatch;
       syncSetTargetAlert(watch?.target ? watch.startedAt + watch.target * 1000 : null, watch?.target ?? null);
-      const next = liveActivityState(presence, anchor, Date.now());
+      const next = liveActivityState(presence, anchor, Date.now(), lockDetail);
       anchor = next.anchor;
-      void syncLiveActivity(next.state, force);
+      // Turned off in «Avisos y actividades en vivo»: no activity, the workout and its alerts as always.
+      void syncLiveActivity(workoutActivity ? next.state : null, force);
     };
     const unsubscribe = store.subscribe(() => sync());
+    const unsubscribePreferences = preferences.subscribe(() => sync());
     // iOS starts a Live Activity only in the foreground: retry one that could not start.
     const foreground = AppState.addEventListener('change', state => { if (state === 'active') sync(true); });
     // +15 s, Saltar and Completar serie from the Lock Screen and the Dynamic Island (#645).
     const stopActions = listenLiveActivityActions(store);
     sync();
     // Signing out or switching accounts ends both the alert and the activity.
-    return () => { unsubscribe(); foreground.remove(); stopActions(); store.dispose(); syncRestAlert(null); syncSetTargetAlert(null, null); void syncLiveActivity(null); };
-  }, [store]);
+    return () => { unsubscribe(); unsubscribePreferences(); foreground.remove(); stopActions(); store.dispose(); syncRestAlert(null); syncSetTargetAlert(null, null); void syncLiveActivity(null); };
+  }, [owner, store]);
   useEffect(() => {
     let previous = AppState.currentState;
     const subscription = AppState.addEventListener('change', state => {
@@ -74,7 +78,7 @@ export function SessionPresenceProvider({ children }: PropsWithChildren) {
     detail: id => fetchSessionDetail(client, id),
   }, activeSessionStorage, owner, { writeRevision: () => settledWrites(client) }) : null, [client, owner]);
   // A different account gets a fresh store; no session/timer crosses the auth boundary.
-  return store ? <PresenceLifetime key={owner} store={store}>{children}</PresenceLifetime> : <>{children}</>;
+  return store && owner ? <PresenceLifetime key={owner} store={store} owner={owner}>{children}</PresenceLifetime> : <>{children}</>;
 }
 
 export function useSessionPresenceStore() { return useContext(SessionPresenceContext); }
