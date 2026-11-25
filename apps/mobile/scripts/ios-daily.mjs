@@ -104,7 +104,39 @@ function prepare() {
     delete config.buildSettings.PROVISIONING_PROFILE;
     delete config.buildSettings.PROVISIONING_PROFILE_SPECIFIER;
   }
+  // #634: the Live Activity extension and its App Group get Daily's identity too; an embedded extension must be
+  // prefixed by its app's bundle ID, and Dev and Daily must never share the group that holds the activity's layout.
+  const group = `group.${variant.bundleIdentifier}`;
+  const groupEntitlements = path => {
+    const value = plist.parse(readFileSync(join(ios, path), 'utf8'));
+    if (value['com.apple.security.application-groups']) value['com.apple.security.application-groups'] = [group];
+    return plist.build(value);
+  };
+  for (const config of targetConfigurations) config.buildSettings.CODE_SIGN_ENTITLEMENTS = JSON.stringify(join(generated, 'OWNLEVELDaily.entitlements'));
+  const extension = Object.values(project.pbxNativeTargetSection()).find(item => typeof item === 'object' && item.name === 'ExpoWidgetsTarget');
+  if (extension) {
+    for (const ref of project.pbxXCConfigurationList()[extension.buildConfigurationList].buildConfigurations) {
+      const config = configurations[ref.value];
+      assert(config.buildSettings.PRODUCT_BUNDLE_IDENTIFIER === 'fit.ownlevel.app.dev.live', 'Live Activity extension identity differs from the audited baseline.');
+      Object.assign(config.buildSettings, {
+        PRODUCT_BUNDLE_IDENTIFIER: `${variant.bundleIdentifier}.live`,
+        INFOPLIST_FILE: JSON.stringify(join(generated, 'ExpoWidgetsTarget-Info.plist')),
+        CODE_SIGN_ENTITLEMENTS: JSON.stringify(join(generated, 'ExpoWidgetsTarget.entitlements')),
+        DEVELOPMENT_TEAM: team,
+        CODE_SIGN_STYLE: 'Automatic',
+        CODE_SIGN_IDENTITY: '"Apple Development"',
+      });
+    }
+    const extensionInfo = plist.parse(readFileSync(join(ios, 'ExpoWidgetsTarget', 'Info.plist'), 'utf8'));
+    extensionInfo.ExpoWidgetsAppGroupIdentifier = group;
+    mkdirSync(generated, { recursive: true });
+    writeFileSync(join(generated, 'ExpoWidgetsTarget-Info.plist'), plist.build(extensionInfo));
+    writeFileSync(join(generated, 'ExpoWidgetsTarget.entitlements'), groupEntitlements(join('ExpoWidgetsTarget', 'ExpoWidgetsTarget.entitlements')));
+  }
+  mkdirSync(generated, { recursive: true });
+  writeFileSync(join(generated, 'OWNLEVELDaily.entitlements'), groupEntitlements(join('OWNLEVELDev', 'OWNLEVELDev.entitlements')));
   const info = plist.parse(readFileSync(join(ios, 'OWNLEVELDev', 'Info.plist'), 'utf8'));
+  if (info.ExpoWidgetsAppGroupIdentifier) info.ExpoWidgetsAppGroupIdentifier = group;
   info.CFBundleDisplayName = variant.name;
   info.CFBundleURLTypes = [{ CFBundleURLSchemes: [variant.scheme, variant.bundleIdentifier] }];
   delete info.NSBonjourServices;
@@ -135,6 +167,13 @@ function verify() {
   assert(info.CFBundleDisplayName === variant.name, 'Unexpected Daily display name.');
   assert(JSON.stringify(info.CFBundleURLTypes) === JSON.stringify([{ CFBundleURLSchemes: [variant.scheme, variant.bundleIdentifier] }]), 'Daily URL schemes are incorrect.');
   assert(!info.NSBonjourServices && !info.NSLocalNetworkUsageDescription && !info.RCTMetroPort, 'Development discovery settings leaked into Daily.');
+  const live = join(app, 'PlugIns', 'ExpoWidgetsTarget.appex');
+  if (existsSync(live)) {
+    const extensionInfo = plist.parse(output('plutil', ['-convert', 'xml1', '-o', '-', join(live, 'Info.plist')]));
+    assert(extensionInfo.CFBundleIdentifier === `${variant.bundleIdentifier}.live`, 'Live Activity extension has a non-Daily bundle ID.');
+    assert(extensionInfo.ExpoWidgetsAppGroupIdentifier === `group.${variant.bundleIdentifier}` && info.ExpoWidgetsAppGroupIdentifier === extensionInfo.ExpoWidgetsAppGroupIdentifier,
+      'App and Live Activity extension do not share the Daily App Group.');
+  }
   const bundle = readFileSync(join(app, 'main.jsbundle'));
   assert(bundle.length > 100_000, 'Embedded JavaScript bundle is missing or too small.');
   for (const value of [variant.scheme, variant.keychainService, process.env.EXPO_PUBLIC_SUPABASE_URL, process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY, process.env.EXPO_PUBLIC_OWNLEVEL_API_URL]) {
