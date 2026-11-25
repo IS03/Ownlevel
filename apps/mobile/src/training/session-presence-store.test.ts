@@ -48,6 +48,18 @@ describe('session presence outside the workout', () => {
     expect(store.getSnapshot().progress).toMatchObject({ totalSets: total });
     store.dispose();
   });
+  it('offers the Live Activity buttons only while the session screen is mounted, and only for that session (#645)', async () => {
+    const { store, controller } = setup();
+    const detach = store.attach(SESSION_ID, controller); await controller.refresh();
+    expect(store.getSnapshot().controls).toBe(true);
+    expect(store.controllerFor(SESSION_ID)).toBe(controller); expect(store.controllerFor('other')).toBeNull();
+    expect(store.getSnapshot().progress?.next?.setId).toEqual(expect.any(String));
+    await store.refresh();
+    expect(store.getSnapshot().controls).toBe(true); expect(store.getSnapshot().progress?.next?.setId).toEqual(expect.any(String));
+    detach(); controller.dispose();
+    expect(store.getSnapshot().controls).toBe(false); expect(store.controllerFor(SESSION_ID)).toBeNull();
+    store.dispose();
+  });
   it('keeps last confirmed presence on unavailable reads and clears only a confirmed empty/closed result', async () => {
     const { store, api } = setup(); await store.refresh();
     jest.mocked(api.active).mockResolvedValueOnce({ status: 'unavailable', reason: 'network', meta: { durationMs: 0, httpStatus: null, outcome: 'unavailable' } });

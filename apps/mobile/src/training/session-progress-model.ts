@@ -9,9 +9,10 @@ import { exerciseSetLabel } from './exercise-detail-model';
 export type SessionLiveProgress = {
   completedSets: number;
   totalSets: number;
-  next: { exerciseName: string; set: string; load: string | null } | null;
+  /** `setId`: the draft row's local id, only from the mounted session (a lock-screen action must hit that very row). */
+  next: { exerciseId: string; setId: string | null; exerciseName: string; set: string; load: string | null } | null;
 };
-type Exercise = { name: string; weightMode: string | null; sets: Pick<SessionSetDto, 'isCompleted' | 'targetReps' | 'targetWeightKg' | 'actualReps' | 'actualWeightKg' | 'setKind'>[] };
+type Exercise = { id: string; name: string; weightMode: string | null; sets: (Pick<SessionSetDto, 'isCompleted' | 'targetReps' | 'targetWeightKg' | 'actualReps' | 'actualWeightKg' | 'setKind'> & { localId?: string })[] };
 
 const typed = (value: string) => {
   const text = value.trim().replace(',', '.');
@@ -36,7 +37,7 @@ export function liveProgress(exercises: readonly Exercise[]): SessionLiveProgres
     // What the user typed for that set wins over the plan; the plan fills what was not typed.
     const reps = row.actualReps ?? row.targetReps, weight = row.actualWeightKg ?? row.targetWeightKg;
     const load = reps === null && weight === null ? null : exerciseSetLabel({ actualReps: reps, actualWeightKg: weight }, exercise.weightMode);
-    next = { exerciseName: exercise.name, set: ordinal.warmup ? 'Calentamiento' : `Serie ${ordinal.number} de ${ordinal.total}`, load: load === '—' ? null : load };
+    next = { exerciseId: exercise.id, setId: row.localId ?? null, exerciseName: exercise.name, set: ordinal.warmup ? 'Calentamiento' : `Serie ${ordinal.number} de ${ordinal.total}`, load: load === '—' ? null : load };
   }
   return { completedSets, totalSets, next };
 }
@@ -45,6 +46,6 @@ export function liveProgress(exercises: readonly Exercise[]): SessionLiveProgres
 export function detailProgress(detail: SessionDetailDto, drafts: ReadonlyMap<string, SessionExerciseDraft> = new Map()): SessionLiveProgress | null {
   return liveProgress([...detail.exercises].sort((a, b) => a.order - b.order).map(exercise => {
     const draft = drafts.get(exercise.id);
-    return { name: exercise.nameSnapshot, weightMode: exercise.weightModeSnapshot, sets: draft ? draftSets(draft) : exercise.payload.sets };
+    return { id: exercise.id, name: exercise.nameSnapshot, weightMode: exercise.weightModeSnapshot, sets: draft ? draftSets(draft) : exercise.payload.sets };
   }));
 }

@@ -713,4 +713,28 @@ describe('native finish (M3.4-2)', () => {
     ] })); controller.dispose();
   });
 
+
+describe('«Completar serie» from the Live Activity (#645)', () => {
+  it('completes the very row it showed, recording the planned load it displayed, and starts the rest like a tap', async () => {
+    const { controller } = setup(); await controller.refresh(); controller.setAutomaticRest(true);
+    const base = controller.getExercise(EXERCISE_ID)!.draft.sets[0];
+    controller.change(EXERCISE_ID, draft => ({ ...draft, sets: [...draft.sets,
+      { ...base, localId: 'row-2', setNumber: 2, actualReps: '', actualWeightKg: '', targetReps: 10, targetWeightKg: 42.5, isCompleted: false },
+      { ...base, localId: 'row-3', setNumber: 3, actualReps: '', actualWeightKg: '', targetReps: null, targetWeightKg: null, isCompleted: false }] }), true);
+    expect(controller.completeShownSet(EXERCISE_ID, 'row-2')).toBe(true);
+    expect(controller.getExercise(EXERCISE_ID)!.draft.sets[1]).toMatchObject({ actualReps: '10', actualWeightKg: '42,5', isCompleted: true });
+    expect(controller.getTimer()).toMatchObject({ exerciseId: EXERCISE_ID, sourceSet: { localId: 'row-2', position: 1 } });
+    // Already done, unknown, or nothing to record: never completed from there.
+    expect(controller.completeShownSet(EXERCISE_ID, 'row-2')).toBe(false);
+    expect(controller.completeShownSet(EXERCISE_ID, 'missing')).toBe(false);
+    expect(controller.completeShownSet(EXERCISE_ID, 'row-3')).toBe(false);
+    expect(controller.getExercise(EXERCISE_ID)!.draft.sets[2].isCompleted).toBe(false);
+    // What was typed is kept as typed.
+    controller.change(EXERCISE_ID, draft => ({ ...draft, sets: draft.sets.map(set => set.localId === 'row-3' ? { ...set, actualReps: '12' } : set) }), true);
+    expect(controller.completeShownSet(EXERCISE_ID, 'row-3')).toBe(true);
+    expect(controller.getExercise(EXERCISE_ID)!.draft.sets[2]).toMatchObject({ actualReps: '12', actualWeightKg: '', isCompleted: true });
+    controller.dispose();
+  });
+});
+
 });

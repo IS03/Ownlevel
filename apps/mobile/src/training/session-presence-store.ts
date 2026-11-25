@@ -12,6 +12,8 @@ export type SessionPresence = {
   timer: RestDeadline | null;
   /** #645: sets done and the next set, for the Live Activity; null when no detail is known. */
   progress?: SessionLiveProgress | null;
+  /** #645: the session screen is mounted, so the Live Activity's buttons can act on it. */
+  controls?: boolean;
   unavailable: boolean;
   recovery: boolean;
 };
@@ -30,6 +32,7 @@ export class SessionPresenceStore {
   private revision = 0;
   private alive = true;
   private flight: Promise<void> | null = null;
+  private attached: { id: string; controller: ActiveSessionController } | null = null;
 
   private confirmedAt: number | null = null;
   private confirmedWrites = -1;
@@ -41,6 +44,8 @@ export class SessionPresenceStore {
     this.now = now; this.writeRevision = writeRevision;
   }
   getSnapshot = () => this.snapshot;
+  /** The mounted session's controller, only for that session: a Live Activity action never reaches another one. */
+  controllerFor = (sessionId: string) => this.attached?.id === sessionId ? this.attached.controller : null;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   activate() { this.alive = true; }
   dispose() { this.alive = false; this.revision++; this.flight = null; }
@@ -63,14 +68,22 @@ export class SessionPresenceStore {
         const drafts = new Map<string, SessionExerciseDraft>();
         for (const exercise of detail.exercises) { const entry = controller.getExercise(exercise.id); if (entry) drafts.set(exercise.id, entry.draft); }
         this.publish({ session: { id, name: detail.session.name, logDate: detail.session.logDate, startedAt: detail.session.startedAt }, timer: controller.getTimer(),
-          progress: detailProgress(detail, drafts), unavailable: state.status === 'unavailable', recovery: !!state.intent });
+          progress: detailProgress(detail, drafts), controls: state.status === 'ready' && !state.intent && !state.fenced && !state.finishing,
+          unavailable: state.status === 'unavailable', recovery: !!state.intent });
       }
     };
     const unsubscribe = controller.subscribe(observe);
     const unsubscribeTimer = controller.subscribeTimer(observe);
     const unsubscribeProgress = controller.subscribeProgress(observe);
+    this.attached = { id, controller };
     observe();
-    return () => { unsubscribe(); unsubscribeTimer(); unsubscribeProgress(); };
+    return () => {
+      unsubscribe(); unsubscribeTimer(); unsubscribeProgress();
+      if (this.attached?.controller !== controller) return;
+      this.attached = null;
+      // Without the screen nothing can act: the buttons go, the rest of what it showed stays.
+      if (this.alive && this.snapshot.session?.id === id && this.snapshot.controls) this.publish({ ...this.snapshot, controls: false });
+    };
   }
 
   /** Navigation reuses a complete, successful discovery only while fresh and with no intervening writes. */
@@ -101,7 +114,8 @@ export class SessionPresenceStore {
         if (!session) { this.publish(empty); confirmed(); return; }
         const same = this.snapshot.session?.id === session.id;
         this.publish({ session: same ? { ...session, startedAt: this.snapshot.session?.startedAt } : session, timer: same ? this.snapshot.timer : null,
-          progress: same ? this.snapshot.progress ?? null : null, unavailable: false, recovery: false });
+          progress: same ? this.snapshot.progress ?? null : null, controls: same && this.attached?.id === session.id ? this.snapshot.controls : false,
+          unavailable: false, recovery: false });
         const detail = await this.api.detail(session.id);
         if (!current()) return;
         if (detail.status === 'not_found' || (detail.status === 'ok' && detail.data.session.status !== 'in_progress')) {
@@ -117,7 +131,10 @@ export class SessionPresenceStore {
           if (stored && stored.sessionId === session.id) drafts.set(exercise.id, stored.draft);
         }
         if (!current()) return;
-        this.publish({ session: { ...session, startedAt: detail.data.session.startedAt }, progress: detailProgress(detail.data, drafts), timer: restoreRestDeadline(storedTimer, new Set(detail.data.exercises.map(exercise => exercise.id))), unavailable: false, recovery: false });
+        // A mounted session publishes its own live progress (with row ids for the buttons); a read never overrides it.
+        const live = this.attached?.id === session.id && this.snapshot.session?.id === session.id;
+        this.publish({ session: { ...session, startedAt: detail.data.session.startedAt }, progress: live ? this.snapshot.progress ?? null : detailProgress(detail.data, drafts),
+          controls: live ? this.snapshot.controls : false, timer: restoreRestDeadline(storedTimer, new Set(detail.data.exercises.map(exercise => exercise.id))), unavailable: false, recovery: false });
         confirmed();
       } catch {
         if (current()) this.publish({ ...this.snapshot, unavailable: true });

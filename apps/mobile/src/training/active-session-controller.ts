@@ -457,6 +457,24 @@ export class ActiveSessionController {
     }
     return completed;
   }
+  /**
+   * #645 · «Completar serie» from the Lock Screen or the Dynamic Island: the very row it showed, still pending, with what it
+   * showed. Empty values take the plan (the load the activity displayed); a row with nothing typed or planned is never
+   * completed from there. Same path as a tap here: the draft, its autosave (CAS) and the automatic rest.
+   */
+  completeShownSet(id: string, setId: string) {
+    const entry = this.entries.get(id);
+    if (!entry || !this.canEdit(id)) return false;
+    const row = entry.snapshot.draft.sets.find(set => set.localId === setId);
+    if (!row || row.isCompleted) return false;
+    const text = (value: number | null) => value === null ? '' : String(value).replace('.', ',');
+    const reps = row.actualReps.trim() || text(row.targetReps), weight = row.actualWeightKg.trim() || text(row.targetWeightKg);
+    if (!reps && !weight) return false;
+    if (reps !== row.actualReps || weight !== row.actualWeightKg) {
+      this.change(id, draft => ({ ...draft, sets: draft.sets.map(set => set.localId === setId ? { ...set, actualReps: reps, actualWeightKg: weight } : set) }), true);
+    }
+    return this.toggleSetCompleted(id, setId);
+  }
   startRest(id: string, duration?: number, sourceSet?: RestDeadline['sourceSet']) {
     const entry = this.entries.get(id); if (!entry || !this.canEdit(id)) return;
     const seconds = duration ?? restSeconds(entry.snapshot.exercise);

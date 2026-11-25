@@ -16,6 +16,11 @@ export type LiveActivityProps = {
   /** #645: sets done over the total, and the next set; null when unknown (never a made-up 0 of 0). */
   sets: { done: number; total: number } | null;
   next: { exerciseName: string; set: string; load: string | null } | null;
+  /**
+   * #645: the buttons, only while the session screen can act. `complete` is the target of «Completar serie» for the row it
+   * shows, and only when that row has a load to record (typed or planned).
+   */
+  controls: { rest: boolean; complete: string | null } | null;
   colors: LiveActivityColors;
 };
 export type LiveActivityState = { sessionId: string; props: LiveActivityProps };
@@ -23,6 +28,17 @@ export type LiveActivityState = { sessionId: string; props: LiveActivityProps };
 export type RestAnchor = { key: string; startedAt: number } | null;
 
 const colors: LiveActivityColors = { background: palette.dark.bg, text: palette.dark.text, muted: palette.dark.textMuted, accent: palette.dark.accent };
+
+/** Button targets: what a tap on the Lock Screen or the Dynamic Island asks the app to do. */
+export const REST_ADD = 'rest:add15', REST_SKIP = 'rest:skip';
+const completeTarget = (exerciseId: string, setId: string) => `set:${exerciseId}:${setId}`;
+export type LiveActivityAction = { kind: 'add' } | { kind: 'skip' } | { kind: 'complete'; exerciseId: string; setId: string };
+export function liveActivityAction(target: unknown): LiveActivityAction | null {
+  if (target === REST_ADD) return { kind: 'add' };
+  if (target === REST_SKIP) return { kind: 'skip' };
+  const match = typeof target === 'string' ? /^set:([^:]+):([^:]+)$/.exec(target) : null;
+  return match ? { kind: 'complete', exerciseId: match[1]!, setId: match[2]! } : null;
+}
 
 function restKey(timer: NonNullable<SessionPresence['timer']>) {
   return `${timer.exerciseId}:${timer.sourceSet?.localId ?? ''}`;
@@ -47,6 +63,9 @@ export function liveActivityState(presence: SessionPresence, anchor: RestAnchor,
   const started = session.startedAt ? Date.parse(session.startedAt) : NaN;
   const progress = presence.progress ?? null;
   const sets = progress && progress.totalSets > 0 ? { done: progress.completedSets, total: progress.totalSets } : null;
+  const shown = progress?.next ?? null;
+  const next = shown ? { exerciseName: shown.exerciseName, set: shown.set, load: shown.load } : null;
+  const controls = presence.controls ? { rest: !!timer, complete: shown?.setId && shown.load ? completeTarget(shown.exerciseId, shown.setId) : null } : null;
   return { state: { sessionId: session.id, props: { sessionName: session.name, startedAt: Number.isFinite(started) ? started : null, rest,
-    sets, next: progress?.next ?? null, colors } }, anchor: nextAnchor };
+    sets, next, controls, colors } }, anchor: nextAnchor };
 }
