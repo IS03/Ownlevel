@@ -8,8 +8,10 @@ import { MealTiming } from './meal-timing';
 import { MealDateControl } from './meal-date-control';
 import { SaveButton } from './save-button';
 import { inputNutritionDate, parseInputNutritionDate } from './day-format';
+import { useUnfinishedMealPark } from './use-unfinished-meals';
 /** `done`: the save is confirmed; the sheet shows its check for a moment before it leaves. */
 export function ManualMealEntry({ controller, state, done = false }: { controller: MealController; state: MealEditorState; done?: boolean }) {
+  const unfinished = useUnfinishedMealPark();
   const { colors } = useOwnlevelTheme();
   const fieldSurface = useFieldSurface();
   const [note, setNote] = useState(false);
@@ -32,6 +34,11 @@ export function ManualMealEntry({ controller, state, done = false }: { controlle
   const close = () => {
     if (saving || done) return;
     if (state.intent || !controller.dirty()) controller.close();
+    // #645 · A new meal can also be left for later: kept on this device and offered as «Comida sin terminar».
+    else if (!editing && unfinished) Alert.alert('¿Dejar la comida para después?', 'Queda en este teléfono para seguirla. No se registra hasta que la guardes.', [
+      { text: 'Seguir editando', style: 'cancel' },
+      { text: 'Dejar para después', onPress: () => { unfinished.park(draft); controller.close(); } },
+      { text: 'Descartar', style: 'destructive', onPress: () => controller.close() }]);
     else Alert.alert('¿Descartar cambios?', 'Tu borrador no se guardará.', [{ text: 'Seguir editando', style: 'cancel' }, { text: 'Descartar', style: 'destructive', onPress: () => controller.close() }]);
   };
   const focus = (key: 'calories' | 'proteinG' | 'carbsG' | 'fatG') => { if (!locked) fields.current[key]?.focus(); };

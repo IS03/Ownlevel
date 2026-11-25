@@ -71,6 +71,12 @@ export class PlateController {
     this.update({ open: true, date, draft, view: draft.items.length ? 'review' : 'pick', search: '', preview: null, previewLoading: false, message: null, errors: {} });
     void this.loadFoods(); void this.loadSaved();
   }
+  /** #645 · The plate this device kept from before the app was closed: back, closed, as it was (never over another one). */
+  restore(draft: PlateDraft) {
+    if (this.state.phase !== 'idle' || this.state.intent || this.state.draft || this.state.open || !draft.items.length) return false;
+    this.update({ draft, date: draft.date, view: 'review' });
+    return true;
+  }
   /** Closing never loses the plate: it is here the next time «Plato» opens. */
   close() { if (this.busy) return; this.previewGeneration++; this.update({ open: false, previewLoading: false }); }
   showRecovery() { if (this.state.intent && !this.busy) this.update({ open: true, view: 'review', date: this.state.intent.intent.date, draft: this.state.intent.draft }); }

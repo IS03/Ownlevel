@@ -1,17 +1,19 @@
 import { Platform } from 'react-native';
 import * as Linking from 'expo-linking';
-import type { LiveActivityProps, LiveActivityState } from './live-activity-model';
+import type { LiveActivityProps } from './live-activity-model';
 
-export type LiveActivityHandle = {
+export type LiveActivityHandle<P = LiveActivityProps> = {
   getId(): string;
-  update(props: LiveActivityProps, staleDate?: Date): Promise<void>;
+  update(props: P, staleDate?: Date): Promise<void>;
   end(dismissalPolicy?: 'immediate'): Promise<void>;
 };
-export type LiveActivityApi = {
-  start(props: LiveActivityProps, url?: string, staleDate?: Date): LiveActivityHandle;
-  getInstances(): LiveActivityHandle[];
+export type LiveActivityApi<P = LiveActivityProps> = {
+  start(props: P, url?: string, staleDate?: Date): LiveActivityHandle<P>;
+  getInstances(): LiveActivityHandle<P>[];
 };
-type Options = { url?: (sessionId: string) => string };
+/** `sessionId`: what the activity belongs to (a session, an unfinished meal); a different one replaces it. */
+type SyncState<P> = { sessionId: string; props: P };
+type Options<P> = { url?: (sessionId: string) => string; stale?: (props: P) => Date | undefined };
 
 function staleDate(props: LiveActivityProps) {
   // The system marks the activity stale when the rest ends, even with the app suspended.
@@ -22,13 +24,14 @@ function staleDate(props: LiveActivityProps) {
  * One activity, for the one session in progress. Calls are queued and only the latest wanted state is applied; an
  * activity this app no longer owns (a crash, another account, a session closed elsewhere) is ended on the next sync.
  */
-export function createLiveActivitySync(resolve: () => LiveActivityApi | null, { url = sessionUrl }: Options = {}) {
+export function createLiveActivitySync<P extends object = LiveActivityProps>(resolve: () => LiveActivityApi<P> | null,
+  { url = sessionUrl, stale = staleDate as unknown as (props: P) => Date | undefined }: Options<P> = {}) {
   let wantedKey: string | null = null;
   let revision = 0;
   let queue: Promise<void> = Promise.resolve();
-  let current: { handle: LiveActivityHandle; sessionId: string; key: string } | null = null;
+  let current: { handle: LiveActivityHandle<P>; sessionId: string; key: string } | null = null;
 
-  return function syncLiveActivity(next: LiveActivityState | null, force = false) {
+  return function syncLiveActivity(next: SyncState<P> | null, force = false) {
     const key = next ? JSON.stringify(next) : '';
     if (key === wantedKey && !force) return queue;
     wantedKey = key;
@@ -37,7 +40,7 @@ export function createLiveActivitySync(resolve: () => LiveActivityApi | null, { 
       if (mine !== revision) return;
       const api = resolve();
       if (!api) return;
-      let instances: LiveActivityHandle[] = [];
+      let instances: LiveActivityHandle<P>[] = [];
       try { instances = api.getInstances(); } catch { return; } // ActivityKit unavailable (iOS < 16.2).
       const keep = next && current?.sessionId === next.sessionId ? current : null;
       for (const instance of instances) {
@@ -47,7 +50,7 @@ export function createLiveActivitySync(resolve: () => LiveActivityApi | null, { 
       if (!next) { current = null; return; }
       if (keep && instances.some(instance => instance.getId() === keep.handle.getId())) {
         if (keep.key !== key) {
-          await keep.handle.update(next.props, staleDate(next.props)).catch(() => undefined);
+          await keep.handle.update(next.props, stale(next.props)).catch(() => undefined);
           keep.key = key;
         }
         return;
@@ -55,7 +58,7 @@ export function createLiveActivitySync(resolve: () => LiveActivityApi | null, { 
       current = null;
       if (mine !== revision) return;
       try {
-        current = { handle: api.start(next.props, url(next.sessionId), staleDate(next.props)), sessionId: next.sessionId, key };
+        current = { handle: api.start(next.props, url(next.sessionId), stale(next.props)), sessionId: next.sessionId, key };
       } catch {
         // iOS starts activities only in the foreground, and the user may have turned them off. Try again next time.
         if (mine === revision) wantedKey = null;

@@ -43,6 +43,7 @@ import { foodQuickOption } from '@/api/nutrition-food';
 import { QuickEditor } from './quick-editor';
 import { useNutritionHomeEntry, type AddEntry } from './home-entry';
 import { usePlateController } from './use-plate-controller';
+import { UnfinishedMealContext, useUnfinishedMeals } from './use-unfinished-meals';
 import { PlateEditor } from './plate-editor';
 
 function NutritionDayView({ revision, date, today, bottomClearance, onSelect, onServerToday, onAdd, addChoices, addControl, highlightedMeal, removal, onManageFoods, onManageSaved, onConfigure, mealActions, onActivity, onContext, onMetric }: {
@@ -162,12 +163,15 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
     && quick?.state.phase === 'idle' && !quick.state.intent && foods?.state.phase === 'idle' && !foods.state.intent && saved?.state.phase==='idle' && !saved.state.intent && config?.state.phase==='idle' && !config.state.intent
     && plate?.state.phase === 'idle' && !plate.state.intent;
   const showToday = useCallback(() => { updateToday(); setSelected(null); }, [setSelected, updateToday]);
+  const unfinished = useUnfinishedMeals({ userId, plate, meals, today });
+  const { resume: resumeUnfinished } = unfinished;
   const openAdd = useCallback((entry: AddEntry) => {
-    if (entry === 'manual') meals?.controller.open(today);
+    if (entry === 'resume') resumeUnfinished();
+    else if (entry === 'manual') meals?.controller.open(today);
     else if (entry === 'food') foods?.controller.open(today);
     else if (entry === 'plate') plate?.controller.open(today);
     else showNutritionAddMenu({ onManual: () => meals?.controller.open(today), onQuick: () => quick?.controller.open(today), onFood: () => foods?.controller.open(today), onPlate: () => plate?.controller.open(today) });
-  }, [foods, meals, plate, quick, today]);
+  }, [foods, meals, plate, quick, resumeUnfinished, today]);
   useNutritionHomeEntry({ add: params.add, editable: !!editable, onAdd: openAdd, onShowToday: showToday, quick, quickParam: params.quick, today });
   // Status and recovery messages live in the scrolling content (under "Agregar comida"), never loose over the tab bar.
   const statusBanners = <>
@@ -235,7 +239,7 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
         : mealNotice.notice ? <MealAddedNotice key={mealNotice.notice.id} notice={mealNotice.notice} disabled={!editable || !!meals?.state.editor} pending={false}
           onUndo={() => { if (mealNotice.notice) void mealNotice.undoNotice(mealNotice.notice.id); }} onClose={() => mealNotice.dismiss(mealNotice.notice?.id)} /> : null}
     </NoticeOutlet>
-    {meals ? <MealEditor controller={meals.controller} state={meals.state} /> : null}
+    {meals ? <UnfinishedMealContext.Provider value={unfinished}><MealEditor controller={meals.controller} state={meals.state} /></UnfinishedMealContext.Provider> : null}
   </>;
 }
 const styles = StyleSheet.create({
