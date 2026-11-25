@@ -12,11 +12,15 @@ import type { LiveActivityProps } from './live-activity-model';
 function workoutLayout(props: LiveActivityProps, environment: LiveActivityEnvironment) {
   'widget';
   const { accent, text, muted, background } = props.colors;
-  const rest = props.rest;
+  const rest = props.rest, sets = props.sets, next = props.next;
   const ended = !!rest && (environment.isStale === true || rest.endAt <= Date.now());
   const counting = !!rest && !ended;
   const interval = rest ? { lower: new Date(rest.startedAt), upper: new Date(rest.endAt) } : null;
   const status = counting ? 'Descanso' : ended ? 'Descanso terminado' : 'Entrenando';
+  const allDone = !!sets && sets.done >= sets.total;
+  const count = sets ? `${sets.done} de ${sets.total} series` : null;
+  // What comes next, only when known: the set and its load as the session screen shows them.
+  const nextLine = next ? [next.set, next.load].filter(Boolean).join(' · ') : null;
 
   // A timer text claims the widest value it may show: align it to the trailing edge, and fix its width where space is tight.
   function clock(kind: 'rest' | 'elapsed', color: string, style: 'largeTitle' | 'title2' | 'headline' | 'caption', width: number | null) {
@@ -35,6 +39,18 @@ function workoutLayout(props: LiveActivityProps, environment: LiveActivityEnviro
   function bar() {
     return counting && interval ? <ProgressView timerInterval={interval} countsDown modifiers={[tint(accent), labelsHidden()]} /> : null;
   }
+  // «Siguiente: SENTADILLA» and «Serie 3 de 4 · 100 kg × 8»; when every set is done, says so instead.
+  function upcoming() {
+    if (allDone) return <Text modifiers={[font({ textStyle: 'subheadline' }), foregroundStyle(text), lineLimit(1)]}>Todas las series hechas</Text>;
+    if (!next) return null;
+    return <VStack alignment="leading" spacing={4}>
+      <Text modifiers={[font({ textStyle: 'subheadline', weight: 'semibold' }), foregroundStyle(text), lineLimit(1)]}>{`Siguiente: ${next.exerciseName}`}</Text>
+      {nextLine ? <Text modifiers={[font({ textStyle: 'footnote' }), monospacedDigit(), foregroundStyle(muted), lineLimit(1)]}>{nextLine}</Text> : null}
+    </VStack>;
+  }
+  function counter(style: 'caption' | 'footnote') {
+    return count ? <Text modifiers={[font({ textStyle: style }), monospacedDigit(), foregroundStyle(muted), lineLimit(1)]}>{count}</Text> : null;
+  }
   const main = counting ? clock('rest', accent, 'largeTitle', null) : clock('elapsed', text, 'title2', null);
 
   return {
@@ -42,17 +58,24 @@ function workoutLayout(props: LiveActivityProps, environment: LiveActivityEnviro
       <VStack alignment="leading" spacing={8} modifiers={[padding({ all: 16 }), activityBackgroundTint(background)]}>
         <HStack spacing={8}>
           {icon(accent)}
-          <Text modifiers={[font({ textStyle: 'headline' }), foregroundStyle(text), lineLimit(1)]}>{props.sessionName}</Text>
+          <VStack alignment="leading" spacing={4}>
+            <Text modifiers={[font({ textStyle: 'headline' }), foregroundStyle(text), lineLimit(1)]}>{props.sessionName}</Text>
+            <Text modifiers={[font({ textStyle: 'caption' }), monospacedDigit(), foregroundStyle(muted), lineLimit(1)]}>{count ? `${status} · ${count}` : status}</Text>
+          </VStack>
           <Spacer />
           {main}
         </HStack>
-        <Text modifiers={[font({ textStyle: 'subheadline' }), foregroundStyle(muted), lineLimit(1)]}>
-          {rest ? `${status} · ${rest.exerciseName}` : status}
-        </Text>
+        {upcoming()}
         {bar()}
       </VStack>
     ),
-    compactLeading: icon(accent),
+    // Closed: the icon with the sets done, and the rest countdown or the session time.
+    compactLeading: (
+      <HStack spacing={4}>
+        {icon(accent)}
+        {sets ? <Text modifiers={[font({ textStyle: 'caption', weight: 'semibold' }), monospacedDigit(), foregroundStyle(text)]}>{`${sets.done}/${sets.total}`}</Text> : null}
+      </HStack>
+    ),
     compactTrailing: counting ? clock('rest', accent, 'caption', 44) : clock('elapsed', muted, 'caption', 52),
     minimal: counting ? clock('rest', accent, 'caption', 36) : icon(accent),
     expandedLeading: (
@@ -63,9 +86,13 @@ function workoutLayout(props: LiveActivityProps, environment: LiveActivityEnviro
     ),
     expandedTrailing: counting ? clock('rest', accent, 'title2', null) : clock('elapsed', text, 'title2', null),
     expandedBottom: (
-      <VStack alignment="leading" spacing={4}>
-        <Text modifiers={[font({ textStyle: 'headline' }), foregroundStyle(text), lineLimit(1)]}>{props.sessionName}</Text>
-        {rest ? <Text modifiers={[font({ textStyle: 'subheadline' }), foregroundStyle(muted), lineLimit(1)]}>{rest.exerciseName}</Text> : null}
+      <VStack alignment="leading" spacing={8}>
+        <HStack spacing={8}>
+          <Text modifiers={[font({ textStyle: 'headline' }), foregroundStyle(text), lineLimit(1)]}>{props.sessionName}</Text>
+          <Spacer />
+          {counter('caption')}
+        </HStack>
+        {upcoming()}
         {bar()}
       </VStack>
     ),

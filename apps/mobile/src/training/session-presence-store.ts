@@ -2,13 +2,16 @@ import type { SessionDetailDto } from '@/api/active-session';
 import type { MobileApiReadResult, MobileApiRequestResult } from '@/api/results';
 import type { MobileTrainingActiveSession, MobileTrainingResponse } from '@/api/training';
 import type { ActiveSessionController } from './active-session-controller';
-import { restoreRestDeadline, type RestDeadline } from './active-session-model';
+import { restoreRestDeadline, type RestDeadline, type SessionExerciseDraft } from './active-session-model';
 import { SessionDraftRepository, type SessionStoragePort } from './active-session-storage';
+import { detailProgress, type SessionLiveProgress } from './session-progress-model';
 
 export type SessionPresence = {
   /** `startedAt` only once a detail read confirmed it (#634: elapsed time on the Live Activity); never guessed. */
   session: (MobileTrainingActiveSession & { startedAt?: string }) | null;
   timer: RestDeadline | null;
+  /** #645: sets done and the next set, for the Live Activity; null when no detail is known. */
+  progress?: SessionLiveProgress | null;
   unavailable: boolean;
   recovery: boolean;
 };
@@ -57,14 +60,17 @@ export class SessionPresenceStore {
       if (!state.intent && (state.status === 'cancelled' || state.status === 'not_found' || (detail && detail.session.status !== 'in_progress'))) {
         if (this.snapshot.session?.id === id) this.publish(empty);
       } else if (detail) {
+        const drafts = new Map<string, SessionExerciseDraft>();
+        for (const exercise of detail.exercises) { const entry = controller.getExercise(exercise.id); if (entry) drafts.set(exercise.id, entry.draft); }
         this.publish({ session: { id, name: detail.session.name, logDate: detail.session.logDate, startedAt: detail.session.startedAt }, timer: controller.getTimer(),
-          unavailable: state.status === 'unavailable', recovery: !!state.intent });
+          progress: detailProgress(detail, drafts), unavailable: state.status === 'unavailable', recovery: !!state.intent });
       }
     };
     const unsubscribe = controller.subscribe(observe);
     const unsubscribeTimer = controller.subscribeTimer(observe);
+    const unsubscribeProgress = controller.subscribeProgress(observe);
     observe();
-    return () => { unsubscribe(); unsubscribeTimer(); };
+    return () => { unsubscribe(); unsubscribeTimer(); unsubscribeProgress(); };
   }
 
   /** Navigation reuses a complete, successful discovery only while fresh and with no intervening writes. */
@@ -93,8 +99,9 @@ export class SessionPresenceStore {
         // A pending finish/cancel still needs its established recovery screen.
         if (this.snapshot.recovery) return;
         if (!session) { this.publish(empty); confirmed(); return; }
-        const previousTimer = this.snapshot.session?.id === session.id ? this.snapshot.timer : null;
-        this.publish({ session, timer: previousTimer, unavailable: false, recovery: false });
+        const same = this.snapshot.session?.id === session.id;
+        this.publish({ session: same ? { ...session, startedAt: this.snapshot.session?.startedAt } : session, timer: same ? this.snapshot.timer : null,
+          progress: same ? this.snapshot.progress ?? null : null, unavailable: false, recovery: false });
         const detail = await this.api.detail(session.id);
         if (!current()) return;
         if (detail.status === 'not_found' || (detail.status === 'ok' && detail.data.session.status !== 'in_progress')) {
@@ -103,8 +110,14 @@ export class SessionPresenceStore {
         if (detail.status !== 'ok') { this.publish({ ...this.snapshot, unavailable: true }); return; }
         const repository = new SessionDraftRepository(this.storage, this.owner, session.id);
         const storedTimer = await repository.readTimer();
+        // This device's unsent drafts count too: the Live Activity shows the same sets as the session screen.
+        const drafts = new Map<string, SessionExerciseDraft>();
+        for (const exercise of detail.data.exercises) {
+          const stored = await repository.readDraft(exercise.id).catch(() => null);
+          if (stored && stored.sessionId === session.id) drafts.set(exercise.id, stored.draft);
+        }
         if (!current()) return;
-        this.publish({ session: { ...session, startedAt: detail.data.session.startedAt }, timer: restoreRestDeadline(storedTimer, new Set(detail.data.exercises.map(exercise => exercise.id))), unavailable: false, recovery: false });
+        this.publish({ session: { ...session, startedAt: detail.data.session.startedAt }, progress: detailProgress(detail.data, drafts), timer: restoreRestDeadline(storedTimer, new Set(detail.data.exercises.map(exercise => exercise.id))), unavailable: false, recovery: false });
         confirmed();
       } catch {
         if (current()) this.publish({ ...this.snapshot, unavailable: true });
