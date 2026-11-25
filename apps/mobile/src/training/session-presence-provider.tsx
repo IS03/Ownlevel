@@ -13,6 +13,7 @@ import { SessionPresenceStore } from './session-presence-store';
 import { syncRestAlert } from './session-rest-alert';
 import { liveActivityState, type RestAnchor } from './live-activity-model';
 import { syncLiveActivity } from './live-activity-sync';
+import { listenLiveActivityActions } from './live-activity-actions';
 import { useRestCountdown } from './use-rest-countdown';
 import type { RestDeadline } from './active-session-model';
 
@@ -41,9 +42,11 @@ function PresenceLifetime({ store, children }: PropsWithChildren<{ store: Sessio
     const unsubscribe = store.subscribe(() => sync());
     // iOS starts a Live Activity only in the foreground: retry one that could not start.
     const foreground = AppState.addEventListener('change', state => { if (state === 'active') sync(true); });
+    // +15 s, Saltar and Completar serie from the Lock Screen and the Dynamic Island (#645).
+    const stopActions = listenLiveActivityActions(store);
     sync();
     // Signing out or switching accounts ends both the alert and the activity.
-    return () => { unsubscribe(); foreground.remove(); store.dispose(); syncRestAlert(null); void syncLiveActivity(null); };
+    return () => { unsubscribe(); foreground.remove(); stopActions(); store.dispose(); syncRestAlert(null); void syncLiveActivity(null); };
   }, [store]);
   useEffect(() => {
     let previous = AppState.currentState;
