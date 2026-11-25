@@ -35,6 +35,8 @@ jest.mock('@/auth', () => ({ useMobileAuth: () => ({ session: { user: { id: mock
 jest.mock('@/platform/haptics', () => ({ triggerHaptic: (event: string) => mockTrigger(event), haptics: { selection: jest.fn() } }));
 jest.mock('expo-router', () => ({ usePathname: () => mockPath, useRouter: () => ({ navigate: mockNavigate }), useIsFocused: () => false, Redirect: ({ href }: { href: unknown }) => { mockRedirect(href); return null; } }));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
+const mockSyncLiveActivity = jest.fn((_state: unknown, _force?: boolean) => Promise.resolve());
+jest.mock('./live-activity-sync', () => ({ syncLiveActivity: (state: unknown, force?: boolean) => mockSyncLiveActivity(state, force) }));
 jest.mock('./use-session-navigation', () => ({ ...jest.requireActual<typeof import('./use-session-navigation')>('./use-session-navigation'), supportsNativeSessionNavigation: true }));
 jest.mock('expo-router/unstable-native-tabs', () => {
   const React = jest.requireActual<typeof import('react')>('react');
@@ -122,6 +124,15 @@ describe('global session return dock', () => {
     expect(view.getByRole('button', { name: 'Volver a la rutina en curso: Sesión libre' })).toBeTruthy();
     expect(mockTrigger.mock.calls).toEqual([['restEnd']]);
     act(() => { jest.advanceTimersByTime(5000); }); expect(mockTrigger.mock.calls).toEqual([['restEnd']]);
+  });
+  it('shows the session in progress as a Live Activity and ends it when the account leaves', async () => {
+    mockSyncLiveActivity.mockClear();
+    const view = setup(); await act(async () => { await view.getStore().refresh(); });
+    expect(mockSyncLiveActivity).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: SESSION_ID,
+      props: expect.objectContaining({ sessionName: 'Sesión libre', rest: null }) }), false);
+    view.unmount();
+    expect(mockSyncLiveActivity).toHaveBeenLastCalledWith(null, undefined);
+    view.controller.dispose();
   });
   it('clears the previous account’s timer when authentication changes', async () => {
     const view = setup(); await act(async () => { await view.getStore().refresh(); await view.controller.refresh(); });
