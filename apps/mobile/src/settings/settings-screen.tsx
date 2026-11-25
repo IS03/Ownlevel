@@ -13,6 +13,14 @@ import { AccountAvatar } from './account-avatar';
 import { CountingNumber, EditorialRow, EditorialScreen, Reveal } from './editorial';
 import { stageNames } from './settings-model';
 import { useSettingsOverview } from './use-settings-overview';
+import { remindersPaused, useNoticePreferences, type NoticePreferences } from '@/notices/notice-preferences';
+
+/** «Avisos» at a glance: the live activities on, and reminders paused when they are. */
+export function noticesSummary(preferences: NoticePreferences, now = Date.now()) {
+  const live = [preferences.workoutActivity && 'entreno', preferences.mealActivity && 'comida sin terminar'].filter(Boolean) as string[];
+  const first = live.length ? `En vivo: ${live.join(' y ')}` : 'Sin actividades en vivo';
+  return remindersPaused(preferences, now) ? `${first} · recordatorios pausados` : first;
+}
 
 export function appVersionLabel() {
   const version = Application.nativeApplicationVersion ?? Constants.expoConfig?.version;
@@ -22,6 +30,7 @@ export function appVersionLabel() {
 export function SettingsScreen() {
   const router = useRouter();
   const { session } = useMobileAuth();
+  const notices = useNoticePreferences(session?.user.id);
   const { colors, mode } = useOwnlevelTheme();
   const haptics = useHapticsPreference();
   const overview = useSettingsOverview();
@@ -163,6 +172,12 @@ export function SettingsScreen() {
             title="App"
             onPress={() => router.push('/settings/app')}
           >{`${mode === 'system' ? 'Tema del sistema' : mode === 'dark' ? 'Oscuro' : 'Claro'} · ${haptics.enabled ? 'vibración' : 'sin vibración'}`}</EditorialRow>,
+          <EditorialRow
+            key="notices"
+            large
+            title="Avisos"
+            onPress={() => router.push('/settings/notices')}
+          >{noticesSummary(notices.preferences)}</EditorialRow>,
           <EditorialRow
             key="account"
             large

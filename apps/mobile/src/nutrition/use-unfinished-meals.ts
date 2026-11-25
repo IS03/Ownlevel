@@ -8,6 +8,7 @@ import type { MealDraft } from './meal-form-model';
 import { MEAL_DISCARD, mealActivityState, type MealActivityProps } from './meal-activity-model';
 import type { PlateController, PlateState } from './plate-controller';
 import { UnfinishedMealRepository, type UnfinishedMeals } from './unfinished-meal-storage';
+import { useNoticePreferences } from '@/notices/notice-preferences';
 
 let api: LiveActivityApi<MealActivityProps> | null | undefined;
 function nativeMealActivities(): LiveActivityApi<MealActivityProps> | null {
@@ -107,7 +108,10 @@ export function useUnfinishedMeals({ userId, plate, meals, today, listen = nativ
     } else if (plateLeft) plateController?.open(plateLeft.draft.date);
   }, [mealController, plateController, stored]);
 
-  const state = stored ? mealActivityState(stored, { plate: !!plate?.state.open, manual: !!editor && !editor.mealId }, today, now) : null;
+  const { preferences } = useNoticePreferences(userId);
+  // Turned off in «Avisos y actividades en vivo»: the meals are still kept, only the activity goes.
+  const state = stored && preferences.mealActivity
+    ? mealActivityState(stored, { plate: !!plate?.state.open, manual: !!editor && !editor.mealId }, today, now, preferences.lockDetail) : null;
   const shown = state?.props.kind, stateKey = JSON.stringify(state);
   useEffect(() => { void sync(JSON.parse(stateKey) as typeof state); }, [stateKey, sync]);
   useEffect(() => () => { void sync(null); }, [sync, userId]);

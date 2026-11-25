@@ -29,7 +29,7 @@ const dayLabel = (date: string, today: string) => {
  * The most recently left meal, unless its own sheet is open (it is being finished) or it was left more than eight hours
  * ago (it stays in the app, the activity goes).
  */
-export function mealActivityState(meals: UnfinishedMeals, open: { plate: boolean; manual: boolean }, today: string, now: number): MealActivityState | null {
+export function mealActivityState(meals: UnfinishedMeals, open: { plate: boolean; manual: boolean }, today: string, now: number, names = true): MealActivityState | null {
   const plate = meals.plate && !open.plate ? meals.plate : null, manual = meals.manual && !open.manual ? meals.manual : null;
   const latest = plate && (!manual || plate.savedAt >= manual.savedAt) ? { kind: 'plate' as const, ...plate } : manual ? { kind: 'manual' as const, ...manual } : null;
   if (!latest || now - latest.savedAt >= MEAL_ACTIVITY_MS) return null;
@@ -41,7 +41,8 @@ export function mealActivityState(meals: UnfinishedMeals, open: { plate: boolean
     const calories = latest.draft.calories.trim();
     detail = /^\d+$/.test(calories) && Number(calories) > 0 ? `${new Intl.NumberFormat('es-AR').format(Number(calories))} kcal` : null;
   }
-  const title = latest.draft.title.trim() || null;
+  // Off (#639 «Nombres en el bloqueo»): no meal name on the Lock Screen.
+  const title = names ? latest.draft.title.trim() || null : null;
   // A manual draft keeps its date as typed (dd/mm/aaaa); the plate's is already a calendar date.
   const date = latest.kind === 'manual' ? parseInputNutritionDate(latest.draft.date) ?? today : latest.draft.date;
   return { sessionId: `${latest.kind}:${latest.savedAt}`, props: { kind: latest.kind, title, detail, day: dayLabel(date, today),

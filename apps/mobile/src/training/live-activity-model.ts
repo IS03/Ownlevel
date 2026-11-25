@@ -51,7 +51,8 @@ function restKey(timer: NonNullable<SessionPresence['timer']>) {
  * Only a session the app itself shows as in progress gets an activity. No numbers beyond the rest the session already
  * runs: an expired rest keeps its end so the layout reports it as finished, never as a fresh countdown.
  */
-export function liveActivityState(presence: SessionPresence, anchor: RestAnchor, now: number): { state: LiveActivityState | null; anchor: RestAnchor } {
+/** `detail`: names on the Lock Screen (#639 «Nombres en el bloqueo»); off, they read generic and the loads stay. */
+export function liveActivityState(presence: SessionPresence, anchor: RestAnchor, now: number, detail = true): { state: LiveActivityState | null; anchor: RestAnchor } {
   const { session, timer } = presence;
   if (!session) return { state: null, anchor: null };
   let rest: LiveActivityProps['rest'] = null;
@@ -67,12 +68,12 @@ export function liveActivityState(presence: SessionPresence, anchor: RestAnchor,
   const progress = presence.progress ?? null;
   const sets = progress && progress.totalSets > 0 ? { done: progress.completedSets, total: progress.totalSets } : null;
   const shown = progress?.next ?? null;
-  const next = shown ? { exerciseName: shown.exerciseName, set: shown.set, load: shown.load } : null;
+  const next = shown ? { exerciseName: detail ? shown.exerciseName : '', set: shown.set, load: shown.load } : null;
   const watch = presence.stopwatch ?? null;
-  const stopwatch = watch ? { startedAt: watch.startedAt, exerciseName: watch.exerciseName, target: watch.target } : null;
+  const stopwatch = watch ? { startedAt: watch.startedAt, exerciseName: detail ? watch.exerciseName : '', target: watch.target } : null;
   // While a timed set runs, its own «Parar» records it: no «Completar serie» for a row being timed.
   const controls = presence.controls ? { rest: !!timer, stop: !!watch,
     complete: !watch && shown?.setId && shown.load ? completeTarget(shown.exerciseId, shown.setId) : null } : null;
-  return { state: { sessionId: session.id, props: { sessionName: session.name, startedAt: Number.isFinite(started) ? started : null, rest,
+  return { state: { sessionId: session.id, props: { sessionName: detail ? session.name : 'Entrenamiento', startedAt: Number.isFinite(started) ? started : null, rest,
     sets, next, controls, stopwatch, colors } }, anchor: nextAnchor };
 }

@@ -1,0 +1,49 @@
+import { useRouter } from 'expo-router';
+import { useEffect, type PropsWithChildren } from 'react';
+import { AppState, Platform } from 'react-native';
+import { useMobileAuth } from '@/auth';
+import { homeDay } from '@/home/home-day';
+import { useNoticePreferences } from './notice-preferences';
+import { planReminders, REMINDER_PREFIX, reminderCategories, syncReminders, type ReminderCategory } from './reminder-engine';
+
+type Response = { notification: { request: { identifier: string; content: { data?: Record<string, unknown> | null } } } };
+function listenResponses(listener: (response: Response) => void): (() => void) | null {
+  if (Platform.OS !== 'ios' && Platform.OS !== 'android') return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const api = require('expo-notifications') as typeof import('expo-notifications');
+    const subscription = api.addNotificationResponseReceivedListener(listener as never);
+    return () => subscription.remove();
+  } catch { return null; }
+}
+
+/**
+ * #639 · Keeps this account's reminders scheduled as its preferences say: on every change, on returning to the app, and
+ * gone when the account leaves (sign-out, another account, deletion). Tapping one opens where it points.
+ */
+export function NoticesLifetime({ children, categories = reminderCategories, sync = syncReminders }: PropsWithChildren<{
+  categories?: readonly ReminderCategory[]; sync?: typeof syncReminders;
+}>) {
+  const { session } = useMobileAuth();
+  const owner = session?.user.id ?? null;
+  const { preferences, ready } = useNoticePreferences(owner);
+  const router = useRouter();
+  useEffect(() => {
+    if (!owner || !ready) return;
+    const apply = () => { void sync(planReminders(categories, { preferences, now: Date.now(), today: homeDay().today })); };
+    apply();
+    const subscription = AppState.addEventListener('change', state => { if (state === 'active') apply(); });
+    return () => subscription.remove();
+  }, [categories, owner, preferences, ready, sync]);
+  // No account, no reminders: what the previous one scheduled never reaches the next.
+  useEffect(() => () => { void sync([]); }, [owner, sync]);
+  useEffect(() => {
+    if (!owner) return;
+    return listenResponses(response => {
+      const { identifier, content } = response.notification.request;
+      const path = content.data?.path;
+      if (identifier.startsWith(REMINDER_PREFIX) && typeof path === 'string' && path.startsWith('/')) router.push(path as never);
+    }) ?? undefined;
+  }, [owner, router]);
+  return <>{children}</>;
+}
