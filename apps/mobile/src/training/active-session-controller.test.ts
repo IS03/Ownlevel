@@ -737,4 +737,56 @@ describe('«Completar serie» from the Live Activity (#645)', () => {
   });
 });
 
+
+describe('stopwatch of a timed set (#645)', () => {
+  const timedDetail = () => {
+    const detail = testDetail();
+    detail.exercises[0] = { ...detail.exercises[0], nameSnapshot: 'PLANCHA', weightModeSnapshot: 'Tiempo (segundos)', payload: { ...detail.exercises[0].payload, sets: [
+      { setNumber: 1, targetReps: 1, targetWeightKg: 60, targetRir: null, actualReps: null, actualWeightKg: null, isCompleted: false, notes: null },
+      { setNumber: 2, targetReps: 1, targetWeightKg: 60, targetRir: null, actualReps: null, actualWeightKg: null, isCompleted: false, notes: null }] } };
+    return detail;
+  };
+  it('counts from its start, records the seconds in the set, completes it and starts the rest; one at a time', async () => {
+    let clock = 10_000;
+    const { controller, api } = setup(() => clock); api.detail.mockResolvedValue(ok(timedDetail()));
+    await controller.refresh(); controller.setAutomaticRest(true);
+    const [first, second] = controller.getExercise(EXERCISE_ID)!.draft.sets;
+    expect(controller.startSetStopwatch(SECOND_ID, 'x')).toBe(false);
+    expect(controller.startSetStopwatch(EXERCISE_ID, first.localId)).toBe(true);
+    expect(controller.getStopwatch()).toMatchObject({ exerciseId: EXERCISE_ID, exerciseName: 'PLANCHA', startedAt: 10_000, target: 60, set: { localId: first.localId, position: 0 } });
+    expect(controller.startSetStopwatch(EXERCISE_ID, second.localId)).toBe(false);
+    clock = 72_400;
+    expect(controller.stopSetStopwatch()).toBe(62);
+    expect(controller.getStopwatch()).toBeNull();
+    expect(controller.getExercise(EXERCISE_ID)!.draft.sets[0]).toMatchObject({ actualWeightKg: '62', actualReps: '1', isCompleted: true });
+    expect(controller.getTimer()).toMatchObject({ exerciseId: EXERCISE_ID, sourceSet: { localId: first.localId } });
+    // Starting the next one ends the rest, as the set starts.
+    expect(controller.startSetStopwatch(EXERCISE_ID, second.localId)).toBe(true); expect(controller.getTimer()).toBeNull();
+    controller.cancelSetStopwatch(); expect(controller.getStopwatch()).toBeNull();
+    expect(controller.getExercise(EXERCISE_ID)!.draft.sets[1]).toMatchObject({ actualWeightKg: '', isCompleted: false });
+    controller.dispose();
+  });
+  it('survives a remount, finds its row by position, and ends with nothing written if the row is gone or completed', async () => {
+    let clock = 10_000;
+    const { controller, api, repository } = setup(() => clock); api.detail.mockResolvedValue(ok(timedDetail()));
+    await controller.refresh();
+    const first = controller.getExercise(EXERCISE_ID)!.draft.sets[0];
+    controller.startSetStopwatch(EXERCISE_ID, first.localId);
+    await settle();
+    clock = 30_000;
+    const restored = new ActiveSessionController(api, repository, undefined, () => clock); await restored.refresh();
+    expect(restored.getStopwatch()).toMatchObject({ startedAt: 10_000, set: { position: 0 } });
+    expect(restored.getStopwatch()!.set.localId).toBe(restored.getExercise(EXERCISE_ID)!.draft.sets[0].localId);
+    restored.toggleSetCompleted(EXERCISE_ID, restored.getExercise(EXERCISE_ID)!.draft.sets[0].localId);
+    expect(restored.getStopwatch()).toBeNull();
+    controller.dispose(); restored.dispose();
+  });
+  it('only for exercises measured in time', async () => {
+    const { controller } = setup(); await controller.refresh();
+    expect(controller.startSetStopwatch(EXERCISE_ID, controller.getExercise(EXERCISE_ID)!.draft.sets[0].localId)).toBe(false);
+    expect(controller.stopSetStopwatch()).toBeNull();
+    controller.dispose();
+  });
+});
+
 });

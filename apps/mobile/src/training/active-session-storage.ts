@@ -1,6 +1,6 @@
 import { writeAccountRecord } from '@/platform/account-local-data';
 import { parseSessionExerciseOrder, parseSessionFinishMetadata, type SessionAddInput, type SessionExerciseOrderInput, type SessionFinishMetadata } from '@/api/active-session';
-import { parseStoredExerciseDraft, parseStoredSummary, type RestDeadline, type SessionSummaryDraft, type StoredExerciseDraft } from './active-session-model';
+import { parseStoredExerciseDraft, parseStoredSummary, type RestDeadline, type SessionSummaryDraft, type SetStopwatch, type StoredExerciseDraft } from './active-session-model';
 import { parseJournalFinishInput, type JournalFinishInput } from '../../../../src/lib/mobile-api/training-feelings-journal';
 
 export type SessionStoragePort = {
@@ -74,6 +74,11 @@ export class SessionDraftRepository {
   readAutomaticRest() { return this.read(`${this.prefix}ui.automatic-rest`).then(value => value === true); }
   writeAutomaticRest(enabled: boolean) { return this.write(`${this.prefix}ui.automatic-rest`, enabled); }
   readTimer() { return this.read(`${this.prefix}timer`); }
+  readStopwatch() { return this.read(`${this.prefix}stopwatch`); }
+  writeStopwatch(watch: SetStopwatch | null) {
+    const key = `${this.prefix}stopwatch`;
+    return watch ? this.write(key, watch) : this.serialize(key, () => this.port.removeItem(key));
+  }
   writeTimer(timer: RestDeadline | null) {
     const key = `${this.prefix}timer`;
     return timer ? this.write(key, timer) : this.serialize(key, () => this.port.removeItem(key));
@@ -113,7 +118,7 @@ export class SessionDraftRepository {
   async clearSession() {
     await Promise.all([...this.queue.entries()].filter(([key]) => key.startsWith(this.prefix)).map(([, job]) => job.catch(() => undefined)));
     const keys = await this.port.getAllKeys();
-    await Promise.all(keys.filter(key => key.startsWith(`${this.prefix}exercise.`) || key === `${this.prefix}timer` || key === `${this.prefix}metadata` || key.startsWith(`${this.prefix}ui.`))
+    await Promise.all(keys.filter(key => key.startsWith(`${this.prefix}exercise.`) || key === `${this.prefix}timer` || key === `${this.prefix}stopwatch` || key === `${this.prefix}metadata` || key.startsWith(`${this.prefix}ui.`))
       .map(key => this.serialize(key, () => this.port.removeItem(key))));
     // Keep the replay key until every draft/timer cleanup has succeeded.
     await this.clearIntent();

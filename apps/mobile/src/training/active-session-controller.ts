@@ -6,8 +6,8 @@ import {
 import type { MobileApiClient } from '@/api/client';
 import type { MobileApiRequestResult } from '@/api/results';
 import {
-  draftIsDirty, emptySessionSummary, exerciseDraft, exercisePayload, finishMetadata, restSeconds, restoreRestDeadline, sameExercisePayload, setProgress,
-  summaryIsValid, type RestDeadline, type SessionExerciseDraft, type SessionSummaryDraft, type StoredExerciseDraft,
+  draftIsDirty, emptySessionSummary, exerciseDraft, exercisePayload, finishMetadata, restSeconds, restoreRestDeadline, restoreSetStopwatch, sameExercisePayload, setProgress,
+  stopwatchSeconds, summaryIsValid, TIME_MODE, type RestDeadline, type SetStopwatch, type SessionExerciseDraft, type SessionSummaryDraft, type StoredExerciseDraft,
 } from './active-session-model';
 import { SessionDraftRepository, type StructuralIntent } from './active-session-storage';
 import { recordSessionResume } from './session-resume-telemetry';
@@ -88,6 +88,7 @@ export class ActiveSessionController {
   private readonly timerListeners = new Set<() => void>();
   private readonly recoveryFlights = new Map<string, Promise<void>>();
   private rest: RestDeadline | null = null;
+  private stopwatch: SetStopwatch | null = null;
   private automaticRest = false;
   private initialized = false;
   private intentHydrated = false;
@@ -111,6 +112,7 @@ export class ActiveSessionController {
   getSnapshot = () => this.snapshot;
   getProgress = () => this.progress;
   getTimer = () => this.rest;
+  getStopwatch = () => this.stopwatch;
   getExerciseRevision = (id: string) => this.entries.get(id)?.revision ?? -1;
   readDismissedHistory = () => this.repository.readDismissedHistory();
   dismissHistory = (exerciseId: string) => this.repository.dismissHistory(exerciseId);
@@ -198,6 +200,13 @@ export class ActiveSessionController {
     entry.revision++; entry.writeId = this.generateKey();
     const draft = updater(entry.snapshot.draft);
     this.publish(entry, { draft });
+    const watch = this.stopwatch;
+    if (watch?.exerciseId === id) {
+      // A timed row that is gone or got completed some other way ends its stopwatch, with nothing written.
+      const position = draft.sets.findIndex(set => set.localId === watch.set.localId && !set.isCompleted);
+      if (position < 0) this.setStopwatch(null);
+      else if (position !== watch.set.position) this.setStopwatch({ ...watch, set: { ...watch.set, position } });
+    }
     const rest = this.rest;
     if (rest?.exerciseId === id && rest.sourceSet) {
       const { localId } = rest.sourceSet;
@@ -415,15 +424,24 @@ export class ActiveSessionController {
     }
     if (!this.initialized) {
       try {
-        const [storedTimer, automaticRest] = await Promise.all([this.repository.readTimer(), this.repository.readAutomaticRest()]);
+        const [storedTimer, automaticRest, storedWatch] = await Promise.all([this.repository.readTimer(), this.repository.readAutomaticRest(), this.repository.readStopwatch()]);
         this.automaticRest = automaticRest;
         const restored = restoreRestDeadline(storedTimer, ids, this.now());
         this.setRest(restored, false);
+        this.setStopwatch(restoreSetStopwatch(storedWatch, ids, this.now()), false);
         this.initialized = true;
       }
       catch { this.update({ storageError: true }); }
     }
     if (this.rest && (!ids.has(this.rest.exerciseId) || detail.session.status !== 'in_progress')) this.setRest(null);
+    const watch = this.stopwatch;
+    if (watch) {
+      const sets = detail.session.status === 'in_progress' ? this.entries.get(watch.exerciseId)?.snapshot.draft.sets ?? [] : [];
+      // Rows get new local ids after a remount: the saved position finds the same row again.
+      const row = sets.find(set => set.localId === watch.set.localId) ?? sets[watch.set.position];
+      if (!row || row.isCompleted) this.setStopwatch(null);
+      else if (row.localId !== watch.set.localId) this.setStopwatch({ ...watch, set: { ...watch.set, localId: row.localId } });
+    }
     const rest = this.rest;
     if (rest?.sourceSet) {
       const sets = this.entries.get(rest.exerciseId)?.snapshot.draft.sets ?? [];
@@ -474,6 +492,45 @@ export class ActiveSessionController {
       this.change(id, draft => ({ ...draft, sets: draft.sets.map(set => set.localId === setId ? { ...set, actualReps: reps, actualWeightKg: weight } : set) }), true);
     }
     return this.toggleSetCompleted(id, setId);
+  }
+  /**
+   * #645 · Starts the stopwatch of a pending set of an exercise measured in time. One at a time; a running rest ends, as
+   * the set starts. The planned seconds (the load field of that mode) are its target.
+   */
+  startSetStopwatch(id: string, setId: string) {
+    const entry = this.entries.get(id);
+    if (!entry || !this.canEdit(id) || this.stopwatch || entry.snapshot.exercise.weightModeSnapshot !== TIME_MODE) return false;
+    const position = entry.snapshot.draft.sets.findIndex(set => set.localId === setId);
+    const row = entry.snapshot.draft.sets[position];
+    if (!row || row.isCompleted) return false;
+    if (this.rest) this.skipRest();
+    const target = row.targetWeightKg !== null && row.targetWeightKg > 0 ? row.targetWeightKg : null;
+    this.setStopwatch({ exerciseId: id, exerciseName: entry.snapshot.exercise.nameSnapshot, set: { localId: setId, position }, startedAt: this.now(), target });
+    return true;
+  }
+  /**
+   * Stops it: the seconds run go to that set's time (the mode's load field), empty reps take the plan, and the set is
+   * completed like a tap (draft, autosave with CAS, automatic rest). Returns the seconds recorded, or null if none was.
+   */
+  stopSetStopwatch() {
+    const watch = this.stopwatch;
+    if (!watch) return null;
+    const entry = this.entries.get(watch.exerciseId);
+    const row = entry?.snapshot.draft.sets.find(set => set.localId === watch.set.localId);
+    if (!entry || !row || row.isCompleted || !this.canEdit(watch.exerciseId)) { this.setStopwatch(null); return null; }
+    const seconds = stopwatchSeconds(watch, this.now());
+    this.setStopwatch(null);
+    const reps = row.actualReps.trim() || (row.targetReps === null ? '' : String(row.targetReps));
+    this.change(watch.exerciseId, draft => ({ ...draft, sets: draft.sets.map(set => set.localId === watch.set.localId ? { ...set, actualWeightKg: String(seconds), actualReps: reps } : set) }), true);
+    this.toggleSetCompleted(watch.exerciseId, watch.set.localId);
+    return seconds;
+  }
+  /** Drops the stopwatch with nothing written. */
+  cancelSetStopwatch() { this.setStopwatch(null); }
+  private setStopwatch(watch: SetStopwatch | null, persist = true) {
+    if (JSON.stringify(watch) === JSON.stringify(this.stopwatch)) return;
+    this.stopwatch = watch; if (!this.disposed) this.timerListeners.forEach(listener => listener());
+    if (persist) void this.repository.writeStopwatch(watch).catch(() => this.update({ storageError: true }));
   }
   startRest(id: string, duration?: number, sourceSet?: RestDeadline['sourceSet']) {
     const entry = this.entries.get(id); if (!entry || !this.canEdit(id)) return;

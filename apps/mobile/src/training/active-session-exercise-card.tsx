@@ -8,7 +8,7 @@ import type { NextSessionDecision } from './session-next-options.types';
 import { SessionGlassButton } from './session-glass-button';
 import { haptics, triggerHaptic } from '@/platform/haptics';
 import type { ActiveSessionController, ExercisePhase } from './active-session-controller';
-import { appendSessionSet, compactActual, draftIncomplete, knowsSetKinds, nextReminder, removeSessionSet, resetSessionSet, setOrdinal, setProgress, toggleSetKind, type SessionExerciseDraft } from './active-session-model';
+import { appendSessionSet, compactActual, draftIncomplete, knowsSetKinds, nextReminder, removeSessionSet, resetSessionSet, setOrdinal, setProgress, stopwatchSeconds, TIME_MODE, toggleSetKind, type SessionExerciseDraft } from './active-session-model';
 import { SessionRestDuration } from './session-rest-duration';
 import { restSeconds } from './active-session-model';
 import { LoadPatternRow } from './load-pattern-row';
@@ -80,6 +80,7 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
   const editingIncomplete = expanded && state.phase === 'validation' && draftIncomplete(draft);
   const completion = setProgress(draft);
   const reminder = nextReminder(exercise);
+  const timed = exercise.weightModeSnapshot === TIME_MODE;
   const identity = [exercise.muscleGroupLabelSnapshot || muscleGroupLabel(exercise.muscleGroupSnapshot), exercise.implementSnapshot, exercise.weightModeSnapshot].filter(Boolean).join(' · ');
   const discardChanges = () => {
     if (!contextual || !canDiscard || refreshing) return;
@@ -148,13 +149,14 @@ export const ActiveExerciseCard = memo(function ActiveExerciseCard({ controller,
       {loadPattern && onLoadPattern && contextual && draft.decision === 'maintain' ? <LoadPatternRow pattern={loadPattern} disabled={locked}
         onPress={() => { Keyboard.dismiss(); onLoadPattern(id); }} /> : null}
       <SeriesColumns header ordinal={<AppText muted style={styles.columnTitle} variant="footnote">#</AppText>}
-        kg={<AppText muted style={styles.columnTitle} variant="footnote">KG</AppText>} reps={<AppText muted style={styles.columnTitle} variant="footnote">REPS</AppText>}
-        rir={<AppText muted style={styles.columnTitle} variant="footnote">RIR</AppText>} completed={<AppText muted style={styles.columnTitle} variant="footnote">✓</AppText>} />
+        kg={<AppText muted style={styles.columnTitle} variant="footnote">{timed ? 'SEG' : 'KG'}</AppText>} reps={<AppText muted style={styles.columnTitle} variant="footnote">REPS</AppText>}
+        rir={timed ? <View accessible accessibilityLabel="Cronómetro" style={styles.columnIcon}><AppIcon name="timer" color={colors.textMuted} size={15} /></View>
+          : <AppText muted style={styles.columnTitle} variant="footnote">RIR</AppText>} completed={<AppText muted style={styles.columnTitle} variant="footnote">✓</AppText>} />
       <NativeReorderList ids={draft.sets.map(set => set.localId)} onLift={() => { const accepted = controller.beginSetDrag(id); if (accepted) Keyboard.dismiss(); return accepted; }}
         onDrop={ids => controller.dropSets(id, ids)} onCancel={() => controller.cancelDrag()}>
         {draft.sets.map((set, index) => <NativeReorderItem key={set.localId} id={set.localId}>
           <ActiveSetRow key={reveal} controller={controller} id={id} name={exercise.nameSnapshot} set={set} index={index} count={draft.sets.length} editable={editable} entering={addedSet === set.localId ? 0 : Math.min(index, 8) * 55} reducedMotion={reducedMotion} onDialogChange={setDialogOpen}
-            ordinal={setOrdinal(draft.sets, index)} kinds={knowsSetKinds(draft)} />
+            ordinal={setOrdinal(draft.sets, index)} kinds={knowsSetKinds(draft)} timed={timed} />
         </NativeReorderItem>)}
       </NativeReorderList>
       {state.phase !== 'closed' && state.phase !== 'removed' ? <Animated.View layout={reducedMotion ? undefined : LinearTransition.duration(300)} style={styles.row}>
@@ -216,9 +218,43 @@ function pendingLabel(sets: SessionExerciseDraft['sets'], index: number) {
   const ordinal = setOrdinal(sets, index);
   return ordinal.warmup ? 'Calentamiento' : `Serie ${ordinal.number} de ${ordinal.total}`;
 }
-function ActiveSetRow({ controller, id, name, set, index, count, editable, entering, reducedMotion, onDialogChange, ordinal, kinds }: {
+/** m:ss, tabular: the same reading as the Live Activity's count. */
+const clockText = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+/**
+ * #645 · A set of an exercise measured in time («Tiempo (segundos)»): its stopwatch, in place of the RIR column. Iniciar
+ * counts up from an absolute start (also on the Lock Screen and the Dynamic Island); Parar records the seconds in the set and
+ * completes it like a tap. One stopwatch at a time.
+ */
+function SetStopwatchCell({ controller, id, set, label, editable }: { controller: ActiveSessionController; id: string; set: SessionExerciseDraft['sets'][number]; label: string; editable: boolean }) {
+  const { colors } = useOwnlevelTheme();
+  const watch = useSyncExternalStore(controller.subscribeTimer, controller.getStopwatch, controller.getStopwatch);
+  const mine = watch?.exerciseId === id && watch.set.localId === set.localId;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!mine) return;
+    const update = () => setNow(Date.now());
+    const first = setTimeout(update, 0), tick = setInterval(update, 1000);
+    return () => { clearTimeout(first); clearInterval(tick); };
+  }, [mine]);
+  if (mine) {
+    const seconds = stopwatchSeconds(watch, now);
+    return <Pressable testID={`set-stopwatch-${set.localId}`} accessibilityRole="button" accessibilityLabel={`Parar cronómetro de ${label.toLocaleLowerCase('es-AR')}: ${clockText(seconds)}`}
+      accessibilityHint="Guarda el tiempo y completa la serie" disabled={!editable}
+      onPress={() => { if (controller.stopSetStopwatch() !== null) triggerHaptic('setComplete'); }} style={styles.controlTrack}>
+      <AppText numeric variant="label" style={{ color: colors.primary, fontWeight: '600' }}>{clockText(seconds)}</AppText>
+    </Pressable>;
+  }
+  const disabled = !editable || set.isCompleted || !!watch;
+  return <Pressable testID={`set-stopwatch-${set.localId}`} accessibilityRole="button" accessibilityLabel={`Iniciar cronómetro de ${label.toLocaleLowerCase('es-AR')}`}
+    accessibilityState={{ disabled }} disabled={disabled} onPress={() => { if (controller.startSetStopwatch(id, set.localId)) haptics.selection(); }}
+    style={[styles.controlTrack, disabled && styles.dim]}>
+    <AppIcon name="playFilled" color={set.isCompleted ? colors.textMuted : colors.primary} size={17} />
+  </Pressable>;
+}
+function ActiveSetRow({ controller, id, name, set, index, count, editable, entering, reducedMotion, onDialogChange, ordinal, kinds, timed = false }: {
   controller: ActiveSessionController; id: string; name: string; set: SessionExerciseDraft['sets'][number]; index: number; count: number; editable: boolean; /** Entering delay in ms: rows cascade in one under the other. */ entering: number; reducedMotion: boolean; onDialogChange: (open: boolean) => void;
   /** Working sets are numbered among themselves; a warm-up shows «C». */ ordinal: ReturnType<typeof setOrdinal>; /** The server knows set kinds (#537). */ kinds: boolean;
+  /** Measured in time (#645): seconds in the load field, and a stopwatch instead of the RIR. */ timed?: boolean;
 }) {
   const { colors } = useOwnlevelTheme();
   // Only a tap here animates the tick; a row that arrives completed (reload, other device) shows it still.
@@ -264,13 +300,13 @@ function ActiveSetRow({ controller, id, name, set, index, count, editable, enter
         accessibilityHint={`Mantené presionado para arrastrar. Deslizá a la izquierda para ${kinds ? 'marcar calentamiento, ' : ''}resetear o eliminar.`} accessibilityActions={actions} onAccessibilityAction={accessibilityAction} style={styles.controlTrack}>
         {/* A warm-up shows «C» in grey, never a number: the working sets keep 1, 2, 3. */}
         <AppText testID={`set-ordinal-${set.localId}`} numeric muted variant="caption">{ordinal.warmup ? 'C' : ordinal.number}</AppText></NativeDragHandle>}
-        kg={<TextInput accessibilityLabel={`Peso ${label.toLocaleLowerCase('es-AR')} de ${name}`} editable={editable} keyboardType="decimal-pad" selectTextOnFocus
+        kg={<TextInput accessibilityLabel={`${timed ? 'Segundos' : 'Peso'} ${label.toLocaleLowerCase('es-AR')} de ${name}`} editable={editable} keyboardType="decimal-pad" selectTextOnFocus
           placeholder="—" placeholderTextColor={colors.textMuted} value={set.actualWeightKg} onChangeText={value => updateActual('actualWeightKg', value)}
           onEndEditing={() => void controller.flush(id)} style={[styles.numberInput, { borderColor: colors.border, color: colors.text }]} />}
         reps={<TextInput accessibilityLabel={`Reps ${label.toLocaleLowerCase('es-AR')} de ${name}`} editable={editable} keyboardType="number-pad" selectTextOnFocus
           placeholder="—" placeholderTextColor={colors.textMuted} value={set.actualReps} onChangeText={value => updateActual('actualReps', value)}
           onEndEditing={() => void controller.flush(id)} style={[styles.numberInput, { borderColor: colors.border, color: colors.text }]} />}
-        rir={<NativeDragHandle testID={`set-rir-${set.localId}`} disabled={!editable} accessibilityRole="button" accessibilityLabel={`RIR objetivo ${label.toLocaleLowerCase('es-AR')}: ${compactActual(set.targetRir)}`}
+        rir={timed ? <SetStopwatchCell controller={controller} id={id} set={set} label={label} editable={editable} /> : <NativeDragHandle testID={`set-rir-${set.localId}`} disabled={!editable} accessibilityRole="button" accessibilityLabel={`RIR objetivo ${label.toLocaleLowerCase('es-AR')}: ${compactActual(set.targetRir)}`}
           accessibilityActions={actions} onAccessibilityAction={accessibilityAction} style={[styles.controlTrack, styles.rirField]}><AppText muted numeric variant="label">{compactActual(set.targetRir)}</AppText></NativeDragHandle>}
         completed={<NativeDragHandle testID={`set-check-${set.localId}`} accessibilityRole="checkbox" accessibilityLabel={`${label} completada`} accessibilityState={{ checked: set.isCompleted, disabled: !editable }} disabled={!editable}
           accessibilityActions={actions} onAccessibilityAction={accessibilityAction}
@@ -292,7 +328,7 @@ const styles = StyleSheet.create({
   controlTrack: { minHeight: 48, width: sizes.touchTarget, justifyContent: 'center', alignItems: 'center' },
   rirField: { width: '100%', borderRadius: 12 }, unchecked: { borderWidth: 1.5, borderRadius: radius.pill, height: 26, width: 26 },
   numberInput: { borderRadius: 12, borderWidth: 1, minHeight: 48, fontSize: brandTokens.typeScale.headline.fontSize, fontWeight: '600', textAlign: 'center', paddingHorizontal: spacing.xs, fontVariant: ['tabular-nums'] },
-  setBlock: { borderRadius: 12, paddingVertical: spacing.xs }, setGap: { marginBottom: spacing.sm },
+  setBlock: { borderRadius: 12, paddingVertical: spacing.xs }, dim: { opacity: 0.45 }, columnIcon: { alignItems: 'center' }, setGap: { marginBottom: spacing.sm },
   restRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 50 }, recovery: { gap: spacing.sm },
   // Fixed width: the label changes with the choice and must not move the popover's anchor.
   nextAnchor: { width: 148 },

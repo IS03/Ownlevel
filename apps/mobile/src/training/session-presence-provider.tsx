@@ -10,7 +10,7 @@ import { useMobileAuth } from '@/auth';
 import { homeDay } from '@/home/home-day';
 import { activeSessionStorage } from './active-session-native-storage';
 import { SessionPresenceStore } from './session-presence-store';
-import { syncRestAlert } from './session-rest-alert';
+import { syncRestAlert, syncSetTargetAlert } from './session-rest-alert';
 import { liveActivityState, type RestAnchor } from './live-activity-model';
 import { syncLiveActivity } from './live-activity-sync';
 import { listenLiveActivityActions } from './live-activity-actions';
@@ -35,6 +35,8 @@ function PresenceLifetime({ store, children }: PropsWithChildren<{ store: Sessio
     const sync = (force = false) => {
       const presence = store.getSnapshot();
       syncRestAlert(presence.timer?.endAt ?? null);
+      const watch = presence.stopwatch;
+      syncSetTargetAlert(watch?.target ? watch.startedAt + watch.target * 1000 : null, watch?.target ?? null);
       const next = liveActivityState(presence, anchor, Date.now());
       anchor = next.anchor;
       void syncLiveActivity(next.state, force);
@@ -46,7 +48,7 @@ function PresenceLifetime({ store, children }: PropsWithChildren<{ store: Sessio
     const stopActions = listenLiveActivityActions(store);
     sync();
     // Signing out or switching accounts ends both the alert and the activity.
-    return () => { unsubscribe(); foreground.remove(); stopActions(); store.dispose(); syncRestAlert(null); void syncLiveActivity(null); };
+    return () => { unsubscribe(); foreground.remove(); stopActions(); store.dispose(); syncRestAlert(null); syncSetTargetAlert(null, null); void syncLiveActivity(null); };
   }, [store]);
   useEffect(() => {
     let previous = AppState.currentState;
