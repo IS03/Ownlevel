@@ -1,5 +1,14 @@
 const { assertPublicEnv } = require('./src/config/public-env-policy');
 const { iosVariant } = require('./src/config/ios-variant');
+const { withEntitlementsPlist } = require('expo/config-plugins');
+
+// expo-widgets 57 writes `aps-environment` even with enablePushNotifications: false. The Live Activity is updated by the
+// app, never by push (#639 decides push apart), and a personal signing team cannot sign that entitlement: remove it.
+// Listed before expo-widgets on purpose: mods of plugins listed earlier run later, so this runs after its write.
+const withoutWidgetPush = config => withEntitlementsPlist(config, mod => {
+  delete mod.modResults['aps-environment'];
+  return mod;
+});
 
 // app.json stays the source of truth. Evaluated by `expo config`, `expo start`,
 // `expo export`, `expo run:*` and EAS: an unsafe public env fails before any build.
@@ -15,7 +24,7 @@ module.exports = ({ config }) => {
     enablePushNotifications: false,
     widgets: [],
   }];
-  const plugins = [...(config.plugins ?? []), widgets];
+  const plugins = [...(config.plugins ?? []), withoutWidgetPush, widgets];
   if (!daily) return { ...config, plugins };
   return {
     ...config,
