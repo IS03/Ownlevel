@@ -13,7 +13,8 @@ export type StoredExerciseDraft = {
   writeId: string;
   attemptPayload?: SessionExercisePayloadDto;
 };
-export type RestDeadline = { exerciseId: string; exerciseName: string; endAt: number; sourceSet?: { localId: string; position: number } };
+/** `startedAt`: when this rest began (#634: the Live Activity's bar). Older stored timers have none. */
+export type RestDeadline = { exerciseId: string; exerciseName: string; endAt: number; startedAt?: number; sourceSet?: { localId: string; position: number } };
 
 let rowSequence = 0;
 const rowId = () => `set-${Date.now().toString(36)}-${++rowSequence}`;
@@ -111,7 +112,8 @@ export function restoreRestDeadline(value: unknown, exerciseIds: ReadonlySet<str
   if (!value || typeof value !== 'object') return null;
   const timer = value as RestDeadline;
   return typeof timer.exerciseId === 'string' && exerciseIds.has(timer.exerciseId) && typeof timer.exerciseName === 'string' &&
-    (timer.sourceSet === undefined || (!!timer.sourceSet && typeof timer.sourceSet.localId === 'string' && Number.isInteger(timer.sourceSet.position) && timer.sourceSet.position >= 0)) && typeof timer.endAt === 'number' && Number.isFinite(timer.endAt) && timer.endAt > now - 60000 ? timer : null;
+    (timer.sourceSet === undefined || (!!timer.sourceSet && typeof timer.sourceSet.localId === 'string' && Number.isInteger(timer.sourceSet.position) && timer.sourceSet.position >= 0)) && typeof timer.endAt === 'number' && Number.isFinite(timer.endAt) && timer.endAt > now - 60000
+    && (timer.startedAt === undefined || (typeof timer.startedAt === 'number' && Number.isFinite(timer.startedAt))) ? timer : null;
 }
 export function restRemaining(timer: RestDeadline, now = Date.now()): number { return Math.max(0, Math.ceil((timer.endAt - now) / 1000)); }
 /**

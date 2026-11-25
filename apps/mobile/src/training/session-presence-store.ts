@@ -6,7 +6,8 @@ import { restoreRestDeadline, type RestDeadline } from './active-session-model';
 import { SessionDraftRepository, type SessionStoragePort } from './active-session-storage';
 
 export type SessionPresence = {
-  session: MobileTrainingActiveSession | null;
+  /** `startedAt` only once a detail read confirmed it (#634: elapsed time on the Live Activity); never guessed. */
+  session: (MobileTrainingActiveSession & { startedAt?: string }) | null;
   timer: RestDeadline | null;
   unavailable: boolean;
   recovery: boolean;
@@ -56,7 +57,7 @@ export class SessionPresenceStore {
       if (!state.intent && (state.status === 'cancelled' || state.status === 'not_found' || (detail && detail.session.status !== 'in_progress'))) {
         if (this.snapshot.session?.id === id) this.publish(empty);
       } else if (detail) {
-        this.publish({ session: { id, name: detail.session.name, logDate: detail.session.logDate }, timer: controller.getTimer(),
+        this.publish({ session: { id, name: detail.session.name, logDate: detail.session.logDate, startedAt: detail.session.startedAt }, timer: controller.getTimer(),
           unavailable: state.status === 'unavailable', recovery: !!state.intent });
       }
     };
@@ -103,7 +104,7 @@ export class SessionPresenceStore {
         const repository = new SessionDraftRepository(this.storage, this.owner, session.id);
         const storedTimer = await repository.readTimer();
         if (!current()) return;
-        this.publish({ session, timer: restoreRestDeadline(storedTimer, new Set(detail.data.exercises.map(exercise => exercise.id))), unavailable: false, recovery: false });
+        this.publish({ session: { ...session, startedAt: detail.data.session.startedAt }, timer: restoreRestDeadline(storedTimer, new Set(detail.data.exercises.map(exercise => exercise.id))), unavailable: false, recovery: false });
         confirmed();
       } catch {
         if (current()) this.publish({ ...this.snapshot, unavailable: true });

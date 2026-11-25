@@ -16,7 +16,7 @@ describe('liveActivityState', () => {
 
   it('shows the session alone when there is no rest, with the brand colors', () => {
     const { state } = liveActivityState(presence(), null, 1000);
-    expect(state).toEqual({ sessionId: 'session-1', props: { sessionName: 'Torso A', rest: null,
+    expect(state).toEqual({ sessionId: 'session-1', props: { sessionName: 'Torso A', startedAt: null, rest: null,
       colors: { accentDark: palette.dark.accent, accentLight: palette.light.accent, mutedDark: palette.dark.textMuted, mutedLight: palette.light.textMuted } } });
   });
 
@@ -29,6 +29,15 @@ describe('liveActivityState', () => {
     expect(next.state?.props.rest?.startedAt).toBe(210_000);
   });
 
+  it('uses the rest\'s own start when the clock recorded it, so reopening the app keeps the bar where it was (#634)', () => {
+    const { state } = liveActivityState(presence({ ...rest(91_000), startedAt: 1000 }), null, 60_000);
+    expect(state?.props.rest?.startedAt).toBe(1000);
+  });
+  it('shows the elapsed time only from a confirmed start, never a made-up one', () => {
+    expect(liveActivityState(presence(null, { ...session, startedAt: '2026-11-25T10:00:00.000Z' } as typeof session), null, 1000).state?.props.startedAt)
+      .toBe(Date.parse('2026-11-25T10:00:00.000Z'));
+    expect(liveActivityState(presence(), null, 1000).state?.props.startedAt).toBeNull();
+  });
   it('keeps an expired rest as finished instead of inventing a new countdown', () => {
     const { state } = liveActivityState(presence(rest(5000)), null, 9000);
     expect(state?.props.rest).toEqual({ exerciseName: 'Press banca', startedAt: 5000, endAt: 5000 });

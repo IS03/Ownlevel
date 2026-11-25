@@ -420,6 +420,8 @@ describe('native active-session controller', () => {
     const restored = new ActiveSessionController(api, repository, undefined, () => 40000); await restored.refresh();
     expect(restored.getTimer()?.endAt).toBe(130000);
     restored.adjustRest(-15); expect(restored.getTimer()?.endAt).toBe(115000);
+    // #634: the rest keeps when it began across a remount and an adjustment (the Live Activity's bar).
+    expect(restored.getTimer()?.startedAt).toBe(controller.getTimer()?.startedAt); expect(typeof restored.getTimer()?.startedAt).toBe('number');
     const server = testDetail(); server.exercises = [server.exercises[1]]; api.detail.mockResolvedValue(ok(server)); await restored.refresh(); expect(restored.getTimer()).toBeNull();
   });
   it('distinguishes not-found, unavailable and unknown history without false empty state', async () => {
