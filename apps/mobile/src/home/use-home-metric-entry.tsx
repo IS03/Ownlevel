@@ -211,11 +211,11 @@ export function useHomeMetricEntry(onSaved: () => void) {
         ) : null}
         {entry.notice ? (
           <MetricSavedNotice
+            key={entry.notice.id}
             notice={entry.notice}
             disabled={!!state?.draft || state?.phase !== 'idle'}
-            onUndo={entry.undoNotice}
-            onClose={entry.dismissNotice}
-            onPrevious={entry.previousNotice}
+            onUndo={() => entry.undoNotice(entry.notice?.id)}
+            onClose={() => entry.dismissNotice(entry.notice?.id)}
           />
         ) : null}
         {quickNotice ? (

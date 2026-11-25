@@ -78,7 +78,7 @@ function Harness({ f }: { f: ReturnType<typeof setup> }) {
     {!entry.entry && !(entry.undoing && dayWriteInFlight(state)) ? <DayWriteEditor controller={f.controller} state={state} /> : null}
     {entry.undoing && dayWriteInFlight(state) ? <MetricSavedNotice notice={{date,message:'Deshaciendo…',undo:null}} disabled pending onUndo={()=>{}} onClose={()=>{}}/>:null}
     {state.message && !state.draft && !entry.feedbackHandled ? <AppText>{state.message}</AppText> : null}
-    {entry.notice ? <MetricSavedNotice notice={entry.notice} disabled={state.phase !== 'idle'} onUndo={entry.undoNotice} onClose={entry.dismissNotice} onPrevious={entry.previousNotice} /> : null}
+    {entry.notice ? <MetricSavedNotice key={entry.notice.id} notice={entry.notice} disabled={state.phase !== 'idle'} onUndo={() => entry.undoNotice(entry.notice?.id)} onClose={() => entry.dismissNotice(entry.notice?.id)} /> : null}
   </>;
 }
 async function open(f = setup(), screenBottom = 34) {
@@ -90,39 +90,45 @@ async function open(f = setup(), screenBottom = 34) {
 const save = async (view: Awaited<ReturnType<typeof open>>['view'], label = 'Agua') => { await act(async () => { fireEvent.press(view.getByLabelText(`Guardar ${label}`)); }); };
 beforeEach(() => { jest.clearAllMocks(); });
 const recordedMetric=(f:ReturnType<typeof setup>,index=0)=>{const data=f.data();if(data.activity.status!=='ok')throw Error('fixture');return data.activity.data.metrics[index];};
-it('preserves different-metric undo slots while later confirmations arrive',async()=>{
+it('#635: a newer confirmation replaces the previous; its Deshacer only reverts the latest, and closing never revives the older',async()=>{
   const f=setup(1);await f.controller.initialize();const hook=renderHook(()=>useMetricEntry(f.controller,date));
   await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f),0.25);});
+  const older=hook.result.current.notice!.id;
   await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f,1),2);});
-  expect(hook.result.current.notice?.message).toBe('Otra métrica: 102');expect(hook.result.current.notice?.queuedCount).toBe(1);
-  act(()=>hook.result.current.previousNotice());expect(hook.result.current.notice?.undo?.before.value).toBe(1);
-  await act(async()=>hook.result.current.undoNotice());
-  expect(recordedMetric(f).value).toBe(1);expect(recordedMetric(f,1).value).toBe(102);expect(f.mutate).toHaveBeenCalledTimes(3);
+  expect(hook.result.current.notice?.message).toBe('Otra métrica: 102');
+  // A tap begun on the replaced notice does nothing.
+  await act(async()=>hook.result.current.undoNotice(older));expect(f.mutate).toHaveBeenCalledTimes(2);
+  await act(async()=>hook.result.current.undoNotice(hook.result.current.notice!.id));
+  expect(recordedMetric(f).value).toBe(1.25);expect(recordedMetric(f,1).value).toBe(100);expect(f.mutate).toHaveBeenCalledTimes(3);
+  expect(hook.result.current.notice?.message).toBe('Otra métrica: 100 · deshecho');
+  act(()=>hook.result.current.dismissNotice(hook.result.current.notice!.id));expect(hook.result.current.notice).toBeNull();
   hook.unmount();f.controller.dispose();
 });
-it('explicitly retires an older same-metric CAS without silently losing the confirmation',async()=>{
+it('#635: Agua 1 → 1,25 → 1,5: Deshacer restores 1,25, with no «reemplazado» notice left behind',async()=>{
   const f=setup(1);await f.controller.initialize();const hook=renderHook(()=>useMetricEntry(f.controller,date));
   await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f),0.25);});
   await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f),0.25);});
-  act(()=>hook.result.current.previousNotice());
-  expect(hook.result.current.notice?.message).toContain('reemplazado por otro registro');expect(hook.result.current.notice?.undo).toBeNull();
-  await act(async()=>hook.result.current.undoNotice());expect(f.mutate).toHaveBeenCalledTimes(2);
+  expect(hook.result.current.notice?.message).toBe('Agua: 1,5 L');
+  await act(async()=>hook.result.current.undoNotice(hook.result.current.notice!.id));
+  expect(recordedMetric(f).value).toBe(1.25);expect(f.mutate).toHaveBeenCalledTimes(3);
+  expect(hook.result.current.notice?.message).toBe('Agua: 1,25 L · deshecho');expect(hook.result.current.notice?.undo).toBeNull();
   act(()=>hook.result.current.dismissNotice());await act(async()=>hook.result.current.undoNotice());
-  expect(recordedMetric(f).value).toBe(1.25);expect(f.mutate).toHaveBeenCalledTimes(3);hook.unmount();f.controller.dispose();
+  expect(f.mutate).toHaveBeenCalledTimes(3);hook.unmount();f.controller.dispose();
 });
-it('keeps a full visible window per slot, pauses behind an editor and clears its timer on unmount',async()=>{
+it('#635: one window from the confirmation, hidden behind an editor, never revived once it ran out',async()=>{
   jest.useFakeTimers();
   try{
     const f=setup(1);await f.controller.initialize();const hook=renderHook(()=>useMetricEntry(f.controller,date));
     await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f),0.25);});
     act(()=>jest.advanceTimersByTime(METRIC_NOTICE_MS-1000));
     act(()=>hook.result.current.open(f.data(),recordedMetric(f)));expect(hook.result.current.notice).toBeNull();
-    act(()=>jest.advanceTimersByTime(20000));act(()=>hook.result.current.close());expect(hook.result.current.notice?.undo).not.toBeNull();
+    act(()=>jest.advanceTimersByTime(500));act(()=>hook.result.current.close());expect(hook.result.current.notice?.undo).not.toBeNull();
+    act(()=>jest.advanceTimersByTime(499));expect(hook.result.current.notice).not.toBeNull();
+    act(()=>jest.advanceTimersByTime(1));expect(hook.result.current.notice).toBeNull();
+    act(()=>hook.result.current.open(f.data(),recordedMetric(f)));act(()=>hook.result.current.close());expect(hook.result.current.notice).toBeNull();
     await act(async()=>{await hook.result.current.quick(f.data(),recordedMetric(f,1),2);});
-    act(()=>jest.advanceTimersByTime(METRIC_NOTICE_MS-1));expect(hook.result.current.notice?.message).toBe('Otra métrica: 102');
-    act(()=>jest.advanceTimersByTime(1));expect(hook.result.current.notice?.message).toBe('Agua: 1,25 L');expect(hook.result.current.notice?.undo).not.toBeNull();
-    act(()=>jest.advanceTimersByTime(METRIC_NOTICE_MS-1));expect(hook.result.current.notice).not.toBeNull();
-    expect(jest.getTimerCount()).toBe(1);hook.unmount();expect(jest.getTimerCount()).toBe(0);f.controller.dispose();
+    expect(hook.result.current.notice?.message).toBe('Otra métrica: 102');
+    hook.unmount();f.controller.dispose();
   }finally{jest.useRealTimers();}
 });
 describe('#511 how long a confirmation stays',()=>{
@@ -420,26 +426,23 @@ describe('metric entry bounds and undo guards', () => {
   });
 });
 
-describe('#472 swipe dismissal of the metric queue', () => {
+describe('#635 swipe dismissal of the metric notice', () => {
   const swipeDown = () => act(() => fireGestureHandler(getByGestureTestId('metric-notice-dismiss'), [
     { state: State.BEGAN, translationX: 0, translationY: 0 }, { state: State.ACTIVE, translationX: 0, translationY: 80 }, { state: State.END, translationX: 0, translationY: 80 }]));
-  it('consecutive saves keep their queue; swiping the newest only hides it and brings the previous one back with its undo, with no write', async () => {
+  it('consecutive saves leave one notice, the latest; swiping it hides it with no write and brings nothing back', async () => {
     const f = setup(1); await f.controller.initialize(); let entry!: ReturnType<typeof useMetricEntry>;
     function Host() {
       const current = useMetricEntry(f.controller, date);
       useEffect(() => { entry = current; });
-      return current.notice ? <MetricSavedNotice notice={current.notice} disabled={false} onUndo={current.undoNotice} onClose={current.dismissNotice} onPrevious={current.previousNotice} /> : null;
+      return current.notice ? <MetricSavedNotice key={current.notice.id} notice={current.notice} disabled={false} onUndo={() => current.undoNotice(current.notice?.id)} onClose={() => current.dismissNotice(current.notice?.id)} /> : null;
     }
     const view = render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, bottom: 34, left: 0, right: 0 } }}><OwnlevelThemeProvider initialMode="light"><Host /></OwnlevelThemeProvider></SafeAreaProvider>);
     await act(async () => { await entry.quick(f.data(), recordedMetric(f), 0.25); });
     await act(async () => { await entry.quick(f.data(), recordedMetric(f, 1), 2); });
-    expect(view.getByLabelText('Otra métrica: 102')).toBeTruthy(); expect(view.getByRole('button', { name: 'Ver confirmación anterior, 1 disponibles' })).toBeTruthy();
+    expect(view.getByLabelText('Otra métrica: 102')).toBeTruthy(); expect(view.queryByLabelText(/^Agua: /)).toBeNull(); expect(view.queryByText(/anterior/i)).toBeNull();
     expect(view.getByRole('button', { name: 'Deshacer cambio de métrica' })).toBeTruthy(); expect(f.mutate).toHaveBeenCalledTimes(2);
     swipeDown();
-    expect(view.queryByLabelText('Otra métrica: 102')).toBeNull(); expect(view.getByLabelText(/^Agua: /)).toBeTruthy();
-    expect(view.getByRole('button', { name: 'Deshacer cambio de métrica' })).toBeTruthy(); expect(view.queryByRole('button', { name: /Ver confirmación anterior/ })).toBeNull();
-    expect(f.mutate).toHaveBeenCalledTimes(2); expect(recordedMetric(f, 1).value).toBe(102);
-    swipeDown(); expect(view.queryByTestId('nutrition-metric-notice')).toBeNull(); expect(f.mutate).toHaveBeenCalledTimes(2);
+    expect(view.queryByTestId('nutrition-metric-notice')).toBeNull(); expect(f.mutate).toHaveBeenCalledTimes(2); expect(recordedMetric(f, 1).value).toBe(102);
     f.controller.dispose();
   });
 });

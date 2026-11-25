@@ -223,15 +223,17 @@ function NutritionUserDayScreen({ userId }: { userId: string }) {
     {writes && !metricEntry.entry && !(metricEntry.undoing && dayWriteInFlight(writes.state)) ? <DayWriteEditor controller={writes.controller} state={writes.state} contextField={contextField} /> : null}
     {/* Another day shown and no notice on screen: a discreet way back to today. */}
     {showTodayControl ? <TodayPill onPress={showToday} onHeight={setTodayPillHeight} /> : null}
-    {/* One local stack, so a metric notice and a meal notice never sit on top of each other. Metric first, meal nearest the bar. */}
+    {/* One local stack. #635: a single confirmation (metric or meal), the latest; recovery and pending states may sit with it. */}
     <NoticeOutlet placement="tab">
       {metricEntry.undoing && writes && dayWriteInFlight(writes.state) ? <MetricSavedNotice notice={{ date, message: 'Deshaciendo…', undo: null }} disabled pending onUndo={() => {}} onClose={() => {}} /> : null}
-      {metricEntry.notice ? <MetricSavedNotice notice={metricEntry.notice} disabled={!editable || !!writes?.state.draft} onUndo={metricEntry.undoNotice} onClose={metricEntry.dismissNotice} onPrevious={metricEntry.previousNotice} /> : null}
+      {metricEntry.notice ? <MetricSavedNotice key={metricEntry.notice.id} notice={metricEntry.notice} disabled={!editable || !!writes?.state.draft}
+        onUndo={() => metricEntry.undoNotice(metricEntry.notice?.id)} onClose={() => metricEntry.dismissNotice(metricEntry.notice?.id)} /> : null}
       {/* One meal-side notice at a time: an add closed mid-way, a delete/undo running, its brief confirmation, or "Guardado · Deshacer". */}
       {quick?.state.inlineKey && !quick.state.open ? <NutritionToast testID="nutrition-quick-pending" state="pending" message="Agregando…" />
         : mealNotice.undoing ? <NutritionToast testID="nutrition-meal-pending" state="pending" message={mealNotice.undoing === 'undo' ? 'Deshaciendo…' : 'Eliminando…'} />
         : mealNotice.result ? <NutritionToast testID="nutrition-meal-result" state="done" message={mealNotice.result.message} />
-        : mealNotice.notice ? <MealAddedNotice notice={mealNotice.notice} disabled={!editable || !!meals?.state.editor} pending={false} onUndo={() => void mealNotice.undo()} onClose={mealNotice.dismiss} queuedCount={mealNotice.queuedCount} onPrevious={mealNotice.previous} /> : null}
+        : mealNotice.notice ? <MealAddedNotice key={mealNotice.notice.id} notice={mealNotice.notice} disabled={!editable || !!meals?.state.editor} pending={false}
+          onUndo={() => { if (mealNotice.notice) void mealNotice.undoNotice(mealNotice.notice.id); }} onClose={() => mealNotice.dismiss(mealNotice.notice?.id)} /> : null}
     </NoticeOutlet>
     {meals ? <MealEditor controller={meals.controller} state={meals.state} /> : null}
   </>;
