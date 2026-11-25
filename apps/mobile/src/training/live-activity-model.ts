@@ -1,8 +1,12 @@
 import { palette } from '@/design-system/brand';
 import type { SessionPresence } from './session-presence-store';
 
-/** Brand colors handed to the Live Activity layout: it runs as text inside the extension and cannot import them. */
-export type LiveActivityColors = { accentDark: string; accentLight: string; mutedDark: string; mutedLight: string };
+/**
+ * Brand colors handed to the Live Activity layout: it runs as text inside the extension and cannot import them. Always the
+ * dark palette on its own dark tint: the Dynamic Island is black, and expo-widgets 57 reports the color scheme of the
+ * widget configuration (not the Lock Screen's), so a light/dark choice there painted light text colors on a dark banner.
+ */
+export type LiveActivityColors = { background: string; text: string; muted: string; accent: string };
 /** What the lock screen and the Dynamic Island show. Times are epoch ms: props travel as JSON. */
 export type LiveActivityProps = {
   sessionName: string;
@@ -15,10 +19,7 @@ export type LiveActivityState = { sessionId: string; props: LiveActivityProps };
 /** When the current rest began, so the bar keeps its length when the rest is lengthened or shortened. */
 export type RestAnchor = { key: string; startedAt: number } | null;
 
-const colors: LiveActivityColors = {
-  accentDark: palette.dark.accent, accentLight: palette.light.accent,
-  mutedDark: palette.dark.textMuted, mutedLight: palette.light.textMuted,
-};
+const colors: LiveActivityColors = { background: palette.dark.bg, text: palette.dark.text, muted: palette.dark.textMuted, accent: palette.dark.accent };
 
 function restKey(timer: NonNullable<SessionPresence['timer']>) {
   return `${timer.exerciseId}:${timer.sourceSet?.localId ?? ''}`;
