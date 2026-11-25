@@ -4,7 +4,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import { Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { NoticeHost, NoticeOutlet, OwnlevelThemeProvider, TransientNotice } from '@/design-system';
+import { ConfirmationSlot, NoticeHost, NoticeOutlet, OwnlevelThemeProvider, TransientNotice, useConfirmationSlot } from '@/design-system';
 
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 
@@ -59,5 +59,48 @@ describe('NoticeHost (QA: a confirmation outlives the tab it was raised in)', ()
     const view = render(tree(<Screen name="Agua" testID="home" />));
     expect(view.queryByTestId('notice-host')).toBeNull();
     expect(within(view.getByTestId('home')).getByTestId('home-notice')).toBeTruthy();
+  });
+});
+
+/** An owner of one saving confirmation (a metric or a meal hook): a new save replaces its own, and the shared place arbitrates. */
+function Owner({ name, testID }: { name: string; testID: string }) {
+  const [notice, setNotice] = useState<{ id: number; text: string } | null>(null);
+  const [hidden, setHidden] = useState(false);
+  useConfirmationSlot(notice ? `${testID}:${notice.id}` : null, () => setNotice(null));
+  return <View>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Guardar ${name}`} onPress={() => setNotice(value => ({ id: (value?.id ?? 0) + 1, text: `${name} ${(value?.id ?? 0) + 1}` }))} />
+    <Pressable accessibilityRole="button" accessibilityLabel={`Ocultar ${name}`} onPress={() => setHidden(value => !value)} />
+    <NoticeOutlet placement="tab">
+      {notice && !hidden ? <TransientNotice key={notice.id} testID={`${testID}-notice`} message={notice.text} state="done" onDismiss={() => setNotice(null)} /> : null}
+    </NoticeOutlet>
+  </View>;
+}
+
+describe('#635 one saving confirmation across Inicio and Nutrición', () => {
+  const press = (view: ReturnType<typeof render>, name: string) => fireEvent.press(view.getByRole('button', { name }));
+  const setup = () => render(tree(<NoticeHost><Owner name="Agua" testID="home" /><Owner name="Pasos" testID="metric" /><Owner name="Pasta" testID="meal" /></NoticeHost>));
+  it('a newer confirmation of another owner retires the previous one for good', () => {
+    const view = setup();
+    press(view, 'Guardar Agua'); expect(view.getByLabelText('Agua 1')).toBeTruthy();
+    press(view, 'Guardar Pasos'); expect(view.queryByLabelText('Agua 1')).toBeNull(); expect(view.getByLabelText('Pasos 1')).toBeTruthy();
+    press(view, 'Guardar Pasta'); expect(view.queryByLabelText('Pasos 1')).toBeNull(); expect(view.getByLabelText('Pasta 1'));
+    // Closing the newest reveals nothing.
+    act(() => { fireEvent(view.getByLabelText('Pasta 1'), 'accessibilityAction', { nativeEvent: { actionName: 'dismiss' } }); });
+    expect(within(view.getByTestId('notice-host')).queryByText(/Agua|Pasos|Pasta/)).toBeNull();
+  });
+  it('the same owner replaces its own; a hidden one shown again never retires a newer one', () => {
+    const view = setup();
+    press(view, 'Guardar Agua'); press(view, 'Guardar Agua'); expect(view.queryByLabelText('Agua 1')).toBeNull(); expect(view.getByLabelText('Agua 2')).toBeTruthy();
+    press(view, 'Guardar Pasta'); press(view, 'Ocultar Pasta'); press(view, 'Ocultar Pasta');
+    expect(view.getByLabelText('Pasta 1')).toBeTruthy(); expect(view.queryByLabelText('Agua 2')).toBeNull();
+    press(view, 'Ocultar Pasta'); press(view, 'Guardar Pasos'); press(view, 'Ocultar Pasta');
+    expect(view.queryByLabelText('Pasta 1')).toBeNull(); expect(view.getByLabelText('Pasos 1')).toBeTruthy();
+  });
+  it('an owner leaving (another account, its tab gone) frees the place without touching the others', () => {
+    const slot = new ConfirmationSlot(), retired: string[] = [];
+    slot.claim('home', 'a', () => retired.push('home')); slot.release('home');
+    slot.claim('meal', 'b', () => retired.push('meal')); expect(retired).toEqual([]);
+    slot.claim('meal', 'c', () => retired.push('meal')); expect(retired).toEqual([]);
+    slot.claim('home', 'd', () => retired.push('home')); expect(retired).toEqual(['meal']);
   });
 });

@@ -44,6 +44,6 @@ export { atmosphere, fadeGradient, fieldGradient, glowGradient, rgba } from './a
 export { useFieldSurface } from './field-surface';
 export { GlassSurface } from './glass';
 export { NoticeStack, TransientNotice } from './transient-notice';
-export { NoticeHost, NoticeOutlet } from './notice-host';
+export { ConfirmationSlot, NoticeHost, NoticeOutlet, useConfirmationSlot } from './notice-host';
 export type { NoticeAction, NoticePlacement, NoticeState } from './transient-notice';
 export { ScrollEdgeBlur } from './scroll-edge';

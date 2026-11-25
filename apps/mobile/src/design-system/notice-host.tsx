@@ -1,4 +1,4 @@
-import { Fragment, createContext, useContext, useId, useLayoutEffect, useState, useSyncExternalStore, type PropsWithChildren, type ReactNode } from 'react';
+import { Fragment, createContext, useContext, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type PropsWithChildren, type ReactNode } from 'react';
 
 import { NoticeStack, type NoticePlacement } from './transient-notice';
 
@@ -18,7 +18,22 @@ class NoticeHub {
   getSnapshot = () => this.snapshot;
 }
 
+/**
+ * #635: one saving confirmation on screen across Inicio and Nutrición. The newest claim retires the previous owner's
+ * confirmation for good (its owner drops it and its Undo): closing or outliving the newest never reveals an older one.
+ */
+export class ConfirmationSlot {
+  private holder: { owner: string; key: string; retire: () => void } | null = null;
+  claim(owner: string, key: string, retire: () => void) {
+    const previous = this.holder;
+    this.holder = { owner, key, retire };
+    if (previous && previous.owner !== owner) previous.retire();
+  }
+  release(owner: string) { if (this.holder?.owner === owner) this.holder = null; }
+}
+
 const Hub = createContext<NoticeHub | null>(null);
+const Slot = createContext<ConfirmationSlot | null>(null);
 
 /**
  * One dock above the native tabs for the notices a screen raises (Inicio, Nutrición): a confirmation outlives the tab it was
@@ -28,7 +43,8 @@ const Hub = createContext<NoticeHub | null>(null);
  */
 export function NoticeHost({ children }: PropsWithChildren) {
   const [hub] = useState(() => new NoticeHub());
-  return <Hub.Provider value={hub}>{children}<HostStack hub={hub} /></Hub.Provider>;
+  const [slot] = useState(() => new ConfirmationSlot());
+  return <Hub.Provider value={hub}><Slot.Provider value={slot}>{children}<HostStack hub={hub} /></Slot.Provider></Hub.Provider>;
 }
 
 function HostStack({ hub }: { hub: NoticeHub }) {
@@ -48,4 +64,17 @@ export function NoticeOutlet({ children, placement = 'tab', bottomOffset = 0, te
   useLayoutEffect(() => { hub?.set(id, { node: children, bottomOffset }); });
   useLayoutEffect(() => () => { hub?.set(id, null); }, [hub, id]);
   return hub ? null : <NoticeStack placement={placement} bottomOffset={bottomOffset} testID={testID}>{children}</NoticeStack>;
+}
+
+/** The shared place for one owner's confirmation: claimed when its key appears, `retire` runs when another owner's newer one takes it. */
+export function useConfirmationSlot(key: string | null, retire: () => void) {
+  const slot = useContext(Slot);
+  const owner = useId();
+  const latest = useRef(retire);
+  useLayoutEffect(() => { latest.current = retire; });
+  useLayoutEffect(() => {
+    if (!slot) return;
+    if (key) slot.claim(owner, key, () => latest.current()); else slot.release(owner);
+  }, [slot, owner, key]);
+  useLayoutEffect(() => () => { slot?.release(owner); }, [slot, owner]);
 }

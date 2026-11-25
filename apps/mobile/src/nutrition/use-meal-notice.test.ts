@@ -50,65 +50,39 @@ const confirmWithTime = (run: () => void) => act(run);
 beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(new Date('2026-10-02T15:00:00Z')); });
 afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
-describe('meal notice queue (#472)', () => {
-  it('keeps the first meal reachable behind the second: Anterior brings it forward and each undo sends its own snapshot', async () => {
+/** «Deshacer» on the notice on screen now. */
+const tapUndo = (now: () => ReturnType<typeof useMealNotice>) => now().undoNotice(now().notice!.id);
+
+describe('one meal notice (#635)', () => {
+  it('a newer confirmation replaces the previous for good: closing or waiting never brings it back', () => {
+    const { meals, quick, now } = setup();
+    confirmWithTime(() => meals.create('A', { updatedAt: 'vA' })); confirmWithTime(() => quick.confirm('Q', DAY, 'vQ'));
+    expect(now().notice?.meal).toMatchObject({ id: 'Q', updatedAt: 'vQ' });
+    act(() => now().dismiss(now().notice!.id)); expect(now().notice).toBeNull();
+    act(() => { jest.advanceTimersByTime(MEAL_NOTICE_MS * 2); }); expect(now().notice).toBeNull();
+    expect(meals.undo).not.toHaveBeenCalled();
+  });
+  it('Deshacer sends the snapshot of the notice on screen and nothing else', async () => {
     const { meals, now, sent } = setup();
     confirmWithTime(() => meals.create('A', { updatedAt: 'vA' })); confirmWithTime(() => meals.create('B', { updatedAt: 'vB' }));
-    expect(now().notice?.meal).toMatchObject({ id: 'B', updatedAt: 'vB' }); expect(now().queuedCount).toBe(1);
-    await act(async () => { await now().undo(); });
+    await act(async () => { await tapUndo(now); });
     expect(sent()).toEqual([{ id: 'B', updatedAt: 'vB', to: DAY }]);
-    // B is gone, A is next with its remaining time.
-    expect(now().notice?.meal.id).toBe('A'); expect(now().queuedCount).toBe(0); expect(now().result).toEqual({ message: 'Deshecho' });
-    await act(async () => { await now().undo(); });
-    expect(sent()).toEqual([{ id: 'B', updatedAt: 'vB', to: DAY }, { id: 'A', updatedAt: 'vA', to: DAY }]);
-    expect(now().notice).toBeNull();
+    expect(now().notice).toBeNull(); expect(now().result).toMatchObject({ message: 'Deshecho' });
   });
-  it('undo of the earlier one after previous() sends the FIRST snapshot and leaves the visible one queued', async () => {
-    const { meals, now, sent } = setup();
-    confirmWithTime(() => meals.create('A', { updatedAt: 'vA' })); confirmWithTime(() => meals.create('B', { updatedAt: 'vB' }));
-    act(() => now().previous());
-    expect(now().notice?.meal.id).toBe('A'); expect(now().queuedCount).toBe(1);
-    await act(async () => { await now().undo(); });
-    expect(sent()).toEqual([{ id: 'A', updatedAt: 'vA', to: DAY }]); expect(sent().some(row => row.id === 'B')).toBe(false);
-    expect(now().notice?.meal.id).toBe('B'); expect(now().queuedCount).toBe(0); expect(now().result).toEqual({ message: 'Deshecho' });
-  });
-  it('three in a row: newest first, count, and previous() rotates through all of them', () => {
-    const { meals, now } = setup();
-    for (const id of ['A', 'B', 'C']) confirmWithTime(() => meals.create(id));
-    expect([now().notice?.meal.id, now().queuedCount]).toEqual(['C', 2]);
-    const seen: string[] = [];
-    for (let i = 0; i < 4; i++) { act(() => now().previous()); seen.push(now().notice!.meal.id); expect(now().queuedCount).toBe(2); }
-    expect(seen).toEqual(['B', 'A', 'C', 'B']);
-  });
-  it('previous() with a single entry changes nothing', () => {
-    const { meals, now } = setup(); confirmWithTime(() => meals.create('A')); const before = now().notice;
-    act(() => now().previous()); expect(now().notice).toEqual(before); expect(now().queuedCount).toBe(0);
-  });
-  it('manual and quick confirmations share the one queue', async () => {
-    const { meals, quick, now, sent } = setup();
-    confirmWithTime(() => meals.create('M', { updatedAt: 'vM' })); confirmWithTime(() => quick.confirm('Q', DAY, 'vQ'));
-    expect(now().notice?.meal).toMatchObject({ id: 'Q', updatedAt: 'vQ' }); expect(now().queuedCount).toBe(1);
-    act(() => now().previous());
-    await act(async () => { await now().undo(); });
-    expect(sent()).toEqual([{ id: 'M', updatedAt: 'vM', to: DAY }]); expect(now().notice?.meal.id).toBe('Q');
-  });
-  it('an entry of another day is not offered here, is offered when that day is shown, and expires like the others', () => {
+  it('a notice of another day is not offered here, is offered when that day is shown, and expires from its confirmation', () => {
     const { meals, now, view } = setup();
     confirmWithTime(() => meals.create('T', { date: OTHER }));
-    expect(now().notice).toBeNull(); expect(now().queuedCount).toBe(0);
+    expect(now().notice).toBeNull();
     act(() => { jest.advanceTimersByTime(4000); });
     view.rerender({ meals, date: OTHER }); expect(now().notice?.meal.id).toBe('T');
     act(() => { jest.advanceTimersByTime(MEAL_NOTICE_MS - 4000 - 1); }); expect(now().notice?.meal.id).toBe('T');
     act(() => { jest.advanceTimersByTime(1); }); expect(now().notice).toBeNull();
-    // and one that was never looked at is gone too
-    view.rerender({ meals, date: DAY }); confirmWithTime(() => meals.create('U', { date: OTHER })); act(() => { jest.advanceTimersByTime(MEAL_NOTICE_MS); });
-    view.rerender({ meals, date: OTHER }); expect(now().notice).toBeNull();
   });
-  it('only counts the entries of the day shown', () => {
+  it('a newer one on another day retires the one of this day', () => {
     const { meals, now, view } = setup();
-    confirmWithTime(() => meals.create('A')); confirmWithTime(() => meals.create('X', { date: OTHER })); confirmWithTime(() => meals.create('B'));
-    expect(now().queuedCount).toBe(1); view.rerender({ meals, date: OTHER }); expect(now().queuedCount).toBe(0);
-    act(() => now().previous()); expect(now().notice?.meal.id).toBe('X');
+    confirmWithTime(() => meals.create('A')); confirmWithTime(() => meals.create('X', { date: OTHER }));
+    expect(now().notice).toBeNull(); view.rerender({ meals, date: OTHER }); expect(now().notice?.meal.id).toBe('X');
+    view.rerender({ meals, date: DAY }); expect(now().notice).toBeNull();
   });
 
   describe('windows', () => {
@@ -117,27 +91,16 @@ describe('meal notice queue (#472)', () => {
       act(() => { jest.advanceTimersByTime(MEAL_NOTICE_MS - 1); }); expect(now().notice?.meal.id).toBe('A');
       act(() => { jest.advanceTimersByTime(1); }); expect(now().notice).toBeNull();
     });
-    it('a newer arrival does not restart the visible one, and the older one is not prolonged when it comes back', () => {
+    it('a replacement gets a window of its own', () => {
       const { meals, now } = setup(); confirmWithTime(() => meals.create('A'));
       act(() => { jest.advanceTimersByTime(at(0.6)); }); confirmWithTime(() => meals.create('B'));
-      act(() => { jest.advanceTimersByTime(MEAL_NOTICE_MS - at(0.6) - 1); });
-      // A has 1 ms left, B has at(0.6) + 1 ms.
-      act(() => now().previous()); expect(now().notice?.meal.id).toBe('A');
-      act(() => { jest.advanceTimersByTime(1); }); expect(now().notice?.meal.id).toBe('B'); expect(now().queuedCount).toBe(0);
-      act(() => { jest.advanceTimersByTime(at(0.6) - 1); }); expect(now().notice?.meal.id).toBe('B');
+      act(() => { jest.advanceTimersByTime(MEAL_NOTICE_MS - 1); }); expect(now().notice?.meal.id).toBe('B');
       act(() => { jest.advanceTimersByTime(1); }); expect(now().notice).toBeNull();
     });
-    it('when the visible one expires, the next one shows with ITS remaining time, not a fresh window', () => {
-      const { meals, now } = setup(); confirmWithTime(() => meals.create('A'));
-      act(() => { jest.advanceTimersByTime(at(0.7)); }); confirmWithTime(() => meals.create('B'));
-      act(() => { jest.advanceTimersByTime(MEAL_NOTICE_MS - at(0.7)); }); expect(now().notice?.meal.id).toBe('B'); expect(now().queuedCount).toBe(0);
-      act(() => { jest.advanceTimersByTime(at(0.7) - 1); }); expect(now().notice?.meal.id).toBe('B');
-      act(() => { jest.advanceTimersByTime(1); }); expect(now().notice).toBeNull();
-    });
-    it('an undo in flight pauses its window; if it returns without removing the entry, a full window starts again', async () => {
+    it('an undo in flight pauses its window; if it returns without removing the meal, a full window starts again', async () => {
       const { meals, now } = setup(); meals.hold = true; meals.outcome = 'stays';
       confirmWithTime(() => meals.create('A')); act(() => { jest.advanceTimersByTime(at(0.6)); });
-      let pending!: Promise<void>; act(() => { pending = now().undo(); });
+      let pending!: Promise<void>; act(() => { pending = tapUndo(now); });
       expect(now().undoing).toBe('undo');
       act(() => { jest.advanceTimersByTime(60000); }); expect(now().notice?.meal.id).toBe('A');
       await act(async () => { meals.gates[0].release(); await pending; });
@@ -145,151 +108,103 @@ describe('meal notice queue (#472)', () => {
       act(() => { jest.advanceTimersByTime(MEAL_NOTICE_MS - 1); }); expect(now().notice?.meal.id).toBe('A');
       act(() => { jest.advanceTimersByTime(1); }); expect(now().notice).toBeNull();
     });
-    it('an undo of one entry does not pause the others', async () => {
-      const { meals, now } = setup(); meals.hold = true;
-      confirmWithTime(() => meals.create('A')); act(() => { jest.advanceTimersByTime(5000); }); confirmWithTime(() => meals.create('B'));
-      let pending!: Promise<void>; act(() => { pending = now().undo(); });
-      act(() => { jest.advanceTimersByTime(5000); }); // A runs out while B's undo is in flight
-      await act(async () => { meals.gates[0].release(); await pending; });
-      expect(now().notice).toBeNull();
-    });
   });
 
   describe('eligibility', () => {
-    it('dismiss hides only the visible entry and never calls undo', () => {
-      const { meals, now } = setup(); confirmWithTime(() => meals.create('A')); confirmWithTime(() => meals.create('B'));
-      act(() => now().dismiss());
-      expect(meals.undo).not.toHaveBeenCalled(); expect(now().notice?.meal.id).toBe('A'); expect(now().queuedCount).toBe(0);
-      act(() => now().dismiss()); expect(now().notice).toBeNull(); expect(meals.undo).not.toHaveBeenCalled();
+    it('dismiss hides it and never calls undo', () => {
+      const { meals, now } = setup(); confirmWithTime(() => meals.create('A'));
+      act(() => now().dismiss(now().notice!.id)); expect(now().notice).toBeNull(); expect(meals.undo).not.toHaveBeenCalled();
     });
-    it('a dismissed entry does not come back by rotating', () => {
-      const { meals, now } = setup(); confirmWithTime(() => meals.create('A')); confirmWithTime(() => meals.create('B'));
-      act(() => now().dismiss()); act(() => now().previous()); expect(now().notice?.meal.id).toBe('A'); expect(now().queuedCount).toBe(0);
-    });
-    it('a later edit of A retires only A; a later delete of B retires only B', () => {
-      const { meals, now } = setup();
-      for (const id of ['A', 'B', 'C']) confirmWithTime(() => meals.create(id));
-      confirmWithTime(() => meals.emit('edit', 'A', { updatedAt: 'v2' }));
-      expect(now().result).toEqual({ message: 'Cambios guardados' }); expect(now().notice?.meal.id).toBe('C'); expect(now().queuedCount).toBe(1);
-      confirmWithTime(() => meals.emit('delete', 'B'));
-      expect(now().notice?.meal.id).toBe('C'); expect(now().queuedCount).toBe(0); expect(now().removed).toBe('B');
-      expect(now().result).toEqual({ message: 'Comida eliminada' });
-    });
-    it('an edit or a delete of an unrelated meal removes nothing', () => {
-      const { meals, now } = setup(); confirmWithTime(() => meals.create('A')); confirmWithTime(() => meals.create('B'));
+    it('a later edit of that meal retires it; an edit or a delete of another meal does not', () => {
+      const { meals, now } = setup(); confirmWithTime(() => meals.create('A'));
       confirmWithTime(() => meals.emit('edit', 'Z')); confirmWithTime(() => meals.emit('delete', 'Y'));
-      expect(now().notice?.meal.id).toBe('B'); expect(now().queuedCount).toBe(1);
+      expect(now().notice?.meal.id).toBe('A');
+      confirmWithTime(() => meals.emit('edit', 'A', { updatedAt: 'v2' }));
+      expect(now().notice).toBeNull(); expect(now().result).toMatchObject({ message: 'Cambios guardados' });
     });
-    it('the same confirmation twice is neither a second entry nor a longer window', () => {
+    it('the same confirmation twice is neither a new notice nor a longer window', () => {
       const { meals, quick, now } = setup();
-      confirmWithTime(() => meals.create('A', { updatedAt: 'vA' })); act(() => { jest.advanceTimersByTime(at(0.6)); });
+      confirmWithTime(() => meals.create('A', { updatedAt: 'vA' })); const id = now().notice!.id; act(() => { jest.advanceTimersByTime(at(0.6)); });
       confirmWithTime(() => meals.create('A', { updatedAt: 'vA' })); confirmWithTime(() => quick.confirm('A', DAY, 'vA'));
-      expect(now().notice?.meal.id).toBe('A'); expect(now().queuedCount).toBe(0);
+      expect(now().notice?.id).toBe(id);
       act(() => { jest.advanceTimersByTime(MEAL_NOTICE_MS - at(0.6)); }); expect(now().notice).toBeNull();
     });
-    it('a newer version of a queued meal replaces its entry (new CAS, new window) without duplicating it', async () => {
+    it('a newer version of the meal replaces the notice with its new CAS', async () => {
       const { meals, now, sent } = setup();
-      confirmWithTime(() => meals.create('A', { updatedAt: 'v1' })); act(() => { jest.advanceTimersByTime(8000); });
+      confirmWithTime(() => meals.create('A', { updatedAt: 'v1' })); act(() => { jest.advanceTimersByTime(3000); });
       confirmWithTime(() => meals.create('A', { updatedAt: 'v2' }));
-      expect(now().queuedCount).toBe(0); act(() => { jest.advanceTimersByTime(5000); }); expect(now().notice?.meal.updatedAt).toBe('v2');
-      await act(async () => { await now().undo(); }); expect(sent()).toEqual([{ id: 'A', updatedAt: 'v2', to: DAY }]);
+      await act(async () => { await tapUndo(now); }); expect(sent()).toEqual([{ id: 'A', updatedAt: 'v2', to: DAY }]);
     });
-    it('undo of an earlier entry through an explicit delete of that meal removes only that entry and says "Comida eliminada"', async () => {
-      const { meals, now, sent } = setup(); confirmWithTime(() => meals.create('A', { updatedAt: 'vA' })); confirmWithTime(() => meals.create('B'));
+    it('an explicit delete of another meal says "Comida eliminada" and keeps the notice', async () => {
+      const { meals, now, sent } = setup(); confirmWithTime(() => meals.create('B'));
       await act(async () => { await now().undo({ id: 'A', updatedAt: 'vA' } as NutritionDayMeal, DAY); });
-      expect(sent()).toEqual([{ id: 'A', updatedAt: 'vA', to: DAY }]); expect(now().notice?.meal.id).toBe('B'); expect(now().queuedCount).toBe(0);
-      expect(now().result).toEqual({ message: 'Comida eliminada' });
+      expect(sent()).toEqual([{ id: 'A', updatedAt: 'vA', to: DAY }]); expect(now().notice?.meal.id).toBe('B');
+      expect(now().result).toMatchObject({ message: 'Comida eliminada' });
     });
     it('an explicit delete of the visible meal is "Deshecho", with the quick row released', async () => {
       const { meals, quick, now } = setup(); confirmWithTime(() => quick.confirm('Q'));
       await act(async () => { await now().undo({ id: 'Q', updatedAt: 'x' } as NutritionDayMeal, DAY, 'saved:q'); });
-      expect(quick.removeAdded).toHaveBeenCalledWith('saved:q'); expect(now().result).toEqual({ message: 'Deshecho' }); expect(meals.undo).toHaveBeenCalledTimes(1);
+      expect(quick.removeAdded).toHaveBeenCalledWith('saved:q'); expect(now().result).toMatchObject({ message: 'Deshecho' }); expect(meals.undo).toHaveBeenCalledTimes(1);
     });
-    it('the controller busy or not idle: nothing is sent and the entries keep running', async () => {
+    it('the controller busy or not idle: nothing is sent and the notice keeps running', async () => {
       const { meals, now } = setup(); confirmWithTime(() => meals.create('A'));
       meals.state = { phase: 'pending', intent: {}, editor: null };
-      await act(async () => { await now().undo(); }); expect(meals.undo).not.toHaveBeenCalled(); expect(now().undoing).toBeNull(); expect(now().notice?.meal.id).toBe('A');
+      await act(async () => { await tapUndo(now); }); expect(meals.undo).not.toHaveBeenCalled(); expect(now().undoing).toBeNull(); expect(now().notice?.meal.id).toBe('A');
       meals.state = { phase: 'idle', intent: null, editor: null };
-      await act(async () => { await now().undo(); }); expect(meals.undo).toHaveBeenCalledTimes(1);
+      await act(async () => { await tapUndo(now); }); expect(meals.undo).toHaveBeenCalledTimes(1);
     });
-    it('an uncertain undo leaves the controller\'s recovery in charge: the entry stays, nothing is retried, the others stay queued', async () => {
+    it('an uncertain undo leaves the controller\'s recovery in charge: the notice stays and nothing is retried', async () => {
       const { meals, now } = setup(); meals.outcome = 'stays';
-      confirmWithTime(() => meals.create('A')); confirmWithTime(() => meals.create('B'));
-      await act(async () => { await now().undo(); });
-      expect(meals.undo).toHaveBeenCalledTimes(1); expect(now().undoing).toBeNull(); expect(now().result).toBeNull();
-      expect(now().notice?.meal.id).toBe('B'); expect(now().queuedCount).toBe(1);
-      // Recovery (controller phase != idle) blocks any new send from the queue.
-      await act(async () => { await now().undo(); }); expect(meals.undo).toHaveBeenCalledTimes(1);
-      // The recovery later confirms the delete of B: only B goes.
-      meals.state = { phase: 'idle', intent: null, editor: null }; confirmWithTime(() => meals.emit('delete', 'B'));
-      expect(now().notice?.meal.id).toBe('A'); expect(now().queuedCount).toBe(0);
+      confirmWithTime(() => meals.create('A'));
+      await act(async () => { await tapUndo(now); });
+      expect(meals.undo).toHaveBeenCalledTimes(1); expect(now().undoing).toBeNull(); expect(now().result).toBeNull(); expect(now().notice?.meal.id).toBe('A');
+      await act(async () => { await tapUndo(now); }); expect(meals.undo).toHaveBeenCalledTimes(1);
+      meals.state = { phase: 'idle', intent: null, editor: null }; confirmWithTime(() => meals.emit('delete', 'A'));
+      expect(now().notice).toBeNull();
     });
-    it('the owner switching clears the whole queue; the new owner starts empty', () => {
-      const { meals, quick, now, view } = setup(); confirmWithTime(() => meals.create('A')); confirmWithTime(() => meals.create('B'));
+    it('the owner switching clears it; the new owner starts empty', () => {
+      const { meals, quick, now, view } = setup(); confirmWithTime(() => meals.create('A'));
       const next = new FakeMeals(); view.rerender({ meals: next, date: DAY });
-      expect(now().notice).toBeNull(); expect(now().queuedCount).toBe(0); expect(jest.getTimerCount()).toBe(0);
+      expect(now().notice).toBeNull(); expect(jest.getTimerCount()).toBe(0);
       expect(meals.listeners.size).toBe(0); expect(quick.listeners.size).toBe(1);
-      confirmWithTime(() => next.create('C')); expect(now().notice?.meal.id).toBe('C'); expect(now().queuedCount).toBe(0);
+      confirmWithTime(() => next.create('C')); expect(now().notice?.meal.id).toBe('C');
     });
   });
 
-  describe('no stale state', () => {
-    it('a captured undo / dismiss called after a newer confirmation acts on the current visible entry', async () => {
+  describe('late taps', () => {
+    it('a tap begun on a notice since replaced undoes nothing, neither the old meal nor the new one', async () => {
       const { meals, now, sent } = setup(); confirmWithTime(() => meals.create('A', { updatedAt: 'vA' }));
-      const staleUndo = now().undo, staleDismiss = now().dismiss;
+      const shown = now().notice!.id;
       confirmWithTime(() => meals.create('B', { updatedAt: 'vB' }));
-      act(() => staleDismiss()); expect(now().notice?.meal.id).toBe('A');
-      confirmWithTime(() => meals.create('C', { updatedAt: 'vC' }));
-      await act(async () => { await staleUndo(); });
-      expect(sent()).toEqual([{ id: 'C', updatedAt: 'vC', to: DAY }]); expect(now().notice?.meal.id).toBe('A');
+      await act(async () => { await now().undoNotice(shown); });
+      expect(sent()).toEqual([]); expect(now().notice?.meal.id).toBe('B');
+      act(() => now().dismiss(shown)); expect(now().notice?.meal.id).toBe('B');
     });
-    it('a captured undo after the day changed acts on the day now shown', async () => {
-      const { meals, now, view, sent } = setup(); confirmWithTime(() => meals.create('A')); confirmWithTime(() => meals.create('T', { date: OTHER, updatedAt: 'vT' }));
-      const stale = now().undo; view.rerender({ meals, date: OTHER });
-      await act(async () => { await stale(); }); expect(sent()).toEqual([{ id: 'T', updatedAt: 'vT', to: OTHER }]);
+    it('a newer arrival in the same event turn is not undone by a tap meant for the one on screen', async () => {
+      const { meals, now, sent } = setup(); confirmWithTime(() => meals.create('A'));
+      const shown = now().notice!.id;
+      await act(async () => { meals.create('B'); await now().undoNotice(shown); });
+      expect(sent()).toEqual([]);
     });
-    it('Deshacer on an entry whose window ran out meanwhile does nothing and never falls through to an older meal', async () => {
-      const { meals, now, sent } = setup(); confirmWithTime(() => meals.create('A', { updatedAt: 'vA' }));
-      act(() => { jest.advanceTimersByTime(6000); }); confirmWithTime(() => meals.create('B', { updatedAt: 'vB' }));
-      const tap = now().undo;
-      // The clock passes A's deadline... and B's: nothing has had time to re-render yet.
+    it('Deshacer on a notice whose window ran out before the screen caught up does nothing', async () => {
+      const { meals, now, sent } = setup(); confirmWithTime(() => meals.create('A'));
+      const shown = now().notice!.id;
       jest.setSystemTime(Date.now() + MEAL_NOTICE_MS + 1);
-      await act(async () => { await tap(); }); expect(sent()).toEqual([]); expect(now().notice).toBeNull();
+      await act(async () => { await now().undoNotice(shown); }); expect(sent()).toEqual([]); expect(now().notice).toBeNull();
     });
-    it('the visible one running out between render and tap does not undo the one behind it', async () => {
-      const { meals, now, sent } = setup(); confirmWithTime(() => meals.create('A'));
-      act(() => { jest.advanceTimersByTime(1000); }); confirmWithTime(() => meals.create('B'));
-      act(() => now().previous()); expect(now().notice?.meal.id).toBe('A');
-      const tap = now().undo;
-      // A (on screen) runs out first; B behind it is still valid. No render has happened yet.
-      jest.setSystemTime(Date.now() + MEAL_NOTICE_MS - 1000 + 500);
-      await act(async () => { await tap(); });
-      expect(sent()).toEqual([]);
-    });
-    it('a newer arrival between render and tap is not undone by a tap meant for the entry that was on screen', async () => {
-      const { meals, now, sent } = setup(); confirmWithTime(() => meals.create('A'));
-      const tap = now().undo;
-      // Arrives and is committed, but the notice has not been re-rendered for the tap yet (same event turn).
-      await act(async () => { meals.create('B'); await tap(); });
-      expect(sent()).toEqual([]);
+    it('a tap for a notice of another day than the one shown does nothing', async () => {
+      const { meals, now, view, sent } = setup(); confirmWithTime(() => meals.create('T', { date: OTHER }));
+      view.rerender({ meals, date: OTHER }); const shown = now().notice!.id; view.rerender({ meals, date: DAY });
+      await act(async () => { await now().undoNotice(shown); }); expect(sent()).toEqual([]);
     });
   });
 
   describe('bounded', () => {
-    it('after every window has passed the queue is empty and no timer remains', () => {
+    it('many rapid confirmations leave one notice, then nothing and no timer', () => {
       const { meals, quick, now } = setup();
-      confirmWithTime(() => meals.create('A')); confirmWithTime(() => quick.confirm('Q')); confirmWithTime(() => meals.create('T', { date: OTHER }));
-      act(() => { jest.advanceTimersByTime(MEAL_NOTICE_MS); });
-      expect(now().notice).toBeNull(); expect(now().queuedCount).toBe(0);
-      // The brief result (1.6 s) is the only other timer; none is left once it passed.
-      act(() => { jest.advanceTimersByTime(2000); }); expect(jest.getTimerCount()).toBe(0);
-    });
-    it('many rapid confirmations stay within what the 10 s window allows, then drain to nothing', () => {
-      const { meals, now } = setup(); let max = 0;
-      for (let i = 0; i < 100; i++) { confirmWithTime(() => meals.create(`M${i}`)); max = Math.max(max, now().queuedCount + 1); act(() => { jest.advanceTimersByTime(250); }); }
-      // 250 ms apart: at most 40 can be inside a 10 s window.
-      expect(max).toBeLessThanOrEqual(40); expect(now().queuedCount + 1).toBeLessThanOrEqual(40);
-      act(() => { jest.advanceTimersByTime(MEAL_NOTICE_MS); }); expect(now().notice).toBeNull(); expect(now().queuedCount).toBe(0);
+      for (let i = 0; i < 100; i++) { confirmWithTime(() => (i % 2 ? quick.confirm(`Q${i}`) : meals.create(`M${i}`))); act(() => { jest.advanceTimersByTime(250); }); }
+      expect(now().notice?.meal.id).toBe('Q99');
+      act(() => { jest.advanceTimersByTime(MEAL_NOTICE_MS); }); expect(now().notice).toBeNull();
       act(() => { jest.advanceTimersByTime(2000); }); expect(jest.getTimerCount()).toBe(0);
     });
     it('unmounting leaves no timer and no listener behind', () => {
