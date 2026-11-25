@@ -17,7 +17,7 @@ describe('liveActivityState', () => {
   it('shows the session alone when there is no rest, with the brand colors', () => {
     const { state } = liveActivityState(presence(), null, 1000);
     expect(state).toEqual({ sessionId: 'session-1', props: { sessionName: 'Torso A', startedAt: null, rest: null, sets: null, next: null,
-      controls: null, colors: { background: palette.dark.bg, text: palette.dark.text, muted: palette.dark.textMuted, accent: palette.dark.accent } } });
+      controls: null, stopwatch: null, colors: { background: palette.dark.bg, text: palette.dark.text, muted: palette.dark.textMuted, accent: palette.dark.accent } } });
   });
 
   it('keeps when a rest started when it is lengthened, and restarts it for the next set', () => {

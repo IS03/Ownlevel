@@ -2,7 +2,7 @@ import type { SessionDetailDto } from '@/api/active-session';
 import type { MobileApiReadResult, MobileApiRequestResult } from '@/api/results';
 import type { MobileTrainingActiveSession, MobileTrainingResponse } from '@/api/training';
 import type { ActiveSessionController } from './active-session-controller';
-import { restoreRestDeadline, type RestDeadline, type SessionExerciseDraft } from './active-session-model';
+import { restoreRestDeadline, restoreSetStopwatch, type RestDeadline, type SessionExerciseDraft, type SetStopwatch } from './active-session-model';
 import { SessionDraftRepository, type SessionStoragePort } from './active-session-storage';
 import { detailProgress, type SessionLiveProgress } from './session-progress-model';
 
@@ -12,6 +12,8 @@ export type SessionPresence = {
   timer: RestDeadline | null;
   /** #645: sets done and the next set, for the Live Activity; null when no detail is known. */
   progress?: SessionLiveProgress | null;
+  /** #645: a timed set running (its absolute start), from the mounted session or the device's stored one. */
+  stopwatch?: SetStopwatch | null;
   /** #645: the session screen is mounted, so the Live Activity's buttons can act on it. */
   controls?: boolean;
   unavailable: boolean;
@@ -68,7 +70,7 @@ export class SessionPresenceStore {
         const drafts = new Map<string, SessionExerciseDraft>();
         for (const exercise of detail.exercises) { const entry = controller.getExercise(exercise.id); if (entry) drafts.set(exercise.id, entry.draft); }
         this.publish({ session: { id, name: detail.session.name, logDate: detail.session.logDate, startedAt: detail.session.startedAt }, timer: controller.getTimer(),
-          progress: detailProgress(detail, drafts), controls: state.status === 'ready' && !state.intent && !state.fenced && !state.finishing,
+          progress: detailProgress(detail, drafts), stopwatch: controller.getStopwatch(), controls: state.status === 'ready' && !state.intent && !state.fenced && !state.finishing,
           unavailable: state.status === 'unavailable', recovery: !!state.intent });
       }
     };
@@ -114,6 +116,7 @@ export class SessionPresenceStore {
         if (!session) { this.publish(empty); confirmed(); return; }
         const same = this.snapshot.session?.id === session.id;
         this.publish({ session: same ? { ...session, startedAt: this.snapshot.session?.startedAt } : session, timer: same ? this.snapshot.timer : null,
+          stopwatch: same ? this.snapshot.stopwatch ?? null : null,
           progress: same ? this.snapshot.progress ?? null : null, controls: same && this.attached?.id === session.id ? this.snapshot.controls : false,
           unavailable: false, recovery: false });
         const detail = await this.api.detail(session.id);
@@ -123,7 +126,7 @@ export class SessionPresenceStore {
         }
         if (detail.status !== 'ok') { this.publish({ ...this.snapshot, unavailable: true }); return; }
         const repository = new SessionDraftRepository(this.storage, this.owner, session.id);
-        const storedTimer = await repository.readTimer();
+        const [storedTimer, storedWatch] = await Promise.all([repository.readTimer(), repository.readStopwatch()]);
         // This device's unsent drafts count too: the Live Activity shows the same sets as the session screen.
         const drafts = new Map<string, SessionExerciseDraft>();
         for (const exercise of detail.data.exercises) {
@@ -134,7 +137,8 @@ export class SessionPresenceStore {
         // A mounted session publishes its own live progress (with row ids for the buttons); a read never overrides it.
         const live = this.attached?.id === session.id && this.snapshot.session?.id === session.id;
         this.publish({ session: { ...session, startedAt: detail.data.session.startedAt }, progress: live ? this.snapshot.progress ?? null : detailProgress(detail.data, drafts),
-          controls: live ? this.snapshot.controls : false, timer: restoreRestDeadline(storedTimer, new Set(detail.data.exercises.map(exercise => exercise.id))), unavailable: false, recovery: false });
+          controls: live ? this.snapshot.controls : false,
+          stopwatch: live ? this.snapshot.stopwatch ?? null : restoreSetStopwatch(storedWatch, new Set(detail.data.exercises.map(exercise => exercise.id))), timer: restoreRestDeadline(storedTimer, new Set(detail.data.exercises.map(exercise => exercise.id))), unavailable: false, recovery: false });
         confirmed();
       } catch {
         if (current()) this.publish({ ...this.snapshot, unavailable: true });

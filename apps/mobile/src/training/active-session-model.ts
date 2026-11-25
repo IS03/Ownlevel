@@ -115,6 +115,23 @@ export function restoreRestDeadline(value: unknown, exerciseIds: ReadonlySet<str
     (timer.sourceSet === undefined || (!!timer.sourceSet && typeof timer.sourceSet.localId === 'string' && Number.isInteger(timer.sourceSet.position) && timer.sourceSet.position >= 0)) && typeof timer.endAt === 'number' && Number.isFinite(timer.endAt) && timer.endAt > now - 60000
     && (timer.startedAt === undefined || (typeof timer.startedAt === 'number' && Number.isFinite(timer.startedAt))) ? timer : null;
 }
+/**
+ * #645 · The stopwatch of a set of an exercise measured in time («Tiempo (segundos)», whose load field holds seconds).
+ * Absolute start like the rest deadline, so it survives locking and closing the app; `target` is the planned seconds.
+ */
+export const TIME_MODE = 'Tiempo (segundos)';
+export type SetStopwatch = { exerciseId: string; exerciseName: string; set: { localId: string; position: number }; startedAt: number; target: number | null };
+/** A stored stopwatch for one of these exercises, started no longer than three hours ago; anything else is dropped. */
+export function restoreSetStopwatch(value: unknown, exerciseIds: ReadonlySet<string>, now = Date.now()): SetStopwatch | null {
+  if (!value || typeof value !== 'object') return null;
+  const watch = value as SetStopwatch;
+  return typeof watch.exerciseId === 'string' && exerciseIds.has(watch.exerciseId) && typeof watch.exerciseName === 'string' && !!watch.set
+    && typeof watch.set.localId === 'string' && Number.isInteger(watch.set.position) && watch.set.position >= 0
+    && typeof watch.startedAt === 'number' && Number.isFinite(watch.startedAt) && watch.startedAt <= now && now - watch.startedAt < 3 * 3600_000
+    && (watch.target === null || (typeof watch.target === 'number' && Number.isFinite(watch.target) && watch.target > 0)) ? watch : null;
+}
+/** Whole seconds run, at least 1: a stopped set records a real time. */
+export const stopwatchSeconds = (watch: Pick<SetStopwatch, 'startedAt'>, now = Date.now()) => Math.max(1, Math.round((now - watch.startedAt) / 1000));
 export function restRemaining(timer: RestDeadline, now = Date.now()): number { return Math.max(0, Math.ceil((timer.endAt - now) / 1000)); }
 /**
  * The rest-end haptic (brand event `restEnd`) fires only when the countdown is seen

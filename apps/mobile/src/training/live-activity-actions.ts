@@ -8,9 +8,10 @@ type Listen = (listener: (event: Interaction) => void) => { remove: () => void }
 const none = () => undefined;
 
 /** The same operations as the session screen's own controls: one clock, one rest alert, one draft with its autosave. */
-export function applyLiveActivityAction(controller: Pick<ActiveSessionController, 'adjustRest' | 'skipRest' | 'completeShownSet'>, action: LiveActivityAction) {
+export function applyLiveActivityAction(controller: Pick<ActiveSessionController, 'adjustRest' | 'skipRest' | 'completeShownSet' | 'stopSetStopwatch'>, action: LiveActivityAction) {
   if (action.kind === 'add') controller.adjustRest(15);
   else if (action.kind === 'skip') controller.skipRest();
+  else if (action.kind === 'stop') controller.stopSetStopwatch();
   else controller.completeShownSet(action.exerciseId, action.setId);
 }
 

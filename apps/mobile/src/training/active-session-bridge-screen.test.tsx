@@ -1252,3 +1252,40 @@ describe('#537 · calentamiento en la sesión activa', () => {
     expect(actions.map(action => action.name)).not.toContain('kind');
   });
 });
+
+function timedDetail() {
+  const detail = testDetail();
+  const sets = [1, 2].map(setNumber => ({ setNumber, targetReps: 1, targetWeightKg: 60, targetRir: null, actualReps: null, actualWeightKg: null, isCompleted: false, notes: null }));
+  detail.exercises[0] = { ...detail.exercises[0]!, weightModeSnapshot: 'Tiempo (segundos)', payload: { ...detail.exercises[0]!.payload, sets } };
+  return detail;
+}
+describe('#645 · cronómetro de una serie por tiempo', () => {
+  beforeEach(() => { mockHeaderOptions = {}; mockSelection.mockReset(); mockTrigger.mockReset(); });
+  afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
+  it('an exercise measured in time reads SEG and offers the stopwatch in place of the RIR', async () => {
+    const { controller, Screen } = fixture(timedDetail()); await controller.refresh();
+    const view = renderWithPressOpen(<Screen />); await act(async () => {});
+    expect(view.getAllByText('SEG', { includeHiddenElements: true }).length).toBeGreaterThan(0);
+    expect(view.getAllByLabelText('Cronómetro', { includeHiddenElements: true }).length).toBeGreaterThan(0);
+    expect(view.getByRole('button', { name: 'Iniciar cronómetro de serie 1' })).toBeTruthy();
+    expect(view.getByLabelText('Segundos serie 1 de PRESS')).toBeTruthy();
+  });
+  it('Iniciar counts up; Parar records the seconds and completes the set; only one runs', async () => {
+    jest.useFakeTimers({ now: 1_000_000 });
+    const { controller, Screen } = fixture(timedDetail()); await controller.refresh();
+    const view = renderWithPressOpen(<Screen />); await act(async () => {});
+    fireEvent.press(view.getByRole('button', { name: 'Iniciar cronómetro de serie 1' })); await act(async () => {});
+    expect(view.getByRole('button', { name: 'Iniciar cronómetro de serie 2' }).props.accessibilityState).toMatchObject({ disabled: true });
+    act(() => { jest.advanceTimersByTime(45_000); });
+    const stop = view.getByRole('button', { name: 'Parar cronómetro de serie 1: 0:45' });
+    fireEvent.press(stop); await act(async () => {});
+    expect(controller.getExercise(EXERCISE_ID)!.draft.sets[0]).toMatchObject({ actualWeightKg: '45', isCompleted: true });
+    expect(mockTrigger).toHaveBeenCalledWith('setComplete');
+    expect(view.getByRole('button', { name: 'Iniciar cronómetro de serie 2' }).props.accessibilityState).toMatchObject({ disabled: false });
+  });
+  it('a weight exercise keeps its KG and RIR columns', async () => {
+    const { controller, Screen } = fixture(); await controller.refresh();
+    const view = renderWithPressOpen(<Screen />); await act(async () => {});
+    expect(view.queryByRole('button', { name: /cronómetro/ })).toBeNull(); expect(view.getAllByText('KG', { includeHiddenElements: true }).length).toBeGreaterThan(0);
+  });
+});

@@ -23,6 +23,36 @@ export async function restAlertStatus(request = false) {
   return status.granted ? 'enabled' : status.canAskAgain ? 'available' : 'settings';
 }
 
+const stopwatchIdentifier = 'ownlevel.training.set-target';
+let target: number | null = null;
+let targetRevision = 0;
+/**
+ * #645 · «Llegaste a 1:00»: a timed set reaching its planned seconds, also with the screen locked. Same permission as the
+ * rest alert; one scheduled at a time, replaced or cancelled with the stopwatch.
+ */
+export function syncSetTargetAlert(at: number | null, seconds: number | null) {
+  if (target === at) return queue;
+  target = at;
+  const current = ++targetRevision;
+  queue = queue.then(async () => {
+    if (current !== targetRevision) return;
+    const api = notifications();
+    await api.cancelScheduledNotificationAsync(stopwatchIdentifier);
+    if (current !== targetRevision || at === null || seconds === null || at <= Date.now()) return;
+    const status = await api.getPermissionsAsync();
+    if (current !== targetRevision || !status.granted || at <= Date.now()) return;
+    const label = seconds >= 60 ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : `${seconds} s`;
+    await api.scheduleNotificationAsync({
+      identifier: stopwatchIdentifier,
+      content: { title: `Llegaste a ${label}`, sound: 'default' },
+      trigger: { type: api.SchedulableTriggerInputTypes.DATE, date: at, ...(Platform.OS === 'android' ? { channelId: channel } : {}) },
+    });
+  }).catch(() => {
+    // The stopwatch works without permission or when the system scheduler is unavailable.
+  });
+  return queue;
+}
+
 export function syncRestAlert(endAt: number | null, refresh = false) {
   if (deadline === endAt && !refresh) return queue;
   deadline = endAt;
