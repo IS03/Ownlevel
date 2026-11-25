@@ -6,6 +6,8 @@ export type LiveActivityColors = { accentDark: string; accentLight: string; mute
 /** What the lock screen and the Dynamic Island show. Times are epoch ms: props travel as JSON. */
 export type LiveActivityProps = {
   sessionName: string;
+  /** When the session started (epoch ms), for the elapsed time; null when no read confirmed it. */
+  startedAt: number | null;
   rest: { exerciseName: string; startedAt: number; endAt: number } | null;
   colors: LiveActivityColors;
 };
@@ -33,9 +35,11 @@ export function liveActivityState(presence: SessionPresence, anchor: RestAnchor,
   let nextAnchor: RestAnchor = null;
   if (timer) {
     const key = restKey(timer);
-    const startedAt = Math.min(anchor?.key === key ? anchor.startedAt : now, timer.endAt);
+    // The rest's own start when the clock recorded it; otherwise when this app first saw it (an older stored timer).
+    const startedAt = Math.min(timer.startedAt ?? (anchor?.key === key ? anchor.startedAt : now), timer.endAt);
     nextAnchor = { key, startedAt };
     rest = { exerciseName: timer.exerciseName, startedAt, endAt: timer.endAt };
   }
-  return { state: { sessionId: session.id, props: { sessionName: session.name, rest, colors } }, anchor: nextAnchor };
+  const started = session.startedAt ? Date.parse(session.startedAt) : NaN;
+  return { state: { sessionId: session.id, props: { sessionName: session.name, startedAt: Number.isFinite(started) ? started : null, rest, colors } }, anchor: nextAnchor };
 }

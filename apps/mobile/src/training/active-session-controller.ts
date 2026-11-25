@@ -461,7 +461,8 @@ export class ActiveSessionController {
     const entry = this.entries.get(id); if (!entry || !this.canEdit(id)) return;
     const seconds = duration ?? restSeconds(entry.snapshot.exercise);
     if (seconds === null || !Number.isInteger(seconds) || seconds <= 0 || seconds > 3600) return;
-    this.setRest({ exerciseId: id, exerciseName: entry.snapshot.exercise.nameSnapshot, endAt: this.now() + seconds * 1000, ...(sourceSet ? { sourceSet } : {}) });
+    const now = this.now();
+    this.setRest({ exerciseId: id, exerciseName: entry.snapshot.exercise.nameSnapshot, endAt: now + seconds * 1000, startedAt: now, ...(sourceSet ? { sourceSet } : {}) });
   }
   adjustRest(seconds: number) { if (this.rest && !this.snapshot.fenced && !this.snapshot.intent) this.setRest({ ...this.rest, endAt: Math.max(this.now(), Math.max(this.now(), this.rest.endAt) + seconds * 1000) }); }
   skipRest() { this.setRest(null); }

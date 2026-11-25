@@ -29,6 +29,12 @@ function workoutLayout(props: LiveActivityProps, environment: LiveActivityEnviro
     if (width !== null) modifiers.push(frame({ width }));
     return <Text timerInterval={interval ?? undefined} countsDown modifiers={modifiers} />;
   }
+  // Elapsed time since the session started, counted by iOS; absent when the start is unknown (never a made-up 0:00).
+  function elapsed(color: string) {
+    if (props.startedAt === null) return null;
+    return <Text timerInterval={{ lower: new Date(props.startedAt), upper: new Date(props.startedAt + 8 * 3600 * 1000) }} countsDown={false}
+      modifiers={[font({ textStyle: 'subheadline' }), monospacedDigit(), foregroundStyle(color)]} />;
+  }
   function icon(color: string) {
     return <Image systemName={counting ? 'timer' : 'figure.strengthtraining.traditional'} color={color} />;
   }
@@ -40,7 +46,7 @@ function workoutLayout(props: LiveActivityProps, environment: LiveActivityEnviro
           {icon(accent)}
           <Text modifiers={[font({ textStyle: 'headline' }), lineLimit(1)]}>{props.sessionName}</Text>
           <Spacer />
-          {counting ? countdown(accent, 'largeTitle', null) : null}
+          {counting ? countdown(accent, 'largeTitle', null) : elapsed(muted)}
         </HStack>
         <Text modifiers={[font({ textStyle: 'subheadline' }), foregroundStyle(muted), lineLimit(1)]}>
           {rest ? `${status} · ${rest.exerciseName}` : status}
@@ -61,7 +67,11 @@ function workoutLayout(props: LiveActivityProps, environment: LiveActivityEnviro
     expandedTrailing: counting ? countdown(islandAccent, 'title2', null) : undefined,
     expandedBottom: (
       <VStack alignment="leading" spacing={4}>
-        <Text modifiers={[font({ textStyle: 'headline' }), lineLimit(1)]}>{props.sessionName}</Text>
+        <HStack spacing={8}>
+          <Text modifiers={[font({ textStyle: 'headline' }), lineLimit(1)]}>{props.sessionName}</Text>
+          <Spacer />
+          {counting ? null : elapsed(islandMuted)}
+        </HStack>
         {rest ? <Text modifiers={[font({ textStyle: 'subheadline' }), foregroundStyle(islandMuted), lineLimit(1)]}>{detail}</Text> : null}
         {counting && interval ? <ProgressView timerInterval={interval} countsDown modifiers={[tint(islandAccent)]} /> : null}
       </VStack>
