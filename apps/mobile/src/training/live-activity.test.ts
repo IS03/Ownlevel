@@ -16,7 +16,7 @@ describe('liveActivityState', () => {
 
   it('shows the session alone when there is no rest, with the brand colors', () => {
     const { state } = liveActivityState(presence(), null, 1000);
-    expect(state).toEqual({ sessionId: 'session-1', props: { sessionName: 'Torso A', startedAt: null, rest: null,
+    expect(state).toEqual({ sessionId: 'session-1', props: { sessionName: 'Torso A', startedAt: null, rest: null, sets: null, next: null,
       colors: { background: palette.dark.bg, text: palette.dark.text, muted: palette.dark.textMuted, accent: palette.dark.accent } } });
   });
 
@@ -37,6 +37,12 @@ describe('liveActivityState', () => {
     expect(liveActivityState(presence(null, { ...session, startedAt: '2026-11-25T10:00:00.000Z' } as typeof session), null, 1000).state?.props.startedAt)
       .toBe(Date.parse('2026-11-25T10:00:00.000Z'));
     expect(liveActivityState(presence(), null, 1000).state?.props.startedAt).toBeNull();
+  });
+  it('carries the sets done and the next set, and nothing when unknown (#645)', () => {
+    const next = { exerciseName: 'SENTADILLA', set: 'Serie 2 de 3', load: '100 kg × 8' };
+    const { state } = liveActivityState({ ...presence(), progress: { completedSets: 3, totalSets: 5, next } }, null, 1000);
+    expect(state?.props).toMatchObject({ sets: { done: 3, total: 5 }, next });
+    expect(liveActivityState({ ...presence(), progress: { completedSets: 0, totalSets: 0, next: null } }, null, 1000).state?.props.sets).toBeNull();
   });
   it('keeps an expired rest as finished instead of inventing a new countdown', () => {
     const { state } = liveActivityState(presence(rest(5000)), null, 9000);

@@ -13,6 +13,9 @@ export type LiveActivityProps = {
   /** When the session started (epoch ms), for the elapsed time; null when no read confirmed it. */
   startedAt: number | null;
   rest: { exerciseName: string; startedAt: number; endAt: number } | null;
+  /** #645: sets done over the total, and the next set; null when unknown (never a made-up 0 of 0). */
+  sets: { done: number; total: number } | null;
+  next: { exerciseName: string; set: string; load: string | null } | null;
   colors: LiveActivityColors;
 };
 export type LiveActivityState = { sessionId: string; props: LiveActivityProps };
@@ -42,5 +45,8 @@ export function liveActivityState(presence: SessionPresence, anchor: RestAnchor,
     rest = { exerciseName: timer.exerciseName, startedAt, endAt: timer.endAt };
   }
   const started = session.startedAt ? Date.parse(session.startedAt) : NaN;
-  return { state: { sessionId: session.id, props: { sessionName: session.name, startedAt: Number.isFinite(started) ? started : null, rest, colors } }, anchor: nextAnchor };
+  const progress = presence.progress ?? null;
+  const sets = progress && progress.totalSets > 0 ? { done: progress.completedSets, total: progress.totalSets } : null;
+  return { state: { sessionId: session.id, props: { sessionName: session.name, startedAt: Number.isFinite(started) ? started : null, rest,
+    sets, next: progress?.next ?? null, colors } }, anchor: nextAnchor };
 }
