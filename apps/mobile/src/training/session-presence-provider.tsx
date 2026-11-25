@@ -11,6 +11,8 @@ import { homeDay } from '@/home/home-day';
 import { activeSessionStorage } from './active-session-native-storage';
 import { SessionPresenceStore } from './session-presence-store';
 import { syncRestAlert } from './session-rest-alert';
+import { liveActivityState, type RestAnchor } from './live-activity-model';
+import { syncLiveActivity } from './live-activity-sync';
 import { useRestCountdown } from './use-rest-countdown';
 import type { RestDeadline } from './active-session-model';
 
@@ -28,10 +30,20 @@ function PresenceLifetime({ store, children }: PropsWithChildren<{ store: Sessio
   const pathname = usePathname();
   useEffect(() => {
     store.activate();
-    const sync = () => syncRestAlert(store.getSnapshot().timer?.endAt ?? null);
-    const unsubscribe = store.subscribe(sync);
+    let anchor: RestAnchor = null;
+    const sync = (force = false) => {
+      const presence = store.getSnapshot();
+      syncRestAlert(presence.timer?.endAt ?? null);
+      const next = liveActivityState(presence, anchor, Date.now());
+      anchor = next.anchor;
+      void syncLiveActivity(next.state, force);
+    };
+    const unsubscribe = store.subscribe(() => sync());
+    // iOS starts a Live Activity only in the foreground: retry one that could not start.
+    const foreground = AppState.addEventListener('change', state => { if (state === 'active') sync(true); });
     sync();
-    return () => { unsubscribe(); store.dispose(); syncRestAlert(null); };
+    // Signing out or switching accounts ends both the alert and the activity.
+    return () => { unsubscribe(); foreground.remove(); store.dispose(); syncRestAlert(null); void syncLiveActivity(null); };
   }, [store]);
   useEffect(() => {
     let previous = AppState.currentState;

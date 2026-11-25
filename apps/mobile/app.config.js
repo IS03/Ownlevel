@@ -6,11 +6,22 @@ const { iosVariant } = require('./src/config/ios-variant');
 module.exports = ({ config }) => {
   assertPublicEnv(process.env);
   const variant = iosVariant();
-  if (process.env.EXPO_PUBLIC_IOS_VARIANT !== 'daily') return config;
+  const daily = process.env.EXPO_PUBLIC_IOS_VARIANT === 'daily';
+  const bundleIdentifier = daily ? variant.bundleIdentifier : config.ios.bundleIdentifier;
+  // The workout Live Activity (#634): its own extension and App Group per variant, no push.
+  const widgets = ['expo-widgets', {
+    bundleIdentifier: `${bundleIdentifier}.live`,
+    groupIdentifier: `group.${bundleIdentifier}`,
+    enablePushNotifications: false,
+    widgets: [],
+  }];
+  const plugins = [...(config.plugins ?? []), widgets];
+  if (!daily) return { ...config, plugins };
   return {
     ...config,
     name: variant.name,
     scheme: variant.scheme,
-    ios: { ...config.ios, bundleIdentifier: variant.bundleIdentifier },
+    ios: { ...config.ios, bundleIdentifier },
+    plugins,
   };
 };
