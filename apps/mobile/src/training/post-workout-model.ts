@@ -16,7 +16,8 @@ export type PostWorkoutHero =
   | { kind: 'improved'; title: string; count: string; names: string; rest: string | null };
 export type PostWorkoutRow = { id: string; kind: 'improvement' | 'added'; title: string; detail: string };
 export type PostWorkoutModel = {
-  title: string; line: string; hero: PostWorkoutHero | null; rows: PostWorkoutRow[]; feelings: RevisitFeeling[]; note: string | null;
+  /** The routine's clean name (or «Entrenamiento»); `announcement` keeps the saved confirmation for VoiceOver. */
+  title: string; announcement: string; line: string; hero: PostWorkoutHero | null; rows: PostWorkoutRow[]; feelings: RevisitFeeling[]; note: string | null;
 };
 
 const MAX_ROWS = 3;
@@ -79,7 +80,7 @@ export function postWorkoutModel(finished: SessionFinishedDto, summary?: Session
   const added = (finished.routineAdditions ?? []).filter(item => item.outcome === 'added').map(item => ({
     id: `added-${item.sessionExerciseId}`, kind: 'added' as const, title: `${item.name} se sumó a ${finished.name}`, detail: 'Va a estar en tu próxima sesión' }));
   return {
-    title: finished.routineId ? `${finished.name} guardado` : 'Entrenamiento guardado', line, hero,
+    title: finished.routineId ? finished.name : 'Entrenamiento', announcement: finished.routineId ? `${finished.name} guardado` : 'Entrenamiento guardado', line, hero,
     rows: [...improved, ...added].slice(0, MAX_ROWS), feelings: sessionFeelings(finished.metadata), note: finished.metadata.notes?.trim() || null,
   };
 }

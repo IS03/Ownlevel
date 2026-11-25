@@ -1,13 +1,14 @@
 import { useRouter } from 'expo-router';
 import { insightsSessionHref } from '@/insights/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import { AccessibilityInfo, Modal, ScrollView, StyleSheet, TextInput, View, type LayoutChangeEvent } from 'react-native';
+import { AccessibilityInfo, Alert, Modal, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn, FadeInDown, useAnimatedProps, useAnimatedStyle, useSharedValue, withDelay, withSequence, withSpring, withTiming } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { SessionDetailDto, SessionFinishedDto } from '@/api/active-session';
 import type { SessionSummaryDto, SessionSummaryLoader } from '@/api/session-summary';
-import { LinkRow, AppIcon, AppText, brandTokens, Button, useOwnlevelTheme, useReduceMotion } from '@/design-system';
-import { triggerHaptic } from '@/platform/haptics';
+import { LinkRow, AppIcon, AppText, GlassSurface, brandTokens, pressedStyle, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { atmosphere, glowGradient } from '@/design-system/atmosphere';
+import { haptics, triggerHaptic } from '@/platform/haptics';
 import { FeelingDots } from './feeling-dots';
 import { RecordedTrainingFeelings } from './recorded-training-feelings';
 import type { FeelingsResponse } from '../../../../src/lib/mobile-api/training-feelings-contract';
@@ -19,7 +20,6 @@ import { revisitModel } from './session-revisit-model';
 export type FinishWeekLoader = () => Promise<FinishWeek | null>;
 const { fast, base } = brandTokens.motion.duration;
 const spring = brandTokens.motion.spring;
-const light = brandTokens.palette.light;
 const AnimatedInput = Animated.createAnimatedComponent(TextInput);
 
 type PostWorkoutProps = {
@@ -40,7 +40,10 @@ function formatLoad(value: number) {
 /** The record load counts up from the previous best; whole steps (or half steps for decimal loads) read as real marks. */
 function CountUp({ from, to, unit, reps, color }: { from: number; to: number; unit: string; reps: number; color: string }) {
   const reduced = useReduceMotion(), progress = useSharedValue(reduced ? 1 : 0);
-  useEffect(() => { if (!reduced) progress.set(withDelay(220, withTiming(1, { duration: 700 }))); }, [progress, reduced]);
+  // A text input never wraps: with large text the mark is plain text that wraps instead of being cut.
+  const { fontScale } = useWindowDimensions();
+  const still = reduced || fontScale > 1.3;
+  useEffect(() => { if (!still) progress.set(withDelay(220, withTiming(1, { duration: 700 }))); else progress.set(1); }, [progress, still]);
   const whole = Number.isInteger(from) && Number.isInteger(to);
   const final = `${formatLoad(to)} ${unit} × ${reps}`;
   const props = useAnimatedProps(() => {
@@ -50,52 +53,59 @@ function CountUp({ from, to, unit, reps, color }: { from: number; to: number; un
     return { text, defaultValue: text };
   });
   const style = [brandTokens.typeScale.largeTitle, styles.mark, { color }];
-  return reduced ? <AppText numeric variant="largeTitle" style={{ color }}>{final}</AppText>
+  return still ? <AppText numeric variant="largeTitle" style={{ color }}>{final}</AppText>
     : <AnimatedInput accessibilityLabel={final} editable={false} defaultValue={final} animatedProps={props} style={style} underlineColorAndroid="transparent" />;
 }
 
-/** The champagne block, only when true. A record pops (trophy, haptic, count-up and one sheen); an improvement just arrives. */
+/**
+ * The record or improvement, only when true, on Progreso's band: the theme surface with the brand glow and a fine border.
+ * The trophy and the mark carry the accent; «Antes» stays secondary. A record pops (trophy, haptic and count-up).
+ */
 function HeroCard({ hero }: { hero: PostWorkoutHero }) {
-  const reduced = useReduceMotion();
-  const trophy = useSharedValue(reduced ? 1 : 0), sheen = useSharedValue(0);
-  const [width, setWidth] = useState(0);
+  const reduced = useReduceMotion(), { colors, isDark } = useOwnlevelTheme();
+  const trophy = useSharedValue(reduced ? 1 : 0);
   const record = hero.kind === 'record';
   useEffect(() => {
     if (!record) { trophy.set(1); return; }
     const timer = setTimeout(() => triggerHaptic('personalRecord'), 260);
-    if (!reduced) {
-      trophy.set(withDelay(200, withSequence(withSpring(1.3, { ...spring, stiffness: 320 }), withSpring(1, spring))));
-      sheen.set(withDelay(650, withTiming(1, { duration: 900 })));
-    }
+    if (!reduced) trophy.set(withDelay(200, withSequence(withSpring(1.3, { ...spring, stiffness: 320 }), withSpring(1, spring))));
     return () => clearTimeout(timer);
-  }, [record, reduced, sheen, trophy]);
+  }, [record, reduced, trophy]);
   const icon = useAnimatedStyle(() => ({ transform: [{ scale: trophy.get() }] }));
-  const sweep = useAnimatedStyle(() => ({ opacity: sheen.get() > 0 && sheen.get() < 1 ? 1 : 0, transform: [{ translateX: -width + 2 * width * sheen.get() }, { rotate: '18deg' }] }));
-  const onLayout = (event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width);
   return <Animated.View entering={reduced ? FadeIn.duration(fast) : FadeInDown.delay(60).springify().damping(spring.damping).stiffness(spring.stiffness)}
-    style={styles.heroShadow} testID={`post-workout-hero-${hero.kind}`}>
-    <View style={styles.hero} onLayout={onLayout}>
-      <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.heroGlow]} />
-      {record && !reduced && width ? <Animated.View pointerEvents="none" style={[styles.sheen, { width: width * 0.45 }, sweep]} /> : null}
-      <View style={styles.heroTitle}>
-        <Animated.View style={icon}><AppIcon name={record ? 'trophy' : 'progress'} color={light.onHero} size={20} /></Animated.View>
-        <AppText variant="headline" style={styles.onHero}>{hero.title}</AppText>
-      </View>
-      {hero.kind === 'record' ? <>
-        <AppText variant="headline" style={[styles.soft, styles.onHero]}>{hero.name}</AppText>
-        <CountUp {...hero.count} color={light.onHero} />
-        <AppText numeric variant="footnote" style={styles.onHero}>{[hero.before, hero.more].filter(Boolean).join(' ')}</AppText>
-      </> : <>
-        <AppText variant="headline" style={[styles.soft, styles.onHero]}>{hero.count}</AppText>
-        <AppText variant="title2" style={styles.onHero}>{hero.names}</AppText>
-        {hero.rest ? <AppText variant="footnote" style={styles.onHero}>{hero.rest}</AppText> : null}
-      </>}
+    style={[styles.hero, { backgroundColor: colors.surfaceRaised, borderColor: colors.border, experimental_backgroundImage: glowGradient(atmosphere[isDark ? 'dark' : 'light'].band) }]}
+    testID={`post-workout-hero-${hero.kind}`}>
+    <View style={styles.heroTitle}>
+      <Animated.View style={icon}><AppIcon name={record ? 'trophy' : 'progress'} color={record ? colors.primary : colors.textMuted} size={20} /></Animated.View>
+      <AppText variant="headline">{hero.title}</AppText>
     </View>
+    {hero.kind === 'record' ? <>
+      <AppText variant="headline" style={styles.soft}>{hero.name}</AppText>
+      <CountUp {...hero.count} color={colors.primary} />
+      <AppText muted numeric variant="footnote">{[hero.before, hero.more].filter(Boolean).join(' ')}</AppText>
+    </> : <>
+      <AppText muted variant="headline" style={styles.soft}>{hero.count}</AppText>
+      <AppText variant="title2">{hero.names}</AppText>
+      {hero.rest ? <AppText muted variant="footnote">{hero.rest}</AppText> : null}
+    </>}
   </Animated.View>;
 }
 
+/** «Listo» in the fixed bar: compact, always reachable while the receipt scrolls (Glass: a control). */
+function DoneButton({ onPress }: { onPress: () => void }) {
+  const { colors } = useOwnlevelTheme(), reduceMotion = useReduceMotion();
+  return <GlassSurface interactive style={styles.done}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Listo" onPress={onPress} hitSlop={6} testID="post-workout-done"
+      style={({ pressed }) => [styles.done, styles.donePress, pressedStyle(pressed, reduceMotion)]}>
+      <AppText variant="headline" style={{ color: colors.primary }}>Listo</AppText>
+    </Pressable>
+  </GlassSurface>;
+}
+
+const RULE = 'Cada ejercicio se compara con la última vez que lo hiciste con el mismo modo de carga. Comparaciones, en Progreso, mira además el implemento y la variante, así que puede leer distinto.';
+
 /**
- * SF2/SF3 · the confirmed receipt. The week intro plays first; as it leaves, the page comes up: "{rutina} guardado", the
+ * SF2/SF3 · the confirmed receipt. The week intro plays first; as it leaves, the page comes up: the routine's name, the
  * record or improvement block (only when true), every exercise with how it went against the last time, what was added to
  * the routine and the feelings. Auxiliary reads never gate success or manufacture empty or zero values.
  */
@@ -108,7 +118,12 @@ export function PostWorkoutContent({ finished, detail, readSummary, readWeek, on
   const [intro, setIntro] = useState(Boolean(readWeek)), [revealed, setRevealed] = useState(!readWeek);
   const model = postWorkoutModel(finished, summary, detail);
   const exercises = detail?.session.id === finished.sessionId ? revisitModel(detail, summary).exercises : null;
-  useEffect(() => { AccessibilityInfo.announceForAccessibility(model.title); }, [model.title]);
+  const [scrolled, setScrolled] = useState(false);
+  // The top is owned here, outside the scroll: inside the finish sheet's transparent modal the native measurement can come
+  // late, so the device's own inset is the floor (portrait only). Nothing can then sit under the Dynamic Island.
+  const insets = useSafeAreaInsets();
+  const top = Math.max(insets.top, initialWindowMetrics?.insets.top ?? 0);
+  useEffect(() => { AccessibilityInfo.announceForAccessibility(model.announcement); }, [model.announcement]);
   useEffect(() => {
     if (!readSummary) return;
     const abort = new AbortController();
@@ -127,19 +142,28 @@ export function PostWorkoutContent({ finished, detail, readSummary, readWeek, on
   const enter = (step: number) => reduced ? FadeIn.duration(fast) : FadeInDown.delay(step * 45).duration(base);
   const rows = exercises ? model.rows.filter(row => row.kind === 'added') : model.rows;
   // The device's own safe area, measured natively: the inherited insets include the tab bar, which this full screen covers.
-  return <SafeAreaView edges={['top', 'bottom']} style={[styles.screen, { backgroundColor: colors.background }]} testID="post-workout-screen">
+  return <SafeAreaView edges={['bottom']} style={[styles.screen, { backgroundColor: colors.background, paddingTop: top }]} testID="post-workout-screen">
     {revealed ? <>
-      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <Animated.View entering={enter(0)} style={[styles.bar, scrolled && { borderBottomColor: colors.border }]} testID="post-workout-bar">
+        <DoneButton onPress={onHome} />
+      </Animated.View>
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentInsetAdjustmentBehavior="never"
+        automaticallyAdjustContentInsets={false} scrollEventThrottle={32} onScroll={event => setScrolled(event.nativeEvent.contentOffset.y > 0)}
+        contentContainerStyle={styles.content} testID="post-workout-scroll">
         <Animated.View entering={enter(0)} style={styles.header}>
           <AppText accessibilityRole="header" variant="largeTitle">{model.title}</AppText>
           <AppText muted numeric variant="subheadline" testID="post-workout-line">{model.line}</AppText>
         </Animated.View>
         {model.hero ? <HeroCard hero={model.hero} /> : null}
         {exercises?.length ? <View testID="post-workout-exercises">
-          <Animated.View entering={enter(2)}>
-            <AppText muted variant="footnote" style={styles.section}>Ejercicios</AppText>
-            {/* These marks are the receipt's own rule, not Insights' comparison: they must not read as the same thing. */}
-            {exercises.some(exercise => exercise.status) ? <AppText muted variant="caption" testID="post-workout-rule">Frente a la última vez con el mismo modo de carga. Comparaciones mira además implemento y variante, y puede leer distinto.</AppText> : null}
+          <Animated.View entering={enter(2)} style={styles.sectionRow}>
+            <AppText muted variant="footnote" style={[styles.section, styles.flex]}>Ejercicios</AppText>
+            {/* These marks are the receipt's own rule, not Insights' comparison: one tap away, only when there are marks. */}
+            {exercises.some(exercise => exercise.status) ? <Pressable accessibilityRole="button" accessibilityLabel="Cómo se comparan los ejercicios" hitSlop={8}
+              onPress={() => { haptics.selection(); Alert.alert('Cómo se comparan', RULE, [{ text: 'Listo', style: 'cancel' }]); }}
+              style={styles.info} testID="post-workout-rule">
+              <AppIcon name="info" color={colors.textMuted} size={17} />
+            </Pressable> : null}
           </Animated.View>
           {exercises.map((exercise, index) => {
             const status = exercise.status, record = status?.kind === 'record';
@@ -170,37 +194,35 @@ export function PostWorkoutContent({ finished, detail, readSummary, readWeek, on
         </Animated.View> : null}
         {feelings ? <RecordedTrainingFeelings values={feelings} session={{ startedAt: finished.startedAt, endedAt: finished.endedAt }} /> : null}
         {feelings && finished.routineId && finished.routineAdditions === undefined ? <AppText muted variant="footnote">El detalle de lo agregado a la rutina no está disponible en esta confirmación. Podés revisar tu rutina.</AppText> : null}
+        <View testID="post-workout-links">
+          <LinkRow label="Ver sesión" onPress={onViewSession} />
+          {/* Facts of this session only, read when it opens: nothing about all-time relations runs at the end of a workout. */}
+          {insights ? <LinkRow label="Ver qué cambió" onPress={() => {
+            router.replace({ pathname: '/(tabs)/train/history/[id]', params: { id: finished.sessionId } });
+            router.push(insights);
+          }} /> : null}
+        </View>
       </ScrollView>
-      <Animated.View entering={enter(1)} style={styles.footer}>
-        <Button label="Listo" onPress={onHome} />
-        <LinkRow label="Ver sesión" onPress={onViewSession} />
-        {/* Facts of this session only, read when it opens: nothing about all-time relations runs at the end of a workout. */}
-        {insights ? <LinkRow label="Ver qué cambió" onPress={() => {
-          router.replace({ pathname: '/(tabs)/train/history/[id]', params: { id: finished.sessionId } });
-          router.push(insights);
-        }} /> : null}
-      </Animated.View>
     </> : null}
     {intro ? <FinishWeekIntro week={week} onLeave={reveal} onDone={endIntro} /> : null}
   </SafeAreaView>;
 }
 const styles = StyleSheet.create({
   screen: { flex: 1 }, flex: { flex: 1 }, italic: { fontStyle: 'italic' }, soft: { fontWeight: '500' }, strong: { fontWeight: '600' }, right: { textAlign: 'right' },
-  content: { paddingHorizontal: brandTokens.space.md, paddingTop: brandTokens.space.xxl, paddingBottom: brandTokens.space.xl, gap: brandTokens.space.xl },
+  bar: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: brandTokens.space.md, paddingVertical: brandTokens.space.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'transparent' },
+  done: { borderRadius: brandTokens.radius.full, minHeight: brandTokens.layout.minTouch, justifyContent: 'center' },
+  donePress: { paddingHorizontal: brandTokens.space.md },
+  content: { paddingHorizontal: brandTokens.space.md, paddingTop: brandTokens.space.xs, paddingBottom: brandTokens.space.xl, gap: brandTokens.space.xl },
   header: { gap: brandTokens.space.xxs },
-  heroShadow: { borderRadius: brandTokens.radius.card, shadowColor: light.heroTo, shadowOpacity: 0.45, shadowRadius: 20, shadowOffset: { width: 0, height: 10 } },
-  hero: { borderRadius: brandTokens.radius.card, padding: brandTokens.layout.cardPadding, gap: brandTokens.space.xxs, overflow: 'hidden', backgroundColor: light.heroFrom,
-    experimental_backgroundImage: `linear-gradient(150deg, ${light.heroFrom} 0%, ${brandTokens.palette.dark.accent} 40%, ${light.heroTo} 100%)` },
-  heroGlow: { experimental_backgroundImage: 'radial-gradient(circle at 8% 0%, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0) 38%)' },
-  sheen: { position: 'absolute', top: -40, bottom: -40, experimental_backgroundImage: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.45) 50%, rgba(255,255,255,0) 100%)' },
+  hero: { borderRadius: brandTokens.radius.card, padding: brandTokens.layout.cardPadding, gap: brandTokens.space.xxs, borderWidth: StyleSheet.hairlineWidth },
   heroTitle: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.xs, marginBottom: brandTokens.space.xxs },
-  onHero: { color: light.onHero },
   mark: { padding: 0, fontVariant: ['tabular-nums'] },
-  section: { fontWeight: '600', marginBottom: brandTokens.space.xxs },
+  sectionRow: { flexDirection: 'row', alignItems: 'center', marginBottom: brandTokens.space.xxs },
+  section: { fontWeight: '600' },
+  info: { minWidth: brandTokens.layout.minTouch, minHeight: brandTokens.layout.minTouch, alignItems: 'flex-end', justifyContent: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.sm, paddingVertical: brandTokens.space.sm, minHeight: 56 },
   lead: { width: 20, alignItems: 'center' }, status: { flexShrink: 1, maxWidth: '45%', flexDirection: 'row', alignItems: 'center', gap: brandTokens.space.xxs },
   feelings: { borderRadius: brandTokens.radius.inner, padding: brandTokens.space.md, gap: brandTokens.space.sm },
   feelingRow: { flexDirection: 'row', flexWrap: 'wrap', columnGap: brandTokens.space.xl, rowGap: brandTokens.space.sm },
-  // Thumb height: the buttons sit right above the home indicator, with no extra bottom padding on top of the safe area.
-  footer: { paddingHorizontal: brandTokens.space.md, paddingTop: brandTokens.space.sm, gap: brandTokens.space.xxs },
 });
