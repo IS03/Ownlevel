@@ -7,10 +7,10 @@ import type { QuickController, QuickState } from './quick-controller';
 export type QuickEntry = { kind: 'saved' | 'suggestion'; id: string } | { kind: 'all' };
 
 /** `add=1` shows the add choices; `add=manual` / `add=food` open that existing flow directly. */
-export type AddEntry = 'choose' | 'manual' | 'food' | 'plate';
+export type AddEntry = 'choose' | 'manual' | 'food' | 'plate' | 'resume';
 
 export function parseAddEntry(value: unknown): AddEntry | null {
-  return value === '1' ? 'choose' : value === 'manual' || value === 'food' || value === 'plate' ? value : null;
+  return value === '1' ? 'choose' : value === 'manual' || value === 'food' || value === 'plate' || value === 'resume' ? value : null;
 }
 
 export function parseQuickEntry(value: unknown): QuickEntry | null {

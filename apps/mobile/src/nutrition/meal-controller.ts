@@ -40,6 +40,14 @@ export class MealController {
       timeSource: meal.timeSource, automaticMealLabel: meal.automaticMealLabel } : undefined;
     this.update({ editor: { sourceDate: date, mealId: meal?.id ?? null, expectedUpdatedAt: meal?.updatedAt ?? null, draft, original: draft, timingReference }, errors: {}, message: null, truth: null, truthDate: null });
   }
+  /** #645 · Back to a manual meal left «para después»: a new meal, as it was left (unsaved, so it reads as changed). */
+  resume(draft: MealDraft) {
+    if (this.state.phase !== 'idle' || this.state.intent || this.busy || this.state.editor) return false;
+    const date = parseInputNutritionDate(draft.date);
+    if (!date) return false;
+    this.update({ editor: { sourceDate: date, mealId: null, expectedUpdatedAt: null, draft, original: mealDraft(date) }, errors: {}, message: null, truth: null, truthDate: null });
+    return true;
+  }
   /** Opens "A mano" prefilled from any meal (also ChatGPT/imported ones): it creates a new manual meal, never edits the source. */
   repeat(date: string, meal: NutritionDayMeal) {
     if (this.state.phase !== 'idle' || this.state.intent || this.busy || meal.entryKind !== 'meal') return;
