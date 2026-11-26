@@ -1,12 +1,12 @@
 import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { ReturnToProgress } from './return-to-progress';
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { useCallback, useRef } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchInsightsPinnedPeriod, validPeriodAnchor } from '@/api/performance-insights';
-import { AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
+import { PullRefreshControl, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { weeklyRows } from '@/progress/weekly-weights';
@@ -37,7 +37,7 @@ export function PeriodScreen() {
   const invalidAnchor = params.asOf !== undefined && !routeAnchor;
   const { state, data, refresh } = useProgressResource(invalidAnchor ? null : client, `performance-insights|period-at|${routeAnchor ?? 'current'}`, load);
   usePeriodReturn(refresh);
-  const refreshControl = <RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />;
+  const refreshControl = <PullRefreshControl onRefresh={() => refresh()} tintColor={colors.primary} />;
   const scroll = (children: React.ReactNode) => <ScrollHeaderScreen title="Últimos 3 meses"><ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="period-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}><ReturnToProgress/>{children}</ScrollView></ScrollHeaderScreen>;
   if (invalidAnchor) return scroll(<UnavailableState title="No pudimos identificar el período" description="Volvé a abrir el resumen desde Comparaciones." />);
   if (state.status === 'loading' && !data) return scroll(<View style={styles.block} testID="period-loading"><SkeletonBlock height={72} /><SkeletonBlock height={132} /><SkeletonBlock height={176} /></View>);

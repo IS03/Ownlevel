@@ -1,16 +1,19 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
-/**
- * The pull spinner belongs to the pull. Refreshes started by focus, foreground or a save run quietly:
- * a visible spinner pushes the whole screen down and back, and moves what the user is about to tap.
- */
-export function usePullRefresh(refreshing: boolean, refresh: () => unknown) {
-  const [pulled, setPulled] = useState(false);
-  const [wasRefreshing, setWasRefreshing] = useState(refreshing);
-  if (wasRefreshing !== refreshing) {
-    setWasRefreshing(refreshing);
-    if (!refreshing) setPulled(false);
-  }
-  const onRefresh = useCallback(() => { setPulled(true); void refresh(); }, [refresh]);
-  return { refreshing: pulled && refreshing, onRefresh };
+export type PullRead = () => PromiseLike<unknown> | void;
+
+/** Only the user's pull owns this spinner. The read can join an existing background request. */
+export function usePullRefresh(refresh: PullRead) {
+  const [refreshing, setRefreshing] = useState(false);
+  const inFlight = useRef(false);
+  const onRefresh = useCallback(() => {
+    if (inFlight.current) return;
+    const request = refresh();
+    if (!request) return;
+    inFlight.current = true;
+    setRefreshing(true);
+    const settle = () => { inFlight.current = false; setRefreshing(false); };
+    void Promise.resolve(request).then(settle, settle);
+  }, [refresh]);
+  return { refreshing, onRefresh };
 }

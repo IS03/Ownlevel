@@ -27,7 +27,6 @@ import {
   StagesSkeleton,
   StagesStatus,
   StagesToast,
-  RefreshingStages,
   stageStyles,
   useStagesRoute,
 } from "./stages-ui";
@@ -105,7 +104,6 @@ export function StagesListScreen() {
           )
         ) : (
           <>
-            <RefreshingStages state={state!} />
             <Reveal>
               <AppText muted variant="caption">
                 AHORA

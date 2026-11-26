@@ -1,11 +1,11 @@
 import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { ReturnToProgress } from './return-to-progress';
 import { useCallback } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchInsightsFeelings } from '@/api/performance-insights';
-import { AppText, Button, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
+import { PullRefreshControl, AppText, Button, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { NOT_PUBLISHED } from './feelings-model';
 import { FeelingOutcomeSections } from './feeling-outcome-sections';
@@ -17,7 +17,7 @@ export function FeelingsScreen() {
   const { colors } = useOwnlevelTheme();
   const load = useCallback((c: MobileApiClient, signal: AbortSignal) => fetchInsightsFeelings(c, signal), []);
   const { state, data, refresh } = useProgressResource(client, 'performance-insights|feelings', load);
-  const refreshControl = <RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />;
+  const refreshControl = <PullRefreshControl onRefresh={() => refresh()} tintColor={colors.primary} />;
   const scroll = (children: React.ReactNode) => <ScrollHeaderScreen title="Cómo terminaste"><ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="feelings-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}><ReturnToProgress/>{children}</ScrollView></ScrollHeaderScreen>;
   if (state.status === 'loading' && !data) return scroll(<View style={styles.block} testID="feelings-loading"><SkeletonBlock height={72} /><SkeletonBlock height={176} /><SkeletonBlock height={176} /></View>);
   if (!data || data.integrity !== 'valid') return scroll(<UnavailableState title="Uy, no pudimos leer tus datos" description="Tranqui: está todo guardado." action={<Button label="Reintentar" onPress={() => void refresh()} />} />);

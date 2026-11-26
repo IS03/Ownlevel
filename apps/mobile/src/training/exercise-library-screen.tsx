@@ -1,10 +1,10 @@
 import { memo, startTransition, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Platform, Pressable, RefreshControl, ScrollView, SectionList, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, ScrollView, SectionList, StyleSheet, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { ReduceMotion } from 'react-native-reanimated';
 import type { MobileTrainingExercise, MobileTrainingExerciseRoutine } from '@/api/exercises';
-import { AppIcon, AppText, EmptyState, InlineUnavailable, SkeletonBlock, TextField, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
+import { PullRefreshControl, AppIcon, AppText, EmptyState, InlineUnavailable, SkeletonBlock, TextField, brandTokens, radius, spacing, useOwnlevelTheme } from '@/design-system';
 import { ExerciseEditorModal, type ExerciseEditorTarget } from './exercise-editor-modal';
 import { ExerciseFilterModal } from './exercise-filter-modal';
 import { activeFilterCount, DEFAULT_EXERCISE_LIBRARY_FILTERS, exerciseSummary, filterExercises, groupExercises, MUSCLE_GROUP_OPTIONS, toggleValue, type ExerciseLibraryFilters } from './exercise-library-model';
@@ -70,7 +70,7 @@ export function ExerciseLibraryScreen({ createIdempotencyKey = () => globalThis.
     {Platform.OS === 'ios' ? <Stack.Toolbar placement="right"><Stack.Toolbar.Button icon="line.3.horizontal.decrease" accessibilityLabel={`Filtros, ${activeFilterCount(filters)} activos`} separateBackground tintColor={activeFilterCount(filters) ? colors.primary : colors.textMuted} disabled={disabled} onPress={() => setFiltersOpen(true)}>{activeFilterCount(filters) ? <Stack.Toolbar.Badge style={{ color: colors.primary, backgroundColor: colors.brandSubtle }}>{String(activeFilterCount(filters))}</Stack.Toolbar.Badge> : null}</Stack.Toolbar.Button><Stack.Toolbar.Button icon="plus" accessibilityLabel="Nuevo ejercicio" separateBackground tintColor={colors.primary} disabled={disabled} onPress={() => openEditor({ mode: 'create' })} /></Stack.Toolbar> : null}</>;
   return <>{header}<SectionList showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} sections={sections} stickySectionHeadersEnabled contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" style={{ backgroundColor: colors.background, flex: 1 }}
     contentContainerStyle={{ paddingBottom: spacing.xxxl }} testID="exercise-library-screen" keyExtractor={exercise => exercise.id}
-    refreshControl={<RefreshControl refreshing={library.state.status === 'ready' && library.state.refreshing} onRefresh={() => { if (!disabled) void refresh(); }} tintColor={colors.primary} />}
+    refreshControl={<PullRefreshControl onRefresh={() => { if (!disabled) return refresh(); }} tintColor={colors.primary} />}
     ListHeaderComponent={<View style={styles.searchArea}>
       {Platform.OS !== 'ios' ? <AppText variant="largeTitle">Ejercicios</AppText> : null}
       {library.catalog ? <AppText numeric muted variant="subheadline" style={{ textAlign: 'right' }}>{visible.length} {visible.length === 1 ? 'ejercicio' : 'ejercicios'}</AppText> : null}

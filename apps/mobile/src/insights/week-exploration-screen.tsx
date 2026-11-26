@@ -1,13 +1,13 @@
 import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { ReturnToProgress } from './return-to-progress';
 import { useCallback } from 'react';
-import { ScrollView,StyleSheet,View,RefreshControl } from 'react-native';
+import { ScrollView,StyleSheet,View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchPeriodExploration,validPeriodAnchor } from '@/api/performance-insights';
 import { useProgressResource } from '@/progress/use-progress-resource';
-import { LinkRow, AppText,Heading,Button,InlineUnavailable,UnavailableState,SkeletonBlock,brandTokens,spacing,useOwnlevelTheme } from '@/design-system';
+import { PullRefreshControl, LinkRow, AppText,Heading,Button,InlineUnavailable,UnavailableState,SkeletonBlock,brandTokens,spacing,useOwnlevelTheme } from '@/design-system';
 import { formatValue } from '@/progress/progress-format';
 import { postsText } from './feelings-model';
 import { FactRow } from './insights-screen';
@@ -31,18 +31,18 @@ export function WeekExplorationScreen() {
   const origin={...insightsOriginOf({...params,explore:'1'}),explore:'1' as const,asOf:asOf!,week:week?.start,revision:data?.sourceRevision,...selection};
   const days=week?.days??[],trained=days.filter(d=>d.training?.sessions),sessionCount=trained.reduce((n,d)=>n+d.training!.sessions,0);
   const c=(lane:'training'|'partial',key:string)=>days.reduce((n,d)=>n+Number((d[lane]?.counts as unknown as Record<string,number>|undefined)?.[key]??0),0);
-  return <ScrollHeaderScreen title="Semanas y días"><ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentInsetAdjustmentBehavior="automatic" style={{backgroundColor:colors.background}} contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={state.status==='ready'&&state.refreshing} onRefresh={()=>void refresh()}/>}>
+  return <ScrollHeaderScreen title="Semanas y días"><ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentInsetAdjustmentBehavior="automatic" style={{backgroundColor:colors.background}} contentContainerStyle={styles.scroll} refreshControl={<PullRefreshControl onRefresh={()=>refresh()}/>}>
     <ReturnToProgress/>
     {!asOf?<UnavailableState title="Período no válido" description="Abrí las semanas desde el resumen."/>:state.status==='loading'&&!data?<SkeletonBlock height={176}/>:!data||data.integrity!=='valid'?<UnavailableState title="No pudimos leer las semanas" description="Tus registros siguen guardados." action={<Button label="Reintentar" onPress={()=>void refresh()}/>}/>:params.compare==='1'?<>
       {state.status!=='ready'?<InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura completa." actionLabel="Reintentar" onAction={()=>void refresh()}/>:null}
       {typeof params.revision==='string'&&params.revision!==data.sourceRevision?<AppText testID="week-revised">Los registros cambiaron desde el origen. Esta lectura completa está actualizada.</AppText>:null}
       <WeekComparison data={data} currentWeek={requested}/>
-      <Coincidences data={data.coincidenceSummary} weeks={data.weeks} origin={origin} selection={selection} onRefresh={()=>void refresh()} onSelect={value=>router.setParams({coincidence:value.coincidence,coincidenceGroup:value.coincidenceGroup,coincidencePage:value.coincidencePage,coincidenceView:value.coincidenceView,weeklyNutrient:value.weeklyNutrient,weeklyOutcome:value.weeklyOutcome})}/>
+      <Coincidences data={data.coincidenceSummary} weeks={data.weeks} origin={origin} selection={selection} onRefresh={()=>refresh()} onSelect={value=>router.setParams({coincidence:value.coincidence,coincidenceGroup:value.coincidenceGroup,coincidencePage:value.coincidencePage,coincidenceView:value.coincidenceView,weeklyNutrient:value.weeklyNutrient,weeklyOutcome:value.weeklyOutcome})}/>
     </>:!week?<UnavailableState title="Semana fuera del período" description="Volvé a abrir desde el resumen."/>:<>
       {state.status!=='ready'?<InlineUnavailable message="No pudimos actualizar. Mostramos la última lectura completa." actionLabel="Reintentar" onAction={()=>void refresh()}/>:null}
       <AppText numeric>{exactPeriodRange(data.period)}</AppText>
       {typeof params.revision==='string'&&params.revision!==data.sourceRevision?<AppText testID="week-revised">Los registros cambiaron desde el origen. Esta lectura completa está actualizada.</AppText>:null}
-      <Coincidences data={data.coincidenceSummary} weeks={data.weeks} origin={origin} selection={selection} onRefresh={()=>void refresh()} onSelect={value=>router.setParams({coincidence:value.coincidence,coincidenceGroup:value.coincidenceGroup,coincidencePage:value.coincidencePage,coincidenceView:value.coincidenceView,weeklyNutrient:value.weeklyNutrient,weeklyOutcome:value.weeklyOutcome})}/>
+      <Coincidences data={data.coincidenceSummary} weeks={data.weeks} origin={origin} selection={selection} onRefresh={()=>refresh()} onSelect={value=>router.setParams({coincidence:value.coincidence,coincidenceGroup:value.coincidenceGroup,coincidencePage:value.coincidencePage,coincidenceView:value.coincidenceView,weeklyNutrient:value.weeklyNutrient,weeklyOutcome:value.weeklyOutcome})}/>
       <LinkRow label="Comparar semanas" onPress={()=>{
         const selection=selectedWeeks(data,week.start);
         if(selection)router.setParams({compare:'1',weekA:data.weeks[selection.a]!.start,weekB:data.weeks[selection.b]!.start,weekSide:undefined});

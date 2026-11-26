@@ -77,7 +77,7 @@ function NutritionDayView({ revision, date, today, bottomClearance, onSelect, on
     const stopMonth = prefetchCalendarMonth(client, date, today);
     return () => { stopDays(); stopMonth?.(); };
   }, [client, date, loaded, today]));
-  const pull = usePullRefresh(state.status === 'ready' && state.refreshing, runRefresh);
+  const pull = usePullRefresh(runRefresh);
   // Like every other tab: the native Liquid Glass bar and its own scroll edge effect, no backing layer of ours (#348).
   return <ScrollScreen scrollEdge testID="nutrition-day-screen"
     contentContainerStyle={bottomClearance ? { paddingBottom: brandTokens.layout.screenPadding + bottomClearance } : undefined} refreshControl={

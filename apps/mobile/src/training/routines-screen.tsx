@@ -1,6 +1,6 @@
 import type { PropsWithChildren } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Platform, Pressable, RefreshControl, StyleSheet, View, type ScrollViewProps } from 'react-native';
+import { AccessibilityInfo, Platform, Pressable, StyleSheet, View, type ScrollViewProps } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
@@ -12,6 +12,7 @@ import { useCachedRead } from '@/api/use-cached-read';
 import type { MobileTrainingRoutine } from '@/api/routines';
 import type { MobileApiMutationResult } from '@/api/results';
 import {
+  PullRefreshControl,
   AppIcon, AppText, Button, EmptyState, GlassSurface, InlineUnavailable,
   Separator, SkeletonBlock, Surface, UnavailableState, motionDurations, pressedStyle, radius, sizes, spacing, useOwnlevelTheme, useReduceMotion,
 } from '@/design-system';
@@ -148,7 +149,7 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
     return () => { alive.current = false; if (noticeTimer.current) clearTimeout(noticeTimer.current); };
   }, []);
   // Focus, foreground and the 30 s reuse are handled by the retained reading (useCachedRead).
-  const runRefresh = () => { if (!pendingRef.current && !ordering.current) void refresh(); };
+  const runRefresh = () => { if (!pendingRef.current && !ordering.current) return refresh(); };
 
   /** After a write settled: never joins a read that may predate it (ConfirmedReadCache.reload). */
   const confirmedReading = () => { const reading = snapshot(); return reading.status === 'ready' ? reading.current : null; };
@@ -298,8 +299,8 @@ export function RoutinesScreen({ archivedOnly = false, createIdempotencyKey = de
     <UnavailableState action={<Button label="Reintentar" onPress={runRefresh} />} description="Revisá la conexión e intentá de nuevo." title={`No pudimos cargar ${title}`} />
   </RoutinesScrollScreen> : <RoutinesScrollScreen canCancelContentTouches={!orderDraft}
     pointerEvents={pointerEvents} contentContainerStyle={{ paddingBottom: shownNotice ? insets.bottom + 100 : spacing.xl }}
-    refreshControl={!orderDraft ? <RefreshControl colors={[colors.primary]} onRefresh={runRefresh} progressBackgroundColor={colors.surface}
-      refreshing={state.status === 'ready' && state.refreshing} tintColor={colors.primary} /> : undefined} testID={archivedOnly ? 'archived-routines-screen' : 'routines-screen'}>
+    refreshControl={!orderDraft ? <PullRefreshControl colors={[colors.primary]} onRefresh={runRefresh} progressBackgroundColor={colors.surface}
+      tintColor={colors.primary} /> : undefined} testID={archivedOnly ? 'archived-routines-screen' : 'routines-screen'}>
     {Platform.OS !== 'ios' ? <AppText accessibilityRole="header" variant="largeTitle">{title}</AppText> : null}
     {state.status !== 'ready' ? <Surface testID="routines-stale"><InlineUnavailable actionLabel="Reintentar"
       message="No se pudo actualizar. Mostramos la última lectura confirmada." onAction={runRefresh} /></Surface> : null}

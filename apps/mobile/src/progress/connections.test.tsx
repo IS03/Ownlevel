@@ -156,7 +156,7 @@ describe('connections client and independent resource', () => {
     fireEvent(view.UNSAFE_getByType(RefreshControl), 'refresh'); await flush();
     expect(connectionCalls()).toHaveLength(2);
     expect(view.getByTestId('connection-protein_strength')).toBeTruthy();
-    expect(view.getByLabelText('Actualizando estas historias')).toBeTruthy();
+    expect(view.queryByLabelText('Actualizando estas historias')).toBeNull();
     expect(view.UNSAFE_getByType(RefreshControl).props.refreshing).toBe(true);
     await act(async () => mockReleases[0]()); await flush();
     expect(view.queryByLabelText('Actualizando estas historias')).toBeNull();

@@ -65,14 +65,7 @@ export function DefinitionsView({
           )
         ) : (
           <>
-            {read.refreshing || (state.phase === 'pending' && !editor) ? (
-              <ActivityIndicator
-                accessibilityLabel={
-                  read.refreshing ? 'Actualizando métricas' : 'Guardando orden'
-                }
-                size="small"
-              />
-            ) : null}
+            {state.phase === 'pending' && !editor ? <ActivityIndicator accessibilityLabel="Guardando orden" size="small" /> : null}
             {read.stale ? (
               <View>
                 <AppText muted>

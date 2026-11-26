@@ -302,7 +302,7 @@ describe('Progress Nutrition', () => {
     let finish!: (value: unknown) => void;
     mockReport.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     act(() => invalidateConfirmedReads(mockClient as never, '/api/mobile/v1/nutrition/days/2026-10-01/meals/fake')); await flush();
-    expect(view.getByText('Actualizando el período elegido; mostramos la última lectura confirmada.')).toBeTruthy();
+    expect(view.queryByText('Actualizando el período elegido; mostramos la última lectura confirmada.')).toBeNull();
     expect(within(view.getByTestId('nutrition-chart-inspection')).getByText('100 kcal')).toBeTruthy();
     await act(async () => finish(ok(edited))); await flush();
     expect(within(view.getByTestId('nutrition-chart-inspection')).getByText('250 kcal')).toBeTruthy();

@@ -2,7 +2,7 @@ import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { invalidateConfirmedReads } from '@/api/confirmed-read-cache';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Alert, StyleSheet } from 'react-native';
+import { Alert } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import type { MobileApiClient } from '@/api/client';
 import type { NutritionStages } from '@/api/nutrition-stages';
@@ -195,7 +195,7 @@ describe('Editorial settings', () => {
     expect(mockPush).toHaveBeenCalledWith('/settings/stages');
     expect(view.queryByText(/V2|heredada|borrador/)).toBeNull();
   });
-  it('the refresh indicator stays out of the flow: rows keep their place when it appears and goes (#311)', async () => {
+  it('revalidates silently while the cached settings stay visible (#661)', async () => {
     const view = render(element()); await view.findByText('Nacho');
     view.unmount();
     // A later visit outside the reuse window refreshes with the known name on screen.
@@ -206,8 +206,7 @@ describe('Editorial settings', () => {
     mockRead.mockImplementation(async options => { await gate; return original(options); });
     const again = render(element());
     expect(again.getByText('Nacho')).toBeTruthy();
-    const indicator = again.getByTestId('settings-refreshing');
-    expect(StyleSheet.flatten(indicator.props.style)).toMatchObject({ position: 'absolute', top: '100%' });
+    expect(again.queryByTestId('settings-refreshing')).toBeNull();
     await act(async () => { release(); });
     jest.mocked(Date.now).mockRestore();
   });

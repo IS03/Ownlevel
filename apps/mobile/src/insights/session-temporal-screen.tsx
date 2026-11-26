@@ -1,12 +1,12 @@
 import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { ReturnToProgress } from './return-to-progress';
 import { useCallback } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchSessionTemporal, validPeriodAnchor, type SessionTemporalDay } from '@/api/performance-insights';
-import { LinkRow, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
+import { PullRefreshControl, LinkRow, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { formatClockTime } from '@/home/format';
 import { FactRow } from './insights-screen';
@@ -42,7 +42,7 @@ export function SessionTemporalScreen() {
     {ref.dates.map(day => <InsightRow key={day} label={`Ver Nutrición del ${exactPeriodDate(day)}`} spoken={`Ver Nutrición del ${exactPeriodDate(day)}`} onPress={() => openDay(day)} />)}
   </View>;
   return <ScrollHeaderScreen title="Horarios y comidas"><ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="session-temporal-screen" contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: colors.background }} contentContainerStyle={styles.scroll}
-    refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
+    refreshControl={<PullRefreshControl onRefresh={() => refresh()} tintColor={colors.primary} />}>
     <ReturnToProgress/>
     {!date ? <UnavailableState title="No pudimos identificar el día" description="Abrí el contexto desde Comparaciones." />
       : state.status === 'loading' && !data ? <SkeletonBlock height={176} />

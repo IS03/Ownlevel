@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { FlatList, Modal, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, Modal, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinkRow, AppText, Button, Heading, LoadingState, Surface, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
+import { PullRefreshControl, LinkRow, AppText, Button, Heading, LoadingState, Surface, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
 import { useMobileApi } from '@/api';
 import { REPORT_PRESETS, type NutritionReport, type ReportDailyRow, type ReportMetric, type ReportQuery, type ReportStatistic } from '@/api/nutrition-report';
 import { useNutritionReportResource } from './report-resource';
@@ -97,7 +97,7 @@ export function NutritionReportsContent({onClose,onDate,initialQuery}:{onClose?:
   const {state,refresh}=useNutritionReportResource(client,query);
   const current=state.status==='ready'?state.current:state.status==='unavailable'?state.previous:undefined;
   const report=current?.data;
-  const runRefresh=()=>void refresh();
+  const runRefresh=()=>refresh();
   const selectDate=(date:string)=>{onDate(date);onClose?.();};
   const header=<View style={styles.section}>
     <Heading>Reporte nutricional</Heading>
@@ -124,7 +124,7 @@ export function NutritionReportsContent({onClose,onDate,initialQuery}:{onClose?:
   return <FlatList showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="nutrition-report-screen" data={report?.days??[]} keyExtractor={d=>d.date} ListHeaderComponent={header}
     renderItem={({item})=><NutritionReportDayRow day={item} onDate={selectDate}/>} initialNumToRender={7} windowSize={5}
     keyboardShouldPersistTaps="handled" contentContainerStyle={styles.list} style={{backgroundColor:colors.background}}
-    refreshControl={<RefreshControl onRefresh={runRefresh} refreshing={state.status==='ready'&&state.refreshing} tintColor={colors.primary}/>}/>;
+    refreshControl={<PullRefreshControl onRefresh={runRefresh} tintColor={colors.primary}/>}/>;
 }
 export function NutritionReports({onClose,onDate}:{onClose:()=>void;onDate:(date:string)=>void}) {
   const {colors}=useOwnlevelTheme();

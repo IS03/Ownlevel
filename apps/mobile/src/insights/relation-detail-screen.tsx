@@ -1,12 +1,12 @@
 import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { ReturnToProgress } from './return-to-progress';
 import { useCallback, useState } from 'react';
-import { LayoutChangeEvent, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { LayoutChangeEvent, ScrollView, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchInsightsRelation, type InsightsRelationDetail } from '@/api/performance-insights';
-import { LinkRow, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
+import { PullRefreshControl, LinkRow, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
 import { formatValue } from '@/progress/progress-format';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { FactRow } from './insights-screen';
@@ -53,7 +53,7 @@ export function RelationDetailScreen() {
     setEveryPair(result.data); setEveryPhase('idle');
     if (recent && !sameRead(result.data, recent)) void refresh();
   };
-  const refreshControl = <RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />;
+  const refreshControl = <PullRefreshControl onRefresh={() => refresh()} tintColor={colors.primary} />;
   const scroll = (children: React.ReactNode) => <ScrollHeaderScreen title="Relación"><ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="relation-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={refreshControl}><ReturnToProgress/>{children}</ScrollView></ScrollHeaderScreen>;
   if (state.status === 'loading' && !data) return scroll(<View style={styles.block} testID="relation-loading"><SkeletonBlock height={72} /><SkeletonBlock height={PLOT} /><SkeletonBlock height={120} /></View>);
   const retry = <Button label="Reintentar" onPress={() => void refresh()} />;

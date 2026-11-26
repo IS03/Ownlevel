@@ -67,7 +67,7 @@ export function HomeScreen({ now = () => new Date() }: { now?: () => Date }) {
   const router = useRouter();
   const resources = useHomeResources(client, now);
   const { refresh } = resources;
-  const pull = usePullRefresh(resources.home.state.status === 'ready' && resources.home.state.refreshing, refresh);
+  const pull = usePullRefresh(refresh);
   const configuration = useNutritionConfiguration(resources.invalidate);
   // Quick load of a daily metric right here (same sheet as Nutrición › Tu día).
   const metricEntry = useHomeMetricEntry(resources.invalidate);

@@ -10,7 +10,6 @@ import { shortDate } from "@/settings/settings-model";
 import { kindLabel, templates, weekdayFor } from "./stages-model";
 import {
   isLocked,
-  RefreshingStages,
   StagesSkeleton,
   StagesStatus,
   useStageColor,
@@ -36,7 +35,6 @@ export function StageActionScreen() {
         TU PLAN
       </AppText>
       <Heading>¿Qué querés hacer ahora?</Heading>
-      {shared ? <RefreshingStages state={shared.state} /> : null}
       {!list ? (
         <StagesSkeleton />
       ) : (

@@ -1,12 +1,12 @@
 import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { ReturnToProgress } from './return-to-progress';
 import { useCallback, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchInsightsEvidence } from '@/api/performance-insights';
-import { AppIcon, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { PullRefreshControl, AppIcon, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { contextRows, evidenceMatch, evidenceNote, evidenceSelectionOf, recordRows, resultOf, sideRows, sideTitle, signalRow } from './evidence-model';
 import { FactRow } from './insights-screen';
@@ -42,7 +42,7 @@ export function EvidenceScreen() {
   const [detail, setDetail] = useState(false);
   const back = () => { if (router.canGoBack()) router.back(); else router.replace(insightsReturnHref(params) ?? '/(tabs)/train/insights'); };
   const backButton = <Button label="Volver a Comparaciones" onPress={back} />;
-  const refreshControl = <RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />;
+  const refreshControl = <PullRefreshControl onRefresh={() => refresh()} tintColor={colors.primary} />;
   const scroll = (children: React.ReactNode) => <ScrollHeaderScreen title="Ejercicio"><ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="evidence-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll} refreshControl={selection ? refreshControl : undefined}><ReturnToProgress/>{children}</ScrollView></ScrollHeaderScreen>;
 
   if (!selection) return scroll(<UnavailableState title="No encontramos esta comparación" description="Volvé a Comparaciones y elegí el ejercicio de nuevo." action={backButton} />);
