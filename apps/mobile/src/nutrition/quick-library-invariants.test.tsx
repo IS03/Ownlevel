@@ -104,7 +104,7 @@ describe('#479 D1 · what the person must act on is not buried under a long libr
     s.quickApi.options.mockResolvedValueOnce({ status: 'unavailable', reason: 'network', meta });
     await act(async () => { await s.quick.loadOptions(); });
     // #303: the 200 meals are still shown, so the alert says they are the last confirmed ones.
-    const stale = 'No pudimos actualizar las opciones. Estás viendo las últimas confirmadas, pueden estar desactualizadas.';
+    const stale = 'No pudimos actualizar. Mostramos lo último que cargó.';
     expect(s.view.getByText(stale)).toBeTruthy();
     expect(at(s.view, 'Reintentar opciones')).toBeLessThan(at(s.view, 'Revisar '));
     await act(async () => { fireEvent.press(s.view.getByText('Reintentar opciones')); });
