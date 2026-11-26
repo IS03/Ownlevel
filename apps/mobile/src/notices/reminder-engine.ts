@@ -5,6 +5,7 @@ import { mealRemindersCategory } from './meal-reminders';
 import { trainingRemindersCategory, type TrainingStatus } from './training-reminders';
 import { bodyRemindersCategory } from './body-reminders';
 import { weeklyReminderCategory } from './weekly-reminder';
+import { muscleRemindersCategory } from './muscle-reminders';
 
 /**
  * #639 · Local reminders. This iPhone schedules them (no push on a personal signing team) and takes back any it learns is
@@ -98,4 +99,4 @@ export function createReminderSync(resolve: () => ReminderNotifications | null =
 }
 export const syncReminders = createReminderSync();
 /** Every category added so far (#639, step 6 adds them one by one). */
-export const reminderCategories: ReminderCategory[] = [closeDayCategory, mealRemindersCategory, trainingRemindersCategory, bodyRemindersCategory, weeklyReminderCategory];
+export const reminderCategories: ReminderCategory[] = [closeDayCategory, mealRemindersCategory, trainingRemindersCategory, bodyRemindersCategory, weeklyReminderCategory, muscleRemindersCategory];

@@ -26,6 +26,7 @@ export default function ProgressLayout() {
       <Stack.Screen name="views" options={{ headerShown: false, title: 'Mis vistas' }} />
       {/* These readers share the floating header and progressive scroll blur. */}
       <Stack.Screen name="stages" options={{ title: 'Tus etapas', headerShown: false }} />
+      <Stack.Screen name="muscles" options={{ headerShown: false, title: 'Músculos' }} />
       <Stack.Screen name="connections/[key]" options={{ headerShown: false, title: 'Lo que se movió junto' }} />
       <Stack.Screen name="influence/index" options={{ headerShown: false, title: 'Qué influye' }} />
       <Stack.Screen name="influence/answer" options={{ headerShown: false, title: 'Tu pregunta' }} />

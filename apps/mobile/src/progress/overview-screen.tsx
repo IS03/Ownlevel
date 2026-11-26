@@ -165,6 +165,10 @@ export function ProgressPeriodOverviewScreen() {
         <AppIcon name="calendar" color={colors.textMuted} size={20} />
         <View style={styles.text}><AppText variant="headline">Tus etapas</AppText><AppText muted numeric variant="footnote">{stagesDetail}</AppText></View>
       </ProgressRow>
+      <ProgressRow testID="progress-muscles" label="Músculos. La última vez de cada grupo" onPress={() => router.push('/(tabs)/progress/muscles')}>
+        <AppIcon name="dumbbell" color={colors.textMuted} size={20} />
+        <View style={styles.text}><AppText variant="headline">Músculos</AppText><AppText muted variant="footnote">La última vez de cada grupo</AppText></View>
+      </ProgressRow>
       <ProgressRow testID="progress-influence" label="Qué influye. Preguntas sobre tus días" onPress={() => router.push('/(tabs)/progress/influence')}>
         <AppIcon name="sparkles" color={colors.textMuted} size={20} />
         <View style={styles.text}><AppText variant="headline">Qué influye</AppText><AppText muted variant="footnote">Preguntas sobre tus días</AppText></View>

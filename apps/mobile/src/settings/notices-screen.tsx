@@ -8,6 +8,8 @@ import { useMealMomentBands } from '@/nutrition/moment-bands-provider';
 import { defaultTrainingDays, defaultTrainingReturn, TRAINING_DAYS, TRAINING_RETURN } from '@/notices/training-reminders';
 import { BODY_MEASURES, BODY_WEIGHT, defaultBodyMeasures, defaultBodyWeight } from '@/notices/body-reminders';
 import { defaultWeekly, WEEKLY } from '@/notices/weekly-reminder';
+import { defaultMuscles, MUSCLES } from '@/notices/muscle-reminders';
+import { MUSCLE_GROUP_OPTIONS } from '@/training/exercise-library-model';
 import { DEFAULT_MEAL_MOMENT_BANDS } from '@/api/nutrition-moment-bands';
 import { reminderCategories, type ReminderCategory } from '@/notices/reminder-engine';
 import { RestAlertOption } from '@/training/session-rest-alert-option';
@@ -61,6 +63,8 @@ function ReminderRow({ id, title, detail, setting, onChange, writable, testID, c
   </View>;
 }
 
+type Gap = '7' | '10' | '14';
+const GAPS: { value: Gap; label: string }[] = [{ value: '7', label: '7 días' }, { value: '10', label: '10 días' }, { value: '14', label: '14 días' }];
 type Every = '14' | '28';
 const EVERY: { value: Every; label: string }[] = [{ value: '14', label: 'Cada 2 semanas' }, { value: '28', label: 'Cada 4 semanas' }];
 type ReturnDays = '3' | '4' | '5' | '7';
@@ -160,6 +164,18 @@ export function NoticesSettingsScreen({ categories = reminderCategories, now = D
           return <ReminderRow id={WEEKLY} title="Resumen semanal" detail="Un aviso para mirar tu semana en Progreso, el día que elijas."
             setting={weekly} onChange={set(WEEKLY)} writable={!!store} testID="reminder-weekly">
             <Weekdays label="Día del resumen" chosen={weekly.days ?? []} multiple={false} disabled={!store} onChange={days => set(WEEKLY)({ ...weekly, days })} />
+          </ReminderRow>;
+        })()}
+        {(() => {
+          const muscles = preferences.reminders[MUSCLES] ?? defaultMuscles, chosen = muscles.groups ?? [], gap = String(muscles.afterDays ?? 7) as Gap;
+          return <ReminderRow id={MUSCLES} title="Grupos musculares" detail={`Si alguno de los que elijas pasa ${gap} días sin series.`}
+            setting={muscles} onChange={set(MUSCLES)} writable={!!store} testID="reminder-muscles">
+            <View accessibilityLabel="Grupos musculares elegidos" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {MUSCLE_GROUP_OPTIONS.map(option => <Chip key={option.value} kind="toggle" label={option.label} selected={chosen.includes(option.value)} disabled={!store}
+                onPress={() => set(MUSCLES)({ ...muscles, groups: chosen.includes(option.value) ? chosen.filter(group => group !== option.value) : [...chosen, option.value] })} />)}
+            </View>
+            <SettingsSegmented accessibilityLabel="Días sin series" options={GAPS} value={gap} onChange={value => set(MUSCLES)({ ...muscles, afterDays: Number(value) })} />
+            {!preferences.facts?.muscles ? <AppText muted variant="footnote">Empieza cuando abras Músculos en Progreso y la app vea tus ejercicios.</AppText> : null}
           </ReminderRow>;
         })()}
         <Toggle title="Pausar recordatorios" detail={paused ? preferences.pausedUntil === 'manual' ? 'Pausados hasta que los reactives.' : `Pausados hasta el ${until(preferences.pausedUntil as number)}.` : 'Ninguno se programa mientras están pausados.'}

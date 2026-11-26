@@ -11,6 +11,8 @@ import { trainingStatus, type TrainingStatus } from './training-reminders';
 import { observeTraining } from '@/api/training';
 import { observeBody } from '@/api/body';
 import { bodyFacts } from './body-reminders';
+import { muscleFacts } from './muscle-reminders';
+import { observeHistoryExercises } from '@/api/training-history';
 import { currentMealMomentBands } from '@/nutrition/moment-bands-store';
 import { planReminders, REMINDER_PREFIX, reminderCategories, syncReminders, type ReminderCategory } from './reminder-engine';
 
@@ -56,7 +58,9 @@ export function NoticesLifetime({ children, categories = reminderCategories, syn
   // What a Cuerpo reading confirms is kept with the preferences: Cuerpo is read only on its screens, not at every start.
   useEffect(() => {
     if (!owner) return;
-    return observeBody(overview => { void noticePreferences(owner).setFacts(bodyFacts(overview)); });
+    const stopBody = observeBody(overview => { void noticePreferences(owner).setFacts(bodyFacts(overview)); });
+    const stopMuscles = observeHistoryExercises(exercises => { void noticePreferences(owner).setFacts(muscleFacts(exercises)); });
+    return () => { stopBody(); stopMuscles(); };
   }, [owner]);
   useEffect(() => {
     if (!owner || !ready) return;

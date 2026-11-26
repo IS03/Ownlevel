@@ -12,12 +12,12 @@ import { writeAccountRecord } from '@/platform/account-local-data';
  * - `reminders`: each category's own settings, added one by one (#639, step 6).
  */
 /** `days`: weekdays (0 Sunday … 6 Saturday) a reminder runs on; `afterDays`: days without the thing before it reminds. */
-export type ReminderSetting = { enabled: boolean; hour: number; minute: number; days?: number[]; afterDays?: number };
+export type ReminderSetting = { enabled: boolean; hour: number; minute: number; days?: number[]; afterDays?: number; groups?: string[] };
 /**
  * What confirmed readings said, kept so a reminder can decide after the app restarts (Cuerpo is read only on its screens).
  * Absent means never read on this device (no reminder that depends on it); null means read, and there is none.
  */
-export type NoticeFacts = { lastWeightOn?: string | null; lastMeasurementOn?: string | null };
+export type NoticeFacts = { lastWeightOn?: string | null; lastMeasurementOn?: string | null; /** #639: last date with sets per muscle group (null: recorded, never with sets). */ muscles?: Record<string, string | null> };
 export type NoticePreferences = {
   workoutActivity: boolean; mealActivity: boolean; lockDetail: boolean;
   pausedUntil: number | 'manual' | null;
@@ -35,7 +35,9 @@ function reminder(value: unknown): ReminderSetting | null {
     || !Number.isInteger(minute) || (minute as number) < 0 || (minute as number) > 59) return null;
   const validDays = Array.isArray(days) ? days.filter(day => Number.isInteger(day) && day >= 0 && day <= 6) as number[] : undefined;
   const afterDays = Number.isInteger(after) && (after as number) >= 1 && (after as number) <= 30 ? after as number : undefined;
-  return { enabled: v.enabled, hour: hour as number, minute: minute as number, ...(validDays ? { days: [...new Set(validDays)].sort() } : {}), ...(afterDays ? { afterDays } : {}) };
+  const groups = Array.isArray(v.groups) ? [...new Set(v.groups.filter((group): group is string => typeof group === 'string' && group.length > 0 && group.length < 40))] : undefined;
+  return { enabled: v.enabled, hour: hour as number, minute: minute as number, ...(validDays ? { days: [...new Set(validDays)].sort() } : {}), ...(afterDays ? { afterDays } : {}),
+    ...(groups ? { groups } : {}) };
 }
 export function parseNoticePreferences(value: unknown): NoticePreferences {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return defaultNoticePreferences;
@@ -50,6 +52,11 @@ export function parseNoticePreferences(value: unknown): NoticePreferences {
   const facts: NoticeFacts = {};
   if (date(rawFacts.lastWeightOn) !== undefined) facts.lastWeightOn = date(rawFacts.lastWeightOn);
   if (date(rawFacts.lastMeasurementOn) !== undefined) facts.lastMeasurementOn = date(rawFacts.lastMeasurementOn);
+  if (rawFacts.muscles && typeof rawFacts.muscles === 'object' && !Array.isArray(rawFacts.muscles)) {
+    const muscles: Record<string, string | null> = {};
+    for (const [group, value] of Object.entries(rawFacts.muscles as Record<string, unknown>)) { const known = date(value); if (known !== undefined) muscles[group] = known; }
+    facts.muscles = muscles;
+  }
   return { workoutActivity: bool(v.workoutActivity, true), mealActivity: bool(v.mealActivity, true), lockDetail: bool(v.lockDetail, true), pausedUntil: paused, reminders,
     ...(Object.keys(facts).length ? { facts } : {}) };
 }
