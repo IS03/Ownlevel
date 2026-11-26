@@ -30,6 +30,9 @@ export function EntryTransitionProvider({ children, client }: PropsWithChildren<
     setPresentation({ status, attempted: status === 'SIGNING_IN' || (status === 'SIGNED_IN' && presentation.attempted) });
   }
   const [startup, setStartup] = useState(() => status === 'BOOTSTRAPPING' || status === 'SIGNED_IN' ? 'pending' : 'done');
+  if (startup !== 'done' && status !== 'BOOTSTRAPPING' && (status !== 'SIGNED_IN' || !client)) {
+    setStartup('done');
+  }
   const [entryLaidOut, setEntryLaidOut] = useState(false);
   const nativeHandoff = client !== undefined && !entryLaidOut;
   const hideSplash = useNativeSplash(entryLaidOut);
@@ -38,9 +41,7 @@ export function EntryTransitionProvider({ children, client }: PropsWithChildren<
   useEffect(() => {
     if (status === 'BOOTSTRAPPING') return;
     markRestored();
-    if (status !== 'SIGNED_IN' && startup !== 'done') { setStartup('done'); return; }
-    if (startup !== 'pending') return;
-    if (!client) { setStartup('fade'); return; }
+    if (status !== 'SIGNED_IN' || startup !== 'pending' || !client) return;
     let active = true;
     const started = Date.now();
     // Reserve time for the exit fade so its last frame also fits in the startup budget.

@@ -21,7 +21,7 @@ export function HomeAddMenu({ onFood, onManual, onPlate, onQuick }: HomeAddMenuP
           <AppText style={[styles.text, { color: colors.primary }]}>+ Comida</AppText>
         </View>
       </HomeActionSurface>
-      <Host onLayout={() => traceStartupNative('add-menu-layout')} colorScheme={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} testID="home-add-menu">
+      <Host onLayoutContent={() => traceStartupNative('add-menu-layout')} colorScheme={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} testID="home-add-menu">
         <Menu
           label={<HStack modifiers={[frame({ maxWidth: Infinity, maxHeight: Infinity }), contentShape(shapes.rectangle())]}><Spacer minLength={0} /></HStack>}
           modifiers={[menuStyle('button'), buttonStyle('plain'), menuIndicator('hidden'), accessibilityLabel('Agregar comida')]}

@@ -95,7 +95,7 @@ function useHomeRead<T>(client: MobileApiClient | null, today: () => string, vis
       previous = next;
     });
     return () => { subscription.remove(); detach(); };
-  }, [cache, entry, ensure]);
+  }, [cache, entry, ensure, resource]);
 
   return { state, resource, ensure, reload, focus, refresh: useCallback(() => ensure('manual'), [ensure]) };
 }
