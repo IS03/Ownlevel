@@ -17,15 +17,16 @@ import { ReturnToInsights } from '@/insights/return-to-insights';
 import { useDomainDate } from '@/history/use-domain-date';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
-import { AppText, Button, LoadingState, NoticeOutlet, ScrollScreen, UnavailableState, brandTokens, spacing, usePullRefresh, useOwnlevelTheme } from '@/design-system';
-import { nutritionToday, shiftNutritionDate } from './day-format';
+import { AppText, Button, SkeletonBlock, NoticeOutlet, ScrollScreen, UnavailableState, brandTokens, spacing, usePullRefresh, useOwnlevelTheme } from '@/design-system';
+import { nutritionToday } from './day-format';
 import { NutritionMonthSheet, prefetchCalendarMonth } from './day-calendar';
 import { headerDate } from '@/home/home-day';
 import { NutritionGlassButton } from './day-controls';
 import { NutritionDayMenu } from './day-menu';
+import { nutritionWeek } from './day-home-model';
 import { NutritionWeek } from './day-week';
 import { NutritionDayContent, type MealActions, type MealRemoval } from './day-content';
-import { prefetchNutritionDays, useNutritionDayResource } from './day-resource';
+import { prefetchNutritionWeek, useNutritionDayResource } from './day-resource';
 import { useMealController } from './use-meal-controller';
 import { useDayWriteController } from './use-day-write-controller';
 import { DayWriteEditor } from './day-write-editor';
@@ -45,6 +46,22 @@ import { useNutritionHomeEntry, type AddEntry } from './home-entry';
 import { usePlateController } from './use-plate-controller';
 import { UnfinishedMealContext, useUnfinishedMeals } from './use-unfinished-meals';
 import { PlateEditor } from './plate-editor';
+
+function NutritionDaySkeleton() {
+  const { layout, space } = brandTokens;
+  return <View testID="nutrition-day-skeleton" accessible accessibilityLabel="Cargando día nutricional" accessibilityState={{ busy: true }} style={{ gap: space.lg }}>
+    <View style={styles.header}>
+      <SkeletonBlock height={layout.minTouch} width="38%" />
+      <View style={{ flexDirection: 'row', gap: space.sm }}>
+        {[0, 1, 2].map(index => <View key={index} style={{ flex: 1 }}><SkeletonBlock height={layout.minTouch} /></View>)}
+      </View>
+    </View>
+    <View style={styles.header}>
+      <SkeletonBlock height={space.lg} width="30%" />
+      {[0, 1, 2].map(index => <SkeletonBlock key={index} height={layout.minTouch} />)}
+    </View>
+  </View>;
+}
 
 function NutritionDayView({ revision, date, today, bottomClearance, onSelect, onServerToday, onAdd, addChoices, addControl, highlightedMeal, removal, onManageFoods, onManageSaved, onConfigure, mealActions, onActivity, onContext, onMetric }: {
   /** Bumped after a confirmed write: the day re-reads in place, so its numbers can move to the new values. */
@@ -71,11 +88,12 @@ function NutritionDayView({ revision, date, today, bottomClearance, onSelect, on
   useEffect(() => { if (revision > 0) void reload(); }, [reload, revision]);
   // The calendar's month is read ahead, once this day has loaded (it never competes with it).
   const loaded = state.status === 'ready';
+  const weekEnd = nutritionWeek(date, today)[6];
   useFocusEffect(useCallback(() => {
-    if (!loaded) return;
-    const stopDays = prefetchNutritionDays(client, [shiftNutritionDate(date, -1), shiftNutritionDate(date, 1)], today);
-    const stopMonth = prefetchCalendarMonth(client, date, today);
-    return () => { stopDays(); stopMonth?.(); };
+    if (client && loaded) return prefetchNutritionWeek(client, weekEnd, today);
+  }, [client, loaded, today, weekEnd]));
+  useFocusEffect(useCallback(() => {
+    if (loaded) return prefetchCalendarMonth(client, date, today);
   }, [client, date, loaded, today]));
   const pull = usePullRefresh(runRefresh);
   // Like every other tab: the native Liquid Glass bar and its own scroll edge effect, no backing layer of ours (#348).
@@ -102,7 +120,7 @@ function NutritionDayView({ revision, date, today, bottomClearance, onSelect, on
       </View>
     </View>
     <NutritionWeek refreshRevision={refreshRevision + revision} date={date} today={today} data={current?.data} onSelect={onSelect} />
-    {!current ? state.status === 'loading' ? <LoadingState label="Cargando día nutricional" />
+    {!current ? state.status === 'loading' ? <NutritionDaySkeleton />
       : <UnavailableState title="No pudimos cargar este día"
         description={state.status === 'auth_required' || state.status === 'unauthorized' ? 'No pudimos confirmar tu sesión.' : 'Revisá la conexión e intentá nuevamente.'}
         action={<Button label="Reintentar" onPress={runRefresh} />} />

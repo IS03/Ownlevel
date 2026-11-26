@@ -455,7 +455,7 @@ describe('Native Nutrition day', () => {
     mockRead.mockImplementation(options => new Promise(resolve => pending.push({ signal: options.signal,
       date: options.path.split('/').pop()!, resolve: resolve as (r: unknown) => void })));
     const view = render(element());
-    expect(view.getByText('Cargando día nutricional')).toBeTruthy();
+    expect(view.getByTestId('nutrition-day-skeleton')).toBeTruthy();
     fireEvent.press(view.getByTestId('nutrition-week-2026-10-01'));
     fireEvent.press(view.getByTestId('nutrition-week-2026-09-30'));
     await act(async () => {});

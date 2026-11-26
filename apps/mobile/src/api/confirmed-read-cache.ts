@@ -2,7 +2,7 @@ import type { MobileApiClient } from './client';
 import type { MobileApiReadResult } from './results';
 import { ApiResourceController, type ResourceRefreshTrigger } from './resource';
 
-export type ReadFamily = 'home' | 'overview' | 'body' | 'training' | 'metrics' | 'nutrition-report' | 'nutrition-day' | 'progress-extra';
+export type ReadFamily = 'home' | 'overview' | 'body' | 'training' | 'metrics' | 'nutrition-report' | 'nutrition-day' | 'nutrition-week' | 'progress-extra';
 export type WriteDomain = 'body' | 'training' | 'metrics' | 'nutrition' | 'views' | 'insight';
 type Domain = WriteDomain;
 type Loader<T> = (signal: AbortSignal, background?: boolean) => Promise<MobileApiReadResult<T>>;
@@ -22,6 +22,7 @@ const domains: Record<ReadFamily, readonly Domain[]> = {
   // Day targets follow training days and energy follows weight/physical data, not only nutrition writes. The day
   // also lists the configured daily metrics, so definition changes invalidate it.
   'nutrition-report': ['nutrition', 'body', 'training'], 'nutrition-day': ['nutrition', 'body', 'training', 'metrics'],
+  'nutrition-week': ['nutrition', 'body', 'training', 'metrics'],
   // Views, connections, insight, Explorar, meal times, stages, influence and exercise detail: any data domain moves them.
   'progress-extra': ['body', 'training', 'metrics', 'nutrition', 'views', 'insight'],
 };
@@ -99,6 +100,16 @@ export class ConfirmedReadCache {
     this.measure({ event: 'network', family: entry.family, trigger: 'manual' });
     const pending = entry.resource.reload('manual'); this.track(entry, pending); return pending;
   }
+  /** Each seeded day adopts the same confirmation and invalidation rules as an individual read. */
+  seedNutritionDay<T>(entry: RetainedRead<T>, result: Extract<MobileApiReadResult<T>, { status: 'ok' }>, startedAtRevision: number): boolean {
+    if (this.retired || entry.family !== 'nutrition-day' || this.writeRevision(domains['nutrition-day']) !== startedAtRevision) return false;
+    const current = entry.resource.getSnapshot();
+    if (current.status === 'ready' && !entry.invalidated && this.now() - current.current.confirmedAt < READ_REUSE_MS) return false;
+    if (!entry.resource.seed(result)) return false;
+    entry.invalidated = false;
+    return true;
+  }
+
   /** One low-priority read at a time, using the SAME retained controllers. No recursive discovery or own data store. */
   prefetch<T>(entries: readonly RetainedRead<T>[]): () => void {
     const owner = Symbol('prefetch');

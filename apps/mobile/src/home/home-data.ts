@@ -11,8 +11,7 @@ import { fetchTrainingHistory, type TrainingHistorySession } from '@/api/trainin
 
 import { homeDay } from './home-day';
 import { useSharedHomeRead, useSharedTodayRead } from './shared-home-read';
-import { prefetchNutritionDays } from '@/nutrition/day-resource';
-import { shiftNutritionDate } from '@/nutrition/day-format';
+import { prefetchNutritionWeek } from '@/nutrition/day-resource';
 
 /**
  * Completed sessions of the current week (Monday → today) plus whether the user ever trained.
@@ -185,7 +184,7 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
     const start = () => {
       stopWarming.current?.();
       stopWarming.current = client && homeSettled && visible.current
-        ? prefetchNutritionDays(client, [warmDay, shiftNutritionDate(warmDay, -1)], warmDay) : null;
+        ? prefetchNutritionWeek(client, warmDay, warmDay, true) : null;
     };
     warmOnFocus.current = start; start();
     return () => { stopWarming.current?.(); stopWarming.current = null; };

@@ -73,6 +73,15 @@ export class ApiResourceController<T> {
     }
   }
 
+  /** Adopt a confirmed response from a batch reader when no individual refresh is in flight. */
+  seed(result: Extract<MobileApiReadResult<T>, { status: 'ok' }>): boolean {
+    if (this.disposed || this.inFlight || isDeniedRead(this.state)) return false;
+    this.confirmed = { confirmedAt: this.now(), data: result.data };
+    this.confirmedResult = result;
+    this.update({ status: 'ready', current: this.confirmed, refreshing: false, trigger: 'initial', result });
+    return true;
+  }
+
   getSnapshot(): ApiResourceState<T> {
     return this.state;
   }
