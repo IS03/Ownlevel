@@ -156,7 +156,6 @@ function ComparedReport({ report, query, selection, onSelect, refreshRevision, p
   }, [refreshRevision, refresh]);
   return (
     <>
-      {state.status === 'ready' && state.refreshing ? <AppText muted variant="caption" accessibilityLiveRegion="polite">Actualizando la comparación; mostramos la última lectura confirmada.</AppText> : null}
       {state.status === 'loading' ? (
         <AppText muted variant="caption">
           Cargando el período de comparación…
@@ -214,7 +213,6 @@ function NutritionReportResource() {
         />
       }
     >
-      {state.status === 'ready' && state.refreshing ? <AppText muted variant="caption" accessibilityLiveRegion="polite">Actualizando el período elegido; mostramos la última lectura confirmada.</AppText> : null}
       {state.status === 'loading' ? (
         <SkeletonBlock height={240} />
       ) : data ? (

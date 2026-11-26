@@ -1,10 +1,10 @@
 import { useCallback, useState } from 'react';
-import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import { fetchTrainingExerciseHistory, type TrainingExerciseHistorySession, type TrainingHistoryMark } from '@/api/training-history';
-import { LinkRow, AppIcon, AppText, EmptyState, pressedStyle, radius, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { PullRefreshControl, LinkRow, AppIcon, AppText, EmptyState, pressedStyle, radius, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { exerciseSetLabel } from './exercise-detail-model';
 import { GroupChip } from './group-chip';
 import { HistoryScroll, ReadStateScreen, StaleNotice } from './history-components';
@@ -136,7 +136,7 @@ function ExerciseHistoryContent({ exerciseId, routineId, options, overallBest, n
   const record = !!best && (routineId === null || sameMark(best.mark, overallBest));
   const identity = ['Historial', exercise.implement, exercise.weightMode].filter(Boolean).join(' · ');
   const single = !!latest && !!best && latest.sessionId === best.sessionId;
-  return <>{screen}<HistoryScroll testID="exercise-history" refreshControl={<RefreshControl refreshing={state.refreshing} onRefresh={() => void reload()} tintColor={colors.primary} />}>
+  return <>{screen}<HistoryScroll testID="exercise-history" refreshControl={<PullRefreshControl onRefresh={() => reload()} tintColor={colors.primary} />}>
     <AppText muted variant="subheadline">{identity}</AppText>
     {filters}
     {state.stale ? <StaleNotice onRetry={() => void reload()} /> : null}

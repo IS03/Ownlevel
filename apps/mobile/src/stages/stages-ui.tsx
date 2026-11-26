@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import { ActivityIndicator, Alert, StyleSheet, View } from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
 import { useFocusEffect, useNavigation } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
 import Animated, {
@@ -127,7 +127,7 @@ export function StageProgressBar({ value }: { value: number }) {
 export function StagesSkeleton() {
   return (
     <View
-      accessibilityLabel="Actualizando etapas"
+      accessibilityLabel="Cargando etapas"
       accessibilityState={{ busy: true }}
       testID="stages-skeleton"
       style={{ gap: 24 }}
@@ -248,15 +248,6 @@ export function StagesToast({
     return () => clearTimeout(timer);
   }, [notice, controller]);
   return notice ? <NutritionToast message={notice} state="done" /> : null;
-}
-export function RefreshingStages({ state }: { state: StagesState }) {
-  return state.loading && state.list ? (
-    <ActivityIndicator
-      size="small"
-      accessibilityLabel="Actualizando etapas"
-      style={{ alignSelf: "flex-start" }}
-    />
-  ) : null;
 }
 export const stageStyles = StyleSheet.create({
   row: {

@@ -3,7 +3,7 @@ import { openLegal } from '@/platform/legal';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useMobileAuth } from '@/auth';
 import { AppText, Heading, SkeletonBlock, useOwnlevelTheme } from '@/design-system';
 import { useHapticsPreference } from '@/platform/haptics';
@@ -35,7 +35,7 @@ export function SettingsScreen() {
   const haptics = useHapticsPreference();
   const overview = useSettingsOverview();
   const moments = useMealMomentBands();
-  const { configuration, stages, identity, metrics, loading } = overview;
+  const { configuration, stages, identity, metrics } = overview;
   const config = configuration?.state.config;
   const name = identity?.displayName ?? null;
   const stage = stages?.current;
@@ -75,16 +75,6 @@ export function SettingsScreen() {
             <AccountAvatar name={name} size={44} />
           </Pressable>
         </View>
-        {(overview.refreshing || configuration?.state.loading) && (!loading || !!identity) ? (
-          // Out of the flow, inside the gap before the rows: appearing or finishing never moves Plan, Energía…
-          <ActivityIndicator
-            testID="settings-refreshing"
-            color={colors.textMuted}
-            size="small"
-            accessibilityLabel="Actualizando ajustes"
-            style={{ position: 'absolute', top: '100%', left: 0, marginTop: 2 }}
-          />
-        ) : null}
       </Reveal>
       <View>
         {[

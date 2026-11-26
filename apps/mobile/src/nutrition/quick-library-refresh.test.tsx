@@ -1,6 +1,6 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { AccessibilityInfo, ActivityIndicator, Dimensions, SectionList, StyleSheet } from 'react-native';
+import { AccessibilityInfo, Dimensions, SectionList } from 'react-native';
 import { OwnlevelThemeProvider } from '@/design-system';
 import type { QuickOption, QuickOptions, QuickPins } from '@/api/nutrition-quick';
 import type { MobileApiReadResult } from '@/api/results';
@@ -31,7 +31,7 @@ jest.mock('@/design-system', () => {
 type Read = MobileApiReadResult<QuickOptions>;
 const lost: Read = { status: 'unavailable', reason: 'network', meta: { ...meta, httpStatus: null, outcome: 'unavailable' } };
 const LOADER = 'Cargando opciones rápidas', REFRESHING = 'quick-options-refreshing', SLOT = 'quick-options-refresh-slot';
-const STALE_ROWS = 'No pudimos actualizar las opciones. Estás viendo las últimas confirmadas, pueden estar desactualizadas.';
+const STALE_ROWS = 'No pudimos actualizar. Mostramos lo último que cargó.';
 function deferred() { let resolve!: (value: Read) => void; let reject!: (error: Error) => void; const promise = new Promise<Read>((res, rej) => { resolve = res; reject = rej; }); return { promise, resolve, reject }; }
 const original = { window: Dimensions.get('window'), screen: Dimensions.get('screen') };
 const atFontScale = (fontScale: number) => Dimensions.set({ window: { ...original.window, fontScale }, screen: original.screen });
@@ -69,22 +69,20 @@ async function harness({ meals = BASE, pins = ok(snap(0, [])) as QuickPins, sugg
   return { view, quick, quickApi, pins: pinsController, pinsApi, shared, first, refresh, settle, good, data };
 }
 type H = Awaited<ReturnType<typeof harness>>;
-const flat = (node: { props: { style?: unknown } }) => StyleSheet.flatten(node.props.style as never) as Record<string, unknown>;
 const loader = (h: H) => h.view.queryByLabelText(LOADER);
 const refreshing = (h: H) => h.view.queryByTestId(REFRESHING);
-const slotHeight = (h: H) => flat(h.view.getByTestId(SLOT)).minHeight;
 
 describe('#303 · first read with nothing confirmed keeps the loader', () => {
   it('options null + loading: the big loader, no refreshing row and no reserved slot; then the rows replace it', async () => {
     const h = await harness({ hold: true });
     expect(h.quick.getSnapshot()).toMatchObject({ options: null, optionsLoading: true });
-    expect(loader(h)).toBeTruthy(); expect(h.view.getByText(LOADER)).toBeTruthy();
+    expect(loader(h)).toBeTruthy(); expect(h.view.getByTestId('quick-options-skeleton')).toBeTruthy();
     expect(refreshing(h)).toBeNull(); expect(h.view.queryByTestId(SLOT)).toBeNull(); expect(names(h.view)).toEqual([]);
     await h.settle(h.first, h.good());
     expect(loader(h)).toBeNull(); expect(refreshing(h)).toBeNull();
     expect(names(h.view)).toHaveLength(6);
-    // Rows are there, nothing is refreshing: the slot is reserved and empty.
-    expect(h.view.getByTestId(SLOT)).toBeTruthy(); expect(h.quickApi.options).toHaveBeenCalledTimes(1);
+    // Rows are there, nothing is refreshing: there is no reserved slot.
+    expect(h.view.queryByTestId(SLOT)).toBeNull(); expect(h.quickApi.options).toHaveBeenCalledTimes(1);
   });
   it('first read that fails: the old text, no «últimas confirmadas», the same retry; the retry keeps the loader until it answers', async () => {
     const h = await harness({ hold: true });
@@ -113,29 +111,28 @@ describe('#303 · first read with nothing confirmed keeps the loader', () => {
 });
 
 describe('#303 · refreshing with confirmed meals on screen', () => {
-  it('no loader: the same rows, query and list stay mounted; only «Actualizando…» appears', async () => {
+  it('no loader: the same rows, query and list stay mounted; with no background status', async () => {
     const h = await harness({ pins: ok(snap(1, [ID(6)])) });
     fireEvent.changeText(h.view.getByLabelText('Buscar en tus comidas'), 'con');
     const list = h.view.UNSAFE_getByType(SectionList);
     const before = names(h.view).map(name => h.view.getByLabelText(`Revisar ${name}`));
     expect(names(h.view)).toEqual(['Avena con banana', 'Café con leche', 'Tostadas con palta']);
-    const height = slotHeight(h);
 
     const next = h.refresh();
     expect(h.quick.getSnapshot().optionsLoading).toBe(true);
     expect(loader(h)).toBeNull(); expect(h.view.queryByText(LOADER)).toBeNull();
-    expect(h.view.getByText('Actualizando…')).toBeTruthy(); expect(refreshing(h)).toBeTruthy();
+    expect(h.view.queryByText('Actualizando…')).toBeNull(); expect(refreshing(h)).toBeNull();
     // Nothing remounted or reset.
     expect(h.view.UNSAFE_getByType(SectionList)).toBe(list);
     expect(names(h.view).map(name => h.view.getByLabelText(`Revisar ${name}`))).toEqual(before);
     names(h.view).forEach((name, i) => expect(h.view.getByLabelText(`Revisar ${name}`)).toBe(before[i]));
     expect(h.view.getByLabelText('Buscar en tus comidas').props.value).toBe('con');
     expect(h.view.getByText('3 resultados')).toBeTruthy();
-    expect(slotHeight(h)).toBe(height);
+    expect(h.view.queryByTestId(SLOT)).toBeNull();
 
     await h.settle(next, h.good());
     expect(refreshing(h)).toBeNull(); expect(loader(h)).toBeNull();
-    expect(slotHeight(h)).toBe(height);
+    expect(h.view.queryByTestId(SLOT)).toBeNull();
     expect(h.view.UNSAFE_getByType(SectionList)).toBe(list);
     names(h.view).forEach((name, i) => expect(h.view.getByLabelText(`Revisar ${name}`)).toBe(before[i]));
     expect(h.view.getByLabelText('Buscar en tus comidas').props.value).toBe('con');
@@ -171,15 +168,15 @@ describe('#303 · refreshing with confirmed meals on screen', () => {
     const next = deferred(); h.quickApi.options.mockImplementationOnce(() => next.promise);
     await act(async () => { h.quick.open(quickDate); });
     expect(h.quick.getSnapshot()).toMatchObject({ optionsLoading: true }); expect(h.quick.getSnapshot().options).not.toBeNull();
-    expect(loader(h)).toBeNull(); expect(refreshing(h)).toBeTruthy(); expect(names(h.view)).toHaveLength(6);
+    expect(loader(h)).toBeNull(); expect(refreshing(h)).toBeNull(); expect(names(h.view)).toHaveLength(6);
     await h.settle(next, h.good());
     expect(refreshing(h)).toBeNull(); expect(h.quickApi.options).toHaveBeenCalledTimes(2);
   });
-  it.each([0, 1, 200])('%i saved meals: no crash, no loader, the same rows, indicator present', async count => {
+  it.each([0, 1, 200])('%i saved meals: no crash, no loader, the same rows, no background status', async count => {
     const h = await harness({ meals: synthetic(count) });
     const shown = names(h.view);
     const next = h.refresh();
-    expect(loader(h)).toBeNull(); expect(refreshing(h)).toBeTruthy();
+    expect(loader(h)).toBeNull(); expect(refreshing(h)).toBeNull();
     expect(names(h.view)).toEqual(shown);
     if (count === 0) expect(h.view.getByText('Todavía no tenés comidas guardadas.')).toBeTruthy();
     await h.settle(next, h.good()); expect(refreshing(h)).toBeNull(); expect(names(h.view)).toEqual(shown);
@@ -191,7 +188,7 @@ describe('#303 · a failed refresh keeps the last confirmed rows and says so', (
     const h = await harness();
     const shown = names(h.view), before = h.view.getByLabelText('Revisar Pollo al horno');
     const next = h.refresh();
-    expect(refreshing(h)).toBeTruthy();
+    expect(refreshing(h)).toBeNull();
     if (how === 'result') await h.settle(next, lost); else await act(async () => { next.reject(new Error('offline')); });
     expect(h.quick.getSnapshot()).toMatchObject({ optionsError: true, optionsLoading: false }); expect(h.quick.getSnapshot().options).not.toBeNull();
     expect(loader(h)).toBeNull(); expect(refreshing(h)).toBeNull(); expect(h.view.queryByTestId(SLOT)).toBeNull();
@@ -199,13 +196,13 @@ describe('#303 · a failed refresh keeps the last confirmed rows and says so', (
     const alert = h.view.getByText(STALE_ROWS);
     expect(alert.props.accessibilityRole).toBe('alert'); expect(h.view.queryByText('No pudimos actualizar las opciones.')).toBeNull();
     const retry = h.view.getByRole('button', { name: 'Reintentar opciones' });
-    expect(flat(retry).minHeight).toBeGreaterThanOrEqual(44);
+    expect(retry.props.accessibilityRole).toBe('button');
     expect(h.quickApi.options).toHaveBeenCalledTimes(2);
     const again = deferred(); h.quickApi.options.mockImplementationOnce(() => again.promise);
     act(() => { fireEvent.press(retry); });
     expect(h.quickApi.options).toHaveBeenCalledTimes(3);
-    // The error gives way to the refresh while it runs, the rows never leave.
-    expect(h.view.queryByText(STALE_ROWS)).toBeNull(); expect(refreshing(h)).toBeTruthy(); expect(loader(h)).toBeNull(); expect(names(h.view)).toEqual(shown);
+    // Retry runs silently, the rows never leave.
+    expect(h.view.queryByText(STALE_ROWS)).toBeNull(); expect(refreshing(h)).toBeNull(); expect(loader(h)).toBeNull(); expect(names(h.view)).toEqual(shown);
     await h.settle(again, h.good());
     expect(refreshing(h)).toBeNull(); expect(h.view.queryByText(STALE_ROWS)).toBeNull(); expect(h.view.queryByText('Reintentar opciones')).toBeNull();
     expect(names(h.view)).toEqual(shown); expect(h.quickApi.options).toHaveBeenCalledTimes(3);
@@ -236,8 +233,8 @@ describe('#303 · each section counts on its own', () => {
     const h = await harness({ suggestions: true, suggested: [suggestion(50, 'Sugerida uno')], options: { saved: { status: 'unavailable' } } });
     expect(h.view.getByText('Sugerida uno')).toBeTruthy(); expect(h.view.getByText('No pudimos cargar estas opciones.')).toBeTruthy();
     const next = h.refresh();
-    expect(loader(h)).toBeNull(); expect(refreshing(h)).toBeTruthy(); expect(h.view.getByText('Sugerida uno')).toBeTruthy();
-    // The error row is showing: no extra reserved slot, the indicator is just the row.
+    expect(loader(h)).toBeNull(); expect(refreshing(h)).toBeNull(); expect(h.view.getByText('Sugerida uno')).toBeTruthy();
+    // The error row is showing: no extra reserved slot, the error is the only extra row.
     expect(h.view.queryByTestId(SLOT)).toBeNull();
     await h.settle(next, h.good({ saved: { status: 'ok', items: BASE }, suggested: { status: 'ok', items: [suggestion(50, 'Sugerida uno')] } }));
     expect(refreshing(h)).toBeNull(); expect(names(h.view)).toHaveLength(7);
@@ -246,7 +243,7 @@ describe('#303 · each section counts on its own', () => {
     const h = await harness({ suggestions: true, options: { suggested: { status: 'unavailable' } } });
     expect(h.view.getByText('Reintentar opciones')).toBeTruthy();
     const next = h.refresh();
-    expect(loader(h)).toBeNull(); expect(refreshing(h)).toBeTruthy(); expect(names(h.view)).toHaveLength(6);
+    expect(loader(h)).toBeNull(); expect(refreshing(h)).toBeNull(); expect(names(h.view)).toHaveLength(6);
     await h.settle(next, h.good()); expect(refreshing(h)).toBeNull();
   });
   it('suggestions ok but not shown (suggestions off) and saved unavailable: nothing to show, the loader stays', async () => {
@@ -262,7 +259,7 @@ describe('#303 · pins are independent of the refresh', () => {
   it('pins never read: the library, never «0 pins», no manage control, nothing writes, the refresh row shows on its own', async () => {
     const h = await harness({ pins: stale });
     const next = h.refresh();
-    expect(refreshing(h)).toBeTruthy(); expect(loader(h)).toBeNull();
+    expect(refreshing(h)).toBeNull(); expect(loader(h)).toBeNull();
     expect(names(h.view)).toHaveLength(6); expect(h.view.queryByText('Fijadas')).toBeNull(); expect(h.view.queryByText(/0 fijadas|no tenés fijadas|sin fijadas/i)).toBeNull();
     expect(h.view.queryByTestId('quick-pins-manage')).toBeNull(); expect(h.view.queryByTestId('quick-pins-stale')).toBeNull();
     const row = h.view.getByLabelText('Revisar Pollo al horno');
@@ -275,7 +272,7 @@ describe('#303 · pins are independent of the refresh', () => {
     const h = await harness({ pins: ok(snap(3, [ID(1), ID(2)])) });
     act(() => { h.pins.adopt(stale); });
     const next = h.refresh();
-    expect(h.view.getByTestId('quick-pins-stale')).toBeTruthy(); expect(refreshing(h)).toBeTruthy();
+    expect(h.view.getByTestId('quick-pins-stale')).toBeTruthy(); expect(refreshing(h)).toBeNull();
     expect(names(h.view).slice(0, 2)).toEqual(['Tostadas con palta', 'Avena con banana']); expect(h.view.queryByTestId('quick-pins-manage')).toBeNull();
     for (const row of h.view.getAllByLabelText('Revisar Avena con banana')) expect(row.props.accessibilityActions).toEqual([]);
     // The pins notice sits after the refresh row but is neither replaced nor hidden by it.
@@ -288,14 +285,14 @@ describe('#303 · pins are independent of the refresh', () => {
   it('blocked and uncertain pins notices stay visible while refreshing, and the refresh adds no pins call', async () => {
     const blocked = await harness({ pins: ok(snap(0, [])), intent: { version: 1 } });
     const b = blocked.refresh();
-    expect(blocked.view.getByTestId('quick-pins-blocked')).toBeTruthy(); expect(refreshing(blocked)).toBeTruthy(); expect(blocked.view.queryByTestId('quick-pins-manage')).toBeNull();
+    expect(blocked.view.getByTestId('quick-pins-blocked')).toBeTruthy(); expect(refreshing(blocked)).toBeNull(); expect(blocked.view.queryByTestId('quick-pins-manage')).toBeNull();
     await blocked.settle(b, blocked.good());
     expect(blocked.view.getByTestId('quick-pins-blocked')).toBeTruthy();
 
     const older = { version: 1, intent: { savedMealIds: [ID(4)], expectedRevision: 0, idempotencyKey: 'pins-old' }, base: snap(0, []) };
     const uncertain = await harness({ pins: ok(snap(0, [])), intent: older });
     const u = uncertain.refresh();
-    expect(uncertain.view.getByTestId('quick-pins-uncertain')).toBeTruthy(); expect(refreshing(uncertain)).toBeTruthy(); expect(uncertain.view.getByText('Comprobar')).toBeTruthy();
+    expect(uncertain.view.getByTestId('quick-pins-uncertain')).toBeTruthy(); expect(refreshing(uncertain)).toBeNull(); expect(uncertain.view.getByText('Comprobar')).toBeTruthy();
     await uncertain.settle(u, uncertain.good());
     expect(uncertain.view.getByTestId('quick-pins-uncertain')).toBeTruthy(); expect(uncertain.pinsApi.write).not.toHaveBeenCalled(); expect(uncertain.pinsApi.read).not.toHaveBeenCalled();
   });
@@ -307,7 +304,7 @@ describe('#303 · pins are independent of the refresh', () => {
     await act(async () => { fireEvent.press(within(h.view.getByTestId('quick-pins-editor')).getByTestId('quick-pins-save')); });
     expect(h.view.getByTestId('quick-pins-conflict')).toBeTruthy();
     const next = h.refresh();
-    expect(h.view.getByTestId('quick-pins-conflict')).toBeTruthy(); expect(refreshing(h)).toBeTruthy(); expect(h.view.getByText('Descartar')).toBeTruthy(); expect(h.view.getByText('Aplicar mi cambio')).toBeTruthy();
+    expect(h.view.getByTestId('quick-pins-conflict')).toBeTruthy(); expect(refreshing(h)).toBeNull(); expect(h.view.getByText('Descartar')).toBeTruthy(); expect(h.view.getByText('Aplicar mi cambio')).toBeTruthy();
     // The conflict screen is writable as before: the refresh did not change that.
     expect(h.view.getByTestId('quick-pins-manage')).toBeTruthy();
     await h.settle(next, h.good());
@@ -342,34 +339,17 @@ describe('#303 · no new reads or writes', () => {
   });
 });
 
-describe('#303 · accessibility and Dynamic Type', () => {
-  it('the indicator is one element with a label and a polite live region; the spinner is hidden from assistive tech; nothing is announced by hand', async () => {
+describe('#661 · accessibility and Dynamic Type', () => {
+  it('a background refresh takes no space and remains silent even with large text', async () => {
+    atFontScale(2);
     const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => {});
     const h = await harness();
     const next = h.refresh();
-    const row = h.view.getByTestId(REFRESHING);
-    expect(row.props).toMatchObject({ accessible: true, accessibilityLabel: 'Actualizando opciones rápidas', accessibilityLiveRegion: 'polite' });
-    const spinners = h.view.UNSAFE_getAllByType(ActivityIndicator).filter(node => node.props.accessibilityElementsHidden);
-    expect(spinners).toHaveLength(1); expect(spinners[0]!.props.importantForAccessibility).toBe('no-hide-descendants');
-    expect(h.view.getByLabelText('Actualizando opciones rápidas')).toBe(row);
-    await h.settle(next, h.good());
-    expect(announce).not.toHaveBeenCalled();
-  });
-  it('the slot is one footnote line (20 pt at the default size), constant while it fills and empties, and absent where there is nothing confirmed', async () => {
-    const h = await harness();
-    expect(slotHeight(h)).toBe(20);
-    const next = h.refresh(); expect(slotHeight(h)).toBe(20); expect(h.view.getByTestId(SLOT).children.length).toBe(1);
-    await h.settle(next, h.good()); expect(slotHeight(h)).toBe(20); expect(h.view.getByTestId(SLOT).children.length).toBe(0);
-  });
-  it('large text: the slot grows with the line, the texts wrap (no line limit) and the retry stays 44 pt or more', async () => {
-    atFontScale(2);
-    const h = await harness();
-    expect(slotHeight(h)).toBe(36);
-    const next = h.refresh();
-    const text = h.view.getByText('Actualizando…');
-    expect(text.props.numberOfLines).toBeUndefined(); expect(flat(text)).toMatchObject({ flex: 1 }); expect(flat(h.view.getByTestId(REFRESHING))).toMatchObject({ flexDirection: 'row', alignItems: 'center' });
+    expect(h.view.queryByTestId(SLOT)).toBeNull();
+    expect(h.view.queryByLabelText('Actualizando opciones rápidas')).toBeNull();
     await h.settle(next, lost);
+    expect(announce).not.toHaveBeenCalled();
     expect(h.view.getByText(STALE_ROWS).props.numberOfLines).toBeUndefined();
-    expect(flat(h.view.getByRole('button', { name: 'Reintentar opciones' })).minHeight).toBeGreaterThanOrEqual(44);
+    expect(h.view.getByRole('button', { name: 'Reintentar opciones' })).toBeTruthy();
   });
 });

@@ -1,12 +1,12 @@
 import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { ReturnToProgress } from './return-to-progress';
 import { useCallback } from 'react';
-import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchInsightsPeriodNutrition, validPeriodAnchor } from '@/api/performance-insights';
-import { LinkRow, AppText, Button, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
+import { PullRefreshControl, LinkRow, AppText, Button, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { FactRow } from './insights-screen';
 import { InsightRow } from './insight-row';
@@ -39,7 +39,7 @@ export function PeriodNutritionScreen() {
   return <ScrollHeaderScreen title="Comidas del período"><FlatList showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="period-nutrition-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll}
     data={asOf && ready ? ready.days : []} keyExtractor={d => d.date} ListHeaderComponent={<View><ReturnToProgress/>{header}</View>} ListFooterComponent={ready ? returnButton : null}
     ItemSeparatorComponent={() => <View style={styles.separator} />}
-    refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}
+    refreshControl={<PullRefreshControl onRefresh={() => refresh()} tintColor={colors.primary} />}
     renderItem={({ item }) => <View testID={`period-food-${item.date}`} style={styles.day}>
       <AppText variant="headline" numeric accessibilityRole="header">{item.date.split('-').reverse().join('/')}</AppText>
       {periodDayRows(item).map(row => <FactRow key={row.key} label={row.label} value={row.value} detail={row.detail} />)}

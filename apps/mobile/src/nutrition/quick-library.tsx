@@ -1,7 +1,7 @@
 import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, SectionList, StyleSheet, View, useWindowDimensions, type AccessibilityActionEvent, type ViewToken } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
-import { LinkRow, AppIcon, AppText, Button, LoadingState, Surface, brandTokens, useOwnlevelTheme, useFieldSurface } from '@/design-system';
+import { LinkRow, AppIcon, AppText, Button, SkeletonBlock, Surface, brandTokens, useOwnlevelTheme, useFieldSurface } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import type { QuickOption } from '@/api/nutrition-quick';
 import type { QuickController, QuickState } from './quick-controller';
@@ -29,7 +29,6 @@ const LETTERS_FROM = 12;
 /** A row counts as on screen when at least half of it is (a zero-height section footer never does). */
 const VIEWABILITY = { itemVisiblePercentThreshold: 50 };
 /** The native small spinner is 20 pt: the refresh slot is never shorter than it, nor than one footnote line at the current text size. */
-const SPINNER_SIZE = 20;
 
 /** What a long press offers on a meal: multiples (saved meals only), pin or unpin, edit. Null where it does not apply. */
 type RowMenu = { onTimes: ((option: QuickOption, times: number) => void) | null; onEdit: ((option: QuickOption) => void) | null };
@@ -284,23 +283,17 @@ export function QuickLibrary({ state, controller, pins, locked, suggestions, onS
       {lettersOpen ? <View style={styles.grid}>{alphabet.map(letter => letterButton(letter))}</View> : null}
     </View>;
   const side = indexed && !compactIndex;
-  const refreshRow = state.optionsLoading && confirmed
-    ? <View accessible accessibilityLabel="Actualizando opciones rápidas" accessibilityLiveRegion="polite" style={styles.inline} testID="quick-options-refreshing">
-      <ActivityIndicator accessibilityElementsHidden importantForAccessibility="no-hide-descendants" color={colors.textMuted} />
-      <AppText muted variant="footnote" style={styles.flex}>Actualizando…</AppText>
-    </View> : null;
-  const refreshSlot = retryable ? refreshRow : <View style={{ minHeight: Math.max(SPINNER_SIZE, Math.ceil(brandTokens.typeScale.footnote.lineHeight * fontScale)), justifyContent: 'center' }} testID="quick-options-refresh-slot">{refreshRow}</View>;
   const header = <View style={styles.header}>
     <MealSearch label="Buscar en tus comidas" value={search} onChange={setSearch} />
     {status}
-    {state.optionsLoading && !confirmed ? <LoadingState label="Cargando opciones rápidas" /> : null}
-    {/* With confirmed meals on screen the rows stay; the refresh sits in a slot of constant height so the list does not jump. */}
-    {confirmed ? refreshSlot : null}
-    {state.optionsError ? <AppText accessibilityRole="alert">{confirmed ? 'No pudimos actualizar las opciones. Estás viendo las últimas confirmadas, pueden estar desactualizadas.' : 'No pudimos actualizar las opciones.'}</AppText> : null}
+    {state.optionsLoading && !confirmed ? <View accessible accessibilityLabel="Cargando opciones rápidas" accessibilityState={{ busy: true }} testID="quick-options-skeleton" style={{ gap: brandTokens.space.sm }}>
+      {[0, 1, 2, 3].map(row => <SkeletonBlock key={row} height={brandTokens.layout.minTouch} />)}
+    </View> : null}
+    {state.optionsError ? <AppText accessibilityRole="alert">{confirmed ? 'No pudimos actualizar. Mostramos lo último que cargó.' : 'No pudimos actualizar las opciones.'}</AppText> : null}
     {state.options?.saved.status === 'unavailable' ? <AppText accessibilityRole="alert">No pudimos cargar estas opciones.</AppText> : null}
     {/* The retry sits next to the error it answers, not after the last row. */}
     {retryable
-      ? <Button label="Reintentar opciones" onPress={() => void controller.loadOptions()} variant="quiet" /> : null}
+      ? <Button label="Reintentar opciones" variant="quiet" onPress={() => void controller.loadOptions()} /> : null}
     {pins ? <PinsNotice pins={pins} names={names} /> : null}
   </View>;
   const empty = saved ? <AppText muted style={styles.empty}>{query ? 'No encontramos comidas con esa búsqueda.' : 'Todavía no tenés comidas guardadas.'}</AppText> : null;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Alert, Keyboard, Platform, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Alert, Keyboard, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/build/react-navigation/core/usePreventRemove';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,7 +9,7 @@ import { fetchRoutineDetail, replaceRoutineTemplate, setMobileTrainingRoutineSta
 import type { RoutineDetail, RoutineTemplatePayload } from '@/api/routine-editor';
 import type { MobileApiMutationResult } from '@/api/results';
 import type { MobileTrainingExercise } from '@/api/exercises';
-import { AppText, Button, EmptyState, GlassSurface, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, motionDurations, radius, spacing, useOwnlevelTheme } from '@/design-system';
+import { PullRefreshControl, AppText, Button, EmptyState, GlassSurface, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, motionDurations, radius, spacing, useOwnlevelTheme } from '@/design-system';
 import { CreateRoutineSheet, type DuplicateRoutineSource, type RoutineCreateInput } from './create-routine-sheet';
 import { duplicateRoutine, routineDuplicateSource } from './routine-duplicate';
 import { appendExercises, draftFromTargets, isTargetsDirty, targetsFromDraft, templatePayload, validateTargetsDraft, type TargetsDraft } from './routine-editor-model';
@@ -208,8 +208,8 @@ export function RoutineEditorScreen({ createIdempotencyKey = defaultKey }: { cre
       metric.max = Math.max(metric.min, contentSize.height - layoutMeasurement.height + contentInset.bottom);
       setFloating(headerBottom.current !== null && contentOffset.y >= headerBottom.current - contentInset.top);
     }} onContentSizeChange={(_width, height) => { const metric = scrollMetrics.current; metric.contentHeight = height; metric.max = Math.max(metric.min, height - metric.height + metric.bottom); }}
-    refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} tintColor={colors.primary} colors={[colors.primary]}
-      onRefresh={() => { if (!busy.current && !blockedRead.current && !dragRef.current) void refresh(); }} />}>
+    refreshControl={<PullRefreshControl tintColor={colors.primary} colors={[colors.primary]}
+      onRefresh={() => { if (!busy.current && !blockedRead.current && !dragRef.current) return refresh(); }} />}>
     {Platform.OS !== 'ios' ? <AppText accessibilityRole="header" variant="largeTitle">{detail.routine.name}</AppText> : null}
     <AppText muted numeric variant="subheadline">{plural(detail.items.length, 'ejercicio', 'ejercicios')} · {plural(detail.items.reduce((total, item) => total + item.targets.sets.length, 0), 'serie', 'series')}</AppText>
     {state.status !== 'ready' ? <InlineUnavailable message="Mostramos la última lectura confirmada." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}

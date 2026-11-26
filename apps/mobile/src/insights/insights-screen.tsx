@@ -2,12 +2,12 @@ import { shortRange as periodDateRange } from '@/progress/progress-range';
 import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { ReturnToProgress } from './return-to-progress';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchInsightsDays, fetchInsightsRelations, fetchInsightsSummaryBefore, fetchSessionTemporal, type DayFact, type InsightsSummary, type PartialDayFact, type PartialRelationSummary, type RelationSummary, type SessionFact } from '@/api/performance-insights';
-import { LinkRow, AppIcon, AppSheet, AppText, Button, ChipGroup, ExampleFrame, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { PullRefreshControl, LinkRow, AppIcon, AppSheet, AppText, Button, ChipGroup, ExampleFrame, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, pressedStyle, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import type { AppIconName } from '@/design-system/icon-names';
 import { haptics } from '@/platform/haptics';
 import { useProgressResource } from '@/progress/use-progress-resource';
@@ -526,7 +526,7 @@ export function InsightsScreen() {
   const setView = (value: View_) => { haptics.selection(); router.setParams({ view: value, session: undefined, date: undefined }); };
   const setFamily = (value: FamilyFilter) => { haptics.selection(); router.setParams({ family: value }); };
   const toggleRelations = () => { haptics.selection(); router.setParams({ relations: relationsOpen ? '0' : '1' }); };
-  const refreshControl = <RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />;
+  const refreshControl = <PullRefreshControl onRefresh={() => refresh()} tintColor={colors.primary} />;
   const returnToSession = origin.fromSession && focusId ? <LinkRow kind="back" label="Volver a la sesión" onPress={() => {
     if (router.canGoBack()) router.back();
     else router.replace({ pathname: '/(tabs)/train/history/[id]', params: { id: focusId } });

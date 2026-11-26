@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react';
-import { Platform, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useApiResource } from '@/api';
 import type { MobileTrainingExercise } from '@/api/exercises';
-import { AppText, InlineUnavailable, ListGroup, ListRow, SkeletonBlock, Surface, UnavailableState, radius, spacing, useOwnlevelTheme } from '@/design-system';
+import { PullRefreshControl, AppText, InlineUnavailable, ListGroup, ListRow, SkeletonBlock, Surface, UnavailableState, radius, spacing, useOwnlevelTheme } from '@/design-system';
 import { useExerciseLibrary, exerciseUnavailable } from './use-exercise-library';
 import { ExerciseEditorModal } from './exercise-editor-modal';
 import { ExerciseAddRoutineSheet } from './exercise-add-routine-sheet';
@@ -37,7 +37,7 @@ export function ExerciseDetailScreen() {
     </TrainingContextMenu> : undefined }} />
     {Platform.OS === 'ios' ? menu : null}
     <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentInsetAdjustmentBehavior="automatic" testID="exercise-detail" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={library.state.status === 'ready' && library.state.refreshing} tintColor={colors.primary} onRefresh={() => { if (!locked) { void refresh(); void last.refresh(); } }} />}>
+      refreshControl={<PullRefreshControl tintColor={colors.primary} onRefresh={() => locked ? undefined : Promise.all([refresh(), last.refresh()])} />}>
       {!exercise ? !library.current && library.state.status === 'loading' ? <SkeletonBlock height={200} /> : !library.catalog ? <InlineUnavailable message="No pudimos cargar el ejercicio." actionLabel="Reintentar" onAction={() => void refresh()} /> : <UnavailableState title="No encontramos el ejercicio" description="Ya no está disponible en tu biblioteca." /> : <>
         {Platform.OS !== 'ios' || exercise.name.length > 24 ? <AppText variant={Platform.OS === 'ios' ? 'title2' : 'largeTitle'} testID="exercise-full-name">{exercise.name}</AppText> : null}
         {library.stale ? <InlineUnavailable message="Mostramos la última lectura confirmada." actionLabel="Reintentar" onAction={() => void refresh()} /> : null}

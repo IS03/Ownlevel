@@ -1,6 +1,6 @@
 import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshControl, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { selectedRouteDate } from '@/history/navigation';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
@@ -8,7 +8,7 @@ import { metricsChartOrigin, ReturnToMetricChart } from '@/progress/metrics-char
 import { useDomainDate } from '@/history/use-domain-date';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
-import { LinkRow, AppText, Button, Heading, InlineUnavailable, ScrollScreen, SkeletonBlock, Surface, spacing, useOwnlevelTheme } from '@/design-system';
+import { PullRefreshControl, LinkRow, AppText, Button, Heading, InlineUnavailable, ScrollScreen, SkeletonBlock, Surface, spacing, useOwnlevelTheme } from '@/design-system';
 import { NutritionDateSelector } from '@/nutrition/date-selector';
 import { metricValue } from '@/nutrition/day-content';
 import { displayNutritionDate, inputNutritionDate, nutritionToday, shiftNutritionDate } from '@/nutrition/day-format';
@@ -49,8 +49,8 @@ function MetricsDay({ autoEdit = false, date, today, onAutoEdit, onSelect, onSer
     onAutoEdit?.();
     writes.controller.open('metrics', data);
   }, [canAutoEdit, data, onAutoEdit, writes]);
-  return <ScrollHeaderScreen title="Métricas diarias"><ScrollScreen testID="daily-metrics-screen" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing}
-    onRefresh={() => void refresh()} tintColor={colors.primary} />}>
+  return <ScrollHeaderScreen title="Métricas diarias"><ScrollScreen testID="daily-metrics-screen" refreshControl={<PullRefreshControl
+    onRefresh={() => refresh()} tintColor={colors.primary} />}>
     <View style={styles.header}>
       <ReturnToHistoryDay /><ReturnToMetricChart />
       {origin?.interval ? <AppText muted variant="caption">Recorrido del intervalo {inputNutritionDate(origin.interval.start)} – {inputNutritionDate(origin.interval.end)}. Consultá cada fecha; este día no representa el promedio.{date < origin.interval.start || date > origin.interval.end ? ' Estás fuera del intervalo del gráfico.' : ''}</AppText> : null}

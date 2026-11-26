@@ -32,7 +32,6 @@ import { DurationControl } from "./duration-control";
 import {
   isLocked,
   isDraftLocked,
-  RefreshingStages,
   StagesSkeleton,
   StagesStatus,
   StagesToast,
@@ -147,7 +146,6 @@ function StagePlanBody({
               : "Esta etapa todavía no empezó. Lo vivido no cambia."}
           </AppText>
         ) : null}
-        {state ? <RefreshingStages state={state} /> : null}
         {!stage || !list ? (
           state?.notice || (list && state?.phase !== "loading") ? (
             <View style={{ gap: 12 }}>

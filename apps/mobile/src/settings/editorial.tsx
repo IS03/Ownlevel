@@ -200,7 +200,7 @@ export function EditorialRow({
 export function EditorialSkeleton() {
   return (
     <View
-      accessibilityLabel="Actualizando ajustes"
+      accessibilityLabel="Cargando ajustes"
       accessibilityState={{ busy: true }}
       style={{ gap: 24 }}
       testID="settings-skeleton"

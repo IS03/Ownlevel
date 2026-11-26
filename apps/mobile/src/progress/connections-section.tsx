@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useRouter } from 'expo-router';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useMobileApi } from '@/api';
 import { fetchProgressConnections, type ConnectionStory } from '@/api/progress-connections';
@@ -70,8 +70,6 @@ export function ConnectionsSection({ resource }: { resource: ConnectionsResource
     {status.status === 'loading' ? <ConnectionsSkeleton /> : !data
       ? <InlineUnavailable message="No pudimos cargar lo que se movió junto." actionLabel="Reintentar" onAction={() => void refresh()} />
       : <>
-        {status.status === 'ready' && status.refreshing
-          ? <ActivityIndicator accessibilityLabel="Actualizando estas historias" color={colors.textMuted} size="small" style={styles.refreshing} /> : null}
         {status.status !== 'ready' ? <InlineUnavailable message="No pudimos actualizar estas historias. Mostramos los últimos datos de este período."
           actionLabel="Reintentar" onAction={() => void refresh()} /> : null}
         {ready.map(story => <ReadyConnection key={story.key} story={story} />)}
@@ -103,5 +101,4 @@ const styles = StyleSheet.create({
   insufficient: { gap: spacing.sm, paddingTop: spacing.md },
   missing: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
   month: { minHeight: 44, justifyContent: 'center' },
-  refreshing: { alignSelf: 'flex-end' },
 });

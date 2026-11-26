@@ -1,12 +1,12 @@
 import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { FadeIn, runOnJS } from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { MobileApiClient } from '@/api/client';
 import { fetchHistoryRange, type HistoryFact } from '@/api/history';
-import { LinkRow, AppIcon, AppText, brandTokens, GlassSurface, InlineUnavailable, ListRow, radius, ScrollScreen, Separator, SkeletonBlock, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
+import { PullRefreshControl, LinkRow, AppIcon, AppText, brandTokens, GlassSurface, InlineUnavailable, ListRow, radius, ScrollScreen, Separator, SkeletonBlock, spacing, useOwnlevelTheme, useReduceMotion } from '@/design-system';
 import { haptics } from '@/platform/haptics';
 import { displayNutritionDate } from '@/nutrition/day-format';
 import { buildTrainingMonth, formatTrainingMonth } from '@/training/calendar';
@@ -78,8 +78,8 @@ export function HistoryCalendarScreen() {
   }), [data, month]);
   const thisMonth = today?.slice(0, 7);
 
-  return <ScrollHeaderScreen title="Calendario"><ScrollScreen testID="global-calendar" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing}
-    onRefresh={() => void refresh()} tintColor={colors.primary} />}>
+  return <ScrollHeaderScreen title="Calendario"><ScrollScreen testID="global-calendar" refreshControl={<PullRefreshControl
+    onRefresh={() => refresh()} tintColor={colors.primary} />}>
     {month ? <View style={styles.header}>
       <MonthButton icon="chevronLeft" label="Mes anterior" disabled={false} onPress={() => go(-1)} />
       <View style={styles.title}>

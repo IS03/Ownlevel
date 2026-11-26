@@ -31,6 +31,7 @@ export { LinkRow, ListGroup, ListRow } from './list';
 export { SheetHandle, SheetHeader, SheetSurface } from './sheet';
 export { AppSheet, useAppSheetDismiss, type AppSheetDismiss } from './app-sheet';
 export { motionDurations, pressedStyle, pressScale, useReduceMotion } from './motion';
+export { PullRefreshControl } from './pull-refresh-control';
 export { usePullRefresh } from './pull-refresh';
 export { AppIcon, appIconSize } from './icons';
 export type { AppIconName } from './icons';

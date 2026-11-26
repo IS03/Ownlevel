@@ -1,11 +1,11 @@
 import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { useCallback } from 'react';
-import { RefreshControl, View } from 'react-native';
+import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { MobileApiClient } from '@/api/client';
 import { fetchHistoryDay, historyHasActivity, shiftHistoryDate } from '@/api/history';
 import { isNutritionDate } from '@/api/nutrition-day';
-import { LinkRow, AppText, Button, Heading, InlineUnavailable, ListRow, ScrollScreen, SkeletonBlock, useOwnlevelTheme } from '@/design-system';
+import { PullRefreshControl, LinkRow, AppText, Button, Heading, InlineUnavailable, ListRow, ScrollScreen, SkeletonBlock, useOwnlevelTheme } from '@/design-system';
 import { amount, displayNutritionDate, nutrientAmount, signedAmount } from '@/nutrition/day-format';
 import { metricValue } from '@/nutrition/day-content';
 import { formatKg, measurementBadges, measurementValues } from '@/body/body-model';
@@ -37,7 +37,7 @@ function Day({ date, month }: { date: string; month?: string }) {
     || (data?.body.measurement.status === 'ok' && !!data.body.measurement.data)
     || (data?.metrics.status === 'ok' && data.metrics.data.metrics.some(m => m.value !== null));
   const unavailable = <InlineUnavailable message="No pudimos leer esta sección." actionLabel="Reintentar" onAction={() => void refresh()} />;
-  return <ScrollHeaderScreen title="Registros del día"><ScrollScreen testID="global-history-day" refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
+  return <ScrollHeaderScreen title="Registros del día"><ScrollScreen testID="global-history-day" refreshControl={<PullRefreshControl onRefresh={() => refresh()} tintColor={colors.primary} />}>
     <AppText muted variant="caption">REGISTROS DEL DÍA</AppText>
     <AppText muted variant="footnote">{displayNutritionDate(date).split(',')[0]}</AppText>
     <Heading level={1} accessibilityLabel={displayNutritionDate(date)}>{formatTrainingDate(date)}</Heading>

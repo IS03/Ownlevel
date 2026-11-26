@@ -39,7 +39,6 @@ import { DurationControl } from "./duration-control";
 import {
   isLocked,
   isDraftLocked,
-  RefreshingStages,
   StageSave,
   StageStripe,
   StagesSkeleton,
@@ -107,7 +106,6 @@ export function StageSequenceScreen() {
             ) : " "}
           </AppText>
         </View>
-        {state ? <RefreshingStages state={state} /> : null}
         {!sequence || !list ? (
           state?.notice || (list && state?.phase !== "loading") ? (
             <View style={{ gap: 12 }}>

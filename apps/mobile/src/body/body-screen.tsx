@@ -1,6 +1,6 @@
 import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { selectedRouteDate } from '@/history/navigation';
 import { ReturnToHistoryDay } from '@/history/return-to-day';
@@ -8,7 +8,7 @@ import { ReturnToBodyChart } from '@/progress/body-chart-navigation';
 import { useMobileApi } from '@/api';
 import { useMobileAuth } from '@/auth';
 import type { BodyMeasurement, BodyMeasurementField, BodyWeightEntry } from '@/api/body';
-import { LinkRow, AppIcon, AppText, Button, Heading, InlineUnavailable, ScrollScreen, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
+import { PullRefreshControl, LinkRow, AppIcon, AppText, Button, Heading, InlineUnavailable, ScrollScreen, SkeletonBlock, UnavailableState, spacing, useOwnlevelTheme } from '@/design-system';
 import type { BodyController, BodyState } from './body-controller';
 import type { WeightEditor } from './body-storage';
 import { MeasurementEditorSheet, WeightEditorSheet } from './body-editor';
@@ -146,7 +146,7 @@ export function BodyView({ state, controller, date }: { state: BodyState; contro
   }
   const editable = state.phase === 'idle' && !state.intent && !editor;
   return <>
-    <ScrollHeaderScreen title="Cuerpo"><ScrollScreen testID="body-screen" refreshControl={<RefreshControl refreshing={read.refreshing} onRefresh={() => void controller.load()} tintColor={colors.primary} />}>
+    <ScrollHeaderScreen title="Cuerpo"><ScrollScreen testID="body-screen" refreshControl={<PullRefreshControl onRefresh={() => controller.load()} tintColor={colors.primary} />}>
       <ReturnToHistoryDay /><ReturnToBodyChart />
       <BodyStatus state={state} controller={controller} />
       <BodyDate state={state} controller={controller} date={date} editable={editable} />

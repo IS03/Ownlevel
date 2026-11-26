@@ -1,12 +1,12 @@
 import { ScrollHeaderScreen } from '@/navigation/scroll-header-screen';
 import { ReturnToProgress } from './return-to-progress';
 import { useCallback } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useMobileApi } from '@/api';
 import type { MobileApiClient } from '@/api/client';
 import { fetchInsightsPeriodFeelings, validPeriodAnchor } from '@/api/performance-insights';
-import { LinkRow, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
+import { PullRefreshControl, LinkRow, AppText, Button, Heading, InlineUnavailable, SkeletonBlock, UnavailableState, brandTokens, spacing, useOwnlevelTheme } from '@/design-system';
 import { useProgressResource } from '@/progress/use-progress-resource';
 import { FeelingOutcomeSections } from './feeling-outcome-sections';
 import { FactRow } from './insights-screen';
@@ -23,7 +23,7 @@ export function PeriodFeelingsScreen() {
   const { state, data, refresh } = useProgressResource(asOf ? client : null, `performance-insights|period-feelings|${asOf}`, load);
   usePeriodReturn(refresh);
   const scroll = (children: React.ReactNode) => <ScrollHeaderScreen title="Sensaciones del período"><ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} testID="period-feelings-screen" contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.scroll}
-    refreshControl={<RefreshControl refreshing={state.status === 'ready' && state.refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}><ReturnToProgress/>{children}</ScrollView></ScrollHeaderScreen>;
+    refreshControl={<PullRefreshControl onRefresh={() => refresh()} tintColor={colors.primary} />}><ReturnToProgress/>{children}</ScrollView></ScrollHeaderScreen>;
   if (!asOf) return scroll(<UnavailableState title="No pudimos identificar el período" description="Abrí el detalle desde el resumen de tres meses." action={<Button label="Volver al resumen" onPress={() => router.navigate(periodSummaryHref(undefined,insightsOriginOf(params)))} />} />);
   if (state.status === 'loading' && !data) return scroll(<SkeletonBlock height={176} />);
   if (!data || data.integrity !== 'valid') return scroll(<UnavailableState title="No pudimos leer las sensaciones" description="Tus respuestas siguen guardadas." action={<Button label="Reintentar" onPress={() => void refresh()} />} />);

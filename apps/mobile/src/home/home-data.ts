@@ -147,7 +147,7 @@ export function useHomeResources(client: MobileApiClient | null, now: () => Date
     const moved = new Set(homeReadsMovedSince(lastFocus.current?.writes, revisionsOf(client)));
     markRefreshed();
     // A pending read may predate the write; refresh() would join it and accept stale data.
-    void Promise.all(HOME_READS.map(read => moved.has(read) ? actionsRef.current[read].reload() : actionsRef.current[read].refresh(fromFocus)));
+    return Promise.all(HOME_READS.map(read => moved.has(read) ? actionsRef.current[read].reload() : actionsRef.current[read].refresh(fromFocus)));
   }, [client, markRefreshed]);
   const pullRefresh = useCallback(() => refreshNow(), [refreshNow]);
   const focusHome = home.focus;
